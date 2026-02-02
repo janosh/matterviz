@@ -1024,10 +1024,9 @@ pub fn guess_defect_charge_states(
 
             for &(added_oxi, added_prob) in &added_oxi_probs {
                 for &(removed_oxi, removed_prob) in &removed_oxi_probs {
-                    // Net charge = (new_at_site_A - expected_at_A) + (new_at_site_B - expected_at_B)
-                    // = (removed_oxi - added_oxi) + (added_oxi - removed_oxi) = 0 if same oxidation state
-                    // But if they have different oxidation states in their new environments...
-                    let charge = (removed_oxi as i32) - (added_oxi as i32);
+                    // Defect charge = (new species oxi) - (expected oxi at site)
+                    // e.g., Na(+1) on Cl(-1) site: charge = +1 - (-1) = +2
+                    let charge = (added_oxi as i32) - (removed_oxi as i32);
                     if charge.abs() <= max_charge {
                         let combined_prob = added_prob * removed_prob;
                         let added_fmt = format_oxi_state(added_oxi);
