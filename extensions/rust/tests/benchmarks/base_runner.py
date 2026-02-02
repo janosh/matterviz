@@ -8,7 +8,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import numpy as np
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
 
@@ -121,47 +120,3 @@ def run_timed_fire_loop(
         converged=is_converged_fn(fmax),
         n_steps_actual=n_steps_actual,
     )
-
-
-def compute_temperature_from_velocities(
-    velocities: np.ndarray, masses: np.ndarray
-) -> float:
-    """Compute temperature from velocities and masses.
-
-    Args:
-        velocities: Nx3 array of velocities
-        masses: N array of masses in amu
-
-    Returns:
-        Temperature in Kelvin
-
-    Raises:
-        ValueError: If there are fewer than 2 atoms (n_dof would be <= 0)
-    """
-    # Boltzmann constant in eV/K
-    kb_ev = 8.617333262e-5
-
-    n_atoms = len(masses)
-    n_dof = 3 * n_atoms - 3  # Remove COM
-
-    if n_dof <= 0:
-        raise ValueError(
-            f"Need at least 2 atoms to compute temperature (got {n_atoms} atoms, "
-            f"n_dof={n_dof})"
-        )
-
-    kinetic_energy = 0.5 * np.sum(masses[:, np.newaxis] * velocities**2)
-    return 2.0 * kinetic_energy / (n_dof * kb_ev)
-
-
-def compute_kinetic_energy(velocities: np.ndarray, masses: np.ndarray) -> float:
-    """Compute kinetic energy from velocities and masses.
-
-    Args:
-        velocities: Nx3 array of velocities
-        masses: N array of masses in amu
-
-    Returns:
-        Kinetic energy in eV
-    """
-    return 0.5 * np.sum(masses[:, np.newaxis] * velocities**2)

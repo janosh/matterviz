@@ -80,6 +80,20 @@ def run_torchsim_fire(
     )
 
 
+def _get_md_final_state(md_state: "SimState") -> tuple[float, float]:
+    """Extract temperature and kinetic energy from torch-sim MD state."""
+    from torch_sim import calc_temperature
+
+    temp = calc_temperature(
+        masses=md_state.masses, velocities=md_state.velocities
+    ).item()
+    ke = (
+        0.5
+        * torch.sum(md_state.masses * torch.sum(md_state.velocities**2, dim=-1)).item()
+    )
+    return temp, ke
+
+
 def run_torchsim_nve(
     structure: Structure,
     model: "MaceModel",
@@ -88,7 +102,7 @@ def run_torchsim_nve(
     temperature: float = 300.0,
 ) -> MDResult:
     """Run NVE MD using torch-sim velocity Verlet."""
-    from torch_sim import calc_temperature, nve_init, nve_step
+    from torch_sim import nve_init, nve_step
 
     device = str(model.device)
     kT = torch.tensor(temperature * KB_EV, device=device, dtype=torch.float64)
@@ -99,19 +113,7 @@ def run_torchsim_nve(
         nonlocal md_state
         md_state = nve_step(md_state, model, dt=dt_tensor)
 
-    def get_final_state() -> tuple[float, float]:
-        temp = calc_temperature(
-            masses=md_state.masses, velocities=md_state.velocities
-        ).item()
-        ke = (
-            0.5
-            * torch.sum(
-                md_state.masses * torch.sum(md_state.velocities**2, dim=-1)
-            ).item()
-        )
-        return temp, ke
-
-    return run_timed_md_loop(n_steps, step, get_final_state)
+    return run_timed_md_loop(n_steps, step, lambda: _get_md_final_state(md_state))
 
 
 def run_torchsim_nvt(
@@ -123,7 +125,7 @@ def run_torchsim_nvt(
     friction: float = 0.01,
 ) -> MDResult:
     """Run NVT MD using torch-sim Langevin dynamics."""
-    from torch_sim import calc_temperature, nvt_langevin_init, nvt_langevin_step
+    from torch_sim import nvt_langevin_init, nvt_langevin_step
 
     device = str(model.device)
     kT = torch.tensor(temperature * KB_EV, device=device, dtype=torch.float64)
@@ -137,16 +139,4 @@ def run_torchsim_nvt(
         nonlocal md_state
         md_state = nvt_langevin_step(md_state, model, dt=dt_tensor, kT=kT, gamma=gamma)
 
-    def get_final_state() -> tuple[float, float]:
-        temp = calc_temperature(
-            masses=md_state.masses, velocities=md_state.velocities
-        ).item()
-        ke = (
-            0.5
-            * torch.sum(
-                md_state.masses * torch.sum(md_state.velocities**2, dim=-1)
-            ).item()
-        )
-        return temp, ke
-
-    return run_timed_md_loop(n_steps, step, get_final_state)
+    return run_timed_md_loop(n_steps, step, lambda: _get_md_final_state(md_state))
