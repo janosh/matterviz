@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import ClassVar
 
 import ferrox
@@ -147,14 +148,20 @@ class TestFindInterstitialSites:
             assert site["min_distance"] >= min_dist
 
     def test_symprec_parameter(self, fcc_cu_json: str) -> None:
-        """Symprec parameter works for site deduplication."""
+        """Symprec parameter affects site deduplication - looser tolerance merges more sites."""
         sites_tight = ferrox.defect_find_interstitial_sites(
             fcc_cu_json, 1.0, symprec=0.01
         )
         sites_loose = ferrox.defect_find_interstitial_sites(
             fcc_cu_json, 1.0, symprec=0.1
         )
-        assert isinstance(sites_tight, list) and isinstance(sites_loose, list)
+        # Both should find sites in FCC structure
+        assert len(sites_tight) > 0
+        assert len(sites_loose) > 0
+        # Looser symprec merges more symmetry-equivalent sites, so count should be <=
+        assert len(sites_loose) <= len(sites_tight), (
+            f"Loose symprec ({len(sites_loose)}) should find <= sites than tight ({len(sites_tight)})"
+        )
 
 
 class TestFindSupercell:
@@ -251,8 +258,8 @@ class TestVoronoiInterstitials:
     def test_returns_required_fields(self, fcc_cu_json: str) -> None:
         """Each site should have all required fields."""
         sites = ferrox.defect_find_voronoi_interstitials(fcc_cu_json)
-        if sites:
-            site = sites[0]
+        assert sites
+        for site in sites:
             assert "frac_coords" in site
             assert "cart_coords" in site
             assert "min_dist" in site
@@ -328,7 +335,7 @@ class TestVoronoiInterstitials:
                 for s in oct_sites
             )
             # BCC octahedral sites should be at face centers or edge midpoints
-            assert has_face_center, "BCC octahedral sites should include face centers"
+            assert has_face_center
 
 
 # === Charge State Guessing Tests (Extended from doped) ===
@@ -377,10 +384,17 @@ class TestChargeStateGuessing:
         assert any(charge in charges for charge in expected_charges)
 
     def test_probabilities_sum_to_one(self) -> None:
-        """Probabilities should sum to approximately 1."""
+        """Probabilities should sum to 1 and each be in valid range [0, 1]."""
         guesses = ferrox.defect_guess_charge_states("vacancy", removed_species="O")
+        assert len(guesses) > 0, "Should return at least one charge state guess"
+        for guess in guesses:
+            assert 0.0 <= guess["probability"] <= 1.0, (
+                f"Probability {guess['probability']} out of range for charge {guess['charge']}"
+            )
         total_prob = sum(g["probability"] for g in guesses)
-        assert abs(total_prob - 1.0) < 0.01
+        assert abs(total_prob - 1.0) < 0.01, (
+            f"Probabilities sum to {total_prob}, expected 1.0"
+        )
 
     def test_sorted_by_probability(self) -> None:
         """Results should be sorted by decreasing probability."""
@@ -477,28 +491,37 @@ class TestWyckoffLabels:
     def test_multiplicity_matches_label(self, fcc_cu_json: str) -> None:
         """Multiplicity field should match the number in the Wyckoff label."""
         labels = ferrox.get_wyckoff_labels(fcc_cu_json)
-        if labels:
-            for site in labels:
-                label = site["label"]
-                multiplicity = site["multiplicity"]
-                # Extract number from label (e.g., "4a" -> 4)
-                import re
+        assert labels
+        for site in labels:
+            label = site["label"]
+            multiplicity = site["multiplicity"]
+            # Extract number from label (e.g., "4a" -> 4)
+            numbers = re.findall(r"\d+", label)
+            assert numbers, f"Wyckoff label missing multiplicity: {label}"
+            expected_mult = int(numbers[0])
+            assert multiplicity == expected_mult, (
+                f"Multiplicity {multiplicity} != label {label}"
+            )
 
-                numbers = re.findall(r"\d+", label)
-                if numbers:
-                    expected_mult = int(numbers[0])
-                    assert multiplicity == expected_mult, (
-                        f"Multiplicity {multiplicity} != label {label}"
-                    )
-
-    def test_site_symmetry_is_string(self, fcc_cu_json: str) -> None:
-        """Site symmetry should be a valid string (point group notation)."""
+    def test_site_symmetry_is_valid_point_group(self, fcc_cu_json: str) -> None:
+        """Site symmetry should be a valid point group symbol (Hermann-Mauguin or Schoenflies)."""
+        # Common point group symbols in crystallography
+        valid_patterns = re.compile(
+            r"^(m-?3m|m3|4/mmm|4mm|4/m|-?4|mmm|mm2|2/m|222|m|-?[1-6]|"
+            r"O_h|O|T_d|T_h|T|D_\d+[hd]?|C_\d+[vhi]?|S_\d+|"
+            r"[1-6](/m)?|[2346]/m(mm)?|-?[346]m|[234]2[2m]?)$"
+        )
         labels = ferrox.get_wyckoff_labels(fcc_cu_json)
-        if labels:
-            for site in labels:
-                sym = site["site_symmetry"]
-                assert isinstance(sym, str)
-                assert len(sym) > 0
+        assert labels, "Should return Wyckoff labels for FCC structure"
+        for site in labels:
+            sym = site["site_symmetry"]
+            assert isinstance(sym, str) and len(sym) > 0, (
+                f"Site symmetry must be non-empty string, got: {sym!r}"
+            )
+            # FCC Cu has m-3m point symmetry at the 4a position
+            assert "m" in sym.lower() or valid_patterns.match(sym), (
+                f"Site symmetry '{sym}' doesn't look like a valid point group"
+            )
 
 
 # === Defect Naming Tests ===

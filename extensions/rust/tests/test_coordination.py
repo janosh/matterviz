@@ -103,8 +103,10 @@ class TestLocalEnvironment:
         assert all(2.0 < dist < 2.7 and len(image) == 3 for _, dist, image in neighbors)
 
     def test_site_bounds_error(self, fcc_cu_json: str) -> None:
-        """Out of bounds site raises error."""
-        with pytest.raises((ValueError, IndexError)):
+        """Out of bounds site raises error with descriptive message."""
+        with pytest.raises(
+            (ValueError, IndexError), match=r"(?i)(out of|bounds|index|100)"
+        ):
             ferrox.get_local_environment(fcc_cu_json, 100, 3.0)
 
 

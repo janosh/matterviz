@@ -49,6 +49,14 @@ describe(`ReferenceLine`, () => {
 
     const lines = query_all(`line`)
     expect(lines.length).toBe(2) // Hit area + visible line
+
+    // Verify the visible line is at correct y position
+    const visible_line = Array.from(lines).find(
+      (line) => line.getAttribute(`stroke`) !== `transparent`,
+    )
+    expect(visible_line).toBeTruthy()
+    const y_pos = parseFloat(visible_line?.getAttribute(`y1`) ?? `0`)
+    expect(y_pos).toBeCloseTo(y_scale(50), 0) // y=50 mapped through y_scale
   })
 
   test(`renders vertical line correctly`, () => {
@@ -75,6 +83,10 @@ describe(`ReferenceLine`, () => {
       (line) => line.getAttribute(`stroke`) !== `transparent`,
     )
     expect(visible_line).toBeTruthy()
+
+    // Verify the visible line is at correct x position
+    const x_pos = parseFloat(visible_line?.getAttribute(`x1`) ?? `0`)
+    expect(x_pos).toBeCloseTo(x_scale(50), 0) // x=50 mapped through x_scale
   })
 
   test(`applies custom style`, () => {

@@ -35,9 +35,7 @@ pub const MAX_PERMUTATIONS: usize = 100_000;
 /// representable as a single oxidation state.
 pub const OXI_INT_TOLERANCE: f64 = 0.25;
 
-// =============================================================================
-// Compressed Data Files (embedded at compile time)
-// =============================================================================
+// === Compressed Data Files (embedded at compile time) ===
 
 // ICSD oxidation state occurrence counts
 const ICSD_OXI_PROB_GZ: &[u8] = include_bytes!("data/icsd_oxi_prob.json.gz");
@@ -48,9 +46,7 @@ const ICSD_BV_STATS_GZ: &[u8] = include_bytes!("data/icsd_bv_stats.json.gz");
 // O'Keeffe & Brese BV parameters (r, c per element)
 const BV_PARAMS_GZ: &[u8] = include_bytes!("data/bv_params.json.gz");
 
-// =============================================================================
-// Data Structures
-// =============================================================================
+// === Data Structures ===
 
 /// Bond valence parameters for an element (O'Keeffe & Brese 1991).
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -81,9 +77,7 @@ pub struct OxiStateGuess {
     pub probability: f64,
 }
 
-// =============================================================================
-// Lazy Data Loading
-// =============================================================================
+// === Lazy Data Loading ===
 
 // Type aliases for data maps
 type OxiProbMap = HashMap<String, u32>;
@@ -124,9 +118,7 @@ pub fn get_bv_params() -> &'static BvParamsMap {
     BV_PARAMS.get_or_init(|| decompress_json(BV_PARAMS_GZ))
 }
 
-// =============================================================================
-// Utility Functions
-// =============================================================================
+// === Utility Functions ===
 
 /// Format species key for looking up in ICSD data maps.
 ///
@@ -184,9 +176,7 @@ pub fn is_electronegative(element: Element) -> bool {
     ELECTRONEG_ELEMENTS.contains(&element)
 }
 
-// =============================================================================
-// Bond Valence Sum Calculation
-// =============================================================================
+// === Bond Valence Sum Calculation ===
 
 /// Calculate bond valence contribution from a single bond.
 ///
@@ -290,9 +280,7 @@ pub fn calculate_bv_sum(site_element: Element, neighbors: &[BvNeighbor], scale_f
         .sum()
 }
 
-// =============================================================================
-// Oxidation State Probability Calculation
-// =============================================================================
+// === Oxidation State Probability Calculation ===
 
 /// Calculate posterior probability for an oxidation state given a BV sum.
 ///
@@ -359,9 +347,7 @@ pub fn get_oxi_state_probabilities(element: Element, bv_sum: f64) -> Vec<(i8, f6
     probs
 }
 
-// =============================================================================
-// Composition-based Oxidation State Guessing
-// =============================================================================
+// === Composition-based Oxidation State Guessing ===
 
 /// Get oxidation states to consider for an element.
 ///
@@ -767,9 +753,7 @@ pub fn find_charge_balanced_assignment(
     best.1
 }
 
-// =============================================================================
-// Defect Charge State Guessing
-// =============================================================================
+// === Defect Charge State Guessing ===
 
 /// Result of charge state guessing for a defect.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1106,9 +1090,7 @@ pub fn guess_defect_charge_states_batch(
         .collect()
 }
 
-// =============================================================================
-// Tests
-// =============================================================================
+// === Tests ===
 
 #[cfg(test)]
 mod tests {

@@ -250,9 +250,17 @@ class TestSymmetryFunctions:
         assert ferrox.get_pearson_symbol(struct) == pearson
         assert ferrox.get_crystal_system(struct) == crystal_sys
 
-    def test_hall_number_range(self, fcc_cu_json: str) -> None:
-        """Hall number is in valid range (1-530)."""
-        assert 1 <= ferrox.get_hall_number(fcc_cu_json) <= 530
+    def test_hall_number_for_fcc(self, fcc_cu_json: str) -> None:
+        """Hall number for FCC Cu (Fm-3m, sg 225) should be in valid range and consistent.
+
+        Hall numbers 523-529 correspond to space group 225 (Fm-3m).
+        """
+        hall = ferrox.get_hall_number(fcc_cu_json)
+        assert 1 <= hall <= 530, f"Hall number {hall} outside valid range [1, 530]"
+        # Hall numbers 523-529 are all settings of Fm-3m (space group 225)
+        assert 523 <= hall <= 529, (
+            f"Hall number {hall} does not correspond to Fm-3m (expected 523-529)"
+        )
 
     def test_wyckoff_and_site_symmetry(self, fcc_cu_json: str) -> None:
         """FCC Cu: all 4 atoms have same Wyckoff position and site symmetry."""
@@ -437,7 +445,7 @@ class TestRdf:
     def test_compute_rdf_has_peaks(self, rocksalt_nacl_json: str) -> None:
         """RDF should have non-zero peaks for crystal structure."""
         _, g_of_r = ferrox.compute_rdf(rocksalt_nacl_json, r_max=6.0, n_bins=30)
-        assert any(g > 0 for g in g_of_r), "RDF should have non-zero values"
+        assert any(g > 0 for g in g_of_r)
 
     def test_compute_element_rdf(self, rocksalt_nacl_json: str) -> None:
         """Element-resolved RDF for Na-Cl pair."""
@@ -445,7 +453,7 @@ class TestRdf:
             rocksalt_nacl_json, "Na", "Cl", r_max=6.0, n_bins=30
         )
         assert len(radii) == 30
-        assert any(g > 0 for g in g_of_r), "Na-Cl RDF should have peaks"
+        assert any(g > 0 for g in g_of_r)
 
     def test_compute_element_rdf_nonexistent_element(
         self, rocksalt_nacl_json: str
@@ -454,7 +462,7 @@ class TestRdf:
         _, g_of_r = ferrox.compute_element_rdf(
             rocksalt_nacl_json, "Fe", "O", r_max=6.0, n_bins=30
         )
-        assert all(g == 0 for g in g_of_r), "Non-existent element pair should be zero"
+        assert all(g == 0 for g in g_of_r)
 
     def test_compute_all_element_rdfs(self, rocksalt_nacl_json: str) -> None:
         """All element pair RDFs for NaCl (3 pairs: Na-Na, Na-Cl, Cl-Cl)."""

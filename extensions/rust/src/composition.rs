@@ -780,9 +780,7 @@ impl Composition {
     }
 }
 
-// =============================================================================
-// Operator Implementations
-// =============================================================================
+// === Operator Implementations ===
 
 impl Composition {
     /// Helper for Add/Sub: merge rhs into self with given sign (+1 or -1).
@@ -858,9 +856,7 @@ impl Mul<Composition> for f64 {
     }
 }
 
-// =============================================================================
-// Trait Implementations
-// =============================================================================
+// === Trait Implementations ===
 
 /// Equality compares actual Species and amounts (with tolerance).
 ///
@@ -901,9 +897,7 @@ impl std::hash::Hash for Composition {
     }
 }
 
-// =============================================================================
-// Helper Functions
-// =============================================================================
+// === Helper Functions ===
 
 /// Parse a formula string recursively, expanding parentheses.
 fn parse_formula_recursive(formula: &str) -> Result<Vec<(Species, f64)>> {

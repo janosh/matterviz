@@ -196,8 +196,10 @@ class TestAdsorptionSites:
         """Adsorption sites have all required fields."""
         slab = ferrox.make_slab(fcc_cu_structure, [1, 0, 0], min_slab_size=8.0)
         sites = ferrox.surface_find_adsorption_sites(slab, height=2.0)
-        if sites:
-            assert self.REQUIRED_FIELDS.issubset(sites[0].keys())
+        assert sites
+        for site in sites:
+            missing = self.REQUIRED_FIELDS - site.keys()
+            assert not missing
 
 
 class TestSurfaceEnergy:
@@ -258,7 +260,7 @@ class TestMillerIndexEdgeCases:
         indices = ferrox.surface_enumerate_miller(max_idx)
         as_tuples = [tuple(idx) for idx in indices]
         assert len(indices) >= min_count
-        assert len(as_tuples) == len(set(as_tuples)), "Indices should be unique"
+        assert len(as_tuples) == len(set(as_tuples))
         for plane in required_planes:
             assert plane in as_tuples, f"Missing required plane {plane}"
 

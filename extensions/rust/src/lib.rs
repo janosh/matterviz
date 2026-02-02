@@ -52,6 +52,7 @@ pub mod neighbors;
 pub mod optimizers;
 pub mod order_params;
 pub mod pbc;
+pub mod potentials;
 pub mod rdf;
 pub mod structure_matcher;
 pub mod trajectory;

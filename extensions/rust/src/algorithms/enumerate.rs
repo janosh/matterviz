@@ -310,9 +310,7 @@ pub struct SmithResult {
     pub v: [[i32; 3]; 3],
 }
 
-// ============================================================================
-// Helper Functions for Smith Normal Form
-// ============================================================================
+// === Helper Functions for Smith Normal Form ===
 
 /// Extended Euclidean algorithm computing Bezout coefficients.
 ///

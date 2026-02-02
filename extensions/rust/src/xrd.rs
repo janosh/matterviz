@@ -21,9 +21,7 @@ use std::sync::OnceLock;
 use crate::element::Element;
 use crate::structure::Structure;
 
-// =============================================================================
-// Constants and Wavelengths
-// =============================================================================
+// === Constants and Wavelengths ===
 
 /// Common X-ray wavelengths in Angstroms.
 pub mod wavelengths {
@@ -55,9 +53,7 @@ pub mod wavelengths {
 const TWO_THETA_TOL: f64 = 1e-5;
 const SCALED_INTENSITY_TOL: f64 = 1e-3;
 
-// =============================================================================
-// Atomic Scattering Parameters
-// =============================================================================
+// === Atomic Scattering Parameters ===
 
 /// Cromer-Mann coefficients: [[a1, b1], [a2, b2], [a3, b3], [a4, b4]]
 type ScatteringCoeffs = [[f64; 2]; 4];
@@ -93,9 +89,7 @@ fn atomic_scattering_factor(coeffs: &ScatteringCoeffs, sin_theta_over_lambda_sq:
         .sum()
 }
 
-// =============================================================================
-// XRD Data Structures
-// =============================================================================
+// === XRD Data Structures ===
 
 /// Miller index information for a peak.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -149,9 +143,7 @@ impl Default for XrdConfig {
     }
 }
 
-// =============================================================================
-// XRD Calculation
-// =============================================================================
+// === XRD Calculation ===
 
 /// Reciprocal point with hkl indices and |g| magnitude.
 #[derive(Debug)]
@@ -521,9 +513,7 @@ pub fn compute_xrd(structure: &Structure, config: &XrdConfig) -> XrdPattern {
     }
 }
 
-// =============================================================================
-// Tests
-// =============================================================================
+// === Tests ===
 
 #[cfg(test)]
 mod tests {

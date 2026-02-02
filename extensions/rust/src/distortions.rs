@@ -78,6 +78,16 @@ pub fn distort_bonds(
     check_site_bounds(center_site_idx, structure.num_sites(), "center_site_idx")?;
     check_positive(cutoff, "cutoff")?;
 
+    // Validate distortion factors: all must be finite
+    for (idx, &factor) in distortion_factors.iter().enumerate() {
+        if !factor.is_finite() {
+            return Err(FerroxError::InvalidStructure {
+                index: idx,
+                reason: format!("distortion_factors[{idx}] must be finite, got {factor}"),
+            });
+        }
+    }
+
     // Build neighbor list
     let config = NeighborListConfig {
         cutoff,

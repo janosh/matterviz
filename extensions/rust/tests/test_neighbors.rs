@@ -9,9 +9,7 @@ use ferrox::element::Element;
 use ferrox::neighbors::{NeighborListConfig, build_neighbor_list};
 use std::time::Instant;
 
-// =============================================================================
-// LARGE SYSTEM SCALING TESTS
-// =============================================================================
+// === Large System Scaling Tests ===
 
 #[test]
 fn test_large_fcc_scaling_1000_atoms() {
@@ -148,182 +146,103 @@ fn test_large_nacl_scaling() {
     );
 }
 
-// =============================================================================
-// CUTOFF COMPARISON TESTS
-// =============================================================================
+// === Cutoff and Coordination Number Tests ===
 
 #[test]
-fn test_cutoff_comparison_fcc() {
-    // Compare neighbor counts at different cutoffs for FCC Cu
+fn test_coordination_numbers_fcc() {
+    // FCC Cu: verify expected coordination numbers at specific cutoffs
     let fcc = make_fcc(3.61, Element::Cu);
+    let n_atoms = fcc.num_sites();
 
-    // Expected coordination numbers for FCC at different shells
-    // First shell: ~2.55 Å, CN=12
-    // Second shell: ~3.61 Å, CN=6
-    // Third shell: ~4.42 Å, CN=24
+    // First shell: distance = a/sqrt(2) ≈ 2.55 Å, CN = 12
+    let config = NeighborListConfig {
+        cutoff: 2.6,
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(&fcc, &config);
+    let avg_cn = nl.len() / n_atoms;
+    assert_eq!(
+        avg_cn, 12,
+        "FCC first shell should have CN=12, got {avg_cn}"
+    );
 
-    let cutoffs = [2.5, 3.0, 4.0, 5.0];
-    let mut prev_count = 0;
-
-    for cutoff in cutoffs {
-        let config = NeighborListConfig {
-            cutoff,
-            ..Default::default()
-        };
-
-        let nl = build_neighbor_list(&fcc, &config);
-        let total_neighbors = nl.len() / 4; // per atom average
-
-        // Neighbor count should be non-decreasing with cutoff
-        assert!(
-            total_neighbors >= prev_count,
-            "Cutoff {}: {} neighbors < previous {}",
-            cutoff,
-            total_neighbors,
-            prev_count
-        );
-
-        prev_count = total_neighbors;
-        println!(
-            "FCC Cu cutoff {:.1} Å: {} neighbors/atom",
-            cutoff, total_neighbors
-        );
-    }
+    // Second shell includes: CN = 12 + 6 = 18
+    let config = NeighborListConfig {
+        cutoff: 3.7,
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(&fcc, &config);
+    let avg_cn = nl.len() / n_atoms;
+    assert_eq!(
+        avg_cn, 18,
+        "FCC first+second shell should have CN=18, got {avg_cn}"
+    );
 }
 
 #[test]
-fn test_cutoff_comparison_bcc() {
-    // Compare neighbor counts at different cutoffs for BCC Fe
+fn test_coordination_numbers_bcc() {
+    // BCC Fe: verify expected coordination numbers
     let bcc = make_bcc(2.87, Element::Fe);
+    let n_atoms = bcc.num_sites();
 
-    // BCC: first shell ~2.48 Å (CN=8), second shell ~2.87 Å (CN=6)
+    // First shell: distance = a*sqrt(3)/2 ≈ 2.48 Å, CN = 8
+    let config = NeighborListConfig {
+        cutoff: 2.5,
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(&bcc, &config);
+    let avg_cn = nl.len() / n_atoms;
+    assert_eq!(avg_cn, 8, "BCC first shell should have CN=8, got {avg_cn}");
 
-    let cutoffs = [2.5, 3.0, 4.0, 5.0];
-    let mut prev_count = 0;
-
-    for cutoff in cutoffs {
-        let config = NeighborListConfig {
-            cutoff,
-            ..Default::default()
-        };
-
-        let nl = build_neighbor_list(&bcc, &config);
-        let total_neighbors = nl.len() / 2; // per atom average
-
-        assert!(
-            total_neighbors >= prev_count,
-            "Cutoff {}: {} neighbors < previous {}",
-            cutoff,
-            total_neighbors,
-            prev_count
-        );
-
-        prev_count = total_neighbors;
-        println!(
-            "BCC Fe cutoff {:.1} Å: {} neighbors/atom",
-            cutoff, total_neighbors
-        );
-    }
+    // Second shell includes: CN = 8 + 6 = 14
+    let config = NeighborListConfig {
+        cutoff: 2.9,
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(&bcc, &config);
+    let avg_cn = nl.len() / n_atoms;
+    assert_eq!(
+        avg_cn, 14,
+        "BCC first+second shell should have CN=14, got {avg_cn}"
+    );
 }
 
 #[test]
-fn test_cutoff_comparison_nacl() {
-    // Compare neighbor counts at different cutoffs for NaCl
+fn test_coordination_numbers_nacl() {
+    // NaCl: verify expected coordination numbers
     let nacl = make_nacl(5.64);
+    let n_atoms = nacl.num_sites();
 
-    // NaCl: Na-Cl first shell ~2.82 Å (CN=6)
-
-    let cutoffs = [2.5, 3.0, 4.0, 5.0];
-    let mut prev_count = 0;
-
-    for cutoff in cutoffs {
-        let config = NeighborListConfig {
-            cutoff,
-            ..Default::default()
-        };
-
-        let nl = build_neighbor_list(&nacl, &config);
-        let total_neighbors = nl.len() / 8; // per atom average
-
-        assert!(
-            total_neighbors >= prev_count,
-            "Cutoff {}: {} neighbors < previous {}",
-            cutoff,
-            total_neighbors,
-            prev_count
-        );
-
-        prev_count = total_neighbors;
-        println!(
-            "NaCl cutoff {:.1} Å: {} neighbors/atom",
-            cutoff, total_neighbors
-        );
-    }
-}
-
-#[test]
-fn test_distance_distribution_consistency() {
-    // Verify that distance distributions are consistent across cutoffs
-    let fcc = make_fcc(3.61, Element::Cu);
-    let _nn_dist = 3.61 / 2.0_f64.sqrt(); // First shell distance
-
-    // Get neighbors at cutoff 3.0
-    let config_small = NeighborListConfig {
-        cutoff: 3.0,
-        ..Default::default()
-    };
-    let nl_small = build_neighbor_list(&fcc, &config_small);
-
-    // Get neighbors at cutoff 5.0
-    let config_large = NeighborListConfig {
-        cutoff: 5.0,
-        ..Default::default()
-    };
-    let nl_large = build_neighbor_list(&fcc, &config_large);
-
-    // All distances from small cutoff should appear in large cutoff
-    let small_dists: std::collections::HashSet<i64> = nl_small
-        .distances
-        .iter()
-        .map(|d| (d * 1000.0).round() as i64) // round to 0.001 Å
-        .collect();
-
-    let large_dists: std::collections::HashSet<i64> = nl_large
-        .distances
-        .iter()
-        .map(|d| (d * 1000.0).round() as i64)
-        .collect();
-
-    for dist in &small_dists {
-        assert!(
-            large_dists.contains(dist),
-            "Distance {} from small cutoff not found in large cutoff",
-            *dist as f64 / 1000.0
-        );
-    }
-}
-
-#[test]
-fn test_supercell_consistency() {
-    // Neighbor counts should be the same for unit cell and supercell
-    let unit_cell = make_fcc(3.61, Element::Cu);
-    let supercell = make_fcc_large(3.61, Element::Cu, 3);
-
+    // Na-Cl first shell: distance = a/2 ≈ 2.82 Å, each atom has CN=6 to opposite type
     let config = NeighborListConfig {
         cutoff: 3.0,
         ..Default::default()
     };
+    let nl = build_neighbor_list(&nacl, &config);
+    let avg_cn = nl.len() / n_atoms;
+    assert_eq!(avg_cn, 6, "NaCl first shell should have CN=6, got {avg_cn}");
+}
 
-    let nl_unit = build_neighbor_list(&unit_cell, &config);
-    let nl_super = build_neighbor_list(&supercell, &config);
+#[test]
+fn test_first_shell_distance_values() {
+    // Verify that first shell distances match expected crystallographic values
+    let fcc = make_fcc(3.61, Element::Cu);
+    let expected_nn_dist = 3.61 / 2.0_f64.sqrt(); // FCC first shell: a/sqrt(2) ≈ 2.553 Å
 
-    // Count per atom
-    let unit_per_atom = nl_unit.len() / unit_cell.num_sites();
-    let super_per_atom = nl_super.len() / supercell.num_sites();
+    let config = NeighborListConfig {
+        cutoff: 2.6, // Just past first shell
+        ..Default::default()
+    };
+    let nl = build_neighbor_list(&fcc, &config);
 
-    assert_eq!(
-        unit_per_atom, super_per_atom,
-        "Unit cell ({}) and supercell ({}) should have same CN",
-        unit_per_atom, super_per_atom
-    );
+    // All distances should be approximately equal to first shell distance
+    for dist in &nl.distances {
+        let error = (dist - expected_nn_dist).abs();
+        assert!(
+            error < 0.01,
+            "Distance {:.3} differs from expected NN distance {:.3}",
+            dist,
+            expected_nn_dist
+        );
+    }
 }

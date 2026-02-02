@@ -18,8 +18,14 @@ from ferrox._ferrox import (
     MDState,
     # Trajectory analysis
     MsdCalculator,
+    # Thermostats
+    NoseHooverChain,
+    NPTIntegrator,
+    # NPT ensemble
+    NPTState,
     StructureMatcher,
     VacfCalculator,
+    VelocityRescale,
     __version__,
     # Oxidation state functions
     add_charges_from_oxi_state_guesses,
@@ -48,7 +54,16 @@ from ferrox._ferrox import (
     compute_all_element_rdfs,
     compute_bv_sums,
     compute_element_rdf,
+    # Harmonic bonds
+    compute_harmonic_bonds,
+    # Lennard-Jones potential
+    compute_lennard_jones,
+    compute_lennard_jones_forces,
+    # Morse potential
+    compute_morse,
     compute_rdf,
+    # Soft Sphere potential
+    compute_soft_sphere,
     compute_steinhardt_q,
     compute_xrd,
     copy_structure,
