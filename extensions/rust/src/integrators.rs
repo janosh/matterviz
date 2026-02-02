@@ -261,6 +261,32 @@ where
     velocity_verlet_finalize(state, dt_fs, &new_forces)
 }
 
+/// Complete velocity Verlet step with fallible force function.
+///
+/// If the force computation fails, the original state is returned along with the error.
+///
+/// # Errors
+/// Returns the error from compute_forces if it fails, along with the original state.
+#[allow(clippy::result_large_err)]
+pub fn try_velocity_verlet_step<F, E>(
+    state: MDState,
+    dt_fs: f64,
+    mut compute_forces: F,
+) -> Result<MDState, (MDState, E)>
+where
+    F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
+{
+    if state.num_atoms() == 0 {
+        return Ok(state);
+    }
+    let original_state = state.clone();
+    let state = velocity_verlet_init(state, dt_fs);
+    match compute_forces(&state.positions) {
+        Ok(new_forces) => Ok(velocity_verlet_finalize(state, dt_fs, &new_forces)),
+        Err(err) => Err((original_state, err)),
+    }
+}
+
 // === Langevin integrator (NVT) - BAOAB scheme ===
 
 /// Configuration for Langevin thermostat.
@@ -329,7 +355,7 @@ impl LangevinConfig {
 
 /// Perform one Langevin dynamics step (BAOAB scheme).
 pub fn langevin_step<R, F>(
-    mut state: MDState,
+    state: MDState,
     config: &LangevinConfig,
     rng: &mut R,
     mut compute_forces: F,
@@ -337,6 +363,29 @@ pub fn langevin_step<R, F>(
 where
     R: Rng,
     F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
+{
+    // Wrap infallible closure and unwrap result (can't fail with Infallible)
+    try_langevin_step(state, config, rng, |pos| {
+        Ok::<_, std::convert::Infallible>(compute_forces(pos))
+    })
+    .unwrap_or_else(|err: std::convert::Infallible| match err {})
+}
+
+/// Perform one Langevin dynamics step with fallible force computation.
+///
+/// If the force computation fails, the original state is returned.
+///
+/// # Errors
+/// Returns the error from compute_forces if it fails.
+pub fn try_langevin_step<R, F, E>(
+    mut state: MDState,
+    config: &LangevinConfig,
+    rng: &mut R,
+    mut compute_forces: F,
+) -> Result<MDState, E>
+where
+    R: Rng,
+    F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
 {
     let n_atoms = state.num_atoms();
     let half_dt = 0.5 * config.dt_int;
@@ -369,8 +418,7 @@ where
     }
 
     // Compute new forces
-    let new_forces = compute_forces(&state.positions);
-    state.forces = new_forces;
+    state.forces = compute_forces(&state.positions)?;
 
     // B: Half-step velocity from new forces
     for idx in 0..n_atoms {
@@ -378,7 +426,7 @@ where
         state.velocities[idx] += half_dt * accel;
     }
 
-    state
+    Ok(state)
 }
 
 // === Stateful Langevin integrator (for Python bindings) ===
@@ -407,17 +455,45 @@ impl LangevinIntegrator {
     }
 
     /// Perform one Langevin dynamics step, mutating the state in place.
-    pub fn step<F>(&mut self, state: &mut MDState, mut compute_forces: F)
+    pub fn step<F>(&mut self, state: &mut MDState, compute_forces: F)
     where
         F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
     {
-        let new_state = langevin_step(
+        *state = langevin_step(
             std::mem::take(state),
             &self.config,
             &mut self.rng,
-            &mut compute_forces,
+            compute_forces,
         );
-        *state = new_state;
+    }
+
+    /// Perform one Langevin dynamics step with fallible force computation.
+    ///
+    /// If the force computation fails, the state is restored to its original
+    /// value before the step and the error is returned.
+    ///
+    /// # Errors
+    /// Returns the error from compute_forces if it fails.
+    pub fn try_step<F, E>(&mut self, state: &mut MDState, compute_forces: F) -> Result<(), E>
+    where
+        F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
+    {
+        let original_state = state.clone();
+        match try_langevin_step(
+            std::mem::take(state),
+            &self.config,
+            &mut self.rng,
+            compute_forces,
+        ) {
+            Ok(new_state) => {
+                *state = new_state;
+                Ok(())
+            }
+            Err(err) => {
+                *state = original_state;
+                Err(err)
+            }
+        }
     }
 
     /// Set target temperature.
@@ -467,8 +543,8 @@ impl NoseHooverChain {
     /// Create a new Nosé-Hoover chain thermostat.
     ///
     /// # Arguments
-    /// * `target_temp` - Target temperature in K
-    /// * `tau` - Characteristic time in fs (larger = weaker coupling)
+    /// * `target_temp` - Target temperature in K (must be > 0)
+    /// * `tau` - Characteristic time in fs (must be > 0; larger = weaker coupling)
     /// * `dt_fs` - Time step in fs
     /// * `n_dof` - Number of degrees of freedom (typically 3*N - 3 for N atoms with COM constraint)
     ///
@@ -477,11 +553,13 @@ impl NoseHooverChain {
     pub fn new(target_temp: f64, tau: f64, dt_fs: f64, n_dof: usize) -> Self {
         assert!(
             target_temp > 0.0,
-            "NoseHooverChain requires target_temp > 0 (got {target_temp})"
+            "NoseHooverChain requires target_temp > 0 (got {target_temp}). \
+             Zero or negative temperature would produce zero/NaN thermostat mass."
         );
         assert!(
             tau > 0.0,
-            "NoseHooverChain requires tau > 0 (got {tau})"
+            "NoseHooverChain requires tau > 0 (got {tau}). \
+             Zero or negative coupling time would produce zero/NaN thermostat mass."
         );
         assert!(
             n_dof > 0,
@@ -644,26 +722,24 @@ impl VelocityRescale {
     /// Create a new velocity rescaling thermostat.
     ///
     /// # Arguments
-    /// * `target_temp` - Target temperature in K
-    /// * `tau` - Coupling time constant in fs (larger = weaker coupling)
+    /// * `target_temp` - Target temperature in K (must be > 0)
+    /// * `tau` - Coupling time constant in fs (must be > 0; larger = weaker coupling)
     /// * `dt_fs` - Time step in fs
     /// * `n_dof` - Number of degrees of freedom
     /// * `seed` - Optional random seed
     ///
     /// # Panics
-    /// Panics if `target_temp <= 0`, `tau <= 0`, `dt_fs <= 0`, or `n_dof == 0`.
+    /// Panics if `target_temp <= 0`, `tau <= 0`, or `n_dof == 0`.
     pub fn new(target_temp: f64, tau: f64, dt_fs: f64, n_dof: usize, seed: Option<u64>) -> Self {
         assert!(
             target_temp > 0.0,
-            "VelocityRescale requires target_temp > 0 (got {target_temp})"
+            "VelocityRescale requires target_temp > 0 (got {target_temp}). \
+             Zero or negative temperature is non-physical."
         );
         assert!(
             tau > 0.0,
-            "VelocityRescale requires tau > 0 (got {tau})"
-        );
-        assert!(
-            dt_fs > 0.0,
-            "VelocityRescale requires dt_fs > 0 (got {dt_fs})"
+            "VelocityRescale requires tau > 0 (got {tau}). \
+             Zero or negative coupling time would cause division by zero."
         );
         assert!(
             n_dof > 0,

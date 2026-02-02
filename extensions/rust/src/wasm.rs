@@ -2622,10 +2622,58 @@ pub fn compute_harmonic_bonds(
         if bonds.len() % 4 != 0 {
             return Err("bonds array length must be divisible by 4".to_string());
         }
-        let bond_vec: Vec<potentials::HarmonicBond> = bonds
-            .chunks(4)
-            .map(|b| potentials::HarmonicBond::new(b[0] as usize, b[1] as usize, b[2], b[3]))
-            .collect();
+        let mut bond_vec: Vec<potentials::HarmonicBond> = Vec::with_capacity(bonds.len() / 4);
+        for (bond_idx, chunk) in bonds.chunks(4).enumerate() {
+            let idx_i = chunk[0];
+            let idx_j = chunk[1];
+
+            // Validate indices: must be finite, non-negative, integer, and within bounds
+            if !idx_i.is_finite() || idx_i < 0.0 || idx_i.fract() != 0.0 {
+                return Err(format!(
+                    "bond {bond_idx}: atom index i={idx_i} is invalid (must be finite non-negative integer)"
+                ));
+            }
+            if !idx_j.is_finite() || idx_j < 0.0 || idx_j.fract() != 0.0 {
+                return Err(format!(
+                    "bond {bond_idx}: atom index j={idx_j} is invalid (must be finite non-negative integer)"
+                ));
+            }
+
+            let idx_i_usize = idx_i as usize;
+            let idx_j_usize = idx_j as usize;
+
+            if idx_i_usize >= n_atoms {
+                return Err(format!(
+                    "bond {bond_idx}: atom index i={idx_i_usize} out of bounds (n_atoms={n_atoms})"
+                ));
+            }
+            if idx_j_usize >= n_atoms {
+                return Err(format!(
+                    "bond {bond_idx}: atom index j={idx_j_usize} out of bounds (n_atoms={n_atoms})"
+                ));
+            }
+
+            // Optionally validate k and r0 are finite
+            if !chunk[2].is_finite() {
+                return Err(format!(
+                    "bond {bond_idx}: spring constant k={} must be finite",
+                    chunk[2]
+                ));
+            }
+            if !chunk[3].is_finite() {
+                return Err(format!(
+                    "bond {bond_idx}: equilibrium distance r0={} must be finite",
+                    chunk[3]
+                ));
+            }
+
+            bond_vec.push(potentials::HarmonicBond::new(
+                idx_i_usize,
+                idx_j_usize,
+                chunk[2],
+                chunk[3],
+            ));
+        }
 
         let result = potentials::compute_harmonic_bonds(
             &pos_vec,
@@ -2633,7 +2681,8 @@ pub fn compute_harmonic_bonds(
             cell_mat.as_ref(),
             pbc,
             compute_stress,
-        );
+        )
+        .map_err(|e| e.to_string())?;
         Ok(potential_result_to_js(&result))
     })();
     result.into()
@@ -3680,15 +3729,16 @@ pub fn langevin_step_with_forces(
             ));
         }
 
-        // Set forces and perform step
+        // Set forces on state before step (integrator uses state.forces for first half-step)
         let force_vec: Vec<Vector3<f64>> = forces
             .chunks(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
+        state.inner.forces = force_vec.clone();
 
         integrator
             .inner
-            .step(&mut state.inner, |_| force_vec.clone());
+            .step(&mut state.inner, |_positions| force_vec.clone());
         Ok(())
     })();
     result.into()
@@ -3811,14 +3861,16 @@ pub fn nose_hoover_step_with_forces(
             ));
         }
 
+        // Set forces on state before step (integrator uses state.forces for first half-step)
         let force_vec: Vec<Vector3<f64>> = forces
             .chunks(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
+        state.inner.forces = force_vec.clone();
 
         thermostat
             .inner
-            .step(&mut state.inner, |_| force_vec.clone());
+            .step(&mut state.inner, |_positions| force_vec.clone());
         Ok(())
     })();
     result.into()
@@ -3897,14 +3949,16 @@ pub fn velocity_rescale_step_with_forces(
             ));
         }
 
+        // Set forces on state before step (integrator uses state.forces for first half-step)
         let force_vec: Vec<Vector3<f64>> = forces
             .chunks(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
+        state.inner.forces = force_vec.clone();
 
         thermostat
             .inner
-            .step(&mut state.inner, |_| force_vec.clone());
+            .step(&mut state.inner, |_positions| force_vec.clone());
         Ok(())
     })();
     result.into()
@@ -4262,7 +4316,9 @@ pub fn fire_step_with_forces(state: &mut JsFireState, forces: Vec<f64>) -> WasmR
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
 
-        state.inner.step(|_| force_vec.clone(), &state.config);
+        state
+            .inner
+            .step(|_positions| force_vec.clone(), &state.config);
         Ok(())
     })();
     result.into()

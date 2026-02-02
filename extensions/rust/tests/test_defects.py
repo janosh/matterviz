@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import ClassVar
 
 import ferrox
@@ -482,8 +483,6 @@ class TestWyckoffLabels:
 
     def test_multiplicity_matches_label(self, fcc_cu_json: str) -> None:
         """Multiplicity field should match the number in the Wyckoff label."""
-        import re
-
         labels = ferrox.get_wyckoff_labels(fcc_cu_json)
         assert labels
         for site in labels:

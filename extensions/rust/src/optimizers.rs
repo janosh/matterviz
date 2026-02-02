@@ -108,6 +108,29 @@ impl FireState {
         *self = new_state;
     }
 
+    /// Perform one FIRE step with fallible force computation.
+    ///
+    /// If the force computation fails, the state is restored to its original
+    /// value before the step and the error is returned.
+    ///
+    /// # Errors
+    /// Returns the error from compute_forces if it fails.
+    pub fn try_step<F, E>(&mut self, compute_forces: F, config: &FireConfig) -> Result<(), E>
+    where
+        F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
+    {
+        match try_fire_step(std::mem::take(self), compute_forces, config) {
+            Ok(new_state) => {
+                *self = new_state;
+                Ok(())
+            }
+            Err((original_state, err)) => {
+                *self = original_state;
+                Err(err)
+            }
+        }
+    }
+
     /// Check if optimization has converged (method wrapper).
     pub fn is_converged(&self, fmax: f64) -> bool {
         is_converged(self, fmax)
@@ -144,15 +167,50 @@ where
     if n_atoms == 0 {
         return state;
     }
-
-    // Compute forces (move into state, reference from there)
     state.last_forces = compute_forces(&state.positions);
     debug_assert_eq!(
         state.last_forces.len(),
         n_atoms,
         "compute_forces must return one force per atom"
     );
+    fire_step_core(state, config)
+}
 
+/// Perform one FIRE optimization step with fallible force computation.
+///
+/// If the force computation fails, the original state is returned along with the error.
+///
+/// # Errors
+/// Returns the error from compute_forces if it fails, along with the original state.
+pub fn try_fire_step<F, E>(
+    mut state: FireState,
+    mut compute_forces: F,
+    config: &FireConfig,
+) -> Result<FireState, (FireState, E)>
+where
+    F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
+{
+    let n_atoms = state.num_atoms();
+    if n_atoms == 0 {
+        return Ok(state);
+    }
+    let original_state = state.clone();
+    match compute_forces(&state.positions) {
+        Ok(forces) => {
+            debug_assert_eq!(
+                forces.len(),
+                n_atoms,
+                "compute_forces must return one force per atom"
+            );
+            state.last_forces = forces;
+            Ok(fire_step_core(state, config))
+        }
+        Err(err) => Err((original_state, err)),
+    }
+}
+
+/// Core FIRE algorithm logic (after forces are computed).
+fn fire_step_core(mut state: FireState, config: &FireConfig) -> FireState {
     // Compute power: P = F · v
     let power: f64 = state
         .velocities
@@ -164,7 +222,6 @@ where
     // FIRE algorithm
     if power > 0.0 {
         state.n_pos += 1;
-
         if state.n_pos > config.n_min {
             state.dt = (state.dt * config.f_inc).min(config.dt_max);
             state.alpha *= config.f_alpha;
@@ -285,6 +342,33 @@ impl CellFireState {
         *self = new_state;
     }
 
+    /// Perform one cell FIRE step with fallible force/stress computation.
+    ///
+    /// If the force computation fails, the state is restored to its original
+    /// value before the step and the error is returned.
+    ///
+    /// # Errors
+    /// Returns the error from compute_forces_and_stress if it fails.
+    pub fn try_step<F, E>(
+        &mut self,
+        compute_forces_and_stress: F,
+        config: &FireConfig,
+    ) -> Result<(), E>
+    where
+        F: FnMut(&[Vector3<f64>], &Matrix3<f64>) -> Result<(Vec<Vector3<f64>>, Matrix3<f64>), E>,
+    {
+        match try_cell_fire_step(std::mem::take(self), compute_forces_and_stress, config) {
+            Ok(new_state) => {
+                *self = new_state;
+                Ok(())
+            }
+            Err((original_state, err)) => {
+                *self = original_state;
+                Err(err)
+            }
+        }
+    }
+
     /// Check if optimization has converged (method wrapper).
     pub fn is_converged(&self, fmax: f64, smax: f64) -> bool {
         cell_is_converged(self, fmax, smax)
@@ -335,8 +419,6 @@ where
     if n_atoms == 0 {
         return state;
     }
-
-    // Compute forces and stress (move forces into state)
     let (forces, stress) = compute_forces_and_stress(&state.positions, &state.cell);
     debug_assert_eq!(
         forces.len(),
@@ -345,10 +427,49 @@ where
     );
     state.last_forces = forces;
     state.last_stress = stress;
+    cell_fire_step_core(state, config)
+}
 
+/// Perform one cell FIRE step with fallible force/stress computation.
+///
+/// If the force computation fails, the original state is returned along with the error.
+///
+/// # Errors
+/// Returns the error from compute_forces_and_stress if it fails, along with the original state.
+#[allow(clippy::result_large_err)]
+pub fn try_cell_fire_step<F, E>(
+    mut state: CellFireState,
+    mut compute_forces_and_stress: F,
+    config: &FireConfig,
+) -> Result<CellFireState, (CellFireState, E)>
+where
+    F: FnMut(&[Vector3<f64>], &Matrix3<f64>) -> Result<(Vec<Vector3<f64>>, Matrix3<f64>), E>,
+{
+    let n_atoms = state.num_atoms();
+    if n_atoms == 0 {
+        return Ok(state);
+    }
+    let original_state = state.clone();
+    match compute_forces_and_stress(&state.positions, &state.cell) {
+        Ok((forces, stress)) => {
+            debug_assert_eq!(
+                forces.len(),
+                n_atoms,
+                "compute_forces_and_stress must return one force per atom"
+            );
+            state.last_forces = forces;
+            state.last_stress = stress;
+            Ok(cell_fire_step_core(state, config))
+        }
+        Err(err) => Err((original_state, err)),
+    }
+}
+
+/// Core cell FIRE algorithm logic (after forces/stress are computed).
+fn cell_fire_step_core(mut state: CellFireState, config: &FireConfig) -> CellFireState {
     // Cell force = -volume * stress
     let volume = state.cell.determinant().abs();
-    let cell_force = -volume * stress * state.cell_factor;
+    let cell_force = -volume * state.last_stress * state.cell_factor;
 
     // Compute power
     let atom_power: f64 = state
@@ -366,7 +487,6 @@ where
     // FIRE algorithm
     if power > 0.0 {
         state.n_pos += 1;
-
         if state.n_pos > config.n_min {
             state.dt = (state.dt * config.f_inc).min(config.dt_max);
             state.alpha *= config.f_alpha;

@@ -23,7 +23,6 @@ def gpu_timer() -> Generator[TimingResult, None, None]:
 
     Yields a TimingResult object that gets populated after the context exits.
     Usage:
-        result = TimingResult(0.0, 0, 0.0)
         with gpu_timer() as timer:
             # ... do work ...
             timer.n_steps = 100

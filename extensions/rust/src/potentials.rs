@@ -8,6 +8,7 @@
 //! - Optional virial stress tensor calculation
 //! - Lennard-Jones, Morse, Soft Sphere, and Harmonic potentials
 
+use crate::error::{FerroxError, Result};
 use nalgebra::{Matrix3, Vector3};
 use std::collections::HashMap;
 
@@ -616,13 +617,16 @@ impl HarmonicBond {
 ///
 /// V = 0.5 * k * (r - r0)^2
 /// F = -k * (r - r0) * r_hat
+///
+/// # Errors
+/// Returns an error if any bond index is out of bounds for the positions array.
 pub fn compute_harmonic_bonds(
     positions: &[Vector3<f64>],
     bonds: &[HarmonicBond],
     cell: Option<&Matrix3<f64>>,
     pbc: [bool; 3],
     compute_stress: bool,
-) -> PotentialResult {
+) -> Result<PotentialResult> {
     let n_atoms = positions.len();
     let mut energy = 0.0;
     let (mut forces, mut per_atom_energies, mut stress) =
@@ -630,9 +634,23 @@ pub fn compute_harmonic_bonds(
 
     let inv_cell = cell.map(|c| c.try_inverse().expect("Cell matrix must be invertible"));
 
-    for bond in bonds {
+    for (bond_idx, bond) in bonds.iter().enumerate() {
         let idx_i = bond.i;
         let idx_j = bond.j;
+
+        // Validate bond indices are within bounds
+        if idx_i >= n_atoms {
+            return Err(FerroxError::InvalidStructure {
+                index: bond_idx,
+                reason: format!("bond atom index i={idx_i} out of bounds (n_atoms={n_atoms})"),
+            });
+        }
+        if idx_j >= n_atoms {
+            return Err(FerroxError::InvalidStructure {
+                index: bond_idx,
+                reason: format!("bond atom index j={idx_j} out of bounds (n_atoms={n_atoms})"),
+            });
+        }
 
         let rij = minimum_image(
             positions[idx_j] - positions[idx_i],
@@ -668,12 +686,12 @@ pub fn compute_harmonic_bonds(
 
     finalize_stress(&mut stress, cell);
 
-    PotentialResult {
+    Ok(PotentialResult {
         energy,
         forces,
         stress,
         per_atom_energies: Some(per_atom_energies),
-    }
+    })
 }
 
 // === Tests ===
@@ -874,7 +892,7 @@ mod tests {
             HarmonicBond::new(0, 1, 1.0, 0.8),
             HarmonicBond::new(1, 2, 1.0, 0.9),
         ];
-        let harm = compute_harmonic_bonds(&pos, &bonds, None, [false; 3], false);
+        let harm = compute_harmonic_bonds(&pos, &bonds, None, [false; 3], false).unwrap();
         assert_momentum_conserved(&harm.forces);
     }
 
@@ -962,7 +980,8 @@ mod tests {
     #[test]
     fn test_harmonic_equilibrium() {
         let bonds = vec![HarmonicBond::new(0, 1, 1.0, 1.5)];
-        let result = compute_harmonic_bonds(&two_atoms(1.5), &bonds, None, [false; 3], false);
+        let result =
+            compute_harmonic_bonds(&two_atoms(1.5), &bonds, None, [false; 3], false).unwrap();
         assert_relative_eq!(result.energy, 0.0, epsilon = 1e-10);
         assert_relative_eq!(result.forces[0].norm(), 0.0, epsilon = 1e-10);
     }
@@ -971,12 +990,14 @@ mod tests {
     fn test_harmonic_stretched_and_compressed() {
         // Stretched: r = 2, r0 = 1, k = 2 → V = 0.5*2*1 = 1, attractive
         let bonds = vec![HarmonicBond::new(0, 1, 2.0, 1.0)];
-        let result = compute_harmonic_bonds(&two_atoms(2.0), &bonds, None, [false; 3], false);
+        let result =
+            compute_harmonic_bonds(&two_atoms(2.0), &bonds, None, [false; 3], false).unwrap();
         assert_relative_eq!(result.energy, 1.0, epsilon = 1e-10);
         assert!(result.forces[0].x > 0.0 && result.forces[1].x < 0.0); // Attractive
 
         // Compressed: r = 0.5, r0 = 1 → V = 0.5*2*0.25 = 0.25, repulsive
-        let result = compute_harmonic_bonds(&two_atoms(0.5), &bonds, None, [false; 3], false);
+        let result =
+            compute_harmonic_bonds(&two_atoms(0.5), &bonds, None, [false; 3], false).unwrap();
         assert_relative_eq!(result.energy, 0.25, epsilon = 1e-10);
         assert!(result.forces[0].x < 0.0 && result.forces[1].x > 0.0); // Repulsive
     }
@@ -1032,8 +1053,9 @@ mod tests {
 
         // Harmonic at dist=1.8
         let bonds = vec![HarmonicBond::new(0, 1, 2.0, 1.5)];
-        let h0 = compute_harmonic_bonds(&two_atoms(1.8), &bonds, None, [false; 3], false);
-        let h1 = compute_harmonic_bonds(&two_atoms(1.8 + delta), &bonds, None, [false; 3], false);
+        let h0 = compute_harmonic_bonds(&two_atoms(1.8), &bonds, None, [false; 3], false).unwrap();
+        let h1 = compute_harmonic_bonds(&two_atoms(1.8 + delta), &bonds, None, [false; 3], false)
+            .unwrap();
         check_fd(h0.energy, h1.energy, h0.forces[1].x);
 
         // 3D check (all axes) for LJ
@@ -1198,7 +1220,7 @@ mod tests {
             HarmonicBond::new(0, 1, 1.0, 1.0),
             HarmonicBond::new(1, 2, 1.0, 1.0),
         ];
-        let harm = compute_harmonic_bonds(&pos3, &bonds, Some(&cell), [true; 3], true);
+        let harm = compute_harmonic_bonds(&pos3, &bonds, Some(&cell), [true; 3], true).unwrap();
         assert_stress_symmetric(&harm.stress.unwrap());
     }
 
@@ -1248,7 +1270,7 @@ mod tests {
         let ss = compute_soft_sphere_simple(&empty, None, [false; 3], 1.0, 1.0, 6.0, 10.0, false);
         assert_eq!(ss.energy, 0.0);
 
-        let harm = compute_harmonic_bonds(&empty, &[], None, [false; 3], false);
+        let harm = compute_harmonic_bonds(&empty, &[], None, [false; 3], false).unwrap();
         assert_eq!(harm.energy, 0.0);
     }
 
@@ -1366,8 +1388,10 @@ mod tests {
         let bonds_01 = vec![HarmonicBond::new(0, 1, 1.0, 1.0)];
         let bonds_10 = vec![HarmonicBond::new(1, 0, 1.0, 1.0)];
 
-        let result_01 = compute_harmonic_bonds(&positions, &bonds_01, None, [false; 3], false);
-        let result_10 = compute_harmonic_bonds(&positions, &bonds_10, None, [false; 3], false);
+        let result_01 =
+            compute_harmonic_bonds(&positions, &bonds_01, None, [false; 3], false).unwrap();
+        let result_10 =
+            compute_harmonic_bonds(&positions, &bonds_10, None, [false; 3], false).unwrap();
 
         assert_relative_eq!(result_01.energy, result_10.energy, epsilon = 1e-14);
         // Forces should be equal (Newton's 3rd law preserved either way)
@@ -1465,11 +1489,32 @@ mod tests {
             HarmonicBond::new(0, 3, 1.0, 1.0),
         ];
 
-        let result = compute_harmonic_bonds(&positions, &bonds, None, [false; 3], false);
+        let result = compute_harmonic_bonds(&positions, &bonds, None, [false; 3], false).unwrap();
 
         // All bonds at equilibrium, so energy should be 0
         assert_relative_eq!(result.energy, 0.0, epsilon = 1e-12);
         // Central atom should have zero net force (symmetric)
         assert_relative_eq!(result.forces[0].norm(), 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_harmonic_bond_index_out_of_bounds() {
+        let positions = two_atoms(1.5);
+        // Bond with invalid index (only 2 atoms, but referencing index 5)
+        let invalid_bonds = vec![HarmonicBond::new(0, 5, 1.0, 1.5)];
+        let result = compute_harmonic_bonds(&positions, &invalid_bonds, None, [false; 3], false);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("out of bounds"));
+        assert!(err_msg.contains("j=5"));
+
+        // Also test invalid first index
+        let invalid_bonds_i = vec![HarmonicBond::new(10, 1, 1.0, 1.5)];
+        let result_i =
+            compute_harmonic_bonds(&positions, &invalid_bonds_i, None, [false; 3], false);
+        assert!(result_i.is_err());
+        let err_msg_i = result_i.unwrap_err().to_string();
+        assert!(err_msg_i.contains("out of bounds"));
+        assert!(err_msg_i.contains("i=10"));
     }
 }

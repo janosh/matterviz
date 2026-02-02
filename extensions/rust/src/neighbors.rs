@@ -584,6 +584,11 @@ use nalgebra::Matrix3;
 /// * `cutoff` - Cutoff distance in Angstrom
 /// * `callback` - Called for each pair with (i, j, r_ij, distance)
 ///
+/// # Minimum Image Convention
+/// Uses minimum image convention: only considers the nearest periodic image
+/// of each atom pair. For correct behavior, the cutoff should be less than
+/// half the smallest cell dimension. Larger cutoffs may miss some pairs.
+///
 /// # Example
 /// ```rust,ignore
 /// for_each_pair(&positions, Some(&cell), [true; 3], 5.0, |i, j, r_ij, dist| {

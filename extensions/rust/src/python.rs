@@ -4113,26 +4113,27 @@ impl PyLangevinIntegrator {
     ///     state: MDState to update
     ///     compute_forces: Python callable that takes positions (Nx3 array)
     ///                     and returns forces (Nx3 array in eV/Angstrom)
+    ///
+    /// Raises:
+    ///     RuntimeError: If force computation fails. State is restored to its
+    ///         original value before the step when this happens.
     fn step(
         &mut self,
         state: &mut PyMDState,
         compute_forces: Py<PyAny>,
         py: Python<'_>,
     ) -> PyResult<()> {
-        self.inner.step(&mut state.inner, |positions| {
+        self.inner.try_step(&mut state.inner, |positions| {
             // Convert positions to Python array
             let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
 
             // Call Python function
-            let result = compute_forces
-                .call1(py, (pos_arr,))
-                .expect("Force computation failed");
-            let forces: Vec<[f64; 3]> = result.extract(py).expect("Failed to extract forces");
+            let result = compute_forces.call1(py, (pos_arr,))?;
+            let forces: Vec<[f64; 3]> = result.extract(py)?;
 
             // Convert back to Vector3
-            forces.iter().map(|f| Vector3::from(*f)).collect()
-        });
-        Ok(())
+            Ok(forces.iter().map(|f| Vector3::from(*f)).collect())
+        })
     }
 
     /// Set target temperature.
@@ -4158,6 +4159,10 @@ impl PyLangevinIntegrator {
 ///     dt: Time step in fs
 ///     compute_forces: Python callable that takes positions (Nx3 array)
 ///                     and returns forces (Nx3 array in eV/Angstrom)
+///
+/// Raises:
+///     RuntimeError: If force computation fails. State is restored to its
+///         original value before the step when this happens.
 #[pyfunction]
 fn md_velocity_verlet_step(
     state: &mut PyMDState,
@@ -4165,17 +4170,21 @@ fn md_velocity_verlet_step(
     compute_forces: Py<PyAny>,
     py: Python<'_>,
 ) -> PyResult<()> {
-    let new_state =
-        integrators::velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
-            let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
-            let result = compute_forces
-                .call1(py, (pos_arr,))
-                .expect("Force computation failed");
-            let forces: Vec<[f64; 3]> = result.extract(py).expect("Failed to extract forces");
-            forces.iter().map(|f| Vector3::from(*f)).collect()
-        });
-    state.inner = new_state;
-    Ok(())
+    match integrators::try_velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
+        let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
+        let result = compute_forces.call1(py, (pos_arr,))?;
+        let forces: Vec<[f64; 3]> = result.extract(py)?;
+        Ok(forces.iter().map(|f| Vector3::from(*f)).collect())
+    }) {
+        Ok(new_state) => {
+            state.inner = new_state;
+            Ok(())
+        }
+        Err((original_state, err)) => {
+            state.inner = original_state;
+            Err(err)
+        }
+    }
 }
 
 // === FIRE Optimizer ===
@@ -4287,20 +4296,20 @@ impl PyFireState {
     /// Args:
     ///     compute_forces: Python callable that takes positions (Nx3 array)
     ///                     and returns forces (Nx3 array in eV/Angstrom)
+    ///
+    /// Raises:
+    ///     RuntimeError: If force computation fails. State is restored to its
+    ///         original value before the step when this happens.
     fn step(&mut self, compute_forces: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
-        let config = self.config.clone();
-        self.inner.step(
+        self.inner.try_step(
             |positions| {
                 let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
-                let result = compute_forces
-                    .call1(py, (pos_arr,))
-                    .expect("Force computation failed");
-                let forces: Vec<[f64; 3]> = result.extract(py).expect("Failed to extract forces");
-                forces.iter().map(|f| Vector3::from(*f)).collect()
+                let result = compute_forces.call1(py, (pos_arr,))?;
+                let forces: Vec<[f64; 3]> = result.extract(py)?;
+                Ok(forces.iter().map(|f| Vector3::from(*f)).collect())
             },
-            &config,
-        );
-        Ok(())
+            &self.config,
+        )
     }
 
     /// Check if optimization has converged.
@@ -4374,9 +4383,12 @@ impl PyCellFireState {
     /// Args:
     ///     compute_forces_and_stress: Python callable that takes (positions, cell)
     ///         and returns (forces, stress) where stress is 3x3 in eV/Angstrom^3
+    ///
+    /// Raises:
+    ///     RuntimeError: If force/stress computation fails. State is restored to its
+    ///         original value before the step when this happens.
     fn step(&mut self, compute_forces_and_stress: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
-        let config = self.config.clone();
-        self.inner.step(
+        self.inner.try_step(
             |positions, cell| {
                 let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
                 let cell_arr = [
@@ -4385,11 +4397,8 @@ impl PyCellFireState {
                     [cell[(2, 0)], cell[(2, 1)], cell[(2, 2)]],
                 ];
 
-                let result = compute_forces_and_stress
-                    .call1(py, (pos_arr, cell_arr))
-                    .expect("Force/stress computation failed");
-                let (forces, stress): (Vec<[f64; 3]>, [[f64; 3]; 3]) =
-                    result.extract(py).expect("Failed to extract forces/stress");
+                let result = compute_forces_and_stress.call1(py, (pos_arr, cell_arr))?;
+                let (forces, stress): (Vec<[f64; 3]>, [[f64; 3]; 3]) = result.extract(py)?;
 
                 let force_vec: Vec<Vector3<f64>> =
                     forces.iter().map(|f| Vector3::from(*f)).collect();
@@ -4405,11 +4414,10 @@ impl PyCellFireState {
                     stress[2][2],
                 ]);
 
-                (force_vec, stress_mat)
+                Ok((force_vec, stress_mat))
             },
-            &config,
-        );
-        Ok(())
+            &self.config,
+        )
     }
 
     /// Check if optimization has converged.
@@ -6499,15 +6507,52 @@ fn compute_harmonic_bonds(
     cell: Option<[[f64; 3]; 3]>,
     pbc: Option<[bool; 3]>,
     compute_stress: bool,
-) -> (f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>) {
+) -> PyResult<(f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>)> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
     let pbc_arr = pbc.unwrap_or([true, true, true]);
+    let n_atoms = pos_vec.len();
 
-    let bond_vec: Vec<potentials::HarmonicBond> = bonds
-        .iter()
-        .map(|b| potentials::HarmonicBond::new(b[0] as usize, b[1] as usize, b[2], b[3]))
-        .collect();
+    // Convert bonds with validation for indices
+    let mut bond_vec: Vec<potentials::HarmonicBond> = Vec::with_capacity(bonds.len());
+    for (bond_idx, bond) in bonds.iter().enumerate() {
+        let idx_i = bond[0];
+        let idx_j = bond[1];
+
+        // Check for valid integer indices: finite, non-negative, integer value
+        if !idx_i.is_finite() || idx_i < 0.0 || idx_i.fract() != 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "bond {bond_idx}: atom index i={idx_i} is invalid (must be finite non-negative integer)"
+            )));
+        }
+        if !idx_j.is_finite() || idx_j < 0.0 || idx_j.fract() != 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "bond {bond_idx}: atom index j={idx_j} is invalid (must be finite non-negative integer)"
+            )));
+        }
+
+        let idx_i_usize = idx_i as usize;
+        let idx_j_usize = idx_j as usize;
+
+        // Check bounds against positions array
+        if idx_i_usize >= n_atoms {
+            return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+                "bond {bond_idx}: atom index i={idx_i_usize} out of bounds (n_atoms={n_atoms})"
+            )));
+        }
+        if idx_j_usize >= n_atoms {
+            return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+                "bond {bond_idx}: atom index j={idx_j_usize} out of bounds (n_atoms={n_atoms})"
+            )));
+        }
+
+        bond_vec.push(potentials::HarmonicBond::new(
+            idx_i_usize,
+            idx_j_usize,
+            bond[2],
+            bond[3],
+        ));
+    }
 
     let result = potentials::compute_harmonic_bonds(
         &pos_vec,
@@ -6515,13 +6560,14 @@ fn compute_harmonic_bonds(
         cell_mat.as_ref(),
         pbc_arr,
         compute_stress,
-    );
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-    (
+    Ok((
         result.energy,
         vec3_to_positions(&result.forces),
         result.stress.as_ref().map(matrix3_to_array),
-    )
+    ))
 }
 
 // === Nosé-Hoover Thermostat ===
@@ -6630,9 +6676,12 @@ impl PyNPTState {
     ///
     /// Args:
     ///     positions: Nx3 array of atomic positions
-    ///     masses: Array of atomic masses
+    ///     masses: Array of atomic masses (must have same length as positions)
     ///     cell: 3x3 cell matrix (rows are lattice vectors)
     ///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+    ///
+    /// Raises:
+    ///     ValueError: If masses length doesn't match positions length
     #[new]
     #[pyo3(signature = (positions, masses, cell, pbc=None))]
     fn new(
@@ -6640,7 +6689,15 @@ impl PyNPTState {
         masses: Vec<f64>,
         cell: [[f64; 3]; 3],
         pbc: Option<[bool; 3]>,
-    ) -> Self {
+    ) -> PyResult<Self> {
+        if positions.len() != masses.len() {
+            return Err(PyValueError::new_err(format!(
+                "Masses length ({}) must match positions length ({})",
+                masses.len(),
+                positions.len()
+            )));
+        }
+
         let pos_vec: Vec<Vector3<f64>> = positions.iter().map(|p| Vector3::from(*p)).collect();
         let cell_mat = Matrix3::from_row_slice(&[
             cell[0][0], cell[0][1], cell[0][2], cell[1][0], cell[1][1], cell[1][2], cell[2][0],
@@ -6648,9 +6705,9 @@ impl PyNPTState {
         ]);
         let pbc_arr = pbc.unwrap_or([true, true, true]);
 
-        Self {
+        Ok(Self {
             inner: integrators::NPTState::new(pos_vec, masses, cell_mat, pbc_arr),
-        }
+        })
     }
 
     /// Number of atoms.

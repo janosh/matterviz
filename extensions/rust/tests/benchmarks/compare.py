@@ -362,7 +362,7 @@ def print_results_table(results: list[BenchmarkResult], title: str) -> None:
             f"{ferrox_sps} | {torchsim_sps} | {ase_sps} | {vs_ts} | {vs_ase} |"
         )
         if row.error:
-            print(f"|  ↳ Error: {row.error} |||||||||")
+            print(f"|  ↳ Error: {row.error} | | | | | | | |")
 
 
 def run_all_benchmarks(

@@ -195,8 +195,11 @@ def run_torchsim_morse_nve(
         for _ in range(n_steps):
             md_state = nve_step(md_state, model, dt=dt_tensor)
         return time.perf_counter() - start
-    except Exception as exc:
+    except (RuntimeError, ValueError, TypeError) as exc:
+        import traceback
+
         print(f"[torch-sim Morse error: {exc}]", end=" ")
+        traceback.print_exc()
         return None
 
 
@@ -240,13 +243,14 @@ def benchmark_potential(
         print(f"{ase_sps:.1f} steps/s")
 
         # TorchSim
+        print("    - torch-sim...", end=" ", flush=True)
         ts_time = ts_fn(atoms, n_steps, dt, temp)
         if ts_time is not None:
-            print("    - torch-sim...", end=" ", flush=True)
             ts_sps = n_steps / ts_time
             print(f"{ts_sps:.1f} steps/s")
         else:
             ts_sps = None
+            print("skipped")
 
         results.append(
             BenchmarkResult(

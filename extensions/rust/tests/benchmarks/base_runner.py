@@ -134,12 +134,21 @@ def compute_temperature_from_velocities(
 
     Returns:
         Temperature in Kelvin
+
+    Raises:
+        ValueError: If there are fewer than 2 atoms (n_dof would be <= 0)
     """
     # Boltzmann constant in eV/K
     kb_ev = 8.617333262e-5
 
     n_atoms = len(masses)
     n_dof = 3 * n_atoms - 3  # Remove COM
+
+    if n_dof <= 0:
+        raise ValueError(
+            f"Need at least 2 atoms to compute temperature (got {n_atoms} atoms, "
+            f"n_dof={n_dof})"
+        )
 
     kinetic_energy = 0.5 * np.sum(masses[:, np.newaxis] * velocities**2)
     return 2.0 * kinetic_energy / (n_dof * kb_ev)
