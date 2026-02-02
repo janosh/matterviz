@@ -377,12 +377,18 @@ fn remove_species(
 ) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
 
-    let species: Vec<crate::species::Species> = species_list
-        .iter()
-        .filter_map(|s| {
-            crate::element::Element::from_symbol(s).map(crate::species::Species::neutral)
-        })
-        .collect();
+    // Validate all species symbols first
+    let mut species = Vec::with_capacity(species_list.len());
+    for sym in &species_list {
+        match crate::element::Element::from_symbol(sym) {
+            Some(elem) => species.push(crate::species::Species::neutral(elem)),
+            None => {
+                return Err(PyValueError::new_err(format!(
+                    "Unknown species symbol: {sym}"
+                )));
+            }
+        }
+    }
 
     let result = struc
         .remove_species(&species)

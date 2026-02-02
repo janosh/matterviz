@@ -112,7 +112,9 @@ fn create_antisite(
     let struct_json = structure_to_pymatgen_json(&result);
     dict.set_item("structure", json_to_pydict(py, &struct_json)?)?;
     dict.set_item("defect_type", "antisite")?;
-    dict.set_item("site_idx", site_a_idx)?; // Primary site
+    dict.set_item("site_idx", site_a_idx)?; // Primary site (kept for back-compat)
+    dict.set_item("site_idx_b", site_b_idx)?; // Second site
+    dict.set_item("site_indices", [site_a_idx, site_b_idx])?; // Both sites as array
     Ok(dict.unbind())
 }
 
@@ -125,6 +127,13 @@ fn find_interstitial_sites(
     min_dist: Option<f64>,
     symprec: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    if let Some(md) = min_dist {
+        if !md.is_finite() || md <= 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "min_dist must be positive and finite, got {md}"
+            )));
+        }
+    }
     if !symprec.is_finite() || symprec <= 0.0 {
         return Err(PyValueError::new_err(format!(
             "symprec must be positive and finite, got {symprec}"
@@ -314,6 +323,24 @@ fn generate_all(
     symprec: f64,
     interstitial_min_dist: f64,
 ) -> PyResult<Py<PyDict>> {
+    // Validate symprec: must be positive, finite, and at most 1.0 (reasonable upper bound)
+    if !symprec.is_finite() || symprec <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "symprec must be positive and finite, got {symprec}"
+        )));
+    }
+    if symprec > 1.0 {
+        return Err(PyValueError::new_err(format!(
+            "symprec must be at most 1.0, got {symprec}"
+        )));
+    }
+    // Validate interstitial_min_dist: must be positive and finite
+    if !interstitial_min_dist.is_finite() || interstitial_min_dist <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "interstitial_min_dist must be positive and finite, got {interstitial_min_dist}"
+        )));
+    }
+
     let struc = parse_struct(&structure)?;
 
     let config = defects::DefectsGeneratorConfig {

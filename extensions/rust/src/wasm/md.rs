@@ -6,6 +6,8 @@ use wasm_bindgen::prelude::*;
 use crate::md;
 use crate::wasm_types::WasmResult;
 
+use super::helpers::{validate_positive_f64, validate_temperature};
+
 /// MD simulation state for WASM.
 #[wasm_bindgen]
 pub struct JsMDState {
@@ -309,15 +311,9 @@ impl JsLangevinIntegrator {
         dt: f64,
         seed: Option<u64>,
     ) -> Result<JsLangevinIntegrator, JsError> {
-        if temperature_k < 0.0 {
-            return Err(JsError::new("temperature must be non-negative"));
-        }
-        if friction <= 0.0 {
-            return Err(JsError::new("friction must be positive"));
-        }
-        if dt <= 0.0 {
-            return Err(JsError::new("timestep dt must be positive"));
-        }
+        validate_temperature(temperature_k).map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(friction, "friction").map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(dt, "timestep dt").map_err(|err| JsError::new(&err))?;
         Ok(JsLangevinIntegrator {
             inner: md::LangevinIntegrator::new(temperature_k, friction, dt, seed),
         })
@@ -342,12 +338,18 @@ impl JsLangevinIntegrator {
     }
 }
 
-/// Perform one Langevin dynamics step (for use with JS force callback).
+/// Perform the first part of a Langevin step (B-A-O-A: velocity half-step, position update,
+/// thermostat).
 ///
-/// This version takes forces directly rather than a callback,
-/// since JS callbacks across WASM boundary are complex.
+/// This is the split API for proper force handling:
+/// 1. Call `langevin_step_init` with current forces
+/// 2. Get new positions from `state.positions`
+/// 3. Compute forces at new positions
+/// 4. Call `langevin_step_finalize` with new forces
+///
+/// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
 #[wasm_bindgen]
-pub fn langevin_step_with_forces(
+pub fn langevin_step_init(
     integrator: &mut JsLangevinIntegrator,
     state: &mut JsMDState,
     forces: Vec<f64>,
@@ -362,16 +364,100 @@ pub fn langevin_step_with_forces(
             ));
         }
 
-        // Set forces on state before step (integrator uses state.forces for first half-step)
-        let force_vec: Vec<Vector3<f64>> = forces
+        // Set forces on state (used for first velocity half-step)
+        state.inner.forces = forces
             .chunks(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
-        state.inner.forces = force_vec.clone();
 
-        integrator
-            .inner
-            .step(&mut state.inner, |_positions| force_vec.clone());
+        // Perform B-A-O-A (everything except final velocity half-step)
+        integrator.inner.step_init(&mut state.inner);
+        Ok(())
+    })();
+    result.into()
+}
+
+/// Complete a Langevin step after `langevin_step_init` (final velocity half-step with new
+/// forces).
+///
+/// new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
+#[wasm_bindgen]
+pub fn langevin_step_finalize(
+    integrator: &JsLangevinIntegrator,
+    state: &mut JsMDState,
+    new_forces: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if new_forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "new_forces length {} must be {} (3 * n_atoms)",
+                new_forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        let force_vec: Vec<Vector3<f64>> = new_forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        integrator.inner.step_finalize(&mut state.inner, &force_vec);
+        Ok(())
+    })();
+    result.into()
+}
+
+/// Perform one complete Langevin dynamics step with both old and new forces.
+///
+/// This is a convenience wrapper that combines `langevin_step_init` and `langevin_step_finalize`.
+/// Use this when you can pre-compute both the current forces and the forces at the new positions.
+///
+/// For most use cases, prefer the split API (`langevin_step_init` + `langevin_step_finalize`)
+/// which allows computing forces at the updated positions between the two calls.
+///
+/// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
+/// new_forces: flat array of forces at updated positions in eV/Angstrom
+#[wasm_bindgen]
+pub fn langevin_step_with_forces(
+    integrator: &mut JsLangevinIntegrator,
+    state: &mut JsMDState,
+    forces: Vec<f64>,
+    new_forces: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+        if new_forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "new_forces length {} must be {} (3 * n_atoms)",
+                new_forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        // Set forces on state (used for first velocity half-step)
+        state.inner.forces = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        // Perform B-A-O-A
+        integrator.inner.step_init(&mut state.inner);
+
+        // Final velocity half-step with new forces
+        let force_vec: Vec<Vector3<f64>> = new_forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        integrator.inner.step_finalize(&mut state.inner, &force_vec);
+
         Ok(())
     })();
     result.into()
@@ -400,15 +486,10 @@ impl JsNoseHooverChain {
         dt: f64,
         n_dof: usize,
     ) -> Result<JsNoseHooverChain, JsError> {
-        if target_temp < 0.0 {
-            return Err(JsError::new("temperature must be non-negative"));
-        }
-        if tau <= 0.0 {
-            return Err(JsError::new("coupling time constant tau must be positive"));
-        }
-        if dt <= 0.0 {
-            return Err(JsError::new("timestep dt must be positive"));
-        }
+        validate_temperature(target_temp).map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(tau, "coupling time constant tau")
+            .map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(dt, "timestep dt").map_err(|err| JsError::new(&err))?;
         Ok(JsNoseHooverChain {
             inner: md::NoseHooverChain::new(target_temp, tau, dt, n_dof),
         })
@@ -421,9 +502,18 @@ impl JsNoseHooverChain {
     }
 }
 
-/// Perform one Nose-Hoover chain step with provided forces.
+/// Perform the first part of a Nosé-Hoover step (thermostat half-step + velocity half-step +
+/// position update).
+///
+/// This is the split API for proper force handling:
+/// 1. Call `nose_hoover_step_init` with current forces
+/// 2. Get new positions from `state.positions`
+/// 3. Compute forces at new positions
+/// 4. Call `nose_hoover_step_finalize` with new forces
+///
+/// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
 #[wasm_bindgen]
-pub fn nose_hoover_step_with_forces(
+pub fn nose_hoover_step_init(
     thermostat: &mut JsNoseHooverChain,
     state: &mut JsMDState,
     forces: Vec<f64>,
@@ -438,16 +528,95 @@ pub fn nose_hoover_step_with_forces(
             ));
         }
 
-        // Set forces on state before step (integrator uses state.forces for first half-step)
-        let force_vec: Vec<Vector3<f64>> = forces
+        // Set forces on state (used for first velocity half-step)
+        state.inner.forces = forces
             .chunks(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
-        state.inner.forces = force_vec.clone();
 
-        thermostat
-            .inner
-            .step(&mut state.inner, |_positions| force_vec.clone());
+        thermostat.inner.step_init(&mut state.inner);
+        Ok(())
+    })();
+    result.into()
+}
+
+/// Complete a Nosé-Hoover step after `nose_hoover_step_init` (velocity half-step with new forces
+/// + second thermostat half-step).
+///
+/// new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
+#[wasm_bindgen]
+pub fn nose_hoover_step_finalize(
+    thermostat: &mut JsNoseHooverChain,
+    state: &mut JsMDState,
+    new_forces: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if new_forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "new_forces length {} must be {} (3 * n_atoms)",
+                new_forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        let force_vec: Vec<Vector3<f64>> = new_forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        thermostat.inner.step_finalize(&mut state.inner, &force_vec);
+        Ok(())
+    })();
+    result.into()
+}
+
+/// Perform one complete Nosé-Hoover chain step with both old and new forces.
+///
+/// This is a convenience wrapper that combines `nose_hoover_step_init` and
+/// `nose_hoover_step_finalize`.
+///
+/// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
+/// new_forces: flat array of forces at updated positions in eV/Angstrom
+#[wasm_bindgen]
+pub fn nose_hoover_step_with_forces(
+    thermostat: &mut JsNoseHooverChain,
+    state: &mut JsMDState,
+    forces: Vec<f64>,
+    new_forces: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+        if new_forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "new_forces length {} must be {} (3 * n_atoms)",
+                new_forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        // Set forces on state (used for first velocity half-step)
+        state.inner.forces = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        thermostat.inner.step_init(&mut state.inner);
+
+        // Final velocity half-step with new forces
+        let force_vec: Vec<Vector3<f64>> = new_forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        thermostat.inner.step_finalize(&mut state.inner, &force_vec);
+
         Ok(())
     })();
     result.into()
@@ -476,15 +645,10 @@ impl JsVelocityRescale {
         n_dof: usize,
         seed: Option<u64>,
     ) -> Result<JsVelocityRescale, JsError> {
-        if target_temp < 0.0 {
-            return Err(JsError::new("temperature must be non-negative"));
-        }
-        if tau <= 0.0 {
-            return Err(JsError::new("coupling time constant tau must be positive"));
-        }
-        if dt <= 0.0 {
-            return Err(JsError::new("timestep dt must be positive"));
-        }
+        validate_temperature(target_temp).map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(tau, "coupling time constant tau")
+            .map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(dt, "timestep dt").map_err(|err| JsError::new(&err))?;
         Ok(JsVelocityRescale {
             inner: md::VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
         })
@@ -497,9 +661,17 @@ impl JsVelocityRescale {
     }
 }
 
-/// Perform one velocity rescale step with provided forces.
+/// Perform the first part of a velocity rescale step (position update).
+///
+/// This is the split API for proper force handling:
+/// 1. Call `velocity_rescale_step_init` with current forces
+/// 2. Get new positions from `state.positions`
+/// 3. Compute forces at new positions
+/// 4. Call `velocity_rescale_step_finalize` with new forces
+///
+/// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
 #[wasm_bindgen]
-pub fn velocity_rescale_step_with_forces(
+pub fn velocity_rescale_step_init(
     thermostat: &mut JsVelocityRescale,
     state: &mut JsMDState,
     forces: Vec<f64>,
@@ -514,16 +686,95 @@ pub fn velocity_rescale_step_with_forces(
             ));
         }
 
-        // Set forces on state before step (integrator uses state.forces for first half-step)
-        let force_vec: Vec<Vector3<f64>> = forces
+        // Set forces on state (preserved for use in step_finalize)
+        state.inner.forces = forces
             .chunks(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
-        state.inner.forces = force_vec.clone();
 
-        thermostat
-            .inner
-            .step(&mut state.inner, |_positions| force_vec.clone());
+        thermostat.inner.step_init(&mut state.inner);
+        Ok(())
+    })();
+    result.into()
+}
+
+/// Complete a velocity rescale step after `velocity_rescale_step_init` (velocity update +
+/// rescaling).
+///
+/// new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
+#[wasm_bindgen]
+pub fn velocity_rescale_step_finalize(
+    thermostat: &mut JsVelocityRescale,
+    state: &mut JsMDState,
+    new_forces: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if new_forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "new_forces length {} must be {} (3 * n_atoms)",
+                new_forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        let force_vec: Vec<Vector3<f64>> = new_forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        thermostat.inner.step_finalize(&mut state.inner, &force_vec);
+        Ok(())
+    })();
+    result.into()
+}
+
+/// Perform one complete velocity rescale step with both old and new forces.
+///
+/// This is a convenience wrapper that combines `velocity_rescale_step_init` and
+/// `velocity_rescale_step_finalize`.
+///
+/// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
+/// new_forces: flat array of forces at updated positions in eV/Angstrom
+#[wasm_bindgen]
+pub fn velocity_rescale_step_with_forces(
+    thermostat: &mut JsVelocityRescale,
+    state: &mut JsMDState,
+    forces: Vec<f64>,
+    new_forces: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+        if new_forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "new_forces length {} must be {} (3 * n_atoms)",
+                new_forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        // Set forces on state (preserved for use in step_finalize)
+        state.inner.forces = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        thermostat.inner.step_init(&mut state.inner);
+
+        // Velocity update + rescaling with new forces
+        let force_vec: Vec<Vector3<f64>> = new_forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        thermostat.inner.step_finalize(&mut state.inner, &force_vec);
+
         Ok(())
     })();
     result.into()
@@ -671,25 +922,18 @@ impl JsNPTIntegrator {
         n_atoms: usize,
         total_mass: f64,
     ) -> Result<JsNPTIntegrator, JsError> {
-        if temperature < 0.0 {
-            return Err(JsError::new("temperature must be non-negative"));
+        validate_temperature(temperature).map_err(|err| JsError::new(&err))?;
+        if !pressure.is_finite() {
+            return Err(JsError::new(&format!(
+                "pressure must be finite, got {pressure}"
+            )));
         }
-        if tau_t <= 0.0 {
-            return Err(JsError::new(
-                "thermostat time constant tau_t must be positive",
-            ));
-        }
-        if tau_p <= 0.0 {
-            return Err(JsError::new(
-                "barostat time constant tau_p must be positive",
-            ));
-        }
-        if dt <= 0.0 {
-            return Err(JsError::new("timestep dt must be positive"));
-        }
-        if total_mass <= 0.0 {
-            return Err(JsError::new("total_mass must be positive"));
-        }
+        validate_positive_f64(tau_t, "thermostat time constant tau_t")
+            .map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(tau_p, "barostat time constant tau_p")
+            .map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(dt, "timestep dt").map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(total_mass, "total_mass").map_err(|err| JsError::new(&err))?;
         let config = md::NPTConfig::new(temperature, pressure, tau_t, tau_p, dt);
         Ok(JsNPTIntegrator {
             inner: md::NPTIntegrator::new(config, n_atoms, total_mass),
@@ -710,9 +954,19 @@ impl JsNPTIntegrator {
     }
 }
 
-/// Perform one NPT step with provided forces and stress.
+/// Perform the first part of an NPT step (thermostat half-step + cell half-step +
+/// velocity half-step + position/cell update).
+///
+/// This is the split API for proper force handling:
+/// 1. Call `npt_step_init` with current forces and stress
+/// 2. Get new positions and cell from state
+/// 3. Compute forces and stress at new configuration
+/// 4. Call `npt_step_finalize` with new forces and stress
+///
+/// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
+/// stress: 9-element stress tensor (row-major) in eV/Å³
 #[wasm_bindgen]
-pub fn npt_step_with_forces_and_stress(
+pub fn npt_step_init(
     integrator: &mut JsNPTIntegrator,
     state: &mut JsNPTState,
     forces: Vec<f64>,
@@ -731,18 +985,145 @@ pub fn npt_step_with_forces_and_stress(
             return Err("stress must have 9 elements".to_string());
         }
 
-        let force_vec: Vec<Vector3<f64>> = forces
+        // Set forces on state
+        state.inner.forces = forces
             .chunks(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
+
         let stress_mat = nalgebra::Matrix3::new(
             stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
             stress[8],
         );
 
+        integrator.inner.step_init(&mut state.inner, &stress_mat);
+        Ok(())
+    })();
+    result.into()
+}
+
+/// Complete an NPT step after `npt_step_init` (velocity second half + cell second half +
+/// thermostat second half).
+///
+/// new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
+/// new_stress: 9-element stress tensor at updated configuration (row-major) in eV/Å³
+#[wasm_bindgen]
+pub fn npt_step_finalize(
+    integrator: &mut JsNPTIntegrator,
+    state: &mut JsNPTState,
+    new_forces: Vec<f64>,
+    new_stress: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if new_forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "new_forces length {} must be {} (3 * n_atoms)",
+                new_forces.len(),
+                n_atoms * 3
+            ));
+        }
+        if new_stress.len() != 9 {
+            return Err("new_stress must have 9 elements".to_string());
+        }
+
+        let force_vec: Vec<Vector3<f64>> = new_forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        let stress_mat = nalgebra::Matrix3::new(
+            new_stress[0],
+            new_stress[1],
+            new_stress[2],
+            new_stress[3],
+            new_stress[4],
+            new_stress[5],
+            new_stress[6],
+            new_stress[7],
+            new_stress[8],
+        );
+
         integrator
             .inner
-            .step(&mut state.inner, |_, _| (force_vec.clone(), stress_mat));
+            .step_finalize(&mut state.inner, &force_vec, &stress_mat);
+        Ok(())
+    })();
+    result.into()
+}
+
+/// Perform one complete NPT step with both initial and new forces/stress.
+///
+/// This is a convenience wrapper that combines `npt_step_init` and `npt_step_finalize`.
+///
+/// forces: flat array of initial forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
+/// stress: 9-element initial stress tensor (row-major) in eV/Å³
+/// new_forces: flat array of forces at updated positions in eV/Angstrom
+/// new_stress: 9-element stress tensor at updated configuration in eV/Å³
+#[wasm_bindgen]
+pub fn npt_step_with_forces_and_stress(
+    integrator: &mut JsNPTIntegrator,
+    state: &mut JsNPTState,
+    forces: Vec<f64>,
+    stress: Vec<f64>,
+    new_forces: Vec<f64>,
+    new_stress: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+        if stress.len() != 9 {
+            return Err("stress must have 9 elements".to_string());
+        }
+        if new_forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "new_forces length {} must be {} (3 * n_atoms)",
+                new_forces.len(),
+                n_atoms * 3
+            ));
+        }
+        if new_stress.len() != 9 {
+            return Err("new_stress must have 9 elements".to_string());
+        }
+
+        // Set initial forces on state
+        state.inner.forces = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        let stress_mat = nalgebra::Matrix3::new(
+            stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
+            stress[8],
+        );
+
+        integrator.inner.step_init(&mut state.inner, &stress_mat);
+
+        // Finalize with new forces/stress
+        let new_force_vec: Vec<Vector3<f64>> = new_forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        let new_stress_mat = nalgebra::Matrix3::new(
+            new_stress[0],
+            new_stress[1],
+            new_stress[2],
+            new_stress[3],
+            new_stress[4],
+            new_stress[5],
+            new_stress[6],
+            new_stress[7],
+            new_stress[8],
+        );
+
+        integrator
+            .inner
+            .step_finalize(&mut state.inner, &new_force_vec, &new_stress_mat);
         Ok(())
     })();
     result.into()

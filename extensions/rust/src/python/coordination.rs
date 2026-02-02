@@ -93,6 +93,16 @@ fn get_neighbors(
         .collect()
 }
 
+/// Validate min_solid_angle is finite and non-negative.
+fn validate_min_solid_angle(min_solid_angle: f64) -> PyResult<()> {
+    if !min_solid_angle.is_finite() || min_solid_angle < 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "min_solid_angle must be finite and non-negative, got {min_solid_angle}"
+        )));
+    }
+    Ok(())
+}
+
 /// Get coordination number using Voronoi tessellation.
 #[cfg(not(target_arch = "wasm32"))]
 #[pyfunction]
@@ -102,6 +112,7 @@ fn get_cn_voronoi(
     site_idx: usize,
     min_solid_angle: f64,
 ) -> PyResult<f64> {
+    validate_min_solid_angle(min_solid_angle)?;
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
     Ok(struc.get_cn_voronoi(site_idx, Some(&voronoi_config(min_solid_angle))))
@@ -112,6 +123,7 @@ fn get_cn_voronoi(
 #[pyfunction]
 #[pyo3(signature = (structure, min_solid_angle = 0.1))]
 fn get_cn_voronoi_all(structure: StructureJson, min_solid_angle: f64) -> PyResult<Vec<f64>> {
+    validate_min_solid_angle(min_solid_angle)?;
     let struc = parse_struct(&structure)?;
     Ok(struc.get_cn_voronoi_all(Some(&voronoi_config(min_solid_angle))))
 }
@@ -125,6 +137,7 @@ fn get_voronoi_neighbors(
     site_idx: usize,
     min_solid_angle: f64,
 ) -> PyResult<Vec<(usize, f64)>> {
+    validate_min_solid_angle(min_solid_angle)?;
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
     Ok(coordination::get_voronoi_neighbors(
@@ -144,6 +157,7 @@ fn get_local_environment_voronoi(
     site_idx: usize,
     min_solid_angle: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    validate_min_solid_angle(min_solid_angle)?;
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
     let env = coordination::get_local_environment_voronoi(

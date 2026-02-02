@@ -192,6 +192,7 @@ impl NPTIntegrator {
     /// - `config.tau_t <= 0` (would cause zero/NaN thermostat mass)
     /// - `config.tau_p <= 0` (would cause incorrect barostat dynamics)
     /// - `config.dt_fs <= 0` (non-physical time step)
+    /// - `config.cell_mass_factor <= 0` or non-finite (would cause NaN/negative w_cell)
     pub fn new(config: NPTConfig, n_atoms: usize, _total_mass: f64) -> Self {
         assert!(
             n_atoms >= 2,
@@ -221,6 +222,12 @@ impl NPTIntegrator {
             "NPTIntegrator requires dt_fs > 0 (got {}). \
              Zero or negative time step is non-physical.",
             config.dt_fs
+        );
+        assert!(
+            config.cell_mass_factor.is_finite() && config.cell_mass_factor > 0.0,
+            "NPTIntegrator requires cell_mass_factor > 0 and finite (got {}). \
+             Invalid cell_mass_factor would produce NaN/negative barostat mass w_cell.",
+            config.cell_mass_factor
         );
 
         let kt = units::KB * config.temperature_k;
@@ -420,5 +427,119 @@ impl NPTIntegrator {
         let p_int = -(stress[(0, 0)] + stress[(1, 1)] + stress[(2, 2)]) / 3.0;
         // Convert eV/Å³ to GPa
         p_int / units::GPA_TO_EV_PER_ANG3
+    }
+
+    /// Perform the first part of an NPT step (thermostat half-step + cell half-step +
+    /// velocity half-step + position/cell update).
+    ///
+    /// This is the split API for WASM where force computation cannot use closures.
+    /// After calling this, compute forces and stress at the new positions/cell,
+    /// then call `step_finalize`.
+    ///
+    /// Expects `state.forces` to contain the initial forces before calling.
+    /// Uses `initial_stress` for the cell dynamics.
+    pub fn step_init(&mut self, state: &mut NPTState, initial_stress: &Matrix3<f64>) {
+        let dt = self.config.dt_fs * units::FS_TO_INTERNAL;
+        let dt2 = dt / 2.0;
+        let kt = units::KB * self.config.temperature_k;
+        let n_dof = self.n_dof as f64;
+
+        // Target pressure in eV/Å³
+        let p_ext = self.config.pressure_gpa * units::GPA_TO_EV_PER_ANG3;
+
+        // === Thermostat half-step for atoms ===
+        let ke2 = kinetic_energy_2x(&state.velocities, &state.masses);
+        let g_xi = (ke2 - n_dof * kt) / self.q_atoms;
+        self.v_xi_atoms += g_xi * dt2;
+
+        // Scale atomic velocities
+        let scale = (-self.v_xi_atoms * dt2).exp();
+        for vel in &mut state.velocities {
+            *vel *= scale;
+        }
+
+        // === Cell dynamics half-step ===
+        let volume = state.volume();
+        let p_int =
+            -(initial_stress[(0, 0)] + initial_stress[(1, 1)] + initial_stress[(2, 2)]) / 3.0;
+
+        // Pressure difference drives cell change
+        let pressure_diff = p_int - p_ext;
+        let cell_acc = pressure_diff * volume / self.w_cell;
+
+        // Update cell velocity (isotropic)
+        let cell_scale_vel = state.cell_velocity[(0, 0)] + cell_acc * dt2;
+        state.cell_velocity = Matrix3::from_diagonal(&Vector3::new(
+            cell_scale_vel,
+            cell_scale_vel,
+            cell_scale_vel,
+        ));
+
+        // === Velocity Verlet: update velocities (half step) ===
+        for (idx, vel) in state.velocities.iter_mut().enumerate() {
+            *vel += dt2 * state.forces[idx] / state.masses[idx];
+        }
+
+        // === Update positions and cell ===
+        let cell_scale = 1.0 + state.cell_velocity[(0, 0)] * dt;
+        state.cell *= cell_scale;
+
+        for pos in &mut state.positions {
+            *pos *= cell_scale;
+        }
+        for (idx, pos) in state.positions.iter_mut().enumerate() {
+            *pos += dt * state.velocities[idx];
+        }
+    }
+
+    /// Complete an NPT step after `step_init` (velocity second half + cell second half +
+    /// thermostat second half).
+    ///
+    /// Must be called after `step_init` with forces and stress computed at the updated
+    /// positions/cell.
+    pub fn step_finalize(
+        &mut self,
+        state: &mut NPTState,
+        new_forces: &[Vector3<f64>],
+        new_stress: &Matrix3<f64>,
+    ) {
+        let dt = self.config.dt_fs * units::FS_TO_INTERNAL;
+        let dt2 = dt / 2.0;
+        let kt = units::KB * self.config.temperature_k;
+        let n_dof = self.n_dof as f64;
+
+        // Target pressure in eV/Å³
+        let p_ext = self.config.pressure_gpa * units::GPA_TO_EV_PER_ANG3;
+
+        // Store new forces
+        state.forces = new_forces.to_vec();
+
+        // === Velocity Verlet: update velocities (second half) ===
+        for (idx, vel) in state.velocities.iter_mut().enumerate() {
+            *vel += dt2 * state.forces[idx] / state.masses[idx];
+        }
+
+        // === Cell dynamics second half-step ===
+        let volume = state.volume();
+        let p_int = -(new_stress[(0, 0)] + new_stress[(1, 1)] + new_stress[(2, 2)]) / 3.0;
+        let pressure_diff = p_int - p_ext;
+        let cell_acc = pressure_diff * volume / self.w_cell;
+
+        let cell_scale_vel = state.cell_velocity[(0, 0)] + cell_acc * dt2;
+        state.cell_velocity = Matrix3::from_diagonal(&Vector3::new(
+            cell_scale_vel,
+            cell_scale_vel,
+            cell_scale_vel,
+        ));
+
+        // === Thermostat second half-step for atoms ===
+        let scale = (-self.v_xi_atoms * dt2).exp();
+        for vel in &mut state.velocities {
+            *vel *= scale;
+        }
+
+        let ke2 = kinetic_energy_2x(&state.velocities, &state.masses);
+        let g_xi = (ke2 - n_dof * kt) / self.q_atoms;
+        self.v_xi_atoms += g_xi * dt2;
     }
 }

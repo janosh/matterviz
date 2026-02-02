@@ -248,15 +248,15 @@ pub fn compute_harmonic_bonds(
                 ));
             }
 
-            if !chunk[2].is_finite() {
+            if !chunk[2].is_finite() || chunk[2] < 0.0 {
                 return Err(format!(
-                    "bond {bond_idx}: spring constant k={} must be finite",
+                    "bond {bond_idx}: spring constant k={} must be finite and non-negative",
                     chunk[2]
                 ));
             }
-            if !chunk[3].is_finite() {
+            if !chunk[3].is_finite() || chunk[3] <= 0.0 {
                 return Err(format!(
-                    "bond {bond_idx}: equilibrium distance r0={} must be finite",
+                    "bond {bond_idx}: equilibrium distance r0={} must be finite and positive",
                     chunk[3]
                 ));
             }

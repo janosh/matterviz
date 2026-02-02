@@ -11,6 +11,41 @@ use super::helpers::{
     array_to_mat3, default_pbc, mat3_to_array, positions_to_vec3, vec3_to_positions,
 };
 
+// === Validation Helpers ===
+
+/// Validate temperature is finite and non-negative.
+#[inline]
+fn validate_temperature(temp: f64) -> PyResult<()> {
+    if !temp.is_finite() || temp < 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "temperature must be finite and non-negative, got {temp}"
+        )));
+    }
+    Ok(())
+}
+
+/// Validate a positive f64 parameter (finite and > 0).
+#[inline]
+fn validate_positive_f64(value: f64, name: &str) -> PyResult<()> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "{name} must be finite and positive, got {value}"
+        )));
+    }
+    Ok(())
+}
+
+/// Validate degrees of freedom is positive.
+#[inline]
+fn validate_n_dof(n_dof: usize) -> PyResult<()> {
+    if n_dof == 0 {
+        return Err(PyValueError::new_err(
+            "n_dof must be positive (number of degrees of freedom)",
+        ));
+    }
+    Ok(())
+}
+
 /// Extract and validate forces from Python callback result.
 /// Returns an error if the number of forces doesn't match the number of positions.
 fn extract_and_validate_forces(
@@ -188,16 +223,19 @@ impl PyLangevinIntegrator {
     /// Create a new Langevin integrator.
     ///
     /// Args:
-    ///     temperature_k: Target temperature in Kelvin
-    ///     friction: Friction coefficient in 1/fs (typical: 0.001 to 0.01)
-    ///     dt: Time step in fs
+    ///     temperature_k: Target temperature in Kelvin (must be non-negative)
+    ///     friction: Friction coefficient in 1/fs (must be positive, typical: 0.001 to 0.01)
+    ///     dt: Time step in fs (must be positive)
     ///     seed: Optional random seed for reproducibility
     #[new]
     #[pyo3(signature = (temperature_k, friction, dt, seed = None))]
-    fn new(temperature_k: f64, friction: f64, dt: f64, seed: Option<u64>) -> Self {
-        Self {
+    fn new(temperature_k: f64, friction: f64, dt: f64, seed: Option<u64>) -> PyResult<Self> {
+        validate_temperature(temperature_k)?;
+        validate_positive_f64(friction, "friction")?;
+        validate_positive_f64(dt, "timestep dt")?;
+        Ok(Self {
             inner: LangevinIntegrator::new(temperature_k, friction, dt, seed),
-        }
+        })
     }
 
     /// Perform one Langevin dynamics step.
@@ -275,11 +313,21 @@ pub struct PyNoseHooverChain {
 #[pymethods]
 impl PyNoseHooverChain {
     /// Create a new Nosé-Hoover chain thermostat.
+    ///
+    /// Args:
+    ///     target_temp: Target temperature in Kelvin (must be non-negative)
+    ///     tau: Coupling time constant in fs (must be positive)
+    ///     dt: Time step in fs (must be positive)
+    ///     n_dof: Number of degrees of freedom (must be positive)
     #[new]
-    fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize) -> Self {
-        Self {
+    fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize) -> PyResult<Self> {
+        validate_temperature(target_temp)?;
+        validate_positive_f64(tau, "coupling time constant tau")?;
+        validate_positive_f64(dt, "timestep dt")?;
+        validate_n_dof(n_dof)?;
+        Ok(Self {
             inner: NoseHooverChain::new(target_temp, tau, dt, n_dof),
-        }
+        })
     }
 
     /// Perform one NVT step.
@@ -308,12 +356,23 @@ pub struct PyVelocityRescale {
 #[pymethods]
 impl PyVelocityRescale {
     /// Create a new velocity rescaling thermostat.
+    ///
+    /// Args:
+    ///     target_temp: Target temperature in Kelvin (must be non-negative)
+    ///     tau: Coupling time constant in fs (must be positive)
+    ///     dt: Time step in fs (must be positive)
+    ///     n_dof: Number of degrees of freedom (must be positive)
+    ///     seed: Optional random seed for reproducibility
     #[new]
     #[pyo3(signature = (target_temp, tau, dt, n_dof, seed = None))]
-    fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize, seed: Option<u64>) -> Self {
-        Self {
+    fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize, seed: Option<u64>) -> PyResult<Self> {
+        validate_temperature(target_temp)?;
+        validate_positive_f64(tau, "coupling time constant tau")?;
+        validate_positive_f64(dt, "timestep dt")?;
+        validate_n_dof(n_dof)?;
+        Ok(Self {
             inner: VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
-        }
+        })
     }
 
     /// Perform one NVT step.

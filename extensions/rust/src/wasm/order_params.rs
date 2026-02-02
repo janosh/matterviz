@@ -35,6 +35,12 @@ pub fn compute_steinhardt_q(
 
 #[wasm_bindgen]
 pub fn classify_local_structure(q4: f64, q6: f64, tolerance: f64) -> WasmResult<String> {
+    if !q4.is_finite() {
+        return WasmResult::err(&format!("q4 must be finite, got {q4}"));
+    }
+    if !q6.is_finite() {
+        return WasmResult::err(&format!("q6 must be finite, got {q6}"));
+    }
     if let Err(err) = validate_tolerance(tolerance) {
         return WasmResult::err(&err);
     }

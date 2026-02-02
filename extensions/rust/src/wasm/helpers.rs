@@ -11,6 +11,26 @@ pub fn validate_cutoff(cutoff: f64) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate temperature is finite and non-negative.
+#[inline]
+pub fn validate_temperature(temp: f64) -> Result<(), String> {
+    if !temp.is_finite() || temp < 0.0 {
+        return Err(format!(
+            "temperature must be finite and non-negative, got {temp}"
+        ));
+    }
+    Ok(())
+}
+
+/// Validate a positive f64 parameter (finite and > 0).
+#[inline]
+pub fn validate_positive_f64(value: f64, name: &str) -> Result<(), String> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(format!("{name} must be finite and positive, got {value}"));
+    }
+    Ok(())
+}
+
 /// Validate cutoff is finite and non-negative (allows zero).
 #[inline]
 pub fn validate_cutoff_nonneg(cutoff: f64) -> Result<(), String> {
@@ -28,6 +48,16 @@ pub fn parse_flat_vec3(data: &[f64], n_atoms: usize) -> Result<Vec<Vector3<f64>>
             n_atoms * 3,
             n_atoms,
             data.len()
+        ));
+    }
+    // Validate all coordinates are finite
+    if let Some(idx) = data.iter().position(|v| !v.is_finite()) {
+        let atom_idx = idx / 3;
+        let component = idx % 3;
+        let axis = ["x", "y", "z"][component];
+        return Err(format!(
+            "Coordinate {axis} for atom {atom_idx} must be finite, got {}",
+            data[idx]
         ));
     }
     Ok(data

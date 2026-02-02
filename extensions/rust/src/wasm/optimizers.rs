@@ -105,8 +105,12 @@ impl JsFireState {
     }
 
     /// Check if optimization has converged.
+    /// Returns false for non-positive fmax thresholds.
     #[wasm_bindgen]
     pub fn is_converged(&self, fmax: f64) -> bool {
+        if !fmax.is_finite() || fmax <= 0.0 {
+            return false;
+        }
         self.inner.is_converged(fmax)
     }
 

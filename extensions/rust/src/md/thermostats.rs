@@ -206,6 +206,80 @@ impl NoseHooverChain {
         self.q[1] = kt * self.tau2_internal;
         self.q[2] = kt * self.tau2_internal;
     }
+
+    /// Perform the first part of a Nosé-Hoover step (thermostat half-step + velocity half-step
+    /// + position update).
+    ///
+    /// This is the split API for WASM where force computation cannot use closures.
+    /// After calling this, compute forces at the new positions, then call `step_finalize`.
+    ///
+    /// Uses `state.forces` for the initial velocity half-step.
+    pub fn step_init(&mut self, state: &mut MDState) {
+        let dt = self.dt_fs * units::FS_TO_INTERNAL;
+        let dt2 = dt / 2.0;
+        let dt4 = dt / 4.0;
+        let kt = units::KB * self.target_temp;
+        let n_dof = self.n_dof as f64;
+
+        // === First thermostat half-step ===
+        let g0 = (kinetic_energy_2x(&state.velocities, &state.masses) - n_dof * kt) / self.q[0];
+        self.v_xi[0] += g0 * dt4;
+
+        // Scale atomic velocities
+        let scale = (-self.v_xi[0] * dt2).exp();
+        for vel in &mut state.velocities {
+            *vel *= scale;
+        }
+
+        // Update thermostat velocity after scaling
+        let g0 = (kinetic_energy_2x(&state.velocities, &state.masses) - n_dof * kt) / self.q[0];
+        self.v_xi[0] += g0 * dt4;
+
+        // === Velocity Verlet first half ===
+        for (idx, vel) in state.velocities.iter_mut().enumerate() {
+            *vel += dt2 * state.forces[idx] / state.masses[idx];
+        }
+
+        // Update positions
+        for (idx, pos) in state.positions.iter_mut().enumerate() {
+            *pos += dt * state.velocities[idx];
+        }
+    }
+
+    /// Complete a Nosé-Hoover step after `step_init` (velocity half-step with new forces +
+    /// second thermostat half-step).
+    ///
+    /// Must be called after `step_init` with forces computed at the updated positions.
+    pub fn step_finalize(&mut self, state: &mut MDState, new_forces: &[Vector3<f64>]) {
+        let dt = self.dt_fs * units::FS_TO_INTERNAL;
+        let dt2 = dt / 2.0;
+        let dt4 = dt / 4.0;
+        let kt = units::KB * self.target_temp;
+        let n_dof = self.n_dof as f64;
+
+        // Store new forces
+        state.forces = new_forces.to_vec();
+
+        // Second half: update velocities with new forces
+        for (idx, vel) in state.velocities.iter_mut().enumerate() {
+            *vel += dt2 * state.forces[idx] / state.masses[idx];
+        }
+
+        // === Second thermostat half-step ===
+        let g0 = (kinetic_energy_2x(&state.velocities, &state.masses) - n_dof * kt) / self.q[0];
+        self.v_xi[0] += g0 * dt4;
+
+        let scale = (-self.v_xi[0] * dt2).exp();
+        for vel in &mut state.velocities {
+            *vel *= scale;
+        }
+
+        let g0 = (kinetic_energy_2x(&state.velocities, &state.masses) - n_dof * kt) / self.q[0];
+        self.v_xi[0] += g0 * dt4;
+
+        // Update thermostat position
+        self.xi[0] += self.v_xi[0] * dt;
+    }
 }
 
 // === Velocity Rescaling (Bussi) Thermostat ===
@@ -360,5 +434,71 @@ impl VelocityRescale {
              Zero or negative temperature is non-physical."
         );
         self.target_temp = target_temp;
+    }
+
+    /// Perform the first part of a velocity rescale step (position update).
+    ///
+    /// This is the split API for WASM where force computation cannot use closures.
+    /// After calling this, compute forces at the new positions, then call `step_finalize`.
+    ///
+    /// Note: `state.forces` must contain the old forces before calling this.
+    /// They are preserved for use in `step_finalize`.
+    pub fn step_init(&mut self, state: &mut MDState) {
+        let dt = self.dt_fs * units::FS_TO_INTERNAL;
+
+        // Position update (Verlet style with velocity and acceleration terms)
+        // state.forces are the old forces - kept for velocity update in step_finalize
+        for (idx, pos) in state.positions.iter_mut().enumerate() {
+            *pos +=
+                dt * state.velocities[idx] + 0.5 * dt * dt * state.forces[idx] / state.masses[idx];
+        }
+    }
+
+    /// Complete a velocity rescale step after `step_init` (velocity update + rescaling).
+    ///
+    /// Must be called after `step_init` with forces computed at the updated positions.
+    /// Uses `state.forces` (old forces from before `step_init`) and `new_forces` for
+    /// the velocity update, then applies stochastic velocity rescaling.
+    pub fn step_finalize(&mut self, state: &mut MDState, new_forces: &[Vector3<f64>]) {
+        let dt = self.dt_fs * units::FS_TO_INTERNAL;
+
+        // Velocity Verlet second half: update velocities using average of old and new forces
+        for (idx, vel) in state.velocities.iter_mut().enumerate() {
+            let old_force = state.forces[idx];
+            let new_force = new_forces[idx];
+            *vel += 0.5 * dt * (old_force + new_force) / state.masses[idx];
+        }
+
+        // Store new forces
+        state.forces = new_forces.to_vec();
+
+        // Apply velocity rescaling with stochastic term
+        let ke_current = kinetic_energy_2x(&state.velocities, &state.masses);
+        if ke_current > 0.0 {
+            let c1 = (-self.dt_fs / self.tau).exp();
+            let c2 = 1.0 - c1;
+            let kt_target = units::KB * self.target_temp * self.n_dof as f64;
+
+            // Stochastic term from sum of n_dof-1 squared normal deviates
+            let r_sum: f64 = (0..self.n_dof - 1)
+                .map(|_| {
+                    let normal = box_muller_normal(&mut self.rng);
+                    normal * normal
+                })
+                .sum();
+            let r1: f64 = box_muller_normal(&mut self.rng);
+
+            // Bussi formula for new kinetic energy
+            let ke_new = c1 * ke_current
+                + c2 * kt_target * (r_sum + r1 * r1) / self.n_dof as f64
+                + 2.0 * (c1 * c2 * ke_current * kt_target / self.n_dof as f64).sqrt() * r1;
+
+            if ke_new > 0.0 {
+                let scale = (ke_new / ke_current).sqrt();
+                for vel in &mut state.velocities {
+                    *vel *= scale;
+                }
+            }
+        }
     }
 }

@@ -67,15 +67,11 @@ class TestCutoffCoordination:
 
     def test_zero_cutoff_raises(self, fcc_cu_json: str) -> None:
         """Zero cutoff raises ValueError."""
-        import pytest
-
         with pytest.raises(ValueError, match="cutoff must be positive"):
             coordination.get_coordination_numbers(fcc_cu_json, 0.0)
 
     def test_negative_cutoff_raises(self, fcc_cu_json: str) -> None:
         """Negative cutoff raises ValueError."""
-        import pytest
-
         with pytest.raises(ValueError, match="cutoff must be positive"):
             coordination.get_coordination_numbers(fcc_cu_json, -1.0)
 

@@ -73,8 +73,3 @@ from ferrox._ferrox import (
     trajectory,
     xrd,
 )
-
-# Re-export commonly used classes at top level for convenience
-# Users can import as: from ferrox import StructureMatcher
-# Or via attribute access: ferrox.structure.StructureMatcher
-StructureMatcher = structure.StructureMatcher

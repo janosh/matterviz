@@ -202,6 +202,11 @@ impl PyCellFireState {
         config: Option<PyFireConfig>,
         cell_factor: f64,
     ) -> PyResult<Self> {
+        if !cell_factor.is_finite() || cell_factor <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "cell_factor must be positive and finite",
+            ));
+        }
         let pos_vec: Vec<Vector3<f64>> = positions
             .iter()
             .map(|p| Vector3::new(p[0], p[1], p[2]))

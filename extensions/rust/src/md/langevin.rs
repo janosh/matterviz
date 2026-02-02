@@ -184,7 +184,8 @@ where
 }
 
 /// Core BAOAB integration steps (B-A-O-A, without final B that requires new forces).
-fn langevin_baoab_core<R: Rng>(
+/// Made pub(crate) for split step API in WASM bindings.
+pub(crate) fn langevin_baoab_core<R: Rng>(
     mut state: MDState,
     config: &LangevinConfig,
     rng: &mut R,
@@ -301,6 +302,29 @@ impl LangevinIntegrator {
         self.config.dt_fs = dt_fs;
         self.config.dt_int = dt_fs * units::FS_TO_INTERNAL;
         self.config.recompute_coefficients();
+    }
+
+    /// Perform the first part of a Langevin step (B-A-O-A: velocity half-step, position
+    /// update, thermostat).
+    ///
+    /// This is the split API for WASM where force computation cannot use closures.
+    /// After calling this, compute forces at the new positions, then call `step_finalize`.
+    ///
+    /// Uses `state.forces` for the initial velocity half-step.
+    pub fn step_init(&mut self, state: &mut MDState) {
+        *state = langevin_baoab_core(std::mem::take(state), &self.config, &mut self.rng);
+    }
+
+    /// Complete a Langevin step after `step_init` (final B: velocity half-step with new forces).
+    ///
+    /// Must be called after `step_init` with forces computed at the updated positions.
+    pub fn step_finalize(&self, state: &mut MDState, new_forces: &[Vector3<f64>]) {
+        state.forces = new_forces.to_vec();
+        let half_dt = 0.5 * self.config.dt_int;
+        for idx in 0..state.num_atoms() {
+            let accel = state.forces[idx] / state.masses[idx];
+            state.velocities[idx] += half_dt * accel;
+        }
     }
 }
 
