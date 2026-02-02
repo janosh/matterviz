@@ -26,7 +26,7 @@ from pymatgen.core import Lattice, Species, Structure
 
 # Try importing ferrox - tests will be skipped if not installed
 try:
-    from ferrox import StructureMatcher as RustMatcher
+    from ferrox.structure import StructureMatcher as RustMatcher
 
     FERROX_AVAILABLE = True
 except ImportError:

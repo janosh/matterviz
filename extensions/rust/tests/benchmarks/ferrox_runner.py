@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-import ferrox
+from ferrox import md
 from pymatgen.core import Structure
 
 from .base_runner import (
@@ -26,8 +26,8 @@ def run_ferrox_fire(
 ) -> FireResult:
     """Run FIRE optimization using ferrox."""
     force_fn = create_force_callback(mace_calc, structure)
-    config = ferrox.FireConfig()
-    state = ferrox.FireState(structure_to_positions(structure), config)
+    config = md.FireConfig()
+    state = md.FireState(structure_to_positions(structure), config)
 
     return run_timed_fire_loop(
         max_steps=max_steps,
@@ -47,13 +47,13 @@ def run_ferrox_nve(
 ) -> MDResult:
     """Run NVE MD using ferrox velocity Verlet."""
     force_fn = create_force_callback(mace_calc, structure)
-    state = ferrox.MDState(structure_to_positions(structure), get_masses(structure))
+    state = md.MDState(structure_to_positions(structure), get_masses(structure))
     state.init_velocities(temperature, seed=42)
     state.forces = force_fn(state.positions)
 
     return run_timed_md_loop(
         n_steps=n_steps,
-        step_fn=lambda: ferrox.md_velocity_verlet_step(state, dt, force_fn),
+        step_fn=lambda: md.velocity_verlet_step(state, dt, force_fn),
         get_final_state=lambda: (state.temperature(), state.kinetic_energy()),
     )
 
@@ -68,9 +68,9 @@ def run_ferrox_nvt(
 ) -> MDResult:
     """Run NVT MD using ferrox Langevin dynamics."""
     force_fn = create_force_callback(mace_calc, structure)
-    state = ferrox.MDState(structure_to_positions(structure), get_masses(structure))
+    state = md.MDState(structure_to_positions(structure), get_masses(structure))
     state.init_velocities(temperature, seed=42)
-    integrator = ferrox.LangevinIntegrator(temperature, friction, dt, seed=42)
+    integrator = md.LangevinIntegrator(temperature, friction, dt, seed=42)
 
     return run_timed_md_loop(
         n_steps=n_steps,

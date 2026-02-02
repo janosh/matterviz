@@ -18,7 +18,7 @@ pip install ferrox
 
 ```python
 import json
-from ferrox import StructureMatcher
+from ferrox.structure import StructureMatcher
 from pymatgen.core import Structure
 
 # Create matcher with desired tolerances

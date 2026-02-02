@@ -78,7 +78,7 @@ pub use error::{FerroxError, OnError, Result};
 
 // Python bindings (optional)
 #[cfg(feature = "python")]
-mod python;
+pub mod python;
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;

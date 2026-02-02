@@ -160,10 +160,13 @@ fn test_coordination_numbers_fcc() {
         ..Default::default()
     };
     let nl = build_neighbor_list(&fcc, &config);
-    let avg_cn = nl.len() / n_atoms;
-    assert_eq!(
-        avg_cn, 12,
-        "FCC first shell should have CN=12, got {avg_cn}"
+    let mut counts = vec![0usize; n_atoms];
+    for &center in &nl.center_indices {
+        counts[center] += 1;
+    }
+    assert!(
+        counts.iter().all(|&cn| cn == 12),
+        "FCC first shell should have CN=12 for all atoms"
     );
 
     // Second shell includes: CN = 12 + 6 = 18
@@ -172,10 +175,13 @@ fn test_coordination_numbers_fcc() {
         ..Default::default()
     };
     let nl = build_neighbor_list(&fcc, &config);
-    let avg_cn = nl.len() / n_atoms;
-    assert_eq!(
-        avg_cn, 18,
-        "FCC first+second shell should have CN=18, got {avg_cn}"
+    let mut counts = vec![0usize; n_atoms];
+    for &center in &nl.center_indices {
+        counts[center] += 1;
+    }
+    assert!(
+        counts.iter().all(|&cn| cn == 18),
+        "FCC first+second shell should have CN=18 for all atoms"
     );
 }
 
@@ -227,6 +233,7 @@ fn test_coordination_numbers_nacl() {
 fn test_first_shell_distance_values() {
     // Verify that first shell distances match expected crystallographic values
     let fcc = make_fcc(3.61, Element::Cu);
+    let n_atoms = fcc.num_sites();
     let expected_nn_dist = 3.61 / 2.0_f64.sqrt(); // FCC first shell: a/sqrt(2) ≈ 2.553 Å
 
     let config = NeighborListConfig {
@@ -234,6 +241,15 @@ fn test_first_shell_distance_values() {
         ..Default::default()
     };
     let nl = build_neighbor_list(&fcc, &config);
+
+    // Verify expected number of first-shell pairs (each atom has 12 neighbors)
+    assert_eq!(
+        nl.len(),
+        n_atoms * 12,
+        "Expected {} first-shell pairs, got {}",
+        n_atoms * 12,
+        nl.len()
+    );
 
     // All distances should be approximately equal to first shell distance
     for dist in &nl.distances {

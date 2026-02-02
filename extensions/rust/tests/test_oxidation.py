@@ -2,9 +2,9 @@
 
 import json
 
-import ferrox
 import numpy as np
 import pytest
+from ferrox import oxidation
 from pymatgen.core import Composition, Structure
 
 
@@ -34,7 +34,7 @@ class TestOxiStateGuesses:
     )
     def test_common_compounds(self, formula: str, expected: dict) -> None:
         """Common compounds should give expected oxidation states."""
-        guesses = ferrox.oxi_state_guesses(formula)
+        guesses = oxidation.oxi_state_guesses(formula)
         assert len(guesses) > 0
         best = guesses[0]["oxidation_states"]
         for elem, oxi in expected.items():
@@ -42,7 +42,7 @@ class TestOxiStateGuesses:
 
     def test_lifepo4_matches_pymatgen(self) -> None:
         """Compare LiFePO4 guesses with pymatgen."""
-        ferrox_guesses = ferrox.oxi_state_guesses("LiFePO4")
+        ferrox_guesses = oxidation.oxi_state_guesses("LiFePO4")
 
         # Get pymatgen result
         comp = Composition("LiFePO4")
@@ -67,7 +67,7 @@ class TestOxiStateGuesses:
 
     def test_multiple_solutions_returned(self) -> None:
         """Some compositions have multiple valid oxidation state assignments."""
-        guesses = ferrox.oxi_state_guesses("Fe3O4")  # magnetite: Fe2+ and Fe3+
+        guesses = oxidation.oxi_state_guesses("Fe3O4")  # magnetite: Fe2+ and Fe3+
         # Should find at least one solution
         assert len(guesses) > 0
         # All solutions should be charge-balanced
@@ -87,7 +87,7 @@ class TestBvSums:
 
     def test_bv_sums_positive_for_cation(self, nacl_structure: dict) -> None:
         """BV sum should be positive for cations like Na+."""
-        bv_sums = ferrox.compute_bv_sums(nacl_structure)
+        bv_sums = oxidation.compute_bv_sums(nacl_structure)
         # NaCl structure from_spacegroup generates full conventional cell
         struct = Structure.from_dict(nacl_structure)
         assert len(bv_sums) == len(struct)
@@ -99,7 +99,7 @@ class TestBvSums:
 
     def test_bv_sums_reasonable_magnitude(self, nacl_structure: dict) -> None:
         """BV sums should be close to expected oxidation states."""
-        bv_sums = ferrox.compute_bv_sums(nacl_structure)
+        bv_sums = oxidation.compute_bv_sums(nacl_structure)
         # Na+ should have BVS ~1, Cl- should have BVS ~-1
         for bvs in bv_sums:
             assert abs(bvs) < 2.0, f"BVS magnitude too large: {bvs}"
@@ -107,8 +107,8 @@ class TestBvSums:
 
     def test_bv_sums_scale_factor(self, nacl_structure: dict) -> None:
         """Scale factor should affect BV sums."""
-        bv_sums_1 = ferrox.compute_bv_sums(nacl_structure, scale_factor=1.0)
-        bv_sums_2 = ferrox.compute_bv_sums(nacl_structure, scale_factor=1.015)
+        bv_sums_1 = oxidation.compute_bv_sums(nacl_structure, scale_factor=1.0)
+        bv_sums_2 = oxidation.compute_bv_sums(nacl_structure, scale_factor=1.015)
         # Different scale factors should give different results
         assert not all(
             np.isclose(a, b, atol=0.001)
@@ -121,13 +121,13 @@ class TestGuessOxidationStatesBvs:
 
     def test_guess_oxi_states_returns_list(self, nacl_structure: dict) -> None:
         """Should return oxidation states for each site."""
-        oxi_states = ferrox.guess_oxidation_states_bvs(nacl_structure)
+        oxi_states = oxidation.guess_oxidation_states(nacl_structure)
         struct = Structure.from_dict(nacl_structure)
         assert len(oxi_states) == len(struct)
 
     def test_guess_oxi_states_charge_balanced(self, nacl_structure: dict) -> None:
         """Result should be charge balanced."""
-        oxi_states = ferrox.guess_oxidation_states_bvs(nacl_structure)
+        oxi_states = oxidation.guess_oxidation_states(nacl_structure)
         total = sum(oxi_states)
         assert total == 0, f"Not charge balanced: sum={total}, states={oxi_states}"
 
@@ -137,7 +137,7 @@ class TestAddOxidationStates:
 
     def test_add_oxidation_state_by_element(self, nacl_structure: dict) -> None:
         """Test adding oxidation states by element."""
-        result = ferrox.add_oxidation_state_by_element(
+        result = oxidation.add_oxidation_state_by_element(
             nacl_structure, {"Na": 1, "Cl": -1}
         )
         struct = Structure.from_dict(result)
@@ -154,7 +154,7 @@ class TestAddOxidationStates:
         """Test adding oxidation states by site."""
         struct = Structure.from_dict(nacl_structure)
         oxi_states = [1 if str(site.specie) == "Na" else -1 for site in struct]
-        result = ferrox.add_oxidation_state_by_site(nacl_structure, oxi_states)
+        result = oxidation.add_oxidation_state_by_site(nacl_structure, oxi_states)
         struct_with_oxi = Structure.from_dict(result)
 
         for site in struct_with_oxi:
@@ -163,11 +163,11 @@ class TestAddOxidationStates:
     def test_remove_oxidation_states(self, nacl_structure: dict) -> None:
         """Test removing oxidation states."""
         # First add them
-        with_oxi = ferrox.add_oxidation_state_by_element(
+        with_oxi = oxidation.add_oxidation_state_by_element(
             nacl_structure, {"Na": 1, "Cl": -1}
         )
         # Then remove them
-        without_oxi = ferrox.remove_oxidation_states(with_oxi)
+        without_oxi = oxidation.remove_oxidation_states(with_oxi)
         struct = Structure.from_dict(without_oxi)
 
         for site in struct:
@@ -178,7 +178,7 @@ class TestAddOxidationStates:
 
     def test_add_charges_from_guesses(self, nacl_structure: dict) -> None:
         """Test adding oxidation states based on composition guessing."""
-        result = ferrox.add_charges_from_oxi_state_guesses(nacl_structure)
+        result = oxidation.add_charges_from_oxi_state_guesses(nacl_structure)
         struct = Structure.from_dict(result)
 
         # Should have oxidation states assigned
@@ -192,7 +192,7 @@ class TestComparisonWithPymatgen:
     @pytest.mark.parametrize("formula", ["NaCl", "Fe2O3", "TiO2", "Al2O3", "CaO"])
     def test_composition_guesses_match_pymatgen(self, formula: str) -> None:
         """Verify composition guesses match pymatgen for common compounds."""
-        ferrox_guesses = ferrox.oxi_state_guesses(formula)
+        ferrox_guesses = oxidation.oxi_state_guesses(formula)
         pymatgen_guesses = Composition(formula).oxi_state_guesses()
 
         assert len(ferrox_guesses) > 0, f"No ferrox guesses for {formula}"

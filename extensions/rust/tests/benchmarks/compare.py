@@ -25,7 +25,7 @@ Example:
 
 import argparse
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -74,7 +74,7 @@ def _run_single_runner(
 
 
 def _run_benchmark_suite(
-    systems: dict[str, Structure],
+    systems: Mapping[str, Structure],
     benchmark_type: str,
     label: str,
     ferrox_fn: Callable[[Structure], FireResult | MDResult],
@@ -140,7 +140,7 @@ def _run_benchmark_suite(
 
 
 def benchmark_fire(
-    systems: dict[str, Structure],
+    systems: Mapping[str, Structure],
     mace_calc: "MACECalculator",
     torchsim_model: "MaceModel",
     max_steps: int = 100,
@@ -160,7 +160,7 @@ def benchmark_fire(
 
 
 def benchmark_nve(
-    systems: dict[str, Structure],
+    systems: Mapping[str, Structure],
     mace_calc: "MACECalculator",
     torchsim_model: "MaceModel",
     n_steps: int = 100,
@@ -182,7 +182,7 @@ def benchmark_nve(
 
 
 def benchmark_nvt(
-    systems: dict[str, Structure],
+    systems: Mapping[str, Structure],
     mace_calc: "MACECalculator",
     torchsim_model: "MaceModel",
     n_steps: int = 100,

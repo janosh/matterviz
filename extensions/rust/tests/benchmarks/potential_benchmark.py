@@ -26,7 +26,6 @@ import time
 from dataclasses import asdict
 from datetime import UTC, datetime
 
-import ferrox
 import numpy as np
 import torch
 from ase import Atoms, units
@@ -35,6 +34,7 @@ from ase.calculators.lj import LennardJones as AseLennardJones
 from ase.calculators.morse import MorsePotential as AseMorse
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.md.verlet import VelocityVerlet
+from ferrox import md, potentials
 from torch_sim import SimState, nve_init, nve_step
 from torch_sim.models.lennard_jones import LennardJonesModel as TorchSimLJ
 from torch_sim.models.morse import MorseModel as TorchSimMorse
@@ -60,17 +60,17 @@ def run_ferrox_lj_nve(atoms: Atoms, n_steps: int, dt: float, temp: float) -> flo
     masses = atoms.get_masses().tolist()
 
     def compute_forces(pos: list[list[float]]) -> list[list[float]]:
-        _, forces = ferrox.compute_lennard_jones(
+        _, forces = potentials.compute_lennard_jones(
             pos, cell=cell, sigma=3.4, epsilon=0.0103, cutoff=10.0
         )
         return forces
 
-    state = ferrox.MDState(positions, masses)
+    state = md.MDState(positions, masses)
     state.init_velocities(temp, seed=42)
 
     start = time.perf_counter()
     for _ in range(n_steps):
-        ferrox.md_velocity_verlet_step(state, dt, compute_forces)
+        md.velocity_verlet_step(state, dt, compute_forces)
     return time.perf_counter() - start
 
 
@@ -81,17 +81,17 @@ def run_ferrox_morse_nve(atoms: Atoms, n_steps: int, dt: float, temp: float) -> 
     masses = atoms.get_masses().tolist()
 
     def compute_forces(pos: list[list[float]]) -> list[list[float]]:
-        _, forces, _ = ferrox.compute_morse(
+        _, forces, _ = potentials.compute_morse(
             pos, cell=cell, d=0.0103, alpha=1.0, r0=3.82, cutoff=10.0
         )
         return forces
 
-    state = ferrox.MDState(positions, masses)
+    state = md.MDState(positions, masses)
     state.init_velocities(temp, seed=42)
 
     start = time.perf_counter()
     for _ in range(n_steps):
-        ferrox.md_velocity_verlet_step(state, dt, compute_forces)
+        md.velocity_verlet_step(state, dt, compute_forces)
     return time.perf_counter() - start
 
 

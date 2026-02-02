@@ -1,0 +1,590 @@
+//! Molecular dynamics integrators and analysis.
+
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::types::PyAny;
+
+use crate::integrators::{self, LangevinIntegrator, MDState, NoseHooverChain, VelocityRescale};
+use crate::optimizers::{CellFireState, FireConfig, FireState};
+
+use super::helpers::{
+    array_to_mat3, default_pbc, mat3_to_array, positions_to_vec3, vec3_to_positions,
+};
+
+// === MDState ===
+
+/// Python wrapper for MD state.
+#[pyclass(name = "MDState")]
+pub struct PyMDState {
+    /// The inner MDState from the core library.
+    pub inner: MDState,
+}
+
+#[pymethods]
+impl PyMDState {
+    /// Create a new MD state.
+    ///
+    /// Args:
+    ///     positions: Nx3 array of atomic positions in Angstrom
+    ///     masses: N-element array of atomic masses in amu
+    ///     velocities: Optional Nx3 array of velocities (default: zeros)
+    #[new]
+    #[pyo3(signature = (positions, masses, velocities = None))]
+    fn new(
+        positions: Vec<[f64; 3]>,
+        masses: Vec<f64>,
+        velocities: Option<Vec<[f64; 3]>>,
+    ) -> PyResult<Self> {
+        if positions.len() != masses.len() {
+            return Err(PyValueError::new_err(format!(
+                "Masses length ({}) must match positions length ({})",
+                masses.len(),
+                positions.len()
+            )));
+        }
+
+        // Validate masses before passing to core library (which panics on invalid)
+        for (idx, &mass) in masses.iter().enumerate() {
+            if !mass.is_finite() || mass <= 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "Mass at index {idx} must be positive and finite, got {mass}"
+                )));
+            }
+        }
+
+        let pos_vec = positions_to_vec3(&positions);
+        let mut state = MDState::new(pos_vec, masses);
+
+        if let Some(vels) = velocities {
+            if vels.len() != state.num_atoms() {
+                return Err(PyValueError::new_err(format!(
+                    "Velocities length ({}) must match positions length ({})",
+                    vels.len(),
+                    state.num_atoms()
+                )));
+            }
+            state.velocities = positions_to_vec3(&vels);
+        }
+
+        Ok(Self { inner: state })
+    }
+
+    /// Initialize velocities from Maxwell-Boltzmann distribution.
+    #[pyo3(signature = (temperature_k, seed = None))]
+    fn init_velocities(&mut self, temperature_k: f64, seed: Option<u64>) {
+        self.inner.init_velocities(temperature_k, seed);
+    }
+
+    /// Get kinetic energy in eV.
+    fn kinetic_energy(&self) -> f64 {
+        self.inner.kinetic_energy()
+    }
+
+    /// Get temperature in Kelvin.
+    fn temperature(&self) -> f64 {
+        self.inner.temperature()
+    }
+
+    /// Get number of atoms.
+    fn num_atoms(&self) -> usize {
+        self.inner.num_atoms()
+    }
+
+    /// Get positions as Nx3 array.
+    #[getter]
+    fn positions(&self) -> Vec<[f64; 3]> {
+        vec3_to_positions(&self.inner.positions)
+    }
+
+    /// Set positions from Nx3 array.
+    #[setter]
+    fn set_positions(&mut self, positions: Vec<[f64; 3]>) -> PyResult<()> {
+        if positions.len() != self.inner.num_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Positions length ({}) must match num_atoms ({})",
+                positions.len(),
+                self.inner.num_atoms()
+            )));
+        }
+        self.inner.positions = positions_to_vec3(&positions);
+        Ok(())
+    }
+
+    /// Get velocities as Nx3 array.
+    #[getter]
+    fn velocities(&self) -> Vec<[f64; 3]> {
+        vec3_to_positions(&self.inner.velocities)
+    }
+
+    /// Set velocities from Nx3 array.
+    #[setter]
+    fn set_velocities(&mut self, velocities: Vec<[f64; 3]>) -> PyResult<()> {
+        if velocities.len() != self.inner.num_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Velocities length ({}) must match num_atoms ({})",
+                velocities.len(),
+                self.inner.num_atoms()
+            )));
+        }
+        self.inner.velocities = positions_to_vec3(&velocities);
+        Ok(())
+    }
+
+    /// Get forces as Nx3 array.
+    #[getter]
+    fn forces(&self) -> Vec<[f64; 3]> {
+        vec3_to_positions(&self.inner.forces)
+    }
+
+    /// Set forces from Nx3 array.
+    #[setter]
+    fn set_forces(&mut self, forces: Vec<[f64; 3]>) -> PyResult<()> {
+        if forces.len() != self.inner.num_atoms() {
+            return Err(PyValueError::new_err(format!(
+                "Forces length ({}) must match num_atoms ({})",
+                forces.len(),
+                self.inner.num_atoms()
+            )));
+        }
+        let force_vec = positions_to_vec3(&forces);
+        self.inner.set_forces(&force_vec);
+        Ok(())
+    }
+}
+
+// === LangevinIntegrator ===
+
+/// Python wrapper for Langevin integrator.
+#[pyclass(name = "LangevinIntegrator")]
+pub struct PyLangevinIntegrator {
+    inner: LangevinIntegrator,
+}
+
+#[pymethods]
+impl PyLangevinIntegrator {
+    /// Create a new Langevin integrator.
+    ///
+    /// Args:
+    ///     temperature_k: Target temperature in Kelvin
+    ///     friction: Friction coefficient in 1/fs (typical: 0.001 to 0.01)
+    ///     dt: Time step in fs
+    ///     seed: Optional random seed for reproducibility
+    #[new]
+    #[pyo3(signature = (temperature_k, friction, dt, seed = None))]
+    fn new(temperature_k: f64, friction: f64, dt: f64, seed: Option<u64>) -> Self {
+        Self {
+            inner: LangevinIntegrator::new(temperature_k, friction, dt, seed),
+        }
+    }
+
+    /// Perform one Langevin dynamics step.
+    ///
+    /// Raises:
+    ///     RuntimeError: If force computation fails. State is restored to its
+    ///         original value before the step when this happens.
+    fn step(
+        &mut self,
+        state: &mut PyMDState,
+        compute_forces: Py<PyAny>,
+        py: Python<'_>,
+    ) -> PyResult<()> {
+        self.inner.try_step(&mut state.inner, |positions| {
+            let pos_arr = vec3_to_positions(positions);
+            let result = compute_forces.call1(py, (pos_arr,))?;
+            let forces: Vec<[f64; 3]> = result.extract(py)?;
+            Ok(positions_to_vec3(&forces))
+        })
+    }
+
+    /// Set target temperature.
+    fn set_temperature(&mut self, temperature_k: f64) {
+        self.inner.set_temperature(temperature_k);
+    }
+
+    /// Set friction coefficient.
+    fn set_friction(&mut self, friction: f64) {
+        self.inner.set_friction(friction);
+    }
+
+    /// Set time step.
+    fn set_dt(&mut self, dt: f64) {
+        self.inner.set_dt(dt);
+    }
+}
+
+/// Perform one velocity Verlet step (NVE ensemble).
+///
+/// Raises:
+///     RuntimeError: If force computation fails. State is restored to its
+///         original value before the step when this happens.
+#[pyfunction]
+fn velocity_verlet_step(
+    state: &mut PyMDState,
+    dt: f64,
+    compute_forces: Py<PyAny>,
+    py: Python<'_>,
+) -> PyResult<()> {
+    match integrators::try_velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
+        let pos_arr = vec3_to_positions(positions);
+        let result = compute_forces.call1(py, (pos_arr,))?;
+        let forces: Vec<[f64; 3]> = result.extract(py)?;
+        Ok(positions_to_vec3(&forces))
+    }) {
+        Ok(new_state) => {
+            state.inner = new_state;
+            Ok(())
+        }
+        Err((original_state, err)) => {
+            state.inner = original_state;
+            Err(err)
+        }
+    }
+}
+
+// === Nose-Hoover Chain ===
+
+/// Nosé-Hoover chain thermostat for NVT molecular dynamics.
+#[pyclass(name = "NoseHooverChain")]
+pub struct PyNoseHooverChain {
+    inner: NoseHooverChain,
+}
+
+#[pymethods]
+impl PyNoseHooverChain {
+    /// Create a new Nosé-Hoover chain thermostat.
+    #[new]
+    fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize) -> Self {
+        Self {
+            inner: NoseHooverChain::new(target_temp, tau, dt, n_dof),
+        }
+    }
+
+    /// Perform one NVT step.
+    fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.inner.try_step(&mut state.inner, |positions| {
+            let result = compute_forces.call1((vec3_to_positions(positions),))?;
+            let forces: Vec<[f64; 3]> = result.extract()?;
+            Ok(positions_to_vec3(&forces))
+        })
+    }
+
+    /// Set target temperature.
+    fn set_temperature(&mut self, target_temp: f64) {
+        self.inner.set_temperature(target_temp);
+    }
+}
+
+// === Velocity Rescaling ===
+
+/// Velocity rescaling (Bussi) thermostat for NVT molecular dynamics.
+#[pyclass(name = "VelocityRescale")]
+pub struct PyVelocityRescale {
+    inner: VelocityRescale,
+}
+
+#[pymethods]
+impl PyVelocityRescale {
+    /// Create a new velocity rescaling thermostat.
+    #[new]
+    #[pyo3(signature = (target_temp, tau, dt, n_dof, seed = None))]
+    fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize, seed: Option<u64>) -> Self {
+        Self {
+            inner: VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
+        }
+    }
+
+    /// Perform one NVT step.
+    fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.inner.try_step(&mut state.inner, |positions| {
+            let result = compute_forces.call1((vec3_to_positions(positions),))?;
+            let forces: Vec<[f64; 3]> = result.extract()?;
+            Ok(positions_to_vec3(&forces))
+        })
+    }
+
+    /// Set target temperature.
+    fn set_temperature(&mut self, target_temp: f64) {
+        self.inner.set_temperature(target_temp);
+    }
+}
+
+// === NPT State ===
+
+/// State for NPT molecular dynamics.
+#[pyclass(name = "NPTState")]
+pub struct PyNPTState {
+    inner: integrators::NPTState,
+}
+
+#[pymethods]
+impl PyNPTState {
+    /// Create a new NPT state.
+    #[new]
+    #[pyo3(signature = (positions, masses, cell, pbc = None))]
+    fn new(
+        positions: Vec<[f64; 3]>,
+        masses: Vec<f64>,
+        cell: [[f64; 3]; 3],
+        pbc: Option<[bool; 3]>,
+    ) -> PyResult<Self> {
+        if positions.len() != masses.len() {
+            return Err(PyValueError::new_err(format!(
+                "Masses length ({}) must match positions length ({})",
+                masses.len(),
+                positions.len()
+            )));
+        }
+
+        // Validate masses before passing to core library (which panics on invalid)
+        for (idx, &mass) in masses.iter().enumerate() {
+            if !mass.is_finite() || mass <= 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "Mass at index {idx} must be positive and finite, got {mass}"
+                )));
+            }
+        }
+
+        let pos_vec = positions_to_vec3(&positions);
+        let cell_mat = array_to_mat3(cell);
+        // NPT always has a cell, so default pbc to true
+        let pbc_arr = default_pbc(pbc, true);
+
+        Ok(Self {
+            inner: integrators::NPTState::new(pos_vec, masses, cell_mat, pbc_arr),
+        })
+    }
+
+    #[getter]
+    fn positions(&self) -> Vec<[f64; 3]> {
+        vec3_to_positions(&self.inner.positions)
+    }
+
+    #[getter]
+    fn cell(&self) -> [[f64; 3]; 3] {
+        mat3_to_array(&self.inner.cell)
+    }
+}
+
+// === FIRE Optimizer ===
+
+/// Python wrapper for FIRE configuration.
+#[pyclass(name = "FireConfig")]
+#[derive(Clone)]
+pub struct PyFireConfig {
+    inner: FireConfig,
+}
+
+#[pymethods]
+impl PyFireConfig {
+    /// Create a new FIRE configuration.
+    #[new]
+    #[pyo3(signature = (dt_start = None, dt_max = None, n_min = None, f_inc = None, f_dec = None, alpha_start = None, f_alpha = None, max_step = None))]
+    fn new(
+        dt_start: Option<f64>,
+        dt_max: Option<f64>,
+        n_min: Option<usize>,
+        f_inc: Option<f64>,
+        f_dec: Option<f64>,
+        alpha_start: Option<f64>,
+        f_alpha: Option<f64>,
+        max_step: Option<f64>,
+    ) -> Self {
+        let mut config = FireConfig::default();
+        if let Some(val) = dt_start {
+            config.dt_start = val;
+        }
+        if let Some(val) = dt_max {
+            config.dt_max = val;
+        }
+        if let Some(val) = n_min {
+            config.n_min = val;
+        }
+        if let Some(val) = f_inc {
+            config.f_inc = val;
+        }
+        if let Some(val) = f_dec {
+            config.f_dec = val;
+        }
+        if let Some(val) = alpha_start {
+            config.alpha_start = val;
+        }
+        if let Some(val) = f_alpha {
+            config.f_alpha = val;
+        }
+        if let Some(val) = max_step {
+            config.max_step = val;
+        }
+        Self { inner: config }
+    }
+
+    #[getter]
+    fn dt_start(&self) -> f64 {
+        self.inner.dt_start
+    }
+
+    #[getter]
+    fn dt_max(&self) -> f64 {
+        self.inner.dt_max
+    }
+
+    #[getter]
+    fn max_step(&self) -> f64 {
+        self.inner.max_step
+    }
+}
+
+/// Python wrapper for FIRE optimizer state.
+#[pyclass(name = "FireState")]
+pub struct PyFireState {
+    inner: FireState,
+    config: FireConfig,
+}
+
+#[pymethods]
+impl PyFireState {
+    /// Create a new FIRE optimizer state.
+    #[new]
+    #[pyo3(signature = (positions, config = None))]
+    fn new(positions: Vec<[f64; 3]>, config: Option<PyFireConfig>) -> Self {
+        let pos_vec = positions_to_vec3(&positions);
+        let fire_config = config.map(|cfg| cfg.inner).unwrap_or_default();
+        let state = FireState::new(pos_vec, &fire_config);
+        Self {
+            inner: state,
+            config: fire_config,
+        }
+    }
+
+    /// Perform one FIRE optimization step.
+    ///
+    /// Raises:
+    ///     RuntimeError: If force computation fails. State is restored to its
+    ///         original value before the step when this happens.
+    fn step(&mut self, compute_forces: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
+        self.inner.try_step(
+            |positions| {
+                let pos_arr = vec3_to_positions(positions);
+                let result = compute_forces.call1(py, (pos_arr,))?;
+                let forces: Vec<[f64; 3]> = result.extract(py)?;
+                Ok(positions_to_vec3(&forces))
+            },
+            &self.config,
+        )
+    }
+
+    /// Check if optimization has converged.
+    fn is_converged(&self, fmax: f64) -> bool {
+        self.inner.is_converged(fmax)
+    }
+
+    /// Get maximum force component magnitude.
+    fn max_force(&self) -> f64 {
+        self.inner.max_force()
+    }
+
+    /// Get number of atoms.
+    fn num_atoms(&self) -> usize {
+        self.inner.num_atoms()
+    }
+
+    /// Get positions as Nx3 array.
+    #[getter]
+    fn positions(&self) -> Vec<[f64; 3]> {
+        vec3_to_positions(&self.inner.positions)
+    }
+}
+
+/// Python wrapper for FIRE optimizer with cell optimization.
+#[pyclass(name = "CellFireState")]
+pub struct PyCellFireState {
+    inner: CellFireState,
+    config: FireConfig,
+}
+
+#[pymethods]
+impl PyCellFireState {
+    /// Create a new FIRE optimizer state with cell optimization.
+    #[new]
+    #[pyo3(signature = (positions, cell, config = None, cell_factor = 1.0))]
+    fn new(
+        positions: Vec<[f64; 3]>,
+        cell: [[f64; 3]; 3],
+        config: Option<PyFireConfig>,
+        cell_factor: f64,
+    ) -> Self {
+        let pos_vec = positions_to_vec3(&positions);
+        let cell_mat = array_to_mat3(cell);
+        let fire_config = config.map(|cfg| cfg.inner).unwrap_or_default();
+        let state = CellFireState::new(pos_vec, cell_mat, &fire_config, cell_factor);
+        Self {
+            inner: state,
+            config: fire_config,
+        }
+    }
+
+    /// Perform one FIRE optimization step with cell optimization.
+    ///
+    /// Raises:
+    ///     RuntimeError: If force/stress computation fails. State is restored to its
+    ///         original value before the step when this happens.
+    fn step(&mut self, compute_forces_and_stress: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
+        self.inner.try_step(
+            |positions, cell| {
+                let pos_arr = vec3_to_positions(positions);
+                let cell_arr = mat3_to_array(cell);
+
+                let result = compute_forces_and_stress.call1(py, (pos_arr, cell_arr))?;
+                let (forces, stress): (Vec<[f64; 3]>, [[f64; 3]; 3]) = result.extract(py)?;
+
+                let force_vec = positions_to_vec3(&forces);
+                let stress_mat = array_to_mat3(stress);
+
+                Ok((force_vec, stress_mat))
+            },
+            &self.config,
+        )
+    }
+
+    /// Check if optimization has converged.
+    fn is_converged(&self, fmax: f64, smax: f64) -> bool {
+        self.inner.is_converged(fmax, smax)
+    }
+
+    /// Get maximum force component magnitude.
+    fn max_force(&self) -> f64 {
+        self.inner.max_force()
+    }
+
+    /// Get maximum stress component magnitude.
+    fn max_stress(&self) -> f64 {
+        self.inner.max_stress()
+    }
+
+    /// Get positions as Nx3 array.
+    #[getter]
+    fn positions(&self) -> Vec<[f64; 3]> {
+        vec3_to_positions(&self.inner.positions)
+    }
+
+    /// Get cell as 3x3 array.
+    #[getter]
+    fn cell(&self) -> [[f64; 3]; 3] {
+        mat3_to_array(&self.inner.cell)
+    }
+}
+
+/// Register the md submodule.
+pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
+    let submod = PyModule::new(parent.py(), "md")?;
+    submod.add_class::<PyMDState>()?;
+    submod.add_class::<PyLangevinIntegrator>()?;
+    submod.add_class::<PyNoseHooverChain>()?;
+    submod.add_class::<PyVelocityRescale>()?;
+    submod.add_class::<PyNPTState>()?;
+    submod.add_class::<PyFireConfig>()?;
+    submod.add_class::<PyFireState>()?;
+    submod.add_class::<PyCellFireState>()?;
+    submod.add_function(wrap_pyfunction!(velocity_verlet_step, &submod)?)?;
+    parent.add_submodule(&submod)?;
+    Ok(())
+}

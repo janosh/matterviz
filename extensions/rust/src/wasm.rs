@@ -4149,6 +4149,13 @@ impl JsNPTState {
             return Err(JsError::new("cell must have 9 elements"));
         }
 
+        // Validate masses: must all be positive and finite
+        for mass in &masses {
+            if !mass.is_finite() || *mass <= 0.0 {
+                return Err(JsError::new("masses must be positive finite numbers"));
+            }
+        }
+
         let pos_vec: Vec<Vector3<f64>> = positions
             .chunks(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
