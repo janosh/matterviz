@@ -136,8 +136,11 @@ def test_invalid_wavelength(nacl_json: str, wavelength: float) -> None:
         ((90.0, 10.0), "two_theta_range"),
         ((-10.0, 90.0), "two_theta_range"),
         ((0.0, 200.0), "two_theta_range"),
+        ((float("nan"), 90.0), "two_theta_range"),
+        ((10.0, float("nan")), "two_theta_range"),
+        ((float("inf"), 90.0), "two_theta_range"),
     ],
-    ids=["min>max", "min<0", "max>180"],
+    ids=["min>max", "min<0", "max>180", "min_nan", "max_nan", "min_inf"],
 )
 def test_invalid_two_theta_range(
     nacl_json: str, two_theta_range: tuple[float, float], match: str
