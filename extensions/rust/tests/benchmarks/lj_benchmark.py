@@ -76,6 +76,15 @@ def sanitize_nan(obj: Any) -> Any:
     return obj
 
 
+def safe_divide(numerator: float | None, denominator: float | None) -> float | None:
+    """Safely divide two values, returning None if either is None or denominator is zero."""
+    if numerator is None or denominator is None:
+        return None
+    if denominator == 0:
+        return None
+    return numerator / denominator
+
+
 @dataclass
 class BenchmarkResult:
     """Result for a single benchmark."""
@@ -368,7 +377,7 @@ def benchmark_fire(
             print(f"{ts_sps:.1f} steps/s")
         else:
             print("    - torch-sim... (skipped, not installed)")
-            ts_time, ts_steps, ts_sps = float("nan"), 0, float("nan")
+            ts_time, ts_steps, ts_sps = None, 0, None
 
         # ASE
         print("    - ase...", end=" ", flush=True)
@@ -376,7 +385,6 @@ def benchmark_fire(
         ase_sps = ase_steps / ase_time
         print(f"{ase_sps:.1f} steps/s")
 
-        ferrox_vs_ts = ts_time / ferrox_time if HAS_TORCH_SIM else float("nan")
         results.append(
             BenchmarkResult(
                 system=name,
@@ -389,8 +397,8 @@ def benchmark_fire(
                 torchsim_steps_per_sec=ts_sps,
                 ase_time=ase_time,
                 ase_steps_per_sec=ase_sps,
-                ferrox_vs_torchsim=ferrox_vs_ts,
-                ferrox_vs_ase=ase_time / ferrox_time,
+                ferrox_vs_torchsim=safe_divide(ts_time, ferrox_time),
+                ferrox_vs_ase=safe_divide(ase_time, ferrox_time),
             )
         )
 
@@ -420,7 +428,7 @@ def benchmark_nve(
             print(f"{ts_sps:.1f} steps/s")
         else:
             print("    - torch-sim... (skipped, not installed)")
-            ts_time, ts_sps = float("nan"), float("nan")
+            ts_time, ts_sps = None, None
 
         # ASE
         print("    - ase...", end=" ", flush=True)
@@ -428,7 +436,6 @@ def benchmark_nve(
         ase_sps = n_steps / ase_time
         print(f"{ase_sps:.1f} steps/s")
 
-        ferrox_vs_ts = ts_time / ferrox_time if HAS_TORCH_SIM else float("nan")
         results.append(
             BenchmarkResult(
                 system=name,
@@ -441,8 +448,8 @@ def benchmark_nve(
                 torchsim_steps_per_sec=ts_sps,
                 ase_time=ase_time,
                 ase_steps_per_sec=ase_sps,
-                ferrox_vs_torchsim=ferrox_vs_ts,
-                ferrox_vs_ase=ase_time / ferrox_time,
+                ferrox_vs_torchsim=safe_divide(ts_time, ferrox_time),
+                ferrox_vs_ase=safe_divide(ase_time, ferrox_time),
             )
         )
 
