@@ -410,7 +410,7 @@ pub fn langevin_step<R, F>(
     mut compute_forces: F,
 ) -> MDState
 where
-    R: Rng,
+    R: Rng + Clone,
     F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
 {
     // Wrap infallible closure and unwrap result (can't fail with Infallible)
@@ -422,8 +422,8 @@ where
 
 /// Perform one Langevin dynamics step with fallible force computation.
 ///
-/// If the force computation fails, the original state is returned along with
-/// the error, allowing the caller to retry or handle the failure gracefully.
+/// If the force computation fails, both the original state and the RNG are
+/// restored, allowing the caller to retry deterministically.
 ///
 /// # Errors
 /// Returns `(original_state, error)` if compute_forces fails.
@@ -435,16 +435,17 @@ pub fn try_langevin_step<R, F, E>(
     mut compute_forces: F,
 ) -> Result<MDState, (MDState, E)>
 where
-    R: Rng,
+    R: Rng + Clone,
     F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
 {
-    // Clone state upfront so we can restore on error
+    // Clone state and RNG upfront so we can restore on error
     let original_state = state.clone();
+    let original_rng = rng.clone();
 
-    // Perform the BAOAB integration
+    // Perform the BAOAB integration (modifies rng)
     let mut state = langevin_baoab_core(state, config, rng);
 
-    // Compute new forces - if this fails, return original state
+    // Compute new forces - if this fails, restore original state and RNG
     match compute_forces(&state.positions) {
         Ok(new_forces) => {
             state.forces = new_forces;
@@ -456,7 +457,10 @@ where
             }
             Ok(state)
         }
-        Err(err) => Err((original_state, err)),
+        Err(err) => {
+            *rng = original_rng;
+            Err((original_state, err))
+        }
     }
 }
 
@@ -549,8 +553,6 @@ impl LangevinIntegrator {
     where
         F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
     {
-        // Clone RNG so we can restore it on error (for reproducibility)
-        let original_rng = self.rng.clone();
         match try_langevin_step(
             std::mem::take(state),
             &self.config,
@@ -563,7 +565,6 @@ impl LangevinIntegrator {
             }
             Err((original_state, err)) => {
                 *state = original_state;
-                self.rng = original_rng;
                 Err(err)
             }
         }
