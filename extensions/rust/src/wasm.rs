@@ -2834,6 +2834,8 @@ pub fn defect_generate_all(
 // Surface Analysis (WASM) - Extended functions
 // =============================================================================
 
+use crate::surfaces;
+
 /// Enumerate all unique Miller indices up to a maximum index value.
 ///
 /// Returns JSON array of [h, k, l] arrays.
@@ -3092,16 +3094,6 @@ pub fn cell_niggli_reduce(structure: JsCrystal, tolerance: f64) -> WasmResult<St
     result.into()
 }
 
-/// Check if a lattice is Niggli-reduced.
-#[wasm_bindgen]
-pub fn cell_is_niggli_reduced(structure: JsCrystal, tolerance: f64) -> WasmResult<bool> {
-    let result: Result<bool, String> = (|| {
-        let struc = structure.to_structure()?;
-        Ok(cell_ops::is_niggli_reduced(&struc.lattice, tolerance))
-    })();
-    result.into()
-}
-
 /// Perform Delaunay reduction on a lattice.
 ///
 /// Returns JSON object with reduced lattice matrix and transformation matrix.
@@ -3127,18 +3119,13 @@ pub fn cell_delaunay_reduce(structure: JsCrystal, tolerance: f64) -> WasmResult<
 ///
 /// Returns JSON array [[a1,a2,a3],[b1,b2,b3],[c1,c2,c3]].
 #[wasm_bindgen]
-pub fn cell_find_supercell_matrix(
-    structure: JsCrystal,
-    target_atoms: u32,
-    max_search: u32,
-) -> WasmResult<String> {
+pub fn cell_find_supercell_matrix(structure: JsCrystal, target_atoms: u32) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
         let struc = structure.to_structure()?;
         let matrix = cell_ops::find_supercell_for_target_atoms(
             &struc.lattice,
             struc.num_sites(),
             target_atoms as usize,
-            max_search as i32,
         );
         Ok(serde_json::to_string(&matrix).unwrap_or_default())
     })();

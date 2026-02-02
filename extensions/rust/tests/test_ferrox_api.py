@@ -109,12 +109,16 @@ class TestStructureCharge:
     @pytest.mark.parametrize("charge", [0.0, 1.0, -1.0, 2.5, -0.5])
     def test_charge_roundtrip(self, charge: float) -> None:
         """Various charge values are preserved through JSON roundtrip."""
-        struct = json.dumps({
-            "@class": "Structure",
-            "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
-            "sites": [{"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]}],
-            "charge": charge,
-        })
+        struct = json.dumps(
+            {
+                "@class": "Structure",
+                "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
+                "sites": [
+                    {"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]}
+                ],
+                "charge": charge,
+            }
+        )
         result = ferrox.to_pymatgen_json(struct)
         parsed = json.loads(result)
         if abs(charge) > 1e-10:
@@ -126,17 +130,21 @@ class TestStructureCharge:
 class TestFromPymatgenStructure:
     """Tests for from_pymatgen_structure oxidation state extraction."""
 
-    @pytest.mark.parametrize(("element", "oxi_state"), [
-        ("Fe", 3),
-        ("Fe", 2),
-        ("O", -2),
-        ("Na", 1),
-        ("Cl", -1),
-    ])
+    @pytest.mark.parametrize(
+        ("element", "oxi_state"),
+        [
+            ("Fe", 3),
+            ("Fe", 2),
+            ("O", -2),
+            ("Na", 1),
+            ("Cl", -1),
+        ],
+    )
     def test_oxidation_states_preserved(self, element: str, oxi_state: int) -> None:
         """Oxidation states from pymatgen Species are preserved."""
         pytest.importorskip("pymatgen")
         from pymatgen.core import Lattice, Species, Structure
+
         # Create pymatgen Structure with oxidation state
         lattice = Lattice.cubic(5.0)
         species = Species(element, oxi_state)
@@ -151,6 +159,7 @@ class TestFromPymatgenStructure:
         """Neutral species (no oxidation state) preserved as neutral."""
         pytest.importorskip("pymatgen")
         from pymatgen.core import Element, Lattice, Structure
+
         lattice = Lattice.cubic(5.0)
         struct = Structure(lattice, [Element("Fe")], [[0, 0, 0]])
         result = ferrox.from_pymatgen_structure(struct)
@@ -162,17 +171,26 @@ class TestFromPymatgenStructure:
         """Structure with multiple species at different oxidation states (Fe2O3)."""
         pytest.importorskip("pymatgen")
         from pymatgen.core import Lattice, Species, Structure
+
         # Fe2O3: 2x Fe3+ and 3x O2-
         struct = Structure(
             Lattice.cubic(5.0),
             [Species("Fe", 3)] * 2 + [Species("O", -2)] * 3,
-            [[0, 0, 0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25], [0.75, 0.75, 0.25], [0.25, 0.75, 0.75]],
+            [
+                [0, 0, 0],
+                [0.5, 0.5, 0.5],
+                [0.25, 0.25, 0.25],
+                [0.75, 0.75, 0.25],
+                [0.25, 0.75, 0.75],
+            ],
         )
         result = ferrox.from_pymatgen_structure(struct)
         # Verify oxidation states by element
         for elem, expected_oxi in [("Fe", 3), ("O", -2)]:
             sites = [s for s in result["sites"] if s["species"][0]["element"] == elem]
-            assert all(s["species"][0]["oxidation_state"] == expected_oxi for s in sites)
+            assert all(
+                s["species"][0]["oxidation_state"] == expected_oxi for s in sites
+            )
 
 
 # Parametrized anonymous formula tests
@@ -209,13 +227,21 @@ def test_formula_anonymous(formula: str, expected: str) -> None:
 class TestSymmetryFunctions:
     """Tests for symmetry analysis functions."""
 
-    @pytest.mark.parametrize(("fixture", "sg_num", "sg_sym", "pearson", "crystal_sys"), [
-        ("fcc_cu_json", 225, "F m -3 m", "cF4", "cubic"),
-        ("bcc_fe_json", 229, "I m -3 m", "cI2", "cubic"),
-    ])
+    @pytest.mark.parametrize(
+        ("fixture", "sg_num", "sg_sym", "pearson", "crystal_sys"),
+        [
+            ("fcc_cu_json", 225, "F m -3 m", "cF4", "cubic"),
+            ("bcc_fe_json", 229, "I m -3 m", "cI2", "cubic"),
+        ],
+    )
     def test_symmetry_properties(
-        self, fixture: str, sg_num: int, sg_sym: str, pearson: str, crystal_sys: str,
-        request: pytest.FixtureRequest
+        self,
+        fixture: str,
+        sg_num: int,
+        sg_sym: str,
+        pearson: str,
+        crystal_sys: str,
+        request: pytest.FixtureRequest,
     ) -> None:
         """Test spacegroup, Pearson symbol, and crystal system."""
         struct = request.getfixturevalue(fixture)
@@ -239,10 +265,13 @@ class TestSymmetryFunctions:
             assert len(rot) == 3 and all(len(row) == 3 for row in rot)
             assert len(trans) == 3
 
-    @pytest.mark.parametrize(("fixture", "n_sites", "n_unique"), [
-        ("fcc_cu_json", 4, 1),  # all equivalent
-        ("nacl_json", 2, 2),    # Na and Cl inequivalent
-    ])
+    @pytest.mark.parametrize(
+        ("fixture", "n_sites", "n_unique"),
+        [
+            ("fcc_cu_json", 4, 1),  # all equivalent
+            ("nacl_json", 2, 2),  # Na and Cl inequivalent
+        ],
+    )
     def test_equivalent_sites(
         self, fixture: str, n_sites: int, n_unique: int, request: pytest.FixtureRequest
     ) -> None:
@@ -429,7 +458,9 @@ class TestRdf:
 
     def test_compute_all_element_rdfs(self, rocksalt_nacl_json: str) -> None:
         """All element pair RDFs for NaCl (3 pairs: Na-Na, Na-Cl, Cl-Cl)."""
-        results = ferrox.compute_all_element_rdfs(rocksalt_nacl_json, r_max=6.0, n_bins=30)
+        results = ferrox.compute_all_element_rdfs(
+            rocksalt_nacl_json, r_max=6.0, n_bins=30
+        )
         assert len(results) == 3
         pairs = {(rdf["element_a"], rdf["element_b"]) for rdf in results}
         assert ("Na", "Na") in pairs
@@ -500,11 +531,13 @@ class TestRdf:
 
     def test_rdf_empty_structure(self) -> None:
         """Empty structure returns zero RDF."""
-        empty_json = json.dumps({
-            "@module": "pymatgen.core.structure",
-            "@class": "Structure",
-            "lattice": {"matrix": [[5, 0, 0], [0, 5, 0], [0, 0, 5]]},
-            "sites": [],
-        })
+        empty_json = json.dumps(
+            {
+                "@module": "pymatgen.core.structure",
+                "@class": "Structure",
+                "lattice": {"matrix": [[5, 0, 0], [0, 5, 0], [0, 0, 5]]},
+                "sites": [],
+            }
+        )
         _, g_of_r = ferrox.compute_rdf(empty_json, r_max=5.0, n_bins=25)
         assert all(g == 0 for g in g_of_r)

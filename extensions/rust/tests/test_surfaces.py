@@ -7,9 +7,8 @@ import math
 from typing import ClassVar
 
 import ferrox
-import numpy as np
 import pytest
-from conftest import lattice_from_matrix, make_site, make_structure
+from conftest import lattice_from_matrix
 
 
 class TestEnumerateMiller:
@@ -36,8 +35,12 @@ class TestEnumerateMiller:
     def test_subset_property(self) -> None:
         """Miller indices with max_index i are subset of max_index i+1."""
         for max_idx in range(1, 3):
-            indices_lower = set(tuple(idx) for idx in ferrox.surface_enumerate_miller(max_idx))
-            indices_higher = set(tuple(idx) for idx in ferrox.surface_enumerate_miller(max_idx + 1))
+            indices_lower = set(
+                tuple(idx) for idx in ferrox.surface_enumerate_miller(max_idx)
+            )
+            indices_higher = set(
+                tuple(idx) for idx in ferrox.surface_enumerate_miller(max_idx + 1)
+            )
             assert indices_lower <= indices_higher
 
 
@@ -49,47 +52,66 @@ class TestDSpacing:
         lattice_param = 4.0
 
         # d_100 = a/1 = 4.0, d_110 = a/sqrt(2), d_111 = a/sqrt(3)
-        assert ferrox.surface_d_spacing(simple_cubic_structure, 1, 0, 0) == pytest.approx(lattice_param, abs=0.01)
-        assert ferrox.surface_d_spacing(simple_cubic_structure, 1, 1, 0) == pytest.approx(lattice_param / math.sqrt(2), abs=0.01)
-        assert ferrox.surface_d_spacing(simple_cubic_structure, 1, 1, 1) == pytest.approx(lattice_param / math.sqrt(3), abs=0.01)
+        assert ferrox.surface_d_spacing(
+            simple_cubic_structure, 1, 0, 0
+        ) == pytest.approx(lattice_param, abs=0.01)
+        assert ferrox.surface_d_spacing(
+            simple_cubic_structure, 1, 1, 0
+        ) == pytest.approx(lattice_param / math.sqrt(2), abs=0.01)
+        assert ferrox.surface_d_spacing(
+            simple_cubic_structure, 1, 1, 1
+        ) == pytest.approx(lattice_param / math.sqrt(3), abs=0.01)
 
     def test_d_200_is_half_lattice_param(self, simple_cubic_structure: dict) -> None:
         """d_200 = a/2."""
-        assert ferrox.surface_d_spacing(simple_cubic_structure, 2, 0, 0) == pytest.approx(2.0, abs=0.01)
+        assert ferrox.surface_d_spacing(
+            simple_cubic_structure, 2, 0, 0
+        ) == pytest.approx(2.0, abs=0.01)
 
     def test_d_hkl_general_pymatgen(self) -> None:
         """Pymatgen test: d_hkl formula for cubic cell."""
         # From pymatgen test_d_hkl: d = a / sqrt(h² + k² + l²)
         lattice_param = 10.0
-        struct = lattice_from_matrix([
-            [lattice_param, 0, 0],
-            [0, lattice_param, 0],
-            [0, 0, lattice_param],
-        ])
+        struct = lattice_from_matrix(
+            [
+                [lattice_param, 0, 0],
+                [0, lattice_param, 0],
+                [0, 0, lattice_param],
+            ]
+        )
         hkl = (1, 2, 3)
         expected = (sum(idx**2 for idx in hkl) / lattice_param**2) ** (-0.5)
-        assert ferrox.surface_d_spacing(struct, *hkl) == pytest.approx(expected, abs=0.01)
+        assert ferrox.surface_d_spacing(struct, *hkl) == pytest.approx(
+            expected, abs=0.01
+        )
 
-    @pytest.mark.parametrize("hkl,expected_factor", [
-        ((1, 0, 0), 1.0),
-        ((0, 1, 0), 1.0),
-        ((0, 0, 1), 1.0),
-        ((1, 1, 0), 1 / math.sqrt(2)),
-        ((1, 1, 1), 1 / math.sqrt(3)),
-        ((2, 0, 0), 0.5),
-        ((2, 2, 0), 0.5 / math.sqrt(2)),
-        ((3, 0, 0), 1 / 3),
-    ])
+    @pytest.mark.parametrize(
+        "hkl,expected_factor",
+        [
+            ((1, 0, 0), 1.0),
+            ((0, 1, 0), 1.0),
+            ((0, 0, 1), 1.0),
+            ((1, 1, 0), 1 / math.sqrt(2)),
+            ((1, 1, 1), 1 / math.sqrt(3)),
+            ((2, 0, 0), 0.5),
+            ((2, 2, 0), 0.5 / math.sqrt(2)),
+            ((3, 0, 0), 1 / 3),
+        ],
+    )
     def test_d_spacing_parametrized(self, hkl: tuple, expected_factor: float) -> None:
         """Parametrized d-spacing tests for cubic system."""
         lattice_param = 5.0
-        struct = lattice_from_matrix([
-            [lattice_param, 0, 0],
-            [0, lattice_param, 0],
-            [0, 0, lattice_param],
-        ])
+        struct = lattice_from_matrix(
+            [
+                [lattice_param, 0, 0],
+                [0, lattice_param, 0],
+                [0, 0, lattice_param],
+            ]
+        )
         expected = lattice_param * expected_factor
-        assert ferrox.surface_d_spacing(struct, *hkl) == pytest.approx(expected, abs=0.01)
+        assert ferrox.surface_d_spacing(struct, *hkl) == pytest.approx(
+            expected, abs=0.01
+        )
 
 
 class TestSurfaceAtoms:
@@ -116,25 +138,32 @@ class TestSurfaceArea:
         assert ferrox.surface_area(fcc_slab) > 0
 
         # Cubic (100) surface area >= a² = 16 Å²
-        cubic_slab = ferrox.make_slab(simple_cubic_structure, [1, 0, 0], min_slab_size=8.0)
+        cubic_slab = ferrox.make_slab(
+            simple_cubic_structure, [1, 0, 0], min_slab_size=8.0
+        )
         assert ferrox.surface_area(cubic_slab) >= 16.0 - 0.1
 
 
 class TestMillerToNormal:
     """Tests for surface_miller_to_normal."""
 
-    @pytest.mark.parametrize("hkl,dominant_axis", [
-        ((1, 0, 0), 0),  # (100) along x
-        ((0, 1, 0), 1),  # (010) along y
-        ((0, 0, 1), 2),  # (001) along z
-    ])
+    @pytest.mark.parametrize(
+        "hkl,dominant_axis",
+        [
+            ((1, 0, 0), 0),  # (100) along x
+            ((0, 1, 0), 1),  # (010) along y
+            ((0, 0, 1), 2),  # (001) along z
+        ],
+    )
     def test_miller_normal_direction(
         self, simple_cubic_structure: dict, hkl: tuple, dominant_axis: int
     ) -> None:
         """Miller normals point along correct axis for cubic cell and have unit length."""
         normal = ferrox.surface_miller_to_normal(simple_cubic_structure, *hkl)
         # Verify unit length
-        assert math.sqrt(sum(comp**2 for comp in normal)) == pytest.approx(1.0, abs=0.001)
+        assert math.sqrt(sum(comp**2 for comp in normal)) == pytest.approx(
+            1.0, abs=0.001
+        )
         # Verify dominant axis
         assert abs(normal[dominant_axis]) > 0.99
         for idx in range(3):
@@ -157,7 +186,9 @@ class TestAdsorptionSites:
         """Number of atop sites equals number of surface atoms."""
         slab = ferrox.make_slab(fcc_cu_structure, [1, 0, 0], min_slab_size=8.0)
         surface_atoms = ferrox.surface_get_surface_atoms(slab, tolerance=0.1)
-        sites = ferrox.surface_find_adsorption_sites(slab, height=2.0, site_types=["atop"])
+        sites = ferrox.surface_find_adsorption_sites(
+            slab, height=2.0, site_types=["atop"]
+        )
         atop_sites = [site for site in sites if site["site_type"] == "atop"]
         assert len(atop_sites) == len(surface_atoms)
 
@@ -249,11 +280,13 @@ class TestSurfaceAreaEdgeCases:
     def test_surface_area_non_orthogonal(self) -> None:
         """Surface area works for non-orthogonal cells."""
         # Use lattice_from_matrix directly - it returns a structure
-        structure = lattice_from_matrix([
-            [5.0, 0.0, 0.0],
-            [2.5, 4.33, 0.0],  # 60 degree angle (hexagonal-like)
-            [0.0, 0.0, 10.0],
-        ])
+        structure = lattice_from_matrix(
+            [
+                [5.0, 0.0, 0.0],
+                [2.5, 4.33, 0.0],  # 60 degree angle (hexagonal-like)
+                [0.0, 0.0, 10.0],
+            ]
+        )
         area = ferrox.surface_area(structure)
         # Area should be |a x b| = 5.0 * 4.33 = 21.65
         assert area == pytest.approx(5.0 * 4.33, rel=0.01)

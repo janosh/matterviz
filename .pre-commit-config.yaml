@@ -1,6 +1,31 @@
 default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.14
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty check
+        entry: ty check
+        language: python
+        types: [python]
+        additional_dependencies: [ty]
+        args:
+          - --output-format
+          - concise
+          - --ignore
+          - unresolved-import
+          - --ignore
+          - invalid-return-type
+          - --ignore
+          - invalid-argument-type
+
   - repo: builtin
     hooks:
       - id: check-case-conflict

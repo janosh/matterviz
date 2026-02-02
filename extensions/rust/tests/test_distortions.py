@@ -7,9 +7,7 @@ import json
 import ferrox
 import numpy as np
 import pytest
-
 from conftest import make_cubic_structure, make_site, make_structure
-
 
 # === Fixtures ===
 
@@ -17,19 +15,24 @@ from conftest import make_cubic_structure, make_site, make_structure
 @pytest.fixture
 def fcc_cu() -> dict:
     """Create FCC Cu conventional cell (4 atoms, cubic a=3.6 Å)."""
-    return make_cubic_structure(3.6, [
-        make_site("Cu", [0, 0, 0]),
-        make_site("Cu", [0.5, 0.5, 0]),
-        make_site("Cu", [0.5, 0, 0.5]),
-        make_site("Cu", [0, 0.5, 0.5]),
-    ])
+    return make_cubic_structure(
+        3.6,
+        [
+            make_site("Cu", [0, 0, 0]),
+            make_site("Cu", [0.5, 0.5, 0]),
+            make_site("Cu", [0.5, 0, 0.5]),
+            make_site("Cu", [0, 0.5, 0.5]),
+        ],
+    )
 
 
 @pytest.fixture
 def nacl_supercell() -> dict:
     """Create 2x2x2 NaCl supercell (16 atoms) for neighbor testing."""
     lattice_param = 5.64
-    lattice = {"matrix": [[lattice_param, 0, 0], [0, lattice_param, 0], [0, 0, lattice_param]]}
+    lattice = {
+        "matrix": [[lattice_param, 0, 0], [0, lattice_param, 0], [0, 0, lattice_param]]
+    }
     # Conventional rocksalt cell (8 atoms)
     sites = [
         make_site("Na", [0, 0, 0]),
@@ -47,10 +50,13 @@ def nacl_supercell() -> dict:
 @pytest.fixture
 def simple_dimer_structure() -> dict:
     """Simple 2-atom structure for dimer testing."""
-    return make_cubic_structure(10.0, [
-        make_site("Li", [0.1, 0.1, 0.1]),
-        make_site("Li", [0.2, 0.1, 0.1]),  # 1 Å apart in x
-    ])
+    return make_cubic_structure(
+        10.0,
+        [
+            make_site("Li", [0.1, 0.1, 0.1]),
+            make_site("Li", [0.2, 0.1, 0.1]),  # 1 Å apart in x
+        ],
+    )
 
 
 # === Helper Functions ===
@@ -120,7 +126,9 @@ class TestDistortBonds:
     def test_invalid_site_index_raises(self, fcc_cu: dict) -> None:
         """Out-of-bounds site index raises ValueError."""
         with pytest.raises(ValueError, match="out of bounds"):
-            ferrox.defect_distort_bonds(structure_to_json(fcc_cu), 100, [0.1], cutoff=3.0)
+            ferrox.defect_distort_bonds(
+                structure_to_json(fcc_cu), 100, [0.1], cutoff=3.0
+            )
 
     def test_num_neighbors_limits_distortions(self, nacl_supercell: dict) -> None:
         """Only specified number of neighbors should be distorted."""
@@ -141,7 +149,9 @@ class TestDistortBonds:
         limited_coords = get_cart_coords(results_limited[0]["structure"])
         all_coords = get_cart_coords(results_all[0]["structure"])
 
-        limited_moved = np.sum(np.linalg.norm(limited_coords - orig_coords, axis=1) > 1e-6)
+        limited_moved = np.sum(
+            np.linalg.norm(limited_coords - orig_coords, axis=1) > 1e-6
+        )
         all_moved = np.sum(np.linalg.norm(all_coords - orig_coords, axis=1) > 1e-6)
 
         assert limited_moved <= 2
@@ -209,15 +219,20 @@ class TestCreateDimer:
     @pytest.mark.parametrize(
         ("site_a", "site_b", "target", "match"),
         [
-            (0, 1, 0.0, "positive"),      # zero target
-            (0, 1, -1.0, "positive"),     # negative target
-            (0, 0, 2.0, "different"),     # same site
+            (0, 1, 0.0, "positive"),  # zero target
+            (0, 1, -1.0, "positive"),  # negative target
+            (0, 0, 2.0, "different"),  # same site
             (100, 1, 2.0, "out of bounds"),  # site_a out of bounds
             (0, 100, 2.0, "out of bounds"),  # site_b out of bounds
         ],
     )
     def test_invalid_inputs_raise(
-        self, simple_dimer_structure: dict, site_a: int, site_b: int, target: float, match: str
+        self,
+        simple_dimer_structure: dict,
+        site_a: int,
+        site_b: int,
+        target: float,
+        match: str,
     ) -> None:
         """Invalid inputs raise appropriate errors."""
         with pytest.raises(ValueError, match=match):
@@ -297,14 +312,22 @@ class TestRattleStructure:
         """Negative stdev raises error."""
         with pytest.raises(ValueError, match="non-negative"):
             ferrox.defect_rattle(
-                structure_to_json(fcc_cu), -0.1, seed=42, min_distance=0.5, max_attempts=100
+                structure_to_json(fcc_cu),
+                -0.1,
+                seed=42,
+                min_distance=0.5,
+                max_attempts=100,
             )
 
     def test_records_stdev_as_factor(self, fcc_cu: dict) -> None:
         """Distortion factor records the stdev."""
         stdev = 0.15
         result = ferrox.defect_rattle(
-            structure_to_json(fcc_cu), stdev, seed=42, min_distance=0.5, max_attempts=100
+            structure_to_json(fcc_cu),
+            stdev,
+            seed=42,
+            min_distance=0.5,
+            max_attempts=100,
         )
         assert result["distortion_factor"] == pytest.approx(stdev)
 
@@ -312,7 +335,11 @@ class TestRattleStructure:
     def test_rattle_with_various_stdev(self, fcc_cu: dict, stdev: float) -> None:
         """Rattling works with various stdev values."""
         result = ferrox.defect_rattle(
-            structure_to_json(fcc_cu), stdev, seed=42, min_distance=0.3, max_attempts=100
+            structure_to_json(fcc_cu),
+            stdev,
+            seed=42,
+            min_distance=0.3,
+            max_attempts=100,
         )
         assert result["distortion_factor"] == pytest.approx(stdev)
         assert len(result["structure"]["sites"]) == 4
@@ -387,9 +414,9 @@ class TestLocalRattle:
         ("center", "amplitude", "decay", "match"),
         [
             (100, 0.5, 3.0, "out of bounds"),  # center out of bounds
-            (0, -0.5, 3.0, "non-negative"),    # negative amplitude
-            (0, 0.5, 0.0, "positive"),         # zero decay radius
-            (0, 0.5, -1.0, "positive"),        # negative decay radius
+            (0, -0.5, 3.0, "non-negative"),  # negative amplitude
+            (0, 0.5, 0.0, "positive"),  # zero decay radius
+            (0, 0.5, -1.0, "positive"),  # negative decay radius
         ],
     )
     def test_invalid_inputs_raise(
@@ -397,7 +424,9 @@ class TestLocalRattle:
     ) -> None:
         """Invalid inputs raise appropriate errors."""
         with pytest.raises(ValueError, match=match):
-            ferrox.defect_local_rattle(structure_to_json(fcc_cu), center, amplitude, decay, seed=42)
+            ferrox.defect_local_rattle(
+                structure_to_json(fcc_cu), center, amplitude, decay, seed=42
+            )
 
     def test_zero_amplitude_unchanged(self, fcc_cu: dict) -> None:
         """Zero max_amplitude leaves structure unchanged."""
@@ -493,17 +522,24 @@ class TestEdgeCases:
         assert len(structure["sites"]) == 27
 
         result = ferrox.defect_rattle(
-            structure_to_json(structure), 0.1, seed=42, min_distance=0.3, max_attempts=100
+            structure_to_json(structure),
+            0.1,
+            seed=42,
+            min_distance=0.3,
+            max_attempts=100,
         )
         assert len(result["structure"]["sites"]) == 27
 
     def test_dimer_same_position_raises(self) -> None:
         """Create dimer with atoms at same position raises error."""
         # Two atoms at exact same fractional coordinates
-        degenerate = make_cubic_structure(4.0, [
-            make_site("Fe", [0.0, 0.0, 0.0]),
-            make_site("Fe", [0.0, 0.0, 0.0]),  # Exact same position
-        ])
+        degenerate = make_cubic_structure(
+            4.0,
+            [
+                make_site("Fe", [0.0, 0.0, 0.0]),
+                make_site("Fe", [0.0, 0.0, 0.0]),  # Exact same position
+            ],
+        )
         with pytest.raises(ValueError, match="same position"):
             ferrox.defect_create_dimer(structure_to_json(degenerate), 0, 1, 2.0)
 
@@ -532,14 +568,20 @@ class TestEdgeCases:
 
     def test_rattle_with_min_distance_constraint(self) -> None:
         """Rattle respects minimum distance constraint."""
-        structure = make_cubic_structure(3.0, [
-            make_site("Fe", [0.0, 0.0, 0.0]),
-            make_site("Fe", [0.5, 0.0, 0.0]),
-        ])
+        structure = make_cubic_structure(
+            3.0,
+            [
+                make_site("Fe", [0.0, 0.0, 0.0]),
+                make_site("Fe", [0.5, 0.0, 0.0]),
+            ],
+        )
         # With tight min_distance, rattling should still succeed
         result = ferrox.defect_rattle(
-            structure_to_json(structure), 0.05, seed=42,
-            min_distance=0.5, max_attempts=100
+            structure_to_json(structure),
+            0.05,
+            seed=42,
+            min_distance=0.5,
+            max_attempts=100,
         )
         # Verify atoms didn't get too close
         coords = get_cart_coords(result["structure"])

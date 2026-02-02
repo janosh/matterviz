@@ -11,19 +11,29 @@ from conftest import make_cubic_structure, make_site
 class TestVacancy:
     """Tests for defect_create_vacancy function."""
 
-    @pytest.mark.parametrize("site_idx,expected_species,remaining_element", [
-        (0, "Na", "Cl"),
-        (1, "Cl", "Na"),
-    ])
+    @pytest.mark.parametrize(
+        "site_idx,expected_species,remaining_element",
+        [
+            (0, "Na", "Cl"),
+            (1, "Cl", "Na"),
+        ],
+    )
     def test_vacancy_removes_correct_atom(
-        self, nacl_json: str, site_idx: int, expected_species: str, remaining_element: str
+        self,
+        nacl_json: str,
+        site_idx: int,
+        expected_species: str,
+        remaining_element: str,
     ) -> None:
         """Vacancy removes correct atom and records species."""
         result = ferrox.defect_create_vacancy(nacl_json, site_idx)
         assert result["defect_type"] == "vacancy"
         assert len(result["structure"]["sites"]) == 1
         assert result["original_species"] == expected_species
-        assert result["structure"]["sites"][0]["species"][0]["element"] == remaining_element
+        assert (
+            result["structure"]["sites"][0]["species"][0]["element"]
+            == remaining_element
+        )
 
     def test_correct_position(self, nacl_json: str) -> None:
         """Vacancy records correct position."""
@@ -107,8 +117,13 @@ class TestFindInterstitialSites:
     """Tests for defect_find_interstitial_sites function."""
 
     VALID_SITE_TYPES = {
-        "trigonal", "tetrahedral", "square_pyramidal",
-        "octahedral", "cubic", "cuboctahedral", "other",
+        "trigonal",
+        "tetrahedral",
+        "square_pyramidal",
+        "octahedral",
+        "cubic",
+        "cuboctahedral",
+        "other",
     }
 
     def test_returns_sites_for_fcc(self, fcc_cu_json: str) -> None:
@@ -131,8 +146,12 @@ class TestFindInterstitialSites:
 
     def test_symprec_parameter(self, fcc_cu_json: str) -> None:
         """Symprec parameter works for site deduplication."""
-        sites_tight = ferrox.defect_find_interstitial_sites(fcc_cu_json, 1.0, symprec=0.01)
-        sites_loose = ferrox.defect_find_interstitial_sites(fcc_cu_json, 1.0, symprec=0.1)
+        sites_tight = ferrox.defect_find_interstitial_sites(
+            fcc_cu_json, 1.0, symprec=0.01
+        )
+        sites_loose = ferrox.defect_find_interstitial_sites(
+            fcc_cu_json, 1.0, symprec=0.1
+        )
         assert isinstance(sites_tight, list) and isinstance(sites_loose, list)
 
 
@@ -152,7 +171,9 @@ class TestFindSupercell:
     def test_respects_max_atoms(self, nacl_json: str) -> None:
         """Supercell stays within max_atoms limit."""
         max_atoms = 50
-        matrix = ferrox.defect_find_supercell(nacl_json, min_image_dist=8.0, max_atoms=max_atoms)
+        matrix = ferrox.defect_find_supercell(
+            nacl_json, min_image_dist=8.0, max_atoms=max_atoms
+        )
         det = abs(int(round(np.linalg.det(matrix))))
         assert 2 * det <= max_atoms  # NaCl has 2 atoms
 
@@ -168,16 +189,19 @@ class TestFindSupercell:
 class TestClassifySite:
     """Tests for defect_classify_site function."""
 
-    @pytest.mark.parametrize("coordination, expected", [
-        (3, "trigonal"),
-        (4, "tetrahedral"),
-        (5, "square_pyramidal"),
-        (6, "octahedral"),
-        (8, "cubic"),
-        (12, "cuboctahedral"),
-        (7, "other"),
-        (9, "other"),
-    ])
+    @pytest.mark.parametrize(
+        "coordination, expected",
+        [
+            (3, "trigonal"),
+            (4, "tetrahedral"),
+            (5, "square_pyramidal"),
+            (6, "octahedral"),
+            (8, "cubic"),
+            (12, "cuboctahedral"),
+            (7, "other"),
+            (9, "other"),
+        ],
+    )
     def test_coordination_mapping(self, coordination: int, expected: str) -> None:
         """Coordination numbers map to correct site types."""
         assert ferrox.defect_classify_site(coordination) == expected
@@ -214,8 +238,12 @@ class TestVoronoiInterstitials:
 
     def test_min_dist_filters_small_sites(self, fcc_cu_json: str) -> None:
         """Large min_dist should filter out small interstitial sites."""
-        sites_no_filter = ferrox.defect_find_voronoi_interstitials(fcc_cu_json, min_dist=0.1)
-        sites_filtered = ferrox.defect_find_voronoi_interstitials(fcc_cu_json, min_dist=2.0)
+        sites_no_filter = ferrox.defect_find_voronoi_interstitials(
+            fcc_cu_json, min_dist=0.1
+        )
+        sites_filtered = ferrox.defect_find_voronoi_interstitials(
+            fcc_cu_json, min_dist=2.0
+        )
         assert len(sites_filtered) <= len(sites_no_filter)
 
     def test_returns_required_fields(self, fcc_cu_json: str) -> None:
@@ -261,7 +289,9 @@ class TestVoronoiInterstitials:
                 np.allclose(s["frac_coords"], [0.5, 0.5, 0.5], atol=0.1)
                 for s in oct_sites
             )
-            assert has_body_center, f"No octahedral site near [0.5,0.5,0.5], found: {oct_sites}"
+            assert has_body_center, (
+                f"No octahedral site near [0.5,0.5,0.5], found: {oct_sites}"
+            )
 
     def test_fcc_tetrahedral_sites_at_expected_coords(self, fcc_cu_json: str) -> None:
         """FCC tetrahedral sites should be at [0.25, 0.25, 0.25] positions (8c Wyckoff)."""
@@ -276,7 +306,9 @@ class TestVoronoiInterstitials:
                 or np.allclose(s["frac_coords"], [0.75, 0.75, 0.75], atol=0.1)
                 for s in tet_sites
             )
-            assert has_tet_position, f"No tetrahedral site at expected positions, found: {tet_sites}"
+            assert has_tet_position, (
+                f"No tetrahedral site at expected positions, found: {tet_sites}"
+            )
 
     def test_bcc_octahedral_at_face_centers(self, bcc_fe_json: str) -> None:
         """BCC structure should have octahedral sites at face centers."""
@@ -287,7 +319,10 @@ class TestVoronoiInterstitials:
             # Check for face-center positions
             face_center_coords = [[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5]]
             has_face_center = any(
-                any(np.allclose(s["frac_coords"], fc, atol=0.1) for fc in face_center_coords)
+                any(
+                    np.allclose(s["frac_coords"], fc, atol=0.1)
+                    for fc in face_center_coords
+                )
                 for s in oct_sites
             )
             # BCC octahedral sites should be at face centers or edge midpoints
@@ -330,10 +365,7 @@ class TestChargeStateGuessing:
     def test_substitution_charge_difference(self) -> None:
         """Substitution charge should be difference of oxidation states."""
         guesses = ferrox.defect_guess_charge_states(
-            "substitution",
-            added_species="Al",
-            original_species="Si",
-            max_charge=4
+            "substitution", added_species="Al", original_species="Si", max_charge=4
         )
         # Al^{3+} on Si^{4+} => charge = -1
         charges = [g["charge"] for g in guesses]
@@ -396,10 +428,7 @@ class TestChargeStateGuessing:
         """Se on Te site (same column) should predict neutral as most likely."""
         # doped: Se_Te [+1,0,-1] - isoelectronic, so 0 should be high probability
         guesses = ferrox.defect_guess_charge_states(
-            "substitution",
-            added_species="Se",
-            original_species="Te",
-            max_charge=4
+            "substitution", added_species="Se", original_species="Te", max_charge=4
         )
         charges = [g["charge"] for g in guesses]
         # Se^{2-} on Te^{2-} => 0 charge
@@ -410,10 +439,7 @@ class TestChargeStateGuessing:
         # Fe can be +2, +3; Ni is typically +2
         # Fe^{2+} on Ni^{2+} => 0; Fe^{3+} on Ni^{2+} => +1
         guesses = ferrox.defect_guess_charge_states(
-            "substitution",
-            added_species="Fe",
-            original_species="Ni",
-            max_charge=4
+            "substitution", added_species="Fe", original_species="Ni", max_charge=4
         )
         charges = [g["charge"] for g in guesses]
         # Should include 0 (same oxidation) and +1 (Fe^{3+} on Ni^{2+})
@@ -453,10 +479,7 @@ class TestChargeStateGuessing:
         """Antisite defects typically have small charges when same-valence swap."""
         # Fe on Ni - both commonly +2, so charge difference is 0
         guesses = ferrox.defect_guess_charge_states(
-            "antisite",
-            added_species="Fe",
-            original_species="Ni",
-            max_charge=4
+            "antisite", added_species="Fe", original_species="Ni", max_charge=4
         )
         # Antisite may return guesses or be empty depending on implementation
         # The key is it doesn't crash and returns valid data structure
@@ -513,7 +536,9 @@ class TestWyckoffLabels:
             # Should be 4a or equivalent
             assert all("4" in label or "a" in label.lower() for label in wyckoff_labels)
 
-    def test_nacl_different_wyckoffs_for_na_and_cl(self, rocksalt_nacl_json: str) -> None:
+    def test_nacl_different_wyckoffs_for_na_and_cl(
+        self, rocksalt_nacl_json: str
+    ) -> None:
         """NaCl should have different Wyckoff positions for Na (4a) and Cl (4b)."""
         # In Fm-3m, Na at [0,0,0] is 4a, Cl at [0.5,0.5,0.5] is 4b
         labels = ferrox.get_wyckoff_labels(rocksalt_nacl_json)
@@ -533,10 +558,13 @@ class TestWyckoffLabels:
                 multiplicity = site["multiplicity"]
                 # Extract number from label (e.g., "4a" -> 4)
                 import re
+
                 numbers = re.findall(r"\d+", label)
                 if numbers:
                     expected_mult = int(numbers[0])
-                    assert multiplicity == expected_mult, f"Multiplicity {multiplicity} != label {label}"
+                    assert multiplicity == expected_mult, (
+                        f"Multiplicity {multiplicity} != label {label}"
+                    )
 
     def test_site_symmetry_is_string(self, fcc_cu_json: str) -> None:
         """Site symmetry should be a valid string (point group notation)."""
@@ -561,7 +589,9 @@ class TestDefectNaming:
 
     def test_vacancy_with_wyckoff(self) -> None:
         """Vacancy with Wyckoff should include it in name."""
-        name = ferrox.defect_generate_name("vacancy", original_species="O", wyckoff="4a")
+        name = ferrox.defect_generate_name(
+            "vacancy", original_species="O", wyckoff="4a"
+        )
         assert name == "v_O_4a"
 
     def test_substitution_name(self) -> None:
@@ -590,11 +620,17 @@ class TestDefectNaming:
         )
         assert name == "Fe_Ni"
 
-    @pytest.mark.parametrize("defect_type", ["vacancy", "interstitial", "substitution", "antisite"])
+    @pytest.mark.parametrize(
+        "defect_type", ["vacancy", "interstitial", "substitution", "antisite"]
+    )
     def test_case_insensitive(self, defect_type: str) -> None:
         """Defect type should be case insensitive."""
-        upper = ferrox.defect_generate_name(defect_type.upper(), species="Fe", original_species="Ni")
-        lower = ferrox.defect_generate_name(defect_type.lower(), species="Fe", original_species="Ni")
+        upper = ferrox.defect_generate_name(
+            defect_type.upper(), species="Fe", original_species="Ni"
+        )
+        lower = ferrox.defect_generate_name(
+            defect_type.lower(), species="Fe", original_species="Ni"
+        )
         assert upper == lower
 
 
@@ -604,23 +640,47 @@ class TestDefectGenerateAll:
     def test_returns_required_fields(self, nacl_json: str) -> None:
         """Result contains all expected top-level fields."""
         result = ferrox.defect_generate_all(nacl_json)
-        required = {"supercell_matrix", "vacancies", "substitutions", "interstitials", "antisites", "spacegroup", "n_defects"}
+        required = {
+            "supercell_matrix",
+            "vacancies",
+            "substitutions",
+            "interstitials",
+            "antisites",
+            "spacegroup",
+            "n_defects",
+        }
         assert required.issubset(result.keys())
 
     def test_vacancies_generated(self, nacl_json: str) -> None:
         """Vacancies are generated for each unique element."""
-        result = ferrox.defect_generate_all(nacl_json, include_substitutions=False, include_interstitials=False, include_antisites=False)
+        result = ferrox.defect_generate_all(
+            nacl_json,
+            include_substitutions=False,
+            include_interstitials=False,
+            include_antisites=False,
+        )
         assert len(result["vacancies"]) >= 2  # Na and Cl vacancies
         assert all("v_" in defect["name"] for defect in result["vacancies"])
 
     def test_antisites_generated_for_binary(self, nacl_json: str) -> None:
         """Antisites are generated for binary compounds."""
-        result = ferrox.defect_generate_all(nacl_json, include_vacancies=False, include_substitutions=False, include_interstitials=False)
+        result = ferrox.defect_generate_all(
+            nacl_json,
+            include_vacancies=False,
+            include_substitutions=False,
+            include_interstitials=False,
+        )
         assert len(result["antisites"]) >= 2  # Na_Cl and Cl_Na
 
     def test_extrinsic_substitutions(self, nacl_json: str) -> None:
         """Extrinsic dopants create substitution defects."""
-        result = ferrox.defect_generate_all(nacl_json, extrinsic=["Li", "Br"], include_vacancies=False, include_interstitials=False, include_antisites=False)
+        result = ferrox.defect_generate_all(
+            nacl_json,
+            extrinsic=["Li", "Br"],
+            include_vacancies=False,
+            include_interstitials=False,
+            include_antisites=False,
+        )
         substitution_names = [defect["name"] for defect in result["substitutions"]]
         assert any("Li" in name for name in substitution_names)
         assert any("Br" in name for name in substitution_names)
@@ -628,7 +688,13 @@ class TestDefectGenerateAll:
     def test_defect_entry_fields(self, nacl_json: str) -> None:
         """Each defect entry has required fields."""
         result = ferrox.defect_generate_all(nacl_json)
-        required = {"name", "defect_type", "frac_coords", "charge_states", "equivalent_sites"}
+        required = {
+            "name",
+            "defect_type",
+            "frac_coords",
+            "charge_states",
+            "equivalent_sites",
+        }
         for defect_list in [result["vacancies"], result["antisites"]]:
             for defect in defect_list:
                 assert required.issubset(defect.keys())
@@ -636,7 +702,12 @@ class TestDefectGenerateAll:
     def test_n_defects_is_sum(self, nacl_json: str) -> None:
         """n_defects equals sum of all defect lists."""
         result = ferrox.defect_generate_all(nacl_json)
-        total = len(result["vacancies"]) + len(result["substitutions"]) + len(result["interstitials"]) + len(result["antisites"])
+        total = (
+            len(result["vacancies"])
+            + len(result["substitutions"])
+            + len(result["interstitials"])
+            + len(result["antisites"])
+        )
         assert result["n_defects"] == total
 
     def test_supercell_matrix_is_3x3(self, nacl_json: str) -> None:

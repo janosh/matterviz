@@ -39,6 +39,80 @@ dev = ["numpy", "pymatgen>=2025.10.7", "pytest>=8.0"]
 # Don't create uv.lock - we use maturin develop for editable installs
 managed = false
 
+[tool.ruff]
+target-version = "py311"
+output-format = "concise"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "ANN401",
+  "BLE001",
+  "C408",    # unnecessary-collection-call
+  "C901",
+  "COM812",
+  "D205",    # blank-line-after-summary
+  "E731",    # lambda-assignment
+  "EM101",
+  "EM102",
+  "FIX002",
+  "G004",    # logging uses f-string
+  "INP001",
+  "ISC001",
+  "N806",    # non-lowercase-variable-in-function
+  "PERF203", # try-except-in-loop
+  "PLC0414", # useless-import-alias
+  "PLC0415",
+  "PLR",     # pylint refactor
+  "PLW2901", # redefined-loop-name
+  "PT006",   # pytest-parametrize-names-wrong-type
+  "PTH",
+  "S108",
+  "S112",    # try/except continue: consider logging the exception
+  "S310",
+  "S311",
+  "S603",    # subprocess-without-shell-equals-true
+  "S607",    # start-process-with-partial-path
+  "T201",
+  "TD",
+  "TRY003",
+  "TRY301",
+]
+pydocstyle.convention = "google"
+isort.split-on-trailing-comma = false
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  "ANN001",  # missing type annotation
+  "B017",    # assert blind exception
+  "B904",    # raise from
+  "B905",    # zip strict
+  "C401",    # unnecessary generator
+  "D",       # docstrings
+  "E501",    # line too long
+  "ERA001",  # commented out code
+  "FBT001",
+  "FBT002",
+  "PERF401", # list.extend
+  "PT011",   # pytest.raises too broad
+  "PT018",   # compound assertions
+  "RUF001",  # ambiguous chars
+  "RUF012",  # mutable class attr
+  "RUF043",  # regex metacharacters
+  "RUF046",  # redundant int cast
+  "RUF059",  # unused unpacked var
+  "S101",
+]
+"__init__.py" = ["F401"]
+"*.pyi" = ["D", "E501", "ERA001", "PYI021", "RUF002"]  # stub files have docstrings by design
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:warnings"
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
+
 [tool.maturin]
 features = ["python"]
 python-source = "python"

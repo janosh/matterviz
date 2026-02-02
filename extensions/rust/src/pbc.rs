@@ -11,9 +11,13 @@ pub type PbcShortestResult = (Vec<Vec<Vector3<f64>>>, Vec<Vec<f64>>, Vec<Vec<[i3
 
 /// Wrap fractional coordinates to the range [0, 1).
 ///
-/// Uses `coord - coord.floor()` instead of `coord % 1.0` because Rust's modulo
-/// operator returns negative values for negative inputs (e.g., `-0.1 % 1.0 = -0.1`),
-/// while `floor()` correctly wraps to [0, 1) for all inputs.
+/// Uses `rem_euclid(1.0)` which computes the Euclidean remainder, correctly
+/// handling negative inputs (e.g., `-0.1` wraps to `0.9`). This is preferred over
+/// `coord % 1.0` which returns negative values for negative inputs, and over
+/// `coord - coord.floor()` which can return exactly 1.0 due to floating-point
+/// precision issues when `coord` is very close to an integer.
+///
+/// A guard handles the rare edge case where `rem_euclid` returns exactly 1.0.
 ///
 /// # Examples
 ///
@@ -26,8 +30,6 @@ pub type PbcShortestResult = (Vec<Vec<Vector3<f64>>>, Vec<Vec<f64>>, Vec<Vec<[i3
 /// ```
 #[inline]
 pub fn wrap_frac_coord(coord: f64) -> f64 {
-    // Use rem_euclid for robust wrapping, handles edge cases where
-    // coord - coord.floor() might return exactly 1.0 due to float precision
     let wrapped = coord.rem_euclid(1.0);
     // Guard against floating-point edge case where result is exactly 1.0
     if wrapped >= 1.0 { 0.0 } else { wrapped }

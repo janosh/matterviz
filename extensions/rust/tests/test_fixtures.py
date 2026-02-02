@@ -17,18 +17,23 @@ from conftest import (
 class TestFixtureValidity:
     """Verify fixtures produce valid pymatgen-compatible structure JSON."""
 
-    @pytest.mark.parametrize("fixture_name", [
-        "nacl_json",
-        "fcc_cu_json",
-        "rocksalt_nacl_json",
-        "nacl_with_oxi_json",
-        "bcc_fe_json",
-        "single_fe_json",
-        "fe2o3_json",
-        "disordered_json",
-        "lifepo4_json",
-    ])
-    def test_json_fixtures_parseable(self, fixture_name: str, request: pytest.FixtureRequest) -> None:
+    @pytest.mark.parametrize(
+        "fixture_name",
+        [
+            "nacl_json",
+            "fcc_cu_json",
+            "rocksalt_nacl_json",
+            "nacl_with_oxi_json",
+            "bcc_fe_json",
+            "single_fe_json",
+            "fe2o3_json",
+            "disordered_json",
+            "lifepo4_json",
+        ],
+    )
+    def test_json_fixtures_parseable(
+        self, fixture_name: str, request: pytest.FixtureRequest
+    ) -> None:
         """All JSON fixtures should be parseable by ferrox."""
         json_str = request.getfixturevalue(fixture_name)
         # Should not raise - ferrox can parse the structure
@@ -36,16 +41,19 @@ class TestFixtureValidity:
         assert "n_sites" in metadata
         assert metadata["n_sites"] > 0 or fixture_name == "disordered_json"
 
-    @pytest.mark.parametrize("fixture_name,expected_sites", [
-        ("nacl_json", 2),
-        ("fcc_cu_json", 4),
-        ("rocksalt_nacl_json", 8),
-        ("nacl_with_oxi_json", 2),
-        ("bcc_fe_json", 2),
-        ("single_fe_json", 1),
-        ("fe2o3_json", 5),
-        ("lifepo4_json", 8),
-    ])
+    @pytest.mark.parametrize(
+        "fixture_name,expected_sites",
+        [
+            ("nacl_json", 2),
+            ("fcc_cu_json", 4),
+            ("rocksalt_nacl_json", 8),
+            ("nacl_with_oxi_json", 2),
+            ("bcc_fe_json", 2),
+            ("single_fe_json", 1),
+            ("fe2o3_json", 5),
+            ("lifepo4_json", 8),
+        ],
+    )
     def test_fixture_site_counts(
         self, fixture_name: str, expected_sites: int, request: pytest.FixtureRequest
     ) -> None:
@@ -54,14 +62,17 @@ class TestFixtureValidity:
         metadata = ferrox.get_structure_metadata(json_str)
         assert metadata["n_sites"] == expected_sites
 
-    @pytest.mark.parametrize("fixture_name,expected_elements", [
-        ("nacl_json", {"Na", "Cl"}),
-        ("fcc_cu_json", {"Cu"}),
-        ("rocksalt_nacl_json", {"Na", "Cl"}),
-        ("bcc_fe_json", {"Fe"}),
-        ("fe2o3_json", {"Fe", "O"}),
-        ("lifepo4_json", {"Li", "Fe", "P", "O"}),
-    ])
+    @pytest.mark.parametrize(
+        "fixture_name,expected_elements",
+        [
+            ("nacl_json", {"Na", "Cl"}),
+            ("fcc_cu_json", {"Cu"}),
+            ("rocksalt_nacl_json", {"Na", "Cl"}),
+            ("bcc_fe_json", {"Fe"}),
+            ("fe2o3_json", {"Fe", "O"}),
+            ("lifepo4_json", {"Li", "Fe", "P", "O"}),
+        ],
+    )
     def test_fixture_elements(
         self, fixture_name: str, expected_elements: set, request: pytest.FixtureRequest
     ) -> None:

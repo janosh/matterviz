@@ -8,7 +8,12 @@ import itertools
 import ferrox
 import numpy as np
 import pytest
-from conftest import lattice_from_matrix, make_cubic_structure, make_site, make_structure
+from conftest import (
+    lattice_from_matrix,
+    make_cubic_structure,
+    make_site,
+    make_structure,
+)
 
 
 class TestMinimumImageDistance:
@@ -91,10 +96,13 @@ class TestWrapToUnitCell:
 
     def test_wrap_positions_to_unit_interval(self) -> None:
         """Positions are wrapped to [0, 1)."""
-        struct = make_cubic_structure(5.0, [
-            make_site("Na", [-0.5, 1.5, 2.3]),
-            make_site("Cl", [0.3, 0.7, -0.2]),
-        ])
+        struct = make_cubic_structure(
+            5.0,
+            [
+                make_site("Na", [-0.5, 1.5, 2.3]),
+                make_site("Cl", [0.3, 0.7, -0.2]),
+            ],
+        )
         wrapped = ferrox.cell_wrap_to_unit_cell(struct)
         sites = wrapped["sites"]
 
@@ -281,22 +289,29 @@ class TestIsSupercell:
 class TestMinimumImageVector:
     """Tests for minimum image vector calculation."""
 
-    @pytest.mark.parametrize("delta,expected", [
-        ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
-        ([0.8, 0.0, 0.0], [-1.128, 0.0, 0.0]),  # 0.8 wraps to -0.2, * 5.64 = -1.128
-    ])
+    @pytest.mark.parametrize(
+        "delta,expected",
+        [
+            ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
+            ([0.8, 0.0, 0.0], [-1.128, 0.0, 0.0]),  # 0.8 wraps to -0.2, * 5.64 = -1.128
+        ],
+    )
     def test_minimum_image_vector(
         self, nacl_structure: dict, delta: list, expected: list
     ) -> None:
         """Minimum image vector wraps correctly."""
-        vec = ferrox.cell_minimum_image_vector(nacl_structure, delta, [True, True, True])
+        vec = ferrox.cell_minimum_image_vector(
+            nacl_structure, delta, [True, True, True]
+        )
         assert vec == pytest.approx(expected, abs=1e-10)
 
 
 class TestDelaunayReduction:
     """Tests for Delaunay reduction."""
 
-    def test_delaunay_valid_and_preserves_volume(self, triclinic_structure: dict) -> None:
+    def test_delaunay_valid_and_preserves_volume(
+        self, triclinic_structure: dict
+    ) -> None:
         """Delaunay reduction produces valid result and preserves volume."""
         original_vol = abs(np.linalg.det(triclinic_structure["lattice"]["matrix"]))
         delaunay = ferrox.cell_delaunay_reduce(triclinic_structure, tolerance=1e-5)
@@ -304,7 +319,9 @@ class TestDelaunayReduction:
         assert "matrix" in delaunay and "transformation" in delaunay
         assert np.array(delaunay["matrix"]).shape == (3, 3)
         assert np.array(delaunay["transformation"]).shape == (3, 3)
-        assert abs(np.linalg.det(delaunay["matrix"])) == pytest.approx(original_vol, abs=1e-3)
+        assert abs(np.linalg.det(delaunay["matrix"])) == pytest.approx(
+            original_vol, abs=1e-3
+        )
 
 
 class TestHighlySkewedCells:
@@ -314,11 +331,13 @@ class TestHighlySkewedCells:
     def highly_skewed_structure(self) -> dict:
         """Structure with angles far from 90 degrees (>30 deg deviation)."""
         # Triclinic cell with ~53 degree angle
-        return lattice_from_matrix([
-            [5.0, 0.0, 0.0],
-            [4.0, 3.0, 0.0],
-            [2.0, 2.0, 4.0],
-        ])
+        return lattice_from_matrix(
+            [
+                [5.0, 0.0, 0.0],
+                [4.0, 3.0, 0.0],
+                [2.0, 2.0, 4.0],
+            ]
+        )
 
     def test_minimum_image_highly_skewed(self, highly_skewed_structure: dict) -> None:
         """Minimum image distance works for highly skewed cells."""
@@ -360,7 +379,11 @@ class TestPartialPBC:
         ("pos1", "pos2", "expected"),
         [
             ([0.0, 0.0, 0.0], [0.0, 0.0, 0.9], 18.0),  # Non-periodic z: 0.9*20=18
-            ([0.0, 0.0, 0.5], [0.9, 0.9, 0.5], 0.707),  # Periodic xy wraps: sqrt(0.5²+0.5²)
+            (
+                [0.0, 0.0, 0.5],
+                [0.9, 0.9, 0.5],
+                0.707,
+            ),  # Periodic xy wraps: sqrt(0.5²+0.5²)
         ],
     )
     def test_minimum_image_partial_pbc(
