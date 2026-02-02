@@ -58,7 +58,8 @@ fn diffusion_from_vacf(vacf: Vec<f64>, dt: f64, dim: usize) -> PyResult<f64> {
     if vacf.len() < 2 {
         return Err(PyValueError::new_err("VACF must have at least 2 points"));
     }
-    if !dt.is_finite() || dt <= 0.0 {
+    if dt <= 0.0 {
+        // MUTATION: removed is_finite check
         return Err(PyValueError::new_err("dt must be a finite positive number"));
     }
     validate_dim(dim)?;

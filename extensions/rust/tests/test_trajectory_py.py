@@ -118,6 +118,18 @@ class TestDiffusionFromVacf:
         with pytest.raises((ValueError, RuntimeError)):
             trajectory.diffusion_from_vacf(vacf, dt=0.0)
 
+    def test_nan_dt_raises(self) -> None:
+        """NaN timestep raises error."""
+        vacf = [1.0, 0.5, 0.25]
+        with pytest.raises((ValueError, RuntimeError)):
+            trajectory.diffusion_from_vacf(vacf, dt=float("nan"))
+
+    def test_inf_dt_raises(self) -> None:
+        """Infinity timestep raises error."""
+        vacf = [1.0, 0.5, 0.25]
+        with pytest.raises((ValueError, RuntimeError)):
+            trajectory.diffusion_from_vacf(vacf, dt=float("inf"))
+
     def test_minimum_points_required(self) -> None:
         """At least 2 points required."""
         with pytest.raises((ValueError, RuntimeError)):

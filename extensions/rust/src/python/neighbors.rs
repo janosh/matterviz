@@ -11,9 +11,9 @@ fn get_neighbor_list(
     structure: StructureJson,
     cutoff: f64,
 ) -> PyResult<(Vec<usize>, Vec<usize>, Vec<[i32; 3]>, Vec<f64>)> {
-    if cutoff < 0.0 {
+    if !cutoff.is_finite() || cutoff < 0.0 {
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "cutoff must be non-negative",
+            "cutoff must be a finite non-negative number",
         ));
     }
 
@@ -83,9 +83,9 @@ fn is_periodic_image(
     idx_b: usize,
     tolerance: f64,
 ) -> PyResult<bool> {
-    if tolerance < 0.0 {
+    if !tolerance.is_finite() || tolerance < 0.0 {
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "tolerance must be non-negative",
+            "tolerance must be a finite non-negative number",
         ));
     }
     let struc = parse_struct(&structure)?;
