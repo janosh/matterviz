@@ -1,6 +1,7 @@
 //! FIRE and CellFIRE optimizer Python bindings.
 
 use nalgebra::{Matrix3, Vector3};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use crate::optimizers;

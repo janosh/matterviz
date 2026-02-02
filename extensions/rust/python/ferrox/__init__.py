@@ -73,3 +73,6 @@ from ferrox._ferrox import (
     trajectory,
     xrd,
 )
+
+# Backward-compatible re-export (StructureMatcher moved to ferrox.structure)
+StructureMatcher = structure.StructureMatcher

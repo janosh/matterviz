@@ -2,18 +2,9 @@
 
 use wasm_bindgen::prelude::*;
 
-use super::helpers::validate_cutoff;
+use super::helpers::{validate_cutoff, validate_cutoff_nonneg};
 use crate::order_params;
 use crate::wasm_types::{JsCrystal, WasmResult};
-
-/// Validate tolerance is finite and non-negative.
-#[inline]
-fn validate_tolerance(tolerance: f64) -> Result<(), String> {
-    if !tolerance.is_finite() || tolerance < 0.0 {
-        return Err("Tolerance must be a finite non-negative number".to_string());
-    }
-    Ok(())
-}
 
 #[wasm_bindgen]
 pub fn compute_steinhardt_q(
@@ -41,7 +32,7 @@ pub fn classify_local_structure(q4: f64, q6: f64, tolerance: f64) -> WasmResult<
     if !q6.is_finite() {
         return WasmResult::err(&format!("q6 must be finite, got {q6}"));
     }
-    if let Err(err) = validate_tolerance(tolerance) {
+    if let Err(err) = validate_cutoff_nonneg(tolerance) {
         return WasmResult::err(&err);
     }
     WasmResult::ok(
@@ -60,7 +51,7 @@ pub fn classify_all_atoms(
     if let Err(err) = validate_cutoff(cutoff) {
         return WasmResult::err(&err);
     }
-    if let Err(err) = validate_tolerance(tolerance) {
+    if let Err(err) = validate_cutoff_nonneg(tolerance) {
         return WasmResult::err(&err);
     }
     structure

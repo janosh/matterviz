@@ -131,6 +131,9 @@ fn enumerate_terminations(
 /// Enumerate Miller indices up to a maximum value.
 #[pyfunction]
 fn enumerate_miller(max_index: i32) -> Vec<[i32; 3]> {
+    if max_index < 1 {
+        return vec![];
+    }
     let miller_list = surfaces::enumerate_miller_indices(max_index);
     miller_list.into_iter().map(|m| m.to_array()).collect()
 }

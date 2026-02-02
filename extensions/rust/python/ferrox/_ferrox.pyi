@@ -1119,3 +1119,7 @@ class species:
             self, coordination: str, spin: str = ""
         ) -> float | None:
             """Get Shannon ionic radius for coordination and spin."""
+
+# === Backward-compatible re-exports ===
+# StructureMatcher moved to ferrox.structure.StructureMatcher
+StructureMatcher = structure.StructureMatcher

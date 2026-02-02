@@ -5,6 +5,15 @@ use wasm_bindgen::prelude::*;
 use crate::wasm::mat3_to_array;
 use crate::wasm_types::{JsCrystal, JsReductionAlgo, WasmResult};
 
+/// Validate symprec parameter.
+#[inline]
+fn validate_symprec(symprec: f64) -> Result<(), String> {
+    if !symprec.is_finite() || symprec <= 0.0 {
+        return Err("symprec must be positive and finite".to_string());
+    }
+    Ok(())
+}
+
 #[wasm_bindgen]
 pub fn get_reduced_structure(structure: JsCrystal, algo: JsReductionAlgo) -> WasmResult<JsCrystal> {
     structure
@@ -20,8 +29,8 @@ pub fn get_reduced_structure(structure: JsCrystal, algo: JsReductionAlgo) -> Was
 
 #[wasm_bindgen]
 pub fn get_primitive(structure: JsCrystal, symprec: f64) -> WasmResult<JsCrystal> {
-    structure
-        .to_structure()
+    validate_symprec(symprec)
+        .and_then(|()| structure.to_structure())
         .and_then(|struc| struc.get_primitive(symprec).map_err(|e| e.to_string()))
         .map(|prim| JsCrystal::from_structure(&prim))
         .into()
@@ -29,8 +38,8 @@ pub fn get_primitive(structure: JsCrystal, symprec: f64) -> WasmResult<JsCrystal
 
 #[wasm_bindgen]
 pub fn get_conventional(structure: JsCrystal, symprec: f64) -> WasmResult<JsCrystal> {
-    structure
-        .to_structure()
+    validate_symprec(symprec)
+        .and_then(|()| structure.to_structure())
         .and_then(|struc| {
             struc
                 .get_conventional_structure(symprec)

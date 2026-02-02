@@ -18,6 +18,23 @@ fn cell_to_matrix3(cell: Option<[[f64; 3]; 3]>) -> Option<Matrix3<f64>> {
 
 // === Lennard-Jones ===
 
+/// Validate Lennard-Jones parameters.
+#[inline]
+fn validate_lj_params(sigma: f64, epsilon: f64, cutoff: Option<f64>) -> PyResult<()> {
+    if !sigma.is_finite() || sigma <= 0.0 {
+        return Err(PyValueError::new_err("sigma must be positive and finite"));
+    }
+    if !epsilon.is_finite() {
+        return Err(PyValueError::new_err("epsilon must be finite"));
+    }
+    if let Some(cut) = cutoff {
+        if !cut.is_finite() || cut <= 0.0 {
+            return Err(PyValueError::new_err("cutoff must be positive and finite"));
+        }
+    }
+    Ok(())
+}
+
 /// Compute Lennard-Jones energy and forces.
 #[pyfunction]
 #[pyo3(signature = (positions, cell = None, pbc = None, sigma = 3.4, epsilon = 0.0103, cutoff = None))]
@@ -29,6 +46,7 @@ fn compute_lennard_jones(
     epsilon: f64,
     cutoff: Option<f64>,
 ) -> PyResult<(f64, Vec<[f64; 3]>)> {
+    validate_lj_params(sigma, epsilon, cutoff)?;
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
     let pbc_arr = default_pbc(pbc, cell.is_some());
@@ -54,6 +72,7 @@ fn compute_lennard_jones_forces(
     epsilon: f64,
     cutoff: Option<f64>,
 ) -> PyResult<Vec<[f64; 3]>> {
+    validate_lj_params(sigma, epsilon, cutoff)?;
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
     let pbc_arr = default_pbc(pbc, cell.is_some());

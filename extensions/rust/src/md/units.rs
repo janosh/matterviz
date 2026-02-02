@@ -21,8 +21,5 @@ pub const GPA_TO_EV_PER_ANG3: f64 = 0.00624150913;
 /// Create an RNG from optional seed.
 #[inline]
 pub fn make_rng(seed: Option<u64>) -> StdRng {
-    match seed {
-        Some(s) => StdRng::seed_from_u64(s),
-        None => StdRng::from_entropy(),
-    }
+    seed.map_or_else(StdRng::from_entropy, StdRng::seed_from_u64)
 }

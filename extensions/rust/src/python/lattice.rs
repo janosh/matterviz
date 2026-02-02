@@ -29,6 +29,11 @@ fn get_reciprocal_lattice(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
 #[pyfunction]
 #[pyo3(signature = (structure, delta = 0.75))]
 fn get_lll_reduced_lattice(structure: StructureJson, delta: f64) -> PyResult<[[f64; 3]; 3]> {
+    if !delta.is_finite() || delta <= 0.25 || delta > 1.0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "delta must be in range (0.25, 1.0] for LLL reduction",
+        ));
+    }
     let struc = parse_struct(&structure)?;
     Ok(mat3_to_array(struc.lattice.get_lll_reduced(delta).matrix()))
 }

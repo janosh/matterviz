@@ -10,12 +10,17 @@ use super::helpers::{StructureJson, parse_struct};
 
 /// Validate RDF parameters.
 #[inline]
-fn validate_rdf_params(r_max: f64, n_bins: usize) -> PyResult<()> {
+fn validate_rdf_params(r_max: f64, n_bins: usize, expansion_factor: f64) -> PyResult<()> {
     if !r_max.is_finite() || r_max <= 0.0 {
         return Err(PyValueError::new_err("r_max must be positive and finite"));
     }
     if n_bins == 0 {
         return Err(PyValueError::new_err("n_bins must be greater than 0"));
+    }
+    if !expansion_factor.is_finite() || expansion_factor <= 0.0 {
+        return Err(PyValueError::new_err(
+            "expansion_factor must be positive and finite",
+        ));
     }
     Ok(())
 }
@@ -32,7 +37,7 @@ fn compute_rdf(
     auto_expand: bool,
     expansion_factor: f64,
 ) -> PyResult<(Vec<f64>, Vec<f64>)> {
-    validate_rdf_params(r_max, n_bins)?;
+    validate_rdf_params(r_max, n_bins, expansion_factor)?;
     let struc = parse_struct(&structure)?;
 
     let options = rdf::RdfOptions {
@@ -62,7 +67,7 @@ fn compute_element_rdf(
     auto_expand: bool,
     expansion_factor: f64,
 ) -> PyResult<(Vec<f64>, Vec<f64>)> {
-    validate_rdf_params(r_max, n_bins)?;
+    validate_rdf_params(r_max, n_bins, expansion_factor)?;
     let struc = parse_struct(&structure)?;
 
     let elem1 = crate::element::Element::from_symbol(element1).ok_or_else(|| {
@@ -96,7 +101,7 @@ fn compute_all_element_rdfs(
     auto_expand: bool,
     expansion_factor: f64,
 ) -> PyResult<Py<PyDict>> {
-    validate_rdf_params(r_max, n_bins)?;
+    validate_rdf_params(r_max, n_bins, expansion_factor)?;
     let struc = parse_struct(&structure)?;
 
     let options = rdf::RdfOptions {

@@ -6,25 +6,23 @@ use crate::wasm_types::{JsCrystal, JsStructureMetadata, WasmResult};
 
 #[wasm_bindgen]
 pub fn get_volume(structure: JsCrystal) -> WasmResult<f64> {
-    let result = structure.to_structure().map(|struc| struc.volume());
-    result.into()
+    structure.to_structure().map(|s| s.volume()).into()
 }
 
 #[wasm_bindgen]
 pub fn get_total_mass(structure: JsCrystal) -> WasmResult<f64> {
-    let result = structure.to_structure().map(|struc| struc.total_mass());
-    result.into()
+    structure.to_structure().map(|s| s.total_mass()).into()
 }
 
 #[wasm_bindgen]
 pub fn get_density(structure: JsCrystal) -> WasmResult<f64> {
-    let result: Result<f64, String> = (|| {
-        let struc = structure.to_structure()?;
-        struc
-            .density()
-            .ok_or_else(|| "Cannot compute density for zero-volume structure".to_string())
-    })();
-    result.into()
+    structure
+        .to_structure()
+        .and_then(|s| {
+            s.density()
+                .ok_or_else(|| "Cannot compute density for zero-volume structure".to_string())
+        })
+        .into()
 }
 
 #[wasm_bindgen]

@@ -6,6 +6,19 @@ use wasm_bindgen::prelude::*;
 use crate::species::Species;
 use crate::wasm_types::{JsCrystal, JsMatrix3x3, JsVector3, WasmResult};
 
+/// Validate site indices are within bounds.
+#[inline]
+fn validate_site_indices(indices: &[usize], num_sites: usize) -> Result<(), String> {
+    for &site_idx in indices {
+        if site_idx >= num_sites {
+            return Err(format!(
+                "Index {site_idx} out of bounds for structure with {num_sites} sites"
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[wasm_bindgen]
 pub fn get_sorted_structure(structure: JsCrystal, reverse: bool) -> WasmResult<JsCrystal> {
     structure
@@ -73,14 +86,7 @@ pub fn translate_sites(
     let result: Result<JsCrystal, String> = (|| {
         let mut struc = structure.to_structure()?;
         let idx: Vec<usize> = indices.into_iter().map(|idx| idx as usize).collect();
-        let num_sites = struc.num_sites();
-        for &site_idx in &idx {
-            if site_idx >= num_sites {
-                return Err(format!(
-                    "Index {site_idx} out of bounds for structure with {num_sites} sites"
-                ));
-            }
-        }
+        validate_site_indices(&idx, struc.num_sites())?;
         struc.translate_sites(&idx, Vector3::from(vector.0), fractional);
         Ok(JsCrystal::from_structure(&struc))
     })();
@@ -188,14 +194,7 @@ pub fn remove_sites(structure: JsCrystal, indices: Vec<u32>) -> WasmResult<JsCry
     let result: Result<JsCrystal, String> = (|| {
         let struc = structure.to_structure()?;
         let idx: Vec<usize> = indices.into_iter().map(|idx| idx as usize).collect();
-        let num_sites = struc.num_sites();
-        for &site_idx in &idx {
-            if site_idx >= num_sites {
-                return Err(format!(
-                    "Index {site_idx} out of bounds for structure with {num_sites} sites"
-                ));
-            }
-        }
+        validate_site_indices(&idx, struc.num_sites())?;
         let new_s = struc.remove_sites(&idx).map_err(|err| err.to_string())?;
         Ok(JsCrystal::from_structure(&new_s))
     })();
