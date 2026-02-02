@@ -262,16 +262,11 @@ impl VelocityRescale {
              Cannot thermalize a system with no degrees of freedom."
         );
 
-        use rand::SeedableRng;
-        let rng = match seed {
-            Some(s) => rand::rngs::StdRng::seed_from_u64(s),
-            None => rand::rngs::StdRng::from_entropy(),
-        };
         Self {
             target_temp,
             tau,
             dt_fs,
-            rng,
+            rng: units::make_rng(seed),
             n_dof,
         }
     }

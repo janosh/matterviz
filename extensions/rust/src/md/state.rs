@@ -1,7 +1,7 @@
 //! Molecular dynamics state containers.
 
 use nalgebra::{Matrix3, Vector3};
-use rand::prelude::*;
+use rand::Rng;
 
 use super::langevin::box_muller_normal;
 use super::units;
@@ -74,11 +74,7 @@ impl MDState {
 
     /// Initialize velocities from Maxwell-Boltzmann distribution (method wrapper).
     pub fn init_velocities(&mut self, temperature_k: f64, seed: Option<u64>) {
-        use rand::SeedableRng;
-        let mut rng = match seed {
-            Some(s) => rand::rngs::StdRng::seed_from_u64(s),
-            None => rand::rngs::StdRng::from_entropy(),
-        };
+        let mut rng = units::make_rng(seed);
         let new_state = init_velocities(std::mem::take(self), temperature_k, &mut rng);
         *self = new_state;
     }

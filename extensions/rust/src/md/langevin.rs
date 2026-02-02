@@ -62,8 +62,7 @@ impl LangevinConfig {
         validate_dt(dt_fs);
         let dt_int = dt_fs * units::FS_TO_INTERNAL;
         let friction_int = friction * units::INTERNAL_TO_FS;
-        let c1 = (-friction_int * dt_int).exp();
-        let c2 = (1.0 - c1 * c1).sqrt();
+        let (c1, c2) = compute_c1_c2(friction_int, dt_int);
         Self {
             temperature_k,
             dt_fs,
@@ -72,6 +71,11 @@ impl LangevinConfig {
             c1,
             c2,
         }
+    }
+
+    /// Recompute c1/c2 after changing friction or dt.
+    fn recompute_coefficients(&mut self) {
+        (self.c1, self.c2) = compute_c1_c2(self.friction_int, self.dt_int);
     }
 
     /// Update temperature.
@@ -91,8 +95,7 @@ impl LangevinConfig {
     pub fn with_friction(mut self, friction: f64) -> Self {
         validate_friction(friction);
         self.friction_int = friction * units::INTERNAL_TO_FS;
-        self.c1 = (-self.friction_int * self.dt_int).exp();
-        self.c2 = (1.0 - self.c1 * self.c1).sqrt();
+        self.recompute_coefficients();
         self
     }
 
@@ -104,11 +107,17 @@ impl LangevinConfig {
         validate_dt(dt_fs);
         self.dt_fs = dt_fs;
         self.dt_int = dt_fs * units::FS_TO_INTERNAL;
-        // Recompute c1, c2 using stored friction_int (avoids numerically unstable ln)
-        self.c1 = (-self.friction_int * self.dt_int).exp();
-        self.c2 = (1.0 - self.c1 * self.c1).sqrt();
+        self.recompute_coefficients();
         self
     }
+}
+
+/// Compute c1 = exp(-friction * dt), c2 = sqrt(1 - c1²).
+#[inline]
+fn compute_c1_c2(friction_int: f64, dt_int: f64) -> (f64, f64) {
+    let c1 = (-friction_int * dt_int).exp();
+    let c2 = (1.0 - c1 * c1).sqrt();
+    (c1, c2)
 }
 
 /// Perform one Langevin dynamics step (BAOAB scheme).
@@ -224,14 +233,9 @@ pub struct LangevinIntegrator {
 impl LangevinIntegrator {
     /// Create a new Langevin integrator.
     pub fn new(temperature_k: f64, friction: f64, dt_fs: f64, seed: Option<u64>) -> Self {
-        use rand::SeedableRng;
-        let rng = match seed {
-            Some(s) => rand::rngs::StdRng::seed_from_u64(s),
-            None => rand::rngs::StdRng::from_entropy(),
-        };
         Self {
             config: LangevinConfig::new(temperature_k, friction, dt_fs),
-            rng,
+            rng: super::units::make_rng(seed),
         }
     }
 
@@ -279,17 +283,23 @@ impl LangevinIntegrator {
 
     /// Set target temperature.
     pub fn set_temperature(&mut self, temperature_k: f64) {
-        self.config = std::mem::take(&mut self.config).with_temperature(temperature_k);
+        validate_temperature(temperature_k);
+        self.config.temperature_k = temperature_k;
     }
 
     /// Set friction coefficient (1/fs).
     pub fn set_friction(&mut self, friction: f64) {
-        self.config = std::mem::take(&mut self.config).with_friction(friction);
+        validate_friction(friction);
+        self.config.friction_int = friction * units::INTERNAL_TO_FS;
+        self.config.recompute_coefficients();
     }
 
     /// Set time step (fs).
     pub fn set_dt(&mut self, dt_fs: f64) {
-        self.config = std::mem::take(&mut self.config).with_dt(dt_fs);
+        validate_dt(dt_fs);
+        self.config.dt_fs = dt_fs;
+        self.config.dt_int = dt_fs * units::FS_TO_INTERNAL;
+        self.config.recompute_coefficients();
     }
 }
 
