@@ -196,4 +196,84 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
       }
     }
   })
+
+  test(`face color mode buttons are visible and clickable`, async ({ page }) => {
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
+    await expect(diagram).toBeVisible()
+
+    // Open controls pane
+    await diagram.locator(`.legend-controls-btn`).click()
+    const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
+    await expect(controls).toBeVisible()
+
+    // Verify face color mode buttons exist
+    const mode_buttons = controls.locator(`.face-color-mode-buttons`)
+    await expect(mode_buttons).toBeVisible()
+
+    // Verify all 4 mode buttons are present
+    await expect(mode_buttons.getByText(`Uniform`)).toBeVisible()
+    await expect(mode_buttons.getByText(`Energy`)).toBeVisible()
+    await expect(mode_buttons.getByText(`Element`)).toBeVisible()
+    await expect(mode_buttons.getByText(`Index`)).toBeVisible()
+
+    // Default should be uniform (Uniform button active)
+    const uniform_btn = mode_buttons.getByText(`Uniform`)
+    await expect(uniform_btn).toHaveClass(/active/)
+  })
+
+  test(`face color mode switch changes canvas rendering`, async ({ page }) => {
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
+    const canvas = diagram.locator(`canvas`)
+    await expect(canvas).toBeVisible()
+
+    // Get initial canvas image data hash
+    const get_canvas_hash = () =>
+      canvas.evaluate((el) => {
+        const ctx = (el as HTMLCanvasElement).getContext(`2d`)
+        if (!ctx) return ``
+        const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
+        // Simple hash: sum of every 100th pixel
+        let hash = 0
+        for (let idx = 0; idx < data.length; idx += 400) hash += data[idx]
+        return hash.toString()
+      })
+
+    const initial_hash = await get_canvas_hash()
+
+    // Open controls and switch to facet_index mode
+    await diagram.locator(`.legend-controls-btn`).click()
+    const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
+    await controls.locator(`.face-color-mode-buttons`).getByText(`Index`).click()
+
+    // Verify canvas has changed
+    await expect(async () => {
+      const new_hash = await get_canvas_hash()
+      expect(new_hash).not.toBe(initial_hash)
+    }).toPass({ timeout: 5000 })
+  })
+
+  test(`uniform mode shows color picker, other modes hide it`, async ({ page }) => {
+    const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
+    await expect(diagram).toBeVisible()
+
+    await diagram.locator(`.legend-controls-btn`).click()
+    const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
+    await expect(controls).toBeVisible()
+
+    // In default (uniform) mode, color picker should be visible
+    const color_picker = controls.locator(`input[type="color"]`).first()
+    await expect(color_picker).toBeVisible()
+
+    // Switch to Index mode
+    await controls.locator(`.face-color-mode-buttons`).getByText(`Index`).click()
+
+    // Color picker should now be hidden
+    await expect(color_picker).toBeHidden()
+
+    // Switch back to Uniform mode
+    await controls.locator(`.face-color-mode-buttons`).getByText(`Uniform`).click()
+
+    // Color picker should be visible again
+    await expect(color_picker).toBeVisible()
+  })
 })
