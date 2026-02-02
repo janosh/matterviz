@@ -61,8 +61,10 @@ fn get_local_environment(
         .into_iter()
         .map(|neighbor| {
             let dict = PyDict::new(py);
+            dict.set_item("site_idx", neighbor.site_idx)?;
             dict.set_item("species", neighbor.species.to_string())?;
             dict.set_item("distance", neighbor.distance)?;
+            dict.set_item("image", neighbor.image)?;
             Ok(dict.unbind())
         })
         .collect()
@@ -83,9 +85,13 @@ fn get_neighbors(
 
     neighbors
         .into_iter()
-        .map(|(site_idx, distance, image)| {
+        .map(|(neighbor_idx, distance, image)| {
+            let species = struc.site_occupancies[neighbor_idx]
+                .dominant_species()
+                .to_string();
             let dict = PyDict::new(py);
-            dict.set_item("site_idx", site_idx)?;
+            dict.set_item("site_idx", neighbor_idx)?;
+            dict.set_item("species", species)?;
             dict.set_item("distance", distance)?;
             dict.set_item("image", image)?;
             Ok(dict.unbind())

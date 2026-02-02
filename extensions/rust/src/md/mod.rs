@@ -42,7 +42,9 @@ pub use langevin::{
 };
 pub use npt::{NPTConfig, NPTIntegrator, NPTState, NptStepError};
 pub use state::{MDState, init_velocities, kinetic_energy, remove_com_velocity, temperature};
-pub use thermostats::{NoseHooverChain, VelocityRescale, kinetic_energy_2x};
+pub use thermostats::{
+    ForcesLengthError, NoseHooverChain, ThermostatStepError, VelocityRescale, kinetic_energy_2x,
+};
 pub use units::{FS_TO_INTERNAL, INTERNAL_TIME_FS, INTERNAL_TO_FS, KB};
 pub use verlet::{
     try_velocity_verlet_step, velocity_verlet_finalize, velocity_verlet_init, velocity_verlet_step,

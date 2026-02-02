@@ -551,12 +551,16 @@ fn perturb(
     min_distance: Option<f64>,
     seed: Option<u64>,
 ) -> PyResult<Py<PyDict>> {
-    if distance < 0.0 {
-        return Err(PyValueError::new_err("distance must be non-negative"));
+    if !distance.is_finite() || distance < 0.0 {
+        return Err(PyValueError::new_err(
+            "distance must be finite and non-negative",
+        ));
     }
     if let Some(min_dist) = min_distance {
-        if min_dist < 0.0 {
-            return Err(PyValueError::new_err("min_distance must be non-negative"));
+        if !min_dist.is_finite() || min_dist < 0.0 {
+            return Err(PyValueError::new_err(
+                "min_distance must be finite and non-negative",
+            ));
         }
         if min_dist > distance {
             return Err(PyValueError::new_err("min_distance must be <= distance"));

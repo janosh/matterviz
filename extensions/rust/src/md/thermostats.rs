@@ -1,10 +1,69 @@
 //! Thermostats for NVT ensemble (Nosé-Hoover and Velocity Rescaling).
 
+use std::fmt;
+
 use nalgebra::Vector3;
 
 use super::langevin::box_muller_normal;
 use super::state::MDState;
 use super::units;
+
+// === Error Types ===
+
+/// Error type for thermostat step failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThermostatStepError<E> {
+    /// Force computation callback returned an error
+    Callback(E),
+    /// Forces vector has wrong length
+    ForcesLengthMismatch {
+        /// Expected number of force vectors
+        expected: usize,
+        /// Actual number of force vectors received
+        got: usize,
+    },
+}
+
+impl<E: fmt::Display> fmt::Display for ThermostatStepError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Callback(err) => write!(f, "Force computation failed: {err}"),
+            Self::ForcesLengthMismatch { expected, got } => {
+                write!(f, "Forces length mismatch: expected {expected}, got {got}")
+            }
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for ThermostatStepError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Callback(err) => Some(err),
+            Self::ForcesLengthMismatch { .. } => None,
+        }
+    }
+}
+
+/// Error for step_finalize when forces length is wrong.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForcesLengthError {
+    /// Expected number of force vectors
+    pub expected: usize,
+    /// Actual number of force vectors received
+    pub got: usize,
+}
+
+impl fmt::Display for ForcesLengthError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Forces length mismatch: expected {}, got {}",
+            self.expected, self.got
+        )
+    }
+}
+
+impl std::error::Error for ForcesLengthError {}
 
 // === Utilities ===
 
@@ -100,22 +159,34 @@ impl NoseHooverChain {
     /// Perform one NVT step using Nosé-Hoover chain.
     ///
     /// Uses the standard Nosé-Hoover equations with velocity Verlet.
+    ///
+    /// # Panics
+    /// Panics if `compute_forces` returns wrong number of forces.
     pub fn step<F>(&mut self, state: &mut MDState, mut compute_forces: F)
     where
         F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
     {
-        let _: Result<(), std::convert::Infallible> =
+        let result: Result<(), ThermostatStepError<std::convert::Infallible>> =
             self.try_step(state, |positions| Ok(compute_forces(positions)));
+        if let Err(ThermostatStepError::ForcesLengthMismatch { expected, got }) = result {
+            panic!("Forces length mismatch: expected {expected}, got {got}");
+        }
     }
 
     /// Perform one NVT step with fallible force computation.
     ///
-    /// If the force computation fails, the state is restored to its original
-    /// value before the step and the error is returned.
+    /// If the force computation fails or returns wrong number of forces,
+    /// the state is restored to its original value before the step and
+    /// the error is returned.
     ///
     /// # Errors
-    /// Returns the error from compute_forces if it fails.
-    pub fn try_step<F, E>(&mut self, state: &mut MDState, mut compute_forces: F) -> Result<(), E>
+    /// Returns `ThermostatStepError::Callback` if compute_forces fails, or
+    /// `ThermostatStepError::ForcesLengthMismatch` if forces have wrong length.
+    pub fn try_step<F, E>(
+        &mut self,
+        state: &mut MDState,
+        mut compute_forces: F,
+    ) -> Result<(), ThermostatStepError<E>>
     where
         F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
     {
@@ -157,15 +228,28 @@ impl NoseHooverChain {
         }
 
         // Compute new forces - if this fails, restore state and return error
-        match compute_forces(&state.positions) {
-            Ok(new_forces) => state.forces = new_forces,
+        let new_forces = match compute_forces(&state.positions) {
+            Ok(forces) => forces,
             Err(err) => {
                 *state = original_state;
                 self.xi = original_xi;
                 self.v_xi = original_v_xi;
-                return Err(err);
+                return Err(ThermostatStepError::Callback(err));
             }
+        };
+
+        // Validate forces length
+        let expected = state.positions.len();
+        if new_forces.len() != expected {
+            *state = original_state;
+            self.xi = original_xi;
+            self.v_xi = original_v_xi;
+            return Err(ThermostatStepError::ForcesLengthMismatch {
+                expected,
+                got: new_forces.len(),
+            });
         }
+        state.forces = new_forces;
 
         // Second half: update velocities with new forces
         for (idx, vel) in state.velocities.iter_mut().enumerate() {
@@ -250,7 +334,23 @@ impl NoseHooverChain {
     /// second thermostat half-step).
     ///
     /// Must be called after `step_init` with forces computed at the updated positions.
-    pub fn step_finalize(&mut self, state: &mut MDState, new_forces: &[Vector3<f64>]) {
+    ///
+    /// # Errors
+    /// Returns `ForcesLengthError` if `new_forces.len() != state.positions.len()`.
+    pub fn step_finalize(
+        &mut self,
+        state: &mut MDState,
+        new_forces: &[Vector3<f64>],
+    ) -> Result<(), ForcesLengthError> {
+        // Validate forces length
+        let expected = state.positions.len();
+        if new_forces.len() != expected {
+            return Err(ForcesLengthError {
+                expected,
+                got: new_forces.len(),
+            });
+        }
+
         let dt = self.dt_fs * units::FS_TO_INTERNAL;
         let dt2 = dt / 2.0;
         let dt4 = dt / 4.0;
@@ -279,6 +379,8 @@ impl NoseHooverChain {
 
         // Update thermostat position
         self.xi[0] += self.v_xi[0] * dt;
+
+        Ok(())
     }
 }
 
@@ -346,22 +448,34 @@ impl VelocityRescale {
     }
 
     /// Perform one NVT step using velocity rescaling.
+    ///
+    /// # Panics
+    /// Panics if `compute_forces` returns wrong number of forces.
     pub fn step<F>(&mut self, state: &mut MDState, mut compute_forces: F)
     where
         F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
     {
-        let _: Result<(), std::convert::Infallible> =
+        let result: Result<(), ThermostatStepError<std::convert::Infallible>> =
             self.try_step(state, |positions| Ok(compute_forces(positions)));
+        if let Err(ThermostatStepError::ForcesLengthMismatch { expected, got }) = result {
+            panic!("Forces length mismatch: expected {expected}, got {got}");
+        }
     }
 
     /// Perform one NVT step with fallible force computation.
     ///
-    /// If the force computation fails, the state is restored to its original
-    /// value before the step and the error is returned.
+    /// If the force computation fails or returns wrong number of forces,
+    /// the state is restored to its original value before the step and
+    /// the error is returned.
     ///
     /// # Errors
-    /// Returns the error from compute_forces if it fails.
-    pub fn try_step<F, E>(&mut self, state: &mut MDState, mut compute_forces: F) -> Result<(), E>
+    /// Returns `ThermostatStepError::Callback` if compute_forces fails, or
+    /// `ThermostatStepError::ForcesLengthMismatch` if forces have wrong length.
+    pub fn try_step<F, E>(
+        &mut self,
+        state: &mut MDState,
+        mut compute_forces: F,
+    ) -> Result<(), ThermostatStepError<E>>
     where
         F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
     {
@@ -378,13 +492,24 @@ impl VelocityRescale {
 
         // Compute new forces - if this fails, restore state and return error
         let old_forces = std::mem::take(&mut state.forces);
-        match compute_forces(&state.positions) {
-            Ok(new_forces) => state.forces = new_forces,
+        let new_forces = match compute_forces(&state.positions) {
+            Ok(forces) => forces,
             Err(err) => {
                 *state = original_state;
-                return Err(err);
+                return Err(ThermostatStepError::Callback(err));
             }
+        };
+
+        // Validate forces length
+        let expected = state.positions.len();
+        if new_forces.len() != expected {
+            *state = original_state;
+            return Err(ThermostatStepError::ForcesLengthMismatch {
+                expected,
+                got: new_forces.len(),
+            });
         }
+        state.forces = new_forces;
 
         // Velocity Verlet second half: update velocities
         for (idx, vel) in state.velocities.iter_mut().enumerate() {
@@ -459,7 +584,23 @@ impl VelocityRescale {
     /// Must be called after `step_init` with forces computed at the updated positions.
     /// Uses `state.forces` (old forces from before `step_init`) and `new_forces` for
     /// the velocity update, then applies stochastic velocity rescaling.
-    pub fn step_finalize(&mut self, state: &mut MDState, new_forces: &[Vector3<f64>]) {
+    ///
+    /// # Errors
+    /// Returns `ForcesLengthError` if `new_forces.len() != state.positions.len()`.
+    pub fn step_finalize(
+        &mut self,
+        state: &mut MDState,
+        new_forces: &[Vector3<f64>],
+    ) -> Result<(), ForcesLengthError> {
+        // Validate forces length
+        let expected = state.positions.len();
+        if new_forces.len() != expected {
+            return Err(ForcesLengthError {
+                expected,
+                got: new_forces.len(),
+            });
+        }
+
         let dt = self.dt_fs * units::FS_TO_INTERNAL;
 
         // Velocity Verlet second half: update velocities using average of old and new forces
@@ -500,5 +641,7 @@ impl VelocityRescale {
                 }
             }
         }
+
+        Ok(())
     }
 }

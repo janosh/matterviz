@@ -1,10 +1,11 @@
 //! FIRE and CellFIRE optimizer WASM bindings.
 
-use nalgebra::Vector3;
 use wasm_bindgen::prelude::*;
 
 use crate::optimizers;
 use crate::wasm_types::WasmResult;
+
+use super::helpers::{parse_flat_cell, parse_flat_vec3, validate_positive_f64};
 
 /// FIRE optimizer configuration.
 #[wasm_bindgen]
@@ -67,20 +68,12 @@ impl JsFireState {
     /// positions: flat array [x0, y0, z0, ...] in Angstrom
     /// config: optional FIRE configuration (uses defaults if not provided)
     ///
-    /// Returns an error if positions length is not a multiple of 3.
+    /// Returns an error if positions length is not a multiple of 3 or contains non-finite values.
     #[wasm_bindgen(constructor)]
     pub fn new(positions: Vec<f64>, config: Option<JsFireConfig>) -> Result<JsFireState, JsError> {
-        if !positions.len().is_multiple_of(3) {
-            return Err(JsError::new(&format!(
-                "positions length {} must be a multiple of 3",
-                positions.len()
-            )));
-        }
-        let pos_vec: Vec<Vector3<f64>> = positions
-            .chunks_exact(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-        let fire_config = config.map(|c| c.inner).unwrap_or_default();
+        let n_atoms = positions.len() / 3;
+        let pos_vec = parse_flat_vec3(&positions, n_atoms).map_err(|err| JsError::new(&err))?;
+        let fire_config = config.map(|cfg| cfg.inner).unwrap_or_default();
         let state = optimizers::FireState::new(pos_vec, &fire_config);
         Ok(JsFireState {
             inner: state,
@@ -132,19 +125,7 @@ impl JsFireState {
 pub fn fire_step_with_forces(state: &mut JsFireState, forces: Vec<f64>) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        let force_vec: Vec<Vector3<f64>> = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        let force_vec = parse_flat_vec3(&forces, n_atoms)?;
         state
             .inner
             .step(|_positions| force_vec.clone(), &state.config);
@@ -167,9 +148,9 @@ impl JsCellFireState {
     /// positions: flat array [x0, y0, z0, ...] in Angstrom
     /// cell: 9-element cell matrix (row-major)
     /// config: optional FIRE configuration
-    /// cell_factor: scaling factor for cell DOF (default: 1.0)
+    /// cell_factor: scaling factor for cell DOF (default: 1.0, must be positive)
     ///
-    /// Returns an error if positions length is not a multiple of 3 or cell is not 9 elements.
+    /// Returns an error if positions/cell contain non-finite values or cell_factor is invalid.
     #[wasm_bindgen(constructor)]
     pub fn new(
         positions: Vec<f64>,
@@ -177,26 +158,14 @@ impl JsCellFireState {
         config: Option<JsFireConfig>,
         cell_factor: Option<f64>,
     ) -> Result<JsCellFireState, JsError> {
-        if !positions.len().is_multiple_of(3) {
-            return Err(JsError::new(&format!(
-                "positions length {} must be a multiple of 3",
-                positions.len()
-            )));
-        }
-        if cell.len() != 9 {
-            return Err(JsError::new("cell must have 9 elements"));
-        }
-
-        let pos_vec: Vec<Vector3<f64>> = positions
-            .chunks_exact(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-        let cell_mat = nalgebra::Matrix3::new(
-            cell[0], cell[1], cell[2], cell[3], cell[4], cell[5], cell[6], cell[7], cell[8],
-        );
-        let fire_config = config.map(|c| c.inner).unwrap_or_default();
+        let n_atoms = positions.len() / 3;
+        let pos_vec = parse_flat_vec3(&positions, n_atoms).map_err(|err| JsError::new(&err))?;
+        let cell_mat = parse_flat_cell(Some(&cell))
+            .map_err(|err| JsError::new(&err))?
+            .unwrap();
         let factor = cell_factor.unwrap_or(1.0);
-
+        validate_positive_f64(factor, "cell_factor").map_err(|err| JsError::new(&err))?;
+        let fire_config = config.map(|cfg| cfg.inner).unwrap_or_default();
         Ok(JsCellFireState {
             inner: optimizers::CellFireState::new(pos_vec, cell_mat, &fire_config, factor),
             config: fire_config,
@@ -273,26 +242,8 @@ pub fn cell_fire_step_with_forces_and_stress(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.positions.len();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-        if stress.len() != 9 {
-            return Err("stress must have 9 elements".to_string());
-        }
-
-        let force_vec: Vec<Vector3<f64>> = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-        let stress_mat = nalgebra::Matrix3::new(
-            stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
-            stress[8],
-        );
-
+        let force_vec = parse_flat_vec3(&forces, n_atoms)?;
+        let stress_mat = parse_flat_cell(Some(&stress))?.unwrap();
         state
             .inner
             .step(|_, _| (force_vec.clone(), stress_mat), &state.config);

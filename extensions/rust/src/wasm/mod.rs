@@ -35,7 +35,7 @@ pub mod xrd;
 pub use cell::*;
 pub use composition::*;
 pub use coordination::{
-    get_average_coordination_number, get_coordination_number, get_coordination_numbers_wasm,
+    get_average_coordination_number, get_coordination_number, get_coordination_numbers,
 };
 pub use defects::*;
 pub use elastic::*;

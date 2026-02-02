@@ -56,15 +56,6 @@ impl PyFireConfig {
                 )));
             }
         }
-        // Validate dt_max >= dt_start when both provided
-        if let (Some(start), Some(max)) = (dt_start, dt_max) {
-            if max < start {
-                return Err(PyValueError::new_err(format!(
-                    "dt_max ({max}) must be >= dt_start ({start})"
-                )));
-            }
-        }
-
         let mut config = optimizers::FireConfig::default();
         if let Some(val) = dt_start {
             config.dt_start = val;
@@ -78,6 +69,15 @@ impl PyFireConfig {
         if let Some(val) = max_step {
             config.max_step = val;
         }
+
+        // Validate dt_max >= dt_start on final config (not just when both inputs are Some)
+        if config.dt_max < config.dt_start {
+            return Err(PyValueError::new_err(format!(
+                "dt_max ({}) must be >= dt_start ({})",
+                config.dt_max, config.dt_start
+            )));
+        }
+
         Ok(PyFireConfig { inner: config })
     }
 

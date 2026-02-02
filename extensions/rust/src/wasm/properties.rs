@@ -29,12 +29,14 @@ pub fn get_density(structure: JsCrystal) -> WasmResult<f64> {
 pub fn get_structure_metadata(structure: JsCrystal) -> WasmResult<JsStructureMetadata> {
     structure
         .to_structure()
-        .map(|struc| {
+        .and_then(|struc| {
+            let num_sites = u32::try_from(struc.num_sites())
+                .map_err(|_| format!("num_sites {} exceeds u32::MAX", struc.num_sites()))?;
             let comp = struc.composition();
             let lengths = struc.lattice.lengths();
             let angles = struc.lattice.angles();
-            JsStructureMetadata {
-                num_sites: struc.num_sites() as u32,
+            Ok(JsStructureMetadata {
+                num_sites,
                 formula: comp.reduced_formula(),
                 formula_anonymous: comp.anonymous_formula(),
                 formula_hill: comp.hill_formula(),
@@ -43,7 +45,7 @@ pub fn get_structure_metadata(structure: JsCrystal) -> WasmResult<JsStructureMet
                 lattice_params: [lengths.x, lengths.y, lengths.z],
                 lattice_angles: [angles.x, angles.y, angles.z],
                 is_ordered: struc.is_ordered(),
-            }
+            })
         })
         .into()
 }

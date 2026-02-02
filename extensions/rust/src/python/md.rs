@@ -254,18 +254,24 @@ impl PyLangevinIntegrator {
     }
 
     /// Set target temperature.
-    fn set_temperature(&mut self, temperature_k: f64) {
+    fn set_temperature(&mut self, temperature_k: f64) -> PyResult<()> {
+        validate_temperature(temperature_k)?;
         self.inner.set_temperature(temperature_k);
+        Ok(())
     }
 
     /// Set friction coefficient.
-    fn set_friction(&mut self, friction: f64) {
+    fn set_friction(&mut self, friction: f64) -> PyResult<()> {
+        validate_positive_f64(friction, "friction")?;
         self.inner.set_friction(friction);
+        Ok(())
     }
 
     /// Set time step.
-    fn set_dt(&mut self, dt: f64) {
+    fn set_dt(&mut self, dt: f64) -> PyResult<()> {
+        validate_positive_f64(dt, "timestep dt")?;
         self.inner.set_dt(dt);
+        Ok(())
     }
 }
 
@@ -336,8 +342,10 @@ impl PyNoseHooverChain {
     }
 
     /// Set target temperature.
-    fn set_temperature(&mut self, target_temp: f64) {
+    fn set_temperature(&mut self, target_temp: f64) -> PyResult<()> {
+        validate_positive_f64(target_temp, "target_temp")?;
         self.inner.set_temperature(target_temp);
+        Ok(())
     }
 }
 
@@ -381,8 +389,10 @@ impl PyVelocityRescale {
     }
 
     /// Set target temperature.
-    fn set_temperature(&mut self, target_temp: f64) {
+    fn set_temperature(&mut self, target_temp: f64) -> PyResult<()> {
+        validate_positive_f64(target_temp, "target_temp")?;
         self.inner.set_temperature(target_temp);
+        Ok(())
     }
 }
 

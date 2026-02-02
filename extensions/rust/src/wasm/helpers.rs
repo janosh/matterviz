@@ -31,6 +31,15 @@ pub fn validate_positive_f64(value: f64, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate degrees of freedom is positive.
+#[inline]
+pub fn validate_n_dof(n_dof: usize) -> Result<(), String> {
+    if n_dof == 0 {
+        return Err("n_dof must be positive (number of degrees of freedom)".to_string());
+    }
+    Ok(())
+}
+
 /// Validate a non-negative f64 parameter (finite and >= 0).
 #[inline]
 pub fn validate_nonneg_f64(value: f64, name: &str) -> Result<(), String> {

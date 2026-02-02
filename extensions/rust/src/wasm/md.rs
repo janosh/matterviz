@@ -7,7 +7,7 @@ use crate::md;
 use crate::wasm_types::WasmResult;
 
 use super::helpers::{
-    parse_flat_cell, parse_flat_vec3, validate_positive_f64, validate_temperature,
+    parse_flat_cell, parse_flat_vec3, validate_n_dof, validate_positive_f64, validate_temperature,
 };
 
 /// Parse flat 9-element stress tensor to Matrix3.
@@ -67,25 +67,11 @@ impl JsMDState {
     }
 
     /// Set positions from flat array.
-    ///
-    /// # Panics
-    /// Panics if length doesn't match `n_atoms * 3`.
     #[wasm_bindgen(setter)]
-    pub fn set_positions(&mut self, positions: Vec<f64>) {
-        let n_atoms = self.inner.num_atoms();
-        let expected = n_atoms * 3;
-        assert_eq!(
-            positions.len(),
-            expected,
-            "positions: expected {} elements (3 * {} atoms), got {}",
-            expected,
-            n_atoms,
-            positions.len()
-        );
-        self.inner.positions = positions
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
+    pub fn set_positions(&mut self, positions: Vec<f64>) -> Result<(), JsError> {
+        self.inner.positions =
+            parse_flat_vec3(&positions, self.inner.num_atoms()).map_err(|e| JsError::new(&e))?;
+        Ok(())
     }
 
     /// Get velocities as flat array.
@@ -99,25 +85,11 @@ impl JsMDState {
     }
 
     /// Set velocities from flat array.
-    ///
-    /// # Panics
-    /// Panics if length doesn't match `n_atoms * 3`.
     #[wasm_bindgen(setter)]
-    pub fn set_velocities(&mut self, velocities: Vec<f64>) {
-        let n_atoms = self.inner.num_atoms();
-        let expected = n_atoms * 3;
-        assert_eq!(
-            velocities.len(),
-            expected,
-            "velocities: expected {} elements (3 * {} atoms), got {}",
-            expected,
-            n_atoms,
-            velocities.len()
-        );
-        self.inner.velocities = velocities
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
+    pub fn set_velocities(&mut self, velocities: Vec<f64>) -> Result<(), JsError> {
+        self.inner.velocities =
+            parse_flat_vec3(&velocities, self.inner.num_atoms()).map_err(|e| JsError::new(&e))?;
+        Ok(())
     }
 
     /// Get forces as flat array.
@@ -131,25 +103,11 @@ impl JsMDState {
     }
 
     /// Set forces from flat array.
-    ///
-    /// # Panics
-    /// Panics if length doesn't match `n_atoms * 3`.
     #[wasm_bindgen(setter)]
-    pub fn set_forces(&mut self, forces: Vec<f64>) {
-        let n_atoms = self.inner.num_atoms();
-        let expected = n_atoms * 3;
-        assert_eq!(
-            forces.len(),
-            expected,
-            "forces: expected {} elements (3 * {} atoms), got {}",
-            expected,
-            n_atoms,
-            forces.len()
-        );
-        self.inner.forces = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
+    pub fn set_forces(&mut self, forces: Vec<f64>) -> Result<(), JsError> {
+        self.inner.forces =
+            parse_flat_vec3(&forces, self.inner.num_atoms()).map_err(|e| JsError::new(&e))?;
+        Ok(())
     }
 
     /// Get masses.
@@ -166,8 +124,14 @@ impl JsMDState {
 
     /// Initialize velocities from Maxwell-Boltzmann distribution.
     #[wasm_bindgen]
-    pub fn init_velocities(&mut self, temperature_k: f64, seed: Option<u64>) {
+    pub fn init_velocities(
+        &mut self,
+        temperature_k: f64,
+        seed: Option<u64>,
+    ) -> Result<(), JsError> {
+        validate_temperature(temperature_k).map_err(|err| JsError::new(&err))?;
         self.inner.init_velocities(temperature_k, seed);
+        Ok(())
     }
 
     /// Compute kinetic energy in eV.
@@ -294,20 +258,26 @@ impl JsLangevinIntegrator {
 
     /// Set target temperature.
     #[wasm_bindgen]
-    pub fn set_temperature(&mut self, temperature_k: f64) {
+    pub fn set_temperature(&mut self, temperature_k: f64) -> Result<(), JsError> {
+        validate_temperature(temperature_k).map_err(|err| JsError::new(&err))?;
         self.inner.set_temperature(temperature_k);
+        Ok(())
     }
 
     /// Set friction coefficient.
     #[wasm_bindgen]
-    pub fn set_friction(&mut self, friction: f64) {
+    pub fn set_friction(&mut self, friction: f64) -> Result<(), JsError> {
+        validate_positive_f64(friction, "friction").map_err(|err| JsError::new(&err))?;
         self.inner.set_friction(friction);
+        Ok(())
     }
 
     /// Set timestep.
     #[wasm_bindgen]
-    pub fn set_dt(&mut self, dt: f64) {
+    pub fn set_dt(&mut self, dt: f64) -> Result<(), JsError> {
+        validate_positive_f64(dt, "timestep dt").map_err(|err| JsError::new(&err))?;
         self.inner.set_dt(dt);
+        Ok(())
     }
 }
 
@@ -347,7 +317,10 @@ pub fn langevin_step_finalize(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let force_vec = parse_flat_vec3(&new_forces, state.inner.num_atoms())?;
-        integrator.inner.step_finalize(&mut state.inner, &force_vec);
+        integrator
+            .inner
+            .step_finalize(&mut state.inner, &force_vec)
+            .map_err(|err| err.to_string())?;
         Ok(())
     })();
     result.into()
@@ -375,7 +348,10 @@ pub fn langevin_step_with_forces(
         state.inner.forces = parse_flat_vec3(&forces, n_atoms)?;
         integrator.inner.step_init(&mut state.inner);
         let force_vec = parse_flat_vec3(&new_forces, n_atoms)?;
-        integrator.inner.step_finalize(&mut state.inner, &force_vec);
+        integrator
+            .inner
+            .step_finalize(&mut state.inner, &force_vec)
+            .map_err(|err| err.to_string())?;
         Ok(())
     })();
     result.into()
@@ -396,7 +372,7 @@ impl JsNoseHooverChain {
     /// target_temp: target temperature in Kelvin (must be non-negative)
     /// tau: coupling time constant in femtoseconds (must be positive)
     /// dt: timestep in femtoseconds (must be positive)
-    /// n_dof: number of degrees of freedom (typically 3 * n_atoms - 3)
+    /// n_dof: number of degrees of freedom (typically 3 * n_atoms - 3, must be > 0)
     #[wasm_bindgen(constructor)]
     pub fn new(
         target_temp: f64,
@@ -408,6 +384,7 @@ impl JsNoseHooverChain {
         validate_positive_f64(tau, "coupling time constant tau")
             .map_err(|err| JsError::new(&err))?;
         validate_positive_f64(dt, "timestep dt").map_err(|err| JsError::new(&err))?;
+        validate_n_dof(n_dof).map_err(|err| JsError::new(&err))?;
         Ok(JsNoseHooverChain {
             inner: md::NoseHooverChain::new(target_temp, tau, dt, n_dof),
         })
@@ -415,8 +392,10 @@ impl JsNoseHooverChain {
 
     /// Set target temperature.
     #[wasm_bindgen]
-    pub fn set_temperature(&mut self, target_temp: f64) {
+    pub fn set_temperature(&mut self, target_temp: f64) -> Result<(), JsError> {
+        validate_temperature(target_temp).map_err(|err| JsError::new(&err))?;
         self.inner.set_temperature(target_temp);
+        Ok(())
     }
 }
 
@@ -456,7 +435,10 @@ pub fn nose_hoover_step_finalize(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let force_vec = parse_flat_vec3(&new_forces, state.inner.num_atoms())?;
-        thermostat.inner.step_finalize(&mut state.inner, &force_vec);
+        thermostat
+            .inner
+            .step_finalize(&mut state.inner, &force_vec)
+            .map_err(|err| err.to_string())?;
         Ok(())
     })();
     result.into()
@@ -481,7 +463,10 @@ pub fn nose_hoover_step_with_forces(
         state.inner.forces = parse_flat_vec3(&forces, n_atoms)?;
         thermostat.inner.step_init(&mut state.inner);
         let force_vec = parse_flat_vec3(&new_forces, n_atoms)?;
-        thermostat.inner.step_finalize(&mut state.inner, &force_vec);
+        thermostat
+            .inner
+            .step_finalize(&mut state.inner, &force_vec)
+            .map_err(|err| err.to_string())?;
         Ok(())
     })();
     result.into()
@@ -500,7 +485,7 @@ impl JsVelocityRescale {
     /// target_temp: target temperature in Kelvin (must be non-negative)
     /// tau: coupling time constant in femtoseconds (must be positive)
     /// dt: timestep in femtoseconds (must be positive)
-    /// n_dof: number of degrees of freedom
+    /// n_dof: number of degrees of freedom (must be > 0)
     /// seed: optional RNG seed
     #[wasm_bindgen(constructor)]
     pub fn new(
@@ -514,6 +499,7 @@ impl JsVelocityRescale {
         validate_positive_f64(tau, "coupling time constant tau")
             .map_err(|err| JsError::new(&err))?;
         validate_positive_f64(dt, "timestep dt").map_err(|err| JsError::new(&err))?;
+        validate_n_dof(n_dof).map_err(|err| JsError::new(&err))?;
         Ok(JsVelocityRescale {
             inner: md::VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
         })
@@ -521,8 +507,10 @@ impl JsVelocityRescale {
 
     /// Set target temperature.
     #[wasm_bindgen]
-    pub fn set_temperature(&mut self, target_temp: f64) {
+    pub fn set_temperature(&mut self, target_temp: f64) -> Result<(), JsError> {
+        validate_temperature(target_temp).map_err(|err| JsError::new(&err))?;
         self.inner.set_temperature(target_temp);
+        Ok(())
     }
 }
 
@@ -561,7 +549,10 @@ pub fn velocity_rescale_step_finalize(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let force_vec = parse_flat_vec3(&new_forces, state.inner.num_atoms())?;
-        thermostat.inner.step_finalize(&mut state.inner, &force_vec);
+        thermostat
+            .inner
+            .step_finalize(&mut state.inner, &force_vec)
+            .map_err(|err| err.to_string())?;
         Ok(())
     })();
     result.into()
@@ -586,7 +577,10 @@ pub fn velocity_rescale_step_with_forces(
         state.inner.forces = parse_flat_vec3(&forces, n_atoms)?;
         thermostat.inner.step_init(&mut state.inner);
         let force_vec = parse_flat_vec3(&new_forces, n_atoms)?;
-        thermostat.inner.step_finalize(&mut state.inner, &force_vec);
+        thermostat
+            .inner
+            .step_finalize(&mut state.inner, &force_vec)
+            .map_err(|err| err.to_string())?;
         Ok(())
     })();
     result.into()

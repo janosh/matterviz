@@ -10,6 +10,24 @@ use crate::io::structure_to_pymatgen_json;
 
 use super::helpers::{StructureJson, json_to_pydict, parse_struct, structure_to_pydict};
 
+/// Validate slab generation parameters.
+fn validate_slab_params(min_slab_size: f64, min_vacuum_size: f64, symprec: f64) -> PyResult<()> {
+    if !min_slab_size.is_finite() || min_slab_size <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_slab_size must be positive and finite",
+        ));
+    }
+    if !min_vacuum_size.is_finite() || min_vacuum_size <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_vacuum_size must be positive and finite",
+        ));
+    }
+    if !symprec.is_finite() || symprec <= 0.0 {
+        return Err(PyValueError::new_err("symprec must be positive and finite"));
+    }
+    Ok(())
+}
+
 /// Generate all slabs for a given Miller index (all terminations).
 #[pyfunction]
 #[pyo3(signature = (structure, miller_index, min_slab_size = 10.0, min_vacuum_size = 10.0, center_slab = true, in_unit_planes = false, symprec = 0.01))]
@@ -23,6 +41,7 @@ fn generate_slabs(
     in_unit_planes: bool,
     symprec: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    validate_slab_params(min_slab_size, min_vacuum_size, symprec)?;
     let struc = parse_struct(&structure)?;
     let config = crate::structure::SlabConfig {
         miller_index,

@@ -318,13 +318,30 @@ impl LangevinIntegrator {
     /// Complete a Langevin step after `step_init` (final B: velocity half-step with new forces).
     ///
     /// Must be called after `step_init` with forces computed at the updated positions.
-    pub fn step_finalize(&self, state: &mut MDState, new_forces: &[Vector3<f64>]) {
+    ///
+    /// # Errors
+    /// Returns `ForcesLengthError` if `new_forces.len() != state.positions.len()`.
+    pub fn step_finalize(
+        &self,
+        state: &mut MDState,
+        new_forces: &[Vector3<f64>],
+    ) -> Result<(), super::thermostats::ForcesLengthError> {
+        // Validate forces length
+        let expected = state.positions.len();
+        if new_forces.len() != expected {
+            return Err(super::thermostats::ForcesLengthError {
+                expected,
+                got: new_forces.len(),
+            });
+        }
+
         state.forces = new_forces.to_vec();
         let half_dt = 0.5 * self.config.dt_int;
         for idx in 0..state.num_atoms() {
             let accel = state.forces[idx] / state.masses[idx];
             state.velocities[idx] += half_dt * accel;
         }
+        Ok(())
     }
 }
 
