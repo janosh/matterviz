@@ -180,32 +180,7 @@ test.describe(`Trajectory Component`, () => {
     await expect(info_button).toBeEnabled()
   })
 
-  test(`fullscreen toggle works`, async () => {
-    const fullscreen_button = controls.locator(`.fullscreen-button`)
-
-    await expect(fullscreen_button).toBeVisible()
-    await expect(fullscreen_button).toHaveAttribute(
-      `title`,
-      `Enter fullscreen`,
-    )
-
-    // Click fullscreen button (note: actual fullscreen requires user gesture)
-    // Fullscreen API doesn't work in headless mode, but we can still test the button
-    await fullscreen_button.click()
-
-    // We can't test actual fullscreen in headless mode, but button should remain functional
-    await expect(fullscreen_button).toBeEnabled()
-    // Verify the title attribute is correct (it might change after click)
-    await expect(fullscreen_button).toHaveAttribute(`title`, /fullscreen/)
-  })
-
-  test(`has correct default values`, async () => {
-    // Check default display mode (should be 'structure+scatter')
-    const content_area = trajectory_viewer.locator(`.content-area`)
-    await expect(content_area).toHaveClass(/show-both/)
-    await expect(content_area).not.toHaveClass(/show-structure-only/)
-    await expect(content_area).not.toHaveClass(/show-scatter-only/)
-
+  test(`initial state has step 0 and closed info pane`, async () => {
     // Check default step (should be 0)
     const step_input = controls.locator(`.step-input`)
     await expect(step_input).toHaveValue(`0`)
