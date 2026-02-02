@@ -66,6 +66,9 @@ pub struct MDState {
 
 impl MDState {
     /// Create a new MD state with zero velocities and forces.
+    ///
+    /// # Panics
+    /// Panics if `masses.len() != positions.len()` or if any mass is non-positive.
     pub fn new(positions: Vec<Vector3<f64>>, masses: Vec<f64>) -> Self {
         let n_atoms = positions.len();
         assert_eq!(
@@ -73,6 +76,12 @@ impl MDState {
             n_atoms,
             "masses.len() must match positions.len()"
         );
+        for (idx, &mass) in masses.iter().enumerate() {
+            assert!(
+                mass > 0.0 && mass.is_finite(),
+                "Mass at index {idx} must be positive and finite, got {mass}"
+            );
+        }
         Self {
             positions,
             velocities: vec![Vector3::zeros(); n_atoms],
@@ -306,14 +315,42 @@ pub struct LangevinConfig {
     c2: f64,
 }
 
+// Validation helpers for LangevinConfig parameters
+fn validate_temperature(temperature_k: f64) {
+    assert!(
+        temperature_k >= 0.0 && temperature_k.is_finite(),
+        "LangevinConfig requires temperature_k >= 0 and finite (got {temperature_k})"
+    );
+}
+
+fn validate_friction(friction: f64) {
+    assert!(
+        friction >= 0.0 && friction.is_finite(),
+        "LangevinConfig requires friction >= 0 and finite (got {friction})"
+    );
+}
+
+fn validate_dt(dt_fs: f64) {
+    assert!(
+        dt_fs > 0.0 && dt_fs.is_finite(),
+        "LangevinConfig requires dt_fs > 0 and finite (got {dt_fs})"
+    );
+}
+
 impl LangevinConfig {
     /// Create Langevin configuration.
     ///
     /// # Arguments
-    /// * `temperature_k` - Target temperature in Kelvin
-    /// * `friction` - Friction coefficient in 1/fs (typical: 0.001 to 0.01)
-    /// * `dt_fs` - Time step in fs
+    /// * `temperature_k` - Target temperature in Kelvin (must be >= 0)
+    /// * `friction` - Friction coefficient in 1/fs (must be >= 0; typical: 0.001 to 0.01)
+    /// * `dt_fs` - Time step in fs (must be > 0)
+    ///
+    /// # Panics
+    /// Panics if `temperature_k < 0`, `friction < 0`, or `dt_fs <= 0`.
     pub fn new(temperature_k: f64, friction: f64, dt_fs: f64) -> Self {
+        validate_temperature(temperature_k);
+        validate_friction(friction);
+        validate_dt(dt_fs);
         let dt_int = dt_fs * units::FS_TO_INTERNAL;
         let friction_int = friction * units::INTERNAL_TO_FS;
         let c1 = (-friction_int * dt_int).exp();
@@ -329,13 +366,21 @@ impl LangevinConfig {
     }
 
     /// Update temperature.
+    ///
+    /// # Panics
+    /// Panics if `temperature_k < 0` or not finite.
     pub fn with_temperature(mut self, temperature_k: f64) -> Self {
+        validate_temperature(temperature_k);
         self.temperature_k = temperature_k;
         self
     }
 
     /// Update friction coefficient (1/fs).
+    ///
+    /// # Panics
+    /// Panics if `friction < 0` or not finite.
     pub fn with_friction(mut self, friction: f64) -> Self {
+        validate_friction(friction);
         self.friction_int = friction * units::INTERNAL_TO_FS;
         self.c1 = (-self.friction_int * self.dt_int).exp();
         self.c2 = (1.0 - self.c1 * self.c1).sqrt();
@@ -343,7 +388,11 @@ impl LangevinConfig {
     }
 
     /// Update time step (fs).
+    ///
+    /// # Panics
+    /// Panics if `dt_fs <= 0` or not finite.
     pub fn with_dt(mut self, dt_fs: f64) -> Self {
+        validate_dt(dt_fs);
         self.dt_fs = dt_fs;
         self.dt_int = dt_fs * units::FS_TO_INTERNAL;
         // Recompute c1, c2 using stored friction_int (avoids numerically unstable ln)

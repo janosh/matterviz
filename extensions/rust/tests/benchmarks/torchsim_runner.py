@@ -26,17 +26,31 @@ def get_torchsim_mace_model(device: str = "cpu") -> "MaceModel":
     calc = mace_mp(model="medium", device=device, default_dtype="float64")
     model_path = getattr(calc, "model_path", None) or getattr(calc, "models_path", None)
     if model_path is None:
-        model_path = os.path.expanduser("~/.cache/mace")
-        candidates = glob.glob(f"{model_path}/*model*")
+        # Fallback: scan cache directory for model files
+        cache_dir = os.path.expanduser("~/.cache/mace")
+        candidates = glob.glob(f"{cache_dir}/*model*")
         if not candidates:
-            raise RuntimeError("Could not find MACE model path")
-        model_path = max(candidates, key=os.path.getmtime)
+            raise RuntimeError(
+                f"Could not find MACE model path. No *model* files in {cache_dir}"
+            )
+        if len(candidates) > 1:
+            raise RuntimeError(
+                f"Multiple MACE models found in {cache_dir}: "
+                f"{[os.path.basename(c) for c in candidates]}. "
+                f"Set model_path explicitly to avoid ambiguity."
+            )
+        model_path = candidates[0]
 
     return MaceModel(model=model_path, device=torch.device(device), dtype=torch.float64)
 
 
 def structure_to_simstate(structure: Structure, device: str = "cpu") -> "SimState":
-    """Convert pymatgen Structure to torch-sim SimState."""
+    """Convert pymatgen Structure to torch-sim SimState.
+
+    Note: PBC is hardcoded to [True, True, True] for bulk periodic systems.
+    This is appropriate for the bulk crystal benchmarks in this module.
+    For molecules or surfaces, modify pbc accordingly.
+    """
     from torch_sim import SimState
 
     atoms = structure_to_atoms(structure)
