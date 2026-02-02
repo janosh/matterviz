@@ -35,6 +35,20 @@ fn potential_result_to_js(result: &potentials::PotentialResult) -> JsPotentialRe
     }
 }
 
+/// Validate Lennard-Jones parameters.
+fn validate_lj_params(sigma: f64, epsilon: f64, cutoff: Option<f64>) -> Result<(), String> {
+    if sigma <= 0.0 || !sigma.is_finite() {
+        return Err("sigma must be positive and finite".to_string());
+    }
+    if !epsilon.is_finite() {
+        return Err("epsilon must be finite".to_string());
+    }
+    if cutoff.is_some_and(|cut| cut <= 0.0 || !cut.is_finite()) {
+        return Err("cutoff must be positive and finite".to_string());
+    }
+    Ok(())
+}
+
 #[wasm_bindgen]
 pub fn compute_lennard_jones(
     positions: Vec<f64>,
@@ -48,21 +62,11 @@ pub fn compute_lennard_jones(
     compute_stress: bool,
 ) -> WasmResult<JsPotentialResult> {
     let result: Result<JsPotentialResult, String> = (|| {
-        if sigma <= 0.0 {
-            return Err("sigma must be positive".to_string());
-        }
-        if !sigma.is_finite() || !epsilon.is_finite() {
-            return Err("sigma and epsilon must be finite".to_string());
-        }
-        if cutoff.is_some_and(|cut| cut <= 0.0 || !cut.is_finite()) {
-            return Err("cutoff must be positive and finite".to_string());
-        }
-
+        validate_lj_params(sigma, epsilon, cutoff)?;
         let n_atoms = positions.len() / 3;
         let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
         let cell_mat = parse_flat_cell(cell.as_deref())?;
         let pbc = [pbc_x, pbc_y, pbc_z];
-
         let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
         let result =
             potentials::compute_lj_full(&pos_vec, cell_mat.as_ref(), pbc, &params, compute_stress)
@@ -84,21 +88,11 @@ pub fn compute_lennard_jones_forces(
     cutoff: Option<f64>,
 ) -> WasmResult<Vec<f64>> {
     let result: Result<Vec<f64>, String> = (|| {
-        if sigma <= 0.0 || !sigma.is_finite() {
-            return Err("sigma must be positive and finite".to_string());
-        }
-        if !epsilon.is_finite() {
-            return Err("epsilon must be finite".to_string());
-        }
-        if cutoff.is_some_and(|cut| cut <= 0.0 || !cut.is_finite()) {
-            return Err("cutoff must be positive and finite".to_string());
-        }
-
+        validate_lj_params(sigma, epsilon, cutoff)?;
         let n_atoms = positions.len() / 3;
         let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
         let cell_mat = parse_flat_cell(cell.as_deref())?;
         let pbc = [pbc_x, pbc_y, pbc_z];
-
         let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
         let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc, &params)
             .map_err(|e| e.to_string())?;

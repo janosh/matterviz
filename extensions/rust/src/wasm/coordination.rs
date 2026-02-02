@@ -8,7 +8,7 @@ use crate::wasm_types::{JsCrystal, WasmResult};
 
 /// Get coordination numbers for all sites using cutoff distance.
 #[wasm_bindgen]
-pub fn get_coordination_numbers_wasm(structure: JsCrystal, cutoff: f64) -> WasmResult<Vec<usize>> {
+pub fn get_coordination_numbers(structure: JsCrystal, cutoff: f64) -> WasmResult<Vec<usize>> {
     if let Err(err) = validate_cutoff(cutoff) {
         return WasmResult::err(&err);
     }

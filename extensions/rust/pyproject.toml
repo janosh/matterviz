@@ -42,6 +42,7 @@ managed = false
 [tool.ruff]
 target-version = "py311"
 output-format = "concise"
+extend-exclude = ["**/typed.py"]  # auto-generated file
 
 [tool.ruff.lint]
 select = ["ALL"]

@@ -6,24 +6,15 @@ use wasm_bindgen::prelude::*;
 use crate::md;
 use crate::wasm_types::WasmResult;
 
-use super::helpers::{parse_flat_vec3, validate_positive_f64, validate_temperature};
-
-/// Parse flat forces array to Vec<Vector3<f64>>, validating length matches n_atoms.
-#[inline]
-fn parse_forces(forces: &[f64], n_atoms: usize) -> Result<Vec<Vector3<f64>>, String> {
-    parse_flat_vec3(forces, n_atoms)
-}
+use super::helpers::{
+    parse_flat_cell, parse_flat_vec3, validate_positive_f64, validate_temperature,
+};
 
 /// Parse flat 9-element stress tensor to Matrix3.
 #[inline]
 fn parse_stress(stress: &[f64]) -> Result<nalgebra::Matrix3<f64>, String> {
-    if stress.len() != 9 {
-        return Err("stress must have 9 elements".to_string());
-    }
-    Ok(nalgebra::Matrix3::new(
-        stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
-        stress[8],
-    ))
+    // Reuse parse_flat_cell logic but unwrap the Option
+    parse_flat_cell(Some(stress)).map(|opt| opt.unwrap())
 }
 
 /// MD simulation state for WASM.
@@ -232,7 +223,7 @@ pub fn md_velocity_verlet_step(
     let result: Result<(), String> = (|| {
         validate_positive_f64(dt_fs, "dt_fs")?;
         let n_atoms = state.inner.num_atoms();
-        let force_vec = parse_forces(&forces, n_atoms)?;
+        let force_vec = parse_flat_vec3(&forces, n_atoms)?;
         state.inner.set_forces(&force_vec);
         // Velocity Verlet: half-step velocity, full-step position
         let dt_internal = dt_fs * md::FS_TO_INTERNAL;
@@ -258,7 +249,7 @@ pub fn md_velocity_verlet_finalize(
     let result: Result<(), String> = (|| {
         validate_positive_f64(dt_fs, "dt_fs")?;
         let n_atoms = state.inner.num_atoms();
-        let force_vec = parse_forces(&new_forces, n_atoms)?;
+        let force_vec = parse_flat_vec3(&new_forces, n_atoms)?;
         state.inner.set_forces(&force_vec);
         let dt_internal = dt_fs * md::FS_TO_INTERNAL;
         let half_dt = 0.5 * dt_internal;
@@ -337,7 +328,7 @@ pub fn langevin_step_init(
     forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        state.inner.forces = parse_forces(&forces, state.inner.num_atoms())?;
+        state.inner.forces = parse_flat_vec3(&forces, state.inner.num_atoms())?;
         integrator.inner.step_init(&mut state.inner);
         Ok(())
     })();
@@ -355,7 +346,7 @@ pub fn langevin_step_finalize(
     new_forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let force_vec = parse_forces(&new_forces, state.inner.num_atoms())?;
+        let force_vec = parse_flat_vec3(&new_forces, state.inner.num_atoms())?;
         integrator.inner.step_finalize(&mut state.inner, &force_vec);
         Ok(())
     })();
@@ -381,9 +372,9 @@ pub fn langevin_step_with_forces(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.num_atoms();
-        state.inner.forces = parse_forces(&forces, n_atoms)?;
+        state.inner.forces = parse_flat_vec3(&forces, n_atoms)?;
         integrator.inner.step_init(&mut state.inner);
-        let force_vec = parse_forces(&new_forces, n_atoms)?;
+        let force_vec = parse_flat_vec3(&new_forces, n_atoms)?;
         integrator.inner.step_finalize(&mut state.inner, &force_vec);
         Ok(())
     })();
@@ -446,7 +437,7 @@ pub fn nose_hoover_step_init(
     forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        state.inner.forces = parse_forces(&forces, state.inner.num_atoms())?;
+        state.inner.forces = parse_flat_vec3(&forces, state.inner.num_atoms())?;
         thermostat.inner.step_init(&mut state.inner);
         Ok(())
     })();
@@ -464,7 +455,7 @@ pub fn nose_hoover_step_finalize(
     new_forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let force_vec = parse_forces(&new_forces, state.inner.num_atoms())?;
+        let force_vec = parse_flat_vec3(&new_forces, state.inner.num_atoms())?;
         thermostat.inner.step_finalize(&mut state.inner, &force_vec);
         Ok(())
     })();
@@ -487,9 +478,9 @@ pub fn nose_hoover_step_with_forces(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.num_atoms();
-        state.inner.forces = parse_forces(&forces, n_atoms)?;
+        state.inner.forces = parse_flat_vec3(&forces, n_atoms)?;
         thermostat.inner.step_init(&mut state.inner);
-        let force_vec = parse_forces(&new_forces, n_atoms)?;
+        let force_vec = parse_flat_vec3(&new_forces, n_atoms)?;
         thermostat.inner.step_finalize(&mut state.inner, &force_vec);
         Ok(())
     })();
@@ -551,7 +542,7 @@ pub fn velocity_rescale_step_init(
     forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        state.inner.forces = parse_forces(&forces, state.inner.num_atoms())?;
+        state.inner.forces = parse_flat_vec3(&forces, state.inner.num_atoms())?;
         thermostat.inner.step_init(&mut state.inner);
         Ok(())
     })();
@@ -569,7 +560,7 @@ pub fn velocity_rescale_step_finalize(
     new_forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let force_vec = parse_forces(&new_forces, state.inner.num_atoms())?;
+        let force_vec = parse_flat_vec3(&new_forces, state.inner.num_atoms())?;
         thermostat.inner.step_finalize(&mut state.inner, &force_vec);
         Ok(())
     })();
@@ -592,9 +583,9 @@ pub fn velocity_rescale_step_with_forces(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.num_atoms();
-        state.inner.forces = parse_forces(&forces, n_atoms)?;
+        state.inner.forces = parse_flat_vec3(&forces, n_atoms)?;
         thermostat.inner.step_init(&mut state.inner);
-        let force_vec = parse_forces(&new_forces, n_atoms)?;
+        let force_vec = parse_flat_vec3(&new_forces, n_atoms)?;
         thermostat.inner.step_finalize(&mut state.inner, &force_vec);
         Ok(())
     })();
@@ -790,7 +781,7 @@ pub fn npt_step_init(
     stress: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        state.inner.forces = parse_forces(&forces, state.inner.num_atoms())?;
+        state.inner.forces = parse_flat_vec3(&forces, state.inner.num_atoms())?;
         let stress_mat = parse_stress(&stress)?;
         integrator.inner.step_init(&mut state.inner, &stress_mat);
         Ok(())
@@ -811,7 +802,7 @@ pub fn npt_step_finalize(
     new_stress: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let force_vec = parse_forces(&new_forces, state.inner.num_atoms())?;
+        let force_vec = parse_flat_vec3(&new_forces, state.inner.num_atoms())?;
         let stress_mat = parse_stress(&new_stress)?;
         integrator
             .inner
@@ -840,10 +831,10 @@ pub fn npt_step_with_forces_and_stress(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.num_atoms();
-        state.inner.forces = parse_forces(&forces, n_atoms)?;
+        state.inner.forces = parse_flat_vec3(&forces, n_atoms)?;
         let stress_mat = parse_stress(&stress)?;
         integrator.inner.step_init(&mut state.inner, &stress_mat);
-        let new_force_vec = parse_forces(&new_forces, n_atoms)?;
+        let new_force_vec = parse_flat_vec3(&new_forces, n_atoms)?;
         let new_stress_mat = parse_stress(&new_stress)?;
         integrator
             .inner
