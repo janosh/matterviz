@@ -79,9 +79,7 @@ fn check_site_idx(structure: &Structure, site_idx: usize) {
     );
 }
 
-// ============================================================================
-// Cutoff-Based Coordination Methods
-// ============================================================================
+// === Cutoff-Based Coordination Methods ===
 
 /// Get coordination numbers for all sites using a distance cutoff.
 ///
@@ -227,9 +225,7 @@ pub fn get_neighbors(
     result
 }
 
-// ============================================================================
-// Voronoi-Based Coordination Methods
-// ============================================================================
+// === Voronoi-Based Coordination Methods ===
 
 // Voronoi-based methods are not available on wasm32 due to meshless_voronoi dependency
 #[cfg(not(target_arch = "wasm32"))]

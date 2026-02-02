@@ -2,16 +2,35 @@ import * as lib from '$lib'
 import * as labels from '$lib/labels'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-test(`src/lib/icons/index.ts re-exports all components`, () => {
-  const components = Object.keys(import.meta.glob(`$lib/*.svelte`)).map(
-    (path) => path.split(`/`).pop()?.split(`.`).shift(),
-  )
-  expect(Object.keys(lib)).toEqual(expect.arrayContaining(components))
+test(`library exports all Svelte components from $lib/*.svelte`, () => {
+  const svelte_files = Object.keys(import.meta.glob(`$lib/*.svelte`))
+    .map((path) => path.split(`/`).pop()?.split(`.`).shift())
+    .filter((name): name is string => name !== undefined)
+  const lib_exports = Object.keys(lib)
+
+  // Verify each Svelte file has a corresponding export
+  for (const component of svelte_files) {
+    expect(lib_exports).toContain(component)
+  }
+
+  // Verify some key components are exported correctly (spot check)
+  expect(lib.PeriodicTable).toBeDefined()
+  expect(lib.Structure).toBeDefined()
+  expect(lib.ElementTile).toBeDefined()
 })
 
-test(`categories and element_symbols are exported`, () => {
+test(`element labels and categories are consistent with element_data`, () => {
+  // Verify all 10 element categories exist
   expect(labels.ELEMENT_CATEGORIES).toHaveLength(10)
+  expect(labels.ELEMENT_CATEGORIES).toContain(`alkali metal`)
+  expect(labels.ELEMENT_CATEGORIES).toContain(`noble gas`)
+  expect(labels.ELEMENT_CATEGORIES).toContain(`transition metal`)
+
+  // Verify symbol count matches element data
   expect(labels.ELEM_SYMBOLS).toHaveLength(lib.element_data.length)
+  expect(labels.ELEM_SYMBOLS).toContain(`H`)
+  expect(labels.ELEM_SYMBOLS).toContain(`He`)
+  expect(labels.ELEM_SYMBOLS).toContain(`U`)
 })
 
 test(`is_binary function detects binary content`, () => {
