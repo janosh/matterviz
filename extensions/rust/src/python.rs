@@ -6353,7 +6353,7 @@ fn cell_to_matrix3(cell: Option<[[f64; 3]; 3]>) -> Option<Matrix3<f64>> {
 /// Args:
 ///     positions: Nx3 array of atomic positions in Angstrom
 ///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
-///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True]*3 if cell provided, else [False]*3)
 ///     sigma: LJ sigma parameter in Angstrom (default: 3.4 for Ar)
 ///     epsilon: LJ epsilon parameter in eV (default: 0.0103 for Ar)
 ///     cutoff: Optional cutoff distance in Angstrom
@@ -6391,7 +6391,7 @@ fn compute_lennard_jones(
 /// Args:
 ///     positions: Nx3 array of atomic positions in Angstrom
 ///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
-///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True]*3 if cell provided, else [False]*3)
 ///     sigma: LJ sigma parameter in Angstrom (default: 3.4 for Ar)
 ///     epsilon: LJ epsilon parameter in eV (default: 0.0103 for Ar)
 ///     cutoff: Optional cutoff distance in Angstrom
@@ -6430,7 +6430,7 @@ fn compute_lennard_jones_forces(
 /// Args:
 ///     positions: Nx3 array of atomic positions in Angstrom
 ///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
-///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True]*3 if cell provided, else [False]*3)
 ///     d: Well depth in eV (default: 1.0)
 ///     alpha: Width parameter in 1/Angstrom (default: 1.0)
 ///     r0: Equilibrium distance in Angstrom (default: 1.0)
@@ -6487,7 +6487,7 @@ fn compute_morse(
 /// Args:
 ///     positions: Nx3 array of atomic positions in Angstrom
 ///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
-///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True]*3 if cell provided, else [False]*3)
 ///     sigma: Length scale in Angstrom (default: 1.0)
 ///     epsilon: Energy scale in eV (default: 1.0)
 ///     alpha: Exponent (default: 12.0, use 2 for soft spheres)
@@ -6546,7 +6546,7 @@ fn compute_soft_sphere(
 ///     bonds: List of bonds, each as [i, j, k, r0] where i,j are atom indices,
 ///            k is spring constant (eV/Å²), r0 is equilibrium distance (Å)
 ///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
-///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True]*3 if cell provided, else [False]*3)
 ///     compute_stress: Whether to compute stress tensor (default: False)
 ///
 /// Returns:
