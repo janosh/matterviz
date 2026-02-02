@@ -29,12 +29,6 @@ test.describe(`Lattice Component Tests`, () => {
     )
   })
 
-  test(`renders lattice with default properties`, async ({ page }) => {
-    // Canvas readiness already guaranteed by beforeEach, just verify visibility
-    const canvas = page.locator(`#test-structure canvas`)
-    await expect(canvas).toBeVisible()
-  })
-
   test(`lattice vectors checkbox toggles visibility`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
     const checkbox = page.locator(
