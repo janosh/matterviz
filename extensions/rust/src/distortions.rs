@@ -331,17 +331,20 @@ pub fn rattle_structure(
             let new_frac =
                 wrap_frac_coords_pbc(&structure.lattice.get_fractional_coord(&new_cart), pbc);
 
-            // Check for collisions with already-placed atoms
-            let mut collision = false;
-            for other_frac in new_frac_coords.iter().take(site_idx) {
-                let other_cart = structure.lattice.get_cartesian_coord(other_frac);
-                let (dist_sq, _) =
-                    minimum_image_distance_squared(&new_cart, &other_cart, lattice_matrix, pbc);
-                if dist_sq < min_dist_sq {
-                    collision = true;
-                    break;
-                }
-            }
+            // Check for collisions with all other atoms (already-rattled use new positions,
+            // not-yet-rattled are still at original positions in new_frac_coords)
+            let collision = new_frac_coords
+                .iter()
+                .enumerate()
+                .any(|(other_idx, other_frac)| {
+                    if other_idx == site_idx {
+                        return false; // Skip self
+                    }
+                    let other_cart = structure.lattice.get_cartesian_coord(other_frac);
+                    let (dist_sq, _) =
+                        minimum_image_distance_squared(&new_cart, &other_cart, lattice_matrix, pbc);
+                    dist_sq < min_dist_sq
+                });
 
             if !collision {
                 new_frac_coords[site_idx] = new_frac;

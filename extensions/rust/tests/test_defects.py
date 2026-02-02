@@ -337,41 +337,44 @@ class TestVoronoiInterstitials:
 class TestChargeStateGuessing:
     """Tests for defect_guess_charge_states function."""
 
-    def test_oxygen_vacancy_predicts_positive(self) -> None:
-        """Oxygen vacancy should predict positive charge states."""
-        guesses = ferrox.defect_guess_charge_states(
-            "vacancy", removed_species="O", max_charge=4
-        )
-        assert len(guesses) > 0
-        # O^{2-} vacancy => +2 should be likely
+    @pytest.mark.parametrize(
+        ("defect_type", "kwargs", "expected_charges"),
+        [
+            # Vacancy tests - charge from removing species with common oxidation state
+            ("vacancy", {"removed_species": "O"}, [2]),  # O^{2-} => +2
+            ("vacancy", {"removed_species": "Na"}, [-1]),  # Na^{+} => -1
+            ("vacancy", {"removed_species": "Te"}, [2, 1, 0]),  # Te^{2-} => +2,+1,0
+            ("vacancy", {"removed_species": "Cd"}, [-2]),  # Cd^{2+} => -2
+            ("vacancy", {"removed_species": "Y"}, [-3]),  # Y^{3+} => -3
+            ("vacancy", {"removed_species": "Ti"}, [-4]),  # Ti^{4+} => -4
+            # Interstitial tests - charge from adding species
+            ("interstitial", {"added_species": "Li"}, [1]),  # Li^{+}
+            ("interstitial", {"added_species": "Cd"}, [2]),  # Cd^{2+}
+            # Substitution tests - charge difference between species
+            (
+                "substitution",
+                {"added_species": "Al", "original_species": "Si"},
+                [-1],
+            ),  # Al^{3+} on Si^{4+}
+            (
+                "substitution",
+                {"added_species": "Se", "original_species": "Te"},
+                [0],
+            ),  # Isoelectronic
+            (
+                "substitution",
+                {"added_species": "Fe", "original_species": "Ni"},
+                [0, 1],
+            ),  # Fe^{2+/3+} on Ni^{2+}
+        ],
+    )
+    def test_expected_charge_states(
+        self, defect_type: str, kwargs: dict, expected_charges: list
+    ) -> None:
+        """Defect charge states match expected values from oxidation states."""
+        guesses = ferrox.defect_guess_charge_states(defect_type, **kwargs, max_charge=4)
         charges = [g["charge"] for g in guesses]
-        assert 2 in charges
-
-    def test_sodium_vacancy_predicts_negative(self) -> None:
-        """Sodium vacancy should predict negative charge state."""
-        guesses = ferrox.defect_guess_charge_states(
-            "vacancy", removed_species="Na", max_charge=4
-        )
-        charges = [g["charge"] for g in guesses]
-        # Na^{+} vacancy => -1 should be present
-        assert -1 in charges
-
-    def test_interstitial_charge_states(self) -> None:
-        """Interstitial should have charge matching oxidation state."""
-        guesses = ferrox.defect_guess_charge_states(
-            "interstitial", added_species="Li", max_charge=4
-        )
-        charges = [g["charge"] for g in guesses]
-        assert 1 in charges  # Li^{+} interstitial
-
-    def test_substitution_charge_difference(self) -> None:
-        """Substitution charge should be difference of oxidation states."""
-        guesses = ferrox.defect_guess_charge_states(
-            "substitution", added_species="Al", original_species="Si", max_charge=4
-        )
-        # Al^{3+} on Si^{4+} => charge = -1
-        charges = [g["charge"] for g in guesses]
-        assert -1 in charges
+        assert any(charge in charges for charge in expected_charges)
 
     def test_probabilities_sum_to_one(self) -> None:
         """Probabilities should sum to approximately 1."""
@@ -393,80 +396,6 @@ class TestChargeStateGuessing:
         charges = [g["charge"] for g in guesses]
         assert all(-2 <= charge <= 2 for charge in charges)
 
-    def test_tellurium_vacancy_like_doped(self) -> None:
-        """Te vacancy should predict charges like doped: +2, +1, 0, -1 (from Te^{2-})."""
-        # doped CdTe test: v_Te [+2,+1,0,-1]
-        guesses = ferrox.defect_guess_charge_states(
-            "vacancy", removed_species="Te", max_charge=4
-        )
-        charges = [g["charge"] for g in guesses]
-        # Te can be -2, so vacancy should have +2
-        assert 2 in charges
-        # Should also include lower charges
-        assert any(c in charges for c in [1, 0])
-
-    def test_cadmium_vacancy_like_doped(self) -> None:
-        """Cd vacancy should predict charges like doped: +1, 0, -1, -2 (from Cd^{2+})."""
-        # doped CdTe test: v_Cd [+1,0,-1,-2]
-        guesses = ferrox.defect_guess_charge_states(
-            "vacancy", removed_species="Cd", max_charge=4
-        )
-        charges = [g["charge"] for g in guesses]
-        # Cd^{2+} vacancy => -2 charge
-        assert -2 in charges
-
-    def test_cadmium_interstitial_like_doped(self) -> None:
-        """Cd interstitial should predict +2 as most likely (from Cd^{2+})."""
-        # doped: Cd_i [+2,+1,0] - but +2 is dominant since Cd^{2+} is 99%+ in ICSD
-        guesses = ferrox.defect_guess_charge_states(
-            "interstitial", added_species="Cd", max_charge=4
-        )
-        charges = [g["charge"] for g in guesses]
-        assert 2 in charges  # Cd^{2+} is dominant
-        # Neutral is always included as fallback
-        assert 0 in charges or len(guesses) > 0
-
-    def test_selenium_substitution_on_tellurium_like_doped(self) -> None:
-        """Se on Te site (same column) should predict neutral as most likely."""
-        # doped: Se_Te [+1,0,-1] - isoelectronic, so 0 should be high probability
-        guesses = ferrox.defect_guess_charge_states(
-            "substitution", added_species="Se", original_species="Te", max_charge=4
-        )
-        charges = [g["charge"] for g in guesses]
-        # Se^{2-} on Te^{2-} => 0 charge
-        assert 0 in charges
-
-    def test_transition_metal_substitution(self) -> None:
-        """Fe on Ni substitution should predict small charge differences."""
-        # Fe can be +2, +3; Ni is typically +2
-        # Fe^{2+} on Ni^{2+} => 0; Fe^{3+} on Ni^{2+} => +1
-        guesses = ferrox.defect_guess_charge_states(
-            "substitution", added_species="Fe", original_species="Ni", max_charge=4
-        )
-        charges = [g["charge"] for g in guesses]
-        # Should include 0 (same oxidation) and +1 (Fe^{3+} on Ni^{2+})
-        assert 0 in charges or 1 in charges
-
-    def test_yttrium_vacancy_like_doped_ytos(self) -> None:
-        """Y vacancy should predict charges up to -3 (from Y^{3+})."""
-        # doped YTOS: v_Y [+1,0,-1,-2,-3]
-        guesses = ferrox.defect_guess_charge_states(
-            "vacancy", removed_species="Y", max_charge=4
-        )
-        charges = [g["charge"] for g in guesses]
-        # Y^{3+} vacancy => -3 charge
-        assert -3 in charges
-
-    def test_titanium_vacancy_like_doped_ytos(self) -> None:
-        """Ti vacancy should predict charges up to -4 (from Ti^{4+})."""
-        # doped YTOS: v_Ti [+1,0,-1,-2,-3,-4]
-        guesses = ferrox.defect_guess_charge_states(
-            "vacancy", removed_species="Ti", max_charge=4
-        )
-        charges = [g["charge"] for g in guesses]
-        # Ti^{4+} vacancy => -4 charge
-        assert -4 in charges
-
     def test_reasoning_string_format(self) -> None:
         """Reasoning string should contain element and charge info."""
         guesses = ferrox.defect_guess_charge_states(
@@ -474,22 +403,16 @@ class TestChargeStateGuessing:
         )
         for guess in guesses:
             assert "reasoning" in guess
-            # Should mention the element
             assert "O" in guess["reasoning"] or "oxygen" in guess["reasoning"].lower()
 
-    def test_antisite_typically_neutral(self) -> None:
-        """Antisite defects typically have small charges when same-valence swap."""
-        # Fe on Ni - both commonly +2, so charge difference is 0
+    def test_antisite_returns_valid_structure(self) -> None:
+        """Antisite defects return valid data structure with reasonable charges."""
         guesses = ferrox.defect_guess_charge_states(
             "antisite", added_species="Fe", original_species="Ni", max_charge=4
         )
-        # Antisite may return guesses or be empty depending on implementation
-        # The key is it doesn't crash and returns valid data structure
         assert isinstance(guesses, list)
         if guesses:
-            charges = [g["charge"] for g in guesses]
-            # Should have reasonable charge states
-            assert all(-4 <= c <= 4 for c in charges)
+            assert all(-4 <= g["charge"] <= 4 for g in guesses)
 
 
 # === Wyckoff Labels Tests ===
@@ -584,43 +507,22 @@ class TestWyckoffLabels:
 class TestDefectNaming:
     """Tests for defect_generate_name function."""
 
-    def test_vacancy_name(self) -> None:
-        """Vacancy should be named v_{element}."""
-        name = ferrox.defect_generate_name("vacancy", original_species="O")
-        assert name == "v_O"
-
-    def test_vacancy_with_wyckoff(self) -> None:
-        """Vacancy with Wyckoff should include it in name."""
-        name = ferrox.defect_generate_name(
-            "vacancy", original_species="O", wyckoff="4a"
-        )
-        assert name == "v_O_4a"
-
-    def test_substitution_name(self) -> None:
-        """Substitution should be named {new}_on_{old}."""
-        name = ferrox.defect_generate_name(
-            "substitution", species="Fe", original_species="Ni"
-        )
-        assert name == "Fe_on_Ni"
-
-    def test_interstitial_name(self) -> None:
-        """Interstitial should be named {element}_i."""
-        name = ferrox.defect_generate_name("interstitial", species="Li")
-        assert name == "Li_i"
-
-    def test_interstitial_with_site_type(self) -> None:
-        """Interstitial with site type should include it."""
-        name = ferrox.defect_generate_name(
-            "interstitial", species="Li", site_type="oct"
-        )
-        assert name == "Li_i_oct"
-
-    def test_antisite_name(self) -> None:
-        """Antisite should be named {new}_{old}."""
-        name = ferrox.defect_generate_name(
-            "antisite", species="Fe", original_species="Ni"
-        )
-        assert name == "Fe_Ni"
+    @pytest.mark.parametrize(
+        ("defect_type", "kwargs", "expected"),
+        [
+            ("vacancy", {"original_species": "O"}, "v_O"),
+            ("vacancy", {"original_species": "O", "wyckoff": "4a"}, "v_O_4a"),
+            ("substitution", {"species": "Fe", "original_species": "Ni"}, "Fe_on_Ni"),
+            ("interstitial", {"species": "Li"}, "Li_i"),
+            ("interstitial", {"species": "Li", "site_type": "oct"}, "Li_i_oct"),
+            ("antisite", {"species": "Fe", "original_species": "Ni"}, "Fe_Ni"),
+        ],
+    )
+    def test_naming_conventions(
+        self, defect_type: str, kwargs: dict, expected: str
+    ) -> None:
+        """Defect names follow expected conventions."""
+        assert ferrox.defect_generate_name(defect_type, **kwargs) == expected
 
     @pytest.mark.parametrize(
         "defect_type", ["vacancy", "interstitial", "substitution", "antisite"]

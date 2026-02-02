@@ -8,6 +8,7 @@
 
 use crate::error::{FerroxError, Result};
 use crate::lattice::Lattice;
+use crate::pbc::wrap_frac_coord;
 use nalgebra::{Matrix3, Vector3};
 
 // === Constants ===
@@ -189,16 +190,11 @@ pub fn wrap_to_half(coord: f64) -> f64 {
 
 /// Wrap a fractional coordinate to the range [0, 1).
 ///
-/// # Arguments
-///
-/// * `coord` - The fractional coordinate value
-///
-/// # Returns
-///
-/// The wrapped coordinate in [0, 1).
+/// Delegates to [`crate::pbc::wrap_frac_coord`] which handles negative inputs
+/// and floating-point edge cases correctly.
 #[inline]
 pub fn wrap_to_unit(coord: f64) -> f64 {
-    coord - coord.floor()
+    wrap_frac_coord(coord)
 }
 
 /// Wrap all fractional positions to the unit cell [0, 1)^3.
