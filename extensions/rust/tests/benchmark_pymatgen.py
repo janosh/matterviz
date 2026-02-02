@@ -32,7 +32,7 @@ from test_pymatgen_compat import (
 )
 
 try:
-    from ferrox.structure import StructureMatcher as RustMatcher
+    from ferrox import StructureMatcher as RustMatcher
 except ImportError:
     print("ERROR: ferrox not installed. Run: maturin develop --features python")
     raise SystemExit(1)

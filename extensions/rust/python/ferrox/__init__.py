@@ -70,5 +70,5 @@ from ferrox._ferrox import (
 
 # Re-export commonly used classes at top level for convenience
 # Users can import as: from ferrox import StructureMatcher
-# Or via submodule: from ferrox.structure import StructureMatcher
+# Or via attribute access: ferrox.structure.StructureMatcher
 StructureMatcher = structure.StructureMatcher

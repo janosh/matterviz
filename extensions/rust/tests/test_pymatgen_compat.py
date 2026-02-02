@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 try:
-    from ferrox.structure import StructureMatcher as RustMatcher
+    from ferrox import StructureMatcher as RustMatcher
 except ImportError:
     pytest.skip(
         "ferrox not installed. Run: maturin develop --features python",
