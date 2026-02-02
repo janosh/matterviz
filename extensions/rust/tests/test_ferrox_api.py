@@ -258,8 +258,8 @@ class TestSymmetryFunctions:
         hall = ferrox.get_hall_number(fcc_cu_json)
         assert 1 <= hall <= 530, f"Hall number {hall} outside valid range [1, 530]"
         # Hall numbers 523-529 are all settings of Fm-3m (space group 225)
-        assert 523 <= hall <= 529 or hall > 0, (
-            f"Hall number {hall} may not correspond to Fm-3m (expected 523-529)"
+        assert 523 <= hall <= 529, (
+            f"Hall number {hall} does not correspond to Fm-3m (expected 523-529)"
         )
 
     def test_wyckoff_and_site_symmetry(self, fcc_cu_json: str) -> None:

@@ -1,8 +1,17 @@
-"""Shared types for benchmark runners."""
+"""Shared types and utilities for benchmark runners."""
 
 from dataclasses import dataclass
 
 from .timing import TimingResult
+
+
+def safe_divide(numerator: float | None, denominator: float | None) -> float | None:
+    """Safely divide two values, returning None if either is None or denominator is ~0."""
+    if numerator is None or denominator is None:
+        return None
+    if abs(denominator) < 1e-9:
+        return None
+    return numerator / denominator
 
 
 @dataclass

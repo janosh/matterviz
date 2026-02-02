@@ -1989,6 +1989,14 @@ fn parse_flat_cell(data: Option<&[f64]>) -> Result<Option<nalgebra::Matrix3<f64>
             if cell.len() != 9 {
                 return Err(format!("Cell must have 9 elements, got {}", cell.len()));
             }
+            if let Some(idx) = cell.iter().position(|v| !v.is_finite()) {
+                let row = idx / 3;
+                let col = idx % 3;
+                return Err(format!(
+                    "cell[{row}][{col}] must be finite, got {}",
+                    cell[idx]
+                ));
+            }
             Ok(Some(nalgebra::Matrix3::new(
                 cell[0], cell[1], cell[2], cell[3], cell[4], cell[5], cell[6], cell[7], cell[8],
             )))

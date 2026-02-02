@@ -3,9 +3,9 @@ import * as labels from '$lib/labels'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 test(`library exports all Svelte components from $lib/*.svelte`, () => {
-  const svelte_files = Object.keys(import.meta.glob(`$lib/*.svelte`)).map(
-    (path) => path.split(`/`).pop()?.split(`.`).shift(),
-  )
+  const svelte_files = Object.keys(import.meta.glob(`$lib/*.svelte`))
+    .map((path) => path.split(`/`).pop()?.split(`.`).shift())
+    .filter((name): name is string => name !== undefined)
   const lib_exports = Object.keys(lib)
 
   // Verify each Svelte file has a corresponding export

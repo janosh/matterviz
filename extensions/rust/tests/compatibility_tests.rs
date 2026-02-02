@@ -78,10 +78,63 @@ fn perturb_structure(s: &Structure, max_displacement: f64) -> Structure {
 // === Basic Sanity Tests ===
 
 #[test]
-fn test_identical_structures_match() {
-    let s = make_cubic(Element::Fe, 4.0);
+fn test_identical_structures_match_all_lattice_types() {
+    // Consolidated test: verify identical structures match for all lattice types.
+    // This replaces 7 separate tests that all tested the same property.
     let matcher = StructureMatcher::new();
-    assert!(matcher.fit(&s, &s), "Identical structures should match");
+
+    // Cubic (simple)
+    let cubic = make_cubic(Element::Fe, 4.0);
+    assert!(matcher.fit(&cubic, &cubic), "Identical cubic should match");
+
+    // BCC
+    let bcc = make_bcc(Element::Fe, 2.87);
+    assert!(matcher.fit(&bcc, &bcc), "Identical BCC should match");
+
+    // FCC
+    let fcc = make_fcc(Element::Cu, 3.6);
+    assert!(matcher.fit(&fcc, &fcc), "Identical FCC should match");
+
+    // Rocksalt
+    let rocksalt = make_rocksalt(Element::Na, Element::Cl, 5.64);
+    assert!(
+        matcher.fit(&rocksalt, &rocksalt),
+        "Identical rocksalt should match"
+    );
+
+    // Hexagonal
+    let hex_lattice = Lattice::hexagonal(3.2, 5.2);
+    let hex = Structure::new(
+        hex_lattice,
+        vec![Species::neutral(Element::Ti), Species::neutral(Element::Ti)],
+        vec![
+            Vector3::new(1.0 / 3.0, 2.0 / 3.0, 0.25),
+            Vector3::new(2.0 / 3.0, 1.0 / 3.0, 0.75),
+        ],
+    );
+    assert!(matcher.fit(&hex, &hex), "Identical hexagonal should match");
+
+    // Orthorhombic
+    let ortho = Structure::new(
+        Lattice::orthorhombic(3.0, 4.0, 5.0),
+        vec![Species::neutral(Element::Si)],
+        vec![Vector3::new(0.0, 0.0, 0.0)],
+    );
+    assert!(
+        matcher.fit(&ortho, &ortho),
+        "Identical orthorhombic should match"
+    );
+
+    // Triclinic
+    let triclinic = Structure::new(
+        Lattice::from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0),
+        vec![Species::neutral(Element::Ca)],
+        vec![Vector3::new(0.0, 0.0, 0.0)],
+    );
+    assert!(
+        matcher.fit(&triclinic, &triclinic),
+        "Identical triclinic should match"
+    );
 }
 
 #[test]
@@ -144,39 +197,6 @@ fn test_different_site_counts_no_match() {
 }
 
 #[test]
-fn test_bcc_structures() {
-    let s1 = make_bcc(Element::Fe, 2.87);
-    let s2 = make_bcc(Element::Fe, 2.87);
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit(&s1, &s2),
-        "Identical BCC structures should match"
-    );
-}
-
-#[test]
-fn test_fcc_structures() {
-    let s1 = make_fcc(Element::Cu, 3.6);
-    let s2 = make_fcc(Element::Cu, 3.6);
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit(&s1, &s2),
-        "Identical FCC structures should match"
-    );
-}
-
-#[test]
-fn test_rocksalt_structures() {
-    let s1 = make_rocksalt(Element::Na, Element::Cl, 5.64);
-    let s2 = make_rocksalt(Element::Na, Element::Cl, 5.64);
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit(&s1, &s2),
-        "Identical rocksalt structures should match"
-    );
-}
-
-#[test]
 fn test_different_rocksalt_no_match() {
     let s1 = make_rocksalt(Element::Na, Element::Cl, 5.64);
     let s2 = make_rocksalt(Element::Mg, Element::O, 4.21);
@@ -217,56 +237,6 @@ fn test_get_rms_dist_perturbed() {
     assert!(
         rms < 0.1,
         "RMS should be small for slightly perturbed (max_disp=0.02)"
-    );
-}
-
-// === Lattice Type Tests ===
-
-#[test]
-fn test_hexagonal_lattice() {
-    let lattice = Lattice::hexagonal(3.2, 5.2);
-    let species = vec![Species::neutral(Element::Ti), Species::neutral(Element::Ti)];
-    let frac_coords = vec![
-        Vector3::new(1.0 / 3.0, 2.0 / 3.0, 0.25),
-        Vector3::new(2.0 / 3.0, 1.0 / 3.0, 0.75),
-    ];
-    let s1 = Structure::new(lattice.clone(), species.clone(), frac_coords.clone());
-    let s2 = Structure::new(lattice, species, frac_coords);
-
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit(&s1, &s2),
-        "Identical hexagonal structures should match"
-    );
-}
-
-#[test]
-fn test_orthorhombic_lattice() {
-    let lattice = Lattice::orthorhombic(3.0, 4.0, 5.0);
-    let species = vec![Species::neutral(Element::Si)];
-    let frac_coords = vec![Vector3::new(0.0, 0.0, 0.0)];
-    let s1 = Structure::new(lattice.clone(), species.clone(), frac_coords.clone());
-    let s2 = Structure::new(lattice, species, frac_coords);
-
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit(&s1, &s2),
-        "Identical orthorhombic structures should match"
-    );
-}
-
-#[test]
-fn test_triclinic_lattice() {
-    let lattice = Lattice::from_parameters(3.0, 4.0, 5.0, 80.0, 85.0, 95.0);
-    let species = vec![Species::neutral(Element::Ca)];
-    let frac_coords = vec![Vector3::new(0.0, 0.0, 0.0)];
-    let s1 = Structure::new(lattice.clone(), species.clone(), frac_coords.clone());
-    let s2 = Structure::new(lattice, species, frac_coords);
-
-    let matcher = StructureMatcher::new();
-    assert!(
-        matcher.fit(&s1, &s2),
-        "Identical triclinic structures should match"
     );
 }
 

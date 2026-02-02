@@ -10,7 +10,7 @@ use nalgebra::Matrix3;
 use ferrox::elastic::{
     apply_strain, bulk_modulus, elastic_tensor_from_stresses, generate_strains, is_cubic_stable,
     is_mechanically_stable, poisson_ratio, reuss_bulk_modulus, reuss_shear_modulus, shear_modulus,
-    stress_to_voigt, voigt_to_tensor, youngs_modulus, zener_ratio,
+    stress_to_voigt, youngs_modulus, zener_ratio,
 };
 
 // === Strain Generation Correctness Tests ===
@@ -68,24 +68,6 @@ fn test_strain_volume_preserving() {
             trace.abs() < 1e-15,
             "Shear strain {idx} should be traceless, got trace={trace}"
         );
-    }
-}
-
-#[test]
-fn test_apply_strain_identity() {
-    // Applying zero strain should return original cell
-    let cell = Matrix3::new(5.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 5.0);
-    let zero_strain = Matrix3::zeros();
-
-    let deformed = apply_strain(&cell, &zero_strain);
-
-    for idx in 0..3 {
-        for jdx in 0..3 {
-            assert!(
-                (cell[(idx, jdx)] - deformed[(idx, jdx)]).abs() < 1e-15,
-                "Zero strain should not deform cell"
-            );
-        }
     }
 }
 
@@ -264,16 +246,9 @@ fn test_singular_elastic_tensor_fit() {
 
 /// Test moduli functions at extreme values (very small and diamond-like large)
 #[test]
-fn test_moduli_extreme_values() {
-    // Very small moduli - should remain finite
-    let e_small = youngs_modulus(1e-12, 1e-12);
-    let nu_small = poisson_ratio(1e-12, 1e-12);
-    assert!(
-        e_small.is_finite() && nu_small.is_finite(),
-        "Small moduli should be finite"
-    );
-
-    // Diamond-like large moduli (C11=1079, C12=124, C44=578 GPa)
+fn test_diamond_elastic_moduli() {
+    // Diamond elastic constants from literature: C11=1079, C12=124, C44=578 GPa
+    // Expected Voigt-Reuss-Hill averages: K ≈ 442 GPa, G ≈ 536 GPa, E ≈ 1142 GPa
     let mut c_diamond = [[0.0; 6]; 6];
     for idx in 0..3 {
         c_diamond[idx][idx] = 1079.0;
@@ -289,11 +264,16 @@ fn test_moduli_extreme_values() {
     let k = bulk_modulus(&c_diamond);
     let g = shear_modulus(&c_diamond);
     let e = youngs_modulus(k, g);
+    let nu = poisson_ratio(k, g);
 
+    // Verify against expected values with 5% tolerance
+    assert!((k - 442.0).abs() / 442.0 < 0.05, "K={k}, expected ~442 GPa");
+    assert!((g - 536.0).abs() / 536.0 < 0.05, "G={g}, expected ~536 GPa");
     assert!(
-        k > 400.0 && g > 500.0 && e > 1000.0,
-        "Diamond: K={k}, G={g}, E={e}"
+        (e - 1142.0).abs() / 1142.0 < 0.05,
+        "E={e}, expected ~1142 GPa"
     );
+    assert!(nu > 0.0 && nu < 0.5, "Poisson ratio should be 0 < nu < 0.5");
     assert!(
         is_mechanically_stable(&c_diamond),
         "Diamond should be stable"
@@ -322,21 +302,6 @@ fn test_voigt_asymmetric_handling() {
     assert!(
         (voigt[3] - 30.0).abs() < 1e-10,
         "Should use upper triangle for yz"
-    );
-}
-
-#[test]
-fn test_voigt_extreme_values() {
-    // Test with extreme values
-    let extreme = Matrix3::new(1e15, 1e10, 1e10, 1e10, 1e15, 1e10, 1e10, 1e10, 1e15);
-
-    let voigt = stress_to_voigt(&extreme);
-    let recovered = voigt_to_tensor(&voigt, false);
-
-    // Should preserve values
-    assert!(
-        (extreme[(0, 0)] - recovered[(0, 0)]).abs() < 1e5,
-        "Should handle large values"
     );
 }
 

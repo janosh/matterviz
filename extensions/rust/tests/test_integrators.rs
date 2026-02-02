@@ -33,56 +33,26 @@ fn test_internal_time_unit_value() {
     );
 }
 
-/// Verify FS_TO_INTERNAL and INTERNAL_TO_FS are consistent inverses.
+/// Consolidated test for unit system consistency.
+/// Verifies that time conversion constants and physical constants are correct.
 #[test]
-fn test_time_conversion_inverse() {
+fn test_unit_system_consistency() {
+    // Time conversion constants are inverses
     let product = units::FS_TO_INTERNAL * units::INTERNAL_TO_FS;
     assert!(
         (product - 1.0).abs() < 1e-14,
-        "FS_TO_INTERNAL * INTERNAL_TO_FS = {}, should be 1.0",
-        product
+        "FS_TO_INTERNAL * INTERNAL_TO_FS should be 1.0"
     );
-}
 
-/// Verify Boltzmann constant value.
-#[test]
-fn test_boltzmann_constant() {
+    // Boltzmann constant is correct (CODATA 2018 value)
     let kb_expected = 8.617333262e-5;
     let rel_error = (units::KB - kb_expected).abs() / kb_expected;
-    assert!(
-        rel_error < 1e-8,
-        "kB = {:.9e} eV/K differs from expected {:.9e} eV/K",
-        units::KB,
-        kb_expected
-    );
-}
+    assert!(rel_error < 1e-8, "kB should match CODATA value");
 
-/// Verify that velocity in internal units gives correct kinetic energy.
-#[test]
-fn test_kinetic_energy_units() {
-    let mass: f64 = 1.0;
-    let velocity: f64 = 1.0;
-    let ke = 0.5 * mass * velocity.powi(2);
-    assert!(
-        (ke - 0.5_f64).abs() < 1e-14,
-        "KE = {}, should be 0.5 eV",
-        ke
-    );
-}
-
-/// Verify velocity standard deviation from Maxwell-Boltzmann.
-/// At 300K with m=1 amu: v_std = sqrt(kT/m) ≈ 0.161 Å/internal_time
-#[test]
-fn test_maxwell_boltzmann_velocity_scale() {
-    let temp = 300.0;
-    let mass = 1.0;
-    let v_std = (units::KB * temp / mass).sqrt();
-    // Expected: sqrt(8.617e-5 * 300 / 1) ≈ 0.1608
-    assert!(
-        (v_std - 0.1608).abs() < 0.001,
-        "v_std = {:.4}, expected ~0.1608",
-        v_std
-    );
+    // Maxwell-Boltzmann velocity scale: v_std = sqrt(kT/m)
+    // At 300K with m=1 amu: v_std ≈ 0.1608 Å/internal_time
+    let v_std = (units::KB * 300.0 / 1.0).sqrt();
+    assert!((v_std - 0.1608).abs() < 0.001, "v_std should be ~0.1608");
 }
 
 // === Analytical Ornstein-Uhlenbeck Tests for Langevin Dynamics ===
@@ -232,25 +202,6 @@ fn test_langevin_diffusion_msd() {
         msd_sum[200] > 0.1 && msd_sum[200] < 100.0,
         "MSD at 200 fs should be reasonable, got {} Å²",
         msd_sum[200]
-    );
-}
-
-/// Test Langevin c1 coefficient.
-#[test]
-fn test_langevin_c1_coefficient() {
-    let friction = 0.01;
-    let dt = 1.0;
-
-    let friction_internal = friction * units::INTERNAL_TO_FS;
-    let dt_internal = dt * units::FS_TO_INTERNAL;
-    let expected_c1 = (-friction_internal * dt_internal).exp();
-
-    let c2_expected = (1.0 - expected_c1.powi(2)).sqrt();
-    let sum = expected_c1.powi(2) + c2_expected.powi(2);
-    assert!(
-        (sum - 1.0).abs() < 1e-14,
-        "c1² + c2² = {}, should be 1.0",
-        sum
     );
 }
 

@@ -1264,9 +1264,18 @@ fn validate_3x3(m: &[Vec<f64>], name: &str) -> PyResult<[f64; 9]> {
     if m.len() != 3 || m.iter().any(|r| r.len() != 3) {
         return Err(PyValueError::new_err(format!("{name} must be 3×3")));
     }
-    Ok([
+    let flat = [
         m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2],
-    ])
+    ];
+    if let Some(idx) = flat.iter().position(|v| !v.is_finite()) {
+        let row = idx / 3;
+        let col = idx % 3;
+        return Err(PyValueError::new_err(format!(
+            "{name}[{row}][{col}] must be finite, got {}",
+            flat[idx]
+        )));
+    }
+    Ok(flat)
 }
 
 #[pyfunction]

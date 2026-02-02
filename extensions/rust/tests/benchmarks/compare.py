@@ -35,7 +35,7 @@ from pymatgen.core import Structure
 from .ase_runner import run_ase_fire, run_ase_nve, run_ase_nvt
 from .ferrox_runner import run_ferrox_fire, run_ferrox_nve, run_ferrox_nvt
 from .mace_model import get_mace_model
-from .results import BenchmarkResult, FireResult, MDResult
+from .results import BenchmarkResult, FireResult, MDResult, safe_divide
 from .structures import SYSTEMS, perturb_structure
 from .torchsim_runner import (
     get_torchsim_mace_model,
@@ -49,15 +49,6 @@ if TYPE_CHECKING:
     from mace.calculators import MACECalculator
 
     from .torchsim_runner import MaceModel
-
-
-def safe_divide(numerator: float | None, denominator: float | None) -> float | None:
-    """Safely divide, returning None if either value is None or denominator is ~0."""
-    if numerator is None or denominator is None:
-        return None
-    if abs(denominator) < 1e-9:
-        return None
-    return numerator / denominator
 
 
 def _run_single_runner(

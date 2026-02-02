@@ -53,6 +53,39 @@ from torch_sim import (
 )
 from torch_sim.models.lennard_jones import LennardJonesModel as TorchSimLJ
 
+# Import shared types when run as module, define locally when run standalone
+try:
+    from .results import BenchmarkResult, safe_divide
+except ImportError:
+
+    def safe_divide(numerator: float | None, denominator: float | None) -> float | None:
+        """Safely divide, returning None if either is None or denominator is ~0."""
+        if numerator is None or denominator is None:
+            return None
+        if abs(denominator) < 1e-9:
+            return None
+        return numerator / denominator
+
+    @dataclass
+    class BenchmarkResult:
+        """Result for a single benchmark."""
+
+        system: str
+        n_atoms: int
+        benchmark_type: str
+        n_steps: int
+        ferrox_time: float | None
+        ferrox_steps_per_sec: float | None
+        torchsim_time: float | None
+        torchsim_steps_per_sec: float | None
+        ase_time: float | None
+        ase_steps_per_sec: float | None
+        ferrox_vs_torchsim: float | None
+        ferrox_vs_ase: float | None
+        potential: str | None = None
+        error: str | None = None
+
+
 # LJ parameters for Argon
 SIGMA = 3.4  # Angstrom
 EPSILON = 0.0103  # eV
@@ -69,31 +102,6 @@ def sanitize_nan(obj: Any) -> Any:
     if isinstance(obj, list):
         return [sanitize_nan(item) for item in obj]
     return obj
-
-
-def safe_divide(numerator: float | None, denominator: float | None) -> float | None:
-    """Safely divide two values, returning None if either is None or denominator is zero."""
-    if numerator is None or denominator is None or denominator == 0:
-        return None
-    return numerator / denominator
-
-
-@dataclass
-class BenchmarkResult:
-    """Result for a single benchmark."""
-
-    system: str
-    n_atoms: int
-    benchmark_type: str
-    n_steps: int
-    ferrox_time: float | None
-    ferrox_steps_per_sec: float | None
-    torchsim_time: float | None
-    torchsim_steps_per_sec: float | None
-    ase_time: float | None
-    ase_steps_per_sec: float | None
-    ferrox_vs_torchsim: float | None
-    ferrox_vs_ase: float | None
 
 
 def make_lj_system(n_repeat: int) -> Atoms:

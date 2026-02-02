@@ -105,7 +105,7 @@ class TestLocalEnvironment:
     def test_site_bounds_error(self, fcc_cu_json: str) -> None:
         """Out of bounds site raises error with descriptive message."""
         with pytest.raises(
-            (ValueError, IndexError), match=r"(out of|bounds|index|100)"
+            (ValueError, IndexError), match=r"(?i)(out of|bounds|index|100)"
         ):
             ferrox.get_local_environment(fcc_cu_json, 100, 3.0)
 

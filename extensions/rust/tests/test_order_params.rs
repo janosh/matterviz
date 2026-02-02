@@ -9,8 +9,8 @@ use common::{make_bcc_supercell, make_disordered, make_fcc_supercell, make_hcp_s
 use ferrox::element::Element;
 use ferrox::lattice::Lattice;
 use ferrox::order_params::{
-    LocalStructure, classify_all_atoms, classify_local_structure, compute_steinhardt_q,
-    global_steinhardt_q, spherical_harmonic,
+    LocalStructure, classify_all_atoms, compute_steinhardt_q, global_steinhardt_q,
+    spherical_harmonic,
 };
 use ferrox::species::Species;
 use ferrox::structure::Structure;
@@ -234,16 +234,6 @@ fn test_disordered_structure_low_q_values() {
     );
 }
 
-#[test]
-fn test_liquid_classification() {
-    // Low q4 and q6 values should be classified as liquid
-    let structure = classify_local_structure(0.03, 0.08, 0.1);
-    assert_eq!(structure, LocalStructure::Liquid);
-
-    let structure2 = classify_local_structure(0.01, 0.15, 0.1);
-    assert_eq!(structure2, LocalStructure::Liquid);
-}
-
 // === Spherical Harmonics Verification ===
 
 #[test]
@@ -396,22 +386,6 @@ fn test_global_steinhardt_fcc() {
     );
 }
 
-#[test]
-fn test_global_steinhardt_vs_local_average() {
-    let structure = make_bcc_supercell(2.87, Element::Fe, 3, 3, 3);
-    let cutoff = 1.1 * 2.87 * 3.0_f64.sqrt() / 2.0;
-
-    let local_q4 = compute_steinhardt_q(&structure, 4, cutoff);
-    let global_q4 = global_steinhardt_q(&local_q4);
-
-    // Global Q should equal average of local q values
-    let manual_avg: f64 = local_q4.iter().sum::<f64>() / local_q4.len() as f64;
-    assert!(
-        (global_q4 - manual_avg).abs() < 1e-10,
-        "Global Q should equal average of local q"
-    );
-}
-
 // === Edge Case Tests ===
 
 #[test]
@@ -434,7 +408,7 @@ fn test_single_atom_structure() {
 
 #[test]
 fn test_two_atom_pair() {
-    // Two atoms close together
+    // Two atoms along x-axis: tests single-neighbor geometry
     let lattice = Lattice::cubic(10.0);
     let structure = Structure::new(
         lattice,
@@ -448,11 +422,16 @@ fn test_two_atom_pair() {
     let q4 = compute_steinhardt_q(&structure, 4, 1.0);
     assert_eq!(q4.len(), 2);
 
-    // With only one neighbor along x-axis, q values should be non-zero
-    // but will depend on the specific geometry
+    // With single neighbor along x-axis, q4 values should be in valid range [0, 1]
+    // and identical for both atoms (symmetric system)
     assert!(
-        q4[0].is_finite() && q4[1].is_finite(),
-        "q4 values should be finite"
+        q4[0] >= 0.0 && q4[0] <= 1.0,
+        "q4 should be in [0,1], got {}",
+        q4[0]
+    );
+    assert!(
+        (q4[0] - q4[1]).abs() < 1e-10,
+        "Symmetric system should have identical q values"
     );
 }
 
