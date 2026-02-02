@@ -9,9 +9,7 @@ use ferrox::element::Element;
 use ferrox::neighbors::{NeighborListConfig, build_neighbor_list};
 use std::time::Instant;
 
-// =============================================================================
-// LARGE SYSTEM SCALING TESTS
-// =============================================================================
+// === Large System Scaling Tests ===
 
 #[test]
 fn test_large_fcc_scaling_1000_atoms() {
@@ -148,9 +146,7 @@ fn test_large_nacl_scaling() {
     );
 }
 
-// =============================================================================
-// CUTOFF COMPARISON TESTS
-// =============================================================================
+// === Cutoff Comparison Tests ===
 
 #[test]
 fn test_cutoff_comparison_fcc() {

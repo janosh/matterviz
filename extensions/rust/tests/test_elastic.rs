@@ -13,9 +13,7 @@ use ferrox::elastic::{
     stress_to_voigt, voigt_to_tensor, youngs_modulus, zener_ratio,
 };
 
-// =============================================================================
-// Strain generation correctness tests
-// =============================================================================
+// === Strain Generation Correctness Tests ===
 
 /// Test strain generation: count, structure, and normal-only mode
 #[test]
@@ -188,9 +186,7 @@ fn test_apply_strain_non_orthogonal_lattice() {
     );
 }
 
-// =============================================================================
-// Singular tensor handling tests
-// =============================================================================
+// === Singular Tensor Handling Tests ===
 
 /// Test that singular/pathological tensors are handled gracefully and detected as unstable
 #[test]
@@ -304,9 +300,7 @@ fn test_moduli_extreme_values() {
     );
 }
 
-// =============================================================================
-// Voigt notation edge cases
-// =============================================================================
+// === Voigt Notation Edge Cases ===
 
 #[test]
 fn test_voigt_asymmetric_handling() {
@@ -346,9 +340,7 @@ fn test_voigt_extreme_values() {
     );
 }
 
-// =============================================================================
-// Physical consistency tests
-// =============================================================================
+// === Physical Consistency Tests ===
 
 #[test]
 fn test_cubic_stability_edge_cases() {

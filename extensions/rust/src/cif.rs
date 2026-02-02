@@ -345,9 +345,7 @@ fn split_cif_line(line: &str) -> Vec<&str> {
 
 // Note: clean_element_symbol has been replaced by normalize_symbol from element module
 
-// ============================================================================
-// CIF Writer
-// ============================================================================
+// === CIF Writer ===
 
 /// Convert a structure to CIF format string.
 ///

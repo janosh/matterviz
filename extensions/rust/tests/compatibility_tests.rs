@@ -75,9 +75,7 @@ fn perturb_structure(s: &Structure, max_displacement: f64) -> Structure {
     result
 }
 
-// =============================================================================
-// Basic Sanity Tests
-// =============================================================================
+// === Basic Sanity Tests ===
 
 #[test]
 fn test_identical_structures_match() {
@@ -189,9 +187,7 @@ fn test_different_rocksalt_no_match() {
     );
 }
 
-// =============================================================================
-// RMS Distance Tests (Rust-specific API)
-// =============================================================================
+// === RMS Distance Tests (Rust-specific API) ===
 
 #[test]
 fn test_get_rms_dist_identical() {
@@ -224,9 +220,7 @@ fn test_get_rms_dist_perturbed() {
     );
 }
 
-// =============================================================================
-// Lattice Type Tests
-// =============================================================================
+// === Lattice Type Tests ===
 
 #[test]
 fn test_hexagonal_lattice() {
@@ -276,9 +270,7 @@ fn test_triclinic_lattice() {
     );
 }
 
-// =============================================================================
-// JSON I/O Tests (Rust-specific)
-// =============================================================================
+// === JSON I/O Tests (Rust-specific) ===
 
 #[test]
 fn test_json_roundtrip() {
@@ -318,9 +310,7 @@ fn test_json_parse_various_elements() {
     }
 }
 
-// =============================================================================
-// Batch Operations Tests (Rust-specific)
-// =============================================================================
+// === Batch Operations Tests (Rust-specific) ===
 
 #[test]
 fn test_batch_composition_groups() {
@@ -380,9 +370,7 @@ fn test_deduplicate_many() {
     );
 }
 
-// =============================================================================
-// Spglib Integration Tests (Rust-specific)
-// =============================================================================
+// === Spglib Integration Tests (Rust-specific) ===
 
 #[test]
 fn test_primitive_cell_fcc() {
@@ -407,9 +395,7 @@ fn test_spacegroup_bcc() {
     assert_eq!(sg, 229, "BCC should be spacegroup 229 (Im-3m)");
 }
 
-// =============================================================================
-// fit_anonymous Integration Tests (complements unit tests in matcher.rs)
-// =============================================================================
+// === fit_anonymous Integration Tests (complements unit tests in matcher.rs) ===
 
 #[test]
 fn test_fit_anonymous_bcc_vs_bcc() {

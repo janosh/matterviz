@@ -17,9 +17,7 @@ use ferrox::structure::Structure;
 use nalgebra::Vector3;
 use std::f64::consts::PI;
 
-// ============================================================================
-// HCP Crystal Tests
-// ============================================================================
+// === HCP Crystal Tests ===
 
 #[test]
 fn test_hcp_order_parameters() {
@@ -77,9 +75,7 @@ fn test_hcp_larger_supercell() {
     );
 }
 
-// ============================================================================
-// Classification Accuracy Tests
-// ============================================================================
+// === Classification Accuracy Tests ===
 
 #[test]
 fn test_classify_fcc_perfect_crystal() {
@@ -206,9 +202,7 @@ fn test_classification_distinguishes_structures() {
     );
 }
 
-// ============================================================================
-// Disordered/Liquid State Tests
-// ============================================================================
+// === Disordered/Liquid State Tests ===
 
 #[test]
 fn test_disordered_structure_low_q_values() {
@@ -250,9 +244,7 @@ fn test_liquid_classification() {
     assert_eq!(structure2, LocalStructure::Liquid);
 }
 
-// ============================================================================
-// Spherical Harmonics Verification
-// ============================================================================
+// === Spherical Harmonics Verification ===
 
 #[test]
 fn test_spherical_harmonics_orthogonality() {
@@ -325,9 +317,7 @@ fn test_spherical_harmonics_addition_theorem() {
     }
 }
 
-// ============================================================================
-// Large l Stability Tests
-// ============================================================================
+// === Large l Stability Tests ===
 
 #[test]
 fn test_large_l_stability_l10() {
@@ -388,9 +378,7 @@ fn test_large_l_spherical_harmonics_stability() {
     }
 }
 
-// ============================================================================
-// Global Steinhardt Q Tests
-// ============================================================================
+// === Global Steinhardt Q Tests ===
 
 #[test]
 fn test_global_steinhardt_fcc() {
@@ -424,9 +412,7 @@ fn test_global_steinhardt_vs_local_average() {
     );
 }
 
-// ============================================================================
-// Edge Case Tests
-// ============================================================================
+// === Edge Case Tests ===
 
 #[test]
 fn test_single_atom_structure() {

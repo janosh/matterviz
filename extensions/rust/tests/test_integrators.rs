@@ -11,9 +11,7 @@ use nalgebra::Vector3;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-// =============================================================================
-// Unit Conversion Tests
-// =============================================================================
+// === Unit Conversion Tests ===
 
 /// Verify the internal time unit constant is correct.
 #[test]
@@ -87,9 +85,7 @@ fn test_maxwell_boltzmann_velocity_scale() {
     );
 }
 
-// =============================================================================
-// Analytical Ornstein-Uhlenbeck Tests for Langevin Dynamics
-// =============================================================================
+// === Analytical Ornstein-Uhlenbeck Tests for Langevin Dynamics ===
 
 /// Test Langevin velocity relaxation: <v(t)> = v0 * exp(-γt)
 #[test]
@@ -258,9 +254,7 @@ fn test_langevin_c1_coefficient() {
     );
 }
 
-// =============================================================================
-// Velocity Verlet Symplectic Property Tests
-// =============================================================================
+// === Velocity Verlet Symplectic Property Tests ===
 
 /// Test that Velocity Verlet is time-reversible.
 #[test]
