@@ -9,7 +9,6 @@ from typing import Any
 
 from .MatterViz import MatterViz
 
-
 class Structure(MatterViz):
     """3D crystal structure / molecule viewer.
 
@@ -71,93 +70,86 @@ class Structure(MatterViz):
         if mv_props is None:
             mv_props = {}
         if allow_file_drop is not None:
-            mv_props["allow_file_drop"] = allow_file_drop
+            mv_props['allow_file_drop'] = allow_file_drop
         if atom_color_config is not None:
-            mv_props["atom_color_config"] = atom_color_config
+            mv_props['atom_color_config'] = atom_color_config
         if cell_type is not None:
-            mv_props["cell_type"] = cell_type
+            mv_props['cell_type'] = cell_type
         if data_url is not None:
-            mv_props["data_url"] = data_url
+            mv_props['data_url'] = data_url
         if displayed_structure is not None:
-            mv_props["displayed_structure"] = displayed_structure
+            mv_props['displayed_structure'] = displayed_structure
         if dragover is not None:
-            mv_props["dragover"] = dragover
+            mv_props['dragover'] = dragover
         if element_mapping is not None:
-            mv_props["element_mapping"] = element_mapping
+            mv_props['element_mapping'] = element_mapping
         if element_radius_overrides is not None:
-            mv_props["element_radius_overrides"] = element_radius_overrides
+            mv_props['element_radius_overrides'] = element_radius_overrides
         if enable_info_pane is not None:
-            mv_props["enable_info_pane"] = enable_info_pane
+            mv_props['enable_info_pane'] = enable_info_pane
         if enable_measure_mode is not None:
-            mv_props["enable_measure_mode"] = enable_measure_mode
+            mv_props['enable_measure_mode'] = enable_measure_mode
         if error_msg is not None:
-            mv_props["error_msg"] = error_msg
+            mv_props['error_msg'] = error_msg
         if fullscreen is not None:
-            mv_props["fullscreen"] = fullscreen
+            mv_props['fullscreen'] = fullscreen
         if height is not None:
-            mv_props["height"] = height
+            mv_props['height'] = height
         if hidden_elements is not None:
-            mv_props["hidden_elements"] = hidden_elements
+            mv_props['hidden_elements'] = hidden_elements
         if hidden_prop_vals is not None:
-            mv_props["hidden_prop_vals"] = hidden_prop_vals
+            mv_props['hidden_prop_vals'] = hidden_prop_vals
         if hovered is not None:
-            mv_props["hovered"] = hovered
+            mv_props['hovered'] = hovered
         if info_pane_open is not None:
-            mv_props["info_pane_open"] = info_pane_open
+            mv_props['info_pane_open'] = info_pane_open
         if loading is not None:
-            mv_props["loading"] = loading
+            mv_props['loading'] = loading
         if measured_sites is not None:
-            mv_props["measured_sites"] = measured_sites
+            mv_props['measured_sites'] = measured_sites
         if on_camera_move is not None:
-            mv_props["on_camera_move"] = on_camera_move
+            mv_props['on_camera_move'] = on_camera_move
         if on_camera_reset is not None:
-            mv_props["on_camera_reset"] = on_camera_reset
+            mv_props['on_camera_reset'] = on_camera_reset
         if on_error is not None:
-            mv_props["on_error"] = on_error
+            mv_props['on_error'] = on_error
         if on_file_load is not None:
-            mv_props["on_file_load"] = on_file_load
+            mv_props['on_file_load'] = on_file_load
         if on_fullscreen_change is not None:
-            mv_props["on_fullscreen_change"] = on_fullscreen_change
+            mv_props['on_fullscreen_change'] = on_fullscreen_change
         if performance_mode is not None:
-            mv_props["performance_mode"] = performance_mode
+            mv_props['performance_mode'] = performance_mode
         if png_dpi is not None:
-            mv_props["png_dpi"] = png_dpi
+            mv_props['png_dpi'] = png_dpi
         if reset_text is not None:
-            mv_props["reset_text"] = reset_text
+            mv_props['reset_text'] = reset_text
         if scene_props is not None:
-            mv_props["scene_props"] = scene_props
+            mv_props['scene_props'] = scene_props
         if selected_sites is not None:
-            mv_props["selected_sites"] = selected_sites
+            mv_props['selected_sites'] = selected_sites
         if site_radius_overrides is not None:
-            mv_props["site_radius_overrides"] = site_radius_overrides
+            mv_props['site_radius_overrides'] = site_radius_overrides
         if spinner_props is not None:
-            mv_props["spinner_props"] = spinner_props
+            mv_props['spinner_props'] = spinner_props
         if structure is not None:
-            mv_props["structure"] = structure
+            mv_props['structure'] = structure
         if structure_string is not None:
-            mv_props["structure_string"] = structure_string
+            mv_props['structure_string'] = structure_string
         if sym_data is not None:
-            mv_props["sym_data"] = sym_data
+            mv_props['sym_data'] = sym_data
         if symmetry_settings is not None:
-            mv_props["symmetry_settings"] = symmetry_settings
+            mv_props['symmetry_settings'] = symmetry_settings
         if width is not None:
-            mv_props["width"] = width
+            mv_props['width'] = width
         if set_props is None:
-            set_props = ["hidden_elements", "hidden_prop_vals"]
+            set_props = ['hidden_elements', 'hidden_prop_vals']
 
         super().__init__(
-            id=id,
-            component="structure/Structure",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='structure/Structure', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class PeriodicTable(MatterViz):
     """Interactive periodic table with heatmaps and tooltips.
@@ -203,57 +195,50 @@ class PeriodicTable(MatterViz):
         if mv_props is None:
             mv_props = {}
         if active_category is not None:
-            mv_props["active_category"] = active_category
+            mv_props['active_category'] = active_category
         if active_element is not None:
-            mv_props["active_element"] = active_element
+            mv_props['active_element'] = active_element
         if active_elements is not None:
-            mv_props["active_elements"] = active_elements
+            mv_props['active_elements'] = active_elements
         if color_bar_props is not None:
-            mv_props["color_bar_props"] = color_bar_props
+            mv_props['color_bar_props'] = color_bar_props
         if color_overrides is not None:
-            mv_props["color_overrides"] = color_overrides
+            mv_props['color_overrides'] = color_overrides
         if color_scale_range is not None:
-            mv_props["color_scale_range"] = color_scale_range
+            mv_props['color_scale_range'] = color_scale_range
         if disabled is not None:
-            mv_props["disabled"] = disabled
+            mv_props['disabled'] = disabled
         if gap is not None:
-            mv_props["gap"] = gap
+            mv_props['gap'] = gap
         if heatmap_values is not None:
-            mv_props["heatmap_values"] = heatmap_values
+            mv_props['heatmap_values'] = heatmap_values
         if inner_transition_metal_offset is not None:
-            mv_props["inner_transition_metal_offset"] = inner_transition_metal_offset
+            mv_props['inner_transition_metal_offset'] = inner_transition_metal_offset
         if labels is not None:
-            mv_props["labels"] = labels
+            mv_props['labels'] = labels
         if lanth_act_style is not None:
-            mv_props["lanth_act_style"] = lanth_act_style
+            mv_props['lanth_act_style'] = lanth_act_style
         if links is not None:
-            mv_props["links"] = links
+            mv_props['links'] = links
         if log is not None:
-            mv_props["log"] = log
+            mv_props['log'] = log
         if missing_color is not None:
-            mv_props["missing_color"] = missing_color
+            mv_props['missing_color'] = missing_color
         if show_color_bar is not None:
-            mv_props["show_color_bar"] = show_color_bar
+            mv_props['show_color_bar'] = show_color_bar
         if show_photo is not None:
-            mv_props["show_photo"] = show_photo
+            mv_props['show_photo'] = show_photo
         if split_layout is not None:
-            mv_props["split_layout"] = split_layout
+            mv_props['split_layout'] = split_layout
         if tile_props is not None:
-            mv_props["tile_props"] = tile_props
+            mv_props['tile_props'] = tile_props
 
         super().__init__(
-            id=id,
-            component="periodic-table/PeriodicTable",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='periodic-table/PeriodicTable', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class Composition(MatterViz):
     """Composition chart (pie/bubble/bar) for a chemical formula or composition dict.
@@ -283,29 +268,22 @@ class Composition(MatterViz):
         if mv_props is None:
             mv_props = {}
         if color_scheme is not None:
-            mv_props["color_scheme"] = color_scheme
+            mv_props['color_scheme'] = color_scheme
         if composition is not None:
-            mv_props["composition"] = composition
+            mv_props['composition'] = composition
         if interactive is not None:
-            mv_props["interactive"] = interactive
+            mv_props['interactive'] = interactive
         if mode is not None:
-            mv_props["mode"] = mode
+            mv_props['mode'] = mode
         if size is not None:
-            mv_props["size"] = size
+            mv_props['size'] = size
 
         super().__init__(
-            id=id,
-            component="composition/Composition",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='composition/Composition', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class Trajectory(MatterViz):
     """Molecular dynamics trajectory viewer with structure + plots.
@@ -353,61 +331,54 @@ class Trajectory(MatterViz):
         if mv_props is None:
             mv_props = {}
         if elem_property_labels is not None:
-            mv_props["ELEM_PROPERTY_LABELS"] = elem_property_labels
+            mv_props['ELEM_PROPERTY_LABELS'] = elem_property_labels
         if allow_file_drop is not None:
-            mv_props["allow_file_drop"] = allow_file_drop
+            mv_props['allow_file_drop'] = allow_file_drop
         if atom_type_mapping is not None:
-            mv_props["atom_type_mapping"] = atom_type_mapping
+            mv_props['atom_type_mapping'] = atom_type_mapping
         if auto_play is not None:
-            mv_props["auto_play"] = auto_play
+            mv_props['auto_play'] = auto_play
         if current_step_idx is not None:
-            mv_props["current_step_idx"] = current_step_idx
+            mv_props['current_step_idx'] = current_step_idx
         if data_extractor is not None:
-            mv_props["data_extractor"] = data_extractor
+            mv_props['data_extractor'] = data_extractor
         if data_url is not None:
-            mv_props["data_url"] = data_url
+            mv_props['data_url'] = data_url
         if display_mode is not None:
-            mv_props["display_mode"] = display_mode
+            mv_props['display_mode'] = display_mode
         if fps is not None:
-            mv_props["fps"] = fps
+            mv_props['fps'] = fps
         if fps_range is not None:
-            mv_props["fps_range"] = fps_range
+            mv_props['fps_range'] = fps_range
         if histogram_props is not None:
-            mv_props["histogram_props"] = histogram_props
+            mv_props['histogram_props'] = histogram_props
         if layout is not None:
-            mv_props["layout"] = layout
+            mv_props['layout'] = layout
         if loading_options is not None:
-            mv_props["loading_options"] = loading_options
+            mv_props['loading_options'] = loading_options
         if plot_skimming is not None:
-            mv_props["plot_skimming"] = plot_skimming
+            mv_props['plot_skimming'] = plot_skimming
         if scatter_props is not None:
-            mv_props["scatter_props"] = scatter_props
+            mv_props['scatter_props'] = scatter_props
         if show_controls is not None:
-            mv_props["show_controls"] = show_controls
+            mv_props['show_controls'] = show_controls
         if spinner_props is not None:
-            mv_props["spinner_props"] = spinner_props
+            mv_props['spinner_props'] = spinner_props
         if step_labels is not None:
-            mv_props["step_labels"] = step_labels
+            mv_props['step_labels'] = step_labels
         if structure_props is not None:
-            mv_props["structure_props"] = structure_props
+            mv_props['structure_props'] = structure_props
         if trajectory is not None:
-            mv_props["trajectory"] = trajectory
+            mv_props['trajectory'] = trajectory
         if visible_properties is not None:
-            mv_props["visible_properties"] = visible_properties
+            mv_props['visible_properties'] = visible_properties
 
         super().__init__(
-            id=id,
-            component="trajectory/Trajectory",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='trajectory/Trajectory', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class BrillouinZone(MatterViz):
     """3D Brillouin zone visualization.
@@ -464,83 +435,76 @@ class BrillouinZone(MatterViz):
         if mv_props is None:
             mv_props = {}
         if allow_file_drop is not None:
-            mv_props["allow_file_drop"] = allow_file_drop
+            mv_props['allow_file_drop'] = allow_file_drop
         if bz_data is not None:
-            mv_props["bz_data"] = bz_data
+            mv_props['bz_data'] = bz_data
         if bz_order is not None:
-            mv_props["bz_order"] = bz_order
+            mv_props['bz_order'] = bz_order
         if camera_projection is not None:
-            mv_props["camera_projection"] = camera_projection
+            mv_props['camera_projection'] = camera_projection
         if controls_open is not None:
-            mv_props["controls_open"] = controls_open
+            mv_props['controls_open'] = controls_open
         if data_url is not None:
-            mv_props["data_url"] = data_url
+            mv_props['data_url'] = data_url
         if dragover is not None:
-            mv_props["dragover"] = dragover
+            mv_props['dragover'] = dragover
         if edge_color is not None:
-            mv_props["edge_color"] = edge_color
+            mv_props['edge_color'] = edge_color
         if edge_width is not None:
-            mv_props["edge_width"] = edge_width
+            mv_props['edge_width'] = edge_width
         if error_msg is not None:
-            mv_props["error_msg"] = error_msg
+            mv_props['error_msg'] = error_msg
         if fullscreen is not None:
-            mv_props["fullscreen"] = fullscreen
+            mv_props['fullscreen'] = fullscreen
         if height is not None:
-            mv_props["height"] = height
+            mv_props['height'] = height
         if hovered is not None:
-            mv_props["hovered"] = hovered
+            mv_props['hovered'] = hovered
         if hovered_k_point is not None:
-            mv_props["hovered_k_point"] = hovered_k_point
+            mv_props['hovered_k_point'] = hovered_k_point
         if hovered_qpoint_index is not None:
-            mv_props["hovered_qpoint_index"] = hovered_qpoint_index
+            mv_props['hovered_qpoint_index'] = hovered_qpoint_index
         if ibz_color is not None:
-            mv_props["ibz_color"] = ibz_color
+            mv_props['ibz_color'] = ibz_color
         if ibz_data is not None:
-            mv_props["ibz_data"] = ibz_data
+            mv_props['ibz_data'] = ibz_data
         if ibz_opacity is not None:
-            mv_props["ibz_opacity"] = ibz_opacity
+            mv_props['ibz_opacity'] = ibz_opacity
         if info_pane_open is not None:
-            mv_props["info_pane_open"] = info_pane_open
+            mv_props['info_pane_open'] = info_pane_open
         if k_path_points is not None:
-            mv_props["k_path_points"] = k_path_points
+            mv_props['k_path_points'] = k_path_points
         if loading is not None:
-            mv_props["loading"] = loading
+            mv_props['loading'] = loading
         if png_dpi is not None:
-            mv_props["png_dpi"] = png_dpi
+            mv_props['png_dpi'] = png_dpi
         if show_ibz is not None:
-            mv_props["show_ibz"] = show_ibz
+            mv_props['show_ibz'] = show_ibz
         if show_vectors is not None:
-            mv_props["show_vectors"] = show_vectors
+            mv_props['show_vectors'] = show_vectors
         if spinner_props is not None:
-            mv_props["spinner_props"] = spinner_props
+            mv_props['spinner_props'] = spinner_props
         if structure is not None:
-            mv_props["structure"] = structure
+            mv_props['structure'] = structure
         if structure_string is not None:
-            mv_props["structure_string"] = structure_string
+            mv_props['structure_string'] = structure_string
         if surface_color is not None:
-            mv_props["surface_color"] = surface_color
+            mv_props['surface_color'] = surface_color
         if surface_opacity is not None:
-            mv_props["surface_opacity"] = surface_opacity
+            mv_props['surface_opacity'] = surface_opacity
         if tooltip_config is not None:
-            mv_props["tooltip_config"] = tooltip_config
+            mv_props['tooltip_config'] = tooltip_config
         if vector_scale is not None:
-            mv_props["vector_scale"] = vector_scale
+            mv_props['vector_scale'] = vector_scale
         if width is not None:
-            mv_props["width"] = width
+            mv_props['width'] = width
 
         super().__init__(
-            id=id,
-            component="brillouin/BrillouinZone",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='brillouin/BrillouinZone', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class ConvexHull2D(MatterViz):
     """2D convex hull phase diagram plot.
@@ -601,87 +565,80 @@ class ConvexHull2D(MatterViz):
         if mv_props is None:
             mv_props = {}
         if highlight_style is not None:
-            mv_props["highlight_style"] = highlight_style
+            mv_props['highlight_style'] = highlight_style
         if x_axis is not None:
-            mv_props["x_axis"] = x_axis
+            mv_props['x_axis'] = x_axis
         if y_axis is not None:
-            mv_props["y_axis"] = y_axis
+            mv_props['y_axis'] = y_axis
         if entries is not None:
-            mv_props["entries"] = entries
+            mv_props['entries'] = entries
         if controls is not None:
-            mv_props["controls"] = controls
+            mv_props['controls'] = controls
         if config is not None:
-            mv_props["config"] = config
+            mv_props['config'] = config
         if fullscreen is not None:
-            mv_props["fullscreen"] = fullscreen
+            mv_props['fullscreen'] = fullscreen
         if enable_fullscreen is not None:
-            mv_props["enable_fullscreen"] = enable_fullscreen
+            mv_props['enable_fullscreen'] = enable_fullscreen
         if enable_info_pane is not None:
-            mv_props["enable_info_pane"] = enable_info_pane
+            mv_props['enable_info_pane'] = enable_info_pane
         if label_threshold is not None:
-            mv_props["label_threshold"] = label_threshold
+            mv_props['label_threshold'] = label_threshold
         if show_stable is not None:
-            mv_props["show_stable"] = show_stable
+            mv_props['show_stable'] = show_stable
         if show_unstable is not None:
-            mv_props["show_unstable"] = show_unstable
+            mv_props['show_unstable'] = show_unstable
         if color_mode is not None:
-            mv_props["color_mode"] = color_mode
+            mv_props['color_mode'] = color_mode
         if color_scale is not None:
-            mv_props["color_scale"] = color_scale
+            mv_props['color_scale'] = color_scale
         if info_pane_open is not None:
-            mv_props["info_pane_open"] = info_pane_open
+            mv_props['info_pane_open'] = info_pane_open
         if legend_pane_open is not None:
-            mv_props["legend_pane_open"] = legend_pane_open
+            mv_props['legend_pane_open'] = legend_pane_open
         if max_hull_dist_show_phases is not None:
-            mv_props["max_hull_dist_show_phases"] = max_hull_dist_show_phases
+            mv_props['max_hull_dist_show_phases'] = max_hull_dist_show_phases
         if max_hull_dist_show_labels is not None:
-            mv_props["max_hull_dist_show_labels"] = max_hull_dist_show_labels
+            mv_props['max_hull_dist_show_labels'] = max_hull_dist_show_labels
         if show_stable_labels is not None:
-            mv_props["show_stable_labels"] = show_stable_labels
+            mv_props['show_stable_labels'] = show_stable_labels
         if show_unstable_labels is not None:
-            mv_props["show_unstable_labels"] = show_unstable_labels
+            mv_props['show_unstable_labels'] = show_unstable_labels
         if enable_click_selection is not None:
-            mv_props["enable_click_selection"] = enable_click_selection
+            mv_props['enable_click_selection'] = enable_click_selection
         if enable_structure_preview is not None:
-            mv_props["enable_structure_preview"] = enable_structure_preview
+            mv_props['enable_structure_preview'] = enable_structure_preview
         if energy_source_mode is not None:
-            mv_props["energy_source_mode"] = energy_source_mode
+            mv_props['energy_source_mode'] = energy_source_mode
         if phase_stats is not None:
-            mv_props["phase_stats"] = phase_stats
+            mv_props['phase_stats'] = phase_stats
         if stable_entries is not None:
-            mv_props["stable_entries"] = stable_entries
+            mv_props['stable_entries'] = stable_entries
         if unstable_entries is not None:
-            mv_props["unstable_entries"] = unstable_entries
+            mv_props['unstable_entries'] = unstable_entries
         if highlighted_entries is not None:
-            mv_props["highlighted_entries"] = highlighted_entries
+            mv_props['highlighted_entries'] = highlighted_entries
         if selected_entry is not None:
-            mv_props["selected_entry"] = selected_entry
+            mv_props['selected_entry'] = selected_entry
         if tooltip is not None:
-            mv_props["tooltip"] = tooltip
+            mv_props['tooltip'] = tooltip
         if temperature is not None:
-            mv_props["temperature"] = temperature
+            mv_props['temperature'] = temperature
         if interpolate_temperature is not None:
-            mv_props["interpolate_temperature"] = interpolate_temperature
+            mv_props['interpolate_temperature'] = interpolate_temperature
         if max_interpolation_gap is not None:
-            mv_props["max_interpolation_gap"] = max_interpolation_gap
+            mv_props['max_interpolation_gap'] = max_interpolation_gap
         if gas_config is not None:
-            mv_props["gas_config"] = gas_config
+            mv_props['gas_config'] = gas_config
         if gas_pressures is not None:
-            mv_props["gas_pressures"] = gas_pressures
+            mv_props['gas_pressures'] = gas_pressures
 
         super().__init__(
-            id=id,
-            component="convex-hull/ConvexHull2D",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='convex-hull/ConvexHull2D', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class ConvexHull3D(MatterViz):
     """3D convex hull phase diagram plot.
@@ -742,87 +699,80 @@ class ConvexHull3D(MatterViz):
         if mv_props is None:
             mv_props = {}
         if highlight_style is not None:
-            mv_props["highlight_style"] = highlight_style
+            mv_props['highlight_style'] = highlight_style
         if entries is not None:
-            mv_props["entries"] = entries
+            mv_props['entries'] = entries
         if controls is not None:
-            mv_props["controls"] = controls
+            mv_props['controls'] = controls
         if config is not None:
-            mv_props["config"] = config
+            mv_props['config'] = config
         if fullscreen is not None:
-            mv_props["fullscreen"] = fullscreen
+            mv_props['fullscreen'] = fullscreen
         if enable_fullscreen is not None:
-            mv_props["enable_fullscreen"] = enable_fullscreen
+            mv_props['enable_fullscreen'] = enable_fullscreen
         if enable_info_pane is not None:
-            mv_props["enable_info_pane"] = enable_info_pane
+            mv_props['enable_info_pane'] = enable_info_pane
         if label_threshold is not None:
-            mv_props["label_threshold"] = label_threshold
+            mv_props['label_threshold'] = label_threshold
         if show_stable is not None:
-            mv_props["show_stable"] = show_stable
+            mv_props['show_stable'] = show_stable
         if show_unstable is not None:
-            mv_props["show_unstable"] = show_unstable
+            mv_props['show_unstable'] = show_unstable
         if color_mode is not None:
-            mv_props["color_mode"] = color_mode
+            mv_props['color_mode'] = color_mode
         if color_scale is not None:
-            mv_props["color_scale"] = color_scale
+            mv_props['color_scale'] = color_scale
         if info_pane_open is not None:
-            mv_props["info_pane_open"] = info_pane_open
+            mv_props['info_pane_open'] = info_pane_open
         if legend_pane_open is not None:
-            mv_props["legend_pane_open"] = legend_pane_open
+            mv_props['legend_pane_open'] = legend_pane_open
         if max_hull_dist_show_phases is not None:
-            mv_props["max_hull_dist_show_phases"] = max_hull_dist_show_phases
+            mv_props['max_hull_dist_show_phases'] = max_hull_dist_show_phases
         if max_hull_dist_show_labels is not None:
-            mv_props["max_hull_dist_show_labels"] = max_hull_dist_show_labels
+            mv_props['max_hull_dist_show_labels'] = max_hull_dist_show_labels
         if show_stable_labels is not None:
-            mv_props["show_stable_labels"] = show_stable_labels
+            mv_props['show_stable_labels'] = show_stable_labels
         if show_unstable_labels is not None:
-            mv_props["show_unstable_labels"] = show_unstable_labels
+            mv_props['show_unstable_labels'] = show_unstable_labels
         if enable_click_selection is not None:
-            mv_props["enable_click_selection"] = enable_click_selection
+            mv_props['enable_click_selection'] = enable_click_selection
         if enable_structure_preview is not None:
-            mv_props["enable_structure_preview"] = enable_structure_preview
+            mv_props['enable_structure_preview'] = enable_structure_preview
         if energy_source_mode is not None:
-            mv_props["energy_source_mode"] = energy_source_mode
+            mv_props['energy_source_mode'] = energy_source_mode
         if phase_stats is not None:
-            mv_props["phase_stats"] = phase_stats
+            mv_props['phase_stats'] = phase_stats
         if stable_entries is not None:
-            mv_props["stable_entries"] = stable_entries
+            mv_props['stable_entries'] = stable_entries
         if unstable_entries is not None:
-            mv_props["unstable_entries"] = unstable_entries
+            mv_props['unstable_entries'] = unstable_entries
         if highlighted_entries is not None:
-            mv_props["highlighted_entries"] = highlighted_entries
+            mv_props['highlighted_entries'] = highlighted_entries
         if selected_entry is not None:
-            mv_props["selected_entry"] = selected_entry
+            mv_props['selected_entry'] = selected_entry
         if tooltip is not None:
-            mv_props["tooltip"] = tooltip
+            mv_props['tooltip'] = tooltip
         if temperature is not None:
-            mv_props["temperature"] = temperature
+            mv_props['temperature'] = temperature
         if interpolate_temperature is not None:
-            mv_props["interpolate_temperature"] = interpolate_temperature
+            mv_props['interpolate_temperature'] = interpolate_temperature
         if max_interpolation_gap is not None:
-            mv_props["max_interpolation_gap"] = max_interpolation_gap
+            mv_props['max_interpolation_gap'] = max_interpolation_gap
         if gas_config is not None:
-            mv_props["gas_config"] = gas_config
+            mv_props['gas_config'] = gas_config
         if gas_pressures is not None:
-            mv_props["gas_pressures"] = gas_pressures
+            mv_props['gas_pressures'] = gas_pressures
         if show_hull_faces is not None:
-            mv_props["show_hull_faces"] = show_hull_faces
+            mv_props['show_hull_faces'] = show_hull_faces
         if hull_face_opacity is not None:
-            mv_props["hull_face_opacity"] = hull_face_opacity
+            mv_props['hull_face_opacity'] = hull_face_opacity
 
         super().__init__(
-            id=id,
-            component="convex-hull/ConvexHull3D",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='convex-hull/ConvexHull3D', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class ConvexHull4D(MatterViz):
     """4D convex hull phase diagram plot (for quaternary systems).
@@ -883,87 +833,80 @@ class ConvexHull4D(MatterViz):
         if mv_props is None:
             mv_props = {}
         if highlight_style is not None:
-            mv_props["highlight_style"] = highlight_style
+            mv_props['highlight_style'] = highlight_style
         if entries is not None:
-            mv_props["entries"] = entries
+            mv_props['entries'] = entries
         if controls is not None:
-            mv_props["controls"] = controls
+            mv_props['controls'] = controls
         if config is not None:
-            mv_props["config"] = config
+            mv_props['config'] = config
         if fullscreen is not None:
-            mv_props["fullscreen"] = fullscreen
+            mv_props['fullscreen'] = fullscreen
         if enable_fullscreen is not None:
-            mv_props["enable_fullscreen"] = enable_fullscreen
+            mv_props['enable_fullscreen'] = enable_fullscreen
         if enable_info_pane is not None:
-            mv_props["enable_info_pane"] = enable_info_pane
+            mv_props['enable_info_pane'] = enable_info_pane
         if label_threshold is not None:
-            mv_props["label_threshold"] = label_threshold
+            mv_props['label_threshold'] = label_threshold
         if show_stable is not None:
-            mv_props["show_stable"] = show_stable
+            mv_props['show_stable'] = show_stable
         if show_unstable is not None:
-            mv_props["show_unstable"] = show_unstable
+            mv_props['show_unstable'] = show_unstable
         if color_mode is not None:
-            mv_props["color_mode"] = color_mode
+            mv_props['color_mode'] = color_mode
         if color_scale is not None:
-            mv_props["color_scale"] = color_scale
+            mv_props['color_scale'] = color_scale
         if info_pane_open is not None:
-            mv_props["info_pane_open"] = info_pane_open
+            mv_props['info_pane_open'] = info_pane_open
         if legend_pane_open is not None:
-            mv_props["legend_pane_open"] = legend_pane_open
+            mv_props['legend_pane_open'] = legend_pane_open
         if max_hull_dist_show_phases is not None:
-            mv_props["max_hull_dist_show_phases"] = max_hull_dist_show_phases
+            mv_props['max_hull_dist_show_phases'] = max_hull_dist_show_phases
         if max_hull_dist_show_labels is not None:
-            mv_props["max_hull_dist_show_labels"] = max_hull_dist_show_labels
+            mv_props['max_hull_dist_show_labels'] = max_hull_dist_show_labels
         if show_stable_labels is not None:
-            mv_props["show_stable_labels"] = show_stable_labels
+            mv_props['show_stable_labels'] = show_stable_labels
         if show_unstable_labels is not None:
-            mv_props["show_unstable_labels"] = show_unstable_labels
+            mv_props['show_unstable_labels'] = show_unstable_labels
         if enable_click_selection is not None:
-            mv_props["enable_click_selection"] = enable_click_selection
+            mv_props['enable_click_selection'] = enable_click_selection
         if enable_structure_preview is not None:
-            mv_props["enable_structure_preview"] = enable_structure_preview
+            mv_props['enable_structure_preview'] = enable_structure_preview
         if energy_source_mode is not None:
-            mv_props["energy_source_mode"] = energy_source_mode
+            mv_props['energy_source_mode'] = energy_source_mode
         if phase_stats is not None:
-            mv_props["phase_stats"] = phase_stats
+            mv_props['phase_stats'] = phase_stats
         if stable_entries is not None:
-            mv_props["stable_entries"] = stable_entries
+            mv_props['stable_entries'] = stable_entries
         if unstable_entries is not None:
-            mv_props["unstable_entries"] = unstable_entries
+            mv_props['unstable_entries'] = unstable_entries
         if highlighted_entries is not None:
-            mv_props["highlighted_entries"] = highlighted_entries
+            mv_props['highlighted_entries'] = highlighted_entries
         if selected_entry is not None:
-            mv_props["selected_entry"] = selected_entry
+            mv_props['selected_entry'] = selected_entry
         if tooltip is not None:
-            mv_props["tooltip"] = tooltip
+            mv_props['tooltip'] = tooltip
         if temperature is not None:
-            mv_props["temperature"] = temperature
+            mv_props['temperature'] = temperature
         if interpolate_temperature is not None:
-            mv_props["interpolate_temperature"] = interpolate_temperature
+            mv_props['interpolate_temperature'] = interpolate_temperature
         if max_interpolation_gap is not None:
-            mv_props["max_interpolation_gap"] = max_interpolation_gap
+            mv_props['max_interpolation_gap'] = max_interpolation_gap
         if gas_config is not None:
-            mv_props["gas_config"] = gas_config
+            mv_props['gas_config'] = gas_config
         if gas_pressures is not None:
-            mv_props["gas_pressures"] = gas_pressures
+            mv_props['gas_pressures'] = gas_pressures
         if show_hull_faces is not None:
-            mv_props["show_hull_faces"] = show_hull_faces
+            mv_props['show_hull_faces'] = show_hull_faces
         if hull_face_opacity is not None:
-            mv_props["hull_face_opacity"] = hull_face_opacity
+            mv_props['hull_face_opacity'] = hull_face_opacity
 
         super().__init__(
-            id=id,
-            component="convex-hull/ConvexHull4D",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='convex-hull/ConvexHull4D', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class IsobaricBinaryPhaseDiagram(MatterViz):
     """Binary isobaric phase diagram.
@@ -1010,59 +953,52 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
         if mv_props is None:
             mv_props = {}
         if config is not None:
-            mv_props["config"] = config
+            mv_props['config'] = config
         if controls_open is not None:
-            mv_props["controls_open"] = controls_open
+            mv_props['controls_open'] = controls_open
         if controls_props is not None:
-            mv_props["controls_props"] = controls_props
+            mv_props['controls_props'] = controls_props
         if data is not None:
-            mv_props["data"] = data
+            mv_props['data'] = data
         if display_temp_unit is not None:
-            mv_props["display_temp_unit"] = display_temp_unit
+            mv_props['display_temp_unit'] = display_temp_unit
         if enable_export is not None:
-            mv_props["enable_export"] = enable_export
+            mv_props['enable_export'] = enable_export
         if export_filename is not None:
-            mv_props["export_filename"] = export_filename
+            mv_props['export_filename'] = export_filename
         if export_pane_open is not None:
-            mv_props["export_pane_open"] = export_pane_open
+            mv_props['export_pane_open'] = export_pane_open
         if fullscreen is not None:
-            mv_props["fullscreen"] = fullscreen
+            mv_props['fullscreen'] = fullscreen
         if fullscreen_toggle is not None:
-            mv_props["fullscreen_toggle"] = fullscreen_toggle
+            mv_props['fullscreen_toggle'] = fullscreen_toggle
         if hovered_region is not None:
-            mv_props["hovered_region"] = hovered_region
+            mv_props['hovered_region'] = hovered_region
         if png_dpi is not None:
-            mv_props["png_dpi"] = png_dpi
+            mv_props['png_dpi'] = png_dpi
         if show_boundaries is not None:
-            mv_props["show_boundaries"] = show_boundaries
+            mv_props['show_boundaries'] = show_boundaries
         if show_component_labels is not None:
-            mv_props["show_component_labels"] = show_component_labels
+            mv_props['show_component_labels'] = show_component_labels
         if show_controls is not None:
-            mv_props["show_controls"] = show_controls
+            mv_props['show_controls'] = show_controls
         if show_grid is not None:
-            mv_props["show_grid"] = show_grid
+            mv_props['show_grid'] = show_grid
         if show_labels is not None:
-            mv_props["show_labels"] = show_labels
+            mv_props['show_labels'] = show_labels
         if show_special_points is not None:
-            mv_props["show_special_points"] = show_special_points
+            mv_props['show_special_points'] = show_special_points
         if x_axis is not None:
-            mv_props["x_axis"] = x_axis
+            mv_props['x_axis'] = x_axis
         if y_axis is not None:
-            mv_props["y_axis"] = y_axis
+            mv_props['y_axis'] = y_axis
 
         super().__init__(
-            id=id,
-            component="phase-diagram/IsobaricBinaryPhaseDiagram",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='phase-diagram/IsobaricBinaryPhaseDiagram', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class XrdPlot(MatterViz):
     """X-ray diffraction pattern plot.
@@ -1101,47 +1037,40 @@ class XrdPlot(MatterViz):
         if mv_props is None:
             mv_props = {}
         if allow_file_drop is not None:
-            mv_props["allow_file_drop"] = allow_file_drop
+            mv_props['allow_file_drop'] = allow_file_drop
         if annotate_peaks is not None:
-            mv_props["annotate_peaks"] = annotate_peaks
+            mv_props['annotate_peaks'] = annotate_peaks
         if broadening_enabled is not None:
-            mv_props["broadening_enabled"] = broadening_enabled
+            mv_props['broadening_enabled'] = broadening_enabled
         if broadening_params is not None:
-            mv_props["broadening_params"] = broadening_params
+            mv_props['broadening_params'] = broadening_params
         if controls is not None:
-            mv_props["controls"] = controls
+            mv_props['controls'] = controls
         if error_msg is not None:
-            mv_props["error_msg"] = error_msg
+            mv_props['error_msg'] = error_msg
         if hkl_format is not None:
-            mv_props["hkl_format"] = hkl_format
+            mv_props['hkl_format'] = hkl_format
         if loading is not None:
-            mv_props["loading"] = loading
+            mv_props['loading'] = loading
         if peak_width is not None:
-            mv_props["peak_width"] = peak_width
+            mv_props['peak_width'] = peak_width
         if show_angles is not None:
-            mv_props["show_angles"] = show_angles
+            mv_props['show_angles'] = show_angles
         if wavelength is not None:
-            mv_props["wavelength"] = wavelength
+            mv_props['wavelength'] = wavelength
         if x_axis is not None:
-            mv_props["x_axis"] = x_axis
+            mv_props['x_axis'] = x_axis
         if y_axis is not None:
-            mv_props["y_axis"] = y_axis
+            mv_props['y_axis'] = y_axis
         if patterns is not None:
-            mv_props["patterns"] = patterns
+            mv_props['patterns'] = patterns
 
         super().__init__(
-            id=id,
-            component="xrd/XrdPlot",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='xrd/XrdPlot', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class Bands(MatterViz):
     """Band structure dispersion plot (phonon or electronic).
@@ -1195,73 +1124,66 @@ class Bands(MatterViz):
         if mv_props is None:
             mv_props = {}
         if band_structs is not None:
-            mv_props["band_structs"] = band_structs
+            mv_props['band_structs'] = band_structs
         if band_type is not None:
-            mv_props["band_type"] = band_type
+            mv_props['band_type'] = band_type
         if controls is not None:
-            mv_props["controls"] = controls
+            mv_props['controls'] = controls
         if current_x_value is not None:
-            mv_props["current_x_value"] = current_x_value
+            mv_props['current_x_value'] = current_x_value
         if data_loader is not None:
-            mv_props["data_loader"] = data_loader
+            mv_props['data_loader'] = data_loader
         if error_bands is not None:
-            mv_props["error_bands"] = error_bands
+            mv_props['error_bands'] = error_bands
         if fermi_level is not None:
-            mv_props["fermi_level"] = fermi_level
+            mv_props['fermi_level'] = fermi_level
         if fill_regions is not None:
-            mv_props["fill_regions"] = fill_regions
+            mv_props['fill_regions'] = fill_regions
         if hover_config is not None:
-            mv_props["hover_config"] = hover_config
+            mv_props['hover_config'] = hover_config
         if label_placement_config is not None:
-            mv_props["label_placement_config"] = label_placement_config
+            mv_props['label_placement_config'] = label_placement_config
         if legend is not None:
-            mv_props["legend"] = legend
+            mv_props['legend'] = legend
         if line_kwargs is not None:
-            mv_props["line_kwargs"] = line_kwargs
+            mv_props['line_kwargs'] = line_kwargs
         if line_tween is not None:
-            mv_props["line_tween"] = line_tween
+            mv_props['line_tween'] = line_tween
         if pan is not None:
-            mv_props["pan"] = pan
+            mv_props['pan'] = pan
         if path_mode is not None:
-            mv_props["path_mode"] = path_mode
+            mv_props['path_mode'] = path_mode
         if point_tween is not None:
-            mv_props["point_tween"] = point_tween
+            mv_props['point_tween'] = point_tween
         if ref_lines is not None:
-            mv_props["ref_lines"] = ref_lines
+            mv_props['ref_lines'] = ref_lines
         if reference_frequency is not None:
-            mv_props["reference_frequency"] = reference_frequency
+            mv_props['reference_frequency'] = reference_frequency
         if ribbon_config is not None:
-            mv_props["ribbon_config"] = ribbon_config
+            mv_props['ribbon_config'] = ribbon_config
         if selected_series_idx is not None:
-            mv_props["selected_series_idx"] = selected_series_idx
+            mv_props['selected_series_idx'] = selected_series_idx
         if series is not None:
-            mv_props["series"] = series
+            mv_props['series'] = series
         if show_legend is not None:
-            mv_props["show_legend"] = show_legend
+            mv_props['show_legend'] = show_legend
         if styles is not None:
-            mv_props["styles"] = styles
+            mv_props['styles'] = styles
         if tooltip_point is not None:
-            mv_props["tooltip_point"] = tooltip_point
+            mv_props['tooltip_point'] = tooltip_point
         if x_axis is not None:
-            mv_props["x_axis"] = x_axis
+            mv_props['x_axis'] = x_axis
         if x_positions is not None:
-            mv_props["x_positions"] = x_positions
+            mv_props['x_positions'] = x_positions
         if y_axis is not None:
-            mv_props["y_axis"] = y_axis
+            mv_props['y_axis'] = y_axis
 
         super().__init__(
-            id=id,
-            component="spectral/Bands",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='spectral/Bands', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class Dos(MatterViz):
     """Density of states plot (electronic or phonon).
@@ -1324,91 +1246,84 @@ class Dos(MatterViz):
         if mv_props is None:
             mv_props = {}
         if controls is not None:
-            mv_props["controls"] = controls
+            mv_props['controls'] = controls
         if current_x_value is not None:
-            mv_props["current_x_value"] = current_x_value
+            mv_props['current_x_value'] = current_x_value
         if data_loader is not None:
-            mv_props["data_loader"] = data_loader
+            mv_props['data_loader'] = data_loader
         if doses is not None:
-            mv_props["doses"] = doses
+            mv_props['doses'] = doses
         if error_bands is not None:
-            mv_props["error_bands"] = error_bands
+            mv_props['error_bands'] = error_bands
         if fermi_level is not None:
-            mv_props["fermi_level"] = fermi_level
+            mv_props['fermi_level'] = fermi_level
         if fill_regions is not None:
-            mv_props["fill_regions"] = fill_regions
+            mv_props['fill_regions'] = fill_regions
         if hover_config is not None:
-            mv_props["hover_config"] = hover_config
+            mv_props['hover_config'] = hover_config
         if hovered_frequency is not None:
-            mv_props["hovered_frequency"] = hovered_frequency
+            mv_props['hovered_frequency'] = hovered_frequency
         if label_placement_config is not None:
-            mv_props["label_placement_config"] = label_placement_config
+            mv_props['label_placement_config'] = label_placement_config
         if legend is not None:
-            mv_props["legend"] = legend
+            mv_props['legend'] = legend
         if line_tween is not None:
-            mv_props["line_tween"] = line_tween
+            mv_props['line_tween'] = line_tween
         if normalize is not None:
-            mv_props["normalize"] = normalize
+            mv_props['normalize'] = normalize
         if orientation is not None:
-            mv_props["orientation"] = orientation
+            mv_props['orientation'] = orientation
         if pan is not None:
-            mv_props["pan"] = pan
+            mv_props['pan'] = pan
         if pdos_filter is not None:
-            mv_props["pdos_filter"] = pdos_filter
+            mv_props['pdos_filter'] = pdos_filter
         if pdos_type is not None:
-            mv_props["pdos_type"] = pdos_type
+            mv_props['pdos_type'] = pdos_type
         if point_tween is not None:
-            mv_props["point_tween"] = point_tween
+            mv_props['point_tween'] = point_tween
         if ref_lines is not None:
-            mv_props["ref_lines"] = ref_lines
+            mv_props['ref_lines'] = ref_lines
         if reference_frequency is not None:
-            mv_props["reference_frequency"] = reference_frequency
+            mv_props['reference_frequency'] = reference_frequency
         if selected_series_idx is not None:
-            mv_props["selected_series_idx"] = selected_series_idx
+            mv_props['selected_series_idx'] = selected_series_idx
         if series is not None:
-            mv_props["series"] = series
+            mv_props['series'] = series
         if show_controls is not None:
-            mv_props["show_controls"] = show_controls
+            mv_props['show_controls'] = show_controls
         if show_legend is not None:
-            mv_props["show_legend"] = show_legend
+            mv_props['show_legend'] = show_legend
         if show_normalize_control is not None:
-            mv_props["show_normalize_control"] = show_normalize_control
+            mv_props['show_normalize_control'] = show_normalize_control
         if show_sigma_control is not None:
-            mv_props["show_sigma_control"] = show_sigma_control
+            mv_props['show_sigma_control'] = show_sigma_control
         if show_units_control is not None:
-            mv_props["show_units_control"] = show_units_control
+            mv_props['show_units_control'] = show_units_control
         if sigma is not None:
-            mv_props["sigma"] = sigma
+            mv_props['sigma'] = sigma
         if sigma_range is not None:
-            mv_props["sigma_range"] = sigma_range
+            mv_props['sigma_range'] = sigma_range
         if spin_mode is not None:
-            mv_props["spin_mode"] = spin_mode
+            mv_props['spin_mode'] = spin_mode
         if stack is not None:
-            mv_props["stack"] = stack
+            mv_props['stack'] = stack
         if styles is not None:
-            mv_props["styles"] = styles
+            mv_props['styles'] = styles
         if tooltip_point is not None:
-            mv_props["tooltip_point"] = tooltip_point
+            mv_props['tooltip_point'] = tooltip_point
         if units is not None:
-            mv_props["units"] = units
+            mv_props['units'] = units
         if x_axis is not None:
-            mv_props["x_axis"] = x_axis
+            mv_props['x_axis'] = x_axis
         if y_axis is not None:
-            mv_props["y_axis"] = y_axis
+            mv_props['y_axis'] = y_axis
 
         super().__init__(
-            id=id,
-            component="spectral/Dos",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='spectral/Dos', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class ScatterPlot(MatterViz):
     """General-purpose scatter plot with customizable axes and tooltips.
@@ -1457,63 +1372,56 @@ class ScatterPlot(MatterViz):
         if mv_props is None:
             mv_props = {}
         if controls is not None:
-            mv_props["controls"] = controls
+            mv_props['controls'] = controls
         if current_x_value is not None:
-            mv_props["current_x_value"] = current_x_value
+            mv_props['current_x_value'] = current_x_value
         if data_loader is not None:
-            mv_props["data_loader"] = data_loader
+            mv_props['data_loader'] = data_loader
         if error_bands is not None:
-            mv_props["error_bands"] = error_bands
+            mv_props['error_bands'] = error_bands
         if fill_regions is not None:
-            mv_props["fill_regions"] = fill_regions
+            mv_props['fill_regions'] = fill_regions
         if hover_config is not None:
-            mv_props["hover_config"] = hover_config
+            mv_props['hover_config'] = hover_config
         if label_placement_config is not None:
-            mv_props["label_placement_config"] = label_placement_config
+            mv_props['label_placement_config'] = label_placement_config
         if legend is not None:
-            mv_props["legend"] = legend
+            mv_props['legend'] = legend
         if line_tween is not None:
-            mv_props["line_tween"] = line_tween
+            mv_props['line_tween'] = line_tween
         if pan is not None:
-            mv_props["pan"] = pan
+            mv_props['pan'] = pan
         if point_tween is not None:
-            mv_props["point_tween"] = point_tween
+            mv_props['point_tween'] = point_tween
         if ref_lines is not None:
-            mv_props["ref_lines"] = ref_lines
+            mv_props['ref_lines'] = ref_lines
         if selected_series_idx is not None:
-            mv_props["selected_series_idx"] = selected_series_idx
+            mv_props['selected_series_idx'] = selected_series_idx
         if series is not None:
-            mv_props["series"] = series
+            mv_props['series'] = series
         if styles is not None:
-            mv_props["styles"] = styles
+            mv_props['styles'] = styles
         if tooltip_point is not None:
-            mv_props["tooltip_point"] = tooltip_point
+            mv_props['tooltip_point'] = tooltip_point
         if x_axis is not None:
-            mv_props["x_axis"] = x_axis
+            mv_props['x_axis'] = x_axis
         if y_axis is not None:
-            mv_props["y_axis"] = y_axis
+            mv_props['y_axis'] = y_axis
         if height is not None:
-            mv_props["height"] = height
+            mv_props['height'] = height
         if width is not None:
-            mv_props["width"] = width
+            mv_props['width'] = width
         if color_scale is not None:
-            mv_props["color_scale"] = color_scale
+            mv_props['color_scale'] = color_scale
         if size_scale is not None:
-            mv_props["size_scale"] = size_scale
+            mv_props['size_scale'] = size_scale
 
         super().__init__(
-            id=id,
-            component="plot/ScatterPlot",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='plot/ScatterPlot', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class Histogram(MatterViz):
     """Histogram plot for data distributions.
@@ -1550,39 +1458,32 @@ class Histogram(MatterViz):
         if mv_props is None:
             mv_props = {}
         if bar is not None:
-            mv_props["bar"] = bar
+            mv_props['bar'] = bar
         if bins is not None:
-            mv_props["bins"] = bins
+            mv_props['bins'] = bins
         if data_loader is not None:
-            mv_props["data_loader"] = data_loader
+            mv_props['data_loader'] = data_loader
         if legend is not None:
-            mv_props["legend"] = legend
+            mv_props['legend'] = legend
         if mode is not None:
-            mv_props["mode"] = mode
+            mv_props['mode'] = mode
         if pan is not None:
-            mv_props["pan"] = pan
+            mv_props['pan'] = pan
         if ref_lines is not None:
-            mv_props["ref_lines"] = ref_lines
+            mv_props['ref_lines'] = ref_lines
         if selected_property is not None:
-            mv_props["selected_property"] = selected_property
+            mv_props['selected_property'] = selected_property
         if series is not None:
-            mv_props["series"] = series
+            mv_props['series'] = series
         if show_legend is not None:
-            mv_props["show_legend"] = show_legend
+            mv_props['show_legend'] = show_legend
 
         super().__init__(
-            id=id,
-            component="plot/Histogram",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='plot/Histogram', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
-
 
 class RdfPlot(MatterViz):
     """Radial distribution function (RDF) plot.
@@ -1621,43 +1522,37 @@ class RdfPlot(MatterViz):
         if mv_props is None:
             mv_props = {}
         if cutoff is not None:
-            mv_props["cutoff"] = cutoff
+            mv_props['cutoff'] = cutoff
         if drag_dropped is not None:
-            mv_props["drag_dropped"] = drag_dropped
+            mv_props['drag_dropped'] = drag_dropped
         if dragging is not None:
-            mv_props["dragging"] = dragging
+            mv_props['dragging'] = dragging
         if enable_drop is not None:
-            mv_props["enable_drop"] = enable_drop
+            mv_props['enable_drop'] = enable_drop
         if error_msg is not None:
-            mv_props["error_msg"] = error_msg
+            mv_props['error_msg'] = error_msg
         if loading is not None:
-            mv_props["loading"] = loading
+            mv_props['loading'] = loading
         if mode is not None:
-            mv_props["mode"] = mode
+            mv_props['mode'] = mode
         if n_bins is not None:
-            mv_props["n_bins"] = n_bins
+            mv_props['n_bins'] = n_bins
         if patterns is not None:
-            mv_props["patterns"] = patterns
+            mv_props['patterns'] = patterns
         if pbc is not None:
-            mv_props["pbc"] = pbc
+            mv_props['pbc'] = pbc
         if show_reference_line is not None:
-            mv_props["show_reference_line"] = show_reference_line
+            mv_props['show_reference_line'] = show_reference_line
         if structures is not None:
-            mv_props["structures"] = structures
+            mv_props['structures'] = structures
         if x_axis is not None:
-            mv_props["x_axis"] = x_axis
+            mv_props['x_axis'] = x_axis
         if y_axis is not None:
-            mv_props["y_axis"] = y_axis
+            mv_props['y_axis'] = y_axis
 
         super().__init__(
-            id=id,
-            component="rdf/RdfPlot",
-            mv_props=mv_props,
-            set_props=set_props,
-            float32_props=float32_props,
-            event_props=event_props,
-            last_event=last_event,
-            className=className,
-            style=style,
-            **kwargs,
+            id=id, component='rdf/RdfPlot', mv_props=mv_props,
+            set_props=set_props, float32_props=float32_props,
+            event_props=event_props, last_event=last_event,
+            className=className, style=style, **kwargs,
         )
