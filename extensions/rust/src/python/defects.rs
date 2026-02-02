@@ -390,6 +390,11 @@ fn find_voronoi_interstitials(
             "min_dist must be non-negative and finite, got {dist}"
         )));
     }
+    if !symprec.is_finite() || symprec < 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "symprec must be non-negative and finite, got {symprec}"
+        )));
+    }
 
     let struc = parse_struct(&structure)?;
     let sites = defects::find_voronoi_interstitials(&struc, min_dist, symprec);

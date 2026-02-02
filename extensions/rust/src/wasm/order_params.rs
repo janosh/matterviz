@@ -2,9 +2,18 @@
 
 use wasm_bindgen::prelude::*;
 
-use super::helpers::validate_cutoff_nonneg;
+use super::helpers::validate_cutoff;
 use crate::order_params;
 use crate::wasm_types::{JsCrystal, WasmResult};
+
+/// Validate tolerance is finite and non-negative.
+#[inline]
+fn validate_tolerance(tolerance: f64) -> Result<(), String> {
+    if !tolerance.is_finite() || tolerance < 0.0 {
+        return Err("Tolerance must be a finite non-negative number".to_string());
+    }
+    Ok(())
+}
 
 #[wasm_bindgen]
 pub fn compute_steinhardt_q(
@@ -12,7 +21,10 @@ pub fn compute_steinhardt_q(
     degree: i32,
     cutoff: f64,
 ) -> WasmResult<Vec<f64>> {
-    if let Err(err) = validate_cutoff_nonneg(cutoff) {
+    if degree < 0 {
+        return WasmResult::err(&format!("degree must be non-negative, got {degree}"));
+    }
+    if let Err(err) = validate_cutoff(cutoff) {
         return WasmResult::err(&err);
     }
     structure
@@ -22,10 +34,15 @@ pub fn compute_steinhardt_q(
 }
 
 #[wasm_bindgen]
-pub fn classify_local_structure(q4: f64, q6: f64, tolerance: f64) -> String {
-    order_params::classify_local_structure(q4, q6, tolerance)
-        .as_str()
-        .to_string()
+pub fn classify_local_structure(q4: f64, q6: f64, tolerance: f64) -> WasmResult<String> {
+    if let Err(err) = validate_tolerance(tolerance) {
+        return WasmResult::err(&err);
+    }
+    WasmResult::ok(
+        order_params::classify_local_structure(q4, q6, tolerance)
+            .as_str()
+            .to_string(),
+    )
 }
 
 #[wasm_bindgen]
@@ -34,7 +51,10 @@ pub fn classify_all_atoms(
     cutoff: f64,
     tolerance: f64,
 ) -> WasmResult<Vec<String>> {
-    if let Err(err) = validate_cutoff_nonneg(cutoff) {
+    if let Err(err) = validate_cutoff(cutoff) {
+        return WasmResult::err(&err);
+    }
+    if let Err(err) = validate_tolerance(tolerance) {
         return WasmResult::err(&err);
     }
     structure
