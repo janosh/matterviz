@@ -19,7 +19,7 @@ from conftest import (
 
 @pytest.fixture
 def fcc_cu() -> dict:
-    """Create FCC Cu conventional cell (4 atoms, cubic a=3.6 Å)."""
+    """FCC Cu conventional cell (4 atoms, cubic a=3.6 Å)."""
     return make_cubic_structure(
         3.6,
         [

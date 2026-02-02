@@ -183,28 +183,10 @@ pub fn min_distance_to_atoms(
     lattice_matrix: &nalgebra::Matrix3<f64>,
     pbc: [bool; 3],
 ) -> f64 {
-    let lattice_vecs = [
-        lattice_matrix.row(0).transpose(),
-        lattice_matrix.row(1).transpose(),
-        lattice_matrix.row(2).transpose(),
-    ];
-
-    let mut min_dist = f64::MAX;
-
-    for atom in atom_coords {
-        for image in periodic_image_offsets(pbc) {
-            let image_offset = (image[0] as f64) * lattice_vecs[0]
-                + (image[1] as f64) * lattice_vecs[1]
-                + (image[2] as f64) * lattice_vecs[2];
-            let atom_image = atom + image_offset;
-            let dist = (point - atom_image).norm();
-            if dist < min_dist {
-                min_dist = dist;
-            }
-        }
-    }
-
-    min_dist
+    atom_coords
+        .iter()
+        .map(|atom| minimum_image_distance(point, atom, lattice_matrix, pbc).0)
+        .fold(f64::MAX, f64::min)
 }
 
 /// Count atoms at approximately a given distance from a point (within tolerance).
@@ -231,45 +213,52 @@ pub fn count_atoms_at_distance(
     target_dist: f64,
     tolerance: f64,
 ) -> usize {
-    let lattice_vecs = [
-        lattice_matrix.row(0).transpose(),
-        lattice_matrix.row(1).transpose(),
-        lattice_matrix.row(2).transpose(),
-    ];
-
-    let mut count = 0;
-
-    for atom in atom_coords {
-        for image in periodic_image_offsets(pbc) {
-            let image_offset = (image[0] as f64) * lattice_vecs[0]
-                + (image[1] as f64) * lattice_vecs[1]
-                + (image[2] as f64) * lattice_vecs[2];
-            let atom_image = atom + image_offset;
-            let dist = (point - atom_image).norm();
-            if (dist - target_dist).abs() < tolerance {
-                count += 1;
-            }
-        }
-    }
-
-    count
+    atom_coords
+        .iter()
+        .filter(|atom| {
+            let dist = minimum_image_distance(point, atom, lattice_matrix, pbc).0;
+            (dist - target_dist).abs() < tolerance
+        })
+        .count()
 }
 
 // === Periodic Image Iteration ===
+
+/// All 27 periodic image offsets as i32.
+const IMAGE_OFFSETS_I32: [[i32; 3]; 27] = [
+    [-1, -1, -1],
+    [-1, -1, 0],
+    [-1, -1, 1],
+    [-1, 0, -1],
+    [-1, 0, 0],
+    [-1, 0, 1],
+    [-1, 1, -1],
+    [-1, 1, 0],
+    [-1, 1, 1],
+    [0, -1, -1],
+    [0, -1, 0],
+    [0, -1, 1],
+    [0, 0, -1],
+    [0, 0, 0],
+    [0, 0, 1],
+    [0, 1, -1],
+    [0, 1, 0],
+    [0, 1, 1],
+    [1, -1, -1],
+    [1, -1, 0],
+    [1, -1, 1],
+    [1, 0, -1],
+    [1, 0, 0],
+    [1, 0, 1],
+    [1, 1, -1],
+    [1, 1, 0],
+    [1, 1, 1],
+];
 
 /// Generate all periodic image offsets based on PBC flags.
 ///
 /// For each periodic axis, generates offsets in {-1, 0, 1}.
 /// For non-periodic axes, only generates 0.
-///
-/// # Arguments
-///
-/// * `pbc` - Periodic boundary conditions along each axis
-///
-/// # Returns
-///
-/// Iterator over [i32; 3] image offsets. For full 3D PBC, yields 27 offsets.
-/// For partial PBC, yields fewer offsets.
 ///
 /// # Example
 ///
@@ -277,29 +266,14 @@ pub fn count_atoms_at_distance(
 /// use ferrox::pbc::periodic_image_offsets;
 ///
 /// // Full 3D PBC: 27 images
-/// let count = periodic_image_offsets([true, true, true]).count();
-/// assert_eq!(count, 27);
+/// assert_eq!(periodic_image_offsets([true, true, true]).count(), 27);
 ///
 /// // Slab (z non-periodic): 9 images
-/// let count = periodic_image_offsets([true, true, false]).count();
-/// assert_eq!(count, 9);
+/// assert_eq!(periodic_image_offsets([true, true, false]).count(), 9);
 /// ```
 pub fn periodic_image_offsets(pbc: [bool; 3]) -> impl Iterator<Item = [i32; 3]> {
-    let range_x: &[i32] = if pbc[0] { &[-1, 0, 1] } else { &[0] };
-    let range_y: &[i32] = if pbc[1] { &[-1, 0, 1] } else { &[0] };
-    let range_z: &[i32] = if pbc[2] { &[-1, 0, 1] } else { &[0] };
-
-    // Use static slices since we need to return an iterator
-    // that captures by value, not by reference
-    let rx: Vec<i32> = range_x.to_vec();
-    let ry: Vec<i32> = range_y.to_vec();
-    let rz: Vec<i32> = range_z.to_vec();
-
-    rx.into_iter().flat_map(move |dx| {
-        let ry = ry.clone();
-        let rz = rz.clone();
-        ry.into_iter()
-            .flat_map(move |dy| rz.clone().into_iter().map(move |dz| [dx, dy, dz]))
+    IMAGE_OFFSETS_I32.into_iter().filter(move |img| {
+        (pbc[0] || img[0] == 0) && (pbc[1] || img[1] == 0) && (pbc[2] || img[2] == 0)
     })
 }
 
