@@ -413,8 +413,8 @@ class composition:
     def get_reduced_factor(formula: str) -> float:
         """Get the reduction factor of a formula."""
     @staticmethod
-    def composition_charge(formula: str) -> float:
-        """Get the charge of a composition."""
+    def composition_charge(formula: str) -> int | None:
+        """Get the charge of a composition. Returns None if species lack oxidation states."""
 
 class symmetry:
     """Symmetry and space group functions."""

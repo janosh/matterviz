@@ -58,9 +58,10 @@ fn compute_lennard_jones_forces(
     let cell_mat = cell_to_matrix3(cell);
     let pbc_arr = default_pbc(pbc, cell.is_some());
     let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
-    let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc_arr, &params)
-        .map_err(|err| PyValueError::new_err(err.to_string()))?;
-    Ok(vec3_to_positions(&result.forces))
+    let forces =
+        potentials::compute_lennard_jones_forces(&pos_vec, cell_mat.as_ref(), pbc_arr, &params)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok(vec3_to_positions(&forces))
 }
 
 // === Morse ===

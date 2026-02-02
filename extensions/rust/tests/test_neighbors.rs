@@ -197,8 +197,14 @@ fn test_coordination_numbers_bcc() {
         ..Default::default()
     };
     let nl = build_neighbor_list(&bcc, &config);
-    let avg_cn = nl.len() / n_atoms;
-    assert_eq!(avg_cn, 8, "BCC first shell should have CN=8, got {avg_cn}");
+    let mut counts = vec![0usize; n_atoms];
+    for &center in &nl.center_indices {
+        counts[center] += 1;
+    }
+    assert!(
+        counts.iter().all(|&cn| cn == 8),
+        "BCC first shell should have CN=8 for all atoms"
+    );
 
     // Second shell includes: CN = 8 + 6 = 14
     let config = NeighborListConfig {
@@ -206,10 +212,13 @@ fn test_coordination_numbers_bcc() {
         ..Default::default()
     };
     let nl = build_neighbor_list(&bcc, &config);
-    let avg_cn = nl.len() / n_atoms;
-    assert_eq!(
-        avg_cn, 14,
-        "BCC first+second shell should have CN=14, got {avg_cn}"
+    let mut counts = vec![0usize; n_atoms];
+    for &center in &nl.center_indices {
+        counts[center] += 1;
+    }
+    assert!(
+        counts.iter().all(|&cn| cn == 14),
+        "BCC first+second shell should have CN=14 for all atoms"
     );
 }
 
@@ -225,8 +234,14 @@ fn test_coordination_numbers_nacl() {
         ..Default::default()
     };
     let nl = build_neighbor_list(&nacl, &config);
-    let avg_cn = nl.len() / n_atoms;
-    assert_eq!(avg_cn, 6, "NaCl first shell should have CN=6, got {avg_cn}");
+    let mut counts = vec![0usize; n_atoms];
+    for &center in &nl.center_indices {
+        counts[center] += 1;
+    }
+    assert!(
+        counts.iter().all(|&cn| cn == 6),
+        "NaCl first shell should have CN=6 for all atoms"
+    );
 }
 
 #[test]
