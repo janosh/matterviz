@@ -87,7 +87,7 @@ fn parse_struct(input: &StructureJson) -> PyResult<Structure> {
 fn json_to_pydict(py: Python<'_>, json: &str) -> PyResult<Py<PyDict>> {
     let result = py.import("json")?.call_method1("loads", (json,))?;
     result
-        .downcast::<PyDict>()
+        .cast::<PyDict>()
         .map(|d| d.clone().unbind())
         .map_err(|e| PyValueError::new_err(format!("Expected dict from JSON: {e}")))
 }
@@ -1368,7 +1368,7 @@ fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyRe
 ///     >>> from ferrox import to_pymatgen_structure, from_pymatgen_structure
 ///     >>> struct = to_pymatgen_structure(ferrox_dict)
 #[pyfunction]
-fn to_pymatgen_structure(py: Python<'_>, structure: StructureJson) -> PyResult<PyObject> {
+fn to_pymatgen_structure(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyAny>> {
     let pymatgen = py.import("pymatgen.core.structure")?;
     let structure_cls = pymatgen.getattr("Structure")?;
 
@@ -1395,7 +1395,7 @@ fn to_pymatgen_structure(py: Python<'_>, structure: StructureJson) -> PyResult<P
 ///     >>> from ferrox import to_pymatgen_molecule
 ///     >>> mol = to_pymatgen_molecule(ferrox_mol_dict)
 #[pyfunction]
-fn to_pymatgen_molecule(py: Python<'_>, molecule: StructureJson) -> PyResult<PyObject> {
+fn to_pymatgen_molecule(py: Python<'_>, molecule: StructureJson) -> PyResult<Py<PyAny>> {
     let pymatgen = py.import("pymatgen.core.structure")?;
     let molecule_cls = pymatgen.getattr("Molecule")?;
 
@@ -1524,7 +1524,7 @@ fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDic
 ///     >>> from ferrox import to_ase_atoms
 ///     >>> atoms = to_ase_atoms(ferrox_dict)
 #[pyfunction]
-fn to_ase_atoms(py: Python<'_>, structure: StructureJson) -> PyResult<PyObject> {
+fn to_ase_atoms(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyAny>> {
     let ase = py.import("ase")?;
     let atoms_cls = ase.getattr("Atoms")?;
 
@@ -6372,7 +6372,12 @@ fn compute_lennard_jones(
 ) -> PyResult<(f64, Vec<[f64; 3]>)> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
-    let pbc_arr = pbc.unwrap_or([true, true, true]);
+    // Default to PBC only if cell is provided
+    let pbc_arr = pbc.unwrap_or(if cell.is_some() {
+        [true, true, true]
+    } else {
+        [false, false, false]
+    });
 
     let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
     let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc_arr, &params)
@@ -6405,7 +6410,11 @@ fn compute_lennard_jones_forces(
 ) -> PyResult<Vec<[f64; 3]>> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
-    let pbc_arr = pbc.unwrap_or([true, true, true]);
+    let pbc_arr = pbc.unwrap_or(if cell.is_some() {
+        [true, true, true]
+    } else {
+        [false, false, false]
+    });
     let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
     let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc_arr, &params)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
@@ -6444,7 +6453,11 @@ fn compute_morse(
 ) -> PyResult<(f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>)> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
-    let pbc_arr = pbc.unwrap_or([true, true, true]);
+    let pbc_arr = pbc.unwrap_or(if cell.is_some() {
+        [true, true, true]
+    } else {
+        [false, false, false]
+    });
 
     let result = potentials::compute_morse_simple(
         &pos_vec,
@@ -6497,7 +6510,11 @@ fn compute_soft_sphere(
 ) -> PyResult<(f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>)> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
-    let pbc_arr = pbc.unwrap_or([true, true, true]);
+    let pbc_arr = pbc.unwrap_or(if cell.is_some() {
+        [true, true, true]
+    } else {
+        [false, false, false]
+    });
 
     let result = potentials::compute_soft_sphere_simple(
         &pos_vec,
@@ -6545,7 +6562,11 @@ fn compute_harmonic_bonds(
 ) -> PyResult<(f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>)> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
-    let pbc_arr = pbc.unwrap_or([true, true, true]);
+    let pbc_arr = pbc.unwrap_or(if cell.is_some() {
+        [true, true, true]
+    } else {
+        [false, false, false]
+    });
     let n_atoms = pos_vec.len();
 
     // Convert bonds with validation for indices
