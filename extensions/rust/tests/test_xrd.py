@@ -17,29 +17,40 @@ except ImportError:
 @pytest.fixture
 def si_diamond_json() -> str:
     """Silicon diamond structure, 2 sites."""
-    return json.dumps({
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[5.431, 0, 0], [0, 5.431, 0], [0, 0, 5.431]]},
-        "sites": [
-            {"species": [{"element": "Si", "occu": 1}], "abc": [0, 0, 0]},
-            {"species": [{"element": "Si", "occu": 1}], "abc": [0.25, 0.25, 0.25]},
-        ],
-    })
+    return json.dumps(
+        {
+            "@module": "pymatgen.core.structure",
+            "@class": "Structure",
+            "lattice": {"matrix": [[5.431, 0, 0], [0, 5.431, 0], [0, 0, 5.431]]},
+            "sites": [
+                {"species": [{"element": "Si", "occu": 1}], "abc": [0, 0, 0]},
+                {"species": [{"element": "Si", "occu": 1}], "abc": [0.25, 0.25, 0.25]},
+            ],
+        }
+    )
 
 
 def test_pattern_structure(nacl_json: str) -> None:
     """XRD pattern has expected keys and consistent array lengths."""
     pattern = compute_xrd(nacl_json)
-    assert all(key in pattern for key in ("two_theta", "intensities", "hkls", "d_spacings"))
+    assert all(
+        key in pattern for key in ("two_theta", "intensities", "hkls", "d_spacings")
+    )
     n = len(pattern["two_theta"])
     assert n > 0
-    assert len(pattern["intensities"]) == len(pattern["hkls"]) == len(pattern["d_spacings"]) == n
+    assert (
+        len(pattern["intensities"])
+        == len(pattern["hkls"])
+        == len(pattern["d_spacings"])
+        == n
+    )
 
 
 def test_scaling(nacl_json: str) -> None:
     """Scaled max=100, unscaled all positive."""
-    assert max(compute_xrd(nacl_json, scaled=True)["intensities"]) == pytest.approx(100.0, abs=0.1)
+    assert max(compute_xrd(nacl_json, scaled=True)["intensities"]) == pytest.approx(
+        100.0, abs=0.1
+    )
     assert all(i > 0 for i in compute_xrd(nacl_json, scaled=False)["intensities"])
 
 
@@ -97,7 +108,9 @@ def test_invalid_wavelength(nacl_json: str, wavelength: float) -> None:
     [(-10.0, 90.0), (0.0, 200.0), (90.0, 10.0)],
     ids=["min<0", "max>180", "min>max"],
 )
-def test_invalid_two_theta_range(nacl_json: str, two_theta_range: tuple[float, float]) -> None:
+def test_invalid_two_theta_range(
+    nacl_json: str, two_theta_range: tuple[float, float]
+) -> None:
     """Invalid 2θ range raises ValueError."""
     with pytest.raises(ValueError, match="two_theta_range"):
         compute_xrd(nacl_json, two_theta_range=two_theta_range)
@@ -109,7 +122,9 @@ def test_scattering_params_structure() -> None:
     for elem in ("H", "C", "N", "O", "Fe", "Na", "Cl", "Si", "Cu"):
         assert elem in params, f"Missing: {elem}"
     for elem, coeffs in params.items():
-        assert len(coeffs) == 4 and all(len(p) == 2 for p in coeffs), f"Bad structure: {elem}"
+        assert len(coeffs) == 4 and all(len(p) == 2 for p in coeffs), (
+            f"Bad structure: {elem}"
+        )
 
 
 def test_deuterium_equals_hydrogen() -> None:

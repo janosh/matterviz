@@ -54,19 +54,23 @@ def generate_quinary_reference() -> dict:
         comp_dict = {str(el): float(amt) for el, amt in entry.composition.items()}
         e_above_hull = pd.get_e_above_hull(entry)
 
-        output_entries.append({
-            "id": f"entry_{idx}",
-            "composition": comp_dict,
-            "energy_per_atom": float(entry.energy_per_atom),
-            "e_above_hull": float(e_above_hull),
-            "is_stable": bool(e_above_hull < 1e-10),
-        })
+        output_entries.append(
+            {
+                "id": f"entry_{idx}",
+                "composition": comp_dict,
+                "energy_per_atom": float(entry.energy_per_atom),
+                "e_above_hull": float(e_above_hull),
+                "is_stable": bool(e_above_hull < 1e-10),
+            }
+        )
 
     return {
         "elements": ["Li", "Na", "K", "Rb", "Cs"],
         "entries": output_entries,
         "n_stable": len([entry for entry in output_entries if entry["is_stable"]]),
-        "n_unstable": len([entry for entry in output_entries if not entry["is_stable"]]),
+        "n_unstable": len(
+            [entry for entry in output_entries if not entry["is_stable"]]
+        ),
     }
 
 
@@ -75,7 +79,9 @@ def main() -> None:
     data = generate_quinary_reference()
 
     # Save to JSON file in the same directory
-    output_path = os.path.join(os.path.dirname(__file__), "quinary_pymatgen_reference.json")
+    output_path = os.path.join(
+        os.path.dirname(__file__), "quinary_pymatgen_reference.json"
+    )
     with open(output_path, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=2)
 
