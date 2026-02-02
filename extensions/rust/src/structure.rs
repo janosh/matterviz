@@ -25,6 +25,19 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 /// translation is a 3-element float array (in fractional coordinates).
 pub type SymmetryOperation = ([[i32; 3]; 3], [f64; 3]);
 
+/// Information about a Wyckoff position in a crystal structure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WyckoffSite {
+    /// Wyckoff label (e.g., "4a", "8c", "24d").
+    pub label: String,
+    /// Multiplicity of the site.
+    pub multiplicity: usize,
+    /// Point group symmetry at this site (e.g., "m..", "-1", "4mm").
+    pub site_symmetry: String,
+    /// Representative fractional coordinates.
+    pub representative_coords: Vector3<f64>,
+}
+
 /// Lattice reduction algorithm choice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReductionAlgo {
@@ -462,6 +475,56 @@ impl Structure {
     /// oriented with respect to the standardized cell.
     pub fn get_site_symmetry_symbols(&self, symprec: f64) -> Result<Vec<String>> {
         Ok(self.get_symmetry_dataset(symprec)?.site_symmetry_symbols)
+    }
+
+    /// Get Wyckoff site information for all sites in the structure.
+    ///
+    /// Uses symmetry analysis to identify equivalent sites and their
+    /// Wyckoff positions within the space group.
+    ///
+    /// **Note:** The returned multiplicities and labels are computed relative to
+    /// the **input cell**, not the standardized/conventional cell. For example,
+    /// a primitive cell will show multiplicities of 1 for sites that would have
+    /// higher multiplicity in the conventional cell. To get conventional Wyckoff
+    /// multiplicities, first transform the structure to its conventional cell.
+    ///
+    /// # Arguments
+    ///
+    /// * `symprec` - Symmetry precision (typical values: 0.01 to 0.1)
+    ///
+    /// # Returns
+    ///
+    /// Vector of `WyckoffSite` for each site, containing the Wyckoff label
+    /// (input-cell multiplicity + letter), site symmetry, and representative coordinates.
+    pub fn get_wyckoff_sites(&self, symprec: f64) -> Result<Vec<WyckoffSite>> {
+        let dataset = self.get_symmetry_dataset(symprec)?;
+        let orbits = &dataset.orbits;
+        let wyckoffs = &dataset.wyckoffs;
+        let site_symmetry = &dataset.site_symmetry_symbols;
+
+        // Count multiplicity for each unique orbit
+        let mut orbit_multiplicity: HashMap<usize, usize> = HashMap::new();
+        for &orbit_idx in orbits {
+            *orbit_multiplicity.entry(orbit_idx).or_insert(0) += 1;
+        }
+
+        // Build WyckoffSite for each site
+        let sites: Vec<WyckoffSite> = (0..self.num_sites())
+            .map(|idx| {
+                let orbit_idx = orbits[idx];
+                let multiplicity = orbit_multiplicity[&orbit_idx];
+                let wyckoff_letter = wyckoffs[idx];
+                let label = format!("{multiplicity}{wyckoff_letter}");
+                WyckoffSite {
+                    label,
+                    multiplicity,
+                    site_symmetry: site_symmetry[idx].clone(),
+                    representative_coords: self.frac_coords[orbit_idx],
+                }
+            })
+            .collect();
+
+        Ok(sites)
     }
 
     /// Get symmetry operations in the input cell.
@@ -1065,6 +1128,7 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `site_idx` is out of bounds.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_cn_voronoi(
         &self,
         site_idx: usize,
@@ -1087,6 +1151,7 @@ impl Structure {
     /// # Returns
     ///
     /// A vector of effective coordination numbers, one for each site.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_cn_voronoi_all(
         &self,
         config: Option<&crate::coordination::VoronoiConfig>,
@@ -1109,6 +1174,7 @@ impl Structure {
     /// # Returns
     ///
     /// A vector of tuples `(neighbor_idx, solid_angle_fraction)`.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_voronoi_neighbors(
         &self,
         site_idx: usize,
@@ -3559,6 +3625,31 @@ mod tests {
         // All should be same Wyckoff position for identical atoms
         let first = wyckoffs[0];
         assert!(wyckoffs.iter().all(|&w| w == first));
+    }
+
+    #[test]
+    fn test_get_wyckoff_sites() {
+        let fcc = make_fcc_conventional(Element::Cu, 3.6);
+        let sites = fcc.get_wyckoff_sites(1e-4).unwrap();
+        assert_eq!(sites.len(), 4); // 4 atoms in conventional FCC cell
+
+        // All sites should have same Wyckoff label (equivalent positions)
+        let first_label = &sites[0].label;
+        assert!(sites.iter().all(|s| &s.label == first_label));
+
+        // Multiplicity should be 4 for 4a Wyckoff position in Fm-3m
+        assert_eq!(sites[0].multiplicity, 4);
+
+        // All sites should have same site symmetry
+        let first_symm = &sites[0].site_symmetry;
+        assert!(sites.iter().all(|s| &s.site_symmetry == first_symm));
+
+        // Test NaCl - should have two different Wyckoff positions
+        let nacl = make_nacl();
+        let nacl_sites = nacl.get_wyckoff_sites(1e-4).unwrap();
+        assert_eq!(nacl_sites.len(), 2);
+        // Na and Cl are at different Wyckoff positions
+        assert_ne!(nacl_sites[0].label, nacl_sites[1].label);
     }
 
     #[test]

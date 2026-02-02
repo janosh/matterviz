@@ -81,7 +81,7 @@ def load_pymatgen_cif_structures() -> dict[str, Structure]:
     return structures
 
 
-def benchmark(quick: bool = False) -> None:
+def benchmark(quick: bool = False) -> None:  # noqa: C901
     """Run compatibility benchmark."""
     print("=" * 70)
     print("FERROX vs PYMATGEN COMPATIBILITY BENCHMARK")

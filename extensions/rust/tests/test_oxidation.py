@@ -2,11 +2,10 @@
 
 import json
 
+import ferrox
 import numpy as np
 import pytest
 from pymatgen.core import Composition, Structure
-
-import ferrox
 
 
 # Shared fixtures

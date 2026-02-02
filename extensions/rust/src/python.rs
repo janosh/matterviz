@@ -20,6 +20,7 @@ use crate::io::{
     structure_to_poscar, structure_to_pymatgen_json, write_structure,
 };
 use crate::rdf;
+use crate::species::Species;
 use crate::structure::{
     Structure, SymmOp, SymmetryOperation, moyo_ops_to_arrays, spacegroup_to_crystal_system,
 };
@@ -4929,6 +4930,1412 @@ fn diffusion_from_vacf(vacf: Vec<f64>, dt: f64, dim: usize) -> f64 {
     crate::trajectory::diffusion_coefficient_from_vacf(&vacf, dt, dim)
 }
 
+// =============================================================================
+// Point Defect Generation
+// =============================================================================
+
+use crate::defects;
+
+/// Helper to build a Python dict from a DefectStructure result.
+fn defect_result_to_pydict(
+    py: Python<'_>,
+    result: &defects::DefectStructure,
+) -> PyResult<Py<PyDict>> {
+    let dict = PyDict::new(py);
+    let struct_json = structure_to_pymatgen_json(&result.structure);
+    dict.set_item("structure", json_to_pydict(py, &struct_json)?)?;
+    dict.set_item("defect_type", result.defect.defect_type.as_str())?;
+    dict.set_item("site_idx", result.defect.site_idx)?;
+    dict.set_item("position", result.defect.position.as_slice())?;
+    if let Some(ref species) = result.defect.species {
+        dict.set_item("species", species.to_string())?;
+    }
+    if let Some(ref original) = result.defect.original_species {
+        dict.set_item("original_species", original.to_string())?;
+    }
+    Ok(dict.unbind())
+}
+
+/// Create a vacancy by removing an atom at the specified site index.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     site_idx: Index of the site to remove.
+///
+/// Returns:
+///     Dict with 'structure' (defective structure as dict) and 'defect' (defect info).
+#[pyfunction]
+fn defect_create_vacancy(
+    py: Python<'_>,
+    structure: StructureJson,
+    site_idx: usize,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let result = defects::create_vacancy(&struc, site_idx)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    defect_result_to_pydict(py, &result)
+}
+
+/// Create a substitutional defect by replacing the species at a site.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     site_idx: Index of the site to substitute.
+///     new_species: Species string (e.g., "K", "Fe2+") to place at the site.
+///
+/// Returns:
+///     Dict with 'structure' and 'defect' info.
+#[pyfunction]
+fn defect_create_substitution(
+    py: Python<'_>,
+    structure: StructureJson,
+    site_idx: usize,
+    new_species: &str,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let species = Species::from_string(new_species)
+        .ok_or_else(|| PyValueError::new_err(format!("Invalid species: {new_species}")))?;
+    let result = defects::create_substitution(&struc, site_idx, species)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    defect_result_to_pydict(py, &result)
+}
+
+/// Create an interstitial by adding an atom at a fractional position.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     position: Fractional coordinates [a, b, c] for the interstitial.
+///     species: Species string (e.g., "Li", "O2-") to add.
+///
+/// Returns:
+///     Dict with 'structure' and 'defect' info.
+#[pyfunction]
+fn defect_create_interstitial(
+    py: Python<'_>,
+    structure: StructureJson,
+    position: [f64; 3],
+    species: &str,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let new_species = Species::from_string(species)
+        .ok_or_else(|| PyValueError::new_err(format!("Invalid species: {species}")))?;
+    let frac_pos = Vector3::new(position[0], position[1], position[2]);
+    let result = defects::create_interstitial(&struc, frac_pos, new_species)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    defect_result_to_pydict(py, &result)
+}
+
+/// Create an antisite pair by swapping species at two sites.
+///
+/// Note: Unlike other `defect_create_*` functions which return a dict with both
+/// 'structure' and 'defect' info, this returns only the structure dict. This is
+/// because antisites involve two sites being swapped rather than a single defect
+/// site, making the defect info representation ambiguous.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     site_a_idx: Index of the first site.
+///     site_b_idx: Index of the second site.
+///
+/// Returns:
+///     Structure dict with swapped species (no defect metadata).
+#[pyfunction]
+fn defect_create_antisite(
+    py: Python<'_>,
+    structure: StructureJson,
+    site_a_idx: usize,
+    site_b_idx: usize,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let result = defects::create_antisite_pair(&struc, site_a_idx, site_b_idx)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let struct_json = structure_to_pymatgen_json(&result);
+    json_to_pydict(py, &struct_json)
+}
+
+/// Find potential interstitial sites using Voronoi tessellation.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     min_dist: Minimum distance to nearest atom for a valid site (Angstrom).
+///     symprec: Symmetry precision for site deduplication (default: 0.01).
+///
+/// Returns:
+///     List of dicts with 'frac_coords', 'cart_coords', 'min_distance', 'coordination',
+///     and 'site_type'.
+#[pyfunction]
+#[pyo3(signature = (structure, min_dist, symprec = 0.01))]
+fn defect_find_interstitial_sites(
+    py: Python<'_>,
+    structure: StructureJson,
+    min_dist: f64,
+    symprec: f64,
+) -> PyResult<Vec<Py<PyDict>>> {
+    if !min_dist.is_finite() || min_dist <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_dist must be positive and finite",
+        ));
+    }
+    let struc = parse_struct(&structure)?;
+    let sites = defects::find_voronoi_interstitials(&struc, Some(min_dist), symprec);
+
+    let results: PyResult<Vec<Py<PyDict>>> = sites
+        .into_iter()
+        .map(|site| {
+            let dict = PyDict::new(py);
+            dict.set_item("frac_coords", site.frac_coords.as_slice())?;
+            dict.set_item("cart_coords", site.cart_coords.as_slice())?;
+            dict.set_item("min_distance", site.min_distance)?;
+            dict.set_item("coordination", site.coordination)?;
+            dict.set_item("site_type", site.site_type.as_str())?;
+            Ok(dict.unbind())
+        })
+        .collect();
+
+    results
+}
+
+/// Find an optimal supercell matrix for dilute defect calculations.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     min_image_dist: Minimum distance between periodic images (Angstrom, default: 10.0).
+///     max_atoms: Maximum number of atoms in supercell (default: 200).
+///     cubic: Preference for cubic supercells (default: False).
+///
+/// Returns:
+///     3x3 integer transformation matrix [[a1,a2,a3], [b1,b2,b3], [c1,c2,c3]].
+#[pyfunction]
+#[pyo3(signature = (structure, min_image_dist = 10.0, max_atoms = 200, cubic = false))]
+fn defect_find_supercell(
+    structure: StructureJson,
+    min_image_dist: f64,
+    max_atoms: usize,
+    cubic: bool,
+) -> PyResult<[[i32; 3]; 3]> {
+    let struc = parse_struct(&structure)?;
+
+    // Validate min_image_dist: must be finite and positive
+    if !min_image_dist.is_finite() || min_image_dist <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_image_dist must be positive and finite",
+        ));
+    }
+    // Validate max_atoms: must be positive
+    if max_atoms == 0 {
+        return Err(PyValueError::new_err("max_atoms must be greater than 0"));
+    }
+
+    let config = defects::DefectSupercellConfig {
+        min_distance: min_image_dist,
+        max_atoms,
+        cubic_preference: if cubic { 1.0 } else { 0.0 },
+    };
+
+    defects::find_defect_supercell(&struc, &config)
+        .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+/// Classify an interstitial site based on its coordination number.
+///
+/// Args:
+///     coordination: The coordination number of the site.
+///
+/// Returns:
+///     Site type string: "tetrahedral", "octahedral", "trigonal", or "other".
+#[pyfunction]
+fn defect_classify_site(coordination: usize) -> String {
+    defects::classify_interstitial_site(coordination)
+        .as_str()
+        .to_string()
+}
+
+// =============================================================================
+// Distortion Functions (ShakeNBreak-style)
+// =============================================================================
+
+use crate::distortions;
+
+/// Distort bonds around a defect site by specified factors.
+///
+/// For each distortion factor, creates a new structure where neighbor atoms are
+/// moved along their bond direction by `factor * original_distance`.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     center_site_idx: Index of the defect/center site.
+///     distortion_factors: List of factors to apply (e.g., [-0.4, -0.2, 0.2, 0.4]).
+///     num_neighbors: Maximum neighbors to distort (None = all within cutoff).
+///     cutoff: Neighbor cutoff distance in Angstrom (default: 5.0).
+///
+/// Returns:
+///     List of dicts with 'structure', 'distortion_type', 'distortion_factor', 'center_site_idx'.
+#[pyfunction]
+#[pyo3(signature = (structure, center_site_idx, distortion_factors, num_neighbors = None, cutoff = 5.0))]
+fn defect_distort_bonds(
+    py: Python<'_>,
+    structure: StructureJson,
+    center_site_idx: usize,
+    distortion_factors: Vec<f64>,
+    num_neighbors: Option<usize>,
+    cutoff: f64,
+) -> PyResult<Py<PyList>> {
+    let struc = parse_struct(&structure)?;
+    let results = distortions::distort_bonds(
+        &struc,
+        center_site_idx,
+        &distortion_factors,
+        num_neighbors,
+        cutoff,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let list = PyList::empty(py);
+    for result in results {
+        let dict = PyDict::new(py);
+        let struct_json = structure_to_pymatgen_json(&result.structure);
+        dict.set_item("structure", json_to_pydict(py, &struct_json)?)?;
+        dict.set_item("distortion_type", result.distortion_type)?;
+        dict.set_item("distortion_factor", result.distortion_factor)?;
+        dict.set_item("center_site_idx", result.center_site_idx)?;
+        list.append(dict)?;
+    }
+    Ok(list.unbind())
+}
+
+/// Create a dimer by moving two atoms closer together.
+///
+/// Both atoms are moved equally toward their midpoint until the target distance
+/// is reached. Handles periodic boundary conditions correctly.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     site_a_idx: Index of the first atom.
+///     site_b_idx: Index of the second atom.
+///     target_distance: Desired distance between atoms in Angstrom.
+///
+/// Returns:
+///     Dict with 'structure', 'distortion_type', 'distortion_factor', 'center_site_idx'.
+#[pyfunction]
+fn defect_create_dimer(
+    py: Python<'_>,
+    structure: StructureJson,
+    site_a_idx: usize,
+    site_b_idx: usize,
+    target_distance: f64,
+) -> PyResult<Py<PyDict>> {
+    // Validate target_distance: must be finite and positive
+    if !target_distance.is_finite() || target_distance <= 0.0 {
+        return Err(PyValueError::new_err(
+            "target_distance must be positive and finite",
+        ));
+    }
+
+    let struc = parse_struct(&structure)?;
+    let result = distortions::create_dimer(&struc, site_a_idx, site_b_idx, target_distance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let dict = PyDict::new(py);
+    let struct_json = structure_to_pymatgen_json(&result.structure);
+    dict.set_item("structure", json_to_pydict(py, &struct_json)?)?;
+    dict.set_item("distortion_type", result.distortion_type)?;
+    dict.set_item("distortion_factor", result.distortion_factor)?;
+    dict.set_item("center_site_idx", result.center_site_idx)?;
+    Ok(dict.unbind())
+}
+
+/// Apply Monte Carlo rattling to all atoms in a structure.
+///
+/// Each atom receives a random displacement drawn from a Gaussian distribution
+/// with direction uniformly random on the unit sphere.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     stdev: Standard deviation of Gaussian displacement (Angstrom).
+///     seed: Random seed for reproducibility.
+///     min_distance: Minimum allowed distance between atoms (default: 0.5).
+///     max_attempts: Maximum attempts per atom to avoid collisions (default: 100).
+///
+/// Returns:
+///     Dict with 'structure', 'distortion_type', 'distortion_factor', 'center_site_idx'.
+#[pyfunction]
+#[pyo3(signature = (structure, stdev, seed, min_distance = 0.5, max_attempts = 100))]
+fn defect_rattle(
+    py: Python<'_>,
+    structure: StructureJson,
+    stdev: f64,
+    seed: u64,
+    min_distance: f64,
+    max_attempts: usize,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+
+    // Validate stdev: must be finite and non-negative
+    if !stdev.is_finite() || stdev < 0.0 {
+        return Err(PyValueError::new_err(
+            "stdev must be non-negative and finite",
+        ));
+    }
+    // Validate min_distance: must be finite and non-negative
+    if !min_distance.is_finite() || min_distance < 0.0 {
+        return Err(PyValueError::new_err(
+            "min_distance must be non-negative and finite",
+        ));
+    }
+    // Validate max_attempts: must be positive
+    if max_attempts == 0 {
+        return Err(PyValueError::new_err("max_attempts must be greater than 0"));
+    }
+
+    let result = distortions::rattle_structure(&struc, stdev, seed, min_distance, max_attempts)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let dict = PyDict::new(py);
+    let struct_json = structure_to_pymatgen_json(&result.structure);
+    dict.set_item("structure", json_to_pydict(py, &struct_json)?)?;
+    dict.set_item("distortion_type", result.distortion_type)?;
+    dict.set_item("distortion_factor", result.distortion_factor)?;
+    dict.set_item("center_site_idx", result.center_site_idx)?;
+    Ok(dict.unbind())
+}
+
+/// Apply local rattling with distance-dependent amplitude decay.
+///
+/// Displacement amplitude decays exponentially with distance from the center site:
+/// amplitude = max_amplitude * exp(-distance / decay_radius)
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     center_site_idx: Index of the center site (e.g., defect site).
+///     max_amplitude: Maximum displacement amplitude at center (Angstrom).
+///     decay_radius: Decay length scale (Angstrom).
+///     seed: Random seed for reproducibility.
+///
+/// Returns:
+///     Dict with 'structure', 'distortion_type', 'distortion_factor', 'center_site_idx'.
+#[pyfunction]
+fn defect_local_rattle(
+    py: Python<'_>,
+    structure: StructureJson,
+    center_site_idx: usize,
+    max_amplitude: f64,
+    decay_radius: f64,
+    seed: u64,
+) -> PyResult<Py<PyDict>> {
+    // Validate max_amplitude: must be finite and non-negative
+    if !max_amplitude.is_finite() || max_amplitude < 0.0 {
+        return Err(PyValueError::new_err(
+            "max_amplitude must be non-negative and finite",
+        ));
+    }
+    // Validate decay_radius: must be finite and positive
+    if !decay_radius.is_finite() || decay_radius <= 0.0 {
+        return Err(PyValueError::new_err(
+            "decay_radius must be positive and finite",
+        ));
+    }
+
+    let struc = parse_struct(&structure)?;
+    let result =
+        distortions::local_rattle(&struc, center_site_idx, max_amplitude, decay_radius, seed)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let dict = PyDict::new(py);
+    let struct_json = structure_to_pymatgen_json(&result.structure);
+    dict.set_item("structure", json_to_pydict(py, &struct_json)?)?;
+    dict.set_item("distortion_type", result.distortion_type)?;
+    dict.set_item("distortion_factor", result.distortion_factor)?;
+    dict.set_item("center_site_idx", result.center_site_idx)?;
+    Ok(dict.unbind())
+}
+
+// =============================================================================
+// Voronoi Interstitials
+// =============================================================================
+
+/// Find interstitial sites using Voronoi tessellation.
+///
+/// Identifies potential interstitial positions as vertices of the Voronoi
+/// tessellation of the atomic positions. Sites are filtered by minimum distance
+/// and optionally reduced by symmetry.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     min_dist: Minimum distance to nearest atom (default: 0.5 Å if None).
+///     symprec: Symmetry precision for equivalent site detection (default: 0.01).
+///
+/// Returns:
+///     List of dicts with 'frac_coords', 'cart_coords', 'min_dist', 'coordination',
+///     'site_type', 'wyckoff', 'multiplicity'.
+#[pyfunction]
+#[pyo3(signature = (structure, min_dist = None, symprec = 0.01))]
+fn defect_find_voronoi_interstitials(
+    py: Python<'_>,
+    structure: StructureJson,
+    min_dist: Option<f64>,
+    symprec: f64,
+) -> PyResult<Py<PyList>> {
+    // Validate min_dist if provided: must be finite and non-negative
+    if let Some(dist) = min_dist {
+        if !dist.is_finite() || dist < 0.0 {
+            return Err(PyValueError::new_err(
+                "min_dist must be non-negative and finite",
+            ));
+        }
+    }
+
+    let struc = parse_struct(&structure)?;
+    let sites = defects::find_voronoi_interstitials(&struc, min_dist, symprec);
+
+    let list = PyList::empty(py);
+    for site in sites {
+        let dict = PyDict::new(py);
+        dict.set_item("frac_coords", site.frac_coords.as_slice())?;
+        dict.set_item("cart_coords", site.cart_coords.as_slice())?;
+        dict.set_item("min_dist", site.min_distance)?;
+        dict.set_item("coordination", site.coordination)?;
+        dict.set_item("site_type", site.site_type.as_str())?;
+        dict.set_item("wyckoff", site.wyckoff_label)?;
+        dict.set_item("multiplicity", site.multiplicity)?;
+        list.append(dict)?;
+    }
+    Ok(list.unbind())
+}
+
+// =============================================================================
+// Defect Naming
+// =============================================================================
+
+/// Generate a doped-compatible name for a point defect.
+///
+/// Naming conventions:
+/// - Vacancy: `v_{element}` or `v_{element}_{wyckoff}` (e.g., "v_O", "v_O_4a")
+/// - Substitution: `{new}_on_{original}` (e.g., "Fe_on_Ni")
+/// - Interstitial: `{element}_i` or `{element}_i_{site_type}` (e.g., "Li_i", "Li_i_oct")
+/// - Antisite: `{A}_{B}` swap notation (e.g., "Fe_Ni" for Fe on Ni site)
+///
+/// Args:
+///     defect_type: One of "vacancy", "interstitial", "substitution", "antisite".
+///     species: Species at the defect site (e.g., "Li" for interstitial).
+///     original_species: Original species before defect (e.g., "O" for vacancy).
+///     wyckoff: Optional Wyckoff label (e.g., "4a", "8c").
+///     site_type: Optional site type for interstitials (e.g., "oct", "tet").
+///
+/// Returns:
+///     String name following doped naming conventions.
+#[pyfunction]
+#[pyo3(signature = (defect_type, species = None, original_species = None, wyckoff = None, site_type = None))]
+fn defect_generate_name(
+    defect_type: &str,
+    species: Option<&str>,
+    original_species: Option<&str>,
+    wyckoff: Option<&str>,
+    site_type: Option<&str>,
+) -> PyResult<String> {
+    // Build a PointDefect for naming
+    let dtype = match defect_type.to_lowercase().as_str() {
+        "vacancy" => defects::DefectType::Vacancy,
+        "interstitial" => defects::DefectType::Interstitial,
+        "substitution" => defects::DefectType::Substitution,
+        "antisite" => defects::DefectType::Antisite,
+        _ => {
+            return Err(PyValueError::new_err(format!(
+                "Unknown defect type: {defect_type}"
+            )));
+        }
+    };
+
+    let sp = match species {
+        Some(s) => match Species::from_string(s) {
+            Some(parsed) => Some(parsed),
+            None => {
+                return Err(PyValueError::new_err(format!(
+                    "Invalid species string: '{s}'"
+                )));
+            }
+        },
+        None => None,
+    };
+    let orig_sp = match original_species {
+        Some(s) => match Species::from_string(s) {
+            Some(parsed) => Some(parsed),
+            None => {
+                return Err(PyValueError::new_err(format!(
+                    "Invalid original_species string: '{s}'"
+                )));
+            }
+        },
+        None => None,
+    };
+
+    let defect = defects::PointDefect {
+        defect_type: dtype,
+        site_idx: None,
+        position: Vector3::zeros(),
+        species: sp,
+        original_species: orig_sp,
+        charge: 0,
+    };
+
+    Ok(defects::generate_defect_name(&defect, wyckoff, site_type))
+}
+
+// =============================================================================
+// Charge State Guessing
+// =============================================================================
+
+use crate::oxidation;
+
+/// Guess likely charge states for a point defect.
+///
+/// Uses ICSD oxidation state probabilities to predict which charge states
+/// are most likely for a given defect based on the species involved.
+///
+/// Args:
+///     defect_type: One of "vacancy", "interstitial", "substitution", "antisite".
+///     removed_species: Element symbol removed (for vacancy, antisite).
+///     added_species: Element symbol added (for interstitial, substitution, antisite).
+///     original_species: Original element (for substitution).
+///     max_charge: Maximum absolute charge to consider (default: 4).
+///
+/// Returns:
+///     List of dicts with 'charge', 'probability', 'reasoning'.
+#[pyfunction]
+#[pyo3(signature = (defect_type, removed_species = None, added_species = None, original_species = None, max_charge = 4))]
+fn defect_guess_charge_states(
+    py: Python<'_>,
+    defect_type: &str,
+    removed_species: Option<&str>,
+    added_species: Option<&str>,
+    original_species: Option<&str>,
+    max_charge: i32,
+) -> PyResult<Py<PyList>> {
+    let dtype = match defect_type.to_lowercase().as_str() {
+        "vacancy" => defects::DefectType::Vacancy,
+        "interstitial" => defects::DefectType::Interstitial,
+        "substitution" => defects::DefectType::Substitution,
+        "antisite" => defects::DefectType::Antisite,
+        _ => {
+            return Err(PyValueError::new_err(format!(
+                "Unknown defect type: {defect_type}"
+            )));
+        }
+    };
+
+    let guesses = oxidation::guess_defect_charge_states(
+        dtype,
+        removed_species,
+        added_species,
+        original_species,
+        max_charge,
+    );
+
+    let list = PyList::empty(py);
+    for guess in guesses {
+        let dict = PyDict::new(py);
+        dict.set_item("charge", guess.charge)?;
+        dict.set_item("probability", guess.probability)?;
+        dict.set_item("reasoning", guess.reasoning)?;
+        list.append(dict)?;
+    }
+    Ok(list.unbind())
+}
+
+// =============================================================================
+// Defect Generator
+// =============================================================================
+
+/// Generate all point defects for a structure.
+///
+/// Main workflow function that analyzes symmetry, finds unique sites, and
+/// generates all requested defect types with charge state predictions.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     extrinsic: List of element symbols to use as substitutional dopants.
+///     include_vacancies: Whether to generate vacancies (default: True).
+///     include_substitutions: Whether to generate substitutions (default: True).
+///     include_interstitials: Whether to generate interstitials (default: True).
+///     include_antisites: Whether to generate antisites (default: True).
+///     supercell_min_dist: Minimum image distance for supercell in Å (default: 10.0).
+///     supercell_max_atoms: Maximum atoms in supercell (default: 400).
+///     interstitial_min_dist: Minimum distance for interstitial sites in Å (default: None).
+///     symprec: Symmetry precision (default: 0.01).
+///     max_charge: Maximum absolute charge state magnitude (default: 4).
+///
+/// Returns:
+///     Dict with 'supercell_matrix', 'vacancies', 'substitutions', 'interstitials',
+///     'antisites', 'spacegroup', 'n_defects'. Each defect list contains dicts with
+///     'name', 'defect_type', 'site_idx', 'frac_coords', 'species', 'original_species',
+///     'wyckoff', 'site_symmetry', 'charge_states', 'equivalent_sites'.
+#[pyfunction]
+#[pyo3(signature = (
+    structure,
+    extrinsic = vec![],
+    include_vacancies = true,
+    include_substitutions = true,
+    include_interstitials = true,
+    include_antisites = true,
+    supercell_min_dist = 10.0,
+    supercell_max_atoms = 400,
+    interstitial_min_dist = None,
+    symprec = 0.01,
+    max_charge = 4
+))]
+#[allow(clippy::too_many_arguments)]
+fn defect_generate_all(
+    py: Python<'_>,
+    structure: StructureJson,
+    extrinsic: Vec<String>,
+    include_vacancies: bool,
+    include_substitutions: bool,
+    include_interstitials: bool,
+    include_antisites: bool,
+    supercell_min_dist: f64,
+    supercell_max_atoms: usize,
+    interstitial_min_dist: Option<f64>,
+    symprec: f64,
+    max_charge: i32,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+
+    let config = defects::DefectsGeneratorConfig {
+        extrinsic,
+        include_vacancies,
+        include_substitutions,
+        include_interstitials,
+        include_antisites,
+        supercell_min_dist,
+        supercell_max_atoms,
+        interstitial_min_dist,
+        symprec,
+        max_charge,
+    };
+
+    let result = defects::generate_all_defects(&struc, &config)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    // Helper to convert DefectEntry to PyDict
+    fn entry_to_dict(py: Python<'_>, entry: &defects::DefectEntry) -> PyResult<pyo3::Py<PyDict>> {
+        let dict = PyDict::new(py);
+        dict.set_item("name", &entry.name)?;
+        dict.set_item("defect_type", entry.defect_type.as_str())?;
+        dict.set_item("site_idx", entry.site_idx)?;
+        dict.set_item("frac_coords", entry.frac_coords.as_slice())?;
+        dict.set_item("species", &entry.species)?;
+        dict.set_item("original_species", &entry.original_species)?;
+        dict.set_item("wyckoff", &entry.wyckoff)?;
+        dict.set_item("site_symmetry", &entry.site_symmetry)?;
+        dict.set_item("equivalent_sites", entry.equivalent_sites)?;
+
+        // Convert charge states
+        let charges = PyList::empty(py);
+        for cs in &entry.charge_states {
+            let cs_dict = PyDict::new(py);
+            cs_dict.set_item("charge", cs.charge)?;
+            cs_dict.set_item("probability", cs.probability)?;
+            cs_dict.set_item("reasoning", &cs.reasoning)?;
+            charges.append(cs_dict)?;
+        }
+        dict.set_item("charge_states", charges)?;
+        Ok(dict.unbind())
+    }
+
+    // Helper to convert defect list to PyList
+    let entries_to_list = |entries: &[defects::DefectEntry]| -> PyResult<pyo3::Py<PyList>> {
+        let list = PyList::empty(py);
+        for entry in entries {
+            list.append(entry_to_dict(py, entry)?)?;
+        }
+        Ok(list.unbind())
+    };
+
+    let main_dict = PyDict::new(py);
+    let matrix: Vec<Vec<i32>> = result
+        .supercell_matrix
+        .iter()
+        .map(|row| row.to_vec())
+        .collect();
+    main_dict.set_item("supercell_matrix", matrix)?;
+    main_dict.set_item("vacancies", entries_to_list(&result.vacancies)?)?;
+    main_dict.set_item("substitutions", entries_to_list(&result.substitutions)?)?;
+    main_dict.set_item("interstitials", entries_to_list(&result.interstitials)?)?;
+    main_dict.set_item("antisites", entries_to_list(&result.antisites)?)?;
+    main_dict.set_item("spacegroup", result.spacegroup)?;
+    main_dict.set_item("n_defects", result.n_defects)?;
+
+    Ok(main_dict.unbind())
+}
+
+// =============================================================================
+// Wyckoff Labels
+// =============================================================================
+
+/// Get Wyckoff labels for all sites in a structure.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     symprec: Symmetry precision for spglib (default: 0.01).
+///
+/// Returns:
+///     List of dicts with 'label', 'multiplicity', 'site_symmetry', 'representative_coords',
+///     or None if symmetry analysis fails.
+#[pyfunction]
+#[pyo3(signature = (structure, symprec = 0.01))]
+fn get_wyckoff_labels(
+    py: Python<'_>,
+    structure: StructureJson,
+    symprec: f64,
+) -> PyResult<Option<Py<PyList>>> {
+    let struc = parse_struct(&structure)?;
+    let sites = match struc.get_wyckoff_sites(symprec) {
+        Ok(s) => s,
+        Err(_) => return Ok(None),
+    };
+
+    let list = PyList::empty(py);
+    for site in sites {
+        let dict = PyDict::new(py);
+        dict.set_item("label", site.label)?;
+        dict.set_item("multiplicity", site.multiplicity)?;
+        dict.set_item("site_symmetry", site.site_symmetry)?;
+        dict.set_item(
+            "representative_coords",
+            site.representative_coords.as_slice(),
+        )?;
+        list.append(dict)?;
+    }
+    Ok(Some(list.unbind()))
+}
+
+// =============================================================================
+// Surface Analysis Functions
+// =============================================================================
+
+use crate::surfaces;
+
+/// Enumerate all unique Miller indices up to a maximum index value.
+///
+/// Args:
+///     max_index: Maximum absolute value for any h, k, or l component.
+///
+/// Returns:
+///     List of Miller indices as [h, k, l] arrays.
+#[pyfunction]
+fn surface_enumerate_miller(max_index: i32) -> Vec<[i32; 3]> {
+    surfaces::enumerate_miller_indices(max_index)
+        .into_iter()
+        .map(|miller| miller.to_array())
+        .collect()
+}
+
+/// Enumerate all unique terminations for a given Miller index.
+///
+/// Args:
+///     structure: Bulk structure as JSON string or dict.
+///     h, k, l: Miller index components.
+///     min_slab: Minimum slab thickness in Angstroms (default: 10.0).
+///     min_vacuum: Minimum vacuum thickness in Angstroms (default: 10.0).
+///     symprec: Symmetry precision for finding unique terminations (default: 0.01).
+///
+/// Returns:
+///     List of dicts with termination info including slab structure.
+#[pyfunction]
+#[pyo3(signature = (structure, h, k, l, min_slab = 10.0, min_vacuum = 10.0, symprec = 0.01))]
+fn surface_enumerate_terminations(
+    py: Python<'_>,
+    structure: StructureJson,
+    h: i32,
+    k: i32,
+    l: i32,
+    min_slab: f64,
+    min_vacuum: f64,
+    symprec: f64,
+) -> PyResult<Vec<Py<PyDict>>> {
+    // Validate min_slab: must be finite and positive
+    if !min_slab.is_finite() || min_slab <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_slab must be positive and finite",
+        ));
+    }
+    // Validate min_vacuum: must be finite and positive
+    if !min_vacuum.is_finite() || min_vacuum <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_vacuum must be positive and finite",
+        ));
+    }
+
+    let struc = parse_struct(&structure)?;
+    let miller = surfaces::MillerIndex::new(h, k, l);
+    let config = surfaces::SlabConfigExt::new(miller)
+        .with_min_slab_size(min_slab)
+        .with_min_vacuum(min_vacuum);
+
+    let terminations = surfaces::enumerate_terminations(&struc, miller, &config, symprec)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let results: PyResult<Vec<Py<PyDict>>> = terminations
+        .into_iter()
+        .map(|term| {
+            let dict = PyDict::new(py);
+            dict.set_item("miller_index", term.miller_index.to_array())?;
+            dict.set_item("shift", term.shift)?;
+            let species_strs: Vec<String> = term
+                .surface_species
+                .iter()
+                .map(|sp| sp.to_string())
+                .collect();
+            dict.set_item("surface_species", species_strs)?;
+            dict.set_item("surface_density", term.surface_density)?;
+            dict.set_item("is_polar", term.is_polar)?;
+            let slab_json = structure_to_pymatgen_json(&term.slab);
+            dict.set_item("slab", json_to_pydict(py, &slab_json)?)?;
+            Ok(dict.unbind())
+        })
+        .collect();
+
+    results
+}
+
+/// Find adsorption sites on a slab surface.
+///
+/// Args:
+///     slab: Slab structure as JSON string or dict.
+///     height: Height above surface for placing adsorbates (Angstroms, default: 2.0).
+///     site_types: Optional list of site types to find ("atop", "bridge", "hollow3", "hollow4").
+///     neighbor_cutoff: Optional cutoff for neighbor analysis (default: 4.0 Angstroms).
+///         May need adjustment for structures with longer bonds (e.g., some oxides)
+///         or shorter bonds in close-packed structures.
+///     surface_tolerance: Optional tolerance for identifying surface atoms (default: 0.1 Angstroms).
+///
+/// Returns:
+///     List of dicts with site info (type, position, coordinating atoms).
+#[pyfunction]
+#[pyo3(signature = (slab, height = 2.0, site_types = None, neighbor_cutoff = None, surface_tolerance = None))]
+fn surface_find_adsorption_sites(
+    py: Python<'_>,
+    slab: StructureJson,
+    height: f64,
+    site_types: Option<Vec<String>>,
+    neighbor_cutoff: Option<f64>,
+    surface_tolerance: Option<f64>,
+) -> PyResult<Vec<Py<PyDict>>> {
+    // Validate height: must be finite and non-negative (zero = on surface plane)
+    if !height.is_finite() || height < 0.0 {
+        return Err(PyValueError::new_err(
+            "height must be non-negative and finite",
+        ));
+    }
+    // Validate neighbor_cutoff if provided: must be finite and positive
+    if let Some(cutoff) = neighbor_cutoff {
+        if !cutoff.is_finite() || cutoff <= 0.0 {
+            return Err(PyValueError::new_err(
+                "neighbor_cutoff must be positive and finite",
+            ));
+        }
+    }
+
+    let struc = parse_struct(&slab)?;
+
+    let types_filter: Option<Vec<surfaces::AdsorptionSiteType>> = match site_types {
+        Some(types) => {
+            let mut parsed = Vec::with_capacity(types.len());
+            for type_str in &types {
+                match surfaces::AdsorptionSiteType::parse(type_str) {
+                    Some(t) => parsed.push(t),
+                    None => {
+                        return Err(PyValueError::new_err(format!(
+                            "Invalid adsorption site type: '{}'. Valid types: atop, bridge, hollow3, hollow4",
+                            type_str
+                        )));
+                    }
+                }
+            }
+            Some(parsed)
+        }
+        None => None,
+    };
+
+    let sites = surfaces::find_adsorption_sites(
+        &struc,
+        height,
+        types_filter.as_deref(),
+        neighbor_cutoff,
+        surface_tolerance,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let results: PyResult<Vec<Py<PyDict>>> = sites
+        .into_iter()
+        .map(|site| {
+            let dict = PyDict::new(py);
+            dict.set_item("site_type", site.site_type.as_str())?;
+            dict.set_item(
+                "position",
+                [site.position.x, site.position.y, site.position.z],
+            )?;
+            dict.set_item(
+                "cart_position",
+                [
+                    site.cart_position.x,
+                    site.cart_position.y,
+                    site.cart_position.z,
+                ],
+            )?;
+            dict.set_item("height", site.height)?;
+            dict.set_item("coordinating_atoms", site.coordinating_atoms.clone())?;
+            dict.set_item("symmetry_multiplicity", site.symmetry_multiplicity)?;
+            Ok(dict.unbind())
+        })
+        .collect();
+
+    results
+}
+
+/// Get indices of surface atoms in a slab.
+///
+/// Args:
+///     slab: Slab structure as JSON string or dict.
+///     tolerance: Tolerance for identifying surface layer (fractional, default: 0.1).
+///
+/// Returns:
+///     List of site indices for atoms at the top surface.
+#[pyfunction]
+#[pyo3(signature = (slab, tolerance = 0.1))]
+fn surface_get_surface_atoms(slab: StructureJson, tolerance: f64) -> PyResult<Vec<usize>> {
+    // Validate tolerance: must be finite and positive
+    if !tolerance.is_finite() || tolerance <= 0.0 {
+        return Err(PyValueError::new_err(
+            "tolerance must be positive and finite",
+        ));
+    }
+    let struc = parse_struct(&slab)?;
+    Ok(surfaces::get_surface_atoms(&struc, tolerance))
+}
+
+/// Calculate the surface area of a slab.
+///
+/// Args:
+///     slab: Slab structure as JSON string or dict.
+///
+/// Returns:
+///     Surface area in Angstrom².
+#[pyfunction]
+fn surface_area(slab: StructureJson) -> PyResult<f64> {
+    let struc = parse_struct(&slab)?;
+    Ok(surfaces::surface_area(&struc))
+}
+
+/// Calculate surface energy from DFT energies.
+///
+/// Args:
+///     slab_energy: Total energy of the slab (eV).
+///     bulk_energy_per_atom: Energy per atom in the bulk (eV).
+///     n_atoms: Number of atoms in the slab.
+///     surface_area: Surface area (Angstrom²).
+///
+/// Returns:
+///     Surface energy in eV/Angstrom².
+///
+/// Raises:
+///     ValueError: If surface_area <= 0 or n_atoms == 0.
+#[pyfunction]
+fn surface_calculate_energy(
+    slab_energy: f64,
+    bulk_energy_per_atom: f64,
+    n_atoms: usize,
+    surface_area: f64,
+) -> PyResult<f64> {
+    if surface_area <= 0.0 {
+        return Err(PyValueError::new_err("surface_area must be positive"));
+    }
+    if n_atoms == 0 {
+        return Err(PyValueError::new_err("n_atoms must be greater than 0"));
+    }
+    if !slab_energy.is_finite() || !bulk_energy_per_atom.is_finite() {
+        return Err(PyValueError::new_err(
+            "slab_energy and bulk_energy_per_atom must be finite",
+        ));
+    }
+    Ok(surfaces::calculate_surface_energy(
+        slab_energy,
+        bulk_energy_per_atom,
+        n_atoms,
+        surface_area,
+    ))
+}
+
+/// Calculate the d-spacing for a Miller plane.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     h, k, l: Miller index components.
+///
+/// Returns:
+///     d-spacing in Angstroms.
+#[pyfunction]
+fn surface_d_spacing(structure: StructureJson, h: i32, k: i32, l: i32) -> PyResult<f64> {
+    let struc = parse_struct(&structure)?;
+    surfaces::d_spacing(&struc.lattice, [h, k, l])
+        .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+/// Compute the Wulff shape (equilibrium crystal shape) from surface energies.
+///
+/// Args:
+///     structure: Structure as JSON string or dict (for lattice info).
+///     surface_energies: List of ([h, k, l], energy) tuples.
+///
+/// Returns:
+///     Dict with Wulff shape info (facets, total_area, volume, sphericity).
+#[pyfunction]
+fn surface_compute_wulff(
+    py: Python<'_>,
+    structure: StructureJson,
+    surface_energies: Vec<([i32; 3], f64)>,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+
+    let energies: Vec<(surfaces::MillerIndex, f64)> = surface_energies
+        .into_iter()
+        .map(|(hkl, energy)| (surfaces::MillerIndex::from_array(hkl), energy))
+        .collect();
+
+    let wulff = surfaces::compute_wulff_shape(&struc.lattice, &energies)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let result = PyDict::new(py);
+    result.set_item("total_surface_area", wulff.total_surface_area)?;
+    result.set_item("volume", wulff.volume)?;
+    result.set_item("sphericity", wulff.sphericity)?;
+
+    let facets_list = PyList::empty(py);
+    for facet in &wulff.facets {
+        let facet_dict = PyDict::new(py);
+        facet_dict.set_item("miller_index", facet.miller_index.to_array())?;
+        facet_dict.set_item("surface_energy", facet.surface_energy)?;
+        facet_dict.set_item("normal", [facet.normal.x, facet.normal.y, facet.normal.z])?;
+        facet_dict.set_item("distance_from_center", facet.distance_from_center)?;
+        facet_dict.set_item("area_fraction", facet.area_fraction)?;
+        facets_list.append(facet_dict)?;
+    }
+    result.set_item("facets", facets_list)?;
+
+    Ok(result.unbind())
+}
+
+/// Convert a Miller index to a surface normal vector.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     h, k, l: Miller index components.
+///
+/// Returns:
+///     Unit normal vector [x, y, z] in Cartesian coordinates.
+#[pyfunction]
+fn surface_miller_to_normal(
+    structure: StructureJson,
+    h: i32,
+    k: i32,
+    l: i32,
+) -> PyResult<[f64; 3]> {
+    let struc = parse_struct(&structure)?;
+    let normal = surfaces::miller_to_normal(&struc.lattice, [h, k, l]);
+    Ok([normal.x, normal.y, normal.z])
+}
+
+// =============================================================================
+// Cell Operations (PBC, Reductions, Supercells)
+// =============================================================================
+
+use crate::cell_ops;
+
+/// Helper to convert a nalgebra Matrix3 to a nested array.
+#[inline]
+fn matrix3_to_array(matrix: &nalgebra::Matrix3<f64>) -> [[f64; 3]; 3] {
+    [
+        [matrix[(0, 0)], matrix[(0, 1)], matrix[(0, 2)]],
+        [matrix[(1, 0)], matrix[(1, 1)], matrix[(1, 2)]],
+        [matrix[(2, 0)], matrix[(2, 1)], matrix[(2, 2)]],
+    ]
+}
+
+/// Compute minimum image distance between two positions under PBC.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     pos1: First position in fractional coordinates [a, b, c].
+///     pos2: Second position in fractional coordinates [a, b, c].
+///     pbc: Periodic boundary conditions [pbc_a, pbc_b, pbc_c].
+///
+/// Returns:
+///     Minimum image distance in Angstroms.
+#[pyfunction]
+fn cell_minimum_image_distance(
+    structure: StructureJson,
+    pos1: [f64; 3],
+    pos2: [f64; 3],
+    pbc: [bool; 3],
+) -> PyResult<f64> {
+    let struc = parse_struct(&structure)?;
+    let vec1 = Vector3::new(pos1[0], pos1[1], pos1[2]);
+    let vec2 = Vector3::new(pos2[0], pos2[1], pos2[2]);
+    Ok(cell_ops::minimum_image_distance(
+        &struc.lattice,
+        &vec1,
+        &vec2,
+        pbc,
+    ))
+}
+
+/// Compute minimum image displacement vector under PBC.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     delta: Displacement in fractional coordinates [da, db, dc].
+///     pbc: Periodic boundary conditions [pbc_a, pbc_b, pbc_c].
+///
+/// Returns:
+///     Minimum image vector in Cartesian coordinates [x, y, z].
+#[pyfunction]
+fn cell_minimum_image_vector(
+    structure: StructureJson,
+    delta: [f64; 3],
+    pbc: [bool; 3],
+) -> PyResult<[f64; 3]> {
+    let struc = parse_struct(&structure)?;
+    let delta_vec = Vector3::new(delta[0], delta[1], delta[2]);
+    let result = cell_ops::minimum_image_vector(&struc.lattice, &delta_vec, pbc);
+    Ok([result[0], result[1], result[2]])
+}
+
+/// Wrap all site positions to the unit cell [0, 1)^3.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///
+/// Returns:
+///     Structure dict with wrapped positions.
+#[pyfunction]
+fn cell_wrap_to_unit_cell(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
+    let mut struc = parse_struct(&structure)?;
+    struc.wrap_to_unit_cell();
+    let json = structure_to_pymatgen_json(&struc);
+    json_to_pydict(py, &json)
+}
+
+/// Compute the Niggli-reduced cell of a structure.
+///
+/// The Niggli reduction produces a unique reduced cell with a ≤ b ≤ c and
+/// specific conditions on angles.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     tolerance: Numerical tolerance for reduction (default: 1e-5).
+///
+/// Returns:
+///     Dict with 'matrix' (3x3 Niggli lattice), 'transformation' (3x3 transform),
+///     and 'form' ('TypeI' or 'TypeII').
+#[pyfunction]
+#[pyo3(signature = (structure, tolerance = 1e-5))]
+fn cell_niggli_reduce(
+    py: Python<'_>,
+    structure: StructureJson,
+    tolerance: f64,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let niggli = cell_ops::niggli_reduce(&struc.lattice, tolerance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let form_str = match niggli.form {
+        cell_ops::NiggliForm::TypeI => "TypeI",
+        cell_ops::NiggliForm::TypeII => "TypeII",
+    };
+
+    let dict = PyDict::new(py);
+    dict.set_item("matrix", matrix3_to_array(&niggli.matrix))?;
+    dict.set_item("transformation", matrix3_to_array(&niggli.transformation))?;
+    dict.set_item("form", form_str)?;
+    Ok(dict.unbind())
+}
+
+/// Check if a lattice is already Niggli-reduced.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     tolerance: Numerical tolerance for comparisons (default: 1e-5).
+///
+/// Returns:
+///     True if the lattice satisfies Niggli conditions.
+#[pyfunction]
+#[pyo3(signature = (structure, tolerance = 1e-5))]
+fn cell_is_niggli_reduced(structure: StructureJson, tolerance: f64) -> PyResult<bool> {
+    let struc = parse_struct(&structure)?;
+    Ok(cell_ops::is_niggli_reduced(&struc.lattice, tolerance))
+}
+
+/// Compute the Delaunay-reduced cell of a structure.
+///
+/// The Delaunay reduction produces a cell where all pairwise scalar products
+/// of lattice vectors are non-positive (all angles ≥ 90°).
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     tolerance: Numerical tolerance for reduction (default: 1e-5).
+///
+/// Returns:
+///     Dict with 'matrix' (3x3 Delaunay lattice) and 'transformation' (3x3 transform).
+#[pyfunction]
+#[pyo3(signature = (structure, tolerance = 1e-5))]
+fn cell_delaunay_reduce(
+    py: Python<'_>,
+    structure: StructureJson,
+    tolerance: f64,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let delaunay = cell_ops::delaunay_reduce(&struc.lattice, tolerance)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    let dict = PyDict::new(py);
+    dict.set_item("matrix", matrix3_to_array(&delaunay.matrix))?;
+    dict.set_item("transformation", matrix3_to_array(&delaunay.transformation))?;
+    Ok(dict.unbind())
+}
+
+/// Find an optimal supercell matrix for a given strategy.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///     strategy: Supercell strategy - one of "target_atoms", "min_length", "min_image_dist".
+///     target_value: Target value for the strategy (atoms, length in Å, or distance in Å).
+///
+/// Returns:
+///     3x3 integer transformation matrix [[a1, a2, a3], [b1, b2, b3], [c1, c2, c3]].
+#[pyfunction]
+fn cell_find_supercell_matrix(
+    structure: StructureJson,
+    strategy: &str,
+    target_value: Option<f64>,
+) -> PyResult<[[i32; 3]; 3]> {
+    let struc = parse_struct(&structure)?;
+    let n_atoms = struc.num_sites();
+
+    let cell_strategy = match strategy {
+        "target_atoms" => {
+            let target = target_value.unwrap_or(100.0);
+            if target <= 0.0 || !target.is_finite() || target.fract() != 0.0 {
+                return Err(PyValueError::new_err(
+                    "target_atoms must be a positive finite integer",
+                ));
+            }
+            cell_ops::SupercellStrategy::TargetAtoms(target as usize)
+        }
+        "min_length" => {
+            let min_len = target_value.unwrap_or(10.0);
+            if min_len <= 0.0 || !min_len.is_finite() {
+                return Err(PyValueError::new_err(
+                    "min_length must be a positive finite number",
+                ));
+            }
+            cell_ops::SupercellStrategy::MinLength(min_len)
+        }
+        "min_image_dist" | "min_image_distance" => {
+            let min_dist = target_value.unwrap_or(10.0);
+            if min_dist <= 0.0 || !min_dist.is_finite() {
+                return Err(PyValueError::new_err(
+                    "min_image_dist must be a positive finite number",
+                ));
+            }
+            cell_ops::SupercellStrategy::MinImageDistance(min_dist)
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "Unknown strategy: {other}. Use 'target_atoms', 'min_length', or 'min_image_dist'"
+            )));
+        }
+    };
+
+    Ok(cell_ops::find_supercell_matrix(
+        &struc.lattice,
+        n_atoms,
+        cell_strategy,
+    ))
+}
+
+/// Check if two lattices are equivalent within tolerances.
+///
+/// Two lattices are equivalent if one can be transformed to the other by
+/// an integer transformation matrix with determinant ±1.
+///
+/// Args:
+///     structure1: First structure as JSON string or dict.
+///     structure2: Second structure as JSON string or dict.
+///     length_tol: Fractional tolerance for lattice vector lengths (default: 0.2).
+///     angle_tol: Tolerance for angles in degrees (default: 5.0).
+///
+/// Returns:
+///     True if the lattices are equivalent.
+#[pyfunction]
+#[pyo3(signature = (structure1, structure2, length_tol = 0.2, angle_tol = 5.0))]
+fn cell_lattices_equivalent(
+    structure1: StructureJson,
+    structure2: StructureJson,
+    length_tol: f64,
+    angle_tol: f64,
+) -> PyResult<bool> {
+    let s1 = parse_struct(&structure1)?;
+    let s2 = parse_struct(&structure2)?;
+    Ok(cell_ops::lattices_equivalent(
+        &s1.lattice,
+        &s2.lattice,
+        length_tol,
+        angle_tol,
+    ))
+}
+
+/// Check if one lattice is a supercell of another.
+///
+/// Args:
+///     primitive: Primitive cell structure as JSON string or dict.
+///     supercell: Potential supercell structure as JSON string or dict.
+///     tolerance: Numerical tolerance for comparisons (default: 1e-5).
+///
+/// Returns:
+///     3x3 integer transformation matrix if supercell, None otherwise.
+#[pyfunction]
+#[pyo3(signature = (primitive, supercell, tolerance = 1e-5))]
+fn cell_is_supercell(
+    primitive: StructureJson,
+    supercell: StructureJson,
+    tolerance: f64,
+) -> PyResult<Option<[[i32; 3]; 3]>> {
+    let prim = parse_struct(&primitive)?;
+    let sup = parse_struct(&supercell)?;
+    Ok(cell_ops::is_supercell(
+        &prim.lattice,
+        &sup.lattice,
+        tolerance,
+    ))
+}
+
+/// Compute the perpendicular distances (heights) of the lattice parallelepiped.
+///
+/// These are the minimum distances between parallel planes of the lattice,
+/// which determine the minimum image distance for PBC calculations.
+///
+/// Args:
+///     structure: Structure as JSON string or dict.
+///
+/// Returns:
+///     Perpendicular distances [d_a, d_b, d_c] in Angstroms.
+#[pyfunction]
+fn cell_perpendicular_distances(structure: StructureJson) -> PyResult<[f64; 3]> {
+    let struc = parse_struct(&structure)?;
+    let perp = cell_ops::perpendicular_distances(&struc.lattice);
+    Ok([perp[0], perp[1], perp[2]])
+}
+
 /// Register Python module contents.
 pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add_class::<PyStructureMatcher>()?;
@@ -5098,5 +6505,49 @@ pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add_function(wrap_pyfunction!(py_add_oxidation_state_by_element, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(py_add_oxidation_state_by_site, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(py_remove_oxidation_states, py_mod)?)?;
+    // Defect generation functions
+    py_mod.add_function(wrap_pyfunction!(defect_create_vacancy, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(defect_create_substitution, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(defect_create_interstitial, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(defect_create_antisite, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(defect_find_interstitial_sites, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(defect_find_supercell, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(defect_classify_site, py_mod)?)?;
+    // Distortion functions (ShakeNBreak-style)
+    py_mod.add_function(wrap_pyfunction!(defect_distort_bonds, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(defect_create_dimer, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(defect_rattle, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(defect_local_rattle, py_mod)?)?;
+    // Voronoi interstitials
+    py_mod.add_function(wrap_pyfunction!(defect_find_voronoi_interstitials, py_mod)?)?;
+    // Defect naming
+    py_mod.add_function(wrap_pyfunction!(defect_generate_name, py_mod)?)?;
+    // Charge state guessing
+    py_mod.add_function(wrap_pyfunction!(defect_guess_charge_states, py_mod)?)?;
+    // Defect generator
+    py_mod.add_function(wrap_pyfunction!(defect_generate_all, py_mod)?)?;
+    // Wyckoff labels
+    py_mod.add_function(wrap_pyfunction!(get_wyckoff_labels, py_mod)?)?;
+    // Cell operations functions
+    py_mod.add_function(wrap_pyfunction!(cell_minimum_image_distance, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(cell_minimum_image_vector, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(cell_wrap_to_unit_cell, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(cell_niggli_reduce, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(cell_is_niggli_reduced, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(cell_delaunay_reduce, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(cell_find_supercell_matrix, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(cell_lattices_equivalent, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(cell_is_supercell, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(cell_perpendicular_distances, py_mod)?)?;
+    // Surface analysis functions
+    py_mod.add_function(wrap_pyfunction!(surface_enumerate_miller, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(surface_enumerate_terminations, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(surface_find_adsorption_sites, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(surface_get_surface_atoms, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(surface_area, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(surface_calculate_energy, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(surface_d_spacing, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(surface_compute_wulff, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(surface_miller_to_normal, py_mod)?)?;
     Ok(())
 }

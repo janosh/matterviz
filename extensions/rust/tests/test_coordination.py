@@ -16,12 +16,16 @@ except ImportError:
 
 def make_structure(lattice_a: float, sites: list[dict]) -> str:
     """Create structure JSON with cubic lattice."""
-    return json.dumps({
-        "@module": "pymatgen.core.structure",
-        "@class": "Structure",
-        "lattice": {"matrix": [[lattice_a, 0, 0], [0, lattice_a, 0], [0, 0, lattice_a]]},
-        "sites": sites,
-    })
+    return json.dumps(
+        {
+            "@module": "pymatgen.core.structure",
+            "@class": "Structure",
+            "lattice": {
+                "matrix": [[lattice_a, 0, 0], [0, lattice_a, 0], [0, 0, lattice_a]]
+            },
+            "sites": sites,
+        }
+    )
 
 
 def site(element: str, abc: list[float]) -> dict:
@@ -32,20 +36,30 @@ def site(element: str, abc: list[float]) -> dict:
 class TestCutoffCoordination:
     """Tests for cutoff-based coordination number functions."""
 
-    @pytest.mark.parametrize(("fixture", "cutoff", "num_sites", "expected_cn"), [
-        ("fcc_cu_json", 3.0, 4, 12),
-        ("bcc_fe_json", 2.6, 2, 8),  # first shell only
-        ("bcc_fe_json", 3.0, 2, 14),  # both shells
-        ("rocksalt_nacl_json", 3.5, 8, 6),
-    ])
+    @pytest.mark.parametrize(
+        ("fixture", "cutoff", "num_sites", "expected_cn"),
+        [
+            ("fcc_cu_json", 3.0, 4, 12),
+            ("bcc_fe_json", 2.6, 2, 8),  # first shell only
+            ("bcc_fe_json", 3.0, 2, 14),  # both shells
+            ("rocksalt_nacl_json", 3.5, 8, 6),
+        ],
+    )
     def test_coordination_numbers(
-        self, fixture: str, cutoff: float, num_sites: int, expected_cn: int, request: pytest.FixtureRequest
+        self,
+        fixture: str,
+        cutoff: float,
+        num_sites: int,
+        expected_cn: int,
+        request: pytest.FixtureRequest,
     ) -> None:
         """Verify coordination numbers for standard structures."""
         struct_json = request.getfixturevalue(fixture)
         cns = ferrox.get_coordination_numbers(struct_json, cutoff)
         assert len(cns) == num_sites
-        assert all(cn == expected_cn for cn in cns), f"Expected CN={expected_cn}, got {cns}"
+        assert all(cn == expected_cn for cn in cns), (
+            f"Expected CN={expected_cn}, got {cns}"
+        )
 
     def test_single_site_coordination(self, fcc_cu_json: str) -> None:
         """get_coordination_number returns single site CN."""
@@ -124,21 +138,39 @@ class TestVoronoiCoordination:
         sc_json = make_structure(3.0, [site("Cu", [0.0, 0.0, 0.0])])
         assert ferrox.get_cn_voronoi(sc_json, 0) == pytest.approx(6.0, abs=1e-6)
 
-    @pytest.mark.parametrize("func", [
-        pytest.param(lambda s: ferrox.get_cn_voronoi(s, 0, min_solid_angle=-0.1), id="cn"),
-        pytest.param(lambda s: ferrox.get_cn_voronoi_all(s, min_solid_angle=-0.1), id="cn_all"),
-        pytest.param(lambda s: ferrox.get_voronoi_neighbors(s, 0, min_solid_angle=-0.1), id="neighbors"),
-    ])
+    @pytest.mark.parametrize(
+        "func",
+        [
+            pytest.param(
+                lambda s: ferrox.get_cn_voronoi(s, 0, min_solid_angle=-0.1), id="cn"
+            ),
+            pytest.param(
+                lambda s: ferrox.get_cn_voronoi_all(s, min_solid_angle=-0.1),
+                id="cn_all",
+            ),
+            pytest.param(
+                lambda s: ferrox.get_voronoi_neighbors(s, 0, min_solid_angle=-0.1),
+                id="neighbors",
+            ),
+        ],
+    )
     def test_negative_solid_angle_error(self, fcc_cu_json: str, func) -> None:
         """Negative min_solid_angle raises ValueError."""
         with pytest.raises(ValueError, match="0.0 and 1.0"):
             func(fcc_cu_json)
 
-    @pytest.mark.parametrize("func", [
-        pytest.param(lambda s: ferrox.get_cn_voronoi(s, 100), id="cn"),
-        pytest.param(lambda s: ferrox.get_voronoi_neighbors(s, 100), id="neighbors"),
-        pytest.param(lambda s: ferrox.get_local_environment_voronoi(s, 100), id="env"),
-    ])
+    @pytest.mark.parametrize(
+        "func",
+        [
+            pytest.param(lambda s: ferrox.get_cn_voronoi(s, 100), id="cn"),
+            pytest.param(
+                lambda s: ferrox.get_voronoi_neighbors(s, 100), id="neighbors"
+            ),
+            pytest.param(
+                lambda s: ferrox.get_local_environment_voronoi(s, 100), id="env"
+            ),
+        ],
+    )
     def test_site_bounds_error(self, fcc_cu_json: str, func) -> None:
         """Out of bounds site raises error."""
         with pytest.raises((ValueError, IndexError)):
@@ -148,10 +180,13 @@ class TestVoronoiCoordination:
 class TestRocksaltElementTypes:
     """Verify correct element identification in mixed structures."""
 
-    @pytest.mark.parametrize(("site_idx", "expected_neighbor"), [
-        (0, "Cl"),  # Na at origin has Cl neighbors
-        (4, "Na"),  # Cl at (0.5,0,0) has Na neighbors
-    ])
+    @pytest.mark.parametrize(
+        ("site_idx", "expected_neighbor"),
+        [
+            (0, "Cl"),  # Na at origin has Cl neighbors
+            (4, "Na"),  # Cl at (0.5,0,0) has Na neighbors
+        ],
+    )
     def test_neighbor_elements(
         self, rocksalt_nacl_json: str, site_idx: int, expected_neighbor: str
     ) -> None:
@@ -192,17 +227,31 @@ except ImportError:
     PYMATGEN_AVAILABLE = False
 
 
-def _make_pymatgen_struct(name: str) -> "Structure":
+def _make_pymatgen_struct(name: str) -> Structure:
     """Create pymatgen structure by name."""
     if name == "fcc_cu":
-        return Structure(Lattice.cubic(3.61), ["Cu"] * 4,
-            [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]])
+        return Structure(
+            Lattice.cubic(3.61),
+            ["Cu"] * 4,
+            [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]],
+        )
     if name == "bcc_fe":
         return Structure(Lattice.cubic(2.87), ["Fe"] * 2, [[0, 0, 0], [0.5, 0.5, 0.5]])
     if name == "rocksalt":
-        return Structure(Lattice.cubic(5.64), ["Na"] * 4 + ["Cl"] * 4, [
-            [0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5],
-            [0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5], [0.5, 0.5, 0.5]])
+        return Structure(
+            Lattice.cubic(5.64),
+            ["Na"] * 4 + ["Cl"] * 4,
+            [
+                [0, 0, 0],
+                [0.5, 0.5, 0],
+                [0.5, 0, 0.5],
+                [0, 0.5, 0.5],
+                [0.5, 0, 0],
+                [0, 0.5, 0],
+                [0, 0, 0.5],
+                [0.5, 0.5, 0.5],
+            ],
+        )
     raise ValueError(f"Unknown structure: {name}")
 
 
@@ -210,24 +259,33 @@ def _make_pymatgen_struct(name: str) -> "Structure":
 class TestPymatgenCompatibility:
     """Compare ferrox coordination results with pymatgen get_all_neighbors."""
 
-    @pytest.mark.parametrize(("struct_name", "cutoff"), [
-        ("fcc_cu", 3.0),
-        ("bcc_fe", 2.6),  # first shell
-        ("bcc_fe", 3.0),  # both shells
-        ("rocksalt", 3.5),
-    ])
-    def test_coordination_matches_pymatgen(self, struct_name: str, cutoff: float) -> None:
+    @pytest.mark.parametrize(
+        ("struct_name", "cutoff"),
+        [
+            ("fcc_cu", 3.0),
+            ("bcc_fe", 2.6),  # first shell
+            ("bcc_fe", 3.0),  # both shells
+            ("rocksalt", 3.5),
+        ],
+    )
+    def test_coordination_matches_pymatgen(
+        self, struct_name: str, cutoff: float
+    ) -> None:
         """Coordination numbers match pymatgen."""
         struct = _make_pymatgen_struct(struct_name)
         py_cns = [len(nn) for nn in struct.get_all_neighbors(cutoff)]
-        ferrox_cns = ferrox.get_coordination_numbers(json.dumps(struct.as_dict()), cutoff)
+        ferrox_cns = ferrox.get_coordination_numbers(
+            json.dumps(struct.as_dict()), cutoff
+        )
         assert ferrox_cns == py_cns
 
     def test_neighbor_distances_match_pymatgen(self) -> None:
         """Neighbor distances match pymatgen."""
         struct = _make_pymatgen_struct("fcc_cu")
-        ferrox_dists = sorted(n["distance"] for n in ferrox.get_local_environment(
-            json.dumps(struct.as_dict()), 0, 3.0))
+        ferrox_dists = sorted(
+            n["distance"]
+            for n in ferrox.get_local_environment(json.dumps(struct.as_dict()), 0, 3.0)
+        )
         py_dists = sorted(n.nn_distance for n in struct.get_all_neighbors(3.0)[0])
         assert len(ferrox_dists) == len(py_dists)
         assert all(abs(fd - pd) < 1e-6 for fd, pd in zip(ferrox_dists, py_dists))
@@ -235,15 +293,19 @@ class TestPymatgenCompatibility:
     def test_neighbor_elements_match_pymatgen(self) -> None:
         """Neighbor elements match pymatgen in rocksalt."""
         struct = _make_pymatgen_struct("rocksalt")
-        ferrox_elems = sorted(n["element"] for n in ferrox.get_local_environment(
-            json.dumps(struct.as_dict()), 0, 3.5))
+        ferrox_elems = sorted(
+            n["element"]
+            for n in ferrox.get_local_environment(json.dumps(struct.as_dict()), 0, 3.5)
+        )
         py_elems = sorted(str(n.specie) for n in struct.get_all_neighbors(3.5)[0])
         assert ferrox_elems == py_elems
 
     def test_periodic_images_present(self) -> None:
         """Both have periodic images for FCC."""
         struct = _make_pymatgen_struct("fcc_cu")
-        ferrox_neighbors = ferrox.get_local_environment(json.dumps(struct.as_dict()), 0, 3.0)
+        ferrox_neighbors = ferrox.get_local_environment(
+            json.dumps(struct.as_dict()), 0, 3.0
+        )
         py_neighbors = struct.get_all_neighbors(3.0)[0]
         assert len(ferrox_neighbors) == len(py_neighbors) == 12
         assert any(n["image"] != [0, 0, 0] for n in ferrox_neighbors)

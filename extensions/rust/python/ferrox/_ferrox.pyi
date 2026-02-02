@@ -5,17 +5,19 @@ implemented in Rust with Python bindings via PyO3.
 """
 
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 # Type aliases for better readability
-StructureDict = dict[str, Any]  # pymatgen-compatible structure dict
-StructureJson = str | StructureDict  # JSON string or dict (both accepted by Rust)
-Matrix3x3 = Sequence[Sequence[float]]  # 3x3 matrix (list or tuple)
-IntMatrix3x3 = Sequence[Sequence[int]]  # 3x3 integer matrix
-Vector3 = Sequence[float]  # 3-element vector [x, y, z]
-IntVector3 = Sequence[int]  # 3-element integer vector [a, b, c]
-RotationMatrix = Sequence[Sequence[int]]  # 3x3 integer rotation matrix
-TranslationVector = Sequence[float]  # 3-element translation vector
+StructureDict: TypeAlias = dict[str, Any]  # pymatgen-compatible structure dict
+StructureJson: TypeAlias = (
+    str | StructureDict
+)  # JSON string or dict (both accepted by Rust)
+Matrix3x3: TypeAlias = Sequence[Sequence[float]]  # 3x3 matrix (list or tuple)
+IntMatrix3x3: TypeAlias = Sequence[Sequence[int]]  # 3x3 integer matrix
+Vector3: TypeAlias = Sequence[float]  # 3-element vector [x, y, z]
+IntVector3: TypeAlias = Sequence[int]  # 3-element integer vector [a, b, c]
+RotationMatrix: TypeAlias = Sequence[Sequence[int]]  # 3x3 integer rotation matrix
+TranslationVector: TypeAlias = Sequence[float]  # 3-element translation vector
 
 __version__: str
 
@@ -35,97 +37,72 @@ class Element:
         Raises:
             ValueError: If the symbol or atomic number is invalid.
         """
-        ...
     @property
     def symbol(self) -> str:
         """Element symbol (e.g., "Fe")."""
-        ...
     @property
     def z(self) -> int:
         """Atomic number (1-118)."""
-        ...
     @property
     def atomic_mass(self) -> float:
         """Atomic mass in atomic mass units."""
-        ...
     @property
     def electronegativity(self) -> float | None:
         """Pauling electronegativity."""
-        ...
     @property
     def common_oxidation_states(self) -> list[int]:
         """Most common oxidation states."""
-        ...
     @property
     def oxidation_states(self) -> list[int]:
         """All known oxidation states."""
-        ...
     @property
     def atomic_radius(self) -> float | None:
         """Atomic radius in Angstroms."""
-        ...
     @property
     def ionic_radii(self) -> dict[int, float]:
         """Ionic radii by oxidation state."""
-        ...
     @property
     def van_der_waals_radius(self) -> float | None:
         """Van der Waals radius in Angstroms."""
-        ...
     @property
     def covalent_radius(self) -> float | None:
         """Covalent radius in Angstroms."""
-        ...
     @property
     def group(self) -> int | None:
         """Periodic table group (1-18)."""
-        ...
     @property
     def period(self) -> int:
         """Periodic table period (1-7)."""
-        ...
     @property
     def block(self) -> str:
         """Periodic table block (s, p, d, f)."""
-        ...
     @property
     def name(self) -> str:
         """Full element name (e.g., "Iron")."""
-        ...
     @property
     def is_metal(self) -> bool:
         """Whether element is a metal."""
-        ...
     @property
     def is_metalloid(self) -> bool:
         """Whether element is a metalloid."""
-        ...
     @property
     def is_noble_gas(self) -> bool:
         """Whether element is a noble gas."""
-        ...
     @property
     def is_rare_earth(self) -> bool:
         """Whether element is a rare earth (lanthanide or actinide)."""
-        ...
     @property
     def is_lanthanoid(self) -> bool:
         """Whether element is a lanthanoid."""
-        ...
     @property
     def is_actinoid(self) -> bool:
         """Whether element is an actinoid."""
-        ...
     @property
     def is_transition_metal(self) -> bool:
         """Whether element is a transition metal."""
-        ...
     @property
     def is_pseudo(self) -> bool:
         """Whether element is a pseudo-element (dummy)."""
-        ...
-    def __repr__(self) -> str: ...
-    def __str__(self) -> str: ...
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
@@ -180,7 +157,6 @@ class StructureMatcher:
             attempt_supercell: Whether to try supercell matching.
             comparator: "species" to match oxidation states, "element" to ignore them.
         """
-        ...
     def fit(
         self,
         struct1: StructureJson,
@@ -198,7 +174,6 @@ class StructureMatcher:
         Returns:
             True if structures match within tolerances.
         """
-        ...
     def get_rms_dist(
         self, struct1: StructureJson, struct2: StructureJson
     ) -> tuple[float, float] | None:
@@ -211,7 +186,6 @@ class StructureMatcher:
         Returns:
             Tuple of (rms, max_dist) if structures match, None otherwise.
         """
-        ...
     def get_structure_distance(
         self, struct1: StructureJson, struct2: StructureJson
     ) -> float:
@@ -229,7 +203,6 @@ class StructureMatcher:
             Finite distance in [0, 1e9]. Identical structures return 0.0.
             Empty vs non-empty structures return 1e9.
         """
-        ...
     def fit_anonymous(self, struct1: StructureJson, struct2: StructureJson) -> bool:
         """Check if two structures match under any species permutation.
 
@@ -243,7 +216,6 @@ class StructureMatcher:
         Returns:
             True if structures match under some species permutation.
         """
-        ...
     def deduplicate(self, structures: list[StructureJson]) -> list[int]:
         """Deduplicate a list of structures.
 
@@ -253,7 +225,6 @@ class StructureMatcher:
         Returns:
             List where result[i] is the index of the first structure matching structure i.
         """
-        ...
     def group(self, structures: list[StructureJson]) -> dict[int, list[int]]:
         """Group structures into equivalence classes.
 
@@ -263,7 +234,6 @@ class StructureMatcher:
         Returns:
             Dict mapping canonical index to list of equivalent structure indices.
         """
-        ...
     def get_unique_indices(self, structures: list[StructureJson]) -> list[int]:
         """Get indices of unique structures from a list.
 
@@ -273,7 +243,6 @@ class StructureMatcher:
         Returns:
             List of indices of unique (first occurrence) structures.
         """
-        ...
     def find_matches(
         self,
         new_structures: list[StructureJson],
@@ -291,7 +260,6 @@ class StructureMatcher:
         Returns:
             List where result[i] is the index of matching existing structure, or None.
         """
-        ...
     def reduce_structure(self, structure: StructureJson) -> StructureJson:
         """Apply Niggli reduction and optionally primitive cell reduction.
 
@@ -303,8 +271,6 @@ class StructureMatcher:
         Returns:
             Reduced structure as JSON string (pymatgen-compatible).
         """
-        ...
-    def __repr__(self) -> str: ...
 
 # === Molecule I/O Functions ===
 
@@ -317,7 +283,6 @@ def parse_molecule_json(json_str: str) -> StructureDict:
     Returns:
         Parsed molecule as dict (same format as input).
     """
-    ...
 
 def molecule_to_json(molecule: StructureJson) -> str:
     """Convert a molecule to pymatgen JSON format string.
@@ -328,7 +293,6 @@ def molecule_to_json(molecule: StructureJson) -> str:
     Returns:
         JSON format string compatible with pymatgen's Molecule.from_dict().
     """
-    ...
 
 def molecule_to_xyz(molecule: StructureJson, comment: str | None = None) -> str:
     """Convert a molecule to XYZ format string.
@@ -340,7 +304,6 @@ def molecule_to_xyz(molecule: StructureJson, comment: str | None = None) -> str:
     Returns:
         XYZ format string.
     """
-    ...
 
 def parse_xyz_str(content: str) -> StructureDict:
     """Parse a molecule from XYZ file content.
@@ -351,7 +314,6 @@ def parse_xyz_str(content: str) -> StructureDict:
     Returns:
         Parsed molecule in pymatgen Molecule.as_dict() format.
     """
-    ...
 
 def parse_xyz_file(path: str) -> StructureDict:
     """Parse a molecule from an XYZ file.
@@ -362,7 +324,6 @@ def parse_xyz_file(path: str) -> StructureDict:
     Returns:
         Parsed molecule in pymatgen Molecule.as_dict() format.
     """
-    ...
 
 def parse_xyz_flexible(path: str) -> tuple[str, StructureDict]:
     """Parse XYZ content flexibly, returning Structure if lattice present, Molecule otherwise.
@@ -373,7 +334,6 @@ def parse_xyz_flexible(path: str) -> tuple[str, StructureDict]:
     Returns:
         Tuple of ("Structure" or "Molecule", dict in pymatgen format).
     """
-    ...
 
 # === ASE Conversion Functions ===
 
@@ -386,7 +346,6 @@ def parse_ase_dict(ase_dict: dict[str, Any]) -> tuple[str, StructureDict]:
     Returns:
         Tuple of ("Structure" or "Molecule", dict in pymatgen format).
     """
-    ...
 
 def from_ase_atoms(atoms: Any) -> StructureDict:
     """Convert an ASE Atoms object directly to ferrox dict format.
@@ -397,7 +356,6 @@ def from_ase_atoms(atoms: Any) -> StructureDict:
     Returns:
         Structure or Molecule in ferrox/pymatgen dict format.
     """
-    ...
 
 def to_ase_atoms(structure: StructureJson) -> Any:
     """Convert a ferrox dict to an ASE Atoms object.
@@ -408,7 +366,6 @@ def to_ase_atoms(structure: StructureJson) -> Any:
     Returns:
         ASE Atoms object.
     """
-    ...
 
 # === Pymatgen Direct Conversion ===
 
@@ -424,7 +381,6 @@ def from_pymatgen_structure(structure: Any) -> StructureDict:
     Returns:
         Structure in ferrox/pymatgen dict format.
     """
-    ...
 
 def to_pymatgen_structure(structure: StructureJson) -> Any:
     """Convert a ferrox dict to a pymatgen Structure object.
@@ -435,7 +391,6 @@ def to_pymatgen_structure(structure: StructureJson) -> Any:
     Returns:
         pymatgen Structure object.
     """
-    ...
 
 def to_pymatgen_molecule(molecule: StructureJson) -> Any:
     """Convert a ferrox dict to a pymatgen Molecule object.
@@ -446,7 +401,6 @@ def to_pymatgen_molecule(molecule: StructureJson) -> Any:
     Returns:
         pymatgen Molecule object.
     """
-    ...
 
 # === I/O Functions - Reading ===
 
@@ -461,7 +415,6 @@ def parse_structure_file(path: str) -> StructureDict:
     Returns:
         Structure as a Python dict compatible with pymatgen's Structure.from_dict().
     """
-    ...
 
 def parse_trajectory(path: str) -> list[StructureDict]:
     """Parse trajectory file (extXYZ format).
@@ -472,7 +425,6 @@ def parse_trajectory(path: str) -> list[StructureDict]:
     Returns:
         List of pymatgen-compatible structure dicts, one per frame.
     """
-    ...
 
 # === I/O Functions - Writing ===
 
@@ -485,7 +437,6 @@ def write_structure_file(structure: StructureJson, path: str) -> None:
         structure: Structure as JSON string.
         path: Path to the output file.
     """
-    ...
 
 def to_poscar(structure: StructureJson, comment: str | None = None) -> str:
     """Convert a structure to POSCAR format string.
@@ -497,7 +448,6 @@ def to_poscar(structure: StructureJson, comment: str | None = None) -> str:
     Returns:
         POSCAR format string.
     """
-    ...
 
 def to_cif(structure: StructureJson, data_name: str | None = None) -> str:
     """Convert a structure to CIF format string.
@@ -509,7 +459,6 @@ def to_cif(structure: StructureJson, data_name: str | None = None) -> str:
     Returns:
         CIF format string.
     """
-    ...
 
 def to_extxyz(structure: StructureJson) -> str:
     """Convert a structure to extXYZ format string.
@@ -520,7 +469,6 @@ def to_extxyz(structure: StructureJson) -> str:
     Returns:
         extXYZ format string.
     """
-    ...
 
 def to_pymatgen_json(structure: StructureJson) -> str:
     """Convert a structure to pymatgen JSON format string.
@@ -531,7 +479,6 @@ def to_pymatgen_json(structure: StructureJson) -> str:
     Returns:
         JSON format string compatible with pymatgen's Structure.from_dict().
     """
-    ...
 
 # === Supercell Functions ===
 
@@ -548,7 +495,6 @@ def make_supercell(
     Returns:
         Supercell structure as pymatgen-compatible dict.
     """
-    ...
 
 def make_supercell_diag(
     structure: StructureJson, nx: int, ny: int, nz: int
@@ -564,7 +510,6 @@ def make_supercell_diag(
     Returns:
         Supercell structure as pymatgen-compatible dict.
     """
-    ...
 
 # === Lattice Reduction Functions ===
 
@@ -583,7 +528,6 @@ def get_reduced_structure(
     Returns:
         Reduced structure as pymatgen-compatible dict.
     """
-    ...
 
 def get_reduced_structure_with_params(
     structure: StructureJson,
@@ -602,7 +546,6 @@ def get_reduced_structure_with_params(
     Returns:
         Reduced structure as pymatgen-compatible dict.
     """
-    ...
 
 # === Neighbor Finding and Distance Functions ===
 
@@ -625,7 +568,6 @@ def get_neighbor_list(
     Returns:
         Tuple of (center_indices, neighbor_indices, image_offsets, distances).
     """
-    ...
 
 def get_distance(structure: StructureJson, i: int, j: int) -> float:
     """Get distance between two sites using minimum image convention.
@@ -638,7 +580,6 @@ def get_distance(structure: StructureJson, i: int, j: int) -> float:
     Returns:
         Distance in Angstroms.
     """
-    ...
 
 def get_distance_and_image(
     structure: StructureJson, i: int, j: int
@@ -654,7 +595,6 @@ def get_distance_and_image(
         Tuple of (distance, [da, db, dc]) where image tells which periodic
         image of site j is closest to site i.
     """
-    ...
 
 def get_distance_with_image(
     structure: StructureJson,
@@ -673,7 +613,6 @@ def get_distance_with_image(
     Returns:
         Distance to the specified periodic image.
     """
-    ...
 
 def distance_from_point(structure: StructureJson, idx: int, point: Vector3) -> float:
     """Get Cartesian distance from a site to an arbitrary point.
@@ -688,7 +627,6 @@ def distance_from_point(structure: StructureJson, idx: int, point: Vector3) -> f
     Returns:
         Distance in Angstroms.
     """
-    ...
 
 def distance_matrix(structure: StructureJson) -> list[list[float]]:
     """Get the full distance matrix between all sites.
@@ -699,7 +637,6 @@ def distance_matrix(structure: StructureJson) -> list[list[float]]:
     Returns:
         n × n distance matrix where n = num_sites.
     """
-    ...
 
 def is_periodic_image(
     structure: StructureJson, i: int, j: int, tolerance: float = 1e-8
@@ -718,7 +655,6 @@ def is_periodic_image(
     Returns:
         True if sites are periodic images.
     """
-    ...
 
 # === Site Label and Species Functions ===
 
@@ -734,7 +670,6 @@ def site_label(structure: StructureJson, idx: int) -> str:
     Returns:
         Site label.
     """
-    ...
 
 def site_labels(structure: StructureJson) -> list[str]:
     """Get labels for all sites.
@@ -745,7 +680,6 @@ def site_labels(structure: StructureJson) -> list[str]:
     Returns:
         List of site labels.
     """
-    ...
 
 def species_strings(structure: StructureJson) -> list[str]:
     """Get species strings for all sites.
@@ -758,7 +692,6 @@ def species_strings(structure: StructureJson) -> list[str]:
     Returns:
         List of species strings.
     """
-    ...
 
 # === Interpolation Functions ===
 
@@ -784,7 +717,6 @@ def interpolate(
     Returns:
         List of structure dicts from start to end.
     """
-    ...
 
 # === Matching Convenience Functions ===
 
@@ -801,7 +733,6 @@ def matches(
     Returns:
         True if structures match, False otherwise.
     """
-    ...
 
 # === Sorting Functions ===
 
@@ -817,7 +748,6 @@ def get_sorted_structure(
     Returns:
         Sorted structure as pymatgen-compatible dict.
     """
-    ...
 
 def get_sorted_by_electronegativity(
     structure: StructureJson, reverse: bool = False
@@ -831,7 +761,6 @@ def get_sorted_by_electronegativity(
     Returns:
         Sorted structure as pymatgen-compatible dict.
     """
-    ...
 
 # === Copy/Sanitization Functions ===
 
@@ -850,7 +779,6 @@ def copy_structure(structure: StructureJson, sanitize: bool = False) -> Structur
     Returns:
         Copy of structure as pymatgen-compatible dict.
     """
-    ...
 
 def wrap_to_unit_cell(structure: StructureJson) -> StructureDict:
     """Wrap all fractional coordinates to [0, 1).
@@ -861,7 +789,6 @@ def wrap_to_unit_cell(structure: StructureJson) -> StructureDict:
     Returns:
         Structure with wrapped coordinates as pymatgen-compatible dict.
     """
-    ...
 
 # === Symmetry Operation Functions ===
 
@@ -884,7 +811,6 @@ def apply_operation(
     Returns:
         Transformed structure as pymatgen-compatible dict.
     """
-    ...
 
 def apply_inversion(structure: StructureJson, fractional: bool = True) -> StructureDict:
     """Apply inversion through the origin.
@@ -896,7 +822,6 @@ def apply_inversion(structure: StructureJson, fractional: bool = True) -> Struct
     Returns:
         Inverted structure as pymatgen-compatible dict.
     """
-    ...
 
 def apply_translation(
     structure: StructureJson,
@@ -913,7 +838,6 @@ def apply_translation(
     Returns:
         Translated structure as pymatgen-compatible dict.
     """
-    ...
 
 # === Lattice Property Functions ===
 
@@ -928,7 +852,6 @@ def get_lattice_metric_tensor(structure: StructureJson) -> list[list[float]]:
     Returns:
         3x3 metric tensor matrix.
     """
-    ...
 
 def get_lattice_inv_matrix(structure: StructureJson) -> list[list[float]]:
     """Get the inverse of the lattice matrix.
@@ -941,7 +864,6 @@ def get_lattice_inv_matrix(structure: StructureJson) -> list[list[float]]:
     Returns:
         3x3 inverse lattice matrix.
     """
-    ...
 
 def get_reciprocal_lattice(structure: StructureJson) -> list[list[float]]:
     """Get the reciprocal lattice.
@@ -954,7 +876,6 @@ def get_reciprocal_lattice(structure: StructureJson) -> list[list[float]]:
     Returns:
         3x3 reciprocal lattice matrix.
     """
-    ...
 
 def get_lll_reduced_lattice(structure: StructureJson) -> list[list[float]]:
     """Get the LLL-reduced lattice matrix.
@@ -968,7 +889,6 @@ def get_lll_reduced_lattice(structure: StructureJson) -> list[list[float]]:
     Returns:
         3x3 LLL-reduced lattice matrix.
     """
-    ...
 
 def get_lll_mapping(structure: StructureJson) -> list[list[float]]:
     """Get the transformation matrix to LLL-reduced basis.
@@ -982,7 +902,6 @@ def get_lll_mapping(structure: StructureJson) -> list[list[float]]:
     Returns:
         3x3 LLL transformation matrix.
     """
-    ...
 
 # === Structure Property Functions ===
 
@@ -1006,7 +925,6 @@ def get_structure_metadata(
         chemical_system, elements, n_elements, n_sites, volume, density,
         mass, is_ordered, spacegroup_number (optional).
     """
-    ...
 
 # === Symmetry Analysis Functions ===
 
@@ -1020,7 +938,6 @@ def get_spacegroup_number(structure: StructureJson, symprec: float = 0.01) -> in
     Returns:
         Spacegroup number (1-230).
     """
-    ...
 
 def get_spacegroup_symbol(structure: StructureJson, symprec: float = 0.01) -> str:
     """Get the Hermann-Mauguin spacegroup symbol (e.g., "Fm-3m", "P2_1/c").
@@ -1032,7 +949,6 @@ def get_spacegroup_symbol(structure: StructureJson, symprec: float = 0.01) -> st
     Returns:
         Hermann-Mauguin symbol.
     """
-    ...
 
 def get_hall_number(structure: StructureJson, symprec: float = 0.01) -> int:
     """Get the Hall number (1-530) identifying the specific spacegroup setting.
@@ -1044,7 +960,6 @@ def get_hall_number(structure: StructureJson, symprec: float = 0.01) -> int:
     Returns:
         Hall number.
     """
-    ...
 
 def get_pearson_symbol(structure: StructureJson, symprec: float = 0.01) -> str:
     """Get the Pearson symbol (e.g., "cF8" for FCC Cu).
@@ -1059,7 +974,6 @@ def get_pearson_symbol(structure: StructureJson, symprec: float = 0.01) -> str:
     Returns:
         Pearson symbol.
     """
-    ...
 
 def get_wyckoff_letters(structure: StructureJson, symprec: float = 0.01) -> list[str]:
     """Get Wyckoff letters for each site in the structure.
@@ -1074,7 +988,6 @@ def get_wyckoff_letters(structure: StructureJson, symprec: float = 0.01) -> list
     Returns:
         Wyckoff letters for each site (single-character strings).
     """
-    ...
 
 def get_site_symmetry_symbols(
     structure: StructureJson, symprec: float = 0.01
@@ -1090,7 +1003,6 @@ def get_site_symmetry_symbols(
     Returns:
         Site symmetry symbols for each site.
     """
-    ...
 
 def get_symmetry_operations(
     structure: StructureJson, symprec: float = 0.01
@@ -1106,7 +1018,6 @@ def get_symmetry_operations(
     Returns:
         List of (rotation, translation) pairs.
     """
-    ...
 
 def get_equivalent_sites(structure: StructureJson, symprec: float = 0.01) -> list[int]:
     """Get equivalent sites (crystallographic orbits).
@@ -1121,7 +1032,6 @@ def get_equivalent_sites(structure: StructureJson, symprec: float = 0.01) -> lis
     Returns:
         Orbit indices for each site.
     """
-    ...
 
 def get_crystal_system(structure: StructureJson, symprec: float = 0.01) -> str:
     """Get the crystal system based on the spacegroup.
@@ -1136,7 +1046,6 @@ def get_crystal_system(structure: StructureJson, symprec: float = 0.01) -> str:
     Returns:
         Crystal system name.
     """
-    ...
 
 def get_symmetry_dataset(
     structure: StructureJson, symprec: float = 0.01
@@ -1154,7 +1063,6 @@ def get_symmetry_dataset(
         pearson_symbol, crystal_system, wyckoff_letters, site_symmetry_symbols,
         equivalent_sites, symmetry_operations, num_operations.
     """
-    ...
 
 # === Site Manipulation Functions ===
 
@@ -1175,7 +1083,6 @@ def translate_sites(
     Returns:
         Structure with translated sites as pymatgen-compatible dict.
     """
-    ...
 
 def perturb(
     structure: StructureJson,
@@ -1197,7 +1104,6 @@ def perturb(
     Returns:
         Perturbed structure as pymatgen-compatible dict.
     """
-    ...
 
 # === Normalization and Site Property Functions ===
 
@@ -1213,7 +1119,6 @@ def normalize_element_symbol(symbol: str) -> dict[str, Any]:
     Returns:
         Dict with keys: element (str), oxidation_state (int | None), metadata (dict).
     """
-    ...
 
 def get_site_properties(structure: StructureJson, idx: int) -> dict[str, Any]:
     """Get site properties for a specific site.
@@ -1225,7 +1130,6 @@ def get_site_properties(structure: StructureJson, idx: int) -> dict[str, Any]:
     Returns:
         Site properties as a dict.
     """
-    ...
 
 def get_all_site_properties(structure: StructureJson) -> list[dict[str, Any]]:
     """Get all site properties for a structure.
@@ -1236,7 +1140,6 @@ def get_all_site_properties(structure: StructureJson) -> list[dict[str, Any]]:
     Returns:
         List of site property dicts (parallel to sites).
     """
-    ...
 
 def set_site_property(
     structure: StructureJson, idx: int, key: str, value: Any
@@ -1252,7 +1155,6 @@ def set_site_property(
     Returns:
         Updated structure as pymatgen-compatible dict.
     """
-    ...
 
 # === Composition Functions ===
 
@@ -1268,7 +1170,6 @@ def parse_composition(formula: str) -> dict[str, Any]:
         num_atoms, num_elements, weight, is_element, average_electroneg,
         total_electrons.
     """
-    ...
 
 def get_atomic_fraction(formula: str, element: str) -> float:
     """Get atomic fraction of an element in a composition.
@@ -1280,7 +1181,6 @@ def get_atomic_fraction(formula: str, element: str) -> float:
     Returns:
         Atomic fraction (0.0 to 1.0) or 0.0 if element not present.
     """
-    ...
 
 def get_wt_fraction(formula: str, element: str) -> float:
     """Get weight fraction of an element in a composition.
@@ -1292,7 +1192,6 @@ def get_wt_fraction(formula: str, element: str) -> float:
     Returns:
         Weight fraction (0.0 to 1.0) or 0.0 if element not present.
     """
-    ...
 
 def reduced_composition(formula: str) -> dict[str, float]:
     """Get reduced composition as a dict.
@@ -1303,7 +1202,6 @@ def reduced_composition(formula: str) -> dict[str, float]:
     Returns:
         Dict mapping element symbols to amounts in reduced form.
     """
-    ...
 
 def get_reduced_factor(formula: str) -> float:
     """Get the reduction factor for a composition.
@@ -1314,7 +1212,6 @@ def get_reduced_factor(formula: str) -> float:
     Returns:
         The factor by which amounts were divided to get the reduced formula.
     """
-    ...
 
 def is_charge_balanced(formula: str) -> bool | None:
     """Check if a composition is charge balanced.
@@ -1325,7 +1222,6 @@ def is_charge_balanced(formula: str) -> bool | None:
     Returns:
         True if charge balanced, False if not, None if species lack oxidation states.
     """
-    ...
 
 def species_hash(formula: str) -> int:
     """Get a hash value for the species composition.
@@ -1338,7 +1234,6 @@ def species_hash(formula: str) -> int:
     Returns:
         Hash value for the species composition.
     """
-    ...
 
 def remap_elements(formula: str, mapping: dict[str, str]) -> dict[str, float]:
     """Remap elements in a composition according to a mapping.
@@ -1350,7 +1245,6 @@ def remap_elements(formula: str, mapping: dict[str, str]) -> dict[str, float]:
     Returns:
         New composition dict with remapped elements.
     """
-    ...
 
 def fractional_composition(formula: str) -> dict[str, float]:
     """Get fractional composition (atomic fractions) as a dict.
@@ -1361,7 +1255,6 @@ def fractional_composition(formula: str) -> dict[str, float]:
     Returns:
         Dict mapping element symbols to atomic fractions (sum to 1.0).
     """
-    ...
 
 def composition_charge(formula: str) -> int | None:
     """Get the total charge of a composition.
@@ -1372,7 +1265,6 @@ def composition_charge(formula: str) -> int | None:
     Returns:
         Total charge as integer, or None if species lack oxidation states.
     """
-    ...
 
 def compositions_almost_equal(
     formula1: str, formula2: str, rtol: float = 0.01, atol: float = 1e-8
@@ -1388,7 +1280,6 @@ def compositions_almost_equal(
     Returns:
         True if compositions are approximately equal.
     """
-    ...
 
 def formula_hash(formula: str) -> int:
     """Get a hash of the reduced formula (ignores oxidation states).
@@ -1401,7 +1292,6 @@ def formula_hash(formula: str) -> int:
     Returns:
         Hash value for the reduced formula.
     """
-    ...
 
 # === Slab Functions ===
 
@@ -1430,7 +1320,6 @@ def make_slab(
     Returns:
         Slab structure as pymatgen-compatible dict.
     """
-    ...
 
 def generate_slabs(
     structure: StructureJson,
@@ -1455,7 +1344,6 @@ def generate_slabs(
     Returns:
         List of slab structures for all unique terminations.
     """
-    ...
 
 # === Transformation Functions ===
 
@@ -1472,7 +1360,6 @@ def to_primitive(structure: StructureJson, symprec: float = 0.01) -> StructureDi
     Returns:
         Primitive structure as pymatgen-compatible dict.
     """
-    ...
 
 def to_conventional(structure: StructureJson, symprec: float = 0.01) -> StructureDict:
     """Get the conventional cell of a structure.
@@ -1487,7 +1374,6 @@ def to_conventional(structure: StructureJson, symprec: float = 0.01) -> Structur
     Returns:
         Conventional structure as pymatgen-compatible dict.
     """
-    ...
 
 def substitute_species(
     structure: StructureJson, from_species: str, to_species: str
@@ -1502,7 +1388,6 @@ def substitute_species(
     Returns:
         Structure with substituted species.
     """
-    ...
 
 def remove_species(structure: StructureJson, species: list[str]) -> StructureDict:
     """Remove all sites containing specified species.
@@ -1514,7 +1399,6 @@ def remove_species(structure: StructureJson, species: list[str]) -> StructureDic
     Returns:
         Structure with species removed.
     """
-    ...
 
 def remove_sites(structure: StructureJson, indices: list[int]) -> StructureDict:
     """Remove sites by index.
@@ -1526,7 +1410,6 @@ def remove_sites(structure: StructureJson, indices: list[int]) -> StructureDict:
     Returns:
         Structure with sites removed.
     """
-    ...
 
 def deform(
     structure: StructureJson,
@@ -1541,7 +1424,6 @@ def deform(
     Returns:
         Deformed structure.
     """
-    ...
 
 def ewald_energy(
     structure: StructureJson, accuracy: float = 1e-5, real_cutoff: float = 10.0
@@ -1556,7 +1438,6 @@ def ewald_energy(
     Returns:
         Coulomb energy in eV.
     """
-    ...
 
 def order_disordered(
     structure: StructureJson,
@@ -1576,7 +1457,6 @@ def order_disordered(
     Returns:
         List of ordered structures as pymatgen-compatible dicts.
     """
-    ...
 
 def enumerate_derivatives(
     structure: StructureJson, min_size: int = 1, max_size: int = 4
@@ -1593,7 +1473,6 @@ def enumerate_derivatives(
     Returns:
         List of derivative structures.
     """
-    ...
 
 # === Coordination Analysis Functions ===
 
@@ -1609,7 +1488,6 @@ def get_coordination_numbers(structure: StructureJson, cutoff: float) -> list[in
     Returns:
         Coordination numbers for each site.
     """
-    ...
 
 def get_coordination_number(
     structure: StructureJson, site_idx: int, cutoff: float
@@ -1624,7 +1502,6 @@ def get_coordination_number(
     Returns:
         Coordination number for the specified site.
     """
-    ...
 
 def get_local_environment(
     structure: StructureJson, site_idx: int, cutoff: float
@@ -1639,7 +1516,6 @@ def get_local_environment(
     Returns:
         List of neighbor dicts with keys: element, species, distance, image, site_idx.
     """
-    ...
 
 def get_neighbors(
     structure: StructureJson, site_idx: int, cutoff: float
@@ -1656,7 +1532,6 @@ def get_neighbors(
     Returns:
         List of (neighbor_idx, distance, [da, db, dc]) tuples.
     """
-    ...
 
 def get_cn_voronoi_all(
     structure: StructureJson, min_solid_angle: float = 0.01
@@ -1672,7 +1547,6 @@ def get_cn_voronoi_all(
     Returns:
         Effective coordination numbers for each site.
     """
-    ...
 
 def get_cn_voronoi(
     structure: StructureJson, site_idx: int, min_solid_angle: float = 0.01
@@ -1687,7 +1561,6 @@ def get_cn_voronoi(
     Returns:
         Effective coordination number for the site.
     """
-    ...
 
 def get_voronoi_neighbors(
     structure: StructureJson, site_idx: int, min_solid_angle: float = 0.01
@@ -1704,7 +1577,6 @@ def get_voronoi_neighbors(
     Returns:
         List of (neighbor_idx, solid_angle_fraction) tuples.
     """
-    ...
 
 def get_local_environment_voronoi(
     structure: StructureJson, site_idx: int, min_solid_angle: float = 0.01
@@ -1721,14 +1593,13 @@ def get_local_environment_voronoi(
     Returns:
         List of neighbor dicts with keys: element, species, distance, image, site_idx, solid_angle.
     """
-    ...
 
 # =============================================================================
 # XRD Functions
 # =============================================================================
 
 # Type alias for XRD pattern result
-XrdPatternDict = dict[str, Any]  # {two_theta, intensities, hkls, d_spacings}
+XrdPatternDict: TypeAlias = dict[str, Any]  # {two_theta, intensities, hkls, d_spacings}
 
 def compute_xrd(
     structure: StructureJson,
@@ -1755,7 +1626,6 @@ def compute_xrd(
             - hkls: List of lists of {hkl, multiplicity} dicts for each peak
             - d_spacings: List of d-spacings in Angstroms
     """
-    ...
 
 def get_atomic_scattering_params() -> dict[str, list[list[float]]]:
     """Get atomic scattering parameters (Cromer-Mann coefficients).
@@ -1768,7 +1638,6 @@ def get_atomic_scattering_params() -> dict[str, list[list[float]]]:
         Dict mapping element symbols to their scattering coefficients.
         Each coefficient set is [[a1, b1], [a2, b2], [a3, b3], [a4, b4]].
     """
-    ...
 
 # =============================================================================
 # RDF Functions
@@ -1795,7 +1664,6 @@ def compute_rdf(
     Returns:
         Tuple of (r, g_r) where r is bin centers and g_r is RDF values.
     """
-    ...
 
 def compute_element_rdf(
     structure: StructureJson,
@@ -1825,7 +1693,6 @@ def compute_element_rdf(
     Returns:
         Tuple of (r, g_r) where r is bin centers and g_r is RDF values.
     """
-    ...
 
 def compute_all_element_rdfs(
     structure: StructureJson,
@@ -1851,7 +1718,6 @@ def compute_all_element_rdfs(
     Returns:
         List of dicts, each with keys: element_a, element_b, r, g_r.
     """
-    ...
 
 # =============================================================================
 # Oxidation State Functions
@@ -1874,7 +1740,6 @@ def oxi_state_guesses(
     Returns:
         List of dicts with keys: oxidation_states (dict), probability (float).
     """
-    ...
 
 def guess_oxidation_states_bvs(
     structure: StructureJson,
@@ -1893,7 +1758,6 @@ def guess_oxidation_states_bvs(
     Returns:
         List of oxidation states for each site.
     """
-    ...
 
 def add_charges_from_oxi_state_guesses(
     structure: StructureJson, target_charge: int = 0
@@ -1909,7 +1773,6 @@ def add_charges_from_oxi_state_guesses(
     Returns:
         Structure with oxidation states added.
     """
-    ...
 
 def add_oxidation_state_by_element(
     structure: StructureJson, oxi_states: dict[str, int]
@@ -1923,7 +1786,6 @@ def add_oxidation_state_by_element(
     Returns:
         Structure with oxidation states added.
     """
-    ...
 
 def add_oxidation_state_by_site(
     structure: StructureJson, oxi_states: Sequence[int]
@@ -1937,7 +1799,6 @@ def add_oxidation_state_by_site(
     Returns:
         Structure with oxidation states added.
     """
-    ...
 
 def remove_oxidation_states(structure: StructureJson) -> StructureDict:
     """Remove oxidation states from all sites in a structure.
@@ -1948,7 +1809,6 @@ def remove_oxidation_states(structure: StructureJson) -> StructureDict:
     Returns:
         Structure with oxidation states removed.
     """
-    ...
 
 def compute_bv_sums(
     structure: StructureJson, max_radius: float = 4.0, scale_factor: float = 1.015
@@ -1963,13 +1823,14 @@ def compute_bv_sums(
     Returns:
         List of bond valence sums for each site.
     """
-    ...
 
 # =============================================================================
 # Order Parameter Functions
 # =============================================================================
 
-def compute_steinhardt_q(structure: StructureJson, l: int, cutoff: float) -> list[float]:
+def compute_steinhardt_q(
+    structure: StructureJson, l: int, cutoff: float
+) -> list[float]:
     """Compute Steinhardt order parameter q_l for all atoms.
 
     Args:
@@ -1980,7 +1841,6 @@ def compute_steinhardt_q(structure: StructureJson, l: int, cutoff: float) -> lis
     Returns:
         List of q_l values for each atom.
     """
-    ...
 
 def classify_local_structure(q4: float, q6: float, tolerance: float = 0.1) -> str:
     """Classify local structure based on q4 and q6 values.
@@ -1993,7 +1853,6 @@ def classify_local_structure(q4: float, q6: float, tolerance: float = 0.1) -> st
     Returns:
         Structure type: "fcc", "bcc", "hcp", "icosahedral", "liquid", or "unknown".
     """
-    ...
 
 def classify_all_atoms(
     structure: StructureJson, cutoff: float, tolerance: float = 0.1
@@ -2008,4 +1867,360 @@ def classify_all_atoms(
     Returns:
         List of structure type strings for each atom.
     """
-    ...
+
+# =============================================================================
+# Cell Operations
+# =============================================================================
+
+def cell_minimum_image_distance(
+    structure: StructureJson,
+    pos1: Vector3,
+    pos2: Vector3,
+    pbc: tuple[bool, bool, bool],
+) -> float:
+    """Compute minimum image distance between two fractional positions."""
+
+def cell_minimum_image_vector(
+    structure: StructureJson,
+    delta: Vector3,
+    pbc: tuple[bool, bool, bool],
+) -> tuple[float, float, float]:
+    """Compute minimum image displacement vector under PBC."""
+
+def cell_wrap_to_unit_cell(structure: StructureJson) -> StructureDict:
+    """Wrap all site positions to the unit cell [0, 1)^3."""
+
+def cell_niggli_reduce(
+    structure: StructureJson, tolerance: float = 1e-5
+) -> dict[str, Any]:
+    """Perform Niggli reduction on the lattice."""
+
+def cell_delaunay_reduce(
+    structure: StructureJson, tolerance: float = 1e-5
+) -> dict[str, Any]:
+    """Perform Delaunay reduction on the lattice."""
+
+def cell_is_niggli_reduced(structure: StructureJson, tolerance: float = 1e-5) -> bool:
+    """Check if lattice is already Niggli-reduced."""
+
+def cell_lattices_equivalent(
+    structure1: StructureJson,
+    structure2: StructureJson,
+    tolerance: float = 1e-5,
+) -> bool:
+    """Check if two lattices are equivalent."""
+
+def cell_is_supercell(
+    structure: StructureJson, supercell: StructureJson, tolerance: float = 1e-5
+) -> list[list[int]] | None:
+    """Check if supercell is a valid supercell of structure.
+
+    Returns the 3x3 integer transformation matrix if valid, None otherwise.
+    """
+
+def cell_find_supercell_matrix(
+    structure: StructureJson, target_atoms: int
+) -> list[list[int]]:
+    """Find supercell matrix to achieve approximately target_atoms atoms."""
+
+def cell_perpendicular_distances(
+    structure: StructureJson,
+) -> tuple[float, float, float]:
+    """Get perpendicular distances for each lattice axis."""
+
+# =============================================================================
+# Defect Functions
+# =============================================================================
+
+def defect_create_vacancy(structure: StructureJson, site_idx: int) -> dict[str, Any]:
+    """Create a vacancy by removing an atom at the given site."""
+
+def defect_create_substitution(
+    structure: StructureJson, site_idx: int, new_species: str
+) -> dict[str, Any]:
+    """Create a substitutional defect by replacing the species at a site."""
+
+def defect_create_interstitial(
+    structure: StructureJson, position: Vector3, species: str
+) -> dict[str, Any]:
+    """Create an interstitial by adding an atom at a fractional position."""
+
+def defect_create_antisite(
+    structure: StructureJson, site_a_idx: int, site_b_idx: int
+) -> StructureDict:
+    """Create an antisite pair by swapping species at two sites."""
+
+def defect_find_voronoi_interstitials(
+    structure: StructureJson,
+    min_dist: float,
+    symprec: float = 0.01,
+) -> list[dict[str, Any]]:
+    """Find potential interstitial sites using Voronoi tessellation."""
+
+def defect_find_interstitial_sites(
+    structure: StructureJson,
+    min_distance: float = 1.0,
+    symprec: float = 0.01,
+    max_neighbors: int = 12,
+) -> list[dict[str, Any]]:
+    """Find interstitial sites with environment classification."""
+
+def defect_classify_site(
+    structure: StructureJson,
+    frac_coords: Vector3,
+    max_neighbors: int = 12,
+) -> dict[str, Any]:
+    """Classify a fractional coordinate position."""
+
+def defect_generate_name(
+    defect_type: str,
+    species: str | None = None,
+    original_species: str | None = None,
+    wyckoff_label: str | None = None,
+) -> str:
+    """Generate a defect name following doped convention."""
+
+def defect_generate_all(
+    structure: StructureJson,
+    supercell_matrix: IntMatrix3x3 | None = None,
+    interstitial_species: list[str] | None = None,
+    vacancy_species: list[str] | None = None,
+    substitution_species: dict[str, list[str]] | None = None,
+    symprec: float = 0.01,
+) -> dict[str, Any]:
+    """Generate all point defects for a structure."""
+
+def defect_guess_charge_states(
+    structure: StructureJson,
+    defect_type: str,
+    species: str | None = None,
+    original_species: str | None = None,
+) -> list[dict[str, Any]]:
+    """Guess likely charge states for a defect."""
+
+def defect_find_supercell(
+    structure: StructureJson,
+    min_atoms: int = 50,
+    max_atoms: int = 200,
+    min_length: float = 10.0,
+) -> list[list[int]]:
+    """Find optimal supercell matrix for defect calculations."""
+
+def defect_distort_bonds(
+    structure: StructureJson,
+    center_site_idx: int,
+    distortion_factors: Sequence[float],
+    neighbor_cutoff: float | None = None,
+    max_distance: float = 5.0,
+) -> list[dict[str, Any]]:
+    """Apply ShakeNBreak-style bond distortions around a defect site."""
+
+def defect_create_dimer(
+    structure: StructureJson,
+    site_a_idx: int,
+    site_b_idx: int,
+    target_distance: float,
+) -> dict[str, Any]:
+    """Create a dimer configuration from two atoms."""
+
+def defect_rattle(
+    structure: StructureJson,
+    stdev: float,
+    seed: int = 42,
+    min_distance: float = 0.5,
+    max_attempts: int = 100,
+) -> list[dict[str, Any]]:
+    """Apply Monte Carlo rattling to all atoms in a structure."""
+
+def defect_local_rattle(
+    structure: StructureJson,
+    center_site_idx: int,
+    stdev: float,
+    cutoff: float,
+    seed: int = 42,
+    min_distance: float = 0.5,
+    max_attempts: int = 100,
+) -> list[dict[str, Any]]:
+    """Apply Monte Carlo rattling to atoms near a specific site."""
+
+# =============================================================================
+# Surface Functions
+# =============================================================================
+
+def surface_enumerate_miller(max_index: int) -> list[tuple[int, int, int]]:
+    """Enumerate all unique Miller indices up to max_index."""
+
+def surface_miller_to_normal(
+    structure: StructureJson, h: int, k: int, l: int
+) -> tuple[float, float, float]:
+    """Get the normal vector for a Miller plane."""
+
+def surface_d_spacing(structure: StructureJson, h: int, k: int, l: int) -> float:
+    """Calculate d-spacing for a Miller plane."""
+
+def surface_get_surface_atoms(
+    structure: StructureJson, tolerance: float = 0.5
+) -> list[int]:
+    """Get indices of atoms at the surface of a slab."""
+
+def surface_find_adsorption_sites(
+    structure: StructureJson,
+    height: float,
+    site_types: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Find adsorption sites on a slab surface."""
+
+def surface_enumerate_terminations(
+    structure: StructureJson,
+    miller_index: tuple[int, int, int],
+    min_slab_size: float = 10.0,
+    min_vacuum_size: float = 10.0,
+    tolerance: float = 0.5,
+) -> list[dict[str, Any]]:
+    """Enumerate all unique surface terminations for a Miller index."""
+
+def surface_area(structure: StructureJson) -> float:
+    """Calculate the surface area of a slab structure."""
+
+def surface_calculate_energy(
+    bulk_energy_per_atom: float,
+    slab_energy: float,
+    n_atoms: int,
+    area: float,
+) -> float:
+    """Calculate surface energy from bulk and slab energies."""
+
+def surface_compute_wulff(
+    structure: StructureJson,
+    surface_energies: list[tuple[tuple[int, int, int], float]],
+) -> dict[str, Any]:
+    """Compute Wulff shape from surface energies."""
+
+# =============================================================================
+# Wyckoff Labels
+# =============================================================================
+
+def get_wyckoff_labels(structure: StructureJson, symprec: float = 0.01) -> list[str]:
+    """Get Wyckoff position labels for all sites in the structure."""
+
+# =============================================================================
+# Elastic Tensor Functions
+# =============================================================================
+
+def elastic_generate_strains(
+    n_strains: int = 6, max_strain: float = 0.01
+) -> list[list[list[float]]]:
+    """Generate strain matrices for elastic tensor calculation."""
+
+def elastic_apply_strain(
+    structure: StructureJson, strain_matrix: Matrix3x3
+) -> StructureDict:
+    """Apply a strain matrix to a structure."""
+
+def elastic_stress_to_voigt(stress_matrix: Matrix3x3) -> list[float]:
+    """Convert 3x3 stress tensor to 6-component Voigt notation."""
+
+def elastic_strain_to_voigt(strain_matrix: Matrix3x3) -> list[float]:
+    """Convert 3x3 strain tensor to 6-component Voigt notation."""
+
+def elastic_tensor_from_stresses(
+    strains: list[list[float]], stresses: list[list[float]]
+) -> list[list[float]]:
+    """Calculate elastic tensor from strain-stress data."""
+
+def elastic_bulk_modulus(elastic_tensor: list[list[float]]) -> float:
+    """Calculate bulk modulus from elastic tensor (Voigt-Reuss-Hill average)."""
+
+def elastic_shear_modulus(elastic_tensor: list[list[float]]) -> float:
+    """Calculate shear modulus from elastic tensor (Voigt-Reuss-Hill average)."""
+
+def elastic_youngs_modulus(elastic_tensor: list[list[float]]) -> float:
+    """Calculate Young's modulus from elastic tensor."""
+
+def elastic_poisson_ratio(elastic_tensor: list[list[float]]) -> float:
+    """Calculate Poisson's ratio from elastic tensor."""
+
+def elastic_is_stable(elastic_tensor: list[list[float]]) -> bool:
+    """Check if elastic tensor represents a mechanically stable material."""
+
+def elastic_zener_ratio(elastic_tensor: list[list[float]]) -> float:
+    """Calculate Zener anisotropy ratio."""
+
+# =============================================================================
+# MD and Trajectory Functions
+# =============================================================================
+
+class MDState:
+    """State for molecular dynamics simulations."""
+
+    positions: list[tuple[float, float, float]]
+    velocities: list[tuple[float, float, float]]
+    forces: list[tuple[float, float, float]]
+    masses: list[float]
+    time: float
+    kinetic_energy: float
+    potential_energy: float
+    temperature: float
+
+class LangevinIntegrator:
+    """Langevin dynamics integrator."""
+
+    def __init__(
+        self,
+        timestep: float,
+        temperature: float,
+        friction: float,
+        seed: int = 42,
+    ) -> None: ...
+    def step(self, state: MDState) -> MDState: ...
+
+class FireConfig:
+    """Configuration for FIRE optimizer."""
+
+    dt_start: float
+    dt_max: float
+    n_min: int
+    f_inc: float
+    f_dec: float
+    alpha_start: float
+    f_alpha: float
+
+class FireState:
+    """State for FIRE optimization."""
+
+    positions: list[tuple[float, float, float]]
+    velocities: list[tuple[float, float, float]]
+    forces: list[tuple[float, float, float]]
+
+class CellFireState:
+    """State for cell FIRE optimization."""
+
+    positions: list[tuple[float, float, float]]
+    velocities: list[tuple[float, float, float]]
+    forces: list[tuple[float, float, float]]
+    cell: list[list[float]]
+
+class MsdCalculator:
+    """Mean squared displacement calculator."""
+
+    def __init__(self, n_atoms: int) -> None: ...
+    def add_frame(self, positions: list[tuple[float, float, float]]) -> None: ...
+    def get_msd(self) -> list[float]: ...
+
+class VacfCalculator:
+    """Velocity autocorrelation function calculator."""
+
+    def __init__(self, n_atoms: int) -> None: ...
+    def add_frame(self, velocities: list[tuple[float, float, float]]) -> None: ...
+    def get_vacf(self) -> list[float]: ...
+
+def md_velocity_verlet_step(state: MDState, timestep: float) -> MDState:
+    """Perform a single velocity Verlet integration step."""
+
+def diffusion_from_msd(msd: list[float], timestep: float, dimensions: int = 3) -> float:
+    """Calculate diffusion coefficient from MSD using Einstein relation."""
+
+def diffusion_from_vacf(
+    vacf: list[float], timestep: float, dimensions: int = 3
+) -> float:
+    """Calculate diffusion coefficient from VACF using Green-Kubo relation."""

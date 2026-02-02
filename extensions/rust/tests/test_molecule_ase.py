@@ -14,25 +14,29 @@ except ImportError:
 
 def _mol_json(element: str = "H", charge: float = 0.0) -> str:
     """Helper to create single-atom molecule JSON."""
-    return json.dumps({
-        "@class": "Molecule",
-        "sites": [{"species": [{"element": element, "occu": 1}], "xyz": [0, 0, 0]}],
-        "charge": charge,
-    })
+    return json.dumps(
+        {
+            "@class": "Molecule",
+            "sites": [{"species": [{"element": element, "occu": 1}], "xyz": [0, 0, 0]}],
+            "charge": charge,
+        }
+    )
 
 
 def _water_json() -> str:
     """Water molecule JSON."""
-    return json.dumps({
-        "@module": "pymatgen.core.structure",
-        "@class": "Molecule",
-        "sites": [
-            {"species": [{"element": "O", "occu": 1}], "xyz": [0.0, 0.0, 0.0]},
-            {"species": [{"element": "H", "occu": 1}], "xyz": [0.96, 0.0, 0.0]},
-            {"species": [{"element": "H", "occu": 1}], "xyz": [-0.24, 0.93, 0.0]},
-        ],
-        "charge": 0,
-    })
+    return json.dumps(
+        {
+            "@module": "pymatgen.core.structure",
+            "@class": "Molecule",
+            "sites": [
+                {"species": [{"element": "O", "occu": 1}], "xyz": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "H", "occu": 1}], "xyz": [0.96, 0.0, 0.0]},
+                {"species": [{"element": "H", "occu": 1}], "xyz": [-0.24, 0.93, 0.0]},
+            ],
+            "charge": 0,
+        }
+    )
 
 
 # === Molecule JSON Parsing Tests ===
@@ -48,7 +52,9 @@ class TestParseMoleculeJson:
         species = sorted(s["species"][0]["element"] for s in result["sites"])
         assert species == ["H", "H", "O"]
         # Check H coordinate preserved
-        h_coords = [s["xyz"] for s in result["sites"] if s["species"][0]["element"] == "H"]
+        h_coords = [
+            s["xyz"] for s in result["sites"] if s["species"][0]["element"] == "H"
+        ]
         assert any(abs(c[0] - 0.96) < 1e-10 for c in h_coords)
 
     def test_invalid_json_error(self) -> None:
@@ -92,11 +98,14 @@ class TestMoleculeToXyz:
 class TestParseAseDict:
     """Tests for parse_ase_dict function."""
 
-    @pytest.mark.parametrize(("pbc", "expected_type"), [
-        ([True, True, True], "Structure"),    # fully periodic
-        ([False, False, False], "Molecule"),  # non-periodic
-        ([True, True, False], "Structure"),   # 2D material (slab)
-    ])
+    @pytest.mark.parametrize(
+        ("pbc", "expected_type"),
+        [
+            ([True, True, True], "Structure"),  # fully periodic
+            ([False, False, False], "Molecule"),  # non-periodic
+            ([True, True, False], "Structure"),  # 2D material (slab)
+        ],
+    )
     def test_periodicity_detection(self, pbc: list[bool], expected_type: str) -> None:
         """Parse ASE dict with various PBC settings."""
         ase_dict = {
@@ -111,12 +120,14 @@ class TestParseAseDict:
 
     def test_charge_from_info(self) -> None:
         """Charge is extracted from info dict."""
-        type_name, result = ferrox.parse_ase_dict({
-            "symbols": ["Na"],
-            "positions": [[0.0, 0.0, 0.0]],
-            "pbc": [False, False, False],
-            "info": {"charge": 1.0},
-        })
+        type_name, result = ferrox.parse_ase_dict(
+            {
+                "symbols": ["Na"],
+                "positions": [[0.0, 0.0, 0.0]],
+                "pbc": [False, False, False],
+                "info": {"charge": 1.0},
+            }
+        )
         assert type_name == "Molecule"
         assert result["charge"] == 1.0
 
@@ -124,12 +135,18 @@ class TestParseAseDict:
 class TestFromAseAtoms:
     """Tests for from_ase_atoms function with actual ASE Atoms objects."""
 
-    @pytest.mark.parametrize(("charge", "pbc"), [(1.0, False), (-1.0, True), (None, False)])
+    @pytest.mark.parametrize(
+        ("charge", "pbc"), [(1.0, False), (-1.0, True), (None, False)]
+    )
     def test_charge_extraction(self, charge: float | None, pbc: bool) -> None:
         """Charge is extracted from atoms.info or defaults to 0."""
         ase = pytest.importorskip("ase")
-        atoms = ase.Atoms("NaCl", positions=[[0, 0, 0], [2.8, 2.8, 2.8]],
-                          cell=[5.6, 5.6, 5.6] if pbc else None, pbc=pbc)
+        atoms = ase.Atoms(
+            "NaCl",
+            positions=[[0, 0, 0], [2.8, 2.8, 2.8]],
+            cell=[5.6, 5.6, 5.6] if pbc else None,
+            pbc=pbc,
+        )
         if charge is not None:
             atoms.info["charge"] = charge
         result = ferrox.from_ase_atoms(atoms)
@@ -160,12 +177,16 @@ class TestRoundtrips:
     def test_to_ase_atoms_charge_roundtrip_structure(self, charge: float) -> None:
         """to_ase_atoms -> from_ase_atoms preserves charge for structures."""
         pytest.importorskip("ase")
-        input_json = json.dumps({
-            "@class": "Structure",
-            "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
-            "sites": [{"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]}],
-            "charge": charge,
-        })
+        input_json = json.dumps(
+            {
+                "@class": "Structure",
+                "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
+                "sites": [
+                    {"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]}
+                ],
+                "charge": charge,
+            }
+        )
         atoms = ferrox.to_ase_atoms(input_json)
         assert atoms.info["charge"] == charge
         assert abs(ferrox.from_ase_atoms(atoms)["charge"] - charge) < 1e-10

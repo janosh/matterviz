@@ -1756,9 +1756,7 @@ pub fn is_periodic_image(
         .into()
 }
 
-// =============================================================================
-// Elastic Tensor Analysis
-// =============================================================================
+// === Elastic Tensor Analysis ===
 
 use crate::elastic;
 
@@ -1907,9 +1905,7 @@ fn tensor_flat_to_array(tensor: &[f64]) -> Result<[[f64; 6]; 6], String> {
     Ok(arr)
 }
 
-// =============================================================================
-// Bond Orientational Order Parameters (Steinhardt)
-// =============================================================================
+// === Bond Orientational Order Parameters (Steinhardt) ===
 
 use crate::order_params;
 
@@ -1965,9 +1961,7 @@ pub fn classify_all_atoms(
         .into()
 }
 
-// =============================================================================
-// Trajectory Analysis (MSD, VACF, Diffusion)
-// =============================================================================
+// === Trajectory Analysis (MSD, VACF, Diffusion) ===
 
 use crate::trajectory::{MsdCalculator, VacfCalculator};
 
@@ -2298,6 +2292,998 @@ pub fn parse_ase_atoms(ase_atoms: JsAseAtoms) -> WasmResult<JsAseParseResult> {
             type_name,
             data: pymatgen_json,
         })
+    })();
+    result.into()
+}
+
+// === Cell Operations (PBC, Reductions, Supercells) ===
+
+use crate::cell_ops;
+
+/// Result type for Niggli reduction.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct JsNiggliResult {
+    /// Flattened 3x3 Niggli matrix (row-major, 9 elements)
+    pub matrix: Vec<f64>,
+    /// Flattened 3x3 transformation matrix (row-major, 9 elements)
+    pub transformation: Vec<f64>,
+    /// Niggli form type: "TypeI" or "TypeII"
+    pub form: String,
+}
+
+/// Wrap all site positions to the unit cell [0, 1)^3.
+#[wasm_bindgen]
+pub fn cell_wrap_to_unit_cell(structure: JsCrystal) -> WasmResult<JsCrystal> {
+    let result: Result<JsCrystal, String> = (|| {
+        let mut struc = structure.to_structure()?;
+        struc.wrap_to_unit_cell();
+        Ok(JsCrystal::from_structure(&struc))
+    })();
+    result.into()
+}
+
+/// Check if a lattice is already Niggli-reduced.
+#[wasm_bindgen]
+pub fn cell_is_niggli_reduced(structure: JsCrystal, tolerance: f64) -> WasmResult<bool> {
+    let result: Result<bool, String> = (|| {
+        let struc = structure.to_structure()?;
+        Ok(cell_ops::is_niggli_reduced(&struc.lattice, tolerance))
+    })();
+    result.into()
+}
+
+// === Point Defect Generation (WASM) ===
+
+use crate::defects;
+
+/// Create a vacancy by removing an atom at the specified site index.
+///
+/// Returns JSON with 'structure' (defective structure) and defect info.
+#[wasm_bindgen]
+pub fn defect_create_vacancy(structure: JsCrystal, site_idx: u32) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let defect_result =
+            defects::create_vacancy(&struc, site_idx as usize).map_err(|err| err.to_string())?;
+        let json = serde_json::json!({
+            "structure": serde_json::to_value(&defect_result.structure).unwrap_or_default(),
+            "defect_type": defect_result.defect.defect_type.as_str(),
+            "site_idx": defect_result.defect.site_idx,
+            "position": defect_result.defect.position.as_slice(),
+            "original_species": defect_result.defect.original_species.map(|s| s.to_string()),
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Create a substitutional defect by replacing the species at a site.
+#[wasm_bindgen]
+pub fn defect_create_substitution(
+    structure: JsCrystal,
+    site_idx: u32,
+    new_species: &str,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let species = Species::from_string(new_species)
+            .ok_or_else(|| format!("Invalid species: {new_species}"))?;
+        let defect_result = defects::create_substitution(&struc, site_idx as usize, species)
+            .map_err(|err| err.to_string())?;
+        let json = serde_json::json!({
+            "structure": serde_json::to_value(&defect_result.structure).unwrap_or_default(),
+            "defect_type": defect_result.defect.defect_type.as_str(),
+            "site_idx": defect_result.defect.site_idx,
+            "position": defect_result.defect.position.as_slice(),
+            "species": defect_result.defect.species.map(|s| s.to_string()),
+            "original_species": defect_result.defect.original_species.map(|s| s.to_string()),
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Create an interstitial by adding an atom at a fractional position.
+#[wasm_bindgen]
+pub fn defect_create_interstitial(
+    structure: JsCrystal,
+    position: Vec<f64>,
+    species: &str,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        if position.len() != 3 {
+            return Err("Position must have 3 elements".to_string());
+        }
+        let struc = structure.to_structure()?;
+        let new_species =
+            Species::from_string(species).ok_or_else(|| format!("Invalid species: {species}"))?;
+        let frac_pos = nalgebra::Vector3::new(position[0], position[1], position[2]);
+        let defect_result = defects::create_interstitial(&struc, frac_pos, new_species)
+            .map_err(|err| err.to_string())?;
+        let json = serde_json::json!({
+            "structure": serde_json::to_value(&defect_result.structure).unwrap_or_default(),
+            "defect_type": defect_result.defect.defect_type.as_str(),
+            "position": defect_result.defect.position.as_slice(),
+            "species": defect_result.defect.species.map(|s| s.to_string()),
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Create an antisite pair by swapping species at two sites.
+#[wasm_bindgen]
+pub fn defect_create_antisite(
+    structure: JsCrystal,
+    site_a_idx: u32,
+    site_b_idx: u32,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let n_sites = struc.num_sites();
+        if site_a_idx as usize >= n_sites || site_b_idx as usize >= n_sites {
+            return Err(format!(
+                "Site indices ({}, {}) out of bounds for structure with {} sites",
+                site_a_idx, site_b_idx, n_sites
+            ));
+        }
+        let species_a = struc.species()[site_a_idx as usize];
+        let species_b = struc.species()[site_b_idx as usize];
+        let swapped =
+            defects::create_antisite_pair(&struc, site_a_idx as usize, site_b_idx as usize)
+                .map_err(|err| err.to_string())?;
+        let json = serde_json::json!({
+            "structure": serde_json::to_value(&swapped).unwrap_or_default(),
+            "defect_type": "antisite",
+            "site_a_idx": site_a_idx,
+            "site_b_idx": site_b_idx,
+            "species_a_original": species_a.to_string(),
+            "species_b_original": species_b.to_string(),
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Find potential interstitial sites using Voronoi tessellation.
+///
+/// Returns JSON array of sites with frac_coords, cart_coords, min_distance, coordination, site_type.
+#[wasm_bindgen]
+pub fn defect_find_interstitial_sites(
+    structure: JsCrystal,
+    min_dist: f64,
+    symprec: f64,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        // Validate min_dist: must be finite and positive
+        if !min_dist.is_finite() || min_dist <= 0.0 {
+            return Err("min_dist must be positive and finite".to_string());
+        }
+
+        let struc = structure.to_structure()?;
+        let sites = defects::find_voronoi_interstitials(&struc, Some(min_dist), symprec);
+        let json_sites: Vec<serde_json::Value> = sites
+            .into_iter()
+            .map(|site| {
+                serde_json::json!({
+                    "frac_coords": site.frac_coords.as_slice(),
+                    "cart_coords": site.cart_coords.as_slice(),
+                    "min_distance": site.min_distance,
+                    "coordination": site.coordination,
+                    "site_type": site.site_type.as_str(),
+                })
+            })
+            .collect();
+        Ok(serde_json::to_string(&json_sites).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Find an optimal supercell matrix for dilute defect calculations.
+///
+/// Returns flat array of 9 integers [a1,a2,a3, b1,b2,b3, c1,c2,c3].
+#[wasm_bindgen]
+pub fn defect_find_supercell(
+    structure: JsCrystal,
+    min_image_dist: f64,
+    max_atoms: u32,
+    cubic_preference: f64,
+) -> WasmResult<Vec<i32>> {
+    let result: Result<Vec<i32>, String> = (|| {
+        // Validate min_image_dist: must be finite and positive
+        if !min_image_dist.is_finite() || min_image_dist <= 0.0 {
+            return Err("min_image_dist must be positive and finite".to_string());
+        }
+        // Validate max_atoms: must be positive
+        if max_atoms == 0 {
+            return Err("max_atoms must be greater than 0".to_string());
+        }
+
+        let struc = structure.to_structure()?;
+        let config = defects::DefectSupercellConfig {
+            min_distance: min_image_dist,
+            max_atoms: max_atoms as usize,
+            cubic_preference,
+        };
+        let matrix =
+            defects::find_defect_supercell(&struc, &config).map_err(|err| err.to_string())?;
+        Ok(vec![
+            matrix[0][0],
+            matrix[0][1],
+            matrix[0][2],
+            matrix[1][0],
+            matrix[1][1],
+            matrix[1][2],
+            matrix[2][0],
+            matrix[2][1],
+            matrix[2][2],
+        ])
+    })();
+    result.into()
+}
+
+/// Classify an interstitial site based on its coordination number.
+#[wasm_bindgen]
+pub fn defect_classify_site(coordination: u32) -> String {
+    defects::classify_interstitial_site(coordination as usize)
+        .as_str()
+        .to_string()
+}
+
+/// Generate a doped-compatible name for a point defect.
+#[wasm_bindgen]
+pub fn defect_generate_name(
+    defect_type: &str,
+    species: Option<String>,
+    original_species: Option<String>,
+    wyckoff: Option<String>,
+    site_type: Option<String>,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        use crate::defects::{DefectType, PointDefect};
+        use crate::species::Species;
+        use nalgebra::Vector3;
+
+        let dtype = match defect_type.to_lowercase().as_str() {
+            "vacancy" => DefectType::Vacancy,
+            "interstitial" => DefectType::Interstitial,
+            "substitution" => DefectType::Substitution,
+            "antisite" => DefectType::Antisite,
+            other => return Err(format!("Unknown defect type: {other}")),
+        };
+
+        let species_parsed = species.as_ref().and_then(|s| Species::from_string(s));
+        let original_parsed = original_species
+            .as_ref()
+            .and_then(|s| Species::from_string(s));
+
+        let defect = PointDefect {
+            defect_type: dtype,
+            site_idx: None,
+            position: Vector3::zeros(),
+            species: species_parsed,
+            original_species: original_parsed,
+            charge: 0,
+        };
+
+        Ok(defect.name(wyckoff.as_deref(), site_type.as_deref()))
+    })();
+    result.into()
+}
+
+/// Guess likely charge states for a point defect based on oxidation state probabilities.
+///
+/// Returns JSON array of {charge, probability, reasoning} objects.
+#[wasm_bindgen]
+pub fn defect_guess_charge_states(
+    defect_type: &str,
+    removed_species: Option<String>,
+    added_species: Option<String>,
+    original_species: Option<String>,
+    max_charge: i32,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        use crate::defects::DefectType;
+        use crate::oxidation::guess_defect_charge_states;
+
+        let dtype = match defect_type.to_lowercase().as_str() {
+            "vacancy" => DefectType::Vacancy,
+            "interstitial" => DefectType::Interstitial,
+            "substitution" => DefectType::Substitution,
+            "antisite" => DefectType::Antisite,
+            other => return Err(format!("Unknown defect type: {other}")),
+        };
+
+        let guesses = guess_defect_charge_states(
+            dtype,
+            removed_species.as_deref(),
+            added_species.as_deref(),
+            original_species.as_deref(),
+            max_charge,
+        );
+
+        let json_guesses: Vec<serde_json::Value> = guesses
+            .into_iter()
+            .map(|guess| {
+                serde_json::json!({
+                    "charge": guess.charge,
+                    "probability": guess.probability,
+                    "reasoning": guess.reasoning,
+                })
+            })
+            .collect();
+        Ok(serde_json::to_string(&json_guesses).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Get Wyckoff labels for all sites in a structure.
+///
+/// Returns JSON array of {label, multiplicity, site_symmetry} objects.
+#[wasm_bindgen]
+pub fn defect_get_wyckoff_labels(structure: JsCrystal, symprec: f64) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let wyckoffs = struc
+            .get_wyckoff_sites(symprec)
+            .map_err(|err| err.to_string())?;
+        let json_sites: Vec<serde_json::Value> = wyckoffs
+            .into_iter()
+            .map(|wyk| {
+                serde_json::json!({
+                    "label": wyk.label,
+                    "multiplicity": wyk.multiplicity,
+                    "site_symmetry": wyk.site_symmetry,
+                })
+            })
+            .collect();
+        Ok(serde_json::to_string(&json_sites).unwrap_or_default())
+    })();
+    result.into()
+}
+
+// === Structure Distortions (WASM) ===
+
+use crate::distortions;
+
+/// Distort bonds around a defect site by specified factors.
+///
+/// Returns JSON array of distorted structures with metadata.
+#[wasm_bindgen]
+pub fn defect_distort_bonds(
+    structure: JsCrystal,
+    center_site_idx: u32,
+    distortion_factors: Vec<f64>,
+    num_neighbors: Option<u32>,
+    cutoff: f64,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        // Validate cutoff: must be non-negative
+        if cutoff < 0.0 {
+            return Err("cutoff must be non-negative".to_string());
+        }
+
+        let struc = structure.to_structure()?;
+        let results = distortions::distort_bonds(
+            &struc,
+            center_site_idx as usize,
+            &distortion_factors,
+            num_neighbors.map(|n| n as usize),
+            cutoff,
+        )
+        .map_err(|err| err.to_string())?;
+
+        let json_results: Vec<serde_json::Value> = results
+            .into_iter()
+            .map(|res| {
+                serde_json::json!({
+                    "structure": serde_json::to_value(&res.structure).unwrap_or_default(),
+                    "distortion_type": res.distortion_type,
+                    "distortion_factor": res.distortion_factor,
+                    "center_site_idx": res.center_site_idx,
+                })
+            })
+            .collect();
+        Ok(serde_json::to_string(&json_results).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Create a dimer by moving two atoms closer together.
+#[wasm_bindgen]
+pub fn defect_create_dimer(
+    structure: JsCrystal,
+    site_a_idx: u32,
+    site_b_idx: u32,
+    target_distance: f64,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        // Validate target_distance: must be finite and positive
+        if !target_distance.is_finite() || target_distance <= 0.0 {
+            return Err("target_distance must be positive and finite".to_string());
+        }
+
+        let struc = structure.to_structure()?;
+        let res = distortions::create_dimer(
+            &struc,
+            site_a_idx as usize,
+            site_b_idx as usize,
+            target_distance,
+        )
+        .map_err(|err| err.to_string())?;
+        let json = serde_json::json!({
+            "structure": serde_json::to_value(&res.structure).unwrap_or_default(),
+            "distortion_type": res.distortion_type,
+            "distortion_factor": res.distortion_factor,
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Apply Monte Carlo rattling - random displacements to all atoms.
+#[wasm_bindgen]
+pub fn defect_rattle(
+    structure: JsCrystal,
+    stdev: f64,
+    seed: u32,
+    min_distance: f64,
+    max_attempts: u32,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        // Validate stdev: must be non-negative and finite
+        if !stdev.is_finite() || stdev < 0.0 {
+            return Err("stdev must be non-negative and finite".to_string());
+        }
+        // Validate min_distance: must be non-negative and finite
+        if !min_distance.is_finite() || min_distance < 0.0 {
+            return Err("min_distance must be non-negative and finite".to_string());
+        }
+
+        let struc = structure.to_structure()?;
+        let res = distortions::rattle_structure(
+            &struc,
+            stdev,
+            seed as u64,
+            min_distance,
+            max_attempts as usize,
+        )
+        .map_err(|err| err.to_string())?;
+        let json = serde_json::json!({
+            "structure": serde_json::to_value(&res.structure).unwrap_or_default(),
+            "distortion_type": res.distortion_type,
+            "distortion_factor": res.distortion_factor,
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Apply local rattling with distance-dependent amplitude decay.
+#[wasm_bindgen]
+pub fn defect_local_rattle(
+    structure: JsCrystal,
+    center_site_idx: u32,
+    max_amplitude: f64,
+    decay_radius: f64,
+    seed: u32,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        // Validate max_amplitude: must be non-negative and finite
+        if !max_amplitude.is_finite() || max_amplitude < 0.0 {
+            return Err("max_amplitude must be non-negative and finite".to_string());
+        }
+        // Validate decay_radius: must be positive and finite
+        if !decay_radius.is_finite() || decay_radius <= 0.0 {
+            return Err("decay_radius must be positive and finite".to_string());
+        }
+
+        let struc = structure.to_structure()?;
+        let res = distortions::local_rattle(
+            &struc,
+            center_site_idx as usize,
+            max_amplitude,
+            decay_radius,
+            seed as u64,
+        )
+        .map_err(|err| err.to_string())?;
+        let json = serde_json::json!({
+            "structure": serde_json::to_value(&res.structure).unwrap_or_default(),
+            "distortion_type": res.distortion_type,
+            "distortion_factor": res.distortion_factor,
+            "center_site_idx": res.center_site_idx,
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+// === Defect Generator (WASM) ===
+
+/// Generate all point defects for a structure.
+///
+/// Returns JSON object with supercell_matrix, vacancies, substitutions,
+/// interstitials, antisites, spacegroup, n_defects.
+#[wasm_bindgen]
+pub fn defect_generate_all(
+    structure: JsCrystal,
+    extrinsic_json: &str,
+    include_vacancies: bool,
+    include_substitutions: bool,
+    include_interstitials: bool,
+    include_antisites: bool,
+    supercell_min_dist: f64,
+    supercell_max_atoms: u32,
+    interstitial_min_dist: Option<f64>,
+    symprec: f64,
+    max_charge: i32,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let extrinsic: Vec<String> = if extrinsic_json.is_empty() {
+            Vec::new()
+        } else {
+            serde_json::from_str(extrinsic_json)
+                .map_err(|err| format!("Invalid extrinsic_json: {err}"))?
+        };
+
+        let config = crate::defects::DefectsGeneratorConfig {
+            extrinsic,
+            include_vacancies,
+            include_substitutions,
+            include_interstitials,
+            include_antisites,
+            supercell_min_dist,
+            supercell_max_atoms: supercell_max_atoms as usize,
+            interstitial_min_dist,
+            symprec,
+            max_charge,
+        };
+
+        let result =
+            crate::defects::generate_all_defects(&struc, &config).map_err(|err| err.to_string())?;
+
+        // Convert DefectEntry to JSON
+        fn entry_to_json(entry: &crate::defects::DefectEntry) -> serde_json::Value {
+            serde_json::json!({
+                "name": entry.name,
+                "defect_type": format!("{:?}", entry.defect_type),
+                "site_idx": entry.site_idx,
+                "frac_coords": entry.frac_coords.as_slice(),
+                "species": entry.species,
+                "original_species": entry.original_species,
+                "wyckoff": entry.wyckoff,
+                "site_symmetry": entry.site_symmetry,
+                "equivalent_sites": entry.equivalent_sites,
+                "charge_states": entry.charge_states.iter().map(|cs| {
+                    serde_json::json!({
+                        "charge": cs.charge,
+                        "probability": cs.probability,
+                        "reasoning": cs.reasoning,
+                    })
+                }).collect::<Vec<_>>(),
+            })
+        }
+
+        let json = serde_json::json!({
+            "supercell_matrix": result.supercell_matrix,
+            "vacancies": result.vacancies.iter().map(entry_to_json).collect::<Vec<_>>(),
+            "substitutions": result.substitutions.iter().map(entry_to_json).collect::<Vec<_>>(),
+            "interstitials": result.interstitials.iter().map(entry_to_json).collect::<Vec<_>>(),
+            "antisites": result.antisites.iter().map(entry_to_json).collect::<Vec<_>>(),
+            "spacegroup": result.spacegroup,
+            "n_defects": result.n_defects,
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+// === Surface Analysis (WASM) ===
+
+use crate::surfaces;
+
+/// Enumerate all unique Miller indices up to a maximum index value.
+///
+/// Returns JSON array of [h, k, l] arrays.
+#[wasm_bindgen]
+pub fn surface_enumerate_miller(max_index: i32) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let indices: Vec<[i32; 3]> = surfaces::enumerate_miller_indices(max_index)
+            .into_iter()
+            .map(|mi| mi.to_array())
+            .collect();
+        Ok(serde_json::to_string(&indices).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Get the normal vector for a Miller plane.
+///
+/// Returns JSON array [x, y, z] of the unit normal.
+#[wasm_bindgen]
+pub fn surface_miller_to_normal(
+    structure: JsCrystal,
+    h: i32,
+    k: i32,
+    l: i32,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let normal = surfaces::miller_to_normal(&struc.lattice, [h, k, l]);
+        Ok(serde_json::to_string(normal.as_slice()).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Enumerate all unique surface terminations for a Miller index.
+///
+/// Returns JSON array of termination objects with miller_index, shift,
+/// surface_species, surface_density, is_polar, and slab structure.
+#[wasm_bindgen]
+pub fn surface_enumerate_terminations(
+    structure: JsCrystal,
+    h: i32,
+    k: i32,
+    l: i32,
+    min_slab: f64,
+    min_vacuum: f64,
+    symprec: f64,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        // Validate min_slab: must be finite and positive
+        if !min_slab.is_finite() || min_slab <= 0.0 {
+            return Err("min_slab must be positive and finite".to_string());
+        }
+        // Validate min_vacuum: must be finite and positive
+        if !min_vacuum.is_finite() || min_vacuum <= 0.0 {
+            return Err("min_vacuum must be positive and finite".to_string());
+        }
+
+        let struc = structure.to_structure()?;
+        let miller = surfaces::MillerIndex::new(h, k, l);
+        let config = surfaces::SlabConfigExt::new(miller)
+            .with_min_slab_size(min_slab)
+            .with_min_vacuum(min_vacuum);
+
+        let terminations = surfaces::enumerate_terminations(&struc, miller, &config, symprec)
+            .map_err(|err| err.to_string())?;
+
+        let json_terms: Vec<serde_json::Value> = terminations
+            .into_iter()
+            .map(|term| {
+                serde_json::json!({
+                    "miller_index": term.miller_index.to_array(),
+                    "shift": term.shift,
+                    "surface_species": term.surface_species.iter().map(|sp| sp.to_string()).collect::<Vec<_>>(),
+                    "surface_density": term.surface_density,
+                    "is_polar": term.is_polar,
+                    "slab": crate::io::structure_to_pymatgen_json(&term.slab),
+                })
+            })
+            .collect();
+
+        Ok(serde_json::to_string(&json_terms).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Get surface atoms in a slab structure.
+///
+/// Returns JSON array of site indices.
+#[wasm_bindgen]
+pub fn surface_get_surface_atoms(slab: JsCrystal, tolerance: f64) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        // Validate tolerance: must be finite and positive
+        if !tolerance.is_finite() || tolerance <= 0.0 {
+            return Err("tolerance must be positive and finite".to_string());
+        }
+
+        let struc = slab.to_structure()?;
+        let atoms = surfaces::get_surface_atoms(&struc, tolerance);
+        Ok(serde_json::to_string(&atoms).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Calculate surface area of a slab.
+#[wasm_bindgen]
+pub fn surface_area(slab: JsCrystal) -> WasmResult<f64> {
+    let result: Result<f64, String> = (|| {
+        let struc = slab.to_structure()?;
+        Ok(surfaces::surface_area(&struc))
+    })();
+    result.into()
+}
+
+/// Calculate surface energy from slab and bulk energies.
+#[wasm_bindgen]
+pub fn surface_calculate_energy(
+    slab_energy: f64,
+    bulk_energy_per_atom: f64,
+    n_atoms: u32,
+    surface_area: f64,
+) -> f64 {
+    // Validate surface_area: return NaN for zero or non-finite values to avoid division-by-zero
+    if surface_area == 0.0 || !surface_area.is_finite() {
+        return f64::NAN;
+    }
+    surfaces::calculate_surface_energy(
+        slab_energy,
+        bulk_energy_per_atom,
+        n_atoms as usize,
+        surface_area,
+    )
+}
+
+/// Find adsorption sites on a slab surface.
+///
+/// Returns JSON array of adsorption site objects.
+#[wasm_bindgen]
+pub fn surface_find_adsorption_sites(
+    slab: JsCrystal,
+    height: f64,
+    site_types_json: &str,
+    neighbor_cutoff: Option<f64>,
+    surface_tolerance: Option<f64>,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        // Validate height: must be finite and non-negative (zero = on surface plane)
+        if !height.is_finite() || height < 0.0 {
+            return Err("height must be non-negative and finite".to_string());
+        }
+        // Validate neighbor_cutoff if provided: must be finite and positive
+        if let Some(cutoff) = neighbor_cutoff {
+            if !cutoff.is_finite() || cutoff <= 0.0 {
+                return Err("neighbor_cutoff must be positive and finite".to_string());
+            }
+        }
+
+        let struc = slab.to_structure()?;
+        let site_types: Option<Vec<surfaces::AdsorptionSiteType>> = if site_types_json.is_empty() {
+            None
+        } else {
+            let strings: Vec<String> = serde_json::from_str(site_types_json)
+                .map_err(|err| format!("Invalid site types JSON: {err}"))?;
+            let parsed: Vec<surfaces::AdsorptionSiteType> = strings
+                .iter()
+                .filter_map(|s| surfaces::AdsorptionSiteType::parse(s))
+                .collect();
+            if parsed.is_empty() {
+                None
+            } else {
+                Some(parsed)
+            }
+        };
+        let sites = surfaces::find_adsorption_sites(
+            &struc,
+            height,
+            site_types.as_deref(),
+            neighbor_cutoff,
+            surface_tolerance,
+        )
+        .map_err(|err| err.to_string())?;
+        let json_sites: Vec<serde_json::Value> = sites
+            .into_iter()
+            .map(|site| {
+                serde_json::json!({
+                    "site_type": site.site_type,
+                    "position": site.position.as_slice(),
+                    "cart_position": site.cart_position.as_slice(),
+                    "height": site.height,
+                    "coordinating_atoms": site.coordinating_atoms,
+                })
+            })
+            .collect();
+        Ok(serde_json::to_string(&json_sites).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Compute Wulff shape from surface energies.
+///
+/// surface_energies_json: JSON array of [[h,k,l], energy] pairs.
+/// Returns JSON object with facets, total_surface_area, volume, sphericity.
+#[wasm_bindgen]
+pub fn surface_compute_wulff(
+    structure: JsCrystal,
+    surface_energies_json: &str,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let raw: Vec<(Vec<i32>, f64)> = serde_json::from_str(surface_energies_json)
+            .map_err(|err| format!("Invalid surface energies JSON: {err}"))?;
+        let mut surface_energies: Vec<(surfaces::MillerIndex, f64)> = Vec::with_capacity(raw.len());
+        for (hkl, energy) in raw {
+            if hkl.len() < 3 {
+                return Err(format!(
+                    "Invalid Miller index: expected 3 components, got {}",
+                    hkl.len()
+                ));
+            }
+            surface_energies.push((surfaces::MillerIndex::new(hkl[0], hkl[1], hkl[2]), energy));
+        }
+        let wulff = surfaces::compute_wulff_shape(&struc.lattice, &surface_energies)
+            .map_err(|err| err.to_string())?;
+        let facets_json: Vec<serde_json::Value> = wulff
+            .facets
+            .iter()
+            .map(|facet| {
+                serde_json::json!({
+                    "miller_index": facet.miller_index.to_array(),
+                    "surface_energy": facet.surface_energy,
+                    "normal": facet.normal.as_slice(),
+                    "area_fraction": facet.area_fraction,
+                })
+            })
+            .collect();
+        let json = serde_json::json!({
+            "facets": facets_json,
+            "total_surface_area": wulff.total_surface_area,
+            "volume": wulff.volume,
+            "sphericity": wulff.sphericity,
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+// === Cell Operations (WASM) - JSON-returning variants ===
+
+/// Calculate minimum image distance between two fractional positions.
+#[wasm_bindgen]
+pub fn cell_minimum_image_distance(
+    structure: JsCrystal,
+    frac1: Vec<f64>,
+    frac2: Vec<f64>,
+) -> WasmResult<f64> {
+    let result: Result<f64, String> = (|| {
+        let struc = structure.to_structure()?;
+        if frac1.len() != 3 || frac2.len() != 3 {
+            return Err("Fractional coords must have 3 components".to_string());
+        }
+        let f1 = Vector3::new(frac1[0], frac1[1], frac1[2]);
+        let f2 = Vector3::new(frac2[0], frac2[1], frac2[2]);
+        Ok(cell_ops::minimum_image_distance(
+            &struc.lattice,
+            &f1,
+            &f2,
+            [true, true, true],
+        ))
+    })();
+    result.into()
+}
+
+/// Calculate minimum image vector between two fractional positions.
+///
+/// Returns JSON array [x, y, z] of the Cartesian displacement.
+#[wasm_bindgen]
+pub fn cell_minimum_image_vector(
+    structure: JsCrystal,
+    frac1: Vec<f64>,
+    frac2: Vec<f64>,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        if frac1.len() != 3 || frac2.len() != 3 {
+            return Err("Fractional coords must have 3 components".to_string());
+        }
+        let f1 = Vector3::new(frac1[0], frac1[1], frac1[2]);
+        let f2 = Vector3::new(frac2[0], frac2[1], frac2[2]);
+        let delta = f2 - f1;
+        let vec = cell_ops::minimum_image_vector(&struc.lattice, &delta, [true, true, true]);
+        Ok(serde_json::to_string(vec.as_slice()).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Perform Niggli reduction on a lattice.
+///
+/// Returns JSON object with reduced lattice matrix and transformation matrix.
+#[wasm_bindgen]
+pub fn cell_niggli_reduce(structure: JsCrystal, tolerance: f64) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let niggli =
+            cell_ops::niggli_reduce(&struc.lattice, tolerance).map_err(|err| err.to_string())?;
+        let lattice_matrix: Vec<Vec<f64>> = (0..3)
+            .map(|idx| niggli.matrix.row(idx).iter().copied().collect())
+            .collect();
+        let json = serde_json::json!({
+            "lattice_matrix": lattice_matrix,
+            "transformation": niggli.transformation,
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Perform Delaunay reduction on a lattice.
+///
+/// Returns JSON object with reduced lattice matrix and transformation matrix.
+#[wasm_bindgen]
+pub fn cell_delaunay_reduce(structure: JsCrystal, tolerance: f64) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let delaunay =
+            cell_ops::delaunay_reduce(&struc.lattice, tolerance).map_err(|err| err.to_string())?;
+        let lattice_matrix: Vec<Vec<f64>> = (0..3)
+            .map(|idx| delaunay.matrix.row(idx).iter().copied().collect())
+            .collect();
+        let json = serde_json::json!({
+            "lattice_matrix": lattice_matrix,
+            "transformation": delaunay.transformation,
+        });
+        Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Find supercell transformation matrix for target atom count.
+///
+/// Returns JSON array [[a1,a2,a3],[b1,b2,b3],[c1,c2,c3]].
+#[wasm_bindgen]
+pub fn cell_find_supercell_matrix(structure: JsCrystal, target_atoms: u32) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let matrix = cell_ops::find_supercell_for_target_atoms(
+            &struc.lattice,
+            struc.num_sites(),
+            target_atoms as usize,
+        );
+        Ok(serde_json::to_string(&matrix).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Get perpendicular distances for each lattice axis.
+///
+/// Returns JSON array [d_a, d_b, d_c].
+#[wasm_bindgen]
+pub fn cell_perpendicular_distances(structure: JsCrystal) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let dists = cell_ops::perpendicular_distances(&struc.lattice);
+        Ok(serde_json::to_string(dists.as_slice()).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Check if two lattices are equivalent under rotation/permutation.
+#[wasm_bindgen]
+pub fn cell_lattices_equivalent(
+    structure1: JsCrystal,
+    structure2: JsCrystal,
+    tolerance: f64,
+) -> WasmResult<bool> {
+    let result: Result<bool, String> = (|| {
+        let struc1 = structure1.to_structure()?;
+        let struc2 = structure2.to_structure()?;
+        Ok(cell_ops::lattices_equivalent(
+            &struc1.lattice,
+            &struc2.lattice,
+            tolerance,
+            tolerance,
+        ))
+    })();
+    result.into()
+}
+
+/// Check if one lattice is a supercell of another.
+///
+/// Returns JSON: null if not a supercell, or [[a,b,c],[d,e,f],[g,h,i]] transformation.
+#[wasm_bindgen]
+pub fn cell_is_supercell(
+    structure: JsCrystal,
+    other: JsCrystal,
+    tolerance: f64,
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
+        let struc = structure.to_structure()?;
+        let other_struc = other.to_structure()?;
+        let matrix = cell_ops::is_supercell(&struc.lattice, &other_struc.lattice, tolerance);
+        Ok(serde_json::to_string(&matrix).unwrap_or_default())
     })();
     result.into()
 }
