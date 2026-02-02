@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
+import numpy as np
 import pytest
 
 if TYPE_CHECKING:
@@ -43,6 +44,12 @@ def make_orthorhombic_lattice(len_a: float, len_b: float, len_c: float) -> dict:
     return {"matrix": [[len_a, 0, 0], [0, len_b, 0], [0, 0, len_c]]}
 
 
+@overload
+def make_structure(
+    lattice: dict, sites: list[dict], as_json: Literal[False] = ...
+) -> dict: ...
+@overload
+def make_structure(lattice: dict, sites: list[dict], as_json: Literal[True]) -> str: ...
 def make_structure(
     lattice: dict,
     sites: list[dict],
@@ -58,6 +65,14 @@ def make_structure(
     return json.dumps(struct) if as_json else struct
 
 
+@overload
+def make_cubic_structure(
+    lattice_param: float, sites: list[dict], as_json: Literal[False] = ...
+) -> dict: ...
+@overload
+def make_cubic_structure(
+    lattice_param: float, sites: list[dict], as_json: Literal[True]
+) -> str: ...
 def make_cubic_structure(
     lattice_param: float,
     sites: list[dict],
@@ -65,6 +80,35 @@ def make_cubic_structure(
 ) -> dict | str:
     """Create a structure with cubic lattice."""
     return make_structure(make_cubic_lattice(lattice_param), sites, as_json)
+
+
+# === Coordinate Helpers ===
+
+
+def get_cart_coords(structure: dict) -> np.ndarray:
+    """Extract Cartesian coordinates from structure dict."""
+    matrix = np.array(structure["lattice"]["matrix"])
+    sites = structure["sites"]
+    frac_coords = np.array([site["abc"] for site in sites])
+    return frac_coords @ matrix
+
+
+def minimum_image_distance(
+    pos_a: np.ndarray, pos_b: np.ndarray, matrix: np.ndarray
+) -> float:
+    """Calculate minimum image distance between two Cartesian points."""
+    inv_matrix = np.linalg.inv(matrix)
+    diff_cart = pos_b - pos_a
+    diff_frac = diff_cart @ inv_matrix
+    # Wrap to [-0.5, 0.5)
+    diff_frac = diff_frac - np.round(diff_frac)
+    diff_cart_pbc = diff_frac @ matrix
+    return float(np.linalg.norm(diff_cart_pbc))
+
+
+def structure_to_json(structure: dict) -> str:
+    """Convert structure dict to JSON string."""
+    return json.dumps(structure)
 
 
 # === Common Structure Fixtures ===

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-import json
-
 import ferrox
 import numpy as np
 import pytest
-from conftest import make_cubic_structure, make_site, make_structure
+from conftest import (
+    get_cart_coords,
+    make_cubic_structure,
+    make_site,
+    make_structure,
+    minimum_image_distance,
+    structure_to_json,
+)
 
 # === Fixtures ===
 
@@ -28,7 +33,7 @@ def fcc_cu() -> dict:
 
 @pytest.fixture
 def nacl_supercell() -> dict:
-    """Create 2x2x2 NaCl supercell (16 atoms) for neighbor testing."""
+    """Create NaCl conventional cell (8 atoms) for neighbor testing."""
     lattice_param = 5.64
     lattice = {
         "matrix": [[lattice_param, 0, 0], [0, lattice_param, 0], [0, 0, lattice_param]]
@@ -57,35 +62,6 @@ def simple_dimer_structure() -> dict:
             make_site("Li", [0.2, 0.1, 0.1]),  # 1 Å apart in x
         ],
     )
-
-
-# === Helper Functions ===
-
-
-def get_cart_coords(structure: dict) -> np.ndarray:
-    """Extract Cartesian coordinates from structure dict."""
-    matrix = np.array(structure["lattice"]["matrix"])
-    sites = structure["sites"]
-    frac_coords = np.array([site["abc"] for site in sites])
-    return frac_coords @ matrix
-
-
-def minimum_image_distance(
-    pos_a: np.ndarray, pos_b: np.ndarray, matrix: np.ndarray
-) -> float:
-    """Calculate minimum image distance between two points."""
-    inv_matrix = np.linalg.inv(matrix)
-    diff_cart = pos_b - pos_a
-    diff_frac = diff_cart @ inv_matrix
-    # Wrap to [-0.5, 0.5)
-    diff_frac = diff_frac - np.round(diff_frac)
-    diff_cart_pbc = diff_frac @ matrix
-    return float(np.linalg.norm(diff_cart_pbc))
-
-
-def structure_to_json(structure: dict) -> str:
-    """Convert structure dict to JSON string."""
-    return json.dumps(structure)
 
 
 # === Test Classes ===
@@ -476,10 +452,11 @@ class TestEdgeCases:
             structure_to_json(single), 0.1, seed=42, min_distance=0.5, max_attempts=100
         )
         assert len(result["structure"]["sites"]) == 1
-        # Position should be different
-        orig = np.array(single["sites"][0]["abc"])
-        new = np.array(result["structure"]["sites"][0]["abc"])
-        assert np.linalg.norm(new - orig) > 1e-6 or np.allclose(new, orig)
+        # Verify returned coordinates are valid (finite)
+        new_coords = np.array(result["structure"]["sites"][0]["abc"])
+        assert np.all(np.isfinite(new_coords)), "Coordinates should be finite"
+        # For single atom, min_distance constraint may prevent movement, so just verify
+        # the structure is valid - position change is not guaranteed
 
     def test_single_atom_local_rattle(self) -> None:
         """Single atom structure with local_rattle."""

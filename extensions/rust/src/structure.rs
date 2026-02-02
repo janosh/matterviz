@@ -1128,6 +1128,7 @@ impl Structure {
     /// # Panics
     ///
     /// Panics if `site_idx` is out of bounds.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_cn_voronoi(
         &self,
         site_idx: usize,
@@ -1150,6 +1151,7 @@ impl Structure {
     /// # Returns
     ///
     /// A vector of effective coordination numbers, one for each site.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_cn_voronoi_all(
         &self,
         config: Option<&crate::coordination::VoronoiConfig>,
@@ -1172,6 +1174,7 @@ impl Structure {
     /// # Returns
     ///
     /// A vector of tuples `(neighbor_idx, solid_angle_fraction)`.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_voronoi_neighbors(
         &self,
         site_idx: usize,

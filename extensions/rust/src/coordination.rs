@@ -42,6 +42,7 @@ use crate::structure::Structure;
 // Tolerance for neighbor list distance comparisons
 const NEIGHBOR_TOL: f64 = 1e-8;
 // Tolerance for geometric comparisons (face area, distance)
+#[cfg(not(target_arch = "wasm32"))]
 const GEOM_TOL: f64 = 1e-10;
 
 /// Information about a neighbor in the local environment of a site.
@@ -250,6 +251,7 @@ impl Default for VoronoiConfig {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl VoronoiConfig {
     /// Validate config values are physically meaningful.
     ///
@@ -266,6 +268,7 @@ impl VoronoiConfig {
 }
 
 /// Get validated config, using default if None.
+#[cfg(not(target_arch = "wasm32"))]
 fn validated_config(config: Option<&VoronoiConfig>) -> VoronoiConfig {
     let cfg = config.copied().unwrap_or_default();
     cfg.validate();
@@ -273,7 +276,7 @@ fn validated_config(config: Option<&VoronoiConfig>) -> VoronoiConfig {
 }
 
 /// Check if a lattice is orthogonal (all angles ≈ 90°).
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 fn is_orthogonal(structure: &Structure) -> bool {
     const ANGLE_TOL: f64 = 1.0; // degrees
     let angles = structure.lattice.angles();
@@ -283,6 +286,7 @@ fn is_orthogonal(structure: &Structure) -> bool {
 }
 
 /// Build a Voronoi tessellation from a structure with periodic boundary conditions.
+#[cfg(not(target_arch = "wasm32"))]
 fn build_voronoi(structure: &Structure) -> Option<Voronoi> {
     if structure.num_sites() == 0 {
         return None;
@@ -322,6 +326,7 @@ fn build_voronoi(structure: &Structure) -> Option<Voronoi> {
 
 /// Helper to compute solid angle fraction from a face.
 /// Returns (neighbor_idx, solid_angle_fraction, distance) or None if it's a boundary face.
+#[cfg(not(target_arch = "wasm32"))]
 fn compute_face_solid_angle(
     face: &meshless_voronoi::VoronoiFace,
     cell_idx: usize,

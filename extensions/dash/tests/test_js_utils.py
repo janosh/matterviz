@@ -18,7 +18,7 @@ REACT_JS_PATH = (
 )
 
 
-def run_js_test(js_code: str) -> dict:
+def run_js_test(js_code: str) -> dict:  # type: ignore[return]
     """Run JavaScript code and return the JSON result."""
     # Read the JS file and extract the functions we need
     js_file = REACT_JS_PATH.read_text()

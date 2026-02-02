@@ -4,10 +4,25 @@
 //! in crystal structures, including vacancies, substitutions, interstitials,
 //! and antisite pairs.
 
+// === Helper Macro ===
+
+/// Implements Display for types with an `as_str` method.
+macro_rules! impl_display_via_as_str {
+    ($type:ty) => {
+        impl std::fmt::Display for $type {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(formatter, "{}", self.as_str())
+            }
+        }
+    };
+}
+
+use crate::cell_ops::perpendicular_distances;
 use crate::error::{FerroxError, Result, check_site_bounds, check_sites_different};
-use crate::lattice::Lattice;
 use crate::oxidation::{ChargeStateGuess, guess_defect_charge_states};
 use crate::pbc::wrap_frac_coords;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::pbc::{count_atoms_at_distance, min_distance_to_atoms};
 use crate::species::{SiteOccupancy, Species};
 use crate::structure::{Structure, WyckoffSite};
 use nalgebra::Vector3;
@@ -41,11 +56,7 @@ impl DefectType {
     }
 }
 
-impl std::fmt::Display for DefectType {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.as_str())
-    }
-}
+impl_display_via_as_str!(DefectType);
 
 /// A point defect in a crystal structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -416,11 +427,7 @@ impl InterstitialSiteType {
     }
 }
 
-impl std::fmt::Display for InterstitialSiteType {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.as_str())
-    }
-}
+impl_display_via_as_str!(InterstitialSiteType);
 
 /// Classify an interstitial site based on its coordination number.
 ///
@@ -575,7 +582,8 @@ pub fn find_voronoi_interstitials(
 
             // Check if vertex is unique (not already in list)
             let is_duplicate = unique_vertices.iter().any(|existing| {
-                let sep = find_min_separation(lattice, &pos, existing);
+                // Use shared min_distance_to_atoms with single-element slice for separation check
+                let sep = min_distance_to_atoms(&pos, &[*existing], lattice.matrix(), lattice.pbc);
                 sep < symprec
             });
 
@@ -587,10 +595,12 @@ pub fn find_voronoi_interstitials(
 
     // Process each unique vertex to create interstitial sites
     let mut interstitials: Vec<VoronoiInterstitial> = Vec::new();
+    let pbc = lattice.pbc;
+    let matrix = lattice.matrix();
 
     for cart_pos in unique_vertices {
         // Calculate minimum distance to any atom
-        let min_atom_dist = find_min_distance_to_atoms(lattice, &cart_pos, &original_cart_coords);
+        let min_atom_dist = min_distance_to_atoms(&cart_pos, &original_cart_coords, matrix, pbc);
 
         // Filter by minimum distance threshold
         if min_atom_dist < min_distance_threshold {
@@ -603,20 +613,19 @@ pub fn find_voronoi_interstitials(
         let wrapped_cart = lattice.get_cartesian_coord(&wrapped_frac);
 
         // Check if this wrapped position is a duplicate
-        let is_duplicate = interstitials.iter().any(|existing| {
-            let sep = find_min_separation(lattice, &wrapped_cart, &existing.cart_coords);
-            sep < symprec
-        });
-
-        if is_duplicate {
+        let existing_carts: Vec<Vector3<f64>> =
+            interstitials.iter().map(|i| i.cart_coords).collect();
+        let sep_to_existing = min_distance_to_atoms(&wrapped_cart, &existing_carts, matrix, pbc);
+        if sep_to_existing < symprec {
             continue;
         }
 
         // Count coordination (atoms at approximately the same distance)
-        let coordination = count_neighbors_at_distance(
-            lattice,
+        let coordination = count_atoms_at_distance(
             &wrapped_cart,
             &original_cart_coords,
+            matrix,
+            pbc,
             min_atom_dist,
             0.3,
         );
@@ -698,96 +707,6 @@ fn is_near_unit_cell(frac: &Vector3<f64>, tolerance: f64) -> bool {
         && frac.z < upper
 }
 
-/// Find the minimum distance from a point to any atom, considering PBC.
-#[cfg(not(target_arch = "wasm32"))]
-fn find_min_distance_to_atoms(
-    lattice: &Lattice,
-    point: &Vector3<f64>,
-    atom_coords: &[Vector3<f64>],
-) -> f64 {
-    let mut min_dist = f64::MAX;
-
-    for atom in atom_coords {
-        // Check distance considering periodic images
-        for img_a in -1..=1_i32 {
-            for img_b in -1..=1_i32 {
-                for img_c in -1..=1_i32 {
-                    let image_offset = lattice.get_cartesian_coord(&Vector3::new(
-                        img_a as f64,
-                        img_b as f64,
-                        img_c as f64,
-                    ));
-                    let atom_image = atom + image_offset;
-                    let dist = (point - atom_image).norm();
-                    if dist < min_dist {
-                        min_dist = dist;
-                    }
-                }
-            }
-        }
-    }
-
-    min_dist
-}
-
-/// Count neighbors at approximately the given distance.
-#[cfg(not(target_arch = "wasm32"))]
-fn count_neighbors_at_distance(
-    lattice: &Lattice,
-    point: &Vector3<f64>,
-    atom_coords: &[Vector3<f64>],
-    target_dist: f64,
-    tolerance: f64,
-) -> usize {
-    let mut count = 0;
-
-    for atom in atom_coords {
-        for img_a in -1..=1_i32 {
-            for img_b in -1..=1_i32 {
-                for img_c in -1..=1_i32 {
-                    let image_offset = lattice.get_cartesian_coord(&Vector3::new(
-                        img_a as f64,
-                        img_b as f64,
-                        img_c as f64,
-                    ));
-                    let atom_image = atom + image_offset;
-                    let dist = (point - atom_image).norm();
-                    if (dist - target_dist).abs() < tolerance {
-                        count += 1;
-                    }
-                }
-            }
-        }
-    }
-
-    count
-}
-
-/// Find minimum separation between two points considering PBC.
-#[cfg(not(target_arch = "wasm32"))]
-fn find_min_separation(lattice: &Lattice, point_a: &Vector3<f64>, point_b: &Vector3<f64>) -> f64 {
-    let mut min_dist = f64::MAX;
-
-    for img_a in -1..=1_i32 {
-        for img_b in -1..=1_i32 {
-            for img_c in -1..=1_i32 {
-                let image_offset = lattice.get_cartesian_coord(&Vector3::new(
-                    img_a as f64,
-                    img_b as f64,
-                    img_c as f64,
-                ));
-                let b_image = point_b + image_offset;
-                let dist = (point_a - b_image).norm();
-                if dist < min_dist {
-                    min_dist = dist;
-                }
-            }
-        }
-    }
-
-    min_dist
-}
-
 /// Wasm32 fallback: returns empty vector since meshless_voronoi is not available.
 #[cfg(target_arch = "wasm32")]
 pub fn find_voronoi_interstitials(
@@ -852,7 +771,7 @@ pub fn find_defect_supercell(
     }
 
     // Calculate perpendicular distances (heights of the parallelepiped)
-    let perp_dists = calculate_perpendicular_distances(lattice);
+    let perp_dists = perpendicular_distances(lattice);
 
     // Check for degenerate lattice (zero perpendicular distance in any direction)
     if perp_dists.x <= 0.0 || perp_dists.y <= 0.0 || perp_dists.z <= 0.0 {
@@ -935,30 +854,6 @@ pub fn find_defect_supercell(
     }
 
     Ok(best_matrix)
-}
-
-/// Calculate perpendicular distances (heights) of the lattice parallelepiped.
-fn calculate_perpendicular_distances(lattice: &Lattice) -> Vector3<f64> {
-    let matrix = lattice.matrix();
-    let vol = lattice.volume().abs();
-
-    let vec_a = matrix.row(0).transpose();
-    let vec_b = matrix.row(1).transpose();
-    let vec_c = matrix.row(2).transpose();
-
-    // Perpendicular distance along a = V / |b x c|
-    // Use epsilon to avoid division by near-zero for degenerate lattices
-    const EPS: f64 = 1e-10;
-
-    let cross_bc = vec_b.cross(&vec_c).norm();
-    let cross_ca = vec_c.cross(&vec_a).norm();
-    let cross_ab = vec_a.cross(&vec_b).norm();
-
-    let perp_a = if cross_bc > EPS { vol / cross_bc } else { 0.0 };
-    let perp_b = if cross_ca > EPS { vol / cross_ca } else { 0.0 };
-    let perp_c = if cross_ab > EPS { vol / cross_ab } else { 0.0 };
-
-    Vector3::new(perp_a, perp_b, perp_c)
 }
 
 // === DefectEntry and Generator ===
@@ -1420,6 +1315,7 @@ fn generate_antisites(
 mod tests {
     use super::*;
     use crate::element::Element;
+    use crate::lattice::Lattice;
 
     fn make_nacl() -> Structure {
         let lattice = Lattice::cubic(5.64);
@@ -1548,7 +1444,7 @@ mod tests {
 
         // Check perpendicular distances
         let super_lattice = Lattice::cubic(5.64 * matrix[0][0] as f64);
-        let perp = calculate_perpendicular_distances(&super_lattice);
+        let perp = perpendicular_distances(&super_lattice);
         assert!(perp.min() >= config.min_distance);
     }
 

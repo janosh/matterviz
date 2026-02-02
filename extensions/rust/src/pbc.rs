@@ -86,6 +86,223 @@ fn coords_match_pbc(
     true
 }
 
+// === Minimum Image Distance Utilities ===
+
+/// Calculate minimum image distance and displacement vector between two Cartesian points.
+///
+/// Returns (distance, displacement_vector) where displacement_vector points from pos_a to pos_b.
+/// This function checks all 27 periodic images to find the shortest path.
+///
+/// # Arguments
+///
+/// * `pos_a` - First position in Cartesian coordinates
+/// * `pos_b` - Second position in Cartesian coordinates
+/// * `lattice_matrix` - 3x3 lattice matrix (rows are lattice vectors)
+/// * `pbc` - Periodic boundary conditions along each axis
+///
+/// # Returns
+///
+/// Tuple of (distance, displacement_vector).
+pub fn minimum_image_distance(
+    pos_a: &Vector3<f64>,
+    pos_b: &Vector3<f64>,
+    lattice_matrix: &nalgebra::Matrix3<f64>,
+    pbc: [bool; 3],
+) -> (f64, Vector3<f64>) {
+    let (dist_sq, vec) = minimum_image_distance_squared(pos_a, pos_b, lattice_matrix, pbc);
+    (dist_sq.sqrt(), vec)
+}
+
+/// Calculate minimum image distance squared and displacement vector.
+///
+/// More efficient than `minimum_image_distance` when you only need to compare distances.
+///
+/// # Arguments
+///
+/// * `pos_a` - First position in Cartesian coordinates
+/// * `pos_b` - Second position in Cartesian coordinates
+/// * `lattice_matrix` - 3x3 lattice matrix (rows are lattice vectors)
+/// * `pbc` - Periodic boundary conditions along each axis
+///
+/// # Returns
+///
+/// Tuple of (distance_squared, displacement_vector).
+pub fn minimum_image_distance_squared(
+    pos_a: &Vector3<f64>,
+    pos_b: &Vector3<f64>,
+    lattice_matrix: &nalgebra::Matrix3<f64>,
+    pbc: [bool; 3],
+) -> (f64, Vector3<f64>) {
+    let lattice_vecs = [
+        lattice_matrix.row(0).transpose(),
+        lattice_matrix.row(1).transpose(),
+        lattice_matrix.row(2).transpose(),
+    ];
+
+    let direct_vec = pos_b - pos_a;
+    let mut min_dist_sq = direct_vec.norm_squared();
+    let mut min_vec = direct_vec;
+
+    // Check periodic images
+    for image in periodic_image_offsets(pbc) {
+        if image == [0, 0, 0] {
+            continue; // Already checked direct distance
+        }
+
+        let image_offset = (image[0] as f64) * lattice_vecs[0]
+            + (image[1] as f64) * lattice_vecs[1]
+            + (image[2] as f64) * lattice_vecs[2];
+
+        let vec = direct_vec + image_offset;
+        let dist_sq = vec.norm_squared();
+
+        if dist_sq < min_dist_sq {
+            min_dist_sq = dist_sq;
+            min_vec = vec;
+        }
+    }
+
+    (min_dist_sq, min_vec)
+}
+
+/// Find minimum distance from a Cartesian point to any atom in a list, considering PBC.
+///
+/// # Arguments
+///
+/// * `point` - The query point in Cartesian coordinates
+/// * `atom_coords` - List of atom positions in Cartesian coordinates
+/// * `lattice_matrix` - 3x3 lattice matrix (rows are lattice vectors)
+/// * `pbc` - Periodic boundary conditions along each axis
+///
+/// # Returns
+///
+/// The minimum distance to any atom (f64::MAX if atom_coords is empty).
+pub fn min_distance_to_atoms(
+    point: &Vector3<f64>,
+    atom_coords: &[Vector3<f64>],
+    lattice_matrix: &nalgebra::Matrix3<f64>,
+    pbc: [bool; 3],
+) -> f64 {
+    let lattice_vecs = [
+        lattice_matrix.row(0).transpose(),
+        lattice_matrix.row(1).transpose(),
+        lattice_matrix.row(2).transpose(),
+    ];
+
+    let mut min_dist = f64::MAX;
+
+    for atom in atom_coords {
+        for image in periodic_image_offsets(pbc) {
+            let image_offset = (image[0] as f64) * lattice_vecs[0]
+                + (image[1] as f64) * lattice_vecs[1]
+                + (image[2] as f64) * lattice_vecs[2];
+            let atom_image = atom + image_offset;
+            let dist = (point - atom_image).norm();
+            if dist < min_dist {
+                min_dist = dist;
+            }
+        }
+    }
+
+    min_dist
+}
+
+/// Count atoms at approximately a given distance from a point (within tolerance).
+///
+/// Useful for determining coordination number of interstitial sites.
+///
+/// # Arguments
+///
+/// * `point` - The query point in Cartesian coordinates
+/// * `atom_coords` - List of atom positions in Cartesian coordinates
+/// * `lattice_matrix` - 3x3 lattice matrix (rows are lattice vectors)
+/// * `pbc` - Periodic boundary conditions along each axis
+/// * `target_dist` - The target distance to match
+/// * `tolerance` - Distance tolerance for matching
+///
+/// # Returns
+///
+/// Number of atoms within `tolerance` of `target_dist` from `point`.
+pub fn count_atoms_at_distance(
+    point: &Vector3<f64>,
+    atom_coords: &[Vector3<f64>],
+    lattice_matrix: &nalgebra::Matrix3<f64>,
+    pbc: [bool; 3],
+    target_dist: f64,
+    tolerance: f64,
+) -> usize {
+    let lattice_vecs = [
+        lattice_matrix.row(0).transpose(),
+        lattice_matrix.row(1).transpose(),
+        lattice_matrix.row(2).transpose(),
+    ];
+
+    let mut count = 0;
+
+    for atom in atom_coords {
+        for image in periodic_image_offsets(pbc) {
+            let image_offset = (image[0] as f64) * lattice_vecs[0]
+                + (image[1] as f64) * lattice_vecs[1]
+                + (image[2] as f64) * lattice_vecs[2];
+            let atom_image = atom + image_offset;
+            let dist = (point - atom_image).norm();
+            if (dist - target_dist).abs() < tolerance {
+                count += 1;
+            }
+        }
+    }
+
+    count
+}
+
+// === Periodic Image Iteration ===
+
+/// Generate all periodic image offsets based on PBC flags.
+///
+/// For each periodic axis, generates offsets in {-1, 0, 1}.
+/// For non-periodic axes, only generates 0.
+///
+/// # Arguments
+///
+/// * `pbc` - Periodic boundary conditions along each axis
+///
+/// # Returns
+///
+/// Iterator over [i32; 3] image offsets. For full 3D PBC, yields 27 offsets.
+/// For partial PBC, yields fewer offsets.
+///
+/// # Example
+///
+/// ```
+/// use ferrox::pbc::periodic_image_offsets;
+///
+/// // Full 3D PBC: 27 images
+/// let count = periodic_image_offsets([true, true, true]).count();
+/// assert_eq!(count, 27);
+///
+/// // Slab (z non-periodic): 9 images
+/// let count = periodic_image_offsets([true, true, false]).count();
+/// assert_eq!(count, 9);
+/// ```
+pub fn periodic_image_offsets(pbc: [bool; 3]) -> impl Iterator<Item = [i32; 3]> {
+    let range_x: &[i32] = if pbc[0] { &[-1, 0, 1] } else { &[0] };
+    let range_y: &[i32] = if pbc[1] { &[-1, 0, 1] } else { &[0] };
+    let range_z: &[i32] = if pbc[2] { &[-1, 0, 1] } else { &[0] };
+
+    // Use static slices since we need to return an iterator
+    // that captures by value, not by reference
+    let rx: Vec<i32> = range_x.to_vec();
+    let ry: Vec<i32> = range_y.to_vec();
+    let rz: Vec<i32> = range_z.to_vec();
+
+    rx.into_iter().flat_map(move |dx| {
+        let ry = ry.clone();
+        let rz = rz.clone();
+        ry.into_iter()
+            .flat_map(move |dy| rz.clone().into_iter().map(move |dz| [dx, dy, dz]))
+    })
+}
+
 /// The 27 periodic images to check for full 3D PBC.
 const IMAGES: [[f64; 3]; 27] = [
     [-1.0, -1.0, -1.0],
@@ -612,5 +829,99 @@ mod tests {
         for (c2, expected) in cases {
             assert_eq!(coords_match_pbc(&c1, &c2, tol, pbc), expected);
         }
+    }
+
+    #[test]
+    fn test_periodic_image_offsets_full_pbc() {
+        let offsets: Vec<_> = periodic_image_offsets([true, true, true]).collect();
+        assert_eq!(offsets.len(), 27);
+        assert!(offsets.contains(&[0, 0, 0]));
+        assert!(offsets.contains(&[-1, -1, -1]));
+        assert!(offsets.contains(&[1, 1, 1]));
+    }
+
+    #[test]
+    fn test_periodic_image_offsets_partial_pbc() {
+        // Slab (z non-periodic)
+        let offsets: Vec<_> = periodic_image_offsets([true, true, false]).collect();
+        assert_eq!(offsets.len(), 9);
+        assert!(offsets.iter().all(|img| img[2] == 0));
+
+        // Wire (only x periodic)
+        let offsets: Vec<_> = periodic_image_offsets([true, false, false]).collect();
+        assert_eq!(offsets.len(), 3);
+
+        // No PBC
+        let offsets: Vec<_> = periodic_image_offsets([false, false, false]).collect();
+        assert_eq!(offsets.len(), 1);
+        assert_eq!(offsets[0], [0, 0, 0]);
+    }
+
+    #[test]
+    fn test_minimum_image_distance_cubic() {
+        let matrix = nalgebra::Matrix3::from_diagonal(&Vector3::new(4.0, 4.0, 4.0));
+        let pbc = [true, true, true];
+
+        // Same point
+        let pos = Vector3::new(2.0, 2.0, 2.0);
+        let (dist, _) = minimum_image_distance(&pos, &pos, &matrix, pbc);
+        assert!(dist < 1e-10);
+
+        // Points across boundary
+        let pos_a = Vector3::new(0.5, 0.5, 0.5);
+        let pos_b = Vector3::new(3.5, 3.5, 3.5);
+        let (dist, _) = minimum_image_distance(&pos_a, &pos_b, &matrix, pbc);
+        // Should be sqrt(3) ≈ 1.73 (via boundary), not sqrt(27) ≈ 5.2
+        assert!(dist < 2.0, "Expected < 2.0, got {dist}");
+    }
+
+    #[test]
+    fn test_min_distance_to_atoms() {
+        let matrix = nalgebra::Matrix3::from_diagonal(&Vector3::new(10.0, 10.0, 10.0));
+        let pbc = [true, true, true];
+
+        let atoms = vec![Vector3::new(1.0, 1.0, 1.0), Vector3::new(5.0, 5.0, 5.0)];
+
+        // Point close to first atom
+        let point = Vector3::new(1.5, 1.0, 1.0);
+        let dist = min_distance_to_atoms(&point, &atoms, &matrix, pbc);
+        assert!((dist - 0.5).abs() < 1e-10);
+
+        // Point near boundary, closer to wrapped image
+        let point2 = Vector3::new(9.5, 1.0, 1.0);
+        let dist2 = min_distance_to_atoms(&point2, &atoms, &matrix, pbc);
+        // Should find distance to image of (1,1,1) at (11,1,1), so dist = 1.5
+        assert!((dist2 - 1.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_count_atoms_at_distance() {
+        let matrix = nalgebra::Matrix3::from_diagonal(&Vector3::new(10.0, 10.0, 10.0));
+        let pbc = [true, true, true];
+
+        // Atoms arranged in octahedral coordination around origin
+        let atoms = [
+            Vector3::new(2.0, 0.0, 0.0),
+            Vector3::new(-2.0, 0.0, 0.0),
+            Vector3::new(0.0, 2.0, 0.0),
+            Vector3::new(0.0, -2.0, 0.0),
+            Vector3::new(0.0, 0.0, 2.0),
+            Vector3::new(0.0, 0.0, -2.0),
+        ];
+        // Wrap negative coords to [0,10)
+        let atoms: Vec<_> = atoms
+            .iter()
+            .map(|a| {
+                Vector3::new(
+                    if a.x < 0.0 { a.x + 10.0 } else { a.x },
+                    if a.y < 0.0 { a.y + 10.0 } else { a.y },
+                    if a.z < 0.0 { a.z + 10.0 } else { a.z },
+                )
+            })
+            .collect();
+
+        let point = Vector3::new(0.0, 0.0, 0.0);
+        let count = count_atoms_at_distance(&point, &atoms, &matrix, pbc, 2.0, 0.5);
+        assert_eq!(count, 6);
     }
 }

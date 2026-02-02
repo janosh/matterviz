@@ -21,7 +21,7 @@ use crate::error::{
     check_sites_different,
 };
 use crate::neighbors::{NeighborListConfig, build_neighbor_list};
-use crate::pbc::wrap_frac_coords_pbc;
+use crate::pbc::{minimum_image_distance, minimum_image_distance_squared, wrap_frac_coords_pbc};
 use crate::structure::Structure;
 use nalgebra::Vector3;
 use rand::SeedableRng;
@@ -489,65 +489,6 @@ fn random_unit_vector<R: Rng>(rng: &mut R) -> Vector3<f64> {
             return vec / norm_sq.sqrt();
         }
     }
-}
-
-/// Calculate minimum image distance and displacement vector between two points.
-///
-/// Returns (distance, displacement_vector) where displacement_vector points from a to b.
-fn minimum_image_distance(
-    pos_a: &Vector3<f64>,
-    pos_b: &Vector3<f64>,
-    lattice_matrix: &nalgebra::Matrix3<f64>,
-    pbc: [bool; 3],
-) -> (f64, Vector3<f64>) {
-    let (dist_sq, vec) = minimum_image_distance_squared(pos_a, pos_b, lattice_matrix, pbc);
-    (dist_sq.sqrt(), vec)
-}
-
-/// Calculate minimum image distance squared and displacement vector.
-fn minimum_image_distance_squared(
-    pos_a: &Vector3<f64>,
-    pos_b: &Vector3<f64>,
-    lattice_matrix: &nalgebra::Matrix3<f64>,
-    pbc: [bool; 3],
-) -> (f64, Vector3<f64>) {
-    let lattice_vecs = [
-        lattice_matrix.row(0).transpose(),
-        lattice_matrix.row(1).transpose(),
-        lattice_matrix.row(2).transpose(),
-    ];
-
-    let direct_vec = pos_b - pos_a;
-    let mut min_dist_sq = direct_vec.norm_squared();
-    let mut min_vec = direct_vec;
-
-    // Check periodic images
-    let ranges: [Vec<i32>; 3] =
-        std::array::from_fn(|idx| if pbc[idx] { vec![-1, 0, 1] } else { vec![0] });
-
-    for &dx in &ranges[0] {
-        for &dy in &ranges[1] {
-            for &dz in &ranges[2] {
-                if dx == 0 && dy == 0 && dz == 0 {
-                    continue; // Already checked direct distance
-                }
-
-                let image_offset = (dx as f64) * lattice_vecs[0]
-                    + (dy as f64) * lattice_vecs[1]
-                    + (dz as f64) * lattice_vecs[2];
-
-                let vec = direct_vec + image_offset;
-                let dist_sq = vec.norm_squared();
-
-                if dist_sq < min_dist_sq {
-                    min_dist_sq = dist_sq;
-                    min_vec = vec;
-                }
-            }
-        }
-    }
-
-    (min_dist_sq, min_vec)
 }
 
 // === Tests ===

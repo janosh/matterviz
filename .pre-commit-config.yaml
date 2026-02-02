@@ -25,10 +25,6 @@ repos:
           - unresolved-attribute
           - --ignore
           - unsupported-operator
-          - --ignore
-          - invalid-return-type
-          - --ignore
-          - invalid-argument-type
 
   - repo: builtin
     hooks:

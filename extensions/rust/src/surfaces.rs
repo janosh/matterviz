@@ -7,6 +7,19 @@
 //! - Surface energy calculations
 //! - Wulff construction for equilibrium crystal shapes
 
+// === Helper Macro ===
+
+/// Implements Display for types with an `as_str` method.
+macro_rules! impl_display_via_as_str {
+    ($type:ty) => {
+        impl std::fmt::Display for $type {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(formatter, "{}", self.as_str())
+            }
+        }
+    };
+}
+
 use crate::error::{FerroxError, Result};
 use crate::lattice::Lattice;
 use crate::species::Species;
@@ -246,11 +259,7 @@ impl AdsorptionSiteType {
     }
 }
 
-impl std::fmt::Display for AdsorptionSiteType {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(fmt, "{}", self.as_str())
-    }
-}
+impl_display_via_as_str!(AdsorptionSiteType);
 
 /// An adsorption site on a surface.
 ///
