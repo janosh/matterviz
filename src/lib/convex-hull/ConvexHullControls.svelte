@@ -6,7 +6,12 @@
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { ConvexHullControlsType, ConvexHullEntry } from './types'
+  import type {
+    ConvexHullControlsType,
+    ConvexHullEntry,
+    HullFaceColorMode,
+  } from './types'
+  import { HULL_FACE_COLOR_MODES } from './types'
 
   interface CameraState {
     elevation?: number // Elevation angle in degrees (for ternary)
@@ -17,6 +22,23 @@
     center_x: number
     center_y: number
   }
+
+  // Display labels for face color modes
+  const FACE_COLOR_MODE_LABELS: Record<HullFaceColorMode, string> = {
+    uniform: `Uniform`,
+    formation_energy: `Energy`,
+    dominant_element: `Element`,
+    facet_index: `Index`,
+  }
+
+  // Tooltips for face color modes
+  const FACE_COLOR_MODE_TIPS: Record<HullFaceColorMode, string> = {
+    uniform: `Single uniform color for all faces`,
+    formation_energy: `Color by average formation energy of face vertices`,
+    dominant_element: `Color by element with highest concentration at face centroid`,
+    facet_index: `Distinct categorical color per facet`,
+  }
+
   let {
     color_mode = $bindable(`stability`),
     color_scale = $bindable(`interpolateViridis`),
@@ -30,6 +52,8 @@
     on_hull_face_color_change,
     hull_face_opacity = $bindable(0.03),
     on_hull_face_opacity_change,
+    hull_face_color_mode = `uniform` as HullFaceColorMode,
+    on_hull_face_color_mode_change,
     max_hull_dist_show_phases = $bindable(0),
     max_hull_dist_show_labels = $bindable(0.1),
     max_hull_dist_in_data = 0.5,
@@ -61,6 +85,8 @@
     on_hull_face_color_change?: (value: string) => void
     hull_face_opacity?: number
     on_hull_face_opacity_change?: (value: number) => void
+    hull_face_color_mode?: HullFaceColorMode
+    on_hull_face_color_mode_change?: (value: HullFaceColorMode) => void
     energy_source_mode?: `precomputed` | `on-the-fly` // whether to read formation and above hull distance from entries or compute them on the fly
     has_precomputed_hull?: boolean
     can_compute_hull?: boolean
@@ -295,13 +321,15 @@
         <span>Show</span>
       </label>
       <div style="display: flex; gap: 6px; align-items: center; flex: 1">
-        <input
-          type="color"
-          value={hull_face_color}
-          oninput={(e) => on_hull_face_color_change?.((e.target as HTMLInputElement).value)}
-          {@attach tooltip({ content: `Set hull face color` })}
-          style="width: 40px; height: 28px"
-        />
+        {#if hull_face_color_mode === `uniform`}
+          <input
+            type="color"
+            value={hull_face_color}
+            oninput={(e) => on_hull_face_color_change?.((e.target as HTMLInputElement).value)}
+            {@attach tooltip({ content: `Set hull face color` })}
+            style="width: 40px; height: 28px"
+          />
+        {/if}
         <input
           type="range"
           min="0"
@@ -317,6 +345,22 @@
         <span style="font-size: 0.75em; min-width: 2em; text-align: right">{
           format_num(hull_face_opacity, `.1%`)
         }</span>
+      </div>
+    </div>
+
+    <!-- Face color mode selector -->
+    <div class="control-row">
+      <span class="control-label">Face color</span>
+      <div class="face-color-mode-buttons">
+        {#each HULL_FACE_COLOR_MODES as mode (mode)}
+          <button
+            class="toggle-btn face-mode-btn {hull_face_color_mode === mode ? `active` : ``}"
+            onclick={() => on_hull_face_color_mode_change?.(mode)}
+            {@attach tooltip({ content: FACE_COLOR_MODE_TIPS[mode] })}
+          >
+            {FACE_COLOR_MODE_LABELS[mode]}
+          </button>
+        {/each}
       </div>
     </div>
   {/if}
@@ -419,11 +463,6 @@
     font-weight: 500;
     min-width: 80px;
   }
-  .color-mode-toggle {
-    display: flex;
-    gap: 4px;
-    flex: 1;
-  }
   button {
     flex: 1;
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
@@ -471,5 +510,17 @@
   }
   .threshold-input {
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
+  }
+  .face-color-mode-buttons {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    flex-wrap: wrap;
+  }
+  .face-mode-btn {
+    padding: 2px 6px;
+    font-size: 0.85em;
+    min-width: auto;
+    flex: 0 1 auto;
   }
 </style>

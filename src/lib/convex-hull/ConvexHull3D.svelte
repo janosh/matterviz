@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { is_dark_mode, watch_dark_mode } from '$lib/colors'
+  import {
+    add_alpha,
+    is_dark_mode,
+    PLOT_COLORS,
+    vesta_hex,
+    watch_dark_mode,
+  } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
@@ -33,7 +39,13 @@
   import StructurePopup from './StructurePopup.svelte'
   import TemperatureSlider from './TemperatureSlider.svelte'
   import * as thermo from './thermodynamics'
-  import type { ConvexHullEntry, HighlightStyle, HoverData3D, Point3D } from './types'
+  import type {
+    ConvexHullEntry,
+    HighlightStyle,
+    HoverData3D,
+    HullFaceColorMode,
+    Point3D,
+  } from './types'
 
   let {
     entries = [],
@@ -50,6 +62,10 @@
     show_unstable = $bindable(DEFAULTS.convex_hull.ternary.show_unstable),
     show_hull_faces = $bindable(DEFAULTS.convex_hull.ternary.show_hull_faces),
     hull_face_opacity = $bindable(DEFAULTS.convex_hull.ternary.hull_face_opacity),
+    hull_face_color_mode = $bindable(
+      DEFAULTS.convex_hull.ternary.hull_face_color_mode as HullFaceColorMode,
+    ),
+    element_colors = vesta_hex,
     color_mode = $bindable(DEFAULTS.convex_hull.ternary.color_mode),
     color_scale = $bindable(
       DEFAULTS.convex_hull.ternary.color_scale as D3InterpolateName,
@@ -303,17 +319,6 @@
   // Hull face color (customizable via controls)
   let hull_face_color = $state(`#4caf50`)
 
-  // Utility: convert hex color to rgba string with alpha
-  function hex_to_rgba(hex: string, alpha: number): string {
-    const normalized = hex.trim()
-    const m = normalized.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i)
-    if (!m) return `rgba(0,0,0,${alpha})`
-    const r = parseInt(m[1], 16)
-    const g = parseInt(m[2], 16)
-    const b = parseInt(m[3], 16)
-    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`
-  }
-
   // Pulsating highlight for selected point
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.3 + 0.4 * Math.sin(pulse_time * 4))
@@ -344,7 +349,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, highlighted_entries, text_color]
+    [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, text_color]
 
     render_once()
   })
@@ -375,6 +380,8 @@
     show_hull_faces = DEFAULTS.convex_hull.ternary.show_hull_faces
     hull_face_color = DEFAULTS.convex_hull.ternary.hull_face_color
     hull_face_opacity = DEFAULTS.convex_hull.ternary.hull_face_opacity
+    hull_face_color_mode = DEFAULTS.convex_hull.ternary
+      .hull_face_color_mode as HullFaceColorMode
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
@@ -640,6 +647,7 @@
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
     // Normalize alpha by formation energy: 0 eV -> 0 alpha, min E_form -> hull_face_opacity
+    // Only used in uniform mode; other modes use fixed opacity
     const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
     const min_fe = Math.min(0, ...formation_energies)
     const norm_alpha = (z: number) => {
@@ -647,89 +655,163 @@
       return t * hull_face_opacity
     }
 
+    // Build energy color scale for formation_energy mode
+    const all_z = hull_faces.flatMap((tri) => tri.vertices.map((v) => v.z))
+    const min_z = Math.min(...all_z)
+    const energy_face_scale = helpers.get_energy_color_scale(
+      `energy`,
+      color_scale,
+      all_z.map((z) => ({ e_above_hull: z - min_z })), // Normalize to 0-based
+    )
+
+    // Helper to get face color based on mode
+    const get_face_color = (
+      tri: typeof hull_faces[0],
+      tri_idx: number,
+    ): string => {
+      if (hull_face_color_mode === `uniform`) {
+        return hull_face_color
+      }
+      const avg_z = (tri.vertices[0].z + tri.vertices[1].z + tri.vertices[2].z) / 3
+      if (hull_face_color_mode === `formation_energy`) {
+        if (energy_face_scale) {
+          return energy_face_scale(avg_z - min_z)
+        }
+        return hull_face_color
+      }
+      if (hull_face_color_mode === `dominant_element`) {
+        // For ternary, we need to get barycentric coordinates from the centroid
+        // The centroid x,y are in ternary 2D space, we need to find which element dominates
+        // Elements are at vertices: elements[0] at (1,0,0), elements[1] at (0,1,0), elements[2] at (0,0,1)
+        // Centroid in barycentric is just the average of the three vertex barycentric coords
+        // For simplicity, we can use inverse distance to triangle vertices
+        const cx = tri.centroid.x
+        const cy = tri.centroid.y
+        // Triangle vertices in 2D ternary space
+        const [t0, t1, t2] = TRIANGLE_VERTICES
+        const d0 = Math.hypot(cx - t0[0], cy - t0[1])
+        const d1 = Math.hypot(cx - t1[0], cy - t1[1])
+        const d2 = Math.hypot(cx - t2[0], cy - t2[1])
+        // Find closest element vertex
+        const min_dist = Math.min(d0, d1, d2)
+        let el_idx = 0
+        if (min_dist === d1) el_idx = 1
+        else if (min_dist === d2) el_idx = 2
+        const el = elements[el_idx]
+        return element_colors[el] ?? `#888888`
+      }
+      if (hull_face_color_mode === `facet_index`) {
+        return PLOT_COLORS[tri_idx % PLOT_COLORS.length]
+      }
+      return hull_face_color
+    }
+
     // Sort faces by depth for proper rendering
-    const faces_with_depth = hull_faces.map((tri) => {
+    const faces_with_depth = hull_faces.map((tri, tri_idx) => {
       const centroid_proj = project_3d_point(
         tri.centroid.x,
         tri.centroid.y,
         tri.centroid.z,
       )
-      return { tri, depth: centroid_proj.depth }
+      return { tri, tri_idx, depth: centroid_proj.depth }
     })
 
     faces_with_depth.sort((a, b) => a.depth - b.depth) // Back to front
 
     // Draw each face (lower hull only)
-    for (const { tri } of faces_with_depth) {
+    for (const { tri, tri_idx } of faces_with_depth) {
       const [p1, p2, p3] = tri.vertices
 
       const proj1 = project_3d_point(p1.x, p1.y, p1.z)
       const proj2 = project_3d_point(p2.x, p2.y, p2.z)
       const proj3 = project_3d_point(p3.x, p3.y, p3.z)
 
-      // Build per-face linear gradient in screen space matching linear variation of formation energy
-      const a1 = norm_alpha(p1.z)
-      const a2 = norm_alpha(p2.z)
-      const a3 = norm_alpha(p3.z)
+      const face_color = get_face_color(tri, tri_idx)
 
-      // Solve a*x + b*y + c = alpha at the three projected vertices
-      const x1 = proj1.x, y1 = proj1.y
-      const x2 = proj2.x, y2 = proj2.y
-      const x3 = proj3.x, y3 = proj3.y
-      const det = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)
-      let a = 0, b = 0, c = (a1 + a2 + a3) / 3
-      if (Math.abs(det) > 1e-9) {
-        a = (a1 * (y2 - y3) + a2 * (y3 - y1) + a3 * (y1 - y2)) / det
-        b = (a1 * (x3 - x2) + a2 * (x1 - x3) + a3 * (x2 - x1)) / det
-        c = (a1 * (x2 * y3 - x3 * y2) + a2 * (x3 * y1 - x1 * y3) +
-          a3 * (x1 * y2 - x2 * y1)) /
-          det
-      }
+      // For uniform mode, use gradient with variable opacity
+      // For other modes, use fixed opacity
+      if (hull_face_color_mode === `uniform`) {
+        // Build per-face linear gradient in screen space matching linear variation of formation energy
+        const a1 = norm_alpha(p1.z)
+        const a2 = norm_alpha(p2.z)
+        const a3 = norm_alpha(p3.z)
 
-      // Gradient direction is the screen-space gradient of alpha
-      const mag = Math.hypot(a, b)
-      // Fallback: uniform if nearly flat
-      if (mag < 1e-9) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.moveTo(proj1.x, proj1.y)
-        ctx.lineTo(proj2.x, proj2.y)
-        ctx.lineTo(proj3.x, proj3.y)
-        ctx.closePath()
-        ctx.fillStyle = hex_to_rgba(hull_face_color, (a1 + a2 + a3) / 3)
-        ctx.fill()
-        ctx.strokeStyle = hull_face_color
-        ctx.lineWidth = 1
-        ctx.stroke()
-        ctx.restore()
+        // Solve a*x + b*y + c = alpha at the three projected vertices
+        const x1 = proj1.x, y1 = proj1.y
+        const x2 = proj2.x, y2 = proj2.y
+        const x3 = proj3.x, y3 = proj3.y
+        const det = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)
+        let coef_a = 0, coef_b = 0, coef_c = (a1 + a2 + a3) / 3
+        if (Math.abs(det) > 1e-9) {
+          coef_a = (a1 * (y2 - y3) + a2 * (y3 - y1) + a3 * (y1 - y2)) / det
+          coef_b = (a1 * (x3 - x2) + a2 * (x1 - x3) + a3 * (x2 - x1)) / det
+          coef_c = (a1 * (x2 * y3 - x3 * y2) + a2 * (x3 * y1 - x1 * y3) +
+            a3 * (x1 * y2 - x2 * y1)) /
+            det
+        }
+
+        // Gradient direction is the screen-space gradient of alpha
+        const mag = Math.hypot(coef_a, coef_b)
+        // Fallback: uniform if nearly flat
+        if (mag < 1e-9) {
+          ctx.save()
+          ctx.beginPath()
+          ctx.moveTo(proj1.x, proj1.y)
+          ctx.lineTo(proj2.x, proj2.y)
+          ctx.lineTo(proj3.x, proj3.y)
+          ctx.closePath()
+          ctx.fillStyle = add_alpha(face_color, (a1 + a2 + a3) / 3)
+          ctx.fill()
+          ctx.strokeStyle = face_color
+          ctx.lineWidth = 1
+          ctx.stroke()
+          ctx.restore()
+        } else {
+          const vx = coef_a / mag
+          const vy = coef_b / mag
+          const cx = (x1 + x2 + x3) / 3
+          const cy = (y1 + y2 + y3) / 3
+          const alpha_c = coef_a * cx + coef_b * cy + coef_c
+          const alpha_min = Math.min(a1, a2, a3)
+          const alpha_max = Math.max(a1, a2, a3)
+          const s_min = (alpha_min - alpha_c) / mag
+          const s_max = (alpha_max - alpha_c) / mag
+          const gx0 = cx + vx * s_min
+          const gy0 = cy + vy * s_min
+          const gx1 = cx + vx * s_max
+          const gy1 = cy + vy * s_max
+
+          const grad = ctx.createLinearGradient(gx0, gy0, gx1, gy1)
+          grad.addColorStop(0, add_alpha(face_color, alpha_min))
+          grad.addColorStop(1, add_alpha(face_color, alpha_max))
+
+          ctx.save()
+          ctx.beginPath()
+          ctx.moveTo(proj1.x, proj1.y)
+          ctx.lineTo(proj2.x, proj2.y)
+          ctx.lineTo(proj3.x, proj3.y)
+          ctx.closePath()
+          ctx.fillStyle = grad
+          ctx.fill()
+          ctx.strokeStyle = face_color
+          ctx.lineWidth = 1
+          ctx.stroke()
+          ctx.restore()
+        }
       } else {
-        const vx = a / mag
-        const vy = b / mag
-        const cx = (x1 + x2 + x3) / 3
-        const cy = (y1 + y2 + y3) / 3
-        const alpha_c = a * cx + b * cy + c
-        const alpha_min = Math.min(a1, a2, a3)
-        const alpha_max = Math.max(a1, a2, a3)
-        const s_min = (alpha_min - alpha_c) / mag
-        const s_max = (alpha_max - alpha_c) / mag
-        const gx0 = cx + vx * s_min
-        const gy0 = cy + vy * s_min
-        const gx1 = cx + vx * s_max
-        const gy1 = cy + vy * s_max
-
-        const grad = ctx.createLinearGradient(gx0, gy0, gx1, gy1)
-        grad.addColorStop(0, hex_to_rgba(hull_face_color, alpha_min))
-        grad.addColorStop(1, hex_to_rgba(hull_face_color, alpha_max))
-
+        // Non-uniform modes: use solid color with fixed opacity
         ctx.save()
         ctx.beginPath()
         ctx.moveTo(proj1.x, proj1.y)
         ctx.lineTo(proj2.x, proj2.y)
         ctx.lineTo(proj3.x, proj3.y)
         ctx.closePath()
-        ctx.fillStyle = grad
+        ctx.fillStyle = add_alpha(face_color, hull_face_opacity)
         ctx.fill()
-        ctx.strokeStyle = hull_face_color
+        ctx.strokeStyle = add_alpha(
+          face_color,
+          Math.min(0.6, hull_face_opacity * 3),
+        )
         ctx.lineWidth = 1
         ctx.stroke()
         ctx.restore()
@@ -751,7 +833,7 @@
       // alpha 0 at 0 eV, goes to hull_face_opacity at most negative energy
       const t = Math.max(0, Math.min(1, (value - min_fe) / denom))
       const alpha = (1 - t) * hull_face_opacity
-      return hex_to_rgba(hull_face_color, alpha)
+      return add_alpha(hull_face_color, alpha)
     }
   })
 
@@ -1238,6 +1320,8 @@
           on_hull_face_color_change={(value) => hull_face_color = value}
           {hull_face_opacity}
           on_hull_face_opacity_change={(value) => hull_face_opacity = value}
+          {hull_face_color_mode}
+          on_hull_face_color_mode_change={(value) => hull_face_color_mode = value}
           bind:energy_source_mode
           {has_precomputed_e_form}
           {can_compute_e_form}

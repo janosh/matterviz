@@ -160,4 +160,19 @@ describe(`Settings`, () => {
       expect(DEFAULTS.structure.rotate_speed).toBe(1.0)
     })
   })
+
+  describe(`Convex hull settings`, () => {
+    test.each([
+      [`ternary`, DEFAULTS.convex_hull.ternary],
+      [`quaternary`, DEFAULTS.convex_hull.quaternary],
+    ])(`%s has valid 3D hull face properties`, (_, settings) => {
+      // Default color mode
+      expect(settings.hull_face_color_mode).toBe(`dominant_element`)
+      // Required properties with correct types
+      expect(typeof settings.show_hull_faces).toBe(`boolean`)
+      expect(typeof settings.hull_face_color).toBe(`string`)
+      expect(settings.hull_face_opacity).toBeGreaterThanOrEqual(0)
+      expect(settings.hull_face_opacity).toBeLessThanOrEqual(1)
+    })
+  })
 })

@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { is_dark_mode, watch_dark_mode } from '$lib/colors'
+  import {
+    add_alpha,
+    is_dark_mode,
+    PLOT_COLORS,
+    vesta_hex,
+    watch_dark_mode,
+  } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
@@ -28,7 +34,12 @@
   import TemperatureSlider from './TemperatureSlider.svelte'
   import type { Point4D } from './thermodynamics'
   import * as thermo from './thermodynamics'
-  import type { ConvexHullEntry, HighlightStyle, HoverData3D } from './types'
+  import type {
+    ConvexHullEntry,
+    HighlightStyle,
+    HoverData3D,
+    HullFaceColorMode,
+  } from './types'
 
   let {
     entries = [],
@@ -45,6 +56,10 @@
     show_unstable = $bindable(DEFAULTS.convex_hull.quaternary.show_unstable),
     show_hull_faces = $bindable(DEFAULTS.convex_hull.quaternary.show_hull_faces),
     hull_face_opacity = $bindable(DEFAULTS.convex_hull.quaternary.hull_face_opacity),
+    hull_face_color_mode = $bindable(
+      DEFAULTS.convex_hull.quaternary.hull_face_color_mode as HullFaceColorMode,
+    ),
+    element_colors = vesta_hex,
     color_mode = $bindable(DEFAULTS.convex_hull.quaternary.color_mode),
     color_scale = $bindable(
       DEFAULTS.convex_hull.quaternary.color_scale as D3InterpolateName,
@@ -205,11 +220,9 @@
         })
         .filter((p) => [p.x, p.y, p.z, p.w].every(Number.isFinite))
 
-      const valid_points = points_4d
+      if (points_4d.length < 5) return [] // Need at least 5 points for 4D hull
 
-      if (valid_points.length < 5) return [] // Need at least 5 points for 4D hull
-
-      return thermo.compute_lower_hull_4d(valid_points)
+      return thermo.compute_lower_hull_4d(points_4d)
     } catch (error) {
       console.error(`Error computing 4D hull:`, error)
       return []
@@ -358,7 +371,7 @@
   $effect(() => {
     // deno-fmt-ignore
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, text_color, elements]
+    [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, elements]
 
     render_once()
   })
@@ -411,6 +424,8 @@
     show_hull_faces = DEFAULTS.convex_hull.quaternary.show_hull_faces
     hull_face_color = DEFAULTS.convex_hull.quaternary.hull_face_color
     hull_face_opacity = DEFAULTS.convex_hull.quaternary.hull_face_opacity
+    hull_face_color_mode = DEFAULTS.convex_hull.quaternary
+      .hull_face_color_mode as HullFaceColorMode
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
@@ -489,17 +504,6 @@
   $effect(() => {
     phase_stats = thermo.get_convex_hull_stats(plot_entries, elements, 4)
   })
-
-  // Utility: convert hex color to rgba string with alpha
-  function hex_to_rgba(hex: string, alpha: number): string {
-    const normalized = hex.trim()
-    const match = normalized.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i)
-    if (!match) return `rgba(0,0,0,${alpha})`
-    const r = parseInt(match[1], 16)
-    const g = parseInt(match[2], 16)
-    const b = parseInt(match[3], 16)
-    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`
-  }
 
   // 3D to 2D projection following Materials Project approach
   function project_3d_point(
@@ -646,14 +650,12 @@
       vertices: [
         { x: number; y: number; depth: number },
         { x: number; y: number; depth: number },
-        {
-          x: number
-          y: number
-          depth: number
-        },
+        { x: number; y: number; depth: number },
       ]
       avg_depth: number
       avg_w: number // Average formation energy for coloring
+      tet_idx: number // Tetrahedron index for facet_index mode
+      centroid_bary: number[] // Barycentric centroid [el0, el1, el2, el3] for dominant_element mode
     }
 
     const triangles: TriangleFace[] = []
@@ -694,6 +696,16 @@
       const proj2 = project_3d_point(tet2.x, tet2.y, tet2.z)
       const proj3 = project_3d_point(tet3.x, tet3.y, tet3.z)
 
+      // Compute tetrahedron centroid in barycentric coords (for dominant_element mode)
+      // All 4 faces share the same tetrahedron, so they get the same color for facet_index
+      const tet_centroid_bary = [
+        (p0.x + p1.x + p2.x + p3.x) / 4,
+        (p0.y + p1.y + p2.y + p3.y) / 4,
+        (p0.z + p1.z + p2.z + p3.z) / 4,
+        ((1 - p0.x - p0.y - p0.z) + (1 - p1.x - p1.y - p1.z) +
+          (1 - p2.x - p2.y - p2.z) + (1 - p3.x - p3.y - p3.z)) / 4,
+      ]
+
       // Each tetrahedron has 4 triangular faces
       const faces: [typeof proj0, typeof proj1, typeof proj2, number][] = [
         [proj0, proj1, proj2, (p0.w + p1.w + p2.w) / 3],
@@ -707,6 +719,8 @@
           vertices: [v0, v1, v2],
           avg_depth: (v0.depth + v1.depth + v2.depth) / 3,
           avg_w,
+          tet_idx,
+          centroid_bary: tet_centroid_bary,
         })
       }
     }
@@ -715,20 +729,56 @@
     triangles.sort((a, b) => a.avg_depth - b.avg_depth)
 
     // Determine alpha based on formation energy (more negative = more opaque)
-    // Scale by user-controlled opacity
+    // Only used in uniform mode; other modes use fixed opacity
     const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
     const min_fe = Math.min(0, ...formation_energies)
 
     const norm_alpha = (w: number) => {
       const t = Math.max(0, Math.min(1, (0 - w) / Math.max(1e-6, 0 - min_fe)))
-      // Use user-controlled opacity as the maximum
       return t * hull_face_opacity
+    }
+
+    // Build energy color scale for formation_energy mode
+    const all_avg_w = triangles.map((tri) => tri.avg_w)
+    const min_w = Math.min(...all_avg_w)
+    const energy_face_scale = helpers.get_energy_color_scale(
+      `energy`,
+      color_scale,
+      all_avg_w.map((w) => ({ e_above_hull: w - min_w })), // Normalize to 0-based
+    )
+
+    // Helper to get face color based on mode
+    const get_face_color = (tri: TriangleFace): string => {
+      if (hull_face_color_mode === `uniform`) {
+        return hull_face_color
+      }
+      if (hull_face_color_mode === `formation_energy`) {
+        // Use energy scale on avg_w
+        if (energy_face_scale) {
+          return energy_face_scale(tri.avg_w - min_w)
+        }
+        return hull_face_color
+      }
+      if (hull_face_color_mode === `dominant_element`) {
+        // Find element with highest fraction
+        const max_idx = tri.centroid_bary.indexOf(Math.max(...tri.centroid_bary))
+        const el = elements[max_idx]
+        return element_colors[el] ?? `#888888`
+      }
+      if (hull_face_color_mode === `facet_index`) {
+        return PLOT_COLORS[tri.tet_idx % PLOT_COLORS.length]
+      }
+      return hull_face_color
     }
 
     // Draw each triangle
     for (const tri of triangles) {
       const [v0, v1, v2] = tri.vertices
-      const alpha = norm_alpha(tri.avg_w)
+      // Uniform mode uses variable opacity; other modes use fixed opacity
+      const alpha = hull_face_color_mode === `uniform`
+        ? norm_alpha(tri.avg_w)
+        : hull_face_opacity
+      const face_color = get_face_color(tri)
 
       ctx.save()
       ctx.beginPath()
@@ -737,12 +787,12 @@
       ctx.lineTo(v2.x, v2.y)
       ctx.closePath()
 
-      ctx.fillStyle = hex_to_rgba(hull_face_color, alpha)
+      ctx.fillStyle = add_alpha(face_color, alpha)
       ctx.fill()
 
       // Edge lines more pronounced with higher opacity and thicker width
-      ctx.strokeStyle = hex_to_rgba(
-        hull_face_color,
+      ctx.strokeStyle = add_alpha(
+        face_color,
         Math.min(0.4, hull_face_opacity * 4),
       )
       ctx.lineWidth = 1
@@ -1166,6 +1216,8 @@
           on_hull_face_color_change={(value) => hull_face_color = value}
           {hull_face_opacity}
           on_hull_face_opacity_change={(value) => hull_face_opacity = value}
+          {hull_face_color_mode}
+          on_hull_face_color_mode_change={(value) => hull_face_color_mode = value}
           bind:energy_source_mode
           {has_precomputed_e_form}
           {can_compute_e_form}
