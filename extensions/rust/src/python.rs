@@ -15,10 +15,12 @@ use std::path::Path;
 use crate::composition::Composition;
 use crate::coordination;
 use crate::element::Element;
+use crate::integrators;
 use crate::io::{
     parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_extxyz,
     structure_to_poscar, structure_to_pymatgen_json, write_structure,
 };
+use crate::potentials;
 use crate::rdf;
 use crate::species::Species;
 use crate::structure::{
@@ -474,9 +476,7 @@ impl PyStructureMatcher {
     }
 }
 
-// ============================================================================
-// Element Class
-// ============================================================================
+// === Element Class ===
 
 /// Python wrapper for Element.
 ///
@@ -835,9 +835,7 @@ impl PyElement {
     }
 }
 
-// ============================================================================
-// Structure I/O Functions
-// ============================================================================
+// === Structure I/O Functions ===
 
 /// Convert a Structure to a Python dict in pymatgen format.
 fn structure_to_pydict<'py>(
@@ -1017,9 +1015,7 @@ fn parse_trajectory(py: Python<'_>, path: &str) -> PyResult<Vec<Py<PyDict>>> {
     Ok(results)
 }
 
-// ============================================================================
-// Structure Writing Functions
-// ============================================================================
+// === Structure Writing Functions ===
 
 /// Write a structure to a file with automatic format detection.
 ///
@@ -1123,9 +1119,7 @@ fn to_pymatgen_json(structure: StructureJson) -> PyResult<String> {
     Ok(structure_to_pymatgen_json(&s))
 }
 
-// ============================================================================
-// Molecule I/O Functions
-// ============================================================================
+// === Molecule I/O Functions ===
 
 /// Parse a molecule from pymatgen Molecule JSON format.
 ///
@@ -1248,9 +1242,7 @@ fn parse_xyz_flexible_py(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyD
     struct_or_mol_to_pydict(py, result)
 }
 
-// ============================================================================
-// Direct Object Conversion (pymatgen <-> ferrox <-> ASE)
-// ============================================================================
+// === Direct Object Conversion (pymatgen <-> ferrox <-> ASE) ===
 
 /// Convert a pymatgen Structure directly to ferrox dict format.
 ///
@@ -1578,9 +1570,7 @@ fn to_ase_atoms(py: Python<'_>, structure: StructureJson) -> PyResult<PyObject> 
     Ok(atoms.unbind())
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
+// === Helper Functions ===
 
 /// Convert StructureOrMolecule to a (type_name, pydict) tuple.
 #[allow(deprecated)]
@@ -1611,9 +1601,7 @@ fn parse_reduction_algo(algo: &str) -> PyResult<crate::structure::ReductionAlgo>
     }
 }
 
-// ============================================================================
-// Structure Manipulation Functions
-// ============================================================================
+// === Structure Manipulation Functions ===
 
 /// Create a supercell from a structure.
 ///
@@ -1729,9 +1717,7 @@ fn get_reduced_structure_with_params(
     Ok(structure_to_pydict(py, &reduced)?.unbind())
 }
 
-// ============================================================================
-// Lattice Property Functions
-// ============================================================================
+// === Lattice Property Functions ===
 
 /// Get the metric tensor G = A * A^T of the lattice.
 ///
@@ -1837,9 +1823,7 @@ fn get_lll_mapping(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
     ])
 }
 
-// ============================================================================
-// Neighbor Finding Functions
-// ============================================================================
+// === Neighbor Finding Functions ===
 
 /// Get neighbor list for a structure.
 ///
@@ -2035,9 +2019,7 @@ fn species_strings(structure: StructureJson) -> PyResult<Vec<String>> {
     Ok(parse_struct(&structure)?.species_strings())
 }
 
-// ============================================================================
-// Structure Interpolation Functions
-// ============================================================================
+// === Structure Interpolation Functions ===
 
 /// Interpolate between two structures for NEB calculations.
 ///
@@ -2073,9 +2055,7 @@ fn interpolate(
         .collect()
 }
 
-// ============================================================================
-// Structure Matching Convenience Functions
-// ============================================================================
+// === Structure Matching Convenience Functions ===
 
 /// Check if two structures match using default matcher settings.
 ///
@@ -2108,9 +2088,7 @@ fn matches(struct1: StructureJson, struct2: StructureJson, anonymous: bool) -> P
     Ok(s1.matches(&s2, anonymous))
 }
 
-// ============================================================================
-// Structure Sorting Functions
-// ============================================================================
+// === Structure Sorting Functions ===
 
 /// Get a sorted copy of the structure by atomic number.
 ///
@@ -2150,9 +2128,7 @@ fn get_sorted_by_electronegativity(
     Ok(structure_to_pydict(py, &sorted)?.unbind())
 }
 
-// ============================================================================
-// Structure Copy/Sanitization Functions
-// ============================================================================
+// === Structure Copy/Sanitization Functions ===
 
 /// Create a copy of the structure, optionally sanitized.
 ///
@@ -2192,9 +2168,7 @@ fn wrap_to_unit_cell(py: Python<'_>, structure: StructureJson) -> PyResult<Py<Py
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
 
-// ============================================================================
-// Symmetry Operation Functions
-// ============================================================================
+// === Symmetry Operation Functions ===
 
 /// Apply a symmetry operation to a structure.
 ///
@@ -2274,9 +2248,7 @@ fn apply_translation(
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
 
-// ============================================================================
-// Structure Properties Functions
-// ============================================================================
+// === Structure Properties Functions ===
 
 /// Get all queryable metadata from a structure in a single call.
 ///
@@ -2344,9 +2316,7 @@ fn get_structure_metadata(
     Ok(dict.unbind())
 }
 
-// ============================================================================
-// Symmetry Analysis Functions
-// ============================================================================
+// === Symmetry Analysis Functions ===
 
 /// Get the spacegroup number of a structure.
 ///
@@ -2578,9 +2548,7 @@ fn get_symmetry_dataset(
     Ok(dict.unbind())
 }
 
-// ============================================================================
-// Site Manipulation Functions
-// ============================================================================
+// === Site Manipulation Functions ===
 
 /// Translate specific sites by a vector.
 ///
@@ -2650,9 +2618,7 @@ fn perturb(
     Ok(structure_to_pydict(py, &s)?.unbind())
 }
 
-// ============================================================================
-// Normalization and Site Properties
-// ============================================================================
+// === Normalization and Site Properties ===
 
 /// Normalize an element symbol string.
 ///
@@ -2813,9 +2779,7 @@ fn py_to_json_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<serde_json::Value>
     }
 }
 
-// ============================================================================
-// Composition Functions
-// ============================================================================
+// === Composition Functions ===
 
 /// Parse a chemical formula and return composition data.
 ///
@@ -3057,9 +3021,7 @@ fn get_reduced_factor(formula: &str) -> PyResult<f64> {
     Ok(parse_comp(formula)?.get_reduced_factor())
 }
 
-// ============================================================================
-// Transformation Functions
-// ============================================================================
+// === Transformation Functions ===
 
 /// Get the primitive cell of a structure.
 ///
@@ -3312,7 +3274,7 @@ fn enumerate_derivatives(
         .collect()
 }
 
-// ========== SLAB GENERATION ==========
+// === Slab Generation ===
 
 /// Generate all unique surface terminations for a given Miller index.
 ///
@@ -3405,7 +3367,7 @@ fn make_slab(
     Ok(structure_to_pydict(py, &slab)?.unbind())
 }
 
-// ========== COORDINATION ANALYSIS ==========
+// === Coordination Analysis ===
 
 /// Get coordination numbers for all sites using distance cutoff.
 ///
@@ -3628,9 +3590,7 @@ fn py_get_local_environment_voronoi(
     Ok(list.unbind())
 }
 
-// =============================================================================
-// XRD Functions
-// =============================================================================
+// === XRD Functions ===
 
 /// Compute powder X-ray diffraction pattern from a structure.
 ///
@@ -3713,9 +3673,7 @@ fn py_compute_xrd(
     Ok(dict.unbind())
 }
 
-// =============================================================================
-// Oxidation State Functions
-// =============================================================================
+// === Oxidation State Functions ===
 
 fn validate_bvs_params(max_radius: f64, scale_factor: f64) -> PyResult<()> {
     if max_radius <= 0.0 {
@@ -3863,9 +3821,7 @@ fn py_remove_oxidation_states(py: Python<'_>, structure: StructureJson) -> PyRes
     )
 }
 
-// =============================================================================
-// XRD Functions (continued)
-// =============================================================================
+// === XRD Functions (continued) ===
 
 /// Returns:
 ///     Dict[str, List[List[float]]]: Element symbol -> [[a1, b1], [a2, b2], [a3, b3], [a4, b4]]
@@ -3882,9 +3838,7 @@ fn py_get_atomic_scattering_params(py: Python<'_>) -> PyResult<Py<PyDict>> {
     Ok(dict.unbind())
 }
 
-// =============================================================================
-// RDF Functions
-// =============================================================================
+// === RDF Functions ===
 
 // Helper: validate and construct RDF options
 fn make_rdf_options(
@@ -3981,12 +3935,10 @@ fn py_compute_all_element_rdfs(
     Ok(list.unbind())
 }
 
-// =============================================================================
-// MD Integrators
-// =============================================================================
+// === MD Integrators ===
 
 use crate::elastic;
-use crate::integrators::{self, LangevinIntegrator, MDState};
+use crate::integrators::{LangevinIntegrator, MDState};
 use crate::optimizers::{CellFireState, FireConfig, FireState};
 use crate::order_params;
 use crate::trajectory::{MsdCalculator, VacfCalculator};
@@ -4226,9 +4178,7 @@ fn md_velocity_verlet_step(
     Ok(())
 }
 
-// =============================================================================
-// FIRE Optimizer
-// =============================================================================
+// === FIRE Optimizer ===
 
 /// Python wrapper for FIRE configuration.
 #[pyclass(name = "FireConfig")]
@@ -4499,9 +4449,7 @@ impl PyCellFireState {
     }
 }
 
-// =============================================================================
-// Elastic Tensor Analysis
-// =============================================================================
+// === Elastic Tensor Analysis ===
 
 /// Generate strain matrices for elastic tensor calculation.
 ///
@@ -4709,9 +4657,7 @@ fn elastic_zener_ratio(c11: f64, c12: f64, c44: f64) -> f64 {
     elastic::zener_ratio(c11, c12, c44)
 }
 
-// =============================================================================
-// Bond Order Parameters
-// =============================================================================
+// === Bond Order Parameters ===
 
 /// Compute Steinhardt q_l order parameter for each atom.
 ///
@@ -4772,9 +4718,7 @@ fn classify_all_atoms(
     )
 }
 
-// =============================================================================
-// Trajectory Analysis
-// =============================================================================
+// === Trajectory Analysis ===
 
 /// Streaming MSD calculator for large trajectories.
 #[pyclass(name = "MsdCalculator")]
@@ -4930,9 +4874,7 @@ fn diffusion_from_vacf(vacf: Vec<f64>, dt: f64, dim: usize) -> f64 {
     crate::trajectory::diffusion_coefficient_from_vacf(&vacf, dt, dim)
 }
 
-// =============================================================================
-// Point Defect Generation
-// =============================================================================
+// === Point Defect Generation ===
 
 use crate::defects;
 
@@ -6051,16 +5993,6 @@ fn surface_miller_to_normal(
 
 use crate::cell_ops;
 
-/// Helper to convert a nalgebra Matrix3 to a nested array.
-#[inline]
-fn matrix3_to_array(matrix: &nalgebra::Matrix3<f64>) -> [[f64; 3]; 3] {
-    [
-        [matrix[(0, 0)], matrix[(0, 1)], matrix[(0, 2)]],
-        [matrix[(1, 0)], matrix[(1, 1)], matrix[(1, 2)]],
-        [matrix[(2, 0)], matrix[(2, 1)], matrix[(2, 2)]],
-    ]
-}
-
 /// Compute minimum image distance between two positions under PBC.
 ///
 /// Args:
@@ -6336,6 +6268,507 @@ fn cell_perpendicular_distances(structure: StructureJson) -> PyResult<[f64; 3]> 
     Ok([perp[0], perp[1], perp[2]])
 }
 
+// === Type Conversion Helpers ===
+
+/// Convert Matrix3 to [[f64; 3]; 3] array.
+#[inline]
+fn matrix3_to_array(m: &Matrix3<f64>) -> [[f64; 3]; 3] {
+    [
+        [m[(0, 0)], m[(0, 1)], m[(0, 2)]],
+        [m[(1, 0)], m[(1, 1)], m[(1, 2)]],
+        [m[(2, 0)], m[(2, 1)], m[(2, 2)]],
+    ]
+}
+
+/// Convert [[f64; 3]; 3] array to Matrix3.
+#[inline]
+fn array_to_matrix3(arr: &[[f64; 3]; 3]) -> Matrix3<f64> {
+    Matrix3::from_row_slice(&[
+        arr[0][0], arr[0][1], arr[0][2], arr[1][0], arr[1][1], arr[1][2], arr[2][0], arr[2][1],
+        arr[2][2],
+    ])
+}
+
+/// Convert Vec<[f64; 3]> to Vec<Vector3<f64>>.
+#[inline]
+fn positions_to_vec3(positions: &[[f64; 3]]) -> Vec<Vector3<f64>> {
+    positions.iter().map(|p| Vector3::from(*p)).collect()
+}
+
+/// Convert Vec<Vector3<f64>> to Vec<[f64; 3]>.
+#[inline]
+fn vec3_to_positions(vecs: &[Vector3<f64>]) -> Vec<[f64; 3]> {
+    vecs.iter().map(|v| [v.x, v.y, v.z]).collect()
+}
+
+/// Convert Optional cell array to Optional Matrix3.
+#[inline]
+fn cell_to_matrix3(cell: Option<[[f64; 3]; 3]>) -> Option<Matrix3<f64>> {
+    cell.map(|c| array_to_matrix3(&c))
+}
+
+// === Lennard-Jones Potential ===
+
+/// Compute Lennard-Jones energy and forces.
+///
+/// Args:
+///     positions: Nx3 array of atomic positions in Angstrom
+///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     sigma: LJ sigma parameter in Angstrom (default: 3.4 for Ar)
+///     epsilon: LJ epsilon parameter in eV (default: 0.0103 for Ar)
+///     cutoff: Optional cutoff distance in Angstrom
+///
+/// Returns:
+///     Tuple of (energy, forces) where forces is Nx3 array
+#[pyfunction]
+#[pyo3(signature = (positions, cell=None, pbc=None, sigma=3.4, epsilon=0.0103, cutoff=None))]
+fn compute_lennard_jones(
+    positions: Vec<[f64; 3]>,
+    cell: Option<[[f64; 3]; 3]>,
+    pbc: Option<[bool; 3]>,
+    sigma: f64,
+    epsilon: f64,
+    cutoff: Option<f64>,
+) -> (f64, Vec<[f64; 3]>) {
+    let pos_vec = positions_to_vec3(&positions);
+    let cell_mat = cell_to_matrix3(cell);
+    let pbc_arr = pbc.unwrap_or([true, true, true]);
+
+    let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
+    let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc_arr, &params);
+
+    (result.energy, vec3_to_positions(&result.forces))
+}
+
+/// Convenience wrapper returning only forces (energy is still computed internally).
+///
+/// Args:
+///     positions: Nx3 array of atomic positions in Angstrom
+///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     sigma: LJ sigma parameter in Angstrom (default: 3.4 for Ar)
+///     epsilon: LJ epsilon parameter in eV (default: 0.0103 for Ar)
+///     cutoff: Optional cutoff distance in Angstrom
+///
+/// Returns:
+///     Nx3 array of forces in eV/Angstrom
+#[pyfunction]
+#[pyo3(signature = (positions, cell=None, pbc=None, sigma=3.4, epsilon=0.0103, cutoff=None))]
+fn compute_lennard_jones_forces(
+    positions: Vec<[f64; 3]>,
+    cell: Option<[[f64; 3]; 3]>,
+    pbc: Option<[bool; 3]>,
+    sigma: f64,
+    epsilon: f64,
+    cutoff: Option<f64>,
+) -> Vec<[f64; 3]> {
+    let pos_vec = positions_to_vec3(&positions);
+    let cell_mat = cell_to_matrix3(cell);
+    let pbc_arr = pbc.unwrap_or([true, true, true]);
+    let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
+    let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc_arr, &params);
+    vec3_to_positions(&result.forces)
+}
+
+// === Morse Potential ===
+
+/// Compute Morse potential energy and forces.
+///
+/// V(r) = D * (1 - exp(-alpha*(r - r0)))^2 - D
+///
+/// Args:
+///     positions: Nx3 array of atomic positions in Angstrom
+///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     d: Well depth in eV (default: 1.0)
+///     alpha: Width parameter in 1/Angstrom (default: 1.0)
+///     r0: Equilibrium distance in Angstrom (default: 1.0)
+///     cutoff: Cutoff distance in Angstrom (default: 10.0)
+///     compute_stress: Whether to compute stress tensor (default: False)
+///
+/// Returns:
+///     Tuple of (energy, forces, stress) where stress is None if not requested
+#[pyfunction]
+#[pyo3(signature = (positions, cell=None, pbc=None, d=1.0, alpha=1.0, r0=1.0, cutoff=10.0, compute_stress=false))]
+fn compute_morse(
+    positions: Vec<[f64; 3]>,
+    cell: Option<[[f64; 3]; 3]>,
+    pbc: Option<[bool; 3]>,
+    d: f64,
+    alpha: f64,
+    r0: f64,
+    cutoff: f64,
+    compute_stress: bool,
+) -> (f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>) {
+    let pos_vec = positions_to_vec3(&positions);
+    let cell_mat = cell_to_matrix3(cell);
+    let pbc_arr = pbc.unwrap_or([true, true, true]);
+
+    let result = potentials::compute_morse_simple(
+        &pos_vec,
+        cell_mat.as_ref(),
+        pbc_arr,
+        d,
+        alpha,
+        r0,
+        cutoff,
+        compute_stress,
+    );
+
+    (
+        result.energy,
+        vec3_to_positions(&result.forces),
+        result.stress.as_ref().map(matrix3_to_array),
+    )
+}
+
+// === Soft Sphere Potential ===
+
+/// Compute Soft Sphere potential energy and forces.
+///
+/// V(r) = epsilon * (sigma/r)^alpha
+///
+/// Args:
+///     positions: Nx3 array of atomic positions in Angstrom
+///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     sigma: Length scale in Angstrom (default: 1.0)
+///     epsilon: Energy scale in eV (default: 1.0)
+///     alpha: Exponent (default: 12.0, use 2 for soft spheres)
+///     cutoff: Cutoff distance in Angstrom (default: 10.0)
+///     compute_stress: Whether to compute stress tensor (default: False)
+///
+/// Returns:
+///     Tuple of (energy, forces, stress) where stress is None if not requested
+#[pyfunction]
+#[pyo3(signature = (positions, cell=None, pbc=None, sigma=1.0, epsilon=1.0, alpha=12.0, cutoff=10.0, compute_stress=false))]
+fn compute_soft_sphere(
+    positions: Vec<[f64; 3]>,
+    cell: Option<[[f64; 3]; 3]>,
+    pbc: Option<[bool; 3]>,
+    sigma: f64,
+    epsilon: f64,
+    alpha: f64,
+    cutoff: f64,
+    compute_stress: bool,
+) -> (f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>) {
+    let pos_vec = positions_to_vec3(&positions);
+    let cell_mat = cell_to_matrix3(cell);
+    let pbc_arr = pbc.unwrap_or([true, true, true]);
+
+    let result = potentials::compute_soft_sphere_simple(
+        &pos_vec,
+        cell_mat.as_ref(),
+        pbc_arr,
+        sigma,
+        epsilon,
+        alpha,
+        cutoff,
+        compute_stress,
+    );
+
+    (
+        result.energy,
+        vec3_to_positions(&result.forces),
+        result.stress.as_ref().map(matrix3_to_array),
+    )
+}
+
+// === Harmonic Bonds ===
+
+/// Compute harmonic bond energy and forces.
+///
+/// V = 0.5 * k * (r - r0)^2
+///
+/// Args:
+///     positions: Nx3 array of atomic positions in Angstrom
+///     bonds: List of bonds, each as [i, j, k, r0] where i,j are atom indices,
+///            k is spring constant (eV/Å²), r0 is equilibrium distance (Å)
+///     cell: Optional 3x3 cell matrix (rows are lattice vectors)
+///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+///     compute_stress: Whether to compute stress tensor (default: False)
+///
+/// Returns:
+///     Tuple of (energy, forces, stress) where stress is None if not requested
+#[pyfunction]
+#[pyo3(signature = (positions, bonds, cell=None, pbc=None, compute_stress=false))]
+fn compute_harmonic_bonds(
+    positions: Vec<[f64; 3]>,
+    bonds: Vec<[f64; 4]>,
+    cell: Option<[[f64; 3]; 3]>,
+    pbc: Option<[bool; 3]>,
+    compute_stress: bool,
+) -> (f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>) {
+    let pos_vec = positions_to_vec3(&positions);
+    let cell_mat = cell_to_matrix3(cell);
+    let pbc_arr = pbc.unwrap_or([true, true, true]);
+
+    let bond_vec: Vec<potentials::HarmonicBond> = bonds
+        .iter()
+        .map(|b| potentials::HarmonicBond::new(b[0] as usize, b[1] as usize, b[2], b[3]))
+        .collect();
+
+    let result = potentials::compute_harmonic_bonds(
+        &pos_vec,
+        &bond_vec,
+        cell_mat.as_ref(),
+        pbc_arr,
+        compute_stress,
+    );
+
+    (
+        result.energy,
+        vec3_to_positions(&result.forces),
+        result.stress.as_ref().map(matrix3_to_array),
+    )
+}
+
+// === Nosé-Hoover Thermostat ===
+
+/// Nosé-Hoover chain thermostat for NVT molecular dynamics.
+#[pyclass(name = "NoseHooverChain")]
+pub struct PyNoseHooverChain {
+    inner: integrators::NoseHooverChain,
+}
+
+#[pymethods]
+impl PyNoseHooverChain {
+    /// Create a new Nosé-Hoover chain thermostat.
+    ///
+    /// Args:
+    ///     target_temp: Target temperature in K
+    ///     tau: Coupling time constant in fs (larger = weaker coupling)
+    ///     dt: Time step in fs
+    ///     n_dof: Number of degrees of freedom (typically 3*N - 3)
+    #[new]
+    fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize) -> Self {
+        Self {
+            inner: integrators::NoseHooverChain::new(target_temp, tau, dt, n_dof),
+        }
+    }
+
+    /// Perform one NVT step.
+    ///
+    /// Args:
+    ///     state: MDState to update
+    ///     compute_forces: Function that takes positions and returns forces
+    ///
+    /// Raises:
+    ///     RuntimeError: If force computation fails. State is restored to its
+    ///         original value before the step when this happens.
+    fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.inner.try_step(&mut state.inner, |positions| {
+            let result = compute_forces.call1((vec3_to_positions(positions),))?;
+            let forces: Vec<[f64; 3]> = result.extract()?;
+            Ok(positions_to_vec3(&forces))
+        })
+    }
+
+    /// Set target temperature.
+    fn set_temperature(&mut self, target_temp: f64) {
+        self.inner.set_temperature(target_temp);
+    }
+}
+
+// === Velocity Rescaling Thermostat ===
+
+/// Velocity rescaling (Bussi) thermostat for NVT molecular dynamics.
+#[pyclass(name = "VelocityRescale")]
+pub struct PyVelocityRescale {
+    inner: integrators::VelocityRescale,
+}
+
+#[pymethods]
+impl PyVelocityRescale {
+    /// Create a new velocity rescaling thermostat.
+    ///
+    /// Args:
+    ///     target_temp: Target temperature in K
+    ///     tau: Coupling time constant in fs
+    ///     dt: Time step in fs
+    ///     n_dof: Number of degrees of freedom
+    ///     seed: Optional random seed
+    #[new]
+    #[pyo3(signature = (target_temp, tau, dt, n_dof, seed=None))]
+    fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize, seed: Option<u64>) -> Self {
+        Self {
+            inner: integrators::VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
+        }
+    }
+
+    /// Perform one NVT step.
+    ///
+    /// Raises:
+    ///     RuntimeError: If force computation fails. State is restored to its
+    ///         original value before the step when this happens.
+    fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.inner.try_step(&mut state.inner, |positions| {
+            let result = compute_forces.call1((vec3_to_positions(positions),))?;
+            let forces: Vec<[f64; 3]> = result.extract()?;
+            Ok(positions_to_vec3(&forces))
+        })
+    }
+
+    /// Set target temperature.
+    fn set_temperature(&mut self, target_temp: f64) {
+        self.inner.set_temperature(target_temp);
+    }
+}
+
+// === NPT Ensemble ===
+
+/// State for NPT molecular dynamics.
+#[pyclass(name = "NPTState")]
+pub struct PyNPTState {
+    inner: integrators::NPTState,
+}
+
+#[pymethods]
+impl PyNPTState {
+    /// Create a new NPT state.
+    ///
+    /// Args:
+    ///     positions: Nx3 array of atomic positions
+    ///     masses: Array of atomic masses
+    ///     cell: 3x3 cell matrix (rows are lattice vectors)
+    ///     pbc: Periodic boundary conditions [x, y, z] (default: [True, True, True])
+    #[new]
+    #[pyo3(signature = (positions, masses, cell, pbc=None))]
+    fn new(
+        positions: Vec<[f64; 3]>,
+        masses: Vec<f64>,
+        cell: [[f64; 3]; 3],
+        pbc: Option<[bool; 3]>,
+    ) -> Self {
+        let pos_vec: Vec<Vector3<f64>> = positions.iter().map(|p| Vector3::from(*p)).collect();
+        let cell_mat = Matrix3::from_row_slice(&[
+            cell[0][0], cell[0][1], cell[0][2], cell[1][0], cell[1][1], cell[1][2], cell[2][0],
+            cell[2][1], cell[2][2],
+        ]);
+        let pbc_arr = pbc.unwrap_or([true, true, true]);
+
+        Self {
+            inner: integrators::NPTState::new(pos_vec, masses, cell_mat, pbc_arr),
+        }
+    }
+
+    /// Number of atoms.
+    fn num_atoms(&self) -> usize {
+        self.inner.num_atoms()
+    }
+
+    /// Current volume in Å³.
+    fn volume(&self) -> f64 {
+        self.inner.volume()
+    }
+
+    /// Kinetic energy in eV.
+    fn kinetic_energy(&self) -> f64 {
+        self.inner.kinetic_energy()
+    }
+
+    /// Instantaneous temperature in K.
+    fn temperature(&self) -> f64 {
+        self.inner.temperature()
+    }
+
+    /// Get positions as Nx3 array.
+    #[getter]
+    fn positions(&self) -> Vec<[f64; 3]> {
+        self.inner
+            .positions
+            .iter()
+            .map(|p| [p.x, p.y, p.z])
+            .collect()
+    }
+
+    /// Get velocities as Nx3 array.
+    #[getter]
+    fn velocities(&self) -> Vec<[f64; 3]> {
+        self.inner
+            .velocities
+            .iter()
+            .map(|v| [v.x, v.y, v.z])
+            .collect()
+    }
+
+    /// Get cell as 3x3 array.
+    #[getter]
+    fn cell(&self) -> [[f64; 3]; 3] {
+        let c = &self.inner.cell;
+        [
+            [c[(0, 0)], c[(0, 1)], c[(0, 2)]],
+            [c[(1, 0)], c[(1, 1)], c[(1, 2)]],
+            [c[(2, 0)], c[(2, 1)], c[(2, 2)]],
+        ]
+    }
+}
+
+/// NPT integrator using Parrinello-Rahman barostat.
+#[pyclass(name = "NPTIntegrator")]
+pub struct PyNPTIntegrator {
+    inner: integrators::NPTIntegrator,
+}
+
+#[pymethods]
+impl PyNPTIntegrator {
+    /// Create a new NPT integrator.
+    ///
+    /// Args:
+    ///     temperature: Target temperature in K
+    ///     pressure: Target pressure in GPa
+    ///     tau_t: Temperature coupling time in fs
+    ///     tau_p: Pressure coupling time in fs
+    ///     dt: Time step in fs
+    ///     n_atoms: Number of atoms
+    ///     total_mass: Total system mass in amu
+    #[new]
+    fn new(
+        temperature: f64,
+        pressure: f64,
+        tau_t: f64,
+        tau_p: f64,
+        dt: f64,
+        n_atoms: usize,
+        total_mass: f64,
+    ) -> Self {
+        let config = integrators::NPTConfig::new(temperature, pressure, tau_t, tau_p, dt);
+        Self {
+            inner: integrators::NPTIntegrator::new(config, n_atoms, total_mass),
+        }
+    }
+
+    /// Perform one NPT step.
+    ///
+    /// Args:
+    ///     state: NPTState to update
+    ///     compute_forces_stress: Function (positions, cell) -> (forces, stress)
+    ///
+    /// Raises:
+    ///     RuntimeError: If force/stress computation fails. State is restored to
+    ///         its original value before the step when this happens.
+    fn step(
+        &mut self,
+        state: &mut PyNPTState,
+        compute_forces_stress: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        self.inner.try_step(&mut state.inner, |positions, cell| {
+            let pos_list: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
+            let cell_arr: [[f64; 3]; 3] = [
+                [cell[(0, 0)], cell[(0, 1)], cell[(0, 2)]],
+                [cell[(1, 0)], cell[(1, 1)], cell[(1, 2)]],
+                [cell[(2, 0)], cell[(2, 1)], cell[(2, 2)]],
+            ];
+
+            let result = compute_forces_stress.call1((pos_list, cell_arr))?;
+            let (forces, stress): (Vec<[f64; 3]>, [[f64; 3]; 3]) = result.extract()?;
+            let force_vec: Vec<Vector3<f64>> = forces.iter().map(|f| Vector3::from(*f)).collect();
+            Ok((force_vec, array_to_matrix3(&stress)))
+        })
+    }
+}
+
 /// Register Python module contents.
 pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add_class::<PyStructureMatcher>()?;
@@ -6369,6 +6802,21 @@ pub fn register(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add_class::<PyVacfCalculator>()?;
     py_mod.add_function(wrap_pyfunction!(diffusion_from_msd, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(diffusion_from_vacf, py_mod)?)?;
+    // Lennard-Jones potential
+    py_mod.add_function(wrap_pyfunction!(compute_lennard_jones, py_mod)?)?;
+    py_mod.add_function(wrap_pyfunction!(compute_lennard_jones_forces, py_mod)?)?;
+    // Morse potential
+    py_mod.add_function(wrap_pyfunction!(compute_morse, py_mod)?)?;
+    // Soft Sphere potential
+    py_mod.add_function(wrap_pyfunction!(compute_soft_sphere, py_mod)?)?;
+    // Harmonic bonds
+    py_mod.add_function(wrap_pyfunction!(compute_harmonic_bonds, py_mod)?)?;
+    // Thermostats
+    py_mod.add_class::<PyNoseHooverChain>()?;
+    py_mod.add_class::<PyVelocityRescale>()?;
+    // NPT ensemble
+    py_mod.add_class::<PyNPTState>()?;
+    py_mod.add_class::<PyNPTIntegrator>()?;
     // I/O functions (reading)
     py_mod.add_function(wrap_pyfunction!(parse_structure_file, py_mod)?)?;
     py_mod.add_function(wrap_pyfunction!(parse_trajectory, py_mod)?)?;
