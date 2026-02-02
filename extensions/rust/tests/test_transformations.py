@@ -288,7 +288,7 @@ class TestErrorHandling:
 
     def test_invalid_species_string(self, nacl_json: str) -> None:
         """Invalid species string should raise ValueError."""
-        with pytest.raises(ValueError, match="Invalid species"):
+        with pytest.raises(ValueError, match="Unknown element"):
             structure.substitute_species(nacl_json, "InvalidElement123", "Fe")
 
     def test_remove_sites_out_of_bounds(self, nacl_json: str) -> None:

@@ -1,7 +1,6 @@
 //! Distance and neighbor calculations.
 
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
 
 use super::helpers::{StructureJson, check_site_idx, check_site_pair, parse_struct};
 

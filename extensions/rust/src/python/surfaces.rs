@@ -171,6 +171,9 @@ fn compute_wulff(
         fd.set_item("miller_index", facet.miller_index.to_array())?;
         fd.set_item("area_fraction", facet.area_fraction)?;
         fd.set_item("surface_energy", facet.surface_energy)?;
+        // Compute normal vector for this facet
+        let normal = surfaces::miller_to_normal(&struc.lattice, facet.miller_index.to_array());
+        fd.set_item("normal", [normal.x, normal.y, normal.z])?;
         facets.append(fd)?;
     }
     dict.set_item("facets", facets)?;

@@ -340,6 +340,179 @@ fn matches(struct1: StructureJson, struct2: StructureJson, anonymous: bool) -> P
     })
 }
 
+// === Structure Transformation Functions ===
+
+/// Substitute one species with another.
+#[pyfunction]
+fn substitute_species(
+    py: Python<'_>,
+    structure: StructureJson,
+    old_species: &str,
+    new_species: &str,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+
+    let old_elem = crate::element::Element::from_symbol(old_species)
+        .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {old_species}")))?;
+    let new_elem = crate::element::Element::from_symbol(new_species)
+        .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {new_species}")))?;
+
+    let old_sp = crate::species::Species::neutral(old_elem);
+    let new_sp = crate::species::Species::neutral(new_elem);
+
+    let result = struc
+        .substitute(old_sp, new_sp)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok(structure_to_pydict(py, &result)?.unbind())
+}
+
+/// Remove all sites of specified species.
+#[pyfunction]
+fn remove_species(
+    py: Python<'_>,
+    structure: StructureJson,
+    species_list: Vec<String>,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+
+    let species: Vec<crate::species::Species> = species_list
+        .iter()
+        .filter_map(|s| {
+            crate::element::Element::from_symbol(s).map(crate::species::Species::neutral)
+        })
+        .collect();
+
+    let result = struc
+        .remove_species(&species)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok(structure_to_pydict(py, &result)?.unbind())
+}
+
+/// Remove sites at specified indices.
+#[pyfunction]
+fn remove_sites(
+    py: Python<'_>,
+    structure: StructureJson,
+    indices: Vec<usize>,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let result = struc
+        .remove_sites(&indices)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok(structure_to_pydict(py, &result)?.unbind())
+}
+
+/// Apply a deformation gradient to the structure.
+#[pyfunction]
+fn deform(
+    py: Python<'_>,
+    structure: StructureJson,
+    gradient: [[f64; 3]; 3],
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let grad_matrix = nalgebra::Matrix3::from_row_slice(&[
+        gradient[0][0],
+        gradient[0][1],
+        gradient[0][2],
+        gradient[1][0],
+        gradient[1][1],
+        gradient[1][2],
+        gradient[2][0],
+        gradient[2][1],
+        gradient[2][2],
+    ]);
+    let result = struc
+        .deform(grad_matrix)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok(structure_to_pydict(py, &result)?.unbind())
+}
+
+/// Compute Ewald energy for a structure with oxidation states.
+#[pyfunction]
+#[pyo3(signature = (structure, eta = None, real_cutoff = None, accuracy = None))]
+fn ewald_energy(
+    structure: StructureJson,
+    eta: Option<f64>,
+    real_cutoff: Option<f64>,
+    accuracy: Option<f64>,
+) -> PyResult<f64> {
+    let struc = parse_struct(&structure)?;
+
+    // Validate optional parameters
+    if let Some(acc) = accuracy {
+        if acc <= 0.0 || !acc.is_finite() {
+            return Err(PyValueError::new_err(
+                "accuracy must be positive and finite",
+            ));
+        }
+    }
+    if let Some(rc) = real_cutoff {
+        if rc <= 0.0 || !rc.is_finite() {
+            return Err(PyValueError::new_err(
+                "real_cutoff must be positive and finite",
+            ));
+        }
+    }
+
+    let mut ewald = crate::algorithms::ewald::Ewald::new();
+    if let Some(eta_val) = eta {
+        ewald = ewald.with_eta(eta_val);
+    }
+    if let Some(rc) = real_cutoff {
+        ewald = ewald.with_real_cutoff(rc);
+    }
+    if let Some(acc) = accuracy {
+        ewald = ewald.with_accuracy(acc);
+    }
+
+    ewald
+        .energy(&struc)
+        .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+/// Generate ordered structures from a disordered structure.
+#[pyfunction]
+#[pyo3(signature = (structure, max_structures = 100))]
+fn order_disordered(
+    py: Python<'_>,
+    structure: StructureJson,
+    max_structures: usize,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let struc = parse_struct(&structure)?;
+    let config = crate::transformations::OrderDisorderedConfig {
+        max_structures: Some(max_structures),
+        ..Default::default()
+    };
+    let results = struc
+        .order_disordered(config)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    results
+        .iter()
+        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
+        .collect()
+}
+
+/// Enumerate derivative structures within a size range.
+#[pyfunction]
+#[pyo3(signature = (structure, min_size = 1, max_size = 4))]
+fn enumerate_derivatives(
+    py: Python<'_>,
+    structure: StructureJson,
+    min_size: usize,
+    max_size: usize,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let struc = parse_struct(&structure)?;
+    let results = struc
+        .enumerate_derivatives(min_size, max_size)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    results
+        .iter()
+        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
+        .collect()
+}
+
 /// Register the structure submodule.
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let submod = PyModule::new(parent.py(), "structure")?;
@@ -353,6 +526,13 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(get_sorted_structure, &submod)?)?;
     submod.add_function(wrap_pyfunction!(get_structure_metadata, &submod)?)?;
     submod.add_function(wrap_pyfunction!(matches, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(substitute_species, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(remove_species, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(remove_sites, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(deform, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(ewald_energy, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(order_disordered, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(enumerate_derivatives, &submod)?)?;
     parent.add_submodule(&submod)?;
     Ok(())
 }

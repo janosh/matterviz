@@ -4,6 +4,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+use crate::composition::Composition;
 use crate::oxidation;
 use crate::structure::Structure;
 
@@ -18,16 +19,37 @@ fn get_elements_and_amounts(struc: &Structure) -> (Vec<crate::element::Element>,
     (elements, amounts)
 }
 
-/// Guess oxidation states for a structure.
+/// Extract elements and amounts from a composition.
+#[inline]
+fn get_elements_and_amounts_from_comp(
+    comp: &Composition,
+) -> (Vec<crate::element::Element>, Vec<f64>) {
+    let elements: Vec<crate::element::Element> = comp.elements();
+    let amounts: Vec<f64> = elements.iter().map(|e| comp.get(*e)).collect();
+    (elements, amounts)
+}
+
+/// Guess oxidation states for a structure or formula.
+/// Accepts either a structure JSON string or a formula string like "Fe2O3".
 #[pyfunction]
-#[pyo3(signature = (structure, all_states = false))]
+#[pyo3(signature = (structure_or_formula, all_states = false))]
 fn oxi_state_guesses(
     py: Python<'_>,
-    structure: StructureJson,
+    structure_or_formula: &str,
     all_states: bool,
 ) -> PyResult<Vec<Py<PyDict>>> {
-    let struc = parse_struct(&structure)?;
-    let (elements, amounts) = get_elements_and_amounts(&struc);
+    // Try to parse as structure first
+    let (elements, amounts) = if structure_or_formula.starts_with('{') {
+        // Looks like JSON - parse as structure
+        let struc = parse_struct(&StructureJson(structure_or_formula.to_string()))?;
+        get_elements_and_amounts(&struc)
+    } else {
+        // Try as formula string
+        let comp = Composition::from_formula(structure_or_formula)
+            .map_err(|e| PyValueError::new_err(format!("Invalid formula: {e}")))?;
+        get_elements_and_amounts_from_comp(&comp)
+    };
+
     let guesses = oxidation::oxi_state_guesses(&elements, &amounts, 0, None, all_states, None);
 
     guesses

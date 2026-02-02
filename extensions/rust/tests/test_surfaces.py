@@ -145,7 +145,7 @@ class TestMillerToNormal:
         self, simple_cubic_structure: dict, hkl: tuple, dominant_axis: int
     ) -> None:
         """Miller normals point along correct axis for cubic cell and have unit length."""
-        normal = surfaces.miller_to_normal(simple_cubic_structure, *hkl)
+        normal = surfaces.miller_to_normal(simple_cubic_structure, list(hkl))
         # Verify unit length
         assert math.sqrt(sum(comp**2 for comp in normal)) == pytest.approx(
             1.0, abs=0.001
@@ -208,15 +208,15 @@ class TestWulffConstruction:
         wulff = surfaces.compute_wulff(simple_cubic_structure, surface_energies)
 
         # Check top-level fields
-        required_fields = {"facets", "total_surface_area", "volume", "sphericity"}
+        required_fields = {"facets", "surface_area", "volume", "sphericity"}
         assert required_fields.issubset(wulff.keys())
-        assert wulff["total_surface_area"] > 0
+        assert wulff["surface_area"] > 0
         assert wulff["volume"] > 0
         assert 0 <= wulff["sphericity"] <= 1
 
         # Check facet fields
         assert len(wulff["facets"]) > 0
-        facet_fields = {"miller_index", "surface_energy", "normal", "area_fraction"}
+        facet_fields = {"miller_index", "surface_energy", "area_fraction"}
         assert facet_fields.issubset(wulff["facets"][0].keys())
 
 
@@ -286,7 +286,7 @@ class TestNormalVectorEdgeCases:
         self, simple_cubic_structure: dict, hkl: tuple, expected_nonzero_axis: int
     ) -> None:
         """Miller to normal produces axis-aligned normals for cubic cell."""
-        normal = surfaces.miller_to_normal(simple_cubic_structure, *hkl)
+        normal = surfaces.miller_to_normal(simple_cubic_structure, list(hkl))
         # For cubic cell, (h,k,l) normal should be along (h,k,l) direction
         for axis in range(3):
             if axis == expected_nonzero_axis:

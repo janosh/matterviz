@@ -295,6 +295,40 @@ class structure:
     @staticmethod
     def get_metadata(structure: StructureJson) -> dict[str, Any]:
         """Get structure metadata (num_sites, composition, volume, density)."""
+    @staticmethod
+    def substitute_species(
+        structure: StructureJson, old_species: str, new_species: str
+    ) -> StructureDict:
+        """Substitute one species with another in the structure."""
+    @staticmethod
+    def remove_species(
+        structure: StructureJson, species_list: list[str]
+    ) -> StructureDict:
+        """Remove all sites of specified species from the structure."""
+    @staticmethod
+    def remove_sites(structure: StructureJson, indices: list[int]) -> StructureDict:
+        """Remove sites at specified indices from the structure."""
+    @staticmethod
+    def deform(structure: StructureJson, gradient: Matrix3x3) -> StructureDict:
+        """Apply a deformation gradient to the structure."""
+    @staticmethod
+    def ewald_energy(
+        structure: StructureJson,
+        eta: float | None = None,
+        real_cutoff: float | None = None,
+        accuracy: float | None = None,
+    ) -> float:
+        """Compute Ewald energy for a structure with oxidation states."""
+    @staticmethod
+    def order_disordered(
+        structure: StructureJson, max_structures: int = 100
+    ) -> list[StructureDict]:
+        """Generate ordered structures from a disordered structure."""
+    @staticmethod
+    def enumerate_derivatives(
+        structure: StructureJson, min_size: int = 1, max_size: int = 4
+    ) -> list[StructureDict]:
+        """Enumerate derivative structures within a size range."""
 
 class lattice:
     """Lattice operations."""
@@ -662,16 +696,27 @@ class xrd:
         wavelength: float = 1.5406,
     ) -> dict[str, Any]:
         """Compute X-ray diffraction pattern."""
+    @staticmethod
+    def get_atomic_scattering_params() -> dict[str, list[list[float]]]:
+        """Get atomic scattering parameters for all elements.
+
+        Returns dict of element -> [[a1,b1], [a2,b2], [a3,b3], [a4,b4]] coefficients.
+        """
 
 class oxidation:
     """Oxidation state analysis."""
 
     @staticmethod
     def oxi_state_guesses(
-        structure: StructureJson,
+        structure_or_formula: StructureJson | str,
         all_states: bool = False,
     ) -> list[dict[str, Any]]:
-        """Guess oxidation states for a structure."""
+        """Guess oxidation states for a structure or formula.
+
+        Args:
+            structure_or_formula: Either a structure JSON/dict or a formula string like "Fe2O3"
+            all_states: If True, return all possible assignments instead of just the best
+        """
     @staticmethod
     def add_charges_from_oxi_state_guesses(structure: StructureJson) -> StructureDict:
         """Add oxidation states from guesses to structure."""
