@@ -42,7 +42,10 @@ pub mod structure;
 // Algorithms
 pub mod algorithms;
 pub mod batch;
+pub mod cell_ops;
 pub mod coordination;
+pub mod defects;
+pub mod distortions;
 pub mod elastic;
 pub mod integrators;
 pub mod neighbors;
@@ -66,6 +69,7 @@ pub mod io;
 
 // Analysis
 pub mod oxidation;
+pub mod surfaces;
 pub mod xrd;
 
 // Re-exports for convenience

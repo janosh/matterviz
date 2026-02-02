@@ -18,12 +18,11 @@ The generated JSON file includes:
 
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
 import numpy as np
-
 
 # === Type Definitions ===
 
@@ -105,17 +104,17 @@ def generate_ewald_references() -> dict[str, EwaldRef]:
 
     # LiFePO4 (olivine) - standard test case from pymatgen
     # Lattice parameters from POSCAR_LiFePO4
-    matrix = np.array([
-        [10.410154, 0.000076, -0.000406],
-        [0.000130, 6.063274, 0.000317],
-        [-0.000889, 0.000405, 4.754894],
-    ])
+    matrix = np.array(
+        [
+            [10.410154, 0.000076, -0.000406],
+            [0.000130, 6.063274, 0.000317],
+            [-0.000889, 0.000405, 4.754894],
+        ]
+    )
     lattice = Lattice(matrix)
 
     # Species with oxidation states
-    species = (
-        ["Fe2+"] * 4 + ["Li+"] * 4 + ["O2-"] * 16 + ["P5+"] * 4
-    )
+    species = ["Fe2+"] * 4 + ["Li+"] * 4 + ["O2-"] * 16 + ["P5+"] * 4
 
     frac_coords = [
         # Fe sites
@@ -193,14 +192,16 @@ def generate_elastic_references() -> dict[str, ElasticRef]:
     results = {}
 
     # Sn-like material from pymatgen test_elastic.py
-    c_matrix = np.array([
-        [59.33, 28.08, 28.08, 0, 0, 0],
-        [28.08, 59.31, 28.07, 0, 0, 0],
-        [28.08, 28.07, 59.32, 0, 0, 0],
-        [0, 0, 0, 26.35, 0, 0],
-        [0, 0, 0, 0, 26.35, 0],
-        [0, 0, 0, 0, 0, 26.35],
-    ])
+    c_matrix = np.array(
+        [
+            [59.33, 28.08, 28.08, 0, 0, 0],
+            [28.08, 59.31, 28.07, 0, 0, 0],
+            [28.08, 28.07, 59.32, 0, 0, 0],
+            [0, 0, 0, 26.35, 0, 0],
+            [0, 0, 0, 0, 26.35, 0],
+            [0, 0, 0, 0, 0, 26.35],
+        ]
+    )
 
     elastic = ElasticTensor.from_voigt(c_matrix)
     results["sn_like"] = {
@@ -219,14 +220,16 @@ def generate_elastic_references() -> dict[str, ElasticRef]:
 
     # Copper (cubic) - from materials databases
     c11, c12, c44 = 171.22, 130.50, 70.80
-    cu_matrix = np.array([
-        [c11, c12, c12, 0, 0, 0],
-        [c12, c11, c12, 0, 0, 0],
-        [c12, c12, c11, 0, 0, 0],
-        [0, 0, 0, c44, 0, 0],
-        [0, 0, 0, 0, c44, 0],
-        [0, 0, 0, 0, 0, c44],
-    ])
+    cu_matrix = np.array(
+        [
+            [c11, c12, c12, 0, 0, 0],
+            [c12, c11, c12, 0, 0, 0],
+            [c12, c12, c11, 0, 0, 0],
+            [0, 0, 0, c44, 0, 0],
+            [0, 0, 0, 0, c44, 0],
+            [0, 0, 0, 0, 0, c44],
+        ]
+    )
 
     elastic_cu = ElasticTensor.from_voigt(cu_matrix)
     results["copper"] = {
@@ -382,7 +385,7 @@ def main() -> None:
 
     reference_data = {
         "_metadata": {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "package_versions": versions,
             "description": "Reference values for ferrox Rust unit tests",
         },

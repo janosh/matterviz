@@ -43,7 +43,6 @@ class TestToPrimitive:
         assert len(result_loose["sites"]) < 4
 
 
-
 class TestToConventional:
     """Tests for to_conventional function."""
 
@@ -52,7 +51,6 @@ class TestToConventional:
         result = ferrox.to_conventional(nacl_json)
         assert "lattice" in result
         assert "sites" in result
-
 
 
 class TestSubstituteSpecies:
@@ -80,7 +78,6 @@ class TestSubstituteSpecies:
         assert elements == {"Na", "Cl"}
 
 
-
 class TestRemoveSpecies:
     """Tests for remove_species function."""
 
@@ -103,7 +100,6 @@ class TestRemoveSpecies:
         assert len(result["sites"]) == 0
 
 
-
 class TestRemoveSites:
     """Tests for remove_sites function."""
 
@@ -123,7 +119,6 @@ class TestRemoveSites:
         assert len(result["sites"]) == 0
 
 
-
 class TestDeform:
     """Tests for deform function."""
 
@@ -139,9 +134,12 @@ class TestDeform:
         # Calculate new volume
         new_mat = result["lattice"]["matrix"]
         new_volume = abs(
-            new_mat[0][0] * (new_mat[1][1] * new_mat[2][2] - new_mat[1][2] * new_mat[2][1])
-            - new_mat[0][1] * (new_mat[1][0] * new_mat[2][2] - new_mat[1][2] * new_mat[2][0])
-            + new_mat[0][2] * (new_mat[1][0] * new_mat[2][1] - new_mat[1][1] * new_mat[2][0])
+            new_mat[0][0]
+            * (new_mat[1][1] * new_mat[2][2] - new_mat[1][2] * new_mat[2][1])
+            - new_mat[0][1]
+            * (new_mat[1][0] * new_mat[2][2] - new_mat[1][2] * new_mat[2][0])
+            + new_mat[0][2]
+            * (new_mat[1][0] * new_mat[2][1] - new_mat[1][1] * new_mat[2][0])
         )
 
         assert abs(new_volume / original_volume - 1.1) < 0.01
@@ -163,7 +161,6 @@ class TestDeform:
                 assert abs(new_val - orig_val) < 1e-10
 
 
-
 class TestEwaldEnergy:
     """Tests for ewald_energy function."""
 
@@ -180,11 +177,14 @@ class TestEwaldEnergy:
 
     def test_custom_parameters(self, nacl_with_oxi_json: str) -> None:
         """Custom accuracy and cutoff should work."""
-        energy1 = ferrox.ewald_energy(nacl_with_oxi_json, accuracy=1e-4, real_cutoff=8.0)
-        energy2 = ferrox.ewald_energy(nacl_with_oxi_json, accuracy=1e-5, real_cutoff=10.0)
+        energy1 = ferrox.ewald_energy(
+            nacl_with_oxi_json, accuracy=1e-4, real_cutoff=8.0
+        )
+        energy2 = ferrox.ewald_energy(
+            nacl_with_oxi_json, accuracy=1e-5, real_cutoff=10.0
+        )
         # Results should be similar
         assert abs(energy1 - energy2) < 0.5
-
 
 
 class TestOrderDisordered:
@@ -215,7 +215,6 @@ class TestOrderDisordered:
         assert len(results) == 1
 
 
-
 class TestEnumerateDerivatives:
     """Tests for enumerate_derivatives function."""
 
@@ -237,7 +236,6 @@ class TestEnumerateDerivatives:
         assert len(results[0]["sites"]) == 1
 
 
-
 class TestTransformationChains:
     """Tests for chaining multiple transformations."""
 
@@ -252,10 +250,11 @@ class TestTransformationChains:
         """Get primitive, then make supercell."""
         primitive = ferrox.to_primitive(fcc_cu_json)
         # Make 2x2x2 supercell using make_supercell
-        supercell = ferrox.make_supercell(json.dumps(primitive), [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
+        supercell = ferrox.make_supercell(
+            json.dumps(primitive), [[2, 0, 0], [0, 2, 0], [0, 0, 2]]
+        )
         # Should have 8x more atoms than primitive
         assert len(supercell["sites"]) == 8 * len(primitive["sites"])
-
 
 
 class TestEdgeCases:
@@ -308,16 +307,18 @@ class TestErrorHandling:
     def test_ewald_non_neutral_system(self) -> None:
         """Non-neutral systems should raise ValueError."""
         # Structure with only Na+ (no compensating negative charge)
-        non_neutral = json.dumps({
-            "@module": "pymatgen.core.structure",
-            "@class": "Structure",
-            "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
-            "sites": [
-                {
-                    "species": [{"element": "Na", "oxidation_state": 1, "occu": 1}],
-                    "abc": [0, 0, 0],
-                },
-            ],
-        })
+        non_neutral = json.dumps(
+            {
+                "@module": "pymatgen.core.structure",
+                "@class": "Structure",
+                "lattice": {"matrix": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]]},
+                "sites": [
+                    {
+                        "species": [{"element": "Na", "oxidation_state": 1, "occu": 1}],
+                        "abc": [0, 0, 0],
+                    },
+                ],
+            }
+        )
         with pytest.raises(ValueError, match="charge-neutral"):
             ferrox.ewald_energy(non_neutral)

@@ -3,10 +3,9 @@
 import json
 import time
 
+import ferrox
 import numpy as np
 import pytest
-
-import ferrox
 
 
 def make_fcc_cu(lattice_const: float = 3.61) -> dict:
@@ -97,10 +96,12 @@ def make_large_supercell(n: int = 3) -> dict:
                         (abc[1] + idx_b) / n,
                         (abc[2] + idx_c) / n,
                     ]
-                    new_sites.append({
-                        "species": site["species"],
-                        "abc": new_abc,
-                    })
+                    new_sites.append(
+                        {
+                            "species": site["species"],
+                            "abc": new_abc,
+                        }
+                    )
 
     return {
         "@module": "pymatgen.core.structure",
@@ -172,7 +173,9 @@ class TestNeighborListBasics:
         expected_dist = 3.61 / np.sqrt(2)
 
         for dist in distances:
-            assert abs(dist - expected_dist) < 0.1, f"Distance {dist} doesn't match expected {expected_dist}"
+            assert abs(dist - expected_dist) < 0.1, (
+                f"Distance {dist} doesn't match expected {expected_dist}"
+            )
 
     def test_empty_result_for_small_cutoff(self) -> None:
         """Very small cutoff should return empty neighbor list."""
@@ -213,7 +216,9 @@ class TestPeriodicImages:
         centers, neighbors, images, distances = ferrox.get_neighbor_list(fcc, cutoff)
 
         for img in images:
-            assert all(abs(x) <= 1 for x in img), f"Unexpected large image offset: {img}"
+            assert all(abs(x) <= 1 for x in img), (
+                f"Unexpected large image offset: {img}"
+            )
 
 
 class TestPerformance:
@@ -228,11 +233,15 @@ class TestPerformance:
         cutoff = 3.0
 
         start = time.perf_counter()
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(struct_json, cutoff)
+        centers, neighbors, images, distances = ferrox.get_neighbor_list(
+            struct_json, cutoff
+        )
         elapsed = time.perf_counter() - start
 
         # Should complete in well under 1 second even for ~500 atoms
-        assert elapsed < 2.0, f"Neighbor finding took {elapsed:.2f}s for {num_atoms} atoms"
+        assert elapsed < 2.0, (
+            f"Neighbor finding took {elapsed:.2f}s for {num_atoms} atoms"
+        )
 
         # Verify we found neighbors
         assert len(centers) > 0, f"No neighbors found for {num_atoms} atom system"
@@ -273,4 +282,6 @@ class TestConsistency:
         # Count neighbors of site 0 from neighbor list
         nl_count = sum(1 for center in centers if center == 0)
 
-        assert nl_count == len(local_env), f"NL count {nl_count} vs local_env {len(local_env)}"
+        assert nl_count == len(local_env), (
+            f"NL count {nl_count} vs local_env {len(local_env)}"
+        )

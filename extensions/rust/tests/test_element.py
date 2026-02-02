@@ -1,8 +1,7 @@
 """Tests for Element class and composition functions in ferrox."""
 
-import pytest
-
 import ferrox
+import pytest
 
 
 class TestElement:
@@ -185,7 +184,9 @@ class TestElement:
         shannon = ferrox.Element("Fe").shannon_radii
         assert shannon is not None
         # Structure: oxi_state -> coordination -> spin -> {crystal_radius, ionic_radius}
-        first_entry = next(iter(next(iter(next(iter(shannon.values())).values())).values()))
+        first_entry = next(
+            iter(next(iter(next(iter(shannon.values())).values())).values())
+        )
         assert "crystal_radius" in first_entry and "ionic_radius" in first_entry
         # VI (octahedral) coordination should be present
         all_coords = {c for coord_map in shannon.values() for c in coord_map}
@@ -273,9 +274,7 @@ class TestCompositionFunctions:
             ("NaCl", {"Na": "K", "Cl": "Br"}, {"K": 1.0, "Br": 1.0}),
         ],
     )
-    def test_remap_elements(
-        self, formula: str, mapping: dict, expected: dict
-    ) -> None:
+    def test_remap_elements(self, formula: str, mapping: dict, expected: dict) -> None:
         """remap_elements correctly substitutes elements."""
         result = ferrox.remap_elements(formula, mapping)
         for elem, amt in expected.items():
