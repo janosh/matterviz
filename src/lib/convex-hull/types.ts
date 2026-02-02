@@ -64,6 +64,20 @@ export type MarkerSymbol = // Marker symbol types for convex hull entries
   | `square`
   | `wye`
 
+// Hull face coloring modes for 3D/4D convex hull visualizations
+export type HullFaceColorMode =
+  | `uniform` // Single user-selected color (default)
+  | `formation_energy` // Color by average formation energy of face vertices
+  | `dominant_element` // Color by element with highest concentration at centroid
+  | `facet_index` // Distinct categorical color per facet
+
+export const HULL_FACE_COLOR_MODES: readonly HullFaceColorMode[] = [
+  `uniform`,
+  `formation_energy`,
+  `dominant_element`,
+  `facet_index`,
+] as const
+
 // Plot entry with 3D coordinates for quaternary diagrams
 export interface ConvexHullEntry extends PhaseData, Point3D {
   is_element: boolean
