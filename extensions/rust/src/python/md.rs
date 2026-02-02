@@ -4,7 +4,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
-use crate::integrators::{self, LangevinIntegrator, MDState, NoseHooverChain, VelocityRescale};
+use crate::md::{self, LangevinIntegrator, MDState, NoseHooverChain, VelocityRescale};
 use crate::optimizers::{CellFireState, FireConfig, FireState};
 
 use super::helpers::{
@@ -241,7 +241,7 @@ fn velocity_verlet_step(
     compute_forces: Py<PyAny>,
     py: Python<'_>,
 ) -> PyResult<()> {
-    match integrators::try_velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
+    match md::try_velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
         let n_atoms = positions.len();
         let pos_arr = vec3_to_positions(positions);
         let result = compute_forces.call1(py, (pos_arr,))?;
@@ -330,7 +330,7 @@ impl PyVelocityRescale {
 /// State for NPT molecular dynamics.
 #[pyclass(name = "NPTState")]
 pub struct PyNPTState {
-    inner: integrators::NPTState,
+    inner: md::NPTState,
 }
 
 #[pymethods]
@@ -367,7 +367,7 @@ impl PyNPTState {
         let pbc_arr = default_pbc(pbc, true);
 
         Ok(Self {
-            inner: integrators::NPTState::new(pos_vec, masses, cell_mat, pbc_arr),
+            inner: md::NPTState::new(pos_vec, masses, cell_mat, pbc_arr),
         })
     }
 

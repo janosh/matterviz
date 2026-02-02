@@ -3,13 +3,13 @@
 use nalgebra::Vector3;
 use wasm_bindgen::prelude::*;
 
-use crate::integrators;
+use crate::md;
 use crate::wasm_types::WasmResult;
 
 /// MD simulation state for WASM.
 #[wasm_bindgen]
 pub struct JsMDState {
-    pub(crate) inner: integrators::MDState,
+    pub(crate) inner: md::MDState,
 }
 
 #[wasm_bindgen]
@@ -41,7 +41,7 @@ impl JsMDState {
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
         Ok(JsMDState {
-            inner: integrators::MDState::new(pos_vec, masses),
+            inner: md::MDState::new(pos_vec, masses),
         })
     }
 
@@ -232,7 +232,7 @@ pub fn md_velocity_verlet_step(
         state.inner.set_forces(&force_vec);
 
         // Velocity Verlet: half-step velocity, full-step position, then caller computes new forces
-        let dt_internal = dt_fs * integrators::units::FS_TO_INTERNAL;
+        let dt_internal = dt_fs * md::FS_TO_INTERNAL;
         let half_dt = 0.5 * dt_internal;
 
         for idx in 0..n_atoms {
@@ -274,7 +274,7 @@ pub fn md_velocity_verlet_finalize(
 
         state.inner.set_forces(&force_vec);
 
-        let dt_internal = dt_fs * integrators::units::FS_TO_INTERNAL;
+        let dt_internal = dt_fs * md::FS_TO_INTERNAL;
         let half_dt = 0.5 * dt_internal;
 
         for idx in 0..n_atoms {
@@ -291,7 +291,7 @@ pub fn md_velocity_verlet_finalize(
 /// Langevin dynamics integrator for NVT ensemble.
 #[wasm_bindgen]
 pub struct JsLangevinIntegrator {
-    inner: integrators::LangevinIntegrator,
+    inner: md::LangevinIntegrator,
 }
 
 #[wasm_bindgen]
@@ -319,7 +319,7 @@ impl JsLangevinIntegrator {
             return Err(JsError::new("timestep dt must be positive"));
         }
         Ok(JsLangevinIntegrator {
-            inner: integrators::LangevinIntegrator::new(temperature_k, friction, dt, seed),
+            inner: md::LangevinIntegrator::new(temperature_k, friction, dt, seed),
         })
     }
 
@@ -382,7 +382,7 @@ pub fn langevin_step_with_forces(
 /// Nose-Hoover chain thermostat for NVT ensemble.
 #[wasm_bindgen]
 pub struct JsNoseHooverChain {
-    inner: integrators::NoseHooverChain,
+    inner: md::NoseHooverChain,
 }
 
 #[wasm_bindgen]
@@ -410,7 +410,7 @@ impl JsNoseHooverChain {
             return Err(JsError::new("timestep dt must be positive"));
         }
         Ok(JsNoseHooverChain {
-            inner: integrators::NoseHooverChain::new(target_temp, tau, dt, n_dof),
+            inner: md::NoseHooverChain::new(target_temp, tau, dt, n_dof),
         })
     }
 
@@ -456,7 +456,7 @@ pub fn nose_hoover_step_with_forces(
 /// Velocity rescaling thermostat (stochastic, canonical sampling).
 #[wasm_bindgen]
 pub struct JsVelocityRescale {
-    inner: integrators::VelocityRescale,
+    inner: md::VelocityRescale,
 }
 
 #[wasm_bindgen]
@@ -486,7 +486,7 @@ impl JsVelocityRescale {
             return Err(JsError::new("timestep dt must be positive"));
         }
         Ok(JsVelocityRescale {
-            inner: integrators::VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
+            inner: md::VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
         })
     }
 
@@ -534,7 +534,7 @@ pub fn velocity_rescale_step_with_forces(
 /// State for NPT molecular dynamics with variable cell.
 #[wasm_bindgen]
 pub struct JsNPTState {
-    inner: integrators::NPTState,
+    inner: md::NPTState,
 }
 
 #[wasm_bindgen]
@@ -578,7 +578,7 @@ impl JsNPTState {
         );
 
         Ok(JsNPTState {
-            inner: integrators::NPTState::new(pos_vec, masses, cell_mat, [pbc_x, pbc_y, pbc_z]),
+            inner: md::NPTState::new(pos_vec, masses, cell_mat, [pbc_x, pbc_y, pbc_z]),
         })
     }
 
@@ -647,7 +647,7 @@ impl JsNPTState {
 /// NPT integrator using Parrinello-Rahman barostat.
 #[wasm_bindgen]
 pub struct JsNPTIntegrator {
-    inner: integrators::NPTIntegrator,
+    inner: md::NPTIntegrator,
 }
 
 #[wasm_bindgen]
@@ -690,9 +690,9 @@ impl JsNPTIntegrator {
         if total_mass <= 0.0 {
             return Err(JsError::new("total_mass must be positive"));
         }
-        let config = integrators::NPTConfig::new(temperature, pressure, tau_t, tau_p, dt);
+        let config = md::NPTConfig::new(temperature, pressure, tau_t, tau_p, dt);
         Ok(JsNPTIntegrator {
-            inner: integrators::NPTIntegrator::new(config, n_atoms, total_mass),
+            inner: md::NPTIntegrator::new(config, n_atoms, total_mass),
         })
     }
 
