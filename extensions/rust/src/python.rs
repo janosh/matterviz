@@ -5323,10 +5323,10 @@ fn defect_local_rattle(
     decay_radius: f64,
     seed: u64,
 ) -> PyResult<Py<PyDict>> {
-    // Validate max_amplitude: must be finite and positive
-    if !max_amplitude.is_finite() || max_amplitude <= 0.0 {
+    // Validate max_amplitude: must be finite and non-negative
+    if !max_amplitude.is_finite() || max_amplitude < 0.0 {
         return Err(PyValueError::new_err(
-            "max_amplitude must be positive and finite",
+            "max_amplitude must be non-negative and finite",
         ));
     }
     // Validate decay_radius: must be finite and positive

@@ -2760,9 +2760,9 @@ pub fn defect_local_rattle(
         if !max_amplitude.is_finite() || max_amplitude < 0.0 {
             return Err("max_amplitude must be non-negative and finite".to_string());
         }
-        // Validate decay_radius: must be non-negative and finite
-        if !decay_radius.is_finite() || decay_radius < 0.0 {
-            return Err("decay_radius must be non-negative and finite".to_string());
+        // Validate decay_radius: must be positive and finite
+        if !decay_radius.is_finite() || decay_radius <= 0.0 {
+            return Err("decay_radius must be positive and finite".to_string());
         }
 
         let struc = structure.to_structure()?;

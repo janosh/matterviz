@@ -9,6 +9,7 @@ from typing import Any
 
 from .MatterViz import MatterViz
 
+
 class Structure(MatterViz):
     """3D crystal structure / molecule viewer.
 
@@ -145,11 +146,18 @@ class Structure(MatterViz):
             set_props = ["hidden_elements", "hidden_prop_vals"]
 
         super().__init__(
-            id=id, component="structure/Structure", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="structure/Structure",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class PeriodicTable(MatterViz):
     """Interactive periodic table with heatmaps and tooltips.
@@ -234,11 +242,18 @@ class PeriodicTable(MatterViz):
             mv_props["tile_props"] = tile_props
 
         super().__init__(
-            id=id, component="periodic-table/PeriodicTable", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="periodic-table/PeriodicTable",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class Composition(MatterViz):
     """Composition chart (pie/bubble/bar) for a chemical formula or composition dict.
@@ -279,11 +294,18 @@ class Composition(MatterViz):
             mv_props["size"] = size
 
         super().__init__(
-            id=id, component="composition/Composition", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="composition/Composition",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class Trajectory(MatterViz):
     """Molecular dynamics trajectory viewer with structure + plots.
@@ -374,11 +396,18 @@ class Trajectory(MatterViz):
             mv_props["visible_properties"] = visible_properties
 
         super().__init__(
-            id=id, component="trajectory/Trajectory", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="trajectory/Trajectory",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class BrillouinZone(MatterViz):
     """3D Brillouin zone visualization.
@@ -500,11 +529,18 @@ class BrillouinZone(MatterViz):
             mv_props["width"] = width
 
         super().__init__(
-            id=id, component="brillouin/BrillouinZone", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="brillouin/BrillouinZone",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class ConvexHull2D(MatterViz):
     """2D convex hull phase diagram plot.
@@ -634,11 +670,18 @@ class ConvexHull2D(MatterViz):
             mv_props["gas_pressures"] = gas_pressures
 
         super().__init__(
-            id=id, component="convex-hull/ConvexHull2D", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="convex-hull/ConvexHull2D",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class ConvexHull3D(MatterViz):
     """3D convex hull phase diagram plot.
@@ -768,11 +811,18 @@ class ConvexHull3D(MatterViz):
             mv_props["hull_face_opacity"] = hull_face_opacity
 
         super().__init__(
-            id=id, component="convex-hull/ConvexHull3D", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="convex-hull/ConvexHull3D",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class ConvexHull4D(MatterViz):
     """4D convex hull phase diagram plot (for quaternary systems).
@@ -902,11 +952,18 @@ class ConvexHull4D(MatterViz):
             mv_props["hull_face_opacity"] = hull_face_opacity
 
         super().__init__(
-            id=id, component="convex-hull/ConvexHull4D", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="convex-hull/ConvexHull4D",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class IsobaricBinaryPhaseDiagram(MatterViz):
     """Binary isobaric phase diagram.
@@ -994,11 +1051,18 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
             mv_props["y_axis"] = y_axis
 
         super().__init__(
-            id=id, component="phase-diagram/IsobaricBinaryPhaseDiagram", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="phase-diagram/IsobaricBinaryPhaseDiagram",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class XrdPlot(MatterViz):
     """X-ray diffraction pattern plot.
@@ -1066,11 +1130,18 @@ class XrdPlot(MatterViz):
             mv_props["patterns"] = patterns
 
         super().__init__(
-            id=id, component="xrd/XrdPlot", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="xrd/XrdPlot",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class Bands(MatterViz):
     """Band structure dispersion plot (phonon or electronic).
@@ -1179,11 +1250,18 @@ class Bands(MatterViz):
             mv_props["y_axis"] = y_axis
 
         super().__init__(
-            id=id, component="spectral/Bands", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="spectral/Bands",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class Dos(MatterViz):
     """Density of states plot (electronic or phonon).
@@ -1319,11 +1397,18 @@ class Dos(MatterViz):
             mv_props["y_axis"] = y_axis
 
         super().__init__(
-            id=id, component="spectral/Dos", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="spectral/Dos",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class ScatterPlot(MatterViz):
     """General-purpose scatter plot with customizable axes and tooltips.
@@ -1417,11 +1502,18 @@ class ScatterPlot(MatterViz):
             mv_props["size_scale"] = size_scale
 
         super().__init__(
-            id=id, component="plot/ScatterPlot", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="plot/ScatterPlot",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class Histogram(MatterViz):
     """Histogram plot for data distributions.
@@ -1479,11 +1571,18 @@ class Histogram(MatterViz):
             mv_props["show_legend"] = show_legend
 
         super().__init__(
-            id=id, component="plot/Histogram", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="plot/Histogram",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )
+
 
 class RdfPlot(MatterViz):
     """Radial distribution function (RDF) plot.
@@ -1551,8 +1650,14 @@ class RdfPlot(MatterViz):
             mv_props["y_axis"] = y_axis
 
         super().__init__(
-            id=id, component="rdf/RdfPlot", mv_props=mv_props,
-            set_props=set_props, float32_props=float32_props,
-            event_props=event_props, last_event=last_event,
-            className=className, style=style, **kwargs,
+            id=id,
+            component="rdf/RdfPlot",
+            mv_props=mv_props,
+            set_props=set_props,
+            float32_props=float32_props,
+            event_props=event_props,
+            last_event=last_event,
+            className=className,
+            style=style,
+            **kwargs,
         )

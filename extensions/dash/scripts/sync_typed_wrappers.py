@@ -707,10 +707,16 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             lines.append(f"            float32_props = {formatted}")
         lines.append("")
         lines.append("        super().__init__(")
-        lines.append(f'            id=id, component="{key}", mv_props=mv_props,')
-        lines.append("            set_props=set_props, float32_props=float32_props,")
-        lines.append("            event_props=event_props, last_event=last_event,")
-        lines.append("            className=className, style=style, **kwargs,")
+        lines.append("            id=id,")
+        lines.append(f'            component="{key}",')
+        lines.append("            mv_props=mv_props,")
+        lines.append("            set_props=set_props,")
+        lines.append("            float32_props=float32_props,")
+        lines.append("            event_props=event_props,")
+        lines.append("            last_event=last_event,")
+        lines.append("            className=className,")
+        lines.append("            style=style,")
+        lines.append("            **kwargs,")
         lines.append("        )")
         lines.append("")
 
@@ -772,11 +778,13 @@ def main() -> None:
 
     # Format with ruff (optional - file is valid without formatting)
     try:
-        subprocess.run(["ruff", "format", out_path], check=True, capture_output=True)
+        subprocess.run(
+            ["ruff", "format", out_path], check=True, capture_output=True, text=True
+        )
     except FileNotFoundError:
         print(f"Warning: ruff not found, skipping formatting of {out_path}")
     except subprocess.CalledProcessError as exc:
-        err_msg = exc.stderr.decode().strip() if exc.stderr else ""
+        err_msg = (exc.stderr or "").strip()
         print(f"Warning: ruff format failed: {err_msg or exc}")
 
     print(f"Wrote {out_path}")
