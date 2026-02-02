@@ -1756,9 +1756,7 @@ pub fn is_periodic_image(
         .into()
 }
 
-// =============================================================================
-// Elastic Tensor Analysis
-// =============================================================================
+// === Elastic Tensor Analysis ===
 
 use crate::elastic;
 
@@ -1907,9 +1905,7 @@ fn tensor_flat_to_array(tensor: &[f64]) -> Result<[[f64; 6]; 6], String> {
     Ok(arr)
 }
 
-// =============================================================================
-// Bond Orientational Order Parameters (Steinhardt)
-// =============================================================================
+// === Bond Orientational Order Parameters (Steinhardt) ===
 
 use crate::order_params;
 
@@ -1965,9 +1961,7 @@ pub fn classify_all_atoms(
         .into()
 }
 
-// =============================================================================
-// Trajectory Analysis (MSD, VACF, Diffusion)
-// =============================================================================
+// === Trajectory Analysis (MSD, VACF, Diffusion) ===
 
 use crate::trajectory::{MsdCalculator, VacfCalculator};
 
@@ -2302,9 +2296,7 @@ pub fn parse_ase_atoms(ase_atoms: JsAseAtoms) -> WasmResult<JsAseParseResult> {
     result.into()
 }
 
-// =============================================================================
-// Cell Operations (PBC, Reductions, Supercells)
-// =============================================================================
+// === Cell Operations (PBC, Reductions, Supercells) ===
 
 use crate::cell_ops;
 
@@ -2341,9 +2333,7 @@ pub fn cell_is_niggli_reduced(structure: JsCrystal, tolerance: f64) -> WasmResul
     result.into()
 }
 
-// =============================================================================
-// Point Defect Generation (WASM)
-// =============================================================================
+// === Point Defect Generation (WASM) ===
 
 use crate::defects;
 
@@ -2622,9 +2612,7 @@ pub fn defect_get_wyckoff_labels(structure: JsCrystal, symprec: f64) -> WasmResu
     result.into()
 }
 
-// =============================================================================
-// Structure Distortions (WASM)
-// =============================================================================
+// === Structure Distortions (WASM) ===
 
 use crate::distortions;
 
@@ -2752,9 +2740,7 @@ pub fn defect_local_rattle(
     result.into()
 }
 
-// =============================================================================
-// Defect Generator (WASM)
-// =============================================================================
+// === Defect Generator (WASM) ===
 
 /// Generate all point defects for a structure.
 ///
@@ -2776,7 +2762,12 @@ pub fn defect_generate_all(
 ) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
         let struc = structure.to_structure()?;
-        let extrinsic: Vec<String> = serde_json::from_str(extrinsic_json).unwrap_or_default();
+        let extrinsic: Vec<String> = if extrinsic_json.is_empty() {
+            Vec::new()
+        } else {
+            serde_json::from_str(extrinsic_json)
+                .map_err(|err| format!("Invalid extrinsic_json: {err}"))?
+        };
 
         let config = crate::defects::DefectsGeneratorConfig {
             extrinsic,
@@ -2830,9 +2821,7 @@ pub fn defect_generate_all(
     result.into()
 }
 
-// =============================================================================
-// Surface Analysis (WASM) - Extended functions
-// =============================================================================
+// === Surface Analysis (WASM) ===
 
 use crate::surfaces;
 
@@ -3010,10 +2999,16 @@ pub fn surface_compute_wulff(
         let struc = structure.to_structure()?;
         let raw: Vec<(Vec<i32>, f64)> = serde_json::from_str(surface_energies_json)
             .map_err(|err| format!("Invalid surface energies JSON: {err}"))?;
-        let surface_energies: Vec<(surfaces::MillerIndex, f64)> = raw
-            .into_iter()
-            .map(|(hkl, energy)| (surfaces::MillerIndex::new(hkl[0], hkl[1], hkl[2]), energy))
-            .collect();
+        let mut surface_energies: Vec<(surfaces::MillerIndex, f64)> = Vec::with_capacity(raw.len());
+        for (hkl, energy) in raw {
+            if hkl.len() < 3 {
+                return Err(format!(
+                    "Invalid Miller index: expected 3 components, got {}",
+                    hkl.len()
+                ));
+            }
+            surface_energies.push((surfaces::MillerIndex::new(hkl[0], hkl[1], hkl[2]), energy));
+        }
         let wulff = surfaces::compute_wulff_shape(&struc.lattice, &surface_energies)
             .map_err(|err| err.to_string())?;
         let facets_json: Vec<serde_json::Value> = wulff
@@ -3039,9 +3034,7 @@ pub fn surface_compute_wulff(
     result.into()
 }
 
-// =============================================================================
-// Cell Operations (WASM) - JSON-returning variants
-// =============================================================================
+// === Cell Operations (WASM) - JSON-returning variants ===
 
 /// Calculate minimum image distance between two fractional positions.
 #[wasm_bindgen]

@@ -145,8 +145,9 @@ pub fn distort_bonds(
             // Displacement: move along bond direction by factor * distance
             let displacement = (bond_vec / bond_len) * (factor * distance);
 
-            // Apply displacement in Cartesian space, then convert back to fractional
-            let new_neighbor_cart = cart_coords[neighbor_idx] + displacement;
+            // Apply displacement to the minimum-image position (neighbor_cart), not the original
+            // position (cart_coords[neighbor_idx]), to respect periodic boundaries correctly
+            let new_neighbor_cart = neighbor_cart + displacement;
             let new_frac = structure.lattice.get_fractional_coord(&new_neighbor_cart);
 
             // Wrap only periodic axes
@@ -291,6 +292,7 @@ pub fn rattle_structure(
     max_attempts: usize,
 ) -> Result<DistortionResult> {
     check_non_negative(stdev, "stdev")?;
+    check_non_negative(min_distance, "min_distance")?;
 
     let n_sites = structure.num_sites();
     if n_sites == 0 || stdev == 0.0 {
@@ -690,6 +692,14 @@ mod tests {
         let result = rattle_structure(&fcc, -0.1, 42, 0.5, 100);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_rattle_structure_negative_min_distance() {
+        let fcc = make_fcc(Element::Cu, 3.61);
+        let result = rattle_structure(&fcc, 0.1, 42, -0.5, 100);
+
+        assert!(result.is_err(), "Negative min_distance should be rejected");
     }
 
     #[test]

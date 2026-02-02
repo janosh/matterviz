@@ -1867,3 +1867,357 @@ def classify_all_atoms(
     Returns:
         List of structure type strings for each atom.
     """
+
+# =============================================================================
+# Cell Operations
+# =============================================================================
+
+def cell_minimum_image_distance(
+    structure: StructureJson,
+    pos1: Vector3,
+    pos2: Vector3,
+    pbc: tuple[bool, bool, bool],
+) -> float:
+    """Compute minimum image distance between two fractional positions."""
+
+def cell_minimum_image_vector(
+    structure: StructureJson,
+    delta: Vector3,
+    pbc: tuple[bool, bool, bool],
+) -> tuple[float, float, float]:
+    """Compute minimum image displacement vector under PBC."""
+
+def cell_wrap_to_unit_cell(structure: StructureJson) -> StructureDict:
+    """Wrap all site positions to the unit cell [0, 1)^3."""
+
+def cell_niggli_reduce(
+    structure: StructureJson, tolerance: float = 1e-5
+) -> dict[str, Any]:
+    """Perform Niggli reduction on the lattice."""
+
+def cell_delaunay_reduce(
+    structure: StructureJson, tolerance: float = 1e-5
+) -> dict[str, Any]:
+    """Perform Delaunay reduction on the lattice."""
+
+def cell_is_niggli_reduced(structure: StructureJson, tolerance: float = 1e-5) -> bool:
+    """Check if lattice is already Niggli-reduced."""
+
+def cell_lattices_equivalent(
+    structure1: StructureJson,
+    structure2: StructureJson,
+    tolerance: float = 1e-5,
+) -> bool:
+    """Check if two lattices are equivalent."""
+
+def cell_is_supercell(
+    structure: StructureJson, supercell: StructureJson, tolerance: float = 1e-5
+) -> bool:
+    """Check if supercell is a valid supercell of structure."""
+
+def cell_find_supercell_matrix(
+    structure: StructureJson, target_atoms: int
+) -> list[list[int]]:
+    """Find supercell matrix to achieve approximately target_atoms atoms."""
+
+def cell_perpendicular_distances(
+    structure: StructureJson,
+) -> tuple[float, float, float]:
+    """Get perpendicular distances for each lattice axis."""
+
+# =============================================================================
+# Defect Functions
+# =============================================================================
+
+def defect_create_vacancy(structure: StructureJson, site_idx: int) -> dict[str, Any]:
+    """Create a vacancy by removing an atom at the given site."""
+
+def defect_create_substitution(
+    structure: StructureJson, site_idx: int, new_species: str
+) -> dict[str, Any]:
+    """Create a substitutional defect by replacing the species at a site."""
+
+def defect_create_interstitial(
+    structure: StructureJson, position: Vector3, species: str
+) -> dict[str, Any]:
+    """Create an interstitial by adding an atom at a fractional position."""
+
+def defect_create_antisite(
+    structure: StructureJson, site_a_idx: int, site_b_idx: int
+) -> StructureDict:
+    """Create an antisite pair by swapping species at two sites."""
+
+def defect_find_voronoi_interstitials(
+    structure: StructureJson,
+    min_dist: float,
+    symprec: float = 0.01,
+) -> list[dict[str, Any]]:
+    """Find potential interstitial sites using Voronoi tessellation."""
+
+def defect_find_interstitial_sites(
+    structure: StructureJson,
+    min_distance: float = 1.0,
+    symprec: float = 0.01,
+    max_neighbors: int = 12,
+) -> list[dict[str, Any]]:
+    """Find interstitial sites with environment classification."""
+
+def defect_classify_site(
+    structure: StructureJson,
+    frac_coords: Vector3,
+    max_neighbors: int = 12,
+) -> dict[str, Any]:
+    """Classify a fractional coordinate position."""
+
+def defect_generate_name(
+    defect_type: str,
+    species: str | None = None,
+    original_species: str | None = None,
+    wyckoff_label: str | None = None,
+) -> str:
+    """Generate a defect name following doped convention."""
+
+def defect_generate_all(
+    structure: StructureJson,
+    supercell_matrix: IntMatrix3x3 | None = None,
+    interstitial_species: list[str] | None = None,
+    vacancy_species: list[str] | None = None,
+    substitution_species: dict[str, list[str]] | None = None,
+    symprec: float = 0.01,
+) -> dict[str, Any]:
+    """Generate all point defects for a structure."""
+
+def defect_guess_charge_states(
+    structure: StructureJson,
+    defect_type: str,
+    species: str | None = None,
+    original_species: str | None = None,
+) -> list[dict[str, Any]]:
+    """Guess likely charge states for a defect."""
+
+def defect_find_supercell(
+    structure: StructureJson,
+    min_atoms: int = 50,
+    max_atoms: int = 200,
+    min_length: float = 10.0,
+) -> list[list[int]]:
+    """Find optimal supercell matrix for defect calculations."""
+
+def defect_distort_bonds(
+    structure: StructureJson,
+    center_site_idx: int,
+    distortion_factors: Sequence[float],
+    neighbor_cutoff: float | None = None,
+    max_distance: float = 5.0,
+) -> list[dict[str, Any]]:
+    """Apply ShakeNBreak-style bond distortions around a defect site."""
+
+def defect_create_dimer(
+    structure: StructureJson,
+    site_a_idx: int,
+    site_b_idx: int,
+    target_distance: float,
+) -> dict[str, Any]:
+    """Create a dimer configuration from two atoms."""
+
+def defect_rattle(
+    structure: StructureJson,
+    stdev: float,
+    seed: int = 42,
+    min_distance: float = 0.5,
+    max_attempts: int = 100,
+) -> list[dict[str, Any]]:
+    """Apply Monte Carlo rattling to all atoms in a structure."""
+
+def defect_local_rattle(
+    structure: StructureJson,
+    center_site_idx: int,
+    stdev: float,
+    cutoff: float,
+    seed: int = 42,
+    min_distance: float = 0.5,
+    max_attempts: int = 100,
+) -> list[dict[str, Any]]:
+    """Apply Monte Carlo rattling to atoms near a specific site."""
+
+# =============================================================================
+# Surface Functions
+# =============================================================================
+
+def surface_enumerate_miller(max_index: int) -> list[tuple[int, int, int]]:
+    """Enumerate all unique Miller indices up to max_index."""
+
+def surface_miller_to_normal(
+    structure: StructureJson, h: int, k: int, l: int
+) -> tuple[float, float, float]:
+    """Get the normal vector for a Miller plane."""
+
+def surface_d_spacing(structure: StructureJson, h: int, k: int, l: int) -> float:
+    """Calculate d-spacing for a Miller plane."""
+
+def surface_get_surface_atoms(
+    structure: StructureJson, tolerance: float = 0.5
+) -> list[int]:
+    """Get indices of atoms at the surface of a slab."""
+
+def surface_find_adsorption_sites(
+    structure: StructureJson,
+    height: float,
+    site_types: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Find adsorption sites on a slab surface."""
+
+def surface_enumerate_terminations(
+    structure: StructureJson,
+    miller_index: tuple[int, int, int],
+    min_slab_size: float = 10.0,
+    min_vacuum_size: float = 10.0,
+    tolerance: float = 0.5,
+) -> list[dict[str, Any]]:
+    """Enumerate all unique surface terminations for a Miller index."""
+
+def surface_area(structure: StructureJson) -> float:
+    """Calculate the surface area of a slab structure."""
+
+def surface_calculate_energy(
+    bulk_energy_per_atom: float,
+    slab_energy: float,
+    n_atoms: int,
+    area: float,
+) -> float:
+    """Calculate surface energy from bulk and slab energies."""
+
+def surface_compute_wulff(
+    structure: StructureJson,
+    surface_energies: list[tuple[tuple[int, int, int], float]],
+) -> dict[str, Any]:
+    """Compute Wulff shape from surface energies."""
+
+# =============================================================================
+# Wyckoff Labels
+# =============================================================================
+
+def get_wyckoff_labels(structure: StructureJson, symprec: float = 0.01) -> list[str]:
+    """Get Wyckoff position labels for all sites in the structure."""
+
+# =============================================================================
+# Elastic Tensor Functions
+# =============================================================================
+
+def elastic_generate_strains(
+    n_strains: int = 6, max_strain: float = 0.01
+) -> list[list[list[float]]]:
+    """Generate strain matrices for elastic tensor calculation."""
+
+def elastic_apply_strain(
+    structure: StructureJson, strain_matrix: Matrix3x3
+) -> StructureDict:
+    """Apply a strain matrix to a structure."""
+
+def elastic_stress_to_voigt(stress_matrix: Matrix3x3) -> list[float]:
+    """Convert 3x3 stress tensor to 6-component Voigt notation."""
+
+def elastic_strain_to_voigt(strain_matrix: Matrix3x3) -> list[float]:
+    """Convert 3x3 strain tensor to 6-component Voigt notation."""
+
+def elastic_tensor_from_stresses(
+    strains: list[list[float]], stresses: list[list[float]]
+) -> list[list[float]]:
+    """Calculate elastic tensor from strain-stress data."""
+
+def elastic_bulk_modulus(elastic_tensor: list[list[float]]) -> float:
+    """Calculate bulk modulus from elastic tensor (Voigt-Reuss-Hill average)."""
+
+def elastic_shear_modulus(elastic_tensor: list[list[float]]) -> float:
+    """Calculate shear modulus from elastic tensor (Voigt-Reuss-Hill average)."""
+
+def elastic_youngs_modulus(elastic_tensor: list[list[float]]) -> float:
+    """Calculate Young's modulus from elastic tensor."""
+
+def elastic_poisson_ratio(elastic_tensor: list[list[float]]) -> float:
+    """Calculate Poisson's ratio from elastic tensor."""
+
+def elastic_is_stable(elastic_tensor: list[list[float]]) -> bool:
+    """Check if elastic tensor represents a mechanically stable material."""
+
+def elastic_zener_ratio(elastic_tensor: list[list[float]]) -> float:
+    """Calculate Zener anisotropy ratio."""
+
+# =============================================================================
+# MD and Trajectory Functions
+# =============================================================================
+
+class MDState:
+    """State for molecular dynamics simulations."""
+
+    positions: list[tuple[float, float, float]]
+    velocities: list[tuple[float, float, float]]
+    forces: list[tuple[float, float, float]]
+    masses: list[float]
+    time: float
+    kinetic_energy: float
+    potential_energy: float
+    temperature: float
+
+class LangevinIntegrator:
+    """Langevin dynamics integrator."""
+
+    def __init__(
+        self,
+        timestep: float,
+        temperature: float,
+        friction: float,
+        seed: int = 42,
+    ) -> None: ...
+    def step(self, state: MDState) -> MDState: ...
+
+class FireConfig:
+    """Configuration for FIRE optimizer."""
+
+    dt_start: float
+    dt_max: float
+    n_min: int
+    f_inc: float
+    f_dec: float
+    alpha_start: float
+    f_alpha: float
+
+class FireState:
+    """State for FIRE optimization."""
+
+    positions: list[tuple[float, float, float]]
+    velocities: list[tuple[float, float, float]]
+    forces: list[tuple[float, float, float]]
+
+class CellFireState:
+    """State for cell FIRE optimization."""
+
+    positions: list[tuple[float, float, float]]
+    velocities: list[tuple[float, float, float]]
+    forces: list[tuple[float, float, float]]
+    cell: list[list[float]]
+
+class MsdCalculator:
+    """Mean squared displacement calculator."""
+
+    def __init__(self, n_atoms: int) -> None: ...
+    def add_frame(self, positions: list[tuple[float, float, float]]) -> None: ...
+    def get_msd(self) -> list[float]: ...
+
+class VacfCalculator:
+    """Velocity autocorrelation function calculator."""
+
+    def __init__(self, n_atoms: int) -> None: ...
+    def add_frame(self, velocities: list[tuple[float, float, float]]) -> None: ...
+    def get_vacf(self) -> list[float]: ...
+
+def md_velocity_verlet_step(state: MDState, timestep: float) -> MDState:
+    """Perform a single velocity Verlet integration step."""
+
+def diffusion_from_msd(msd: list[float], timestep: float, dimensions: int = 3) -> float:
+    """Calculate diffusion coefficient from MSD using Einstein relation."""
+
+def diffusion_from_vacf(
+    vacf: list[float], timestep: float, dimensions: int = 3
+) -> float:
+    """Calculate diffusion coefficient from VACF using Green-Kubo relation."""

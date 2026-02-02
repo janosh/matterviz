@@ -5067,6 +5067,11 @@ fn defect_find_interstitial_sites(
     min_dist: f64,
     symprec: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    if !min_dist.is_finite() || min_dist <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_dist must be positive and finite",
+        ));
+    }
     let struc = parse_struct(&structure)?;
     let sites = defects::find_voronoi_interstitials(&struc, Some(min_dist), symprec);
 
@@ -5826,14 +5831,33 @@ fn surface_area(slab: StructureJson) -> PyResult<f64> {
 ///
 /// Returns:
 ///     Surface energy in eV/Angstrom².
+///
+/// Raises:
+///     ValueError: If surface_area <= 0 or n_atoms == 0.
 #[pyfunction]
 fn surface_calculate_energy(
     slab_energy: f64,
     bulk_energy_per_atom: f64,
     n_atoms: usize,
     surface_area: f64,
-) -> f64 {
-    surfaces::calculate_surface_energy(slab_energy, bulk_energy_per_atom, n_atoms, surface_area)
+) -> PyResult<f64> {
+    if surface_area <= 0.0 {
+        return Err(PyValueError::new_err("surface_area must be positive"));
+    }
+    if n_atoms == 0 {
+        return Err(PyValueError::new_err("n_atoms must be greater than 0"));
+    }
+    if !slab_energy.is_finite() || !bulk_energy_per_atom.is_finite() {
+        return Err(PyValueError::new_err(
+            "slab_energy and bulk_energy_per_atom must be finite",
+        ));
+    }
+    Ok(surfaces::calculate_surface_energy(
+        slab_energy,
+        bulk_energy_per_atom,
+        n_atoms,
+        surface_area,
+    ))
 }
 
 /// Calculate the d-spacing for a Miller plane.
