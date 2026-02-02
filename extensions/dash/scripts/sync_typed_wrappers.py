@@ -776,7 +776,8 @@ def main() -> None:
     except FileNotFoundError:
         print(f"Warning: ruff not found, skipping formatting of {out_path}")
     except subprocess.CalledProcessError as exc:
-        print(f"Warning: ruff format failed: {exc.stderr.decode().strip() or exc}")
+        err_msg = exc.stderr.decode().strip() if exc.stderr else ""
+        print(f"Warning: ruff format failed: {err_msg or exc}")
 
     print(f"Wrote {out_path}")
 
