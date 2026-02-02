@@ -2418,13 +2418,23 @@ pub fn defect_create_antisite(
     structure: JsCrystal,
     site_a_idx: u32,
     site_b_idx: u32,
-) -> WasmResult<JsCrystal> {
-    let result: Result<JsCrystal, String> = (|| {
+) -> WasmResult<String> {
+    let result: Result<String, String> = (|| {
         let struc = structure.to_structure()?;
+        let species_a = struc.species()[site_a_idx as usize];
+        let species_b = struc.species()[site_b_idx as usize];
         let swapped =
             defects::create_antisite_pair(&struc, site_a_idx as usize, site_b_idx as usize)
                 .map_err(|err| err.to_string())?;
-        Ok(JsCrystal::from_structure(&swapped))
+        let json = serde_json::json!({
+            "structure": serde_json::to_value(&swapped).unwrap_or_default(),
+            "defect_type": "antisite",
+            "site_a_idx": site_a_idx,
+            "site_b_idx": site_b_idx,
+            "species_a_original": species_a.to_string(),
+            "species_b_original": species_b.to_string(),
+        });
+        Ok(json.to_string())
     })();
     result.into()
 }
@@ -2628,6 +2638,11 @@ pub fn defect_distort_bonds(
     cutoff: f64,
 ) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
+        // Validate cutoff: must be non-negative
+        if cutoff < 0.0 {
+            return Err("cutoff must be non-negative".to_string());
+        }
+
         let struc = structure.to_structure()?;
         let results = distortions::distort_bonds(
             &struc,
@@ -2663,6 +2678,11 @@ pub fn defect_create_dimer(
     target_distance: f64,
 ) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
+        // Validate target_distance: must be finite and positive
+        if !target_distance.is_finite() || target_distance <= 0.0 {
+            return Err("target_distance must be positive and finite".to_string());
+        }
+
         let struc = structure.to_structure()?;
         let res = distortions::create_dimer(
             &struc,
@@ -2691,6 +2711,15 @@ pub fn defect_rattle(
     max_attempts: u32,
 ) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
+        // Validate stdev: must be non-negative and finite
+        if !stdev.is_finite() || stdev < 0.0 {
+            return Err("stdev must be non-negative and finite".to_string());
+        }
+        // Validate min_distance: must be non-negative and finite
+        if !min_distance.is_finite() || min_distance < 0.0 {
+            return Err("min_distance must be non-negative and finite".to_string());
+        }
+
         let struc = structure.to_structure()?;
         let res = distortions::rattle_structure(
             &struc,
@@ -2720,6 +2749,15 @@ pub fn defect_local_rattle(
     seed: u32,
 ) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
+        // Validate max_amplitude: must be non-negative and finite
+        if !max_amplitude.is_finite() || max_amplitude < 0.0 {
+            return Err("max_amplitude must be non-negative and finite".to_string());
+        }
+        // Validate decay_radius: must be non-negative and finite
+        if !decay_radius.is_finite() || decay_radius < 0.0 {
+            return Err("decay_radius must be non-negative and finite".to_string());
+        }
+
         let struc = structure.to_structure()?;
         let res = distortions::local_rattle(
             &struc,
@@ -2932,6 +2970,10 @@ pub fn surface_calculate_energy(
     n_atoms: u32,
     surface_area: f64,
 ) -> f64 {
+    // Validate surface_area: return NaN for zero or non-finite values to avoid division-by-zero
+    if surface_area == 0.0 || !surface_area.is_finite() {
+        return f64::NAN;
+    }
     surfaces::calculate_surface_energy(
         slab_energy,
         bulk_energy_per_atom,
@@ -2949,6 +2991,7 @@ pub fn surface_find_adsorption_sites(
     height: f64,
     site_types_json: &str,
     neighbor_cutoff: Option<f64>,
+    surface_tolerance: Option<f64>,
 ) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
         let struc = slab.to_structure()?;
@@ -2967,8 +3010,14 @@ pub fn surface_find_adsorption_sites(
                 Some(parsed)
             }
         };
-        let sites =
-            surfaces::find_adsorption_sites(&struc, height, site_types.as_deref(), neighbor_cutoff);
+        let sites = surfaces::find_adsorption_sites(
+            &struc,
+            height,
+            site_types.as_deref(),
+            neighbor_cutoff,
+            surface_tolerance,
+        )
+        .map_err(|err| err.to_string())?;
         let json_sites: Vec<serde_json::Value> = sites
             .into_iter()
             .map(|site| {

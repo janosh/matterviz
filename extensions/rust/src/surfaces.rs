@@ -7,20 +7,8 @@
 //! - Surface energy calculations
 //! - Wulff construction for equilibrium crystal shapes
 
-// === Helper Macro ===
-
-/// Implements Display for types with an `as_str` method.
-macro_rules! impl_display_via_as_str {
-    ($type:ty) => {
-        impl std::fmt::Display for $type {
-            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(formatter, "{}", self.as_str())
-            }
-        }
-    };
-}
-
-use crate::error::{FerroxError, Result};
+use crate::error::{FerroxError, Result, check_non_negative};
+use crate::impl_display_via_as_str;
 use crate::lattice::Lattice;
 use crate::species::Species;
 use crate::structure::Structure;
@@ -28,6 +16,14 @@ use nalgebra::Vector3;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::f64::consts::PI;
+
+// === Constants ===
+
+/// Default cutoff distance for neighbor analysis in adsorption site finding (Å).
+pub const DEFAULT_NEIGHBOR_CUTOFF: f64 = 4.0;
+
+/// Default tolerance for identifying surface atoms (Å).
+pub const DEFAULT_SURFACE_TOLERANCE: f64 = 0.1;
 
 // === Miller Index ===
 
@@ -425,29 +421,37 @@ impl SurfaceEnergy {
 /// # Arguments
 ///
 /// * `slab` - The slab structure
-/// * `height` - Height above surface for placing adsorbates (Å)
+/// * `height` - Height above surface for placing adsorbates (Å). Must be non-negative and finite.
 /// * `site_types` - Optional filter for site types (None = all types)
 /// * `neighbor_cutoff` - Optional cutoff for neighbor analysis (default: 4.0 Å).
 ///   May need adjustment for structures with longer bonds (e.g., some oxides)
 ///   or shorter bonds in close-packed structures.
+/// * `surface_tolerance` - Optional tolerance for identifying surface atoms (default: 0.1 Å).
 ///
 /// # Returns
 ///
-/// Vector of adsorption sites found on the surface.
+/// `Result<Vec<AdsorptionSite>>` - Vector of adsorption sites found on the surface.
+///
+/// # Errors
+///
+/// Returns `FerroxError` if `height` is negative or non-finite.
 pub fn find_adsorption_sites(
     slab: &Structure,
     height: f64,
     site_types: Option<&[AdsorptionSiteType]>,
     neighbor_cutoff: Option<f64>,
-) -> Vec<AdsorptionSite> {
+    surface_tolerance: Option<f64>,
+) -> Result<Vec<AdsorptionSite>> {
+    check_non_negative(height, "height")?;
+
     let mut sites = Vec::new();
 
-    // Get surface atoms with a reasonable tolerance
-    let tolerance = 0.1;
+    // Get surface atoms with specified tolerance
+    let tolerance = surface_tolerance.unwrap_or(DEFAULT_SURFACE_TOLERANCE);
     let surface_indices = get_surface_atoms(slab, tolerance);
 
     if surface_indices.is_empty() {
-        return sites;
+        return Ok(sites);
     }
 
     // Get Cartesian positions of surface atoms
@@ -499,7 +503,7 @@ pub fn find_adsorption_sites(
     // Bridge and hollow sites require neighbor analysis
     if include_bridge || include_hollow3 || include_hollow4 {
         // Build neighbor list for surface atoms
-        let cutoff = neighbor_cutoff.unwrap_or(4.0);
+        let cutoff = neighbor_cutoff.unwrap_or(DEFAULT_NEIGHBOR_CUTOFF);
         let (center_idx, neighbor_idx, images, distances) =
             slab.get_neighbor_list(cutoff, 1e-8, true);
 
@@ -702,7 +706,7 @@ pub fn find_adsorption_sites(
         }
     }
 
-    sites
+    Ok(sites)
 }
 
 // === Wulff Construction ===

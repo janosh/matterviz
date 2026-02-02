@@ -2,6 +2,23 @@
 
 use thiserror::Error;
 
+// === Helper Macro ===
+
+/// Implements Display for types with an `as_str` method.
+///
+/// This macro generates a `Display` implementation that simply calls `as_str()`.
+/// The type must have a method `fn as_str(&self) -> &'static str`.
+#[macro_export]
+macro_rules! impl_display_via_as_str {
+    ($type:ty) => {
+        impl std::fmt::Display for $type {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(formatter, "{}", self.as_str())
+            }
+        }
+    };
+}
+
 /// Main error type for ferrox operations.
 #[derive(Debug, Error)]
 #[allow(missing_docs)] // Error variant fields are self-documenting via #[error] attribute

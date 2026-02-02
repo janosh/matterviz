@@ -10,6 +10,11 @@ use crate::error::{FerroxError, Result};
 use crate::lattice::Lattice;
 use nalgebra::{Matrix3, Vector3};
 
+// === Constants ===
+
+/// Tolerance for detecting degenerate lattices (nearly zero perpendicular distance).
+const DEGENERATE_LATTICE_TOLERANCE: f64 = 1e-10;
+
 // === Minimum Image Distance Functions ===
 
 /// Compute the minimum image distance between two positions.
@@ -124,11 +129,12 @@ pub fn minimum_image_brute_force(
 
     // Search range: need to check images that could be closer than best_dist
     // Use ceil(max_lattice_length / min_perp_dist) with minimum of 1
-    // No hard upper clamp to handle very skewed cells correctly
+    // Clamp to max 10 to avoid O(n³) explosion for pathologically skewed cells
+    const MAX_SEARCH_RANGE: i32 = 10;
     let lattice_lengths = lattice.lengths();
     let max_length = lattice_lengths.max();
-    let search_range = if min_perp > 1e-10 {
-        ((max_length / min_perp).ceil() as i32).max(1)
+    let search_range = if min_perp > DEGENERATE_LATTICE_TOLERANCE {
+        ((max_length / min_perp).ceil() as i32).clamp(1, MAX_SEARCH_RANGE)
     } else {
         3 // fallback for degenerate lattices
     };
@@ -163,10 +169,11 @@ pub fn minimum_image_brute_force(
     best_vec
 }
 
-/// Wrap a fractional coordinate to the range (-0.5, 0.5].
+/// Wrap a fractional coordinate to the range [-0.5, 0.5).
 ///
-/// Note: Due to Rust's banker's rounding (round half to even), values exactly
-/// at 0.5 map to 0.5, not -0.5. This is acceptable for floating-point use.
+/// Uses `coord - coord.round()` where Rust's `round()` rounds half away from zero:
+/// - `wrap_to_half(0.5)` returns -0.5
+/// - `wrap_to_half(-0.5)` returns 0.5
 ///
 /// # Arguments
 ///
@@ -174,7 +181,7 @@ pub fn minimum_image_brute_force(
 ///
 /// # Returns
 ///
-/// The wrapped coordinate in approximately [-0.5, 0.5].
+/// The wrapped coordinate in [-0.5, 0.5).
 #[inline]
 pub fn wrap_to_half(coord: f64) -> f64 {
     coord - coord.round()
@@ -673,17 +680,17 @@ pub fn find_supercell_for_min_image_dist(lattice: &Lattice, min_dist: f64) -> [[
     let perp_dists = perpendicular_distances(lattice);
 
     // Protect against zero perpendicular distances (degenerate lattice)
-    let mult_a = if perp_dists[0] > 1e-10 {
+    let mult_a = if perp_dists[0] > DEGENERATE_LATTICE_TOLERANCE {
         (min_dist / perp_dists[0]).ceil() as i32
     } else {
         1
     };
-    let mult_b = if perp_dists[1] > 1e-10 {
+    let mult_b = if perp_dists[1] > DEGENERATE_LATTICE_TOLERANCE {
         (min_dist / perp_dists[1]).ceil() as i32
     } else {
         1
     };
-    let mult_c = if perp_dists[2] > 1e-10 {
+    let mult_c = if perp_dists[2] > DEGENERATE_LATTICE_TOLERANCE {
         (min_dist / perp_dists[2]).ceil() as i32
     } else {
         1

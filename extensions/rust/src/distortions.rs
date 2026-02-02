@@ -93,12 +93,18 @@ pub fn distort_bonds(
         .map(|(idx, _)| (nl.neighbor_indices[idx], nl.distances[idx], nl.images[idx]))
         .collect();
 
-    // Sort by distance
+    // Sort by distance (closest first)
     neighbors.sort_by(|lhs, rhs| {
         lhs.1
             .partial_cmp(&rhs.1)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+
+    // Deduplicate by neighbor_idx, keeping only the closest image of each neighbor.
+    // This handles small cells where the same atom appears multiple times via different
+    // periodic images within the cutoff radius.
+    let mut seen_neighbors = std::collections::HashSet::new();
+    neighbors.retain(|(neighbor_idx, _, _)| seen_neighbors.insert(*neighbor_idx));
 
     // Limit to num_neighbors if specified
     let neighbors = match num_neighbors {

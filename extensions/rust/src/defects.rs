@@ -4,21 +4,9 @@
 //! in crystal structures, including vacancies, substitutions, interstitials,
 //! and antisite pairs.
 
-// === Helper Macro ===
-
-/// Implements Display for types with an `as_str` method.
-macro_rules! impl_display_via_as_str {
-    ($type:ty) => {
-        impl std::fmt::Display for $type {
-            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(formatter, "{}", self.as_str())
-            }
-        }
-    };
-}
-
 use crate::cell_ops::perpendicular_distances;
 use crate::error::{FerroxError, Result, check_site_bounds, check_sites_different};
+use crate::impl_display_via_as_str;
 use crate::oxidation::{ChargeStateGuess, guess_defect_charge_states};
 use crate::pbc::wrap_frac_coords_pbc;
 #[cfg(not(target_arch = "wasm32"))]

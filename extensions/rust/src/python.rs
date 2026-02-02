@@ -5027,13 +5027,18 @@ fn defect_create_interstitial(
 
 /// Create an antisite pair by swapping species at two sites.
 ///
+/// Note: Unlike other `defect_create_*` functions which return a dict with both
+/// 'structure' and 'defect' info, this returns only the structure dict. This is
+/// because antisites involve two sites being swapped rather than a single defect
+/// site, making the defect info representation ambiguous.
+///
 /// Args:
 ///     structure: Structure as JSON string or dict.
 ///     site_a_idx: Index of the first site.
 ///     site_b_idx: Index of the second site.
 ///
 /// Returns:
-///     Structure dict with swapped species.
+///     Structure dict with swapped species (no defect metadata).
 #[pyfunction]
 fn defect_create_antisite(
     py: Python<'_>,
@@ -5110,6 +5115,18 @@ fn defect_find_supercell(
     cubic: bool,
 ) -> PyResult<[[i32; 3]; 3]> {
     let struc = parse_struct(&structure)?;
+
+    // Validate min_image_dist: must be finite and positive
+    if !min_image_dist.is_finite() || min_image_dist <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_image_dist must be positive and finite",
+        ));
+    }
+    // Validate max_atoms: must be positive
+    if max_atoms == 0 {
+        return Err(PyValueError::new_err("max_atoms must be greater than 0"));
+    }
+
     let config = defects::DefectSupercellConfig {
         min_distance: min_image_dist,
         max_atoms,
@@ -5208,6 +5225,13 @@ fn defect_create_dimer(
     site_b_idx: usize,
     target_distance: f64,
 ) -> PyResult<Py<PyDict>> {
+    // Validate target_distance: must be finite and positive
+    if !target_distance.is_finite() || target_distance <= 0.0 {
+        return Err(PyValueError::new_err(
+            "target_distance must be positive and finite",
+        ));
+    }
+
     let struc = parse_struct(&structure)?;
     let result = distortions::create_dimer(&struc, site_a_idx, site_b_idx, target_distance)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
@@ -5321,6 +5345,15 @@ fn defect_find_voronoi_interstitials(
     min_dist: Option<f64>,
     symprec: f64,
 ) -> PyResult<Py<PyList>> {
+    // Validate min_dist if provided: must be finite and non-negative
+    if let Some(dist) = min_dist {
+        if !dist.is_finite() || dist < 0.0 {
+            return Err(PyValueError::new_err(
+                "min_dist must be non-negative and finite",
+            ));
+        }
+    }
+
     let struc = parse_struct(&structure)?;
     let sites = defects::find_voronoi_interstitials(&struc, min_dist, symprec);
 
@@ -5689,6 +5722,19 @@ fn surface_enumerate_terminations(
     min_vacuum: f64,
     symprec: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    // Validate min_slab: must be finite and positive
+    if !min_slab.is_finite() || min_slab <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_slab must be positive and finite",
+        ));
+    }
+    // Validate min_vacuum: must be finite and positive
+    if !min_vacuum.is_finite() || min_vacuum <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_vacuum must be positive and finite",
+        ));
+    }
+
     let struc = parse_struct(&structure)?;
     let miller = surfaces::MillerIndex::new(h, k, l);
     let config = surfaces::SlabConfigExt::new(miller)
@@ -5730,17 +5776,19 @@ fn surface_enumerate_terminations(
 ///     neighbor_cutoff: Optional cutoff for neighbor analysis (default: 4.0 Angstroms).
 ///         May need adjustment for structures with longer bonds (e.g., some oxides)
 ///         or shorter bonds in close-packed structures.
+///     surface_tolerance: Optional tolerance for identifying surface atoms (default: 0.1 Angstroms).
 ///
 /// Returns:
 ///     List of dicts with site info (type, position, coordinating atoms).
 #[pyfunction]
-#[pyo3(signature = (slab, height = 2.0, site_types = None, neighbor_cutoff = None))]
+#[pyo3(signature = (slab, height = 2.0, site_types = None, neighbor_cutoff = None, surface_tolerance = None))]
 fn surface_find_adsorption_sites(
     py: Python<'_>,
     slab: StructureJson,
     height: f64,
     site_types: Option<Vec<String>>,
     neighbor_cutoff: Option<f64>,
+    surface_tolerance: Option<f64>,
 ) -> PyResult<Vec<Py<PyDict>>> {
     let struc = parse_struct(&slab)?;
 
@@ -5763,8 +5811,14 @@ fn surface_find_adsorption_sites(
         None => None,
     };
 
-    let sites =
-        surfaces::find_adsorption_sites(&struc, height, types_filter.as_deref(), neighbor_cutoff);
+    let sites = surfaces::find_adsorption_sites(
+        &struc,
+        height,
+        types_filter.as_deref(),
+        neighbor_cutoff,
+        surface_tolerance,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
     let results: PyResult<Vec<Py<PyDict>>> = sites
         .into_iter()

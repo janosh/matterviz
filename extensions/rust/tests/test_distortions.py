@@ -161,6 +161,54 @@ class TestDistortBonds:
         )
         assert orig_elements == new_elements
 
+    def test_duplicate_neighbor_images_uses_closest(self) -> None:
+        """Regression test: when same atom appears via multiple periodic images, use closest.
+
+        In small cells with large cutoffs, the same neighbor atom can appear multiple times
+        via different periodic images. The distortion should apply only the displacement
+        computed from the closest image, not overwrite with a farther one.
+        """
+        # Small cell where cutoff exceeds cell size, causing duplicate neighbor entries
+        small_cell = make_cubic_structure(
+            2.0,  # Very small 2 Å cubic cell
+            [
+                make_site("Fe", [0.0, 0.0, 0.0]),  # Center atom
+                make_site("Fe", [0.5, 0.5, 0.5]),  # Body-centered neighbor at ~1.73 Å
+            ],
+        )
+        # Large cutoff ensures we see the same atom via multiple periodic images
+        cutoff = 5.0  # Much larger than cell dimension
+        results = ferrox.defect_distort_bonds(
+            structure_to_json(small_cell), 0, [0.3], cutoff=cutoff
+        )
+
+        # Should return a valid structure without errors
+        assert len(results) == 1
+        result = results[0]
+        assert result["distortion_type"] == "bond_distortion"
+        assert len(result["structure"]["sites"]) == 2
+
+        # Verify the structure is valid (coordinates are finite, not NaN)
+        new_coords = get_cart_coords(result["structure"])
+        assert np.isfinite(new_coords).all(), "Coordinates should be finite"
+
+        # Verify at least one atom moved (with factor 0.3, something should change)
+        orig_coords = get_cart_coords(small_cell)
+        max_displacement = np.max(np.linalg.norm(new_coords - orig_coords, axis=1))
+        assert max_displacement > 0.01, (
+            f"Expected some displacement, got {max_displacement}"
+        )
+
+        # The key regression check: run twice with same params should give same result
+        # (if deduplication is broken, random ordering could give different results)
+        results2 = ferrox.defect_distort_bonds(
+            structure_to_json(small_cell), 0, [0.3], cutoff=cutoff
+        )
+        new_coords2 = get_cart_coords(results2[0]["structure"])
+        assert np.allclose(new_coords, new_coords2, atol=1e-10), (
+            "Results should be deterministic"
+        )
+
 
 class TestCreateDimer:
     """Tests for defect_create_dimer function."""

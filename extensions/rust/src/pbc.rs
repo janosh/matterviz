@@ -222,7 +222,10 @@ pub fn count_atoms_at_distance(
         .count()
 }
 
-// === Periodic Image Iteration ===
+// === Periodic Image Arrays ===
+// Note: IMAGE_OFFSETS_I32 and IMAGES contain the same 27 offset values in different
+// types (i32 vs f64). Both needed: i32 for integer arithmetic and PBC filtering,
+// f64 for direct fractional coordinate math.
 
 /// All 27 periodic image offsets as i32.
 const IMAGE_OFFSETS_I32: [[i32; 3]; 27] = [

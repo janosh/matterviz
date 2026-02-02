@@ -353,7 +353,7 @@ pub fn get_oxi_state_probabilities(element: Element, bv_sum: f64) -> Vec<(i8, f6
         }
     }
 
-    // Sort by decreasing probability
+    // Sort by decreasing probability (unwrap_or handles NaN gracefully by treating as equal)
     probs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     probs
@@ -669,7 +669,7 @@ pub fn oxi_state_guesses(
         &mut permutation_count,
     );
 
-    // Sort by decreasing probability
+    // Sort by decreasing probability (unwrap_or handles NaN gracefully by treating as equal)
     solutions.sort_by(|a, b| {
         b.probability
             .partial_cmp(&a.probability)
@@ -810,7 +810,7 @@ fn get_element_oxi_probs(symbol: &str) -> Vec<(i8, f64)> {
         .map(|&(oxi, count)| (oxi, count as f64 / total as f64))
         .collect();
 
-    // Sort by decreasing probability
+    // Sort by decreasing probability (unwrap_or handles NaN gracefully by treating as equal)
     normalized.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     normalized
@@ -1071,7 +1071,7 @@ pub fn guess_defect_charge_states(
         }
     }
 
-    // Sort by probability descending
+    // Sort by probability descending (unwrap_or handles NaN gracefully by treating as equal)
     guesses.sort_by(|a, b| {
         b.probability
             .partial_cmp(&a.probability)
