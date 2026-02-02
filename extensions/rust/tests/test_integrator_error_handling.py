@@ -52,7 +52,17 @@ def velocity_rescale() -> ferrox.VelocityRescale:
     )
 
 
-@pytest.mark.parametrize("thermostat_fixture", ["nose_hoover", "velocity_rescale"])
+@pytest.fixture
+def langevin() -> ferrox.LangevinIntegrator:
+    """Create Langevin integrator."""
+    return ferrox.LangevinIntegrator(
+        temperature_k=300.0, friction=0.01, dt=1.0, seed=42
+    )
+
+
+@pytest.mark.parametrize(
+    "thermostat_fixture", ["nose_hoover", "velocity_rescale", "langevin"]
+)
 def test_error_raises_exception(
     thermostat_fixture: str, md_state: ferrox.MDState, request: pytest.FixtureRequest
 ) -> None:
@@ -62,7 +72,9 @@ def test_error_raises_exception(
         thermostat.step(md_state, failing_force_fn)
 
 
-@pytest.mark.parametrize("thermostat_fixture", ["nose_hoover", "velocity_rescale"])
+@pytest.mark.parametrize(
+    "thermostat_fixture", ["nose_hoover", "velocity_rescale", "langevin"]
+)
 def test_state_restored_on_error(
     thermostat_fixture: str, md_state: ferrox.MDState, request: pytest.FixtureRequest
 ) -> None:

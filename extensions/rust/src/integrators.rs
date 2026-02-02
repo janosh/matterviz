@@ -368,25 +368,55 @@ where
     try_langevin_step(state, config, rng, |pos| {
         Ok::<_, std::convert::Infallible>(compute_forces(pos))
     })
-    .unwrap_or_else(|err: std::convert::Infallible| match err {})
+    .unwrap_or_else(|(_state, err): (MDState, std::convert::Infallible)| match err {})
 }
 
 /// Perform one Langevin dynamics step with fallible force computation.
 ///
-/// If the force computation fails, the original state is returned.
+/// If the force computation fails, the original state is returned along with
+/// the error, allowing the caller to retry or handle the failure gracefully.
 ///
 /// # Errors
-/// Returns the error from compute_forces if it fails.
+/// Returns `(original_state, error)` if compute_forces fails.
+#[allow(clippy::result_large_err)]
 pub fn try_langevin_step<R, F, E>(
-    mut state: MDState,
+    state: MDState,
     config: &LangevinConfig,
     rng: &mut R,
     mut compute_forces: F,
-) -> Result<MDState, E>
+) -> Result<MDState, (MDState, E)>
 where
     R: Rng,
     F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
 {
+    // Clone state upfront so we can restore on error
+    let original_state = state.clone();
+
+    // Perform the BAOAB integration
+    let mut state = langevin_baoab_core(state, config, rng);
+
+    // Compute new forces - if this fails, return original state
+    match compute_forces(&state.positions) {
+        Ok(new_forces) => {
+            state.forces = new_forces;
+            // B: Half-step velocity from new forces
+            let half_dt = 0.5 * config.dt_int;
+            for idx in 0..state.num_atoms() {
+                let accel = state.forces[idx] / state.masses[idx];
+                state.velocities[idx] += half_dt * accel;
+            }
+            Ok(state)
+        }
+        Err(err) => Err((original_state, err)),
+    }
+}
+
+/// Core BAOAB integration steps (B-A-O-A, without final B that requires new forces).
+fn langevin_baoab_core<R: Rng>(
+    mut state: MDState,
+    config: &LangevinConfig,
+    rng: &mut R,
+) -> MDState {
     let n_atoms = state.num_atoms();
     let half_dt = 0.5 * config.dt_int;
 
@@ -417,16 +447,7 @@ where
         state.positions[idx] += half_dt * state.velocities[idx];
     }
 
-    // Compute new forces
-    state.forces = compute_forces(&state.positions)?;
-
-    // B: Half-step velocity from new forces
-    for idx in 0..n_atoms {
-        let accel = state.forces[idx] / state.masses[idx];
-        state.velocities[idx] += half_dt * accel;
-    }
-
-    Ok(state)
+    state
 }
 
 // === Stateful Langevin integrator (for Python bindings) ===
@@ -469,8 +490,9 @@ impl LangevinIntegrator {
 
     /// Perform one Langevin dynamics step with fallible force computation.
     ///
-    /// If the force computation fails, the state is restored to its original
-    /// value before the step and the error is returned.
+    /// If the force computation fails, the state and internal RNG are restored
+    /// to their original values before the step and the error is returned.
+    /// This ensures deterministic behavior on retry.
     ///
     /// # Errors
     /// Returns the error from compute_forces if it fails.
@@ -478,7 +500,8 @@ impl LangevinIntegrator {
     where
         F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
     {
-        let original_state = state.clone();
+        // Clone RNG so we can restore it on error (for reproducibility)
+        let original_rng = self.rng.clone();
         match try_langevin_step(
             std::mem::take(state),
             &self.config,
@@ -489,8 +512,9 @@ impl LangevinIntegrator {
                 *state = new_state;
                 Ok(())
             }
-            Err(err) => {
+            Err((original_state, err)) => {
                 *state = original_state;
+                self.rng = original_rng;
                 Err(err)
             }
         }
@@ -549,7 +573,7 @@ impl NoseHooverChain {
     /// * `n_dof` - Number of degrees of freedom (typically 3*N - 3 for N atoms with COM constraint)
     ///
     /// # Panics
-    /// Panics if `target_temp <= 0`, `tau <= 0`, or `n_dof == 0`.
+    /// Panics if `target_temp <= 0`, `tau <= 0`, `dt_fs <= 0`, or `n_dof == 0`.
     pub fn new(target_temp: f64, tau: f64, dt_fs: f64, n_dof: usize) -> Self {
         assert!(
             target_temp > 0.0,
@@ -560,6 +584,11 @@ impl NoseHooverChain {
             tau > 0.0,
             "NoseHooverChain requires tau > 0 (got {tau}). \
              Zero or negative coupling time would produce zero/NaN thermostat mass."
+        );
+        assert!(
+            dt_fs > 0.0,
+            "NoseHooverChain requires dt_fs > 0 (got {dt_fs}). \
+             Zero or negative time step is non-physical."
         );
         assert!(
             n_dof > 0,
@@ -729,7 +758,7 @@ impl VelocityRescale {
     /// * `seed` - Optional random seed
     ///
     /// # Panics
-    /// Panics if `target_temp <= 0`, `tau <= 0`, or `n_dof == 0`.
+    /// Panics if `target_temp <= 0`, `tau <= 0`, `dt_fs <= 0`, or `n_dof == 0`.
     pub fn new(target_temp: f64, tau: f64, dt_fs: f64, n_dof: usize, seed: Option<u64>) -> Self {
         assert!(
             target_temp > 0.0,
@@ -740,6 +769,11 @@ impl VelocityRescale {
             tau > 0.0,
             "VelocityRescale requires tau > 0 (got {tau}). \
              Zero or negative coupling time would cause division by zero."
+        );
+        assert!(
+            dt_fs > 0.0,
+            "VelocityRescale requires dt_fs > 0 (got {dt_fs}). \
+             Zero or negative time step is non-physical."
         );
         assert!(
             n_dof > 0,
@@ -844,7 +878,12 @@ impl VelocityRescale {
 
         // Stochastic correction from Bussi-Donadio-Parrinello (Eq. 7)
         // For large n_dof, the chi-squared sum simplifies to a single Gaussian term
-        // with variance 4*c*(1-c)*K_target/(n_dof*K_current)
+        // with variance 4*c*(1-c)*K_target/(n_dof*K_current).
+        //
+        // NOTE: This approximation is accurate for n_dof >> 1 but introduces sampling
+        // bias for small systems (e.g., diatomics with n_dof=3). For exact canonical
+        // sampling of small systems, the full algorithm (sum of n_dof-1 chi-squared
+        // variates plus Gaussian) would be needed.
         let random_normal = box_muller_normal(&mut self.rng);
         let stochastic_variance = 4.0 * exp_factor * one_minus_exp * ke_ratio / n_dof;
         let stochastic_term = stochastic_variance.sqrt() * random_normal;
@@ -867,7 +906,15 @@ impl VelocityRescale {
     }
 
     /// Set target temperature.
+    ///
+    /// # Panics
+    /// Panics if `target_temp <= 0` (same invariant as constructor).
     pub fn set_temperature(&mut self, target_temp: f64) {
+        assert!(
+            target_temp > 0.0,
+            "VelocityRescale::set_temperature requires target_temp > 0 (got {target_temp}). \
+             Zero or negative temperature is non-physical."
+        );
         self.target_temp = target_temp;
     }
 }
@@ -1025,13 +1072,41 @@ impl NPTIntegrator {
     /// * `total_mass` - Total mass of the system in amu
     ///
     /// # Panics
-    /// Panics if `n_atoms < 2` (need at least 2 atoms for meaningful NPT dynamics
-    /// with COM-constrained degrees of freedom).
+    /// Panics if:
+    /// - `n_atoms < 2` (need at least 2 atoms for meaningful NPT dynamics)
+    /// - `config.temperature_k <= 0` (non-physical temperature)
+    /// - `config.tau_t <= 0` (would cause zero/NaN thermostat mass)
+    /// - `config.tau_p <= 0` (would cause incorrect barostat dynamics)
+    /// - `config.dt_fs <= 0` (non-physical time step)
     pub fn new(config: NPTConfig, n_atoms: usize, total_mass: f64) -> Self {
         assert!(
             n_atoms >= 2,
             "NPTIntegrator requires n_atoms >= 2 (got {n_atoms}). \
              Need at least 2 atoms for meaningful NPT dynamics with n_dof = 3*N - 3 > 0."
+        );
+        assert!(
+            config.temperature_k > 0.0,
+            "NPTIntegrator requires temperature_k > 0 (got {}). \
+             Zero or negative temperature is non-physical.",
+            config.temperature_k
+        );
+        assert!(
+            config.tau_t > 0.0,
+            "NPTIntegrator requires tau_t > 0 (got {}). \
+             Zero or negative thermostat coupling time would cause zero/NaN thermostat mass.",
+            config.tau_t
+        );
+        assert!(
+            config.tau_p > 0.0,
+            "NPTIntegrator requires tau_p > 0 (got {}). \
+             Zero or negative barostat coupling time is non-physical.",
+            config.tau_p
+        );
+        assert!(
+            config.dt_fs > 0.0,
+            "NPTIntegrator requires dt_fs > 0 (got {}). \
+             Zero or negative time step is non-physical.",
+            config.dt_fs
         );
 
         let kt = units::KB * config.temperature_k;
@@ -2681,6 +2756,56 @@ mod tests {
         // Setting temperature to 0 should panic
         let mut thermostat = NoseHooverChain::new(300.0, 100.0, 1.0, 3);
         thermostat.set_temperature(0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "NoseHooverChain requires dt_fs > 0")]
+    fn test_nose_hoover_panics_on_zero_dt() {
+        // Creating NoseHooverChain with dt_fs=0 should panic
+        let _thermostat = NoseHooverChain::new(300.0, 100.0, 0.0, 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "NoseHooverChain requires dt_fs > 0")]
+    fn test_nose_hoover_panics_on_negative_dt() {
+        // Creating NoseHooverChain with negative dt_fs should panic
+        let _thermostat = NoseHooverChain::new(300.0, 100.0, -1.0, 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "VelocityRescale::set_temperature requires target_temp > 0")]
+    fn test_velocity_rescale_set_temperature_panics_on_zero() {
+        // Setting temperature to 0 should panic
+        let mut thermostat = VelocityRescale::new(300.0, 100.0, 1.0, 3, Some(42));
+        thermostat.set_temperature(0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "NPTIntegrator requires temperature_k > 0")]
+    fn test_npt_integrator_panics_on_zero_temperature() {
+        let config = NPTConfig::new(0.0, 0.0, 100.0, 1000.0, 1.0);
+        let _integrator = NPTIntegrator::new(config, 4, 48.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "NPTIntegrator requires tau_t > 0")]
+    fn test_npt_integrator_panics_on_zero_tau_t() {
+        let config = NPTConfig::new(300.0, 0.0, 0.0, 1000.0, 1.0);
+        let _integrator = NPTIntegrator::new(config, 4, 48.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "NPTIntegrator requires tau_p > 0")]
+    fn test_npt_integrator_panics_on_zero_tau_p() {
+        let config = NPTConfig::new(300.0, 0.0, 100.0, 0.0, 1.0);
+        let _integrator = NPTIntegrator::new(config, 4, 48.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "NPTIntegrator requires dt_fs > 0")]
+    fn test_npt_integrator_panics_on_zero_dt() {
+        let config = NPTConfig::new(300.0, 0.0, 100.0, 1000.0, 0.0);
+        let _integrator = NPTIntegrator::new(config, 4, 48.0);
     }
 
     #[test]
