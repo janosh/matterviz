@@ -2,7 +2,7 @@
 
 use wasm_bindgen::prelude::*;
 
-use super::helpers::{validate_cutoff, validate_cutoff_nonneg};
+use super::helpers::{validate_cutoff, validate_nonneg_f64};
 use crate::order_params;
 use crate::wasm_types::{JsCrystal, WasmResult};
 
@@ -32,7 +32,7 @@ pub fn classify_local_structure(q4: f64, q6: f64, tolerance: f64) -> WasmResult<
     if !q6.is_finite() {
         return WasmResult::err(&format!("q6 must be finite, got {q6}"));
     }
-    if let Err(err) = validate_cutoff_nonneg(tolerance) {
+    if let Err(err) = validate_nonneg_f64(tolerance, "tolerance") {
         return WasmResult::err(&err);
     }
     WasmResult::ok(
@@ -51,7 +51,7 @@ pub fn classify_all_atoms(
     if let Err(err) = validate_cutoff(cutoff) {
         return WasmResult::err(&err);
     }
-    if let Err(err) = validate_cutoff_nonneg(tolerance) {
+    if let Err(err) = validate_nonneg_f64(tolerance, "tolerance") {
         return WasmResult::err(&err);
     }
     structure

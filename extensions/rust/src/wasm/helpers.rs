@@ -31,11 +31,13 @@ pub fn validate_positive_f64(value: f64, name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate cutoff is finite and non-negative (allows zero).
+/// Validate a non-negative f64 parameter (finite and >= 0).
 #[inline]
-pub fn validate_cutoff_nonneg(cutoff: f64) -> Result<(), String> {
-    if !cutoff.is_finite() || cutoff < 0.0 {
-        return Err("Cutoff must be a finite non-negative number".to_string());
+pub fn validate_nonneg_f64(value: f64, name: &str) -> Result<(), String> {
+    if !value.is_finite() || value < 0.0 {
+        return Err(format!(
+            "{name} must be finite and non-negative, got {value}"
+        ));
     }
     Ok(())
 }

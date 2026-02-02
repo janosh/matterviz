@@ -294,6 +294,27 @@ impl NPTIntegrator {
         let original_state = state.clone();
         let original_v_xi_atoms = self.v_xi_atoms;
 
+        // Helper to compute forces with validation and state restoration on error
+        #[allow(clippy::type_complexity)]
+        let mut compute_validated =
+            |positions: &[Vector3<f64>],
+             cell: &Matrix3<f64>|
+             -> Result<(Vec<Vector3<f64>>, Matrix3<f64>), NptStepError<E>> {
+                match compute_forces_and_stress(positions, cell) {
+                    Ok((forces, stress)) => {
+                        let expected = positions.len();
+                        if forces.len() != expected {
+                            return Err(NptStepError::ForcesLengthMismatch {
+                                expected,
+                                got: forces.len(),
+                            });
+                        }
+                        Ok((forces, stress))
+                    }
+                    Err(err) => Err(NptStepError::Callback(err)),
+                }
+            };
+
         let dt = self.config.dt_fs * units::FS_TO_INTERNAL;
         let dt2 = dt / 2.0;
         let kt = units::KB * self.config.temperature_k;
@@ -315,23 +336,12 @@ impl NPTIntegrator {
 
         // === Cell dynamics half-step ===
         let (initial_forces, initial_stress) =
-            match compute_forces_and_stress(&state.positions, &state.cell) {
-                Ok((forces, stress)) => {
-                    let expected = state.positions.len();
-                    if forces.len() != expected {
-                        *state = original_state;
-                        self.v_xi_atoms = original_v_xi_atoms;
-                        return Err(NptStepError::ForcesLengthMismatch {
-                            expected,
-                            got: forces.len(),
-                        });
-                    }
-                    (forces, stress)
-                }
+            match compute_validated(&state.positions, &state.cell) {
+                Ok(result) => result,
                 Err(err) => {
                     *state = original_state;
                     self.v_xi_atoms = original_v_xi_atoms;
-                    return Err(NptStepError::Callback(err));
+                    return Err(err);
                 }
             };
         state.forces = initial_forces;
@@ -369,26 +379,14 @@ impl NPTIntegrator {
         }
 
         // === Compute new forces ===
-        let (new_forces, new_stress) =
-            match compute_forces_and_stress(&state.positions, &state.cell) {
-                Ok((forces, stress)) => {
-                    let expected = state.positions.len();
-                    if forces.len() != expected {
-                        *state = original_state;
-                        self.v_xi_atoms = original_v_xi_atoms;
-                        return Err(NptStepError::ForcesLengthMismatch {
-                            expected,
-                            got: forces.len(),
-                        });
-                    }
-                    (forces, stress)
-                }
-                Err(err) => {
-                    *state = original_state;
-                    self.v_xi_atoms = original_v_xi_atoms;
-                    return Err(NptStepError::Callback(err));
-                }
-            };
+        let (new_forces, new_stress) = match compute_validated(&state.positions, &state.cell) {
+            Ok(result) => result,
+            Err(err) => {
+                *state = original_state;
+                self.v_xi_atoms = original_v_xi_atoms;
+                return Err(err);
+            }
+        };
         state.forces = new_forces;
 
         // === Velocity Verlet: update velocities (second half) ===

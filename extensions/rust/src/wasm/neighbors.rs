@@ -4,7 +4,7 @@
 
 use wasm_bindgen::prelude::*;
 
-use super::helpers::validate_cutoff_nonneg;
+use super::helpers::validate_nonneg_f64;
 use crate::wasm_types::{
     JsCrystal, JsLocalEnvironment, JsNeighborInfo, JsNeighborList, WasmResult,
 };
@@ -17,10 +17,8 @@ pub fn get_neighbor_list(
     exclude_self: bool,
 ) -> WasmResult<JsNeighborList> {
     let result: Result<JsNeighborList, String> = (|| {
-        validate_cutoff_nonneg(cutoff_radius)?;
-        if !numerical_tol.is_finite() || numerical_tol < 0.0 {
-            return Err("Numerical tolerance must be finite and non-negative".to_string());
-        }
+        validate_nonneg_f64(cutoff_radius, "cutoff_radius")?;
+        validate_nonneg_f64(numerical_tol, "numerical_tol")?;
         let struc = structure.to_structure()?;
         let (center_indices, neighbor_indices, image_offsets, distances) =
             struc.get_neighbor_list(cutoff_radius, numerical_tol, exclude_self);
@@ -65,7 +63,7 @@ pub fn get_local_environment(
     site_index: u32,
     cutoff: f64,
 ) -> WasmResult<JsLocalEnvironment> {
-    if let Err(err) = validate_cutoff_nonneg(cutoff) {
+    if let Err(err) = validate_nonneg_f64(cutoff, "cutoff") {
         return WasmResult::err(&err);
     }
     let result: Result<JsLocalEnvironment, String> = (|| {

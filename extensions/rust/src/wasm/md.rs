@@ -6,7 +6,25 @@ use wasm_bindgen::prelude::*;
 use crate::md;
 use crate::wasm_types::WasmResult;
 
-use super::helpers::{validate_positive_f64, validate_temperature};
+use super::helpers::{parse_flat_vec3, validate_positive_f64, validate_temperature};
+
+/// Parse flat forces array to Vec<Vector3<f64>>, validating length matches n_atoms.
+#[inline]
+fn parse_forces(forces: &[f64], n_atoms: usize) -> Result<Vec<Vector3<f64>>, String> {
+    parse_flat_vec3(forces, n_atoms)
+}
+
+/// Parse flat 9-element stress tensor to Matrix3.
+#[inline]
+fn parse_stress(stress: &[f64]) -> Result<nalgebra::Matrix3<f64>, String> {
+    if stress.len() != 9 {
+        return Err("stress must have 9 elements".to_string());
+    }
+    Ok(nalgebra::Matrix3::new(
+        stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
+        stress[8],
+    ))
+}
 
 /// MD simulation state for WASM.
 #[wasm_bindgen]
@@ -212,38 +230,19 @@ pub fn md_velocity_verlet_step(
     dt_fs: f64,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        // Validate timestep first
-        if !dt_fs.is_finite() || dt_fs <= 0.0 {
-            return Err(format!("dt_fs must be finite and positive, got {dt_fs}"));
-        }
-
+        validate_positive_f64(dt_fs, "dt_fs")?;
         let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        let force_vec: Vec<Vector3<f64>> = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        let force_vec = parse_forces(&forces, n_atoms)?;
         state.inner.set_forces(&force_vec);
-
-        // Velocity Verlet: half-step velocity, full-step position, then caller computes new forces
+        // Velocity Verlet: half-step velocity, full-step position
         let dt_internal = dt_fs * md::FS_TO_INTERNAL;
         let half_dt = 0.5 * dt_internal;
-
         for idx in 0..n_atoms {
             let mass = state.inner.masses[idx];
             let accel = state.inner.forces[idx] / mass;
             state.inner.velocities[idx] += half_dt * accel;
             state.inner.positions[idx] += dt_internal * state.inner.velocities[idx];
         }
-
         Ok(())
     })();
     result.into()
@@ -257,34 +256,17 @@ pub fn md_velocity_verlet_finalize(
     dt_fs: f64,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        if !dt_fs.is_finite() || dt_fs <= 0.0 {
-            return Err(format!("dt_fs must be finite and positive, got {dt_fs}"));
-        }
+        validate_positive_f64(dt_fs, "dt_fs")?;
         let n_atoms = state.inner.num_atoms();
-        if new_forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "new_forces length {} must be {} (3 * n_atoms)",
-                new_forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        let force_vec: Vec<Vector3<f64>> = new_forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        let force_vec = parse_forces(&new_forces, n_atoms)?;
         state.inner.set_forces(&force_vec);
-
         let dt_internal = dt_fs * md::FS_TO_INTERNAL;
         let half_dt = 0.5 * dt_internal;
-
         for idx in 0..n_atoms {
             let mass = state.inner.masses[idx];
             let accel = state.inner.forces[idx] / mass;
             state.inner.velocities[idx] += half_dt * accel;
         }
-
         Ok(())
     })();
     result.into()
@@ -355,22 +337,7 @@ pub fn langevin_step_init(
     forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        // Set forces on state (used for first velocity half-step)
-        state.inner.forces = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
-        // Perform B-A-O-A (everything except final velocity half-step)
+        state.inner.forces = parse_forces(&forces, state.inner.num_atoms())?;
         integrator.inner.step_init(&mut state.inner);
         Ok(())
     })();
@@ -388,20 +355,7 @@ pub fn langevin_step_finalize(
     new_forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let n_atoms = state.inner.num_atoms();
-        if new_forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "new_forces length {} must be {} (3 * n_atoms)",
-                new_forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        let force_vec: Vec<Vector3<f64>> = new_forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        let force_vec = parse_forces(&new_forces, state.inner.num_atoms())?;
         integrator.inner.step_finalize(&mut state.inner, &force_vec);
         Ok(())
     })();
@@ -427,37 +381,10 @@ pub fn langevin_step_with_forces(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-        if new_forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "new_forces length {} must be {} (3 * n_atoms)",
-                new_forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        // Set forces on state (used for first velocity half-step)
-        state.inner.forces = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
-        // Perform B-A-O-A
+        state.inner.forces = parse_forces(&forces, n_atoms)?;
         integrator.inner.step_init(&mut state.inner);
-
-        // Final velocity half-step with new forces
-        let force_vec: Vec<Vector3<f64>> = new_forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
+        let force_vec = parse_forces(&new_forces, n_atoms)?;
         integrator.inner.step_finalize(&mut state.inner, &force_vec);
-
         Ok(())
     })();
     result.into()
@@ -519,21 +446,7 @@ pub fn nose_hoover_step_init(
     forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        // Set forces on state (used for first velocity half-step)
-        state.inner.forces = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        state.inner.forces = parse_forces(&forces, state.inner.num_atoms())?;
         thermostat.inner.step_init(&mut state.inner);
         Ok(())
     })();
@@ -551,20 +464,7 @@ pub fn nose_hoover_step_finalize(
     new_forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let n_atoms = state.inner.num_atoms();
-        if new_forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "new_forces length {} must be {} (3 * n_atoms)",
-                new_forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        let force_vec: Vec<Vector3<f64>> = new_forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        let force_vec = parse_forces(&new_forces, state.inner.num_atoms())?;
         thermostat.inner.step_finalize(&mut state.inner, &force_vec);
         Ok(())
     })();
@@ -587,36 +487,10 @@ pub fn nose_hoover_step_with_forces(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-        if new_forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "new_forces length {} must be {} (3 * n_atoms)",
-                new_forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        // Set forces on state (used for first velocity half-step)
-        state.inner.forces = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        state.inner.forces = parse_forces(&forces, n_atoms)?;
         thermostat.inner.step_init(&mut state.inner);
-
-        // Final velocity half-step with new forces
-        let force_vec: Vec<Vector3<f64>> = new_forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
+        let force_vec = parse_forces(&new_forces, n_atoms)?;
         thermostat.inner.step_finalize(&mut state.inner, &force_vec);
-
         Ok(())
     })();
     result.into()
@@ -677,21 +551,7 @@ pub fn velocity_rescale_step_init(
     forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        // Set forces on state (preserved for use in step_finalize)
-        state.inner.forces = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        state.inner.forces = parse_forces(&forces, state.inner.num_atoms())?;
         thermostat.inner.step_init(&mut state.inner);
         Ok(())
     })();
@@ -709,20 +569,7 @@ pub fn velocity_rescale_step_finalize(
     new_forces: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let n_atoms = state.inner.num_atoms();
-        if new_forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "new_forces length {} must be {} (3 * n_atoms)",
-                new_forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        let force_vec: Vec<Vector3<f64>> = new_forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        let force_vec = parse_forces(&new_forces, state.inner.num_atoms())?;
         thermostat.inner.step_finalize(&mut state.inner, &force_vec);
         Ok(())
     })();
@@ -745,36 +592,10 @@ pub fn velocity_rescale_step_with_forces(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-        if new_forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "new_forces length {} must be {} (3 * n_atoms)",
-                new_forces.len(),
-                n_atoms * 3
-            ));
-        }
-
-        // Set forces on state (preserved for use in step_finalize)
-        state.inner.forces = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
+        state.inner.forces = parse_forces(&forces, n_atoms)?;
         thermostat.inner.step_init(&mut state.inner);
-
-        // Velocity update + rescaling with new forces
-        let force_vec: Vec<Vector3<f64>> = new_forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
+        let force_vec = parse_forces(&new_forces, n_atoms)?;
         thermostat.inner.step_finalize(&mut state.inner, &force_vec);
-
         Ok(())
     })();
     result.into()
@@ -943,14 +764,10 @@ impl JsNPTIntegrator {
     /// Get instantaneous pressure from stress tensor.
     #[wasm_bindgen]
     pub fn pressure(&self, stress: Vec<f64>) -> WasmResult<f64> {
-        if stress.len() != 9 {
-            return WasmResult::err("stress must have 9 elements");
+        match parse_stress(&stress) {
+            Ok(stress_mat) => WasmResult::ok(self.inner.pressure(&stress_mat)),
+            Err(err) => WasmResult::err(&err),
         }
-        let stress_mat = nalgebra::Matrix3::new(
-            stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
-            stress[8],
-        );
-        WasmResult::ok(self.inner.pressure(&stress_mat))
     }
 }
 
@@ -973,29 +790,8 @@ pub fn npt_step_init(
     stress: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-        if stress.len() != 9 {
-            return Err("stress must have 9 elements".to_string());
-        }
-
-        // Set forces on state
-        state.inner.forces = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
-        let stress_mat = nalgebra::Matrix3::new(
-            stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
-            stress[8],
-        );
-
+        state.inner.forces = parse_forces(&forces, state.inner.num_atoms())?;
+        let stress_mat = parse_stress(&stress)?;
         integrator.inner.step_init(&mut state.inner, &stress_mat);
         Ok(())
     })();
@@ -1015,34 +811,8 @@ pub fn npt_step_finalize(
     new_stress: Vec<f64>,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
-        let n_atoms = state.inner.num_atoms();
-        if new_forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "new_forces length {} must be {} (3 * n_atoms)",
-                new_forces.len(),
-                n_atoms * 3
-            ));
-        }
-        if new_stress.len() != 9 {
-            return Err("new_stress must have 9 elements".to_string());
-        }
-
-        let force_vec: Vec<Vector3<f64>> = new_forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-        let stress_mat = nalgebra::Matrix3::new(
-            new_stress[0],
-            new_stress[1],
-            new_stress[2],
-            new_stress[3],
-            new_stress[4],
-            new_stress[5],
-            new_stress[6],
-            new_stress[7],
-            new_stress[8],
-        );
-
+        let force_vec = parse_forces(&new_forces, state.inner.num_atoms())?;
+        let stress_mat = parse_stress(&new_stress)?;
         integrator
             .inner
             .step_finalize(&mut state.inner, &force_vec, &stress_mat);
@@ -1070,57 +840,11 @@ pub fn npt_step_with_forces_and_stress(
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
         let n_atoms = state.inner.num_atoms();
-        if forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "forces length {} must be {} (3 * n_atoms)",
-                forces.len(),
-                n_atoms * 3
-            ));
-        }
-        if stress.len() != 9 {
-            return Err("stress must have 9 elements".to_string());
-        }
-        if new_forces.len() != n_atoms * 3 {
-            return Err(format!(
-                "new_forces length {} must be {} (3 * n_atoms)",
-                new_forces.len(),
-                n_atoms * 3
-            ));
-        }
-        if new_stress.len() != 9 {
-            return Err("new_stress must have 9 elements".to_string());
-        }
-
-        // Set initial forces on state
-        state.inner.forces = forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-
-        let stress_mat = nalgebra::Matrix3::new(
-            stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
-            stress[8],
-        );
-
+        state.inner.forces = parse_forces(&forces, n_atoms)?;
+        let stress_mat = parse_stress(&stress)?;
         integrator.inner.step_init(&mut state.inner, &stress_mat);
-
-        // Finalize with new forces/stress
-        let new_force_vec: Vec<Vector3<f64>> = new_forces
-            .chunks(3)
-            .map(|c| Vector3::new(c[0], c[1], c[2]))
-            .collect();
-        let new_stress_mat = nalgebra::Matrix3::new(
-            new_stress[0],
-            new_stress[1],
-            new_stress[2],
-            new_stress[3],
-            new_stress[4],
-            new_stress[5],
-            new_stress[6],
-            new_stress[7],
-            new_stress[8],
-        );
-
+        let new_force_vec = parse_forces(&new_forces, n_atoms)?;
+        let new_stress_mat = parse_stress(&new_stress)?;
         integrator
             .inner
             .step_finalize(&mut state.inner, &new_force_vec, &new_stress_mat);

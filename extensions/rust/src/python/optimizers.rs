@@ -25,7 +25,46 @@ impl PyFireConfig {
         dt_max: Option<f64>,
         n_min: Option<usize>,
         max_step: Option<f64>,
-    ) -> Self {
+    ) -> PyResult<Self> {
+        // Validate dt_start: must be finite and positive
+        if let Some(val) = dt_start {
+            if !val.is_finite() || val <= 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "dt_start must be finite and positive, got {val}"
+                )));
+            }
+        }
+        // Validate dt_max: must be finite and positive
+        if let Some(val) = dt_max {
+            if !val.is_finite() || val <= 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "dt_max must be finite and positive, got {val}"
+                )));
+            }
+        }
+        // Validate n_min: must be > 0
+        if let Some(val) = n_min {
+            if val == 0 {
+                return Err(PyValueError::new_err("n_min must be greater than 0"));
+            }
+        }
+        // Validate max_step: must be finite and positive
+        if let Some(val) = max_step {
+            if !val.is_finite() || val <= 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "max_step must be finite and positive, got {val}"
+                )));
+            }
+        }
+        // Validate dt_max >= dt_start when both provided
+        if let (Some(start), Some(max)) = (dt_start, dt_max) {
+            if max < start {
+                return Err(PyValueError::new_err(format!(
+                    "dt_max ({max}) must be >= dt_start ({start})"
+                )));
+            }
+        }
+
         let mut config = optimizers::FireConfig::default();
         if let Some(val) = dt_start {
             config.dt_start = val;
@@ -39,7 +78,7 @@ impl PyFireConfig {
         if let Some(val) = max_step {
             config.max_step = val;
         }
-        PyFireConfig { inner: config }
+        Ok(PyFireConfig { inner: config })
     }
 
     #[getter]
@@ -48,8 +87,20 @@ impl PyFireConfig {
     }
 
     #[setter]
-    fn set_dt_start(&mut self, val: f64) {
+    fn set_dt_start(&mut self, val: f64) -> PyResult<()> {
+        if !val.is_finite() || val <= 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "dt_start must be finite and positive, got {val}"
+            )));
+        }
+        if val > self.inner.dt_max {
+            return Err(PyValueError::new_err(format!(
+                "dt_start ({val}) must be <= dt_max ({})",
+                self.inner.dt_max
+            )));
+        }
         self.inner.dt_start = val;
+        Ok(())
     }
 
     #[getter]
@@ -58,8 +109,20 @@ impl PyFireConfig {
     }
 
     #[setter]
-    fn set_dt_max(&mut self, val: f64) {
+    fn set_dt_max(&mut self, val: f64) -> PyResult<()> {
+        if !val.is_finite() || val <= 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "dt_max must be finite and positive, got {val}"
+            )));
+        }
+        if val < self.inner.dt_start {
+            return Err(PyValueError::new_err(format!(
+                "dt_max ({val}) must be >= dt_start ({})",
+                self.inner.dt_start
+            )));
+        }
         self.inner.dt_max = val;
+        Ok(())
     }
 
     #[getter]
@@ -68,8 +131,12 @@ impl PyFireConfig {
     }
 
     #[setter]
-    fn set_n_min(&mut self, val: usize) {
+    fn set_n_min(&mut self, val: usize) -> PyResult<()> {
+        if val == 0 {
+            return Err(PyValueError::new_err("n_min must be greater than 0"));
+        }
         self.inner.n_min = val;
+        Ok(())
     }
 
     #[getter]
@@ -78,8 +145,14 @@ impl PyFireConfig {
     }
 
     #[setter]
-    fn set_max_step(&mut self, val: f64) {
+    fn set_max_step(&mut self, val: f64) -> PyResult<()> {
+        if !val.is_finite() || val <= 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "max_step must be finite and positive, got {val}"
+            )));
+        }
         self.inner.max_step = val;
+        Ok(())
     }
 }
 
