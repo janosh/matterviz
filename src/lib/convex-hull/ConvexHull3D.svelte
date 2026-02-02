@@ -1229,7 +1229,10 @@
   {/if}
 
   <!-- Formation Energy Faces Color Bar (bottom-right corner) -->
-  {#if plot_entries.length > 0}
+  <!-- Only show for uniform/formation_energy modes where face color relates to E_form -->
+  {#if plot_entries.length > 0 && show_hull_faces &&
+      (hull_face_color_mode === `uniform` ||
+        hull_face_color_mode === `formation_energy`)}
     <ColorBar
       title="Formation energy (eV/atom)"
       color_scale_fn={e_form_color_scale_fn}
