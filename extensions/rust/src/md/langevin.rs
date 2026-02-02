@@ -116,7 +116,8 @@ impl LangevinConfig {
 #[inline]
 fn compute_c1_c2(friction_int: f64, dt_int: f64) -> (f64, f64) {
     let c1 = (-friction_int * dt_int).exp();
-    let c2 = (1.0 - c1 * c1).sqrt();
+    // Clamp to avoid NaN from tiny negative rounding when c1 ≈ 1
+    let c2 = (1.0 - c1 * c1).max(0.0).sqrt();
     (c1, c2)
 }
 

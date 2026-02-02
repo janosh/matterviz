@@ -5,9 +5,17 @@ use nalgebra::Vector3;
 use super::state::MDState;
 use super::units;
 
+fn validate_dt(dt_fs: f64) {
+    assert!(
+        dt_fs > 0.0 && dt_fs.is_finite(),
+        "velocity_verlet requires dt_fs > 0 and finite (got {dt_fs})"
+    );
+}
+
 /// First half of velocity Verlet: update velocities and positions.
 /// After this, compute new forces and call `velocity_verlet_finalize`.
 pub fn velocity_verlet_init(mut state: MDState, dt_fs: f64) -> MDState {
+    validate_dt(dt_fs);
     let dt = dt_fs * units::FS_TO_INTERNAL;
     for ((pos, vel), (&force, &mass)) in state
         .positions
@@ -28,6 +36,12 @@ pub fn velocity_verlet_finalize(
     dt_fs: f64,
     new_forces: &[Vector3<f64>],
 ) -> MDState {
+    validate_dt(dt_fs);
+    assert_eq!(
+        new_forces.len(),
+        state.num_atoms(),
+        "new_forces.len() must match state.num_atoms()"
+    );
     let dt = dt_fs * units::FS_TO_INTERNAL;
     state.forces = new_forces.to_vec();
     for (vel, (&force, &mass)) in state

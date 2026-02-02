@@ -151,23 +151,10 @@ fn get_symmetry_dataset(
     dict.set_item("pearson_symbol", &dataset.pearson_symbol)?;
     dict.set_item("num_operations", dataset.operations.len())?;
 
-    // Derive crystal system from spacegroup number
-    let crystal_system = if dataset.number <= 2 {
-        "triclinic"
-    } else if dataset.number <= 15 {
-        "monoclinic"
-    } else if dataset.number <= 74 {
-        "orthorhombic"
-    } else if dataset.number <= 142 {
-        "tetragonal"
-    } else if dataset.number <= 167 {
-        "trigonal"
-    } else if dataset.number <= 194 {
-        "hexagonal"
-    } else {
-        "cubic"
-    };
-    dict.set_item("crystal_system", crystal_system)?;
+    dict.set_item(
+        "crystal_system",
+        spacegroup_to_crystal_system(dataset.number),
+    )?;
 
     // Add wyckoff letters
     let wyckoff = struc

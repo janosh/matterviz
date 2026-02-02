@@ -49,6 +49,16 @@ pub fn get_coordination_number(
     }
     structure
         .to_structure()
-        .map(|struc| coordination::get_coordination_number(&struc, site_idx, cutoff))
+        .and_then(|struc| {
+            let num_sites = struc.num_sites();
+            if site_idx >= num_sites {
+                return Err(format!(
+                    "site_idx {site_idx} out of bounds for structure with {num_sites} sites"
+                ));
+            }
+            Ok(coordination::get_coordination_number(
+                &struc, site_idx, cutoff,
+            ))
+        })
         .into()
 }

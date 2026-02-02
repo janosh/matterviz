@@ -65,16 +65,19 @@ class TestCutoffCoordination:
         """get_coordination_number returns single site CN."""
         assert coordination.get_coordination_number(fcc_cu_json, 0, 3.0) == 12
 
-    def test_zero_cutoff(self, fcc_cu_json: str) -> None:
-        """Zero cutoff gives CN=0."""
-        assert all(
-            cn == 0 for cn in coordination.get_coordination_numbers(fcc_cu_json, 0.0)
-        )
+    def test_zero_cutoff_raises(self, fcc_cu_json: str) -> None:
+        """Zero cutoff raises ValueError."""
+        import pytest
 
-    def test_negative_cutoff_returns_zero(self, fcc_cu_json: str) -> None:
-        """Negative cutoff returns zero coordination (no neighbors within distance)."""
-        cns = coordination.get_coordination_numbers(fcc_cu_json, -1.0)
-        assert all(cn == 0 for cn in cns)
+        with pytest.raises(ValueError, match="cutoff must be positive"):
+            coordination.get_coordination_numbers(fcc_cu_json, 0.0)
+
+    def test_negative_cutoff_raises(self, fcc_cu_json: str) -> None:
+        """Negative cutoff raises ValueError."""
+        import pytest
+
+        with pytest.raises(ValueError, match="cutoff must be positive"):
+            coordination.get_coordination_numbers(fcc_cu_json, -1.0)
 
 
 class TestLocalEnvironment:

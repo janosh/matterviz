@@ -137,8 +137,13 @@ impl PyFireState {
     }
 
     /// Check if optimization has converged.
-    fn is_converged(&self, fmax: f64) -> bool {
-        self.inner.is_converged(fmax)
+    fn is_converged(&self, fmax: f64) -> PyResult<bool> {
+        if !fmax.is_finite() || fmax <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "fmax must be positive and finite",
+            ));
+        }
+        Ok(self.inner.is_converged(fmax))
     }
 
     /// Number of atoms.
@@ -240,14 +245,14 @@ impl PyCellFireState {
 
     /// Check if optimization has converged.
     fn is_converged(&self, fmax: f64, smax: f64) -> PyResult<bool> {
-        if fmax <= 0.0 {
+        if !fmax.is_finite() || fmax <= 0.0 {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "fmax must be positive",
+                "fmax must be positive and finite",
             ));
         }
-        if smax <= 0.0 {
+        if !smax.is_finite() || smax <= 0.0 {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "smax must be positive",
+                "smax must be positive and finite",
             ));
         }
         Ok(optimizers::cell_is_converged(&self.inner, fmax, smax))

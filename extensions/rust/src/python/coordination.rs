@@ -1,5 +1,6 @@
 //! Coordination number analysis.
 
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
@@ -7,9 +8,17 @@ use crate::coordination;
 
 use super::helpers::{StructureJson, check_site_idx, parse_struct};
 
+fn validate_cutoff(cutoff: f64) -> PyResult<()> {
+    if !cutoff.is_finite() || cutoff <= 0.0 {
+        return Err(PyValueError::new_err("cutoff must be positive and finite"));
+    }
+    Ok(())
+}
+
 /// Get coordination numbers for all sites.
 #[pyfunction]
 fn get_coordination_numbers(structure: StructureJson, cutoff: f64) -> PyResult<Vec<usize>> {
+    validate_cutoff(cutoff)?;
     let struc = parse_struct(&structure)?;
     Ok(coordination::get_coordination_numbers(&struc, cutoff))
 }
@@ -21,6 +30,7 @@ fn get_coordination_number(
     site_idx: usize,
     cutoff: f64,
 ) -> PyResult<usize> {
+    validate_cutoff(cutoff)?;
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
     Ok(coordination::get_coordination_number(
@@ -36,6 +46,7 @@ fn get_local_environment(
     site_idx: usize,
     cutoff: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    validate_cutoff(cutoff)?;
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
     let neighbors = coordination::get_local_environment(&struc, site_idx, cutoff);
@@ -59,6 +70,7 @@ fn get_neighbors(
     site_idx: usize,
     cutoff: f64,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    validate_cutoff(cutoff)?;
     let struc = parse_struct(&structure)?;
     check_site_idx(site_idx, struc.num_sites())?;
     let neighbors = coordination::get_neighbors(&struc, site_idx, cutoff);

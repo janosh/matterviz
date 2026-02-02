@@ -19,6 +19,9 @@ pub fn get_neighbor_list(
         if !cutoff_radius.is_finite() || cutoff_radius < 0.0 {
             return Err("Cutoff radius must be finite and non-negative".to_string());
         }
+        if !numerical_tol.is_finite() || numerical_tol < 0.0 {
+            return Err("Numerical tolerance must be finite and non-negative".to_string());
+        }
         let struc = structure.to_structure()?;
         let (center_indices, neighbor_indices, image_offsets, distances) =
             struc.get_neighbor_list(cutoff_radius, numerical_tol, exclude_self);

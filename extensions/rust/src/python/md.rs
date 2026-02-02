@@ -88,8 +88,14 @@ impl PyMDState {
 
     /// Initialize velocities from Maxwell-Boltzmann distribution.
     #[pyo3(signature = (temperature_k, seed = None))]
-    fn init_velocities(&mut self, temperature_k: f64, seed: Option<u64>) {
+    fn init_velocities(&mut self, temperature_k: f64, seed: Option<u64>) -> PyResult<()> {
+        if !temperature_k.is_finite() || temperature_k < 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "temperature_k must be finite and >= 0, got {temperature_k}"
+            )));
+        }
         self.inner.init_velocities(temperature_k, seed);
+        Ok(())
     }
 
     /// Get kinetic energy in eV.

@@ -127,7 +127,14 @@ pub fn temperature(state: &MDState) -> f64 {
 /// Initialize velocities from Maxwell-Boltzmann distribution at given temperature.
 ///
 /// Also removes center-of-mass motion.
+///
+/// # Panics
+/// Panics if `temperature_k` is not finite.
 pub fn init_velocities<R: Rng>(mut state: MDState, temperature_k: f64, rng: &mut R) -> MDState {
+    assert!(
+        temperature_k.is_finite(),
+        "temperature_k must be finite, got {temperature_k}"
+    );
     // Skip for empty systems or zero temperature
     if state.num_atoms() == 0 || temperature_k <= 0.0 {
         return state;

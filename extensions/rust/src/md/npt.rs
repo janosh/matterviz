@@ -26,6 +26,9 @@ pub struct NPTState {
 
 impl NPTState {
     /// Create a new NPT state.
+    ///
+    /// # Panics
+    /// Panics if `positions.len() != masses.len()`.
     pub fn new(
         positions: Vec<Vector3<f64>>,
         masses: Vec<f64>,
@@ -33,6 +36,13 @@ impl NPTState {
         pbc: [bool; 3],
     ) -> Self {
         let n_atoms = positions.len();
+        assert_eq!(
+            masses.len(),
+            n_atoms,
+            "NPTState::new requires positions.len() == masses.len() (got {} vs {})",
+            n_atoms,
+            masses.len()
+        );
         Self {
             positions,
             velocities: vec![Vector3::zeros(); n_atoms],

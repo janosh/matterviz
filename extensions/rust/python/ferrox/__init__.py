@@ -37,7 +37,7 @@ from ferrox import Element
 from ferrox import io, structure, defects
 
 # Parse a structure file
-struct = io.parse_file("POSCAR")
+struct = io.parse_structure_file("POSCAR")
 
 # Create a supercell
 supercell = structure.make_supercell(struct, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
