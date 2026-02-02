@@ -194,7 +194,8 @@ where
     if n_atoms == 0 {
         return Ok(state);
     }
-    let original_state = state.clone();
+    // State isn't mutated until after successful force computation,
+    // so we can return it directly on error without cloning
     match compute_forces(&state.positions) {
         Ok(forces) => {
             debug_assert_eq!(
@@ -205,7 +206,7 @@ where
             state.last_forces = forces;
             Ok(fire_step_core(state, config))
         }
-        Err(err) => Err((original_state, err)),
+        Err(err) => Err((state, err)),
     }
 }
 
@@ -449,7 +450,8 @@ where
     if n_atoms == 0 {
         return Ok(state);
     }
-    let original_state = state.clone();
+    // State isn't mutated until after successful force/stress computation,
+    // so we can return it directly on error without cloning
     match compute_forces_and_stress(&state.positions, &state.cell) {
         Ok((forces, stress)) => {
             debug_assert_eq!(
@@ -461,7 +463,7 @@ where
             state.last_stress = stress;
             Ok(cell_fire_step_core(state, config))
         }
-        Err(err) => Err((original_state, err)),
+        Err(err) => Err((state, err)),
     }
 }
 

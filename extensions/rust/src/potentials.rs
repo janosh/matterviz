@@ -188,6 +188,18 @@ where
     F: FnMut(u8, u8, f64, f64) -> Option<PairInteraction>,
 {
     let n_atoms = positions.len();
+
+    // Validate atomic_numbers length if provided
+    if let Some(z) = atomic_numbers {
+        assert_eq!(
+            z.len(),
+            n_atoms,
+            "atomic_numbers length ({}) must match positions length ({})",
+            z.len(),
+            n_atoms
+        );
+    }
+
     let mut energy = 0.0;
     let (mut forces, mut per_atom_energies, mut stress) =
         init_potential_arrays(n_atoms, compute_stress);

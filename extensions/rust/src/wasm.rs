@@ -2433,6 +2433,19 @@ pub fn compute_lennard_jones(
     compute_stress: bool,
 ) -> WasmResult<JsPotentialResult> {
     let result: Result<JsPotentialResult, String> = (|| {
+        // Validate physical parameters
+        if sigma <= 0.0 {
+            return Err("sigma must be positive".to_string());
+        }
+        if !sigma.is_finite() || !epsilon.is_finite() {
+            return Err("sigma and epsilon must be finite".to_string());
+        }
+        if let Some(cut) = cutoff {
+            if cut <= 0.0 || !cut.is_finite() {
+                return Err("cutoff must be positive and finite".to_string());
+            }
+        }
+
         let n_atoms = positions.len() / 3;
         let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
         let cell_mat = parse_flat_cell(cell.as_deref())?;
@@ -2498,6 +2511,20 @@ pub fn compute_morse(
     compute_stress: bool,
 ) -> WasmResult<JsPotentialResult> {
     let result: Result<JsPotentialResult, String> = (|| {
+        // Validate physical parameters
+        if d < 0.0 || !d.is_finite() {
+            return Err("d (well depth) must be non-negative and finite".to_string());
+        }
+        if alpha <= 0.0 || !alpha.is_finite() {
+            return Err("alpha must be positive and finite".to_string());
+        }
+        if r0 <= 0.0 || !r0.is_finite() {
+            return Err("r0 (equilibrium distance) must be positive and finite".to_string());
+        }
+        if cutoff <= 0.0 || !cutoff.is_finite() {
+            return Err("cutoff must be positive and finite".to_string());
+        }
+
         let n_atoms = positions.len() / 3;
         let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
         let cell_mat = parse_flat_cell(cell.as_deref())?;
@@ -2572,6 +2599,20 @@ pub fn compute_soft_sphere(
     compute_stress: bool,
 ) -> WasmResult<JsPotentialResult> {
     let result: Result<JsPotentialResult, String> = (|| {
+        // Validate physical parameters
+        if sigma <= 0.0 || !sigma.is_finite() {
+            return Err("sigma must be positive and finite".to_string());
+        }
+        if !epsilon.is_finite() {
+            return Err("epsilon must be finite".to_string());
+        }
+        if alpha <= 0.0 || !alpha.is_finite() {
+            return Err("alpha (exponent) must be positive and finite".to_string());
+        }
+        if cutoff <= 0.0 || !cutoff.is_finite() {
+            return Err("cutoff must be positive and finite".to_string());
+        }
+
         let n_atoms = positions.len() / 3;
         let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
         let cell_mat = parse_flat_cell(cell.as_deref())?;
@@ -3323,15 +3364,25 @@ impl JsMDState {
     }
 
     /// Set positions from flat array.
+    ///
+    /// # Panics
+    /// Panics if length doesn't match `n_atoms * 3`.
     #[wasm_bindgen(setter)]
     pub fn set_positions(&mut self, positions: Vec<f64>) {
         let n_atoms = self.inner.num_atoms();
-        if positions.len() == n_atoms * 3 {
-            self.inner.positions = positions
-                .chunks(3)
-                .map(|c| Vector3::new(c[0], c[1], c[2]))
-                .collect();
-        }
+        let expected = n_atoms * 3;
+        assert_eq!(
+            positions.len(),
+            expected,
+            "positions: expected {} elements (3 * {} atoms), got {}",
+            expected,
+            n_atoms,
+            positions.len()
+        );
+        self.inner.positions = positions
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
     }
 
     /// Get velocities as flat array.
@@ -3345,15 +3396,25 @@ impl JsMDState {
     }
 
     /// Set velocities from flat array.
+    ///
+    /// # Panics
+    /// Panics if length doesn't match `n_atoms * 3`.
     #[wasm_bindgen(setter)]
     pub fn set_velocities(&mut self, velocities: Vec<f64>) {
         let n_atoms = self.inner.num_atoms();
-        if velocities.len() == n_atoms * 3 {
-            self.inner.velocities = velocities
-                .chunks(3)
-                .map(|c| Vector3::new(c[0], c[1], c[2]))
-                .collect();
-        }
+        let expected = n_atoms * 3;
+        assert_eq!(
+            velocities.len(),
+            expected,
+            "velocities: expected {} elements (3 * {} atoms), got {}",
+            expected,
+            n_atoms,
+            velocities.len()
+        );
+        self.inner.velocities = velocities
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
     }
 
     /// Get forces as flat array.
@@ -3367,15 +3428,25 @@ impl JsMDState {
     }
 
     /// Set forces from flat array.
+    ///
+    /// # Panics
+    /// Panics if length doesn't match `n_atoms * 3`.
     #[wasm_bindgen(setter)]
     pub fn set_forces(&mut self, forces: Vec<f64>) {
         let n_atoms = self.inner.num_atoms();
-        if forces.len() == n_atoms * 3 {
-            self.inner.forces = forces
-                .chunks(3)
-                .map(|c| Vector3::new(c[0], c[1], c[2]))
-                .collect();
-        }
+        let expected = n_atoms * 3;
+        assert_eq!(
+            forces.len(),
+            expected,
+            "forces: expected {} elements (3 * {} atoms), got {}",
+            expected,
+            n_atoms,
+            forces.len()
+        );
+        self.inner.forces = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
     }
 
     /// Get masses.

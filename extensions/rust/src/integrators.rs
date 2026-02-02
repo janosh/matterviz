@@ -1078,7 +1078,7 @@ impl NPTIntegrator {
     /// - `config.tau_t <= 0` (would cause zero/NaN thermostat mass)
     /// - `config.tau_p <= 0` (would cause incorrect barostat dynamics)
     /// - `config.dt_fs <= 0` (non-physical time step)
-    pub fn new(config: NPTConfig, n_atoms: usize, total_mass: f64) -> Self {
+    pub fn new(config: NPTConfig, n_atoms: usize, _total_mass: f64) -> Self {
         assert!(
             n_atoms >= 2,
             "NPTIntegrator requires n_atoms >= 2 (got {n_atoms}). \
@@ -1113,11 +1113,15 @@ impl NPTIntegrator {
         let n_dof = 3 * n_atoms - 3;
 
         // Thermostat mass: Q = n_dof * kT * tau_t^2
-        let tau_t = config.tau_t * units::FS_TO_INTERNAL;
-        let q_atoms = n_dof as f64 * kt * tau_t * tau_t;
+        let tau_t_int = config.tau_t * units::FS_TO_INTERNAL;
+        let q_atoms = n_dof as f64 * kt * tau_t_int * tau_t_int;
 
-        // Cell mass: proportional to total system mass
-        let w_cell = total_mass * config.cell_mass_factor;
+        // Barostat mass: W = (n_dof + 1) * kT * tau_p^2 * cell_mass_factor
+        // This follows the Martyna-Tobias-Klein (MTK) equations where the barostat
+        // mass determines the pressure coupling timescale. The (n_dof + 1) factor
+        // accounts for the additional cell degree of freedom.
+        let tau_p_int = config.tau_p * units::FS_TO_INTERNAL;
+        let w_cell = (n_dof + 1) as f64 * kt * tau_p_int * tau_p_int * config.cell_mass_factor;
 
         Self {
             config,

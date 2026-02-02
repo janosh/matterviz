@@ -483,7 +483,7 @@ def benchmark_nvt(
             print(f"{ts_sps:.1f} steps/s")
         else:
             print("    - torch-sim... (skipped, not installed)")
-            ts_time, ts_sps = float("nan"), float("nan")
+            ts_time, ts_sps = None, None
 
         # ASE
         print("    - ase...", end=" ", flush=True)
@@ -491,7 +491,6 @@ def benchmark_nvt(
         ase_sps = n_steps / ase_time
         print(f"{ase_sps:.1f} steps/s")
 
-        ferrox_vs_ts = ts_time / ferrox_time if HAS_TORCH_SIM else float("nan")
         results.append(
             BenchmarkResult(
                 system=name,
@@ -504,12 +503,19 @@ def benchmark_nvt(
                 torchsim_steps_per_sec=ts_sps,
                 ase_time=ase_time,
                 ase_steps_per_sec=ase_sps,
-                ferrox_vs_torchsim=ferrox_vs_ts,
-                ferrox_vs_ase=ase_time / ferrox_time,
+                ferrox_vs_torchsim=safe_divide(ts_time, ferrox_time),
+                ferrox_vs_ase=safe_divide(ase_time, ferrox_time),
             )
         )
 
     return results
+
+
+def format_value(val: float | None, fmt: str = ".1f", suffix: str = "") -> str:
+    """Format a numeric value, returning 'N/A' for None."""
+    if val is None:
+        return "N/A"
+    return f"{val:{fmt}}{suffix}"
 
 
 def print_results_table(results: list[BenchmarkResult], title: str) -> None:
@@ -523,11 +529,14 @@ def print_results_table(results: list[BenchmarkResult], title: str) -> None:
     )
 
     for row in results:
+        ts_sps = format_value(row.torchsim_steps_per_sec)
+        ase_sps = format_value(row.ase_steps_per_sec)
+        ferrox_sps = format_value(row.ferrox_steps_per_sec)
+        vs_ts = format_value(row.ferrox_vs_torchsim, ".2f", "x")
+        vs_ase = format_value(row.ferrox_vs_ase, ".2f", "x")
         print(
             f"| {row.system} | {row.n_atoms} | {row.n_steps} | "
-            f"{row.ferrox_steps_per_sec:.1f} | {row.torchsim_steps_per_sec:.1f} | "
-            f"{row.ase_steps_per_sec:.1f} | {row.ferrox_vs_torchsim:.2f}x | "
-            f"{row.ferrox_vs_ase:.2f}x |"
+            f"{ferrox_sps} | {ts_sps} | {ase_sps} | {vs_ts} | {vs_ase} |"
         )
 
 
@@ -598,11 +607,25 @@ def run_lj_benchmarks(
     for bench_type in ["fire", "nve", "nvt"]:
         results = all_results[bench_type]
         if results:
-            avg_vs_ts = sum(r["ferrox_vs_torchsim"] for r in results) / len(results)
-            avg_vs_ase = sum(r["ferrox_vs_ase"] for r in results) / len(results)
+            # Filter out None values before averaging
+            ts_ratios = [
+                r["ferrox_vs_torchsim"]
+                for r in results
+                if r["ferrox_vs_torchsim"] is not None
+            ]
+            ase_ratios = [
+                r["ferrox_vs_ase"] for r in results if r["ferrox_vs_ase"] is not None
+            ]
+
             print(f"\n{bench_type.upper()}:")
-            print(f"  Avg Ferrox vs TorchSim: {avg_vs_ts:.2f}x")
-            print(f"  Avg Ferrox vs ASE:      {avg_vs_ase:.2f}x")
+            if ts_ratios:
+                avg_vs_ts = sum(ts_ratios) / len(ts_ratios)
+                print(f"  Avg Ferrox vs TorchSim: {avg_vs_ts:.2f}x")
+            else:
+                print("  Avg Ferrox vs TorchSim: N/A (TorchSim not installed)")
+            if ase_ratios:
+                avg_vs_ase = sum(ase_ratios) / len(ase_ratios)
+                print(f"  Avg Ferrox vs ASE:      {avg_vs_ase:.2f}x")
 
     print("\n" + "=" * 70)
 

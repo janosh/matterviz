@@ -595,20 +595,32 @@ use nalgebra::Matrix3;
 ///     // Compute pair interaction
 /// });
 /// ```
+/// # Errors
+/// Returns `FerroxError::PbcWithoutCell` if any PBC direction is enabled but cell is None.
+/// Returns `FerroxError::SingularCell` if the cell matrix is non-invertible.
 pub fn for_each_pair<F>(
     positions: &[Vector3<f64>],
     cell: Option<&Matrix3<f64>>,
     pbc: [bool; 3],
     cutoff: f64,
     mut callback: F,
-) where
+) -> crate::error::Result<()>
+where
     F: FnMut(usize, usize, Vector3<f64>, f64),
 {
+    use crate::error::FerroxError;
     use crate::potentials::minimum_image;
+
+    // Guard: PBC requires a cell matrix
+    if cell.is_none() && pbc.iter().any(|&enabled| enabled) {
+        return Err(FerroxError::PbcWithoutCell);
+    }
 
     let n_atoms = positions.len();
     let cutoff_sq = cutoff * cutoff;
-    let inv_cell = cell.map(|c| c.try_inverse().expect("Cell matrix must be invertible"));
+    let inv_cell = cell
+        .map(|mat| mat.try_inverse().ok_or(FerroxError::SingularCell))
+        .transpose()?;
 
     // O(N²) iteration - for O(N) use build_neighbor_list() with CellList
     for idx_i in 0..n_atoms {
@@ -626,22 +638,28 @@ pub fn for_each_pair<F>(
             }
         }
     }
+
+    Ok(())
 }
 
 /// Count pairs within cutoff distance.
 ///
 /// Useful for estimating memory requirements.
+///
+/// # Errors
+/// Returns `FerroxError::PbcWithoutCell` if any PBC direction is enabled but cell is None.
+/// Returns `FerroxError::SingularCell` if the cell matrix is non-invertible.
 pub fn count_pairs(
     positions: &[Vector3<f64>],
     cell: Option<&Matrix3<f64>>,
     pbc: [bool; 3],
     cutoff: f64,
-) -> usize {
+) -> crate::error::Result<usize> {
     let mut count = 0;
     for_each_pair(positions, cell, pbc, cutoff, |_, _, _, _| {
         count += 1;
-    });
-    count
+    })?;
+    Ok(count)
 }
 
 #[cfg(test)]
@@ -1929,7 +1947,8 @@ mod tests {
             |idx_i, idx_j, _rij, dist| {
                 pairs.push((idx_i, idx_j, dist));
             },
-        );
+        )
+        .unwrap();
         assert_eq!(pairs.len(), 1);
         assert_eq!((pairs[0].0, pairs[0].1), (0, 1));
         assert!((pairs[0].2 - 2.0).abs() < 1e-10);
@@ -1942,15 +1961,18 @@ mod tests {
             Vector3::new(cutoff + 0.001, 0.0, 0.0), // Beyond - excluded from (0,2)
         ];
         // Pairs: (0,1) at cutoff, (1,2) at 0.001, (0,2) beyond → 2 pairs
-        assert_eq!(count_pairs(&positions3, None, [false; 3], cutoff), 2);
+        assert_eq!(
+            count_pairs(&positions3, None, [false; 3], cutoff).unwrap(),
+            2
+        );
     }
 
     #[test]
     fn test_count_pairs_edge_cases() {
         // Empty and single-atom: 0 pairs
-        assert_eq!(count_pairs(&[], None, [false; 3], 5.0), 0);
+        assert_eq!(count_pairs(&[], None, [false; 3], 5.0).unwrap(), 0);
         assert_eq!(
-            count_pairs(&[Vector3::new(0.0, 0.0, 0.0)], None, [false; 3], 5.0),
+            count_pairs(&[Vector3::new(0.0, 0.0, 0.0)], None, [false; 3], 5.0).unwrap(),
             0
         );
     }
@@ -1960,8 +1982,14 @@ mod tests {
         let cell = Matrix3::from_diagonal(&Vector3::new(5.0, 5.0, 5.0));
         let positions = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(4.5, 0.0, 0.0)];
         // Minimum image distance is 0.5 via PBC
-        assert_eq!(count_pairs(&positions, Some(&cell), [true; 3], 1.0), 1);
-        assert_eq!(count_pairs(&positions, Some(&cell), [false; 3], 1.0), 0);
+        assert_eq!(
+            count_pairs(&positions, Some(&cell), [true; 3], 1.0).unwrap(),
+            1
+        );
+        assert_eq!(
+            count_pairs(&positions, Some(&cell), [false; 3], 1.0).unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -1971,7 +1999,8 @@ mod tests {
         let mut rij_captured = Vector3::zeros();
         for_each_pair(&positions, None, [false; 3], 5.0, |_, _, rij, _| {
             rij_captured = rij
-        });
+        })
+        .unwrap();
         assert!((rij_captured - (positions[1] - positions[0])).norm() < 1e-10);
     }
 
@@ -1988,8 +2017,39 @@ mod tests {
         let cell = Matrix3::from_diagonal(&Vector3::new(a, a, a));
         let nn_dist = a / 2.0_f64.sqrt();
         assert_eq!(
-            count_pairs(&positions, Some(&cell), [true; 3], nn_dist * 1.01),
+            count_pairs(&positions, Some(&cell), [true; 3], nn_dist * 1.01).unwrap(),
             6
         );
+    }
+
+    #[test]
+    fn test_for_each_pair_pbc_without_cell_error() {
+        // Enabling PBC without a cell should return an error
+        let positions = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 0.0, 0.0)];
+        let result = for_each_pair(&positions, None, [true, false, false], 5.0, |_, _, _, _| {});
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            crate::error::FerroxError::PbcWithoutCell
+        ));
+    }
+
+    #[test]
+    fn test_for_each_pair_singular_cell_error() {
+        // Singular (non-invertible) cell should return an error
+        let positions = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 0.0, 0.0)];
+        let singular_cell = Matrix3::zeros(); // All zeros = singular
+        let result = for_each_pair(
+            &positions,
+            Some(&singular_cell),
+            [true; 3],
+            5.0,
+            |_, _, _, _| {},
+        );
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            crate::error::FerroxError::SingularCell
+        ));
     }
 }
