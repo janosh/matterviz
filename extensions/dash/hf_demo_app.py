@@ -38,7 +38,7 @@ DEMO_TRAJECTORY = {
             "structure": {
                 **DEMO_STRUCTURE,
                 "sites": [
-                    {**s, "abc": [s["abc"][0] + 0.02, s["abc"][1], s["abc"][2]]}
+                    {**s, "abc": [s["abc"][0] + 0.02, s["abc"][1], s["abc"][2]]}  # type: ignore[arg-type,call-overload]
                     for s in DEMO_STRUCTURE["sites"]
                 ],
             },
