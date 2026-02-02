@@ -20,7 +20,7 @@ macro_rules! impl_display_via_as_str {
 use crate::cell_ops::perpendicular_distances;
 use crate::error::{FerroxError, Result, check_site_bounds, check_sites_different};
 use crate::oxidation::{ChargeStateGuess, guess_defect_charge_states};
-use crate::pbc::wrap_frac_coords;
+use crate::pbc::wrap_frac_coords_pbc;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::pbc::{count_atoms_at_distance, min_distance_to_atoms};
 use crate::species::{SiteOccupancy, Species};
@@ -369,8 +369,8 @@ pub fn create_interstitial(
     position: Vector3<f64>,
     species: Species,
 ) -> Result<DefectStructure> {
-    // Append new site to the structure, wrapping coords to [0,1) for normalization
-    let wrapped_position = wrap_frac_coords(&position);
+    // Append new site to the structure, wrapping coords only along periodic axes
+    let wrapped_position = wrap_frac_coords_pbc(&position, structure.lattice.pbc);
     let mut new_occupancies = structure.site_occupancies.clone();
     let mut new_coords = structure.frac_coords.clone();
 
@@ -607,9 +607,9 @@ pub fn find_voronoi_interstitials(
             continue;
         }
 
-        // Map to unit cell [0, 1)
+        // Map to unit cell [0, 1) only along periodic axes
         let frac = lattice.get_fractional_coord(&cart_pos);
-        let wrapped_frac = wrap_frac_coords(&frac);
+        let wrapped_frac = wrap_frac_coords_pbc(&frac, pbc);
         let wrapped_cart = lattice.get_cartesian_coord(&wrapped_frac);
 
         // Check if this wrapped position is a duplicate

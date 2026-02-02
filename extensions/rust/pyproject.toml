@@ -51,11 +51,11 @@ ignore = [
   "C408",    # unnecessary-collection-call
   "COM812",
   "D205",    # blank-line-after-summary
+  "EM101",
   "EM102",
   "FIX002",
   "G004",    # logging uses f-string
   "INP001",
-  "ISC001",
   "N806",    # non-lowercase-variable-in-function
   "PERF203", # try-except-in-loop
   "PLC0414", # useless-import-alias
@@ -66,14 +66,10 @@ ignore = [
   "PTH",
   "S108",
   "S112",    # try/except continue: consider logging the exception
-  "S310",
-  "S311",
   "S603",    # subprocess-without-shell-equals-true
   "S607",    # start-process-with-partial-path
   "T201",
-  "TD",
   "TRY003",
-  "TRY301",
 ]
 pydocstyle.convention = "google"
 isort.split-on-trailing-comma = false

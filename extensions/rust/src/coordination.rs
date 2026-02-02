@@ -138,6 +138,7 @@ pub fn get_coordination_number(structure: &Structure, site_idx: usize, cutoff: f
     }
     let config = NeighborListConfig {
         cutoff,
+        self_interaction: false,
         numerical_tol: NEIGHBOR_TOL,
         ..Default::default()
     };
@@ -165,6 +166,7 @@ pub fn get_local_environment(
 
     let config = NeighborListConfig {
         cutoff,
+        self_interaction: false,
         numerical_tol: NEIGHBOR_TOL,
         ..Default::default()
     };
@@ -207,6 +209,7 @@ pub fn get_neighbors(
 
     let config = NeighborListConfig {
         cutoff,
+        self_interaction: false,
         numerical_tol: NEIGHBOR_TOL,
         ..Default::default()
     };
