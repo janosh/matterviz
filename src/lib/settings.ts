@@ -2,6 +2,7 @@
 // Used by both main package and VSCode extension
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
+import type { HullFaceColorMode } from '$lib/convex-hull/types'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
@@ -93,6 +94,7 @@ type ConvexHullWith3DType = ConvexHullCommonType & {
   show_hull_faces: SettingType<boolean>
   hull_face_color: SettingType<string>
   hull_face_opacity: SettingType<number>
+  hull_face_color_mode: SettingType<HullFaceColorMode>
 }
 
 export interface SettingsConfig {
@@ -1231,6 +1233,17 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         minimum: 0,
         maximum: 1,
       },
+      hull_face_color_mode: {
+        value: `uniform`,
+        description:
+          `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
+        enum: {
+          uniform: `Uniform`,
+          formation_energy: `Formation energy`,
+          dominant_element: `Dominant element`,
+          facet_index: `Facet index`,
+        },
+      },
       fullscreen: {
         value: false,
         description: `Start in fullscreen for 3D convex hull`,
@@ -1312,6 +1325,17 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         description: `Opacity for hull faces in 4D convex hull (0-1)`,
         minimum: 0,
         maximum: 1,
+      },
+      hull_face_color_mode: {
+        value: `dominant_element`,
+        description:
+          `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
+        enum: {
+          uniform: `Uniform`,
+          formation_energy: `Formation energy`,
+          dominant_element: `Dominant element`,
+          facet_index: `Facet index`,
+        },
       },
       max_hull_dist_show_phases: {
         value: 0.1,
