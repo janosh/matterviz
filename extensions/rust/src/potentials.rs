@@ -14,12 +14,6 @@ use std::collections::HashMap;
 
 // === Common Types ===
 
-/// Key for element pair (always ordered: min first for symmetry).
-#[inline]
-pub fn pair_key(z1: u8, z2: u8) -> (u8, u8) {
-    if z1 <= z2 { (z1, z2) } else { (z2, z1) }
-}
-
 /// Generic pair parameter storage for element-specific interactions.
 #[derive(Debug, Clone)]
 pub struct PairPotential<P: Clone> {
@@ -43,17 +37,14 @@ impl<P: Clone> PairPotential<P> {
 
     /// Get parameters for a specific element pair.
     pub fn get(&self, z1: u8, z2: u8) -> &P {
-        self.params.get(&pair_key(z1, z2)).unwrap_or(&self.default)
+        let key = if z1 <= z2 { (z1, z2) } else { (z2, z1) };
+        self.params.get(&key).unwrap_or(&self.default)
     }
 
     /// Set parameters for a specific element pair.
     pub fn set(&mut self, z1: u8, z2: u8, params: P) {
-        self.params.insert(pair_key(z1, z2), params);
-    }
-
-    /// Get the default parameters.
-    pub fn default_params(&self) -> &P {
-        &self.default
+        let key = if z1 <= z2 { (z1, z2) } else { (z2, z1) };
+        self.params.insert(key, params);
     }
 }
 
@@ -296,11 +287,6 @@ impl LJParams {
     /// Create new LJ parameters.
     pub fn new(sigma: f64, epsilon: f64) -> Self {
         Self { sigma, epsilon }
-    }
-
-    /// Parameters for Argon.
-    pub fn argon() -> Self {
-        Self::default()
     }
 }
 
