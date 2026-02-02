@@ -8,8 +8,8 @@ use crate::composition::Composition;
 
 use super::helpers::parse_comp;
 
-/// Convert a Composition to a Python dict.
-fn comp_to_dict(py: Python<'_>, comp: &Composition) -> PyResult<Py<PyDict>> {
+/// Convert a Composition to a simple element dict (element -> amount).
+fn comp_to_element_dict(py: Python<'_>, comp: &Composition) -> PyResult<Py<PyDict>> {
     let dict = PyDict::new(py);
     for (species, &amount) in comp.iter() {
         dict.set_item(species.element.symbol(), amount)?;
@@ -17,10 +17,35 @@ fn comp_to_dict(py: Python<'_>, comp: &Composition) -> PyResult<Py<PyDict>> {
     Ok(dict.unbind())
 }
 
-/// Parse a composition formula.
+/// Convert a Composition to a rich metadata dict.
+fn comp_to_metadata_dict(py: Python<'_>, comp: &Composition) -> PyResult<Py<PyDict>> {
+    let dict = PyDict::new(py);
+
+    // Formula representations
+    dict.set_item("formula", comp.formula())?;
+    dict.set_item("reduced_formula", comp.reduced_composition().formula())?;
+    dict.set_item("formula_anonymous", comp.anonymous_formula())?;
+    dict.set_item("formula_hill", comp.hill_formula())?;
+    dict.set_item("chemical_system", comp.chemical_system())?;
+
+    // Counts
+    dict.set_item("num_atoms", comp.num_atoms())?;
+    dict.set_item("num_elements", comp.num_elements())?;
+
+    // Species dict
+    let species_dict = comp_to_element_dict(py, comp)?;
+    dict.set_item("species", species_dict)?;
+
+    // Physical properties
+    dict.set_item("weight", comp.weight())?;
+
+    Ok(dict.unbind())
+}
+
+/// Parse a composition formula and return rich metadata.
 #[pyfunction]
 fn parse_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
-    comp_to_dict(py, &parse_comp(formula)?)
+    comp_to_metadata_dict(py, &parse_comp(formula)?)
 }
 
 /// Get the atomic fraction of an element.
@@ -44,13 +69,13 @@ fn get_wt_fraction(formula: &str, element: &str) -> PyResult<f64> {
 /// Get the reduced composition.
 #[pyfunction]
 fn reduced_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
-    comp_to_dict(py, &parse_comp(formula)?.reduced_composition())
+    comp_to_element_dict(py, &parse_comp(formula)?.reduced_composition())
 }
 
 /// Get the fractional composition.
 #[pyfunction]
 fn fractional_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
-    comp_to_dict(py, &parse_comp(formula)?.fractional_composition())
+    comp_to_element_dict(py, &parse_comp(formula)?.fractional_composition())
 }
 
 /// Check if a composition is charge balanced.
@@ -111,7 +136,7 @@ fn remap_elements(
             .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {to_sym}")))?;
         elem_map.insert(from_elem, to_elem);
     }
-    comp_to_dict(py, &comp.remap_elements(&elem_map))
+    comp_to_element_dict(py, &comp.remap_elements(&elem_map))
 }
 
 /// Get the reduction factor of a formula.

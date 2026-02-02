@@ -197,13 +197,7 @@ fn distort_bonds(
 
     let list = PyList::empty(py);
     for result in results {
-        let dict = PyDict::new(py);
-        let struct_json = structure_to_pymatgen_json(&result.structure);
-        dict.set_item("structure", json_to_pydict(py, &struct_json)?)?;
-        dict.set_item("distortion_type", result.distortion_type)?;
-        dict.set_item("distortion_factor", result.distortion_factor)?;
-        dict.set_item("center_site_idx", result.center_site_idx)?;
-        list.append(dict)?;
+        list.append(distortion_to_pydict(py, &result)?)?;
     }
     Ok(list.unbind())
 }

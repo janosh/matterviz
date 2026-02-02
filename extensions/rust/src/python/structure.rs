@@ -300,11 +300,30 @@ fn get_sorted_structure(
 #[pyfunction]
 fn get_structure_metadata(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
+    let comp = struc.composition();
     let dict = PyDict::new(py);
-    dict.set_item("num_sites", struc.num_sites())?;
-    dict.set_item("composition", struc.composition().formula())?;
+
+    // Formula representations
+    dict.set_item("formula", comp.formula())?;
+    dict.set_item("formula_anonymous", comp.anonymous_formula())?;
+    dict.set_item("formula_hill", comp.hill_formula())?;
+    dict.set_item("chemical_system", comp.chemical_system())?;
+
+    // Element info
+    let elements: Vec<String> = struc.species_strings();
+    let unique_elements: std::collections::HashSet<_> = elements.iter().cloned().collect();
+    let mut sorted_elements: Vec<_> = unique_elements.into_iter().collect();
+    sorted_elements.sort();
+    dict.set_item("elements", sorted_elements.clone())?;
+    dict.set_item("n_elements", sorted_elements.len())?;
+    dict.set_item("n_sites", struc.num_sites())?;
+    dict.set_item("is_ordered", struc.is_ordered())?;
+
+    // Physical properties
     dict.set_item("volume", struc.volume())?;
     dict.set_item("density", struc.density())?;
+    dict.set_item("mass", comp.weight())?;
+
     Ok(dict.unbind())
 }
 

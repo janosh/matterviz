@@ -24,11 +24,10 @@ fn validate_rdf_params(r_max: f64, n_bins: usize) -> PyResult<()> {
 #[pyfunction]
 #[pyo3(signature = (structure, r_max = 10.0, n_bins = 100))]
 fn compute_rdf(
-    py: Python<'_>,
     structure: StructureJson,
     r_max: f64,
     n_bins: usize,
-) -> PyResult<Py<PyDict>> {
+) -> PyResult<(Vec<f64>, Vec<f64>)> {
     validate_rdf_params(r_max, n_bins)?;
     let struc = parse_struct(&structure)?;
 
@@ -39,24 +38,19 @@ fn compute_rdf(
     };
 
     let result = rdf::compute_rdf(&struc, &options);
-
-    let dict = PyDict::new(py);
-    dict.set_item("radii", result.radii.clone())?;
-    dict.set_item("g_of_r", result.g_of_r.clone())?;
-    Ok(dict.unbind())
+    Ok((result.radii, result.g_of_r))
 }
 
-/// Compute the element-specific RDF.
+/// Compute the element-specific RDF. Returns (radii, g_of_r) tuple.
 #[pyfunction]
 #[pyo3(signature = (structure, element1, element2, r_max = 10.0, n_bins = 100))]
 fn compute_element_rdf(
-    py: Python<'_>,
     structure: StructureJson,
     element1: &str,
     element2: &str,
     r_max: f64,
     n_bins: usize,
-) -> PyResult<Py<PyDict>> {
+) -> PyResult<(Vec<f64>, Vec<f64>)> {
     validate_rdf_params(r_max, n_bins)?;
     let struc = parse_struct(&structure)?;
 
@@ -74,14 +68,10 @@ fn compute_element_rdf(
     };
 
     let result = rdf::compute_element_rdf(&struc, elem1, elem2, &options);
-
-    let dict = PyDict::new(py);
-    dict.set_item("radii", result.radii.clone())?;
-    dict.set_item("g_of_r", result.g_of_r.clone())?;
-    Ok(dict.unbind())
+    Ok((result.radii, result.g_of_r))
 }
 
-/// Compute RDFs for all element pairs.
+/// Compute RDFs for all element pairs. Returns dict keyed by element pair.
 #[pyfunction]
 #[pyo3(signature = (structure, r_max = 10.0, n_bins = 100))]
 fn compute_all_element_rdfs(
@@ -101,13 +91,12 @@ fn compute_all_element_rdfs(
 
     let results = rdf::compute_all_element_rdfs(&struc, &options);
 
+    // Return a dict keyed by "Element1-Element2" with (radii, g_of_r) tuples as values
     let dict = PyDict::new(py);
     for (elem1, elem2, result) in results {
         let pair_key = format!("{}-{}", elem1.symbol(), elem2.symbol());
-        let pair_dict = PyDict::new(py);
-        pair_dict.set_item("radii", result.radii.clone())?;
-        pair_dict.set_item("g_of_r", result.g_of_r.clone())?;
-        dict.set_item(pair_key, pair_dict)?;
+        let pair_value: (Vec<f64>, Vec<f64>) = (result.radii, result.g_of_r);
+        dict.set_item(pair_key, pair_value)?;
     }
     Ok(dict.unbind())
 }

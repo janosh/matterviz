@@ -81,6 +81,13 @@ fn to_pymatgen_json(structure: StructureJson) -> PyResult<String> {
     Ok(structure_to_pymatgen_json(&struc))
 }
 
+/// Alias for to_pymatgen_json for convenience.
+#[pyfunction]
+fn to_json(structure: StructureJson) -> PyResult<String> {
+    let struc = parse_struct(&structure)?;
+    Ok(structure_to_pymatgen_json(&struc))
+}
+
 // === Molecule I/O Functions ===
 
 /// Parse a molecule from pymatgen Molecule JSON format.
@@ -419,6 +426,7 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(to_cif, &submod)?)?;
     submod.add_function(wrap_pyfunction!(to_extxyz, &submod)?)?;
     submod.add_function(wrap_pyfunction!(to_pymatgen_json, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(to_json, &submod)?)?;
     submod.add_function(wrap_pyfunction!(parse_molecule_json, &submod)?)?;
     submod.add_function(wrap_pyfunction!(molecule_to_json, &submod)?)?;
     submod.add_function(wrap_pyfunction!(molecule_to_xyz, &submod)?)?;

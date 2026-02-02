@@ -144,10 +144,61 @@ fn get_symmetry_dataset(
 
     let dict = PyDict::new(py);
     dict.set_item("spacegroup_number", dataset.number)?;
+    dict.set_item("spacegroup_symbol", &dataset.hm_symbol)?;
     dict.set_item("hall_number", dataset.hall_number)?;
     dict.set_item("hm_symbol", &dataset.hm_symbol)?;
     dict.set_item("pearson_symbol", &dataset.pearson_symbol)?;
-    dict.set_item("n_operations", dataset.operations.len())?;
+    dict.set_item("num_operations", dataset.operations.len())?;
+
+    // Derive crystal system from spacegroup number
+    let crystal_system = if dataset.number <= 2 {
+        "triclinic"
+    } else if dataset.number <= 15 {
+        "monoclinic"
+    } else if dataset.number <= 74 {
+        "orthorhombic"
+    } else if dataset.number <= 142 {
+        "tetragonal"
+    } else if dataset.number <= 167 {
+        "trigonal"
+    } else if dataset.number <= 194 {
+        "hexagonal"
+    } else {
+        "cubic"
+    };
+    dict.set_item("crystal_system", crystal_system)?;
+
+    // Add wyckoff letters
+    let wyckoff = struc
+        .get_wyckoff_letters(symprec)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let wyckoff_strs: Vec<String> = wyckoff.into_iter().map(|c| c.to_string()).collect();
+    dict.set_item("wyckoff_letters", wyckoff_strs)?;
+
+    // Add equivalent sites
+    let equiv = struc
+        .get_equivalent_sites(symprec)
+        .map_err(|err: crate::FerroxError| PyValueError::new_err(err.to_string()))?;
+    dict.set_item("equivalent_sites", equiv)?;
+
+    // Placeholder for site symmetry symbols (not available in current spglib wrapper)
+    let site_syms: Vec<&str> = (0..struc.num_sites()).map(|_| "").collect();
+    dict.set_item("site_symmetry_symbols", site_syms)?;
+
+    // Add symmetry operations as list of (rotation, translation) tuples
+    // Convert from Moyo Operations to arrays
+    let ops: Vec<(Vec<Vec<i32>>, Vec<f64>)> = dataset
+        .operations
+        .iter()
+        .map(|op| {
+            let rot_vec: Vec<Vec<i32>> = (0..3)
+                .map(|i| (0..3).map(|j| op.rotation[(i, j)]).collect())
+                .collect();
+            let trans_vec = vec![op.translation.x, op.translation.y, op.translation.z];
+            (rot_vec, trans_vec)
+        })
+        .collect();
+    dict.set_item("symmetry_operations", ops)?;
 
     Ok(dict.unbind())
 }

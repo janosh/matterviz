@@ -39,9 +39,9 @@ fn compute_xrd(
     let pattern = xrd::compute_xrd(&struc, &config);
 
     let dict = PyDict::new(py);
-    dict.set_item("two_theta", pattern.two_theta.clone())?;
-    dict.set_item("intensities", pattern.intensities.clone())?;
-    dict.set_item("d_spacings", pattern.d_spacings.clone())?;
+    dict.set_item("two_theta", &pattern.two_theta)?;
+    dict.set_item("intensities", &pattern.intensities)?;
+    dict.set_item("d_spacings", &pattern.d_spacings)?;
 
     // Convert HklInfo to simple arrays
     let hkls: Vec<Vec<[i32; 3]>> = pattern

@@ -6,27 +6,36 @@ use pyo3::types::PyDict;
 use super::helpers::{StructureJson, check_site_idx, check_site_pair, parse_struct};
 
 /// Get the neighbor list for a structure.
+/// Returns (center_indices, neighbor_indices, images, distances) as separate lists.
 #[pyfunction]
 fn get_neighbor_list(
-    py: Python<'_>,
     structure: StructureJson,
     cutoff: f64,
-) -> PyResult<Vec<Py<PyDict>>> {
+) -> PyResult<(Vec<usize>, Vec<usize>, Vec<[i32; 3]>, Vec<f64>)> {
+    if cutoff < 0.0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "cutoff must be non-negative",
+        ));
+    }
+
     let struc = parse_struct(&structure)?;
     let neighbors = struc.get_all_neighbors(cutoff);
 
-    let mut result = Vec::new();
+    let mut centers = Vec::new();
+    let mut neighbor_indices = Vec::new();
+    let mut images = Vec::new();
+    let mut distances = Vec::new();
+
     for (site_idx, site_neighbors) in neighbors.into_iter().enumerate() {
         for (neighbor_idx, distance, image) in site_neighbors {
-            let dict = PyDict::new(py);
-            dict.set_item("site_idx", site_idx)?;
-            dict.set_item("neighbor_idx", neighbor_idx)?;
-            dict.set_item("distance", distance)?;
-            dict.set_item("image", image)?;
-            result.push(dict.unbind());
+            centers.push(site_idx);
+            neighbor_indices.push(neighbor_idx);
+            images.push(image);
+            distances.push(distance);
         }
     }
-    Ok(result)
+
+    Ok((centers, neighbor_indices, images, distances))
 }
 
 /// Get the distance between two sites.
