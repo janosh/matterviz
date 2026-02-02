@@ -11,10 +11,12 @@ without Python callback overhead since all implementations are native.
 
 import argparse
 import json
+import math
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import ferrox
 import numpy as np
@@ -57,6 +59,21 @@ SIGMA = 3.4  # Angstrom
 EPSILON = 0.0103  # eV
 CUTOFF = 10.0  # Angstrom
 KB_EV = 8.617333262e-5  # Boltzmann constant in eV/K
+
+
+def sanitize_nan(obj: Any) -> Any:
+    """Recursively convert NaN floats to None for JSON compatibility.
+
+    Standard JSON doesn't support NaN, so strict parsers will fail.
+    This converts NaN values to null (None in Python).
+    """
+    if isinstance(obj, float) and math.isnan(obj):
+        return None
+    if isinstance(obj, dict):
+        return {key: sanitize_nan(val) for key, val in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_nan(item) for item in obj]
+    return obj
 
 
 @dataclass
@@ -560,10 +577,10 @@ def run_lj_benchmarks(
         "lj_params": {"sigma": SIGMA, "epsilon": EPSILON, "cutoff": CUTOFF},
     }
 
-    # Save JSON if requested
+    # Save JSON if requested (sanitize NaN values for strict JSON compliance)
     if output_file:
         with open(output_file, "w") as f:
-            json.dump(all_results, f, indent=2)
+            json.dump(sanitize_nan(all_results), f, indent=2)
         print(f"\nResults saved to: {output_file}")
 
     # Print summary
