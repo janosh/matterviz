@@ -728,24 +728,29 @@
     // Sort by depth (back to front)
     triangles.sort((a, b) => a.avg_depth - b.avg_depth)
 
-    // Determine alpha based on formation energy (more negative = more opaque)
-    // Only used in uniform mode; other modes use fixed opacity
-    const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
-    const min_fe = Math.min(0, ...formation_energies)
-
-    const norm_alpha = (w: number) => {
-      const t = Math.max(0, Math.min(1, (0 - w) / Math.max(1e-6, 0 - min_fe)))
-      return t * hull_face_opacity
+    // Lazy computation for uniform mode: normalize alpha by formation energy
+    let norm_alpha: ((w: number) => number) | null = null
+    if (hull_face_color_mode === `uniform`) {
+      const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
+      const min_fe = Math.min(0, ...formation_energies)
+      norm_alpha = (w: number) => {
+        const t = Math.max(0, Math.min(1, (0 - w) / Math.max(1e-6, 0 - min_fe)))
+        return t * hull_face_opacity
+      }
     }
 
-    // Build energy color scale for formation_energy mode
-    const all_avg_w = triangles.map((tri) => tri.avg_w)
-    const min_w = Math.min(...all_avg_w)
-    const energy_face_scale = helpers.get_energy_color_scale(
-      `energy`,
-      color_scale,
-      all_avg_w.map((w) => ({ e_above_hull: w - min_w })), // Normalize to 0-based
-    )
+    // Lazy computation for formation_energy mode
+    let energy_face_scale: ((val: number) => string) | null = null
+    let min_w = 0
+    if (hull_face_color_mode === `formation_energy`) {
+      const all_avg_w = triangles.map((tri) => tri.avg_w)
+      min_w = Math.min(...all_avg_w)
+      energy_face_scale = helpers.get_energy_color_scale(
+        `energy`,
+        color_scale,
+        all_avg_w.map((w) => ({ e_above_hull: w - min_w })), // Normalize to 0-based
+      )
+    }
 
     // Helper to get face color based on mode
     const get_face_color = (tri: TriangleFace): string => {
@@ -753,11 +758,7 @@
         return hull_face_color
       }
       if (hull_face_color_mode === `formation_energy`) {
-        // Use energy scale on avg_w
-        if (energy_face_scale) {
-          return energy_face_scale(tri.avg_w - min_w)
-        }
-        return hull_face_color
+        return energy_face_scale!(tri.avg_w - min_w)
       }
       if (hull_face_color_mode === `dominant_element`) {
         // Find element with highest fraction
@@ -776,7 +777,7 @@
       const [v0, v1, v2] = tri.vertices
       // Uniform mode uses variable opacity; other modes use fixed opacity
       const alpha = hull_face_color_mode === `uniform`
-        ? norm_alpha(tri.avg_w)
+        ? norm_alpha!(tri.avg_w)
         : hull_face_opacity
       const face_color = get_face_color(tri)
 
@@ -790,11 +791,8 @@
       ctx.fillStyle = add_alpha(face_color, alpha)
       ctx.fill()
 
-      // Edge lines more pronounced with higher opacity and thicker width
-      ctx.strokeStyle = add_alpha(
-        face_color,
-        Math.min(0.4, hull_face_opacity * 4),
-      )
+      // Edge lines more pronounced with higher opacity
+      ctx.strokeStyle = add_alpha(face_color, Math.min(0.4, alpha * 4))
       ctx.lineWidth = 1
       ctx.stroke()
       ctx.restore()

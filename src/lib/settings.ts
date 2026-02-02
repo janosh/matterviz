@@ -2,6 +2,7 @@
 // Used by both main package and VSCode extension
 
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
+import type { HullFaceColorMode } from '$lib/convex-hull/types'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
@@ -93,9 +94,7 @@ type ConvexHullWith3DType = ConvexHullCommonType & {
   show_hull_faces: SettingType<boolean>
   hull_face_color: SettingType<string>
   hull_face_opacity: SettingType<number>
-  hull_face_color_mode: SettingType<
-    `uniform` | `formation_energy` | `dominant_element` | `facet_index`
-  >
+  hull_face_color_mode: SettingType<HullFaceColorMode>
 }
 
 export interface SettingsConfig {

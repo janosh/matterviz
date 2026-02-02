@@ -23,21 +23,20 @@
     center_y: number
   }
 
-  // Display labels for face color modes
-  const FACE_COLOR_MODE_LABELS: Record<HullFaceColorMode, string> = {
-    uniform: `Uniform`,
-    formation_energy: `Energy`,
-    dominant_element: `Element`,
-    facet_index: `Index`,
-  }
-
-  // Tooltips for face color modes
-  const FACE_COLOR_MODE_TIPS: Record<HullFaceColorMode, string> = {
-    uniform: `Single uniform color for all faces`,
-    formation_energy: `Color by average formation energy of face vertices`,
-    dominant_element: `Color by element with highest concentration at face centroid`,
-    facet_index: `Distinct categorical color per facet`,
-  }
+  // Face color mode display labels and tooltips
+  const FACE_COLOR_MODES: Record<HullFaceColorMode, { label: string; tip: string }> =
+    {
+      uniform: { label: `Uniform`, tip: `Single uniform color for all faces` },
+      formation_energy: {
+        label: `Energy`,
+        tip: `Color by average formation energy of face vertices`,
+      },
+      dominant_element: {
+        label: `Element`,
+        tip: `Color by element with highest concentration at face centroid`,
+      },
+      facet_index: { label: `Index`, tip: `Distinct categorical color per facet` },
+    }
 
   let {
     color_mode = $bindable(`stability`),
@@ -52,7 +51,7 @@
     on_hull_face_color_change,
     hull_face_opacity = $bindable(0.03),
     on_hull_face_opacity_change,
-    hull_face_color_mode = `uniform` as HullFaceColorMode,
+    hull_face_color_mode = `dominant_element` as HullFaceColorMode,
     on_hull_face_color_mode_change,
     max_hull_dist_show_phases = $bindable(0),
     max_hull_dist_show_labels = $bindable(0.1),
@@ -355,9 +354,9 @@
           <button
             class="toggle-btn face-mode-btn {hull_face_color_mode === mode ? `active` : ``}"
             onclick={() => on_hull_face_color_mode_change?.(mode)}
-            {@attach tooltip({ content: FACE_COLOR_MODE_TIPS[mode] })}
+            {@attach tooltip({ content: FACE_COLOR_MODES[mode].tip })}
           >
-            {FACE_COLOR_MODE_LABELS[mode]}
+            {FACE_COLOR_MODES[mode].label}
           </button>
         {/each}
       </div>

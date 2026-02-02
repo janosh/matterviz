@@ -646,23 +646,29 @@
   function draw_convex_hull_faces(): void {
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
-    // Normalize alpha by formation energy: 0 eV -> 0 alpha, min E_form -> hull_face_opacity
-    // Only used in uniform mode; other modes use fixed opacity
-    const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
-    const min_fe = Math.min(0, ...formation_energies)
-    const norm_alpha = (z: number) => {
-      const t = Math.max(0, Math.min(1, (0 - z) / Math.max(1e-6, 0 - min_fe)))
-      return t * hull_face_opacity
+    // Lazy computation for uniform mode: normalize alpha by formation energy
+    let norm_alpha: ((z: number) => number) | null = null
+    if (hull_face_color_mode === `uniform`) {
+      const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
+      const min_fe = Math.min(0, ...formation_energies)
+      norm_alpha = (z: number) => {
+        const t = Math.max(0, Math.min(1, (0 - z) / Math.max(1e-6, 0 - min_fe)))
+        return t * hull_face_opacity
+      }
     }
 
-    // Build energy color scale for formation_energy mode
-    const all_z = hull_faces.flatMap((tri) => tri.vertices.map((v) => v.z))
-    const min_z = Math.min(...all_z)
-    const energy_face_scale = helpers.get_energy_color_scale(
-      `energy`,
-      color_scale,
-      all_z.map((z) => ({ e_above_hull: z - min_z })), // Normalize to 0-based
-    )
+    // Lazy computation for formation_energy mode
+    let energy_face_scale: ((val: number) => string) | null = null
+    let min_z = 0
+    if (hull_face_color_mode === `formation_energy`) {
+      const all_z = hull_faces.flatMap((tri) => tri.vertices.map((v) => v.z))
+      min_z = Math.min(...all_z)
+      energy_face_scale = helpers.get_energy_color_scale(
+        `energy`,
+        color_scale,
+        all_z.map((z) => ({ e_above_hull: z - min_z })), // Normalize to 0-based
+      )
+    }
 
     // Helper to get face color based on mode
     const get_face_color = (
@@ -672,32 +678,17 @@
       if (hull_face_color_mode === `uniform`) {
         return hull_face_color
       }
-      const avg_z = (tri.vertices[0].z + tri.vertices[1].z + tri.vertices[2].z) / 3
       if (hull_face_color_mode === `formation_energy`) {
-        if (energy_face_scale) {
-          return energy_face_scale(avg_z - min_z)
-        }
-        return hull_face_color
+        const avg_z = (tri.vertices[0].z + tri.vertices[1].z + tri.vertices[2].z) / 3
+        return energy_face_scale!(avg_z - min_z)
       }
       if (hull_face_color_mode === `dominant_element`) {
-        // For ternary, we need to get barycentric coordinates from the centroid
-        // The centroid x,y are in ternary 2D space, we need to find which element dominates
-        // Elements are at vertices: elements[0] at (1,0,0), elements[1] at (0,1,0), elements[2] at (0,0,1)
-        // Centroid in barycentric is just the average of the three vertex barycentric coords
-        // For simplicity, we can use inverse distance to triangle vertices
-        const cx = tri.centroid.x
-        const cy = tri.centroid.y
-        // Triangle vertices in 2D ternary space
-        const [t0, t1, t2] = TRIANGLE_VERTICES
-        const d0 = Math.hypot(cx - t0[0], cy - t0[1])
-        const d1 = Math.hypot(cx - t1[0], cy - t1[1])
-        const d2 = Math.hypot(cx - t2[0], cy - t2[1])
-        // Find closest element vertex
-        const min_dist = Math.min(d0, d1, d2)
-        let el_idx = 0
-        if (min_dist === d1) el_idx = 1
-        else if (min_dist === d2) el_idx = 2
-        const el = elements[el_idx]
+        // Find element vertex closest to face centroid in 2D ternary space
+        const { x: cx, y: cy } = tri.centroid
+        const dists = TRIANGLE_VERTICES.map(([tx, ty]) =>
+          Math.hypot(cx - tx, cy - ty)
+        )
+        const el = elements[dists.indexOf(Math.min(...dists))]
         return element_colors[el] ?? `#888888`
       }
       if (hull_face_color_mode === `facet_index`) {
@@ -732,9 +723,9 @@
       // For other modes, use fixed opacity
       if (hull_face_color_mode === `uniform`) {
         // Build per-face linear gradient in screen space matching linear variation of formation energy
-        const a1 = norm_alpha(p1.z)
-        const a2 = norm_alpha(p2.z)
-        const a3 = norm_alpha(p3.z)
+        const a1 = norm_alpha!(p1.z)
+        const a2 = norm_alpha!(p2.z)
+        const a3 = norm_alpha!(p3.z)
 
         // Solve a*x + b*y + c = alpha at the three projected vertices
         const x1 = proj1.x, y1 = proj1.y
@@ -750,23 +741,28 @@
             det
         }
 
+        // Helper to draw filled+stroked triangle (ctx guaranteed non-null by early return)
+        const draw_tri = (fill: string | CanvasGradient, stroke_alpha: number) => {
+          ctx!.save()
+          ctx!.beginPath()
+          ctx!.moveTo(proj1.x, proj1.y)
+          ctx!.lineTo(proj2.x, proj2.y)
+          ctx!.lineTo(proj3.x, proj3.y)
+          ctx!.closePath()
+          ctx!.fillStyle = fill
+          ctx!.fill()
+          ctx!.strokeStyle = add_alpha(face_color, Math.min(0.6, stroke_alpha))
+          ctx!.lineWidth = 1
+          ctx!.stroke()
+          ctx!.restore()
+        }
+
         // Gradient direction is the screen-space gradient of alpha
         const mag = Math.hypot(coef_a, coef_b)
-        // Fallback: uniform if nearly flat
         if (mag < 1e-9) {
-          ctx.save()
-          ctx.beginPath()
-          ctx.moveTo(proj1.x, proj1.y)
-          ctx.lineTo(proj2.x, proj2.y)
-          ctx.lineTo(proj3.x, proj3.y)
-          ctx.closePath()
+          // Fallback: uniform fill if nearly flat
           const avg_alpha = (a1 + a2 + a3) / 3
-          ctx.fillStyle = add_alpha(face_color, avg_alpha)
-          ctx.fill()
-          ctx.strokeStyle = add_alpha(face_color, Math.min(0.6, avg_alpha * 3))
-          ctx.lineWidth = 1
-          ctx.stroke()
-          ctx.restore()
+          draw_tri(add_alpha(face_color, avg_alpha), avg_alpha * 3)
         } else {
           const vx = coef_a / mag
           const vy = coef_b / mag
@@ -777,30 +773,19 @@
           const alpha_max = Math.max(a1, a2, a3)
           const s_min = (alpha_min - alpha_c) / mag
           const s_max = (alpha_max - alpha_c) / mag
-          const gx0 = cx + vx * s_min
-          const gy0 = cy + vy * s_min
-          const gx1 = cx + vx * s_max
-          const gy1 = cy + vy * s_max
 
-          const grad = ctx.createLinearGradient(gx0, gy0, gx1, gy1)
+          const grad = ctx.createLinearGradient(
+            cx + vx * s_min,
+            cy + vy * s_min,
+            cx + vx * s_max,
+            cy + vy * s_max,
+          )
           grad.addColorStop(0, add_alpha(face_color, alpha_min))
           grad.addColorStop(1, add_alpha(face_color, alpha_max))
-
-          ctx.save()
-          ctx.beginPath()
-          ctx.moveTo(proj1.x, proj1.y)
-          ctx.lineTo(proj2.x, proj2.y)
-          ctx.lineTo(proj3.x, proj3.y)
-          ctx.closePath()
-          ctx.fillStyle = grad
-          ctx.fill()
-          ctx.strokeStyle = add_alpha(face_color, Math.min(0.6, alpha_max * 3))
-          ctx.lineWidth = 1
-          ctx.stroke()
-          ctx.restore()
+          draw_tri(grad, alpha_max * 3)
         }
       } else {
-        // Non-uniform modes: use solid color with fixed opacity
+        // Non-uniform modes: solid color with fixed opacity
         ctx.save()
         ctx.beginPath()
         ctx.moveTo(proj1.x, proj1.y)
@@ -809,10 +794,7 @@
         ctx.closePath()
         ctx.fillStyle = add_alpha(face_color, hull_face_opacity)
         ctx.fill()
-        ctx.strokeStyle = add_alpha(
-          face_color,
-          Math.min(0.6, hull_face_opacity * 3),
-        )
+        ctx.strokeStyle = add_alpha(face_color, Math.min(0.6, hull_face_opacity * 3))
         ctx.lineWidth = 1
         ctx.stroke()
         ctx.restore()
