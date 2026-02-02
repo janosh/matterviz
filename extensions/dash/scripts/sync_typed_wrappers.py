@@ -770,8 +770,14 @@ def main() -> None:
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(expected)
 
-    # Format with ruff
-    subprocess.run(["ruff", "format", out_path], check=True)
+    # Format with ruff (optional - file is valid without formatting)
+    try:
+        subprocess.run(["ruff", "format", out_path], check=True, capture_output=True)
+    except FileNotFoundError:
+        print(f"Warning: ruff not found, skipping formatting of {out_path}")
+    except subprocess.CalledProcessError as exc:
+        print(f"Warning: ruff format failed: {exc.stderr.decode().strip() or exc}")
+
     print(f"Wrote {out_path}")
 
 
