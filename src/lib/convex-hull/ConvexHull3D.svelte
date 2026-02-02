@@ -760,9 +760,10 @@
           ctx.lineTo(proj2.x, proj2.y)
           ctx.lineTo(proj3.x, proj3.y)
           ctx.closePath()
-          ctx.fillStyle = add_alpha(face_color, (a1 + a2 + a3) / 3)
+          const avg_alpha = (a1 + a2 + a3) / 3
+          ctx.fillStyle = add_alpha(face_color, avg_alpha)
           ctx.fill()
-          ctx.strokeStyle = face_color
+          ctx.strokeStyle = add_alpha(face_color, Math.min(0.6, avg_alpha * 3))
           ctx.lineWidth = 1
           ctx.stroke()
           ctx.restore()
@@ -793,7 +794,7 @@
           ctx.closePath()
           ctx.fillStyle = grad
           ctx.fill()
-          ctx.strokeStyle = face_color
+          ctx.strokeStyle = add_alpha(face_color, Math.min(0.6, alpha_max * 3))
           ctx.lineWidth = 1
           ctx.stroke()
           ctx.restore()

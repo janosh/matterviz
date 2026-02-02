@@ -94,7 +94,7 @@ type ConvexHullWith3DType = ConvexHullCommonType & {
   hull_face_color: SettingType<string>
   hull_face_opacity: SettingType<number>
   hull_face_color_mode: SettingType<
-    `uniform` | `formation_energy` | `dominant_element` | `facet_index` | `depth`
+    `uniform` | `formation_energy` | `dominant_element` | `facet_index`
   >
 }
 

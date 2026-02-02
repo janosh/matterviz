@@ -210,12 +210,11 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     const mode_buttons = controls.locator(`.face-color-mode-buttons`)
     await expect(mode_buttons).toBeVisible()
 
-    // Verify all 5 mode buttons are present
+    // Verify all 4 mode buttons are present
     await expect(mode_buttons.getByText(`Uniform`)).toBeVisible()
     await expect(mode_buttons.getByText(`Energy`)).toBeVisible()
     await expect(mode_buttons.getByText(`Element`)).toBeVisible()
     await expect(mode_buttons.getByText(`Index`)).toBeVisible()
-    await expect(mode_buttons.getByText(`Depth`)).toBeVisible()
 
     // Default should be dominant_element (Element button active)
     const element_btn = mode_buttons.getByText(`Element`)

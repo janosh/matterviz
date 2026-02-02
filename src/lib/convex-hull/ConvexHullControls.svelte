@@ -115,10 +115,9 @@
   pane_props={{
     ...pane_props,
     class: `convex-hull-controls-pane ${pane_props?.class ?? ``}`,
-    style:
-      `--pane-min-height: 280px; --pane-max-height: max(350px, calc(100cqh - 40px)); ${
-        pane_props?.style ?? ``
-      }`,
+    style: `--pane-max-height: max(350px, calc(100cqh - 40px)); ${
+      pane_props?.style ?? ``
+    }`,
   }}
   toggle_props={{
     title: controls_open ? `` : `Convex hull controls`,
