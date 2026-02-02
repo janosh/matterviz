@@ -2886,9 +2886,9 @@ pub fn defect_distort_bonds(
     cutoff: f64,
 ) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
-        // Validate cutoff: must be non-negative
-        if cutoff < 0.0 {
-            return Err("cutoff must be non-negative".to_string());
+        // Validate cutoff: must be positive and finite (core function requires > 0)
+        if !cutoff.is_finite() || cutoff <= 0.0 {
+            return Err("cutoff must be positive and finite".to_string());
         }
 
         let struc = structure.to_structure()?;
@@ -2966,6 +2966,10 @@ pub fn defect_rattle(
         // Validate min_distance: must be non-negative and finite
         if !min_distance.is_finite() || min_distance < 0.0 {
             return Err("min_distance must be non-negative and finite".to_string());
+        }
+        // Validate max_attempts: must be positive
+        if max_attempts == 0 {
+            return Err("max_attempts must be greater than 0".to_string());
         }
 
         let struc = structure.to_structure()?;

@@ -93,7 +93,7 @@ def test_silicon_111_peak(si_diamond_json: str) -> None:
         for peak_hkls in pattern["hkls"]
         for info in peak_hkls
     )
-    assert has_111, "Silicon should have (111) reflection"
+    assert has_111
 
 
 @pytest.mark.parametrize("wavelength", [-1.0, 0.0])

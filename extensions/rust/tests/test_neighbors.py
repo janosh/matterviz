@@ -206,7 +206,7 @@ class TestPeriodicImages:
 
         # Some images should be non-zero
         nonzero_images = [img for img in images if img != [0, 0, 0]]
-        assert len(nonzero_images) > 0, "Expected some periodic images"
+        assert len(nonzero_images) > 0
 
     def test_image_offsets_correct(self) -> None:
         """Image offsets should be small integers."""

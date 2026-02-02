@@ -147,14 +147,20 @@ class TestFindInterstitialSites:
             assert site["min_distance"] >= min_dist
 
     def test_symprec_parameter(self, fcc_cu_json: str) -> None:
-        """Symprec parameter works for site deduplication."""
+        """Symprec parameter affects site deduplication - looser tolerance merges more sites."""
         sites_tight = ferrox.defect_find_interstitial_sites(
             fcc_cu_json, 1.0, symprec=0.01
         )
         sites_loose = ferrox.defect_find_interstitial_sites(
             fcc_cu_json, 1.0, symprec=0.1
         )
-        assert isinstance(sites_tight, list) and isinstance(sites_loose, list)
+        # Both should find sites in FCC structure
+        assert len(sites_tight) > 0
+        assert len(sites_loose) > 0
+        # Looser symprec merges more symmetry-equivalent sites, so count should be <=
+        assert len(sites_loose) <= len(sites_tight), (
+            f"Loose symprec ({len(sites_loose)}) should find <= sites than tight ({len(sites_tight)})"
+        )
 
 
 class TestFindSupercell:
@@ -251,8 +257,8 @@ class TestVoronoiInterstitials:
     def test_returns_required_fields(self, fcc_cu_json: str) -> None:
         """Each site should have all required fields."""
         sites = ferrox.defect_find_voronoi_interstitials(fcc_cu_json)
-        if sites:
-            site = sites[0]
+        assert sites
+        for site in sites:
             assert "frac_coords" in site
             assert "cart_coords" in site
             assert "min_dist" in site
@@ -328,7 +334,7 @@ class TestVoronoiInterstitials:
                 for s in oct_sites
             )
             # BCC octahedral sites should be at face centers or edge midpoints
-            assert has_face_center, "BCC octahedral sites should include face centers"
+            assert has_face_center
 
 
 # === Charge State Guessing Tests (Extended from doped) ===
@@ -476,29 +482,29 @@ class TestWyckoffLabels:
 
     def test_multiplicity_matches_label(self, fcc_cu_json: str) -> None:
         """Multiplicity field should match the number in the Wyckoff label."""
-        labels = ferrox.get_wyckoff_labels(fcc_cu_json)
-        if labels:
-            for site in labels:
-                label = site["label"]
-                multiplicity = site["multiplicity"]
-                # Extract number from label (e.g., "4a" -> 4)
-                import re
+        import re
 
-                numbers = re.findall(r"\d+", label)
-                if numbers:
-                    expected_mult = int(numbers[0])
-                    assert multiplicity == expected_mult, (
-                        f"Multiplicity {multiplicity} != label {label}"
-                    )
+        labels = ferrox.get_wyckoff_labels(fcc_cu_json)
+        assert labels
+        for site in labels:
+            label = site["label"]
+            multiplicity = site["multiplicity"]
+            # Extract number from label (e.g., "4a" -> 4)
+            numbers = re.findall(r"\d+", label)
+            assert numbers, f"Wyckoff label missing multiplicity: {label}"
+            expected_mult = int(numbers[0])
+            assert multiplicity == expected_mult, (
+                f"Multiplicity {multiplicity} != label {label}"
+            )
 
     def test_site_symmetry_is_string(self, fcc_cu_json: str) -> None:
-        """Site symmetry should be a valid string (point group notation)."""
+        """Site symmetry should be a valid non-empty string (point group notation)."""
         labels = ferrox.get_wyckoff_labels(fcc_cu_json)
-        if labels:
-            for site in labels:
-                sym = site["site_symmetry"]
-                assert isinstance(sym, str)
-                assert len(sym) > 0
+        assert labels
+        for site in labels:
+            sym = site["site_symmetry"]
+            assert isinstance(sym, str)
+            assert len(sym) > 0
 
 
 # === Defect Naming Tests ===
