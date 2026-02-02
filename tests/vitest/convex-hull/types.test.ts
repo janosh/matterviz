@@ -1,8 +1,13 @@
 import { normalize_show_controls } from '$lib/controls'
 import { default_controls } from '$lib/convex-hull'
-import type { ConvexHullControlsType, PhaseData } from '$lib/convex-hull/types'
+import type {
+  ConvexHullControlsType,
+  HullFaceColorMode,
+  PhaseData,
+} from '$lib/convex-hull/types'
 import {
   get_arity,
+  HULL_FACE_COLOR_MODES,
   is_binary_entry,
   is_denary_entry,
   is_nonary_entry,
@@ -60,5 +65,19 @@ describe(`ConvexHullControlsType.show`, () => {
     expect(config.class).toBe(`hover-visible`)
     expect(config.visible(`reset`)).toBe(false)
     expect(config.visible(`info-pane`)).toBe(true)
+  })
+})
+
+describe(`HullFaceColorMode`, () => {
+  // toEqual validates content, order, length, and array-ness in one assertion
+  test(`HULL_FACE_COLOR_MODES contains expected modes in order`, () => {
+    expect(HULL_FACE_COLOR_MODES).toEqual(
+      [
+        `uniform`,
+        `formation_energy`,
+        `dominant_element`,
+        `facet_index`,
+      ] satisfies HullFaceColorMode[],
+    )
   })
 })

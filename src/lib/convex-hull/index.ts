@@ -8,6 +8,7 @@ import type {
   GasThermodynamicsConfig,
   HighlightStyle,
   HoverData3D,
+  HullFaceColorMode,
   PhaseData,
   PhaseStats,
 } from './types'
@@ -121,6 +122,8 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
 export interface Hull3DProps {
   show_hull_faces?: boolean
   hull_face_opacity?: number
+  hull_face_color_mode?: HullFaceColorMode
+  element_colors?: Record<string, string>
 }
 
 // Configuration result from merging user controls with defaults
