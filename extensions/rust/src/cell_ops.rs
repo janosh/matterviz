@@ -123,11 +123,12 @@ pub fn minimum_image_brute_force(
     let min_perp = perp_dists.min();
 
     // Search range: need to check images that could be closer than best_dist
-    // For safety, use max of 3 or ceil(max_lattice_length / min_perp_dist)
+    // Use ceil(max_lattice_length / min_perp_dist) with minimum of 1
+    // No hard upper clamp to handle very skewed cells correctly
     let lattice_lengths = lattice.lengths();
     let max_length = lattice_lengths.max();
     let search_range = if min_perp > 1e-10 {
-        ((max_length / min_perp).ceil() as i32).clamp(1, 5)
+        ((max_length / min_perp).ceil() as i32).max(1)
     } else {
         3 // fallback for degenerate lattices
     };
@@ -274,7 +275,7 @@ pub fn closest_image(
     );
 
     // For orthogonal cells, the wrapped fractional delta gives the closest image.
-    // For skewed cells, we need to check neighboring images to find the true minimum.
+    // For skewed cells, check neighboring images to find the true minimum.
     let matrix = lattice.matrix();
     let mut best_delta = wrapped_delta;
     let mut best_dist_sq = (matrix * wrapped_delta).norm_squared();
@@ -410,7 +411,8 @@ pub fn is_niggli_reduced(lattice: &Lattice, tolerance: f64) -> bool {
     let zeta = 2.0 * metric[(0, 1)];
 
     // Check Type I or Type II conditions
-    let eps = tolerance * lattice.volume().powf(1.0 / 3.0);
+    // Use absolute volume to handle left-handed lattices correctly
+    let eps = tolerance * lattice.volume().abs().powf(1.0 / 3.0);
 
     if ksi * eta * zeta > 0.0 {
         // Type I: all off-diagonal products positive or all negative
@@ -460,7 +462,8 @@ pub fn delaunay_reduce(lattice: &Lattice, tolerance: f64) -> Result<DelaunayCell
     let mut matrix = lattice.lll_matrix();
     let mut total_transform = lattice.lll_mapping();
 
-    let eps = tolerance * lattice.volume().powf(1.0 / 3.0);
+    // Use absolute volume to handle left-handed lattices correctly
+    let eps = tolerance * lattice.volume().abs().powf(1.0 / 3.0);
     const MAX_ITER: usize = 100;
 
     for _ in 0..MAX_ITER {

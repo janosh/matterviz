@@ -4,6 +4,7 @@ Includes test cases ported from pymatgen for correctness validation.
 """
 
 import math
+from typing import ClassVar
 
 import ferrox
 import numpy as np
@@ -144,7 +145,13 @@ class TestMillerToNormal:
 class TestAdsorptionSites:
     """Tests for surface_find_adsorption_sites."""
 
-    REQUIRED_FIELDS = {"site_type", "position", "cart_position", "height", "coordinating_atoms"}
+    REQUIRED_FIELDS: ClassVar[set[str]] = {
+        "site_type",
+        "position",
+        "cart_position",
+        "height",
+        "coordinating_atoms",
+    }
 
     def test_atop_count_matches_surface_atoms(self, fcc_cu_structure: dict) -> None:
         """Number of atop sites equals number of surface atoms."""
@@ -201,6 +208,79 @@ class TestWulffConstruction:
         assert len(wulff["facets"]) > 0
         facet_fields = {"miller_index", "surface_energy", "normal", "area_fraction"}
         assert facet_fields.issubset(wulff["facets"][0].keys())
+
+
+class TestMillerIndexEdgeCases:
+    """Tests for Miller index edge cases."""
+
+    @pytest.mark.parametrize(
+        ("max_idx", "min_count", "required_planes"),
+        [
+            (1, 7, [(1, 0, 0), (1, 1, 0), (1, 1, 1)]),
+            (2, 7, [(1, 0, 0), (1, 1, 0), (1, 1, 1), (2, 1, 0)]),
+        ],
+    )
+    def test_enumerate_miller(
+        self, max_idx: int, min_count: int, required_planes: list
+    ) -> None:
+        """Enumerate produces unique Miller indices including required planes."""
+        indices = ferrox.surface_enumerate_miller(max_idx)
+        as_tuples = [tuple(idx) for idx in indices]
+        assert len(indices) >= min_count
+        assert len(as_tuples) == len(set(as_tuples)), "Indices should be unique"
+        for plane in required_planes:
+            assert plane in as_tuples, f"Missing required plane {plane}"
+
+    def test_d_spacing_zero_miller_raises(self, simple_cubic_structure: dict) -> None:
+        """D-spacing with [0,0,0] Miller index raises error."""
+        with pytest.raises(Exception):
+            ferrox.surface_d_spacing(simple_cubic_structure, 0, 0, 0)
+
+    def test_d_spacing_equivalent_miller(self, simple_cubic_structure: dict) -> None:
+        """D-spacing is same for equivalent Miller indices."""
+        d_100 = ferrox.surface_d_spacing(simple_cubic_structure, 1, 0, 0)
+        d_200 = ferrox.surface_d_spacing(simple_cubic_structure, 2, 0, 0)
+        assert d_200 == pytest.approx(d_100 / 2, rel=1e-6)
+
+
+class TestSurfaceAreaEdgeCases:
+    """Tests for surface area edge cases."""
+
+    def test_surface_area_non_orthogonal(self) -> None:
+        """Surface area works for non-orthogonal cells."""
+        # Use lattice_from_matrix directly - it returns a structure
+        structure = lattice_from_matrix([
+            [5.0, 0.0, 0.0],
+            [2.5, 4.33, 0.0],  # 60 degree angle (hexagonal-like)
+            [0.0, 0.0, 10.0],
+        ])
+        area = ferrox.surface_area(structure)
+        # Area should be |a x b| = 5.0 * 4.33 = 21.65
+        assert area == pytest.approx(5.0 * 4.33, rel=0.01)
+
+
+class TestNormalVectorEdgeCases:
+    """Tests for surface normal vector edge cases."""
+
+    @pytest.mark.parametrize(
+        ("hkl", "expected_nonzero_axis"),
+        [
+            ((1, 0, 0), 0),  # Normal along x
+            ((0, 1, 0), 1),  # Normal along y
+            ((0, 0, 1), 2),  # Normal along z
+        ],
+    )
+    def test_miller_to_normal_axis_aligned(
+        self, simple_cubic_structure: dict, hkl: tuple, expected_nonzero_axis: int
+    ) -> None:
+        """Miller to normal produces axis-aligned normals for cubic cell."""
+        normal = ferrox.surface_miller_to_normal(simple_cubic_structure, *hkl)
+        # For cubic cell, (h,k,l) normal should be along (h,k,l) direction
+        for axis in range(3):
+            if axis == expected_nonzero_axis:
+                assert abs(normal[axis]) > 0.99
+            else:
+                assert abs(normal[axis]) < 0.01
 
 
 if __name__ == "__main__":

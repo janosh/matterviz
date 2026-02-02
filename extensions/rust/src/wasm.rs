@@ -2303,284 +2303,6 @@ pub fn parse_ase_atoms(ase_atoms: JsAseAtoms) -> WasmResult<JsAseParseResult> {
 }
 
 // =============================================================================
-// Point Defect Generation
-// =============================================================================
-
-use crate::defects;
-
-/// Create a vacancy by removing an atom at the specified site index.
-///
-/// Returns the defective structure.
-#[wasm_bindgen]
-pub fn defect_create_vacancy(structure: JsCrystal, site_idx: u32) -> WasmResult<JsCrystal> {
-    let result: Result<JsCrystal, String> = (|| {
-        let struc = structure.to_structure()?;
-        let defect_struct =
-            defects::create_vacancy(&struc, site_idx as usize).map_err(|err| err.to_string())?;
-        Ok(JsCrystal::from_structure(&defect_struct.structure))
-    })();
-    result.into()
-}
-
-/// Create a substitutional defect by replacing the species at a site.
-///
-/// Returns the defective structure.
-#[wasm_bindgen]
-pub fn defect_create_substitution(
-    structure: JsCrystal,
-    site_idx: u32,
-    new_species: &str,
-) -> WasmResult<JsCrystal> {
-    let result: Result<JsCrystal, String> = (|| {
-        let struc = structure.to_structure()?;
-        let species = Species::from_string(new_species)
-            .ok_or_else(|| format!("Invalid species: {new_species}"))?;
-        let defect_struct = defects::create_substitution(&struc, site_idx as usize, species)
-            .map_err(|err| err.to_string())?;
-        Ok(JsCrystal::from_structure(&defect_struct.structure))
-    })();
-    result.into()
-}
-
-/// Create an interstitial by adding an atom at a fractional position.
-///
-/// Returns the defective structure.
-#[wasm_bindgen]
-pub fn defect_create_interstitial(
-    structure: JsCrystal,
-    position: Vec<f64>,
-    species: &str,
-) -> WasmResult<JsCrystal> {
-    let result: Result<JsCrystal, String> = (|| {
-        if position.len() != 3 {
-            return Err("Position must have exactly 3 elements".to_string());
-        }
-        let struc = structure.to_structure()?;
-        let sp =
-            Species::from_string(species).ok_or_else(|| format!("Invalid species: {species}"))?;
-        let pos = Vector3::new(position[0], position[1], position[2]);
-        let defect_struct =
-            defects::create_interstitial(&struc, pos, sp).map_err(|err| err.to_string())?;
-        Ok(JsCrystal::from_structure(&defect_struct.structure))
-    })();
-    result.into()
-}
-
-/// Find potential interstitial sites using grid-based max distance algorithm.
-///
-/// Returns a JsValue array of site objects with frac_coords, cart_coords,
-/// min_distance, coordination, and site_type.
-#[wasm_bindgen]
-pub fn defect_find_interstitial_sites(
-    structure: JsCrystal,
-    min_dist: f64,
-    grid_density: f64,
-    clustering_tol: f64,
-) -> Result<JsValue, JsError> {
-    let struc = structure.to_structure().map_err(|err| JsError::new(&err))?;
-    let sites = defects::find_interstitial_sites(&struc, min_dist, grid_density, clustering_tol);
-
-    let sites_data: Vec<serde_json::Value> = sites
-        .into_iter()
-        .map(|site| {
-            let site_type = defects::classify_interstitial_site(site.coordination);
-            serde_json::json!({
-                "frac_coords": site.frac_coords.as_slice(),
-                "cart_coords": site.cart_coords.as_slice(),
-                "min_distance": site.min_distance,
-                "coordination": site.coordination,
-                "site_type": site_type.as_str(),
-            })
-        })
-        .collect();
-
-    serde_wasm_bindgen::to_value(&sites_data)
-        .map_err(|err| JsError::new(&format!("Serialization error: {err}")))
-}
-
-/// Find an optimal supercell matrix for dilute defect calculations.
-///
-/// Returns a flat array of 9 integers [a1,a2,a3, b1,b2,b3, c1,c2,c3].
-#[wasm_bindgen]
-pub fn defect_find_supercell(
-    structure: JsCrystal,
-    min_image_dist: f64,
-    max_atoms: u32,
-) -> WasmResult<Vec<i32>> {
-    let result: Result<Vec<i32>, String> = (|| {
-        let struc = structure.to_structure()?;
-        let config = defects::DefectSupercellConfig {
-            min_distance: min_image_dist,
-            max_atoms: max_atoms as usize,
-            cubic_preference: 0.0,
-        };
-        let matrix =
-            defects::find_defect_supercell(&struc, &config).map_err(|err| err.to_string())?;
-        // Flatten to 9 elements
-        Ok(vec![
-            matrix[0][0],
-            matrix[0][1],
-            matrix[0][2],
-            matrix[1][0],
-            matrix[1][1],
-            matrix[1][2],
-            matrix[2][0],
-            matrix[2][1],
-            matrix[2][2],
-        ])
-    })();
-    result.into()
-}
-
-/// Classify an interstitial site based on its coordination number.
-///
-/// Returns site type string: "tetrahedral", "octahedral", "trigonal", or "other".
-#[wasm_bindgen]
-pub fn defect_classify_site(coordination: u32) -> String {
-    defects::classify_interstitial_site(coordination as usize)
-        .as_str()
-        .to_string()
-}
-
-// =============================================================================
-// Surface Analysis Functions
-// =============================================================================
-
-use crate::surfaces;
-
-/// Enumerate all unique Miller indices up to a maximum index value.
-///
-/// Returns a flattened array [h1,k1,l1, h2,k2,l2, ...] of Miller indices.
-#[wasm_bindgen]
-pub fn surface_enumerate_miller(max_index: i32) -> Vec<i32> {
-    surfaces::enumerate_miller_indices(max_index)
-        .into_iter()
-        .flat_map(|m| [m.h, m.k, m.l])
-        .collect()
-}
-
-/// Find adsorption sites on a slab surface.
-///
-/// Returns a JsValue array of site objects with type, position, height, etc.
-#[wasm_bindgen]
-pub fn surface_find_adsorption_sites(slab: JsCrystal, height: f64) -> Result<JsValue, JsError> {
-    let struc = slab.to_structure().map_err(|err| JsError::new(&err))?;
-    let sites = surfaces::find_adsorption_sites(&struc, height, None);
-
-    let sites_data: Vec<serde_json::Value> = sites
-        .into_iter()
-        .map(|site| {
-            serde_json::json!({
-                "site_type": site.site_type.as_str(),
-                "position": [site.position.x, site.position.y, site.position.z],
-                "cart_position": [site.cart_position.x, site.cart_position.y, site.cart_position.z],
-                "height": site.height,
-                "coordinating_atoms": site.coordinating_atoms,
-                "symmetry_multiplicity": site.symmetry_multiplicity,
-            })
-        })
-        .collect();
-
-    serde_wasm_bindgen::to_value(&sites_data)
-        .map_err(|err| JsError::new(&format!("Serialization error: {err}")))
-}
-
-/// Get indices of surface atoms in a slab.
-///
-/// Returns array of site indices for atoms at the top surface.
-#[wasm_bindgen]
-pub fn surface_get_surface_atoms(slab: JsCrystal, tolerance: f64) -> WasmResult<Vec<u32>> {
-    slab.to_structure()
-        .map(|struc| {
-            surfaces::get_surface_atoms(&struc, tolerance)
-                .into_iter()
-                .map(|idx| idx as u32)
-                .collect()
-        })
-        .into()
-}
-
-/// Calculate the surface area of a slab.
-///
-/// Returns surface area in Angstrom².
-#[wasm_bindgen]
-pub fn surface_area_wasm(slab: JsCrystal) -> WasmResult<f64> {
-    slab.to_structure()
-        .map(|struc| surfaces::surface_area(&struc))
-        .into()
-}
-
-/// Calculate the d-spacing for a Miller plane.
-///
-/// Returns d-spacing in Angstroms.
-#[wasm_bindgen]
-pub fn surface_d_spacing(structure: JsCrystal, h: i32, k: i32, l: i32) -> WasmResult<f64> {
-    structure
-        .to_structure()
-        .and_then(|struc| {
-            surfaces::d_spacing(&struc.lattice, [h, k, l]).map_err(|err| err.to_string())
-        })
-        .into()
-}
-
-/// Compute the Wulff shape (equilibrium crystal shape) from surface energies.
-///
-/// miller_indices: flattened [h1,k1,l1, h2,k2,l2, ...]
-/// surface_energies: [e1, e2, ...] matching each Miller index
-///
-/// Returns JsValue with facets, total_surface_area, volume, sphericity.
-#[wasm_bindgen]
-pub fn surface_compute_wulff(
-    structure: JsCrystal,
-    miller_indices: Vec<i32>,
-    surface_energies: Vec<f64>,
-) -> Result<JsValue, JsError> {
-    if miller_indices.len() % 3 != 0 {
-        return Err(JsError::new("miller_indices length must be divisible by 3"));
-    }
-    let n_surfaces = miller_indices.len() / 3;
-    if n_surfaces != surface_energies.len() {
-        return Err(JsError::new(&format!(
-            "Number of Miller indices ({}) must match number of energies ({})",
-            n_surfaces,
-            surface_energies.len()
-        )));
-    }
-
-    let struc = structure.to_structure().map_err(|err| JsError::new(&err))?;
-
-    let energies: Vec<(surfaces::MillerIndex, f64)> = (0..n_surfaces)
-        .map(|idx| {
-            let h = miller_indices[idx * 3];
-            let k = miller_indices[idx * 3 + 1];
-            let l = miller_indices[idx * 3 + 2];
-            (surfaces::MillerIndex::new(h, k, l), surface_energies[idx])
-        })
-        .collect();
-
-    let wulff = surfaces::compute_wulff_shape(&struc.lattice, &energies)
-        .map_err(|err| JsError::new(&err.to_string()))?;
-
-    let wulff_data = serde_json::json!({
-        "facets": wulff.facets.iter().map(|facet| {
-            serde_json::json!({
-                "miller_index": facet.miller_index.to_array(),
-                "surface_energy": facet.surface_energy,
-                "normal": [facet.normal.x, facet.normal.y, facet.normal.z],
-                "distance_from_center": facet.distance_from_center,
-                "area_fraction": facet.area_fraction,
-            })
-        }).collect::<Vec<_>>(),
-        "total_surface_area": wulff.total_surface_area,
-        "volume": wulff.volume,
-        "sphericity": wulff.sphericity,
-    });
-
-    serde_wasm_bindgen::to_value(&wulff_data)
-        .map_err(|err| JsError::new(&format!("Serialization error: {err}")))
-}
-
-// =============================================================================
 // Cell Operations (PBC, Reductions, Supercells)
 // =============================================================================
 
@@ -2598,51 +2320,6 @@ pub struct JsNiggliResult {
     pub form: String,
 }
 
-/// Compute minimum image distance between two positions under PBC.
-///
-/// pos1 and pos2 are in fractional coordinates [a, b, c].
-/// Uses the structure's lattice PBC settings.
-#[wasm_bindgen]
-pub fn cell_minimum_image_distance(
-    structure: JsCrystal,
-    pos1: Vec<f64>,
-    pos2: Vec<f64>,
-) -> WasmResult<f64> {
-    let result: Result<f64, String> = (|| {
-        if pos1.len() != 3 || pos2.len() != 3 {
-            return Err("pos1 and pos2 must have 3 elements".to_string());
-        }
-        let struc = structure.to_structure()?;
-        let vec1 = Vector3::new(pos1[0], pos1[1], pos1[2]);
-        let vec2 = Vector3::new(pos2[0], pos2[1], pos2[2]);
-        Ok(cell_ops::minimum_image_distance(
-            &struc.lattice,
-            &vec1,
-            &vec2,
-            struc.pbc,
-        ))
-    })();
-    result.into()
-}
-
-/// Compute minimum image displacement vector under PBC.
-///
-/// delta is in fractional coordinates [da, db, dc].
-/// Returns Cartesian displacement vector [x, y, z].
-#[wasm_bindgen]
-pub fn cell_minimum_image_vector(structure: JsCrystal, delta: Vec<f64>) -> WasmResult<Vec<f64>> {
-    let result: Result<Vec<f64>, String> = (|| {
-        if delta.len() != 3 {
-            return Err("delta must have 3 elements".to_string());
-        }
-        let struc = structure.to_structure()?;
-        let delta_vec = Vector3::new(delta[0], delta[1], delta[2]);
-        let result = cell_ops::minimum_image_vector(&struc.lattice, &delta_vec, struc.pbc);
-        Ok(vec![result[0], result[1], result[2]])
-    })();
-    result.into()
-}
-
 /// Wrap all site positions to the unit cell [0, 1)^3.
 #[wasm_bindgen]
 pub fn cell_wrap_to_unit_cell(structure: JsCrystal) -> WasmResult<JsCrystal> {
@@ -2654,107 +2331,12 @@ pub fn cell_wrap_to_unit_cell(structure: JsCrystal) -> WasmResult<JsCrystal> {
     result.into()
 }
 
-/// Compute the Niggli-reduced cell of a structure.
-///
-/// Returns an object with:
-/// - matrix: 3x3 array (flattened to 9 elements, row-major)
-/// - transformation: 3x3 array (flattened to 9 elements, row-major)
-/// - form: "TypeI" or "TypeII"
-#[wasm_bindgen]
-pub fn cell_niggli_reduce(structure: JsCrystal, tolerance: f64) -> WasmResult<JsNiggliResult> {
-    let result: Result<JsNiggliResult, String> = (|| {
-        let struc = structure.to_structure()?;
-        let niggli =
-            cell_ops::niggli_reduce(&struc.lattice, tolerance).map_err(|err| err.to_string())?;
-
-        // Flatten matrices to row-major vectors
-        let mut matrix = Vec::with_capacity(9);
-        let mut transformation = Vec::with_capacity(9);
-        for row_idx in 0..3 {
-            for col_idx in 0..3 {
-                matrix.push(niggli.matrix[(row_idx, col_idx)]);
-                transformation.push(niggli.transformation[(row_idx, col_idx)]);
-            }
-        }
-
-        let form = match niggli.form {
-            cell_ops::NiggliForm::TypeI => "TypeI".to_string(),
-            cell_ops::NiggliForm::TypeII => "TypeII".to_string(),
-        };
-
-        Ok(JsNiggliResult {
-            matrix,
-            transformation,
-            form,
-        })
-    })();
-    result.into()
-}
-
 /// Check if a lattice is already Niggli-reduced.
 #[wasm_bindgen]
 pub fn cell_is_niggli_reduced(structure: JsCrystal, tolerance: f64) -> WasmResult<bool> {
     let result: Result<bool, String> = (|| {
         let struc = structure.to_structure()?;
         Ok(cell_ops::is_niggli_reduced(&struc.lattice, tolerance))
-    })();
-    result.into()
-}
-
-/// Find an optimal supercell matrix for a given strategy.
-///
-/// strategy: "target_atoms", "min_length", or "min_image_dist"
-/// target_value: value for the strategy (atom count, length in Å, or distance in Å)
-///
-/// Returns flat array of 9 integers [a1,a2,a3, b1,b2,b3, c1,c2,c3].
-#[wasm_bindgen]
-pub fn cell_find_supercell_matrix(
-    structure: JsCrystal,
-    strategy: &str,
-    target_value: f64,
-) -> WasmResult<Vec<i32>> {
-    let result: Result<Vec<i32>, String> = (|| {
-        let struc = structure.to_structure()?;
-        let n_atoms = struc.num_sites();
-
-        let cell_strategy = match strategy {
-            "target_atoms" => cell_ops::SupercellStrategy::TargetAtoms(target_value as usize),
-            "min_length" => cell_ops::SupercellStrategy::MinLength(target_value),
-            "min_image_dist" | "min_image_distance" => {
-                cell_ops::SupercellStrategy::MinImageDistance(target_value)
-            }
-            other => {
-                return Err(format!(
-                    "Unknown strategy: {other}. Use 'target_atoms', 'min_length', or 'min_image_dist'"
-                ));
-            }
-        };
-
-        let matrix = cell_ops::find_supercell_matrix(&struc.lattice, n_atoms, cell_strategy);
-        Ok(vec![
-            matrix[0][0],
-            matrix[0][1],
-            matrix[0][2],
-            matrix[1][0],
-            matrix[1][1],
-            matrix[1][2],
-            matrix[2][0],
-            matrix[2][1],
-            matrix[2][2],
-        ])
-    })();
-    result.into()
-}
-
-/// Compute the perpendicular distances (heights) of the lattice parallelepiped.
-///
-/// Returns [d_a, d_b, d_c] in Angstroms.
-#[wasm_bindgen]
-pub fn cell_perpendicular_distances(structure: JsCrystal) -> WasmResult<Vec<f64>> {
-    let result: Result<Vec<f64>, String> = (|| {
-        let struc = structure.to_structure()?;
-        let perp = cell_ops::perpendicular_distances(&struc.lattice);
-        Ok(vec![perp[0], perp[1], perp[2]])
     })();
     result.into()
 }
@@ -3249,10 +2831,8 @@ pub fn defect_generate_all(
 }
 
 // =============================================================================
-// Surface Analysis (WASM)
+// Surface Analysis (WASM) - Extended functions
 // =============================================================================
-
-use crate::surfaces;
 
 /// Enumerate all unique Miller indices up to a maximum index value.
 ///
@@ -3265,16 +2845,6 @@ pub fn surface_enumerate_miller(max_index: i32) -> WasmResult<String> {
             .map(|mi| mi.to_array())
             .collect();
         Ok(serde_json::to_string(&indices).unwrap_or_default())
-    })();
-    result.into()
-}
-
-/// Calculate d-spacing for a Miller plane.
-#[wasm_bindgen]
-pub fn surface_d_spacing(structure: JsCrystal, h: i32, k: i32, l: i32) -> WasmResult<f64> {
-    let result: Result<f64, String> = (|| {
-        let struc = structure.to_structure()?;
-        surfaces::d_spacing(&struc.lattice, [h, k, l]).map_err(|err| err.to_string())
     })();
     result.into()
 }
@@ -3457,10 +3027,8 @@ pub fn surface_compute_wulff(
 }
 
 // =============================================================================
-// Cell Operations (WASM)
+// Cell Operations (WASM) - JSON-returning variants
 // =============================================================================
-
-use crate::cell_ops;
 
 /// Calculate minimum image distance between two fractional positions.
 #[wasm_bindgen]
@@ -3513,15 +3081,7 @@ pub fn cell_niggli_reduce(structure: JsCrystal, tolerance: f64) -> WasmResult<St
         let niggli =
             cell_ops::niggli_reduce(&struc.lattice, tolerance).map_err(|err| err.to_string())?;
         let lattice_matrix: Vec<Vec<f64>> = (0..3)
-            .map(|idx| {
-                niggli
-                    .reduced_lattice
-                    .matrix
-                    .row(idx)
-                    .iter()
-                    .copied()
-                    .collect()
-            })
+            .map(|idx| niggli.matrix.row(idx).iter().copied().collect())
             .collect();
         let json = serde_json::json!({
             "lattice_matrix": lattice_matrix,
@@ -3552,15 +3112,7 @@ pub fn cell_delaunay_reduce(structure: JsCrystal, tolerance: f64) -> WasmResult<
         let delaunay =
             cell_ops::delaunay_reduce(&struc.lattice, tolerance).map_err(|err| err.to_string())?;
         let lattice_matrix: Vec<Vec<f64>> = (0..3)
-            .map(|idx| {
-                delaunay
-                    .reduced_lattice
-                    .matrix
-                    .row(idx)
-                    .iter()
-                    .copied()
-                    .collect()
-            })
+            .map(|idx| delaunay.matrix.row(idx).iter().copied().collect())
             .collect();
         let json = serde_json::json!({
             "lattice_matrix": lattice_matrix,
@@ -3619,6 +3171,7 @@ pub fn cell_lattices_equivalent(
         Ok(cell_ops::lattices_equivalent(
             &struc1.lattice,
             &struc2.lattice,
+            tolerance,
             tolerance,
         ))
     })();

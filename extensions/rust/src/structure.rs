@@ -482,14 +482,20 @@ impl Structure {
     /// Uses symmetry analysis to identify equivalent sites and their
     /// Wyckoff positions within the space group.
     ///
+    /// **Note:** The returned multiplicities and labels are computed relative to
+    /// the **input cell**, not the standardized/conventional cell. For example,
+    /// a primitive cell will show multiplicities of 1 for sites that would have
+    /// higher multiplicity in the conventional cell. To get conventional Wyckoff
+    /// multiplicities, first transform the structure to its conventional cell.
+    ///
     /// # Arguments
     ///
     /// * `symprec` - Symmetry precision (typical values: 0.01 to 0.1)
     ///
     /// # Returns
     ///
-    /// Vector of `WyckoffSite` for each site, containing the Wyckoff label,
-    /// multiplicity, site symmetry, and representative coordinates.
+    /// Vector of `WyckoffSite` for each site, containing the Wyckoff label
+    /// (input-cell multiplicity + letter), site symmetry, and representative coordinates.
     pub fn get_wyckoff_sites(&self, symprec: f64) -> Result<Vec<WyckoffSite>> {
         let dataset = self.get_symmetry_dataset(symprec)?;
         let orbits = &dataset.orbits;

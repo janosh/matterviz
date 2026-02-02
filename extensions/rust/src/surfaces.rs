@@ -487,22 +487,31 @@ pub fn find_adsorption_sites(
     if include_bridge || include_hollow3 || include_hollow4 {
         // Build neighbor list for surface atoms
         let cutoff = 4.0; // Reasonable cutoff for nearest neighbors
-        let (center_idx, neighbor_idx, _, distances) = slab.get_neighbor_list(cutoff, 1e-8, true);
+        let (center_idx, neighbor_idx, images, distances) =
+            slab.get_neighbor_list(cutoff, 1e-8, true);
 
         // Build adjacency set for O(1) neighbor lookups
-        // Store edges as (min, max) pairs for consistent ordering
+        // Store edges as (min, max) pairs with image offset for the larger index
         let surface_set: HashSet<usize> = surface_indices.iter().copied().collect();
-        let mut edges: HashSet<(usize, usize)> = HashSet::new();
-        for ((&ci, &ni), &dist) in center_idx
+        // Store edges with image info: key=(min_idx, max_idx), value=image_offset for max_idx relative to min_idx
+        let mut edges_with_images: std::collections::HashMap<(usize, usize), [i32; 3]> =
+            std::collections::HashMap::new();
+        for (((&ci, &ni), &image), &dist) in center_idx
             .iter()
             .zip(neighbor_idx.iter())
+            .zip(images.iter())
             .zip(distances.iter())
         {
             if dist < cutoff && surface_set.contains(&ci) && surface_set.contains(&ni) {
-                let edge = if ci < ni { (ci, ni) } else { (ni, ci) };
-                edges.insert(edge);
+                let (edge, stored_image) = if ci < ni {
+                    ((ci, ni), image)
+                } else {
+                    ((ni, ci), [-image[0], -image[1], -image[2]])
+                };
+                edges_with_images.entry(edge).or_insert(stored_image);
             }
         }
+        let edges: HashSet<(usize, usize)> = edges_with_images.keys().copied().collect();
 
         // Helper to check if two atoms are neighbors using the prebuilt set
         let are_neighbors = |a: usize, b: usize| -> bool {
@@ -525,13 +534,25 @@ pub fn find_adsorption_sites(
             .map(|(local, &global)| (global, local))
             .collect();
 
-        // Bridge sites: at midpoint of each edge
+        // Helper to get image-shifted Cartesian position
+        let get_shifted_cart = |global_idx: usize, image: [i32; 3]| -> Vector3<f64> {
+            let idx = global_to_local[&global_idx];
+            let base_cart = surface_cart[idx];
+            let shift = slab.lattice.get_cartesian_coord(&Vector3::new(
+                image[0] as f64,
+                image[1] as f64,
+                image[2] as f64,
+            ));
+            base_cart + shift
+        };
+
+        // Bridge sites: at midpoint of each edge (accounting for periodic images)
         if include_bridge {
-            for &(global_i, global_j) in &edges {
+            for (&(global_i, global_j), &image_j) in &edges_with_images {
                 let idx_i = global_to_local[&global_i];
-                let idx_j = global_to_local[&global_j];
                 let cart_i = surface_cart[idx_i];
-                let cart_j = surface_cart[idx_j];
+                // global_j is at image_j relative to global_i
+                let cart_j = get_shifted_cart(global_j, image_j);
                 let midpoint = (cart_i + cart_j) / 2.0;
                 let cart_pos = Vector3::new(midpoint.x, midpoint.y, site_z);
                 let frac_pos = slab.lattice.get_fractional_coord(&cart_pos);
@@ -546,6 +567,16 @@ pub fn find_adsorption_sites(
                 ));
             }
         }
+
+        // Helper to get image offset from a to b (b's image relative to a)
+        let get_image = |a: usize, b: usize| -> [i32; 3] {
+            if a < b {
+                edges_with_images.get(&(a, b)).copied().unwrap_or([0, 0, 0])
+            } else {
+                let img = edges_with_images.get(&(b, a)).copied().unwrap_or([0, 0, 0]);
+                [-img[0], -img[1], -img[2]]
+            }
+        };
 
         // Hollow sites require finding triangular or square arrangements
         if include_hollow3 || include_hollow4 {
@@ -564,13 +595,16 @@ pub fn find_adsorption_sites(
                                 let mut tri = [global_i, global_j, global_k];
                                 tri.sort();
                                 if found_triangles.insert((tri[0], tri[1], tri[2])) {
+                                    // Compute centroid using image-shifted coordinates
+                                    // Use global_i as reference (image = [0,0,0])
                                     let idx_i = global_to_local[&global_i];
-                                    let idx_j = global_to_local[&global_j];
-                                    let idx_k = global_to_local[&global_k];
-                                    let centroid = (surface_cart[idx_i]
-                                        + surface_cart[idx_j]
-                                        + surface_cart[idx_k])
-                                        / 3.0;
+                                    let cart_i = surface_cart[idx_i];
+                                    let image_j = get_image(global_i, global_j);
+                                    let cart_j = get_shifted_cart(global_j, image_j);
+                                    let image_k = get_image(global_i, global_k);
+                                    let cart_k = get_shifted_cart(global_k, image_k);
+
+                                    let centroid = (cart_i + cart_j + cart_k) / 3.0;
                                     let cart_pos = Vector3::new(centroid.x, centroid.y, site_z);
                                     let frac_pos = slab.lattice.get_fractional_coord(&cart_pos);
 
@@ -614,15 +648,18 @@ pub fn find_adsorption_sites(
                                     let mut quad = [global_i, global_j, global_k, global_l];
                                     quad.sort();
                                     if found_quads.insert((quad[0], quad[1], quad[2], quad[3])) {
+                                        // Compute centroid using image-shifted coordinates
+                                        // Use global_i as reference (image = [0,0,0])
                                         let idx_i = global_to_local[&global_i];
-                                        let idx_j = global_to_local[&global_j];
-                                        let idx_k = global_to_local[&global_k];
-                                        let idx_l = global_to_local[&global_l];
-                                        let centroid = (surface_cart[idx_i]
-                                            + surface_cart[idx_j]
-                                            + surface_cart[idx_k]
-                                            + surface_cart[idx_l])
-                                            / 4.0;
+                                        let cart_i = surface_cart[idx_i];
+                                        let image_j = get_image(global_i, global_j);
+                                        let cart_j = get_shifted_cart(global_j, image_j);
+                                        let image_k = get_image(global_i, global_k);
+                                        let cart_k = get_shifted_cart(global_k, image_k);
+                                        let image_l = get_image(global_i, global_l);
+                                        let cart_l = get_shifted_cart(global_l, image_l);
+
+                                        let centroid = (cart_i + cart_j + cart_k + cart_l) / 4.0;
                                         let cart_pos = Vector3::new(centroid.x, centroid.y, site_z);
                                         let frac_pos = slab.lattice.get_fractional_coord(&cart_pos);
 
@@ -1022,9 +1059,13 @@ pub fn enumerate_terminations(
             unique_species.len() == 1 && !surface_species.is_empty()
         };
 
+        // Note: The shift value is a placeholder index (0.0, 0.1, 0.2, ...) rather than
+        // an actual fractional coordinate along the surface normal. This provides a
+        // unique identifier for each termination but doesn't represent the true
+        // crystallographic shift. Use the slab structure directly for accurate geometry.
         terminations.push(SurfaceTermination::new(
             miller_index,
-            idx as f64 * 0.1, // Approximate shift
+            idx as f64 * 0.1, // Termination index (not a true fractional shift)
             surface_species,
             density,
             is_polar,

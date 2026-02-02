@@ -35,6 +35,10 @@ Repository = "https://github.com/janosh/matterviz"
 [project.optional-dependencies]
 dev = ["numpy", "pymatgen>=2025.10.7", "pytest>=8.0"]
 
+[tool.uv]
+# Don't create uv.lock - we use maturin develop for editable installs
+managed = false
+
 [tool.maturin]
 features = ["python"]
 python-source = "python"

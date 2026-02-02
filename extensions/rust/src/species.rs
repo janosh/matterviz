@@ -248,7 +248,7 @@ impl From<Element> for Species {
 }
 
 /// A site with potentially multiple species (partial occupancy).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SiteOccupancy {
     /// Species with their occupancies.
     pub species: Vec<(Species, f64)>,

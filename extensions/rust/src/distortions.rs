@@ -136,8 +136,14 @@ pub fn distort_bonds(
             // Bond direction vector (from center to neighbor)
             let bond_vec = neighbor_cart - center_cart;
 
+            // Skip neighbors at same position (would cause NaN from normalize)
+            let bond_len = bond_vec.norm();
+            if bond_len < 1e-10 {
+                continue;
+            }
+
             // Displacement: move along bond direction by factor * distance
-            let displacement = bond_vec.normalize() * (factor * distance);
+            let displacement = (bond_vec / bond_len) * (factor * distance);
 
             // Apply displacement in Cartesian space, then convert back to fractional
             let new_neighbor_cart = cart_coords[neighbor_idx] + displacement;
@@ -211,6 +217,14 @@ pub fn create_dimer(
         structure.lattice.matrix(),
         structure.lattice.pbc,
     );
+
+    // Guard against atoms at same position (would cause NaN from normalize)
+    if min_dist < 1e-10 {
+        return Err(FerroxError::InvalidStructure {
+            index: site_a_idx,
+            reason: "atoms are at the same position, cannot create dimer".to_string(),
+        });
+    }
 
     // Calculate midpoint (in Cartesian space, accounting for PBC)
     let midpoint = pos_a + min_image_vec * 0.5;

@@ -318,6 +318,19 @@ pub fn create_antisite_pair(
     check_site_bounds(site_b_idx, num_sites, "site_b_idx")?;
     check_sites_different(site_a_idx, site_b_idx)?;
 
+    // Check that sites have different species (otherwise antisite is meaningless)
+    let occ_a = &structure.site_occupancies[site_a_idx];
+    let occ_b = &structure.site_occupancies[site_b_idx];
+    if occ_a == occ_b {
+        return Err(FerroxError::InvalidStructure {
+            index: site_a_idx,
+            reason: format!(
+                "sites {} and {} have identical species, cannot create antisite",
+                site_a_idx, site_b_idx
+            ),
+        });
+    }
+
     // Swap site occupancies
     let mut new_occupancies = structure.site_occupancies.clone();
     new_occupancies.swap(site_a_idx, site_b_idx);
@@ -345,12 +358,13 @@ pub fn create_interstitial(
     position: Vector3<f64>,
     species: Species,
 ) -> Result<DefectStructure> {
-    // Append new site to the structure
+    // Append new site to the structure, wrapping coords to [0,1) for normalization
+    let wrapped_position = wrap_frac_coords(&position);
     let mut new_occupancies = structure.site_occupancies.clone();
     let mut new_coords = structure.frac_coords.clone();
 
     new_occupancies.push(SiteOccupancy::ordered(species));
-    new_coords.push(position);
+    new_coords.push(wrapped_position);
 
     let new_structure = Structure::try_new_from_occupancies(
         structure.lattice.clone(),
@@ -358,7 +372,7 @@ pub fn create_interstitial(
         new_coords,
     )?;
 
-    let defect = PointDefect::interstitial(position, species);
+    let defect = PointDefect::interstitial(wrapped_position, species);
 
     Ok(DefectStructure {
         structure: new_structure,

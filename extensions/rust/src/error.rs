@@ -96,9 +96,15 @@ pub fn check_sites_different(site_a: usize, site_b: usize) -> Result<()> {
     Ok(())
 }
 
-/// Check that a value is positive.
+/// Check that a value is positive and finite.
 #[inline]
 pub fn check_positive(value: f64, name: &str) -> Result<()> {
+    if !value.is_finite() {
+        return Err(FerroxError::InvalidStructure {
+            index: 0,
+            reason: format!("{name} must be finite, got {value}"),
+        });
+    }
     if value <= 0.0 {
         return Err(FerroxError::InvalidStructure {
             index: 0,
@@ -108,9 +114,15 @@ pub fn check_positive(value: f64, name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Check that a value is non-negative.
+/// Check that a value is non-negative and finite.
 #[inline]
 pub fn check_non_negative(value: f64, name: &str) -> Result<()> {
+    if !value.is_finite() {
+        return Err(FerroxError::InvalidStructure {
+            index: 0,
+            reason: format!("{name} must be finite, got {value}"),
+        });
+    }
     if value < 0.0 {
         return Err(FerroxError::InvalidStructure {
             index: 0,

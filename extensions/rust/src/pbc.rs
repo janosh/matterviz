@@ -26,7 +26,11 @@ pub type PbcShortestResult = (Vec<Vec<Vector3<f64>>>, Vec<Vec<f64>>, Vec<Vec<[i3
 /// ```
 #[inline]
 pub fn wrap_frac_coord(coord: f64) -> f64 {
-    coord - coord.floor()
+    // Use rem_euclid for robust wrapping, handles edge cases where
+    // coord - coord.floor() might return exactly 1.0 due to float precision
+    let wrapped = coord.rem_euclid(1.0);
+    // Guard against floating-point edge case where result is exactly 1.0
+    if wrapped >= 1.0 { 0.0 } else { wrapped }
 }
 
 /// Wrap a Vector3 of fractional coordinates to the range [0, 1).

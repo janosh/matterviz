@@ -290,8 +290,8 @@ class TestVoronoiInterstitials:
                 any(np.allclose(s["frac_coords"], fc, atol=0.1) for fc in face_center_coords)
                 for s in oct_sites
             )
-            # May also be at edge midpoints
-            assert len(oct_sites) > 0
+            # BCC octahedral sites should be at face centers or edge midpoints
+            assert has_face_center, "BCC octahedral sites should include face centers"
 
 
 # === Charge State Guessing Tests (Extended from doped) ===

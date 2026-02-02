@@ -186,7 +186,7 @@ class TestSupercellStrategies:
         matrix = ferrox.cell_find_supercell_matrix(
             nacl_structure, strategy="target_atoms", target_value=target
         )
-        det = int(round(np.linalg.det(matrix)))
+        det = round(np.linalg.det(matrix))
         actual_atoms = det * 2
         assert abs(actual_atoms - target) <= 2
 
@@ -305,6 +305,103 @@ class TestDelaunayReduction:
         assert np.array(delaunay["matrix"]).shape == (3, 3)
         assert np.array(delaunay["transformation"]).shape == (3, 3)
         assert abs(np.linalg.det(delaunay["matrix"])) == pytest.approx(original_vol, abs=1e-3)
+
+
+class TestHighlySkewedCells:
+    """Tests for highly skewed cell handling."""
+
+    @pytest.fixture
+    def highly_skewed_structure(self) -> dict:
+        """Structure with angles far from 90 degrees (>30 deg deviation)."""
+        # Triclinic cell with ~53 degree angle
+        return lattice_from_matrix([
+            [5.0, 0.0, 0.0],
+            [4.0, 3.0, 0.0],
+            [2.0, 2.0, 4.0],
+        ])
+
+    def test_minimum_image_highly_skewed(self, highly_skewed_structure: dict) -> None:
+        """Minimum image distance works for highly skewed cells."""
+        # Two points that are close via periodic image
+        pos1 = [0.0, 0.0, 0.0]
+        pos2 = [0.9, 0.9, 0.9]  # Close to [0,0,0] via wrapping
+        dist = ferrox.cell_minimum_image_distance(
+            highly_skewed_structure, pos1, pos2, [True, True, True]
+        )
+        # Should find the shorter periodic image
+        assert dist > 0
+        assert dist < 10.0  # Sanity check
+
+    def test_wrap_to_unit_cell_highly_skewed(self) -> None:
+        """Wrap to unit cell works for highly skewed cells."""
+        # Create structure with positions outside [0, 1)
+        struct = make_structure(
+            {"matrix": [[5.0, 0.0, 0.0], [4.0, 3.0, 0.0], [2.0, 2.0, 4.0]]},
+            [make_site("Na", [1.5, -0.5, 2.3]), make_site("Cl", [-0.1, 1.1, 0.0])],
+        )
+        wrapped = ferrox.cell_wrap_to_unit_cell(struct)
+        # All wrapped coordinates should be in [0, 1)
+        for site in wrapped["sites"]:
+            for coord in site["abc"]:
+                assert 0.0 <= coord < 1.0, f"Coordinate {coord} not in [0, 1)"
+
+
+class TestPartialPBC:
+    """Tests for partial periodic boundary conditions."""
+
+    @pytest.fixture
+    def slab_structure(self) -> dict:
+        """Structure with PBC only in x,y (slab geometry)."""
+        struct = lattice_from_matrix([[5.0, 0, 0], [0, 5.0, 0], [0, 0, 20.0]])
+        struct["lattice"]["pbc"] = [True, True, False]
+        return struct
+
+    @pytest.mark.parametrize(
+        ("pos1", "pos2", "expected"),
+        [
+            ([0.0, 0.0, 0.0], [0.0, 0.0, 0.9], 18.0),  # Non-periodic z: 0.9*20=18
+            ([0.0, 0.0, 0.5], [0.9, 0.9, 0.5], 0.707),  # Periodic xy wraps: sqrt(0.5²+0.5²)
+        ],
+    )
+    def test_minimum_image_partial_pbc(
+        self, slab_structure: dict, pos1: list, pos2: list, expected: float
+    ) -> None:
+        """Minimum image respects partial PBC in xy, no wrap in z."""
+        dist = ferrox.cell_minimum_image_distance(
+            slab_structure, pos1, pos2, [True, True, False]
+        )
+        assert dist == pytest.approx(expected, abs=0.1)
+
+
+class TestBoundaryValues:
+    """Tests for boundary value handling."""
+
+    def test_wrap_boundary_values(self) -> None:
+        """Wrap handles boundary values correctly."""
+        # Create structure with boundary positions
+        struct = make_structure(
+            {"matrix": [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]},
+            [
+                make_site("Na", [0.0, 0.0, 0.0]),
+                make_site("Na", [1.0, 1.0, 1.0]),  # Should wrap to [0,0,0]
+                make_site("Cl", [0.5, 0.5, 0.5]),
+                make_site("Cl", [-0.5, -0.5, -0.5]),  # Should wrap to [0.5, 0.5, 0.5]
+            ],
+        )
+        wrapped = ferrox.cell_wrap_to_unit_cell(struct)
+        sites = wrapped["sites"]
+        assert sites[0]["abc"] == pytest.approx([0, 0, 0], abs=1e-10)
+        assert sites[1]["abc"] == pytest.approx([0, 0, 0], abs=1e-10)
+        assert sites[2]["abc"] == pytest.approx([0.5, 0.5, 0.5], abs=1e-10)
+        assert sites[3]["abc"] == pytest.approx([0.5, 0.5, 0.5], abs=1e-10)
+
+    def test_minimum_image_atoms_at_same_position(self, nacl_structure: dict) -> None:
+        """Minimum image distance is zero for same position."""
+        pos = [0.25, 0.25, 0.25]
+        dist = ferrox.cell_minimum_image_distance(
+            nacl_structure, pos, pos, [True, True, True]
+        )
+        assert dist == pytest.approx(0.0, abs=1e-10)
 
 
 if __name__ == "__main__":

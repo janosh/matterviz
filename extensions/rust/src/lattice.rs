@@ -433,7 +433,8 @@ impl Lattice {
     pub fn get_niggli_reduced(&self, tol: f64) -> Result<Self> {
         // Start with LLL-reduced matrix for numerical stability
         let matrix = self.lll_matrix();
-        let eps = tol * self.volume().powf(1.0 / 3.0);
+        // Use absolute volume to handle left-handed lattices correctly
+        let eps = tol * self.volume().abs().powf(1.0 / 3.0);
 
         // Define metric tensor G = M * M^T
         let mut g = matrix * matrix.transpose();
@@ -1045,7 +1046,7 @@ mod tests {
         let lattice = Lattice::new(matrix);
         let ideal_niggli = Lattice::from_parameters(2.8767, 2.8767, 5.9353, 75.975, 75.975, 60.0);
 
-        let tol = 1e-5 * lattice.volume().powf(1.0 / 3.0);
+        let tol = 1e-5 * lattice.volume().abs().powf(1.0 / 3.0);
         let result = lattice.find_mapping(&ideal_niggli, tol, 5.0 * tol * 180.0 / PI, true);
         assert!(result.is_some(), "should find mapping to ideal Niggli");
     }

@@ -5179,7 +5179,7 @@ fn defect_distort_bonds(
         dict.set_item("center_site_idx", result.center_site_idx)?;
         list.append(dict)?;
     }
-    Ok(list.into())
+    Ok(list.unbind())
 }
 
 /// Create a dimer by moving two atoms closer together.
@@ -5213,7 +5213,7 @@ fn defect_create_dimer(
     dict.set_item("distortion_type", result.distortion_type)?;
     dict.set_item("distortion_factor", result.distortion_factor)?;
     dict.set_item("center_site_idx", result.center_site_idx)?;
-    Ok(dict.into())
+    Ok(dict.unbind())
 }
 
 /// Apply Monte Carlo rattling to all atoms in a structure.
@@ -5250,7 +5250,7 @@ fn defect_rattle(
     dict.set_item("distortion_type", result.distortion_type)?;
     dict.set_item("distortion_factor", result.distortion_factor)?;
     dict.set_item("center_site_idx", result.center_site_idx)?;
-    Ok(dict.into())
+    Ok(dict.unbind())
 }
 
 /// Apply local rattling with distance-dependent amplitude decay.
@@ -5287,7 +5287,7 @@ fn defect_local_rattle(
     dict.set_item("distortion_type", result.distortion_type)?;
     dict.set_item("distortion_factor", result.distortion_factor)?;
     dict.set_item("center_site_idx", result.center_site_idx)?;
-    Ok(dict.into())
+    Ok(dict.unbind())
 }
 
 // =============================================================================
@@ -5331,7 +5331,7 @@ fn defect_find_voronoi_interstitials(
         dict.set_item("multiplicity", site.multiplicity)?;
         list.append(dict)?;
     }
-    Ok(list.into())
+    Ok(list.unbind())
 }
 
 // =============================================================================
@@ -5377,8 +5377,28 @@ fn defect_generate_name(
         }
     };
 
-    let sp = species.and_then(Species::from_string);
-    let orig_sp = original_species.and_then(Species::from_string);
+    let sp = match species {
+        Some(s) => match Species::from_string(s) {
+            Some(parsed) => Some(parsed),
+            None => {
+                return Err(PyValueError::new_err(format!(
+                    "Invalid species string: '{s}'"
+                )));
+            }
+        },
+        None => None,
+    };
+    let orig_sp = match original_species {
+        Some(s) => match Species::from_string(s) {
+            Some(parsed) => Some(parsed),
+            None => {
+                return Err(PyValueError::new_err(format!(
+                    "Invalid original_species string: '{s}'"
+                )));
+            }
+        },
+        None => None,
+    };
 
     let defect = defects::PointDefect {
         defect_type: dtype,
@@ -5450,7 +5470,7 @@ fn defect_guess_charge_states(
         dict.set_item("reasoning", guess.reasoning)?;
         list.append(dict)?;
     }
-    Ok(list.into())
+    Ok(list.unbind())
 }
 
 // =============================================================================
@@ -5531,7 +5551,7 @@ fn defect_generate_all(
     fn entry_to_dict(py: Python<'_>, entry: &defects::DefectEntry) -> PyResult<pyo3::Py<PyDict>> {
         let dict = PyDict::new(py);
         dict.set_item("name", &entry.name)?;
-        dict.set_item("defect_type", format!("{:?}", entry.defect_type))?;
+        dict.set_item("defect_type", entry.defect_type.as_str())?;
         dict.set_item("site_idx", entry.site_idx)?;
         dict.set_item("frac_coords", entry.frac_coords.as_slice())?;
         dict.set_item("species", &entry.species)?;
@@ -5550,7 +5570,7 @@ fn defect_generate_all(
             charges.append(cs_dict)?;
         }
         dict.set_item("charge_states", charges)?;
-        Ok(dict.into())
+        Ok(dict.unbind())
     }
 
     // Helper to convert defect list to PyList
@@ -5559,7 +5579,7 @@ fn defect_generate_all(
         for entry in entries {
             list.append(entry_to_dict(py, entry)?)?;
         }
-        Ok(list.into())
+        Ok(list.unbind())
     };
 
     let main_dict = PyDict::new(py);
@@ -5576,7 +5596,7 @@ fn defect_generate_all(
     main_dict.set_item("spacegroup", result.spacegroup)?;
     main_dict.set_item("n_defects", result.n_defects)?;
 
-    Ok(main_dict.into())
+    Ok(main_dict.unbind())
 }
 
 // =============================================================================
@@ -5617,7 +5637,7 @@ fn get_wyckoff_labels(
         )?;
         list.append(dict)?;
     }
-    Ok(Some(list.into()))
+    Ok(Some(list.unbind()))
 }
 
 // =============================================================================
@@ -5715,12 +5735,24 @@ fn surface_find_adsorption_sites(
 ) -> PyResult<Vec<Py<PyDict>>> {
     let struc = parse_struct(&slab)?;
 
-    let types_filter: Option<Vec<surfaces::AdsorptionSiteType>> = site_types.map(|types| {
-        types
-            .iter()
-            .filter_map(|type_str| surfaces::AdsorptionSiteType::parse(type_str))
-            .collect()
-    });
+    let types_filter: Option<Vec<surfaces::AdsorptionSiteType>> = match site_types {
+        Some(types) => {
+            let mut parsed = Vec::with_capacity(types.len());
+            for type_str in &types {
+                match surfaces::AdsorptionSiteType::parse(type_str) {
+                    Some(t) => parsed.push(t),
+                    None => {
+                        return Err(PyValueError::new_err(format!(
+                            "Invalid adsorption site type: '{}'. Valid types: atop, bridge, hollow3, hollow4",
+                            type_str
+                        )));
+                    }
+                }
+            }
+            Some(parsed)
+        }
+        None => None,
+    };
 
     let sites = surfaces::find_adsorption_sites(&struc, height, types_filter.as_deref());
 
@@ -6056,15 +6088,30 @@ fn cell_find_supercell_matrix(
 
     let cell_strategy = match strategy {
         "target_atoms" => {
-            let target = target_value.unwrap_or(100.0) as usize;
-            cell_ops::SupercellStrategy::TargetAtoms(target)
+            let target = target_value.unwrap_or(100.0);
+            if target <= 0.0 || !target.is_finite() {
+                return Err(PyValueError::new_err(
+                    "target_atoms must be a positive finite number",
+                ));
+            }
+            cell_ops::SupercellStrategy::TargetAtoms(target as usize)
         }
         "min_length" => {
             let min_len = target_value.unwrap_or(10.0);
+            if min_len <= 0.0 || !min_len.is_finite() {
+                return Err(PyValueError::new_err(
+                    "min_length must be a positive finite number",
+                ));
+            }
             cell_ops::SupercellStrategy::MinLength(min_len)
         }
         "min_image_dist" | "min_image_distance" => {
             let min_dist = target_value.unwrap_or(10.0);
+            if min_dist <= 0.0 || !min_dist.is_finite() {
+                return Err(PyValueError::new_err(
+                    "min_image_dist must be a positive finite number",
+                ));
+            }
             cell_ops::SupercellStrategy::MinImageDistance(min_dist)
         }
         other => {
