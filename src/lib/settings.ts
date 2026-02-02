@@ -1237,6 +1237,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: `dominant_element`,
         description:
           `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
+        enum: {
+          uniform: `Uniform`,
+          formation_energy: `Formation energy`,
+          dominant_element: `Dominant element`,
+          facet_index: `Facet index`,
+        },
       },
       fullscreen: {
         value: false,
@@ -1324,6 +1330,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         value: `dominant_element`,
         description:
           `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
+        enum: {
+          uniform: `Uniform`,
+          formation_energy: `Formation energy`,
+          dominant_element: `Dominant element`,
+          facet_index: `Facet index`,
+        },
       },
       max_hull_dist_show_phases: {
         value: 0.1,
