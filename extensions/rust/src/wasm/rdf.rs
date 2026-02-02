@@ -80,18 +80,18 @@ pub fn compute_element_rdf(
     let elem1 = Element::from_symbol(element1);
     let elem2 = Element::from_symbol(element2);
 
-    if elem1.is_none() {
+    let Some(elem1) = elem1 else {
         return WasmResult::err(&format!("Unknown element: {element1}"));
-    }
-    if elem2.is_none() {
+    };
+    let Some(elem2) = elem2 else {
         return WasmResult::err(&format!("Unknown element: {element2}"));
-    }
+    };
 
     structure
         .to_structure()
         .map(|struc| {
             let options = RdfOptions::new(r_max, n_bins);
-            let result = rdf::compute_element_rdf(&struc, elem1.unwrap(), elem2.unwrap(), &options);
+            let result = rdf::compute_element_rdf(&struc, elem1, elem2, &options);
             JsRdfResult {
                 radii: result.radii,
                 g_of_r: result.g_of_r,

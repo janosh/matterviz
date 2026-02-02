@@ -294,14 +294,12 @@ fn guess_charge_states(defect_type: &str, species: Option<&str>) -> Vec<i32> {
     let _ = defect_type;
 
     // Basic heuristic: use common oxidation states of the species
-    if let Some(sp) = species {
-        if let Some(elem) = crate::element::Element::from_symbol(sp) {
-            return elem
-                .common_oxidation_states()
-                .iter()
-                .map(|&s| s as i32)
-                .collect();
-        }
+    if let Some(elem) = species.and_then(crate::element::Element::from_symbol) {
+        return elem
+            .common_oxidation_states()
+            .iter()
+            .map(|&s| s as i32)
+            .collect();
     }
     vec![-2, -1, 0, 1, 2]
 }
@@ -387,12 +385,10 @@ fn find_voronoi_interstitials(
     min_dist: Option<f64>,
     symprec: f64,
 ) -> PyResult<Py<PyList>> {
-    if let Some(dist) = min_dist {
-        if !dist.is_finite() || dist < 0.0 {
-            return Err(PyValueError::new_err(
-                "min_dist must be non-negative and finite",
-            ));
-        }
+    if let Some(dist) = min_dist.filter(|&d| !d.is_finite() || d < 0.0) {
+        return Err(PyValueError::new_err(format!(
+            "min_dist must be non-negative and finite, got {dist}"
+        )));
     }
 
     let struc = parse_struct(&structure)?;

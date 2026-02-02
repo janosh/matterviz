@@ -70,7 +70,7 @@ impl JsFireState {
     /// Returns an error if positions length is not a multiple of 3.
     #[wasm_bindgen(constructor)]
     pub fn new(positions: Vec<f64>, config: Option<JsFireConfig>) -> Result<JsFireState, JsError> {
-        if positions.len() % 3 != 0 {
+        if !positions.len().is_multiple_of(3) {
             return Err(JsError::new(&format!(
                 "positions length {} must be a multiple of 3",
                 positions.len()
@@ -173,7 +173,7 @@ impl JsCellFireState {
         config: Option<JsFireConfig>,
         cell_factor: Option<f64>,
     ) -> Result<JsCellFireState, JsError> {
-        if positions.len() % 3 != 0 {
+        if !positions.len().is_multiple_of(3) {
             return Err(JsError::new(&format!(
                 "positions length {} must be a multiple of 3",
                 positions.len()

@@ -54,10 +54,8 @@ pub fn compute_lennard_jones(
         if !sigma.is_finite() || !epsilon.is_finite() {
             return Err("sigma and epsilon must be finite".to_string());
         }
-        if let Some(cut) = cutoff {
-            if cut <= 0.0 || !cut.is_finite() {
-                return Err("cutoff must be positive and finite".to_string());
-            }
+        if cutoff.is_some_and(|cut| cut <= 0.0 || !cut.is_finite()) {
+            return Err("cutoff must be positive and finite".to_string());
         }
 
         let n_atoms = positions.len() / 3;
@@ -92,10 +90,8 @@ pub fn compute_lennard_jones_forces(
         if !epsilon.is_finite() {
             return Err("epsilon must be finite".to_string());
         }
-        if let Some(cut) = cutoff {
-            if cut <= 0.0 || !cut.is_finite() {
-                return Err("cutoff must be positive and finite".to_string());
-            }
+        if cutoff.is_some_and(|cut| cut <= 0.0 || !cut.is_finite()) {
+            return Err("cutoff must be positive and finite".to_string());
         }
 
         let n_atoms = positions.len() / 3;
@@ -223,7 +219,7 @@ pub fn compute_harmonic_bonds(
         let cell_mat = parse_flat_cell(cell.as_deref())?;
         let pbc = [pbc_x, pbc_y, pbc_z];
 
-        if bonds.len() % 4 != 0 {
+        if !bonds.len().is_multiple_of(4) {
             return Err("bonds array length must be divisible by 4".to_string());
         }
         let mut bond_vec: Vec<potentials::HarmonicBond> = Vec::with_capacity(bonds.len() / 4);

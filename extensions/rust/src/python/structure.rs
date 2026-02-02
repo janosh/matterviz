@@ -441,19 +441,15 @@ fn ewald_energy(
     let struc = parse_struct(&structure)?;
 
     // Validate optional parameters
-    if let Some(acc) = accuracy {
-        if acc <= 0.0 || !acc.is_finite() {
-            return Err(PyValueError::new_err(
-                "accuracy must be positive and finite",
-            ));
-        }
+    if let Some(acc) = accuracy.filter(|&a| a <= 0.0 || !a.is_finite()) {
+        return Err(PyValueError::new_err(format!(
+            "accuracy must be positive and finite, got {acc}"
+        )));
     }
-    if let Some(rc) = real_cutoff {
-        if rc <= 0.0 || !rc.is_finite() {
-            return Err(PyValueError::new_err(
-                "real_cutoff must be positive and finite",
-            ));
-        }
+    if let Some(rc) = real_cutoff.filter(|&r| r <= 0.0 || !r.is_finite()) {
+        return Err(PyValueError::new_err(format!(
+            "real_cutoff must be positive and finite, got {rc}"
+        )));
     }
 
     let mut ewald = crate::algorithms::ewald::Ewald::new();
