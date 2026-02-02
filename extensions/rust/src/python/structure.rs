@@ -9,9 +9,11 @@ use pyo3::types::PyDict;
 use crate::io::structure_to_pymatgen_json;
 use crate::structure_matcher::{ComparatorType, StructureMatcher};
 
+use pyo3::types::PyList;
+
 use super::helpers::{
-    StructureJson, parse_reduction_algo, parse_struct, parse_structure_pair, structure_to_pydict,
-    to_str_refs,
+    StructureJson, parse_reduction_algo, parse_struct, parse_structure_pair, props_to_pydict,
+    py_to_json_value, structure_to_pydict, to_str_refs,
 };
 
 /// Python wrapper for StructureMatcher.
@@ -516,6 +518,161 @@ fn enumerate_derivatives(
         .collect()
 }
 
+/// Translate selected sites by a vector.
+#[pyfunction]
+#[pyo3(signature = (structure, indices, vector, fractional = true))]
+fn translate_sites(
+    py: Python<'_>,
+    structure: StructureJson,
+    indices: Vec<usize>,
+    vector: [f64; 3],
+    fractional: bool,
+) -> PyResult<Py<PyDict>> {
+    let mut struc = parse_struct(&structure)?;
+    let num_sites = struc.num_sites();
+    if let Some(&idx) = indices.iter().find(|&&idx| idx >= num_sites) {
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+            "Site index {idx} out of bounds (num_sites={num_sites})"
+        )));
+    }
+    struc.translate_sites(&indices, nalgebra::Vector3::from(vector), fractional);
+    Ok(structure_to_pydict(py, &struc)?.unbind())
+}
+
+/// Perturb all sites by random vectors.
+#[pyfunction]
+#[pyo3(signature = (structure, distance, min_distance = None, seed = None))]
+fn perturb(
+    py: Python<'_>,
+    structure: StructureJson,
+    distance: f64,
+    min_distance: Option<f64>,
+    seed: Option<u64>,
+) -> PyResult<Py<PyDict>> {
+    if distance < 0.0 {
+        return Err(PyValueError::new_err("distance must be non-negative"));
+    }
+    if let Some(min_dist) = min_distance {
+        if min_dist < 0.0 {
+            return Err(PyValueError::new_err("min_distance must be non-negative"));
+        }
+        if min_dist > distance {
+            return Err(PyValueError::new_err("min_distance must be <= distance"));
+        }
+    }
+    let mut struc = parse_struct(&structure)?;
+    struc.perturb(distance, min_distance, seed);
+    Ok(structure_to_pydict(py, &struc)?.unbind())
+}
+
+/// Get labels for all sites.
+#[pyfunction]
+fn site_labels(structure: StructureJson) -> PyResult<Vec<String>> {
+    Ok(parse_struct(&structure)?.site_labels())
+}
+
+/// Get species strings for all sites.
+#[pyfunction]
+fn species_strings(structure: StructureJson) -> PyResult<Vec<String>> {
+    Ok(parse_struct(&structure)?.species_strings())
+}
+
+/// Get structure with reduced lattice using custom parameters.
+#[pyfunction]
+#[pyo3(signature = (structure, algorithm = "niggli", niggli_tol = 1e-5, lll_delta = 0.75))]
+fn get_reduced_structure_with_params(
+    py: Python<'_>,
+    structure: StructureJson,
+    algorithm: &str,
+    niggli_tol: f64,
+    lll_delta: f64,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let algo = parse_reduction_algo(algorithm)?;
+    let reduced = struc
+        .get_reduced_structure_with_params(algo, niggli_tol, lll_delta)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok(structure_to_pydict(py, &reduced)?.unbind())
+}
+
+/// Get structure sorted by electronegativity.
+#[pyfunction]
+fn get_sorted_by_electronegativity(
+    py: Python<'_>,
+    structure: StructureJson,
+    reverse: Option<bool>,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let sorted = struc.get_sorted_by_electronegativity(reverse.unwrap_or(false));
+    Ok(structure_to_pydict(py, &sorted)?.unbind())
+}
+
+/// Get distance between two sites with a specific periodic image.
+#[pyfunction]
+fn get_distance_with_image(
+    structure: StructureJson,
+    idx1: usize,
+    idx2: usize,
+    jimage: [i32; 3],
+) -> PyResult<f64> {
+    let struc = parse_struct(&structure)?;
+    let num_sites = struc.num_sites();
+    if idx1 >= num_sites || idx2 >= num_sites {
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+            "Site index out of bounds (num_sites={num_sites})"
+        )));
+    }
+    Ok(struc.get_distance_with_image(idx1, idx2, jimage))
+}
+
+/// Get site properties for a specific site.
+#[pyfunction]
+fn get_site_properties(
+    py: Python<'_>,
+    structure: StructureJson,
+    idx: usize,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    if idx >= struc.num_sites() {
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+            "Site index {idx} out of bounds for structure with {} sites",
+            struc.num_sites()
+        )));
+    }
+    Ok(props_to_pydict(py, struc.site_properties(idx))?.unbind())
+}
+
+/// Get all site properties for a structure.
+#[pyfunction]
+fn get_all_site_properties(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyList>> {
+    let struc = parse_struct(&structure)?;
+    let result: Vec<_> = (0..struc.num_sites())
+        .map(|idx| props_to_pydict(py, struc.site_properties(idx)))
+        .collect::<PyResult<_>>()?;
+    Ok(PyList::new(py, result)?.unbind())
+}
+
+/// Set a site property.
+#[pyfunction]
+fn set_site_property(
+    py: Python<'_>,
+    structure: StructureJson,
+    idx: usize,
+    key: &str,
+    value: Bound<'_, pyo3::PyAny>,
+) -> PyResult<Py<PyDict>> {
+    let mut struc = parse_struct(&structure)?;
+    if idx >= struc.num_sites() {
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+            "Site index {idx} out of bounds for structure with {} sites",
+            struc.num_sites()
+        )));
+    }
+    let json_val = py_to_json_value(&value)?;
+    struc.set_site_property(idx, key, json_val);
+    Ok(structure_to_pydict(py, &struc)?.unbind())
+}
+
 /// Register the structure submodule.
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let submod = PyModule::new(parent.py(), "structure")?;
@@ -523,10 +680,15 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(make_supercell, &submod)?)?;
     submod.add_function(wrap_pyfunction!(make_supercell_diag, &submod)?)?;
     submod.add_function(wrap_pyfunction!(get_reduced_structure, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(
+        get_reduced_structure_with_params,
+        &submod
+    )?)?;
     submod.add_function(wrap_pyfunction!(copy_structure, &submod)?)?;
     submod.add_function(wrap_pyfunction!(wrap_to_unit_cell, &submod)?)?;
     submod.add_function(wrap_pyfunction!(interpolate, &submod)?)?;
     submod.add_function(wrap_pyfunction!(get_sorted_structure, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(get_sorted_by_electronegativity, &submod)?)?;
     submod.add_function(wrap_pyfunction!(get_structure_metadata, &submod)?)?;
     submod.add_function(wrap_pyfunction!(matches, &submod)?)?;
     submod.add_function(wrap_pyfunction!(substitute_species, &submod)?)?;
@@ -536,6 +698,14 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(ewald_energy, &submod)?)?;
     submod.add_function(wrap_pyfunction!(order_disordered, &submod)?)?;
     submod.add_function(wrap_pyfunction!(enumerate_derivatives, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(translate_sites, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(perturb, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(site_labels, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(species_strings, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(get_distance_with_image, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(get_site_properties, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(get_all_site_properties, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(set_site_property, &submod)?)?;
     parent.add_submodule(&submod)?;
     Ok(())
 }

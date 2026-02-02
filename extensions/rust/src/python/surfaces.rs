@@ -6,7 +6,127 @@ use pyo3::types::{PyDict, PyList};
 
 use crate::surfaces;
 
-use super::helpers::{StructureJson, parse_struct};
+use crate::io::structure_to_pymatgen_json;
+
+use super::helpers::{StructureJson, json_to_pydict, parse_struct, structure_to_pydict};
+
+/// Generate all slabs for a given Miller index (all terminations).
+#[pyfunction]
+#[pyo3(signature = (structure, miller_index, min_slab_size = 10.0, min_vacuum_size = 10.0, center_slab = true, in_unit_planes = false, symprec = 0.01))]
+fn generate_slabs(
+    py: Python<'_>,
+    structure: StructureJson,
+    miller_index: [i32; 3],
+    min_slab_size: f64,
+    min_vacuum_size: f64,
+    center_slab: bool,
+    in_unit_planes: bool,
+    symprec: f64,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let struc = parse_struct(&structure)?;
+    let config = crate::structure::SlabConfig {
+        miller_index,
+        min_slab_size,
+        min_vacuum_size,
+        center_slab,
+        in_unit_planes,
+        primitive: false,
+        symprec,
+        termination_index: None,
+    };
+    let slabs = py
+        .allow_threads(|| struc.generate_slabs(&config))
+        .map_err(|err| PyValueError::new_err(format!("Error generating slabs: {err}")))?;
+    slabs
+        .iter()
+        .map(|slab| Ok(structure_to_pydict(py, slab)?.unbind()))
+        .collect()
+}
+
+/// Generate a single slab for a given Miller index and termination.
+#[pyfunction]
+#[pyo3(signature = (structure, miller_index, min_slab_size = 10.0, min_vacuum_size = 10.0, center_slab = true, in_unit_planes = false, symprec = 0.01, termination_index = 0))]
+fn make_slab(
+    py: Python<'_>,
+    structure: StructureJson,
+    miller_index: [i32; 3],
+    min_slab_size: f64,
+    min_vacuum_size: f64,
+    center_slab: bool,
+    in_unit_planes: bool,
+    symprec: f64,
+    termination_index: usize,
+) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let config = crate::structure::SlabConfig {
+        miller_index,
+        min_slab_size,
+        min_vacuum_size,
+        center_slab,
+        in_unit_planes,
+        primitive: false,
+        symprec,
+        termination_index: Some(termination_index),
+    };
+    let slab = py
+        .allow_threads(|| struc.make_slab(&config))
+        .map_err(|err| PyValueError::new_err(format!("Error making slab: {err}")))?;
+    Ok(structure_to_pydict(py, &slab)?.unbind())
+}
+
+/// Enumerate terminations for a given Miller index.
+#[pyfunction]
+#[pyo3(signature = (structure, h, k, l, min_slab = 10.0, min_vacuum = 10.0, symprec = 0.01))]
+fn enumerate_terminations(
+    py: Python<'_>,
+    structure: StructureJson,
+    h: i32,
+    k: i32,
+    l: i32,
+    min_slab: f64,
+    min_vacuum: f64,
+    symprec: f64,
+) -> PyResult<Vec<Py<PyDict>>> {
+    if !min_slab.is_finite() || min_slab <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_slab must be positive and finite",
+        ));
+    }
+    if !min_vacuum.is_finite() || min_vacuum <= 0.0 {
+        return Err(PyValueError::new_err(
+            "min_vacuum must be positive and finite",
+        ));
+    }
+
+    let struc = parse_struct(&structure)?;
+    let miller = surfaces::MillerIndex::new(h, k, l);
+    let config = surfaces::SlabConfigExt::new(miller)
+        .with_min_slab_size(min_slab)
+        .with_min_vacuum(min_vacuum);
+
+    let terminations = surfaces::enumerate_terminations(&struc, miller, &config, symprec)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+
+    terminations
+        .into_iter()
+        .map(|term| {
+            let dict = PyDict::new(py);
+            dict.set_item("miller_index", term.miller_index.to_array())?;
+            dict.set_item("shift", term.shift)?;
+            let species_strs: Vec<String> = term
+                .surface_species
+                .iter()
+                .map(|sp| sp.to_string())
+                .collect();
+            dict.set_item("surface_species", species_strs)?;
+            dict.set_item("surface_density", term.surface_density)?;
+            dict.set_item("is_polar", term.is_polar)?;
+            let slab_json = structure_to_pymatgen_json(&term.slab);
+            dict.set_item("slab", json_to_pydict(py, &slab_json)?)?;
+            Ok(dict.unbind())
+        })
+        .collect()
+}
 
 /// Enumerate Miller indices up to a maximum value.
 #[pyfunction]
@@ -193,6 +313,9 @@ fn miller_to_normal(structure: StructureJson, miller: [i32; 3]) -> PyResult<[f64
 /// Register the surfaces submodule.
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let submod = PyModule::new(parent.py(), "surfaces")?;
+    submod.add_function(wrap_pyfunction!(generate_slabs, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(make_slab, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(enumerate_terminations, &submod)?)?;
     submod.add_function(wrap_pyfunction!(enumerate_miller, &submod)?)?;
     submod.add_function(wrap_pyfunction!(find_adsorption_sites, &submod)?)?;
     submod.add_function(wrap_pyfunction!(get_surface_atoms, &submod)?)?;

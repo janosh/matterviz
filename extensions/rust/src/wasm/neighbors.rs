@@ -14,8 +14,8 @@ pub fn get_neighbor_list(
     exclude_self: bool,
 ) -> WasmResult<JsNeighborList> {
     let result: Result<JsNeighborList, String> = (|| {
-        if cutoff_radius < 0.0 {
-            return Err("Cutoff radius must be non-negative".to_string());
+        if !cutoff_radius.is_finite() || cutoff_radius < 0.0 {
+            return Err("Cutoff radius must be finite and non-negative".to_string());
         }
         let struc = structure.to_structure()?;
         let (center_indices, neighbor_indices, image_offsets, distances) =
@@ -57,8 +57,8 @@ pub fn get_distance_matrix(structure: JsCrystal) -> WasmResult<Vec<Vec<f64>>> {
 
 #[wasm_bindgen]
 pub fn get_coordination_numbers(structure: JsCrystal, cutoff: f64) -> WasmResult<Vec<u32>> {
-    if cutoff < 0.0 {
-        return WasmResult::err("Cutoff must be non-negative");
+    if !cutoff.is_finite() || cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be finite and non-negative");
     }
     structure
         .to_structure()
@@ -78,8 +78,8 @@ pub fn get_coordination_number(
     site_index: u32,
     cutoff: f64,
 ) -> WasmResult<u32> {
-    if cutoff < 0.0 {
-        return WasmResult::err("Cutoff must be non-negative");
+    if !cutoff.is_finite() || cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be finite and non-negative");
     }
     let result: Result<u32, String> = (|| {
         let struc = structure.to_structure()?;
@@ -101,8 +101,8 @@ pub fn get_local_environment(
     site_index: u32,
     cutoff: f64,
 ) -> WasmResult<JsLocalEnvironment> {
-    if cutoff < 0.0 {
-        return WasmResult::err("Cutoff must be non-negative");
+    if !cutoff.is_finite() || cutoff < 0.0 {
+        return WasmResult::err("Cutoff must be finite and non-negative");
     }
     let result: Result<JsLocalEnvironment, String> = (|| {
         let struc = structure.to_structure()?;

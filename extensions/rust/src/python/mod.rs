@@ -51,8 +51,9 @@ pub mod xrd;
 
 /// Register all Python submodules.
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Top-level Element class
+    // Top-level Element class and functions
     parent.add_class::<element::Element>()?;
+    element::register(parent)?;
 
     // Register all submodules
     io::register(parent)?;

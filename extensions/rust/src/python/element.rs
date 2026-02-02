@@ -361,3 +361,35 @@ impl Element {
         self.inner.atomic_number() as isize
     }
 }
+
+use super::helpers::json_to_py;
+
+/// Normalize an element symbol string, extracting element, oxidation state, and metadata.
+#[pyfunction]
+pub fn normalize_element_symbol(py: Python<'_>, symbol: &str) -> PyResult<Py<PyDict>> {
+    let normalized = crate::element::normalize_symbol(symbol)
+        .map_err(|err| PyValueError::new_err(format!("Invalid symbol '{symbol}': {err}")))?;
+
+    let dict = PyDict::new(py);
+    dict.set_item("element", normalized.element.symbol())?;
+    dict.set_item(
+        "oxidation_state",
+        normalized.oxidation_state.map(|o| o as i32),
+    )?;
+
+    // Convert metadata HashMap to Python dict
+    let metadata = PyDict::new(py);
+    for (key, val) in normalized.metadata {
+        let py_val = json_to_py(py, &val)?;
+        metadata.set_item(key, py_val)?;
+    }
+    dict.set_item("metadata", metadata)?;
+
+    Ok(dict.unbind())
+}
+
+/// Register element functions at the top level (Element class is registered in mod.rs).
+pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
+    parent.add_function(wrap_pyfunction!(normalize_element_symbol, parent)?)?;
+    Ok(())
+}

@@ -378,6 +378,41 @@ fn generate_all(
     Ok(output.unbind())
 }
 
+/// Find Voronoi-based interstitial sites.
+#[pyfunction]
+#[pyo3(signature = (structure, min_dist = None, symprec = 0.01))]
+fn find_voronoi_interstitials(
+    py: Python<'_>,
+    structure: StructureJson,
+    min_dist: Option<f64>,
+    symprec: f64,
+) -> PyResult<Py<PyList>> {
+    if let Some(dist) = min_dist {
+        if !dist.is_finite() || dist < 0.0 {
+            return Err(PyValueError::new_err(
+                "min_dist must be non-negative and finite",
+            ));
+        }
+    }
+
+    let struc = parse_struct(&structure)?;
+    let sites = defects::find_voronoi_interstitials(&struc, min_dist, symprec);
+
+    let list = PyList::empty(py);
+    for site in sites {
+        let dict = PyDict::new(py);
+        dict.set_item("frac_coords", site.frac_coords.as_slice())?;
+        dict.set_item("cart_coords", site.cart_coords.as_slice())?;
+        dict.set_item("min_dist", site.min_distance)?;
+        dict.set_item("coordination", site.coordination)?;
+        dict.set_item("site_type", site.site_type.as_str())?;
+        dict.set_item("wyckoff", site.wyckoff_label)?;
+        dict.set_item("multiplicity", site.multiplicity)?;
+        list.append(dict)?;
+    }
+    Ok(list.unbind())
+}
+
 /// Register the defects submodule.
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let submod = PyModule::new(parent.py(), "defects")?;
@@ -386,6 +421,7 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(create_interstitial, &submod)?)?;
     submod.add_function(wrap_pyfunction!(create_antisite, &submod)?)?;
     submod.add_function(wrap_pyfunction!(find_interstitial_sites, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(find_voronoi_interstitials, &submod)?)?;
     submod.add_function(wrap_pyfunction!(find_supercell, &submod)?)?;
     submod.add_function(wrap_pyfunction!(classify_site, &submod)?)?;
     submod.add_function(wrap_pyfunction!(distort_bonds, &submod)?)?;

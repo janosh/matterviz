@@ -326,3 +326,51 @@ pub fn validate_array_index(value: f64, context: &str) -> PyResult<usize> {
     }
     Ok(value as usize)
 }
+
+/// Convert a HashMap of JSON values to a Python dict.
+pub fn props_to_pydict<'py>(
+    py: Python<'py>,
+    props: &std::collections::HashMap<String, serde_json::Value>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let dict = PyDict::new(py);
+    for (key, val) in props {
+        dict.set_item(key, json_to_py(py, val)?)?;
+    }
+    Ok(dict)
+}
+
+/// Convert Python object to serde_json::Value.
+#[allow(deprecated)]
+pub fn py_to_json_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<serde_json::Value> {
+    if obj.is_none() {
+        Ok(serde_json::Value::Null)
+    } else if let Ok(b) = obj.extract::<bool>() {
+        Ok(serde_json::Value::Bool(b))
+    } else if let Ok(i) = obj.extract::<i64>() {
+        Ok(serde_json::json!(i))
+    } else if let Ok(u) = obj.extract::<u64>() {
+        Ok(serde_json::json!(u))
+    } else if let Ok(f) = obj.extract::<f64>() {
+        Ok(serde_json::json!(f))
+    } else if let Ok(s) = obj.extract::<String>() {
+        Ok(serde_json::Value::String(s))
+    } else if let Ok(list) = obj.downcast::<PyList>() {
+        let arr: Vec<serde_json::Value> = list
+            .iter()
+            .map(|item| py_to_json_value(&item))
+            .collect::<PyResult<_>>()?;
+        Ok(serde_json::Value::Array(arr))
+    } else if let Ok(dict) = obj.downcast::<PyDict>() {
+        let mut map = serde_json::Map::new();
+        for (k, v) in dict {
+            let key: String = k.extract()?;
+            map.insert(key, py_to_json_value(&v)?);
+        }
+        Ok(serde_json::Value::Object(map))
+    } else {
+        Err(PyValueError::new_err(format!(
+            "Cannot convert Python object to JSON: {:?}",
+            obj.get_type().name()
+        )))
+    }
+}

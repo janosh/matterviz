@@ -28,7 +28,7 @@ impl JsElement {
             .map(|elem| JsElement { inner: elem })
             .ok_or_else(|| {
                 JsError::new(&format!(
-                    "Invalid atomic number: {atomic_num} (valid: 1-121)"
+                    "Invalid atomic number: {atomic_num} (valid: 1-118)"
                 ))
             })
     }

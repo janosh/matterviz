@@ -28,6 +28,14 @@ impl JsMDState {
                 n_atoms
             )));
         }
+        // Validate masses are positive and finite
+        for (idx, &mass) in masses.iter().enumerate() {
+            if !mass.is_finite() || mass <= 0.0 {
+                return Err(JsError::new(&format!(
+                    "Mass at index {idx} must be positive and finite, got {mass}"
+                )));
+            }
+        }
         let pos_vec: Vec<Vector3<f64>> = positions
             .chunks(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
@@ -165,13 +173,24 @@ impl JsMDState {
 
     /// Set cell matrix (9 elements, row-major).
     #[wasm_bindgen]
-    pub fn set_cell(&mut self, cell: Vec<f64>, pbc_x: bool, pbc_y: bool, pbc_z: bool) {
-        if cell.len() == 9 {
-            self.inner.cell = Some(nalgebra::Matrix3::new(
-                cell[0], cell[1], cell[2], cell[3], cell[4], cell[5], cell[6], cell[7], cell[8],
-            ));
-            self.inner.pbc = [pbc_x, pbc_y, pbc_z];
+    pub fn set_cell(
+        &mut self,
+        cell: Vec<f64>,
+        pbc_x: bool,
+        pbc_y: bool,
+        pbc_z: bool,
+    ) -> Result<(), JsError> {
+        if cell.len() != 9 {
+            return Err(JsError::new(&format!(
+                "cell must have 9 elements, got {}",
+                cell.len()
+            )));
         }
+        self.inner.cell = Some(nalgebra::Matrix3::new(
+            cell[0], cell[1], cell[2], cell[3], cell[4], cell[5], cell[6], cell[7], cell[8],
+        ));
+        self.inner.pbc = [pbc_x, pbc_y, pbc_z];
+        Ok(())
     }
 }
 
@@ -236,6 +255,9 @@ pub fn md_velocity_verlet_finalize(
     dt_fs: f64,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
+        if !dt_fs.is_finite() || dt_fs <= 0.0 {
+            return Err(format!("dt_fs must be finite and positive, got {dt_fs}"));
+        }
         let n_atoms = state.inner.num_atoms();
         if new_forces.len() != n_atoms * 3 {
             return Err(format!(

@@ -1,10 +1,11 @@
 //! Symmetry and space group functions.
 
+use nalgebra::{Matrix3, Vector3};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::structure::spacegroup_to_crystal_system;
+use crate::structure::{SymmOp, spacegroup_to_crystal_system};
 
 use super::helpers::{StructureJson, parse_struct, structure_to_pydict};
 
@@ -203,6 +204,50 @@ fn get_symmetry_dataset(
     Ok(dict.unbind())
 }
 
+/// Apply a symmetry operation (rotation + translation) to a structure.
+#[pyfunction]
+#[pyo3(signature = (structure, rotation, translation, fractional = true))]
+fn apply_operation(
+    py: Python<'_>,
+    structure: StructureJson,
+    rotation: [[f64; 3]; 3],
+    translation: [f64; 3],
+    fractional: bool,
+) -> PyResult<Py<PyDict>> {
+    let mut struc = parse_struct(&structure)?;
+    let rot = Matrix3::from_row_slice(&rotation.concat());
+    let op = SymmOp::new(rot, Vector3::from(translation));
+    struc.apply_operation(&op, fractional);
+    Ok(structure_to_pydict(py, &struc)?.unbind())
+}
+
+/// Apply inversion through the origin.
+#[pyfunction]
+#[pyo3(signature = (structure, fractional = true))]
+fn apply_inversion(
+    py: Python<'_>,
+    structure: StructureJson,
+    fractional: bool,
+) -> PyResult<Py<PyDict>> {
+    let mut struc = parse_struct(&structure)?;
+    struc.apply_operation(&SymmOp::inversion(), fractional);
+    Ok(structure_to_pydict(py, &struc)?.unbind())
+}
+
+/// Apply a translation to all sites.
+#[pyfunction]
+#[pyo3(signature = (structure, translation, fractional = true))]
+fn apply_translation(
+    py: Python<'_>,
+    structure: StructureJson,
+    translation: [f64; 3],
+    fractional: bool,
+) -> PyResult<Py<PyDict>> {
+    let mut struc = parse_struct(&structure)?;
+    struc.apply_operation(&SymmOp::translation(Vector3::from(translation)), fractional);
+    Ok(structure_to_pydict(py, &struc)?.unbind())
+}
+
 /// Register the symmetry submodule.
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let submod = PyModule::new(parent.py(), "symmetry")?;
@@ -217,6 +262,9 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(get_primitive, &submod)?)?;
     submod.add_function(wrap_pyfunction!(get_conventional, &submod)?)?;
     submod.add_function(wrap_pyfunction!(get_symmetry_dataset, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(apply_operation, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(apply_inversion, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(apply_translation, &submod)?)?;
     parent.add_submodule(&submod)?;
     Ok(())
 }

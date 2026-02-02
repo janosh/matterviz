@@ -128,6 +128,14 @@ fn is_supercell(
     Ok(cell_ops::is_supercell(&s1.lattice, &s2.lattice, tolerance))
 }
 
+/// Get perpendicular distances for each lattice direction.
+#[pyfunction]
+fn perpendicular_distances(structure: StructureJson) -> PyResult<[f64; 3]> {
+    let struc = parse_struct(&structure)?;
+    let perp = cell_ops::perpendicular_distances(&struc.lattice);
+    Ok([perp[0], perp[1], perp[2]])
+}
+
 /// Register the cell submodule.
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let submod = PyModule::new(parent.py(), "cell")?;
@@ -139,6 +147,7 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(find_supercell_matrix, &submod)?)?;
     submod.add_function(wrap_pyfunction!(lattices_equivalent, &submod)?)?;
     submod.add_function(wrap_pyfunction!(is_supercell, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(perpendicular_distances, &submod)?)?;
     parent.add_submodule(&submod)?;
     Ok(())
 }

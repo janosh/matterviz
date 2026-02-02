@@ -160,13 +160,22 @@ fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyRe
     let lattice = structure.getattr("lattice")?;
     let matrix: Vec<Vec<f64>> = lattice.getattr("matrix")?.extract()?;
 
-    // Validate matrix dimensions
+    // Validate matrix dimensions and finite values
     if matrix.len() != 3 || matrix.iter().any(|row| row.len() != 3) {
         return Err(PyValueError::new_err(format!(
             "Lattice matrix must be 3x3, got {}x{}",
             matrix.len(),
             matrix.first().map_or(0, |r| r.len())
         )));
+    }
+    for (row_idx, row) in matrix.iter().enumerate() {
+        for (col_idx, &val) in row.iter().enumerate() {
+            if !val.is_finite() {
+                return Err(PyValueError::new_err(format!(
+                    "Lattice matrix[{row_idx}][{col_idx}] must be finite, got {val}"
+                )));
+            }
+        }
     }
 
     let pbc: [bool; 3] = lattice
@@ -278,6 +287,23 @@ fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDic
     let positions: Vec<[f64; 3]> = atoms.call_method0("get_positions")?.extract()?;
     let cell_obj = atoms.call_method0("get_cell")?;
     let cell: Vec<Vec<f64>> = cell_obj.extract().unwrap_or_else(|_| vec![vec![0.0; 3]; 3]);
+    // Validate cell dimensions and finite values
+    if cell.len() != 3 || cell.iter().any(|row| row.len() != 3) {
+        return Err(PyValueError::new_err(format!(
+            "ASE cell must be 3x3, got {}x{}",
+            cell.len(),
+            cell.first().map_or(0, |r| r.len())
+        )));
+    }
+    for (row_idx, row) in cell.iter().enumerate() {
+        for (col_idx, &val) in row.iter().enumerate() {
+            if !val.is_finite() {
+                return Err(PyValueError::new_err(format!(
+                    "ASE cell[{row_idx}][{col_idx}] must be finite, got {val}"
+                )));
+            }
+        }
+    }
     let has_cell = cell.iter().any(|row| row.iter().any(|&v| v.abs() > 1e-10));
     let pbc: [bool; 3] = atoms
         .call_method0("get_pbc")

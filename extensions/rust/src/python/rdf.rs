@@ -22,11 +22,15 @@ fn validate_rdf_params(r_max: f64, n_bins: usize) -> PyResult<()> {
 
 /// Compute the radial distribution function.
 #[pyfunction]
-#[pyo3(signature = (structure, r_max = 10.0, n_bins = 100))]
+#[pyo3(signature = (structure, r_max = 15.0, n_bins = 75, normalize = true, auto_expand = true, expansion_factor = 2.0))]
 fn compute_rdf(
+    py: Python<'_>,
     structure: StructureJson,
     r_max: f64,
     n_bins: usize,
+    normalize: bool,
+    auto_expand: bool,
+    expansion_factor: f64,
 ) -> PyResult<(Vec<f64>, Vec<f64>)> {
     validate_rdf_params(r_max, n_bins)?;
     let struc = parse_struct(&structure)?;
@@ -34,22 +38,29 @@ fn compute_rdf(
     let options = rdf::RdfOptions {
         r_max,
         n_bins,
-        ..Default::default()
+        normalize,
+        auto_expand,
+        expansion_factor,
     };
 
-    let result = rdf::compute_rdf(&struc, &options);
+    // Release GIL during heavy computation (especially with auto_expand creating supercells)
+    let result = py.allow_threads(|| rdf::compute_rdf(&struc, &options));
     Ok((result.radii, result.g_of_r))
 }
 
 /// Compute the element-specific RDF. Returns (radii, g_of_r) tuple.
 #[pyfunction]
-#[pyo3(signature = (structure, element1, element2, r_max = 10.0, n_bins = 100))]
+#[pyo3(signature = (structure, element1, element2, r_max = 15.0, n_bins = 75, normalize = true, auto_expand = true, expansion_factor = 2.0))]
 fn compute_element_rdf(
+    py: Python<'_>,
     structure: StructureJson,
     element1: &str,
     element2: &str,
     r_max: f64,
     n_bins: usize,
+    normalize: bool,
+    auto_expand: bool,
+    expansion_factor: f64,
 ) -> PyResult<(Vec<f64>, Vec<f64>)> {
     validate_rdf_params(r_max, n_bins)?;
     let struc = parse_struct(&structure)?;
@@ -64,21 +75,26 @@ fn compute_element_rdf(
     let options = rdf::RdfOptions {
         r_max,
         n_bins,
-        ..Default::default()
+        normalize,
+        auto_expand,
+        expansion_factor,
     };
 
-    let result = rdf::compute_element_rdf(&struc, elem1, elem2, &options);
+    let result = py.allow_threads(|| rdf::compute_element_rdf(&struc, elem1, elem2, &options));
     Ok((result.radii, result.g_of_r))
 }
 
 /// Compute RDFs for all element pairs. Returns dict keyed by element pair.
 #[pyfunction]
-#[pyo3(signature = (structure, r_max = 10.0, n_bins = 100))]
+#[pyo3(signature = (structure, r_max = 15.0, n_bins = 75, normalize = true, auto_expand = true, expansion_factor = 2.0))]
 fn compute_all_element_rdfs(
     py: Python<'_>,
     structure: StructureJson,
     r_max: f64,
     n_bins: usize,
+    normalize: bool,
+    auto_expand: bool,
+    expansion_factor: f64,
 ) -> PyResult<Py<PyDict>> {
     validate_rdf_params(r_max, n_bins)?;
     let struc = parse_struct(&structure)?;
@@ -86,10 +102,12 @@ fn compute_all_element_rdfs(
     let options = rdf::RdfOptions {
         r_max,
         n_bins,
-        ..Default::default()
+        normalize,
+        auto_expand,
+        expansion_factor,
     };
 
-    let results = rdf::compute_all_element_rdfs(&struc, &options);
+    let results = py.allow_threads(|| rdf::compute_all_element_rdfs(&struc, &options));
 
     // Return a dict keyed by "Element1-Element2" with (radii, g_of_r) tuples as values
     let dict = PyDict::new(py);
