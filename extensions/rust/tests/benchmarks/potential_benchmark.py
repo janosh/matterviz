@@ -1,11 +1,26 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "ase",
+#     "numpy",
+#     "torch",
+#     "torch-sim",
+# ]
+#
+# [tool.uv.sources]
+# ferrox = { path = "../../", editable = true }
+# ///
 """Comprehensive potential benchmark: LJ and Morse.
 
 Compares native implementations in:
 - ferrox (Rust)
 - torch-sim (PyTorch)
 - ASE (NumPy/Python)
+
+Run with: uv run potential_benchmark.py [--steps N] [--output FILE]
 """
 
+import argparse
 import json
 import time
 from dataclasses import asdict, dataclass
@@ -13,22 +28,16 @@ from datetime import UTC, datetime
 
 import ferrox
 import numpy as np
+import torch
 from ase import Atoms, units
 from ase.build import bulk
 from ase.calculators.lj import LennardJones as AseLennardJones
 from ase.calculators.morse import MorsePotential as AseMorse
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.md.verlet import VelocityVerlet
-
-try:
-    import torch
-    from torch_sim import SimState, nve_init, nve_step
-    from torch_sim.models.lennard_jones import LennardJonesModel as TorchSimLJ
-    from torch_sim.models.morse import MorseModel as TorchSimMorse
-
-    HAS_TORCH_SIM = True
-except ImportError:
-    HAS_TORCH_SIM = False
+from torch_sim import SimState, nve_init, nve_step
+from torch_sim.models.lennard_jones import LennardJonesModel as TorchSimLJ
+from torch_sim.models.morse import MorseModel as TorchSimMorse
 
 
 @dataclass
@@ -61,7 +70,7 @@ def make_supercell(n_repeat: int) -> Atoms:
 
 def run_ferrox_lj_nve(atoms: Atoms, n_steps: int, dt: float, temp: float) -> float:
     """Run NVE with ferrox LJ."""
-    positions = [list(p) for p in atoms.get_positions()]
+    positions = [list(pos) for pos in atoms.get_positions()]
     cell = atoms.get_cell().array.tolist()
     masses = atoms.get_masses().tolist()
 
@@ -82,7 +91,7 @@ def run_ferrox_lj_nve(atoms: Atoms, n_steps: int, dt: float, temp: float) -> flo
 
 def run_ferrox_morse_nve(atoms: Atoms, n_steps: int, dt: float, temp: float) -> float:
     """Run NVE with ferrox Morse."""
-    positions = [list(p) for p in atoms.get_positions()]
+    positions = [list(pos) for pos in atoms.get_positions()]
     cell = atoms.get_cell().array.tolist()
     masses = atoms.get_masses().tolist()
 
@@ -135,7 +144,7 @@ def run_ase_morse_nve(atoms: Atoms, n_steps: int, dt: float, temp: float) -> flo
 # === TorchSim runners ===
 
 
-def create_simstate(atoms: Atoms) -> "SimState":
+def create_simstate(atoms: Atoms) -> SimState:
     """Convert ASE Atoms to torch-sim SimState."""
     return SimState(
         positions=torch.tensor(atoms.get_positions(), dtype=torch.float64),
@@ -146,13 +155,8 @@ def create_simstate(atoms: Atoms) -> "SimState":
     )
 
 
-def run_torchsim_lj_nve(
-    atoms: Atoms, n_steps: int, dt: float, temp: float
-) -> float | None:
+def run_torchsim_lj_nve(atoms: Atoms, n_steps: int, dt: float, temp: float) -> float:
     """Run NVE with torch-sim LJ."""
-    if not HAS_TORCH_SIM:
-        return None
-
     model = TorchSimLJ(sigma=3.4, epsilon=0.0103, cutoff=10.0, dtype=torch.float64)
     state = create_simstate(atoms)
     kb_ev = 8.617333262e-5
@@ -171,11 +175,7 @@ def run_torchsim_morse_nve(
     atoms: Atoms, n_steps: int, dt: float, temp: float
 ) -> float | None:
     """Run NVE with torch-sim Morse."""
-    if not HAS_TORCH_SIM:
-        return None
-
     try:
-        # torch-sim Morse requires compute_forces=True
         model = TorchSimMorse(
             sigma=3.82,
             epsilon=0.0103,
@@ -196,10 +196,7 @@ def run_torchsim_morse_nve(
             md_state = nve_step(md_state, model, dt=dt_tensor)
         return time.perf_counter() - start
     except (RuntimeError, ValueError, TypeError) as exc:
-        import traceback
-
         print(f"[torch-sim Morse error: {exc}]", end=" ")
-        traceback.print_exc()
         return None
 
 
@@ -306,22 +303,21 @@ def run_benchmarks(n_steps: int = 50, output_file: str | None = None) -> dict:
     print("=" * 70)
     print(f"\nSystems: {list(systems.keys())}")
     print(f"Steps per benchmark: {n_steps}")
-    print(f"TorchSim available: {HAS_TORCH_SIM}")
 
-    all_results = {"lj": [], "morse": []}
+    all_results: dict = {"lj": [], "morse": []}
 
     print("\n" + "-" * 70)
     print("LENNARD-JONES POTENTIAL")
     print("-" * 70)
     lj_results = benchmark_potential("lj", systems, n_steps, dt=5.0, temp=100.0)
-    all_results["lj"] = [asdict(r) for r in lj_results]
+    all_results["lj"] = [asdict(res) for res in lj_results]
     print_results_table(lj_results, "Lennard-Jones NVE Results")
 
     print("\n" + "-" * 70)
     print("MORSE POTENTIAL")
     print("-" * 70)
     morse_results = benchmark_potential("morse", systems, n_steps, dt=5.0, temp=100.0)
-    all_results["morse"] = [asdict(r) for r in morse_results]
+    all_results["morse"] = [asdict(res) for res in morse_results]
     print_results_table(morse_results, "Morse NVE Results")
 
     # Summary
@@ -332,14 +328,13 @@ def run_benchmarks(n_steps: int = 50, output_file: str | None = None) -> dict:
     for pot in ["lj", "morse"]:
         results = all_results[pot]
         if results:
-            avg_speedup = sum(r["ferrox_vs_ase"] for r in results) / len(results)
+            avg_speedup = sum(res["ferrox_vs_ase"] for res in results) / len(results)
             print(f"  {pot.upper()}: {avg_speedup:.1f}x faster than ASE")
 
     all_results["metadata"] = {
         "timestamp": datetime.now(tz=UTC).isoformat(),
         "n_steps": n_steps,
         "systems": list(systems.keys()),
-        "torch_sim_available": HAS_TORCH_SIM,
     }
 
     if output_file:
@@ -350,5 +345,18 @@ def run_benchmarks(n_steps: int = 50, output_file: str | None = None) -> dict:
     return all_results
 
 
+def main() -> None:
+    """CLI entry point."""
+    parser = argparse.ArgumentParser(
+        description="Potential benchmark: Ferrox vs ASE vs TorchSim"
+    )
+    parser.add_argument("--steps", type=int, default=50, help="Number of MD steps")
+    parser.add_argument("--output", type=str, default=None, help="Output JSON file")
+
+    args = parser.parse_args()
+
+    run_benchmarks(n_steps=args.steps, output_file=args.output)
+
+
 if __name__ == "__main__":
-    run_benchmarks(n_steps=50)
+    main()

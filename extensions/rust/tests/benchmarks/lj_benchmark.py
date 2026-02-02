@@ -1,3 +1,15 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "ase",
+#     "numpy",
+#     "torch",
+#     "torch-sim",
+# ]
+#
+# [tool.uv.sources]
+# ferrox = { path = "../../", editable = true }
+# ///
 """Lennard-Jones benchmark comparing native implementations.
 
 This benchmark compares native LJ implementations in:
@@ -7,6 +19,8 @@ This benchmark compares native LJ implementations in:
 
 Unlike the MACE benchmarks, this isolates algorithmic efficiency
 without Python callback overhead since all implementations are native.
+
+Run with: uv run lj_benchmark.py [--md-steps N] [--fire-steps N] [--output FILE]
 """
 
 import argparse
@@ -20,6 +34,7 @@ from typing import Any
 
 import ferrox
 import numpy as np
+import torch
 from ase import Atoms, units
 from ase.build import bulk
 from ase.calculators.lj import LennardJones as AseLennardJones
@@ -27,32 +42,16 @@ from ase.md.langevin import Langevin
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.md.verlet import VelocityVerlet
 from ase.optimize import FIRE
-
-try:
-    import torch
-    from torch_sim import (
-        SimState,
-        fire_init,
-        fire_step,
-        nve_init,
-        nve_step,
-        nvt_langevin_init,
-        nvt_langevin_step,
-    )
-    from torch_sim.models.lennard_jones import LennardJonesModel as TorchSimLJ
-
-    HAS_TORCH_SIM = True
-except ImportError:
-    torch = None  # type: ignore[assignment]
-    SimState = None  # type: ignore[assignment, misc]
-    fire_init = None  # type: ignore[assignment]
-    fire_step = None  # type: ignore[assignment]
-    nve_init = None  # type: ignore[assignment]
-    nve_step = None  # type: ignore[assignment]
-    nvt_langevin_init = None  # type: ignore[assignment]
-    nvt_langevin_step = None  # type: ignore[assignment]
-    TorchSimLJ = None  # type: ignore[assignment, misc]
-    HAS_TORCH_SIM = False
+from torch_sim import (
+    SimState,
+    fire_init,
+    fire_step,
+    nve_init,
+    nve_step,
+    nvt_langevin_init,
+    nvt_langevin_step,
+)
+from torch_sim.models.lennard_jones import LennardJonesModel as TorchSimLJ
 
 # LJ parameters for Argon
 SIGMA = 3.4  # Angstrom
@@ -62,11 +61,7 @@ KB_EV = 8.617333262e-5  # Boltzmann constant in eV/K
 
 
 def sanitize_nan(obj: Any) -> Any:
-    """Recursively convert NaN floats to None for JSON compatibility.
-
-    Standard JSON doesn't support NaN, so strict parsers will fail.
-    This converts NaN values to null (None in Python).
-    """
+    """Recursively convert NaN floats to None for JSON compatibility."""
     if isinstance(obj, float) and math.isnan(obj):
         return None
     if isinstance(obj, dict):
@@ -78,9 +73,7 @@ def sanitize_nan(obj: Any) -> Any:
 
 def safe_divide(numerator: float | None, denominator: float | None) -> float | None:
     """Safely divide two values, returning None if either is None or denominator is zero."""
-    if numerator is None or denominator is None:
-        return None
-    if denominator == 0:
+    if numerator is None or denominator is None or denominator == 0:
         return None
     return numerator / denominator
 
@@ -104,26 +97,15 @@ class BenchmarkResult:
 
 
 def make_lj_system(n_repeat: int) -> Atoms:
-    """Create FCC Argon system.
-
-    Args:
-        n_repeat: Supercell repetitions in each direction
-
-    Returns:
-        ASE Atoms object with perturbed positions
-    """
+    """Create FCC Argon system with perturbed positions."""
     atoms = bulk("Ar", "fcc", a=5.26, cubic=True) * (n_repeat, n_repeat, n_repeat)
     rng = np.random.default_rng(42)
-    atoms.positions += rng.uniform(-0.1, 0.1, atoms.positions.shape)  # break symmetry
+    atoms.positions += rng.uniform(-0.1, 0.1, atoms.positions.shape)
     return atoms
 
 
-def create_torchsim_state(atoms: Atoms, device: str = "cpu") -> "SimState":
-    """Convert ASE Atoms to torch-sim SimState.
-
-    Note: Only call this function when HAS_TORCH_SIM is True.
-    """
-    assert torch is not None and SimState is not None
+def create_torchsim_state(atoms: Atoms, device: str = "cpu") -> SimState:
+    """Convert ASE Atoms to torch-sim SimState."""
     return SimState(
         positions=torch.tensor(
             atoms.get_positions(), dtype=torch.float64, device=device
@@ -132,9 +114,7 @@ def create_torchsim_state(atoms: Atoms, device: str = "cpu") -> "SimState":
         cell=torch.tensor(atoms.get_cell().array, dtype=torch.float64, device=device),
         pbc=torch.tensor([True, True, True], device=device),
         atomic_numbers=torch.tensor(
-            atoms.get_atomic_numbers(),
-            dtype=torch.int64,
-            device=device,
+            atoms.get_atomic_numbers(), dtype=torch.int64, device=device
         ),
     )
 
@@ -217,15 +197,9 @@ def run_ferrox_lj_nvt(
 def run_torchsim_lj_fire(
     atoms: Atoms, max_steps: int, fmax: float
 ) -> tuple[float, int]:
-    """Run FIRE optimization using torch-sim with native LJ.
-
-    Note: Only call this function when HAS_TORCH_SIM is True.
-    """
-    assert torch is not None and TorchSimLJ is not None
-    assert fire_init is not None and fire_step is not None
+    """Run FIRE optimization using torch-sim with native LJ."""
     model = TorchSimLJ(sigma=SIGMA, epsilon=EPSILON, cutoff=CUTOFF, dtype=torch.float64)
     state = create_torchsim_state(atoms)
-
     fire_state = fire_init(state, model)
 
     n_steps = 0
@@ -244,12 +218,7 @@ def run_torchsim_lj_fire(
 def run_torchsim_lj_nve(
     atoms: Atoms, n_steps: int, dt: float, temperature: float
 ) -> float:
-    """Run NVE MD using torch-sim with native LJ.
-
-    Note: Only call this function when HAS_TORCH_SIM is True.
-    """
-    assert torch is not None and TorchSimLJ is not None
-    assert nve_init is not None and nve_step is not None
+    """Run NVE MD using torch-sim with native LJ."""
     model = TorchSimLJ(sigma=SIGMA, epsilon=EPSILON, cutoff=CUTOFF, dtype=torch.float64)
     state = create_torchsim_state(atoms)
 
@@ -267,12 +236,7 @@ def run_torchsim_lj_nve(
 def run_torchsim_lj_nvt(
     atoms: Atoms, n_steps: int, dt: float, temperature: float, friction: float
 ) -> float:
-    """Run NVT MD using torch-sim with native LJ.
-
-    Note: Only call this function when HAS_TORCH_SIM is True.
-    """
-    assert torch is not None and TorchSimLJ is not None
-    assert nvt_langevin_init is not None and nvt_langevin_step is not None
+    """Run NVT MD using torch-sim with native LJ."""
     model = TorchSimLJ(sigma=SIGMA, epsilon=EPSILON, cutoff=CUTOFF, dtype=torch.float64)
     state = create_torchsim_state(atoms)
 
@@ -353,26 +317,28 @@ def run_ase_lj_nvt(
     return time.perf_counter() - start
 
 
+# === Benchmark orchestration ===
+
+
 def benchmark_fire(
-    systems: dict, max_steps: int = 100, fmax: float = 0.01
+    systems: dict[str, Atoms], max_steps: int = 100, fmax: float = 0.01
 ) -> list[BenchmarkResult]:
-    """Run FIRE benchmark."""
+    """Run FIRE benchmark across all systems."""
     results = []
 
     for name, atoms in systems.items():
         print(f"\n  Running FIRE on {name} ({len(atoms)} atoms)...")
+
         print("    - ferrox...", end=" ", flush=True)
         ferrox_time, ferrox_steps = run_ferrox_lj_fire(atoms, max_steps, fmax)
         ferrox_sps = ferrox_steps / ferrox_time
         print(f"{ferrox_sps:.1f} steps/s")
-        if HAS_TORCH_SIM:
-            print("    - torch-sim...", end=" ", flush=True)
-            ts_time, ts_steps = run_torchsim_lj_fire(atoms, max_steps, fmax)
-            ts_sps = ts_steps / ts_time
-            print(f"{ts_sps:.1f} steps/s")
-        else:
-            print("    - torch-sim... (skipped, not installed)")
-            ts_time, ts_steps, ts_sps = None, 0, None
+
+        print("    - torch-sim...", end=" ", flush=True)
+        ts_time, ts_steps = run_torchsim_lj_fire(atoms, max_steps, fmax)
+        ts_sps = ts_steps / ts_time
+        print(f"{ts_sps:.1f} steps/s")
+
         print("    - ase...", end=" ", flush=True)
         ase_time, ase_steps = run_ase_lj_fire(atoms, max_steps, fmax)
         ase_sps = ase_steps / ase_time
@@ -399,25 +365,27 @@ def benchmark_fire(
 
 
 def benchmark_nve(
-    systems: dict, n_steps: int = 100, dt: float = 5.0, temperature: float = 100.0
+    systems: dict[str, Atoms],
+    n_steps: int = 100,
+    dt: float = 5.0,
+    temperature: float = 100.0,
 ) -> list[BenchmarkResult]:
-    """Run NVE benchmark."""
+    """Run NVE benchmark across all systems."""
     results = []
 
     for name, atoms in systems.items():
         print(f"\n  Running NVE on {name} ({len(atoms)} atoms)...")
+
         print("    - ferrox...", end=" ", flush=True)
         ferrox_time = run_ferrox_lj_nve(atoms, n_steps, dt, temperature)
         ferrox_sps = n_steps / ferrox_time
         print(f"{ferrox_sps:.1f} steps/s")
-        if HAS_TORCH_SIM:
-            print("    - torch-sim...", end=" ", flush=True)
-            ts_time = run_torchsim_lj_nve(atoms, n_steps, dt, temperature)
-            ts_sps = n_steps / ts_time
-            print(f"{ts_sps:.1f} steps/s")
-        else:
-            print("    - torch-sim... (skipped, not installed)")
-            ts_time, ts_sps = None, None
+
+        print("    - torch-sim...", end=" ", flush=True)
+        ts_time = run_torchsim_lj_nve(atoms, n_steps, dt, temperature)
+        ts_sps = n_steps / ts_time
+        print(f"{ts_sps:.1f} steps/s")
+
         print("    - ase...", end=" ", flush=True)
         ase_time = run_ase_lj_nve(atoms, n_steps, dt, temperature)
         ase_sps = n_steps / ase_time
@@ -444,29 +412,28 @@ def benchmark_nve(
 
 
 def benchmark_nvt(
-    systems: dict,
+    systems: dict[str, Atoms],
     n_steps: int = 100,
     dt: float = 5.0,
     temperature: float = 100.0,
     friction: float = 0.01,
 ) -> list[BenchmarkResult]:
-    """Run NVT benchmark."""
+    """Run NVT benchmark across all systems."""
     results = []
 
     for name, atoms in systems.items():
         print(f"\n  Running NVT on {name} ({len(atoms)} atoms)...")
+
         print("    - ferrox...", end=" ", flush=True)
         ferrox_time = run_ferrox_lj_nvt(atoms, n_steps, dt, temperature, friction)
         ferrox_sps = n_steps / ferrox_time
         print(f"{ferrox_sps:.1f} steps/s")
-        if HAS_TORCH_SIM:
-            print("    - torch-sim...", end=" ", flush=True)
-            ts_time = run_torchsim_lj_nvt(atoms, n_steps, dt, temperature, friction)
-            ts_sps = n_steps / ts_time
-            print(f"{ts_sps:.1f} steps/s")
-        else:
-            print("    - torch-sim... (skipped, not installed)")
-            ts_time, ts_sps = None, None
+
+        print("    - torch-sim...", end=" ", flush=True)
+        ts_time = run_torchsim_lj_nvt(atoms, n_steps, dt, temperature, friction)
+        ts_sps = n_steps / ts_time
+        print(f"{ts_sps:.1f} steps/s")
+
         print("    - ase...", end=" ", flush=True)
         ase_time = run_ase_lj_nvt(atoms, n_steps, dt, temperature, friction)
         ase_sps = n_steps / ase_time
@@ -525,13 +492,13 @@ def run_lj_benchmarks(
     n_steps_md: int = 100,
     max_steps_fire: int = 100,
     output_file: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Run all LJ benchmarks."""
     systems = {
-        "ar_32": make_lj_system(2),  # 32 atoms
-        "ar_108": make_lj_system(3),  # 108 atoms
-        "ar_256": make_lj_system(4),  # 256 atoms
-        "ar_500": make_lj_system(5),  # 500 atoms
+        "ar_32": make_lj_system(2),
+        "ar_108": make_lj_system(3),
+        "ar_256": make_lj_system(4),
+        "ar_500": make_lj_system(5),
     }
 
     print("=" * 70)
@@ -541,28 +508,35 @@ def run_lj_benchmarks(
     print(f"MD steps: {n_steps_md}, FIRE max steps: {max_steps_fire}")
     print(f"LJ params: sigma={SIGMA} A, epsilon={EPSILON} eV, cutoff={CUTOFF} A")
 
-    all_results = {"fire": [], "nve": [], "nvt": []}
+    all_results: dict[str, Any] = {}
+    benchmarks = [
+        (
+            "fire",
+            "FIRE GEOMETRY OPTIMIZATION",
+            "FIRE Optimization Results",
+            lambda: benchmark_fire(systems, max_steps_fire),
+        ),
+        (
+            "nve",
+            "NVE MOLECULAR DYNAMICS",
+            "NVE MD Results",
+            lambda: benchmark_nve(systems, n_steps_md),
+        ),
+        (
+            "nvt",
+            "NVT MOLECULAR DYNAMICS (Langevin)",
+            "NVT MD Results",
+            lambda: benchmark_nvt(systems, n_steps_md),
+        ),
+    ]
 
-    print("\n" + "-" * 70)
-    print("FIRE GEOMETRY OPTIMIZATION")
-    print("-" * 70)
-    fire_results = benchmark_fire(systems, max_steps_fire)
-    all_results["fire"] = [asdict(res) for res in fire_results]
-    print_results_table(fire_results, "FIRE Optimization Results")
-
-    print("\n" + "-" * 70)
-    print("NVE MOLECULAR DYNAMICS")
-    print("-" * 70)
-    nve_results = benchmark_nve(systems, n_steps_md)
-    all_results["nve"] = [asdict(res) for res in nve_results]
-    print_results_table(nve_results, "NVE MD Results")
-
-    print("\n" + "-" * 70)
-    print("NVT MOLECULAR DYNAMICS (Langevin)")
-    print("-" * 70)
-    nvt_results = benchmark_nvt(systems, n_steps_md)
-    all_results["nvt"] = [asdict(res) for res in nvt_results]
-    print_results_table(nvt_results, "NVT MD Results")
+    for key, header, table_title, run_benchmark in benchmarks:
+        print("\n" + "-" * 70)
+        print(header)
+        print("-" * 70)
+        results = run_benchmark()
+        all_results[key] = [asdict(res) for res in results]
+        print_results_table(results, table_title)
 
     all_results["metadata"] = {
         "timestamp": datetime.now(tz=UTC).isoformat(),
@@ -573,10 +547,11 @@ def run_lj_benchmarks(
     }
 
     if output_file:
-        with open(output_file, "w") as f:
-            json.dump(sanitize_nan(all_results), f, indent=2)
+        with open(output_file, "w") as fh:
+            json.dump(sanitize_nan(all_results), fh, indent=2)
         print(f"\nResults saved to: {output_file}")
 
+    # Print summary
     print("\n" + "=" * 70)
     print("SUMMARY")
     print("=" * 70)
@@ -588,21 +563,17 @@ def run_lj_benchmarks(
                 row["ferrox_vs_torchsim"]
                 for row in results
                 if row["ferrox_vs_torchsim"] is not None
-                and math.isfinite(row["ferrox_vs_torchsim"])
             ]
             ase_ratios = [
                 row["ferrox_vs_ase"]
                 for row in results
                 if row["ferrox_vs_ase"] is not None
-                and math.isfinite(row["ferrox_vs_ase"])
             ]
 
             print(f"\n{bench_type.upper()}:")
             if ts_ratios:
                 avg_vs_ts = sum(ts_ratios) / len(ts_ratios)
                 print(f"  Avg Ferrox vs TorchSim: {avg_vs_ts:.2f}x")
-            else:
-                print("  Avg Ferrox vs TorchSim: N/A (TorchSim not installed)")
             if ase_ratios:
                 avg_vs_ase = sum(ase_ratios) / len(ase_ratios)
                 print(f"  Avg Ferrox vs ASE:      {avg_vs_ase:.2f}x")

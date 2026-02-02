@@ -260,6 +260,11 @@ mod tests {
                 },
                 &["Transform error", "zero-length axis"],
             ),
+            (FerroxError::SingularCell, &["singular", "non-invertible"]),
+            (
+                FerroxError::PbcWithoutCell,
+                &["Periodic", "boundary", "cell", "None"],
+            ),
         ];
 
         for (err, expected_substrings) in test_cases {

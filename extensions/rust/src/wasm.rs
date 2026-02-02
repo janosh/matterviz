@@ -2453,7 +2453,8 @@ pub fn compute_lennard_jones(
 
         let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
         let result =
-            potentials::compute_lj_full(&pos_vec, cell_mat.as_ref(), pbc, &params, compute_stress);
+            potentials::compute_lj_full(&pos_vec, cell_mat.as_ref(), pbc, &params, compute_stress)
+                .map_err(|e| e.to_string())?;
         Ok(potential_result_to_js(&result))
     })();
     result.into()
@@ -2539,7 +2540,8 @@ pub fn compute_morse(
             r0,
             cutoff,
             compute_stress,
-        );
+        )
+        .map_err(|e| e.to_string())?;
         Ok(potential_result_to_js(&result))
     })();
     result.into()
@@ -2627,7 +2629,8 @@ pub fn compute_soft_sphere(
             alpha,
             cutoff,
             compute_stress,
-        );
+        )
+        .map_err(|e| e.to_string())?;
         Ok(potential_result_to_js(&result))
     })();
     result.into()
@@ -3324,7 +3327,8 @@ pub fn compute_lennard_jones_forces(
         let pbc = [pbc_x, pbc_y, pbc_z];
 
         let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
-        let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc, &params);
+        let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc, &params)
+            .map_err(|e| e.to_string())?;
         Ok(result.forces.iter().flat_map(|f| [f.x, f.y, f.z]).collect())
     })();
     result.into()
@@ -3504,13 +3508,15 @@ impl JsMDState {
     }
 }
 
-/// Perform one velocity Verlet MD step.
+/// Perform one velocity Verlet MD step (half-step velocity update + full position update).
+///
+/// This function updates positions and velocities in-place. The caller must:
+/// 1. Call this function with current forces
+/// 2. Compute new forces at the updated positions
+/// 3. Call `md_velocity_verlet_finish` with new forces to complete the velocity update
 ///
 /// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
 /// dt: timestep in femtoseconds
-///
-/// Returns new forces array that should be used for next step.
-/// The caller must compute forces at the new positions and pass them to the next call.
 #[wasm_bindgen]
 pub fn md_velocity_verlet_step(
     state: &mut JsMDState,
@@ -3758,9 +3764,9 @@ pub struct JsLangevinIntegrator {
 impl JsLangevinIntegrator {
     /// Create a new Langevin integrator.
     ///
-    /// temperature_k: target temperature in Kelvin
-    /// friction: friction coefficient in 1/fs
-    /// dt: timestep in femtoseconds
+    /// temperature_k: target temperature in Kelvin (must be non-negative)
+    /// friction: friction coefficient in 1/fs (must be positive)
+    /// dt: timestep in femtoseconds (must be positive)
     /// seed: optional RNG seed for reproducibility
     #[wasm_bindgen(constructor)]
     pub fn new(
@@ -3768,10 +3774,19 @@ impl JsLangevinIntegrator {
         friction: f64,
         dt: f64,
         seed: Option<u64>,
-    ) -> JsLangevinIntegrator {
-        JsLangevinIntegrator {
-            inner: integrators::LangevinIntegrator::new(temperature_k, friction, dt, seed),
+    ) -> Result<JsLangevinIntegrator, JsError> {
+        if temperature_k < 0.0 {
+            return Err(JsError::new("temperature must be non-negative"));
         }
+        if friction <= 0.0 {
+            return Err(JsError::new("friction must be positive"));
+        }
+        if dt <= 0.0 {
+            return Err(JsError::new("timestep dt must be positive"));
+        }
+        Ok(JsLangevinIntegrator {
+            inner: integrators::LangevinIntegrator::new(temperature_k, friction, dt, seed),
+        })
     }
 
     /// Set target temperature.
@@ -3910,15 +3925,29 @@ pub struct JsNoseHooverChain {
 impl JsNoseHooverChain {
     /// Create a new Nose-Hoover chain thermostat.
     ///
-    /// target_temp: target temperature in Kelvin
-    /// tau: coupling time constant in femtoseconds
-    /// dt: timestep in femtoseconds
+    /// target_temp: target temperature in Kelvin (must be non-negative)
+    /// tau: coupling time constant in femtoseconds (must be positive)
+    /// dt: timestep in femtoseconds (must be positive)
     /// n_dof: number of degrees of freedom (typically 3 * n_atoms - 3)
     #[wasm_bindgen(constructor)]
-    pub fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize) -> JsNoseHooverChain {
-        JsNoseHooverChain {
-            inner: integrators::NoseHooverChain::new(target_temp, tau, dt, n_dof),
+    pub fn new(
+        target_temp: f64,
+        tau: f64,
+        dt: f64,
+        n_dof: usize,
+    ) -> Result<JsNoseHooverChain, JsError> {
+        if target_temp < 0.0 {
+            return Err(JsError::new("temperature must be non-negative"));
         }
+        if tau <= 0.0 {
+            return Err(JsError::new("coupling time constant tau must be positive"));
+        }
+        if dt <= 0.0 {
+            return Err(JsError::new("timestep dt must be positive"));
+        }
+        Ok(JsNoseHooverChain {
+            inner: integrators::NoseHooverChain::new(target_temp, tau, dt, n_dof),
+        })
     }
 
     /// Set target temperature.
@@ -3991,9 +4020,9 @@ pub struct JsVelocityRescale {
 impl JsVelocityRescale {
     /// Create a new velocity rescale thermostat.
     ///
-    /// target_temp: target temperature in Kelvin
-    /// tau: coupling time constant in femtoseconds
-    /// dt: timestep in femtoseconds
+    /// target_temp: target temperature in Kelvin (must be non-negative)
+    /// tau: coupling time constant in femtoseconds (must be positive)
+    /// dt: timestep in femtoseconds (must be positive)
     /// n_dof: number of degrees of freedom
     /// seed: optional RNG seed
     #[wasm_bindgen(constructor)]
@@ -4003,10 +4032,19 @@ impl JsVelocityRescale {
         dt: f64,
         n_dof: usize,
         seed: Option<u64>,
-    ) -> JsVelocityRescale {
-        JsVelocityRescale {
-            inner: integrators::VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
+    ) -> Result<JsVelocityRescale, JsError> {
+        if target_temp < 0.0 {
+            return Err(JsError::new("temperature must be non-negative"));
         }
+        if tau <= 0.0 {
+            return Err(JsError::new("coupling time constant tau must be positive"));
+        }
+        if dt <= 0.0 {
+            return Err(JsError::new("timestep dt must be positive"));
+        }
+        Ok(JsVelocityRescale {
+            inner: integrators::VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
+        })
     }
 
     /// Set target temperature.
@@ -4183,13 +4221,13 @@ pub struct JsNPTIntegrator {
 impl JsNPTIntegrator {
     /// Create a new NPT integrator.
     ///
-    /// temperature: target temperature in Kelvin
+    /// temperature: target temperature in Kelvin (must be non-negative)
     /// pressure: target pressure in GPa
-    /// tau_t: thermostat time constant in femtoseconds
-    /// tau_p: barostat time constant in femtoseconds
-    /// dt: timestep in femtoseconds
+    /// tau_t: thermostat time constant in femtoseconds (must be positive)
+    /// tau_p: barostat time constant in femtoseconds (must be positive)
+    /// dt: timestep in femtoseconds (must be positive)
     /// n_atoms: number of atoms
-    /// total_mass: total system mass in amu
+    /// total_mass: total system mass in amu (must be positive)
     #[wasm_bindgen(constructor)]
     pub fn new(
         temperature: f64,
@@ -4199,11 +4237,30 @@ impl JsNPTIntegrator {
         dt: f64,
         n_atoms: usize,
         total_mass: f64,
-    ) -> JsNPTIntegrator {
-        let config = integrators::NPTConfig::new(temperature, pressure, tau_t, tau_p, dt);
-        JsNPTIntegrator {
-            inner: integrators::NPTIntegrator::new(config, n_atoms, total_mass),
+    ) -> Result<JsNPTIntegrator, JsError> {
+        if temperature < 0.0 {
+            return Err(JsError::new("temperature must be non-negative"));
         }
+        if tau_t <= 0.0 {
+            return Err(JsError::new(
+                "thermostat time constant tau_t must be positive",
+            ));
+        }
+        if tau_p <= 0.0 {
+            return Err(JsError::new(
+                "barostat time constant tau_p must be positive",
+            ));
+        }
+        if dt <= 0.0 {
+            return Err(JsError::new("timestep dt must be positive"));
+        }
+        if total_mass <= 0.0 {
+            return Err(JsError::new("total_mass must be positive"));
+        }
+        let config = integrators::NPTConfig::new(temperature, pressure, tau_t, tau_p, dt);
+        Ok(JsNPTIntegrator {
+            inner: integrators::NPTIntegrator::new(config, n_atoms, total_mass),
+        })
     }
 
     /// Get instantaneous pressure from stress tensor.
@@ -4333,18 +4390,26 @@ impl JsFireState {
     ///
     /// positions: flat array [x0, y0, z0, ...] in Angstrom
     /// config: optional FIRE configuration (uses defaults if not provided)
+    ///
+    /// Returns an error if positions length is not a multiple of 3.
     #[wasm_bindgen(constructor)]
-    pub fn new(positions: Vec<f64>, config: Option<JsFireConfig>) -> JsFireState {
+    pub fn new(positions: Vec<f64>, config: Option<JsFireConfig>) -> Result<JsFireState, JsError> {
+        if positions.len() % 3 != 0 {
+            return Err(JsError::new(&format!(
+                "positions length {} must be a multiple of 3",
+                positions.len()
+            )));
+        }
         let pos_vec: Vec<Vector3<f64>> = positions
-            .chunks(3)
+            .chunks_exact(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
         let fire_config = config.map(|c| c.inner).unwrap_or_default();
         let state = optimizers::FireState::new(pos_vec, &fire_config);
-        JsFireState {
+        Ok(JsFireState {
             inner: state,
             config: fire_config,
-        }
+        })
     }
 
     /// Get positions as flat array.
@@ -4461,6 +4526,8 @@ impl JsCellFireState {
     /// cell: 9-element cell matrix (row-major)
     /// config: optional FIRE configuration
     /// cell_factor: scaling factor for cell DOF (default: 1.0)
+    ///
+    /// Returns an error if positions length is not a multiple of 3 or cell is not 9 elements.
     #[wasm_bindgen(constructor)]
     pub fn new(
         positions: Vec<f64>,
@@ -4468,12 +4535,18 @@ impl JsCellFireState {
         config: Option<JsFireConfig>,
         cell_factor: Option<f64>,
     ) -> Result<JsCellFireState, JsError> {
+        if positions.len() % 3 != 0 {
+            return Err(JsError::new(&format!(
+                "positions length {} must be a multiple of 3",
+                positions.len()
+            )));
+        }
         if cell.len() != 9 {
             return Err(JsError::new("cell must have 9 elements"));
         }
 
         let pos_vec: Vec<Vector3<f64>> = positions
-            .chunks(3)
+            .chunks_exact(3)
             .map(|c| Vector3::new(c[0], c[1], c[2]))
             .collect();
         let cell_mat = nalgebra::Matrix3::new(
@@ -4528,9 +4601,18 @@ impl JsCellFireState {
     }
 
     /// Check if optimization has converged.
+    ///
+    /// fmax: force convergence threshold (must be positive)
+    /// smax: stress convergence threshold (must be positive)
     #[wasm_bindgen]
-    pub fn is_converged(&self, fmax: f64, smax: f64) -> bool {
-        optimizers::cell_is_converged(&self.inner, fmax, smax)
+    pub fn is_converged(&self, fmax: f64, smax: f64) -> Result<bool, JsError> {
+        if fmax <= 0.0 {
+            return Err(JsError::new("fmax must be positive"));
+        }
+        if smax <= 0.0 {
+            return Err(JsError::new("smax must be positive"));
+        }
+        Ok(optimizers::cell_is_converged(&self.inner, fmax, smax))
     }
 
     /// Number of atoms.

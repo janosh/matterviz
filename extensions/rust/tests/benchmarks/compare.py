@@ -1,6 +1,22 @@
-"""Main benchmark comparison script.
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "ase",
+#     "mace-torch",
+#     "numpy",
+#     "pymatgen",
+#     "torch",
+#     "torch-sim",
+# ]
+#
+# [tool.uv.sources]
+# ferrox = { path = "../../", editable = true }
+# ///
+"""Main MACE benchmark comparison script.
 
-Usage:
+This script compares ferrox, torch-sim, and ASE using MACE-MP as the force model.
+
+Usage (as module from tests/ directory):
     python -m benchmarks.compare [--systems SYSTEMS] [--output OUTPUT]
 
 Example:

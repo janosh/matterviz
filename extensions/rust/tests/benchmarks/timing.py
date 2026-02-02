@@ -5,7 +5,12 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-import torch
+try:
+    import torch
+
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
 
 @dataclass
@@ -28,7 +33,7 @@ def gpu_timer() -> Generator[TimingResult, None, None]:
             timer.n_steps = 100
         print(timer.elapsed, timer.steps_per_second)
     """
-    if torch.cuda.is_available():
+    if HAS_TORCH and torch.cuda.is_available():
         torch.cuda.synchronize()
 
     result = TimingResult(elapsed=0.0, n_steps=0, steps_per_second=0.0)
@@ -36,7 +41,7 @@ def gpu_timer() -> Generator[TimingResult, None, None]:
 
     yield result
 
-    if torch.cuda.is_available():
+    if HAS_TORCH and torch.cuda.is_available():
         torch.cuda.synchronize()
 
     result.elapsed = time.perf_counter() - start

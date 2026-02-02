@@ -6338,15 +6338,16 @@ fn compute_lennard_jones(
     sigma: f64,
     epsilon: f64,
     cutoff: Option<f64>,
-) -> (f64, Vec<[f64; 3]>) {
+) -> PyResult<(f64, Vec<[f64; 3]>)> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
     let pbc_arr = pbc.unwrap_or([true, true, true]);
 
     let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
-    let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc_arr, &params);
+    let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc_arr, &params)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
-    (result.energy, vec3_to_positions(&result.forces))
+    Ok((result.energy, vec3_to_positions(&result.forces)))
 }
 
 /// Convenience wrapper returning only forces (energy is still computed internally).
@@ -6370,13 +6371,14 @@ fn compute_lennard_jones_forces(
     sigma: f64,
     epsilon: f64,
     cutoff: Option<f64>,
-) -> Vec<[f64; 3]> {
+) -> PyResult<Vec<[f64; 3]>> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
     let pbc_arr = pbc.unwrap_or([true, true, true]);
     let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
-    let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc_arr, &params);
-    vec3_to_positions(&result.forces)
+    let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc_arr, &params)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    Ok(vec3_to_positions(&result.forces))
 }
 
 // === Morse Potential ===
@@ -6408,7 +6410,7 @@ fn compute_morse(
     r0: f64,
     cutoff: f64,
     compute_stress: bool,
-) -> (f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>) {
+) -> PyResult<(f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>)> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
     let pbc_arr = pbc.unwrap_or([true, true, true]);
@@ -6422,13 +6424,14 @@ fn compute_morse(
         r0,
         cutoff,
         compute_stress,
-    );
+    )
+    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
-    (
+    Ok((
         result.energy,
         vec3_to_positions(&result.forces),
         result.stress.as_ref().map(matrix3_to_array),
-    )
+    ))
 }
 
 // === Soft Sphere Potential ===
@@ -6460,7 +6463,7 @@ fn compute_soft_sphere(
     alpha: f64,
     cutoff: f64,
     compute_stress: bool,
-) -> (f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>) {
+) -> PyResult<(f64, Vec<[f64; 3]>, Option<[[f64; 3]; 3]>)> {
     let pos_vec = positions_to_vec3(&positions);
     let cell_mat = cell_to_matrix3(cell);
     let pbc_arr = pbc.unwrap_or([true, true, true]);
@@ -6474,13 +6477,14 @@ fn compute_soft_sphere(
         alpha,
         cutoff,
         compute_stress,
-    );
+    )
+    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
 
-    (
+    Ok((
         result.energy,
         vec3_to_positions(&result.forces),
         result.stress.as_ref().map(matrix3_to_array),
-    )
+    ))
 }
 
 // === Harmonic Bonds ===

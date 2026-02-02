@@ -175,6 +175,11 @@ pub struct PairInteraction {
 /// * `cutoff` - Cutoff distance
 /// * `compute_stress` - Whether to compute stress tensor
 /// * `interaction` - Closure (z_i, z_j, dist, dist_sq) -> Option<PairInteraction>
+///
+/// # Errors
+/// - `FerroxError::InvalidStructure` if `atomic_numbers` length doesn't match `positions` length.
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if `cell` is provided but not invertible.
 pub fn compute_pair_potential_generic<F>(
     positions: &[Vector3<f64>],
     atomic_numbers: Option<&[u8]>,
@@ -183,28 +188,38 @@ pub fn compute_pair_potential_generic<F>(
     cutoff: f64,
     compute_stress: bool,
     mut interaction: F,
-) -> PotentialResult
+) -> Result<PotentialResult>
 where
     F: FnMut(u8, u8, f64, f64) -> Option<PairInteraction>,
 {
+    // Guard: PBC requires a cell matrix
+    if cell.is_none() && pbc.iter().any(|&enabled| enabled) {
+        return Err(FerroxError::PbcWithoutCell);
+    }
+
     let n_atoms = positions.len();
 
     // Validate atomic_numbers length if provided
-    if let Some(z) = atomic_numbers {
-        assert_eq!(
-            z.len(),
-            n_atoms,
-            "atomic_numbers length ({}) must match positions length ({})",
-            z.len(),
-            n_atoms
-        );
+    if let Some(z) = atomic_numbers
+        && z.len() != n_atoms
+    {
+        return Err(FerroxError::InvalidStructure {
+            index: 0,
+            reason: format!(
+                "atomic_numbers length ({}) must match positions length ({})",
+                z.len(),
+                n_atoms
+            ),
+        });
     }
 
     let mut energy = 0.0;
     let (mut forces, mut per_atom_energies, mut stress) =
         init_potential_arrays(n_atoms, compute_stress);
 
-    let inv_cell = cell.map(|c| c.try_inverse().expect("Cell matrix must be invertible"));
+    let inv_cell = cell
+        .map(|c| c.try_inverse().ok_or(FerroxError::SingularCell))
+        .transpose()?;
     let cutoff_sq = cutoff * cutoff;
 
     for idx_i in 0..n_atoms {
@@ -247,12 +262,12 @@ where
 
     finalize_stress(&mut stress, cell);
 
-    PotentialResult {
+    Ok(PotentialResult {
         energy,
         forces,
         stress,
         per_atom_energies: Some(per_atom_energies),
-    }
+    })
 }
 
 // === Lennard-Jones Potential ===
@@ -351,39 +366,51 @@ pub struct LennardJonesResult {
 ///
 /// # Returns
 /// Energy and forces
+///
+/// # Errors
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if `cell` is provided but not invertible.
 pub fn compute_lennard_jones(
     positions: &[Vector3<f64>],
     cell: Option<&Matrix3<f64>>,
     pbc: [bool; 3],
     params: &LennardJonesParams,
-) -> LennardJonesResult {
-    let result = compute_lj_full(positions, cell, pbc, params, false);
-    LennardJonesResult {
+) -> Result<LennardJonesResult> {
+    let result = compute_lj_full(positions, cell, pbc, params, false)?;
+    Ok(LennardJonesResult {
         energy: result.energy,
         forces: result.forces,
         per_atom_energies: result.per_atom_energies,
-    }
+    })
 }
 
 /// Compute LJ forces only.
+///
+/// # Errors
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if `cell` is provided but not invertible.
 pub fn compute_lennard_jones_forces(
     positions: &[Vector3<f64>],
     cell: Option<&Matrix3<f64>>,
     pbc: [bool; 3],
     params: &LennardJonesParams,
-) -> Vec<Vector3<f64>> {
-    compute_lennard_jones(positions, cell, pbc, params).forces
+) -> Result<Vec<Vector3<f64>>> {
+    Ok(compute_lennard_jones(positions, cell, pbc, params)?.forces)
 }
 
 /// Compute Lennard-Jones with optional stress tensor.
 /// V(r) = 4ε[(σ/r)¹² - (σ/r)⁶]
+///
+/// # Errors
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if `cell` is provided but not invertible.
 pub fn compute_lj_full(
     positions: &[Vector3<f64>],
     cell: Option<&Matrix3<f64>>,
     pbc: [bool; 3],
     params: &LennardJonesParams,
     compute_stress: bool,
-) -> PotentialResult {
+) -> Result<PotentialResult> {
     let sigma6 = params.sigma.powi(6);
     let sigma12 = sigma6 * sigma6;
     let epsilon = params.epsilon;
@@ -410,6 +437,10 @@ pub fn compute_lj_full(
 }
 
 /// Compute LJ with per-element-pair parameters.
+///
+/// # Errors
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if `cell` is provided but not invertible.
 pub fn compute_lj_pair(
     positions: &[Vector3<f64>],
     atomic_numbers: &[u8],
@@ -417,7 +448,7 @@ pub fn compute_lj_pair(
     pbc: [bool; 3],
     potential: &PairPotential<LJParams>,
     compute_stress: bool,
-) -> PotentialResult {
+) -> Result<PotentialResult> {
     compute_pair_potential_generic(
         positions,
         Some(atomic_numbers),
@@ -474,6 +505,10 @@ impl MorseParams {
 
 /// Compute Morse potential energy and forces.
 /// V(r) = D * (1 - exp(-alpha*(r - r0)))^2 - D
+///
+/// # Errors
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if `cell` is provided but not invertible.
 pub fn compute_morse(
     positions: &[Vector3<f64>],
     atomic_numbers: &[u8],
@@ -481,7 +516,7 @@ pub fn compute_morse(
     pbc: [bool; 3],
     potential: &PairPotential<MorseParams>,
     compute_stress: bool,
-) -> PotentialResult {
+) -> Result<PotentialResult> {
     compute_pair_potential_generic(
         positions,
         Some(atomic_numbers),
@@ -506,6 +541,10 @@ pub fn compute_morse(
 }
 
 /// Simple Morse computation without per-pair parameters.
+///
+/// # Errors
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if `cell` is provided but not invertible.
 #[allow(clippy::too_many_arguments)]
 pub fn compute_morse_simple(
     positions: &[Vector3<f64>],
@@ -516,7 +555,7 @@ pub fn compute_morse_simple(
     r0: f64,
     cutoff: f64,
     compute_stress: bool,
-) -> PotentialResult {
+) -> Result<PotentialResult> {
     let dummy_z = vec![0u8; positions.len()];
     let potential = PairPotential::new(MorseParams::new(d, alpha, r0), cutoff);
     compute_morse(positions, &dummy_z, cell, pbc, &potential, compute_stress)
@@ -558,6 +597,10 @@ impl SoftSphereParams {
 
 /// Compute Soft Sphere potential energy and forces.
 /// V(r) = epsilon * (sigma/r)^alpha
+///
+/// # Errors
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if `cell` is provided but not invertible.
 pub fn compute_soft_sphere(
     positions: &[Vector3<f64>],
     atomic_numbers: &[u8],
@@ -565,7 +608,7 @@ pub fn compute_soft_sphere(
     pbc: [bool; 3],
     potential: &PairPotential<SoftSphereParams>,
     compute_stress: bool,
-) -> PotentialResult {
+) -> Result<PotentialResult> {
     compute_pair_potential_generic(
         positions,
         Some(atomic_numbers),
@@ -587,6 +630,10 @@ pub fn compute_soft_sphere(
 }
 
 /// Simple Soft Sphere computation without per-pair parameters.
+///
+/// # Errors
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if `cell` is provided but not invertible.
 #[allow(clippy::too_many_arguments)]
 pub fn compute_soft_sphere_simple(
     positions: &[Vector3<f64>],
@@ -597,7 +644,7 @@ pub fn compute_soft_sphere_simple(
     alpha: f64,
     cutoff: f64,
     compute_stress: bool,
-) -> PotentialResult {
+) -> Result<PotentialResult> {
     let dummy_z = vec![0u8; positions.len()];
     let potential = PairPotential::new(SoftSphereParams::new(sigma, epsilon, alpha), cutoff);
     compute_soft_sphere(positions, &dummy_z, cell, pbc, &potential, compute_stress)
@@ -631,7 +678,9 @@ impl HarmonicBond {
 /// F = -k * (r - r0) * r_hat
 ///
 /// # Errors
-/// Returns an error if any bond index is out of bounds for the positions array.
+/// - `FerroxError::PbcWithoutCell` if PBC is enabled but no cell matrix is provided.
+/// - `FerroxError::SingularCell` if the cell matrix is singular (non-invertible).
+/// - `FerroxError::InvalidStructure` if any bond index is out of bounds.
 pub fn compute_harmonic_bonds(
     positions: &[Vector3<f64>],
     bonds: &[HarmonicBond],
@@ -639,12 +688,19 @@ pub fn compute_harmonic_bonds(
     pbc: [bool; 3],
     compute_stress: bool,
 ) -> Result<PotentialResult> {
+    // Guard: PBC requires a cell matrix
+    if cell.is_none() && pbc.iter().any(|&enabled| enabled) {
+        return Err(FerroxError::PbcWithoutCell);
+    }
+
     let n_atoms = positions.len();
     let mut energy = 0.0;
     let (mut forces, mut per_atom_energies, mut stress) =
         init_potential_arrays(n_atoms, compute_stress);
 
-    let inv_cell = cell.map(|c| c.try_inverse().expect("Cell matrix must be invertible"));
+    let inv_cell = cell
+        .map(|c| c.try_inverse().ok_or(FerroxError::SingularCell))
+        .transpose()?;
 
     for (bond_idx, bond) in bonds.iter().enumerate() {
         let idx_i = bond.i;
@@ -770,12 +826,12 @@ mod tests {
         let params = LennardJonesParams::new(1.0, 1.0, None);
 
         // r = σ: V = 4ε(1 - 1) = 0
-        let result = compute_lennard_jones(&two_atoms(1.0), None, [false; 3], &params);
+        let result = compute_lennard_jones(&two_atoms(1.0), None, [false; 3], &params).unwrap();
         assert_relative_eq!(result.energy, 0.0, epsilon = 1e-10);
 
         // r = 2^(1/6)σ: equilibrium, V = -ε, F = 0
         let r_eq = 2.0_f64.powf(1.0 / 6.0);
-        let result = compute_lennard_jones(&two_atoms(r_eq), None, [false; 3], &params);
+        let result = compute_lennard_jones(&two_atoms(r_eq), None, [false; 3], &params).unwrap();
         assert_relative_eq!(result.energy, -1.0, epsilon = 1e-10);
         assert_relative_eq!(result.forces[0].norm(), 0.0, epsilon = 1e-10);
     }
@@ -791,7 +847,8 @@ mod tests {
             None,
             [false; 3],
             &LennardJonesParams::new(1.0, 1.0, None),
-        );
+        )
+        .unwrap();
         assert!(lj.forces[0].x < 0.0 && lj.forces[1].x > 0.0, "LJ repulsive");
 
         // Morse at r < r0
@@ -802,7 +859,8 @@ mod tests {
             [false; 3],
             &PairPotential::new(MorseParams::new(1.0, 1.0, 1.5), 10.0),
             false,
-        );
+        )
+        .unwrap();
         assert!(
             morse.forces[0].x < 0.0 && morse.forces[1].x > 0.0,
             "Morse repulsive"
@@ -816,7 +874,8 @@ mod tests {
             [false; 3],
             &PairPotential::new(SoftSphereParams::new(1.0, 1.0, 2.0), 10.0),
             false,
-        );
+        )
+        .unwrap();
         assert!(
             ss.forces[0].x < 0.0 && ss.forces[1].x > 0.0,
             "Soft sphere repulsive"
@@ -826,7 +885,7 @@ mod tests {
     #[test]
     fn test_lj_cutoff() {
         let params = LennardJonesParams::new(1.0, 1.0, Some(2.0));
-        let result = compute_lennard_jones(&two_atoms(3.0), None, [false; 3], &params);
+        let result = compute_lennard_jones(&two_atoms(3.0), None, [false; 3], &params).unwrap();
         assert_relative_eq!(result.energy, 0.0, epsilon = 1e-10);
     }
 
@@ -835,7 +894,7 @@ mod tests {
         let params = LennardJonesParams::new(1.0, 1.0, None);
         let cell = Matrix3::from_diagonal(&Vector3::new(5.0, 5.0, 5.0));
         let positions = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(4.5, 0.0, 0.0)];
-        let result = compute_lennard_jones(&positions, Some(&cell), [true; 3], &params);
+        let result = compute_lennard_jones(&positions, Some(&cell), [true; 3], &params).unwrap();
         // Minimum image distance is 0.5
         let expected = 4.0 * (1.0 / 0.5_f64.powi(12) - 1.0 / 0.5_f64.powi(6));
         assert_relative_eq!(result.energy, expected, epsilon = 1e-10);
@@ -848,7 +907,8 @@ mod tests {
         let lattice_a = 5.26;
         let cell = Matrix3::from_diagonal(&Vector3::new(lattice_a, lattice_a, lattice_a));
         let result =
-            compute_lennard_jones(&fcc_positions(lattice_a), Some(&cell), [true; 3], &params);
+            compute_lennard_jones(&fcc_positions(lattice_a), Some(&cell), [true; 3], &params)
+                .unwrap();
         // Energy should be negative (bound state) - actual ~-0.06 eV for 4-atom cell
         assert!(
             result.energy < 0.0 && result.energy > -0.5,
@@ -874,7 +934,8 @@ mod tests {
             None,
             [false; 3],
             &LennardJonesParams::new(1.0, 1.0, None),
-        );
+        )
+        .unwrap();
         assert_momentum_conserved(&lj.forces);
 
         // Morse
@@ -885,7 +946,8 @@ mod tests {
             [false; 3],
             &PairPotential::new(MorseParams::new(1.0, 1.0, 1.5), 10.0),
             false,
-        );
+        )
+        .unwrap();
         assert_momentum_conserved(&morse.forces);
 
         // Soft sphere
@@ -896,7 +958,8 @@ mod tests {
             [false; 3],
             &PairPotential::new(SoftSphereParams::new(1.0, 1.0, 6.0), 10.0),
             false,
-        );
+        )
+        .unwrap();
         assert_momentum_conserved(&ss.forces);
 
         // Harmonic
@@ -912,7 +975,8 @@ mod tests {
     fn test_lj_stress_tensor() {
         let params = LennardJonesParams::new(1.0, 1.0, Some(5.0));
         let cell = Matrix3::from_diagonal(&Vector3::new(6.0, 3.0, 3.0));
-        let result = compute_lj_full(&two_atoms(3.0), Some(&cell), [true; 3], &params, true);
+        let result =
+            compute_lj_full(&two_atoms(3.0), Some(&cell), [true; 3], &params, true).unwrap();
         let stress = result.stress.unwrap();
         assert_stress_symmetric(&stress);
         assert!(stress[(0, 0)].abs() > 1e-10); // 1D chain has non-zero xx stress
@@ -930,7 +994,8 @@ mod tests {
             [false; 3],
             &potential,
             false,
-        );
+        )
+        .unwrap();
         // Verify Ar-Kr params (σ=3.6, ε=0.015) are used, not default (σ=1, ε=1)
         let s6 = (3.6 / dist).powi(6);
         let expected = 4.0 * 0.015 * (s6 * s6 - s6);
@@ -950,7 +1015,8 @@ mod tests {
             [false; 3],
             &potential,
             false,
-        );
+        )
+        .unwrap();
         assert_relative_eq!(result.energy, -1.0, epsilon = 1e-10);
         assert_relative_eq!(result.forces[0].norm(), 0.0, epsilon = 1e-10);
     }
@@ -966,7 +1032,8 @@ mod tests {
             [false; 3],
             &potential,
             false,
-        );
+        )
+        .unwrap();
         assert_relative_eq!(result.energy, 0.0, epsilon = 1e-6);
     }
 
@@ -983,7 +1050,8 @@ mod tests {
             [false; 3],
             &potential,
             false,
-        );
+        )
+        .unwrap();
         assert_relative_eq!(result.energy, 1.0, epsilon = 1e-10);
     }
 
@@ -1033,13 +1101,14 @@ mod tests {
 
         // LJ at dist=1.5
         let lj_params = LennardJonesParams::new(1.0, 1.0, Some(5.0));
-        let lj0 = compute_lennard_jones(&two_atoms(1.5), None, [false; 3], &lj_params);
-        let lj1 = compute_lennard_jones(&two_atoms(1.5 + delta), None, [false; 3], &lj_params);
+        let lj0 = compute_lennard_jones(&two_atoms(1.5), None, [false; 3], &lj_params).unwrap();
+        let lj1 =
+            compute_lennard_jones(&two_atoms(1.5 + delta), None, [false; 3], &lj_params).unwrap();
         check_fd(lj0.energy, lj1.energy, lj0.forces[1].x);
 
         // Morse at dist=1.8
         let morse_pot = PairPotential::new(MorseParams::new(1.0, 2.0, 1.5), 10.0);
-        let m0 = compute_morse(&two_atoms(1.8), &z, None, [false; 3], &morse_pot, false);
+        let m0 = compute_morse(&two_atoms(1.8), &z, None, [false; 3], &morse_pot, false).unwrap();
         let m1 = compute_morse(
             &two_atoms(1.8 + delta),
             &z,
@@ -1047,12 +1116,14 @@ mod tests {
             [false; 3],
             &morse_pot,
             false,
-        );
+        )
+        .unwrap();
         check_fd(m0.energy, m1.energy, m0.forces[1].x);
 
         // Soft sphere at dist=1.5
         let ss_pot = PairPotential::new(SoftSphereParams::new(1.0, 1.0, 6.0), 10.0);
-        let s0 = compute_soft_sphere(&two_atoms(1.5), &z, None, [false; 3], &ss_pot, false);
+        let s0 =
+            compute_soft_sphere(&two_atoms(1.5), &z, None, [false; 3], &ss_pot, false).unwrap();
         let s1 = compute_soft_sphere(
             &two_atoms(1.5 + delta),
             &z,
@@ -1060,7 +1131,8 @@ mod tests {
             [false; 3],
             &ss_pot,
             false,
-        );
+        )
+        .unwrap();
         check_fd(s0.energy, s1.energy, s0.forces[1].x);
 
         // Harmonic at dist=1.8
@@ -1073,11 +1145,13 @@ mod tests {
         // 3D check (all axes) for LJ
         let base = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(1.2, 0.8, 0.5)];
         let params = LennardJonesParams::new(1.0, 1.0, None);
-        let result = compute_lennard_jones(&base, None, [false; 3], &params);
+        let result = compute_lennard_jones(&base, None, [false; 3], &params).unwrap();
         for axis in 0..3 {
             let mut pos_plus = base.clone();
             pos_plus[1][axis] += 1e-7;
-            let e_plus = compute_lennard_jones(&pos_plus, None, [false; 3], &params).energy;
+            let e_plus = compute_lennard_jones(&pos_plus, None, [false; 3], &params)
+                .unwrap()
+                .energy;
             let fd = -(e_plus - result.energy) / 1e-7;
             assert!((fd - result.forces[1][axis]).abs() < 1e-5);
         }
@@ -1090,7 +1164,8 @@ mod tests {
         // V = 4ε[(σ/r)^12 - (σ/r)^6], F = 24ε/r[2(σ/r)^12 - (σ/r)^6]
         let params = LennardJonesParams::new(1.0, 1.0, None);
         for dist in [0.9, 1.0, 1.122462, 1.5, 2.0, 3.0] {
-            let result = compute_lennard_jones(&two_atoms(dist), None, [false; 3], &params);
+            let result =
+                compute_lennard_jones(&two_atoms(dist), None, [false; 3], &params).unwrap();
             let s6 = (1.0 / dist).powi(6);
             let s12 = s6 * s6;
             assert!((result.energy - 4.0 * (s12 - s6)).abs() < 1e-12);
@@ -1111,7 +1186,8 @@ mod tests {
                 [false; 3],
                 &potential,
                 false,
-            );
+            )
+            .unwrap();
             let exp_term = (-alpha * (dist - r0)).exp();
             let one_minus = 1.0 - exp_term;
             assert!((result.energy - (d * one_minus * one_minus - d)).abs() < 1e-12);
@@ -1132,7 +1208,8 @@ mod tests {
                 [false; 3],
                 &potential,
                 false,
-            );
+            )
+            .unwrap();
             let expected_e = eps * (sigma / dist).powf(alpha);
             let expected_f = alpha * eps * sigma.powf(alpha) / dist.powf(alpha + 1.0);
             assert!((result.energy - expected_e).abs() < 1e-12);
@@ -1151,7 +1228,8 @@ mod tests {
             [true; 3],
             &params,
             false,
-        );
+        )
+        .unwrap();
         let per_atom_sum: f64 = result.per_atom_energies.as_ref().unwrap().iter().sum();
         assert_relative_eq!(result.energy, per_atom_sum, epsilon = 1e-10);
     }
@@ -1165,7 +1243,7 @@ mod tests {
             Vector3::new(3.0, 0.0, 0.0),
             Vector3::new(0.0, 4.0, 0.0),
         ];
-        let specialized = compute_lennard_jones(&positions, None, [false; 3], &params);
+        let specialized = compute_lennard_jones(&positions, None, [false; 3], &params).unwrap();
         let (s6, s12) = (sigma.powi(6), sigma.powi(12));
         let generic = compute_pair_potential_generic(
             &positions,
@@ -1182,7 +1260,8 @@ mod tests {
                     force_mag_r: 24.0 * eps * (2.0 * s12 * d12_inv - s6 * d6_inv),
                 })
             },
-        );
+        )
+        .unwrap();
         assert_relative_eq!(generic.energy, specialized.energy, epsilon = 1e-12);
     }
 
@@ -1201,7 +1280,8 @@ mod tests {
             [true; 3],
             &LennardJonesParams::new(1.0, 1.0, Some(5.0)),
             true,
-        );
+        )
+        .unwrap();
         assert_stress_symmetric(&lj.stress.unwrap());
 
         // Morse
@@ -1212,7 +1292,8 @@ mod tests {
             [true; 3],
             &PairPotential::new(MorseParams::new(1.0, 1.5, 1.2), 10.0),
             true,
-        );
+        )
+        .unwrap();
         assert_stress_symmetric(&morse.stress.unwrap());
 
         // Soft sphere
@@ -1223,7 +1304,8 @@ mod tests {
             [true; 3],
             &PairPotential::new(SoftSphereParams::new(1.0, 1.0, 6.0), 10.0),
             true,
-        );
+        )
+        .unwrap();
         assert_stress_symmetric(&ss.stress.unwrap());
 
         // Harmonic (3 atoms with 2 bonds)
@@ -1243,7 +1325,7 @@ mod tests {
         let positions = fcc_positions(lattice_a);
         let cell = Matrix3::from_diagonal(&Vector3::new(lattice_a, lattice_a, lattice_a));
 
-        let result = compute_lj_full(&positions, Some(&cell), [true; 3], &params, true);
+        let result = compute_lj_full(&positions, Some(&cell), [true; 3], &params, true).unwrap();
         let stress = result.stress.unwrap();
 
         // Apply isotropic strain
@@ -1251,7 +1333,7 @@ mod tests {
         let strain = 1.0 + delta;
         let cell_s = cell * strain;
         let pos_s: Vec<_> = positions.iter().map(|p| p * strain).collect();
-        let result_s = compute_lj_full(&pos_s, Some(&cell_s), [true; 3], &params, false);
+        let result_s = compute_lj_full(&pos_s, Some(&cell_s), [true; 3], &params, false).unwrap();
 
         let de_dv = (result_s.energy - result.energy)
             / (cell_s.determinant().abs() - cell.determinant().abs());
@@ -1272,14 +1354,16 @@ mod tests {
         let empty: Vec<Vector3<f64>> = vec![];
         let params = LennardJonesParams::new(1.0, 1.0, None);
 
-        let lj = compute_lennard_jones(&empty, None, [false; 3], &params);
+        let lj = compute_lennard_jones(&empty, None, [false; 3], &params).unwrap();
         assert_eq!(lj.energy, 0.0);
         assert!(lj.forces.is_empty());
 
-        let morse = compute_morse_simple(&empty, None, [false; 3], 1.0, 1.0, 1.0, 10.0, false);
+        let morse =
+            compute_morse_simple(&empty, None, [false; 3], 1.0, 1.0, 1.0, 10.0, false).unwrap();
         assert_eq!(morse.energy, 0.0);
 
-        let ss = compute_soft_sphere_simple(&empty, None, [false; 3], 1.0, 1.0, 6.0, 10.0, false);
+        let ss = compute_soft_sphere_simple(&empty, None, [false; 3], 1.0, 1.0, 6.0, 10.0, false)
+            .unwrap();
         assert_eq!(ss.energy, 0.0);
 
         let harm = compute_harmonic_bonds(&empty, &[], None, [false; 3], false).unwrap();
@@ -1292,7 +1376,7 @@ mod tests {
         let single = vec![Vector3::new(1.0, 2.0, 3.0)];
         let params = LennardJonesParams::new(1.0, 1.0, None);
 
-        let result = compute_lennard_jones(&single, None, [false; 3], &params);
+        let result = compute_lennard_jones(&single, None, [false; 3], &params).unwrap();
         assert_eq!(result.energy, 0.0);
         assert_eq!(result.forces.len(), 1);
         assert_eq!(result.forces[0], Vector3::zeros());
@@ -1304,7 +1388,7 @@ mod tests {
         let coincident = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)];
         let params = LennardJonesParams::new(1.0, 1.0, None);
 
-        let result = compute_lennard_jones(&coincident, None, [false; 3], &params);
+        let result = compute_lennard_jones(&coincident, None, [false; 3], &params).unwrap();
         assert_eq!(result.energy, 0.0);
         assert!(result.forces[0].norm().is_finite());
         assert!(result.forces[1].norm().is_finite());
@@ -1317,7 +1401,7 @@ mod tests {
         let very_close = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(1e-8, 0.0, 0.0)];
         let params = LennardJonesParams::new(1.0, 1.0, None);
 
-        let result = compute_lennard_jones(&very_close, None, [false; 3], &params);
+        let result = compute_lennard_jones(&very_close, None, [false; 3], &params).unwrap();
         assert!(result.energy.is_finite());
         assert!(
             result.energy != 0.0,
@@ -1339,7 +1423,7 @@ mod tests {
 
         // Exactly at cutoff
         let at_cutoff = two_atoms(cutoff);
-        let result = compute_lennard_jones(&at_cutoff, None, [false; 3], &params);
+        let result = compute_lennard_jones(&at_cutoff, None, [false; 3], &params).unwrap();
         assert!(
             result.energy != 0.0,
             "Pair at exactly cutoff should be included"
@@ -1347,7 +1431,7 @@ mod tests {
 
         // Just beyond cutoff
         let beyond = two_atoms(cutoff + 1e-10);
-        let result = compute_lennard_jones(&beyond, None, [false; 3], &params);
+        let result = compute_lennard_jones(&beyond, None, [false; 3], &params).unwrap();
         assert_eq!(result.energy, 0.0, "Pair beyond cutoff should be excluded");
     }
 
@@ -1361,12 +1445,14 @@ mod tests {
         let positions = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(4.5, 0.0, 0.0)];
 
         // With PBC in x: minimum image distance is 0.5
-        let pbc_x = compute_lennard_jones(&positions, Some(&cell), [true, false, false], &params);
+        let pbc_x =
+            compute_lennard_jones(&positions, Some(&cell), [true, false, false], &params).unwrap();
         let expected_e = 4.0 * (1.0 / 0.5_f64.powi(12) - 1.0 / 0.5_f64.powi(6));
         assert_relative_eq!(pbc_x.energy, expected_e, epsilon = 1e-10);
 
         // Without PBC in x: real distance is 4.5
-        let no_pbc_x = compute_lennard_jones(&positions, Some(&cell), [false, true, true], &params);
+        let no_pbc_x =
+            compute_lennard_jones(&positions, Some(&cell), [false, true, true], &params).unwrap();
         let expected_e_no = 4.0 * (1.0 / 4.5_f64.powi(12) - 1.0 / 4.5_f64.powi(6));
         assert_relative_eq!(no_pbc_x.energy, expected_e_no, epsilon = 1e-10);
     }
@@ -1385,7 +1471,7 @@ mod tests {
         );
 
         let positions = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(2.0, 0.0, 0.0)];
-        let result = compute_lj_full(&positions, Some(&cell), [true; 3], &params, true);
+        let result = compute_lj_full(&positions, Some(&cell), [true; 3], &params, true).unwrap();
 
         // Should compute without panic and give finite results
         assert!(result.energy.is_finite());
@@ -1427,7 +1513,8 @@ mod tests {
             [true; 3],
             &params,
             false,
-        );
+        )
+        .unwrap();
         let energies = result.per_atom_energies.unwrap();
 
         // FCC has 4 equivalent sites - all per-atom energies should be equal
@@ -1441,7 +1528,7 @@ mod tests {
     fn test_stress_requires_cell() {
         // Stress computation without a cell returns None (can't normalize without volume)
         let params = LennardJonesParams::new(1.0, 1.0, None);
-        let result = compute_lj_full(&two_atoms(1.5), None, [false; 3], &params, true);
+        let result = compute_lj_full(&two_atoms(1.5), None, [false; 3], &params, true).unwrap();
         assert!(
             result.stress.is_none(),
             "Stress should be None without cell (no volume for normalization)"
@@ -1450,7 +1537,7 @@ mod tests {
         // With a cell, stress should be computed
         let cell = Matrix3::from_diagonal(&Vector3::new(5.0, 5.0, 5.0));
         let result_with_cell =
-            compute_lj_full(&two_atoms(1.5), Some(&cell), [true; 3], &params, true);
+            compute_lj_full(&two_atoms(1.5), Some(&cell), [true; 3], &params, true).unwrap();
         assert!(result_with_cell.stress.is_some());
         assert_stress_symmetric(&result_with_cell.stress.unwrap());
     }
@@ -1459,7 +1546,7 @@ mod tests {
     fn test_no_stress_when_disabled() {
         // When compute_stress=false, stress should be None
         let params = LennardJonesParams::new(1.0, 1.0, None);
-        let result = compute_lj_full(&two_atoms(1.5), None, [false; 3], &params, false);
+        let result = compute_lj_full(&two_atoms(1.5), None, [false; 3], &params, false).unwrap();
         assert!(result.stress.is_none());
     }
 
@@ -1473,8 +1560,8 @@ mod tests {
             .map(|p| p + Vector3::new(100.0, -50.0, 25.0))
             .collect();
 
-        let result_orig = compute_lennard_jones(&original, None, [false; 3], &params);
-        let result_trans = compute_lennard_jones(&translated, None, [false; 3], &params);
+        let result_orig = compute_lennard_jones(&original, None, [false; 3], &params).unwrap();
+        let result_trans = compute_lennard_jones(&translated, None, [false; 3], &params).unwrap();
 
         assert_relative_eq!(result_orig.energy, result_trans.energy, epsilon = 1e-10);
         for idx in 0..3 {
@@ -1528,5 +1615,70 @@ mod tests {
         let err_msg_i = result_i.unwrap_err().to_string();
         assert!(err_msg_i.contains("out of bounds"));
         assert!(err_msg_i.contains("i=10"));
+    }
+
+    #[test]
+    fn test_singular_cell_returns_error() {
+        let positions = two_atoms(3.0);
+        let singular_cell = Matrix3::zeros(); // All zeros = singular
+        let params = LennardJonesParams::new(3.4, 0.0103, Some(10.0));
+        let result = compute_lj_full(&positions, Some(&singular_cell), [true; 3], &params, false);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), FerroxError::SingularCell));
+
+        // Also test harmonic bonds with singular cell
+        let bonds = vec![HarmonicBond::new(0, 1, 1.0, 3.0)];
+        let result_bonds =
+            compute_harmonic_bonds(&positions, &bonds, Some(&singular_cell), [true; 3], false);
+        assert!(result_bonds.is_err());
+        assert!(matches!(
+            result_bonds.unwrap_err(),
+            FerroxError::SingularCell
+        ));
+    }
+
+    #[test]
+    fn test_pbc_without_cell_returns_error() {
+        let positions = two_atoms(3.0);
+        let bonds = vec![HarmonicBond::new(0, 1, 1.0, 3.0)];
+
+        // PBC enabled but no cell provided should return error
+        let result = compute_harmonic_bonds(&positions, &bonds, None, [true, false, false], false);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), FerroxError::PbcWithoutCell));
+
+        // All PBC enabled, no cell
+        let result_all =
+            compute_harmonic_bonds(&positions, &bonds, None, [true, true, true], false);
+        assert!(result_all.is_err());
+        assert!(matches!(
+            result_all.unwrap_err(),
+            FerroxError::PbcWithoutCell
+        ));
+
+        // No PBC, no cell should work fine
+        let result_no_pbc =
+            compute_harmonic_bonds(&positions, &bonds, None, [false, false, false], false);
+        assert!(result_no_pbc.is_ok());
+    }
+
+    #[test]
+    fn test_atomic_numbers_length_mismatch_returns_error() {
+        let positions = two_atoms(3.0); // 2 atoms
+        let wrong_length_z = vec![0u8, 1, 2]; // 3 elements - mismatch!
+
+        let potential = PairPotential::new(LJParams::default(), 10.0);
+        let result = compute_lj_pair(
+            &positions,
+            &wrong_length_z,
+            None,
+            [false; 3],
+            &potential,
+            false,
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, FerroxError::InvalidStructure { .. }));
+        assert!(err.to_string().contains("atomic_numbers length"));
     }
 }
