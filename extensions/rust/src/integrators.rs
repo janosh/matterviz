@@ -473,8 +473,16 @@ impl NoseHooverChain {
     /// * `n_dof` - Number of degrees of freedom (typically 3*N - 3 for N atoms with COM constraint)
     ///
     /// # Panics
-    /// Panics if `n_dof` is 0 (cannot thermalize a system with no degrees of freedom).
+    /// Panics if `target_temp <= 0`, `tau <= 0`, or `n_dof == 0`.
     pub fn new(target_temp: f64, tau: f64, dt_fs: f64, n_dof: usize) -> Self {
+        assert!(
+            target_temp > 0.0,
+            "NoseHooverChain requires target_temp > 0 (got {target_temp})"
+        );
+        assert!(
+            tau > 0.0,
+            "NoseHooverChain requires tau > 0 (got {tau})"
+        );
         assert!(
             n_dof > 0,
             "NoseHooverChain requires n_dof > 0 (got {n_dof}). \
@@ -643,8 +651,20 @@ impl VelocityRescale {
     /// * `seed` - Optional random seed
     ///
     /// # Panics
-    /// Panics if `n_dof` is 0 (cannot thermalize a system with no degrees of freedom).
+    /// Panics if `target_temp <= 0`, `tau <= 0`, `dt_fs <= 0`, or `n_dof == 0`.
     pub fn new(target_temp: f64, tau: f64, dt_fs: f64, n_dof: usize, seed: Option<u64>) -> Self {
+        assert!(
+            target_temp > 0.0,
+            "VelocityRescale requires target_temp > 0 (got {target_temp})"
+        );
+        assert!(
+            tau > 0.0,
+            "VelocityRescale requires tau > 0 (got {tau})"
+        );
+        assert!(
+            dt_fs > 0.0,
+            "VelocityRescale requires dt_fs > 0 (got {dt_fs})"
+        );
         assert!(
             n_dof > 0,
             "VelocityRescale requires n_dof > 0 (got {n_dof}). \

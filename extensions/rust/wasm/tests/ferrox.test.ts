@@ -401,7 +401,7 @@ describe(`compute_lennard_jones`, () => {
     const result = unwrap(wasm.compute_lennard_jones(
       positions,
       null,
-      false,
+      true, // compute forces
       false,
       false,
       1.0,
@@ -543,7 +543,7 @@ describe(`compute_soft_sphere`, () => {
     const result = unwrap(wasm.compute_soft_sphere(
       positions,
       null,
-      false,
+      true, // compute forces
       false,
       false,
       1.0,
@@ -604,7 +604,7 @@ describe(`compute_harmonic_bonds`, () => {
       positions,
       bonds,
       null,
-      false,
+      true, // compute forces
       false,
       false,
       false,
@@ -647,7 +647,7 @@ describe(`compute_harmonic_bonds`, () => {
       positions,
       bonds,
       null,
-      false,
+      true, // compute forces
       false,
       false,
       false,
