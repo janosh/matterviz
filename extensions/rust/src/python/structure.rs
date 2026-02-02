@@ -456,6 +456,9 @@ fn ewald_energy(
 
     let mut ewald = crate::algorithms::ewald::Ewald::new();
     if let Some(eta_val) = eta {
+        if eta_val <= 0.0 || !eta_val.is_finite() {
+            return Err(PyValueError::new_err("eta must be positive and finite"));
+        }
         ewald = ewald.with_eta(eta_val);
     }
     if let Some(rc) = real_cutoff {

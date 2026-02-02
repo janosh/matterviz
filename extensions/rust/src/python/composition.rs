@@ -9,10 +9,13 @@ use crate::composition::Composition;
 use super::helpers::parse_comp;
 
 /// Convert a Composition to a simple element dict (element -> amount).
+/// Uses get_element_total to aggregate across all oxidation states of an element.
 fn comp_to_element_dict(py: Python<'_>, comp: &Composition) -> PyResult<Py<PyDict>> {
     let dict = PyDict::new(py);
-    for (species, &amount) in comp.iter() {
-        dict.set_item(species.element.symbol(), amount)?;
+    // Use elements() to get unique elements, then get_element_total for each
+    for elem in comp.elements() {
+        let total = comp.get_element_total(elem);
+        dict.set_item(elem.symbol(), total)?;
     }
     Ok(dict.unbind())
 }

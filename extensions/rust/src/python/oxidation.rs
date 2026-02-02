@@ -38,14 +38,16 @@ fn oxi_state_guesses(
     structure_or_formula: &str,
     all_states: bool,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    // Trim leading whitespace before detecting input type
+    let input = structure_or_formula.trim_start();
     // Try to parse as structure first
-    let (elements, amounts) = if structure_or_formula.starts_with('{') {
+    let (elements, amounts) = if input.starts_with('{') {
         // Looks like JSON - parse as structure
-        let struc = parse_struct(&StructureJson(structure_or_formula.to_string()))?;
+        let struc = parse_struct(&StructureJson(input.to_string()))?;
         get_elements_and_amounts(&struc)
     } else {
         // Try as formula string
-        let comp = Composition::from_formula(structure_or_formula)
+        let comp = Composition::from_formula(input)
             .map_err(|e| PyValueError::new_err(format!("Invalid formula: {e}")))?;
         get_elements_and_amounts_from_comp(&comp)
     };
@@ -123,12 +125,18 @@ fn compute_bv_sums(
         let site_element = struc.site_occupancies[site_idx].dominant_species().element;
         let bv_neighbors: Vec<oxidation::BvNeighbor> = site_neighbors
             .iter()
-            .map(|&(neighbor_idx, distance, _image)| oxidation::BvNeighbor {
-                element: struc.site_occupancies[neighbor_idx]
-                    .dominant_species()
-                    .element,
-                distance,
-                occupancy: 1.0,
+            .map(|&(neighbor_idx, distance, _image)| {
+                let neighbor_site = &struc.site_occupancies[neighbor_idx];
+                let (neighbor_sp, neighbor_occ) = neighbor_site
+                    .species
+                    .iter()
+                    .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                    .unwrap();
+                oxidation::BvNeighbor {
+                    element: neighbor_sp.element,
+                    distance,
+                    occupancy: *neighbor_occ,
+                }
             })
             .collect();
         sums.push(oxidation::calculate_bv_sum(

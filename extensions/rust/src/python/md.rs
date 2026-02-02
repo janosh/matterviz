@@ -11,6 +11,23 @@ use super::helpers::{
     array_to_mat3, default_pbc, mat3_to_array, positions_to_vec3, vec3_to_positions,
 };
 
+/// Extract and validate forces from Python callback result.
+/// Returns an error if the number of forces doesn't match the number of positions.
+fn extract_and_validate_forces(
+    result: &Bound<'_, PyAny>,
+    n_atoms: usize,
+) -> PyResult<Vec<nalgebra::Vector3<f64>>> {
+    let forces: Vec<[f64; 3]> = result.extract()?;
+    if forces.len() != n_atoms {
+        return Err(PyValueError::new_err(format!(
+            "Force callback returned {} forces for {} atoms",
+            forces.len(),
+            n_atoms
+        )));
+    }
+    Ok(positions_to_vec3(&forces))
+}
+
 // === MDState ===
 
 /// Python wrapper for MD state.
@@ -189,10 +206,10 @@ impl PyLangevinIntegrator {
         py: Python<'_>,
     ) -> PyResult<()> {
         self.inner.try_step(&mut state.inner, |positions| {
+            let n_atoms = positions.len();
             let pos_arr = vec3_to_positions(positions);
             let result = compute_forces.call1(py, (pos_arr,))?;
-            let forces: Vec<[f64; 3]> = result.extract(py)?;
-            Ok(positions_to_vec3(&forces))
+            extract_and_validate_forces(result.bind(py), n_atoms)
         })
     }
 
@@ -225,10 +242,10 @@ fn velocity_verlet_step(
     py: Python<'_>,
 ) -> PyResult<()> {
     match integrators::try_velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
+        let n_atoms = positions.len();
         let pos_arr = vec3_to_positions(positions);
         let result = compute_forces.call1(py, (pos_arr,))?;
-        let forces: Vec<[f64; 3]> = result.extract(py)?;
-        Ok(positions_to_vec3(&forces))
+        extract_and_validate_forces(result.bind(py), n_atoms)
     }) {
         Ok(new_state) => {
             state.inner = new_state;
@@ -262,9 +279,9 @@ impl PyNoseHooverChain {
     /// Perform one NVT step.
     fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner.try_step(&mut state.inner, |positions| {
+            let n_atoms = positions.len();
             let result = compute_forces.call1((vec3_to_positions(positions),))?;
-            let forces: Vec<[f64; 3]> = result.extract()?;
-            Ok(positions_to_vec3(&forces))
+            extract_and_validate_forces(&result, n_atoms)
         })
     }
 
@@ -296,9 +313,9 @@ impl PyVelocityRescale {
     /// Perform one NVT step.
     fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner.try_step(&mut state.inner, |positions| {
+            let n_atoms = positions.len();
             let result = compute_forces.call1((vec3_to_positions(positions),))?;
-            let forces: Vec<[f64; 3]> = result.extract()?;
-            Ok(positions_to_vec3(&forces))
+            extract_and_validate_forces(&result, n_atoms)
         })
     }
 
@@ -463,10 +480,10 @@ impl PyFireState {
     fn step(&mut self, compute_forces: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
         self.inner.try_step(
             |positions| {
+                let n_atoms = positions.len();
                 let pos_arr = vec3_to_positions(positions);
                 let result = compute_forces.call1(py, (pos_arr,))?;
-                let forces: Vec<[f64; 3]> = result.extract(py)?;
-                Ok(positions_to_vec3(&forces))
+                extract_and_validate_forces(result.bind(py), n_atoms)
             },
             &self.config,
         )
@@ -530,11 +547,20 @@ impl PyCellFireState {
     fn step(&mut self, compute_forces_and_stress: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
         self.inner.try_step(
             |positions, cell| {
+                let n_atoms = positions.len();
                 let pos_arr = vec3_to_positions(positions);
                 let cell_arr = mat3_to_array(cell);
 
                 let result = compute_forces_and_stress.call1(py, (pos_arr, cell_arr))?;
                 let (forces, stress): (Vec<[f64; 3]>, [[f64; 3]; 3]) = result.extract(py)?;
+
+                if forces.len() != n_atoms {
+                    return Err(PyValueError::new_err(format!(
+                        "Force callback returned {} forces for {} atoms",
+                        forces.len(),
+                        n_atoms
+                    )));
+                }
 
                 let force_vec = positions_to_vec3(&forces);
                 let stress_mat = array_to_mat3(stress);

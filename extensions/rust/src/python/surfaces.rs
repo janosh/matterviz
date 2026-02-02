@@ -64,8 +64,8 @@ fn find_adsorption_sites(
         .into_iter()
         .map(|site| {
             let dict = PyDict::new(py);
-            dict.set_item("frac_coords", site.position.as_slice())?;
-            dict.set_item("cart_coords", site.cart_position.as_slice())?;
+            dict.set_item("position", site.position.as_slice())?;
+            dict.set_item("cart_position", site.cart_position.as_slice())?;
             dict.set_item(
                 "site_type",
                 match site.site_type {
@@ -77,6 +77,7 @@ fn find_adsorption_sites(
                 },
             )?;
             dict.set_item("height", site.height)?;
+            dict.set_item("coordinating_atoms", &site.coordinating_atoms)?;
             Ok(dict.unbind())
         })
         .collect()

@@ -83,6 +83,11 @@ fn is_periodic_image(
     idx_b: usize,
     tolerance: f64,
 ) -> PyResult<bool> {
+    if tolerance < 0.0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "tolerance must be non-negative",
+        ));
+    }
     let struc = parse_struct(&structure)?;
     check_site_pair(idx_a, idx_b, struc.num_sites())?;
     Ok(struc.is_periodic_image(idx_a, idx_b, tolerance))
