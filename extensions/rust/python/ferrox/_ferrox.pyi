@@ -724,7 +724,7 @@ class oxidation:
     def compute_bv_sums(
         structure: StructureJson,
         max_radius: float = 4.0,
-        scale_factor: float = 0.37,
+        scale_factor: float = 1.0,
     ) -> list[float]:
         """Compute bond valence sums."""
     @staticmethod

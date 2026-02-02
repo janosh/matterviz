@@ -100,7 +100,7 @@ fn add_charges_from_oxi_state_guesses(
 
 /// Compute bond valence sums.
 #[pyfunction]
-#[pyo3(signature = (structure, max_radius = 4.0, scale_factor = 0.37))]
+#[pyo3(signature = (structure, max_radius = 4.0, scale_factor = 1.0))]
 fn compute_bv_sums(
     structure: StructureJson,
     max_radius: f64,
