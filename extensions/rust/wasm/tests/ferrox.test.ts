@@ -353,3 +353,315 @@ describe(`WasmStructureMatcher.get_structure_distance`, () => {
     expect(dist_diff).toBeGreaterThan(d12) // Different composition > same composition
   })
 })
+
+// === Interatomic Potentials ===
+
+describe(`compute_lennard_jones`, () => {
+  it(`computes correct energy at r = sigma (should be zero)`, () => {
+    const sigma = 1.0
+    const positions = new Float64Array([0, 0, 0, sigma, 0, 0])
+    const result = unwrap(wasm.compute_lennard_jones(
+      positions,
+      null,
+      true,
+      true,
+      true,
+      sigma,
+      1.0,
+      null,
+      false,
+    ))
+    expect(result.energy).toBeCloseTo(0, 10)
+  })
+
+  it(`computes correct energy at equilibrium (r = 2^(1/6) * sigma)`, () => {
+    const sigma = 1.0
+    const epsilon = 1.0
+    const r_eq = Math.pow(2, 1 / 6) * sigma
+    const positions = new Float64Array([0, 0, 0, r_eq, 0, 0])
+    const result = unwrap(wasm.compute_lennard_jones(
+      positions,
+      null,
+      true,
+      true,
+      true,
+      sigma,
+      epsilon,
+      null,
+      false,
+    ))
+    expect(result.energy).toBeCloseTo(-epsilon, 10)
+    // Forces should be near zero at equilibrium
+    expect(Math.abs(result.forces[0])).toBeLessThan(1e-10)
+    expect(Math.abs(result.forces[3])).toBeLessThan(1e-10)
+  })
+
+  it(`forces satisfy momentum conservation`, () => {
+    const positions = new Float64Array([0, 0, 0, 1.5, 0.5, 0.2, 2.5, 1.0, 0.5])
+    const result = unwrap(wasm.compute_lennard_jones(
+      positions,
+      null,
+      false,
+      false,
+      false,
+      1.0,
+      1.0,
+      null,
+      false,
+    ))
+    // Sum forces for each atom
+    let sum_x = 0
+    let sum_y = 0
+    let sum_z = 0
+    for (let idx = 0; idx < result.forces.length; idx += 3) {
+      sum_x += result.forces[idx]
+      sum_y += result.forces[idx + 1]
+      sum_z += result.forces[idx + 2]
+    }
+    expect(Math.abs(sum_x)).toBeLessThan(1e-12)
+    expect(Math.abs(sum_y)).toBeLessThan(1e-12)
+    expect(Math.abs(sum_z)).toBeLessThan(1e-12)
+  })
+
+  it(`respects cutoff`, () => {
+    const positions = new Float64Array([0, 0, 0, 5.0, 0, 0])
+    const result = unwrap(wasm.compute_lennard_jones(
+      positions,
+      null,
+      false,
+      false,
+      false,
+      1.0,
+      1.0,
+      3.0,
+      false,
+    ))
+    expect(result.energy).toBeCloseTo(0, 14)
+  })
+
+  it(`computes stress tensor when requested`, () => {
+    const positions = new Float64Array([0, 0, 0, 1.5, 0, 0])
+    const cell = new Float64Array([5, 0, 0, 0, 5, 0, 0, 0, 5])
+    const result = unwrap(wasm.compute_lennard_jones(
+      positions,
+      cell,
+      true,
+      true,
+      true,
+      1.0,
+      1.0,
+      null,
+      true,
+    ))
+    expect(result.stress).not.toBeNull()
+    expect(result.stress).toHaveLength(6)
+    // xx component should be non-zero for 1D chain
+    if (result.stress) expect(Math.abs(result.stress[0])).toBeGreaterThan(0)
+  })
+})
+
+describe(`compute_morse`, () => {
+  it(`computes correct energy at equilibrium (r = r0)`, () => {
+    const well_depth = 1.0
+    const r0 = 1.2
+    const positions = new Float64Array([0, 0, 0, r0, 0, 0])
+    const result = unwrap(wasm.compute_morse(
+      positions,
+      null,
+      false,
+      false,
+      false,
+      well_depth,
+      1.5,
+      r0,
+      10.0,
+      false,
+    ))
+    expect(result.energy).toBeCloseTo(-well_depth, 10)
+  })
+
+  it(`forces are zero at equilibrium`, () => {
+    const r0 = 1.2
+    const positions = new Float64Array([0, 0, 0, r0, 0, 0])
+    const result = unwrap(wasm.compute_morse(
+      positions,
+      null,
+      false,
+      false,
+      false,
+      1.0,
+      1.5,
+      r0,
+      10.0,
+      false,
+    ))
+    expect(Math.abs(result.forces[0])).toBeLessThan(1e-10)
+    expect(Math.abs(result.forces[3])).toBeLessThan(1e-10)
+  })
+
+  it(`energy approaches zero at large distance`, () => {
+    const positions = new Float64Array([0, 0, 0, 20.0, 0, 0])
+    const result = unwrap(wasm.compute_morse(
+      positions,
+      null,
+      false,
+      false,
+      false,
+      1.0,
+      2.0,
+      1.0,
+      100.0,
+      false,
+    ))
+    expect(Math.abs(result.energy)).toBeLessThan(1e-6)
+  })
+})
+
+describe(`compute_soft_sphere`, () => {
+  it(`computes correct energy at r = sigma (should equal epsilon)`, () => {
+    const sigma = 1.0
+    const epsilon = 1.0
+    const alpha = 12.0
+    const positions = new Float64Array([0, 0, 0, sigma, 0, 0])
+    const result = unwrap(wasm.compute_soft_sphere(
+      positions,
+      null,
+      false,
+      false,
+      false,
+      sigma,
+      epsilon,
+      alpha,
+      10.0,
+      false,
+    ))
+    expect(result.energy).toBeCloseTo(epsilon, 10)
+  })
+
+  it(`is always repulsive`, () => {
+    const positions = new Float64Array([0, 0, 0, 0.8, 0, 0])
+    const result = unwrap(wasm.compute_soft_sphere(
+      positions,
+      null,
+      false,
+      false,
+      false,
+      1.0,
+      1.0,
+      6.0,
+      10.0,
+      false,
+    ))
+    // Force on atom 0 should be negative (pushed away from atom 1)
+    expect(result.forces[0]).toBeLessThan(0)
+    // Force on atom 1 should be positive (pushed away from atom 0)
+    expect(result.forces[3]).toBeGreaterThan(0)
+  })
+})
+
+describe(`compute_harmonic_bonds`, () => {
+  it(`energy is zero at equilibrium`, () => {
+    const positions = new Float64Array([0, 0, 0, 1.0, 0, 0])
+    const bonds = new Float64Array([0, 1, 1.0, 1.0]) // i=0, j=1, k=1.0, r0=1.0
+    const result = unwrap(wasm.compute_harmonic_bonds(
+      positions,
+      bonds,
+      null,
+      false,
+      false,
+      false,
+      false,
+    ))
+    expect(result.energy).toBeCloseTo(0, 14)
+  })
+
+  it(`computes correct energy for stretched bond`, () => {
+    const spring_k = 2.0
+    const r0 = 1.0
+    const dist = 1.5
+    const positions = new Float64Array([0, 0, 0, dist, 0, 0])
+    const bonds = new Float64Array([0, 1, spring_k, r0])
+    const result = unwrap(wasm.compute_harmonic_bonds(
+      positions,
+      bonds,
+      null,
+      false,
+      false,
+      false,
+      false,
+    ))
+    const expected = 0.5 * spring_k * Math.pow(dist - r0, 2)
+    expect(result.energy).toBeCloseTo(expected, 12)
+  })
+
+  it(`computes correct force for stretched bond`, () => {
+    const spring_k = 2.0
+    const r0 = 1.0
+    const dist = 1.2
+    const positions = new Float64Array([0, 0, 0, dist, 0, 0])
+    const bonds = new Float64Array([0, 1, spring_k, r0])
+    const result = unwrap(wasm.compute_harmonic_bonds(
+      positions,
+      bonds,
+      null,
+      false,
+      false,
+      false,
+      false,
+    ))
+    // F = -k(r - r0), negative because stretched
+    const expected_force = -spring_k * (dist - r0)
+    expect(result.forces[3]).toBeCloseTo(expected_force, 12)
+    expect(result.forces[0]).toBeCloseTo(-expected_force, 12)
+  })
+
+  it(`handles multiple bonds`, () => {
+    const positions = new Float64Array([0, 0, 0, 1.0, 0, 0, 2.2, 0, 0])
+    const bonds = new Float64Array([
+      0,
+      1,
+      1.0,
+      1.0, // equilibrium
+      1,
+      2,
+      1.0,
+      1.0, // stretched by 0.2
+    ])
+    const result = unwrap(wasm.compute_harmonic_bonds(
+      positions,
+      bonds,
+      null,
+      false,
+      false,
+      false,
+      false,
+    ))
+    const expected = 0.5 * 1.0 * Math.pow(0.2, 2)
+    expect(result.energy).toBeCloseTo(expected, 12)
+  })
+
+  it(`forces sum to zero`, () => {
+    const positions = new Float64Array([0, 0, 0, 1.2, 0.3, 0.1, 2.5, 0.8, 0.4])
+    const bonds = new Float64Array([0, 1, 1.0, 1.0, 1, 2, 1.5, 1.2])
+    const result = unwrap(wasm.compute_harmonic_bonds(
+      positions,
+      bonds,
+      null,
+      false,
+      false,
+      false,
+      false,
+    ))
+    let sum_x = 0
+    let sum_y = 0
+    let sum_z = 0
+    for (let idx = 0; idx < result.forces.length; idx += 3) {
+      sum_x += result.forces[idx]
+      sum_y += result.forces[idx + 1]
+      sum_z += result.forces[idx + 2]
+    }
+    expect(Math.abs(sum_x)).toBeLessThan(1e-12)
+    expect(Math.abs(sum_y)).toBeLessThan(1e-12)
+    expect(Math.abs(sum_z)).toBeLessThan(1e-12)
+  })
+})

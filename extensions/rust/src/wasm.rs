@@ -1981,6 +1981,21 @@ fn parse_flat_vec3(data: &[f64], n_atoms: usize) -> Result<Vec<Vector3<f64>>, St
         .collect())
 }
 
+// Helper to parse flat 9-element cell array to Matrix3 (row-major)
+fn parse_flat_cell(data: Option<&[f64]>) -> Result<Option<nalgebra::Matrix3<f64>>, String> {
+    match data {
+        None => Ok(None),
+        Some(cell) => {
+            if cell.len() != 9 {
+                return Err(format!("Cell must have 9 elements, got {}", cell.len()));
+            }
+            Ok(Some(nalgebra::Matrix3::new(
+                cell[0], cell[1], cell[2], cell[3], cell[4], cell[5], cell[6], cell[7], cell[8],
+            )))
+        }
+    }
+}
+
 /// Streaming MSD calculator for large trajectories.
 ///
 /// Usage: create with new(), add frames with add_frame(), get result with compute_msd().
@@ -2358,6 +2373,79 @@ pub fn defect_create_vacancy(structure: JsCrystal, site_idx: u32) -> WasmResult<
     result.into()
 }
 
+// === Interatomic Potentials ===
+
+use crate::potentials;
+
+/// Result from potential calculation.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi)]
+pub struct JsPotentialResult {
+    /// Total potential energy in eV
+    pub energy: f64,
+    /// Forces on each atom [Fx, Fy, Fz] in eV/Å (flat array)
+    pub forces: Vec<f64>,
+    /// Optional 3x3 stress tensor in eV/Å³ (Voigt: xx, yy, zz, yz, xz, xy)
+    pub stress: Option<[f64; 6]>,
+}
+
+fn potential_result_to_js(result: &potentials::PotentialResult) -> JsPotentialResult {
+    let forces: Vec<f64> = result.forces.iter().flat_map(|f| [f.x, f.y, f.z]).collect();
+    let stress = result.stress.as_ref().map(|s| {
+        // Convert 3x3 to Voigt notation: xx, yy, zz, yz, xz, xy
+        [
+            s[(0, 0)],
+            s[(1, 1)],
+            s[(2, 2)],
+            s[(1, 2)],
+            s[(0, 2)],
+            s[(0, 1)],
+        ]
+    });
+    JsPotentialResult {
+        energy: result.energy,
+        forces,
+        stress,
+    }
+}
+
+/// Compute Lennard-Jones potential energy and forces.
+///
+/// V(r) = 4ε[(σ/r)¹² - (σ/r)⁶]
+///
+/// positions: flat array [x0, y0, z0, x1, y1, z1, ...] in Angstrom
+/// cell: optional 3x3 cell matrix as flat array [a1, a2, a3, b1, b2, b3, c1, c2, c3]
+/// pbc_x, pbc_y, pbc_z: periodic boundary conditions
+/// sigma: LJ sigma in Angstrom (default: 3.4 for Ar)
+/// epsilon: LJ epsilon in eV (default: 0.0103 for Ar)
+/// cutoff: optional cutoff distance in Angstrom
+/// compute_stress: whether to compute stress tensor
+#[wasm_bindgen]
+pub fn compute_lennard_jones(
+    positions: Vec<f64>,
+    cell: Option<Vec<f64>>,
+    pbc_x: bool,
+    pbc_y: bool,
+    pbc_z: bool,
+    sigma: f64,
+    epsilon: f64,
+    cutoff: Option<f64>,
+    compute_stress: bool,
+) -> WasmResult<JsPotentialResult> {
+    let result: Result<JsPotentialResult, String> = (|| {
+        let n_atoms = positions.len() / 3;
+        let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
+        let cell_mat = parse_flat_cell(cell.as_deref())?;
+        let pbc = [pbc_x, pbc_y, pbc_z];
+
+        let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
+        let result =
+            potentials::compute_lj_full(&pos_vec, cell_mat.as_ref(), pbc, &params, compute_stress);
+        Ok(potential_result_to_js(&result))
+    })();
+    result.into()
+}
+
 /// Create a substitutional defect by replacing the species at a site.
 #[wasm_bindgen]
 pub fn defect_create_substitution(
@@ -2380,6 +2468,52 @@ pub fn defect_create_substitution(
             "original_species": defect_result.defect.original_species.map(|s| s.to_string()),
         });
         Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Compute Morse potential energy and forces.
+///
+/// V(r) = D * (1 - exp(-α(r - r₀)))² - D
+///
+/// positions: flat array [x0, y0, z0, x1, y1, z1, ...] in Angstrom
+/// cell: optional 3x3 cell matrix as flat array
+/// pbc_x, pbc_y, pbc_z: periodic boundary conditions
+/// d: well depth in eV
+/// alpha: width parameter in 1/Angstrom
+/// r0: equilibrium distance in Angstrom
+/// cutoff: cutoff distance in Angstrom
+/// compute_stress: whether to compute stress tensor
+#[wasm_bindgen]
+pub fn compute_morse(
+    positions: Vec<f64>,
+    cell: Option<Vec<f64>>,
+    pbc_x: bool,
+    pbc_y: bool,
+    pbc_z: bool,
+    d: f64,
+    alpha: f64,
+    r0: f64,
+    cutoff: f64,
+    compute_stress: bool,
+) -> WasmResult<JsPotentialResult> {
+    let result: Result<JsPotentialResult, String> = (|| {
+        let n_atoms = positions.len() / 3;
+        let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
+        let cell_mat = parse_flat_cell(cell.as_deref())?;
+        let pbc = [pbc_x, pbc_y, pbc_z];
+
+        let result = potentials::compute_morse_simple(
+            &pos_vec,
+            cell_mat.as_ref(),
+            pbc,
+            d,
+            alpha,
+            r0,
+            cutoff,
+            compute_stress,
+        );
+        Ok(potential_result_to_js(&result))
     })();
     result.into()
 }
@@ -2408,6 +2542,99 @@ pub fn defect_create_interstitial(
             "species": defect_result.defect.species.map(|s| s.to_string()),
         });
         Ok(json.to_string())
+    })();
+    result.into()
+}
+
+/// Compute soft sphere potential energy and forces.
+///
+/// V(r) = ε(σ/r)^α
+///
+/// positions: flat array [x0, y0, z0, x1, y1, z1, ...] in Angstrom
+/// cell: optional 3x3 cell matrix as flat array
+/// pbc_x, pbc_y, pbc_z: periodic boundary conditions
+/// sigma: length scale in Angstrom
+/// epsilon: energy scale in eV
+/// alpha: exponent (default 12, use 2 for soft spheres)
+/// cutoff: cutoff distance in Angstrom
+/// compute_stress: whether to compute stress tensor
+#[wasm_bindgen]
+pub fn compute_soft_sphere(
+    positions: Vec<f64>,
+    cell: Option<Vec<f64>>,
+    pbc_x: bool,
+    pbc_y: bool,
+    pbc_z: bool,
+    sigma: f64,
+    epsilon: f64,
+    alpha: f64,
+    cutoff: f64,
+    compute_stress: bool,
+) -> WasmResult<JsPotentialResult> {
+    let result: Result<JsPotentialResult, String> = (|| {
+        let n_atoms = positions.len() / 3;
+        let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
+        let cell_mat = parse_flat_cell(cell.as_deref())?;
+        let pbc = [pbc_x, pbc_y, pbc_z];
+
+        let result = potentials::compute_soft_sphere_simple(
+            &pos_vec,
+            cell_mat.as_ref(),
+            pbc,
+            sigma,
+            epsilon,
+            alpha,
+            cutoff,
+            compute_stress,
+        );
+        Ok(potential_result_to_js(&result))
+    })();
+    result.into()
+}
+
+/// Compute harmonic bond energy and forces.
+///
+/// V = 0.5 * k * (r - r₀)²
+///
+/// positions: flat array [x0, y0, z0, x1, y1, z1, ...] in Angstrom
+/// bonds: flat array [i0, j0, k0, r0_0, i1, j1, k1, r0_1, ...] where
+///        i,j are atom indices, k is spring constant (eV/Å²), r0 is equilibrium distance (Å)
+/// cell: optional 3x3 cell matrix as flat array
+/// pbc_x, pbc_y, pbc_z: periodic boundary conditions
+/// compute_stress: whether to compute stress tensor
+#[wasm_bindgen]
+pub fn compute_harmonic_bonds(
+    positions: Vec<f64>,
+    bonds: Vec<f64>,
+    cell: Option<Vec<f64>>,
+    pbc_x: bool,
+    pbc_y: bool,
+    pbc_z: bool,
+    compute_stress: bool,
+) -> WasmResult<JsPotentialResult> {
+    let result: Result<JsPotentialResult, String> = (|| {
+        let n_atoms = positions.len() / 3;
+        let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
+        let cell_mat = parse_flat_cell(cell.as_deref())?;
+        let pbc = [pbc_x, pbc_y, pbc_z];
+
+        // Parse bonds: [i, j, k, r0, ...]
+        if bonds.len() % 4 != 0 {
+            return Err("bonds array length must be divisible by 4".to_string());
+        }
+        let bond_vec: Vec<potentials::HarmonicBond> = bonds
+            .chunks(4)
+            .map(|b| potentials::HarmonicBond::new(b[0] as usize, b[1] as usize, b[2], b[3]))
+            .collect();
+
+        let result = potentials::compute_harmonic_bonds(
+            &pos_vec,
+            &bond_vec,
+            cell_mat.as_ref(),
+            pbc,
+            compute_stress,
+        );
+        Ok(potential_result_to_js(&result))
     })();
     result.into()
 }
@@ -2969,6 +3196,223 @@ pub fn surface_enumerate_terminations(
     result.into()
 }
 
+/// Compute Lennard-Jones forces only.
+///
+/// Returns flat array of forces [Fx0, Fy0, Fz0, Fx1, Fy1, Fz1, ...] in eV/Å.
+#[wasm_bindgen]
+pub fn compute_lennard_jones_forces(
+    positions: Vec<f64>,
+    cell: Option<Vec<f64>>,
+    pbc_x: bool,
+    pbc_y: bool,
+    pbc_z: bool,
+    sigma: f64,
+    epsilon: f64,
+    cutoff: Option<f64>,
+) -> WasmResult<Vec<f64>> {
+    let result: Result<Vec<f64>, String> = (|| {
+        let n_atoms = positions.len() / 3;
+        let pos_vec = parse_flat_vec3(&positions, n_atoms)?;
+        let cell_mat = parse_flat_cell(cell.as_deref())?;
+        let pbc = [pbc_x, pbc_y, pbc_z];
+
+        let params = potentials::LennardJonesParams::new(sigma, epsilon, cutoff);
+        let result = potentials::compute_lennard_jones(&pos_vec, cell_mat.as_ref(), pbc, &params);
+        Ok(result.forces.iter().flat_map(|f| [f.x, f.y, f.z]).collect())
+    })();
+    result.into()
+}
+
+// === MD Integrators ===
+
+use crate::integrators;
+use crate::optimizers;
+
+/// MD simulation state for WASM.
+#[wasm_bindgen]
+pub struct JsMDState {
+    inner: integrators::MDState,
+}
+
+#[wasm_bindgen]
+impl JsMDState {
+    /// Create a new MD state.
+    ///
+    /// positions: flat array [x0, y0, z0, x1, y1, z1, ...] in Angstrom
+    /// masses: array of atomic masses in amu
+    #[wasm_bindgen(constructor)]
+    pub fn new(positions: Vec<f64>, masses: Vec<f64>) -> Result<JsMDState, JsError> {
+        let n_atoms = masses.len();
+        if positions.len() != n_atoms * 3 {
+            return Err(JsError::new(&format!(
+                "positions length {} must be 3 * masses length {}",
+                positions.len(),
+                n_atoms
+            )));
+        }
+        let pos_vec: Vec<Vector3<f64>> = positions
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        Ok(JsMDState {
+            inner: integrators::MDState::new(pos_vec, masses),
+        })
+    }
+
+    /// Get positions as flat array.
+    #[wasm_bindgen(getter)]
+    pub fn positions(&self) -> Vec<f64> {
+        self.inner
+            .positions
+            .iter()
+            .flat_map(|p| [p.x, p.y, p.z])
+            .collect()
+    }
+
+    /// Set positions from flat array.
+    #[wasm_bindgen(setter)]
+    pub fn set_positions(&mut self, positions: Vec<f64>) {
+        let n_atoms = self.inner.num_atoms();
+        if positions.len() == n_atoms * 3 {
+            self.inner.positions = positions
+                .chunks(3)
+                .map(|c| Vector3::new(c[0], c[1], c[2]))
+                .collect();
+        }
+    }
+
+    /// Get velocities as flat array.
+    #[wasm_bindgen(getter)]
+    pub fn velocities(&self) -> Vec<f64> {
+        self.inner
+            .velocities
+            .iter()
+            .flat_map(|v| [v.x, v.y, v.z])
+            .collect()
+    }
+
+    /// Set velocities from flat array.
+    #[wasm_bindgen(setter)]
+    pub fn set_velocities(&mut self, velocities: Vec<f64>) {
+        let n_atoms = self.inner.num_atoms();
+        if velocities.len() == n_atoms * 3 {
+            self.inner.velocities = velocities
+                .chunks(3)
+                .map(|c| Vector3::new(c[0], c[1], c[2]))
+                .collect();
+        }
+    }
+
+    /// Get forces as flat array.
+    #[wasm_bindgen(getter)]
+    pub fn forces(&self) -> Vec<f64> {
+        self.inner
+            .forces
+            .iter()
+            .flat_map(|f| [f.x, f.y, f.z])
+            .collect()
+    }
+
+    /// Set forces from flat array.
+    #[wasm_bindgen(setter)]
+    pub fn set_forces(&mut self, forces: Vec<f64>) {
+        let n_atoms = self.inner.num_atoms();
+        if forces.len() == n_atoms * 3 {
+            self.inner.forces = forces
+                .chunks(3)
+                .map(|c| Vector3::new(c[0], c[1], c[2]))
+                .collect();
+        }
+    }
+
+    /// Get masses.
+    #[wasm_bindgen(getter)]
+    pub fn masses(&self) -> Vec<f64> {
+        self.inner.masses.clone()
+    }
+
+    /// Number of atoms.
+    #[wasm_bindgen(getter)]
+    pub fn num_atoms(&self) -> usize {
+        self.inner.num_atoms()
+    }
+
+    /// Initialize velocities from Maxwell-Boltzmann distribution.
+    #[wasm_bindgen]
+    pub fn init_velocities(&mut self, temperature_k: f64, seed: Option<u64>) {
+        self.inner.init_velocities(temperature_k, seed);
+    }
+
+    /// Compute kinetic energy in eV.
+    #[wasm_bindgen]
+    pub fn kinetic_energy(&self) -> f64 {
+        self.inner.kinetic_energy()
+    }
+
+    /// Compute temperature in Kelvin.
+    #[wasm_bindgen]
+    pub fn temperature(&self) -> f64 {
+        self.inner.temperature()
+    }
+
+    /// Set cell matrix (9 elements, row-major).
+    #[wasm_bindgen]
+    pub fn set_cell(&mut self, cell: Vec<f64>, pbc_x: bool, pbc_y: bool, pbc_z: bool) {
+        if cell.len() == 9 {
+            self.inner.cell = Some(nalgebra::Matrix3::new(
+                cell[0], cell[1], cell[2], cell[3], cell[4], cell[5], cell[6], cell[7], cell[8],
+            ));
+            self.inner.pbc = [pbc_x, pbc_y, pbc_z];
+        }
+    }
+}
+
+/// Perform one velocity Verlet MD step.
+///
+/// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
+/// dt: timestep in femtoseconds
+///
+/// Returns new forces array that should be used for next step.
+/// The caller must compute forces at the new positions and pass them to the next call.
+#[wasm_bindgen]
+pub fn md_velocity_verlet_step(
+    state: &mut JsMDState,
+    forces: Vec<f64>,
+    dt_fs: f64,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        let force_vec: Vec<Vector3<f64>> = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        state.inner.set_forces(&force_vec);
+
+        // Velocity Verlet: half-step velocity, full-step position, then caller computes new forces
+        let dt_internal = dt_fs * integrators::units::FS_TO_INTERNAL;
+        let half_dt = 0.5 * dt_internal;
+
+        for idx in 0..n_atoms {
+            let mass = state.inner.masses[idx];
+            let accel = state.inner.forces[idx] / mass;
+            state.inner.velocities[idx] += half_dt * accel;
+            state.inner.positions[idx] += dt_internal * state.inner.velocities[idx];
+        }
+
+        Ok(())
+    })();
+    result.into()
+}
+
 /// Get surface atoms in a slab structure.
 ///
 /// Returns JSON array of site indices.
@@ -2983,6 +3427,44 @@ pub fn surface_get_surface_atoms(slab: JsCrystal, tolerance: f64) -> WasmResult<
         let struc = slab.to_structure()?;
         let atoms = surfaces::get_surface_atoms(&struc, tolerance);
         Ok(serde_json::to_string(&atoms).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// Complete the velocity Verlet step after computing new forces.
+#[wasm_bindgen]
+pub fn md_velocity_verlet_finalize(
+    state: &mut JsMDState,
+    new_forces: Vec<f64>,
+    dt_fs: f64,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if new_forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "new_forces length {} must be {} (3 * n_atoms)",
+                new_forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        let force_vec: Vec<Vector3<f64>> = new_forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        state.inner.set_forces(&force_vec);
+
+        let dt_internal = dt_fs * integrators::units::FS_TO_INTERNAL;
+        let half_dt = 0.5 * dt_internal;
+
+        for idx in 0..n_atoms {
+            let mass = state.inner.masses[idx];
+            let accel = state.inner.forces[idx] / mass;
+            state.inner.velocities[idx] += half_dt * accel;
+        }
+
+        Ok(())
     })();
     result.into()
 }
@@ -3129,6 +3611,85 @@ pub fn surface_compute_wulff(
     result.into()
 }
 
+/// Langevin dynamics integrator for NVT ensemble.
+#[wasm_bindgen]
+pub struct JsLangevinIntegrator {
+    inner: integrators::LangevinIntegrator,
+}
+
+#[wasm_bindgen]
+impl JsLangevinIntegrator {
+    /// Create a new Langevin integrator.
+    ///
+    /// temperature_k: target temperature in Kelvin
+    /// friction: friction coefficient in 1/fs
+    /// dt: timestep in femtoseconds
+    /// seed: optional RNG seed for reproducibility
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        temperature_k: f64,
+        friction: f64,
+        dt: f64,
+        seed: Option<u64>,
+    ) -> JsLangevinIntegrator {
+        JsLangevinIntegrator {
+            inner: integrators::LangevinIntegrator::new(temperature_k, friction, dt, seed),
+        }
+    }
+
+    /// Set target temperature.
+    #[wasm_bindgen]
+    pub fn set_temperature(&mut self, temperature_k: f64) {
+        self.inner.set_temperature(temperature_k);
+    }
+
+    /// Set friction coefficient.
+    #[wasm_bindgen]
+    pub fn set_friction(&mut self, friction: f64) {
+        self.inner.set_friction(friction);
+    }
+
+    /// Set timestep.
+    #[wasm_bindgen]
+    pub fn set_dt(&mut self, dt: f64) {
+        self.inner.set_dt(dt);
+    }
+}
+
+/// Perform one Langevin dynamics step (for use with JS force callback).
+///
+/// This version takes forces directly rather than a callback,
+/// since JS callbacks across WASM boundary are complex.
+#[wasm_bindgen]
+pub fn langevin_step_with_forces(
+    integrator: &mut JsLangevinIntegrator,
+    state: &mut JsMDState,
+    forces: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        // Set forces and perform step
+        let force_vec: Vec<Vector3<f64>> = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        integrator
+            .inner
+            .step(&mut state.inner, |_| force_vec.clone());
+        Ok(())
+    })();
+    result.into()
+}
+
 // === Cell Operations (WASM) - JSON-returning variants ===
 
 /// Calculate minimum image distance between two fractional positions.
@@ -3199,6 +3760,66 @@ pub fn cell_niggli_reduce(structure: JsCrystal, tolerance: f64) -> WasmResult<St
     result.into()
 }
 
+// === Thermostats ===
+
+/// Nose-Hoover chain thermostat for NVT ensemble.
+#[wasm_bindgen]
+pub struct JsNoseHooverChain {
+    inner: integrators::NoseHooverChain,
+}
+
+#[wasm_bindgen]
+impl JsNoseHooverChain {
+    /// Create a new Nose-Hoover chain thermostat.
+    ///
+    /// target_temp: target temperature in Kelvin
+    /// tau: coupling time constant in femtoseconds
+    /// dt: timestep in femtoseconds
+    /// n_dof: number of degrees of freedom (typically 3 * n_atoms - 3)
+    #[wasm_bindgen(constructor)]
+    pub fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize) -> JsNoseHooverChain {
+        JsNoseHooverChain {
+            inner: integrators::NoseHooverChain::new(target_temp, tau, dt, n_dof),
+        }
+    }
+
+    /// Set target temperature.
+    #[wasm_bindgen]
+    pub fn set_temperature(&mut self, target_temp: f64) {
+        self.inner.set_temperature(target_temp);
+    }
+}
+
+/// Perform one Nose-Hoover chain step with provided forces.
+#[wasm_bindgen]
+pub fn nose_hoover_step_with_forces(
+    thermostat: &mut JsNoseHooverChain,
+    state: &mut JsMDState,
+    forces: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        let force_vec: Vec<Vector3<f64>> = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        thermostat
+            .inner
+            .step(&mut state.inner, |_| force_vec.clone());
+        Ok(())
+    })();
+    result.into()
+}
+
 /// Perform Delaunay reduction on a lattice.
 ///
 /// Returns JSON object with reduced lattice matrix and transformation matrix.
@@ -3220,6 +3841,71 @@ pub fn cell_delaunay_reduce(structure: JsCrystal, tolerance: f64) -> WasmResult<
     result.into()
 }
 
+/// Velocity rescaling thermostat (stochastic, canonical sampling).
+#[wasm_bindgen]
+pub struct JsVelocityRescale {
+    inner: integrators::VelocityRescale,
+}
+
+#[wasm_bindgen]
+impl JsVelocityRescale {
+    /// Create a new velocity rescale thermostat.
+    ///
+    /// target_temp: target temperature in Kelvin
+    /// tau: coupling time constant in femtoseconds
+    /// dt: timestep in femtoseconds
+    /// n_dof: number of degrees of freedom
+    /// seed: optional RNG seed
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        target_temp: f64,
+        tau: f64,
+        dt: f64,
+        n_dof: usize,
+        seed: Option<u64>,
+    ) -> JsVelocityRescale {
+        JsVelocityRescale {
+            inner: integrators::VelocityRescale::new(target_temp, tau, dt, n_dof, seed),
+        }
+    }
+
+    /// Set target temperature.
+    #[wasm_bindgen]
+    pub fn set_temperature(&mut self, target_temp: f64) {
+        self.inner.set_temperature(target_temp);
+    }
+}
+
+/// Perform one velocity rescale step with provided forces.
+#[wasm_bindgen]
+pub fn velocity_rescale_step_with_forces(
+    thermostat: &mut JsVelocityRescale,
+    state: &mut JsMDState,
+    forces: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        let force_vec: Vec<Vector3<f64>> = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        thermostat
+            .inner
+            .step(&mut state.inner, |_| force_vec.clone());
+        Ok(())
+    })();
+    result.into()
+}
+
 /// Find supercell transformation matrix for target atom count.
 ///
 /// Returns JSON array [[a1,a2,a3],[b1,b2,b3],[c1,c2,c3]].
@@ -3237,6 +3923,199 @@ pub fn cell_find_supercell_matrix(structure: JsCrystal, target_atoms: u32) -> Wa
     result.into()
 }
 
+// === NPT Ensemble ===
+
+/// State for NPT molecular dynamics with variable cell.
+#[wasm_bindgen]
+pub struct JsNPTState {
+    inner: integrators::NPTState,
+}
+
+#[wasm_bindgen]
+impl JsNPTState {
+    /// Create a new NPT state.
+    ///
+    /// positions: flat array [x0, y0, z0, ...] in Angstrom
+    /// masses: array of atomic masses in amu
+    /// cell: 9-element cell matrix (row-major) in Angstrom
+    /// pbc_x, pbc_y, pbc_z: periodic boundary conditions
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        positions: Vec<f64>,
+        masses: Vec<f64>,
+        cell: Vec<f64>,
+        pbc_x: bool,
+        pbc_y: bool,
+        pbc_z: bool,
+    ) -> Result<JsNPTState, JsError> {
+        let n_atoms = masses.len();
+        if positions.len() != n_atoms * 3 {
+            return Err(JsError::new("positions length must be 3 * n_atoms"));
+        }
+        if cell.len() != 9 {
+            return Err(JsError::new("cell must have 9 elements"));
+        }
+
+        let pos_vec: Vec<Vector3<f64>> = positions
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        let cell_mat = nalgebra::Matrix3::new(
+            cell[0], cell[1], cell[2], cell[3], cell[4], cell[5], cell[6], cell[7], cell[8],
+        );
+
+        Ok(JsNPTState {
+            inner: integrators::NPTState::new(pos_vec, masses, cell_mat, [pbc_x, pbc_y, pbc_z]),
+        })
+    }
+
+    /// Get positions as flat array.
+    #[wasm_bindgen(getter)]
+    pub fn positions(&self) -> Vec<f64> {
+        self.inner
+            .positions
+            .iter()
+            .flat_map(|p| [p.x, p.y, p.z])
+            .collect()
+    }
+
+    /// Get velocities as flat array.
+    #[wasm_bindgen(getter)]
+    pub fn velocities(&self) -> Vec<f64> {
+        self.inner
+            .velocities
+            .iter()
+            .flat_map(|v| [v.x, v.y, v.z])
+            .collect()
+    }
+
+    /// Get cell matrix as flat array.
+    #[wasm_bindgen(getter)]
+    pub fn cell(&self) -> Vec<f64> {
+        let c = &self.inner.cell;
+        vec![
+            c[(0, 0)],
+            c[(0, 1)],
+            c[(0, 2)],
+            c[(1, 0)],
+            c[(1, 1)],
+            c[(1, 2)],
+            c[(2, 0)],
+            c[(2, 1)],
+            c[(2, 2)],
+        ]
+    }
+
+    /// Get cell volume in Angstrom³.
+    #[wasm_bindgen]
+    pub fn volume(&self) -> f64 {
+        self.inner.volume()
+    }
+
+    /// Get kinetic energy in eV.
+    #[wasm_bindgen]
+    pub fn kinetic_energy(&self) -> f64 {
+        self.inner.kinetic_energy()
+    }
+
+    /// Get temperature in Kelvin.
+    #[wasm_bindgen]
+    pub fn temperature(&self) -> f64 {
+        self.inner.temperature()
+    }
+
+    /// Number of atoms.
+    #[wasm_bindgen(getter)]
+    pub fn num_atoms(&self) -> usize {
+        self.inner.num_atoms()
+    }
+}
+
+/// NPT integrator using Parrinello-Rahman barostat.
+#[wasm_bindgen]
+pub struct JsNPTIntegrator {
+    inner: integrators::NPTIntegrator,
+}
+
+#[wasm_bindgen]
+impl JsNPTIntegrator {
+    /// Create a new NPT integrator.
+    ///
+    /// temperature: target temperature in Kelvin
+    /// pressure: target pressure in GPa
+    /// tau_t: thermostat time constant in femtoseconds
+    /// tau_p: barostat time constant in femtoseconds
+    /// dt: timestep in femtoseconds
+    /// n_atoms: number of atoms
+    /// total_mass: total system mass in amu
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        temperature: f64,
+        pressure: f64,
+        tau_t: f64,
+        tau_p: f64,
+        dt: f64,
+        n_atoms: usize,
+        total_mass: f64,
+    ) -> JsNPTIntegrator {
+        let config = integrators::NPTConfig::new(temperature, pressure, tau_t, tau_p, dt);
+        JsNPTIntegrator {
+            inner: integrators::NPTIntegrator::new(config, n_atoms, total_mass),
+        }
+    }
+
+    /// Get instantaneous pressure from stress tensor.
+    #[wasm_bindgen]
+    pub fn pressure(&self, stress: Vec<f64>) -> WasmResult<f64> {
+        if stress.len() != 9 {
+            return WasmResult::err("stress must have 9 elements");
+        }
+        let stress_mat = nalgebra::Matrix3::new(
+            stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
+            stress[8],
+        );
+        WasmResult::ok(self.inner.pressure(&stress_mat))
+    }
+}
+
+/// Perform one NPT step with provided forces and stress.
+#[wasm_bindgen]
+pub fn npt_step_with_forces_and_stress(
+    integrator: &mut JsNPTIntegrator,
+    state: &mut JsNPTState,
+    forces: Vec<f64>,
+    stress: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+        if stress.len() != 9 {
+            return Err("stress must have 9 elements".to_string());
+        }
+
+        let force_vec: Vec<Vector3<f64>> = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        let stress_mat = nalgebra::Matrix3::new(
+            stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
+            stress[8],
+        );
+
+        integrator
+            .inner
+            .step(&mut state.inner, |_, _| (force_vec.clone(), stress_mat));
+        Ok(())
+    })();
+    result.into()
+}
+
 /// Get perpendicular distances for each lattice axis.
 ///
 /// Returns JSON array [d_a, d_b, d_c].
@@ -3246,6 +4125,141 @@ pub fn cell_perpendicular_distances(structure: JsCrystal) -> WasmResult<String> 
         let struc = structure.to_structure()?;
         let dists = cell_ops::perpendicular_distances(&struc.lattice);
         Ok(serde_json::to_string(dists.as_slice()).unwrap_or_default())
+    })();
+    result.into()
+}
+
+// === FIRE Optimizer ===
+
+/// FIRE optimizer configuration.
+#[wasm_bindgen]
+pub struct JsFireConfig {
+    inner: optimizers::FireConfig,
+}
+
+#[wasm_bindgen]
+impl JsFireConfig {
+    /// Create a new FIRE configuration with default parameters.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> JsFireConfig {
+        JsFireConfig {
+            inner: optimizers::FireConfig::default(),
+        }
+    }
+
+    /// Set initial timestep.
+    #[wasm_bindgen]
+    pub fn set_dt_start(&mut self, dt_start: f64) {
+        self.inner.dt_start = dt_start;
+    }
+
+    /// Set maximum timestep.
+    #[wasm_bindgen]
+    pub fn set_dt_max(&mut self, dt_max: f64) {
+        self.inner.dt_max = dt_max;
+    }
+
+    /// Set minimum steps before dt increase.
+    #[wasm_bindgen]
+    pub fn set_n_min(&mut self, n_min: usize) {
+        self.inner.n_min = n_min;
+    }
+
+    /// Set maximum step size in Angstrom.
+    #[wasm_bindgen]
+    pub fn set_max_step(&mut self, max_step: f64) {
+        self.inner.max_step = max_step;
+    }
+}
+
+impl Default for JsFireConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// FIRE optimizer state.
+#[wasm_bindgen]
+pub struct JsFireState {
+    inner: optimizers::FireState,
+    config: optimizers::FireConfig,
+}
+
+#[wasm_bindgen]
+impl JsFireState {
+    /// Create a new FIRE state.
+    ///
+    /// positions: flat array [x0, y0, z0, ...] in Angstrom
+    /// config: optional FIRE configuration (uses defaults if not provided)
+    #[wasm_bindgen(constructor)]
+    pub fn new(positions: Vec<f64>, config: Option<JsFireConfig>) -> JsFireState {
+        let pos_vec: Vec<Vector3<f64>> = positions
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        let fire_config = config.map(|c| c.inner).unwrap_or_default();
+        let state = optimizers::FireState::new(pos_vec, &fire_config);
+        JsFireState {
+            inner: state,
+            config: fire_config,
+        }
+    }
+
+    /// Get positions as flat array.
+    #[wasm_bindgen(getter)]
+    pub fn positions(&self) -> Vec<f64> {
+        self.inner
+            .positions
+            .iter()
+            .flat_map(|p| [p.x, p.y, p.z])
+            .collect()
+    }
+
+    /// Get maximum force component.
+    #[wasm_bindgen]
+    pub fn max_force(&self) -> f64 {
+        self.inner.max_force()
+    }
+
+    /// Check if optimization has converged.
+    #[wasm_bindgen]
+    pub fn is_converged(&self, fmax: f64) -> bool {
+        self.inner.is_converged(fmax)
+    }
+
+    /// Number of atoms.
+    #[wasm_bindgen(getter)]
+    pub fn num_atoms(&self) -> usize {
+        self.inner.num_atoms()
+    }
+
+    /// Current timestep.
+    #[wasm_bindgen(getter)]
+    pub fn dt(&self) -> f64 {
+        self.inner.dt
+    }
+}
+
+/// Perform one FIRE optimization step with provided forces.
+#[wasm_bindgen]
+pub fn fire_step_with_forces(state: &mut JsFireState, forces: Vec<f64>) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.num_atoms();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+
+        let force_vec: Vec<Vector3<f64>> = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+
+        state.inner.step(|_| force_vec.clone(), &state.config);
+        Ok(())
     })();
     result.into()
 }
@@ -3284,6 +4298,137 @@ pub fn cell_is_supercell(
         let other_struc = other.to_structure()?;
         let matrix = cell_ops::is_supercell(&struc.lattice, &other_struc.lattice, tolerance);
         Ok(serde_json::to_string(&matrix).unwrap_or_default())
+    })();
+    result.into()
+}
+
+/// FIRE optimizer state with cell optimization.
+#[wasm_bindgen]
+pub struct JsCellFireState {
+    inner: optimizers::CellFireState,
+    config: optimizers::FireConfig,
+}
+
+#[wasm_bindgen]
+impl JsCellFireState {
+    /// Create a new CellFIRE state.
+    ///
+    /// positions: flat array [x0, y0, z0, ...] in Angstrom
+    /// cell: 9-element cell matrix (row-major)
+    /// config: optional FIRE configuration
+    /// cell_factor: scaling factor for cell DOF (default: 1.0)
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        positions: Vec<f64>,
+        cell: Vec<f64>,
+        config: Option<JsFireConfig>,
+        cell_factor: Option<f64>,
+    ) -> Result<JsCellFireState, JsError> {
+        if cell.len() != 9 {
+            return Err(JsError::new("cell must have 9 elements"));
+        }
+
+        let pos_vec: Vec<Vector3<f64>> = positions
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        let cell_mat = nalgebra::Matrix3::new(
+            cell[0], cell[1], cell[2], cell[3], cell[4], cell[5], cell[6], cell[7], cell[8],
+        );
+        let fire_config = config.map(|c| c.inner).unwrap_or_default();
+        let factor = cell_factor.unwrap_or(1.0);
+
+        Ok(JsCellFireState {
+            inner: optimizers::CellFireState::new(pos_vec, cell_mat, &fire_config, factor),
+            config: fire_config,
+        })
+    }
+
+    /// Get positions as flat array.
+    #[wasm_bindgen(getter)]
+    pub fn positions(&self) -> Vec<f64> {
+        self.inner
+            .positions
+            .iter()
+            .flat_map(|p| [p.x, p.y, p.z])
+            .collect()
+    }
+
+    /// Get cell matrix as flat array.
+    #[wasm_bindgen(getter)]
+    pub fn cell(&self) -> Vec<f64> {
+        let c = &self.inner.cell;
+        vec![
+            c[(0, 0)],
+            c[(0, 1)],
+            c[(0, 2)],
+            c[(1, 0)],
+            c[(1, 1)],
+            c[(1, 2)],
+            c[(2, 0)],
+            c[(2, 1)],
+            c[(2, 2)],
+        ]
+    }
+
+    /// Get maximum force component.
+    #[wasm_bindgen]
+    pub fn max_force(&self) -> f64 {
+        optimizers::cell_max_force(&self.inner)
+    }
+
+    /// Get maximum stress component.
+    #[wasm_bindgen]
+    pub fn max_stress(&self) -> f64 {
+        optimizers::cell_max_stress(&self.inner)
+    }
+
+    /// Check if optimization has converged.
+    #[wasm_bindgen]
+    pub fn is_converged(&self, fmax: f64, smax: f64) -> bool {
+        optimizers::cell_is_converged(&self.inner, fmax, smax)
+    }
+
+    /// Number of atoms.
+    #[wasm_bindgen(getter)]
+    pub fn num_atoms(&self) -> usize {
+        self.inner.positions.len()
+    }
+}
+
+/// Perform one CellFIRE optimization step with provided forces and stress.
+#[wasm_bindgen]
+pub fn cell_fire_step_with_forces_and_stress(
+    state: &mut JsCellFireState,
+    forces: Vec<f64>,
+    stress: Vec<f64>,
+) -> WasmResult<()> {
+    let result: Result<(), String> = (|| {
+        let n_atoms = state.inner.positions.len();
+        if forces.len() != n_atoms * 3 {
+            return Err(format!(
+                "forces length {} must be {} (3 * n_atoms)",
+                forces.len(),
+                n_atoms * 3
+            ));
+        }
+        if stress.len() != 9 {
+            return Err("stress must have 9 elements".to_string());
+        }
+
+        let force_vec: Vec<Vector3<f64>> = forces
+            .chunks(3)
+            .map(|c| Vector3::new(c[0], c[1], c[2]))
+            .collect();
+        let stress_mat = nalgebra::Matrix3::new(
+            stress[0], stress[1], stress[2], stress[3], stress[4], stress[5], stress[6], stress[7],
+            stress[8],
+        );
+
+        state
+            .inner
+            .step(|_, _| (force_vec.clone(), stress_mat), &state.config);
+        Ok(())
     })();
     result.into()
 }
