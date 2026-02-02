@@ -5070,20 +5070,20 @@ fn defect_find_interstitial_sites(
     let struc = parse_struct(&structure)?;
     let sites = defects::find_voronoi_interstitials(&struc, Some(min_dist), symprec);
 
-    let results: Vec<Py<PyDict>> = sites
+    let results: PyResult<Vec<Py<PyDict>>> = sites
         .into_iter()
         .map(|site| {
             let dict = PyDict::new(py);
-            let _ = dict.set_item("frac_coords", site.frac_coords.as_slice());
-            let _ = dict.set_item("cart_coords", site.cart_coords.as_slice());
-            let _ = dict.set_item("min_distance", site.min_distance);
-            let _ = dict.set_item("coordination", site.coordination);
-            let _ = dict.set_item("site_type", site.site_type.as_str());
-            dict.unbind()
+            dict.set_item("frac_coords", site.frac_coords.as_slice())?;
+            dict.set_item("cart_coords", site.cart_coords.as_slice())?;
+            dict.set_item("min_distance", site.min_distance)?;
+            dict.set_item("coordination", site.coordination)?;
+            dict.set_item("site_type", site.site_type.as_str())?;
+            Ok(dict.unbind())
         })
         .collect();
 
-    Ok(results)
+    results
 }
 
 /// Find an optimal supercell matrix for dilute defect calculations.
@@ -5693,27 +5693,27 @@ fn surface_enumerate_terminations(
     let terminations = surfaces::enumerate_terminations(&struc, miller, &config, symprec)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
-    let results: Vec<Py<PyDict>> = terminations
+    let results: PyResult<Vec<Py<PyDict>>> = terminations
         .into_iter()
         .map(|term| {
             let dict = PyDict::new(py);
-            let _ = dict.set_item("miller_index", term.miller_index.to_array());
-            let _ = dict.set_item("shift", term.shift);
+            dict.set_item("miller_index", term.miller_index.to_array())?;
+            dict.set_item("shift", term.shift)?;
             let species_strs: Vec<String> = term
                 .surface_species
                 .iter()
                 .map(|sp| sp.to_string())
                 .collect();
-            let _ = dict.set_item("surface_species", species_strs);
-            let _ = dict.set_item("surface_density", term.surface_density);
-            let _ = dict.set_item("is_polar", term.is_polar);
+            dict.set_item("surface_species", species_strs)?;
+            dict.set_item("surface_density", term.surface_density)?;
+            dict.set_item("is_polar", term.is_polar)?;
             let slab_json = structure_to_pymatgen_json(&term.slab);
-            let _ = dict.set_item("slab", json_to_pydict(py, &slab_json).ok());
-            dict.unbind()
+            dict.set_item("slab", json_to_pydict(py, &slab_json)?)?;
+            Ok(dict.unbind())
         })
         .collect();
 
-    Ok(results)
+    results
 }
 
 /// Find adsorption sites on a slab surface.
@@ -5722,16 +5722,20 @@ fn surface_enumerate_terminations(
 ///     slab: Slab structure as JSON string or dict.
 ///     height: Height above surface for placing adsorbates (Angstroms, default: 2.0).
 ///     site_types: Optional list of site types to find ("atop", "bridge", "hollow3", "hollow4").
+///     neighbor_cutoff: Optional cutoff for neighbor analysis (default: 4.0 Angstroms).
+///         May need adjustment for structures with longer bonds (e.g., some oxides)
+///         or shorter bonds in close-packed structures.
 ///
 /// Returns:
 ///     List of dicts with site info (type, position, coordinating atoms).
 #[pyfunction]
-#[pyo3(signature = (slab, height = 2.0, site_types = None))]
+#[pyo3(signature = (slab, height = 2.0, site_types = None, neighbor_cutoff = None))]
 fn surface_find_adsorption_sites(
     py: Python<'_>,
     slab: StructureJson,
     height: f64,
     site_types: Option<Vec<String>>,
+    neighbor_cutoff: Option<f64>,
 ) -> PyResult<Vec<Py<PyDict>>> {
     let struc = parse_struct(&slab)?;
 
@@ -5754,33 +5758,34 @@ fn surface_find_adsorption_sites(
         None => None,
     };
 
-    let sites = surfaces::find_adsorption_sites(&struc, height, types_filter.as_deref());
+    let sites =
+        surfaces::find_adsorption_sites(&struc, height, types_filter.as_deref(), neighbor_cutoff);
 
-    let results: Vec<Py<PyDict>> = sites
+    let results: PyResult<Vec<Py<PyDict>>> = sites
         .into_iter()
         .map(|site| {
             let dict = PyDict::new(py);
-            let _ = dict.set_item("site_type", site.site_type.as_str());
-            let _ = dict.set_item(
+            dict.set_item("site_type", site.site_type.as_str())?;
+            dict.set_item(
                 "position",
                 [site.position.x, site.position.y, site.position.z],
-            );
-            let _ = dict.set_item(
+            )?;
+            dict.set_item(
                 "cart_position",
                 [
                     site.cart_position.x,
                     site.cart_position.y,
                     site.cart_position.z,
                 ],
-            );
-            let _ = dict.set_item("height", site.height);
-            let _ = dict.set_item("coordinating_atoms", site.coordinating_atoms.clone());
-            let _ = dict.set_item("symmetry_multiplicity", site.symmetry_multiplicity);
-            dict.unbind()
+            )?;
+            dict.set_item("height", site.height)?;
+            dict.set_item("coordinating_atoms", site.coordinating_atoms.clone())?;
+            dict.set_item("symmetry_multiplicity", site.symmetry_multiplicity)?;
+            Ok(dict.unbind())
         })
         .collect();
 
-    Ok(results)
+    results
 }
 
 /// Get indices of surface atoms in a slab.
@@ -6089,9 +6094,9 @@ fn cell_find_supercell_matrix(
     let cell_strategy = match strategy {
         "target_atoms" => {
             let target = target_value.unwrap_or(100.0);
-            if target <= 0.0 || !target.is_finite() {
+            if target <= 0.0 || !target.is_finite() || target.fract() != 0.0 {
                 return Err(PyValueError::new_err(
-                    "target_atoms must be a positive finite number",
+                    "target_atoms must be a positive finite integer",
                 ));
             }
             cell_ops::SupercellStrategy::TargetAtoms(target as usize)

@@ -31,7 +31,12 @@ try:
     FERROX_AVAILABLE = True
 except ImportError:
     FERROX_AVAILABLE = False
-    RustMatcher = None  # type: ignore[assignment, misc]
+
+    class RustMatcher:
+        """Stub when ferrox unavailable."""
+
+        def __init__(self, **_kwargs: object) -> None:
+            raise ImportError("ferrox not installed")
 
 
 # Structure Factories
@@ -485,7 +490,9 @@ def print_summary() -> None:
 
     all_pass = True
     for name, struct_a, struct_b, py_m, expected, reason in test_cases:
-        rust_m = rust_no_scale if py_m.scale is False else rust_default
+        rust_m = (
+            rust_no_scale if getattr(py_m, "scale", True) is False else rust_default
+        )
         result = MatchResult.compare(struct_a, struct_b, py_m, rust_m)
 
         py_ok = result.pymatgen == expected

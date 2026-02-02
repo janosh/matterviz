@@ -137,7 +137,7 @@ def simple_cubic_structure() -> dict:
 
 def lattice_from_matrix(matrix: list[list[float]]) -> dict:
     """Create a structure dict from a lattice matrix (for testing lattice operations)."""
-    return make_structure({"matrix": matrix}, [make_site("H", [0, 0, 0])])  # type: ignore[return-value]
+    return make_structure({"matrix": matrix}, [make_site("H", [0, 0, 0])])
 
 
 @pytest.fixture
@@ -155,7 +155,7 @@ def rocksalt_nacl_structure() -> dict:
             make_site("Cl", [0, 0, 0.5]),
             make_site("Cl", [0.5, 0.5, 0.5]),
         ],
-    )  # type: ignore[return-value]
+    )
 
 
 @pytest.fixture

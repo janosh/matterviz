@@ -264,7 +264,7 @@ class TestMillerIndexEdgeCases:
 
     def test_d_spacing_zero_miller_raises(self, simple_cubic_structure: dict) -> None:
         """D-spacing with [0,0,0] Miller index raises error."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             ferrox.surface_d_spacing(simple_cubic_structure, 0, 0, 0)
 
     def test_d_spacing_equivalent_miller(self, simple_cubic_structure: dict) -> None:

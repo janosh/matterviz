@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import ferrox
 import numpy as np
 import pytest
@@ -116,7 +118,7 @@ class TestAntisite:
 class TestFindInterstitialSites:
     """Tests for defect_find_interstitial_sites function."""
 
-    VALID_SITE_TYPES = {
+    VALID_SITE_TYPES: ClassVar[set[str]] = {
         "trigonal",
         "tetrahedral",
         "square_pyramidal",
@@ -546,8 +548,8 @@ class TestWyckoffLabels:
             wyckoff_labels = [site["label"] for site in labels]
             # Should have at least 2 different Wyckoff positions
             unique_labels = set(wyckoff_labels)
-            # Both Na and Cl positions should be present
-            assert len(unique_labels) >= 1  # At minimum, some structure
+            # Both Na and Cl positions should be present (Na 4a and Cl 4b)
+            assert len(unique_labels) >= 2
 
     def test_multiplicity_matches_label(self, fcc_cu_json: str) -> None:
         """Multiplicity field should match the number in the Wyckoff label."""

@@ -106,15 +106,15 @@ class TestSanitizeForJsonEdgeCases:
 
     def test_float32_array_precision(self) -> None:
         """Float32Array converts with acceptable precision."""
-        result = run_js_test("return sanitize_for_json(new Float32Array([1.5, 2.5, 3.5]))")
+        result = run_js_test(
+            "return sanitize_for_json(new Float32Array([1.5, 2.5, 3.5]))"
+        )
         assert len(result) == 3
         assert abs(result[0] - 1.5) < 0.01
 
     def test_error_to_object(self) -> None:
         """Error should become object with name, message, stack."""
-        result = run_js_test(
-            'return sanitize_for_json(new Error("test error"))'
-        )
+        result = run_js_test('return sanitize_for_json(new Error("test error"))')
         assert result["name"] == "Error"
         assert result["message"] == "test error"
         assert "stack" in result

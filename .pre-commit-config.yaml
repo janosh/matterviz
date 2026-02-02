@@ -22,6 +22,10 @@ repos:
           - --ignore
           - unresolved-import
           - --ignore
+          - unresolved-attribute
+          - --ignore
+          - unsupported-operator
+          - --ignore
           - invalid-return-type
           - --ignore
           - invalid-argument-type

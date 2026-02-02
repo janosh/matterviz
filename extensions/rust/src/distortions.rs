@@ -21,7 +21,7 @@ use crate::error::{
     check_sites_different,
 };
 use crate::neighbors::{NeighborListConfig, build_neighbor_list};
-use crate::pbc::wrap_frac_coords;
+use crate::pbc::wrap_frac_coords_pbc;
 use crate::structure::Structure;
 use nalgebra::Vector3;
 use rand::SeedableRng;
@@ -149,8 +149,8 @@ pub fn distort_bonds(
             let new_neighbor_cart = cart_coords[neighbor_idx] + displacement;
             let new_frac = structure.lattice.get_fractional_coord(&new_neighbor_cart);
 
-            // Wrap to [0, 1)
-            new_frac_coords[neighbor_idx] = wrap_frac_coords(&new_frac);
+            // Wrap only periodic axes
+            new_frac_coords[neighbor_idx] = wrap_frac_coords_pbc(&new_frac, structure.lattice.pbc);
         }
 
         // Create new structure with distorted coordinates
@@ -239,12 +239,13 @@ pub fn create_dimer(
     let new_pos_a = midpoint - direction * half_target;
     let new_pos_b = midpoint + direction * half_target;
 
-    // Convert back to fractional coordinates
+    // Convert back to fractional coordinates (wrap only periodic axes)
+    let pbc = structure.lattice.pbc;
     let mut new_frac_coords = structure.frac_coords.clone();
     new_frac_coords[site_a_idx] =
-        wrap_frac_coords(&structure.lattice.get_fractional_coord(&new_pos_a));
+        wrap_frac_coords_pbc(&structure.lattice.get_fractional_coord(&new_pos_a), pbc);
     new_frac_coords[site_b_idx] =
-        wrap_frac_coords(&structure.lattice.get_fractional_coord(&new_pos_b));
+        wrap_frac_coords_pbc(&structure.lattice.get_fractional_coord(&new_pos_b), pbc);
 
     let new_structure = Structure::new_from_occupancies(
         structure.lattice.clone(),
@@ -319,7 +320,8 @@ pub fn rattle_structure(
             // Generate random displacement
             let displacement = random_gaussian_vector(&mut rng, stdev);
             let new_cart = original_cart + displacement;
-            let new_frac = wrap_frac_coords(&structure.lattice.get_fractional_coord(&new_cart));
+            let new_frac =
+                wrap_frac_coords_pbc(&structure.lattice.get_fractional_coord(&new_cart), pbc);
 
             // Check for collisions with already-placed atoms
             let mut collision = false;
@@ -435,7 +437,7 @@ pub fn local_rattle(
             let displacement = direction * amplitude;
             let new_cart = cart_coords[site_idx] + displacement;
             new_frac_coords[site_idx] =
-                wrap_frac_coords(&structure.lattice.get_fractional_coord(&new_cart));
+                wrap_frac_coords_pbc(&structure.lattice.get_fractional_coord(&new_cart), pbc);
         }
     }
 

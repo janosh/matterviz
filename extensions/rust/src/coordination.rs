@@ -227,16 +227,21 @@ pub fn get_neighbors(
 // Voronoi-Based Coordination Methods
 // ============================================================================
 
+// Voronoi-based methods are not available on wasm32 due to meshless_voronoi dependency
+#[cfg(not(target_arch = "wasm32"))]
 use glam::DVec3;
+#[cfg(not(target_arch = "wasm32"))]
 use meshless_voronoi::{Dimensionality, Voronoi};
 
 /// Configuration for Voronoi-based coordination analysis.
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Clone, Copy)]
 pub struct VoronoiConfig {
     /// Minimum solid angle fraction to consider a neighbor (default: 0.01).
     pub min_solid_angle: f64,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Default for VoronoiConfig {
     fn default() -> Self {
         Self {
@@ -367,6 +372,7 @@ fn compute_face_solid_angle(
 /// # Panics
 ///
 /// Panics if `site_idx` is out of bounds.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn get_cn_voronoi(
     structure: &Structure,
     site_idx: usize,
@@ -389,6 +395,7 @@ pub fn get_cn_voronoi(
 }
 
 /// Get Voronoi-weighted coordination numbers for all sites.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn get_cn_voronoi_all(structure: &Structure, config: Option<&VoronoiConfig>) -> Vec<f64> {
     let config = validated_config(config);
     let Some(voronoi) = build_voronoi(structure) else {
@@ -416,6 +423,7 @@ pub fn get_cn_voronoi_all(structure: &Structure, config: Option<&VoronoiConfig>)
 /// Get Voronoi neighbors with their solid angle fractions for a site.
 ///
 /// Returns neighbors sorted by solid angle (largest first).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn get_voronoi_neighbors(
     structure: &Structure,
     site_idx: usize,
@@ -445,6 +453,7 @@ pub fn get_voronoi_neighbors(
 ///
 /// Uses Voronoi faces to determine neighbors instead of a distance cutoff.
 /// Includes solid angle information.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn get_local_environment_voronoi(
     structure: &Structure,
     site_idx: usize,

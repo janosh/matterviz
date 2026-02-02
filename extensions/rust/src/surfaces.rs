@@ -418,6 +418,9 @@ impl SurfaceEnergy {
 /// * `slab` - The slab structure
 /// * `height` - Height above surface for placing adsorbates (Å)
 /// * `site_types` - Optional filter for site types (None = all types)
+/// * `neighbor_cutoff` - Optional cutoff for neighbor analysis (default: 4.0 Å).
+///   May need adjustment for structures with longer bonds (e.g., some oxides)
+///   or shorter bonds in close-packed structures.
 ///
 /// # Returns
 ///
@@ -426,6 +429,7 @@ pub fn find_adsorption_sites(
     slab: &Structure,
     height: f64,
     site_types: Option<&[AdsorptionSiteType]>,
+    neighbor_cutoff: Option<f64>,
 ) -> Vec<AdsorptionSite> {
     let mut sites = Vec::new();
 
@@ -486,7 +490,7 @@ pub fn find_adsorption_sites(
     // Bridge and hollow sites require neighbor analysis
     if include_bridge || include_hollow3 || include_hollow4 {
         // Build neighbor list for surface atoms
-        let cutoff = 4.0; // Reasonable cutoff for nearest neighbors
+        let cutoff = neighbor_cutoff.unwrap_or(4.0);
         let (center_idx, neighbor_idx, images, distances) =
             slab.get_neighbor_list(cutoff, 1e-8, true);
 
@@ -650,13 +654,21 @@ pub fn find_adsorption_sites(
                                     if found_quads.insert((quad[0], quad[1], quad[2], quad[3])) {
                                         // Compute centroid using image-shifted coordinates
                                         // Use global_i as reference (image = [0,0,0])
+                                        // For diagonal neighbors (l), compute image by chaining
+                                        // through the neighbor path: i->j->l
                                         let idx_i = global_to_local[&global_i];
                                         let cart_i = surface_cart[idx_i];
                                         let image_j = get_image(global_i, global_j);
                                         let cart_j = get_shifted_cart(global_j, image_j);
                                         let image_k = get_image(global_i, global_k);
                                         let cart_k = get_shifted_cart(global_k, image_k);
-                                        let image_l = get_image(global_i, global_l);
+                                        // l is a neighbor of j, not necessarily of i, so compose images
+                                        let image_j_to_l = get_image(global_j, global_l);
+                                        let image_l = [
+                                            image_j[0] + image_j_to_l[0],
+                                            image_j[1] + image_j_to_l[1],
+                                            image_j[2] + image_j_to_l[2],
+                                        ];
                                         let cart_l = get_shifted_cart(global_l, image_l);
 
                                         let centroid = (cart_i + cart_j + cart_k + cart_l) / 4.0;
@@ -819,6 +831,13 @@ pub fn d_spacing(lattice: &Lattice, hkl: [i32; 3]) -> Result<f64> {
 ///
 /// The Wulff construction determines the equilibrium shape of a crystal
 /// by minimizing total surface energy at fixed volume.
+///
+/// **Note**: This is a simplified implementation that:
+/// - Does not compute actual polyhedron vertices (returns empty `vertices`)
+/// - Uses spherical approximation for volume/area estimates
+/// - Area fractions are approximate based on solid angle coverage
+///
+/// For precise Wulff geometry, consider using a dedicated convex hull library.
 ///
 /// # Arguments
 ///
@@ -985,7 +1004,7 @@ impl SlabConfigExt {
     }
 
     /// Convert to the basic SlabConfig used by Structure::generate_slabs
-    pub fn to_slab_config(&self) -> crate::structure::SlabConfig {
+    pub fn to_slab_config(&self, symprec: f64) -> crate::structure::SlabConfig {
         crate::structure::SlabConfig {
             miller_index: self.miller_index.to_array(),
             min_slab_size: self.min_slab_size,
@@ -993,7 +1012,7 @@ impl SlabConfigExt {
             center_slab: self.center_slab,
             in_unit_planes: self.in_unit_planes,
             primitive: self.primitive,
-            symprec: 0.01,
+            symprec,
             termination_index: None,
         }
     }
@@ -1039,7 +1058,8 @@ pub fn enumerate_terminations(
     for (idx, slab) in slabs.into_iter().enumerate() {
         // Calculate surface properties
         let area = surface_area(&slab);
-        let surface_atoms = get_surface_atoms(&slab, 0.1);
+        let tolerance = 0.1;
+        let surface_atoms = get_surface_atoms(&slab, tolerance);
         let surface_species: Vec<Species> = surface_atoms
             .iter()
             .filter_map(|&site_idx| slab.site_occupancies.get(site_idx))
@@ -1052,11 +1072,32 @@ pub fn enumerate_terminations(
             0.0
         };
 
-        // Simple polarity check - if surface has only one type of species
-        // and the opposite surface has different species
+        // Calculate is_polar by comparing top vs bottom surface compositions
         let is_polar = {
-            let unique_species: HashSet<_> = surface_species.iter().collect();
-            unique_species.len() == 1 && !surface_species.is_empty()
+            // Get top surface species (already computed as surface_species)
+            let top_species: HashSet<Species> = surface_species.iter().cloned().collect();
+
+            // Get bottom surface species (atoms near minimum z)
+            let min_z = slab
+                .frac_coords
+                .iter()
+                .map(|coord| coord.z)
+                .fold(f64::INFINITY, f64::min);
+            let bottom_atoms: Vec<usize> = slab
+                .frac_coords
+                .iter()
+                .enumerate()
+                .filter(|(_, coord)| (coord.z - min_z).abs() < tolerance)
+                .map(|(site_idx, _)| site_idx)
+                .collect();
+            let bottom_species: HashSet<Species> = bottom_atoms
+                .iter()
+                .filter_map(|&site_idx| slab.site_occupancies.get(site_idx))
+                .map(|occ| *occ.dominant_species())
+                .collect();
+
+            // Polar if top and bottom have different species compositions
+            !top_species.is_empty() && !bottom_species.is_empty() && top_species != bottom_species
         };
 
         // Note: The shift value is a placeholder index (0.0, 0.1, 0.2, ...) rather than
@@ -1154,12 +1195,12 @@ mod tests {
         let lattice = Lattice::cubic(4.0);
 
         let normal_100 = miller_to_normal(&lattice, [1, 0, 0]);
-        assert!(normal_100.norm() - 1.0 < 0.001);
+        assert!((normal_100.norm() - 1.0).abs() < 0.001);
         // For cubic, (100) normal should be along x
         assert!(normal_100.x.abs() > 0.99);
 
         let normal_001 = miller_to_normal(&lattice, [0, 0, 1]);
-        assert!(normal_001.norm() - 1.0 < 0.001);
+        assert!((normal_001.norm() - 1.0).abs() < 0.001);
         // For cubic, (001) normal should be along z
         assert!(normal_001.z.abs() > 0.99);
     }

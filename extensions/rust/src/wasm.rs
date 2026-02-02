@@ -2959,17 +2959,27 @@ pub fn surface_find_adsorption_sites(
     slab: JsCrystal,
     height: f64,
     site_types_json: &str,
-    distance: Option<f64>,
+    neighbor_cutoff: Option<f64>,
 ) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
         let struc = slab.to_structure()?;
-        let site_types: Option<Vec<String>> = if site_types_json.is_empty() {
+        let site_types: Option<Vec<surfaces::AdsorptionSiteType>> = if site_types_json.is_empty() {
             None
         } else {
-            serde_json::from_str(site_types_json).ok()
+            let strings: Vec<String> = serde_json::from_str(site_types_json)
+                .map_err(|err| format!("Invalid site types JSON: {err}"))?;
+            let parsed: Vec<surfaces::AdsorptionSiteType> = strings
+                .iter()
+                .filter_map(|s| surfaces::AdsorptionSiteType::parse(s))
+                .collect();
+            if parsed.is_empty() {
+                None
+            } else {
+                Some(parsed)
+            }
         };
         let sites =
-            surfaces::find_adsorption_sites(&struc, height, site_types.as_deref(), distance);
+            surfaces::find_adsorption_sites(&struc, height, site_types.as_deref(), neighbor_cutoff);
         let json_sites: Vec<serde_json::Value> = sites
             .into_iter()
             .map(|site| {
@@ -3004,7 +3014,8 @@ pub fn surface_compute_wulff(
             .into_iter()
             .map(|(hkl, energy)| (surfaces::MillerIndex::new(hkl[0], hkl[1], hkl[2]), energy))
             .collect();
-        let wulff = surfaces::compute_wulff_shape(&struc, &surface_energies);
+        let wulff = surfaces::compute_wulff_shape(&struc.lattice, &surface_energies)
+            .map_err(|err| err.to_string())?;
         let facets_json: Vec<serde_json::Value> = wulff
             .facets
             .iter()
@@ -3046,7 +3057,12 @@ pub fn cell_minimum_image_distance(
         }
         let f1 = Vector3::new(frac1[0], frac1[1], frac1[2]);
         let f2 = Vector3::new(frac2[0], frac2[1], frac2[2]);
-        Ok(cell_ops::minimum_image_distance(&struc.lattice, &f1, &f2))
+        Ok(cell_ops::minimum_image_distance(
+            &struc.lattice,
+            &f1,
+            &f2,
+            [true, true, true],
+        ))
     })();
     result.into()
 }
@@ -3067,7 +3083,8 @@ pub fn cell_minimum_image_vector(
         }
         let f1 = Vector3::new(frac1[0], frac1[1], frac1[2]);
         let f2 = Vector3::new(frac2[0], frac2[1], frac2[2]);
-        let vec = cell_ops::minimum_image_vector(&struc.lattice, &f1, &f2);
+        let delta = f2 - f1;
+        let vec = cell_ops::minimum_image_vector(&struc.lattice, &delta, [true, true, true]);
         Ok(serde_json::to_string(vec.as_slice()).unwrap_or_default())
     })();
     result.into()

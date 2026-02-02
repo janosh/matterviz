@@ -445,9 +445,6 @@ pub fn classify_interstitial_site(coordination: usize) -> InterstitialSiteType {
 
 // === Voronoi-Based Interstitial Site Finding ===
 
-use glam::DVec3;
-use meshless_voronoi::{Dimensionality, VoronoiIntegrator};
-
 /// Enhanced interstitial site information from Voronoi analysis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoronoiInterstitial {
@@ -466,6 +463,12 @@ pub struct VoronoiInterstitial {
     /// Number of symmetry-equivalent sites.
     pub multiplicity: usize,
 }
+
+// Voronoi implementation is not available for wasm32 due to meshless_voronoi dependency
+#[cfg(not(target_arch = "wasm32"))]
+use glam::DVec3;
+#[cfg(not(target_arch = "wasm32"))]
+use meshless_voronoi::{Dimensionality, VoronoiIntegrator};
 
 /// Find interstitial sites using Voronoi tessellation.
 ///
@@ -487,6 +490,10 @@ pub struct VoronoiInterstitial {
 ///
 /// For non-orthogonal lattices, accuracy may be reduced due to the rectangular
 /// bounding box used by the Voronoi algorithm.
+///
+/// On wasm32 targets, this function returns an empty vector since meshless_voronoi
+/// is not available.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn find_voronoi_interstitials(
     structure: &Structure,
     min_dist: Option<f64>,
@@ -640,6 +647,7 @@ pub fn find_voronoi_interstitials(
 }
 
 /// Compute bounding box for a 3x3x3 supercell.
+#[cfg(not(target_arch = "wasm32"))]
 fn compute_supercell_bounds(lattice_vectors: &[Vector3<f64>; 3]) -> (DVec3, DVec3) {
     let mut min_corner = Vector3::new(f64::MAX, f64::MAX, f64::MAX);
     let mut max_corner = Vector3::new(f64::MIN, f64::MIN, f64::MIN);
@@ -678,6 +686,7 @@ fn compute_supercell_bounds(lattice_vectors: &[Vector3<f64>; 3]) -> (DVec3, DVec
 }
 
 /// Check if fractional coordinates are near the unit cell [0, 1).
+#[cfg(not(target_arch = "wasm32"))]
 fn is_near_unit_cell(frac: &Vector3<f64>, tolerance: f64) -> bool {
     let lower = -tolerance;
     let upper = 1.0 + tolerance;
@@ -690,6 +699,7 @@ fn is_near_unit_cell(frac: &Vector3<f64>, tolerance: f64) -> bool {
 }
 
 /// Find the minimum distance from a point to any atom, considering PBC.
+#[cfg(not(target_arch = "wasm32"))]
 fn find_min_distance_to_atoms(
     lattice: &Lattice,
     point: &Vector3<f64>,
@@ -721,6 +731,7 @@ fn find_min_distance_to_atoms(
 }
 
 /// Count neighbors at approximately the given distance.
+#[cfg(not(target_arch = "wasm32"))]
 fn count_neighbors_at_distance(
     lattice: &Lattice,
     point: &Vector3<f64>,
@@ -753,6 +764,7 @@ fn count_neighbors_at_distance(
 }
 
 /// Find minimum separation between two points considering PBC.
+#[cfg(not(target_arch = "wasm32"))]
 fn find_min_separation(lattice: &Lattice, point_a: &Vector3<f64>, point_b: &Vector3<f64>) -> f64 {
     let mut min_dist = f64::MAX;
 
@@ -774,6 +786,16 @@ fn find_min_separation(lattice: &Lattice, point_a: &Vector3<f64>, point_b: &Vect
     }
 
     min_dist
+}
+
+/// Wasm32 fallback: returns empty vector since meshless_voronoi is not available.
+#[cfg(target_arch = "wasm32")]
+pub fn find_voronoi_interstitials(
+    _structure: &Structure,
+    _min_dist: Option<f64>,
+    _symprec: f64,
+) -> Vec<VoronoiInterstitial> {
+    Vec::new()
 }
 
 // === Supercell for Defect Calculations ===
@@ -1153,24 +1175,15 @@ fn find_unique_sites(
             }
         }
     } else {
-        // No symmetry info: treat each element type as unique
-        let mut seen_elements: HashSet<String> = HashSet::new();
-
+        // No symmetry info: treat every site as unique (don't collapse by element)
         for (idx, occ) in structure.site_occupancies.iter().enumerate() {
             let element = occ.dominant_species().element.symbol().to_string();
-            if seen_elements.insert(element.clone()) {
-                let count = structure
-                    .site_occupancies
-                    .iter()
-                    .filter(|o| o.dominant_species().element.symbol() == element)
-                    .count();
-                unique_sites.push(UniqueSite {
-                    representative_idx: idx,
-                    element,
-                    wyckoff: None,
-                    multiplicity: count,
-                });
-            }
+            unique_sites.push(UniqueSite {
+                representative_idx: idx,
+                element,
+                wyckoff: None,
+                multiplicity: 1,
+            });
         }
     }
 
@@ -1289,14 +1302,17 @@ fn generate_interstitials(
 
     // Collect elements to create interstitials for
     // Use both host elements and extrinsic dopants
-    let mut interstitial_species: HashSet<String> = structure
+    // Use Vec with sort/dedup instead of HashSet for deterministic iteration order
+    let mut interstitial_species: Vec<String> = structure
         .site_occupancies
         .iter()
         .map(|occ| occ.dominant_species().element.symbol().to_string())
         .collect();
     for dopant in &config.extrinsic {
-        interstitial_species.insert(dopant.clone());
+        interstitial_species.push(dopant.clone());
     }
+    interstitial_species.sort();
+    interstitial_species.dedup();
 
     for (site_idx, voronoi_site) in voronoi_sites.iter().enumerate() {
         for species in &interstitial_species {
@@ -1344,12 +1360,13 @@ fn generate_antisites(
     let mut antisites: Vec<DefectEntry> = Vec::new();
 
     // Get all unique elements in the structure
-    let elements: Vec<String> = unique_sites
+    // Use Vec with sort/dedup instead of HashSet for deterministic iteration order
+    let mut elements: Vec<String> = unique_sites
         .iter()
         .map(|site| site.element.clone())
-        .collect::<HashSet<_>>()
-        .into_iter()
         .collect();
+    elements.sort();
+    elements.dedup();
 
     // Need at least 2 elements for antisites
     if elements.len() < 2 {
