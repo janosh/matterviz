@@ -39,6 +39,7 @@ import argparse
 import keyword
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from glob import glob
 from typing import Any
@@ -695,16 +696,18 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
         lines.append("            mv_props = {}")
         for py, js in py_to_js.items():
             lines.append(f"        if {py} is not None:")
-            lines.append(f"            mv_props[{js!r}] = {py}")
+            lines.append(f'            mv_props["{js}"] = {py}')
         if default_set_props:
             lines.append("        if set_props is None:")
-            lines.append(f"            set_props = {default_set_props!r}")
+            formatted = "[" + ", ".join(f'"{s}"' for s in default_set_props) + "]"
+            lines.append(f"            set_props = {formatted}")
         if default_float32_props:
             lines.append("        if float32_props is None:")
-            lines.append(f"            float32_props = {default_float32_props!r}")
+            formatted = "[" + ", ".join(f'"{s}"' for s in default_float32_props) + "]"
+            lines.append(f"            float32_props = {formatted}")
         lines.append("")
         lines.append("        super().__init__(")
-        lines.append(f"            id=id, component={key!r}, mv_props=mv_props,")
+        lines.append(f'            id=id, component="{key}", mv_props=mv_props,')
         lines.append("            set_props=set_props, float32_props=float32_props,")
         lines.append("            event_props=event_props, last_event=last_event,")
         lines.append("            className=className, style=style, **kwargs,")
@@ -766,6 +769,9 @@ def main() -> None:
 
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(expected)
+
+    # Format with ruff
+    subprocess.run(["ruff", "format", out_path], check=True)
     print(f"Wrote {out_path}")
 
 
