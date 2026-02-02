@@ -62,6 +62,64 @@ pub enum FerroxError {
 /// Result type alias for ferrox operations.
 pub type Result<T> = std::result::Result<T, FerroxError>;
 
+// === Validation Helpers ===
+
+/// Check that a site index is within bounds of a structure.
+///
+/// # Arguments
+/// * `site_idx` - The site index to validate
+/// * `n_sites` - Total number of sites in the structure
+/// * `name` - Name of the parameter for error messages (e.g., "site_idx", "center_site_idx")
+///
+/// # Returns
+/// Ok(()) if valid, Err(FerroxError::InvalidStructure) if out of bounds.
+#[inline]
+pub fn check_site_bounds(site_idx: usize, n_sites: usize, name: &str) -> Result<()> {
+    if site_idx >= n_sites {
+        return Err(FerroxError::InvalidStructure {
+            index: site_idx,
+            reason: format!("{name} {site_idx} out of bounds (structure has {n_sites} sites)"),
+        });
+    }
+    Ok(())
+}
+
+/// Check that two site indices are different.
+#[inline]
+pub fn check_sites_different(site_a: usize, site_b: usize) -> Result<()> {
+    if site_a == site_b {
+        return Err(FerroxError::InvalidStructure {
+            index: site_a,
+            reason: "site indices must be different".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Check that a value is positive.
+#[inline]
+pub fn check_positive(value: f64, name: &str) -> Result<()> {
+    if value <= 0.0 {
+        return Err(FerroxError::InvalidStructure {
+            index: 0,
+            reason: format!("{name} must be positive, got {value}"),
+        });
+    }
+    Ok(())
+}
+
+/// Check that a value is non-negative.
+#[inline]
+pub fn check_non_negative(value: f64, name: &str) -> Result<()> {
+    if value < 0.0 {
+        return Err(FerroxError::InvalidStructure {
+            index: 0,
+            reason: format!("{name} must be non-negative, got {value}"),
+        });
+    }
+    Ok(())
+}
+
 /// Behavior when encountering errors in batch processing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OnError {

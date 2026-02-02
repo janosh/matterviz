@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::sync::OnceLock;
 
+use crate::defects::DefectType;
 use crate::element::Element;
 
 // Bond valence "softness" parameter (Brown & Altermatt, Acta Cryst. B41, 244, 1985)
@@ -767,6 +768,346 @@ pub fn find_charge_balanced_assignment(
 }
 
 // =============================================================================
+// Defect Charge State Guessing
+// =============================================================================
+
+/// Result of charge state guessing for a defect.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChargeStateGuess {
+    /// The predicted charge state.
+    pub charge: i32,
+    /// Probability/confidence of this charge state (0-1).
+    pub probability: f64,
+    /// Human-readable reasoning for this charge state.
+    pub reasoning: String,
+}
+
+/// Get normalized oxidation state probabilities for an element from ICSD data.
+///
+/// Returns a vector of (oxidation_state, probability) pairs sorted by decreasing probability.
+fn get_element_oxi_probs(symbol: &str) -> Vec<(i8, f64)> {
+    let icsd_data = get_icsd_oxi_prob();
+    let prefix = format!("{symbol}:");
+
+    let probs: Vec<(i8, u32)> = icsd_data
+        .iter()
+        .filter(|(key, _)| key.starts_with(&prefix))
+        .filter_map(|(key, &count)| {
+            let oxi_str = key.strip_prefix(&prefix)?;
+            let oxi: i8 = oxi_str.parse().ok()?;
+            Some((oxi, count))
+        })
+        .collect();
+
+    // Normalize to probabilities
+    let total: u32 = probs.iter().map(|(_, count)| count).sum();
+    if total == 0 {
+        return vec![];
+    }
+
+    let mut normalized: Vec<(i8, f64)> = probs
+        .iter()
+        .map(|&(oxi, count)| (oxi, count as f64 / total as f64))
+        .collect();
+
+    // Sort by decreasing probability
+    normalized.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    normalized
+}
+
+/// Format an oxidation state with superscript notation.
+fn format_oxi_state(oxi: i8) -> String {
+    let abs_oxi = oxi.abs();
+    let sign = if oxi > 0 {
+        "+"
+    } else if oxi < 0 {
+        "-"
+    } else {
+        ""
+    };
+    if abs_oxi == 1 && oxi != 0 {
+        format!("^{{{sign}}}")
+    } else if oxi == 0 {
+        String::new()
+    } else {
+        format!("^{{{abs_oxi}{sign}}}")
+    }
+}
+
+/// Guess likely charge states for a point defect.
+///
+/// Uses ICSD oxidation state probabilities to predict which charge states
+/// are most likely for a given defect based on the species involved.
+///
+/// # Arguments
+///
+/// * `defect_type` - Type of defect (Vacancy, Interstitial, Substitution, Antisite)
+/// * `removed_species` - Element symbol removed (for Vacancy, Antisite)
+/// * `added_species` - Element symbol added (for Interstitial, Substitution, Antisite)
+/// * `original_species` - Original element (for Substitution)
+/// * `max_charge` - Maximum absolute charge to consider (default: 4)
+///
+/// # Returns
+///
+/// Vector of `ChargeStateGuess` sorted by decreasing probability.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use ferrox::defects::DefectType;
+/// use ferrox::oxidation::guess_defect_charge_states;
+///
+/// // Oxygen vacancy in oxide: O^{2-} removed => +2, +1, 0 likely
+/// let charges = guess_defect_charge_states(
+///     DefectType::Vacancy, Some("O"), None, None, 4
+/// );
+/// // Returns: [{charge: 2, prob: ~0.85}, {charge: 1, prob: ~0.10}, ...]
+/// ```
+pub fn guess_defect_charge_states(
+    defect_type: DefectType,
+    removed_species: Option<&str>,
+    added_species: Option<&str>,
+    original_species: Option<&str>,
+    max_charge: i32,
+) -> Vec<ChargeStateGuess> {
+    let mut guesses: Vec<ChargeStateGuess> = Vec::new();
+
+    match defect_type {
+        DefectType::Vacancy => {
+            // Vacancy: charge = -oxidation_state of removed species
+            let Some(removed) = removed_species else {
+                return vec![];
+            };
+            let oxi_probs = get_element_oxi_probs(removed);
+            if oxi_probs.is_empty() {
+                // No ICSD data; return neutral only
+                return vec![ChargeStateGuess {
+                    charge: 0,
+                    probability: 1.0,
+                    reasoning: format!("V_{{{removed}}}: no ICSD data, assuming neutral"),
+                }];
+            }
+
+            for (oxi, prob) in oxi_probs {
+                let charge = -(oxi as i32);
+                if charge.abs() <= max_charge {
+                    let oxi_fmt = format_oxi_state(oxi);
+                    guesses.push(ChargeStateGuess {
+                        charge,
+                        probability: prob,
+                        reasoning: format!("{removed}{oxi_fmt} vacancy => {charge:+}"),
+                    });
+                }
+            }
+
+            // Always include neutral with small probability if not already present
+            if !guesses.iter().any(|guess| guess.charge == 0) {
+                guesses.push(ChargeStateGuess {
+                    charge: 0,
+                    probability: 0.01,
+                    reasoning: format!("V_{{{removed}}}^0: neutral defect"),
+                });
+            }
+        }
+        DefectType::Interstitial => {
+            // Interstitial: charge = oxidation_state of added species
+            let Some(added) = added_species else {
+                return vec![];
+            };
+            let oxi_probs = get_element_oxi_probs(added);
+            if oxi_probs.is_empty() {
+                return vec![ChargeStateGuess {
+                    charge: 0,
+                    probability: 1.0,
+                    reasoning: format!("{added}_i: no ICSD data, assuming neutral"),
+                }];
+            }
+
+            for (oxi, prob) in oxi_probs {
+                let charge = oxi as i32;
+                if charge.abs() <= max_charge {
+                    let oxi_fmt = format_oxi_state(oxi);
+                    guesses.push(ChargeStateGuess {
+                        charge,
+                        probability: prob,
+                        reasoning: format!("{added}{oxi_fmt} interstitial => {charge:+}"),
+                    });
+                }
+            }
+
+            // Always include neutral with small probability if not already present
+            if !guesses.iter().any(|guess| guess.charge == 0) {
+                guesses.push(ChargeStateGuess {
+                    charge: 0,
+                    probability: 0.01,
+                    reasoning: format!("{added}_i^0: neutral defect"),
+                });
+            }
+        }
+        DefectType::Substitution => {
+            // Substitution: charge = new_oxidation - original_oxidation
+            let (Some(added), Some(original)) = (added_species, original_species) else {
+                return vec![];
+            };
+            let added_oxi_probs = get_element_oxi_probs(added);
+            let original_oxi_probs = get_element_oxi_probs(original);
+
+            if added_oxi_probs.is_empty() || original_oxi_probs.is_empty() {
+                return vec![ChargeStateGuess {
+                    charge: 0,
+                    probability: 1.0,
+                    reasoning: format!("{added}_{{{original}}}: no ICSD data, assuming neutral"),
+                }];
+            }
+
+            // Consider all combinations, weight by product of probabilities
+            let mut charge_probs: HashMap<i32, (f64, String)> = HashMap::new();
+
+            for &(added_oxi, added_prob) in &added_oxi_probs {
+                for &(orig_oxi, orig_prob) in &original_oxi_probs {
+                    let charge = (added_oxi as i32) - (orig_oxi as i32);
+                    if charge.abs() <= max_charge {
+                        let combined_prob = added_prob * orig_prob;
+                        let added_fmt = format_oxi_state(added_oxi);
+                        let orig_fmt = format_oxi_state(orig_oxi);
+                        let reasoning = format!(
+                            "{added}{added_fmt} on {original}{orig_fmt} site => {charge:+}"
+                        );
+
+                        charge_probs
+                            .entry(charge)
+                            .and_modify(|(prob, _)| *prob += combined_prob)
+                            .or_insert((combined_prob, reasoning));
+                    }
+                }
+            }
+
+            guesses = charge_probs
+                .into_iter()
+                .map(|(charge, (prob, reasoning))| ChargeStateGuess {
+                    charge,
+                    probability: prob,
+                    reasoning,
+                })
+                .collect();
+
+            // Always include neutral with small probability if not already present
+            if !guesses.iter().any(|guess| guess.charge == 0) {
+                guesses.push(ChargeStateGuess {
+                    charge: 0,
+                    probability: 0.01,
+                    reasoning: format!("{added}_{{{original}}}^0: neutral defect"),
+                });
+            }
+        }
+        DefectType::Antisite => {
+            // Antisite: effectively two substitutions, charge = (A_oxi - B_oxi) + (B_oxi - A_oxi) = 0
+            // But individual sites can have different oxidation states
+            let (Some(added), Some(removed)) = (added_species, removed_species) else {
+                return vec![];
+            };
+            let added_oxi_probs = get_element_oxi_probs(added);
+            let removed_oxi_probs = get_element_oxi_probs(removed);
+
+            if added_oxi_probs.is_empty() || removed_oxi_probs.is_empty() {
+                return vec![ChargeStateGuess {
+                    charge: 0,
+                    probability: 1.0,
+                    reasoning: format!("{added}_{{{removed}}}: no ICSD data, assuming neutral"),
+                }];
+            }
+
+            // For antisite pairs, consider charge as difference in oxidation states
+            // between the two swapped atoms at their new sites
+            let mut charge_probs: HashMap<i32, (f64, String)> = HashMap::new();
+
+            for &(added_oxi, added_prob) in &added_oxi_probs {
+                for &(removed_oxi, removed_prob) in &removed_oxi_probs {
+                    // Net charge = (new_at_site_A - expected_at_A) + (new_at_site_B - expected_at_B)
+                    // = (removed_oxi - added_oxi) + (added_oxi - removed_oxi) = 0 if same oxidation state
+                    // But if they have different oxidation states in their new environments...
+                    let charge = (removed_oxi as i32) - (added_oxi as i32);
+                    if charge.abs() <= max_charge {
+                        let combined_prob = added_prob * removed_prob;
+                        let added_fmt = format_oxi_state(added_oxi);
+                        let removed_fmt = format_oxi_state(removed_oxi);
+                        let reasoning = format!(
+                            "{removed}{removed_fmt} <-> {added}{added_fmt} antisite => {charge:+}"
+                        );
+
+                        charge_probs
+                            .entry(charge)
+                            .and_modify(|(prob, _)| *prob += combined_prob)
+                            .or_insert((combined_prob, reasoning));
+                    }
+                }
+            }
+
+            guesses = charge_probs
+                .into_iter()
+                .map(|(charge, (prob, reasoning))| ChargeStateGuess {
+                    charge,
+                    probability: prob,
+                    reasoning,
+                })
+                .collect();
+
+            // Always include neutral with small probability if not already present
+            if !guesses.iter().any(|guess| guess.charge == 0) {
+                guesses.push(ChargeStateGuess {
+                    charge: 0,
+                    probability: 0.01,
+                    reasoning: format!("{added}_{{{removed}}} antisite: neutral defect"),
+                });
+            }
+        }
+    }
+
+    // Normalize probabilities so they sum to 1
+    let total_prob: f64 = guesses.iter().map(|guess| guess.probability).sum();
+    if total_prob > 0.0 {
+        for guess in &mut guesses {
+            guess.probability /= total_prob;
+        }
+    }
+
+    // Sort by probability descending
+    guesses.sort_by(|a, b| {
+        b.probability
+            .partial_cmp(&a.probability)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    guesses
+}
+
+/// Guess charge states for multiple defects at once.
+///
+/// Convenience wrapper for batch processing of defects.
+///
+/// # Arguments
+///
+/// * `defects` - Slice of tuples: (defect_type, removed_species, added_species, original_species)
+/// * `max_charge` - Maximum absolute charge to consider
+///
+/// # Returns
+///
+/// Vector of charge state guess vectors, one per defect.
+#[allow(clippy::type_complexity)]
+pub fn guess_defect_charge_states_batch(
+    defects: &[(DefectType, Option<&str>, Option<&str>, Option<&str>)],
+    max_charge: i32,
+) -> Vec<Vec<ChargeStateGuess>> {
+    defects
+        .iter()
+        .map(|(defect_type, removed, added, original)| {
+            guess_defect_charge_states(*defect_type, *removed, *added, *original, max_charge)
+        })
+        .collect()
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -934,5 +1275,166 @@ mod tests {
         let fe = get_candidate_oxi_states(Element::Fe, false);
         assert!(fe.contains(&2) && fe.contains(&3));
         assert!(get_candidate_oxi_states(Element::O, false).contains(&-2));
+    }
+
+    // === Defect Charge State Guessing Tests ===
+
+    #[test]
+    fn test_format_oxi_state() {
+        assert_eq!(format_oxi_state(2), "^{2+}");
+        assert_eq!(format_oxi_state(-2), "^{2-}");
+        assert_eq!(format_oxi_state(1), "^{+}");
+        assert_eq!(format_oxi_state(-1), "^{-}");
+        assert_eq!(format_oxi_state(0), "");
+    }
+
+    #[test]
+    fn test_get_element_oxi_probs() {
+        // Oxygen should have -2 as most common
+        let o_probs = get_element_oxi_probs("O");
+        assert!(!o_probs.is_empty());
+        assert_eq!(o_probs[0].0, -2, "O should have -2 as most common");
+
+        // Iron should have multiple oxidation states
+        let fe_probs = get_element_oxi_probs("Fe");
+        assert!(!fe_probs.is_empty());
+        assert!(
+            fe_probs.iter().any(|(oxi, _)| *oxi == 3),
+            "Fe should have +3"
+        );
+        assert!(
+            fe_probs.iter().any(|(oxi, _)| *oxi == 2),
+            "Fe should have +2"
+        );
+
+        // Unknown element should return empty
+        let unknown = get_element_oxi_probs("Xx");
+        assert!(unknown.is_empty());
+    }
+
+    #[test]
+    fn test_vacancy_charge_states() {
+        // Oxygen vacancy: O^{2-} removed => charge = +2 most likely
+        let charges = guess_defect_charge_states(DefectType::Vacancy, Some("O"), None, None, 4);
+        assert!(!charges.is_empty());
+        assert_eq!(charges[0].charge, 2, "O vacancy should be +2");
+        assert!(
+            charges[0].probability > 0.5,
+            "O vacancy +2 should be dominant"
+        );
+
+        // Sodium vacancy: Na^{+} removed => charge = -1 most likely
+        let na_charges = guess_defect_charge_states(DefectType::Vacancy, Some("Na"), None, None, 4);
+        assert!(!na_charges.is_empty());
+        assert_eq!(na_charges[0].charge, -1, "Na vacancy should be -1");
+    }
+
+    #[test]
+    fn test_interstitial_charge_states() {
+        // Lithium interstitial: Li^{+} added => charge = +1 most likely
+        let charges =
+            guess_defect_charge_states(DefectType::Interstitial, None, Some("Li"), None, 4);
+        assert!(!charges.is_empty());
+        assert_eq!(charges[0].charge, 1, "Li interstitial should be +1");
+
+        // Oxygen interstitial: O^{2-} added => charge = -2 most likely
+        let o_charges =
+            guess_defect_charge_states(DefectType::Interstitial, None, Some("O"), None, 4);
+        assert!(!o_charges.is_empty());
+        assert_eq!(o_charges[0].charge, -2, "O interstitial should be -2");
+    }
+
+    #[test]
+    fn test_substitution_charge_states() {
+        // Al^{3+} on Si^{4+} site => charge = -1
+        let charges =
+            guess_defect_charge_states(DefectType::Substitution, None, Some("Al"), Some("Si"), 4);
+        assert!(!charges.is_empty());
+        // Al is typically 3+, Si is typically 4+, so charge should be -1
+        assert!(
+            charges.iter().any(|guess| guess.charge == -1),
+            "Al on Si should have -1 as possibility"
+        );
+
+        // P^{5+} on Si^{4+} site => charge = +1
+        let p_charges =
+            guess_defect_charge_states(DefectType::Substitution, None, Some("P"), Some("Si"), 4);
+        assert!(!p_charges.is_empty());
+        assert!(
+            p_charges.iter().any(|guess| guess.charge == 1),
+            "P on Si should have +1 as possibility"
+        );
+    }
+
+    #[test]
+    fn test_antisite_charge_states() {
+        // Na-Cl antisite: should have various charge states
+        let charges =
+            guess_defect_charge_states(DefectType::Antisite, Some("Na"), Some("Cl"), None, 4);
+        assert!(!charges.is_empty());
+        // Na is +1, Cl is -1, so antisite charge = (+1) - (-1) = +2 or vice versa
+        assert!(
+            charges.iter().any(|guess| guess.charge.abs() <= 2),
+            "Na-Cl antisite should have reasonable charges"
+        );
+    }
+
+    #[test]
+    fn test_charge_state_probabilities_normalized() {
+        let charges = guess_defect_charge_states(DefectType::Vacancy, Some("Fe"), None, None, 4);
+        assert!(!charges.is_empty());
+        let total: f64 = charges.iter().map(|guess| guess.probability).sum();
+        assert!(
+            (total - 1.0).abs() < 0.01,
+            "Probabilities should sum to 1, got {total}"
+        );
+    }
+
+    #[test]
+    fn test_charge_state_sorted_by_probability() {
+        let charges = guess_defect_charge_states(DefectType::Vacancy, Some("O"), None, None, 4);
+        assert!(charges.len() >= 2);
+        for window in charges.windows(2) {
+            assert!(
+                window[0].probability >= window[1].probability,
+                "Charges should be sorted by decreasing probability"
+            );
+        }
+    }
+
+    #[test]
+    fn test_max_charge_filtering() {
+        // With max_charge = 1, should not see +2 charges for O vacancy
+        let charges = guess_defect_charge_states(DefectType::Vacancy, Some("O"), None, None, 1);
+        assert!(
+            charges.iter().all(|guess| guess.charge.abs() <= 1),
+            "All charges should be within max_charge"
+        );
+    }
+
+    #[test]
+    fn test_missing_species_returns_empty() {
+        let charges = guess_defect_charge_states(DefectType::Vacancy, None, None, None, 4);
+        assert!(charges.is_empty(), "Missing species should return empty");
+
+        let int_charges = guess_defect_charge_states(DefectType::Interstitial, None, None, None, 4);
+        assert!(
+            int_charges.is_empty(),
+            "Missing species should return empty"
+        );
+    }
+
+    #[test]
+    fn test_batch_charge_state_guessing() {
+        let defects = vec![
+            (DefectType::Vacancy, Some("O"), None, None),
+            (DefectType::Interstitial, None, Some("Li"), None),
+            (DefectType::Substitution, None, Some("Al"), Some("Si")),
+        ];
+        let results = guess_defect_charge_states_batch(&defects, 4);
+        assert_eq!(results.len(), 3);
+        assert!(!results[0].is_empty()); // O vacancy
+        assert!(!results[1].is_empty()); // Li interstitial
+        assert!(!results[2].is_empty()); // Al on Si
     }
 }
