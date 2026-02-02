@@ -5,6 +5,20 @@ use nalgebra::{Matrix3, Vector3};
 use super::thermostats::kinetic_energy_2x;
 use super::units;
 
+/// Error type for NPT step operations.
+#[derive(Debug, Clone)]
+pub enum NptStepError<E> {
+    /// The force/stress callback returned an error.
+    Callback(E),
+    /// The forces vector has an incorrect length.
+    ForcesLengthMismatch {
+        /// Expected number of forces (equal to number of atoms).
+        expected: usize,
+        /// Actual number of forces returned by callback.
+        got: usize,
+    },
+}
+
 /// State for NPT molecular dynamics.
 #[derive(Debug, Clone)]
 pub struct NPTState {
@@ -28,7 +42,7 @@ impl NPTState {
     /// Create a new NPT state.
     ///
     /// # Panics
-    /// Panics if `positions.len() != masses.len()`.
+    /// Panics if `positions.len() != masses.len()` or if any mass is non-positive or non-finite.
     pub fn new(
         positions: Vec<Vector3<f64>>,
         masses: Vec<f64>,
@@ -43,6 +57,12 @@ impl NPTState {
             n_atoms,
             masses.len()
         );
+        for (idx, &mass) in masses.iter().enumerate() {
+            assert!(
+                mass > 0.0 && mass.is_finite(),
+                "NPTState::new: mass at index {idx} must be positive and finite, got {mass}"
+            );
+        }
         Self {
             positions,
             velocities: vec![Vector3::zeros(); n_atoms],
@@ -229,13 +249,20 @@ impl NPTIntegrator {
     /// * `state` - NPT state
     /// * `compute_forces_and_stress` - Function that returns (forces, stress_tensor)
     ///   where stress is in eV/Å³
+    ///
+    /// # Panics
+    /// Panics if the callback returns a forces vector with incorrect length.
     pub fn step<F>(&mut self, state: &mut NPTState, mut compute_forces_and_stress: F)
     where
         F: FnMut(&[Vector3<f64>], &Matrix3<f64>) -> (Vec<Vector3<f64>>, Matrix3<f64>),
     {
-        let _: Result<(), std::convert::Infallible> = self.try_step(state, |positions, cell| {
-            Ok(compute_forces_and_stress(positions, cell))
-        });
+        let result: Result<(), NptStepError<std::convert::Infallible>> = self
+            .try_step(state, |positions, cell| {
+                Ok(compute_forces_and_stress(positions, cell))
+            });
+        if let Err(NptStepError::ForcesLengthMismatch { expected, got }) = result {
+            panic!("compute_forces_and_stress returned {got} forces but expected {expected}");
+        }
     }
 
     /// Perform one NPT step with fallible force/stress computation.
@@ -244,12 +271,15 @@ impl NPTIntegrator {
     /// value before the step and the error is returned.
     ///
     /// # Errors
-    /// Returns the error from compute_forces_and_stress if it fails.
+    /// Returns an error if:
+    /// - `compute_forces_and_stress` returns an error (`NptStepError::Callback`)
+    /// - The returned forces vector has a different length than `state.positions`
+    ///   (`NptStepError::ForcesLengthMismatch`)
     pub fn try_step<F, E>(
         &mut self,
         state: &mut NPTState,
         mut compute_forces_and_stress: F,
-    ) -> Result<(), E>
+    ) -> Result<(), NptStepError<E>>
     where
         F: FnMut(&[Vector3<f64>], &Matrix3<f64>) -> Result<(Vec<Vector3<f64>>, Matrix3<f64>), E>,
     {
@@ -279,11 +309,22 @@ impl NPTIntegrator {
         // === Cell dynamics half-step ===
         let (initial_forces, initial_stress) =
             match compute_forces_and_stress(&state.positions, &state.cell) {
-                Ok((forces, stress)) => (forces, stress),
+                Ok((forces, stress)) => {
+                    let expected = state.positions.len();
+                    if forces.len() != expected {
+                        *state = original_state;
+                        self.v_xi_atoms = original_v_xi_atoms;
+                        return Err(NptStepError::ForcesLengthMismatch {
+                            expected,
+                            got: forces.len(),
+                        });
+                    }
+                    (forces, stress)
+                }
                 Err(err) => {
                     *state = original_state;
                     self.v_xi_atoms = original_v_xi_atoms;
-                    return Err(err);
+                    return Err(NptStepError::Callback(err));
                 }
             };
         state.forces = initial_forces;
@@ -323,11 +364,22 @@ impl NPTIntegrator {
         // === Compute new forces ===
         let (new_forces, new_stress) =
             match compute_forces_and_stress(&state.positions, &state.cell) {
-                Ok((forces, stress)) => (forces, stress),
+                Ok((forces, stress)) => {
+                    let expected = state.positions.len();
+                    if forces.len() != expected {
+                        *state = original_state;
+                        self.v_xi_atoms = original_v_xi_atoms;
+                        return Err(NptStepError::ForcesLengthMismatch {
+                            expected,
+                            got: forces.len(),
+                        });
+                    }
+                    (forces, stress)
+                }
                 Err(err) => {
                     *state = original_state;
                     self.v_xi_atoms = original_v_xi_atoms;
-                    return Err(err);
+                    return Err(NptStepError::Callback(err));
                 }
             };
         state.forces = new_forces;

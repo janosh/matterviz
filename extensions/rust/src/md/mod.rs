@@ -40,7 +40,7 @@ pub mod verlet;
 pub use langevin::{
     LangevinConfig, LangevinIntegrator, box_muller_normal, langevin_step, try_langevin_step,
 };
-pub use npt::{NPTConfig, NPTIntegrator, NPTState};
+pub use npt::{NPTConfig, NPTIntegrator, NPTState, NptStepError};
 pub use state::{MDState, init_velocities, kinetic_energy, remove_com_velocity, temperature};
 pub use thermostats::{NoseHooverChain, VelocityRescale, kinetic_energy_2x};
 pub use units::{FS_TO_INTERNAL, INTERNAL_TIME_FS, INTERNAL_TO_FS, KB};
