@@ -5270,6 +5270,24 @@ fn defect_rattle(
     max_attempts: usize,
 ) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
+
+    // Validate stdev: must be finite and non-negative
+    if !stdev.is_finite() || stdev < 0.0 {
+        return Err(PyValueError::new_err(
+            "stdev must be non-negative and finite",
+        ));
+    }
+    // Validate min_distance: must be finite and non-negative
+    if !min_distance.is_finite() || min_distance < 0.0 {
+        return Err(PyValueError::new_err(
+            "min_distance must be non-negative and finite",
+        ));
+    }
+    // Validate max_attempts: must be positive
+    if max_attempts == 0 {
+        return Err(PyValueError::new_err("max_attempts must be greater than 0"));
+    }
+
     let result = distortions::rattle_structure(&struc, stdev, seed, min_distance, max_attempts)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
@@ -5305,6 +5323,19 @@ fn defect_local_rattle(
     decay_radius: f64,
     seed: u64,
 ) -> PyResult<Py<PyDict>> {
+    // Validate max_amplitude: must be finite and positive
+    if !max_amplitude.is_finite() || max_amplitude <= 0.0 {
+        return Err(PyValueError::new_err(
+            "max_amplitude must be positive and finite",
+        ));
+    }
+    // Validate decay_radius: must be finite and positive
+    if !decay_radius.is_finite() || decay_radius <= 0.0 {
+        return Err(PyValueError::new_err(
+            "decay_radius must be positive and finite",
+        ));
+    }
+
     let struc = parse_struct(&structure)?;
     let result =
         distortions::local_rattle(&struc, center_site_idx, max_amplitude, decay_radius, seed)

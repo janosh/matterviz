@@ -795,11 +795,13 @@ pub fn is_supercell(
     supercell: &Lattice,
     tolerance: f64,
 ) -> Option<[[i32; 3]; 3]> {
-    // The volume ratio should be close to an integer
+    // The volume ratio should be close to a positive integer.
+    // Use absolute value to allow opposite-handed (mirrored) supercells.
     let vol_ratio = supercell.volume() / primitive.volume();
-    let vol_int = vol_ratio.round() as i32;
+    let vol_ratio_abs = vol_ratio.abs();
+    let vol_int = vol_ratio_abs.round() as i32;
 
-    if (vol_ratio - vol_int as f64).abs() > tolerance {
+    if (vol_ratio_abs - vol_int as f64).abs() > tolerance {
         return None;
     }
 

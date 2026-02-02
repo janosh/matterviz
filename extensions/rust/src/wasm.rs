@@ -2421,6 +2421,13 @@ pub fn defect_create_antisite(
 ) -> WasmResult<String> {
     let result: Result<String, String> = (|| {
         let struc = structure.to_structure()?;
+        let n_sites = struc.num_sites();
+        if site_a_idx as usize >= n_sites || site_b_idx as usize >= n_sites {
+            return Err(format!(
+                "Site indices ({}, {}) out of bounds for structure with {} sites",
+                site_a_idx, site_b_idx, n_sites
+            ));
+        }
         let species_a = struc.species()[site_a_idx as usize];
         let species_b = struc.species()[site_b_idx as usize];
         let swapped =

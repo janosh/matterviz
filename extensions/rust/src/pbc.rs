@@ -143,26 +143,107 @@ pub fn minimum_image_distance_squared(
     let mut min_dist_sq = direct_vec.norm_squared();
     let mut min_vec = direct_vec;
 
-    // Check periodic images
-    for image in periodic_image_offsets(pbc) {
-        if image == [0, 0, 0] {
-            continue; // Already checked direct distance
+    // Determine search range based on lattice skewness.
+    // For highly skewed lattices, images beyond ±1 may be closer.
+    let search_range = compute_search_range(lattice_matrix, &lattice_vecs);
+
+    // Check periodic images within the determined range
+    for shift_a in -search_range..=search_range {
+        if !pbc[0] && shift_a != 0 {
+            continue;
         }
+        for shift_b in -search_range..=search_range {
+            if !pbc[1] && shift_b != 0 {
+                continue;
+            }
+            for shift_c in -search_range..=search_range {
+                if !pbc[2] && shift_c != 0 {
+                    continue;
+                }
+                if shift_a == 0 && shift_b == 0 && shift_c == 0 {
+                    continue; // Already checked direct distance
+                }
 
-        let image_offset = (image[0] as f64) * lattice_vecs[0]
-            + (image[1] as f64) * lattice_vecs[1]
-            + (image[2] as f64) * lattice_vecs[2];
+                let image_offset = (shift_a as f64) * lattice_vecs[0]
+                    + (shift_b as f64) * lattice_vecs[1]
+                    + (shift_c as f64) * lattice_vecs[2];
 
-        let vec = direct_vec + image_offset;
-        let dist_sq = vec.norm_squared();
+                let vec = direct_vec + image_offset;
+                let dist_sq = vec.norm_squared();
 
-        if dist_sq < min_dist_sq {
-            min_dist_sq = dist_sq;
-            min_vec = vec;
+                if dist_sq < min_dist_sq {
+                    min_dist_sq = dist_sq;
+                    min_vec = vec;
+                }
+            }
         }
     }
 
     (min_dist_sq, min_vec)
+}
+
+/// Compute the search range for periodic images based on lattice skewness.
+///
+/// For orthogonal or nearly orthogonal cells, ±1 (27 images) is sufficient.
+/// For highly skewed cells, we need to search a larger range.
+fn compute_search_range(
+    lattice_matrix: &nalgebra::Matrix3<f64>,
+    lattice_vecs: &[Vector3<f64>; 3],
+) -> i32 {
+    // Compute angles between lattice vectors to detect skewness
+    let lengths = [
+        lattice_vecs[0].norm(),
+        lattice_vecs[1].norm(),
+        lattice_vecs[2].norm(),
+    ];
+
+    // Avoid division by zero for degenerate lattices
+    if lengths[0] < 1e-10 || lengths[1] < 1e-10 || lengths[2] < 1e-10 {
+        return 1;
+    }
+
+    // Compute angles (in degrees) between lattice vector pairs
+    let cos_alpha = lattice_vecs[1].dot(&lattice_vecs[2]) / (lengths[1] * lengths[2]); // angle bc
+    let cos_beta = lattice_vecs[0].dot(&lattice_vecs[2]) / (lengths[0] * lengths[2]); // angle ac
+    let cos_gamma = lattice_vecs[0].dot(&lattice_vecs[1]) / (lengths[0] * lengths[1]); // angle ab
+
+    let alpha = cos_alpha.clamp(-1.0, 1.0).acos().to_degrees();
+    let beta = cos_beta.clamp(-1.0, 1.0).acos().to_degrees();
+    let gamma = cos_gamma.clamp(-1.0, 1.0).acos().to_degrees();
+
+    // Check if any angle deviates significantly from 90° (threshold: 30°)
+    let is_highly_skewed =
+        (alpha - 90.0).abs() > 30.0 || (beta - 90.0).abs() > 30.0 || (gamma - 90.0).abs() > 30.0;
+
+    if !is_highly_skewed {
+        return 1; // Standard 27 images sufficient
+    }
+
+    // For skewed cells, compute search range based on perpendicular distances.
+    // The perpendicular distance for axis i is |V| / |a_j × a_k| where j,k are the other axes.
+    let volume = lattice_matrix.determinant().abs();
+    if volume < 1e-10 {
+        return 1; // Degenerate lattice
+    }
+
+    let cross_bc = lattice_vecs[1].cross(&lattice_vecs[2]);
+    let cross_ac = lattice_vecs[0].cross(&lattice_vecs[2]);
+    let cross_ab = lattice_vecs[0].cross(&lattice_vecs[1]);
+
+    let perp_a = volume / cross_bc.norm().max(1e-10);
+    let perp_b = volume / cross_ac.norm().max(1e-10);
+    let perp_c = volume / cross_ab.norm().max(1e-10);
+    let min_perp = perp_a.min(perp_b).min(perp_c);
+
+    let max_length = lengths[0].max(lengths[1]).max(lengths[2]);
+
+    // Search range: ceil(max_length / min_perp), clamped to reasonable bounds
+    const MAX_SEARCH_RANGE: i32 = 5;
+    if min_perp > 1e-10 {
+        ((max_length / min_perp).ceil() as i32).clamp(1, MAX_SEARCH_RANGE)
+    } else {
+        2 // Fallback for near-degenerate lattices
+    }
 }
 
 /// Find minimum distance from a Cartesian point to any atom in a list, considering PBC.

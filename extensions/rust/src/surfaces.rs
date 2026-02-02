@@ -722,7 +722,10 @@ pub struct WulffFacet {
     pub normal: Vector3<f64>,
     /// Distance from center to facet (proportional to surface energy)
     pub distance_from_center: f64,
-    /// Fractional area of total surface
+    /// Fractional area of total surface (approximate).
+    /// Note: This is a simplified calculation based on solid angle coverage.
+    /// In a true Wulff construction, high-energy facets may be cut off entirely
+    /// by lower-energy facets and should have zero area.
     pub area_fraction: f64,
 }
 
@@ -796,6 +799,12 @@ impl WulffShape {
 /// # Returns
 ///
 /// Unit normal vector in Cartesian coordinates.
+///
+/// # Note
+///
+/// Returns `[0, 0, 1]` for degenerate cases (e.g., singular lattice or
+/// reciprocal vector with near-zero norm). Callers should validate that
+/// the input lattice is non-singular.
 pub fn miller_to_normal(lattice: &Lattice, hkl: [i32; 3]) -> Vector3<f64> {
     let inv_t = lattice.inv_matrix().transpose();
     let hkl_vec = Vector3::new(hkl[0] as f64, hkl[1] as f64, hkl[2] as f64);
@@ -1071,8 +1080,7 @@ pub fn enumerate_terminations(
     for (idx, slab) in slabs.into_iter().enumerate() {
         // Calculate surface properties
         let area = surface_area(&slab);
-        let tolerance = 0.1;
-        let surface_atoms = get_surface_atoms(&slab, tolerance);
+        let surface_atoms = get_surface_atoms(&slab, DEFAULT_SURFACE_TOLERANCE);
         let surface_species: Vec<Species> = surface_atoms
             .iter()
             .filter_map(|&site_idx| slab.site_occupancies.get(site_idx))
@@ -1100,7 +1108,7 @@ pub fn enumerate_terminations(
                 .frac_coords
                 .iter()
                 .enumerate()
-                .filter(|(_, coord)| (coord.z - min_z).abs() < tolerance)
+                .filter(|(_, coord)| (coord.z - min_z).abs() < DEFAULT_SURFACE_TOLERANCE)
                 .map(|(site_idx, _)| site_idx)
                 .collect();
             let bottom_species: HashSet<Species> = bottom_atoms
