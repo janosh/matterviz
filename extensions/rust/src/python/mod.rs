@@ -39,10 +39,13 @@ pub mod io;
 pub mod lattice;
 pub mod md;
 pub mod neighbors;
+pub mod optimizers;
 pub mod order_params;
 pub mod oxidation;
 pub mod potentials;
+pub mod properties;
 pub mod rdf;
+pub mod species;
 pub mod structure;
 pub mod surfaces;
 pub mod symmetry;
@@ -74,6 +77,9 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     trajectory::register(parent)?;
     md::register(parent)?;
     potentials::register(parent)?;
+    optimizers::register(parent)?;
+    properties::register(parent)?;
+    species::register(parent)?;
 
     Ok(())
 }

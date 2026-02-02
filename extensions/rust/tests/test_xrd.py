@@ -5,40 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
-
-try:
-    from ferrox import xrd
-except ImportError:
-    pytest.skip("ferrox not installed", allow_module_level=True)
-
-# Check if XRD API has changed (hkls now returns list of list instead of list of dict)
-_pattern_sample = None
-try:
-    _sample = json.dumps(
-        {
-            "@class": "Structure",
-            "lattice": {"matrix": [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]},
-            "sites": [
-                {"species": [{"element": "Na", "occu": 1.0}], "abc": [0, 0, 0]},
-                {"species": [{"element": "Cl", "occu": 1.0}], "abc": [0.5, 0.5, 0.5]},
-            ],
-        }
-    )
-    _pattern_sample = xrd.compute_xrd(_sample)
-except Exception:  # noqa: S110
-    pass  # Expected if ferrox API changes
-
-# HKLs are now list of list[int] not list of dict with "hkl" key
-_hkl_is_list = (
-    _pattern_sample is not None
-    and "hkls" in _pattern_sample
-    and len(_pattern_sample["hkls"]) > 0
-    and isinstance(_pattern_sample["hkls"][0], list)
-    and len(_pattern_sample["hkls"][0]) > 0
-    and isinstance(_pattern_sample["hkls"][0][0], list)
-)
-
-# nacl_json fixture imported from conftest.py
+from ferrox import xrd
 
 
 @pytest.fixture
@@ -123,7 +90,11 @@ def test_silicon_111_peak(si_diamond_json: str) -> None:
     assert has_111
 
 
-@pytest.mark.parametrize("wavelength", [-1.0, 0.0])
+@pytest.mark.parametrize(
+    "wavelength",
+    [-1.0, 0.0, float("nan"), float("inf"), float("-inf")],
+    ids=["negative", "zero", "nan", "inf", "neg_inf"],
+)
 def test_invalid_wavelength(nacl_json: str, wavelength: float) -> None:
     """Invalid wavelength raises ValueError."""
     with pytest.raises(ValueError, match="wavelength must be positive"):

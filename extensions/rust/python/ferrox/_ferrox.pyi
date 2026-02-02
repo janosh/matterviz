@@ -1015,3 +1015,107 @@ class potentials:
         compute_stress: bool = False,
     ) -> tuple[float, list[list[float]], list[list[float]] | None]:
         """Compute harmonic bond energy and forces."""
+
+class optimizers:
+    """Geometry optimization (FIRE, CellFIRE)."""
+
+    class FireConfig:
+        """FIRE optimizer configuration."""
+
+        dt_start: float
+        dt_max: float
+        n_min: int
+        max_step: float
+
+        def __init__(
+            self,
+            dt_start: float | None = None,
+            dt_max: float | None = None,
+            n_min: int | None = None,
+            max_step: float | None = None,
+        ) -> None:
+            """Create FIRE configuration."""
+
+    class FireState:
+        """FIRE optimizer state."""
+
+        positions: list[list[float]]
+        velocities: list[list[float]]
+        dt: float
+        num_atoms: int
+
+        def __init__(
+            self,
+            positions: list[list[float]],
+            config: optimizers.FireConfig | None = None,
+        ) -> None:
+            """Create FIRE state."""
+        def max_force(self) -> float:
+            """Get maximum force component."""
+        def is_converged(self, fmax: float) -> bool:
+            """Check if converged."""
+        def step(self, forces: list[list[float]]) -> None:
+            """Perform one FIRE step."""
+
+    class CellFireState:
+        """CellFIRE optimizer state (positions + cell)."""
+
+        positions: list[list[float]]
+        cell: list[list[float]]
+        num_atoms: int
+
+        def __init__(
+            self,
+            positions: list[list[float]],
+            cell: list[list[float]],
+            config: optimizers.FireConfig | None = None,
+            cell_factor: float = 1.0,
+        ) -> None:
+            """Create CellFIRE state."""
+        def max_force(self) -> float:
+            """Get maximum force component."""
+        def max_stress(self) -> float:
+            """Get maximum stress component."""
+        def is_converged(self, fmax: float, smax: float) -> bool:
+            """Check if converged."""
+        def step(self, forces: list[list[float]], stress: list[list[float]]) -> None:
+            """Perform one CellFIRE step."""
+
+class properties:
+    """Physical property calculations."""
+
+    @staticmethod
+    def get_volume(structure: StructureJson) -> float:
+        """Get structure volume in Angstrom^3."""
+    @staticmethod
+    def get_total_mass(structure: StructureJson) -> float:
+        """Get total mass in amu."""
+    @staticmethod
+    def get_density(structure: StructureJson) -> float | None:
+        """Get density in g/cm^3 (None for non-periodic)."""
+    @staticmethod
+    def get_structure_metadata(structure: StructureJson) -> dict[str, Any]:
+        """Get structure metadata dictionary."""
+
+class species:
+    """Chemical species with oxidation states."""
+
+    class Species:
+        """A chemical species with optional oxidation state."""
+
+        symbol: str
+        atomic_number: int
+        oxidation_state: int | None
+        ionic_radius: float | None
+        atomic_radius: float | None
+        electronegativity: float | None
+        covalent_radius: float | None
+        name: str
+        atomic_mass: float
+
+        def __init__(self, species_str: str) -> None:
+            """Create Species from string like 'Fe', 'Fe2+', 'O2-'."""
+        def shannon_ionic_radius(
+            self, coordination: str, spin: str = ""
+        ) -> float | None:
+            """Get Shannon ionic radius for coordination and spin."""

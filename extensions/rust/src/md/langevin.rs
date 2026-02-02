@@ -1,0 +1,301 @@
+//! Langevin integrator (NVT ensemble) - BAOAB scheme.
+
+use nalgebra::Vector3;
+use rand::prelude::*;
+
+use super::state::MDState;
+use super::units;
+
+// === Validation helpers ===
+
+fn validate_temperature(temperature_k: f64) {
+    assert!(
+        temperature_k >= 0.0 && temperature_k.is_finite(),
+        "LangevinConfig requires temperature_k >= 0 and finite (got {temperature_k})"
+    );
+}
+
+fn validate_friction(friction: f64) {
+    assert!(
+        friction >= 0.0 && friction.is_finite(),
+        "LangevinConfig requires friction >= 0 and finite (got {friction})"
+    );
+}
+
+fn validate_dt(dt_fs: f64) {
+    assert!(
+        dt_fs > 0.0 && dt_fs.is_finite(),
+        "LangevinConfig requires dt_fs > 0 and finite (got {dt_fs})"
+    );
+}
+
+/// Configuration for Langevin thermostat.
+#[derive(Debug, Clone, Default)]
+pub struct LangevinConfig {
+    /// Target temperature in Kelvin.
+    pub temperature_k: f64,
+    /// Time step in fs.
+    pub dt_fs: f64,
+    /// Pre-computed: dt in internal units.
+    pub(crate) dt_int: f64,
+    /// Friction coefficient in internal units (stored to avoid ln recovery).
+    pub(crate) friction_int: f64,
+    /// Pre-computed: c1 = exp(-friction * dt).
+    pub(crate) c1: f64,
+    /// Pre-computed: c2 = sqrt(1 - c1²).
+    pub(crate) c2: f64,
+}
+
+impl LangevinConfig {
+    /// Create Langevin configuration.
+    ///
+    /// # Arguments
+    /// * `temperature_k` - Target temperature in Kelvin (must be >= 0)
+    /// * `friction` - Friction coefficient in 1/fs (must be >= 0; typical: 0.001 to 0.01)
+    /// * `dt_fs` - Time step in fs (must be > 0)
+    ///
+    /// # Panics
+    /// Panics if `temperature_k < 0`, `friction < 0`, or `dt_fs <= 0`.
+    pub fn new(temperature_k: f64, friction: f64, dt_fs: f64) -> Self {
+        validate_temperature(temperature_k);
+        validate_friction(friction);
+        validate_dt(dt_fs);
+        let dt_int = dt_fs * units::FS_TO_INTERNAL;
+        let friction_int = friction * units::INTERNAL_TO_FS;
+        let c1 = (-friction_int * dt_int).exp();
+        let c2 = (1.0 - c1 * c1).sqrt();
+        Self {
+            temperature_k,
+            dt_fs,
+            dt_int,
+            friction_int,
+            c1,
+            c2,
+        }
+    }
+
+    /// Update temperature.
+    ///
+    /// # Panics
+    /// Panics if `temperature_k < 0` or not finite.
+    pub fn with_temperature(mut self, temperature_k: f64) -> Self {
+        validate_temperature(temperature_k);
+        self.temperature_k = temperature_k;
+        self
+    }
+
+    /// Update friction coefficient (1/fs).
+    ///
+    /// # Panics
+    /// Panics if `friction < 0` or not finite.
+    pub fn with_friction(mut self, friction: f64) -> Self {
+        validate_friction(friction);
+        self.friction_int = friction * units::INTERNAL_TO_FS;
+        self.c1 = (-self.friction_int * self.dt_int).exp();
+        self.c2 = (1.0 - self.c1 * self.c1).sqrt();
+        self
+    }
+
+    /// Update time step (fs).
+    ///
+    /// # Panics
+    /// Panics if `dt_fs <= 0` or not finite.
+    pub fn with_dt(mut self, dt_fs: f64) -> Self {
+        validate_dt(dt_fs);
+        self.dt_fs = dt_fs;
+        self.dt_int = dt_fs * units::FS_TO_INTERNAL;
+        // Recompute c1, c2 using stored friction_int (avoids numerically unstable ln)
+        self.c1 = (-self.friction_int * self.dt_int).exp();
+        self.c2 = (1.0 - self.c1 * self.c1).sqrt();
+        self
+    }
+}
+
+/// Perform one Langevin dynamics step (BAOAB scheme).
+pub fn langevin_step<R, F>(
+    state: MDState,
+    config: &LangevinConfig,
+    rng: &mut R,
+    mut compute_forces: F,
+) -> MDState
+where
+    R: Rng + Clone,
+    F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
+{
+    // Wrap infallible closure and unwrap result (can't fail with Infallible)
+    try_langevin_step(state, config, rng, |pos| {
+        Ok::<_, std::convert::Infallible>(compute_forces(pos))
+    })
+    .unwrap_or_else(|(_state, err): (MDState, std::convert::Infallible)| match err {})
+}
+
+/// Perform one Langevin dynamics step with fallible force computation.
+///
+/// If the force computation fails, both the original state and the RNG are
+/// restored, allowing the caller to retry deterministically.
+///
+/// # Errors
+/// Returns `(original_state, error)` if compute_forces fails.
+#[allow(clippy::result_large_err)]
+pub fn try_langevin_step<R, F, E>(
+    state: MDState,
+    config: &LangevinConfig,
+    rng: &mut R,
+    mut compute_forces: F,
+) -> Result<MDState, (MDState, E)>
+where
+    R: Rng + Clone,
+    F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
+{
+    // Clone state and RNG upfront so we can restore on error
+    let original_state = state.clone();
+    let original_rng = rng.clone();
+
+    // Perform the BAOAB integration (modifies rng)
+    let mut state = langevin_baoab_core(state, config, rng);
+
+    // Compute new forces - if this fails, restore original state and RNG
+    match compute_forces(&state.positions) {
+        Ok(new_forces) => {
+            state.forces = new_forces;
+            // B: Half-step velocity from new forces
+            let half_dt = 0.5 * config.dt_int;
+            for idx in 0..state.num_atoms() {
+                let accel = state.forces[idx] / state.masses[idx];
+                state.velocities[idx] += half_dt * accel;
+            }
+            Ok(state)
+        }
+        Err(err) => {
+            *rng = original_rng;
+            Err((original_state, err))
+        }
+    }
+}
+
+/// Core BAOAB integration steps (B-A-O-A, without final B that requires new forces).
+fn langevin_baoab_core<R: Rng>(
+    mut state: MDState,
+    config: &LangevinConfig,
+    rng: &mut R,
+) -> MDState {
+    let n_atoms = state.num_atoms();
+    let half_dt = 0.5 * config.dt_int;
+
+    // B: Half-step velocity from current forces
+    for idx in 0..n_atoms {
+        let accel = state.forces[idx] / state.masses[idx];
+        state.velocities[idx] += half_dt * accel;
+    }
+
+    // A: Half-step position
+    for idx in 0..n_atoms {
+        state.positions[idx] += half_dt * state.velocities[idx];
+    }
+
+    // O: Ornstein-Uhlenbeck (friction + random kicks)
+    for idx in 0..n_atoms {
+        let mass = state.masses[idx];
+        let v_std = (units::KB * config.temperature_k / mass).sqrt();
+        let vel = &mut state.velocities[idx];
+        for axis in 0..3 {
+            let noise = box_muller_normal(rng);
+            vel[axis] = config.c1 * vel[axis] + config.c2 * v_std * noise;
+        }
+    }
+
+    // A: Half-step position
+    for idx in 0..n_atoms {
+        state.positions[idx] += half_dt * state.velocities[idx];
+    }
+
+    state
+}
+
+/// Stateful Langevin integrator with internal RNG.
+///
+/// This wrapper is for use with Python bindings where we need mutable state.
+/// For pure Rust code, prefer the functional `langevin_step` API.
+pub struct LangevinIntegrator {
+    config: LangevinConfig,
+    rng: rand::rngs::StdRng,
+}
+
+impl LangevinIntegrator {
+    /// Create a new Langevin integrator.
+    pub fn new(temperature_k: f64, friction: f64, dt_fs: f64, seed: Option<u64>) -> Self {
+        use rand::SeedableRng;
+        let rng = match seed {
+            Some(s) => rand::rngs::StdRng::seed_from_u64(s),
+            None => rand::rngs::StdRng::from_entropy(),
+        };
+        Self {
+            config: LangevinConfig::new(temperature_k, friction, dt_fs),
+            rng,
+        }
+    }
+
+    /// Perform one Langevin dynamics step, mutating the state in place.
+    pub fn step<F>(&mut self, state: &mut MDState, compute_forces: F)
+    where
+        F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
+    {
+        *state = langevin_step(
+            std::mem::take(state),
+            &self.config,
+            &mut self.rng,
+            compute_forces,
+        );
+    }
+
+    /// Perform one Langevin dynamics step with fallible force computation.
+    ///
+    /// If the force computation fails, the state and internal RNG are restored
+    /// to their original values before the step and the error is returned.
+    /// This ensures deterministic behavior on retry.
+    ///
+    /// # Errors
+    /// Returns the error from compute_forces if it fails.
+    pub fn try_step<F, E>(&mut self, state: &mut MDState, compute_forces: F) -> Result<(), E>
+    where
+        F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
+    {
+        match try_langevin_step(
+            std::mem::take(state),
+            &self.config,
+            &mut self.rng,
+            compute_forces,
+        ) {
+            Ok(new_state) => {
+                *state = new_state;
+                Ok(())
+            }
+            Err((original_state, err)) => {
+                *state = original_state;
+                Err(err)
+            }
+        }
+    }
+
+    /// Set target temperature.
+    pub fn set_temperature(&mut self, temperature_k: f64) {
+        self.config = std::mem::take(&mut self.config).with_temperature(temperature_k);
+    }
+
+    /// Set friction coefficient (1/fs).
+    pub fn set_friction(&mut self, friction: f64) {
+        self.config = std::mem::take(&mut self.config).with_friction(friction);
+    }
+
+    /// Set time step (fs).
+    pub fn set_dt(&mut self, dt_fs: f64) {
+        self.config = std::mem::take(&mut self.config).with_dt(dt_fs);
+    }
+}
+
+/// Box-Muller transform for standard normal random number.
+pub fn box_muller_normal<R: Rng>(rng: &mut R) -> f64 {
+    let u1: f64 = rng.gen_range(0.0001..1.0);
+    let u2: f64 = rng.gen_range(0.0..std::f64::consts::TAU);
+    (-2.0 * u1.ln()).sqrt() * u2.cos()
+}

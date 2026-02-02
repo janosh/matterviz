@@ -67,6 +67,11 @@ fn get_distance_and_image(
 /// Get the distance from a site to a point.
 #[pyfunction]
 fn distance_from_point(structure: StructureJson, idx: usize, point: [f64; 3]) -> PyResult<f64> {
+    if !point.iter().all(|coord| coord.is_finite()) {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "point coordinates must be finite numbers",
+        ));
+    }
     let struc = parse_struct(&structure)?;
     check_site_idx(idx, struc.num_sites())?;
     let coords = struc.cart_coords();

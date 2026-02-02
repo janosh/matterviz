@@ -48,6 +48,7 @@ pub mod defects;
 pub mod distortions;
 pub mod elastic;
 pub mod integrators;
+pub mod md; // Modularized MD integrators (use this for new code)
 pub mod neighbors;
 pub mod optimizers;
 pub mod order_params;

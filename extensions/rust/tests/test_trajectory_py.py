@@ -71,6 +71,52 @@ class TestDiffusionFromMsd:
         with pytest.raises((ValueError, RuntimeError)):
             trajectory.diffusion_from_msd(msd, times)
 
+    @pytest.mark.parametrize("dim", [0, 4])
+    def test_invalid_dim_raises(self, dim: int) -> None:
+        """Invalid dimension (not 1, 2, or 3) raises error."""
+        msd = [0.0, 6.0, 12.0, 18.0]
+        times = [0.0, 1.0, 2.0, 3.0]
+        with pytest.raises((ValueError, RuntimeError)):
+            trajectory.diffusion_from_msd(msd, times, dim=dim)
+
+    @pytest.mark.parametrize(
+        ("start_fraction", "end_fraction"),
+        [
+            (1.5, 1.0),  # start > 1
+            (0.0, 1.5),  # end > 1
+            (-0.1, 1.0),  # start < 0
+            (0.7, 0.3),  # start >= end
+            (0.5, 0.5),  # start == end
+        ],
+        ids=["start>1", "end>1", "start<0", "start>end", "start==end"],
+    )
+    def test_invalid_fractions_raise(
+        self, start_fraction: float, end_fraction: float
+    ) -> None:
+        """Invalid start/end fractions raise error."""
+        msd = [0.0, 6.0, 12.0, 18.0, 24.0, 30.0]
+        times = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+        with pytest.raises((ValueError, RuntimeError)):
+            trajectory.diffusion_from_msd(
+                msd, times, start_fraction=start_fraction, end_fraction=end_fraction
+            )
+
+    @pytest.mark.parametrize(
+        ("msd", "times"),
+        [
+            ([float("nan"), 6.0, 12.0], [0.0, 1.0, 2.0]),  # NaN in msd
+            ([0.0, 6.0, 12.0], [float("nan"), 1.0, 2.0]),  # NaN in times
+            ([float("inf"), 6.0, 12.0], [0.0, 1.0, 2.0]),  # Inf in msd
+            ([0.0, 6.0, 12.0], [0.0, float("inf"), 2.0]),  # Inf in times
+        ],
+        ids=["nan_msd", "nan_times", "inf_msd", "inf_times"],
+    )
+    @pytest.mark.xfail(reason="NaN/Inf validation not yet implemented")
+    def test_nan_inf_values_raise(self, msd: list[float], times: list[float]) -> None:
+        """NaN/Infinity values in msd or times raise error."""
+        with pytest.raises((ValueError, RuntimeError)):
+            trajectory.diffusion_from_msd(msd, times)
+
 
 # === diffusion_from_vacf Tests ===
 
@@ -135,10 +181,9 @@ class TestDiffusionFromVacf:
         with pytest.raises((ValueError, RuntimeError)):
             trajectory.diffusion_from_vacf([1.0], dt=0.1)
 
-    def test_invalid_dim_raises(self) -> None:
+    @pytest.mark.parametrize("dim", [0, 4])
+    def test_invalid_dim_raises(self, dim: int) -> None:
         """Invalid dimension raises error."""
         vacf = [1.0, 0.5, 0.25]
         with pytest.raises((ValueError, RuntimeError)):
-            trajectory.diffusion_from_vacf(vacf, dt=0.1, dim=0)
-        with pytest.raises((ValueError, RuntimeError)):
-            trajectory.diffusion_from_vacf(vacf, dt=0.1, dim=4)
+            trajectory.diffusion_from_vacf(vacf, dt=0.1, dim=dim)

@@ -15,8 +15,8 @@ pub fn compute_xrd(
         let struc = structure.to_structure()?;
         let opts = options.unwrap_or_default();
 
-        if opts.wavelength <= 0.0 {
-            return Err("wavelength must be positive".to_string());
+        if !opts.wavelength.is_finite() || opts.wavelength <= 0.0 {
+            return Err("wavelength must be positive and finite".to_string());
         }
 
         let two_theta_range = opts

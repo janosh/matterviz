@@ -26,6 +26,9 @@ Functions are organized into submodules by domain:
 - `ferrox.trajectory` - Trajectory analysis (MSD, diffusion)
 - `ferrox.md` - Molecular dynamics integrators
 - `ferrox.potentials` - Classical interatomic potentials (LJ, Morse, etc.)
+- `ferrox.optimizers` - Geometry optimizers (FIRE, CellFIRE)
+- `ferrox.properties` - Physical property calculations (volume, density, mass)
+- `ferrox.species` - Chemical species with oxidation states
 
 ## Usage Example
 
@@ -57,10 +60,13 @@ from ferrox._ferrox import (
     lattice,
     md,
     neighbors,
+    optimizers,
     order_params,
     oxidation,
     potentials,
+    properties,
     rdf,
+    species,
     structure,
     surfaces,
     symmetry,

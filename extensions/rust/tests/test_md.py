@@ -145,6 +145,9 @@ class TestLangevinIntegrator:
         """set_temperature changes target temperature."""
         integrator = md.LangevinIntegrator(300.0, 0.01, 1.0, seed=42)
         integrator.set_temperature(500.0)
+        # Verify temperature was changed if getter is available
+        if hasattr(integrator, "temperature"):
+            assert integrator.temperature == pytest.approx(500.0)
 
 
 # === Nose-Hoover Tests ===
@@ -242,3 +245,41 @@ class TestMDValidation:
         md_state.init_velocities(300.0, seed=42)
         with pytest.raises((ValueError, RuntimeError)):
             md.velocity_verlet_step(md_state, 1.0, bad_forces)
+
+    @pytest.mark.parametrize("temperature", [float("nan"), float("inf"), float("-inf")])
+    @pytest.mark.xfail(reason="NaN/Inf validation not yet implemented")
+    def test_init_velocities_invalid_temperature(
+        self, md_state: md.MDState, temperature: float
+    ) -> None:
+        """NaN/Infinity temperature for init_velocities raises error."""
+        with pytest.raises((ValueError, RuntimeError)):
+            md_state.init_velocities(temperature, seed=42)
+
+    @pytest.mark.parametrize("temperature", [float("nan"), float("inf"), float("-inf")])
+    @pytest.mark.xfail(reason="NaN/Inf validation not yet implemented")
+    def test_langevin_invalid_temperature(self, temperature: float) -> None:
+        """NaN/Infinity temperature for LangevinIntegrator raises error."""
+        with pytest.raises((ValueError, RuntimeError)):
+            md.LangevinIntegrator(temperature, 0.01, 1.0, seed=42)
+
+    @pytest.mark.parametrize("dt", [float("nan"), float("inf"), float("-inf")])
+    @pytest.mark.xfail(reason="NaN/Inf validation not yet implemented")
+    def test_langevin_invalid_dt(self, dt: float) -> None:
+        """NaN/Infinity dt for LangevinIntegrator raises error."""
+        with pytest.raises((ValueError, RuntimeError)):
+            md.LangevinIntegrator(300.0, dt, 1.0, seed=42)
+
+    @pytest.mark.parametrize("friction", [float("nan"), float("inf"), float("-inf")])
+    @pytest.mark.xfail(reason="NaN/Inf validation not yet implemented")
+    def test_langevin_invalid_friction(self, friction: float) -> None:
+        """NaN/Infinity friction for LangevinIntegrator raises error."""
+        with pytest.raises((ValueError, RuntimeError)):
+            md.LangevinIntegrator(300.0, 0.01, friction, seed=42)
+
+    @pytest.mark.parametrize("dt", [float("nan"), float("inf"), float("-inf")])
+    @pytest.mark.xfail(reason="NaN/Inf validation not yet implemented")
+    def test_velocity_verlet_invalid_dt(self, md_state: md.MDState, dt: float) -> None:
+        """NaN/Infinity dt for velocity_verlet_step raises error."""
+        md_state.init_velocities(300.0, seed=42)
+        with pytest.raises((ValueError, RuntimeError)):
+            md.velocity_verlet_step(md_state, dt, harmonic_forces)

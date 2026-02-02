@@ -1,4 +1,6 @@
-//! Neighbor and coordination WASM bindings.
+//! Neighbor list and distance WASM bindings.
+//!
+//! Note: Coordination number functions are in the `coordination` module.
 
 use wasm_bindgen::prelude::*;
 
@@ -52,46 +54,6 @@ pub fn get_distance_matrix(structure: JsCrystal) -> WasmResult<Vec<Vec<f64>>> {
     let result = structure
         .to_structure()
         .map(|struc| struc.distance_matrix());
-    result.into()
-}
-
-#[wasm_bindgen]
-pub fn get_coordination_numbers(structure: JsCrystal, cutoff: f64) -> WasmResult<Vec<u32>> {
-    if !cutoff.is_finite() || cutoff < 0.0 {
-        return WasmResult::err("Cutoff must be finite and non-negative");
-    }
-    structure
-        .to_structure()
-        .map(|struc| {
-            struc
-                .get_coordination_numbers(cutoff)
-                .into_iter()
-                .map(|cn| cn as u32)
-                .collect()
-        })
-        .into()
-}
-
-#[wasm_bindgen]
-pub fn get_coordination_number(
-    structure: JsCrystal,
-    site_index: u32,
-    cutoff: f64,
-) -> WasmResult<u32> {
-    if !cutoff.is_finite() || cutoff < 0.0 {
-        return WasmResult::err("Cutoff must be finite and non-negative");
-    }
-    let result: Result<u32, String> = (|| {
-        let struc = structure.to_structure()?;
-        let idx = site_index as usize;
-        if idx >= struc.num_sites() {
-            return Err(format!(
-                "Site index {idx} out of bounds for structure with {} sites",
-                struc.num_sites()
-            ));
-        }
-        Ok(struc.get_coordination_number(idx, cutoff) as u32)
-    })();
     result.into()
 }
 
