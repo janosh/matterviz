@@ -1316,6 +1316,9 @@ impl NPTIntegrator {
         ));
 
         // === Thermostat second half-step for atoms ===
+        // For time-reversibility, second half is REVERSE of first half:
+        // First half:  update v_xi -> scale velocities
+        // Second half: scale velocities -> update v_xi
         let scale = (-self.v_xi_atoms * dt2).exp();
         for vel in &mut state.velocities {
             *vel *= scale;

@@ -1260,11 +1260,21 @@ fn parse_xyz_flexible_py(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyD
 ///     >>> from ferrox import from_pymatgen_structure
 ///     >>> struct = Structure.from_file("POSCAR")
 ///     >>> ferrox_dict = from_pymatgen_structure(struct)
+fn validate_3x3(m: &[Vec<f64>], name: &str) -> PyResult<[f64; 9]> {
+    if m.len() != 3 || m.iter().any(|r| r.len() != 3) {
+        return Err(PyValueError::new_err(format!("{name} must be 3×3")));
+    }
+    Ok([
+        m[0][0], m[0][1], m[0][2], m[1][0], m[1][1], m[1][2], m[2][0], m[2][1], m[2][2],
+    ])
+}
+
 #[pyfunction]
 fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyResult<Py<PyDict>> {
     // Extract lattice matrix directly
     let lattice = structure.getattr("lattice")?;
     let matrix: Vec<Vec<f64>> = lattice.getattr("matrix")?.extract()?;
+    let matrix_flat = validate_3x3(&matrix, "lattice matrix")?;
     let pbc: [bool; 3] = lattice
         .getattr("pbc")
         .and_then(|p| p.extract())
@@ -1277,17 +1287,8 @@ fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyRe
         .unwrap_or(0.0);
 
     // Build the ferrox lattice
-    let mut lattice_obj = crate::lattice::Lattice::new(nalgebra::Matrix3::from_row_slice(&[
-        matrix[0][0],
-        matrix[0][1],
-        matrix[0][2],
-        matrix[1][0],
-        matrix[1][1],
-        matrix[1][2],
-        matrix[2][0],
-        matrix[2][1],
-        matrix[2][2],
-    ]));
+    let mut lattice_obj =
+        crate::lattice::Lattice::new(nalgebra::Matrix3::from_row_slice(&matrix_flat));
     lattice_obj.pbc = pbc;
 
     // Extract sites with full species info (oxidation states, occupancies, disordered sites)
@@ -1436,7 +1437,8 @@ fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDic
     // This is intentional: has_cell check below correctly handles zero matrices as "no cell"
     let cell_obj = atoms.call_method0("get_cell")?;
     let cell: Vec<Vec<f64>> = cell_obj.extract().unwrap_or_else(|_| vec![vec![0.0; 3]; 3]);
-    let has_cell = cell.iter().any(|row| row.iter().any(|&v| v.abs() > 1e-10));
+    let cell_flat = validate_3x3(&cell, "ASE cell")?;
+    let has_cell = cell_flat.iter().any(|&v| v.abs() > 1e-10);
 
     // Extract pbc
     let pbc: [bool; 3] = atoms
@@ -1471,10 +1473,8 @@ fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDic
 
     if is_periodic {
         // Build periodic Structure
-        let mut lattice = crate::lattice::Lattice::new(nalgebra::Matrix3::from_row_slice(&[
-            cell[0][0], cell[0][1], cell[0][2], cell[1][0], cell[1][1], cell[1][2], cell[2][0],
-            cell[2][1], cell[2][2],
-        ]));
+        let mut lattice =
+            crate::lattice::Lattice::new(nalgebra::Matrix3::from_row_slice(&cell_flat));
         lattice.pbc = pbc;
 
         // Convert Cartesian to fractional (cache inverse to avoid repeated inversion)
@@ -4117,6 +4117,7 @@ impl PyLangevinIntegrator {
     /// Raises:
     ///     RuntimeError: If force computation fails. State is restored to its
     ///         original value before the step when this happens.
+    ///     ValueError: If force callback returns wrong number of forces.
     fn step(
         &mut self,
         state: &mut PyMDState,
@@ -4124,14 +4125,17 @@ impl PyLangevinIntegrator {
         py: Python<'_>,
     ) -> PyResult<()> {
         self.inner.try_step(&mut state.inner, |positions| {
-            // Convert positions to Python array
+            let n_atoms = positions.len();
             let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
-
-            // Call Python function
             let result = compute_forces.call1(py, (pos_arr,))?;
             let forces: Vec<[f64; 3]> = result.extract(py)?;
-
-            // Convert back to Vector3
+            if forces.len() != n_atoms {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "force callback returned {} forces, expected {} (one per atom)",
+                    forces.len(),
+                    n_atoms
+                )));
+            }
             Ok(forces.iter().map(|f| Vector3::from(*f)).collect())
         })
     }
@@ -4171,9 +4175,17 @@ fn md_velocity_verlet_step(
     py: Python<'_>,
 ) -> PyResult<()> {
     match integrators::try_velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
+        let n_atoms = positions.len();
         let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
         let result = compute_forces.call1(py, (pos_arr,))?;
         let forces: Vec<[f64; 3]> = result.extract(py)?;
+        if forces.len() != n_atoms {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "force callback returned {} forces, expected {} (one per atom)",
+                forces.len(),
+                n_atoms
+            )));
+        }
         Ok(forces.iter().map(|f| Vector3::from(*f)).collect())
     }) {
         Ok(new_state) => {
@@ -4300,12 +4312,21 @@ impl PyFireState {
     /// Raises:
     ///     RuntimeError: If force computation fails. State is restored to its
     ///         original value before the step when this happens.
+    ///     ValueError: If force callback returns wrong number of forces.
     fn step(&mut self, compute_forces: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
         self.inner.try_step(
             |positions| {
+                let n_atoms = positions.len();
                 let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
                 let result = compute_forces.call1(py, (pos_arr,))?;
                 let forces: Vec<[f64; 3]> = result.extract(py)?;
+                if forces.len() != n_atoms {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "force callback returned {} forces, expected {} (one per atom)",
+                        forces.len(),
+                        n_atoms
+                    )));
+                }
                 Ok(forces.iter().map(|f| Vector3::from(*f)).collect())
             },
             &self.config,
@@ -4387,9 +4408,11 @@ impl PyCellFireState {
     /// Raises:
     ///     RuntimeError: If force/stress computation fails. State is restored to its
     ///         original value before the step when this happens.
+    ///     ValueError: If force callback returns wrong number of forces.
     fn step(&mut self, compute_forces_and_stress: Py<PyAny>, py: Python<'_>) -> PyResult<()> {
         self.inner.try_step(
             |positions, cell| {
+                let n_atoms = positions.len();
                 let pos_arr: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
                 let cell_arr = [
                     [cell[(0, 0)], cell[(0, 1)], cell[(0, 2)]],
@@ -4399,6 +4422,14 @@ impl PyCellFireState {
 
                 let result = compute_forces_and_stress.call1(py, (pos_arr, cell_arr))?;
                 let (forces, stress): (Vec<[f64; 3]>, [[f64; 3]; 3]) = result.extract(py)?;
+
+                if forces.len() != n_atoms {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "force callback returned {} forces, expected {} (one per atom)",
+                        forces.len(),
+                        n_atoms
+                    )));
+                }
 
                 let force_vec: Vec<Vector3<f64>> =
                     forces.iter().map(|f| Vector3::from(*f)).collect();
@@ -6607,10 +6638,19 @@ impl PyNoseHooverChain {
     /// Raises:
     ///     RuntimeError: If force computation fails. State is restored to its
     ///         original value before the step when this happens.
+    ///     ValueError: If force callback returns wrong number of forces.
     fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner.try_step(&mut state.inner, |positions| {
+            let n_atoms = positions.len();
             let result = compute_forces.call1((vec3_to_positions(positions),))?;
             let forces: Vec<[f64; 3]> = result.extract()?;
+            if forces.len() != n_atoms {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "force callback returned {} forces, expected {} (one per atom)",
+                    forces.len(),
+                    n_atoms
+                )));
+            }
             Ok(positions_to_vec3(&forces))
         })
     }
@@ -6652,10 +6692,19 @@ impl PyVelocityRescale {
     /// Raises:
     ///     RuntimeError: If force computation fails. State is restored to its
     ///         original value before the step when this happens.
+    ///     ValueError: If force callback returns wrong number of forces.
     fn step(&mut self, state: &mut PyMDState, compute_forces: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner.try_step(&mut state.inner, |positions| {
+            let n_atoms = positions.len();
             let result = compute_forces.call1((vec3_to_positions(positions),))?;
             let forces: Vec<[f64; 3]> = result.extract()?;
+            if forces.len() != n_atoms {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "force callback returned {} forces, expected {} (one per atom)",
+                    forces.len(),
+                    n_atoms
+                )));
+            }
             Ok(positions_to_vec3(&forces))
         })
     }
@@ -6809,12 +6858,14 @@ impl PyNPTIntegrator {
     /// Raises:
     ///     RuntimeError: If force/stress computation fails. State is restored to
     ///         its original value before the step when this happens.
+    ///     ValueError: If force callback returns wrong number of forces.
     fn step(
         &mut self,
         state: &mut PyNPTState,
         compute_forces_stress: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         self.inner.try_step(&mut state.inner, |positions, cell| {
+            let n_atoms = positions.len();
             let pos_list: Vec<[f64; 3]> = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
             let cell_arr: [[f64; 3]; 3] = [
                 [cell[(0, 0)], cell[(0, 1)], cell[(0, 2)]],
@@ -6824,6 +6875,13 @@ impl PyNPTIntegrator {
 
             let result = compute_forces_stress.call1((pos_list, cell_arr))?;
             let (forces, stress): (Vec<[f64; 3]>, [[f64; 3]; 3]) = result.extract()?;
+            if forces.len() != n_atoms {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "force callback returned {} forces, expected {} (one per atom)",
+                    forces.len(),
+                    n_atoms
+                )));
+            }
             let force_vec: Vec<Vector3<f64>> = forces.iter().map(|f| Vector3::from(*f)).collect();
             Ok((force_vec, array_to_matrix3(&stress)))
         })

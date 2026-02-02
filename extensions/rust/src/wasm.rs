@@ -3516,7 +3516,7 @@ impl JsMDState {
 /// 3. Call `md_velocity_verlet_finish` with new forces to complete the velocity update
 ///
 /// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
-/// dt: timestep in femtoseconds
+/// dt_fs: timestep in femtoseconds (must be finite and positive)
 #[wasm_bindgen]
 pub fn md_velocity_verlet_step(
     state: &mut JsMDState,
@@ -3524,6 +3524,11 @@ pub fn md_velocity_verlet_step(
     dt_fs: f64,
 ) -> WasmResult<()> {
     let result: Result<(), String> = (|| {
+        // Validate timestep first
+        if !dt_fs.is_finite() || dt_fs <= 0.0 {
+            return Err(format!("dt_fs must be finite and positive, got {dt_fs}"));
+        }
+
         let n_atoms = state.inner.num_atoms();
         if forces.len() != n_atoms * 3 {
             return Err(format!(

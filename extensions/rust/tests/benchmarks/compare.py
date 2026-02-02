@@ -25,7 +25,8 @@ Example:
 
 import argparse
 import json
-from dataclasses import asdict, dataclass
+from collections.abc import Callable
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -34,6 +35,7 @@ from pymatgen.core import Structure
 from .ase_runner import run_ase_fire, run_ase_nve, run_ase_nvt
 from .ferrox_runner import run_ferrox_fire, run_ferrox_nve, run_ferrox_nvt
 from .mace_model import get_mace_model
+from .results import BenchmarkResult, FireResult, MDResult
 from .structures import SYSTEMS, perturb_structure
 from .torchsim_runner import (
     get_torchsim_mace_model,
@@ -49,25 +51,6 @@ if TYPE_CHECKING:
     from .torchsim_runner import MaceModel
 
 
-@dataclass
-class BenchmarkResult:
-    """Result for a single benchmark configuration."""
-
-    system: str
-    n_atoms: int
-    benchmark_type: str  # 'fire', 'nve', 'nvt'
-    n_steps: int
-    ferrox_time: float | None  # None if runner failed
-    ferrox_steps_per_sec: float | None
-    torchsim_time: float | None
-    torchsim_steps_per_sec: float | None
-    ase_time: float | None
-    ase_steps_per_sec: float | None
-    ferrox_vs_torchsim: float | None  # speedup ratio (>1 means ferrox faster)
-    ferrox_vs_ase: float | None
-    error: str | None = None  # error message if any runner failed
-
-
 def safe_divide(numerator: float | None, denominator: float | None) -> float | None:
     """Safely divide, returning None if either value is None or denominator is ~0."""
     if numerator is None or denominator is None:
@@ -77,21 +60,49 @@ def safe_divide(numerator: float | None, denominator: float | None) -> float | N
     return numerator / denominator
 
 
-def benchmark_fire(
+def _run_single_runner(
+    name: str,
+    runner_fn: Callable[[], FireResult | MDResult],
+) -> tuple[float | None, float | None, list[str]]:
+    """Run a single benchmark runner with error handling.
+
+    Returns:
+        Tuple of (elapsed_time, steps_per_second, errors_list)
+    """
+    print(f"    - {name}...", end=" ", flush=True)
+    try:
+        result = runner_fn()
+        elapsed = result.timing.elapsed
+        sps = result.timing.steps_per_second
+        print(f"{sps:.1f} steps/s")
+    except (RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        print(f"FAILED: {exc}")
+        return None, None, [f"{name}: {exc}"]
+    else:
+        return elapsed, sps, []
+
+
+def _run_benchmark_suite(
     systems: dict[str, Structure],
-    mace_calc: "MACECalculator",
-    torchsim_model: "MaceModel",
-    max_steps: int = 100,
-    fmax: float = 0.01,
+    benchmark_type: str,
+    label: str,
+    ferrox_fn: Callable[[Structure], FireResult | MDResult],
+    torchsim_fn: Callable[[Structure], FireResult | MDResult],
+    ase_fn: Callable[[Structure], FireResult | MDResult],
+    n_steps: int,
+    preprocess: Callable[[Structure], Structure] | None = None,
 ) -> list[BenchmarkResult]:
-    """Run FIRE optimization benchmark comparing all packages.
+    """Generic benchmark runner for ferrox, torch-sim, and ASE.
 
     Args:
         systems: Dict of system_name -> Structure
-        mace_calc: MACE calculator for ASE/ferrox
-        torchsim_model: torch-sim MaceModel
-        max_steps: Maximum optimization steps
-        fmax: Force convergence threshold
+        benchmark_type: Type identifier ('fire', 'nve', 'nvt')
+        label: Human-readable label for printing (e.g., 'FIRE', 'NVE')
+        ferrox_fn: Ferrox runner function taking Structure
+        torchsim_fn: TorchSim runner function taking Structure
+        ase_fn: ASE runner function taking Structure
+        n_steps: Number of steps (used in result)
+        preprocess: Optional function to preprocess structure before benchmarking
 
     Returns:
         List of BenchmarkResult for each system
@@ -99,54 +110,28 @@ def benchmark_fire(
     results = []
 
     for name, structure in systems.items():
-        print(f"\n  Running FIRE on {name} ({structure.num_sites} atoms)...")
-        perturbed = perturb_structure(structure, amplitude=0.1)
-        errors = []
+        print(f"\n  Running {label} on {name} ({structure.num_sites} atoms)...")
+        struct = preprocess(structure) if preprocess else structure
+        all_errors: list[str] = []
 
-        # Ferrox
-        ferrox_time, ferrox_sps, n_steps = None, None, max_steps
-        print("    - ferrox...", end=" ", flush=True)
-        try:
-            ferrox_result = run_ferrox_fire(perturbed, mace_calc, max_steps, fmax)
-            ferrox_time = ferrox_result.timing.elapsed
-            ferrox_sps = ferrox_result.timing.steps_per_second
-            n_steps = ferrox_result.n_steps_actual
-            print(f"{ferrox_sps:.1f} steps/s")
-        except Exception as exc:
-            errors.append(f"ferrox: {exc}")
-            print(f"FAILED: {exc}")
+        ferrox_time, ferrox_sps, errs = _run_single_runner(
+            "ferrox", lambda s=struct: ferrox_fn(s)
+        )
+        all_errors.extend(errs)
 
-        # TorchSim
-        torchsim_time, torchsim_sps = None, None
-        print("    - torch-sim...", end=" ", flush=True)
-        try:
-            torchsim_result = run_torchsim_fire(
-                perturbed, torchsim_model, max_steps, fmax
-            )
-            torchsim_time = torchsim_result.timing.elapsed
-            torchsim_sps = torchsim_result.timing.steps_per_second
-            print(f"{torchsim_sps:.1f} steps/s")
-        except Exception as exc:
-            errors.append(f"torchsim: {exc}")
-            print(f"FAILED: {exc}")
+        torchsim_time, torchsim_sps, errs = _run_single_runner(
+            "torch-sim", lambda s=struct: torchsim_fn(s)
+        )
+        all_errors.extend(errs)
 
-        # ASE
-        ase_time, ase_sps = None, None
-        print("    - ase...", end=" ", flush=True)
-        try:
-            ase_result = run_ase_fire(perturbed, mace_calc, max_steps, fmax)
-            ase_time = ase_result.timing.elapsed
-            ase_sps = ase_result.timing.steps_per_second
-            print(f"{ase_sps:.1f} steps/s")
-        except Exception as exc:
-            errors.append(f"ase: {exc}")
-            print(f"FAILED: {exc}")
+        ase_time, ase_sps, errs = _run_single_runner("ase", lambda s=struct: ase_fn(s))
+        all_errors.extend(errs)
 
         results.append(
             BenchmarkResult(
                 system=name,
                 n_atoms=structure.num_sites,
-                benchmark_type="fire",
+                benchmark_type=benchmark_type,
                 n_steps=n_steps,
                 ferrox_time=ferrox_time,
                 ferrox_steps_per_sec=ferrox_sps,
@@ -156,11 +141,31 @@ def benchmark_fire(
                 ase_steps_per_sec=ase_sps,
                 ferrox_vs_torchsim=safe_divide(torchsim_time, ferrox_time),
                 ferrox_vs_ase=safe_divide(ase_time, ferrox_time),
-                error="; ".join(errors) if errors else None,
+                error="; ".join(all_errors) if all_errors else None,
             )
         )
 
     return results
+
+
+def benchmark_fire(
+    systems: dict[str, Structure],
+    mace_calc: "MACECalculator",
+    torchsim_model: "MaceModel",
+    max_steps: int = 100,
+    fmax: float = 0.01,
+) -> list[BenchmarkResult]:
+    """Run FIRE optimization benchmark comparing all packages."""
+    return _run_benchmark_suite(
+        systems=systems,
+        benchmark_type="fire",
+        label="FIRE",
+        ferrox_fn=lambda s: run_ferrox_fire(s, mace_calc, max_steps, fmax),
+        torchsim_fn=lambda s: run_torchsim_fire(s, torchsim_model, max_steps, fmax),
+        ase_fn=lambda s: run_ase_fire(s, mace_calc, max_steps, fmax),
+        n_steps=max_steps,
+        preprocess=lambda s: perturb_structure(s, amplitude=0.1),
+    )
 
 
 def benchmark_nve(
@@ -171,84 +176,18 @@ def benchmark_nve(
     dt: float = 1.0,
     temperature: float = 300.0,
 ) -> list[BenchmarkResult]:
-    """Run NVE MD benchmark comparing all packages.
-
-    Args:
-        systems: Dict of system_name -> Structure
-        mace_calc: MACE calculator for ASE/ferrox
-        torchsim_model: torch-sim MaceModel
-        n_steps: Number of MD steps
-        dt: Time step in fs
-        temperature: Initial temperature in Kelvin
-
-    Returns:
-        List of BenchmarkResult for each system
-    """
-    results = []
-
-    for name, structure in systems.items():
-        print(f"\n  Running NVE on {name} ({structure.num_sites} atoms)...")
-        errors = []
-
-        # Ferrox
-        ferrox_time, ferrox_sps = None, None
-        print("    - ferrox...", end=" ", flush=True)
-        try:
-            ferrox_result = run_ferrox_nve(
-                structure, mace_calc, n_steps, dt, temperature
-            )
-            ferrox_time = ferrox_result.timing.elapsed
-            ferrox_sps = ferrox_result.timing.steps_per_second
-            print(f"{ferrox_sps:.1f} steps/s")
-        except Exception as exc:
-            errors.append(f"ferrox: {exc}")
-            print(f"FAILED: {exc}")
-
-        # TorchSim
-        torchsim_time, torchsim_sps = None, None
-        print("    - torch-sim...", end=" ", flush=True)
-        try:
-            torchsim_result = run_torchsim_nve(
-                structure, torchsim_model, n_steps, dt, temperature
-            )
-            torchsim_time = torchsim_result.timing.elapsed
-            torchsim_sps = torchsim_result.timing.steps_per_second
-            print(f"{torchsim_sps:.1f} steps/s")
-        except Exception as exc:
-            errors.append(f"torchsim: {exc}")
-            print(f"FAILED: {exc}")
-
-        # ASE
-        ase_time, ase_sps = None, None
-        print("    - ase...", end=" ", flush=True)
-        try:
-            ase_result = run_ase_nve(structure, mace_calc, n_steps, dt, temperature)
-            ase_time = ase_result.timing.elapsed
-            ase_sps = ase_result.timing.steps_per_second
-            print(f"{ase_sps:.1f} steps/s")
-        except Exception as exc:
-            errors.append(f"ase: {exc}")
-            print(f"FAILED: {exc}")
-
-        results.append(
-            BenchmarkResult(
-                system=name,
-                n_atoms=structure.num_sites,
-                benchmark_type="nve",
-                n_steps=n_steps,
-                ferrox_time=ferrox_time,
-                ferrox_steps_per_sec=ferrox_sps,
-                torchsim_time=torchsim_time,
-                torchsim_steps_per_sec=torchsim_sps,
-                ase_time=ase_time,
-                ase_steps_per_sec=ase_sps,
-                ferrox_vs_torchsim=safe_divide(torchsim_time, ferrox_time),
-                ferrox_vs_ase=safe_divide(ase_time, ferrox_time),
-                error="; ".join(errors) if errors else None,
-            )
-        )
-
-    return results
+    """Run NVE MD benchmark comparing all packages."""
+    return _run_benchmark_suite(
+        systems=systems,
+        benchmark_type="nve",
+        label="NVE",
+        ferrox_fn=lambda s: run_ferrox_nve(s, mace_calc, n_steps, dt, temperature),
+        torchsim_fn=lambda s: run_torchsim_nve(
+            s, torchsim_model, n_steps, dt, temperature
+        ),
+        ase_fn=lambda s: run_ase_nve(s, mace_calc, n_steps, dt, temperature),
+        n_steps=n_steps,
+    )
 
 
 def benchmark_nvt(
@@ -260,87 +199,20 @@ def benchmark_nvt(
     temperature: float = 300.0,
     friction: float = 0.01,
 ) -> list[BenchmarkResult]:
-    """Run NVT MD benchmark comparing all packages.
-
-    Args:
-        systems: Dict of system_name -> Structure
-        mace_calc: MACE calculator for ASE/ferrox
-        torchsim_model: torch-sim MaceModel
-        n_steps: Number of MD steps
-        dt: Time step in fs
-        temperature: Target temperature in Kelvin
-        friction: Langevin friction coefficient in 1/fs
-
-    Returns:
-        List of BenchmarkResult for each system
-    """
-    results = []
-
-    for name, structure in systems.items():
-        print(f"\n  Running NVT on {name} ({structure.num_sites} atoms)...")
-        errors = []
-
-        # Ferrox
-        ferrox_time, ferrox_sps = None, None
-        print("    - ferrox...", end=" ", flush=True)
-        try:
-            ferrox_result = run_ferrox_nvt(
-                structure, mace_calc, n_steps, dt, temperature, friction
-            )
-            ferrox_time = ferrox_result.timing.elapsed
-            ferrox_sps = ferrox_result.timing.steps_per_second
-            print(f"{ferrox_sps:.1f} steps/s")
-        except Exception as exc:
-            errors.append(f"ferrox: {exc}")
-            print(f"FAILED: {exc}")
-
-        # TorchSim
-        torchsim_time, torchsim_sps = None, None
-        print("    - torch-sim...", end=" ", flush=True)
-        try:
-            torchsim_result = run_torchsim_nvt(
-                structure, torchsim_model, n_steps, dt, temperature, friction
-            )
-            torchsim_time = torchsim_result.timing.elapsed
-            torchsim_sps = torchsim_result.timing.steps_per_second
-            print(f"{torchsim_sps:.1f} steps/s")
-        except Exception as exc:
-            errors.append(f"torchsim: {exc}")
-            print(f"FAILED: {exc}")
-
-        # ASE
-        ase_time, ase_sps = None, None
-        print("    - ase...", end=" ", flush=True)
-        try:
-            ase_result = run_ase_nvt(
-                structure, mace_calc, n_steps, dt, temperature, friction
-            )
-            ase_time = ase_result.timing.elapsed
-            ase_sps = ase_result.timing.steps_per_second
-            print(f"{ase_sps:.1f} steps/s")
-        except Exception as exc:
-            errors.append(f"ase: {exc}")
-            print(f"FAILED: {exc}")
-
-        results.append(
-            BenchmarkResult(
-                system=name,
-                n_atoms=structure.num_sites,
-                benchmark_type="nvt",
-                n_steps=n_steps,
-                ferrox_time=ferrox_time,
-                ferrox_steps_per_sec=ferrox_sps,
-                torchsim_time=torchsim_time,
-                torchsim_steps_per_sec=torchsim_sps,
-                ase_time=ase_time,
-                ase_steps_per_sec=ase_sps,
-                ferrox_vs_torchsim=safe_divide(torchsim_time, ferrox_time),
-                ferrox_vs_ase=safe_divide(ase_time, ferrox_time),
-                error="; ".join(errors) if errors else None,
-            )
-        )
-
-    return results
+    """Run NVT MD benchmark comparing all packages."""
+    return _run_benchmark_suite(
+        systems=systems,
+        benchmark_type="nvt",
+        label="NVT",
+        ferrox_fn=lambda s: run_ferrox_nvt(
+            s, mace_calc, n_steps, dt, temperature, friction
+        ),
+        torchsim_fn=lambda s: run_torchsim_nvt(
+            s, torchsim_model, n_steps, dt, temperature, friction
+        ),
+        ase_fn=lambda s: run_ase_nvt(s, mace_calc, n_steps, dt, temperature, friction),
+        n_steps=n_steps,
+    )
 
 
 def fmt_val(val: float | None, decimals: int = 2, suffix: str = "") -> str:
@@ -367,6 +239,7 @@ def print_results_table(results: list[BenchmarkResult], title: str) -> None:
         "-----------|------------|"
     )
 
+    errors = []
     for row in results:
         ferrox_sps = fmt_val(row.ferrox_steps_per_sec, decimals=1)
         torchsim_sps = fmt_val(row.torchsim_steps_per_sec, decimals=1)
@@ -378,7 +251,12 @@ def print_results_table(results: list[BenchmarkResult], title: str) -> None:
             f"{ferrox_sps} | {torchsim_sps} | {ase_sps} | {vs_ts} | {vs_ase} |"
         )
         if row.error:
-            print(f"|  ↳ Error: {row.error} | | | | | | | |")
+            errors.append(f"  - {row.system}: {row.error}")
+
+    if errors:
+        print("\n**Errors:**")
+        for err in errors:
+            print(err)
 
 
 def run_all_benchmarks(
@@ -400,12 +278,17 @@ def run_all_benchmarks(
     """
     # Select systems
     if system_names:
-        systems = {name: SYSTEMS[name] for name in system_names if name in SYSTEMS}
+        valid = {name: SYSTEMS[name] for name in system_names if name in SYSTEMS}
+        invalid = [name for name in system_names if name not in SYSTEMS]
+        if invalid:
+            print(f"WARNING: Unknown systems ignored: {invalid}")
+            print(f"Available systems: {list(SYSTEMS.keys())}")
+        systems = valid
     else:
         systems = SYSTEMS
 
     if not systems:
-        print("ERROR: No valid systems selected")
+        print(f"ERROR: No valid systems selected. Available: {list(SYSTEMS.keys())}")
         return {}
 
     print("=" * 70)

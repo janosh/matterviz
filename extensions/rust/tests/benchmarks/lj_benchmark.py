@@ -203,6 +203,8 @@ def run_torchsim_lj_fire(
     fire_state = fire_init(state, model)
 
     n_steps = 0
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     start = time.perf_counter()
     for step in range(max_steps):
         fire_state = fire_step(fire_state, model)
@@ -210,6 +212,8 @@ def run_torchsim_lj_fire(
         n_steps = step + 1
         if max_force < fmax:
             break
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     elapsed = time.perf_counter() - start
 
     return elapsed, n_steps
@@ -226,10 +230,13 @@ def run_torchsim_lj_nve(
     dt_tensor = torch.tensor(dt, dtype=torch.float64)
     md_state = nve_init(state, model, kT=kT, seed=42)
 
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     start = time.perf_counter()
     for _ in range(n_steps):
         md_state = nve_step(md_state, model, dt=dt_tensor)
-
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     return time.perf_counter() - start
 
 
@@ -245,10 +252,13 @@ def run_torchsim_lj_nvt(
     gamma = torch.tensor(friction, dtype=torch.float64)
     md_state = nvt_langevin_init(state, model, kT=kT, seed=42)
 
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     start = time.perf_counter()
     for _ in range(n_steps):
         md_state = nvt_langevin_step(md_state, model, dt=dt_tensor, kT=kT, gamma=gamma)
-
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     return time.perf_counter() - start
 
 

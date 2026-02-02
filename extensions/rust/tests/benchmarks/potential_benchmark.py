@@ -23,7 +23,7 @@ Run with: uv run potential_benchmark.py [--steps N] [--output FILE]
 import argparse
 import json
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import UTC, datetime
 
 import ferrox
@@ -39,22 +39,7 @@ from torch_sim import SimState, nve_init, nve_step
 from torch_sim.models.lennard_jones import LennardJonesModel as TorchSimLJ
 from torch_sim.models.morse import MorseModel as TorchSimMorse
 
-
-@dataclass
-class BenchmarkResult:
-    """Result for a single benchmark."""
-
-    potential: str
-    system: str
-    n_atoms: int
-    n_steps: int
-    ferrox_time: float
-    ferrox_steps_per_sec: float
-    ase_time: float
-    ase_steps_per_sec: float
-    torchsim_time: float | None
-    torchsim_steps_per_sec: float | None
-    ferrox_vs_ase: float
+from .results import BenchmarkResult
 
 
 def make_supercell(n_repeat: int) -> Atoms:
@@ -165,9 +150,13 @@ def run_torchsim_lj_nve(atoms: Atoms, n_steps: int, dt: float, temp: float) -> f
 
     md_state = nve_init(state, model, kT=kT, seed=42)
 
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     start = time.perf_counter()
     for _ in range(n_steps):
         md_state = nve_step(md_state, model, dt=dt_tensor)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     return time.perf_counter() - start
 
 
@@ -191,9 +180,13 @@ def run_torchsim_morse_nve(
 
         md_state = nve_init(state, model, kT=kT, seed=42)
 
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         start = time.perf_counter()
         for _ in range(n_steps):
             md_state = nve_step(md_state, model, dt=dt_tensor)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         return time.perf_counter() - start
     except (RuntimeError, ValueError, TypeError) as exc:
         print(f"[torch-sim Morse error: {exc}]", end=" ")
@@ -251,17 +244,19 @@ def benchmark_potential(
 
         results.append(
             BenchmarkResult(
-                potential=potential,
                 system=name,
                 n_atoms=len(atoms),
+                benchmark_type=potential,
                 n_steps=n_steps,
                 ferrox_time=ferrox_time,
                 ferrox_steps_per_sec=ferrox_sps,
-                ase_time=ase_time,
-                ase_steps_per_sec=ase_sps,
                 torchsim_time=ts_time,
                 torchsim_steps_per_sec=ts_sps,
+                ase_time=ase_time,
+                ase_steps_per_sec=ase_sps,
+                ferrox_vs_torchsim=(ts_time / ferrox_time) if ts_time else None,
                 ferrox_vs_ase=ase_time / ferrox_time,
+                potential=potential,
             )
         )
 
@@ -282,10 +277,14 @@ def print_results_table(results: list[BenchmarkResult], title: str) -> None:
         ts_sps = (
             f"{row.torchsim_steps_per_sec:.1f}" if row.torchsim_steps_per_sec else "N/A"
         )
+        ferrox_sps = (
+            f"{row.ferrox_steps_per_sec:.1f}" if row.ferrox_steps_per_sec else "N/A"
+        )
+        ase_sps = f"{row.ase_steps_per_sec:.1f}" if row.ase_steps_per_sec else "N/A"
+        vs_ase = f"{row.ferrox_vs_ase:.2f}x" if row.ferrox_vs_ase else "N/A"
         print(
-            f"| {row.potential} | {row.system} | {row.n_atoms} | {row.n_steps} | "
-            f"{row.ferrox_steps_per_sec:.1f} | {row.ase_steps_per_sec:.1f} | {ts_sps} | "
-            f"{row.ferrox_vs_ase:.2f}x |"
+            f"| {row.benchmark_type} | {row.system} | {row.n_atoms} | {row.n_steps} | "
+            f"{ferrox_sps} | {ase_sps} | {ts_sps} | {vs_ase} |"
         )
 
 
