@@ -38,51 +38,40 @@ def md_state() -> ferrox.MDState:
     return state
 
 
-@pytest.fixture
-def nose_hoover() -> ferrox.NoseHooverChain:
-    """Create NoseHooverChain thermostat."""
-    return ferrox.NoseHooverChain(target_temp=300.0, tau=100.0, dt=1.0, n_dof=3)
-
-
-@pytest.fixture
-def velocity_rescale() -> ferrox.VelocityRescale:
-    """Create VelocityRescale thermostat."""
-    return ferrox.VelocityRescale(
-        target_temp=300.0, tau=100.0, dt=1.0, n_dof=3, seed=42
-    )
-
-
-@pytest.fixture
-def langevin() -> ferrox.LangevinIntegrator:
-    """Create Langevin integrator."""
-    return ferrox.LangevinIntegrator(
-        temperature_k=300.0, friction=0.01, dt=1.0, seed=42
-    )
-
-
-@pytest.mark.parametrize(
-    "thermostat_fixture", ["nose_hoover", "velocity_rescale", "langevin"]
+@pytest.fixture(
+    params=[
+        (
+            "NoseHooverChain",
+            {"target_temp": 300.0, "tau": 100.0, "dt": 1.0, "n_dof": 3},
+        ),
+        (
+            "VelocityRescale",
+            {"target_temp": 300.0, "tau": 100.0, "dt": 1.0, "n_dof": 3, "seed": 42},
+        ),
+        (
+            "LangevinIntegrator",
+            {"temperature_k": 300.0, "friction": 0.01, "dt": 1.0, "seed": 42},
+        ),
+    ],
+    ids=["nose_hoover", "velocity_rescale", "langevin"],
 )
-def test_error_raises_exception(
-    thermostat_fixture: str, md_state: ferrox.MDState, request: pytest.FixtureRequest
-) -> None:
-    """Thermostat.step() should raise when force callback fails."""
-    thermostat = request.getfixturevalue(thermostat_fixture)
+def integrator(request: pytest.FixtureRequest) -> object:
+    """Create integrator/thermostat for testing."""
+    name, kwargs = request.param
+    return getattr(ferrox, name)(**kwargs)
+
+
+def test_error_raises_exception(integrator: object, md_state: ferrox.MDState) -> None:
+    """Integrator.step() should raise when force callback fails."""
     with pytest.raises(RuntimeError, match="Force computation failed"):
-        thermostat.step(md_state, failing_force_fn)
+        integrator.step(md_state, failing_force_fn)
 
 
-@pytest.mark.parametrize(
-    "thermostat_fixture", ["nose_hoover", "velocity_rescale", "langevin"]
-)
-def test_state_restored_on_error(
-    thermostat_fixture: str, md_state: ferrox.MDState, request: pytest.FixtureRequest
-) -> None:
-    """Thermostat.step() should restore state when force callback fails."""
-    thermostat = request.getfixturevalue(thermostat_fixture)
+def test_state_restored_on_error(integrator: object, md_state: ferrox.MDState) -> None:
+    """Integrator.step() should restore state when force callback fails."""
     original = snapshot_state(md_state)
 
     with pytest.raises(RuntimeError):
-        thermostat.step(md_state, failing_force_fn)
+        integrator.step(md_state, failing_force_fn)
 
     assert_state_unchanged(md_state, original)
