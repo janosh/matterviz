@@ -1234,7 +1234,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         maximum: 1,
       },
       hull_face_color_mode: {
-        value: `dominant_element`,
+        value: `uniform`,
         description:
           `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
         enum: {

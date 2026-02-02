@@ -163,11 +163,11 @@ describe(`Settings`, () => {
 
   describe(`Convex hull settings`, () => {
     test.each([
-      [`ternary`, DEFAULTS.convex_hull.ternary],
-      [`quaternary`, DEFAULTS.convex_hull.quaternary],
-    ])(`%s has valid 3D hull face properties`, (_, settings) => {
-      // Default color mode
-      expect(settings.hull_face_color_mode).toBe(`dominant_element`)
+      [`ternary`, DEFAULTS.convex_hull.ternary, `uniform`],
+      [`quaternary`, DEFAULTS.convex_hull.quaternary, `dominant_element`],
+    ])(`%s has valid 3D hull face properties`, (_, settings, expected_color_mode) => {
+      // Default color mode (ternary=uniform, quaternary=dominant_element)
+      expect(settings.hull_face_color_mode).toBe(expected_color_mode)
       // Required properties with correct types
       expect(typeof settings.show_hull_faces).toBe(`boolean`)
       expect(typeof settings.hull_face_color).toBe(`string`)

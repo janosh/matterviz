@@ -216,9 +216,9 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await expect(mode_buttons.getByText(`Element`)).toBeVisible()
     await expect(mode_buttons.getByText(`Index`)).toBeVisible()
 
-    // Default should be dominant_element (Element button active)
-    const element_btn = mode_buttons.getByText(`Element`)
-    await expect(element_btn).toHaveClass(/active/)
+    // Default should be uniform (Uniform button active)
+    const uniform_btn = mode_buttons.getByText(`Uniform`)
+    await expect(uniform_btn).toHaveClass(/active/)
   })
 
   test(`face color mode switch changes canvas rendering`, async ({ page }) => {
@@ -260,20 +260,20 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
 
-    // In default (dominant_element) mode, color picker should be hidden
+    // In default (uniform) mode, color picker should be visible
     const color_picker = controls.locator(`input[type="color"]`).first()
-    await expect(color_picker).toBeHidden()
-
-    // Switch to uniform mode
-    await controls.locator(`.face-color-mode-buttons`).getByText(`Uniform`).click()
-
-    // Color picker should now be visible
     await expect(color_picker).toBeVisible()
 
-    // Switch back to Index mode
+    // Switch to Index mode
     await controls.locator(`.face-color-mode-buttons`).getByText(`Index`).click()
 
-    // Color picker should be hidden again
+    // Color picker should now be hidden
     await expect(color_picker).toBeHidden()
+
+    // Switch back to Uniform mode
+    await controls.locator(`.face-color-mode-buttons`).getByText(`Uniform`).click()
+
+    // Color picker should be visible again
+    await expect(color_picker).toBeVisible()
   })
 })

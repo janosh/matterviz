@@ -51,7 +51,7 @@
     on_hull_face_color_change,
     hull_face_opacity = $bindable(0.03),
     on_hull_face_opacity_change,
-    hull_face_color_mode = `dominant_element` as HullFaceColorMode,
+    hull_face_color_mode = `uniform` as HullFaceColorMode,
     on_hull_face_color_mode_change,
     max_hull_dist_show_phases = $bindable(0),
     max_hull_dist_show_labels = $bindable(0.1),
