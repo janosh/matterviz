@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import ferrox
 import pytest
 from conftest import (
     lattice_from_matrix,
@@ -12,6 +11,7 @@ from conftest import (
     make_site,
     make_structure,
 )
+from ferrox import coordination, structure
 
 
 class TestFixtureValidity:
@@ -37,7 +37,7 @@ class TestFixtureValidity:
         """All JSON fixtures should be parseable by ferrox."""
         json_str = request.getfixturevalue(fixture_name)
         # Should not raise - ferrox can parse the structure
-        metadata = ferrox.get_structure_metadata(json_str)
+        metadata = structure.get_structure_metadata(json_str)
         assert "n_sites" in metadata
         assert metadata["n_sites"] > 0 or fixture_name == "disordered_json"
 
@@ -59,7 +59,7 @@ class TestFixtureValidity:
     ) -> None:
         """Fixtures have correct number of sites."""
         json_str = request.getfixturevalue(fixture_name)
-        metadata = ferrox.get_structure_metadata(json_str)
+        metadata = structure.get_structure_metadata(json_str)
         assert metadata["n_sites"] == expected_sites
 
     @pytest.mark.parametrize(
@@ -78,7 +78,7 @@ class TestFixtureValidity:
     ) -> None:
         """Fixtures contain expected elements."""
         json_str = request.getfixturevalue(fixture_name)
-        metadata = ferrox.get_structure_metadata(json_str)
+        metadata = structure.get_structure_metadata(json_str)
         actual_elements = set(metadata["elements"])
         assert actual_elements == expected_elements
 
@@ -172,7 +172,7 @@ class TestCrystallographicAccuracy:
     def test_rocksalt_has_coordination_six(self, rocksalt_nacl_json: str) -> None:
         """Rocksalt structure should have CN=6."""
         # Use ferrox to verify coordination
-        cn_list = ferrox.get_coordination_numbers(rocksalt_nacl_json, cutoff=3.5)
+        cn_list = coordination.get_coordination_numbers(rocksalt_nacl_json, cutoff=3.5)
         # All atoms should have CN=6 in rocksalt
         assert all(cn == 6 for cn in cn_list)
 

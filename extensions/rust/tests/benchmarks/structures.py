@@ -1,5 +1,7 @@
 """Structure generators for benchmarks."""
 
+from collections.abc import Iterator, Mapping
+
 from ase.build import bulk
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
@@ -43,30 +45,55 @@ def perturb_structure(structure: Structure, amplitude: float = 0.1) -> Structure
     return new_structure
 
 
-# Predefined test systems with increasing sizes
-SYSTEMS: dict[str, Structure] = {}
-
-
-def _init_systems() -> None:
-    """Initialize predefined test systems (lazy loading)."""
-    if SYSTEMS:
-        return  # Already initialized
-
+# System definitions (lazy-loaded to avoid import-time computation)
+_SYSTEM_DEFINITIONS: dict[str, tuple[str, str, float, tuple[int, int, int]]] = {
     # MgO rocksalt - ionic material
-    SYSTEMS["mgo_8"] = make_supercell("MgO", "rocksalt", 4.21, (1, 1, 1))  # 8 atoms
-    SYSTEMS["mgo_64"] = make_supercell("MgO", "rocksalt", 4.21, (2, 2, 2))  # 64 atoms
-    SYSTEMS["mgo_216"] = make_supercell("MgO", "rocksalt", 4.21, (3, 3, 3))  # 216 atoms
-    SYSTEMS["mgo_512"] = make_supercell("MgO", "rocksalt", 4.21, (4, 4, 4))  # 512 atoms
-
+    "mgo_8": ("MgO", "rocksalt", 4.21, (1, 1, 1)),  # 8 atoms
+    "mgo_64": ("MgO", "rocksalt", 4.21, (2, 2, 2)),  # 64 atoms
+    "mgo_216": ("MgO", "rocksalt", 4.21, (3, 3, 3)),  # 216 atoms
+    "mgo_512": ("MgO", "rocksalt", 4.21, (4, 4, 4)),  # 512 atoms
     # Cu FCC - metallic
-    SYSTEMS["cu_32"] = make_supercell("Cu", "fcc", 3.61, (2, 2, 2))  # 32 atoms
-    SYSTEMS["cu_108"] = make_supercell("Cu", "fcc", 3.61, (3, 3, 3))  # 108 atoms
-    SYSTEMS["cu_256"] = make_supercell("Cu", "fcc", 3.61, (4, 4, 4))  # 256 atoms
-
+    "cu_32": ("Cu", "fcc", 3.61, (2, 2, 2)),  # 32 atoms
+    "cu_108": ("Cu", "fcc", 3.61, (3, 3, 3)),  # 108 atoms
+    "cu_256": ("Cu", "fcc", 3.61, (4, 4, 4)),  # 256 atoms
     # Si diamond - covalent semiconductor
-    SYSTEMS["si_64"] = make_supercell("Si", "diamond", 5.43, (2, 2, 2))  # 64 atoms
-    SYSTEMS["si_216"] = make_supercell("Si", "diamond", 5.43, (3, 3, 3))  # 216 atoms
+    "si_64": ("Si", "diamond", 5.43, (2, 2, 2)),  # 64 atoms
+    "si_216": ("Si", "diamond", 5.43, (3, 3, 3)),  # 216 atoms
+}
+
+_SYSTEMS_CACHE: dict[str, Structure] = {}
 
 
-# Initialize on import
-_init_systems()
+def get_system(name: str) -> Structure:
+    """Get a predefined test system by name (lazy-loaded).
+
+    Args:
+        name: System name (e.g., 'mgo_64', 'cu_108', 'si_216')
+
+    Returns:
+        pymatgen Structure object
+    """
+    if name not in _SYSTEMS_CACHE:
+        if name not in _SYSTEM_DEFINITIONS:
+            available = ", ".join(sorted(_SYSTEM_DEFINITIONS.keys()))
+            raise KeyError(f"Unknown system: '{name}'. Available: {available}")
+        formula, crystal, a, size = _SYSTEM_DEFINITIONS[name]
+        _SYSTEMS_CACHE[name] = make_supercell(formula, crystal, a, size)
+    return _SYSTEMS_CACHE[name]
+
+
+# For backward compatibility, provide SYSTEMS as a lazy-loading dict-like interface
+class _LazySystemsDict(Mapping[str, Structure]):
+    """Dict-like object that lazily loads systems on access."""
+
+    def __getitem__(self, key: str) -> Structure:
+        return get_system(key)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(_SYSTEM_DEFINITIONS)
+
+    def __len__(self) -> int:
+        return len(_SYSTEM_DEFINITIONS)
+
+
+SYSTEMS = _LazySystemsDict()

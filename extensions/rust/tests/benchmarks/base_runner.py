@@ -107,9 +107,9 @@ def run_timed_fire_loop(
     n_steps_actual = 0
 
     with gpu_timer() as timer:
-        for step in range(max_steps):
+        for step_idx in range(1, max_steps + 1):
             step_fn()
-            n_steps_actual = step + 1
+            n_steps_actual = step_idx
             if is_converged_fn(fmax):
                 break
         timer.n_steps = n_steps_actual

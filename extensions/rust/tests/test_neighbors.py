@@ -3,9 +3,10 @@
 import json
 import time
 
-import ferrox
 import numpy as np
 import pytest
+from ferrox import coordination
+from ferrox import neighbors as neighbors_mod
 
 
 def make_fcc_cu(lattice_const: float = 3.61) -> dict:
@@ -122,7 +123,9 @@ class TestNeighborListBasics:
         fcc = json.dumps(make_fcc_cu())
         cutoff = 3.0  # covers first shell at ~2.55 Å
 
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(fcc, cutoff)
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
+            fcc, cutoff
+        )
 
         # Count neighbors per site
         counts = [0] * 4
@@ -137,7 +140,9 @@ class TestNeighborListBasics:
         bcc = json.dumps(make_bcc_fe())
         cutoff = 2.6  # covers first shell at ~2.48 Å
 
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(bcc, cutoff)
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
+            bcc, cutoff
+        )
 
         # Count neighbors per site
         counts = [0] * 2
@@ -152,7 +157,9 @@ class TestNeighborListBasics:
         nacl = json.dumps(make_nacl())
         cutoff = 3.5  # covers first shell at ~2.82 Å
 
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(nacl, cutoff)
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
+            nacl, cutoff
+        )
 
         # Count neighbors per site
         counts = [0] * 8
@@ -167,7 +174,9 @@ class TestNeighborListBasics:
         fcc = json.dumps(make_fcc_cu(3.61))
         cutoff = 3.0
 
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(fcc, cutoff)
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
+            fcc, cutoff
+        )
 
         # Expected first shell distance: a/sqrt(2) ≈ 2.552 Å
         expected_dist = 3.61 / np.sqrt(2)
@@ -182,7 +191,9 @@ class TestNeighborListBasics:
         fcc = json.dumps(make_fcc_cu())
         cutoff = 0.1  # too small to find any neighbors
 
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(fcc, cutoff)
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
+            fcc, cutoff
+        )
 
         assert len(centers) == 0
 
@@ -191,7 +202,7 @@ class TestNeighborListBasics:
         fcc = json.dumps(make_fcc_cu())
 
         with pytest.raises(ValueError):
-            ferrox.get_neighbor_list(fcc, -1.0)
+            neighbors_mod.get_neighbor_list(fcc, -1.0)
 
 
 class TestPeriodicImages:
@@ -202,7 +213,9 @@ class TestPeriodicImages:
         fcc = json.dumps(make_fcc_cu())
         cutoff = 3.0
 
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(fcc, cutoff)
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
+            fcc, cutoff
+        )
 
         # Some images should be non-zero
         nonzero_images = [img for img in images if img != [0, 0, 0]]
@@ -213,7 +226,9 @@ class TestPeriodicImages:
         fcc = json.dumps(make_fcc_cu())
         cutoff = 3.0
 
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(fcc, cutoff)
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
+            fcc, cutoff
+        )
 
         for img in images:
             assert all(abs(x) <= 1 for x in img), (
@@ -233,7 +248,7 @@ class TestPerformance:
         cutoff = 3.0
 
         start = time.perf_counter()
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
             struct_json, cutoff
         )
         elapsed = time.perf_counter() - start
@@ -256,10 +271,12 @@ class TestConsistency:
         cutoff = 3.0
 
         # Get neighbor list
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(fcc, cutoff)
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
+            fcc, cutoff
+        )
 
         # Get coordination numbers
-        cns = ferrox.get_coordination_numbers(fcc, cutoff)
+        cns = coordination.get_coordination_numbers(fcc, cutoff)
 
         # Count from neighbor list
         nl_counts = [0] * len(cns)
@@ -274,10 +291,12 @@ class TestConsistency:
         cutoff = 3.0
 
         # Get neighbor list
-        centers, neighbors, images, distances = ferrox.get_neighbor_list(fcc, cutoff)
+        centers, neighbor_indices, images, distances = neighbors_mod.get_neighbor_list(
+            fcc, cutoff
+        )
 
         # Get local environment for site 0
-        local_env = ferrox.get_local_environment(fcc, 0, cutoff)
+        local_env = coordination.get_local_environment(fcc, 0, cutoff)
 
         # Count neighbors of site 0 from neighbor list
         nl_count = sum(1 for center in centers if center == 0)

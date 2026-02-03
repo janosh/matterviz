@@ -4,9 +4,7 @@
 //! 1. Unit conversion correctness (internal time unit = 10.1805 fs)
 //! 2. Analytical Ornstein-Uhlenbeck velocity relaxation for Langevin dynamics
 
-use ferrox::integrators::{
-    LangevinConfig, MDState, langevin_step, set_forces, units, velocity_verlet_step,
-};
+use ferrox::md::{LangevinConfig, MDState, langevin_step, units, velocity_verlet_step};
 use nalgebra::Vector3;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -222,7 +220,7 @@ fn test_velocity_verlet_time_reversibility() {
     let v0 = 0.0;
 
     let forces = compute_forces(&state.positions);
-    state = set_forces(state, &forces);
+    state.set_forces(&forces);
 
     let dt = 0.5;
     let n_steps = 100;
@@ -290,7 +288,7 @@ fn test_velocity_verlet_phase_space_preservation() {
         state.velocities[0] = Vector3::new(*vi, 0.0, 0.0);
 
         let forces = compute_forces(&state.positions);
-        state = set_forces(state, &forces);
+        state.set_forces(&forces);
 
         for _ in 0..n_steps {
             state = velocity_verlet_step(state, dt, compute_forces);

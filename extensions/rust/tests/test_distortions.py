@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ferrox
 import numpy as np
 import pytest
 from conftest import (
@@ -13,6 +12,7 @@ from conftest import (
     minimum_image_distance,
     structure_to_json,
 )
+from ferrox import defects
 
 # === Fixtures ===
 
@@ -73,7 +73,7 @@ class TestDistortBonds:
     def test_returns_list_of_structures(self, fcc_cu: dict) -> None:
         """distort_bonds returns list with one structure per factor."""
         factors = [-0.4, -0.2, 0.2, 0.4]
-        results = ferrox.defect_distort_bonds(
+        results = defects.distort_bonds(
             structure_to_json(fcc_cu), 0, factors, cutoff=3.0
         )
         assert len(results) == len(factors)
@@ -86,7 +86,7 @@ class TestDistortBonds:
     def test_distortion_factors_recorded(self, fcc_cu: dict) -> None:
         """Each result records correct distortion factor."""
         factors = [-0.3, 0.0, 0.3]
-        results = ferrox.defect_distort_bonds(
+        results = defects.distort_bonds(
             structure_to_json(fcc_cu), 0, factors, cutoff=3.0
         )
         for idx, factor in enumerate(factors):
@@ -94,25 +94,21 @@ class TestDistortBonds:
 
     def test_center_site_idx_recorded(self, fcc_cu: dict) -> None:
         """Each result records correct center site index."""
-        results = ferrox.defect_distort_bonds(
-            structure_to_json(fcc_cu), 2, [0.1], cutoff=3.0
-        )
+        results = defects.distort_bonds(structure_to_json(fcc_cu), 2, [0.1], cutoff=3.0)
         assert results[0]["center_site_idx"] == 2
 
     def test_invalid_site_index_raises(self, fcc_cu: dict) -> None:
         """Out-of-bounds site index raises ValueError."""
         with pytest.raises(ValueError, match="out of bounds"):
-            ferrox.defect_distort_bonds(
-                structure_to_json(fcc_cu), 100, [0.1], cutoff=3.0
-            )
+            defects.distort_bonds(structure_to_json(fcc_cu), 100, [0.1], cutoff=3.0)
 
     def test_num_neighbors_limits_distortions(self, nacl_supercell: dict) -> None:
         """Only specified number of neighbors should be distorted."""
         # Distort only 2 nearest neighbors
-        results_limited = ferrox.defect_distort_bonds(
+        results_limited = defects.distort_bonds(
             structure_to_json(nacl_supercell), 0, [0.2], num_neighbors=2, cutoff=5.0
         )
-        results_all = ferrox.defect_distort_bonds(
+        results_all = defects.distort_bonds(
             structure_to_json(nacl_supercell), 0, [0.2], cutoff=5.0
         )
 
@@ -135,14 +131,12 @@ class TestDistortBonds:
 
     def test_empty_factors_returns_empty(self, fcc_cu: dict) -> None:
         """Empty distortion factors returns empty list."""
-        results = ferrox.defect_distort_bonds(
-            structure_to_json(fcc_cu), 0, [], cutoff=3.0
-        )
+        results = defects.distort_bonds(structure_to_json(fcc_cu), 0, [], cutoff=3.0)
         assert results == []
 
     def test_preserves_num_sites(self, fcc_cu: dict) -> None:
         """Distorted structure has same number of sites."""
-        results = ferrox.defect_distort_bonds(
+        results = defects.distort_bonds(
             structure_to_json(fcc_cu), 0, [0.1, -0.1], cutoff=3.0
         )
         for result in results:
@@ -150,7 +144,7 @@ class TestDistortBonds:
 
     def test_preserves_species(self, nacl_supercell: dict) -> None:
         """Distorted structure preserves all species."""
-        results = ferrox.defect_distort_bonds(
+        results = defects.distort_bonds(
             structure_to_json(nacl_supercell), 0, [0.1], cutoff=5.0
         )
         orig_elements = sorted(
@@ -178,7 +172,7 @@ class TestDistortBonds:
         )
         # Large cutoff ensures we see the same atom via multiple periodic images
         cutoff = 5.0  # Much larger than cell dimension
-        results = ferrox.defect_distort_bonds(
+        results = defects.distort_bonds(
             structure_to_json(small_cell), 0, [0.3], cutoff=cutoff
         )
 
@@ -201,7 +195,7 @@ class TestDistortBonds:
 
         # The key regression check: run twice with same params should give same result
         # (if deduplication is broken, random ordering could give different results)
-        results2 = ferrox.defect_distort_bonds(
+        results2 = defects.distort_bonds(
             structure_to_json(small_cell), 0, [0.3], cutoff=cutoff
         )
         new_coords2 = get_cart_coords(results2[0]["structure"])
@@ -216,7 +210,7 @@ class TestCreateDimer:
     def test_dimer_reaches_target_distance(self, simple_dimer_structure: dict) -> None:
         """Dimer brings atoms to target distance."""
         target = 0.5
-        result = ferrox.defect_create_dimer(
+        result = defects.create_dimer(
             structure_to_json(simple_dimer_structure), 0, 1, target
         )
         assert "structure" in result
@@ -231,7 +225,7 @@ class TestCreateDimer:
     def test_dimer_expands_distance(self, simple_dimer_structure: dict) -> None:
         """Dimer can also increase distance."""
         target = 3.0  # Larger than initial ~1 Å
-        result = ferrox.defect_create_dimer(
+        result = defects.create_dimer(
             structure_to_json(simple_dimer_structure), 0, 1, target
         )
 
@@ -260,15 +254,13 @@ class TestCreateDimer:
     ) -> None:
         """Invalid inputs raise appropriate errors."""
         with pytest.raises(ValueError, match=match):
-            ferrox.defect_create_dimer(
+            defects.create_dimer(
                 structure_to_json(simple_dimer_structure), site_a, site_b, target
             )
 
     def test_preserves_num_sites(self, nacl_supercell: dict) -> None:
         """Dimer preserves number of sites."""
-        result = ferrox.defect_create_dimer(
-            structure_to_json(nacl_supercell), 0, 1, 2.5
-        )
+        result = defects.create_dimer(structure_to_json(nacl_supercell), 0, 1, 2.5)
         assert len(result["structure"]["sites"]) == len(nacl_supercell["sites"])
 
 
@@ -277,7 +269,7 @@ class TestRattleStructure:
 
     def test_rattle_returns_valid_structure(self, fcc_cu: dict) -> None:
         """Rattling returns valid distortion result."""
-        result = ferrox.defect_rattle(
+        result = defects.rattle(
             structure_to_json(fcc_cu), 0.1, seed=42, min_distance=0.5, max_attempts=100
         )
         assert result["distortion_type"] == "rattle"
@@ -286,7 +278,7 @@ class TestRattleStructure:
 
     def test_rattle_changes_positions(self, fcc_cu: dict) -> None:
         """Rattling modifies atomic positions."""
-        result = ferrox.defect_rattle(
+        result = defects.rattle(
             structure_to_json(fcc_cu), 0.2, seed=42, min_distance=0.3, max_attempts=100
         )
 
@@ -297,10 +289,10 @@ class TestRattleStructure:
 
     def test_rattle_is_reproducible(self, fcc_cu: dict) -> None:
         """Same seed produces same rattled structure."""
-        result1 = ferrox.defect_rattle(
+        result1 = defects.rattle(
             structure_to_json(fcc_cu), 0.1, seed=42, min_distance=0.5, max_attempts=100
         )
-        result2 = ferrox.defect_rattle(
+        result2 = defects.rattle(
             structure_to_json(fcc_cu), 0.1, seed=42, min_distance=0.5, max_attempts=100
         )
 
@@ -310,10 +302,10 @@ class TestRattleStructure:
 
     def test_different_seeds_differ(self, fcc_cu: dict) -> None:
         """Different seeds produce different structures."""
-        result1 = ferrox.defect_rattle(
+        result1 = defects.rattle(
             structure_to_json(fcc_cu), 0.1, seed=1, min_distance=0.5, max_attempts=100
         )
-        result2 = ferrox.defect_rattle(
+        result2 = defects.rattle(
             structure_to_json(fcc_cu), 0.1, seed=2, min_distance=0.5, max_attempts=100
         )
 
@@ -324,7 +316,7 @@ class TestRattleStructure:
 
     def test_zero_stdev_unchanged(self, fcc_cu: dict) -> None:
         """Zero stdev leaves structure unchanged."""
-        result = ferrox.defect_rattle(
+        result = defects.rattle(
             structure_to_json(fcc_cu), 0.0, seed=42, min_distance=0.5, max_attempts=100
         )
 
@@ -335,7 +327,7 @@ class TestRattleStructure:
     def test_negative_stdev_raises(self, fcc_cu: dict) -> None:
         """Negative stdev raises error."""
         with pytest.raises(ValueError, match="non-negative"):
-            ferrox.defect_rattle(
+            defects.rattle(
                 structure_to_json(fcc_cu),
                 -0.1,
                 seed=42,
@@ -346,7 +338,7 @@ class TestRattleStructure:
     def test_records_stdev_as_factor(self, fcc_cu: dict) -> None:
         """Distortion factor records the stdev."""
         stdev = 0.15
-        result = ferrox.defect_rattle(
+        result = defects.rattle(
             structure_to_json(fcc_cu),
             stdev,
             seed=42,
@@ -358,7 +350,7 @@ class TestRattleStructure:
     @pytest.mark.parametrize("stdev", [0.05, 0.1, 0.2])
     def test_rattle_with_various_stdev(self, fcc_cu: dict, stdev: float) -> None:
         """Rattling works with various stdev values."""
-        result = ferrox.defect_rattle(
+        result = defects.rattle(
             structure_to_json(fcc_cu),
             stdev,
             seed=42,
@@ -374,7 +366,7 @@ class TestLocalRattle:
 
     def test_local_rattle_returns_structure(self, nacl_supercell: dict) -> None:
         """local_rattle returns valid distortion result."""
-        result = ferrox.defect_local_rattle(
+        result = defects.local_rattle(
             structure_to_json(nacl_supercell), 0, 0.5, 3.0, seed=42
         )
         assert "structure" in result
@@ -392,7 +384,7 @@ class TestLocalRattle:
         ]
         structure = make_structure(lattice, sites)
 
-        result = ferrox.defect_local_rattle(
+        result = defects.local_rattle(
             structure_to_json(structure), 0, 1.0, 2.0, seed=42
         )
 
@@ -409,10 +401,10 @@ class TestLocalRattle:
 
     def test_reproducible_with_seed(self, nacl_supercell: dict) -> None:
         """Same seed produces same result."""
-        result1 = ferrox.defect_local_rattle(
+        result1 = defects.local_rattle(
             structure_to_json(nacl_supercell), 0, 0.5, 3.0, seed=42
         )
-        result2 = ferrox.defect_local_rattle(
+        result2 = defects.local_rattle(
             structure_to_json(nacl_supercell), 0, 0.5, 3.0, seed=42
         )
 
@@ -422,10 +414,10 @@ class TestLocalRattle:
 
     def test_different_seeds_differ(self, nacl_supercell: dict) -> None:
         """Different seeds produce different structures."""
-        result1 = ferrox.defect_local_rattle(
+        result1 = defects.local_rattle(
             structure_to_json(nacl_supercell), 0, 0.5, 3.0, seed=1
         )
-        result2 = ferrox.defect_local_rattle(
+        result2 = defects.local_rattle(
             structure_to_json(nacl_supercell), 0, 0.5, 3.0, seed=2
         )
 
@@ -448,15 +440,13 @@ class TestLocalRattle:
     ) -> None:
         """Invalid inputs raise appropriate errors."""
         with pytest.raises(ValueError, match=match):
-            ferrox.defect_local_rattle(
+            defects.local_rattle(
                 structure_to_json(fcc_cu), center, amplitude, decay, seed=42
             )
 
     def test_zero_amplitude_unchanged(self, fcc_cu: dict) -> None:
         """Zero max_amplitude leaves structure unchanged."""
-        result = ferrox.defect_local_rattle(
-            structure_to_json(fcc_cu), 0, 0.0, 3.0, seed=42
-        )
+        result = defects.local_rattle(structure_to_json(fcc_cu), 0, 0.0, 3.0, seed=42)
 
         orig_coords = get_cart_coords(fcc_cu)
         new_coords = get_cart_coords(result["structure"])
@@ -465,7 +455,7 @@ class TestLocalRattle:
     def test_records_amplitude_as_factor(self, fcc_cu: dict) -> None:
         """Distortion factor records max_amplitude."""
         amplitude = 0.75
-        result = ferrox.defect_local_rattle(
+        result = defects.local_rattle(
             structure_to_json(fcc_cu), 0, amplitude, 3.0, seed=42
         )
         assert result["distortion_factor"] == pytest.approx(amplitude)
@@ -473,7 +463,7 @@ class TestLocalRattle:
     @pytest.mark.parametrize("center_idx", [0, 1, 2, 3])
     def test_different_center_sites(self, fcc_cu: dict, center_idx: int) -> None:
         """Local rattle works with different center sites."""
-        result = ferrox.defect_local_rattle(
+        result = defects.local_rattle(
             structure_to_json(fcc_cu), center_idx, 0.3, 2.0, seed=42
         )
         assert result["center_site_idx"] == center_idx
@@ -486,9 +476,7 @@ class TestEdgeCases:
     def test_single_atom_distort_bonds(self) -> None:
         """Single atom structure with distort_bonds (no neighbors)."""
         single = make_cubic_structure(4.0, [make_site("Fe", [0, 0, 0])])
-        results = ferrox.defect_distort_bonds(
-            structure_to_json(single), 0, [0.1], cutoff=3.0
-        )
+        results = defects.distort_bonds(structure_to_json(single), 0, [0.1], cutoff=3.0)
         # Should return result but with unchanged structure (no neighbors to distort)
         assert len(results) == 1
         assert len(results[0]["structure"]["sites"]) == 1
@@ -496,7 +484,7 @@ class TestEdgeCases:
     def test_single_atom_rattle(self) -> None:
         """Single atom structure with rattle."""
         single = make_cubic_structure(4.0, [make_site("Fe", [0, 0, 0])])
-        result = ferrox.defect_rattle(
+        result = defects.rattle(
             structure_to_json(single), 0.1, seed=42, min_distance=0.5, max_attempts=100
         )
         assert len(result["structure"]["sites"]) == 1
@@ -509,14 +497,12 @@ class TestEdgeCases:
     def test_single_atom_local_rattle(self) -> None:
         """Single atom structure with local_rattle."""
         single = make_cubic_structure(4.0, [make_site("Fe", [0, 0, 0])])
-        result = ferrox.defect_local_rattle(
-            structure_to_json(single), 0, 0.5, 3.0, seed=42
-        )
+        result = defects.local_rattle(structure_to_json(single), 0, 0.5, 3.0, seed=42)
         assert len(result["structure"]["sites"]) == 1
 
     def test_large_distortion_factor(self, fcc_cu: dict) -> None:
         """Large distortion factors work correctly."""
-        results = ferrox.defect_distort_bonds(
+        results = defects.distort_bonds(
             structure_to_json(fcc_cu), 0, [1.0, -0.9], cutoff=3.0
         )
         assert len(results) == 2
@@ -525,9 +511,7 @@ class TestEdgeCases:
 
     def test_very_small_cutoff(self, fcc_cu: dict) -> None:
         """Very small cutoff (no neighbors within range)."""
-        results = ferrox.defect_distort_bonds(
-            structure_to_json(fcc_cu), 0, [0.1], cutoff=0.1
-        )
+        results = defects.distort_bonds(structure_to_json(fcc_cu), 0, [0.1], cutoff=0.1)
         # Should return result with unchanged structure
         assert len(results) == 1
         orig_coords = get_cart_coords(fcc_cu)
@@ -546,7 +530,7 @@ class TestEdgeCases:
         structure = make_cubic_structure(9.0, sites)
         assert len(structure["sites"]) == 27
 
-        result = ferrox.defect_rattle(
+        result = defects.rattle(
             structure_to_json(structure),
             0.1,
             seed=42,
@@ -566,7 +550,7 @@ class TestEdgeCases:
             ],
         )
         with pytest.raises(ValueError, match="same position"):
-            ferrox.defect_create_dimer(structure_to_json(degenerate), 0, 1, 2.0)
+            defects.create_dimer(structure_to_json(degenerate), 0, 1, 2.0)
 
     def test_distort_bonds_highly_skewed_cell(self) -> None:
         """Distort bonds works correctly with highly skewed cell."""
@@ -584,7 +568,7 @@ class TestEdgeCases:
             make_site("O", [0.75, 0.75, 0.75]),
         ]
         structure = make_structure(lattice, sites)
-        results = ferrox.defect_distort_bonds(
+        results = defects.distort_bonds(
             structure_to_json(structure), 0, [0.1, -0.1], cutoff=4.0
         )
         assert len(results) == 2
@@ -601,7 +585,7 @@ class TestEdgeCases:
             ],
         )
         # With tight min_distance, rattling should still succeed
-        result = ferrox.defect_rattle(
+        result = defects.rattle(
             structure_to_json(structure),
             0.05,
             seed=42,

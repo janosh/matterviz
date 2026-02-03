@@ -1,7 +1,7 @@
 """Tests for integrator error handling when force callbacks fail."""
 
-import ferrox
 import pytest
+from ferrox import md
 
 
 def failing_force_fn(_positions: list[list[float]]) -> list[list[float]]:
@@ -9,7 +9,7 @@ def failing_force_fn(_positions: list[list[float]]) -> list[list[float]]:
     raise RuntimeError("Force computation failed")
 
 
-def snapshot_state(state: ferrox.MDState) -> tuple[list, list, list]:
+def snapshot_state(state: md.MDState) -> tuple[list, list, list]:
     """Record positions, velocities, and forces."""
     return (
         [list(pos) for pos in state.positions],
@@ -19,7 +19,7 @@ def snapshot_state(state: ferrox.MDState) -> tuple[list, list, list]:
 
 
 def assert_state_unchanged(
-    state: ferrox.MDState, snapshot: tuple[list, list, list]
+    state: md.MDState, snapshot: tuple[list, list, list]
 ) -> None:
     """Verify state matches a previous snapshot."""
     orig_pos, orig_vel, orig_forces = snapshot
@@ -30,9 +30,9 @@ def assert_state_unchanged(
 
 
 @pytest.fixture
-def md_state() -> ferrox.MDState:
+def md_state() -> md.MDState:
     """Create a simple MD state for testing."""
-    state = ferrox.MDState([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]], [12.0, 12.0])
+    state = md.MDState([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]], [12.0, 12.0])
     state.velocities = [[0.1, 0.05, -0.02], [-0.1, -0.05, 0.02]]
     state.forces = [[-0.1, 0.0, 0.0], [0.1, 0.0, 0.0]]
     return state
@@ -58,16 +58,16 @@ def md_state() -> ferrox.MDState:
 def integrator(request: pytest.FixtureRequest) -> object:
     """Create integrator/thermostat for testing."""
     name, kwargs = request.param
-    return getattr(ferrox, name)(**kwargs)
+    return getattr(md, name)(**kwargs)
 
 
-def test_error_raises_exception(integrator: object, md_state: ferrox.MDState) -> None:
+def test_error_raises_exception(integrator: object, md_state: md.MDState) -> None:
     """Integrator.step() should raise when force callback fails."""
     with pytest.raises(RuntimeError, match="Force computation failed"):
         integrator.step(md_state, failing_force_fn)
 
 
-def test_state_restored_on_error(integrator: object, md_state: ferrox.MDState) -> None:
+def test_state_restored_on_error(integrator: object, md_state: md.MDState) -> None:
     """Integrator.step() should restore state when force callback fails."""
     original = snapshot_state(md_state)
 

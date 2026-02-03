@@ -7,9 +7,9 @@ we test against analytical formulas which ferrox implements directly.
 
 from collections.abc import Callable
 
-import ferrox
 import numpy as np
 import pytest
+from ferrox import potentials
 from numpy.testing import assert_allclose
 
 # === Lennard-Jones Analytical Tests ===
@@ -26,7 +26,7 @@ class TestLennardJonesAnalytical:
         positions = [[0.0, 0.0, 0.0], [dist, 0.0, 0.0]]
 
         # Ferrox
-        energy_ferrox, _ = ferrox.compute_lennard_jones(
+        energy_ferrox, _ = potentials.compute_lennard_jones(
             positions, sigma=sigma, epsilon=epsilon
         )
 
@@ -46,7 +46,7 @@ class TestLennardJonesAnalytical:
         positions = [[0.0, 0.0, 0.0], [dist, 0.0, 0.0]]
 
         # Ferrox
-        _, forces_ferrox = ferrox.compute_lennard_jones(
+        _, forces_ferrox = potentials.compute_lennard_jones(
             positions, sigma=sigma, epsilon=epsilon
         )
 
@@ -75,7 +75,7 @@ class TestMorseAnalytical:
         positions = [[0.0, 0.0, 0.0], [dist, 0.0, 0.0]]
 
         # Ferrox
-        energy_ferrox, _, _ = ferrox.compute_morse(
+        energy_ferrox, _, _ = potentials.compute_morse(
             positions, d=well_depth, alpha=alpha, r0=eq_dist, cutoff=10.0
         )
 
@@ -94,7 +94,7 @@ class TestMorseAnalytical:
         positions = [[0.0, 0.0, 0.0], [dist, 0.0, 0.0]]
 
         # Ferrox
-        _, forces_ferrox, _ = ferrox.compute_morse(
+        _, forces_ferrox, _ = potentials.compute_morse(
             positions, d=well_depth, alpha=alpha, r0=eq_dist, cutoff=10.0
         )
 
@@ -128,7 +128,7 @@ class TestSoftSphereAnalytical:
         positions = [[0.0, 0.0, 0.0], [dist, 0.0, 0.0]]
 
         # Ferrox
-        energy_ferrox, _, _ = ferrox.compute_soft_sphere(
+        energy_ferrox, _, _ = potentials.compute_soft_sphere(
             positions, sigma=sigma, epsilon=epsilon, alpha=alpha, cutoff=10.0
         )
 
@@ -153,7 +153,7 @@ class TestSoftSphereAnalytical:
         positions = [[0.0, 0.0, 0.0], [dist, 0.0, 0.0]]
 
         # Ferrox
-        _, forces_ferrox, _ = ferrox.compute_soft_sphere(
+        _, forces_ferrox, _ = potentials.compute_soft_sphere(
             positions, sigma=sigma, epsilon=epsilon, alpha=alpha, cutoff=10.0
         )
 
@@ -173,10 +173,13 @@ class TestConservationLaws:
     @pytest.mark.parametrize(
         "potential_fn,kwargs",
         [
-            (ferrox.compute_lennard_jones, {"sigma": 1.0, "epsilon": 1.0}),
-            (ferrox.compute_morse, {"d": 1.0, "alpha": 1.5, "r0": 1.2, "cutoff": 10.0}),
+            (potentials.compute_lennard_jones, {"sigma": 1.0, "epsilon": 1.0}),
             (
-                ferrox.compute_soft_sphere,
+                potentials.compute_morse,
+                {"d": 1.0, "alpha": 1.5, "r0": 1.2, "cutoff": 10.0},
+            ),
+            (
+                potentials.compute_soft_sphere,
                 {"sigma": 1.0, "epsilon": 1.0, "alpha": 6.0, "cutoff": 10.0},
             ),
         ],
@@ -202,10 +205,13 @@ class TestConservationLaws:
     @pytest.mark.parametrize(
         "potential_fn,kwargs",
         [
-            (ferrox.compute_lennard_jones, {"sigma": 1.0, "epsilon": 1.0}),
-            (ferrox.compute_morse, {"d": 1.0, "alpha": 1.5, "r0": 1.2, "cutoff": 10.0}),
+            (potentials.compute_lennard_jones, {"sigma": 1.0, "epsilon": 1.0}),
             (
-                ferrox.compute_soft_sphere,
+                potentials.compute_morse,
+                {"d": 1.0, "alpha": 1.5, "r0": 1.2, "cutoff": 10.0},
+            ),
+            (
+                potentials.compute_soft_sphere,
                 {"sigma": 1.0, "epsilon": 1.0, "alpha": 6.0, "cutoff": 10.0},
             ),
         ],
@@ -234,10 +240,13 @@ class TestConservationLaws:
     @pytest.mark.parametrize(
         "potential_fn,kwargs",
         [
-            (ferrox.compute_lennard_jones, {"sigma": 1.0, "epsilon": 1.0}),
-            (ferrox.compute_morse, {"d": 1.0, "alpha": 1.5, "r0": 1.2, "cutoff": 10.0}),
+            (potentials.compute_lennard_jones, {"sigma": 1.0, "epsilon": 1.0}),
             (
-                ferrox.compute_soft_sphere,
+                potentials.compute_morse,
+                {"d": 1.0, "alpha": 1.5, "r0": 1.2, "cutoff": 10.0},
+            ),
+            (
+                potentials.compute_soft_sphere,
                 {"sigma": 1.0, "epsilon": 1.0, "alpha": 6.0, "cutoff": 10.0},
             ),
         ],
@@ -291,7 +300,7 @@ class TestHarmonicBondsAnalytical:
         positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
         bonds = [[0, 1, 1.0, 1.0]]  # [i, j, k, r0]
 
-        energy, forces, _ = ferrox.compute_harmonic_bonds(positions, bonds)
+        energy, forces, _ = potentials.compute_harmonic_bonds(positions, bonds)
 
         assert_allclose(energy, 0.0, atol=1e-14)
         assert_allclose(np.array(forces), 0.0, atol=1e-14)
@@ -305,7 +314,7 @@ class TestHarmonicBondsAnalytical:
         positions = [[0.0, 0.0, 0.0], [dist, 0.0, 0.0]]
         bonds = [[0, 1, spring_k, r0]]
 
-        energy, _, _ = ferrox.compute_harmonic_bonds(positions, bonds)
+        energy, _, _ = potentials.compute_harmonic_bonds(positions, bonds)
 
         expected = 0.5 * spring_k * (dist - r0) ** 2
         assert_allclose(energy, expected, rtol=1e-12)
@@ -319,7 +328,7 @@ class TestHarmonicBondsAnalytical:
         positions = [[0.0, 0.0, 0.0], [dist, 0.0, 0.0]]
         bonds = [[0, 1, spring_k, r0]]
 
-        _, forces, _ = ferrox.compute_harmonic_bonds(positions, bonds)
+        _, forces, _ = potentials.compute_harmonic_bonds(positions, bonds)
 
         # Force on atom 1: F = -k * (r - r0) in +x direction when compressed
         expected_force = -spring_k * (dist - r0)
@@ -333,7 +342,7 @@ class TestHarmonicBondsAnalytical:
         r0 = 1.0
         bonds = [[0, 1, spring_k, r0], [1, 2, spring_k, r0]]
 
-        energy, forces, _ = ferrox.compute_harmonic_bonds(positions, bonds)
+        energy, forces, _ = potentials.compute_harmonic_bonds(positions, bonds)
 
         # Bond 0-1: at equilibrium → E = 0
         # Bond 1-2: dist = 1.2, E = 0.5 * 1.0 * 0.2² = 0.02
@@ -352,7 +361,7 @@ class TestHarmonicBondsAnalytical:
         # Create a chain of bonds
         bonds = [[idx, idx + 1, 1.0, 1.5] for idx in range(n_atoms - 1)]
 
-        _, forces, _ = ferrox.compute_harmonic_bonds(positions, bonds)
+        _, forces, _ = potentials.compute_harmonic_bonds(positions, bonds)
 
         total_force = np.sum(forces, axis=0)
         assert_allclose(total_force, [0.0, 0.0, 0.0], atol=1e-12)
@@ -365,7 +374,7 @@ class TestHarmonicBondsAnalytical:
         r0 = 1.5
         bonds = [[0, 1, spring_k, r0]]
 
-        energy, forces, _ = ferrox.compute_harmonic_bonds(positions, bonds)
+        energy, forces, _ = potentials.compute_harmonic_bonds(positions, bonds)
 
         dist = np.sqrt(3.0)
         expected_energy = 0.5 * spring_k * (dist - r0) ** 2
@@ -383,7 +392,7 @@ class TestHarmonicBondsAnalytical:
         positions = [[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]]
         bonds = [[0, 1, 1.0, 1.0]]
         cell = [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]]
-        _, _, stress = ferrox.compute_harmonic_bonds(
+        _, _, stress = potentials.compute_harmonic_bonds(
             positions, bonds, cell=cell, compute_stress=True
         )
         assert stress is not None
@@ -399,9 +408,12 @@ class TestStressTensorValidation:
     @pytest.mark.parametrize(
         "potential_fn,kwargs",
         [
-            (ferrox.compute_morse, {"d": 1.0, "alpha": 1.5, "r0": 1.2, "cutoff": 5.0}),
             (
-                ferrox.compute_soft_sphere,
+                potentials.compute_morse,
+                {"d": 1.0, "alpha": 1.5, "r0": 1.2, "cutoff": 5.0},
+            ),
+            (
+                potentials.compute_soft_sphere,
                 {"sigma": 1.0, "epsilon": 1.0, "alpha": 6.0, "cutoff": 5.0},
             ),
         ],
@@ -420,7 +432,7 @@ class TestStressTensorValidation:
         positions = [[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]]
         cell = [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]]
 
-        _, _, stress = ferrox.compute_morse(
+        _, _, stress = potentials.compute_morse(
             positions,
             cell=cell,
             d=1.0,
@@ -439,7 +451,7 @@ class TestStressTensorValidation:
         positions = [[0.0, 0.0, 0.0], [0.8, 0.0, 0.0]]
         cell = [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]]
 
-        _, _, stress = ferrox.compute_soft_sphere(
+        _, _, stress = potentials.compute_soft_sphere(
             positions,
             cell=cell,
             sigma=1.0,
@@ -458,7 +470,7 @@ class TestStressTensorValidation:
         positions = [[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]]
 
         # Without cell, stress should be None even if compute_stress=True
-        _, _, stress = ferrox.compute_morse(
+        _, _, stress = potentials.compute_morse(
             positions, d=1.0, alpha=1.5, r0=1.2, cutoff=5.0, compute_stress=True
         )
         assert stress is None, "Stress should be None without cell (no volume)"
@@ -476,10 +488,10 @@ class TestMixedPeriodicBoundaryConditions:
         # Two atoms at distance 1.0 (real-space distance)
         positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
 
-        energy_pbc, _ = ferrox.compute_lennard_jones(
+        energy_pbc, _ = potentials.compute_lennard_jones(
             positions, cell=cell, pbc=[True, True, True], sigma=1.0, epsilon=1.0
         )
-        energy_no_pbc, _ = ferrox.compute_lennard_jones(
+        energy_no_pbc, _ = potentials.compute_lennard_jones(
             positions, sigma=1.0, epsilon=1.0
         )
 
@@ -492,7 +504,7 @@ class TestMixedPeriodicBoundaryConditions:
         np_rng = np.random.default_rng(seed=42)
         positions = np_rng.uniform(0, 10, size=(5, 3)).tolist()
 
-        _, forces, _ = ferrox.compute_morse(
+        _, forces, _ = potentials.compute_morse(
             positions,
             cell=cell,
             pbc=[True, True, True],
@@ -511,7 +523,7 @@ class TestMixedPeriodicBoundaryConditions:
         positions = [[0.5, 5.0, 5.0], [9.5, 5.0, 5.0]]
         bonds = [[0, 1, 1.0, 1.0]]  # equilibrium at r0=1.0
 
-        energy, forces, _ = ferrox.compute_harmonic_bonds(
+        energy, forces, _ = potentials.compute_harmonic_bonds(
             positions, bonds, cell=cell, pbc=[True, True, True]
         )
 
