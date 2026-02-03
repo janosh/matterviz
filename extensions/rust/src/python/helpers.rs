@@ -367,7 +367,6 @@ pub fn props_to_pydict<'py>(
 }
 
 /// Convert Python object to serde_json::Value.
-#[allow(deprecated)]
 pub fn py_to_json_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<serde_json::Value> {
     if obj.is_none() {
         Ok(serde_json::Value::Null)
@@ -381,13 +380,13 @@ pub fn py_to_json_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<serde_json::Va
         Ok(serde_json::json!(f))
     } else if let Ok(s) = obj.extract::<String>() {
         Ok(serde_json::Value::String(s))
-    } else if let Ok(list) = obj.downcast::<PyList>() {
+    } else if let Ok(list) = obj.cast::<PyList>() {
         let arr: Vec<serde_json::Value> = list
             .iter()
             .map(|item| py_to_json_value(&item))
             .collect::<PyResult<_>>()?;
         Ok(serde_json::Value::Array(arr))
-    } else if let Ok(dict) = obj.downcast::<PyDict>() {
+    } else if let Ok(dict) = obj.cast::<PyDict>() {
         let mut map = serde_json::Map::new();
         for (k, v) in dict {
             let key: String = k.extract()?;

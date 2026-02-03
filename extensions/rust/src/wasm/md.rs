@@ -369,7 +369,7 @@ pub struct JsNoseHooverChain {
 impl JsNoseHooverChain {
     /// Create a new Nose-Hoover chain thermostat.
     ///
-    /// target_temp: target temperature in Kelvin (must be non-negative)
+    /// target_temp: target temperature in Kelvin (must be positive)
     /// tau: coupling time constant in femtoseconds (must be positive)
     /// dt: timestep in femtoseconds (must be positive)
     /// n_dof: number of degrees of freedom (typically 3 * n_atoms - 3, must be > 0)
@@ -380,7 +380,7 @@ impl JsNoseHooverChain {
         dt: f64,
         n_dof: usize,
     ) -> Result<JsNoseHooverChain, JsError> {
-        validate_temperature(target_temp).map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(target_temp, "target_temp").map_err(|err| JsError::new(&err))?;
         validate_positive_f64(tau, "coupling time constant tau")
             .map_err(|err| JsError::new(&err))?;
         validate_positive_f64(dt, "timestep dt").map_err(|err| JsError::new(&err))?;
@@ -393,7 +393,7 @@ impl JsNoseHooverChain {
     /// Set target temperature.
     #[wasm_bindgen]
     pub fn set_temperature(&mut self, target_temp: f64) -> Result<(), JsError> {
-        validate_temperature(target_temp).map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(target_temp, "target_temp").map_err(|err| JsError::new(&err))?;
         self.inner.set_temperature(target_temp);
         Ok(())
     }
@@ -482,7 +482,7 @@ pub struct JsVelocityRescale {
 impl JsVelocityRescale {
     /// Create a new velocity rescale thermostat.
     ///
-    /// target_temp: target temperature in Kelvin (must be non-negative)
+    /// target_temp: target temperature in Kelvin (must be positive)
     /// tau: coupling time constant in femtoseconds (must be positive)
     /// dt: timestep in femtoseconds (must be positive)
     /// n_dof: number of degrees of freedom (must be > 0)
@@ -495,7 +495,7 @@ impl JsVelocityRescale {
         n_dof: usize,
         seed: Option<u64>,
     ) -> Result<JsVelocityRescale, JsError> {
-        validate_temperature(target_temp).map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(target_temp, "target_temp").map_err(|err| JsError::new(&err))?;
         validate_positive_f64(tau, "coupling time constant tau")
             .map_err(|err| JsError::new(&err))?;
         validate_positive_f64(dt, "timestep dt").map_err(|err| JsError::new(&err))?;
@@ -508,7 +508,7 @@ impl JsVelocityRescale {
     /// Set target temperature.
     #[wasm_bindgen]
     pub fn set_temperature(&mut self, target_temp: f64) -> Result<(), JsError> {
-        validate_temperature(target_temp).map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(target_temp, "target_temp").map_err(|err| JsError::new(&err))?;
         self.inner.set_temperature(target_temp);
         Ok(())
     }
@@ -711,7 +711,7 @@ pub struct JsNPTIntegrator {
 impl JsNPTIntegrator {
     /// Create a new NPT integrator.
     ///
-    /// temperature: target temperature in Kelvin (must be non-negative)
+    /// temperature: target temperature in Kelvin (must be positive)
     /// pressure: target pressure in GPa
     /// tau_t: thermostat time constant in femtoseconds (must be positive)
     /// tau_p: barostat time constant in femtoseconds (must be positive)
@@ -728,7 +728,7 @@ impl JsNPTIntegrator {
         n_atoms: usize,
         total_mass: f64,
     ) -> Result<JsNPTIntegrator, JsError> {
-        validate_temperature(temperature).map_err(|err| JsError::new(&err))?;
+        validate_positive_f64(temperature, "temperature").map_err(|err| JsError::new(&err))?;
         if !pressure.is_finite() {
             return Err(JsError::new(&format!(
                 "pressure must be finite, got {pressure}"

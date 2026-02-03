@@ -330,13 +330,13 @@ impl PyNoseHooverChain {
     /// Create a new Nosé-Hoover chain thermostat.
     ///
     /// Args:
-    ///     target_temp: Target temperature in Kelvin (must be non-negative)
+    ///     target_temp: Target temperature in Kelvin (must be positive)
     ///     tau: Coupling time constant in fs (must be positive)
     ///     dt: Time step in fs (must be positive)
     ///     n_dof: Number of degrees of freedom (must be positive)
     #[new]
     fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize) -> PyResult<Self> {
-        validate_temperature(target_temp)?;
+        validate_positive_f64(target_temp, "target_temp")?;
         validate_positive_f64(tau, "coupling time constant tau")?;
         validate_positive_f64(dt, "timestep dt")?;
         validate_n_dof(n_dof)?;
@@ -377,7 +377,7 @@ impl PyVelocityRescale {
     /// Create a new velocity rescaling thermostat.
     ///
     /// Args:
-    ///     target_temp: Target temperature in Kelvin (must be non-negative)
+    ///     target_temp: Target temperature in Kelvin (must be positive)
     ///     tau: Coupling time constant in fs (must be positive)
     ///     dt: Time step in fs (must be positive)
     ///     n_dof: Number of degrees of freedom (must be positive)
@@ -385,7 +385,7 @@ impl PyVelocityRescale {
     #[new]
     #[pyo3(signature = (target_temp, tau, dt, n_dof, seed = None))]
     fn new(target_temp: f64, tau: f64, dt: f64, n_dof: usize, seed: Option<u64>) -> PyResult<Self> {
-        validate_temperature(target_temp)?;
+        validate_positive_f64(target_temp, "target_temp")?;
         validate_positive_f64(tau, "coupling time constant tau")?;
         validate_positive_f64(dt, "timestep dt")?;
         validate_n_dof(n_dof)?;

@@ -173,6 +173,27 @@ fn find_adsorption_sites(
     neighbor_cutoff: Option<f64>,
     surface_tolerance: Option<f64>,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    // Validate numeric inputs
+    if !height.is_finite() || height < 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "height must be finite and non-negative, got {height}"
+        )));
+    }
+    if let Some(cutoff) = neighbor_cutoff {
+        if !cutoff.is_finite() || cutoff <= 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "neighbor_cutoff must be finite and positive, got {cutoff}"
+            )));
+        }
+    }
+    if let Some(tol) = surface_tolerance {
+        if !tol.is_finite() || tol <= 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "surface_tolerance must be finite and positive, got {tol}"
+            )));
+        }
+    }
+
     let struc = parse_struct(&slab)?;
 
     let site_type_enums: Option<Vec<surfaces::AdsorptionSiteType>> = site_types
@@ -220,6 +241,11 @@ fn find_adsorption_sites(
 #[pyfunction]
 #[pyo3(signature = (slab, tolerance = 0.5))]
 fn get_surface_atoms(slab: StructureJson, tolerance: f64) -> PyResult<Vec<usize>> {
+    if !tolerance.is_finite() || tolerance <= 0.0 {
+        return Err(PyValueError::new_err(format!(
+            "tolerance must be finite and positive, got {tolerance}"
+        )));
+    }
     let struc = parse_struct(&slab)?;
     Ok(surfaces::get_surface_atoms(&struc, tolerance))
 }
