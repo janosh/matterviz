@@ -501,13 +501,13 @@ impl Composition {
     /// Check if two compositions are approximately equal.
     ///
     /// Uses both relative and absolute tolerances.
-    pub fn almost_equals(&self, other: &Self, rtol: f64, atol: f64) -> bool {
+    pub fn almost_equals(&self, other: &Self, rel_tol: f64, abs_tol: f64) -> bool {
         let all_species: HashSet<_> = self.species.keys().chain(other.species.keys()).collect();
 
         for sp in all_species {
             let a = self.get(*sp);
             let b = other.get(*sp);
-            let tol = atol + rtol * (a.abs() + b.abs()) / 2.0;
+            let tol = abs_tol + rel_tol * (a.abs() + b.abs()) / 2.0;
             if (a - b).abs() > tol {
                 return false;
             }

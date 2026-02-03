@@ -97,16 +97,16 @@ fn composition_charge(formula: &str) -> PyResult<Option<i32>> {
 
 /// Check if two compositions are almost equal.
 #[pyfunction]
-#[pyo3(signature = (formula1, formula2, rtol = 1e-6, atol = 1e-8))]
+#[pyo3(signature = (formula1, formula2, rel_tol = 1e-6, abs_tol = 1e-8))]
 fn compositions_almost_equal(
     formula1: &str,
     formula2: &str,
-    rtol: f64,
-    atol: f64,
+    rel_tol: f64,
+    abs_tol: f64,
 ) -> PyResult<bool> {
     let comp1 = parse_comp(formula1)?;
     let comp2 = parse_comp(formula2)?;
-    Ok(comp1.almost_equals(&comp2, rtol, atol))
+    Ok(comp1.almost_equals(&comp2, rel_tol, abs_tol))
 }
 
 /// Get a hash of a formula (for fast comparisons).
