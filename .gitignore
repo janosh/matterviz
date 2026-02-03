@@ -28,3 +28,8 @@ static/tmp
 extensions/vscode/deno.jsonc
 extensions/dash/deno.jsonc
 src/lib/element/data.json
+
+# Generated ferrox docs (rebuilt in CI)
+src/routes/ferrox/rust/
+src/routes/ferrox/python/
+src/routes/ferrox/wasm/
