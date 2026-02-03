@@ -220,7 +220,11 @@ async function generate_wasm_docs(): Promise<boolean> {
 
   await ensure_dir(output_dir)
 
-  const result = await run_command([`npx`, `typedoc`], wasm_dir)
+  // Use npx with -p flags to ensure both packages are available
+  const result = await run_command(
+    [`npx`, `-p`, `typedoc`, `-p`, `typedoc-plugin-markdown`, `--`, `typedoc`],
+    wasm_dir,
+  )
 
   if (!result.success) {
     console.error(`  ❌ typedoc failed:`)
@@ -282,6 +286,8 @@ async function main(): Promise<void> {
   })
 
   console.log(all_success ? `\n✨ All docs generated!` : `\n⚠️  Some docs failed.`)
+
+  if (!all_success) Deno.exit(1)
 }
 
 main().catch((err) => {

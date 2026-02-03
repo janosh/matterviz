@@ -43,10 +43,8 @@ jobs:
         python -c "import ferrox; print(f'ferrox {ferrox.__version__} installed')"
         cd ../..
 
-        # Install TypeDoc for WASM docs
-        npm install --save-dev typedoc typedoc-plugin-markdown
-
         # Generate ferrox documentation (Rust, Python, WASM)
+        # TypeDoc is installed via npx in the generate script
         deno run -A scripts/generate-ferrox-docs.ts
 
         # Build the site

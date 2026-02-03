@@ -12,8 +12,7 @@
 
   <Toc
     headingSelector=".ferrox-docs :where(h2, h3)"
-    breakpoint={1200}
-    open_button_style="display: flex; padding: 3px;"
+    breakpoint={1300}
     --toc-mobile-bg="var(--bg-color, #fff)"
     --toc-padding="1em"
   />
@@ -78,21 +77,20 @@
   }
   .ferrox-layout {
     :global(aside.toc) {
-      font-size: 0.7rem;
+      font-size: 7pt;
     }
     :global(aside.toc.desktop) {
       position: fixed;
       top: 6rem;
-      left: calc(50% + 480px);
+      left: calc(50% + 420px);
       max-width: 13rem;
-      max-height: 75vh;
+      max-height: 95vh;
       overflow-y: auto;
     }
-    :global(aside.toc nav) {
-      padding: 0.5rem;
-    }
-    :global(aside.toc li) {
-      margin: 0.2rem 0;
+    :global(aside.toc li.active) {
+      background: none;
+      font-weight: bold;
+      color: var(--accent-color, #0066cc);
     }
   }
 </style>
