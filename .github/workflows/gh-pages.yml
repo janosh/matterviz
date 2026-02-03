@@ -44,7 +44,7 @@ jobs:
         cd ../..
 
         # Install TypeDoc for WASM docs
-        pnpm add -D typedoc typedoc-plugin-markdown
+        npm install --save-dev typedoc typedoc-plugin-markdown
 
         # Generate ferrox documentation (Rust, Python, WASM)
         deno run -A scripts/generate-ferrox-docs.ts

@@ -6,6 +6,9 @@
 //! All structure functions use strongly-typed `JsCrystal` inputs/outputs.
 //! Results are returned as `WasmResult<T>` = `{ ok: T }` | `{ error: string }`.
 
+// WASM functions are documented via TypeScript types in ferrox.d.ts
+#![allow(missing_docs)]
+
 // Submodules
 pub mod cell;
 pub mod composition;
