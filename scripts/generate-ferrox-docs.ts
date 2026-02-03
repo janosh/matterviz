@@ -144,9 +144,11 @@ cd extensions/rust
 cargo doc --open
 \`\`\`
 
-## Source Code
+## Links
 
 - [GitHub: extensions/rust/src](https://github.com/janosh/matterviz/tree/main/extensions/rust/src)
+- [crates.io](https://crates.io/crates/ferrox)
+- [Releases](https://github.com/janosh/matterviz/releases)
 
 ## Key Modules
 

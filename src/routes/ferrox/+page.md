@@ -94,7 +94,9 @@ if (result.ok) {
 }
 ```
 
-## Source Code
+## Links
 
 - [GitHub: extensions/rust](https://github.com/janosh/matterviz/tree/main/extensions/rust)
 - [PyPI: ferrox](https://pypi.org/project/ferrox/)
+- [Releases](https://github.com/janosh/matterviz/releases) - Changelog and version history
+- [Issues](https://github.com/janosh/matterviz/issues) - Bug reports and feature requests
