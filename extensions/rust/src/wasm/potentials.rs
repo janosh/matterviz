@@ -220,6 +220,7 @@ pub fn compute_harmonic_bonds(
             return Err("bonds array length must be divisible by 4".to_string());
         }
         let mut bond_vec: Vec<potentials::HarmonicBond> = Vec::with_capacity(bonds.len() / 4);
+        let n_atoms_f64 = n_atoms as f64;
         for (bond_idx, chunk) in bonds.chunks(4).enumerate() {
             let idx_i = chunk[0];
             let idx_j = chunk[1];
@@ -231,19 +232,20 @@ pub fn compute_harmonic_bonds(
                 return Err(format!("bond {bond_idx}: atom index j={idx_j} is invalid"));
             }
 
+            // Check bounds before casting to prevent overflow (use >= to avoid underflow when n_atoms == 0)
+            if idx_i >= n_atoms_f64 {
+                return Err(format!(
+                    "bond {bond_idx}: atom index i={idx_i} out of bounds (n_atoms={n_atoms})"
+                ));
+            }
+            if idx_j >= n_atoms_f64 {
+                return Err(format!(
+                    "bond {bond_idx}: atom index j={idx_j} out of bounds (n_atoms={n_atoms})"
+                ));
+            }
+
             let idx_i_usize = idx_i as usize;
             let idx_j_usize = idx_j as usize;
-
-            if idx_i_usize >= n_atoms {
-                return Err(format!(
-                    "bond {bond_idx}: atom index i={idx_i_usize} out of bounds"
-                ));
-            }
-            if idx_j_usize >= n_atoms {
-                return Err(format!(
-                    "bond {bond_idx}: atom index j={idx_j_usize} out of bounds"
-                ));
-            }
 
             if !chunk[2].is_finite() || chunk[2] < 0.0 {
                 return Err(format!(

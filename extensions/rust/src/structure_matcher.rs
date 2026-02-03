@@ -1001,9 +1001,9 @@ mod tests {
 
     #[test]
     fn test_fit_with_scale_false() {
-        // With scale=false and tight ltol, very different volumes should not match
+        // With scale=false and tight len_tol, very different volumes should not match
         let s1 = make_simple_cubic(Element::Fe, 4.0);
-        let s2 = make_simple_cubic(Element::Fe, 6.0); // 50% larger, ratio=1.5 well outside ltol=0.2
+        let s2 = make_simple_cubic(Element::Fe, 6.0); // 50% larger, ratio=1.5 well outside len_tol=0.2
 
         let matcher = StructureMatcher::new().with_scale(false);
         assert!(

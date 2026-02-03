@@ -624,8 +624,8 @@ impl Lattice {
     /// # Arguments
     ///
     /// * `target` - The target lattice to map to
-    /// * `ltol` - Fractional length tolerance
-    /// * `atol` - Angle tolerance in degrees
+    /// * `len_tol` - Fractional length tolerance
+    /// * `ang_tol` - Angle tolerance in degrees
     /// * `skip_rotation_matrix` - If true, don't compute rotation matrices
     ///
     /// # Returns
@@ -634,13 +634,13 @@ impl Lattice {
     pub fn find_all_mappings(
         &self,
         target: &Lattice,
-        ltol: f64,
-        atol: f64,
+        len_tol: f64,
+        ang_tol: f64,
         skip_rotation_matrix: bool,
     ) -> Vec<(Lattice, Option<Matrix3<f64>>, Matrix3<i32>)> {
         let target_lengths = target.lengths();
         let target_angles = target.angles();
-        let max_length = target_lengths.max() * (1.0 + ltol);
+        let max_length = target_lengths.max() * (1.0 + len_tol);
 
         // Search range for lattice vector candidates
         // Need extra margin for oblique cells where Cartesian lengths differ from lattice params
@@ -662,15 +662,15 @@ impl Lattice {
                     let length = cart.norm();
 
                     // Check if this vector matches any target length
-                    // Use symmetric tolerance: ratio should be in (1/(1+ltol), 1+ltol)
+                    // Use symmetric tolerance: ratio should be in (1/(1+len_tol), 1+len_tol)
                     // Note: pymatgen uses strict inequalities (< and >), not <=/>=
-                    // This matches pymatgen's behavior where ±ltol% means ratio in (1/1.2, 1.2)
+                    // This matches pymatgen's behavior where ±len_tol% means ratio in (1/1.2, 1.2)
                     let ratio_a = length / target_lengths[0];
                     let ratio_b = length / target_lengths[1];
                     let ratio_c = length / target_lengths[2];
 
-                    let lo = 1.0 / (1.0 + ltol);
-                    let hi = 1.0 + ltol;
+                    let lo = 1.0 / (1.0 + len_tol);
+                    let hi = 1.0 + len_tol;
 
                     if ratio_a > lo && ratio_a < hi {
                         cands_a.push((Vector3::new(idx, jdx, kdx), cart, length));
@@ -693,7 +693,7 @@ impl Lattice {
                 // Check gamma angle (between a and b)
                 let cos_gamma = ca.dot(cb) / (la * lb);
                 let gamma = cos_gamma.clamp(-1.0, 1.0).acos() * 180.0 / PI;
-                if (gamma - target_angles[2]).abs() > atol {
+                if (gamma - target_angles[2]).abs() > ang_tol {
                     continue;
                 }
 
@@ -701,14 +701,14 @@ impl Lattice {
                     // Check alpha angle (between b and c)
                     let cos_alpha = cb.dot(cc) / (lb * lc);
                     let alpha = cos_alpha.clamp(-1.0, 1.0).acos() * 180.0 / PI;
-                    if (alpha - target_angles[0]).abs() > atol {
+                    if (alpha - target_angles[0]).abs() > ang_tol {
                         continue;
                     }
 
                     // Check beta angle (between a and c)
                     let cos_beta = ca.dot(cc) / (la * lc);
                     let beta = cos_beta.clamp(-1.0, 1.0).acos() * 180.0 / PI;
-                    if (beta - target_angles[1]).abs() > atol {
+                    if (beta - target_angles[1]).abs() > ang_tol {
                         continue;
                     }
 
@@ -759,11 +759,11 @@ impl Lattice {
     pub fn find_mapping(
         &self,
         target: &Lattice,
-        ltol: f64,
-        atol: f64,
+        len_tol: f64,
+        ang_tol: f64,
         skip_rotation_matrix: bool,
     ) -> Option<(Lattice, Option<Matrix3<f64>>, Matrix3<i32>)> {
-        let mut mappings = self.find_all_mappings(target, ltol, atol, skip_rotation_matrix);
+        let mut mappings = self.find_all_mappings(target, len_tol, ang_tol, skip_rotation_matrix);
 
         if mappings.is_empty() {
             return None;
@@ -1150,12 +1150,12 @@ mod tests {
 
     #[test]
     fn test_find_all_mappings_length_tolerance_bounds() {
-        // Test that length tolerance uses symmetric bounds (1/(1+ltol), 1+ltol)
-        // not asymmetric bounds (1-ltol, 1+ltol)
-        // With ltol=0.2: correct range is (0.833, 1.2), NOT (0.8, 1.2)
+        // Test that length tolerance uses symmetric bounds (1/(1+len_tol), 1+len_tol)
+        // not asymmetric bounds (1-len_tol, 1+len_tol)
+        // With len_tol=0.2: correct range is (0.833, 1.2), NOT (0.8, 1.2)
 
-        let ltol = 0.2;
-        let atol = 5.0;
+        let len_tol = 0.2;
+        let ang_tol = 5.0;
 
         // Base cubic lattice
         let base = Lattice::cubic(5.0);
@@ -1163,7 +1163,7 @@ mod tests {
         // Test 1: Ratio 0.84 - inside both (0.833, 1.2) and (0.8, 1.2)
         // Should find mapping
         let scaled_084 = Lattice::cubic(5.0 * 0.84);
-        let mappings = base.find_all_mappings(&scaled_084, ltol, atol, true);
+        let mappings = base.find_all_mappings(&scaled_084, len_tol, ang_tol, true);
         assert!(
             !mappings.is_empty(),
             "Ratio 0.84 should be inside tolerance (0.833, 1.2)"
@@ -1172,7 +1172,7 @@ mod tests {
         // Test 2: Ratio 0.82 - inside (0.8, 1.2) but OUTSIDE (0.833, 1.2)
         // Should NOT find mapping with correct implementation
         let scaled_082 = Lattice::cubic(5.0 * 0.82);
-        let mappings = base.find_all_mappings(&scaled_082, ltol, atol, true);
+        let mappings = base.find_all_mappings(&scaled_082, len_tol, ang_tol, true);
         assert!(
             mappings.is_empty(),
             "Ratio 0.82 should be OUTSIDE tolerance (0.833, 1.2)"
@@ -1181,7 +1181,7 @@ mod tests {
         // Test 3: Ratio exactly at boundary 0.833 (= 1/1.2)
         // With strict inequalities, boundary is excluded
         let scaled_boundary = Lattice::cubic(5.0 / 1.2);
-        let mappings = base.find_all_mappings(&scaled_boundary, ltol, atol, true);
+        let mappings = base.find_all_mappings(&scaled_boundary, len_tol, ang_tol, true);
         assert!(
             mappings.is_empty(),
             "Ratio 0.833 (exact boundary) should be excluded with strict inequality"
@@ -1190,7 +1190,7 @@ mod tests {
         // Test 4: Ratio 1.19 - inside (0.833, 1.2)
         // Should find mapping
         let scaled_119 = Lattice::cubic(5.0 * 1.19);
-        let mappings = base.find_all_mappings(&scaled_119, ltol, atol, true);
+        let mappings = base.find_all_mappings(&scaled_119, len_tol, ang_tol, true);
         assert!(
             !mappings.is_empty(),
             "Ratio 1.19 should be inside tolerance (0.833, 1.2)"
@@ -1199,7 +1199,7 @@ mod tests {
         // Test 5: Ratio 1.21 - outside (0.833, 1.2)
         // Should NOT find mapping
         let scaled_121 = Lattice::cubic(5.0 * 1.21);
-        let mappings = base.find_all_mappings(&scaled_121, ltol, atol, true);
+        let mappings = base.find_all_mappings(&scaled_121, len_tol, ang_tol, true);
         assert!(
             mappings.is_empty(),
             "Ratio 1.21 should be OUTSIDE tolerance (0.833, 1.2)"
@@ -1208,7 +1208,7 @@ mod tests {
         // Test 6: Ratio exactly at boundary 1.2
         // With strict inequalities, boundary is excluded
         let scaled_upper = Lattice::cubic(5.0 * 1.2);
-        let mappings = base.find_all_mappings(&scaled_upper, ltol, atol, true);
+        let mappings = base.find_all_mappings(&scaled_upper, len_tol, ang_tol, true);
         assert!(
             mappings.is_empty(),
             "Ratio 1.2 (exact boundary) should be excluded with strict inequality"
@@ -1220,8 +1220,8 @@ mod tests {
         // Test that ALL three axes must be within tolerance
         // If just one axis is outside, the mapping should fail
 
-        let ltol = 0.2;
-        let atol = 5.0;
+        let len_tol = 0.2;
+        let ang_tol = 5.0;
 
         // Triclinic lattice with different lengths
         let lat1 = Lattice::from_parameters(6.0, 7.0, 8.0, 80.0, 85.0, 90.0);
@@ -1230,7 +1230,7 @@ mod tests {
         // b and c stay at 1.0 (inside tolerance)
         let lat2 = Lattice::from_parameters(6.0 * 0.82, 7.0, 8.0, 80.0, 85.0, 90.0);
 
-        let mappings = lat1.find_all_mappings(&lat2, ltol, atol, true);
+        let mappings = lat1.find_all_mappings(&lat2, len_tol, ang_tol, true);
         assert!(
             mappings.is_empty(),
             "Should not find mapping when one axis ratio (0.82) is outside tolerance"
@@ -1240,14 +1240,14 @@ mod tests {
     #[test]
     fn test_find_all_mappings_angle_tolerance() {
         // Test that angle tolerance is respected
-        let ltol = 0.2;
-        let atol = 5.0; // 5 degree angle tolerance
+        let len_tol = 0.2;
+        let ang_tol = 5.0; // 5 degree angle tolerance
 
         let lat1 = Lattice::from_parameters(5.0, 5.0, 5.0, 90.0, 90.0, 90.0);
 
         // Same lengths but angles differ by 4 degrees (within 5 degree tolerance)
         let lat2 = Lattice::from_parameters(5.0, 5.0, 5.0, 90.0, 90.0, 94.0);
-        let mappings = lat1.find_all_mappings(&lat2, ltol, atol, true);
+        let mappings = lat1.find_all_mappings(&lat2, len_tol, ang_tol, true);
         assert!(
             !mappings.is_empty(),
             "4 degree angle difference should be within 5 degree tolerance"
@@ -1255,7 +1255,7 @@ mod tests {
 
         // Same lengths but angles differ by 7 degrees (outside 5 degree tolerance)
         let lat3 = Lattice::from_parameters(5.0, 5.0, 5.0, 90.0, 90.0, 97.0);
-        let mappings = lat1.find_all_mappings(&lat3, ltol, atol, true);
+        let mappings = lat1.find_all_mappings(&lat3, len_tol, ang_tol, true);
         assert!(
             mappings.is_empty(),
             "7 degree angle difference should be outside 5 degree tolerance"
@@ -1282,33 +1282,33 @@ mod tests {
     }
 
     #[test]
-    fn test_find_all_mappings_different_ltol_values() {
-        // Test that different ltol values produce expected results
+    fn test_find_all_mappings_different_len_tol_values() {
+        // Test that different len_tol values produce expected results
         let base = Lattice::cubic(5.0);
         let scaled_09 = Lattice::cubic(5.0 * 0.9); // 10% smaller, ratio = 0.9
 
-        // ltol=0.05: range is (0.952, 1.05) - 0.9 ratio is outside
+        // len_tol=0.05: range is (0.952, 1.05) - 0.9 ratio is outside
         let mappings = base.find_all_mappings(&scaled_09, 0.05, 5.0, true);
         assert!(
             mappings.is_empty(),
             "0.9 ratio should be outside (0.952, 1.05) tolerance"
         );
 
-        // ltol=0.1: range is (0.909, 1.1) - 0.9 ratio is still OUTSIDE (0.9 < 0.909)
+        // len_tol=0.1: range is (0.909, 1.1) - 0.9 ratio is still OUTSIDE (0.9 < 0.909)
         let mappings = base.find_all_mappings(&scaled_09, 0.1, 5.0, true);
         assert!(
             mappings.is_empty(),
             "0.9 ratio should be outside (0.909, 1.1) tolerance (0.9 < 0.909)"
         );
 
-        // ltol=0.12: range is (0.893, 1.12) - 0.9 ratio is inside
+        // len_tol=0.12: range is (0.893, 1.12) - 0.9 ratio is inside
         let mappings = base.find_all_mappings(&scaled_09, 0.12, 5.0, true);
         assert!(
             !mappings.is_empty(),
             "0.9 ratio should be inside (0.893, 1.12) tolerance"
         );
 
-        // ltol=0.15: range is (0.87, 1.15) - 0.9 ratio is inside
+        // len_tol=0.15: range is (0.87, 1.15) - 0.9 ratio is inside
         let mappings = base.find_all_mappings(&scaled_09, 0.15, 5.0, true);
         assert!(
             !mappings.is_empty(),

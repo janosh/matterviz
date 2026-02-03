@@ -132,8 +132,8 @@ impl FireState {
     }
 
     /// Check if optimization has converged (method wrapper).
-    pub fn is_converged(&self, fmax: f64) -> bool {
-        is_converged(self, fmax)
+    pub fn is_converged(&self, f_max: f64) -> bool {
+        is_converged(self, f_max)
     }
 
     /// Get maximum force component (method wrapper).
@@ -154,8 +154,8 @@ pub fn max_force(state: &FireState) -> f64 {
 }
 
 /// Check if optimization has converged.
-pub fn is_converged(state: &FireState, fmax: f64) -> bool {
-    max_force(state) < fmax
+pub fn is_converged(state: &FireState, f_max: f64) -> bool {
+    max_force(state) < f_max
 }
 
 /// Perform one FIRE optimization step.
@@ -371,8 +371,8 @@ impl CellFireState {
     }
 
     /// Check if optimization has converged (method wrapper).
-    pub fn is_converged(&self, fmax: f64, smax: f64) -> bool {
-        cell_is_converged(self, fmax, smax)
+    pub fn is_converged(&self, f_max: f64, s_max: f64) -> bool {
+        cell_is_converged(self, f_max, s_max)
     }
 
     /// Get maximum force component (method wrapper).
@@ -403,8 +403,8 @@ pub fn cell_max_stress(state: &CellFireState) -> f64 {
 }
 
 /// Check if cell optimization has converged.
-pub fn cell_is_converged(state: &CellFireState, fmax: f64, smax: f64) -> bool {
-    cell_max_force(state) < fmax && cell_max_stress(state) < smax
+pub fn cell_is_converged(state: &CellFireState, f_max: f64, s_max: f64) -> bool {
+    cell_max_force(state) < f_max && cell_max_stress(state) < s_max
 }
 
 /// Perform one FIRE step with cell optimization.
@@ -700,19 +700,19 @@ mod tests {
         let config = FireConfig::default();
         let mut state = FireState::new(initial, &config);
         let k = 1.0;
-        let fmax = 0.001;
+        let f_max = 0.001;
 
         let mut steps = 0;
         for _ in 0..100 {
             state = fire_step(state, |pos| quadratic_forces(pos, &minimum, k), &config);
             steps += 1;
-            if is_converged(&state, fmax) {
+            if is_converged(&state, f_max) {
                 break;
             }
         }
 
         assert!(
-            is_converged(&state, fmax),
+            is_converged(&state, f_max),
             "Should converge when starting near minimum"
         );
         assert!(
@@ -799,12 +799,15 @@ mod tests {
         let config = FireConfig::default();
         let mut state = FireState::new(initial, &config);
         let k = 1.0;
-        let fmax = 0.001;
+        let f_max = 0.001;
 
         let forces = quadratic_forces(&state.positions, &minimum, k);
         state.last_forces = forces;
 
-        assert!(is_converged(&state, fmax), "Should be converged at minimum");
+        assert!(
+            is_converged(&state, f_max),
+            "Should be converged at minimum"
+        );
         assert!(max_force(&state) < 1e-10, "Max force should be ~0");
 
         let initial_positions = state.positions.clone();

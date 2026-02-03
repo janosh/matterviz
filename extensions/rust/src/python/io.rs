@@ -15,6 +15,7 @@ use crate::io::{
 };
 
 use super::helpers::{StructureJson, json_to_pydict, parse_struct, structure_to_pydict};
+use crate::structure::Structure;
 
 // === Structure Reading Functions ===
 
@@ -150,6 +151,103 @@ fn parse_xyz_flexible(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyDict
     let result = crate::io::parse_xyz_flexible(Path::new(path))
         .map_err(|err| PyValueError::new_err(format!("Error parsing XYZ: {err}")))?;
     struct_or_mol_to_pydict(py, result)
+}
+
+/// Parse a structure from POSCAR content string.
+///
+/// Supports VASP 5+ format with element symbols. VASP 4 format is not supported.
+#[pyfunction]
+fn parse_poscar_str(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
+    let structure = crate::io::parse_poscar_str(content)
+        .map_err(|err| PyValueError::new_err(format!("{err}")))?;
+    let json = crate::io::structure_to_pymatgen_json(&structure);
+    json_to_pydict(py, &json)
+}
+
+/// Parse a structure from a POSCAR file.
+///
+/// Supports VASP 5+ format with element symbols. VASP 4 format is not supported.
+#[pyfunction]
+fn parse_poscar_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
+    let structure = crate::io::parse_poscar(Path::new(path))
+        .map_err(|err| PyValueError::new_err(format!("{err}")))?;
+    let json = crate::io::structure_to_pymatgen_json(&structure);
+    json_to_pydict(py, &json)
+}
+
+// === TorchSim State Conversion ===
+
+/// Convert a Structure to TorchSim SimState dict format.
+///
+/// The returned dict has the same structure as torch_sim.SimState:
+/// - positions: list of [x, y, z] for all atoms
+/// - masses: list of atomic masses in amu
+/// - cell: list of 3x3 matrices (one per system, column-major)
+/// - pbc: [bool, bool, bool] periodic boundary conditions
+/// - atomic_numbers: list of atomic numbers
+/// - system_idx: list of system indices (all 0 for single structure)
+/// - charge: list of system charges
+/// - spin: list of system spins
+#[pyfunction]
+fn to_torch_sim_state(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
+    let struc = parse_struct(&structure)?;
+    let state = crate::io::structure_to_torch_sim_state(&struc);
+    let json = crate::io::torch_sim_state_to_json(&state);
+    json_to_pydict(py, &json)
+}
+
+/// Convert multiple Structures to a batched TorchSim SimState dict.
+///
+/// All structures are combined into a single batched state where:
+/// - system_idx indicates which system each atom belongs to
+/// - cell contains one 3x3 matrix per system
+/// - charge/spin have one value per system
+#[pyfunction]
+fn structures_to_torch_sim_state(
+    py: Python<'_>,
+    structures: Vec<StructureJson>,
+) -> PyResult<Py<PyDict>> {
+    let structs: Vec<_> = structures
+        .iter()
+        .map(parse_struct)
+        .collect::<PyResult<_>>()?;
+    let state = crate::io::structures_to_torch_sim_state(&structs)
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    let json = crate::io::torch_sim_state_to_json(&state);
+    json_to_pydict(py, &json)
+}
+
+// Helper to convert parsed structures to PyDict list
+fn structures_to_pydicts(py: Python<'_>, structures: &[Structure]) -> PyResult<Vec<Py<PyDict>>> {
+    structures
+        .iter()
+        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
+        .collect()
+}
+
+/// Parse a TorchSim SimState dict to a list of Structure dicts.
+///
+/// Converts a batched state back to individual structures.
+#[pyfunction]
+fn from_torch_sim_state(
+    py: Python<'_>,
+    state_dict: &Bound<'_, PyDict>,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let json_module = py.import("json")?;
+    let json_str: String = json_module
+        .call_method1("dumps", (state_dict,))?
+        .extract()?;
+    let structures = crate::io::parse_torch_sim_state(&json_str)
+        .map_err(|err| PyValueError::new_err(format!("Invalid TorchSim state: {err}")))?;
+    structures_to_pydicts(py, &structures)
+}
+
+/// Parse a TorchSim SimState JSON string to a list of Structure dicts.
+#[pyfunction]
+fn parse_torch_sim_state_json(py: Python<'_>, json_str: &str) -> PyResult<Vec<Py<PyDict>>> {
+    let structures = crate::io::parse_torch_sim_state(json_str)
+        .map_err(|err| PyValueError::new_err(format!("Invalid TorchSim state: {err}")))?;
+    structures_to_pydicts(py, &structures)
 }
 
 // === Direct Object Conversion ===
@@ -460,6 +558,12 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(parse_xyz_file, &submod)?)?;
     submod.add_function(wrap_pyfunction!(parse_ase_dict, &submod)?)?;
     submod.add_function(wrap_pyfunction!(parse_xyz_flexible, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(parse_poscar_str, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(parse_poscar_file, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(to_torch_sim_state, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(structures_to_torch_sim_state, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(from_torch_sim_state, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(parse_torch_sim_state_json, &submod)?)?;
     submod.add_function(wrap_pyfunction!(from_pymatgen_structure, &submod)?)?;
     submod.add_function(wrap_pyfunction!(to_pymatgen_structure, &submod)?)?;
     submod.add_function(wrap_pyfunction!(to_pymatgen_molecule, &submod)?)?;

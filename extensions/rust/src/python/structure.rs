@@ -13,7 +13,7 @@ use pyo3::types::PyList;
 
 use super::helpers::{
     StructureJson, parse_reduction_algo, parse_struct, parse_structure_pair, props_to_pydict,
-    py_to_json_value, structure_to_pydict, to_str_refs,
+    py_to_json_value, structure_to_pydict, to_str_refs, validate_positive_f64,
 };
 
 /// Python wrapper for StructureMatcher.
@@ -43,6 +43,11 @@ impl PyStructureMatcher {
         attempt_supercell: bool,
         comparator: &str,
     ) -> PyResult<Self> {
+        // Validate tolerance parameters
+        validate_positive_f64(latt_len_tol, "latt_len_tol")?;
+        validate_positive_f64(site_pos_tol, "site_pos_tol")?;
+        validate_positive_f64(angle_tol, "angle_tol")?;
+
         let comparator_type = match comparator {
             "species" => ComparatorType::Species,
             "element" => ComparatorType::Element,
@@ -124,17 +129,19 @@ impl PyStructureMatcher {
         })
     }
 
-    fn get_unique_indices(&self, structures: Vec<String>) -> PyResult<Vec<usize>> {
-        let dedup = self
-            .inner
-            .deduplicate_json(&to_str_refs(&structures))
-            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    fn get_unique_indices(&self, py: Python<'_>, structures: Vec<String>) -> PyResult<Vec<usize>> {
+        py.detach(|| {
+            let dedup = self
+                .inner
+                .deduplicate_json(&to_str_refs(&structures))
+                .map_err(|err| PyValueError::new_err(err.to_string()))?;
 
-        Ok(dedup
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, &canonical)| (idx == canonical).then_some(idx))
-            .collect())
+            Ok(dedup
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, &canonical)| (idx == canonical).then_some(idx))
+                .collect())
+        })
     }
 
     fn find_matches(
@@ -266,18 +273,23 @@ fn wrap_to_unit_cell(py: Python<'_>, structure: StructureJson) -> PyResult<Py<Py
 
 /// Interpolate between two structures.
 #[pyfunction]
-#[pyo3(signature = (struct1, struct2, nimages, interpolate_lattices = false, use_pbc = true))]
+#[pyo3(signature = (struct1, struct2, n_images, interpolate_lattices = false, use_pbc = true))]
 fn interpolate(
     py: Python<'_>,
     struct1: StructureJson,
     struct2: StructureJson,
-    nimages: usize,
+    n_images: usize,
     interpolate_lattices: bool,
     use_pbc: bool,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    if n_images == 0 {
+        return Err(PyValueError::new_err(
+            "n_images must be at least 1 to generate interpolated structures",
+        ));
+    }
     let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
     let images = s1
-        .interpolate(&s2, nimages, interpolate_lattices, use_pbc)
+        .interpolate(&s2, n_images, interpolate_lattices, use_pbc)
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
     images
         .iter()

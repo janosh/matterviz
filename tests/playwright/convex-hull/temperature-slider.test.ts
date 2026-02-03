@@ -47,7 +47,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       const initial_temp = await temp_input.inputValue()
 
       // Move slider to a different position
-      await range_input.fill(`2`) // Index 2 = 900K (temperatures: [300, 600, 900, 1200, 1500])
+      await range_input.fill(`6`) // Index 6 = 900K (temperatures: 300-1500K in 100K steps)
 
       // Temperature should update
       await expect(temp_input).toHaveValue(`900`)
@@ -83,7 +83,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       const initial_temp = await temp_input.inputValue()
 
       // Change temperature to a different value
-      await range_input.fill(`4`) // Index 4 = 1500K
+      await range_input.fill(`12`) // Index 12 = 1500K (max)
 
       // Verify temperature changed
       await expect(temp_input).toHaveValue(`1500`)
@@ -109,7 +109,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       // Verify slider has correct range
       const range_input = temp_slider.locator(`input[type="range"]`)
       await expect(range_input).toHaveAttribute(`min`, `0`)
-      await expect(range_input).toHaveAttribute(`max`, `4`) // 5 temperatures: 0-4
+      await expect(range_input).toHaveAttribute(`max`, `12`) // 13 temperatures: 0-12
     })
 
     test(`canvas redraws when temperature changes`, async ({ page }) => {
@@ -124,7 +124,7 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       const range_input = temp_slider.locator(`input[type="range"]`)
 
       // Change temperature
-      await range_input.fill(`3`) // Index 3 = 1200K
+      await range_input.fill(`9`) // Index 9 = 1200K
 
       // Wait for redraw and verify canvas still renders
       await expect(canvas).toBeVisible()
@@ -170,14 +170,14 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       const temp_input = temp_slider.locator(`.temp-label input[type="number"]`)
       const range_input = temp_slider.locator(`input[type="range"]`)
 
-      // Test first and last temperature values (sequential testing required)
+      // Test first, middle, and last temperature values (sequential testing required)
       await range_input.fill(`0`)
       await expect(temp_input).toHaveValue(`300`)
 
-      await range_input.fill(`2`)
+      await range_input.fill(`6`)
       await expect(temp_input).toHaveValue(`900`)
 
-      await range_input.fill(`4`)
+      await range_input.fill(`12`)
       await expect(temp_input).toHaveValue(`1500`)
     })
   })
@@ -203,9 +203,9 @@ test.describe(`Temperature Slider - Accessibility`, () => {
     await expect(diagram).toBeVisible()
 
     const range_input = diagram.locator(`.temperature-slider input[type="range"]`)
-    // 5 temperatures [300, 600, 900, 1200, 1500] → indices 0-4
+    // 13 temperatures [300, 400, ..., 1500] → indices 0-12
     await expect(range_input).toHaveAttribute(`min`, `0`)
-    await expect(range_input).toHaveAttribute(`max`, `4`)
+    await expect(range_input).toHaveAttribute(`max`, `12`)
   })
 
   for (const dim of [`3d`, `4d`]) {
