@@ -715,6 +715,9 @@ fn parse_poscar_str_impl(content: &str, path: &str) -> Result<Structure> {
     let mut line_idx = 6;
 
     // Handle multi-line symbols/counts (atoms > 20 groups wrap to multiple lines)
+    // POSCAR format: symbols come first, then counts, then coordinate type
+    // Once we've read ANY counts, we stop looking for more symbols
+    let mut reading_counts = false;
     while line_idx < lines.len() {
         let line = lines[line_idx].trim();
         let parts: Vec<&str> = line.split_whitespace().collect();
@@ -725,6 +728,7 @@ fn parse_poscar_str_impl(content: &str, path: &str) -> Result<Structure> {
 
         // Check if first part is a number (counts line)
         if parts[0].parse::<usize>().is_ok() {
+            reading_counts = true;
             for part in &parts {
                 let count: usize = part
                     .parse()
@@ -735,8 +739,14 @@ fn parse_poscar_str_impl(content: &str, path: &str) -> Result<Structure> {
             continue;
         }
 
+        // If we've already started reading counts, this must be the coordinate type line
+        // (prevents "c" for Cartesian being matched as Carbon element)
+        if reading_counts {
+            break;
+        }
+
         // Check if first part is a valid element symbol (more symbols line)
-        // Must check this BEFORE coordinate type detection to handle S, C, Dy, etc.
+        // Only valid before we start reading counts
         let first_cleaned = clean_symbol(parts[0]);
         if Element::from_symbol(&first_cleaned).is_some() {
             for part in &parts {
