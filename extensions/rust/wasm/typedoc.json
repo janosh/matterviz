@@ -13,8 +13,6 @@
   "hidePageTitle": true,
   "disableSources": true,
   "useCodeBlocks": true,
-  "expandObjects": false,
-  "expandParameters": false,
   "parametersFormat": "table",
   "tableColumnSettings": {
     "hideDefaults": true,
