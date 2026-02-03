@@ -9,6 +9,7 @@ export const structures = Object.entries( // JSON structure files (OPTIMADE/pyma
   import.meta.glob(`./*.json`, {
     eager: true,
     import: `default`,
+    query: { type: `json` },
   }) as Record<string, unknown>,
 )
   .map(([path, data]) => {
