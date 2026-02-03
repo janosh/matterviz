@@ -36,3 +36,6 @@ python_files = ["test_*.py"]
 python_functions = ["test_*"]
 # Playwright tests require: pip install pytest-playwright && playwright install chromium
 markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+
+[tool.ruff]
+extend-exclude = ["**/typed.py"]  # auto-generated file

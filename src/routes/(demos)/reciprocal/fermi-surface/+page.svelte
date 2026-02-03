@@ -11,10 +11,12 @@
     FermiSurfaceData,
   } from '$lib/fermi-surface'
   import {
+    extract_fermi_surface,
     FermiSlice,
     FermiSurface,
     is_band_grid_data,
     is_fermi_surface_data,
+    parse_fermi_file,
   } from '$lib/fermi-surface'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
@@ -82,8 +84,6 @@
 
     try {
       const { load_from_url } = await import(`$lib/io`)
-      const { parse_fermi_file } = await import(`$lib/fermi-surface/parse`)
-      const { extract_fermi_surface } = await import(`$lib/fermi-surface/compute`)
 
       await load_from_url(file.url, async (content, filename) => {
         const text = content instanceof ArrayBuffer

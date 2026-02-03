@@ -7,6 +7,7 @@
   import type { Crystal } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import {
+    ensure_ferrox_wasm_ready,
     get_structure_distance,
     is_ok,
     match_structures,
@@ -92,7 +93,6 @@
 
   onMount(async () => {
     try {
-      const { ensure_ferrox_wasm_ready } = await import(`$lib/structure/ferrox-wasm`)
       await ensure_ferrox_wasm_ready()
       init_perturbed_examples()
       wasm_ready = true

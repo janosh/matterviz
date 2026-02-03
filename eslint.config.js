@@ -36,5 +36,14 @@ export default [
       '@stylistic/quotes': [`error`, `single`, { avoidEscape: true }],
     },
   },
-  { ignores: [`build/`, `.svelte-kit/`, `package/`] },
+  {
+    ignores: [
+      `build/`,
+      `.svelte-kit/`,
+      `package/`,
+      `dist/`,
+      `extensions/rust/pkg/`,
+      `extensions/rust/wasm/pkg/`,
+    ],
+  },
 ]

@@ -39,7 +39,6 @@ import argparse
 import keyword
 import os
 import re
-import subprocess
 from dataclasses import dataclass
 from glob import glob
 from typing import Any
@@ -775,17 +774,6 @@ def main() -> None:
 
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(expected)
-
-    # Format with ruff (optional - file is valid without formatting)
-    try:
-        subprocess.run(
-            ["ruff", "format", out_path], check=True, capture_output=True, text=True
-        )
-    except FileNotFoundError:
-        print(f"Warning: ruff not found, skipping formatting of {out_path}")
-    except subprocess.CalledProcessError as exc:
-        err_msg = (exc.stderr or "").strip()
-        print(f"Warning: ruff format failed: {err_msg or exc}")
 
     print(f"Wrote {out_path}")
 
