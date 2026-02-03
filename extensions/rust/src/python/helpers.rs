@@ -99,7 +99,7 @@ pub fn check_site_bounds(num_sites: usize, indices: &[usize]) -> PyResult<()> {
 #[inline]
 pub fn check_site_idx(site_idx: usize, num_sites: usize) -> PyResult<()> {
     if site_idx >= num_sites {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
             "Site index {site_idx} out of bounds (num_sites={num_sites})"
         )));
     }
@@ -110,7 +110,7 @@ pub fn check_site_idx(site_idx: usize, num_sites: usize) -> PyResult<()> {
 #[inline]
 pub fn check_site_pair(idx_a: usize, idx_b: usize, num_sites: usize) -> PyResult<()> {
     if idx_a >= num_sites || idx_b >= num_sites {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
             "Site index out of bounds (num_sites={num_sites})"
         )));
     }
@@ -197,6 +197,9 @@ pub fn structure_to_pydict<'py>(
         props.set_item(key, py_value)?;
     }
     dict.set_item("properties", props)?;
+
+    // Charge (preserve non-zero values for round-tripping)
+    dict.set_item("charge", structure.charge)?;
 
     Ok(dict)
 }

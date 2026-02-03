@@ -12,7 +12,6 @@ use crate::wasm_types::WasmResult;
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi)]
 pub struct JsPotentialResult {
-    /// Total potential energy in eV.
     pub energy: f64,
     /// Flattened forces [fx0, fy0, fz0, fx1, fy1, fz1, ...] in eV/Å.
     pub forces: Vec<f64>,
