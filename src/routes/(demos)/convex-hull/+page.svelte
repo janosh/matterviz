@@ -273,24 +273,44 @@
   // Bindable gas pressures for the demo
   let gas_demo_pressures = $state<Partial<Record<GasSpecies, number>>>({})
 
-  // Gas demo: Fe-O binary with iron oxides
-  const gas_demo_fe_o_entries: PhaseData[] = [
-    make_phase({ Fe: 1 }, 1100),
-    make_phase({ O: 1 }, 1101),
-    ...[0.33, 0.4, 0.5, 0.6, 0.67, 0.75].map((x, idx) =>
-      make_phase({ Fe: x, O: 1 - x }, 1110 + idx)
+  // Gas demo helper: explicit energy/entropy for physically smooth T-dependence
+  const make_gas_phase = (
+    comp: Comp,
+    energy: number,
+    entropy_coef: number,
+  ): PhaseData => ({
+    composition: comp,
+    energy,
+    temperatures,
+    free_energies: temperatures.map(
+      (T) => energy + entropy_coef * T * 0.0001 - 0.00005 * T * Math.log(T),
     ),
+  })
+
+  // Gas demo: Fe-O binary with realistic iron oxide energies
+  // Values approximate DFT formation energies for Fe-O system
+  const gas_demo_fe_o_entries: PhaseData[] = [
+    make_gas_phase({ Fe: 1 }, 0, 0.6), // Fe metal
+    make_gas_phase({ O: 1 }, 0, 0.5), // O2 reference
+    make_gas_phase({ Fe: 0.75, O: 0.25 }, -0.45, 0.9), // Fe-rich
+    make_gas_phase({ Fe: 0.67, O: 0.33 }, -0.85, 1.2), // FeO (wüstite)
+    make_gas_phase({ Fe: 0.6, O: 0.4 }, -0.95, 1.3), // Fe3O4-like
+    make_gas_phase({ Fe: 0.5, O: 0.5 }, -0.78, 1.4), // intermediate
+    make_gas_phase({ Fe: 0.43, O: 0.57 }, -1.05, 1.5), // Fe2O3 (hematite)
+    make_gas_phase({ Fe: 0.33, O: 0.67 }, -0.68, 1.6), // O-rich
   ]
 
-  // Gas demo: Fe-Ni-O ternary
+  // Gas demo: Fe-Ni-O ternary with smooth energies
   const gas_demo_ternary_entries: PhaseData[] = [
-    ...[`Fe`, `Ni`, `O`].map((el, idx) => make_phase({ [el]: 1 }, 1200 + idx)),
-    ...[[`Fe`, `Ni`], [`Fe`, `O`], [`Ni`, `O`]].map(([a, b], idx) =>
-      make_phase({ [a]: 0.5, [b]: 0.5 }, 1210 + idx)
-    ),
-    make_phase({ Fe: 0.33, Ni: 0.33, O: 0.34 }, 1220),
-    make_phase({ Fe: 0.4, Ni: 0.2, O: 0.4 }, 1221),
-    make_phase({ Fe: 0.2, Ni: 0.4, O: 0.4 }, 1222),
+    make_gas_phase({ Fe: 1 }, 0, 0.6),
+    make_gas_phase({ Ni: 1 }, 0, 0.5),
+    make_gas_phase({ O: 1 }, 0, 0.5),
+    make_gas_phase({ Fe: 0.5, Ni: 0.5 }, -0.15, 1.0), // FeNi alloy
+    make_gas_phase({ Fe: 0.5, O: 0.5 }, -0.9, 1.3), // FeO
+    make_gas_phase({ Ni: 0.5, O: 0.5 }, -0.85, 1.2), // NiO
+    make_gas_phase({ Fe: 0.33, Ni: 0.33, O: 0.34 }, -0.72, 1.5), // spinel
+    make_gas_phase({ Fe: 0.4, Ni: 0.2, O: 0.4 }, -0.82, 1.4),
+    make_gas_phase({ Fe: 0.2, Ni: 0.4, O: 0.4 }, -0.78, 1.3),
   ]
 </script>
 
