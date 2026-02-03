@@ -7,7 +7,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "matterviz": ["../../../src/lib"],
+      "matterviz/*": ["../../../src/lib/*"]
+    }
   },
   "include": ["tests/**/*.ts", "*.ts", "*.js"]
 }
