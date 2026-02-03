@@ -1,6 +1,7 @@
 import adapter from '@sveltejs/adapter-static'
 import type { Config } from '@sveltejs/kit'
 import { mdsvex } from 'mdsvex'
+import process from 'node:process'
 import katex from 'rehype-katex'
 import math from 'remark-math' // remark-math@3.0.0 pinned due to mdsvex https://github.com/kwshi/rehype-katex-svelte#usage
 import { heading_ids } from 'svelte-multiselect/heading-anchors'
@@ -10,7 +11,6 @@ import {
   sveltePreprocess,
 } from 'svelte-multiselect/live-examples'
 import type { PreprocessorGroup } from 'svelte/compiler'
-import process from 'node:process'
 
 const { default: pkg } = await import(`./package.json`, {
   with: { type: `json` },
@@ -46,6 +46,9 @@ export default {
       handleHttpError: ({ path, message }) => {
         // ignore missing element photos
         if (path.startsWith(`/elements/`)) return
+
+        // ignore TypeDoc internal cross-reference links (e.g. Function.foo.md, Class.bar.md)
+        if (path.startsWith(`/ferrox/`) && path.endsWith(`.md`)) return
 
         // ignore missing ferrox docs locally (generated in CI, gitignored locally)
         if (
