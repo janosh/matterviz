@@ -13,6 +13,8 @@ jobs:
     with:
       deno-version: 2.3.7
       build-cmd: |
+        set -eo pipefail
+
         # Copy site data to static
         rm -rf static/{molecules,structures,trajectories}
         cp -r src/site/{molecules,structures,trajectories} static/
