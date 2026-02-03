@@ -456,6 +456,17 @@ impl PyNPTState {
             }
         }
 
+        // Validate cell matrix for finiteness
+        for (row_idx, row) in cell.iter().enumerate() {
+            for (col_idx, &val) in row.iter().enumerate() {
+                if !val.is_finite() {
+                    return Err(PyValueError::new_err(format!(
+                        "Cell matrix element [{row_idx}][{col_idx}] must be finite, got {val}"
+                    )));
+                }
+            }
+        }
+
         let pos_vec = positions_to_vec3(&positions);
         let cell_mat = array_to_mat3(cell);
         // NPT always has a cell, so default pbc to true
@@ -589,8 +600,8 @@ impl PyFireState {
     }
 
     /// Check if optimization has converged.
-    fn is_converged(&self, fmax: f64) -> bool {
-        self.inner.is_converged(fmax)
+    fn is_converged(&self, f_max: f64) -> bool {
+        self.inner.is_converged(f_max)
     }
 
     /// Get maximum force component magnitude.
@@ -676,8 +687,8 @@ impl PyCellFireState {
     }
 
     /// Check if optimization has converged.
-    fn is_converged(&self, fmax: f64, smax: f64) -> bool {
-        self.inner.is_converged(fmax, smax)
+    fn is_converged(&self, f_max: f64, s_max: f64) -> bool {
+        self.inner.is_converged(f_max, s_max)
     }
 
     /// Get maximum force component magnitude.

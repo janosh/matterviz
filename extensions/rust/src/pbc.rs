@@ -73,13 +73,13 @@ pub fn wrap_frac_coords_pbc(coords: &Vector3<f64>, pbc: [bool; 3]) -> Vector3<f6
 fn coords_match_pbc(
     fc1: &Vector3<f64>,
     fc2: &Vector3<f64>,
-    atol: [f64; 3],
+    abs_tol: [f64; 3],
     pbc: [bool; 3],
 ) -> bool {
     for axis in 0..3 {
         let diff = fc1[axis] - fc2[axis];
         let wrapped_diff = if pbc[axis] { diff - diff.round() } else { diff };
-        if wrapped_diff.abs() > atol[axis] {
+        if wrapped_diff.abs() > abs_tol[axis] {
             return false;
         }
     }
@@ -489,7 +489,7 @@ pub fn pbc_shortest_vectors(
 
             // Check fractional tolerance (only wrap periodic axes)
             let mut within_frac = true;
-            if let Some(ftol) = lll_frac_tol {
+            if let Some(frac_tol) = lll_frac_tol {
                 for axis in 0..3 {
                     let fdist = f2[axis] - f1[axis];
                     let wrapped = if pbc[axis] {
@@ -497,7 +497,7 @@ pub fn pbc_shortest_vectors(
                     } else {
                         fdist
                     };
-                    if wrapped.abs() > ftol[axis] {
+                    if wrapped.abs() > frac_tol[axis] {
                         within_frac = false;
                         break;
                     }
@@ -556,7 +556,7 @@ pub fn pbc_shortest_vectors(
 ///
 /// * `subset` - Coordinates that should all appear in superset
 /// * `superset` - Coordinates to search within
-/// * `atol` - Tolerance for each fractional coordinate
+/// * `abs_tol` - Tolerance for each fractional coordinate
 /// * `mask` - Mask where `mask[i][j] = true` means subset[i] cannot match superset[j]
 /// * `pbc` - Periodic boundary conditions along each axis
 ///
@@ -566,7 +566,7 @@ pub fn pbc_shortest_vectors(
 pub fn is_coord_subset_pbc(
     subset: &[Vector3<f64>],
     superset: &[Vector3<f64>],
-    atol: [f64; 3],
+    abs_tol: [f64; 3],
     mask: &[Vec<bool>],
     pbc: [bool; 3],
 ) -> bool {
@@ -574,7 +574,7 @@ pub fn is_coord_subset_pbc(
         superset
             .iter()
             .enumerate()
-            .any(|(jdx, fc2)| !mask[idx][jdx] && coords_match_pbc(fc1, fc2, atol, pbc))
+            .any(|(jdx, fc2)| !mask[idx][jdx] && coords_match_pbc(fc1, fc2, abs_tol, pbc))
     })
 }
 
@@ -584,7 +584,7 @@ pub fn is_coord_subset_pbc(
 ///
 /// * `subset` - Coordinates to map
 /// * `superset` - Coordinates to map to
-/// * `atol` - Tolerance for matching
+/// * `abs_tol` - Tolerance for matching
 /// * `pbc` - Periodic boundary conditions
 ///
 /// # Returns
@@ -594,16 +594,16 @@ pub fn is_coord_subset_pbc(
 pub fn coord_list_mapping_pbc(
     subset: &[Vector3<f64>],
     superset: &[Vector3<f64>],
-    atol: f64,
+    abs_tol: f64,
     pbc: [bool; 3],
 ) -> Option<Vec<usize>> {
-    let atol_arr = [atol, atol, atol];
+    let abs_tol_arr = [abs_tol, abs_tol, abs_tol];
     subset
         .iter()
         .map(|fc1| {
             superset
                 .iter()
-                .position(|fc2| coords_match_pbc(fc1, fc2, atol_arr, pbc))
+                .position(|fc2| coords_match_pbc(fc1, fc2, abs_tol_arr, pbc))
         })
         .collect()
 }
@@ -644,7 +644,7 @@ mod tests {
     #[test]
     fn test_is_coord_subset_pbc() {
         let pbc = [true, true, true];
-        let atol = [0.05, 0.05, 0.05];
+        let abs_tol = [0.05, 0.05, 0.05];
 
         // Basic subset
         let subset = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
@@ -654,21 +654,25 @@ mod tests {
             Vector3::new(0.25, 0.25, 0.25),
         ];
         let mask = vec![vec![false; 3]; 2];
-        assert!(is_coord_subset_pbc(&subset, &superset, atol, &mask, pbc));
+        assert!(is_coord_subset_pbc(&subset, &superset, abs_tol, &mask, pbc));
 
         // Periodic: 0.99 matches 0.01
         let subset = vec![Vector3::new(0.99, 0.0, 0.0)];
         let superset = vec![Vector3::new(0.01, 0.0, 0.0)];
         let mask = vec![vec![false; 1]; 1];
-        assert!(is_coord_subset_pbc(&subset, &superset, atol, &mask, pbc));
+        assert!(is_coord_subset_pbc(&subset, &superset, abs_tol, &mask, pbc));
 
         // Not found
         let subset = vec![Vector3::new(0.3, 0.3, 0.3)];
         let superset = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
         let mask = vec![vec![false; 2]; 1];
-        let atol_tight = [0.01, 0.01, 0.01];
+        let abs_tol_tight = [0.01, 0.01, 0.01];
         assert!(!is_coord_subset_pbc(
-            &subset, &superset, atol_tight, &mask, pbc
+            &subset,
+            &superset,
+            abs_tol_tight,
+            &mask,
+            pbc
         ));
     }
 
@@ -821,8 +825,8 @@ mod tests {
         let c2 = vec![Vector3::new(0.5, 0.5, 0.5), Vector3::new(0.01, 0.01, 0.01)];
 
         // Tight tolerance - only nearby points
-        let ftol = Some([0.1, 0.1, 0.1]);
-        let (_, d2, _images) = pbc_shortest_vectors(&lattice, &c1, &c2, None, ftol);
+        let frac_tol = Some([0.1, 0.1, 0.1]);
+        let (_, d2, _images) = pbc_shortest_vectors(&lattice, &c1, &c2, None, frac_tol);
 
         // (0.5, 0.5, 0.5) is outside tolerance
         assert!(d2[0][0].is_infinite());
@@ -833,24 +837,24 @@ mod tests {
     #[test]
     fn test_partial_pbc() {
         // Test with PBC only along some axes
-        let atol = [0.05, 0.05, 0.05];
+        let abs_tol = [0.05, 0.05, 0.05];
 
         // PBC only along x-axis
         let pbc_x = [true, false, false];
         let c1 = Vector3::new(0.99, 0.0, 0.0);
         let c2 = Vector3::new(0.01, 0.0, 0.0);
         // Should match via PBC along x
-        assert!(coords_match_pbc(&c1, &c2, atol, pbc_x));
+        assert!(coords_match_pbc(&c1, &c2, abs_tol, pbc_x));
 
         // Same coords but y-axis - no PBC
         let c3 = Vector3::new(0.0, 0.99, 0.0);
         let c4 = Vector3::new(0.0, 0.01, 0.0);
         // Should NOT match (no PBC along y)
-        assert!(!coords_match_pbc(&c3, &c4, atol, pbc_x));
+        assert!(!coords_match_pbc(&c3, &c4, abs_tol, pbc_x));
 
         // No PBC at all
         let no_pbc = [false, false, false];
-        assert!(!coords_match_pbc(&c1, &c2, atol, no_pbc));
+        assert!(!coords_match_pbc(&c1, &c2, abs_tol, no_pbc));
     }
 
     #[test]

@@ -98,13 +98,13 @@ impl JsFireState {
     }
 
     /// Check if optimization has converged.
-    /// Returns false for non-positive fmax thresholds.
+    /// Returns false for non-positive f_max thresholds.
     #[wasm_bindgen]
-    pub fn is_converged(&self, fmax: f64) -> bool {
-        if !fmax.is_finite() || fmax <= 0.0 {
+    pub fn is_converged(&self, f_max: f64) -> bool {
+        if !f_max.is_finite() || f_max <= 0.0 {
             return false;
         }
-        self.inner.is_converged(fmax)
+        self.inner.is_converged(f_max)
     }
 
     /// Number of atoms.
@@ -213,17 +213,17 @@ impl JsCellFireState {
 
     /// Check if optimization has converged.
     ///
-    /// fmax: force convergence threshold (must be finite and positive)
-    /// smax: stress convergence threshold (must be finite and positive)
+    /// f_max: force convergence threshold (must be finite and positive)
+    /// s_max: stress convergence threshold (must be finite and positive)
     #[wasm_bindgen]
-    pub fn is_converged(&self, fmax: f64, smax: f64) -> Result<bool, JsError> {
-        if !fmax.is_finite() || fmax <= 0.0 {
-            return Err(JsError::new("fmax must be finite and positive"));
+    pub fn is_converged(&self, f_max: f64, s_max: f64) -> Result<bool, JsError> {
+        if !f_max.is_finite() || f_max <= 0.0 {
+            return Err(JsError::new("f_max must be finite and positive"));
         }
-        if !smax.is_finite() || smax <= 0.0 {
-            return Err(JsError::new("smax must be finite and positive"));
+        if !s_max.is_finite() || s_max <= 0.0 {
+            return Err(JsError::new("s_max must be finite and positive"));
         }
-        Ok(optimizers::cell_is_converged(&self.inner, fmax, smax))
+        Ok(optimizers::cell_is_converged(&self.inner, f_max, s_max))
     }
 
     /// Number of atoms.
