@@ -153,6 +153,28 @@ fn parse_xyz_flexible(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyDict
     struct_or_mol_to_pydict(py, result)
 }
 
+/// Parse a structure from POSCAR content string.
+///
+/// Supports VASP 5+ format with element symbols. VASP 4 format is not supported.
+#[pyfunction]
+fn parse_poscar_str(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
+    let structure = crate::io::parse_poscar_str(content)
+        .map_err(|err| PyValueError::new_err(format!("{err}")))?;
+    let json = crate::io::structure_to_pymatgen_json(&structure);
+    json_to_pydict(py, &json)
+}
+
+/// Parse a structure from a POSCAR file.
+///
+/// Supports VASP 5+ format with element symbols. VASP 4 format is not supported.
+#[pyfunction]
+fn parse_poscar_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
+    let structure = crate::io::parse_poscar(Path::new(path))
+        .map_err(|err| PyValueError::new_err(format!("{err}")))?;
+    let json = crate::io::structure_to_pymatgen_json(&structure);
+    json_to_pydict(py, &json)
+}
+
 // === TorchSim State Conversion ===
 
 /// Convert a Structure to TorchSim SimState dict format.
@@ -536,6 +558,8 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(parse_xyz_file, &submod)?)?;
     submod.add_function(wrap_pyfunction!(parse_ase_dict, &submod)?)?;
     submod.add_function(wrap_pyfunction!(parse_xyz_flexible, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(parse_poscar_str, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(parse_poscar_file, &submod)?)?;
     submod.add_function(wrap_pyfunction!(to_torch_sim_state, &submod)?)?;
     submod.add_function(wrap_pyfunction!(structures_to_torch_sim_state, &submod)?)?;
     submod.add_function(wrap_pyfunction!(from_torch_sim_state, &submod)?)?;

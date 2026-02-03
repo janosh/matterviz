@@ -69,7 +69,6 @@ tracing = "0.1"
 flate2 = "1.1"  # gzip decompression for element data
 
 # File format parsing
-vasp-poscar = "0.3"
 extxyz = "0.2"
 
 [dev-dependencies]
