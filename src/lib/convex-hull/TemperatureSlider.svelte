@@ -9,22 +9,63 @@
     temperature: number
   } = $props()
 
+  // Local preview state for smooth slider interaction without causing full re-renders
+  let is_dragging = $state(false)
+  let preview_index = $state<number | null>(null)
+  let last_update_time = 0
+  const THROTTLE_MS = 100
+
   const temp_index = $derived(
     Math.max(0, available_temperatures.indexOf(temperature)),
   )
-  const display_temp = $derived(available_temperatures[temp_index] ?? temperature)
+  const display_index = $derived(preview_index ?? temp_index)
+  const display_temp = $derived(available_temperatures[display_index] ?? temperature)
 
-  // Find closest available temperature to input value
+  function handle_slider_input(event: Event): void {
+    const new_index = +(event.currentTarget as HTMLInputElement).value
+    preview_index = new_index
+    // Throttle parent updates during drag to prevent scene flashing
+    const now = Date.now()
+    if (now - last_update_time >= THROTTLE_MS) {
+      last_update_time = now
+      temperature = available_temperatures[new_index] ?? temperature
+    }
+  }
+
+  function handle_slider_change(event: Event): void {
+    const new_temp =
+      available_temperatures[+(event.currentTarget as HTMLInputElement).value]
+    if (new_temp !== undefined) temperature = new_temp
+    preview_index = null
+    is_dragging = false
+  }
+
+  // Explicit end handlers for touch devices where onchange fires unreliably
+  function handle_slider_end(event: Event): void {
+    if (!is_dragging) return
+    const new_temp =
+      available_temperatures[+(event.currentTarget as HTMLInputElement).value]
+    if (new_temp !== undefined) temperature = new_temp
+    preview_index = null
+    is_dragging = false
+  }
+
+  function handle_slider_start(): void {
+    is_dragging = true
+    last_update_time = 0 // Reset throttle for fresh drag
+  }
+
   function set_closest_temp(value: number): void {
     temperature = available_temperatures.reduce(
       (prev, curr) => (Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev),
-      temperature, // fallback to current if array is empty
+      temperature,
     )
   }
 </script>
 
 <div
   class="temperature-slider"
+  class:is-dragging={is_dragging}
   {@attach tooltip({ content: `Temperature for G(T) free energies` })}
 >
   <label class="temp-label">
@@ -49,8 +90,13 @@
       type="range"
       min="0"
       max={available_temperatures.length - 1}
-      value={temp_index}
-      oninput={(evt) => temperature = available_temperatures[+evt.currentTarget.value]}
+      value={display_index}
+      onmousedown={handle_slider_start}
+      ontouchstart={handle_slider_start}
+      oninput={handle_slider_input}
+      onchange={handle_slider_change}
+      onmouseup={handle_slider_end}
+      ontouchend={handle_slider_end}
       aria-label="Temperature (Kelvin)"
     />
   </div>
