@@ -2201,6 +2201,28 @@ pub fn torch_sim_state_to_structures(state: &TorchSimState) -> Result<Vec<Struct
         });
     }
 
+    // Validate charge and spin lengths if provided
+    if !state.charge.is_empty() && state.charge.len() != n_systems {
+        return Err(FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!(
+                "charge length {} doesn't match number of systems {}",
+                state.charge.len(),
+                n_systems
+            ),
+        });
+    }
+    if !state.spin.is_empty() && state.spin.len() != n_systems {
+        return Err(FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!(
+                "spin length {} doesn't match number of systems {}",
+                state.spin.len(),
+                n_systems
+            ),
+        });
+    }
+
     let mut structures = Vec::with_capacity(n_systems);
 
     for sys_idx in 0..n_systems {
