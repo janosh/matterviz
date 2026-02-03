@@ -97,6 +97,7 @@
       onchange={handle_slider_change}
       onmouseup={handle_slider_end}
       ontouchend={handle_slider_end}
+      ontouchcancel={handle_slider_end}
       aria-label="Temperature (Kelvin)"
     />
   </div>
