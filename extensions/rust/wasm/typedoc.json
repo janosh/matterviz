@@ -1,0 +1,25 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["types.d.ts"],
+  "exclude": ["**/tests/**", "**/node_modules/**"],
+  "skipErrorChecking": true,
+  "plugin": ["typedoc-plugin-markdown"],
+  "out": "../../../src/routes/ferrox/wasm",
+  "readme": "none",
+  "githubPages": false,
+  "flattenOutputFiles": true,
+  "hideBreadcrumbs": true,
+  "hidePageHeader": true,
+  "hidePageTitle": true,
+  "disableSources": true,
+  "useCodeBlocks": true,
+  "expandObjects": false,
+  "expandParameters": false,
+  "parametersFormat": "table",
+  "tableColumnSettings": {
+    "hideDefaults": true,
+    "hideInherited": true,
+    "hideOverrides": true,
+    "hideSources": true
+  }
+}

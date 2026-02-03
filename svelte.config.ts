@@ -46,6 +46,15 @@ export default {
         // ignore missing element photos
         if (path.startsWith(`/elements/`)) return
 
+        // ignore missing ferrox docs (generated in CI, gitignored locally)
+        if (
+          path.startsWith(`/ferrox/rust`) || path.startsWith(`/ferrox/python`) ||
+          path.startsWith(`/ferrox/wasm`)
+        ) {
+          console.warn(`Skipping missing ferrox doc: ${path}`)
+          return
+        }
+
         // fail the build for other errors
         throw new Error(message)
       },

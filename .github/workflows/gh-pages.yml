@@ -13,12 +13,39 @@ jobs:
     with:
       deno-version: 2.3.7
       build-cmd: |
+        # Copy site data to static
         rm -rf static/{molecules,structures,trajectories}
         cp -r src/site/{molecules,structures,trajectories} static/
+
+        # Install Rust toolchain
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         . "$HOME/.cargo/env"
+
+        # Install Rust tools (rustdoc-md not needed - Rust docs use placeholder)
         cargo install wasm-pack@0.13.1 --locked
+
+        # Build WASM (needed for TypeDoc and site)
         wasm-pack build extensions/rust --target web --features wasm --no-default-features
         mkdir -p extensions/rust/wasm/pkg/
         cp -r extensions/rust/pkg/* extensions/rust/wasm/pkg/
+
+        # Install Python tools for doc generation
+        pip install maturin pydoc-markdown
+
+        # Build and install Python extension (needed for pydoc-markdown)
+        cd extensions/rust
+        rm -rf target/wheels/
+        maturin build --release --features python
+        pip install target/wheels/ferrox-*.whl
+        # Verify ferrox is importable before doc generation
+        python -c "import ferrox; print(f'ferrox {ferrox.__version__} installed')"
+        cd ../..
+
+        # Install TypeDoc for WASM docs
+        pnpm add -D typedoc typedoc-plugin-markdown
+
+        # Generate ferrox documentation (Rust, Python, WASM)
+        deno run -A scripts/generate-ferrox-docs.ts
+
+        # Build the site
         deno task build
