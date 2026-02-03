@@ -598,16 +598,9 @@ Line series support full marker customization including symbol types, sizes, col
       label: `Model Prediction`,
       color: `#f783ac`,
       render_mode: `line`,
-      markers, // Bind to toggle
       line_style: { stroke_width: 2 },
       // Size each point by sample count (more samples = larger marker)
       size_values: [10, 25, 50, 75, 100, 150],
-      point_style: {
-        symbol_type,
-        radius, // Base radius, modified by size_values
-        stroke: `white`,
-        stroke_width: 2,
-      },
       point_hover: { scale: 1.5, brightness: 1.2 },
     },
   ]
@@ -618,7 +611,12 @@ Line series support full marker customization including symbol types, sizes, col
         ? {
           ...srs,
           markers,
-          point_style: { ...srs.point_style, symbol_type, radius },
+          point_style: {
+            symbol_type,
+            radius,
+            stroke: `white`,
+            stroke_width: 2,
+          },
         }
         : srs
     ),
@@ -1017,7 +1015,7 @@ This demo stress-tests interactive axis labels with:
 
   // State
   let y_key = $state(`band_gap`)
-  let series = $state(build_series(y_key))
+  let series = $derived(build_series(y_key))
   let load_times = $state([])
   let switch_count = $state(0)
   let load_start = $state(0)

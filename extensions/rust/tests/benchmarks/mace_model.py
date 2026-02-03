@@ -48,7 +48,11 @@ def create_force_callback(
     # Pre-extract structure info
     symbols = [str(site.specie) for site in structure]
     cell = structure.lattice.matrix
-    pbc = [True, True, True]
+    pbc = (
+        list(structure.lattice.pbc)
+        if hasattr(structure.lattice, "pbc")
+        else [True, True, True]
+    )
 
     def compute_forces(positions: list[list[float]]) -> list[list[float]]:
         """Compute forces using MACE.

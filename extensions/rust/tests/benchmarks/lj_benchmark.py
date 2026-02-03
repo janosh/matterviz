@@ -32,7 +32,6 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-import ferrox
 import numpy as np
 import torch
 from ase import Atoms, units
@@ -42,6 +41,7 @@ from ase.md.langevin import Langevin
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.md.verlet import VelocityVerlet
 from ase.optimize import FIRE
+from ferrox import md, potentials
 from torch_sim import (
     SimState,
     fire_init,
@@ -136,7 +136,7 @@ def make_lj_force_fn(
     """Create LJ force callback for ferrox."""
 
     def compute_forces(pos: list[list[float]]) -> list[list[float]]:
-        _, forces = ferrox.compute_lennard_jones(
+        _, forces = potentials.compute_lennard_jones(
             pos, cell=cell, sigma=SIGMA, epsilon=EPSILON, cutoff=CUTOFF
         )
         return forces
@@ -149,8 +149,8 @@ def run_ferrox_lj_fire(atoms: Atoms, max_steps: int, fmax: float) -> tuple[float
     positions = [list(pos) for pos in atoms.get_positions()]
     force_fn = make_lj_force_fn(atoms.get_cell().array.tolist())
 
-    config = ferrox.FireConfig()
-    state = ferrox.FireState(positions, config)
+    config = md.FireConfig()
+    state = md.FireState(positions, config)
 
     n_steps = 0
     start = time.perf_counter()
@@ -171,12 +171,12 @@ def run_ferrox_lj_nve(
     positions = [list(pos) for pos in atoms.get_positions()]
     force_fn = make_lj_force_fn(atoms.get_cell().array.tolist())
 
-    state = ferrox.MDState(positions, atoms.get_masses().tolist())
+    state = md.MDState(positions, atoms.get_masses().tolist())
     state.init_velocities(temperature, seed=42)
 
     start = time.perf_counter()
     for _ in range(n_steps):
-        ferrox.md_velocity_verlet_step(state, dt, force_fn)
+        md.velocity_verlet_step(state, dt, force_fn)
 
     return time.perf_counter() - start
 
@@ -188,9 +188,9 @@ def run_ferrox_lj_nvt(
     positions = [list(pos) for pos in atoms.get_positions()]
     force_fn = make_lj_force_fn(atoms.get_cell().array.tolist())
 
-    state = ferrox.MDState(positions, atoms.get_masses().tolist())
+    state = md.MDState(positions, atoms.get_masses().tolist())
     state.init_velocities(temperature, seed=42)
-    integrator = ferrox.LangevinIntegrator(temperature, friction, dt, seed=42)
+    integrator = md.LangevinIntegrator(temperature, friction, dt, seed=42)
 
     start = time.perf_counter()
     for _ in range(n_steps):

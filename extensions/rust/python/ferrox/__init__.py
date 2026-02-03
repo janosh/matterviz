@@ -3,204 +3,76 @@
 Features: I/O (CIF/POSCAR/extXYZ/JSON), structure matching, symmetry analysis,
 coordination analysis, supercells, primitive/conventional cells, composition parsing,
 oxidation state guessing and bond valence analysis.
+
+## Submodule Organization
+
+Functions are organized into submodules by domain:
+
+- `ferrox.io` - Structure parsing and writing (CIF, POSCAR, XYZ, etc.)
+- `ferrox.structure` - Structure manipulation (supercell, sort, interpolate, etc.)
+- `ferrox.lattice` - Lattice operations (metric tensor, reduction, etc.)
+- `ferrox.neighbors` - Neighbor lists and distance calculations
+- `ferrox.coordination` - Coordination numbers and local environments
+- `ferrox.composition` - Composition parsing and analysis
+- `ferrox.symmetry` - Space groups, Wyckoff positions, symmetry operations
+- `ferrox.defects` - Point defect generation and analysis
+- `ferrox.surfaces` - Surface/slab operations, Miller indices, adsorption
+- `ferrox.cell` - Cell operations (minimum image, reduction)
+- `ferrox.elastic` - Elastic tensor calculations
+- `ferrox.rdf` - Radial distribution functions
+- `ferrox.xrd` - X-ray diffraction
+- `ferrox.oxidation` - Oxidation state analysis
+- `ferrox.order_params` - Steinhardt order parameters
+- `ferrox.trajectory` - Trajectory analysis (MSD, diffusion)
+- `ferrox.md` - Molecular dynamics integrators
+- `ferrox.potentials` - Classical interatomic potentials (LJ, Morse, etc.)
+- `ferrox.optimizers` - Geometry optimizers (FIRE, CellFIRE)
+- `ferrox.properties` - Physical property calculations (volume, density, mass)
+- `ferrox.species` - Chemical species with oxidation states
+
+## Usage Example
+
+```python
+from ferrox import Element
+from ferrox import io, structure, defects
+
+# Parse a structure file
+struct = io.parse_structure_file("POSCAR")
+
+# Create a supercell
+supercell = structure.make_supercell(struct, [[2, 0, 0], [0, 2, 0], [0, 0, 2]])
+
+# Create a vacancy defect
+defect = defects.create_vacancy(supercell, 0)
+```
 """
 
-# Re-exports for public API
+# Top-level classes and submodules
 from ferrox._ferrox import (
-    CellFireState,
-    # Classes
     Element,
-    # FIRE optimizer
-    FireConfig,
-    FireState,
-    LangevinIntegrator,
-    # MD integrators
-    MDState,
-    # Trajectory analysis
-    MsdCalculator,
-    # Thermostats
-    NoseHooverChain,
-    NPTIntegrator,
-    # NPT ensemble
-    NPTState,
-    StructureMatcher,
-    VacfCalculator,
-    VelocityRescale,
     __version__,
-    # Oxidation state functions
-    add_charges_from_oxi_state_guesses,
-    add_oxidation_state_by_element,
-    add_oxidation_state_by_site,
-    apply_inversion,
-    apply_operation,
-    apply_translation,
-    cell_delaunay_reduce,
-    cell_find_supercell_matrix,
-    cell_is_niggli_reduced,
-    cell_is_supercell,
-    cell_lattices_equivalent,
-    # Cell operations
-    cell_minimum_image_distance,
-    cell_minimum_image_vector,
-    cell_niggli_reduce,
-    cell_perpendicular_distances,
-    cell_wrap_to_unit_cell,
-    classify_all_atoms,
-    classify_local_structure,
-    # Composition functions
-    composition_charge,
-    compositions_almost_equal,
-    # RDF functions
-    compute_all_element_rdfs,
-    compute_bv_sums,
-    compute_element_rdf,
-    # Harmonic bonds
-    compute_harmonic_bonds,
-    # Lennard-Jones potential
-    compute_lennard_jones,
-    compute_lennard_jones_forces,
-    # Morse potential
-    compute_morse,
-    compute_rdf,
-    # Soft Sphere potential
-    compute_soft_sphere,
-    compute_steinhardt_q,
-    compute_xrd,
-    copy_structure,
-    # Defect functions
-    defect_classify_site,
-    defect_create_antisite,
-    defect_create_dimer,
-    defect_create_interstitial,
-    defect_create_substitution,
-    defect_create_vacancy,
-    defect_distort_bonds,
-    defect_find_interstitial_sites,
-    defect_find_supercell,
-    defect_find_voronoi_interstitials,
-    defect_generate_all,
-    defect_generate_name,
-    defect_guess_charge_states,
-    defect_local_rattle,
-    defect_rattle,
-    deform,
-    diffusion_from_msd,
-    diffusion_from_vacf,
-    distance_from_point,
-    distance_matrix,
-    elastic_apply_strain,
-    elastic_bulk_modulus,
-    # Elastic tensor
-    elastic_generate_strains,
-    elastic_is_stable,
-    elastic_poisson_ratio,
-    elastic_shear_modulus,
-    elastic_strain_to_voigt,
-    elastic_stress_to_voigt,
-    elastic_tensor_from_stresses,
-    elastic_youngs_modulus,
-    elastic_zener_ratio,
-    enumerate_derivatives,
-    ewald_energy,
-    formula_hash,
-    fractional_composition,
-    from_ase_atoms,
-    from_pymatgen_structure,
-    generate_slabs,
-    get_all_site_properties,
-    get_atomic_fraction,
-    get_atomic_scattering_params,
-    get_cn_voronoi,
-    get_cn_voronoi_all,
-    get_coordination_number,
-    get_coordination_numbers,
-    get_crystal_system,
-    get_distance,
-    get_distance_and_image,
-    get_distance_with_image,
-    get_equivalent_sites,
-    get_hall_number,
-    get_lattice_inv_matrix,
-    get_lattice_metric_tensor,
-    get_lll_mapping,
-    get_lll_reduced_lattice,
-    get_local_environment,
-    get_local_environment_voronoi,
-    get_neighbor_list,
-    get_neighbors,
-    get_pearson_symbol,
-    get_reciprocal_lattice,
-    get_reduced_factor,
-    get_reduced_structure,
-    get_reduced_structure_with_params,
-    get_site_properties,
-    get_site_symmetry_symbols,
-    get_sorted_by_electronegativity,
-    get_sorted_structure,
-    get_spacegroup_number,
-    get_spacegroup_symbol,
-    get_structure_metadata,
-    get_symmetry_dataset,
-    get_symmetry_operations,
-    get_voronoi_neighbors,
-    get_wt_fraction,
-    # Wyckoff labels
-    get_wyckoff_labels,
-    get_wyckoff_letters,
-    guess_oxidation_states_bvs,
-    interpolate,
-    is_charge_balanced,
-    is_periodic_image,
-    make_slab,
-    make_supercell,
-    make_supercell_diag,
-    matches,
-    md_velocity_verlet_step,
-    molecule_to_json,
-    molecule_to_xyz,
-    normalize_element_symbol,
-    order_disordered,
-    oxi_state_guesses,
-    parse_ase_dict,
-    parse_composition,
-    parse_molecule_json,
-    parse_structure_file,
-    parse_trajectory,
-    parse_xyz_file,
-    parse_xyz_flexible,
-    parse_xyz_str,
-    perturb,
-    reduced_composition,
-    remap_elements,
-    remove_oxidation_states,
-    remove_sites,
-    remove_species,
-    set_site_property,
-    site_label,
-    site_labels,
-    species_hash,
-    species_strings,
-    substitute_species,
-    surface_area,
-    surface_calculate_energy,
-    surface_compute_wulff,
-    surface_d_spacing,
-    # Surface functions
-    surface_enumerate_miller,
-    surface_enumerate_terminations,
-    surface_find_adsorption_sites,
-    surface_get_surface_atoms,
-    surface_miller_to_normal,
-    to_ase_atoms,
-    to_cif,
-    to_conventional,
-    to_extxyz,
-    to_poscar,
-    to_primitive,
-    to_pymatgen_json,
-    to_pymatgen_molecule,
-    to_pymatgen_structure,
-    translate_sites,
-    wrap_to_unit_cell,
-    write_structure_file,
+    cell,
+    composition,
+    coordination,
+    defects,
+    elastic,
+    io,
+    lattice,
+    md,
+    neighbors,
+    optimizers,
+    order_params,
+    oxidation,
+    potentials,
+    properties,
+    rdf,
+    species,
+    structure,
+    surfaces,
+    symmetry,
+    trajectory,
+    xrd,
 )
+
+# Backward-compatible re-export (StructureMatcher moved to ferrox.structure)
+StructureMatcher = structure.StructureMatcher
