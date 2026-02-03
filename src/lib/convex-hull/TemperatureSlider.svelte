@@ -80,27 +80,27 @@
     />
     <span>K</span>
   </label>
-  <div class="slider-wrapper">
-    {#if available_temperatures.length > 0}
+  {#if available_temperatures.length > 0}
+    <div class="slider-wrapper">
       <span class="temp-range">
         {available_temperatures[0]}–{available_temperatures.at(-1)} K
       </span>
-    {/if}
-    <input
-      type="range"
-      min="0"
-      max={available_temperatures.length - 1}
-      value={display_index}
-      onmousedown={handle_slider_start}
-      ontouchstart={handle_slider_start}
-      oninput={handle_slider_input}
-      onchange={handle_slider_change}
-      onmouseup={handle_slider_end}
-      ontouchend={handle_slider_end}
-      ontouchcancel={handle_slider_end}
-      aria-label="Temperature (Kelvin)"
-    />
-  </div>
+      <input
+        type="range"
+        min="0"
+        max={available_temperatures.length - 1}
+        value={display_index}
+        onmousedown={handle_slider_start}
+        ontouchstart={handle_slider_start}
+        oninput={handle_slider_input}
+        onchange={handle_slider_change}
+        onmouseup={handle_slider_end}
+        ontouchend={handle_slider_end}
+        ontouchcancel={handle_slider_end}
+        aria-label="Temperature (Kelvin)"
+      />
+    </div>
+  {/if}
 </div>
 
 <style>
