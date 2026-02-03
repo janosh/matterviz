@@ -10,9 +10,8 @@
   } = $props()
 
   // Local preview state for smooth slider interaction without causing full re-renders
-  let is_dragging = $state(false)
   let preview_index = $state<number | null>(null)
-  let last_update_time = $state(0)
+  let last_update_time = 0
   const THROTTLE_MS = 100
 
   const temp_index = $derived(
@@ -32,27 +31,12 @@
     }
   }
 
-  function handle_slider_change(event: Event): void {
-    const new_temp =
-      available_temperatures[+(event.currentTarget as HTMLInputElement).value]
-    if (new_temp !== undefined) temperature = new_temp
-    preview_index = null
-    is_dragging = false
-  }
-
-  // Explicit end handlers for touch devices where onchange fires unreliably
   function handle_slider_end(event: Event): void {
-    if (!is_dragging) return
+    if (preview_index === null) return // Already processed or no drag occurred
     const new_temp =
       available_temperatures[+(event.currentTarget as HTMLInputElement).value]
     if (new_temp !== undefined) temperature = new_temp
     preview_index = null
-    is_dragging = false
-  }
-
-  function handle_slider_start(): void {
-    is_dragging = true
-    last_update_time = 0 // Reset throttle for fresh drag
   }
 
   function set_closest_temp(value: number): void {
@@ -65,7 +49,6 @@
 
 <div
   class="temperature-slider"
-  class:is-dragging={is_dragging}
   {@attach tooltip({ content: `Temperature for G(T) free energies` })}
 >
   <label class="temp-label">
@@ -90,13 +73,10 @@
         min="0"
         max={available_temperatures.length - 1}
         value={display_index}
-        onmousedown={handle_slider_start}
-        ontouchstart={handle_slider_start}
         oninput={handle_slider_input}
-        onchange={handle_slider_change}
+        onchange={handle_slider_end}
         onmouseup={handle_slider_end}
         ontouchend={handle_slider_end}
-        ontouchcancel={handle_slider_end}
         aria-label="Temperature (Kelvin)"
       />
     </div>
