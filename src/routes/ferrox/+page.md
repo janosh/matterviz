@@ -40,7 +40,7 @@ ferrox = "*"  # or pin to specific version from crates.io
 Build from source and use in the browser:
 
 ```javascript
-import init, * as ferrox from 'matterviz/wasm'
+import init, * as ferrox from 'matterviz/structure/ferrox-wasm'
 
 await init()
 const result = ferrox.parse_cif(cif_content)
@@ -83,7 +83,7 @@ let is_match = matcher.fit(&struct1, &struct2);
 ### TypeScript/WASM
 
 ```typescript
-import init, { get_spacegroup_symbol, parse_cif } from 'matterviz/wasm'
+import init, { get_spacegroup_symbol, parse_cif } from 'matterviz/structure/ferrox-wasm'
 
 await init()
 

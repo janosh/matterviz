@@ -78,7 +78,7 @@
   }
   .ferrox-layout {
     :global(aside.toc) {
-      font-size: 0.75rem;
+      font-size: 0.7rem;
     }
     :global(aside.toc.desktop) {
       position: fixed;

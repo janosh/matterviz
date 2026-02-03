@@ -4,7 +4,7 @@
 loaders:
   - type: python
     search_path: [python]
-    modules: [ferrox]
+    packages: [ferrox]
 
 processors:
   - type: filter

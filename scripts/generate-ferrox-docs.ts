@@ -38,6 +38,7 @@ interface CommandResult {
 }
 
 async function run_command(cmd: string[], cwd: string): Promise<CommandResult> {
+  console.log(`  Running: ${cmd.join(` `)} (in ${cwd})`)
   const proc = new Deno.Command(cmd[0], {
     args: cmd.slice(1),
     cwd,
@@ -112,7 +113,11 @@ async function postprocess_markdown(filepath: string): Promise<void> {
     // Ensure the file doesn't have conflicting frontmatter
     if (!content.startsWith(`---`) && !content.startsWith(`#`)) {
       // Add a title if the file doesn't start with a heading
-      const filename = filepath.split(`/`).pop()?.replace(`+page.md`, ``) || `API`
+      // Strip /+page.md suffix, then get last segment, fallback to parent dir or "API"
+      const path_without_suffix = filepath.replace(/\/\+page\.md$/, ``)
+      const segments = path_without_suffix.split(`/`)
+      const last_segment = segments.pop() || ``
+      const filename = last_segment || segments.slice(-1)[0] || `API`
       content = `# ${filename}\n\n${content}`
     }
 

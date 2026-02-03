@@ -10,6 +10,7 @@ import {
   sveltePreprocess,
 } from 'svelte-multiselect/live-examples'
 import type { PreprocessorGroup } from 'svelte/compiler'
+import process from 'node:process'
 
 const { default: pkg } = await import(`./package.json`, {
   with: { type: `json` },
@@ -46,11 +47,15 @@ export default {
         // ignore missing element photos
         if (path.startsWith(`/elements/`)) return
 
-        // ignore missing ferrox docs (generated in CI, gitignored locally)
+        // ignore missing ferrox docs locally (generated in CI, gitignored locally)
         if (
           path.startsWith(`/ferrox/rust`) || path.startsWith(`/ferrox/python`) ||
           path.startsWith(`/ferrox/wasm`)
         ) {
+          if (process.env.CI) {
+            console.error(`Missing ferrox doc in CI: ${path}`)
+            throw new Error(message)
+          }
           console.warn(`Skipping missing ferrox doc: ${path}`)
           return
         }
