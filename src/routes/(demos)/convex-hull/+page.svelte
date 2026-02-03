@@ -170,102 +170,97 @@
     })),
   )
 
-  // Synthetic G(T) data: G(T) ≈ E_0K + a*T - b*T*ln(T)
-  const temperatures = [300, 600, 900, 1200, 1500]
+  // === Temperature-dependent G(T) synthetic data ===
+  // G(T) ≈ E_0K + entropy_coef * T * 0.0001 - 0.00005 * T * ln(T)
+  const temperatures = Array.from({ length: 13 }, (_, idx) => 300 + idx * 100) // 300-1500K
 
-  type BaseEntry = {
-    composition: Record<string, number>
-    energy: number
-    entropy_coef: number
+  // Seeded pseudo-random for reproducible demo data
+  const seeded_random = (seed: number) => {
+    const x = Math.sin(seed * 9999) * 10000
+    return x - Math.floor(x)
   }
-  const with_temp_data = (
-    { composition, energy, entropy_coef }: BaseEntry,
-  ): PhaseData => ({
-    composition,
-    energy,
-    temperatures,
-    free_energies: temperatures.map((T) =>
-      energy + entropy_coef * T * 0.0001 - 0.00005 * T * Math.log(T)
+
+  // Generate phase with computed energy/entropy from composition
+  type Comp = Record<string, number>
+  const make_phase = (comp: Comp, seed: number, entropy_boost = 0): PhaseData => {
+    const n_elements = Object.keys(comp).length
+    const energy = -0.3 * n_elements - seeded_random(seed) * 0.5
+    const entropy_coef = 0.5 + n_elements * 0.3 + seeded_random(seed + 1) * 2 +
+      entropy_boost
+    return {
+      composition: comp,
+      energy,
+      temperatures,
+      free_energies: temperatures.map(
+        (T) => energy + entropy_coef * T * 0.0001 - 0.00005 * T * Math.log(T),
+      ),
+    }
+  }
+
+  // Binary Li-Fe: elements + 7 compositions at different x values
+  const temp_binary_entries: PhaseData[] = [
+    make_phase({ Li: 1 }, 1),
+    make_phase({ Fe: 1 }, 2),
+    ...[0.25, 0.33, 0.4, 0.5, 0.6, 0.67, 0.75].flatMap((x, idx) => [
+      make_phase({ Li: x, Fe: 1 - x }, 10 + idx), // ordered
+      make_phase({ Li: x, Fe: 1 - x }, 20 + idx, 2), // disordered (high entropy)
+    ]),
+  ]
+
+  // Ternary Li-Fe-O: elements + binary edges + interior points + polymorphs
+  const temp_ternary_entries: PhaseData[] = [
+    // Pure elements
+    ...[`Li`, `Fe`, `O`].map((el, idx) => make_phase({ [el]: 1 }, idx)),
+    // Binary edges (6 pairs × 2 polymorphs)
+    ...[[`Li`, `Fe`], [`Li`, `O`], [`Fe`, `O`]].flatMap(([a, b], idx) =>
+      [0.33, 0.5, 0.67].flatMap((x, jdx) => [
+        make_phase({ [a]: x, [b]: 1 - x }, 100 + idx * 10 + jdx),
+        make_phase({ [a]: x, [b]: 1 - x }, 200 + idx * 10 + jdx, 3),
+      ])
     ),
-  })
+    // Ternary interior with competing polymorphs
+    ...[
+      { Li: 0.33, Fe: 0.33, O: 0.34 },
+      { Li: 0.5, Fe: 0.25, O: 0.25 },
+      { Li: 0.25, Fe: 0.5, O: 0.25 },
+      { Li: 0.25, Fe: 0.25, O: 0.5 },
+    ].flatMap((comp, idx) => [
+      make_phase(comp, 300 + idx), // ordered (low S)
+      make_phase(comp, 400 + idx, 4), // disordered (high S)
+    ]),
+  ]
 
-  // Binary Li-Fe system with temperature-dependent G(T)
-  const temp_binary_entries = [
-    { composition: { Li: 1 }, energy: 0, entropy_coef: 0.5 },
-    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.8 },
-    { composition: { Li: 0.5, Fe: 0.5 }, energy: -0.3, entropy_coef: 1.2 },
-    { composition: { Li: 0.33, Fe: 0.67 }, energy: -0.25, entropy_coef: 1.5 },
-    { composition: { Li: 0.67, Fe: 0.33 }, energy: -0.22, entropy_coef: 0.9 },
-    { composition: { Li: 0.25, Fe: 0.75 }, energy: -0.15, entropy_coef: 1.8 },
-    { composition: { Li: 0.75, Fe: 0.25 }, energy: -0.12, entropy_coef: 0.6 },
-    { composition: { Li: 0.4, Fe: 0.6 }, energy: -0.1, entropy_coef: 2.0 },
-    { composition: { Li: 0.6, Fe: 0.4 }, energy: -0.08, entropy_coef: 1.1 },
-  ].map(with_temp_data)
-
-  // Ternary Li-Fe-O system with temperature-dependent G(T)
-  const temp_ternary_entries = [
-    { composition: { Li: 1 }, energy: 0, entropy_coef: 0.4 },
-    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.6 },
-    { composition: { O: 1 }, energy: 0, entropy_coef: 0.5 },
-    { composition: { Li: 0.5, Fe: 0.5 }, energy: -0.35, entropy_coef: 1.3 },
-    { composition: { Fe: 0.5, O: 0.5 }, energy: -0.28, entropy_coef: 1.6 },
-    { composition: { Li: 0.5, O: 0.5 }, energy: -0.32, entropy_coef: 1.1 },
-    {
-      composition: { Li: 0.33, Fe: 0.33, O: 0.34 },
-      energy: -0.45,
-      entropy_coef: 1.8,
-    },
-    { composition: { Li: 0.5, Fe: 0.25, O: 0.25 }, energy: -0.38, entropy_coef: 1.4 },
-    { composition: { Li: 0.25, Fe: 0.5, O: 0.25 }, energy: -0.36, entropy_coef: 1.5 },
-    { composition: { Li: 0.25, Fe: 0.25, O: 0.5 }, energy: -0.34, entropy_coef: 1.2 },
-    { composition: { Li: 0.4, Fe: 0.4, O: 0.2 }, energy: -0.2, entropy_coef: 2.2 },
-    { composition: { Li: 0.2, Fe: 0.4, O: 0.4 }, energy: -0.18, entropy_coef: 2.0 },
-  ].map(with_temp_data)
-
-  // Quaternary Li-Fe-Ni-O system with temperature-dependent G(T)
-  const temp_quaternary_entries = [
-    { composition: { Li: 1 }, energy: 0, entropy_coef: 0.3 },
-    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.5 },
-    { composition: { Ni: 1 }, energy: 0, entropy_coef: 0.4 },
-    { composition: { O: 1 }, energy: 0, entropy_coef: 0.6 },
-    { composition: { Li: 0.5, Fe: 0.5 }, energy: -0.3, entropy_coef: 1.2 },
-    { composition: { Ni: 0.5, O: 0.5 }, energy: -0.28, entropy_coef: 1.4 },
-    {
-      composition: { Li: 0.33, Fe: 0.33, Ni: 0.34 },
-      energy: -0.4,
-      entropy_coef: 1.6,
-    },
-    {
-      composition: { Fe: 0.33, Ni: 0.33, O: 0.34 },
-      energy: -0.38,
-      entropy_coef: 1.7,
-    },
-    {
-      composition: { Li: 0.25, Fe: 0.25, Ni: 0.25, O: 0.25 },
-      energy: -0.5,
-      entropy_coef: 2.0,
-    },
-    {
-      composition: { Li: 0.4, Fe: 0.2, Ni: 0.2, O: 0.2 },
-      energy: -0.42,
-      entropy_coef: 1.8,
-    },
-    {
-      composition: { Li: 0.2, Fe: 0.4, Ni: 0.2, O: 0.2 },
-      energy: -0.4,
-      entropy_coef: 1.9,
-    },
-    {
-      composition: { Li: 0.3, Fe: 0.3, Ni: 0.3, O: 0.1 },
-      energy: -0.25,
-      entropy_coef: 2.5,
-    },
-    {
-      composition: { Li: 0.1, Fe: 0.3, Ni: 0.3, O: 0.3 },
-      energy: -0.22,
-      entropy_coef: 2.3,
-    },
-  ].map(with_temp_data)
+  // Quaternary Li-Fe-Ni-O: programmatic generation
+  const temp_quaternary_entries: PhaseData[] = [
+    // Pure elements
+    ...[`Li`, `Fe`, `Ni`, `O`].map((el, idx) => make_phase({ [el]: 1 }, idx)),
+    // All binary pairs
+    ...[[`Li`, `Fe`], [`Li`, `Ni`], [`Li`, `O`], [`Fe`, `Ni`], [`Fe`, `O`], [
+      `Ni`,
+      `O`,
+    ]]
+      .flatMap(([a, b], idx) => [
+        make_phase({ [a]: 0.5, [b]: 0.5 }, 500 + idx),
+        make_phase({ [a]: 0.5, [b]: 0.5 }, 600 + idx, 2.5),
+      ]),
+    // Ternary faces (4 faces × 2 polymorphs)
+    ...[[`Li`, `Fe`, `Ni`], [`Li`, `Fe`, `O`], [`Li`, `Ni`, `O`], [`Fe`, `Ni`, `O`]]
+      .flatMap(([a, b, c], idx) => [
+        make_phase({ [a]: 0.33, [b]: 0.33, [c]: 0.34 }, 700 + idx),
+        make_phase({ [a]: 0.33, [b]: 0.33, [c]: 0.34 }, 800 + idx, 3.5),
+      ]),
+    // Quaternary interior with dramatic order-disorder transitions
+    ...[
+      { Li: 0.25, Fe: 0.25, Ni: 0.25, O: 0.25 },
+      { Li: 0.4, Fe: 0.2, Ni: 0.2, O: 0.2 },
+      { Li: 0.2, Fe: 0.4, Ni: 0.2, O: 0.2 },
+      { Li: 0.2, Fe: 0.2, Ni: 0.4, O: 0.2 },
+      { Li: 0.2, Fe: 0.2, Ni: 0.2, O: 0.4 },
+    ].flatMap((comp, idx) => [
+      make_phase(comp, 900 + idx), // ordered
+      make_phase(comp, 1000 + idx, 5), // high-entropy (HEO)
+    ]),
+  ]
 
   // Gas pressure demo: configurable gas atmosphere control
   let selected_demo_gas = $state<GasSpecies>(`O2`)
@@ -278,35 +273,43 @@
   // Bindable gas pressures for the demo
   let gas_demo_pressures = $state<Partial<Record<GasSpecies, number>>>({})
 
-  // Synthetic Fe-O data with temperature dependence for gas demo
-  const gas_demo_fe_o_entries = ([
-    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.6 },
-    { composition: { O: 1 }, energy: 0, entropy_coef: 0.5 },
-    { composition: { Fe: 0.67, O: 0.33 }, energy: -0.85, entropy_coef: 1.2 }, // FeO
-    { composition: { Fe: 0.6, O: 0.4 }, energy: -0.95, entropy_coef: 1.4 }, // Fe3O4
-    { composition: { Fe: 0.4, O: 0.6 }, energy: -1.05, entropy_coef: 1.6 }, // Fe2O3
-    { composition: { Fe: 0.5, O: 0.5 }, energy: -0.78, entropy_coef: 1.3 },
-    { composition: { Fe: 0.75, O: 0.25 }, energy: -0.45, entropy_coef: 0.9 },
-    { composition: { Fe: 0.33, O: 0.67 }, energy: -0.68, entropy_coef: 1.8 },
-  ] as BaseEntry[]).map(with_temp_data)
+  // Gas demo helper: linear G(T) = E - S*(T - 300K)*0.001 for smooth T-dependence
+  // Demo entropy values 30-80 (unitless scaling factor, not physical meV/K)
+  const make_gas_phase = (
+    comp: Comp,
+    energy: number,
+    entropy: number, // unitless scaling factor
+  ): PhaseData => ({
+    composition: comp,
+    energy,
+    temperatures,
+    free_energies: temperatures.map((T) => energy - entropy * (T - 300) * 0.001),
+  })
 
-  // Ternary Fe-Ni-O system for gas demo
-  const gas_demo_ternary_entries = ([
-    { composition: { Fe: 1 }, energy: 0, entropy_coef: 0.6 },
-    { composition: { Ni: 1 }, energy: 0, entropy_coef: 0.5 },
-    { composition: { O: 1 }, energy: 0, entropy_coef: 0.5 },
-    { composition: { Fe: 0.5, O: 0.5 }, energy: -0.9, entropy_coef: 1.3 },
-    { composition: { Ni: 0.5, O: 0.5 }, energy: -0.85, entropy_coef: 1.2 },
-    { composition: { Fe: 0.5, Ni: 0.5 }, energy: -0.15, entropy_coef: 1.0 },
-    {
-      composition: { Fe: 0.33, Ni: 0.33, O: 0.34 },
-      energy: -0.72,
-      entropy_coef: 1.5,
-    },
-    { composition: { Fe: 0.4, Ni: 0.2, O: 0.4 }, energy: -0.82, entropy_coef: 1.6 },
-    { composition: { Fe: 0.2, Ni: 0.4, O: 0.4 }, energy: -0.78, entropy_coef: 1.4 },
-    { composition: { Fe: 0.25, Ni: 0.25, O: 0.5 }, energy: -0.68, entropy_coef: 1.7 },
-  ] as BaseEntry[]).map(with_temp_data)
+  // Gas demo: Fe-O binary - entropy increases with O content (oxides have higher S)
+  const gas_demo_fe_o_entries: PhaseData[] = [
+    make_gas_phase({ Fe: 1 }, 0, 30), // Fe metal, low entropy
+    make_gas_phase({ O: 1 }, 0, 50), // O2 reference
+    make_gas_phase({ Fe: 0.75, O: 0.25 }, -0.4, 45), // Fe-rich
+    make_gas_phase({ Fe: 0.67, O: 0.33 }, -0.75, 55), // FeO (wüstite)
+    make_gas_phase({ Fe: 0.6, O: 0.4 }, -0.85, 60), // Fe3O4-like
+    make_gas_phase({ Fe: 0.5, O: 0.5 }, -0.7, 65), // intermediate
+    make_gas_phase({ Fe: 0.43, O: 0.57 }, -0.95, 70), // Fe2O3 (hematite)
+    make_gas_phase({ Fe: 0.33, O: 0.67 }, -0.55, 80), // O-rich
+  ]
+
+  // Gas demo: Fe-Ni-O ternary with consistent entropy trend
+  const gas_demo_ternary_entries: PhaseData[] = [
+    make_gas_phase({ Fe: 1 }, 0, 30),
+    make_gas_phase({ Ni: 1 }, 0, 32),
+    make_gas_phase({ O: 1 }, 0, 50),
+    make_gas_phase({ Fe: 0.5, Ni: 0.5 }, -0.12, 40), // FeNi alloy
+    make_gas_phase({ Fe: 0.5, O: 0.5 }, -0.8, 60), // FeO
+    make_gas_phase({ Ni: 0.5, O: 0.5 }, -0.75, 58), // NiO
+    make_gas_phase({ Fe: 0.33, Ni: 0.33, O: 0.34 }, -0.65, 55), // spinel
+    make_gas_phase({ Fe: 0.4, Ni: 0.2, O: 0.4 }, -0.72, 58),
+    make_gas_phase({ Fe: 0.2, Ni: 0.4, O: 0.4 }, -0.68, 56),
+  ]
 </script>
 
 <svelte:head>
@@ -587,6 +590,7 @@
   .gas-selector {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
     margin-bottom: 1rem;
   }
@@ -594,11 +598,11 @@
     font-weight: 500;
   }
   .gas-selector select {
-    padding: 0.4rem 0.8rem;
-    border-radius: 4px;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
     border: 1px solid var(--border-color, #ccc);
     background: var(--bg-color, white);
-    font-size: 1rem;
+    font-size: 0.9rem;
     cursor: pointer;
   }
   .gas-grid {
