@@ -600,8 +600,13 @@ impl PyFireState {
     }
 
     /// Check if optimization has converged.
-    fn is_converged(&self, f_max: f64) -> bool {
-        self.inner.is_converged(f_max)
+    fn is_converged(&self, f_max: f64) -> PyResult<bool> {
+        if !f_max.is_finite() || f_max <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "f_max must be positive and finite",
+            ));
+        }
+        Ok(self.inner.is_converged(f_max))
     }
 
     /// Get maximum force component magnitude.
@@ -687,8 +692,18 @@ impl PyCellFireState {
     }
 
     /// Check if optimization has converged.
-    fn is_converged(&self, f_max: f64, s_max: f64) -> bool {
-        self.inner.is_converged(f_max, s_max)
+    fn is_converged(&self, f_max: f64, s_max: f64) -> PyResult<bool> {
+        if !f_max.is_finite() || f_max <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "f_max must be positive and finite",
+            ));
+        }
+        if !s_max.is_finite() || s_max <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "s_max must be positive and finite",
+            ));
+        }
+        Ok(self.inner.is_converged(f_max, s_max))
     }
 
     /// Get maximum force component magnitude.

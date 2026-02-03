@@ -98,13 +98,14 @@ impl JsFireState {
     }
 
     /// Check if optimization has converged.
-    /// Returns false for non-positive f_max thresholds.
+    ///
+    /// f_max: force convergence threshold (must be finite and positive)
     #[wasm_bindgen]
-    pub fn is_converged(&self, f_max: f64) -> bool {
+    pub fn is_converged(&self, f_max: f64) -> Result<bool, JsError> {
         if !f_max.is_finite() || f_max <= 0.0 {
-            return false;
+            return Err(JsError::new("f_max must be finite and positive"));
         }
-        self.inner.is_converged(f_max)
+        Ok(self.inner.is_converged(f_max))
     }
 
     /// Number of atoms.
