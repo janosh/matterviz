@@ -273,44 +273,42 @@
   // Bindable gas pressures for the demo
   let gas_demo_pressures = $state<Partial<Record<GasSpecies, number>>>({})
 
-  // Gas demo helper: explicit energy/entropy for physically smooth T-dependence
+  // Gas demo helper: linear G(T) = E - S*(T - 300K) for smooth T-dependence
+  // entropy values in meV/K (typical range 0.05-0.15 meV/K for solids)
   const make_gas_phase = (
     comp: Comp,
     energy: number,
-    entropy_coef: number,
+    entropy: number, // meV/K
   ): PhaseData => ({
     composition: comp,
     energy,
     temperatures,
-    free_energies: temperatures.map(
-      (T) => energy + entropy_coef * T * 0.0001 - 0.00005 * T * Math.log(T),
-    ),
+    free_energies: temperatures.map((T) => energy - entropy * (T - 300) * 0.001),
   })
 
-  // Gas demo: Fe-O binary with realistic iron oxide energies
-  // Values approximate DFT formation energies for Fe-O system
+  // Gas demo: Fe-O binary - entropy increases with O content (oxides have higher S)
   const gas_demo_fe_o_entries: PhaseData[] = [
-    make_gas_phase({ Fe: 1 }, 0, 0.6), // Fe metal
-    make_gas_phase({ O: 1 }, 0, 0.5), // O2 reference
-    make_gas_phase({ Fe: 0.75, O: 0.25 }, -0.45, 0.9), // Fe-rich
-    make_gas_phase({ Fe: 0.67, O: 0.33 }, -0.85, 1.2), // FeO (wüstite)
-    make_gas_phase({ Fe: 0.6, O: 0.4 }, -0.95, 1.3), // Fe3O4-like
-    make_gas_phase({ Fe: 0.5, O: 0.5 }, -0.78, 1.4), // intermediate
-    make_gas_phase({ Fe: 0.43, O: 0.57 }, -1.05, 1.5), // Fe2O3 (hematite)
-    make_gas_phase({ Fe: 0.33, O: 0.67 }, -0.68, 1.6), // O-rich
+    make_gas_phase({ Fe: 1 }, 0, 30), // Fe metal, low entropy
+    make_gas_phase({ O: 1 }, 0, 50), // O2 reference
+    make_gas_phase({ Fe: 0.75, O: 0.25 }, -0.4, 45), // Fe-rich
+    make_gas_phase({ Fe: 0.67, O: 0.33 }, -0.75, 55), // FeO (wüstite)
+    make_gas_phase({ Fe: 0.6, O: 0.4 }, -0.85, 60), // Fe3O4-like
+    make_gas_phase({ Fe: 0.5, O: 0.5 }, -0.7, 65), // intermediate
+    make_gas_phase({ Fe: 0.43, O: 0.57 }, -0.95, 70), // Fe2O3 (hematite)
+    make_gas_phase({ Fe: 0.33, O: 0.67 }, -0.55, 80), // O-rich
   ]
 
-  // Gas demo: Fe-Ni-O ternary with smooth energies
+  // Gas demo: Fe-Ni-O ternary with consistent entropy trend
   const gas_demo_ternary_entries: PhaseData[] = [
-    make_gas_phase({ Fe: 1 }, 0, 0.6),
-    make_gas_phase({ Ni: 1 }, 0, 0.5),
-    make_gas_phase({ O: 1 }, 0, 0.5),
-    make_gas_phase({ Fe: 0.5, Ni: 0.5 }, -0.15, 1.0), // FeNi alloy
-    make_gas_phase({ Fe: 0.5, O: 0.5 }, -0.9, 1.3), // FeO
-    make_gas_phase({ Ni: 0.5, O: 0.5 }, -0.85, 1.2), // NiO
-    make_gas_phase({ Fe: 0.33, Ni: 0.33, O: 0.34 }, -0.72, 1.5), // spinel
-    make_gas_phase({ Fe: 0.4, Ni: 0.2, O: 0.4 }, -0.82, 1.4),
-    make_gas_phase({ Fe: 0.2, Ni: 0.4, O: 0.4 }, -0.78, 1.3),
+    make_gas_phase({ Fe: 1 }, 0, 30),
+    make_gas_phase({ Ni: 1 }, 0, 32),
+    make_gas_phase({ O: 1 }, 0, 50),
+    make_gas_phase({ Fe: 0.5, Ni: 0.5 }, -0.12, 40), // FeNi alloy
+    make_gas_phase({ Fe: 0.5, O: 0.5 }, -0.8, 60), // FeO
+    make_gas_phase({ Ni: 0.5, O: 0.5 }, -0.75, 58), // NiO
+    make_gas_phase({ Fe: 0.33, Ni: 0.33, O: 0.34 }, -0.65, 55), // spinel
+    make_gas_phase({ Fe: 0.4, Ni: 0.2, O: 0.4 }, -0.72, 58),
+    make_gas_phase({ Fe: 0.2, Ni: 0.4, O: 0.4 }, -0.68, 56),
   ]
 </script>
 
