@@ -12,7 +12,7 @@
   // Local preview state for smooth slider interaction without causing full re-renders
   let is_dragging = $state(false)
   let preview_index = $state<number | null>(null)
-  let last_update_time = 0
+  let last_update_time = $state(0)
   const THROTTLE_MS = 100
 
   const temp_index = $derived(

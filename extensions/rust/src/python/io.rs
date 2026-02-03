@@ -15,6 +15,7 @@ use crate::io::{
 };
 
 use super::helpers::{StructureJson, json_to_pydict, parse_struct, structure_to_pydict};
+use crate::structure::Structure;
 
 // === Structure Reading Functions ===
 
@@ -194,6 +195,14 @@ fn structures_to_torch_sim_state(
     json_to_pydict(py, &json)
 }
 
+// Helper to convert parsed structures to PyDict list
+fn structures_to_pydicts(py: Python<'_>, structures: &[Structure]) -> PyResult<Vec<Py<PyDict>>> {
+    structures
+        .iter()
+        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
+        .collect()
+}
+
 /// Parse a TorchSim SimState dict to a list of Structure dicts.
 ///
 /// Converts a batched state back to individual structures.
@@ -207,24 +216,16 @@ fn from_torch_sim_state(
         .call_method1("dumps", (state_dict,))?
         .extract()?;
     let structures = crate::io::parse_torch_sim_state(&json_str)
-        .map_err(|err| PyValueError::new_err(format!("Error parsing TorchSim state: {err}")))?;
-
-    structures
-        .iter()
-        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
-        .collect()
+        .map_err(|err| PyValueError::new_err(format!("Invalid TorchSim state: {err}")))?;
+    structures_to_pydicts(py, &structures)
 }
 
 /// Parse a TorchSim SimState JSON string to a list of Structure dicts.
 #[pyfunction]
 fn parse_torch_sim_state_json(py: Python<'_>, json_str: &str) -> PyResult<Vec<Py<PyDict>>> {
     let structures = crate::io::parse_torch_sim_state(json_str)
-        .map_err(|err| PyValueError::new_err(format!("Error parsing TorchSim state: {err}")))?;
-
-    structures
-        .iter()
-        .map(|s| Ok(structure_to_pydict(py, s)?.unbind()))
-        .collect()
+        .map_err(|err| PyValueError::new_err(format!("Invalid TorchSim state: {err}")))?;
+    structures_to_pydicts(py, &structures)
 }
 
 // === Direct Object Conversion ===

@@ -2180,6 +2180,17 @@ pub fn torch_sim_state_to_structures(state: &TorchSimState) -> Result<Vec<Struct
             ),
         });
     }
+    // Validate masses length if provided
+    if !state.masses.is_empty() && state.masses.len() != n_atoms {
+        return Err(FerroxError::JsonError {
+            path: "inline".to_string(),
+            reason: format!(
+                "masses length {} doesn't match positions length {}",
+                state.masses.len(),
+                n_atoms
+            ),
+        });
+    }
 
     // Determine number of systems
     let n_systems = state.cell.len();

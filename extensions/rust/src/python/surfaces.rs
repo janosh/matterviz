@@ -149,7 +149,7 @@ fn parse_site_type(site_type: &str) -> Result<surfaces::AdsorptionSiteType, Stri
         "hollow4" => Ok(surfaces::AdsorptionSiteType::Hollow4),
         "other" | "other_site" => Ok(surfaces::AdsorptionSiteType::Other),
         _ => Err(format!(
-            "Unknown site type: '{site_type}'. Valid types: atop, on_top, bridge, hollow, hollow3, hollow4, other"
+            "Unknown site type: '{site_type}'. Valid types: atop, on_top, bridge, hollow, hollow3, hollow4, other, other_site"
         )),
     }
 }

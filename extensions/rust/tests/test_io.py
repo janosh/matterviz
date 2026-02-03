@@ -127,9 +127,7 @@ class TestMultipleStructuresToState:
         pbc_false["lattice"]["pbc"] = [False, False, False]
 
         with pytest.raises(ValueError, match="periodic boundary conditions"):
-            ferrox_io.structures_to_torch_sim_state(
-                [json.dumps(pbc_true), json.dumps(pbc_false)]
-            )
+            ferrox_io.structures_to_torch_sim_state([pbc_true, pbc_false])
 
 
 # === State to Structure Conversion Tests ===
@@ -292,38 +290,26 @@ class TestEdgeCases:
         state = ferrox_io.to_torch_sim_state(json.dumps(charged))
         assert state["charge"] == [2.0]
 
-    def test_spin_preserved(self) -> None:
-        """Spin is preserved via structure properties (like ASE atoms.info['spin'])."""
-        structure = make_cubic_structure(4.0, [make_site("Fe", [0, 0, 0])])
-        structure["properties"] = {"spin": 2.0}
-
-        state = ferrox_io.to_torch_sim_state(json.dumps(structure))
-        assert state["spin"] == [2.0]
-
-        # Round-trip preserves spin
-        result = ferrox_io.from_torch_sim_state(state)[0]
-        assert result["properties"]["spin"] == 2.0
-
-    def test_spin_defaults_to_zero(self) -> None:
-        """Spin defaults to 0.0 when not specified."""
-        structure = make_cubic_structure(4.0, [make_site("Fe", [0, 0, 0])])
-
-        state = ferrox_io.to_torch_sim_state(structure)
-        assert state["spin"] == [0.0]
-
     def test_charge_and_spin_round_trip(self) -> None:
         """Charge and spin are preserved in round-trip conversion."""
         structure = make_cubic_structure(4.0, [make_site("Fe", [0, 0, 0])])
         structure["charge"] = 1.0
-        structure["properties"] = {"spin": 1.0}
+        structure["properties"] = {"spin": 2.0}
 
         state = ferrox_io.to_torch_sim_state(json.dumps(structure))
         assert state["charge"] == [1.0]
-        assert state["spin"] == [1.0]
+        assert state["spin"] == [2.0]
 
         result = ferrox_io.from_torch_sim_state(state)[0]
         assert result.get("charge", 0) == pytest.approx(1.0)
-        assert result["properties"]["spin"] == 1.0
+        assert result["properties"]["spin"] == 2.0
+
+    def test_spin_defaults_to_zero(self) -> None:
+        """Spin defaults to 0.0 when not in properties."""
+        state = ferrox_io.to_torch_sim_state(
+            make_cubic_structure(4.0, [make_site("Fe", [0, 0, 0])])
+        )
+        assert state["spin"] == [0.0]
 
     def test_multiple_systems_charge_spin(self) -> None:
         """Batched state preserves per-system charge and spin."""
