@@ -1,0 +1,20 @@
+# pydoc-markdown configuration for ferrox Python bindings
+# Run with: pydoc-markdown (from extensions/rust directory)
+
+loaders:
+  - type: python
+    search_path: [python]
+    packages: [ferrox]
+
+processors:
+  - type: filter
+    expression: not name.startswith('_') or name == '__init__'
+  - type: smart
+  - type: crossref
+
+renderer:
+  type: markdown
+  render_module_header: true
+  descriptive_class_title: false
+  add_module_prefix: false
+  filename: ../../src/routes/ferrox/python/+page.md
