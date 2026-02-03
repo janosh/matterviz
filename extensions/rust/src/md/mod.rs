@@ -18,8 +18,8 @@
 //! ```rust,ignore
 //! use ferrox::md::{MDState, LangevinConfig, init_velocities, langevin_step};
 //!
-//! let state = MDState::new(positions, masses);
-//! let state = init_velocities(state, 300.0, &mut rng);
+//! let mut state = MDState::new(positions, masses);
+//! state = init_velocities(state, 300.0, &mut rng);
 //!
 //! let config = LangevinConfig::new(300.0, 0.01, 1.0);
 //! for _ in 0..1000 {
@@ -38,7 +38,8 @@ pub mod verlet;
 
 // Re-export commonly used types and functions
 pub use langevin::{
-    LangevinConfig, LangevinIntegrator, box_muller_normal, langevin_step, try_langevin_step,
+    LangevinConfig, LangevinIntegrator, LangevinStepError, box_muller_normal, langevin_step,
+    try_langevin_step,
 };
 pub use npt::{NPTConfig, NPTIntegrator, NPTState, NptStepError};
 pub use state::{MDState, init_velocities, kinetic_energy, remove_com_velocity, temperature};

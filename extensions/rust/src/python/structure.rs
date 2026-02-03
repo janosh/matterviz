@@ -593,6 +593,16 @@ fn get_reduced_structure_with_params(
     niggli_tol: f64,
     lll_delta: f64,
 ) -> PyResult<Py<PyDict>> {
+    if !niggli_tol.is_finite() || niggli_tol <= 0.0 {
+        return Err(PyValueError::new_err(
+            "niggli_tol must be finite and positive",
+        ));
+    }
+    if !lll_delta.is_finite() || lll_delta <= 0.25 || lll_delta > 1.0 {
+        return Err(PyValueError::new_err(
+            "lll_delta must be finite and in range (0.25, 1.0]",
+        ));
+    }
     let struc = parse_struct(&structure)?;
     let algo = parse_reduction_algo(algorithm)?;
     let reduced = struc

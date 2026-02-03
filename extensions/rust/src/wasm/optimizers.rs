@@ -213,15 +213,15 @@ impl JsCellFireState {
 
     /// Check if optimization has converged.
     ///
-    /// fmax: force convergence threshold (must be positive)
-    /// smax: stress convergence threshold (must be positive)
+    /// fmax: force convergence threshold (must be finite and positive)
+    /// smax: stress convergence threshold (must be finite and positive)
     #[wasm_bindgen]
     pub fn is_converged(&self, fmax: f64, smax: f64) -> Result<bool, JsError> {
-        if fmax <= 0.0 {
-            return Err(JsError::new("fmax must be positive"));
+        if !fmax.is_finite() || fmax <= 0.0 {
+            return Err(JsError::new("fmax must be finite and positive"));
         }
-        if smax <= 0.0 {
-            return Err(JsError::new("smax must be positive"));
+        if !smax.is_finite() || smax <= 0.0 {
+            return Err(JsError::new("smax must be finite and positive"));
         }
         Ok(optimizers::cell_is_converged(&self.inner, fmax, smax))
     }

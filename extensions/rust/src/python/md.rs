@@ -5,7 +5,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
 use crate::md::{
-    self, LangevinIntegrator, MDState, NoseHooverChain, ThermostatStepError, VelocityRescale,
+    self, LangevinIntegrator, LangevinStepError, MDState, NoseHooverChain, ThermostatStepError,
+    VelocityRescale,
 };
 use crate::optimizers::{CellFireState, FireConfig, FireState};
 
@@ -44,6 +45,15 @@ fn thermostat_step_err_to_pyerr(err: ThermostatStepError<PyErr>) -> PyErr {
     match err {
         ThermostatStepError::Callback(py_err) => py_err,
         ThermostatStepError::ForcesLength(err) => PyValueError::new_err(err.to_string()),
+    }
+}
+
+/// Convert LangevinStepError to PyErr.
+#[inline]
+fn langevin_step_err_to_pyerr(err: LangevinStepError<PyErr>) -> PyErr {
+    match err {
+        LangevinStepError::Callback(py_err) => py_err,
+        LangevinStepError::ForcesLength(err) => PyValueError::new_err(err.to_string()),
     }
 }
 
@@ -246,12 +256,14 @@ impl PyLangevinIntegrator {
         compute_forces: Py<PyAny>,
         py: Python<'_>,
     ) -> PyResult<()> {
-        self.inner.try_step(&mut state.inner, |positions| {
-            let n_atoms = positions.len();
-            let pos_arr = vec3_to_positions(positions);
-            let result = compute_forces.call1(py, (pos_arr,))?;
-            extract_and_validate_forces(result.bind(py), n_atoms)
-        })
+        self.inner
+            .try_step(&mut state.inner, |positions| {
+                let n_atoms = positions.len();
+                let pos_arr = vec3_to_positions(positions);
+                let result = compute_forces.call1(py, (pos_arr,))?;
+                extract_and_validate_forces(result.bind(py), n_atoms)
+            })
+            .map_err(langevin_step_err_to_pyerr)
     }
 
     /// Set target temperature.

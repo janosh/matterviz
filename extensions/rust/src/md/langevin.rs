@@ -1,10 +1,41 @@
 //! Langevin integrator (NVT ensemble) - BAOAB scheme.
 
+use std::fmt;
+
 use nalgebra::Vector3;
 use rand::prelude::*;
 
 use super::state::MDState;
+use super::thermostats::ForcesLengthError;
 use super::units;
+
+// === Error types ===
+
+/// Error type for Langevin step failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LangevinStepError<E> {
+    /// Force computation callback returned an error
+    Callback(E),
+    /// Forces vector has wrong length
+    ForcesLength(ForcesLengthError),
+}
+
+impl<E: fmt::Display> fmt::Display for LangevinStepError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Callback(err) => write!(f, "Force computation failed: {err}"),
+            Self::ForcesLength(err) => err.fmt(f),
+        }
+    }
+}
+
+impl<E: fmt::Debug + fmt::Display> std::error::Error for LangevinStepError<E> {}
+
+impl<E> From<ForcesLengthError> for LangevinStepError<E> {
+    fn from(err: ForcesLengthError) -> Self {
+        Self::ForcesLength(err)
+    }
+}
 
 // === Validation helpers ===
 
@@ -132,27 +163,36 @@ where
     R: Rng + Clone,
     F: FnMut(&[Vector3<f64>]) -> Vec<Vector3<f64>>,
 {
-    // Wrap infallible closure and unwrap result (can't fail with Infallible)
+    // Wrap infallible closure and unwrap result
+    // With infallible closure, callback errors are impossible, but forces length
+    // mismatch can still occur - panic in that case as caller violated contract
     try_langevin_step(state, config, rng, |pos| {
         Ok::<_, std::convert::Infallible>(compute_forces(pos))
     })
-    .unwrap_or_else(|(_state, err): (MDState, std::convert::Infallible)| match err {})
+    .unwrap_or_else(|(_state, err)| match err {
+        LangevinStepError::Callback(infallible) => match infallible {},
+        LangevinStepError::ForcesLength(err) => {
+            panic!("langevin_step: {err}")
+        }
+    })
 }
 
 /// Perform one Langevin dynamics step with fallible force computation.
 ///
-/// If the force computation fails, both the original state and the RNG are
-/// restored, allowing the caller to retry deterministically.
+/// If the force computation fails or returns wrong-length forces, both the
+/// original state and the RNG are restored, allowing the caller to retry
+/// deterministically.
 ///
 /// # Errors
-/// Returns `(original_state, error)` if compute_forces fails.
+/// Returns `(original_state, error)` if compute_forces fails or returns
+/// forces with length != state.num_atoms().
 #[allow(clippy::result_large_err)]
 pub fn try_langevin_step<R, F, E>(
     state: MDState,
     config: &LangevinConfig,
     rng: &mut R,
     mut compute_forces: F,
-) -> Result<MDState, (MDState, E)>
+) -> Result<MDState, (MDState, LangevinStepError<E>)>
 where
     R: Rng + Clone,
     F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
@@ -160,6 +200,7 @@ where
     // Clone state and RNG upfront so we can restore on error
     let original_state = state.clone();
     let original_rng = rng.clone();
+    let expected_len = state.num_atoms();
 
     // Perform the BAOAB integration (modifies rng)
     let mut state = langevin_baoab_core(state, config, rng);
@@ -167,6 +208,18 @@ where
     // Compute new forces - if this fails, restore original state and RNG
     match compute_forces(&state.positions) {
         Ok(new_forces) => {
+            // Validate forces length before assignment to prevent panic
+            if new_forces.len() != expected_len {
+                *rng = original_rng;
+                return Err((
+                    original_state,
+                    ForcesLengthError {
+                        expected: expected_len,
+                        got: new_forces.len(),
+                    }
+                    .into(),
+                ));
+            }
             state.forces = new_forces;
             // B: Half-step velocity from new forces
             let half_dt = 0.5 * config.dt_int;
@@ -178,7 +231,7 @@ where
         }
         Err(err) => {
             *rng = original_rng;
-            Err((original_state, err))
+            Err((original_state, LangevinStepError::Callback(err)))
         }
     }
 }
@@ -256,13 +309,18 @@ impl LangevinIntegrator {
 
     /// Perform one Langevin dynamics step with fallible force computation.
     ///
-    /// If the force computation fails, the state and internal RNG are restored
-    /// to their original values before the step and the error is returned.
-    /// This ensures deterministic behavior on retry.
+    /// If the force computation fails or returns wrong-length forces, the state
+    /// and internal RNG are restored to their original values before the step
+    /// and the error is returned. This ensures deterministic behavior on retry.
     ///
     /// # Errors
-    /// Returns the error from compute_forces if it fails.
-    pub fn try_step<F, E>(&mut self, state: &mut MDState, compute_forces: F) -> Result<(), E>
+    /// Returns `LangevinStepError::Callback` if compute_forces fails, or
+    /// `LangevinStepError::ForcesLength` if forces have wrong length.
+    pub fn try_step<F, E>(
+        &mut self,
+        state: &mut MDState,
+        compute_forces: F,
+    ) -> Result<(), LangevinStepError<E>>
     where
         F: FnMut(&[Vector3<f64>]) -> Result<Vec<Vector3<f64>>, E>,
     {
