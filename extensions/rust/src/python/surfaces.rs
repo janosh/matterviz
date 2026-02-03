@@ -8,24 +8,15 @@ use crate::surfaces;
 
 use crate::io::structure_to_pymatgen_json;
 
-use super::helpers::{StructureJson, json_to_pydict, parse_struct, structure_to_pydict};
+use super::helpers::{
+    StructureJson, json_to_pydict, parse_struct, structure_to_pydict, validate_positive_f64,
+};
 
 /// Validate slab generation parameters.
 fn validate_slab_params(min_slab_size: f64, min_vacuum_size: f64, symprec: f64) -> PyResult<()> {
-    if !min_slab_size.is_finite() || min_slab_size <= 0.0 {
-        return Err(PyValueError::new_err(
-            "min_slab_size must be positive and finite",
-        ));
-    }
-    if !min_vacuum_size.is_finite() || min_vacuum_size <= 0.0 {
-        return Err(PyValueError::new_err(
-            "min_vacuum_size must be positive and finite",
-        ));
-    }
-    if !symprec.is_finite() || symprec <= 0.0 {
-        return Err(PyValueError::new_err("symprec must be positive and finite"));
-    }
-    Ok(())
+    validate_positive_f64(min_slab_size, "min_slab_size")?;
+    validate_positive_f64(min_vacuum_size, "min_vacuum_size")?;
+    validate_positive_f64(symprec, "symprec")
 }
 
 /// Generate all slabs for a given Miller index (all terminations).

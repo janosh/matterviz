@@ -417,6 +417,9 @@ fn deform(
     structure: StructureJson,
     gradient: [[f64; 3]; 3],
 ) -> PyResult<Py<PyDict>> {
+    if gradient.iter().flatten().any(|v| !v.is_finite()) {
+        return Err(PyValueError::new_err("gradient must be finite"));
+    }
     let struc = parse_struct(&structure)?;
     let grad_matrix = nalgebra::Matrix3::from_row_slice(&[
         gradient[0][0],
@@ -509,6 +512,9 @@ fn enumerate_derivatives(
     min_size: usize,
     max_size: usize,
 ) -> PyResult<Vec<Py<PyDict>>> {
+    if min_size > max_size {
+        return Err(PyValueError::new_err("min_size must be <= max_size"));
+    }
     let struc = parse_struct(&structure)?;
     let results = struc
         .enumerate_derivatives(min_size, max_size)
@@ -530,6 +536,9 @@ fn translate_sites(
     vector: [f64; 3],
     fractional: bool,
 ) -> PyResult<Py<PyDict>> {
+    if vector.iter().any(|v| !v.is_finite()) {
+        return Err(PyValueError::new_err("vector must be finite"));
+    }
     let mut struc = parse_struct(&structure)?;
     let num_sites = struc.num_sites();
     if let Some(&idx) = indices.iter().find(|&&idx| idx >= num_sites) {

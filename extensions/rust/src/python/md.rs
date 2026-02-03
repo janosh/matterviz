@@ -290,7 +290,13 @@ impl PyLangevinIntegrator {
 
 /// Perform one velocity Verlet step (NVE ensemble).
 ///
+/// Args:
+///     state: MD state to update
+///     dt: Time step in fs (must be positive)
+///     compute_forces: Callback to compute forces
+///
 /// Raises:
+///     ValueError: If dt is not positive and finite.
 ///     RuntimeError: If force computation fails. State is restored to its
 ///         original value before the step when this happens.
 #[pyfunction]
@@ -300,6 +306,7 @@ fn velocity_verlet_step(
     compute_forces: Py<PyAny>,
     py: Python<'_>,
 ) -> PyResult<()> {
+    validate_positive_f64(dt, "timestep dt")?;
     match md::try_velocity_verlet_step(std::mem::take(&mut state.inner), dt, |positions| {
         let n_atoms = positions.len();
         let pos_arr = vec3_to_positions(positions);
@@ -620,15 +627,20 @@ impl PyCellFireState {
         cell: [[f64; 3]; 3],
         config: Option<PyFireConfig>,
         cell_factor: f64,
-    ) -> Self {
+    ) -> PyResult<Self> {
+        if !cell_factor.is_finite() || cell_factor <= 0.0 {
+            return Err(PyValueError::new_err(
+                "cell_factor must be positive and finite",
+            ));
+        }
         let pos_vec = positions_to_vec3(&positions);
         let cell_mat = array_to_mat3(cell);
         let fire_config = config.map(|cfg| cfg.inner).unwrap_or_default();
         let state = CellFireState::new(pos_vec, cell_mat, &fire_config, cell_factor);
-        Self {
+        Ok(Self {
             inner: state,
             config: fire_config,
-        }
+        })
     }
 
     /// Perform one FIRE optimization step with cell optimization.
