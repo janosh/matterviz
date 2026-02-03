@@ -32,7 +32,6 @@
   }
 
   function handle_slider_end(event: Event): void {
-    if (preview_index === null) return // Already processed or no drag occurred
     const new_temp =
       available_temperatures[+(event.currentTarget as HTMLInputElement).value]
     if (new_temp !== undefined) temperature = new_temp
