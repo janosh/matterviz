@@ -273,12 +273,12 @@
   // Bindable gas pressures for the demo
   let gas_demo_pressures = $state<Partial<Record<GasSpecies, number>>>({})
 
-  // Gas demo helper: linear G(T) = E - S*(T - 300K) for smooth T-dependence
-  // entropy values in meV/K (typical range 0.05-0.15 meV/K for solids)
+  // Gas demo helper: linear G(T) = E - S*(T - 300K)*0.001 for smooth T-dependence
+  // Demo entropy values 30-80 (unitless scaling factor, not physical meV/K)
   const make_gas_phase = (
     comp: Comp,
     energy: number,
-    entropy: number, // meV/K
+    entropy: number, // unitless scaling factor
   ): PhaseData => ({
     composition: comp,
     energy,
