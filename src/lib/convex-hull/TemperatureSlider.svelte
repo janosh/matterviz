@@ -9,16 +9,39 @@
     temperature: number
   } = $props()
 
+  // Local preview state for smooth slider interaction without causing full re-renders
+  let preview_index = $state<number | null>(null)
+  let last_update_time = 0
+  const THROTTLE_MS = 100
+
   const temp_index = $derived(
     Math.max(0, available_temperatures.indexOf(temperature)),
   )
-  const display_temp = $derived(available_temperatures[temp_index] ?? temperature)
+  const display_index = $derived(preview_index ?? temp_index)
+  const display_temp = $derived(available_temperatures[display_index] ?? temperature)
 
-  // Find closest available temperature to input value
+  function handle_slider_input(event: Event): void {
+    const new_index = +(event.currentTarget as HTMLInputElement).value
+    preview_index = new_index
+    // Throttle parent updates during drag to prevent scene flashing
+    const now = Date.now()
+    if (now - last_update_time >= THROTTLE_MS) {
+      last_update_time = now
+      temperature = available_temperatures[new_index] ?? temperature
+    }
+  }
+
+  function handle_slider_end(event: Event): void {
+    const new_temp =
+      available_temperatures[+(event.currentTarget as HTMLInputElement).value]
+    if (new_temp !== undefined) temperature = new_temp
+    preview_index = null
+  }
+
   function set_closest_temp(value: number): void {
     temperature = available_temperatures.reduce(
       (prev, curr) => (Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev),
-      temperature, // fallback to current if array is empty
+      temperature,
     )
   }
 </script>
@@ -39,21 +62,24 @@
     />
     <span>K</span>
   </label>
-  <div class="slider-wrapper">
-    {#if available_temperatures.length > 0}
+  {#if available_temperatures.length > 0}
+    <div class="slider-wrapper">
       <span class="temp-range">
         {available_temperatures[0]}–{available_temperatures.at(-1)} K
       </span>
-    {/if}
-    <input
-      type="range"
-      min="0"
-      max={available_temperatures.length - 1}
-      value={temp_index}
-      oninput={(evt) => temperature = available_temperatures[+evt.currentTarget.value]}
-      aria-label="Temperature (Kelvin)"
-    />
-  </div>
+      <input
+        type="range"
+        min="0"
+        max={available_temperatures.length - 1}
+        value={display_index}
+        oninput={handle_slider_input}
+        onchange={handle_slider_end}
+        onmouseup={handle_slider_end}
+        ontouchend={handle_slider_end}
+        aria-label="Temperature (Kelvin)"
+      />
+    </div>
+  {/if}
 </div>
 
 <style>

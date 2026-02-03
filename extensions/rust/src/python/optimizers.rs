@@ -202,13 +202,13 @@ impl PyFireState {
     }
 
     /// Check if optimization has converged.
-    fn is_converged(&self, fmax: f64) -> PyResult<bool> {
-        if !fmax.is_finite() || fmax <= 0.0 {
+    fn is_converged(&self, f_max: f64) -> PyResult<bool> {
+        if !f_max.is_finite() || f_max <= 0.0 {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "fmax must be positive and finite",
+                "f_max must be positive and finite",
             ));
         }
-        Ok(self.inner.is_converged(fmax))
+        Ok(self.inner.is_converged(f_max))
     }
 
     /// Number of atoms.
@@ -303,18 +303,18 @@ impl PyCellFireState {
     }
 
     /// Check if optimization has converged.
-    fn is_converged(&self, fmax: f64, smax: f64) -> PyResult<bool> {
-        if !fmax.is_finite() || fmax <= 0.0 {
+    fn is_converged(&self, f_max: f64, s_max: f64) -> PyResult<bool> {
+        if !f_max.is_finite() || f_max <= 0.0 {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "fmax must be positive and finite",
+                "f_max must be positive and finite",
             ));
         }
-        if !smax.is_finite() || smax <= 0.0 {
+        if !s_max.is_finite() || s_max <= 0.0 {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "smax must be positive and finite",
+                "s_max must be positive and finite",
             ));
         }
-        Ok(optimizers::cell_is_converged(&self.inner, fmax, smax))
+        Ok(optimizers::cell_is_converged(&self.inner, f_max, s_max))
     }
 
     /// Number of atoms.

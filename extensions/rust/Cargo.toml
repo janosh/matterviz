@@ -1,6 +1,6 @@
 [package]
 name = "ferrox"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version = "1.93"
 authors = ["Janosh Riebesell <janosh.riebesell@gmail.com>"]
@@ -69,7 +69,6 @@ tracing = "0.1"
 flate2 = "1.1"  # gzip decompression for element data
 
 # File format parsing
-vasp-poscar = "0.3"
 extxyz = "0.2"
 
 [dev-dependencies]
