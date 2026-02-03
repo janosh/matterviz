@@ -1,7 +1,7 @@
 <script lang="ts">
   import { BrillouinZone, type Crystal } from '$lib'
   import type { IrreducibleBZData } from '$lib/brillouin/types'
-  import mp1_struct from '$site/structures/mp-1.json'
+  import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
 
   let controls_open = $state(false)
   let info_pane_open = $state(false)

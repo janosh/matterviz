@@ -1,5 +1,6 @@
 """Numerical validation utilities for benchmark comparisons."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -124,7 +125,7 @@ def validate_forces(
 
 
 def validate_all_systems(
-    systems: dict[str, Structure],
+    systems: Mapping[str, Structure],
     mace_calc: "MACECalculator",
     torchsim_model: "MaceModel",
     tolerance: float = 1e-5,

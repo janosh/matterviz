@@ -47,7 +47,7 @@ pub mod coordination;
 pub mod defects;
 pub mod distortions;
 pub mod elastic;
-pub mod integrators;
+pub mod md;
 pub mod neighbors;
 pub mod optimizers;
 pub mod order_params;
@@ -78,7 +78,7 @@ pub use error::{FerroxError, OnError, Result};
 
 // Python bindings (optional)
 #[cfg(feature = "python")]
-mod python;
+pub mod python;
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;

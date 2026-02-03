@@ -7,7 +7,7 @@ import json
 import pytest
 
 try:
-    from ferrox import _ferrox as ferrox
+    from ferrox import io
 except ImportError:
     pytest.skip("ferrox not installed", allow_module_level=True)
 
@@ -47,7 +47,7 @@ class TestParseMoleculeJson:
 
     def test_water_molecule(self) -> None:
         """Parse water molecule: verify sites, species, and coordinates."""
-        result = ferrox.parse_molecule_json(_water_json())
+        result = io.parse_molecule_json(_water_json())
         assert len(result["sites"]) == 3
         species = sorted(s["species"][0]["element"] for s in result["sites"])
         assert species == ["H", "H", "O"]
@@ -60,12 +60,12 @@ class TestParseMoleculeJson:
     def test_invalid_json_error(self) -> None:
         """Invalid JSON raises error."""
         with pytest.raises(ValueError, match="Error parsing molecule"):
-            ferrox.parse_molecule_json("not valid json")
+            io.parse_molecule_json("not valid json")
 
     @pytest.mark.parametrize("charge", [0.0, 1.0, -1.0, 2.5, -0.5])
     def test_charge_preserved(self, charge: float) -> None:
         """Various charge values are preserved."""
-        result = ferrox.parse_molecule_json(_mol_json(charge=charge))
+        result = io.parse_molecule_json(_mol_json(charge=charge))
         assert abs(result["charge"] - charge) < 1e-10
 
 
@@ -77,7 +77,7 @@ class TestMoleculeToXyz:
 
     def test_xyz_format(self) -> None:
         """Verify XYZ format: atom count, comment, atom lines."""
-        xyz = ferrox.molecule_to_xyz(_water_json())
+        xyz = io.molecule_to_xyz(_water_json())
         lines = xyz.strip().split("\n")
         assert lines[0] == "3"  # atom count
         assert len(lines) == 5  # count + comment + 3 atoms
@@ -88,7 +88,7 @@ class TestMoleculeToXyz:
 
     def test_custom_comment(self) -> None:
         """Custom comment is used."""
-        xyz = ferrox.molecule_to_xyz(_water_json(), comment="My Water")
+        xyz = io.molecule_to_xyz(_water_json(), comment="My Water")
         assert xyz.strip().split("\n")[1] == "My Water"
 
 
@@ -114,13 +114,13 @@ class TestParseAseDict:
             "cell": [[5.64, 0.0, 0.0], [0.0, 5.64, 0.0], [0.0, 0.0, 5.64]],
             "pbc": pbc,
         }
-        type_name, result = ferrox.parse_ase_dict(ase_dict)
+        type_name, result = io.parse_ase_dict(ase_dict)
         assert type_name == expected_type
         assert len(result["sites"]) == 2
 
     def test_charge_from_info(self) -> None:
         """Charge is extracted from info dict."""
-        type_name, result = ferrox.parse_ase_dict(
+        type_name, result = io.parse_ase_dict(
             {
                 "symbols": ["Na"],
                 "positions": [[0.0, 0.0, 0.0]],
@@ -149,7 +149,7 @@ class TestFromAseAtoms:
         )
         if charge is not None:
             atoms.info["charge"] = charge
-        result = ferrox.from_ase_atoms(atoms)
+        result = io.from_ase_atoms(atoms)
         assert result.get("charge", 0.0) == (charge or 0.0)
 
 
@@ -161,16 +161,16 @@ class TestRoundtrips:
 
     def test_molecule_json_roundtrip(self) -> None:
         """Molecule JSON -> parse -> JSON preserves data."""
-        parsed = ferrox.parse_molecule_json(_water_json())
-        json_str = ferrox.molecule_to_json(json.dumps(parsed))
-        reparsed = ferrox.parse_molecule_json(json_str)
+        parsed = io.parse_molecule_json(_water_json())
+        json_str = io.molecule_to_json(json.dumps(parsed))
+        reparsed = io.parse_molecule_json(json_str)
         assert len(reparsed["sites"]) == len(parsed["sites"])
         assert reparsed["charge"] == parsed["charge"]
 
     def test_xyz_roundtrip(self) -> None:
         """Molecule JSON -> XYZ -> parse preserves atoms."""
-        xyz = ferrox.molecule_to_xyz(_water_json())
-        parsed = ferrox.parse_xyz_str(xyz)
+        xyz = io.molecule_to_xyz(_water_json())
+        parsed = io.parse_xyz_str(xyz)
         assert len(parsed["sites"]) == 3
 
     @pytest.mark.parametrize("charge", [1.0, -1.0, 2.5, 0.5])
@@ -187,22 +187,22 @@ class TestRoundtrips:
                 "charge": charge,
             }
         )
-        atoms = ferrox.to_ase_atoms(input_json)
+        atoms = io.to_ase_atoms(input_json)
         assert atoms.info["charge"] == charge
-        assert abs(ferrox.from_ase_atoms(atoms)["charge"] - charge) < 1e-10
+        assert abs(io.from_ase_atoms(atoms)["charge"] - charge) < 1e-10
 
     @pytest.mark.parametrize("charge", [1.0, -1.0, 0.5])
     def test_to_ase_atoms_charge_roundtrip_molecule(self, charge: float) -> None:
         """to_ase_atoms -> from_ase_atoms preserves charge for molecules."""
         pytest.importorskip("ase")
-        atoms = ferrox.to_ase_atoms(_mol_json("Na", charge=charge))
+        atoms = io.to_ase_atoms(_mol_json("Na", charge=charge))
         assert atoms.info["charge"] == charge
-        assert abs(ferrox.from_ase_atoms(atoms)["charge"] - charge) < 1e-10
+        assert abs(io.from_ase_atoms(atoms)["charge"] - charge) < 1e-10
 
     def test_to_ase_atoms_zero_charge_not_in_info(self) -> None:
         """Zero charge should not appear in atoms.info (Rust convention)."""
         pytest.importorskip("ase")
-        atoms = ferrox.to_ase_atoms(_mol_json("Na", charge=0.0))
+        atoms = io.to_ase_atoms(_mol_json("Na", charge=0.0))
         assert "charge" not in atoms.info
 
 
@@ -215,13 +215,13 @@ class TestEdgeCases:
     def test_single_atom_molecule(self) -> None:
         """Single-atom molecule is parsed correctly."""
         mol = _mol_json("He")
-        result = ferrox.parse_molecule_json(mol)
+        result = io.parse_molecule_json(mol)
         assert len(result["sites"]) == 1
         assert result["sites"][0]["species"][0]["element"] == "He"
 
     def test_empty_molecule_returns_empty(self) -> None:
         """Empty molecule (no atoms) returns a molecule with zero sites."""
         mol = json.dumps({"@class": "Molecule", "sites": [], "charge": 0})
-        result = ferrox.parse_molecule_json(mol)
+        result = io.parse_molecule_json(mol)
         assert len(result["sites"]) == 0
         assert result["charge"] == 0
