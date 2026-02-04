@@ -21,6 +21,7 @@ src/site/phonons/*.json
 # temp files
 tmp
 static/tmp
+__marimo__
 
 # vscode extension
 *.vsix

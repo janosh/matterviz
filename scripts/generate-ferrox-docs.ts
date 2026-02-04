@@ -64,7 +64,8 @@ const SVELTE_DIRECTIVE_RE = /^@(html|const|render|debug|snippet)\b/
 
 function escape_svelte_syntax(content: string): string {
   let in_code_block = false
-  return content.split(`\n`).map((line) => {
+  const lines = content.split(`\n`)
+  const result = lines.map((line) => {
     if (CODE_FENCE_RE.test(line)) {
       in_code_block = !in_code_block
       return line
@@ -100,6 +101,10 @@ function escape_svelte_syntax(content: string): string {
     }
     return escaped
   }).join(`\n`)
+  if (in_code_block) {
+    throw new Error(`Unclosed code fence detected in markdown content`)
+  }
+  return result
 }
 
 // Post-process generated markdown for SvelteKit/mdsvex compatibility

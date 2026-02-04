@@ -1,12 +1,18 @@
 # ferrox
 
-High-performance structure matching for crystallographic data, written in Rust with Python bindings.
+High-performance base layer for computational materials science, written in Rust with Python and WebAssembly bindings. Provides 10-100x speedups for atomistic simulations.
 
 ## Features
 
-- **Fast matching**: Compare crystal structures for equivalence using the same algorithm as pymatgen's StructureMatcher
-- **Batch processing**: Efficiently deduplicate and group large sets of structures with automatic parallelization
-- **Python bindings**: Use from Python via PyO3 bindings, accepting pymatgen Structure.as_dict() JSON format
+- **Structure I/O**: Parse CIF, POSCAR, extXYZ, LAMMPS, and more
+- **Structure Matching**: Fast deduplication and grouping with parallel processing
+- **Symmetry Analysis**: Space groups, Wyckoff positions, primitive/conventional cells
+- **Molecular Dynamics**: NVE/NVT integrators, thermostats, classical potentials
+- **Surface Science**: Slab generation, Miller indices, adsorption sites, Wulff shapes
+- **Defect Engineering**: Vacancies, substitutions, interstitials, Voronoi sites
+- **Trajectory Analysis**: RDF, MSD, diffusion coefficients, order parameters
+- **Properties**: XRD patterns, elastic tensors, coordination numbers
+- **Python bindings**: Drop-in compatible with pymatgen Structure dictionaries
 
 ## Installation
 
