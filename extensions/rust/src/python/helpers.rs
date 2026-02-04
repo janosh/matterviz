@@ -20,6 +20,17 @@ use crate::structure::Structure;
 /// For molecules, use the dedicated molecule functions (e.g., `parse_molecule_json`).
 pub struct StructureJson(pub String);
 
+// Tell pyo3-stub-gen what Python type StructureJson maps to in stubs.
+// Accepts str (JSON) or dict (from pymatgen .as_dict()).
+impl pyo3_stub_gen::PyStubType for StructureJson {
+    fn type_input() -> pyo3_stub_gen::TypeInfo {
+        pyo3_stub_gen::TypeInfo::with_module("str | dict[str, Any]", "typing".into())
+    }
+    fn type_output() -> pyo3_stub_gen::TypeInfo {
+        pyo3_stub_gen::TypeInfo::with_module("str | dict[str, Any]", "typing".into())
+    }
+}
+
 impl<'a, 'py> FromPyObject<'a, 'py> for StructureJson {
     type Error = PyErr;
 

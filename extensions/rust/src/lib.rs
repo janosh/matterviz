@@ -76,11 +76,11 @@ pub mod xrd;
 // Re-exports for convenience
 pub use error::{FerroxError, OnError, Result};
 
-// Python bindings (optional)
-#[cfg(feature = "python")]
+// Python bindings (optional, enabled for both python extension and stub generation)
+#[cfg(any(feature = "python", feature = "stub-gen"))]
 pub mod python;
 
-#[cfg(feature = "python")]
+#[cfg(any(feature = "python", feature = "stub-gen"))]
 use pyo3::prelude::*;
 
 // WASM bindings (optional)
@@ -91,7 +91,7 @@ pub mod wasm;
 pub mod wasm_types;
 
 /// Python module entry point.
-#[cfg(feature = "python")]
+#[cfg(any(feature = "python", feature = "stub-gen"))]
 #[pymodule]
 fn _ferrox(py_mod: &Bound<'_, PyModule>) -> PyResult<()> {
     py_mod.add("__version__", env!("CARGO_PKG_VERSION"))?;

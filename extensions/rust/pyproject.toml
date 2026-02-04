@@ -124,3 +124,6 @@ include = [
     "wheel",
   ] },
 ]
+
+[tool.pyo3-stub-gen]
+stub_root = "python/ferrox"

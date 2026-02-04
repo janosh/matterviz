@@ -1,6 +1,16 @@
 default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
+  # python-stubs MUST come before ruff so ruff formats the freshly generated stubs
+  - repo: local
+    hooks:
+      - id: python-stubs
+        name: Clean Python stubs
+        entry: python extensions/rust/scripts/generate_stubs.py --clean-only
+        language: system
+        files: ^extensions/rust/(src/python|python/ferrox)/.*\.(rs|pyi)$
+        pass_filenames: false
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.14
     hooks:

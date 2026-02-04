@@ -7,6 +7,7 @@ use nalgebra::Vector3;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::defects;
 use crate::distortions;
@@ -49,6 +50,7 @@ fn distortion_to_pydict(
 }
 
 /// Create a vacancy by removing an atom at the specified site index.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn create_vacancy(
     py: Python<'_>,
@@ -62,6 +64,7 @@ fn create_vacancy(
 }
 
 /// Create a substitutional defect by replacing the species at a site.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn create_substitution(
     py: Python<'_>,
@@ -78,6 +81,7 @@ fn create_substitution(
 }
 
 /// Create an interstitial by adding an atom at a fractional position.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn create_interstitial(
     py: Python<'_>,
@@ -96,6 +100,7 @@ fn create_interstitial(
 
 /// Create an antisite pair by swapping species at two sites.
 /// Returns structure dict (no defect metadata since antisites modify two sites).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn create_antisite(
     py: Python<'_>,
@@ -119,6 +124,7 @@ fn create_antisite(
 }
 
 /// Find potential interstitial sites using Voronoi tessellation.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, min_dist = None, symprec = 0.01))]
 fn find_interstitial_sites(
@@ -147,6 +153,7 @@ fn find_interstitial_sites(
 }
 
 /// Find an optimal supercell matrix for dilute defect calculations.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, min_image_dist = 10.0, max_atoms = 200, cubic = false))]
 fn find_supercell(
@@ -176,6 +183,7 @@ fn find_supercell(
 }
 
 /// Classify an interstitial site based on its coordination number.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn classify_site(coordination: usize) -> String {
     defects::classify_interstitial_site(coordination)
@@ -184,6 +192,7 @@ fn classify_site(coordination: usize) -> String {
 }
 
 /// Distort bonds around a defect site by specified factors.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, center_site_idx, distortion_factors, num_neighbors = None, cutoff = 5.0))]
 fn distort_bonds(
@@ -212,6 +221,7 @@ fn distort_bonds(
 }
 
 /// Create a dimer by moving two atoms closer together.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn create_dimer(
     py: Python<'_>,
@@ -232,6 +242,7 @@ fn create_dimer(
 }
 
 /// Apply Monte Carlo rattling to all atoms in a structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, stdev, seed, min_distance = 0.5, max_attempts = 100))]
 fn rattle(
@@ -262,6 +273,7 @@ fn rattle(
 }
 
 /// Apply local rattling with distance-dependent amplitude decay.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn local_rattle(
     py: Python<'_>,
@@ -296,6 +308,7 @@ fn local_rattle(
 ///
 /// Returns:
 ///     List of possible charge states based on common oxidation states
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (defect_type, species = None))]
 fn guess_charge_states(defect_type: &str, species: Option<&str>) -> Vec<i32> {
@@ -314,6 +327,7 @@ fn guess_charge_states(defect_type: &str, species: Option<&str>) -> Vec<i32> {
 }
 
 /// Generate all point defects for a structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, extrinsic = None, symprec = 0.01, interstitial_min_dist = 1.0))]
 fn generate_all(
@@ -404,6 +418,7 @@ fn generate_all(
 }
 
 /// Find Voronoi-based interstitial sites.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, min_dist = None, symprec = 0.01))]
 fn find_voronoi_interstitials(
