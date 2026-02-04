@@ -92,6 +92,10 @@ wasm = [
 ]
 rayon = ["dep:rayon"]
 
+[[bin]]
+name = "stub_gen"
+required-features = ["python"]
+
 [[bench]]
 name = "matcher_bench"
 harness = false

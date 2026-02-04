@@ -1,8 +1,10 @@
 """ferrox - High-performance atomistic simulation toolkit in Rust.
 
-High-performance base layer for computational materials science with 10-100x speedups.
-Features include I/O (CIF/POSCAR/extXYZ/LAMMPS), structure matching, symmetry analysis,
-molecular dynamics, surface science, defect engineering, trajectory analysis, and more.
+High-performance base layer for computational materials science. Batch operations
+like structure matching/grouping achieve 10-100x speedups over pymatgen via
+parallel Rayon processing. Features include I/O (CIF/POSCAR/extXYZ/LAMMPS),
+structure matching, symmetry analysis, molecular dynamics, surface science,
+defect engineering, trajectory analysis, and more.
 
 ## Submodule Organization
 

@@ -115,19 +115,18 @@ async function postprocess_markdown(filepath: string): Promise<void> {
     // Escape curly braces and angle brackets to prevent Svelte syntax errors
     content = escape_svelte_syntax(content)
 
-    // Ensure the file doesn't have conflicting frontmatter
+    // Add a title if the file doesn't start with frontmatter or heading
     if (!content.startsWith(`---`) && !content.startsWith(`#`)) {
-      // Add a title if the file doesn't start with a heading
-      // Strip /+page.md suffix, then get last segment, fallback to parent dir or "API"
-      const path_without_suffix = filepath.replace(/\/\+page\.md$/, ``)
-      const segments = path_without_suffix.split(`/`)
-      const last_segment = segments.pop() || ``
-      const filename = last_segment || segments.slice(-1)[0] || `API`
+      const segments = filepath.replace(/\/\+page\.md$/, ``).split(`/`).filter(Boolean)
+      const filename = segments.at(-1) || `API`
       content = `# ${filename}\n\n${content}`
     }
 
     await Deno.writeTextFile(filepath, content)
   } catch (err) {
+    if (err instanceof Error && err.message.includes(`Unclosed code fence`)) {
+      throw err
+    }
     console.warn(`Warning: Could not post-process ${filepath}: ${err}`)
   }
 }
@@ -250,8 +249,8 @@ async function generate_wasm_docs(): Promise<boolean> {
     )
 
     // Rename main entry file to +page.md, or create fallback
-    const main_file = [`README.md`, `index.md`, `modules.md`].find((f) =>
-      md_files.includes(f)
+    const main_file = [`README.md`, `index.md`, `modules.md`].find((name) =>
+      md_files.includes(name)
     )
     if (main_file) {
       await Deno.rename(`${output_dir}/${main_file}`, `${output_dir}/+page.md`)

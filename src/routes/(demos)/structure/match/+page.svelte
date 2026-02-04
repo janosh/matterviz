@@ -6,13 +6,13 @@
   import FilePicker from '$lib/FilePicker.svelte'
   import type { Crystal } from '$lib/structure'
   import { Structure } from '$lib/structure'
+  import type { MatcherOptions } from '$lib/structure/ferrox-wasm'
   import {
     ensure_ferrox_wasm_ready,
     get_structure_distance,
     is_ok,
     match_structures,
     match_structures_anonymous,
-    type MatcherOptions,
   } from '$lib/structure/ferrox-wasm'
   import { parse_structure_file } from '$lib/structure/parse'
   import { structure_files, structure_map } from '$site/structures'
@@ -28,11 +28,43 @@
   // Uploaded and perturbed structures
   let uploaded = $state<Map<string, Crystal>>(new Map())
   let perturbed = $state<Map<string, Crystal>>(new Map())
+  // Cache for parsed non-JSON structures (CIF, POSCAR, etc.)
+  let parsed_cache = $state<Map<string, Crystal>>(new Map())
 
   // Helper to look up structure by ID from any source
   function get_structure(id: string | null): Crystal | null {
     if (!id) return null
-    return structure_map.get(id) ?? uploaded.get(id) ?? perturbed.get(id) ?? null
+    return structure_map.get(id) ?? uploaded.get(id) ?? perturbed.get(id) ??
+      parsed_cache.get(id) ?? null
+  }
+
+  // Fetch and parse non-JSON structure files on demand
+  async function ensure_structure_loaded(id: string): Promise<Crystal | null> {
+    const existing = get_structure(id)
+    if (existing) return existing
+
+    const file = structure_files.find((entry) => get_id_from_file(entry) === id)
+    if (!file?.url) return null
+
+    // JSON files should already be in structure_map
+    if (file.name.endsWith(`.json`)) return null
+
+    try {
+      const response = await fetch(file.url)
+      if (!response.ok) return null
+      const content = await response.text()
+      const parsed = parse_structure_file(content, file.name)
+      if (parsed && `sites` in parsed && parsed.lattice) {
+        const crystal = parsed as Crystal
+        crystal.id = id
+        parsed_cache = new Map([...parsed_cache, [id, crystal]])
+        return crystal
+      }
+      console.warn(`Parsed ${id} but missing sites or lattice`)
+    } catch (err) {
+      console.warn(`Failed to load structure ${id}:`, err)
+    }
+    return null
   }
 
   // Reference structure
@@ -87,7 +119,7 @@
   // Map candidate IDs back to file names for FilePicker highlighting
   const active_file_names = $derived(
     candidate_ids.map((id) =>
-      all_files.find((f) => get_id_from_file(f) === id)?.name ?? id
+      all_files.find((entry) => get_id_from_file(entry) === id)?.name ?? id
     ),
   )
 
@@ -161,7 +193,7 @@
       anonymous,
     ]
     void deps
-    if (!wasm_ready || !reference || candidate_ids.length === 0) {
+    if (!wasm_ready || !reference_id || candidate_ids.length === 0) {
       results = []
       return
     }
@@ -170,7 +202,13 @@
   })
 
   async function run_matching() {
-    if (!reference) return
+    if (!reference_id) return
+    const ref = await ensure_structure_loaded(reference_id)
+    if (!ref) {
+      results = []
+      selected_id = null
+      return
+    }
     loading = true
     results = []
 
@@ -185,6 +223,13 @@
 
     const match_fn = anonymous ? match_structures_anonymous : match_structures
     const new_results: MatchResult[] = []
+
+    // Load all candidates in parallel before matching
+    await Promise.all(candidate_ids.map(ensure_structure_loaded))
+    if (candidate_ids.every((id) => !get_structure(id))) {
+      loading = false
+      return
+    }
 
     for (const id of candidate_ids) {
       const candidate = get_structure(id)
@@ -201,8 +246,8 @@
         // Use get_structure_distance for consistent ranking (always returns a value)
         // and match_fn for strict crystallographic matching
         const [dist_result, match_result] = await Promise.all([
-          get_structure_distance(reference, candidate, opts),
-          match_fn(reference, candidate, opts),
+          get_structure_distance(ref, candidate, opts),
+          match_fn(ref, candidate, opts),
         ])
 
         const error = !is_ok(dist_result)
@@ -229,30 +274,33 @@
     }
 
     // Sort by distance ascending (lower = more similar)
-    new_results.sort((a, b) => a.distance - b.distance)
+    new_results.sort((first, second) => first.distance - second.distance)
     results = new_results
     loading = false
     if (new_results.length > 0 && !selected_id) selected_id = new_results[0].id
   }
 
-  function handle_file_click(file: { name: string }) {
+  async function handle_file_click(file: { name: string }) {
     const id = get_id_from_file(file)
     if (candidate_ids.includes(id)) {
       candidate_ids = candidate_ids.filter((cid) => cid !== id)
       if (selected_id === id) selected_id = null
     } else {
+      if (!await ensure_structure_loaded(id)) return
       candidate_ids = [...candidate_ids, id]
     }
   }
 
-  function handle_file_dblclick(file: { name: string }) {
-    reference_id = get_id_from_file(file)
+  async function handle_file_dblclick(file: { name: string }) {
+    const id = get_id_from_file(file)
+    if (!await ensure_structure_loaded(id)) return
+    reference_id = id
   }
 
-  function select_all() {
-    candidate_ids = all_files
-      .map(get_id_from_file)
-      .filter((id) => id !== reference_id)
+  async function select_all() {
+    const ids = all_files.map(get_id_from_file).filter((id) => id !== reference_id)
+    await Promise.all(ids.map(ensure_structure_loaded))
+    candidate_ids = ids.filter((id) => get_structure(id)) // filter out failed loads
   }
 
   async function handle_upload(event: Event) {
@@ -272,7 +320,28 @@
   async function handle_drop(event: DragEvent, target: `reference` | `comparison`) {
     event.preventDefault()
     const files = event.dataTransfer?.files
-    if (!files || files.length === 0) return
+    const json_data = event.dataTransfer?.getData(`application/json`)
+
+    // Internal drag from FilePicker sidebar
+    if (json_data) {
+      try {
+        const file_info = JSON.parse(json_data) as { name: string; url: string }
+        const id = get_id_from_file({ name: file_info.name })
+        if (!await ensure_structure_loaded(id)) return
+        if (target === `reference`) {
+          reference_id = id
+        } else {
+          if (!candidate_ids.includes(id)) candidate_ids = [...candidate_ids, id]
+          selected_id = id
+        }
+        return
+      } catch (err) {
+        console.warn(`Failed to parse drag data:`, err)
+      }
+    }
+
+    // External file drop from OS
+    if (!files?.length) return
 
     for (const file of files) {
       const content = await file.text()
@@ -364,8 +433,9 @@
 
 <h1>Structure Matching</h1>
 <p class="intro">
-  <strong>Double-click</strong> = reference, <strong>single-click</strong> = candidate.
-  Use <strong>+Noise</strong> to create perturbed copies showing non-zero RMS values.
+  <strong>Drag files</strong> from your computer onto the viewers below, or use the
+  sidebar. Supports <code>.cif</code> <code>.poscar</code> <code>.json</code> <code
+  >.xyz</code> <code>.yaml</code>
 </p>
 
 {#if wasm_error}
@@ -394,12 +464,15 @@
       >
         +Noise
       </button>
-      <label class="upload-btn" title="Upload structure files">+ <input
+      <label class="upload-btn" title="Upload structure files (CIF, POSCAR, JSON, XYZ)">
+        Upload
+        <input
           type="file"
           accept=".json,.cif,.poscar,.xyz,.extxyz,.yaml,.yml"
           multiple
           onchange={handle_upload}
-        /></label>
+        />
+      </label>
     </div>
     <FilePicker
       files={all_files}
@@ -434,7 +507,7 @@
         {#if reference}
           <Structure structure={reference} style="height: 340px" />
         {:else}
-          <EmptyState message="Double-click or drop" style="height: 340px" />
+          <EmptyState message="Drop reference file here" style="height: 340px" />
         {/if}
       </div>
       <div
@@ -450,7 +523,7 @@
         {#if selected_candidate}
           <Structure structure={selected_candidate} style="height: 340px" />
         {:else}
-          <EmptyState message="Click result or drop" style="height: 340px" />
+          <EmptyState message="Drop files to compare" style="height: 340px" />
         {/if}
       </div>
     </div>
@@ -500,42 +573,46 @@
           </tr>
         </thead>
         <tbody>
-          {#each results as r, idx (r.id)}
+          {#each results as result, idx (result.id)}
             <tr
               tabindex="0"
-              class:selected={r.id === selected_id}
-              class:err={!!r.error}
-              onclick={() => (selected_id = r.id)}
+              class:selected={result.id === selected_id}
+              class:err={!!result.error}
+              onclick={() => (selected_id = result.id)}
               onkeydown={(event) => {
                 if (
                   event.key === `Enter` || event.key === ` ` ||
                   event.key === `Spacebar`
                 ) {
                   if (event.key !== `Enter`) event.preventDefault()
-                  selected_id = r.id
+                  selected_id = result.id
                 }
               }}
             >
               <td>{idx + 1}</td>
-              <td class="mono">{r.id.replace(`upload:`, ``)}</td>
+              <td class="mono">{result.id.replace(`upload:`, ``)}</td>
               <td
                 class="mono"
-                title={!Number.isFinite(r.distance)
+                title={!Number.isFinite(result.distance)
                 ? `Incompatible structures`
-                : `Structure distance: ${r.distance.toFixed(4)}`}
+                : `Structure distance: ${result.distance.toFixed(4)}`}
               >
-                {format_num(r.distance)}
+                {format_num(result.distance)}
               </td>
-              <td>{#if r.error}❌{:else if r.matches}✓{:else}✗{/if}</td>
+              <td>{#if result.error}❌{:else if result.matches}✓{:else}✗{/if}</td>
             </tr>
           {/each}
         </tbody>
       </table>
+    {:else if !reference_id}
+      <p class="hint">Drop a structure file onto the left viewer to set reference</p>
     {:else if !reference}
-      <p class="hint">Double-click a structure to set reference</p>
+      <p class="hint">Failed to load reference structure</p>
     {:else if candidate_ids.length === 0}
-      <p class="hint">Click structures to add candidates</p>
-    {:else if !loading}
+      <p class="hint">
+        Drop files onto the right viewer or click sidebar to add candidates
+      </p>
+    {:else if loading}
       <p class="hint">Matching...</p>
     {/if}
   </main>

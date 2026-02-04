@@ -261,6 +261,11 @@ fn extract_site_species(
         let item = item_result?;
         let (sp, occu): (pyo3::Bound<'_, PyAny>, f64) = item.extract()?;
         let symbol: String = sp.getattr("symbol")?.extract()?;
+        if !occu.is_finite() || occu < 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "Invalid occupancy {occu} for {symbol}; must be finite and non-negative"
+            )));
+        }
         let elem = crate::element::Element::from_symbol(&symbol)
             .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {symbol}")))?;
 
@@ -295,10 +300,11 @@ fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyRe
         .unwrap_or(0.0);
 
     // Check if this is a periodic structure (has lattice) or molecule (no lattice)
-    let has_lattice = structure.hasattr("lattice")? && {
-        let lattice_attr = structure.getattr("lattice")?;
-        !lattice_attr.is_none()
-    };
+    let has_lattice = structure
+        .getattr("lattice")
+        .ok()
+        .map(|l| !l.is_none())
+        .unwrap_or(false);
 
     if has_lattice {
         // Periodic structure path
@@ -347,6 +353,13 @@ fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyRe
         for site_result in sites.try_iter()? {
             let site = site_result?;
             let frac: [f64; 3] = site.getattr("frac_coords")?.extract()?;
+            for (idx, &val) in frac.iter().enumerate() {
+                if !val.is_finite() {
+                    return Err(PyValueError::new_err(format!(
+                        "Fractional coordinate[{idx}] must be finite, got {val}"
+                    )));
+                }
+            }
             frac_coords.push(nalgebra::Vector3::new(frac[0], frac[1], frac[2]));
 
             let species_comp = site.getattr("species")?;
@@ -386,6 +399,15 @@ fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyRe
 
             let species_comp = site.getattr("species")?;
             let site_species = extract_site_species(&species_comp)?;
+
+            // Warn if partial occupancy is being discarded
+            if site_species.len() > 1 || site_species.iter().any(|(_, occ)| *occ < 1.0 - 1e-6) {
+                let warnings = py.import("warnings")?;
+                warnings.call_method1(
+                    "warn",
+                    ("Molecule site has partial occupancy; using dominant species only",),
+                )?;
+            }
 
             // For molecules, use dominant species (highest occupancy)
             if let Some((dominant_species, _)) = site_species
