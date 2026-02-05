@@ -68,7 +68,7 @@ def _():
 
 
 @app.cell
-def _(Lattice, Structure, mo, pmv):
+def _(Lattice, Structure, mo):
     """Create pristine MgO structure."""
 
     # Rock salt MgO
@@ -357,7 +357,7 @@ def _(antisite, ferrox, mo, pmv):
 
 
 @app.cell
-def _(defects, ferrox, mgo, mo, structure):
+def _(ferrox, mgo, mo, structure):
     """Generate all symmetry-distinct defects."""
 
     # First create a supercell for realistic defect calculations
@@ -368,7 +368,7 @@ def _(defects, ferrox, mgo, mo, structure):
         mo.md(f"""
         ## Supercell for Defect Calculations
 
-        Created 2×2×2 supercell:
+        Created 2x2x2 supercell:
         - **Original atoms**: {len(mgo)}
         - **Supercell atoms**: {len(supercell["sites"])}
 
@@ -401,7 +401,7 @@ def _(defects, mo, supercell, time):
         mo.md(f"""
         ## All Symmetry-Distinct Defects
 
-        Generated all unique defects in 2×2×2 supercell:
+        Generated all unique defects in 2x2x2 supercell:
 
         | Defect Type | Count |
         |-------------|-------|
