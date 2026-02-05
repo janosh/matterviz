@@ -144,8 +144,10 @@ def clean_stub(content: str) -> str:
     content = re.sub(
         r"def __eq__\(self, other: \w+\)", "def __eq__(self, other: object)", content
     )
-    # Bare -> dict: should be -> dict[str, Any]:
-    content = re.sub(r"\) -> dict:", ") -> dict[str, Any]:", content)
+    # Bare dict/list in type positions should have params: dict -> dict[str, Any]
+    # Only match after type annotation markers (-> : [ ( , |) to avoid docstrings
+    content = re.sub(r"(-> |: |\[|\(|, |\| )dict\b(?!\[)", r"\1dict[str, Any]", content)
+    content = re.sub(r"(-> |: |\[|\(|, |\| )list\b(?!\[)", r"\1list[Any]", content)
     # Convert Optional[X] -> X | None (deterministic, no ruff needed)
     content = _convert_optional(content)
     # Remove __repr__/__str__ stubs (PYI029)

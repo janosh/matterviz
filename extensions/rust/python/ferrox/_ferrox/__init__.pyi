@@ -96,12 +96,12 @@ class Element:
         Minimum oxidation state.
         """
     @property
-    def ionic_radii(self) -> dict | None:
+    def ionic_radii(self) -> dict[str, Any] | None:
         r"""
         All ionic radii as dict mapping oxidation state (str) to radius (float).
         """
     @property
-    def shannon_radii(self) -> dict | None:
+    def shannon_radii(self) -> dict[str, Any] | None:
         r"""
         Full Shannon radii data structure.
         """
@@ -864,14 +864,14 @@ def distort_bonds(
     distortion_factors: Sequence[float],
     num_neighbors: int | None = None,
     cutoff: float = 5.0,
-) -> list:
+) -> list[Any]:
     r"""
     Distort bonds around a defect site by specified factors.
     """
 
 def enumerate_derivatives(
     structure: str | dict[str, Any], min_size: int = 1, max_size: int = 4
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Enumerate derivative structures within a size range.
     """
@@ -889,7 +889,7 @@ def enumerate_terminations(
     min_slab: float = 10.0,
     min_vacuum: float = 10.0,
     symprec: float = 0.01,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Enumerate terminations for a given Miller index.
     """
@@ -910,7 +910,7 @@ def find_adsorption_sites(
     site_types: Sequence[str] | None = None,
     neighbor_cutoff: float | None = None,
     surface_tolerance: float | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Find adsorption sites on a slab.
     """
@@ -919,7 +919,7 @@ def find_interstitial_sites(
     structure: str | dict[str, Any],
     min_dist: float | None = None,
     symprec: float = 0.01,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Find potential interstitial sites using Voronoi tessellation.
     """
@@ -945,7 +945,7 @@ def find_voronoi_interstitials(
     structure: str | dict[str, Any],
     min_dist: float | None = None,
     symprec: float = 0.01,
-) -> list:
+) -> list[Any]:
     r"""
     Find Voronoi-based interstitial sites.
     """
@@ -970,7 +970,7 @@ def from_pymatgen_structure(structure: Any) -> dict[str, Any]:
     Convert a pymatgen Structure directly to ferrox dict format.
     """
 
-def from_torch_sim_state(state_dict: dict) -> list[dict]:
+def from_torch_sim_state(state_dict: dict[str, Any]) -> list[dict[str, Any]]:
     r"""
     Parse a TorchSim SimState dict to a list of Structure dicts.
 
@@ -995,7 +995,7 @@ def generate_slabs(
     center_slab: bool = True,
     in_unit_planes: bool = False,
     symprec: float = 0.01,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Generate all slabs for a given Miller index (all terminations).
     """
@@ -1007,7 +1007,7 @@ def generate_strains(
     Generate strain matrices for elastic constant calculation.
     """
 
-def get_all_site_properties(structure: str | dict[str, Any]) -> list:
+def get_all_site_properties(structure: str | dict[str, Any]) -> list[Any]:
     r"""
     Get all site properties for a structure.
     """
@@ -1120,14 +1120,14 @@ def get_lll_reduced_lattice(
 
 def get_local_environment(
     structure: str | dict[str, Any], site_idx: int, cutoff: float
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Get the local environment for a site.
     """
 
 def get_local_environment_voronoi(
     structure: str | dict[str, Any], site_idx: int, min_solid_angle: float = 0.1
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Get Voronoi-based local environment for a site.
     """
@@ -1147,7 +1147,7 @@ def get_neighbor_list(
 
 def get_neighbors(
     structure: str | dict[str, Any], site_idx: int, cutoff: float
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Get neighbors for a site.
     """
@@ -1243,7 +1243,7 @@ def get_symmetry_dataset(
 
 def get_symmetry_operations(
     structure: str | dict[str, Any], symprec: float = 0.01
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Get symmetry operations.
     """
@@ -1300,7 +1300,7 @@ def interpolate(
     n_images: int,
     interpolate_lattices: bool = False,
     use_pbc: bool = True,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Interpolate between two structures.
     """
@@ -1439,20 +1439,20 @@ def normalize_element_symbol(symbol: str) -> dict[str, Any]:
 
 def order_disordered(
     structure: str | dict[str, Any], max_structures: int = 100
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Generate ordered structures from a disordered structure.
     """
 
 def oxi_state_guesses(
     structure_or_formula: str, all_states: bool = False
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Guess oxidation states for a structure or formula.
     Accepts either a structure JSON string or a formula string like "Fe2O3".
     """
 
-def parse_ase_dict(ase_dict: dict) -> tuple[str, dict]:
+def parse_ase_dict(ase_dict: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     r"""
     Parse ASE Atoms dict, returning either a Structure or Molecule dict.
     """
@@ -1486,12 +1486,12 @@ def parse_structure_file(path: str) -> dict[str, Any]:
     Parse a structure file (auto-detects format from extension).
     """
 
-def parse_torch_sim_state_json(json_str: str) -> list[dict]:
+def parse_torch_sim_state_json(json_str: str) -> list[dict[str, Any]]:
     r"""
     Parse a TorchSim SimState JSON string to a list of Structure dicts.
     """
 
-def parse_trajectory(path: str) -> list[dict]:
+def parse_trajectory(path: str) -> list[dict[str, Any]]:
     r"""
     Parse trajectory file (extXYZ format).
     """
@@ -1501,7 +1501,7 @@ def parse_xyz_file(path: str) -> dict[str, Any]:
     Parse a molecule from an XYZ file.
     """
 
-def parse_xyz_flexible(path: str) -> tuple[str, dict]:
+def parse_xyz_flexible(path: str) -> tuple[str, dict[str, Any]]:
     r"""
     Parse XYZ file path flexibly, returning Structure if lattice present, Molecule otherwise.
     """
@@ -1680,14 +1680,14 @@ def to_torch_sim_state(structure: str | dict[str, Any]) -> dict[str, Any]:
     Convert a Structure to TorchSim SimState dict format.
 
     The returned dict has the same structure as torch_sim.SimState:
-    - positions: list of [x, y, z] for all atoms
-    - masses: list of atomic masses in amu
-    - cell: list of 3x3 matrices (one per system, column-major)
+    - positions: list[Any] of [x, y, z] for all atoms
+    - masses: list[Any] of atomic masses in amu
+    - cell: list[Any] of 3x3 matrices (one per system, column-major)
     - pbc: [bool, bool, bool] periodic boundary conditions
-    - atomic_numbers: list of atomic numbers
-    - system_idx: list of system indices (all 0 for single structure)
-    - charge: list of system charges
-    - spin: list of system spins
+    - atomic_numbers: list[Any] of atomic numbers
+    - system_idx: list[Any] of system indices (all 0 for single structure)
+    - charge: list[Any] of system charges
+    - spin: list[Any] of system spins
     """
 
 def translate_sites(
