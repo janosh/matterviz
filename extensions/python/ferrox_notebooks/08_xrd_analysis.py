@@ -24,7 +24,7 @@ Run with: marimo edit 08_xrd_analysis.py --no-sandbox
 
 import marimo
 
-__generated_with = "0.19.7"
+__generated_with = "0.19.8"
 app = marimo.App(width="full")
 
 
@@ -58,19 +58,19 @@ def _():
         This notebook demonstrates ferrox's X-ray diffraction capabilities:
 
         - **Pattern calculation**: Full XRD pattern from crystal structure
-        - **Peak indexing**: Miller indices for each reflection
-        - **Wavelength options**: Cu Kα, Co Kα, etc.
+        - **Peak analysis**: Miller indices, d-spacings, intensities
+        - **Multi-wavelength**: Cu Kα, Co Kα, Mo Kα, custom
         - **Batch processing**: Efficient multi-structure analysis
 
         **Key ferrox functions:**
         - `xrd.compute_xrd()` - Calculate XRD pattern
-        - `xrd.get_atomic_scattering_params()` - Scattering factor data
+        - `xrd.get_atomic_scattering_params()` - Atomic form factors
         """),
-)
+    )
 
 
 @app.cell
-def _(Lattice, Structure, mo):
+def _(Lattice, Structure):
     """Create test structures for XRD."""
 
     # FCC Aluminum
@@ -102,23 +102,7 @@ def _(Lattice, Structure, mo):
             [0.5, 0.5, 0.5],
         ],
     )
-
-    return (
-        al_fcc,
-        fe_bcc,
-        nacl,
-        mo.md(f"""
-        ## Test Structures
-
-        Created structures for XRD pattern calculation:
-
-        | Structure | Space Group | Lattice (Å) | Atoms |
-        |-----------|-------------|-------------|-------|
-        | Al (FCC) | Fm-3m | 4.05 | {len(al_fcc)} |
-        | Fe (BCC) | Im-3m | 2.87 | {len(fe_bcc)} |
-        | NaCl | Fm-3m | 5.64 | {len(nacl)} |
-        """),
-    )
+    return al_fcc, fe_bcc, nacl
 
 
 @app.cell
@@ -126,24 +110,9 @@ def _(al_fcc, fe_bcc, mo, nacl, pmv):
     """Visualize test structures."""
     return mo.hstack(
         [
-            mo.vstack(
-                [
-                    mo.md("**Al (FCC)**"),
-                    pmv.StructureWidget(structure=al_fcc, style="height: 250px;"),
-                ]
-            ),
-            mo.vstack(
-                [
-                    mo.md("**Fe (BCC)**"),
-                    pmv.StructureWidget(structure=fe_bcc, style="height: 250px;"),
-                ]
-            ),
-            mo.vstack(
-                [
-                    mo.md("**NaCl**"),
-                    pmv.StructureWidget(structure=nacl, style="height: 250px;"),
-                ]
-            ),
+            mo.vstack([mo.md("**Al (FCC)**"), pmv.StructureWidget(structure=al_fcc, style="height: 200px;")]),
+            mo.vstack([mo.md("**Fe (BCC)**"), pmv.StructureWidget(structure=fe_bcc, style="height: 200px;")]),
+            mo.vstack([mo.md("**NaCl**"), pmv.StructureWidget(structure=nacl, style="height: 200px;")]),
         ],
         gap=2,
     )
@@ -164,7 +133,6 @@ def _(mo):
     )
     theta_min_slider = mo.ui.slider(5.0, 30.0, value=10.0, step=5.0, label="2θ min (°)")
     theta_max_slider = mo.ui.slider(60.0, 150.0, value=90.0, step=10.0, label="2θ max (°)")
-
     return theta_max_slider, theta_min_slider, wavelength_select
 
 
@@ -210,9 +178,6 @@ Calculated with λ = {wavelength} Å:
 - **2θ range**: {theta_min_slider.value}° - {theta_max_slider.value}°
 - **Calculation time**: {al_time:.4f}s
 - **Number of peaks**: {len(al_xrd["two_theta"])}
-
-Change X-ray source to see how peaks shift. Mo Kα compresses peaks to lower
-angles; Co Kα spreads them out.
             """),
         ]),
     )
@@ -222,13 +187,10 @@ angles; Co Kα spreads them out.
 def _(al_xrd, mo, np):
     """Display Al XRD peaks."""
 
-    # Build peaks list from parallel arrays
     _two_theta = al_xrd["two_theta"]
     _intensities = al_xrd["intensities"]
     _d_spacings = al_xrd["d_spacings"]
     _hkls = al_xrd["hkls"]
-
-    # Sort by intensity (descending)
     _sorted_idx = np.argsort(_intensities)[::-1]
 
     peak_table = "\n".join(
@@ -237,15 +199,13 @@ def _(al_xrd, mo, np):
     )
 
     return mo.md(f"""
-    ### Al XRD Peak List
+### Al XRD Peak List
 
-    | hkl | 2θ (°) | Intensity | d-spacing (Å) |
-    |-----|--------|-----------|---------------|
-    {peak_table}
+| hkl | 2θ (°) | Intensity | d-spacing (Å) |
+|-----|--------|-----------|---------------|
+{peak_table}
 
-    **Expected FCC reflections**: (111), (200), (220), (311), (222), ...
-
-    FCC extinction rules: h, k, l all even or all odd.
+**Expected FCC reflections**: (111), (200), (220), (311), (222), ...
     """)
 
 
@@ -274,15 +234,13 @@ def _(fe_bcc, ferrox, mo, np, time, wavelength, xrd):
     )
 
     return mo.md(f"""
-    ## XRD Pattern: BCC Iron
+## XRD Pattern: BCC Iron
 
-    | hkl | 2θ (°) | Intensity |
-    |-----|--------|-----------|
-    {fe_table}
+| hkl | 2θ (°) | Intensity |
+|-----|--------|-----------|
+{fe_table}
 
-    **BCC extinction rule**: h + k + l = even
-
-    Calculation time: {fe_time:.4f}s
+**BCC extinction rule**: h + k + l = even. Calculation time: {fe_time:.4f}s
     """)
 
 
@@ -311,16 +269,13 @@ def _(ferrox, mo, nacl, np, time, wavelength, xrd):
     )
 
     return mo.md(f"""
-    ## XRD Pattern: NaCl (Rock Salt)
+## XRD Pattern: NaCl (Rock Salt)
 
-    | hkl | 2θ (°) | Intensity |
-    |-----|--------|-----------|
-    {nacl_table}
+| hkl | 2θ (°) | Intensity |
+|-----|--------|-----------|
+{nacl_table}
 
-    **Rock salt extinction**: h, k, l all even or all odd
-    (but weak/absent for h+k+l = 4n+2 due to Na-Cl destructive interference)
-
-    Calculation time: {nacl_time:.4f}s
+**Rock salt extinction**: h, k, l all even or all odd. Calculation time: {nacl_time:.4f}s
     """)
 
 
@@ -364,14 +319,14 @@ def _(PMGXRDCalculator, al_fcc, fe_bcc, ferrox, mo, nacl, time, wavelength, xrd)
     )
 
     return mo.md(f"""
-    ## Performance Benchmark
+## Performance Benchmark
 
-    | Structure | Ferrox | Pymatgen | Speedup |
-    |-----------|--------|----------|---------|
-    {_bench_table}
+| Structure | Ferrox | Pymatgen | Speedup |
+|-----------|--------|----------|---------|
+{_bench_table}
 
-    For individual patterns, both are fast (sub-millisecond). The speedup becomes
-    relevant when computing 10k+ patterns for database generation or phase identification.
+For individual patterns, both are fast (sub-millisecond). The speedup becomes
+relevant when computing 10k+ patterns for database generation or phase identification.
     """)
 
 
@@ -384,34 +339,24 @@ def _(mo, xrd):
     sample_elements = ["H", "C", "O", "Fe", "Cu", "Au"]
 
     param_table = "\n".join(
-        f"| {elem} | {scattering_params.get(elem, [[0, 0]])[0]} | ... |"
+        f"| {elem} | {scattering_params.get(elem, [[0, 0]])[0]} |"
         for elem in sample_elements
         if elem in scattering_params
     )
 
-    return (
-        param_table,
-        sample_elements,
-        scattering_params,
-        mo.md(f"""
-        ## Atomic Scattering Parameters
+    return mo.md(f"""
+## Atomic Scattering Parameters
 
-        X-ray scattering factors for selected elements:
+| Element | First coefficient set |
+|---------|----------------------|
+{param_table}
 
-        | Element | a₁, b₁ | ... |
-        |---------|--------|-----|
-        {param_table}
-
-        These Cromer-Mann coefficients determine X-ray scattering amplitude.
-        The form factor: f(s) = Σᵢ aᵢ exp(-bᵢ s²) + c
-
-        **Total elements available**: {len(scattering_params)}
-        """),
-    )
+These coefficients are used in the structure factor calculation.
+    """)
 
 
 @app.cell
-def _(Lattice, Structure, ferrox, mo, np, time, xrd):
+def _(Lattice, Structure, ferrox, mo, time, xrd):
     """Different wavelengths comparison."""
 
     # Quartz-like structure
@@ -433,7 +378,6 @@ def _(Lattice, Structure, ferrox, mo, np, time, xrd):
 
     quartz_dict = ferrox.io.from_pymatgen_structure(quartz)
 
-    # Different X-ray sources
     _sources = [
         ("Cu Kα", 1.5406),
         ("Co Kα", 1.7902),
@@ -449,7 +393,6 @@ def _(Lattice, Structure, ferrox, mo, np, time, xrd):
         )
         _calc_time = time.perf_counter() - _start
 
-        # First peak position (lowest 2θ)
         _two_theta = _result["two_theta"]
         _first_peak = min(_two_theta) if _two_theta else None
 
@@ -470,35 +413,32 @@ def _(Lattice, Structure, ferrox, mo, np, time, xrd):
 
     return (quartz,
         mo.md(f"""
-        ## Different X-ray Sources
+## Different X-ray Sources
 
-        XRD patterns for quartz with different wavelengths:
+XRD patterns for quartz with different wavelengths:
 
-        | Source | λ (Å) | Peaks | First Peak |
-        |--------|-------|-------|------------|
-        {_wl_table}
+| Source | λ (Å) | Peaks | First Peak |
+|--------|-------|-------|------------|
+{_wl_table}
 
-        Shorter wavelengths access higher-Q reflections but compress 2θ range.
+Shorter wavelengths (Mo, Ag) compress peaks to lower 2θ angles.
         """),
-)
+    )
 
 
 @app.cell
 def _(mo, pmv, quartz):
     """Visualize quartz structure."""
-    return mo.vstack(
-        [
-            mo.md("### Quartz (SiO₂) Structure"),
-            pmv.StructureWidget(structure=quartz, style="height: 250px;"),
-        ]
-    )
+    return mo.vstack([
+        mo.md("### Quartz Structure"),
+        pmv.StructureWidget(structure=quartz, style="height: 250px;"),
+    ])
 
 
 @app.cell
 def _(Lattice, Structure, ferrox, mo, time, xrd):
     """Batch XRD calculation for multiple structures."""
 
-    # Generate variants with slightly different lattice parameters
     _variants = []
     _base_a = 4.0
     for _idx in range(20):
@@ -510,7 +450,6 @@ def _(Lattice, Structure, ferrox, mo, time, xrd):
         )
         _variants.append(_struct)
 
-    # Batch calculation
     _start = time.perf_counter()
     _batch_results = []
     for _struct in _variants:
@@ -518,7 +457,6 @@ def _(Lattice, Structure, ferrox, mo, time, xrd):
         _result = xrd.compute_xrd(
             _struct_dict, two_theta_range=(30.0, 90.0), wavelength=1.5406
         )
-        # Track (111) peak position
         _hkls = _result["hkls"]
         _two_theta = _result["two_theta"]
         _found_111 = None
@@ -529,25 +467,22 @@ def _(Lattice, Structure, ferrox, mo, time, xrd):
         _batch_results.append(_found_111)
     _batch_time = time.perf_counter() - _start
 
-    # Filter out None values for summary
     _valid_results = [peak for peak in _batch_results if peak is not None]
-    if _valid_results:
-        _peak_range = f"{_valid_results[0]:.2f}° → {_valid_results[-1]:.2f}°"
-    else:
-        _peak_range = "N/A (no (111) peaks found)"
+    _peak_range = (
+        f"{_valid_results[0]:.2f}° → {_valid_results[-1]:.2f}°"
+        if _valid_results
+        else "N/A (no (111) peaks found)"
+    )
 
     return mo.md(f"""
-    ## Batch XRD Processing
+## Batch XRD Processing
 
-    Calculated XRD for {len(_variants)} structures with varying lattice parameter:
+Calculated XRD for {len(_variants)} FCC Cu variants (a = {_base_a}–{_base_a + 19 * 0.02:.2f} Å):
 
-    - **Lattice range**: {_base_a:.2f} - {_base_a + 19 * 0.02:.2f} Å
-    - **Total time**: {_batch_time:.3f}s
-    - **Time per structure**: {_batch_time / len(_variants):.4f}s
+- **Total time**: {_batch_time:.4f}s ({_batch_time / len(_variants) * 1000:.2f} ms/structure)
+- **(111) peak range**: {_peak_range}
 
-    **(111) peak positions**: {_peak_range}
-
-    Peak shifts track lattice parameter changes (Bragg's law).
+Lattice expansion shifts peaks to lower 2θ angles.
     """)
 
 
@@ -555,7 +490,6 @@ def _(Lattice, Structure, ferrox, mo, time, xrd):
 def _(Lattice, Structure, ferrox, mo, np, xrd):
     """Edge case: Heavy elements."""
 
-    # Structure with heavy elements (high-Z)
     pbo2 = Structure(
         Lattice.tetragonal(4.95, 3.38),
         ["Pb", "Pb", "O", "O", "O", "O"],
@@ -584,87 +518,45 @@ def _(Lattice, Structure, ferrox, mo, np, xrd):
         for idx in _sorted_idx[:6]
     )
 
-    return (pbo2,
-        mo.md(f"""
-        ## Edge Case: Heavy Elements (PbO₂)
+    return mo.md(f"""
+## Edge Case: Heavy Elements (PbO₂)
 
-        Lead dioxide with high-Z Pb (Z=82):
+| hkl | 2θ (°) | Intensity |
+|-----|--------|-----------|
+{_pbo2_table}
 
-        | hkl | 2θ (°) | Intensity |
-        |-----|--------|-----------|
-        {_pbo2_table}
-
-        Heavy elements dominate scattering due to more electrons.
-        The Pb contribution is much stronger than O.
-        """),
-)
-
-
-@app.cell
-def _(mo, pbo2, pmv):
-    """Visualize PbO2."""
-    return mo.vstack(
-        [
-            mo.md("### PbO₂ Structure"),
-            pmv.StructureWidget(structure=pbo2, style="height: 250px;"),
-        ]
-    )
+Heavy elements like Pb have large scattering factors, producing strong peaks.
+    """)
 
 
 @app.cell
 def _(mo):
     """Summary and key takeaways."""
     return mo.md("""
-    ## Summary
+## Summary
 
-    Ferrox provides XRD pattern calculation with the same physics as pymatgen:
+Ferrox provides XRD pattern calculation with the same physics as pymatgen:
 
-    1. **Full pattern calculation**: Positions, intensities, Miller indices
-    2. **Flexible wavelengths**: Cu Kα, Co Kα, Mo Kα, custom
-    3. **Batch processing**: Efficient multi-structure analysis
-    4. **Scattering parameters**: Access to atomic form factors
+1. **Full pattern calculation**: Positions, intensities, Miller indices
+2. **Flexible wavelengths**: Cu Kα, Co Kα, Mo Kα, custom
+3. **Batch processing**: Efficient multi-structure analysis
+4. **Scattering parameters**: Access to atomic form factors
 
-    ### Key Functions
+### Key Functions
 
-    ```python
-    from ferrox import xrd
+```python
+from ferrox import xrd
 
-    # Calculate XRD pattern
-    result = xrd.compute_xrd(
-        struct,
-        two_theta_range=(10.0, 90.0),
-        wavelength=1.5406, # Cu Kα
-    )
+result = xrd.compute_xrd(
+    struct, two_theta_range=(10.0, 90.0), wavelength=1.5406,
+)
 
-    # Access peaks via parallel arrays
-    for two_theta, intensity, hkl, d_spacing in zip(
-        result["two_theta"],
-        result["intensities"],
-        result["hkls"],
-        result["d_spacings"],
-    ):
-        # hkl is a list of [h, k, l] values for equivalent reflections
-        h, k, l = hkl[0]  # First equivalent
-
-    # Get scattering parameters
-    params = xrd.get_atomic_scattering_params()
-    ```
-
-    ### Common Wavelengths
-
-    | Source | λ (Å) | Use Case |
-    |--------|-------|----------|
-    | Cu Kα | 1.5406 | Most common lab source |
-    | Co Kα | 1.7902 | Fe-containing samples |
-    | Mo Kα | 0.7107 | Single crystal |
-    | Ag Kα | 0.5594 | High-Q measurements |
-
-    ### Use Cases
-
-    - **Phase identification**: Match experimental patterns
-    - **Structural refinement**: Compare calculated vs observed
-    - **Quality control**: Track peak positions and widths
-    - **Database generation**: Batch calculate reference patterns
+# Access peaks via parallel arrays
+for two_theta, intensity, hkl in zip(
+    result["two_theta"], result["intensities"], result["hkls"],
+):
+    h, k, l = hkl[0]
+```
     """)
 
 
