@@ -174,7 +174,7 @@ def clean_stub(content: str) -> str:
 
     # Replace header: only add imports that the file actually uses
     body_match = re.search(
-        r"^(@|class |def |from \.|[A-Za-z_]\w*\s*[:=])", content, re.MULTILINE
+        r"^(@|# ruff:|class |def |from \.|[A-Za-z_]\w*\s*[:=])", content, re.MULTILINE
     )
     if not body_match:
         # No substantive content (e.g. ferrox/__init__.pyi with just a comment)
@@ -237,10 +237,8 @@ def main() -> int:
         print(f"Stub root not found: {STUB_ROOT}", file=sys.stderr)
         return 1
 
-    # Clean all generated stubs (skip top-level __init__.pyi which is just re-exports)
+    # Clean all generated stubs
     for pyi in sorted(STUB_ROOT.rglob("*.pyi")):
-        if pyi.parent == STUB_ROOT:
-            continue
         content = pyi.read_text()
         cleaned = clean_stub(content)
         if content != cleaned:
