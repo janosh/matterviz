@@ -176,7 +176,12 @@ def clean_stub(content: str) -> str:
 
     # Replace header: only add imports that the file actually uses
     body_match = re.search(
-        r"^(@|# ruff:|class |def |from \.|[A-Za-z_]\w*\s*[:=])", content, re.MULTILINE
+        r"^(@|# ruff:|class |def |from \.|"
+        r"from (?!typing\b|builtins\b|collections\b)\w+|"
+        r"import (?!typing\b|builtins\b|collections\b)|"
+        r"[A-Za-z_]\w*\s*[:=])",
+        content,
+        re.MULTILINE,
     )
     if not body_match:
         # No substantive content (e.g. ferrox/__init__.pyi with just a comment)
