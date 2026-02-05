@@ -77,11 +77,9 @@ def _parse_rs_module(content: str) -> tuple[str, list[str]] | None:
         names.append(fn_renames.get(rust_name, rust_name))
 
     # Extract registered classes: add_class::<RustStruct>()
-    names.extend(
-        py_name
-        for match in re.finditer(r"add_class::<(\w+)>", content)
-        if (py_name := class_map.get(match.group(1)))
-    )
+    for match in re.finditer(r"add_class::<(\w+)>", content):
+        rust_name = match.group(1)
+        names.append(class_map.get(rust_name, rust_name))
 
     if not names:
         return None
@@ -239,8 +237,10 @@ def main() -> int:
         print(f"Stub root not found: {STUB_ROOT}", file=sys.stderr)
         return 1
 
-    # Clean all generated stubs
+    # Clean all generated stubs (skip top-level __init__.pyi which is just re-exports)
     for pyi in sorted(STUB_ROOT.rglob("*.pyi")):
+        if pyi.parent == STUB_ROOT:
+            continue
         content = pyi.read_text()
         cleaned = clean_stub(content)
         if content != cleaned:
@@ -255,7 +255,9 @@ def main() -> int:
         defined = {
             m.group(1) or m.group(2)
             for m in re.finditer(
-                r"^(?:def (\w+)\(|@final\nclass (\w+))", stub_content, re.MULTILINE
+                r"^(?:def (\w+)\(|(?:@final\n)?class (\w+)[\(:])",
+                stub_content,
+                re.MULTILINE,
             )
         }
         namespaces = {
