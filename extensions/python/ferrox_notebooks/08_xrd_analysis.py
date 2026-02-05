@@ -341,8 +341,8 @@ def _(PMGXRDCalculator, al_fcc, fe_bcc, ferrox, mo, nacl, time, wavelength, xrd)
         )
         _ferrox_time = time.perf_counter() - _start
 
-        # Pymatgen timing
-        _pmg_calc = PMGXRDCalculator(wavelength="CuKa")
+        # Pymatgen timing (use same wavelength for fair comparison)
+        _pmg_calc = PMGXRDCalculator(wavelength=wavelength)
         _start = time.perf_counter()
         _ = _pmg_calc.get_pattern(_struct)
         _pmg_time = time.perf_counter() - _start

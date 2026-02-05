@@ -554,7 +554,7 @@ def _(mo, pmv, traj_data):
     )
 
     display = mo.vstack([mo.md("### Li Diffusion Trajectory"), traj_widget])
-    return traj_widget, display
+    return (display,)
 
 
 @app.cell

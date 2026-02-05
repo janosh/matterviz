@@ -118,7 +118,7 @@ async function postprocess_markdown(filepath: string): Promise<void> {
     // Add a title if the file doesn't start with frontmatter or heading
     if (!content.startsWith(`---`) && !content.startsWith(`#`)) {
       const segments = filepath.replace(/\/\+page\.md$/, ``).split(`/`).filter(Boolean)
-      const filename = segments.at(-1) || `API`
+      const filename = (segments.at(-1) || `API`).replace(/\.md$/, ``)
       content = `# ${filename}\n\n${content}`
     }
 

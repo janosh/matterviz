@@ -156,7 +156,7 @@ def _(mo):
 
 
 @app.cell
-def _(bcc, cutoff_slider, fcc, ferrox, hcp, mo, order_params, q_degree_slider, time):
+def _(bcc, cutoff_slider, fcc, ferrox, hcp, mo, np, order_params, q_degree_slider, time):
     """Calculate Steinhardt Q parameters with interactive controls."""
 
     cutoff = cutoff_slider.value
@@ -323,7 +323,7 @@ def _(mo, order_params):
 
 
 @app.cell
-def _(Lattice, Structure, mo, np, order_params, time):
+def _(Lattice, Structure, mo):
     """Edge case: Grain boundary with mixed phases."""
 
     # Create a structure with FCC and BCC regions (simplified)
@@ -354,7 +354,7 @@ def _(Lattice, Structure, mo, np, order_params, time):
 
 
 @app.cell
-def _(Lattice, Structure, ferrox, mo, np, order_params):
+def _(Lattice, Structure, ferrox, mo, order_params):
     """Edge case: Nanoparticle with surface effects."""
 
     # Create a small nanoparticle-like cluster
@@ -475,7 +475,7 @@ def _(liquid, mo, pmv):
 
 
 @app.cell
-def _(bcc, fcc, ferrox, hcp, mo, order_params, time):
+def _(fcc, ferrox, mo, order_params, time):
     """Benchmark: Large-scale classification."""
 
     # Create large structures for benchmarking
