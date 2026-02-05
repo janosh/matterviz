@@ -178,6 +178,7 @@
 
   // Auto-matching
   let debounce_timer: ReturnType<typeof setTimeout>
+  let run_token = 0 // guards against stale async runs overwriting newer results
 
   $effect(() => { // Re-run matching when any dependency changes (debounced)
     const deps = [
@@ -203,12 +204,14 @@
 
   async function run_matching() {
     if (!reference_id) return
+    const token = ++run_token // capture current run; bail if superseded
     const ref = await ensure_structure_loaded(reference_id)
     if (!ref) {
       results = []
       selected_id = null
       return
     }
+    if (token !== run_token) return // superseded by newer run
     loading = true
     results = []
 
@@ -226,6 +229,7 @@
 
     // Load all candidates in parallel before matching
     await Promise.all(candidate_ids.map(ensure_structure_loaded))
+    if (token !== run_token) return // superseded by newer run
     if (candidate_ids.every((id) => !get_structure(id))) {
       loading = false
       return

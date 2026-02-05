@@ -483,11 +483,11 @@ def _(SpacegroupAnalyzer, fcc, ferrox, mo, symmetry, time):
         _ = symmetry.get_spacegroup_number(_fcc_dict, symprec=0.01)
     ferrox_time = (time.perf_counter() - _start) / 100
 
-    # Pymatgen timing — SpacegroupAnalyzer does symmetry detection in __init__,
-    # so we create it once and only time the getter for a fair comparison
-    sga = SpacegroupAnalyzer(fcc, symprec=0.01)
+    # Pymatgen timing — include SpacegroupAnalyzer creation since that's the
+    # real-world pattern (SGA does symmetry detection in __init__)
     _start = time.perf_counter()
     for _ in range(100):
+        sga = SpacegroupAnalyzer(fcc, symprec=0.01)
         _ = sga.get_space_group_number()
     pmg_time = (time.perf_counter() - _start) / 100
 
@@ -502,7 +502,7 @@ def _(SpacegroupAnalyzer, fcc, ferrox, mo, symmetry, time):
         mo.md(f"""
         ## Performance Benchmark
 
-        Space group number retrieval (average of 100 runs):
+        Space group detection (average of 100 runs, end-to-end):
 
         | Method | Time per call |
         |--------|---------------|
@@ -510,8 +510,10 @@ def _(SpacegroupAnalyzer, fcc, ferrox, mo, symmetry, time):
         | Pymatgen | {pmg_time * 1000:.3f} ms |
         | **Ratio** | **{speedup:.1f}x** |
 
-        Both use spglib under the hood. For individual lookups both are fast;
-        the difference matters mainly for batch analysis of 1000s+ structures.
+        Both use spglib under the hood. Pymatgen timing includes
+        `SpacegroupAnalyzer` creation (which runs symmetry detection).
+        For individual lookups both are fast; the difference matters
+        mainly for batch analysis of 1000s+ structures.
         """),
     )
 
@@ -704,14 +706,14 @@ def _(mo):
     from ferrox import symmetry
 
     # Space group detection
-    _sg_num = symmetry.get_spacegroup_number(struct, symprec=0.01)
-    _sg_sym = symmetry.get_spacegroup_symbol(struct, symprec=0.01)
+    sg_num = symmetry.get_spacegroup_number(struct, symprec=0.01)
+    sg_sym = symmetry.get_spacegroup_symbol(struct, symprec=0.01)
 
     # Crystal system
-    _crystal = symmetry.get_crystal_system(struct, symprec=0.01)
+    crystal_sys = symmetry.get_crystal_system(struct, symprec=0.01)
 
     # Wyckoff positions
-    _wyckoff = symmetry.get_wyckoff_letters(struct, symprec=0.01)
+    wyckoff = symmetry.get_wyckoff_letters(struct, symprec=0.01)
     equiv = symmetry.get_equivalent_sites(struct, symprec=0.01)
 
     # Cell transformations

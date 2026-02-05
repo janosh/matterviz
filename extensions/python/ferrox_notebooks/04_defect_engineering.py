@@ -121,7 +121,7 @@ def _(mgo, mo):
     }
     vacancy_site_select = mo.ui.dropdown(
         options=site_options,
-        value=list(site_options.keys())[0],
+        value=next(iter(site_options)),
         label="Vacancy site",
     )
     return (vacancy_site_select,)

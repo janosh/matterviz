@@ -44,7 +44,7 @@ groups = matcher.group(json_strs)
 
 ## Development
 
-Requires Rust 1.70+ and Python 3.10+.
+Requires Rust 1.93+ and Python 3.10+.
 
 ```bash
 # Build and install in development mode
