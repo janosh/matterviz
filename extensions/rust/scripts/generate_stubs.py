@@ -260,11 +260,8 @@ def generate_init_stub(stub_root: Path, rust_dir: Path) -> None:
     lines.append("")
     pyi_path = stub_root / "__init__.pyi"
     pyi_content = "\n".join(lines)
-    # Only regenerate if key re-exports are missing (avoids ruff fight)
-    existing = pyi_path.read_text() if pyi_path.exists() else ""
-    if "Element" not in existing:
-        pyi_path.write_text(pyi_content)
-        print(f"  Generated: {pyi_path.relative_to(rust_dir)}")
+    pyi_path.write_text(pyi_content)
+    print(f"  Generated: {pyi_path.relative_to(rust_dir)}")
 
 
 def main() -> int:
@@ -285,8 +282,10 @@ def main() -> int:
         print(f"Stub root not found: {STUB_ROOT}", file=sys.stderr)
         return 1
 
-    # Clean all generated stubs
+    # Clean pyo3-stub-gen stubs (skip top-level __init__.pyi, managed separately)
     for pyi in sorted(STUB_ROOT.rglob("*.pyi")):
+        if pyi.parent == STUB_ROOT:
+            continue
         content = pyi.read_text()
         cleaned = clean_stub(content)
         if content != cleaned:

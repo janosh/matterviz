@@ -8,7 +8,7 @@ repos:
         name: Clean Python stubs
         entry: python extensions/rust/scripts/generate_stubs.py --clean-only
         language: system
-        files: ^extensions/rust/(src/python|python/ferrox)/.*\.(rs|pyi)$
+        files: ^extensions/rust/(src/python/.*\.rs|python/ferrox/(_ferrox|optimizers)/.*\.pyi)$
         pass_filenames: false
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
