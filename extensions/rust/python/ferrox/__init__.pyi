@@ -2,4 +2,29 @@
 
 # ruff: noqa: F401
 
-from . import _ferrox, optimizers
+from . import (
+    cell,
+    composition,
+    coordination,
+    defects,
+    elastic,
+    io,
+    lattice,
+    md,
+    neighbors,
+    optimizers,
+    order_params,
+    oxidation,
+    potentials,
+    properties,
+    rdf,
+    species,
+    structure,
+    surfaces,
+    symmetry,
+    trajectory,
+    xrd,
+)
+from ._ferrox import Element, __version__
+
+StructureMatcher = structure.StructureMatcher
