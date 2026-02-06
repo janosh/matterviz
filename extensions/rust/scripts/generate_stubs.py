@@ -104,28 +104,34 @@ def to_pascal_case(name: str) -> str:
 
 
 def _convert_optional(content: str) -> str:
-    """Convert Optional[X] to X | None, handling nested brackets."""
-    result: list[str] = []
-    idx = 0
-    while idx < len(content):
-        match = re.search(r"\bOptional\[", content[idx:])
-        if not match:
-            result.append(content[idx:])
-            break
-        result.append(content[idx : idx + match.start()])
-        # Find the matching ] by counting bracket depth
-        start = idx + match.end()
-        depth = 1
-        pos = start
-        while pos < len(content) and depth > 0:
-            if content[pos] == "[":
-                depth += 1
-            elif content[pos] == "]":
-                depth -= 1
-            pos += 1
-        result.append(f"{content[start : pos - 1]} | None")
-        idx = pos
-    return "".join(result)
+    """Convert Optional[X] to X | None, handling nested brackets.
+
+    Loops until no Optional[ remains to handle nested cases like
+    Optional[Optional[int]] -> int | None | None.
+    """
+    while "Optional[" in content:
+        result: list[str] = []
+        idx = 0
+        while idx < len(content):
+            match = re.search(r"\bOptional\[", content[idx:])
+            if not match:
+                result.append(content[idx:])
+                break
+            result.append(content[idx : idx + match.start()])
+            # Find the matching ] by counting bracket depth
+            start = idx + match.end()
+            depth = 1
+            pos = start
+            while pos < len(content) and depth > 0:
+                if content[pos] == "[":
+                    depth += 1
+                elif content[pos] == "]":
+                    depth -= 1
+                pos += 1
+            result.append(f"{content[start : pos - 1]} | None")
+            idx = pos
+        content = "".join(result)
+    return content
 
 
 def clean_stub(content: str) -> str:
