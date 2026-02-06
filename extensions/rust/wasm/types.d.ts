@@ -43,7 +43,7 @@ export interface JsAseAtoms {
    */
   positions: [number, number, number][]
   /**
-   * Cell matrix (3x3), null for molecules
+   * Cell matrix (3x3), omitted for molecules
    */
   cell?: [[number, number, number], [number, number, number], [number, number, number]]
   /**
