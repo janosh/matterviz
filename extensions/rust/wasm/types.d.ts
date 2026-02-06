@@ -91,11 +91,7 @@ export interface JsSymmetryOperation {
   /**
    * 3x3 rotation matrix (integer elements in fractional basis)
    */
-  rotation: [
-    [number, number, number],
-    [number, number, number],
-    [number, number, number],
-  ]
+  rotation: [[number, number, number], [number, number, number], [number, number, number]]
   /**
    * Translation vector in fractional coordinates
    */
@@ -117,11 +113,7 @@ export interface JsAseAtoms {
   /**
    * Cell matrix (3x3), null for molecules
    */
-  cell?: [
-    [number, number, number],
-    [number, number, number],
-    [number, number, number],
-  ]
+  cell?: [[number, number, number], [number, number, number], [number, number, number]]
   /**
    * Periodic boundary conditions
    */
@@ -722,12 +714,7 @@ export class JsLangevinIntegrator {
    * dt: timestep in femtoseconds (must be positive)
    * seed: optional RNG seed for reproducibility
    */
-  constructor(
-    temperature_k: number,
-    friction: number,
-    dt: number,
-    seed?: bigint | null,
-  )
+  constructor(temperature_k: number, friction: number, dt: number, seed?: bigint | null)
   /**
    * Set timestep.
    */
@@ -766,12 +753,7 @@ export class JsMDState {
   /**
    * Set cell matrix (9 elements, row-major).
    */
-  set_cell(
-    cell: Float64Array,
-    pbc_x: boolean,
-    pbc_y: boolean,
-    pbc_z: boolean,
-  ): void
+  set_cell(cell: Float64Array, pbc_x: boolean, pbc_y: boolean, pbc_z: boolean): void
   /**
    * Compute temperature in Kelvin.
    */
@@ -996,14 +978,8 @@ export class WasmStructureMatcher {
   ): WasmResult<(number | null)[]>
   fit(struct1: Crystal, struct2: Crystal): WasmResult<boolean>
   fit_anonymous(struct1: Crystal, struct2: Crystal): WasmResult<boolean>
-  get_rms_dist(
-    struct1: Crystal,
-    struct2: Crystal,
-  ): WasmResult<JsRmsDistResult | null>
-  get_structure_distance(
-    struct1: Crystal,
-    struct2: Crystal,
-  ): WasmResult<number>
+  get_rms_dist(struct1: Crystal, struct2: Crystal): WasmResult<JsRmsDistResult | null>
+  get_structure_distance(struct1: Crystal, struct2: Crystal): WasmResult<number>
   constructor()
   with_angle_tol(tol: number): WasmStructureMatcher
   with_element_comparator(val: boolean): WasmStructureMatcher
@@ -1080,9 +1056,7 @@ export function cell_niggli_reduce(
   tolerance: number,
 ): WasmResult<string>
 
-export function cell_perpendicular_distances(
-  structure: Crystal,
-): WasmResult<string>
+export function cell_perpendicular_distances(structure: Crystal): WasmResult<string>
 
 export function cell_wrap_to_unit_cell(structure: Crystal): WasmResult<Crystal>
 
@@ -1195,10 +1169,7 @@ export function compute_xrd(
   options?: JsXrdOptions | null,
 ): WasmResult<JsXrdPattern>
 
-export function copy_structure(
-  structure: Crystal,
-  sanitize: boolean,
-): WasmResult<Crystal>
+export function copy_structure(structure: Crystal, sanitize: boolean): WasmResult<Crystal>
 
 export function defect_classify_site(coordination: number): string
 
@@ -1318,10 +1289,7 @@ export function diffusion_from_vacf(
   dim: number,
 ): WasmResult<number>
 
-export function elastic_apply_strain(
-  cell: JsMatrix3x3,
-  strain: JsMatrix3x3,
-): JsMatrix3x3
+export function elastic_apply_strain(cell: JsMatrix3x3, strain: JsMatrix3x3): JsMatrix3x3
 
 export function elastic_bulk_modulus(tensor: Float64Array): WasmResult<number>
 
@@ -1347,11 +1315,7 @@ export function elastic_tensor_from_stresses(
 
 export function elastic_youngs_modulus(bulk: number, shear: number): number
 
-export function elastic_zener_ratio(
-  c11: number,
-  c12: number,
-  c44: number,
-): number
+export function elastic_zener_ratio(c11: number, c12: number, c44: number): number
 
 /**
  * Perform one FIRE optimization step with provided forces.
@@ -1363,9 +1327,7 @@ export function fire_step_with_forces(
 
 export function formula_hash(formula: string): WasmResult<string>
 
-export function fractional_composition(
-  formula: string,
-): WasmResult<JsElementAmount[]>
+export function fractional_composition(formula: string): WasmResult<JsElementAmount[]>
 
 export function generate_slabs(
   structure: Crystal,
@@ -1378,10 +1340,7 @@ export function generate_slabs(
   symprec: number,
 ): WasmResult<Crystal[]>
 
-export function get_atomic_fraction(
-  formula: string,
-  element: string,
-): WasmResult<number>
+export function get_atomic_fraction(formula: string, element: string): WasmResult<number>
 
 export function get_atomic_mass(symbol: string): WasmResult<number>
 
@@ -1395,10 +1354,7 @@ export function get_average_coordination_number(
   cutoff: number,
 ): WasmResult<number>
 
-export function get_conventional(
-  structure: Crystal,
-  symprec: number,
-): WasmResult<Crystal>
+export function get_conventional(structure: Crystal, symprec: number): WasmResult<Crystal>
 
 /**
  * Get coordination number for a single site.
@@ -1439,24 +1395,15 @@ export function get_equivalent_sites(
   symprec: number,
 ): WasmResult<number[]>
 
-export function get_hall_number(
-  structure: Crystal,
-  symprec: number,
-): WasmResult<number>
+export function get_hall_number(structure: Crystal, symprec: number): WasmResult<number>
 
-export function get_lattice_inv_matrix(
-  structure: Crystal,
-): WasmResult<JsMatrix3x3>
+export function get_lattice_inv_matrix(structure: Crystal): WasmResult<JsMatrix3x3>
 
-export function get_lattice_metric_tensor(
-  structure: Crystal,
-): WasmResult<JsMatrix3x3>
+export function get_lattice_metric_tensor(structure: Crystal): WasmResult<JsMatrix3x3>
 
 export function get_lll_mapping(structure: Crystal): WasmResult<JsMatrix3x3>
 
-export function get_lll_reduced_lattice(
-  structure: Crystal,
-): WasmResult<JsMatrix3x3>
+export function get_lll_reduced_lattice(structure: Crystal): WasmResult<JsMatrix3x3>
 
 export function get_local_environment(
   structure: Crystal,
@@ -1476,14 +1423,9 @@ export function get_pearson_symbol(
   symprec: number,
 ): WasmResult<string>
 
-export function get_primitive(
-  structure: Crystal,
-  symprec: number,
-): WasmResult<Crystal>
+export function get_primitive(structure: Crystal, symprec: number): WasmResult<Crystal>
 
-export function get_reciprocal_lattice(
-  structure: Crystal,
-): WasmResult<JsMatrix3x3>
+export function get_reciprocal_lattice(structure: Crystal): WasmResult<JsMatrix3x3>
 
 export function get_reduced_structure(
   structure: Crystal,
@@ -1533,10 +1475,7 @@ export function get_total_mass(structure: Crystal): WasmResult<number>
 
 export function get_volume(structure: Crystal): WasmResult<number>
 
-export function get_wt_fraction(
-  formula: string,
-  element: string,
-): WasmResult<number>
+export function get_wt_fraction(formula: string, element: string): WasmResult<number>
 
 export function get_wyckoff_letters(
   structure: Crystal,
@@ -1765,15 +1704,11 @@ export function npt_step_with_forces_and_stress(
   new_stress: Float64Array,
 ): WasmResult<void>
 
-export function parse_ase_atoms(
-  ase_atoms: JsAseAtoms,
-): WasmResult<JsAseParseResult>
+export function parse_ase_atoms(ase_atoms: JsAseAtoms): WasmResult<JsAseParseResult>
 
 export function parse_cif(content: string): WasmResult<Crystal>
 
-export function parse_composition(
-  formula: string,
-): WasmResult<JsCompositionInfo>
+export function parse_composition(formula: string): WasmResult<JsCompositionInfo>
 
 export function parse_molecule_json(json: string): WasmResult<string>
 
@@ -1788,19 +1723,14 @@ export function perturb_structure(
   seed?: bigint | null,
 ): WasmResult<Crystal>
 
-export function reduced_composition(
-  formula: string,
-): WasmResult<JsElementAmount[]>
+export function reduced_composition(formula: string): WasmResult<JsElementAmount[]>
 
 export function remove_sites(
   structure: Crystal,
   indices: Uint32Array,
 ): WasmResult<Crystal>
 
-export function remove_species(
-  structure: Crystal,
-  species: string[],
-): WasmResult<Crystal>
+export function remove_species(structure: Crystal, species: string[]): WasmResult<Crystal>
 
 export function species_hash(formula: string): WasmResult<string>
 
@@ -1918,12 +1848,7 @@ export function velocity_rescale_step_with_forces(
 
 export function wrap_to_unit_cell(structure: Crystal): WasmResult<Crystal>
 
-export type InitInput =
-  | RequestInfo
-  | URL
-  | Response
-  | BufferSource
-  | WebAssembly.Module
+export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory
@@ -1942,12 +1867,7 @@ export interface InitOutput {
     f: number,
     g: number,
   ) => any
-  readonly diffusion_from_vacf: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly diffusion_from_vacf: (a: number, b: number, c: number, d: number) => any
   readonly elastic_apply_strain: (a: any, b: any) => any
   readonly elastic_bulk_modulus: (a: number, b: number) => any
   readonly elastic_generate_strains: (a: number, b: number) => any
@@ -1979,9 +1899,7 @@ export interface InitOutput {
   ) => any
   readonly jsmsdcalculator_add_frame: (a: number, b: number, c: number) => any
   readonly jsmsdcalculator_compute_msd: (a: number) => [number, number]
-  readonly jsmsdcalculator_compute_msd_per_atom: (
-    a: number,
-  ) => [number, number]
+  readonly jsmsdcalculator_compute_msd_per_atom: (a: number) => [number, number]
   readonly jsmsdcalculator_max_lag: (a: number) => number
   readonly jsmsdcalculator_n_atoms: (a: number) => number
   readonly jsmsdcalculator_new: (
@@ -1990,9 +1908,7 @@ export interface InitOutput {
     c: number,
   ) => [number, number, number]
   readonly jsvacfcalculator_add_frame: (a: number, b: number, c: number) => any
-  readonly jsvacfcalculator_compute_normalized_vacf: (
-    a: number,
-  ) => [number, number]
+  readonly jsvacfcalculator_compute_normalized_vacf: (a: number) => [number, number]
   readonly jsvacfcalculator_compute_vacf: (a: number) => [number, number]
   readonly jsvacfcalculator_new: (
     a: number,
@@ -2009,25 +1925,9 @@ export interface InitOutput {
   ) => any
   readonly remove_sites: (a: any, b: number, c: number) => any
   readonly remove_species: (a: any, b: number, c: number) => any
-  readonly substitute_species: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-  ) => any
-  readonly translate_sites: (
-    a: any,
-    b: number,
-    c: number,
-    d: any,
-    e: number,
-  ) => any
-  readonly wasmstructurematcher_deduplicate: (
-    a: number,
-    b: number,
-    c: number,
-  ) => any
+  readonly substitute_species: (a: any, b: number, c: number, d: number, e: number) => any
+  readonly translate_sites: (a: any, b: number, c: number, d: any, e: number) => any
+  readonly wasmstructurematcher_deduplicate: (a: number, b: number, c: number) => any
   readonly wasmstructurematcher_find_matches: (
     a: number,
     b: number,
@@ -2036,43 +1936,16 @@ export interface InitOutput {
     e: number,
   ) => any
   readonly wasmstructurematcher_fit: (a: number, b: any, c: any) => any
-  readonly wasmstructurematcher_fit_anonymous: (
-    a: number,
-    b: any,
-    c: any,
-  ) => any
-  readonly wasmstructurematcher_get_rms_dist: (
-    a: number,
-    b: any,
-    c: any,
-  ) => any
-  readonly wasmstructurematcher_get_structure_distance: (
-    a: number,
-    b: any,
-    c: any,
-  ) => any
+  readonly wasmstructurematcher_fit_anonymous: (a: number, b: any, c: any) => any
+  readonly wasmstructurematcher_get_rms_dist: (a: number, b: any, c: any) => any
+  readonly wasmstructurematcher_get_structure_distance: (a: number, b: any, c: any) => any
   readonly wasmstructurematcher_new: () => number
-  readonly wasmstructurematcher_with_angle_tol: (
-    a: number,
-    b: number,
-  ) => number
-  readonly wasmstructurematcher_with_element_comparator: (
-    a: number,
-    b: number,
-  ) => number
-  readonly wasmstructurematcher_with_latt_len_tol: (
-    a: number,
-    b: number,
-  ) => number
-  readonly wasmstructurematcher_with_primitive_cell: (
-    a: number,
-    b: number,
-  ) => number
+  readonly wasmstructurematcher_with_angle_tol: (a: number, b: number) => number
+  readonly wasmstructurematcher_with_element_comparator: (a: number, b: number) => number
+  readonly wasmstructurematcher_with_latt_len_tol: (a: number, b: number) => number
+  readonly wasmstructurematcher_with_primitive_cell: (a: number, b: number) => number
   readonly wasmstructurematcher_with_scale: (a: number, b: number) => number
-  readonly wasmstructurematcher_with_site_pos_tol: (
-    a: number,
-    b: number,
-  ) => number
+  readonly wasmstructurematcher_with_site_pos_tol: (a: number, b: number) => number
   readonly wrap_to_unit_cell: (a: any) => any
   readonly jsvacfcalculator_max_lag: (a: number) => number
   readonly jsvacfcalculator_n_atoms: (a: number) => number
@@ -2089,14 +1962,10 @@ export interface InitOutput {
   readonly jselement_density: (a: number) => number
   readonly jselement_electron_affinity: (a: number) => number
   readonly jselement_electron_configuration: (a: number) => [number, number]
-  readonly jselement_electron_configuration_semantic: (
-    a: number,
-  ) => [number, number]
+  readonly jselement_electron_configuration_semantic: (a: number) => [number, number]
   readonly jselement_electronegativity: (a: number) => number
   readonly jselement_first_ionization_energy: (a: number) => number
-  readonly jselement_from_atomic_number: (
-    a: number,
-  ) => [number, number, number]
+  readonly jselement_from_atomic_number: (a: number) => [number, number, number]
   readonly jselement_group: (a: number) => number
   readonly jselement_icsd_oxidation_states: (a: number) => [number, number]
   readonly jselement_ionic_radii: (a: number) => [number, number]
@@ -2230,12 +2099,7 @@ export interface InitOutput {
   readonly compute_rdf_wasm: (a: any, b: number, c: number) => any
   readonly defect_classify_site: (a: number) => [number, number]
   readonly defect_create_antisite: (a: any, b: number, c: number) => any
-  readonly defect_create_dimer: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly defect_create_dimer: (a: any, b: number, c: number, d: number) => any
   readonly defect_create_interstitial: (
     a: any,
     b: number,
@@ -2243,12 +2107,7 @@ export interface InitOutput {
     d: number,
     e: number,
   ) => any
-  readonly defect_create_substitution: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly defect_create_substitution: (a: any, b: number, c: number, d: number) => any
   readonly defect_create_vacancy: (a: any, b: number) => any
   readonly defect_distort_bonds: (
     a: any,
@@ -2258,17 +2117,8 @@ export interface InitOutput {
     e: number,
     f: number,
   ) => any
-  readonly defect_find_interstitial_sites: (
-    a: any,
-    b: number,
-    c: number,
-  ) => any
-  readonly defect_find_supercell: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly defect_find_interstitial_sites: (a: any, b: number, c: number) => any
+  readonly defect_find_supercell: (a: any, b: number, c: number, d: number) => any
   readonly defect_generate_all: (
     a: any,
     b: number,
@@ -2315,13 +2165,7 @@ export interface InitOutput {
     d: number,
     e: number,
   ) => any
-  readonly defect_rattle: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-  ) => any
+  readonly defect_rattle: (a: any, b: number, c: number, d: number, e: number) => any
   readonly get_conventional: (a: any, b: number) => any
   readonly get_crystal_system: (a: any, b: number) => any
   readonly get_equivalent_sites: (a: any, b: number) => any
@@ -2361,12 +2205,7 @@ export interface InitOutput {
   readonly jsspecies_symbol: (a: number) => [number, number]
   readonly jsspecies_to_string: (a: number) => [number, number]
   readonly molecule_to_ase: (a: number, b: number) => any
-  readonly molecule_to_xyz_str: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly molecule_to_xyz_str: (a: number, b: number, c: number, d: number) => any
   readonly parse_ase_atoms: (a: any) => any
   readonly parse_cif: (a: number, b: number) => any
   readonly parse_molecule_json: (a: number, b: number) => any
@@ -2415,12 +2254,7 @@ export interface InitOutput {
   readonly cell_perpendicular_distances: (a: any) => any
   readonly cell_wrap_to_unit_cell: (a: any) => any
   readonly composition_charge: (a: number, b: number) => any
-  readonly compositions_almost_equal: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly compositions_almost_equal: (a: number, b: number, c: number, d: number) => any
   readonly fire_step_with_forces: (a: number, b: number, c: number) => any
   readonly formula_hash: (a: number, b: number) => any
   readonly fractional_composition: (a: number, b: number) => any
@@ -2434,12 +2268,7 @@ export interface InitOutput {
     g: number,
     h: number,
   ) => any
-  readonly get_atomic_fraction: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly get_atomic_fraction: (a: number, b: number, c: number, d: number) => any
   readonly get_wt_fraction: (a: number, b: number, c: number, d: number) => any
   readonly is_charge_balanced: (a: number, b: number) => any
   readonly jscellfirestate_cell: (a: number) => [number, number]
@@ -2467,16 +2296,9 @@ export interface InitOutput {
   readonly jsfireconfig_set_max_step: (a: number, b: number) => void
   readonly jsfireconfig_set_n_min: (a: number, b: number) => void
   readonly jsfirestate_dt: (a: number) => number
-  readonly jsfirestate_is_converged: (
-    a: number,
-    b: number,
-  ) => [number, number, number]
+  readonly jsfirestate_is_converged: (a: number, b: number) => [number, number, number]
   readonly jsfirestate_max_force: (a: number) => number
-  readonly jsfirestate_new: (
-    a: number,
-    b: number,
-    c: number,
-  ) => [number, number, number]
+  readonly jsfirestate_new: (a: number, b: number, c: number) => [number, number, number]
   readonly jsfirestate_num_atoms: (a: number) => number
   readonly jsfirestate_positions: (a: number) => [number, number]
   readonly jslangevinintegrator_new: (
@@ -2486,14 +2308,8 @@ export interface InitOutput {
     d: number,
     e: bigint,
   ) => [number, number, number]
-  readonly jslangevinintegrator_set_dt: (
-    a: number,
-    b: number,
-  ) => [number, number]
-  readonly jslangevinintegrator_set_friction: (
-    a: number,
-    b: number,
-  ) => [number, number]
+  readonly jslangevinintegrator_set_dt: (a: number, b: number) => [number, number]
+  readonly jslangevinintegrator_set_friction: (a: number, b: number) => [number, number]
   readonly jslangevinintegrator_set_temperature: (
     a: number,
     b: number,
@@ -2523,21 +2339,9 @@ export interface InitOutput {
     e: number,
     f: number,
   ) => [number, number]
-  readonly jsmdstate_set_forces: (
-    a: number,
-    b: number,
-    c: number,
-  ) => [number, number]
-  readonly jsmdstate_set_positions: (
-    a: number,
-    b: number,
-    c: number,
-  ) => [number, number]
-  readonly jsmdstate_set_velocities: (
-    a: number,
-    b: number,
-    c: number,
-  ) => [number, number]
+  readonly jsmdstate_set_forces: (a: number, b: number, c: number) => [number, number]
+  readonly jsmdstate_set_positions: (a: number, b: number, c: number) => [number, number]
+  readonly jsmdstate_set_velocities: (a: number, b: number, c: number) => [number, number]
   readonly jsmdstate_temperature: (a: number) => number
   readonly jsmdstate_velocities: (a: number) => [number, number]
   readonly jsnosehooverchain_new: (
@@ -2546,10 +2350,7 @@ export interface InitOutput {
     c: number,
     d: number,
   ) => [number, number, number]
-  readonly jsnosehooverchain_set_temperature: (
-    a: number,
-    b: number,
-  ) => [number, number]
+  readonly jsnosehooverchain_set_temperature: (a: number, b: number) => [number, number]
   readonly jsnptintegrator_new: (
     a: number,
     b: number,
@@ -2586,22 +2387,9 @@ export interface InitOutput {
     e: number,
     f: bigint,
   ) => [number, number, number]
-  readonly jsvelocityrescale_set_temperature: (
-    a: number,
-    b: number,
-  ) => [number, number]
-  readonly langevin_step_finalize: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
-  readonly langevin_step_init: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly jsvelocityrescale_set_temperature: (a: number, b: number) => [number, number]
+  readonly langevin_step_finalize: (a: number, b: number, c: number, d: number) => any
+  readonly langevin_step_init: (a: number, b: number, c: number, d: number) => any
   readonly langevin_step_with_forces: (
     a: number,
     b: number,
@@ -2622,36 +2410,16 @@ export interface InitOutput {
     i: number,
   ) => any
   readonly make_supercell: (a: any, b: any) => any
-  readonly make_supercell_diag: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly make_supercell_diag: (a: any, b: number, c: number, d: number) => any
   readonly md_velocity_verlet_finalize: (
     a: number,
     b: number,
     c: number,
     d: number,
   ) => any
-  readonly md_velocity_verlet_step: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
-  readonly nose_hoover_step_finalize: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
-  readonly nose_hoover_step_init: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly md_velocity_verlet_step: (a: number, b: number, c: number, d: number) => any
+  readonly nose_hoover_step_finalize: (a: number, b: number, c: number, d: number) => any
+  readonly nose_hoover_step_init: (a: number, b: number, c: number, d: number) => any
   readonly nose_hoover_step_with_forces: (
     a: number,
     b: number,
@@ -2720,24 +2488,14 @@ export interface InitOutput {
     h: number,
   ) => any
   readonly surface_get_surface_atoms: (a: any, b: number) => any
-  readonly surface_miller_to_normal: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly surface_miller_to_normal: (a: any, b: number, c: number, d: number) => any
   readonly velocity_rescale_step_finalize: (
     a: number,
     b: number,
     c: number,
     d: number,
   ) => any
-  readonly velocity_rescale_step_init: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => any
+  readonly velocity_rescale_step_init: (a: number, b: number, c: number, d: number) => any
   readonly velocity_rescale_step_with_forces: (
     a: number,
     b: number,
@@ -2747,12 +2505,7 @@ export interface InitOutput {
     f: number,
   ) => any
   readonly __wbindgen_malloc: (a: number, b: number) => number
-  readonly __wbindgen_realloc: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-  ) => number
+  readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number
   readonly __wbindgen_exn_store: (a: number) => void
   readonly __externref_table_alloc: () => number
   readonly __wbindgen_externrefs: WebAssembly.Table
@@ -2771,6 +2524,11 @@ export type SyncInitInput = BufferSource | WebAssembly.Module
  *
  * @returns {InitOutput}
  */
-export function initSync(
-  module: { module: SyncInitInput } | SyncInitInput,
-): InitOutput
+export function initSync(module: { module: SyncInitInput } | SyncInitInput): InitOutput
+
+export default function __wbg_init(
+  module_or_path?:
+    | { module_or_path: InitInput | Promise<InitInput> }
+    | InitInput
+    | Promise<InitInput>,
+): Promise<InitOutput>

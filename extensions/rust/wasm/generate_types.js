@@ -157,6 +157,9 @@ function generate() {
     `$1 | null;`,
   )
 
+  // Strip semicolons at end of lines (project uses semiColons: false in deno.jsonc)
+  patched = patched.replace(/;$/gm, ``)
+
   // Remove the tslint/eslint disable comments from generated file
   patched = patched.replace(/^\/\* tslint:disable \*\/\n\/\* eslint-disable \*\/\n/, ``)
 
