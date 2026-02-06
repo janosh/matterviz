@@ -2,8 +2,8 @@
 // Re-run: node extensions/rust/wasm/generate_types.js
 // Source: wasm-pack output (pkg/ferrox.d.ts) + Rust return types (src/wasm/*.rs)
 
-export type { Crystal } from 'matterviz'
-import type { Crystal } from 'matterviz'
+export type { Crystal, Matrix3x3, Vec3 } from 'matterviz'
+import type { Crystal, Matrix3x3, Vec3 } from 'matterviz'
 
 // The module returned by init() has all exports from pkg/ferrox.js
 import * as ferrox from './pkg/ferrox.d.ts'
@@ -15,73 +15,6 @@ export default function init(
     | InitInput
     | Promise<InitInput>,
 ): Promise<FerroxModule>
-
-/**
- * 3D vector of floats.
- */
-export type JsVector3 = [number, number, number]
-
-/**
- * 3x3 float matrix for transformations.
- */
-export type JsMatrix3x3 = [
-  [number, number, number],
-  [number, number, number],
-  [number, number, number],
-]
-
-/**
- * 3x3 integer matrix for supercell transformations.
- */
-export type JsIntMatrix3x3 = [
-  [number, number, number],
-  [number, number, number],
-  [number, number, number],
-]
-
-/**
- * A crystal structure matching pymatgen\'s JSON format.
- */
-export interface JsCrystal {
-  /**
-   * The crystal lattice
-   */
-  lattice: JsLattice
-  /**
-   * List of crystallographic sites
-   */
-  sites: JsSite[]
-  /**
-   * Structure-level properties
-   */
-  properties?: Record<string, unknown>
-}
-
-/**
- * A crystallographic site with species, coordinates, and properties.
- */
-export interface JsSite {
-  /**
-   * Species at this site (can have multiple for disordered sites)
-   */
-  species: JsSpeciesOccupancy[]
-  /**
-   * Fractional coordinates [a, b, c] in range [0, 1)
-   */
-  abc: [number, number, number]
-  /**
-   * Cartesian coordinates [x, y, z] in Angstroms (optional, computed if missing)
-   */
-  xyz?: [number, number, number]
-  /**
-   * Site label (defaults to element symbol)
-   */
-  label?: string
-  /**
-   * Site-specific properties (e.g., magnetic moment, charge)
-   */
-  properties?: Record<string, unknown>
-}
 
 /**
  * A symmetry operation (rotation + translation in fractional coordinates).
@@ -106,7 +39,7 @@ export interface JsAseAtoms {
    */
   symbols: string[]
   /**
-   * Cartesian positions [[x1, y1, z1], ...] in Angstroms
+   * Cartesian positions [[x1, y1, z1], ...] in Ångströms
    */
   positions: [number, number, number][]
   /**
@@ -188,7 +121,7 @@ export interface JsNeighborInfo {
    */
   element: string
   /**
-   * Distance to neighbor (Angstroms)
+   * Distance to neighbor (Ångströms)
    */
   distance: number
   /**
@@ -261,50 +194,6 @@ export interface JsCompositionInfo {
 export type JsReductionAlgo = 'niggli' | 'lll'
 
 /**
- * Lattice structure matching pymatgen\'s JSON format.
- * Includes both the 3x3 matrix and derived lattice parameters (a, b, c, alpha, beta, gamma, volume)
- * so that matterviz\'s Structure component can render without recomputing them client-side.
- */
-export interface JsLattice {
-  /**
-   * 3x3 lattice matrix with lattice vectors as rows (Angstroms)
-   */
-  matrix: JsMatrix3x3
-  /**
-   * Periodic boundary conditions along each axis
-   */
-  pbc?: [boolean, boolean, boolean]
-  /**
-   * Lattice vector length a (Angstroms)
-   */
-  a?: number
-  /**
-   * Lattice vector length b (Angstroms)
-   */
-  b?: number
-  /**
-   * Lattice vector length c (Angstroms)
-   */
-  c?: number
-  /**
-   * Angle between b and c vectors (degrees)
-   */
-  alpha?: number
-  /**
-   * Angle between a and c vectors (degrees)
-   */
-  beta?: number
-  /**
-   * Angle between a and b vectors (degrees)
-   */
-  gamma?: number
-  /**
-   * Unit cell volume (A^3)
-   */
-  volume?: number
-}
-
-/**
  * Local coordination environment for a site.
  */
 export interface JsLocalEnvironment {
@@ -347,15 +236,15 @@ export interface JsStructureMetadata {
    */
   formula_hill: string
   /**
-   * Volume in A^3
+   * Volume in Å³
    */
   volume: number
   /**
-   * Density in g/cm^3 (null if zero volume)
+   * Density in g/cm³ (null if zero volume)
    */
   density: number | null
   /**
-   * Lattice parameters [a, b, c] in Angstroms
+   * Lattice parameters [a, b, c] in Ångströms
    */
   lattice_params: [number, number, number]
   /**
@@ -367,11 +256,6 @@ export interface JsStructureMetadata {
    */
   is_ordered: boolean
 }
-
-/**
- * Miller index (3D integer vector).
- */
-export type JsMillerIndex = [number, number, number]
 
 /**
  * Miller index information for an XRD peak.
@@ -393,11 +277,11 @@ export interface JsHklInfo {
 export interface JsPotentialResult {
   energy: number
   /**
-   * Flattened forces [fx0, fy0, fz0, fx1, fy1, fz1, ...] in eV/A.
+   * Flattened forces [fx0, fy0, fz0, fx1, fy1, fz1, ...] in eV/Å.
    */
   forces: number[]
   /**
-   * Stress tensor in Voigt order: [xx, yy, zz, yz, xz, xy] in eV/A^3.
+   * Stress tensor in Voigt order: [xx, yy, zz, yz, xz, xy] in eV/Å³.
    */
   stress: [number, number, number, number, number, number] | null
 }
@@ -407,11 +291,11 @@ export interface JsPotentialResult {
  */
 export interface JsRmsDistResult {
   /**
-   * Root mean square distance between matched sites (Angstroms)
+   * Root mean square distance between matched sites (Ångströms)
    */
   rms: number
   /**
-   * Maximum distance between any pair of matched sites (Angstroms)
+   * Maximum distance between any pair of matched sites (Ångströms)
    */
   max_dist: number
 }
@@ -433,7 +317,7 @@ export interface JsNeighborList {
    */
   image_offsets: [number, number, number][]
   /**
-   * Distances from center to neighbor (Angstroms)
+   * Distances from center to neighbor (Ångströms)
    */
   distances: number[]
 }
@@ -445,33 +329,15 @@ export interface JsNeighborList {
 export type WasmResult<T> = { ok: T } | { error: string }
 
 /**
- * Species occupancy at a site (element + occupancy + optional oxidation state).
- */
-export interface JsSpeciesOccupancy {
-  /**
-   * Element symbol (e.g., \"Fe\", \"O\", \"Li\")
-   */
-  element: string
-  /**
-   * Site occupancy (0.0 to 1.0, typically 1.0 for ordered sites)
-   */
-  occu?: number
-  /**
-   * Optional oxidation state (e.g., 2 for Fe2+, -2 for O2-)
-   */
-  oxidation_state?: number
-}
-
-/**
  * XRD calculation options.
  */
 export interface JsXrdOptions {
   /**
-   * X-ray wavelength in Angstroms (default: Cu Ka = 1.54184)
+   * X-ray wavelength in Angstroms (default: Cu Kα = 1.54184)
    */
   wavelength?: number
   /**
-   * 2-theta range in degrees as [min, max]. None = all accessible angles
+   * 2θ range in degrees as [min, max]. None = all accessible angles
    */
   two_theta_range?: [number, number] | null
   /**
@@ -489,7 +355,7 @@ export interface JsXrdOptions {
  */
 export interface JsXrdPattern {
   /**
-   * 2-theta angles in degrees
+   * 2θ angles in degrees
    */
   two_theta: number[]
   /**
@@ -853,7 +719,7 @@ export class JsNPTState {
    */
   temperature(): number
   /**
-   * Get cell volume in Angstrom^3.
+   * Get cell volume in Angstrom³.
    */
   volume(): number
   /**
@@ -995,8 +861,8 @@ export function apply_inversion(
 
 export function apply_operation(
   structure: Crystal,
-  rotation: JsMatrix3x3,
-  translation: JsVector3,
+  rotation: Matrix3x3,
+  translation: Vec3,
   fractional: boolean,
 ): WasmResult<Crystal>
 
@@ -1288,14 +1154,14 @@ export function diffusion_from_vacf(
   dim: number,
 ): WasmResult<number>
 
-export function elastic_apply_strain(cell: JsMatrix3x3, strain: JsMatrix3x3): JsMatrix3x3
+export function elastic_apply_strain(cell: Matrix3x3, strain: Matrix3x3): Matrix3x3
 
 export function elastic_bulk_modulus(tensor: Float64Array): WasmResult<number>
 
 export function elastic_generate_strains(
   magnitude: number,
   shear: boolean,
-): WasmResult<JsMatrix3x3[]>
+): WasmResult<Matrix3x3[]>
 
 export function elastic_is_stable(tensor: Float64Array): WasmResult<boolean>
 
@@ -1303,13 +1169,13 @@ export function elastic_poisson_ratio(bulk: number, shear: number): number
 
 export function elastic_shear_modulus(tensor: Float64Array): WasmResult<number>
 
-export function elastic_strain_to_voigt(strain: JsMatrix3x3): Float64Array
+export function elastic_strain_to_voigt(strain: Matrix3x3): Float64Array
 
-export function elastic_stress_to_voigt(stress: JsMatrix3x3): Float64Array
+export function elastic_stress_to_voigt(stress: Matrix3x3): Float64Array
 
 export function elastic_tensor_from_stresses(
-  strains: JsMatrix3x3[],
-  stresses: JsMatrix3x3[],
+  strains: Matrix3x3[],
+  stresses: Matrix3x3[],
 ): WasmResult<number[]>
 
 export function elastic_youngs_modulus(bulk: number, shear: number): number
@@ -1330,7 +1196,7 @@ export function fractional_composition(formula: string): WasmResult<JsElementAmo
 
 export function generate_slabs(
   structure: Crystal,
-  miller_index: JsMillerIndex,
+  miller_index: Vec3,
   min_slab_size: number,
   min_vacuum_size: number,
   center_slab: boolean,
@@ -1396,13 +1262,13 @@ export function get_equivalent_sites(
 
 export function get_hall_number(structure: Crystal, symprec: number): WasmResult<number>
 
-export function get_lattice_inv_matrix(structure: Crystal): WasmResult<JsMatrix3x3>
+export function get_lattice_inv_matrix(structure: Crystal): WasmResult<Matrix3x3>
 
-export function get_lattice_metric_tensor(structure: Crystal): WasmResult<JsMatrix3x3>
+export function get_lattice_metric_tensor(structure: Crystal): WasmResult<Matrix3x3>
 
-export function get_lll_mapping(structure: Crystal): WasmResult<JsMatrix3x3>
+export function get_lll_mapping(structure: Crystal): WasmResult<Matrix3x3>
 
-export function get_lll_reduced_lattice(structure: Crystal): WasmResult<JsMatrix3x3>
+export function get_lll_reduced_lattice(structure: Crystal): WasmResult<Matrix3x3>
 
 export function get_local_environment(
   structure: Crystal,
@@ -1424,7 +1290,7 @@ export function get_pearson_symbol(
 
 export function get_primitive(structure: Crystal, symprec: number): WasmResult<Crystal>
 
-export function get_reciprocal_lattice(structure: Crystal): WasmResult<JsMatrix3x3>
+export function get_reciprocal_lattice(structure: Crystal): WasmResult<Matrix3x3>
 
 export function get_reduced_structure(
   structure: Crystal,
@@ -1549,7 +1415,7 @@ export function langevin_step_with_forces(
 
 export function make_slab(
   structure: Crystal,
-  miller_index: JsMillerIndex,
+  miller_index: Vec3,
   min_slab_size: number,
   min_vacuum_size: number,
   center_slab: boolean,
@@ -1559,10 +1425,7 @@ export function make_slab(
   termination_index?: number | null,
 ): WasmResult<Crystal>
 
-export function make_supercell(
-  structure: Crystal,
-  matrix: JsIntMatrix3x3,
-): WasmResult<Crystal>
+export function make_supercell(structure: Crystal, matrix: Matrix3x3): WasmResult<Crystal>
 
 export function make_supercell_diag(
   structure: Crystal,
@@ -1605,7 +1468,7 @@ export function molecule_to_xyz_str(
 ): WasmResult<string>
 
 /**
- * Complete a Nose-Hoover step after `nose_hoover_step_init` (velocity half-step with new forces
+ * Complete a Nosé-Hoover step after `nose_hoover_step_init` (velocity half-step with new forces
  * + second thermostat half-step).
  *
  * new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
@@ -1617,7 +1480,7 @@ export function nose_hoover_step_finalize(
 ): WasmResult<void>
 
 /**
- * Perform the first part of a Nose-Hoover step (thermostat half-step + velocity half-step +
+ * Perform the first part of a Nosé-Hoover step (thermostat half-step + velocity half-step +
  * position update).
  *
  * This is the split API for proper force handling:
@@ -1635,7 +1498,7 @@ export function nose_hoover_step_init(
 ): WasmResult<void>
 
 /**
- * Perform one complete Nose-Hoover chain step with both old and new forces.
+ * Perform one complete Nosé-Hoover chain step with both old and new forces.
  *
  * This is a convenience wrapper that combines `nose_hoover_step_init` and
  * `nose_hoover_step_finalize`.
@@ -1655,7 +1518,7 @@ export function nose_hoover_step_with_forces(
  * thermostat second half).
  *
  * new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
- * new_stress: 9-element stress tensor at updated configuration (row-major) in eV/A^3
+ * new_stress: 9-element stress tensor at updated configuration (row-major) in eV/Å³
  */
 export function npt_step_finalize(
   integrator: JsNPTIntegrator,
@@ -1675,7 +1538,7 @@ export function npt_step_finalize(
  * 4. Call `npt_step_finalize` with new forces and stress
  *
  * forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
- * stress: 9-element stress tensor (row-major) in eV/A^3
+ * stress: 9-element stress tensor (row-major) in eV/Å³
  */
 export function npt_step_init(
   integrator: JsNPTIntegrator,
@@ -1690,9 +1553,9 @@ export function npt_step_init(
  * This is a convenience wrapper that combines `npt_step_init` and `npt_step_finalize`.
  *
  * forces: flat array of initial forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
- * stress: 9-element initial stress tensor (row-major) in eV/A^3
+ * stress: 9-element initial stress tensor (row-major) in eV/Å³
  * new_forces: flat array of forces at updated positions in eV/Angstrom
- * new_stress: 9-element stress tensor at updated configuration in eV/A^3
+ * new_stress: 9-element stress tensor at updated configuration in eV/Å³
  */
 export function npt_step_with_forces_and_stress(
   integrator: JsNPTIntegrator,
@@ -1796,7 +1659,7 @@ export function surface_miller_to_normal(
 export function translate_sites(
   structure: Crystal,
   indices: Uint32Array,
-  vector: JsVector3,
+  vector: Vec3,
   fractional: boolean,
 ): WasmResult<Crystal>
 

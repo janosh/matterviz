@@ -60,8 +60,8 @@ function rust_type_to_ts(rust_type) {
     return inner.includes(`|`) ? `(${inner})[]` : `${inner}[]`
   }
 
-  // [[f64; 3]; 3] -> JsMatrix3x3 (already defined in generated types)
-  if (rust_type === `[[f64; 3]; 3]`) return `JsMatrix3x3`
+  // [[f64; 3]; 3] -> Matrix3x3 (imported from matterviz)
+  if (rust_type === `[[f64; 3]; 3]`) return `Matrix3x3`
 
   // Primitive types
   if (RUST_TO_TS[rust_type]) return RUST_TO_TS[rust_type]
@@ -151,6 +151,65 @@ function generate() {
   // Fix tsify referencing Rust type alias `Matrix3x3` instead of the exported `JsMatrix3x3`
   patched = patched.replace(/\bMatrix3x3\b(?![\w[])/g, `JsMatrix3x3`)
 
+  // DRY: remove Js* type/interface definitions that duplicate matterviz types,
+  // THEN rename remaining references to use matterviz names.
+  // Must remove definitions BEFORE renaming so regexes match original Js* names.
+  // Uses line-based removal to avoid greedy regex matching across definitions.
+  const dead_types = [`JsVector3`, `JsMatrix3x3`, `JsIntMatrix3x3`, `JsMillerIndex`]
+  const dead_interfaces = [`JsCrystal`, `JsSite`, `JsSpeciesOccupancy`, `JsLattice`]
+
+  {
+    const lines = patched.split(`\n`)
+    const filtered = []
+    let skip_until = -1
+
+    for (let idx = 0; idx < lines.length; idx++) {
+      if (idx <= skip_until) continue
+      const trimmed = lines[idx].trimStart()
+
+      // Check for dead type alias: `export type JsVector3 = ...`
+      const is_dead_type = dead_types.some((name) =>
+        trimmed.startsWith(`export type ${name}`)
+      )
+
+      // Check for dead interface: `export interface JsCrystal {`
+      const dead_iface = dead_interfaces.find((name) =>
+        trimmed.startsWith(`export interface ${name} {`)
+      )
+
+      if (is_dead_type || dead_iface) {
+        // Remove preceding JSDoc block
+        while (filtered.length > 0) {
+          const prev = filtered.at(-1).trimStart()
+          if (prev.startsWith(`*`) || prev.startsWith(`/**`)) filtered.pop()
+          else break
+        }
+        // For interfaces, skip until closing brace
+        if (dead_iface) {
+          let depth = 0
+          for (let jj = idx; jj < lines.length; jj++) {
+            if (lines[jj].includes(`{`)) depth++
+            if (lines[jj].includes(`}`)) depth--
+            if (depth === 0) {
+              skip_until = jj
+              break
+            }
+          }
+        }
+        continue
+      }
+
+      filtered.push(lines[idx])
+    }
+    patched = filtered.join(`\n`)
+  }
+
+  // Rename remaining references to matterviz equivalents
+  patched = patched.replace(/\bJsVector3\b/g, `Vec3`)
+  patched = patched.replace(/\bJsMatrix3x3\b/g, `Matrix3x3`)
+  patched = patched.replace(/\bJsIntMatrix3x3\b/g, `Matrix3x3`)
+  patched = patched.replace(/\bJsMillerIndex\b/g, `Vec3`)
+
   // Fix tsify Option<T> in interface fields: "| undefined" → "| null"
   // serde serializes None as null, not undefined. Only fix interface fields
   // (indented, no `readonly`, no `()` before `:`), not class methods/getters
@@ -187,8 +246,8 @@ function generate() {
 // Re-run: node extensions/rust/wasm/generate_types.js
 // Source: wasm-pack output (pkg/ferrox.d.ts) + Rust return types (src/wasm/*.rs)
 
-export type { Crystal } from 'matterviz'
-import type { Crystal } from 'matterviz'
+export type { Crystal, Matrix3x3, Vec3 } from 'matterviz'
+import type { Crystal, Matrix3x3, Vec3 } from 'matterviz'
 
 // The module returned by init() has all exports from pkg/ferrox.js
 import * as ferrox from './pkg/ferrox.d.ts'
