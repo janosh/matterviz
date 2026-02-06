@@ -191,27 +191,6 @@ describe(`ToggleMenu`, () => {
     })
   })
 
-  describe(`Layout modes`, () => {
-    const layout_cols: Label[] = [
-      { key: `a`, label: `A`, group: `G1` },
-      { key: `b`, label: `B`, group: `G2` },
-    ]
-
-    it.each([
-      { layout: `horizontal` as const, has_class: `horizontal`, grid: `auto-fill` },
-      { layout: `vertical` as const, has_class: `vertical`, grid: `1fr` },
-      { layout: undefined, has_class: `horizontal`, grid: `auto-fill` }, // default
-    ])(`layout=$layout applies class=$has_class`, ({ layout, has_class, grid }) => {
-      mount_menu(layout_cols, { column_panel_open: true, layout })
-
-      const container = document.querySelector(`.sections-container`)
-      expect(container?.classList.contains(has_class)).toBe(true)
-
-      const items = document.querySelector(`.section-items`) as HTMLElement
-      expect(items?.style.gridTemplateColumns).toContain(grid)
-    })
-  })
-
   describe(`n_columns prop`, () => {
     it.each([
       { n_columns: 4, expected: `repeat(4, max-content)` },
@@ -222,21 +201,15 @@ describe(`ToggleMenu`, () => {
       expect(menu?.style.gridTemplateColumns).toContain(expected)
     })
 
-    it.each([
-      { layout: `horizontal` as const, n_columns: 3, expected: `repeat(3, max-content)` },
-      { layout: `vertical` as const, n_columns: 3, expected: `1fr` }, // vertical ignores n_columns
-    ])(
-      `grouped: layout=$layout n_columns=$n_columns → $expected`,
-      ({ layout, n_columns, expected }) => {
-        const grouped: Label[] = [
-          { key: `a`, label: `A`, group: `G` },
-          { key: `b`, label: `B`, group: `G` },
-        ]
-        mount_menu(grouped, { column_panel_open: true, n_columns, layout })
-        const items = document.querySelector(`.section-items`) as HTMLElement
-        expect(items?.style.gridTemplateColumns).toContain(expected)
-      },
-    )
+    it(`grouped: n_columns=3 applies to section items`, () => {
+      const grouped: Label[] = [
+        { key: `a`, label: `A`, group: `G` },
+        { key: `b`, label: `B`, group: `G` },
+      ]
+      mount_menu(grouped, { column_panel_open: true, n_columns: 3 })
+      const items = document.querySelector(`.section-items`) as HTMLElement
+      expect(items?.style.gridTemplateColumns).toContain(`repeat(3, max-content)`)
+    })
   })
 
   describe(`Disabled items`, () => {

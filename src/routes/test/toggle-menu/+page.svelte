@@ -12,7 +12,7 @@
   ])
   let basic_open = $state(false)
 
-  // === Example 2: Grouped columns (horizontal layout) ===
+  // === Example 2: Grouped columns ===
   let grouped_columns: Label[] = $state([
     { key: `name`, label: `Name`, group: `Personal`, description: `Full name` },
     { key: `age`, label: `Age`, group: `Personal`, description: `Age in years` },
@@ -32,48 +32,7 @@
   let grouped_open = $state(false)
   let grouped_collapsed: string[] = $state([])
 
-  // === Example 3: Vertical layout ===
-  let vertical_columns: Label[] = $state([
-    {
-      key: `width`,
-      label: `Width`,
-      group: `Dimensions`,
-      description: `Width in pixels`,
-    },
-    {
-      key: `height`,
-      label: `Height`,
-      group: `Dimensions`,
-      description: `Height in pixels`,
-    },
-    {
-      key: `depth`,
-      label: `Depth`,
-      group: `Dimensions`,
-      description: `Depth in pixels`,
-    },
-    { key: `red`, label: `Red`, group: `Colors`, description: `Red channel` },
-    { key: `green`, label: `Green`, group: `Colors`, description: `Green channel` },
-    { key: `blue`, label: `Blue`, group: `Colors`, description: `Blue channel` },
-    {
-      key: `alpha`,
-      label: `Alpha`,
-      group: `Colors`,
-      description: `Alpha/transparency`,
-    },
-    { key: `bold`, label: `Bold`, group: `Font`, description: `Bold text` },
-    { key: `italic`, label: `Italic`, group: `Font`, description: `Italic text` },
-    {
-      key: `underline`,
-      label: `Underline`,
-      group: `Font`,
-      description: `Underlined text`,
-    },
-  ])
-  let vertical_open = $state(false)
-  let vertical_collapsed: string[] = $state([])
-
-  // === Example 4: With disabled items ===
+  // === Example 3: With disabled items ===
   let disabled_columns: Label[] = $state([
     { key: `enabled1`, label: `Enabled 1`, description: `This toggle is enabled` },
     {
@@ -98,7 +57,7 @@
   ])
   let disabled_open = $state(false)
 
-  // === Example 5: Fixed column count ===
+  // === Example 4: Fixed column count ===
   let fixed_columns: Label[] = $state([
     { key: `col1`, label: `Col 1` },
     { key: `col2`, label: `Col 2` },
@@ -111,7 +70,7 @@
   ])
   let fixed_open = $state(false)
 
-  // === Example 6: HTML labels with subscripts/superscripts ===
+  // === Example 5: HTML labels with subscripts/superscripts ===
   let html_columns: Label[] = $state([
     {
       key: `h2o`,
@@ -141,7 +100,7 @@
   let html_open = $state(false)
   let html_collapsed: string[] = $state([])
 
-  // === Example 7: Many groups with pre-collapsed ===
+  // === Example 6: Many groups with pre-collapsed ===
   let many_groups_columns: Label[] = $state([
     { key: `a1`, label: `A1`, group: `Group A` },
     { key: `a2`, label: `A2`, group: `Group A` },
@@ -155,7 +114,7 @@
   let many_groups_open = $state(false)
   let many_groups_collapsed: string[] = $state([`Group B`, `Group D`])
 
-  // === Example 8: Multi-column sections (horizontal layout with n_columns) ===
+  // === Example 7: Multi-column sections (grouped with n_columns) ===
   let multicolumn_columns: Label[] = $state([
     { key: `li`, label: `Lithium`, group: `Alkali Metals` },
     { key: `na`, label: `Sodium`, group: `Alkali Metals` },
@@ -183,17 +142,6 @@
   let multicolumn_open = $state(false)
   let multicolumn_collapsed: string[] = $state([])
 
-  // === Example 9: Vertical with n_columns (demonstrates n_columns ignored in vertical) ===
-  let ex9_columns: Label[] = $state([
-    { key: `width`, label: `Width`, group: `Dimensions` },
-    { key: `height`, label: `Height`, group: `Dimensions` },
-    { key: `depth`, label: `Depth`, group: `Dimensions` },
-    { key: `red`, label: `Red`, group: `Colors` },
-    { key: `green`, label: `Green`, group: `Colors` },
-    { key: `blue`, label: `Blue`, group: `Colors` },
-  ])
-  let ex9_open = $state(false)
-
   // Derive visibility counts for display (reactive without effects)
   let basic_visible = $derived(
     basic_columns.filter((c) => c.visible !== false).map((c) => c.label).join(`, `) ||
@@ -207,8 +155,8 @@
 
 <h1>ToggleMenu Component Demo</h1>
 <p>
-  A flexible toggle menu supporting grouped sections, collapsible headers,
-  horizontal/vertical layouts, and disabled states.
+  A flexible toggle menu supporting grouped sections, collapsible headers, and disabled
+  states.
 </p>
 
 <section class="demo-grid">
@@ -224,14 +172,13 @@
   </div>
 
   <div class="demo-card">
-    <h2>2. Grouped (Horizontal Layout)</h2>
+    <h2>2. Grouped Sections</h2>
     <p>Columns grouped by category with collapsible section headers.</p>
     <div class="demo-container">
       <ToggleMenu
         bind:columns={grouped_columns}
         bind:column_panel_open={grouped_open}
         bind:collapsed_sections={grouped_collapsed}
-        layout="horizontal"
       />
     </div>
     <div class="state-display">
@@ -240,23 +187,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>3. Grouped (Vertical Layout)</h2>
-    <p>Sections displayed side-by-side as columns, toggles stack vertically.</p>
-    <div class="demo-container">
-      <ToggleMenu
-        bind:columns={vertical_columns}
-        bind:column_panel_open={vertical_open}
-        bind:collapsed_sections={vertical_collapsed}
-        layout="vertical"
-      />
-    </div>
-    <div class="state-display">
-      <strong>Collapsed sections:</strong> {vertical_collapsed.join(`, `) || `none`}
-    </div>
-  </div>
-
-  <div class="demo-card">
-    <h2>4. With Disabled Items</h2>
+    <h2>3. With Disabled Items</h2>
     <p>Some toggles are disabled and cannot be changed. Hover for tooltips.</p>
     <div class="demo-container">
       <ToggleMenu
@@ -275,7 +206,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>5. Fixed Column Count (n_columns=4)</h2>
+    <h2>4. Fixed Column Count (n_columns=4)</h2>
     <p>Force exactly 4 columns regardless of container width.</p>
     <div class="demo-container">
       <ToggleMenu
@@ -287,7 +218,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>6. HTML Labels</h2>
+    <h2>5. HTML Labels</h2>
     <p>Labels support HTML for subscripts, superscripts, etc.</p>
     <div class="demo-container">
       <ToggleMenu
@@ -299,7 +230,7 @@
   </div>
 
   <div class="demo-card">
-    <h2>7. Pre-collapsed Sections</h2>
+    <h2>6. Pre-collapsed Sections</h2>
     <p>Some sections start collapsed (Group B and D).</p>
     <div class="demo-container">
       <ToggleMenu
@@ -314,10 +245,10 @@
   </div>
 
   <div class="demo-card wide">
-    <h2>8. Multi-column Sections</h2>
+    <h2>7. Multi-column Sections</h2>
     <p>
-      Horizontal layout with n_columns=3. Each section header spans the full width, items
-      fill a 3-column grid below it.
+      With n_columns=3, each section header spans the full width and items fill a 3-column
+      grid below it.
     </p>
     <div class="demo-container">
       <ToggleMenu
@@ -329,22 +260,6 @@
     </div>
     <div class="state-display">
       <strong>Collapsed:</strong> {multicolumn_collapsed.join(`, `) || `none`}
-    </div>
-  </div>
-
-  <div class="demo-card wide">
-    <h2>9. Vertical with Fixed Columns (n_columns ignored)</h2>
-    <p>
-      In vertical layout, n_columns is ignored - each section is a single column of
-      stacked toggles.
-    </p>
-    <div class="demo-container">
-      <ToggleMenu
-        bind:columns={ex9_columns}
-        bind:column_panel_open={ex9_open}
-        layout="vertical"
-        n_columns={3}
-      />
     </div>
   </div>
 </section>

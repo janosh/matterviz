@@ -8,14 +8,12 @@
     columns = $bindable([]),
     column_panel_open = $bindable(false),
     n_columns,
-    layout = `horizontal`,
     collapsed_sections = $bindable<string[]>([]),
   }: {
     columns: Label[]
     column_panel_open?: boolean
-    // Number of grid columns for toggle layout. Ignored when layout="vertical".
+    // Number of grid columns for toggle layout
     n_columns?: number
-    layout?: `horizontal` | `vertical`
     collapsed_sections?: string[]
   } = $props()
 
@@ -63,6 +61,10 @@
   let details_el: HTMLElement | undefined
   $effect(() => {
     if (!column_panel_open || !details_el) return
+    // Re-run when section state changes while open
+    void n_columns
+    void collapsed_sections
+    void sections
     const dropdown = details_el.querySelector<HTMLElement>(
       `.column-menu, .sections-container`,
     )
@@ -116,7 +118,7 @@
   </summary>
 
   {#if has_sections}
-    <div class="sections-container {layout}" role="group">
+    <div class="sections-container" role="group">
       {#each sections as section (section.name)}
         {@const is_collapsed = section.name !== `` &&
         collapsed_sections.includes(section.name)}
@@ -135,7 +137,7 @@
           {#if !is_collapsed}
             <div
               class="section-items"
-              style:grid-template-columns={layout === `vertical` ? `1fr` : grid_template}
+              style:grid-template-columns={grid_template}
               transition:slide={{ duration: 200 }}
             >
               {#each section.items as col, idx (col.key ?? col.label ?? idx)}
@@ -202,22 +204,8 @@
   .sections-container {
     padding: 6pt 8pt;
     display: flex;
+    flex-direction: column;
     gap: 8px;
-    /* Horizontal (default) - sections stack vertically */
-    &.horizontal {
-      flex-direction: column;
-    }
-    /* Vertical - sections side by side, wrap when full */
-    &.vertical {
-      flex-direction: row;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      gap: 12px;
-      .section {
-        min-width: 120px;
-        flex: 0 0 auto;
-      }
-    }
   }
   .section-header {
     display: flex;
