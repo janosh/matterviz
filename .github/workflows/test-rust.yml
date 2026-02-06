@@ -34,6 +34,8 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - name: Run WASM type tests (native)
+        run: cargo test --features wasm --lib -- wasm_types
 
   verify-stubs:
     name: Verify Python stubs
@@ -122,6 +124,17 @@ jobs:
         run: |
           pnpm install
           pnpm test
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.3.7
+      - name: Verify WASM types are up to date
+        run: |
+          deno run -A extensions/rust/wasm/generate_types.ts
+          deno fmt --config deno.jsonc extensions/rust/wasm/types.d.ts
+          if ! git diff --exit-code extensions/rust/wasm/types.d.ts; then
+            echo "::error::WASM types.d.ts is out of sync! Run 'deno run -A generate_types.ts' and commit."
+            exit 1
+          fi
       - name: Upload WASM artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
