@@ -132,7 +132,7 @@ jobs:
           deno run -A extensions/rust/wasm/generate_types.ts
           deno fmt --config deno.jsonc extensions/rust/wasm/types.d.ts
           if ! git diff --exit-code extensions/rust/wasm/types.d.ts; then
-            echo "::error::WASM types.d.ts is out of sync! Run 'node generate_types.js' and commit."
+            echo "::error::WASM types.d.ts is out of sync! Run 'deno run -A generate_types.ts' and commit."
             exit 1
           fi
       - name: Upload WASM artifact
