@@ -69,6 +69,8 @@ pub struct JsMillerIndex(pub [i32; 3]);
 pub struct JsMatrix3x3(pub [[f64; 3]; 3]);
 
 /// Lattice structure matching pymatgen's JSON format.
+/// Includes both the 3x3 matrix and derived lattice parameters (a, b, c, alpha, beta, gamma, volume)
+/// so that matterviz's Structure component can render without recomputing them client-side.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub struct JsLattice {
@@ -77,6 +79,27 @@ pub struct JsLattice {
     /// Periodic boundary conditions along each axis
     #[serde(default = "default_pbc")]
     pub pbc: [bool; 3],
+    /// Lattice vector length a (Ångströms)
+    #[serde(default)]
+    pub a: f64,
+    /// Lattice vector length b (Ångströms)
+    #[serde(default)]
+    pub b: f64,
+    /// Lattice vector length c (Ångströms)
+    #[serde(default)]
+    pub c: f64,
+    /// Angle between b and c vectors (degrees)
+    #[serde(default)]
+    pub alpha: f64,
+    /// Angle between a and c vectors (degrees)
+    #[serde(default)]
+    pub beta: f64,
+    /// Angle between a and b vectors (degrees)
+    #[serde(default)]
+    pub gamma: f64,
+    /// Unit cell volume (ų)
+    #[serde(default)]
+    pub volume: f64,
 }
 
 fn default_pbc() -> [bool; 3] {
@@ -345,6 +368,9 @@ impl JsCrystal {
             .map(|(key, val)| (key.clone(), val.clone()))
             .collect();
 
+        let lengths = structure.lattice.lengths();
+        let angles = structure.lattice.angles();
+
         JsCrystal {
             lattice: JsLattice {
                 matrix: [
@@ -353,6 +379,13 @@ impl JsCrystal {
                     [mat[(2, 0)], mat[(2, 1)], mat[(2, 2)]],
                 ],
                 pbc: structure.lattice.pbc,
+                a: lengths.x,
+                b: lengths.y,
+                c: lengths.z,
+                alpha: angles.x,
+                beta: angles.y,
+                gamma: angles.z,
+                volume: structure.lattice.volume(),
             },
             sites,
             properties,
@@ -537,4 +570,160 @@ pub struct JsCompositionInfo {
     pub average_electronegativity: Option<f64>,
     /// Total number of electrons
     pub total_electrons: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lattice::Lattice;
+    use crate::structure::Structure;
+
+    /// Build a simple NaCl structure for testing.
+    fn nacl_structure() -> Structure {
+        use crate::element::Element;
+        use crate::species::{SiteOccupancy, Species};
+        use nalgebra::Vector3;
+
+        let lattice = Lattice::from_parameters(5.64, 5.64, 5.64, 90.0, 90.0, 90.0);
+        let na = SiteOccupancy::ordered(Species::neutral(Element::Na));
+        let cl = SiteOccupancy::ordered(Species::neutral(Element::Cl));
+        Structure::try_new_from_occupancies(
+            lattice,
+            vec![na, cl],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn js_lattice_has_params_and_volume() {
+        let structure = nacl_structure();
+        let js_crystal = JsCrystal::from_structure(&structure);
+        let lat = &js_crystal.lattice;
+
+        // Matrix must be present
+        assert!(lat.matrix[0][0] > 5.0);
+
+        // Lattice parameters must be populated
+        assert!((lat.a - 5.64).abs() < 1e-6, "a = {}", lat.a);
+        assert!((lat.b - 5.64).abs() < 1e-6, "b = {}", lat.b);
+        assert!((lat.c - 5.64).abs() < 1e-6, "c = {}", lat.c);
+        assert!((lat.alpha - 90.0).abs() < 1e-6, "alpha = {}", lat.alpha);
+        assert!((lat.beta - 90.0).abs() < 1e-6, "beta = {}", lat.beta);
+        assert!((lat.gamma - 90.0).abs() < 1e-6, "gamma = {}", lat.gamma);
+
+        // Volume = a^3 for cubic
+        let expected_volume = 5.64_f64.powi(3);
+        assert!(
+            (lat.volume - expected_volume).abs() < 1e-3,
+            "volume = {} (expected {})",
+            lat.volume,
+            expected_volume,
+        );
+    }
+
+    #[test]
+    fn js_crystal_sites_have_xyz() {
+        let structure = nacl_structure();
+        let js_crystal = JsCrystal::from_structure(&structure);
+
+        assert_eq!(js_crystal.sites.len(), 2);
+        for (idx, site) in js_crystal.sites.iter().enumerate() {
+            assert!(
+                site.xyz.is_some(),
+                "Site {idx} ({}) missing xyz",
+                site.species[0].element,
+            );
+        }
+
+        // Na at origin → xyz ≈ [0, 0, 0]
+        let na_xyz = js_crystal.sites[0].xyz.unwrap();
+        assert!(
+            na_xyz.iter().all(|v| v.abs() < 1e-10),
+            "Na xyz = {na_xyz:?}"
+        );
+
+        // Cl at (0.5, 0.5, 0.5) → xyz ≈ [2.82, 2.82, 2.82]
+        let cl_xyz = js_crystal.sites[1].xyz.unwrap();
+        for coord in cl_xyz {
+            assert!((coord - 2.82).abs() < 0.01, "Cl xyz = {cl_xyz:?}");
+        }
+    }
+
+    #[test]
+    fn js_crystal_roundtrip_preserves_lattice_params() {
+        let structure = nacl_structure();
+        let js_crystal = JsCrystal::from_structure(&structure);
+
+        // Roundtrip: JsCrystal → Structure → JsCrystal
+        let roundtripped = js_crystal.to_structure().unwrap();
+        let js_roundtripped = JsCrystal::from_structure(&roundtripped);
+
+        assert!((js_roundtripped.lattice.a - 5.64).abs() < 1e-6);
+        assert!((js_roundtripped.lattice.volume - 5.64_f64.powi(3)).abs() < 1e-3);
+        assert_eq!(js_roundtripped.sites.len(), 2);
+    }
+
+    #[test]
+    fn js_lattice_deserialize_without_params() {
+        // Backward compat: lattice with only matrix + pbc (no a/b/c/alpha/beta/gamma/volume)
+        let json = serde_json::json!({
+            "matrix": [[5.64, 0.0, 0.0], [0.0, 5.64, 0.0], [0.0, 0.0, 5.64]],
+            "pbc": [true, true, true],
+        });
+        let lattice: JsLattice = serde_json::from_value(json).unwrap();
+        assert!(lattice.matrix[0][0] > 5.0);
+        // Defaults to 0.0 when not provided
+        assert_eq!(lattice.a, 0.0);
+        assert_eq!(lattice.volume, 0.0);
+    }
+
+    #[test]
+    fn cif_parse_produces_complete_js_crystal() {
+        use crate::cif::parse_cif_str;
+        use std::path::Path;
+
+        let cif_content = r#"
+data_test
+_cell_length_a    3.6957
+_cell_length_b    3.6957
+_cell_length_c    19.2145
+_cell_angle_alpha 90.0
+_cell_angle_beta  90.0
+_cell_angle_gamma 90.0
+
+loop_
+_space_group_symop_operation_xyz
+'x, y, z'
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+O1 O 0.0 0.5 0.908
+Ni1 Ni 0.0 0.0 0.1045
+La1 La 0.0 0.0 0.3163
+"#;
+        let structure = parse_cif_str(cif_content, Path::new("test.cif")).unwrap();
+        let js_crystal = JsCrystal::from_structure(&structure);
+
+        // Lattice params
+        assert!((js_crystal.lattice.a - 3.6957).abs() < 1e-3);
+        assert!((js_crystal.lattice.c - 19.2145).abs() < 1e-3);
+        assert!((js_crystal.lattice.alpha - 90.0).abs() < 1e-3);
+        assert!(js_crystal.lattice.volume > 200.0);
+
+        // All sites must have xyz
+        assert_eq!(js_crystal.sites.len(), 3);
+        for (idx, site) in js_crystal.sites.iter().enumerate() {
+            assert!(site.xyz.is_some(), "Site {idx} missing xyz");
+            let xyz = site.xyz.unwrap();
+            // xyz coords must be finite and plausible (within cell bounds)
+            for coord in xyz {
+                assert!(coord.is_finite(), "Site {idx} has non-finite xyz coord");
+            }
+        }
+    }
 }
