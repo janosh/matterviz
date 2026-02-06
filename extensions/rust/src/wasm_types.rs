@@ -97,7 +97,7 @@ pub struct JsLattice {
     /// Angle between a and b vectors (degrees)
     #[serde(default)]
     pub gamma: f64,
-    /// Unit cell volume (ų)
+    /// Unit cell volume (Å³)
     #[serde(default)]
     pub volume: f64,
 }
@@ -657,11 +657,19 @@ mod tests {
 
         // Roundtrip: JsCrystal → Structure → JsCrystal
         let roundtripped = js_crystal.to_structure().unwrap();
-        let js_roundtripped = JsCrystal::from_structure(&roundtripped);
+        let lat = JsCrystal::from_structure(&roundtripped).lattice;
 
-        assert!((js_roundtripped.lattice.a - 5.64).abs() < 1e-6);
-        assert!((js_roundtripped.lattice.volume - 5.64_f64.powi(3)).abs() < 1e-3);
-        assert_eq!(js_roundtripped.sites.len(), 2);
+        assert!((lat.a - 5.64).abs() < 1e-6, "a = {}", lat.a);
+        assert!((lat.b - 5.64).abs() < 1e-6, "b = {}", lat.b);
+        assert!((lat.c - 5.64).abs() < 1e-6, "c = {}", lat.c);
+        assert!((lat.alpha - 90.0).abs() < 1e-6, "alpha = {}", lat.alpha);
+        assert!((lat.beta - 90.0).abs() < 1e-6, "beta = {}", lat.beta);
+        assert!((lat.gamma - 90.0).abs() < 1e-6, "gamma = {}", lat.gamma);
+        assert!(
+            (lat.volume - 5.64_f64.powi(3)).abs() < 1e-3,
+            "volume = {}",
+            lat.volume
+        );
     }
 
     #[test]

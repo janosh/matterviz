@@ -1,5 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { mat3x3_vec3_multiply, transpose_3x3_matrix } from '$lib/math'
+import type { ParsedStructure } from '$lib/structure/parse'
 import {
   detect_structure_type,
   is_optimade_json,
@@ -529,6 +530,10 @@ describe(`Auto-detection & Error Handling`, () => {
     expect(result).toBeNull()
   })
 })
+
+// Helper to count elements in a parsed structure
+const el_count = (result: ParsedStructure) => (el: string) =>
+  result.sites.filter((site) => site.species[0].element === el).length
 
 describe(`CIF Parser`, () => {
   it.each([
@@ -1425,15 +1430,12 @@ Na Na 0.000 0.000 0.000`
     // After expansion: 62 sites (Ge1/P1 share position but are separate entries)
     expect(result.sites.length).toBe(62)
 
-    // Element counts should match pymatgen: Li=28, Ge=4, P=6, S=24
-    const count = (el: string) =>
-      result.sites.filter((site) => site.species[0].element === el).length
+    const count = el_count(result)
     expect(count(`Li`)).toBe(28)
     expect(count(`Ge`)).toBe(4)
     expect(count(`P`)).toBe(6)
     expect(count(`S`)).toBe(24)
 
-    // Verify lattice parameters
     expect(result.lattice?.a).toBeCloseTo(8.694, 2)
     expect(result.lattice?.c).toBeCloseTo(12.599, 2)
     expect(result.lattice?.alpha).toBeCloseTo(90, 1)
@@ -1448,12 +1450,25 @@ Na Na 0.000 0.000 0.000`
     // Same as pymatgen: 424 sites (C=192, H=96, O=104, Zn=32)
     expect(result.sites.length).toBe(424)
 
-    const count = (el: string) =>
-      result.sites.filter((site) => site.species[0].element === el).length
+    const count = el_count(result)
     expect(count(`Zn`)).toBe(32)
     expect(count(`O`)).toBe(104)
     expect(count(`C`)).toBe(192)
     expect(count(`H`)).toBe(96)
+
+    // Lattice params (cubic, a ≈ 25.832 Å)
+    expect(result.lattice?.a).toBeCloseTo(25.832, 1)
+    expect(result.lattice?.alpha).toBeCloseTo(90, 1)
+
+    // All sites must have valid Cartesian coordinates
+    for (const site of result.sites) {
+      expect(site.xyz).toBeDefined()
+      if (site.xyz) {
+        for (const coord of site.xyz) {
+          expect(Number.isFinite(coord)).toBe(true)
+        }
+      }
+    }
   })
 })
 

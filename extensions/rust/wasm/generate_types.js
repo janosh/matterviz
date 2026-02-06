@@ -131,16 +131,10 @@ function generate() {
     },
   )
 
-  // Replace JsCrystal with Crystal in function parameter types
-  // Only in function signatures, not in interface/type definitions
+  // Replace JsCrystal with Crystal in function/method signatures
+  // (not in interface/type definitions)
   patched = patched.replace(
-    /^(export function .+)\bJsCrystal\b/gm,
-    (match) => match.replace(/\bJsCrystal\b/g, `Crystal`),
-  )
-
-  // Also replace JsCrystal in class method signatures
-  patched = patched.replace(
-    /^( {2,}\w+\(.+)\bJsCrystal\b/gm,
+    /^(export function .+| {2,}\w+\(.+)\bJsCrystal\b/gm,
     (match) => match.replace(/\bJsCrystal\b/g, `Crystal`),
   )
 

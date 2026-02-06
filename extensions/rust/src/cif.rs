@@ -519,11 +519,6 @@ fn parse_fraction_or_float(input: &str) -> Option<f64> {
     }
 }
 
-/// Wrap a fractional coordinate into the [0, 1) range.
-fn wrap_frac(val: f64) -> f64 {
-    val - val.floor()
-}
-
 /// Apply symmetry operations to expand the asymmetric unit.
 /// Deduplicates positions using 6 decimal places to handle floating point imprecision.
 fn expand_symmetry(sites: &[AtomSite], symm_ops: &[SymmetryOp]) -> Vec<AtomSite> {
@@ -545,7 +540,7 @@ fn expand_symmetry(sites: &[AtomSite], symm_ops: &[SymmetryOp]) -> Vec<AtomSite>
                     + op.rotation[dim][1] * base[1]
                     + op.rotation[dim][2] * base[2]
                     + op.translation[dim];
-                wrap_frac(val)
+                crate::pbc::wrap_frac_coord(val)
             });
 
             let key = format!(

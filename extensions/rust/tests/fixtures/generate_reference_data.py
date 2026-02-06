@@ -372,6 +372,117 @@ def generate_xrd_references() -> dict[str, XrdRef]:
     return results
 
 
+# === Coordination Number Reference Data ===
+
+
+class CoordinationRef(TypedDict):
+    """Reference data for coordination number test."""
+
+    description: str
+    cutoff: float
+    expected_cn: list[int]
+
+
+def generate_coordination_references() -> dict[str, CoordinationRef]:
+    """Generate coordination number reference values from pymatgen."""
+    from pymatgen.analysis.local_env import VoronoiNN
+    from pymatgen.core import Lattice, Structure
+
+    results = {}
+
+    # NaCl: CN = 6/6
+    nacl = Structure(
+        Lattice.cubic(5.64),
+        ["Na"] * 4 + ["Cl"] * 4,
+        [
+            [0, 0, 0],
+            [0.5, 0.5, 0],
+            [0.5, 0, 0.5],
+            [0, 0.5, 0.5],
+            [0.5, 0, 0],
+            [0, 0.5, 0],
+            [0, 0, 0.5],
+            [0.5, 0.5, 0.5],
+        ],
+    )
+    voronoi = VoronoiNN()
+    nacl_cn = [voronoi.get_cn(nacl, idx) for idx in range(len(nacl))]
+    results["nacl"] = {
+        "description": "NaCl rocksalt CN=6/6",
+        "cutoff": 3.4,
+        "expected_cn": nacl_cn,
+    }
+
+    # FCC Cu: CN = 12
+    fcc = Structure(
+        Lattice.cubic(3.61),
+        ["Cu"] * 4,
+        [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]],
+    )
+    fcc_cn = [voronoi.get_cn(fcc, idx) for idx in range(len(fcc))]
+    results["fcc_cu"] = {
+        "description": "FCC Copper CN=12",
+        "cutoff": 3.08,
+        "expected_cn": fcc_cn,
+    }
+
+    # BCC Fe: CN = 8 (1st shell) or 14 (1st+2nd shell)
+    bcc = Structure(
+        Lattice.cubic(2.87),
+        ["Fe"] * 2,
+        [[0, 0, 0], [0.5, 0.5, 0.5]],
+    )
+    bcc_cn = [voronoi.get_cn(bcc, idx) for idx in range(len(bcc))]
+    results["bcc_fe"] = {
+        "description": "BCC Iron (Voronoi CN)",
+        "cutoff": 2.68,
+        "expected_cn": bcc_cn,
+    }
+
+    return results
+
+
+# === Niggli Reduction Reference Data ===
+
+
+class NiggliRef(TypedDict):
+    """Reference data for Niggli reduction test."""
+
+    description: str
+    input_params: list[float]
+    reduced_lengths: list[float]
+    reduced_angles: list[float]
+    volume: float
+
+
+def generate_niggli_references() -> dict[str, NiggliRef]:
+    """Generate Niggli reduction reference values from pymatgen."""
+    from pymatgen.core import Lattice
+
+    results = {}
+
+    test_cases = [
+        ("cubic", [4.0, 4.0, 4.0, 90.0, 90.0, 90.0]),
+        ("hexagonal", [3.0, 3.0, 5.0, 90.0, 90.0, 120.0]),
+        ("triclinic", [3.0, 4.0, 5.0, 80.0, 85.0, 95.0]),
+        ("orthorhombic", [3.0, 4.0, 5.0, 90.0, 90.0, 90.0]),
+        ("tetragonal", [4.0, 4.0, 6.0, 90.0, 90.0, 90.0]),
+    ]
+
+    for name, params in test_cases:
+        lattice = Lattice.from_parameters(*params)
+        niggli = lattice.get_niggli_reduced_lattice()
+        results[name] = {
+            "description": f"{name} lattice Niggli reduction",
+            "input_params": params,
+            "reduced_lengths": list(niggli.lengths),
+            "reduced_angles": list(niggli.angles),
+            "volume": float(lattice.volume),
+        }
+
+    return results
+
+
 # === Main ===
 
 
@@ -397,6 +508,8 @@ def main() -> None:
         ("elastic", generate_elastic_references),
         ("steinhardt", generate_steinhardt_references),
         ("xrd", generate_xrd_references),
+        ("coordination", generate_coordination_references),
+        ("niggli", generate_niggli_references),
     ]
 
     for name, generator in generators:

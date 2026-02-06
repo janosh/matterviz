@@ -633,6 +633,11 @@ fn parse_poscar_str_impl(content: &str, path: &str) -> Result<Structure> {
     let scale_raw: f64 = scale_str
         .parse()
         .map_err(|_| err(format!("Invalid scale factor: '{scale_str}'")))?;
+    if !scale_raw.is_finite() || scale_raw == 0.0 {
+        return Err(err(format!(
+            "Scale factor must be finite and non-zero, got '{scale_str}'"
+        )));
+    }
 
     // Lines 2-4: Lattice vectors (3x3)
     let mut lattice_vecs = [[0.0f64; 3]; 3];
@@ -650,6 +655,12 @@ fn parse_poscar_str_impl(content: &str, path: &str) -> Result<Structure> {
                 "Lattice vector {} must have 3 components, got {}",
                 idx + 1,
                 parts.len()
+            )));
+        }
+        if !parts[0].is_finite() || !parts[1].is_finite() || !parts[2].is_finite() {
+            return Err(err(format!(
+                "Non-finite lattice vector component in vector {}",
+                idx + 1
             )));
         }
         lattice_vecs[idx] = [parts[0], parts[1], parts[2]];
@@ -830,6 +841,13 @@ fn parse_poscar_str_impl(content: &str, path: &str) -> Result<Structure> {
         let z: f64 = parts[2]
             .parse()
             .map_err(|_| err(format!("Invalid z coordinate: '{}'", parts[2])))?;
+
+        if !x.is_finite() || !y.is_finite() || !z.is_finite() {
+            return Err(err(format!(
+                "Non-finite coordinate at atom {}: ({x}, {y}, {z})",
+                idx + 1
+            )));
+        }
 
         coords.push(Vector3::new(x, y, z));
     }

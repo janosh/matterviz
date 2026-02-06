@@ -263,6 +263,8 @@ export type JsReductionAlgo = 'niggli' | 'lll'
 
 /**
  * Lattice structure matching pymatgen\'s JSON format.
+ * Includes both the 3x3 matrix and derived lattice parameters (a, b, c, alpha, beta, gamma, volume)
+ * so that matterviz\'s Structure component can render without recomputing them client-side.
  */
 export interface JsLattice {
   /**
@@ -273,6 +275,34 @@ export interface JsLattice {
    * Periodic boundary conditions along each axis
    */
   pbc?: [boolean, boolean, boolean]
+  /**
+   * Lattice vector length a (Ångströms)
+   */
+  a?: number
+  /**
+   * Lattice vector length b (Ångströms)
+   */
+  b?: number
+  /**
+   * Lattice vector length c (Ångströms)
+   */
+  c?: number
+  /**
+   * Angle between b and c vectors (degrees)
+   */
+  alpha?: number
+  /**
+   * Angle between a and c vectors (degrees)
+   */
+  beta?: number
+  /**
+   * Angle between a and b vectors (degrees)
+   */
+  gamma?: number
+  /**
+   * Unit cell volume (ų)
+   */
+  volume?: number
 }
 
 /**
@@ -1975,139 +2005,6 @@ export interface InitOutput {
   readonly jselement_shannon_radii: (a: number) => [number, number]
   readonly jselement_specific_heat: (a: number) => number
   readonly jselement_symbol: (a: number) => [number, number]
-  readonly __wbg_jsrdfresult_free: (a: number, b: number) => void
-  readonly __wbg_jsspecies_free: (a: number, b: number) => void
-  readonly ase_to_pymatgen: (a: any) => any
-  readonly compute_element_rdf: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-    f: number,
-    g: number,
-  ) => any
-  readonly compute_rdf_wasm: (a: any, b: number, c: number) => any
-  readonly compute_xrd: (a: any, b: number) => any
-  readonly defect_classify_site: (a: number) => [number, number]
-  readonly defect_create_antisite: (a: any, b: number, c: number) => any
-  readonly defect_create_dimer: (a: any, b: number, c: number, d: number) => any
-  readonly defect_create_interstitial: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-  ) => any
-  readonly defect_create_substitution: (a: any, b: number, c: number, d: number) => any
-  readonly defect_create_vacancy: (a: any, b: number) => any
-  readonly defect_distort_bonds: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-    f: number,
-  ) => any
-  readonly defect_find_interstitial_sites: (a: any, b: number, c: number) => any
-  readonly defect_find_supercell: (a: any, b: number, c: number, d: number) => any
-  readonly defect_generate_all: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-    f: number,
-    g: number,
-    h: number,
-    i: number,
-    j: number,
-    k: number,
-    l: number,
-    m: number,
-  ) => any
-  readonly defect_generate_name: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-    f: number,
-    g: number,
-    h: number,
-    i: number,
-    j: number,
-  ) => any
-  readonly defect_get_wyckoff_labels: (a: any, b: number) => any
-  readonly defect_guess_charge_states: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-    f: number,
-    g: number,
-    h: number,
-    i: number,
-  ) => any
-  readonly defect_local_rattle: (
-    a: any,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-  ) => any
-  readonly defect_rattle: (a: any, b: number, c: number, d: number, e: number) => any
-  readonly get_atomic_scattering_params: () => [number, number]
-  readonly get_conventional: (a: any, b: number) => any
-  readonly get_crystal_system: (a: any, b: number) => any
-  readonly get_equivalent_sites: (a: any, b: number) => any
-  readonly get_hall_number: (a: any, b: number) => any
-  readonly get_lattice_inv_matrix: (a: any) => any
-  readonly get_lattice_metric_tensor: (a: any) => any
-  readonly get_lll_mapping: (a: any) => any
-  readonly get_lll_reduced_lattice: (a: any) => any
-  readonly get_pearson_symbol: (a: any, b: number) => any
-  readonly get_primitive: (a: any, b: number) => any
-  readonly get_reciprocal_lattice: (a: any) => any
-  readonly get_reduced_structure: (a: any, b: any) => any
-  readonly get_site_symmetry_symbols: (a: any, b: number) => any
-  readonly get_spacegroup_number: (a: any, b: number) => any
-  readonly get_spacegroup_symbol: (a: any, b: number) => any
-  readonly get_symmetry_dataset: (a: any, b: number) => any
-  readonly get_symmetry_operations: (a: any, b: number) => any
-  readonly get_wyckoff_letters: (a: any, b: number) => any
-  readonly is_periodic_image: (a: any, b: number, c: number, d: number) => any
-  readonly jsrdfresult_g_of_r: (a: number) => [number, number]
-  readonly jsrdfresult_radii: (a: number) => [number, number]
-  readonly jsspecies_atomic_number: (a: number) => number
-  readonly jsspecies_atomic_radius: (a: number) => number
-  readonly jsspecies_covalent_radius: (a: number) => number
-  readonly jsspecies_electronegativity: (a: number) => number
-  readonly jsspecies_ionic_radius: (a: number) => number
-  readonly jsspecies_name: (a: number) => [number, number]
-  readonly jsspecies_new: (a: number, b: number) => [number, number, number]
-  readonly jsspecies_oxidation_state: (a: number) => number
-  readonly jsspecies_shannon_ionic_radius: (
-    a: number,
-    b: number,
-    c: number,
-    d: number,
-    e: number,
-  ) => number
-  readonly jsspecies_symbol: (a: number) => [number, number]
-  readonly jsspecies_to_string: (a: number) => [number, number]
-  readonly molecule_to_ase: (a: number, b: number) => any
-  readonly molecule_to_xyz_str: (a: number, b: number, c: number, d: number) => any
-  readonly parse_ase_atoms: (a: any) => any
-  readonly parse_cif: (a: number, b: number) => any
-  readonly parse_molecule_json: (a: number, b: number) => any
-  readonly parse_poscar: (a: number, b: number) => any
-  readonly parse_xyz_str: (a: number, b: number) => any
-  readonly structure_to_ase: (a: any) => any
-  readonly structure_to_cif: (a: any) => any
-  readonly structure_to_json: (a: any) => any
-  readonly structure_to_poscar: (a: any) => any
   readonly classify_all_atoms: (a: any, b: number, c: number) => any
   readonly classify_local_structure: (a: number, b: number, c: number) => any
   readonly compute_harmonic_bonds: (
@@ -2178,6 +2075,8 @@ export interface InitOutput {
     l: number,
   ) => any
   readonly compute_steinhardt_q: (a: any, b: number, c: number) => any
+  readonly compute_xrd: (a: any, b: number) => any
+  readonly get_atomic_scattering_params: () => [number, number]
   readonly get_average_coordination_number: (a: any, b: number) => any
   readonly get_coordination_number: (a: any, b: number, c: number) => any
   readonly get_coordination_numbers: (a: any, b: number) => any
@@ -2185,6 +2084,137 @@ export interface InitOutput {
   readonly get_distance_matrix: (a: any) => any
   readonly get_local_environment: (a: any, b: number, c: number) => any
   readonly get_neighbor_list: (a: any, b: number, c: number, d: number) => any
+  readonly __wbg_jsrdfresult_free: (a: number, b: number) => void
+  readonly __wbg_jsspecies_free: (a: number, b: number) => void
+  readonly ase_to_pymatgen: (a: any) => any
+  readonly compute_element_rdf: (
+    a: any,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+    f: number,
+    g: number,
+  ) => any
+  readonly compute_rdf_wasm: (a: any, b: number, c: number) => any
+  readonly defect_classify_site: (a: number) => [number, number]
+  readonly defect_create_antisite: (a: any, b: number, c: number) => any
+  readonly defect_create_dimer: (a: any, b: number, c: number, d: number) => any
+  readonly defect_create_interstitial: (
+    a: any,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+  ) => any
+  readonly defect_create_substitution: (a: any, b: number, c: number, d: number) => any
+  readonly defect_create_vacancy: (a: any, b: number) => any
+  readonly defect_distort_bonds: (
+    a: any,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+    f: number,
+  ) => any
+  readonly defect_find_interstitial_sites: (a: any, b: number, c: number) => any
+  readonly defect_find_supercell: (a: any, b: number, c: number, d: number) => any
+  readonly defect_generate_all: (
+    a: any,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+    f: number,
+    g: number,
+    h: number,
+    i: number,
+    j: number,
+    k: number,
+    l: number,
+    m: number,
+  ) => any
+  readonly defect_generate_name: (
+    a: number,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+    f: number,
+    g: number,
+    h: number,
+    i: number,
+    j: number,
+  ) => any
+  readonly defect_get_wyckoff_labels: (a: any, b: number) => any
+  readonly defect_guess_charge_states: (
+    a: number,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+    f: number,
+    g: number,
+    h: number,
+    i: number,
+  ) => any
+  readonly defect_local_rattle: (
+    a: any,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+  ) => any
+  readonly defect_rattle: (a: any, b: number, c: number, d: number, e: number) => any
+  readonly get_conventional: (a: any, b: number) => any
+  readonly get_crystal_system: (a: any, b: number) => any
+  readonly get_equivalent_sites: (a: any, b: number) => any
+  readonly get_hall_number: (a: any, b: number) => any
+  readonly get_lattice_inv_matrix: (a: any) => any
+  readonly get_lattice_metric_tensor: (a: any) => any
+  readonly get_lll_mapping: (a: any) => any
+  readonly get_lll_reduced_lattice: (a: any) => any
+  readonly get_pearson_symbol: (a: any, b: number) => any
+  readonly get_primitive: (a: any, b: number) => any
+  readonly get_reciprocal_lattice: (a: any) => any
+  readonly get_reduced_structure: (a: any, b: any) => any
+  readonly get_site_symmetry_symbols: (a: any, b: number) => any
+  readonly get_spacegroup_number: (a: any, b: number) => any
+  readonly get_spacegroup_symbol: (a: any, b: number) => any
+  readonly get_symmetry_dataset: (a: any, b: number) => any
+  readonly get_symmetry_operations: (a: any, b: number) => any
+  readonly get_wyckoff_letters: (a: any, b: number) => any
+  readonly is_periodic_image: (a: any, b: number, c: number, d: number) => any
+  readonly jsrdfresult_g_of_r: (a: number) => [number, number]
+  readonly jsrdfresult_radii: (a: number) => [number, number]
+  readonly jsspecies_atomic_number: (a: number) => number
+  readonly jsspecies_atomic_radius: (a: number) => number
+  readonly jsspecies_covalent_radius: (a: number) => number
+  readonly jsspecies_electronegativity: (a: number) => number
+  readonly jsspecies_ionic_radius: (a: number) => number
+  readonly jsspecies_name: (a: number) => [number, number]
+  readonly jsspecies_new: (a: number, b: number) => [number, number, number]
+  readonly jsspecies_oxidation_state: (a: number) => number
+  readonly jsspecies_shannon_ionic_radius: (
+    a: number,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+  ) => number
+  readonly jsspecies_symbol: (a: number) => [number, number]
+  readonly jsspecies_to_string: (a: number) => [number, number]
+  readonly molecule_to_ase: (a: number, b: number) => any
+  readonly molecule_to_xyz_str: (a: number, b: number, c: number, d: number) => any
+  readonly parse_ase_atoms: (a: any) => any
+  readonly parse_cif: (a: number, b: number) => any
+  readonly parse_molecule_json: (a: number, b: number) => any
+  readonly parse_poscar: (a: number, b: number) => any
+  readonly parse_xyz_str: (a: number, b: number) => any
+  readonly structure_to_ase: (a: any) => any
+  readonly structure_to_cif: (a: any) => any
+  readonly structure_to_json: (a: any) => any
+  readonly structure_to_poscar: (a: any) => any
   readonly __wbg_jscellfirestate_free: (a: number, b: number) => void
   readonly __wbg_jsfireconfig_free: (a: number, b: number) => void
   readonly __wbg_jsfirestate_free: (a: number, b: number) => void
