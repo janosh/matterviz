@@ -522,8 +522,8 @@ fn parse_fraction_or_float(input: &str) -> Option<f64> {
 /// Apply symmetry operations to expand the asymmetric unit.
 /// Deduplicates positions using 6 decimal places to handle floating point imprecision.
 fn expand_symmetry(sites: &[AtomSite], symm_ops: &[SymmetryOp]) -> Vec<AtomSite> {
-    // If no symmetry operations or only identity, return sites as-is
-    if symm_ops.len() <= 1 {
+    // No symmetry loop in CIF → sites already represent the full unit cell
+    if symm_ops.is_empty() {
         return sites.to_vec();
     }
 
