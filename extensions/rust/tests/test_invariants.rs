@@ -194,6 +194,22 @@ fn stress_tensor_symmetry_all_potentials() {
     .stress
     .expect("stress should be computed");
     assert_stress_symmetric("Morse", &morse_stress);
+
+    // Soft Sphere stress
+    let ss_stress = compute_soft_sphere_simple(
+        &pos_cu,
+        Some(&cell_cu),
+        [true; 3],
+        2.5,
+        0.01,
+        12.0,
+        6.0,
+        true,
+    )
+    .unwrap()
+    .stress
+    .expect("stress should be computed");
+    assert_stress_symmetric("Soft Sphere", &ss_stress);
 }
 
 // === Permutation Invariance ===

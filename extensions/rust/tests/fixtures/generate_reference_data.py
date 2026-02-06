@@ -477,7 +477,7 @@ def generate_niggli_references() -> dict[str, NiggliRef]:
             "input_params": params,
             "reduced_lengths": list(niggli.lengths),
             "reduced_angles": list(niggli.angles),
-            "volume": float(lattice.volume),
+            "volume": float(niggli.volume),
         }
 
     return results
