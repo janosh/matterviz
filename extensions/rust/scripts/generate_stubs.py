@@ -316,7 +316,8 @@ def main() -> int:
         print(f"  Augmented: {ferrox_stub.relative_to(RUST_DIR)}")
 
     # Generate top-level __init__.pyi from runtime __init__.py re-exports
-    if (STUB_ROOT / "__init__.py").exists():
+    # Only during full generation (not --clean-only) to avoid ruff format cycle
+    if not args.clean_only and (STUB_ROOT / "__init__.py").exists():
         generate_init_stub(STUB_ROOT, RUST_DIR)
 
     # Formatting is handled by the ruff pre-commit hooks (run after this script)
