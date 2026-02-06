@@ -967,7 +967,10 @@ def from_ase_atoms(atoms: Any) -> dict[str, Any]:
 
 def from_pymatgen_structure(structure: Any) -> dict[str, Any]:
     r"""
-    Convert a pymatgen Structure directly to ferrox dict format.
+    Convert a pymatgen Structure or Molecule directly to ferrox dict format.
+
+    Handles both periodic structures (with lattice) and non-periodic molecules.
+    Detection is automatic based on whether the object has a `lattice` attribute.
     """
 
 def from_torch_sim_state(state_dict: dict[str, Any]) -> list[dict[str, Any]]:
