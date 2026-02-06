@@ -206,6 +206,24 @@ function generate(): { output: string; n_typed: number } {
     `\n`,
   )
 
+  // Replace non-ASCII chars that wasm-pack mangles in doc comments
+  const ascii_fixes: Record<string, string> = {
+    '\u00c5\u00b3': `A^3`, // ų (mangled Å³)
+    '\u0173': `A^3`, // ų (alternate mangling)
+    '\u00c5ngstr\u00f6ms': `Angstroms`,
+    'Nos\u00e9': `Nose`,
+    '\u00b3': `^3`,
+    '\u00c5.': `A.`,
+    '\u00c5': `A`,
+    'K\u03b1': `Ka`,
+    '2\u03b8': `2-theta`,
+    '\u00b2\u207a': `2+`,
+    '\u00b2\u207b': `2-`,
+  }
+  for (const [old, replacement] of Object.entries(ascii_fixes)) {
+    patched = patched.replaceAll(old, replacement)
+  }
+
   // Strip semicolons (project uses semiColons: false in deno.jsonc)
   patched = patched.replace(/;$/gm, ``)
 

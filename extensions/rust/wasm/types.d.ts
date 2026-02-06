@@ -39,7 +39,7 @@ export interface JsAseAtoms {
    */
   symbols: string[]
   /**
-   * Cartesian positions [[x1, y1, z1], ...] in Ångströms
+   * Cartesian positions [[x1, y1, z1], ...] in Angstroms
    */
   positions: [number, number, number][]
   /**
@@ -121,7 +121,7 @@ export interface JsNeighborInfo {
    */
   element: string
   /**
-   * Distance to neighbor (Ångströms)
+   * Distance to neighbor (Angstroms)
    */
   distance: number
   /**
@@ -236,15 +236,15 @@ export interface JsStructureMetadata {
    */
   formula_hill: string
   /**
-   * Volume in Å³
+   * Volume in A^3
    */
   volume: number
   /**
-   * Density in g/cm³ (null if zero volume)
+   * Density in g/cm^3 (null if zero volume)
    */
   density: number | null
   /**
-   * Lattice parameters [a, b, c] in Ångströms
+   * Lattice parameters [a, b, c] in Angstroms
    */
   lattice_params: [number, number, number]
   /**
@@ -277,11 +277,11 @@ export interface JsHklInfo {
 export interface JsPotentialResult {
   energy: number
   /**
-   * Flattened forces [fx0, fy0, fz0, fx1, fy1, fz1, ...] in eV/Å.
+   * Flattened forces [fx0, fy0, fz0, fx1, fy1, fz1, ...] in eV/A.
    */
   forces: number[]
   /**
-   * Stress tensor in Voigt order: [xx, yy, zz, yz, xz, xy] in eV/Å³.
+   * Stress tensor in Voigt order: [xx, yy, zz, yz, xz, xy] in eV/A^3.
    */
   stress: [number, number, number, number, number, number] | null
 }
@@ -291,11 +291,11 @@ export interface JsPotentialResult {
  */
 export interface JsRmsDistResult {
   /**
-   * Root mean square distance between matched sites (Ångströms)
+   * Root mean square distance between matched sites (Angstroms)
    */
   rms: number
   /**
-   * Maximum distance between any pair of matched sites (Ångströms)
+   * Maximum distance between any pair of matched sites (Angstroms)
    */
   max_dist: number
 }
@@ -317,7 +317,7 @@ export interface JsNeighborList {
    */
   image_offsets: [number, number, number][]
   /**
-   * Distances from center to neighbor (Ångströms)
+   * Distances from center to neighbor (Angstroms)
    */
   distances: number[]
 }
@@ -333,11 +333,11 @@ export type WasmResult<T> = { ok: T } | { error: string }
  */
 export interface JsXrdOptions {
   /**
-   * X-ray wavelength in Angstroms (default: Cu Kα = 1.54184)
+   * X-ray wavelength in Angstroms (default: Cu Ka = 1.54184)
    */
   wavelength?: number
   /**
-   * 2θ range in degrees as [min, max]. None = all accessible angles
+   * 2-theta range in degrees as [min, max]. None = all accessible angles
    */
   two_theta_range?: [number, number] | null
   /**
@@ -355,7 +355,7 @@ export interface JsXrdOptions {
  */
 export interface JsXrdPattern {
   /**
-   * 2θ angles in degrees
+   * 2-theta angles in degrees
    */
   two_theta: number[]
   /**
@@ -719,7 +719,7 @@ export class JsNPTState {
    */
   temperature(): number
   /**
-   * Get cell volume in Angstrom³.
+   * Get cell volume in Angstrom^3.
    */
   volume(): number
   /**
@@ -1468,7 +1468,7 @@ export function molecule_to_xyz_str(
 ): WasmResult<string>
 
 /**
- * Complete a Nosé-Hoover step after `nose_hoover_step_init` (velocity half-step with new forces
+ * Complete a Nose-Hoover step after `nose_hoover_step_init` (velocity half-step with new forces
  * + second thermostat half-step).
  *
  * new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
@@ -1480,7 +1480,7 @@ export function nose_hoover_step_finalize(
 ): WasmResult<void>
 
 /**
- * Perform the first part of a Nosé-Hoover step (thermostat half-step + velocity half-step +
+ * Perform the first part of a Nose-Hoover step (thermostat half-step + velocity half-step +
  * position update).
  *
  * This is the split API for proper force handling:
@@ -1498,7 +1498,7 @@ export function nose_hoover_step_init(
 ): WasmResult<void>
 
 /**
- * Perform one complete Nosé-Hoover chain step with both old and new forces.
+ * Perform one complete Nose-Hoover chain step with both old and new forces.
  *
  * This is a convenience wrapper that combines `nose_hoover_step_init` and
  * `nose_hoover_step_finalize`.
@@ -1518,7 +1518,7 @@ export function nose_hoover_step_with_forces(
  * thermostat second half).
  *
  * new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
- * new_stress: 9-element stress tensor at updated configuration (row-major) in eV/Å³
+ * new_stress: 9-element stress tensor at updated configuration (row-major) in eV/A^3
  */
 export function npt_step_finalize(
   integrator: JsNPTIntegrator,
@@ -1538,7 +1538,7 @@ export function npt_step_finalize(
  * 4. Call `npt_step_finalize` with new forces and stress
  *
  * forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
- * stress: 9-element stress tensor (row-major) in eV/Å³
+ * stress: 9-element stress tensor (row-major) in eV/A^3
  */
 export function npt_step_init(
   integrator: JsNPTIntegrator,
@@ -1553,9 +1553,9 @@ export function npt_step_init(
  * This is a convenience wrapper that combines `npt_step_init` and `npt_step_finalize`.
  *
  * forces: flat array of initial forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
- * stress: 9-element initial stress tensor (row-major) in eV/Å³
+ * stress: 9-element initial stress tensor (row-major) in eV/A^3
  * new_forces: flat array of forces at updated positions in eV/Angstrom
- * new_stress: 9-element stress tensor at updated configuration in eV/Å³
+ * new_stress: 9-element stress tensor at updated configuration in eV/A^3
  */
 export function npt_step_with_forces_and_stress(
   integrator: JsNPTIntegrator,
