@@ -1,8 +1,10 @@
-"""ferrox - High-performance crystallographic structure operations in Rust.
+"""ferrox - High-performance atomistic simulation toolkit in Rust.
 
-Features: I/O (CIF/POSCAR/extXYZ/JSON), structure matching, symmetry analysis,
-coordination analysis, supercells, primitive/conventional cells, composition parsing,
-oxidation state guessing and bond valence analysis.
+High-performance base layer for computational materials science. Batch operations
+like structure matching/grouping achieve 10-100x speedups over pymatgen via
+parallel Rayon processing. Features include I/O (CIF/POSCAR/extXYZ/LAMMPS),
+structure matching, symmetry analysis, molecular dynamics, surface science,
+defect engineering, trajectory analysis, and more.
 
 ## Submodule Organization
 

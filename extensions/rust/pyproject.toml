@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "ferrox"
 dynamic = ["version"]
-description = "High-performance structure matching for crystallographic data"
+description = "High-performance base layer for computational materials science"
 readme = "readme.md"
 license = { text = "MIT" }
 authors = [{ name = "Janosh Riebesell", email = "janosh.riebesell@gmail.com" }]
@@ -23,10 +23,11 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Physics",
 ]
 keywords = [
+  "atomistic-simulation",
+  "computational-materials-science",
   "crystallography",
   "materials-science",
-  "pymatgen",
-  "structure-matching",
+  "molecular-dynamics",
 ]
 
 [project.urls]
@@ -42,7 +43,7 @@ managed = false
 [tool.ruff]
 target-version = "py311"
 output-format = "concise"
-extend-exclude = ["**/typed.py"]  # auto-generated file
+extend-exclude = ["**/typed.py"] # auto-generated file
 
 [tool.ruff.lint]
 select = ["ALL"]

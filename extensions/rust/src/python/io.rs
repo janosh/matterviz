@@ -274,104 +274,186 @@ fn parse_torch_sim_state_json(py: Python<'_>, json_str: &str) -> PyResult<Vec<Py
 
 // === Direct Object Conversion ===
 
-/// Convert a pymatgen Structure directly to ferrox dict format.
+// Extract species-occupancy pairs from a pymatgen site's species composition.
+fn extract_site_species(
+    species_comp: &Bound<'_, PyAny>,
+) -> PyResult<Vec<(crate::species::Species, f64)>> {
+    let mut species_vec = Vec::new();
+    for item_result in species_comp.call_method0("items")?.try_iter()? {
+        let item = item_result?;
+        let (sp, occu): (pyo3::Bound<'_, PyAny>, f64) = item.extract()?;
+        let symbol: String = sp.getattr("symbol")?.extract()?;
+        if !occu.is_finite() || occu < 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "Invalid occupancy {occu} for {symbol}; must be finite and non-negative"
+            )));
+        }
+        let elem = crate::element::Element::from_symbol(&symbol)
+            .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {symbol}")))?;
+
+        let oxi_state: Option<i8> = sp
+            .getattr("oxi_state")
+            .and_then(|o| o.extract::<f64>())
+            .ok()
+            .and_then(|oxi| {
+                if oxi.abs() < 1e-10 {
+                    None
+                } else if oxi.fract().abs() < 1e-10 {
+                    Some(oxi.round() as i8)
+                } else {
+                    None
+                }
+            });
+
+        species_vec.push((crate::species::Species::new(elem, oxi_state), occu));
+    }
+    Ok(species_vec)
+}
+
+/// Convert a pymatgen Structure or Molecule directly to ferrox dict format.
+///
+/// Handles both periodic structures (with lattice) and non-periodic molecules.
+/// Detection is automatic based on whether the object has a `lattice` attribute.
 #[gen_stub_pyfunction]
 #[pyfunction]
 fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyResult<Py<PyDict>> {
-    let lattice = structure.getattr("lattice")?;
-    let matrix: Vec<Vec<f64>> = lattice.getattr("matrix")?.extract()?;
-
-    // Validate matrix dimensions and finite values
-    if matrix.len() != 3 || matrix.iter().any(|row| row.len() != 3) {
-        return Err(PyValueError::new_err(format!(
-            "Lattice matrix must be 3x3, got {}x{}",
-            matrix.len(),
-            matrix.first().map_or(0, |r| r.len())
-        )));
-    }
-    for (row_idx, row) in matrix.iter().enumerate() {
-        for (col_idx, &val) in row.iter().enumerate() {
-            if !val.is_finite() {
-                return Err(PyValueError::new_err(format!(
-                    "Lattice matrix[{row_idx}][{col_idx}] must be finite, got {val}"
-                )));
-            }
-        }
-    }
-
-    let pbc: [bool; 3] = lattice
-        .getattr("pbc")
-        .and_then(|p| p.extract())
-        .unwrap_or([true, true, true]);
     let charge: f64 = structure
         .getattr("charge")
         .and_then(|c| c.extract())
         .unwrap_or(0.0);
 
-    let mut lattice_obj = crate::lattice::Lattice::new(nalgebra::Matrix3::from_row_slice(&[
-        matrix[0][0],
-        matrix[0][1],
-        matrix[0][2],
-        matrix[1][0],
-        matrix[1][1],
-        matrix[1][2],
-        matrix[2][0],
-        matrix[2][1],
-        matrix[2][2],
-    ]));
-    lattice_obj.pbc = pbc;
+    // Check if this is a periodic structure (has lattice) or molecule (no lattice)
+    let has_lattice = structure
+        .getattr("lattice")
+        .ok()
+        .map(|l| !l.is_none())
+        .unwrap_or(false);
 
-    let sites = structure.getattr("sites")?;
-    let mut site_occupancies = Vec::new();
-    let mut frac_coords = Vec::new();
+    if has_lattice {
+        // Periodic structure path
+        let lattice = structure.getattr("lattice")?;
+        let matrix: Vec<Vec<f64>> = lattice.getattr("matrix")?.extract()?;
 
-    for site_result in sites.try_iter()? {
-        let site = site_result?;
-        let frac: [f64; 3] = site.getattr("frac_coords")?.extract()?;
-        frac_coords.push(nalgebra::Vector3::new(frac[0], frac[1], frac[2]));
-
-        let species_comp = site.getattr("species")?;
-        let mut species_vec: Vec<(crate::species::Species, f64)> = Vec::new();
-
-        for item_result in species_comp.call_method0("items")?.try_iter()? {
-            let item = item_result?;
-            let (sp, occu): (pyo3::Bound<'_, PyAny>, f64) = item.extract()?;
-            let symbol: String = sp.getattr("symbol")?.extract()?;
-            let elem = crate::element::Element::from_symbol(&symbol)
-                .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {symbol}")))?;
-
-            let oxi_state: Option<i8> = sp
-                .getattr("oxi_state")
-                .and_then(|o| o.extract::<f64>())
-                .ok()
-                .and_then(|oxi| {
-                    if oxi.abs() < 1e-10 {
-                        None
-                    } else if oxi.fract().abs() < 1e-10 {
-                        Some(oxi.round() as i8)
-                    } else {
-                        None
-                    }
-                });
-
-            species_vec.push((crate::species::Species::new(elem, oxi_state), occu));
+        if matrix.len() != 3 || matrix.iter().any(|row| row.len() != 3) {
+            return Err(PyValueError::new_err(format!(
+                "Lattice matrix must be 3x3, got {}x{}",
+                matrix.len(),
+                matrix.first().map_or(0, |r| r.len())
+            )));
+        }
+        for (row_idx, row) in matrix.iter().enumerate() {
+            for (col_idx, &val) in row.iter().enumerate() {
+                if !val.is_finite() {
+                    return Err(PyValueError::new_err(format!(
+                        "Lattice matrix[{row_idx}][{col_idx}] must be finite, got {val}"
+                    )));
+                }
+            }
         }
 
-        site_occupancies.push(crate::species::SiteOccupancy::new(species_vec));
+        let pbc: [bool; 3] = lattice
+            .getattr("pbc")
+            .and_then(|p| p.extract())
+            .unwrap_or([true, true, true]);
+
+        let mut lattice_obj = crate::lattice::Lattice::new(nalgebra::Matrix3::from_row_slice(&[
+            matrix[0][0],
+            matrix[0][1],
+            matrix[0][2],
+            matrix[1][0],
+            matrix[1][1],
+            matrix[1][2],
+            matrix[2][0],
+            matrix[2][1],
+            matrix[2][2],
+        ]));
+        lattice_obj.pbc = pbc;
+
+        let sites = structure.getattr("sites")?;
+        let mut site_occupancies = Vec::new();
+        let mut frac_coords = Vec::new();
+
+        for site_result in sites.try_iter()? {
+            let site = site_result?;
+            let frac: [f64; 3] = site.getattr("frac_coords")?.extract()?;
+            for (idx, &val) in frac.iter().enumerate() {
+                if !val.is_finite() {
+                    return Err(PyValueError::new_err(format!(
+                        "Fractional coordinate[{idx}] must be finite, got {val}"
+                    )));
+                }
+            }
+            frac_coords.push(nalgebra::Vector3::new(frac[0], frac[1], frac[2]));
+
+            let species_comp = site.getattr("species")?;
+            let species_vec = extract_site_species(&species_comp)?;
+            site_occupancies.push(crate::species::SiteOccupancy::new(species_vec));
+        }
+
+        let struc = crate::structure::Structure::try_new_full(
+            lattice_obj,
+            site_occupancies,
+            frac_coords,
+            pbc,
+            charge,
+            std::collections::HashMap::new(),
+        )
+        .map_err(|err| PyValueError::new_err(format!("Error creating structure: {err}")))?;
+
+        let json = structure_to_pymatgen_json(&struc);
+        json_to_pydict(py, &json)
+    } else {
+        // Non-periodic molecule path
+        let sites = structure.getattr("sites")?;
+        let mut species_vec = Vec::new();
+        let mut cart_coords = Vec::new();
+
+        for site_result in sites.try_iter()? {
+            let site = site_result?;
+            let coords: [f64; 3] = site.getattr("coords")?.extract()?;
+            for (idx, &val) in coords.iter().enumerate() {
+                if !val.is_finite() {
+                    return Err(PyValueError::new_err(format!(
+                        "Coordinate[{idx}] must be finite, got {val}"
+                    )));
+                }
+            }
+            cart_coords.push(nalgebra::Vector3::new(coords[0], coords[1], coords[2]));
+
+            let species_comp = site.getattr("species")?;
+            let site_species = extract_site_species(&species_comp)?;
+
+            // Warn if partial occupancy is being discarded
+            if site_species.len() > 1 || site_species.iter().any(|(_, occ)| *occ < 1.0 - 1e-6) {
+                let warnings = py.import("warnings")?;
+                warnings.call_method1(
+                    "warn",
+                    ("Molecule site has partial occupancy; using dominant species only",),
+                )?;
+            }
+
+            // For molecules, use dominant species (highest occupancy)
+            if let Some((dominant_species, _)) = site_species
+                .iter()
+                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            {
+                species_vec.push(*dominant_species);
+            } else {
+                return Err(PyValueError::new_err("Site has no species"));
+            }
+        }
+
+        let mol = crate::structure::Structure::try_new_molecule(
+            species_vec,
+            cart_coords,
+            charge,
+            std::collections::HashMap::new(),
+        )
+        .map_err(|err| PyValueError::new_err(format!("Error creating molecule: {err}")))?;
+
+        let json = crate::io::molecule_to_pymatgen_json(&mol);
+        json_to_pydict(py, &json)
     }
-
-    let struc = crate::structure::Structure::try_new_full(
-        lattice_obj,
-        site_occupancies,
-        frac_coords,
-        pbc,
-        charge,
-        std::collections::HashMap::new(),
-    )
-    .map_err(|err| PyValueError::new_err(format!("Error creating structure: {err}")))?;
-
-    let json = structure_to_pymatgen_json(&struc);
-    json_to_pydict(py, &json)
 }
 
 /// Convert a ferrox dict to a pymatgen Structure object.

@@ -16,7 +16,11 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
+        # Exclude marimo notebooks - they use cell-based execution where variables
+        # flow between cells via dependency injection that ruff sees as undefined (F821)
+        exclude: ferrox_notebooks/
       - id: ruff-format
+        exclude: ferrox_notebooks/
 
   - repo: local
     hooks:
@@ -26,6 +30,9 @@ repos:
         language: python
         types: [python]
         additional_dependencies: [ty]
+        # Exclude marimo notebooks - they use cell-based execution where variables
+        # flow between cells via dependency injection that ty can't understand
+        exclude: ferrox_notebooks/
         args:
           - --output-format
           - concise
