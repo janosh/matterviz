@@ -145,6 +145,9 @@ function generate() {
   // Fix tsify's undefined `Value` type (from serde_json::Value) → unknown
   patched = patched.replace(/\bValue\b/g, `unknown`)
 
+  // Fix tsify referencing Rust type alias `Matrix3x3` instead of the exported `JsMatrix3x3`
+  patched = patched.replace(/\bMatrix3x3\b(?![\w[])/g, `JsMatrix3x3`)
+
   // Fix tsify Option<T> in interface fields: "| undefined" → "| null"
   // serde serializes None as null, not undefined. Only fix interface fields
   // (indented, no `readonly`, no `()` before `:`), not class methods/getters
