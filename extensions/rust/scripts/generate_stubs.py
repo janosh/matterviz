@@ -294,8 +294,9 @@ def main() -> int:
 
     # Augment _ferrox/__init__.pyi with namespace classes (auto-derived from Rust)
     ferrox_stub = STUB_ROOT / "_ferrox" / "__init__.pyi"
-    if ferrox_stub.exists() and "# Namespace classes" not in ferrox_stub.read_text():
+    if ferrox_stub.exists():
         stub_content = ferrox_stub.read_text()
+    if ferrox_stub.exists() and "# Namespace classes" not in stub_content:
         # Only include names that are actually defined in this stub file
         defined = {
             m.group(1) or m.group(2)
