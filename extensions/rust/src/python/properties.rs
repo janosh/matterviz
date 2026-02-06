@@ -2,10 +2,12 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use super::helpers::{StructureJson, parse_struct};
 
 /// Get the volume of a structure in Angstrom^3.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_volume(structure: StructureJson) -> PyResult<f64> {
     let struc = parse_struct(&structure)?;
@@ -13,6 +15,7 @@ fn get_volume(structure: StructureJson) -> PyResult<f64> {
 }
 
 /// Get the total mass of a structure in atomic mass units (amu).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_total_mass(structure: StructureJson) -> PyResult<f64> {
     let struc = parse_struct(&structure)?;
@@ -22,15 +25,21 @@ fn get_total_mass(structure: StructureJson) -> PyResult<f64> {
 /// Get the density of a structure in g/cm^3.
 ///
 /// Returns None for non-periodic or zero-volume structures.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_density(structure: StructureJson) -> PyResult<Option<f64>> {
     let struc = parse_struct(&structure)?;
     Ok(struc.density())
 }
 
-/// Get structure metadata as a dictionary.
+/// Get basic structure metadata (volume, density, lattice params).
+// Note: Not using gen_stub_pyfunction to avoid duplicate name conflict with structure.rs version
 #[pyfunction]
-fn get_structure_metadata(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
+#[pyo3(name = "get_structure_metadata")]
+fn properties_get_structure_metadata(
+    py: Python<'_>,
+    structure: StructureJson,
+) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
     let comp = struc.composition();
     let lengths = struc.lattice.lengths();
@@ -63,7 +72,10 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     submod.add_function(wrap_pyfunction!(get_volume, &submod)?)?;
     submod.add_function(wrap_pyfunction!(get_total_mass, &submod)?)?;
     submod.add_function(wrap_pyfunction!(get_density, &submod)?)?;
-    submod.add_function(wrap_pyfunction!(get_structure_metadata, &submod)?)?;
+    submod.add_function(wrap_pyfunction!(
+        properties_get_structure_metadata,
+        &submod
+    )?)?;
     parent.add_submodule(&submod)?;
     Ok(())
 }

@@ -3,6 +3,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::composition::Composition;
 
@@ -46,12 +47,14 @@ fn comp_to_metadata_dict(py: Python<'_>, comp: &Composition) -> PyResult<Py<PyDi
 }
 
 /// Parse a composition formula and return rich metadata.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
     comp_to_metadata_dict(py, &parse_comp(formula)?)
 }
 
 /// Get the atomic fraction of an element.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_atomic_fraction(formula: &str, element: &str) -> PyResult<f64> {
     let comp = parse_comp(formula)?;
@@ -61,6 +64,7 @@ fn get_atomic_fraction(formula: &str, element: &str) -> PyResult<f64> {
 }
 
 /// Get the weight fraction of an element.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_wt_fraction(formula: &str, element: &str) -> PyResult<f64> {
     let comp = parse_comp(formula)?;
@@ -70,18 +74,21 @@ fn get_wt_fraction(formula: &str, element: &str) -> PyResult<f64> {
 }
 
 /// Get the reduced composition.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn reduced_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
     comp_to_element_dict(py, &parse_comp(formula)?.reduced_composition())
 }
 
 /// Get the fractional composition.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn fractional_composition(py: Python<'_>, formula: &str) -> PyResult<Py<PyDict>> {
     comp_to_element_dict(py, &parse_comp(formula)?.fractional_composition())
 }
 
 /// Check if a composition is charge balanced.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn is_charge_balanced(formula: &str) -> PyResult<Option<bool>> {
     let comp = parse_comp(formula)?;
@@ -89,6 +96,7 @@ fn is_charge_balanced(formula: &str) -> PyResult<Option<bool>> {
 }
 
 /// Get the total charge of a composition.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn composition_charge(formula: &str) -> PyResult<Option<i32>> {
     let comp = parse_comp(formula)?;
@@ -96,6 +104,7 @@ fn composition_charge(formula: &str) -> PyResult<Option<i32>> {
 }
 
 /// Check if two compositions are almost equal.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (formula1, formula2, rel_tol = 1e-6, abs_tol = 1e-8))]
 fn compositions_almost_equal(
@@ -110,6 +119,7 @@ fn compositions_almost_equal(
 }
 
 /// Get a hash of a formula (for fast comparisons).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn formula_hash(formula: &str) -> PyResult<u64> {
     let comp = parse_comp(formula)?;
@@ -117,6 +127,7 @@ fn formula_hash(formula: &str) -> PyResult<u64> {
 }
 
 /// Get a hash based on species (including oxidation states).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn species_hash(formula: &str) -> PyResult<u64> {
     let comp = parse_comp(formula)?;
@@ -124,6 +135,7 @@ fn species_hash(formula: &str) -> PyResult<u64> {
 }
 
 /// Remap elements in a formula.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn remap_elements(
     py: Python<'_>,
@@ -143,6 +155,7 @@ fn remap_elements(
 }
 
 /// Get the reduction factor of a formula.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_reduced_factor(formula: &str) -> PyResult<f64> {
     let comp = parse_comp(formula)?;

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from ferrox import md
+from ferrox import md, optimizers
 
 # === Fixtures ===
 
@@ -195,18 +195,18 @@ class TestVelocityRescale:
 
 
 class TestFireOptimizer:
-    """Tests for FIRE optimizer."""
+    """Tests for FIRE optimizer (in optimizers module)."""
 
     def test_fire_config_defaults(self) -> None:
         """FireConfig has sensible defaults."""
-        config = md.FireConfig()
+        config = optimizers.FireConfig()
         assert config.dt_start > 0
         assert config.dt_max > config.dt_start
 
     def test_fire_state_init(self) -> None:
         """FireState initializes with positions."""
         positions = [[0.0, 0.0, 0.0], [2.5, 0.0, 0.0]]
-        state = md.FireState(positions)
+        state = optimizers.FireState(positions)
         assert len(state.positions) == 2
 
 

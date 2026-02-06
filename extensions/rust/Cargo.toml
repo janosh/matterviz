@@ -21,11 +21,10 @@ crate-type = ["cdylib", "rlib"] # cdylib for Python/WASM, rlib for Rust
 
 [dependencies]
 # Python bindings
-pyo3 = { version = "0.27.2", features = [
-  "abi3-py311",
-  "extension-module",
-], optional = true }
-pyo3-stub-gen = { version = "0.7", optional = true }
+# When building the extension module (python feature), use extension-module
+# When generating stubs (stub-gen feature), link against Python directly
+pyo3 = { version = "0.27.2", optional = true }
+pyo3-stub-gen = { version = "0.18", optional = true }
 
 # WASM bindings
 wasm-bindgen = { version = "0.2.108", optional = true }
@@ -82,7 +81,10 @@ pyo3-build-config = { version = "0.27.2", optional = true }
 
 [features]
 default = ["rayon"]
-python = ["dep:pyo3", "dep:pyo3-build-config", "dep:pyo3-stub-gen", "rayon"]
+# python feature: for building the extension module (loaded into Python interpreter)
+python = ["dep:pyo3", "dep:pyo3-build-config", "dep:pyo3-stub-gen", "rayon", "pyo3/extension-module", "pyo3/abi3-py311"]
+# stub-gen feature: for running stub_gen binary (no extension-module, doesn't need Python runtime)
+stub-gen = ["dep:pyo3", "dep:pyo3-build-config", "dep:pyo3-stub-gen", "rayon", "pyo3/abi3-py311"]
 wasm = [
   "dep:console_error_panic_hook",
   "dep:js-sys",
@@ -94,7 +96,8 @@ rayon = ["dep:rayon"]
 
 [[bin]]
 name = "stub_gen"
-required-features = ["python"]
+path = "src/bin/stub_gen.rs"
+required-features = ["stub-gen"]
 
 [[bench]]
 name = "matcher_bench"

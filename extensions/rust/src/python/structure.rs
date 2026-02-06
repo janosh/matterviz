@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyfunction, gen_stub_pymethods};
 
 use crate::io::structure_to_pymatgen_json;
 use crate::structure_matcher::{ComparatorType, StructureMatcher};
@@ -17,11 +18,13 @@ use super::helpers::{
 };
 
 /// Python wrapper for StructureMatcher.
+#[gen_stub_pyclass]
 #[pyclass(name = "StructureMatcher")]
 pub struct PyStructureMatcher {
     inner: StructureMatcher,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyStructureMatcher {
     #[new]
@@ -215,6 +218,7 @@ impl PyStructureMatcher {
 // === Structure Manipulation Functions ===
 
 /// Create a supercell using a 3x3 transformation matrix.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn make_supercell(
     py: Python<'_>,
@@ -229,6 +233,7 @@ fn make_supercell(
 }
 
 /// Create a diagonal supercell.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn make_supercell_diag(
     py: Python<'_>,
@@ -241,6 +246,7 @@ fn make_supercell_diag(
 }
 
 /// Get a reduced cell structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, algorithm = "niggli"))]
 fn get_reduced_structure(
@@ -257,6 +263,7 @@ fn get_reduced_structure(
 }
 
 /// Copy a structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn copy_structure(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
@@ -264,6 +271,7 @@ fn copy_structure(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDic
 }
 
 /// Wrap all sites to the unit cell.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn wrap_to_unit_cell(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let mut struc = parse_struct(&structure)?;
@@ -272,6 +280,7 @@ fn wrap_to_unit_cell(py: Python<'_>, structure: StructureJson) -> PyResult<Py<Py
 }
 
 /// Interpolate between two structures.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (struct1, struct2, n_images, interpolate_lattices = false, use_pbc = true))]
 fn interpolate(
@@ -298,6 +307,7 @@ fn interpolate(
 }
 
 /// Get structure sorted by species.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, reverse = false))]
 fn get_sorted_structure(
@@ -311,6 +321,7 @@ fn get_sorted_structure(
 }
 
 /// Get structure metadata.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_structure_metadata(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
@@ -342,6 +353,7 @@ fn get_structure_metadata(py: Python<'_>, structure: StructureJson) -> PyResult<
 }
 
 /// Check if two structures match.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (struct1, struct2, anonymous = false))]
 fn matches(struct1: StructureJson, struct2: StructureJson, anonymous: bool) -> PyResult<bool> {
@@ -357,6 +369,7 @@ fn matches(struct1: StructureJson, struct2: StructureJson, anonymous: bool) -> P
 // === Structure Transformation Functions ===
 
 /// Substitute one species with another.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn substitute_species(
     py: Python<'_>,
@@ -381,6 +394,7 @@ fn substitute_species(
 }
 
 /// Remove all sites of specified species.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn remove_species(
     py: Python<'_>,
@@ -409,6 +423,7 @@ fn remove_species(
 }
 
 /// Remove sites at specified indices.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn remove_sites(
     py: Python<'_>,
@@ -418,11 +433,12 @@ fn remove_sites(
     let struc = parse_struct(&structure)?;
     let result = struc
         .remove_sites(&indices)
-        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        .map_err(|err| pyo3::exceptions::PyIndexError::new_err(err.to_string()))?;
     Ok(structure_to_pydict(py, &result)?.unbind())
 }
 
 /// Apply a deformation gradient to the structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn deform(
     py: Python<'_>,
@@ -451,6 +467,7 @@ fn deform(
 }
 
 /// Compute Ewald energy for a structure with oxidation states.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, eta = None, real_cutoff = None, accuracy = None))]
 fn ewald_energy(
@@ -493,6 +510,7 @@ fn ewald_energy(
 }
 
 /// Generate ordered structures from a disordered structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, max_structures = 100))]
 fn order_disordered(
@@ -516,6 +534,7 @@ fn order_disordered(
 }
 
 /// Enumerate derivative structures within a size range.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, min_size = 1, max_size = 4))]
 fn enumerate_derivatives(
@@ -539,6 +558,7 @@ fn enumerate_derivatives(
 }
 
 /// Translate selected sites by a vector.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, indices, vector, fractional = true))]
 fn translate_sites(
@@ -563,6 +583,7 @@ fn translate_sites(
 }
 
 /// Perturb all sites by random vectors.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, distance, min_distance = None, seed = None))]
 fn perturb(
@@ -593,18 +614,21 @@ fn perturb(
 }
 
 /// Get labels for all sites.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn site_labels(structure: StructureJson) -> PyResult<Vec<String>> {
     Ok(parse_struct(&structure)?.site_labels())
 }
 
 /// Get species strings for all sites.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn species_strings(structure: StructureJson) -> PyResult<Vec<String>> {
     Ok(parse_struct(&structure)?.species_strings())
 }
 
 /// Get structure with reduced lattice using custom parameters.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, algorithm = "niggli", niggli_tol = 1e-5, lll_delta = 0.75))]
 fn get_reduced_structure_with_params(
@@ -633,6 +657,7 @@ fn get_reduced_structure_with_params(
 }
 
 /// Get structure sorted by electronegativity.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_sorted_by_electronegativity(
     py: Python<'_>,
@@ -645,6 +670,7 @@ fn get_sorted_by_electronegativity(
 }
 
 /// Get distance between two sites with a specific periodic image.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_distance_with_image(
     structure: StructureJson,
@@ -663,6 +689,7 @@ fn get_distance_with_image(
 }
 
 /// Get site properties for a specific site.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_site_properties(
     py: Python<'_>,
@@ -680,6 +707,7 @@ fn get_site_properties(
 }
 
 /// Get all site properties for a structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_all_site_properties(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyList>> {
     let struc = parse_struct(&structure)?;
@@ -690,6 +718,7 @@ fn get_all_site_properties(py: Python<'_>, structure: StructureJson) -> PyResult
 }
 
 /// Set a site property.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn set_site_property(
     py: Python<'_>,

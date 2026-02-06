@@ -3,6 +3,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyfunction, gen_stub_pymethods};
 
 use crate::element::Element as RustElement;
 
@@ -10,11 +11,13 @@ use crate::element::Element as RustElement;
 ///
 /// Provides access to element properties like atomic number, mass, electronegativity,
 /// oxidation states, radii, and physical properties.
+#[gen_stub_pyclass]
 #[pyclass(name = "Element")]
 pub struct Element {
     inner: RustElement,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl Element {
     /// Create an Element from symbol or atomic number.
@@ -365,6 +368,7 @@ impl Element {
 use super::helpers::json_to_py;
 
 /// Normalize an element symbol string, extracting element, oxidation state, and metadata.
+#[gen_stub_pyfunction]
 #[pyfunction]
 pub fn normalize_element_symbol(py: Python<'_>, symbol: &str) -> PyResult<Py<PyDict>> {
     let normalized = crate::element::normalize_symbol(symbol)

@@ -1,10 +1,12 @@
 //! Lattice operations.
 
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use super::helpers::{StructureJson, mat3_to_array, parse_struct};
 
 /// Get the lattice metric tensor.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_metric_tensor(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
     let struc = parse_struct(&structure)?;
@@ -12,6 +14,7 @@ fn get_metric_tensor(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
 }
 
 /// Get the inverse lattice matrix.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_inv_matrix(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
     let struc = parse_struct(&structure)?;
@@ -19,6 +22,7 @@ fn get_inv_matrix(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
 }
 
 /// Get the reciprocal lattice matrix.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_reciprocal_lattice(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
     let struc = parse_struct(&structure)?;
@@ -26,6 +30,7 @@ fn get_reciprocal_lattice(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
 }
 
 /// Get the LLL-reduced lattice.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, delta = 0.75))]
 fn get_lll_reduced_lattice(structure: StructureJson, delta: f64) -> PyResult<[[f64; 3]; 3]> {
@@ -39,6 +44,7 @@ fn get_lll_reduced_lattice(structure: StructureJson, delta: f64) -> PyResult<[[f
 }
 
 /// Get the LLL reduction mapping matrix.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_lll_mapping(structure: StructureJson) -> PyResult<[[f64; 3]; 3]> {
     let struc = parse_struct(&structure)?;

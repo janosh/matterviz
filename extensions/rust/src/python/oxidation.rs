@@ -3,6 +3,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::composition::Composition;
 use crate::oxidation;
@@ -31,6 +32,7 @@ fn get_elements_and_amounts_from_comp(
 
 /// Guess oxidation states for a structure or formula.
 /// Accepts either a structure JSON string or a formula string like "Fe2O3".
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure_or_formula, all_states = false))]
 fn oxi_state_guesses(
@@ -70,6 +72,7 @@ fn oxi_state_guesses(
 }
 
 /// Add oxidation states from guesses to a structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn add_charges_from_oxi_state_guesses(
     py: Python<'_>,
@@ -99,6 +102,7 @@ fn add_charges_from_oxi_state_guesses(
 }
 
 /// Compute bond valence sums.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, max_radius = 4.0, scale_factor = 1.0))]
 fn compute_bv_sums(
@@ -149,6 +153,7 @@ fn compute_bv_sums(
 }
 
 /// Guess oxidation states using structure's composition.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn guess_oxidation_states(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
@@ -170,6 +175,7 @@ fn guess_oxidation_states(py: Python<'_>, structure: StructureJson) -> PyResult<
 }
 
 /// Add oxidation states by element.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn add_oxidation_state_by_element(
     py: Python<'_>,
@@ -188,6 +194,7 @@ fn add_oxidation_state_by_element(
 }
 
 /// Add oxidation states by site.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn add_oxidation_state_by_site(
     py: Python<'_>,
@@ -211,6 +218,7 @@ fn add_oxidation_state_by_site(
 }
 
 /// Remove oxidation states from a structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn remove_oxidation_states(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let mut struc = parse_struct(&structure)?;

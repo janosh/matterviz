@@ -44,7 +44,7 @@ groups = matcher.group(json_strs)
 
 ## Development
 
-Requires Rust 1.93+ and Python 3.10+.
+Requires Rust 1.93+ and Python 3.11+.
 
 ```bash
 # Build and install in development mode
@@ -54,6 +54,21 @@ maturin develop --features python --release
 # Run tests
 cargo test
 ```
+
+### Python Type Stubs
+
+Python type stubs (`.pyi` files) are auto-generated from Rust code using `pyo3-stub-gen`. After modifying PyO3-exposed functions or classes, regenerate stubs:
+
+```bash
+python scripts/generate_stubs.py
+
+# Verify stubs pass type checking
+ty check python/ferrox
+```
+
+The script runs `cargo` to generate raw stubs, then cleans them to use modern Python type syntax (`X | None` instead of `Optional[X]`, `list[float]` instead of `builtins.list[builtins.float]`).
+
+The CI pipeline automatically verifies stubs are in sync with Rust code.
 
 ## License
 

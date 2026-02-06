@@ -3,12 +3,14 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::xrd;
 
 use super::helpers::{StructureJson, parse_struct};
 
 /// Compute X-ray diffraction pattern.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, two_theta_range = None, wavelength = 1.5406))]
 fn compute_xrd(
@@ -66,6 +68,7 @@ fn compute_xrd(
 
 /// Get atomic scattering parameters for all elements.
 /// Returns a dict of element -> [[a1,b1], [a2,b2], [a3,b3], [a4,b4]] coefficients.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn get_atomic_scattering_params(py: Python<'_>) -> PyResult<Py<PyDict>> {
     let dict = PyDict::new(py);

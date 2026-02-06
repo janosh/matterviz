@@ -3,6 +3,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::surfaces;
 
@@ -20,6 +21,7 @@ fn validate_slab_params(min_slab_size: f64, min_vacuum_size: f64, symprec: f64) 
 }
 
 /// Generate all slabs for a given Miller index (all terminations).
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, miller_index, min_slab_size = 10.0, min_vacuum_size = 10.0, center_slab = true, in_unit_planes = false, symprec = 0.01))]
 fn generate_slabs(
@@ -54,6 +56,7 @@ fn generate_slabs(
 }
 
 /// Generate a single slab for a given Miller index and termination.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, miller_index, min_slab_size = 10.0, min_vacuum_size = 10.0, center_slab = true, in_unit_planes = false, symprec = 0.01, termination_index = 0))]
 fn make_slab(
@@ -86,6 +89,7 @@ fn make_slab(
 }
 
 /// Enumerate terminations for a given Miller index.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, h, k, l, min_slab = 10.0, min_vacuum = 10.0, symprec = 0.01))]
 fn enumerate_terminations(
@@ -130,6 +134,7 @@ fn enumerate_terminations(
 }
 
 /// Enumerate Miller indices up to a maximum value.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn enumerate_miller(max_index: i32) -> Vec<[i32; 3]> {
     if max_index < 1 {
@@ -155,6 +160,7 @@ fn parse_site_type(site_type: &str) -> Result<surfaces::AdsorptionSiteType, Stri
 }
 
 /// Find adsorption sites on a slab.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (slab, height = 2.0, site_types = None, neighbor_cutoff = None, surface_tolerance = None))]
 fn find_adsorption_sites(
@@ -230,6 +236,7 @@ fn find_adsorption_sites(
 }
 
 /// Get surface atom indices.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (slab, tolerance = 0.5))]
 fn get_surface_atoms(slab: StructureJson, tolerance: f64) -> PyResult<Vec<usize>> {
@@ -243,6 +250,7 @@ fn get_surface_atoms(slab: StructureJson, tolerance: f64) -> PyResult<Vec<usize>
 }
 
 /// Get the surface area of a slab.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn area(slab: StructureJson) -> PyResult<f64> {
     let struc = parse_struct(&slab)?;
@@ -250,6 +258,7 @@ fn area(slab: StructureJson) -> PyResult<f64> {
 }
 
 /// Calculate surface energy.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn calculate_energy(
     slab_energy: f64,
@@ -277,6 +286,7 @@ fn calculate_energy(
 }
 
 /// Calculate d-spacing for a Miller index.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn d_spacing(structure: StructureJson, h: i32, k: i32, l: i32) -> PyResult<f64> {
     let struc = parse_struct(&structure)?;
@@ -285,6 +295,7 @@ fn d_spacing(structure: StructureJson, h: i32, k: i32, l: i32) -> PyResult<f64> 
 }
 
 /// Compute the Wulff shape from surface energies.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn compute_wulff(
     py: Python<'_>,
@@ -336,6 +347,7 @@ fn compute_wulff(
 }
 
 /// Convert Miller index to a normal vector.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn miller_to_normal(structure: StructureJson, miller: [i32; 3]) -> PyResult<[f64; 3]> {
     let struc = parse_struct(&structure)?;

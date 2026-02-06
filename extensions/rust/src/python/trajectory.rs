@@ -2,6 +2,7 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::trajectory;
 
@@ -14,6 +15,7 @@ fn validate_dim(dim: usize) -> PyResult<()> {
 }
 
 /// Calculate diffusion coefficient from mean squared displacement.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (msd, times, dim = 3, start_fraction = 0.2, end_fraction = 0.8))]
 fn diffusion_from_msd(
@@ -52,6 +54,7 @@ fn diffusion_from_msd(
 }
 
 /// Calculate diffusion coefficient from velocity autocorrelation function.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (vacf, dt, dim = 3))]
 fn diffusion_from_vacf(vacf: Vec<f64>, dt: f64, dim: usize) -> PyResult<f64> {
