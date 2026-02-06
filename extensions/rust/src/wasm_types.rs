@@ -69,14 +69,37 @@ pub struct JsMillerIndex(pub [i32; 3]);
 pub struct JsMatrix3x3(pub [[f64; 3]; 3]);
 
 /// Lattice structure matching pymatgen's JSON format.
+/// Includes both the 3x3 matrix and derived lattice parameters (a, b, c, alpha, beta, gamma, volume)
+/// so that matterviz's Structure component can render without recomputing them client-side.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub struct JsLattice {
-    /// 3x3 lattice matrix with lattice vectors as rows (Ångströms)
+    /// 3x3 lattice matrix with lattice vectors as rows (Angstroms)
     pub matrix: Matrix3x3,
     /// Periodic boundary conditions along each axis
     #[serde(default = "default_pbc")]
     pub pbc: [bool; 3],
+    /// Lattice vector length a (Angstroms)
+    #[serde(default)]
+    pub a: f64,
+    /// Lattice vector length b (Angstroms)
+    #[serde(default)]
+    pub b: f64,
+    /// Lattice vector length c (Angstroms)
+    #[serde(default)]
+    pub c: f64,
+    /// Angle between b and c vectors (degrees)
+    #[serde(default)]
+    pub alpha: f64,
+    /// Angle between a and c vectors (degrees)
+    #[serde(default)]
+    pub beta: f64,
+    /// Angle between a and b vectors (degrees)
+    #[serde(default)]
+    pub gamma: f64,
+    /// Unit cell volume (A^3)
+    #[serde(default)]
+    pub volume: f64,
 }
 
 fn default_pbc() -> [bool; 3] {
@@ -94,7 +117,7 @@ pub struct JsSpeciesOccupancy {
     /// Site occupancy (0.0 to 1.0, typically 1.0 for ordered sites)
     #[serde(default = "default_occupancy")]
     pub occu: f64,
-    /// Optional oxidation state (e.g., 2 for Fe²⁺, -2 for O²⁻)
+    /// Optional oxidation state (e.g., 2 for Fe2+, -2 for O2-)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oxidation_state: Option<i8>,
 }
@@ -113,7 +136,7 @@ pub struct JsSite {
     pub species: Vec<JsSpeciesOccupancy>,
     /// Fractional coordinates [a, b, c] in range [0, 1)
     pub abc: [f64; 3],
-    /// Cartesian coordinates [x, y, z] in Ångströms (optional, computed if missing)
+    /// Cartesian coordinates [x, y, z] in Angstroms (optional, computed if missing)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub xyz: Option<[f64; 3]>,
     /// Site label (defaults to element symbol)
@@ -147,9 +170,9 @@ pub struct JsCrystal {
 pub struct JsAseAtoms {
     /// Element symbols for each atom
     pub symbols: Vec<String>,
-    /// Cartesian positions [[x1, y1, z1], ...] in Ångströms
+    /// Cartesian positions [[x1, y1, z1], ...] in Angstroms
     pub positions: Vec<[f64; 3]>,
-    /// Cell matrix (3x3), null for molecules
+    /// Cell matrix (3x3), omitted for molecules
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cell: Option<[[f64; 3]; 3]>,
     /// Periodic boundary conditions
@@ -172,7 +195,7 @@ pub struct JsNeighborList {
     pub neighbor_indices: Vec<u32>,
     /// Periodic image offsets [h, k, l] for each neighbor
     pub image_offsets: Vec<[i32; 3]>,
-    /// Distances from center to neighbor (Ångströms)
+    /// Distances from center to neighbor (Angstroms)
     pub distances: Vec<f64>,
 }
 
@@ -182,9 +205,9 @@ pub struct JsNeighborList {
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi)]
 pub struct JsRmsDistResult {
-    /// Root mean square distance between matched sites (Ångströms)
+    /// Root mean square distance between matched sites (Angstroms)
     pub rms: f64,
-    /// Maximum distance between any pair of matched sites (Ångströms)
+    /// Maximum distance between any pair of matched sites (Angstroms)
     pub max_dist: f64,
 }
 
@@ -232,7 +255,7 @@ pub struct JsNeighborInfo {
     pub site_index: u32,
     /// Element symbol of neighbor
     pub element: String,
-    /// Distance to neighbor (Ångströms)
+    /// Distance to neighbor (Angstroms)
     pub distance: f64,
     /// Periodic image offset
     pub image: [i32; 3],
@@ -266,11 +289,11 @@ pub struct JsStructureMetadata {
     pub formula_anonymous: String,
     /// Hill notation formula (C and H first if present, then alphabetical)
     pub formula_hill: String,
-    /// Volume in Å³
+    /// Volume in A^3
     pub volume: f64,
-    /// Density in g/cm³ (null if zero volume)
+    /// Density in g/cm^3 (null if zero volume)
     pub density: Option<f64>,
-    /// Lattice parameters [a, b, c] in Ångströms
+    /// Lattice parameters [a, b, c] in Angstroms
     pub lattice_params: [f64; 3],
     /// Lattice angles [alpha, beta, gamma] in degrees
     pub lattice_angles: [f64; 3],
@@ -345,6 +368,9 @@ impl JsCrystal {
             .map(|(key, val)| (key.clone(), val.clone()))
             .collect();
 
+        let lengths = structure.lattice.lengths();
+        let angles = structure.lattice.angles();
+
         JsCrystal {
             lattice: JsLattice {
                 matrix: [
@@ -353,6 +379,13 @@ impl JsCrystal {
                     [mat[(2, 0)], mat[(2, 1)], mat[(2, 2)]],
                 ],
                 pbc: structure.lattice.pbc,
+                a: lengths.x,
+                b: lengths.y,
+                c: lengths.z,
+                alpha: angles.x,
+                beta: angles.y,
+                gamma: angles.z,
+                volume: structure.lattice.volume(),
             },
             sites,
             properties,
@@ -447,7 +480,7 @@ pub struct JsHklInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi)]
 pub struct JsXrdPattern {
-    /// 2θ angles in degrees
+    /// 2-theta angles in degrees
     pub two_theta: Vec<f64>,
     /// Peak intensities (scaled 0-100 if scaled=true)
     pub intensities: Vec<f64>,
@@ -461,10 +494,10 @@ pub struct JsXrdPattern {
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub struct JsXrdOptions {
-    /// X-ray wavelength in Angstroms (default: Cu Kα = 1.54184)
+    /// X-ray wavelength in Angstroms (default: Cu Ka = 1.54184)
     #[serde(default = "default_wavelength")]
     pub wavelength: f64,
-    /// 2θ range in degrees as [min, max]. None = all accessible angles
+    /// 2-theta range in degrees as [min, max]. None = all accessible angles
     #[serde(default)]
     pub two_theta_range: Option<[f64; 2]>,
     /// Debye-Waller factors per element symbol (thermal damping)
@@ -537,4 +570,143 @@ pub struct JsCompositionInfo {
     pub average_electronegativity: Option<f64>,
     /// Total number of electrons
     pub total_electrons: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lattice::Lattice;
+    use crate::structure::Structure;
+
+    /// Build a simple NaCl structure for testing.
+    fn nacl_structure() -> Structure {
+        use crate::element::Element;
+        use crate::species::{SiteOccupancy, Species};
+        use nalgebra::Vector3;
+
+        let lattice = Lattice::from_parameters(5.64, 5.64, 5.64, 90.0, 90.0, 90.0);
+        let na = SiteOccupancy::ordered(Species::neutral(Element::Na));
+        let cl = SiteOccupancy::ordered(Species::neutral(Element::Cl));
+        Structure::try_new_from_occupancies(
+            lattice,
+            vec![na, cl],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        )
+        .unwrap()
+    }
+
+    // Assert all lattice params match expected NaCl cubic values.
+    fn assert_nacl_lattice(lat: &JsLattice) {
+        for (label, got, expected) in [
+            ("a", lat.a, 5.64),
+            ("b", lat.b, 5.64),
+            ("c", lat.c, 5.64),
+            ("alpha", lat.alpha, 90.0),
+            ("beta", lat.beta, 90.0),
+            ("gamma", lat.gamma, 90.0),
+        ] {
+            assert!((got - expected).abs() < 1e-6, "{label} = {got}");
+        }
+        let expected_vol = 5.64_f64.powi(3);
+        assert!(
+            (lat.volume - expected_vol).abs() < 1e-3,
+            "volume = {} (expected {expected_vol})",
+            lat.volume,
+        );
+    }
+
+    #[test]
+    fn js_lattice_has_params_and_volume() {
+        let lat = &JsCrystal::from_structure(&nacl_structure()).lattice;
+        assert!(lat.matrix[0][0] > 5.0);
+        assert_nacl_lattice(lat);
+    }
+
+    #[test]
+    fn js_crystal_sites_have_xyz() {
+        let js_crystal = JsCrystal::from_structure(&nacl_structure());
+
+        assert_eq!(js_crystal.sites.len(), 2);
+        for (idx, site) in js_crystal.sites.iter().enumerate() {
+            assert!(site.xyz.is_some(), "Site {idx} missing xyz");
+        }
+
+        // Na at origin → xyz ≈ [0, 0, 0]
+        let na_xyz = js_crystal.sites[0].xyz.unwrap();
+        assert!(
+            na_xyz.iter().all(|v| v.abs() < 1e-10),
+            "Na xyz = {na_xyz:?}"
+        );
+
+        // Cl at (0.5, 0.5, 0.5) → xyz ≈ [2.82, 2.82, 2.82]
+        let cl_xyz = js_crystal.sites[1].xyz.unwrap();
+        for coord in cl_xyz {
+            assert!((coord - 2.82).abs() < 0.01, "Cl xyz = {cl_xyz:?}");
+        }
+    }
+
+    #[test]
+    fn js_crystal_roundtrip_preserves_lattice_params() {
+        let js_crystal = JsCrystal::from_structure(&nacl_structure());
+        let roundtripped = js_crystal.to_structure().unwrap();
+        assert_nacl_lattice(&JsCrystal::from_structure(&roundtripped).lattice);
+    }
+
+    #[test]
+    fn js_lattice_deserialize_without_params() {
+        // Backward compat: lattice with only matrix + pbc (no a/b/c/alpha/beta/gamma/volume)
+        let json = serde_json::json!({
+            "matrix": [[5.64, 0.0, 0.0], [0.0, 5.64, 0.0], [0.0, 0.0, 5.64]],
+            "pbc": [true, true, true],
+        });
+        let lattice: JsLattice = serde_json::from_value(json).unwrap();
+        assert!(lattice.matrix[0][0] > 5.0);
+        // Defaults to 0.0 when not provided
+        assert_eq!(lattice.a, 0.0);
+        assert_eq!(lattice.volume, 0.0);
+    }
+
+    #[test]
+    fn cif_parse_produces_complete_js_crystal() {
+        use crate::cif::parse_cif_str;
+        use std::path::Path;
+
+        let cif_content = r#"
+data_test
+_cell_length_a    3.6957
+_cell_length_b    3.6957
+_cell_length_c    19.2145
+_cell_angle_alpha 90.0
+_cell_angle_beta  90.0
+_cell_angle_gamma 90.0
+
+loop_
+_space_group_symop_operation_xyz
+'x, y, z'
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+O1 O 0.0 0.5 0.908
+Ni1 Ni 0.0 0.0 0.1045
+La1 La 0.0 0.0 0.3163
+"#;
+        let structure = parse_cif_str(cif_content, Path::new("test.cif")).unwrap();
+        let js_crystal = JsCrystal::from_structure(&structure);
+
+        assert!((js_crystal.lattice.a - 3.6957).abs() < 1e-3);
+        assert!((js_crystal.lattice.c - 19.2145).abs() < 1e-3);
+        assert!(js_crystal.lattice.volume > 200.0);
+
+        assert_eq!(js_crystal.sites.len(), 3);
+        for (idx, site) in js_crystal.sites.iter().enumerate() {
+            let xyz = site.xyz.unwrap_or_else(|| panic!("Site {idx} missing xyz"));
+            for coord in xyz {
+                assert!(coord.is_finite(), "Site {idx} has non-finite xyz coord");
+            }
+        }
+    }
 }

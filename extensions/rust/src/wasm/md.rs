@@ -399,7 +399,7 @@ impl JsNoseHooverChain {
     }
 }
 
-/// Perform the first part of a Nosé-Hoover step (thermostat half-step + velocity half-step +
+/// Perform the first part of a Nose-Hoover step (thermostat half-step + velocity half-step +
 /// position update).
 ///
 /// This is the split API for proper force handling:
@@ -423,7 +423,7 @@ pub fn nose_hoover_step_init(
     result.into()
 }
 
-/// Complete a Nosé-Hoover step after `nose_hoover_step_init` (velocity half-step with new forces
+/// Complete a Nose-Hoover step after `nose_hoover_step_init` (velocity half-step with new forces
 /// + second thermostat half-step).
 ///
 /// new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
@@ -444,7 +444,7 @@ pub fn nose_hoover_step_finalize(
     result.into()
 }
 
-/// Perform one complete Nosé-Hoover chain step with both old and new forces.
+/// Perform one complete Nose-Hoover chain step with both old and new forces.
 ///
 /// This is a convenience wrapper that combines `nose_hoover_step_init` and
 /// `nose_hoover_step_finalize`.
@@ -676,7 +676,7 @@ impl JsNPTState {
         ]
     }
 
-    /// Get cell volume in Angstrom³.
+    /// Get cell volume in Angstrom^3.
     #[wasm_bindgen]
     pub fn volume(&self) -> f64 {
         self.inner.volume()
@@ -766,7 +766,7 @@ impl JsNPTIntegrator {
 /// 4. Call `npt_step_finalize` with new forces and stress
 ///
 /// forces: flat array of current forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
-/// stress: 9-element stress tensor (row-major) in eV/Å³
+/// stress: 9-element stress tensor (row-major) in eV/A^3
 #[wasm_bindgen]
 pub fn npt_step_init(
     integrator: &mut JsNPTIntegrator,
@@ -787,7 +787,7 @@ pub fn npt_step_init(
 /// thermostat second half).
 ///
 /// new_forces: flat array of forces computed at the updated positions [Fx0, Fy0, Fz0, ...]
-/// new_stress: 9-element stress tensor at updated configuration (row-major) in eV/Å³
+/// new_stress: 9-element stress tensor at updated configuration (row-major) in eV/A^3
 #[wasm_bindgen]
 pub fn npt_step_finalize(
     integrator: &mut JsNPTIntegrator,
@@ -811,9 +811,9 @@ pub fn npt_step_finalize(
 /// This is a convenience wrapper that combines `npt_step_init` and `npt_step_finalize`.
 ///
 /// forces: flat array of initial forces [Fx0, Fy0, Fz0, ...] in eV/Angstrom
-/// stress: 9-element initial stress tensor (row-major) in eV/Å³
+/// stress: 9-element initial stress tensor (row-major) in eV/A^3
 /// new_forces: flat array of forces at updated positions in eV/Angstrom
-/// new_stress: 9-element stress tensor at updated configuration in eV/Å³
+/// new_stress: 9-element stress tensor at updated configuration in eV/A^3
 #[wasm_bindgen]
 pub fn npt_step_with_forces_and_stress(
     integrator: &mut JsNPTIntegrator,
