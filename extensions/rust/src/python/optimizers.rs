@@ -3,6 +3,7 @@
 use nalgebra::{Matrix3, Vector3};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
 use crate::optimizers;
 
@@ -45,12 +46,14 @@ fn parse_stress(stress: &[[f64; 3]; 3]) -> PyResult<Matrix3<f64>> {
 }
 
 /// FIRE optimizer configuration.
+#[gen_stub_pyclass(module = "ferrox.optimizers")]
 #[pyclass(name = "FireConfig")]
 #[derive(Clone)]
 pub struct PyFireConfig {
     pub(crate) inner: optimizers::FireConfig,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyFireConfig {
     /// Create a new FIRE configuration with default parameters.
@@ -148,12 +151,14 @@ impl PyFireConfig {
 }
 
 /// FIRE optimizer state.
+#[gen_stub_pyclass(module = "ferrox.optimizers")]
 #[pyclass(name = "FireState")]
 pub struct PyFireState {
     inner: optimizers::FireState,
     config: optimizers::FireConfig,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyFireState {
     /// Create a new FIRE state.
@@ -204,9 +209,7 @@ impl PyFireState {
     /// Check if optimization has converged.
     fn is_converged(&self, f_max: f64) -> PyResult<bool> {
         if !f_max.is_finite() || f_max <= 0.0 {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "f_max must be positive and finite",
-            ));
+            return Err(PyValueError::new_err("f_max must be positive and finite"));
         }
         Ok(self.inner.is_converged(f_max))
     }
@@ -233,12 +236,14 @@ impl PyFireState {
 }
 
 /// CellFIRE optimizer state (optimizes both positions and cell).
+#[gen_stub_pyclass(module = "ferrox.optimizers")]
 #[pyclass(name = "CellFireState")]
 pub struct PyCellFireState {
     inner: optimizers::CellFireState,
     config: optimizers::FireConfig,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyCellFireState {
     /// Create a new CellFIRE state.
@@ -257,7 +262,7 @@ impl PyCellFireState {
         cell_factor: f64,
     ) -> PyResult<Self> {
         if !cell_factor.is_finite() || cell_factor <= 0.0 {
-            return Err(pyo3::exceptions::PyValueError::new_err(
+            return Err(PyValueError::new_err(
                 "cell_factor must be positive and finite",
             ));
         }
@@ -305,14 +310,10 @@ impl PyCellFireState {
     /// Check if optimization has converged.
     fn is_converged(&self, f_max: f64, s_max: f64) -> PyResult<bool> {
         if !f_max.is_finite() || f_max <= 0.0 {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "f_max must be positive and finite",
-            ));
+            return Err(PyValueError::new_err("f_max must be positive and finite"));
         }
         if !s_max.is_finite() || s_max <= 0.0 {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "s_max must be positive and finite",
-            ));
+            return Err(PyValueError::new_err("s_max must be positive and finite"));
         }
         Ok(optimizers::cell_is_converged(&self.inner, f_max, s_max))
     }

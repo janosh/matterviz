@@ -3,12 +3,14 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::cell_ops;
 
 use super::helpers::{StructureJson, parse_struct, structure_to_pydict};
 
 /// Calculate the minimum image distance between two points (in fractional coords).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn minimum_image_distance(
     structure: StructureJson,
@@ -27,6 +29,7 @@ fn minimum_image_distance(
 }
 
 /// Calculate the minimum image vector (fractional delta -> cartesian vector).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn minimum_image_vector(
     structure: StructureJson,
@@ -42,6 +45,7 @@ fn minimum_image_vector(
 }
 
 /// Perform Niggli reduction on the lattice.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn niggli_reduce(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
@@ -52,6 +56,7 @@ fn niggli_reduce(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict
 }
 
 /// Check if a structure is Niggli reduced (compares against reducing it).
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, tolerance = 1e-5))]
 fn is_niggli_reduced(structure: StructureJson, tolerance: f64) -> PyResult<bool> {
@@ -75,6 +80,7 @@ fn is_niggli_reduced(structure: StructureJson, tolerance: f64) -> PyResult<bool>
 }
 
 /// Perform Delaunay reduction on the lattice (uses LLL).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn delaunay_reduce(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
@@ -85,6 +91,7 @@ fn delaunay_reduce(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDi
 }
 
 /// Find the supercell matrix for a target number of atoms.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, target_atoms = 100))]
 fn find_supercell_matrix(structure: StructureJson, target_atoms: usize) -> PyResult<[[i32; 3]; 3]> {
@@ -97,6 +104,7 @@ fn find_supercell_matrix(structure: StructureJson, target_atoms: usize) -> PyRes
 }
 
 /// Check if two lattices are equivalent.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure1, structure2, length_tol = 0.01, angle_tol = 1.0))]
 fn lattices_equivalent(
@@ -116,6 +124,7 @@ fn lattices_equivalent(
 }
 
 /// Check if one structure is a supercell of another, returning the transformation matrix if so.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, potential_supercell, tolerance = 0.01))]
 fn is_supercell(
@@ -129,6 +138,7 @@ fn is_supercell(
 }
 
 /// Get perpendicular distances for each lattice direction.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn perpendicular_distances(structure: StructureJson) -> PyResult<[f64; 3]> {
     let struc = parse_struct(&structure)?;
