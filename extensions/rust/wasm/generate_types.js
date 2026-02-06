@@ -83,8 +83,11 @@ function parse_rust_return_types() {
     const content = readFileSync(join(WASM_SRC, file), `utf8`)
 
     // Match: pub fn name(...) -> WasmResult<T> {
-    // Strip doc comments before joining to prevent false regex matches
-    const joined = content.replace(/^\s*\/\/.*$/gm, ``).replace(/\n\s*/g, ` `)
+    // Strip line and block comments before joining to prevent false regex matches
+    const joined = content
+      .replace(/^\s*\/\/.*$/gm, ``)
+      .replace(/\/\*[\s\S]*?\*\//g, ``)
+      .replace(/\n\s*/g, ` `)
 
     for (
       const match of joined.matchAll(
@@ -188,7 +191,7 @@ export type { Crystal } from 'matterviz'
 import type { Crystal } from 'matterviz'
 
 // The module returned by init() has all exports from pkg/ferrox.js
-import type * as ferrox from './pkg/ferrox.d.ts'
+import * as ferrox from './pkg/ferrox.d.ts'
 export type FerroxModule = typeof ferrox
 
 export default function init(
