@@ -74,18 +74,18 @@ pub struct JsMatrix3x3(pub [[f64; 3]; 3]);
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub struct JsLattice {
-    /// 3x3 lattice matrix with lattice vectors as rows (Ångströms)
+    /// 3x3 lattice matrix with lattice vectors as rows (Angstroms)
     pub matrix: Matrix3x3,
     /// Periodic boundary conditions along each axis
     #[serde(default = "default_pbc")]
     pub pbc: [bool; 3],
-    /// Lattice vector length a (Ångströms)
+    /// Lattice vector length a (Angstroms)
     #[serde(default)]
     pub a: f64,
-    /// Lattice vector length b (Ångströms)
+    /// Lattice vector length b (Angstroms)
     #[serde(default)]
     pub b: f64,
-    /// Lattice vector length c (Ångströms)
+    /// Lattice vector length c (Angstroms)
     #[serde(default)]
     pub c: f64,
     /// Angle between b and c vectors (degrees)
@@ -97,7 +97,7 @@ pub struct JsLattice {
     /// Angle between a and b vectors (degrees)
     #[serde(default)]
     pub gamma: f64,
-    /// Unit cell volume (Å³)
+    /// Unit cell volume (A^3)
     #[serde(default)]
     pub volume: f64,
 }
@@ -117,7 +117,7 @@ pub struct JsSpeciesOccupancy {
     /// Site occupancy (0.0 to 1.0, typically 1.0 for ordered sites)
     #[serde(default = "default_occupancy")]
     pub occu: f64,
-    /// Optional oxidation state (e.g., 2 for Fe²⁺, -2 for O²⁻)
+    /// Optional oxidation state (e.g., 2 for Fe2+, -2 for O2-)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oxidation_state: Option<i8>,
 }
@@ -136,7 +136,7 @@ pub struct JsSite {
     pub species: Vec<JsSpeciesOccupancy>,
     /// Fractional coordinates [a, b, c] in range [0, 1)
     pub abc: [f64; 3],
-    /// Cartesian coordinates [x, y, z] in Ångströms (optional, computed if missing)
+    /// Cartesian coordinates [x, y, z] in Angstroms (optional, computed if missing)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub xyz: Option<[f64; 3]>,
     /// Site label (defaults to element symbol)
@@ -170,7 +170,7 @@ pub struct JsCrystal {
 pub struct JsAseAtoms {
     /// Element symbols for each atom
     pub symbols: Vec<String>,
-    /// Cartesian positions [[x1, y1, z1], ...] in Ångströms
+    /// Cartesian positions [[x1, y1, z1], ...] in Angstroms
     pub positions: Vec<[f64; 3]>,
     /// Cell matrix (3x3), null for molecules
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -195,7 +195,7 @@ pub struct JsNeighborList {
     pub neighbor_indices: Vec<u32>,
     /// Periodic image offsets [h, k, l] for each neighbor
     pub image_offsets: Vec<[i32; 3]>,
-    /// Distances from center to neighbor (Ångströms)
+    /// Distances from center to neighbor (Angstroms)
     pub distances: Vec<f64>,
 }
 
@@ -205,9 +205,9 @@ pub struct JsNeighborList {
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi)]
 pub struct JsRmsDistResult {
-    /// Root mean square distance between matched sites (Ångströms)
+    /// Root mean square distance between matched sites (Angstroms)
     pub rms: f64,
-    /// Maximum distance between any pair of matched sites (Ångströms)
+    /// Maximum distance between any pair of matched sites (Angstroms)
     pub max_dist: f64,
 }
 
@@ -255,7 +255,7 @@ pub struct JsNeighborInfo {
     pub site_index: u32,
     /// Element symbol of neighbor
     pub element: String,
-    /// Distance to neighbor (Ångströms)
+    /// Distance to neighbor (Angstroms)
     pub distance: f64,
     /// Periodic image offset
     pub image: [i32; 3],
@@ -289,11 +289,11 @@ pub struct JsStructureMetadata {
     pub formula_anonymous: String,
     /// Hill notation formula (C and H first if present, then alphabetical)
     pub formula_hill: String,
-    /// Volume in Å³
+    /// Volume in A^3
     pub volume: f64,
-    /// Density in g/cm³ (null if zero volume)
+    /// Density in g/cm^3 (null if zero volume)
     pub density: Option<f64>,
-    /// Lattice parameters [a, b, c] in Ångströms
+    /// Lattice parameters [a, b, c] in Angstroms
     pub lattice_params: [f64; 3],
     /// Lattice angles [alpha, beta, gamma] in degrees
     pub lattice_angles: [f64; 3],
@@ -480,7 +480,7 @@ pub struct JsHklInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi)]
 pub struct JsXrdPattern {
-    /// 2θ angles in degrees
+    /// 2-theta angles in degrees
     pub two_theta: Vec<f64>,
     /// Peak intensities (scaled 0-100 if scaled=true)
     pub intensities: Vec<f64>,
@@ -494,10 +494,10 @@ pub struct JsXrdPattern {
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 pub struct JsXrdOptions {
-    /// X-ray wavelength in Angstroms (default: Cu Kα = 1.54184)
+    /// X-ray wavelength in Angstroms (default: Cu Ka = 1.54184)
     #[serde(default = "default_wavelength")]
     pub wavelength: f64,
-    /// 2θ range in degrees as [min, max]. None = all accessible angles
+    /// 2-theta range in degrees as [min, max]. None = all accessible angles
     #[serde(default)]
     pub two_theta_range: Option<[f64; 2]>,
     /// Debye-Waller factors per element symbol (thermal damping)
