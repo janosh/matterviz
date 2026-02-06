@@ -3,8 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
-
-type WasmResult<T> = { ok: T } | { error: string }
+import type { WasmResult } from '../types.d.ts'
 
 let wasm: Awaited<typeof import('../pkg/ferrox.js')>
 
@@ -210,6 +209,35 @@ describe(`I/O functions`, () => {
     const output = unwrap(to_fn(nacl_json))
     expect(unwrap(parse_fn(output)).sites).toHaveLength(2)
   })
+
+  it.each([`CIF`, `POSCAR`] as const)(
+    `%s roundtrip includes lattice params, volume, and site xyz`,
+    (format) => {
+      const to_fn = format === `CIF` ? wasm.structure_to_cif : wasm.structure_to_poscar
+      const parse_fn = format === `CIF` ? wasm.parse_cif : wasm.parse_poscar
+      const output = unwrap(to_fn(nacl_json))
+      const parsed = unwrap(parse_fn(output))
+
+      // Lattice params must be populated
+      expect(parsed.lattice.a).toBeCloseTo(5.64, 1)
+      expect(parsed.lattice.b).toBeCloseTo(5.64, 1)
+      expect(parsed.lattice.c).toBeCloseTo(5.64, 1)
+      expect(parsed.lattice.alpha).toBeCloseTo(90, 1)
+      expect(parsed.lattice.beta).toBeCloseTo(90, 1)
+      expect(parsed.lattice.gamma).toBeCloseTo(90, 1)
+      expect(parsed.lattice.volume).toBeCloseTo(5.64 ** 3, 0)
+
+      // All sites must have xyz Cartesian coordinates
+      for (const site of parsed.sites) {
+        expect(site.xyz).toBeDefined()
+        expect(site.xyz).toHaveLength(3)
+        const xyz = site.xyz ?? []
+        for (const coord of xyz) {
+          expect(Number.isFinite(coord)).toBe(true)
+        }
+      }
+    },
+  )
 })
 
 describe(`WasmStructureMatcher`, () => {

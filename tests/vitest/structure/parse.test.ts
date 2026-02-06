@@ -1,5 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { mat3x3_vec3_multiply, transpose_3x3_matrix } from '$lib/math'
+import type { ParsedStructure } from '$lib/structure/parse'
 import {
   detect_structure_type,
   is_optimade_json,
@@ -18,6 +19,7 @@ import c5_extra_data_xyz from '$site/molecules/C5-extra-data.xyz?raw'
 import cyclohexane from '$site/molecules/cyclohexane.xyz?raw'
 import aviary_CuF3K_triolith from '$site/structures/aviary-CuF3K-triolith.poscar?raw'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
+import li10gep2s12_cif from '$site/structures/Li10GeP2S12.cif?raw'
 import mof_issue_127 from '$site/structures/mof-issue-127.cif?raw'
 import na_cl_cubic from '$site/structures/NaCl-cubic.poscar?raw'
 import ru_p_complex_cif from '$site/structures/P24Ru4H252C296S24N16.cif?raw'
@@ -528,6 +530,10 @@ describe(`Auto-detection & Error Handling`, () => {
     expect(result).toBeNull()
   })
 })
+
+// Helper to count elements in a parsed structure
+const el_count = (result: ParsedStructure) => (el: string) =>
+  result.sites.filter((site) => site.species[0].element === el).length
 
 describe(`CIF Parser`, () => {
   it.each([
@@ -1413,6 +1419,56 @@ Na Na 0.000 0.000 0.000`
     expect(result.lattice?.b).toBeCloseTo(6.335, 3)
     expect(result.lattice?.c).toBeCloseTo(7.598, 3)
     expect(result.lattice?.beta).toBeCloseTo(115.07, 2)
+  })
+
+  test(`parses Li10GeP2S12 CIF with P42/nmc symmetry expansion`, () => {
+    const result = parse_cif(li10gep2s12_cif)
+    expect(result).not.toBeNull()
+    if (!result) return
+
+    // P42/nmc (space group 137), 16 symmetry ops, 9 unique sites
+    // After expansion: 62 sites (Ge1/P1 share position but are separate entries)
+    expect(result.sites.length).toBe(62)
+
+    const count = el_count(result)
+    expect(count(`Li`)).toBe(28)
+    expect(count(`Ge`)).toBe(4)
+    expect(count(`P`)).toBe(6)
+    expect(count(`S`)).toBe(24)
+
+    expect(result.lattice?.a).toBeCloseTo(8.694, 2)
+    expect(result.lattice?.c).toBeCloseTo(12.599, 2)
+    expect(result.lattice?.alpha).toBeCloseTo(90, 1)
+  })
+
+  test(`parses MOF IRMOF-1 CIF with Fm-3m symmetry expansion`, () => {
+    const result = parse_cif(mof_issue_127)
+    expect(result).not.toBeNull()
+    if (!result) return
+
+    // Fm-3m (space group 225), 192 symmetry ops, 7 unique sites
+    // Same as pymatgen: 424 sites (C=192, H=96, O=104, Zn=32)
+    expect(result.sites.length).toBe(424)
+
+    const count = el_count(result)
+    expect(count(`Zn`)).toBe(32)
+    expect(count(`O`)).toBe(104)
+    expect(count(`C`)).toBe(192)
+    expect(count(`H`)).toBe(96)
+
+    // Lattice params (cubic, a ≈ 25.832 Å)
+    expect(result.lattice?.a).toBeCloseTo(25.832, 1)
+    expect(result.lattice?.alpha).toBeCloseTo(90, 1)
+
+    // All sites must have valid Cartesian coordinates
+    for (const site of result.sites) {
+      expect(site.xyz).toBeDefined()
+      if (site.xyz) {
+        for (const coord of site.xyz) {
+          expect(Number.isFinite(coord)).toBe(true)
+        }
+      }
+    }
   })
 })
 

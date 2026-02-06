@@ -21,6 +21,7 @@
     "$site/": "./src/site/"
   },
   "lint": {
+    "exclude": ["extensions/rust/wasm/types.d.ts"],
     "rules": {
       "tags": ["recommended"],
       "include": [
