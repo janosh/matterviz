@@ -694,7 +694,7 @@ def _(mo):
     all_defects = defects.generate_all(struct, extrinsic=["Li", "Ca"])
 
     # Optimal supercell for defect calculations
-    matrix = defects.find_supercell(struct, min_image_distance=10.0)
+    matrix = defects.find_supercell(struct, min_image_dist=10.0)
 
     # Perturbations
     distorted = defects.distort_bonds(struct, site_idx=0, distortion=0.1)
