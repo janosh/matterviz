@@ -1,12 +1,8 @@
 //! CIF (Crystallographic Information File) parser.
 //!
 //! This module provides functions for parsing crystal structures from CIF format.
-//!
-//! # Limitations
-//!
-//! Currently only supports CIF files with P1 symmetry (space group 1) or files that
-//! already contain all atoms in the unit cell. Files with higher symmetry that require
-//! symmetry expansion are not yet supported.
+//! Supports symmetry expansion via `_space_group_symop_operation_xyz` or
+//! `_symmetry_equiv_pos_as_xyz` loops.
 
 use crate::element::{Element, normalize_symbol};
 use crate::error::{FerroxError, Result};
@@ -14,7 +10,7 @@ use crate::lattice::Lattice;
 use crate::species::{SiteOccupancy, Species};
 use crate::structure::Structure;
 use nalgebra::Vector3;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// Parse a structure from a CIF file.
@@ -27,10 +23,8 @@ use std::path::Path;
 ///
 /// The parsed structure or an error if parsing fails.
 ///
-/// # Limitations
-///
-/// Only P1 structures are currently supported. For non-P1 structures,
-/// pre-expand the asymmetric unit before using this function.
+/// Symmetry operations from `_space_group_symop_operation_xyz` or
+/// `_symmetry_equiv_pos_as_xyz` loops are applied to expand the asymmetric unit.
 pub fn parse_cif(path: &Path) -> Result<Structure> {
     let content = std::fs::read_to_string(path)?;
     parse_cif_str(&content, path)
@@ -51,18 +45,8 @@ pub fn parse_cif_str(content: &str, path: &Path) -> Result<Structure> {
     // from_parameters expects angles in degrees
     let lattice = Lattice::from_parameters(a, b, c, alpha, beta, gamma);
 
-    // Check for space group - warn if not P1
-    if let Some(sg) = find_space_group(content)
-        && sg != "1"
-        && sg != "P1"
-        && sg != "P 1"
-    {
-        tracing::warn!(
-            "CIF file has space group '{}'. Only P1 symmetry is fully supported. \
-             Atoms will be read as-is without symmetry expansion.",
-            sg
-        );
-    }
+    // Parse symmetry operations
+    let symm_ops = parse_symmetry_ops(content);
 
     // Parse atom site loop
     let sites = parse_atom_site_loop(content, &path_str)?;
@@ -74,11 +58,14 @@ pub fn parse_cif_str(content: &str, path: &Path) -> Result<Structure> {
         });
     }
 
-    // Convert to Structure
-    let mut site_occupancies = Vec::with_capacity(sites.len());
-    let mut frac_coords = Vec::with_capacity(sites.len());
+    // Apply symmetry operations to expand the asymmetric unit
+    let expanded_sites = expand_symmetry(&sites, &symm_ops);
 
-    for site in sites {
+    // Convert to Structure
+    let mut site_occupancies = Vec::with_capacity(expanded_sites.len());
+    let mut frac_coords = Vec::with_capacity(expanded_sites.len());
+
+    for site in expanded_sites {
         // Check occupancy
         if site.occupancy < 0.99 {
             tracing::warn!(
@@ -106,7 +93,7 @@ pub fn parse_cif_str(content: &str, path: &Path) -> Result<Structure> {
 }
 
 /// Parsed atom site from CIF.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AtomSite {
     element: Element,
     oxidation_state: Option<i8>,
@@ -150,22 +137,28 @@ fn find_cif_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
-/// Find space group from CIF content.
-fn find_space_group(content: &str) -> Option<String> {
-    const KEYS: [&str; 4] = [
-        "_symmetry_space_group_name_H-M",
-        "_space_group_name_H-M_alt",
-        "_symmetry_Int_Tables_number",
-        "_space_group_IT_number",
-    ];
-    KEYS.iter()
-        .find_map(|key| find_cif_value(content, key))
-        .map(|v| v.trim_matches(['\'', '"']).to_string())
+/// Check if a set of headers contains the required coordinate columns
+/// (either fractional or Cartesian) and an element identifier.
+fn has_coordinate_headers(headers: &[String]) -> bool {
+    let has_element = headers
+        .iter()
+        .any(|hdr| hdr == "_atom_site_type_symbol" || hdr == "_atom_site_label");
+    let has_frac = [
+        "_atom_site_fract_x",
+        "_atom_site_fract_y",
+        "_atom_site_fract_z",
+    ]
+    .iter()
+    .all(|key| headers.iter().any(|hdr| hdr == key));
+    has_element && has_frac
 }
 
 /// Parse the _atom_site loop in CIF.
 fn parse_atom_site_loop(content: &str, path: &str) -> Result<Vec<AtomSite>> {
-    // Find the loop_ block containing _atom_site
+    // Find the loop_ block containing _atom_site with actual coordinates.
+    // Collects ALL headers in each loop (not just _atom_site_*) to handle CIFs
+    // with mixed headers (e.g. _sm_* alongside _atom_site_*).
+    // Skips loops that only contain _atom_site_aniso_* (no coordinate columns).
     let mut lines = content.lines().peekable();
     let mut in_atom_site_loop = false;
     let mut headers: Vec<String> = Vec::new();
@@ -181,25 +174,40 @@ fn parse_atom_site_loop(content: &str, path: &str) -> Result<Vec<AtomSite>> {
 
         // Check for loop_ start
         if line == "loop_" {
-            // Check if next lines contain _atom_site
             headers.clear();
             in_atom_site_loop = false;
+            let mut has_atom_site_header = false;
 
+            // Collect ALL headers in this loop block
             while let Some(next_line) = lines.peek() {
                 let next_line = next_line.trim();
                 if next_line.starts_with('_') {
                     if next_line.starts_with("_atom_site") {
-                        in_atom_site_loop = true;
-                        headers.push(next_line.to_string());
-                    } else if in_atom_site_loop {
-                        // Different loop, stop
-                        break;
+                        has_atom_site_header = true;
                     }
+                    headers.push(next_line.to_string());
                     lines.next();
                 } else {
                     break;
                 }
             }
+
+            // Only treat as atom site loop if it has _atom_site headers AND
+            // the required coordinate columns (not just _atom_site_aniso_* etc.)
+            if has_atom_site_header && has_coordinate_headers(&headers) {
+                in_atom_site_loop = true;
+            }
+
+            continue;
+        }
+
+        // A new data_ block terminates the current atom site loop
+        if line.starts_with("data_") {
+            if in_atom_site_loop && !sites.is_empty() {
+                break; // We already have sites, stop here
+            }
+            in_atom_site_loop = false;
+            headers.clear();
             continue;
         }
 
@@ -343,7 +351,227 @@ fn split_cif_line(line: &str) -> Vec<&str> {
     result
 }
 
-// Note: clean_element_symbol has been replaced by normalize_symbol from element module
+// === Symmetry Operations ===
+
+/// Parsed symmetry operation: 3x3 rotation matrix + translation vector.
+/// Applied as: new_coord[i] = sum(rotation[i][j] * old_coord[j]) + translation[i]
+#[derive(Debug, Clone)]
+struct SymmetryOp {
+    rotation: [[f64; 3]; 3],
+    translation: [f64; 3],
+}
+
+/// Parse symmetry operations from CIF content.
+/// Looks for `_space_group_symop_operation_xyz` or `_symmetry_equiv_pos_as_xyz` loops.
+fn parse_symmetry_ops(content: &str) -> Vec<SymmetryOp> {
+    let mut ops = Vec::new();
+    let mut lines = content.lines().peekable();
+
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim();
+        if trimmed != "loop_" {
+            continue;
+        }
+
+        // Collect headers for this loop
+        let mut headers: Vec<String> = Vec::new();
+        while let Some(next_line) = lines.peek() {
+            let next_trimmed = next_line.trim();
+            if next_trimmed.starts_with('_') {
+                headers.push(next_trimmed.to_string());
+                lines.next();
+            } else {
+                break;
+            }
+        }
+
+        // Check if this is a symmetry operations loop
+        let Some(symop_col) = headers.iter().position(|hdr| {
+            let lower = hdr.to_lowercase();
+            lower.contains("_space_group_symop_operation_xyz")
+                || lower.contains("_symmetry_equiv_pos_as_xyz")
+        }) else {
+            continue;
+        };
+
+        // Read data rows
+        while let Some(data_line) = lines.peek() {
+            let data_trimmed = data_line.trim();
+            if data_trimmed.is_empty()
+                || data_trimmed.starts_with('_')
+                || data_trimmed == "loop_"
+                || data_trimmed.starts_with("data_")
+            {
+                break;
+            }
+            if data_trimmed.starts_with('#') {
+                lines.next();
+                continue;
+            }
+
+            let row_values: Vec<&str> = split_cif_line(data_trimmed);
+            if let Some(op_str) = row_values.get(symop_col) {
+                let clean = op_str.trim_matches(['\'', '"']).trim();
+                if let Some(op) = parse_symmetry_op_str(clean) {
+                    ops.push(op);
+                }
+            }
+            lines.next();
+        }
+
+        // Only parse the first symmetry loop found
+        break;
+    }
+
+    ops
+}
+
+/// Parse a single symmetry operation string like "x, y, z" or "-y+1/2, x+1/2, z+1/2".
+fn parse_symmetry_op_str(op_str: &str) -> Option<SymmetryOp> {
+    let parts: Vec<&str> = op_str.split(',').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+
+    let mut rotation = [[0.0_f64; 3]; 3];
+    let mut translation = [0.0_f64; 3];
+
+    for (dim, part) in parts.iter().enumerate() {
+        let (coeffs, trans) = parse_symmetry_expression(part);
+        rotation[dim] = coeffs;
+        translation[dim] = trans;
+    }
+
+    Some(SymmetryOp {
+        rotation,
+        translation,
+    })
+}
+
+/// Parse a single dimension of a symmetry expression (e.g., "-x+y+1/2").
+/// Returns coefficients for (x, y, z) and a translation constant.
+fn parse_symmetry_expression(expr_input: &str) -> ([f64; 3], f64) {
+    let mut coefficients = [0.0_f64; 3];
+    let mut trans = 0.0_f64;
+
+    // Remove whitespace
+    let expr: String = expr_input
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect();
+    if expr.is_empty() {
+        return (coefficients, trans);
+    }
+
+    // Tokenize: split into terms preserving signs
+    let mut tokens: Vec<String> = Vec::new();
+    let mut current = String::new();
+
+    for ch in expr.chars() {
+        if (ch == '+' || ch == '-') && !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
+        }
+        current.push(ch);
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    for token in &tokens {
+        let lower = token.to_lowercase();
+
+        if let Some(pos) = lower.find(['x', 'y', 'z']) {
+            // Variable term: optional sign/coefficient + xyz
+            let var_idx = match lower.as_bytes()[pos] {
+                b'x' => 0,
+                b'y' => 1,
+                _ => 2, // 'z'
+            };
+            let prefix = &lower[..pos];
+            let coeff = match prefix {
+                "" | "+" => 1.0,
+                "-" => -1.0,
+                _ => parse_fraction_or_float(prefix).unwrap_or(1.0),
+            };
+            coefficients[var_idx] += coeff;
+        } else if let Some(val) = parse_fraction_or_float(token) {
+            // Numeric term (integer, decimal, or fraction)
+            trans += val;
+        }
+    }
+
+    (coefficients, trans)
+}
+
+/// Parse a string as either a fraction ("1/2", "-1/3") or a decimal float.
+fn parse_fraction_or_float(input: &str) -> Option<f64> {
+    if input.is_empty() || input == "+" || input == "-" {
+        return None;
+    }
+    if let Some((num_str, denom_str)) = input.split_once('/') {
+        let denom: f64 = denom_str.parse().ok()?;
+        if denom == 0.0 {
+            return None;
+        }
+        Some(num_str.parse::<f64>().ok()? / denom)
+    } else {
+        input.parse().ok()
+    }
+}
+
+/// Wrap a fractional coordinate into the [0, 1) range.
+fn wrap_frac(val: f64) -> f64 {
+    val - val.floor()
+}
+
+/// Apply symmetry operations to expand the asymmetric unit.
+/// Deduplicates positions using 6 decimal places to handle floating point imprecision.
+fn expand_symmetry(sites: &[AtomSite], symm_ops: &[SymmetryOp]) -> Vec<AtomSite> {
+    // If no symmetry operations or only identity, return sites as-is
+    if symm_ops.len() <= 1 {
+        return sites.to_vec();
+    }
+
+    let mut expanded = Vec::new();
+    let mut seen = HashSet::new();
+
+    for site in sites {
+        let base = [site.x, site.y, site.z];
+
+        for op in symm_ops {
+            // Apply rotation + translation, then wrap to [0, 1)
+            let wrapped: [f64; 3] = std::array::from_fn(|dim| {
+                let val = op.rotation[dim][0] * base[0]
+                    + op.rotation[dim][1] * base[1]
+                    + op.rotation[dim][2] * base[2]
+                    + op.translation[dim];
+                wrap_frac(val)
+            });
+
+            let key = format!(
+                "{}|{:.6},{:.6},{:.6}",
+                site.element.symbol(),
+                wrapped[0],
+                wrapped[1],
+                wrapped[2]
+            );
+            if !seen.insert(key) {
+                continue;
+            }
+
+            expanded.push(AtomSite {
+                x: wrapped[0],
+                y: wrapped[1],
+                z: wrapped[2],
+                label: site.label.clone(),
+                metadata: site.metadata.clone(),
+                ..*site
+            });
+        }
+    }
+
+    expanded
+}
 
 // === CIF Writer ===
 
@@ -944,6 +1172,161 @@ Cu 0.0 0.0 0.0
 
         // Volume should be a^3 = 64
         assert!((structure.lattice.volume() - 64.0).abs() < 1e-6);
+    }
+
+    // =========================================================================
+    // Symmetry Expansion Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_symmetry_expression() {
+        // Simple identity
+        let (coeffs, trans) = parse_symmetry_expression("x");
+        assert_eq!(coeffs, [1.0, 0.0, 0.0]);
+        assert_float_eq(trans, 0.0);
+
+        // Negative variable
+        let (coeffs, trans) = parse_symmetry_expression("-y");
+        assert_eq!(coeffs, [0.0, -1.0, 0.0]);
+        assert_float_eq(trans, 0.0);
+
+        // Variable with fraction translation
+        let (coeffs, trans) = parse_symmetry_expression("x+1/2");
+        assert_eq!(coeffs, [1.0, 0.0, 0.0]);
+        assert_float_eq(trans, 0.5);
+
+        // Compound expression
+        let (coeffs, trans) = parse_symmetry_expression("-y+x+1/3");
+        assert_float_eq(coeffs[0], 1.0);
+        assert_float_eq(coeffs[1], -1.0);
+        assert_float_eq(coeffs[2], 0.0);
+        assert!((trans - 1.0 / 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_symmetry_op_str() {
+        // Identity operation
+        let op = parse_symmetry_op_str("x, y, z").unwrap();
+        assert_eq!(
+            op.rotation,
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        );
+        assert_eq!(op.translation, [0.0, 0.0, 0.0]);
+
+        // I-centering: x+1/2, y+1/2, z+1/2
+        let op = parse_symmetry_op_str("x+1/2, y+1/2, z+1/2").unwrap();
+        assert_eq!(
+            op.rotation,
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        );
+        assert!((op.translation[0] - 0.5).abs() < 1e-10);
+        assert!((op.translation[1] - 0.5).abs() < 1e-10);
+        assert!((op.translation[2] - 0.5).abs() < 1e-10);
+
+        // Mirror: y, x, -z
+        let op = parse_symmetry_op_str("y, x, -z").unwrap();
+        assert_eq!(
+            op.rotation,
+            [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]]
+        );
+    }
+
+    #[test]
+    fn test_symmetry_expansion_bcc() {
+        // BCC structure with I-centering: 1 atom at origin + body center translation
+        let cif_content = r#"data_bcc
+_cell_length_a   2.87
+_cell_length_b   2.87
+_cell_length_c   2.87
+_cell_angle_alpha   90
+_cell_angle_beta   90
+_cell_angle_gamma   90
+
+loop_
+_space_group_symop_operation_xyz
+'x, y, z'
+'x+1/2, y+1/2, z+1/2'
+
+loop_
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Fe 0.0 0.0 0.0
+"#;
+
+        let structure = parse_cif_str(cif_content, Path::new("bcc.cif")).unwrap();
+        // Should expand from 1 to 2 atoms
+        assert_eq!(structure.num_sites(), 2);
+        assert_eq!(count_element(&structure, Element::Fe), 2);
+
+        // Verify coordinates
+        let c0 = structure.frac_coords[0];
+        let c1 = structure.frac_coords[1];
+        assert!(c0.x.abs() < 1e-10 && c0.y.abs() < 1e-10 && c0.z.abs() < 1e-10);
+        assert!(
+            (c1.x - 0.5).abs() < 1e-10 && (c1.y - 0.5).abs() < 1e-10 && (c1.z - 0.5).abs() < 1e-10
+        );
+    }
+
+    #[test]
+    fn test_symmetry_expansion_fcc() {
+        // FCC structure with F-centering: 1 atom + 3 face-centered translations
+        let cif_content = r#"data_fcc
+_cell_length_a   3.6
+_cell_length_b   3.6
+_cell_length_c   3.6
+_cell_angle_alpha   90
+_cell_angle_beta   90
+_cell_angle_gamma   90
+
+loop_
+_space_group_symop_operation_xyz
+'x, y, z'
+'x+1/2, y+1/2, z'
+'x+1/2, y, z+1/2'
+'x, y+1/2, z+1/2'
+
+loop_
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Cu 0.0 0.0 0.0
+"#;
+
+        let structure = parse_cif_str(cif_content, Path::new("fcc.cif")).unwrap();
+        assert_eq!(structure.num_sites(), 4);
+        assert_eq!(count_element(&structure, Element::Cu), 4);
+    }
+
+    #[test]
+    fn test_symmetry_expansion_deduplicates() {
+        // P1 with explicit identity and a redundant operation that maps to same site
+        let cif_content = r#"data_dedup
+_cell_length_a   5.0
+_cell_length_b   5.0
+_cell_length_c   5.0
+_cell_angle_alpha   90
+_cell_angle_beta   90
+_cell_angle_gamma   90
+
+loop_
+_space_group_symop_operation_xyz
+'x, y, z'
+'x+1, y+1, z+1'
+
+loop_
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Na 0.0 0.0 0.0
+"#;
+
+        let structure = parse_cif_str(cif_content, Path::new("dedup.cif")).unwrap();
+        // x+1 wraps to x, so should deduplicate to 1 site
+        assert_eq!(structure.num_sites(), 1);
     }
 
     // =========================================================================

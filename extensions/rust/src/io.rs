@@ -3820,6 +3820,66 @@ Mg 0.0 0.0 0.0
     }
 
     #[test]
+    fn test_parse_cif_li10gep2s12_symmetry_expansion() {
+        // Li10GeP2S12: P42/nmc (space group 137) with 16 symmetry ops, 9 unique sites
+        let fixture = include_str!("../../../src/site/structures/Li10GeP2S12.cif");
+        let structure =
+            crate::cif::parse_cif_str(fixture, std::path::Path::new("Li10GeP2S12.cif")).unwrap();
+
+        // After symmetry expansion: 62 sites (Ge1 and P1 share a position but are separate entries)
+        // Element counts match pymatgen: Ge=4, Li=28, P=6, S=24
+        assert_eq!(structure.num_sites(), 62);
+        assert_eq!(count_element(&structure, Element::Li), 28);
+        assert_eq!(count_element(&structure, Element::Ge), 4);
+        assert_eq!(count_element(&structure, Element::P), 6);
+        assert_eq!(count_element(&structure, Element::S), 24);
+    }
+
+    #[test]
+    fn test_parse_cif_mof_irmof1_symmetry_expansion() {
+        // IRMOF-1: Fm-3m (space group 225) with 192 symmetry ops, 7 unique sites
+        let fixture = include_str!("../../../src/site/structures/mof-issue-127.cif");
+        let structure =
+            crate::cif::parse_cif_str(fixture, std::path::Path::new("mof-issue-127.cif")).unwrap();
+
+        // Same as pymatgen: 424 sites (C=192, H=96, O=104, Zn=32)
+        assert_eq!(structure.num_sites(), 424);
+        assert_eq!(count_element(&structure, Element::Zn), 32);
+        assert_eq!(count_element(&structure, Element::O), 104);
+        assert_eq!(count_element(&structure, Element::C), 192);
+        assert_eq!(count_element(&structure, Element::H), 96);
+    }
+
+    #[test]
+    fn test_parse_cif_p24ru4_aniso_loop_skipping() {
+        // P24Ru4H252C296S24N16: C 1 2/c 1 (space group 15) with 8 symmetry ops, 63 unique sites
+        // Also has _atom_site_aniso_* loop that must be skipped to find real coordinates
+        let fixture = include_str!("../../../src/site/structures/P24Ru4H252C296S24N16.cif");
+        let structure =
+            crate::cif::parse_cif_str(fixture, std::path::Path::new("P24Ru4H252C296S24N16.cif"))
+                .unwrap();
+
+        // Same as pymatgen: 616 sites (C=296, H=252, N=16, P=24, Ru=4, S=24)
+        assert_eq!(structure.num_sites(), 616);
+        assert_eq!(count_element(&structure, Element::C), 296);
+        assert_eq!(count_element(&structure, Element::H), 252);
+        assert_eq!(count_element(&structure, Element::Ru), 4);
+    }
+
+    #[test]
+    fn test_parse_cif_pf_sd_multi_data_blocks() {
+        // PF-sd-1601634: CIF with multiple data_ blocks where later blocks have '?' placeholders
+        let fixture = include_str!("../../../src/site/structures/PF-sd-1601634.cif");
+        let structure =
+            crate::cif::parse_cif_str(fixture, std::path::Path::new("PF-sd-1601634.cif")).unwrap();
+
+        // First data block has 10 sites with mixed _atom_site and _sm_ headers
+        assert_eq!(structure.num_sites(), 10);
+        assert_eq!(count_element(&structure, Element::As), 1);
+        assert_eq!(count_element(&structure, Element::Pb), 2);
+    }
+
+    #[test]
     fn test_roundtrip_extxyz_quartz_fixture() {
         use std::io::Write;
         // Parse quartz extXYZ fixture, export, reparse
