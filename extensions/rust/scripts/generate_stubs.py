@@ -236,9 +236,9 @@ def generate_init_stub(stub_root: Path, rust_dir: Path) -> None:
     if not import_match:
         return
     names = [
-        n.strip().rstrip(",")
+        name
         for n in import_match.group(1).split("\n")
-        if n.strip() and not n.strip().startswith("#")
+        if (name := n.strip().rstrip(",")) and not name.startswith("#")
     ]
     # Separate classes/vars (uppercase) from submodules (lowercase)
     classes = [n for n in names if n[0].isupper() or n.startswith("__")]
