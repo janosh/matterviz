@@ -27,6 +27,8 @@ export type Label = {
   // labels are developer-defined, not user input, to avoid XSS vulnerabilities.
   label: string
   key?: string
+  // Group name for ToggleMenu section grouping. Columns with the same group
+  // are displayed together under a collapsible section header.
   group?: string
   description?: string
   format?: string
@@ -36,6 +38,8 @@ export type Label = {
   sticky?: boolean
   visible?: boolean
   sortable?: boolean
+  // When true, the toggle checkbox in ToggleMenu is greyed out and non-interactive
+  disabled?: boolean
   style?: string
   cell_style?: string
 }
