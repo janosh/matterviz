@@ -129,7 +129,7 @@ jobs:
           deno-version: 2.3.7
       - name: Verify WASM types are up to date
         run: |
-          node extensions/rust/wasm/generate_types.js
+          deno run -A extensions/rust/wasm/generate_types.ts
           deno fmt --config deno.jsonc extensions/rust/wasm/types.d.ts
           if ! git diff --exit-code extensions/rust/wasm/types.d.ts; then
             echo "::error::WASM types.d.ts is out of sync! Run 'node generate_types.js' and commit."
