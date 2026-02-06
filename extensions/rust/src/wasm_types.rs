@@ -172,7 +172,7 @@ pub struct JsAseAtoms {
     pub symbols: Vec<String>,
     /// Cartesian positions [[x1, y1, z1], ...] in Angstroms
     pub positions: Vec<[f64; 3]>,
-    /// Cell matrix (3x3), null for molecules
+    /// Cell matrix (3x3), omitted for molecules
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cell: Option<[[f64; 3]; 3]>,
     /// Periodic boundary conditions
