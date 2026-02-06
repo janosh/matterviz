@@ -224,7 +224,7 @@ fn poscar_rejects_non_finite_values() {
         )
     };
 
-    let cases: Vec<(&str, String)> = vec![
+    let cases = [
         (
             "NaN coordinates",
             make_poscar("1.0", "3.0 0.0 0.0", "NaN NaN NaN"),

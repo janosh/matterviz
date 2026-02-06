@@ -5,8 +5,7 @@
 // 2. Replaces JsCrystal with Crystal (from matterviz) in function/method params
 // 3. Adds init() wrapper and FerroxModule type
 //
-// Usage: node generate_types.js [--check]
-//   --check: verify types.d.ts is up-to-date (exits 1 if stale)
+// Usage: node generate_types.js
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -84,8 +83,8 @@ function parse_rust_return_types() {
     const content = readFileSync(join(WASM_SRC, file), `utf8`)
 
     // Match: pub fn name(...) -> WasmResult<T> {
-    // Handles multi-line signatures by joining lines first
-    const joined = content.replace(/\n\s*/g, ` `)
+    // Strip doc comments before joining to prevent false regex matches
+    const joined = content.replace(/^\s*\/\/.*$/gm, ``).replace(/\n\s*/g, ` `)
 
     for (
       const match of joined.matchAll(
@@ -115,6 +114,7 @@ function generate() {
   }
 
   const return_types = parse_rust_return_types()
+  const n_typed = return_types.size
 
   // Replace bare WasmResult with WasmResult<T> in function declarations
   // Matches: functionName(...): WasmResult;
@@ -136,6 +136,22 @@ function generate() {
   patched = patched.replace(
     /^(export function .+| {2,}\w+\(.+)\bJsCrystal\b/gm,
     (match) => match.replace(/\bJsCrystal\b/g, `Crystal`),
+  )
+
+  // Fix tsify Map<string, X> → Record<string, X>
+  // serde_json::Map and HashMap serialize as plain JS objects, not JS Map
+  patched = patched.replace(/\bMap<string,\s*([^>]+)>/g, `Record<string, $1>`)
+
+  // Fix tsify's undefined `Value` type (from serde_json::Value) → unknown
+  patched = patched.replace(/\bValue\b/g, `unknown`)
+
+  // Fix tsify Option<T> in interface fields: "| undefined" → "| null"
+  // serde serializes None as null, not undefined. Only fix interface fields
+  // (indented, no `readonly`, no `()` before `:`), not class methods/getters
+  // which use wasm-bindgen (correctly returns undefined).
+  patched = patched.replace(
+    /^(\s+(?!readonly\s)\w[\w?]*: .+) \| undefined;$/gm,
+    `$1 | null;`,
   )
 
   // Remove the tslint/eslint disable comments from generated file
@@ -177,25 +193,11 @@ export default function init(
 
   const output = header + patched.trim() + `\n`
 
-  return output
+  return { output, n_typed }
 }
 
 // === Main ===
 
-const check_mode = process.argv.includes(`--check`)
-const output = generate()
-
-if (check_mode) {
-  // Write the generated output, then compare against git HEAD.
-  // This accounts for Deno format which modifies the file during pre-commit.
-  // In CI, run `deno fmt types.d.ts` after generation before checking git diff.
-  writeFileSync(OUT_DTS, output)
-  console.log(
-    `Regenerated ${OUT_DTS} — check with 'deno fmt types.d.ts && git diff types.d.ts'`,
-  )
-} else {
-  writeFileSync(OUT_DTS, output)
-  console.log(`Generated ${OUT_DTS}`)
-  const return_types = parse_rust_return_types()
-  console.log(`  Typed ${return_types.size} WasmResult<T> return types from Rust source`)
-}
+const { output, n_typed } = generate()
+writeFileSync(OUT_DTS, output)
+console.log(`Generated ${OUT_DTS} (${n_typed} typed WasmResult<T> return types)`)

@@ -33,6 +33,9 @@ where
     -(e_plus - e_minus) / (2.0 * delta)
 }
 
+// Voigt index to (row, col) matrix indices.
+const VOIGT_INDICES: [(usize, usize); 6] = [(0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (0, 1)];
+
 // Compute numerical stress component using central strain differences.
 // Stress convention: sigma_ab = (1/V) dE/d_eps_ab
 fn numerical_stress_component<F>(
@@ -48,15 +51,7 @@ where
     let volume = cell.determinant().abs();
 
     // Build strain tensor from Voigt index
-    let (row, col) = match voigt_idx {
-        0 => (0, 0),
-        1 => (1, 1),
-        2 => (2, 2),
-        3 => (1, 2),
-        4 => (0, 2),
-        5 => (0, 1),
-        _ => unreachable!(),
-    };
+    let (row, col) = VOIGT_INDICES[voigt_idx];
 
     let mut strain_plus = Matrix3::identity();
     let mut strain_minus = Matrix3::identity();
@@ -107,10 +102,10 @@ fn make_displaced_fcc(a: f64) -> (Vec<Vector3<f64>>, Matrix3<f64>) {
 
     let mut positions = Vec::new();
     // Create 2x2x2 supercell with small displacements
-    for ix in 0..2 {
-        for iy in 0..2 {
-            for iz in 0..2 {
-                let offset = Vector3::new(ix as f64 * a, iy as f64 * a, iz as f64 * a);
+    for cell_x in 0..2 {
+        for cell_y in 0..2 {
+            for cell_z in 0..2 {
+                let offset = Vector3::new(cell_x as f64 * a, cell_y as f64 * a, cell_z as f64 * a);
                 for base in basis.iter() {
                     // Small deterministic displacement to break symmetry
                     let atom_idx = positions.len();
@@ -163,16 +158,7 @@ fn assert_stress_matches(
     stress_tol: f64,
     energy_fn: impl Fn(&[Vector3<f64>], &Matrix3<f64>) -> f64,
 ) {
-    for voigt_idx in 0..6 {
-        let (row, col) = match voigt_idx {
-            0 => (0, 0),
-            1 => (1, 1),
-            2 => (2, 2),
-            3 => (1, 2),
-            4 => (0, 2),
-            5 => (0, 1),
-            _ => unreachable!(),
-        };
+    for (voigt_idx, &(row, col)) in VOIGT_INDICES.iter().enumerate() {
         let num_stress = numerical_stress_component(positions, cell, voigt_idx, delta, &energy_fn);
         let analytic = analytic_stress[(row, col)];
         let abs_diff = (analytic - num_stress).abs();

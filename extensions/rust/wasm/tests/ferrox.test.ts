@@ -3,8 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
-
-type WasmResult<T> = { ok: T } | { error: string }
+import type { WasmResult } from '../types.d.ts'
 
 let wasm: Awaited<typeof import('../pkg/ferrox.js')>
 

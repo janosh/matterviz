@@ -137,8 +137,8 @@ fn find_cif_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
-/// Check if a set of headers contains the required coordinate columns
-/// (either fractional or Cartesian) and an element identifier.
+/// Check if a set of headers contains the required fractional coordinate
+/// columns and an element identifier.
 fn has_coordinate_headers(headers: &[String]) -> bool {
     let has_element = headers
         .iter()
@@ -388,8 +388,7 @@ fn parse_symmetry_ops(content: &str) -> Vec<SymmetryOp> {
         // Check if this is a symmetry operations loop
         let Some(symop_col) = headers.iter().position(|hdr| {
             let lower = hdr.to_lowercase();
-            lower.contains("_space_group_symop_operation_xyz")
-                || lower.contains("_symmetry_equiv_pos_as_xyz")
+            lower == "_space_group_symop_operation_xyz" || lower == "_symmetry_equiv_pos_as_xyz"
         }) else {
             continue;
         };
@@ -409,11 +408,13 @@ fn parse_symmetry_ops(content: &str) -> Vec<SymmetryOp> {
                 continue;
             }
 
-            let row_values: Vec<&str> = split_cif_line(data_trimmed);
+            let row_values = split_cif_line(data_trimmed);
             if let Some(op_str) = row_values.get(symop_col) {
                 let clean = op_str.trim_matches(['\'', '"']).trim();
                 if let Some(op) = parse_symmetry_op_str(clean) {
                     ops.push(op);
+                } else if !clean.is_empty() {
+                    tracing::warn!("Ignoring unparsable symmetry operation: '{clean}'");
                 }
             }
             lines.next();
@@ -544,8 +545,9 @@ fn expand_symmetry(sites: &[AtomSite], symm_ops: &[SymmetryOp]) -> Vec<AtomSite>
             });
 
             let key = format!(
-                "{}|{:.6},{:.6},{:.6}",
+                "{}|{}|{:.6},{:.6},{:.6}",
                 site.element.symbol(),
+                site.label.as_deref().unwrap_or(""),
                 wrapped[0],
                 wrapped[1],
                 wrapped[2]
@@ -1214,9 +1216,9 @@ Cu 0.0 0.0 0.0
             op.rotation,
             [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
         );
-        assert!((op.translation[0] - 0.5).abs() < 1e-10);
-        assert!((op.translation[1] - 0.5).abs() < 1e-10);
-        assert!((op.translation[2] - 0.5).abs() < 1e-10);
+        for dim in 0..3 {
+            assert!((op.translation[dim] - 0.5).abs() < 1e-10);
+        }
 
         // Mirror: y, x, -z
         let op = parse_symmetry_op_str("y, x, -z").unwrap();

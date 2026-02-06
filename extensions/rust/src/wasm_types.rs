@@ -595,45 +595,40 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn js_lattice_has_params_and_volume() {
-        let structure = nacl_structure();
-        let js_crystal = JsCrystal::from_structure(&structure);
-        let lat = &js_crystal.lattice;
-
-        // Matrix must be present
-        assert!(lat.matrix[0][0] > 5.0);
-
-        // Lattice parameters must be populated
-        assert!((lat.a - 5.64).abs() < 1e-6, "a = {}", lat.a);
-        assert!((lat.b - 5.64).abs() < 1e-6, "b = {}", lat.b);
-        assert!((lat.c - 5.64).abs() < 1e-6, "c = {}", lat.c);
-        assert!((lat.alpha - 90.0).abs() < 1e-6, "alpha = {}", lat.alpha);
-        assert!((lat.beta - 90.0).abs() < 1e-6, "beta = {}", lat.beta);
-        assert!((lat.gamma - 90.0).abs() < 1e-6, "gamma = {}", lat.gamma);
-
-        // Volume = a^3 for cubic
-        let expected_volume = 5.64_f64.powi(3);
+    // Assert all lattice params match expected NaCl cubic values.
+    fn assert_nacl_lattice(lat: &JsLattice) {
+        for (label, got, expected) in [
+            ("a", lat.a, 5.64),
+            ("b", lat.b, 5.64),
+            ("c", lat.c, 5.64),
+            ("alpha", lat.alpha, 90.0),
+            ("beta", lat.beta, 90.0),
+            ("gamma", lat.gamma, 90.0),
+        ] {
+            assert!((got - expected).abs() < 1e-6, "{label} = {got}");
+        }
+        let expected_vol = 5.64_f64.powi(3);
         assert!(
-            (lat.volume - expected_volume).abs() < 1e-3,
-            "volume = {} (expected {})",
+            (lat.volume - expected_vol).abs() < 1e-3,
+            "volume = {} (expected {expected_vol})",
             lat.volume,
-            expected_volume,
         );
     }
 
     #[test]
+    fn js_lattice_has_params_and_volume() {
+        let lat = &JsCrystal::from_structure(&nacl_structure()).lattice;
+        assert!(lat.matrix[0][0] > 5.0);
+        assert_nacl_lattice(lat);
+    }
+
+    #[test]
     fn js_crystal_sites_have_xyz() {
-        let structure = nacl_structure();
-        let js_crystal = JsCrystal::from_structure(&structure);
+        let js_crystal = JsCrystal::from_structure(&nacl_structure());
 
         assert_eq!(js_crystal.sites.len(), 2);
         for (idx, site) in js_crystal.sites.iter().enumerate() {
-            assert!(
-                site.xyz.is_some(),
-                "Site {idx} ({}) missing xyz",
-                site.species[0].element,
-            );
+            assert!(site.xyz.is_some(), "Site {idx} missing xyz");
         }
 
         // Na at origin → xyz ≈ [0, 0, 0]
@@ -652,24 +647,9 @@ mod tests {
 
     #[test]
     fn js_crystal_roundtrip_preserves_lattice_params() {
-        let structure = nacl_structure();
-        let js_crystal = JsCrystal::from_structure(&structure);
-
-        // Roundtrip: JsCrystal → Structure → JsCrystal
+        let js_crystal = JsCrystal::from_structure(&nacl_structure());
         let roundtripped = js_crystal.to_structure().unwrap();
-        let lat = JsCrystal::from_structure(&roundtripped).lattice;
-
-        assert!((lat.a - 5.64).abs() < 1e-6, "a = {}", lat.a);
-        assert!((lat.b - 5.64).abs() < 1e-6, "b = {}", lat.b);
-        assert!((lat.c - 5.64).abs() < 1e-6, "c = {}", lat.c);
-        assert!((lat.alpha - 90.0).abs() < 1e-6, "alpha = {}", lat.alpha);
-        assert!((lat.beta - 90.0).abs() < 1e-6, "beta = {}", lat.beta);
-        assert!((lat.gamma - 90.0).abs() < 1e-6, "gamma = {}", lat.gamma);
-        assert!(
-            (lat.volume - 5.64_f64.powi(3)).abs() < 1e-3,
-            "volume = {}",
-            lat.volume
-        );
+        assert_nacl_lattice(&JsCrystal::from_structure(&roundtripped).lattice);
     }
 
     #[test]
@@ -717,18 +697,13 @@ La1 La 0.0 0.0 0.3163
         let structure = parse_cif_str(cif_content, Path::new("test.cif")).unwrap();
         let js_crystal = JsCrystal::from_structure(&structure);
 
-        // Lattice params
         assert!((js_crystal.lattice.a - 3.6957).abs() < 1e-3);
         assert!((js_crystal.lattice.c - 19.2145).abs() < 1e-3);
-        assert!((js_crystal.lattice.alpha - 90.0).abs() < 1e-3);
         assert!(js_crystal.lattice.volume > 200.0);
 
-        // All sites must have xyz
         assert_eq!(js_crystal.sites.len(), 3);
         for (idx, site) in js_crystal.sites.iter().enumerate() {
-            assert!(site.xyz.is_some(), "Site {idx} missing xyz");
-            let xyz = site.xyz.unwrap();
-            // xyz coords must be finite and plausible (within cell bounds)
+            let xyz = site.xyz.unwrap_or_else(|| panic!("Site {idx} missing xyz"));
             for coord in xyz {
                 assert!(coord.is_finite(), "Site {idx} has non-finite xyz coord");
             }

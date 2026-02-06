@@ -657,7 +657,7 @@ fn parse_poscar_str_impl(content: &str, path: &str) -> Result<Structure> {
                 parts.len()
             )));
         }
-        if !parts[0].is_finite() || !parts[1].is_finite() || !parts[2].is_finite() {
+        if !parts.iter().all(|v| v.is_finite()) {
             return Err(err(format!(
                 "Non-finite lattice vector component in vector {}",
                 idx + 1

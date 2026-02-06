@@ -34,6 +34,8 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - name: Run WASM type tests (native)
+        run: cargo test --features wasm --lib -- wasm_types
 
   verify-stubs:
     name: Verify Python stubs
@@ -122,6 +124,9 @@ jobs:
         run: |
           pnpm install
           pnpm test
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.3.7
       - name: Verify WASM types are up to date
         working-directory: extensions/rust/wasm
         run: |

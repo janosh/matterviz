@@ -115,7 +115,7 @@ fn steinhardt_ideal_structures() {
     let a_hcp = 3.21;
     let hcp_cutoff = a_hcp * 1.1;
 
-    let cases: Vec<(&str, Structure, f64, f64, f64, f64)> = vec![
+    let cases = [
         // FCC ideal: q4 ≈ 0.19094, q6 ≈ 0.57452
         (
             "FCC",
@@ -159,17 +159,17 @@ fn d_spacing_cubic() {
     let a = 5.64;
     let lattice = Lattice::cubic(a);
 
-    let test_cases: Vec<([i32; 3], f64)> = vec![
+    let test_cases = [
         ([1, 0, 0], a / 1.0),
-        ([1, 1, 0], a / (2.0f64).sqrt()),
-        ([1, 1, 1], a / (3.0f64).sqrt()),
+        ([1, 1, 0], a / 2.0f64.sqrt()),
+        ([1, 1, 1], a / 3.0f64.sqrt()),
         ([2, 0, 0], a / 2.0),
-        ([2, 1, 0], a / (5.0f64).sqrt()),
-        ([2, 1, 1], a / (6.0f64).sqrt()),
-        ([2, 2, 0], a / (8.0f64).sqrt()),
+        ([2, 1, 0], a / 5.0f64.sqrt()),
+        ([2, 1, 1], a / 6.0f64.sqrt()),
+        ([2, 2, 0], a / 8.0f64.sqrt()),
         ([3, 0, 0], a / 3.0),
-        ([3, 1, 0], a / (10.0f64).sqrt()),
-        ([2, 2, 2], a / (12.0f64).sqrt()),
+        ([3, 1, 0], a / 10.0f64.sqrt()),
+        ([2, 2, 2], a / 12.0f64.sqrt()),
     ];
 
     for (hkl, expected) in test_cases {
@@ -236,7 +236,7 @@ fn xrd_intensities_normalized() {
     let max_intensity = pattern
         .intensities
         .iter()
-        .cloned()
+        .copied()
         .fold(f64::NEG_INFINITY, f64::max);
     assert!(
         (max_intensity - 100.0).abs() < 0.01,

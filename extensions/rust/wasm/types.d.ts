@@ -55,7 +55,7 @@ export interface JsCrystal {
   /**
    * Structure-level properties
    */
-  properties?: Map<string, Value>
+  properties?: Record<string, unknown>
 }
 
 /**
@@ -81,7 +81,7 @@ export interface JsSite {
   /**
    * Site-specific properties (e.g., magnetic moment, charge)
    */
-  properties?: Map<string, Value>
+  properties?: Record<string, unknown>
 }
 
 /**
@@ -121,7 +121,7 @@ export interface JsAseAtoms {
   /**
    * Additional info dict
    */
-  info?: Map<string, Value>
+  info?: Record<string, unknown>
 }
 
 /**
@@ -249,7 +249,7 @@ export interface JsCompositionInfo {
   /**
    * Average electronegativity (null if undefined)
    */
-  averageElectronegativity: number | undefined
+  averageElectronegativity: number | null
   /**
    * Total number of electrons
    */
@@ -354,7 +354,7 @@ export interface JsStructureMetadata {
   /**
    * Density in g/cm³ (null if zero volume)
    */
-  density: number | undefined
+  density: number | null
   /**
    * Lattice parameters [a, b, c] in Ångströms
    */
@@ -400,7 +400,7 @@ export interface JsPotentialResult {
   /**
    * Stress tensor in Voigt order: [xx, yy, zz, yz, xz, xy] in eV/Å³.
    */
-  stress: [number, number, number, number, number, number] | undefined
+  stress: [number, number, number, number, number, number] | null
 }
 
 /**
@@ -474,11 +474,11 @@ export interface JsXrdOptions {
   /**
    * 2θ range in degrees as [min, max]. None = all accessible angles
    */
-  two_theta_range?: [number, number] | undefined
+  two_theta_range?: [number, number] | null
   /**
    * Debye-Waller factors per element symbol (thermal damping)
    */
-  debye_waller_factors?: Map<string, number>
+  debye_waller_factors?: Record<string, number>
   /**
    * Whether to scale intensities to 0-100 (default: true)
    */

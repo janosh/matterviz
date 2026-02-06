@@ -108,7 +108,7 @@ fn xrd_matches_pymatgen() {
         vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
     );
 
-    let cases: Vec<(&str, &Structure)> = vec![("graphite", &graphite), ("cscl", &cscl)];
+    let cases = [("graphite", &graphite), ("cscl", &cscl)];
     let config = XrdConfig::default();
 
     for (name, structure) in cases {
@@ -151,7 +151,7 @@ fn coordination_numbers_match_expected() {
     let a_bcc = 2.87;
     let nn_dist_bcc = a_bcc * (3.0f64).sqrt() / 2.0;
 
-    let cases: Vec<(&str, Structure, f64, usize)> = vec![
+    let cases = [
         // NaCl: cutoff between 1st shell (a/2 = 2.82 Å) and 2nd shell (a/√2 = 3.99 Å)
         ("NaCl", make_nacl(a_nacl), 3.4, 6),
         // FCC Cu: 12 nearest neighbors, cutoff between 1st and 2nd shell
@@ -185,7 +185,7 @@ fn coordination_numbers_match_expected() {
 
 #[test]
 fn niggli_reduction_various_lattices() {
-    let test_cases: Vec<(&str, Lattice)> = vec![
+    let test_cases = [
         ("cubic", Lattice::cubic(4.0)),
         ("hexagonal", Lattice::hexagonal(3.0, 5.0)),
         ("tetragonal", Lattice::tetragonal(4.0, 6.0)),
