@@ -126,6 +126,7 @@ jobs:
         working-directory: extensions/rust/wasm
         run: |
           node generate_types.js
+          deno fmt types.d.ts
           if ! git diff --exit-code types.d.ts; then
             echo "::error::WASM types.d.ts is out of sync! Run 'node generate_types.js' and commit."
             exit 1

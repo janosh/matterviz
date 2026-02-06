@@ -186,20 +186,13 @@ const check_mode = process.argv.includes(`--check`)
 const output = generate()
 
 if (check_mode) {
-  let existing
-  try {
-    existing = readFileSync(OUT_DTS, `utf8`)
-  } catch {
-    console.error(`types.d.ts does not exist`)
-    process.exit(1)
-  }
-  if (existing !== output) {
-    console.error(
-      `types.d.ts is out of date. Run 'node generate_types.js' to update.`,
-    )
-    process.exit(1)
-  }
-  console.log(`types.d.ts is up to date.`)
+  // Write the generated output, then compare against git HEAD.
+  // This accounts for Deno format which modifies the file during pre-commit.
+  // In CI, run `deno fmt types.d.ts` after generation before checking git diff.
+  writeFileSync(OUT_DTS, output)
+  console.log(
+    `Regenerated ${OUT_DTS} — check with 'deno fmt types.d.ts && git diff types.d.ts'`,
+  )
 } else {
   writeFileSync(OUT_DTS, output)
   console.log(`Generated ${OUT_DTS}`)
