@@ -4,10 +4,10 @@ version = "0.0.5"
 edition = "2024"
 rust-version = "1.93"
 authors = ["Janosh Riebesell <janosh.riebesell@gmail.com>"]
-description = "High-performance structure matching for crystallographic data"
+description = "High-performance base layer for computational materials science"
 license = "MIT"
 repository = "https://github.com/janosh/matterviz"
-keywords = ["crystallography", "materials-science", "structure-matching"]
+keywords = ["atomistic-simulation", "materials-science", "molecular-dynamics", "crystallography", "rust"]
 include = [
   "src/**/*.rs",
   "src/**/*.json", # atomic scattering params - SSOT shared with TypeScript
@@ -91,6 +91,10 @@ wasm = [
   "dep:wasm-bindgen",
 ]
 rayon = ["dep:rayon"]
+
+[[bin]]
+name = "stub_gen"
+required-features = ["python"]
 
 [[bench]]
 name = "matcher_bench"

@@ -1,17 +1,21 @@
 //! # ferrox
 //!
-//! High-performance structure matching for crystallographic data.
+//! High-performance base layer for computational materials science.
 //!
-//! This crate provides a Rust implementation of structure matching algorithms,
-//! compatible with pymatgen's StructureMatcher but optimized for batch processing.
+//! This crate provides fast implementations of common materials science operations
+//! including I/O, structure matching, symmetry analysis, molecular dynamics, surface
+//! science, defect engineering, and trajectory analysis.
 //!
 //! ## Features
 //!
-//! - **Fast single-pair matching**: Compare two structures for equivalence
-//! - **Batch deduplication**: Find unique structures in large sets
-//! - **Parallel processing**: Automatic parallelization via Rayon (native only)
-//! - **Multiple comparators**: Species or Element-based matching
-//! - **Python bindings**: Optional PyO3 bindings for use from Python
+//! - **Structure I/O**: Parse CIF, POSCAR, extXYZ, LAMMPS, and more
+//! - **Structure Matching**: Fast deduplication and grouping with parallel processing
+//! - **Symmetry Analysis**: Space groups, Wyckoff positions, primitive/conventional cells
+//! - **Molecular Dynamics**: NVE/NVT integrators, thermostats, classical potentials
+//! - **Surface Science**: Slab generation, Miller indices, adsorption sites
+//! - **Defect Engineering**: Vacancies, substitutions, interstitials, Voronoi sites
+//! - **Trajectory Analysis**: RDF, MSD, diffusion coefficients, order parameters
+//! - **Python bindings**: Optional PyO3 bindings, compatible with pymatgen dictionaries
 //! - **WASM bindings**: Optional wasm-bindgen bindings for browser use
 //!
 //! ## Example
