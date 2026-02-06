@@ -194,8 +194,12 @@ class io:
     def to_json(structure: StructureJson) -> str:
         """Convert structure to JSON string."""
     @staticmethod
-    def from_pymatgen(structure: Any) -> StructureDict:
-        """Convert pymatgen Structure to dict."""
+    def from_pymatgen_structure(structure: Any) -> StructureDict:
+        """Convert pymatgen Structure or Molecule to ferrox dict.
+
+        Handles both periodic structures (with lattice) and non-periodic molecules.
+        Detection is automatic based on whether the object has a `lattice` attribute.
+        """
     @staticmethod
     def to_pymatgen_structure(structure: StructureJson) -> Any:
         """Convert to pymatgen Structure."""
@@ -203,8 +207,8 @@ class io:
     def to_pymatgen_molecule(molecule: StructureJson) -> Any:
         """Convert to pymatgen Molecule."""
     @staticmethod
-    def from_ase(atoms: Any) -> StructureDict:
-        """Convert ASE Atoms to dict."""
+    def from_ase_atoms(atoms: Any) -> StructureDict:
+        """Convert ASE Atoms to ferrox dict."""
     @staticmethod
     def to_ase_atoms(structure: StructureJson) -> Any:
         """Convert to ASE Atoms."""
