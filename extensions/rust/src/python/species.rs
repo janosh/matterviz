@@ -1,15 +1,18 @@
 //! Species Python bindings.
 
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
 use crate::species::Species as RustSpecies;
 
 /// A chemical species with optional oxidation state.
+#[gen_stub_pyclass]
 #[pyclass(name = "Species")]
 pub struct PySpecies {
     inner: RustSpecies,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PySpecies {
     /// Create a new Species from a string like "Fe", "Fe2+", "O2-".

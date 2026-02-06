@@ -1,6 +1,6 @@
 //! Binary to generate Python type stubs from Rust code using pyo3-stub-gen.
 //!
-//! Run with: `cargo run --bin stub_gen --features python`
+//! Run with: `cargo run --bin stub_gen --features stub-gen`
 
 use pyo3_stub_gen::Result;
 

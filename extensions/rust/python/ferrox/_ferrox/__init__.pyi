@@ -2,244 +2,6 @@
 from collections.abc import Mapping, Sequence
 from typing import Any, final
 
-__all__ = [
-    "CellFireState",
-    "Element",
-    "FireConfig",
-    "FireState",
-    "LangevinIntegrator",
-    "MDState",
-    "NPTState",
-    "NoseHooverChain",
-    "Species",
-    "StructureMatcher",
-    "VelocityRescale",
-    "add_charges_from_oxi_state_guesses",
-    "add_oxidation_state_by_element",
-    "add_oxidation_state_by_site",
-    "apply_inversion",
-    "apply_operation",
-    "apply_strain",
-    "apply_translation",
-    "area",
-    "bulk_modulus",
-    "calculate_energy",
-    "classify_all_atoms",
-    "classify_local_structure",
-    "classify_site",
-    "composition_charge",
-    "compositions_almost_equal",
-    "compute_all_element_rdfs",
-    "compute_bv_sums",
-    "compute_element_rdf",
-    "compute_harmonic_bonds",
-    "compute_lennard_jones",
-    "compute_lennard_jones_forces",
-    "compute_morse",
-    "compute_rdf",
-    "compute_soft_sphere",
-    "compute_steinhardt_q",
-    "compute_wulff",
-    "compute_xrd",
-    "copy_structure",
-    "create_antisite",
-    "create_dimer",
-    "create_interstitial",
-    "create_substitution",
-    "create_vacancy",
-    "d_spacing",
-    "deform",
-    "delaunay_reduce",
-    "diffusion_from_msd",
-    "diffusion_from_vacf",
-    "distance_from_point",
-    "distance_matrix",
-    "distort_bonds",
-    "enumerate_derivatives",
-    "enumerate_miller",
-    "enumerate_terminations",
-    "ewald_energy",
-    "find_adsorption_sites",
-    "find_interstitial_sites",
-    "find_supercell",
-    "find_supercell_matrix",
-    "find_voronoi_interstitials",
-    "formula_hash",
-    "fractional_composition",
-    "from_ase_atoms",
-    "from_pymatgen_structure",
-    "from_torch_sim_state",
-    "generate_all",
-    "generate_slabs",
-    "generate_strains",
-    "get_all_site_properties",
-    "get_atomic_fraction",
-    "get_atomic_scattering_params",
-    "get_cn_voronoi",
-    "get_cn_voronoi_all",
-    "get_conventional",
-    "get_coordination_number",
-    "get_coordination_numbers",
-    "get_crystal_system",
-    "get_density",
-    "get_distance",
-    "get_distance_and_image",
-    "get_distance_with_image",
-    "get_equivalent_sites",
-    "get_hall_number",
-    "get_inv_matrix",
-    "get_lll_mapping",
-    "get_lll_reduced_lattice",
-    "get_local_environment",
-    "get_local_environment_voronoi",
-    "get_metric_tensor",
-    "get_neighbor_list",
-    "get_neighbors",
-    "get_pearson_symbol",
-    "get_primitive",
-    "get_reciprocal_lattice",
-    "get_reduced_factor",
-    "get_reduced_structure",
-    "get_reduced_structure_with_params",
-    "get_site_properties",
-    "get_sorted_by_electronegativity",
-    "get_sorted_structure",
-    "get_spacegroup_number",
-    "get_spacegroup_symbol",
-    "get_structure_metadata",
-    "get_surface_atoms",
-    "get_symmetry_dataset",
-    "get_symmetry_operations",
-    "get_total_mass",
-    "get_volume",
-    "get_voronoi_neighbors",
-    "get_wt_fraction",
-    "get_wyckoff_letters",
-    "guess_charge_states",
-    "guess_oxidation_states",
-    "interpolate",
-    "is_charge_balanced",
-    "is_niggli_reduced",
-    "is_periodic_image",
-    "is_stable",
-    "is_supercell",
-    "lattices_equivalent",
-    "local_rattle",
-    "make_slab",
-    "make_supercell",
-    "make_supercell_diag",
-    "matches",
-    "miller_to_normal",
-    "minimum_image_distance",
-    "minimum_image_vector",
-    "molecule_to_json",
-    "molecule_to_xyz",
-    "niggli_reduce",
-    "normalize_element_symbol",
-    "order_disordered",
-    "oxi_state_guesses",
-    "parse_ase_dict",
-    "parse_composition",
-    "parse_molecule_json",
-    "parse_poscar_file",
-    "parse_poscar_str",
-    "parse_structure_file",
-    "parse_torch_sim_state_json",
-    "parse_trajectory",
-    "parse_xyz_file",
-    "parse_xyz_flexible",
-    "parse_xyz_str",
-    "perpendicular_distances",
-    "perturb",
-    "poisson_ratio",
-    "rattle",
-    "reduced_composition",
-    "remap_elements",
-    "remove_oxidation_states",
-    "remove_sites",
-    "remove_species",
-    "set_site_property",
-    "shear_modulus",
-    "site_labels",
-    "species_hash",
-    "species_strings",
-    "strain_to_voigt",
-    "stress_to_voigt",
-    "structures_to_torch_sim_state",
-    "substitute_species",
-    "tensor_from_stresses",
-    "to_ase_atoms",
-    "to_cif",
-    "to_extxyz",
-    "to_json",
-    "to_poscar",
-    "to_pymatgen_json",
-    "to_pymatgen_molecule",
-    "to_pymatgen_structure",
-    "to_torch_sim_state",
-    "translate_sites",
-    "velocity_verlet_step",
-    "wrap_to_unit_cell",
-    "write_structure_file",
-    "youngs_modulus",
-    "zener_ratio",
-]
-
-@final
-class CellFireState:
-    r"""
-    CellFIRE optimizer state (optimizes both positions and cell).
-    """
-    @property
-    def positions(self) -> list[list[float]]:
-        r"""
-        Get positions.
-        """
-    @property
-    def cell(self) -> list[list[float]]:
-        r"""
-        Get cell matrix.
-        """
-    @property
-    def num_atoms(self) -> int:
-        r"""
-        Number of atoms.
-        """
-    def __new__(
-        cls,
-        positions: Sequence[Sequence[float]],
-        cell: Sequence[Sequence[float]],
-        config: FireConfig | None = None,
-        cell_factor: float = 1.0,
-    ) -> CellFireState:
-        r"""
-        Create a new CellFIRE state.
-
-        Args:
-            positions: List of [x, y, z] positions in Angstrom
-            cell: 3x3 cell matrix (row vectors)
-            config: Optional FIRE configuration
-            cell_factor: Scaling factor for cell DOF (default: 1.0)
-        """
-    def max_force(self) -> float:
-        r"""
-        Get maximum force component.
-        """
-    def max_stress(self) -> float:
-        r"""
-        Get maximum stress component.
-        """
-    def is_converged(self, f_max: float, s_max: float) -> bool:
-        r"""
-        Check if optimization has converged.
-        """
-    def step(
-        self, forces: Sequence[Sequence[float]], stress: Sequence[Sequence[float]]
-    ) -> None:
-        r"""
-        Perform one CellFIRE step with provided forces and stress.
-        """
-
 @final
 class Element:
     r"""
@@ -334,12 +96,12 @@ class Element:
         Minimum oxidation state.
         """
     @property
-    def ionic_radii(self) -> dict | None:
+    def ionic_radii(self) -> dict[str, Any] | None:
         r"""
         All ionic radii as dict mapping oxidation state (str) to radius (float).
         """
     @property
-    def shannon_radii(self) -> dict | None:
+    def shannon_radii(self) -> dict[str, Any] | None:
         r"""
         Full Shannon radii data structure.
         """
@@ -479,69 +241,6 @@ class Element:
         """
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
-
-@final
-class FireConfig:
-    r"""
-    Python wrapper for FIRE configuration.
-    """
-    @property
-    def dt_start(self) -> float: ...
-    @property
-    def dt_max(self) -> float: ...
-    @property
-    def max_step(self) -> float: ...
-    def __new__(
-        cls,
-        dt_start: float | None = None,
-        dt_max: float | None = None,
-        n_min: int | None = None,
-        f_inc: float | None = None,
-        f_dec: float | None = None,
-        alpha_start: float | None = None,
-        f_alpha: float | None = None,
-        max_step: float | None = None,
-    ) -> FireConfig:
-        r"""
-        Create a new FIRE configuration.
-        """
-
-@final
-class FireState:
-    r"""
-    Python wrapper for FIRE optimizer state.
-    """
-    @property
-    def positions(self) -> list[list[float]]:
-        r"""
-        Get positions as Nx3 array.
-        """
-    def __new__(
-        cls, positions: Sequence[Sequence[float]], config: FireConfig | None = None
-    ) -> FireState:
-        r"""
-        Create a new FIRE optimizer state.
-        """
-    def step(self, compute_forces: Any) -> None:
-        r"""
-        Perform one FIRE optimization step.
-
-        Raises:
-            RuntimeError: If force computation fails. State is restored to its
-                original value before the step when this happens.
-        """
-    def is_converged(self, f_max: float) -> bool:
-        r"""
-        Check if optimization has converged.
-        """
-    def max_force(self) -> float:
-        r"""
-        Get maximum force component magnitude.
-        """
-    def num_atoms(self) -> int:
-        r"""
-        Get number of atoms.
-        """
 
 @final
 class LangevinIntegrator:
@@ -834,26 +533,30 @@ class VelocityRescale:
         Set target temperature.
         """
 
-def add_charges_from_oxi_state_guesses(structure: str | dict[str, Any]) -> dict:
+def add_charges_from_oxi_state_guesses(
+    structure: str | dict[str, Any],
+) -> dict[str, Any]:
     r"""
     Add oxidation states from guesses to a structure.
     """
 
 def add_oxidation_state_by_element(
     structure: str | dict[str, Any], oxi_states: Mapping[str, int]
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Add oxidation states by element.
     """
 
 def add_oxidation_state_by_site(
     structure: str | dict[str, Any], oxi_states: Sequence[int]
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Add oxidation states by site.
     """
 
-def apply_inversion(structure: str | dict[str, Any], fractional: bool = True) -> dict:
+def apply_inversion(
+    structure: str | dict[str, Any], fractional: bool = True
+) -> dict[str, Any]:
     r"""
     Apply inversion through the origin.
     """
@@ -863,7 +566,7 @@ def apply_operation(
     rotation: Sequence[Sequence[float]],
     translation: Sequence[float],
     fractional: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Apply a symmetry operation (rotation + translation) to a structure.
     """
@@ -879,7 +582,7 @@ def apply_translation(
     structure: str | dict[str, Any],
     translation: Sequence[float],
     fractional: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Apply a translation to all sites.
     """
@@ -937,7 +640,7 @@ def compute_all_element_rdfs(
     normalize: bool = True,
     auto_expand: bool = True,
     expansion_factor: float = 2.0,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Compute RDFs for all element pairs. Returns dict keyed by element pair.
     """
@@ -1054,7 +757,7 @@ def compute_steinhardt_q(
 def compute_wulff(
     structure: str | dict[str, Any],
     surface_energies: Sequence[tuple[Sequence[int], float]],
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Compute the Wulff shape from surface energies.
     """
@@ -1063,19 +766,19 @@ def compute_xrd(
     structure: str | dict[str, Any],
     two_theta_range: tuple[float, float] | None = None,
     wavelength: float = 1.5406,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Compute X-ray diffraction pattern.
     """
 
-def copy_structure(structure: str | dict[str, Any]) -> dict:
+def copy_structure(structure: str | dict[str, Any]) -> dict[str, Any]:
     r"""
     Copy a structure.
     """
 
 def create_antisite(
     structure: str | dict[str, Any], site_a_idx: int, site_b_idx: int
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Create an antisite pair by swapping species at two sites.
     Returns structure dict (no defect metadata since antisites modify two sites).
@@ -1086,26 +789,26 @@ def create_dimer(
     site_a_idx: int,
     site_b_idx: int,
     target_distance: float,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Create a dimer by moving two atoms closer together.
     """
 
 def create_interstitial(
     structure: str | dict[str, Any], position: Sequence[float], species: str
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Create an interstitial by adding an atom at a fractional position.
     """
 
 def create_substitution(
     structure: str | dict[str, Any], site_idx: int, new_species: str
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Create a substitutional defect by replacing the species at a site.
     """
 
-def create_vacancy(structure: str | dict[str, Any], site_idx: int) -> dict:
+def create_vacancy(structure: str | dict[str, Any], site_idx: int) -> dict[str, Any]:
     r"""
     Create a vacancy by removing an atom at the specified site index.
     """
@@ -1117,12 +820,12 @@ def d_spacing(structure: str | dict[str, Any], h: int, k: int, l: int) -> float:
 
 def deform(
     structure: str | dict[str, Any], gradient: Sequence[Sequence[float]]
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Apply a deformation gradient to the structure.
     """
 
-def delaunay_reduce(structure: str | dict[str, Any]) -> dict:
+def delaunay_reduce(structure: str | dict[str, Any]) -> dict[str, Any]:
     r"""
     Perform Delaunay reduction on the lattice (uses LLL).
     """
@@ -1161,14 +864,14 @@ def distort_bonds(
     distortion_factors: Sequence[float],
     num_neighbors: int | None = None,
     cutoff: float = 5.0,
-) -> list:
+) -> list[Any]:
     r"""
     Distort bonds around a defect site by specified factors.
     """
 
 def enumerate_derivatives(
     structure: str | dict[str, Any], min_size: int = 1, max_size: int = 4
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Enumerate derivative structures within a size range.
     """
@@ -1186,7 +889,7 @@ def enumerate_terminations(
     min_slab: float = 10.0,
     min_vacuum: float = 10.0,
     symprec: float = 0.01,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Enumerate terminations for a given Miller index.
     """
@@ -1207,7 +910,7 @@ def find_adsorption_sites(
     site_types: Sequence[str] | None = None,
     neighbor_cutoff: float | None = None,
     surface_tolerance: float | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Find adsorption sites on a slab.
     """
@@ -1216,7 +919,7 @@ def find_interstitial_sites(
     structure: str | dict[str, Any],
     min_dist: float | None = None,
     symprec: float = 0.01,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Find potential interstitial sites using Voronoi tessellation.
     """
@@ -1242,7 +945,7 @@ def find_voronoi_interstitials(
     structure: str | dict[str, Any],
     min_dist: float | None = None,
     symprec: float = 0.01,
-) -> list:
+) -> list[Any]:
     r"""
     Find Voronoi-based interstitial sites.
     """
@@ -1252,22 +955,25 @@ def formula_hash(formula: str) -> int:
     Get a hash of a formula (for fast comparisons).
     """
 
-def fractional_composition(formula: str) -> dict:
+def fractional_composition(formula: str) -> dict[str, Any]:
     r"""
     Get the fractional composition.
     """
 
-def from_ase_atoms(atoms: Any) -> dict:
+def from_ase_atoms(atoms: Any) -> dict[str, Any]:
     r"""
     Convert an ASE Atoms object directly to ferrox dict format.
     """
 
-def from_pymatgen_structure(structure: Any) -> dict:
+def from_pymatgen_structure(structure: Any) -> dict[str, Any]:
     r"""
-    Convert a pymatgen Structure directly to ferrox dict format.
+    Convert a pymatgen Structure or Molecule directly to ferrox dict format.
+
+    Handles both periodic structures (with lattice) and non-periodic molecules.
+    Detection is automatic based on whether the object has a `lattice` attribute.
     """
 
-def from_torch_sim_state(state_dict: dict) -> list[dict]:
+def from_torch_sim_state(state_dict: dict[str, Any]) -> list[dict[str, Any]]:
     r"""
     Parse a TorchSim SimState dict to a list of Structure dicts.
 
@@ -1279,7 +985,7 @@ def generate_all(
     extrinsic: Sequence[str] | None = None,
     symprec: float = 0.01,
     interstitial_min_dist: float = 1.0,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Generate all point defects for a structure.
     """
@@ -1292,7 +998,7 @@ def generate_slabs(
     center_slab: bool = True,
     in_unit_planes: bool = False,
     symprec: float = 0.01,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Generate all slabs for a given Miller index (all terminations).
     """
@@ -1304,7 +1010,7 @@ def generate_strains(
     Generate strain matrices for elastic constant calculation.
     """
 
-def get_all_site_properties(structure: str | dict[str, Any]) -> list:
+def get_all_site_properties(structure: str | dict[str, Any]) -> list[Any]:
     r"""
     Get all site properties for a structure.
     """
@@ -1314,7 +1020,7 @@ def get_atomic_fraction(formula: str, element: str) -> float:
     Get the atomic fraction of an element.
     """
 
-def get_atomic_scattering_params() -> dict:
+def get_atomic_scattering_params() -> dict[str, Any]:
     r"""
     Get atomic scattering parameters for all elements.
     Returns a dict of element -> [[a1,b1], [a2,b2], [a3,b3], [a4,b4]] coefficients.
@@ -1334,7 +1040,9 @@ def get_cn_voronoi_all(
     Get Voronoi coordination numbers for all sites.
     """
 
-def get_conventional(structure: str | dict[str, Any], symprec: float = 0.01) -> dict:
+def get_conventional(
+    structure: str | dict[str, Any], symprec: float = 0.01
+) -> dict[str, Any]:
     r"""
     Get the conventional cell.
     """
@@ -1415,14 +1123,14 @@ def get_lll_reduced_lattice(
 
 def get_local_environment(
     structure: str | dict[str, Any], site_idx: int, cutoff: float
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Get the local environment for a site.
     """
 
 def get_local_environment_voronoi(
     structure: str | dict[str, Any], site_idx: int, min_solid_angle: float = 0.1
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Get Voronoi-based local environment for a site.
     """
@@ -1442,7 +1150,7 @@ def get_neighbor_list(
 
 def get_neighbors(
     structure: str | dict[str, Any], site_idx: int, cutoff: float
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Get neighbors for a site.
     """
@@ -1452,7 +1160,9 @@ def get_pearson_symbol(structure: str | dict[str, Any], symprec: float = 0.01) -
     Get the Pearson symbol.
     """
 
-def get_primitive(structure: str | dict[str, Any], symprec: float = 0.01) -> dict:
+def get_primitive(
+    structure: str | dict[str, Any], symprec: float = 0.01
+) -> dict[str, Any]:
     r"""
     Get the primitive cell.
     """
@@ -1469,7 +1179,7 @@ def get_reduced_factor(formula: str) -> float:
 
 def get_reduced_structure(
     structure: str | dict[str, Any], algorithm: str = "niggli"
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Get a reduced cell structure.
     """
@@ -1479,26 +1189,26 @@ def get_reduced_structure_with_params(
     algorithm: str = "niggli",
     niggli_tol: float = 1e-05,
     lll_delta: float = 0.75,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Get structure with reduced lattice using custom parameters.
     """
 
-def get_site_properties(structure: str | dict[str, Any], idx: int) -> dict:
+def get_site_properties(structure: str | dict[str, Any], idx: int) -> dict[str, Any]:
     r"""
     Get site properties for a specific site.
     """
 
 def get_sorted_by_electronegativity(
     structure: str | dict[str, Any], reverse: bool | None
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Get structure sorted by electronegativity.
     """
 
 def get_sorted_structure(
     structure: str | dict[str, Any], reverse: bool = False
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Get structure sorted by species.
     """
@@ -1517,7 +1227,7 @@ def get_spacegroup_symbol(
     Get the space group symbol.
     """
 
-def get_structure_metadata(structure: str | dict[str, Any]) -> dict:
+def get_structure_metadata(structure: str | dict[str, Any]) -> dict[str, Any]:
     r"""
     Get structure metadata.
     """
@@ -1529,14 +1239,14 @@ def get_surface_atoms(slab: str | dict[str, Any], tolerance: float = 0.5) -> lis
 
 def get_symmetry_dataset(
     structure: str | dict[str, Any], symprec: float = 0.01
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Get the full symmetry dataset.
     """
 
 def get_symmetry_operations(
     structure: str | dict[str, Any], symprec: float = 0.01
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Get symmetry operations.
     """
@@ -1582,7 +1292,7 @@ def guess_charge_states(defect_type: str, species: str | None = None) -> list[in
         List of possible charge states based on common oxidation states
     """
 
-def guess_oxidation_states(structure: str | dict[str, Any]) -> dict:
+def guess_oxidation_states(structure: str | dict[str, Any]) -> dict[str, Any]:
     r"""
     Guess oxidation states using structure's composition.
     """
@@ -1593,7 +1303,7 @@ def interpolate(
     n_images: int,
     interpolate_lattices: bool = False,
     use_pbc: bool = True,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Interpolate between two structures.
     """
@@ -1647,7 +1357,7 @@ def local_rattle(
     max_amplitude: float,
     decay_radius: float,
     seed: int,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Apply local rattling with distance-dependent amplitude decay.
     """
@@ -1661,21 +1371,21 @@ def make_slab(
     in_unit_planes: bool = False,
     symprec: float = 0.01,
     termination_index: int = 0,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Generate a single slab for a given Miller index and termination.
     """
 
 def make_supercell(
     structure: str | dict[str, Any], matrix: Sequence[Sequence[int]]
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Create a supercell using a 3x3 transformation matrix.
     """
 
 def make_supercell_diag(
     structure: str | dict[str, Any], scaling: Sequence[int]
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Create a diagonal supercell.
     """
@@ -1720,86 +1430,86 @@ def molecule_to_xyz(molecule: str | dict[str, Any], comment: str | None = None) 
     Convert a molecule to XYZ format string.
     """
 
-def niggli_reduce(structure: str | dict[str, Any]) -> dict:
+def niggli_reduce(structure: str | dict[str, Any]) -> dict[str, Any]:
     r"""
     Perform Niggli reduction on the lattice.
     """
 
-def normalize_element_symbol(symbol: str) -> dict:
+def normalize_element_symbol(symbol: str) -> dict[str, Any]:
     r"""
     Normalize an element symbol string, extracting element, oxidation state, and metadata.
     """
 
 def order_disordered(
     structure: str | dict[str, Any], max_structures: int = 100
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Generate ordered structures from a disordered structure.
     """
 
 def oxi_state_guesses(
     structure_or_formula: str, all_states: bool = False
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     r"""
     Guess oxidation states for a structure or formula.
     Accepts either a structure JSON string or a formula string like "Fe2O3".
     """
 
-def parse_ase_dict(ase_dict: dict) -> tuple[str, dict]:
+def parse_ase_dict(ase_dict: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     r"""
     Parse ASE Atoms dict, returning either a Structure or Molecule dict.
     """
 
-def parse_composition(formula: str) -> dict:
+def parse_composition(formula: str) -> dict[str, Any]:
     r"""
     Parse a composition formula and return rich metadata.
     """
 
-def parse_molecule_json(json_str: str) -> dict:
+def parse_molecule_json(json_str: str) -> dict[str, Any]:
     r"""
     Parse a molecule from pymatgen Molecule JSON format.
     """
 
-def parse_poscar_file(path: str) -> dict:
+def parse_poscar_file(path: str) -> dict[str, Any]:
     r"""
     Parse a structure from a POSCAR file.
 
     Supports VASP 5+ format with element symbols. VASP 4 format is not supported.
     """
 
-def parse_poscar_str(content: str) -> dict:
+def parse_poscar_str(content: str) -> dict[str, Any]:
     r"""
     Parse a structure from POSCAR content string.
 
     Supports VASP 5+ format with element symbols. VASP 4 format is not supported.
     """
 
-def parse_structure_file(path: str) -> dict:
+def parse_structure_file(path: str) -> dict[str, Any]:
     r"""
     Parse a structure file (auto-detects format from extension).
     """
 
-def parse_torch_sim_state_json(json_str: str) -> list[dict]:
+def parse_torch_sim_state_json(json_str: str) -> list[dict[str, Any]]:
     r"""
     Parse a TorchSim SimState JSON string to a list of Structure dicts.
     """
 
-def parse_trajectory(path: str) -> list[dict]:
+def parse_trajectory(path: str) -> list[dict[str, Any]]:
     r"""
     Parse trajectory file (extXYZ format).
     """
 
-def parse_xyz_file(path: str) -> dict:
+def parse_xyz_file(path: str) -> dict[str, Any]:
     r"""
     Parse a molecule from an XYZ file.
     """
 
-def parse_xyz_flexible(path: str) -> tuple[str, dict]:
+def parse_xyz_flexible(path: str) -> tuple[str, dict[str, Any]]:
     r"""
-    Parse XYZ content flexibly, returning Structure if lattice present, Molecule otherwise.
+    Parse XYZ file path flexibly, returning Structure if lattice present, Molecule otherwise.
     """
 
-def parse_xyz_str(content: str) -> dict:
+def parse_xyz_str(content: str) -> dict[str, Any]:
     r"""
     Parse a molecule from XYZ file content.
     """
@@ -1814,7 +1524,7 @@ def perturb(
     distance: float,
     min_distance: float | None = None,
     seed: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Perturb all sites by random vectors.
     """
@@ -1830,41 +1540,43 @@ def rattle(
     seed: int,
     min_distance: float = 0.5,
     max_attempts: int = 100,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Apply Monte Carlo rattling to all atoms in a structure.
     """
 
-def reduced_composition(formula: str) -> dict:
+def reduced_composition(formula: str) -> dict[str, Any]:
     r"""
     Get the reduced composition.
     """
 
-def remap_elements(formula: str, mapping: Mapping[str, str]) -> dict:
+def remap_elements(formula: str, mapping: Mapping[str, str]) -> dict[str, Any]:
     r"""
     Remap elements in a formula.
     """
 
-def remove_oxidation_states(structure: str | dict[str, Any]) -> dict:
+def remove_oxidation_states(structure: str | dict[str, Any]) -> dict[str, Any]:
     r"""
     Remove oxidation states from a structure.
     """
 
-def remove_sites(structure: str | dict[str, Any], indices: Sequence[int]) -> dict:
+def remove_sites(
+    structure: str | dict[str, Any], indices: Sequence[int]
+) -> dict[str, Any]:
     r"""
     Remove sites at specified indices.
     """
 
 def remove_species(
     structure: str | dict[str, Any], species_list: Sequence[str]
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Remove all sites of specified species.
     """
 
 def set_site_property(
     structure: str | dict[str, Any], idx: int, key: str, value: Any
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Set a site property.
     """
@@ -1899,7 +1611,9 @@ def stress_to_voigt(stress: Sequence[Sequence[float]]) -> list[float]:
     Convert stress tensor to Voigt notation.
     """
 
-def structures_to_torch_sim_state(structures: Sequence[str | dict[str, Any]]) -> dict:
+def structures_to_torch_sim_state(
+    structures: Sequence[str | dict[str, Any]],
+) -> dict[str, Any]:
     r"""
     Convert multiple Structures to a batched TorchSim SimState dict.
 
@@ -1911,7 +1625,7 @@ def structures_to_torch_sim_state(structures: Sequence[str | dict[str, Any]]) ->
 
 def substitute_species(
     structure: str | dict[str, Any], old_species: str, new_species: str
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Substitute one species with another.
     """
@@ -1964,19 +1678,19 @@ def to_pymatgen_structure(structure: str | dict[str, Any]) -> Any:
     Convert a ferrox dict to a pymatgen Structure object.
     """
 
-def to_torch_sim_state(structure: str | dict[str, Any]) -> dict:
+def to_torch_sim_state(structure: str | dict[str, Any]) -> dict[str, Any]:
     r"""
     Convert a Structure to TorchSim SimState dict format.
 
     The returned dict has the same structure as torch_sim.SimState:
-    - positions: list of [x, y, z] for all atoms
-    - masses: list of atomic masses in amu
-    - cell: list of 3x3 matrices (one per system, column-major)
+    - positions: list[Any] of [x, y, z] for all atoms
+    - masses: list[Any] of atomic masses in amu
+    - cell: list[Any] of 3x3 matrices (one per system, column-major)
     - pbc: [bool, bool, bool] periodic boundary conditions
-    - atomic_numbers: list of atomic numbers
-    - system_idx: list of system indices (all 0 for single structure)
-    - charge: list of system charges
-    - spin: list of system spins
+    - atomic_numbers: list[Any] of atomic numbers
+    - system_idx: list[Any] of system indices (all 0 for single structure)
+    - charge: list[Any] of system charges
+    - spin: list[Any] of system spins
     """
 
 def translate_sites(
@@ -1984,7 +1698,7 @@ def translate_sites(
     indices: Sequence[int],
     vector: Sequence[float],
     fractional: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     r"""
     Translate selected sites by a vector.
     """
@@ -2004,7 +1718,7 @@ def velocity_verlet_step(state: MDState, dt: float, compute_forces: Any) -> None
             original value before the step when this happens.
     """
 
-def wrap_to_unit_cell(structure: str | dict[str, Any]) -> dict:
+def wrap_to_unit_cell(structure: str | dict[str, Any]) -> dict[str, Any]:
     r"""
     Wrap all sites to the unit cell.
     """
@@ -2024,19 +1738,20 @@ def zener_ratio(c11: float, c12: float, c44: float) -> float:
     Calculate the Zener anisotropy ratio.
     """
 
-# Namespace classes that group related functions
 __version__: str
 
+# Namespace classes that group related functions
+
 class Cell:
-    area = area
     delaunay_reduce = delaunay_reduce
-    get_lll_mapping = get_lll_mapping
-    get_lll_reduced_lattice = get_lll_reduced_lattice
-    get_volume = get_volume
+    find_supercell_matrix = find_supercell_matrix
     is_niggli_reduced = is_niggli_reduced
+    is_supercell = is_supercell
+    lattices_equivalent = lattices_equivalent
     minimum_image_distance = minimum_image_distance
     minimum_image_vector = minimum_image_vector
     niggli_reduce = niggli_reduce
+    perpendicular_distances = perpendicular_distances
 
 class Composition:
     composition_charge = composition_charge
@@ -2044,33 +1759,42 @@ class Composition:
     formula_hash = formula_hash
     fractional_composition = fractional_composition
     get_atomic_fraction = get_atomic_fraction
+    get_reduced_factor = get_reduced_factor
     get_wt_fraction = get_wt_fraction
     is_charge_balanced = is_charge_balanced
     parse_composition = parse_composition
     reduced_composition = reduced_composition
+    remap_elements = remap_elements
+    species_hash = species_hash
 
 class Coordination:
-    classify_all_atoms = classify_all_atoms
-    classify_local_structure = classify_local_structure
-    classify_site = classify_site
     get_cn_voronoi = get_cn_voronoi
     get_cn_voronoi_all = get_cn_voronoi_all
     get_coordination_number = get_coordination_number
     get_coordination_numbers = get_coordination_numbers
     get_local_environment = get_local_environment
     get_local_environment_voronoi = get_local_environment_voronoi
+    get_neighbors = get_neighbors
+    get_voronoi_neighbors = get_voronoi_neighbors
 
 class Defects:
+    classify_site = classify_site
     create_antisite = create_antisite
     create_dimer = create_dimer
     create_interstitial = create_interstitial
     create_substitution = create_substitution
     create_vacancy = create_vacancy
+    distort_bonds = distort_bonds
     find_interstitial_sites = find_interstitial_sites
+    find_supercell = find_supercell
     find_voronoi_interstitials = find_voronoi_interstitials
     generate_all = generate_all
+    guess_charge_states = guess_charge_states
+    local_rattle = local_rattle
+    rattle = rattle
 
 class Elastic:
+    apply_strain = apply_strain
     bulk_modulus = bulk_modulus
     generate_strains = generate_strains
     is_stable = is_stable
@@ -2111,12 +1835,11 @@ class Io:
     write_structure_file = write_structure_file
 
 class Lattice:
-    deform = deform
-    distance_from_point = distance_from_point
     get_inv_matrix = get_inv_matrix
+    get_lll_mapping = get_lll_mapping
+    get_lll_reduced_lattice = get_lll_reduced_lattice
     get_metric_tensor = get_metric_tensor
     get_reciprocal_lattice = get_reciprocal_lattice
-    lattices_equivalent = lattices_equivalent
 
 class Md:
     LangevinIntegrator = LangevinIntegrator
@@ -2127,19 +1850,16 @@ class Md:
     velocity_verlet_step = velocity_verlet_step
 
 class Neighbors:
+    distance_from_point = distance_from_point
     distance_matrix = distance_matrix
     get_distance = get_distance
     get_distance_and_image = get_distance_and_image
-    get_distance_with_image = get_distance_with_image
     get_neighbor_list = get_neighbor_list
-    get_neighbors = get_neighbors
-
-class Optimizers:
-    CellFireState = CellFireState
-    FireConfig = FireConfig
-    FireState = FireState
+    is_periodic_image = is_periodic_image
 
 class OrderParams:
+    classify_all_atoms = classify_all_atoms
+    classify_local_structure = classify_local_structure
     compute_steinhardt_q = compute_steinhardt_q
 
 class Oxidation:
@@ -2147,13 +1867,11 @@ class Oxidation:
     add_oxidation_state_by_element = add_oxidation_state_by_element
     add_oxidation_state_by_site = add_oxidation_state_by_site
     compute_bv_sums = compute_bv_sums
-    guess_charge_states = guess_charge_states
     guess_oxidation_states = guess_oxidation_states
     oxi_state_guesses = oxi_state_guesses
     remove_oxidation_states = remove_oxidation_states
 
 class Potentials:
-    calculate_energy = calculate_energy
     compute_harmonic_bonds = compute_harmonic_bonds
     compute_lennard_jones = compute_lennard_jones
     compute_lennard_jones_forces = compute_lennard_jones_forces
@@ -2171,26 +1889,17 @@ class Rdf:
     compute_element_rdf = compute_element_rdf
     compute_rdf = compute_rdf
 
-class Species:
+class SpeciesNamespace:
     Species = Species
-    normalize_element_symbol = normalize_element_symbol
-    species_hash = species_hash
-    species_strings = species_strings
 
 class Structure:
     StructureMatcher = StructureMatcher
-    apply_inversion = apply_inversion
-    apply_operation = apply_operation
-    apply_strain = apply_strain
-    apply_translation = apply_translation
     copy_structure = copy_structure
-    distort_bonds = distort_bonds
+    deform = deform
     enumerate_derivatives = enumerate_derivatives
     ewald_energy = ewald_energy
-    find_supercell = find_supercell
-    find_supercell_matrix = find_supercell_matrix
     get_all_site_properties = get_all_site_properties
-    get_reduced_factor = get_reduced_factor
+    get_distance_with_image = get_distance_with_image
     get_reduced_structure = get_reduced_structure
     get_reduced_structure_with_params = get_reduced_structure_with_params
     get_site_properties = get_site_properties
@@ -2198,26 +1907,23 @@ class Structure:
     get_sorted_structure = get_sorted_structure
     get_structure_metadata = get_structure_metadata
     interpolate = interpolate
-    is_periodic_image = is_periodic_image
-    is_stable = is_stable
-    is_supercell = is_supercell
-    local_rattle = local_rattle
     make_supercell = make_supercell
     make_supercell_diag = make_supercell_diag
     matches = matches
     order_disordered = order_disordered
     perturb = perturb
-    rattle = rattle
-    remap_elements = remap_elements
     remove_sites = remove_sites
     remove_species = remove_species
     set_site_property = set_site_property
     site_labels = site_labels
+    species_strings = species_strings
     substitute_species = substitute_species
     translate_sites = translate_sites
     wrap_to_unit_cell = wrap_to_unit_cell
 
 class Surfaces:
+    area = area
+    calculate_energy = calculate_energy
     compute_wulff = compute_wulff
     d_spacing = d_spacing
     enumerate_miller = enumerate_miller
@@ -2227,10 +1933,11 @@ class Surfaces:
     get_surface_atoms = get_surface_atoms
     make_slab = make_slab
     miller_to_normal = miller_to_normal
-    perpendicular_distances = perpendicular_distances
 
 class Symmetry:
+    apply_inversion = apply_inversion
     apply_operation = apply_operation
+    apply_translation = apply_translation
     get_conventional = get_conventional
     get_crystal_system = get_crystal_system
     get_equivalent_sites = get_equivalent_sites
@@ -2250,3 +1957,25 @@ class Trajectory:
 class Xrd:
     compute_xrd = compute_xrd
     get_atomic_scattering_params = get_atomic_scattering_params
+
+# Lowercase aliases for module-style imports
+cell = Cell
+composition = Composition
+coordination = Coordination
+defects = Defects
+elastic = Elastic
+io = Io
+lattice = Lattice
+md = Md
+neighbors = Neighbors
+order_params = OrderParams
+oxidation = Oxidation
+potentials = Potentials
+properties = Properties
+rdf = Rdf
+species = SpeciesNamespace
+structure = Structure
+surfaces = Surfaces
+symmetry = Symmetry
+trajectory = Trajectory
+xrd = Xrd
