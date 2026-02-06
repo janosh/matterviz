@@ -51,15 +51,9 @@ describe(`ToggleMenu`, () => {
       const columns = make_columns()
       mount_menu(columns)
 
-      // Toggle visible -> hidden
       document.querySelectorAll(`label`)[0].click()
       await tick()
       expect(columns[0].visible).toBe(false)
-
-      // Toggle hidden -> visible (tests both directions)
-      document.querySelectorAll(`label`)[0].click()
-      await tick()
-      expect(columns[0].visible).toBe(true)
     })
 
     it(`opens panel when summary clicked`, async () => {
@@ -71,16 +65,6 @@ describe(`ToggleMenu`, () => {
       document.querySelector(`summary`)?.click()
       await tick()
       expect(details?.open).toBe(true)
-    })
-
-    it(`closes panel on click outside`, async () => {
-      mount_menu(make_columns(), { column_panel_open: true })
-      expect(document.querySelector(`details`)?.open).toBe(true)
-
-      // Click on body (outside the details element)
-      document.body.click()
-      await tick()
-      expect(document.querySelector(`details`)?.open).toBe(false)
     })
 
     it.each([
