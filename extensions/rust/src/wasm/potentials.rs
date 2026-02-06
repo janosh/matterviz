@@ -13,9 +13,9 @@ use crate::wasm_types::WasmResult;
 #[tsify(into_wasm_abi)]
 pub struct JsPotentialResult {
     pub energy: f64,
-    /// Flattened forces [fx0, fy0, fz0, fx1, fy1, fz1, ...] in eV/Å.
+    /// Flattened forces [fx0, fy0, fz0, fx1, fy1, fz1, ...] in eV/A.
     pub forces: Vec<f64>,
-    /// Stress tensor in Voigt order: [xx, yy, zz, yz, xz, xy] in eV/Å³.
+    /// Stress tensor in Voigt order: [xx, yy, zz, yz, xz, xy] in eV/A^3.
     pub stress: Option<[f64; 6]>,
 }
 

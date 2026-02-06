@@ -1,6 +1,6 @@
 {
   "name": "matterviz-wasm",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "WASM bindings for ferrox structure matching library",
   "type": "module",
   "main": "index.js",
@@ -20,8 +20,9 @@
     "data/"
   ],
   "scripts": {
-    "build": "cd .. && wasm-pack build --target web --features wasm --no-default-features && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/",
-    "build:dev": "cd .. && wasm-pack build --target web --features wasm --no-default-features --dev && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/",
+    "build": "cd .. && wasm-pack build --target web --features wasm --no-default-features && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/ && deno run -A generate_types.ts",
+    "build:dev": "cd .. && wasm-pack build --target web --features wasm --no-default-features --dev && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/ && deno run -A generate_types.ts",
+    "generate-types": "deno run -A generate_types.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
