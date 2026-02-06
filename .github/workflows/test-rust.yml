@@ -122,6 +122,14 @@ jobs:
         run: |
           pnpm install
           pnpm test
+      - name: Verify WASM types are up to date
+        working-directory: extensions/rust/wasm
+        run: |
+          node generate_types.js
+          if ! git diff --exit-code types.d.ts; then
+            echo "::error::WASM types.d.ts is out of sync! Run 'node generate_types.js' and commit."
+            exit 1
+          fi
       - name: Upload WASM artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4

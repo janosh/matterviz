@@ -20,8 +20,10 @@
     "data/"
   ],
   "scripts": {
-    "build": "cd .. && wasm-pack build --target web --features wasm --no-default-features && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/",
-    "build:dev": "cd .. && wasm-pack build --target web --features wasm --no-default-features --dev && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/",
+    "build": "cd .. && wasm-pack build --target web --features wasm --no-default-features && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/ && node generate_types.js",
+    "build:dev": "cd .. && wasm-pack build --target web --features wasm --no-default-features --dev && cd wasm && rm -rf pkg && cp -r ../pkg . && rm -f pkg/.gitignore && mkdir -p data && cp ../src/atomic_scattering_params.json data/ && node generate_types.js",
+    "generate-types": "node generate_types.js",
+    "check-types": "node generate_types.js --check",
     "test": "vitest run",
     "test:watch": "vitest"
   },
