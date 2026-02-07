@@ -102,8 +102,7 @@ export const PINCH_ZOOM_THRESHOLD = 0.1
 // Note: min === 0 handles -0 correctly since -0 === 0 in JavaScript
 const is_default_range = ([min, max]: [number, number]) => min === 0 && max === 1
 
-// Lazy range expansion: only expand when new data exceeds current bounds.
-// Never shrink when data is hidden (preserves user's view context).
+// Adopt the new data range, unless all series were hidden (sentinel [0, 1] fallback).
 // NOTE: [0, 1] is the "no data" sentinel - when all series are hidden, auto ranges
 // fall back to [0, 1]. Actual data spanning exactly [0, 1] is a rare edge case.
 export function expand_range_if_needed(
@@ -117,20 +116,13 @@ export function expand_range_if_needed(
   if (!new_valid) return { range: current, changed: false }
   if (!current_valid) return { range: new_range, changed: true }
 
-  const current_is_default = is_default_range(current)
-  const new_is_default = is_default_range(new_range)
-
-  // Adopt new range if transitioning from default, keep current if data was hidden
-  if (current_is_default !== new_is_default) {
-    return current_is_default
-      ? { range: new_range, changed: true }
-      : { range: current, changed: false }
+  // When all series are hidden, auto ranges fall back to [0, 1] sentinel.
+  // Don't shrink to that — preserve the current view so it doesn't jump.
+  if (!is_default_range(current) && is_default_range(new_range)) {
+    return { range: current, changed: false }
   }
-  // Both default or neither - expand only (take min of mins, max of maxes)
-  const expanded: [number, number] = [
-    Math.min(current[0], new_range[0]),
-    Math.max(current[1], new_range[1]),
-  ]
-  const changed = expanded[0] !== current[0] || expanded[1] !== current[1]
-  return { range: expanded, changed }
+
+  // Otherwise adopt the new range directly (both expand and shrink)
+  const changed = new_range[0] !== current[0] || new_range[1] !== current[1]
+  return { range: new_range, changed }
 }

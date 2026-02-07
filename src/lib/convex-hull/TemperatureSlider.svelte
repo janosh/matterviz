@@ -92,9 +92,9 @@
     align-items: center;
     gap: 4px;
     background: color-mix(in srgb, var(--hull-bg, transparent) 80%, transparent);
-    padding: 6px 8px;
-    border-radius: var(--border-radius, 3pt);
-    backdrop-filter: blur(4px);
+    padding: 3px 5px;
+    border-radius: var(--border-radius, 6pt);
+    backdrop-filter: blur(2px);
   }
   .slider-wrapper {
     display: flex;
