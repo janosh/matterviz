@@ -42,7 +42,7 @@
       x: [...Array(y.length + 1).keys()].slice(1),
       y,
       color_values: y,
-      point_style: { radius: 4 },
+      point_style: { radius: 2 },
     },
   ]}
   bind:tooltip_point
