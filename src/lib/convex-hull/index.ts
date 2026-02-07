@@ -1,4 +1,5 @@
 import type { D3InterpolateName } from '$lib/colors'
+import type { GizmoOptions } from '@threlte/extras'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type {
@@ -124,6 +125,9 @@ export interface Hull3DProps {
   hull_face_opacity?: number
   hull_face_color_mode?: HullFaceColorMode
   element_colors?: Record<string, string>
+  // Orientation gizmo: false to disable, true for defaults, object to customize
+  // (colors, size, position, etc. - same as @threlte/extras Gizmo props)
+  gizmo?: boolean | Partial<GizmoOptions>
 }
 
 // Configuration result from merging user controls with defaults

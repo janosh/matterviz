@@ -107,6 +107,12 @@
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   } = $props()
+
+  // Focus the multiselect input next to the "Color scale" label
+  function focus_multiselect(evt: Event): void {
+    ;(evt.currentTarget as HTMLElement).nextElementSibling
+      ?.querySelector<HTMLInputElement>(`input`)?.focus()
+  }
 </script>
 
 <DraggablePane
@@ -114,9 +120,7 @@
   pane_props={{
     ...pane_props,
     class: `convex-hull-controls-pane ${pane_props?.class ?? ``}`,
-    style: `--pane-max-height: max(350px, calc(100cqh - 40px)); ${
-      pane_props?.style ?? ``
-    }`,
+    style: `${pane_props?.style ?? ``}`,
   }}
   toggle_props={{
     title: controls_open ? `` : `Convex hull controls`,
@@ -127,7 +131,7 @@
   open_icon="Cross"
   {...rest}
 >
-  <h4 style="margin: 0">
+  <h4>
     {@html merged_controls.title || `Convex Hull Controls`}
   </h4>
 
@@ -192,7 +196,7 @@
         bind:value={max_hull_dist_show_phases}
         class="threshold-input"
       />
-      <span style="white-space: nowrap; font-size: 0.85em">eV/atom</span>
+      <span style="white-space: nowrap">eV/atom</span>
       <input
         type="range"
         min="0"
@@ -244,8 +248,19 @@
     </div>
   {:else}
     <!-- Color scale selector -->
-    <div style="display: grid; gap: 8px; grid-template-columns: auto 1fr">
-      <span {@attach tooltip({ content: `Choose energy colormap` })}>Color scale</span>
+    <div
+      style="display: grid; gap: 8px; grid-template-columns: auto 1fr; align-items: center; overflow: hidden; margin-top: 12px"
+    >
+      <span
+        {@attach tooltip({ content: `Choose energy colormap` })}
+        onclick={focus_multiselect}
+        onkeydown={(evt) => {
+          if (evt.key === `Enter` || evt.key === ` `) focus_multiselect(evt)
+        }}
+        role="button"
+        tabindex="0"
+        style="cursor: pointer"
+      >Color scale</span>
       <ColorScaleSelect
         bind:value={color_scale}
         selected={[color_scale]}
@@ -290,9 +305,8 @@
       >
         <span class="control-label">Label threshold</span>
         <label style="display: flex; align-items: center; gap: 4px; flex: 1">
-          <span style="white-space: nowrap; font-size: 0.85em">{
-              max_hull_dist_show_labels.toFixed(2)
-            } eV/atom</span>
+          <span style="white-space: nowrap">{max_hull_dist_show_labels.toFixed(2)}
+            eV/atom</span>
           <input
             type="range"
             min="0"
@@ -340,7 +354,7 @@
           class="threshold-slider"
           style="flex: 1; min-width: 80px"
         />
-        <span style="font-size: 0.75em; min-width: 2em; text-align: right">{
+        <span style="font-size: 0.9em; min-width: 2em; text-align: right">{
           format_num(hull_face_opacity, `.1%`)
         }</span>
       </div>
@@ -447,15 +461,18 @@
 </DraggablePane>
 
 <style>
+  :global(.convex-hull-controls-pane) {
+    --pane-max-height: max(350px, calc(100cqh - 40px));
+    --pane-padding: 1ex;
+    --pane-gap: 0;
+    font-size: 0.85em;
+    pointer-events: auto;
+  }
   .control-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 12px;
-  }
-  /* Remove bottom margin from last element to prevent blank scrollable space */
-  :global(.convex-hull-controls-pane > :last-child) {
-    margin-bottom: 0;
+    margin-top: 12px;
   }
   .control-label {
     font-weight: 500;
@@ -505,6 +522,7 @@
     display: flex;
     gap: 12px;
     flex: 1;
+    margin-top: 12px;
   }
   .threshold-input {
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
@@ -517,7 +535,6 @@
   }
   .face-mode-btn {
     padding: 2px 6px;
-    font-size: 0.85em;
     min-width: auto;
     flex: 0 1 auto;
   }
