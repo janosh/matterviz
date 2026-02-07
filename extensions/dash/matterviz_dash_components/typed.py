@@ -40,6 +40,7 @@ class Structure(MatterViz):
         hovered: bool | None = None,
         info_pane_open: bool | None = None,
         loading: bool | None = None,
+        measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
         on_camera_move: Any | None = None,
         on_camera_reset: Any | None = None,
@@ -105,6 +106,8 @@ class Structure(MatterViz):
             mv_props["info_pane_open"] = info_pane_open
         if loading is not None:
             mv_props["loading"] = loading
+        if measure_mode is not None:
+            mv_props["measure_mode"] = measure_mode
         if measured_sites is not None:
             mv_props["measured_sites"] = measured_sites
         if on_camera_move is not None:
@@ -874,7 +877,7 @@ class ConvexHull4D(MatterViz):
         hull_face_opacity: float | None = None,
         hull_face_color_mode: Any | None = None,
         element_colors: dict | None = None,
-        gizmo: dict | None = None,
+        gizmo: bool | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
