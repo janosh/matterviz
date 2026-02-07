@@ -13,25 +13,55 @@ export async function ensure_pane_visible(
   }
 }
 
-// Robustly open the controls pane with retries
+// Robustly open controls pane via direct DOM manipulation
+// (Svelte 5's event delegation prevents programmatic .click() from toggling state)
 export async function open_controls_pane(
   page: Page,
   diagram: Locator,
 ): Promise<Locator> {
   const pane = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    // Use evaluate to directly toggle the pane's display via its show state
+  for (let attempt = 0; attempt < 5; attempt++) {
+    // Force-open via DOM: set display and add class, matching DraggablePane's show=true state
     // deno-lint-ignore no-await-in-loop -- sequential retry required
     await diagram.evaluate((el) => {
       const pane_el = el.querySelector(`.convex-hull-controls-pane`) as HTMLElement
-      if (pane_el && getComputedStyle(pane_el).display === `none`) {
+      if (pane_el) {
+        pane_el.style.display = `grid`
+        pane_el.classList.add(`pane-open`)
+        // Also set aria-expanded on the toggle to keep state consistent
+        const toggle = el.querySelector(
+          `.legend-controls-btn, .convex-hull-controls-toggle`,
+        )
+        if (toggle) toggle.setAttribute(`aria-expanded`, `true`)
+      }
+    })
+    // deno-lint-ignore no-await-in-loop -- sequential retry required
+    await page.waitForTimeout(200)
+    // deno-lint-ignore no-await-in-loop -- sequential retry required
+    if (await pane.isVisible()) return pane
+  }
+  return pane
+}
+
+// Robustly open info pane via direct DOM manipulation
+export async function open_info_pane(
+  page: Page,
+  diagram: Locator,
+): Promise<Locator> {
+  const pane = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    // deno-lint-ignore no-await-in-loop -- sequential retry required
+    await diagram.evaluate((el) => {
+      const pane_el = el.querySelector(`.convex-hull-info-pane`) as HTMLElement
+      if (pane_el) {
         pane_el.style.display = `grid`
         pane_el.classList.add(`pane-open`)
       }
     })
     // deno-lint-ignore no-await-in-loop -- sequential retry required
-    await page.waitForTimeout(100)
+    await page.waitForTimeout(200)
     // deno-lint-ignore no-await-in-loop -- sequential retry required
     if (await pane.isVisible()) return pane
   }

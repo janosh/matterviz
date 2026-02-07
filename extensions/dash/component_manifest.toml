@@ -57,8 +57,6 @@ include_from = [
   "convex-hull/index.d.ts:BaseConvexHullProps",
   "convex-hull/index.d.ts:Hull3DProps",
 ]
-[components.ConvexHull4D.type_hints]
-gizmo = "dict | bool | None"
 
 [components.IsobaricBinaryPhaseDiagram]
 key = "phase-diagram/IsobaricBinaryPhaseDiagram"

@@ -309,6 +309,29 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
       .toPass({ timeout: 5000 })
   })
 
+  test(`drag-right increases rotation_y (natural direction)`, async ({ page }) => {
+    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
+    const canvas = diagram.locator(`canvas`)
+    await expect(canvas).toBeVisible()
+
+    const rot_before = Number(await diagram.getAttribute(`data-rotation-y`))
+    const box = await canvas.boundingBox()
+    expect(box).toBeTruthy()
+    if (!box) throw new Error(`Canvas bounding box not found`)
+
+    // Drag right across the canvas
+    const cx = box.x + box.width / 2
+    const cy = box.y + box.height / 2
+    await page.mouse.move(cx, cy)
+    await page.mouse.down()
+    await page.mouse.move(cx + 80, cy, { steps: 5 })
+    await page.mouse.up()
+    await page.waitForTimeout(50)
+
+    const rot_after = Number(await diagram.getAttribute(`data-rotation-y`))
+    expect(rot_after).toBeGreaterThan(rot_before)
+  })
+
   test(`uniform mode shows color picker, other modes hide it`, async ({ page }) => {
     const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     await expect(diagram).toBeVisible()

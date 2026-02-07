@@ -107,6 +107,15 @@
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   } = $props()
+
+  // Focus the multiselect input inside the color scale selector
+  function focus_multiselect(evt: Event): void {
+    ;(evt.currentTarget as HTMLElement).closest(`div`)?.querySelector<
+      HTMLInputElement
+    >(
+      `.multiselect input`,
+    )?.focus()
+  }
 </script>
 
 <DraggablePane
@@ -250,17 +259,9 @@
     >
       <span
         {@attach tooltip({ content: `Choose energy colormap` })}
-        onclick={(evt) => {
-          ;(evt.currentTarget as HTMLElement).nextElementSibling?.querySelector<
-            HTMLInputElement
-          >(`input`)?.focus()
-        }}
+        onclick={focus_multiselect}
         onkeydown={(evt) => {
-          if (evt.key === `Enter` || evt.key === ` `) {
-            ;(evt.currentTarget as HTMLElement).nextElementSibling?.querySelector<
-              HTMLInputElement
-            >(`input`)?.focus()
-          }
+          if (evt.key === `Enter` || evt.key === ` `) focus_multiselect(evt)
         }}
         role="button"
         tabindex="0"

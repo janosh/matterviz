@@ -314,29 +314,28 @@
   const deg2rad = (deg: number): number => deg * Math.PI / 180
   let gizmo_cam_ref = $state<PerspectiveCamera>()
   let gizmo_orbit_ref = $state<{ update?: () => void }>()
-  let gizmo_active = false
+  let gizmo_active = $state(false)
 
-  // Convert elevation/azimuth (degrees) to Three.js camera position.
-  function gizmo_position(
+  // Convert elevation/azimuth (degrees) to Three.js camera position + up vector.
+  function gizmo_camera(
     elev_deg: number,
     azim_deg: number,
-  ): [number, number, number] {
+  ): { position: [number, number, number]; up: [number, number, number] } {
     const [elev, azim] = [deg2rad(elev_deg), deg2rad(azim_deg)]
-    return [
-      -Math.sin(azim) * Math.sin(elev) * GIZMO_CAM_DIST,
-      -Math.cos(azim) * Math.sin(elev) * GIZMO_CAM_DIST,
-      Math.cos(elev) * GIZMO_CAM_DIST,
-    ]
-  }
-
-  // Convert elevation/azimuth (degrees) to Three.js camera up vector.
-  function gizmo_up(elev_deg: number, azim_deg: number): [number, number, number] {
-    const [elev, azim] = [deg2rad(elev_deg), deg2rad(azim_deg)]
-    return [
-      Math.sin(azim) * Math.cos(elev),
-      Math.cos(azim) * Math.cos(elev),
+    const [se, ce, sa, ca] = [
       Math.sin(elev),
+      Math.cos(elev),
+      Math.sin(azim),
+      Math.cos(azim),
     ]
+    return {
+      position: [
+        -sa * se * GIZMO_CAM_DIST,
+        -ca * se * GIZMO_CAM_DIST,
+        ce * GIZMO_CAM_DIST,
+      ],
+      up: [sa * ce, ca * ce, se],
+    }
   }
 
   // Center camera on the triangle's visual center for a given elevation.
@@ -345,6 +344,7 @@
   // Scale by cos(elevation) so offset only applies in near-top-down views.
   function center_camera(elev_deg: number): void {
     camera.center_x = 0
+    // 0.6 matches the draw_data_points() scale factor that maps data coords to canvas pixels
     const scale = Math.min(canvas_dims.width, canvas_dims.height) * 0.6 * camera.zoom
     camera.center_y = Math.sqrt(3) / 12 * scale * Math.cos(deg2rad(elev_deg))
   }
@@ -354,8 +354,9 @@
     if (gizmo_active) return
     const cam = gizmo_cam_ref
     if (!cam) return
-    cam.position.set(...gizmo_position(camera.elevation, camera.azimuth))
-    cam.up.set(...gizmo_up(camera.elevation, camera.azimuth))
+    const { position, up } = gizmo_camera(camera.elevation, camera.azimuth)
+    cam.position.set(...position)
+    cam.up.set(...up)
     cam.lookAt(0, 0, 0)
     gizmo_orbit_ref?.update?.()
   })
@@ -380,19 +381,14 @@
   // Gizmo axis colors, with consumer overrides merged on top
   const gizmo_props = $derived.by(() => {
     const axis_options = Object.fromEntries(
-      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover_color]) => {
-        const is_neg = axis.startsWith(`n`)
-        return [axis, {
-          color,
-          labelColor: `#111`,
-          opacity: is_neg ? 0.9 : 0.8,
-          hover: {
-            color: hover_color,
-            labelColor: `#222`,
-            opacity: is_neg ? 1 : 0.9,
-          },
-        }]
-      }),
+      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map((
+        [axis, color, hover_color],
+      ) => [axis, {
+        color,
+        labelColor: `#111`,
+        opacity: 0.85,
+        hover: { color: hover_color, labelColor: `#222`, opacity: 1 },
+      }]),
     )
     return {
       background: { enabled: false },
@@ -709,6 +705,8 @@
 
   function draw_z_axis_ticks(): void {
     if (!ctx || elements.length !== 3) return
+    // Hide z-axis in near-top-down views where ticks collapse to a point
+    if (Math.abs(camera.elevation) < 5) return
 
     const { min: e_min, max: e_max, center: e_mid } = energy_range
     if (Math.abs(e_max - e_min) < 1e-6) return
@@ -747,18 +745,22 @@
     // Rotated axis label: Eform (eV/atom) with "form" as subscript
     const { x: lx, y: ly } = project_3d_point(axis_x, axis_y, e_mid)
     const fs = merged_config.font_size ?? 12
+    const sub_fs = Math.round(fs * 0.75)
     ctx.translate(lx - 50 * canvas_dims.scale, ly)
     ctx.rotate(-Math.PI / 2)
     ctx.textAlign = `left`
-    // Approximate total width to center the composite label
+    // Measure widths in each font, then draw — reordered to minimize font switches
     ctx.font = `bold ${fs}px Arial`
-    const offset = -ctx.measureText(`Eform (eV/atom)`).width / 2
+    const e_width = ctx.measureText(`E`).width
+    const suffix_width = ctx.measureText(` (eV/atom)`).width
+    ctx.font = `${sub_fs}px Arial`
+    const form_width = ctx.measureText(`form`).width
+    const offset = -(e_width + form_width + suffix_width) / 2
+    // Draw subscript while sub-font is still active
+    ctx.fillText(`form`, offset + e_width, fs * 0.3)
+    ctx.font = `bold ${fs}px Arial`
     ctx.fillText(`E`, offset, 0)
-    const ex = offset + ctx.measureText(`E`).width
-    ctx.font = `${Math.round(fs * 0.75)}px Arial`
-    ctx.fillText(`form`, ex, fs * 0.3)
-    ctx.font = `bold ${fs}px Arial`
-    ctx.fillText(` (eV/atom)`, ex + ctx.measureText(`form`).width, 0)
+    ctx.fillText(` (eV/atom)`, offset + e_width + form_width, 0)
     ctx.restore()
   }
 
@@ -1085,6 +1087,7 @@
     is_dragging = true
     drag_started = false
     hover_data = null
+    on_point_hover?.(null)
     last_mouse = { x: event.clientX, y: event.clientY }
   }
 
@@ -1297,8 +1300,6 @@
   data-has-selection={selected_entry !== null}
   data-has-hover={hover_data !== null}
   data-is-dragging={is_dragging}
-  data-elevation={Math.round(camera.elevation)}
-  data-azimuth={Math.round(camera.azimuth)}
   bind:this={wrapper}
   role="application"
   tabindex="-1"
@@ -1446,13 +1447,14 @@
   {#if gizmo && typeof WebGLRenderingContext !== `undefined`}
     <div class="gizmo-wrapper {controls_config.class}">
       <Canvas
-        createRenderer={(cvs) => new WebGLRenderer({ canvas: cvs, alpha: true, antialias: true })}
+        createRenderer={(cvs: HTMLCanvasElement) =>
+        new WebGLRenderer({ canvas: cvs, alpha: true, antialias: true })}
       >
         <T.PerspectiveCamera
           makeDefault
           bind:ref={gizmo_cam_ref}
-          position={gizmo_position(camera.elevation, camera.azimuth)}
-          up={gizmo_up(camera.elevation, camera.azimuth)}
+          position={gizmo_camera(camera.elevation, camera.azimuth).position}
+          up={gizmo_camera(camera.elevation, camera.azimuth).up}
           fov={50}
         >
           <extras.OrbitControls
@@ -1556,7 +1558,7 @@
   }
   .gizmo-wrapper {
     position: absolute;
-    top: 2.5em;
+    top: 1.8em;
     right: 1ex;
     width: clamp(80px, 18cqmin, 110px);
     height: clamp(80px, 18cqmin, 110px);
@@ -1593,7 +1595,7 @@
     opacity: 1;
     pointer-events: auto;
   }
-  .control-buttons button {
+  .control-buttons :global(button) {
     background: transparent;
     border: none;
     padding: 4px;
@@ -1604,7 +1606,7 @@
     display: flex;
     font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
-  .control-buttons button:hover {
+  .control-buttons :global(button):hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
 </style>
