@@ -14,7 +14,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
-    const control_buttons = diagram.locator(`.control-buttons`)
+    const control_buttons = diagram.locator(`section.control-buttons`)
     await expect(control_buttons).toBeAttached()
 
     // Control buttons should have hover-visible class (default mode)
@@ -47,7 +47,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     )
     const diagram = page.locator(`.convex-hull-3d`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-    const canvas = diagram.locator(`canvas`)
+    const canvas = diagram.locator(`canvas`).first()
     const box = await canvas.boundingBox()
     if (box) {
       // Click multiple positions to ensure we hit an entry
@@ -71,7 +71,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     const diagram = ternary_grid.locator(`.convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
-    const canvas = diagram.locator(`canvas`)
+    const canvas = diagram.locator(`canvas`).first()
     await expect(canvas).toBeVisible()
 
     // Open legend controls pane to toggle hull faces
@@ -111,7 +111,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
   test(`camera elevation/azimuth controls accept numeric changes`, async ({ page }) => {
     const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
-    await diagram.locator(`.legend-controls-btn`).click()
+    await dom_click(diagram.locator(`.legend-controls-btn`))
     const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
     const elev = controls.getByText(`Elev`).locator(`..`).locator(`input[type="number"]`)
@@ -120,7 +120,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
       .first()
     await elev.fill(`45`)
     await azim.fill(`120`)
-    await expect(diagram.locator(`canvas`)).toBeVisible()
+    await expect(diagram.locator(`canvas`).first()).toBeVisible()
   })
 
   test(`drag release does not trigger click callback`, async ({ page }) => {
@@ -129,7 +129,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await expect(diagram).toBeVisible()
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
 
-    const canvas = diagram.locator(`canvas`)
+    const canvas = diagram.locator(`canvas`).first()
     const box = await canvas.boundingBox()
     expect(box, `Canvas bounding box not found - rendering may have failed`).toBeTruthy()
     if (!box) throw new Error(`Canvas bounding box not found`)
@@ -172,7 +172,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
-    const canvas = diagram.locator(`canvas`)
+    const canvas = diagram.locator(`canvas`).first()
     await expect(canvas).toBeVisible()
 
     // Move mouse to center of canvas to trigger hover on a compound
@@ -201,8 +201,8 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
-    // Open controls pane
-    await diagram.locator(`.legend-controls-btn`).click()
+    // Open controls pane (use dom_click to bypass canvas pointer interception)
+    await dom_click(diagram.locator(`.legend-controls-btn`))
     const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
 
@@ -223,7 +223,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
 
   test(`face color mode switch changes canvas rendering`, async ({ page }) => {
     const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
-    const canvas = diagram.locator(`canvas`)
+    const canvas = diagram.locator(`canvas`).first()
     await expect(canvas).toBeVisible()
 
     // Get initial canvas image data hash
@@ -240,8 +240,8 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
 
     const initial_hash = await get_canvas_hash()
 
-    // Open controls and switch to facet_index mode
-    await diagram.locator(`.legend-controls-btn`).click()
+    // Open controls and switch to facet_index mode (dom_click bypasses canvas interception)
+    await dom_click(diagram.locator(`.legend-controls-btn`))
     const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await controls.locator(`.face-color-mode-buttons`).getByText(`Index`).click()
 
@@ -256,7 +256,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
-    await diagram.locator(`.legend-controls-btn`).click()
+    await dom_click(diagram.locator(`.legend-controls-btn`))
     const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
 

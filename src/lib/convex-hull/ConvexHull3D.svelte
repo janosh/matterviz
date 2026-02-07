@@ -2,7 +2,9 @@
   import type { D3InterpolateName } from '$lib/colors'
   import {
     add_alpha,
+    AXIS_COLORS,
     is_dark_mode,
+    NEG_AXIS_COLORS,
     PLOT_COLORS,
     vesta_hex,
     watch_dark_mode,
@@ -20,8 +22,11 @@
   import { ColorBar, PlotTooltip } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
+  import { Canvas, T } from '@threlte/core'
+  import * as extras from '@threlte/extras'
   import { ticks } from 'd3-array'
   import { SvelteMap } from 'svelte/reactivity'
+  import { PerspectiveCamera, WebGLRenderer } from 'three'
   import {
     get_ternary_3d_coordinates,
     get_triangle_centroid,
@@ -95,6 +100,7 @@
     temperature = $bindable(),
     interpolate_temperature = true,
     max_interpolation_gap = 500,
+    gizmo = true,
     gas_config,
     gas_pressures = $bindable({}),
     children,
@@ -301,6 +307,101 @@
   }
   let camera = $state({ ...camera_default })
 
+  // === Gizmo state & coordinate mapping ===
+  // ConvexHull3D uses Rz(azimuth) then Rx(-elevation), viewing along -z_rotated.
+  // These helpers convert between that system and Three.js camera position/up.
+  const GIZMO_CAM_DIST = 5
+  const deg2rad = (deg: number): number => deg * Math.PI / 180
+  let gizmo_cam_ref = $state<PerspectiveCamera>()
+  let gizmo_orbit_ref = $state<{ update?: () => void }>()
+  let gizmo_active = false
+
+  // Convert elevation/azimuth (degrees) to Three.js camera position.
+  function gizmo_position(
+    elev_deg: number,
+    azim_deg: number,
+  ): [number, number, number] {
+    const [elev, azim] = [deg2rad(elev_deg), deg2rad(azim_deg)]
+    return [
+      -Math.sin(azim) * Math.sin(elev) * GIZMO_CAM_DIST,
+      -Math.cos(azim) * Math.sin(elev) * GIZMO_CAM_DIST,
+      Math.cos(elev) * GIZMO_CAM_DIST,
+    ]
+  }
+
+  // Convert elevation/azimuth (degrees) to Three.js camera up vector.
+  function gizmo_up(elev_deg: number, azim_deg: number): [number, number, number] {
+    const [elev, azim] = [deg2rad(elev_deg), deg2rad(azim_deg)]
+    return [
+      Math.sin(azim) * Math.cos(elev),
+      Math.cos(azim) * Math.cos(elev),
+      Math.sin(elev),
+    ]
+  }
+
+  // Center camera on the triangle's visual center for a given elevation.
+  // The centroid (rotation center) sits at 1/3 height while the bbox
+  // center is at 1/2 height — a difference of sqrt(3)/12 in data units.
+  // Scale by cos(elevation) so offset only applies in near-top-down views.
+  function center_camera(elev_deg: number): void {
+    camera.center_x = 0
+    const scale = Math.min(canvas_dims.width, canvas_dims.height) * 0.6 * camera.zoom
+    camera.center_y = Math.sqrt(3) / 12 * scale * Math.cos(deg2rad(elev_deg))
+  }
+
+  // Sync: ConvexHull3D → Three.js gizmo camera (on main canvas drag)
+  $effect(() => {
+    if (gizmo_active) return
+    const cam = gizmo_cam_ref
+    if (!cam) return
+    cam.position.set(...gizmo_position(camera.elevation, camera.azimuth))
+    cam.up.set(...gizmo_up(camera.elevation, camera.azimuth))
+    cam.lookAt(0, 0, 0)
+    gizmo_orbit_ref?.update?.()
+  })
+
+  // Sync: gizmo → ConvexHull3D (during and after gizmo animation)
+  function sync_gizmo_to_camera(): void {
+    const cam = gizmo_cam_ref
+    if (!cam) return
+    const { x: cx, y: cy, z: cz } = cam.position
+    const dist = Math.sqrt(cx * cx + cy * cy + cz * cz)
+    if (dist < 1e-6) return
+    const elev = Math.acos(Math.max(-1, Math.min(1, cz / dist))) * 180 / Math.PI
+    const sin_elev = Math.sin(deg2rad(elev))
+    const azim = Math.abs(sin_elev) > 1e-6
+      ? Math.atan2(-cx / (dist * sin_elev), -cy / (dist * sin_elev)) * 180 / Math.PI
+      : 0
+    camera.elevation = elev
+    camera.azimuth = azim
+    center_camera(elev)
+  }
+
+  // Gizmo axis colors, with consumer overrides merged on top
+  const gizmo_props = $derived.by(() => {
+    const axis_options = Object.fromEntries(
+      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map(([axis, color, hover_color]) => {
+        const is_neg = axis.startsWith(`n`)
+        return [axis, {
+          color,
+          labelColor: `#111`,
+          opacity: is_neg ? 0.9 : 0.8,
+          hover: {
+            color: hover_color,
+            labelColor: `#222`,
+            opacity: is_neg ? 1 : 0.9,
+          },
+        }]
+      }),
+    )
+    return {
+      background: { enabled: false },
+      size: 80,
+      ...axis_options,
+      ...(typeof gizmo === `object` ? gizmo : {}),
+    }
+  })
+
   // Interaction state
   let is_dragging = $state(false)
   let drag_started = $state(false)
@@ -394,6 +495,11 @@
       event.stopPropagation()
     }
 
+    if (event.key === `Escape` && modal_open) {
+      close_structure_popup()
+      return
+    }
+
     // Handle Enter for keyboard accessibility - select hovered entry
     if (event.key === `Enter`) {
       const entry = hover_data?.entry
@@ -418,6 +524,11 @@
 
     const actions: Record<string, () => void> = {
       r: reset_camera,
+      t: () => {
+        camera.elevation = 0
+        camera.azimuth = 0
+        center_camera(0)
+      },
       b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
       s: () => show_stable = !show_stable,
       u: () => show_unstable = !show_unstable,
@@ -969,26 +1080,25 @@
   }
 
   const handle_mouse_move = (event: MouseEvent) => {
-    if (is_dragging) {
-      const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
+    if (!is_dragging) return
+    const [dx, dy] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
 
-      // Mark as drag if any movement occurred
-      if (dx !== 0 || dy !== 0) drag_started = true
+    // Mark as drag if any movement occurred
+    if (dx !== 0 || dy !== 0) drag_started = true
 
-      // With Cmd/Ctrl held: pan the view instead of rotating
-      if (event.metaKey || event.ctrlKey) {
-        camera.center_x += dx
-        camera.center_y += dy
-      } else {
-        // Horizontal drag -> azimuth rotation around z-axis
-        camera.azimuth += dx * 0.3 // Positive dx (drag right) rotates clockwise
+    // With Cmd/Ctrl held: pan the view instead of rotating
+    if (event.metaKey || event.ctrlKey) {
+      camera.center_x += dx
+      camera.center_y += dy
+    } else {
+      // Horizontal drag -> azimuth rotation around z-axis
+      camera.azimuth += dx * 0.3 // Positive dx (drag right) rotates clockwise
 
-        // Vertical drag -> elevation angle (full range)
-        camera.elevation -= dy * 0.3 // Positive dy (drag down) tilts view down
-      }
-
-      last_mouse = { x: event.clientX, y: event.clientY }
+      // Vertical drag -> elevation angle (full range)
+      camera.elevation -= dy * 0.3 // Positive dy (drag down) tilts view down
     }
+
+    last_mouse = { x: event.clientX, y: event.clientY }
   }
 
   const handle_wheel = (event: WheelEvent) => {
@@ -1166,7 +1276,7 @@
     fullscreen = Boolean(document.fullscreenElement)
   }}
   onmousemove={handle_mouse_move}
-  onmouseup={() => ([is_dragging, drag_started] = [false, false])}
+  onmouseup={() => (is_dragging = false)}
 />
 
 <div
@@ -1196,7 +1306,7 @@
       highlighted_entries,
       selected_entry,
     })}
-  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0">
+  <h3 style="position: absolute; left: 1em; top: 1ex; margin: 0; font-weight: 500">
     {@html merged_controls.title || phase_stats?.chemical_system || ``}
   </h3>
   <canvas
@@ -1318,6 +1428,40 @@
     </section>
   {/if}
 
+  <!-- Orientation gizmo (top-right, below control buttons) -->
+  {#if gizmo && typeof WebGLRenderingContext !== `undefined`}
+    <div class="gizmo-wrapper {controls_config.class}">
+      <Canvas
+        createRenderer={(cvs) => new WebGLRenderer({ canvas: cvs, alpha: true, antialias: true })}
+      >
+        <T.PerspectiveCamera
+          makeDefault
+          bind:ref={gizmo_cam_ref}
+          position={gizmo_position(camera.elevation, camera.azimuth)}
+          up={gizmo_up(camera.elevation, camera.azimuth)}
+          fov={50}
+        >
+          <extras.OrbitControls
+            bind:ref={gizmo_orbit_ref}
+            enableRotate={false}
+            enableZoom={false}
+            enablePan={false}
+          >
+            <extras.Gizmo
+              {...gizmo_props}
+              onstart={() => (gizmo_active = true)}
+              onchange={sync_gizmo_to_camera}
+              onend={() => {
+                sync_gizmo_to_camera()
+                gizmo_active = false
+              }}
+            />
+          </extras.OrbitControls>
+        </T.PerspectiveCamera>
+      </Canvas>
+    </div>
+  {/if}
+
   {#if has_temp_data && temperature !== undefined}
     <TemperatureSlider {available_temperatures} bind:temperature />
   {/if}
@@ -1395,6 +1539,24 @@
   }
   canvas:active {
     cursor: grabbing;
+  }
+  .gizmo-wrapper {
+    position: absolute;
+    top: 2.5em;
+    right: 1ex;
+    width: clamp(80px, 18cqmin, 110px);
+    height: clamp(80px, 18cqmin, 110px);
+    pointer-events: auto;
+    transition: opacity 0.2s ease-in-out;
+  }
+  .gizmo-wrapper.hover-visible {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .convex-hull-3d:hover .gizmo-wrapper.hover-visible,
+  .convex-hull-3d:focus-within .gizmo-wrapper.hover-visible {
+    opacity: 1;
+    pointer-events: auto;
   }
   .control-buttons {
     position: absolute;

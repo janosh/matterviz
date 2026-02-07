@@ -124,6 +124,9 @@ export interface Hull3DProps {
   hull_face_opacity?: number
   hull_face_color_mode?: HullFaceColorMode
   element_colors?: Record<string, string>
+  // Orientation gizmo: false to disable, true for defaults, object to customize
+  // (colors, size, position, etc. - same as @threlte/extras Gizmo props)
+  gizmo?: boolean | Record<string, unknown>
 }
 
 // Configuration result from merging user controls with defaults
