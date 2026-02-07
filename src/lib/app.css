@@ -14,6 +14,7 @@
   --sms-options-bg: var(--page-bg);
   --sms-active-color: light-dark(var(--accent-color), cornflowerblue);
   --sms-li-active-bg: light-dark(rgba(100, 149, 237, 0.25), cornflowerblue);
+  --sms-selected-bg: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.15));
   --border-radius: 3pt;
 }
 
