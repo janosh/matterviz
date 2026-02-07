@@ -13,59 +13,53 @@ export async function ensure_pane_visible(
   }
 }
 
-// Robustly open controls pane via direct DOM manipulation
-// (Svelte 5's event delegation prevents programmatic .click() from toggling state)
-export async function open_controls_pane(
+// Robustly open a DraggablePane via direct DOM manipulation.
+// (Svelte 5's event delegation prevents programmatic .click() from toggling state,
+// so we bypass Svelte and set display + class directly.)
+async function open_pane(
   page: Page,
   diagram: Locator,
+  pane_selector: string,
+  toggle_selector?: string,
 ): Promise<Locator> {
-  const pane = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
+  const pane = diagram.locator(`.draggable-pane.${pane_selector}`)
 
   for (let attempt = 0; attempt < 5; attempt++) {
     // Force-open via DOM: set display and add class, matching DraggablePane's show=true state
-    // deno-lint-ignore no-await-in-loop -- sequential retry required
-    await diagram.evaluate((el) => {
-      const pane_el = el.querySelector(`.convex-hull-controls-pane`) as HTMLElement
-      if (pane_el) {
-        pane_el.style.display = `grid`
-        pane_el.classList.add(`pane-open`)
-        // Also set aria-expanded on the toggle to keep state consistent
-        const toggle = el.querySelector(
-          `.legend-controls-btn, .convex-hull-controls-toggle`,
-        )
-        if (toggle) toggle.setAttribute(`aria-expanded`, `true`)
-      }
-    })
-    // deno-lint-ignore no-await-in-loop -- sequential retry required
+    // deno-lint-ignore no-await-in-loop
+    await diagram.evaluate(
+      (el, { sel, toggle_sel }) => {
+        const pane_el = el.querySelector(`.${sel}`) as HTMLElement
+        if (pane_el) {
+          pane_el.style.display = `grid`
+          pane_el.classList.add(`pane-open`)
+          if (toggle_sel) {
+            const toggle = el.querySelector(toggle_sel)
+            if (toggle) toggle.setAttribute(`aria-expanded`, `true`)
+          }
+        }
+      },
+      { sel: pane_selector, toggle_sel: toggle_selector ?? null },
+    )
+    // deno-lint-ignore no-await-in-loop
     await page.waitForTimeout(200)
-    // deno-lint-ignore no-await-in-loop -- sequential retry required
+    // deno-lint-ignore no-await-in-loop
     if (await pane.isVisible()) return pane
   }
   return pane
 }
 
-// Robustly open info pane via direct DOM manipulation
-export async function open_info_pane(
-  page: Page,
-  diagram: Locator,
-): Promise<Locator> {
-  const pane = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
+export function open_controls_pane(page: Page, diagram: Locator): Promise<Locator> {
+  return open_pane(
+    page,
+    diagram,
+    `convex-hull-controls-pane`,
+    `.legend-controls-btn, .convex-hull-controls-toggle`,
+  )
+}
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    // deno-lint-ignore no-await-in-loop -- sequential retry required
-    await diagram.evaluate((el) => {
-      const pane_el = el.querySelector(`.convex-hull-info-pane`) as HTMLElement
-      if (pane_el) {
-        pane_el.style.display = `grid`
-        pane_el.classList.add(`pane-open`)
-      }
-    })
-    // deno-lint-ignore no-await-in-loop -- sequential retry required
-    await page.waitForTimeout(200)
-    // deno-lint-ignore no-await-in-loop -- sequential retry required
-    if (await pane.isVisible()) return pane
-  }
-  return pane
+export function open_info_pane(page: Page, diagram: Locator): Promise<Locator> {
+  return open_pane(page, diagram, `convex-hull-info-pane`)
 }
 
 export async function open_info_and_controls(

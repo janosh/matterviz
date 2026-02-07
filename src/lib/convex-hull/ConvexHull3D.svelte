@@ -14,6 +14,7 @@
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
+  import { to_radians } from '$lib/math'
   import {
     set_fullscreen_bg,
     setup_fullscreen_effect,
@@ -311,7 +312,7 @@
   // ConvexHull3D uses Rz(azimuth) then Rx(-elevation), viewing along -z_rotated.
   // These helpers convert between that system and Three.js camera position/up.
   const GIZMO_CAM_DIST = 5
-  const deg2rad = (deg: number): number => deg * Math.PI / 180
+  const MIN_ELEV_FOR_Z_AXIS = 5 // degrees — below this, z-axis ticks collapse to a point
   let gizmo_cam_ref = $state<PerspectiveCamera>()
   let gizmo_orbit_ref = $state<{ update?: () => void }>()
   let gizmo_active = $state(false)
@@ -321,7 +322,7 @@
     elev_deg: number,
     azim_deg: number,
   ): { position: [number, number, number]; up: [number, number, number] } {
-    const [elev, azim] = [deg2rad(elev_deg), deg2rad(azim_deg)]
+    const [elev, azim] = [to_radians(elev_deg), to_radians(azim_deg)]
     const [se, ce, sa, ca] = [
       Math.sin(elev),
       Math.cos(elev),
@@ -338,6 +339,9 @@
     }
   }
 
+  // Derived gizmo camera state, avoids recomputing in the template
+  const gizmo_cam_state = $derived(gizmo_camera(camera.elevation, camera.azimuth))
+
   // Center camera on the triangle's visual center for a given elevation.
   // The centroid (rotation center) sits at 1/3 height while the bbox
   // center is at 1/2 height — a difference of sqrt(3)/12 in data units.
@@ -346,7 +350,7 @@
     camera.center_x = 0
     // 0.6 matches the draw_data_points() scale factor that maps data coords to canvas pixels
     const scale = Math.min(canvas_dims.width, canvas_dims.height) * 0.6 * camera.zoom
-    camera.center_y = Math.sqrt(3) / 12 * scale * Math.cos(deg2rad(elev_deg))
+    camera.center_y = Math.sqrt(3) / 12 * scale * Math.cos(to_radians(elev_deg))
   }
 
   // Sync: ConvexHull3D → Three.js gizmo camera (on main canvas drag)
@@ -368,34 +372,35 @@
     const { x: cx, y: cy, z: cz } = cam.position
     const dist = Math.sqrt(cx * cx + cy * cy + cz * cz)
     if (dist < 1e-6) return
-    const elev = Math.acos(Math.max(-1, Math.min(1, cz / dist))) * 180 / Math.PI
-    const sin_elev = Math.sin(deg2rad(elev))
-    const azim = Math.abs(sin_elev) > 1e-6
+    const elev_rad = Math.acos(Math.max(-1, Math.min(1, cz / dist)))
+    const sin_elev = Math.sin(elev_rad)
+    const azim_deg = Math.abs(sin_elev) > 1e-6
       ? Math.atan2(-cx / (dist * sin_elev), -cy / (dist * sin_elev)) * 180 / Math.PI
       : 0
-    camera.elevation = elev
-    camera.azimuth = azim
-    center_camera(elev)
+    const elev_deg = elev_rad * 180 / Math.PI
+    camera.elevation = elev_deg
+    camera.azimuth = azim_deg
+    center_camera(elev_deg)
   }
 
-  // Gizmo axis colors, with consumer overrides merged on top
-  const gizmo_props = $derived.by(() => {
-    const axis_options = Object.fromEntries(
-      [...AXIS_COLORS, ...NEG_AXIS_COLORS].map((
-        [axis, color, hover_color],
-      ) => [axis, {
-        color,
-        labelColor: `#111`,
-        opacity: 0.85,
-        hover: { color: hover_color, labelColor: `#222`, opacity: 1 },
-      }]),
-    )
-    return {
-      background: { enabled: false },
-      size: 80,
-      ...axis_options,
-      ...(typeof gizmo === `object` ? gizmo : {}),
-    }
+  // Gizmo axis colors (constant — AXIS_COLORS/NEG_AXIS_COLORS never change)
+  const gizmo_axis_options = Object.fromEntries(
+    [...AXIS_COLORS, ...NEG_AXIS_COLORS].map((
+      [axis, color, hover_color],
+    ) => [axis, {
+      color,
+      labelColor: `#111`,
+      opacity: 0.85,
+      hover: { color: hover_color, labelColor: `#222`, opacity: 1 },
+    }]),
+  )
+
+  // Merge constant axis options with consumer overrides
+  const gizmo_props = $derived({
+    background: { enabled: false },
+    size: 80,
+    ...gizmo_axis_options,
+    ...(typeof gizmo === `object` ? gizmo : {}),
   })
 
   // Interaction state
@@ -706,7 +711,7 @@
   function draw_z_axis_ticks(): void {
     if (!ctx || elements.length !== 3) return
     // Hide z-axis in near-top-down views where ticks collapse to a point
-    if (Math.abs(camera.elevation) < 5) return
+    if (Math.abs(camera.elevation) < MIN_ELEV_FOR_Z_AXIS) return
 
     const { min: e_min, max: e_max, center: e_mid } = energy_range
     if (Math.abs(e_max - e_min) < 1e-6) return
@@ -1289,7 +1294,7 @@
     fullscreen = Boolean(document.fullscreenElement)
   }}
   onmousemove={handle_mouse_move}
-  onmouseup={() => (is_dragging = false)}
+  onmouseup={() => ([is_dragging, drag_started] = [false, false])}
 />
 
 <div
@@ -1453,8 +1458,8 @@
         <T.PerspectiveCamera
           makeDefault
           bind:ref={gizmo_cam_ref}
-          position={gizmo_camera(camera.elevation, camera.azimuth).position}
-          up={gizmo_camera(camera.elevation, camera.azimuth).up}
+          position={gizmo_cam_state.position}
+          up={gizmo_cam_state.up}
           fov={50}
         >
           <extras.OrbitControls

@@ -108,13 +108,10 @@
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   } = $props()
 
-  // Focus the multiselect input inside the color scale selector
+  // Focus the multiselect input next to the "Color scale" label
   function focus_multiselect(evt: Event): void {
-    ;(evt.currentTarget as HTMLElement).closest(`div`)?.querySelector<
-      HTMLInputElement
-    >(
-      `.multiselect input`,
-    )?.focus()
+    ;(evt.currentTarget as HTMLElement).nextElementSibling
+      ?.querySelector<HTMLInputElement>(`input`)?.focus()
   }
 </script>
 
@@ -123,10 +120,7 @@
   pane_props={{
     ...pane_props,
     class: `convex-hull-controls-pane ${pane_props?.class ?? ``}`,
-    style:
-      `--pane-max-height: max(350px, calc(100cqh - 40px)); --pane-padding: 1ex; --pane-gap: 0; font-size: 0.85em; pointer-events: auto; ${
-        pane_props?.style ?? ``
-      }`,
+    style: `${pane_props?.style ?? ``}`,
   }}
   toggle_props={{
     title: controls_open ? `` : `Convex hull controls`,
@@ -467,6 +461,13 @@
 </DraggablePane>
 
 <style>
+  :global(.convex-hull-controls-pane) {
+    --pane-max-height: max(350px, calc(100cqh - 40px));
+    --pane-padding: 1ex;
+    --pane-gap: 0;
+    font-size: 0.85em;
+    pointer-events: auto;
+  }
   .control-row {
     display: flex;
     align-items: center;

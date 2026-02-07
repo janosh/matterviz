@@ -52,7 +52,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     if (box) {
       // Click multiple positions to ensure we hit an entry
       for (const off of [0, 0.3, -0.3]) {
-        // deno-lint-ignore no-await-in-loop -- sequential clicking required
+        // deno-lint-ignore no-await-in-loop
         await canvas.click({
           position: { x: box.width * (0.5 + off), y: box.height * (0.5 + off) },
         })
@@ -137,11 +137,11 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     outer: for (let x_frac = 0.3; x_frac <= 0.7; x_frac += 0.04) {
       for (let y_frac = 0.3; y_frac <= 0.7; y_frac += 0.04) {
         const [test_x, test_y] = [box.x + box.width * x_frac, box.y + box.height * y_frac]
-        // deno-lint-ignore no-await-in-loop -- sequential scanning required
+        // deno-lint-ignore no-await-in-loop
         await page.mouse.click(test_x, test_y)
-        // deno-lint-ignore no-await-in-loop -- sequential scanning required
+        // deno-lint-ignore no-await-in-loop
         await page.waitForTimeout(30)
-        // deno-lint-ignore no-await-in-loop -- sequential scanning required
+        // deno-lint-ignore no-await-in-loop
         if ((await diagram.getAttribute(`data-has-selection`)) === `true`) {
           entry_pos = { x: test_x, y: test_y }
           break outer
@@ -200,7 +200,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     const mode_buttons = controls.locator(`.face-color-mode-buttons`)
     await expect(mode_buttons).toBeVisible()
     for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
-      // deno-lint-ignore no-await-in-loop -- sequential assertion
+      // deno-lint-ignore no-await-in-loop
       await expect(mode_buttons.getByText(label)).toBeVisible()
     }
     await expect(mode_buttons.getByText(`Uniform`)).toHaveClass(/active/)
@@ -276,14 +276,14 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     let popup_opened = false
     for (let x_frac = 0.3; x_frac <= 0.7 && !popup_opened; x_frac += 0.05) {
       for (let y_frac = 0.3; y_frac <= 0.7 && !popup_opened; y_frac += 0.05) {
-        // deno-lint-ignore no-await-in-loop -- sequential scanning required
+        // deno-lint-ignore no-await-in-loop
         await page.mouse.dblclick(
           box.x + box.width * x_frac,
           box.y + box.height * y_frac,
         )
-        // deno-lint-ignore no-await-in-loop -- sequential scanning required
+        // deno-lint-ignore no-await-in-loop
         await page.waitForTimeout(100)
-        // deno-lint-ignore no-await-in-loop -- sequential scanning required
+        // deno-lint-ignore no-await-in-loop
         popup_opened = await diagram.locator(`.structure-popup`).isVisible()
       }
     }

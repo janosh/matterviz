@@ -28,14 +28,14 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     const box = await canvas.boundingBox()
     if (box) {
       // Click grid of positions to ensure we hit an entry
-      const offsets = [-0.3, -0.15, 0, 0.15, 0.3]
-      const positions = offsets.flatMap((x) =>
-        offsets.map((y) => ({ x: box.width * (0.5 + x), y: box.height * (0.5 + y) }))
-      )
-      await positions.reduce(
-        (chain, pos) => chain.then(() => canvas.click({ position: pos })),
-        Promise.resolve(),
-      )
+      for (const x_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
+        for (const y_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
+          // deno-lint-ignore no-await-in-loop
+          await canvas.click({
+            position: { x: box.width * (0.5 + x_off), y: box.height * (0.5 + y_off) },
+          })
+        }
+      }
       await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     }
   })
@@ -268,30 +268,6 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
       .toPass({ timeout: 5000 })
   })
 
-  test(`face color mode buttons are visible and clickable`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
-    await expect(diagram).toBeVisible()
-
-    // Open controls pane
-    await diagram.locator(`.legend-controls-btn`).click()
-    const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
-    await expect(controls).toBeVisible()
-
-    // Verify face color mode buttons exist
-    const mode_buttons = controls.locator(`.face-color-mode-buttons`)
-    await expect(mode_buttons).toBeVisible()
-
-    // Verify all 4 mode buttons are present
-    await expect(mode_buttons.getByText(`Uniform`)).toBeVisible()
-    await expect(mode_buttons.getByText(`Energy`)).toBeVisible()
-    await expect(mode_buttons.getByText(`Element`)).toBeVisible()
-    await expect(mode_buttons.getByText(`Index`)).toBeVisible()
-
-    // Default should be dominant_element (Element button active)
-    const element_btn = mode_buttons.getByText(`Element`)
-    await expect(element_btn).toHaveClass(/active/)
-  })
-
   test(`face color mode switch changes canvas rendering`, async ({ page }) => {
     const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     const canvas = diagram.locator(`canvas`)
@@ -309,30 +285,7 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
       .toPass({ timeout: 5000 })
   })
 
-  test(`drag-right increases rotation_y (natural direction)`, async ({ page }) => {
-    const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
-    const canvas = diagram.locator(`canvas`)
-    await expect(canvas).toBeVisible()
-
-    const rot_before = Number(await diagram.getAttribute(`data-rotation-y`))
-    const box = await canvas.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) throw new Error(`Canvas bounding box not found`)
-
-    // Drag right across the canvas
-    const cx = box.x + box.width / 2
-    const cy = box.y + box.height / 2
-    await page.mouse.move(cx, cy)
-    await page.mouse.down()
-    await page.mouse.move(cx + 80, cy, { steps: 5 })
-    await page.mouse.up()
-    await page.waitForTimeout(50)
-
-    const rot_after = Number(await diagram.getAttribute(`data-rotation-y`))
-    expect(rot_after).toBeGreaterThan(rot_before)
-  })
-
-  test(`uniform mode shows color picker, other modes hide it`, async ({ page }) => {
+  test(`face color mode buttons toggle color picker visibility`, async ({ page }) => {
     const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     await expect(diagram).toBeVisible()
 
@@ -340,20 +293,53 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
 
+    // All 4 mode buttons present, Element active by default
+    const mode_buttons = controls.locator(`.face-color-mode-buttons`)
+    await expect(mode_buttons).toBeVisible()
+    for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
+      // deno-lint-ignore no-await-in-loop
+      await expect(mode_buttons.getByText(label)).toBeVisible()
+    }
+    await expect(mode_buttons.getByText(`Element`)).toHaveClass(/active/)
+
     // In default (dominant_element) mode, color picker should be hidden
     const color_picker = controls.locator(`input[type="color"]`).first()
     await expect(color_picker).toBeHidden()
 
-    // Switch to uniform mode
-    await controls.locator(`.face-color-mode-buttons`).getByText(`Uniform`).click()
-
-    // Color picker should now be visible
+    // Switch to uniform — color picker appears
+    await mode_buttons.getByText(`Uniform`).click()
     await expect(color_picker).toBeVisible()
 
-    // Switch back to Index mode
-    await controls.locator(`.face-color-mode-buttons`).getByText(`Index`).click()
-
-    // Color picker should be hidden again
+    // Switch to Index — color picker hidden again
+    await mode_buttons.getByText(`Index`).click()
     await expect(color_picker).toBeHidden()
   })
+})
+
+// Standalone test: uses performance page directly to avoid beforeEach's
+// quaternary-grid visibility requirement (which depends on slow data loading)
+test(`drag-right increases rotation_y (natural direction)`, async ({ page }) => {
+  await page.goto(`/test/convex-hull-performance?dim=4d&count=20`, {
+    waitUntil: `networkidle`,
+  })
+  const diagram = page.locator(`.convex-hull-4d`).first()
+  const canvas = diagram.locator(`canvas`)
+  await expect(canvas).toBeVisible({ timeout: 15000 })
+
+  const rot_before = Number(await diagram.getAttribute(`data-rotation-y`))
+  const box = await canvas.boundingBox()
+  expect(box).toBeTruthy()
+  if (!box) throw new Error(`Canvas bounding box not found`)
+
+  // Drag right across the canvas
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx + 80, cy, { steps: 5 })
+  await page.mouse.up()
+  await page.waitForTimeout(50)
+
+  const rot_after = Number(await diagram.getAttribute(`data-rotation-y`))
+  expect(rot_after).toBeGreaterThan(rot_before)
 })

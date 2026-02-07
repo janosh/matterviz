@@ -926,7 +926,7 @@
       camera.center_x += dx
       camera.center_y += dy
     } else {
-      camera.rotation_y -= dx * 0.005
+      camera.rotation_y += dx * 0.005
       camera.rotation_x = Math.max(
         -Math.PI / 3,
         Math.min(Math.PI / 3, camera.rotation_x + dy * 0.005),
