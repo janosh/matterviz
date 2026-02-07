@@ -1,5 +1,4 @@
 import type { D3InterpolateName } from '$lib/colors'
-import type { GizmoOptions } from '@threlte/extras'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type {
@@ -126,8 +125,18 @@ export interface Hull3DProps {
   hull_face_color_mode?: HullFaceColorMode
   element_colors?: Record<string, string>
   // Orientation gizmo: false to disable, true for defaults, object to customize
-  // (colors, size, position, etc. - same as @threlte/extras Gizmo props)
-  gizmo?: boolean | Partial<GizmoOptions>
+  // Supports placement and Threlte Gizmo appearance options (size, colors, background, etc.)
+  gizmo?: boolean | ConvexHullGizmoOptions
+}
+
+export type GizmoPlacement = `top-right` | `bottom-right` | `top-left` | `bottom-left`
+
+// Gizmo options for ConvexHull3D. Includes placement + common @threlte/extras Gizmo props.
+// Defined here to avoid exposing @threlte/extras types to consumers.
+export type ConvexHullGizmoOptions = Record<string, unknown> & {
+  placement?: GizmoPlacement
+  size?: number
+  background?: { enabled?: boolean; color?: number; opacity?: number }
 }
 
 // Configuration result from merging user controls with defaults
