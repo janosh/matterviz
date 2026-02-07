@@ -909,6 +909,8 @@
   function handle_mouse_down(event: MouseEvent) {
     is_dragging = true
     drag_started = false
+    hover_data = null
+    on_point_hover?.(null)
     last_mouse = { x: event.clientX, y: event.clientY }
   }
 
@@ -924,7 +926,7 @@
       camera.center_x += dx
       camera.center_y += dy
     } else {
-      camera.rotation_y -= dx * 0.005
+      camera.rotation_y += dx * 0.005
       camera.rotation_x = Math.max(
         -Math.PI / 3,
         Math.min(Math.PI / 3, camera.rotation_x + dy * 0.005),
@@ -942,6 +944,7 @@
   }
 
   const handle_hover = (event: MouseEvent) => {
+    if (is_dragging) return
     const entry = find_entry_at_mouse(event)
     hover_data = entry
       ? { entry, position: { x: event.clientX, y: event.clientY } }
@@ -1098,6 +1101,9 @@
   class:dragover={drag_over}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}
+  data-has-hover={hover_data !== null}
+  data-is-dragging={is_dragging}
+  data-rotation-y={camera.rotation_y.toFixed(4)}
   bind:this={wrapper}
   role="application"
   tabindex="-1"
@@ -1331,7 +1337,7 @@
   .control-buttons :global(.draggable-pane) {
     z-index: 1001 !important;
   }
-  .control-buttons button {
+  .control-buttons :global(button) {
     background: transparent;
     border: none;
     padding: 4px;
@@ -1342,7 +1348,7 @@
     display: flex;
     font-size: clamp(0.85em, 2cqmin, 2.5em);
   }
-  .control-buttons button:hover {
+  .control-buttons :global(button):hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
 </style>

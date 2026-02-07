@@ -39,11 +39,10 @@ import argparse
 import keyword
 import os
 import re
+import tomllib
 from dataclasses import dataclass
 from glob import glob
 from typing import Any
-
-import tomllib
 
 
 @dataclass(frozen=True)
@@ -675,9 +674,11 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
                     f"[{class_name}] alias '{py}' maps to unknown JS prop '{js}'. "
                     f"Valid props: {list(js_to_prop.keys())}"
                 )
-            sig.append(
-                f"{py}: {_py_type_hint(p.ts_type, py, type_hints)} | None = None"
-            )
+            py_type = _py_type_hint(p.ts_type, py, type_hints)
+            # Avoid duplicate None when type hint already includes it
+            if "None" not in py_type:
+                py_type += " | None"
+            sig.append(f"{py}: {py_type} = None")
         sig += [
             "mv_props: dict | None = None",
             "set_props: list[str] | None = None",
