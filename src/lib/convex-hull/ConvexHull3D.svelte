@@ -744,13 +744,21 @@
       ctx.fillText(format_num(tick, `.2~`), x - tick_len - 4, y)
     }
 
-    // Rotated axis label (Unicode superscript: Eᶠᵒʳᵐ)
+    // Rotated axis label: Eform (eV/atom) with "form" as subscript
     const { x: lx, y: ly } = project_3d_point(axis_x, axis_y, e_mid)
+    const fs = merged_config.font_size ?? 12
     ctx.translate(lx - 50 * canvas_dims.scale, ly)
     ctx.rotate(-Math.PI / 2)
-    ctx.textAlign = `center`
-    ctx.font = `bold ${merged_config.font_size}px Arial`
-    ctx.fillText(`E\u1DA0\u1D52\u02B3\u1D50 (eV/atom)`, 0, 0) // Eᶠᵒʳᵐ
+    ctx.textAlign = `left`
+    // Approximate total width to center the composite label
+    ctx.font = `bold ${fs}px Arial`
+    const offset = -ctx.measureText(`Eform (eV/atom)`).width / 2
+    ctx.fillText(`E`, offset, 0)
+    const ex = offset + ctx.measureText(`E`).width
+    ctx.font = `${Math.round(fs * 0.75)}px Arial`
+    ctx.fillText(`form`, ex, fs * 0.3)
+    ctx.font = `bold ${fs}px Arial`
+    ctx.fillText(` (eV/atom)`, ex + ctx.measureText(`form`).width, 0)
     ctx.restore()
   }
 
@@ -1076,6 +1084,7 @@
   function handle_mouse_down(event: MouseEvent) {
     is_dragging = true
     drag_started = false
+    hover_data = null
     last_mouse = { x: event.clientX, y: event.clientY }
   }
 
@@ -1110,6 +1119,7 @@
   }
 
   const handle_hover = (event: MouseEvent) => {
+    if (is_dragging) return
     const entry = find_entry_at_mouse(event)
     hover_data = entry
       ? { entry, position: { x: event.clientX, y: event.clientY } }
@@ -1285,6 +1295,10 @@
   class:dragover={drag_over}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}
+  data-has-hover={hover_data !== null}
+  data-is-dragging={is_dragging}
+  data-elevation={Math.round(camera.elevation)}
+  data-azimuth={Math.round(camera.azimuth)}
   bind:this={wrapper}
   role="application"
   tabindex="-1"
@@ -1332,7 +1346,7 @@
       title="Energy above hull (eV/atom)"
       range={[min_energy, max_energy]}
       {color_scale}
-      wrapper_style="position: absolute; bottom: 2em; left: 1em; width: 200px;"
+      wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px;"
       bar_style="height: 12px;"
       title_style="margin-bottom: 4px;"
     />
@@ -1348,7 +1362,7 @@
       color_scale_fn={e_form_color_scale_fn}
       color_scale_domain={e_form_range}
       range={e_form_range}
-      wrapper_style="position: absolute; width: 200px; left: auto; right: 1em; bottom: 2em"
+      wrapper_style="position: absolute; bottom: 16px; right: 1em; width: 200px;"
       bar_style="height: 12px;"
       title_style="margin-bottom: 4px;"
     />

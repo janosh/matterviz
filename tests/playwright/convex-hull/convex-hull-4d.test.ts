@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
-import { ensure_pane_visible, open_info_and_controls } from './utils'
+import { ensure_pane_visible, get_canvas_hash, open_info_and_controls } from './utils'
 
 test.describe(`ConvexHull4D (Quaternary)`, () => {
   test.beforeEach(async ({ page }) => {
@@ -40,7 +40,7 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     }
   })
 
-  test(`renders quaternary diagram canvas and opens panes`, async ({ page }) => {
+  test(`renders quaternary diagram canvas, opens panes, initial data attributes`, async ({ page }) => {
     await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
     const quaternary_grid = page.locator(`.quaternary-grid`)
     await expect(quaternary_grid).toBeVisible()
@@ -48,13 +48,17 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     const diagram = quaternary_grid.locator(`.convex-hull-4d`).first()
     await expect(diagram).toBeVisible()
 
+    // Verify initial state data attributes (tooltip + drag)
+    await expect(diagram).toHaveAttribute(`data-has-hover`, `false`)
+    await expect(diagram).toHaveAttribute(`data-is-dragging`, `false`)
+    expect(await diagram.locator(`.plot-tooltip`).count()).toBe(0)
+
     const canvas = diagram.locator(`canvas`)
     await expect(canvas).toBeVisible()
 
     // Open info pane
     const info_btn = diagram.locator(`.info-btn`)
     await info_btn.click()
-    // Scoped pane inside this diagram
     const info_pane = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
     await expect(info_pane).toBeVisible()
 
@@ -293,19 +297,7 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     const canvas = diagram.locator(`canvas`)
     await expect(canvas).toBeVisible()
 
-    // Get initial canvas image data hash
-    const get_canvas_hash = () =>
-      canvas.evaluate((el) => {
-        const ctx = (el as HTMLCanvasElement).getContext(`2d`)
-        if (!ctx) return ``
-        const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
-        // Simple hash: sum of every 100th pixel
-        let hash = 0
-        for (let idx = 0; idx < data.length; idx += 400) hash += data[idx]
-        return hash.toString()
-      })
-
-    const initial_hash = await get_canvas_hash()
+    const initial_hash = await get_canvas_hash(canvas)
 
     // Open controls and switch to facet_index mode
     await diagram.locator(`.legend-controls-btn`).click()
@@ -313,10 +305,8 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     await controls.locator(`.face-color-mode-buttons`).getByText(`Index`).click()
 
     // Verify canvas has changed
-    await expect(async () => {
-      const new_hash = await get_canvas_hash()
-      expect(new_hash).not.toBe(initial_hash)
-    }).toPass({ timeout: 5000 })
+    await expect(async () => expect(await get_canvas_hash(canvas)).not.toBe(initial_hash))
+      .toPass({ timeout: 5000 })
   })
 
   test(`uniform mode shows color picker, other modes hide it`, async ({ page }) => {

@@ -909,6 +909,7 @@
   function handle_mouse_down(event: MouseEvent) {
     is_dragging = true
     drag_started = false
+    hover_data = null
     last_mouse = { x: event.clientX, y: event.clientY }
   }
 
@@ -942,6 +943,7 @@
   }
 
   const handle_hover = (event: MouseEvent) => {
+    if (is_dragging) return
     const entry = find_entry_at_mouse(event)
     hover_data = entry
       ? { entry, position: { x: event.clientX, y: event.clientY } }
@@ -1098,6 +1100,8 @@
   class:dragover={drag_over}
   style={`${style}; ${rest.style ?? ``}`}
   data-has-selection={selected_entry !== null}
+  data-has-hover={hover_data !== null}
+  data-is-dragging={is_dragging}
   bind:this={wrapper}
   role="application"
   tabindex="-1"
