@@ -395,12 +395,23 @@
     }]),
   )
 
-  // Merge constant axis options with consumer overrides
-  const gizmo_props = $derived({
-    background: { enabled: false },
-    size: 80,
-    ...gizmo_axis_options,
-    ...(typeof gizmo === `object` && gizmo ? gizmo : {}),
+  // Extract placement from gizmo options (not a Threlte Gizmo prop)
+  const gizmo_placement = $derived(
+    typeof gizmo === `object` && gizmo?.placement ? gizmo.placement : `top-right`,
+  )
+
+  // Merge constant axis options with consumer overrides (exclude our custom placement)
+  const gizmo_props = $derived.by(() => {
+    if (typeof gizmo !== `object` || !gizmo) {
+      return { background: { enabled: false }, size: 80, ...gizmo_axis_options }
+    }
+    const { placement: _, ...threlte_opts } = gizmo
+    return {
+      background: { enabled: false },
+      size: 80,
+      ...gizmo_axis_options,
+      ...threlte_opts,
+    }
   })
 
   // Interaction state
@@ -1448,9 +1459,9 @@
     </section>
   {/if}
 
-  <!-- Orientation gizmo (top-right, below control buttons) -->
+  <!-- Orientation gizmo (configurable placement, default top-right) -->
   {#if gizmo && typeof WebGLRenderingContext !== `undefined`}
-    <div class="gizmo-wrapper {controls_config.class}">
+    <div class="gizmo-wrapper {controls_config.class}" data-placement={gizmo_placement}>
       <Canvas
         createRenderer={(cvs: HTMLCanvasElement) =>
         new WebGLRenderer({ canvas: cvs, alpha: true, antialias: true })}
@@ -1563,12 +1574,26 @@
   }
   .gizmo-wrapper {
     position: absolute;
-    top: 1.8em;
-    right: 1ex;
     width: clamp(80px, 18cqmin, 110px);
     height: clamp(80px, 18cqmin, 110px);
     pointer-events: auto;
     transition: opacity 0.2s ease-in-out;
+  }
+  .gizmo-wrapper[data-placement='top-right'] {
+    top: 1.8em;
+    right: 1ex;
+  }
+  .gizmo-wrapper[data-placement='top-left'] {
+    top: 1.8em;
+    left: 1ex;
+  }
+  .gizmo-wrapper[data-placement='bottom-right'] {
+    bottom: 2.5em;
+    right: 1ex;
+  }
+  .gizmo-wrapper[data-placement='bottom-left'] {
+    bottom: 2.5em;
+    left: 1ex;
   }
   .gizmo-wrapper.hover-visible {
     opacity: 0;
