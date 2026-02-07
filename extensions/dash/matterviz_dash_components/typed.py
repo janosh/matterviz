@@ -725,6 +725,7 @@ class ConvexHull3D(MatterViz):
         hull_face_opacity: float | None = None,
         hull_face_color_mode: Any | None = None,
         element_colors: dict | None = None,
+        gizmo: dict | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -808,6 +809,8 @@ class ConvexHull3D(MatterViz):
             mv_props["hull_face_color_mode"] = hull_face_color_mode
         if element_colors is not None:
             mv_props["element_colors"] = element_colors
+        if gizmo is not None:
+            mv_props["gizmo"] = gizmo
 
         super().__init__(
             id=id,
@@ -871,6 +874,7 @@ class ConvexHull4D(MatterViz):
         hull_face_opacity: float | None = None,
         hull_face_color_mode: Any | None = None,
         element_colors: dict | None = None,
+        gizmo: dict | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -954,6 +958,8 @@ class ConvexHull4D(MatterViz):
             mv_props["hull_face_color_mode"] = hull_face_color_mode
         if element_colors is not None:
             mv_props["element_colors"] = element_colors
+        if gizmo is not None:
+            mv_props["gizmo"] = gizmo
 
         super().__init__(
             id=id,
