@@ -33,7 +33,7 @@
   bind:selected
   {placeholder}
   liOptionStyle="padding: 3pt 6pt;"
-  liSelectedStyle="width: 100%; background-color: transparent;"
+  liSelectedStyle="width: 100%; background-color: transparent; pointer-events: none;"
   ulSelectedStyle="display: contents;"
   inputStyle="min-width: 0;"
   {...rest}

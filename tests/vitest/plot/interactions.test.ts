@@ -251,7 +251,7 @@ describe(`expand_range_if_needed`, () => {
     expect(result).toEqual({ range: expected, changed })
   })
 
-  // Expansion: only expand, never shrink
+  // Range adoption: adopt new range (both expand and shrink)
   it.each([
     {
       current: [5, 15],
@@ -277,16 +277,16 @@ describe(`expand_range_if_needed`, () => {
     {
       current: [5, 15],
       new_r: [7, 12],
-      expected: [5, 15],
-      changed: false,
-      desc: `no shrink`,
+      expected: [7, 12],
+      changed: true,
+      desc: `shrinks to new range`,
     },
     {
       current: [5, 15],
       new_r: [8, 20],
-      expected: [5, 20],
+      expected: [8, 20],
       changed: true,
-      desc: `expands max, keeps min`,
+      desc: `shrinks min, expands max`,
     },
     {
       current: [5, 15],
@@ -295,7 +295,14 @@ describe(`expand_range_if_needed`, () => {
       changed: false,
       desc: `identical - no change`,
     },
-  ])(`expansion: $desc`, ({ current, new_r, expected, changed }) => {
+    {
+      current: [0, 6000],
+      new_r: [0, 3],
+      expected: [0, 3],
+      changed: true,
+      desc: `shrinks from large to small range (property switch)`,
+    },
+  ])(`adoption: $desc`, ({ current, new_r, expected, changed }) => {
     const result = expand_range_if_needed(
       current as [number, number],
       new_r as [number, number],
@@ -322,9 +329,9 @@ describe(`expand_range_if_needed`, () => {
     {
       current: [-10, 10],
       new_r: [-5, 5],
-      expected: [-10, 10],
-      changed: false,
-      desc: `no shrink negative`,
+      expected: [-5, 5],
+      changed: true,
+      desc: `shrinks negative range`,
     },
     {
       current: [0, 1e6],
