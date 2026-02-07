@@ -208,6 +208,28 @@ export async function assert_test_hook_exists(
   return locator
 }
 
+// Switch to edit-atoms mode via the Structure component's dropdown UI.
+// Injects CSS to force control buttons visible (they're hidden by default with hover visibility).
+export async function enter_edit_atoms_mode(page: Page): Promise<void> {
+  await page.addStyleTag({
+    content:
+      `section[class*="control-buttons"] { opacity: 1 !important; pointer-events: auto !important; }`,
+  })
+  const structure_div = page.locator(`#test-structure`)
+  const measure_button = structure_div.locator(`button.view-mode-button`)
+  await expect(measure_button).toBeVisible({ timeout: 3000 })
+  await measure_button.click()
+  const edit_option = structure_div.locator(`.view-mode-option`).filter({
+    hasText: `Edit Atoms`,
+  })
+  await expect(edit_option).toBeVisible({ timeout: 3000 })
+  await edit_option.click()
+  // Wait for mode to be applied (undo/redo buttons appear)
+  await expect(structure_div.locator(`.undo-redo-container`)).toBeVisible({
+    timeout: 3000,
+  })
+}
+
 // Deterministically sample n items from a list without replacement.
 // Uses a seeded RNG to ensure reproducible test runs across CI environments.
 export const random_sample = <T>(list: T[], n: number, seed: number = 42): T[] => {

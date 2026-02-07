@@ -22,13 +22,14 @@
     get_property_colors,
   } from '$lib/structure/atom-properties'
   import * as measure from '$lib/structure/measure'
+  import type { MeasureMode } from '$lib/structure/Structure.svelte'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import type { Camera, Scene } from 'three'
+  import type { Camera, Object3D, Scene } from 'three'
   import Bond from './Bond.svelte'
   import type { BondingStrategy } from './bonding'
   import { BONDING_STRATEGIES, compute_bond_transform } from './bonding'
@@ -38,6 +39,7 @@
     element: string
     radius: number
     color: string
+    is_image_atom: boolean
     atoms: (typeof atom_data)[number][]
   }
 
@@ -127,6 +129,12 @@
       scale_type: DEFAULTS.structure.atom_color_scale_type,
     },
     sym_data = null,
+    // Edit-atoms mode callbacks
+    on_sites_moved,
+    on_operation_start,
+    on_add_atom,
+    add_atom_mode = $bindable(false),
+    add_element = $bindable(`C`),
   }: {
     structure?: AnyStructure
     base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
@@ -175,7 +183,7 @@
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
-    measure_mode?: `distance` | `angle` | `edit-bonds`
+    measure_mode?: MeasureMode
     selected_sites?: number[]
     measured_sites?: number[]
     added_bonds?: [number, number][]
@@ -197,6 +205,12 @@
     site_radius_overrides?: Map<number, number> | SvelteMap<number, number> // Per-site absolute radius in Angstroms
     atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
+    // Edit-atoms mode callbacks and state
+    on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
+    on_operation_start?: () => void
+    on_add_atom?: (xyz: Vec3, element: ElementSymbol) => void
+    add_atom_mode?: boolean // whether user is in click-to-place add-atom sub-mode
+    add_element?: ElementSymbol // element to add when clicking in add-atom mode
   } = $props()
 
   const threlte = useThrelte()
@@ -226,6 +240,11 @@
 
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
+
+  // === Edit-atoms mode state ===
+  let transform_object = $state<Object3D | undefined>(undefined)
+  // Plain variable — only used imperatively in TransformControls drag handlers
+  let drag_start_centroid: Vec3 | null = null
 
   function get_bond_key(idx1: number, idx2: number): string {
     return idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`
@@ -280,6 +299,36 @@
         // Reset selection after toggling bond
         measured_sites = []
         selected_sites = []
+      }
+      return
+    }
+
+    if (measure_mode === `edit-atoms`) {
+      // Block image atoms (detected by orig_site_idx property from PBC)
+      const site = structure?.sites?.[site_index]
+      if (site?.properties?.orig_site_idx != null) return
+
+      const is_selected = selected_sites.includes(site_index)
+      const is_shift = evt instanceof MouseEvent && evt.shiftKey
+
+      if (is_shift) {
+        // Multi-select: toggle this site in/out of selection
+        if (is_selected) {
+          selected_sites = selected_sites.filter((idx) => idx !== site_index)
+          measured_sites = measured_sites.filter((idx) => idx !== site_index)
+        } else {
+          selected_sites = [...selected_sites, site_index]
+          measured_sites = [...measured_sites, site_index]
+        }
+      } else {
+        // Single-select: replace selection
+        if (is_selected) {
+          selected_sites = []
+          measured_sites = []
+        } else {
+          selected_sites = [site_index]
+          measured_sites = [site_index]
+        }
       }
       return
     }
@@ -415,6 +464,9 @@
       // Otherwise, each species gets its own element color (important for disordered sites)
       const site_property_color = property_colors?.colors[orig_idx]
 
+      // Detect image atoms by presence of orig_site_idx property (set by get_pbc_image_sites)
+      const is_image_atom = site.properties?.orig_site_idx != null
+
       let start_angle = 0
       return site.species
         .filter(({ element }) => !hidden_elements.has(element))
@@ -428,6 +480,7 @@
           has_partial_occupancy: occu < 1,
           start_phi: 2 * Math.PI * start_angle,
           end_phi: 2 * Math.PI * (start_angle += occu),
+          is_image_atom,
         }))
     })
   })
@@ -565,10 +618,13 @@
         .filter((atom) => !atom.has_partial_occupancy)
         .reduce(
           (groups, atom) => {
-            const { element, radius, color } = atom
-            const key = `${element}-${format_num(radius, `.3~`)}-${color}`
+            const { element, radius, color, is_image_atom } = atom
+            // Separate image atoms into their own groups for distinct styling in edit-atoms mode
+            const key = `${element}-${format_num(radius, `.3~`)}-${color}-${
+              is_image_atom ? `img` : `base`
+            }`
             const bucket = groups[key] ||
-              (groups[key] = { element, radius, color, atoms: [] })
+              (groups[key] = { element, radius, color, is_image_atom, atoms: [] })
             bucket.atoms.push(atom)
             return groups
           },
@@ -734,16 +790,21 @@
       {#if show_atoms}
         <!-- Instanced rendering for full occupancy atoms -->
         {#each instanced_atom_groups as
-          { element, radius, color, atoms }
-          (`${element}-${radius}-${color}`)
+          { element, radius, color, is_image_atom, atoms }
+          (`${element}-${radius}-${color}-${is_image_atom}`)
         }
+          {@const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom}
           <extras.InstancedMesh
-            key="{element}-{format_num(radius, `.3~`)}-{color}-{atoms.length}"
+            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom}-{atoms.length}"
             range={atoms.length}
             frustumCulled={false}
           >
             <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
-            <T.MeshStandardMaterial {color} />
+            <T.MeshStandardMaterial
+              {color}
+              opacity={edit_mode_image ? 0.35 : 1}
+              transparent={edit_mode_image}
+            />
             {#each atoms as atom (atom.site_idx)}
               <extras.Instance
                 position={atom.position}
@@ -757,8 +818,8 @@
                   active_tooltip = null
                 }}
                 onclick={(event: MouseEvent) => {
-                  const site_idx = atom.site_idx
-                  toggle_selection(site_idx, event)
+                  if (edit_mode_image) return // image atoms non-clickable in edit mode
+                  toggle_selection(atom.site_idx, event)
                 }}
               />
             {/each}
@@ -770,6 +831,7 @@
           atom
           (atom.site_idx + atom.element + atom.occupancy)
         }
+          {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
           <T.Group
             position={atom.position}
             scale={atom.radius}
@@ -782,8 +844,8 @@
               active_tooltip = null
             }}
             onclick={(event: MouseEvent) => {
-              const site_idx = atom.site_idx
-              toggle_selection(site_idx, event)
+              if (partial_edit_image) return
+              toggle_selection(atom.site_idx, event)
             }}
           >
             <T.Mesh>
@@ -796,17 +858,31 @@
                   2 * Math.PI * atom.occupancy,
                 ]}
               />
-              <T.MeshStandardMaterial color={atom.color} />
+              <T.MeshStandardMaterial
+                color={atom.color}
+                opacity={partial_edit_image ? 0.35 : 1}
+                transparent={partial_edit_image}
+              />
             </T.Mesh>
 
             {#if atom.has_partial_occupancy}
               <T.Mesh rotation={[0, atom.start_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
-                <T.MeshStandardMaterial color={atom.color} side={2} />
+                <T.MeshStandardMaterial
+                  color={atom.color}
+                  side={2}
+                  opacity={partial_edit_image ? 0.35 : 1}
+                  transparent={partial_edit_image}
+                />
               </T.Mesh>
               <T.Mesh rotation={[0, atom.end_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
-                <T.MeshStandardMaterial color={atom.color} side={2} />
+                <T.MeshStandardMaterial
+                  color={atom.color}
+                  side={2}
+                  opacity={partial_edit_image ? 0.35 : 1}
+                  transparent={partial_edit_image}
+                />
               </T.Mesh>
             {/if}
           </T.Group>
@@ -895,8 +971,9 @@
         {/if}
       {/each}
 
-      <!-- selection order labels (1, 2, 3, ...) for measured sites -->
-      {#if structure?.sites && (measured_sites?.length ?? 0) > 0}
+      <!-- selection order labels (1, 2, 3, ...) for measured sites (hidden in edit-atoms mode) -->
+      {#if structure?.sites && (measured_sites?.length ?? 0) > 0 &&
+          measure_mode !== `edit-atoms`}
         {#each measured_sites as site_index, loop_idx (site_index)}
           {@const site = structure.sites[site_index]}
           {#if site}
@@ -946,6 +1023,77 @@
 
       {#if visual_lattice}
         <Lattice matrix={visual_lattice.matrix} {...lattice_props} />
+      {/if}
+
+      <!-- TransformControls for editing atoms in edit-atoms mode -->
+      {#if measure_mode === `edit-atoms` && selected_sites.length > 0 &&
+          structure?.sites}
+        {@const selected_atoms = selected_sites
+          .map((idx) => structure?.sites?.[idx])
+          .filter(Boolean) as Site[]}
+        {#if selected_atoms.length > 0}
+          {@const n_sel = selected_atoms.length}
+          {@const avg = (dim: number) =>
+          selected_atoms.reduce((sum, atom) => sum + atom.xyz[dim], 0) / n_sel}
+          {@const centroid = [avg(0), avg(1), avg(2)] as Vec3}
+          <!-- Invisible mesh at centroid for TransformControls to manipulate -->
+          <T.Mesh
+            position={centroid}
+            bind:ref={transform_object}
+          >
+            <T.SphereGeometry args={[0.01, 4, 4]} />
+            <T.MeshBasicMaterial transparent opacity={0} />
+          </T.Mesh>
+          <extras.TransformControls
+            object={transform_object}
+            translationSnap={0.1}
+            size={1.2}
+            space="world"
+            onobjectChange={() => {
+              if (!transform_object?.position || !drag_start_centroid) return
+              const { x: tx, y: ty, z: tz } = transform_object.position
+              const delta: Vec3 = [
+                tx - drag_start_centroid[0],
+                ty - drag_start_centroid[1],
+                tz - drag_start_centroid[2],
+              ]
+              on_sites_moved?.(selected_sites, delta)
+            }}
+            onmouseDown={() => {
+              drag_start_centroid = [...centroid] as Vec3
+              on_operation_start?.()
+            }}
+            onmouseUp={() => {
+              drag_start_centroid = null
+            }}
+          />
+        {/if}
+      {/if}
+
+      <!-- Invisible plane for click-to-place atom in add-atom mode -->
+      <!-- Uses onBeforeRender to orient normal toward camera so raycasts always hit -->
+      {#if measure_mode === `edit-atoms` && add_atom_mode}
+        {@const center = rotation_target ?? [0, 0, 0]}
+        <T.Mesh
+          position={center}
+          onBeforeRender={(mesh: { lookAt: (x: number, y: number, z: number) => void }) => {
+            if (camera) {
+              mesh.lookAt(
+                camera.position.x,
+                camera.position.y,
+                camera.position.z,
+              )
+            }
+          }}
+          onclick={(event: { point: { x: number; y: number; z: number } }) => {
+            const { x, y, z } = event.point
+            on_add_atom?.([x, y, z] as Vec3, add_element as ElementSymbol)
+            add_atom_mode = false
+          }}
+        >
+          <T.PlaneGeometry args={[200, 200]} />
+          <T.MeshBasicMaterial transparent opacity={0} side={2} depthWrite={false} />
+        </T.Mesh>
       {/if}
 
       <!-- Measurement overlays for measured sites -->

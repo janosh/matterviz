@@ -1,3 +1,7 @@
+<script module lang="ts">
+  export type MeasureMode = `distance` | `angle` | `edit-bonds` | `edit-atoms`
+</script>
+
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
@@ -7,11 +11,13 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
+  import { ELEM_SYMBOLS } from '$lib/labels'
   import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
+  import { create_cart_to_frac } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import type { AnyStructure, Crystal } from '$lib/structure'
+  import type { AnyStructure, Crystal, Site } from '$lib/structure'
   import { get_element_counts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
@@ -23,7 +29,7 @@
   import { untrack } from 'svelte'
   import { click_outside, tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, OrthographicCamera, Scene } from 'three'
   import type { AtomColorConfig } from './atom-properties'
   import { get_property_colors } from './atom-properties'
@@ -59,6 +65,7 @@
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
     enable_measure_mode = $bindable(true),
+    measure_mode = $bindable<MeasureMode>(`distance`),
     background_color = $bindable(),
     background_opacity = $bindable(0.1),
     show_controls,
@@ -149,6 +156,7 @@
       allow_file_drop?: boolean
       enable_info_pane?: boolean
       enable_measure_mode?: boolean
+      measure_mode?: MeasureMode
       info_pane_open?: boolean
       fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
       bottom_left?: Snippet<[{ structure?: AnyStructure }]>
@@ -365,14 +373,82 @@
       })
   })
 
-  // Measurement mode and selection state
-  let measure_mode: `distance` | `angle` | `edit-bonds` = $state(`distance`)
   let measure_menu_open = $state(false)
   let export_pane_open = $state(false)
 
   // Bond customization state
   let added_bonds = $state<[number, number][]>([])
   let removed_bonds = $state<[number, number][]>([])
+
+  // === Edit-atoms mode state ===
+  let undo_stack = $state<AnyStructure[]>([])
+  let redo_stack = $state<AnyStructure[]>([])
+  const MAX_HISTORY = 20
+  // Flag set before internal edits (undo/redo/delete/add/move) to distinguish
+  // them from external structure changes (file load, trajectory step, etc.)
+  let is_internal_edit = false
+  // Add-atom sub-mode state (bound to StructureScene)
+  let add_atom_mode = $state(false)
+  let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
+
+  function push_undo() {
+    if (!structure) return
+    undo_stack = [...undo_stack.slice(-(MAX_HISTORY - 1)), $state.snapshot(structure)]
+    redo_stack = []
+  }
+
+  function undo() {
+    if (undo_stack.length === 0 || !structure) return
+    is_internal_edit = true
+    redo_stack = [...redo_stack, $state.snapshot(structure)]
+    structure = undo_stack.at(-1)!
+    undo_stack = undo_stack.slice(0, -1)
+    selected_sites = []
+    measured_sites = []
+  }
+
+  function redo() {
+    if (redo_stack.length === 0 || !structure) return
+    is_internal_edit = true
+    undo_stack = [...undo_stack.slice(-(MAX_HISTORY - 1)), $state.snapshot(structure)]
+    structure = redo_stack.at(-1)!
+    redo_stack = redo_stack.slice(0, -1)
+    selected_sites = []
+    measured_sites = []
+  }
+
+  // Clear undo/redo stacks when structure changes externally (file load, etc.)
+  // Internal edits set is_internal_edit=true before modifying structure.
+  // This $effect runs after microtask, so the flag is still set from the edit.
+  $effect(() => {
+    // Track structure to re-run when it changes
+    void structure
+    if (is_internal_edit) {
+      is_internal_edit = false
+      return
+    }
+    // External change — clear history
+    untrack(() => {
+      if (undo_stack.length > 0 || redo_stack.length > 0) {
+        undo_stack = []
+        redo_stack = []
+      }
+    })
+  })
+
+  // Auto-bake cell type transform when entering edit-atoms mode
+  $effect(() => {
+    if (measure_mode !== `edit-atoms`) return
+    untrack(() => {
+      if (cell_type !== `original` && cell_transformed_structure && structure) {
+        // Bake the transformed cell: push original to undo, replace structure
+        is_internal_edit = true
+        push_undo()
+        structure = $state.snapshot(cell_transformed_structure) as AnyStructure
+        cell_type = `original`
+      }
+    })
+  })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
 
@@ -407,6 +483,9 @@
   // Create supercell if needed (uses cell_transformed_structure as base)
   let supercell_structure = $state(structure)
   let supercell_loading = $state(false)
+  let has_supercell = $derived(
+    !!supercell_scaling && ![``, `1x1x1`, `1`].includes(supercell_scaling),
+  )
 
   $effect(() => {
     const base_structure = cell_transformed_structure
@@ -655,13 +734,66 @@
     }
   }
 
-  function onkeydown(event: KeyboardEvent) {
+  function handle_keydown(event: KeyboardEvent) {
     // Don't handle shortcuts if user is typing in an input field
     const target = event.target as HTMLElement
     const is_input_focused = target.tagName === `INPUT` ||
       target.tagName === `TEXTAREA`
 
     if (is_input_focused) return
+
+    // Edit-atoms mode shortcuts (including undo/redo)
+    if (measure_mode === `edit-atoms`) {
+      // Undo/redo shortcuts (Ctrl/Cmd + Z/Y) — only active in edit-atoms mode
+      if (event.ctrlKey || event.metaKey) {
+        if (event.key === `z` && !event.shiftKey) {
+          event.preventDefault()
+          undo()
+          return
+        } else if (event.key === `y` || (event.key === `z` && event.shiftKey)) {
+          event.preventDefault()
+          redo()
+          return
+        }
+      }
+
+      if (event.key === `Delete` || event.key === `Backspace`) {
+        // Delete selected atoms
+        if (selected_sites.length > 0 && structure?.sites) {
+          event.preventDefault()
+          is_internal_edit = true
+          push_undo()
+          const to_delete = map_scene_indices_to_structure(selected_sites)
+          selected_sites = []
+          measured_sites = []
+          structure = {
+            ...structure,
+            sites: structure.sites.filter((_site: Site, idx: number) =>
+              !to_delete.has(idx)
+            ),
+          }
+        }
+        return
+      }
+      if (event.key.toLowerCase() === `a`) {
+        // Enter add-atom sub-mode
+        event.preventDefault()
+        add_atom_mode = !add_atom_mode
+        return
+      }
+      if (event.key === `Escape`) {
+        // Exit add-atom mode first, then clear selection
+        if (add_atom_mode) {
+          add_atom_mode = false
+          return
+        }
+        if (selected_sites.length > 0) {
+          selected_sites = []
+          measured_sites = []
+          return
+        }
+      }
+    }
 
     // Interface shortcuts
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
@@ -671,6 +803,101 @@
       if (info_pane_open) info_pane_open = false
       else if (controls_open) controls_open = false
       else if (export_pane_open) export_pane_open = false
+    }
+  }
+
+  // === Edit-atoms mode helpers ===
+
+  // Map scene indices (into displayed_structure) back to raw structure indices
+  // Handles supercell atoms via orig_unit_cell_idx property
+  function map_scene_indices_to_structure(
+    scene_indices: number[],
+  ): SvelteSet<number> {
+    const result = new SvelteSet<number>()
+    for (const scene_idx of scene_indices) {
+      const displayed_site = displayed_structure?.sites?.[scene_idx]
+      if (!displayed_site) continue
+      // Skip image atoms
+      if (displayed_site.properties?.orig_site_idx != null) continue
+
+      if (has_supercell && displayed_site.properties?.orig_unit_cell_idx != null) {
+        result.add(displayed_site.properties.orig_unit_cell_idx as number)
+      } else {
+        result.add(scene_idx)
+      }
+    }
+    return result
+  }
+
+  // Try to create a Cartesian→fractional converter for the current structure's lattice
+  function get_cart_to_frac(): ((xyz: Vec3) => Vec3) | undefined {
+    if (!structure || !(`lattice` in structure)) return undefined
+    try {
+      return create_cart_to_frac((structure as Crystal).lattice.matrix)
+    } catch {
+      console.warn(`Failed to compute lattice inverse for fractional coordinates`)
+      return undefined
+    }
+  }
+
+  // Handle atom moves from StructureScene TransformControls.
+  // Receives scene-level indices and a Cartesian delta (offset) to apply.
+  function handle_sites_moved(scene_indices: number[], delta: Vec3) {
+    if (!structure?.sites) return
+    is_internal_edit = true
+
+    // Map scene indices to original structure indices, collecting unique targets
+    const orig_indices = new SvelteSet<number>()
+    for (const scene_idx of scene_indices) {
+      const displayed_site = displayed_structure?.sites?.[scene_idx]
+      if (!displayed_site) continue
+      if (has_supercell && displayed_site.properties?.orig_unit_cell_idx != null) {
+        orig_indices.add(displayed_site.properties.orig_unit_cell_idx as number)
+      } else {
+        orig_indices.add(scene_idx)
+      }
+    }
+
+    const cart_to_frac = get_cart_to_frac()
+    structure = {
+      ...structure,
+      sites: structure.sites.map((site: Site, idx: number) => {
+        if (!orig_indices.has(idx)) return site
+        const new_xyz: Vec3 = [
+          site.xyz[0] + delta[0],
+          site.xyz[1] + delta[1],
+          site.xyz[2] + delta[2],
+        ]
+        return { ...site, xyz: new_xyz, abc: cart_to_frac?.(new_xyz) ?? site.abc }
+      }),
+    }
+  }
+
+  // Handle add-atom from StructureScene click-to-place
+  function handle_add_atom(xyz: Vec3, element: ElementSymbol) {
+    if (!structure) return
+    // Validate element symbol — capitalize first letter to be forgiving of case
+    const normalized = (element.charAt(0).toUpperCase() +
+      element.slice(1).toLowerCase()) as ElementSymbol
+    if (!ELEM_SYMBOLS.includes(normalized)) {
+      console.warn(`Invalid element symbol "${element}", ignoring add-atom`)
+      return
+    }
+    element = normalized
+    is_internal_edit = true
+    push_undo()
+
+    const new_site: Site = {
+      species: [{ element, occu: 1, oxidation_state: 0 }],
+      xyz,
+      abc: get_cart_to_frac()?.(xyz) ?? [0, 0, 0],
+      label: element,
+      properties: {},
+    }
+
+    structure = {
+      ...structure,
+      sites: [...structure.sites, new_site],
     }
   }
 
@@ -714,6 +941,7 @@
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
   role="region"
+  tabindex="-1"
   aria-label="Structure viewer"
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -747,7 +975,7 @@
     event.preventDefault()
     dragover = false
   }}
-  {onkeydown}
+  onkeydown={handle_keydown}
   {...rest}
   class="structure {rest.class ?? ``}"
 >
@@ -816,6 +1044,7 @@
                     distance: `Ruler`,
                     angle: `Angle`,
                     'edit-bonds': `Link`,
+                    'edit-atoms': `Edit`,
                   } as const)[measure_mode]}
                 />
               {/if}
@@ -849,6 +1078,12 @@
               label: `Edit Bonds`,
               scale: 1.0,
             },
+            {
+              mode: `edit-atoms`,
+              icon: `Edit`,
+              label: `Edit Atoms`,
+              scale: 1.0,
+            },
           ] as const as
                   { mode, icon, label, scale }
                   (mode)
@@ -865,6 +1100,55 @@
               </div>
             {/if}
           </div>
+
+          <!-- Undo/redo buttons (only in edit-atoms mode) -->
+          {#if measure_mode === `edit-atoms`}
+            <div class="undo-redo-container">
+              <button
+                type="button"
+                aria-label="Undo (Ctrl+Z)"
+                disabled={undo_stack.length === 0}
+                onclick={undo}
+                title="Undo (Ctrl+Z)"
+                class="undo-redo-btn"
+              >
+                <Icon icon="Undo" />
+                {#if undo_stack.length > 0}
+                  <span class="history-count">{undo_stack.length}</span>
+                {/if}
+              </button>
+              <button
+                type="button"
+                aria-label="Redo (Ctrl+Y)"
+                disabled={redo_stack.length === 0}
+                onclick={redo}
+                title="Redo (Ctrl+Y)"
+                class="undo-redo-btn"
+              >
+                <Icon icon="Redo" />
+                {#if redo_stack.length > 0}
+                  <span class="history-count">{redo_stack.length}</span>
+                {/if}
+              </button>
+            </div>
+          {/if}
+
+          <!-- Add-atom element input (shown when add_atom_mode is active) -->
+          {#if measure_mode === `edit-atoms` && add_atom_mode}
+            <div class="add-atom-input">
+              <label>
+                <span>Element:</span>
+                <input
+                  type="text"
+                  bind:value={add_element}
+                  maxlength="2"
+                  placeholder="C"
+                  style="width: 3em; text-align: center"
+                />
+              </label>
+              <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>
+            </div>
+          {/if}
         {/if}
 
         {#if enable_info_pane && normalized_structure &&
@@ -965,6 +1249,11 @@
             {height}
             {atom_color_config}
             {sym_data}
+            on_sites_moved={handle_sites_moved}
+            on_operation_start={push_undo}
+            on_add_atom={handle_add_atom}
+            bind:add_atom_mode
+            bind:add_element
           />
         </Canvas>
       </div>
@@ -1224,5 +1513,55 @@
   .structure:hover :global(.cell-select) {
     opacity: 1;
     pointer-events: auto;
+  }
+  .undo-redo-container {
+    display: flex;
+  }
+  .undo-redo-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .history-count {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    background: var(--accent-color, #007acc);
+    color: white;
+    border-radius: 50%;
+    width: 12px;
+    height: 12px;
+    font-size: 8px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .add-atom-input {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 0.3em 0.6em;
+    border-radius: var(--border-radius, 3pt);
+    font-size: 0.8rem;
+    label {
+      display: flex;
+      align-items: center;
+      gap: 0.3em;
+    }
+    input {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 3px;
+      color: white;
+      font-size: 0.85rem;
+      padding: 0.1em 0.3em;
+    }
   }
 </style>

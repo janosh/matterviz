@@ -2,6 +2,7 @@
 import type { XyObj } from '$lib'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  enter_edit_atoms_mode,
   expect_canvas_changed,
   get_canvas_timeout,
   IS_CI,
@@ -938,6 +939,111 @@ test.describe(`StructureScene Component Tests`, () => {
       expect(rotated_screenshot.length).toBeGreaterThan(1000)
     }
 
+    expect(console_errors).toHaveLength(0)
+  })
+})
+
+// === Edit Atoms Scene Tests ===
+
+test.describe(`Edit Atoms Scene`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    test.skip(IS_CI, `Edit atoms scene tests require WebGL, skip in CI`)
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await wait_for_3d_canvas(page, `#test-structure`)
+    await enter_edit_atoms_mode(page)
+  })
+
+  test(`atom click toggles selection in edit-atoms mode`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
+    const position = { x: 400, y: 250 }
+
+    // Take initial screenshot
+    const initial = await canvas.screenshot()
+
+    // Click to select
+    await canvas.click({ position, force: true })
+    await page.waitForTimeout(300)
+    const selected = await canvas.screenshot()
+
+    // Click again to deselect
+    await canvas.click({ position, force: true })
+    await page.waitForTimeout(300)
+    const deselected = await canvas.screenshot()
+
+    // Initial and deselected should differ from selected
+    expect(initial.equals(selected)).toBe(false)
+    expect(selected.equals(deselected)).toBe(false)
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`shift+click adds to selection`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
+    // Click first atom
+    await canvas.click({ position: { x: 350, y: 200 }, force: true })
+    await page.waitForTimeout(200)
+    const single_selection = await canvas.screenshot()
+
+    // Click second atom without shift (replaces selection)
+    await canvas.click({ position: { x: 450, y: 300 }, force: true })
+    await page.waitForTimeout(200)
+    const replaced = await canvas.screenshot()
+
+    // Click first again
+    await canvas.click({ position: { x: 350, y: 200 }, force: true })
+    await page.waitForTimeout(200)
+
+    // Shift+click second atom (adds to selection)
+    await canvas.click({
+      position: { x: 450, y: 300 },
+      modifiers: [`Shift`],
+      force: true,
+    })
+    await page.waitForTimeout(200)
+    const multi_selection = await canvas.screenshot()
+
+    // All screenshots should differ
+    expect(single_selection.equals(replaced)).toBe(false)
+    expect(replaced.equals(multi_selection)).toBe(false)
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`no errors in edit-atoms mode after various interactions`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
+    // Various interactions should not cause errors
+    await canvas.click({ position: { x: 400, y: 250 }, force: true })
+    await page.waitForTimeout(100)
+    await canvas.click({ position: { x: 200, y: 150 }, force: true })
+    await page.waitForTimeout(100)
+    await canvas.click({
+      position: { x: 500, y: 300 },
+      modifiers: [`Shift`],
+      force: true,
+    })
+    await page.waitForTimeout(100)
+
+    // Keyboard shortcuts should not cause errors
+    await page.keyboard.press(`Delete`)
+    await page.keyboard.press(`Control+z`)
+    await page.keyboard.press(`Control+y`)
+
+    // Canvas should still render
+    const screenshot = await canvas.screenshot()
+    expect(screenshot.length).toBeGreaterThan(1000)
     expect(console_errors).toHaveLength(0)
   })
 })

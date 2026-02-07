@@ -3,6 +3,7 @@ import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import {
+  enter_edit_atoms_mode,
   expect_canvas_changed,
   get_canvas_timeout,
   goto_structure_test,
@@ -3106,5 +3107,189 @@ test.describe(`Fullscreen Background Color Detection`, () => {
     expect(bg).toContain(`100`)
     expect(bg).toContain(`150`)
     expect(bg).toContain(`200`)
+  })
+})
+
+// === Edit Atoms Mode Tests ===
+
+test.describe(`Edit Atoms Mode`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    // Edit-atoms tests require WebGL for 3D canvas interactions
+    test.skip(IS_CI, `Edit atoms tests require WebGL, skip in CI`)
+    await goto_structure_test(page, `/test/structure?show_controls=always`)
+  })
+
+  test(`edit-atoms mode can be selected from dropdown`, async ({ page }) => {
+    await enter_edit_atoms_mode(page)
+
+    // Verify undo/redo buttons appear (only in edit-atoms mode)
+    const structure_div = page.locator(`#test-structure`)
+    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+    const redo_btn = structure_div.locator(`button[aria-label*="Redo"]`)
+    await expect(undo_btn).toBeVisible()
+    await expect(redo_btn).toBeVisible()
+  })
+
+  test(`undo/redo buttons initially disabled`, async ({ page }) => {
+    await enter_edit_atoms_mode(page)
+
+    const structure_div = page.locator(`#test-structure`)
+    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+    const redo_btn = structure_div.locator(`button[aria-label*="Redo"]`)
+
+    await expect(undo_btn).toBeDisabled()
+    await expect(redo_btn).toBeDisabled()
+  })
+
+  test(`undo/redo buttons hidden in distance/angle modes`, async ({ page }) => {
+    // Check default distance mode - no undo/redo buttons
+    const structure_div = page.locator(`#test-structure`)
+    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+    await expect(undo_btn).toHaveCount(0)
+
+    // Switch to edit-atoms to verify they appear
+    await enter_edit_atoms_mode(page)
+    await expect(undo_btn).toBeVisible()
+
+    // Switch back to distance mode via the dropdown
+    const measure_button = structure_div.locator(`button.view-mode-button`)
+    await measure_button.click()
+    await page.waitForTimeout(300)
+    const distance_option = structure_div.locator(`.view-mode-option`).filter({
+      hasText: `Distance`,
+    })
+    await distance_option.click()
+    await page.waitForTimeout(300)
+    await expect(undo_btn).toHaveCount(0)
+  })
+
+  test(`delete key removes atom and enables undo`, async ({ page }) => {
+    await enter_edit_atoms_mode(page)
+
+    const structure_div = page.locator(`#test-structure`)
+    const canvas = structure_div.locator(`canvas`)
+
+    // Click on an atom to select it (use center of canvas)
+    await canvas.click({ position: { x: 400, y: 250 }, force: true })
+    await page.waitForTimeout(300)
+
+    // Focus wrapper for keyboard events and press Delete
+    await structure_div.focus()
+    await page.keyboard.press(`Delete`)
+    await page.waitForTimeout(300)
+
+    // Undo button should now be enabled
+    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+    await expect(undo_btn).toBeEnabled()
+  })
+
+  test(`undo restores state and enables redo`, async ({ page }) => {
+    await enter_edit_atoms_mode(page)
+
+    const structure_div = page.locator(`#test-structure`)
+    const canvas = structure_div.locator(`canvas`)
+
+    // Select and delete an atom
+    await canvas.click({ position: { x: 400, y: 250 }, force: true })
+    await page.waitForTimeout(300)
+    await structure_div.focus()
+    await page.keyboard.press(`Delete`)
+    await page.waitForTimeout(300)
+
+    // Click undo
+    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+    await undo_btn.click({ force: true })
+    await page.waitForTimeout(300)
+
+    // Redo should now be enabled
+    const redo_btn = structure_div.locator(`button[aria-label*="Redo"]`)
+    await expect(redo_btn).toBeEnabled()
+  })
+
+  test(`keyboard shortcuts Ctrl+Z/Y work for undo/redo`, async ({ page }) => {
+    await enter_edit_atoms_mode(page)
+
+    const structure_div = page.locator(`#test-structure`)
+    const canvas = structure_div.locator(`canvas`)
+
+    // Select and delete
+    await canvas.click({ position: { x: 400, y: 250 }, force: true })
+    await page.waitForTimeout(300)
+    await structure_div.focus()
+    await page.keyboard.press(`Delete`)
+    await page.waitForTimeout(300)
+
+    // Ctrl+Z to undo
+    await page.keyboard.press(`Control+z`)
+    await page.waitForTimeout(200)
+
+    // Ctrl+Y to redo
+    await page.keyboard.press(`Control+y`)
+    await page.waitForTimeout(200)
+
+    // Undo should be enabled (redo just put item back on undo stack)
+    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+    await expect(undo_btn).toBeEnabled()
+  })
+
+  test(`add atom via A key shows element input`, async ({ page }) => {
+    await enter_edit_atoms_mode(page)
+
+    const structure_div = page.locator(`#test-structure`)
+    // Focus wrapper for keyboard events
+    await structure_div.focus()
+
+    // Press A to enter add-atom mode
+    await page.keyboard.press(`a`)
+    await page.waitForTimeout(200)
+
+    // Should show element input
+    const add_input = structure_div.locator(`.add-atom-input`)
+    await expect(add_input).toBeVisible()
+
+    // Press Escape to cancel
+    await page.keyboard.press(`Escape`)
+    await page.waitForTimeout(200)
+    await expect(add_input).not.toBeVisible()
+  })
+
+  test(`edit mode persists across interactions`, async ({ page }) => {
+    await enter_edit_atoms_mode(page)
+
+    const structure_div = page.locator(`#test-structure`)
+    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+
+    // Verify edit mode active
+    await expect(undo_btn).toBeVisible()
+
+    // Click on the canvas
+    const canvas = structure_div.locator(`canvas`)
+    await canvas.click({ position: { x: 50, y: 50 }, force: true })
+    await page.waitForTimeout(200)
+
+    // Undo/redo buttons should still be visible
+    await expect(undo_btn).toBeVisible()
+  })
+
+  test(`history count badges show correct counts`, async ({ page }) => {
+    await enter_edit_atoms_mode(page)
+
+    const structure_div = page.locator(`#test-structure`)
+    const canvas = structure_div.locator(`canvas`)
+
+    // Initially no count badges
+    await expect(structure_div.locator(`.history-count`)).toHaveCount(0)
+
+    // Delete an atom to create history
+    await canvas.click({ position: { x: 400, y: 250 }, force: true })
+    await page.waitForTimeout(300)
+    await structure_div.focus()
+    await page.keyboard.press(`Delete`)
+    await page.waitForTimeout(300)
+
+    // Should show undo count badge with "1"
+    const count_badge = structure_div.locator(`.history-count`).first()
+    await expect(count_badge).toBeVisible()
+    await expect(count_badge).toHaveText(`1`)
   })
 })
