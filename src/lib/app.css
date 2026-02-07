@@ -8,6 +8,7 @@
   --max-text-width: 50em;
 
   --sms-max-width: 20em;
+  --sms-min-height: 19pt;
   --sms-text-color: var(--text-color);
 
   /* Svelte MultiSelect */
