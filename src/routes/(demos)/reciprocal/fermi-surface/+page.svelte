@@ -4,6 +4,7 @@
   import { page } from '$app/state'
   import type { FileInfo } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
+  import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import type {
     BandGridData,
     FermiFileLoadData,
@@ -33,37 +34,6 @@
   let slice_miller = $state<Vec3>([0, 0, 1])
   let slice_distance = $state(0)
   let hover_data = $state<FermiHoverData | null>(null)
-  let hkl_input = $state(`001`) // Combined hkl input as string
-
-  // Parse hkl string like "001", "111", "121" into Vec3
-  function parse_hkl(input: string): Vec3 | null {
-    // Handle negative values with - prefix (e.g., "-101", "1-11")
-    const cleaned = input.replace(/\s/g, ``)
-    if (cleaned.length < 3) return null
-    const parts: number[] = []
-    let idx = 0
-    while (idx < cleaned.length && parts.length < 3) {
-      let neg = false
-      if (cleaned[idx] === `-`) {
-        neg = true
-        idx++
-      }
-      const digit = parseInt(cleaned[idx], 10)
-      if (isNaN(digit)) return null
-      parts.push(neg ? -digit : digit)
-      idx++
-    }
-    if (parts.length !== 3) return null
-    return parts as Vec3
-  }
-
-  // Update slice_miller when hkl_input changes
-  function handle_hkl_change(event: Event) {
-    const target = event.target as HTMLInputElement
-    hkl_input = target.value
-    const parsed = parse_hkl(hkl_input)
-    if (parsed) slice_miller = parsed
-  }
 
   function update_url(filename: string) {
     if (!browser) return
@@ -214,17 +184,7 @@
   <section class="slice-section">
     <header>
       <h2 style="margin: 0">2D Slice</h2>
-      <label>
-        hkl:
-        <input
-          type="text"
-          value={hkl_input}
-          oninput={handle_hkl_change}
-          placeholder="001"
-          maxlength="6"
-          title="Miller indices (e.g. 001, 111, -101)"
-        />
-      </label>
+      <MillerIndexInput bind:value={slice_miller} />
       <label>
         d:
         <input type="range" bind:value={slice_distance} min="-1" max="1" step="0.05" />

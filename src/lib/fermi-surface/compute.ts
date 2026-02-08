@@ -450,7 +450,7 @@ export function compute_fermi_slice(
   const unit_normal = math.normalize_vec3(plane_normal)
 
   // Compute in-plane basis vectors
-  const [in_plane_u, in_plane_v] = compute_in_plane_basis(unit_normal)
+  const [in_plane_u, in_plane_v] = math.compute_in_plane_basis(unit_normal)
 
   // Slice each isosurface
   const isolines: Isoline[] = []
@@ -476,30 +476,6 @@ export function compute_fermi_slice(
       has_properties: isolines.some((l) => l.properties !== undefined),
     },
   }
-}
-
-// Compute orthonormal basis vectors in a plane
-function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
-  // Find a vector not parallel to normal
-  let ref: Vec3 = [1, 0, 0]
-  if (Math.abs(normal[0]) > 0.9) {
-    ref = [0, 1, 0]
-  }
-
-  // Gram-Schmidt to get first in-plane vector
-  const dot_nr = math.dot(normal, ref) as number
-  const u_unnorm: Vec3 = [
-    ref[0] - dot_nr * normal[0],
-    ref[1] - dot_nr * normal[1],
-    ref[2] - dot_nr * normal[2],
-  ]
-  // Guard against near-zero length from failed Gram-Schmidt (numerical issues)
-  const u = math.normalize_vec3(u_unnorm, [0, 1, 0])
-
-  // Cross product for second in-plane vector
-  const v = math.cross_3d(normal, u)
-
-  return [u, v]
 }
 
 // Helper to create edge key (sorted vertex indices)
