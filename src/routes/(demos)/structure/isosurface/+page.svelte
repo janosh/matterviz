@@ -37,6 +37,7 @@
   let slice_position = $state(0.5) // fractional distance along plane normal [0, 1]
   let slice_canvas = $state<HTMLCanvasElement | undefined>()
   let slice_range = $state<[number, number]>([0, 1])
+  let slice_canvas_height = $state(200)
 
   // Use precomputed data_range from the active volume
   let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
@@ -53,7 +54,9 @@
     ) {
       params.set(`show_negative`, String(isosurface_settings.show_negative))
     }
-    goto(`${page.url.pathname}?${params.toString()}`, {
+    // Use window.location instead of page.url to avoid creating a reactive
+    // dependency that would cause an infinite loop with the $effect
+    goto(`${window.location.pathname}?${params.toString()}`, {
       replaceState: true,
       keepFocus: true,
       noScroll: true,
@@ -103,9 +106,19 @@
     }
   }
 
-  // Sync URL when isosurface settings change (isovalue/show_negative are read
-  // inside update_url, so Svelte auto-tracks them as dependencies)
-  $effect(() => update_url())
+  // Sync URL when isosurface settings change.
+  // Skip during initial mount (active_file is set by onMount's load_file).
+  let mounted = false
+  $effect(() => {
+    // Read reactive values to establish tracking (void suppresses eslint no-unused-expressions)
+    void isosurface_settings.isovalue
+    void isosurface_settings.show_negative
+    void active_file
+    if (mounted) update_url()
+  })
+  onMount(() => {
+    mounted = true
+  })
 
   // === Slice rendering ===
   // Render a 2D heatmap slice through the volumetric data using ImageData for performance
@@ -124,6 +137,7 @@
     const canvas_height = Math.round(height * scale)
     slice_canvas.width = canvas_width
     slice_canvas.height = canvas_height
+    slice_canvas_height = canvas_height
 
     const ctx = slice_canvas.getContext(`2d`)
     if (!ctx) return
@@ -320,11 +334,9 @@
         range={slice_range}
         color_scale="interpolateRdBu"
         tick_labels={5}
-        snap_ticks={false}
-        tick_side="secondary"
-        style="height: 100%"
-        --cbar-thickness="14px"
+        bar_style="height: {slice_canvas_height}px"
         --cbar-font-size="0.75em"
+        --cbar-tick-label-font-weight="normal"
       />
     </div>
   </div>
