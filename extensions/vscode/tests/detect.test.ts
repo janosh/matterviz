@@ -1,10 +1,12 @@
 // Tests for data type detection used by JsonBrowser and main.ts
 import { readFileSync } from 'node:fs'
+import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 import { detect_view_type, scan_renderable_paths } from '../src/webview/detect'
 
 const fixture = JSON.parse(
-  readFileSync(`extensions/vscode/test-fixtures/all-viz-types.json`, `utf-8`),
+  gunzipSync(readFileSync(`extensions/vscode/test-fixtures/all-viz-types.json.gz`))
+    .toString(),
 )
 
 describe(`detect_view_type`, () => {

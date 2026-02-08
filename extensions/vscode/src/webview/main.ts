@@ -114,7 +114,7 @@ class VSCodeFrameLoader implements FrameLoader {
 
       timer = setTimeout(() => {
         globalThis.removeEventListener(`message`, handler)
-        reject(new Error(`Frame ${frame_index} timeout after ${timeout}ms`))
+        reject(new Error(`Frame ${frame_index} timeout after ${timeout}s`))
       }, timeout * 1000)
     })
   }
