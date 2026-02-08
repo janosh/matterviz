@@ -950,7 +950,7 @@ def generate_al_slab_locpot() -> str:
 if __name__ == "__main__":
     import os
 
-    out_dir = os.path.dirname(os.path.abspath(__file__))
+    out_dir = os.path.dirname(__file__)
 
     generators: list[tuple[str, str]] = [
         ("H2O electron density .cube", "h2o-density.cube.gz"),

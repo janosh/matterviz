@@ -11,7 +11,6 @@
   import {
     auto_isosurface_settings,
     DEFAULT_ISOSURFACE_SETTINGS,
-    grid_data_range,
     Structure,
   } from 'matterviz'
   import { onMount } from 'svelte'
@@ -34,28 +33,8 @@
   let slice_position = $state(0.5) // fractional position along axis [0, 1]
   let slice_canvas = $state<HTMLCanvasElement | undefined>()
 
-  // Derived data range for the active volume
-  let data_range = $derived.by(() => {
-    const vol = volumetric_data?.[active_volume_idx]
-    return vol ? grid_data_range(vol.grid) : undefined
-  })
-
-  // Compute grid mean for stats display
-  let grid_mean = $derived.by(() => {
-    const vol = volumetric_data?.[active_volume_idx]
-    if (!vol) return undefined
-    let sum = 0
-    let count = 0
-    for (const plane of vol.grid) {
-      for (const row of plane) {
-        for (const val of row) {
-          sum += val
-          count++
-        }
-      }
-    }
-    return count > 0 ? sum / count : 0
-  })
+  // Use precomputed data_range from the active volume
+  let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
 
   function update_url() {
     if (!browser || !active_file) return
@@ -97,10 +76,10 @@
           structure = vol_result.structure as AnyStructure
           volumetric_data = vol_result.volumes
           active_volume_idx = 0
-          // Auto-set reasonable isovalue based on data range
+          // Auto-set reasonable isovalue based on precomputed data range
           const vol = vol_result.volumes[0]
           if (vol) {
-            isosurface_settings = auto_isosurface_settings(vol.grid)
+            isosurface_settings = auto_isosurface_settings(vol.data_range)
           }
         } else {
           // Fall back to regular structure parsing
@@ -124,13 +103,11 @@
   function set_isovalue_preset(fraction: number) {
     if (!data_range) return
     isosurface_settings.isovalue = data_range.abs_max * fraction
-    // reassign to trigger reactivity
-    isosurface_settings = { ...isosurface_settings }
     update_url()
   }
 
   // === Slice rendering ===
-  // Render a 2D heatmap slice through the volumetric data
+  // Render a 2D heatmap slice through the volumetric data using ImageData for performance
   function render_slice() {
     const vol = volumetric_data?.[active_volume_idx]
     if (!vol || !slice_canvas) return
@@ -177,17 +154,20 @@
       }
     }
 
-    // Render to canvas
+    // Render to canvas using ImageData for efficient pixel-level writes
     const scale = Math.min(300 / width, 300 / height, 10)
-    const canvas_width = width * scale
-    const canvas_height = height * scale
+    const canvas_width = Math.round(width * scale)
+    const canvas_height = Math.round(height * scale)
     slice_canvas.width = canvas_width
     slice_canvas.height = canvas_height
 
     const ctx = slice_canvas.getContext(`2d`)
     if (!ctx) return
 
+    const img_data = ctx.createImageData(canvas_width, canvas_height)
+    const pixels = img_data.data
     const range = s_max - s_min || 1
+
     for (let row = 0; row < height; row++) {
       for (let col = 0; col < width; col++) {
         const val = slice_data[row * width + col]
@@ -206,21 +186,33 @@
           g_col = Math.round((1 - t_val) * 255)
           b_col = Math.round((1 - t_val) * 255)
         }
-        ctx.fillStyle = `rgb(${r_col},${g_col},${b_col})`
-        // Flip y so origin is at bottom-left
-        ctx.fillRect(col * scale, (height - 1 - row) * scale, scale, scale)
+
+        // Fill the scaled pixel block (flip y so origin is at bottom-left)
+        const flipped_row = height - 1 - row
+        const px_y_start = Math.round(flipped_row * scale)
+        const px_y_end = Math.round((flipped_row + 1) * scale)
+        const px_x_start = Math.round(col * scale)
+        const px_x_end = Math.round((col + 1) * scale)
+        for (let py = px_y_start; py < px_y_end; py++) {
+          for (let px = px_x_start; px < px_x_end; px++) {
+            const offset = (py * canvas_width + px) * 4
+            pixels[offset] = r_col
+            pixels[offset + 1] = g_col
+            pixels[offset + 2] = b_col
+            pixels[offset + 3] = 255
+          }
+        }
       }
     }
+
+    ctx.putImageData(img_data, 0, 0)
   }
 
   // Re-render slice when relevant state changes
+  // render_slice reads show_slice, volumetric_data, active_volume_idx, slice_axis,
+  // slice_position, and slice_canvas — Svelte 5 tracks these automatically
   $effect(() => {
-    if (show_slice && volumetric_data && slice_canvas) {
-      // touch reactive deps
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      ;[active_volume_idx, slice_axis, slice_position]
-      render_slice()
-    }
+    if (show_slice && volumetric_data && slice_canvas) render_slice()
   })
 
   // Load file from URL param or default on mount
@@ -239,14 +231,11 @@
         if (isovalue_param) {
           const parsed = parseFloat(isovalue_param)
           if (!isNaN(parsed)) {
-            isosurface_settings = { ...isosurface_settings, isovalue: parsed }
+            isosurface_settings.isovalue = parsed
           }
         }
         if (show_neg_param) {
-          isosurface_settings = {
-            ...isosurface_settings,
-            show_negative: show_neg_param === `true`,
-          }
+          isosurface_settings.show_negative = show_neg_param === `true`
         }
       })
     }
@@ -281,7 +270,7 @@
   {/each}
 </nav>
 
-{#if volumetric_data && volumetric_data.length > 1}
+{#if (volumetric_data?.length ?? 0) > 1}
   <div class="volume-selector">
     <span>Volume:</span>
     {#each volumetric_data as vol, idx (idx)}
@@ -290,7 +279,7 @@
         onclick={() => {
           active_volume_idx = idx
           const vol_data = volumetric_data?.[idx]
-          if (vol_data) isosurface_settings = auto_isosurface_settings(vol_data.grid)
+          if (vol_data) isosurface_settings = auto_isosurface_settings(vol_data.data_range)
         }}
       >
         {vol.label ?? `Volume ${idx + 1}`}
@@ -330,16 +319,18 @@
   role="region"
   aria-label="Isosurface viewer - drop volumetric files here"
   ondragenter={() => (dragover_hint = true)}
-  ondragleave={(event) => {
+  ondragleave={(event: DragEvent) => {
     // Only clear if leaving the container (not entering a child)
-    const related = event.relatedTarget as HTMLElement | null
-    if (!related || !event.currentTarget.contains(related)) dragover_hint = false
+    const related = event.relatedTarget
+    if (!(related instanceof Node) || !(event.currentTarget as Node).contains(related)) {
+      dragover_hint = false
+    }
   }}
   ondrop={() => (dragover_hint = false)}
 >
   {#if dragover_hint}
     <div class="drop-overlay">
-      <div class="drop-icon">
+      <div style="color: var(--primary, #3b82f6)">
         <svg
           width="48"
           height="48"
@@ -391,7 +382,7 @@
       <span title="Grid dimensions">Grid: {vol.grid_dims.join(` × `)}</span>
       <span title="Data minimum">Min: {format_num(data_range.min, `.3~g`)}</span>
       <span title="Data maximum">Max: {format_num(data_range.max, `.3~g`)}</span>
-      <span title="Data mean">Mean: {format_num(grid_mean ?? 0, `.3~g`)}</span>
+      <span title="Data mean">Mean: {format_num(data_range.mean, `.3~g`)}</span>
       <span title="Total grid points">
         Points: {format_num(vol.grid_dims[0] * vol.grid_dims[1] * vol.grid_dims[2])}
       </span>
@@ -413,7 +404,7 @@
   </div>
 {/if}
 
-<div class="slice-section">
+<div style="margin-top: 1em">
   <button class="slice-toggle" onclick={() => (show_slice = !show_slice)}>
     {show_slice ? `Hide` : `Show`} cross-section slice
   </button>
@@ -623,9 +614,6 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s;
-    .drop-icon {
-      color: var(--primary, #3b82f6);
-    }
     span {
       font-size: 1.1em;
       font-weight: 500;
@@ -668,9 +656,6 @@
       white-space: nowrap;
       opacity: 0.85;
     }
-  }
-  .slice-section {
-    margin-top: 1em;
   }
   .slice-toggle {
     padding: 0.4em 0.8em;

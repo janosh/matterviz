@@ -11,7 +11,7 @@ export * from './feedback'
 export * from './fermi-surface'
 export { default as FilePicker } from './FilePicker.svelte'
 export { default as Icon } from './Icon.svelte'
-export { ICON_DATA, type IconName } from './icons'
+export * from './icons'
 export * from './io'
 // Explicit exports to avoid name clash with fermi-surface's Isosurface type
 export {
@@ -24,7 +24,7 @@ export {
   parse_cube,
   parse_volumetric_file,
 } from './isosurface'
-export type { IsosurfaceSettings, VolumetricData, VolumetricFileData } from './isosurface'
+export type { DataRange, IsosurfaceSettings, VolumetricData, VolumetricFileData } from './isosurface'
 export * from './labels'
 export * from './layout'
 export * from './math'

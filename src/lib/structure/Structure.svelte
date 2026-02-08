@@ -604,9 +604,13 @@
 
   // Try to parse content as a volumetric file, setting both structure and volumetric data.
   // Delegates format detection entirely to parse_volumetric_file (filename + content sniffing).
-  function try_parse_volumetric(text_content: string, filename: string): boolean {
+  // Returns the parsed structure on success, or null if the file isn't a volumetric format.
+  function try_parse_volumetric(
+    text_content: string,
+    filename: string,
+  ): AnyStructure | null {
     const vol_result = parse_volumetric_file(text_content, filename)
-    if (!vol_result) return false
+    if (!vol_result) return null
     // parse_volumetric_file extracts structure from file header;
     // parsers set pbc so the lattice conforms to Crystal's LatticeType
     structure = vol_result.structure as AnyStructure
@@ -614,16 +618,17 @@
     // Auto-compute reasonable isosurface settings from data range
     const vol = vol_result.volumes[0]
     if (vol) {
-      isosurface_settings = auto_isosurface_settings(vol.grid)
+      isosurface_settings = auto_isosurface_settings(vol.data_range)
       active_volume_idx = 0
     }
-    return true
+    return structure
   }
 
   // Parse file content, trying volumetric format first then falling back to plain structure.
   // Returns the parsed structure on success, throws on failure.
   function parse_file_content(text_content: string, filename: string): AnyStructure {
-    if (try_parse_volumetric(text_content, filename)) return structure!
+    const vol_struct = try_parse_volumetric(text_content, filename)
+    if (vol_struct) return vol_struct
     // Clear stale volumetric data when loading a non-volumetric file
     volumetric_data = []
     const parsed = parse_any_structure(text_content, filename)

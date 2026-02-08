@@ -3,7 +3,7 @@
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import type { IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, grid_data_range } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS } from './types'
 
   let {
     settings = $bindable({ ...DEFAULT_ISOSURFACE_SETTINGS }),
@@ -15,11 +15,10 @@
     active_volume_idx?: number
   } = $props()
 
-  // Compute min/max of the active volume for slider range
-  let data_range = $derived.by(() => {
-    const vol = volumes[active_volume_idx]
-    return vol ? grid_data_range(vol.grid) : { min: 0, max: 1, abs_max: 1 }
-  })
+  // Use precomputed data_range from the active volume
+  let data_range = $derived(
+    volumes[active_volume_idx]?.data_range ?? { min: 0, max: 1, abs_max: 1, mean: 0 },
+  )
 
   // Reasonable step size based on data range
   let step = $derived(data_range.abs_max > 0 ? data_range.abs_max / 200 : 0.001)

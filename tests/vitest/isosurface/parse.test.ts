@@ -183,6 +183,54 @@ describe(`parse_chgcar`, () => {
   ])(`returns null for %s`, (_label, content) => {
     expect(parse_chgcar(content as string)).toBeNull()
   })
+
+  test(`computes data_range with correct min, max, abs_max, and mean`, () => {
+    const result = parse_chgcar(make_chgcar())
+    const range = result?.volumes[0].data_range
+    const vol = result?.structure.lattice?.volume ?? 1
+    // Default data: 1.0..8.0 divided by cell volume
+    expect(range?.min).toBeCloseTo(1.0 / vol, 5)
+    expect(range?.max).toBeCloseTo(8.0 / vol, 5)
+    expect(range?.abs_max).toBeCloseTo(8.0 / vol, 5)
+    expect(range?.mean).toBeCloseTo(4.5 / vol, 5)
+  })
+
+  test(`handles element symbols with suffixes like Fe_pv`, () => {
+    const result = parse_chgcar(make_chgcar({
+      elements: `Fe_pv O_s`,
+      counts: `1 1`,
+      positions: [`0.0  0.0  0.0`, `0.5  0.5  0.5`],
+    }))
+    expect(result?.structure.sites[0].species[0].element).toBe(`Fe`)
+    expect(result?.structure.sites[1].species[0].element).toBe(`O`)
+  })
+
+  test(`data values across multiple lines are concatenated correctly`, () => {
+    const result = parse_chgcar(make_chgcar({
+      grid_dims: `2   2   2`,
+      data: `1.0  2.0  3.0\n  4.0  5.0\n  6.0  7.0  8.0`,
+    }))
+    expect(result).not.toBeNull()
+    const grid = result?.volumes[0].grid
+    const cell_vol = result?.structure.lattice?.volume ?? 1
+    expect(grid?.[0][0][0]).toBeCloseTo(1.0 / cell_vol, 5)
+    expect(grid?.[1][1][1]).toBeCloseTo(8.0 / cell_vol, 5)
+  })
+
+  test(`non-orthogonal lattice produces correct lattice params`, () => {
+    const result = parse_chgcar(make_chgcar({
+      lattice: [`2.5000  0.0000  0.0000`, `1.2500  2.1651  0.0000`, `0.0000  0.0000  6.6600`],
+      elements: `B`,
+      counts: `1`,
+      positions: [`0.0  0.0  0.0`],
+    }))
+    expect(result).not.toBeNull()
+    const lat = result?.structure.lattice
+    expect(lat?.a).toBeCloseTo(2.5, 2)
+    expect(lat?.b).toBeCloseTo(2.5, 1)
+    expect(lat?.c).toBeCloseTo(6.66, 2)
+    expect(lat?.gamma).toBeCloseTo(60, 0)
+  })
 })
 
 // === Gaussian .cube Tests ===
@@ -317,6 +365,41 @@ describe(`parse_cube`, () => {
     }))
     expect(result?.structure.sites[0].xyz[2]).toBeCloseTo(2.0 * bohr, 5)
   })
+
+  test(`computes data_range with correct min, max, abs_max, mean`, () => {
+    const result = parse_cube(make_cube({
+      data: `-2.0  1.0  0.5  3.0\n  -1.0  0.0  2.0  0.5`,
+    }))
+    const range = result?.volumes[0].data_range
+    expect(range?.min).toBe(-2.0)
+    expect(range?.max).toBe(3.0)
+    expect(range?.abs_max).toBe(3.0)
+    expect(range?.mean).toBeCloseTo((-2 + 1 + 0.5 + 3 - 1 + 0 + 2 + 0.5) / 8, 5)
+  })
+
+  test.each([
+    { origin: [0, 0, 0] as [number, number, number], pbc: true, label: `periodic (origin at 0)` },
+    { origin: [-5, -5, -5] as [number, number, number], pbc: false, label: `molecular (non-zero origin)` },
+  ])(`$label sets pbc=$pbc`, ({ origin, pbc }) => {
+    const result = parse_cube(make_cube({ origin }))
+    expect(result?.structure.lattice?.pbc).toEqual([pbc, pbc, pbc])
+  })
+
+  test(`skips blank lines in volumetric data section`, () => {
+    const result = parse_cube(make_cube({
+      data: `0.001  0.002\n\n  0.003  0.004\n\n  0.005  0.006\n  0.007  0.008`,
+    }))
+    expect(result).not.toBeNull()
+    expect(result?.volumes[0].grid[0][0][0]).toBeCloseTo(0.001, 5)
+    expect(result?.volumes[0].grid[1][1][1]).toBeCloseTo(0.008, 5)
+  })
+
+  test(`handles incomplete data gracefully`, () => {
+    const result = parse_cube(make_cube({ data: `1.0  2.0  3.0  4.0` }))
+    expect(result).not.toBeNull()
+    expect(result?.volumes[0].grid[0][0][0]).toBeCloseTo(1.0, 5)
+    expect(result?.volumes[0].grid[1][1][1]).toBeCloseTo(0.0, 5)
+  })
 })
 
 // === Auto-detection Tests ===
@@ -358,29 +441,24 @@ describe(`parse_volumetric_file`, () => {
 
   // === Content-based detection ===
 
-  test(`detects .cube format by content when filename is unknown`, () => {
-    const result = parse_volumetric_file(minimal_cube, `unknown_file`)
-    expect(result).not.toBeNull()
-    expect(result?.volumes.length).toBe(1)
+  test(`detects .cube format by content when filename is unknown or absent`, () => {
+    const with_name = parse_volumetric_file(minimal_cube, `unknown_file`)
+    expect(with_name).not.toBeNull()
+    expect(with_name?.volumes.length).toBe(1)
+    // No filename at all also works
+    expect(parse_volumetric_file(minimal_cube)).not.toBeNull()
   })
 
   test(`detects CHGCAR by content (POSCAR-like header with scale factor)`, () => {
-    // No recognizable filename but content starts with POSCAR header
     const result = parse_volumetric_file(minimal_chgcar, `data.dat`)
     expect(result).not.toBeNull()
   })
 
-  test(`returns null for unrecognized format`, () => {
-    expect(parse_volumetric_file(`random text`, `random.txt`)).toBeNull()
-  })
-
-  test(`returns null for short unrecognized content`, () => {
-    expect(parse_volumetric_file(`a\nb\nc`, `unknown`)).toBeNull()
-  })
-
-  test(`falls back to content-based detection with no filename`, () => {
-    const result = parse_volumetric_file(minimal_cube)
-    expect(result).not.toBeNull()
+  test.each([
+    [`random text`, `random.txt`],
+    [`a\nb\nc`, `unknown`],
+  ])(`returns null for unrecognized content`, (content, filename) => {
+    expect(parse_volumetric_file(content, filename)).toBeNull()
   })
 
   test(`VASP filename takes priority over content-based detection`, () => {

@@ -115,24 +115,50 @@
     return build_geometry(result.vertices, result.faces, result.normals)
   }
 
-  let positive_geometry = $derived.by(() => {
-    if (settings.isovalue <= 0) return null
-    return extract_surface(settings.isovalue)
+  // Debounced surface extraction: waits 30ms after last change before recomputing.
+  // Prevents excessive marching cubes runs during slider drags.
+  let positive_geometry = $state<BufferGeometry | null>(null)
+  let negative_geometry = $state<BufferGeometry | null>(null)
+
+  // Dispose WebGL geometries on component unmount (no reactive deps → runs once, cleanup on destroy)
+  $effect(() => {
+    return () => {
+      positive_geometry?.dispose()
+      negative_geometry?.dispose()
+    }
   })
 
-  let negative_geometry = $derived.by(() => {
-    if (!settings.show_negative || settings.isovalue <= 0) return null
-    return extract_surface(-settings.isovalue)
+  $effect(() => {
+    const iso = settings.isovalue
+    const vol = volume
+    if (!vol || iso <= 0) {
+      positive_geometry?.dispose()
+      positive_geometry = null
+      return
+    }
+    const timeout = setTimeout(() => {
+      const old = positive_geometry
+      positive_geometry = extract_surface(iso)
+      old?.dispose()
+    }, 30)
+    return () => clearTimeout(timeout)
   })
 
-  // Cleanup geometries independently to avoid disposing one that's still active
   $effect(() => {
-    const geo = positive_geometry
-    return () => geo?.dispose()
-  })
-  $effect(() => {
-    const geo = negative_geometry
-    return () => geo?.dispose()
+    const iso = settings.isovalue
+    const show_neg = settings.show_negative
+    const vol = volume
+    if (!vol || !show_neg || iso <= 0) {
+      negative_geometry?.dispose()
+      negative_geometry = null
+      return
+    }
+    const timeout = setTimeout(() => {
+      const old = negative_geometry
+      negative_geometry = extract_surface(-iso)
+      old?.dispose()
+    }, 30)
+    return () => clearTimeout(timeout)
   })
 
   let is_transparent = $derived(settings.opacity < 1)
@@ -147,8 +173,6 @@
         wireframe
         transparent={is_transparent}
         opacity={settings.opacity}
-        depthWrite={true}
-        depthTest={true}
       />
     </T.Mesh>
   {:else if is_transparent}
@@ -183,8 +207,6 @@
       <T.MeshStandardMaterial
         {color}
         side={DoubleSide}
-        depthWrite={true}
-        depthTest={true}
         metalness={0.1}
         roughness={0.6}
       />

@@ -883,7 +883,7 @@ class ConvexHull4D(MatterViz):
         hull_face_opacity: float | None = None,
         hull_face_color_mode: Any | None = None,
         element_colors: dict | None = None,
-        gizmo: bool | None = None,
+        gizmo: dict | bool | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
