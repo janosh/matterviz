@@ -181,5 +181,22 @@ git clone https://github.com/janosh/matterviz
 cd matterviz/extensions/vscode
 pnpm install
 pnpm build
-vsce package
+vsce package  # creates .vsix for local install
+```
+
+### Publishing
+
+Publish to both [Open VSX](https://open-vsx.org/extension/janosh/matterviz) and [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz):
+
+```bash
+cd extensions/vscode
+pnpm package
+
+# Open VSX (token at ~/.config/matterviz/ovsx-token)
+npx ovsx publish matterviz-*.vsix -p $(cat ~/.config/matterviz/ovsx-token)
+
+# VS Code Marketplace (requires `brew install azure-cli` for auth)
+az login --allow-no-subscriptions --scope https://app.vssps.visualstudio.com/.default
+TOKEN=$(python3 -c "import json,os;c=json.load(open(os.path.expanduser('~/.azure/msal_token_cache.json')));print(next(t['secret'] for t in c['AccessToken'].values() if 'vssps.visualstudio.com' in t.get('target','')))")
+vsce publish --no-dependencies -p "$TOKEN"
 ```
