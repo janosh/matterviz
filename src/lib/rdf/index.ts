@@ -1,6 +1,6 @@
 import type { Pbc } from '$lib/structure'
 
-export { calculate_all_pair_rdfs, calculate_rdf } from './calc-rdf'
+export * from './calc-rdf'
 export { default as RdfPlot } from './RdfPlot.svelte'
 
 export type RdfPattern = {

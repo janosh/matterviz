@@ -481,6 +481,23 @@ export function normalize_vec3(vec: Vec3, fallback?: Vec3): Vec3 {
   return [vec[0] / len, vec[1] / len, vec[2] / len]
 }
 
+// Compute orthonormal basis vectors in a plane perpendicular to `normal`.
+// Uses Gram-Schmidt orthogonalization + cross product.
+export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
+  let ref_vec: Vec3 = [1, 0, 0]
+  if (Math.abs(normal[0]) > 0.9) ref_vec = [0, 1, 0]
+
+  const dot_nr = dot(normal, ref_vec) as number
+  const u_raw: Vec3 = [
+    ref_vec[0] - dot_nr * normal[0],
+    ref_vec[1] - dot_nr * normal[1],
+    ref_vec[2] - dot_nr * normal[2],
+  ]
+  const u_vec = normalize_vec3(u_raw, [0, 1, 0])
+  const v_vec = cross_3d(normal, u_vec)
+  return [u_vec, v_vec]
+}
+
 // Compute axis-aligned bounding box of Vec3 vertices
 export function compute_bounding_box(vertices: Vec3[]): { min: Vec3; max: Vec3 } {
   if (vertices.length === 0) {

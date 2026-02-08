@@ -374,10 +374,8 @@
     const lattice = struct.lattice.matrix
     // Approximate fractional displacement magnitude from Cartesian distance
     const avg_lattice_length =
-      (Math.sqrt(lattice[0][0] ** 2 + lattice[0][1] ** 2 + lattice[0][2] ** 2) +
-        Math.sqrt(lattice[1][0] ** 2 + lattice[1][1] ** 2 + lattice[1][2] ** 2) +
-        Math.sqrt(lattice[2][0] ** 2 + lattice[2][1] ** 2 + lattice[2][2] ** 2)) /
-      3
+      (Math.hypot(...lattice[0]) + Math.hypot(...lattice[1]) +
+        Math.hypot(...lattice[2])) / 3
     const frac_magnitude = distance / avg_lattice_length
 
     return {
