@@ -564,6 +564,9 @@
       return
     }
     untrack(() => {
+      // In edit-atoms mode, structure changes are intentional user edits
+      // (move/add/delete) — preserve the selection so TransformControls stays active
+      if (measure_mode === `edit-atoms`) return
       if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
       // Clear site radius overrides since site indices are no longer valid
       if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
@@ -780,6 +783,13 @@
     const is_input_focused = target.tagName === `INPUT` ||
       target.tagName === `TEXTAREA`
 
+    // Allow Escape to cancel add-atom mode even when the element input is focused
+    if (event.key === `Escape` && measure_mode === `edit-atoms` && add_atom_mode) {
+      event.preventDefault()
+      add_atom_mode = false
+      return
+    }
+
     if (is_input_focused) return
 
     // Edit-atoms mode shortcuts (including undo/redo)
@@ -899,7 +909,7 @@
           site.xyz[1] + delta[1],
           site.xyz[2] + delta[2],
         ]
-        return { ...site, xyz: new_xyz, abc: cart_to_frac?.(new_xyz) ?? new_xyz }
+        return { ...site, xyz: new_xyz, abc: cart_to_frac?.(new_xyz) ?? site.abc }
       }),
     }
   }

@@ -1043,9 +1043,9 @@
           .map((idx) => structure?.sites?.[idx])
           .filter(Boolean) as Site[]}
         {#if selected_atoms.length > 0}
-          {@const n_sel = selected_atoms.length}
           {@const avg = (dim: number) =>
-          selected_atoms.reduce((sum, atom) => sum + atom.xyz[dim], 0) / n_sel}
+          selected_atoms.reduce((sum, atom) => sum + atom.xyz[dim], 0) /
+          selected_atoms.length}
           {@const centroid = [avg(0), avg(1), avg(2)] as Vec3}
           <!-- Invisible mesh at centroid for TransformControls to manipulate -->
           <T.Mesh
