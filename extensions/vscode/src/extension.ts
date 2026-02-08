@@ -15,6 +15,7 @@ import * as path from 'path'
 import * as vscode from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import { stream_file_to_buffer } from './node-io'
+import type { ViewType } from './types'
 
 interface FrameLoaderData {
   loader: FrameLoader
@@ -55,15 +56,6 @@ interface FileData {
   content: string
   is_base64: boolean // content is base64-encoded (binary or compressed)
 }
-
-type ViewType =
-  | `trajectory`
-  | `structure`
-  | `fermi_surface`
-  | `isosurface`
-  | `convex_hull`
-  | `phase_diagram`
-  | `json_browser`
 
 interface WebviewData {
   type: ViewType
@@ -131,16 +123,17 @@ function get_wasm_filename(ext_path: string): string | null {
 // File size thresholds for reading files via VSCode API (1GB for both text and binary)
 const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
 
+// Filename patterns for specialized file types (shared between infer_view_type / should_auto_render)
+const FERMI_FILE_RE = /\.(bxsf|frmsf)$/i
+const VOLUMETRIC_EXT_RE = /\.cube$/i
+const VOLUMETRIC_VASP_RE = /^(chgcar|aeccar[012]?|elfcar|locpot)/i
+
 // Helper: determine view type using content when available
 const infer_view_type = (file: FileData): ViewType => {
   // Strip compression extensions before matching (filename may still have .gz/.bz2)
   const name = file.filename.toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-  // Fermi surface files
-  if (/\.(bxsf|frmsf)$/i.test(name)) return `fermi_surface`
-  // Volumetric data files
-  if (/\.cube$/i.test(name) || /^(chgcar|aeccar[012]?|elfcar|locpot)/i.test(name)) {
-    return `isosurface`
-  }
+  if (FERMI_FILE_RE.test(name)) return `fermi_surface`
+  if (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name)) return `isosurface`
   // Only pass content for text files; for binary (compressed) fall back to filename
   const content = file.is_base64 ? undefined : file.content
   if (is_trajectory_file(file.filename, content)) return `trajectory`
@@ -150,11 +143,10 @@ const infer_view_type = (file: FileData): ViewType => {
 // Check if a file should be auto-rendered
 export const should_auto_render = (filename: string): boolean => {
   if (!filename || typeof filename !== `string`) return false
-  // Fermi surface files
-  if (/\.(bxsf|frmsf)(\.gz)?$/i.test(filename)) return true
-  // Volumetric data files
-  if (/\.cube(\.gz|\.bz2)?$/i.test(filename)) return true
-  if (/^(CHGCAR|AECCAR[012]?|ELFCAR|LOCPOT)/i.test(filename)) return true
+  // Strip compression extensions so .bxsf.gz / .cube.bz2 etc. are recognized
+  const name = path.basename(filename).replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  if (FERMI_FILE_RE.test(name)) return true
+  if (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name)) return true
   // Structure and trajectory files (existing behavior)
   return is_structure_file(filename) || is_trajectory_file(filename)
 }

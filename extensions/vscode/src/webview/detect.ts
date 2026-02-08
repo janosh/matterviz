@@ -41,43 +41,53 @@ export const TYPE_COLORS: Record<RenderableType, string> = {
 
 // === Type Guards ===
 
+// Narrows unknown to a non-array object record; used by every type guard below
+function as_record(obj: unknown): Record<string, unknown> | null {
+  return (obj && typeof obj === `object` && !Array.isArray(obj))
+    ? obj as Record<string, unknown>
+    : null
+}
+
+// Check that `key` on `data` is an Array with exactly `len` elements (or any length if omitted)
+function has_array(data: Record<string, unknown>, key: string, len?: number): boolean {
+  const val = data[key]
+  return Array.isArray(val) && (len === undefined || val.length === len)
+}
+
 // Structure: must have non-empty `sites` array where first site has `species` + coordinates
 function is_structure(obj: unknown): boolean {
-  if (!obj || typeof obj !== `object` || Array.isArray(obj)) return false
-  const record = obj as Record<string, unknown>
-  if (!Array.isArray(record.sites) || record.sites.length === 0) return false
-  const first_site = record.sites[0] as Record<string, unknown> | undefined
-  if (!first_site || typeof first_site !== `object`) return false
+  const data = as_record(obj)
+  if (!data || !has_array(data, `sites`)) return false
+  const sites = data.sites as unknown[]
+  if (sites.length === 0) return false
+  const first_site = as_record(sites[0])
+  if (!first_site) return false
   const has_species = Array.isArray(first_site.species) && first_site.species.length > 0
-  const has_coords = Array.isArray(first_site.abc) || Array.isArray(first_site.xyz)
-  return has_species && has_coords
+  return has_species && (Array.isArray(first_site.abc) || Array.isArray(first_site.xyz))
 }
 
 // FermiSurfaceData: pre-computed isosurfaces with reciprocal lattice info
 function is_fermi_surface(obj: unknown): boolean {
-  if (!obj || typeof obj !== `object` || Array.isArray(obj)) return false
-  const data = obj as Record<string, unknown>
-  if (!Array.isArray(data.isosurfaces)) return false
-  if (!Array.isArray(data.k_lattice) || data.k_lattice.length !== 3) return false
-  if (typeof data.fermi_energy !== `number`) return false
-  if (
-    data.reciprocal_cell !== `wigner_seitz` && data.reciprocal_cell !== `parallelepiped`
-  ) return false
-  if (!data.metadata || typeof data.metadata !== `object`) return false
-  return true
+  const data = as_record(obj)
+  if (!data) return false
+  return has_array(data, `isosurfaces`) &&
+    has_array(data, `k_lattice`, 3) &&
+    typeof data.fermi_energy === `number` &&
+    (data.reciprocal_cell === `wigner_seitz` ||
+      data.reciprocal_cell === `parallelepiped`) &&
+    !!as_record(data.metadata)
 }
 
 // BandGridData: raw band energies on a k-grid (needs marching cubes extraction)
 function is_band_grid(obj: unknown): boolean {
-  if (!obj || typeof obj !== `object` || Array.isArray(obj)) return false
-  const data = obj as Record<string, unknown>
-  if (!Array.isArray(data.energies)) return false
-  if (!Array.isArray(data.k_grid) || data.k_grid.length !== 3) return false
-  if (!Array.isArray(data.k_lattice) || data.k_lattice.length !== 3) return false
-  if (typeof data.fermi_energy !== `number`) return false
-  if (typeof data.n_bands !== `number`) return false
-  if (typeof data.n_spins !== `number`) return false
-  return true
+  const data = as_record(obj)
+  if (!data) return false
+  return has_array(data, `energies`) &&
+    has_array(data, `k_grid`, 3) &&
+    has_array(data, `k_lattice`, 3) &&
+    typeof data.fermi_energy === `number` &&
+    typeof data.n_bands === `number` &&
+    typeof data.n_spins === `number`
 }
 
 // ConvexHull entries: array of objects with `composition` (object) + energy field
@@ -85,76 +95,62 @@ function is_band_grid(obj: unknown): boolean {
 function is_convex_hull_entries(obj: unknown): boolean {
   if (!Array.isArray(obj) || obj.length === 0) return false
   // Check first few entries to avoid false positives on random arrays
-  const check_count = Math.min(obj.length, 3)
-  for (let idx = 0; idx < check_count; idx++) {
-    const entry = obj[idx] as Record<string, unknown> | undefined
-    if (!entry || typeof entry !== `object`) return false
-    if (!entry.composition || typeof entry.composition !== `object`) return false
-    const has_energy = typeof entry.energy === `number` ||
+  return obj.slice(0, 3).every((item) => {
+    const entry = as_record(item)
+    return entry && as_record(entry.composition) && (
+      typeof entry.energy === `number` ||
       typeof entry.e_form_per_atom === `number` ||
       typeof entry.energy_per_atom === `number`
-    if (!has_energy) return false
-  }
-  return true
+    )
+  })
 }
 
 // VolumetricData: 3D scalar grid with lattice info
 function is_volumetric(obj: unknown): boolean {
-  if (!obj || typeof obj !== `object` || Array.isArray(obj)) return false
-  const data = obj as Record<string, unknown>
+  const data = as_record(obj)
+  if (!data || !has_array(data, `grid`)) return false
   // grid must be a 3D array (array of arrays of arrays)
-  if (!Array.isArray(data.grid) || data.grid.length === 0) return false
-  const first_slice = data.grid[0]
-  if (!Array.isArray(first_slice) || first_slice.length === 0) return false
-  if (!Array.isArray(first_slice[0])) return false
-  // grid_dims, lattice, origin are required
-  if (!Array.isArray(data.grid_dims) || data.grid_dims.length !== 3) return false
-  if (!Array.isArray(data.lattice) || data.lattice.length !== 3) return false
-  if (!Array.isArray(data.origin) || data.origin.length !== 3) return false
-  if (!data.data_range || typeof data.data_range !== `object`) return false
-  if (typeof data.periodic !== `boolean`) return false
-  return true
+  const grid = data.grid as unknown[]
+  if (grid.length === 0) return false
+  const first_slice = grid[0]
+  if (
+    !Array.isArray(first_slice) || !first_slice.length || !Array.isArray(first_slice[0])
+  ) return false
+  return has_array(data, `grid_dims`, 3) &&
+    has_array(data, `lattice`, 3) &&
+    has_array(data, `origin`, 3) &&
+    !!as_record(data.data_range) &&
+    typeof data.periodic === `boolean`
 }
 
 // PhaseDiagramData: binary phase diagram with components, regions, boundaries
 function is_phase_diagram(obj: unknown): boolean {
-  if (!obj || typeof obj !== `object` || Array.isArray(obj)) return false
-  const data = obj as Record<string, unknown>
-  // components must be a 2-element array of strings
-  if (!Array.isArray(data.components) || data.components.length !== 2) return false
-  if (typeof data.components[0] !== `string` || typeof data.components[1] !== `string`) {
-    return false
-  }
-  // regions and boundaries are required arrays
-  if (!Array.isArray(data.regions)) return false
-  if (!Array.isArray(data.boundaries)) return false
-  // temperature_range is required
-  if (!Array.isArray(data.temperature_range) || data.temperature_range.length !== 2) {
-    return false
-  }
-  return true
+  const data = as_record(obj)
+  if (!data) return false
+  if (!has_array(data, `components`, 2)) return false
+  const [comp_a, comp_b] = data.components as unknown[]
+  if (typeof comp_a !== `string` || typeof comp_b !== `string`) return false
+  return has_array(data, `regions`) &&
+    has_array(data, `boundaries`) &&
+    has_array(data, `temperature_range`, 2)
 }
 
 // BandStructure: normalized format (qpoints, branches, bands, nb_bands)
 // or pymatgen format (kpoints, branches, bands with spin keys, labels_dict)
 function is_band_structure(obj: unknown): boolean {
-  if (!obj || typeof obj !== `object` || Array.isArray(obj)) return false
-  const data = obj as Record<string, unknown>
-  // Both formats require branches and labels_dict
-  if (!Array.isArray(data.branches) || data.branches.length === 0) return false
-  if (!data.labels_dict || typeof data.labels_dict !== `object`) return false
-  // Normalized format: qpoints + bands array + nb_bands + distance
-  if (
-    Array.isArray(data.qpoints) && Array.isArray(data.bands) &&
-    typeof data.nb_bands === `number`
-  ) {
-    return true
+  const data = as_record(obj)
+  if (!data) return false
+  if (!has_array(data, `branches`) || (data.branches as unknown[]).length === 0) {
+    return false
   }
-  // Pymatgen format: kpoints + bands object with spin keys ("1"/"-1") + efermi
+  if (!as_record(data.labels_dict)) return false
+  // Normalized format
   if (
-    Array.isArray(data.kpoints) && data.bands && typeof data.bands === `object` &&
-    !Array.isArray(data.bands)
-  ) {
+    has_array(data, `qpoints`) && has_array(data, `bands`) &&
+    typeof data.nb_bands === `number`
+  ) return true
+  // Pymatgen format: kpoints + bands object (not array) + efermi
+  if (has_array(data, `kpoints`) && as_record(data.bands)) {
     return typeof data.efermi === `number`
   }
   return false
@@ -164,25 +160,19 @@ function is_band_structure(obj: unknown): boolean {
 // CompleteDos: has energies, densities, efermi, and @class containing "Dos"
 // DosData: has type ("phonon"|"electronic"), frequencies/energies, densities
 function is_dos(obj: unknown): boolean {
-  if (!obj || typeof obj !== `object` || Array.isArray(obj)) return false
-  const data = obj as Record<string, unknown>
+  const data = as_record(obj)
+  if (!data) return false
+  const has_spectra = has_array(data, `energies`) || has_array(data, `frequencies`)
   // pymatgen CompleteDos format
   if (
-    typeof data[`@class`] === `string` &&
-    (data[`@class`] as string).includes(`Dos`) &&
-    (Array.isArray(data.energies) || Array.isArray(data.frequencies)) &&
-    data.densities !== undefined
-  ) {
-    return true
-  }
+    typeof data[`@class`] === `string` && (data[`@class`] as string).includes(`Dos`) &&
+    has_spectra && data.densities !== undefined
+  ) return true
   // Normalized DosData format
   if (
     (data.type === `phonon` || data.type === `electronic`) &&
-    (Array.isArray(data.frequencies) || Array.isArray(data.energies)) &&
-    Array.isArray(data.densities)
-  ) {
-    return true
-  }
+    has_spectra && has_array(data, `densities`)
+  ) return true
   return false
 }
 
@@ -195,9 +185,7 @@ export function detect_view_type(value: unknown): RenderableType | null {
   if (value === null || value === undefined) return null
 
   // OPTIMADE format (special structure variant) -- check before generic structure
-  if (typeof value === `object` && !Array.isArray(value) && is_optimade_raw(value)) {
-    return `structure`
-  }
+  if (as_record(value) && is_optimade_raw(value)) return `structure`
 
   // Fermi surface (pre-computed isosurfaces) -- very specific shape
   if (is_fermi_surface(value)) return `fermi_surface`

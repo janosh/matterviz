@@ -2,14 +2,12 @@
 import type { XyObj } from '$lib'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
+  enter_edit_atoms_mode,
   expect_canvas_changed,
   get_canvas_timeout,
   IS_CI,
   wait_for_3d_canvas,
 } from '../helpers'
-
-// Cached atom position to avoid repeated searches
-let cached_atom_position: XyObj | null = null
 
 // Helper function to clear any existing tooltips and overlays
 async function clear_tooltips_and_overlays(page: Page): Promise<void> {
@@ -38,26 +36,20 @@ async function safe_canvas_hover(
   // Try normal hover first
   try {
     await canvas.hover({ position, timeout: 2000 })
-  } catch {
-    // If normal hover fails, use force hover
+  } catch (err) {
+    // If normal hover fails (e.g. tooltip overlay), retry with force
+    console.warn(
+      `Hover at (${position.x}, ${position.y}) failed, retrying with force:`,
+      err,
+    )
     await canvas.hover({ position, force: true, timeout: 2000 })
   }
 }
 
-// Helper function to try multiple positions to find a hoverable atom (optimized)
+// Helper function to try multiple positions to find a hoverable atom
 async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
   const canvas = page.locator(`#test-structure canvas`)
 
-  if (cached_atom_position) { // Use cached position if available
-    try {
-      await safe_canvas_hover(page, canvas, cached_atom_position)
-      const structure_tooltip = page.locator(`.tooltip:has(.coordinates)`)
-      await structure_tooltip.waitFor({ state: `visible`, timeout: 300 })
-      return cached_atom_position
-    } catch {
-      cached_atom_position = null // fall through to probing positions below
-    }
-  }
   const positions = [
     { x: 300, y: 200 },
     { x: 250, y: 150 },
@@ -73,7 +65,6 @@ async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
     const structure_tooltip = page.locator(`.tooltip:has(.coordinates)`)
     try {
       await structure_tooltip.waitFor({ state: `visible`, timeout: 500 })
-      cached_atom_position = position // Cache for future use
       return position
     } catch {
       // Continue to next position if tooltip doesn't appear
@@ -416,9 +407,9 @@ test.describe(`StructureScene Component Tests`, () => {
       { x: 350, y: 300 },
     ]
 
-    for (let idx = 0; idx < positions.length; idx++) {
-      await safe_canvas_hover(page, canvas, positions[idx])
-      await canvas.click({ position: positions[idx], force: true })
+    for (const position of positions) {
+      await safe_canvas_hover(page, canvas, position)
+      await canvas.click({ position, force: true })
     }
 
     // Verify scene is still functional
@@ -938,6 +929,110 @@ test.describe(`StructureScene Component Tests`, () => {
       expect(rotated_screenshot.length).toBeGreaterThan(1000)
     }
 
+    expect(console_errors).toHaveLength(0)
+  })
+})
+
+// === Edit Atoms Scene Tests ===
+
+test.describe(`Edit Atoms Scene`, () => {
+  test.beforeEach(async ({ page }: { page: Page }) => {
+    test.skip(IS_CI, `Edit atoms scene tests require WebGL, skip in CI`)
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await wait_for_3d_canvas(page, `#test-structure`)
+    await enter_edit_atoms_mode(page)
+  })
+
+  test(`atom click toggles selection in edit-atoms mode`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors = setup_console_monitoring(page)
+
+    const position = { x: 400, y: 250 }
+
+    // Take initial screenshot
+    const initial = await canvas.screenshot()
+
+    // Click to select
+    await canvas.click({ position, force: true })
+    await expect_canvas_changed(canvas, initial)
+    const selected = await canvas.screenshot()
+
+    // Click again to deselect
+    await canvas.click({ position, force: true })
+    await expect_canvas_changed(canvas, selected)
+    const deselected = await canvas.screenshot()
+
+    // Initial and deselected should differ from selected
+    expect(initial.equals(selected)).toBe(false)
+    expect(selected.equals(deselected)).toBe(false)
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`shift+click adds to selection`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors = setup_console_monitoring(page)
+
+    // Click first atom
+    const before_first = await canvas.screenshot()
+    await canvas.click({ position: { x: 350, y: 200 }, force: true })
+    await expect_canvas_changed(canvas, before_first)
+    const single_selection = await canvas.screenshot()
+
+    // Click second atom without shift (replaces selection)
+    await canvas.click({ position: { x: 450, y: 300 }, force: true })
+    await expect_canvas_changed(canvas, single_selection)
+    const replaced = await canvas.screenshot()
+
+    // Click first again
+    await canvas.click({ position: { x: 350, y: 200 }, force: true })
+    await expect_canvas_changed(canvas, replaced)
+
+    // Shift+click second atom (adds to selection)
+    const before_shift = await canvas.screenshot()
+    await canvas.click({
+      position: { x: 450, y: 300 },
+      modifiers: [`Shift`],
+      force: true,
+    })
+    await expect_canvas_changed(canvas, before_shift)
+    const multi_selection = await canvas.screenshot()
+
+    // All screenshots should differ
+    expect(single_selection.equals(replaced)).toBe(false)
+    expect(replaced.equals(multi_selection)).toBe(false)
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`no errors in edit-atoms mode after various interactions`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const console_errors = setup_console_monitoring(page)
+
+    // Various interactions should not cause errors
+    let prev = await canvas.screenshot()
+    await canvas.click({ position: { x: 400, y: 250 }, force: true })
+    await expect_canvas_changed(canvas, prev)
+    prev = await canvas.screenshot()
+    await canvas.click({ position: { x: 200, y: 150 }, force: true })
+    await expect_canvas_changed(canvas, prev)
+    prev = await canvas.screenshot()
+    await canvas.click({
+      position: { x: 500, y: 300 },
+      modifiers: [`Shift`],
+      force: true,
+    })
+    await expect_canvas_changed(canvas, prev)
+
+    // Keyboard shortcuts should not cause errors
+    const is_mac = await page.evaluate(() =>
+      navigator.platform.toUpperCase().indexOf(`MAC`) >= 0
+    )
+    await page.keyboard.press(`Delete`)
+    await page.keyboard.press(is_mac ? `Meta+z` : `Control+z`)
+    await page.keyboard.press(is_mac ? `Meta+y` : `Control+y`)
+
+    // Canvas should still render
+    const screenshot = await canvas.screenshot()
+    expect(screenshot.length).toBeGreaterThan(1000)
     expect(console_errors).toHaveLength(0)
   })
 })

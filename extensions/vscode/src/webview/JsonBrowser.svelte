@@ -12,7 +12,7 @@
   import JsonTree from '$lib/layout/json-tree/JsonTree.svelte';
   import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte';
   import type { PhaseDiagramData } from '$lib/phase-diagram/types';
-  import type { DefaultSettings } from '$lib/settings';
+  import { merge, type DefaultSettings } from '$lib/settings';
   import Bands from '$lib/spectral/Bands.svelte';
   import Dos from '$lib/spectral/Dos.svelte';
   import type { BaseBandStructure, DosInput } from '$lib/spectral/types';
@@ -34,7 +34,7 @@
 
   let {
     value,
-    defaults: _defaults,
+    defaults,
     filename,
   }: {
     value: unknown
@@ -61,8 +61,9 @@
   let panel_sizes = $state<number[]>([]) // flex weight per panel (parallel to panels[])
   let split_directions = $state<SplitDirection[]>([]) // direction between panels[i] and panels[i+1]
 
-  // Debounce timer for rapid clicks
+  // Debounce timer for rapid clicks (cleaned up when component is destroyed)
   let select_timer: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => { if (select_timer) clearTimeout(select_timer) })
 
   // Scan for renderable paths (re-scans if value changes, e.g. file reload)
   let renderable_paths = $derived(scan_renderable_paths(value))
@@ -115,12 +116,16 @@
 
   let sidebar_element: HTMLElement | undefined = $state()
 
+  // Convert a data path (relative to JSON root) to the tree path used by JsonTree
+  function data_to_tree_path(data_path: string): string {
+    return filename ? (data_path ? `${filename}.${data_path}` : filename) : data_path
+  }
+
   // Build a Set of tree paths that are renderable (for fast draggable lookup)
   let renderable_tree_paths = $derived(new Map(
-    [...renderable_paths].map(([data_path, info]) => {
-      const tree_path = filename ? (data_path ? `${filename}.${data_path}` : filename) : data_path
-      return [tree_path, { data_path, ...info }]
-    })
+    [...renderable_paths].map(([data_path, info]) =>
+      [data_to_tree_path(data_path), { data_path, ...info }]
+    )
   ))
 
   // Mark renderable tree nodes as draggable via attribute (no per-node listeners)
@@ -141,9 +146,9 @@
       if (!target) return
       const tree_path = target.getAttribute(`data-path`) ?? ``
       const info = renderable_tree_paths.get(tree_path)
-      if (!info) { event.preventDefault(); return }
-      event.dataTransfer?.setData(`text/plain`, JSON.stringify({ data_path: info.data_path, detected_type: info.type }))
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = `copy`
+      if (!info || !event.dataTransfer) { event.preventDefault(); return }
+      event.dataTransfer.setData(`text/plain`, JSON.stringify({ data_path: info.data_path, detected_type: info.type }))
+      event.dataTransfer.effectAllowed = `copy`
     }
     sidebar_element.addEventListener(`dragstart`, on_dragstart)
     return () => sidebar_element!.removeEventListener(`dragstart`, on_dragstart)
@@ -156,8 +161,7 @@
       existing.remove()
     }
     for (const [data_path, info] of renderable_paths) {
-      const tree_path = filename ? (data_path ? `${filename}.${data_path}` : filename) : data_path
-      const node = sidebar_element.querySelector(`[data-path="${CSS.escape(tree_path)}"]`)
+      const node = sidebar_element.querySelector(`[data-path="${CSS.escape(data_to_tree_path(data_path))}"]`)
       if (!node) continue
       const colon_el = node.querySelector(`.colon`)
       const insert_after = colon_el ?? node.querySelector(`.node-key`) ?? node
@@ -175,43 +179,36 @@
     }
   }
 
-  // Re-apply badges + draggable attributes when tree DOM changes
+  // Re-apply badges + draggable attributes when tree DOM changes.
+  // Guard with a flag so our own badge DOM mutations don't re-trigger the observer,
+  // and coalesce rapid mutations into a single rAF.
+  let applying_badges = false
   $effect(() => {
     if (!sidebar_element) return
-    requestAnimationFrame(() => { apply_badges(); mark_draggable_nodes() })
-    const observer = new MutationObserver(() => {
-      requestAnimationFrame(() => { apply_badges(); mark_draggable_nodes() })
-    })
-    observer.observe(sidebar_element, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  })
-
-  // Capture clicks on tree nodes
-  $effect(() => {
-    if (!sidebar_element) return
-    function on_tree_click(event: Event): void {
-      const target = event.target as HTMLElement
-      const node = target.closest(`[data-path]`)
-      if (!node) return
-      const tree_path = node.getAttribute(`data-path`)
-      if (!tree_path) return
-      const data_path = strip_root_prefix(tree_path)
-      const val = resolve_path(value, data_path)
-      if (val === undefined) return
-      if (select_timer) clearTimeout(select_timer)
-      select_timer = setTimeout(() => {
-        const detected = detect_view_type(val)
-        if (detected) replace_or_add_panel(data_path, detected, val)
-      }, 150)
+    let pending_raf: number | null = null
+    function schedule_refresh(): void {
+      if (pending_raf) return
+      pending_raf = requestAnimationFrame(() => {
+        pending_raf = null
+        if (applying_badges) return
+        applying_badges = true
+        try { apply_badges(); mark_draggable_nodes() }
+        finally { applying_badges = false }
+      })
     }
-    sidebar_element.addEventListener(`click`, on_tree_click)
-    return () => sidebar_element!.removeEventListener(`click`, on_tree_click)
+    schedule_refresh()
+    const observer = new MutationObserver(schedule_refresh)
+    observer.observe(sidebar_element, { childList: true, subtree: true })
+    return () => {
+      observer.disconnect()
+      if (pending_raf) cancelAnimationFrame(pending_raf)
+    }
   })
 
   // === Panel management ===
 
   function make_panel_id(): string {
-    return `panel_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    return `panel_${crypto.randomUUID()}`
   }
 
   // Click replaces the single/first panel; drag adds a split
@@ -254,8 +251,7 @@
       new_panels.splice(insert_idx, 0, new_panel)
       new_sizes.splice(insert_idx, 0, target_size / 2)
       // Add direction between the two panels
-      const dir_idx = insert_before ? target_idx : target_idx
-      new_dirs.splice(dir_idx, 0, direction)
+      new_dirs.splice(target_idx, 0, direction)
       panels = new_panels
       panel_sizes = new_sizes
       split_directions = new_dirs
@@ -271,9 +267,7 @@
     // Give the closed panel's size to its neighbor
     const closed_size = new_sizes[idx] ?? 0
     const neighbor_idx = idx > 0 ? idx - 1 : idx + 1
-    if (neighbor_idx < new_sizes.length && neighbor_idx !== idx) {
-      new_sizes[neighbor_idx] += closed_size
-    }
+    if (neighbor_idx < new_sizes.length) new_sizes[neighbor_idx] += closed_size
     new_panels.splice(idx, 1)
     new_sizes.splice(idx, 1)
     // Remove the adjacent split direction
@@ -309,16 +303,37 @@
     return val
   }
 
+  // Map user defaults to structure component props (mirrors main.ts structure_props)
+  function struct_props(merged: DefaultSettings): Record<string, unknown> {
+    const { structure } = merged
+    return {
+      scene_props: { ...structure, gizmo: structure.show_gizmo },
+      lattice_props: {
+        show_cell_vectors: structure.show_cell_vectors,
+        cell_edge_opacity: structure.cell_edge_opacity,
+        cell_surface_opacity: structure.cell_surface_opacity,
+        cell_edge_color: structure.cell_edge_color,
+        cell_surface_color: structure.cell_surface_color,
+      },
+      color_scheme: merged.color_scheme,
+      background_color: merged.background_color,
+      background_opacity: merged.background_opacity,
+      show_image_atoms: structure.show_image_atoms,
+    }
+  }
+
   function mount_into(target: HTMLElement, val: unknown, detected_type: RenderableType): ReturnType<typeof mount> | null {
     target.innerHTML = ``
     // Force layout so Three.js gets real dimensions
     void target.offsetHeight
 
+    const merged = merge(defaults)
     const common_props = { fullscreen_toggle: false, style: `height:100%` }
+    const struct_common = { allow_file_drop: false, enable_tips: false, ...struct_props(merged), ...common_props }
 
     try {
       if (detected_type === `structure`) {
-        return mount(Structure, { target, props: { structure: prepare_structure(val) as AnyStructure, allow_file_drop: false, enable_tips: false, ...common_props } })
+        return mount(Structure, { target, props: { structure: prepare_structure(val) as AnyStructure, ...struct_common } })
       } else if (detected_type === `fermi_surface` || detected_type === `band_grid`) {
         const fermi_props: Record<string, unknown> = { allow_file_drop: false, ...common_props }
         if (is_fermi_surface_data(val as Parameters<typeof is_fermi_surface_data>[0])) fermi_props.fermi_data = val
@@ -330,7 +345,7 @@
         return mount(IsobaricBinaryPhaseDiagram, { target, props: { data: val as PhaseDiagramData, ...common_props } })
       } else if (detected_type === `volumetric`) {
         const vol_data = val as { lattice: LatticeType }
-        return mount(Structure, { target, props: { structure: { sites: [], lattice: vol_data.lattice } as AnyStructure, volumetric_data: [val as VolumetricData], allow_file_drop: false, enable_tips: false, ...common_props } })
+        return mount(Structure, { target, props: { structure: { sites: [], lattice: vol_data.lattice } as AnyStructure, volumetric_data: [val as VolumetricData], ...struct_common } })
       } else if (detected_type === `band_structure`) {
         return mount(Bands, { target, props: { band_structs: val as BaseBandStructure, ...common_props, padding: { b: 60 } } })
       } else if (detected_type === `dos`) {
@@ -370,25 +385,17 @@
     event.preventDefault()
     if (event.dataTransfer) event.dataTransfer.dropEffect = `copy`
     if (!canvas_element) return
-    // Determine which panel the cursor is over, or the whole canvas if no panels
-    if (panels.length === 0) {
-      drop_zone = `center`
-      drop_target_panel_idx = 0
-    } else {
-      const panel_els = canvas_element.querySelectorAll(`.viz-panel`)
-      let found = false
-      panel_els.forEach((el, idx) => {
-        const rect = el.getBoundingClientRect()
-        if (event.clientX >= rect.left && event.clientX <= rect.right &&
-            event.clientY >= rect.top && event.clientY <= rect.bottom) {
-          drop_zone = get_drop_zone(event, rect)
-          drop_target_panel_idx = idx
-          found = true
-        }
-      })
-      if (!found) {
-        drop_zone = `center`
-        drop_target_panel_idx = 0
+    // Default to center/first panel; override if cursor is inside a specific panel
+    drop_zone = `center`
+    drop_target_panel_idx = 0
+    const panel_els = canvas_element.querySelectorAll(`.viz-panel`)
+    for (let idx = 0; idx < panel_els.length; idx++) {
+      const rect = panel_els[idx].getBoundingClientRect()
+      if (event.clientX >= rect.left && event.clientX <= rect.right &&
+          event.clientY >= rect.top && event.clientY <= rect.bottom) {
+        drop_zone = get_drop_zone(event, rect)
+        drop_target_panel_idx = idx
+        break
       }
     }
     // Prevent mixed-axis splits until nested layouts are supported
@@ -502,6 +509,18 @@
   }
 </script>
 
+{#snippet type_list(header: string, extra_style?: string)}
+  <div class="type-list" style={extra_style ?? ``}>
+    <p class="type-list-header">{header}</p>
+    {#each Object.entries(TYPE_LABELS) as [type_key, label] (type_key)}
+      <span class="type-tag" style="border-color: {type_color(type_key)}44;">
+        <span class="chip-dot" style="background: {type_color(type_key)};"></span>
+        {label}
+      </span>
+    {/each}
+  </div>
+{/snippet}
+
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="json-browser" class:dragging={is_sidebar_dragging || split_dragging_idx >= 0}>
   <aside class="sidebar" bind:this={sidebar_element} style="width: {sidebar_width}px">
@@ -533,15 +552,7 @@
           <p class="placeholder-sub">
             This JSON file doesn't contain recognized visualization data.
           </p>
-          <div class="type-list">
-            <p class="type-list-header">Recognized types:</p>
-            {#each Object.entries(TYPE_LABELS) as [type_key, label] (type_key)}
-              <span class="type-tag" style="border-color: {type_color(type_key)}44;">
-                <span class="chip-dot" style="background: {type_color(type_key)};"></span>
-                {label}
-              </span>
-            {/each}
-          </div>
+          {@render type_list(`Recognized types:`)}
         {:else}
           <p class="placeholder-title">Click or drag a data node to visualize it</p>
           <p class="placeholder-sub">
@@ -566,15 +577,7 @@
               </button>
             {/each}
           </div>
-          <div class="type-list" style="margin-top: 20px;">
-            <p class="type-list-header">All recognized types:</p>
-            {#each Object.entries(TYPE_LABELS) as [type_key, label] (type_key)}
-              <span class="type-tag" style="border-color: {type_color(type_key)}44;">
-                <span class="chip-dot" style="background: {type_color(type_key)};"></span>
-                {label}
-              </span>
-            {/each}
-          </div>
+          {@render type_list(`All recognized types:`, `margin-top: 20px`)}
         {/if}
       </div>
     {:else}

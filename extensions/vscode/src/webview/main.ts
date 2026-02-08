@@ -23,21 +23,29 @@ import type {
   TrajectoryMetadata,
   TrajectoryType,
 } from '$lib/trajectory'
-import type { LoadingOptions } from '$lib/trajectory/parse'
 import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
+import type { ViewType } from '../types'
 import { detect_view_type } from './detect'
 import JsonBrowser from './JsonBrowser.svelte'
 
-type ViewType =
-  | `trajectory`
-  | `structure`
-  | `fermi_surface`
-  | `isosurface`
-  | `convex_hull`
-  | `phase_diagram`
-  | `json_browser`
+// Filename patterns for specialized file types
+const FERMI_FILE_RE = /\.(bxsf|frmsf)$/i
+const VOLUMETRIC_EXT_RE = /\.cube$/i
+const VOLUMETRIC_VASP_RE = /^(CHGCAR|AECCAR[012]?|ELFCAR|LOCPOT)/i
+
+// Maps detect.ts RenderableType to ViewType for direct rendering.
+// Types not listed here (band_structure, dos, structure, volumetric) have
+// special handling or intentionally fall through to json_browser.
+const DETECTION_TO_VIEW_TYPE: Record<string, ViewType> = {
+  fermi_surface: `fermi_surface`,
+  band_grid: `fermi_surface`,
+  convex_hull: `convex_hull`,
+  phase_diagram: `phase_diagram`,
+}
+
+export type { ViewType }
 export interface FileData {
   filename: string
   content: string
@@ -210,7 +218,7 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
       container.innerHTML = `
         <div style="padding: 2rem; text-align: center; color: var(--vscode-errorForeground);">
           <h2>File Deleted</h2>
-          <p>The file "${message.file_path}" has been deleted.</p>
+          <p>The file "${escape_html(message.file_path ?? ``)}" has been deleted.</p>
         </div>
       `
     }
@@ -224,7 +232,7 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
       }
 
       const { content, filename, is_base64 } = message.data
-      const result = await parse_file_content(content, filename, undefined, is_base64)
+      const result = await parse_file_content(content, filename, is_base64)
 
       // Update the display
       const container = document.getElementById(`matterviz-app`)
@@ -312,7 +320,6 @@ function request_large_file_content(
 const parse_file_content = async (
   content: string,
   filename: string,
-  loading_options?: LoadingOptions,
   is_compressed: boolean = false,
   recursion_depth: number = 0,
 ): Promise<ParseResult> => {
@@ -351,7 +358,6 @@ const parse_file_content = async (
     return parse_file_content(
       parsed_trajectory as string,
       filename,
-      loading_options,
       is_compressed,
       recursion_depth + 1,
     )
@@ -361,14 +367,8 @@ const parse_file_content = async (
   if (is_compressed) {
     const buffer = base64_to_array_buffer(content)
 
-    // For HDF5 files, pass buffer directly to trajectory parser
-    if (/\.(h5|hdf5)$/i.test(filename)) {
-      const data = await parse_trajectory_data(buffer, filename)
-      return { type: `trajectory`, filename, data }
-    }
-
-    // For ASE .traj files, pass buffer directly to trajectory parser
-    if (/\.traj$/i.test(filename)) {
+    // Binary trajectory formats: pass buffer directly to trajectory parser
+    if (/\.(h5|hdf5|traj)$/i.test(filename)) {
       const data = await parse_trajectory_data(buffer, filename)
       return { type: `trajectory`, filename, data }
     }
@@ -388,16 +388,14 @@ const parse_file_content = async (
   }
 
   // Fermi surface files (.bxsf, .frmsf)
-  if (/\.(bxsf|frmsf)$/i.test(filename)) {
+  if (FERMI_FILE_RE.test(filename)) {
     const data = parse_fermi_file(content, filename)
     if (data) return { type: `fermi_surface`, data, filename }
     throw new Error(`Failed to parse Fermi surface file: ${filename}`)
   }
 
   // Volumetric data files (.cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT)
-  if (
-    /\.cube$/i.test(filename) || /^(CHGCAR|AECCAR[012]?|ELFCAR|LOCPOT)/i.test(filename)
-  ) {
+  if (VOLUMETRIC_EXT_RE.test(filename) || VOLUMETRIC_VASP_RE.test(filename)) {
     const data = parse_volumetric_file(content, filename)
     if (data) return { type: `isosurface`, data, filename }
     throw new Error(`Failed to parse volumetric file: ${filename}`)
@@ -430,16 +428,11 @@ const parse_file_content = async (
             filename,
           }
         }
-        // Map detection types to ViewType for direct rendering.
-        // Types not listed here (band_structure, dos) intentionally fall through
-        // to json_browser -- they render inside the JsonBrowser's split-panel UI.
-        const type_map: Record<string, ViewType> = {
-          fermi_surface: `fermi_surface`,
-          band_grid: `fermi_surface`,
-          convex_hull: `convex_hull`,
-          phase_diagram: `phase_diagram`,
+        return {
+          type: DETECTION_TO_VIEW_TYPE[detected] ?? `json_browser`,
+          data: parsed,
+          filename,
         }
-        return { type: type_map[detected] ?? `json_browser`, data: parsed, filename }
       }
       // No top-level match -- show JSON browser for navigation
       return { type: `json_browser`, data: parsed, filename }
@@ -458,6 +451,12 @@ const parse_file_content = async (
   return { type: `structure`, data, filename }
 }
 
+// Escape HTML special chars to prevent XSS when inserting into innerHTML
+function escape_html(text: string): string {
+  return text.replace(/&/g, `&amp;`).replace(/</g, `&lt;`).replace(/>/g, `&gt;`)
+    .replace(/"/g, `&quot;`).replace(/'/g, `&#39;`)
+}
+
 // Create error display in container
 const create_error_display = (
   container: HTMLElement,
@@ -471,8 +470,10 @@ const create_error_display = (
       <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
       <h2 style="margin: 0 0 15px 0;">Failed to Parse File</h2>
       <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 8px; max-width: 600px;">
-        <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${filename}</p>
-        <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${error.message}</p>
+        <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
+        <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${
+    escape_html(error.message)
+  }</p>
         <p style="margin: 0; font-size: 14px; opacity: 0.8;">
           Supported formats: XYZ, CIF, JSON, POSCAR, trajectory files (.traj, .h5, .extxyz), etc.
         </p>
@@ -605,7 +606,7 @@ const create_display = (
     } sites)`
   }
 
-  vscode_api?.postMessage({ command: `log`, text: log_message })
+  vscode_api?.postMessage({ command: `info`, text: log_message })
   return app
 }
 
@@ -699,7 +700,7 @@ async function initialize() {
   const container = document.getElementById(`matterviz-app`)
   if (!container) throw new Error(`Target container not found in DOM`)
 
-  const result = await parse_file_content(content, filename, undefined, is_base64)
+  const result = await parse_file_content(content, filename, is_base64)
   const app = create_display(container, result, result.filename)
 
   // Store the app instance for file watching
@@ -725,7 +726,6 @@ async function cleanup_matterviz(): Promise<void> {
     current_app = null
   }
 } // Export initialization and cleanup functions to global scope
-// Export initialization and cleanup functions to global scope
 
 ;(globalThis as unknown as {
   initializeMatterViz?: () => Promise<MatterVizApp | null>
