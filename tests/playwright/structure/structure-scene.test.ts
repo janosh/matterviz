@@ -1037,9 +1037,12 @@ test.describe(`Edit Atoms Scene`, () => {
     await page.waitForTimeout(100)
 
     // Keyboard shortcuts should not cause errors
+    const is_mac = await page.evaluate(() =>
+      navigator.platform.toUpperCase().indexOf(`MAC`) >= 0
+    )
     await page.keyboard.press(`Delete`)
-    await page.keyboard.press(`Control+z`)
-    await page.keyboard.press(`Control+y`)
+    await page.keyboard.press(is_mac ? `Meta+z` : `Control+z`)
+    await page.keyboard.press(is_mac ? `Meta+y` : `Control+y`)
 
     // Canvas should still render
     const screenshot = await canvas.screenshot()

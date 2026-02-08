@@ -3219,12 +3219,18 @@ test.describe(`Edit Atoms Mode`, () => {
     await page.keyboard.press(`Delete`)
     await page.waitForTimeout(300)
 
-    // Ctrl+Z to undo
-    await page.keyboard.press(`Control+z`)
+    const is_mac = await page.evaluate(() =>
+      navigator.platform.toUpperCase().indexOf(`MAC`) >= 0
+    )
+    const undo_combo = is_mac ? `Meta+z` : `Control+z`
+    const redo_combo = is_mac ? `Meta+y` : `Control+y`
+
+    // Undo
+    await page.keyboard.press(undo_combo)
     await page.waitForTimeout(200)
 
-    // Ctrl+Y to redo
-    await page.keyboard.press(`Control+y`)
+    // Redo
+    await page.keyboard.press(redo_combo)
     await page.waitForTimeout(200)
 
     // Undo should be enabled (redo just put item back on undo stack)
