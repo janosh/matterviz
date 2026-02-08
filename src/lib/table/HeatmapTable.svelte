@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { luminance } from '$lib/colors'
+  import { luminance, watch_dark_mode } from '$lib/colors'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import type {
@@ -97,13 +97,17 @@
   let container_el = $state<HTMLDivElement>()
 
   // Read --page-bg from computed style for text contrast calculation.
-  // This is a theme-level property that rarely changes at runtime.
+  // Recalculates on mount and when the theme changes (dark/light mode toggle).
   let page_bg_lum = $state(luminance(`white`))
   $effect(() => {
     if (!container_el) return
-    const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`)
-      .trim()
-    page_bg_lum = luminance(page_bg || `white`)
+    const read_page_bg = () => {
+      const page_bg = getComputedStyle(container_el!).getPropertyValue(`--page-bg`)
+        .trim()
+      page_bg_lum = luminance(page_bg || `white`)
+    }
+    read_page_bg()
+    return watch_dark_mode(read_page_bg)
   })
 
   // Detect HTML to prevent setting raw HTML as data-sort-value. Simple string matching

@@ -131,10 +131,10 @@ describe(`HeatmapTable`, () => {
       expect(initial_dates).toEqual([`2021-05-14`, `2023-05-25`, `2024-05-07`])
     })
 
-    it(`sorts using data-sort-value attributes for numeric values`, () => {
+    it(`sorts using data-sort-value attributes for numeric values`, async () => {
       const formatted_data = [
-        { Number: `<span data-sort-value="50">50</span>` },
         { Number: `<span data-sort-value="1000">1,000</span>` },
+        { Number: `<span data-sort-value="50">50</span>` },
         { Number: `<span data-sort-value="10000">10,000</span>` },
       ]
 
@@ -145,11 +145,15 @@ describe(`HeatmapTable`, () => {
         props: { data: formatted_data, columns },
       })
 
-      // Initial data
-      const initial_numbers = Array.from(document.querySelectorAll(`td`)).map(
+      // Click to sort ascending by data-sort-value
+      document.querySelector(`th`)?.click()
+      await tick()
+
+      const sorted = Array.from(document.querySelectorAll(`td`)).map(
         (cell) => cell.textContent?.trim(),
       )
-      expect(initial_numbers).toEqual([`50`, `1,000`, `10,000`])
+      // Default sort is descending (no `better` set), so largest first
+      expect(sorted).toEqual([`10,000`, `1,000`, `50`])
     })
 
     it(`respects unsortable columns`, async () => {
@@ -425,7 +429,8 @@ describe(`HeatmapTable`, () => {
     expect(header?.getAttribute(`title`) || header?.getAttribute(`data-title`)).toBe(
       `Description`,
     )
-    expect(header?.querySelector(`[title="Click to sort"]`)).toBeDefined()
+    // sort_hint renders as a separate .sort-hint element, not inside the header
+    expect(document.querySelector(`.sort-hint`)).not.toBeNull()
     expect(header?.classList.contains(`sticky-col`)).toBe(true)
   })
 
@@ -1314,8 +1319,14 @@ describe(`HeatmapTable`, () => {
       group_b_header.click()
       await tick()
 
-      // Should sort by Group B values, not Group A
-      // Group B values: 100, 50, 75 - sorted ascending: 50, 75, 100
+      // Should sort by Group B values (100, 50, 75)
+      // data-col="Value" is used for both groups, so check Name column order instead
+      const sorted_names = Array.from(
+        document.querySelectorAll(`td[data-col="Name"]`),
+      ).map((cell) => cell.textContent?.trim())
+      // Group B values: Item 1=100, Item 2=50, Item 3=75
+      // Default sort is descending: Item 1 (100), Item 3 (75), Item 2 (50)
+      expect(sorted_names).toEqual([`Item 1`, `Item 3`, `Item 2`])
     })
 
     // Regression: zero and negative values should be included in linear scale heatmap

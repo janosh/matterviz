@@ -301,7 +301,12 @@ A comprehensive ML model benchmark comparison with sticky first column. Scroll h
   models &nbsp;|&nbsp; Model column stays pinned
 </p>
 
-<HeatmapTable {data} {columns} scroll_style="max-height: 400px;" style="margin: 0 auto" />
+<HeatmapTable
+  {data}
+  {columns}
+  scroll_style="max-height: 400px; border-inline: none"
+  style="margin: 0 auto"
+/>
 ```
 
 ## Values with Uncertainties

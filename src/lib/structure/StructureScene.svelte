@@ -138,6 +138,8 @@
     on_add_atom,
     add_atom_mode = $bindable(false),
     add_element = $bindable(`C`),
+    cursor = $bindable(`default`),
+    transform_mode = `translate`,
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
   }: {
@@ -216,6 +218,8 @@
     on_add_atom?: (xyz: Vec3, element: ElementSymbol) => void
     add_atom_mode?: boolean // whether user is in click-to-place add-atom sub-mode
     add_element?: ElementSymbol // element to add when clicking in add-atom mode
+    cursor?: string // cursor style for the 3D canvas
+    transform_mode?: `translate` | `rotate` // transform mode for TransformControls
     volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
   } = $props()
@@ -247,6 +251,21 @@
 
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
+  let hovered_bond_key = $state<string | null>(null)
+
+  // Cursor style for the canvas, derived from mode and hover state
+  let canvas_cursor = $derived.by(() => {
+    if (measure_mode === `edit-atoms` && add_atom_mode) return `crosshair`
+    if (hovered_idx != null) {
+      if (measure_mode === `edit-atoms`) {
+        const site = structure?.sites?.[hovered_idx]
+        if (site?.properties?.orig_site_idx != null) return `not-allowed`
+        return `pointer`
+      }
+      return `pointer`
+    }
+    return `default`
+  })
 
   // === Edit-atoms mode state ===
   let transform_object = $state<Mesh | undefined>(undefined)
@@ -261,28 +280,28 @@
   function toggle_bond(site_1: number, site_2: number) {
     const idx_i = Math.min(site_1, site_2)
     const idx_j = Math.max(site_1, site_2)
-    const key = get_bond_key(idx_i, idx_j)
+    // added/removed pairs are stored sorted, so direct comparison works
+    const match = ([a, b]: [number, number]) => a === idx_i && b === idx_j
 
-    const match_key = (pair: [number, number]) =>
-      get_bond_key(pair[0], pair[1]) === key
-
-    const added_idx = added_bonds.findIndex(match_key)
+    const added_idx = added_bonds.findIndex(match)
     if (added_idx >= 0) {
       added_bonds = added_bonds.toSpliced(added_idx, 1)
       return
     }
 
-    const removed_idx = removed_bonds.findIndex(match_key)
+    const removed_idx = removed_bonds.findIndex(match)
     if (removed_idx >= 0) {
-      // Restore previously removed calculated bond
       removed_bonds = removed_bonds.toSpliced(removed_idx, 1)
       return
     }
 
-    const calculated_exists = bond_pairs.some((bond) =>
-      get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
-    )
-    if (calculated_exists) {
+    // bond_pairs may not be sorted, so use get_bond_key for comparison
+    const key = `${idx_i}-${idx_j}`
+    if (
+      bond_pairs.some((bond) =>
+        get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
+      )
+    ) {
       removed_bonds = [...removed_bonds, [idx_i, idx_j]]
     } else {
       added_bonds = [...added_bonds, [idx_i, idx_j]]
@@ -326,25 +345,19 @@
       const is_selected = selected_sites.includes(site_index)
       const is_shift = evt instanceof MouseEvent && evt.shiftKey
 
+      // In edit-atoms mode, selected_sites and measured_sites always stay in sync
+      let new_sites: number[]
       if (is_shift) {
         // Multi-select: toggle this site in/out of selection
-        if (is_selected) {
-          selected_sites = selected_sites.filter((idx) => idx !== site_index)
-          measured_sites = measured_sites.filter((idx) => idx !== site_index)
-        } else {
-          selected_sites = [...selected_sites, site_index]
-          measured_sites = [...measured_sites, site_index]
-        }
+        new_sites = is_selected
+          ? selected_sites.filter((idx) => idx !== site_index)
+          : [...selected_sites, site_index]
       } else {
-        // Single-select: replace selection
-        if (is_selected) {
-          selected_sites = []
-          measured_sites = []
-        } else {
-          selected_sites = [site_index]
-          measured_sites = [site_index]
-        }
+        // Single-select: replace selection (or deselect if already selected)
+        new_sites = is_selected ? [] : [site_index]
       }
+      selected_sites = new_sites
+      measured_sites = new_sites
       return
     }
 
@@ -374,6 +387,11 @@
     untrack(() => {
       measured_sites = measured_sites.filter((idx) => idx >= 0 && idx < count)
     })
+  })
+
+  // Sync derived cursor to the bindable prop
+  $effect(() => {
+    cursor = canvas_cursor
   })
 
   extras.interactivity()
@@ -849,6 +867,7 @@
           (atom.site_idx + atom.element + atom.occupancy)
         }
           {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
+          {@const ghost_opacity = partial_edit_image ? 0.35 : 1}
           <T.Group
             position={atom.position}
             scale={atom.radius}
@@ -879,7 +898,7 @@
               />
               <T.MeshStandardMaterial
                 color={atom.color}
-                opacity={partial_edit_image ? 0.35 : 1}
+                opacity={ghost_opacity}
                 transparent={partial_edit_image}
               />
             </T.Mesh>
@@ -890,7 +909,7 @@
                 <T.MeshStandardMaterial
                   color={atom.color}
                   side={2}
-                  opacity={partial_edit_image ? 0.35 : 1}
+                  opacity={ghost_opacity}
                   transparent={partial_edit_image}
                 />
               </T.Mesh>
@@ -899,7 +918,7 @@
                 <T.MeshStandardMaterial
                   color={atom.color}
                   side={2}
-                  opacity={partial_edit_image ? 0.35 : 1}
+                  opacity={ghost_opacity}
                   transparent={partial_edit_image}
                 />
               </T.Mesh>
@@ -940,6 +959,8 @@
           bond
           (`bond-hit-${bond.site_idx_1}-${bond.site_idx_2}`)
         }
+          {@const bond_key = get_bond_key(bond.site_idx_1, bond.site_idx_2)}
+          {@const is_hovered = hovered_bond_key === bond_key}
           <T.Mesh
             matrixAutoUpdate={false}
             oncreate={(ref) => {
@@ -951,10 +972,22 @@
               toggle_bond(bond.site_idx_1, bond.site_idx_2)
               measured_sites = []
               selected_sites = []
+              hovered_bond_key = null
+            }}
+            onpointerenter={() => {
+              hovered_bond_key = bond_key
+            }}
+            onpointerleave={() => {
+              if (hovered_bond_key === bond_key) hovered_bond_key = null
             }}
           >
             <T.CylinderGeometry args={[bond_thickness * 3, bond_thickness * 3, 1, 6]} />
-            <T.MeshBasicMaterial transparent opacity={0} depthWrite={false} />
+            <T.MeshBasicMaterial
+              transparent
+              opacity={is_hovered ? 0.25 : 0}
+              color={is_hovered ? `#ff4444` : `white`}
+              depthWrite={false}
+            />
           </T.Mesh>
         {/each}
       {/if}
@@ -1090,7 +1123,9 @@
           </T.Mesh>
           <extras.TransformControls
             object={transform_object}
-            translationSnap={0.1}
+            mode={transform_mode}
+            translationSnap={transform_mode === `translate` ? 0.1 : undefined}
+            rotationSnap={transform_mode === `rotate` ? Math.PI / 12 : undefined}
             size={1.2}
             space="world"
             onobjectChange={() => {
@@ -1132,7 +1167,6 @@
           onclick={(event: { point: { x: number; y: number; z: number } }) => {
             const { x, y, z } = event.point
             on_add_atom?.([x, y, z] as Vec3, add_element as ElementSymbol)
-            add_atom_mode = false
           }}
         >
           <T.PlaneGeometry args={[200, 200]} />

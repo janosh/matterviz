@@ -398,6 +398,19 @@
   // Add-atom sub-mode state (bound to StructureScene)
   let add_atom_mode = $state(false)
   let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
+  let canvas_cursor = $state(`default`)
+  let change_element_mode = $state(false)
+  let change_element_value = $state(``)
+  let transform_mode = $state<`translate` | `rotate`>(`translate`)
+
+  // Ephemeral toast message for edit operations
+  let toast_msg = $state<string | null>(null)
+  let toast_timer: ReturnType<typeof setTimeout> | undefined
+  function show_toast(msg: string, duration_ms = 2000) {
+    clearTimeout(toast_timer)
+    toast_msg = msg
+    toast_timer = setTimeout(() => (toast_msg = null), duration_ms)
+  }
 
   function clear_selection() {
     selected_sites = []
@@ -819,10 +832,12 @@
         if (key === `z` && !event.shiftKey) {
           event.preventDefault()
           undo()
+          show_toast(`Undo (${undo_stack.length} left)`)
           return
         } else if (key === `y` || (key === `z` && event.shiftKey)) {
           event.preventDefault()
           redo()
+          show_toast(`Redo (${redo_stack.length} left)`)
           return
         }
       }
@@ -834,6 +849,7 @@
           is_internal_edit = true
           push_undo()
           const to_delete = scene_to_structure_indices(selected_sites, true)
+          const n_deleted = to_delete.size
           clear_selection()
           structure = {
             ...structure,
@@ -843,6 +859,7 @@
           if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
           added_bonds = []
           removed_bonds = []
+          show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
         }
         return
       }
@@ -855,10 +872,66 @@
         add_atom_mode = !add_atom_mode
         return
       }
-      // add_atom_mode Escape is already handled above (before is_input_focused guard)
-      if (event.key === `Escape` && selected_sites.length > 0) {
-        clear_selection()
+      // Change element of selected atoms
+      if (
+        event.key.toLowerCase() === `e` && !event.ctrlKey && !event.metaKey &&
+        !event.altKey && selected_sites.length > 0
+      ) {
+        event.preventDefault()
+        change_element_mode = !change_element_mode
         return
+      }
+      // Duplicate selected atoms at a small offset
+      if (
+        (event.key.toLowerCase() === `d` && (event.ctrlKey || event.metaKey)) &&
+        selected_sites.length > 0 && structure?.sites
+      ) {
+        event.preventDefault()
+        is_internal_edit = true
+        push_undo()
+        const orig_indices = scene_to_structure_indices(selected_sites)
+        const new_sites = structure.sites
+          .filter((_, idx) => orig_indices.has(idx))
+          .map((site) => ({
+            ...site,
+            xyz: [site.xyz[0] + 0.5, site.xyz[1] + 0.5, site.xyz[2] + 0.5] as Vec3,
+            abc: [site.abc[0] + 0.05, site.abc[1] + 0.05, site.abc[2] + 0.05] as Vec3,
+            properties: { ...site.properties },
+          }))
+        const base_idx = structure.sites.length
+        structure = {
+          ...structure,
+          sites: [...structure.sites, ...new_sites],
+        }
+        // Select the newly duplicated atoms
+        selected_sites = new_sites.map((_, idx) => base_idx + idx)
+        measured_sites = [...selected_sites]
+        show_toast(
+          `Duplicated ${new_sites.length} site${new_sites.length > 1 ? `s` : ``}`,
+        )
+        return
+      }
+      // Toggle transform mode between translate and rotate
+      if (event.key.toLowerCase() === `t` && !event.ctrlKey && !event.metaKey) {
+        transform_mode = `translate`
+        show_toast(`Transform: translate`)
+        return
+      }
+      if (event.key.toLowerCase() === `r` && !event.ctrlKey && !event.metaKey) {
+        transform_mode = `rotate`
+        show_toast(`Transform: rotate`)
+        return
+      }
+      // add_atom_mode Escape is already handled above (before is_input_focused guard)
+      if (event.key === `Escape`) {
+        if (change_element_mode) {
+          change_element_mode = false
+          return
+        }
+        if (selected_sites.length > 0) {
+          clear_selection()
+          return
+        }
       }
     }
 
@@ -935,6 +1008,35 @@
     }
   }
 
+  // Change element symbol of selected atoms
+  function handle_change_element(new_element: string) {
+    if (!structure?.sites || selected_sites.length === 0) return
+    const normalized = (new_element.charAt(0).toUpperCase() +
+      new_element.slice(1).toLowerCase()) as ElementSymbol
+    if (!ELEM_SYMBOLS.includes(normalized)) return
+    is_internal_edit = true
+    push_undo()
+    const orig_indices = scene_to_structure_indices(selected_sites)
+    structure = {
+      ...structure,
+      sites: structure.sites.map((site, idx) => {
+        if (!orig_indices.has(idx)) return site
+        return {
+          ...site,
+          species: [{ element: normalized, occu: 1, oxidation_state: 0 }],
+          label: normalized,
+        }
+      }),
+    }
+    change_element_mode = false
+    change_element_value = ``
+    show_toast(
+      `Changed ${orig_indices.size} site${
+        orig_indices.size > 1 ? `s` : ``
+      } to ${normalized}`,
+    )
+  }
+
   // Handle add-atom from StructureScene click-to-place
   function handle_add_atom(xyz: Vec3, element: ElementSymbol) {
     if (!structure) return
@@ -960,6 +1062,7 @@
       ...structure,
       sites: [...structure.sites, new_site],
     }
+    show_toast(`Added ${normalized} at (${xyz.map((c) => c.toFixed(2)).join(`, `)})`)
   }
 
   // Only set background override when background_color is explicitly provided
@@ -998,11 +1101,13 @@
   }}
 />
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
-  role="region"
-  tabindex="-1"
+  role="application"
+  tabindex="0"
+  style:--canvas-cursor={canvas_cursor}
   aria-label="Structure viewer"
   bind:this={wrapper}
   bind:clientWidth={width}
@@ -1089,7 +1194,7 @@
           >
             <button
               onclick={() => (measure_menu_open = !measure_menu_open)}
-              title="Measurement mode"
+              title="Measure / Edit"
               class="view-mode-button"
               class:active={measure_menu_open}
               aria-expanded={measure_menu_open}
@@ -1134,15 +1239,15 @@
             { mode: `distance`, icon: `Ruler`, label: `Distance`, scale: 1.1 },
             { mode: `angle`, icon: `Angle`, label: `Angle`, scale: 1.3 },
             {
-              mode: `edit-bonds`,
-              icon: `Link`,
-              label: `Edit Bonds`,
-              scale: 1.0,
-            },
-            {
               mode: `edit-atoms`,
               icon: `Edit`,
               label: `Edit Atoms`,
+              scale: 1.0,
+            },
+            {
+              mode: `edit-bonds`,
+              icon: `Link`,
+              label: `Edit Bonds`,
               scale: 1.0,
             },
           ] as const as
@@ -1208,6 +1313,35 @@
                 />
               </label>
               <span style="font-size: 0.75em; opacity: 0.7">Click to place</span>
+            </div>
+          {/if}
+
+          <!-- Change-element input (shown when 'e' pressed with selection) -->
+          {#if measure_mode === `edit-atoms` && change_element_mode &&
+        selected_sites.length > 0}
+            <div class="add-atom-input">
+              <label>
+                <span>New element:</span>
+                <input
+                  type="text"
+                  bind:value={change_element_value}
+                  maxlength="2"
+                  placeholder="Fe"
+                  style="width: 3em; text-align: center"
+                  onkeydown={(event: KeyboardEvent) => {
+                    if (event.key === `Enter`) {
+                      handle_change_element(change_element_value)
+                    } else if (event.key === `Escape`) {
+                      change_element_mode = false
+                    }
+                    event.stopPropagation()
+                  }}
+                  {@attach (node: HTMLInputElement) => {
+                    node.focus()
+                  }}
+                />
+              </label>
+              <span style="font-size: 0.75em; opacity: 0.7">Enter to apply</span>
             </div>
           {/if}
         {/if}
@@ -1320,6 +1454,8 @@
             on_add_atom={handle_add_atom}
             bind:add_atom_mode
             bind:add_element
+            bind:cursor={canvas_cursor}
+            {transform_mode}
           />
         </Canvas>
       </div>
@@ -1328,6 +1464,10 @@
     <div class="bottom-left">
       {@render bottom_left?.({ structure: displayed_structure })}
     </div>
+
+    {#if toast_msg}
+      <div class="edit-toast">{toast_msg}</div>
+    {/if}
 
     {#if measure_mode === `edit-bonds` &&
       (added_bonds.length > 0 || removed_bonds.length > 0)}
@@ -1387,6 +1527,7 @@
   /* Ensure canvas is transparent so the themed --struct-bg shows through */
   .structure :global(canvas) {
     background: transparent;
+    cursor: var(--canvas-cursor, default);
   }
   /* Avoid accidental text selection while interacting with the viewer */
   .structure :global(canvas),
@@ -1551,6 +1692,30 @@
   }
   .symmetry-error button:hover {
     opacity: 1;
+  }
+  .edit-toast {
+    position: absolute;
+    bottom: 3rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, currentColor);
+    color: var(--text-color, currentColor);
+    padding: 0.4rem 0.8rem;
+    border-radius: var(--border-radius, 3pt);
+    font-size: 0.8rem;
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    animation: toast-fade 2s ease-in-out;
+    opacity: 0;
+  }
+  @keyframes toast-fade {
+    0%, 70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
   }
   .bond-edit-status {
     position: absolute;

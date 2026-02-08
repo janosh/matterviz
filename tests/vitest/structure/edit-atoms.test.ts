@@ -313,6 +313,428 @@ describe(`edit-atoms: image atom detection`, () => {
   })
 })
 
+// === Bond Toggle Logic ===
+// Mirrors toggle_bond from StructureScene.svelte
+
+type BondPair = {
+  site_idx_1: number
+  site_idx_2: number
+}
+
+function get_bond_key(idx1: number, idx2: number): string {
+  return idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`
+}
+
+function create_bond_state(calculated: BondPair[] = []) {
+  let added: [number, number][] = []
+  let removed: [number, number][] = []
+
+  function toggle_bond(site_1: number, site_2: number) {
+    const idx_i = Math.min(site_1, site_2)
+    const idx_j = Math.max(site_1, site_2)
+    const match = ([a, b]: [number, number]) => a === idx_i && b === idx_j
+
+    const added_idx = added.findIndex(match)
+    if (added_idx >= 0) {
+      added = added.toSpliced(added_idx, 1)
+      return
+    }
+
+    const removed_idx = removed.findIndex(match)
+    if (removed_idx >= 0) {
+      removed = removed.toSpliced(removed_idx, 1)
+      return
+    }
+
+    const key = `${idx_i}-${idx_j}`
+    if (
+      calculated.some((bond) => get_bond_key(bond.site_idx_1, bond.site_idx_2) === key)
+    ) {
+      removed = [...removed, [idx_i, idx_j]]
+    } else {
+      added = [...added, [idx_i, idx_j]]
+    }
+  }
+
+  return {
+    toggle_bond,
+    get added_bonds() {
+      return added
+    },
+    get removed_bonds() {
+      return removed
+    },
+  }
+}
+
+describe(`edit-bonds: toggle_bond`, () => {
+  test(`adds bond between unconnected atoms, sorted regardless of input order`, () => {
+    const state = create_bond_state()
+    state.toggle_bond(5, 2)
+    expect(state.added_bonds).toEqual([[2, 5]])
+    expect(state.removed_bonds).toEqual([])
+  })
+
+  test(`removes manually added bond on second toggle`, () => {
+    const state = create_bond_state()
+    state.toggle_bond(0, 3)
+    expect(state.added_bonds).toHaveLength(1)
+    state.toggle_bond(0, 3)
+    expect(state.added_bonds).toHaveLength(0)
+  })
+
+  test(`removes calculated bond (handles reversed indices in bond_pairs)`, () => {
+    // bond_pairs may have site_idx_1 > site_idx_2
+    const state = create_bond_state([{ site_idx_1: 5, site_idx_2: 2 }])
+    state.toggle_bond(2, 5)
+    expect(state.removed_bonds).toEqual([[2, 5]])
+    expect(state.added_bonds).toEqual([])
+  })
+
+  test(`restores removed calculated bond on second toggle`, () => {
+    const state = create_bond_state([{ site_idx_1: 0, site_idx_2: 1 }])
+    state.toggle_bond(0, 1) // remove
+    expect(state.removed_bonds).toHaveLength(1)
+    state.toggle_bond(0, 1) // restore
+    expect(state.removed_bonds).toHaveLength(0)
+  })
+
+  test(`full cycle: add → remove → re-add for non-calculated bond`, () => {
+    const state = create_bond_state()
+    state.toggle_bond(1, 4)
+    expect(state.added_bonds).toEqual([[1, 4]])
+    state.toggle_bond(1, 4)
+    expect(state.added_bonds).toEqual([])
+    state.toggle_bond(1, 4)
+    expect(state.added_bonds).toEqual([[1, 4]])
+  })
+
+  test(`manages multiple bonds independently`, () => {
+    const state = create_bond_state([{ site_idx_1: 0, site_idx_2: 1 }])
+    state.toggle_bond(0, 1) // remove calculated
+    state.toggle_bond(2, 3) // add new
+    state.toggle_bond(4, 5) // add new
+    expect(state.removed_bonds).toEqual([[0, 1]])
+    expect(state.added_bonds).toEqual([[2, 3], [4, 5]])
+  })
+})
+
+// === Change Element Logic ===
+// Mirrors handle_change_element from Structure.svelte
+
+function change_element_on_structure(
+  structure: AnyStructure,
+  selected_indices: Set<number>,
+  new_element: string,
+): AnyStructure | null {
+  const normalized = (new_element.charAt(0).toUpperCase() +
+    new_element.slice(1).toLowerCase()) as ElementSymbol
+  if (!ELEM_SYMBOLS.includes(normalized)) return null
+  return {
+    ...structure,
+    sites: structure.sites.map((site, idx) => {
+      if (!selected_indices.has(idx)) return site
+      return {
+        ...site,
+        species: [{ element: normalized, occu: 1, oxidation_state: 0 }],
+        label: normalized,
+      }
+    }),
+  }
+}
+
+describe(`edit-atoms: change element`, () => {
+  test(`changes single atom element and label`, () => {
+    const struct = get_dummy_structure(`H`, 3)
+    const result = change_element_on_structure(struct, new Set([1]), `Fe`)
+    expect(result?.sites[0].species[0].element).toBe(`H`)
+    expect(result?.sites[1].species[0].element).toBe(`Fe`)
+    expect(result?.sites[1].label).toBe(`Fe`)
+    expect(result?.sites[2].species[0].element).toBe(`H`)
+  })
+
+  test(`changes multiple atoms and normalizes case`, () => {
+    const struct = get_dummy_structure(`H`, 4)
+    const result = change_element_on_structure(struct, new Set([0, 2, 3]), `o`)
+    const elements = result?.sites.map((s) => s.species[0].element)
+    expect(elements).toEqual([`O`, `H`, `O`, `O`])
+  })
+
+  test.each([`Xx`, ``, `123`])(`rejects invalid symbol "%s"`, (sym) => {
+    expect(change_element_on_structure(get_dummy_structure(`H`, 1), new Set([0]), sym))
+      .toBeNull()
+  })
+
+  test(`preserves unselected atoms by reference`, () => {
+    const struct = get_dummy_structure(`Si`, 3)
+    const original_site = struct.sites[1]
+    const result = change_element_on_structure(struct, new Set([0]), `Ge`)
+    expect(result?.sites[1]).toBe(original_site)
+  })
+
+  test(`resets oxidation state to 0`, () => {
+    const struct: AnyStructure = {
+      sites: [{
+        species: [{ element: `Fe` as ElementSymbol, occu: 1, oxidation_state: 3 }],
+        xyz: [0, 0, 0] as Vec3,
+        abc: [0, 0, 0] as Vec3,
+        label: `Fe`,
+        properties: {},
+      }],
+    }
+    const result = change_element_on_structure(struct, new Set([0]), `Mn`)
+    expect(result?.sites[0].species[0].oxidation_state).toBe(0)
+  })
+})
+
+// === Atom Duplication Logic ===
+// Mirrors the Ctrl+D duplication from Structure.svelte
+
+function duplicate_atoms(
+  structure: AnyStructure,
+  selected_indices: Set<number>,
+  offset: Vec3 = [0.5, 0.5, 0.5],
+): { structure: AnyStructure; new_indices: number[] } {
+  const new_sites = structure.sites
+    .filter((_, idx) => selected_indices.has(idx))
+    .map((site) => ({
+      ...site,
+      xyz: [
+        site.xyz[0] + offset[0],
+        site.xyz[1] + offset[1],
+        site.xyz[2] + offset[2],
+      ] as Vec3,
+      abc: [site.abc[0] + 0.05, site.abc[1] + 0.05, site.abc[2] + 0.05] as Vec3,
+      properties: { ...site.properties },
+    }))
+  const base_idx = structure.sites.length
+  return {
+    structure: { ...structure, sites: [...structure.sites, ...new_sites] },
+    new_indices: new_sites.map((_, idx) => base_idx + idx),
+  }
+}
+
+describe(`edit-atoms: duplicate atoms`, () => {
+  test(`duplicates single atom with offset and correct element`, () => {
+    const struct = get_dummy_structure(`Si`, 2)
+    const { structure: result, new_indices } = duplicate_atoms(struct, new Set([0]))
+    expect(result.sites).toHaveLength(3)
+    expect(new_indices).toEqual([2])
+    expect(result.sites[2].xyz[0]).toBeCloseTo(struct.sites[0].xyz[0] + 0.5)
+    expect(result.sites[2].species[0].element).toBe(`Si`)
+  })
+
+  test(`duplicates multiple atoms with correct indices`, () => {
+    const struct = get_dummy_structure(`Fe`, 4)
+    const { structure: result, new_indices } = duplicate_atoms(struct, new Set([1, 3]))
+    expect(result.sites).toHaveLength(6)
+    expect(new_indices).toEqual([4, 5])
+  })
+
+  test(`creates independent copies (no shared property references)`, () => {
+    const struct = get_dummy_structure(`C`, 1)
+    struct.sites[0].properties = { force: [1, 0, 0] }
+    const { structure: result } = duplicate_atoms(struct, new Set([0]))
+    ;(result.sites[1].properties as Record<string, unknown>).force = [0, 0, 0]
+    expect(struct.sites[0].properties.force).toEqual([1, 0, 0])
+  })
+
+  test(`preserves original atoms unchanged`, () => {
+    const struct = get_dummy_structure(`O`, 3)
+    const { structure: result } = duplicate_atoms(struct, new Set([1]))
+    for (let idx = 0; idx < 3; idx++) {
+      expect(result.sites[idx].xyz).toEqual(struct.sites[idx].xyz)
+    }
+  })
+
+  test(`handles empty selection`, () => {
+    const struct = get_dummy_structure(`H`, 3)
+    const { structure: result, new_indices } = duplicate_atoms(struct, new Set())
+    expect(result.sites).toHaveLength(3)
+    expect(new_indices).toEqual([])
+  })
+
+  test(`applies custom offset`, () => {
+    const struct = get_dummy_structure(`Na`, 1)
+    const offset: Vec3 = [1.0, 2.0, 3.0]
+    const { structure: result } = duplicate_atoms(struct, new Set([0]), offset)
+    expect(result.sites[1].xyz[0]).toBeCloseTo(struct.sites[0].xyz[0] + 1.0)
+    expect(result.sites[1].xyz[1]).toBeCloseTo(struct.sites[0].xyz[1] + 2.0)
+    expect(result.sites[1].xyz[2]).toBeCloseTo(struct.sites[0].xyz[2] + 3.0)
+  })
+})
+
+// === Canvas Cursor Logic ===
+// Mirrors the canvas_cursor derived from StructureScene.svelte
+
+type CursorContext = {
+  measure_mode: string
+  add_atom_mode: boolean
+  hovered_idx: number | null
+  site_is_image: (idx: number) => boolean
+}
+
+function get_canvas_cursor(ctx: CursorContext): string {
+  if (ctx.measure_mode === `edit-atoms` && ctx.add_atom_mode) return `crosshair`
+  if (ctx.hovered_idx !== null) {
+    if (ctx.measure_mode === `edit-atoms`) {
+      if (ctx.site_is_image(ctx.hovered_idx)) return `not-allowed`
+      return `pointer`
+    }
+    return `pointer`
+  }
+  return `default`
+}
+
+describe(`canvas cursor`, () => {
+  const no_image = () => false
+  const all_image = () => true
+
+  test.each([
+    {
+      desc: `crosshair in add-atom mode (not hovering)`,
+      mode: `edit-atoms`,
+      add: true,
+      hover: null,
+      image: false,
+      expected: `crosshair`,
+    },
+    {
+      desc: `crosshair in add-atom mode (hovering)`,
+      mode: `edit-atoms`,
+      add: true,
+      hover: 3,
+      image: false,
+      expected: `crosshair`,
+    },
+    {
+      desc: `pointer on selectable atom`,
+      mode: `edit-atoms`,
+      add: false,
+      hover: 0,
+      image: false,
+      expected: `pointer`,
+    },
+    {
+      desc: `not-allowed on image atom`,
+      mode: `edit-atoms`,
+      add: false,
+      hover: 2,
+      image: true,
+      expected: `not-allowed`,
+    },
+    {
+      desc: `default when not hovering`,
+      mode: `edit-atoms`,
+      add: false,
+      hover: null,
+      image: false,
+      expected: `default`,
+    },
+  ])(`$desc`, ({ mode, add, hover, image, expected }) => {
+    expect(get_canvas_cursor({
+      measure_mode: mode,
+      add_atom_mode: add,
+      hovered_idx: hover,
+      site_is_image: image ? all_image : no_image,
+    })).toBe(expected)
+  })
+
+  test.each([`distance`, `angle`, `edit-bonds`])(
+    `shows pointer in %s mode when hovering`,
+    (mode) => {
+      expect(get_canvas_cursor({
+        measure_mode: mode,
+        add_atom_mode: false,
+        hovered_idx: 0,
+        site_is_image: no_image,
+      })).toBe(`pointer`)
+    },
+  )
+})
+
+// === Edit-atoms Selection Logic ===
+// Mirrors toggle_selection edit-atoms branch from StructureScene.svelte
+
+function edit_atoms_toggle(
+  site_index: number,
+  selected: number[],
+  is_shift: boolean,
+  is_image: boolean,
+): number[] {
+  if (is_image) return selected // block image atoms
+  const is_selected = selected.includes(site_index)
+  if (is_shift) {
+    return is_selected
+      ? selected.filter((idx) => idx !== site_index)
+      : [...selected, site_index]
+  }
+  return is_selected ? [] : [site_index]
+}
+
+describe(`edit-atoms: selection toggle`, () => {
+  test.each([
+    {
+      desc: `single click selects atom`,
+      idx: 3,
+      sel: [],
+      shift: false,
+      img: false,
+      expected: [3],
+    },
+    {
+      desc: `single click deselects all`,
+      idx: 1,
+      sel: [1, 2],
+      shift: false,
+      img: false,
+      expected: [],
+    },
+    {
+      desc: `single click replaces selection`,
+      idx: 3,
+      sel: [1, 2],
+      shift: false,
+      img: false,
+      expected: [3],
+    },
+    {
+      desc: `shift+click adds to selection`,
+      idx: 3,
+      sel: [1],
+      shift: true,
+      img: false,
+      expected: [1, 3],
+    },
+    {
+      desc: `shift+click removes from selection`,
+      idx: 1,
+      sel: [1, 2, 3],
+      shift: true,
+      img: false,
+      expected: [2, 3],
+    },
+    {
+      desc: `blocks image atom click`,
+      idx: 5,
+      sel: [1],
+      shift: false,
+      img: true,
+      expected: [1],
+    },
+    {
+      desc: `blocks image atom shift+click`,
+      idx: 5,
+      sel: [1],
+      shift: true,
+      img: true,
+      expected: [1],
+    },
+  ])(`$desc`, ({ idx, sel, shift, img, expected }) => {
+    expect(edit_atoms_toggle(idx, sel, shift, img)).toEqual(expected)
+  })
+})
+
 // === Coordinate Conversion for Added Atoms ===
 
 describe(`edit-atoms: coordinate conversion`, () => {
