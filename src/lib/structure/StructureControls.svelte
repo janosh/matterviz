@@ -7,6 +7,8 @@
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorScaleSelect } from '$lib/plot'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
+  import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
+  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import type { AnyStructure } from '$lib/structure'
   import { Lattice, StructureScene } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
@@ -42,6 +44,9 @@
     supercell_loading = $bindable(false),
     sym_data = null,
     cell_type = $bindable(`original`),
+    volumetric_data = $bindable<VolumetricData[]>(),
+    isosurface_settings = $bindable<IsosurfaceSettings>(),
+    active_volume_idx = $bindable(0),
     pane_props = {},
     toggle_props = {},
     ...rest
@@ -59,6 +64,9 @@
     supercell_loading?: boolean
     sym_data?: MoyoDataset | null
     cell_type?: CellType // Cell type: original, conventional, or primitive
+    volumetric_data?: VolumetricData[] // Volumetric data volumes for isosurface controls
+    isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
+    active_volume_idx?: number // Active volume index
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
@@ -951,6 +959,14 @@
         />
       </label>
     </SettingsSection>
+  {/if}
+
+  {#if volumetric_data?.length && isosurface_settings}
+    <IsosurfaceControls
+      bind:settings={isosurface_settings}
+      volumes={volumetric_data}
+      bind:active_volume_idx
+    />
   {/if}
 </DraggablePane>
 

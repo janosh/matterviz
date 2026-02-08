@@ -94,6 +94,7 @@ export const STRUCTURE_EXTENSIONS = Object.freeze([
   `.mcif`,
   `.poscar`,
   `.vasp`,
+  `.cube`,
   `.lmp`,
   `.data`,
   `.dump`,
@@ -122,6 +123,8 @@ export const TRAJ_FALLBACK_EXTENSIONS_REGEX = new RegExp(
 // Special regex patterns
 export const VASP_FILES_REGEX =
   /(?:^|[\\/_.-])(poscar|contcar|potcar|incar|kpoints|outcar)(?:[\\/_.-]|$)/i
+export const VASP_VOLUMETRIC_REGEX =
+  /(?:^|[\\/_.-])(chgcar|aeccar[012]?|elfcar|locpot|parchg)(?:[\\/_.-]|$)/i
 export const XDATCAR_REGEX = /xdatcar/i
 export const CONFIG_DIRS_REGEX =
   /(?:^|[\\/])(\.vscode|\.idea|\.nyc_output|\.cache|\.tmp|\.temp|node_modules|dist|build|coverage)(?:[\\/]|$)/i
