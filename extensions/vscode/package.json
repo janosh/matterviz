@@ -1206,6 +1206,17 @@
           "minimum": 0,
           "maximum": 1
         },
+        "matterviz.convex_hull.ternary.hull_face_color_mode": {
+          "type": "string",
+          "default": "uniform",
+          "description": "Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)",
+          "enum": [
+            "uniform",
+            "formation_energy",
+            "dominant_element",
+            "facet_index"
+          ]
+        },
         "matterviz.convex_hull.ternary.fullscreen": {
           "type": "boolean",
           "default": false,
@@ -1302,6 +1313,17 @@
           "description": "Opacity for hull faces in 4D convex hull (0-1)",
           "minimum": 0,
           "maximum": 1
+        },
+        "matterviz.convex_hull.quaternary.hull_face_color_mode": {
+          "type": "string",
+          "default": "dominant_element",
+          "description": "Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)",
+          "enum": [
+            "uniform",
+            "formation_energy",
+            "dominant_element",
+            "facet_index"
+          ]
         },
         "matterviz.convex_hull.quaternary.max_hull_dist_show_phases": {
           "type": "number",

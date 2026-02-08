@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Crystal } from '$lib'
   import { DEFAULTS } from '$lib/settings'
-  import Structure from '$lib/structure/Structure.svelte'
+  import Structure, { type MeasureMode } from '$lib/structure/Structure.svelte'
   import StructureScene from '$lib/structure/StructureScene.svelte'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
   import type { ComponentProps } from 'svelte'
@@ -18,6 +18,7 @@
   let selected_sites = $state<number[]>([])
   let measured_sites = $state<number[]>([])
   let enable_measure_mode = $state(true)
+  let measure_mode = $state<MeasureMode>(`distance`)
   let supercell_scaling = $state(`1x1x1`)
   let show_image_atoms = $state(true)
   let fullscreen = $state(false)
@@ -225,6 +226,8 @@
         [`clear-selected`, () => selected_sites = []],
         [`set-measured`, () => measured_sites = [0, 1, 2]],
         [`clear-measured`, () => measured_sites = []],
+        [`set-edit-atoms`, () => measure_mode = `edit-atoms`],
+        [`set-distance-mode`, () => measure_mode = `distance`],
       ] as const as
       [btn_type, onclick]
       (btn_type)
@@ -259,6 +262,7 @@
   bind:selected_sites
   bind:measured_sites
   {enable_measure_mode}
+  bind:measure_mode
   bind:supercell_scaling
   bind:show_image_atoms
   bind:fullscreen
@@ -274,6 +278,7 @@
 <div data-testid="canvas-height-status">Canvas Height Status: {canvas.height}</div>
 <div data-testid="gizmo-status">Gizmo Status: {scene_props.show_gizmo}</div>
 <div data-testid="show-buttons-status">Show Buttons Status: {show_controls}</div>
+<div data-testid="measure-mode-status">Measure Mode: {measure_mode}</div>
 <div data-testid="fullscreen-status">Fullscreen Status: {fullscreen}</div>
 <div data-testid="performance-mode-status">
   Performance Mode Status: {performance_mode}
