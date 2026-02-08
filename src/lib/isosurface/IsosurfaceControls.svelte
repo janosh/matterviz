@@ -58,7 +58,11 @@
   <!-- Top row: volume selector (if multi-volume) + layer count + toggles -->
   <div class="pane-row compact-row">
     {#if volumes.length > 1}
-      <label {@attach tooltip({ content: `Select which volume to display (e.g. charge vs magnetization)` })}>
+      <label
+        {@attach tooltip({
+          content: `Select which volume to display (e.g. charge vs magnetization)`,
+        })}
+      >
         <span>Volume:</span>
         <select bind:value={active_volume_idx}>
           {#each volumes as vol, idx (idx)}
@@ -67,7 +71,11 @@
         </select>
       </label>
     {/if}
-    <label {@attach tooltip({ content: `Number of isosurface shells at different density thresholds` })}>
+    <label
+      {@attach tooltip({
+        content: `Number of isosurface shells at different density thresholds`,
+      })}
+    >
       <span>Layers:</span>
       <select
         value={n_layers}
@@ -79,7 +87,14 @@
         {/each}
       </select>
     </label>
-    <label {@attach tooltip({ content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)` })}>
+    <!-- Sync both settings.show_negative (single-layer fallback) and all layer entries
+    so the toggle works consistently regardless of which mode is active -->
+    <label
+      {@attach tooltip({
+        content:
+          `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)`,
+      })}
+    >
       <span>Neg. lobe</span>
       <input
         type="checkbox"
@@ -98,7 +113,9 @@
         }}
       />
     </label>
-    <label {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}>
+    <label
+      {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}
+    >
       <span>Wireframe</span>
       <input type="checkbox" bind:checked={settings.wireframe} />
     </label>
@@ -149,7 +166,11 @@
     {/each}
   {:else}
     <!-- Single-layer: isovalue slider full width -->
-    <label {@attach tooltip({ content: `Density threshold — surface is drawn where grid values equal this` })}>
+    <label
+      {@attach tooltip({
+        content: `Density threshold — surface is drawn where grid values equal this`,
+      })}
+    >
       <span>Isovalue:</span>
       <input
         type="range"
@@ -163,7 +184,11 @@
 
     <!-- Opacity + colors on one row -->
     <div class="pane-row compact-row">
-      <label {@attach tooltip({ content: `Surface transparency — lower values reveal inner structure` })}>
+      <label
+        {@attach tooltip({
+          content: `Surface transparency — lower values reveal inner structure`,
+        })}
+      >
         <span>Opacity:</span>
         <input
           type="range"
@@ -180,7 +205,9 @@
         <input type="color" bind:value={settings.positive_color} />
       </label>
       {#if settings.show_negative}
-        <label {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}>
+        <label
+          {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}
+        >
           <span>&minus; Color</span>
           <input type="color" bind:value={settings.negative_color} />
         </label>
@@ -190,8 +217,9 @@
 
   {#if volumes[active_volume_idx]}
     <div class="grid-info">
-      {volumes[active_volume_idx].grid_dims.join(` × `)} grid
-      &nbsp;|&nbsp; [{format_num(data_range.min, `.3~g`)}, {format_num(data_range.max, `.3~g`)}]
+      {volumes[active_volume_idx].grid_dims.join(` × `)} grid &nbsp;|&nbsp; [{
+        format_num(data_range.min, `.3~g`)
+      }, {format_num(data_range.max, `.3~g`)}]
     </div>
   {/if}
 </SettingsSection>

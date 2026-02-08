@@ -11,6 +11,7 @@ export * from './feedback'
 export * from './fermi-surface'
 export { default as FilePicker } from './FilePicker.svelte'
 export { default as Icon } from './Icon.svelte'
+export { default as MillerIndexInput } from './MillerIndexInput.svelte'
 export * from './icons'
 export * from './io'
 // Explicit exports to avoid name clash with fermi-surface's Isosurface type
@@ -25,11 +26,14 @@ export {
   parse_chgcar,
   parse_cube,
   parse_volumetric_file,
+  sample_hkl_slice,
+  trilinear_interpolate,
 } from './isosurface'
 export type {
   DataRange,
   IsosurfaceLayer,
   IsosurfaceSettings,
+  SliceResult,
   VolumetricData,
   VolumetricFileData,
 } from './isosurface'

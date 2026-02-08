@@ -52,7 +52,7 @@ export interface IsosurfaceSettings {
   layers?: IsosurfaceLayer[] // if set, overrides single-isovalue mode
 }
 
-// Categorical palette for auto-coloring isosurface layers (ColorBrewer Set1)
+// Categorical palette for auto-coloring isosurface layers (Tailwind-inspired)
 export const LAYER_COLORS = [
   `#3b82f6`, // blue
   `#ef4444`, // red

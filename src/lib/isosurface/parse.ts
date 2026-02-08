@@ -60,7 +60,7 @@ function parse_float_block(
     const start = pos
     while (pos < len && text.charCodeAt(pos) > 32) pos++
 
-    // Parse number using native parseFloat (handles scientific notation)
+    // Parse number using unary + (handles scientific notation)
     const num = +text.substring(start, pos)
     if (!Number.isNaN(num)) {
       data[idx++] = num
@@ -125,22 +125,30 @@ function build_grid(
   const total = nx * ny * nz
   const data_len = Math.min(data.length, total)
 
+  if (data_len === 0) {
+    // Empty data: return zeroed grid with neutral data_range
+    for (let ix = 0; ix < nx; ix++) {
+      const plane: number[][] = new Array(ny)
+      for (let iy = 0; iy < ny; iy++) plane[iy] = new Array(nz).fill(0)
+      grid[ix] = plane
+    }
+    return { grid, data_range: { min: 0, max: 0, abs_max: 0, mean: 0 } }
+  }
+
   for (let ix = 0; ix < nx; ix++) {
     const plane: number[][] = new Array(ny)
     for (let iy = 0; iy < ny; iy++) {
-      const row = new Float64Array(nz) // typed array for the innermost dimension
+      const row = new Array<number>(nz).fill(0)
       const base = ix * ny_nz + iy * nz
-      for (let iz = 0; iz < nz; iz++) {
-        const flat_idx = base + iz
-        if (flat_idx < data_len) {
-          const val = data[flat_idx] / divisor
-          row[iz] = val
-          if (val < min_val) min_val = val
-          if (val > max_val) max_val = val
-          sum += val
-        }
+      const row_end = Math.min(base + nz, data_len)
+      for (let flat_idx = base; flat_idx < row_end; flat_idx++) {
+        const val = data[flat_idx] / divisor
+        row[flat_idx - base] = val
+        if (val < min_val) min_val = val
+        if (val > max_val) max_val = val
+        sum += val
       }
-      plane[iy] = row as unknown as number[]
+      plane[iy] = row
     }
     grid[ix] = plane
   }
@@ -152,7 +160,7 @@ function build_grid(
       min: min_val,
       max: max_val,
       abs_max,
-      mean: data_len > 0 ? sum / data_len : 0,
+      mean: sum / data_len,
     },
   }
 }

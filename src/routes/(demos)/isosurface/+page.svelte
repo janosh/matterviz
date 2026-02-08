@@ -4,7 +4,10 @@
   import { page } from '$app/state'
   import { load_from_url } from '$lib/io'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
+  import { sample_hkl_slice } from '$lib/isosurface/slice'
   import { format_num } from '$lib/labels'
+  import type { Vec3 } from '$lib/math'
+  import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import { parse_any_structure } from '$lib/structure/parse'
   import { volumetric_files } from '$site/isosurfaces'
   import type { AnyStructure, IsosurfaceSettings, VolumetricData } from 'matterviz'
@@ -27,9 +30,9 @@
   let parse_time_ms = $state<number | undefined>()
   let dragover_hint = $state(false)
 
-  // Slice view state
-  let slice_axis = $state<0 | 1 | 2>(2) // 0=x, 1=y, 2=z
-  let slice_position = $state(0.5) // fractional position along axis [0, 1]
+  // HKL slice view state
+  let miller_indices = $state<Vec3>([0, 0, 1]) // default (001) = z-plane
+  let slice_position = $state(0.5) // fractional distance along plane normal [0, 1]
   let slice_canvas = $state<HTMLCanvasElement | undefined>()
 
   // Use precomputed data_range from the active volume
@@ -61,7 +64,6 @@
     parse_time_ms = undefined
     structure = undefined
     volumetric_data = undefined
-    update_url()
 
     try {
       const parse_start = performance.now()
@@ -98,56 +100,20 @@
     }
   }
 
-  // Reasonable step size for isovalue slider based on data range
-  let iso_step = $derived(data_range?.abs_max ? data_range.abs_max / 200 : 0.001)
+  // Sync URL when isosurface settings change (isovalue/show_negative are read
+  // inside update_url, so Svelte auto-tracks them as dependencies)
+  $effect(() => update_url())
 
   // === Slice rendering ===
   // Render a 2D heatmap slice through the volumetric data using ImageData for performance
   function render_slice() {
     const vol = volumetric_data?.[active_volume_idx]
     if (!vol || !slice_canvas) return
-    const { grid, grid_dims } = vol
-    const [nx, ny, nz] = grid_dims
-    const axis = slice_axis
-    const pos = Math.max(0, Math.min(1 - 1e-9, slice_position))
 
-    // Determine slice dimensions
-    let width: number, height: number
-    let slice_idx: number
-    if (axis === 0) {
-      // slice along x: show y (width) vs z (height)
-      slice_idx = Math.floor(pos * nx)
-      width = ny
-      height = nz
-    } else if (axis === 1) {
-      // slice along y: show x (width) vs z (height)
-      slice_idx = Math.floor(pos * ny)
-      width = nx
-      height = nz
-    } else {
-      // slice along z: show x (width) vs y (height)
-      slice_idx = Math.floor(pos * nz)
-      width = nx
-      height = ny
-    }
-
-    // Extract 2D slice data and find range
-    const slice_data: number[] = new Array(width * height)
-    let s_min = Infinity
-    let s_max = -Infinity
-
-    for (let row = 0; row < height; row++) {
-      for (let col = 0; col < width; col++) {
-        let val: number
-        if (axis === 0) val = grid[slice_idx][col][row]
-        else if (axis === 1) val = grid[col][slice_idx][row]
-        else val = grid[col][row][slice_idx]
-
-        slice_data[row * width + col] = val
-        if (val < s_min) s_min = val
-        if (val > s_max) s_max = val
-      }
-    }
+    // Sample the slice along the HKL plane
+    const result = sample_hkl_slice(vol, miller_indices, slice_position)
+    if (!result) return
+    const { data: slice_data, width, height, min: s_min, max: s_max } = result
 
     // Render to canvas using ImageData for efficient pixel-level writes
     const scale = Math.min(300 / width, 300 / height, 10)
@@ -166,7 +132,8 @@
     // Theme-aware midpoint: dark mode → dark center, light mode → white center
     const bg_rgb = getComputedStyle(document.documentElement)
       .backgroundColor.match(/\d+/g)?.map(Number) ?? [255, 255, 255]
-    const lerp = (from: number, to: number, frac: number) => Math.round(from + (to - from) * frac)
+    const lerp = (from: number, to: number, frac: number) =>
+      Math.round(from + (to - from) * frac)
 
     for (let row = 0; row < height; row++) {
       for (let col = 0; col < width; col++) {
@@ -240,8 +207,6 @@
       })
     }
   })
-
-  const axis_labels = [`X`, `Y`, `Z`] as const
 </script>
 
 <svelte:head>
@@ -270,64 +235,15 @@
   {/each}
 </nav>
 
-{#if (volumetric_data?.length ?? 0) > 1}
-  <div class="volume-selector">
-    <span>Volume:</span>
-    {#each volumetric_data as vol, idx (idx)}
-      <button
-        class:active={active_volume_idx === idx}
-        onclick={() => {
-          active_volume_idx = idx
-          const vol_data = volumetric_data?.[idx]
-          if (vol_data) {
-            isosurface_settings = auto_isosurface_settings(vol_data.data_range)
-          }
-        }}
-      >
-        {vol.label ?? `Volume ${idx + 1}`}
-      </button>
-    {/each}
-  </div>
-{/if}
-
-{#if data_range}
-  <label class="isovalue-control">
-    <span>Isovalue:</span>
-    <input
-      type="range"
-      min={iso_step}
-      max={data_range.abs_max}
-      step={iso_step}
-      bind:value={isosurface_settings.isovalue}
-      onchange={update_url}
-    />
-    <input
-      type="number"
-      min={0}
-      max={data_range.abs_max}
-      step={iso_step}
-      bind:value={isosurface_settings.isovalue}
-      onchange={update_url}
-    />
-    <span class="iso-pct">
-      {
-        format_num(
-          data_range.abs_max > 0
-            ? (isosurface_settings.isovalue / data_range.abs_max) * 100
-            : 0,
-          `.1~f`,
-        )
-      }%
-    </span>
-  </label>
-{/if}
-
 <div
   class="viewer-container"
   class:dragover-hint={dragover_hint}
   role="region"
   aria-label="Isosurface viewer - drop volumetric files here"
-  ondragenter={() => (dragover_hint = true)}
+  ondragenter={(event: DragEvent) => {
+    event.preventDefault()
+    dragover_hint = true
+  }}
   ondragleave={(event: DragEvent) => {
     // Only clear if leaving the container (not entering a child)
     const related = event.relatedTarget
@@ -369,9 +285,6 @@
     show_controls="always"
     on_file_load={(data) => {
       active_file = data.filename
-      if (data.filename) update_url()
-      // Isosurface settings auto-computed by Structure's try_parse_volumetric
-      // and propagated back via bind:isosurface_settings
     }}
   >
     {#if active_file}
@@ -405,31 +318,17 @@
 {/if}
 
 {#if volumetric_data?.[active_volume_idx]}
-  {@const vol = volumetric_data[active_volume_idx]}
   <div class="slice-section">
     <div class="slice-header">
       <h3>Cross-Section Slice</h3>
-      <label>
-        {#each [0, 1, 2] as axis (axis)}
-          <button
-            class:active={slice_axis === axis}
-            onclick={() => {
-              slice_axis = axis as 0 | 1 | 2
-            }}
-          >
-            {axis_labels[axis]}
-          </button>
-        {/each}
-      </label>
+      <MillerIndexInput bind:value={miller_indices} />
       <label class="slice-position">
-        {axis_labels[slice_axis]} = {
-          Math.floor(slice_position * vol.grid_dims[slice_axis])
-        }/{vol.grid_dims[slice_axis]}
+        d = {format_num(slice_position, `.2f`)}
         <input
           type="range"
           min={0}
           max={1}
-          step={1 / vol.grid_dims[slice_axis]}
+          step={0.01}
           bind:value={slice_position}
         />
       </label>
@@ -525,61 +424,6 @@
       }
     }
   }
-  .volume-selector {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    margin-bottom: 0.5em;
-    font-size: 0.9em;
-    span {
-      font-weight: 500;
-      opacity: 0.8;
-    }
-    button {
-      padding: 0.25em 0.6em;
-      border: 1px solid var(--border-color, #ccc);
-      border-radius: 4px;
-      background: var(--surface-bg, #f5f5f5);
-      cursor: pointer;
-      font-size: 0.9em;
-      transition: all 0.15s;
-      &:hover {
-        border-color: var(--primary, #3b82f6);
-      }
-      &.active {
-        background: var(--primary, #3b82f6);
-        color: white;
-        border-color: var(--primary, #3b82f6);
-      }
-    }
-  }
-  .isovalue-control {
-    display: flex;
-    align-items: center;
-    gap: 0.5em;
-    margin-bottom: 0.5em;
-    font-size: 0.9em;
-    input[type='range'] {
-      flex: 1;
-      min-width: 120px;
-      max-width: 300px;
-    }
-    input[type='number'] {
-      width: 5.5em;
-      padding: 0.2em 0.4em;
-      border: 1px solid var(--border-color, #ccc);
-      border-radius: 4px;
-      font-family: monospace;
-      font-size: 0.9em;
-      box-sizing: border-box;
-    }
-    .iso-pct {
-      opacity: 0.6;
-      font-family: monospace;
-      font-size: 0.85em;
-      min-width: 3.5em;
-    }
-  }
   .viewer-container {
     position: relative;
     height: 500px;
@@ -658,7 +502,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5em 1em;
+    gap: 0.5em 0.8em;
     margin-bottom: 0.5em;
     font-size: 0.9em;
     h3 {
@@ -667,33 +511,13 @@
     }
     .slice-position {
       white-space: nowrap;
-      input[type='range'] {
-        width: 200px;
-      }
-    }
-    label {
       display: flex;
       align-items: center;
       gap: 0.4em;
-    }
-    button {
-      padding: 0.15em 0.5em;
-      border: 1px solid var(--border-color, #ccc);
-      border-radius: 4px;
-      background: var(--surface-bg, #f5f5f5);
-      cursor: pointer;
-      font-size: 0.9em;
-      &:hover {
-        border-color: var(--primary, #3b82f6);
+      font-family: monospace;
+      input[type='range'] {
+        width: 200px;
       }
-      &.active {
-        background: var(--primary, #3b82f6);
-        color: white;
-        border-color: var(--primary, #3b82f6);
-      }
-    }
-    input[type='range'] {
-      width: 200px;
     }
   }
   .slice-view {

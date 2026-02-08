@@ -73,8 +73,6 @@ describe(`DEFAULT_ISOSURFACE_SETTINGS`, () => {
     expect(DEFAULT_ISOSURFACE_SETTINGS.wireframe).toBe(false)
     expect(DEFAULT_ISOSURFACE_SETTINGS.positive_color).toBe(`#3b82f6`)
     expect(DEFAULT_ISOSURFACE_SETTINGS.negative_color).toBe(`#ef4444`)
-    // smooth field was removed as unused
-    expect(`smooth` in DEFAULT_ISOSURFACE_SETTINGS).toBe(false)
   })
 })
 

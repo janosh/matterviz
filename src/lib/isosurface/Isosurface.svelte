@@ -101,7 +101,7 @@
     render_order: number
   }
   let active_geometries = $state<GeoEntry[]>([])
-  let raf_id: number
+  let raf_id = 0
 
   // Dispose all current geometries
   function dispose_all() {
@@ -120,7 +120,6 @@
       dispose_all()
       return
     }
-    cancelAnimationFrame(raf_id)
     raf_id = requestAnimationFrame(() => {
       const old = active_geometries
       const entries: GeoEntry[] = []
