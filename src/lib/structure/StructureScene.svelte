@@ -32,7 +32,7 @@
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import type { Camera, Object3D, Scene } from 'three'
+  import type { Camera, Mesh, Scene } from 'three'
   import Bond from './Bond.svelte'
   import type { BondingStrategy } from './bonding'
   import { BONDING_STRATEGIES, compute_bond_transform } from './bonding'
@@ -249,7 +249,7 @@
   let active_tooltip = $state<`atom` | `bond` | null>(null)
 
   // === Edit-atoms mode state ===
-  let transform_object = $state<Object3D | undefined>(undefined)
+  let transform_object = $state<Mesh | undefined>(undefined)
   // Plain variable — only used imperatively in TransformControls drag handlers
   let drag_start_centroid: Vec3 | null = null
 
@@ -1064,6 +1064,10 @@
                 ty - drag_start_centroid[1],
                 tz - drag_start_centroid[2],
               ]
+              // Update reference point so deltas are incremental, not cumulative.
+              // Without this, each frame compounds: sites already moved by previous
+              // delta get the full cumulative delta re-applied.
+              drag_start_centroid = [tx, ty, tz]
               on_sites_moved?.(selected_sites, delta)
             }}
             onmouseDown={() => {

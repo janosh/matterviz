@@ -211,9 +211,14 @@ export async function assert_test_hook_exists(
 // Switch to edit-atoms mode via the Structure component's dropdown UI.
 // Injects CSS to force control buttons visible (they're hidden by default with hover visibility).
 export async function enter_edit_atoms_mode(page: Page): Promise<void> {
-  await page.addStyleTag({
-    content:
-      `section[class*="control-buttons"] { opacity: 1 !important; pointer-events: auto !important; }`,
+  // Only inject the style once per page to avoid accumulating duplicate tags
+  await page.evaluate(() => {
+    if (document.querySelector(`[data-edit-atoms-style]`)) return
+    const style = document.createElement(`style`)
+    style.setAttribute(`data-edit-atoms-style`, ``)
+    style.textContent =
+      `section[class*="control-buttons"] { opacity: 1 !important; pointer-events: auto !important; }`
+    document.head.appendChild(style)
   })
   const structure_div = page.locator(`#test-structure`)
   const measure_button = structure_div.locator(`button.view-mode-button`)

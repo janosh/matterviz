@@ -399,30 +399,31 @@
   let add_atom_mode = $state(false)
   let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
 
+  function clear_selection() {
+    selected_sites = []
+    measured_sites = []
+  }
+
   function push_undo() {
     if (!structure) return
     undo_stack = [...undo_stack.slice(-(MAX_HISTORY - 1)), $state.snapshot(structure)]
     redo_stack = []
   }
 
-  function undo() {
-    if (undo_stack.length === 0 || !structure) return
+  // Shared undo/redo: pop from `source`, push current state onto `target`
+  function apply_history(source: AnyStructure[], target: AnyStructure[]) {
+    if (source.length === 0 || !structure) return
     is_internal_edit = true
-    redo_stack = [...redo_stack, $state.snapshot(structure)]
-    structure = undo_stack.at(-1)!
-    undo_stack = undo_stack.slice(0, -1)
-    selected_sites = []
-    measured_sites = []
+    target.push($state.snapshot(structure) as AnyStructure)
+    structure = source.pop()!
+    clear_selection()
   }
 
+  function undo() {
+    apply_history(undo_stack, redo_stack)
+  }
   function redo() {
-    if (redo_stack.length === 0 || !structure) return
-    is_internal_edit = true
-    undo_stack = [...undo_stack.slice(-(MAX_HISTORY - 1)), $state.snapshot(structure)]
-    structure = redo_stack.at(-1)!
-    redo_stack = redo_stack.slice(0, -1)
-    selected_sites = []
-    measured_sites = []
+    apply_history(redo_stack, undo_stack)
   }
 
   // Clear undo/redo stacks when structure changes externally (file load, etc.)
@@ -444,10 +445,15 @@
     })
   })
 
-  // Auto-bake cell type transform when entering edit-atoms mode
+  // Auto-bake cell type transform and clear stale state when entering edit-atoms mode
   $effect(() => {
     if (measure_mode !== `edit-atoms`) return
     untrack(() => {
+      // Clear bond edits from edit-bonds mode to avoid stale state
+      if (added_bonds.length > 0 || removed_bonds.length > 0) {
+        added_bonds = []
+        removed_bonds = []
+      }
       if (cell_type !== `original` && cell_transformed_structure && structure) {
         // Bake the transformed cell: push original to undo, replace structure
         is_internal_edit = true
@@ -558,10 +564,7 @@
       return
     }
     untrack(() => {
-      if (selected_sites.length > 0 || measured_sites.length > 0) {
-        selected_sites = []
-        measured_sites = []
-      }
+      if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
       // Clear site radius overrides since site indices are no longer valid
       if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
     })
@@ -800,20 +803,20 @@
           event.preventDefault()
           is_internal_edit = true
           push_undo()
-          const to_delete = map_scene_indices_to_structure(selected_sites)
-          selected_sites = []
-          measured_sites = []
+          const to_delete = scene_to_structure_indices(selected_sites, true)
+          clear_selection()
           structure = {
             ...structure,
-            sites: structure.sites.filter((_site: Site, idx: number) =>
-              !to_delete.has(idx)
-            ),
+            sites: structure.sites.filter((_, idx) => !to_delete.has(idx)),
           }
         }
         return
       }
-      if (event.key.toLowerCase() === `a`) {
-        // Enter add-atom sub-mode
+      if (
+        event.key.toLowerCase() === `a` && !event.ctrlKey && !event.metaKey &&
+        !event.altKey
+      ) {
+        // Enter add-atom sub-mode (plain 'a' only, not Ctrl+A/Cmd+A/Alt+A)
         event.preventDefault()
         add_atom_mode = !add_atom_mode
         return
@@ -825,8 +828,7 @@
           return
         }
         if (selected_sites.length > 0) {
-          selected_sites = []
-          measured_sites = []
+          clear_selection()
           return
         }
       }
@@ -845,17 +847,20 @@
 
   // === Edit-atoms mode helpers ===
 
-  // Map scene indices (into displayed_structure) back to raw structure indices
-  // Handles supercell atoms via orig_unit_cell_idx property
-  function map_scene_indices_to_structure(
+  // Map scene indices (into displayed_structure) back to raw structure indices.
+  // Handles supercell atoms via orig_unit_cell_idx property.
+  // skip_image_atoms: when true, image atoms (PBC ghosts) are excluded from the result.
+  function scene_to_structure_indices(
     scene_indices: number[],
+    skip_image_atoms = false,
   ): SvelteSet<number> {
     const result = new SvelteSet<number>()
     for (const scene_idx of scene_indices) {
       const displayed_site = displayed_structure?.sites?.[scene_idx]
       if (!displayed_site) continue
-      // Skip image atoms
-      if (displayed_site.properties?.orig_site_idx != null) continue
+      if (skip_image_atoms && displayed_site.properties?.orig_site_idx != null) {
+        continue
+      }
 
       if (has_supercell && displayed_site.properties?.orig_unit_cell_idx != null) {
         result.add(displayed_site.properties.orig_unit_cell_idx as number)
@@ -883,22 +888,11 @@
     if (!structure?.sites) return
     is_internal_edit = true
 
-    // Map scene indices to original structure indices, collecting unique targets
-    const orig_indices = new SvelteSet<number>()
-    for (const scene_idx of scene_indices) {
-      const displayed_site = displayed_structure?.sites?.[scene_idx]
-      if (!displayed_site) continue
-      if (has_supercell && displayed_site.properties?.orig_unit_cell_idx != null) {
-        orig_indices.add(displayed_site.properties.orig_unit_cell_idx as number)
-      } else {
-        orig_indices.add(scene_idx)
-      }
-    }
-
+    const orig_indices = scene_to_structure_indices(scene_indices)
     const cart_to_frac = get_cart_to_frac()
     structure = {
       ...structure,
-      sites: structure.sites.map((site: Site, idx: number) => {
+      sites: structure.sites.map((site, idx) => {
         if (!orig_indices.has(idx)) return site
         const new_xyz: Vec3 = [
           site.xyz[0] + delta[0],
@@ -920,15 +914,14 @@
       console.warn(`Invalid element symbol "${element}", ignoring add-atom`)
       return
     }
-    element = normalized
     is_internal_edit = true
     push_undo()
 
     const new_site: Site = {
-      species: [{ element, occu: 1, oxidation_state: 0 }],
+      species: [{ element: normalized, occu: 1, oxidation_state: 0 }],
       xyz,
       abc: get_cart_to_frac()?.(xyz) ?? [0, 0, 0],
-      label: element,
+      label: normalized,
       properties: {},
     }
 
