@@ -3171,16 +3171,14 @@ test.describe(`Edit Atoms Mode`, () => {
 
     // Click on an atom to select it (use center of canvas)
     await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await page.waitForTimeout(300)
 
     // Focus wrapper for keyboard events and press Delete
     await structure_div.focus()
     await page.keyboard.press(`Delete`)
-    await page.waitForTimeout(300)
 
     // Undo button should now be enabled
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
-    await expect(undo_btn).toBeEnabled()
+    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
   })
 
   test(`undo restores state and enables redo`, async ({ page }) => {
@@ -3191,19 +3189,17 @@ test.describe(`Edit Atoms Mode`, () => {
 
     // Select and delete an atom
     await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await page.waitForTimeout(300)
     await structure_div.focus()
     await page.keyboard.press(`Delete`)
-    await page.waitForTimeout(300)
 
-    // Click undo
+    // Wait for undo to become available, then click it
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
     await undo_btn.click({ force: true })
-    await page.waitForTimeout(300)
 
     // Redo should now be enabled
     const redo_btn = structure_div.locator(`button[aria-label*="Redo"]`)
-    await expect(redo_btn).toBeEnabled()
+    await expect(redo_btn).toBeEnabled({ timeout: 2000 })
   })
 
   test(`keyboard shortcuts Ctrl+Z/Y work for undo/redo`, async ({ page }) => {
@@ -3214,10 +3210,11 @@ test.describe(`Edit Atoms Mode`, () => {
 
     // Select and delete
     await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await page.waitForTimeout(300)
     await structure_div.focus()
     await page.keyboard.press(`Delete`)
-    await page.waitForTimeout(300)
+
+    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
+    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
 
     const is_mac = await page.evaluate(() =>
       navigator.platform.toUpperCase().indexOf(`MAC`) >= 0
@@ -3227,15 +3224,14 @@ test.describe(`Edit Atoms Mode`, () => {
 
     // Undo
     await page.keyboard.press(undo_combo)
-    await page.waitForTimeout(200)
+    const redo_btn = structure_div.locator(`button[aria-label*="Redo"]`)
+    await expect(redo_btn).toBeEnabled({ timeout: 2000 })
 
     // Redo
     await page.keyboard.press(redo_combo)
-    await page.waitForTimeout(200)
 
     // Undo should be enabled (redo just put item back on undo stack)
-    const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
-    await expect(undo_btn).toBeEnabled()
+    await expect(undo_btn).toBeEnabled({ timeout: 2000 })
   })
 
   test(`add atom via A key shows element input`, async ({ page }) => {
@@ -3247,16 +3243,14 @@ test.describe(`Edit Atoms Mode`, () => {
 
     // Press A to enter add-atom mode
     await page.keyboard.press(`a`)
-    await page.waitForTimeout(200)
 
     // Should show element input
     const add_input = structure_div.locator(`.add-atom-input`)
-    await expect(add_input).toBeVisible()
+    await expect(add_input).toBeVisible({ timeout: 2000 })
 
     // Press Escape to cancel
     await page.keyboard.press(`Escape`)
-    await page.waitForTimeout(200)
-    await expect(add_input).not.toBeVisible()
+    await expect(add_input).not.toBeVisible({ timeout: 2000 })
   })
 
   test(`edit mode persists across interactions`, async ({ page }) => {
@@ -3266,15 +3260,14 @@ test.describe(`Edit Atoms Mode`, () => {
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
 
     // Verify edit mode active
-    await expect(undo_btn).toBeVisible()
+    await expect(undo_btn).toBeVisible({ timeout: 2000 })
 
     // Click on the canvas
     const canvas = structure_div.locator(`canvas`)
     await canvas.click({ position: { x: 50, y: 50 }, force: true })
-    await page.waitForTimeout(200)
 
     // Undo/redo buttons should still be visible
-    await expect(undo_btn).toBeVisible()
+    await expect(undo_btn).toBeVisible({ timeout: 2000 })
   })
 
   test(`history count badges show correct counts`, async ({ page }) => {
@@ -3288,14 +3281,12 @@ test.describe(`Edit Atoms Mode`, () => {
 
     // Delete an atom to create history
     await canvas.click({ position: { x: 400, y: 250 }, force: true })
-    await page.waitForTimeout(300)
     await structure_div.focus()
     await page.keyboard.press(`Delete`)
-    await page.waitForTimeout(300)
 
     // Should show undo count badge with "1"
     const count_badge = structure_div.locator(`.history-count`).first()
-    await expect(count_badge).toBeVisible()
+    await expect(count_badge).toBeVisible({ timeout: 2000 })
     await expect(count_badge).toHaveText(`1`)
   })
 })

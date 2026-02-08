@@ -60,6 +60,9 @@ function scene_to_structure_indices(
 
     if (has_supercell && site.properties?.orig_unit_cell_idx !== undefined) {
       result.add(site.properties.orig_unit_cell_idx as number)
+    } else if (site.properties?.orig_site_idx !== undefined) {
+      // Image atom (PBC ghost) — map back to its original site index
+      result.add(site.properties.orig_site_idx as number)
     } else {
       result.add(scene_idx)
     }
@@ -105,14 +108,15 @@ describe(`edit-atoms: scene-to-structure index mapping`, () => {
     expect(result).toEqual(new Set([0, 2]))
   })
 
-  test(`includes image atoms when skip_image_atoms is false`, () => {
+  test(`maps image atoms back to orig_site_idx when not skipped`, () => {
     const sites = [
       base_site(0),
       base_site(1, { orig_site_idx: 0 }),
       base_site(2),
     ]
     const result = scene_to_structure_indices(sites, [0, 1, 2], false, false)
-    expect(result).toEqual(new Set([0, 1, 2]))
+    // Image atom at scene index 1 maps back to original site 0 (deduped with site 0)
+    expect(result).toEqual(new Set([0, 2]))
   })
 
   test(`deduplicates supercell mappings to same original index`, () => {

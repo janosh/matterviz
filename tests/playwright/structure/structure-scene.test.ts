@@ -955,10 +955,7 @@ test.describe(`Edit Atoms Scene`, () => {
 
   test(`atom click toggles selection in edit-atoms mode`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
+    const console_errors = setup_console_monitoring(page)
 
     const position = { x: 400, y: 250 }
 
@@ -983,10 +980,7 @@ test.describe(`Edit Atoms Scene`, () => {
 
   test(`shift+click adds to selection`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
+    const console_errors = setup_console_monitoring(page)
 
     // Click first atom
     await canvas.click({ position: { x: 350, y: 200 }, force: true })
@@ -1019,10 +1013,7 @@ test.describe(`Edit Atoms Scene`, () => {
 
   test(`no errors in edit-atoms mode after various interactions`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
+    const console_errors = setup_console_monitoring(page)
 
     // Various interactions should not cause errors
     await canvas.click({ position: { x: 400, y: 250 }, force: true })

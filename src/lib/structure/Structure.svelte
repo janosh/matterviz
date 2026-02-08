@@ -819,6 +819,10 @@
             ...structure,
             sites: structure.sites.filter((_, idx) => !to_delete.has(idx)),
           }
+          // Clear per-site overrides since indices shifted after deletion
+          if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
+          added_bonds = []
+          removed_bonds = []
         }
         return
       }
@@ -874,6 +878,9 @@
 
       if (has_supercell && displayed_site.properties?.orig_unit_cell_idx != null) {
         result.add(displayed_site.properties.orig_unit_cell_idx as number)
+      } else if (displayed_site.properties?.orig_site_idx != null) {
+        // Image atom (PBC ghost) — map back to its original site index
+        result.add(displayed_site.properties.orig_site_idx as number)
       } else {
         result.add(scene_idx)
       }
@@ -909,7 +916,7 @@
           site.xyz[1] + delta[1],
           site.xyz[2] + delta[2],
         ]
-        return { ...site, xyz: new_xyz, abc: cart_to_frac?.(new_xyz) ?? site.abc }
+        return { ...site, xyz: new_xyz, abc: cart_to_frac?.(new_xyz) ?? new_xyz }
       }),
     }
   }
