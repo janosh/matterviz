@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { luminance } from '$lib/colors'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import type {
@@ -88,6 +89,31 @@
     // When onsort is provided, sort_data behavior is implicitly false.
     sort_data?: boolean
   } = $props()
+
+  let container_el = $state<HTMLDivElement>()
+
+  // Reactively track --heatmap-opacity and --page-bg from the container's style.
+  // MutationObserver fires when the style attribute changes (e.g. via parent binding).
+  let heatmap_opacity = $state(1)
+  let page_bg_lum = $state(luminance(`white`))
+  $effect(() => {
+    const el = container_el
+    if (!el) return
+    const read_style = () => {
+      const style = getComputedStyle(el)
+      const raw = style.getPropertyValue(`--heatmap-opacity`).trim()
+      heatmap_opacity = raw.endsWith(`%`)
+        ? parseFloat(raw) / 100
+        : (parseFloat(raw) || 1)
+      page_bg_lum = luminance(
+        style.getPropertyValue(`--page-bg`).trim() || `white`,
+      )
+    }
+    read_style()
+    const observer = new MutationObserver(read_style)
+    observer.observe(el, { attributes: true, attributeFilter: [`style`] })
+    return () => observer.disconnect()
+  })
 
   // Detect HTML to prevent setting raw HTML as data-sort-value. Simple string matching
   // suffices since false positives just skip setting the attr (sorting still works by inner data-sort-value).
@@ -563,13 +589,22 @@
     const numeric_vals = parsed_column_values.get(col_id) ?? []
 
     // calc_cell_color handles null/NaN filtering internally
-    return calc_cell_color(
+    const color = calc_cell_color(
       numeric_val,
       numeric_vals,
       col.better,
       col.color_scale || `interpolateViridis`,
       col.scale_type || `linear`,
     )
+
+    // Recompute text contrast against effective bg (cell bg blended with page bg by opacity).
+    // luminance() is linear in RGB, so mixing luminances equals luminance of mixed color.
+    if (color.bg && heatmap_opacity < 1) {
+      const blended_lum = luminance(color.bg) * heatmap_opacity +
+        page_bg_lum * (1 - heatmap_opacity)
+      color.text = blended_lum > 0.7 ? `black` : `white`
+    }
+    return color
   }
 
   let visible_columns = $derived(
@@ -727,6 +762,7 @@
 <div
   {@attach tooltip()}
   {...rest}
+  bind:this={container_el}
   class="table-container {rest.class ?? ``}"
   onmouseleave={() => [show_column_dropdown, show_export_dropdown] = [false, false]}
 >
@@ -1080,14 +1116,17 @@
     font-size: var(--heatmap-font-size, 0.9em);
     width: fit-content;
     max-width: 100%;
+    max-height: inherit;
     margin: 0 auto;
     position: relative;
+    display: flex;
+    flex-direction: column;
   }
   .table-scroll {
     position: relative;
+    overflow: auto;
   }
   .table-scroll.has-scroll {
-    overflow: auto;
     border: 1px solid var(--border, #333);
   }
   table {

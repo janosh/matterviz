@@ -3154,12 +3154,11 @@ test.describe(`Edit Atoms Mode`, () => {
     // Switch back to distance mode via the dropdown
     const measure_button = structure_div.locator(`button.view-mode-button`)
     await measure_button.click()
-    await page.waitForTimeout(300)
     const distance_option = structure_div.locator(`.view-mode-option`).filter({
       hasText: `Distance`,
     })
+    await expect(distance_option).toBeVisible()
     await distance_option.click()
-    await page.waitForTimeout(300)
     await expect(undo_btn).toHaveCount(0)
   })
 

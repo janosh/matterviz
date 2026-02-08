@@ -406,8 +406,11 @@
 
   function push_undo() {
     if (!structure) return
-    undo_stack = [...undo_stack.slice(-(MAX_HISTORY - 1)), $state.snapshot(structure)]
-    redo_stack = []
+    if (undo_stack.length >= MAX_HISTORY) {
+      undo_stack.splice(0, undo_stack.length - MAX_HISTORY + 1)
+    }
+    undo_stack.push($state.snapshot(structure) as AnyStructure)
+    redo_stack.length = 0
   }
 
   // Shared undo/redo: pop from `source`, push current state onto `target`
@@ -446,8 +449,13 @@
   })
 
   // Clear selection when switching measure/edit mode so stale state doesn't carry over
+  let mode_first_run = true
   $effect(() => {
     void measure_mode // track reactively
+    if (mode_first_run) {
+      mode_first_run = false
+      return
+    }
     untrack(() => {
       if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
     })
@@ -1606,21 +1614,22 @@
     display: flex;
     align-items: center;
     gap: 0.5em;
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
+    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, currentColor);
+    color: var(--text-color, currentColor);
     padding: 0.3em 0.6em;
     border-radius: var(--border-radius, 3pt);
     font-size: 0.8rem;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
     label {
       display: flex;
       align-items: center;
       gap: 0.3em;
     }
     input {
-      background: rgba(255, 255, 255, 0.15);
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: color-mix(in srgb, currentColor 10%, transparent);
+      border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
       border-radius: 3px;
-      color: white;
+      color: inherit;
       font-size: 0.85rem;
       padding: 0.1em 0.3em;
     }

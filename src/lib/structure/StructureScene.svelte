@@ -261,26 +261,21 @@
   function toggle_bond(site_1: number, site_2: number) {
     const idx_i = Math.min(site_1, site_2)
     const idx_j = Math.max(site_1, site_2)
-    const key = get_bond_key(idx_i, idx_j)
+    const key = `${idx_i}-${idx_j}` // already sorted, no need for get_bond_key
 
-    const is_added = added_bonds.some((pair) =>
+    const match_key = (pair: [number, number]) =>
       get_bond_key(pair[0], pair[1]) === key
-    )
-    if (is_added) {
-      added_bonds = added_bonds.filter((pair) =>
-        get_bond_key(pair[0], pair[1]) !== key
-      )
+
+    const added_idx = added_bonds.findIndex(match_key)
+    if (added_idx >= 0) {
+      added_bonds = added_bonds.toSpliced(added_idx, 1)
       return
     }
 
-    const is_removed = removed_bonds.some((pair) =>
-      get_bond_key(pair[0], pair[1]) === key
-    )
-    if (is_removed) {
+    const removed_idx = removed_bonds.findIndex(match_key)
+    if (removed_idx >= 0) {
       // Restore previously removed calculated bond
-      removed_bonds = removed_bonds.filter((pair) =>
-        get_bond_key(pair[0], pair[1]) !== key
-      )
+      removed_bonds = removed_bonds.toSpliced(removed_idx, 1)
       return
     }
 
@@ -811,11 +806,11 @@
         <!-- Instanced rendering for full occupancy atoms -->
         {#each instanced_atom_groups as
           { element, radius, color, is_image_atom, atoms }
-          (`${element}-${radius}-${color}-${is_image_atom}`)
+          (`${element}-${radius}-${color}-${is_image_atom ? `img` : `base`}`)
         }
           {@const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom}
           <extras.InstancedMesh
-            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom}-{atoms.length}"
+            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom ? `img` : `base`}-{atoms.length}"
             range={atoms.length}
             frustumCulled={false}
           >
