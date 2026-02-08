@@ -817,15 +817,17 @@
                 position={atom.position}
                 scale={atom.radius}
                 onpointerenter={() => {
+                  if (edit_mode_image) return
                   hovered_idx = atom.site_idx
                   active_tooltip = `atom`
                 }}
                 onpointerleave={() => {
+                  if (edit_mode_image) return
                   hovered_idx = null
                   active_tooltip = null
                 }}
                 onclick={(event: MouseEvent) => {
-                  if (edit_mode_image) return // image atoms non-clickable in edit mode
+                  if (edit_mode_image) return
                   toggle_selection(atom.site_idx, event)
                 }}
               />
@@ -843,10 +845,12 @@
             position={atom.position}
             scale={atom.radius}
             onpointerenter={() => {
+              if (partial_edit_image) return
               hovered_idx = atom.site_idx
               active_tooltip = `atom`
             }}
             onpointerleave={() => {
+              if (partial_edit_image) return
               hovered_idx = null
               active_tooltip = null
             }}

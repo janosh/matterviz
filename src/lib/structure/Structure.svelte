@@ -899,7 +899,7 @@
           site.xyz[1] + delta[1],
           site.xyz[2] + delta[2],
         ]
-        return { ...site, xyz: new_xyz, abc: cart_to_frac?.(new_xyz) ?? site.abc }
+        return { ...site, xyz: new_xyz, abc: cart_to_frac?.(new_xyz) ?? new_xyz }
       }),
     }
   }
@@ -920,7 +920,7 @@
     const new_site: Site = {
       species: [{ element: normalized, occu: 1, oxidation_state: 0 }],
       xyz,
-      abc: get_cart_to_frac()?.(xyz) ?? [0, 0, 0],
+      abc: get_cart_to_frac()?.(xyz) ?? xyz,
       label: normalized,
       properties: {},
     }
