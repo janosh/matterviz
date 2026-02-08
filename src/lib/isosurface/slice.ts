@@ -93,23 +93,15 @@ export function sample_hkl_slice(
   const { grid, grid_dims, lattice, periodic } = volume
   const [nx, ny, nz] = grid_dims
 
-  // Compute plane normal from Miller indices via reciprocal lattice
+  // Plane normal G = h*b1 + k*b2 + l*b3 where b_i are reciprocal lattice rows
   const recip = reciprocal_lattice(lattice)
-  const plane_normal: Vec3 = math.add(
-    math.add(
-      math.scale(recip[0], h_idx),
-      math.scale(recip[1], k_idx),
-    ),
-    math.scale(recip[2], l_idx),
-  ) as Vec3
-
-  const normal_len = Math.hypot(...plane_normal)
-  if (normal_len < 1e-12) return null
-  const unit_normal: Vec3 = [
-    plane_normal[0] / normal_len,
-    plane_normal[1] / normal_len,
-    plane_normal[2] / normal_len,
+  const plane_normal: Vec3 = [
+    h_idx * recip[0][0] + k_idx * recip[1][0] + l_idx * recip[2][0],
+    h_idx * recip[0][1] + k_idx * recip[1][1] + l_idx * recip[2][1],
+    h_idx * recip[0][2] + k_idx * recip[1][2] + l_idx * recip[2][2],
   ]
+  const unit_normal = math.normalize_vec3(plane_normal)
+  if (Math.hypot(...unit_normal) < 0.5) return null // degenerate normal
 
   // In-plane basis vectors
   const [u_vec, v_vec] = math.compute_in_plane_basis(unit_normal)
@@ -150,10 +142,9 @@ export function sample_hkl_slice(
   // Plane position: fractional distance [0,1] along the normal extent
   const d_cartesian = normal_min + distance * (normal_max - normal_min)
 
-  // Sampling resolution: use the max grid dimension
-  const resolution = Math.max(nx, ny, nz)
-  const width = resolution
-  const height = resolution
+  // Sampling resolution: square grid using max dimension
+  const width = Math.max(nx, ny, nz)
+  const height = width
 
   const data = new Float64Array(width * height)
   let data_min = Infinity

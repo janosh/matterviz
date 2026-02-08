@@ -390,7 +390,10 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 // Parse Gaussian .cube file format.
 // Contains atomic structure and volumetric data in a single file.
 // Units: if grid dimensions are positive, coordinates are in Bohr; if negative, in Angstrom.
-export function parse_cube(content: string): VolumetricFileData | null {
+export function parse_cube(
+  content: string,
+  options: { periodic?: boolean } = {},
+): VolumetricFileData | null {
   // Quick line count check: need at least 7 lines (2 title + 1 header + 3 voxel + 1 atom)
   let line_count = 0
   for (let idx = 0; idx < content.length && line_count < 7; idx++) {
@@ -409,6 +412,10 @@ export function parse_cube(content: string): VolumetricFileData | null {
   // Line 2: n_atoms, origin_x, origin_y, origin_z
   // (negative n_atoms indicates orbital data with extra header line)
   const line2 = header.lines[2].split(/\s+/).map(Number)
+  if (line2.length < 4 || line2.some(isNaN)) {
+    console.error(`.cube header line 3 malformed: expected 4 numbers`)
+    return null
+  }
   const n_atoms = Math.abs(line2[0])
   const has_orbital_header = line2[0] < 0
   const raw_origin: Vec3 = [line2[1], line2[2], line2[3]]
@@ -420,6 +427,10 @@ export function parse_cube(content: string): VolumetricFileData | null {
     header.lines[4].split(/\s+/).map(Number),
     header.lines[5].split(/\s+/).map(Number),
   ]
+  if (voxel_lines.some((line) => line.length < 4 || line.some(isNaN))) {
+    console.error(`.cube voxel lines malformed: expected 4 numbers per line`)
+    return null
+  }
 
   const n_grid: [number, number, number] = [
     Math.abs(voxel_lines[0][0]),
@@ -445,11 +456,11 @@ export function parse_cube(content: string): VolumetricFileData | null {
 
   const origin = math.scale(raw_origin, unit_scale)
 
-  // Detect periodicity: .cube files from molecular calculations typically have
-  // a non-zero origin (bounding box around molecule), while periodic systems
-  // have origin at or near (0,0,0).
-  const origin_magnitude = Math.hypot(...origin)
-  const is_periodic = origin_magnitude < 1e-6
+  // Periodicity: use explicit override if provided, else heuristic based on origin.
+  // Molecular .cube files have a non-zero origin (bounding box offset); periodic
+  // systems (QE, CP2K) have origin at (0,0,0). Pass { periodic: true/false } to
+  // override when the heuristic is wrong (e.g. molecule centered at origin).
+  const is_periodic = options.periodic ?? Math.hypot(...origin) < 1e-6
 
   // Parse atomic positions
   const sites: Site[] = []
@@ -468,7 +479,17 @@ export function parse_cube(content: string): VolumetricFileData | null {
     const atom_line = cur.line.trim().split(/\s+/).map(Number)
     pos = cur.next
 
-    const atomic_number = atom_line[0]
+    // Validate: need atomic_number, charge, x, y, z (5 tokens, indices 2-4 finite)
+    if (
+      atom_line.length < 5 || !isFinite(atom_line[2]) || !isFinite(atom_line[3]) ||
+      !isFinite(atom_line[4])
+    ) {
+      console.warn(
+        `.cube atom ${atom_idx}: malformed line "${cur.line.trim()}", skipping`,
+      )
+      continue
+    }
+
     // atom_line[1] is the charge (often 0)
     const raw_xyz = math.scale(
       [atom_line[2], atom_line[3], atom_line[4]] as Vec3,
@@ -480,7 +501,7 @@ export function parse_cube(content: string): VolumetricFileData | null {
     const xyz = math.subtract(raw_xyz, origin)
     const abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
 
-    const element = atomic_number_to_symbol(atomic_number)
+    const element = atomic_number_to_symbol(atom_line[0])
     sites.push({
       species: [{ element, occu: 1, oxidation_state: 0 }],
       abc,
@@ -592,7 +613,8 @@ export function parse_volumetric_file(
     // Scan for grid dimensions line (3 integers) starting from ~line 7
     let scan_pos = find_line_offset(content, 7)
     // Only scan a limited window, not the entire file
-    const scan_end = Math.min(content.length, scan_pos + 5000)
+    // Scan enough to cover large atom blocks (~100 chars/atom × ~200 atoms max)
+    const scan_end = Math.min(content.length, scan_pos + 25000)
     while (scan_pos < scan_end) {
       const { line, next } = read_line(content, scan_pos)
       if (/^\s*\d+\s+\d+\s+\d+\s*$/.test(line)) {

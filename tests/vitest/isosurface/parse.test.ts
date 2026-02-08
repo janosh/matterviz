@@ -415,6 +415,49 @@ describe(`parse_cube`, () => {
     expect(result?.volumes[0].grid[0][0][0]).toBeCloseTo(1.0, 5)
     expect(result?.volumes[0].grid[1][1][1]).toBeCloseTo(0.0, 5)
   })
+
+  test(`periodic option overrides origin-based heuristic`, () => {
+    // Non-zero origin would normally be detected as non-periodic
+    const molecular_origin: [number, number, number] = [-5, -5, -5]
+    const auto_result = parse_cube(make_cube({ origin: molecular_origin }))
+    expect(auto_result?.volumes[0].periodic).toBe(false)
+    // Explicit override forces periodic=true despite non-zero origin
+    const forced = parse_cube(make_cube({ origin: molecular_origin }), { periodic: true })
+    expect(forced?.volumes[0].periodic).toBe(true)
+    expect(forced?.structure.lattice?.pbc).toEqual([true, true, true])
+  })
+
+  test(`returns null for malformed header (NaN tokens)`, () => {
+    // Corrupt line 3 (n_atoms line) with non-numeric tokens
+    const bad_cube = [
+      `title`,
+      `comment`,
+      `    abc   0.000000   0.000000   0.000000`, // "abc" instead of number
+      `   2   1.889726   0.000000   0.000000`,
+      `   2   0.000000   1.889726   0.000000`,
+      `   2   0.000000   0.000000   1.889726`,
+      `    1   0.000000   0.000000   0.000000   0.000000`,
+      `    1   0.000000   0.000000   0.000000   1.400000`,
+      `0.001  0.002  0.003  0.004  0.005  0.006  0.007  0.008`,
+    ].join(`\n`) + `\n`
+    expect(parse_cube(bad_cube)).toBeNull()
+  })
+
+  test(`skips malformed atom lines and parses valid ones`, () => {
+    const result = parse_cube(make_cube({
+      n_atoms: 3,
+      atoms: [
+        [6, 0, 0, 0, 0], // valid C atom
+        [0, 0], // malformed: only 2 tokens
+        [8, 0, 0, 0, 1.5], // valid O atom
+      ],
+    }))
+    expect(result).not.toBeNull()
+    // Only 2 valid atoms should be parsed (malformed one skipped)
+    expect(result?.structure.sites).toHaveLength(2)
+    expect(result?.structure.sites[0].species[0].element).toBe(`C`)
+    expect(result?.structure.sites[1].species[0].element).toBe(`O`)
+  })
 })
 
 // === Auto-detection Tests ===

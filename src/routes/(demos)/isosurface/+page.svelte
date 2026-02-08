@@ -175,9 +175,7 @@
     ctx.putImageData(img_data, 0, 0)
   }
 
-  // Re-render slice when relevant state changes
-  // render_slice reads show_slice, volumetric_data, active_volume_idx, slice_axis,
-  // slice_position, and slice_canvas — Svelte 5 tracks these automatically
+  // Re-render slice when relevant state changes (Svelte 5 auto-tracks dependencies)
   $effect(() => {
     if (volumetric_data && slice_canvas) render_slice()
   })

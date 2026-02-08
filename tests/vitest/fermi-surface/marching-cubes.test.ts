@@ -108,6 +108,8 @@ describe(`marching_cubes (fermi-surface re-export)`, () => {
     const grid = create_gradient_grid(4, 4, 4, `y`, 0, 2)
     const result = marching_cubes(grid, 1.0, identity_lattice)
 
+    expect(result.normals.length).toBeGreaterThan(0)
+    expect(result.normals.length).toBe(result.vertices.length)
     for (const normal of result.normals) {
       expect(Math.hypot(...normal)).toBeCloseTo(1.0, 3)
     }
