@@ -17,15 +17,18 @@ export * from './io'
 export {
   auto_isosurface_settings,
   DEFAULT_ISOSURFACE_SETTINGS,
+  generate_layers,
   grid_data_range,
   Isosurface as VolumetricIsosurface,
   IsosurfaceControls,
+  LAYER_COLORS,
   parse_chgcar,
   parse_cube,
   parse_volumetric_file,
 } from './isosurface'
 export type {
   DataRange,
+  IsosurfaceLayer,
   IsosurfaceSettings,
   VolumetricData,
   VolumetricFileData,

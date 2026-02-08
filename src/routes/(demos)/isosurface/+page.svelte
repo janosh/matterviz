@@ -28,7 +28,6 @@
   let dragover_hint = $state(false)
 
   // Slice view state
-  let show_slice = $state(false)
   let slice_axis = $state<0 | 1 | 2>(2) // 0=x, 1=y, 2=z
   let slice_position = $state(0.5) // fractional position along axis [0, 1]
   let slice_canvas = $state<HTMLCanvasElement | undefined>()
@@ -100,9 +99,7 @@
   }
 
   // Reasonable step size for isovalue slider based on data range
-  let iso_step = $derived(
-    data_range && data_range.abs_max > 0 ? data_range.abs_max / 200 : 0.001,
-  )
+  let iso_step = $derived(data_range?.abs_max ? data_range.abs_max / 200 : 0.001)
 
   // === Slice rendering ===
   // Render a 2D heatmap slice through the volumetric data using ImageData for performance
@@ -172,10 +169,10 @@
         const normalized = (val - s_min) / range
 
         // Diverging colormap: blue (0) -> white (0.5) -> red (1)
-        const t = normalized * 2 // 0 to 2
-        const r_col = Math.round(Math.min(t, 1) * 255)
-        const g_col = Math.round((1 - Math.abs(1 - t)) * 255)
-        const b_col = Math.round(Math.min(2 - t, 1) * 255)
+        const ramp = normalized * 2 // 0 to 2
+        const r_col = Math.round(Math.min(ramp, 1) * 255)
+        const g_col = Math.round((1 - Math.abs(1 - ramp)) * 255)
+        const b_col = Math.round(Math.min(2 - ramp, 1) * 255)
 
         // Fill the scaled pixel block (flip y so origin is at bottom-left)
         const flipped_row = height - 1 - row
@@ -202,7 +199,7 @@
   // render_slice reads show_slice, volumetric_data, active_volume_idx, slice_axis,
   // slice_position, and slice_canvas — Svelte 5 tracks these automatically
   $effect(() => {
-    if (show_slice && volumetric_data && slice_canvas) render_slice()
+    if (volumetric_data && slice_canvas) render_slice()
   })
 
   // Load file from URL param or default on mount
@@ -394,16 +391,12 @@
   </div>
 {/if}
 
-<div style="margin-top: 1em">
-  <button class="slice-toggle" onclick={() => (show_slice = !show_slice)}>
-    {show_slice ? `Hide` : `Show`} cross-section slice
-  </button>
-
-  {#if show_slice && volumetric_data?.[active_volume_idx]}
-    {@const vol = volumetric_data[active_volume_idx]}
-    <div class="slice-controls">
+{#if volumetric_data?.[active_volume_idx]}
+  {@const vol = volumetric_data[active_volume_idx]}
+  <div class="slice-section">
+    <div class="slice-header">
+      <h3>Cross-Section Slice</h3>
       <label>
-        Axis:
         {#each [0, 1, 2] as axis (axis)}
           <button
             class:active={slice_axis === axis}
@@ -415,11 +408,10 @@
           </button>
         {/each}
       </label>
-      <label>
-        Position ({axis_labels[slice_axis]}
-        = {Math.floor(slice_position * vol.grid_dims[slice_axis])}/{
-          vol.grid_dims[slice_axis]
-        }):
+      <label class="slice-position">
+        {axis_labels[slice_axis]} = {
+          Math.floor(slice_position * vol.grid_dims[slice_axis])
+        }/{vol.grid_dims[slice_axis]}
         <input
           type="range"
           min={0}
@@ -437,8 +429,8 @@
         <span>High</span>
       </div>
     </div>
-  {/if}
-</div>
+  </div>
+{/if}
 
 <section class="features">
   <h2>Features</h2>
@@ -646,25 +638,26 @@
       opacity: 0.85;
     }
   }
-  .slice-toggle {
-    padding: 0.4em 0.8em;
-    border: 1px solid var(--border-color, #ccc);
-    border-radius: 6px;
-    background: var(--surface-bg, #f5f5f5);
-    cursor: pointer;
-    font-size: 0.9em;
-    transition: all 0.15s;
-    &:hover {
-      border-color: var(--primary, #3b82f6);
-    }
+  .slice-section {
+    margin-top: 1em;
   }
-  .slice-controls {
+  .slice-header {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 1em;
-    margin: 0.5em 0;
+    gap: 0.5em 1em;
+    margin-bottom: 0.5em;
     font-size: 0.9em;
+    h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+    .slice-position {
+      white-space: nowrap;
+      input[type='range'] {
+        width: 200px;
+      }
+    }
     label {
       display: flex;
       align-items: center;

@@ -91,7 +91,7 @@ def generate_h2o_cube() -> str:
     # Write volumetric data (6 values per line)
     for idx in range(0, len(values), 6):
         chunk = values[idx : idx + 6]
-        lines.append("  ".join(f"{v:.5E}" for v in chunk))
+        lines.append("  ".join(f"{val:.5E}" for val in chunk))
 
     return "\n".join(lines) + "\n"
 
@@ -102,7 +102,7 @@ def generate_si_chgcar() -> str:
     Grid: 24x24x24 for a reasonable isosurface.
     """
     # Si diamond structure
-    a = 5.43  # lattice parameter in Angstrom
+    lat_a = 5.43  # lattice parameter in Angstrom
 
     # Si positions in fractional coordinates
     si_frac = [
@@ -119,9 +119,9 @@ def generate_si_chgcar() -> str:
     lines = []
     lines.append("Si8 diamond structure - simulated charge density")
     lines.append("   1.0")
-    lines.append(f"     {a:.2f}  0.00  0.00")
-    lines.append(f"     0.00  {a:.2f}  0.00")
-    lines.append(f"     0.00  0.00  {a:.2f}")
+    lines.append(f"     {lat_a:.2f}  0.00  0.00")
+    lines.append(f"     0.00  {lat_a:.2f}  0.00")
+    lines.append(f"     0.00  0.00  {lat_a:.2f}")
     lines.append("   Si")
     lines.append(f"   {len(si_frac)}")
     lines.append("Direct")
@@ -158,9 +158,9 @@ def generate_si_chgcar() -> str:
         (0.125, 0.875, 0.875),
     ]
 
-    volume = a**3
+    volume = lat_a**3
     values = []
-    voxel = a / n_grid
+    voxel = lat_a / n_grid
 
     for ix in range(n_grid):
         x = ix * voxel
@@ -173,21 +173,21 @@ def generate_si_chgcar() -> str:
 
                 # Atomic contributions (with PBC images)
                 for frac_x, frac_y, frac_z in si_frac:
-                    ax, ay, az = frac_x * a, frac_y * a, frac_z * a
+                    ax, ay, az = frac_x * lat_a, frac_y * lat_a, frac_z * lat_a
                     # Check nearest image
-                    for dx in [-a, 0, a]:
-                        for dy in [-a, 0, a]:
-                            for dz in [-a, 0, a]:
+                    for dx in [-lat_a, 0, lat_a]:
+                        for dy in [-lat_a, 0, lat_a]:
+                            for dz in [-lat_a, 0, lat_a]:
                                 rho += 14.0 * gaussian(
                                     x, y, z, ax + dx, ay + dy, az + dz, sigma_atom
                                 )
 
                 # Bond charge (with PBC images)
                 for frac_x, frac_y, frac_z in bond_midpoints_frac:
-                    bx, by, bz = frac_x * a, frac_y * a, frac_z * a
-                    for dx in [-a, 0, a]:
-                        for dy in [-a, 0, a]:
-                            for dz in [-a, 0, a]:
+                    bx, by, bz = frac_x * lat_a, frac_y * lat_a, frac_z * lat_a
+                    for dx in [-lat_a, 0, lat_a]:
+                        for dy in [-lat_a, 0, lat_a]:
+                            for dz in [-lat_a, 0, lat_a]:
                                 rho += 4.0 * gaussian(
                                     x, y, z, bx + dx, by + dy, bz + dz, sigma_bond
                                 )
@@ -198,7 +198,7 @@ def generate_si_chgcar() -> str:
     # Write volumetric data (5 values per line, Fortran style)
     for idx in range(0, len(values), 5):
         chunk = values[idx : idx + 5]
-        lines.append(" ".join(f"{v:18.11E}" for v in chunk))
+        lines.append(" ".join(f"{val:18.11E}" for val in chunk))
 
     return "\n".join(lines) + "\n"
 
@@ -280,7 +280,7 @@ def generate_benzene_orbital_cube() -> str:
 
     for idx in range(0, len(values), 6):
         chunk = values[idx : idx + 6]
-        lines.append("  ".join(f"{v:.5E}" for v in chunk))
+        lines.append("  ".join(f"{val:.5E}" for val in chunk))
 
     return "\n".join(lines) + "\n"
 
@@ -291,7 +291,7 @@ def generate_fe_bcc_spin_chgcar() -> str:
     Tests the spin-polarized code path: total charge density + magnetization density.
     Grid: 20x20x20 for compact file size.
     """
-    a = 2.87  # Fe BCC lattice parameter (Angstrom)
+    lat_a = 2.87  # Fe BCC lattice parameter (Angstrom)
 
     # BCC: atoms at (0,0,0) and (0.5,0.5,0.5) fractional
     fe_frac = [
@@ -302,9 +302,9 @@ def generate_fe_bcc_spin_chgcar() -> str:
     lines = []
     lines.append("Fe2 BCC - spin-polarized charge density")
     lines.append("   1.0")
-    lines.append(f"     {a:.2f}  0.00  0.00")
-    lines.append(f"     0.00  {a:.2f}  0.00")
-    lines.append(f"     0.00  0.00  {a:.2f}")
+    lines.append(f"     {lat_a:.2f}  0.00  0.00")
+    lines.append(f"     0.00  {lat_a:.2f}  0.00")
+    lines.append(f"     0.00  0.00  {lat_a:.2f}")
     lines.append("   Fe")
     lines.append(f"   {len(fe_frac)}")
     lines.append("Direct")
@@ -317,12 +317,12 @@ def generate_fe_bcc_spin_chgcar() -> str:
     n_grid = 20
     lines.append(f"   {n_grid}   {n_grid}   {n_grid}")
 
-    volume = a**3
+    volume = lat_a**3
     sigma_atom = 0.6
 
     # Generate total charge density (block 1)
     total_values = []
-    voxel = a / n_grid
+    voxel = lat_a / n_grid
     for ix in range(n_grid):
         x = ix * voxel
         for iy in range(n_grid):
@@ -331,10 +331,10 @@ def generate_fe_bcc_spin_chgcar() -> str:
                 z = iz * voxel
                 rho = 0.0
                 for frac_x, frac_y, frac_z in fe_frac:
-                    ax, ay, az = frac_x * a, frac_y * a, frac_z * a
-                    for dx in [-a, 0, a]:
-                        for dy in [-a, 0, a]:
-                            for dz in [-a, 0, a]:
+                    ax, ay, az = frac_x * lat_a, frac_y * lat_a, frac_z * lat_a
+                    for dx in [-lat_a, 0, lat_a]:
+                        for dy in [-lat_a, 0, lat_a]:
+                            for dz in [-lat_a, 0, lat_a]:
                                 rho += 26.0 * gaussian(
                                     x, y, z, ax + dx, ay + dy, az + dz, sigma_atom
                                 )
@@ -342,7 +342,7 @@ def generate_fe_bcc_spin_chgcar() -> str:
 
     for idx in range(0, len(total_values), 5):
         chunk = total_values[idx : idx + 5]
-        lines.append(" ".join(f"{v:18.11E}" for v in chunk))
+        lines.append(" ".join(f"{val:18.11E}" for val in chunk))
 
     # Augmentation occupancies placeholder (common in real CHGCAR files)
     lines.append("augmentation occupancies   1  16")
@@ -369,10 +369,10 @@ def generate_fe_bcc_spin_chgcar() -> str:
                 z = iz * voxel
                 mag = 0.0
                 for frac_x, frac_y, frac_z in fe_frac:
-                    ax, ay, az = frac_x * a, frac_y * a, frac_z * a
-                    for dx in [-a, 0, a]:
-                        for dy in [-a, 0, a]:
-                            for dz in [-a, 0, a]:
+                    ax, ay, az = frac_x * lat_a, frac_y * lat_a, frac_z * lat_a
+                    for dx in [-lat_a, 0, lat_a]:
+                        for dy in [-lat_a, 0, lat_a]:
+                            for dz in [-lat_a, 0, lat_a]:
                                 # Magnetic moment ~2.2 muB per Fe atom
                                 mag += 2.2 * gaussian(
                                     x, y, z, ax + dx, ay + dy, az + dz, sigma_mag
@@ -381,7 +381,7 @@ def generate_fe_bcc_spin_chgcar() -> str:
 
     for idx in range(0, len(mag_values), 5):
         chunk = mag_values[idx : idx + 5]
-        lines.append(" ".join(f"{v:18.11E}" for v in chunk))
+        lines.append(" ".join(f"{val:18.11E}" for val in chunk))
 
     return "\n".join(lines) + "\n"
 
@@ -391,7 +391,7 @@ def generate_gaas_chgcar() -> str:
 
     Tests multi-element VASP parsing. Grid: 20x20x20.
     """
-    a = 5.65  # GaAs lattice parameter (Angstrom)
+    lat_a = 5.65  # GaAs lattice parameter (Angstrom)
 
     # Zinc blende: Ga at FCC positions, As at FCC + (1/4,1/4,1/4) offset
     ga_frac = [
@@ -410,9 +410,9 @@ def generate_gaas_chgcar() -> str:
     lines = []
     lines.append("GaAs zinc blende - charge density")
     lines.append("   1.0")
-    lines.append(f"     {a:.2f}  0.00  0.00")
-    lines.append(f"     0.00  {a:.2f}  0.00")
-    lines.append(f"     0.00  0.00  {a:.2f}")
+    lines.append(f"     {lat_a:.2f}  0.00  0.00")
+    lines.append(f"     0.00  {lat_a:.2f}  0.00")
+    lines.append(f"     0.00  0.00  {lat_a:.2f}")
     lines.append("   Ga   As")
     lines.append(f"   {len(ga_frac)}   {len(as_frac)}")
     lines.append("Direct")
@@ -427,7 +427,7 @@ def generate_gaas_chgcar() -> str:
     n_grid = 20
     lines.append(f"   {n_grid}   {n_grid}   {n_grid}")
 
-    volume = a**3
+    volume = lat_a**3
     sigma_ga = 0.75
     sigma_as = 0.8
     sigma_bond = 0.45
@@ -436,7 +436,7 @@ def generate_gaas_chgcar() -> str:
     bond_midpoints = []
     for ga in ga_frac:
         for a_site in as_frac:
-            # Check if nearest neighbor (distance ~ a*sqrt(3)/4)
+            # Check if nearest neighbor (distance ~ lat_a*sqrt(3)/4)
             d2 = sum(
                 (min(abs(ga[idx] - a_site[idx]), 1 - abs(ga[idx] - a_site[idx]))) ** 2
                 for idx in range(3)
@@ -446,7 +446,7 @@ def generate_gaas_chgcar() -> str:
                 bond_midpoints.append(mid)
 
     values = []
-    voxel = a / n_grid
+    voxel = lat_a / n_grid
     for ix in range(n_grid):
         x = ix * voxel
         for iy in range(n_grid):
@@ -457,30 +457,30 @@ def generate_gaas_chgcar() -> str:
 
                 # Ga contributions (Z=31)
                 for frac_x, frac_y, frac_z in ga_frac:
-                    ax, ay, az = frac_x * a, frac_y * a, frac_z * a
-                    for ddx in [-a, 0, a]:
-                        for ddy in [-a, 0, a]:
-                            for ddz in [-a, 0, a]:
+                    ax, ay, az = frac_x * lat_a, frac_y * lat_a, frac_z * lat_a
+                    for ddx in [-lat_a, 0, lat_a]:
+                        for ddy in [-lat_a, 0, lat_a]:
+                            for ddz in [-lat_a, 0, lat_a]:
                                 rho += 31.0 * gaussian(
                                     x, y, z, ax + ddx, ay + ddy, az + ddz, sigma_ga
                                 )
 
                 # As contributions (Z=33)
                 for frac_x, frac_y, frac_z in as_frac:
-                    ax, ay, az = frac_x * a, frac_y * a, frac_z * a
-                    for ddx in [-a, 0, a]:
-                        for ddy in [-a, 0, a]:
-                            for ddz in [-a, 0, a]:
+                    ax, ay, az = frac_x * lat_a, frac_y * lat_a, frac_z * lat_a
+                    for ddx in [-lat_a, 0, lat_a]:
+                        for ddy in [-lat_a, 0, lat_a]:
+                            for ddz in [-lat_a, 0, lat_a]:
                                 rho += 33.0 * gaussian(
                                     x, y, z, ax + ddx, ay + ddy, az + ddz, sigma_as
                                 )
 
                 # Bond charge
                 for mid in bond_midpoints:
-                    bx, by, bz = mid[0] * a, mid[1] * a, mid[2] * a
-                    for ddx in [-a, 0, a]:
-                        for ddy in [-a, 0, a]:
-                            for ddz in [-a, 0, a]:
+                    bx, by, bz = mid[0] * lat_a, mid[1] * lat_a, mid[2] * lat_a
+                    for ddx in [-lat_a, 0, lat_a]:
+                        for ddy in [-lat_a, 0, lat_a]:
+                            for ddz in [-lat_a, 0, lat_a]:
                                 rho += 5.0 * gaussian(
                                     x, y, z, bx + ddx, by + ddy, bz + ddz, sigma_bond
                                 )
@@ -489,7 +489,7 @@ def generate_gaas_chgcar() -> str:
 
     for idx in range(0, len(values), 5):
         chunk = values[idx : idx + 5]
-        lines.append(" ".join(f"{v:18.11E}" for v in chunk))
+        lines.append(" ".join(f"{val:18.11E}" for val in chunk))
 
     return "\n".join(lines) + "\n"
 
@@ -503,14 +503,14 @@ def generate_ch4_esp_cube() -> str:
     # Tetrahedral geometry (Angstrom)
     # C at origin, H at tetrahedral vertices
     r_ch = 1.089
-    # Tetrahedral vertices
-    t = r_ch / math.sqrt(3)
+    # Tetrahedral vertices: distance from center to vertex along each axis
+    tet = r_ch / math.sqrt(3)
     atoms = [
         (6, 0.0, 0.0, 0.0),  # C
-        (1, t, t, t),  # H
-        (1, t, -t, -t),  # H
-        (1, -t, t, -t),  # H
-        (1, -t, -t, t),  # H
+        (1, tet, tet, tet),  # H
+        (1, tet, -tet, -tet),  # H
+        (1, -tet, tet, -tet),  # H
+        (1, -tet, -tet, tet),  # H
     ]
 
     box_size = 7.0
@@ -560,7 +560,7 @@ def generate_ch4_esp_cube() -> str:
 
     for idx in range(0, len(values), 6):
         chunk = values[idx : idx + 6]
-        file_lines.append("  ".join(f"{v:.5E}" for v in chunk))
+        file_lines.append("  ".join(f"{val:.5E}" for val in chunk))
 
     return "\n".join(file_lines) + "\n"
 
@@ -637,7 +637,7 @@ def generate_ethylene_orbital_cube() -> str:
 
     for idx in range(0, len(values), 6):
         chunk = values[idx : idx + 6]
-        file_lines.append("  ".join(f"{v:.5E}" for v in chunk))
+        file_lines.append("  ".join(f"{val:.5E}" for val in chunk))
 
     return "\n".join(file_lines) + "\n"
 
@@ -648,7 +648,7 @@ def generate_mgo_elfcar() -> str:
     Tests ELFCAR filename detection and non-diamond lattice type.
     ELF values range from 0 to 1. Grid: 20x20x20.
     """
-    a = 4.21  # MgO lattice parameter (Angstrom)
+    lat_a = 4.21  # MgO lattice parameter (Angstrom)
 
     # Rocksalt: Mg at (0,0,0)+FCC, O at (0.5,0.5,0.5)+FCC
     mg_frac = [
@@ -667,9 +667,9 @@ def generate_mgo_elfcar() -> str:
     lines = []
     lines.append("MgO rocksalt - electron localization function")
     lines.append("   1.0")
-    lines.append(f"     {a:.2f}  0.00  0.00")
-    lines.append(f"     0.00  {a:.2f}  0.00")
-    lines.append(f"     0.00  0.00  {a:.2f}")
+    lines.append(f"     {lat_a:.2f}  0.00  0.00")
+    lines.append(f"     0.00  {lat_a:.2f}  0.00")
+    lines.append(f"     0.00  0.00  {lat_a:.2f}")
     lines.append("   Mg   O")
     lines.append(f"   {len(mg_frac)}   {len(o_frac)}")
     lines.append("Direct")
@@ -686,7 +686,7 @@ def generate_mgo_elfcar() -> str:
 
     # ELF is not multiplied by volume (unlike CHGCAR), but ELFCAR uses same format
     # where the parser divides by volume. So we multiply by volume here.
-    volume = a**3
+    volume = lat_a**3
     sigma_core = 0.4  # core ELF (high localization near nuclei)
     sigma_bond = 0.55  # bonding ELF regions
 
@@ -709,7 +709,7 @@ def generate_mgo_elfcar() -> str:
             bond_midpoints_frac.add((mx, my, mz))
 
     values = []
-    voxel = a / n_grid
+    voxel = lat_a / n_grid
     for ix in range(n_grid):
         x = ix * voxel
         for iy in range(n_grid):
@@ -720,20 +720,20 @@ def generate_mgo_elfcar() -> str:
 
                 # High ELF at atomic cores
                 for frac_x, frac_y, frac_z in mg_frac + o_frac:
-                    ax, ay, az = frac_x * a, frac_y * a, frac_z * a
-                    for ddx in [-a, 0, a]:
-                        for ddy in [-a, 0, a]:
-                            for ddz in [-a, 0, a]:
+                    ax, ay, az = frac_x * lat_a, frac_y * lat_a, frac_z * lat_a
+                    for ddx in [-lat_a, 0, lat_a]:
+                        for ddy in [-lat_a, 0, lat_a]:
+                            for ddz in [-lat_a, 0, lat_a]:
                                 elf += 0.8 * gaussian(
                                     x, y, z, ax + ddx, ay + ddy, az + ddz, sigma_core
                                 )
 
                 # ELF at nearest-neighbor bond midpoints (ionic bond character)
                 for mid in bond_midpoints_frac:
-                    bx, by, bz = mid[0] * a, mid[1] * a, mid[2] * a
-                    for ddx in [-a, 0, a]:
-                        for ddy in [-a, 0, a]:
-                            for ddz in [-a, 0, a]:
+                    bx, by, bz = mid[0] * lat_a, mid[1] * lat_a, mid[2] * lat_a
+                    for ddx in [-lat_a, 0, lat_a]:
+                        for ddy in [-lat_a, 0, lat_a]:
+                            for ddz in [-lat_a, 0, lat_a]:
                                 elf += 0.3 * gaussian(
                                     x, y, z, bx + ddx, by + ddy, bz + ddz, sigma_bond
                                 )
@@ -744,7 +744,7 @@ def generate_mgo_elfcar() -> str:
 
     for idx in range(0, len(values), 5):
         chunk = values[idx : idx + 5]
-        lines.append(" ".join(f"{v:18.11E}" for v in chunk))
+        lines.append(" ".join(f"{val:18.11E}" for val in chunk))
 
     return "\n".join(lines) + "\n"
 
@@ -756,15 +756,15 @@ def generate_hbn_chgcar() -> str:
     Hexagonal cell: a=b=2.50 A, c=6.66 A, gamma=120 degrees.
     Grid: 20x20x16.
     """
-    a = 2.50  # in-plane lattice parameter (Angstrom)
-    c = 6.66  # out-of-plane
+    lat_a = 2.50  # in-plane lattice parameter (Angstrom)
+    lat_c = 6.66  # out-of-plane
 
     # Hexagonal lattice vectors
-    # a1 = (a, 0, 0)
-    # a2 = (a/2, a*sqrt(3)/2, 0)
-    # a3 = (0, 0, c)
-    a2_x = a / 2
-    a2_y = a * math.sqrt(3) / 2
+    # a1 = (lat_a, 0, 0)
+    # a2 = (lat_a/2, lat_a*sqrt(3)/2, 0)
+    # a3 = (0, 0, lat_c)
+    a2_x = lat_a / 2
+    a2_y = lat_a * math.sqrt(3) / 2
 
     # BN positions in fractional coords (AB stacking, 2 layers)
     bn_frac = [
@@ -777,9 +777,9 @@ def generate_hbn_chgcar() -> str:
     lines = []
     lines.append("hBN hexagonal - charge density")
     lines.append("   1.0")
-    lines.append(f"     {a:.4f}  0.0000  0.0000")
+    lines.append(f"     {lat_a:.4f}  0.0000  0.0000")
     lines.append(f"     {a2_x:.4f}  {a2_y:.4f}  0.0000")
-    lines.append(f"     0.0000  0.0000  {c:.4f}")
+    lines.append(f"     0.0000  0.0000  {lat_c:.4f}")
     lines.append("   B   N")
     lines.append("   2   2")
     lines.append("Direct")
@@ -792,7 +792,7 @@ def generate_hbn_chgcar() -> str:
     nx, ny, nz = 20, 20, 16
     lines.append(f"   {nx}   {ny}   {nz}")
 
-    volume = a * a2_y * c  # det of lattice matrix
+    volume = lat_a * a2_y * lat_c  # det of lattice matrix
     sigma_atom = 0.45
     sigma_bond = 0.3
 
@@ -801,9 +801,9 @@ def generate_hbn_chgcar() -> str:
         frac_x: float, frac_y: float, frac_z: float
     ) -> tuple[float, float, float]:
         """Convert fractional coordinates to Cartesian."""
-        cx = frac_x * a + frac_y * a2_x
+        cx = frac_x * lat_a + frac_y * a2_x
         cy = frac_y * a2_y
-        cz = frac_z * c
+        cz = frac_z * lat_c
         return (cx, cy, cz)
 
     atom_cart = [frac_to_cart(*frac) for frac in bn_frac]
@@ -820,9 +820,9 @@ def generate_hbn_chgcar() -> str:
     for ix in range(nx):
         for iy in range(ny):
             for iz in range(nz):
-                x = (ix / nx) * a + (iy / ny) * a2_x
+                x = (ix / nx) * lat_a + (iy / ny) * a2_x
                 y = (iy / ny) * a2_y
-                z = (iz / nz) * c
+                z = (iz / nz) * lat_c
 
                 rho = 0.0
                 # Atomic contributions with PBC images
@@ -831,9 +831,9 @@ def generate_hbn_chgcar() -> str:
                     for dx_img in [-1, 0, 1]:
                         for dy_img in [-1, 0, 1]:
                             for dz_img in [-1, 0, 1]:
-                                img_x = ax + dx_img * a + dy_img * a2_x
+                                img_x = ax + dx_img * lat_a + dy_img * a2_x
                                 img_y = ay + dy_img * a2_y
-                                img_z = az + dz_img * c
+                                img_z = az + dz_img * lat_c
                                 rho += z_num * gaussian(
                                     x, y, z, img_x, img_y, img_z, sigma_atom
                                 )
@@ -843,9 +843,9 @@ def generate_hbn_chgcar() -> str:
                     for dx_img in [-1, 0, 1]:
                         for dy_img in [-1, 0, 1]:
                             for dz_img in [-1, 0, 1]:
-                                img_x = bx + dx_img * a + dy_img * a2_x
+                                img_x = bx + dx_img * lat_a + dy_img * a2_x
                                 img_y = by + dy_img * a2_y
-                                img_z = bz + dz_img * c
+                                img_z = bz + dz_img * lat_c
                                 rho += 3.0 * gaussian(
                                     x, y, z, img_x, img_y, img_z, sigma_bond
                                 )
@@ -854,7 +854,7 @@ def generate_hbn_chgcar() -> str:
 
     for idx in range(0, len(values), 5):
         chunk = values[idx : idx + 5]
-        lines.append(" ".join(f"{v:18.11E}" for v in chunk))
+        lines.append(" ".join(f"{val:18.11E}" for val in chunk))
 
     return "\n".join(lines) + "\n"
 
@@ -942,7 +942,7 @@ def generate_al_slab_locpot() -> str:
 
     for idx in range(0, len(values), 5):
         chunk = values[idx : idx + 5]
-        lines.append(" ".join(f"{v:18.11E}" for v in chunk))
+        lines.append(" ".join(f"{val:18.11E}" for val in chunk))
 
     return "\n".join(lines) + "\n"
 

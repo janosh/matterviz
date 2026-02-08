@@ -1071,6 +1071,10 @@
     background: var(--struct-dragover-bg, var(--dragover-bg));
     border: var(--struct-dragover-border, var(--dragover-border));
   }
+  /* Ensure canvas is transparent so the themed --struct-bg shows through */
+  .structure :global(canvas) {
+    background: transparent;
+  }
   /* Avoid accidental text selection while interacting with the viewer */
   .structure :global(canvas),
   .structure section.control-buttons,

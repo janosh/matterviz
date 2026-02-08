@@ -52,6 +52,7 @@ describe(`parse_chgcar`, () => {
     expect(result?.volumes[0].label).toBe(`charge density`)
     expect(result?.volumes[0].lattice[0][0]).toBeCloseTo(5.43)
     expect(result?.volumes[0].origin).toEqual([0, 0, 0])
+    expect(result?.volumes[0].periodic).toBe(true) // VASP grids are periodic
     // Grid shape
     const grid = result?.volumes[0].grid
     expect(grid?.length).toBe(2) // nx
@@ -395,6 +396,8 @@ describe(`parse_cube`, () => {
   ])(`$label sets pbc=$pbc`, ({ origin, pbc }) => {
     const result = parse_cube(make_cube({ origin }))
     expect(result?.structure.lattice?.pbc).toEqual([pbc, pbc, pbc])
+    // Volume periodic flag should match structure pbc
+    expect(result?.volumes[0].periodic).toBe(pbc)
   })
 
   test(`skips blank lines in volumetric data section`, () => {

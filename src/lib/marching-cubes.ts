@@ -292,6 +292,9 @@ export interface MarchingCubesOptions {
   // Whether to center the grid at the origin (shift by -0.5 in fractional coords)
   // Default true for proper Brillouin zone visualization centered at Γ point
   centered?: boolean
+  // Whether to compute per-vertex normals via central differences on the grid.
+  // Default true. Set false to skip (caller can use geometry.computeVertexNormals() instead).
+  normals?: boolean
 }
 
 // Compute gradient (normal) at a grid point using central differences
@@ -306,7 +309,7 @@ function compute_gradient(
   periodic: boolean,
 ): Vec3 {
   // Wrap for periodic, clamp for non-periodic boundaries
-  const wrap = (val: number, n: number) => ((val % n) + n) % n
+  const wrap = (val: number, dim: number) => ((val % dim) + dim) % dim
   const clamp = (val: number, max: number) => Math.max(0, Math.min(val, max))
 
   const [ix_w, iy_w, iz_w] = periodic
@@ -339,7 +342,12 @@ export function marching_cubes(
   k_lattice: Matrix3x3,
   options: MarchingCubesOptions = {},
 ): MarchingCubesResult {
-  const { periodic = true, interpolate = true, centered = true } = options
+  const {
+    periodic = true,
+    interpolate = true,
+    centered = true,
+    normals: compute_norms = true,
+  } = options
   // When centered=true, shift fractional coordinates by -0.5 so the grid is
   // centered at the origin (Γ point). This is needed for proper BZ visualization.
   const center_offset = centered ? 0.5 : 0
@@ -436,10 +444,10 @@ export function marching_cubes(
         fy = f1y
         fz = f1z
       } else {
-        const t = (iso_value - v1) / dv
-        fx = f1x + t * (f2x - f1x)
-        fy = f1y + t * (f2y - f1y)
-        fz = f1z + t * (f2z - f1z)
+        const lerp = (iso_value - v1) / dv
+        fx = f1x + lerp * (f2x - f1x)
+        fy = f1y + lerp * (f2y - f1y)
+        fz = f1z + lerp * (f2z - f1z)
       }
     } else {
       fx = (ix + (ox1 + ox2) * 0.5) * inv_nx - center_offset
@@ -455,18 +463,12 @@ export function marching_cubes(
       fx * kx2 + fy * ky2 + fz * kz2,
     ])
 
-    // Compute normal (simplified - skip gradient interpolation for speed)
-    const norm = compute_gradient(
-      grid,
-      ix + ox1,
-      iy + oy1,
-      iz + oz1,
-      nx,
-      ny,
-      nz,
-      periodic,
-    )
-    normals.push(norm)
+    // Compute normal from grid gradient (skip if caller will compute from geometry)
+    if (compute_norms) {
+      normals.push(
+        compute_gradient(grid, ix + ox1, iy + oy1, iz + oz1, nx, ny, nz, periodic),
+      )
+    }
 
     vertex_cache.set(cache_key, vert_idx)
     return vert_idx
@@ -582,7 +584,7 @@ export function compute_vertex_normals(vertices: Vec3[], faces: number[][]): Vec
 
   // Normalize all normals
   for (const normal of normals) {
-    const len = Math.sqrt(normal[0] ** 2 + normal[1] ** 2 + normal[2] ** 2)
+    const len = Math.hypot(normal[0], normal[1], normal[2])
     if (len > 0) {
       normal[0] /= len
       normal[1] /= len

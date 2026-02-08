@@ -17,6 +17,7 @@ const file_metadata: Record<
   string,
   { format: string; label: string; description: string }
 > = {
+  // Simulated .cube files (small, fast to load)
   'h2o-density.cube.gz': {
     format: `.cube`,
     label: `Water`,
@@ -24,9 +25,15 @@ const file_metadata: Record<
   },
   'benzene-orbital.cube.gz': {
     format: `.cube`,
-    label: `Benzene`,
+    label: `Benzene π`,
     description: `Benzene pi orbital with +/- lobes (simulated)`,
   },
+  'ch4-esp.cube.gz': {
+    format: `.cube`,
+    label: `Methane ESP`,
+    description: `Methane electrostatic potential with +/- regions (simulated)`,
+  },
+  // Simulated VASP files (small, fast to load)
   'Si-CHGCAR.gz': {
     format: `CHGCAR`,
     label: `Si diamond`,
@@ -37,26 +44,6 @@ const file_metadata: Record<
     label: `Fe BCC spin`,
     description: `Fe BCC spin-polarized: charge + magnetization (simulated)`,
   },
-  'GaAs-CHGCAR.gz': {
-    format: `CHGCAR`,
-    label: `GaAs`,
-    description: `GaAs zinc blende multi-element charge density (simulated)`,
-  },
-  'ch4-esp.cube.gz': {
-    format: `.cube`,
-    label: `Methane ESP`,
-    description: `Methane electrostatic potential with +/- regions (simulated)`,
-  },
-  'ethylene-orbital.cube.gz': {
-    format: `.cube`,
-    label: `Ethylene`,
-    description: `Ethylene pi* anti-bonding orbital (simulated)`,
-  },
-  'MgO-ELFCAR.gz': {
-    format: `ELFCAR`,
-    label: `MgO ELF`,
-    description: `MgO rocksalt electron localization function (simulated)`,
-  },
   'hBN-CHGCAR.gz': {
     format: `CHGCAR`,
     label: `hBN hex`,
@@ -66,6 +53,33 @@ const file_metadata: Record<
     format: `LOCPOT`,
     label: `Al slab`,
     description: `Al(111) slab local potential with vacuum gap (simulated)`,
+  },
+  // Real DFT files from pymatgen test fixtures (MIT license, materialsproject/pymatgen)
+  'pymatgen-CHGCAR.Fe3O4.gz': {
+    format: `CHGCAR`,
+    label: `Fe₃O₄ (real)`,
+    description: `Real Fe₃O₄ magnetite charge density, 14 atoms, spin-polarized`,
+  },
+  'pymatgen-CHGCAR.NiO_SOC.gz': {
+    format: `CHGCAR`,
+    label: `NiO SOC (real)`,
+    description: `Real NiO charge density with spin-orbit coupling`,
+  },
+  'pymatgen-ELFCAR.gz': {
+    format: `ELFCAR`,
+    label: `ELF (real)`,
+    description: `Real electron localization function, unusual 18×18×70 grid`,
+  },
+  // Real .cube files from quantum chemistry calculations (MIT license)
+  'caffeine-HOMO.cube.gz': {
+    format: `.cube`,
+    label: `Caffeine HOMO`,
+    description: `Caffeine HOMO orbital, B3LYP/6-31G(d) via Psi4`,
+  },
+  'caffeine-LUMO.cube.gz': {
+    format: `.cube`,
+    label: `Caffeine LUMO`,
+    description: `Caffeine LUMO orbital, B3LYP/6-31G(d) via Psi4`,
   },
 }
 

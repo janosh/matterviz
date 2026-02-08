@@ -116,8 +116,7 @@ describe(`marching_cubes`, () => {
     const result = marching_cubes(grid, 1.0, identity_lattice)
 
     for (const normal of result.normals) {
-      const length = Math.sqrt(normal[0] ** 2 + normal[1] ** 2 + normal[2] ** 2)
-      expect(length).toBeCloseTo(1.0, 3)
+      expect(Math.hypot(...normal)).toBeCloseTo(1.0, 3)
     }
   })
 
@@ -157,8 +156,7 @@ describe(`compute_vertex_normals`, () => {
     expect(normals).toHaveLength(3)
     for (const normal of normals) {
       // Unit length
-      const length = Math.sqrt(normal[0] ** 2 + normal[1] ** 2 + normal[2] ** 2)
-      expect(length).toBeCloseTo(1.0, 5)
+      expect(Math.hypot(...normal)).toBeCloseTo(1.0, 5)
       // CCW winding: e1×e2 = (1,0,0)×(0,1,0) = (0,0,1) → +z direction
       expect(normal[0]).toBeCloseTo(0, 5)
       expect(normal[1]).toBeCloseTo(0, 5)

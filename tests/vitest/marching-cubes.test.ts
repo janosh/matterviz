@@ -35,9 +35,6 @@ const gaussian_grid = (size: number): number[][][] => {
   })
 }
 
-const vec_length = (vec: Vec3): number =>
-  Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)
-
 // === marching_cubes ===
 
 describe(`marching_cubes`, () => {
@@ -87,7 +84,7 @@ describe(`marching_cubes`, () => {
 
     // Normals are unit length
     for (const normal of result.normals) {
-      expect(vec_length(normal)).toBeCloseTo(1.0, 3)
+      expect(Math.hypot(...normal)).toBeCloseTo(1.0, 3)
     }
 
     // Vertex caching: shared vertices across adjacent cubes
@@ -190,7 +187,7 @@ describe(`compute_vertex_normals`, () => {
 
     expect(normals).toHaveLength(3)
     for (const normal of normals) {
-      expect(vec_length(normal)).toBeCloseTo(1.0, 5)
+      expect(Math.hypot(...normal)).toBeCloseTo(1.0, 5)
       expect(Math.abs(normal[2])).toBeCloseTo(1.0, 5)
     }
   })
@@ -208,7 +205,7 @@ describe(`compute_vertex_normals`, () => {
     const normals = compute_vertex_normals(vertices, [face])
     // All normals remain at zero (face was skipped)
     for (const normal of normals) {
-      expect(vec_length(normal)).toBe(0)
+      expect(Math.hypot(...normal)).toBe(0)
     }
   })
 
@@ -218,7 +215,7 @@ describe(`compute_vertex_normals`, () => {
 
     expect(normals).toHaveLength(4)
     for (const normal of normals) {
-      expect(vec_length(normal)).toBeCloseTo(1.0, 5)
+      expect(Math.hypot(...normal)).toBeCloseTo(1.0, 5)
       expect(Math.abs(normal[2])).toBeCloseTo(1.0, 5)
     }
   })
@@ -230,7 +227,7 @@ describe(`compute_vertex_normals`, () => {
 
     // Shared vertex 0: averaged normal has both y and z components
     const shared = normals[0]
-    expect(vec_length(shared)).toBeCloseTo(1.0, 5)
+    expect(Math.hypot(...shared)).toBeCloseTo(1.0, 5)
     expect(Math.abs(shared[1])).toBeGreaterThan(0.1)
     expect(Math.abs(shared[2])).toBeGreaterThan(0.1)
   })

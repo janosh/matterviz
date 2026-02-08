@@ -2,7 +2,9 @@
 import {
   auto_isosurface_settings,
   DEFAULT_ISOSURFACE_SETTINGS,
+  generate_layers,
   grid_data_range,
+  LAYER_COLORS,
 } from '$lib/isosurface/types'
 import { describe, expect, test } from 'vitest'
 
@@ -116,5 +118,66 @@ describe(`auto_isosurface_settings`, () => {
     // Mutating the result should not affect defaults
     settings.isovalue = 999
     expect(DEFAULT_ISOSURFACE_SETTINGS.isovalue).toBe(0.05)
+  })
+})
+
+describe(`generate_layers`, () => {
+  const range = { min: 0, max: 10, abs_max: 10, mean: 5 }
+
+  test.each([1, 2, 3, 5])(
+    `generates %i layers with correct count and palette colors`,
+    (count) => {
+      const layers = generate_layers(range, count)
+      expect(layers).toHaveLength(count)
+      for (let idx = 0; idx < count; idx++) {
+        expect(layers[idx].color).toBe(LAYER_COLORS[idx % LAYER_COLORS.length])
+        expect(layers[idx].visible).toBe(true)
+        expect(layers[idx].isovalue).toBeGreaterThan(0)
+        expect(layers[idx].isovalue).toBeLessThanOrEqual(range.abs_max)
+        expect(layers[idx].opacity).toBeGreaterThan(0)
+        expect(layers[idx].opacity).toBeLessThanOrEqual(1)
+      }
+    },
+  )
+
+  test(`single layer uses 20% of abs_max`, () => {
+    const [layer] = generate_layers(range, 1)
+    expect(layer.isovalue).toBeCloseTo(10 * 0.2)
+  })
+
+  test(`layers are ordered from inner (highest isovalue) to outer (lowest)`, () => {
+    const layers = generate_layers(range, 4)
+    for (let idx = 1; idx < layers.length; idx++) {
+      expect(layers[idx].isovalue).toBeLessThan(layers[idx - 1].isovalue)
+    }
+  })
+
+  test(`outer layers have lower opacity than inner layers`, () => {
+    const layers = generate_layers(range, 3)
+    for (let idx = 1; idx < layers.length; idx++) {
+      expect(layers[idx].opacity).toBeLessThan(layers[idx - 1].opacity)
+    }
+  })
+
+  test(`returns empty array for zero abs_max`, () => {
+    expect(generate_layers({ min: 0, max: 0, abs_max: 0, mean: 0 }, 3)).toEqual([])
+  })
+
+  test(`returns empty array for n_layers <= 0`, () => {
+    expect(generate_layers(range, 0)).toEqual([])
+    expect(generate_layers(range, -1)).toEqual([])
+  })
+
+  test(`enables show_negative for data with significant negatives`, () => {
+    const neg_range = { min: -5, max: 10, abs_max: 10, mean: 2 }
+    const layers = generate_layers(neg_range, 2)
+    expect(layers.every((layer) => layer.show_negative)).toBe(true)
+  })
+})
+
+describe(`LAYER_COLORS`, () => {
+  test(`has at least 8 distinct colors`, () => {
+    expect(LAYER_COLORS.length).toBeGreaterThanOrEqual(8)
+    expect(new Set(LAYER_COLORS).size).toBe(LAYER_COLORS.length)
   })
 })
