@@ -42,6 +42,7 @@ class Structure(MatterViz):
         info_pane_open: bool | None = None,
         isosurface_settings: list | None = None,
         loading: bool | None = None,
+        measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
         on_camera_move: Any | None = None,
         on_camera_reset: Any | None = None,
@@ -112,6 +113,8 @@ class Structure(MatterViz):
             mv_props["isosurface_settings"] = isosurface_settings
         if loading is not None:
             mv_props["loading"] = loading
+        if measure_mode is not None:
+            mv_props["measure_mode"] = measure_mode
         if measured_sites is not None:
             mv_props["measured_sites"] = measured_sites
         if on_camera_move is not None:
