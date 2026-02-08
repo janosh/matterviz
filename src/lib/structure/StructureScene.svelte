@@ -3,6 +3,9 @@
   import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_data } from '$lib/element'
+  import Isosurface from '$lib/isosurface/Isosurface.svelte'
+  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
+  import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
@@ -127,6 +130,8 @@
       scale_type: DEFAULTS.structure.atom_color_scale_type,
     },
     sym_data = null,
+    volumetric_data = undefined,
+    isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
   }: {
     structure?: AnyStructure
     base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
@@ -197,6 +202,8 @@
     site_radius_overrides?: Map<number, number> | SvelteMap<number, number> // Per-site absolute radius in Angstroms
     atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
+    volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
+    isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
   } = $props()
 
   const threlte = useThrelte()
@@ -946,6 +953,11 @@
 
       {#if visual_lattice}
         <Lattice matrix={visual_lattice.matrix} {...lattice_props} />
+      {/if}
+
+      <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->
+      {#if volumetric_data && isosurface_settings}
+        <Isosurface volume={volumetric_data} settings={isosurface_settings} />
       {/if}
 
       <!-- Measurement overlays for measured sites -->
