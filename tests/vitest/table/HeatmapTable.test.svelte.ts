@@ -311,14 +311,14 @@ describe(`HeatmapTable`, () => {
       mount(HeatmapTable, { target: document.body, props: { data, columns } })
 
       const cells = document.querySelectorAll(`td[data-col="Value"]`)
-      const backgrounds = Array.from(cells).map(
-        (cell) => (cell as HTMLElement).style.backgroundColor,
+      const style_attrs = Array.from(cells).map(
+        (cell) => cell.getAttribute(`style`) ?? ``,
       )
 
-      // All cells should have background colors set (not empty)
-      expect(backgrounds.every((bg) => bg !== ``)).toBe(true)
-      // Colors should be different for different values
-      expect(new Set(backgrounds).size).toBeGreaterThan(1)
+      // All cells should have --cell-bg custom property set (match with colon to avoid partial matches)
+      expect(style_attrs.every((s) => s.includes(`--cell-bg:`))).toBe(true)
+      // Styles should be different for different values (different d3 colors)
+      expect(new Set(style_attrs).size).toBeGreaterThan(1)
     })
 
     it(`does not apply heatmap colors to non-numeric strings`, () => {
@@ -335,12 +335,36 @@ describe(`HeatmapTable`, () => {
       mount(HeatmapTable, { target: document.body, props: { data, columns } })
 
       const cells = document.querySelectorAll(`td[data-col="Value"]`)
-      const backgrounds = Array.from(cells).map(
-        (cell) => (cell as HTMLElement).style.backgroundColor,
+      const style_attrs = Array.from(cells).map(
+        (cell) => cell.getAttribute(`style`) ?? ``,
       )
 
-      // No background colors should be set for non-numeric strings
-      expect(backgrounds.every((bg) => bg === ``)).toBe(true)
+      // No --cell-bg should be set for non-numeric strings
+      expect(style_attrs.every((s) => !s.includes(`--cell-bg:`))).toBe(true)
+    })
+
+    it(`does not apply heatmap colors to non-numeric values mixed with numeric`, () => {
+      // Tests that string cells in a column with valid numeric peers don't get colored
+      const data = [
+        { Name: `A`, Value: 10 },
+        { Name: `B`, Value: `not a number` },
+        { Name: `C`, Value: 100 },
+      ]
+      const columns: Label[] = [
+        { label: `Name`, description: `` },
+        { label: `Value`, color_scale: `interpolateViridis`, description: `` },
+      ]
+
+      mount(HeatmapTable, { target: document.body, props: { data, columns } })
+
+      const cells = Array.from(document.querySelectorAll(`td[data-col="Value"]`))
+      const style_attrs = cells.map((cell) => cell.getAttribute(`style`) ?? ``)
+
+      // First and third rows (numeric 10 and 100) should have --cell-bg
+      expect(style_attrs[0]).toContain(`--cell-bg:`)
+      expect(style_attrs[2]).toContain(`--cell-bg:`)
+      // Second row (string "not a number") should NOT have --cell-bg
+      expect(style_attrs[1]).not.toContain(`--cell-bg:`)
     })
   })
 
@@ -369,14 +393,12 @@ describe(`HeatmapTable`, () => {
     if (!num_cell) throw `Num cell not found`
     expect(num_cell.textContent?.trim()).toBe(`12.3%`)
 
-    // Check that val cells have background colors
+    // Check that val cells have --cell-bg set
     const val_cells = document.querySelectorAll(`td[data-col="Val"]`)
-    const backgrounds = Array.from(val_cells).map(
-      (cell) => getComputedStyle(cell as Element).backgroundColor,
+    const has_color = Array.from(val_cells).some((cell) =>
+      (cell.getAttribute(`style`) ?? ``).includes(`--cell-bg:`)
     )
-
-    // Verify at least one background color is set (not empty)
-    expect(backgrounds.some((bg) => bg !== `` && bg !== `rgba(0, 0, 0, 0)`)).toBe(true)
+    expect(has_color).toBe(true)
   })
 
   it(`applies different scale types for color mapping`, () => {
@@ -402,28 +424,24 @@ describe(`HeatmapTable`, () => {
     const linear_cells = document.querySelectorAll(`td[data-col="Linear"]`)
     const log_cells = document.querySelectorAll(`td[data-col="Log"]`)
 
-    // Get background colors
-    const linear_backgrounds = Array.from(linear_cells).map(
-      (cell) => getComputedStyle(cell).backgroundColor,
+    // Check --cell-bg is set on cells
+    const linear_styles = Array.from(linear_cells).map(
+      (cell) => cell.getAttribute(`style`) ?? ``,
     )
-    const log_backgrounds = Array.from(log_cells).map(
-      (cell) => getComputedStyle(cell).backgroundColor,
+    const log_styles = Array.from(log_cells).map(
+      (cell) => cell.getAttribute(`style`) ?? ``,
     )
 
-    // Both types should have colors set
-    expect(linear_backgrounds.every((bg) => bg !== `` && bg !== `rgba(0, 0, 0, 0)`)).toBe(
-      true,
-    )
-    expect(log_backgrounds.every((bg) => bg !== `` && bg !== `rgba(0, 0, 0, 0)`)).toBe(
-      true,
-    )
+    // Both types should have --cell-bg set
+    expect(linear_styles.every((s) => s.includes(`--cell-bg:`))).toBe(true)
+    expect(log_styles.every((s) => s.includes(`--cell-bg:`))).toBe(true)
 
     // The color distribution should be different between linear and log scale
     // In linear scale, 10->100->1000 should have increasingly spaced colors
     // In log scale, the color difference between 10->100 should be similar to 100->1000
     // Difficult to test precisely without mocking d3 scales, but we can check
     // there are differences between the two scale types.
-    expect(linear_backgrounds).not.toEqual(log_backgrounds)
+    expect(linear_styles).not.toEqual(log_styles)
   })
 
   it(`handles accessibility features`, () => {
@@ -565,12 +583,12 @@ describe(`HeatmapTable`, () => {
       })
 
       const val_cells = document.querySelectorAll(`td[data-col="Val"]`)
-      const backgrounds = Array.from(val_cells).map(
-        (cell) => getComputedStyle(cell as Element).backgroundColor,
-      )
 
-      // No background color should be applied when show_heatmap is false
-      expect(backgrounds.every((bg) => bg === `` || bg === `rgba(0, 0, 0, 0)`)).toBe(true)
+      // No --cell-bg should be applied when show_heatmap is false
+      for (const cell of val_cells) {
+        const style_attr = cell.getAttribute(`style`) ?? ``
+        expect(style_attr).not.toContain(`--cell-bg:`)
+      }
     })
 
     it(`applies heatmap colors when show_heatmap is true (default)`, () => {
@@ -590,12 +608,95 @@ describe(`HeatmapTable`, () => {
       })
 
       const val_cells = document.querySelectorAll(`td[data-col="Val"]`)
-      const backgrounds = Array.from(val_cells).map(
-        (cell) => getComputedStyle(cell as Element).backgroundColor,
-      )
 
-      // At least one background color should be set when show_heatmap is true
-      expect(backgrounds.some((bg) => bg !== `` && bg !== `rgba(0, 0, 0, 0)`)).toBe(true)
+      // At least one cell should have --cell-bg set
+      const has_color = Array.from(val_cells).some((cell) =>
+        (cell.getAttribute(`style`) ?? ``).includes(`--cell-bg:`)
+      )
+      expect(has_color).toBe(true)
+    })
+
+    // --cell-bg CSS custom property is set inline per cell; the stylesheet applies
+    // color-mix(in srgb, var(--cell-bg) var(--heatmap-opacity, 100%), transparent)
+    it(`sets --cell-bg custom property on heatmap cells`, () => {
+      const columns: Label[] = [
+        {
+          label: `Val`,
+          better: `higher`,
+          color_scale: `interpolateViridis`,
+          description: ``,
+        },
+      ]
+      const data = [{ Val: 0 }, { Val: 50 }, { Val: 100 }]
+
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data, columns },
+      })
+
+      const val_cells = document.querySelectorAll(`td[data-col="Val"]`)
+      for (const cell of val_cells) {
+        const style_attr = cell.getAttribute(`style`) ?? ``
+        expect(style_attr).toContain(`--cell-bg:`)
+      }
+    })
+
+    it(`does not set --cell-bg when show_heatmap is false`, () => {
+      const columns: Label[] = [
+        {
+          label: `Val`,
+          better: `higher`,
+          color_scale: `interpolateViridis`,
+          description: ``,
+        },
+      ]
+      const data = [{ Val: 0 }, { Val: 100 }]
+
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data, columns, show_heatmap: false },
+      })
+
+      const val_cells = document.querySelectorAll(`td[data-col="Val"]`)
+      for (const cell of val_cells) {
+        const style_attr = cell.getAttribute(`style`) ?? ``
+        expect(style_attr).not.toContain(`--cell-bg:`)
+      }
+    })
+
+    it(`does not set --cell-bg on non-numeric cells`, () => {
+      const columns: Label[] = [
+        { label: `Name`, description: `` },
+        {
+          label: `Val`,
+          better: `higher`,
+          color_scale: `interpolateViridis`,
+          description: ``,
+        },
+      ]
+      const data = [
+        { Name: `foo`, Val: 10 },
+        { Name: `bar`, Val: 20 },
+      ]
+
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data, columns },
+      })
+
+      // Name column cells should have no --cell-bg
+      const name_cells = document.querySelectorAll(`td[data-col="Name"]`)
+      for (const cell of name_cells) {
+        const style_attr = cell.getAttribute(`style`) ?? ``
+        expect(style_attr).not.toContain(`--cell-bg:`)
+      }
+
+      // Val column cells should have --cell-bg
+      const val_cells = document.querySelectorAll(`td[data-col="Val"]`)
+      for (const cell of val_cells) {
+        const style_attr = cell.getAttribute(`style`) ?? ``
+        expect(style_attr).toContain(`--cell-bg:`)
+      }
     })
   })
 
@@ -1464,11 +1565,10 @@ describe(`HeatmapTable`, () => {
       })
 
       const cells = document.querySelectorAll(`td[data-col="Value"]`)
-      // All cells should have background colors set
+      // All cells should have --cell-bg set
       cells.forEach((cell) => {
-        const bg = (cell as HTMLElement).style.backgroundColor
-        // Should have a color, not be empty
-        expect(bg).not.toBe(``)
+        const style_attr = cell.getAttribute(`style`) ?? ``
+        expect(style_attr).toContain(`--cell-bg:`)
       })
     })
 
@@ -1491,10 +1591,10 @@ describe(`HeatmapTable`, () => {
       })
 
       const cells = document.querySelectorAll(`td[data-col="Value"]`)
-      // All cells should have background colors set
+      // All cells should have --cell-bg set
       cells.forEach((cell) => {
-        const bg = (cell as HTMLElement).style.backgroundColor
-        expect(bg).not.toBe(``)
+        const style_attr = cell.getAttribute(`style`) ?? ``
+        expect(style_attr).toContain(`--cell-bg:`)
       })
     })
 

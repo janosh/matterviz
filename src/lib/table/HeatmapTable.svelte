@@ -989,7 +989,7 @@
                 data-col={col.label}
                 data-sort-value={is_html_str(val) ? null : val}
                 class:sticky-col={col.sticky}
-                style:background-color={color.bg}
+                style:--cell-bg={color.bg}
                 style:color={color.text}
                 style={`${col.cell_style ?? col.style ?? ``}${
                   col_width
@@ -1102,6 +1102,13 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    /* --cell-bg is set inline per-cell by calc_color(); --heatmap-opacity (default 100%)
+       lets consumers fade the heatmap background via CSS custom property */
+    background-color: color-mix(
+      in srgb,
+      var(--cell-bg, transparent) var(--heatmap-opacity, 100%),
+      transparent
+    );
   }
   th {
     background: var(--heatmap-header-bg, var(--page-bg, Canvas));
