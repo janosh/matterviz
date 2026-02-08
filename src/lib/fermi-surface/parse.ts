@@ -463,7 +463,7 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
             e1[2] * e2[0] - e1[0] * e2[2],
             e1[0] * e2[1] - e1[1] * e2[0],
           ]
-          area += 0.5 * Math.sqrt(cross[0] ** 2 + cross[1] ** 2 + cross[2] ** 2)
+          area += 0.5 * Math.hypot(cross[0], cross[1], cross[2])
         }
       }
 

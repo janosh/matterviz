@@ -121,6 +121,7 @@
               color={cell_edge_color}
               opacity={cell_edge_opacity}
               transparent
+              depthWrite={false}
             />
           </T.Mesh>
         {/each}
@@ -134,6 +135,7 @@
           color={cell_surface_color}
           opacity={cell_surface_opacity}
           transparent
+          depthWrite={false}
         />
       </T.Mesh>
     {/if}

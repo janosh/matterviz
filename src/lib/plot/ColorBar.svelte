@@ -676,11 +676,11 @@
   }
   .tick-label.vertical.tick-primary {
     left: 100%; /* Position right of bar */
-    padding-left: var(--cbar-tick-offset, 0);
+    margin-left: var(--cbar-tick-offset, 1pt);
   }
   .tick-label.vertical.tick-secondary {
     right: 100%; /* Position left of bar */
-    padding-right: var(--cbar-tick-offset, 0);
+    margin-right: var(--cbar-tick-offset, 1pt);
   }
   .tick-label.vertical.tick-inside {
     left: 50%; /* Center horizontally */
