@@ -1256,7 +1256,7 @@
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
       <!-- prevent HTML labels from rendering outside of the canvas -->
-      <div style="overflow: hidden; height: 100%">
+      <div style="overflow: hidden; height: 100%; flex: 1">
         <Canvas>
           <StructureScene
             structure={displayed_structure}
@@ -1399,7 +1399,7 @@
     display: flex;
     padding: 4px;
     border-radius: var(--border-radius, 3pt);
-    font-size: clamp(0.85em, 2cqmin, 2.5em);
+    font-size: clamp(0.85em, 2cqmin, 1.3em);
   }
   section.control-buttons :global(button:hover) {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
@@ -1450,7 +1450,7 @@
   .measure-mode-dropdown > button {
     background: transparent;
     padding: 0 0 0 4px;
-    font-size: clamp(0.85em, 2cqmin, 2.5em);
+    font-size: clamp(0.85em, 2cqmin, 1.3em);
   }
   .selection-limit-text {
     font-weight: bold;
