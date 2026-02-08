@@ -2,12 +2,14 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
+  import { DragOverlay, StatusMessage } from '$lib/feedback'
   import { load_from_url } from '$lib/io'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { sample_hkl_slice } from '$lib/isosurface/slice'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
+  import { ColorBar } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
   import { volumetric_files } from '$site/isosurfaces'
   import type { AnyStructure, IsosurfaceSettings, VolumetricData } from 'matterviz'
@@ -34,6 +36,7 @@
   let miller_indices = $state<Vec3>([0, 0, 1]) // default (001) = z-plane
   let slice_position = $state(0.5) // fractional distance along plane normal [0, 1]
   let slice_canvas = $state<HTMLCanvasElement | undefined>()
+  let slice_range = $state<[number, number]>([0, 1])
 
   // Use precomputed data_range from the active volume
   let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
@@ -125,33 +128,31 @@
     const ctx = slice_canvas.getContext(`2d`)
     if (!ctx) return
 
+    slice_range = [s_min, s_max]
+
     const img_data = ctx.createImageData(canvas_width, canvas_height)
     const pixels = img_data.data
-    const range = s_max - s_min || 1
-
-    // Theme-aware midpoint: dark mode → dark center, light mode → white center
-    const bg_rgb = getComputedStyle(document.documentElement)
-      .backgroundColor.match(/\d+/g)?.map(Number) ?? [255, 255, 255]
-    const lerp = (from: number, to: number, frac: number) =>
-      Math.round(from + (to - from) * frac)
+    const val_range = s_max - s_min || 1
 
     for (let row = 0; row < height; row++) {
       for (let col = 0; col < width; col++) {
         const val = slice_data[row * width + col]
-        const normalized = (val - s_min) / range
+        // Normalize to [0,1] then reverse for RdBu (1=blue/low, 0=red/high)
+        const normalized = 1 - (val - s_min) / val_range
 
-        // Diverging colormap: blue (0) → background (0.5) → red (1)
+        // Inline RdBu-like diverging colormap: blue (0) → white (0.5) → red (1)
+        // Matches d3's interpolateRdBu so canvas and ColorBar stay in sync
         let r_col: number, g_col: number, b_col: number
         if (normalized < 0.5) {
           const frac = normalized * 2
-          r_col = lerp(0, bg_rgb[0], frac)
-          g_col = lerp(0, bg_rgb[1], frac)
-          b_col = lerp(255, bg_rgb[2], frac)
+          r_col = Math.round(103 + (247 - 103) * frac)
+          g_col = Math.round(169 + (247 - 169) * frac)
+          b_col = Math.round(207 + (247 - 207) * frac)
         } else {
           const frac = (normalized - 0.5) * 2
-          r_col = lerp(bg_rgb[0], 255, frac)
-          g_col = lerp(bg_rgb[1], 0, frac)
-          b_col = lerp(bg_rgb[2], 0, frac)
+          r_col = Math.round(247 - (247 - 202) * frac)
+          g_col = Math.round(247 - (247 - 0) * frac)
+          b_col = Math.round(247 - (247 - 32) * frac)
         }
 
         // Fill the scaled pixel block (flip y so origin is at bottom-left)
@@ -253,26 +254,7 @@
   }}
   ondrop={() => (dragover_hint = false)}
 >
-  {#if dragover_hint}
-    <div class="drop-overlay">
-      <div style="color: var(--primary, #3b82f6)">
-        <svg
-          width="48"
-          height="48"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-      </div>
-      <span>Drop volumetric file here</span>
-      <small>CHGCAR, ELFCAR, LOCPOT, or .cube</small>
-    </div>
-  {/if}
+  <DragOverlay visible={dragover_hint} message="Drop CHGCAR, ELFCAR, LOCPOT, or .cube" />
   <Structure
     bind:structure
     bind:volumetric_data
@@ -294,7 +276,7 @@
 </div>
 
 {#if error_msg}
-  <p class="error">{error_msg}</p>
+  <StatusMessage message={error_msg} type="error" />
 {/if}
 
 {#if data_range && volumetric_data}
@@ -333,11 +315,17 @@
     </div>
     <div class="slice-view">
       <canvas bind:this={slice_canvas}></canvas>
-      <div class="slice-colorbar">
-        <span>Low</span>
-        <div class="colorbar-gradient"></div>
-        <span>High</span>
-      </div>
+      <ColorBar
+        orientation="vertical"
+        range={slice_range}
+        color_scale="interpolateRdBu"
+        tick_labels={5}
+        snap_ticks={false}
+        tick_side="secondary"
+        style="height: 100%"
+        --cbar-thickness="14px"
+        --cbar-font-size="0.75em"
+      />
     </div>
   </div>
 {/if}
@@ -429,36 +417,6 @@
       height: 100%;
     }
   }
-  .viewer-container.dragover-hint {
-    .drop-overlay {
-      opacity: 1;
-    }
-  }
-  .drop-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5em;
-    background: rgba(59, 130, 246, 0.15);
-    border: 2px dashed var(--primary, #3b82f6);
-    border-radius: 8px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s;
-    span {
-      font-size: 1.1em;
-      font-weight: 500;
-      color: var(--primary, #3b82f6);
-    }
-    small {
-      opacity: 0.7;
-      font-size: 0.85em;
-    }
-  }
   .filename-label {
     position: absolute;
     margin: 1ex 1em;
@@ -469,13 +427,6 @@
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 0.9em;
-  }
-  .error {
-    color: var(--error, #ef4444);
-    padding: 0.5em 1em;
-    background: var(--error-bg, #fef2f2);
-    border-radius: 6px;
-    border: 1px solid var(--error-border, #fecaca);
   }
   .stats-bar {
     display: flex;
@@ -519,7 +470,7 @@
   }
   .slice-view {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 1em;
     margin-top: 0.5em;
     canvas {
@@ -527,21 +478,6 @@
       border-radius: 4px;
       image-rendering: pixelated;
     }
-  }
-  .slice-colorbar {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.3em;
-    font-size: 0.75em;
-    opacity: 0.8;
-  }
-  .colorbar-gradient {
-    width: 16px;
-    height: 120px;
-    border-radius: 3px;
-    outline: 1px solid var(--border-color, #ccc);
-    background: linear-gradient(to bottom, #ff0000, Canvas, #0000ff);
   }
   .features {
     margin-top: 1.5em;
