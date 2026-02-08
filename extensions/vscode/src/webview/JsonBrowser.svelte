@@ -383,9 +383,11 @@
       } else if (detected_type === `dos`) {
         return mount(Dos, { target, props: { doses: val as DosInput, ...common_props, padding: { b: 60 } } })
       } else if (detected_type === `brillouin_zone`) {
-        const bz_data = val as Record<string, unknown>
+        const bz_val = val as Record<string, unknown>
         const bz_props: Record<string, unknown> = { allow_file_drop: false, ...common_props }
-        if (bz_data.structure) bz_props.structure = prepare_structure(bz_data.structure)
+        if (bz_val.structure) bz_props.structure = prepare_structure(bz_val.structure)
+        // Pass pre-computed BZ data (vertices, faces, edges) if present
+        if (bz_val.vertices && bz_val.faces) bz_props.bz_data = bz_val
         return mount(BrillouinZone, { target, props: bz_props })
       } else if (detected_type === `xrd`) {
         return mount(XrdPlot, { target, props: { patterns: val as XrdPattern, allow_file_drop: false, ...common_props } })
