@@ -391,6 +391,15 @@
         drop_target_panel_idx = 0
       }
     }
+    // Prevent mixed-axis splits until nested layouts are supported
+    if (split_directions.length > 0) {
+      const layout = split_directions[0]
+      if (layout === `vertical` && (drop_zone === `left` || drop_zone === `right`)) {
+        drop_zone = `center`
+      } else if (layout === `horizontal` && (drop_zone === `top` || drop_zone === `bottom`)) {
+        drop_zone = `center`
+      }
+    }
   }
 
   function on_canvas_dragleave(event: DragEvent): void {

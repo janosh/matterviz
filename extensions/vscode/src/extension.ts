@@ -133,11 +133,12 @@ const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
 
 // Helper: determine view type using content when available
 const infer_view_type = (file: FileData): ViewType => {
-  const name = file.filename.toLowerCase()
+  // Strip compression extensions before matching (filename may still have .gz/.bz2)
+  const name = file.filename.toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
   // Fermi surface files
   if (/\.(bxsf|frmsf)$/i.test(name)) return `fermi_surface`
   // Volumetric data files
-  if (/\.cube$/i.test(name) || /^(chgcar|aeccar\d?|elfcar|locpot)/i.test(name)) {
+  if (/\.cube$/i.test(name) || /^(chgcar|aeccar[012]?|elfcar|locpot)/i.test(name)) {
     return `isosurface`
   }
   // Only pass content for text files; for binary (compressed) fall back to filename
@@ -153,7 +154,7 @@ export const should_auto_render = (filename: string): boolean => {
   if (/\.(bxsf|frmsf)(\.gz)?$/i.test(filename)) return true
   // Volumetric data files
   if (/\.cube(\.gz|\.bz2)?$/i.test(filename)) return true
-  if (/^(CHGCAR|AECCAR\d?|ELFCAR|LOCPOT)/i.test(filename)) return true
+  if (/^(CHGCAR|AECCAR[012]?|ELFCAR|LOCPOT)/i.test(filename)) return true
   // Structure and trajectory files (existing behavior)
   return is_structure_file(filename) || is_trajectory_file(filename)
 }

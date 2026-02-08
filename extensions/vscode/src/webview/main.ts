@@ -395,7 +395,9 @@ const parse_file_content = async (
   }
 
   // Volumetric data files (.cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT)
-  if (/\.cube$/i.test(filename) || /^(CHGCAR|AECCAR\d?|ELFCAR|LOCPOT)/i.test(filename)) {
+  if (
+    /\.cube$/i.test(filename) || /^(CHGCAR|AECCAR[012]?|ELFCAR|LOCPOT)/i.test(filename)
+  ) {
     const data = parse_volumetric_file(content, filename)
     if (data) return { type: `isosurface`, data, filename }
     throw new Error(`Failed to parse volumetric file: ${filename}`)
@@ -408,15 +410,33 @@ const parse_file_content = async (
       // Check if the top-level value matches a known visualization type
       const detected = detect_view_type(parsed)
       if (detected) {
+        // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.)
+        if (detected === `structure`) {
+          const structure = parse_structure_file(content, filename)
+          if (structure?.sites) {
+            return {
+              type: `structure`,
+              data: { ...structure, id: filename.replace(/\.[^/.]+$/, ``) },
+              filename,
+            }
+          }
+        }
+        // Volumetric JSON needs wrapping in { structure, volumes } for the isosurface renderer
+        if (detected === `volumetric`) {
+          const vol = parsed as { lattice?: unknown }
+          return {
+            type: `isosurface`,
+            data: { structure: { sites: [], lattice: vol.lattice }, volumes: [parsed] },
+            filename,
+          }
+        }
         // Map detection types to ViewType for direct rendering.
         // Types not listed here (band_structure, dos) intentionally fall through
         // to json_browser -- they render inside the JsonBrowser's split-panel UI.
         const type_map: Record<string, ViewType> = {
-          structure: `structure`,
           fermi_surface: `fermi_surface`,
           band_grid: `fermi_surface`,
           convex_hull: `convex_hull`,
-          volumetric: `isosurface`,
           phase_diagram: `phase_diagram`,
         }
         return { type: type_map[detected] ?? `json_browser`, data: parsed, filename }
