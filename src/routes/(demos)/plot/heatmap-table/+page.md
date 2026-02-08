@@ -301,7 +301,12 @@ A comprehensive ML model benchmark comparison with sticky first column. Scroll h
   models &nbsp;|&nbsp; Model column stays pinned
 </p>
 
-<HeatmapTable {data} {columns} scroll_style="max-height: 400px;" style="margin: 0 auto" />
+<HeatmapTable
+  {data}
+  {columns}
+  scroll_style="max-height: 400px; border-inline: none"
+  style="margin: 0 auto"
+/>
 ```
 
 ## Values with Uncertainties
@@ -384,6 +389,7 @@ Explore different D3 color scales, scale types (linear vs logarithmic), and the 
   let selected_scale = $state(`interpolateViridis`)
   let better = $state(`higher`)
   let scale_type = $state(`linear`)
+  let heatmap_opacity = $state(1)
 
   // Materials with properties spanning different orders of magnitude
   const data = [
@@ -454,7 +460,16 @@ Explore different D3 color scales, scale types (linear vs logarithmic), and the 
       <option value="log">Logarithmic</option>
     </select>
   </label>
+  <label>
+    Opacity: {Math.round(heatmap_opacity * 100)}%
+    <input type="range" min="0" max="1" step="0.01" bind:value={heatmap_opacity} />
+  </label>
 </div>
 
-<HeatmapTable {data} {columns} style="margin: 0 auto" />
+<HeatmapTable
+  {data}
+  {columns}
+  bind:heatmap_opacity
+  style="margin: 0 auto"
+/>
 ```
