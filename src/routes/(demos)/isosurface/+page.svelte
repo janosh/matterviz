@@ -163,16 +163,29 @@
     const pixels = img_data.data
     const range = s_max - s_min || 1
 
+    // Theme-aware midpoint: dark mode → dark center, light mode → white center
+    const bg_rgb = getComputedStyle(document.documentElement)
+      .backgroundColor.match(/\d+/g)?.map(Number) ?? [255, 255, 255]
+    const lerp = (from: number, to: number, frac: number) => Math.round(from + (to - from) * frac)
+
     for (let row = 0; row < height; row++) {
       for (let col = 0; col < width; col++) {
         const val = slice_data[row * width + col]
         const normalized = (val - s_min) / range
 
-        // Diverging colormap: blue (0) -> white (0.5) -> red (1)
-        const ramp = normalized * 2 // 0 to 2
-        const r_col = Math.round(Math.min(ramp, 1) * 255)
-        const g_col = Math.round((1 - Math.abs(1 - ramp)) * 255)
-        const b_col = Math.round(Math.min(2 - ramp, 1) * 255)
+        // Diverging colormap: blue (0) → background (0.5) → red (1)
+        let r_col: number, g_col: number, b_col: number
+        if (normalized < 0.5) {
+          const frac = normalized * 2
+          r_col = lerp(0, bg_rgb[0], frac)
+          g_col = lerp(0, bg_rgb[1], frac)
+          b_col = lerp(255, bg_rgb[2], frac)
+        } else {
+          const frac = (normalized - 0.5) * 2
+          r_col = lerp(bg_rgb[0], 255, frac)
+          g_col = lerp(bg_rgb[1], 0, frac)
+          b_col = lerp(bg_rgb[2], 0, frac)
+        }
 
         // Fill the scaled pixel block (flip y so origin is at bottom-left)
         const flipped_row = height - 1 - row
@@ -707,7 +720,7 @@
     height: 120px;
     border-radius: 3px;
     outline: 1px solid var(--border-color, #ccc);
-    background: linear-gradient(to bottom, #ff0000, #ffffff, #0000ff);
+    background: linear-gradient(to bottom, #ff0000, Canvas, #0000ff);
   }
   .features {
     margin-top: 1.5em;
