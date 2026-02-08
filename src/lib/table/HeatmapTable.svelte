@@ -50,6 +50,7 @@
     onsorterror = undefined,
     loading = $bindable(false),
     sort_data = true,
+    heatmap_opacity = $bindable(1),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     data: RowData[]
@@ -88,31 +89,21 @@
     // Whether to sort data client-side. Set to false when parent handles sorting externally.
     // When onsort is provided, sort_data behavior is implicitly false.
     sort_data?: boolean
+    // Heatmap cell background opacity (0–1). Controls both the visual fade via CSS
+    // color-mix() and the JS text contrast correction. Default 1 (fully opaque).
+    heatmap_opacity?: number
   } = $props()
 
   let container_el = $state<HTMLDivElement>()
 
-  // Reactively track --heatmap-opacity and --page-bg from the container's style.
-  // MutationObserver fires when the style attribute changes (e.g. via parent binding).
-  let heatmap_opacity = $state(1)
+  // Read --page-bg from computed style for text contrast calculation.
+  // This is a theme-level property that rarely changes at runtime.
   let page_bg_lum = $state(luminance(`white`))
   $effect(() => {
-    const el = container_el
-    if (!el) return
-    const read_style = () => {
-      const style = getComputedStyle(el)
-      const raw = style.getPropertyValue(`--heatmap-opacity`).trim()
-      heatmap_opacity = raw.endsWith(`%`)
-        ? parseFloat(raw) / 100
-        : (parseFloat(raw) || 1)
-      page_bg_lum = luminance(
-        style.getPropertyValue(`--page-bg`).trim() || `white`,
-      )
-    }
-    read_style()
-    const observer = new MutationObserver(read_style)
-    observer.observe(el, { attributes: true, attributeFilter: [`style`] })
-    return () => observer.disconnect()
+    if (!container_el) return
+    const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`)
+      .trim()
+    page_bg_lum = luminance(page_bg || `white`)
   })
 
   // Detect HTML to prevent setting raw HTML as data-sort-value. Simple string matching
@@ -598,7 +589,7 @@
     )
 
     // Recompute text contrast against effective bg (cell bg blended with page bg by opacity).
-    // luminance() is linear in RGB, so mixing luminances equals luminance of mixed color.
+    // Approximation: blend luminances directly; accurate enough for black/white text choice.
     if (color.bg && heatmap_opacity < 1) {
       const blended_lum = luminance(color.bg) * heatmap_opacity +
         page_bg_lum * (1 - heatmap_opacity)
@@ -764,6 +755,7 @@
   {...rest}
   bind:this={container_el}
   class="table-container {rest.class ?? ``}"
+  style:--heatmap-opacity="{heatmap_opacity * 100}%"
   onmouseleave={() => [show_column_dropdown, show_export_dropdown] = [false, false]}
 >
   <!-- Floating control buttons -->
@@ -1141,8 +1133,8 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    /* --cell-bg is set inline per-cell by calc_color(); --heatmap-opacity (default 100%)
-       lets consumers fade the heatmap background via CSS custom property */
+    /* --cell-bg is set inline per-cell by calc_color(); --heatmap-opacity is set
+       on the container from the heatmap_opacity prop to fade cell backgrounds */
     background-color: color-mix(
       in srgb,
       var(--cell-bg, transparent) var(--heatmap-opacity, 100%),

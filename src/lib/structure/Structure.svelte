@@ -416,9 +416,11 @@
   // Shared undo/redo: pop from `source`, push current state onto `target`
   function apply_history(source: AnyStructure[], target: AnyStructure[]) {
     if (source.length === 0 || !structure) return
+    const restored = source.pop()
+    if (!restored) return
     is_internal_edit = true
     target.push($state.snapshot(structure) as AnyStructure)
-    structure = source.pop()!
+    structure = restored
     clear_selection()
   }
 
@@ -523,10 +525,7 @@
 
   $effect(() => {
     const base_structure = cell_transformed_structure
-    if (!base_structure || !(`lattice` in base_structure)) {
-      supercell_structure = base_structure
-      supercell_loading = false
-    } else if ([``, `1x1x1`, `1`].includes(supercell_scaling)) {
+    if (!base_structure || !(`lattice` in base_structure) || !has_supercell) {
       supercell_structure = base_structure
       supercell_loading = false
     } else if (!is_valid_supercell_input(supercell_scaling)) {

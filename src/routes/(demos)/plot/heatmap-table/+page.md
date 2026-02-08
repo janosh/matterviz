@@ -384,7 +384,7 @@ Explore different D3 color scales, scale types (linear vs logarithmic), and the 
   let selected_scale = $state(`interpolateViridis`)
   let better = $state(`higher`)
   let scale_type = $state(`linear`)
-  let heatmap_opacity = $state(100)
+  let heatmap_opacity = $state(1)
 
   // Materials with properties spanning different orders of magnitude
   const data = [
@@ -456,14 +456,15 @@ Explore different D3 color scales, scale types (linear vs logarithmic), and the 
     </select>
   </label>
   <label>
-    Opacity: {heatmap_opacity}%
-    <input type="range" min="0" max="100" bind:value={heatmap_opacity} />
+    Opacity: {Math.round(heatmap_opacity * 100)}%
+    <input type="range" min="0" max="1" step="0.01" bind:value={heatmap_opacity} />
   </label>
 </div>
 
 <HeatmapTable
   {data}
   {columns}
-  style="margin: 0 auto; --heatmap-opacity: {heatmap_opacity}%"
+  bind:heatmap_opacity
+  style="margin: 0 auto"
 />
 ```

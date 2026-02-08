@@ -261,7 +261,7 @@
   function toggle_bond(site_1: number, site_2: number) {
     const idx_i = Math.min(site_1, site_2)
     const idx_j = Math.max(site_1, site_2)
-    const key = `${idx_i}-${idx_j}` // already sorted, no need for get_bond_key
+    const key = get_bond_key(idx_i, idx_j)
 
     const match_key = (pair: [number, number]) =>
       get_bond_key(pair[0], pair[1]) === key
@@ -1124,13 +1124,9 @@
         {@const center = rotation_target ?? [0, 0, 0]}
         <T.Mesh
           position={center}
-          onBeforeRender={(mesh: { lookAt: (x: number, y: number, z: number) => void }) => {
+          onBeforeRender={(mesh: Mesh) => {
             if (camera) {
-              mesh.lookAt(
-                camera.position.x,
-                camera.position.y,
-                camera.position.z,
-              )
+              mesh.lookAt(camera.position)
             }
           }}
           onclick={(event: { point: { x: number; y: number; z: number } }) => {
