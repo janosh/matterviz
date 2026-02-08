@@ -3,6 +3,7 @@
   // Supports both single-isovalue mode and multi-layer mode.
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import { DEFAULT_ISOSURFACE_SETTINGS, generate_layers } from './types'
 
@@ -27,7 +28,6 @@
 
   function set_layer_count(count: number) {
     if (count <= 1) {
-      // Switch back to single-layer mode
       settings.layers = undefined
     } else {
       settings.layers = generate_layers(data_range, count)
@@ -55,33 +55,57 @@
     settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
   }}
 >
-  {#if volumes.length > 1}
-    <label>
-      <span>Volume:</span>
-      <select bind:value={active_volume_idx}>
-        {#each volumes as vol, idx (idx)}
-          <option value={idx}>{vol.label ?? `Volume ${idx + 1}`}</option>
+  <!-- Top row: volume selector (if multi-volume) + layer count + toggles -->
+  <div class="pane-row compact-row">
+    {#if volumes.length > 1}
+      <label {@attach tooltip({ content: `Select which volume to display (e.g. charge vs magnetization)` })}>
+        <span>Volume:</span>
+        <select bind:value={active_volume_idx}>
+          {#each volumes as vol, idx (idx)}
+            <option value={idx}>{vol.label ?? `Volume ${idx + 1}`}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
+    <label {@attach tooltip({ content: `Number of isosurface shells at different density thresholds` })}>
+      <span>Layers:</span>
+      <select
+        value={n_layers}
+        onchange={(event) =>
+        set_layer_count(Number((event.target as HTMLSelectElement).value))}
+      >
+        {#each [1, 2, 3, 4, 5] as count (count)}
+          <option value={count}>{count}</option>
         {/each}
       </select>
     </label>
-  {/if}
-
-  <!-- Layer count selector -->
-  <label>
-    <span>Layers:</span>
-    <select
-      value={n_layers}
-      onchange={(event) =>
-      set_layer_count(Number((event.target as HTMLSelectElement).value))}
-    >
-      {#each [1, 2, 3, 4, 5] as count (count)}
-        <option value={count}>{count}</option>
-      {/each}
-    </select>
-  </label>
+    <label {@attach tooltip({ content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)` })}>
+      <span>Neg. lobe</span>
+      <input
+        type="checkbox"
+        checked={is_multi_layer
+        ? settings.layers?.some((layer) => layer.show_negative) ?? false
+        : settings.show_negative}
+        onchange={(event) => {
+          const checked = (event.target as HTMLInputElement).checked
+          settings.show_negative = checked
+          if (settings.layers) {
+            settings.layers = settings.layers.map((layer) => ({
+              ...layer,
+              show_negative: checked,
+            }))
+          }
+        }}
+      />
+    </label>
+    <label {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}>
+      <span>Wireframe</span>
+      <input type="checkbox" bind:checked={settings.wireframe} />
+    </label>
+  </div>
 
   {#if is_multi_layer && settings.layers}
-    <!-- Multi-layer controls -->
+    <!-- Multi-layer controls: each row has visibility, color, isovalue slider, opacity -->
     {#each settings.layers as layer, idx (idx)}
       <div class="layer-row">
         <input
@@ -124,8 +148,8 @@
       </div>
     {/each}
   {:else}
-    <!-- Single-layer controls (backward compatible) -->
-    <label>
+    <!-- Single-layer: isovalue slider full width -->
+    <label {@attach tooltip({ content: `Density threshold — surface is drawn where grid values equal this` })}>
       <span>Isovalue:</span>
       <input
         type="range"
@@ -137,62 +161,49 @@
       <span class="value">{format_num(settings.isovalue, `.4~g`)}</span>
     </label>
 
-    <label>
-      <span>Opacity:</span>
-      <input type="range" min={0.1} max={1} step={0.05} bind:value={settings.opacity} />
-      <span class="value">{format_num(settings.opacity, `.2f`)}</span>
-    </label>
-
-    <label>
-      <span>+ Color:</span>
-      <input type="color" bind:value={settings.positive_color} />
-    </label>
+    <!-- Opacity + colors on one row -->
+    <div class="pane-row compact-row">
+      <label {@attach tooltip({ content: `Surface transparency — lower values reveal inner structure` })}>
+        <span>Opacity:</span>
+        <input
+          type="range"
+          min={0.1}
+          max={1}
+          step={0.05}
+          bind:value={settings.opacity}
+          style="width: 60px"
+        />
+        <span class="value">{format_num(settings.opacity, `.2f`)}</span>
+      </label>
+      <label {@attach tooltip({ content: `Color for the positive isovalue surface` })}>
+        <span>+ Color</span>
+        <input type="color" bind:value={settings.positive_color} />
+      </label>
+      {#if settings.show_negative}
+        <label {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}>
+          <span>&minus; Color</span>
+          <input type="color" bind:value={settings.negative_color} />
+        </label>
+      {/if}
+    </div>
   {/if}
-
-  <label>
-    <span>Show &minus; lobe:</span>
-    <input
-      type="checkbox"
-      checked={is_multi_layer
-      ? settings.layers?.some((layer) => layer.show_negative) ?? false
-      : settings.show_negative}
-      onchange={(event) => {
-        const checked = (event.target as HTMLInputElement).checked
-        settings.show_negative = checked
-        // In multi-layer mode, propagate to all layers
-        if (settings.layers) {
-          settings.layers = settings.layers.map((layer) => ({
-            ...layer,
-            show_negative: checked,
-          }))
-        }
-      }}
-    />
-  </label>
-
-  {#if settings.show_negative && !is_multi_layer}
-    <label>
-      <span>&minus; Color:</span>
-      <input type="color" bind:value={settings.negative_color} />
-    </label>
-  {/if}
-
-  <label>
-    <span>Wireframe:</span>
-    <input type="checkbox" bind:checked={settings.wireframe} />
-  </label>
 
   {#if volumes[active_volume_idx]}
     <div class="grid-info">
-      Grid: {volumes[active_volume_idx].grid_dims.join(` × `)}
-      &nbsp;|&nbsp; Range: [{format_num(data_range.min, `.3~g`)}, {
-        format_num(data_range.max, `.3~g`)
-      }]
+      {volumes[active_volume_idx].grid_dims.join(` × `)} grid
+      &nbsp;|&nbsp; [{format_num(data_range.min, `.3~g`)}, {format_num(data_range.max, `.3~g`)}]
     </div>
   {/if}
 </SettingsSection>
 
 <style>
+  .compact-row {
+    flex-wrap: wrap;
+    gap: 4pt 14pt;
+  }
+  label {
+    gap: 6pt;
+  }
   .grid-info {
     font-size: 0.75em;
     opacity: 0.7;
