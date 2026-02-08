@@ -17,12 +17,20 @@
     active_volume_idx?: number
   } = $props()
 
+  // Clamp active_volume_idx when volumes list changes (e.g. dataset swap)
+  $effect(() => {
+    if (volumes.length > 0 && active_volume_idx >= volumes.length) {
+      active_volume_idx = 0
+    }
+  })
+
   // Use precomputed data_range from the active volume
   let data_range = $derived(
     volumes[active_volume_idx]?.data_range ?? { min: 0, max: 1, abs_max: 1, mean: 0 },
   )
 
-  let step = $derived(data_range.abs_max > 0 ? data_range.abs_max / 200 : 0.001)
+  let slider_max = $derived(Math.max(data_range.abs_max, 0.001))
+  let step = $derived(slider_max / 200)
   let is_multi_layer = $derived((settings.layers?.length ?? 0) > 0)
   let n_layers = $derived(settings.layers?.length ?? 1)
 
@@ -139,7 +147,7 @@
         <input
           type="range"
           min={step}
-          max={data_range.abs_max}
+          max={slider_max}
           {step}
           value={layer.isovalue}
           oninput={(event) =>
@@ -175,7 +183,7 @@
       <input
         type="range"
         min={step}
-        max={data_range.abs_max}
+        max={slider_max}
         {step}
         bind:value={settings.isovalue}
       />

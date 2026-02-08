@@ -434,7 +434,6 @@
   .viewer-container.dragover-hint {
     .drop-overlay {
       opacity: 1;
-      pointer-events: auto;
     }
   }
   .drop-overlay {
