@@ -56,8 +56,17 @@ interface FileData {
   is_base64: boolean // content is base64-encoded (binary or compressed)
 }
 
+type ViewType =
+  | `trajectory`
+  | `structure`
+  | `fermi_surface`
+  | `isosurface`
+  | `convex_hull`
+  | `phase_diagram`
+  | `json_browser`
+
 interface WebviewData {
-  type: `trajectory` | `structure`
+  type: ViewType
   data: FileData
   theme: ThemeName
   defaults?: DefaultSettings
@@ -123,15 +132,29 @@ function get_wasm_filename(ext_path: string): string | null {
 const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
 
 // Helper: determine view type using content when available
-const infer_view_type = (file: FileData): `trajectory` | `structure` => {
+const infer_view_type = (file: FileData): ViewType => {
+  const name = file.filename.toLowerCase()
+  // Fermi surface files
+  if (/\.(bxsf|frmsf)$/i.test(name)) return `fermi_surface`
+  // Volumetric data files
+  if (/\.cube$/i.test(name) || /^(chgcar|aeccar\d?|elfcar|locpot)/i.test(name)) {
+    return `isosurface`
+  }
   // Only pass content for text files; for binary (compressed) fall back to filename
   const content = file.is_base64 ? undefined : file.content
-  return is_trajectory_file(file.filename, content) ? `trajectory` : `structure`
+  if (is_trajectory_file(file.filename, content)) return `trajectory`
+  return `structure`
 }
 
 // Check if a file should be auto-rendered
 export const should_auto_render = (filename: string): boolean => {
   if (!filename || typeof filename !== `string`) return false
+  // Fermi surface files
+  if (/\.(bxsf|frmsf)(\.gz)?$/i.test(filename)) return true
+  // Volumetric data files
+  if (/\.cube(\.gz|\.bz2)?$/i.test(filename)) return true
+  if (/^(CHGCAR|AECCAR\d?|ELFCAR|LOCPOT)/i.test(filename)) return true
+  // Structure and trajectory files (existing behavior)
   return is_structure_file(filename) || is_trajectory_file(filename)
 }
 
@@ -763,7 +786,7 @@ export const activate = (context: vscode.ExtensionContext) => {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      `matterviz.render_structure`,
+      `matterviz.open`,
       (uri?: vscode.Uri) => render(context, uri),
     ),
     vscode.commands.registerCommand(

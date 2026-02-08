@@ -36,7 +36,7 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 
 1. **Open a structure file** in VS Code (`.cif`, `.poscar`, `.xyz`, `.json`, etc.)
 2. **Right-click** in the explorer or editor
-3. **Select "Render with MatterViz"** from the context menu
+3. **Select "MatterViz: Open"** from the context menu
 4. **Or use the keyboard shortcut**: `Ctrl+Shift+V` (Windows/Linux) / `Cmd+Shift+V` (Mac)
 
 ### Supported File Formats

@@ -583,7 +583,7 @@ describe(`MatterViz Extension`, () => {
   test(`extension activation`, async () => {
     await activate(mock_context)
     expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
-      `matterviz.render_structure`,
+      `matterviz.open`,
       expect.any(Function),
     )
     expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
@@ -1384,7 +1384,7 @@ describe(`MatterViz Extension`, () => {
         expect(() => activate(mock_context)).not.toThrow()
 
         expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
-          `matterviz.render_structure`,
+          `matterviz.open`,
           expect.any(Function),
         )
       })
