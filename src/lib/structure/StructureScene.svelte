@@ -139,7 +139,6 @@
     add_atom_mode = $bindable(false),
     add_element = $bindable(`C`),
     cursor = $bindable(`default`),
-    transform_mode = `translate`,
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
   }: {
@@ -219,7 +218,6 @@
     add_atom_mode?: boolean // whether user is in click-to-place add-atom sub-mode
     add_element?: ElementSymbol // element to add when clicking in add-atom mode
     cursor?: string // cursor style for the 3D canvas
-    transform_mode?: `translate` | `rotate` // transform mode for TransformControls
     volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
   } = $props()
@@ -1145,9 +1143,7 @@
           </T.Mesh>
           <extras.TransformControls
             object={transform_object}
-            mode={transform_mode}
-            translationSnap={transform_mode === `translate` ? 0.1 : undefined}
-            rotationSnap={transform_mode === `rotate` ? Math.PI / 12 : undefined}
+            translationSnap={0.1}
             size={1.2}
             space="world"
             onobjectChange={() => {
@@ -1191,7 +1187,12 @@
             on_add_atom?.([x, y, z] as Vec3, add_element as ElementSymbol)
           }}
         >
-          <T.PlaneGeometry args={[200, 200]} />
+          <T.PlaneGeometry
+            args={[
+              Math.max(200, structure_size * 4),
+              Math.max(200, structure_size * 4),
+            ]}
+          />
           <T.MeshBasicMaterial transparent opacity={0} side={2} depthWrite={false} />
         </T.Mesh>
       {/if}

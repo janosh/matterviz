@@ -401,8 +401,6 @@
   let canvas_cursor = $state(`default`)
   let change_element_mode = $state(false)
   let change_element_value = $state(``)
-  let transform_mode = $state<`translate` | `rotate`>(`translate`)
-
   // Ephemeral toast message for edit operations
   let toast_msg = $state<string | null>(null)
   let toast_timer: ReturnType<typeof setTimeout> | undefined
@@ -923,12 +921,7 @@
         )
         return
       }
-      // Toggle transform mode between translate and rotate
-      if ((key === `t` || key === `r`) && plain) {
-        transform_mode = key === `t` ? `translate` : `rotate`
-        show_toast(`Transform: ${transform_mode}`)
-        return
-      }
+
       // add_atom_mode Escape is already handled above (before is_input_focused guard)
       if (event.key === `Escape`) {
         if (change_element_mode) {
@@ -1458,7 +1451,6 @@
             bind:add_atom_mode
             bind:add_element
             bind:cursor={canvas_cursor}
-            {transform_mode}
           />
         </Canvas>
       </div>
