@@ -14,6 +14,10 @@ export type RenderableType =
   | `phase_diagram`
   | `band_structure`
   | `dos`
+  | `bands_and_dos`
+  | `brillouin_zone`
+  | `xrd`
+  | `table`
 
 // Human-readable labels for badge display
 export const TYPE_LABELS: Record<RenderableType, string> = {
@@ -25,6 +29,10 @@ export const TYPE_LABELS: Record<RenderableType, string> = {
   phase_diagram: `Phase Diagram`,
   band_structure: `Band Structure`,
   dos: `DOS`,
+  bands_and_dos: `Bands + DOS`,
+  brillouin_zone: `Brillouin Zone`,
+  xrd: `XRD`,
+  table: `Table`,
 }
 
 // Badge colors per type (CSS color values)
@@ -37,6 +45,10 @@ export const TYPE_COLORS: Record<RenderableType, string> = {
   phase_diagram: `#ef5350`,
   band_structure: `#29b6f6`,
   dos: `#26a69a`,
+  bands_and_dos: `#5c6bc0`,
+  brillouin_zone: `#8d6e63`,
+  xrd: `#ec407a`,
+  table: `#78909c`,
 }
 
 // === Type Guards ===
@@ -176,6 +188,98 @@ function is_dos(obj: unknown): boolean {
   return false
 }
 
+// BandsAndDos: object containing both band_structure and dos data at the same level.
+// Must be a focused wrapper (few keys), not a large object that happens to have both.
+function is_bands_and_dos(obj: unknown): boolean {
+  const data = as_record(obj)
+  if (!data) return false
+  const keys = Object.keys(data).filter((key) =>
+    !key.startsWith(`@`) && !key.startsWith(`_`)
+  )
+  // Wrapper format: { band_structure: {...}, dos: {...} } with few extra keys
+  const has_bands = as_record(data.band_structure) &&
+    is_band_structure(data.band_structure)
+  const has_dos_key = as_record(data.dos) && is_dos(data.dos)
+  if (has_bands && has_dos_key && keys.length <= 5) return true
+  // Combined-fields format: single object with both band structure and DOS fields mixed in
+  const has_bands_fields = has_array(data, `branches`) && as_record(data.labels_dict)
+  const has_dos_fields =
+    (has_array(data, `energies`) || has_array(data, `frequencies`)) &&
+    data.densities !== undefined &&
+    (data.atom_dos !== undefined || data.spd_dos !== undefined)
+  return !!(has_bands_fields && has_dos_fields)
+}
+
+// BrillouinZone: reciprocal lattice data with optional k-path info
+// Matches objects with a lattice that has reciprocal vectors (k_lattice or reciprocal_lattice)
+// and optionally k-path points/labels for overlaying on the zone
+function is_brillouin_zone(obj: unknown): boolean {
+  const data = as_record(obj)
+  if (!data) return false
+  // Must have reciprocal lattice vectors (3x3 matrix)
+  const has_k_lattice = has_array(data, `k_lattice`, 3) ||
+    has_array(data, `reciprocal_lattice`, 3)
+  if (!has_k_lattice) return false
+  // Must have k-path or explicit BZ data to distinguish from Fermi surface data
+  // (Fermi surface also has k_lattice but additionally has isosurfaces)
+  if (has_array(data, `isosurfaces`)) return false // that's a Fermi surface, not a plain BZ
+  // Accept if it has k_path labels/points, or a structure with lattice
+  return has_array(data, `k_path`) || has_array(data, `k_points`) ||
+    !!as_record(data.k_labels) || !!as_record(data.labels_dict) ||
+    data.bz_order !== undefined
+}
+
+// XRD pattern: x + y arrays of equal length (2-theta angles vs intensities)
+// with optional hkls (Miller indices) and d_hkls (d-spacings)
+function is_xrd_pattern(obj: unknown): boolean {
+  const data = as_record(obj)
+  if (!data) return false
+  if (!has_array(data, `x`) || !has_array(data, `y`)) return false
+  const x_arr = data.x as unknown[]
+  const y_arr = data.y as unknown[]
+  if (x_arr.length !== y_arr.length || x_arr.length === 0) return false
+  // Must have numeric x/y values
+  if (typeof x_arr[0] !== `number` || typeof y_arr[0] !== `number`) return false
+  // Distinguish from generic scatter data: XRD patterns typically have hkls or d_hkls,
+  // or have @class containing "Xrd"
+  return has_array(data, `hkls`) || has_array(data, `d_hkls`) ||
+    (typeof data[`@class`] === `string` && (data[`@class`] as string).includes(`Xrd`)) ||
+    typeof data.wavelength === `number`
+}
+
+// Tabular data: array of objects with consistent keys (row-based table format)
+// or object with parallel arrays (column-based format)
+function is_tabular_data(obj: unknown): boolean {
+  // Row-based: array of objects with string keys and numeric/string values
+  if (Array.isArray(obj) && obj.length >= 2) {
+    const first = as_record(obj[0])
+    const second = as_record(obj[1])
+    if (!first || !second) return false
+    const first_keys = Object.keys(first)
+    if (first_keys.length < 2) return false
+    // Check that rows have consistent keys and mostly numeric/string values
+    const second_keys = Object.keys(second)
+    const overlap = first_keys.filter((key) => second_keys.includes(key))
+    if (overlap.length < first_keys.length * 0.5) return false
+    // At least some values should be numbers (not just metadata objects)
+    const num_count = first_keys.filter((key) => typeof first[key] === `number`).length
+    return num_count >= 1
+  }
+  // Column-based: object where multiple values are equal-length arrays
+  const data = as_record(obj)
+  if (!data) return false
+  const entries = Object.entries(data)
+  if (entries.length < 2) return false
+  const array_entries = entries.filter(([, val]) => Array.isArray(val) && val.length > 0)
+  if (array_entries.length < 2) return false
+  // Check that arrays have consistent lengths
+  const lengths = array_entries.map(([, val]) => (val as unknown[]).length)
+  const first_len = lengths[0]
+  if (!lengths.every((len) => len === first_len)) return false
+  // At least one column must contain numbers
+  return array_entries.some(([, val]) => typeof (val as unknown[])[0] === `number`)
+}
+
 // === Main Detection Function ===
 
 // Detect the visualization type for a given JSON value.
@@ -196,11 +300,20 @@ export function detect_view_type(value: unknown): RenderableType | null {
   // Phase diagram -- specific shape with components + regions + boundaries
   if (is_phase_diagram(value)) return `phase_diagram`
 
+  // Combined bands + DOS -- check before individual band/dos checks
+  if (is_bands_and_dos(value)) return `bands_and_dos`
+
   // Band structure -- qpoints + branches + bands
   if (is_band_structure(value)) return `band_structure`
 
   // DOS -- energies/frequencies + densities
   if (is_dos(value)) return `dos`
+
+  // Brillouin zone -- reciprocal lattice with k-path info
+  if (is_brillouin_zone(value)) return `brillouin_zone`
+
+  // XRD pattern -- x/y arrays with hkls or d_hkls
+  if (is_xrd_pattern(value)) return `xrd`
 
   // Volumetric data -- 3D grid with lattice
   if (is_volumetric(value)) return `volumetric`
@@ -211,6 +324,9 @@ export function detect_view_type(value: unknown): RenderableType | null {
 
   // Convex hull entries -- array check last (most generic)
   if (is_convex_hull_entries(value)) return `convex_hull`
+
+  // Tabular data -- most generic, check last
+  if (is_tabular_data(value)) return `table`
 
   return null
 }

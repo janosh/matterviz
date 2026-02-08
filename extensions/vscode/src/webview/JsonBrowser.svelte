@@ -4,6 +4,7 @@
   // Right canvas renders one or more visualization panels in a split layout.
   // Users can click tree nodes to render in the main panel, or drag nodes
   // to specific edges to create horizontal/vertical splits.
+  import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte';
   import ConvexHull from '$lib/convex-hull/ConvexHull.svelte';
   import type { PhaseData } from '$lib/convex-hull/types';
   import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte';
@@ -14,6 +15,7 @@
   import type { PhaseDiagramData } from '$lib/phase-diagram/types';
   import { merge, type DefaultSettings } from '$lib/settings';
   import Bands from '$lib/spectral/Bands.svelte';
+  import BandsAndDos from '$lib/spectral/BandsAndDos.svelte';
   import Dos from '$lib/spectral/Dos.svelte';
   import type { BaseBandStructure, DosInput } from '$lib/spectral/types';
   import type { AnyStructure, LatticeType } from '$lib/structure';
@@ -23,6 +25,10 @@
       parse_optimade_from_raw,
   } from '$lib/structure/parse';
   import Structure from '$lib/structure/Structure.svelte';
+  import type { RowData } from '$lib/table';
+  import HeatmapTable from '$lib/table/HeatmapTable.svelte';
+  import type { XrdPattern } from '$lib/xrd';
+  import XrdPlot from '$lib/xrd/XrdPlot.svelte';
   import { mount, unmount } from 'svelte';
   import {
       detect_view_type,
@@ -65,8 +71,16 @@
   let select_timer: ReturnType<typeof setTimeout> | undefined
   $effect(() => () => { if (select_timer) clearTimeout(select_timer) })
 
-  // Scan for renderable paths (re-scans if value changes, e.g. file reload)
-  let renderable_paths = $derived(scan_renderable_paths(value))
+  // Scan for renderable paths asynchronously to avoid blocking the UI on large JSON files.
+  // Uses requestIdleCallback to yield to the main thread during tree rendering.
+  let renderable_paths = $state(new Map<string, { type: RenderableType; label: string }>())
+  $effect(() => {
+    const current_value = value
+    const idle_handle = requestIdleCallback(() => {
+      renderable_paths = scan_renderable_paths(current_value)
+    })
+    return () => cancelIdleCallback(idle_handle)
+  })
 
   // === Draggable sidebar divider ===
   let sidebar_width = $state(320)
@@ -303,6 +317,18 @@
     return val
   }
 
+  // Convert column-based or row-based data to RowData[] for HeatmapTable
+  function prepare_table_data(val: unknown): RowData[] {
+    if (Array.isArray(val)) return val as RowData[]
+    // Column-based: { col_a: [1,2,3], col_b: [4,5,6] } -> [{ col_a: 1, col_b: 4 }, ...]
+    const data = val as Record<string, unknown[]>
+    const keys = Object.keys(data).filter((key) => Array.isArray(data[key]))
+    if (keys.length === 0) return []
+    return Array.from({ length: (data[keys[0]] as unknown[]).length }, (_, idx) =>
+      Object.fromEntries(keys.map((key) => [key, (data[key] as unknown[])[idx]])) as RowData
+    )
+  }
+
   // Map user defaults to structure component props (mirrors main.ts structure_props)
   function struct_props(merged: DefaultSettings): Record<string, unknown> {
     const { structure } = merged
@@ -346,10 +372,26 @@
       } else if (detected_type === `volumetric`) {
         const vol_data = val as { lattice: LatticeType }
         return mount(Structure, { target, props: { structure: { sites: [], lattice: vol_data.lattice } as AnyStructure, volumetric_data: [val as VolumetricData], ...struct_common } })
+      } else if (detected_type === `bands_and_dos`) {
+        const data = val as Record<string, unknown>
+        // Support both { band_structure, dos } wrapper and combined-fields format
+        const band_data = (data.band_structure ?? val) as BaseBandStructure
+        const dos_data = (data.dos ?? val) as DosInput
+        return mount(BandsAndDos, { target, props: { band_structs: band_data, doses: dos_data, ...common_props } })
       } else if (detected_type === `band_structure`) {
         return mount(Bands, { target, props: { band_structs: val as BaseBandStructure, ...common_props, padding: { b: 60 } } })
       } else if (detected_type === `dos`) {
         return mount(Dos, { target, props: { doses: val as DosInput, ...common_props, padding: { b: 60 } } })
+      } else if (detected_type === `brillouin_zone`) {
+        const bz_data = val as Record<string, unknown>
+        const bz_props: Record<string, unknown> = { allow_file_drop: false, ...common_props }
+        if (bz_data.structure) bz_props.structure = prepare_structure(bz_data.structure)
+        return mount(BrillouinZone, { target, props: bz_props })
+      } else if (detected_type === `xrd`) {
+        return mount(XrdPlot, { target, props: { patterns: val as XrdPattern, allow_file_drop: false, ...common_props } })
+      } else if (detected_type === `table`) {
+        const table_data = prepare_table_data(val)
+        return mount(HeatmapTable, { target, props: { data: table_data, ...common_props } })
       }
     } catch (err) {
       console.error(`JsonBrowser: mount failed for ${detected_type}:`, err)
@@ -529,7 +571,7 @@
       root_label={filename}
       default_fold_level={1}
       onselect={handle_select}
-      show_header={true}
+      show_header
     />
   </aside>
 
