@@ -23,7 +23,7 @@
   import { create_cart_to_frac } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import type { AnyStructure, Crystal, Site } from '$lib/structure'
+  import type { AnyStructure, Crystal } from '$lib/structure'
   import { get_element_counts, get_pbc_image_sites } from '$lib/structure'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
@@ -410,6 +410,13 @@
     clearTimeout(toast_timer)
     toast_msg = msg
     toast_timer = setTimeout(() => (toast_msg = null), duration_ms)
+  }
+
+  // Normalize and validate element symbol (e.g. "fe" → "Fe", "Xx" → null)
+  function normalize_element(input: string): ElementSymbol | null {
+    const normalized = (input.charAt(0).toUpperCase() +
+      input.slice(1).toLowerCase()) as ElementSymbol
+    return ELEM_SYMBOLS.includes(normalized) ? normalized : null
   }
 
   function clear_selection() {
@@ -863,41 +870,46 @@
         }
         return
       }
-      if (
-        event.key.toLowerCase() === `a` && !event.ctrlKey && !event.metaKey &&
-        !event.altKey
-      ) {
+      const key = event.key.toLowerCase()
+      const plain = !event.ctrlKey && !event.metaKey && !event.altKey
+
+      if (key === `a` && plain) {
         // Enter add-atom sub-mode (plain 'a' only, not Ctrl+A/Cmd+A/Alt+A)
         event.preventDefault()
         add_atom_mode = !add_atom_mode
         return
       }
       // Change element of selected atoms
-      if (
-        event.key.toLowerCase() === `e` && !event.ctrlKey && !event.metaKey &&
-        !event.altKey && selected_sites.length > 0
-      ) {
+      if (key === `e` && plain && selected_sites.length > 0) {
         event.preventDefault()
         change_element_mode = !change_element_mode
         return
       }
       // Duplicate selected atoms at a small offset
       if (
-        (event.key.toLowerCase() === `d` && (event.ctrlKey || event.metaKey)) &&
+        key === `d` && (event.ctrlKey || event.metaKey) &&
         selected_sites.length > 0 && structure?.sites
       ) {
         event.preventDefault()
         is_internal_edit = true
         push_undo()
         const orig_indices = scene_to_structure_indices(selected_sites)
+        const cart_to_frac = get_cart_to_frac()
         const new_sites = structure.sites
           .filter((_, idx) => orig_indices.has(idx))
-          .map((site) => ({
-            ...site,
-            xyz: [site.xyz[0] + 0.5, site.xyz[1] + 0.5, site.xyz[2] + 0.5] as Vec3,
-            abc: [site.abc[0] + 0.05, site.abc[1] + 0.05, site.abc[2] + 0.05] as Vec3,
-            properties: { ...site.properties },
-          }))
+          .map((site) => {
+            const new_xyz: Vec3 = [
+              site.xyz[0] + 0.5,
+              site.xyz[1] + 0.5,
+              site.xyz[2] + 0.5,
+            ]
+            return {
+              ...site,
+              xyz: new_xyz,
+              abc: cart_to_frac?.(new_xyz) ?? new_xyz,
+              properties: { ...site.properties },
+            }
+          })
         const base_idx = structure.sites.length
         structure = {
           ...structure,
@@ -912,14 +924,9 @@
         return
       }
       // Toggle transform mode between translate and rotate
-      if (event.key.toLowerCase() === `t` && !event.ctrlKey && !event.metaKey) {
-        transform_mode = `translate`
-        show_toast(`Transform: translate`)
-        return
-      }
-      if (event.key.toLowerCase() === `r` && !event.ctrlKey && !event.metaKey) {
-        transform_mode = `rotate`
-        show_toast(`Transform: rotate`)
+      if ((key === `t` || key === `r`) && plain) {
+        transform_mode = key === `t` ? `translate` : `rotate`
+        show_toast(`Transform: ${transform_mode}`)
         return
       }
       // add_atom_mode Escape is already handled above (before is_input_focused guard)
@@ -939,10 +946,13 @@
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     else if (event.key === `i` && enable_info_pane) info_pane_open = !info_pane_open
     else if (event.key === `Escape`) {
-      // Prioritize closing panes over exiting fullscreen
+      // Prioritize closing panes, then exit edit modes, then exit fullscreen
       if (info_pane_open) info_pane_open = false
       else if (controls_open) controls_open = false
       else if (export_pane_open) export_pane_open = false
+      else if (measure_mode === `edit-bonds` || measure_mode === `edit-atoms`) {
+        measure_mode = `distance`
+      }
     }
   }
 
@@ -1011,9 +1021,8 @@
   // Change element symbol of selected atoms
   function handle_change_element(new_element: string) {
     if (!structure?.sites || selected_sites.length === 0) return
-    const normalized = (new_element.charAt(0).toUpperCase() +
-      new_element.slice(1).toLowerCase()) as ElementSymbol
-    if (!ELEM_SYMBOLS.includes(normalized)) return
+    const elem = normalize_element(new_element)
+    if (!elem) return
     is_internal_edit = true
     push_undo()
     const orig_indices = scene_to_structure_indices(selected_sites)
@@ -1023,8 +1032,8 @@
         if (!orig_indices.has(idx)) return site
         return {
           ...site,
-          species: [{ element: normalized, occu: 1, oxidation_state: 0 }],
-          label: normalized,
+          species: [{ element: elem, occu: 1, oxidation_state: 0 }],
+          label: elem,
         }
       }),
     }
@@ -1033,36 +1042,30 @@
     show_toast(
       `Changed ${orig_indices.size} site${
         orig_indices.size > 1 ? `s` : ``
-      } to ${normalized}`,
+      } to ${elem}`,
     )
   }
 
   // Handle add-atom from StructureScene click-to-place
   function handle_add_atom(xyz: Vec3, element: ElementSymbol) {
     if (!structure) return
-    // Validate element symbol — capitalize first letter to be forgiving of case
-    const normalized = (element.charAt(0).toUpperCase() +
-      element.slice(1).toLowerCase()) as ElementSymbol
-    if (!ELEM_SYMBOLS.includes(normalized)) {
-      console.warn(`Invalid element symbol "${element}", ignoring add-atom`)
-      return
+    const elem = normalize_element(element)
+    if (!elem) {
+      return console.warn(`Invalid element symbol "${element}", ignoring add-atom`)
     }
     is_internal_edit = true
     push_undo()
-
-    const new_site: Site = {
-      species: [{ element: normalized, occu: 1, oxidation_state: 0 }],
-      xyz,
-      abc: get_cart_to_frac()?.(xyz) ?? xyz,
-      label: normalized,
-      properties: {},
-    }
-
     structure = {
       ...structure,
-      sites: [...structure.sites, new_site],
+      sites: [...structure.sites, {
+        species: [{ element: elem, occu: 1, oxidation_state: 0 }],
+        xyz,
+        abc: get_cart_to_frac()?.(xyz) ?? xyz,
+        label: elem,
+        properties: {},
+      }],
     }
-    show_toast(`Added ${normalized} at (${xyz.map((c) => c.toFixed(2)).join(`, `)})`)
+    show_toast(`Added ${elem} at (${xyz.map((c) => c.toFixed(2)).join(`, `)})`)
   }
 
   // Only set background override when background_color is explicitly provided

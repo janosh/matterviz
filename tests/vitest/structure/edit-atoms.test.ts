@@ -419,6 +419,83 @@ describe(`edit-bonds: toggle_bond`, () => {
   })
 })
 
+// === Bond Neighbor Summary ===
+// Mirrors the bond tooltip logic from StructureScene.svelte
+
+function get_bond_neighbors(
+  hovered_idx: number,
+  bond_pairs: BondPair[],
+  sites: { species: { element: string }[] }[],
+): string[] {
+  return bond_pairs
+    .filter((b) => b.site_idx_1 === hovered_idx || b.site_idx_2 === hovered_idx)
+    .map((b) => {
+      const neighbor_idx = b.site_idx_1 === hovered_idx ? b.site_idx_2 : b.site_idx_1
+      return sites[neighbor_idx]?.species[0]?.element ?? `?`
+    })
+}
+
+function format_bond_summary(neighbors: string[]): string {
+  if (neighbors.length === 0) return ``
+  const counts: Record<string, number> = {}
+  for (const elem of neighbors) counts[elem] = (counts[elem] ?? 0) + 1
+  const parts = Object.entries(counts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([elem, count]) => `${elem}: ${count}`)
+  return ` (${parts.join(`, `)})`
+}
+
+describe(`bond tooltip: neighbor summary`, () => {
+  const sites = [
+    { species: [{ element: `Fe` }] },
+    { species: [{ element: `O` }] },
+    { species: [{ element: `O` }] },
+    { species: [{ element: `P` }] },
+    { species: [{ element: `O` }] },
+  ]
+
+  const bonds: BondPair[] = [
+    { site_idx_1: 0, site_idx_2: 1 },
+    { site_idx_1: 0, site_idx_2: 2 },
+    { site_idx_1: 0, site_idx_2: 3 },
+    { site_idx_1: 0, site_idx_2: 4 },
+    { site_idx_1: 1, site_idx_2: 3 },
+  ]
+
+  test(`counts all bonds for a site`, () => {
+    const neighbors = get_bond_neighbors(0, bonds, sites)
+    expect(neighbors).toHaveLength(4)
+    expect(neighbors).toEqual([`O`, `O`, `P`, `O`])
+  })
+
+  test(`counts bonds for site with fewer connections`, () => {
+    expect(get_bond_neighbors(1, bonds, sites)).toEqual([`Fe`, `P`])
+  })
+
+  test(`returns empty for site with no bonds`, () => {
+    expect(get_bond_neighbors(99, bonds, sites)).toEqual([])
+  })
+
+  test(`formats summary with species breakdown sorted alphabetically`, () => {
+    const neighbors = get_bond_neighbors(0, bonds, sites)
+    expect(format_bond_summary(neighbors)).toBe(` (O: 3, P: 1)`)
+  })
+
+  test(`formats summary for single species`, () => {
+    expect(format_bond_summary([`O`, `O`])).toBe(` (O: 2)`)
+  })
+
+  test(`returns empty string for no neighbors`, () => {
+    expect(format_bond_summary([])).toBe(``)
+  })
+
+  test(`handles missing site gracefully`, () => {
+    const sparse_bonds: BondPair[] = [{ site_idx_1: 0, site_idx_2: 10 }]
+    const neighbors = get_bond_neighbors(0, sparse_bonds, sites)
+    expect(neighbors).toEqual([`?`])
+  })
+})
+
 // === Change Element Logic ===
 // Mirrors handle_change_element from Structure.svelte
 

@@ -389,7 +389,6 @@
     })
   })
 
-  // Sync derived cursor to the bindable prop
   $effect(() => {
     cursor = canvas_cursor
   })
@@ -828,14 +827,14 @@
         }
           {@const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom}
           <extras.InstancedMesh
-            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom ? `img` : `base`}-{atoms.length}"
+            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom ? `img` : `base`}-{atoms.length}-{edit_mode_image}"
             range={atoms.length}
             frustumCulled={false}
           >
             <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
             <T.MeshStandardMaterial
               {color}
-              opacity={edit_mode_image ? 0.35 : 1}
+              opacity={edit_mode_image ? 0.5 : 1}
               transparent={edit_mode_image}
             />
             {#each atoms as atom (atom.site_idx)}
@@ -867,7 +866,7 @@
           (atom.site_idx + atom.element + atom.occupancy)
         }
           {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
-          {@const ghost_opacity = partial_edit_image ? 0.35 : 1}
+          {@const ghost_opacity = partial_edit_image ? 0.5 : 1}
           <T.Group
             position={atom.position}
             scale={atom.radius}
@@ -974,12 +973,8 @@
               selected_sites = []
               hovered_bond_key = null
             }}
-            onpointerenter={() => {
-              hovered_bond_key = bond_key
-            }}
-            onpointerleave={() => {
-              if (hovered_bond_key === bond_key) hovered_bond_key = null
-            }}
+            onpointerenter={() => (hovered_bond_key = bond_key)}
+            onpointerleave={() => (hovered_bond_key = null)}
           >
             <T.CylinderGeometry args={[bond_thickness * 3, bond_thickness * 3, 1, 6]} />
             <T.MeshBasicMaterial
@@ -1068,6 +1063,30 @@
       {#if hovered_site && !camera_is_moving && active_tooltip === `atom`}
         {@const abc = hovered_site.abc.map((x) => format_num(x, float_fmt)).join(`, `)}
         {@const xyz = hovered_site.xyz.map((x) => format_num(x, float_fmt)).join(`, `)}
+        {@const bond_neighbors = (() => {
+          if (hovered_idx == null || !structure?.sites) return []
+          return filtered_bond_pairs
+            .filter((b) =>
+              b.site_idx_1 === hovered_idx || b.site_idx_2 === hovered_idx
+            )
+            .map((b) => {
+              const neighbor_idx = b.site_idx_1 === hovered_idx
+                ? b.site_idx_2
+                : b.site_idx_1
+              return structure.sites[neighbor_idx]?.species[0]?.element ?? `?`
+            })
+        })()}
+        {@const bond_summary = (() => {
+          if (bond_neighbors.length === 0) return ``
+          const counts: Record<string, number> = {}
+          for (const elem of bond_neighbors) {
+            counts[elem] = (counts[elem] ?? 0) + 1
+          }
+          const parts = Object.entries(counts)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([elem, count]) => `${elem}: ${count}`)
+          return ` (${parts.join(`, `)})`
+        })()}
         <CanvasTooltip position={hovered_site.xyz}>
           <!-- Element symbols with occupancies for disordered sites -->
           <div class="elements">
@@ -1095,6 +1114,9 @@
           </div>
           <div class="coordinates fractional">abc: ({abc})</div>
           <div class="coordinates cartesian">xyz: ({xyz}) Å</div>
+          {#if bond_neighbors.length > 0}
+            <div class="coordinates">Bonds: {bond_neighbors.length}{bond_summary}</div>
+          {/if}
         </CanvasTooltip>
       {/if}
 
