@@ -25,13 +25,14 @@
     get_property_colors,
   } from '$lib/structure/atom-properties'
   import * as measure from '$lib/structure/measure'
+  import type { MeasureMode } from '$lib/structure/Structure.svelte'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import type { Camera, Scene } from 'three'
+  import type { Camera, Mesh, Scene } from 'three'
   import Bond from './Bond.svelte'
   import type { BondingStrategy } from './bonding'
   import { BONDING_STRATEGIES, compute_bond_transform } from './bonding'
@@ -41,6 +42,7 @@
     element: string
     radius: number
     color: string
+    is_image_atom: boolean
     atoms: (typeof atom_data)[number][]
   }
 
@@ -130,6 +132,13 @@
       scale_type: DEFAULTS.structure.atom_color_scale_type,
     },
     sym_data = null,
+    // Edit-atoms mode callbacks
+    on_sites_moved,
+    on_operation_start,
+    on_add_atom,
+    add_atom_mode = $bindable(false),
+    add_element = $bindable(`C`),
+    cursor = $bindable(`default`),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
   }: {
@@ -180,7 +189,7 @@
     width?: number // Viewer dimensions for responsive zoom
     height?: number
     // measurement props
-    measure_mode?: `distance` | `angle` | `edit-bonds`
+    measure_mode?: MeasureMode
     selected_sites?: number[]
     measured_sites?: number[]
     added_bonds?: [number, number][]
@@ -202,6 +211,13 @@
     site_radius_overrides?: Map<number, number> | SvelteMap<number, number> // Per-site absolute radius in Angstroms
     atom_color_config?: Partial<AtomColorConfig> // Atom coloring configuration
     sym_data?: MoyoDataset | null // Symmetry data for Wyckoff coloring
+    // Edit-atoms mode callbacks and state
+    on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
+    on_operation_start?: () => void
+    on_add_atom?: (xyz: Vec3, element: ElementSymbol) => void
+    add_atom_mode?: boolean // whether user is in click-to-place add-atom sub-mode
+    add_element?: ElementSymbol // element to add when clicking in add-atom mode
+    cursor?: string // cursor style for the 3D canvas
     volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
   } = $props()
@@ -233,13 +249,73 @@
 
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
+  let hovered_bond_key = $state<string | null>(null)
+
+  // Cursor style for the canvas, derived from mode and hover state
+  let canvas_cursor = $derived.by(() => {
+    if (measure_mode === `edit-atoms` && add_atom_mode) return `crosshair`
+    if (hovered_idx != null) {
+      if (measure_mode === `edit-atoms`) {
+        const site = structure?.sites?.[hovered_idx]
+        if (site?.properties?.orig_site_idx != null) return `not-allowed`
+        return `pointer`
+      }
+      return `pointer`
+    }
+    return `default`
+  })
+
+  // === Edit-atoms mode state ===
+  let transform_object = $state<Mesh | undefined>(undefined)
+  // Plain variable — only used imperatively in TransformControls drag handlers
+  let drag_start_centroid: Vec3 | null = null
 
   function get_bond_key(idx1: number, idx2: number): string {
     return idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`
   }
 
+  // Toggle a bond between two atoms: cycles through add → remove → restore states
+  function toggle_bond(site_1: number, site_2: number) {
+    const idx_i = Math.min(site_1, site_2)
+    const idx_j = Math.max(site_1, site_2)
+    // added/removed pairs are stored sorted, so direct comparison works
+    const match = ([a, b]: [number, number]) => a === idx_i && b === idx_j
+
+    const added_idx = added_bonds.findIndex(match)
+    if (added_idx >= 0) {
+      added_bonds = added_bonds.toSpliced(added_idx, 1)
+      return
+    }
+
+    const removed_idx = removed_bonds.findIndex(match)
+    if (removed_idx >= 0) {
+      removed_bonds = removed_bonds.toSpliced(removed_idx, 1)
+      return
+    }
+
+    // bond_pairs may not be sorted, so use get_bond_key for comparison
+    const key = `${idx_i}-${idx_j}`
+    if (
+      bond_pairs.some((bond) =>
+        get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
+      )
+    ) {
+      removed_bonds = [...removed_bonds, [idx_i, idx_j]]
+    } else {
+      added_bonds = [...added_bonds, [idx_i, idx_j]]
+    }
+  }
+
+  // Deduplicate clicks: when a highlight sphere and the underlying atom both
+  // intercept the same native click, only the first intersection should fire.
+  // All threlte intersection events from one click share the same nativeEvent ref.
+  let last_native_event: Event | null = null
+
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
+    const native = (evt as unknown as { nativeEvent?: Event })?.nativeEvent
+    if (native && native === last_native_event) return
+    if (native) last_native_event = native
 
     if (measure_mode === `edit-bonds`) {
       // In edit-bonds mode, select atoms to add/remove bonds between them
@@ -252,42 +328,34 @@
 
       // When two atoms are selected, toggle the bond between them
       if (measured_sites.length === 2) {
-        const [idx_i, idx_j] = measured_sites.sort((a, b) => a - b)
-        const key = get_bond_key(idx_i, idx_j)
-
-        // Check if bond exists in calculated bonds (and not removed)
-        const calculated_exists = bond_pairs.some((bond) =>
-          get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
-        )
-        const is_removed = removed_bonds.some((pair) =>
-          get_bond_key(pair[0], pair[1]) === key
-        )
-        const is_added = added_bonds.some((pair) =>
-          get_bond_key(pair[0], pair[1]) === key
-        )
-
-        if (is_added) {
-          // Toggle off added bond
-          added_bonds = added_bonds.filter((pair) =>
-            get_bond_key(pair[0], pair[1]) !== key
-          )
-        } else if (calculated_exists && !is_removed) {
-          // Remove calculated bond
-          removed_bonds = [...removed_bonds, [idx_i, idx_j]]
-        } else if (is_removed) {
-          // Restore calculated bond
-          removed_bonds = removed_bonds.filter((pair) =>
-            get_bond_key(pair[0], pair[1]) !== key
-          )
-        } else {
-          // Add new bond
-          added_bonds = [...added_bonds, [idx_i, idx_j]]
-        }
-
-        // Reset selection after toggling bond
+        toggle_bond(measured_sites[0], measured_sites[1])
         measured_sites = []
         selected_sites = []
       }
+      return
+    }
+
+    if (measure_mode === `edit-atoms`) {
+      // Block image atoms (detected by orig_site_idx property from PBC)
+      const site = structure?.sites?.[site_index]
+      if (site?.properties?.orig_site_idx != null) return
+
+      const is_selected = selected_sites.includes(site_index)
+      const is_shift = evt instanceof MouseEvent && evt.shiftKey
+
+      // In edit-atoms mode, selected_sites and measured_sites always stay in sync
+      let new_sites: number[]
+      if (is_shift) {
+        // Multi-select: toggle this site in/out of selection
+        new_sites = is_selected
+          ? selected_sites.filter((idx) => idx !== site_index)
+          : [...selected_sites, site_index]
+      } else {
+        // Single-select: replace selection (or deselect if already selected)
+        new_sites = is_selected ? [] : [site_index]
+      }
+      selected_sites = new_sites
+      measured_sites = new_sites
       return
     }
 
@@ -317,6 +385,10 @@
     untrack(() => {
       measured_sites = measured_sites.filter((idx) => idx >= 0 && idx < count)
     })
+  })
+
+  $effect(() => {
+    cursor = canvas_cursor
   })
 
   extras.interactivity()
@@ -422,6 +494,9 @@
       // Otherwise, each species gets its own element color (important for disordered sites)
       const site_property_color = property_colors?.colors[orig_idx]
 
+      // Detect image atoms by presence of orig_site_idx property (set by get_pbc_image_sites)
+      const is_image_atom = site.properties?.orig_site_idx != null
+
       let start_angle = 0
       return site.species
         .filter(({ element }) => !hidden_elements.has(element))
@@ -435,6 +510,7 @@
           has_partial_occupancy: occu < 1,
           start_phi: 2 * Math.PI * start_angle,
           end_phi: 2 * Math.PI * (start_angle += occu),
+          is_image_atom,
         }))
     })
   })
@@ -572,10 +648,13 @@
         .filter((atom) => !atom.has_partial_occupancy)
         .reduce(
           (groups, atom) => {
-            const { element, radius, color } = atom
-            const key = `${element}-${format_num(radius, `.3~`)}-${color}`
+            const { element, radius, color, is_image_atom } = atom
+            // Separate image atoms into their own groups for distinct styling in edit-atoms mode
+            const key = `${element}-${format_num(radius, `.3~`)}-${color}-${
+              is_image_atom ? `img` : `base`
+            }`
             const bucket = groups[key] ||
-              (groups[key] = { element, radius, color, atoms: [] })
+              (groups[key] = { element, radius, color, is_image_atom, atoms: [] })
             bucket.atoms.push(atom)
             return groups
           },
@@ -741,31 +820,38 @@
       {#if show_atoms}
         <!-- Instanced rendering for full occupancy atoms -->
         {#each instanced_atom_groups as
-          { element, radius, color, atoms }
-          (`${element}-${radius}-${color}`)
+          { element, radius, color, is_image_atom, atoms }
+          (`${element}-${radius}-${color}-${is_image_atom ? `img` : `base`}`)
         }
+          {@const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom}
           <extras.InstancedMesh
-            key="{element}-{format_num(radius, `.3~`)}-{color}-{atoms.length}"
+            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom ? `img` : `base`}-{atoms.length}-{edit_mode_image}"
             range={atoms.length}
             frustumCulled={false}
           >
             <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
-            <T.MeshStandardMaterial {color} />
+            <T.MeshStandardMaterial
+              {color}
+              opacity={edit_mode_image ? 0.5 : 1}
+              transparent={edit_mode_image}
+            />
             {#each atoms as atom (atom.site_idx)}
               <extras.Instance
                 position={atom.position}
                 scale={atom.radius}
                 onpointerenter={() => {
+                  if (edit_mode_image) return
                   hovered_idx = atom.site_idx
                   active_tooltip = `atom`
                 }}
                 onpointerleave={() => {
+                  if (edit_mode_image) return
                   hovered_idx = null
                   active_tooltip = null
                 }}
                 onclick={(event: MouseEvent) => {
-                  const site_idx = atom.site_idx
-                  toggle_selection(site_idx, event)
+                  if (edit_mode_image) return
+                  toggle_selection(atom.site_idx, event)
                 }}
               />
             {/each}
@@ -777,20 +863,24 @@
           atom
           (atom.site_idx + atom.element + atom.occupancy)
         }
+          {@const partial_edit_image = measure_mode === `edit-atoms` && atom.is_image_atom}
+          {@const ghost_opacity = partial_edit_image ? 0.5 : 1}
           <T.Group
             position={atom.position}
             scale={atom.radius}
             onpointerenter={() => {
+              if (partial_edit_image) return
               hovered_idx = atom.site_idx
               active_tooltip = `atom`
             }}
             onpointerleave={() => {
+              if (partial_edit_image) return
               hovered_idx = null
               active_tooltip = null
             }}
             onclick={(event: MouseEvent) => {
-              const site_idx = atom.site_idx
-              toggle_selection(site_idx, event)
+              if (partial_edit_image) return
+              toggle_selection(atom.site_idx, event)
             }}
           >
             <T.Mesh>
@@ -803,17 +893,31 @@
                   2 * Math.PI * atom.occupancy,
                 ]}
               />
-              <T.MeshStandardMaterial color={atom.color} />
+              <T.MeshStandardMaterial
+                color={atom.color}
+                opacity={ghost_opacity}
+                transparent={partial_edit_image}
+              />
             </T.Mesh>
 
             {#if atom.has_partial_occupancy}
               <T.Mesh rotation={[0, atom.start_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
-                <T.MeshStandardMaterial color={atom.color} side={2} />
+                <T.MeshStandardMaterial
+                  color={atom.color}
+                  side={2}
+                  opacity={ghost_opacity}
+                  transparent={partial_edit_image}
+                />
               </T.Mesh>
               <T.Mesh rotation={[0, atom.end_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
-                <T.MeshStandardMaterial color={atom.color} side={2} />
+                <T.MeshStandardMaterial
+                  color={atom.color}
+                  side={2}
+                  opacity={ghost_opacity}
+                  transparent={partial_edit_image}
+                />
               </T.Mesh>
             {/if}
           </T.Group>
@@ -843,6 +947,41 @@
       {#if instanced_bond_groups.length > 0}
         {#each instanced_bond_groups as group (group.thickness + group.instances.length)}
           {@render bond_instanced_mesh_snippet(group)}
+        {/each}
+      {/if}
+
+      <!-- Clickable bond hit-test cylinders in edit-bonds mode -->
+      {#if measure_mode === `edit-bonds` && filtered_bond_pairs.length > 0}
+        {#each filtered_bond_pairs as
+          bond
+          (`bond-hit-${bond.site_idx_1}-${bond.site_idx_2}`)
+        }
+          {@const bond_key = get_bond_key(bond.site_idx_1, bond.site_idx_2)}
+          {@const is_hovered = hovered_bond_key === bond_key}
+          <T.Mesh
+            matrixAutoUpdate={false}
+            oncreate={(ref) => {
+              ref.matrix.fromArray(bond.transform_matrix)
+              ref.matrixWorldNeedsUpdate = true
+            }}
+            onclick={(event: MouseEvent) => {
+              event.stopPropagation()
+              toggle_bond(bond.site_idx_1, bond.site_idx_2)
+              measured_sites = []
+              selected_sites = []
+              hovered_bond_key = null
+            }}
+            onpointerenter={() => (hovered_bond_key = bond_key)}
+            onpointerleave={() => (hovered_bond_key = null)}
+          >
+            <T.CylinderGeometry args={[bond_thickness * 3, bond_thickness * 3, 1, 6]} />
+            <T.MeshBasicMaterial
+              transparent
+              opacity={is_hovered ? 0.25 : 0}
+              color={is_hovered ? `#ff4444` : `white`}
+              depthWrite={false}
+            />
+          </T.Mesh>
         {/each}
       {/if}
 
@@ -902,8 +1041,9 @@
         {/if}
       {/each}
 
-      <!-- selection order labels (1, 2, 3, ...) for measured sites -->
-      {#if structure?.sites && (measured_sites?.length ?? 0) > 0}
+      <!-- selection order labels (1, 2, 3, ...) for measured sites (hidden in edit-atoms mode) -->
+      {#if structure?.sites && (measured_sites?.length ?? 0) > 0 &&
+          measure_mode !== `edit-atoms`}
         {#each measured_sites as site_index, loop_idx (site_index)}
           {@const site = structure.sites[site_index]}
           {#if site}
@@ -921,6 +1061,30 @@
       {#if hovered_site && !camera_is_moving && active_tooltip === `atom`}
         {@const abc = hovered_site.abc.map((x) => format_num(x, float_fmt)).join(`, `)}
         {@const xyz = hovered_site.xyz.map((x) => format_num(x, float_fmt)).join(`, `)}
+        {@const bond_neighbors = (() => {
+          if (hovered_idx == null || !structure?.sites) return []
+          return filtered_bond_pairs
+            .filter((b) =>
+              b.site_idx_1 === hovered_idx || b.site_idx_2 === hovered_idx
+            )
+            .map((b) => {
+              const neighbor_idx = b.site_idx_1 === hovered_idx
+                ? b.site_idx_2
+                : b.site_idx_1
+              return structure.sites[neighbor_idx]?.species[0]?.element ?? `?`
+            })
+        })()}
+        {@const bond_summary = (() => {
+          if (bond_neighbors.length === 0) return ``
+          const counts: Record<string, number> = {}
+          for (const elem of bond_neighbors) {
+            counts[elem] = (counts[elem] ?? 0) + 1
+          }
+          const parts = Object.entries(counts)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([elem, count]) => `${elem}: ${count}`)
+          return ` (${parts.join(`, `)})`
+        })()}
         <CanvasTooltip position={hovered_site.xyz}>
           <!-- Element symbols with occupancies for disordered sites -->
           <div class="elements">
@@ -948,11 +1112,89 @@
           </div>
           <div class="coordinates fractional">abc: ({abc})</div>
           <div class="coordinates cartesian">xyz: ({xyz}) Å</div>
+          {#if bond_neighbors.length > 0}
+            <div class="coordinates">Bonds: {bond_neighbors.length}{bond_summary}</div>
+          {/if}
         </CanvasTooltip>
       {/if}
 
       {#if visual_lattice}
         <Lattice matrix={visual_lattice.matrix} {...lattice_props} />
+      {/if}
+
+      <!-- TransformControls for editing atoms in edit-atoms mode -->
+      {#if measure_mode === `edit-atoms` && selected_sites.length > 0 &&
+          structure?.sites}
+        {@const selected_atoms = selected_sites
+          .map((idx) => structure?.sites?.[idx])
+          .filter(Boolean) as Site[]}
+        {#if selected_atoms.length > 0}
+          {@const avg = (dim: number) =>
+          selected_atoms.reduce((sum, atom) => sum + atom.xyz[dim], 0) /
+          selected_atoms.length}
+          {@const centroid = [avg(0), avg(1), avg(2)] as Vec3}
+          <!-- Invisible mesh at centroid for TransformControls to manipulate -->
+          <T.Mesh
+            position={centroid}
+            bind:ref={transform_object}
+          >
+            <T.SphereGeometry args={[0.01, 4, 4]} />
+            <T.MeshBasicMaterial transparent opacity={0} />
+          </T.Mesh>
+          <extras.TransformControls
+            object={transform_object}
+            translationSnap={0.1}
+            size={1.2}
+            space="world"
+            onobjectChange={() => {
+              if (!transform_object?.position || !drag_start_centroid) return
+              const { x: tx, y: ty, z: tz } = transform_object.position
+              const delta: Vec3 = [
+                tx - drag_start_centroid[0],
+                ty - drag_start_centroid[1],
+                tz - drag_start_centroid[2],
+              ]
+              // Update reference point so deltas are incremental, not cumulative.
+              // Without this, each frame compounds: sites already moved by previous
+              // delta get the full cumulative delta re-applied.
+              drag_start_centroid = [tx, ty, tz]
+              on_sites_moved?.(selected_sites, delta)
+            }}
+            onmouseDown={() => {
+              drag_start_centroid = [...centroid] as Vec3
+              on_operation_start?.()
+            }}
+            onmouseUp={() => {
+              drag_start_centroid = null
+            }}
+          />
+        {/if}
+      {/if}
+
+      <!-- Invisible plane for click-to-place atom in add-atom mode -->
+      <!-- Uses onBeforeRender to orient normal toward camera so raycasts always hit -->
+      {#if measure_mode === `edit-atoms` && add_atom_mode}
+        {@const center = rotation_target ?? [0, 0, 0]}
+        <T.Mesh
+          position={center}
+          onBeforeRender={(mesh: Mesh) => {
+            if (camera) {
+              mesh.lookAt(camera.position)
+            }
+          }}
+          onclick={(event: { point: { x: number; y: number; z: number } }) => {
+            const { x, y, z } = event.point
+            on_add_atom?.([x, y, z] as Vec3, add_element as ElementSymbol)
+          }}
+        >
+          <T.PlaneGeometry
+            args={[
+              Math.max(200, structure_size * 4),
+              Math.max(200, structure_size * 4),
+            ]}
+          />
+          <T.MeshBasicMaterial transparent opacity={0} side={2} depthWrite={false} />
+        </T.Mesh>
       {/if}
 
       <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->

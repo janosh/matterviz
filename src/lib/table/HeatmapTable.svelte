@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { luminance, watch_dark_mode } from '$lib/colors'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import type {
@@ -49,6 +50,7 @@
     onsorterror = undefined,
     loading = $bindable(false),
     sort_data = true,
+    heatmap_opacity = $bindable(1),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     data: RowData[]
@@ -87,7 +89,26 @@
     // Whether to sort data client-side. Set to false when parent handles sorting externally.
     // When onsort is provided, sort_data behavior is implicitly false.
     sort_data?: boolean
+    // Heatmap cell background opacity (0–1). Controls both the visual fade via CSS
+    // color-mix() and the JS text contrast correction. Default 1 (fully opaque).
+    heatmap_opacity?: number
   } = $props()
+
+  let container_el = $state<HTMLDivElement>()
+
+  // Read --page-bg from computed style for text contrast calculation.
+  // Recalculates on mount and when the theme changes (dark/light mode toggle).
+  let page_bg_lum = $state(luminance(`white`))
+  $effect(() => {
+    if (!container_el) return
+    const read_page_bg = () => {
+      const page_bg = getComputedStyle(container_el!).getPropertyValue(`--page-bg`)
+        .trim()
+      page_bg_lum = luminance(page_bg || `white`)
+    }
+    read_page_bg()
+    return watch_dark_mode(read_page_bg)
+  })
 
   // Detect HTML to prevent setting raw HTML as data-sort-value. Simple string matching
   // suffices since false positives just skip setting the attr (sorting still works by inner data-sort-value).
@@ -563,13 +584,22 @@
     const numeric_vals = parsed_column_values.get(col_id) ?? []
 
     // calc_cell_color handles null/NaN filtering internally
-    return calc_cell_color(
+    const color = calc_cell_color(
       numeric_val,
       numeric_vals,
       col.better,
       col.color_scale || `interpolateViridis`,
       col.scale_type || `linear`,
     )
+
+    // Recompute text contrast against effective bg (cell bg blended with page bg by opacity).
+    // Approximation: blend luminances directly; accurate enough for black/white text choice.
+    if (color.bg && heatmap_opacity < 1) {
+      const blended_lum = luminance(color.bg) * heatmap_opacity +
+        page_bg_lum * (1 - heatmap_opacity)
+      color.text = blended_lum > 0.7 ? `black` : `white`
+    }
+    return color
   }
 
   let visible_columns = $derived(
@@ -727,7 +757,9 @@
 <div
   {@attach tooltip()}
   {...rest}
+  bind:this={container_el}
   class="table-container {rest.class ?? ``}"
+  style:--heatmap-opacity="{heatmap_opacity * 100}%"
   onmouseleave={() => [show_column_dropdown, show_export_dropdown] = [false, false]}
 >
   <!-- Floating control buttons -->
@@ -989,7 +1021,7 @@
                 data-col={col.label}
                 data-sort-value={is_html_str(val) ? null : val}
                 class:sticky-col={col.sticky}
-                style:background-color={color.bg}
+                style:--cell-bg={color.bg}
                 style:color={color.text}
                 style={`${col.cell_style ?? col.style ?? ``}${
                   col_width
@@ -1080,14 +1112,17 @@
     font-size: var(--heatmap-font-size, 0.9em);
     width: fit-content;
     max-width: 100%;
+    max-height: inherit;
     margin: 0 auto;
     position: relative;
+    display: flex;
+    flex-direction: column;
   }
   .table-scroll {
     position: relative;
+    overflow: auto;
   }
   .table-scroll.has-scroll {
-    overflow: auto;
     border: 1px solid var(--border, #333);
   }
   table {
@@ -1102,6 +1137,13 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    /* --cell-bg is set inline per-cell by calc_color(); --heatmap-opacity is set
+       on the container from the heatmap_opacity prop to fade cell backgrounds */
+    background-color: color-mix(
+      in srgb,
+      var(--cell-bg, transparent) var(--heatmap-opacity, 100%),
+      transparent
+    );
   }
   th {
     background: var(--heatmap-header-bg, var(--page-bg, Canvas));
