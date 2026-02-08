@@ -39,6 +39,9 @@ export interface IsosurfaceSettings {
 // Compute min/max/abs_max/mean of a 3D grid.
 // Prefer using the precomputed `data_range` field on VolumetricData when available.
 export function grid_data_range(grid: number[][][]): DataRange {
+  if (!grid.length || !grid[0]?.length || !grid[0][0]?.length) {
+    return { min: 0, max: 0, abs_max: 0, mean: 0 }
+  }
   let min_val = Infinity
   let max_val = -Infinity
   let sum = 0

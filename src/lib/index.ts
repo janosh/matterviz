@@ -24,7 +24,12 @@ export {
   parse_cube,
   parse_volumetric_file,
 } from './isosurface'
-export type { DataRange, IsosurfaceSettings, VolumetricData, VolumetricFileData } from './isosurface'
+export type {
+  DataRange,
+  IsosurfaceSettings,
+  VolumetricData,
+  VolumetricFileData,
+} from './isosurface'
 export * from './labels'
 export * from './layout'
 export * from './math'

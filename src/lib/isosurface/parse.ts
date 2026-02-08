@@ -319,7 +319,8 @@ export function parse_cube(content: string): VolumetricFileData | null {
     Math.abs(voxel_lines[2][0]),
   ]
 
-  // If all N values are positive, units are Bohr
+  // Per Gaussian .cube convention, the sign of the first axis N determines units
+  // for all axes (mixed signs are non-standard and unsupported)
   const is_bohr = voxel_lines[0][0] > 0
   const unit_scale = is_bohr ? BOHR_TO_ANGSTROM : 1.0
 

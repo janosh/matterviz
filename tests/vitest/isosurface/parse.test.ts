@@ -219,7 +219,11 @@ describe(`parse_chgcar`, () => {
 
   test(`non-orthogonal lattice produces correct lattice params`, () => {
     const result = parse_chgcar(make_chgcar({
-      lattice: [`2.5000  0.0000  0.0000`, `1.2500  2.1651  0.0000`, `0.0000  0.0000  6.6600`],
+      lattice: [
+        `2.5000  0.0000  0.0000`,
+        `1.2500  2.1651  0.0000`,
+        `0.0000  0.0000  6.6600`,
+      ],
       elements: `B`,
       counts: `1`,
       positions: [`0.0  0.0  0.0`],
@@ -378,8 +382,16 @@ describe(`parse_cube`, () => {
   })
 
   test.each([
-    { origin: [0, 0, 0] as [number, number, number], pbc: true, label: `periodic (origin at 0)` },
-    { origin: [-5, -5, -5] as [number, number, number], pbc: false, label: `molecular (non-zero origin)` },
+    {
+      origin: [0, 0, 0] as [number, number, number],
+      pbc: true,
+      label: `periodic (origin at 0)`,
+    },
+    {
+      origin: [-5, -5, -5] as [number, number, number],
+      pbc: false,
+      label: `molecular (non-zero origin)`,
+    },
   ])(`$label sets pbc=$pbc`, ({ origin, pbc }) => {
     const result = parse_cube(make_cube({ origin }))
     expect(result?.structure.lattice?.pbc).toEqual([pbc, pbc, pbc])

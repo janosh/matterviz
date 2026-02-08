@@ -24,17 +24,43 @@ describe(`grid_data_range`, () => {
       mean: 0.25,
       label: `mixed pos/neg`,
     },
-    { grid: [[[-10, 1]]], min: -10, max: 1, abs_max: 10, mean: -4.5, label: `abs_max driven by min` },
-    { grid: [[[0, 0], [0, 0]]], min: 0, max: 0, abs_max: 0, mean: 0, label: `uniform zero` },
+    {
+      grid: [[[-10, 1]]],
+      min: -10,
+      max: 1,
+      abs_max: 10,
+      mean: -4.5,
+      label: `abs_max driven by min`,
+    },
+    {
+      grid: [[[0, 0], [0, 0]]],
+      min: 0,
+      max: 0,
+      abs_max: 0,
+      mean: 0,
+      label: `uniform zero`,
+    },
     { grid: [[[42]]], min: 42, max: 42, abs_max: 42, mean: 42, label: `single element` },
-    { grid: [[[-3.5]]], min: -3.5, max: -3.5, abs_max: 3.5, mean: -3.5, label: `single negative` },
-  ])(`$label: min=$min max=$max abs_max=$abs_max mean=$mean`, ({ grid, min, max, abs_max, mean }) => {
-    const range = grid_data_range(grid)
-    expect(range.min).toBe(min)
-    expect(range.max).toBe(max)
-    expect(range.abs_max).toBe(abs_max)
-    expect(range.mean).toBeCloseTo(mean)
-  })
+    {
+      grid: [[[-3.5]]],
+      min: -3.5,
+      max: -3.5,
+      abs_max: 3.5,
+      mean: -3.5,
+      label: `single negative`,
+    },
+    { grid: [], min: 0, max: 0, abs_max: 0, mean: 0, label: `empty grid` },
+    { grid: [[]], min: 0, max: 0, abs_max: 0, mean: 0, label: `empty planes` },
+  ])(
+    `$label: min=$min max=$max abs_max=$abs_max mean=$mean`,
+    ({ grid, min, max, abs_max, mean }) => {
+      const range = grid_data_range(grid)
+      expect(range.min).toBe(min)
+      expect(range.max).toBe(max)
+      expect(range.abs_max).toBe(abs_max)
+      expect(range.mean).toBeCloseTo(mean)
+    },
+  )
 })
 
 describe(`DEFAULT_ISOSURFACE_SETTINGS`, () => {
@@ -55,12 +81,20 @@ describe(`auto_isosurface_settings`, () => {
     { min: 0, abs_max: 10, show_neg: false, label: `positive-only` },
     { min: -5, abs_max: 10, show_neg: true, label: `significant negatives` },
     { min: -5, abs_max: 5, show_neg: true, label: `symmetric ±` },
-    { min: -0.005, abs_max: 1, show_neg: false, label: `tiny negatives below 1% threshold` },
-  ])(`$label: isovalue=20% of abs_max, show_negative=$show_neg`, ({ min, abs_max, show_neg }) => {
-    const settings = auto_isosurface_settings({ min, max: abs_max, abs_max, mean: 0 })
-    expect(settings.isovalue).toBeCloseTo(abs_max * 0.2)
-    expect(settings.show_negative).toBe(show_neg)
-  })
+    {
+      min: -0.005,
+      abs_max: 1,
+      show_neg: false,
+      label: `tiny negatives below 1% threshold`,
+    },
+  ])(
+    `$label: isovalue=20% of abs_max, show_negative=$show_neg`,
+    ({ min, abs_max, show_neg }) => {
+      const settings = auto_isosurface_settings({ min, max: abs_max, abs_max, mean: 0 })
+      expect(settings.isovalue).toBeCloseTo(abs_max * 0.2)
+      expect(settings.show_negative).toBe(show_neg)
+    },
+  )
 
   test(`falls back to default isovalue for all-zero grid`, () => {
     const settings = auto_isosurface_settings({ min: 0, max: 0, abs_max: 0, mean: 0 })

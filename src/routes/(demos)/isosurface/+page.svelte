@@ -99,12 +99,10 @@
     }
   }
 
-  // Set isovalue to a fraction of abs_max
-  function set_isovalue_preset(fraction: number) {
-    if (!data_range) return
-    isosurface_settings.isovalue = data_range.abs_max * fraction
-    update_url()
-  }
+  // Reasonable step size for isovalue slider based on data range
+  let iso_step = $derived(
+    data_range && data_range.abs_max > 0 ? data_range.abs_max / 200 : 0.001,
+  )
 
   // === Slice rendering ===
   // Render a 2D heatmap slice through the volumetric data using ImageData for performance
@@ -174,18 +172,10 @@
         const normalized = (val - s_min) / range
 
         // Diverging colormap: blue (0) -> white (0.5) -> red (1)
-        let r_col: number, g_col: number, b_col: number
-        if (normalized < 0.5) {
-          const t_val = normalized * 2 // 0 to 1
-          r_col = Math.round(t_val * 255)
-          g_col = Math.round(t_val * 255)
-          b_col = 255
-        } else {
-          const t_val = (normalized - 0.5) * 2 // 0 to 1
-          r_col = 255
-          g_col = Math.round((1 - t_val) * 255)
-          b_col = Math.round((1 - t_val) * 255)
-        }
+        const t = normalized * 2 // 0 to 2
+        const r_col = Math.round(Math.min(t, 1) * 255)
+        const g_col = Math.round((1 - Math.abs(1 - t)) * 255)
+        const b_col = Math.round(Math.min(2 - t, 1) * 255)
 
         // Fill the scaled pixel block (flip y so origin is at bottom-left)
         const flipped_row = height - 1 - row
@@ -279,7 +269,9 @@
         onclick={() => {
           active_volume_idx = idx
           const vol_data = volumetric_data?.[idx]
-          if (vol_data) isosurface_settings = auto_isosurface_settings(vol_data.data_range)
+          if (vol_data) {
+            isosurface_settings = auto_isosurface_settings(vol_data.data_range)
+          }
         }}
       >
         {vol.label ?? `Volume ${idx + 1}`}
@@ -289,28 +281,35 @@
 {/if}
 
 {#if data_range}
-  <div class="isovalue-presets">
-    <span>Isovalue presets:</span>
-    {#each [
-      { fraction: 0.1, label: `10%` },
-      { fraction: 0.2, label: `20%` },
-      { fraction: 0.5, label: `50%` },
-      { fraction: 0.8, label: `80%` },
-    ] as
-      { fraction, label }
-      (label)
-    }
-      {@const target_val = data_range.abs_max * fraction}
-      <button
-        class:active={Math.abs(isosurface_settings.isovalue - target_val) <
-        data_range.abs_max * 0.005}
-        onclick={() => set_isovalue_preset(fraction)}
-        title="{label} of max = {format_num(target_val, `.3~g`)}"
-      >
-        {label}
-      </button>
-    {/each}
-  </div>
+  <label class="isovalue-control">
+    <span>Isovalue:</span>
+    <input
+      type="range"
+      min={iso_step}
+      max={data_range.abs_max}
+      step={iso_step}
+      bind:value={isosurface_settings.isovalue}
+      onchange={update_url}
+    />
+    <input
+      type="number"
+      min={0}
+      max={data_range.abs_max}
+      step={iso_step}
+      bind:value={isosurface_settings.isovalue}
+      onchange={update_url}
+    />
+    <span class="iso-pct">
+      {
+        format_num(
+          data_range.abs_max > 0
+            ? (isosurface_settings.isovalue / data_range.abs_max) * 100
+            : 0,
+          `.1~f`,
+        )
+      }%
+    </span>
+  </label>
 {/if}
 
 <div
@@ -322,7 +321,9 @@
   ondragleave={(event: DragEvent) => {
     // Only clear if leaving the container (not entering a child)
     const related = event.relatedTarget
-    if (!(related instanceof Node) || !(event.currentTarget as Node).contains(related)) {
+    if (
+      !(related instanceof Node) || !(event.currentTarget as Node).contains(related)
+    ) {
       dragover_hint = false
     }
   }}
@@ -390,17 +391,6 @@
     {#if parse_time_ms !== undefined}
       <span title="Parse + decompress time">Parse: {parse_time_ms} ms</span>
     {/if}
-    <span title="Current isovalue">
-      Isovalue: {format_num(isosurface_settings.isovalue, `.3~g`)}
-      ({
-        format_num(
-          data_range.abs_max > 0
-            ? (isosurface_settings.isovalue / data_range.abs_max) * 100
-            : 0,
-          `.1~f`,
-        )
-      }% of max)
-    </span>
   </div>
 {/if}
 
@@ -558,32 +548,31 @@
       }
     }
   }
-  .isovalue-presets {
+  .isovalue-control {
     display: flex;
     align-items: center;
-    gap: 0.4em;
+    gap: 0.5em;
     margin-bottom: 0.5em;
-    font-size: 0.85em;
-    span {
-      opacity: 0.7;
+    font-size: 0.9em;
+    input[type='range'] {
+      flex: 1;
+      min-width: 120px;
+      max-width: 300px;
     }
-    button {
-      padding: 0.2em 0.5em;
+    input[type='number'] {
+      width: 5.5em;
+      padding: 0.2em 0.4em;
       border: 1px solid var(--border-color, #ccc);
       border-radius: 4px;
-      background: var(--surface-bg, #f5f5f5);
-      cursor: pointer;
       font-family: monospace;
       font-size: 0.9em;
-      transition: all 0.15s;
-      &:hover {
-        border-color: var(--primary, #3b82f6);
-      }
-      &.active {
-        background: var(--primary, #3b82f6);
-        color: white;
-        border-color: var(--primary, #3b82f6);
-      }
+      box-sizing: border-box;
+    }
+    .iso-pct {
+      opacity: 0.6;
+      font-family: monospace;
+      font-size: 0.85em;
+      min-width: 3.5em;
     }
   }
   .viewer-container {

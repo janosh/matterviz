@@ -7,36 +7,36 @@ const IDENTITY: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
 const NON_PERIODIC = { periodic: false, centered: false }
 
 // Helper: create a 3D grid filled with a function f(ix, iy, iz)
-function make_grid(
+const make_grid = (
   nx: number,
   ny: number,
   nz: number,
   fill_fn: (ix: number, iy: number, iz: number) => number,
-): number[][][] {
-  return Array.from({ length: nx }, (_, ix) =>
-    Array.from({ length: ny }, (_, iy) =>
-      Array.from({ length: nz }, (_, iz) => fill_fn(ix, iy, iz)),
-    ),
+): number[][][] =>
+  Array.from(
+    { length: nx },
+    (_, ix) =>
+      Array.from(
+        { length: ny },
+        (_, iy) => Array.from({ length: nz }, (_, iz) => fill_fn(ix, iy, iz)),
+      ),
   )
-}
 
-function uniform_grid(nx: number, ny: number, nz: number, value: number): number[][][] {
-  return make_grid(nx, ny, nz, () => value)
-}
+const uniform_grid = (nx: number, ny: number, nz: number, value: number): number[][][] =>
+  make_grid(nx, ny, nz, () => value)
 
 // Gaussian blob centered in grid, values ~0 at edges to ~1 at center
-function gaussian_grid(size: number): number[][][] {
+const gaussian_grid = (size: number): number[][][] => {
   const center = (size - 1) / 2
   const sigma = size / 4
   return make_grid(size, size, size, (ix, iy, iz) => {
-    const dx = ix - center, dy = iy - center, dz = iz - center
+    const [dx, dy, dz] = [ix - center, iy - center, iz - center]
     return Math.exp(-(dx * dx + dy * dy + dz * dz) / (2 * sigma * sigma))
   })
 }
 
-function vec_length(vec: Vec3): number {
-  return Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)
-}
+const vec_length = (vec: Vec3): number =>
+  Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)
 
 // === marching_cubes ===
 
@@ -47,13 +47,17 @@ describe(`marching_cubes`, () => {
     { nx: 3, ny: 1, nz: 3 },
     { nx: 3, ny: 3, nz: 1 },
     { nx: 0, ny: 0, nz: 0 },
-  ])(`returns empty result for grid smaller than 2x2x2: $nx×$ny×$nz`, ({ nx, ny, nz }) => {
-    const grid = uniform_grid(Math.max(nx, 1), Math.max(ny, 1), Math.max(nz, 1), 1.0).slice(0, nx)
-    const result = marching_cubes(grid, 0.5, IDENTITY)
-    expect(result.vertices).toHaveLength(0)
-    expect(result.faces).toHaveLength(0)
-    expect(result.normals).toHaveLength(0)
-  })
+  ])(
+    `returns empty result for grid smaller than 2x2x2: $nx×$ny×$nz`,
+    ({ nx, ny, nz }) => {
+      const grid = uniform_grid(Math.max(nx, 1), Math.max(ny, 1), Math.max(nz, 1), 1.0)
+        .slice(0, nx)
+      const result = marching_cubes(grid, 0.5, IDENTITY)
+      expect(result.vertices).toHaveLength(0)
+      expect(result.faces).toHaveLength(0)
+      expect(result.normals).toHaveLength(0)
+    },
+  )
 
   test.each([
     { iso: 2.0, label: `above all values` },
@@ -92,7 +96,10 @@ describe(`marching_cubes`, () => {
 
   test(`centered=true shifts vertices relative to uncentered`, () => {
     const grid = gaussian_grid(8)
-    const centered = marching_cubes(grid, 0.5, IDENTITY, { periodic: false, centered: true })
+    const centered = marching_cubes(grid, 0.5, IDENTITY, {
+      periodic: false,
+      centered: true,
+    })
     const uncentered = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
 
     expect(centered.faces.length).toBe(uncentered.faces.length)
@@ -104,9 +111,14 @@ describe(`marching_cubes`, () => {
   test(`periodic=true wraps boundaries and produces more faces`, () => {
     const grid = make_grid(4, 4, 4, (ix, iy, iz) => {
       // High at origin and opposite corner, low in middle
-      return (ix === 0 && iy === 0 && iz === 0) || (ix === 3 && iy === 3 && iz === 3) ? 2.0 : 0.0
+      return (ix === 0 && iy === 0 && iz === 0) || (ix === 3 && iy === 3 && iz === 3)
+        ? 2.0
+        : 0.0
     })
-    const periodic = marching_cubes(grid, 1.0, IDENTITY, { periodic: true, centered: false })
+    const periodic = marching_cubes(grid, 1.0, IDENTITY, {
+      periodic: true,
+      centered: false,
+    })
     const non_periodic = marching_cubes(grid, 1.0, IDENTITY, NON_PERIODIC)
     expect(periodic.faces.length).toBeGreaterThanOrEqual(non_periodic.faces.length)
   })
@@ -114,13 +126,19 @@ describe(`marching_cubes`, () => {
   test(`interpolate=false places vertices at different positions than interpolated`, () => {
     // Quadratic gradient: interpolation won't land at midpoints
     const grid = make_grid(4, 4, 4, (ix) => ix * ix)
-    const interp = marching_cubes(grid, 2.0, IDENTITY, { ...NON_PERIODIC, interpolate: true })
-    const no_interp = marching_cubes(grid, 2.0, IDENTITY, { ...NON_PERIODIC, interpolate: false })
+    const interp = marching_cubes(grid, 2.0, IDENTITY, {
+      ...NON_PERIODIC,
+      interpolate: true,
+    })
+    const no_interp = marching_cubes(grid, 2.0, IDENTITY, {
+      ...NON_PERIODIC,
+      interpolate: false,
+    })
     expect(no_interp.vertices.length).toBeGreaterThan(0)
     expect(no_interp.faces.length).toBe(interp.faces.length)
     // Non-linear gradient means interpolated positions differ from midpoints
     const any_different = no_interp.vertices.some((vert, idx) =>
-      Math.abs(vert[0] - interp.vertices[idx][0]) > 1e-6,
+      Math.abs(vert[0] - interp.vertices[idx][0]) > 1e-6
     )
     expect(any_different).toBe(true)
   })
@@ -150,7 +168,7 @@ describe(`marching_cubes`, () => {
 
     expect(result.vertices.length).toBeGreaterThan(0)
     const any_different = result.vertices.some((v, idx) =>
-      Math.abs(v[1] - identity.vertices[idx][1]) > 1e-6,
+      Math.abs(v[1] - identity.vertices[idx][1]) > 1e-6
     )
     expect(any_different).toBe(true)
   })
