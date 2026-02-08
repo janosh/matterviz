@@ -439,11 +439,15 @@
       is_internal_edit = false
       return
     }
-    // External change — clear history
+    // External change — clear history and stale edit-atoms state
     untrack(() => {
       if (undo_stack.length > 0 || redo_stack.length > 0) {
         undo_stack = []
         redo_stack = []
+      }
+      if (measure_mode === `edit-atoms`) {
+        if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
+        if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
       }
     })
   })
@@ -812,11 +816,12 @@
     if (measure_mode === `edit-atoms`) {
       // Undo/redo shortcuts (Ctrl/Cmd + Z/Y) — only active in edit-atoms mode
       if (event.ctrlKey || event.metaKey) {
-        if (event.key === `z` && !event.shiftKey) {
+        const key = event.key.toLowerCase()
+        if (key === `z` && !event.shiftKey) {
           event.preventDefault()
           undo()
           return
-        } else if (event.key === `y` || (event.key === `z` && event.shiftKey)) {
+        } else if (key === `y` || (key === `z` && event.shiftKey)) {
           event.preventDefault()
           redo()
           return
