@@ -11,6 +11,12 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
   import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
+  import { parse_volumetric_file } from '$lib/isosurface/parse'
+  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
+  import {
+    auto_isosurface_settings,
+    DEFAULT_ISOSURFACE_SETTINGS,
+  } from '$lib/isosurface/types'
   import { ELEM_SYMBOLS } from '$lib/labels'
   import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
@@ -119,6 +125,14 @@
     element_mapping = $bindable(),
     // Cell type: original, conventional, or primitive (requires symmetry analysis)
     cell_type = $bindable(`original`),
+    // Volumetric data for isosurface rendering (parsed from CHGCAR or .cube files)
+    volumetric_data = $bindable<VolumetricData[]>(),
+    // Isosurface rendering settings
+    isosurface_settings = $bindable<IsosurfaceSettings>({
+      ...DEFAULT_ISOSURFACE_SETTINGS,
+    }),
+    // Active volume index when multiple volumes are present
+    active_volume_idx = $bindable(0),
     children,
     top_right_controls,
     on_file_load,
@@ -193,6 +207,12 @@
       element_mapping?: Partial<Record<ElementSymbol, ElementSymbol>>
       // Cell type: original, conventional, or primitive (requires symmetry analysis)
       cell_type?: CellType
+      // Volumetric data for isosurface rendering (parsed from CHGCAR or .cube files)
+      volumetric_data?: VolumetricData[]
+      // Isosurface rendering settings
+      isosurface_settings?: IsosurfaceSettings
+      // Active volume index when multiple volumes are present
+      active_volume_idx?: number
       // structure content as string (alternative to providing structure directly or via data_url)
       structure_string?: string
       // Atom coloring configuration
@@ -231,20 +251,8 @@
             const text_content = content instanceof ArrayBuffer
               ? new TextDecoder().decode(content)
               : content
-            const parsed_structure = parse_any_structure(text_content, filename)
-            if (parsed_structure) {
-              structure = parsed_structure
-              // Emit file load event
-              on_file_load?.({
-                structure,
-                filename,
-                file_size: new Blob([content]).size,
-                total_atoms: structure.sites?.length || 0,
-              })
-            } else {
-              error_msg = `Failed to parse structure from ${filename}`
-              on_error?.({ error_msg, filename })
-            }
+            const parsed = parse_file_content(text_content, filename)
+            emit_file_load_event(parsed, filename, content)
           } catch (error) {
             error_msg = `Failed to parse structure: ${
               error instanceof Error ? error.message : String(error)
@@ -673,6 +681,41 @@
       total_atoms: structure.sites?.length || 0,
     })
 
+  // Try to parse content as a volumetric file, setting both structure and volumetric data.
+  // Delegates format detection entirely to parse_volumetric_file (filename + content sniffing).
+  // Returns the parsed structure on success, or null if the file isn't a volumetric format.
+  function try_parse_volumetric(
+    text_content: string,
+    filename: string,
+  ): AnyStructure | null {
+    const vol_result = parse_volumetric_file(text_content, filename)
+    if (!vol_result) return null
+    // parse_volumetric_file extracts structure from file header;
+    // parsers set pbc so the lattice conforms to Crystal's LatticeType
+    structure = vol_result.structure as AnyStructure
+    volumetric_data = vol_result.volumes
+    // Auto-compute reasonable isosurface settings from data range
+    const vol = vol_result.volumes[0]
+    if (vol) {
+      isosurface_settings = auto_isosurface_settings(vol.data_range)
+      active_volume_idx = 0
+    }
+    return structure
+  }
+
+  // Parse file content, trying volumetric format first then falling back to plain structure.
+  // Returns the parsed structure on success, throws on failure.
+  function parse_file_content(text_content: string, filename: string): AnyStructure {
+    const vol_struct = try_parse_volumetric(text_content, filename)
+    if (vol_struct) return vol_struct
+    // Clear stale volumetric data when loading a non-volumetric file
+    volumetric_data = []
+    const parsed = parse_any_structure(text_content, filename)
+    if (!parsed) throw new Error(`Failed to parse structure from ${filename}`)
+    structure = parsed
+    return parsed
+  }
+
   async function handle_file_drop(event: DragEvent) {
     event.preventDefault()
     dragover = false
@@ -689,11 +732,8 @@
             const text_content = content instanceof ArrayBuffer
               ? new TextDecoder().decode(content)
               : content
-            const parsed_structure = parse_any_structure(text_content, filename)
-            if (parsed_structure) {
-              structure = parsed_structure
-              emit_file_load_event(parsed_structure, filename, content)
-            } else throw new Error(`Failed to parse structure from ${filename}`)
+            const parsed = parse_file_content(text_content, filename)
+            emit_file_load_event(parsed, filename, content)
           } catch (err) {
             error_msg = `Failed to parse structure: ${err}`
             on_error?.({ error_msg, filename })
@@ -713,11 +753,8 @@
             else {
               // Parse structure internally when no handler provided
               try {
-                const parsed_structure = parse_any_structure(content, filename)
-                if (parsed_structure) {
-                  structure = parsed_structure
-                  emit_file_load_event(parsed_structure, filename, content)
-                } else throw new Error(`Failed to parse structure from ${filename}`)
+                const parsed = parse_file_content(content, filename)
+                emit_file_load_event(parsed, filename, content)
               } catch (err) {
                 error_msg = `Failed to parse structure: ${err}`
                 on_error?.({ error_msg, filename })
@@ -1186,6 +1223,9 @@
             bind:color_scheme
             bind:atom_color_config
             bind:cell_type
+            bind:volumetric_data
+            bind:isosurface_settings
+            bind:active_volume_idx
             {structure}
             {supercell_loading}
             {sym_data}
@@ -1230,6 +1270,8 @@
             base_structure={cell_transformed_structure}
             {...scene_props}
             {lattice_props}
+            volumetric_data={volumetric_data?.[active_volume_idx]}
+            {isosurface_settings}
             bind:camera_is_moving
             bind:selected_sites
             bind:measured_sites
@@ -1317,6 +1359,10 @@
   .structure.dragover {
     background: var(--struct-dragover-bg, var(--dragover-bg));
     border: var(--struct-dragover-border, var(--dragover-border));
+  }
+  /* Ensure canvas is transparent so the themed --struct-bg shows through */
+  .structure :global(canvas) {
+    background: transparent;
   }
   /* Avoid accidental text selection while interacting with the viewer */
   .structure :global(canvas),

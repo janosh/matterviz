@@ -22,6 +22,7 @@ class Structure(MatterViz):
     def __init__(
         self,
         id=None,
+        active_volume_idx: int | None = None,
         allow_file_drop: bool | None = None,
         atom_color_config: dict | None = None,
         cell_type: Any | None = None,
@@ -39,6 +40,7 @@ class Structure(MatterViz):
         hidden_prop_vals: list | None = None,
         hovered: bool | None = None,
         info_pane_open: bool | None = None,
+        isosurface_settings: list | None = None,
         loading: bool | None = None,
         measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
@@ -58,6 +60,7 @@ class Structure(MatterViz):
         structure_string: str | None = None,
         sym_data: Any | None = None,
         symmetry_settings: dict | None = None,
+        volumetric_data: list | None = None,
         width: float | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
@@ -70,6 +73,8 @@ class Structure(MatterViz):
     ):
         if mv_props is None:
             mv_props = {}
+        if active_volume_idx is not None:
+            mv_props["active_volume_idx"] = active_volume_idx
         if allow_file_drop is not None:
             mv_props["allow_file_drop"] = allow_file_drop
         if atom_color_config is not None:
@@ -104,6 +109,8 @@ class Structure(MatterViz):
             mv_props["hovered"] = hovered
         if info_pane_open is not None:
             mv_props["info_pane_open"] = info_pane_open
+        if isosurface_settings is not None:
+            mv_props["isosurface_settings"] = isosurface_settings
         if loading is not None:
             mv_props["loading"] = loading
         if measure_mode is not None:
@@ -142,6 +149,8 @@ class Structure(MatterViz):
             mv_props["sym_data"] = sym_data
         if symmetry_settings is not None:
             mv_props["symmetry_settings"] = symmetry_settings
+        if volumetric_data is not None:
+            mv_props["volumetric_data"] = volumetric_data
         if width is not None:
             mv_props["width"] = width
         if set_props is None:
@@ -877,7 +886,7 @@ class ConvexHull4D(MatterViz):
         hull_face_opacity: float | None = None,
         hull_face_color_mode: Any | None = None,
         element_colors: dict | None = None,
-        gizmo: bool | None = None,
+        gizmo: dict | bool | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,

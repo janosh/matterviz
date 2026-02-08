@@ -3,6 +3,9 @@
   import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_data } from '$lib/element'
+  import Isosurface from '$lib/isosurface/Isosurface.svelte'
+  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
+  import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
@@ -135,6 +138,8 @@
     on_add_atom,
     add_atom_mode = $bindable(false),
     add_element = $bindable(`C`),
+    volumetric_data = undefined,
+    isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
   }: {
     structure?: AnyStructure
     base_structure?: AnyStructure // The original structure without image atoms, used for property color calculation
@@ -211,6 +216,8 @@
     on_add_atom?: (xyz: Vec3, element: ElementSymbol) => void
     add_atom_mode?: boolean // whether user is in click-to-place add-atom sub-mode
     add_element?: ElementSymbol // element to add when clicking in add-atom mode
+    volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
+    isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
   } = $props()
 
   const threlte = useThrelte()
@@ -1094,6 +1101,11 @@
           <T.PlaneGeometry args={[200, 200]} />
           <T.MeshBasicMaterial transparent opacity={0} side={2} depthWrite={false} />
         </T.Mesh>
+      {/if}
+
+      <!-- Isosurface rendering from volumetric data (CHGCAR, .cube files) -->
+      {#if volumetric_data && isosurface_settings}
+        <Isosurface volume={volumetric_data} settings={isosurface_settings} />
       {/if}
 
       <!-- Measurement overlays for measured sites -->
