@@ -257,8 +257,53 @@
     return idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`
   }
 
+  // Toggle a bond between two atoms: cycles through add → remove → restore states
+  function toggle_bond(site_1: number, site_2: number) {
+    const idx_i = Math.min(site_1, site_2)
+    const idx_j = Math.max(site_1, site_2)
+    const key = get_bond_key(idx_i, idx_j)
+
+    const is_added = added_bonds.some((pair) =>
+      get_bond_key(pair[0], pair[1]) === key
+    )
+    if (is_added) {
+      added_bonds = added_bonds.filter((pair) =>
+        get_bond_key(pair[0], pair[1]) !== key
+      )
+      return
+    }
+
+    const is_removed = removed_bonds.some((pair) =>
+      get_bond_key(pair[0], pair[1]) === key
+    )
+    if (is_removed) {
+      // Restore previously removed calculated bond
+      removed_bonds = removed_bonds.filter((pair) =>
+        get_bond_key(pair[0], pair[1]) !== key
+      )
+      return
+    }
+
+    const calculated_exists = bond_pairs.some((bond) =>
+      get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
+    )
+    if (calculated_exists) {
+      removed_bonds = [...removed_bonds, [idx_i, idx_j]]
+    } else {
+      added_bonds = [...added_bonds, [idx_i, idx_j]]
+    }
+  }
+
+  // Deduplicate clicks: when a highlight sphere and the underlying atom both
+  // intercept the same native click, only the first intersection should fire.
+  // All threlte intersection events from one click share the same nativeEvent ref.
+  let last_native_event: Event | null = null
+
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
+    const native = (evt as unknown as { nativeEvent?: Event })?.nativeEvent
+    if (native && native === last_native_event) return
+    if (native) last_native_event = native
 
     if (measure_mode === `edit-bonds`) {
       // In edit-bonds mode, select atoms to add/remove bonds between them
@@ -271,39 +316,7 @@
 
       // When two atoms are selected, toggle the bond between them
       if (measured_sites.length === 2) {
-        const [idx_i, idx_j] = measured_sites.sort((a, b) => a - b)
-        const key = get_bond_key(idx_i, idx_j)
-
-        // Check if bond exists in calculated bonds (and not removed)
-        const calculated_exists = bond_pairs.some((bond) =>
-          get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
-        )
-        const is_removed = removed_bonds.some((pair) =>
-          get_bond_key(pair[0], pair[1]) === key
-        )
-        const is_added = added_bonds.some((pair) =>
-          get_bond_key(pair[0], pair[1]) === key
-        )
-
-        if (is_added) {
-          // Toggle off added bond
-          added_bonds = added_bonds.filter((pair) =>
-            get_bond_key(pair[0], pair[1]) !== key
-          )
-        } else if (calculated_exists && !is_removed) {
-          // Remove calculated bond
-          removed_bonds = [...removed_bonds, [idx_i, idx_j]]
-        } else if (is_removed) {
-          // Restore calculated bond
-          removed_bonds = removed_bonds.filter((pair) =>
-            get_bond_key(pair[0], pair[1]) !== key
-          )
-        } else {
-          // Add new bond
-          added_bonds = [...added_bonds, [idx_i, idx_j]]
-        }
-
-        // Reset selection after toggling bond
+        toggle_bond(measured_sites[0], measured_sites[1])
         measured_sites = []
         selected_sites = []
       }
@@ -923,6 +936,31 @@
       {#if instanced_bond_groups.length > 0}
         {#each instanced_bond_groups as group (group.thickness + group.instances.length)}
           {@render bond_instanced_mesh_snippet(group)}
+        {/each}
+      {/if}
+
+      <!-- Clickable bond hit-test cylinders in edit-bonds mode -->
+      {#if measure_mode === `edit-bonds` && filtered_bond_pairs.length > 0}
+        {#each filtered_bond_pairs as
+          bond
+          (`bond-hit-${bond.site_idx_1}-${bond.site_idx_2}`)
+        }
+          <T.Mesh
+            matrixAutoUpdate={false}
+            oncreate={(ref) => {
+              ref.matrix.fromArray(bond.transform_matrix)
+              ref.matrixWorldNeedsUpdate = true
+            }}
+            onclick={(event: MouseEvent) => {
+              event.stopPropagation()
+              toggle_bond(bond.site_idx_1, bond.site_idx_2)
+              measured_sites = []
+              selected_sites = []
+            }}
+          >
+            <T.CylinderGeometry args={[bond_thickness * 3, bond_thickness * 3, 1, 6]} />
+            <T.MeshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </T.Mesh>
         {/each}
       {/if}
 

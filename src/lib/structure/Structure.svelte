@@ -445,6 +445,14 @@
     })
   })
 
+  // Clear selection when switching measure/edit mode so stale state doesn't carry over
+  $effect(() => {
+    void measure_mode // track reactively
+    untrack(() => {
+      if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
+    })
+  })
+
   // Auto-bake cell type transform and clear stale state when entering edit-atoms mode
   $effect(() => {
     if (measure_mode !== `edit-atoms`) return
@@ -835,16 +843,10 @@
         add_atom_mode = !add_atom_mode
         return
       }
-      if (event.key === `Escape`) {
-        // Exit add-atom mode first, then clear selection
-        if (add_atom_mode) {
-          add_atom_mode = false
-          return
-        }
-        if (selected_sites.length > 0) {
-          clear_selection()
-          return
-        }
+      // add_atom_mode Escape is already handled above (before is_input_focused guard)
+      if (event.key === `Escape` && selected_sites.length > 0) {
+        clear_selection()
+        return
       }
     }
 
@@ -1106,7 +1108,7 @@
                 type="button"
                 aria-label="Reset selection and bond edits"
                 onclick={() => {
-                  ;[measured_sites, selected_sites] = [[], []]
+                  clear_selection()
                   added_bonds = []
                   removed_bonds = []
                 }}
@@ -1315,7 +1317,7 @@
       {@render bottom_left?.({ structure: displayed_structure })}
     </div>
 
-    {#if (measure_mode as string) === `edit-bonds` &&
+    {#if measure_mode === `edit-bonds` &&
       (added_bonds.length > 0 || removed_bonds.length > 0)}
       <div class="bond-edit-status">
         {#if added_bonds.length > 0}
@@ -1543,8 +1545,8 @@
     bottom: 1rem;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
+    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, currentColor);
+    color: var(--text-color, currentColor);
     padding: 0.5rem 1rem;
     border-radius: var(--border-radius, 3pt);
     font-size: 0.85rem;
@@ -1552,12 +1554,15 @@
     gap: 0.75rem;
     z-index: 100;
     pointer-events: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   }
   .bond-edit-status .added {
     color: #4caf50;
+    font-weight: bold;
   }
   .bond-edit-status .removed {
     color: #f44336;
+    font-weight: bold;
   }
   /* CellSelect: position at left of legend, show on hover */
   .structure :global(.cell-select) {
