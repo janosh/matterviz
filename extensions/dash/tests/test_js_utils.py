@@ -12,16 +12,16 @@ from pathlib import Path
 
 import pytest
 
-# Path to the MatterViz.react.js file
-REACT_JS_PATH = (
-    Path(__file__).parent.parent / "src" / "lib" / "components" / "MatterViz.react.js"
+# Path to the MatterViz React component (TypeScript)
+REACT_TS_PATH = (
+    Path(__file__).parent.parent / "src" / "lib" / "components" / "MatterViz.react.ts"
 )
 
 
 def run_js_test(js_code: str) -> dict:  # type: ignore[return]
     """Run JavaScript code and return the JSON result."""
-    # Read the JS file and extract the functions we need
-    js_file = REACT_JS_PATH.read_text()
+    # Read the TS file and extract the functions we need
+    js_file = REACT_TS_PATH.read_text()
 
     # Create a test script that imports the functions and runs the test
     test_script = f"""
@@ -37,7 +37,7 @@ def run_js_test(js_code: str) -> dict:  # type: ignore[return]
 
     try:
         result = subprocess.run(
-            ["node", "--input-type=module", "-e", test_script],
+            ["node", "--input-type=module-typescript", "-e", test_script],
             capture_output=True,
             text=True,
             timeout=5,
