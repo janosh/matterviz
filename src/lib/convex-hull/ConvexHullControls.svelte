@@ -540,7 +540,6 @@
     gap: 8px;
     grid-template-columns: auto 1fr;
     align-items: center;
-    overflow: hidden;
     margin-top: 12px;
   }
   .color-scale-row :global(.multiselect) {
