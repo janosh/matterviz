@@ -1,7 +1,3 @@
-<script module lang="ts">
-  export type MeasureMode = `distance` | `angle` | `edit-bonds` | `edit-atoms`
-</script>
-
 <script lang="ts">
   import type { ColorSchemeName } from '$lib/colors'
   import { ELEMENT_COLOR_SCHEMES } from '$lib/colors'
@@ -23,7 +19,7 @@
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import type { AnyStructure, Crystal } from '$lib/structure'
+  import type { AnyStructure, Crystal, MeasureMode } from '$lib/structure'
   import { get_element_counts, get_pbc_image_sites } from '$lib/structure'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
