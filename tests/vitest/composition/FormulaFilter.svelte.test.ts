@@ -1,6 +1,6 @@
 import { FormulaFilter } from '$lib/composition'
 import { flushSync, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`FormulaFilter`, () => {
@@ -18,7 +18,7 @@ describe(`FormulaFilter`, () => {
   })
 
   test.each([
-    [`Li,Fe`, `contains elements`],
+    [`Li,Fe`, `has elements`],
     [`Li-Fe-O`, `chemical system`],
     [`LiFePO4`, `exact formula`],
   ])(`mode hint for "%s" shows "%s"`, async (input, expected_hint) => {
@@ -66,7 +66,7 @@ describe(`FormulaFilter`, () => {
     get_mode_btn()?.click()
     flushSync()
     expect(onchange).toHaveBeenLastCalledWith(`Fe,Li,O,P`, `elements`)
-    expect(get_mode_btn()?.textContent).toContain(`contains elements`)
+    expect(get_mode_btn()?.textContent).toContain(`has elements`)
 
     // Click again: elements → chemsys (reformats to dash-separated)
     get_mode_btn()?.click()
@@ -470,7 +470,7 @@ describe(`FormulaFilter`, () => {
 
   describe(`wildcard handling`, () => {
     test.each([
-      [`Li,*,*`, `contains elements`],
+      [`Li,*,*`, `has elements`],
       [`Li-Fe-*-*`, `chemical system`],
       [`LiFe*2*`, `exact formula`],
       [`*-*-O`, `chemical system`],
@@ -697,6 +697,261 @@ describe(`FormulaFilter`, () => {
       flushSync()
       // Elements are sorted alphabetically, wildcards appended
       expect(onchange).toHaveBeenCalledWith(`Fe,Li,*,*`, `elements`)
+    })
+  })
+
+  describe(`history dropdown`, () => {
+    const HISTORY_KEY = `formula-filter-test-history`
+    const keydown = (key: string) =>
+      get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+    const focus_input = () =>
+      get_input().dispatchEvent(new Event(`focus`, { bubbles: true }))
+    const history_dropdown = () => document.querySelector(`.history-dropdown`)
+    const history_items = () => document.querySelectorAll(`.history-item`)
+    const history_values = () => document.querySelectorAll(`.history-value`)
+    const remove_btns = () =>
+      document.querySelectorAll<HTMLButtonElement>(`.history-remove`)
+    const get_stored = () =>
+      JSON.parse(localStorage.getItem(HISTORY_KEY) ?? `[]`) as string[]
+
+    beforeEach(() => localStorage.removeItem(HISTORY_KEY))
+    afterEach(() => localStorage.removeItem(HISTORY_KEY))
+
+    function seed(entries: string[]): void {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(entries))
+    }
+
+    // Mount with history enabled and unique localStorage key
+    function mount_with_history(props: Record<string, unknown> = {}) {
+      return mount(FormulaFilter, {
+        target: document.body,
+        props: { value: ``, history_key: HISTORY_KEY, max_history: 5, ...props },
+      })
+    }
+
+    // Seed localStorage, mount, focus input, flushSync — the most common setup
+    function seed_mount_focus(entries: string[], props: Record<string, unknown> = {}) {
+      seed(entries)
+      mount_with_history(props)
+      focus_input()
+      flushSync()
+    }
+
+    function submit(value: string): void {
+      get_input().value = value
+      get_input().dispatchEvent(new Event(`input`, { bubbles: true }))
+      keydown(`Enter`)
+      flushSync()
+    }
+
+    test(`loads prepopulated history, shows header and ARIA attributes`, () => {
+      seed_mount_focus([`Fe,O`, `Li-Fe-O`, `LiFePO4`])
+      // Dropdown structure
+      expect(doc_query(`.history-header`).textContent?.trim()).toBe(`Recent`)
+      expect(history_dropdown()?.getAttribute(`role`)).toBe(`listbox`)
+      expect(history_dropdown()?.getAttribute(`aria-label`)).toBe(`Recent searches`)
+      // Items rendered in order with correct roles
+      const items = history_values()
+      expect(items.length).toBe(3)
+      expect(items[0].textContent?.trim()).toBe(`Fe,O`)
+      expect(items[1].textContent?.trim()).toBe(`Li-Fe-O`)
+      expect(items[2].textContent?.trim()).toBe(`LiFePO4`)
+      expect(items[0].getAttribute(`role`)).toBe(`option`)
+    })
+
+    test(`adds entries on submit and persists to localStorage`, () => {
+      mount_with_history()
+      submit(`Fe,O`)
+      expect(get_stored()).toEqual([`Fe,O`])
+    })
+
+    test(`deduplicates: re-submitting moves value to top`, () => {
+      // Pre-normalized values since sync_value normalizes on submit
+      seed([`Fe,O`, `Li,Na`, `O,Si`])
+      mount_with_history()
+      submit(`Si,O`) // normalized to O,Si
+      expect(get_stored()).toEqual([`O,Si`, `Fe,O`, `Li,Na`])
+    })
+
+    test(`caps history at max_history entries`, () => {
+      seed([`a`, `b`, `c`])
+      mount_with_history({ max_history: 3 })
+      submit(`Fe,O`)
+      expect(get_stored()).toEqual([`Fe,O`, `a`, `b`])
+    })
+
+    test(`max_history=0 disables history entirely`, () => {
+      seed([`Fe,O`])
+      mount_with_history({ max_history: 0 })
+      focus_input()
+      flushSync()
+      expect(history_dropdown()).toBeNull()
+      submit(`Li,Na`)
+      // Original value unchanged — load_history returned [] so nothing was overwritten
+      expect(localStorage.getItem(HISTORY_KEY)).toBe(JSON.stringify([`Fe,O`]))
+    })
+
+    test(`excludes current value from visible history`, () => {
+      seed_mount_focus([`Fe,O`, `Li,Na`], { value: `Fe,O` })
+      expect(history_values().length).toBe(1)
+      expect(history_values()[0].textContent?.trim()).toBe(`Li,Na`)
+    })
+
+    test(`does not show dropdown on focus when history is empty`, () => {
+      mount_with_history()
+      focus_input()
+      flushSync()
+      expect(history_dropdown()).toBeNull()
+    })
+
+    test(`clicking a history item sets value and closes dropdown`, () => {
+      const onchange = vi.fn()
+      seed_mount_focus([`Fe,O`, `Li,Na`], { onchange })
+      doc_query<HTMLButtonElement>(`.history-value`).dispatchEvent(
+        new MouseEvent(`mousedown`, { bubbles: true }),
+      )
+      flushSync()
+      expect(onchange).toHaveBeenCalledWith(`Fe,O`, `elements`)
+      expect(history_dropdown()).toBeNull()
+    })
+
+    test(`remove button removes entry and updates localStorage`, () => {
+      seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
+      expect(history_items().length).toBe(3)
+      remove_btns()[1].dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      flushSync()
+      expect(history_values().length).toBe(2)
+      expect(history_values()[0].textContent?.trim()).toBe(`Fe,O`)
+      expect(history_values()[1].textContent?.trim()).toBe(`Si,O`)
+      expect(get_stored()).toEqual([`Fe,O`, `Si,O`])
+    })
+
+    test(`removing item clamps focused index to prevent out-of-bounds Enter`, () => {
+      const onchange = vi.fn()
+      seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`], { onchange })
+      // Navigate to last item (index 2)
+      for (let step = 0; step < 3; step++) keydown(`ArrowDown`)
+      flushSync()
+      expect(history_items()[2].classList.contains(`focused`)).toBe(true)
+      // Remove middle item — list shrinks from 3→2, focused_history_idx should clamp
+      remove_btns()[1].dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      flushSync()
+      // Enter should select the clamped item, not crash
+      keydown(`Enter`)
+      flushSync()
+      expect(onchange).toHaveBeenCalled()
+      expect([`Fe,O`, `Si,O`]).toContain(
+        onchange.mock.calls[onchange.mock.calls.length - 1][0],
+      )
+    })
+
+    test(`removing last entry closes dropdown`, () => {
+      seed_mount_focus([`Fe,O`])
+      expect(history_dropdown()).toBeTruthy()
+      remove_btns()[0].dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      flushSync()
+      expect(history_dropdown()).toBeNull()
+    })
+
+    test(`ArrowDown cycles through items, ArrowUp from no selection goes to last`, () => {
+      seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
+      // ArrowDown: -1 → 0 → 1
+      keydown(`ArrowDown`)
+      flushSync()
+      expect(history_items()[0].classList.contains(`focused`)).toBe(true)
+      keydown(`ArrowDown`)
+      flushSync()
+      expect(history_items()[1].classList.contains(`focused`)).toBe(true)
+      // ArrowDown wraps: 1 → 2 → 0
+      keydown(`ArrowDown`)
+      keydown(`ArrowDown`)
+      flushSync()
+      expect(history_items()[0].classList.contains(`focused`)).toBe(true)
+
+      // Reset: re-mount to test ArrowUp from no selection
+      document.body.innerHTML = ``
+      seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
+      keydown(`ArrowUp`)
+      flushSync()
+      expect(history_items()[2].classList.contains(`focused`)).toBe(true)
+      expect(history_items()[0].classList.contains(`focused`)).toBe(false)
+    })
+
+    test(`Enter selects focused history item`, () => {
+      const onchange = vi.fn()
+      seed_mount_focus([`Fe,O`, `Li,Na`], { onchange })
+      keydown(`ArrowDown`)
+      keydown(`ArrowDown`)
+      keydown(`Enter`)
+      flushSync()
+      expect(onchange).toHaveBeenCalledWith(`Li,Na`, `elements`)
+    })
+
+    test(`Escape closes history dropdown before clearing value`, () => {
+      const onclear = vi.fn()
+      seed_mount_focus([`Fe,O`], { value: `Li`, onclear })
+      expect(history_dropdown()).toBeTruthy()
+      // First Escape closes history
+      keydown(`Escape`)
+      flushSync()
+      expect(history_dropdown()).toBeNull()
+      expect(get_input().value).toBe(`Li`)
+      expect(onclear).not.toHaveBeenCalled()
+      // Second Escape clears value
+      keydown(`Escape`)
+      flushSync()
+      expect(onclear).toHaveBeenCalled()
+    })
+
+    test(`examples and history are mutually exclusive`, () => {
+      seed_mount_focus([`Fe,O`], { show_examples: true })
+      expect(history_dropdown()).toBeTruthy()
+      // Opening examples closes history
+      doc_query<HTMLButtonElement>(`.help-btn`).click()
+      flushSync()
+      expect(history_dropdown()).toBeNull()
+      expect(document.querySelector(`.examples-dropdown`)).toBeTruthy()
+      // Focusing input while examples open does NOT open history
+      focus_input()
+      flushSync()
+      expect(history_dropdown()).toBeNull()
+    })
+
+    test(`separate history_key props maintain independent histories`, () => {
+      const key_a = `${HISTORY_KEY}-a`
+      const key_b = `${HISTORY_KEY}-b`
+      localStorage.setItem(key_a, JSON.stringify([`Fe,O`]))
+      localStorage.setItem(key_b, JSON.stringify([`Li,Na`, `Si,O`]))
+      mount(FormulaFilter, {
+        target: document.body,
+        props: { value: ``, history_key: key_a },
+      })
+      focus_input()
+      flushSync()
+      expect(history_values().length).toBe(1)
+      expect(history_values()[0].textContent?.trim()).toBe(`Fe,O`)
+      localStorage.removeItem(key_a)
+      localStorage.removeItem(key_b)
+    })
+
+    test.each([
+      { stored: `not valid json{{{`, desc: `invalid JSON` },
+      { stored: `"just a string"`, desc: `string instead of array` },
+      { stored: `42`, desc: `number instead of array` },
+      { stored: `{"a":1}`, desc: `object instead of array` },
+      { stored: `[1, 2, true, null]`, desc: `array of non-strings` },
+    ])(`handles malformed localStorage ($desc)`, ({ stored }) => {
+      localStorage.setItem(HISTORY_KEY, stored)
+      mount_with_history()
+      focus_input()
+      flushSync()
+      expect(history_dropdown()).toBeNull()
+    })
+
+    test(`empty string submissions are not added to history`, () => {
+      mount_with_history()
+      submit(`   `)
+      expect(localStorage.getItem(HISTORY_KEY)).toBeNull()
     })
   })
 })
