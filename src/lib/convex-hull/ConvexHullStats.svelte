@@ -323,7 +323,7 @@
             y_axis={{ label: ``, ticks: 3 }}
             show_legend={false}
             show_controls={false}
-            padding={{ t: 5, b: 35, l: 35, r: 5 }}
+            padding={{ t: 5, b: 22, l: 35, r: 5 }}
             style="height: 100px; --histogram-min-height: 100px"
             bar={{ color: `steelblue`, opacity: 0.7 }}
           />
@@ -338,7 +338,7 @@
             y_axis={{ label: ``, ticks: 3 }}
             show_legend={false}
             show_controls={false}
-            padding={{ t: 5, b: 35, l: 35, r: 5 }}
+            padding={{ t: 5, b: 22, l: 35, r: 5 }}
             style="height: 100px; --histogram-min-height: 100px"
             bar={{ color: `coral`, opacity: 0.7 }}
           />
