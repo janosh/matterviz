@@ -144,13 +144,7 @@ describe(`detect_view_type`, () => {
       energy: [-5.4, -4.6, -7.4],
       volume: [20.5, 22.7, 11.2],
     }],
-  ] as [string, string, unknown][])(`detects minimal %s`, (_, expected, val) => {
-    expect(detect_view_type(val)).toBe(expected)
-  })
-
-  // === Alternative valid formats (testing all code branches) ===
-
-  test.each([
+    // Alternative format variants (testing all code branches)
     [`convex_hull (energy_per_atom)`, `convex_hull`, [
       { composition: { Li: 1 }, energy_per_atom: -1.5 },
       { composition: { Fe: 1 }, energy_per_atom: -2.0 },
@@ -164,7 +158,7 @@ describe(`detect_view_type`, () => {
     }],
     [`xrd (d_hkls)`, `xrd`, { x: [20, 40], y: [100, 50], d_hkls: [2.0, 1.5] }],
     [`xrd (@class)`, `xrd`, { x: [20, 40], y: [100, 50], '@class': `XrdPattern` }],
-    [`brillouin_zone (reciprocal_lattice key)`, `brillouin_zone`, {
+    [`brillouin_zone (reciprocal_lattice)`, `brillouin_zone`, {
       reciprocal_lattice: k_lattice_3x3,
       k_path: [[0, 0, 0]],
     }],
@@ -203,6 +197,15 @@ describe(`detect_view_type`, () => {
       fermi_energy: 5.0,
       reciprocal_cell: `wigner_seitz`,
       metadata: {},
+    }],
+    [`combined fields without atom_dos/spd_dos -> band_structure`, `band_structure`, {
+      branches: [{ start_index: 0, end_index: 1 }],
+      labels_dict,
+      energies: [0, 1],
+      densities: [[0.1, 0.2]],
+      kpoints: [[0, 0, 0]],
+      bands: { '1': [[1, 2]] },
+      efermi: 5.0,
     }],
     [`bands_and_dos wrapper with too many keys`, null, {
       band_structure: pymatgen_bands,
@@ -295,29 +298,22 @@ describe(`scan_renderable_paths`, () => {
     expect(scan_renderable_paths(data).get(`items[1]`)?.type).toBe(`structure`)
   })
 
-  test(`handles keys containing dots via bracket notation`, () => {
-    const data = {
-      'mp-1234.structure': {
-        sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }],
-      },
-    }
-    const paths = scan_renderable_paths(data)
-    expect(paths.has(`["mp-1234.structure"]`)).toBe(true)
-    expect(paths.get(`["mp-1234.structure"]`)?.type).toBe(`structure`)
-  })
-
-  test(`handles nested dotted keys in deeper paths`, () => {
-    const data = {
+  test.each([
+    [`root-level dotted key`, {
+      'mp-1234.structure': { sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }] },
+    }, `["mp-1234.structure"]`],
+    [`nested dotted key`, {
       results: {
-        'calc.1': {
-          sites: [{ species: [{ element: `Cu` }], abc: [0, 0, 0] }],
-        },
+        'calc.1': { sites: [{ species: [{ element: `Cu` }], abc: [0, 0, 0] }] },
       },
-    }
-    const paths = scan_renderable_paths(data)
-    expect(paths.has(`results["calc.1"]`)).toBe(true)
-    expect(paths.get(`results["calc.1"]`)?.type).toBe(`structure`)
-  })
+    }, `results["calc.1"]`],
+  ] as [string, unknown, string][])(
+    `handles %s via bracket notation`,
+    (_, data, expected_path) => {
+      const paths = scan_renderable_paths(data)
+      expect(paths.get(expected_path)?.type).toBe(`structure`)
+    },
+  )
 
   test(`all scanned paths resolve back to the original value`, () => {
     // resolve_path mirror (same logic as JsonBrowser.svelte)
