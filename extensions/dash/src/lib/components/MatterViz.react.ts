@@ -328,8 +328,6 @@ const MatterVizInner = (props: MatterVizProps): React.ReactElement => {
   )
 }
 
-// PropTypes defined on outer MatterViz component
-
 // MatterViz component wrapper for Dash.
 // Wraps any MatterViz Svelte component as a Dash-compatible React component.
 const MatterViz = (props: MatterVizProps): React.ReactElement => {

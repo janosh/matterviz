@@ -14,9 +14,7 @@ const modules = import.meta.glob(`/node_modules/matterviz/dist/**/*.svelte`, {
   eager: true,
 }) as Record<string, { default?: Component }>
 
-// Map<string, Component> - component key -> Svelte component
 const components_by_key = new Map<string, Component>()
-// Map<string, string[]> - base name -> list of matching keys
 const keys_by_base_name = new Map<string, string[]>()
 
 for (const [raw_path, mod] of Object.entries(modules)) {
