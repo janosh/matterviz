@@ -739,12 +739,10 @@ export function filter_entries_at_temperature(
     // Set both energy and energy_per_atom so downstream formation energy
     // calculations use the temperature-dependent value (not stale 0K energy_per_atom)
     if (entry_has_temperature(entry, T)) {
+      // free_energies stores per-atom values (E_0K/atom + F_vib/atom),
+      // so energy is already per-atom — set both fields to the same value
       const energy = get_energy_at_temperature(entry, T)
-      const atoms = Object.values(entry.composition).reduce(
-        (sum, amt) => sum + amt,
-        0,
-      ) || 1
-      return [{ ...entry, energy, energy_per_atom: energy / atoms }]
+      return [{ ...entry, energy, energy_per_atom: energy }]
     }
 
     // Try interpolation if enabled
@@ -755,11 +753,8 @@ export function filter_entries_at_temperature(
         max_interpolation_gap,
       )
       if (energy !== null) {
-        const atoms = Object.values(entry.composition).reduce(
-          (sum, amt) => sum + amt,
-          0,
-        ) || 1
-        return [{ ...entry, energy, energy_per_atom: energy / atoms }]
+        // interpolated energy is also per-atom (interpolated from per-atom free_energies)
+        return [{ ...entry, energy, energy_per_atom: energy }]
       }
     }
 
@@ -839,4 +834,23 @@ export function get_gas_corrected_entries(
     analysis,
     merged_config,
   }
+}
+
+// Derive a display label for a convex hull entry, falling back to composition
+// when reduced_formula and name are both missing.
+export function get_entry_label(
+  entry: { reduced_formula?: string; name?: string; composition: Record<string, number> },
+  elements?: ElementSymbol[],
+): string {
+  if (entry.reduced_formula) return entry.reduced_formula
+  if (entry.name) return entry.name
+  let pairs = Object.entries(entry.composition).filter(([, amt]) => amt > 0)
+  if (elements) {
+    pairs = pairs.sort(([el1], [el2]) =>
+      elements.indexOf(el1 as ElementSymbol) - elements.indexOf(el2 as ElementSymbol)
+    )
+  }
+  return pairs
+    .map(([el, amt]) => Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`)
+    .join(``)
 }

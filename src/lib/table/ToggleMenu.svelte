@@ -9,13 +9,65 @@
     column_panel_open = $bindable(false),
     n_columns,
     collapsed_sections = $bindable<string[]>([]),
+    on_reset,
   }: {
     columns: Label[]
     column_panel_open?: boolean
     // Number of grid columns for toggle layout
     n_columns?: number
     collapsed_sections?: string[]
+    // Called after reset with the section name (or undefined for global reset)
+    on_reset?: (section?: string) => void
   } = $props()
+
+  const col_id = (col: Label) => col.key ?? col.label
+
+  // Snapshot default visibility when column set changes (new dataset).
+  // Compare by column keys to avoid re-snapshotting on internal columns = [...columns] reactivity.
+  // Intentionally non-reactive: mutated only inside snapshot_defaults() and compared manually.
+  let prev_col_keys = ``
+  let default_visibility: Record<string, boolean> = {}
+  function snapshot_defaults() {
+    default_visibility = {}
+    for (const col of columns) {
+      default_visibility[col_id(col)] = col.visible !== false
+    }
+    prev_col_keys = columns.map(col_id).join(`\0`)
+  }
+  snapshot_defaults()
+
+  $effect(() => {
+    const current_keys = columns.map(col_id).join(`\0`)
+    if (current_keys !== prev_col_keys) {
+      snapshot_defaults()
+    }
+  })
+
+  // Check if a column's visibility differs from its default
+  const is_changed = (col: Label) =>
+    (col.visible !== false) !== (default_visibility[col_id(col)] ?? true)
+
+  let has_any_changes = $derived(columns.some(is_changed))
+
+  // Reset columns to default visibility
+  function reset_columns(items: Label[]): void {
+    for (const col of items) {
+      col.visible = default_visibility[col_id(col)] ?? true
+    }
+    columns = [...columns]
+  }
+
+  function reset_all(): void {
+    reset_columns(columns)
+    on_reset?.()
+  }
+
+  function reset_section(section_name: string): void {
+    const section = sections.find((sec) => sec.name === section_name)
+    if (!section) return
+    reset_columns(section.items)
+    on_reset?.(section_name)
+  }
 
   // Group columns by their group property
   let sections = $derived.by(() => {
@@ -119,20 +171,46 @@
 
   {#if has_sections}
     <div class="sections-container" role="group">
+      {#if has_any_changes}
+        <button
+          class="reset-all-btn"
+          onclick={reset_all}
+          type="button"
+          {@attach tooltip({ content: `Reset all columns to defaults` })}
+        >
+          <Icon icon="Reset" width="14px" />
+          Reset all
+        </button>
+      {/if}
       {#each sections as section (section.name)}
         {@const is_collapsed = section.name !== `` &&
         collapsed_sections.includes(section.name)}
         <div class="section">
           {#if section.name}
-            <button
-              class="section-header"
-              aria-expanded={!is_collapsed}
-              onclick={() => toggle_section(section.name)}
-              type="button"
-            >
-              <span class="collapse-icon">{is_collapsed ? `▶` : `▼`}</span>
-              {section.name}
-            </button>
+            <div class="section-header-row">
+              <button
+                class="section-header"
+                aria-expanded={!is_collapsed}
+                onclick={() => toggle_section(section.name)}
+                type="button"
+              >
+                <span class="collapse-icon">{is_collapsed ? `▶` : `▼`}</span>
+                {section.name}
+              </button>
+              {#if section.items.some(is_changed)}
+                <button
+                  class="reset-section-btn"
+                  onclick={(event) => {
+                    event.stopPropagation()
+                    reset_section(section.name)
+                  }}
+                  type="button"
+                  {@attach tooltip({ content: `Reset ${section.name} to defaults` })}
+                >
+                  <Icon icon="Reset" width="12px" />
+                </button>
+              {/if}
+            </div>
           {/if}
           {#if !is_collapsed}
             <div
@@ -150,6 +228,18 @@
     </div>
   {:else}
     <div class="column-menu" role="group" style:grid-template-columns={grid_template}>
+      {#if has_any_changes}
+        <button
+          class="reset-all-btn"
+          onclick={reset_all}
+          type="button"
+          {@attach tooltip({ content: `Reset all columns to defaults` })}
+          style="grid-column: 1 / -1"
+        >
+          <Icon icon="Reset" width="14px" />
+          Reset all
+        </button>
+      {/if}
       {#each columns as col, idx (col.key ?? col.label ?? idx)}
         {@render toggle_item(col)}
       {/each}
@@ -207,6 +297,47 @@
     flex-direction: column;
     gap: 8px;
   }
+  .reset-all-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2pt 6pt;
+    margin-bottom: 4pt;
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-radius: var(--tgl-border-radius, 3pt);
+    background: color-mix(in srgb, currentColor 5%, transparent);
+    cursor: pointer;
+    font-size: 0.85em;
+    color: inherit;
+    opacity: 0.8;
+    &:hover {
+      background: color-mix(in srgb, currentColor 12%, transparent);
+      opacity: 1;
+    }
+  }
+  .section-header-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4pt;
+  }
+  .reset-section-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2pt;
+    border: none;
+    border-radius: var(--tgl-border-radius, 3pt);
+    background: transparent;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.5;
+    flex-shrink: 0;
+    &:hover {
+      background: color-mix(in srgb, currentColor 12%, transparent);
+      opacity: 1;
+    }
+  }
   .section-header {
     display: flex;
     align-items: center;
@@ -214,7 +345,6 @@
     font-weight: 600;
     font-size: 0.9em;
     padding: 2pt 4pt;
-    margin-bottom: 4pt;
     border: none;
     border-radius: var(--tgl-border-radius, 3pt);
     background: var(
@@ -222,7 +352,7 @@
       color-mix(in srgb, currentColor 5%, transparent)
     );
     cursor: pointer;
-    width: 100%;
+    flex: 1;
     text-align: left;
     color: inherit;
     &:hover {
