@@ -43,6 +43,9 @@ function sanitize_for_json(value: unknown): unknown {
     }
     if (val instanceof Set) return [...val]
     if (val instanceof Map) return [...val.entries()]
+    if (val instanceof DataView) {
+      return [...new Uint8Array(val.buffer, val.byteOffset, val.byteLength)]
+    }
     if (ArrayBuffer.isView(val)) return [...(val as Iterable<unknown>)]
     if (val instanceof ArrayBuffer) return [...new Uint8Array(val)]
     if (typeof File !== `undefined` && val instanceof File) {
@@ -202,7 +205,7 @@ interface MatterVizElement extends HTMLElement {
 }
 
 // Inner component that handles the actual MatterViz custom element.
-const MatterVizInner = (props: MatterVizProps): React.ReactElement => {
+const MatterVizInner = (props: MatterVizProps) => {
   const {
     id,
     component = `Structure`,
@@ -330,7 +333,7 @@ const MatterVizInner = (props: MatterVizProps): React.ReactElement => {
 
 // MatterViz component wrapper for Dash.
 // Wraps any MatterViz Svelte component as a Dash-compatible React component.
-const MatterViz = (props: MatterVizProps): React.ReactElement => {
+const MatterViz = (props: MatterVizProps) => {
   return React.createElement(
     MatterVizErrorBoundary,
     { component: props.component },
