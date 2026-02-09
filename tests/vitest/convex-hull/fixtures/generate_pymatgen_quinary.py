@@ -52,14 +52,15 @@ def generate_quinary_reference() -> dict:
     output_entries = []
     for idx, entry in enumerate(entries):
         comp_dict = {str(el): float(amt) for el, amt in entry.composition.items()}
-        e_above_hull = pd.get_e_above_hull(entry)
+        e_above_hull_raw = pd.get_e_above_hull(entry)
+        e_above_hull = float(e_above_hull_raw) if e_above_hull_raw is not None else 0.0
 
         output_entries.append(
             {
                 "id": f"entry_{idx}",
                 "composition": comp_dict,
                 "energy_per_atom": float(entry.energy_per_atom),
-                "e_above_hull": float(e_above_hull),
+                "e_above_hull": e_above_hull,
                 "is_stable": bool(e_above_hull < 1e-10),
             }
         )

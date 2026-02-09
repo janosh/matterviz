@@ -173,13 +173,11 @@ Combine tags with icons to display material properties with dynamic styling:
     },
   ]
 
-  function stability_variant(ehull: number) {
-    return ehull <= 0 ? `success` : ehull <= 0.05 ? `warning` : `error`
-  }
+  const stability_variant = (ehull: number) =>
+    ehull <= 0 ? `success` : ehull <= 0.05 ? `warning` : `error`
 
-  function stability_icon(ehull: number) {
-    return ehull <= 0 ? `CheckCircle` : ehull <= 0.05 ? `Alert` : `XCircle`
-  }
+  const stability_icon = (ehull: number) =>
+    ehull <= 0 ? `CheckCircle` : ehull <= 0.05 ? `Alert` : `XCircle`
 </script>
 
 <div

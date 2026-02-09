@@ -341,7 +341,7 @@ function compute_savgol_coefficients(window: number, order: number): number[] {
 
   // Compute (V^T V)^-1 V^T using simple pseudoinverse
   // For smoothing, we only need the first row (constant term coefficients)
-  const vtv = multiply_transpose(vandermonde, vandermonde)
+  const vtv = multiply_matrices(transpose(vandermonde), vandermonde)
   const vtv_inv = invert_matrix(vtv)
   if (!vtv_inv) {
     // Fallback to uniform weights
@@ -1021,11 +1021,6 @@ function transpose(matrix: number[][]): number[][] {
     }
   }
   return result
-}
-
-function multiply_transpose(a: number[][], b: number[][]): number[][] {
-  const at = transpose(a)
-  return multiply_matrices(at, b)
 }
 
 function multiply_matrices(a: number[][], b: number[][]): number[][] {

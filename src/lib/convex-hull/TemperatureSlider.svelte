@@ -1,10 +1,12 @@
 <script lang="ts">
   import { tooltip } from 'svelte-multiselect'
+  import type { HTMLAttributes } from 'svelte/elements'
 
   let {
     available_temperatures,
     temperature = $bindable(),
-  }: {
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
     available_temperatures: number[]
     temperature: number
   } = $props()
@@ -47,7 +49,8 @@
 </script>
 
 <div
-  class="temperature-slider"
+  {...rest}
+  class="temperature-slider {rest.class ?? ``}"
   {@attach tooltip({ content: `Temperature for G(T) free energies` })}
 >
   <label class="temp-label">
@@ -101,6 +104,7 @@
   .slider-wrapper {
     display: flex;
     place-items: center;
+    justify-content: var(--slider-justify, center);
     line-height: 1;
   }
   .temperature-slider input[type='range'] {

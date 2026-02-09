@@ -5,6 +5,7 @@
     GasThermodynamicsConfig,
   } from '$lib/convex-hull/types'
   import { tooltip } from 'svelte-multiselect'
+  import type { HTMLAttributes } from 'svelte/elements'
   import {
     compute_gas_chemical_potential,
     format_chemical_potential,
@@ -17,7 +18,8 @@
     pressures = $bindable({}),
     temperature,
     position = `top-right`,
-  }: {
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
     config: GasThermodynamicsConfig
     pressures: Partial<Record<GasSpecies, number>>
     temperature: number
@@ -51,32 +53,21 @@
   }
 
   // Compute chemical potential μ(T,P) for a gas at current temperature and pressure
-  function get_mu(gas: GasSpecies): number {
-    return compute_gas_chemical_potential(
-      provider,
-      gas,
-      temperature,
-      get_pressure(gas),
-    )
-  }
+  const get_mu = (gas: GasSpecies): number =>
+    compute_gas_chemical_potential(provider, gas, temperature, get_pressure(gas))
 
   // Convert pressure to log scale slider position (0-100)
-  function pressure_to_slider(P: number): number {
-    const log_P = Math.log10(P) // P is already normalized from get_pressure
-    return ((Math.max(LOG_P_MIN, Math.min(LOG_P_MAX, log_P)) - LOG_P_MIN) /
+  const pressure_to_slider = (P: number): number =>
+    ((Math.max(LOG_P_MIN, Math.min(LOG_P_MAX, Math.log10(P))) - LOG_P_MIN) /
       LOG_P_RANGE) * 100
-  }
 
   // Convert slider position (0-100) to pressure
-  function slider_to_pressure(value: number): number {
-    const log_P = LOG_P_MIN + (value / 100) * LOG_P_RANGE
-    return Math.pow(10, log_P)
-  }
+  const slider_to_pressure = (value: number): number =>
+    Math.pow(10, LOG_P_MIN + (value / 100) * LOG_P_RANGE)
 
   // Format gas name for display (subscript numbers)
-  function format_gas_name(gas: GasSpecies): string {
-    return gas.replace(/(\d+)/g, `<sub>$1</sub>`)
-  }
+  const format_gas_name = (gas: GasSpecies): string =>
+    gas.replace(/(\d+)/g, `<sub>$1</sub>`)
 
   // Format pressure as plain text (no HTML) for the number input
   function format_pressure(P: number): string {
@@ -116,7 +107,7 @@
 </script>
 
 {#if enabled_gases.length > 0}
-  <div class="pressure-controls {position}">
+  <div {...rest} class="pressure-controls {position} {rest.class ?? ``}">
     {#each enabled_gases as gas (gas)}
       {@const P = get_pressure(gas)}
       {@const mu = get_mu(gas)}
@@ -205,7 +196,7 @@
   .pressure-slider {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: var(--pressure-slider-align, center);
     gap: 4px;
     background: color-mix(in srgb, var(--hull-bg, transparent) 80%, transparent);
     padding: 3px 5px;
@@ -215,6 +206,7 @@
   .slider-wrapper {
     display: flex;
     place-items: center;
+    justify-content: var(--slider-justify, center);
     line-height: 1;
   }
   .pressure-slider input[type='range'] {
