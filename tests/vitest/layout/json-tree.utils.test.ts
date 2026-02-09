@@ -2,14 +2,19 @@
 import {
   build_path,
   collect_all_paths,
+  compute_diff,
+  estimate_byte_size,
   find_matching_paths,
+  format_byte_size,
   format_path,
   format_preview,
   get_ancestor_paths,
   get_child_count,
   get_value_type,
+  is_css_color,
   is_expandable,
   is_expandable_type,
+  is_url,
   matches_search,
   parse_path,
   serialize_for_copy,
@@ -523,5 +528,269 @@ describe(`values_equal`, () => {
     expect(values_equal(NaN, 0)).toBe(false)
     expect(values_equal(0, NaN)).toBe(false)
     expect(values_equal(NaN, null)).toBe(false)
+  })
+})
+
+describe(`is_url`, () => {
+  it.each([
+    [`https://example.com`, true],
+    [`http://localhost:3000/path`, true],
+    [`https://example.com/path?q=1&b=2#hash`, true],
+    [`https://sub.domain.example.co.uk`, true],
+    [`ftp://example.com`, false],
+    [`not a url`, false],
+    [`example.com`, false],
+    [``, false],
+    [`https://`, false], // no path after protocol
+    [` https://example.com `, true], // trimmed
+  ])(`is_url(%p) = %p`, (str, expected) => {
+    expect(is_url(str)).toBe(expected)
+  })
+})
+
+describe(`is_css_color`, () => {
+  it.each([
+    // hex colors (case-insensitive, 3/4/6/8 digit)
+    [`#fff`, true],
+    [`#ABCDEF`, true],
+    [`#abcd`, true], // 4-digit with alpha
+    [`#aabbccdd`, true], // 8-digit with alpha
+    // functional colors
+    [`rgb(255, 0, 0)`, true],
+    [`rgba(255, 0, 0, 0.5)`, true],
+    [`hsl(120, 100%, 50%)`, true],
+    [`hsla(120, 100%, 50%, 0.5)`, true],
+    [`oklch(0.5 0.2 120)`, true],
+    [`oklab(0.5 0.1 -0.1)`, true],
+    [`lch(50 30 120)`, true],
+    [`lab(50 20 -30)`, true],
+    [`color(display-p3 1 0 0)`, true],
+    // non-colors
+    [`red`, false],
+    [`not a color`, false],
+    [`#gg`, false],
+    [`#12345`, false], // 5 digits invalid
+    [`rgb`, false],
+    [``, false],
+    [` #fff `, true], // trimmed
+    // CSS injection prevention: semicolons rejected
+    [`rgb(0,0,0);position:fixed`, false],
+    [`#fff;background:red`, false],
+    // CSS injection prevention: url() injection blocked by [^)]* regex
+    [`rgb(255,0,0) url(https://evil.com/track.png)`, false],
+    [`hsl(0,0%,0%) url(data:,x)`, false],
+  ])(`is_css_color(%p) = %p`, (str, expected) => {
+    expect(is_css_color(str)).toBe(expected)
+  })
+})
+
+describe(`estimate_byte_size`, () => {
+  it.each([
+    [null, 4],
+    [undefined, 9],
+    [true, 4],
+    [false, 5],
+    [42, 2],
+    [3.14, 4],
+    [`hello`, 7], // 5 chars + 2 for quotes
+    [``, 2], // empty string + quotes
+    [[], 2], // empty array brackets
+    [{}, 2], // empty object braces
+    [[1, 2, 3], 8], // 2 + 3*(1+1)
+    [{ ab: 1 }, 9], // 2 + 2(key) + 4(quotes+colon+comma) + 1(value)
+  ])(`estimates %p as %d bytes`, (value, expected) => {
+    expect(estimate_byte_size(value)).toBe(expected)
+  })
+
+  it(`respects max_depth`, () => {
+    const deep = { a: { b: { c: { d: { e: 1 } } } } }
+    expect(estimate_byte_size(deep, 2)).toBeLessThan(estimate_byte_size(deep, 5))
+  })
+
+  it(`handles Map and Set`, () => {
+    expect(estimate_byte_size(new Map([[`key`, `val`]]))).toBeGreaterThan(2)
+    expect(estimate_byte_size(new Set([1, 2, 3]))).toBeGreaterThan(2)
+  })
+})
+
+describe(`format_byte_size`, () => {
+  it.each([
+    [0, `0 B`],
+    [100, `100 B`],
+    [1023, `1023 B`],
+    [1024, `1.0 KB`],
+    [1536, `1.5 KB`],
+    [10240, `10.0 KB`],
+    [1048576, `1.0 MB`],
+    [1572864, `1.5 MB`],
+  ])(`format_byte_size(%d) = %p`, (bytes, expected) => {
+    expect(format_byte_size(bytes)).toBe(expected)
+  })
+})
+
+describe(`compute_diff`, () => {
+  it(`returns empty map for identical primitives`, () => {
+    expect(compute_diff(42, 42).size).toBe(0)
+    expect(compute_diff(`hello`, `hello`).size).toBe(0)
+    expect(compute_diff(true, true).size).toBe(0)
+    expect(compute_diff(null, null).size).toBe(0)
+  })
+
+  it(`detects changed primitives`, () => {
+    const diff = compute_diff(1, 2, `root`)
+    expect(diff.size).toBe(1)
+    expect(diff.get(`root`)).toEqual({
+      status: `changed`,
+      path: `root`,
+      old_value: 1,
+      new_value: 2,
+    })
+  })
+
+  it(`detects type changes`, () => {
+    const diff = compute_diff(`string`, 42, `val`)
+    expect(diff.get(`val`)?.status).toBe(`changed`)
+    expect(diff.get(`val`)?.old_value).toBe(`string`)
+    expect(diff.get(`val`)?.new_value).toBe(42)
+  })
+
+  it(`detects added object keys`, () => {
+    const diff = compute_diff({ a: 1 }, { a: 1, b: 2 }, `root`)
+    expect(diff.size).toBe(1)
+    expect(diff.get(`root.b`)).toEqual({
+      status: `added`,
+      path: `root.b`,
+      new_value: 2,
+    })
+  })
+
+  it(`detects removed object keys`, () => {
+    const diff = compute_diff({ a: 1, b: 2 }, { a: 1 }, `root`)
+    expect(diff.size).toBe(1)
+    expect(diff.get(`root.b`)).toEqual({
+      status: `removed`,
+      path: `root.b`,
+      old_value: 2,
+    })
+  })
+
+  it(`detects changed object values`, () => {
+    const diff = compute_diff({ a: 1 }, { a: 99 }, `root`)
+    expect(diff.get(`root.a`)).toEqual({
+      status: `changed`,
+      path: `root.a`,
+      old_value: 1,
+      new_value: 99,
+    })
+  })
+
+  it(`detects added array elements`, () => {
+    const diff = compute_diff([1, 2], [1, 2, 3], `arr`)
+    expect(diff.size).toBe(1)
+    expect(diff.get(`arr[2]`)).toEqual({
+      status: `added`,
+      path: `arr[2]`,
+      new_value: 3,
+    })
+  })
+
+  it(`detects removed array elements`, () => {
+    const diff = compute_diff([1, 2, 3], [1, 2], `arr`)
+    expect(diff.size).toBe(1)
+    expect(diff.get(`arr[2]`)).toEqual({
+      status: `removed`,
+      path: `arr[2]`,
+      old_value: 3,
+    })
+  })
+
+  it(`handles nested object diffs`, () => {
+    const old_val = { user: { name: `Alice`, age: 30 } }
+    const new_val = { user: { name: `Bob`, age: 30 } }
+    const diff = compute_diff(old_val, new_val)
+    expect(diff.size).toBe(1)
+    expect(diff.get(`user.name`)?.status).toBe(`changed`)
+    expect(diff.has(`user.age`)).toBe(false) // unchanged
+  })
+
+  it(`handles multiple changes at different depths`, () => {
+    const old_val = { a: 1, b: { c: 2, d: 3 } }
+    const new_val = { a: 99, b: { c: 2, d: 100, e: 5 } }
+    const diff = compute_diff(old_val, new_val)
+    expect(diff.get(`a`)?.status).toBe(`changed`)
+    expect(diff.get(`b.d`)?.status).toBe(`changed`)
+    expect(diff.get(`b.e`)?.status).toBe(`added`)
+    expect(diff.has(`b.c`)).toBe(false) // unchanged
+  })
+
+  it(`returns empty map for identical objects`, () => {
+    const obj = { a: 1, b: [2, 3], c: { d: 4 } }
+    expect(compute_diff(obj, { ...obj, b: [2, 3], c: { d: 4 } }).size).toBe(0)
+  })
+
+  it(`handles circular references without infinite loop`, () => {
+    const obj: Record<string, unknown> = { a: 1 }
+    obj.self = obj
+    // Should not throw — circular refs are detected and skipped
+    const diff = compute_diff(obj, { a: 2 })
+    expect(diff.get(`a`)?.status).toBe(`changed`)
+  })
+
+  it(`compares dates via string form`, () => {
+    expect(compute_diff(new Date(`2024-01-15`), new Date(`2024-01-15`)).size).toBe(0)
+    expect(
+      compute_diff(new Date(`2024-01-15`), new Date(`2024-01-16`), `d`).get(`d`)?.status,
+    )
+      .toBe(`changed`)
+  })
+
+  it(`uses empty string as default root path`, () => {
+    expect(compute_diff(1, 2).get(``)?.status).toBe(`changed`)
+  })
+
+  it(`treats NaN as equal to NaN (including nested)`, () => {
+    expect(compute_diff(NaN, NaN).size).toBe(0)
+    expect(compute_diff({ x: NaN }, { x: NaN }).size).toBe(0)
+    expect(compute_diff(NaN, 42).get(``)?.status).toBe(`changed`)
+  })
+
+  it(`detects changes in Map values`, () => {
+    const old_map = new Map([[`a`, 1], [`b`, 2]])
+    const new_map = new Map([[`a`, 1], [`b`, 99]])
+    const diff = compute_diff(old_map, new_map, `m`)
+    // Map entries are wrapped as { key, value } to match rendering
+    expect(diff.size).toBe(1)
+    expect(diff.get(`m[1].value`)?.status).toBe(`changed`)
+  })
+
+  it(`detects Map key changes`, () => {
+    const old_map = new Map([[`a`, 1]])
+    const new_map = new Map([[`b`, 1]])
+    const diff = compute_diff(old_map, new_map, `m`)
+    expect(diff.size).toBe(1)
+    expect(diff.get(`m[0].key`)?.status).toBe(`changed`)
+    expect(diff.get(`m[0].key`)?.old_value).toBe(`a`)
+    expect(diff.get(`m[0].key`)?.new_value).toBe(`b`)
+  })
+
+  it(`detects added/removed Map entries`, () => {
+    const old_map = new Map([[`a`, 1]])
+    const new_map = new Map([[`a`, 1], [`b`, 2]])
+    const diff = compute_diff(old_map, new_map, `m`)
+    expect(diff.size).toBe(1)
+    expect(diff.get(`m[1]`)?.status).toBe(`added`)
+  })
+
+  it(`detects changes in Set values`, () => {
+    const old_set = new Set([1, 2, 3])
+    const new_set = new Set([1, 2])
+    const diff = compute_diff(old_set, new_set, `s`)
+    expect(diff.size).toBe(1)
+    expect(diff.get(`s[2]`)?.status).toBe(`removed`)
+  })
+
+  it(`returns empty map for identical Maps and Sets`, () => {
+    expect(compute_diff(new Map([[`a`, 1]]), new Map([[`a`, 1]])).size).toBe(0)
+    expect(compute_diff(new Set([1, 2]), new Set([1, 2])).size).toBe(0)
   })
 })

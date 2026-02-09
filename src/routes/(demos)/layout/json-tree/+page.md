@@ -5,23 +5,7 @@ title: JsonTree
 <script lang="ts">
   import { JsonTree } from '$lib'
 
-  // Example 1: Simple config-like data
-  const config_data = {
-    name: "my-app",
-    version: "2.1.0",
-    private: true,
-    scripts: {
-      dev: "vite dev",
-      build: "vite build",
-      test: "vitest run"
-    },
-    dependencies: {
-      svelte: "^5.0.0",
-      vite: "^6.0.0"
-    }
-  }
-
-  // Example 2: API response with nested data
+  // API response with nested data
   const api_response = {
     status: "success",
     data: {
@@ -35,7 +19,7 @@ title: JsonTree
     }
   }
 
-  // Example 3: Scientific/materials data (large)
+  // Scientific/materials data (large)
   const materials_data = {
     formula: "Fe2O3",
     material_id: "mp-19770",
@@ -63,7 +47,7 @@ title: JsonTree
     }
   }
 
-  // Example 4: All data types showcase
+  // All data types showcase
   const all_types = {
     string: "Hello, World!",
     number: 42,
@@ -89,50 +73,45 @@ title: JsonTree
     special_numbers: { infinity: Infinity, neg_infinity: -Infinity, nan: NaN },
   }
 
-  // Example: Edge cases
+  // Edge cases including URL/color auto-detection
   const edge_cases = {
-    // Very long strings that wrap
-    long_paragraph: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
-    single_long_word: "supercalifragilisticexpialidocious".repeat(5),
-    // Multiline strings
+    // URLs auto-linked, CSS colors get swatches
+    urls: {
+      website: "https://github.com/janosh/matterviz",
+      api: "https://api.example.com/v2/materials?page=1&limit=100#section",
+      not_a_url: "just a regular string",
+    },
+    colors: {
+      hex: "#3b82f6",
+      rgb: "rgb(139, 92, 246)",
+      hsl: "hsl(330, 80%, 60%)",
+      oklch: "oklch(0.8 0.15 85)",
+      transparent: "rgba(0, 0, 0, 0.5)",
+      not_a_color: "blue sky",
+    },
+    // Long strings, special chars, unicode
+    long_paragraph: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
     multiline: "First line\nSecond line\nThird line with\ttab",
-    code_snippet: "function hello() {\n  console.log('world');\n  return 42;\n}",
-    // Special characters
     "key.with.dots": "dot notation won't work here",
     "key with spaces": "needs bracket notation",
     'key"with"quotes': "escaped in paths",
-    "key/with/slashes": "common in URLs",
     "émojis_🎉_work": "unicode keys supported",
-    // Unicode content
     unicode_text: "日本語テキスト • Ελληνικά • العربية",
-    emojis: "🚀 🎨 🔧 💡 ⚡ 🌈 🎯 🔥",
+    emojis: "🚀 🎨 🔧 💡 ⚡ 🌈",
     math_symbols: "∑∏∫∂∇ε δ→∞ √π ≈ ≠ ≤ ≥",
-    // Numbers edge cases
+    // Number edge cases
     huge_number: 9999999999999999999999n,
-    tiny_float: 0.000000000001,
     scientific: 6.022e23,
-    // URLs and paths
-    url: "https://example.com/api/v2/users?page=1&limit=100#section",
-    file_path: "/Users/developer/projects/my-app/src/components/Button.svelte",
-    // Base64-like data
-    base64: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ",
-    // Keys that look like numbers
-    "123": "numeric-looking string key",
-    "0": "zero as key",
-    "-1": "negative as key",
-    // Deeply nested mixed types
+    // Nested collections
     nested_collections: new Map([
       ["set_value", new Set([{ inner: [1, 2, 3] }])],
       ["map_value", new Map([["deep", { very: { deep: true } }]])]
     ]),
-    // Edge case values
     empty_string: "",
-    whitespace_only: "   \t\n   ",
     html_content: "<div class='test'><span>HTML &amp; entities</span></div>",
-    json_string: '{"escaped": "json", "inside": ["a", "string"]}',
   }
 
-  // Example 5: Large dataset for performance
+  // Large dataset for performance
   const large_dataset = {
     metadata: { generated: new Date().toISOString(), count: 100 },
     items: Array.from({ length: 100 }, (_, i) => ({
@@ -144,22 +123,20 @@ title: JsonTree
     }))
   }
 
-  // Example 6: Deeply nested structure
-  const deep_structure = {
-    level_0: {
-      level_1: {
-        level_2: {
-          level_3: {
-            level_4: {
-              level_5: {
-                deep_value: "You found me!",
-                siblings: ["a", "b", "c"]
-              }
-            }
-          }
-        }
-      }
-    }
+  // Diff mode (old vs new data)
+  const old_config = {
+    name: "my-app",
+    version: "1.0.0",
+    port: 3000,
+    features: { auth: true, logging: false, cache_ttl: 300, deprecated_flag: true },
+    plugins: ["svelte", "tailwind"],
+  }
+  const new_config = {
+    name: "my-app",
+    version: "2.0.0",
+    port: 8080,
+    features: { auth: true, logging: true, cache_ttl: 600, dark_mode: true },
+    plugins: ["svelte", "tailwind", "mdsvex"],
   }
 
   // Dynamic data for change highlighting
@@ -186,7 +163,7 @@ title: JsonTree
   }
 </script>
 
-A fully-featured JSON tree viewer with folding, search, copy, keyboard navigation, and change highlighting.
+A fully-featured JSON tree viewer with folding, search, copy, keyboard navigation, diff mode, and change highlighting.
 
 ## Quick Start
 
@@ -201,45 +178,41 @@ A fully-featured JSON tree viewer with folding, search, copy, keyboard navigatio
 
 ## Examples
 
-### Config File
-
-<JsonTree value={config_data} default_fold_level={3} />
-
 ### API Response with Search
 
-Search for "alice", "admin", or "editor" to filter results:
+Search for "alice", "admin", or "editor". Right-click any node for the context menu. Ctrl+click to select, Shift+click a key to copy its path:
 
 <JsonTree value={api_response} default_fold_level={4} />
 
-### Scientific Data (Materials)
+### Scientific Data
 
-Large nested structure with arrays of objects:
+Large nested structure. Note the **size annotations** on collapsed nodes, **sticky headers** as you scroll, and the **⊟ button** on hover to collapse children:
 
 <JsonTree value={materials_data} default_fold_level={2} auto_fold_arrays={5} />
 
 ### All Supported Data Types
 
-Every JavaScript type rendered correctly:
+Every JavaScript type rendered correctly with type annotations:
 
 <JsonTree value={all_types} default_fold_level={1} show_data_types={true} />
 
-### Edge Cases
+### Edge Cases, URLs & Colors
 
-Long strings, special characters, unicode, and nested collections:
+URLs render as clickable links. CSS color strings show inline swatches. Special characters and unicode in keys and values:
 
-<JsonTree value={edge_cases} default_fold_level={1} />
+<JsonTree value={edge_cases} default_fold_level={2} />
 
 ### Large Dataset (100 items)
 
-Performance test with auto-folding:
+Performance test with auto-folding. Use the level buttons (1, 2, 3) to control depth:
 
 <JsonTree value={large_dataset} default_fold_level={2} auto_fold_arrays={20} />
 
-### Deep Nesting with Level Controls
+### Diff Mode
 
-Use the level buttons (1, 2, 3) to control expansion depth:
+Pass `compare_value` to highlight additions (green), changes (yellow), and removals (red strikethrough):
 
-<JsonTree value={deep_structure} default_fold_level={2} />
+<JsonTree value={new_config} compare_value={old_config} default_fold_level={5} />
 
 ### Change Highlighting
 
@@ -268,48 +241,62 @@ onselect={handle_select}
 oncopy={handle_copy}
 />
 
-### Sorted Keys
+### Prop Variants
 
-Alphabetically sorted object keys:
+Sorted keys, custom root label, and headerless mode:
 
-<JsonTree value={{ zebra: 1, apple: 2, mango: 3, banana: 4, cherry: 5 }} sort_keys={true} show_header={false} />
-
-### Custom Root Label
+<JsonTree value={{ zebra: 1, apple: 2, mango: 3, banana: 4 }} sort_keys={true} show_header={false} />
 
 <JsonTree value={["red", "green", "blue"]} root_label="colors" show_header={false} />
 
-### Minimal (No Header)
-
 <JsonTree value={{ compact: true, clean: "display" }} show_header={false} />
+
+## Interactions
+
+All built-in — no props needed:
+
+- **Right-click** any node → context menu with Copy value, Copy path, Expand/Collapse children, Pin path
+- **Click a closed key** → expands it. **Click an open key** → copies value
+- **Shift+click** or **middle-click** any key → copies the path
+- **Ctrl+click** nodes to select (blue highlight), **Ctrl+Shift+click** for range select
+- **Ctrl+C** with selection → copies all selected values. **Escape** clears
+- **Hover** a key → shows `▸` expand hint or clipboard icon
+- **⊟ button** on hover → collapses children while keeping node open
+- **Pinned paths** panel appears between header and content after pinning via context menu
 
 ## Keyboard Navigation
 
-| Key         | Action                          |
-| ----------- | ------------------------------- |
-| ↓/↑         | Navigate between nodes          |
-| →           | Expand node or move to child    |
-| ←           | Collapse node or move to parent |
-| Enter/Space | Toggle collapse                 |
-| Ctrl+C      | Copy focused value              |
+| Key             | Action                                      |
+| --------------- | ------------------------------------------- |
+| ↓/↑             | Navigate between nodes                      |
+| →               | Expand node or move to child                |
+| ←               | Collapse node or move to parent             |
+| Enter/Space     | Toggle collapse (expandable) or copy (leaf) |
+| Ctrl/Cmd+C      | Copy focused value (or all selected)        |
+| Ctrl/Cmd+click  | Toggle node selection                       |
+| Shift+click key | Copy path to clipboard                      |
+| Escape          | Close context menu, then clear selection    |
 
 ## Props Reference
 
-| Prop                 | Type                    | Default     | Description                            |
-| -------------------- | ----------------------- | ----------- | -------------------------------------- |
-| `value`              | `unknown`               | required    | Data to display                        |
-| `root_label`         | `string`                | -           | Label for root node                    |
-| `default_fold_level` | `number`                | `2`         | Initial expansion depth                |
-| `auto_fold_arrays`   | `number`                | `10`        | Auto-collapse arrays larger than this  |
-| `auto_fold_objects`  | `number`                | `20`        | Auto-collapse objects larger than this |
-| `collapsed_paths`    | `Set<string>`           | `new Set()` | Bindable collapse state                |
-| `show_header`        | `boolean`               | `true`      | Show search/controls                   |
-| `show_data_types`    | `boolean`               | `false`     | Show type annotations                  |
-| `show_array_indices` | `boolean`               | `true`      | Show array indices                     |
-| `sort_keys`          | `boolean`               | `false`     | Alphabetize keys                       |
-| `max_string_length`  | `number`                | `200`       | Truncate long strings                  |
-| `highlight_changes`  | `boolean`               | `true`      | Flash on value change                  |
-| `onselect`           | `(path, value) => void` | -           | Node click callback                    |
-| `oncopy`             | `(path, value) => void` | -           | Copy callback                          |
+| Prop                 | Type                    | Default     | Description                                          |
+| -------------------- | ----------------------- | ----------- | ---------------------------------------------------- |
+| `value`              | `unknown`               | required    | Data to display                                      |
+| `root_label`         | `string`                | -           | Label for root node                                  |
+| `default_fold_level` | `number`                | `2`         | Initial expansion depth                              |
+| `auto_fold_arrays`   | `number`                | `10`        | Auto-collapse arrays larger than this                |
+| `auto_fold_objects`  | `number`                | `20`        | Auto-collapse objects larger than this               |
+| `collapsed_paths`    | `Set<string>`           | `new Set()` | Bindable collapse state                              |
+| `show_header`        | `boolean`               | `true`      | Show search/controls                                 |
+| `show_data_types`    | `boolean`               | `false`     | Show type annotations                                |
+| `show_array_indices` | `boolean`               | `true`      | Show array indices                                   |
+| `sort_keys`          | `boolean`               | `false`     | Alphabetize keys                                     |
+| `max_string_length`  | `number`                | `200`       | Truncate long strings                                |
+| `highlight_changes`  | `boolean`               | `true`      | Flash on value change                                |
+| `compare_value`      | `unknown`               | -           | Diff against this value (shows adds/removes/changes) |
+| `onselect`           | `(path, value) => void` | -           | Node click callback                                  |
+| `oncopy`             | `(path, value) => void` | -           | Copy callback                                        |
+| `download_filename`  | `string`                | auto        | Custom filename for JSON download                    |
 
 ## CSS Customization
 

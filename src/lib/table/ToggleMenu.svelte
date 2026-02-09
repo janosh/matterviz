@@ -167,21 +167,25 @@
 >
   <summary aria-expanded={column_panel_open}>
     Columns <Icon icon="Columns" />
+    {#if has_any_changes}
+      <button
+        class="reset-btn"
+        onclick={(event) => {
+          event.stopPropagation()
+          event.preventDefault()
+          reset_all()
+        }}
+        type="button"
+        aria-label="Reset all columns to defaults"
+        {@attach tooltip()}
+      >
+        <Icon icon="Reset" width="12px" />
+      </button>
+    {/if}
   </summary>
 
   {#if has_sections}
     <div class="sections-container" role="group">
-      {#if has_any_changes}
-        <button
-          class="reset-all-btn"
-          onclick={reset_all}
-          type="button"
-          {@attach tooltip({ content: `Reset all columns to defaults` })}
-        >
-          <Icon icon="Reset" width="14px" />
-          Reset all
-        </button>
-      {/if}
       {#each sections as section (section.name)}
         {@const is_collapsed = section.name !== `` &&
         collapsed_sections.includes(section.name)}
@@ -199,13 +203,11 @@
               </button>
               {#if section.items.some(is_changed)}
                 <button
-                  class="reset-section-btn"
-                  onclick={(event) => {
-                    event.stopPropagation()
-                    reset_section(section.name)
-                  }}
+                  class="reset-btn"
+                  onclick={() => reset_section(section.name)}
                   type="button"
-                  {@attach tooltip({ content: `Reset ${section.name} to defaults` })}
+                  aria-label="Reset {section.name} to defaults"
+                  {@attach tooltip()}
                 >
                   <Icon icon="Reset" width="12px" />
                 </button>
@@ -228,18 +230,6 @@
     </div>
   {:else}
     <div class="column-menu" role="group" style:grid-template-columns={grid_template}>
-      {#if has_any_changes}
-        <button
-          class="reset-all-btn"
-          onclick={reset_all}
-          type="button"
-          {@attach tooltip({ content: `Reset all columns to defaults` })}
-          style="grid-column: 1 / -1"
-        >
-          <Icon icon="Reset" width="14px" />
-          Reset all
-        </button>
-      {/if}
       {#each columns as col, idx (col.key ?? col.label ?? idx)}
         {@render toggle_item(col)}
       {/each}
@@ -297,31 +287,7 @@
     flex-direction: column;
     gap: 8px;
   }
-  .reset-all-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2pt 6pt;
-    margin-bottom: 4pt;
-    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-    border-radius: var(--tgl-border-radius, 3pt);
-    background: color-mix(in srgb, currentColor 5%, transparent);
-    cursor: pointer;
-    font-size: 0.85em;
-    color: inherit;
-    opacity: 0.8;
-    &:hover {
-      background: color-mix(in srgb, currentColor 12%, transparent);
-      opacity: 1;
-    }
-  }
-  .section-header-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 4pt;
-  }
-  .reset-section-btn {
+  .reset-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -338,29 +304,40 @@
       opacity: 1;
     }
   }
-  .section-header {
+  summary .reset-btn {
+    margin-left: auto;
+  }
+  .section-header-row {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-weight: 600;
-    font-size: 0.9em;
+    margin-bottom: 4pt;
     padding: 2pt 4pt;
-    border: none;
     border-radius: var(--tgl-border-radius, 3pt);
     background: var(
       --tgl-section-header-bg,
       color-mix(in srgb, currentColor 5%, transparent)
     );
-    cursor: pointer;
-    flex: 1;
-    text-align: left;
-    color: inherit;
     &:hover {
       background: var(
         --tgl-section-header-hover-bg,
         color-mix(in srgb, currentColor 12%, transparent)
       );
     }
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+    font-size: 0.9em;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    flex: 1;
+    text-align: left;
+    color: inherit;
   }
   .collapse-icon {
     font-size: 0.7em;

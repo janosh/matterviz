@@ -24,6 +24,8 @@ export { default as StructureInfoPane } from './StructureInfoPane.svelte'
 export { default as StructureScene } from './StructureScene.svelte'
 export * from './supercell'
 
+export type MeasureMode = `distance` | `angle` | `edit-bonds` | `edit-atoms`
+
 export type Species = {
   element: ElementSymbol
   occu: number

@@ -266,12 +266,12 @@ describe(`ToggleMenu`, () => {
       mount_menu(columns, { column_panel_open: true })
 
       // Initially col2 is visible=false which matches default, no changes
-      expect(document.querySelector(`.reset-all-btn`)).toBeNull()
+      expect(document.querySelector(`summary .reset-btn`)).toBeNull()
 
       // Toggle col1 off (differs from default)
       document.querySelectorAll(`label`)[0].click()
       await tick()
-      expect(document.querySelector(`.reset-all-btn`)).not.toBeNull()
+      expect(document.querySelector(`summary .reset-btn`)).not.toBeNull()
     })
 
     it(`reset all restores checkboxes to default state`, async () => {
@@ -283,14 +283,14 @@ describe(`ToggleMenu`, () => {
         document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
       expect(checkboxes()[0].checked).toBe(false) // was toggled off
        // Click reset all
-      ;(document.querySelector(`.reset-all-btn`) as HTMLElement).click()
+      ;(document.querySelector(`summary .reset-btn`) as HTMLElement).click()
       await tick()
 
       // Checkboxes should be back to defaults: true, false, true
       expect(checkboxes()[0].checked).toBe(true)
       expect(checkboxes()[1].checked).toBe(false)
       expect(checkboxes()[2].checked).toBe(true)
-      expect(document.querySelector(`.reset-all-btn`)).toBeNull() // no more changes
+      expect(document.querySelector(`summary .reset-btn`)).toBeNull() // no more changes
     })
 
     it(`calls on_reset callback when reset all clicked`, async () => {
@@ -301,7 +301,7 @@ describe(`ToggleMenu`, () => {
       // Toggle col1 off then reset
       document.querySelectorAll(`label`)[0].click()
       await tick()
-      ;(document.querySelector(`.reset-all-btn`) as HTMLElement).click()
+      ;(document.querySelector(`summary .reset-btn`) as HTMLElement).click()
       await tick()
 
       expect(on_reset).toHaveBeenCalledWith()
@@ -316,14 +316,14 @@ describe(`ToggleMenu`, () => {
       mount_menu(grouped, { column_panel_open: true })
 
       // No changes yet
-      expect(document.querySelector(`.reset-section-btn`)).toBeNull()
+      expect(document.querySelector(`.section-header-row .reset-btn`)).toBeNull()
 
       // Toggle first column off
       document.querySelectorAll(`label`)[0].click()
       await tick()
 
       // Section reset button appears for G1 only
-      const section_btns = document.querySelectorAll(`.reset-section-btn`)
+      const section_btns = document.querySelectorAll(`.section-header-row .reset-btn`)
       expect(section_btns).toHaveLength(1)
     })
 
@@ -343,7 +343,7 @@ describe(`ToggleMenu`, () => {
 
       expect(checkboxes()[0].checked).toBe(false)
       expect(checkboxes()[1].checked).toBe(false) // Reset G1 section only (first reset-section-btn corresponds to G1)
-      ;(document.querySelector(`.reset-section-btn`) as HTMLElement).click()
+      ;(document.querySelector(`.section-header-row .reset-btn`) as HTMLElement).click()
       await tick()
 
       expect(checkboxes()[0].checked).toBe(true) // G1 restored
