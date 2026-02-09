@@ -409,17 +409,21 @@
     padding: 1px 2px;
     border-radius: 2px;
   }
+  .node-content :where(button) {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+  }
   .collapse-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 1em;
     height: 1em;
-    padding: 0;
     margin: 0;
-    border: none;
-    background: none;
-    cursor: pointer;
     color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
     flex-shrink: 0;
   }
@@ -441,11 +445,6 @@
   }
   .node-key {
     color: var(--jt-key, light-dark(#001080, #9cdcfe));
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
   }
   .node-key:hover {
     text-decoration: underline;
@@ -463,12 +462,7 @@
   .preview {
     color: var(--jt-preview, light-dark(#808080, #808080));
     font-style: italic;
-    cursor: pointer;
     margin: 0 4px;
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
   }
   .preview:hover {
     text-decoration: underline;
@@ -524,9 +518,6 @@
   }
   .collapse-level-btn {
     opacity: 0;
-    background: none;
-    border: none;
-    cursor: pointer;
     padding: 0 2px;
     font-size: 0.85em;
     color: var(--jt-arrow, light-dark(#6e6e6e, #858585));

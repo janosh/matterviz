@@ -108,10 +108,13 @@
     }, 150)
   }
 
+  // Root path used everywhere - avoids repeating `root_label ?? ''`
+  let root_path = $derived(root_label ?? ``)
+
   // Compute search matches
   let search_matches = $derived.by(() => {
     if (!search_query) return EMPTY_MATCHES
-    return new SvelteSet(find_matching_paths(value, search_query, root_label ?? ``))
+    return new SvelteSet(find_matching_paths(value, search_query, root_path))
   })
 
   // Sorted matches list for navigation (maintains DOM order via registered_paths_list)
@@ -216,21 +219,11 @@
 
   // Toggle collapse recursively for all descendants
   function toggle_collapse_recursive(path: string, collapse: boolean): void {
-    const all_paths = collect_all_paths(value, root_label ?? ``)
-    // Find all paths that start with this path (descendants)
-    // Empty path means root without label - all paths are descendants
-    let descendants = path === `` ? all_paths : all_paths.filter(
-      (p) => p === path || p.startsWith(path + `.`) || p.startsWith(path + `[`),
-    )
-    // Always include the current path itself (collect_all_paths excludes empty root path)
-    if (!descendants.includes(path)) descendants = [path, ...descendants]
-    if (collapse) {
-      for (const desc of descendants) {
+    for (const desc of get_descendants(path)) {
+      if (collapse) {
         force_expanded.delete(desc)
         collapsed_paths.add(desc)
-      }
-    } else {
-      for (const desc of descendants) {
+      } else {
         collapsed_paths.delete(desc)
         force_expanded.add(desc)
       }
@@ -239,18 +232,31 @@
     force_expanded = new SvelteSet(force_expanded)
   }
 
+  // Get all descendant paths of a given path (including the path itself)
+  function get_descendants(target_path: string): string[] {
+    const all_paths = collect_all_paths(value, root_path)
+    const descendants = target_path === `` ? all_paths : all_paths.filter(
+      (p) =>
+        p === target_path || p.startsWith(target_path + `.`) ||
+        p.startsWith(target_path + `[`),
+    )
+    return descendants.includes(target_path)
+      ? descendants
+      : [target_path, ...descendants]
+  }
+
   function expand_all(): void {
-    force_expanded = new SvelteSet(collect_all_paths(value, root_label ?? ``))
+    force_expanded = new SvelteSet(collect_all_paths(value, root_path))
     collapsed_paths = new SvelteSet()
   }
 
   function collapse_all(): void {
     force_expanded = new SvelteSet()
-    collapsed_paths = new SvelteSet(collect_all_paths(value, root_label ?? ``))
+    collapsed_paths = new SvelteSet(collect_all_paths(value, root_path))
   }
 
   function collapse_to_level(level: number): void {
-    const all_paths = collect_all_paths(value, root_label ?? ``)
+    const all_paths = collect_all_paths(value, root_path)
     const new_collapsed = new SvelteSet<string>()
     const new_expanded = new SvelteSet<string>()
 
@@ -335,7 +341,7 @@
   // Compute diff map when compare_value is provided
   let diff_map = $derived.by((): Map<string, DiffEntry> | null => {
     if (compare_value === undefined) return null
-    return compute_diff(compare_value, value, root_label ?? ``)
+    return compute_diff(compare_value, value, root_path)
   })
 
   // Pre-compute ghost children map for O(1) lookup per node
@@ -343,15 +349,8 @@
 
   // Collapse all descendants but keep the given node expanded (single batch)
   function collapse_children_only(target_path: string): void {
-    const all_paths = collect_all_paths(value, root_label ?? ``)
-    const descendants = target_path === `` ? all_paths : all_paths.filter(
-      (p) =>
-        p === target_path || p.startsWith(target_path + `.`) ||
-        p.startsWith(target_path + `[`),
-    )
-    for (const desc of descendants) {
+    for (const desc of get_descendants(target_path)) {
       if (desc === target_path) {
-        // Keep this node expanded
         collapsed_paths.delete(desc)
         force_expanded.add(desc)
       } else {
@@ -795,7 +794,7 @@
       css_class: `json-tree-search-match`,
     })}
   >
-    <JsonNode node_key={root_label ?? null} {value} path={root_label ?? ``} depth={0} />
+    <JsonNode node_key={root_label ?? null} {value} path={root_path} depth={0} />
   </div>
 
   {#if copy_feedback_path !== null}
@@ -1113,9 +1112,6 @@
     list-style: none;
     margin: 0;
   }
-  .context-menu li {
-    list-style: none;
-  }
   .context-menu button {
     display: flex;
     align-items: center;
@@ -1143,6 +1139,14 @@
       light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1))
     );
   }
+  .pinned-panel :where(button) {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+  }
   .pinned-panel {
     border-bottom: 1px solid var(--jt-header-border);
     padding: 4px 8px;
@@ -1160,11 +1164,7 @@
     opacity: 0.7;
   }
   .pinned-clear-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
     font-size: 10px;
-    color: inherit;
     opacity: 0.6;
     padding: 1px 4px;
   }
@@ -1184,11 +1184,6 @@
   }
   .pinned-path {
     color: var(--jt-key, light-dark(#001080, #9cdcfe));
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
     font-family: var(--jt-font-family);
     white-space: nowrap;
     overflow: hidden;
@@ -1207,13 +1202,9 @@
     flex: 1;
   }
   .unpin-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
     padding: 0 2px;
     opacity: 0.5;
     font-size: 10px;
-    color: inherit;
   }
   .unpin-btn:hover {
     opacity: 1;

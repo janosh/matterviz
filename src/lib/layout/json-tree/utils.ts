@@ -456,32 +456,30 @@ export function estimate_byte_size(
   if (type === `error`) {
     return `${(value as Error).name}: ${(value as Error).message}`.length
   }
+  // Accumulate child sizes for collection types
+  const child_depth = current_depth + 1
+  const child_size = (val: unknown, overhead: number = 1) =>
+    estimate_byte_size(val, max_depth, child_depth) + overhead
   if (type === `array`) {
     let size = 2
-    for (const item of value as unknown[]) {
-      size += estimate_byte_size(item, max_depth, current_depth + 1) + 1
-    }
+    for (const item of value as unknown[]) size += child_size(item)
     return size
   }
   if (type === `object`) {
     let size = 2
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      size += key.length + 4 + estimate_byte_size(val, max_depth, current_depth + 1)
+      size += key.length + 4 + child_size(val, 0)
     }
     return size
   }
   if (type === `map`) {
     let size = 2
-    for (const [, val] of value as Map<unknown, unknown>) {
-      size += estimate_byte_size(val, max_depth, current_depth + 1) + 10
-    }
+    for (const [, val] of value as Map<unknown, unknown>) size += child_size(val, 10)
     return size
   }
   if (type === `set`) {
     let size = 2
-    for (const val of value as Set<unknown>) {
-      size += estimate_byte_size(val, max_depth, current_depth + 1) + 1
-    }
+    for (const val of value as Set<unknown>) size += child_size(val)
     return size
   }
   return String(value).length
