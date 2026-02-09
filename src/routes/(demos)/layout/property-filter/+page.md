@@ -140,9 +140,8 @@ Filter materials by multiple properties simultaneously:
   let v_min = $state()
   let v_max = $state()
 
-  function in_range(val: number, min: number | undefined, max: number | undefined) {
-    return (min === undefined || val >= min) && (max === undefined || val <= max)
-  }
+  const in_range = (val: number, min: number | undefined, max: number | undefined) =>
+    (min === undefined || val >= min) && (max === undefined || val <= max)
 
   const total = $derived(
     Array.from(

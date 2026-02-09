@@ -380,15 +380,12 @@ export function apply_gas_corrections(
 
     // Apply correction to energy (update both energy and energy_per_atom
     // so downstream formation energy calculations use the corrected value)
+    // Both fields store per-atom values, and correction is also per-atom
     const corrected_energy = entry.energy + correction
-    const atoms = Object.values(entry.composition).reduce(
-      (sum, amt) => sum + amt,
-      0,
-    ) || 1
     return {
       ...entry,
       energy: corrected_energy,
-      energy_per_atom: corrected_energy / atoms,
+      energy_per_atom: corrected_energy,
     }
   })
 }
