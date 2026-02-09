@@ -69,15 +69,35 @@
 
   // Debounce timer for rapid clicks (cleaned up when component is destroyed)
   let select_timer: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => { if (select_timer) clearTimeout(select_timer) })
+  let destroyed = false
+  $effect(() => () => {
+    destroyed = true
+    if (select_timer) clearTimeout(select_timer)
+  })
+
+  // Unmount all imperatively mounted panels when this component is destroyed
+  // (prevents leaked WebGL contexts, Three.js renderers, etc.)
+  $effect(() => () => {
+    for (let idx = 0; idx < panels.length; idx++) {
+      unmount_panel(idx)
+    }
+  })
 
   // Scan for renderable paths asynchronously to avoid blocking the UI on large JSON files.
   // Uses requestIdleCallback to yield to the main thread during tree rendering.
   let renderable_paths = $state(new Map<string, { type: RenderableType; label: string }>())
+  let auto_rendered = false
   $effect(() => {
     const current_value = value
     const idle_handle = requestIdleCallback(() => {
       renderable_paths = scan_renderable_paths(current_value)
+      // Auto-render if the root value itself is a single renderable type
+      // (avoids forcing the user to click for single-type JSON files)
+      if (!auto_rendered && renderable_paths.has(``)) {
+        auto_rendered = true
+        const info = renderable_paths.get(``)
+        if (info) replace_or_add_panel(``, info.type, current_value)
+      }
     })
     return () => cancelIdleCallback(idle_handle)
   })
@@ -183,15 +203,29 @@
       badge.className = `renderable-badge`
       badge.textContent = info.label
       badge.title = `Drag to canvas or click to render`
-      badge.style.cssText = `font-size:9px;padding:1px 4px;margin-left:4px;border-radius:3px;background:${TYPE_COLORS[info.type]};color:white;font-weight:500;white-space:nowrap;cursor:grab;flex-shrink:0;`
-      badge.addEventListener(`click`, (event) => {
-        event.stopPropagation()
-        const val = resolve_path(value, data_path)
-        if (val !== undefined) replace_or_add_panel(data_path, info.type, val)
-      })
+      badge.dataset.renderable_path = data_path
+      badge.dataset.renderable_type = info.type
+      badge.style.background = TYPE_COLORS[info.type]
       insert_after.after(badge)
     }
   }
+
+  // Delegated click handler for badges (avoids per-badge listeners that leak on re-render)
+  $effect(() => {
+    if (!sidebar_element) return
+    function on_badge_click(event: MouseEvent): void {
+      const badge = (event.target as HTMLElement).closest(`.renderable-badge`) as HTMLElement | null
+      if (!badge) return
+      event.stopPropagation()
+      const data_path = badge.dataset.renderable_path ?? ``
+      const detected_type = badge.dataset.renderable_type as RenderableType | undefined
+      if (!detected_type) return
+      const val = resolve_path(value, data_path)
+      if (val !== undefined) replace_or_add_panel(data_path, detected_type, val)
+    }
+    sidebar_element.addEventListener(`click`, on_badge_click)
+    return () => sidebar_element!.removeEventListener(`click`, on_badge_click)
+  })
 
   // Re-apply badges + draggable attributes when tree DOM changes.
   // Guard with a flag so our own badge DOM mutations don't re-trigger the observer,
@@ -348,14 +382,16 @@
     }
   }
 
+  // Merge defaults once (reused across all panel mounts)
+  const merged_defaults = $derived(merge(defaults))
+  const common_props = { fullscreen_toggle: false, style: `height:100%` }
+
   function mount_into(target: HTMLElement, val: unknown, detected_type: RenderableType): ReturnType<typeof mount> | null {
     target.innerHTML = ``
     // Force layout so Three.js gets real dimensions
     void target.offsetHeight
 
-    const merged = merge(defaults)
-    const common_props = { fullscreen_toggle: false, style: `height:100%` }
-    const struct_common = { allow_file_drop: false, enable_tips: false, ...struct_props(merged), ...common_props }
+    const struct_common = { allow_file_drop: false, enable_tips: false, ...struct_props(merged_defaults), ...common_props }
 
     try {
       if (detected_type === `structure`) {
@@ -473,7 +509,7 @@
     try {
       const { data_path, detected_type } = JSON.parse(raw) as { data_path: string; detected_type: RenderableType }
       const val = resolve_path(value, data_path)
-      if (!val || !detected_type) return
+      if (val === undefined || !detected_type) return
       if (panels.length === 0 || zone === `center` || !zone) {
         replace_or_add_panel(data_path, detected_type, val)
       } else {
@@ -528,6 +564,7 @@
     const data_path = strip_root_prefix(path)
     if (select_timer) clearTimeout(select_timer)
     select_timer = setTimeout(() => {
+      if (destroyed) return // component was destroyed while timer was pending
       const detected = detect_view_type(val)
       if (detected) replace_or_add_panel(data_path, detected, val)
     }, 150)
@@ -886,6 +923,18 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
+    flex-shrink: 0;
+  }
+  /* Badges are injected imperatively — use :global so Svelte doesn't strip the rule */
+  :global(.renderable-badge) {
+    font-size: 9px;
+    padding: 1px 4px;
+    margin-left: 4px;
+    border-radius: 3px;
+    color: white;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: grab;
     flex-shrink: 0;
   }
 </style>

@@ -101,7 +101,9 @@
   function handle_slider_end(gas: GasSpecies, event: Event): void {
     const P = slider_to_pressure(+(event.currentTarget as HTMLInputElement).value)
     pressures = { ...pressures, [gas]: P }
-    preview_pressures = {}
+    // Clear only this gas's preview (don't reset other sliders being dragged simultaneously)
+    const { [gas]: _, ...rest } = preview_pressures
+    preview_pressures = rest
   }
 
   function set_pressure_direct(gas: GasSpecies, value: number): void {

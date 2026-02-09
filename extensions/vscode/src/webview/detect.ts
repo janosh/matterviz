@@ -105,7 +105,7 @@ function is_band_grid(obj: unknown): boolean {
 // ConvexHull entries: array of objects with `composition` (object) + energy field
 // Accepts `energy`, `e_form_per_atom`, or `energy_per_atom` as the energy key
 function is_convex_hull_entries(obj: unknown): boolean {
-  if (!Array.isArray(obj) || obj.length === 0) return false
+  if (!Array.isArray(obj) || obj.length < 2) return false
   // Check first few entries to avoid false positives on random arrays
   return obj.slice(0, 3).every((item) => {
     const entry = as_record(item)
@@ -251,7 +251,7 @@ function is_xrd_pattern(obj: unknown): boolean {
 // or object with parallel arrays (column-based format)
 function is_tabular_data(obj: unknown): boolean {
   // Row-based: array of objects with string keys and numeric/string values
-  if (Array.isArray(obj) && obj.length >= 2) {
+  if (Array.isArray(obj) && obj.length >= 3) {
     const first = as_record(obj[0])
     const second = as_record(obj[1])
     if (!first || !second) return false

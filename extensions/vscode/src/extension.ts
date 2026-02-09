@@ -16,6 +16,7 @@ import * as vscode from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import { stream_file_to_buffer } from './node-io'
 import type { ViewType } from './types'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from './types'
 
 interface FrameLoaderData {
   loader: FrameLoader
@@ -122,11 +123,6 @@ function get_wasm_filename(ext_path: string): string | null {
 
 // File size thresholds for reading files via VSCode API (1GB for both text and binary)
 const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
-
-// Filename patterns for specialized file types (shared between infer_view_type / should_auto_render)
-const FERMI_FILE_RE = /\.(bxsf|frmsf)$/i
-const VOLUMETRIC_EXT_RE = /\.cube$/i
-const VOLUMETRIC_VASP_RE = /^(chgcar|aeccar[012]?|elfcar|locpot)/i
 
 // Helper: determine view type using content when available
 const infer_view_type = (file: FileData): ViewType => {

@@ -4,9 +4,15 @@ import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 import { detect_view_type, scan_renderable_paths } from '../src/webview/detect'
 
+// Use URL-based resolution relative to this test file (CWD-independent)
+import { fileURLToPath } from 'node:url'
+const fixture_path = fileURLToPath(
+  new URL(`../test-fixtures/all-viz-types.json.gz`, import.meta.url) as Parameters<
+    typeof fileURLToPath
+  >[0],
+)
 const fixture = JSON.parse(
-  gunzipSync(readFileSync(`extensions/vscode/test-fixtures/all-viz-types.json.gz`))
-    .toString(),
+  gunzipSync(readFileSync(fixture_path)).toString(),
 )
 
 describe(`detect_view_type`, () => {
@@ -75,10 +81,10 @@ describe(`detect_view_type`, () => {
       composition: { Fe: 1 },
       energy: -2.0,
     }]],
-    [`convex_hull (e_form_per_atom)`, `convex_hull`, [{
-      composition: { Li: 1 },
-      e_form_per_atom: 0.0,
-    }]],
+    [`convex_hull (e_form_per_atom)`, `convex_hull`, [
+      { composition: { Li: 1 }, e_form_per_atom: 0.0 },
+      { composition: { Fe: 1 }, e_form_per_atom: 0.0 },
+    ]],
     [`band_grid`, `band_grid`, {
       energies: [[[1, 2]]],
       k_grid: [2, 2, 2],
@@ -133,11 +139,11 @@ describe(`detect_view_type`, () => {
       k_path: [[0, 0, 0], [0.5, 0, 0]],
     }],
     [`bands_and_dos`, `bands_and_dos`, { band_structure: pymatgen_bands, dos: norm_dos }],
-    [`table (row-based)`, `table`, [{ name: `Si`, energy: -5.4, volume: 20.5 }, {
-      name: `Ge`,
-      energy: -4.6,
-      volume: 22.7,
-    }]],
+    [`table (row-based)`, `table`, [
+      { name: `Si`, energy: -5.4, volume: 20.5 },
+      { name: `Ge`, energy: -4.6, volume: 22.7 },
+      { name: `C`, energy: -7.4, volume: 11.2 },
+    ]],
     [`table (column-based)`, `table`, {
       element: [`Si`, `Ge`, `C`],
       energy: [-5.4, -4.6, -7.4],
@@ -151,7 +157,13 @@ describe(`detect_view_type`, () => {
 
   test.each([
     [`pure-string columns`, null, { names: [`Si`, `Ge`], symbols: [`Si`, `Ge`] }],
-    [`x/y without hkls -> table not xrd`, `table`, { x: [1, 2, 3], y: [4, 5, 6] }],
+    [`x/y without hkls -> table not xrd`, `table`, {
+      x: [1, 2, 3],
+      y: [4, 5, 6],
+      z: [7, 8, 9],
+    }],
+    [`single convex hull entry`, null, [{ composition: { Li: 1 }, energy: -1.5 }]],
+    [`2-row table too small`, null, [{ a: 1, b: 2 }, { a: 3, b: 4 }]],
     [`BZ with isosurfaces -> fermi_surface`, `fermi_surface`, {
       k_lattice: k_lattice_3x3,
       isosurfaces: [],
@@ -218,6 +230,28 @@ describe(`scan_renderable_paths`, () => {
       ],
     }
     expect(scan_renderable_paths(data).get(`items[1]`)?.type).toBe(`structure`)
+  })
+
+  test(`all scanned paths resolve back to the original value`, () => {
+    // resolve_path mirror (same logic as JsonBrowser.svelte)
+    function resolve_path(root: unknown, path: string): unknown {
+      if (!path) return root
+      const segments = path.replace(/\[(\d+)\]/g, `.$1`).split(`.`).filter(Boolean)
+      let current: unknown = root
+      for (const segment of segments) {
+        if (current === null || current === undefined || typeof current !== `object`) {
+          return undefined
+        }
+        current = (current as Record<string, unknown>)[segment]
+      }
+      return current
+    }
+    for (const [path] of fixture_paths) {
+      const resolved = resolve_path(fixture, path)
+      expect(resolved, `resolve_path failed for '${path}'`).not.toBeUndefined()
+      // Re-detect should return the same type
+      expect(detect_view_type(resolved)).toBe(fixture_paths.get(path)?.type)
+    }
   })
 })
 

@@ -27,18 +27,16 @@ import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import type { ViewType } from '../types'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '../types'
+import type { RenderableType } from './detect'
 import { detect_view_type } from './detect'
 import JsonBrowser from './JsonBrowser.svelte'
 
-// Filename patterns for specialized file types
-const FERMI_FILE_RE = /\.(bxsf|frmsf)$/i
-const VOLUMETRIC_EXT_RE = /\.cube$/i
-const VOLUMETRIC_VASP_RE = /^(CHGCAR|AECCAR[012]?|ELFCAR|LOCPOT)/i
-
 // Maps detect.ts RenderableType to ViewType for direct rendering.
-// Types not listed here (band_structure, dos, structure, volumetric) have
-// special handling or intentionally fall through to json_browser.
-const DETECTION_TO_VIEW_TYPE: Record<string, ViewType> = {
+// Types not listed here fall through to json_browser (which can render all types
+// via its internal mount_into, giving the user a tree view alongside the viz).
+// structure and volumetric have special handling in parse_file_content below.
+const DETECTION_TO_VIEW_TYPE: Partial<Record<RenderableType, ViewType>> = {
   fermi_surface: `fermi_surface`,
   band_grid: `fermi_surface`,
   convex_hull: `convex_hull`,
@@ -388,14 +386,16 @@ const parse_file_content = async (
   }
 
   // Fermi surface files (.bxsf, .frmsf)
-  if (FERMI_FILE_RE.test(filename)) {
+  // Use basename for regex matching in case filename retains a directory prefix
+  const basename = filename.split(`/`).pop() ?? filename
+  if (FERMI_FILE_RE.test(basename)) {
     const data = parse_fermi_file(content, filename)
     if (data) return { type: `fermi_surface`, data, filename }
     throw new Error(`Failed to parse Fermi surface file: ${filename}`)
   }
 
   // Volumetric data files (.cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT)
-  if (VOLUMETRIC_EXT_RE.test(filename) || VOLUMETRIC_VASP_RE.test(filename)) {
+  if (VOLUMETRIC_EXT_RE.test(basename) || VOLUMETRIC_VASP_RE.test(basename)) {
     const data = parse_volumetric_file(content, filename)
     if (data) return { type: `isosurface`, data, filename }
     throw new Error(`Failed to parse volumetric file: ${filename}`)
