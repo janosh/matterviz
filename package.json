@@ -5,10 +5,10 @@
   "homepage": "https://janosh.github.io/matterviz",
   "repository": "https://github.com/janosh/matterviz",
   "license": "MIT",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "svelte": "./dist/index.js",
   "bugs": "https://github.com/janosh/matterviz/issues",

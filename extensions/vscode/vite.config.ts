@@ -1,21 +1,18 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { mock_vscode } from './tests/vscode-mock'
 
-// this file is trying to load ESM-only packages but it's being loaded as CommonJS by VSCode extension.
-// Needs to be explicitly named .mjs to communicate correct import format to VSCode.
-
-const __dirname = fileURLToPath(new URL(`.`, import.meta.url))
+// always defined when running under Node/Vite
+const __dirname = import.meta.dirname as string
 
 export default defineConfig(({ mode }) => ({
   plugins: [
     mode === `test`
       ? { // just ignore svelte files in test mode
         name: `svelte-mock`,
-        resolveId: (id) => id.endsWith(`.svelte`) ? id : null,
-        load: (id) => id.endsWith(`.svelte`) ? `export default {}` : null,
+        resolveId: (id: string) => id.endsWith(`.svelte`) ? id : null,
+        load: (id: string) => id.endsWith(`.svelte`) ? `export default {}` : null,
       }
       : svelte(),
     mode === `test` ? mock_vscode() : null,

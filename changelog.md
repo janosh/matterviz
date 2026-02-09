@@ -1,5 +1,26 @@
 # Changelog
 
+## [v0.3.1](https://github.com/janosh/matterviz/compare/v0.3.0...v0.3.1)
+
+> 9 February 2026
+
+### 🛠 Enhancements
+
+- Add classical potentials, MD thermostats, and benchmark suite by @janosh in https://github.com/janosh/matterviz/pull/290
+- Add multiple face coloring modes for 3D/4D convex hulls by @janosh in https://github.com/janosh/matterviz/pull/292
+- Add TorchSim state conversion + improve Rust bindings by @janosh in https://github.com/janosh/matterviz/pull/293
+- Automate `ferrox` docs generation for Rust + Python + WASM APIs by @janosh in https://github.com/janosh/matterviz/pull/294
+- Add 10 ferrox Marimo notebooks and improve structure matching UX by @janosh in https://github.com/janosh/matterviz/pull/295
+- Auto-generate Python type stubs from Rust with pyo3-stub-gen by @janosh in https://github.com/janosh/matterviz/pull/296
+- Add section grouping and layout options to ToggleMenu by @janosh in https://github.com/janosh/matterviz/pull/297
+- Add isosurface visualization for volumetric data by @janosh in https://github.com/janosh/matterviz/pull/300
+- Add interactive edit-atoms mode for adding, moving, and deleting structure sites by @janosh in https://github.com/janosh/matterviz/pull/301
+- VS Code extension: JsonBrowser with multi-panel drag-and-drop layout by @janosh in https://github.com/janosh/matterviz/pull/303
+
+### 💡 Refactoring
+
+- `ferrox` modularize Python and WASM bindings into namespaced submodules by @janosh in https://github.com/janosh/matterviz/pull/291
+
 ## [v0.3.0](https://github.com/janosh/matterviz/compare/v0.2.2...v0.3.0)
 
 > 1 February 2026
