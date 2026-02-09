@@ -248,9 +248,7 @@
     </div>
   {:else}
     <!-- Color scale selector -->
-    <div
-      style="display: grid; gap: 8px; grid-template-columns: auto 1fr; align-items: center; overflow: hidden; margin-top: 12px"
-    >
+    <div class="color-scale-row">
       <span
         {@attach tooltip({ content: `Choose energy colormap` })}
         onclick={focus_multiselect}
@@ -479,7 +477,6 @@
     min-width: 80px;
   }
   button {
-    flex: 1;
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
   }
   .toggle-btn.active, .toggle-btn:hover.active {
@@ -537,5 +534,17 @@
     padding: 2px 6px;
     min-width: auto;
     flex: 0 1 auto;
+  }
+  .color-scale-row {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    overflow: hidden;
+    margin-top: 12px;
+  }
+  .color-scale-row :global(.multiselect) {
+    font-size: 0.85em;
+    --sms-min-height: 24px;
   }
 </style>
