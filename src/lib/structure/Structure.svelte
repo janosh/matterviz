@@ -20,11 +20,12 @@
   import { ELEM_SYMBOLS } from '$lib/labels'
   import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
-  import { create_cart_to_frac } from '$lib/math'
+  import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure, Crystal } from '$lib/structure'
   import { get_element_counts, get_pbc_image_sites } from '$lib/structure'
+  import { wrap_to_unit_cell } from '$lib/structure/pbc'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
@@ -343,8 +344,11 @@
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
 
-  // Trigger symmetry analysis when structure is loaded or settings change
+  // Trigger symmetry analysis when structure is loaded or settings change.
+  // Skip during atom drags — symmetry doesn't change from moving atoms,
+  // and WASM analysis on every drag frame causes severe frame drops.
   $effect(() => {
+    if (dragging_atoms) return
     if (!structure || !(`lattice` in structure)) {
       untrack(() => {
         sym_data = null
@@ -389,6 +393,7 @@
   let removed_bonds = $state<[number, number][]>([])
 
   // === Edit-atoms mode state ===
+  let dragging_atoms = $state(false)
   let undo_stack = $state<AnyStructure[]>([])
   let redo_stack = $state<AnyStructure[]>([])
   const MAX_HISTORY = 20
@@ -420,6 +425,7 @@
   function clear_selection() {
     selected_sites = []
     measured_sites = []
+    dragging_atoms = false
   }
 
   function push_undo() {
@@ -610,7 +616,9 @@
     })
   })
 
-  // Apply element mapping then image atoms to the supercell structure
+  // Apply element mapping then image atoms to the supercell structure.
+  // Skip get_pbc_image_sites during atom drags — the vector math + doubled site
+  // count causes frame drops. Image atoms reappear instantly on drag release.
   $effect(() => {
     let struct = supercell_structure
     if (struct && element_mapping && Object.keys(element_mapping).length > 0) {
@@ -628,7 +636,8 @@
       }
     }
     displayed_structure =
-      show_image_atoms && struct && `lattice` in struct && struct.lattice
+      !dragging_atoms && show_image_atoms && struct && `lattice` in struct &&
+        struct.lattice
         ? get_pbc_image_sites(struct)
         : struct
   })
@@ -989,14 +998,20 @@
     }
   }
 
-  // Handle atom moves from StructureScene TransformControls.
-  // Receives scene-level indices and a Cartesian delta (offset) to apply.
+  // Handle atom moves from TransformControls. Applies Cartesian delta and wraps
+  // fractional coords inline so normalize_fractional_coords hits its fast path.
   function handle_sites_moved(scene_indices: number[], delta: Vec3) {
     if (!structure?.sites) return
     is_internal_edit = true
 
     const orig_indices = scene_to_structure_indices(scene_indices)
-    const cart_to_frac = get_cart_to_frac()
+    // For crystals, wrap to [0,1) inline so normalize_fractional_coords fast-paths.
+    // For molecules (no lattice), just apply the Cartesian delta directly.
+    const lattice = `lattice` in structure
+      ? (structure as Crystal).lattice.matrix
+      : null
+    const cart_to_frac = lattice ? create_cart_to_frac(lattice) : null
+    const frac_to_cart = lattice ? create_frac_to_cart(lattice) : null
     structure = {
       ...structure,
       sites: structure.sites.map((site, idx) => {
@@ -1006,7 +1021,11 @@
           site.xyz[1] + delta[1],
           site.xyz[2] + delta[2],
         ]
-        return { ...site, xyz: new_xyz, abc: cart_to_frac?.(new_xyz) ?? new_xyz }
+        if (!cart_to_frac || !frac_to_cart) {
+          return { ...site, xyz: new_xyz, abc: new_xyz }
+        }
+        const wrapped_abc = wrap_to_unit_cell(cart_to_frac(new_xyz))
+        return { ...site, xyz: frac_to_cart(wrapped_abc), abc: wrapped_abc }
       }),
     }
   }
@@ -1451,6 +1470,7 @@
             bind:add_atom_mode
             bind:add_element
             bind:cursor={canvas_cursor}
+            bind:dragging_atoms
           />
         </Canvas>
       </div>

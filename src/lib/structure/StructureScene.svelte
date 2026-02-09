@@ -32,7 +32,7 @@
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import type { Camera, Mesh, Scene } from 'three'
+  import { type Camera, Color, type Mesh, type Scene } from 'three'
   import Bond from './Bond.svelte'
   import type { BondingStrategy } from './bonding'
   import { BONDING_STRATEGIES, compute_bond_transform } from './bonding'
@@ -139,6 +139,7 @@
     add_atom_mode = $bindable(false),
     add_element = $bindable(`C`),
     cursor = $bindable(`default`),
+    dragging_atoms = $bindable(false),
     volumetric_data = undefined,
     isosurface_settings = DEFAULT_ISOSURFACE_SETTINGS,
   }: {
@@ -218,6 +219,7 @@
     add_atom_mode?: boolean // whether user is in click-to-place add-atom sub-mode
     add_element?: ElementSymbol // element to add when clicking in add-atom mode
     cursor?: string // cursor style for the 3D canvas
+    dragging_atoms?: boolean // true while TransformControls drag is active (skips expensive recalculations)
     volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
   } = $props()
@@ -265,10 +267,21 @@
     return `default`
   })
 
+  // Desaturate a color by blending it toward gray (for ghosting image atoms in edit mode)
+  const gray = new Color(0x999999)
+  function desaturate(hex: string | undefined, amount = 0.4): string {
+    return `#${new Color(hex ?? 0x999999).lerp(gray, amount).getHexString()}`
+  }
+
   // === Edit-atoms mode state ===
   let transform_object = $state<Mesh | undefined>(undefined)
   // Plain variable — only used imperatively in TransformControls drag handlers
   let drag_start_centroid: Vec3 | null = null
+  // Frozen centroid set on drag start. While non-null, the TransformControls mesh
+  // position stays at this fixed value so Svelte's reactive centroid updates (from
+  // PBC wrapping) don't fight TransformControls. Cleared on mouseUp so the mesh
+  // snaps to the new wrapped centroid.
+  let frozen_centroid = $state<Vec3 | null>(null)
 
   function get_bond_key(idx1: number, idx2: number): string {
     return idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`
@@ -825,13 +838,13 @@
         }
           {@const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom}
           <extras.InstancedMesh
-            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom ? `img` : `base`}-{atoms.length}-{edit_mode_image}"
+            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom ? `img` : `base`}-{edit_mode_image}"
             range={atoms.length}
             frustumCulled={false}
           >
             <T.SphereGeometry args={[0.5, sphere_segments, sphere_segments]} />
             <T.MeshStandardMaterial
-              {color}
+              color={edit_mode_image ? desaturate(color) : color}
               opacity={edit_mode_image ? 0.5 : 1}
               transparent={edit_mode_image}
             />
@@ -883,6 +896,9 @@
               toggle_selection(atom.site_idx, event)
             }}
           >
+            {@const partial_color = partial_edit_image
+            ? desaturate(atom.color)
+            : atom.color}
             <T.Mesh>
               <T.SphereGeometry
                 args={[
@@ -894,7 +910,7 @@
                 ]}
               />
               <T.MeshStandardMaterial
-                color={atom.color}
+                color={partial_color}
                 opacity={ghost_opacity}
                 transparent={partial_edit_image}
               />
@@ -904,7 +920,7 @@
               <T.Mesh rotation={[0, atom.start_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
                 <T.MeshStandardMaterial
-                  color={atom.color}
+                  color={partial_color}
                   side={2}
                   opacity={ghost_opacity}
                   transparent={partial_edit_image}
@@ -913,7 +929,7 @@
               <T.Mesh rotation={[0, atom.end_phi, 0]}>
                 <T.CircleGeometry args={[0.5, sphere_segments]} />
                 <T.MeshStandardMaterial
-                  color={atom.color}
+                  color={partial_color}
                   side={2}
                   opacity={ghost_opacity}
                   transparent={partial_edit_image}
@@ -1133,9 +1149,11 @@
           selected_atoms.reduce((sum, atom) => sum + atom.xyz[dim], 0) /
           selected_atoms.length}
           {@const centroid = [avg(0), avg(1), avg(2)] as Vec3}
-          <!-- Invisible mesh at centroid for TransformControls to manipulate -->
+          <!-- Invisible mesh at centroid for TransformControls to manipulate.
+               During drag, use frozen_centroid so Svelte doesn't override TransformControls
+               with the wrapped centroid (which jumps on PBC boundary crossings). -->
           <T.Mesh
-            position={centroid}
+            position={frozen_centroid ?? centroid}
             bind:ref={transform_object}
           >
             <T.SphereGeometry args={[0.01, 4, 4]} />
@@ -1161,10 +1179,13 @@
               on_sites_moved?.(selected_sites, delta)
             }}
             onmouseDown={() => {
-              drag_start_centroid = [...centroid] as Vec3
+              dragging_atoms = true
+              drag_start_centroid = frozen_centroid = [...centroid] as Vec3
               on_operation_start?.()
             }}
             onmouseUp={() => {
+              dragging_atoms = false
+              frozen_centroid = null
               drag_start_centroid = null
             }}
           />

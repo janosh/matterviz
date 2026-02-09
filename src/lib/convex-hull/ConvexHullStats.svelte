@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { InfoItem } from '$lib/layout'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
+  import type { InfoItem } from '$lib/layout'
   import Histogram from '$lib/plot/Histogram.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
@@ -211,7 +211,7 @@
           y_axis={{ label: ``, ticks: 3 }}
           show_legend={false}
           show_controls={false}
-          padding={{ t: 5, b: 25, l: 35, r: 5 }}
+          padding={{ t: 5, b: 35, l: 35, r: 5 }}
           style="height: 100px; --histogram-min-height: 100px"
           bar={{ color: `steelblue`, opacity: 0.7 }}
         />
@@ -226,7 +226,7 @@
           y_axis={{ label: ``, ticks: 3 }}
           show_legend={false}
           show_controls={false}
-          padding={{ t: 5, b: 25, l: 35, r: 5 }}
+          padding={{ t: 5, b: 35, l: 35, r: 5 }}
           style="height: 100px; --histogram-min-height: 100px"
           bar={{ color: `coral`, opacity: 0.7 }}
         />

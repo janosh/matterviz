@@ -87,6 +87,8 @@
     position: absolute;
     top: calc(1ex + 50px);
     right: 1ex;
+    z-index: 2;
+    pointer-events: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
