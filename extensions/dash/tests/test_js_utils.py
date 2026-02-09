@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-# Path to the MatterViz.react.js file
+# Path to the MatterViz.react.ts file
 REACT_JS_PATH = (
-    Path(__file__).parent.parent / "src" / "lib" / "components" / "MatterViz.react.js"
+    Path(__file__).parent.parent / "src" / "lib" / "components" / "MatterViz.react.ts"
 )
 
 

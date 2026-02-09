@@ -8,11 +8,31 @@ const LOADING_DELAY_MS = 100
 // Guard against prototype pollution attacks via malicious prop names
 const DANGEROUS_KEYS = new Set([`__proto__`, `constructor`, `prototype`])
 
+interface MatterVizProps {
+  id?: string
+  component?: string
+  mv_props?: Record<string, unknown>
+  set_props?: string[]
+  float32_props?: string[]
+  event_props?: string[]
+  last_event?: Record<string, unknown>
+  className?: string
+  style?: React.CSSProperties
+  setProps?: (props: Record<string, unknown>) => void
+  children?: React.ReactNode
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+  errorInfo: React.ErrorInfo | null
+}
+
 // Convert non-JSON-serializable values for Dash event payloads.
 // Uses JSON.stringify with a replacer to handle special types.
-function sanitize_for_json(value) {
+function sanitize_for_json(value: unknown): unknown {
   const seen = new WeakSet()
-  const replacer = (_key, val) => {
+  const replacer = (_key: string, val: unknown): unknown => {
     if (val === null || val === undefined) return val
     if (typeof val === `bigint`) return val.toString()
     if (typeof val === `function`) return undefined
@@ -23,7 +43,7 @@ function sanitize_for_json(value) {
     }
     if (val instanceof Set) return [...val]
     if (val instanceof Map) return [...val.entries()]
-    if (ArrayBuffer.isView(val)) return [...val]
+    if (ArrayBuffer.isView(val)) return [...(val as Iterable<unknown>)]
     if (val instanceof ArrayBuffer) return [...new Uint8Array(val)]
     if (typeof File !== `undefined` && val instanceof File) {
       return {
@@ -38,8 +58,8 @@ function sanitize_for_json(value) {
     }
     // Circular reference detection
     if (typeof val === `object`) {
-      if (seen.has(val)) return `[Circular]`
-      seen.add(val)
+      if (seen.has(val as object)) return `[Circular]`
+      seen.add(val as object)
     }
     return val
   }
@@ -50,20 +70,24 @@ function sanitize_for_json(value) {
   }
 }
 
-function convert_dash_props_to_matterviz(mv_props, set_props_list, float32_props_list) {
+function convert_dash_props_to_matterviz(
+  mv_props: Record<string, unknown>,
+  set_props_list: string[],
+  float32_props_list: string[],
+): Record<string, unknown> {
   if (!mv_props || typeof mv_props !== `object`) return {}
 
-  const out = { ...mv_props }
+  const out: Record<string, unknown> = { ...mv_props }
 
   for (const key of set_props_list || []) {
     if (Array.isArray(out[key])) {
-      out[key] = new Set(out[key])
+      out[key] = new Set(out[key] as unknown[])
     }
   }
 
   for (const key of float32_props_list || []) {
     if (Array.isArray(out[key])) {
-      out[key] = new Float32Array(out[key])
+      out[key] = new Float32Array(out[key] as number[])
     }
   }
 
@@ -73,9 +97,12 @@ function convert_dash_props_to_matterviz(mv_props, set_props_list, float32_props
 // Deep merge two objects. Used to merge nested event callbacks with mv_props.
 // Callbacks (functions) always override, objects are recursively merged.
 // Skips dangerous keys to prevent prototype pollution.
-function deep_merge(target, source) {
+function deep_merge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
   if (!source || typeof source !== `object`) return target
-  const result = { ...target }
+  const result: Record<string, unknown> = { ...target }
   for (const key of Object.keys(source)) {
     // Skip dangerous keys (prototype pollution guard)
     if (DANGEROUS_KEYS.has(key)) continue
@@ -90,7 +117,10 @@ function deep_merge(target, source) {
       typeof tgt_val === `object` &&
       !Array.isArray(tgt_val)
     ) {
-      result[key] = deep_merge(tgt_val, src_val)
+      result[key] = deep_merge(
+        tgt_val as Record<string, unknown>,
+        src_val as Record<string, unknown>,
+      )
     } else {
       result[key] = src_val
     }
@@ -99,23 +129,23 @@ function deep_merge(target, source) {
 }
 
 // Error boundary component to catch and display errors from MatterViz components.
-class MatterVizErrorBoundary extends Component {
-  constructor(props) {
+class MatterVizErrorBoundary extends Component<MatterVizProps, ErrorBoundaryState> {
+  constructor(props: MatterVizProps) {
     super(props)
     this.state = { hasError: false, error: null, errorInfo: null }
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return { hasError: true, error }
   }
 
-  componentDidCatch(error, errorInfo) {
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     this.setState({ errorInfo })
     // Log error to console for debugging
     console.error(`MatterViz component error:`, error, errorInfo)
   }
 
-  render() {
+  render(): React.ReactNode {
     if (this.state.hasError) {
       const { component } = this.props
       const { error } = this.state
@@ -165,8 +195,14 @@ MatterVizErrorBoundary.propTypes = {
   component: PropTypes.string,
 }
 
+// Custom element type for the mv-matterviz web component
+interface MatterVizElement extends HTMLElement {
+  component: string
+  props: Record<string, unknown>
+}
+
 // Inner component that handles the actual MatterViz custom element.
-const MatterVizInner = (props) => {
+const MatterVizInner = (props: MatterVizProps): React.ReactElement => {
   const {
     id,
     component = `Structure`,
@@ -180,9 +216,9 @@ const MatterVizInner = (props) => {
   const float32_props = props.float32_props ?? []
   const event_props = props.event_props ?? []
 
-  const ref = useRef(null)
+  const ref = useRef<MatterVizElement>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const callbacksRef = useRef({})
+  const callbacksRef = useRef<Record<string, unknown>>({})
 
   // Build event callbacks during render and store in ref for stability.
   // This pattern is intentional: setProps is stable from Dash, and we avoid
@@ -195,7 +231,7 @@ const MatterVizInner = (props) => {
       // Skip dangerous prop names (prototype pollution guard)
       if (DANGEROUS_KEYS.has(propName)) continue
 
-      const callback = (data) => {
+      const callback = (data: unknown) => {
         setProps({
           last_event: {
             prop: propName,
@@ -210,12 +246,12 @@ const MatterVizInner = (props) => {
         // Skip if any part is a dangerous key
         if (parts.some((part) => DANGEROUS_KEYS.has(part))) continue
 
-        let target = callbacksRef.current
+        let target = callbacksRef.current as Record<string, unknown>
         for (let idx = 0; idx < parts.length - 1; idx++) {
           const part = parts[idx]
           // Use null-prototype objects to avoid Object.prototype chain
           if (!target[part]) target[part] = Object.create(null)
-          target = target[part]
+          target = target[part] as Record<string, unknown>
         }
         target[parts[parts.length - 1]] = callback
       } else {
@@ -240,7 +276,10 @@ const MatterVizInner = (props) => {
       set_props,
       float32_props,
     )
-    const resolved_props = deep_merge(converted_props, callbacksRef.current)
+    const resolved_props = deep_merge(
+      converted_props,
+      callbacksRef.current as Record<string, unknown>,
+    )
 
     // Set component and props. Due to Svelte's reactivity, there may be a brief
     // render with incomplete props when switching components. Components should
@@ -263,13 +302,13 @@ const MatterVizInner = (props) => {
   // React key forces remount when component type changes
   return React.createElement(
     `div`,
-    { style: { position: `relative`, ...style } },
+    { style: { position: `relative` as const, ...style } },
     isLoading &&
       React.createElement(
         `div`,
         {
           style: {
-            position: `absolute`,
+            position: `absolute` as const,
             top: `50%`,
             left: `50%`,
             transform: `translate(-50%, -50%)`,
@@ -293,7 +332,7 @@ const MatterVizInner = (props) => {
 
 // MatterViz component wrapper for Dash.
 // Wraps any MatterViz Svelte component as a Dash-compatible React component.
-const MatterViz = (props) => {
+const MatterViz = (props: MatterVizProps): React.ReactElement => {
   return React.createElement(
     MatterVizErrorBoundary,
     { component: props.component },
