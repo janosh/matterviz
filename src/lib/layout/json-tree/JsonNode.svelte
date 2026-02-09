@@ -483,18 +483,27 @@
     background: var(--jt-select-bg, light-dark(#bbdefb, #0a3050));
   }
   .json-node.diff-added > .node-content {
-    background: var(--jt-diff-added, light-dark(#c8e6c9, #1b5e20));
+    background: var(
+      --jt-diff-added,
+      light-dark(rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.2))
+    );
   }
   .json-node.diff-removed > .node-content,
   .ghost .node-content {
-    background: var(--jt-diff-removed, light-dark(#ffcdd2, #5e1b1b));
+    background: var(
+      --jt-diff-removed,
+      light-dark(rgba(244, 67, 54, 0.12), rgba(244, 67, 54, 0.18))
+    );
     text-decoration: line-through;
   }
   .json-node.diff-removed > .node-content {
     opacity: 0.7;
   }
   .json-node.diff-changed > .node-content {
-    background: var(--jt-diff-changed, light-dark(#fff9c4, #5e5200));
+    background: var(
+      --jt-diff-changed,
+      light-dark(rgba(255, 193, 7, 0.15), rgba(255, 193, 7, 0.2))
+    );
   }
   .json-node.sticky-header > .node-content {
     position: sticky;
