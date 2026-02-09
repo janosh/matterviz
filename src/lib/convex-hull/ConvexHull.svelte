@@ -1,6 +1,7 @@
 <script lang="ts">
   import { extract_formula_elements } from '$lib/composition/parse'
   import type { AxisConfig } from '$lib/plot'
+  import { DEFAULTS } from '$lib/settings'
   import type { Component } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
   import ConvexHull2D from './ConvexHull2D.svelte'
@@ -28,7 +29,9 @@
     show_stable = $bindable(true),
     show_unstable = $bindable(true),
     show_hull_faces = $bindable(true),
-    hull_face_opacity = $bindable(0.3),
+    hull_face_opacity: hull_face_opacity_prop = $bindable(
+      undefined as number | undefined,
+    ),
     color_mode = $bindable(`energy`),
     color_scale = $bindable(`interpolateViridis`),
     info_pane_open = $bindable(false),
@@ -69,6 +72,15 @@
   // Detect dimensionality by counting unique elements (lightweight operation)
   const elements = $derived(extract_unique_elements(entries))
   const element_count = $derived(elements.length)
+
+  // Resolve hull face opacity: use caller's value if provided,
+  // otherwise pick the right default for the dimensionality (ternary=30%, quaternary=3%)
+  let hull_face_opacity = $derived(
+    hull_face_opacity_prop ??
+      (element_count === 4
+        ? DEFAULTS.convex_hull.quaternary.hull_face_opacity
+        : DEFAULTS.convex_hull.ternary.hull_face_opacity),
+  )
 
   // Map element count to corresponding component
   // Note: Type assertion needed because TypeScript can't infer that all components
