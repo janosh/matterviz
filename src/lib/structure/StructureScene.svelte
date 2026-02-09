@@ -31,7 +31,7 @@
   import * as extras from '@threlte/extras'
   import type { ComponentProps } from 'svelte'
   import { type Snippet, untrack } from 'svelte'
-  import { SvelteMap } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { type Camera, Color, type Mesh, type Scene } from 'three'
   import Bond from './Bond.svelte'
   import type { BondingStrategy } from './bonding'
@@ -122,8 +122,8 @@
     orbit_controls = $bindable(),
     rotation_target_ref = $bindable(),
     initial_computed_zoom = $bindable(),
-    hidden_elements = $bindable(new Set()),
-    hidden_prop_vals = $bindable(new Set<number | string>()),
+    hidden_elements = $bindable(new SvelteSet()),
+    hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
     atom_color_config = {

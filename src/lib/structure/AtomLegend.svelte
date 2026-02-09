@@ -33,8 +33,8 @@
     amount_format = `.3~f`,
     show_amounts = true,
     get_element_label,
-    hidden_elements = $bindable(new Set()),
-    hidden_prop_vals = $bindable(new Set<number | string>()),
+    hidden_elements = $bindable(new SvelteSet()),
+    hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     // Element remapping: maps original element symbols to new ones
     element_mapping = $bindable(),
     // Per-element and per-site radius overrides
@@ -92,7 +92,7 @@
   let previous_mode = $state(atom_color_config.mode)
   $effect(() => {
     if (atom_color_config.mode !== previous_mode) {
-      hidden_prop_vals = new Set()
+      hidden_prop_vals = new SvelteSet()
       previous_mode = atom_color_config.mode
     }
   })

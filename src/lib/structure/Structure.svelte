@@ -110,9 +110,9 @@
     // expose the displayed structure (with image atoms and supercell) for external use
     displayed_structure = $bindable(),
     // Track hidden elements across component lifecycle
-    hidden_elements = $bindable(new Set<ElementSymbol>()),
+    hidden_elements = $bindable(new SvelteSet<ElementSymbol>()),
     // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
-    hidden_prop_vals = $bindable(new Set<number | string>()),
+    hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     // Per-element radius overrides (absolute values in Angstroms)
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     // Per-site radius overrides (absolute values in Angstroms)
