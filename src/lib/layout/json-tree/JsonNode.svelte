@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/Icon.svelte'
   import { getContext, onMount } from 'svelte'
   import JsonNode from './JsonNode.svelte'
   import JsonValue from './JsonValue.svelte'
@@ -6,6 +7,8 @@
   import { JSON_TREE_CONTEXT_KEY } from './types'
   import {
     build_path,
+    estimate_byte_size,
+    format_byte_size,
     format_preview,
     get_child_count,
     get_value_type,
@@ -80,6 +83,17 @@
   // Check if this is the current search match being navigated
   let is_current_match = $derived(ctx?.current_match_path === path)
 
+  // Check if this node is selected
+  let is_selected = $derived(ctx?.selected_paths.has(path) ?? false)
+
+  // Diff status for this node (null if no diff or unchanged)
+  let diff_status = $derived(ctx?.diff_map?.get(path)?.status ?? null)
+
+  // Estimated byte size for collapsed preview (only compute when collapsed)
+  let byte_size = $derived(
+    expandable && is_collapsed ? format_byte_size(estimate_byte_size(value)) : ``,
+  )
+
   // Toggle collapse state
   function toggle_collapse(event?: MouseEvent) {
     event?.stopPropagation()
@@ -141,6 +155,16 @@
 
   let children = $derived(get_children())
 
+  // Ghost children: removed entries from diff (pre-computed in JsonTree for O(1) lookup)
+  let ghost_children = $derived.by(() => {
+    if (!expandable || is_collapsed) return []
+    const all_ghosts = ctx?.ghost_map.get(path) ?? []
+    if (all_ghosts.length === 0) return []
+    // Filter out ghosts whose keys already exist in current children
+    const existing_keys = new Set(children.map((child) => String(child.key)))
+    return all_ghosts.filter((ghost) => !existing_keys.has(String(ghost.key)))
+  })
+
   // Get bracket characters based on type
   let open_bracket = $derived(value_type === `array` ? `[` : `{`)
   let close_bracket = $derived(value_type === `array` ? `]` : `}`)
@@ -153,6 +177,8 @@
       event.preventDefault()
       if (expandable) {
         toggle_collapse()
+      } else {
+        ctx?.copy_value(path, value)
       }
     } else if (event.key === `ArrowRight`) {
       event.preventDefault()
@@ -167,7 +193,10 @@
     } else if (
       (event.key === `c` || event.key === `C`) && (event.ctrlKey || event.metaKey)
     ) {
+      // When nodes are selected, let the tree-level handler do bulk copy
+      if (ctx?.selected_paths.size) return
       event.preventDefault()
+      event.stopPropagation()
       ctx?.copy_value(path, value)
     }
   }
@@ -188,13 +217,35 @@
   class:collapsed={is_collapsed}
   class:expandable
   class:focused={is_focused}
+  class:selected={is_selected}
   class:current-match={is_current_match}
+  class:diff-added={diff_status === `added`}
+  class:diff-removed={diff_status === `removed`}
+  class:diff-changed={diff_status === `changed`}
+  class:sticky-header={expandable && !is_collapsed && depth <= 2}
+  style:--jt-sticky-depth={depth}
   data-path={path}
   role="treeitem"
   aria-expanded={expandable ? !is_collapsed : undefined}
-  aria-selected={is_focused}
+  aria-selected={is_selected}
   tabindex={is_focused ? 0 : -1}
-  onclick={focus_node}
+  onclick={(event) => {
+    if (event.ctrlKey || event.metaKey) {
+      event.stopPropagation()
+      ctx?.toggle_select(path, event.shiftKey)
+    } else {
+      focus_node()
+    }
+  }}
+  onauxclick={(event) => {
+    if (event.button === 1) {
+      event.preventDefault()
+      ctx?.copy_path(path, event)
+    }
+  }}
+  oncontextmenu={(event) => {
+    ctx?.show_context_menu(event, path, value, expandable, is_collapsed)
+  }}
   ondblclick={toggle_collapse_recursive}
   onkeydown={handle_keydown}
 >
@@ -217,11 +268,28 @@
         type="button"
         class="node-key"
         class:array-index={typeof node_key === `number`}
-        title="Click to copy path: {path}"
+        title={expandable && is_collapsed
+        ? `Click to expand · Shift+click: copy path · Ctrl+click: select`
+        : `Click to copy value · Shift+click: copy path · Ctrl+click: select`}
         tabindex="-1"
         onclick={(event) => {
           event.stopPropagation()
-          ctx?.copy_path(path)
+          if (event.ctrlKey || event.metaKey) {
+            ctx?.toggle_select(path, event.shiftKey)
+          } else if (event.shiftKey) {
+            ctx?.copy_path(path, event)
+          } else if (expandable && is_collapsed) {
+            ctx?.toggle_collapse(path, true)
+          } else {
+            ctx?.copy_value(path, value, event)
+          }
+        }}
+        onauxclick={(event) => {
+          if (event.button === 1) {
+            event.preventDefault()
+            event.stopPropagation()
+            ctx?.copy_path(path, event)
+          }
         }}
       >
         {#if typeof node_key === `number` && ctx?.settings.show_array_indices}
@@ -229,6 +297,16 @@
         {:else if typeof node_key === `string`}
           "{node_key}"
         {/if}
+        <span class="action-hint">
+          {#if expandable && is_collapsed}
+            ▸
+          {:else}
+            <Icon
+              icon="Copy"
+              style="width: 10px; height: 10px; vertical-align: baseline"
+            />
+          {/if}
+        </span>
       </button>
       <span class="colon">:</span>
     {/if}
@@ -239,10 +317,26 @@
         <button type="button" class="preview" tabindex="-1" onclick={toggle_collapse}>
           {format_preview(value)}
         </button>
+        <span class="size-hint">{byte_size}</span>
         <span class="bracket close">{close_bracket}</span>
       {/if}
     {:else}
       <JsonValue {value} {value_type} {path} />
+    {/if}
+
+    {#if expandable && !is_collapsed}
+      <button
+        type="button"
+        class="collapse-level-btn"
+        title="Collapse children to this level"
+        tabindex="-1"
+        onclick={(event) => {
+          event.stopPropagation()
+          ctx?.collapse_children_only(path)
+        }}
+      >
+        ⊟
+      </button>
     {/if}
   </span>
 
@@ -258,8 +352,32 @@
           value={child.value}
           path={build_path(path, child.key)}
           depth={depth + 1}
-          is_last={idx === children.length - 1}
+          is_last={idx === children.length - 1 && ghost_children.length === 0}
         />
+      {/each}
+      {#each ghost_children as ghost (ghost.key)}
+        <div
+          class="json-node ghost"
+          data-path={ghost.path}
+          role="treeitem"
+          aria-selected="false"
+          aria-disabled="true"
+        >
+          <span class="node-content">
+            <span class="no-toggle"></span>
+            <span style="color: var(--jt-key)">
+              {#if typeof ghost.key === `number`}
+                <span class="index">{ghost.key}</span>
+              {:else}
+                "{ghost.key}"
+              {/if}
+            </span>
+            <span class="colon">:</span>
+            <span style="color: var(--jt-preview); font-style: italic">{
+              format_preview(ghost.value)
+            }</span>
+          </span>
+        </div>
       {/each}
     </div>
     <span class="bracket close">{close_bracket}</span>
@@ -294,17 +412,21 @@
     padding: 1px 2px;
     border-radius: 2px;
   }
+  .node-content :where(button) {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+  }
   .collapse-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 1em;
     height: 1em;
-    padding: 0;
     margin: 0;
-    border: none;
-    background: none;
-    cursor: pointer;
     color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
     flex-shrink: 0;
   }
@@ -326,11 +448,6 @@
   }
   .node-key {
     color: var(--jt-key, light-dark(#001080, #9cdcfe));
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
   }
   .node-key:hover {
     text-decoration: underline;
@@ -348,12 +465,7 @@
   .preview {
     color: var(--jt-preview, light-dark(#808080, #808080));
     font-style: italic;
-    cursor: pointer;
     margin: 0 4px;
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
   }
   .preview:hover {
     text-decoration: underline;
@@ -366,5 +478,72 @@
     border-left: 1px solid
       var(--jt-indent-guide, light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1)));
     margin-left: 0.5em;
+  }
+  .json-node.selected > .node-content {
+    background: var(--jt-select-bg, light-dark(#bbdefb, #0a3050));
+  }
+  .json-node.diff-added > .node-content {
+    background: var(
+      --jt-diff-added,
+      light-dark(rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.2))
+    );
+  }
+  .json-node.diff-removed > .node-content,
+  .ghost .node-content {
+    background: var(
+      --jt-diff-removed,
+      light-dark(rgba(244, 67, 54, 0.12), rgba(244, 67, 54, 0.18))
+    );
+    text-decoration: line-through;
+  }
+  .json-node.diff-removed > .node-content {
+    opacity: 0.7;
+  }
+  .json-node.diff-changed > .node-content {
+    background: var(
+      --jt-diff-changed,
+      light-dark(rgba(255, 193, 7, 0.15), rgba(255, 193, 7, 0.2))
+    );
+  }
+  .json-node.sticky-header > .node-content {
+    position: sticky;
+    top: calc(var(--jt-sticky-depth) * 20px);
+    z-index: calc(100 - var(--jt-sticky-depth));
+    background: var(--jt-sticky-bg, var(--jt-bg, light-dark(white, #1e1e1e)));
+    display: flex;
+  }
+  .action-hint {
+    opacity: 0;
+    font-size: 0.8em;
+    margin-left: 2px;
+    transition: opacity 0.15s;
+    color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
+  }
+  .node-key:hover .action-hint {
+    opacity: 0.6;
+  }
+  .size-hint {
+    font-size: 0.8em;
+    color: var(--jt-preview, light-dark(#808080, #808080));
+    margin-left: 4px;
+    opacity: 0.6;
+  }
+  .collapse-level-btn {
+    opacity: 0;
+    padding: 0 2px;
+    font-size: 0.85em;
+    color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
+    transition: opacity 0.15s;
+    margin-left: 4px;
+  }
+  .json-node:hover > .node-content > .collapse-level-btn {
+    opacity: 0.5;
+  }
+  .collapse-level-btn:hover {
+    opacity: 1;
+    color: light-dark(#000, #fff);
+  }
+  .ghost {
+    opacity: 0.5;
   }
 </style>
