@@ -193,7 +193,10 @@
     } else if (
       (event.key === `c` || event.key === `C`) && (event.ctrlKey || event.metaKey)
     ) {
+      // When nodes are selected, let the tree-level handler do bulk copy
+      if (ctx?.selected_paths.size) return
       event.preventDefault()
+      event.stopPropagation()
       ctx?.copy_value(path, value)
     }
   }
@@ -224,7 +227,7 @@
   data-path={path}
   role="treeitem"
   aria-expanded={expandable ? !is_collapsed : undefined}
-  aria-selected={is_focused}
+  aria-selected={is_selected}
   tabindex={is_focused ? 0 : -1}
   onclick={(event) => {
     if (event.ctrlKey || event.metaKey) {
@@ -271,10 +274,10 @@
         tabindex="-1"
         onclick={(event) => {
           event.stopPropagation()
-          if (event.shiftKey) {
+          if (event.ctrlKey || event.metaKey) {
+            ctx?.toggle_select(path, event.shiftKey)
+          } else if (event.shiftKey) {
             ctx?.copy_path(path, event)
-          } else if (event.ctrlKey || event.metaKey) {
-            ctx?.toggle_select(path, false)
           } else if (expandable && is_collapsed) {
             ctx?.toggle_collapse(path, true)
           } else {

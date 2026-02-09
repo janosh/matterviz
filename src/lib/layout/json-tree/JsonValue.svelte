@@ -48,14 +48,15 @@
     }
   })
 
+  // Trimmed string for URL/color detection (avoids using raw whitespace in href/style)
+  let trimmed_str = $derived(value_type === `string` ? (value as string).trim() : ``)
+
   // Auto-detect URLs in string values
-  let url_detected = $derived(value_type === `string` && is_url(value as string))
+  let url_detected = $derived(value_type === `string` && is_url(trimmed_str))
 
   // Auto-detect CSS colors in string values
   let color_detected = $derived(
-    value_type === `string` && is_css_color(value as string)
-      ? (value as string)
-      : null,
+    value_type === `string` && is_css_color(trimmed_str) ? trimmed_str : null,
   )
 
   // Handle click to copy
@@ -110,7 +111,7 @@
   {/if}
   {#if url_detected}
     <a
-      href={encodeURI(value as string)}
+      href={encodeURI(trimmed_str)}
       class="url-link"
       target="_blank"
       rel="noopener noreferrer"
