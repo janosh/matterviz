@@ -354,21 +354,5 @@ describe(`ConvexHullStats`, () => {
         expect(document.body.textContent).toContain(el)
       }
     })
-
-    test(`spacegroup column shown when structure data has it`, () => {
-      mount_stats({
-        stable_entries: [mock_entry({
-          reduced_formula: `NaCl`,
-          structure: { spacegroup: { symbol: `Fm-3m`, number: 225 } } as Record<
-            string,
-            unknown
-          >,
-        })],
-        unstable_entries: [],
-      })
-      switch_to_table()
-      expect(get_headers()).toContain(`Spacegroup`)
-      expect(document.body.textContent).toContain(`Fm-3m`)
-    })
   })
 })

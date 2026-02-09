@@ -1125,8 +1125,7 @@
   .table-scroll.has-scroll {
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.12));
     border-radius: var(--border-radius, 3pt);
-    /* Clip sticky headers to rounded corners while keeping vertical scroll */
-    overflow: clip;
+    overflow-x: hidden;
     overflow-y: auto;
   }
   table {

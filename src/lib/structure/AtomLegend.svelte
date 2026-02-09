@@ -92,7 +92,7 @@
   let previous_mode = $state(atom_color_config.mode)
   $effect(() => {
     if (atom_color_config.mode !== previous_mode) {
-      hidden_prop_vals = new SvelteSet()
+      hidden_prop_vals.clear()
       previous_mode = atom_color_config.mode
     }
   })

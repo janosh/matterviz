@@ -849,13 +849,13 @@ export function get_entry_label(
 ): string {
   if (entry.reduced_formula) return entry.reduced_formula
   if (entry.name) return entry.name
-  let entries = Object.entries(entry.composition).filter(([, amt]) => amt > 0)
+  let pairs = Object.entries(entry.composition).filter(([, amt]) => amt > 0)
   if (elements) {
-    entries = entries.sort(([el1], [el2]) =>
+    pairs = pairs.sort(([el1], [el2]) =>
       elements.indexOf(el1 as ElementSymbol) - elements.indexOf(el2 as ElementSymbol)
     )
   }
-  return entries
+  return pairs
     .map(([el, amt]) => Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`)
     .join(``)
 }

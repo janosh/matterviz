@@ -31,9 +31,11 @@
     }
   }
 
+  // Shared concatenation of stable + unstable for histograms
+  let all_entries = $derived([...stable_entries, ...unstable_entries])
+
   // Prepare histogram data for formation energies and hull distances
   let e_form_data = $derived.by(() => {
-    const all_entries = [...stable_entries, ...unstable_entries]
     const energies = all_entries
       .map((entry) => entry.e_form_per_atom ?? entry.energy_per_atom)
       .filter((val): val is number => val !== undefined && isFinite(val))
@@ -46,7 +48,6 @@
   })
 
   let hull_distance_data = $derived.by(() => {
-    const all_entries = [...stable_entries, ...unstable_entries]
     const distances = all_entries
       .map((entry) => entry.e_above_hull)
       .filter((val): val is number => val !== undefined && isFinite(val))
@@ -84,41 +85,23 @@
     ]
 
     // Only show phase types that exist or are within expected dimensionality
-    if (phase_stats.unary > 0 || max_arity >= 1) {
-      phase_items.push({
-        label: `Unary phases`,
-        value: `${format_num(phase_stats.unary)} (${
-          format_num(phase_stats.unary / phase_stats.total, `.1~%`)
-        })`,
-        key: `unary-phases`,
-      })
-    }
-    if (phase_stats.binary > 0 || max_arity >= 2) {
-      phase_items.push({
-        label: `Binary phases`,
-        value: `${format_num(phase_stats.binary)} (${
-          format_num(phase_stats.binary / phase_stats.total, `.1~%`)
-        })`,
-        key: `binary-phases`,
-      })
-    }
-    if (phase_stats.ternary > 0 || max_arity >= 3) {
-      phase_items.push({
-        label: `Ternary phases`,
-        value: `${format_num(phase_stats.ternary)} (${
-          format_num(phase_stats.ternary / phase_stats.total, `.1~%`)
-        })`,
-        key: `ternary-phases`,
-      })
-    }
-    if (phase_stats.quaternary > 0 || max_arity >= 4) {
-      phase_items.push({
-        label: `Quaternary phases`,
-        value: `${format_num(phase_stats.quaternary)} (${
-          format_num(phase_stats.quaternary / phase_stats.total, `.1~%`)
-        })`,
-        key: `quaternary-phases`,
-      })
+    const arity_types = [
+      [`Unary`, `unary`, 1],
+      [`Binary`, `binary`, 2],
+      [`Ternary`, `ternary`, 3],
+      [`Quaternary`, `quaternary`, 4],
+    ] as const
+    for (const [display, field, min_arity] of arity_types) {
+      const count = phase_stats[field]
+      if (count > 0 || max_arity >= min_arity) {
+        phase_items.push({
+          label: `${display} phases`,
+          value: `${format_num(count)} (${
+            format_num(count / phase_stats.total, `.1~%`)
+          })`,
+          key: `${field}-phases`,
+        })
+      }
     }
 
     sections.push({ title: ``, items: phase_items })
@@ -169,48 +152,25 @@
     return sections
   })
 
-  // Extract spacegroup symbol from pymatgen structure dict
-  function get_spacegroup(entry: ConvexHullEntry): string | undefined {
-    const struct = entry.structure as Record<string, unknown> | undefined
-    if (!struct) return undefined
-    const lattice = struct.lattice as Record<string, unknown> | undefined
-    const sg = struct.spacegroup ?? lattice?.spacegroup
-    if (sg && typeof sg === `object`) {
-      const sg_obj = sg as Record<string, unknown>
-      return (sg_obj.symbol ?? sg_obj.Hermann_Mauguin ?? sg_obj.number) as
-        | string
-        | undefined
-    }
-    if (typeof sg === `string`) return sg
-    if (typeof sg === `number`) return String(sg)
-    return undefined
-  }
-
-  // Table view: shared derived for visible entries and feature flags
+  // Table view: visible entries and feature flags
   let visible_entries = $derived(
-    [...stable_entries, ...unstable_entries].filter((entry) => entry.visible),
+    all_entries.filter((entry) => entry.visible),
   )
   let has_raw = $derived(
     visible_entries.some((entry) => entry.energy_per_atom !== undefined),
   )
   let has_ids = $derived(visible_entries.some((entry) => entry.entry_id))
-  // Cache spacegroup lookups to avoid redundant parsing in both has_spacegroup and table_data
-  let spacegroup_map = $derived(
-    new Map(visible_entries.map((entry) => [entry, get_spacegroup(entry)])),
-  )
-  let has_spacegroup = $derived([...spacegroup_map.values()].some(Boolean))
 
   let table_data = $derived(visible_entries.map((entry) => {
     const counts = Object.values(entry.composition)
     const n_atoms = counts.reduce((sum, count) => sum + count, 0)
     const row: RowData = {
       Formula: entry.reduced_formula ?? entry.name ??
-        get_alphabetical_formula(entry.composition, true),
-      'E<sub>hull</sub>': entry.e_above_hull,
-      'E<sub>form</sub>': entry.e_form_per_atom,
+        get_alphabetical_formula(entry.composition, true, ``),
+      'E<sub>hull</sub>': entry.e_above_hull ?? null,
+      'E<sub>form</sub>': entry.e_form_per_atom ?? entry.energy_per_atom ?? null,
     }
     if (has_raw) row[`E<sub>raw</sub>`] = entry.energy_per_atom
-    if (has_spacegroup) row.Spacegroup = spacegroup_map.get(entry)
     if (has_ids) row.ID = entry.entry_id
     row[`N<sub>el</sub>`] = counts.filter((count) => count > 0).length
     row[`N<sub>at</sub>`] = n_atoms
@@ -241,13 +201,6 @@
         color_scale: `interpolateCool`,
         format: `.4f`,
         description: `Raw energy per atom (eV/atom)`,
-      })
-    }
-    if (has_spacegroup) {
-      cols.push({
-        label: `Spacegroup`,
-        color_scale: null,
-        description: `Crystal spacegroup symbol`,
       })
     }
     if (has_ids) {
@@ -296,7 +249,7 @@
             role="button"
             tabindex="0"
             onkeydown={(event) => {
-              if ([`Enter`, ` `].includes(event.key)) {
+              if (event.key === `Enter` || event.key === ` `) {
                 event.preventDefault()
                 copy_to_clipboard(item.label, String(item.value), key ?? item.label)
               }

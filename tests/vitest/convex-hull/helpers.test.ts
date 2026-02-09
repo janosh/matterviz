@@ -830,61 +830,58 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`get_entry_label`, () => {
-    test.each([
-      {
-        desc: `uses reduced_formula when available`,
-        entry: { reduced_formula: `LiFeO2`, composition: { Li: 1, Fe: 1, O: 2 } },
-        expected: `LiFeO2`,
-      },
-      {
-        desc: `uses name as fallback`,
-        entry: { name: `lithium iron oxide`, composition: { Li: 1, Fe: 1, O: 2 } },
-        expected: `lithium iron oxide`,
-      },
-      {
-        desc: `prefers reduced_formula over name`,
-        entry: {
-          reduced_formula: `LiFeO2`,
-          name: `lithium iron oxide`,
-          composition: { Li: 1, Fe: 1, O: 2 },
+    test.each(
+      [
+        {
+          desc: `uses reduced_formula when available`,
+          entry: { reduced_formula: `LiFeO2`, composition: { Li: 1, Fe: 1, O: 2 } },
+          expected: `LiFeO2`,
         },
-        expected: `LiFeO2`,
-      },
-      {
-        desc: `builds formula from composition when both missing`,
-        entry: { composition: { Li: 1, Fe: 1, O: 2 } },
-        expected: `LiFeO2`,
-      },
-      {
-        desc: `omits subscript 1 for single atoms`,
-        entry: { composition: { Na: 1, Cl: 1 } },
-        expected: `NaCl`,
-      },
-      {
-        desc: `formats fractional amounts`,
-        entry: { composition: { Fe: 2, O: 3 } },
-        expected: `Fe2O3`,
-      },
-      {
-        desc: `filters zero-count elements`,
-        entry: { composition: { Li: 1, Fe: 0, O: 2 } },
-        expected: `LiO2`,
-      },
-      {
-        desc: `handles single element`,
-        entry: { composition: { Fe: 1 } },
-        expected: `Fe`,
-      },
-    ] as {
-      desc: string
-      entry: Parameters<typeof helpers.get_entry_label>[0]
-      expected: string
-    }[])(
-      `$desc`,
-      ({ entry, expected }) => {
-        expect(helpers.get_entry_label(entry)).toBe(expected)
-      },
-    )
+        {
+          desc: `uses name as fallback`,
+          entry: { name: `lithium iron oxide`, composition: { Li: 1, Fe: 1, O: 2 } },
+          expected: `lithium iron oxide`,
+        },
+        {
+          desc: `prefers reduced_formula over name`,
+          entry: {
+            reduced_formula: `LiFeO2`,
+            name: `lithium iron oxide`,
+            composition: { Li: 1, Fe: 1, O: 2 },
+          },
+          expected: `LiFeO2`,
+        },
+        {
+          desc: `builds formula from composition when both missing`,
+          entry: { composition: { Li: 1, Fe: 1, O: 2 } },
+          expected: `LiFeO2`,
+        },
+        {
+          desc: `omits subscript 1 for single atoms`,
+          entry: { composition: { Na: 1, Cl: 1 } },
+          expected: `NaCl`,
+        },
+        {
+          desc: `formats fractional amounts`,
+          entry: { composition: { Fe: 2, O: 3 } },
+          expected: `Fe2O3`,
+        },
+        {
+          desc: `filters zero-count elements`,
+          entry: { composition: { Li: 1, Fe: 0, O: 2 } },
+          expected: `LiO2`,
+        },
+        {
+          desc: `handles single element`,
+          entry: { composition: { Fe: 1 } },
+          expected: `Fe`,
+        },
+      ] as { desc: string; entry: Record<string, unknown>; expected: string }[],
+    )(`$desc`, ({ entry, expected }) => {
+      expect(
+        helpers.get_entry_label(entry as { composition: Record<string, number> }),
+      ).toBe(expected)
+    })
 
     test(`sorts by elements order when provided`, () => {
       const entry = { composition: { O: 3, Fe: 1, Li: 2 } }

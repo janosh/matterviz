@@ -20,21 +20,24 @@
     on_reset?: (section?: string) => void
   } = $props()
 
+  const col_id = (col: Label) => col.key ?? col.label
+
   // Snapshot default visibility when column set changes (new dataset).
   // Compare by column keys to avoid re-snapshotting on internal columns = [...columns] reactivity.
+  // Intentionally non-reactive: mutated only inside snapshot_defaults() and compared manually.
   let prev_col_keys = ``
   let default_visibility: Record<string, boolean> = {}
   function snapshot_defaults() {
     default_visibility = {}
     for (const col of columns) {
-      default_visibility[col.key ?? col.label] = col.visible !== false
+      default_visibility[col_id(col)] = col.visible !== false
     }
-    prev_col_keys = columns.map((col) => col.key ?? col.label).join(`\0`)
+    prev_col_keys = columns.map(col_id).join(`\0`)
   }
   snapshot_defaults()
 
   $effect(() => {
-    const current_keys = columns.map((col) => col.key ?? col.label).join(`\0`)
+    const current_keys = columns.map(col_id).join(`\0`)
     if (current_keys !== prev_col_keys) {
       snapshot_defaults()
     }
@@ -42,7 +45,7 @@
 
   // Check if a column's visibility differs from its default
   const is_changed = (col: Label) =>
-    (col.visible !== false) !== (default_visibility[col.key ?? col.label] ?? true)
+    (col.visible !== false) !== (default_visibility[col_id(col)] ?? true)
 
   function section_has_changes(items: Label[]): boolean {
     return items.some(is_changed)
@@ -53,7 +56,7 @@
   // Reset columns to default visibility
   function reset_columns(items: Label[]): void {
     for (const col of items) {
-      col.visible = default_visibility[col.key ?? col.label] ?? true
+      col.visible = default_visibility[col_id(col)] ?? true
     }
     columns = [...columns]
   }
@@ -201,7 +204,7 @@
               {#if section_has_changes(section.items)}
                 <button
                   class="reset-section-btn"
-                  onclick={(event: MouseEvent) => {
+                  onclick={(event) => {
                     event.stopPropagation()
                     reset_section(section.name)
                   }}
