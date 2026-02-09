@@ -11,7 +11,8 @@ import {
 } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs'
-import * as path from 'path'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import * as vscode from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import { stream_file_to_buffer } from './node-io'
@@ -839,9 +840,6 @@ export const activate = (context: vscode.ExtensionContext) => {
 
 // Collect debug information for bug reporting
 async function collect_debug_info(): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const os = require(`os`) // Cursor is still using CommonJS, module-scoped ESM import broke this function on 2025-10-23
-
   // Check if running remotely
   const remote_name = vscode.env.remoteName
   const is_remote = !!remote_name
