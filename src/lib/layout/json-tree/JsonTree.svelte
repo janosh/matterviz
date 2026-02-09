@@ -853,7 +853,9 @@
             type="button"
             onclick={() =>
             ctx_menu_action((st) =>
-              toggle_collapse_recursive(st.path, !st.is_collapsed)
+              st.is_collapsed
+                ? toggle_collapse_recursive(st.path, false)
+                : collapse_children_only(st.path)
             )}
           >
             {context_menu_state.is_collapsed ? `Expand` : `Collapse`} all children

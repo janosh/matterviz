@@ -75,15 +75,15 @@
 
   // Resolve hull face opacity: use caller's value if provided,
   // otherwise pick the right default for the dimensionality (ternary=30%, quaternary=3%)
-  // Uses $state + $effect (not $derived) to stay writable for bind:hull_face_opacity
+  // Writable $derived handles forward sync (prop→local), back-sync $effect handles local→prop
   const default_opacity = $derived(
     element_count === 4
       ? DEFAULTS.convex_hull.quaternary.hull_face_opacity
       : DEFAULTS.convex_hull.ternary.hull_face_opacity,
   )
-  let hull_face_opacity = $state(hull_face_opacity_prop ?? default_opacity)
+  let hull_face_opacity = $derived(hull_face_opacity_prop ?? default_opacity)
   $effect(() => {
-    hull_face_opacity = hull_face_opacity_prop ?? default_opacity
+    hull_face_opacity_prop = hull_face_opacity
   })
 
   // Map element count to corresponding component
