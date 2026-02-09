@@ -2,7 +2,7 @@
 
 An interactive search filter for chemical formulas. The search mode is automatically inferred from input format:
 
-- **Comma-separated** (Li,Fe,O) → contains these elements
+- **Comma-separated** (Li,Fe,O) → has these elements
 - **Dash-separated** (Li-Fe-O) → chemical system (only these elements)
 - **Formula** (LiFePO4) → exact match
 
@@ -15,6 +15,15 @@ An interactive search filter for chemical formulas. The search mode is automatic
     FormulaFilter,
     get_alphabetical_formula,
   } from 'matterviz/composition'
+
+  // Seed history so the dropdown is visible on focus
+  const history_key = `formula-filter-demo`
+  if (typeof localStorage !== `undefined` && !localStorage.getItem(history_key)) {
+    localStorage.setItem(
+      history_key,
+      JSON.stringify([`Fe,O`, `Li-Fe-O`, `Fe2O3`, `Co,Ni`]),
+    )
+  }
 
   let value = $state(`Li,Fe`)
   let mode = $state(`elements`)
@@ -61,7 +70,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
   })
 </script>
 
-<FormulaFilter bind:value bind:search_mode={mode} />
+<FormulaFilter bind:value bind:search_mode={mode} {history_key} />
 
 <div style="margin-top: 1em">
   <strong style="font-size: 0.85em; opacity: 0.7">{filtered.length} of {
@@ -127,8 +136,12 @@ Try these examples:
 </script>
 
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1em; margin-bottom: 1em">
-  <FormulaFilter bind:value={include} />
-  <FormulaFilter bind:value={exclude} style="--filter-bg: rgba(239, 68, 68, 0.05)" />
+  <FormulaFilter bind:value={include} history_key="formula-filter-include" />
+  <FormulaFilter
+    bind:value={exclude}
+    history_key="formula-filter-exclude"
+    style="--filter-bg: rgba(239, 68, 68, 0.05)"
+  />
 </div>
 
 <div style="display: flex; flex-wrap: wrap; gap: 6pt">

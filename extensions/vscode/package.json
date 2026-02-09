@@ -26,8 +26,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "matterviz.render_structure",
-        "title": "Render",
+        "command": "matterviz.open",
+        "title": "Open",
         "category": "MatterViz"
       },
       {
@@ -38,7 +38,7 @@
     ],
     "keybindings": [
       {
-        "command": "matterviz.render_structure",
+        "command": "matterviz.open",
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
         "when": "matterviz.supported_resource && editorLangId != 'markdown'"
@@ -47,7 +47,7 @@
     "menus": {
       "explorer/context": [
         {
-          "command": "matterviz.render_structure",
+          "command": "matterviz.open",
           "when": "matterviz.supported_resource"
         }
       ]
@@ -74,6 +74,21 @@
           },
           {
             "filenamePattern": "*{trajectory,traj,relax,npt,nvt,nve,qha,md,dynamics,simulation}*"
+          },
+          {
+            "filenamePattern": "*.{bxsf,frmsf}"
+          },
+          {
+            "filenamePattern": "*.{bxsf,frmsf}.gz"
+          },
+          {
+            "filenamePattern": "*.cube.{gz,bz2}"
+          },
+          {
+            "filenamePattern": "{CHGCAR,ELFCAR,LOCPOT}*"
+          },
+          {
+            "filenamePattern": "AECCAR*"
           }
         ],
         "priority": "option"

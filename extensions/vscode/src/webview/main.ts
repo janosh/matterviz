@@ -1,18 +1,21 @@
 // deno-lint-ignore-file require-await
 // Import MatterViz parsing functions and components
 import '$lib/app.css'
+import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
+import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
+import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
+import { parse_fermi_file } from '$lib/fermi-surface/parse'
+import { is_fermi_surface_data } from '$lib/fermi-surface/types'
 import { decompress_data, detect_compression_format } from '$lib/io/decompress'
+import { parse_volumetric_file } from '$lib/isosurface/parse'
+import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
+import { type DefaultSettings, merge } from '$lib/settings'
+import type { Crystal } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
 import '$lib/theme/themes'
-import type { LoadingOptions } from '$lib/trajectory/parse'
-import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
-// Add frame loader import
-import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
-import { type DefaultSettings, merge } from '$lib/settings'
-import type { Crystal } from '$lib/structure'
 import type {
   FrameIndex,
   FrameLoader,
@@ -20,10 +23,27 @@ import type {
   TrajectoryMetadata,
   TrajectoryType,
 } from '$lib/trajectory'
+import { is_trajectory_file, parse_trajectory_data } from '$lib/trajectory/parse'
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
+import type { ViewType } from '../types'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '../types'
+import type { RenderableType } from './detect'
+import { detect_view_type } from './detect'
+import JsonBrowser from './JsonBrowser.svelte'
 
-type ViewType = `trajectory` | `structure`
+// Maps detect.ts RenderableType to ViewType for direct rendering.
+// Types not listed here fall through to json_browser (which can render all types
+// via its internal mount_into, giving the user a tree view alongside the viz).
+// structure and volumetric have special handling in parse_file_content below.
+const DETECTION_TO_VIEW_TYPE: Partial<Record<RenderableType, ViewType>> = {
+  fermi_surface: `fermi_surface`,
+  band_grid: `fermi_surface`,
+  convex_hull: `convex_hull`,
+  phase_diagram: `phase_diagram`,
+}
+
+export type { ViewType }
 export interface FileData {
   filename: string
   content: string
@@ -92,7 +112,7 @@ class VSCodeFrameLoader implements FrameLoader {
 
       timer = setTimeout(() => {
         globalThis.removeEventListener(`message`, handler)
-        reject(new Error(`Frame ${frame_index} timeout after ${timeout}ms`))
+        reject(new Error(`Frame ${frame_index} timeout after ${timeout}s`))
       }, timeout * 1000)
     })
   }
@@ -196,7 +216,7 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
       container.innerHTML = `
         <div style="padding: 2rem; text-align: center; color: var(--vscode-errorForeground);">
           <h2>File Deleted</h2>
-          <p>The file "${message.file_path}" has been deleted.</p>
+          <p>The file "${escape_html(message.file_path ?? ``)}" has been deleted.</p>
         </div>
       `
     }
@@ -210,7 +230,7 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
       }
 
       const { content, filename, is_base64 } = message.data
-      const result = await parse_file_content(content, filename, undefined, is_base64)
+      const result = await parse_file_content(content, filename, is_base64)
 
       // Update the display
       const container = document.getElementById(`matterviz-app`)
@@ -298,7 +318,6 @@ function request_large_file_content(
 const parse_file_content = async (
   content: string,
   filename: string,
-  loading_options?: LoadingOptions,
   is_compressed: boolean = false,
   recursion_depth: number = 0,
 ): Promise<ParseResult> => {
@@ -337,7 +356,6 @@ const parse_file_content = async (
     return parse_file_content(
       parsed_trajectory as string,
       filename,
-      loading_options,
       is_compressed,
       recursion_depth + 1,
     )
@@ -347,14 +365,8 @@ const parse_file_content = async (
   if (is_compressed) {
     const buffer = base64_to_array_buffer(content)
 
-    // For HDF5 files, pass buffer directly to trajectory parser
-    if (/\.(h5|hdf5)$/i.test(filename)) {
-      const data = await parse_trajectory_data(buffer, filename)
-      return { type: `trajectory`, filename, data }
-    }
-
-    // For ASE .traj files, pass buffer directly to trajectory parser
-    if (/\.traj$/i.test(filename)) {
+    // Binary trajectory formats: pass buffer directly to trajectory parser
+    if (/\.(h5|hdf5|traj)$/i.test(filename)) {
       const data = await parse_trajectory_data(buffer, filename)
       return { type: `trajectory`, filename, data }
     }
@@ -373,7 +385,63 @@ const parse_file_content = async (
     return { type: `trajectory`, data, filename }
   }
 
-  // Parse as structure
+  // Fermi surface files (.bxsf, .frmsf)
+  // Use basename for regex matching in case filename retains a directory prefix
+  const basename = filename.split(`/`).pop() ?? filename
+  if (FERMI_FILE_RE.test(basename)) {
+    const data = parse_fermi_file(content, filename)
+    if (data) return { type: `fermi_surface`, data, filename }
+    throw new Error(`Failed to parse Fermi surface file: ${filename}`)
+  }
+
+  // Volumetric data files (.cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT)
+  if (VOLUMETRIC_EXT_RE.test(basename) || VOLUMETRIC_VASP_RE.test(basename)) {
+    const data = parse_volumetric_file(content, filename)
+    if (data) return { type: `isosurface`, data, filename }
+    throw new Error(`Failed to parse volumetric file: ${filename}`)
+  }
+
+  // JSON files: use smart detection + JSON browser
+  if (/\.json$/i.test(filename)) {
+    try {
+      const parsed = JSON.parse(content)
+      // Check if the top-level value matches a known visualization type
+      const detected = detect_view_type(parsed)
+      if (detected) {
+        // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.)
+        if (detected === `structure`) {
+          const structure = parse_structure_file(content, filename)
+          if (structure?.sites) {
+            return {
+              type: `structure`,
+              data: { ...structure, id: filename.replace(/\.[^/.]+$/, ``) },
+              filename,
+            }
+          }
+        }
+        // Volumetric JSON needs wrapping in { structure, volumes } for the isosurface renderer
+        if (detected === `volumetric`) {
+          const vol = parsed as { lattice?: unknown }
+          return {
+            type: `isosurface`,
+            data: { structure: { sites: [], lattice: vol.lattice }, volumes: [parsed] },
+            filename,
+          }
+        }
+        return {
+          type: DETECTION_TO_VIEW_TYPE[detected] ?? `json_browser`,
+          data: parsed,
+          filename,
+        }
+      }
+      // No top-level match -- show JSON browser for navigation
+      return { type: `json_browser`, data: parsed, filename }
+    } catch {
+      // JSON parse failed, fall through to structure parser
+    }
+  }
+
+  // Parse as structure (CIF, POSCAR, XYZ, etc.)
   const structure = parse_structure_file(content, filename)
   if (!structure?.sites) {
     throw new Error(`Failed to parse file or no atoms found`)
@@ -381,6 +449,12 @@ const parse_file_content = async (
 
   const data = { ...structure, id: filename.replace(/\.[^/.]+$/, ``) }
   return { type: `structure`, data, filename }
+}
+
+// Escape HTML special chars to prevent XSS when inserting into innerHTML
+function escape_html(text: string): string {
+  return text.replace(/&/g, `&amp;`).replace(/</g, `&lt;`).replace(/>/g, `&gt;`)
+    .replace(/"/g, `&quot;`).replace(/'/g, `&#39;`)
 }
 
 // Create error display in container
@@ -396,8 +470,10 @@ const create_error_display = (
       <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
       <h2 style="margin: 0 0 15px 0;">Failed to Parse File</h2>
       <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 8px; max-width: 600px;">
-        <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${filename}</p>
-        <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${error.message}</p>
+        <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
+        <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${
+    escape_html(error.message)
+  }</p>
         <p style="margin: 0; font-size: 14px; opacity: 0.8;">
           Supported formats: XYZ, CIF, JSON, POSCAR, trajectory files (.traj, .h5, .extxyz), etc.
         </p>
@@ -425,66 +501,112 @@ const create_display = (
   })
   container.innerHTML = ``
 
-  const is_trajectory = result.type === `trajectory`
-  const Component = is_trajectory ? Trajectory : Structure
-
   // Get defaults and create props
   const defaults = merge(globalThis.matterviz_data?.defaults)
-
-  // Type for trajectory with optional frame loader for streaming
-  type StreamingTrajectory = TrajectoryType & { frame_loader?: FrameLoader }
-
-  // Prepare trajectory data for VS Code streaming if supported
-  let final_trajectory: TrajectoryType | StreamingTrajectory = result
-    .data as TrajectoryType
-
-  if (is_trajectory && result.streaming_info?.supports_streaming) {
-    const trajectory = result.data as TrajectoryType
-
-    if (vscode_api && result.streaming_info.file_path) {
-      // Create trajectory with frame loader for streaming
-      final_trajectory = {
-        ...trajectory,
-        is_indexed: true, // Mark as indexed so component uses frame loading logic
-        // Keep existing frames for initial display
-        frames: trajectory.frames || [],
-        // Attach frame loader directly to trajectory
-        frame_loader: new VSCodeFrameLoader(result.streaming_info.file_path, vscode_api),
-      }
-    }
-  }
-
-  // Create component props by mapping defaults to component props
-  const props = {
-    ...(is_trajectory
-      ? {
-        trajectory: final_trajectory,
-        ...trajectory_props(defaults),
-        fullscreen_toggle: false, // Disable fullscreen button in VSCode extension
-      }
-      : {
-        structure: result.data,
-        ...structure_props(defaults),
-        fullscreen_toggle: false, // Disable fullscreen button in VSCode extension
-      }),
+  const common_props = {
     allow_file_drop: false,
     style: `height: 100%; border-radius: 0`,
     enable_tips: false,
+    fullscreen_toggle: false,
   }
 
-  const app = mount(Component, { target: container, props })
+  let app: MatterVizApp
+  let log_message: string
 
-  // VSCode message logging
-  const message = is_trajectory
-    ? `Trajectory rendered: ${filename} (${
+  if (result.type === `trajectory`) {
+    // Type for trajectory with optional frame loader for streaming
+    type StreamingTrajectory = TrajectoryType & { frame_loader?: FrameLoader }
+
+    // Prepare trajectory data for VS Code streaming if supported
+    let final_trajectory: TrajectoryType | StreamingTrajectory = result
+      .data as TrajectoryType
+
+    if (result.streaming_info?.supports_streaming) {
+      const trajectory = result.data as TrajectoryType
+      if (vscode_api && result.streaming_info.file_path) {
+        final_trajectory = {
+          ...trajectory,
+          is_indexed: true,
+          frames: trajectory.frames || [],
+          frame_loader: new VSCodeFrameLoader(
+            result.streaming_info.file_path,
+            vscode_api,
+          ),
+        }
+      }
+    }
+
+    app = mount(Trajectory, {
+      target: container,
+      props: {
+        trajectory: final_trajectory,
+        ...trajectory_props(defaults),
+        ...common_props,
+      },
+    })
+    log_message = `Trajectory rendered: ${filename} (${
       final_trajectory.frames?.length ?? 0
     } initial frames, ${final_trajectory.total_frames ?? `unknown`} total)`
-    : `Structure rendered: ${filename} (${
+  } else if (result.type === `fermi_surface`) {
+    const fermi_props: Record<string, unknown> = { ...common_props }
+    if (
+      is_fermi_surface_data(result.data as Parameters<typeof is_fermi_surface_data>[0])
+    ) {
+      fermi_props.fermi_data = result.data
+    } else {
+      fermi_props.band_data = result.data
+    }
+    app = mount(FermiSurface, { target: container, props: fermi_props })
+    log_message = `Fermi surface rendered: ${filename}`
+  } else if (result.type === `isosurface`) {
+    // VolumetricFileData has structure + volumes; render via Structure with volumetric_data
+    const vol_file = result.data as { structure: unknown; volumes: unknown[] }
+    app = mount(Structure, {
+      target: container,
+      props: {
+        structure: vol_file.structure,
+        volumetric_data: vol_file.volumes,
+        ...structure_props(defaults),
+        ...common_props,
+      },
+    })
+    log_message = `Volumetric data rendered: ${filename}`
+  } else if (result.type === `convex_hull`) {
+    app = mount(ConvexHull, {
+      target: container,
+      props: { entries: result.data as unknown[], ...common_props },
+    })
+    log_message = `Convex hull rendered: ${filename} (${
+      (result.data as unknown[]).length
+    } entries)`
+  } else if (result.type === `phase_diagram`) {
+    app = mount(IsobaricBinaryPhaseDiagram, {
+      target: container,
+      props: { data: result.data, ...common_props },
+    })
+    log_message = `Phase diagram rendered: ${filename}`
+  } else if (result.type === `json_browser`) {
+    app = mount(JsonBrowser, {
+      target: container,
+      props: { value: result.data, defaults, filename },
+    })
+    log_message = `JSON browser opened: ${filename}`
+  } else {
+    // Default: structure
+    app = mount(Structure, {
+      target: container,
+      props: {
+        structure: result.data,
+        ...structure_props(defaults),
+        ...common_props,
+      },
+    })
+    log_message = `Structure rendered: ${filename} (${
       (result.data as Crystal).sites?.length ?? 0
     } sites)`
+  }
 
-  vscode_api?.postMessage({ command: `log`, text: message })
-
+  vscode_api?.postMessage({ command: `info`, text: log_message })
   return app
 }
 
@@ -578,7 +700,7 @@ async function initialize() {
   const container = document.getElementById(`matterviz-app`)
   if (!container) throw new Error(`Target container not found in DOM`)
 
-  const result = await parse_file_content(content, filename, undefined, is_base64)
+  const result = await parse_file_content(content, filename, is_base64)
   const app = create_display(container, result, result.filename)
 
   // Store the app instance for file watching
@@ -604,7 +726,6 @@ async function cleanup_matterviz(): Promise<void> {
     current_app = null
   }
 } // Export initialization and cleanup functions to global scope
-// Export initialization and cleanup functions to global scope
 
 ;(globalThis as unknown as {
   initializeMatterViz?: () => Promise<MatterVizApp | null>

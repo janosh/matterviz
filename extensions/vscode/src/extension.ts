@@ -15,6 +15,8 @@ import * as path from 'path'
 import * as vscode from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import { stream_file_to_buffer } from './node-io'
+import type { ViewType } from './types'
+import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from './types'
 
 interface FrameLoaderData {
   loader: FrameLoader
@@ -57,7 +59,7 @@ interface FileData {
 }
 
 interface WebviewData {
-  type: `trajectory` | `structure`
+  type: ViewType
   data: FileData
   theme: ThemeName
   defaults?: DefaultSettings
@@ -123,15 +125,25 @@ function get_wasm_filename(ext_path: string): string | null {
 const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
 
 // Helper: determine view type using content when available
-const infer_view_type = (file: FileData): `trajectory` | `structure` => {
+const infer_view_type = (file: FileData): ViewType => {
+  // Strip compression extensions before matching (filename may still have .gz/.bz2)
+  const name = file.filename.toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  if (FERMI_FILE_RE.test(name)) return `fermi_surface`
+  if (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name)) return `isosurface`
   // Only pass content for text files; for binary (compressed) fall back to filename
   const content = file.is_base64 ? undefined : file.content
-  return is_trajectory_file(file.filename, content) ? `trajectory` : `structure`
+  if (is_trajectory_file(file.filename, content)) return `trajectory`
+  return `structure`
 }
 
 // Check if a file should be auto-rendered
 export const should_auto_render = (filename: string): boolean => {
   if (!filename || typeof filename !== `string`) return false
+  // Strip compression extensions so .bxsf.gz / .cube.bz2 etc. are recognized
+  const name = path.basename(filename).replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  if (FERMI_FILE_RE.test(name)) return true
+  if (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name)) return true
+  // Structure and trajectory files (existing behavior)
   return is_structure_file(filename) || is_trajectory_file(filename)
 }
 
@@ -763,7 +775,7 @@ export const activate = (context: vscode.ExtensionContext) => {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      `matterviz.render_structure`,
+      `matterviz.open`,
       (uri?: vscode.Uri) => render(context, uri),
     ),
     vscode.commands.registerCommand(

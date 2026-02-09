@@ -63,6 +63,7 @@
       "src/routes/ferrox/rust",
       "src/routes/ferrox/python",
       "src/routes/ferrox/wasm",
+      "extensions/vscode/src/webview/*.svelte",
       "tmp"
     ],
     "indentWidth": 2,
