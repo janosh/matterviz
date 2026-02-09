@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { get_alphabetical_formula } from '$lib/composition/format'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
   import Histogram from '$lib/plot/Histogram.svelte'
+  import type { Label, RowData } from '$lib/table'
+  import HeatmapTable from '$lib/table/HeatmapTable.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import type { ConvexHullEntry, PhaseStats } from './types'
@@ -16,6 +19,7 @@
     } = $props()
 
   let copied_items = new SvelteSet<string>()
+  let view_mode = $state<`stats` | `table`>(`stats`)
 
   async function copy_to_clipboard(label: string, value: string, key: string) {
     try {
@@ -164,82 +168,199 @@
 
     return sections
   })
+
+  // Extract spacegroup symbol from pymatgen structure dict
+  function get_spacegroup(entry: ConvexHullEntry): string | undefined {
+    const struct = entry.structure as Record<string, unknown> | undefined
+    if (!struct) return undefined
+    const lattice = struct.lattice as Record<string, unknown> | undefined
+    const sg = struct.spacegroup ?? lattice?.spacegroup
+    if (sg && typeof sg === `object`) {
+      const sg_obj = sg as Record<string, unknown>
+      return (sg_obj.symbol ?? sg_obj.Hermann_Mauguin ?? sg_obj.number) as
+        | string
+        | undefined
+    }
+    if (typeof sg === `string`) return sg
+    if (typeof sg === `number`) return String(sg)
+    return undefined
+  }
+
+  // Table view: shared derived for visible entries and feature flags
+  let visible_entries = $derived(
+    [...stable_entries, ...unstable_entries].filter((entry) => entry.visible),
+  )
+  let has_raw = $derived(
+    visible_entries.some((entry) => entry.energy_per_atom !== undefined),
+  )
+  let has_ids = $derived(visible_entries.some((entry) => entry.entry_id))
+  // Cache spacegroup lookups to avoid redundant parsing in both has_spacegroup and table_data
+  let spacegroup_map = $derived(
+    new Map(visible_entries.map((entry) => [entry, get_spacegroup(entry)])),
+  )
+  let has_spacegroup = $derived([...spacegroup_map.values()].some(Boolean))
+
+  let table_data = $derived(visible_entries.map((entry) => {
+    const counts = Object.values(entry.composition)
+    const n_atoms = counts.reduce((sum, count) => sum + count, 0)
+    const row: RowData = {
+      Formula: entry.reduced_formula ?? entry.name ??
+        get_alphabetical_formula(entry.composition, true),
+      'E<sub>hull</sub>': entry.e_above_hull,
+      'E<sub>form</sub>': entry.e_form_per_atom,
+    }
+    if (has_raw) row[`E<sub>raw</sub>`] = entry.energy_per_atom
+    if (has_spacegroup) row.Spacegroup = spacegroup_map.get(entry)
+    if (has_ids) row.ID = entry.entry_id
+    row[`N<sub>el</sub>`] = counts.filter((count) => count > 0).length
+    row[`N<sub>at</sub>`] = n_atoms
+    return row
+  }))
+
+  let table_columns = $derived.by(() => {
+    const cols: Label[] = [
+      { label: `Formula`, color_scale: null },
+      {
+        label: `E<sub>hull</sub>`,
+        better: `lower`,
+        color_scale: `interpolateRdYlGn`,
+        format: `.4f`,
+        description: `Energy above convex hull (eV/atom)`,
+      },
+      {
+        label: `E<sub>form</sub>`,
+        better: `lower`,
+        color_scale: `interpolateBlues`,
+        format: `.4f`,
+        description: `Formation energy (eV/atom)`,
+      },
+    ]
+    if (has_raw) {
+      cols.push({
+        label: `E<sub>raw</sub>`,
+        color_scale: `interpolateCool`,
+        format: `.4f`,
+        description: `Raw energy per atom (eV/atom)`,
+      })
+    }
+    if (has_spacegroup) {
+      cols.push({
+        label: `Spacegroup`,
+        color_scale: null,
+        description: `Crystal spacegroup symbol`,
+      })
+    }
+    if (has_ids) {
+      cols.push({ label: `ID`, color_scale: null, description: `Entry identifier` })
+    }
+    cols.push(
+      {
+        label: `N<sub>el</sub>`,
+        color_scale: null,
+        description: `Number of elements`,
+      },
+      {
+        label: `N<sub>at</sub>`,
+        color_scale: null,
+        format: `d`,
+        description: `Number of atoms in unit cell`,
+      },
+    )
+    return cols
+  })
 </script>
 
 <div {...rest} class="convex-hull-stats {rest.class ?? ``}">
-  <h4 style="margin-top: 0">Convex Hull Stats</h4>
-  {#each pane_data as section, sec_idx (sec_idx)}
-    {#if sec_idx > 0}<hr />{/if}
-    <section>
-      {#if section.title}
-        <h5>{@html section.title}</h5>
-      {/if}
-      {#each section.items as item (item.key ?? item.label)}
-        {@const { key, label, value } = item}
-        <div
-          class="clickable stat-item"
-          data-testid={key ? `pd-${key}` : undefined}
-          title="Click to copy: {label}: {value}"
-          onclick={() => copy_to_clipboard(item.label, String(item.value), key ?? item.label)}
-          role="button"
-          tabindex="0"
-          onkeydown={(event) => {
-            if ([`Enter`, ` `].includes(event.key)) {
-              event.preventDefault()
-              copy_to_clipboard(item.label, String(item.value), key ?? item.label)
-            }
-          }}
-        >
-          <span>{@html label}:</span>
-          <span>{@html value}</span>
-          {#if key && copied_items.has(key)}
-            <Icon
-              icon="Check"
-              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-              class="copy-checkmark"
-            />
-          {/if}
-        </div>
-      {/each}
+  <div class="view-toggle">
+    <button class:active={view_mode === `stats`} onclick={() => view_mode = `stats`}>
+      Stats
+    </button>
+    <button class:active={view_mode === `table`} onclick={() => view_mode = `table`}>
+      Table
+    </button>
+  </div>
+  {#if view_mode === `stats`}
+    {#each pane_data as section, sec_idx (sec_idx)}
+      {#if sec_idx > 0}<hr />{/if}
+      <section>
+        {#if section.title}
+          <h5>{@html section.title}</h5>
+        {/if}
+        {#each section.items as item (item.key ?? item.label)}
+          {@const { key, label, value } = item}
+          <div
+            class="clickable stat-item"
+            data-testid={key ? `pd-${key}` : undefined}
+            title="Click to copy: {label}: {value}"
+            onclick={() => copy_to_clipboard(item.label, String(item.value), key ?? item.label)}
+            role="button"
+            tabindex="0"
+            onkeydown={(event) => {
+              if ([`Enter`, ` `].includes(event.key)) {
+                event.preventDefault()
+                copy_to_clipboard(item.label, String(item.value), key ?? item.label)
+              }
+            }}
+          >
+            <span>{@html label}:</span>
+            <span>{@html value}</span>
+            {#if key && copied_items.has(key)}
+              <Icon
+                icon="Check"
+                style="color: var(--success-color, #10b981); width: 12px; height: 12px"
+                class="copy-checkmark"
+              />
+            {/if}
+          </div>
+        {/each}
 
-      {#if section.title === `E<sub>form</sub> distribution` &&
+        {#if section.title === `E<sub>form</sub> distribution` &&
         e_form_data[0].y.length > 0}
-        <Histogram
-          series={e_form_data}
-          bins={50}
-          x_axis={{ label: ``, format: `.2f` }}
-          y_axis={{ label: ``, ticks: 3 }}
-          show_legend={false}
-          show_controls={false}
-          padding={{ t: 5, b: 35, l: 35, r: 5 }}
-          style="height: 100px; --histogram-min-height: 100px"
-          bar={{ color: `steelblue`, opacity: 0.7 }}
-        />
-      {/if}
+          <Histogram
+            series={e_form_data}
+            bins={50}
+            x_axis={{ label: ``, format: `.2f` }}
+            y_axis={{ label: ``, ticks: 3 }}
+            show_legend={false}
+            show_controls={false}
+            padding={{ t: 5, b: 35, l: 35, r: 5 }}
+            style="height: 100px; --histogram-min-height: 100px"
+            bar={{ color: `steelblue`, opacity: 0.7 }}
+          />
+        {/if}
 
-      {#if section.title === `E<sub>above hull</sub> distribution` &&
+        {#if section.title === `E<sub>above hull</sub> distribution` &&
         hull_distance_data[0].y.length > 0}
-        <Histogram
-          series={hull_distance_data}
-          bins={50}
-          x_axis={{ label: ``, format: `.2f`, range: [0, null] }}
-          y_axis={{ label: ``, ticks: 3 }}
-          show_legend={false}
-          show_controls={false}
-          padding={{ t: 5, b: 35, l: 35, r: 5 }}
-          style="height: 100px; --histogram-min-height: 100px"
-          bar={{ color: `coral`, opacity: 0.7 }}
-        />
-      {/if}
-    </section>
-  {/each}
+          <Histogram
+            series={hull_distance_data}
+            bins={50}
+            x_axis={{ label: ``, format: `.2f`, range: [0, null] }}
+            y_axis={{ label: ``, ticks: 3 }}
+            show_legend={false}
+            show_controls={false}
+            padding={{ t: 5, b: 35, l: 35, r: 5 }}
+            style="height: 100px; --histogram-min-height: 100px"
+            bar={{ color: `coral`, opacity: 0.7 }}
+          />
+        {/if}
+      </section>
+    {/each}
+  {:else}
+    <HeatmapTable
+      data={table_data}
+      columns={table_columns}
+      initial_sort={{ column: `E<sub>hull</sub>`, direction: `asc` }}
+      scroll_style="max-height: var(--hull-stats-max-height, 500px)"
+      style="width: 100%"
+    />
+  {/if}
 </div>
 
 <style>
   .convex-hull-stats {
     background: var(--hull-stats-bg, var(--hull-bg));
     border-radius: var(--hull-border-radius, var(--border-radius, 3pt));
-    padding: 0 1em 1em;
+    padding: 1em;
   }
   section div {
     display: flex;
@@ -276,5 +397,29 @@
   }
   section h5 {
     margin: 0 0 6px 0;
+  }
+  .view-toggle {
+    display: flex;
+    margin-bottom: 8pt;
+  }
+  .view-toggle button {
+    flex: 1;
+    padding: 4pt 8pt;
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.85em;
+  }
+  .view-toggle button:first-child {
+    border-radius: 4pt 0 0 4pt;
+  }
+  .view-toggle button:last-child {
+    border-radius: 0 4pt 4pt 0;
+    border-left: none;
+  }
+  .view-toggle button.active {
+    background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15));
+    font-weight: 500;
   }
 </style>
