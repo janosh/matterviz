@@ -19,6 +19,7 @@ const defaults = {
   Wrapper: [`svelte-multiselect`, `CodeExample`],
   repo: pkg.repository,
   hideStyle: true,
+  collapsible: true,
 }
 
 export default {
