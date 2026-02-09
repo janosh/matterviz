@@ -10,7 +10,6 @@
   import { normalize_show_controls } from '$lib/controls'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
-  import { format_num } from '$lib/labels'
   import {
     set_fullscreen_bg,
     setup_fullscreen_effect,
@@ -863,15 +862,7 @@
       )
       if (should_label) {
         ctx.fillStyle = text_color
-        let label = entry.reduced_formula || entry.name || ``
-        if (!label) {
-          label = Object.entries(entry.composition)
-            .filter(([, amt]) => amt > 0)
-            .map(([el, amt]) =>
-              Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`
-            )
-            .join(``)
-        }
+        const label = helpers.get_entry_label(entry)
         const font_size = Math.round(12 * canvas_dims.scale)
         ctx.font = `${font_size}px Arial`
         ctx.textAlign = `center`

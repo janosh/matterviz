@@ -840,3 +840,22 @@ export function get_gas_corrected_entries(
     merged_config,
   }
 }
+
+// Derive a display label for a convex hull entry, falling back to composition
+// when reduced_formula and name are both missing.
+export function get_entry_label(
+  entry: { reduced_formula?: string; name?: string; composition: Record<string, number> },
+  elements?: ElementSymbol[],
+): string {
+  if (entry.reduced_formula) return entry.reduced_formula
+  if (entry.name) return entry.name
+  let entries = Object.entries(entry.composition).filter(([, amt]) => amt > 0)
+  if (elements) {
+    entries = entries.sort(([el1], [el2]) =>
+      elements.indexOf(el1 as ElementSymbol) - elements.indexOf(el2 as ElementSymbol)
+    )
+  }
+  return entries
+    .map(([el, amt]) => Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`)
+    .join(``)
+}
