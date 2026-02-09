@@ -4,15 +4,10 @@ import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 import { detect_view_type, scan_renderable_paths } from '../src/webview/detect'
 
-// Use URL-based resolution relative to this test file (CWD-independent)
-import { fileURLToPath } from 'node:url'
-const fixture_path = fileURLToPath(
-  new URL(`../test-fixtures/all-viz-types.json.gz`, import.meta.url) as Parameters<
-    typeof fileURLToPath
-  >[0],
-)
 const fixture = JSON.parse(
-  gunzipSync(readFileSync(fixture_path)).toString(),
+  gunzipSync(
+    readFileSync(`extensions/vscode/test-fixtures/all-viz-types.json.gz`),
+  ).toString(),
 )
 
 describe(`detect_view_type`, () => {
@@ -153,6 +148,44 @@ describe(`detect_view_type`, () => {
     expect(detect_view_type(val)).toBe(expected)
   })
 
+  // === Alternative valid formats (testing all code branches) ===
+
+  test.each([
+    [`convex_hull (energy_per_atom)`, `convex_hull`, [
+      { composition: { Li: 1 }, energy_per_atom: -1.5 },
+      { composition: { Fe: 1 }, energy_per_atom: -2.0 },
+    ]],
+    [`dos (pymatgen @class)`, `dos`, {
+      '@class': `CompleteDos`,
+      '@module': `pymatgen.electronic_structure.dos`,
+      energies: [-5, 0, 5],
+      densities: { '1': [0.1, 0.5, 0.1] },
+      efermi: 0.0,
+    }],
+    [`xrd (d_hkls)`, `xrd`, { x: [20, 40], y: [100, 50], d_hkls: [2.0, 1.5] }],
+    [`xrd (@class)`, `xrd`, { x: [20, 40], y: [100, 50], '@class': `XrdPattern` }],
+    [`brillouin_zone (reciprocal_lattice key)`, `brillouin_zone`, {
+      reciprocal_lattice: k_lattice_3x3,
+      k_path: [[0, 0, 0]],
+    }],
+    [`brillouin_zone (bz_order)`, `brillouin_zone`, {
+      k_lattice: k_lattice_3x3,
+      bz_order: 1,
+    }],
+    [`bands_and_dos (combined fields)`, `bands_and_dos`, {
+      branches: [{ start_index: 0, end_index: 1 }],
+      labels_dict,
+      energies: [0, 1, 2],
+      densities: [[0.1, 0.2, 0.3]],
+      atom_dos: {},
+      kpoints: [[0, 0, 0]],
+      bands: { '1': [[1, 2]] },
+      efermi: 5.0,
+    }],
+  ] as [string, string, unknown][])(`detects %s`, (_, expected, val) => {
+    expect(detect_view_type(val)).toBe(expected)
+  })
+
   // === Negative / boundary cases ===
 
   test.each([
@@ -171,6 +204,36 @@ describe(`detect_view_type`, () => {
       reciprocal_cell: `wigner_seitz`,
       metadata: {},
     }],
+    [`bands_and_dos wrapper with too many keys`, null, {
+      band_structure: pymatgen_bands,
+      dos: norm_dos,
+      extra_1: 1,
+      extra_2: 2,
+      extra_3: 3,
+      extra_4: 4,
+    }],
+    [`band_structure with empty branches`, null, {
+      branches: [],
+      labels_dict,
+      kpoints: [[0, 0, 0]],
+      bands: { '1': [[1]] },
+      efermi: 5.0,
+    }],
+    [`phase_diagram with 3 components (not binary)`, null, {
+      components: [`A`, `B`, `C`],
+      regions: [],
+      boundaries: [],
+      temperature_range: [300, 1500],
+    }],
+    [`column table with unequal lengths`, null, {
+      col_a: [1, 2, 3],
+      col_b: [4, 5],
+    }],
+    [`row table with inconsistent keys`, null, [
+      { a: 1, b: 2 },
+      { x: 3, y: 4 },
+      { z: 5, w: 6 },
+    ]],
   ] as [string, string | null, unknown][])(`%s -> %s`, (_, expected, val) => {
     if (expected === null) expect(detect_view_type(val)).toBeNull()
     else expect(detect_view_type(val)).toBe(expected)
@@ -232,11 +295,40 @@ describe(`scan_renderable_paths`, () => {
     expect(scan_renderable_paths(data).get(`items[1]`)?.type).toBe(`structure`)
   })
 
+  test(`handles keys containing dots via bracket notation`, () => {
+    const data = {
+      'mp-1234.structure': {
+        sites: [{ species: [{ element: `Si` }], abc: [0, 0, 0] }],
+      },
+    }
+    const paths = scan_renderable_paths(data)
+    expect(paths.has(`["mp-1234.structure"]`)).toBe(true)
+    expect(paths.get(`["mp-1234.structure"]`)?.type).toBe(`structure`)
+  })
+
+  test(`handles nested dotted keys in deeper paths`, () => {
+    const data = {
+      results: {
+        'calc.1': {
+          sites: [{ species: [{ element: `Cu` }], abc: [0, 0, 0] }],
+        },
+      },
+    }
+    const paths = scan_renderable_paths(data)
+    expect(paths.has(`results["calc.1"]`)).toBe(true)
+    expect(paths.get(`results["calc.1"]`)?.type).toBe(`structure`)
+  })
+
   test(`all scanned paths resolve back to the original value`, () => {
     // resolve_path mirror (same logic as JsonBrowser.svelte)
     function resolve_path(root: unknown, path: string): unknown {
       if (!path) return root
-      const segments = path.replace(/\[(\d+)\]/g, `.$1`).split(`.`).filter(Boolean)
+      const segments: string[] = []
+      const segment_re = /\["([^"]+)"\]|\[(\d+)\]|([^.\[\]]+)/g
+      let match: RegExpExecArray | null
+      while ((match = segment_re.exec(path)) !== null) {
+        segments.push(match[1] ?? match[2] ?? match[3])
+      }
       let current: unknown = root
       for (const segment of segments) {
         if (current === null || current === undefined || typeof current !== `object`) {

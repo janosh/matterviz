@@ -377,7 +377,11 @@ export function scan_renderable_paths(
       }
     } else {
       for (const [key, child_value] of Object.entries(value as Record<string, unknown>)) {
-        const child_path = path ? `${path}.${key}` : key
+        // Use bracket notation for keys containing dots to avoid ambiguity in resolve_path
+        const segment = key.includes(`.`) ? `["${key}"]` : key
+        const child_path = path
+          ? (key.includes(`.`) ? `${path}${segment}` : `${path}.${segment}`)
+          : segment
         walk(child_value, child_path, depth + 1)
       }
     }

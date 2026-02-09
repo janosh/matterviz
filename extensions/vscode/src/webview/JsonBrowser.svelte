@@ -572,7 +572,14 @@
 
   function resolve_path(root: unknown, path: string): unknown {
     if (!path) return root
-    const segments = path.replace(/\[(\d+)\]/g, `.$1`).split(`.`).filter(Boolean)
+    // Parse path segments: handles dotted keys like ["foo.bar"], array indices like [0],
+    // and regular dotted paths like a.b.c
+    const segments: string[] = []
+    const segment_re = /\["([^"]+)"\]|\[(\d+)\]|([^.\[\]]+)/g
+    let match: RegExpExecArray | null
+    while ((match = segment_re.exec(path)) !== null) {
+      segments.push(match[1] ?? match[2] ?? match[3])
+    }
     let current: unknown = root
     for (const segment of segments) {
       if (current === null || current === undefined || typeof current !== `object`) return undefined
