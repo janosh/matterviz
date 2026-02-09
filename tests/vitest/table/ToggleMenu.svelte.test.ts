@@ -1,7 +1,7 @@
 import type { Label } from '$lib/table'
 import ToggleMenu from '$lib/table/ToggleMenu.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => {
   document.body.innerHTML = ``
@@ -257,6 +257,97 @@ describe(`ToggleMenu`, () => {
       const labels = document.querySelectorAll(`.toggle-label`)
       expect(labels[0].classList.contains(`disabled`)).toBe(true)
       expect(labels[1].classList.contains(`disabled`)).toBe(false)
+    })
+  })
+
+  describe(`Reset functionality`, () => {
+    it(`shows reset all button when columns differ from defaults`, async () => {
+      const columns = make_columns()
+      mount_menu(columns, { column_panel_open: true })
+
+      // Initially col2 is visible=false which matches default, no changes
+      expect(document.querySelector(`.reset-all-btn`)).toBeNull()
+
+      // Toggle col1 off (differs from default)
+      document.querySelectorAll(`label`)[0].click()
+      await tick()
+      expect(document.querySelector(`.reset-all-btn`)).not.toBeNull()
+    })
+
+    it(`reset all restores checkboxes to default state`, async () => {
+      const columns = make_columns() // col1=true, col2=false, col3=true
+      mount_menu(columns, { column_panel_open: true }) // Toggle col1 off (differs from default)
+      ;(document.querySelectorAll(`.toggle-label`)[0] as HTMLElement).click()
+      await tick()
+      const checkboxes = () =>
+        document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
+      expect(checkboxes()[0].checked).toBe(false) // was toggled off
+       // Click reset all
+      ;(document.querySelector(`.reset-all-btn`) as HTMLElement).click()
+      await tick()
+
+      // Checkboxes should be back to defaults: true, false, true
+      expect(checkboxes()[0].checked).toBe(true)
+      expect(checkboxes()[1].checked).toBe(false)
+      expect(checkboxes()[2].checked).toBe(true)
+      expect(document.querySelector(`.reset-all-btn`)).toBeNull() // no more changes
+    })
+
+    it(`calls on_reset callback when reset all clicked`, async () => {
+      const columns = make_columns()
+      const on_reset = vi.fn()
+      mount_menu(columns, { column_panel_open: true, on_reset })
+
+      // Toggle col1 off then reset
+      document.querySelectorAll(`label`)[0].click()
+      await tick()
+      ;(document.querySelector(`.reset-all-btn`) as HTMLElement).click()
+      await tick()
+
+      expect(on_reset).toHaveBeenCalledWith()
+    })
+
+    it(`shows per-section reset button for grouped columns with changes`, async () => {
+      const grouped: Label[] = [
+        { key: `a`, label: `A`, group: `G1`, visible: true },
+        { key: `b`, label: `B`, group: `G1`, visible: true },
+        { key: `c`, label: `C`, group: `G2`, visible: true },
+      ]
+      mount_menu(grouped, { column_panel_open: true })
+
+      // No changes yet
+      expect(document.querySelector(`.reset-section-btn`)).toBeNull()
+
+      // Toggle first column off
+      document.querySelectorAll(`label`)[0].click()
+      await tick()
+
+      // Section reset button appears for G1 only
+      const section_btns = document.querySelectorAll(`.reset-section-btn`)
+      expect(section_btns).toHaveLength(1)
+    })
+
+    it(`per-section reset restores only that section's checkboxes`, async () => {
+      const grouped: Label[] = [
+        { key: `a`, label: `A`, group: `G1`, visible: true },
+        { key: `b`, label: `B`, group: `G2`, visible: true },
+      ]
+      mount_menu(grouped, { column_panel_open: true })
+
+      const checkboxes = () =>
+        document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`) // Toggle both off via toggle labels
+      ;(document.querySelectorAll(`.toggle-label`)[0] as HTMLElement).click()
+      await tick()
+      ;(document.querySelectorAll(`.toggle-label`)[1] as HTMLElement).click()
+      await tick()
+
+      expect(checkboxes()[0].checked).toBe(false)
+      expect(checkboxes()[1].checked).toBe(false) // Reset G1 section only (first reset-section-btn corresponds to G1)
+      ;(document.querySelector(`.reset-section-btn`) as HTMLElement).click()
+      await tick()
+
+      expect(checkboxes()[0].checked).toBe(true) // G1 restored
+      expect(checkboxes()[1].checked).toBe(false) // G2 unchanged
     })
   })
 

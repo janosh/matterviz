@@ -52,12 +52,17 @@ const mount_stats = (props: Partial<Props> = {}) =>
 describe(`ConvexHullStats`, () => {
   beforeEach(() => vi.clearAllMocks())
 
-  test(`renders header and all phase type counts`, () => {
+  test(`renders view toggle buttons and all phase type counts`, () => {
     mount_stats({
       phase_stats: mock_stats({ unary: 4, binary: 20, ternary: 50, quaternary: 26 }),
     })
     const text = document.body.textContent ?? ``
-    expect(doc_query(`h4`).textContent).toContain(`Convex Hull Stats`)
+    // View toggle buttons replace the old h4 heading
+    const buttons = document.querySelectorAll(`.view-toggle button`)
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0].textContent?.trim()).toBe(`Stats`)
+    expect(buttons[1].textContent?.trim()).toBe(`Table`)
+    expect(buttons[0].classList.contains(`active`)).toBe(true)
     for (
       const [type, count] of [[`Unary`, 4], [`Binary`, 20], [`Ternary`, 50], [
         `Quaternary`,
@@ -208,5 +213,162 @@ describe(`ConvexHullStats`, () => {
     const container = doc_query(`.convex-hull-stats`)
     expect(container.classList.contains(`custom-class`)).toBe(true)
     expect(container.getAttribute(`style`)).toContain(`background: red`)
+  })
+
+  describe(`table view mode`, () => {
+    const stable = [
+      mock_entry({
+        composition: { Fe: 2, O: 3 },
+        e_above_hull: 0,
+        e_form_per_atom: -1.5,
+        is_stable: true,
+        reduced_formula: `Fe2O3`,
+      }),
+      mock_entry({
+        composition: { Li: 1 },
+        e_above_hull: 0,
+        e_form_per_atom: 0,
+        is_stable: true,
+        is_element: true,
+        reduced_formula: `Li`,
+      }),
+    ]
+    const unstable = [
+      mock_entry({
+        composition: { Li: 1, Fe: 1, O: 2 },
+        e_above_hull: 0.15,
+        e_form_per_atom: -0.8,
+        reduced_formula: `LiFeO2`,
+      }),
+      mock_entry({
+        composition: { Li: 2, O: 1 },
+        e_above_hull: 0.05,
+        e_form_per_atom: -1.2,
+        reduced_formula: `Li2O`,
+      }),
+    ]
+
+    // Helpers to reduce boilerplate
+    const switch_to_table = () => {
+      ;(document.querySelectorAll(`.view-toggle button`)[1] as HTMLElement).click()
+      flushSync()
+    }
+    const get_headers = () =>
+      Array.from(document.querySelectorAll(`th`)).map((th) => th.textContent?.trim())
+
+    test(`view toggle switches between stats and table, round-trips correctly`, () => {
+      mount_stats({ stable_entries: stable, unstable_entries: unstable })
+      // Stats is default
+      expect(document.querySelector(`.stat-item`)).not.toBeNull()
+      expect(document.querySelector(`.table-container`)).toBeNull()
+      const [stats_btn, table_btn] = document.querySelectorAll(
+        `.view-toggle button`,
+      ) as NodeListOf<HTMLElement>
+      expect(stats_btn.classList.contains(`active`)).toBe(true)
+
+      // Switch to table
+      table_btn.click()
+      flushSync()
+      expect(document.querySelector(`.stat-item`)).toBeNull()
+      expect(document.querySelector(`.table-container`)).not.toBeNull()
+      expect(table_btn.classList.contains(`active`)).toBe(true)
+      expect(stats_btn.classList.contains(`active`)).toBe(false)
+
+      // Switch back to stats
+      stats_btn.click()
+      flushSync()
+      expect(document.querySelector(`.stat-item`)).not.toBeNull()
+      expect(document.querySelector(`.table-container`)).toBeNull()
+    })
+
+    test(`table shows all visible entries with correct columns`, () => {
+      mount_stats({ stable_entries: stable, unstable_entries: unstable })
+      switch_to_table()
+
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(4)
+      for (const formula of [`Fe2O3`, `Li`, `LiFeO2`, `Li2O`]) {
+        expect(document.body.textContent).toContain(formula)
+      }
+      const headers = get_headers()
+      expect(headers).toContain(`Formula`)
+      for (const substr of [`hull`, `form`, `el`, `at`]) {
+        expect(headers.some((h) => h?.includes(substr))).toBe(true)
+      }
+    })
+
+    test(`table excludes non-visible entries`, () => {
+      const hidden = mock_entry({
+        composition: { Zr: 1 },
+        visible: false,
+        reduced_formula: `Zr`,
+      })
+      mount_stats({ stable_entries: stable, unstable_entries: [hidden] })
+      switch_to_table()
+
+      expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
+      const cells = Array.from(document.querySelectorAll(`td`)).map((td) =>
+        td.textContent?.trim()
+      )
+      expect(cells).not.toContain(`Zr`)
+    })
+
+    test.each([
+      {
+        desc: `shown when available`,
+        energy_per_atom: -5.2 as number | undefined,
+        expected: true,
+      },
+      { desc: `hidden when unavailable`, energy_per_atom: undefined, expected: false },
+    ])(`E_raw column $desc`, ({ energy_per_atom, expected }) => {
+      mount_stats({
+        stable_entries: [mock_entry({ energy_per_atom, reduced_formula: `X` })],
+        unstable_entries: [],
+      })
+      switch_to_table()
+      expect(get_headers().some((h) => h?.includes(`raw`))).toBe(expected)
+    })
+
+    test(`ID column and value shown when entry_id available`, () => {
+      mount_stats({
+        stable_entries: [mock_entry({ entry_id: `mp-1234`, reduced_formula: `X` })],
+        unstable_entries: [],
+      })
+      switch_to_table()
+      expect(get_headers()).toContain(`ID`)
+      expect(document.body.textContent).toContain(`mp-1234`)
+    })
+
+    test(`composition fallback when reduced_formula missing`, () => {
+      mount_stats({
+        stable_entries: [
+          mock_entry({
+            composition: { Ca: 1, Ti: 1, O: 3 },
+            reduced_formula: undefined,
+            name: undefined,
+          }),
+        ],
+        unstable_entries: [],
+      })
+      switch_to_table()
+      for (const el of [`Ca`, `Ti`, `O`]) {
+        expect(document.body.textContent).toContain(el)
+      }
+    })
+
+    test(`spacegroup column shown when structure data has it`, () => {
+      mount_stats({
+        stable_entries: [mock_entry({
+          reduced_formula: `NaCl`,
+          structure: { spacegroup: { symbol: `Fm-3m`, number: 225 } } as Record<
+            string,
+            unknown
+          >,
+        })],
+        unstable_entries: [],
+      })
+      switch_to_table()
+      expect(get_headers()).toContain(`Spacegroup`)
+      expect(document.body.textContent).toContain(`Fm-3m`)
+    })
   })
 })
