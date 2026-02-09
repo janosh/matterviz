@@ -320,6 +320,18 @@
     align-items: center;
     gap: 4px;
     margin-bottom: 4pt;
+    padding: 2pt 4pt;
+    border-radius: var(--tgl-border-radius, 3pt);
+    background: var(
+      --tgl-section-header-bg,
+      color-mix(in srgb, currentColor 5%, transparent)
+    );
+    &:hover {
+      background: var(
+        --tgl-section-header-hover-bg,
+        color-mix(in srgb, currentColor 12%, transparent)
+      );
+    }
   }
   .reset-section-btn {
     display: flex;
@@ -344,23 +356,14 @@
     gap: 4px;
     font-weight: 600;
     font-size: 0.9em;
-    padding: 2pt 4pt;
+    padding: 0;
     border: none;
-    border-radius: var(--tgl-border-radius, 3pt);
-    background: var(
-      --tgl-section-header-bg,
-      color-mix(in srgb, currentColor 5%, transparent)
-    );
+    border-radius: 0;
+    background: transparent;
     cursor: pointer;
     flex: 1;
     text-align: left;
     color: inherit;
-    &:hover {
-      background: var(
-        --tgl-section-header-hover-bg,
-        color-mix(in srgb, currentColor 12%, transparent)
-      );
-    }
   }
   .collapse-icon {
     font-size: 0.7em;
