@@ -2,7 +2,7 @@
   import { getContext } from 'svelte'
   import type { JsonTreeContext, JsonValueType } from './types'
   import { JSON_TREE_CONTEXT_KEY } from './types'
-  import { format_preview, values_equal } from './utils'
+  import { format_preview, is_css_color, is_url, values_equal } from './utils'
 
   let {
     value,
@@ -48,11 +48,21 @@
     }
   })
 
+  // Auto-detect URLs in string values
+  let url_detected = $derived(value_type === `string` && is_url(value as string))
+
+  // Auto-detect CSS colors in string values
+  let color_detected = $derived(
+    value_type === `string` && is_css_color(value as string)
+      ? (value as string)
+      : null,
+  )
+
   // Handle click to copy
   async function handle_click(event: MouseEvent) {
     event.stopPropagation()
     if (ctx) {
-      await ctx.copy_value(path, value)
+      await ctx.copy_value(path, value, event)
     }
   }
 
@@ -82,6 +92,9 @@
   class="json-value {value_type}"
   class:changed={just_changed}
   onclick={handle_click}
+  oncontextmenu={(event) => {
+    ctx?.show_context_menu(event, path, value, false, false)
+  }}
   onkeydown={(event) => {
     if (event.key === `Enter` || event.key === ` `) {
       event.preventDefault()
@@ -92,7 +105,23 @@
   tabindex="-1"
   title="Click to copy"
 >
-  {display_value}
+  {#if color_detected}
+    <span class="color-swatch" style:background={color_detected}></span>
+  {/if}
+  {#if url_detected}
+    <a
+      href={encodeURI(value as string)}
+      class="url-link"
+      target="_blank"
+      rel="noopener noreferrer"
+      onclick={(event) => event.stopPropagation()}
+      title="Open URL in new tab"
+    >
+      {display_value}
+    </a>
+  {:else}
+    {display_value}
+  {/if}
   {#if is_truncated}
     <button
       type="button"
@@ -201,5 +230,21 @@
     color: var(--jt-type-annotation, light-dark(#808080, #6a6a6a));
     margin-left: 4px;
     opacity: 0.7;
+  }
+  .url-link {
+    color: var(--jt-url, light-dark(#0066cc, #4fc3f7));
+    text-decoration: none;
+  }
+  .url-link:hover {
+    text-decoration: underline;
+  }
+  .color-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.3));
+    vertical-align: middle;
+    margin-right: 4px;
   }
 </style>

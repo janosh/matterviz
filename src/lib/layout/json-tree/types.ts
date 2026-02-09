@@ -51,6 +51,8 @@ export interface JsonTreeProps {
   oncopy?: (path: string, value: string) => void
   // Custom filename for JSON download (default: "data-YYYY-MM-DD.json")
   download_filename?: string
+  // Optional value to diff against - highlights additions, removals, and changes
+  compare_value?: unknown
 }
 
 // Context shared with child components (state + methods)
@@ -78,11 +80,37 @@ export interface JsonTreeContext {
   collapse_all: () => void
   collapse_to_level: (level: number) => void
   set_focused: (path: string | null) => void
-  copy_value: (path: string, value: unknown) => Promise<void>
-  copy_path: (path: string) => Promise<void>
+  copy_value: (path: string, value: unknown, event?: MouseEvent) => Promise<void>
+  copy_path: (path: string, event?: MouseEvent) => Promise<void>
   register_path: (path: string) => void
   unregister_path: (path: string) => void
+  show_context_menu: (
+    event: MouseEvent,
+    path: string,
+    value: unknown,
+    expandable: boolean,
+    is_collapsed: boolean,
+  ) => void
+  pinned_paths: Set<string>
+  toggle_pin: (path: string) => void
+  selected_paths: Set<string>
+  toggle_select: (path: string, shift: boolean) => void
+  copy_selected: () => void
+  diff_map: Map<string, DiffEntry> | null
+  ghost_map: Map<string, import('./utils').GhostEntry[]>
+  collapse_children_only: (path: string) => void
 }
 
 // Context key for Svelte's setContext/getContext
 export const JSON_TREE_CONTEXT_KEY = Symbol(`json-tree-context`)
+
+// Diff status for comparing two JSON values
+export type DiffStatus = `added` | `removed` | `changed`
+
+// Single entry in a diff result (one path that differs between old and new)
+export interface DiffEntry {
+  status: DiffStatus
+  path: string
+  old_value?: unknown
+  new_value?: unknown
+}

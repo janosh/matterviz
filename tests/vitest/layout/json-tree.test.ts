@@ -197,7 +197,7 @@ describe(`JsonTree`, () => {
         },
       })
       const keys = Array.from(document.querySelectorAll(`.node-key`))
-        .map((el) => el.textContent?.replace(/"/g, ``))
+        .map((el) => el.textContent?.replace(/"/g, ``).trim())
       expect(keys).toEqual([`apple`, `mango`, `zebra`])
     })
 
@@ -418,7 +418,7 @@ describe(`JsonTree`, () => {
   })
 
   describe(`copy functionality`, () => {
-    it(`keys are clickable and call clipboard API`, () => {
+    it(`keys are clickable and copy value to clipboard`, () => {
       const write_text = vi.fn().mockResolvedValue(undefined)
       Object.defineProperty(navigator, `clipboard`, {
         value: { writeText: write_text },
@@ -432,7 +432,8 @@ describe(`JsonTree`, () => {
       expect(key_el.tagName).toBe(`BUTTON`)
       key_el.click()
       flushSync()
-      expect(write_text).toHaveBeenCalledWith(`my_key`)
+      // Clicking an expanded key copies the value, not the path
+      expect(write_text).toHaveBeenCalledWith(`42`)
     })
   })
 
@@ -1164,7 +1165,7 @@ describe(`path breadcrumb`, () => {
 })
 
 describe(`copy path functionality`, () => {
-  it(`clicking key copies full path instead of just key`, async () => {
+  it(`clicking expanded key copies value to clipboard`, async () => {
     const write_text = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, `clipboard`, {
       value: { writeText: write_text },
@@ -1188,10 +1189,11 @@ describe(`copy path functionality`, () => {
     flushSync()
     await tick()
 
-    expect(write_text).toHaveBeenCalledWith(`outer.inner`)
+    // Clicking expanded key copies value, not path
+    expect(write_text).toHaveBeenCalledWith(`42`)
   })
 
-  it(`key title shows full path hint`, () => {
+  it(`key title shows action hints`, () => {
     mount(JsonTree, {
       target: document.body,
       props: {
@@ -1204,7 +1206,8 @@ describe(`copy path functionality`, () => {
     const keys = document.querySelectorAll(`.node-key`)
     const child_key = Array.from(keys).find((el) => el.textContent?.includes(`child`))
 
-    expect(child_key?.getAttribute(`title`)).toContain(`parent.child`)
+    expect(child_key?.getAttribute(`title`)).toContain(`copy value`)
+    expect(child_key?.getAttribute(`title`)).toContain(`copy path`)
   })
 })
 
@@ -1410,5 +1413,518 @@ describe(`edge cases`, () => {
   ])(`renders $desc correctly`, ({ value, expected }) => {
     mount(JsonTree, { target: document.body, props: { value, show_header: false } })
     expected.forEach((text) => expect(document.body.textContent).toContain(text))
+  })
+})
+
+describe(`context menu`, () => {
+  it(`opens on right-click and shows menu items`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { key: `val` }, show_header: false, default_fold_level: 5 },
+    })
+    const node = document.querySelector(`.json-node`) as HTMLDivElement
+    node.dispatchEvent(
+      new MouseEvent(`contextmenu`, { bubbles: true, clientX: 100, clientY: 200 }),
+    )
+    flushSync()
+    await tick()
+
+    const menu = document.querySelector(`.context-menu`)
+    expect(menu).toBeTruthy()
+    expect(menu?.textContent).toContain(`Copy value`)
+    expect(menu?.textContent).toContain(`Copy path`)
+    expect(menu?.textContent).toContain(`Pin`)
+  })
+
+  it(`closes on backdrop click`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { a: 1 }, show_header: false },
+    })
+    const node = document.querySelector(`.json-node`) as HTMLDivElement
+    node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+    flushSync()
+    await tick()
+    expect(document.querySelector(`.context-menu`)).toBeTruthy()
+
+    const backdrop = document.querySelector(`.context-menu-backdrop`) as HTMLDivElement
+    backdrop.click()
+    flushSync()
+    await tick()
+    expect(document.querySelector(`.context-menu`)).toBeFalsy()
+  })
+
+  it(`closes on Escape key`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { a: 1 }, show_header: false },
+    })
+    const node = document.querySelector(`.json-node`) as HTMLDivElement
+    node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+    flushSync()
+    await tick()
+    expect(document.querySelector(`.context-menu`)).toBeTruthy()
+
+    const tree = document.querySelector(`.json-tree`) as HTMLDivElement
+    tree.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+    flushSync()
+    await tick()
+    expect(document.querySelector(`.context-menu`)).toBeFalsy()
+  })
+
+  it(`shows expand/collapse options for expandable nodes`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { nested: { a: 1 } }, show_header: false, default_fold_level: 5 },
+    })
+    // Right-click on the root node (expandable, expanded)
+    const root_node = document.querySelector(`.json-node`) as HTMLDivElement
+    root_node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+    flushSync()
+    await tick()
+
+    expect(document.querySelector(`.context-menu`)?.textContent).toContain(
+      `Collapse all children`,
+    )
+  })
+})
+
+describe(`pinned paths panel`, () => {
+  it(`shows pinned panel after pinning via context menu`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 },
+    })
+    // Right-click to open context menu
+    const node = document.querySelector(`.json-node`) as HTMLDivElement
+    node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+    flushSync()
+    await tick()
+
+    // Click "Pin this path"
+    const pin_btn = Array.from(document.querySelectorAll(`.context-menu button`))
+      .find((btn) => btn.textContent?.includes(`Pin`)) as HTMLButtonElement
+    expect(pin_btn).toBeTruthy()
+    pin_btn.click()
+    flushSync()
+    await tick()
+
+    // Pinned panel should appear
+    const panel = document.querySelector(`.pinned-panel`)
+    expect(panel).toBeTruthy()
+    expect(panel?.textContent).toContain(`Pinned (1)`)
+  })
+
+  it(`clears all pins with Clear button`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { a: 1 }, show_header: false },
+    })
+    // Pin a node via context menu
+    const node = document.querySelector(`.json-node`) as HTMLDivElement
+    node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+    flushSync()
+    await tick()
+    const pin_btn = Array.from(document.querySelectorAll(`.context-menu button`))
+      .find((btn) => btn.textContent?.includes(`Pin`)) as HTMLButtonElement
+    pin_btn.click()
+    flushSync()
+    await tick()
+    expect(document.querySelector(`.pinned-panel`)).toBeTruthy()
+
+    // Click Clear
+    const clear_btn = document.querySelector(`.pinned-clear-btn`) as HTMLButtonElement
+    clear_btn.click()
+    flushSync()
+    await tick()
+    expect(document.querySelector(`.pinned-panel`)).toBeFalsy()
+  })
+})
+
+describe(`selection`, () => {
+  it(`Ctrl+click selects a node`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 },
+    })
+    const nodes = document.querySelectorAll(`.json-node`)
+    // Ctrl+click on the "a" node (index 1, since index 0 is root)
+    nodes[1].dispatchEvent(
+      new MouseEvent(`click`, { bubbles: true, ctrlKey: true }),
+    )
+    flushSync()
+    await tick()
+    expect(nodes[1].classList.contains(`selected`)).toBe(true)
+  })
+
+  it(`Ctrl+click again deselects`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { a: 1 }, show_header: false, default_fold_level: 5 },
+    })
+    const node = document.querySelectorAll(`.json-node`)[1]
+    // Select
+    node.dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
+    flushSync()
+    await tick()
+    expect(node.classList.contains(`selected`)).toBe(true)
+    // Deselect
+    node.dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
+    flushSync()
+    await tick()
+    expect(node.classList.contains(`selected`)).toBe(false)
+  })
+
+  it(`Escape clears all selections`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { a: 1, b: 2 }, show_header: false, default_fold_level: 5 },
+    })
+    const tree = document.querySelector(`.json-tree`) as HTMLDivElement
+    const nodes = document.querySelectorAll(`.json-node`)
+    // Select node
+    nodes[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
+    flushSync()
+    expect(nodes[1].classList.contains(`selected`)).toBe(true)
+
+    // Press Escape on tree
+    tree.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+    flushSync()
+    await tick()
+    expect(nodes[1].classList.contains(`selected`)).toBe(false)
+  })
+})
+
+describe(`key click behavior`, () => {
+  it(`clicking collapsed key expands node`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { nested: { deep: 42 } },
+        show_header: false,
+        default_fold_level: 1,
+      },
+    })
+    // "nested" is collapsed at fold level 1
+    expect(document.body.textContent).not.toContain(`"deep"`)
+
+    const key_btn = document.querySelector(`.node-key`) as HTMLButtonElement
+    key_btn.click()
+    flushSync()
+    await tick()
+
+    // Should now be expanded
+    expect(document.body.textContent).toContain(`"deep"`)
+  })
+
+  it(`Shift+click on key copies path`, async () => {
+    const write_text = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, `clipboard`, {
+      value: { writeText: write_text },
+      writable: true,
+    })
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { my_key: 42 }, show_header: false, default_fold_level: 5 },
+    })
+    const key_btn = document.querySelector(`.node-key`) as HTMLButtonElement
+    key_btn.dispatchEvent(new MouseEvent(`click`, { bubbles: true, shiftKey: true }))
+    flushSync()
+    await tick()
+    expect(write_text).toHaveBeenCalledWith(`my_key`)
+  })
+})
+
+describe(`node visual hints`, () => {
+  it(`shows byte size next to collapsed preview`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { data: { a: 1, b: 2 } },
+        show_header: false,
+        default_fold_level: 1,
+      },
+    })
+    const size_hint = document.querySelector(`.size-hint`)
+    expect(size_hint).toBeTruthy()
+    expect(size_hint?.textContent?.trim()).toMatch(/\d+ B/)
+  })
+
+  it(`shows ▸ hint for collapsed keys, copy icon for expanded`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { nested: { a: 1 } }, show_header: false, default_fold_level: 1 },
+    })
+    // Collapsed expandable key shows expand hint
+    const hint = document.querySelector(`.action-hint`)
+    expect(hint?.textContent?.trim()).toBe(`▸`)
+  })
+
+  it(`renders action hint on expanded leaf keys`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { key: 42 }, show_header: false, default_fold_level: 5 },
+    })
+    // Expanded/leaf key shows copy icon (SVG renders as empty text)
+    expect(document.querySelector(`.action-hint`)).toBeTruthy()
+  })
+})
+
+describe(`collapse-to-level button`, () => {
+  it(`shows ⊟ button on expanded nodes`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { nested: { a: 1 } },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    const btn = document.querySelector(`.collapse-level-btn`)
+    expect(btn).toBeTruthy()
+    expect(btn?.textContent?.trim()).toBe(`⊟`)
+  })
+
+  it(`collapses children when clicked`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { outer: { inner: { deep: 1 } } },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    expect(document.body.textContent).toContain(`"deep"`)
+
+    // Click the collapse-level button on root
+    const btn = document.querySelector(`.collapse-level-btn`) as HTMLButtonElement
+    btn.click()
+    flushSync()
+    await tick()
+
+    // Children should be collapsed but root should still be expanded
+    expect(document.body.textContent).not.toContain(`"deep"`)
+    expect(document.body.textContent).toContain(`"outer"`)
+  })
+})
+
+describe(`URL auto-linking`, () => {
+  it(`renders URL strings as clickable links`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { link: `https://example.com` },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    const link = document.querySelector(`.url-link`) as HTMLAnchorElement
+    expect(link).toBeTruthy()
+    expect(link.href).toBe(`https://example.com/`)
+    expect(link.target).toBe(`_blank`)
+    expect(link.rel).toBe(`noopener noreferrer`)
+  })
+
+  it(`does not render non-URL strings as links`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { text: `not a url` },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    expect(document.querySelector(`.url-link`)).toBeFalsy()
+  })
+})
+
+describe(`color swatch`, () => {
+  it.each([
+    `#ff0000`,
+    `#fff`,
+    `rgb(255, 0, 0)`,
+    `hsl(120, 100%, 50%)`,
+  ])(`renders swatch for CSS color %p`, (color) => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { color },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    const swatch = document.querySelector(`.color-swatch`) as HTMLSpanElement
+    expect(swatch).toBeTruthy()
+    expect(swatch.style.background).toBeTruthy()
+  })
+
+  it(`does not render swatch for non-color strings`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { text: `hello` },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    expect(document.querySelector(`.color-swatch`)).toBeFalsy()
+  })
+})
+
+describe(`diff mode`, () => {
+  it(`highlights added keys with diff-added class`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: 1, b: 2 },
+        compare_value: { a: 1 },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    const added_nodes = document.querySelectorAll(`.diff-added`)
+    expect(added_nodes.length).toBeGreaterThan(0)
+  })
+
+  it(`highlights changed values with diff-changed class`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: 99 },
+        compare_value: { a: 1 },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    const changed_nodes = document.querySelectorAll(`.diff-changed`)
+    expect(changed_nodes.length).toBeGreaterThan(0)
+  })
+
+  it(`shows ghost nodes for removed keys`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: 1 },
+        compare_value: { a: 1, removed_key: `gone` },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    await tick()
+    const ghost = document.querySelector(`.ghost`)
+    expect(ghost).toBeTruthy()
+    expect(ghost?.textContent).toContain(`removed_key`)
+  })
+
+  it(`does not show diff classes when compare_value is undefined`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: 1, b: 2 },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    expect(document.querySelectorAll(`.diff-added`).length).toBe(0)
+    expect(document.querySelectorAll(`.diff-changed`).length).toBe(0)
+    expect(document.querySelectorAll(`.diff-removed`).length).toBe(0)
+    expect(document.querySelectorAll(`.ghost`).length).toBe(0)
+  })
+})
+
+describe(`sticky headers`, () => {
+  it(`adds sticky-header class to expanded nodes at depth <= 2`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: { b: { c: 1 } } },
+        show_header: false,
+        default_fold_level: 5,
+      },
+    })
+    const sticky_nodes = document.querySelectorAll(`.sticky-header`)
+    // root (depth 0), a (depth 1), b (depth 2) should all be sticky
+    expect(sticky_nodes.length).toBe(3)
+  })
+
+  it(`does not add sticky-header to collapsed or leaf nodes`, () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: { b: 1 } },
+        show_header: false,
+        default_fold_level: 1, // only root expanded
+      },
+    })
+    // Only the root node should be sticky (depth 0, expanded)
+    const sticky = document.querySelectorAll(`.sticky-header`)
+    expect(sticky.length).toBe(1)
+  })
+})
+
+describe(`clipboard interactions`, () => {
+  it(`right-click on leaf value opens context menu`, async () => {
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { key: 42 }, show_header: false, default_fold_level: 5 },
+    })
+    const json_value = document.querySelector(`.json-value`) as HTMLSpanElement
+    json_value.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+    flushSync()
+    await tick()
+
+    const menu = document.querySelector(`.context-menu`)
+    expect(menu).toBeTruthy()
+    expect(menu?.textContent).toContain(`Copy value`)
+    expect(menu?.textContent).toContain(`Copy path`)
+  })
+
+  it(`shows inline copy feedback after click-to-copy`, async () => {
+    const write_text = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, `clipboard`, {
+      value: { writeText: write_text },
+      writable: true,
+    })
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { key: 42 }, show_header: false, default_fold_level: 5 },
+    })
+    const value_el = document.querySelector(`.json-value`) as HTMLSpanElement
+    value_el.click()
+    flushSync()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    flushSync()
+
+    const feedback = document.querySelector(`.copy-feedback`)
+    expect(feedback).toBeTruthy()
+    expect(feedback?.textContent?.trim()).toBe(`Copied!`)
+  })
+
+  it(`Enter on focused leaf node copies value`, async () => {
+    const write_text = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, `clipboard`, {
+      value: { writeText: write_text },
+      writable: true,
+    })
+    mount(JsonTree, {
+      target: document.body,
+      props: { value: { key: 42 }, show_header: false, default_fold_level: 5 },
+    })
+    const tree = document.querySelector(`.json-tree`) as HTMLDivElement
+    // ArrowDown twice: first focuses root, second focuses leaf "key: 42"
+    tree.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }))
+    flushSync()
+    tree.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }))
+    flushSync()
+    await tick()
+
+    const leaf_node = document.querySelectorAll(`.json-node`)[1] as HTMLDivElement
+    expect(leaf_node.classList.contains(`focused`)).toBe(true)
+    leaf_node.dispatchEvent(
+      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
+    )
+    flushSync()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(write_text).toHaveBeenCalledWith(`42`)
   })
 })

@@ -6,11 +6,14 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import JsonNode from './JsonNode.svelte'
-  import type { JsonTreeContext, JsonTreeProps } from './types'
+  import type { DiffEntry, JsonTreeContext, JsonTreeProps } from './types'
   import { JSON_TREE_CONTEXT_KEY } from './types'
   import {
+    build_ghost_map,
     collect_all_paths,
+    compute_diff,
     find_matching_paths,
+    format_preview,
     get_ancestor_paths,
     parse_path,
     serialize_for_copy,
@@ -37,6 +40,7 @@
     onselect,
     oncopy,
     download_filename,
+    compare_value,
     ...rest
   }: JsonTreeProps & Omit<HTMLAttributes<HTMLDivElement>, `onselect`> = $props()
 
@@ -58,12 +62,33 @@
   let content_element: HTMLDivElement | undefined = $state()
   // Reference to the search input for focus management
   let search_input_element: HTMLInputElement | undefined = $state()
+  // Context menu state (null when closed)
+  let context_menu_state = $state<
+    {
+      x: number
+      y: number
+      path: string
+      value: unknown
+      expandable: boolean
+      is_collapsed: boolean
+    } | null
+  >(null)
+  // Pinned paths for quick reference
+  let pinned_paths = $state(new SvelteSet<string>())
+  // Selection state for bulk operations
+  let selected_paths = $state(new SvelteSet<string>())
+  let last_selected_path = $state<string | null>(null)
+  // Copy feedback positioning (null = use default corner position)
+  let copy_feedback_pos = $state<{ x: number; y: number } | null>(null)
 
-  // Clear force_expanded when value changes (stale paths from old data)
+  // Clear stale path-based state when value changes
   let prev_value_ref: unknown
   $effect.pre(() => {
     if (prev_value_ref !== undefined && value !== prev_value_ref) {
       force_expanded.clear()
+      pinned_paths = new SvelteSet()
+      selected_paths = new SvelteSet()
+      last_selected_path = null
     }
     prev_value_ref = value
   })
@@ -246,8 +271,13 @@
     if (path) onselect?.(path, get_value_at_path(path))
   }
 
-  // Shared clipboard copy with feedback
-  async function copy_to_clipboard(path: string, text: string): Promise<void> {
+  // Shared clipboard copy with feedback (event used for inline positioning)
+  async function copy_to_clipboard(
+    path: string,
+    text: string,
+    event?: MouseEvent,
+  ): Promise<void> {
+    copy_feedback_pos = event ? { x: event.clientX, y: event.clientY } : null
     try {
       await navigator.clipboard.writeText(text)
       copy_feedback_error = false
@@ -302,6 +332,106 @@
     return current
   }
 
+  // Compute diff map when compare_value is provided
+  let diff_map = $derived.by((): Map<string, DiffEntry> | null => {
+    if (compare_value === undefined) return null
+    return compute_diff(compare_value, value, root_label ?? ``)
+  })
+
+  // Pre-compute ghost children map for O(1) lookup per node
+  let ghost_map = $derived(diff_map ? build_ghost_map(diff_map) : new Map())
+
+  // Collapse all descendants but keep the given node expanded (single batch)
+  function collapse_children_only(target_path: string): void {
+    const all_paths = collect_all_paths(value, root_label ?? ``)
+    const descendants = target_path === `` ? all_paths : all_paths.filter(
+      (p) =>
+        p === target_path || p.startsWith(target_path + `.`) ||
+        p.startsWith(target_path + `[`),
+    )
+    for (const desc of descendants) {
+      if (desc === target_path) {
+        // Keep this node expanded
+        collapsed_paths.delete(desc)
+        force_expanded.add(desc)
+      } else {
+        force_expanded.delete(desc)
+        collapsed_paths.add(desc)
+      }
+    }
+    collapsed_paths = new SvelteSet(collapsed_paths)
+    force_expanded = new SvelteSet(force_expanded)
+  }
+
+  // Context menu handlers
+  function show_context_menu(
+    event: MouseEvent,
+    ctx_path: string,
+    ctx_value: unknown,
+    expandable: boolean,
+    is_collapsed: boolean,
+  ): void {
+    event.preventDefault()
+    context_menu_state = {
+      x: event.clientX,
+      y: event.clientY,
+      path: ctx_path,
+      value: ctx_value,
+      expandable,
+      is_collapsed,
+    }
+  }
+
+  function close_context_menu(): void {
+    context_menu_state = null
+  }
+
+  // Run action with current context menu state, then close
+  function ctx_menu_action(
+    action: (state: NonNullable<typeof context_menu_state>) => void,
+  ): void {
+    if (context_menu_state) action(context_menu_state)
+    close_context_menu()
+  }
+
+  // Pin/unpin a path for quick reference
+  function toggle_pin(pin_path: string): void {
+    if (pinned_paths.has(pin_path)) pinned_paths.delete(pin_path)
+    else pinned_paths.add(pin_path)
+    pinned_paths = new SvelteSet(pinned_paths)
+  }
+
+  // Toggle selection of a path (with shift for range select)
+  function toggle_select(select_path: string, shift: boolean): void {
+    if (shift && last_selected_path) {
+      const start_idx = registered_paths_list.indexOf(last_selected_path)
+      const end_idx = registered_paths_list.indexOf(select_path)
+      if (start_idx !== -1 && end_idx !== -1) {
+        const [from, to] = start_idx < end_idx
+          ? [start_idx, end_idx]
+          : [end_idx, start_idx]
+        for (let idx = from; idx <= to; idx++) {
+          selected_paths.add(registered_paths_list[idx])
+        }
+        selected_paths = new SvelteSet(selected_paths)
+      }
+    } else {
+      if (selected_paths.has(select_path)) selected_paths.delete(select_path)
+      else selected_paths.add(select_path)
+      selected_paths = new SvelteSet(selected_paths)
+    }
+    last_selected_path = select_path
+  }
+
+  // Copy all selected node values to clipboard
+  function copy_selected(): void {
+    if (selected_paths.size === 0) return
+    const text = [...selected_paths]
+      .map((sel_path) => serialize_for_copy(get_value_at_path(sel_path)))
+      .join(`\n`)
+    copy_to_clipboard(`[selection]`, text)
+  }
+
   // Create context
   const context: JsonTreeContext = {
     get settings() {
@@ -341,17 +471,57 @@
     collapse_all,
     collapse_to_level,
     set_focused,
-    copy_value: (path: string, val: unknown) =>
-      copy_to_clipboard(path, serialize_for_copy(val)),
-    copy_path: (path: string) => copy_to_clipboard(path, path),
+    copy_value: (val_path: string, val: unknown, event?: MouseEvent) =>
+      copy_to_clipboard(val_path, serialize_for_copy(val), event),
+    copy_path: (cp_path: string, event?: MouseEvent) =>
+      copy_to_clipboard(cp_path, cp_path, event),
     register_path,
     unregister_path,
+    show_context_menu,
+    get pinned_paths() {
+      return pinned_paths
+    },
+    toggle_pin,
+    get selected_paths() {
+      return selected_paths
+    },
+    toggle_select,
+    copy_selected,
+    get diff_map() {
+      return diff_map
+    },
+    get ghost_map() {
+      return ghost_map
+    },
+    collapse_children_only,
   }
 
   setContext(JSON_TREE_CONTEXT_KEY, context)
 
   // Keyboard navigation at tree level
   function handle_tree_keydown(event: KeyboardEvent) {
+    // Escape closes context menu first, then clears selection
+    if (event.key === `Escape`) {
+      if (context_menu_state) {
+        close_context_menu()
+        return
+      }
+      if (selected_paths.size > 0) {
+        selected_paths = new SvelteSet()
+        return
+      }
+    }
+    // Ctrl/Cmd+C with selection copies all selected
+    if (
+      (event.key === `c` || event.key === `C`) &&
+      (event.ctrlKey || event.metaKey) &&
+      selected_paths.size > 0
+    ) {
+      event.preventDefault()
+      copy_selected()
+      return
+    }
+
     if (!focused_path) {
       // Focus first node on any arrow key
       if (ARROW_KEYS.has(event.key)) {
@@ -572,6 +742,51 @@
     </div>
   {/if}
 
+  {#if pinned_paths.size > 0}
+    <div class="pinned-panel">
+      <div class="pinned-header">
+        <span>Pinned ({pinned_paths.size})</span>
+        <button
+          type="button"
+          class="pinned-clear-btn"
+          onclick={() => {
+            pinned_paths = new SvelteSet()
+          }}
+        >
+          Clear
+        </button>
+      </div>
+      {#each [...pinned_paths] as pinned_path (pinned_path)}
+        <div class="pinned-item">
+          <button
+            type="button"
+            class="pinned-path"
+            onclick={() =>
+            copy_to_clipboard(
+              pinned_path,
+              serialize_for_copy(get_value_at_path(pinned_path)),
+            )}
+            title="Click to copy value"
+            {@attach tooltip()}
+          >
+            {pinned_path}
+          </button>
+          <span class="pinned-value">{
+            format_preview(get_value_at_path(pinned_path))
+          }</span>
+          <button
+            type="button"
+            class="unpin-btn"
+            onclick={() => toggle_pin(pinned_path)}
+            title="Unpin"
+          >
+            ✕
+          </button>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   <div
     bind:this={content_element}
     class="json-tree-content"
@@ -580,13 +795,83 @@
       css_class: `json-tree-search-match`,
     })}
   >
-    {#if copy_feedback_path !== null}
-      <div class="copy-feedback" class:error={copy_feedback_error}>
-        {copy_feedback_error ? `Copy failed` : `Copied!`}
-      </div>
-    {/if}
     <JsonNode node_key={root_label ?? null} {value} path={root_label ?? ``} depth={0} />
   </div>
+
+  {#if copy_feedback_path !== null}
+    <div
+      class="copy-feedback"
+      class:error={copy_feedback_error}
+      style={copy_feedback_pos
+      ? `left: ${copy_feedback_pos.x}px; top: ${copy_feedback_pos.y - 24}px`
+      : `right: 8px; top: 8px`}
+    >
+      {copy_feedback_error ? `Copy failed` : `Copied!`}
+    </div>
+  {/if}
+
+  {#if context_menu_state}
+    <button
+      type="button"
+      class="context-menu-backdrop"
+      onclick={close_context_menu}
+      oncontextmenu={(ev) => {
+        ev.preventDefault()
+        close_context_menu()
+      }}
+      aria-label="Close context menu"
+      tabindex="-1"
+    >
+    </button>
+    <menu
+      class="context-menu"
+      style:left="{Math.min(context_menu_state.x, window.innerWidth - 180)}px"
+      style:top="{Math.min(context_menu_state.y, window.innerHeight - 200)}px"
+    >
+      <li>
+        <button
+          type="button"
+          onclick={() =>
+          ctx_menu_action((st) =>
+            copy_to_clipboard(st.path, serialize_for_copy(st.value))
+          )}
+        >
+          <Icon icon="Copy" style="width: 12px; height: 12px" /> Copy value
+        </button>
+      </li>
+      <li>
+        <button
+          type="button"
+          onclick={() => ctx_menu_action((st) => copy_to_clipboard(st.path, st.path))}
+        >
+          Copy path
+        </button>
+      </li>
+      <li class="separator"></li>
+      {#if context_menu_state.expandable}
+        <li>
+          <button
+            type="button"
+            onclick={() =>
+            ctx_menu_action((st) =>
+              toggle_collapse_recursive(st.path, !st.is_collapsed)
+            )}
+          >
+            {context_menu_state.is_collapsed ? `Expand` : `Collapse`} all children
+          </button>
+        </li>
+        <li class="separator"></li>
+      {/if}
+      <li>
+        <button
+          type="button"
+          onclick={() => ctx_menu_action((st) => toggle_pin(st.path))}
+        >
+          {pinned_paths.has(context_menu_state.path) ? `Unpin` : `Pin`} this path
+        </button>
+      </li>
+    </menu>
+  {/if}
 </div>
 
 <style>
@@ -774,9 +1059,7 @@
     max-height: var(--jt-max-height, none);
   }
   .copy-feedback {
-    position: absolute;
-    top: 8px;
-    right: 8px;
+    position: fixed;
     background: var(--success-color, #10b981);
     color: white;
     padding: 4px 8px;
@@ -784,7 +1067,8 @@
     font-size: 11px;
     animation: fade-in-out 1s ease-out forwards;
     pointer-events: none;
-    z-index: 10;
+    z-index: 1002;
+    white-space: nowrap;
   }
   .copy-feedback.error {
     background: var(--error-color, #ef4444);
@@ -804,5 +1088,134 @@
     100% {
       opacity: 0;
     }
+  }
+  .context-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: default;
+  }
+  .context-menu {
+    position: fixed;
+    z-index: 1001;
+    background: var(--jt-ctx-bg, light-dark(white, #2d2d2d));
+    border: 1px solid
+      var(--jt-ctx-border, light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.15)));
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 4px 0;
+    min-width: 160px;
+    font-size: 12px;
+    list-style: none;
+    margin: 0;
+  }
+  .context-menu li {
+    list-style: none;
+  }
+  .context-menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 12px;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+  }
+  .context-menu button:hover {
+    background: var(
+      --jt-ctx-hover,
+      light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1))
+    );
+  }
+  .context-menu .separator {
+    height: 1px;
+    margin: 4px 8px;
+    background: var(
+      --jt-ctx-border,
+      light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1))
+    );
+  }
+  .pinned-panel {
+    border-bottom: 1px solid var(--jt-header-border);
+    padding: 4px 8px;
+    background: var(--jt-header-bg);
+    font-size: 11px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .pinned-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-weight: 500;
+    opacity: 0.7;
+  }
+  .pinned-clear-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 10px;
+    color: inherit;
+    opacity: 0.6;
+    padding: 1px 4px;
+  }
+  .pinned-clear-btn:hover {
+    opacity: 1;
+    text-decoration: underline;
+  }
+  .pinned-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+    border-radius: 2px;
+  }
+  .pinned-item:hover {
+    background: var(--jt-hover-bg);
+  }
+  .pinned-path {
+    color: var(--jt-key, light-dark(#001080, #9cdcfe));
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-family: var(--jt-font-family);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+  .pinned-path:hover {
+    text-decoration: underline;
+  }
+  .pinned-value {
+    color: var(--jt-preview, light-dark(#808080, #808080));
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+  .unpin-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 2px;
+    opacity: 0.5;
+    font-size: 10px;
+    color: inherit;
+  }
+  .unpin-btn:hover {
+    opacity: 1;
   }
 </style>
