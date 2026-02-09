@@ -36,7 +36,7 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 
 1. **Open a structure file** in VS Code (`.cif`, `.poscar`, `.xyz`, `.json`, etc.)
 2. **Right-click** in the explorer or editor
-3. **Select "Render with MatterViz"** from the context menu
+3. **Select "MatterViz: Open"** from the context menu
 4. **Or use the keyboard shortcut**: `Ctrl+Shift+V` (Windows/Linux) / `Cmd+Shift+V` (Mac)
 
 ### Supported File Formats
@@ -46,7 +46,7 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 - **CIF** - Crystallographic Information Files
 - **POSCAR/CONTCAR** - VASP structure files
 - **XYZ/ExtXYZ** - Standard molecular coordinate formats
-- **JSON** - JSON-formatted structure data
+- **JSON** - JSON-formatted structure data (pymatgen, OPTIMADE)
 - **YAML/YML** - YAML structure definitions
 
 #### Trajectory Files
@@ -55,7 +55,24 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 - **ExtXYZ** - Extended XYZ trajectories
 - **HDF5/H5** - `flame` HDF5 trajectory formats
 - **JSON** - `pymatgen` JSON trajectory formats
-- **Compressed files** - `.gz` compressed versions of above
+
+#### Fermi Surface Files
+
+- **BXSF** - XCrySDen band structure format
+- **FRMSF** - FermiSurfer format
+
+#### Volumetric Data Files
+
+- **CUBE** - Gaussian cube files
+- **CHGCAR/ELFCAR/LOCPOT/AECCAR** - VASP volumetric output
+
+#### Compressed Files
+
+All formats above are also supported with `.gz` or `.bz2` compression.
+
+#### JSON Files with Multiple Data Types
+
+When a `.json` file contains recognized data (structures, band structures, DOS, convex hulls, phase diagrams, Fermi surfaces, Brillouin zones, XRD patterns, or tabular data), MatterViz opens a **JSON browser** with a navigable tree sidebar and visualization canvas. Renderable nodes are marked with colored badges -- click to render, or drag to a canvas edge to create a split view with multiple visualizations side by side. When both band structure and DOS data are found together, they're rendered as a combined Bands+DOS plot.
 
 ### Custom Editor Integration
 
