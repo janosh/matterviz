@@ -11,7 +11,7 @@
   import * as math from '$lib/math'
   import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
-  import type { AnyStructure, BondPair, Site } from '$lib/structure'
+  import type { AnyStructure, BondPair, MeasureMode, Site } from '$lib/structure'
   import {
     Arrow,
     atomic_radii,
@@ -25,7 +25,6 @@
     get_property_colors,
   } from '$lib/structure/atom-properties'
   import * as measure from '$lib/structure/measure'
-  import type { MeasureMode } from '$lib/structure/Structure.svelte'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'

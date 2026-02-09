@@ -1,5 +1,5 @@
 // JSON Tree utility functions
-import type { JsonValueType } from './types'
+import type { DiffEntry, JsonValueType } from './types'
 
 // Pre-compiled regex for valid JS identifiers (used in path formatting)
 const VALID_IDENTIFIER_RE = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/
@@ -413,4 +413,242 @@ export function values_equal(val_a: unknown, val_b: unknown): boolean {
   }
 
   return false
+}
+
+// URL regex for auto-detection in string values
+const URL_RE = /^https?:\/\/\S+$/
+
+// CSS color patterns for swatch rendering
+const HEX_COLOR_RE = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+const FUNC_COLOR_RE = /^(?:rgba?|hsla?|oklch|oklab|lch|lab|color)\([^)]*\)$/i
+
+// Check if a string is a URL
+export function is_url(str: string): boolean {
+  return URL_RE.test(str.trim())
+}
+
+// Check if a string looks like a CSS color value
+// Rejects strings with semicolons to prevent CSS injection
+export function is_css_color(str: string): boolean {
+  const trimmed = str.trim()
+  if (trimmed.includes(`;`)) return false
+  return HEX_COLOR_RE.test(trimmed) || FUNC_COLOR_RE.test(trimmed)
+}
+
+// Estimate the serialized byte size of a value (rough approximation)
+// Uses max_depth to avoid expensive deep recursion on large trees
+export function estimate_byte_size(
+  value: unknown,
+  max_depth: number = 4,
+  current_depth: number = 0,
+): number {
+  if (current_depth >= max_depth) return 10
+  const type = get_value_type(value)
+  if (type === `null`) return 4
+  if (type === `undefined`) return 9
+  if (type === `boolean`) return value ? 4 : 5
+  if (type === `number` || type === `bigint`) return String(value).length
+  if (type === `string`) return (value as string).length + 2
+  if (type === `symbol`) return (value as symbol).toString().length
+  if (type === `function`) return 20
+  if (type === `date`) return 24
+  if (type === `regexp`) return (value as RegExp).toString().length
+  if (type === `error`) {
+    return `${(value as Error).name}: ${(value as Error).message}`.length
+  }
+  // Accumulate child sizes for collection types
+  const child_depth = current_depth + 1
+  const child_size = (val: unknown, overhead: number = 1) =>
+    estimate_byte_size(val, max_depth, child_depth) + overhead
+  if (type === `array`) {
+    let size = 2
+    for (const item of value as unknown[]) size += child_size(item)
+    return size
+  }
+  if (type === `object`) {
+    let size = 2
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      size += key.length + 4 + child_size(val, 0)
+    }
+    return size
+  }
+  if (type === `map`) {
+    let size = 2
+    for (const [, val] of value as Map<unknown, unknown>) size += child_size(val, 10)
+    return size
+  }
+  if (type === `set`) {
+    let size = 2
+    for (const val of value as Set<unknown>) size += child_size(val)
+    return size
+  }
+  return String(value).length
+}
+
+// Ghost entry for removed diff children
+export interface GhostEntry {
+  key: string | number
+  value: unknown
+  path: string
+}
+
+// Pre-compute a map of parent_path -> removed children from a diff map
+// This avoids O(diff_size) iteration per expanded node
+export function build_ghost_map(
+  diff_map: Map<string, DiffEntry>,
+): Map<string, GhostEntry[]> {
+  const ghost_map = new Map<string, GhostEntry[]>()
+  for (const [diff_path, entry] of diff_map) {
+    if (entry.status !== `removed`) continue
+    const segments = parse_path(diff_path)
+    if (segments.length === 0) continue
+    const parent_path = segments.length === 1 ? `` : format_path(segments.slice(0, -1))
+    const key = segments[segments.length - 1]
+    const ghosts = ghost_map.get(parent_path) ?? []
+    ghosts.push({ key, value: entry.old_value, path: diff_path })
+    ghost_map.set(parent_path, ghosts)
+  }
+  return ghost_map
+}
+
+// Format byte size as human-readable string (e.g., "1.2 KB")
+export function format_byte_size(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// Compute diff between old and new values, returning path -> DiffEntry map
+// Only paths that differ are included (unchanged paths are omitted)
+export function compute_diff(
+  old_val: unknown,
+  new_val: unknown,
+  current_path: string = ``,
+  result: Map<string, DiffEntry> = new Map(),
+  seen: WeakSet<object> = new WeakSet(),
+): Map<string, DiffEntry> {
+  const old_type = get_value_type(old_val)
+  const new_type = get_value_type(new_val)
+
+  // Different types = changed
+  if (old_type !== new_type) {
+    result.set(current_path, {
+      status: `changed`,
+      path: current_path,
+      old_value: old_val,
+      new_value: new_val,
+    })
+    return result
+  }
+
+  // Both primitive: compare values (with NaN === NaN special case)
+  if (is_primitive_type(old_type)) {
+    const both_nan = typeof old_val === `number` && typeof new_val === `number` &&
+      Number.isNaN(old_val) && Number.isNaN(new_val)
+    if (!both_nan && old_val !== new_val) {
+      result.set(current_path, {
+        status: `changed`,
+        path: current_path,
+        old_value: old_val,
+        new_value: new_val,
+      })
+    }
+    return result
+  }
+
+  // Non-expandable special types (date, regexp, etc): compare string forms
+  if (!is_expandable_type(old_type)) {
+    if (String(old_val) !== String(new_val)) {
+      result.set(current_path, {
+        status: `changed`,
+        path: current_path,
+        old_value: old_val,
+        new_value: new_val,
+      })
+    }
+    return result
+  }
+
+  // Prevent circular references
+  if (typeof old_val === `object` && old_val !== null) {
+    if (seen.has(old_val)) return result
+    seen.add(old_val)
+  }
+
+  // Diff two indexed lists element-by-element (shared by array, map, set)
+  function diff_indexed(old_items: unknown[], new_items: unknown[]): void {
+    const max_len = Math.max(old_items.length, new_items.length)
+    for (let idx = 0; idx < max_len; idx++) {
+      const child_path = build_path(current_path, idx)
+      if (idx >= old_items.length) {
+        result.set(child_path, {
+          status: `added`,
+          path: child_path,
+          new_value: new_items[idx],
+        })
+      } else if (idx >= new_items.length) {
+        result.set(child_path, {
+          status: `removed`,
+          path: child_path,
+          old_value: old_items[idx],
+        })
+      } else {
+        compute_diff(old_items[idx], new_items[idx], child_path, result, seen)
+      }
+    }
+  }
+
+  if (old_type === `array`) {
+    diff_indexed(old_val as unknown[], new_val as unknown[])
+    return result
+  }
+
+  // Objects: compare key sets and recurse
+  if (old_type === `object`) {
+    const old_obj = old_val as Record<string, unknown>
+    const new_obj = new_val as Record<string, unknown>
+    const all_keys = new Set([...Object.keys(old_obj), ...Object.keys(new_obj)])
+    for (const key of all_keys) {
+      const child_path = build_path(current_path, key)
+      const in_old = key in old_obj
+      const in_new = key in new_obj
+      if (!in_old) {
+        result.set(child_path, {
+          status: `added`,
+          path: child_path,
+          new_value: new_obj[key],
+        })
+      } else if (!in_new) {
+        result.set(child_path, {
+          status: `removed`,
+          path: child_path,
+          old_value: old_obj[key],
+        })
+      } else {
+        compute_diff(old_obj[key], new_obj[key], child_path, result, seen)
+      }
+    }
+    return result
+  }
+
+  // Maps: wrap entries as { key, value } to match JsonNode.get_children() rendering
+  if (old_type === `map`) {
+    diff_indexed(
+      Array.from((old_val as Map<unknown, unknown>).entries()).map(([key, val]) => ({
+        key,
+        value: val,
+      })),
+      Array.from((new_val as Map<unknown, unknown>).entries()).map(([key, val]) => ({
+        key,
+        value: val,
+      })),
+    )
+    return result
+  }
+  if (old_type === `set`) {
+    diff_indexed(Array.from(old_val as Set<unknown>), Array.from(new_val as Set<unknown>))
+    return result
+  }
+
+  return result
 }
