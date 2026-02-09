@@ -387,7 +387,12 @@
       style="height: 100%"
     />
     {#if phase_stats}
-      <ConvexHullStats {phase_stats} {stable_entries} {unstable_entries} />
+      <ConvexHullStats
+        {phase_stats}
+        {stable_entries}
+        {unstable_entries}
+        style="--hull-stats-max-height: var(--hull-height, 500px)"
+      />
     {/if}
   </div>
 
@@ -601,7 +606,8 @@
     padding: 0.2rem 0.4rem;
     border-radius: 3px;
     border: 1px solid var(--border-color, #ccc);
-    background: var(--bg-color, white);
+    background: var(--page-bg, Canvas);
+    color: inherit;
     font-size: 0.9rem;
     cursor: pointer;
   }

@@ -862,8 +862,7 @@
       )
       if (should_label) {
         ctx.fillStyle = text_color
-        const label = entry.name || entry.reduced_formula || entry.entry_id ||
-          `Unknown`
+        const label = helpers.get_entry_label(entry, elements)
         const font_size = Math.round(12 * canvas_dims.scale)
         ctx.font = `${font_size}px Arial`
         ctx.textAlign = `center`
