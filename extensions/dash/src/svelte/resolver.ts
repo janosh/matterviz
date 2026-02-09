@@ -24,6 +24,9 @@ for (const [raw_path, mod] of Object.entries(modules)) {
 
   const key = match[1] // e.g. "structure/Structure"
   const comp = mod?.default ?? (mod as unknown as Component)
+  if (!mod?.default && import.meta.env.DEV) {
+    console.warn(`Module at ${raw_path} has no default export, using module directly`)
+  }
 
   if (!comp) continue
 

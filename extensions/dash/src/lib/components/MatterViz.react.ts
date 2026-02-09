@@ -23,9 +23,9 @@ interface MatterVizProps {
 }
 
 interface ErrorBoundaryState {
-  hasError: boolean
+  has_error: boolean
   error: Error | null
-  errorInfo: React.ErrorInfo | null
+  error_info: React.ErrorInfo | null
 }
 
 // Convert non-JSON-serializable values for Dash event payloads.
@@ -135,21 +135,21 @@ function deep_merge(
 class MatterVizErrorBoundary extends Component<MatterVizProps, ErrorBoundaryState> {
   constructor(props: MatterVizProps) {
     super(props)
-    this.state = { hasError: false, error: null, errorInfo: null }
+    this.state = { has_error: false, error: null, error_info: null }
   }
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
-    return { hasError: true, error }
+    return { has_error: true, error }
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    this.setState({ errorInfo })
+  componentDidCatch(error: Error, error_info: React.ErrorInfo): void {
+    this.setState({ error_info })
     // Log error to console for debugging
-    console.error(`MatterViz component error:`, error, errorInfo)
+    console.error(`MatterViz component error:`, error, error_info)
   }
 
   render(): React.ReactNode {
-    if (this.state.hasError) {
+    if (this.state.has_error) {
       const { component } = this.props
       const { error } = this.state
       return React.createElement(
@@ -174,7 +174,7 @@ class MatterVizErrorBoundary extends Component<MatterVizProps, ErrorBoundaryStat
           `button`,
           {
             onClick: () =>
-              this.setState({ hasError: false, error: null, errorInfo: null }),
+              this.setState({ has_error: false, error: null, error_info: null }),
             style: {
               padding: `6px 12px`,
               border: `1px solid #dc3545`,
@@ -220,36 +220,36 @@ const MatterVizInner = (props: MatterVizProps) => {
   const event_props = props.event_props ?? []
 
   const ref = useRef<MatterVizElement>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const callbacksRef = useRef<Record<string, unknown>>({})
+  const [is_loading, set_is_loading] = useState(true)
+  const callbacks_ref = useRef<Record<string, unknown>>({})
 
   // Build event callbacks during render and store in ref for stability.
   // This pattern is intentional: setProps is stable from Dash, and we avoid
   // the overhead of useCallback for each dynamic callback.
   // Clear previous callbacks to avoid stale handlers when event_props changes.
   // Supports dot notation for nested props (e.g., "tile_props.onclick").
-  callbacksRef.current = Object.create(null) // null-prototype to avoid prototype chain
+  callbacks_ref.current = Object.create(null) // null-prototype to avoid prototype chain
   if (setProps) {
-    for (const propName of event_props || []) {
+    for (const prop_name of event_props) {
       // Skip dangerous prop names (prototype pollution guard)
-      if (DANGEROUS_KEYS.has(propName)) continue
+      if (DANGEROUS_KEYS.has(prop_name)) continue
 
       const callback = (data: unknown) => {
         setProps({
           last_event: {
-            prop: propName,
+            prop: prop_name,
             data: sanitize_for_json(data),
             timestamp: Date.now(),
           },
         })
       }
 
-      if (propName.includes(`.`)) {
-        const parts = propName.split(`.`).filter(Boolean)
+      if (prop_name.includes(`.`)) {
+        const parts = prop_name.split(`.`).filter(Boolean)
         // Skip if any part is a dangerous key
         if (parts.some((part) => DANGEROUS_KEYS.has(part))) continue
 
-        let target = callbacksRef.current as Record<string, unknown>
+        let target = callbacks_ref.current as Record<string, unknown>
         for (let idx = 0; idx < parts.length - 1; idx++) {
           const part = parts[idx]
           // Use null-prototype objects to avoid Object.prototype chain
@@ -258,13 +258,13 @@ const MatterVizInner = (props: MatterVizProps) => {
         }
         target[parts[parts.length - 1]] = callback
       } else {
-        callbacksRef.current[propName] = callback
+        callbacks_ref.current[prop_name] = callback
       }
     }
   }
 
   // Serialize props for stable dependency comparison (Dash re-creates objects each render)
-  const propsKey = useMemo(
+  const props_key = useMemo(
     () => JSON.stringify([mv_props, set_props, float32_props, event_props]),
     [mv_props, set_props, float32_props, event_props],
   )
@@ -281,7 +281,7 @@ const MatterVizInner = (props: MatterVizProps) => {
     )
     const resolved_props = deep_merge(
       converted_props,
-      callbacksRef.current as Record<string, unknown>,
+      callbacks_ref.current as Record<string, unknown>,
     )
 
     // Set component and props. Due to Svelte's reactivity, there may be a brief
@@ -291,27 +291,25 @@ const MatterVizInner = (props: MatterVizProps) => {
     element.props = resolved_props
 
     // Mark as loaded after brief delay
-    const timer = setTimeout(() => setIsLoading(false), LOADING_DELAY_MS)
+    const timer = setTimeout(() => set_is_loading(false), LOADING_DELAY_MS)
 
     // Cleanup: clear props to allow garbage collection
     return () => {
       clearTimeout(timer)
-      if (element) {
-        element.props = {}
-      }
+      element.props = {}
     }
-  }, [component, propsKey])
+  }, [component, props_key])
 
   // React key forces remount when component type changes
   return React.createElement(
     `div`,
-    { style: { position: `relative` as const, ...style } },
-    isLoading &&
+    { style: { position: `relative`, ...style } },
+    is_loading &&
       React.createElement(
         `div`,
         {
           style: {
-            position: `absolute` as const,
+            position: `absolute`,
             top: `50%`,
             left: `50%`,
             transform: `translate(-50%, -50%)`,
@@ -326,7 +324,7 @@ const MatterVizInner = (props: MatterVizProps) => {
       id,
       ref,
       className,
-      style: { opacity: isLoading ? 0.5 : 1, transition: `opacity 0.2s` },
+      style: { opacity: is_loading ? 0.5 : 1, transition: `opacity 0.2s` },
     }),
   )
 }

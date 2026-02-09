@@ -20,7 +20,7 @@ REACT_TS_PATH = (
 
 def run_js_test(js_code: str) -> dict:  # type: ignore[return]
     """Run JavaScript code and return the JSON result."""
-    # Read the JS file and extract the functions we need
+    # Read the TS file and extract the functions we need
     js_file = REACT_TS_PATH.read_text()
 
     # Create a test script that imports the functions and runs the test
