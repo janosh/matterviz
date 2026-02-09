@@ -1217,16 +1217,21 @@
     const rect = container?.getBoundingClientRect()
     const [w, h] = rect ? [rect.width, rect.height] : [400, 400]
 
-    canvas.width = Math.max(0, Math.round(w * dpr))
-    canvas.height = Math.max(0, Math.round(h * dpr))
-    canvas_dims = { width: w, height: h, scale: Math.min(w, h) / 600 }
-
-    ctx = canvas.getContext(`2d`)
-    if (ctx) {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = `high`
+    // Only update canvas dimensions if they actually changed
+    // (assigning canvas.width/height clears the canvas even if values are the same)
+    const new_width = Math.max(0, Math.round(w * dpr))
+    const new_height = Math.max(0, Math.round(h * dpr))
+    if (!ctx || canvas.width !== new_width || canvas.height !== new_height) {
+      canvas.width = new_width
+      canvas.height = new_height
+      ctx = canvas.getContext(`2d`)
+      if (ctx) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = `high`
+      }
     }
+    canvas_dims = { width: w, height: h, scale: Math.min(w, h) / 600 }
     render_once()
   }
 
@@ -1494,16 +1499,20 @@
     </div>
   {/if}
 
-  {#if has_temp_data && temperature !== undefined}
-    <TemperatureSlider {available_temperatures} bind:temperature />
-  {/if}
-
-  {#if gas_analysis.has_gas_dependent_elements && merged_gas_config}
-    <GasPressureControls
-      config={merged_gas_config}
-      bind:pressures={gas_pressures}
-      temperature={temperature ?? 300}
-    />
+  {#if (has_temp_data && temperature !== undefined) ||
+      (gas_analysis.has_gas_dependent_elements && merged_gas_config)}
+    <div class="right-controls">
+      {#if has_temp_data && temperature !== undefined}
+        <TemperatureSlider {available_temperatures} bind:temperature />
+      {/if}
+      {#if gas_analysis.has_gas_dependent_elements && merged_gas_config}
+        <GasPressureControls
+          config={merged_gas_config}
+          bind:pressures={gas_pressures}
+          temperature={temperature ?? 300}
+        />
+      {/if}
+    </div>
   {/if}
 
   <!-- Hover tooltip -->
@@ -1572,11 +1581,31 @@
   canvas:active {
     cursor: grabbing;
   }
+  .right-controls {
+    position: absolute;
+    top: calc(1ex + 50px);
+    right: 1ex;
+    z-index: 2;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+  .right-controls :global(.temperature-slider),
+  .right-controls :global(.pressure-controls) {
+    position: static;
+  }
+  /* align both vertical range inputs at the same x position */
+  .right-controls :global(.slider-wrapper) {
+    justify-content: flex-end;
+  }
   .gizmo-wrapper {
     position: absolute;
     width: clamp(80px, 18cqmin, 110px);
     height: clamp(80px, 18cqmin, 110px);
     pointer-events: auto;
+    isolation: isolate; /* contain z-index: 1000 from three-viewport-gizmo overlay */
     transition: opacity 0.2s ease-in-out;
   }
   .gizmo-wrapper[data-placement='top-right'] {

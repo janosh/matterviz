@@ -194,7 +194,8 @@ export function compute_gas_chemical_potential(
   // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms
   // The RT·ln(P) term must be divided by num_atoms to match PIRO's per-atom convention
   const num_atoms = GAS_NUM_ATOMS[gas]
-  return mu_standard + (R_EV_PER_K * T * Math.log(effective_P / P_REF)) / num_atoms
+  return mu_standard +
+    (R_EV_PER_K * T * Math.log(effective_P / P_REF)) / num_atoms
 }
 
 // Compute chemical potential per atom of a specific element from a gas
@@ -239,7 +240,10 @@ export function analyze_gas_data(
   }
 
   // Get element-to-gas mapping
-  const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...config.element_to_gas }
+  const element_to_gas = {
+    ...DEFAULT_ELEMENT_TO_GAS,
+    ...config.element_to_gas,
+  }
 
   // Find all elements in the chemical system
   const all_elements = new Set<ElementSymbol>()
@@ -300,7 +304,10 @@ export function compute_gas_correction(
   pressures: Record<GasSpecies, number>,
 ): number {
   const provider = config.provider ?? get_default_gas_provider()
-  const element_to_gas = { ...DEFAULT_ELEMENT_TO_GAS, ...config.element_to_gas }
+  const element_to_gas = {
+    ...DEFAULT_ELEMENT_TO_GAS,
+    ...config.element_to_gas,
+  }
   const enabled_gases = new Set(config.enabled_gases ?? [])
 
   let correction = 0
@@ -371,10 +378,17 @@ export function apply_gas_corrections(
     // If no correction needed, return entry unchanged
     if (Math.abs(correction) < 1e-12) return entry
 
-    // Apply correction to energy
+    // Apply correction to energy (update both energy and energy_per_atom
+    // so downstream formation energy calculations use the corrected value)
+    const corrected_energy = entry.energy + correction
+    const atoms = Object.values(entry.composition).reduce(
+      (sum, amt) => sum + amt,
+      0,
+    ) || 1
     return {
       ...entry,
-      energy: entry.energy + correction,
+      energy: corrected_energy,
+      energy_per_atom: corrected_energy / atoms,
     }
   })
 }

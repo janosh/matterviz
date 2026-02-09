@@ -583,7 +583,7 @@ describe(`MatterViz Extension`, () => {
   test(`extension activation`, async () => {
     await activate(mock_context)
     expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
-      `matterviz.render_structure`,
+      `matterviz.open`,
       expect.any(Function),
     )
     expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
@@ -1384,7 +1384,7 @@ describe(`MatterViz Extension`, () => {
         expect(() => activate(mock_context)).not.toThrow()
 
         expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
-          `matterviz.render_structure`,
+          `matterviz.open`,
           expect.any(Function),
         )
       })
@@ -1454,6 +1454,25 @@ describe(`MatterViz Extension`, () => {
       [`XDATCAR`, true],
       [`xdatcar`, true],
       [`Xdatcar`, true],
+      // Fermi surface files
+      [`band.bxsf`, true],
+      [`fermi.frmsf`, true],
+      [`BAND.BXSF`, true],
+      [`fermi.FRMSF`, true],
+      [`band.bxsf.gz`, true],
+      [`fermi.frmsf.gz`, true],
+      // Volumetric data files
+      [`density.cube`, true],
+      [`DENSITY.CUBE`, true],
+      [`density.cube.gz`, true],
+      [`density.cube.bz2`, true],
+      [`CHGCAR`, true],
+      [`CHGCAR.lobster`, true],
+      [`ELFCAR`, true],
+      [`LOCPOT`, true],
+      [`AECCAR0`, true],
+      [`AECCAR1`, true],
+      [`AECCAR2`, true],
       // Files that look like structure files but are supported
       [`structure_copy.cif`, true],
       [`trajectory_backup.xyz`, true],

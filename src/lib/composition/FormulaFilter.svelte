@@ -12,7 +12,7 @@
 
   const SEARCH_EXAMPLES = [
     {
-      label: `Contains elements`,
+      label: `Has elements`,
       description:
         `Materials containing at least these elements (may have others). Use * for any element.`,
       examples: [`Li,Fe`, `Si,O`, `Li,*,*`],
@@ -37,6 +37,8 @@
     show_clear_button = true,
     show_examples = true,
     disabled = false,
+    max_history = 5, // Max recent inputs to remember; 0 disables history dropdown
+    history_key = `formula-filter-history`, // localStorage key for persisting history
     onchange,
     onclear,
     ...rest
@@ -47,25 +49,96 @@
     show_clear_button?: boolean // Show clear button when value is non-empty
     show_examples?: boolean // Show the help button and examples dropdown
     disabled?: boolean // Disable all inputs
+    max_history?: number // Max recent inputs to remember; 0 disables history dropdown
+    history_key?: string // localStorage key for persisting history
     onchange?: (value: string, search_mode: FormulaSearchMode) => void // Callback when value changes
     onclear?: () => void // Callback when clear button is clicked
   } & HTMLAttributes<HTMLDivElement> = $props()
 
   let input_value = $state(value)
   let examples_open = $state(false)
+  let history_open = $state(false)
   let wrapper: HTMLDivElement | null = $state(null)
   let examples_wrapper: HTMLDivElement | null = $state(null)
   let focused_item_idx = $state(-1)
+  let focused_history_idx = $state(-1)
   let anchor_left = $state(false)
 
   // Flatten examples for keyboard navigation
   const all_examples = SEARCH_EXAMPLES.flatMap((cat) => cat.examples)
 
+  // === History Management ===
+  const has_storage = typeof localStorage !== `undefined`
+
+  function load_history(): string[] {
+    if (max_history <= 0 || !has_storage) return []
+    try {
+      const raw = localStorage.getItem(history_key)
+      if (!raw) return []
+      const parsed: unknown = JSON.parse(raw)
+      if (!Array.isArray(parsed)) return []
+      return parsed.filter((item): item is string => typeof item === `string`).slice(
+        0,
+        max_history,
+      )
+    } catch {
+      return []
+    }
+  }
+
+  function save_history(entries: string[]): void {
+    if (max_history <= 0 || !has_storage) return
+    try {
+      localStorage.setItem(history_key, JSON.stringify(entries.slice(0, max_history)))
+    } catch {
+      // localStorage may be unavailable (e.g. private browsing)
+    }
+  }
+
+  let history = $state<string[]>(load_history())
+
+  function add_to_history(entry: string): void {
+    if (max_history <= 0 || !entry.trim()) return
+    // Remove duplicate if present, then prepend
+    const filtered = history.filter((item) => item !== entry)
+    history = [entry, ...filtered].slice(0, max_history)
+    save_history(history)
+  }
+
+  function remove_from_history(entry: string): void {
+    history = history.filter((item) => item !== entry)
+    save_history(history)
+    // Clamp focused index to prevent out-of-bounds access on Enter
+    if (history.length === 0) history_open = false
+    else if (focused_history_idx >= visible_history.length) {
+      focused_history_idx = visible_history.length - 1
+    }
+  }
+
+  // Filtered history: exclude current value to avoid redundant suggestion
+  let visible_history = $derived(
+    history.filter((item) => item !== value),
+  )
+
+  function close_history(): void {
+    history_open = false
+    focused_history_idx = -1
+  }
+
+  function open_history(): void {
+    if (max_history <= 0 || visible_history.length === 0 || examples_open) return
+    history_open = true
+    focused_history_idx = -1
+  }
+
   function handle_document_click(event: MouseEvent): void {
-    if (!wrapper || !examples_open) return
+    if (!wrapper || (!examples_open && !history_open)) return
     const target = event.target
     if (!(target instanceof Node)) return
-    if (!wrapper.contains(target)) close_examples()
+    if (!wrapper.contains(target)) {
+      if (examples_open) close_examples()
+      if (history_open) close_history()
+    }
   }
 
   function close_examples(restore_focus = true): void {
@@ -105,7 +178,7 @@
   function infer_mode(input: string): FormulaSearchMode {
     const trimmed = input.trim()
     if (!trimmed) return `elements`
-    if (trimmed.includes(`,`)) return `elements` // Li,Fe,O → contains elements
+    if (trimmed.includes(`,`)) return `elements` // Li,Fe,O → has elements
     if (trimmed.includes(`-`)) return `chemsys` // Li-Fe-O → chemical system
     return `exact` // LiFePO4 → exact formula
   }
@@ -178,6 +251,8 @@
     const mode = infer_mode(new_value)
     last_synced = value = input_value = new_value // update last_synced to prevent effect re-inference
     search_mode = mode
+    if (new_value.trim()) add_to_history(new_value)
+    close_history()
     onchange?.(value, mode)
   }
 
@@ -206,10 +281,26 @@
   function onkeydown(event: KeyboardEvent): void {
     if (event.key === `Enter`) {
       event.preventDefault()
-      sync_value()
+      if (history_open && focused_history_idx >= 0) {
+        set_value(visible_history[focused_history_idx])
+      } else {
+        sync_value()
+      }
     } else if (event.key === `Escape`) {
-      if (examples_open) examples_open = false
+      if (history_open) close_history()
+      else if (examples_open) examples_open = false
       else if (input_value) clear_filter()
+    } else if (history_open && visible_history.length > 0) {
+      const len = visible_history.length
+      if (event.key === `ArrowDown`) {
+        event.preventDefault()
+        focused_history_idx = (focused_history_idx + 1) % len
+      } else if (event.key === `ArrowUp`) {
+        event.preventDefault()
+        focused_history_idx = focused_history_idx <= 0
+          ? len - 1
+          : focused_history_idx - 1
+      }
     }
   }
 
@@ -225,6 +316,7 @@
 
   function toggle_examples(event: MouseEvent): void {
     event.stopPropagation()
+    close_history()
     examples_open = !examples_open
     focused_item_idx = examples_open ? 0 : -1
     if (examples_open) anchor_left = false
@@ -267,7 +359,7 @@
   )
 
   const MODE_LABELS: Record<FormulaSearchMode, string> = {
-    elements: `contains elements`,
+    elements: `has elements`,
     chemsys: `chemical system`,
     exact: `exact formula`,
   }
@@ -288,12 +380,51 @@
   <input
     bind:this={input_element}
     bind:value={input_value}
-    onblur={sync_value}
+    onblur={() => {
+      // mousedown preventDefault on history items prevents blur, so this only
+      // fires when focus genuinely leaves (tab out, click outside, etc.)
+      // sync_value → set_value → close_history, so no separate close needed
+      sync_value()
+    }}
+    onfocus={open_history}
     {onkeydown}
     {placeholder}
     {disabled}
     aria-label="Formula filter"
   />
+  {#if history_open && visible_history.length > 0}
+    <div class="history-dropdown" role="listbox" aria-label="Recent searches">
+      <span class="history-header">Recent</span>
+      {#each visible_history as entry, idx (entry)}
+        <div class="history-item" class:focused={idx === focused_history_idx}>
+          <button
+            type="button"
+            class="history-value"
+            role="option"
+            aria-selected={idx === focused_history_idx}
+            onmousedown={(event) => {
+              event.preventDefault()
+              set_value(entry)
+            }}
+          >
+            {entry}
+          </button>
+          <button
+            type="button"
+            class="history-remove"
+            title="Remove from history"
+            aria-label="Remove {entry} from history"
+            onmousedown={(event) => {
+              event.preventDefault()
+              remove_from_history(entry)
+            }}
+          >
+            <Icon icon="Close" style="width: 0.7em; height: 0.7em" />
+          </button>
+        </div>
+      {/each}
+    </div>
+  {/if}
   {#if input_value}
     <button
       type="button"
@@ -437,6 +568,64 @@
   .icon-btn.active {
     opacity: 1;
     color: var(--highlight, #4db6ff);
+  }
+  .history-dropdown {
+    position: absolute;
+    top: calc(100% + 2pt);
+    left: 0;
+    right: 0;
+    z-index: 101;
+    background: var(--dropdown-bg, var(--surface-bg, #fff));
+    border: 1px solid var(--dropdown-border, rgba(128, 128, 128, 0.2));
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 4pt 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .history-header {
+    font-size: 0.7em;
+    font-weight: 600;
+    opacity: 0.45;
+    padding: 2pt 10pt 4pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .history-item {
+    display: flex;
+    align-items: center;
+    padding: 0 4pt 0 0;
+  }
+  .history-item.focused,
+  .history-item:hover {
+    background: rgba(77, 182, 255, 0.08);
+  }
+  .history-value {
+    flex: 1;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4pt 10pt;
+    font-family: var(--mono-font, monospace);
+    font-size: 0.88em;
+    color: inherit;
+  }
+  .history-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 3pt;
+    border-radius: 50%;
+    opacity: 0.3;
+    color: inherit;
+  }
+  .history-remove:hover {
+    opacity: 0.8;
+    background: rgba(128, 128, 128, 0.15);
   }
   .examples-wrapper {
     position: relative;
