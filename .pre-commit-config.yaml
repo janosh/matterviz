@@ -40,8 +40,6 @@ repos:
           - unresolved-import
           - --ignore
           - unresolved-attribute
-          - --ignore
-          - unsupported-operator
 
   - repo: builtin
     hooks:

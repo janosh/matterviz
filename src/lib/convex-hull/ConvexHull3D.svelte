@@ -10,7 +10,6 @@
     watch_dark_mode,
   } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
-  import type { ElementSymbol } from '$lib/element'
   import { ClickFeedback, DragOverlay } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
@@ -1046,19 +1045,7 @@
       if (!can_label) continue
 
       const projected = project_3d_point(entry.x, entry.y, entry.z)
-      let formula = entry.reduced_formula || entry.name || ``
-      if (!formula) {
-        formula = Object.entries(entry.composition)
-          .filter(([, amt]) => amt > 0)
-          .sort(([el1], [el2]) =>
-            elements.indexOf(el1 as ElementSymbol) -
-            elements.indexOf(el2 as ElementSymbol)
-          )
-          .map(([el, amt]) =>
-            Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`
-          )
-          .join(``)
-      }
+      const formula = helpers.get_entry_label(entry, elements)
       ctx.fillText(formula, projected.x, projected.y + 16 * canvas_dims.scale)
     }
   }
