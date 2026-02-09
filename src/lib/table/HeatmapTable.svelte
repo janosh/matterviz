@@ -1123,7 +1123,10 @@
     overflow: auto;
   }
   .table-scroll.has-scroll {
-    border: 1px solid var(--border, #333);
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.12));
+    border-radius: var(--border-radius, 3pt);
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   table {
     border-collapse: separate;
