@@ -29,6 +29,11 @@
   const LOG_P_MAX = 2
   const LOG_P_RANGE = LOG_P_MAX - LOG_P_MIN
   const MIN_PRESSURE = 1e-15 // Safe minimum to avoid log(0) or NaN
+  const THROTTLE_MS = 100
+
+  // Local preview state for smooth slider interaction without causing full hull re-renders
+  let preview_pressures = $state<Partial<Record<GasSpecies, number>>>({})
+  let last_update_time = 0
 
   // Get provider for chemical potential calculations
   const provider = $derived(config.provider ?? get_default_gas_provider())
@@ -39,9 +44,9 @@
   // Effective pressures including defaults
   const effective_pressures = $derived(get_effective_pressures(config))
 
-  // Get current pressure for a gas (user-set or default), clamped to safe value
+  // Get current pressure for a gas (preview during drag, committed, or default)
   function get_pressure(gas: GasSpecies): number {
-    const P = pressures[gas] ?? effective_pressures[gas]
+    const P = preview_pressures[gas] ?? pressures[gas] ?? effective_pressures[gas]
     return Number.isFinite(P) && P > 0 ? P : MIN_PRESSURE
   }
 
@@ -73,15 +78,38 @@
     return gas.replace(/(\d+)/g, `<sub>$1</sub>`)
   }
 
-  // Format pressure with HTML - exponent notation for powers of 10, decimal otherwise
-  function format_pressure_html(P: number): string {
-    const log_P = Math.log10(P), exp = Math.round(log_P) // P already normalized
-    if (Math.abs(log_P - exp) < 0.1) return `10<sup>${exp}</sup>`
-    return P >= 0.01 && P < 100 ? `${P.toPrecision(2)}` : `${P.toExponential(1)}`
+  // Format pressure as plain text (no HTML) for the number input
+  function format_pressure(P: number): string {
+    const log_P = Math.log10(P)
+    const exp = Math.round(log_P)
+    if (Math.abs(log_P - exp) < 0.1) return `1e${exp}`
+    if (P >= 0.01 && P < 100) return P.toPrecision(2)
+    return P.toExponential(1)
   }
 
   function set_pressure(gas: GasSpecies, value: number): void {
-    pressures = { ...pressures, [gas]: slider_to_pressure(value) }
+    const P = slider_to_pressure(value)
+    preview_pressures = { ...preview_pressures, [gas]: P }
+    // Throttle parent updates during drag to prevent hull recomputation on every pixel
+    const now = Date.now()
+    if (now - last_update_time >= THROTTLE_MS) {
+      last_update_time = now
+      pressures = { ...pressures, [gas]: P }
+    }
+  }
+
+  function handle_slider_end(gas: GasSpecies, event: Event): void {
+    const P = slider_to_pressure(+(event.currentTarget as HTMLInputElement).value)
+    pressures = { ...pressures, [gas]: P }
+    preview_pressures = {}
+  }
+
+  function set_pressure_direct(gas: GasSpecies, value: number): void {
+    const clamped = Math.max(
+      Math.pow(10, LOG_P_MIN),
+      Math.min(Math.pow(10, LOG_P_MAX), value),
+    )
+    pressures = { ...pressures, [gas]: clamped }
   }
 </script>
 
@@ -98,12 +126,21 @@
           }`,
         })}
       >
-        <div class="pressure-label">
-          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-          <span class="pressure-value">{@html format_pressure_html(P)}</span>
+        <label class="pressure-label">
+          <input
+            type="text"
+            class="pressure-input"
+            value={format_pressure(P)}
+            onchange={(evt) => {
+              const val = Number(evt.currentTarget.value)
+              if (Number.isFinite(val) && val > 0) set_pressure_direct(gas, val)
+              else evt.currentTarget.value = format_pressure(P)
+            }}
+            aria-label="{gas} pressure (bar)"
+          />
           <!-- eslint-disable-next-line svelte/no-at-html-tags -->
           <span class="gas-name">{@html format_gas_name(gas)}</span>
-        </div>
+        </label>
         <div class="slider-wrapper">
           <span class="pressure-range">
             10<sup>{LOG_P_MIN}</sup>–10<sup>{LOG_P_MAX}</sup>
@@ -115,6 +152,9 @@
             step="0.5"
             value={pressure_to_slider(P)}
             oninput={(evt) => set_pressure(gas, +evt.currentTarget.value)}
+            onchange={(evt) => handle_slider_end(gas, evt)}
+            onmouseup={(evt) => handle_slider_end(gas, evt)}
+            ontouchend={(evt) => handle_slider_end(gas, evt)}
             aria-label="{gas} partial pressure"
           />
         </div>
@@ -182,13 +222,19 @@
   .pressure-label {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
   }
-  .pressure-value {
-    font-size: 0.95em;
+  .pressure-input {
+    width: 5.5ch;
+    border: 1px solid color-mix(in srgb, currentColor 5%, transparent);
+    border-radius: 3px;
+    background: transparent;
+    text-align: center;
   }
-  .pressure-value :global(sup) {
-    font-size: 0.75em;
+  .pressure-input::-webkit-outer-spin-button,
+  .pressure-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
   .gas-name {
     font-size: 0.9em;
