@@ -27,7 +27,7 @@ const mock_fs = vi.hoisted(() => ({
 }))
 
 vi.mock(`fs`, () => mock_fs)
-vi.mock(`path`, async (importOriginal) => {
+vi.mock(`node:path`, async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
   return {
     ...actual,

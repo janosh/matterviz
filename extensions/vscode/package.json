@@ -2,7 +2,7 @@
   "name": "matterviz",
   "displayName": "MatterViz",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
@@ -16,7 +16,7 @@
   "engines": {
     "vscode": "^1.96.0"
   },
-  "main": "./dist/extension.cjs",
+  "main": "./dist/extension.mjs",
   "extensionKind": [
     "workspace"
   ],
@@ -1375,7 +1375,7 @@
   "scripts": {
     "sync-config": "deno run -A --node-modules-dir scripts/sync-config.ts",
     "prebuild": "pnpm sync-config",
-    "build": "rm -rf dist && vite build --config vite.webview.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
+    "build": "rm -rf dist && vite build --config vite.extension.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
     "package": "pnpm build && vsce package --no-dependencies",
     "test": "vitest"
   },
