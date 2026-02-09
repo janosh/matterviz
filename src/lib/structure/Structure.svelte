@@ -110,9 +110,9 @@
     // expose the displayed structure (with image atoms and supercell) for external use
     displayed_structure = $bindable(),
     // Track hidden elements across component lifecycle
-    hidden_elements = $bindable(new Set<ElementSymbol>()),
+    hidden_elements = $bindable(new SvelteSet<ElementSymbol>()),
     // Track hidden property values (e.g. Wyckoff positions, coordination numbers)
-    hidden_prop_vals = $bindable(new Set<number | string>()),
+    hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
     // Per-element radius overrides (absolute values in Angstroms)
     element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
     // Per-site radius overrides (absolute values in Angstroms)
@@ -448,12 +448,8 @@
     clear_selection()
   }
 
-  function undo() {
-    apply_history(undo_stack, redo_stack)
-  }
-  function redo() {
-    apply_history(redo_stack, undo_stack)
-  }
+  const undo = () => apply_history(undo_stack, redo_stack)
+  const redo = () => apply_history(redo_stack, undo_stack)
 
   // Clear undo/redo stacks when structure changes externally (file load, etc.)
   // Internal edits set is_internal_edit=true before modifying structure.
