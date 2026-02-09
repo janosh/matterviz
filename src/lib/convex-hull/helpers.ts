@@ -84,7 +84,8 @@ export function calc_max_hull_dist_in_data(
   const hull_distances = processed_entries
     .map((e) => e.e_above_hull)
     .filter((v): v is number => typeof v === `number` && Number.isFinite(v))
-  const max_val = (hull_distances.length ? Math.max(...hull_distances) : 0) + 0.001
+  const max_val = (hull_distances.length ? Math.max(...hull_distances) : 0) +
+    0.001
   return Math.max(0.1, max_val)
 }
 
@@ -116,12 +117,17 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
     : `${entry.name || entry.reduced_formula || ``}\n`
 
   if (!is_element) {
-    const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
+    const total = Object.values(entry.composition).reduce(
+      (sum, amt) => sum + amt,
+      0,
+    )
     if (total > 0) {
       const fractions = Object.entries(entry.composition)
         .filter(([, amt]) => amt > 0)
         .map(([el, amt]) => `${el}: ${format_fractional(amt / total)}`)
-      if (fractions.length > 1) text += `Composition: ${fractions.join(`, `)}\n`
+      if (fractions.length > 1) {
+        text += `Composition: ${fractions.join(`, `)}\n`
+      }
     }
   }
 
@@ -168,14 +174,17 @@ export function find_hull_entry_at_mouse<
     if (!entry.visible) continue
     const projected = project_point(entry.x, entry.y, entry.z)
     const distance = Math.hypot(mouse_x - projected.x, mouse_y - projected.y)
-    const base = entry.size ?? ((entry.is_stable || entry.e_above_hull === 0) ? 6 : 4)
+    const base = entry.size ??
+      ((entry.is_stable || entry.e_above_hull === 0) ? 6 : 4)
     if (distance < base * container_scale + 5) return entry
   }
   return null
 }
 
 // Calculate which side of the viewport has more space for modal placement
-export function calculate_modal_side(wrapper: HTMLDivElement | undefined): boolean {
+export function calculate_modal_side(
+  wrapper: HTMLDivElement | undefined,
+): boolean {
   if (!wrapper) return true
   const rect = wrapper.getBoundingClientRect()
   const viewport_width = globalThis.innerWidth
@@ -188,7 +197,9 @@ export function calculate_modal_side(wrapper: HTMLDivElement | undefined): boole
 // This determines whether we can use precomputed energies or need to compute on-the-fly.
 export function compute_energy_mode_info(
   entries: PhaseData[], // Array of phase entries to analyze
-  find_lowest_energy_unary_refs_fn: (entries: PhaseData[]) => Record<string, PhaseData>, // Function to find unary references
+  find_lowest_energy_unary_refs_fn: (
+    entries: PhaseData[],
+  ) => Record<string, PhaseData>, // Function to find unary references
   energy_source_mode: `precomputed` | `on-the-fly`, // User-specified energy source mode preference
 ): EnergyModeInfo {
   const has_precomputed_e_form = entries.length > 0 &&
@@ -312,7 +323,11 @@ export interface PolymorphStats {
 }
 
 // Energy metric types for consistent polymorph comparison
-type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | null
+type EnergyMetric =
+  | `e_form_per_atom`
+  | `energy_per_atom`
+  | `e_above_hull`
+  | null
 
 // Check if value is a finite number
 const is_finite = (val: unknown): val is number =>
@@ -321,7 +336,10 @@ const is_finite = (val: unknown): val is number =>
 // Compute energy_per_atom from total energy and composition
 function compute_energy_per_atom(entry: PhaseData): number | null {
   if (!is_finite(entry.energy)) return null
-  const total_atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
+  const total_atoms = Object.values(entry.composition).reduce(
+    (sum, amt) => sum + amt,
+    0,
+  )
   return total_atoms > 0 ? entry.energy / total_atoms : null
 }
 
@@ -357,11 +375,14 @@ function select_group_energy_metric(polymorphs: PhaseData[]): EnergyMetric {
   if (
     polymorphs.every(
       (entry) =>
-        is_finite(entry.energy_per_atom) || compute_energy_per_atom(entry) !== null,
+        is_finite(entry.energy_per_atom) ||
+        compute_energy_per_atom(entry) !== null,
     )
   ) return `energy_per_atom`
   // Last resort: e_above_hull (will fail to differentiate stable polymorphs with e_above_hull=0)
-  if (polymorphs.every((entry) => is_finite(entry.e_above_hull))) return `e_above_hull`
+  if (polymorphs.every((entry) => is_finite(entry.e_above_hull))) {
+    return `e_above_hull`
+  }
 
   return null // No valid metric available for this group
 }
@@ -517,8 +538,14 @@ export function draw_selection_highlight(
   pulse_opacity: number,
 ): void {
   const highlight_size = base_size * (1.8 + 0.3 * Math.sin(pulse_time * 4))
-  ctx.fillStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity * 0.6)
-  ctx.strokeStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity)
+  ctx.fillStyle = apply_alpha_to_color(
+    `rgba(102, 240, 255, 1)`,
+    pulse_opacity * 0.6,
+  )
+  ctx.strokeStyle = apply_alpha_to_color(
+    `rgba(102, 240, 255, 1)`,
+    pulse_opacity,
+  )
   ctx.lineWidth = 2 * container_scale
   ctx.beginPath()
   ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
@@ -577,12 +604,17 @@ export interface TemperatureAnalysis {
 
 // Analyze entries for temperature-dependent free energy data.
 // Returns available temperatures (union of all T values across entries) if any entries have temp data.
-export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnalysis {
+export function analyze_temperature_data(
+  entries: PhaseData[],
+): TemperatureAnalysis {
   const valid_temps = entries
     .filter(entry_has_temp_data)
     .flatMap((entry) => entry.temperatures ?? [])
   const available_temperatures = [...new Set(valid_temps)].sort((a, b) => a - b)
-  return { has_temp_data: available_temperatures.length > 0, available_temperatures }
+  return {
+    has_temp_data: available_temperatures.length > 0,
+    available_temperatures,
+  }
 }
 
 // Check if an entry has valid temperature-dependent data (matching array lengths, non-empty)
@@ -597,7 +629,8 @@ function entry_has_temp_data(entry: PhaseData): boolean {
 
 // Check if entry has data at exact temperature T
 export function entry_has_temperature(entry: PhaseData, T: number): boolean {
-  return entry_has_temp_data(entry) && (entry.temperatures?.includes(T) ?? false)
+  return entry_has_temp_data(entry) &&
+    (entry.temperatures?.includes(T) ?? false)
 }
 
 // Get energy at temperature T (throws if T not found - validate with entry_has_temperature first)
@@ -605,7 +638,9 @@ export function get_energy_at_temperature(entry: PhaseData, T: number): number {
   const temps = entry.temperatures ?? []
   const energies = entry.free_energies ?? []
   const idx = temps.indexOf(T)
-  if (idx === -1) throw new Error(`Temperature ${T}K not found in entry temperatures`)
+  if (idx === -1) {
+    throw new Error(`Temperature ${T}K not found in entry temperatures`)
+  }
   return energies[idx]
 }
 
@@ -701,14 +736,31 @@ export function filter_entries_at_temperature(
     if (!entry_has_temp_data(entry)) return [entry]
 
     // Exact temperature match - use G(T)
+    // Set both energy and energy_per_atom so downstream formation energy
+    // calculations use the temperature-dependent value (not stale 0K energy_per_atom)
     if (entry_has_temperature(entry, T)) {
-      return [{ ...entry, energy: get_energy_at_temperature(entry, T) }]
+      const energy = get_energy_at_temperature(entry, T)
+      const atoms = Object.values(entry.composition).reduce(
+        (sum, amt) => sum + amt,
+        0,
+      ) || 1
+      return [{ ...entry, energy, energy_per_atom: energy / atoms }]
     }
 
     // Try interpolation if enabled
     if (interpolate) {
-      const energy = interpolate_energy_at_temperature(entry, T, max_interpolation_gap)
-      if (energy !== null) return [{ ...entry, energy }]
+      const energy = interpolate_energy_at_temperature(
+        entry,
+        T,
+        max_interpolation_gap,
+      )
+      if (energy !== null) {
+        const atoms = Object.values(entry.composition).reduce(
+          (sum, amt) => sum + amt,
+          0,
+        ) || 1
+        return [{ ...entry, energy, energy_per_atom: energy / atoms }]
+      }
     }
 
     // Exclude entry (has temp data but can't get energy at T)
