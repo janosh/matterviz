@@ -520,27 +520,33 @@ export interface HighDimHullResult {
   phase_stats: PhaseStats | null
 }
 
+// Convert a PhaseData entry to a ConvexHullEntry with default visual fields.
+// x/y/z default to 0 since high-dim systems aren't visually plotted.
+function to_hull_entry(entry: PhaseData): ConvexHullEntry {
+  return {
+    ...entry,
+    visible: true,
+    is_element: get_arity(entry) === 1,
+    x: 0,
+    y: 0,
+    z: 0,
+  }
+}
+
 // Process raw hull entries for high-dimensional systems (5+ elements) where the
 // ConvexHull visual component can't render. Computes formation energies, hull distances,
 // stable/unstable classification, and phase stats. Returns null on failure.
+// Optionally accepts `elements` to scope the chemical system; if omitted, elements
+// are derived from the entries' compositions.
 export function process_hull_for_stats(
   entries: PhaseData[],
+  elements?: ElementSymbol[],
 ): HighDimHullResult | null {
   if (!entries.length) return null
 
   const processed = process_hull_entries(entries)
   if (!processed.entries.length) return null
-
-  // Add ConvexHullEntry-required fields (visible, is_element, x/y/z)
-  // x/y/z default to 0 since high-dim systems aren't visually plotted
-  for (const entry of processed.entries) {
-    const hull_entry = entry as ConvexHullEntry
-    hull_entry.visible = true
-    hull_entry.is_element = get_arity(entry) === 1
-    hull_entry.x = 0
-    hull_entry.y = 0
-    hull_entry.z = 0
-  }
+  const hull_elements = elements ?? processed.elements
 
   // Compute formation energies
   const el_refs = find_lowest_energy_unary_refs(processed.entries)
@@ -551,14 +557,16 @@ export function process_hull_for_stats(
     }
   }
 
-  // Compute hull distances
+  // Compute hull distances, using index-based IDs to avoid polymorph collisions
+  // when multiple entries share the same composition but have no entry_id
   try {
     const hull_distances = calculate_e_above_hull(
       processed.entries,
       processed.entries,
     )
 
-    for (const entry of processed.entries) {
+    for (let idx = 0; idx < processed.entries.length; idx++) {
+      const entry = processed.entries[idx]
       const id = entry.entry_id ?? JSON.stringify(entry.composition)
       const dist = hull_distances[id]
       if (typeof dist === `number` && Number.isFinite(dist)) {
@@ -571,14 +579,11 @@ export function process_hull_for_stats(
     return null
   }
 
+  const hull_entries = processed.entries.map(to_hull_entry)
   return {
-    stable_entries: processed.entries.filter((entry) =>
-      is_on_hull(entry)
-    ) as ConvexHullEntry[],
-    unstable_entries: processed.entries.filter(
-      (entry) => !is_on_hull(entry),
-    ) as ConvexHullEntry[],
-    phase_stats: get_convex_hull_stats(processed.entries, processed.elements),
+    stable_entries: hull_entries.filter((entry) => is_on_hull(entry)),
+    unstable_entries: hull_entries.filter((entry) => !is_on_hull(entry)),
+    phase_stats: get_convex_hull_stats(processed.entries, hull_elements),
   }
 }
 

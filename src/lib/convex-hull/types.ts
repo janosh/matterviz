@@ -164,13 +164,12 @@ export interface PhaseStats {
   chemical_system: string
 }
 
-// Numeric arity-count fields in PhaseStats (for type-safe indexing)
-export type PhaseArityField =
-  | `unary`
-  | `binary`
-  | `ternary`
-  | `quaternary`
-  | `quinary_plus`
+// Numeric arity-count fields in PhaseStats (for type-safe indexing).
+// Uses Extract to stay in sync with PhaseStats at compile time.
+export type PhaseArityField = Extract<
+  keyof PhaseStats,
+  `unary` | `binary` | `ternary` | `quaternary` | `quinary_plus`
+>
 
 // Tolerance for classifying a phase as on the convex hull (eV/atom)
 export const HULL_STABILITY_TOL = 1e-6

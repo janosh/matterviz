@@ -52,6 +52,15 @@
   // Shared concatenation of stable + unstable for histograms
   let all_entries = $derived([...stable_entries, ...unstable_entries])
 
+  // Static arity labels for phase breakdown display
+  const arity_types: [string, PhaseArityField, number][] = [
+    [`Unary`, `unary`, 1],
+    [`Binary`, `binary`, 2],
+    [`Ternary`, `ternary`, 3],
+    [`Quaternary`, `quaternary`, 4],
+    [`Quinary+`, `quinary_plus`, 5],
+  ]
+
   const histogram_props = {
     bins: 50,
     y_axis: { label: ``, ticks: 3 },
@@ -94,13 +103,6 @@
 
     // Determine system dimensionality from chemical_system string
     const num_elements = phase_stats.chemical_system.split(`-`).length
-    const arity_types: [string, PhaseArityField, number][] = [
-      [`Unary`, `unary`, 1],
-      [`Binary`, `binary`, 2],
-      [`Ternary`, `ternary`, 3],
-      [`Quaternary`, `quaternary`, 4],
-      [`Quinary+`, `quinary_plus`, 5],
-    ]
     // max arity from data or system dimensionality
     const max_arity = arity_types.reduce(
       (max, [, field, arity]) => phase_stats[field] > 0 ? Math.max(max, arity) : max,
@@ -194,10 +196,10 @@
       const formula = entry.reduced_formula ?? entry.name ??
         get_alphabetical_formula(entry.composition, true, ``)
       const row: RowData = {
-        '#': idx + 1,
+        '#': `<span data-sort-value="${idx + 1}">${idx + 1}</span>`,
         Stable: on_hull
-          ? `<span style="color: var(--hull-stable-color, #22c55e)" title="On hull">●</span>`
-          : `<span style="color: var(--hull-unstable-color, #666); opacity: 0.4" title="Above hull">●</span>`,
+          ? `<span data-sort-value="0" style="color: var(--hull-stable-color, #22c55e)" title="On hull">●</span>`
+          : `<span data-sort-value="1" style="color: var(--hull-unstable-color, #666); opacity: 0.4" title="Above hull">●</span>`,
         Formula: on_hull ? `<strong>${formula}</strong>` : formula,
         'E<sub>hull</sub>': entry.e_above_hull ?? null,
         'E<sub>form</sub>': entry.e_form_per_atom ?? entry.energy_per_atom ?? null,
@@ -216,8 +218,6 @@
     const entry = entry_by_row.get(row)
     if (entry) on_entry_click?.(entry)
   }
-
-  let table_width = $derived(layout === `side-by-side` ? `fit-content` : `100%`)
 
   let table_columns: Label[] = $derived(
     [
@@ -349,7 +349,7 @@
     scroll_style={layout === `side-by-side`
     ? `flex: 1 1 0; overflow: auto`
     : `max-height: var(--hull-stats-max-height, 500px)`}
-    style={`width: ${table_width}`}
+    style={`width: ${layout === `side-by-side` ? `fit-content` : `100%`}`}
     onrowclick={on_entry_click ? handle_row_click : undefined}
   />
 {/snippet}

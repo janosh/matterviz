@@ -331,7 +331,11 @@ impl SiteOccupancy {
     /// its occupancy is summed.
     pub fn merge_from(&mut self, other: &SiteOccupancy) {
         for (sp, occ) in &other.species {
-            if let Some(existing) = self.species.iter_mut().find(|(s, _)| s == sp) {
+            if let Some(existing) = self
+                .species
+                .iter_mut()
+                .find(|(existing_sp, _)| existing_sp == sp)
+            {
                 existing.1 += occ;
             } else {
                 self.species.push((*sp, *occ));
