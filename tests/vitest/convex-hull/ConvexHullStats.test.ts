@@ -17,6 +17,7 @@ const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   chemical_system: `Li-Fe-P-O`,
   energy_range: { min: -2.5, max: 0.5, avg: -0.8 },
   hull_distance: { max: 0.4, avg: 0.12 },
+  max_arity: 4,
   ...overrides,
 })
 
@@ -130,6 +131,7 @@ describe(`ConvexHullStats`, () => {
   test.each([
     {
       system: `Li-Fe`,
+      max_arity: 2,
       ternary: 0,
       quaternary: 0,
       shown: [`Binary`],
@@ -137,6 +139,7 @@ describe(`ConvexHullStats`, () => {
     },
     {
       system: `Li-Fe-O`,
+      max_arity: 3,
       ternary: 10,
       quaternary: 0,
       shown: [`Ternary`],
@@ -144,9 +147,14 @@ describe(`ConvexHullStats`, () => {
     },
   ])(
     `conditional phase display for $system system`,
-    ({ system, ternary, quaternary, shown, hidden }) => {
+    ({ system, max_arity, ternary, quaternary, shown, hidden }) => {
       mount_stats({
-        phase_stats: mock_stats({ chemical_system: system, ternary, quaternary }),
+        phase_stats: mock_stats({
+          chemical_system: system,
+          max_arity,
+          ternary,
+          quaternary,
+        }),
       })
       const text = document.body.textContent ?? ``
       for (const type of shown) expect(text).toContain(`${type} phases`)

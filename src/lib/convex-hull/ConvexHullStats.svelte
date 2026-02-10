@@ -101,14 +101,6 @@
     const pct = (count: number) =>
       phase_stats.total > 0 ? format_num(count / phase_stats.total, `.1~%`) : `0%`
 
-    // Determine system dimensionality from chemical_system string
-    const num_elements = phase_stats.chemical_system.split(`-`).length
-    // max arity from data or system dimensionality
-    const max_arity = arity_types.reduce(
-      (max, [, field, arity]) => phase_stats[field] > 0 ? Math.max(max, arity) : max,
-      num_elements,
-    )
-
     return [
       {
         title: ``,
@@ -118,10 +110,11 @@
             value: format_num(phase_stats.total),
             key: `total-entries`,
           },
-          // Only show phase types that exist or are within system dimensionality
+          // Only show phase types that exist or are within the max_arity
+          // used when computing stats (respects zeroed-out counts)
           ...arity_types
             .filter(([, field, arity]) =>
-              phase_stats[field] > 0 || max_arity >= arity
+              phase_stats[field] > 0 || phase_stats.max_arity >= arity
             )
             .map(([display, field]) => ({
               label: `${display} phases`,

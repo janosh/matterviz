@@ -162,6 +162,9 @@ export interface PhaseStats {
   hull_distance: { max: number; avg: number }
   elements: number
   chemical_system: string
+  // Maximum arity used when computing stats — arity counts beyond this
+  // were zeroed. The UI uses this to decide which arity rows to display.
+  max_arity: number
 }
 
 // Numeric arity-count fields in PhaseStats (for type-safe indexing).

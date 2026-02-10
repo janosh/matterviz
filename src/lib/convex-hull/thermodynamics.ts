@@ -467,6 +467,8 @@ export function get_convex_hull_stats(
     else if (arity >= 5) quinary_plus++
   }
   // Zero out counts beyond system dimensionality for cleaner display
+  // quinary_plus is intentionally not zeroed — it's a catch-all bucket that
+  // is naturally 0 for systems with fewer than 5 elements
   if (max_arity < 4) quaternary = 0
   if (max_arity < 3) ternary = 0
   if (max_arity < 2) binary = 0
@@ -514,6 +516,7 @@ export function get_convex_hull_stats(
     hull_distance,
     elements: elements.length,
     chemical_system: sort_by_electronegativity([...elements]).join(`-`),
+    max_arity,
   }
 }
 
@@ -561,8 +564,9 @@ export function process_hull_for_stats(
     }
   }
 
-  // Compute hull distances, using index-based IDs to avoid polymorph collisions
-  // when multiple entries share the same composition but have no entry_id
+  // Compute hull distances. Note: entries without entry_id are keyed by
+  // JSON.stringify(composition), so polymorphs at the same composition
+  // collide — the last-processed entry's distance wins for all of them.
   try {
     const hull_distances = calculate_e_above_hull(
       processed.entries,

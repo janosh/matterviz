@@ -396,9 +396,10 @@ pub fn parse_structure_json_with_merge_tol(json: &str, merge_tol: f64) -> Result
     let mut merged_occupancies: Vec<SiteOccupancy> = Vec::new();
     let mut merged_coords: Vec<Vector3<f64>> = Vec::new();
 
-    // Minimum-image distance for fractional coordinates in [0, 1)
+    // Minimum-image distance for fractional coordinates, handles wrapping
+    // so coords outside [0, 1) (e.g. -0.1 or 1.5) are compared correctly
     let periodic_dist = |a: f64, b: f64| -> f64 {
-        let diff = (a - b).abs();
+        let diff = (a - b).rem_euclid(1.0);
         diff.min(1.0 - diff)
     };
 
