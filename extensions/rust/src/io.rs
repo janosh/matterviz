@@ -4876,7 +4876,7 @@ Fe 2.0 2.0 2.0
             // Ba should be dominant (0.88)
             assert_eq!(site.dominant_species().element, Element::Ba);
             // Total occupancy should be 0.06 + 0.88 + 0.05 + 0.01 = 1.0
-            let total: f64 = site.species.iter().map(|(_, o)| o).sum();
+            let total: f64 = site.species.iter().map(|(_, occ)| occ).sum();
             assert!(
                 (total - 1.0).abs() < 1e-10,
                 "occupancies should sum to 1.0, got {total}"

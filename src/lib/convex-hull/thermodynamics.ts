@@ -576,7 +576,7 @@ export function process_hull_for_stats(
       is_on_hull(entry)
     ) as ConvexHullEntry[],
     unstable_entries: processed.entries.filter(
-      (entry) => !is_on_hull(entry) && typeof entry.e_above_hull === `number`,
+      (entry) => !is_on_hull(entry),
     ) as ConvexHullEntry[],
     phase_stats: get_convex_hull_stats(processed.entries, processed.elements),
   }
