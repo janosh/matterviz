@@ -1106,7 +1106,7 @@
         {@const inside = final_x_axis.tick?.label?.inside ?? false}
         {@const shift_x = final_x_axis.tick?.label?.shift?.x ?? 0}
         {@const shift_y = final_x_axis.tick?.label?.shift?.y ?? 0}
-        {@const base_y = inside ? -8 : 18}
+        {@const base_y = inside ? -8 : 8}
         {@const text_y = base_y + shift_y}
         {@const dominant_baseline = inside ? `auto` : `hanging`}
         <g class="tick" transform="translate({tick_x}, {height - pad.b})">

@@ -379,22 +379,24 @@ class TestBoundaryValues:
 
     def test_wrap_boundary_values(self) -> None:
         """Wrap handles boundary values correctly."""
-        # Create structure with boundary positions
+        # Use positions that are outside [0,1) but don't overlap with other sites
+        # after wrapping. Co-located sites get merged during parsing, so each
+        # site must have unique wrapped fractional coordinates.
         struct = make_structure(
             {"matrix": [[5.64, 0, 0], [0, 5.64, 0], [0, 0, 5.64]]},
             [
                 make_site("Na", [0.0, 0.0, 0.0]),
-                make_site("Na", [1.0, 1.0, 1.0]),  # Should wrap to [0,0,0]
+                make_site("Na", [1.1, 1.2, 1.3]),  # Should wrap to [0.1, 0.2, 0.3]
                 make_site("Cl", [0.5, 0.5, 0.5]),
-                make_site("Cl", [-0.5, -0.5, -0.5]),  # Should wrap to [0.5, 0.5, 0.5]
+                make_site("Cl", [-0.4, -0.3, -0.2]),  # Should wrap to [0.6, 0.7, 0.8]
             ],
         )
         wrapped = structure.wrap_to_unit_cell(struct)
         sites = wrapped["sites"]
         assert sites[0]["abc"] == pytest.approx([0, 0, 0], abs=1e-10)
-        assert sites[1]["abc"] == pytest.approx([0, 0, 0], abs=1e-10)
+        assert sites[1]["abc"] == pytest.approx([0.1, 0.2, 0.3], abs=1e-10)
         assert sites[2]["abc"] == pytest.approx([0.5, 0.5, 0.5], abs=1e-10)
-        assert sites[3]["abc"] == pytest.approx([0.5, 0.5, 0.5], abs=1e-10)
+        assert sites[3]["abc"] == pytest.approx([0.6, 0.7, 0.8], abs=1e-10)
 
     def test_minimum_image_atoms_at_same_position(self, nacl_structure: dict) -> None:
         """Minimum image distance is zero for same position."""
