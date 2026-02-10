@@ -155,6 +155,7 @@ export interface PhaseStats {
   binary: number
   ternary: number
   quaternary: number
+  quinary_plus: number
   stable: number
   unstable: number
   energy_range: { min: number; max: number; avg: number }
@@ -162,6 +163,19 @@ export interface PhaseStats {
   elements: number
   chemical_system: string
 }
+
+// Numeric arity-count fields in PhaseStats (for type-safe indexing)
+export type PhaseArityField =
+  | `unary`
+  | `binary`
+  | `ternary`
+  | `quaternary`
+  | `quinary_plus`
+
+// Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
+export const is_on_hull = (entry: PhaseData, tol: number = 1e-6): boolean =>
+  entry.is_stable === true ||
+  (typeof entry.e_above_hull === `number` && entry.e_above_hull < tol)
 
 // Arity helpers (inlined from former arity.ts)
 export const get_arity = (entry: PhaseData): number =>

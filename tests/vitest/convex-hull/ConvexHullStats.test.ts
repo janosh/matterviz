@@ -10,6 +10,7 @@ const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   binary: 20,
   ternary: 50,
   quaternary: 27,
+  quinary_plus: 0,
   stable: 15,
   unstable: 85,
   elements: 4,

@@ -36,6 +36,7 @@
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
     heatmap_class = `heatmap`,
+    onrowclick,
     onrowdblclick,
     column_order = $bindable([]),
     export_data = false,
@@ -65,6 +66,7 @@
     default_num_format?: string
     show_heatmap?: boolean
     heatmap_class?: string
+    onrowclick?: (event: MouseEvent, row: RowData) => void
     onrowdblclick?: (event: MouseEvent, row: RowData) => void
     // Array of column IDs to control display order. IDs are derived as:
     // - Ungrouped columns: col.key ?? col.label
@@ -1002,6 +1004,7 @@
             style={row.style}
             class={row.class ?? ``}
             class:selected={row_selected}
+            onclick={onrowclick ? (event) => onrowclick(event, row) : undefined}
             ondblclick={onrowdblclick ? (event) => onrowdblclick(event, row) : undefined}
           >
             {#if show_row_select}

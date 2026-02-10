@@ -13,15 +13,17 @@ import {
   composition_to_barycentric_nd,
 } from './barycentric-coords'
 import type {
+  ConvexHullEntry,
   ConvexHullFace,
   ConvexHullTriangle,
   PhaseData,
+  PhaseStats,
   Plane,
   Point2D,
   Point3D,
   ProcessedPhaseData,
 } from './types'
-import { is_unary_entry } from './types'
+import { get_arity, is_on_hull, is_unary_entry } from './types'
 
 // Track warned keys to avoid log spam on large datasets with repeated invalid keys
 const warned_keys = new Set<string>()
@@ -446,62 +448,50 @@ export function calculate_e_above_hull(
 export function get_convex_hull_stats(
   processed_entries: PhaseData[],
   elements: ElementSymbol[],
-  max_arity: 3 | 4,
-): {
-  total: number
-  unary: number
-  binary: number
-  ternary: number
-  quaternary: number
-  stable: number
-  unstable: number
-  energy_range: { min: number; max: number; avg: number }
-  hull_distance: { max: number; avg: number }
-  elements: number
-  chemical_system: string
-} | null {
+  max_arity: number = 4,
+): PhaseStats | null {
   if (!processed_entries || processed_entries.length === 0) return null
+  max_arity = Math.max(1, max_arity)
 
-  const composition_counts = (max_arity === 4 ? [1, 2, 3, 4] : [1, 2, 3]).map((target) =>
-    processed_entries.filter((entry) =>
-      Object.keys(entry.composition).filter(
-        (el) => (entry.composition[el as ElementSymbol] ?? 0) > 0,
-      ).length === target
-    ).length
-  )
-  const [unary, binary, ternary, quaternaryMaybe] = composition_counts as [
-    number,
-    number,
-    number,
-    number?,
-  ]
-  const quaternary = max_arity === 4 ? (quaternaryMaybe ?? 0) : 0
+  let unary = 0
+  let binary = 0
+  let ternary = 0
+  let quaternary = 0
+  let quinary_plus = 0
+  for (const entry of processed_entries) {
+    const arity = get_arity(entry)
+    if (arity === 1) unary++
+    else if (arity === 2) binary++
+    else if (arity === 3) ternary++
+    else if (arity === 4) quaternary++
+    else if (arity >= 5) quinary_plus++
+  }
+  // Zero out counts beyond system dimensionality for cleaner display
+  if (max_arity < 4) quaternary = 0
+  if (max_arity < 3) ternary = 0
 
-  const stable_count = processed_entries.filter((e) =>
-    e.is_stable === true ||
-    (typeof e.e_above_hull === `number` && e.e_above_hull < 1e-6)
-  ).length
+  const stable_count = processed_entries.filter(is_on_hull).length
   const unstable_count = processed_entries.length - stable_count
 
   const energies = processed_entries
-    .map((e) => e.e_form_per_atom ?? e.energy_per_atom)
-    .filter((v): v is number => typeof v === `number` && Number.isFinite(v))
+    .map((entry) => entry.e_form_per_atom ?? entry.energy_per_atom)
+    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
 
   const energy_range = energies.length > 0
     ? {
       min: Math.min(...energies),
       max: Math.max(...energies),
-      avg: energies.reduce((a, b) => a + b, 0) / energies.length,
+      avg: energies.reduce((sum, val) => sum + val, 0) / energies.length,
     }
     : { min: 0, max: 0, avg: 0 }
 
   const hull_distances = processed_entries
-    .map((e) => e.e_above_hull)
-    .filter((v): v is number => typeof v === `number` && v >= 0)
+    .map((entry) => entry.e_above_hull)
+    .filter((val): val is number => typeof val === `number` && val >= 0)
   const hull_distance = hull_distances.length > 0
     ? {
       max: Math.max(...hull_distances),
-      avg: hull_distances.reduce((a, b) => a + b, 0) / hull_distances.length,
+      avg: hull_distances.reduce((sum, val) => sum + val, 0) / hull_distances.length,
     }
     : { max: 0, avg: 0 }
 
@@ -511,12 +501,76 @@ export function get_convex_hull_stats(
     binary,
     ternary,
     quaternary,
+    quinary_plus,
     stable: stable_count,
     unstable: unstable_count,
     energy_range,
     hull_distance,
     elements: elements.length,
     chemical_system: sort_by_electronegativity([...elements]).join(`-`),
+  }
+}
+
+// Result type for process_hull_for_stats
+export interface HighDimHullResult {
+  stable_entries: ConvexHullEntry[]
+  unstable_entries: ConvexHullEntry[]
+  phase_stats: PhaseStats | null
+}
+
+// Process raw hull entries for high-dimensional systems (5+ elements) where the
+// ConvexHull visual component can't render. Computes formation energies, hull distances,
+// stable/unstable classification, and phase stats. Returns null on failure.
+export function process_hull_for_stats(
+  entries: PhaseData[],
+): HighDimHullResult | null {
+  if (!entries.length) return null
+
+  const processed = process_hull_entries(entries)
+  if (!processed.entries.length) return null
+
+  // Add ConvexHullEntry-required fields (visible, is_element)
+  for (const entry of processed.entries) {
+    const hull_entry = entry as ConvexHullEntry
+    hull_entry.visible = true
+    hull_entry.is_element = get_arity(entry) === 1
+  }
+
+  // Compute formation energies
+  const el_refs = find_lowest_energy_unary_refs(processed.entries)
+  for (const entry of processed.entries) {
+    if (entry.e_form_per_atom === undefined) {
+      const e_form = compute_e_form_per_atom(entry, el_refs)
+      if (e_form !== null) entry.e_form_per_atom = e_form
+    }
+  }
+
+  // Compute hull distances
+  try {
+    const hull_distances = calculate_e_above_hull(
+      processed.entries,
+      processed.entries,
+    ) as Record<string, number>
+
+    for (const entry of processed.entries) {
+      const id = entry.entry_id ?? JSON.stringify(entry.composition)
+      const dist = hull_distances[id]
+      if (typeof dist === `number` && Number.isFinite(dist)) {
+        entry.e_above_hull = dist
+        entry.is_stable = dist < 1e-6
+      }
+    }
+  } catch (err) {
+    console.warn(`Failed to compute high-dim hull:`, err)
+    return null
+  }
+
+  return {
+    stable_entries: processed.entries.filter(is_on_hull) as ConvexHullEntry[],
+    unstable_entries: processed.entries.filter(
+      (entry) => !is_on_hull(entry) && typeof entry.e_above_hull === `number`,
+    ) as ConvexHullEntry[],
+    phase_stats: get_convex_hull_stats(processed.entries, processed.elements),
   }
 }
 
