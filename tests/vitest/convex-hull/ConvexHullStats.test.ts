@@ -460,15 +460,14 @@ describe(`ConvexHullStats`, () => {
   })
 
   test.each([
-    [5, true, `shown when count > 0`],
-    [0, false, `hidden when count is 0`],
-  ] as [number, boolean, string][])(
-    `Quinary+ row: %s (%s)`,
+    [5, true],
+    [0, false],
+  ] as [number, boolean][])(
+    `Quinary+ row with count=%s visible=%s`,
     (quinary_plus, should_show) => {
       mount_stats({ phase_stats: mock_stats({ quinary_plus }) })
       const text = document.body.textContent ?? ``
-      if (should_show) expect(text).toContain(`Quinary+`)
-      else expect(text).not.toContain(`Quinary+`)
+      expect(text.includes(`Quinary+`)).toBe(should_show)
     },
   )
 })

@@ -4807,11 +4807,7 @@ Fe 2.0 2.0 2.0
         // It should contain both species
         assert_eq!(structure.site_occupancies[0].species.len(), 2);
         // Total occupancy at merged site
-        let total_occ: f64 = structure.site_occupancies[0]
-            .species
-            .iter()
-            .map(|(_, occ)| occ)
-            .sum();
+        let total_occ = structure.site_occupancies[0].total_occupancy();
         assert!(
             (total_occ - 1.0).abs() < 1e-10,
             "occupancies should sum to 1.0"
@@ -4883,7 +4879,7 @@ Fe 2.0 2.0 2.0
             // Ba should be dominant (0.88)
             assert_eq!(site.dominant_species().element, Element::Ba);
             // Total occupancy should be 0.06 + 0.88 + 0.05 + 0.01 = 1.0
-            let total: f64 = site.species.iter().map(|(_, occ)| occ).sum();
+            let total = site.total_occupancy();
             assert!(
                 (total - 1.0).abs() < 1e-10,
                 "occupancies should sum to 1.0, got {total}"
@@ -4920,10 +4916,7 @@ Fe 2.0 2.0 2.0
 
         // Verify no overlapping Cartesian coordinates
         let coords = structure.cart_coords();
-        let dist = ((coords[0].x - coords[1].x).powi(2)
-            + (coords[0].y - coords[1].y).powi(2)
-            + (coords[0].z - coords[1].z).powi(2))
-        .sqrt();
+        let dist = (coords[0] - coords[1]).norm();
         assert!(
             dist > 1.0,
             "merged sites should not overlap, got dist={dist}"

@@ -473,16 +473,14 @@ export function get_convex_hull_stats(
   if (max_arity < 3) ternary = 0
   if (max_arity < 2) binary = 0
 
-  const stable_count = processed_entries.filter(is_on_hull).length
+  const stable_count = processed_entries.filter((entry) => is_on_hull(entry)).length
   const unstable_count = processed_entries.length - stable_count
 
   const energies = processed_entries
     .map((entry) =>
-      entry.e_form_per_atom ??
-        entry.energy_per_atom ??
-        (typeof entry.energy === `number` ? get_energy_per_atom(entry) : undefined)
+      entry.e_form_per_atom ?? entry.energy_per_atom ?? get_energy_per_atom(entry)
     )
-    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
+    .filter(Number.isFinite)
 
   // Use reduce instead of Math.min/max(...arr) to avoid stack overflow on large datasets
   const energy_range = energies.length > 0
@@ -591,9 +589,13 @@ export function process_hull_for_stats(
 
   const hull_entries = processed.entries.map(to_hull_entry)
   return {
-    stable_entries: hull_entries.filter(is_on_hull),
+    stable_entries: hull_entries.filter((entry) => is_on_hull(entry)),
     unstable_entries: hull_entries.filter((entry) => !is_on_hull(entry)),
-    phase_stats: get_convex_hull_stats(processed.entries, hull_elements, hull_elements.length),
+    phase_stats: get_convex_hull_stats(
+      processed.entries,
+      hull_elements,
+      hull_elements.length,
+    ),
   }
 }
 

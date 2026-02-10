@@ -71,29 +71,21 @@
   } as const
 
   // Prepare histogram data for formation energies and hull distances
-  let e_form_data = $derived.by(() => {
-    const energies = all_entries
+  let e_form_data = $derived([{
+    x: [] as number[],
+    y: all_entries
       .map((entry) => entry.e_form_per_atom ?? entry.energy_per_atom)
-      .filter((val): val is number => val !== undefined && isFinite(val))
-    return [{
-      x: [],
-      y: energies,
-      label: `Formation Energy`,
-      line_style: { stroke: `steelblue` },
-    }]
-  })
+      .filter((val): val is number => val !== undefined && isFinite(val)),
+    label: `Formation Energy`,
+  }])
 
-  let hull_distance_data = $derived.by(() => {
-    const distances = all_entries
+  let hull_distance_data = $derived([{
+    x: [] as number[],
+    y: all_entries
       .map((entry) => entry.e_above_hull)
-      .filter((val): val is number => val !== undefined && isFinite(val))
-    return [{
-      x: [],
-      y: distances,
-      label: `E above hull`,
-      line_style: { stroke: `coral` },
-    }]
-  })
+      .filter((val): val is number => val !== undefined && isFinite(val)),
+    label: `E above hull`,
+  }])
 
   let pane_data = $derived.by(() => {
     if (!phase_stats) return []
@@ -177,6 +169,10 @@
     all_entries.reduce((max, entry) => Math.max(max, get_arity(entry)), 1),
   )
 
+  // Sortable HTML cell with a hidden data-sort-value for HeatmapTable sorting
+  const sort_span = (sort_val: number | string, display: string, attrs = ``) =>
+    `<span data-sort-value="${sort_val}"${attrs ? ` ${attrs}` : ``}>${display}</span>`
+
   // Build table rows and a WeakMap from row→entry for the click handler
   let { table_data, entry_by_row } = $derived.by(() => {
     const map = new WeakMap<RowData, ConvexHullEntry>()
@@ -189,10 +185,18 @@
       const formula = entry.reduced_formula ?? entry.name ??
         get_alphabetical_formula(entry.composition, true, ``)
       const row: RowData = {
-        '#': `<span data-sort-value="${idx + 1}">${idx + 1}</span>`,
+        '#': sort_span(idx + 1, `${idx + 1}`),
         Stable: on_hull
-          ? `<span data-sort-value="0" style="color: var(--hull-stable-color, #22c55e)" title="On hull">●</span>`
-          : `<span data-sort-value="1" style="color: var(--hull-unstable-color, #666); opacity: 0.4" title="Above hull">●</span>`,
+          ? sort_span(
+            0,
+            `●`,
+            `style="color: var(--hull-stable-color, #22c55e)" title="On hull"`,
+          )
+          : sort_span(
+            1,
+            `●`,
+            `style="color: var(--hull-unstable-color, #666); opacity: 0.4" title="Above hull"`,
+          ),
         Formula: on_hull ? `<strong>${formula}</strong>` : formula,
         'E<sub>hull</sub>': entry.e_above_hull ?? null,
         'E<sub>form</sub>': entry.e_form_per_atom ?? entry.energy_per_atom ?? null,
