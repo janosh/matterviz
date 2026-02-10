@@ -473,7 +473,7 @@ export function get_convex_hull_stats(
   if (max_arity < 3) ternary = 0
   if (max_arity < 2) binary = 0
 
-  const stable_count = processed_entries.filter((entry) => is_on_hull(entry)).length
+  const stable_count = processed_entries.filter(is_on_hull).length
   const unstable_count = processed_entries.length - stable_count
 
   const energies = processed_entries
@@ -573,10 +573,8 @@ export function process_hull_for_stats(
       processed.entries,
     )
 
-    for (let idx = 0; idx < processed.entries.length; idx++) {
-      const entry = processed.entries[idx]
-      const id = entry.entry_id ?? JSON.stringify(entry.composition)
-      const dist = hull_distances[id]
+    for (const entry of processed.entries) {
+      const dist = hull_distances[entry.entry_id ?? JSON.stringify(entry.composition)]
       if (typeof dist === `number` && Number.isFinite(dist)) {
         entry.e_above_hull = dist
         entry.is_stable = dist < HULL_STABILITY_TOL
@@ -593,9 +591,9 @@ export function process_hull_for_stats(
 
   const hull_entries = processed.entries.map(to_hull_entry)
   return {
-    stable_entries: hull_entries.filter((entry) => is_on_hull(entry)),
+    stable_entries: hull_entries.filter(is_on_hull),
     unstable_entries: hull_entries.filter((entry) => !is_on_hull(entry)),
-    phase_stats: get_convex_hull_stats(processed.entries, hull_elements),
+    phase_stats: get_convex_hull_stats(processed.entries, hull_elements, hull_elements.length),
   }
 }
 
