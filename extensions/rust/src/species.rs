@@ -334,12 +334,14 @@ impl SiteOccupancy {
             if let Some(existing) = self.species.iter_mut().find(|(s, _)| s == sp) {
                 existing.1 += occ;
             } else {
-                self.species.push((sp.clone(), *occ));
+                self.species.push((*sp, *occ));
             }
         }
-        // Merge properties (other's properties take precedence only for new keys)
+        // Merge properties: keep self's values, fill in missing keys from other
         for (key, val) in &other.properties {
-            self.properties.entry(key.clone()).or_insert_with(|| val.clone());
+            self.properties
+                .entry(key.clone())
+                .or_insert_with(|| val.clone());
         }
     }
 

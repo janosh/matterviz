@@ -172,8 +172,11 @@ export type PhaseArityField =
   | `quaternary`
   | `quinary_plus`
 
+// Tolerance for classifying a phase as on the convex hull (eV/atom)
+export const HULL_STABILITY_TOL = 1e-6
+
 // Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
-export const is_on_hull = (entry: PhaseData, tol: number = 1e-6): boolean =>
+export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>
   entry.is_stable === true ||
   (typeof entry.e_above_hull === `number` && entry.e_above_hull < tol)
 

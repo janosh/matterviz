@@ -50,6 +50,14 @@ const mount_stats = (props: Partial<Props> = {}) =>
     },
   })
 
+// Shared helpers
+const switch_to_table = () => {
+  ;(document.querySelectorAll(`.view-toggle button`)[1] as HTMLElement).click()
+  flushSync()
+}
+const get_headers = () =>
+  Array.from(document.querySelectorAll(`th`)).map((th) => th.textContent?.trim())
+
 describe(`ConvexHullStats`, () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -113,12 +121,10 @@ describe(`ConvexHullStats`, () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalled()
   })
 
-  test.each([
-    { name: `energy histogram`, entries: [mock_entry({ e_form_per_atom: -0.5 })] },
-    { name: `hull histogram`, entries: [mock_entry({ e_above_hull: 0.1 })] },
-  ])(`renders $name when entries have data`, ({ entries }) => {
-    mount_stats({ stable_entries: entries })
-    expect(document.querySelectorAll(`.histogram`).length).toBeGreaterThanOrEqual(1)
+  test(`renders both histograms when entries have energy and hull data`, () => {
+    // mock_entry has both e_form_per_atom and e_above_hull by default
+    mount_stats({ stable_entries: [mock_entry()] })
+    expect(document.querySelectorAll(`.histogram`).length).toBe(2)
   })
 
   test.each([
@@ -168,23 +174,32 @@ describe(`ConvexHullStats`, () => {
     expect(document.querySelectorAll(`.histogram`).length).toBe(2)
   })
 
-  test.each([
-    { desc: `zero totals`, stats: { total: 0, stable: 0, unstable: 0 }, entries: [] },
-    {
-      desc: `missing energy`,
-      stats: {},
-      entries: [mock_entry({ e_form_per_atom: undefined, energy_per_atom: undefined })],
-    },
-    {
-      desc: `non-finite values`,
-      stats: {},
-      entries: [
-        mock_entry({ e_form_per_atom: NaN }),
-        mock_entry({ e_form_per_atom: Infinity }),
+  test(`zero totals does not produce NaN in percentages`, () => {
+    mount_stats({
+      phase_stats: mock_stats({ total: 0, stable: 0, unstable: 0 }),
+      stable_entries: [],
+    })
+    const text = document.body.textContent ?? ``
+    expect(text).not.toContain(`NaN`)
+  })
+
+  test(`non-finite energy values are excluded from histograms`, () => {
+    mount_stats({
+      stable_entries: [
+        mock_entry({ e_form_per_atom: NaN, e_above_hull: Infinity }),
+        mock_entry({ e_form_per_atom: Infinity, e_above_hull: NaN }),
       ],
-    },
-  ])(`handles edge case: $desc`, ({ stats, entries }) => {
-    mount_stats({ phase_stats: mock_stats(stats), stable_entries: entries })
+    })
+    // NaN/Infinity are filtered out → no histogram data → 0 histograms
+    expect(document.querySelectorAll(`.histogram`).length).toBe(0)
+  })
+
+  test(`missing energy fields render without errors`, () => {
+    mount_stats({
+      stable_entries: [
+        mock_entry({ e_form_per_atom: undefined, energy_per_atom: undefined }),
+      ],
+    })
     expect(doc_query(`.convex-hull-stats`)).toBeTruthy()
   })
 
@@ -249,14 +264,6 @@ describe(`ConvexHullStats`, () => {
       }),
     ]
 
-    // Helpers to reduce boilerplate
-    const switch_to_table = () => {
-      ;(document.querySelectorAll(`.view-toggle button`)[1] as HTMLElement).click()
-      flushSync()
-    }
-    const get_headers = () =>
-      Array.from(document.querySelectorAll(`th`)).map((th) => th.textContent?.trim())
-
     test(`view toggle switches between stats and table, round-trips correctly`, () => {
       mount_stats({ stable_entries: stable, unstable_entries: unstable })
       // Stats is default
@@ -291,10 +298,11 @@ describe(`ConvexHullStats`, () => {
         expect(document.body.textContent).toContain(formula)
       }
       const headers = get_headers()
-      expect(headers).toContain(`Formula`)
-      for (const substr of [`hull`, `form`, `el`, `at`]) {
-        expect(headers.some((h) => h?.includes(substr))).toBe(true)
+      for (const col of [`#`, `Stable`, `Formula`]) {
+        expect(headers).toContain(col)
       }
+      // Columns with HTML subscripts render as text without tags
+      expect(headers.length).toBeGreaterThanOrEqual(7)
     })
 
     test(`table excludes non-visible entries`, () => {
@@ -355,5 +363,104 @@ describe(`ConvexHullStats`, () => {
         expect(document.body.textContent).toContain(el)
       }
     })
+
+    test(`table has #, Stable columns with row numbers and hull indicators`, () => {
+      mount_stats({
+        stable_entries: [
+          mock_entry({ is_stable: true, e_above_hull: 0, reduced_formula: `Fe` }),
+        ],
+        unstable_entries: [
+          mock_entry({ is_stable: false, e_above_hull: 0.1, reduced_formula: `FeO` }),
+        ],
+      })
+      switch_to_table()
+
+      const headers = get_headers()
+      expect(headers).toContain(`#`)
+      expect(headers).toContain(`Stable`)
+      // Row numbers start at 1
+      const first_cells = Array.from(document.querySelectorAll(`tbody tr:first-child td`))
+        .map((td) => td.textContent?.trim())
+      expect(first_cells).toContain(`1`)
+      // On-hull vs above-hull markers
+      const all_cells = document.querySelectorAll(`td`)
+      expect(Array.from(all_cells).filter((td) => td.innerHTML.includes(`On hull`)))
+        .toHaveLength(1)
+      expect(Array.from(all_cells).filter((td) => td.innerHTML.includes(`Above hull`)))
+        .toHaveLength(1)
+    })
+
+    test(`on_entry_click callback fires on row click`, () => {
+      const clicked: ConvexHullEntry[] = []
+      mount(ConvexHullStats, {
+        target: document.body,
+        props: {
+          phase_stats: mock_stats(),
+          stable_entries: stable,
+          unstable_entries: [],
+          on_entry_click: (entry: ConvexHullEntry) => clicked.push(entry),
+        },
+      })
+      switch_to_table()
+
+      const first_row = document.querySelector(`tbody tr`) as HTMLElement
+      expect(first_row).not.toBeNull()
+      first_row.click()
+      flushSync()
+      expect(clicked).toHaveLength(1)
+      expect(clicked[0].reduced_formula).toBe(stable[0].reduced_formula)
+    })
   })
+
+  describe(`side-by-side layout`, () => {
+    test(`renders both stats and table simultaneously`, () => {
+      mount(ConvexHullStats, {
+        target: document.body,
+        props: {
+          phase_stats: mock_stats(),
+          stable_entries: [mock_entry({ reduced_formula: `Fe` })],
+          unstable_entries: [],
+          layout: `side-by-side`,
+        },
+      })
+      // Both should be visible at once (no toggle)
+      expect(document.querySelector(`.stat-item`)).not.toBeNull()
+      expect(document.querySelector(`.table-container`)).not.toBeNull()
+      expect(document.querySelector(`.side-by-side`)).not.toBeNull()
+      // No toggle buttons in side-by-side
+      expect(document.querySelector(`.view-toggle`)).toBeNull()
+    })
+  })
+
+  describe(`min N_el filter`, () => {
+    test(`dropdown visible for ternary+ systems, hidden for binary-only`, () => {
+      const ternary = mock_entry({
+        composition: { Li: 1, Fe: 1, O: 2 },
+        reduced_formula: `LiFeO2`,
+      })
+      const binary = mock_entry({ composition: { Fe: 1, O: 1 }, reduced_formula: `FeO` })
+
+      mount_stats({ stable_entries: [ternary, binary] })
+      switch_to_table()
+      expect(document.querySelector(`.nel-filter select`)).not.toBeNull()
+
+      document.body.innerHTML = ``
+      mount_stats({ stable_entries: [binary] })
+      switch_to_table()
+      expect(document.querySelector(`.nel-filter`)).toBeNull()
+    })
+  })
+
+  test.each([
+    [5, true, `shown when count > 0`],
+    [0, false, `hidden when count is 0`],
+  ] as [number, boolean, string][])(
+    `Quinary+ row: %s (%s)`,
+    (quinary_plus, should_show) => {
+      mount_stats({ phase_stats: mock_stats({ quinary_plus }) })
+      const text = document.body.textContent ?? ``
+      if (should_show) expect(text).toContain(`Quinary+`)
+      else expect(text).not.toContain(`Quinary+`)
+    },
+  )
 })

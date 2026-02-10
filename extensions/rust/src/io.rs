@@ -4787,17 +4787,34 @@ Fe 2.0 2.0 2.0
 
         let structure = parse_structure_json(json).unwrap();
         // K and Ba at [0,0,0] should be merged into 1 site, Fe stays separate
-        assert_eq!(structure.num_sites(), 2, "co-located K+Ba should merge into 1 site");
+        assert_eq!(
+            structure.num_sites(),
+            2,
+            "co-located K+Ba should merge into 1 site"
+        );
         // The merged site should have Ba as dominant (0.7 > 0.3)
-        assert_eq!(structure.site_occupancies[0].dominant_species().element, Element::Ba);
+        assert_eq!(
+            structure.site_occupancies[0].dominant_species().element,
+            Element::Ba
+        );
         // It should contain both species
         assert_eq!(structure.site_occupancies[0].species.len(), 2);
         // Total occupancy at merged site
-        let total_occ: f64 = structure.site_occupancies[0].species.iter().map(|(_, o)| o).sum();
-        assert!((total_occ - 1.0).abs() < 1e-10, "occupancies should sum to 1.0");
+        let total_occ: f64 = structure.site_occupancies[0]
+            .species
+            .iter()
+            .map(|(_, occ)| occ)
+            .sum();
+        assert!(
+            (total_occ - 1.0).abs() < 1e-10,
+            "occupancies should sum to 1.0"
+        );
         // Fe site should be ordered
         assert!(structure.site_occupancies[1].is_ordered());
-        assert_eq!(structure.site_occupancies[1].dominant_species().element, Element::Fe);
+        assert_eq!(
+            structure.site_occupancies[1].dominant_species().element,
+            Element::Fe
+        );
     }
 
     #[test]
@@ -4837,25 +4854,39 @@ Fe 2.0 2.0 2.0
 
         let structure = parse_structure_json(json).unwrap();
         // 4 positions with 4 species each = 16 expanded -> 4 merged + 8 F = 12 sites
-        assert_eq!(structure.num_sites(), 12,
-            "24 expanded sites should merge to 12 (4 disordered + 8 ordered F)");
+        assert_eq!(
+            structure.num_sites(),
+            12,
+            "24 expanded sites should merge to 12 (4 disordered + 8 ordered F)"
+        );
 
         // Check the merged disordered sites have 4 species each
-        let disordered_sites: Vec<_> = structure.site_occupancies.iter()
+        let disordered_sites: Vec<_> = structure
+            .site_occupancies
+            .iter()
             .filter(|so| !so.is_ordered())
             .collect();
         assert_eq!(disordered_sites.len(), 4, "should have 4 disordered sites");
         for site in &disordered_sites {
-            assert_eq!(site.species.len(), 4, "each disordered site should have 4 species");
+            assert_eq!(
+                site.species.len(),
+                4,
+                "each disordered site should have 4 species"
+            );
             // Ba should be dominant (0.88)
             assert_eq!(site.dominant_species().element, Element::Ba);
             // Total occupancy should be 0.06 + 0.88 + 0.05 + 0.01 = 1.0
             let total: f64 = site.species.iter().map(|(_, o)| o).sum();
-            assert!((total - 1.0).abs() < 1e-10, "occupancies should sum to 1.0, got {total}");
+            assert!(
+                (total - 1.0).abs() < 1e-10,
+                "occupancies should sum to 1.0, got {total}"
+            );
         }
 
         // Check F sites are ordered and unchanged
-        let ordered_sites: Vec<_> = structure.site_occupancies.iter()
+        let ordered_sites: Vec<_> = structure
+            .site_occupancies
+            .iter()
             .filter(|so| so.is_ordered())
             .collect();
         assert_eq!(ordered_sites.len(), 8, "should have 8 ordered F sites");
@@ -4886,7 +4917,10 @@ Fe 2.0 2.0 2.0
             + (coords[0].y - coords[1].y).powi(2)
             + (coords[0].z - coords[1].z).powi(2))
         .sqrt();
-        assert!(dist > 1.0, "merged sites should not overlap, got dist={dist}");
+        assert!(
+            dist > 1.0,
+            "merged sites should not overlap, got dist={dist}"
+        );
     }
 
     #[test]
@@ -4919,7 +4953,11 @@ Fe 2.0 2.0 2.0
         }"#;
 
         let structure = parse_structure_json(json).unwrap();
-        assert_eq!(structure.num_sites(), 1, "same element at same position should merge");
+        assert_eq!(
+            structure.num_sites(),
+            1,
+            "same element at same position should merge"
+        );
         // Occupancy should be summed
         assert_eq!(structure.site_occupancies[0].species.len(), 1);
         let (sp, occ) = &structure.site_occupancies[0].species[0];
@@ -4945,7 +4983,11 @@ Fe 2.0 2.0 2.0
         assert_eq!(structure.num_sites(), 3, "K+Ba merge into 1 + 2 F = 3");
 
         let state = structure_to_torch_sim_state(&structure);
-        assert_eq!(state.positions.len(), 3, "TorchSimState should have 3 atoms");
+        assert_eq!(
+            state.positions.len(),
+            3,
+            "TorchSimState should have 3 atoms"
+        );
 
         // Check no positions overlap
         for atom_idx in 0..state.positions.len() {
@@ -4964,7 +5006,10 @@ Fe 2.0 2.0 2.0
         }
 
         // Dominant species (Ba, 0.9) should be used for atomic number
-        assert_eq!(state.atomic_numbers[0], 56, "Ba should be dominant at merged site");
+        assert_eq!(
+            state.atomic_numbers[0], 56,
+            "Ba should be dominant at merged site"
+        );
     }
 
     #[test]
@@ -4979,7 +5024,11 @@ Fe 2.0 2.0 2.0
         }"#;
 
         let structure = parse_structure_json_with_merge_tol(json, 0.0).unwrap();
-        assert_eq!(structure.num_sites(), 2, "merge_tol=0 should keep all sites separate");
+        assert_eq!(
+            structure.num_sites(),
+            2,
+            "merge_tol=0 should keep all sites separate"
+        );
     }
 
     #[test]
@@ -4998,7 +5047,11 @@ Fe 2.0 2.0 2.0
         }"#;
 
         let structure = parse_structure_json(json).unwrap();
-        assert_eq!(structure.num_sites(), 2, "4 co-located sites + 1 F = 2 sites");
+        assert_eq!(
+            structure.num_sites(),
+            2,
+            "4 co-located sites + 1 F = 2 sites"
+        );
         assert_eq!(
             structure.site_occupancies[0].species.len(),
             4,

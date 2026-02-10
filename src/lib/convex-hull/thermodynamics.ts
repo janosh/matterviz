@@ -23,7 +23,7 @@ import type {
   Point3D,
   ProcessedPhaseData,
 } from './types'
-import { get_arity, is_on_hull, is_unary_entry } from './types'
+import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './types'
 
 // Track warned keys to avoid log spam on large datasets with repeated invalid keys
 const warned_keys = new Set<string>()
@@ -450,7 +450,7 @@ export function get_convex_hull_stats(
   elements: ElementSymbol[],
   max_arity: number = 4,
 ): PhaseStats | null {
-  if (!processed_entries || processed_entries.length === 0) return null
+  if (processed_entries.length === 0) return null
   max_arity = Math.max(1, max_arity)
 
   let unary = 0
@@ -469,18 +469,20 @@ export function get_convex_hull_stats(
   // Zero out counts beyond system dimensionality for cleaner display
   if (max_arity < 4) quaternary = 0
   if (max_arity < 3) ternary = 0
+  if (max_arity < 2) binary = 0
 
-  const stable_count = processed_entries.filter(is_on_hull).length
+  const stable_count = processed_entries.filter((entry) => is_on_hull(entry)).length
   const unstable_count = processed_entries.length - stable_count
 
   const energies = processed_entries
     .map((entry) => entry.e_form_per_atom ?? entry.energy_per_atom)
     .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
 
+  // Use reduce instead of Math.min/max(...arr) to avoid stack overflow on large datasets
   const energy_range = energies.length > 0
     ? {
-      min: Math.min(...energies),
-      max: Math.max(...energies),
+      min: energies.reduce((min, val) => val < min ? val : min, Infinity),
+      max: energies.reduce((max, val) => val > max ? val : max, -Infinity),
       avg: energies.reduce((sum, val) => sum + val, 0) / energies.length,
     }
     : { min: 0, max: 0, avg: 0 }
@@ -490,7 +492,7 @@ export function get_convex_hull_stats(
     .filter((val): val is number => typeof val === `number` && val >= 0)
   const hull_distance = hull_distances.length > 0
     ? {
-      max: Math.max(...hull_distances),
+      max: hull_distances.reduce((max, val) => val > max ? val : max, -Infinity),
       avg: hull_distances.reduce((sum, val) => sum + val, 0) / hull_distances.length,
     }
     : { max: 0, avg: 0 }
@@ -529,11 +531,15 @@ export function process_hull_for_stats(
   const processed = process_hull_entries(entries)
   if (!processed.entries.length) return null
 
-  // Add ConvexHullEntry-required fields (visible, is_element)
+  // Add ConvexHullEntry-required fields (visible, is_element, x/y/z)
+  // x/y/z default to 0 since high-dim systems aren't visually plotted
   for (const entry of processed.entries) {
     const hull_entry = entry as ConvexHullEntry
     hull_entry.visible = true
     hull_entry.is_element = get_arity(entry) === 1
+    hull_entry.x = 0
+    hull_entry.y = 0
+    hull_entry.z = 0
   }
 
   // Compute formation energies
@@ -550,14 +556,14 @@ export function process_hull_for_stats(
     const hull_distances = calculate_e_above_hull(
       processed.entries,
       processed.entries,
-    ) as Record<string, number>
+    )
 
     for (const entry of processed.entries) {
       const id = entry.entry_id ?? JSON.stringify(entry.composition)
       const dist = hull_distances[id]
       if (typeof dist === `number` && Number.isFinite(dist)) {
         entry.e_above_hull = dist
-        entry.is_stable = dist < 1e-6
+        entry.is_stable = dist < HULL_STABILITY_TOL
       }
     }
   } catch (err) {
@@ -566,7 +572,9 @@ export function process_hull_for_stats(
   }
 
   return {
-    stable_entries: processed.entries.filter(is_on_hull) as ConvexHullEntry[],
+    stable_entries: processed.entries.filter((entry) =>
+      is_on_hull(entry)
+    ) as ConvexHullEntry[],
     unstable_entries: processed.entries.filter(
       (entry) => !is_on_hull(entry) && typeof entry.e_above_hull === `number`,
     ) as ConvexHullEntry[],

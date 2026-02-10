@@ -2,7 +2,6 @@
   import { get_alphabetical_formula } from '$lib/composition/format'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
-  import type { InfoItem } from '$lib/layout'
   import Histogram from '$lib/plot/Histogram.svelte'
   import type { Label, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
@@ -89,32 +88,12 @@
 
   let pane_data = $derived.by(() => {
     if (!phase_stats) return []
-    const sections: { title: string; items: InfoItem[] }[] = []
 
-    // Determine system dimensionality from chemical_system string (count elements)
+    const pct = (count: number) =>
+      phase_stats.total > 0 ? format_num(count / phase_stats.total, `.1~%`) : `0%`
+
+    // Determine system dimensionality from chemical_system string
     const num_elements = phase_stats.chemical_system.split(`-`).length
-    const max_arity = Math.max(
-      num_elements,
-      phase_stats.quinary_plus > 0
-        ? 5
-        : phase_stats.quaternary > 0
-        ? 4
-        : phase_stats.ternary > 0
-        ? 3
-        : phase_stats.binary > 0
-        ? 2
-        : 1,
-    )
-
-    const phase_items: InfoItem[] = [
-      {
-        label: `Total entries in ${phase_stats.chemical_system}`,
-        value: format_num(phase_stats.total),
-        key: `total-entries`,
-      },
-    ]
-
-    // Only show phase types that exist or are within expected dimensionality
     const arity_types: [string, PhaseArityField, number][] = [
       [`Unary`, `unary`, 1],
       [`Binary`, `binary`, 2],
@@ -122,73 +101,78 @@
       [`Quaternary`, `quaternary`, 4],
       [`Quinary+`, `quinary_plus`, 5],
     ]
-    for (const [display, field, min_arity] of arity_types) {
-      const count = phase_stats[field]
-      if (count > 0 || (max_arity >= min_arity && min_arity <= 4)) {
-        phase_items.push({
-          label: `${display} phases`,
-          value: `${format_num(count)} (${
-            format_num(count / phase_stats.total, `.1~%`)
-          })`,
-          key: `${field}-phases`,
-        })
-      }
-    }
+    // max arity from data or system dimensionality
+    const max_arity = arity_types.reduce(
+      (max, [, field, arity]) => phase_stats[field] > 0 ? Math.max(max, arity) : max,
+      num_elements,
+    )
 
-    sections.push({ title: ``, items: phase_items })
-
-    sections.push({
-      title: `Stability`,
-      items: [
-        {
-          label: `Stable phases`,
-          value: `${format_num(phase_stats.stable)} (${
-            format_num(phase_stats.stable / phase_stats.total, `.1~%`)
-          })`,
-          key: `stable-phases`,
-        },
-        {
-          label: `Unstable phases`,
-          value: `${format_num(phase_stats.unstable)} (${
-            format_num(phase_stats.unstable / phase_stats.total, `.1~%`)
-          })`,
-          key: `unstable-phases`,
-        },
-      ],
-    })
-
-    sections.push({
-      title: `E<sub>form</sub> distribution`,
-      items: [{
-        label: `Min / avg / max (eV/atom)`,
-        value: `${format_num(phase_stats.energy_range.min, `.3f`)} / ${
-          format_num(phase_stats.energy_range.avg, `.3f`)
-        } / ${format_num(phase_stats.energy_range.max, `.3f`)}`,
-        key: `formation-energy`,
-      }],
-    })
-
-    sections.push({
-      title: `E<sub>above hull</sub> distribution`,
-      items: [{
-        label: `Max / avg (eV/atom)`,
-        value: `${format_num(phase_stats.hull_distance.max, `.3f`)} / ${
-          format_num(phase_stats.hull_distance.avg, `.3f`)
-        }`,
-        key: `hull-distance`,
-      }],
-    })
-
-    return sections
+    return [
+      {
+        title: ``,
+        items: [
+          {
+            label: `Total entries in ${phase_stats.chemical_system}`,
+            value: format_num(phase_stats.total),
+            key: `total-entries`,
+          },
+          // Only show phase types that exist or are within system dimensionality
+          ...arity_types
+            .filter(([, field, arity]) =>
+              phase_stats[field] > 0 || max_arity >= arity
+            )
+            .map(([display, field]) => ({
+              label: `${display} phases`,
+              value: `${format_num(phase_stats[field])} (${pct(phase_stats[field])})`,
+              key: `${field}-phases`,
+            })),
+        ],
+      },
+      {
+        title: `Stability`,
+        items: [
+          {
+            label: `Stable phases`,
+            value: `${format_num(phase_stats.stable)} (${pct(phase_stats.stable)})`,
+            key: `stable-phases`,
+          },
+          {
+            label: `Unstable phases`,
+            value: `${format_num(phase_stats.unstable)} (${
+              pct(phase_stats.unstable)
+            })`,
+            key: `unstable-phases`,
+          },
+        ],
+      },
+      {
+        title: `E<sub>form</sub> distribution`,
+        items: [{
+          label: `Min / avg / max (eV/atom)`,
+          value: `${format_num(phase_stats.energy_range.min, `.3f`)} / ${
+            format_num(phase_stats.energy_range.avg, `.3f`)
+          } / ${format_num(phase_stats.energy_range.max, `.3f`)}`,
+          key: `formation-energy`,
+        }],
+      },
+      {
+        title: `E<sub>above hull</sub> distribution`,
+        items: [{
+          label: `Max / avg (eV/atom)`,
+          value: `${format_num(phase_stats.hull_distance.max, `.3f`)} / ${
+            format_num(phase_stats.hull_distance.avg, `.3f`)
+          }`,
+          key: `hull-distance`,
+        }],
+      },
+    ]
   })
 
   // Table view: visible entries filtered by min element count
   let visible_entries = $derived(
-    all_entries.filter((entry) => {
-      if (!entry.visible) return false
-      if (min_n_elements <= 1) return true
-      return get_arity(entry) >= min_n_elements
-    }),
+    all_entries.filter((entry) =>
+      entry.visible && (min_n_elements <= 1 || get_arity(entry) >= min_n_elements)
+    ),
   )
   let has_raw = $derived(
     visible_entries.some((entry) => entry.energy_per_atom !== undefined),
@@ -198,33 +182,35 @@
     all_entries.reduce((max, entry) => Math.max(max, get_arity(entry)), 1),
   )
 
-  // Map from row object to source entry for click handler
-  let entry_by_row = new WeakMap<RowData, ConvexHullEntry>()
-
-  let table_data = $derived(visible_entries.map((entry, idx) => {
-    const n_atoms = Object.values(entry.composition).reduce(
-      (sum, count) => sum + count,
-      0,
-    )
-    const on_hull = is_on_hull(entry)
-    const formula = entry.reduced_formula ?? entry.name ??
-      get_alphabetical_formula(entry.composition, true, ``)
-    const row: RowData = {
-      '#': idx + 1,
-      Stable: on_hull
-        ? `<span style="color: #22c55e" title="On hull">●</span>`
-        : `<span style="color: #666; opacity: 0.4" title="Above hull">●</span>`,
-      Formula: on_hull ? `<strong>${formula}</strong>` : formula,
-      'E<sub>hull</sub>': entry.e_above_hull ?? null,
-      'E<sub>form</sub>': entry.e_form_per_atom ?? entry.energy_per_atom ?? null,
-    }
-    if (has_raw) row[`E<sub>raw</sub>`] = entry.energy_per_atom
-    if (has_ids) row.ID = entry.entry_id
-    row[`N<sub>el</sub>`] = get_arity(entry)
-    row[`N<sub>at</sub>`] = n_atoms
-    entry_by_row.set(row, entry)
-    return row
-  }))
+  // Build table rows and a WeakMap from row→entry for the click handler
+  let { table_data, entry_by_row } = $derived.by(() => {
+    const map = new WeakMap<RowData, ConvexHullEntry>()
+    const rows = visible_entries.map((entry, idx) => {
+      const n_atoms = Object.values(entry.composition).reduce(
+        (sum, count) => sum + count,
+        0,
+      )
+      const on_hull = is_on_hull(entry)
+      const formula = entry.reduced_formula ?? entry.name ??
+        get_alphabetical_formula(entry.composition, true, ``)
+      const row: RowData = {
+        '#': idx + 1,
+        Stable: on_hull
+          ? `<span style="color: var(--hull-stable-color, #22c55e)" title="On hull">●</span>`
+          : `<span style="color: var(--hull-unstable-color, #666); opacity: 0.4" title="Above hull">●</span>`,
+        Formula: on_hull ? `<strong>${formula}</strong>` : formula,
+        'E<sub>hull</sub>': entry.e_above_hull ?? null,
+        'E<sub>form</sub>': entry.e_form_per_atom ?? entry.energy_per_atom ?? null,
+      }
+      if (has_raw) row[`E<sub>raw</sub>`] = entry.energy_per_atom
+      if (has_ids) row.ID = entry.entry_id
+      row[`N<sub>el</sub>`] = get_arity(entry)
+      row[`N<sub>at</sub>`] = n_atoms
+      map.set(row, entry)
+      return row
+    })
+    return { table_data: rows, entry_by_row: map }
+  })
 
   function handle_row_click(_event: MouseEvent, row: RowData): void {
     const entry = entry_by_row.get(row)
@@ -232,9 +218,6 @@
   }
 
   let table_width = $derived(layout === `side-by-side` ? `fit-content` : `100%`)
-  let table_style = $derived(
-    `width: ${table_width}${on_entry_click ? `; cursor: pointer` : ``}`,
-  )
 
   let table_columns: Label[] = $derived(
     [
@@ -366,7 +349,7 @@
     scroll_style={layout === `side-by-side`
     ? `flex: 1 1 0; overflow: auto`
     : `max-height: var(--hull-stats-max-height, 500px)`}
-    style={table_style}
+    style={`width: ${table_width}`}
     onrowclick={on_entry_click ? handle_row_click : undefined}
   />
 {/snippet}
@@ -425,6 +408,9 @@
       flex: 1 1 0;
       min-height: 0;
     }
+  }
+  .convex-hull-stats :global(tbody tr[onclick]) {
+    cursor: pointer;
   }
   section div {
     display: flex;
