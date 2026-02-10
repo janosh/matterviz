@@ -541,7 +541,8 @@ class TestEdgeCases:
 
     def test_dimer_same_position_raises(self) -> None:
         """Create dimer with atoms at same position raises error."""
-        # Two atoms at exact same fractional coordinates
+        # Two atoms at exact same fractional coordinates: either merged during
+        # parsing (causing out-of-bounds) or detected as same position by create_dimer
         degenerate = make_cubic_structure(
             4.0,
             [
@@ -549,7 +550,7 @@ class TestEdgeCases:
                 make_site("Fe", [0.0, 0.0, 0.0]),  # Exact same position
             ],
         )
-        with pytest.raises(ValueError, match="same position"):
+        with pytest.raises(ValueError, match="same position|out of bounds"):
             defects.create_dimer(structure_to_json(degenerate), 0, 1, 2.0)
 
     def test_distort_bonds_highly_skewed_cell(self) -> None:
