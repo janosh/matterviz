@@ -36,6 +36,7 @@
     default_num_format = `.3`,
     show_heatmap = $bindable(true),
     heatmap_class = `heatmap`,
+    onrowclick,
     onrowdblclick,
     column_order = $bindable([]),
     export_data = false,
@@ -46,11 +47,16 @@
     selected_rows = $bindable([]),
     hidden_columns = $bindable([]),
     scroll_style,
+    root_style,
     onsort = undefined,
     onsorterror = undefined,
     loading = $bindable(false),
     sort_data = true,
     heatmap_opacity = $bindable(1),
+    empty_message = `No data`,
+    show_row_numbers = false,
+    header_cell,
+    footer,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     data: RowData[]
@@ -65,6 +71,7 @@
     default_num_format?: string
     show_heatmap?: boolean
     heatmap_class?: string
+    onrowclick?: (event: MouseEvent, row: RowData) => void
     onrowdblclick?: (event: MouseEvent, row: RowData) => void
     // Array of column IDs to control display order. IDs are derived as:
     // - Ungrouped columns: col.key ?? col.label
@@ -79,6 +86,8 @@
     selected_rows?: RowData[]
     hidden_columns?: string[]
     scroll_style?: string
+    // Inline styles for the root table container (merged with rest.style). Use instead of global CSS overrides.
+    root_style?: string
     // Async callback for server-side sorting. When provided, client-side sorting is skipped
     // and the callback is called with (column_id, direction) to fetch new data from server.
     onsort?: (column: string, dir: `asc` | `desc`) => Promise<RowData[]>
@@ -92,6 +101,14 @@
     // Heatmap cell background opacity (0–1). Controls both the visual fade via CSS
     // color-mix() and the JS text contrast correction. Default 1 (fully opaque).
     heatmap_opacity?: number
+    // Message shown when the table has no data rows. Set to empty string to hide.
+    empty_message?: string
+    // Show a row number column as the first column
+    show_row_numbers?: boolean
+    // Custom snippet for rendering header cells. Falls back to {@html col.label}.
+    header_cell?: Snippet<[{ col: Label }]>
+    // Footer snippet rendered inside <tfoot> below the table body
+    footer?: Snippet
   } = $props()
 
   let container_el = $state<HTMLDivElement>()
@@ -137,6 +154,9 @@
       ? { page_size: 25, ...(typeof pagination === `object` ? pagination : {}) }
       : null,
   )
+
+  // Mutable page size — writable $derived allows user to change via dropdown
+  let effective_page_size = $derived(pagination_config?.page_size ?? 25)
 
   // Normalize search config
   let search_config = $derived(
@@ -237,6 +257,13 @@
 
   let drag_col_id = $state<string | null>(null)
   let drag_over_col_id = $state<string | null>(null)
+
+  // Merge root_style with rest.style for root div; omit style from rest to avoid duplicate
+  let rest_props = $derived.by(() => {
+    const { style: rest_style, ...other_props } = rest
+    const merged = [rest_style, root_style].filter(Boolean).join(`; `)
+    return { ...other_props, ...(merged ? { style: merged } : {}) }
+  })
 
   // WeakMap to assign stable unique IDs to row objects for efficient comparison and keying
   // This avoids O(n) JSON.stringify calls and prevents unnecessary re-renders
@@ -428,12 +455,12 @@
   // Paginated data
   let paginated_data = $derived.by(() => {
     if (!pagination_config) return sorted_data
-    const start = (current_page - 1) * pagination_config.page_size
-    return sorted_data.slice(start, start + pagination_config.page_size)
+    const start = (current_page - 1) * effective_page_size
+    return sorted_data.slice(start, start + effective_page_size)
   })
 
   let total_pages = $derived(
-    Math.ceil(sorted_data.length / (pagination_config?.page_size ?? 25)),
+    Math.ceil(sorted_data.length / effective_page_size),
   )
 
   // Track previous values to detect actual changes
@@ -452,6 +479,9 @@
       current_page = 1
       prev_search_query = search_query
       prev_data_length = sorted_data.length
+    } else if (total_pages > 0 && current_page > total_pages) {
+      // Clamp when total pages decreases (e.g., page size increase)
+      current_page = total_pages
     }
   })
 
@@ -646,41 +676,69 @@
     return selected_rows.some((r) => get_row_id(r) === row_id)
   }
 
-  // Export functions
-  function export_csv(filename = `table-export`) {
-    const headers = visible_columns.map((col) => col.label)
-    const rows = sorted_data.map((row) =>
+  // Select-all: checks if every row on the current page is selected
+  let all_page_selected = $derived(
+    paginated_data.length > 0 && paginated_data.every((row) => is_row_selected(row)),
+  )
+
+  function toggle_select_all() {
+    if (all_page_selected) {
+      const page_ids = new Set(paginated_data.map(get_row_id))
+      selected_rows = selected_rows.filter((row) => !page_ids.has(get_row_id(row)))
+    } else {
+      const already = new Set(selected_rows.map(get_row_id))
+      const new_rows = paginated_data.filter((row) => !already.has(get_row_id(row)))
+      selected_rows = [...selected_rows, ...new_rows]
+    }
+  }
+
+  // Data source for exports: selected rows when any are selected, otherwise all sorted data
+  let export_rows = $derived(
+    show_row_select && selected_rows.length > 0 ? selected_rows : sorted_data,
+  )
+
+  // Serialize table as delimited text (shared by CSV export and clipboard copy)
+  // Per RFC 4180, fields containing commas, double quotes, or newlines must be quoted
+  function serialize_table(delimiter: string, csv_quote = false): string {
+    const quote = (str: string) => {
+      if (!csv_quote) return str
+      if (str.includes(`,`) || str.includes(`"`) || str.includes(`\n`)) {
+        return `"${str.replace(/"/g, `""`)}"`
+      }
+      return str
+    }
+    const headers = visible_columns.map((col) => quote(strip_html(col.label)))
+    const rows = export_rows.map((row) =>
       visible_columns.map((col) => {
         const val = row[get_col_id(col)]
         if (val == null) return ``
-        const str_val = strip_html(String(val))
-        // Escape quotes and wrap in quotes if contains comma
-        if (str_val.includes(`,`) || str_val.includes(`"`)) {
-          return `"${str_val.replace(/"/g, `""`)}"`
-        }
-        return str_val
+        return quote(strip_html(String(val)))
       })
     )
+    return [headers.join(delimiter), ...rows.map((r) => r.join(delimiter))].join(`\n`)
+  }
 
-    const csv_content = [headers.join(`,`), ...rows.map((r) => r.join(`,`))].join(
-      `\n`,
-    )
-    download_file(csv_content, `${filename}.csv`, `text/csv`)
+  function export_csv(filename = `table-export`) {
+    download_file(serialize_table(`,`, true), `${filename}.csv`, `text/csv`)
   }
 
   function export_json(filename = `table-export`) {
-    const rows = sorted_data.map((row) => {
+    const rows = export_rows.map((row) => {
       const clean_row: Record<string, unknown> = {}
       for (const col of visible_columns) {
         const col_id = get_col_id(col)
         const val = row[col_id]
-        clean_row[col.label] = typeof val === `string` ? strip_html(val) : val
+        clean_row[strip_html(col.label)] = typeof val === `string`
+          ? strip_html(val)
+          : val
       }
       return clean_row
     })
-
-    const json_content = JSON.stringify(rows, null, 2)
-    download_file(json_content, `${filename}.json`, `application/json`)
+    download_file(
+      JSON.stringify(rows, null, 2),
+      `${filename}.json`,
+      `application/json`,
+    )
   }
 
   function download_file(content: string, filename: string, mime_type: string) {
@@ -693,6 +751,10 @@
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
+  }
+
+  function copy_to_clipboard() {
+    navigator.clipboard.writeText(serialize_table(`\t`))
   }
 
   // Column visibility toggle
@@ -756,9 +818,9 @@
 
 <div
   {@attach tooltip()}
-  {...rest}
+  {...rest_props}
   bind:this={container_el}
-  class="table-container {rest.class ?? ``}"
+  class="table-container {rest_props.class ?? ``}"
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
   onmouseleave={() => [show_column_dropdown, show_export_dropdown] = [false, false]}
 >
@@ -854,6 +916,15 @@
                 <Icon icon="Download" style="width: 12px" /> JSON
               </button>
             {/if}
+            <button
+              class="dropdown-option"
+              onclick={() => {
+                copy_to_clipboard()
+                show_export_dropdown = false
+              }}
+            >
+              <Icon icon="Copy" style="width: 12px" /> Copy
+            </button>
           </div>
         {/if}
       </div>
@@ -896,6 +967,9 @@
             {#if show_row_select}
               <th class="select-col"></th>
             {/if}
+            {#if show_row_numbers}
+              <th class="row-num-col"></th>
+            {/if}
             {#each visible_columns as
               { label, group, description, sticky }
               (label + group)
@@ -918,9 +992,19 @@
         <!-- Second level headers -->
         <tr>
           {#if show_row_select}
-            <th class="select-col" title="Select rows">
-              <Icon icon="Checkbox" style="width: 14px; opacity: 0.7" />
+            <th
+              class="select-col"
+              title={all_page_selected ? `Deselect all` : `Select all on this page`}
+            >
+              <input
+                type="checkbox"
+                checked={all_page_selected}
+                onchange={toggle_select_all}
+              />
             </th>
+          {/if}
+          {#if show_row_numbers}
+            <th class="row-num-col">#</th>
           {/if}
           {#each visible_columns as col (col.label + col.group)}
             {@const col_id = get_col_id(col)}
@@ -977,7 +1061,11 @@
                 event.currentTarget.removeAttribute(`aria-grabbed`)
               }}
             >
-              {@html col.label}
+              {#if header_cell}
+                {@render header_cell({ col })}
+              {:else}
+                {@html col.label}
+              {/if}
               {@html sort_indicator(col, sort_state)}
               <!-- Column resize handle -->
               <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -995,14 +1083,32 @@
         </tr>
       </thead>
       <tbody>
-        {#each paginated_data as row (get_row_id(row))}
+        {#each paginated_data as row, row_idx (get_row_id(row))}
           {@const row_selected = show_row_select && is_row_selected(row)}
           <tr
             animate:flip={{ duration: 500 }}
             style={row.style}
             class={row.class ?? ``}
             class:selected={row_selected}
+            tabindex={onrowclick ? 0 : undefined}
+            onclick={onrowclick ? (event) => onrowclick(event, row) : undefined}
             ondblclick={onrowdblclick ? (event) => onrowdblclick(event, row) : undefined}
+            onkeydown={onrowclick
+            ? (event) => {
+              if (event.key === `Enter` || event.key === ` `) {
+                event.preventDefault()
+                onrowclick(event as unknown as MouseEvent, row)
+              } else if (event.key === `ArrowDown`) {
+                event.preventDefault()
+                ;(event.currentTarget.nextElementSibling as HTMLElement)
+                  ?.focus()
+              } else if (event.key === `ArrowUp`) {
+                event.preventDefault()
+                ;(event.currentTarget.previousElementSibling as HTMLElement)
+                  ?.focus()
+              }
+            }
+            : undefined}
           >
             {#if show_row_select}
               <td class="select-col">
@@ -1011,6 +1117,11 @@
                   checked={row_selected}
                   onchange={() => toggle_row_select(row)}
                 />
+              </td>
+            {/if}
+            {#if show_row_numbers}
+              <td class="row-num-col">
+                {(current_page - 1) * effective_page_size + row_idx + 1}
               </td>
             {/if}
             {#each visible_columns as col (col.label + col.group)}
@@ -1045,8 +1156,24 @@
               </td>
             {/each}
           </tr>
+        {:else}
+          {#if empty_message}
+            <tr class="empty-row">
+              <td
+                colspan={visible_columns.length + (show_row_select ? 1 : 0) +
+                (show_row_numbers ? 1 : 0)}
+              >
+                {empty_message}
+              </td>
+            </tr>
+          {/if}
         {/each}
       </tbody>
+      {#if footer}
+        <tfoot>
+          {@render footer()}
+        </tfoot>
+      {/if}
     </table>
   </div>
 
@@ -1103,6 +1230,21 @@
       >
         »
       </button>
+      {#if pagination_config.page_sizes}
+        <select
+          class="page-size-select"
+          onchange={(event) => {
+            effective_page_size = parseInt(event.currentTarget.value, 10)
+            current_page = 1
+          }}
+        >
+          {#each pagination_config.page_sizes as size (size)}
+            <option value={size} selected={size === effective_page_size}>
+              {size} / page
+            </option>
+          {/each}
+        </select>
+      {/if}
     </div>
   {/if}
 </div>
@@ -1189,6 +1331,13 @@
   }
   tbody tr:hover {
     filter: var(--heatmap-row-hover-filter, brightness(1.1));
+  }
+  tbody tr[tabindex] {
+    cursor: pointer;
+  }
+  tbody tr:focus-visible {
+    outline: 2px solid var(--highlight, #4a9eff);
+    outline-offset: -2px;
   }
   td[data-sort-value] {
     cursor: default;
@@ -1443,5 +1592,26 @@
     to {
       transform: rotate(360deg);
     }
+  }
+  .empty-row td {
+    text-align: center;
+    padding: 2em !important;
+    color: var(--text-muted, #888);
+    font-style: italic;
+  }
+  .row-num-col {
+    text-align: right;
+    color: var(--text-muted, #888);
+    font-size: 0.85em;
+    width: 2em;
+    padding-right: 8px !important;
+  }
+  .page-size-select {
+    padding: 2px 4px;
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.2));
+    border-radius: 3px;
+    background: light-dark(#fff, #333);
+    color: inherit;
+    font-size: 0.9em;
   }
 </style>
