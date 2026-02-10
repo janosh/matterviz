@@ -282,10 +282,15 @@ struct PymatgenStructure {
 ///
 /// Supports the format produced by `Structure.as_dict()` in pymatgen.
 ///
-/// # Limitations
+/// # Expanded disorder handling
 ///
-/// - **Disordered sites**: Sites with multiple species (partial occupancy) use only
-///   the first species. Full disorder support is not yet implemented.
+/// Some databases store disordered structures in an "expanded" format where
+/// each partial-occupancy species is a separate site at the same fractional
+/// coordinates. For example, a site shared by K (0.06) and Ba (0.88) is stored
+/// as two separate JSON sites at `[0, 0, 0]` rather than one site with two
+/// species entries. This function detects co-located sites (within
+/// `merge_tol` in fractional coordinates) and merges them into a single
+/// `SiteOccupancy` with multiple species.
 ///
 /// # Arguments
 ///
@@ -305,6 +310,15 @@ struct PymatgenStructure {
 /// let structure = parse_structure_json(json)?;
 /// ```
 pub fn parse_structure_json(json: &str) -> Result<Structure> {
+    parse_structure_json_with_merge_tol(json, 1e-6)
+}
+
+/// Like [`parse_structure_json`] but with a configurable tolerance for merging
+/// co-located sites. Sites whose fractional coordinates differ by less than
+/// `merge_tol` in all three dimensions are merged into a single disordered site.
+///
+/// Set `merge_tol` to `0.0` to disable merging entirely.
+pub fn parse_structure_json_with_merge_tol(json: &str, merge_tol: f64) -> Result<Structure> {
     let parsed: PymatgenStructure =
         serde_json::from_str(json).map_err(|e| FerroxError::JsonError {
             path: "inline".to_string(),
@@ -373,6 +387,34 @@ pub fn parse_structure_json(json: &str) -> Result<Structure> {
         })?;
         frac_coords.push(Vector3::new(abc[0], abc[1], abc[2]));
     }
+
+    // Merge co-located sites: when multiple sites share the same fractional
+    // coordinates (within tolerance), combine their species into a single
+    // SiteOccupancy. This handles the "expanded disorder" format where partial
+    // occupancies are stored as separate sites at identical positions rather
+    // than as multi-species entries on a single site.
+    let mut merged_occupancies: Vec<SiteOccupancy> = Vec::new();
+    let mut merged_coords: Vec<Vector3<f64>> = Vec::new();
+
+    for (occ, coord) in site_occupancies.into_iter().zip(frac_coords.into_iter()) {
+        // Check if this coordinate already exists in merged list
+        let existing_idx = merged_coords.iter().position(|existing| {
+            (existing.x - coord.x).abs() < merge_tol
+                && (existing.y - coord.y).abs() < merge_tol
+                && (existing.z - coord.z).abs() < merge_tol
+        });
+
+        if let Some(idx) = existing_idx {
+            // Merge species into existing site
+            merged_occupancies[idx].merge_from(&occ);
+        } else {
+            merged_occupancies.push(occ);
+            merged_coords.push(coord);
+        }
+    }
+
+    let site_occupancies = merged_occupancies;
+    let frac_coords = merged_coords;
 
     // Extract structure-level properties from JSON
     let properties: HashMap<String, serde_json::Value> = match parsed.properties {
@@ -4726,5 +4768,246 @@ Fe 2.0 2.0 2.0
         let result = parse_ase_atoms_json(json);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("same length"));
+    }
+
+    // --- Tests for expanded disorder merging (co-located sites) ---
+
+    #[test]
+    fn test_merge_colocated_sites_basic() {
+        // Two different elements at the exact same fractional coordinates
+        // with partial occupancies. Should be merged into one site.
+        let json = r#"{
+            "lattice": {"matrix": [[5,0,0],[0,5,0],[0,0,5]]},
+            "sites": [
+                {"species": [{"element": "K", "occu": 0.3}], "abc": [0,0,0]},
+                {"species": [{"element": "Ba", "occu": 0.7}], "abc": [0,0,0]},
+                {"species": [{"element": "Fe"}], "abc": [0.5,0.5,0.5]}
+            ]
+        }"#;
+
+        let structure = parse_structure_json(json).unwrap();
+        // K and Ba at [0,0,0] should be merged into 1 site, Fe stays separate
+        assert_eq!(structure.num_sites(), 2, "co-located K+Ba should merge into 1 site");
+        // The merged site should have Ba as dominant (0.7 > 0.3)
+        assert_eq!(structure.site_occupancies[0].dominant_species().element, Element::Ba);
+        // It should contain both species
+        assert_eq!(structure.site_occupancies[0].species.len(), 2);
+        // Total occupancy at merged site
+        let total_occ: f64 = structure.site_occupancies[0].species.iter().map(|(_, o)| o).sum();
+        assert!((total_occ - 1.0).abs() < 1e-10, "occupancies should sum to 1.0");
+        // Fe site should be ordered
+        assert!(structure.site_occupancies[1].is_ordered());
+        assert_eq!(structure.site_occupancies[1].dominant_species().element, Element::Fe);
+    }
+
+    #[test]
+    fn test_merge_colocated_four_species_per_site() {
+        // Reproduces the exact data format from SourceDocsUnique that caused
+        // NaN forces: 4 elements (K, Ba, Gd, Eu) each at the same 4 positions
+        // with partial occupancies, totaling 24 sites that should merge to 12.
+        let json = r#"{
+            "lattice": {"matrix": [[6.156,0,3.77e-16],[-3.77e-16,6.156,3.77e-16],[0,0,6.156]]},
+            "sites": [
+                {"species": [{"element": "K",  "occu": 0.06}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "K",  "occu": 0.06}], "abc": [0.5, 0.5, 0.0]},
+                {"species": [{"element": "K",  "occu": 0.06}], "abc": [0.5, 0.0, 0.5]},
+                {"species": [{"element": "K",  "occu": 0.06}], "abc": [0.0, 0.5, 0.5]},
+                {"species": [{"element": "Ba", "occu": 0.88}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "Ba", "occu": 0.88}], "abc": [0.5, 0.5, 0.0]},
+                {"species": [{"element": "Ba", "occu": 0.88}], "abc": [0.5, 0.0, 0.5]},
+                {"species": [{"element": "Ba", "occu": 0.88}], "abc": [0.0, 0.5, 0.5]},
+                {"species": [{"element": "Gd", "occu": 0.05}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "Gd", "occu": 0.05}], "abc": [0.5, 0.5, 0.0]},
+                {"species": [{"element": "Gd", "occu": 0.05}], "abc": [0.5, 0.0, 0.5]},
+                {"species": [{"element": "Gd", "occu": 0.05}], "abc": [0.0, 0.5, 0.5]},
+                {"species": [{"element": "F"}], "abc": [0.25, 0.25, 0.25]},
+                {"species": [{"element": "F"}], "abc": [0.75, 0.75, 0.25]},
+                {"species": [{"element": "F"}], "abc": [0.75, 0.25, 0.75]},
+                {"species": [{"element": "F"}], "abc": [0.25, 0.75, 0.75]},
+                {"species": [{"element": "F"}], "abc": [0.75, 0.75, 0.75]},
+                {"species": [{"element": "F"}], "abc": [0.25, 0.25, 0.75]},
+                {"species": [{"element": "F"}], "abc": [0.25, 0.75, 0.25]},
+                {"species": [{"element": "F"}], "abc": [0.75, 0.25, 0.25]},
+                {"species": [{"element": "Eu", "occu": 0.01}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "Eu", "occu": 0.01}], "abc": [0.5, 0.5, 0.0]},
+                {"species": [{"element": "Eu", "occu": 0.01}], "abc": [0.5, 0.0, 0.5]},
+                {"species": [{"element": "Eu", "occu": 0.01}], "abc": [0.0, 0.5, 0.5]}
+            ]
+        }"#;
+
+        let structure = parse_structure_json(json).unwrap();
+        // 4 positions with 4 species each = 16 expanded -> 4 merged + 8 F = 12 sites
+        assert_eq!(structure.num_sites(), 12,
+            "24 expanded sites should merge to 12 (4 disordered + 8 ordered F)");
+
+        // Check the merged disordered sites have 4 species each
+        let disordered_sites: Vec<_> = structure.site_occupancies.iter()
+            .filter(|so| !so.is_ordered())
+            .collect();
+        assert_eq!(disordered_sites.len(), 4, "should have 4 disordered sites");
+        for site in &disordered_sites {
+            assert_eq!(site.species.len(), 4, "each disordered site should have 4 species");
+            // Ba should be dominant (0.88)
+            assert_eq!(site.dominant_species().element, Element::Ba);
+            // Total occupancy should be 0.06 + 0.88 + 0.05 + 0.01 = 1.0
+            let total: f64 = site.species.iter().map(|(_, o)| o).sum();
+            assert!((total - 1.0).abs() < 1e-10, "occupancies should sum to 1.0, got {total}");
+        }
+
+        // Check F sites are ordered and unchanged
+        let ordered_sites: Vec<_> = structure.site_occupancies.iter()
+            .filter(|so| so.is_ordered())
+            .collect();
+        assert_eq!(ordered_sites.len(), 8, "should have 8 ordered F sites");
+        for site in &ordered_sites {
+            assert_eq!(site.dominant_species().element, Element::F);
+        }
+    }
+
+    #[test]
+    fn test_merge_colocated_preserves_cartesian_coords() {
+        // After merging, the Cartesian coordinates should not have overlapping
+        // atoms (the original bug: overlapping atoms caused NaN in NequIP).
+        let json = r#"{
+            "lattice": {"matrix": [[5,0,0],[0,5,0],[0,0,5]]},
+            "sites": [
+                {"species": [{"element": "Fe", "occu": 0.6}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "Co", "occu": 0.4}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "O"}],  "abc": [0.5, 0.5, 0.5]}
+            ]
+        }"#;
+
+        let structure = parse_structure_json(json).unwrap();
+        assert_eq!(structure.num_sites(), 2);
+
+        // Verify no overlapping Cartesian coordinates
+        let coords = structure.cart_coords();
+        let dist = ((coords[0].x - coords[1].x).powi(2)
+            + (coords[0].y - coords[1].y).powi(2)
+            + (coords[0].z - coords[1].z).powi(2))
+        .sqrt();
+        assert!(dist > 1.0, "merged sites should not overlap, got dist={dist}");
+    }
+
+    #[test]
+    fn test_merge_colocated_no_merge_for_ordered() {
+        // Fully ordered structure (no partial occupancy, no duplicate coords)
+        // should be unchanged.
+        let json = r#"{
+            "lattice": {"matrix": [[4,0,0],[0,4,0],[0,0,4]]},
+            "sites": [
+                {"species": [{"element": "Na"}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "Cl"}], "abc": [0.5, 0.5, 0.5]}
+            ]
+        }"#;
+
+        let structure = parse_structure_json(json).unwrap();
+        assert_eq!(structure.num_sites(), 2);
+        assert!(structure.site_occupancies[0].is_ordered());
+        assert!(structure.site_occupancies[1].is_ordered());
+    }
+
+    #[test]
+    fn test_merge_colocated_same_element_sums_occupancy() {
+        // Same element at same position should sum occupancies.
+        let json = r#"{
+            "lattice": {"matrix": [[5,0,0],[0,5,0],[0,0,5]]},
+            "sites": [
+                {"species": [{"element": "Fe", "occu": 0.5}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "Fe", "occu": 0.5}], "abc": [0.0, 0.0, 0.0]}
+            ]
+        }"#;
+
+        let structure = parse_structure_json(json).unwrap();
+        assert_eq!(structure.num_sites(), 1, "same element at same position should merge");
+        // Occupancy should be summed
+        assert_eq!(structure.site_occupancies[0].species.len(), 1);
+        let (sp, occ) = &structure.site_occupancies[0].species[0];
+        assert_eq!(sp.element, Element::Fe);
+        assert!((occ - 1.0).abs() < 1e-10, "occupancies should sum to 1.0");
+    }
+
+    #[test]
+    fn test_merge_colocated_torch_sim_state_no_overlap() {
+        // End-to-end test: ensure the TorchSimState from a merged structure
+        // has no overlapping atoms (the actual failure mode).
+        let json = r#"{
+            "lattice": {"matrix": [[6,0,0],[0,6,0],[0,0,6]]},
+            "sites": [
+                {"species": [{"element": "K",  "occu": 0.1}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "Ba", "occu": 0.9}], "abc": [0.0, 0.0, 0.0]},
+                {"species": [{"element": "F"}],  "abc": [0.25, 0.25, 0.25]},
+                {"species": [{"element": "F"}],  "abc": [0.75, 0.75, 0.75]}
+            ]
+        }"#;
+
+        let structure = parse_structure_json(json).unwrap();
+        assert_eq!(structure.num_sites(), 3, "K+Ba merge into 1 + 2 F = 3");
+
+        let state = structure_to_torch_sim_state(&structure);
+        assert_eq!(state.positions.len(), 3, "TorchSimState should have 3 atoms");
+
+        // Check no positions overlap
+        for atom_idx in 0..state.positions.len() {
+            for other_idx in (atom_idx + 1)..state.positions.len() {
+                let pos_a = state.positions[atom_idx];
+                let pos_b = state.positions[other_idx];
+                let dist = ((pos_a[0] - pos_b[0]).powi(2)
+                    + (pos_a[1] - pos_b[1]).powi(2)
+                    + (pos_a[2] - pos_b[2]).powi(2))
+                .sqrt();
+                assert!(
+                    dist > 0.1,
+                    "atoms {atom_idx} and {other_idx} overlap at dist={dist}"
+                );
+            }
+        }
+
+        // Dominant species (Ba, 0.9) should be used for atomic number
+        assert_eq!(state.atomic_numbers[0], 56, "Ba should be dominant at merged site");
+    }
+
+    #[test]
+    fn test_merge_disabled_with_zero_tolerance() {
+        // When merge_tol=0.0, no merging should occur even for identical coords.
+        let json = r#"{
+            "lattice": {"matrix": [[5,0,0],[0,5,0],[0,0,5]]},
+            "sites": [
+                {"species": [{"element": "K",  "occu": 0.3}], "abc": [0,0,0]},
+                {"species": [{"element": "Ba", "occu": 0.7}], "abc": [0,0,0]}
+            ]
+        }"#;
+
+        let structure = parse_structure_json_with_merge_tol(json, 0.0).unwrap();
+        assert_eq!(structure.num_sites(), 2, "merge_tol=0 should keep all sites separate");
+    }
+
+    #[test]
+    fn test_merge_colocated_near_zero_coords() {
+        // Test with coordinates very close to zero (like 6.16e-33) that
+        // appeared in real MongoDB data.
+        let json = r#"{
+            "lattice": {"matrix": [[5,0,0],[0,5,0],[0,0,5]]},
+            "sites": [
+                {"species": [{"element": "K",  "occu": 0.06}], "abc": [6.16e-33, 0.5, 0.5]},
+                {"species": [{"element": "Ba", "occu": 0.88}], "abc": [6.16e-33, 0.5, 0.5]},
+                {"species": [{"element": "Gd", "occu": 0.05}], "abc": [6.16e-33, 0.5, 0.5]},
+                {"species": [{"element": "Eu", "occu": 0.01}], "abc": [6.16e-33, 0.5, 0.5]},
+                {"species": [{"element": "F"}],  "abc": [0.25, 0.25, 0.25]}
+            ]
+        }"#;
+
+        let structure = parse_structure_json(json).unwrap();
+        assert_eq!(structure.num_sites(), 2, "4 co-located sites + 1 F = 2 sites");
+        assert_eq!(
+            structure.site_occupancies[0].species.len(),
+            4,
+            "merged site should have K, Ba, Gd, Eu"
+        );
+        assert_eq!(
+            structure.site_occupancies[0].dominant_species().element,
+            Element::Ba,
+            "Ba (0.88) should be dominant"
+        );
     }
 }
