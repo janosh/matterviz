@@ -155,13 +155,32 @@ export interface PhaseStats {
   binary: number
   ternary: number
   quaternary: number
+  quinary_plus: number
   stable: number
   unstable: number
   energy_range: { min: number; max: number; avg: number }
   hull_distance: { max: number; avg: number }
   elements: number
   chemical_system: string
+  // Maximum arity used when computing stats — arity counts beyond this
+  // were zeroed. The UI uses this to decide which arity rows to display.
+  max_arity: number
 }
+
+// Numeric arity-count fields in PhaseStats (for type-safe indexing).
+// Uses Extract to stay in sync with PhaseStats at compile time.
+export type PhaseArityField = Extract<
+  keyof PhaseStats,
+  `unary` | `binary` | `ternary` | `quaternary` | `quinary_plus`
+>
+
+// Tolerance for classifying a phase as on the convex hull (eV/atom)
+export const HULL_STABILITY_TOL = 1e-6
+
+// Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
+export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>
+  entry.is_stable === true ||
+  (typeof entry.e_above_hull === `number` && entry.e_above_hull < tol)
 
 // Arity helpers (inlined from former arity.ts)
 export const get_arity = (entry: PhaseData): number =>

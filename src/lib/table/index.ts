@@ -80,7 +80,7 @@ export type InitialSort =
 // Pagination configuration (boolean to enable, object for full control)
 export type Pagination =
   | boolean
-  | { page_size?: number }
+  | { page_size?: number; page_sizes?: number[] }
 
 // Search configuration (boolean to enable, object for full control)
 export type Search =
