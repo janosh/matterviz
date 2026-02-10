@@ -1845,9 +1845,11 @@ mod tests {
     #[test]
     fn test_structure_distance_basic_properties() {
         // Tests: identical=0, symmetry, ranking (identical < shifted)
+        // Disable primitive_cell since moyo standardizes NaCl to canonical Wyckoff
+        // positions, erasing the rigid-body shift and producing distance=0
         let s1 = make_nacl();
         let s2 = make_nacl_shifted();
-        let matcher = StructureMatcher::new();
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
 
         let d_self = matcher.get_structure_distance(&s1, &s1);
         let d12 = matcher.get_structure_distance(&s1, &s2);
