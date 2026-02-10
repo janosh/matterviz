@@ -20,6 +20,7 @@ import {
   interpolate_hull_2d,
   normalize_hull_composition_keys,
   process_hull_entries,
+  process_hull_for_stats,
 } from '$lib/convex-hull/thermodynamics'
 import type {
   ConvexHullTriangle,
@@ -456,6 +457,50 @@ describe(`get_convex_hull_stats`, () => {
       `Li-Fe-O`,
     )
   })
+
+  test(`counts quinary_plus entries for 5+ element compositions`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ Li: 1, Fe: 1, P: 1, O: 1, Mn: 1 }, -8.0),
+      make_phase({ Li: 1, Fe: 1, P: 1, O: 1, Mn: 1, Co: 1 }, -9.0),
+      make_phase({ Fe: 1, O: 1 }, -5.0),
+    ]
+    const stats = get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`, `Mn`, `Co`])
+    expect(stats?.quinary_plus).toBe(2)
+    expect(stats?.binary).toBe(1)
+  })
+
+  test(`uses default max_arity=4 when omitted`, () => {
+    const entries = [make_phase({ Li: 1, Fe: 1, P: 1, O: 4 }, -10.0)]
+    const stats = get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`])
+    expect(stats?.quaternary).toBe(1)
+  })
+
+  test(`zeroes binary when max_arity=1`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ Fe: 1 }, -4.0),
+      make_phase({ Fe: 1, O: 1 }, -5.0),
+    ]
+    const stats = get_convex_hull_stats(entries, [`Fe`, `O`], 1)
+    expect(stats?.unary).toBe(1)
+    expect(stats?.binary).toBe(0)
+  })
+
+  test(`zeroes ternary when max_arity < 3 and quaternary when max_arity < 4`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ Fe: 1 }, -4.0),
+      make_phase({ Fe: 1, O: 1 }, -5.0),
+      make_phase({ Li: 1, Fe: 1, O: 1 }, -6.0),
+      make_phase({ Li: 1, Fe: 1, P: 1, O: 1 }, -7.0),
+    ]
+    const stats_2 = get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], 2)
+    expect(stats_2?.ternary).toBe(0)
+    expect(stats_2?.quaternary).toBe(0)
+    expect(stats_2?.binary).toBe(1)
+
+    const stats_3 = get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], 3)
+    expect(stats_3?.ternary).toBe(1)
+    expect(stats_3?.quaternary).toBe(0)
+  })
 })
 
 describe(`Edge cases`, () => {
@@ -483,6 +528,73 @@ describe(`Edge cases`, () => {
     // At x=0.5, the tie-line formation energy = 0
     // e_above_hull = max(0, e_form_per_atom - 0) = e_form_per_atom
     expect(calculate_e_above_hull(entry, refs)).toBeCloseTo(e_form_per_atom)
+  })
+})
+
+describe(`process_hull_for_stats`, () => {
+  test(`returns null for empty entries`, () => {
+    expect(process_hull_for_stats([])).toBeNull()
+  })
+
+  test(`computes formation energies and hull distances for binary system`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe` }),
+      make_phase({ O: 1 }, -2.0, { entry_id: `O` }),
+      make_phase({ Fe: 1, O: 1 }, -2.5, { entry_id: `FeO` }),
+    ]
+    const result = process_hull_for_stats(entries)
+    expect(result).not.toBeNull()
+    const all = [...(result?.stable_entries ?? []), ...(result?.unstable_entries ?? [])]
+    // All entries should have computed e_form_per_atom
+    for (const entry of all) {
+      expect(typeof entry.e_form_per_atom).toBe(`number`)
+    }
+    // FeO should have e_above_hull computed
+    const feo = all.find((entry) => entry.entry_id === `FeO`)
+    expect(typeof feo?.e_above_hull).toBe(`number`)
+    // Unary refs are on the hull
+    expect(result?.stable_entries.length).toBeGreaterThanOrEqual(2)
+    // FeO at -2.5 eV/atom is above the tie-line (-3.0) → unstable
+    expect(
+      result?.unstable_entries.some(
+        (entry) => entry.entry_id === `FeO`,
+      ),
+    ).toBe(true)
+    // Phase stats should be populated
+    expect(result?.phase_stats?.total).toBe(3)
+    expect(result?.phase_stats?.unary).toBe(2)
+    expect(result?.phase_stats?.binary).toBe(1)
+  })
+
+  test(`sets visible and is_element on returned entries`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ Fe: 1 }, -4.0),
+      make_phase({ Fe: 1, O: 1 }, -3.5),
+    ]
+    const result = process_hull_for_stats(entries)
+    if (!result) throw new Error(`expected result`)
+    const all = [...result.stable_entries, ...result.unstable_entries]
+    for (const entry of all) {
+      expect(entry.visible).toBe(true)
+    }
+    // Fe is unary → is_element
+    const fe_entry = all.find((entry) => Object.keys(entry.composition).length === 1)
+    expect(fe_entry?.is_element).toBe(true)
+  })
+
+  test(`preserves pre-computed e_form_per_atom`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ Fe: 1 }, -4.0),
+      make_phase({ O: 1 }, -2.0),
+      make_phase({ Fe: 1, O: 1 }, -3.5, { e_form_per_atom: -99 }),
+    ]
+    const result = process_hull_for_stats(entries)
+    const compound = [
+      ...(result?.stable_entries ?? []),
+      ...(result?.unstable_entries ?? []),
+    ]
+      .find((entry) => Object.keys(entry.composition).length === 2)
+    expect(compound?.e_form_per_atom).toBe(-99)
   })
 })
 

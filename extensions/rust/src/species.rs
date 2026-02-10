@@ -324,6 +324,31 @@ impl SiteOccupancy {
             .expect("SiteOccupancy must have at least one species")
     }
 
+    /// Merge species from another `SiteOccupancy` into this one.
+    ///
+    /// Used to combine co-located sites (expanded disorder format) back into
+    /// a single site with multiple species. If the same species already exists,
+    /// its occupancy is summed.
+    pub fn merge_from(&mut self, other: &SiteOccupancy) {
+        for (sp, occ) in &other.species {
+            if let Some(existing) = self
+                .species
+                .iter_mut()
+                .find(|(existing_sp, _)| existing_sp == sp)
+            {
+                existing.1 += occ;
+            } else {
+                self.species.push((*sp, *occ));
+            }
+        }
+        // Merge properties: keep self's values, fill in missing keys from other
+        for (key, val) in &other.properties {
+            self.properties
+                .entry(key.clone())
+                .or_insert_with(|| val.clone());
+        }
+    }
+
     /// Get the total occupancy.
     pub fn total_occupancy(&self) -> f64 {
         self.species.iter().map(|(_, occ)| occ).sum()
