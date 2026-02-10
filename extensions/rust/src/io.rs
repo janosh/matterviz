@@ -396,12 +396,18 @@ pub fn parse_structure_json_with_merge_tol(json: &str, merge_tol: f64) -> Result
     let mut merged_occupancies: Vec<SiteOccupancy> = Vec::new();
     let mut merged_coords: Vec<Vector3<f64>> = Vec::new();
 
+    // Minimum-image distance for fractional coordinates in [0, 1)
+    let periodic_dist = |a: f64, b: f64| -> f64 {
+        let diff = (a - b).abs();
+        diff.min(1.0 - diff)
+    };
+
     for (occ, coord) in site_occupancies.into_iter().zip(frac_coords.into_iter()) {
-        // Check if this coordinate already exists in merged list
+        // Check if this coordinate already exists in merged list (periodic-aware)
         let existing_idx = merged_coords.iter().position(|existing| {
-            (existing.x - coord.x).abs() < merge_tol
-                && (existing.y - coord.y).abs() < merge_tol
-                && (existing.z - coord.z).abs() < merge_tol
+            periodic_dist(existing.x, coord.x) < merge_tol
+                && periodic_dist(existing.y, coord.y) < merge_tol
+                && periodic_dist(existing.z, coord.z) < merge_tol
         });
 
         if let Some(idx) = existing_idx {

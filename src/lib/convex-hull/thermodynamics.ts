@@ -475,7 +475,11 @@ export function get_convex_hull_stats(
   const unstable_count = processed_entries.length - stable_count
 
   const energies = processed_entries
-    .map((entry) => entry.e_form_per_atom ?? entry.energy_per_atom)
+    .map((entry) =>
+      entry.e_form_per_atom ??
+        entry.energy_per_atom ??
+        (typeof entry.energy === `number` ? get_energy_per_atom(entry) : undefined)
+    )
     .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
 
   // Use reduce instead of Math.min/max(...arr) to avoid stack overflow on large datasets
@@ -572,6 +576,10 @@ export function process_hull_for_stats(
       if (typeof dist === `number` && Number.isFinite(dist)) {
         entry.e_above_hull = dist
         entry.is_stable = dist < HULL_STABILITY_TOL
+      } else {
+        // Clear stale hull metadata so previous values don't persist
+        entry.e_above_hull = undefined
+        entry.is_stable = undefined
       }
     }
   } catch (err) {
