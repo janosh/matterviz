@@ -112,7 +112,14 @@ describe(`Bands component`, () => {
     await mount_bands({
       band_structs: { canonical: base_band_structure, alt: path_mismatch_structure },
       path_mode: `strict`,
+      'data-testid': `strict-mismatch-plot`,
+      role: `status`,
+      'aria-label': `Bands unavailable`,
     })
+    expect(document.querySelector(`[data-testid="strict-mismatch-plot"]`)).toBeTruthy()
+    expect(
+      document.querySelector(`[role="status"][aria-label="Bands unavailable"]`),
+    ).toBeTruthy()
     expect(document.querySelector(`.empty-state`)).toBeTruthy()
     expect(document.body.textContent).toContain(`different q-point paths`)
     expect(line_count()).toBe(0)

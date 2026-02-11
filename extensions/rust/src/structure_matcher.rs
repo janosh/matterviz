@@ -29,6 +29,8 @@ const DISJOINT_COMPOSITION_DISTANCE: f64 = 11.0;
 const EMPTY_STRUCTURE_DISTANCE: f64 = 1e9;
 /// Minimum lattice volume to avoid division by zero in normalization
 const MIN_LATTICE_VOLUME: f64 = 1e-12;
+/// Highest atomic number supported by `Element::from_atomic_number()` (includes pseudo-elements).
+const MAX_SUPPORTED_ATOMIC_NUMBER: u8 = 121;
 
 /// Type of comparator to use for species matching.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -236,7 +238,7 @@ impl StructureMatcher {
         mapping_kind: AnonymousClassMapping,
     ) -> HashMap<Element, String> {
         let mut class_mapping = HashMap::new();
-        for atomic_number in 1..=118 {
+        for atomic_number in 1..=MAX_SUPPORTED_ATOMIC_NUMBER {
             if let Some(element) = Element::from_atomic_number(atomic_number)
                 && let Some(class_label) = mapping_kind.class_for_element(element)
             {
@@ -244,6 +246,25 @@ impl StructureMatcher {
             }
         }
         class_mapping
+    }
+
+    /// Return elements present in the inputs that are not covered by a predefined mapping.
+    pub fn missing_predefined_mapping_elements(
+        struct1: &Structure,
+        struct2: &Structure,
+        mapping_kind: AnonymousClassMapping,
+    ) -> Vec<Element> {
+        let mut missing_elements = HashSet::new();
+        for structure in [struct1, struct2] {
+            for species in structure.species() {
+                if mapping_kind.class_for_element(species.element).is_none() {
+                    missing_elements.insert(species.element);
+                }
+            }
+        }
+        let mut sorted_missing: Vec<_> = missing_elements.into_iter().collect();
+        sorted_missing.sort_unstable();
+        sorted_missing
     }
 
     /// Check if two species are equal according to the comparator.
@@ -902,6 +923,11 @@ impl StructureMatcher {
                 self.fit_anonymous_by_element_permutation(struct1, struct2)
             }
             AnonymousMatchMode::Predefined(mapping_kind) => {
+                if !Self::missing_predefined_mapping_elements(struct1, struct2, mapping_kind)
+                    .is_empty()
+                {
+                    return false;
+                }
                 let class_mapping = Self::predefined_class_mapping(mapping_kind);
                 self.fit_anonymous_with_class_mapping(struct1, struct2, &class_mapping)
             }
@@ -2043,6 +2069,44 @@ mod tests {
             &fe,
             &cu,
             Some(AnonymousMatchMode::Predefined(AnonymousClassMapping::Acx)),
+        ));
+    }
+
+    #[test]
+    fn test_fit_anonymous_predefined_metal_nonmetal_covers_isotopes() {
+        let h2o = Structure::new(
+            Lattice::cubic(5.0),
+            vec![
+                Species::neutral(Element::H),
+                Species::neutral(Element::H),
+                Species::neutral(Element::O),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+                Vector3::new(0.25, 0.25, 0.25),
+            ],
+        );
+        let d2o = Structure::new(
+            Lattice::cubic(5.0),
+            vec![
+                Species::neutral(Element::D),
+                Species::neutral(Element::D),
+                Species::neutral(Element::O),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+                Vector3::new(0.25, 0.25, 0.25),
+            ],
+        );
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        assert!(matcher.fit_anonymous(
+            &h2o,
+            &d2o,
+            Some(AnonymousMatchMode::Predefined(
+                AnonymousClassMapping::MetalNonMetal,
+            )),
         ));
     }
 

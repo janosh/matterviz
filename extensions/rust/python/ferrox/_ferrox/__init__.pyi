@@ -495,13 +495,13 @@ class StructureMatcher:
         struct1: str | dict[str, Any],
         struct2: str | dict[str, Any],
         mapping_name: str | None = None,
-        mapping: dict[str, str] | None = None,
+        mapping: Mapping[str, str] | None = None,
     ) -> bool: ...
     def get_structure_distance_anonymous_mapped(
         self,
         struct1: str | dict[str, Any],
         struct2: str | dict[str, Any],
-        mapping: dict[str, str],
+        mapping: Mapping[str, str],
     ) -> float | None: ...
     def get_structure_distance_anonymous_predefined(
         self,

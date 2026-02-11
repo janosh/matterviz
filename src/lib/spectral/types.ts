@@ -79,6 +79,8 @@ export interface ElectronicDos {
 
 // Spin display mode for electronic DOS visualization
 export type SpinMode = `mirror` | `overlay` | `up_only` | `down_only` | null
+// Spin display mode for band structure visualization (no mirror mode)
+export type BandsSpinMode = Exclude<SpinMode, `mirror`>
 
 // Projected DOS type for pymatgen CompleteDos extraction
 export type PdosType = `atom` | `orbital`

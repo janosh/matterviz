@@ -98,6 +98,12 @@ impl WasmStructureMatcher {
                             "Invalid mapping_name: {predefined_mapping_name}. Use one of: ACX, CEA, Metal/Non-metal"
                         )
                     })?;
+                validate_predefined_mapping_coverage(
+                    &s1,
+                    &s2,
+                    mapping_kind,
+                    &predefined_mapping_name,
+                )?;
                 Ok(self.inner.fit_anonymous(
                     &s1,
                     &s2,
@@ -187,6 +193,7 @@ impl WasmStructureMatcher {
                     "Invalid mapping_name: {mapping_name}. Use one of: ACX, CEA, Metal/Non-metal"
                 )
             })?;
+            validate_predefined_mapping_coverage(&s1, &s2, mapping_kind, &mapping_name)?;
             Ok(self
                 .inner
                 .get_structure_distance_anonymous_predefined(&s1, &s2, mapping_kind))
@@ -242,6 +249,28 @@ impl Default for WasmStructureMatcher {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn validate_predefined_mapping_coverage(
+    struct1: &crate::structure::Structure,
+    struct2: &crate::structure::Structure,
+    mapping_kind: AnonymousClassMapping,
+    mapping_name: &str,
+) -> Result<(), String> {
+    let missing_elements =
+        StructureMatcher::missing_predefined_mapping_elements(struct1, struct2, mapping_kind);
+    if missing_elements.is_empty() {
+        return Ok(());
+    }
+
+    let missing_symbols = missing_elements
+        .iter()
+        .map(Element::symbol)
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(format!(
+        "Mapping '{mapping_name}' does not cover elements: {missing_symbols}"
+    ))
 }
 
 fn parse_class_mapping_by_symbol(

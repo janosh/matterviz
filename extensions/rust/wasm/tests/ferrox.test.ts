@@ -1,7 +1,7 @@
 // Tests for matterviz-wasm - mirrors Python tests in extensions/rust/tests/
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { WasmResult } from '../types.d.ts'
 
@@ -63,6 +63,32 @@ const class_mapping_second_json = {
     { species: [{ element: `Li`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
     { species: [{ element: `Br`, occu: 1 }], abc: [0.25, 0.25, 0.25] },
     { species: [{ element: `Br`, occu: 1 }], abc: [0.75, 0.75, 0.75] },
+  ],
+}
+
+const feo_json = {
+  lattice: { matrix: [[4, 0, 0], [0, 4, 0], [0, 0, 4]] },
+  sites: [
+    { species: [{ element: `Fe`, occu: 1 }], abc: [0, 0, 0] },
+    { species: [{ element: `O`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+  ],
+}
+
+const h2o_json = {
+  lattice: { matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]] },
+  sites: [
+    { species: [{ element: `H`, occu: 1 }], abc: [0, 0, 0] },
+    { species: [{ element: `H`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+    { species: [{ element: `O`, occu: 1 }], abc: [0.25, 0.25, 0.25] },
+  ],
+}
+
+const d2o_json = {
+  lattice: { matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]] },
+  sites: [
+    { species: [{ element: `D`, occu: 1 }], abc: [0, 0, 0] },
+    { species: [{ element: `D`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+    { species: [{ element: `O`, occu: 1 }], abc: [0.25, 0.25, 0.25] },
   ],
 }
 
@@ -330,6 +356,23 @@ describe(`WasmStructureMatcher`, () => {
       if (`error` in result) expect(result.error).toContain(expected_message)
     },
   )
+
+  it(`fit_anonymous reports uncovered elements for predefined mapping`, () => {
+    const matcher = new wasm.WasmStructureMatcher().with_primitive_cell(false)
+    const result = matcher.fit_anonymous(feo_json, feo_json, `ACX`)
+    expect(`error` in result).toBe(true)
+    if (`error` in result) {
+      expect(result.error).toContain(`does not cover elements`)
+      expect(result.error).toContain(`Fe`)
+    }
+  })
+
+  it(`fit_anonymous predefined metal/non-metal covers deuterium`, () => {
+    const matcher = new wasm.WasmStructureMatcher().with_primitive_cell(false)
+    expect(unwrap(matcher.fit_anonymous(h2o_json, d2o_json, `Metal/Non-metal`))).toBe(
+      true,
+    )
+  })
 
   it.each([
     [{ NotAnElement: `X` }, `Invalid element symbol`],

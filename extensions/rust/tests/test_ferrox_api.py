@@ -144,6 +144,38 @@ class TestStructureMatcherAnonymous:
         )
         return first_struct, second_struct
 
+    @classmethod
+    def _feo_structure(cls) -> str:
+        """Return a simple FeO structure used for uncovered-mapping tests."""
+        return cls._json_structure(
+            [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
+            [
+                {"species": [{"element": "Fe", "occu": 1}], "abc": [0, 0, 0]},
+                {"species": [{"element": "O", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
+            ],
+        )
+
+    @classmethod
+    def _water_isotope_pair(cls) -> tuple[str, str]:
+        """Return H2O and D2O structures for isotope-coverage tests."""
+        h2o_struct = cls._json_structure(
+            [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+            [
+                {"species": [{"element": "H", "occu": 1}], "abc": [0, 0, 0]},
+                {"species": [{"element": "H", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
+                {"species": [{"element": "O", "occu": 1}], "abc": [0.25, 0.25, 0.25]},
+            ],
+        )
+        d2o_struct = cls._json_structure(
+            [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+            [
+                {"species": [{"element": "D", "occu": 1}], "abc": [0, 0, 0]},
+                {"species": [{"element": "D", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
+                {"species": [{"element": "O", "occu": 1}], "abc": [0.25, 0.25, 0.25]},
+            ],
+        )
+        return h2o_struct, d2o_struct
+
     def test_fit_anonymous_default_element_permutation(self, nacl_json: str) -> None:
         """Default anonymous mode matches element-permuted prototypes."""
         mgo_json = self._json_structure(
@@ -196,6 +228,37 @@ class TestStructureMatcherAnonymous:
         matcher = StructureMatcher()
         with pytest.raises(ValueError, match=expected_error):
             matcher.fit_anonymous(nacl_json, nacl_json, mapping_name=mapping_name)
+
+    def test_fit_anonymous_predefined_reports_uncovered_elements(self) -> None:
+        """Predefined mappings error clearly when elements are not covered."""
+        feo_json = self._feo_structure()
+        matcher = StructureMatcher(primitive_cell=False)
+        with pytest.raises(ValueError, match=r"does not cover elements: .*Fe"):
+            matcher.fit_anonymous(feo_json, feo_json, mapping_name="ACX")
+
+    def test_distance_predefined_reports_uncovered_elements(self) -> None:
+        """Distance API errors clearly when predefined mapping misses elements."""
+        feo_json = self._feo_structure()
+        matcher = StructureMatcher(primitive_cell=False)
+        with pytest.raises(ValueError, match=r"does not cover elements: .*Fe"):
+            matcher.get_structure_distance_anonymous_predefined(
+                feo_json,
+                feo_json,
+                mapping_name="ACX",
+            )
+
+    def test_fit_anonymous_predefined_metal_nonmetal_covers_deuterium(self) -> None:
+        """Metal/non-metal mapping should treat D similarly to H."""
+        h2o_json, d2o_json = self._water_isotope_pair()
+        matcher = StructureMatcher(primitive_cell=False)
+        assert (
+            matcher.fit_anonymous(
+                h2o_json,
+                d2o_json,
+                mapping_name="Metal/Non-metal",
+            )
+            is True
+        )
 
     @pytest.mark.parametrize(
         ("mapping", "expected_error"),

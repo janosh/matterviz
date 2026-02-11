@@ -7,16 +7,18 @@
   import type { AxisConfig, DataSeries, FillRegion } from '$lib/plot/types'
   import * as helpers from '$lib/spectral/helpers'
   import type {
+    BandsSpinMode,
     BandStructureType,
     BaseBandStructure,
     FrequencyUnit,
     LineKwargs,
     PathMode,
     RibbonConfig,
-    SpinMode,
   } from '$lib/spectral/types'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+
+  type Dom_attr_value = string | number | boolean
 
   let {
     band_structs,
@@ -40,6 +42,10 @@
     show_units_control = true,
     show_spin_control = true,
     show_annotation_controls = true,
+    id = undefined,
+    class: class_name = undefined,
+    style = undefined,
+    'data-testid': data_testid = undefined,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
@@ -54,7 +60,7 @@
     ribbon_config?: RibbonConfig | Record<string, RibbonConfig>
     fermi_level?: number // Fermi level for electronic bands (auto-detected if not provided)
     units?: FrequencyUnit // Phonon frequency display units (electronic always eV)
-    band_spin_mode?: SpinMode // Electronic spin display: overlay (default), up_only, down_only
+    band_spin_mode?: BandsSpinMode // Electronic spin display: overlay (default), up_only, down_only
     highlight_regions?: {
       y_min: number
       y_max: number
@@ -69,7 +75,16 @@
     show_units_control?: boolean
     show_spin_control?: boolean
     show_annotation_controls?: boolean
+    id?: string
+    class?: string
+    style?: string
+    'data-testid'?: string
   } = $props()
+
+  const is_dom_attr_value = (attr_value: unknown): attr_value is Dom_attr_value =>
+    typeof attr_value === `string` ||
+    typeof attr_value === `number` ||
+    typeof attr_value === `boolean`
 
   // Helper function to get line styling for a band
   function get_line_style(
@@ -202,7 +217,7 @@
     return typeof efermi === `number` ? efermi : undefined
   })
 
-  let effective_spin_mode = $derived.by((): SpinMode => {
+  let effective_spin_mode = $derived.by((): BandsSpinMode => {
     if (detected_band_type !== `electronic`) return null
     return (band_spin_mode === `up_only` || band_spin_mode === `down_only`)
       ? band_spin_mode
@@ -230,27 +245,38 @@
     return all_segments
   })
 
+  let num_structures = $derived(Object.keys(band_structs_dict).length)
+  let all_segment_keys = $derived(Object.keys(all_segments))
+  let common_segment_keys = $derived.by(() =>
+    all_segment_keys.filter(
+      (segment_key) => all_segments[segment_key].length === num_structures,
+    )
+  )
+  let empty_state_attrs = $derived.by(() => {
+    const attrs: Record<string, Dom_attr_value> = {}
+    for (const [attr_name, attr_value] of Object.entries(rest)) {
+      if (
+        (attr_name === `role` || attr_name.startsWith(`aria-`)) &&
+        is_dom_attr_value(attr_value)
+      ) {
+        attrs[attr_name] = attr_value
+      }
+    }
+    return attrs
+  })
+
   // Compute path mismatch details for strict mode handling
   let strict_path_error = $derived.by((): string | null => {
     if (path_mode !== `strict`) return null
-    const num_structs = Object.keys(band_structs_dict).length
-    const all_segment_keys = Object.keys(all_segments)
-    const common_segments = all_segment_keys.filter(
-      (segment_key) => all_segments[segment_key].length === num_structs,
-    )
-    return common_segments.length === all_segment_keys.length
+    return common_segment_keys.length === all_segment_keys.length
       ? null
       : `Band structures have different q-point paths. Switch to path_mode="union" or "intersection" to compare non-identical paths.`
   })
 
   // Determine which segments to plot based on path_mode
   let segments_to_plot = $derived.by(() => {
-    if (path_mode === `union`) return new Set(Object.keys(all_segments))
-    const num_structs = Object.keys(band_structs_dict).length
-    const common_segments = Object.keys(all_segments).filter(
-      (segment_key) => all_segments[segment_key].length === num_structs,
-    )
-    return new Set(common_segments)
+    if (path_mode === `union`) return new Set(all_segment_keys)
+    return new Set(common_segment_keys)
   })
 
   // Map segments to x-axis positions
@@ -641,6 +667,10 @@
 </script>
 {#if has_series && !is_strict_path_error}
   <ScatterPlot
+    {id}
+    class={class_name}
+    {style}
+    data-testid={data_testid}
     series={series_data}
     {fill_regions}
     x_axis={{
@@ -878,7 +908,14 @@
     {/snippet}
   </ScatterPlot>
 {:else}
-  <EmptyState message={empty_state_message} />
+  <EmptyState
+    {id}
+    class={class_name}
+    {style}
+    data-testid={data_testid}
+    {...empty_state_attrs}
+    message={empty_state_message}
+  />
 {/if}
 
 <style>
