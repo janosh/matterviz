@@ -34,6 +34,7 @@ export interface BaseBandStructure {
   distance: number[]
   nb_bands: number
   bands: number[][] // [nb_bands][nb_qpoints]
+  spin_down_bands?: number[][] // [nb_bands][nb_qpoints] for spin-polarized electronic bands
   band_widths?: number[][] // [nb_bands][nb_qpoints] - width values for fat bands visualization
 }
 
@@ -78,6 +79,8 @@ export interface ElectronicDos {
 
 // Spin display mode for electronic DOS visualization
 export type SpinMode = `mirror` | `overlay` | `up_only` | `down_only` | null
+// Spin display mode for band structure visualization (no mirror mode)
+export type BandsSpinMode = Exclude<SpinMode, `mirror`>
 
 // Projected DOS type for pymatgen CompleteDos extraction
 export type PdosType = `atom` | `orbital`

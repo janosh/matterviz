@@ -1,5 +1,5 @@
 import { FormulaFilter } from '$lib/composition'
-import { flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
@@ -323,7 +323,7 @@ describe(`FormulaFilter`, () => {
     // Alphabetical order: Fe before O, Fe before Li
     { input: `Fe,O`, expected: `Fe,O`, mode: `elements` },
     { input: `Fe-Li`, expected: `Fe-Li`, mode: `chemsys` },
-    { input: `NaCl`, expected: `NaCl`, mode: `exact` },
+    { input: `NaCl`, expected: `ClNa`, mode: `exact` },
   ])(
     `normalizes "$input" to "$expected" (mode=$mode)`,
     async ({ input, expected, mode }) => {
@@ -952,6 +952,247 @@ describe(`FormulaFilter`, () => {
       mount_with_history()
       submit(`   `)
       expect(localStorage.getItem(HISTORY_KEY)).toBeNull()
+    })
+
+    test(`pins history entries and keeps pinned entries first`, () => {
+      seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
+      // Pin second entry
+      document.querySelectorAll<HTMLButtonElement>(`.history-pin`)[1].dispatchEvent(
+        new MouseEvent(`mousedown`, { bubbles: true }),
+      )
+      flushSync()
+
+      const values = Array.from(history_values()).map((item) => item.textContent?.trim())
+      expect(values[0]).toBe(`Li,Na`)
+    })
+
+    test(`clear-all button clears dropdown and persisted history`, () => {
+      seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
+      doc_query<HTMLButtonElement>(`.history-clear-all`).dispatchEvent(
+        new MouseEvent(`mousedown`, { bubbles: true }),
+      )
+      flushSync()
+      expect(history_dropdown()).toBeNull()
+      expect(localStorage.getItem(HISTORY_KEY)).toBe(JSON.stringify([]))
+      expect(localStorage.getItem(`${HISTORY_KEY}-pins`)).toBe(JSON.stringify([]))
+    })
+  })
+
+  describe(`extended features`, () => {
+    function mount_filter(props: Partial<ComponentProps<typeof FormulaFilter>>): void {
+      mount(FormulaFilter, {
+        target: document.body,
+        props: props as ComponentProps<typeof FormulaFilter>,
+      })
+    }
+
+    function submit_input(raw_value: string): void {
+      get_input().value = raw_value
+      get_input().dispatchEvent(new Event(`input`, { bubbles: true }))
+      get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
+      flushSync()
+    }
+
+    test(`mode lock prevents automatic mode inference`, async () => {
+      let mode = $state<`elements` | `chemsys` | `exact`>(`elements`)
+      let locked = $state(true)
+      mount_filter({
+        value: `Li-Fe-O`,
+        get search_mode() {
+          return mode
+        },
+        set search_mode(val) {
+          mode = val
+        },
+        get mode_locked() {
+          return locked
+        },
+        set mode_locked(val) {
+          locked = val
+        },
+      })
+      await tick()
+      expect(mode).toBe(`elements`)
+    })
+
+    test(`onparse emits structured token data`, () => {
+      const onparse = vi.fn()
+      mount_filter({ value: ``, onparse })
+      submit_input(`+Li,-O`)
+
+      expect(onparse).toHaveBeenCalled()
+      const last = onparse.mock.calls[onparse.mock.calls.length - 1][0]
+      expect(last.tokens.length).toBeGreaterThan(0)
+      expect(last.tokens.some((tok: { operator: string }) => tok.operator === `exclude`))
+        .toBe(
+          true,
+        )
+    })
+
+    test(`custom validate hook controls validation message`, () => {
+      const validate = vi.fn(() => ({
+        state: `warning`,
+        message: `custom warning`,
+      }))
+      mount_filter({
+        value: `Li,Fe`,
+        validate: validate as ComponentProps<typeof FormulaFilter>[`validate`],
+      })
+      flushSync()
+      expect(document.querySelector(`.validation-message`)?.textContent).toContain(
+        `custom warning`,
+      )
+    })
+
+    test(`invalid exact formulas emit invalid validation state`, () => {
+      const on_validation = vi.fn()
+      mount_filter({ value: ``, on_validation })
+      submit_input(`Xx2`)
+
+      const last_validation = on_validation.mock
+        .calls[on_validation.mock.calls.length - 1][0] as {
+          state: string
+          message: string | null
+        }
+      expect(last_validation.state).toBe(`invalid`)
+      expect(last_validation.message).toContain(`Invalid element symbol`)
+      expect(doc_query(`.formula-filter`).classList.contains(`invalid`)).toBe(true)
+    })
+
+    test(`invalid non-exact tokens are not silently dropped on submit`, () => {
+      const onchange = vi.fn()
+      const on_validation = vi.fn()
+      mount_filter({ value: ``, onchange, on_validation })
+      submit_input(`Li,Xx`)
+      expect(onchange).not.toHaveBeenCalled()
+      const invalid_validation = on_validation.mock.calls
+        .map((call) =>
+          call[0] as {
+            state: string
+            message: string | null
+          }
+        )
+        .find((validation) => validation.state === `invalid`)
+      expect(invalid_validation).toBeTruthy()
+      expect(invalid_validation?.message).toContain(`Invalid token`)
+      const last_validation = on_validation.mock
+        .calls[on_validation.mock.calls.length - 1][0] as {
+          state: string
+          message: string | null
+        }
+      expect(last_validation.state).toBe(`valid`)
+    })
+
+    test.each([
+      {
+        case_name: `normalize_exact=false preserves user exact formula order`,
+        props: { normalize_exact: false },
+        input: `NaCl`,
+        expected: `NaCl`,
+      },
+      {
+        case_name: `unicode subscripts normalize in exact mode`,
+        props: {},
+        input: `Fe₂O₃`,
+        expected: `Fe2O3`,
+      },
+    ])(`$case_name`, ({ props, input, expected }) => {
+      const onchange = vi.fn()
+      mount_filter({ value: ``, onchange, ...props })
+      submit_input(input)
+      expect(onchange).toHaveBeenLastCalledWith(expected, `exact`)
+    })
+
+    test(`mode hint click is ignored while mode is locked`, () => {
+      const onchange = vi.fn()
+      mount_filter({
+        value: `Li,Fe`,
+        mode_locked: true,
+        onchange,
+      })
+      doc_query<HTMLButtonElement>(`.mode-hint.clickable`).click()
+      flushSync()
+      expect(onchange).not.toHaveBeenCalled()
+      expect(doc_query(`.mode-hint.clickable`).classList.contains(`locked`)).toBe(true)
+    })
+
+    test(`lock button toggles mode_locked binding`, () => {
+      let mode_locked = $state(false)
+      mount_filter({
+        value: `Li,Fe`,
+        get mode_locked() {
+          return mode_locked
+        },
+        set mode_locked(next_value) {
+          mode_locked = next_value
+        },
+      })
+      const lock_btn = doc_query<HTMLButtonElement>(`.lock-btn`)
+      lock_btn.click()
+      flushSync()
+      expect(mode_locked).toBe(true)
+      lock_btn.click()
+      flushSync()
+      expect(mode_locked).toBe(false)
+    })
+
+    test(`renders removable token chips for tokenized input`, () => {
+      mount_filter({ value: `+Li,-O` })
+      flushSync()
+      const chips = document.querySelectorAll(`.token-chip`)
+      expect(chips.length).toBe(2)
+      ;(chips[0] as HTMLButtonElement).click()
+      flushSync()
+      expect(document.querySelectorAll(`.token-chip`).length).toBe(1)
+    })
+
+    test(`removing one duplicate token chip only removes one instance`, () => {
+      mount_filter({ value: `Li,Li` })
+      flushSync()
+      let chips = document.querySelectorAll(`.token-chip`)
+      expect(chips.length).toBe(2)
+      ;(chips[0] as HTMLButtonElement).click()
+      flushSync()
+      chips = document.querySelectorAll(`.token-chip`)
+      expect(chips.length).toBe(1)
+      expect(chips[0].textContent).toContain(`+Li`)
+    })
+
+    test(`normalizes and sorts constrained include/exclude token input`, () => {
+      const onchange = vi.fn()
+      mount_filter({ value: ``, onchange })
+      submit_input(`-O,+Li,Fe:1-2,*`)
+      expect(onchange).toHaveBeenLastCalledWith(`Fe:1-2,Li,*,-O`, `elements`)
+    })
+
+    test(`keeps chemsys ranges intact while tokenizing`, () => {
+      const onchange = vi.fn()
+      mount_filter({ value: ``, onchange, search_mode: `chemsys`, mode_locked: true })
+      submit_input(`Fe:1-2-Li`)
+      expect(onchange).toHaveBeenLastCalledWith(`Fe:1-2-Li`, `chemsys`)
+    })
+
+    test(`supports custom examples prop and applies custom example`, () => {
+      const onchange = vi.fn()
+      mount_filter({
+        value: ``,
+        onchange,
+        examples: [{
+          label: `Custom`,
+          description: `Custom example set`,
+          examples: [`Co,Ni`, `Mn-Fe-O`],
+        }],
+      })
+      doc_query<HTMLButtonElement>(`.help-btn`).click()
+      flushSync()
+      const example_btn = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(`.example-tag`),
+      )
+        .find((btn) => btn.textContent === `Co,Ni`)
+      expect(example_btn).toBeTruthy()
+      example_btn?.click()
+      flushSync()
+      expect(onchange).toHaveBeenLastCalledWith(`Co,Ni`, `elements`)
     })
   })
 })

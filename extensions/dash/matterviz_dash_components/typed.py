@@ -1175,8 +1175,10 @@ class Bands(MatterViz):
     def __init__(
         self,
         id=None,
+        band_spin_mode: Any | None = None,
         band_structs: dict | None = None,
         band_type: Any | None = None,
+        class_: str | None = None,
         controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
@@ -1196,9 +1198,17 @@ class Bands(MatterViz):
         ribbon_config: dict | None = None,
         selected_series_idx: int | None = None,
         series: list | None = None,
+        shade_imaginary_modes: bool | None = None,
+        show_annotation_controls: bool | None = None,
+        show_controls: bool | None = None,
+        show_gap_annotation: bool | None = None,
         show_legend: bool | None = None,
+        show_path_mode_control: bool | None = None,
+        show_spin_control: bool | None = None,
+        show_units_control: bool | None = None,
         styles: Any | None = None,
         tooltip_point: Any | None = None,
+        units: Any | None = None,
         x_axis: Any | None = None,
         x_positions: dict | None = None,
         y_axis: Any | None = None,
@@ -1213,10 +1223,14 @@ class Bands(MatterViz):
     ):
         if mv_props is None:
             mv_props = {}
+        if band_spin_mode is not None:
+            mv_props["band_spin_mode"] = band_spin_mode
         if band_structs is not None:
             mv_props["band_structs"] = band_structs
         if band_type is not None:
             mv_props["band_type"] = band_type
+        if class_ is not None:
+            mv_props["class"] = class_
         if controls is not None:
             mv_props["controls"] = controls
         if current_x_value is not None:
@@ -1255,12 +1269,28 @@ class Bands(MatterViz):
             mv_props["selected_series_idx"] = selected_series_idx
         if series is not None:
             mv_props["series"] = series
+        if shade_imaginary_modes is not None:
+            mv_props["shade_imaginary_modes"] = shade_imaginary_modes
+        if show_annotation_controls is not None:
+            mv_props["show_annotation_controls"] = show_annotation_controls
+        if show_controls is not None:
+            mv_props["show_controls"] = show_controls
+        if show_gap_annotation is not None:
+            mv_props["show_gap_annotation"] = show_gap_annotation
         if show_legend is not None:
             mv_props["show_legend"] = show_legend
+        if show_path_mode_control is not None:
+            mv_props["show_path_mode_control"] = show_path_mode_control
+        if show_spin_control is not None:
+            mv_props["show_spin_control"] = show_spin_control
+        if show_units_control is not None:
+            mv_props["show_units_control"] = show_units_control
         if styles is not None:
             mv_props["styles"] = styles
         if tooltip_point is not None:
             mv_props["tooltip_point"] = tooltip_point
+        if units is not None:
+            mv_props["units"] = units
         if x_axis is not None:
             mv_props["x_axis"] = x_axis
         if x_positions is not None:

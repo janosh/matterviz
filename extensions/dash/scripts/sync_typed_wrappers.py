@@ -621,11 +621,15 @@ def generate_wrappers(manifest: dict[str, Any], dist_dir: str) -> str:
             add_extra_props(props, extra, callback_props)
 
         # Filter to JSON-serializable value props
+        # These are handled by the base MatterViz wrapper args and must not be
+        # re-emitted as component-specific params.
+        reserved_base_args = {"id", "className", "style"}
         value_props = [
             p
             for p in props
             if p.kind == "value"
             and p.js_name not in dom_props
+            and p.js_name not in reserved_base_args
             and p.js_name != "children"
         ]
 

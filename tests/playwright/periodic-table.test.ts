@@ -1,5 +1,4 @@
 // deno-lint-ignore-file no-await-in-loop
-import element_data from '$lib/element/data'
 import {
   CATEGORY_COUNTS,
   ELEM_HEATMAP_KEYS,
@@ -7,6 +6,7 @@ import {
   format_num,
 } from '$lib/labels'
 import { expect, type Page, test } from '@playwright/test'
+import element_data from './element-data'
 import { IS_CI, random_sample } from './helpers'
 
 test.describe(`Periodic Table`, () => {
