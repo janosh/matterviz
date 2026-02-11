@@ -7,7 +7,15 @@ import json
 import pytest
 
 try:
-    from ferrox import composition, io, neighbors, rdf, structure, symmetry
+    from ferrox import (
+        StructureMatcher,
+        composition,
+        io,
+        neighbors,
+        rdf,
+        structure,
+        symmetry,
+    )
 except ImportError:
     pytest.skip("ferrox not installed", allow_module_level=True)
 
@@ -95,6 +103,115 @@ class TestGetStructureMetadata:
         assert metadata["formula"] == comp["formula"]
         assert metadata["formula_anonymous"] == comp["formula_anonymous"]
         assert metadata["chemical_system"] == comp["chemical_system"]
+
+
+class TestStructureMatcherAnonymous:
+    """Tests for unified StructureMatcher.fit_anonymous API."""
+
+    @staticmethod
+    def _json_structure(
+        lattice_matrix: list[list[float]], sites: list[dict[str, object]]
+    ) -> str:
+        """Build a minimal pymatgen-style structure JSON string."""
+        return json.dumps(
+            {
+                "@class": "Structure",
+                "lattice": {"matrix": lattice_matrix},
+                "sites": sites,
+            }
+        )
+
+    @classmethod
+    def _many_to_one_pair(cls) -> tuple[str, str]:
+        """Return structures that require class-based many-to-one matching."""
+        first_struct = cls._json_structure(
+            [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+            [
+                {"species": [{"element": "Ca", "occu": 1}], "abc": [0, 0, 0]},
+                {"species": [{"element": "Al", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
+                {"species": [{"element": "Cl", "occu": 1}], "abc": [0.25, 0.25, 0.25]},
+                {"species": [{"element": "Cl", "occu": 1}], "abc": [0.75, 0.75, 0.75]},
+            ],
+        )
+        second_struct = cls._json_structure(
+            [[5.2, 0, 0], [0, 5.2, 0], [0, 0, 5.2]],
+            [
+                {"species": [{"element": "Li", "occu": 1}], "abc": [0, 0, 0]},
+                {"species": [{"element": "Li", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
+                {"species": [{"element": "Br", "occu": 1}], "abc": [0.25, 0.25, 0.25]},
+                {"species": [{"element": "Br", "occu": 1}], "abc": [0.75, 0.75, 0.75]},
+            ],
+        )
+        return first_struct, second_struct
+
+    def test_fit_anonymous_default_element_permutation(self, nacl_json: str) -> None:
+        """Default anonymous mode matches element-permuted prototypes."""
+        mgo_json = self._json_structure(
+            [[4.21, 0, 0], [0, 4.21, 0], [0, 0, 4.21]],
+            [
+                {"species": [{"element": "Mg", "occu": 1}], "abc": [0, 0, 0]},
+                {"species": [{"element": "O", "occu": 1}], "abc": [0.5, 0.5, 0.5]},
+            ],
+        )
+        matcher = StructureMatcher(primitive_cell=False)
+        assert matcher.fit_anonymous(nacl_json, mgo_json) is True
+
+    @pytest.mark.parametrize(
+        "fit_kwargs",
+        [
+            {"mapping_name": "Metal/Non-metal"},
+            {"mapping": {"Ca": "C", "Al": "C", "Cl": "X", "Li": "C", "Br": "X"}},
+        ],
+    )
+    def test_fit_anonymous_class_mapping_enables_many_to_one(
+        self, fit_kwargs: dict[str, object]
+    ) -> None:
+        """Class-based matching succeeds where plain element permutation fails."""
+        first_struct, second_struct = self._many_to_one_pair()
+        matcher = StructureMatcher(primitive_cell=False)
+        assert matcher.fit_anonymous(first_struct, second_struct) is False
+        assert matcher.fit_anonymous(first_struct, second_struct, **fit_kwargs) is True
+
+    def test_fit_anonymous_rejects_both_mapping_args(self, nacl_json: str) -> None:
+        """Passing both mapping_name and mapping raises clear ValueError."""
+        matcher = StructureMatcher()
+        with pytest.raises(
+            ValueError, match="Provide only one of mapping_name or mapping"
+        ):
+            matcher.fit_anonymous(
+                nacl_json, nacl_json, mapping_name="ACX", mapping={"Na": "C", "Cl": "X"}
+            )
+
+    @pytest.mark.parametrize(
+        ("mapping_name", "expected_error"),
+        [
+            ("unknown", "Invalid mapping_name"),
+            ("", "Invalid mapping_name"),
+        ],
+    )
+    def test_fit_anonymous_invalid_mapping_name(
+        self, nacl_json: str, mapping_name: str, expected_error: str
+    ) -> None:
+        """Invalid predefined mapping name raises ValueError."""
+        matcher = StructureMatcher()
+        with pytest.raises(ValueError, match=expected_error):
+            matcher.fit_anonymous(nacl_json, nacl_json, mapping_name=mapping_name)
+
+    @pytest.mark.parametrize(
+        ("mapping", "expected_error"),
+        [
+            ({"NotAnElement": "X"}, "Invalid element symbol"),
+            ({"Na": ""}, "Class label cannot be empty"),
+            ({"Na": "   "}, "Class label cannot be empty"),
+        ],
+    )
+    def test_fit_anonymous_invalid_custom_mapping(
+        self, nacl_json: str, mapping: dict[str, str], expected_error: str
+    ) -> None:
+        """Invalid custom mapping payload raises ValueError."""
+        matcher = StructureMatcher()
+        with pytest.raises(ValueError, match=expected_error):
+            matcher.fit_anonymous(nacl_json, nacl_json, mapping=mapping)
 
 
 class TestStructureCharge:

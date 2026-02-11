@@ -34,6 +34,7 @@ export interface BaseBandStructure {
   distance: number[]
   nb_bands: number
   bands: number[][] // [nb_bands][nb_qpoints]
+  spin_down_bands?: number[][] // [nb_bands][nb_qpoints] for spin-polarized electronic bands
   band_widths?: number[][] // [nb_bands][nb_qpoints] - width values for fat bands visualization
 }
 

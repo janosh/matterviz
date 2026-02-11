@@ -436,12 +436,6 @@ const CM_TO_THZ = 1 / THz_TO_CM
 const SPIN_UP_KEYS = [`1`, `Spin.up`]
 const SPIN_DOWN_KEYS = [`-1`, `Spin.down`]
 
-// Extract first spin channel from pymatgen spin-keyed data.
-// Thin wrapper around extract_spin_channels for backwards compatibility.
-function extract_first_spin_channel<T>(data: unknown): T | null {
-  return extract_spin_channels<T>(data)?.up ?? null
-}
-
 // Extract both spin channels from pymatgen spin-keyed data.
 // Returns { up: T, down: T | null } where down is null for non-spin-polarized data.
 export function extract_spin_channels<T>(
@@ -491,7 +485,9 @@ function convert_pymatgen_band_structure(
   // 1. Standard pymatgen: bands as dict with spin keys {1: [[...], ...]}
   // 2. Custom phonon format: frequencies_cm as 2D array [[...], ...]
   // 3. Already normalized: bands as 2D array [[...], ...]
-  let raw_bands = extract_first_spin_channel<number[][]>(pmg.bands)
+  const spin_channels = extract_spin_channels<number[][]>(pmg.bands)
+  let raw_bands = spin_channels?.up ?? null
+  let raw_spin_down_bands = spin_channels?.down ?? null
   const has_frequencies_cm = Array.isArray(pmg.frequencies_cm)
   if (!raw_bands && has_frequencies_cm) {
     // Phonon format: frequencies_cm is [n_qpoints x n_branches] - needs transpose
@@ -502,6 +498,7 @@ function convert_pymatgen_band_structure(
         { length: freqs[0].length },
         (_, band_idx) => freqs.map((qpt_freqs) => qpt_freqs[band_idx]),
       )
+      raw_spin_down_bands = null
     }
   }
 
@@ -590,11 +587,24 @@ function convert_pymatgen_band_structure(
     return val // THz (default) - no conversion
   }
 
+  const converted_bands = raw_bands.map((band) => band.map(convert_to_thz))
+  const valid_spin_down_bands = raw_spin_down_bands &&
+      raw_spin_down_bands.length === raw_bands.length &&
+      raw_spin_down_bands.every((band, band_idx) =>
+        Array.isArray(band) && band.length === raw_bands[band_idx]?.length
+      )
+    ? raw_spin_down_bands
+    : null
+  const converted_spin_down_bands = valid_spin_down_bands?.map((band) =>
+    band.map(convert_to_thz)
+  )
+
   return {
     qpoints,
     branches,
     distance,
-    bands: raw_bands.map((band) => band.map(convert_to_thz)),
+    bands: converted_bands,
+    spin_down_bands: converted_spin_down_bands,
     nb_bands: raw_bands.length,
     labels_dict: labels_dict ?? {},
     recip_lattice: { matrix: lattice_rec?.matrix ?? [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },

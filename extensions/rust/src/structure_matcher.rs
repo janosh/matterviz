@@ -40,6 +40,106 @@ pub enum ComparatorType {
     Element,
 }
 
+/// Predefined element-to-class mappings for anonymous prototype matching.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnonymousClassMapping {
+    /// ACX mapping: A (anions), C (cations), X (halides).
+    Acx,
+    /// CEA mapping: C (alkali/alkaline), E (electropositive), A (anions).
+    Cea,
+    /// Metal vs non-metal mapping.
+    MetalNonMetal,
+}
+
+/// Anonymous matching mode for `fit_anonymous`.
+#[derive(Debug, Clone, Copy)]
+pub enum AnonymousMatchMode<'a> {
+    /// Original pymatgen-style anonymous matching via one-to-one element permutation.
+    ElementPermutation,
+    /// Class-based matching using one of the predefined mapping families.
+    Predefined(AnonymousClassMapping),
+    /// Class-based matching using a custom element -> class label mapping.
+    Custom(&'a HashMap<Element, String>),
+}
+
+impl AnonymousClassMapping {
+    /// Parse a mapping name from user input.
+    ///
+    /// Accepted values:
+    /// - `ACX`
+    /// - `CEA`
+    /// - `Metal/Non-metal` (also `metal_nonmetal`, `metal_non_metal`)
+    pub fn from_name(mapping_name: &str) -> Option<Self> {
+        let normalized_name = mapping_name.trim().to_ascii_lowercase();
+        match normalized_name.as_str() {
+            "acx" => Some(Self::Acx),
+            "cea" => Some(Self::Cea),
+            "metal/non-metal" | "metal_nonmetal" | "metal_non_metal" => Some(Self::MetalNonMetal),
+            _ => None,
+        }
+    }
+
+    /// Return the class label for an element under this mapping.
+    fn class_for_element(&self, element: Element) -> Option<&'static str> {
+        match self {
+            Self::Acx => match element {
+                Element::Si
+                | Element::Ge
+                | Element::Sn
+                | Element::Sb
+                | Element::Bi
+                | Element::S
+                | Element::Se
+                | Element::Te => Some("A"),
+                Element::Al
+                | Element::Ga
+                | Element::In
+                | Element::Sc
+                | Element::Y
+                | Element::Li
+                | Element::Na
+                | Element::K
+                | Element::Rb
+                | Element::Cs
+                | Element::Mg
+                | Element::Ca
+                | Element::Sr
+                | Element::Ba => Some("C"),
+                Element::Cl | Element::Br | Element::I => Some("X"),
+                _ => None,
+            },
+            Self::Cea => match element {
+                Element::Si
+                | Element::Ge
+                | Element::Sn
+                | Element::Sb
+                | Element::Bi
+                | Element::S
+                | Element::Se
+                | Element::Te => Some("A"),
+                Element::Al | Element::Ga | Element::In | Element::Sc | Element::Y => Some("E"),
+                Element::Li
+                | Element::Na
+                | Element::K
+                | Element::Rb
+                | Element::Cs
+                | Element::Mg
+                | Element::Ca
+                | Element::Sr
+                | Element::Ba => Some("C"),
+                _ => None,
+            },
+            Self::MetalNonMetal => {
+                if element.is_metal() {
+                    Some("M")
+                } else {
+                    Some("X")
+                }
+            }
+        }
+    }
+}
+
 /// Configuration and state for structure matching.
 #[derive(Debug, Clone)]
 pub struct StructureMatcher {
@@ -129,6 +229,21 @@ impl StructureMatcher {
     pub fn with_on_error(mut self, on_error: OnError) -> Self {
         self.on_error = on_error;
         self
+    }
+
+    /// Build a predefined element-to-class mapping.
+    pub fn predefined_class_mapping(
+        mapping_kind: AnonymousClassMapping,
+    ) -> HashMap<Element, String> {
+        let mut class_mapping = HashMap::new();
+        for atomic_number in 1..=118 {
+            if let Some(element) = Element::from_atomic_number(atomic_number)
+                && let Some(class_label) = mapping_kind.class_for_element(element)
+            {
+                class_mapping.insert(element, class_label.to_string());
+            }
+        }
+        class_mapping
     }
 
     /// Check if two species are equal according to the comparator.
@@ -776,7 +891,31 @@ impl StructureMatcher {
     /// This method always uses element-only matching (ignores oxidation states),
     /// regardless of the matcher's `comparator_type` setting. This matches pymatgen's
     /// behavior where anonymous matching only considers elemental identity.
-    pub fn fit_anonymous(&self, struct1: &Structure, struct2: &Structure) -> bool {
+    pub fn fit_anonymous(
+        &self,
+        struct1: &Structure,
+        struct2: &Structure,
+        match_mode: Option<AnonymousMatchMode<'_>>,
+    ) -> bool {
+        match match_mode.unwrap_or(AnonymousMatchMode::ElementPermutation) {
+            AnonymousMatchMode::ElementPermutation => {
+                self.fit_anonymous_by_element_permutation(struct1, struct2)
+            }
+            AnonymousMatchMode::Predefined(mapping_kind) => {
+                let class_mapping = Self::predefined_class_mapping(mapping_kind);
+                self.fit_anonymous_with_class_mapping(struct1, struct2, &class_mapping)
+            }
+            AnonymousMatchMode::Custom(class_mapping) => {
+                self.fit_anonymous_with_class_mapping(struct1, struct2, class_mapping)
+            }
+        }
+    }
+
+    fn fit_anonymous_by_element_permutation(
+        &self,
+        struct1: &Structure,
+        struct2: &Structure,
+    ) -> bool {
         // Get unique elements in order of first appearance
         let elements1 = struct1.unique_elements();
         let elements2 = struct2.unique_elements();
@@ -826,6 +965,96 @@ impl StructureMatcher {
         }
 
         false
+    }
+
+    fn fit_anonymous_with_class_mapping(
+        &self,
+        struct1: &Structure,
+        struct2: &Structure,
+        class_mapping: &HashMap<Element, String>,
+    ) -> bool {
+        let Some((mapped_struct1, mapped_struct2)) =
+            self.remap_structures_for_class_matching(struct1, struct2, class_mapping)
+        else {
+            return false;
+        };
+        let element_matcher = Self {
+            comparator_type: ComparatorType::Element,
+            ..self.clone()
+        };
+        element_matcher.fit(&mapped_struct1, &mapped_struct2)
+    }
+
+    /// Compute structure distance after applying class-based anonymous mapping.
+    ///
+    /// Returns `None` if any element in either structure is not present in
+    /// `class_mapping`.
+    pub fn get_structure_distance_anonymous_mapped(
+        &self,
+        struct1: &Structure,
+        struct2: &Structure,
+        class_mapping: &HashMap<Element, String>,
+    ) -> Option<f64> {
+        let (mapped_struct1, mapped_struct2) =
+            self.remap_structures_for_class_matching(struct1, struct2, class_mapping)?;
+        let element_matcher = Self {
+            comparator_type: ComparatorType::Element,
+            ..self.clone()
+        };
+        Some(element_matcher.get_structure_distance(&mapped_struct1, &mapped_struct2))
+    }
+
+    /// Compute structure distance after applying a predefined class-based mapping.
+    pub fn get_structure_distance_anonymous_predefined(
+        &self,
+        struct1: &Structure,
+        struct2: &Structure,
+        mapping_kind: AnonymousClassMapping,
+    ) -> Option<f64> {
+        let class_mapping = Self::predefined_class_mapping(mapping_kind);
+        self.get_structure_distance_anonymous_mapped(struct1, struct2, &class_mapping)
+    }
+
+    fn remap_structures_for_class_matching(
+        &self,
+        struct1: &Structure,
+        struct2: &Structure,
+        class_mapping: &HashMap<Element, String>,
+    ) -> Option<(Structure, Structure)> {
+        let mut class_labels = HashSet::new();
+        let mut unique_elements = HashSet::new();
+        for structure in [struct1, struct2] {
+            for species in structure.species() {
+                let element = species.element;
+                unique_elements.insert(element);
+                let class_label = class_mapping.get(&element)?;
+                class_labels.insert(class_label.clone());
+            }
+        }
+
+        if class_labels.len() > 118 {
+            return None;
+        }
+
+        let mut sorted_class_labels: Vec<_> = class_labels.into_iter().collect();
+        sorted_class_labels.sort_unstable();
+
+        let mut placeholder_by_class = HashMap::new();
+        for (class_idx, class_label) in sorted_class_labels.into_iter().enumerate() {
+            let placeholder = Element::from_atomic_number((class_idx + 1) as u8)?;
+            placeholder_by_class.insert(class_label, placeholder);
+        }
+
+        let mut element_remap = HashMap::new();
+        for element in unique_elements {
+            let class_label = class_mapping.get(&element)?;
+            let placeholder_element = *placeholder_by_class.get(class_label)?;
+            element_remap.insert(element, placeholder_element);
+        }
+
+        let mapped_struct1 = struct1.remap_species(&element_remap);
+        let mapped_struct2 = struct2.remap_species(&element_remap);
+        Some((mapped_struct1, mapped_struct2))
     }
 
     /// Check if two already-reduced structures match.
@@ -1222,7 +1451,7 @@ mod tests {
     fn test_fit_anonymous_identical() {
         let s = make_nacl();
         let matcher = StructureMatcher::new();
-        assert!(matcher.fit_anonymous(&s, &s));
+        assert!(matcher.fit_anonymous(&s, &s, None));
     }
 
     #[test]
@@ -1234,7 +1463,7 @@ mod tests {
             vec![Species::neutral(Element::Cl), Species::neutral(Element::Na)],
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
-        assert!(StructureMatcher::new().fit_anonymous(&nacl, &clna));
+        assert!(StructureMatcher::new().fit_anonymous(&nacl, &clna, None));
     }
 
     #[test]
@@ -1246,7 +1475,7 @@ mod tests {
             vec![Species::neutral(Element::Mg), Species::neutral(Element::O)],
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
         );
-        assert!(StructureMatcher::new().fit_anonymous(&nacl, &mgo));
+        assert!(StructureMatcher::new().fit_anonymous(&nacl, &mgo, None));
     }
 
     #[test]
@@ -1270,7 +1499,7 @@ mod tests {
                 Vector3::new(0.25, 0.75, 0.25),
             ],
         );
-        assert!(!StructureMatcher::new().fit_anonymous(&nacl, &a2b3));
+        assert!(!StructureMatcher::new().fit_anonymous(&nacl, &a2b3, None));
     }
 
     #[test]
@@ -1278,7 +1507,7 @@ mod tests {
         let fe = make_simple_cubic(Element::Fe, 4.0);
         let cu = make_simple_cubic(Element::Cu, 4.0);
         let matcher = StructureMatcher::new();
-        assert!(matcher.fit_anonymous(&fe, &cu));
+        assert!(matcher.fit_anonymous(&fe, &cu, None));
     }
 
     #[test]
@@ -1286,7 +1515,7 @@ mod tests {
         let nacl = make_nacl();
         let fe = make_simple_cubic(Element::Fe, 4.0);
         let matcher = StructureMatcher::new();
-        assert!(!matcher.fit_anonymous(&nacl, &fe));
+        assert!(!matcher.fit_anonymous(&nacl, &fe, None));
     }
 
     #[test]
@@ -1624,7 +1853,7 @@ mod tests {
         let matcher = StructureMatcher::new().with_primitive_cell(false);
         // Should find a matching permutation within reasonable time
         assert!(
-            matcher.fit_anonymous(&s1, &s2),
+            matcher.fit_anonymous(&s1, &s2, None),
             "fit_anonymous should handle 7 elements (5040 permutations)"
         );
     }
@@ -1636,11 +1865,11 @@ mod tests {
 
         // Works with default Species comparator
         let matcher_species = StructureMatcher::new();
-        assert!(matcher_species.fit_anonymous(&s, &s));
+        assert!(matcher_species.fit_anonymous(&s, &s, None));
 
         // Works with Element comparator too
         let matcher_element = StructureMatcher::new().with_comparator(ComparatorType::Element);
-        assert!(matcher_element.fit_anonymous(&s, &s));
+        assert!(matcher_element.fit_anonymous(&s, &s, None));
     }
 
     #[test]
@@ -1667,9 +1896,154 @@ mod tests {
         // Should match anonymously (same rocksalt prototype)
         let matcher = StructureMatcher::new().with_primitive_cell(false);
         assert!(
-            matcher.fit_anonymous(&s1, &s2),
+            matcher.fit_anonymous(&s1, &s2, None),
             "fit_anonymous should ignore oxidation states and match NaCl with MgO"
         );
+    }
+
+    #[test]
+    fn test_fit_anonymous_predefined_metal_nonmetal() {
+        let nacl = make_nacl();
+        let mgo = Structure::new(
+            Lattice::cubic(4.21),
+            vec![Species::neutral(Element::Mg), Species::neutral(Element::O)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        assert!(matcher.fit_anonymous(
+            &nacl,
+            &mgo,
+            Some(AnonymousMatchMode::Predefined(
+                AnonymousClassMapping::MetalNonMetal,
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_fit_anonymous_mapped_custom_classes() {
+        let first_structure = Structure::new(
+            Lattice::cubic(5.0),
+            vec![
+                Species::neutral(Element::Ca),
+                Species::neutral(Element::Al),
+                Species::neutral(Element::Cl),
+                Species::neutral(Element::Cl),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+                Vector3::new(0.25, 0.25, 0.25),
+                Vector3::new(0.75, 0.75, 0.75),
+            ],
+        );
+        let second_structure = Structure::new(
+            Lattice::cubic(5.2),
+            vec![
+                Species::neutral(Element::Li),
+                Species::neutral(Element::Li),
+                Species::neutral(Element::Br),
+                Species::neutral(Element::Br),
+            ],
+            vec![
+                Vector3::new(0.0, 0.0, 0.0),
+                Vector3::new(0.5, 0.5, 0.5),
+                Vector3::new(0.25, 0.25, 0.25),
+                Vector3::new(0.75, 0.75, 0.75),
+            ],
+        );
+
+        let class_mapping = HashMap::from([
+            (Element::Ca, "C".to_string()),
+            (Element::Al, "C".to_string()),
+            (Element::Cl, "X".to_string()),
+            (Element::Li, "C".to_string()),
+            (Element::Br, "X".to_string()),
+        ]);
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        assert!(
+            !matcher.fit_anonymous(&first_structure, &second_structure, None),
+            "Element-permutation mode should fail for 3 elements vs 2 elements",
+        );
+        assert!(matcher.fit_anonymous(
+            &first_structure,
+            &second_structure,
+            Some(AnonymousMatchMode::Custom(&class_mapping)),
+        ));
+    }
+
+    #[test]
+    fn test_fit_anonymous_mapped_fails_when_element_unmapped() {
+        let class_mapping = HashMap::from([(Element::Na, "C".to_string())]);
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        assert!(!matcher.fit_anonymous(
+            &make_nacl(),
+            &make_nacl(),
+            Some(AnonymousMatchMode::Custom(&class_mapping)),
+        ));
+    }
+
+    #[test]
+    fn test_get_structure_distance_anonymous_mapped_returns_none_for_unmapped() {
+        let class_mapping = HashMap::from([(Element::Na, "C".to_string())]);
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        assert!(
+            matcher
+                .get_structure_distance_anonymous_mapped(&make_nacl(), &make_nacl(), &class_mapping)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_fit_anonymous_explicit_element_permutation_mode_matches_default() {
+        let nacl = make_nacl();
+        let mgo = Structure::new(
+            Lattice::cubic(4.21),
+            vec![Species::neutral(Element::Mg), Species::neutral(Element::O)],
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)],
+        );
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        let default_result = matcher.fit_anonymous(&nacl, &mgo, None);
+        let explicit_mode_result =
+            matcher.fit_anonymous(&nacl, &mgo, Some(AnonymousMatchMode::ElementPermutation));
+        assert_eq!(default_result, explicit_mode_result);
+        assert!(default_result);
+    }
+
+    #[test]
+    fn test_anonymous_class_mapping_from_name_aliases() {
+        assert_eq!(
+            AnonymousClassMapping::from_name("ACX"),
+            Some(AnonymousClassMapping::Acx)
+        );
+        assert_eq!(
+            AnonymousClassMapping::from_name("cea"),
+            Some(AnonymousClassMapping::Cea)
+        );
+        assert_eq!(
+            AnonymousClassMapping::from_name("metal/non-metal"),
+            Some(AnonymousClassMapping::MetalNonMetal)
+        );
+        assert_eq!(
+            AnonymousClassMapping::from_name("metal_nonmetal"),
+            Some(AnonymousClassMapping::MetalNonMetal)
+        );
+        assert_eq!(
+            AnonymousClassMapping::from_name("metal_non_metal"),
+            Some(AnonymousClassMapping::MetalNonMetal)
+        );
+        assert_eq!(AnonymousClassMapping::from_name("unknown"), None);
+    }
+
+    #[test]
+    fn test_fit_anonymous_predefined_acx_fails_for_uncovered_elements() {
+        let fe = make_simple_cubic(Element::Fe, 4.0);
+        let cu = make_simple_cubic(Element::Cu, 4.0);
+        let matcher = StructureMatcher::new().with_primitive_cell(false);
+        assert!(!matcher.fit_anonymous(
+            &fe,
+            &cu,
+            Some(AnonymousMatchMode::Predefined(AnonymousClassMapping::Acx)),
+        ));
     }
 
     // =========================================================================
@@ -2248,7 +2622,7 @@ mod tests {
 
         for (struct1, struct2, label) in cases {
             assert!(
-                !matcher.fit_anonymous(struct1, struct2),
+                !matcher.fit_anonymous(struct1, struct2, None),
                 "{label} should not match anonymously"
             );
         }

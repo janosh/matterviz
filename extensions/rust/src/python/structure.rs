@@ -7,8 +7,11 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyfunction, gen_stub_pymethods};
 
+use crate::element::Element;
 use crate::io::structure_to_pymatgen_json;
-use crate::structure_matcher::{ComparatorType, StructureMatcher};
+use crate::structure_matcher::{
+    AnonymousClassMapping, AnonymousMatchMode, ComparatorType, StructureMatcher,
+};
 
 use pyo3::types::PyList;
 
@@ -106,9 +109,70 @@ impl PyStructureMatcher {
         Ok(self.inner.get_structure_distance(&s1, &s2))
     }
 
-    fn fit_anonymous(&self, struct1: StructureJson, struct2: StructureJson) -> PyResult<bool> {
+    #[pyo3(signature = (struct1, struct2, mapping_name = None, mapping = None))]
+    fn fit_anonymous(
+        &self,
+        struct1: StructureJson,
+        struct2: StructureJson,
+        mapping_name: Option<&str>,
+        mapping: Option<HashMap<String, String>>,
+    ) -> PyResult<bool> {
         let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
-        Ok(self.inner.fit_anonymous(&s1, &s2))
+        if mapping_name.is_some() && mapping.is_some() {
+            return Err(PyValueError::new_err(
+                "Provide only one of mapping_name or mapping",
+            ));
+        }
+        if let Some(predefined_mapping_name) = mapping_name {
+            let mapping_kind =
+                AnonymousClassMapping::from_name(predefined_mapping_name).ok_or_else(|| {
+                    PyValueError::new_err(format!(
+                        "Invalid mapping_name: {predefined_mapping_name}. Use one of: ACX, CEA, Metal/Non-metal"
+                    ))
+                })?;
+            Ok(self.inner.fit_anonymous(
+                &s1,
+                &s2,
+                Some(AnonymousMatchMode::Predefined(mapping_kind)),
+            ))
+        } else if let Some(custom_mapping) = mapping {
+            let class_mapping = parse_class_mapping_by_symbol(custom_mapping)?;
+            Ok(self
+                .inner
+                .fit_anonymous(&s1, &s2, Some(AnonymousMatchMode::Custom(&class_mapping))))
+        } else {
+            Ok(self.inner.fit_anonymous(&s1, &s2, None))
+        }
+    }
+
+    fn get_structure_distance_anonymous_mapped(
+        &self,
+        struct1: StructureJson,
+        struct2: StructureJson,
+        mapping: HashMap<String, String>,
+    ) -> PyResult<Option<f64>> {
+        let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
+        let class_mapping = parse_class_mapping_by_symbol(mapping)?;
+        Ok(self
+            .inner
+            .get_structure_distance_anonymous_mapped(&s1, &s2, &class_mapping))
+    }
+
+    fn get_structure_distance_anonymous_predefined(
+        &self,
+        struct1: StructureJson,
+        struct2: StructureJson,
+        mapping_name: &str,
+    ) -> PyResult<Option<f64>> {
+        let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
+        let mapping_kind = AnonymousClassMapping::from_name(mapping_name).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "Invalid mapping_name: {mapping_name}. Use one of: ACX, CEA, Metal/Non-metal"
+            ))
+        })?;
+        Ok(self
+            .inner
+            .get_structure_distance_anonymous_predefined(&s1, &s2, mapping_kind))
     }
 
     fn deduplicate(&self, py: Python<'_>, structures: Vec<String>) -> PyResult<Vec<usize>> {
@@ -213,6 +277,27 @@ impl PyStructureMatcher {
     fn attempt_supercell(&self) -> bool {
         self.inner.attempt_supercell
     }
+}
+
+fn parse_class_mapping_by_symbol(
+    mapping_by_symbol: HashMap<String, String>,
+) -> PyResult<HashMap<Element, String>> {
+    let mut class_mapping = HashMap::new();
+    for (element_symbol, class_label) in mapping_by_symbol {
+        let trimmed_class_label = class_label.trim();
+        if trimmed_class_label.is_empty() {
+            return Err(PyValueError::new_err(format!(
+                "Class label cannot be empty for element '{element_symbol}'"
+            )));
+        }
+        let element = Element::from_symbol(&element_symbol).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "Invalid element symbol in mapping: '{element_symbol}'"
+            ))
+        })?;
+        class_mapping.insert(element, trimmed_class_label.to_string());
+    }
+    Ok(class_mapping)
 }
 
 // === Structure Manipulation Functions ===
@@ -360,7 +445,7 @@ fn matches(struct1: StructureJson, struct2: StructureJson, anonymous: bool) -> P
     let (s1, s2) = parse_structure_pair(&struct1, &struct2)?;
     let matcher = StructureMatcher::new();
     Ok(if anonymous {
-        matcher.fit_anonymous(&s1, &s2)
+        matcher.fit_anonymous(&s1, &s2, None)
     } else {
         matcher.fit(&s1, &s2)
     })
