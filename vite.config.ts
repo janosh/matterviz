@@ -7,7 +7,6 @@ import { gunzipSync } from 'node:zlib'
 import { vite_plugin as live_examples } from 'svelte-multiselect/live-examples'
 import { defineConfig, type Plugin } from 'vite'
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock'
-import './scripts/ensure-element-data' // decompress data.json.gz if needed
 
 export default defineConfig(({ mode }) => ({
   plugins: [
