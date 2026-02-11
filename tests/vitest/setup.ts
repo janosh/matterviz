@@ -5,11 +5,10 @@ import init from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, vi } from 'vitest'
-import '../../scripts/ensure-element-data' // decompress data.json.gz if needed
 
 // Resolve WASM path for Node.js environment (used by moyo-wasm integration tests)
 const MOYO_WASM_PATH = resolve(
-  import.meta.dirname,
+  import.meta.dirname ?? `.`,
   `../../node_modules/@spglib/moyo-wasm/moyo_wasm_bg.wasm`,
 )
 

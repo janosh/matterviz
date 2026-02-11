@@ -17,9 +17,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest --run && playwright test",
-    "package": "svelte-package && mkdir -p dist/xrd && cp extensions/rust/src/atomic_scattering_params.json dist/xrd/",
-    "prepare": "svelte-kit sync && svelte-package && mkdir -p dist/xrd && cp extensions/rust/src/atomic_scattering_params.json dist/xrd/",
-    "prepublishOnly": "svelte-package && mkdir -p dist/xrd && cp extensions/rust/src/atomic_scattering_params.json dist/xrd/"
+    "package-element-data": "node scripts/package-element-data.mjs",
+    "package:dist": "svelte-package && pnpm run package-element-data && mkdir -p dist/xrd && cp extensions/rust/src/atomic_scattering_params.json dist/xrd/",
+    "package": "pnpm run package:dist",
+    "prepare": "svelte-kit sync && pnpm run package:dist",
+    "prepublishOnly": "pnpm run package:dist"
   },
   "dependencies": {
     "@spglib/moyo-wasm": "^0.7.7",
