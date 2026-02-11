@@ -86,10 +86,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
         const operator = token.startsWith(`-`) || token.startsWith(`!`)
           ? `exclude`
           : `include`
-        const unsigned =
-          token.startsWith(`+`) || token.startsWith(`-`) || token.startsWith(`!`)
-            ? token.slice(1)
-            : token
+        const unsigned = /^[+\-!]/.test(token) ? token.slice(1) : token
         const [element, constraint] = unsigned.split(`:`)
         return { operator, element, constraint: constraint || null }
       })
@@ -134,9 +131,10 @@ An interactive search filter for chemical formulas. The search mode is automatic
       const included_elements = tokens
         .filter((tok) => tok.operator === `include`)
         .map((tok) => tok.element)
+      const included_set = new Set(included_elements)
       const comp_elements = Object.keys(comp)
       return included_elements.every((elem) => elem in comp) &&
-        comp_elements.every((elem) => included_elements.includes(elem))
+        comp_elements.every((elem) => included_set.has(elem))
     })
   })
 </script>
@@ -272,22 +270,27 @@ Additional features in `FormulaFilter`:
   }
 
   const to_str = (comp) => get_alphabetical_formula(comp, true, ``)
-  const strip_prefix = (token) =>
-    token.startsWith(`+`) || token.startsWith(`-`) || token.startsWith(`!`)
-      ? token.slice(1)
-      : token
+  const strip_prefix = (token) => /^[+\-!]/.test(token) ? token.slice(1) : token
   const split_csv_tokens = (query) =>
-    query.split(`,`).map((token) => token.trim()).filter(Boolean)
-  const parse_include_tokens = (query) =>
+    query
+      .split(`,`)
+      .map((token) => token.trim())
+      .filter(Boolean)
+  const parse_tokens = (query) =>
     split_csv_tokens(query).map((token) => {
+      const unsigned = strip_prefix(token)
+      const [element, constraint] = unsigned.split(`:`)
+      return { token, element, constraint: constraint || null }
+    })
+  const parse_include_tokens = (query) =>
+    parse_tokens(query).map(({ token, element, constraint }) => {
       const operator = token.startsWith(`-`) || token.startsWith(`!`)
         ? `exclude`
         : `include`
-      const unsigned = strip_prefix(token)
-      const [element, constraint] = unsigned.split(`:`)
       return { operator, element, constraint: constraint || null }
     })
-  const parse_exclude_tokens = (query) => split_csv_tokens(query).map(strip_prefix)
+  const parse_exclude_tokens = (query) =>
+    parse_tokens(query).map(({ element }) => element)
   const satisfies_constraint = (count, constraint) => {
     if (!constraint) return true
     if (/^\d+$/.test(constraint)) return count === Number(constraint)
@@ -297,6 +300,8 @@ Additional features in `FormulaFilter`:
     }
     if (/^>=\d+$/.test(constraint)) return count >= Number(constraint.slice(2))
     if (/^<=\d+$/.test(constraint)) return count <= Number(constraint.slice(2))
+    if (/^>\d+$/.test(constraint)) return count > Number(constraint.slice(1))
+    if (/^<\d+$/.test(constraint)) return count < Number(constraint.slice(1))
     return true
   }
   const results = $derived.by(() => {

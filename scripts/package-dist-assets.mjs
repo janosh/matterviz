@@ -14,7 +14,7 @@ const xrd_src_path = resolve(
 const xrd_out_dir = resolve(root_dir, `dist/xrd`)
 const xrd_out_path = resolve(xrd_out_dir, `atomic_scattering_params.json`)
 
-mkdirSync(out_dir, { recursive: true })
+for (const dir of [out_dir, xrd_out_dir]) mkdirSync(dir, { recursive: true })
 const json = JSON.parse(gunzipSync(readFileSync(gz_path)).toString(`utf8`))
 writeFileSync(
   out_path,
@@ -23,5 +23,4 @@ writeFileSync(
   };\n`,
 )
 
-mkdirSync(xrd_out_dir, { recursive: true })
 copyFileSync(xrd_src_path, xrd_out_path)

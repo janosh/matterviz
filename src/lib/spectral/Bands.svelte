@@ -866,7 +866,7 @@
       {/if}
 
       <!-- Reference frequency horizontal line -->
-      {@const ref_freq = reference_frequency !== null
+      {@const ref_freq = reference_frequency !== null && reference_frequency !== undefined
       ? convert_band_values([reference_frequency])[0]
       : NaN}
       {@const ref_y = Number.isFinite(ref_freq) ? y_scale_fn(ref_freq) : NaN}
