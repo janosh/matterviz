@@ -9,7 +9,7 @@
     "vitest": "deno run -A --node-modules-dir npm:vitest",
     "e2e": "npx playwright test",
     "test:install": "npx playwright install chromium",
-    "package": "svelte-package",
+    "package": "svelte-package && node scripts/package-dist-assets.mjs",
     "prepublishOnly": "deno task package",
     "changelog": "deno run -A https://github.com/janosh/workflows/raw/refs/heads/main/scripts/make-release-notes.ts"
   },

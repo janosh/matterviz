@@ -869,7 +869,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0;
-    padding: 1pt 0 1pt 5pt;
+    padding: 1pt 5pt;
     border-radius: 3pt;
     font-size: 0.78em;
     line-height: 1.2;

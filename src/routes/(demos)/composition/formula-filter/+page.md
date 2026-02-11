@@ -72,9 +72,14 @@ An interactive search filter for chemical formulas. The search mode is automatic
 
   const parse_tokens = (query, query_mode): DemoToken[] => {
     if (!query || query_mode === `exact`) return []
-    const sep = query_mode === `chemsys` ? `-` : `,`
-    return query
-      .split(sep)
+    const normalized_query = query_mode === `chemsys`
+      ? query.replaceAll(`,`, `-`)
+      : query
+    const split_tokens = query_mode === `chemsys`
+      // Keep range constraints like Fe:1-2 intact while splitting separators.
+      ? normalized_query.split(/-(?!\d)/)
+      : normalized_query.split(`,`)
+    return split_tokens
       .map((token) => token.trim())
       .filter(Boolean)
       .map((token) => {
@@ -112,26 +117,27 @@ An interactive search filter for chemical formulas. The search mode is automatic
       return materials.filter((comp) => to_str(comp).toLowerCase() === target)
     }
     const tokens = parse_tokens(value, mode)
-    const plain_chemsys = mode === `chemsys` &&
-      tokens.every((tok) =>
-        tok.operator === `include` && !tok.constraint && tok.element !== `*`
-      )
-    if (plain_chemsys) {
-      return materials.filter((comp) => {
-        const comp_els = Object.keys(comp)
-        const token_els = tokens.map((tok) => tok.element)
-        return token_els.every((elem) => elem in comp) &&
-          comp_els.every((elem) => token_els.includes(elem))
-      })
-    }
-    return materials.filter((comp) =>
-      tokens.every((tok) => {
+    return materials.filter((comp) => {
+      const matches_tokens = tokens.every((tok) => {
         if (tok.element === `*`) return true
         const count = comp[tok.element] ?? 0
         if (tok.operator === `exclude`) return count === 0
         return count > 0 && satisfies_constraint(count, tok.constraint)
       })
-    )
+      if (!matches_tokens) return false
+      if (mode !== `chemsys`) return true
+
+      // Chemsys means "only these elements", even when token constraints are present.
+      const has_wildcard = tokens.some((tok) => tok.element === `*`)
+      if (has_wildcard) return true
+
+      const included_elements = tokens
+        .filter((tok) => tok.operator === `include`)
+        .map((tok) => tok.element)
+      const comp_elements = Object.keys(comp)
+      return included_elements.every((elem) => elem in comp) &&
+        comp_elements.every((elem) => included_elements.includes(elem))
+    })
   })
 </script>
 
