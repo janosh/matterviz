@@ -115,6 +115,20 @@ function remove_dead_defs(input_text: string): string {
             break
           }
         }
+      } else if (is_dead_type) {
+        let depth = 0
+        let has_brace_block = false
+        for (let line_idx = idx; line_idx < lines.length; line_idx++) {
+          const line = lines[line_idx]
+          const opens = line.match(/\{/g)?.length ?? 0
+          const closes = line.match(/\}/g)?.length ?? 0
+          if (opens > 0) has_brace_block = true
+          depth += opens - closes
+          if (line.trimEnd().endsWith(`;`) && (!has_brace_block || depth <= 0)) {
+            skip_until = line_idx
+            break
+          }
+        }
       }
       continue
     }

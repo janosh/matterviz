@@ -8,7 +8,7 @@
 //   python scripts/extract_pymatgen_data.py
 
 import type { ChemicalElement } from '$lib/element/types'
-// Source of truth is data.json.gz. During npm packaging, scripts/package-element-data.mjs
+// Source of truth is data.json.gz. During npm packaging, scripts/package-dist-assets.mjs
 // rewrites dist/element/data.js to inline decompressed JSON for sync consumers.
 import data from './data.json.gz'
 

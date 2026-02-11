@@ -22,7 +22,6 @@ class Structure(MatterViz):
     def __init__(
         self,
         id=None,
-        active_volume_idx: int | None = None,
         allow_file_drop: bool | None = None,
         atom_color_config: dict | None = None,
         cell_type: Any | None = None,
@@ -40,9 +39,7 @@ class Structure(MatterViz):
         hidden_prop_vals: list | None = None,
         hovered: bool | None = None,
         info_pane_open: bool | None = None,
-        isosurface_settings: list | None = None,
         loading: bool | None = None,
-        measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
         on_camera_move: Any | None = None,
         on_camera_reset: Any | None = None,
@@ -60,7 +57,6 @@ class Structure(MatterViz):
         structure_string: str | None = None,
         sym_data: Any | None = None,
         symmetry_settings: dict | None = None,
-        volumetric_data: list | None = None,
         width: float | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
@@ -73,8 +69,6 @@ class Structure(MatterViz):
     ):
         if mv_props is None:
             mv_props = {}
-        if active_volume_idx is not None:
-            mv_props["active_volume_idx"] = active_volume_idx
         if allow_file_drop is not None:
             mv_props["allow_file_drop"] = allow_file_drop
         if atom_color_config is not None:
@@ -109,12 +103,8 @@ class Structure(MatterViz):
             mv_props["hovered"] = hovered
         if info_pane_open is not None:
             mv_props["info_pane_open"] = info_pane_open
-        if isosurface_settings is not None:
-            mv_props["isosurface_settings"] = isosurface_settings
         if loading is not None:
             mv_props["loading"] = loading
-        if measure_mode is not None:
-            mv_props["measure_mode"] = measure_mode
         if measured_sites is not None:
             mv_props["measured_sites"] = measured_sites
         if on_camera_move is not None:
@@ -149,8 +139,6 @@ class Structure(MatterViz):
             mv_props["sym_data"] = sym_data
         if symmetry_settings is not None:
             mv_props["symmetry_settings"] = symmetry_settings
-        if volumetric_data is not None:
-            mv_props["volumetric_data"] = volumetric_data
         if width is not None:
             mv_props["width"] = width
         if set_props is None:
@@ -735,9 +723,6 @@ class ConvexHull3D(MatterViz):
         gas_pressures: dict | None = None,
         show_hull_faces: bool | None = None,
         hull_face_opacity: float | None = None,
-        hull_face_color_mode: Any | None = None,
-        element_colors: dict | None = None,
-        gizmo: dict | bool | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -817,12 +802,6 @@ class ConvexHull3D(MatterViz):
             mv_props["show_hull_faces"] = show_hull_faces
         if hull_face_opacity is not None:
             mv_props["hull_face_opacity"] = hull_face_opacity
-        if hull_face_color_mode is not None:
-            mv_props["hull_face_color_mode"] = hull_face_color_mode
-        if element_colors is not None:
-            mv_props["element_colors"] = element_colors
-        if gizmo is not None:
-            mv_props["gizmo"] = gizmo
 
         super().__init__(
             id=id,
@@ -884,9 +863,6 @@ class ConvexHull4D(MatterViz):
         gas_pressures: dict | None = None,
         show_hull_faces: bool | None = None,
         hull_face_opacity: float | None = None,
-        hull_face_color_mode: Any | None = None,
-        element_colors: dict | None = None,
-        gizmo: dict | bool | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -966,12 +942,6 @@ class ConvexHull4D(MatterViz):
             mv_props["show_hull_faces"] = show_hull_faces
         if hull_face_opacity is not None:
             mv_props["hull_face_opacity"] = hull_face_opacity
-        if hull_face_color_mode is not None:
-            mv_props["hull_face_color_mode"] = hull_face_color_mode
-        if element_colors is not None:
-            mv_props["element_colors"] = element_colors
-        if gizmo is not None:
-            mv_props["gizmo"] = gizmo
 
         super().__init__(
             id=id,
@@ -1175,10 +1145,8 @@ class Bands(MatterViz):
     def __init__(
         self,
         id=None,
-        band_spin_mode: Any | None = None,
         band_structs: dict | None = None,
         band_type: Any | None = None,
-        class_: str | None = None,
         controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
@@ -1186,7 +1154,6 @@ class Bands(MatterViz):
         fermi_level: float | None = None,
         fill_regions: list | None = None,
         hover_config: dict | None = None,
-        id: str | None = None,
         label_placement_config: dict | None = None,
         legend: Any | None = None,
         line_kwargs: Any | None = None,
@@ -1199,18 +1166,9 @@ class Bands(MatterViz):
         ribbon_config: dict | None = None,
         selected_series_idx: int | None = None,
         series: list | None = None,
-        shade_imaginary_modes: bool | None = None,
-        show_annotation_controls: bool | None = None,
-        show_controls: bool | None = None,
-        show_gap_annotation: bool | None = None,
         show_legend: bool | None = None,
-        show_path_mode_control: bool | None = None,
-        show_spin_control: bool | None = None,
-        show_units_control: bool | None = None,
-        style: str | None = None,
         styles: Any | None = None,
         tooltip_point: Any | None = None,
-        units: Any | None = None,
         x_axis: Any | None = None,
         x_positions: dict | None = None,
         y_axis: Any | None = None,
@@ -1225,14 +1183,10 @@ class Bands(MatterViz):
     ):
         if mv_props is None:
             mv_props = {}
-        if band_spin_mode is not None:
-            mv_props["band_spin_mode"] = band_spin_mode
         if band_structs is not None:
             mv_props["band_structs"] = band_structs
         if band_type is not None:
             mv_props["band_type"] = band_type
-        if class_ is not None:
-            mv_props["class"] = class_
         if controls is not None:
             mv_props["controls"] = controls
         if current_x_value is not None:
@@ -1247,8 +1201,6 @@ class Bands(MatterViz):
             mv_props["fill_regions"] = fill_regions
         if hover_config is not None:
             mv_props["hover_config"] = hover_config
-        if id is not None:
-            mv_props["id"] = id
         if label_placement_config is not None:
             mv_props["label_placement_config"] = label_placement_config
         if legend is not None:
@@ -1273,30 +1225,12 @@ class Bands(MatterViz):
             mv_props["selected_series_idx"] = selected_series_idx
         if series is not None:
             mv_props["series"] = series
-        if shade_imaginary_modes is not None:
-            mv_props["shade_imaginary_modes"] = shade_imaginary_modes
-        if show_annotation_controls is not None:
-            mv_props["show_annotation_controls"] = show_annotation_controls
-        if show_controls is not None:
-            mv_props["show_controls"] = show_controls
-        if show_gap_annotation is not None:
-            mv_props["show_gap_annotation"] = show_gap_annotation
         if show_legend is not None:
             mv_props["show_legend"] = show_legend
-        if show_path_mode_control is not None:
-            mv_props["show_path_mode_control"] = show_path_mode_control
-        if show_spin_control is not None:
-            mv_props["show_spin_control"] = show_spin_control
-        if show_units_control is not None:
-            mv_props["show_units_control"] = show_units_control
-        if style is not None:
-            mv_props["style"] = style
         if styles is not None:
             mv_props["styles"] = styles
         if tooltip_point is not None:
             mv_props["tooltip_point"] = tooltip_point
-        if units is not None:
-            mv_props["units"] = units
         if x_axis is not None:
             mv_props["x_axis"] = x_axis
         if x_positions is not None:

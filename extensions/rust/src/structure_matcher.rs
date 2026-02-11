@@ -1058,7 +1058,7 @@ impl StructureMatcher {
             }
         }
 
-        if class_labels.len() > 118 {
+        if class_labels.len() > usize::from(MAX_SUPPORTED_ATOMIC_NUMBER) {
             return None;
         }
 

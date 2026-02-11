@@ -17,9 +17,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest --run && playwright test",
-    "package-element-data": "node scripts/package-element-data.mjs",
-    "copy-xrd-data": "node scripts/copy-xrd-data.mjs",
-    "package:dist": "svelte-package && pnpm run package-element-data && pnpm run copy-xrd-data",
+    "package-dist-assets": "node scripts/package-dist-assets.mjs",
+    "package:dist": "svelte-package && pnpm run package-dist-assets",
     "package": "pnpm run package:dist",
     "prepare": "svelte-kit sync && pnpm run package:dist",
     "prepublishOnly": "pnpm run package:dist"
