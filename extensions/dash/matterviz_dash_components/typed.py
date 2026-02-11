@@ -1178,6 +1178,7 @@ class Bands(MatterViz):
         band_spin_mode: Any | None = None,
         band_structs: dict | None = None,
         band_type: Any | None = None,
+        class_: str | None = None,
         controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
@@ -1185,6 +1186,7 @@ class Bands(MatterViz):
         fermi_level: float | None = None,
         fill_regions: list | None = None,
         hover_config: dict | None = None,
+        id: str | None = None,
         label_placement_config: dict | None = None,
         legend: Any | None = None,
         line_kwargs: Any | None = None,
@@ -1205,6 +1207,7 @@ class Bands(MatterViz):
         show_path_mode_control: bool | None = None,
         show_spin_control: bool | None = None,
         show_units_control: bool | None = None,
+        style: str | None = None,
         styles: Any | None = None,
         tooltip_point: Any | None = None,
         units: Any | None = None,
@@ -1228,6 +1231,8 @@ class Bands(MatterViz):
             mv_props["band_structs"] = band_structs
         if band_type is not None:
             mv_props["band_type"] = band_type
+        if class_ is not None:
+            mv_props["class"] = class_
         if controls is not None:
             mv_props["controls"] = controls
         if current_x_value is not None:
@@ -1242,6 +1247,8 @@ class Bands(MatterViz):
             mv_props["fill_regions"] = fill_regions
         if hover_config is not None:
             mv_props["hover_config"] = hover_config
+        if id is not None:
+            mv_props["id"] = id
         if label_placement_config is not None:
             mv_props["label_placement_config"] = label_placement_config
         if legend is not None:
@@ -1282,6 +1289,8 @@ class Bands(MatterViz):
             mv_props["show_spin_control"] = show_spin_control
         if show_units_control is not None:
             mv_props["show_units_control"] = show_units_control
+        if style is not None:
+            mv_props["style"] = style
         if styles is not None:
             mv_props["styles"] = styles
         if tooltip_point is not None:
