@@ -1354,7 +1354,7 @@ impl Structure {
         anonymous: bool,
     ) -> bool {
         if anonymous {
-            matcher.fit_anonymous(self, other)
+            matcher.fit_anonymous(self, other, None)
         } else {
             matcher.fit(self, other)
         }

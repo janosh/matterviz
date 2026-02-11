@@ -77,3 +77,30 @@ Compare band structures and DOS from different computational methods:
   style="aspect-ratio: 3"
 />
 ```
+
+## Showcasing New Bands Features via `bands_props`
+
+`BandsAndDos` forwards all `Bands` options through `bands_props`, so you can use path controls, unit conversion, highlights, spin display, and gap annotation in the combined layout.
+
+```svelte example
+<script lang="ts">
+  import { BandsAndDos } from 'matterviz'
+  import { electronic_bands } from '$site/electronic/bands'
+  import { dos_spin_polarization } from '$site/electronic/dos'
+</script>
+
+<BandsAndDos
+  band_structs={electronic_bands.vbr2_971787}
+  doses={dos_spin_polarization}
+  bands_props={{
+    band_spin_mode: 'overlay',
+    show_gap_annotation: true,
+    path_mode: 'intersection',
+    show_controls: true,
+  }}
+  dos_props={{ spin_mode: 'mirror', sigma: 0.1 }}
+  shared_y_axis
+  class="full-bleed"
+  style="aspect-ratio: 3"
+/>
+```

@@ -1,18 +1,24 @@
 <script lang="ts">
   import { PLOT_COLORS } from '$lib/colors'
+  import EmptyState from '$lib/EmptyState.svelte'
+  import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
-  import type { AxisConfig, DataSeries } from '$lib/plot/types'
+  import type { AxisConfig, DataSeries, FillRegion } from '$lib/plot/types'
   import * as helpers from '$lib/spectral/helpers'
   import type {
+    BandsSpinMode,
     BandStructureType,
     BaseBandStructure,
+    FrequencyUnit,
     LineKwargs,
     PathMode,
     RibbonConfig,
   } from '$lib/spectral/types'
   import type { ComponentProps } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+
+  type Dom_attr_value = string | number | boolean
 
   let {
     band_structs,
@@ -26,6 +32,20 @@
     reference_frequency = null,
     ribbon_config = {},
     fermi_level = undefined,
+    units = $bindable(`THz`),
+    band_spin_mode = $bindable(`overlay`),
+    highlight_regions = [],
+    shade_imaginary_modes = true,
+    show_gap_annotation = true,
+    show_controls = true,
+    show_path_mode_control = true,
+    show_units_control = true,
+    show_spin_control = true,
+    show_annotation_controls = true,
+    id = undefined,
+    class: class_name = undefined,
+    style = undefined,
+    'data-testid': data_testid = undefined,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
     band_structs: BaseBandStructure | Record<string, BaseBandStructure>
@@ -39,7 +59,32 @@
     reference_frequency?: number | null
     ribbon_config?: RibbonConfig | Record<string, RibbonConfig>
     fermi_level?: number // Fermi level for electronic bands (auto-detected if not provided)
+    units?: FrequencyUnit // Phonon frequency display units (electronic always eV)
+    band_spin_mode?: BandsSpinMode // Electronic spin display: overlay (default), up_only, down_only
+    highlight_regions?: {
+      y_min: number
+      y_max: number
+      color?: string
+      opacity?: number
+      label?: string
+    }[]
+    shade_imaginary_modes?: boolean // Shade y<0 region for phonon plots with imaginary modes
+    show_gap_annotation?: boolean // Annotate electronic VBM/CBM and gap when available
+    show_controls?: boolean
+    show_path_mode_control?: boolean
+    show_units_control?: boolean
+    show_spin_control?: boolean
+    show_annotation_controls?: boolean
+    id?: string
+    class?: string
+    style?: string
+    'data-testid'?: string
   } = $props()
+
+  const is_dom_attr_value = (attr_value: unknown): attr_value is Dom_attr_value =>
+    typeof attr_value === `string` ||
+    typeof attr_value === `number` ||
+    typeof attr_value === `boolean`
 
   // Helper function to get line styling for a band
   function get_line_style(
@@ -172,55 +217,83 @@
     return typeof efermi === `number` ? efermi : undefined
   })
 
-  // Determine which segments to plot based on path_mode
-  let segments_to_plot = $derived.by(() => {
-    const all_segments: Record<string, [string, BaseBandStructure][]> = {}
+  let effective_spin_mode = $derived.by((): BandsSpinMode => {
+    if (detected_band_type !== `electronic`) return null
+    return (band_spin_mode === `up_only` || band_spin_mode === `down_only`)
+      ? band_spin_mode
+      : `overlay`
+  })
 
-    // Collect all segments from all structures
+  const convert_band_values = (values: number[]): number[] => {
+    if (detected_band_type !== `phonon`) return values
+    if (units === `THz`) return values
+    return helpers.convert_frequencies(values, units)
+  }
+
+  // Collect all path segments across structures once (shared by strict checks and plotting)
+  let all_segments = $derived.by(() => {
+    const all_segments: Record<string, [string, BaseBandStructure][]> = {}
     for (const [label, bs] of Object.entries(band_structs_dict)) {
       for (const branch of bs.branches) {
         const start_label = bs.qpoints[branch.start_index]?.label ?? undefined
         const end_label = bs.qpoints[branch.end_index]?.label ?? undefined
         const segment_key = helpers.get_segment_key(start_label, end_label)
-
         all_segments[segment_key] ??= []
         all_segments[segment_key].push([label, bs])
       }
     }
+    return all_segments
+  })
 
-    const num_structs = Object.keys(band_structs_dict).length
-    const is_intersection = path_mode === `strict` || path_mode === `intersection`
-
-    if (is_intersection) {
-      // Only segments present in all structures
-      const common_segments = Object.keys(all_segments).filter(
-        (seg) => all_segments[seg].length === num_structs,
-      )
-
-      // Warn in strict mode if not all segments are common
+  let num_structures = $derived(Object.keys(band_structs_dict).length)
+  let all_segment_keys = $derived(Object.keys(all_segments))
+  let common_segment_keys = $derived.by(() =>
+    all_segment_keys.filter(
+      (segment_key) => all_segments[segment_key].length === num_structures,
+    )
+  )
+  let empty_state_attrs = $derived.by(() => {
+    const attrs: Record<string, Dom_attr_value> = {}
+    for (const [attr_name, attr_value] of Object.entries(rest)) {
       if (
-        path_mode === `strict` &&
-        common_segments.length !== Object.keys(all_segments).length
+        (attr_name === `role` || attr_name.startsWith(`aria-`)) &&
+        is_dom_attr_value(attr_value)
       ) {
-        console.warn(
-          `Band structures have different q-point paths. Use path_mode="union" or "intersection".`,
-        )
+        attrs[attr_name] = attr_value
       }
-
-      return new Set(common_segments)
     }
+    return attrs
+  })
 
-    // union - all segments
-    return new Set(Object.keys(all_segments))
+  // Compute path mismatch details for strict mode handling
+  let strict_path_error = $derived.by((): string | null => {
+    if (path_mode !== `strict`) return null
+    return common_segment_keys.length === all_segment_keys.length
+      ? null
+      : `Band structures have different q-point paths. Switch to path_mode="union" or "intersection" to compare non-identical paths.`
+  })
+
+  // Determine which segments to plot based on path_mode
+  let segments_to_plot = $derived.by(() => {
+    if (path_mode === `union`) return new Set(all_segment_keys)
+    return new Set(common_segment_keys)
   })
 
   // Map segments to x-axis positions
   $effect(() => {
+    if (Object.keys(band_structs_dict).length === 0 || segments_to_plot.size === 0) {
+      x_positions = {}
+      return
+    }
     const positions: Record<string, [number, number]> = {}
     let current_x = 0
 
     // Preserve physical path order using the first available structure
     const canonical = Object.values(band_structs_dict)[0]
+    if (!canonical) {
+      x_positions = {}
+      return
+    }
     const ordered_segments = helpers.get_ordered_segments(canonical, segments_to_plot)
 
     for (let seg_idx = 0; seg_idx < ordered_segments.length; seg_idx++) {
@@ -294,14 +367,16 @@
           x_end,
         )
 
-        // Create series for each band
+        // Create series for each band (and spin channel for electronic structures)
         for (let band_idx = 0; band_idx < bs.nb_bands; band_idx++) {
-          const frequencies = bs.bands[band_idx].slice(start_idx, end_idx)
+          const frequencies = convert_band_values(
+            bs.bands[band_idx].slice(start_idx, end_idx),
+          )
           const is_acoustic = detected_band_type === `phonon` &&
             band_idx < helpers.N_ACOUSTIC_MODES
           const mode_type = is_acoustic ? `acoustic` : `optical`
 
-          const line_style = get_line_style(
+          const line_style_up = get_line_style(
             color,
             is_acoustic,
             mode_type,
@@ -309,14 +384,41 @@
             band_idx,
           )
 
-          all_series.push({
-            x: scaled_distances,
-            y: frequencies,
-            markers: `line`,
-            label: structure_label,
-            line_style,
-            metadata: { band_idx },
-          })
+          const spin_down_band = bs.spin_down_bands?.[band_idx]
+          const has_spin_down_channel = detected_band_type === `electronic` &&
+            Array.isArray(spin_down_band) &&
+            spin_down_band.length >= end_idx
+
+          if (effective_spin_mode !== `down_only`) {
+            all_series.push({
+              x: scaled_distances,
+              y: frequencies,
+              markers: `line`,
+              label: has_spin_down_channel
+                ? `${structure_label} (↑)`
+                : structure_label,
+              line_style: line_style_up,
+              metadata: { band_idx, spin: `up` },
+            })
+          }
+
+          if (has_spin_down_channel && effective_spin_mode !== `up_only`) {
+            const spin_down_frequencies = convert_band_values(
+              spin_down_band.slice(start_idx, end_idx),
+            )
+            all_series.push({
+              x: scaled_distances,
+              y: spin_down_frequencies,
+              markers: `line`,
+              label: `${structure_label} (↓)`,
+              line_style: {
+                ...line_style_up,
+                line_dash: `4,2`,
+                stroke_width: Math.max(1, line_style_up.stroke_width - 0.1),
+              },
+              metadata: { band_idx, spin: `down` },
+            })
+          }
         }
       }
     }
@@ -372,7 +474,9 @@
           // Skip if all widths are zero or missing
           if (width_values.every((wv) => !wv || wv <= 0)) continue
 
-          const y_values = bs.bands[band_idx].slice(start_idx, end_idx)
+          const y_values = convert_band_values(
+            bs.bands[band_idx].slice(start_idx, end_idx),
+          )
 
           all_ribbons.push({
             x_values: scaled_distances,
@@ -446,10 +550,16 @@
 
   // Calculate y-range, enforcing 0 minimum for phonon bands without imaginary modes
   let y_range = $derived.by((): Vec2 | undefined => {
-    const all_freqs = Object.values(band_structs_dict).flatMap((bs) =>
-      bs.bands.flat()
-    )
-    const finite = all_freqs.filter(Number.isFinite)
+    const all_freqs = Object.values(band_structs_dict).flatMap((bs) => [
+      ...bs.bands.flat(),
+      ...(bs.spin_down_bands?.flat() ?? []),
+    ])
+    // Keep electronic y-range independent of phonon unit conversion options.
+    const display_values = detected_band_type === `phonon`
+      ? convert_band_values(all_freqs)
+      : all_freqs
+    if (!display_values.length) return undefined
+    const finite = display_values.filter(Number.isFinite)
     if (!finite.length) return undefined
     let min_val = Math.min(...finite), max_val = Math.max(...finite)
     if (
@@ -465,7 +575,7 @@
 
   // Internal y_axis that ScatterPlot binds to - syncs zoom changes back to parent
   let internal_y_axis = $derived({
-    label: detected_band_type === `phonon` ? `Frequency (THz)` : `Energy (eV)`,
+    label: detected_band_type === `phonon` ? `Frequency (${units})` : `Energy (eV)`,
     format: `.2f`,
     label_shift: { y: 15 },
     range: y_range,
@@ -489,49 +599,205 @@
     }
   })
 
+  let has_series = $derived(series_data.length > 0)
+  let is_strict_path_error = $derived(path_mode === `strict` && !!strict_path_error)
+
+  let imaginary_mode_region = $derived.by((): FillRegion[] => {
+    if (
+      detected_band_type !== `phonon` ||
+      !shade_imaginary_modes ||
+      !y_range ||
+      y_range[0] >= 0
+    ) return []
+    return [{
+      lower: y_range[0],
+      upper: 0,
+      fill: `var(--bands-imaginary-region-color, light-dark(#f8d7da, #5a1a1f))`,
+      fill_opacity: 0.2,
+      label: `Imaginary modes`,
+      show_in_legend: false,
+      z_index: `below-lines`,
+    }]
+  })
+
+  let custom_highlight_regions = $derived.by((): FillRegion[] =>
+    (highlight_regions ?? [])
+      .filter((region) =>
+        Number.isFinite(region.y_min) && Number.isFinite(region.y_max)
+      )
+      .map((region) => ({
+        lower: Math.min(region.y_min, region.y_max),
+        upper: Math.max(region.y_min, region.y_max),
+        fill: region.color ??
+          `var(--bands-highlight-region-color, light-dark(#f6e8c3, #4d3f20))`,
+        fill_opacity: region.opacity ?? 0.2,
+        label: region.label,
+        show_in_legend: Boolean(region.label),
+        z_index: `below-lines` as const,
+      }))
+  )
+
+  let fill_regions = $derived([
+    ...imaginary_mode_region,
+    ...custom_highlight_regions,
+  ])
+
+  let electronic_gap_annotation = $derived.by(() => {
+    if (
+      !show_gap_annotation ||
+      detected_band_type !== `electronic` ||
+      effective_fermi_level === undefined
+    ) return null
+    const all_energies = series_data.flatMap((series_item) =>
+      series_item.y.filter(Number.isFinite)
+    )
+    const occupied = all_energies.filter((energy) => energy <= effective_fermi_level)
+    const unoccupied = all_energies.filter((energy) => energy > effective_fermi_level)
+    if (!occupied.length || !unoccupied.length) return null
+    const vbm = Math.max(...occupied)
+    const cbm = Math.min(...unoccupied)
+    const gap = cbm - vbm
+    if (!(gap > 0)) return null
+    return { vbm, cbm, gap }
+  })
+
+  let empty_state_message = $derived.by(() => {
+    if (is_strict_path_error) {
+      return strict_path_error ?? `Path mismatch in strict mode.`
+    }
+    if (!band_structs || Object.keys(band_structs_dict).length === 0) {
+      return `No valid band structure data to display.`
+    }
+    if (!has_series) {
+      return `No plottable band segments were found in the provided data.`
+    }
+    return `No valid band structure data to display.`
+  })
+
   let display = $state({ x_grid: false, y_grid: true, y_zero_line: true })
 </script>
-
-<ScatterPlot
-  series={series_data}
-  x_axis={{
-    label: `Wave Vector`,
-    ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
-    format: ``,
-    range: x_range,
-    ...x_axis,
-  }}
-  bind:y_axis={internal_y_axis}
-  bind:display
-  legend={show_legend && Object.keys(band_structs_dict).length > 1 ? {} : null}
-  hover_config={{ threshold_px: 50 }}
-  {...rest}
->
-  {#snippet tooltip({ x, y_formatted, label, metadata })}
-    {@const y_label_full = internal_y_axis.label ?? ``}
-    {@const [, y_label, y_unit] = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/) ??
+{#if has_series && !is_strict_path_error}
+  <ScatterPlot
+    {id}
+    class={class_name}
+    {style}
+    data-testid={data_testid}
+    series={series_data}
+    {fill_regions}
+    x_axis={{
+      label: `Wave Vector`,
+      ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
+      format: ``,
+      range: x_range,
+      ...x_axis,
+    }}
+    bind:y_axis={internal_y_axis}
+    bind:display
+    legend={show_legend && Object.keys(band_structs_dict).length > 1 ? {} : null}
+    hover_config={{ threshold_px: 50 }}
+    controls={{ show: show_controls }}
+    {...rest}
+  >
+    {#snippet tooltip({ x, y_formatted, label, metadata })}
+      {@const y_label_full = internal_y_axis.label ?? ``}
+      {@const [, y_label, y_unit] = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/) ??
       [, y_label_full, ``]}
-    {@const segment = Object.entries(x_positions ?? {}).find(([, [start, end]]) =>
+      {@const segment = Object.entries(x_positions ?? {}).find(([, [start, end]]) =>
       x >= start && x <= end
     )}
-    {@const path = segment?.[0].split(`_`).map((lbl) =>
+      {@const path = segment?.[0].split(`_`).map((lbl) =>
       lbl !== `null` ? helpers.pretty_sym_point(lbl) : ``
     ).filter(Boolean).join(` → `) || null}
-    {@const band_idx = metadata?.band_idx}
-    {@const num_structs = Object.keys(band_structs_dict).length}
-    {#if num_structs > 1 && label}<strong>{label}</strong><br />{/if}
-    {y_label || `Value`}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
-    {#if path}Path: {path}<br />{/if}
-    {#if typeof band_idx === `number`}Band: {band_idx + 1}{/if}
-  {/snippet}
+      {@const band_idx = metadata?.band_idx}
+      {@const spin = metadata?.spin}
+      {@const num_structs = Object.keys(band_structs_dict).length}
+      {#if num_structs > 1 && label}<strong>{label}</strong><br />{/if}
+      {y_label || `Value`}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
+      {#if path}Path: {path}<br />{/if}
+      {#if typeof band_idx === `number`}Band: {band_idx + 1}{/if}
+      {#if spin === `up` || spin === `down`}
+        ({spin === `up` ? `↑` : `↓`}){/if}
+    {/snippet}
 
-  {#snippet user_content({ height, x_scale_fn, y_scale_fn, pad })}
-    <!-- Fat band ribbons (rendered behind band lines) -->
-    {#each ribbon_data as
-      ribbon
-      (`${ribbon.structure_label}-${ribbon.segment_key}-${ribbon.band_idx}`)
-    }
-      {@const path_d = helpers.generate_ribbon_path(
+    {#snippet controls_extra()}
+      {#if show_path_mode_control}
+        <SettingsSection
+          title="Path Mode"
+          current_values={{ path_mode }}
+          on_reset={() => (path_mode = `strict`)}
+        >
+          <div class="pane-row">
+            <label for="bands-path-mode">Mode:</label>
+            <select id="bands-path-mode" bind:value={path_mode}>
+              <option value="strict">strict</option>
+              <option value="intersection">intersection</option>
+              <option value="union">union</option>
+            </select>
+          </div>
+        </SettingsSection>
+      {/if}
+
+      {#if show_units_control && detected_band_type === `phonon`}
+        <SettingsSection
+          title="Units"
+          current_values={{ units }}
+          on_reset={() => (units = `THz`)}
+        >
+          <div class="pane-row">
+            <label for="bands-units">Frequency:</label>
+            <select id="bands-units" bind:value={units}>
+              <option value="THz">THz</option>
+              <option value="eV">eV</option>
+              <option value="meV">meV</option>
+              <option value="cm-1">cm-1</option>
+              <option value="Ha">Ha</option>
+            </select>
+          </div>
+        </SettingsSection>
+      {/if}
+
+      {#if show_spin_control && detected_band_type === `electronic`}
+        <SettingsSection
+          title="Spin Display"
+          current_values={{ band_spin_mode }}
+          on_reset={() => (band_spin_mode = `overlay`)}
+        >
+          <div class="pane-row">
+            <label for="bands-spin-mode">Mode:</label>
+            <select id="bands-spin-mode" bind:value={band_spin_mode}>
+              <option value="overlay">overlay</option>
+              <option value="up_only">up only</option>
+              <option value="down_only">down only</option>
+            </select>
+          </div>
+        </SettingsSection>
+      {/if}
+
+      {#if show_annotation_controls && detected_band_type === `electronic`}
+        <SettingsSection
+          title="Annotations"
+          current_values={{ show_gap_annotation }}
+          on_reset={() => (show_gap_annotation = true)}
+        >
+          <div class="pane-row pane-checkbox">
+            <input
+              id="bands-gap-annotation"
+              type="checkbox"
+              bind:checked={show_gap_annotation}
+            />
+            <label for="bands-gap-annotation">Show band gap annotation</label>
+          </div>
+        </SettingsSection>
+      {/if}
+    {/snippet}
+
+    {#snippet user_content({ height, x_scale_fn, y_scale_fn, pad })}
+      <!-- Fat band ribbons (rendered behind band lines) -->
+      {#each ribbon_data as
+        ribbon
+        (`${ribbon.structure_label}-${ribbon.segment_key}-${ribbon.band_idx}`)
+      }
+        {@const path_d = helpers.generate_ribbon_path(
       ribbon.x_values,
       ribbon.y_values,
       ribbon.width_values,
@@ -540,78 +806,152 @@
       ribbon.max_width,
       ribbon.scale,
     )}
-      {#if path_d}
-        <path
-          d={path_d}
-          fill={ribbon.color}
-          opacity={ribbon.opacity}
-          stroke="none"
-          class="fat-band-ribbon"
-        />
-      {/if}
-    {/each}
+        {#if path_d}
+          <path
+            d={path_d}
+            fill={ribbon.color}
+            opacity={ribbon.opacity}
+            stroke="none"
+            class="fat-band-ribbon"
+          />
+        {/if}
+      {/each}
 
-    <!-- Symmetry point vertical lines (filter NaN from scale) -->
-    {#each Object.keys(x_axis_ticks).map(Number).map((x) => x_scale_fn(x)).filter(
+      <!-- Symmetry point vertical lines (filter NaN from scale) -->
+      {#each Object.keys(x_axis_ticks).map(Number).map((x) => x_scale_fn(x)).filter(
       Number.isFinite,
     ) as
-      scaled_x
-      (scaled_x)
-    }
-      <line
-        x1={scaled_x}
-        x2={scaled_x}
-        y1={pad.t}
-        y2={height - pad.b}
-        stroke="var(--bands-symmetry-line-color, light-dark(black, white))"
-        stroke-width="var(--bands-symmetry-line-width, 1)"
-        opacity="var(--bands-symmetry-line-opacity, 0.5)"
-      />
-    {/each}
+        scaled_x
+        (scaled_x)
+      }
+        <line
+          x1={scaled_x}
+          x2={scaled_x}
+          y1={pad.t}
+          y2={height - pad.b}
+          stroke="var(--bands-symmetry-line-color, light-dark(black, white))"
+          stroke-width="var(--bands-symmetry-line-width, 1)"
+          opacity="var(--bands-symmetry-line-opacity, 0.5)"
+        />
+      {/each}
 
-    <!-- Fermi level line for electronic bands -->
-    {@const fermi_y = effective_fermi_level !== undefined
+      <!-- Fermi level line for electronic bands -->
+      {@const fermi_y = effective_fermi_level !== undefined
       ? y_scale_fn(effective_fermi_level)
       : NaN}
-    {@const bands_x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
-    {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
-      <line
-        class="fermi-level-line"
-        x1={pad.l}
-        x2={bands_x_end}
-        y1={fermi_y}
-        y2={fermi_y}
-        stroke="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
-        stroke-width="var(--bands-fermi-line-width, 1.5)"
-        stroke-dasharray="var(--bands-fermi-line-dash, 6,3)"
-        opacity="var(--bands-fermi-line-opacity, 0.8)"
-      />
-      <text
-        class="fermi-level-label"
-        x={bands_x_end + 4}
-        y={fermi_y}
-        dy="0.35em"
-        font-size="10"
-        fill="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
-        opacity="0.9"
-      >
-        E<tspan dy="2" font-size="8">F</tspan>
-      </text>
-    {/if}
+      {@const bands_x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
+      {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
+        <line
+          class="fermi-level-line"
+          x1={pad.l}
+          x2={bands_x_end}
+          y1={fermi_y}
+          y2={fermi_y}
+          stroke="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+          stroke-width="var(--bands-fermi-line-width, 1.5)"
+          stroke-dasharray="var(--bands-fermi-line-dash, 6,3)"
+          opacity="var(--bands-fermi-line-opacity, 0.8)"
+        />
+        <text
+          class="fermi-level-label"
+          x={bands_x_end + 4}
+          y={fermi_y}
+          dy="0.35em"
+          font-size="10"
+          fill="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+          opacity="0.9"
+        >
+          E<tspan dy="2" font-size="8">F</tspan>
+        </text>
+      {/if}
 
-    <!-- Reference frequency horizontal line -->
-    {@const ref_y = reference_frequency !== null ? y_scale_fn(reference_frequency) : NaN}
-    {#if Number.isFinite(ref_y) && Number.isFinite(bands_x_end)}
-      <line
-        x1={pad.l}
-        x2={bands_x_end}
-        y1={ref_y}
-        y2={ref_y}
-        stroke="var(--bands-reference-line-color, light-dark(#d48860, #c47850))"
-        stroke-width="var(--bands-reference-line-width, 1)"
-        stroke-dasharray="var(--bands-reference-line-dash, 4,3)"
-        opacity="var(--bands-reference-line-opacity, 0.5)"
-      />
-    {/if}
-  {/snippet}
-</ScatterPlot>
+      <!-- Reference frequency horizontal line -->
+      {@const ref_freq = reference_frequency !== null && reference_frequency !== undefined
+      ? convert_band_values([reference_frequency])[0]
+      : NaN}
+      {@const ref_y = Number.isFinite(ref_freq) ? y_scale_fn(ref_freq) : NaN}
+      {#if Number.isFinite(ref_y) && Number.isFinite(bands_x_end)}
+        <line
+          x1={pad.l}
+          x2={bands_x_end}
+          y1={ref_y}
+          y2={ref_y}
+          stroke="var(--bands-reference-line-color, light-dark(#d48860, #c47850))"
+          stroke-width="var(--bands-reference-line-width, 1)"
+          stroke-dasharray="var(--bands-reference-line-dash, 4,3)"
+          opacity="var(--bands-reference-line-opacity, 0.5)"
+        />
+      {/if}
+
+      <!-- Electronic band edge and gap annotation -->
+      {@const gap_data = electronic_gap_annotation}
+      {@const vbm_y = gap_data ? y_scale_fn(gap_data.vbm) : NaN}
+      {@const cbm_y = gap_data ? y_scale_fn(gap_data.cbm) : NaN}
+      {#if gap_data && Number.isFinite(vbm_y) && Number.isFinite(cbm_y) &&
+      Number.isFinite(bands_x_end)}
+        <line
+          x1={pad.l}
+          x2={bands_x_end}
+          y1={vbm_y}
+          y2={vbm_y}
+          stroke="var(--bands-gap-vbm-color, light-dark(#1f77b4, #7db7ff))"
+          stroke-width="var(--bands-gap-line-width, 1)"
+          stroke-dasharray="var(--bands-gap-line-dash, 2,2)"
+          opacity="0.7"
+        />
+        <line
+          x1={pad.l}
+          x2={bands_x_end}
+          y1={cbm_y}
+          y2={cbm_y}
+          stroke="var(--bands-gap-cbm-color, light-dark(#2ca02c, #7ddc7d))"
+          stroke-width="var(--bands-gap-line-width, 1)"
+          stroke-dasharray="var(--bands-gap-line-dash, 2,2)"
+          opacity="0.7"
+        />
+        <text
+          x={bands_x_end + 6}
+          y={(vbm_y + cbm_y) / 2}
+          dominant-baseline="middle"
+          font-size="10"
+          fill="var(--text-color)"
+        >
+          E<tspan dy="2" font-size="8">g</tspan>: {Number(gap_data.gap.toPrecision(4))} eV
+        </text>
+      {/if}
+    {/snippet}
+  </ScatterPlot>
+{:else}
+  <EmptyState
+    {id}
+    class={class_name}
+    {style}
+    data-testid={data_testid}
+    {...empty_state_attrs}
+    message={empty_state_message}
+  />
+{/if}
+
+<style>
+  .pane-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin: 0.3em 0;
+    font-size: 0.9em;
+  }
+  .pane-row label {
+    min-width: 4.5em;
+    flex-shrink: 0;
+  }
+  .pane-row select {
+    flex: 1;
+    min-width: 0;
+  }
+  .pane-checkbox {
+    gap: 0.4em;
+  }
+  .pane-checkbox label {
+    min-width: 0;
+  }
+</style>
