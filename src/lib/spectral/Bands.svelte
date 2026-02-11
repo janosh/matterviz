@@ -281,11 +281,19 @@
 
   // Map segments to x-axis positions
   $effect(() => {
+    if (Object.keys(band_structs_dict).length === 0 || segments_to_plot.size === 0) {
+      x_positions = {}
+      return
+    }
     const positions: Record<string, [number, number]> = {}
     let current_x = 0
 
     // Preserve physical path order using the first available structure
     const canonical = Object.values(band_structs_dict)[0]
+    if (!canonical) {
+      x_positions = {}
+      return
+    }
     const ordered_segments = helpers.get_ordered_segments(canonical, segments_to_plot)
 
     for (let seg_idx = 0; seg_idx < ordered_segments.length; seg_idx++) {
@@ -546,7 +554,10 @@
       ...bs.bands.flat(),
       ...(bs.spin_down_bands?.flat() ?? []),
     ])
-    const display_values = convert_band_values(all_freqs)
+    // Keep electronic y-range independent of phonon unit conversion options.
+    const display_values = detected_band_type === `phonon`
+      ? convert_band_values(all_freqs)
+      : all_freqs
     if (!display_values.length) return undefined
     const finite = display_values.filter(Number.isFinite)
     if (!finite.length) return undefined
@@ -855,7 +866,10 @@
       {/if}
 
       <!-- Reference frequency horizontal line -->
-      {@const ref_y = reference_frequency !== null ? y_scale_fn(reference_frequency) : NaN}
+      {@const ref_freq = reference_frequency !== null
+      ? convert_band_values([reference_frequency])[0]
+      : NaN}
+      {@const ref_y = Number.isFinite(ref_freq) ? y_scale_fn(ref_freq) : NaN}
       {#if Number.isFinite(ref_y) && Number.isFinite(bands_x_end)}
         <line
           x1={pad.l}

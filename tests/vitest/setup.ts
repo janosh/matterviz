@@ -4,11 +4,12 @@ import type { Crystal, Pbc, Site } from '$lib/structure'
 import init from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeEach, vi } from 'vitest'
 
 // Resolve WASM path for Node.js environment (used by moyo-wasm integration tests)
 const MOYO_WASM_PATH = resolve(
-  import.meta.dirname ?? `.`,
+  import.meta.dirname ?? fileURLToPath(new URL(`.`, import.meta.url).href),
   `../../node_modules/@spglib/moyo-wasm/moyo_wasm_bg.wasm`,
 )
 

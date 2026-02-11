@@ -2,7 +2,7 @@ import Bands from '$lib/spectral/Bands.svelte'
 import type { BaseBandStructure } from '$lib/spectral/types'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 const base_band_structure: BaseBandStructure = {
   recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
@@ -63,11 +63,16 @@ const spin_polarized_electronic = {
 const mount_bands = async (
   props: ComponentProps<typeof Bands>,
 ): Promise<void> => {
+  document.body.innerHTML = ``
   mount(Bands, { target: document.body, props })
   await tick()
 }
 
 const line_count = (): number => document.querySelectorAll(`svg path[fill="none"]`).length
+
+afterEach(() => {
+  document.body.innerHTML = ``
+})
 
 describe(`Bands component`, () => {
   it.each([
@@ -149,5 +154,18 @@ describe(`Bands component`, () => {
       show_gap_annotation: true,
     })
     expect(document.body.textContent).toContain(`Eg:`)
+  })
+
+  it(`ignores units prop for electronic y-range/gap values`, async () => {
+    await mount_bands({
+      band_structs: spin_polarized_electronic,
+      band_type: `electronic`,
+      band_spin_mode: `up_only`,
+      units: `cm-1`,
+      show_gap_annotation: true,
+    })
+    expect(document.body.textContent).toContain(`Energy (eV)`)
+    expect(document.body.textContent).toContain(`Eg:`)
+    expect(document.body.textContent).toContain(`0.3 eV`)
   })
 })

@@ -588,7 +588,7 @@ function convert_pymatgen_band_structure(
   }
 
   const converted_bands = raw_bands.map((band) => band.map(convert_to_thz))
-  const valid_spin_down_bands = raw_spin_down_bands &&
+  const valid_spin_down_bands = Array.isArray(raw_spin_down_bands) &&
       raw_spin_down_bands.length === raw_bands.length &&
       raw_spin_down_bands.every((band, band_idx) =>
         Array.isArray(band) && band.length === raw_bands[band_idx]?.length

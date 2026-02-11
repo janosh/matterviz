@@ -320,6 +320,7 @@
   function infer_mode(input: string): FormulaSearchMode {
     const trimmed = input.trim()
     if (!trimmed) return `elements`
+    if (/^[+\-!]\s*\w/.test(trimmed)) return `elements`
     if (trimmed.includes(`+`) || trimmed.includes(`!`)) return `elements`
     if (trimmed.includes(`:`)) return trimmed.includes(`-`) ? `chemsys` : `elements`
     if (trimmed.includes(`,`)) return `elements` // Li,Fe,O → has elements
