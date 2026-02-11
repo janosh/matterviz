@@ -8,10 +8,8 @@
 //   python scripts/extract_pymatgen_data.py
 
 import type { ChemicalElement } from '$lib/element/types'
-// data.json is generated from data.json.gz (gitignored, not committed) by:
-// - vite.config.ts on Vite startup
-// - tests/vitest/setup.ts on vitest run
-// - playwright.config.ts on Playwright run
-import data from './data.json' with { type: 'json' }
+// Source of truth is data.json.gz. During npm packaging, scripts/package-dist-assets.mjs
+// rewrites dist/element/data.js to inline decompressed JSON for sync consumers.
+import data from './data.json.gz'
 
 export default data as ChemicalElement[]

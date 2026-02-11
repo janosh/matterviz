@@ -430,7 +430,7 @@ describe(`ConvexHullStats`, () => {
       }
     })
 
-    test(`table has # column with row numbers and bold stable formulas`, () => {
+    test(`table has # and stable columns with row numbers and bold stable formulas`, () => {
       mount_stats_table({
         stable_entries: [
           mock_entry({
@@ -450,7 +450,7 @@ describe(`ConvexHullStats`, () => {
 
       const headers = get_headers()
       expect(headers).toContain(`#`)
-      expect(headers).not.toContain(`Stable`)
+      expect(headers).toContain(`Stable`)
       // Row numbers start at 1
       const first_cells = Array.from(
         document.querySelectorAll(`tbody tr:first-child td`),

@@ -100,6 +100,13 @@ test.describe(`Bands Component Tests`, () => {
     expect(x_labels).toContain(`K`)
   })
 
+  test(`shows error state for strict mode path mismatches`, async ({ page }) => {
+    const plot = page.getByTestId(`strict-mismatch-plot`)
+    await expect(plot).toBeVisible()
+    await expect(plot.locator(`svg`)).toHaveCount(0)
+    await expect(plot).toContainText(`different q-point paths`)
+  })
+
   test(`shows tooltip with frequency and path on hover`, async ({ page }) => {
     const plot = page.getByTestId(`single-bands-plot`)
     await expect(plot).toBeVisible()
@@ -240,5 +247,35 @@ test.describe(`Bands Component Tests`, () => {
     // We have 3 branches, but U-K is discontinuous, so only 2 should have paths
     // Each of the 2 continuous branches * 4 bands = 8 paths expected
     expect(path_count).toBe(8)
+  })
+
+  test(`applies phonon unit conversion and renders custom highlight region`, async ({ page }) => {
+    const plot = page.getByTestId(`phonon-units-highlight-plot`)
+    await expect(plot).toBeVisible()
+
+    const y_axis_text = (await plot.locator(`g.y-axis text`).allTextContents()).join(` `)
+    expect(y_axis_text).toContain(`cm-1`)
+
+    const fill_paths = plot.locator(`svg path`)
+    await expect(fill_paths.first()).toBeVisible()
+  })
+
+  test(`renders electronic spin overlay channels and gap annotation`, async ({ page }) => {
+    const plot = page.getByTestId(`electronic-spin-overlay-plot`)
+    await expect(plot).toBeVisible()
+
+    const line_paths = plot.locator(`svg path[fill="none"]`)
+    await expect(line_paths.first()).toBeVisible()
+    expect(await line_paths.count()).toBeGreaterThan(4)
+
+    await expect(plot.locator(`svg text`).filter({ hasText: `Eg:` })).toBeVisible()
+  })
+
+  test(`supports down-only electronic spin mode`, async ({ page }) => {
+    const plot = page.getByTestId(`electronic-spin-down-only-plot`)
+    await expect(plot).toBeVisible()
+    const line_paths = plot.locator(`svg path[fill="none"]`)
+    await expect(line_paths.first()).toBeVisible()
+    expect(await line_paths.count()).toBe(4)
   })
 })

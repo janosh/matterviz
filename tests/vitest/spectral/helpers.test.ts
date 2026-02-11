@@ -893,6 +893,21 @@ describe(`normalize_band_structure`, () => {
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
       expect(result?.bands).toEqual([[0, 1], [2, 3]]) // First spin channel
+      expect(result?.spin_down_bands).toEqual([[0.1, 1.1], [2.1, 3.1]])
+    })
+
+    it(`drops malformed spin-down channel when band shapes mismatch`, () => {
+      const result = normalize_band_structure({
+        '@class': `BandStructureSymmLine`,
+        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        bands: {
+          '1': [[0, 1], [2, 3]],
+          '-1': [[0.1], [2.1, 3.1]], // first spin-down band has wrong length
+        },
+        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+      })
+      expect(result?.bands).toEqual([[0, 1], [2, 3]])
+      expect(result?.spin_down_bands).toBeUndefined()
     })
 
     it(`handles BandStructure base class (not just SymmLine)`, () => {

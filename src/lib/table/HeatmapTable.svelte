@@ -639,6 +639,10 @@
   )
 
   const sort_indicator = (col: Label, sort_state: SortState) => {
+    const hide_sort_indicator = col.show_sort_indicator === false ||
+      col.style?.includes(`--hide-sort-indicator`)
+    if (hide_sort_indicator) return ``
+
     const col_id = get_col_id(col)
 
     // Check multi-sort first
@@ -650,12 +654,9 @@
     }
 
     const is_sorted = sort_state.column === col_id
-
-    // Show ↓ for ascending/↑ for descending when sorted
-    // Show ↑ for higher-is-better/↓ for lower-is-better when not sorted
-    const arrow = is_sorted
-      ? (sort_state.ascending ? `↓` : `↑`)
-      : (col.better === `higher` ? `↑` : col.better === `lower` ? `↓` : ``)
+    if (!is_sorted) return ``
+    // Show indicator only for actively sorted columns.
+    const arrow = sort_state.ascending ? `↓` : `↑`
 
     return arrow ? `<span style="font-size: 0.8em;">${arrow}</span>` : ``
   }
@@ -970,20 +971,21 @@
             {#if show_row_numbers}
               <th class="row-num-col"></th>
             {/if}
-            {#each visible_columns as
-              { label, group, description, sticky }
-              (label + group)
-            }
-              {#if !group}
-                <th class:sticky-col={sticky}></th>
+            {#each visible_columns as col (get_col_id(col))}
+              {#if !col.group}
+                <th class:sticky-col={col.sticky}></th>
               {:else}
-                {@const group_cols = visible_columns.filter((c) => c.group === group)}
+                {@const group_cols = visible_columns.filter((c) =>
+              c.group === col.group
+            )}
                 <!-- Only render the group header once for each group by checking if this is the first column of this group -->
-                {#if visible_columns.findIndex((c) => c.group === group) ===
+                {#if visible_columns.findIndex((c) => c.group === col.group) ===
               visible_columns.findIndex((c) =>
-                c.group === group && c.label === label
+                c.group === col.group && c.label === col.label
               )}
-                  <th title={description} colspan={group_cols.length}>{@html group}</th>
+                  <th title={col.description} colspan={group_cols.length}>
+                    {@html col.group}
+                  </th>
                 {/if}
               {/if}
             {/each}
@@ -1006,7 +1008,7 @@
           {#if show_row_numbers}
             <th class="row-num-col">#</th>
           {/if}
-          {#each visible_columns as col (col.label + col.group)}
+          {#each visible_columns as col (get_col_id(col))}
             {@const col_id = get_col_id(col)}
             {@const drag_side = drag_over_col_id === col_id
               ? get_drag_side(col_id)
@@ -1124,7 +1126,7 @@
                 {(current_page - 1) * effective_page_size + row_idx + 1}
               </td>
             {/if}
-            {#each visible_columns as col (col.label + col.group)}
+            {#each visible_columns as col (get_col_id(col))}
               {@const val = row[get_col_id(col)]}
               {@const color = calc_color(val, col)}
               {@const col_width = column_widths[get_col_id(col)]}

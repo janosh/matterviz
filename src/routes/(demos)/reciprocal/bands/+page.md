@@ -37,7 +37,7 @@ Pymatgen's `BandStructureSymmLine` objects render directly, handling spin-keyed 
 
 ### Spin-Polarized Electronic Bands
 
-This example shows a spin-polarized electronic band structure (VBr₂). The component automatically extracts the first spin channel:
+Spin-polarized electronic band structures can be shown in `overlay`, `up_only`, or `down_only` mode:
 
 ```svelte example
 <script lang="ts">
@@ -45,7 +45,29 @@ This example shows a spin-polarized electronic band structure (VBr₂). The comp
   import { electronic_bands } from '$site/electronic/bands'
 </script>
 
-<Bands band_structs={electronic_bands.vbr2_971787} y_axis={{ label: 'Energy (eV)' }} />
+<Bands
+  band_structs={electronic_bands.vbr2_971787}
+  band_spin_mode="overlay"
+  y_axis={{ label: 'Energy (eV)' }}
+/>
+```
+
+### Electronic Gap Annotation
+
+For gapped electronic structures, `Bands` automatically annotates VBM/CBM and the gap (`E_g`). You can toggle this with `show_gap_annotation`:
+
+```svelte example
+<script lang="ts">
+  import { Bands } from 'matterviz'
+  import { electronic_bands } from '$site/electronic/bands'
+</script>
+
+<Bands
+  band_structs={electronic_bands.cao_2605}
+  band_spin_mode="up_only"
+  show_gap_annotation
+  y_axis={{ label: 'Energy (eV)' }}
+/>
 ```
 
 ## Comparing Multiple Band Structures
@@ -75,6 +97,63 @@ Compare multiple band structures on the same plot with interactive controls:
 
 <Bands {band_structs} controls={{ show: true, open: true }} />
 ```
+
+### Path Alignment Modes (`strict`, `intersection`, `union`)
+
+When comparing multiple structures, `path_mode="strict"` now fails fast if symmetry-path segments do not match exactly.
+
+```svelte example
+<script lang="ts">
+  import { Bands } from 'matterviz'
+  import { phonon_bands } from '$site/phonons'
+
+  const canonical = phonon_bands['mp-2758-Sr4Se4-pbe']
+  const alt_path = {
+    ...canonical,
+    qpoints: [
+      { label: 'GAMMA', frac_coords: [0, 0, 0] },
+      { label: null, frac_coords: [0.3, 0.3, 0] },
+      { label: 'K', frac_coords: [0.5, 0.5, 0] },
+    ],
+    branches: [{ start_index: 0, end_index: 2, name: 'GAMMA-K' }],
+    labels_dict: { GAMMA: [0, 0, 0], K: [0.5, 0.5, 0] },
+    distance: [0, 1, 2],
+    bands: canonical.bands.map((band) => [band[0], band[2], band.at(-1) ?? band[0]]),
+  }
+</script>
+
+<Bands
+  band_structs={{ canonical, alt_path }}
+  path_mode="strict"
+  controls={{ show: true, open: true }}
+/>
+```
+
+Switch to `path_mode="intersection"` to compare only shared segments, or `path_mode="union"` to show all segments.
+
+## Phonon Units and Highlight Regions
+
+Use `units` to convert phonon frequencies on the y-axis, and `highlight_regions` to shade custom windows.
+
+```svelte example
+<script lang="ts">
+  import { Bands } from 'matterviz'
+  import { phonon_bands } from '$site/phonons'
+</script>
+
+<Bands
+  band_structs={phonon_bands['mp-2758-Sr4Se4-pbe']}
+  units="cm-1"
+  highlight_regions={[
+    { y_min: 40, y_max: 120, color: 'rgba(255, 193, 7, 0.35)', label: 'Target window' },
+  ]}
+  controls={{ show: true, open: true }}
+/>
+```
+
+### Imaginary Mode Shading
+
+For phonons with negative frequencies, `shade_imaginary_modes` shades the `y < 0` region by default. Disable it with `shade_imaginary_modes={false}` if you want a clean axis-only view.
 
 ## Fat Bands (Band-Resolved Quantities)
 
@@ -179,8 +258,10 @@ When comparing multiple band structures, each can have its own `band_widths`. Th
 
 - **High-symmetry points**: Automatic labeling with Greek letters (Γ, Δ, Σ)
 - **Acoustic vs optical**: Different styling for phonon mode types
+- **Spin display modes**: `overlay`, `up_only`, `down_only` for spin-polarized electronic bands
+- **Band gap annotation**: Automatic `E_g` label with VBM/CBM guide lines for gapped electronic bands
 - **Fat bands**: Visualize band-resolved quantities like electron-phonon coupling λ<sub>nk</sub>
-- **Shaded regions**: Highlight specific frequency ranges (e.g. imaginary modes)
+- **Shaded regions**: Highlight custom ranges and optional imaginary-mode region shading
 - **Path modes**: When plotting multiple bands, choose from different path resolutions (union/intersection/strict = error on mismatch)
 - **Interactive**: Zoom, pan, hover tooltips
 - **Responsive**: Adapts to container size
