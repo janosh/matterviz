@@ -38,6 +38,9 @@ export type Label = {
   sticky?: boolean
   visible?: boolean
   sortable?: boolean
+  // Show sort direction/better-hint arrow in header. Set false to keep sorting
+  // enabled but hide the visual arrow indicator.
+  show_sort_indicator?: boolean
   // When true, the toggle checkbox in ToggleMenu is greyed out and non-interactive
   disabled?: boolean
   style?: string

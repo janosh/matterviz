@@ -1,6 +1,6 @@
 [package]
 name = "ferrox"
-version = "0.0.6"
+version = "0.0.7"
 edition = "2024"
 rust-version = "1.93"
 authors = ["Janosh Riebesell <janosh.riebesell@gmail.com>"]

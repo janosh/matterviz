@@ -1,7 +1,7 @@
 // Tests for matterviz-wasm - mirrors Python tests in extensions/rust/tests/
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { WasmResult } from '../types.d.ts'
 
@@ -35,6 +35,60 @@ const bcc_fe_json = {
   sites: [
     { species: [{ element: `Fe`, occu: 1 }], abc: [0, 0, 0] },
     { species: [{ element: `Fe`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+  ],
+}
+
+const mgo_json = {
+  lattice: { matrix: [[4.21, 0, 0], [0, 4.21, 0], [0, 0, 4.21]] },
+  sites: [
+    { species: [{ element: `Mg`, occu: 1 }], abc: [0, 0, 0] },
+    { species: [{ element: `O`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+  ],
+}
+
+const class_mapping_first_json = {
+  lattice: { matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]] },
+  sites: [
+    { species: [{ element: `Ca`, occu: 1 }], abc: [0, 0, 0] },
+    { species: [{ element: `Al`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+    { species: [{ element: `Cl`, occu: 1 }], abc: [0.25, 0.25, 0.25] },
+    { species: [{ element: `Cl`, occu: 1 }], abc: [0.75, 0.75, 0.75] },
+  ],
+}
+
+const class_mapping_second_json = {
+  lattice: { matrix: [[5.2, 0, 0], [0, 5.2, 0], [0, 0, 5.2]] },
+  sites: [
+    { species: [{ element: `Li`, occu: 1 }], abc: [0, 0, 0] },
+    { species: [{ element: `Li`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+    { species: [{ element: `Br`, occu: 1 }], abc: [0.25, 0.25, 0.25] },
+    { species: [{ element: `Br`, occu: 1 }], abc: [0.75, 0.75, 0.75] },
+  ],
+}
+
+const feo_json = {
+  lattice: { matrix: [[4, 0, 0], [0, 4, 0], [0, 0, 4]] },
+  sites: [
+    { species: [{ element: `Fe`, occu: 1 }], abc: [0, 0, 0] },
+    { species: [{ element: `O`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+  ],
+}
+
+const h2o_json = {
+  lattice: { matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]] },
+  sites: [
+    { species: [{ element: `H`, occu: 1 }], abc: [0, 0, 0] },
+    { species: [{ element: `H`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+    { species: [{ element: `O`, occu: 1 }], abc: [0.25, 0.25, 0.25] },
+  ],
+}
+
+const d2o_json = {
+  lattice: { matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]] },
+  sites: [
+    { species: [{ element: `D`, occu: 1 }], abc: [0, 0, 0] },
+    { species: [{ element: `D`, occu: 1 }], abc: [0.5, 0.5, 0.5] },
+    { species: [{ element: `O`, occu: 1 }], abc: [0.25, 0.25, 0.25] },
   ],
 }
 
@@ -243,6 +297,91 @@ describe(`I/O functions`, () => {
 describe(`WasmStructureMatcher`, () => {
   it(`matches identical structures`, () => {
     expect(unwrap(new wasm.WasmStructureMatcher().fit(nacl_json, nacl_json))).toBe(true)
+  })
+
+  it(`fit_anonymous default mode matches NaCl and MgO`, () => {
+    const matcher = new wasm.WasmStructureMatcher().with_primitive_cell(false)
+    expect(unwrap(matcher.fit_anonymous(nacl_json, mgo_json))).toBe(true)
+  })
+
+  it(`fit_anonymous predefined mapping enables many-to-one matching`, () => {
+    const matcher = new wasm.WasmStructureMatcher().with_primitive_cell(false)
+    expect(
+      unwrap(matcher.fit_anonymous(class_mapping_first_json, class_mapping_second_json)),
+    )
+      .toBe(false)
+    expect(unwrap(
+      matcher.fit_anonymous(
+        class_mapping_first_json,
+        class_mapping_second_json,
+        `Metal/Non-metal`,
+      ),
+    )).toBe(true)
+  })
+
+  it(`fit_anonymous custom mapping enables class matching`, () => {
+    const matcher = new wasm.WasmStructureMatcher().with_primitive_cell(false)
+    const class_mapping = { Ca: `C`, Al: `C`, Cl: `X`, Li: `C`, Br: `X` }
+    expect(
+      unwrap(matcher.fit_anonymous(class_mapping_first_json, class_mapping_second_json)),
+    )
+      .toBe(false)
+    expect(unwrap(
+      matcher.fit_anonymous(
+        class_mapping_first_json,
+        class_mapping_second_json,
+        null,
+        class_mapping,
+      ),
+    )).toBe(true)
+  })
+
+  it(`fit_anonymous rejects both mapping_name and mapping`, () => {
+    const matcher = new wasm.WasmStructureMatcher()
+    const class_mapping = { Na: `C`, Cl: `X` }
+    const result = matcher.fit_anonymous(nacl_json, nacl_json, `ACX`, class_mapping)
+    expect(`error` in result).toBe(true)
+    if (`error` in result) expect(result.error).toContain(`Provide only one`)
+  })
+
+  it.each([
+    [`unknown`, `Invalid mapping_name`],
+    [``, `Invalid mapping_name`],
+  ])(
+    `fit_anonymous reports invalid mapping_name %s`,
+    (mapping_name, expected_message) => {
+      const matcher = new wasm.WasmStructureMatcher()
+      const result = matcher.fit_anonymous(nacl_json, nacl_json, mapping_name)
+      expect(`error` in result).toBe(true)
+      if (`error` in result) expect(result.error).toContain(expected_message)
+    },
+  )
+
+  it(`fit_anonymous reports uncovered elements for predefined mapping`, () => {
+    const matcher = new wasm.WasmStructureMatcher().with_primitive_cell(false)
+    const result = matcher.fit_anonymous(feo_json, feo_json, `ACX`)
+    expect(`error` in result).toBe(true)
+    if (`error` in result) {
+      expect(result.error).toContain(`does not cover elements`)
+      expect(result.error).toContain(`Fe`)
+    }
+  })
+
+  it(`fit_anonymous predefined metal/non-metal covers deuterium`, () => {
+    const matcher = new wasm.WasmStructureMatcher().with_primitive_cell(false)
+    expect(unwrap(matcher.fit_anonymous(h2o_json, d2o_json, `Metal/Non-metal`))).toBe(
+      true,
+    )
+  })
+
+  it.each([
+    [{ NotAnElement: `X` }, `Invalid element symbol`],
+    [{ Na: `` }, `Class label cannot be empty`],
+  ])(`fit_anonymous reports invalid custom mapping %s`, (mapping, expected_message) => {
+    const matcher = new wasm.WasmStructureMatcher()
+    const result = matcher.fit_anonymous(nacl_json, nacl_json, null, mapping)
+    expect(`error` in result).toBe(true)
+    if (`error` in result) expect(result.error).toContain(expected_message)
   })
 
   it(`deduplicates structures`, () => {

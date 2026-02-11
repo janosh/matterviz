@@ -123,6 +123,28 @@
     max_width: 8,
     scale: 1.0,
   }
+
+  // Simple electronic band structure with spin-up and spin-down channels
+  const electronic_bands_spin: BaseBandStructure = {
+    ...mock_band_structure,
+    bands: [
+      [-1.2, -0.8, -0.3, 0.2],
+      [-0.7, -0.2, 0.3, 0.8],
+      [0.2, 0.8, 1.4, 2.0],
+      [1.1, 1.7, 2.3, 2.9],
+    ],
+    spin_down_bands: [
+      [-1.0, -0.6, -0.1, 0.4],
+      [-0.5, 0.0, 0.5, 1.0],
+      [0.4, 1.0, 1.6, 2.2],
+      [1.3, 1.9, 2.5, 3.1],
+    ],
+  }
+
+  const electronic_bands_with_fermi = {
+    ...electronic_bands_spin,
+    efermi: 0.0,
+  }
 </script>
 
 <h1>Bands Component Test Page</h1>
@@ -171,6 +193,13 @@
   data-testid="union-non-canonical-plot"
 />
 
+<h2 id="strict-mismatch">Strict Mode Path Mismatch Error State</h2>
+<Bands
+  band_structs={{ canonical: mock_band_structure, alt_path: bs_alt_path }}
+  path_mode="strict"
+  data-testid="strict-mismatch-plot"
+/>
+
 <h2 id="discontinuity">Band Structure with Discontinuities</h2>
 <Bands band_structs={bs_with_discontinuity} data-testid="discontinuity-plot" />
 
@@ -200,6 +229,35 @@
   }}
   ribbon_config={{ opacity: 0.35, max_width: 6 }}
   data-testid="fat-bands-multiple-plot"
+/>
+
+<h2 id="phonon-units-and-shading">Phonon Units and Highlight Regions</h2>
+<Bands
+  band_structs={mock_band_structure}
+  units="cm-1"
+  highlight_regions={[{
+    y_min: 40,
+    y_max: 90,
+    color: `rgba(255, 193, 7, 0.35)`,
+    label: `Target window`,
+  }]}
+  data-testid="phonon-units-highlight-plot"
+/>
+
+<h2 id="electronic-spin-overlay">Electronic Spin Overlay and Gap Annotation</h2>
+<Bands
+  band_structs={electronic_bands_with_fermi}
+  band_type="electronic"
+  band_spin_mode="overlay"
+  data-testid="electronic-spin-overlay-plot"
+/>
+
+<h2 id="electronic-spin-down-only">Electronic Spin Down Only</h2>
+<Bands
+  band_structs={electronic_bands_with_fermi}
+  band_type="electronic"
+  band_spin_mode="down_only"
+  data-testid="electronic-spin-down-only-plot"
 />
 
 <style>

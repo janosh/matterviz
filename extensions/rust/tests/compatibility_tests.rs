@@ -373,7 +373,7 @@ fn test_fit_anonymous_bcc_vs_bcc() {
     let fe_bcc = make_bcc(Element::Fe, 2.87);
     let w_bcc = make_bcc(Element::W, 3.16);
     assert!(
-        StructureMatcher::new().fit_anonymous(&fe_bcc, &w_bcc),
+        StructureMatcher::new().fit_anonymous(&fe_bcc, &w_bcc, None),
         "BCC Fe and BCC W should match anonymously"
     );
 }
@@ -384,7 +384,7 @@ fn test_fit_anonymous_fcc_vs_fcc() {
     let cu_fcc = make_fcc(Element::Cu, 3.6);
     let al_fcc = make_fcc(Element::Al, 4.05);
     assert!(
-        StructureMatcher::new().fit_anonymous(&cu_fcc, &al_fcc),
+        StructureMatcher::new().fit_anonymous(&cu_fcc, &al_fcc, None),
         "FCC Cu and FCC Al should match anonymously"
     );
 }
@@ -398,7 +398,7 @@ fn test_fit_anonymous_bcc_vs_fcc_no_match() {
     let cu_fcc = make_fcc(Element::Cu, 3.6);
     let matcher = StructureMatcher::new().with_primitive_cell(false);
     assert!(
-        !matcher.fit_anonymous(&fe_bcc, &cu_fcc),
+        !matcher.fit_anonymous(&fe_bcc, &cu_fcc, None),
         "BCC vs FCC should not match (without primitive reduction)"
     );
 }

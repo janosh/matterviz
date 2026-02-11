@@ -491,8 +491,24 @@ class StructureMatcher:
         self, struct1: str | dict[str, Any], struct2: str | dict[str, Any]
     ) -> float: ...
     def fit_anonymous(
-        self, struct1: str | dict[str, Any], struct2: str | dict[str, Any]
+        self,
+        struct1: str | dict[str, Any],
+        struct2: str | dict[str, Any],
+        mapping_name: str | None = None,
+        mapping: Mapping[str, str] | None = None,
     ) -> bool: ...
+    def get_structure_distance_anonymous_mapped(
+        self,
+        struct1: str | dict[str, Any],
+        struct2: str | dict[str, Any],
+        mapping: Mapping[str, str],
+    ) -> float | None: ...
+    def get_structure_distance_anonymous_predefined(
+        self,
+        struct1: str | dict[str, Any],
+        struct2: str | dict[str, Any],
+        mapping_name: str,
+    ) -> float | None: ...
     def deduplicate(self, structures: Sequence[str]) -> list[int]: ...
     def group(self, structures: Sequence[str]) -> dict[int, list[int]]: ...
     def get_unique_indices(self, structures: Sequence[str]) -> list[int]: ...

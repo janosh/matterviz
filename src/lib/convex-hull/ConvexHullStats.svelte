@@ -869,7 +869,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0;
-    padding: 1pt 0 1pt 5pt;
+    padding: 1pt 5pt;
     border-radius: 3pt;
     font-size: 0.78em;
     line-height: 1.2;
@@ -880,18 +880,13 @@
     }
     .count {
       margin-left: 3pt;
-      padding: 1pt 4pt;
-      border-radius: 0 3pt 3pt 0;
       font-size: 0.9em;
-      opacity: 0.7;
-      background: color-mix(in srgb, currentColor 8%, transparent);
+      font-weight: 600;
+      color: color-mix(in srgb, currentColor 70%, transparent);
     }
   }
   .subsystem-chip.has-entries {
     background: color-mix(in srgb, var(--hull-stable-color, #22c55e) 15%, transparent);
     color: inherit;
-    .count {
-      background: color-mix(in srgb, var(--hull-stable-color, #22c55e) 12%, transparent);
-    }
   }
 </style>
