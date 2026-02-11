@@ -1,5 +1,5 @@
-import { HeatmapTable, type Label } from '$lib'
-import { mount, tick } from 'svelte'
+import { HeatmapTable, type Label, type RowData } from '$lib'
+import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 
 describe(`HeatmapTable`, () => {
@@ -36,7 +36,7 @@ describe(`HeatmapTable`, () => {
     expect(headers).toHaveLength(3)
     expect(
       Array.from(headers).map((h) => h.textContent?.replace(/\s+/g, ` `).trim()),
-    ).toEqual([`Model`, `Score ↑`, `Value ↓`])
+    ).toEqual([`Model`, `Score`, `Value`])
 
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
     expect(document.querySelectorAll(`td[data-col="Hidden"]`)).toHaveLength(0)
@@ -1022,6 +1022,8 @@ describe(`HeatmapTable`, () => {
       // With 2 columns in multi-sort, numbered badges should appear
       expect(headers[0].innerHTML).toContain(`<sup>1</sup>`)
       expect(headers[1].innerHTML).toContain(`<sup>2</sup>`)
+      expect(headers[0].textContent).toMatch(/[↑↓]/)
+      expect(headers[1].textContent).toMatch(/[↑↓]/)
     })
 
     it(`clears multi-sort on regular click`, async () => {
@@ -1046,6 +1048,87 @@ describe(`HeatmapTable`, () => {
       // Only third header should have sort indicator
       expect(headers[0].innerHTML).not.toContain(`<sup>`)
       expect(headers[1].innerHTML).not.toContain(`<sup>`)
+    })
+  })
+
+  describe(`Sort Indicator Rendering`, () => {
+    const render_table = (
+      columns: Label[] = sample_columns,
+      data: RowData[] = sample_data,
+    ) => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data, columns },
+      })
+      return document.querySelectorAll(`th`)
+    }
+
+    const get_col_values = (col_name: string) =>
+      Array.from(document.querySelectorAll(`td[data-col="${col_name}"]`))
+        .map((cell) => cell.textContent?.trim())
+
+    it(`does not render arrows for unsorted columns by default`, () => {
+      const headers = render_table()
+      expect(headers).toHaveLength(3)
+      for (const header of Array.from(headers)) {
+        expect(header.textContent).not.toMatch(/[↑↓]/)
+      }
+    })
+
+    it.each([
+      { click_count: 1, expected_arrow: `↓` },
+      { click_count: 2, expected_arrow: `↑` },
+    ])(
+      `renders $expected_arrow for Value header after $click_count click(s)`,
+      async ({ click_count, expected_arrow }) => {
+        const headers = render_table()
+        const value_header = headers[2] as HTMLTableCellElement
+
+        if (click_count >= 1) {
+          value_header.click()
+          await tick()
+        }
+        if (click_count >= 2) {
+          value_header.click()
+          await tick()
+        }
+        expect(value_header.textContent).toContain(expected_arrow)
+      },
+    )
+
+    it.each([
+      {
+        desc: `show_sort_indicator=false`,
+        value_col: {
+          label: `Value`,
+          better: `lower`,
+          show_sort_indicator: false,
+          description: ``,
+        } as Label,
+      },
+      {
+        desc: `--hide-sort-indicator style token`,
+        value_col: {
+          label: `Value`,
+          better: `lower`,
+          style: `--hide-sort-indicator:1;`,
+          description: ``,
+        } as Label,
+      },
+    ])(`hides indicator for $desc but still sorts rows`, async ({ value_col }) => {
+      const columns: Label[] = [{ label: `Model`, description: `` }, value_col]
+      const data = [
+        { Model: `A`, Value: 300 },
+        { Model: `B`, Value: 100 },
+        { Model: `C`, Value: 200 },
+      ]
+      const headers = render_table(columns, data)
+      const value_header = headers[1] as HTMLTableCellElement
+      value_header.click()
+      await tick()
+
+      expect(value_header.textContent).not.toMatch(/[↑↓]/)
+      expect(get_col_values(`Value`)).toEqual([`100`, `200`, `300`])
     })
   })
 
@@ -1756,6 +1839,356 @@ describe(`HeatmapTable`, () => {
           expect(onsorterror_mock).toHaveBeenCalledWith(error, `Score`, `desc`)
         })
       })
+    })
+  })
+
+  describe(`Empty State`, () => {
+    it.each([
+      { desc: `default message`, props: {}, text: `No data`, visible: true },
+      {
+        desc: `custom message`,
+        props: { empty_message: `Nothing here` },
+        text: `Nothing here`,
+        visible: true,
+      },
+      {
+        desc: `hidden when empty string`,
+        props: { empty_message: `` },
+        text: null,
+        visible: false,
+      },
+    ])(`$desc`, ({ props, text, visible }) => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: [], columns: sample_columns, ...props },
+      })
+
+      const empty_row = document.querySelector(`.empty-row`)
+      if (visible) {
+        expect(empty_row?.textContent?.trim()).toBe(text)
+      } else {
+        expect(empty_row).toBeNull()
+      }
+    })
+
+    it(`colspan covers all columns including select and row-number`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: [],
+          columns: sample_columns,
+          show_row_select: true,
+          show_row_numbers: true,
+        },
+      })
+      // 3 data columns + 1 select + 1 row number = 5
+      expect(document.querySelector(`.empty-row td`)?.getAttribute(`colspan`)).toBe(`5`)
+    })
+
+    it(`not shown when data is present`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: sample_data, columns: sample_columns },
+      })
+      expect(document.querySelector(`.empty-row`)).toBeNull()
+    })
+  })
+
+  describe(`Row Numbers`, () => {
+    it(`shows 1-indexed numbers and # header when enabled`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: sample_data, columns: sample_columns, show_row_numbers: true },
+      })
+
+      const headers = Array.from(document.querySelectorAll(`th`)).map((th) =>
+        th.textContent?.trim()
+      )
+      expect(headers).toContain(`#`)
+
+      const num_cells = document.querySelectorAll(`td.row-num-col`)
+      expect(num_cells).toHaveLength(3)
+      expect(Array.from(num_cells).map((td) => td.textContent?.trim())).toEqual([
+        `1`,
+        `2`,
+        `3`,
+      ])
+    })
+
+    it(`hidden by default`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: sample_data, columns: sample_columns },
+      })
+      expect(document.querySelectorAll(`td.row-num-col`)).toHaveLength(0)
+    })
+  })
+
+  describe(`Select All`, () => {
+    it(`badge shows all-selected count after selecting every row`, async () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: sample_data, columns: sample_columns, show_row_select: true },
+      })
+
+      for (
+        const cb of Array.from(
+          document.querySelectorAll(`td.select-col input[type="checkbox"]`),
+        )
+      ) {
+        ;(cb as HTMLInputElement).click()
+      }
+      await tick()
+
+      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(
+        `3`,
+      )
+    })
+
+    it(`header checkbox unchecked on partial selection`, async () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: sample_data, columns: sample_columns, show_row_select: true },
+      })
+      ;(document.querySelector(
+        `td.select-col input[type="checkbox"]`,
+      ) as HTMLInputElement).click()
+      await tick()
+
+      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(
+        `1`,
+      )
+      expect(
+        (document.querySelector(
+          `th.select-col input[type="checkbox"]`,
+        ) as HTMLInputElement).checked,
+      ).toBe(false)
+    })
+  })
+
+  describe(`Keyboard Navigation`, () => {
+    it.each([
+      { desc: `with onrowclick`, has_click: true, expected_tabindex: `0` },
+      { desc: `without onrowclick`, has_click: false, expected_tabindex: null },
+    ])(`tabindex $desc`, ({ has_click, expected_tabindex }) => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          ...(has_click ? { onrowclick: () => {} } : {}),
+        },
+      })
+
+      for (const row of Array.from(document.querySelectorAll(`tbody tr`))) {
+        expect(row.getAttribute(`tabindex`)).toBe(expected_tabindex)
+      }
+    })
+
+    it.each([
+      { key: `Enter` },
+      { key: ` ` },
+    ])(`triggers onrowclick on $key key`, async ({ key }) => {
+      const clicked: unknown[] = []
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          onrowclick: (_event: MouseEvent, row: Record<string, unknown>) =>
+            clicked.push(row),
+        },
+      })
+
+      const first_row = document.querySelector(`tbody tr`) as HTMLElement
+      first_row.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+      await tick()
+
+      expect(clicked).toHaveLength(1)
+      expect(clicked[0]).toHaveProperty(`Model`, `Model A`)
+    })
+  })
+
+  describe(`Export Enhancements`, () => {
+    // Shared helper: mount, optionally interact, trigger CSV export, return blob text
+    async function export_csv_text(
+      props: Partial<ComponentProps<typeof HeatmapTable>>,
+      before_export?: () => Promise<void>,
+    ): Promise<string> {
+      const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
+      const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
+      const anchor_click = vi.spyOn(HTMLAnchorElement.prototype, `click`)
+        .mockImplementation(() => {})
+      const append_spy = vi.spyOn(document.body, `append`)
+
+      try {
+        mount(HeatmapTable, {
+          target: document.body,
+          props: { export_data: true, ...props } as ComponentProps<typeof HeatmapTable>,
+        })
+        if (before_export) await before_export()
+        ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement)
+          .click()
+        await tick()
+        const csv_btn = Array.from(
+          document.querySelectorAll(`.dropdown-pane .dropdown-option`),
+        ).find((btn) => btn.textContent?.includes(`CSV`)) as HTMLButtonElement
+        csv_btn.click()
+        await tick()
+
+        return await (create_url.mock.calls[0]?.[0] as Blob).text()
+      } finally {
+        create_url.mockRestore()
+        revoke_url.mockRestore()
+        anchor_click.mockRestore()
+        append_spy.mockRestore()
+      }
+    }
+
+    it(`copy to clipboard writes TSV`, async () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: sample_data, columns: sample_columns, export_data: true },
+      })
+      ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement)
+        .click()
+      await tick()
+
+      const copy_btn = Array.from(
+        document.querySelectorAll(`.dropdown-pane .dropdown-option`),
+      ).find((btn) => btn.textContent?.includes(`Copy`)) as HTMLButtonElement
+      copy_btn.click()
+      await tick()
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1)
+      const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as string
+      expect(written).toContain(`Model\tScore\tValue`)
+      expect(written).toContain(`Model A`)
+    })
+
+    it(`strips HTML from column headers`, async () => {
+      const text = await export_csv_text({
+        data: [{ 'E<sub>form</sub>': -1.5, Name: `Fe` }],
+        columns: [{ label: `E<sub>form</sub>`, description: `` }, {
+          label: `Name`,
+          description: ``,
+        }],
+      })
+      expect(text).toContain(`Eform`)
+      expect(text).not.toContain(`<sub>`)
+    })
+
+    it(`exports only selected rows`, async () => {
+      const text = await export_csv_text(
+        { data: sample_data, columns: sample_columns, show_row_select: true },
+        async () => {
+          ;(document.querySelector(
+            `td.select-col input[type="checkbox"]`,
+          ) as HTMLInputElement).click()
+          await tick()
+        },
+      )
+
+      const lines = text.trim().split(`\n`)
+      expect(lines).toHaveLength(2) // header + 1 selected row
+      expect(text).toContain(`Model A`)
+      expect(text).not.toContain(`Model B`)
+    })
+
+    it.each([
+      { desc: `commas`, val: `hello, world`, expected: `"hello, world"` },
+      { desc: `double quotes`, val: `say "hi"`, expected: `"say ""hi"""` },
+      { desc: `newlines`, val: `line1\nline2`, expected: `"line1\nline2"` },
+    ])(`CSV quoting for $desc`, async ({ val, expected }) => {
+      const text = await export_csv_text({
+        data: [{ Name: val }],
+        columns: [{ label: `Name`, description: `` }],
+      })
+      expect(text).toContain(expected)
+    })
+  })
+
+  it(`does not render tfoot when footer is not provided`, () => {
+    mount(HeatmapTable, {
+      target: document.body,
+      props: { data: sample_data, columns: sample_columns },
+    })
+    expect(document.querySelector(`tfoot`)).toBeNull()
+  })
+
+  describe(`root_style prop`, () => {
+    it(`applies root_style to container`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          root_style: `margin: 0; max-width: 500px`,
+        },
+      })
+
+      const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ??
+        ``
+      expect(style).toContain(`margin: 0`)
+      expect(style).toContain(`max-width: 500px`)
+    })
+
+    it(`merges root_style with rest style`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: sample_data,
+          columns: sample_columns,
+          root_style: `flex: 1`,
+          style: `color: red`,
+        },
+      })
+
+      const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ??
+        ``
+      expect(style).toContain(`color: red`)
+      // happy-dom normalizes `flex: 1` to longhand properties
+      expect(style).toMatch(/flex-grow:\s*1|flex:\s*1/)
+    })
+  })
+
+  describe(`Page Size Selector`, () => {
+    const large_data = Array.from({ length: 50 }, (_, idx) => ({
+      Model: `Model ${idx}`,
+      Score: Math.random(),
+      Value: idx * 10,
+    }))
+
+    it(`renders dropdown with correct options when page_sizes provided`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: large_data,
+          columns: sample_columns,
+          pagination: { page_size: 10, page_sizes: [10, 25, 50] },
+        },
+      })
+
+      const options = document.querySelectorAll(`.page-size-select option`)
+      expect(options).toHaveLength(3)
+      expect(Array.from(options).map((opt) => opt.textContent?.trim())).toEqual([
+        `10 / page`,
+        `25 / page`,
+        `50 / page`,
+      ])
+    })
+
+    it(`hidden when page_sizes not provided`, () => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: {
+          data: large_data,
+          columns: sample_columns,
+          pagination: { page_size: 10 },
+        },
+      })
+      expect(document.querySelector(`.page-size-select`)).toBeNull()
     })
   })
 })

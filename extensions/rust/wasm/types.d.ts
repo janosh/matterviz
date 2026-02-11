@@ -842,9 +842,24 @@ export class WasmStructureMatcher {
     existing_structures: Crystal[],
   ): WasmResult<(number | null)[]>
   fit(struct1: Crystal, struct2: Crystal): WasmResult<boolean>
-  fit_anonymous(struct1: Crystal, struct2: Crystal): WasmResult<boolean>
+  fit_anonymous(
+    struct1: Crystal,
+    struct2: Crystal,
+    mapping_name?: string | null,
+    mapping?: Record<string, string> | null,
+  ): WasmResult<boolean>
   get_rms_dist(struct1: Crystal, struct2: Crystal): WasmResult<JsRmsDistResult | null>
   get_structure_distance(struct1: Crystal, struct2: Crystal): WasmResult<number>
+  get_structure_distance_anonymous_mapped(
+    struct1: Crystal,
+    struct2: Crystal,
+    mapping: Record<string, string>,
+  ): WasmResult<number | null>
+  get_structure_distance_anonymous_predefined(
+    struct1: Crystal,
+    struct2: Crystal,
+    mapping_name: string,
+  ): WasmResult<number | null>
   constructor()
   with_angle_tol(tol: number): WasmStructureMatcher
   with_element_comparator(val: boolean): WasmStructureMatcher
