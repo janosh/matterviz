@@ -15,6 +15,7 @@ An interactive search filter for chemical formulas. The search mode is automatic
     FormulaFilter,
     get_alphabetical_formula,
   } from 'matterviz/composition'
+  import { tooltip } from 'svelte-multiselect'
 
   // Seed history so the dropdown is visible on focus
   const history_key = `formula-filter-demo`
@@ -158,20 +159,26 @@ An interactive search filter for chemical formulas. The search mode is automatic
   }}
 />
 
-<div
-  style="display: flex; flex-wrap: wrap; gap: 12pt; margin-top: 8pt; align-items: center"
->
-  <label style="display: inline-flex; align-items: center; gap: 5pt; font-size: 0.85em">
+<div>
+  <label
+    title="Lock search mode to prevent auto-inference while typing"
+    {@attach tooltip()}
+  >
     <input type="checkbox" bind:checked={mode_locked} />
     lock mode
   </label>
-  <label style="display: inline-flex; align-items: center; gap: 5pt; font-size: 0.85em">
+  <label
+    title="Canonicalize exact formulas (e.g. NaCl -> ClNa) on submit"
+    {@attach tooltip()}
+  >
     <input type="checkbox" bind:checked={normalize_exact} />
     normalize exact formulas
   </label>
-  <span style="font-size: 0.8em; opacity: 0.7">status: {validation_state}</span>
+  <span title="Live validation state from FormulaFilter" {@attach tooltip()}>status: {
+      validation_state
+    }</span>
   {#if validation_message}
-    <span style="font-size: 0.78em; color: rgb(239, 68, 68)">{validation_message}</span>
+    <span>{validation_message}</span>
   {/if}
 </div>
 
