@@ -1003,13 +1003,16 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
         controls_open: bool | None = None,
         controls_props: dict | None = None,
         data: Any | None = None,
+        diagram_input: Any | None = None,
         display_temp_unit: Any | None = None,
+        editor_open: bool | None = None,
         enable_export: bool | None = None,
         export_filename: str | None = None,
         export_pane_open: bool | None = None,
         fullscreen: bool | None = None,
         fullscreen_toggle: bool | None = None,
         hovered_region: Any | None = None,
+        lever_rule_mode: Any | None = None,
         png_dpi: float | None = None,
         show_boundaries: bool | None = None,
         show_component_labels: bool | None = None,
@@ -1038,8 +1041,12 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
             mv_props["controls_props"] = controls_props
         if data is not None:
             mv_props["data"] = data
+        if diagram_input is not None:
+            mv_props["diagram_input"] = diagram_input
         if display_temp_unit is not None:
             mv_props["display_temp_unit"] = display_temp_unit
+        if editor_open is not None:
+            mv_props["editor_open"] = editor_open
         if enable_export is not None:
             mv_props["enable_export"] = enable_export
         if export_filename is not None:
@@ -1052,6 +1059,8 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
             mv_props["fullscreen_toggle"] = fullscreen_toggle
         if hovered_region is not None:
             mv_props["hovered_region"] = hovered_region
+        if lever_rule_mode is not None:
+            mv_props["lever_rule_mode"] = lever_rule_mode
         if png_dpi is not None:
             mv_props["png_dpi"] = png_dpi
         if show_boundaries is not None:

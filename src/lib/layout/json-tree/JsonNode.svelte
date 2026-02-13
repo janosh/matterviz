@@ -412,7 +412,8 @@
     padding: 1px 2px;
     border-radius: 2px;
   }
-  .node-content :where(button) {
+  /* Higher specificity than DraggablePane's :where(button) so our reset wins when nested */
+  .node-content button {
     background: none;
     border: none;
     padding: 0;
