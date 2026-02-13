@@ -144,7 +144,7 @@
         ),
       }
     }
-    if (hover_info.lever_rule) {
+    if (lever_rule_mode === `horizontal` && hover_info.lever_rule) {
       const lr = hover_info.lever_rule
       return {
         label: `Lever Rule`,

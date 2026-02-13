@@ -160,9 +160,10 @@
         let x_min = lo ?? data_min
         let x_max = hi ?? data_max
 
-        // Auto-extend to 0/1 when edge regions contain a pure component
+        // Auto-extend to 0/1 when edge regions contain a pure component AND the
+        // data already nearly reaches the boundary. This prevents extending a
+        // section diagram (e.g. 0.3–0.7) to the full [0, 1] range.
         // Word boundary regex avoids matching substrings (e.g. "Fe" won't match "Fe3C")
-        // Note: \b works for alphanumeric boundaries but not all chemical notation
         const comp_at_edge = (comp: string, x_val: number) => {
           const re = new RegExp(
             `\\b${comp.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`,
@@ -173,12 +174,14 @@
           )
         }
         if (
-          lo == null && data.components[0] && comp_at_edge(data.components[0], x_min)
+          lo == null && x_min < 0.05 &&
+          data.components[0] && comp_at_edge(data.components[0], x_min)
         ) {
           x_min = 0
         }
         if (
-          hi == null && data.components[1] && comp_at_edge(data.components[1], x_max)
+          hi == null && x_max > 0.95 &&
+          data.components[1] && comp_at_edge(data.components[1], x_max)
         ) {
           x_max = 1
         }
@@ -318,6 +321,7 @@
           comp_unit,
           component_a,
           component_b,
+          data_temp_unit,
         ),
       )
       if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
@@ -398,13 +402,11 @@
         composition,
         temperature,
         position: { x: event.clientX, y: event.clientY },
-        lever_rule: lever_rule_mode === `horizontal`
-          ? calculate_lever_rule(region, composition, temperature) || undefined
-          : undefined,
-        vertical_lever_rule: lever_rule_mode === `vertical`
-          ? calculate_vertical_lever_rule(region, composition, temperature) ||
-            undefined
-          : undefined,
+        lever_rule: calculate_lever_rule(region, composition, temperature) ||
+          undefined,
+        vertical_lever_rule:
+          calculate_vertical_lever_rule(region, composition, temperature) ||
+          undefined,
         special_point: nearby_special || undefined,
       }
       on_phase_hover?.(hover_info)
@@ -668,8 +670,7 @@
             <path
               d={boundary.svg_path}
               fill="none"
-              stroke={config.colors?.boundary ?? boundary.style?.color ??
-              merged_config.colors.boundary}
+              stroke={boundary.style?.color ?? merged_config.colors.boundary}
               stroke-width={boundary.style?.width || 2}
               stroke-dasharray={boundary.style?.dash || ``}
               stroke-linecap="round"
@@ -708,52 +709,38 @@
 
       <!-- Tie-line visualization for two-phase regions -->
       {#if lever_rule_mode === `vertical` && effective_hover_info?.vertical_lever_rule}
-        {@const info = effective_hover_info}
         {@const vlr = effective_hover_info.vertical_lever_rule}
-        {@const x_pos = x_scale(info.composition)}
+        {@const cx = x_scale(effective_hover_info.composition)}
+        {@const y_bot = y_scale(vlr.bottom_temperature)}
+        {@const y_top = y_scale(vlr.top_temperature)}
         {@render tie_line_viz(
-        x_pos,
-        y_scale(vlr.bottom_temperature),
-        x_pos,
-        y_scale(vlr.top_temperature),
+        cx,
+        y_bot,
+        cx,
+        y_top,
         [
-          {
-            cx: x_pos,
-            cy: y_scale(vlr.bottom_temperature),
-            color: get_phase_color(vlr.bottom_phase, `rgb`),
-          },
-          {
-            cx: x_pos,
-            cy: y_scale(vlr.top_temperature),
-            color: get_phase_color(vlr.top_phase, `rgb`),
-          },
+          { cx, cy: y_bot, color: get_phase_color(vlr.bottom_phase, `rgb`) },
+          { cx, cy: y_top, color: get_phase_color(vlr.top_phase, `rgb`) },
         ],
-        x_pos,
-        y_scale(info.temperature),
+        cx,
+        y_scale(effective_hover_info.temperature),
       )}
-      {:else if effective_hover_info?.lever_rule}
-        {@const info = effective_hover_info}
+      {:else if lever_rule_mode === `horizontal` && effective_hover_info?.lever_rule}
         {@const lr = effective_hover_info.lever_rule}
-        {@const y_pos = y_scale(info.temperature)}
+        {@const cy = y_scale(effective_hover_info.temperature)}
+        {@const x_l = x_scale(lr.left_composition)}
+        {@const x_r = x_scale(lr.right_composition)}
         {@render tie_line_viz(
-        x_scale(lr.left_composition),
-        y_pos,
-        x_scale(lr.right_composition),
-        y_pos,
+        x_l,
+        cy,
+        x_r,
+        cy,
         [
-          {
-            cx: x_scale(lr.left_composition),
-            cy: y_pos,
-            color: get_phase_color(lr.left_phase, `rgb`),
-          },
-          {
-            cx: x_scale(lr.right_composition),
-            cy: y_pos,
-            color: get_phase_color(lr.right_phase, `rgb`),
-          },
+          { cx: x_l, cy, color: get_phase_color(lr.left_phase, `rgb`) },
+          { cx: x_r, cy, color: get_phase_color(lr.right_phase, `rgb`) },
         ],
-        x_scale(info.composition),
-        y_pos,
+        x_scale(effective_hover_info.composition),
+        cy,
       )}
       {/if}
 

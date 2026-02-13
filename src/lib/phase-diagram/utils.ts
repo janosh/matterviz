@@ -426,10 +426,14 @@ export function format_hover_info_text(
   comp_unit: string = `at%`,
   component_a: string = `A`,
   component_b: string = `B`,
+  data_temp_unit: TempUnit = temp_unit,
 ): string {
+  // Convert temperature from data unit to display unit
+  const to_display = (temp: number) => convert_temp(temp, data_temp_unit, temp_unit)
+
   const lines: string[] = [
     `Phase: ${info.region.name}`,
-    `Temperature: ${format_temperature(info.temperature, temp_unit)}`,
+    `Temperature: ${format_temperature(to_display(info.temperature), temp_unit)}`,
     `Composition: ${format_composition(info.composition, comp_unit)} ${component_b} (${
       format_composition(1 - info.composition, comp_unit)
     } ${component_a})`,
@@ -455,10 +459,10 @@ export function format_hover_info_text(
       ``,
       `Vertical Lever Rule:`,
       `  ${vlr.bottom_phase}: ${format_num(vlr.fraction_bottom * 100, `.1f`)}% (at ${
-        format_temperature(vlr.bottom_temperature, temp_unit)
+        format_temperature(to_display(vlr.bottom_temperature), temp_unit)
       })`,
       `  ${vlr.top_phase}: ${format_num(vlr.fraction_top * 100, `.1f`)}% (at ${
-        format_temperature(vlr.top_temperature, temp_unit)
+        format_temperature(to_display(vlr.top_temperature), temp_unit)
       })`,
     )
   }
@@ -649,28 +653,26 @@ export function format_formula_svg(
   return result
 }
 
-// Format a phase region label (e.g. "La2NiO4 + NiO") as SVG with subscripts
-// Splits on " + " and formats each part as a chemical formula
-export function format_label_svg(label: string, use_subscripts = true): string {
-  if (!use_subscripts) return label
-  return label.split(/(\s*\+\s*)/).map((part) => {
-    // Keep the " + " separator as-is, format formula parts
-    if (part.trim() === `+`) return part
-    return format_formula_svg(part.trim(), use_subscripts)
-  }).join(``)
-}
-
-// Format a phase region label as HTML with subscripts (splits on " + ")
-export function format_label_html(
+// Split a multi-phase label on " + " and format each part with the given formatter
+function format_label_parts(
   label: string,
-  use_subscripts = true,
+  use_subscripts: boolean,
+  formatter: (formula: string, use_sub: boolean) => string,
 ): string {
   if (!use_subscripts) return label
   return label.split(/(\s*\+\s*)/).map((part) => {
     if (part.trim() === `+`) return part
-    return format_formula_html(part.trim(), use_subscripts)
+    return formatter(part.trim(), use_subscripts)
   }).join(``)
 }
+
+// Format a phase region label (e.g. "La2NiO4 + NiO") as SVG with subscripts
+export const format_label_svg = (label: string, use_subscripts = true): string =>
+  format_label_parts(label, use_subscripts, format_formula_svg)
+
+// Format a phase region label as HTML with subscripts (splits on " + ")
+export const format_label_html = (label: string, use_subscripts = true): string =>
+  format_label_parts(label, use_subscripts, format_formula_html)
 
 // Format chemical formula as HTML with <sub> and <sup> tags
 export function format_formula_html(

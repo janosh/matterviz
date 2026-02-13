@@ -5,7 +5,12 @@
   import FilePicker from '$lib/FilePicker.svelte'
   import { decompress_data } from '$lib/io/decompress'
   import type { PhaseDiagramData, TdbParseResult } from '$lib/phase-diagram'
-  import { IsobaricBinaryPhaseDiagram, TdbInfoPanel } from '$lib/phase-diagram'
+  import {
+    build_diagram,
+    IsobaricBinaryPhaseDiagram,
+    parse_phase_diagram_svg,
+    TdbInfoPanel,
+  } from '$lib/phase-diagram'
   import {
     all_phase_diagram_files,
     find_precomputed_url,
@@ -30,6 +35,7 @@
   // Helper to check file type from filename
   const has_ext = (name: string, ext: string) => name.toLowerCase().endsWith(ext)
   const is_tdb = (name: string) => has_ext(name, `.tdb`)
+  const is_svg = (name: string) => has_ext(name, `.svg`)
   const is_gzipped = (name: string) => has_ext(name, `.gz`)
 
   // Helper for consistent error formatting
@@ -165,6 +171,16 @@
               tdb.is_loaded = true
             }
           }
+        }
+        return
+      }
+      if (is_svg(filename)) {
+        if (typeof content === `string`) {
+          const diagram_input = parse_phase_diagram_svg(content)
+          current_data = build_diagram(diagram_input)
+          current_file = filename
+          update_url(filename)
+          tdb = null
         }
         return
       }

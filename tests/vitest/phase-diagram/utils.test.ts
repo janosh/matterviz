@@ -861,6 +861,59 @@ describe(`format_hover_info_text`, () => {
     const text = format_hover_info_text(base_info)
     expect(text).not.toContain(`Lever Rule`)
   })
+
+  test(`converts temperature from data unit to display unit`, () => {
+    // Data in K (800), display in °C → should show 527 °C, not 800 °C
+    const text = format_hover_info_text(base_info, `°C`, `at%`, `A`, `B`, `K`)
+    expect(text).toContain(`527 °C`)
+    expect(text).not.toContain(`800`)
+  })
+
+  test(`converts vertical lever rule temperatures to display unit`, () => {
+    const info = {
+      ...base_info,
+      vertical_lever_rule: {
+        bottom_phase: `α`,
+        top_phase: `L`,
+        bottom_temperature: 673.15, // 400 °C in K
+        top_temperature: 1173.15, // 900 °C in K
+        fraction_bottom: 0.6,
+        fraction_top: 0.4,
+      },
+    }
+    const text = format_hover_info_text(info, `°C`, `at%`, `A`, `B`, `K`)
+    expect(text).toContain(`at 400 °C`)
+    expect(text).toContain(`at 900 °C`)
+  })
+
+  test(`includes both lever rules when both present (mode-independent computation)`, () => {
+    // Regression: both lever rules must always be computed so switching
+    // lever_rule_mode while hovering shows the other rule instantly
+    const info = {
+      ...base_info,
+      lever_rule: {
+        left_phase: `α`,
+        right_phase: `β`,
+        left_composition: 0.2,
+        right_composition: 0.8,
+        fraction_left: 0.6,
+        fraction_right: 0.4,
+      },
+      vertical_lever_rule: {
+        bottom_phase: `α`,
+        top_phase: `β`,
+        bottom_temperature: 400,
+        top_temperature: 900,
+        fraction_bottom: 0.7,
+        fraction_top: 0.3,
+      },
+    }
+    const text = format_hover_info_text(info)
+    expect(text).toContain(`Lever Rule:`)
+    expect(text).toContain(`α: 60.0%`)
+    expect(text).toContain(`Vertical Lever Rule:`)
+    expect(text).toContain(`α: 70.0%`)
+  })
 })
 
 // === extract_tdb_reference ===
