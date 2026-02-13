@@ -35,8 +35,8 @@
   let last_synced_input = $state<DiagramInput | null>(null)
   $effect(() => {
     if (diagram_input && diagram_input !== last_synced_input) {
-      original_input = JSON.parse(JSON.stringify(diagram_input))
       text_content = JSON.stringify(diagram_input, null, 2)
+      original_input = JSON.parse(text_content)
       last_synced_input = diagram_input
       parse_error = null
     }
@@ -70,12 +70,12 @@
 
   function reset() {
     if (!original_input) return
-    diagram_input = JSON.parse(JSON.stringify(original_input))
-    text_content = JSON.stringify(diagram_input, null, 2)
+    const cloned = JSON.parse(JSON.stringify(original_input)) as DiagramInput
+    diagram_input = cloned
+    text_content = JSON.stringify(cloned, null, 2)
     parse_error = null
-    if (!diagram_input) return
     try {
-      on_rebuild?.(build_diagram(diagram_input))
+      on_rebuild?.(build_diagram(cloned))
     } catch (err) {
       parse_error = err instanceof Error ? err.message : String(err)
     }

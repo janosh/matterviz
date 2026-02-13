@@ -20,7 +20,7 @@ const TWO_PHASE_COLORS = [
   `two_phase_eta`,
 ]
 
-// Round to 6 decimal places (microsecond precision for compositions/temperatures)
+// Round to 6 decimal places for clean floating-point output
 const round = (val: number): number => Math.round(val * 1e6) / 1e6
 
 // === Types ===
@@ -178,6 +178,8 @@ function extract_mpds_scales(
   }
 
   // Separate composition (0-100 at%) from temperature (typically 100-3000)
+  // Note: value 100 appears in both filters (valid as 100 at% and 100°C).
+  // This is intentional — only endpoints are used for scale mapping.
   const comp_vals = [
     ...new Set(numbers.filter((v) => v >= 0 && v <= 100 && v % 10 === 0)),
   ].sort((a, b) => a - b)
@@ -240,14 +242,20 @@ function extract_mpds_scales(
     )
   }
 
-  // Map tick positions to data values
-  // x-axis: ticks map to composition values (at%), convert to fraction
-  // y-axis: ticks map to temperature (top = max, bottom = min, SVG y inverted)
-  const x_vals = comp_vals.slice(0, x_ticks_sorted.length)
-  const y_vals = temp_vals.slice(0, y_ticks_sorted.length).reverse() // top = highest temp
-
-  const x_ticks = x_ticks_sorted.map((px, idx) => ({ px, value: x_vals[idx] / 100 }))
-  const y_ticks = y_ticks_sorted.map((px, idx) => ({ px, value: y_vals[idx] }))
+  // Map tick positions to data values using endpoints
+  // Only the first and last tick+value need to match for a linear scale
+  // x-axis: composition in at% → fraction; y-axis: temperature (SVG y inverted)
+  const x_ticks = [
+    { px: x_ticks_sorted[0], value: comp_vals[0] / 100 },
+    {
+      px: x_ticks_sorted[x_ticks_sorted.length - 1],
+      value: comp_vals[comp_vals.length - 1] / 100,
+    },
+  ]
+  const y_ticks = [
+    { px: y_ticks_sorted[0], value: temp_vals[temp_vals.length - 1] }, // top = highest temp
+    { px: y_ticks_sorted[y_ticks_sorted.length - 1], value: temp_vals[0] }, // bottom = lowest temp
+  ]
 
   return {
     x_scale: build_scale(x_ticks),
@@ -559,41 +567,27 @@ function extract_simple_labels(doc: Document, labels: Label[]): void {
 
 // Infer binary components from region labels
 function infer_components(labels: Label[]): [string, string] {
-  // Split each label into constituent phases
-  const labeled_phases: { phases: string[]; px_x: number }[] = labels.map((
-    label,
-  ) => ({
-    phases: label.text.split(/\s*\+\s*/).map((p) => p.trim()),
-    px_x: label.px_x,
-  }))
+  // Sort labels by x position, split each into phases
+  const sorted = [...labels].sort((a, b) => a.px_x - b.px_x)
+  if (sorted.length < 2) return [`A`, `B`]
 
-  // Sort by x position to find leftmost and rightmost
-  labeled_phases.sort((a, b) => a.px_x - b.px_x)
+  const split = (label: Label) => label.text.split(/\s*\+\s*/)
+  const leftmost = split(sorted[0])
+  const rightmost = split(sorted[sorted.length - 1])
 
-  // Component A: the unique phase in the leftmost region that doesn't appear in the next region
-  // Component B: the unique phase in the rightmost region that doesn't appear in the previous region
+  // Component A: the unique phase in the leftmost region that doesn't appear on the right
+  // For "La2NiO4 + La2O3", La2O3 is the pure A endpoint
   let comp_a = `A`
+  if (leftmost.length === 2) {
+    const right_phases = sorted.slice(-3).flatMap(split)
+    comp_a = leftmost.find((p) => !right_phases.includes(p)) ?? leftmost[1] ?? `A`
+  }
+
+  // Component B: the unique phase in the rightmost region that doesn't appear on the left
   let comp_b = `B`
-
-  if (labeled_phases.length >= 2) {
-    const leftmost = labeled_phases[0].phases
-    const rightmost = labeled_phases[labeled_phases.length - 1].phases
-
-    // Component A: appears only in left-side regions, candidate is the one
-    // in the leftmost label that has the smallest x composition
-    // For "La2NiO4 + La2O3", La2O3 is the pure A endpoint
-    if (leftmost.length === 2) {
-      // The phase that appears less frequently on the right side is likely the pure endpoint
-      const right_phases = labeled_phases.slice(-3).flatMap((lp) => lp.phases)
-      comp_a = leftmost.find((p) => !right_phases.includes(p)) ?? leftmost[1] ??
-        `A`
-    }
-
-    if (rightmost.length === 2) {
-      const left_phases = labeled_phases.slice(0, 3).flatMap((lp) => lp.phases)
-      comp_b = rightmost.find((p) => !left_phases.includes(p)) ??
-        rightmost[1] ?? `B`
-    }
+  if (rightmost.length === 2) {
+    const left_phases = sorted.slice(0, 3).flatMap(split)
+    comp_b = rightmost.find((p) => !left_phases.includes(p)) ?? rightmost[1] ?? `B`
   }
 
   return [comp_a, comp_b]
@@ -884,7 +878,7 @@ function parse_float_attr(el: Element, attr: string): number | null {
 
 // Extract a number from XML comment nodes inside a group element
 function extract_comment_number(group: Element): number | null {
-  const walker = document.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
+  const walker = group.ownerDocument.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
   let node: Comment | null
   while ((node = walker.nextNode() as Comment | null)) {
     const value = parseFloat(node.textContent?.trim() ?? ``)
@@ -896,7 +890,7 @@ function extract_comment_number(group: Element): number | null {
 // Find the first XML comment text inside or preceding a group
 function find_comment_text(group: Element): string | null {
   // Check comment nodes inside the group
-  const walker = document.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
+  const walker = group.ownerDocument.createTreeWalker(group, NodeFilter.SHOW_COMMENT)
   let node: Comment | null
   while ((node = walker.nextNode() as Comment | null)) {
     const text = node.textContent?.trim()
@@ -927,14 +921,13 @@ function clean_latex(text: string): string {
     .trim()
 }
 
-// Parse "M x1 y1 L x2 y2" path data (simple 2-point lines only)
 // Parse SVG path data into absolute line segments [x1,y1,x2,y2]
 // Handles M/m, L/l, H/h, V/v, C/c commands (both absolute and relative)
 // After M/m, implicit coordinates are treated as L/l per SVG spec
 function parse_path_segments(d: string): [number, number, number, number][] {
   const segments: [number, number, number, number][] = []
-  let [cx, cy] = [0, 0]
-  let [sx, sy] = [0, 0]
+  let [cursor_x, cursor_y] = [0, 0]
+  let [start_x, start_y] = [0, 0]
   let last_cmd = ``
 
   const tokens = d.match(/[MmLlHhVvCcSsQqTtAaZz]|[-+]?[\d]*\.?[\d]+(?:[eE][-+]?\d+)?/g)
@@ -956,45 +949,47 @@ function parse_path_segments(d: string): [number, number, number, number][] {
     }
 
     if (cmd === `M` || cmd === `m`) {
-      const nx = next_num()
-      const ny = next_num()
-      cx = cmd === `M` ? nx : cx + nx
-      cy = cmd === `M` ? ny : cy + ny
-      sx = cx
-      sy = cy
+      const next_x = next_num()
+      const next_y = next_num()
+      cursor_x = cmd === `M` ? next_x : cursor_x + next_x
+      cursor_y = cmd === `M` ? next_y : cursor_y + next_y
+      start_x = cursor_x
+      start_y = cursor_y
       last_cmd = cmd
     } else if (cmd === `L` || cmd === `l`) {
-      const nx = next_num()
-      const ny = next_num()
-      const x2 = cmd === `L` ? nx : cx + nx
-      const y2 = cmd === `L` ? ny : cy + ny
-      segments.push([cx, cy, x2, y2])
-      cx = x2
-      cy = y2
+      const next_x = next_num()
+      const next_y = next_num()
+      const x2 = cmd === `L` ? next_x : cursor_x + next_x
+      const y2 = cmd === `L` ? next_y : cursor_y + next_y
+      segments.push([cursor_x, cursor_y, x2, y2])
+      cursor_x = x2
+      cursor_y = y2
     } else if (cmd === `H` || cmd === `h`) {
-      const nx = next_num()
-      const x2 = cmd === `H` ? nx : cx + nx
-      segments.push([cx, cy, x2, cy])
-      cx = x2
+      const next_x = next_num()
+      const x2 = cmd === `H` ? next_x : cursor_x + next_x
+      segments.push([cursor_x, cursor_y, x2, cursor_y])
+      cursor_x = x2
     } else if (cmd === `V` || cmd === `v`) {
-      const ny = next_num()
-      const y2 = cmd === `V` ? ny : cy + ny
-      segments.push([cx, cy, cx, y2])
-      cy = y2
+      const next_y = next_num()
+      const y2 = cmd === `V` ? next_y : cursor_y + next_y
+      segments.push([cursor_x, cursor_y, cursor_x, y2])
+      cursor_y = y2
     } else if (cmd === `C` || cmd === `c`) {
       // Cubic bezier: skip control points, use endpoint only
       for (let _skip = 0; _skip < 4; _skip++) next_num()
-      const ex = next_num()
-      const ey = next_num()
-      const x2 = cmd === `C` ? ex : cx + ex
-      const y2 = cmd === `C` ? ey : cy + ey
-      segments.push([cx, cy, x2, y2])
-      cx = x2
-      cy = y2
+      const end_x = next_num()
+      const end_y = next_num()
+      const x2 = cmd === `C` ? end_x : cursor_x + end_x
+      const y2 = cmd === `C` ? end_y : cursor_y + end_y
+      segments.push([cursor_x, cursor_y, x2, y2])
+      cursor_x = x2
+      cursor_y = y2
     } else if (cmd === `Z` || cmd === `z`) {
-      if (cx !== sx || cy !== sy) segments.push([cx, cy, sx, sy])
-      cx = sx
-      cy = sy
+      if (cursor_x !== start_x || cursor_y !== start_y) {
+        segments.push([cursor_x, cursor_y, start_x, start_y])
+      }
+      cursor_x = start_x
+      cursor_y = start_y
     } else {
       idx++ // skip unsupported commands
     }
@@ -1002,13 +997,13 @@ function parse_path_segments(d: string): [number, number, number, number][] {
   return segments
 }
 
+// Parse a simple 2-point line path (M...L only). Returns null for multi-segment paths
+// to enforce the single-line contract expected by boundary extraction.
 function parse_ml_path(
   d: string,
 ): { x1: number; y1: number; x2: number; y2: number } | null {
-  // Use parse_path_segments to handle all SVG command variants
-  // Return the first segment as a simple line
   const segments = parse_path_segments(d)
-  if (segments.length === 0) return null
+  if (segments.length !== 1) return null
   const [x1, y1, x2, y2] = segments[0]
   return { x1, y1, x2, y2 }
 }
@@ -1024,6 +1019,7 @@ function get_group_translate(el: Element | null, axis: `x` | `y`): number {
 
 // Collect unique sorted values from an array (with epsilon deduplication)
 function collect_unique_sorted(values: number[]): number[] {
+  if (values.length === 0) return []
   const sorted = [...values].sort((a, b) => a - b)
   const unique: number[] = [sorted[0]]
   for (let idx = 1; idx < sorted.length; idx++) {

@@ -127,14 +127,14 @@
   // When diagram_input is provided and changes, rebuild data from it
   let rebuilt_data = $state<PhaseDiagramData | null>(null)
   $effect(() => {
-    if (diagram_input) {
-      try {
-        rebuilt_data = build_diagram(diagram_input)
-      } catch {
-        // Keep last good data on build errors
-      }
-    } else {
+    if (!diagram_input) {
       rebuilt_data = null
+      return
+    }
+    try {
+      rebuilt_data = build_diagram(diagram_input)
+    } catch {
+      // Keep last good data on build errors
     }
   })
 
@@ -366,6 +366,7 @@
           component_a,
           component_b,
           data_temp_unit,
+          lever_rule_mode,
         ),
       )
       if (copy_feedback_timeout) clearTimeout(copy_feedback_timeout)
@@ -977,6 +978,7 @@
             composition_unit={comp_unit}
             {component_a}
             {component_b}
+            boundaries={effective_data?.boundaries ?? []}
             {lever_rule_mode}
             {use_subscripts}
             {tooltip}

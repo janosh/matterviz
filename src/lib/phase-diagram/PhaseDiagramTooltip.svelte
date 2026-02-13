@@ -4,6 +4,7 @@
   import { format_num } from '$lib/labels'
   import { TooltipContent } from '$lib/tooltip'
   import type {
+    CompUnit,
     LeverRuleMode,
     PhaseBoundary,
     PhaseDiagramTooltipProp,
@@ -35,7 +36,7 @@
     temperature_unit?: TempUnit
     // Original unit of hover_info.temperature (defaults to temperature_unit)
     data_temperature_unit?: TempUnit
-    composition_unit?: string
+    composition_unit?: CompUnit
     component_a?: string
     component_b?: string
     boundaries?: PhaseBoundary[]

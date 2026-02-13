@@ -1,4 +1,5 @@
 import type {
+  CompUnit,
   LeverRuleResult,
   PhaseBoundary,
   PhaseHoverInfo,
@@ -46,7 +47,7 @@ describe(`PhaseDiagramTooltip`, () => {
       const hover_info = create_hover_info({ composition })
       mount(PhaseDiagramTooltip, {
         target: document.body,
-        props: { hover_info, composition_unit: unit, component_b },
+        props: { hover_info, composition_unit: unit as CompUnit, component_b },
       })
 
       const tooltip = document.querySelector(`.phase-diagram-tooltip`)
@@ -236,8 +237,8 @@ describe(`PhaseDiagramTooltip`, () => {
         props: { hover_info, lever_rule_mode: `horizontal` },
       })
 
-      expect(document.querySelector(`.lever > span`)?.textContent ?? null)
-        .not.toBe(`Lever Rule (vertical)`)
+      // No lever section at all — only vertical data present but mode is horizontal
+      expect(document.querySelector(`.lever`)).toBeNull()
     })
 
     test(`horizontal lever rule hidden when mode is vertical`, () => {

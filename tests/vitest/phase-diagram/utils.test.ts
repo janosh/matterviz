@@ -1,5 +1,10 @@
 import { point_in_polygon, polygon_centroid, type Vec2 } from '$lib/math'
-import type { PhaseDiagramData, PhaseRegion, TempUnit } from '$lib/phase-diagram'
+import type {
+  CompUnit,
+  PhaseDiagramData,
+  PhaseRegion,
+  TempUnit,
+} from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
   calculate_vertical_lever_rule,
@@ -322,7 +327,7 @@ describe(`format_composition`, () => {
     [0.001, `at%`, `0.1 at%`],
     [0.1005, `at%`, `10.1 at%`],
   ])(`%d with %s → %s`, (value, unit, expected) => {
-    expect(format_composition(value, unit)).toBe(expected)
+    expect(format_composition(value, unit as CompUnit)).toBe(expected)
   })
 })
 
@@ -409,15 +414,13 @@ describe(`calculate_lever_rule`, () => {
     expect(minor).toBeLessThan(0.1)
   })
 
-  test(`fractions sum to 1 across multiple compositions`, () => {
-    for (const comp of [0.3, 0.4, 0.5, 0.6, 0.7]) {
-      const result = calculate_lever_rule(two_phase_region, comp, 500)
-      expect(result).not.toBeNull()
-      expect((result?.fraction_left ?? 0) + (result?.fraction_right ?? 0)).toBeCloseTo(
-        1,
-        5,
-      )
-    }
+  test.each([0.3, 0.4, 0.5, 0.6, 0.7])(`fractions sum to 1 at comp=%f`, (comp) => {
+    const result = calculate_lever_rule(two_phase_region, comp, 500)
+    expect(result).not.toBeNull()
+    expect((result?.fraction_left ?? 0) + (result?.fraction_right ?? 0)).toBeCloseTo(
+      1,
+      5,
+    )
   })
 
   test(`parses complex phase names like "Liquid + FCC_A1"`, () => {
@@ -447,15 +450,13 @@ describe(`calculate_vertical_lever_rule`, () => {
     expect(result?.bottom_temperature).toBeLessThan(result?.top_temperature ?? Infinity)
   })
 
-  test(`fractions sum to 1 across multiple temperatures`, () => {
-    for (const temp of [420, 450, 500, 550, 580]) {
-      const result = calculate_vertical_lever_rule(two_phase_region, 0.5, temp)
-      expect(result).not.toBeNull()
-      expect((result?.fraction_bottom ?? 0) + (result?.fraction_top ?? 0)).toBeCloseTo(
-        1,
-        5,
-      )
-    }
+  test.each([420, 450, 500, 550, 580])(`fractions sum to 1 at temp=%d`, (temp) => {
+    const result = calculate_vertical_lever_rule(two_phase_region, 0.5, temp)
+    expect(result).not.toBeNull()
+    expect((result?.fraction_bottom ?? 0) + (result?.fraction_top ?? 0)).toBeCloseTo(
+      1,
+      5,
+    )
   })
 
   test.each([
@@ -480,19 +481,21 @@ describe(`compute_label_properties`, () => {
   test.each([
     { width: 0, height: 100, desc: `zero width` },
     { width: -10, height: 50, desc: `negative width` },
+    { width: 100, height: 0, desc: `zero height` },
+    { width: 50, height: -5, desc: `negative height` },
   ])(`handles degenerate bounds: $desc`, ({ width, height }) => {
     expect(compute_label_properties(`Test`, { width, height }, 12))
       .toEqual({ rotation: 0, lines: [`Test`], scale: 1 })
   })
 
-  test.each([
-    { label: ``, font_size: 12, expected_lines: [], desc: `empty label` },
-    { label: `Test`, font_size: 0, expected_lines: [`Test`], desc: `zero font_size` },
-  ])(`$desc → valid result`, ({ label, font_size, expected_lines }) => {
-    const result = compute_label_properties(label, { width: 100, height: 80 }, font_size)
-    expect(result.lines).toEqual(expected_lines)
-    expect(Number.isFinite(result.rotation)).toBe(true)
-    expect(Number.isFinite(result.scale)).toBe(true)
+  test(`empty label returns no lines`, () => {
+    expect(compute_label_properties(``, { width: 100, height: 80 }, 12))
+      .toEqual({ rotation: 0, lines: [], scale: 1 })
+  })
+
+  test(`zero font_size returns scale=1`, () => {
+    expect(compute_label_properties(`Test`, { width: 100, height: 80 }, 0))
+      .toEqual({ rotation: 0, lines: [`Test`], scale: 1 })
   })
 
   test(`wrapped labels join words with spaces, not underscores`, () => {
@@ -614,8 +617,8 @@ describe(`format_formula_html`, () => {
 })
 
 describe(`format_formula_svg`, () => {
-  test(`returns simple element unchanged`, () => {
-    expect(format_formula_svg(`Fe`)).toBe(`Fe`)
+  test.each([`Fe`, `α`, `α + β`])(`returns %s unchanged`, (input) => {
+    expect(format_formula_svg(input)).toBe(input)
   })
 
   test(`formats compound with tspan subscripts`, () => {
@@ -652,11 +655,6 @@ describe(`format_formula_svg`, () => {
 
   test(`respects use_subscripts=false`, () => {
     expect(format_formula_svg(`Fe3C`, false)).toBe(`Fe3C`)
-  })
-
-  test(`returns Greek letters unchanged`, () => {
-    expect(format_formula_svg(`α`)).toBe(`α`)
-    expect(format_formula_svg(`α + β`)).toBe(`α + β`)
   })
 })
 
@@ -832,7 +830,7 @@ describe(`format_hover_info_text`, () => {
     expect(text).toContain(`β: 33.3%`)
   })
 
-  test(`includes vertical lever rule when present`, () => {
+  test(`includes vertical lever rule when mode is vertical`, () => {
     const info = {
       ...base_info,
       vertical_lever_rule: {
@@ -844,7 +842,7 @@ describe(`format_hover_info_text`, () => {
         fraction_top: 0.4,
       },
     }
-    const text = format_hover_info_text(info)
+    const text = format_hover_info_text(info, `K`, `at%`, `A`, `B`, `K`, `vertical`)
     expect(text).toContain(`Vertical Lever Rule:`)
     expect(text).toContain(`α: 60.0%`)
     expect(text).toContain(`L: 40.0%`)
@@ -876,14 +874,12 @@ describe(`format_hover_info_text`, () => {
         fraction_top: 0.4,
       },
     }
-    const text = format_hover_info_text(info, `°C`, `at%`, `A`, `B`, `K`)
+    const text = format_hover_info_text(info, `°C`, `at%`, `A`, `B`, `K`, `vertical`)
     expect(text).toContain(`at 400 °C`)
     expect(text).toContain(`at 900 °C`)
   })
 
-  test(`includes both lever rules when both present (mode-independent computation)`, () => {
-    // Regression: both lever rules must always be computed so switching
-    // lever_rule_mode while hovering shows the other rule instantly
+  test(`only includes active lever rule mode in copied text`, () => {
     const info = {
       ...base_info,
       lever_rule: {
@@ -903,11 +899,18 @@ describe(`format_hover_info_text`, () => {
         fraction_top: 0.3,
       },
     }
-    const text = format_hover_info_text(info)
-    expect(text).toContain(`Lever Rule:`)
-    expect(text).toContain(`α: 60.0%`)
-    expect(text).toContain(`Vertical Lever Rule:`)
-    expect(text).toContain(`α: 70.0%`)
+    // Horizontal mode: only horizontal lever rule
+    const horiz = format_hover_info_text(info, `K`, `at%`, `A`, `B`, `K`, `horizontal`)
+    expect(horiz).toContain(`Lever Rule:`)
+    expect(horiz).toContain(`α: 60.0%`)
+    expect(horiz).not.toContain(`Vertical`)
+
+    // Vertical mode: only vertical lever rule
+    const vert = format_hover_info_text(info, `K`, `at%`, `A`, `B`, `K`, `vertical`)
+    expect(vert).toContain(`Vertical Lever Rule:`)
+    expect(vert).toContain(`α: 70.0%`)
+    // Should not contain a standalone "Lever Rule:" line (only "Vertical Lever Rule:")
+    expect(vert).not.toMatch(/^Lever Rule:/m)
   })
 })
 
