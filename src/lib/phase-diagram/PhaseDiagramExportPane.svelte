@@ -182,7 +182,7 @@
   label {
     display: flex;
     align-items: center;
-    gap: 8pt;
+    gap: 4pt;
     font-size: 0.95em;
     white-space: nowrap;
   }

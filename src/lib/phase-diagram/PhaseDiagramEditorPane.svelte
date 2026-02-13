@@ -1,8 +1,8 @@
 <script lang="ts">
   import { JsonTree } from '$lib/layout/json-tree'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
-  import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
+  import type { ComponentProps } from 'svelte'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import type { PhaseDiagramData } from './types'
@@ -25,7 +25,7 @@
   let original_input = $state<DiagramInput | null>(null)
   $effect(() => {
     if (diagram_input && !original_input) {
-      original_input = JSON.parse(JSON.stringify(diagram_input))
+      original_input = structuredClone(diagram_input)
     }
   })
 
@@ -74,10 +74,9 @@
 
   function reset() {
     if (!original_input) return
-    diagram_input = JSON.parse(JSON.stringify(original_input))
+    diagram_input = structuredClone(original_input)
     text_content = JSON.stringify(diagram_input, null, 2)
     parse_error = null
-    if (!diagram_input) return
     try {
       on_rebuild?.(build_diagram(diagram_input))
     } catch (err) {
