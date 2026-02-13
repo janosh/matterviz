@@ -1003,7 +1003,9 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
         controls_open: bool | None = None,
         controls_props: dict | None = None,
         data: Any | None = None,
+        diagram_input: Any | None = None,
         display_temp_unit: Any | None = None,
+        editor_open: bool | None = None,
         enable_export: bool | None = None,
         export_filename: str | None = None,
         export_pane_open: bool | None = None,
@@ -1039,8 +1041,12 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
             mv_props["controls_props"] = controls_props
         if data is not None:
             mv_props["data"] = data
+        if diagram_input is not None:
+            mv_props["diagram_input"] = diagram_input
         if display_temp_unit is not None:
             mv_props["display_temp_unit"] = display_temp_unit
+        if editor_open is not None:
+            mv_props["editor_open"] = editor_open
         if enable_export is not None:
             mv_props["enable_export"] = enable_export
         if export_filename is not None:
