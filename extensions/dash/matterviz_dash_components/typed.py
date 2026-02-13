@@ -1010,6 +1010,7 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
         fullscreen: bool | None = None,
         fullscreen_toggle: bool | None = None,
         hovered_region: Any | None = None,
+        lever_rule_mode: Any | None = None,
         png_dpi: float | None = None,
         show_boundaries: bool | None = None,
         show_component_labels: bool | None = None,
@@ -1052,6 +1053,8 @@ class IsobaricBinaryPhaseDiagram(MatterViz):
             mv_props["fullscreen_toggle"] = fullscreen_toggle
         if hovered_region is not None:
             mv_props["hovered_region"] = hovered_region
+        if lever_rule_mode is not None:
+            mv_props["lever_rule_mode"] = lever_rule_mode
         if png_dpi is not None:
             mv_props["png_dpi"] = png_dpi
         if show_boundaries is not None:
