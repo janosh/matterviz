@@ -5,16 +5,22 @@ import type { Sides } from '$lib/plot'
 import { line } from 'd3-shape'
 import type {
   CompUnit,
+  LeverRuleMode,
   LeverRuleResult,
   PhaseDiagramConfig,
   PhaseDiagramData,
   PhaseHoverInfo,
   PhaseRegion,
   TempUnit,
+  VerticalLeverRuleResult,
 } from './types'
 
 // Convert temperature between units (K, °C, °F)
-export function convert_temp(value: number, from: TempUnit, to: TempUnit): number {
+export function convert_temp(
+  value: number,
+  from: TempUnit,
+  to: TempUnit,
+): number {
   if (from === to) return value
   // Convert to Kelvin first
   const kelvin = from === `°C`
@@ -60,13 +66,15 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
     special_point: `#d32f2f`,
   }),
   // Margins
-  margin: Object.freeze({ t: 25, r: 15, b: 50, l: 60 } as Required<Sides>),
+  margin: Object.freeze({ t: 25, r: 25, b: 50, l: 60 } as Required<Sides>),
   // Export
   png_dpi: 150,
 })
 
 // Merge partial config with defaults - single helper for consistent merging
-export function merge_phase_diagram_config(config: Partial<PhaseDiagramConfig>) {
+export function merge_phase_diagram_config(
+  config: Partial<PhaseDiagramConfig>,
+) {
   return {
     margin: { ...PHASE_DIAGRAM_DEFAULTS.margin, ...config.margin },
     font_size: config.font_size ?? PHASE_DIAGRAM_DEFAULTS.font_size,
@@ -117,7 +125,10 @@ export const PHASE_COLORS = Object.freeze(
   Object.fromEntries(
     Object.entries(PHASE_COLOR_HEX).map(([key, hex]) => [
       key,
-      add_alpha(hex, (PHASE_ALPHA as Record<string, number>)[key] ?? 0.6),
+      add_alpha(
+        hex,
+        key in PHASE_ALPHA ? PHASE_ALPHA[key as keyof typeof PHASE_ALPHA] : 0.6,
+      ),
     ]),
   ),
 ) as Record<PhaseColorKey, string>
@@ -151,8 +162,11 @@ export function get_phase_color_key(name: string): PhaseColorKey {
 }
 
 // Get phase color - returns rgba() by default, or RGB string if format='rgb'
-export function get_phase_color(name: string, format: `rgba` | `rgb` = `rgba`): string {
-  const lower = name.toLowerCase()
+export function get_phase_color(
+  name: string,
+  format: `rgba` | `rgb` = `rgba`,
+): string {
+  const lower = name.toLowerCase().trim()
   const key: PhaseColorKey = lower.includes(`+`) ? `two_phase` : get_phase_color_key(name)
   return format === `rgb` ? PHASE_COLOR_RGB[key] : PHASE_COLORS[key]
 }
@@ -186,7 +200,9 @@ export function find_phase_at_point(
   // Search regions in reverse order so later-defined regions take precedence
   for (let idx = data.regions.length - 1; idx >= 0; idx--) {
     const region = data.regions[idx]
-    if (point_in_polygon(composition, temperature, region.vertices)) return region
+    if (point_in_polygon(composition, temperature, region.vertices)) {
+      return region
+    }
   }
   return null
 }
@@ -249,8 +265,11 @@ export function compute_label_properties(
   }
 
   // Scale down as last resort (min 70%)
-  const scale = Math.max(0.7, Math.min(avail_w / label_width, avail_h / line_height, 1))
-  const rotation = is_tall && avail_h / label_width > avail_w / label_width ? -90 : 0
+  const scale = Math.max(
+    0.7,
+    Math.min(avail_w / label_width, avail_h / line_height, 1),
+  )
+  const rotation = is_tall ? -90 : 0
   return { rotation, lines: [label], scale }
 }
 
@@ -263,7 +282,7 @@ function wrap_text(text: string, max_chars: number): string[] {
   let current_line = ``
 
   for (const word of words) {
-    const candidate = current_line ? `${current_line}_${word}` : word
+    const candidate = current_line ? `${current_line} ${word}` : word
     if (candidate.length <= max_chars) {
       current_line = candidate
     } else {
@@ -273,7 +292,7 @@ function wrap_text(text: string, max_chars: number): string[] {
   }
 
   if (current_line) lines.push(current_line)
-  return lines.length > 0 ? lines : [text]
+  return lines
 }
 
 // Transform data coordinates to SVG coordinates using scale functions
@@ -288,20 +307,79 @@ export function transform_vertices(
 // Format composition value for display
 export function format_composition(
   value: number,
-  unit: CompUnit | string = `at%`,
+  unit: CompUnit = `at%`,
   include_unit: boolean = true,
 ): string {
-  if (unit === `fraction`) return format_num(value, `.3f`)
-  const formatted = format_num(value * 100, `.3`)
+  if (unit === `fraction`) return format_num(value, `.3~f`)
+  const formatted = format_num(value * 100, `.3~`)
   return include_unit ? `${formatted} ${unit}` : formatted
 }
 
 // Format temperature value for display
 export function format_temperature(
   value: number,
-  unit: TempUnit | string = `K`,
+  unit: TempUnit = `K`,
 ): string {
   return `${format_num(value, `.0f`)} ${unit}`
+}
+
+// Parse a two-phase region name into its two phase names
+// Returns null if the region is not exactly a two-phase region
+function parse_two_phases(name: string): [string, string] | null {
+  if (!name.includes(`+`)) return null
+  const parts = name.trim().split(/\s*\+\s*/).filter(Boolean)
+  return parts.length === 2 ? [parts[0], parts[1]] : null
+}
+
+// Find polygon edge intersections along a scan line (horizontal or vertical)
+// For horizontal: fixed_val = temperature, returns x-intersections
+// For vertical: fixed_val = composition, returns y-intersections
+function find_polygon_intersections(
+  vertices: Vec2[],
+  fixed_val: number,
+  axis: 0 | 1,
+): number[] {
+  const other = axis === 0 ? 1 : 0
+  const intersections: number[] = []
+  for (let idx = 0; idx < vertices.length; idx++) {
+    const v1 = vertices[idx]
+    const v2 = vertices[(idx + 1) % vertices.length]
+    if (
+      (v1[axis] <= fixed_val && v2[axis] > fixed_val) ||
+      (v2[axis] <= fixed_val && v1[axis] > fixed_val)
+    ) {
+      intersections.push(
+        v1[other] +
+          ((fixed_val - v1[axis]) / (v2[axis] - v1[axis])) * (v2[other] - v1[other]),
+      )
+    }
+  }
+  return intersections.sort((a, b) => a - b)
+}
+
+// Shared core for lever rule calculations (horizontal and vertical)
+// Parses phases, finds intersections along the scan axis, validates bounds,
+// and computes the fractional position within the two-phase region.
+function lever_rule_core(
+  region: PhaseRegion,
+  position: number,
+  scan_val: number,
+  axis: 0 | 1,
+): { phases: [string, string]; lo: number; hi: number; fraction_hi: number } | null {
+  const phases = parse_two_phases(region.name)
+  if (!phases) return null
+
+  const intersections = find_polygon_intersections(region.vertices, scan_val, axis)
+  if (intersections.length < 2) return null
+
+  const lo = intersections[0]
+  const hi = intersections[intersections.length - 1]
+  if (position < lo || position > hi) return null
+
+  const span = hi - lo
+  if (span < 1e-10) return null
+
+  return { phases, lo, hi, fraction_hi: (position - lo) / span }
 }
 
 // Calculate lever rule for a point in a two-phase region
@@ -312,70 +390,64 @@ export function calculate_lever_rule(
   composition: number,
   temperature: number,
 ): LeverRuleResult | null {
-  // Only works for exactly two-phase regions (lever rule undefined for 3+ phases)
-  if (!region.name.includes(`+`)) return null
-  const phase_count = region.name.split(`+`).filter((s) => s.trim()).length
-  if (phase_count !== 2) return null
-
-  // Find horizontal intersections with polygon edges at this temperature
-  const intersections: number[] = []
-  const n = region.vertices.length
-
-  for (let idx = 0; idx < n; idx++) {
-    const [x1, y1] = region.vertices[idx]
-    const [x2, y2] = region.vertices[(idx + 1) % n]
-    if (
-      (y1 <= temperature && y2 > temperature) || (y2 <= temperature && y1 > temperature)
-    ) {
-      intersections.push(x1 + ((temperature - y1) / (y2 - y1)) * (x2 - x1))
-    }
-  }
-
-  if (intersections.length < 2) return null
-  intersections.sort((a, b) => a - b)
-
-  const left_composition = intersections[0]
-  const right_composition = intersections[intersections.length - 1]
-  if (composition < left_composition || composition > right_composition) return null
-
-  const total_width = right_composition - left_composition
-  if (total_width < 1e-10) return null
-
-  const fraction_right = (composition - left_composition) / total_width
-  const fraction_left = 1 - fraction_right
-
-  // Parse phase names from "α + β" format
-  const parts = region.name.split(/\s*\+\s*/)
-  const left_phase = parts[0]?.trim() || `Phase 1`
-  const right_phase = parts[1]?.trim() || `Phase 2`
+  // Horizontal scan: fixed temperature, find composition intersections
+  const core = lever_rule_core(region, composition, temperature, 1)
+  if (!core) return null
 
   return {
-    left_phase,
-    right_phase,
-    left_composition,
-    right_composition,
-    fraction_left,
-    fraction_right,
+    left_phase: core.phases[0],
+    right_phase: core.phases[1],
+    left_composition: core.lo,
+    right_composition: core.hi,
+    fraction_left: 1 - core.fraction_hi,
+    fraction_right: core.fraction_hi,
+  }
+}
+
+// Calculate vertical lever rule for a point in a two-phase region
+// Uses constant composition (vertical line) to find temperature boundaries
+export function calculate_vertical_lever_rule(
+  region: PhaseRegion,
+  composition: number,
+  temperature: number,
+): VerticalLeverRuleResult | null {
+  // Vertical scan: fixed composition, find temperature intersections
+  const core = lever_rule_core(region, temperature, composition, 0)
+  if (!core) return null
+
+  return {
+    bottom_phase: core.phases[0],
+    top_phase: core.phases[1],
+    bottom_temperature: core.lo,
+    top_temperature: core.hi,
+    fraction_bottom: 1 - core.fraction_hi,
+    fraction_top: core.fraction_hi,
   }
 }
 
 // Format hover info as copyable text for clipboard
+// Only includes lever rule data for the active mode to match tooltip display
 export function format_hover_info_text(
   info: PhaseHoverInfo,
-  temp_unit: string = `K`,
-  comp_unit: string = `at%`,
+  temp_unit: TempUnit = `K`,
+  comp_unit: CompUnit = `at%`,
   component_a: string = `A`,
   component_b: string = `B`,
+  data_temp_unit: TempUnit = temp_unit,
+  lever_rule_mode: LeverRuleMode = `horizontal`,
 ): string {
+  // Convert temperature from data unit to display unit
+  const to_display = (temp: number) => convert_temp(temp, data_temp_unit, temp_unit)
+
   const lines: string[] = [
     `Phase: ${info.region.name}`,
-    `Temperature: ${format_temperature(info.temperature, temp_unit)}`,
+    `Temperature: ${format_temperature(to_display(info.temperature), temp_unit)}`,
     `Composition: ${format_composition(info.composition, comp_unit)} ${component_b} (${
       format_composition(1 - info.composition, comp_unit)
     } ${component_a})`,
   ]
 
-  if (info.lever_rule) {
+  if (lever_rule_mode === `horizontal` && info.lever_rule) {
     const lr = info.lever_rule
     lines.push(
       ``,
@@ -389,6 +461,20 @@ export function format_hover_info_text(
     )
   }
 
+  if (lever_rule_mode === `vertical` && info.vertical_lever_rule) {
+    const vlr = info.vertical_lever_rule
+    lines.push(
+      ``,
+      `Vertical Lever Rule:`,
+      `  ${vlr.bottom_phase}: ${format_num(vlr.fraction_bottom * 100, `.1f`)}% (at ${
+        format_temperature(to_display(vlr.bottom_temperature), temp_unit)
+      })`,
+      `  ${vlr.top_phase}: ${format_num(vlr.fraction_top * 100, `.1f`)}% (at ${
+        format_temperature(to_display(vlr.top_temperature), temp_unit)
+      })`,
+    )
+  }
+
   return lines.join(`\n`)
 }
 
@@ -397,8 +483,13 @@ export function get_phase_stability_range(
   region: PhaseRegion,
 ): { t_min: number; t_max: number } | null {
   if (!region.vertices?.length) return null
-  const temps = region.vertices.map(([, temp]) => temp)
-  return { t_min: Math.min(...temps), t_max: Math.max(...temps) }
+  let t_min = Infinity
+  let t_max = -Infinity
+  for (const [, temp] of region.vertices) {
+    if (temp < t_min) t_min = temp
+    if (temp > t_max) t_max = temp
+  }
+  return { t_min, t_max }
 }
 
 // Extract reference/citation from TDB comments
@@ -421,11 +512,14 @@ export function summarize_models(
 ): string {
   const counts = new Map<number, number>()
   for (const phase of phases) {
-    counts.set(phase.sublattice_count, (counts.get(phase.sublattice_count) ?? 0) + 1)
+    counts.set(
+      phase.sublattice_count,
+      (counts.get(phase.sublattice_count) ?? 0) + 1,
+    )
   }
   return [...counts.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([n, c]) => `${c}×${n}-SL`)
+    .sort(([sl_a], [sl_b]) => sl_a - sl_b)
+    .map(([sublattices, count]) => `${count}×${sublattices}-SL`)
     .join(`, `)
 }
 
@@ -448,12 +542,7 @@ export function is_compound(name: string): boolean {
   if (/\d/.test(name)) return true
   // Single element pattern: one uppercase followed by optional lowercase (Fe, Ca, He, C)
   if (/^[A-Z][a-z]?$/.test(name)) return false
-  // Count uppercase letters without array allocation
-  let uppercase_count = 0
-  for (const char of name) {
-    if (char >= `A` && char <= `Z`) uppercase_count++
-  }
-  return uppercase_count >= 2
+  return (name.match(/[A-Z]/g)?.length ?? 0) >= 2
 }
 
 // Tokenize a chemical formula for rendering with subscripts/superscripts
@@ -543,7 +632,10 @@ const DY = { sub: 0.25, sup: -0.4 } as const
 
 // Format chemical formula as SVG tspan elements with subscripts
 // Tracks cumulative baseline offset and adds trailing reset so concatenated text aligns
-export function format_formula_svg(formula: string, use_subscripts = true): string {
+export function format_formula_svg(
+  formula: string,
+  use_subscripts = true,
+): string {
   if (!use_subscripts || !is_compound(formula)) return formula
 
   let result = ``
@@ -560,17 +652,44 @@ export function format_formula_svg(formula: string, use_subscripts = true): stri
     }
   }
 
-  if (offset) result += `<tspan dy="${-offset}em"></tspan>`
+  // Reset baseline after trailing subscript/superscript using a zero-width space
+  // (empty tspans may not apply dy in all SVG renderers)
+  if (offset) result += `<tspan dy="${-offset}em">\u200B</tspan>`
   return result
 }
 
+// Split a multi-phase label on " + " and format each part with the given formatter
+function format_label_parts(
+  label: string,
+  use_subscripts: boolean,
+  formatter: (formula: string, use_sub: boolean) => string,
+): string {
+  if (!use_subscripts) return label
+  return label.split(/(\s*\+\s*)/).map((part) => {
+    if (part.trim() === `+`) return part
+    return formatter(part.trim(), use_subscripts)
+  }).join(``)
+}
+
+// Format a phase region label (e.g. "La2NiO4 + NiO") as SVG with subscripts
+export const format_label_svg = (label: string, use_subscripts = true): string =>
+  format_label_parts(label, use_subscripts, format_formula_svg)
+
+// Format a phase region label as HTML with subscripts (splits on " + ")
+export const format_label_html = (label: string, use_subscripts = true): string =>
+  format_label_parts(label, use_subscripts, format_formula_html)
+
 // Format chemical formula as HTML with <sub> and <sup> tags
-export function format_formula_html(formula: string, use_subscripts = true): string {
+export function format_formula_html(
+  formula: string,
+  use_subscripts = true,
+): string {
   if (!use_subscripts || !is_compound(formula)) return formula
 
   return tokenize_formula(formula)
     .map((token) =>
-      token.text ?? (token.sub ? `<sub>${token.sub}</sub>` : `<sup>${token.sup}</sup>`)
+      token.text ??
+        (token.sub ? `<sub>${token.sub}</sub>` : `<sup>${token.sup}</sup>`)
     )
     .join(``)
 }

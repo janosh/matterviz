@@ -53,6 +53,10 @@ export interface JsonTreeProps {
   download_filename?: string
   // Optional value to diff against - highlights additions, removals, and changes
   compare_value?: unknown
+  // Enable inline editing of leaf values (double-click to edit)
+  editable?: boolean
+  // Callback when a value is edited inline (path, new_value, old_value)
+  onchange?: (path: string, new_value: unknown, old_value: unknown) => void
 }
 
 // Context shared with child components (state + methods)
@@ -66,6 +70,7 @@ export interface JsonTreeContext {
     sort_keys: boolean
     max_string_length: number
     highlight_changes: boolean
+    editable: boolean
   }
   collapsed: Set<string>
   force_expanded: Set<string>
@@ -80,8 +85,8 @@ export interface JsonTreeContext {
   collapse_all: () => void
   collapse_to_level: (level: number) => void
   set_focused: (path: string | null) => void
-  copy_value: (path: string, value: unknown, event?: MouseEvent) => Promise<void>
-  copy_path: (path: string, event?: MouseEvent) => Promise<void>
+  copy_value: (path: string, value: unknown, event?: CopyEventPosition) => Promise<void>
+  copy_path: (path: string, event?: CopyEventPosition) => Promise<void>
   register_path: (path: string) => void
   unregister_path: (path: string) => void
   show_context_menu: (
@@ -99,7 +104,11 @@ export interface JsonTreeContext {
   diff_map: Map<string, DiffEntry> | null
   ghost_map: Map<string, import('./utils').GhostEntry[]>
   collapse_children_only: (path: string) => void
+  onchange?: (path: string, new_value: unknown, old_value: unknown) => void
 }
+
+// Minimal position info for copy feedback (avoids partial MouseEvent mocks)
+export type CopyEventPosition = { clientX: number; clientY: number }
 
 // Context key for Svelte's setContext/getContext
 export const JSON_TREE_CONTEXT_KEY = Symbol(`json-tree-context`)

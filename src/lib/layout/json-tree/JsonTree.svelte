@@ -6,7 +6,12 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import JsonNode from './JsonNode.svelte'
-  import type { DiffEntry, JsonTreeContext, JsonTreeProps } from './types'
+  import type {
+    CopyEventPosition,
+    DiffEntry,
+    JsonTreeContext,
+    JsonTreeProps,
+  } from './types'
   import { JSON_TREE_CONTEXT_KEY } from './types'
   import {
     build_ghost_map,
@@ -41,8 +46,11 @@
     oncopy,
     download_filename,
     compare_value,
+    editable = false,
+    onchange,
     ...rest
-  }: JsonTreeProps & Omit<HTMLAttributes<HTMLDivElement>, `onselect`> = $props()
+  }: JsonTreeProps & Omit<HTMLAttributes<HTMLDivElement>, `onselect` | `onchange`> =
+    $props()
 
   // Internal state
   let search_query = $state(``)
@@ -281,7 +289,7 @@
   async function copy_to_clipboard(
     path: string,
     text: string,
-    event?: MouseEvent,
+    event?: CopyEventPosition,
   ): Promise<void> {
     copy_feedback_pos = event ? { x: event.clientX, y: event.clientY } : null
     try {
@@ -443,6 +451,7 @@
         sort_keys,
         max_string_length,
         highlight_changes,
+        editable,
       }
     },
     get collapsed() {
@@ -470,9 +479,9 @@
     collapse_all,
     collapse_to_level,
     set_focused,
-    copy_value: (val_path: string, val: unknown, event?: MouseEvent) =>
+    copy_value: (val_path: string, val: unknown, event?: CopyEventPosition) =>
       copy_to_clipboard(val_path, serialize_for_copy(val), event),
-    copy_path: (cp_path: string, event?: MouseEvent) =>
+    copy_path: (cp_path: string, event?: CopyEventPosition) =>
       copy_to_clipboard(cp_path, cp_path, event),
     register_path,
     unregister_path,
@@ -493,6 +502,9 @@
       return ghost_map
     },
     collapse_children_only,
+    get onchange() {
+      return onchange
+    },
   }
 
   setContext(JSON_TREE_CONTEXT_KEY, context)
@@ -911,12 +923,14 @@
     border-radius: var(--jt-border-radius, 4px);
     overflow: hidden;
   }
+  /* --jt-header-bg, --jt-header-border, --jt-btn-bg, --jt-btn-hover-bg, --jt-btn-active-bg
+     intentionally removed in favor of transparent/opacity-based button styling.
+     Use --jt-hover-bg to customize the button hover background. */
   .json-tree-header {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    background: var(--jt-header-bg);
     flex-wrap: wrap;
   }
   .search-wrapper {
@@ -977,26 +991,22 @@
     min-width: 24px;
     height: 24px;
     padding: 2px 6px;
-    border: 1px solid var(--jt-header-border);
-    background: var(--jt-btn-bg, light-dark(white, rgba(255, 255, 255, 0.1)));
+    border: none;
+    background: transparent;
     border-radius: 3px;
     cursor: pointer;
     font-size: 11px;
     font-weight: 500;
     color: inherit;
-    transition: background 0.15s;
+    opacity: 0.6;
+    transition: opacity 0.15s, background 0.15s;
   }
   .controls button:hover {
-    background: var(
-      --jt-btn-hover-bg,
-      light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.15))
-    );
+    opacity: 1;
+    background: var(--jt-hover-bg);
   }
   .controls button.active {
-    background: var(
-      --jt-btn-active-bg,
-      light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2))
-    );
+    opacity: 1;
   }
   .match-nav {
     display: flex;
@@ -1010,17 +1020,16 @@
     width: 20px;
     height: 20px;
     padding: 0;
-    border: 1px solid var(--jt-header-border);
-    background: var(--jt-btn-bg, light-dark(white, rgba(255, 255, 255, 0.1)));
+    border: none;
+    background: transparent;
     border-radius: 3px;
     cursor: pointer;
     color: inherit;
+    opacity: 0.6;
   }
   .nav-btn:hover {
-    background: var(
-      --jt-btn-hover-bg,
-      light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.15))
-    );
+    opacity: 1;
+    background: var(--jt-hover-bg);
   }
   .match-count {
     font-size: 11px;
