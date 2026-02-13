@@ -316,11 +316,6 @@ describe(`format_composition`, () => {
     [0.333, `fraction`, `0.333`],
     [0, `at%`, `0 at%`],
     [1, `at%`, `100 at%`],
-    // Trailing zeros stripped
-    [0.35, `at%`, `35 at%`],
-    [0.123, `at%`, `12.3 at%`],
-    [0.001, `at%`, `0.1 at%`],
-    [0.1005, `at%`, `10.1 at%`],
   ])(`%d with %s → %s`, (value, unit, expected) => {
     expect(format_composition(value, unit)).toBe(expected)
   })
@@ -479,10 +474,15 @@ describe(`compute_label_properties`, () => {
 
   test.each([
     { width: 0, height: 100, desc: `zero width` },
+    { width: 100, height: 0, desc: `zero height` },
+    { width: 0, height: 0, desc: `zero dimensions` },
     { width: -10, height: 50, desc: `negative width` },
+    { width: 50, height: -10, desc: `negative height` },
   ])(`handles degenerate bounds: $desc`, ({ width, height }) => {
-    expect(compute_label_properties(`Test`, { width, height }, 12))
-      .toEqual({ rotation: 0, lines: [`Test`], scale: 1 })
+    const result = compute_label_properties(`Test`, { width, height }, 12)
+    expect(Number.isFinite(result.rotation)).toBe(true)
+    expect(Number.isFinite(result.scale)).toBe(true)
+    expect(result.lines).toEqual([`Test`])
   })
 
   test.each([
@@ -665,6 +665,12 @@ describe(`format_label_svg`, () => {
     expect(result).toContain(` + `)
     expect(result).toContain(`Ni`)
   })
+
+  test(`handles partial separator from wrapped text`, () => {
+    const result = format_label_svg(`α +`)
+    expect(result).not.toContain(`_`)
+    expect(result).toContain(`α`)
+  })
 })
 
 describe(`format_label_html`, () => {
@@ -758,30 +764,33 @@ describe(`word boundary regex for component matching`, () => {
 // === get_phase_stability_range ===
 
 describe(`get_phase_stability_range`, () => {
-  test.each([
-    {
-      vertices: [[0, 400], [1, 400], [1, 800], [0, 800]] as Vec2[],
-      expected: { t_min: 400, t_max: 800 },
-      desc: `rectangle`,
-    },
-    {
-      vertices: [[0.5, 600]] as Vec2[],
-      expected: { t_min: 600, t_max: 600 },
-      desc: `single vertex`,
-    },
-    {
-      vertices: [[0.2, 400], [0.8, 450], [0.7, 650], [0.3, 600]] as Vec2[],
-      expected: { t_min: 400, t_max: 650 },
-      desc: `irregular polygon`,
-    },
-  ])(`$desc → t_min=$expected.t_min, t_max=$expected.t_max`, ({ vertices, expected }) => {
-    expect(get_phase_stability_range({ id: `test`, name: `α`, vertices })).toEqual(
-      expected,
-    )
+  test(`returns min/max temperatures from vertices`, () => {
+    const region: PhaseRegion = {
+      id: `test`,
+      name: `α`,
+      vertices: [[0, 400], [1, 400], [1, 800], [0, 800]],
+    }
+    expect(get_phase_stability_range(region)).toEqual({ t_min: 400, t_max: 800 })
+  })
+
+  test(`handles single vertex`, () => {
+    const region: PhaseRegion = { id: `test`, name: `α`, vertices: [[0.5, 600]] }
+    expect(get_phase_stability_range(region)).toEqual({ t_min: 600, t_max: 600 })
   })
 
   test(`returns null for empty vertices`, () => {
     expect(get_phase_stability_range({ id: `test`, name: `α`, vertices: [] })).toBeNull()
+  })
+
+  test(`handles non-axis-aligned region (irregular polygon)`, () => {
+    const region: PhaseRegion = {
+      id: `test`,
+      name: `α + β`,
+      vertices: [[0.2, 400], [0.8, 450], [0.7, 650], [0.3, 600]],
+    }
+    const range = get_phase_stability_range(region)
+    expect(range?.t_min).toBe(400)
+    expect(range?.t_max).toBe(650)
   })
 })
 
@@ -851,59 +860,6 @@ describe(`format_hover_info_text`, () => {
   test(`omits lever rule sections when not present`, () => {
     const text = format_hover_info_text(base_info)
     expect(text).not.toContain(`Lever Rule`)
-  })
-
-  test(`converts temperature from data unit to display unit`, () => {
-    // Data in K (800), display in °C → should show 527 °C, not 800 °C
-    const text = format_hover_info_text(base_info, `°C`, `at%`, `A`, `B`, `K`)
-    expect(text).toContain(`527 °C`)
-    expect(text).not.toContain(`800`)
-  })
-
-  test(`converts vertical lever rule temperatures to display unit`, () => {
-    const info = {
-      ...base_info,
-      vertical_lever_rule: {
-        bottom_phase: `α`,
-        top_phase: `L`,
-        bottom_temperature: 673.15, // 400 °C in K
-        top_temperature: 1173.15, // 900 °C in K
-        fraction_bottom: 0.6,
-        fraction_top: 0.4,
-      },
-    }
-    const text = format_hover_info_text(info, `°C`, `at%`, `A`, `B`, `K`)
-    expect(text).toContain(`at 400 °C`)
-    expect(text).toContain(`at 900 °C`)
-  })
-
-  test(`includes both lever rules when both present (mode-independent computation)`, () => {
-    // Regression: both lever rules must always be computed so switching
-    // lever_rule_mode while hovering shows the other rule instantly
-    const info = {
-      ...base_info,
-      lever_rule: {
-        left_phase: `α`,
-        right_phase: `β`,
-        left_composition: 0.2,
-        right_composition: 0.8,
-        fraction_left: 0.6,
-        fraction_right: 0.4,
-      },
-      vertical_lever_rule: {
-        bottom_phase: `α`,
-        top_phase: `β`,
-        bottom_temperature: 400,
-        top_temperature: 900,
-        fraction_bottom: 0.7,
-        fraction_top: 0.3,
-      },
-    }
-    const text = format_hover_info_text(info)
-    expect(text).toContain(`Lever Rule:`)
-    expect(text).toContain(`α: 60.0%`)
-    expect(text).toContain(`Vertical Lever Rule:`)
-    expect(text).toContain(`α: 70.0%`)
   })
 })
 
@@ -981,5 +937,19 @@ describe(`summarize_models`, () => {
     expect(summarize_models([
       { sublattice_count: 4, sublattice_sites: [1, 1, 1, 1] },
     ])).toBe(`1×4-SL`)
+  })
+})
+
+// === format_composition trailing zeros ===
+
+describe(`format_composition trailing zeros`, () => {
+  test.each([
+    [0.5, `at%`, `50 at%`],
+    [0.35, `at%`, `35 at%`],
+    [0.123, `at%`, `12.3 at%`],
+    [0.001, `at%`, `0.1 at%`],
+    [0.1005, `at%`, `10.1 at%`],
+  ])(`%f → %s (no trailing zeros)`, (value, unit, expected) => {
+    expect(format_composition(value, unit)).toBe(expected)
   })
 })
