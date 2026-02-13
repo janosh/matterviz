@@ -63,8 +63,8 @@ describe(`PhaseDiagramExportPane`, () => {
     })
 
     const headings = Array.from(document.querySelectorAll(`h4`)).map((h) => h.textContent)
-    expect(headings).toContain(`Export as image`)
-    expect(headings).toContain(`Export as data`)
+    expect(headings).toContain(`Image`)
+    expect(headings).toContain(`Data`)
   })
 
   test(`SVG download button calls export_svg_as_svg`, async () => {

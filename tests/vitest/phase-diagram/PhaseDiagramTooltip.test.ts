@@ -1,4 +1,11 @@
-import type { LeverRuleResult, PhaseBoundary, PhaseHoverInfo } from '$lib/phase-diagram'
+import type {
+  CompUnit,
+  LeverRuleResult,
+  PhaseBoundary,
+  PhaseHoverInfo,
+  TempUnit,
+  VerticalLeverRuleResult,
+} from '$lib/phase-diagram'
 import { PhaseDiagramTooltip } from '$lib/phase-diagram'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -14,7 +21,7 @@ describe(`PhaseDiagramTooltip`, () => {
     expect(document.querySelector(`header strong`)?.textContent).toBe(`α (FCC)`)
   })
 
-  test.each([
+  test.each<[number, TempUnit, string]>([
     [500, `K`, `500 K`],
     [25, `°C`, `25 °C`],
     [1000, `°F`, `1000 °F`],
@@ -40,7 +47,7 @@ describe(`PhaseDiagramTooltip`, () => {
       const hover_info = create_hover_info({ composition })
       mount(PhaseDiagramTooltip, {
         target: document.body,
-        props: { hover_info, composition_unit: unit, component_b },
+        props: { hover_info, composition_unit: unit as CompUnit, component_b },
       })
 
       const tooltip = document.querySelector(`.phase-diagram-tooltip`)
@@ -167,8 +174,106 @@ describe(`PhaseDiagramTooltip`, () => {
     })
   })
 
+  describe(`vertical lever rule`, () => {
+    const vertical_lever_rule: VerticalLeverRuleResult = {
+      bottom_phase: `α`,
+      top_phase: `L`,
+      bottom_temperature: 400,
+      top_temperature: 900,
+      fraction_bottom: 0.6,
+      fraction_top: 0.4,
+    }
+    const horiz_lever_rule: LeverRuleResult = {
+      left_phase: `α`,
+      right_phase: `L`,
+      left_composition: 0.2,
+      right_composition: 0.8,
+      fraction_left: 0.5,
+      fraction_right: 0.5,
+    }
+    const two_phase = {
+      id: `two_phase`,
+      name: `α + L`,
+      vertices: [] as [number, number][],
+    }
+
+    test(`displays vertical label, phase fractions, and temperatures`, () => {
+      const hover_info = create_hover_info({ region: two_phase, vertical_lever_rule })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, lever_rule_mode: `vertical`, temperature_unit: `K` },
+      })
+
+      expect(document.querySelector(`.lever > span`)?.textContent).toBe(
+        `Lever Rule (vertical)`,
+      )
+      const text = document.querySelector(`.phase-info`)?.textContent?.replace(
+        /\s+/g,
+        ` `,
+      )
+      expect(text).toContain(`α: 60%`)
+      expect(text).toContain(`at 400 K`)
+      expect(text).toContain(`L: 40%`)
+      expect(text).toContain(`at 900 K`)
+    })
+
+    test(`bar widths and marker match vertical fractions`, () => {
+      const hover_info = create_hover_info({ region: two_phase, vertical_lever_rule })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, lever_rule_mode: `vertical` },
+      })
+
+      const bars = document.querySelectorAll(`.bar > div`) as NodeListOf<HTMLElement>
+      expect(bars[0]?.style.width).toBe(`60%`)
+      expect(bars[1]?.style.width).toBe(`40%`)
+      expect((document.querySelector(`.bar > i`) as HTMLElement)?.style.left).toBe(`60%`)
+    })
+
+    test(`not displayed when lever_rule_mode is horizontal`, () => {
+      const hover_info = create_hover_info({ region: two_phase, vertical_lever_rule })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, lever_rule_mode: `horizontal` },
+      })
+
+      // No lever section at all — only vertical data present but mode is horizontal
+      expect(document.querySelector(`.lever`)).toBeNull()
+    })
+
+    test(`horizontal lever rule hidden when mode is vertical`, () => {
+      // Regression: stale horizontal lever_rule must not display in vertical mode
+      const hover_info = create_hover_info({
+        region: two_phase,
+        lever_rule: horiz_lever_rule,
+      })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, lever_rule_mode: `vertical` },
+      })
+
+      expect(document.querySelector(`.lever`)).toBeNull()
+    })
+
+    test(`prefers vertical over horizontal when both present`, () => {
+      const hover_info = create_hover_info({
+        region: two_phase,
+        lever_rule: horiz_lever_rule,
+        vertical_lever_rule,
+      })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, lever_rule_mode: `vertical` },
+      })
+
+      expect(document.querySelector(`.lever > span`)?.textContent).toBe(
+        `Lever Rule (vertical)`,
+      )
+    })
+  })
+
   describe(`boundary distance`, () => {
-    test.each([
+    test.each<[number, number, string, TempUnit, string]>([
       [1050, 1000, `liquidus`, `K`, `above`], // temp > boundary → above
       [750, 800, `solidus`, `°C`, `below`], // temp < boundary → below
       [900, 1000, `solvus`, `K`, `below`],
