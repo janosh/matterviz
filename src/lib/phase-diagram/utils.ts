@@ -449,6 +449,20 @@ export function format_hover_info_text(
     )
   }
 
+  if (info.vertical_lever_rule) {
+    const vlr = info.vertical_lever_rule
+    lines.push(
+      ``,
+      `Vertical Lever Rule:`,
+      `  ${vlr.bottom_phase}: ${format_num(vlr.fraction_bottom * 100, `.1f`)}% (at ${
+        format_temperature(vlr.bottom_temperature, temp_unit)
+      })`,
+      `  ${vlr.top_phase}: ${format_num(vlr.fraction_top * 100, `.1f`)}% (at ${
+        format_temperature(vlr.top_temperature, temp_unit)
+      })`,
+    )
+  }
+
   return lines.join(`\n`)
 }
 

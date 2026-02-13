@@ -5,10 +5,12 @@ import {
   calculate_vertical_lever_rule,
   compute_label_properties,
   convert_temp,
+  extract_tdb_reference,
   find_phase_at_point,
   format_composition,
   format_formula_html,
   format_formula_svg,
+  format_hover_info_text,
   format_label_html,
   format_label_svg,
   format_temperature,
@@ -17,11 +19,13 @@ import {
   get_multi_phase_gradient,
   get_phase_color,
   get_phase_color_key,
+  get_phase_stability_range,
   is_compound,
   merge_phase_diagram_config,
   PHASE_COLOR_HEX,
   PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
+  summarize_models,
   tokenize_formula,
   transform_vertices,
 } from '$lib/phase-diagram/utils'
@@ -358,18 +362,27 @@ const three_phase_region: PhaseRegion = {
   name: `α + β + γ`,
   vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
 }
+const empty_plus_region: PhaseRegion = {
+  id: `test`,
+  name: `+`,
+  vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+}
+
+// Shared null-case inputs for both lever rule functions
+const lever_null_cases = [
+  { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
+  { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
+  { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },
+  { region: three_phase_region, comp: 0.5, temp: 500, desc: `3+ phase region` },
+  { region: empty_plus_region, comp: 0.5, temp: 500, desc: `"+" (empty phases)` },
+]
 
 describe(`calculate_lever_rule`, () => {
-  test.each([
-    { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
-    { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
-    { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },
-    { region: three_phase_region, comp: 0.5, temp: 500, desc: `3+ phase region` },
-  ])(`returns null for $desc`, ({ region, comp, temp }) => {
+  test.each(lever_null_cases)(`returns null for $desc`, ({ region, comp, temp }) => {
     expect(calculate_lever_rule(region, comp, temp)).toBeNull()
   })
 
-  test(`parses phase names and calculates fractions correctly`, () => {
+  test(`parses phase names and calculates fractions at midpoint`, () => {
     const result = calculate_lever_rule(two_phase_region, 0.5, 500)
     expect(result).not.toBeNull()
     expect(result?.left_phase).toBe(`α`)
@@ -402,15 +415,6 @@ describe(`calculate_lever_rule`, () => {
     }
   })
 
-  test(`returns null for "+" (empty phase names)`, () => {
-    const region: PhaseRegion = {
-      id: `test`,
-      name: `+`,
-      vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
-    }
-    expect(calculate_lever_rule(region, 0.5, 500)).toBeNull()
-  })
-
   test(`parses complex phase names like "Liquid + FCC_A1"`, () => {
     const region: PhaseRegion = {
       id: `test`,
@@ -424,16 +428,11 @@ describe(`calculate_lever_rule`, () => {
 })
 
 describe(`calculate_vertical_lever_rule`, () => {
-  test.each([
-    { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
-    { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
-    { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },
-    { region: three_phase_region, comp: 0.5, temp: 500, desc: `3+ phase region` },
-  ])(`returns null for $desc`, ({ region, comp, temp }) => {
+  test.each(lever_null_cases)(`returns null for $desc`, ({ region, comp, temp }) => {
     expect(calculate_vertical_lever_rule(region, comp, temp)).toBeNull()
   })
 
-  test(`parses phase names and calculates fractions correctly at midpoint`, () => {
+  test(`parses phase names and calculates fractions at midpoint`, () => {
     const result = calculate_vertical_lever_rule(two_phase_region, 0.5, 500)
     expect(result).not.toBeNull()
     expect(result?.bottom_phase).toBe(`α`)
@@ -464,15 +463,6 @@ describe(`calculate_vertical_lever_rule`, () => {
     const minor = bottom_dominant ? result?.fraction_top : result?.fraction_bottom
     expect(dominant).toBeGreaterThan(0.9)
     expect(minor).toBeLessThan(0.1)
-  })
-
-  test(`returns null for "+" (empty phase names)`, () => {
-    const region: PhaseRegion = {
-      id: `test`,
-      name: `+`,
-      vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
-    }
-    expect(calculate_vertical_lever_rule(region, 0.5, 500)).toBeNull()
   })
 })
 
@@ -676,19 +666,10 @@ describe(`format_label_svg`, () => {
     expect(result).toContain(`Ni`)
   })
 
-  test(`passes through Greek letters unchanged`, () => {
-    expect(format_label_svg(`α + β`)).toBe(`α + β`)
-  })
-
-  test(`handles space-delimited + from wrapped text`, () => {
-    // After wrap_text fix, wrapped lines use spaces: "α +" not "α_+"
+  test(`handles partial separator from wrapped text`, () => {
     const result = format_label_svg(`α +`)
     expect(result).not.toContain(`_`)
     expect(result).toContain(`α`)
-  })
-
-  test(`respects use_subscripts=false`, () => {
-    expect(format_label_svg(`Fe3C + NiO`, false)).toBe(`Fe3C + NiO`)
   })
 })
 
@@ -698,13 +679,19 @@ describe(`format_label_html`, () => {
     expect(result).toContain(`Fe<sub>3</sub>C`)
     expect(result).toContain(` + `)
   })
+})
 
+// Shared behavior for both format_label_* functions
+describe.each([
+  [`format_label_svg`, format_label_svg],
+  [`format_label_html`, format_label_html],
+])(`%s`, (_name, format_fn) => {
   test(`passes through Greek letters unchanged`, () => {
-    expect(format_label_html(`α + β`)).toBe(`α + β`)
+    expect(format_fn(`α + β`)).toBe(`α + β`)
   })
 
   test(`respects use_subscripts=false`, () => {
-    expect(format_label_html(`Fe3C + NiO`, false)).toBe(`Fe3C + NiO`)
+    expect(format_fn(`Fe3C + NiO`, false)).toBe(`Fe3C + NiO`)
   })
 })
 
@@ -740,45 +727,229 @@ describe(`convert_temp`, () => {
 
 // === x_domain word boundary regex pattern ===
 
-describe(`x_domain component name matching (word boundary regex)`, () => {
-  // Tests the regex pattern used in IsobaricBinaryPhaseDiagram's x_domain
+describe(`word boundary regex for component matching`, () => {
+  // Tests the \b regex pattern used in IsobaricBinaryPhaseDiagram's x_domain
   function matches_component(region_name: string, component: string): boolean {
     const escaped = component.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`)
     return new RegExp(`\\b${escaped}\\b`).test(region_name)
   }
 
+  // [region_name, component, should_match]
   test.each([
-    // Pure component names — should match
-    { region: `Fe`, component: `Fe`, expected: true, desc: `exact match` },
-    { region: `α(Fe)`, component: `Fe`, expected: true, desc: `in parentheses` },
-    { region: `Liquid + Fe`, component: `Fe`, expected: true, desc: `multi-phase` },
-    { region: `Fe + Fe3C`, component: `Fe`, expected: true, desc: `pure + compound` },
-    { region: `C`, component: `C`, expected: true, desc: `single-letter exact` },
-    { region: `α(C)`, component: `C`, expected: true, desc: `single-letter in parens` },
-    // Compound names — should NOT match the element substring
-    { region: `Fe3C`, component: `Fe`, expected: false, desc: `Fe3C ≠ Fe` },
-    { region: `FeO`, component: `Fe`, expected: false, desc: `FeO ≠ Fe` },
-    { region: `Fe2O3`, component: `Fe`, expected: false, desc: `Fe2O3 ≠ Fe` },
-    { region: `NiFe2O4`, component: `Fe`, expected: false, desc: `NiFe2O4 ≠ Fe` },
-    { region: `Fe3C`, component: `C`, expected: false, desc: `Fe3C ≠ C` },
-    { region: `SiC`, component: `C`, expected: false, desc: `SiC ≠ C` },
-    // Compound components in pseudo-binary diagrams
-    { region: `Fe3C`, component: `Fe3C`, expected: true, desc: `compound exact` },
-    {
-      region: `Liquid + Fe3C`,
-      component: `Fe3C`,
-      expected: true,
-      desc: `compound in multi-phase`,
-    },
-    { region: `Fe3C2`, component: `Fe3C`, expected: false, desc: `Fe3C2 ≠ Fe3C` },
-    // Cu edge cases
-    { region: `Cu`, component: `Cu`, expected: true, desc: `Cu exact` },
-    { region: `Cu3Au`, component: `Cu`, expected: false, desc: `Cu3Au ≠ Cu` },
-    { region: `CuO`, component: `Cu`, expected: false, desc: `CuO ≠ Cu` },
-  ])(
-    `$desc: "$region" vs "$component" → $expected`,
-    ({ region, component, expected }) => {
-      expect(matches_component(region, component)).toBe(expected)
+    // Should match: pure component names
+    [`Fe`, `Fe`, true],
+    [`α(Fe)`, `Fe`, true],
+    [`Liquid + Fe`, `Fe`, true],
+    [`Fe + Fe3C`, `Fe`, true],
+    [`C`, `C`, true],
+    [`α(C)`, `C`, true],
+    [`Fe3C`, `Fe3C`, true],
+    [`Liquid + Fe3C`, `Fe3C`, true],
+    [`Cu`, `Cu`, true],
+    // Should NOT match: element as substring of compound
+    [`Fe3C`, `Fe`, false],
+    [`FeO`, `Fe`, false],
+    [`Fe2O3`, `Fe`, false],
+    [`NiFe2O4`, `Fe`, false],
+    [`Fe3C`, `C`, false],
+    [`SiC`, `C`, false],
+    [`Fe3C2`, `Fe3C`, false],
+    [`Cu3Au`, `Cu`, false],
+    [`CuO`, `Cu`, false],
+  ])(`"%s" contains "%s" → %s`, (region, component, expected) => {
+    expect(matches_component(region, component)).toBe(expected)
+  })
+})
+
+// === get_phase_stability_range ===
+
+describe(`get_phase_stability_range`, () => {
+  test(`returns min/max temperatures from vertices`, () => {
+    const region: PhaseRegion = {
+      id: `test`,
+      name: `α`,
+      vertices: [[0, 400], [1, 400], [1, 800], [0, 800]],
+    }
+    expect(get_phase_stability_range(region)).toEqual({ t_min: 400, t_max: 800 })
+  })
+
+  test(`handles single vertex`, () => {
+    const region: PhaseRegion = { id: `test`, name: `α`, vertices: [[0.5, 600]] }
+    expect(get_phase_stability_range(region)).toEqual({ t_min: 600, t_max: 600 })
+  })
+
+  test(`returns null for empty vertices`, () => {
+    expect(get_phase_stability_range({ id: `test`, name: `α`, vertices: [] })).toBeNull()
+  })
+
+  test(`handles non-axis-aligned region (irregular polygon)`, () => {
+    const region: PhaseRegion = {
+      id: `test`,
+      name: `α + β`,
+      vertices: [[0.2, 400], [0.8, 450], [0.7, 650], [0.3, 600]],
+    }
+    const range = get_phase_stability_range(region)
+    expect(range?.t_min).toBe(400)
+    expect(range?.t_max).toBe(650)
+  })
+})
+
+// === format_hover_info_text ===
+
+describe(`format_hover_info_text`, () => {
+  const base_info = {
+    region: { id: `liquid`, name: `Liquid`, vertices: [] as Vec2[] },
+    composition: 0.4,
+    temperature: 800,
+    position: { x: 0, y: 0 },
+  }
+
+  test(`includes phase name, temperature, and composition`, () => {
+    const text = format_hover_info_text(base_info)
+    expect(text).toContain(`Phase: Liquid`)
+    expect(text).toContain(`Temperature: 800 K`)
+    expect(text).toContain(`40 at% B`)
+    expect(text).toContain(`60 at% A`)
+  })
+
+  test(`uses custom component names and units`, () => {
+    const text = format_hover_info_text(base_info, `°C`, `at%`, `Cu`, `Ni`)
+    expect(text).toContain(`800 °C`)
+    expect(text).toContain(`40 at% Ni`)
+    expect(text).toContain(`60 at% Cu`)
+  })
+
+  test(`includes horizontal lever rule when present`, () => {
+    const info = {
+      ...base_info,
+      lever_rule: {
+        left_phase: `α`,
+        right_phase: `β`,
+        left_composition: 0.2,
+        right_composition: 0.8,
+        fraction_left: 0.667,
+        fraction_right: 0.333,
+      },
+    }
+    const text = format_hover_info_text(info)
+    expect(text).toContain(`Lever Rule:`)
+    expect(text).toContain(`α: 66.7%`)
+    expect(text).toContain(`β: 33.3%`)
+  })
+
+  test(`includes vertical lever rule when present`, () => {
+    const info = {
+      ...base_info,
+      vertical_lever_rule: {
+        bottom_phase: `α`,
+        top_phase: `L`,
+        bottom_temperature: 400,
+        top_temperature: 900,
+        fraction_bottom: 0.6,
+        fraction_top: 0.4,
+      },
+    }
+    const text = format_hover_info_text(info)
+    expect(text).toContain(`Vertical Lever Rule:`)
+    expect(text).toContain(`α: 60.0%`)
+    expect(text).toContain(`L: 40.0%`)
+    expect(text).toContain(`at 400 K`)
+    expect(text).toContain(`at 900 K`)
+  })
+
+  test(`omits lever rule sections when not present`, () => {
+    const text = format_hover_info_text(base_info)
+    expect(text).not.toContain(`Lever Rule`)
+  })
+})
+
+// === extract_tdb_reference ===
+
+describe(`extract_tdb_reference`, () => {
+  test(`extracts reference containing keyword`, () => {
+    const ref = extract_tdb_reference([
+      `$ Some comment`,
+      `$ Reference: A. Author, Journal of Alloys, Vol 100, 2020, pp 1-10`,
+    ])
+    expect(ref).toContain(`Author`)
+    expect(ref).toContain(`Journal`)
+  })
+
+  test.each([`reference`, `citation`, `database`, `assessed by`])(
+    `matches keyword "%s" case-insensitively`,
+    (keyword) => {
+      const comment =
+        `$ This ${keyword} was from X. Author, Some Long Journal Name, Vol 42, 2019`
+      expect(extract_tdb_reference([comment])).not.toBeNull()
     },
   )
+
+  test(`returns null for empty comments`, () => {
+    expect(extract_tdb_reference([])).toBeNull()
+  })
+
+  test(`returns null when no keywords match`, () => {
+    expect(extract_tdb_reference([`$ Just a regular comment`, `$ Another one`]))
+      .toBeNull()
+  })
+
+  test(`skips short references (<=30 chars)`, () => {
+    expect(extract_tdb_reference([`$ Reference: short`])).toBeNull()
+  })
+
+  test(`skips references ending with "from"`, () => {
+    expect(extract_tdb_reference([
+      `$ Reference data was extracted from`,
+    ])).toBeNull()
+  })
+
+  test(`strips leading $ from reference text`, () => {
+    const ref = extract_tdb_reference([
+      `$ Database entry: Thermodynamic data assessed by J. Author et al. 2021`,
+    ])
+    expect(ref).not.toMatch(/^\$/)
+  })
+})
+
+// === summarize_models ===
+
+describe(`summarize_models`, () => {
+  test(`summarizes single sublattice type`, () => {
+    expect(summarize_models([
+      { sublattice_count: 2, sublattice_sites: [1, 1] },
+      { sublattice_count: 2, sublattice_sites: [1, 3] },
+    ])).toBe(`2×2-SL`)
+  })
+
+  test(`summarizes multiple sublattice types sorted by count`, () => {
+    expect(summarize_models([
+      { sublattice_count: 3, sublattice_sites: [1, 1, 1] },
+      { sublattice_count: 2, sublattice_sites: [1, 1] },
+      { sublattice_count: 2, sublattice_sites: [1, 3] },
+    ])).toBe(`2×2-SL, 1×3-SL`)
+  })
+
+  test(`returns empty string for no phases`, () => {
+    expect(summarize_models([])).toBe(``)
+  })
+
+  test(`handles single phase`, () => {
+    expect(summarize_models([
+      { sublattice_count: 4, sublattice_sites: [1, 1, 1, 1] },
+    ])).toBe(`1×4-SL`)
+  })
+})
+
+// === format_composition trailing zeros ===
+
+describe(`format_composition trailing zeros`, () => {
+  test.each([
+    [0.5, `at%`, `50 at%`],
+    [0.35, `at%`, `35 at%`],
+    [0.123, `at%`, `12.3 at%`],
+    [0.001, `at%`, `0.1 at%`],
+    [0.1005, `at%`, `10.1 at%`],
+  ])(`%f → %s (no trailing zeros)`, (value, unit, expected) => {
+    expect(format_composition(value, unit)).toBe(expected)
+  })
 })

@@ -3,6 +3,7 @@ import type {
   PhaseBoundary,
   PhaseHoverInfo,
   TempUnit,
+  VerticalLeverRuleResult,
 } from '$lib/phase-diagram'
 import { PhaseDiagramTooltip } from '$lib/phase-diagram'
 import { mount } from 'svelte'
@@ -169,6 +170,98 @@ describe(`PhaseDiagramTooltip`, () => {
       mount(PhaseDiagramTooltip, { target: document.body, props: { hover_info } })
 
       expect(document.querySelector(`.lever`)).toBeNull()
+    })
+  })
+
+  describe(`vertical lever rule`, () => {
+    const vertical_lever_rule: VerticalLeverRuleResult = {
+      bottom_phase: `α`,
+      top_phase: `L`,
+      bottom_temperature: 400,
+      top_temperature: 900,
+      fraction_bottom: 0.6,
+      fraction_top: 0.4,
+    }
+
+    test(`displays vertical label, phase fractions, and temperatures`, () => {
+      const hover_info = create_hover_info({
+        region: { id: `two_phase`, name: `α + L`, vertices: [] },
+        vertical_lever_rule,
+      })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, lever_rule_mode: `vertical`, temperature_unit: `K` },
+      })
+
+      const lever = document.querySelector(`.lever`)
+      expect(lever).not.toBeNull()
+      expect(lever?.querySelector(`:scope > span`)?.textContent).toBe(
+        `Lever Rule (vertical)`,
+      )
+
+      const text = document.querySelector(`.phase-info`)?.textContent?.replace(
+        /\s+/g,
+        ` `,
+      )
+      expect(text).toContain(`α: 60%`)
+      expect(text).toContain(`at 400 K`)
+      expect(text).toContain(`L: 40%`)
+      expect(text).toContain(`at 900 K`)
+    })
+
+    test(`bar widths and marker match vertical fractions`, () => {
+      const hover_info = create_hover_info({
+        region: { id: `two_phase`, name: `α + L`, vertices: [] },
+        vertical_lever_rule,
+      })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, lever_rule_mode: `vertical` },
+      })
+
+      const bars = document.querySelectorAll(`.bar > div`) as NodeListOf<HTMLElement>
+      expect(bars[0]?.style.width).toBe(`60%`)
+      expect(bars[1]?.style.width).toBe(`40%`)
+      const marker = document.querySelector(`.bar > i`) as HTMLElement
+      expect(marker?.style.left).toBe(`60%`)
+    })
+
+    test(`not displayed when lever_rule_mode is horizontal`, () => {
+      const hover_info = create_hover_info({
+        region: { id: `two_phase`, name: `α + L`, vertices: [] },
+        vertical_lever_rule,
+      })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, lever_rule_mode: `horizontal` },
+      })
+
+      // Should not show vertical lever rule when mode is horizontal
+      const label = document.querySelector(`.lever > span`)?.textContent
+      expect(label ?? null).not.toBe(`Lever Rule (vertical)`)
+    })
+
+    test(`prefers vertical over horizontal when both present and mode is vertical`, () => {
+      const hover_info = create_hover_info({
+        region: { id: `two_phase`, name: `α + L`, vertices: [] },
+        lever_rule: {
+          left_phase: `α`,
+          right_phase: `L`,
+          left_composition: 0.2,
+          right_composition: 0.8,
+          fraction_left: 0.5,
+          fraction_right: 0.5,
+        },
+        vertical_lever_rule,
+      })
+      mount(PhaseDiagramTooltip, {
+        target: document.body,
+        props: { hover_info, lever_rule_mode: `vertical` },
+      })
+
+      expect(document.querySelector(`.lever > span`)?.textContent).toBe(
+        `Lever Rule (vertical)`,
+      )
     })
   })
 

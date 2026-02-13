@@ -1,9 +1,9 @@
 <script lang="ts">
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
+  import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
-  import { css_color_to_hex } from '$lib/colors'
   import type { AxisConfig } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -271,7 +271,7 @@
       lever_rule_mode = `horizontal`
     }}
   >
-    <label {@attach tooltip({ content: `Direction of the lever rule tie-line` })}>
+    <span {@attach tooltip({ content: `Direction of the lever rule tie-line` })}>
       Direction
       <div class="pane-row">
         <label>
@@ -283,7 +283,7 @@
           Vertical
         </label>
       </div>
-    </label>
+    </span>
     {@render num_range(
         `Line width`,
         merged_config.tie_line.stroke_width,
