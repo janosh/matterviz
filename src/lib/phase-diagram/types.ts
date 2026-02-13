@@ -117,6 +117,19 @@ export interface LeverRuleResult {
   fraction_right: number // Fraction of right phase (0-1)
 }
 
+// Vertical lever rule result (constant composition, varying temperature)
+export interface VerticalLeverRuleResult {
+  bottom_phase: string // Phase at lower temperature boundary
+  top_phase: string // Phase at higher temperature boundary
+  bottom_temperature: number // Temperature at bottom boundary
+  top_temperature: number // Temperature at top boundary
+  fraction_bottom: number // Fraction of bottom phase (0-1)
+  fraction_top: number // Fraction of top phase (0-1)
+}
+
+// Lever rule direction mode
+export type LeverRuleMode = `horizontal` | `vertical`
+
 // Hover information returned when mouse is over a phase region
 export interface PhaseHoverInfo {
   region: PhaseRegion
@@ -124,6 +137,7 @@ export interface PhaseHoverInfo {
   temperature: number
   position: { x: number; y: number } // screen coordinates
   lever_rule?: LeverRuleResult // Only populated for two-phase regions
+  vertical_lever_rule?: VerticalLeverRuleResult // Vertical lever rule for two-phase regions
   special_point?: SpecialPoint // Populated when hovering near a special point
 }
 

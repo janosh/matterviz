@@ -1,13 +1,13 @@
 <script lang="ts">
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
+  import { css_color_to_hex } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
-  import { css_color_to_hex } from '$lib/colors'
   import type { AxisConfig } from '$lib/plot'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
-  import type { PhaseDiagramConfig, PhaseDiagramData } from './types'
+  import type { LeverRuleMode, PhaseDiagramConfig, PhaseDiagramData } from './types'
   import { merge_phase_diagram_config, PHASE_DIAGRAM_DEFAULTS } from './utils'
 
   type Props = Omit<ComponentProps<typeof DraggablePane>, `children`> & {
@@ -20,6 +20,8 @@
     show_component_labels?: boolean
     // Configuration
     config?: Partial<PhaseDiagramConfig>
+    // Lever rule mode
+    lever_rule_mode?: LeverRuleMode
     // Axis configuration
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -46,6 +48,8 @@
     show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
     // Configuration
     config = $bindable({}),
+    // Lever rule mode
+    lever_rule_mode = $bindable(`horizontal`),
     // Axis configuration
     x_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -122,7 +126,7 @@
   pane_props={{
     ...pane_props,
     class: `phase-diagram-controls-pane ${pane_props?.class ?? ``}`,
-    style: `--pane-padding: 12px; --pane-gap: 6px; ${pane_props?.style ?? ``}`,
+    style: pane_props?.style ?? ``,
   }}
   toggle_props={{
     title: controls_open ? `` : `Phase diagram controls`,
@@ -257,14 +261,29 @@
     title="Tie-line Display"
     current_values={{
       ...merged_config.tie_line,
+      lever_rule_mode,
     }}
     on_reset={() => {
       config = {
         ...config,
         tie_line: { ...PHASE_DIAGRAM_DEFAULTS.tie_line },
       }
+      lever_rule_mode = `horizontal`
     }}
   >
+    <span {@attach tooltip({ content: `Direction of the lever rule tie-line` })}>
+      Direction
+      <div class="pane-row">
+        <label>
+          <input type="radio" bind:group={lever_rule_mode} value="horizontal" />
+          Horizontal
+        </label>
+        <label>
+          <input type="radio" bind:group={lever_rule_mode} value="vertical" />
+          Vertical
+        </label>
+      </div>
+    </span>
     {@render num_range(
         `Line width`,
         merged_config.tie_line.stroke_width,
@@ -272,7 +291,7 @@
         5,
         0.5,
         (val) => update_nested(`tie_line`, `stroke_width`, val),
-        `Thickness of the horizontal tie-line`,
+        `Thickness of the tie-line`,
       )}
     {@render num_range(
         `Endpoint radius`,
@@ -348,6 +367,7 @@
           min={72}
           max={600}
           step={50}
+          style="width: 3.5em"
           bind:value={png_dpi}
         />
         <input
@@ -370,14 +390,16 @@
   :global(.phase-diagram-controls-pane) {
     font-size: 0.85em;
     max-width: 320px;
+    --pane-padding: 10px;
+    --pane-gap: 4px;
   }
   :global(.phase-diagram-controls-pane section) {
     display: flex;
     flex-direction: column;
-    gap: 6pt;
+    gap: 4pt;
   }
   :global(.phase-diagram-controls-pane h4) {
-    margin: 10pt 0 4pt !important;
+    margin: 6pt 0 2pt !important;
   }
   :global(.phase-diagram-controls-pane h4:first-of-type) {
     margin-top: 0 !important;
@@ -385,18 +407,16 @@
   .pane-row {
     display: flex;
     gap: 12pt;
-    justify-content: space-between;
-    width: 100%;
   }
   .visibility-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6pt 12pt;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4pt 10pt;
   }
   .color-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8pt;
+    gap: 6pt;
   }
   .color-grid label {
     flex-direction: column;
@@ -411,6 +431,9 @@
   input {
     font-size: inherit;
     font-family: inherit;
+  }
+  input[type='number'] {
+    width: 3.5em;
   }
   input[type='range'] {
     flex: 1;
