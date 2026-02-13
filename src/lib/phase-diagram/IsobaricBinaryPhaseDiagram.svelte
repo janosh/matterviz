@@ -14,8 +14,10 @@
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
+  import PhaseDiagramEditorPane from './PhaseDiagramEditorPane.svelte'
   import PhaseDiagramExportPane from './PhaseDiagramExportPane.svelte'
   import PhaseDiagramTooltip from './PhaseDiagramTooltip.svelte'
+  import { parse_phase_diagram_svg } from './svg-to-diagram'
   import type {
     LeverRuleMode,
     PhaseDiagramConfig,
@@ -138,6 +140,22 @@
 
   // Use rebuilt data if available, otherwise fall back to the data prop
   const effective_data = $derived(rebuilt_data ?? data)
+
+  // Handle SVG file drop directly on the component
+  function handle_svg_drop(event: DragEvent) {
+    event.preventDefault()
+    const file = event.dataTransfer?.files[0]
+    if (!file || !file.name.endsWith(`.svg`)) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        diagram_input = parse_phase_diagram_svg(reader.result as string)
+      } catch (err) {
+        console.error(`Failed to parse dropped SVG:`, err)
+      }
+    }
+    reader.readAsText(file)
+  }
 
   // Merge config with centralized defaults using shared helper
   const merged_config = $derived(merge_phase_diagram_config(config))
@@ -581,6 +599,8 @@
   bind:clientHeight={height}
   role="img"
   aria-label={`${component_a}-${component_b} binary phase diagram`}
+  ondrop={handle_svg_drop}
+  ondragover={(ev) => ev.preventDefault()}
 >
   {#if width > 0 && height > 0}
     <!-- Header controls -->
@@ -612,6 +632,15 @@
           {data}
           {wrapper}
           filename={export_filename}
+          icon_style={pane_icon_style}
+          toggle_props={pane_toggle_props}
+        />
+      {/if}
+      {#if diagram_input}
+        <PhaseDiagramEditorPane
+          bind:editor_open
+          bind:diagram_input
+          on_rebuild={(built) => rebuilt_data = built}
           icon_style={pane_icon_style}
           toggle_props={pane_toggle_props}
         />
