@@ -15,6 +15,7 @@
   import PhaseDiagramExportPane from './PhaseDiagramExportPane.svelte'
   import PhaseDiagramTooltip from './PhaseDiagramTooltip.svelte'
   import type {
+    LeverRuleMode,
     PhaseDiagramConfig,
     PhaseDiagramData,
     PhaseDiagramTooltipConfig,
@@ -24,12 +25,14 @@
   } from './types'
   import {
     calculate_lever_rule,
+    calculate_vertical_lever_rule,
     compute_label_properties,
     convert_temp,
     find_phase_at_point,
     format_composition,
     format_formula_svg,
     format_hover_info_text,
+    format_label_svg,
     generate_boundary_path,
     generate_region_path,
     get_multi_phase_gradient,
@@ -66,6 +69,8 @@
     export_pane_open?: boolean
     png_dpi?: number
     export_filename?: string
+    // Lever rule mode (horizontal = composition tie-line, vertical = temperature tie-line)
+    lever_rule_mode?: LeverRuleMode
     // Axis configuration
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -98,12 +103,17 @@
     export_pane_open = $bindable(false),
     png_dpi = $bindable(150),
     export_filename = `phase-diagram`,
+    lever_rule_mode = $bindable(`horizontal`),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     tooltip,
     children,
     ...rest
   }: Props = $props()
+
+  // Shared icon/toggle styling for controls and export panes
+  const pane_icon_style = `width: 14px; height: 14px`
+  const pane_toggle_props = { style: `padding: 0; font-size: 18px` }
 
   // Merge config with centralized defaults using shared helper
   const merged_config = $derived(merge_phase_diagram_config(config))
@@ -123,8 +133,64 @@
   const plot_width = $derived(right - left)
   const plot_height = $derived(bottom - top)
 
+  // Compute x domain from data extent, x_axis.range override, or default [0, 1]
+  // Auto-extends to 0/1 when edge regions contain a pure component
+  const x_domain = $derived.by((): Vec2 => {
+    const lo = x_axis.range?.[0]
+    const hi = x_axis.range?.[1]
+    if (lo != null && hi != null) return [lo, hi]
+
+    if (data) {
+      // Loop-based min/max to avoid stack overflow with large datasets
+      let data_min = Infinity
+      let data_max = -Infinity
+      const update = (val: number) => {
+        if (val < data_min) data_min = val
+        if (val > data_max) data_max = val
+      }
+      for (const region of data.regions) {
+        for (const vertex of region.vertices) update(vertex[0])
+      }
+      for (const boundary of data.boundaries) {
+        for (const point of boundary.points) update(point[0])
+      }
+      for (const sp of data.special_points ?? []) update(sp.position[0])
+
+      if (data_min <= data_max) {
+        let x_min = lo ?? data_min
+        let x_max = hi ?? data_max
+
+        // Auto-extend to 0/1 when edge regions contain a pure component
+        // Word boundary regex avoids matching substrings (e.g. "Fe" won't match "Fe3C")
+        // Note: \b works for alphanumeric boundaries but not all chemical notation
+        const comp_at_edge = (comp: string, x_val: number) => {
+          const re = new RegExp(
+            `\\b${comp.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`,
+          )
+          return data.regions.some((region) =>
+            re.test(region.name) &&
+            region.vertices.some((v) => Math.abs(v[0] - x_val) < 1e-6)
+          )
+        }
+        if (
+          lo == null && data.components[0] && comp_at_edge(data.components[0], x_min)
+        ) {
+          x_min = 0
+        }
+        if (
+          hi == null && data.components[1] && comp_at_edge(data.components[1], x_max)
+        ) {
+          x_max = 1
+        }
+
+        return [x_min, x_max]
+      }
+    }
+    return [lo ?? 0, hi ?? 1]
+  })
+
   // Scales
-  const x_scale = $derived(scaleLinear().domain([0, 1]).range([left, right]))
+  const x_scale = $derived(scaleLinear().domain(x_domain).range([left, right]))
 
   // Temperature units (guard for initial render when data may be undefined)
   const data_temp_unit = $derived<TempUnit>(
@@ -332,8 +398,13 @@
         composition,
         temperature,
         position: { x: event.clientX, y: event.clientY },
-        lever_rule: calculate_lever_rule(region, composition, temperature) ||
-          undefined,
+        lever_rule: lever_rule_mode === `horizontal`
+          ? calculate_lever_rule(region, composition, temperature) || undefined
+          : undefined,
+        vertical_lever_rule: lever_rule_mode === `vertical`
+          ? calculate_vertical_lever_rule(region, composition, temperature) ||
+            undefined
+          : undefined,
         special_point: nearby_special || undefined,
       }
       on_phase_hover?.(hover_info)
@@ -417,6 +488,50 @@
   {/each}
 {/snippet}
 
+<!-- Tie-line snippet: renders line with white outline, phase endpoints, and cursor marker -->
+{#snippet tie_line_viz(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  endpoints: Array<{ cx: number; cy: number; color: string }>,
+  cursor_cx: number,
+  cursor_cy: number,
+)}
+  {@const tl = merged_config.tie_line}
+  <g class="tie-line" class:locked={locked_hover_info}>
+    {#each [`white`, `rgb(${PHASE_COLOR_RGB.tie_line})`] as stroke (stroke)}
+      <line
+        {x1}
+        {y1}
+        {x2}
+        {y2}
+        {stroke}
+        stroke-width={tl.stroke_width + (stroke === `white` ? 1 : 0)}
+        stroke-linecap="round"
+      />
+    {/each}
+    {#each endpoints as ep, idx (idx)}
+      <circle
+        cx={ep.cx}
+        cy={ep.cy}
+        r={tl.endpoint_radius}
+        fill="rgb({ep.color})"
+        stroke="white"
+        stroke-width={1.5}
+      />
+    {/each}
+    <circle
+      cx={cursor_cx}
+      cy={cursor_cy}
+      r={tl.cursor_radius}
+      fill="rgb({PHASE_COLOR_RGB.tie_line})"
+      stroke="white"
+      stroke-width={2}
+    />
+  </g>
+{/snippet}
+
 <svelte:document
   onfullscreenchange={() => {
     fullscreen = Boolean(document.fullscreenElement)
@@ -446,12 +561,15 @@
           bind:show_grid
           bind:show_component_labels
           bind:config
+          bind:lever_rule_mode
           bind:x_axis
           bind:y_axis
           bind:png_dpi
           {data}
           {enable_export}
           {...controls_props}
+          icon_style={pane_icon_style}
+          toggle_props={pane_toggle_props}
         />
       {/if}
       {#if enable_export}
@@ -461,6 +579,8 @@
           {data}
           {wrapper}
           filename={export_filename}
+          icon_style={pane_icon_style}
+          toggle_props={pane_toggle_props}
         />
       {/if}
       {#if fullscreen_toggle}
@@ -548,7 +668,8 @@
             <path
               d={boundary.svg_path}
               fill="none"
-              stroke={boundary.style?.color || merged_config.colors.boundary}
+              stroke={config.colors?.boundary ?? boundary.style?.color ??
+              merged_config.colors.boundary}
               stroke-width={boundary.style?.width || 2}
               stroke-dasharray={boundary.style?.dash || ``}
               stroke-linecap="round"
@@ -577,7 +698,7 @@
                   font-weight="500"
                   class="region-label"
                 >
-                  {line}
+                  {@html format_label_svg(line, use_subscripts)}
                 </text>
               {/each}
             </g>
@@ -586,51 +707,54 @@
       {/if}
 
       <!-- Tie-line visualization for two-phase regions -->
-      {#if effective_hover_info?.lever_rule}
+      {#if lever_rule_mode === `vertical` && effective_hover_info?.vertical_lever_rule}
+        {@const info = effective_hover_info}
+        {@const vlr = effective_hover_info.vertical_lever_rule}
+        {@const x_pos = x_scale(info.composition)}
+        {@render tie_line_viz(
+        x_pos,
+        y_scale(vlr.bottom_temperature),
+        x_pos,
+        y_scale(vlr.top_temperature),
+        [
+          {
+            cx: x_pos,
+            cy: y_scale(vlr.bottom_temperature),
+            color: get_phase_color(vlr.bottom_phase, `rgb`),
+          },
+          {
+            cx: x_pos,
+            cy: y_scale(vlr.top_temperature),
+            color: get_phase_color(vlr.top_phase, `rgb`),
+          },
+        ],
+        x_pos,
+        y_scale(info.temperature),
+      )}
+      {:else if effective_hover_info?.lever_rule}
         {@const info = effective_hover_info}
         {@const lr = effective_hover_info.lever_rule}
         {@const y_pos = y_scale(info.temperature)}
-        {@const x_left = x_scale(lr.left_composition)}
-        {@const x_right = x_scale(lr.right_composition)}
-        {@const tie_line = merged_config.tie_line}
-        {@const endpoints = [
-        { cx: x_left, color: get_phase_color(lr.left_phase, `rgb`) },
-        { cx: x_right, color: get_phase_color(lr.right_phase, `rgb`) },
-      ]}
-        <g class="tie-line" class:locked={locked_hover_info}>
-          <!-- Horizontal tie-line with white outline for contrast -->
-          {#each [`white`, `rgb(${PHASE_COLOR_RGB.tie_line})`] as stroke (stroke)}
-            <line
-              x1={x_left}
-              y1={y_pos}
-              x2={x_right}
-              y2={y_pos}
-              {stroke}
-              stroke-width={tie_line.stroke_width + (stroke === `white` ? 1 : 0)}
-              stroke-linecap="round"
-            />
-          {/each}
-          <!-- Phase endpoints -->
-          {#each endpoints as { cx, color } (cx)}
-            <circle
-              {cx}
-              cy={y_pos}
-              r={tie_line.endpoint_radius}
-              fill="rgb({color})"
-              stroke="white"
-              stroke-width={1.5}
-            />
-          {/each}
-          <!-- Cursor position marker -->
-          <circle
-            cx={x_scale(info.composition)}
-            cy={y_pos}
-            r={tie_line.cursor_radius}
-            fill="rgb({PHASE_COLOR_RGB.tie_line})"
-            stroke="white"
-            stroke-width={2}
-          />
-        </g>
+        {@render tie_line_viz(
+        x_scale(lr.left_composition),
+        y_pos,
+        x_scale(lr.right_composition),
+        y_pos,
+        [
+          {
+            cx: x_scale(lr.left_composition),
+            cy: y_pos,
+            color: get_phase_color(lr.left_phase, `rgb`),
+          },
+          {
+            cx: x_scale(lr.right_composition),
+            cy: y_pos,
+            color: get_phase_color(lr.right_phase, `rgb`),
+          },
+        ],
+        x_scale(info.composition),
+        y_pos,
+      )}
       {/if}
 
       <!-- Special points (rendered last for highest z-index) -->
@@ -743,7 +867,7 @@
         <text
           transform="rotate(-90)"
           x={-(top + plot_height / 2)}
-          y={12}
+          y={16}
           text-anchor="middle"
           fill={merged_config.colors.text}
           font-size={merged_config.font_size + 2}
@@ -802,9 +926,12 @@
           <PhaseDiagramTooltip
             hover_info={effective_hover_info}
             temperature_unit={temp_unit}
+            data_temperature_unit={data_temp_unit}
             composition_unit={comp_unit}
             {component_a}
             {component_b}
+            {lever_rule_mode}
+            {use_subscripts}
             {tooltip}
           />
         {/if}

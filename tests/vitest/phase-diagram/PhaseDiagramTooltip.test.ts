@@ -1,4 +1,9 @@
-import type { LeverRuleResult, PhaseBoundary, PhaseHoverInfo } from '$lib/phase-diagram'
+import type {
+  LeverRuleResult,
+  PhaseBoundary,
+  PhaseHoverInfo,
+  TempUnit,
+} from '$lib/phase-diagram'
 import { PhaseDiagramTooltip } from '$lib/phase-diagram'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -14,7 +19,7 @@ describe(`PhaseDiagramTooltip`, () => {
     expect(document.querySelector(`header strong`)?.textContent).toBe(`α (FCC)`)
   })
 
-  test.each([
+  test.each<[number, TempUnit, string]>([
     [500, `K`, `500 K`],
     [25, `°C`, `25 °C`],
     [1000, `°F`, `1000 °F`],
@@ -168,7 +173,7 @@ describe(`PhaseDiagramTooltip`, () => {
   })
 
   describe(`boundary distance`, () => {
-    test.each([
+    test.each<[number, number, string, TempUnit, string]>([
       [1050, 1000, `liquidus`, `K`, `above`], // temp > boundary → above
       [750, 800, `solidus`, `°C`, `below`], // temp < boundary → below
       [900, 1000, `solvus`, `K`, `below`],

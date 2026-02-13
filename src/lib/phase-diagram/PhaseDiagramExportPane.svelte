@@ -2,6 +2,7 @@
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { tooltip } from 'svelte-multiselect/attachments'
+  import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { PhaseDiagramData } from './types'
 
@@ -11,6 +12,8 @@
     wrapper,
     filename = `phase-diagram`,
     png_dpi = $bindable(150),
+    icon_style = ``,
+    toggle_props: caller_toggle_props = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     export_pane_open?: boolean
@@ -18,6 +21,8 @@
     wrapper?: HTMLDivElement
     filename?: string
     png_dpi?: number
+    icon_style?: string
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
 
   // Copy button feedback state
@@ -77,9 +82,11 @@
   open_icon="Cross"
   closed_icon="Export"
   pane_props={{ ...rest, class: `export-pane ${rest.class ?? ``}` }}
+  {icon_style}
   toggle_props={{
     class: `pd-export-toggle`,
     title: export_pane_open ? `` : `Export phase diagram`,
+    ...caller_toggle_props,
   }}
 >
   <h4
