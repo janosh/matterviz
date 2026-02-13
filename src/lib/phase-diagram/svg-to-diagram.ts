@@ -25,7 +25,7 @@ const round = (val: number): number => Math.round(val * 1e6) / 1e6
 
 // === Types ===
 
-type SvgFormat = `matplotlib` | `simple`
+type SvgFormat = `matplotlib` | `simple` | `mpds`
 
 interface LinearScale {
   to_data: (px: number) => number
@@ -48,13 +48,25 @@ interface Label {
 
 // === Format Detection ===
 
-// Detect whether the SVG is matplotlib (glyph-based) or simple (plain text/line)
+// Detect whether the SVG is matplotlib, MPDS, or simple format
 function detect_format(doc: Document): SvgFormat {
   // Matplotlib SVGs have xtick/ytick group IDs
   if (
     doc.querySelector(`[id^="xtick_"]`) || doc.querySelector(`[id^="ytick_"]`)
   ) {
     return `matplotlib`
+  }
+  // MPDS SVGs (from CorelDRAW/Inkscape) have sodipodi namespace or inkscape attributes
+  const svg_el = doc.querySelector(`svg`)
+  if (
+    svg_el?.getAttribute(`sodipodi:docname`) ||
+    svg_el?.getAttribute(`inkscape:version`) ||
+    svg_el?.getAttributeNS(
+      `http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd`,
+      `docname`,
+    )
+  ) {
+    return `mpds`
   }
   return `simple`
 }
@@ -71,6 +83,8 @@ function extract_axis_scales(
 
   if (format === `matplotlib`) {
     extract_matplotlib_ticks(doc, x_ticks, y_ticks)
+  } else if (format === `mpds`) {
+    return extract_mpds_scales(doc)
   } else {
     extract_simple_ticks(doc, x_ticks, y_ticks)
   }
@@ -149,6 +163,98 @@ function extract_simple_ticks(
   }
 }
 
+// Extract scales from MPDS SVGs using tick mark paths and text values
+// MPDS SVGs store tick marks as multi-segment paths with major ticks (longer)
+// and minor ticks (shorter). Text values are not positionally useful but
+// tell us the data range.
+function extract_mpds_scales(
+  doc: Document,
+): { x_scale: LinearScale; y_scale: LinearScale } {
+  // Extract all numeric text values to infer axis ranges
+  const numbers: number[] = []
+  for (const text_el of Array.from(doc.querySelectorAll(`text`))) {
+    const val = parseFloat(text_el.textContent?.trim() ?? ``)
+    if (!isNaN(val)) numbers.push(val)
+  }
+
+  // Separate composition (0-100 at%) from temperature (typically 100-3000)
+  const comp_vals = [
+    ...new Set(numbers.filter((v) => v >= 0 && v <= 100 && v % 10 === 0)),
+  ].sort((a, b) => a - b)
+  const temp_vals = [
+    ...new Set(numbers.filter((v) => v >= 100 && v % 100 === 0 && v <= 3000)),
+  ].sort((a, b) => a - b)
+
+  if (comp_vals.length < 2 || temp_vals.length < 2) {
+    throw new Error(
+      `MPDS SVG: could not infer axis ranges (found ${comp_vals.length} composition, ${temp_vals.length} temperature values)`,
+    )
+  }
+
+  // Find tick mark paths — multi-segment paths with stroke-width ~0.5
+  // containing both major (longer) and minor (shorter) tick marks
+  const x_major_ticks: number[] = []
+  const y_major_ticks: number[] = []
+
+  for (const path of Array.from(doc.querySelectorAll(`path`))) {
+    const d = path.getAttribute(`d`) ?? ``
+    const style = path.getAttribute(`style`) ?? ``
+    const sw_match = style.match(/stroke-width:\s*([\d.]+)/)
+    const stroke_width = sw_match ? parseFloat(sw_match[1]) : 0
+
+    // Tick mark paths have stroke-width ~0.5
+    if (stroke_width < 0.3 || stroke_width > 1.0) continue
+
+    // Parse path into absolute line segments (handles both absolute & relative commands)
+    const segments = parse_path_segments(d)
+    if (segments.length < 3) continue
+
+    for (const [sx1, sy1, sx2, sy2] of segments) {
+      const seg_dx = Math.abs(sx2 - sx1)
+      const seg_dy = Math.abs(sy2 - sy1)
+      const len = Math.sqrt(seg_dx * seg_dx + seg_dy * seg_dy)
+
+      // Major ticks are longer (~3.9 px), minor are shorter (~1.7 px)
+      if (len < 3) continue
+
+      // Horizontal tick segments → y-axis tick (x changes, y constant)
+      if (seg_dy < 0.1 && seg_dx > 2) {
+        y_major_ticks.push(Math.round(sy1 * 100) / 100)
+      }
+      // Vertical tick segments → x-axis tick (y changes, x constant)
+      if (seg_dx < 0.1 && seg_dy > 2) {
+        x_major_ticks.push(Math.round(sx1 * 100) / 100)
+      }
+    }
+  }
+
+  // Deduplicate and sort
+  const x_ticks_sorted = [...new Set(x_major_ticks.map((v) => Math.round(v * 10) / 10))]
+    .sort((a, b) => a - b)
+  const y_ticks_sorted = [...new Set(y_major_ticks.map((v) => Math.round(v * 10) / 10))]
+    .sort((a, b) => a - b)
+
+  if (x_ticks_sorted.length < 2 || y_ticks_sorted.length < 2) {
+    throw new Error(
+      `MPDS SVG: could not find tick marks (found ${x_ticks_sorted.length} x-ticks, ${y_ticks_sorted.length} y-ticks)`,
+    )
+  }
+
+  // Map tick positions to data values
+  // x-axis: ticks map to composition values (at%), convert to fraction
+  // y-axis: ticks map to temperature (top = max, bottom = min, SVG y inverted)
+  const x_vals = comp_vals.slice(0, x_ticks_sorted.length)
+  const y_vals = temp_vals.slice(0, y_ticks_sorted.length).reverse() // top = highest temp
+
+  const x_ticks = x_ticks_sorted.map((px, idx) => ({ px, value: x_vals[idx] / 100 }))
+  const y_ticks = y_ticks_sorted.map((px, idx) => ({ px, value: y_vals[idx] }))
+
+  return {
+    x_scale: build_scale(x_ticks),
+    y_scale: build_scale(y_ticks),
+  }
+}
+
 // Build a linear scale from tick data points
 function build_scale(ticks: { px: number; value: number }[]): LinearScale {
   ticks.sort((a, b) => a.value - b.value)
@@ -175,7 +281,9 @@ function extract_boundaries(
   const boundaries: Boundary[] = []
   const epsilon = 0.5 // pixel tolerance for classifying horizontal/vertical
 
-  if (format === `matplotlib`) {
+  if (format === `mpds`) {
+    extract_mpds_boundaries(doc, boundaries, x_scale, y_scale, epsilon)
+  } else if (format === `matplotlib`) {
     // Matplotlib: look for line2d_N groups with path elements (skip tick marks at line2d_1..12ish)
     for (const group of Array.from(doc.querySelectorAll(`[id^="line2d_"]`))) {
       const path_el = group.querySelector(`path`)
@@ -227,6 +335,105 @@ function extract_boundaries(
   return boundaries
 }
 
+// Extract boundaries from MPDS SVGs — simple M x1,y1 L x2,y2 path elements
+// inside the plot area with thin stroke (0.216) and dark color
+function extract_mpds_boundaries(
+  doc: Document,
+  boundaries: Boundary[],
+  x_scale: LinearScale,
+  y_scale: LinearScale,
+  epsilon: number,
+): void {
+  // Find the plot border to filter boundaries inside it
+  const plot_rect = find_mpds_plot_rect(doc)
+  if (!plot_rect) return
+
+  const { left, right, top, bottom } = plot_rect
+
+  for (const path of Array.from(doc.querySelectorAll(`path`))) {
+    const d = path.getAttribute(`d`) ?? ``
+    const style = path.getAttribute(`style`) ?? ``
+
+    // Skip tick mark paths (stroke-width > 0.3)
+    const sw_match = style.match(/stroke-width:\s*([\d.]+)/)
+    const stroke_width = sw_match ? parseFloat(sw_match[1]) : 0
+    if (stroke_width > 0.3 || stroke_width === 0) continue
+
+    // Skip filled regions (phase region fills)
+    if (
+      style.includes(`fill-rule`) || style.includes(`fill: #`) || style.includes(`fill:#`)
+    ) {
+      if (!style.includes(`fill: none`) && !style.includes(`fill:none`)) continue
+    }
+
+    // Skip red annotation lines
+    if (style.includes(`#e30016`) || style.includes(`#E30016`)) continue
+
+    // Parse as simple M...L line
+    const coords = parse_ml_path(d)
+    if (!coords) continue
+
+    // Must be inside the plot area
+    const inside = coords.x1 >= left - 1 && coords.x1 <= right + 1 &&
+      coords.x2 >= left - 1 && coords.x2 <= right + 1 &&
+      coords.y1 >= top - 1 && coords.y1 <= bottom + 1 &&
+      coords.y2 >= top - 1 && coords.y2 <= bottom + 1
+    if (!inside) continue
+
+    // Skip very short segments (< 10px)
+    const dx = Math.abs(coords.x2 - coords.x1)
+    const dy = Math.abs(coords.y2 - coords.y1)
+    if (dx < 10 && dy < 10) continue
+
+    // Skip the plot border itself (connects all 4 edges)
+    const touches_left = Math.abs(coords.x1 - left) < 2 || Math.abs(coords.x2 - left) < 2
+    const touches_right = Math.abs(coords.x1 - right) < 2 ||
+      Math.abs(coords.x2 - right) < 2
+    if (touches_left && touches_right) continue // spans full width = likely axis
+
+    add_boundary(boundaries, coords, x_scale, y_scale, epsilon)
+  }
+}
+
+// Find the plot area rectangle in an MPDS SVG
+// Handles both M...L...L...L...Z and M...V...H...V...Z formats
+function find_mpds_plot_rect(
+  doc: Document,
+): { left: number; right: number; top: number; bottom: number } | null {
+  for (const path of Array.from(doc.querySelectorAll(`path`))) {
+    const d = path.getAttribute(`d`) ?? ``
+    const style = path.getAttribute(`style`) ?? ``
+    if (!style.includes(`fill: none`) && !style.includes(`fill:none`)) continue
+    if (!d.includes(`Z`) && !d.includes(`z`)) continue
+
+    // Parse path into absolute segments and extract corner points
+    const segments = parse_path_segments(d)
+    if (segments.length < 3) continue // rectangle needs at least 3 segments (4th is Z)
+
+    // Collect all x and y coordinates from segment endpoints
+    const xs: number[] = []
+    const ys: number[] = []
+    for (const [x1, y1, x2, y2] of segments) {
+      xs.push(Math.round(x1 * 10) / 10, Math.round(x2 * 10) / 10)
+      ys.push(Math.round(y1 * 10) / 10, Math.round(y2 * 10) / 10)
+    }
+
+    const unique_x = [...new Set(xs)]
+    const unique_y = [...new Set(ys)]
+
+    // Rectangle has exactly 2 unique x and 2 unique y values
+    if (unique_x.length === 2 && unique_y.length === 2) {
+      return {
+        left: Math.min(...unique_x),
+        right: Math.max(...unique_x),
+        top: Math.min(...unique_y),
+        bottom: Math.max(...unique_y),
+      }
+    }
+  }
+  return null
+}
+
 // Add a boundary line, classifying as horizontal or vertical
 function add_boundary(
   boundaries: Boundary[],
@@ -265,6 +472,9 @@ function extract_labels(
 
   if (format === `matplotlib`) {
     extract_matplotlib_labels(doc, labels)
+  } else if (format === `mpds`) {
+    // MPDS labels use garbled encoding; skip label extraction
+    // Regions will get auto-generated names from infer_regions
   } else {
     extract_simple_labels(doc, labels)
   }
@@ -274,11 +484,29 @@ function extract_labels(
 
 // Extract labels from matplotlib SVG using XML comments
 function extract_matplotlib_labels(doc: Document, labels: Label[]): void {
-  // Find text groups with comments containing phase names (contain "$" for subscripts)
+  // Find text groups with comments containing phase names
+  // Matplotlib may split multi-line labels (especially rotated ones) into
+  // separate <g> groups: text_N has "La$_2$NiO$_4$", followed by a sibling
+  // with "+ La$_3$Ni$_2$O$_7$". We concatenate these continuation groups.
   for (const group of Array.from(doc.querySelectorAll(`[id^="text_"]`))) {
-    // Look for comment nodes preceding or inside the group
-    const comment = find_comment_text(group)
-    if (!comment || !comment.includes(`+`)) continue // skip axis labels (no "+")
+    let comment = find_comment_text(group)
+    if (!comment) continue
+
+    // Check following sibling groups for continuation comments starting with "+"
+    let sibling = group.nextElementSibling
+    while (sibling) {
+      // Stop at the next text_N group (that's a separate label)
+      if (sibling.id?.startsWith(`text_`)) break
+      const continuation = find_comment_text(sibling)
+      if (continuation?.trimStart().startsWith(`+`)) {
+        comment += ` ${continuation.trim()}`
+        sibling = sibling.nextElementSibling
+      } else {
+        break
+      }
+    }
+
+    if (!comment.includes(`+`)) continue // skip axis labels (no "+")
 
     // Clean LaTeX: "La$_2$NiO$_4$ + NiO" -> "La2NiO4 + NiO"
     const text = clean_latex(comment.trim())
@@ -457,16 +685,7 @@ function infer_regions(
   for (let col = 0; col < n_cols; col++) {
     for (let row = 0; row < n_rows; row++) {
       if (cell_ids[col][row] !== -1) continue
-      flood_fill(
-        cell_ids,
-        h_walls,
-        v_walls,
-        col,
-        row,
-        n_cols,
-        n_rows,
-        next_region_id,
-      )
+      flood_fill(cell_ids, h_walls, v_walls, col, row, n_cols, n_rows, next_region_id)
       next_region_id++
     }
   }
@@ -491,10 +710,11 @@ function infer_regions(
   const regions: RegionInput[] = []
   for (let region_id = 0; region_id < next_region_id; region_id++) {
     const name = region_labels.get(region_id) ?? `Region ${region_id + 1}`
+    // Slug can be empty for non-ASCII labels like "α + β" — fall back to region_N
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, `_`).replace(
       /^_|_$/g,
       ``,
-    )
+    ) || `region_${region_id + 1}`
 
     // Find bounding box of all cells in this region
     let min_x = Infinity
@@ -609,7 +829,9 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
   const { x_scale, y_scale } = extract_axis_scales(doc, format)
   const boundaries = extract_boundaries(doc, format, x_scale, y_scale)
   const labels = extract_labels(doc, format)
-  const components = infer_components(labels)
+  const components = format === `mpds`
+    ? infer_mpds_components(doc)
+    : infer_components(labels)
 
   if (boundaries.length === 0) {
     throw new Error(`No phase boundaries found in SVG`)
@@ -618,17 +840,36 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
   const regions = infer_regions(boundaries, labels, x_scale, y_scale)
   const curves = generate_curves(boundaries)
 
+  // MPDS SVGs use °C for temperature
+  const temp_unit = format === `mpds` ? `°C` : `K`
+
   return {
     meta: {
       components,
       temp_range: y_scale.domain,
-      temp_unit: `K`,
+      temp_unit,
       comp_unit: `fraction`,
       title: `Imported Phase Diagram`,
     },
     curves,
     regions,
   }
+}
+
+// Infer components from MPDS SVGs by finding element-like text content
+// MPDS SVGs have readable element names as text (e.g., "Cu", "Si")
+function infer_mpds_components(doc: Document): [string, string] {
+  const element_pattern = /^[A-Z][a-z]?$/
+  const elements: string[] = []
+  for (const text_el of Array.from(doc.querySelectorAll(`text`))) {
+    const content = text_el.textContent?.trim() ?? ``
+    if (element_pattern.test(content)) {
+      elements.push(content)
+    }
+  }
+  // Remove duplicates and common non-element text
+  const unique = [...new Set(elements)].filter((el) => el !== `L` && el !== `M`)
+  return [unique[0] ?? `A`, unique[1] ?? `B`]
 }
 
 // === Utility Functions ===
@@ -687,22 +928,89 @@ function clean_latex(text: string): string {
 }
 
 // Parse "M x1 y1 L x2 y2" path data (simple 2-point lines only)
+// Parse SVG path data into absolute line segments [x1,y1,x2,y2]
+// Handles M/m, L/l, H/h, V/v, C/c commands (both absolute and relative)
+// After M/m, implicit coordinates are treated as L/l per SVG spec
+function parse_path_segments(d: string): [number, number, number, number][] {
+  const segments: [number, number, number, number][] = []
+  let [cx, cy] = [0, 0]
+  let [sx, sy] = [0, 0]
+  let last_cmd = ``
+
+  const tokens = d.match(/[MmLlHhVvCcSsQqTtAaZz]|[-+]?[\d]*\.?[\d]+(?:[eE][-+]?\d+)?/g)
+  if (!tokens) return segments
+
+  let idx = 0
+  const peek = () => tokens[idx]
+  const next_num = () => parseFloat(tokens[idx++] ?? `0`)
+
+  while (idx < tokens.length) {
+    let cmd = peek() ?? ``
+
+    if (cmd.length === 1 && /[A-Za-z]/.test(cmd)) {
+      idx++
+      last_cmd = cmd
+    } else {
+      // Implicit repeat: after M→L, after m→l, others repeat themselves
+      cmd = last_cmd === `M` ? `L` : last_cmd === `m` ? `l` : last_cmd
+    }
+
+    if (cmd === `M` || cmd === `m`) {
+      const nx = next_num()
+      const ny = next_num()
+      cx = cmd === `M` ? nx : cx + nx
+      cy = cmd === `M` ? ny : cy + ny
+      sx = cx
+      sy = cy
+      last_cmd = cmd
+    } else if (cmd === `L` || cmd === `l`) {
+      const nx = next_num()
+      const ny = next_num()
+      const x2 = cmd === `L` ? nx : cx + nx
+      const y2 = cmd === `L` ? ny : cy + ny
+      segments.push([cx, cy, x2, y2])
+      cx = x2
+      cy = y2
+    } else if (cmd === `H` || cmd === `h`) {
+      const nx = next_num()
+      const x2 = cmd === `H` ? nx : cx + nx
+      segments.push([cx, cy, x2, cy])
+      cx = x2
+    } else if (cmd === `V` || cmd === `v`) {
+      const ny = next_num()
+      const y2 = cmd === `V` ? ny : cy + ny
+      segments.push([cx, cy, cx, y2])
+      cy = y2
+    } else if (cmd === `C` || cmd === `c`) {
+      // Cubic bezier: skip control points, use endpoint only
+      for (let _skip = 0; _skip < 4; _skip++) next_num()
+      const ex = next_num()
+      const ey = next_num()
+      const x2 = cmd === `C` ? ex : cx + ex
+      const y2 = cmd === `C` ? ey : cy + ey
+      segments.push([cx, cy, x2, y2])
+      cx = x2
+      cy = y2
+    } else if (cmd === `Z` || cmd === `z`) {
+      if (cx !== sx || cy !== sy) segments.push([cx, cy, sx, sy])
+      cx = sx
+      cy = sy
+    } else {
+      idx++ // skip unsupported commands
+    }
+  }
+  return segments
+}
+
 function parse_ml_path(
   d: string,
 ): { x1: number; y1: number; x2: number; y2: number } | null {
-  // Normalize whitespace and parse M/L commands
-  const cleaned = d.replace(/\s+/g, ` `).trim()
-  const match = cleaned.match(
-    /M\s*([\d.-]+)\s*[,\s]\s*([\d.-]+)\s*L\s*([\d.-]+)\s*[,\s]\s*([\d.-]+)/,
-  )
-  if (!match) return null
-
-  return {
-    x1: parseFloat(match[1]),
-    y1: parseFloat(match[2]),
-    x2: parseFloat(match[3]),
-    y2: parseFloat(match[4]),
-  }
+  // Use parse_path_segments to handle all SVG command variants
+  // Return the first segment as a simple line
+  const segments = parse_path_segments(d)
+  if (segments.length === 0) return null
+  const [x1, y1, x2, y2] = segments[0]
+  return { x1, y1, x2, y2 }
 }
 
 // Get translate X or Y from a group's transform attribute

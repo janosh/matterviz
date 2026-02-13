@@ -649,7 +649,9 @@ export function format_formula_svg(
     }
   }
 
-  if (offset) result += `<tspan dy="${-offset}em"></tspan>`
+  // Reset baseline after trailing subscript/superscript using a zero-width space
+  // (empty tspans may not apply dy in all SVG renderers)
+  if (offset) result += `<tspan dy="${-offset}em">\u200B</tspan>`
   return result
 }
 

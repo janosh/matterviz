@@ -618,7 +618,7 @@
           bind:x_axis
           bind:y_axis
           bind:png_dpi
-          {data}
+          data={effective_data}
           {enable_export}
           {...controls_props}
           icon_style={pane_icon_style}
@@ -629,7 +629,7 @@
         <PhaseDiagramExportPane
           bind:export_pane_open
           bind:png_dpi
-          {data}
+          data={effective_data}
           {wrapper}
           filename={export_filename}
           icon_style={pane_icon_style}

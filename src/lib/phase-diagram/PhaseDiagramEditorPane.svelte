@@ -21,13 +21,8 @@
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
 
-  // Track the original input for reset
+  // Track the original input for reset (updated on each new external input)
   let original_input = $state<DiagramInput | null>(null)
-  $effect(() => {
-    if (diagram_input && !original_input) {
-      original_input = JSON.parse(JSON.stringify(diagram_input))
-    }
-  })
 
   // Active tab: edit (textarea) or view (JsonTree)
   let active_tab = $state<`edit` | `view`>(`edit`)
@@ -36,10 +31,11 @@
   let text_content = $state(``)
   let parse_error = $state<string | null>(null)
 
-  // Sync textarea when diagram_input changes externally (e.g. new SVG drop)
+  // Sync textarea and original_input when diagram_input changes externally
   let last_synced_input = $state<DiagramInput | null>(null)
   $effect(() => {
     if (diagram_input && diagram_input !== last_synced_input) {
+      original_input = JSON.parse(JSON.stringify(diagram_input))
       text_content = JSON.stringify(diagram_input, null, 2)
       last_synced_input = diagram_input
       parse_error = null

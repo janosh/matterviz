@@ -634,16 +634,20 @@ describe(`format_formula_svg`, () => {
   })
 
   test(`adds trailing baseline reset when formula ends with subscript`, () => {
-    expect(format_formula_svg(`SiO2`)).toMatch(/<tspan dy="-0\.25em"><\/tspan>$/)
+    // Uses zero-width space \u200B to ensure dy is applied in all SVG renderers
+    expect(format_formula_svg(`SiO2`)).toMatch(/<tspan dy="-0\.25em">\u200B<\/tspan>$/)
   })
 
   test(`no trailing reset when formula ends with text`, () => {
-    expect(format_formula_svg(`Fe3C`)).not.toMatch(/<tspan dy="[^"]+"><\/tspan>$/)
+    // Fe3C ends with "C" in a baseline-reset tspan, not a zero-width-space reset
+    const result = format_formula_svg(`Fe3C`)
+    expect(result).toMatch(/C<\/tspan>$/)
+    expect(result).not.toContain(`\u200B`)
   })
 
   test(`cumulative offset for consecutive sub/superscripts`, () => {
     // O2- has subscript (0.25em) then superscript (-0.4em), reset ≈ 0.15em
-    expect(format_formula_svg(`O2-`)).toMatch(/<tspan dy="0\.15\d*em"><\/tspan>$/)
+    expect(format_formula_svg(`O2-`)).toMatch(/<tspan dy="0\.15\d*em">\u200B<\/tspan>$/)
   })
 
   test(`respects use_subscripts=false`, () => {
