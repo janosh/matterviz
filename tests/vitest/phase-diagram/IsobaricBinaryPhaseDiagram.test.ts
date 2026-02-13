@@ -92,8 +92,8 @@ describe(`format_hover_info_text`, () => {
     expect(text).toContain(`Lever Rule:`)
     expect(text).toContain(`α: 75.0%`)
     expect(text).toContain(`L: 25.0%`)
-    expect(text).toContain(`at 0.150`)
-    expect(text).toContain(`at 0.750`)
+    expect(text).toContain(`at 0.15`)
+    expect(text).toContain(`at 0.75`)
   })
 
   test(`does not include lever rule for single-phase regions`, () => {
