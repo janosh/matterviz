@@ -124,17 +124,14 @@
   const pane_icon_style = `width: 14px; height: 14px`
   const pane_toggle_props = { style: `padding: 0; font-size: 18px` }
 
-  // When diagram_input is provided and changes, rebuild data from it
-  let rebuilt_data = $state<PhaseDiagramData | null>(null)
-  $effect(() => {
-    if (!diagram_input) {
-      rebuilt_data = null
-      return
-    }
+  // Rebuild diagram data when diagram_input changes ($derived auto-recomputes)
+  const rebuilt_data = $derived.by(() => {
+    if (!diagram_input) return null
     try {
-      rebuilt_data = build_diagram(diagram_input)
+      return build_diagram(diagram_input)
     } catch (err) {
       console.warn(`Failed to rebuild diagram from input:`, err)
+      return null
     }
   })
 
@@ -145,7 +142,9 @@
   function handle_svg_drop(event: DragEvent) {
     event.preventDefault()
     const file = event.dataTransfer?.files[0]
-    if (!file || !file.name.endsWith(`.svg`)) return
+    if (!file || (!file.name.endsWith(`.svg`) && file.type !== `image/svg+xml`)) {
+      return
+    }
     const reader = new FileReader()
     reader.onload = () => {
       try {
@@ -196,7 +195,9 @@
       for (const boundary of effective_data.boundaries) {
         for (const point of boundary.points) update(point[0])
       }
-      for (const sp of effective_data.special_points ?? []) update(sp.position[0])
+      for (const special_point of effective_data.special_points ?? []) {
+        update(special_point.position[0])
+      }
 
       if (data_min <= data_max) {
         let x_min = lo ?? data_min
@@ -212,7 +213,7 @@
           )
           return effective_data.regions.some((region) =>
             re.test(region.name) &&
-            region.vertices.some((v) => Math.abs(v[0] - x_val) < 1e-6)
+            region.vertices.some((vertex) => Math.abs(vertex[0] - x_val) < 1e-6)
           )
         }
         if (
@@ -265,15 +266,13 @@
   )
 
   // Generate tick values using d3 scale's built-in ticks method
-  const x_tick_count = $derived(
-    typeof x_axis.ticks === `number` ? x_axis.ticks : 5,
+  const x_ticks = $derived(
+    x_scale.ticks(typeof x_axis.ticks === `number` ? x_axis.ticks : 5),
   )
-  const y_tick_count = $derived(
-    typeof y_axis.ticks === `number` ? y_axis.ticks : 6,
-  )
-  const x_ticks = $derived(x_scale.ticks(x_tick_count))
   // Use display scale for y ticks so they show converted temperatures
-  const y_ticks = $derived(y_scale_display.ticks(y_tick_count))
+  const y_ticks = $derived(
+    y_scale_display.ticks(typeof y_axis.ticks === `number` ? y_axis.ticks : 6),
+  )
 
   // Transform regions to SVG coordinates
   const transformed_regions = $derived(
@@ -514,10 +513,6 @@
   const component_a_svg = $derived(format_formula_svg(component_a, use_subscripts))
   const component_b_svg = $derived(format_formula_svg(component_b, use_subscripts))
 
-  // Custom axis labels from data (for pseudo-binary or special cases)
-  const data_x_axis_label = $derived(effective_data?.x_axis_label)
-  const data_y_axis_label = $derived(effective_data?.y_axis_label)
-
   // Default x-axis label as a single string (avoids mixing plain text with {@html})
   const default_x_axis_label = $derived.by(() => {
     const prefix = comp_unit === `fraction` ? `x ` : ``
@@ -641,7 +636,6 @@
         <PhaseDiagramEditorPane
           bind:editor_open
           bind:diagram_input
-          on_rebuild={(built) => rebuilt_data = built}
           icon_style={pane_icon_style}
           toggle_props={pane_toggle_props}
         />
@@ -879,8 +873,8 @@
         >
           {#if x_axis.label}
             {@html x_axis.label}
-          {:else if data_x_axis_label}
-            {@html data_x_axis_label}
+          {:else if effective_data?.x_axis_label}
+            {@html effective_data.x_axis_label}
           {:else}
             {@html default_x_axis_label}
           {/if}
@@ -922,8 +916,8 @@
         >
           {#if y_axis.label}
             {@html y_axis.label}
-          {:else if data_y_axis_label}
-            {@html data_y_axis_label}
+          {:else if effective_data?.y_axis_label}
+            {@html effective_data.y_axis_label}
           {:else}
             Temperature ({temp_unit})
           {/if}

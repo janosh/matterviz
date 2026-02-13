@@ -292,7 +292,7 @@ function wrap_text(text: string, max_chars: number): string[] {
   }
 
   if (current_line) lines.push(current_line)
-  return lines.length > 0 ? lines : [text]
+  return lines
 }
 
 // Transform data coordinates to SVG coordinates using scale functions

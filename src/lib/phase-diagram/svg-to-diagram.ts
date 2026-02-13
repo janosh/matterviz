@@ -108,23 +108,18 @@ function extract_matplotlib_ticks(
   x_ticks: { px: number; value: number }[],
   y_ticks: { px: number; value: number }[],
 ): void {
-  // Process xtick groups
-  for (const group of Array.from(doc.querySelectorAll(`[id^="xtick_"]`))) {
-    const value = extract_comment_number(group)
-    const use_el = group.querySelector(`use`)
-    if (value !== null && use_el) {
-      const px = parse_float_attr(use_el, `x`)
-      if (px !== null) x_ticks.push({ px, value })
-    }
-  }
-
-  // Process ytick groups
-  for (const group of Array.from(doc.querySelectorAll(`[id^="ytick_"]`))) {
-    const value = extract_comment_number(group)
-    const use_el = group.querySelector(`use`)
-    if (value !== null && use_el) {
-      const px = parse_float_attr(use_el, `y`)
-      if (px !== null) y_ticks.push({ px, value })
+  const axes: [string, string, { px: number; value: number }[]][] = [
+    [`xtick_`, `x`, x_ticks],
+    [`ytick_`, `y`, y_ticks],
+  ]
+  for (const [prefix, attr, ticks] of axes) {
+    for (const group of Array.from(doc.querySelectorAll(`[id^="${prefix}"]`))) {
+      const value = extract_comment_number(group)
+      const use_el = group.querySelector(`use`)
+      if (value !== null && use_el) {
+        const px = parse_float_attr(use_el, attr)
+        if (px !== null) ticks.push({ px, value })
+      }
     }
   }
 }
@@ -200,9 +195,7 @@ function extract_mpds_scales(
 
   for (const path of Array.from(doc.querySelectorAll(`path`))) {
     const d = path.getAttribute(`d`) ?? ``
-    const style = path.getAttribute(`style`) ?? ``
-    const sw_match = style.match(/stroke-width:\s*([\d.]+)/)
-    const stroke_width = sw_match ? parseFloat(sw_match[1]) : 0
+    const stroke_width = parse_stroke_width(path)
 
     // Tick mark paths have stroke-width ~0.5
     if (stroke_width < 0.3 || stroke_width > 1.0) continue
@@ -214,10 +207,9 @@ function extract_mpds_scales(
     for (const [sx1, sy1, sx2, sy2] of segments) {
       const seg_dx = Math.abs(sx2 - sx1)
       const seg_dy = Math.abs(sy2 - sy1)
-      const len = Math.sqrt(seg_dx * seg_dx + seg_dy * seg_dy)
 
       // Major ticks are longer (~3.9 px), minor are shorter (~1.7 px)
-      if (len < 3) continue
+      if (Math.hypot(seg_dx, seg_dy) < 3) continue
 
       // Horizontal tick segments → y-axis tick (x changes, y constant)
       if (seg_dy < 0.1 && seg_dx > 2) {
@@ -314,9 +306,7 @@ function extract_boundaries(
       if (dx < 15 && dy < 15) continue
 
       // Check stroke-width to distinguish boundaries from axis lines
-      const style = path_el.getAttribute(`style`) ?? ``
-      const stroke_width_match = style.match(/stroke-width:\s*([\d.]+)/)
-      const stroke_width = stroke_width_match ? parseFloat(stroke_width_match[1]) : 1
+      const stroke_width = parse_stroke_width(path_el) || 1
 
       // Axis patches (id="patch_*") are axis borders, not phase boundaries
       const parent_id = group.getAttribute(`id`) ?? ``
@@ -367,8 +357,7 @@ function extract_mpds_boundaries(
     const style = path.getAttribute(`style`) ?? ``
 
     // Skip tick mark paths (stroke-width > 0.3)
-    const sw_match = style.match(/stroke-width:\s*([\d.]+)/)
-    const stroke_width = sw_match ? parseFloat(sw_match[1]) : 0
+    const stroke_width = parse_stroke_width(path)
     if (stroke_width > 0.3 || stroke_width === 0) continue
 
     // Skip filled regions (phase region fills)
@@ -476,10 +465,7 @@ function add_boundary(
 // === Label Extraction ===
 
 // Extract phase region labels with their pixel positions
-function extract_labels(
-  doc: Document,
-  format: SvgFormat,
-): Label[] {
+function extract_labels(doc: Document, format: SvgFormat): Label[] {
   const labels: Label[] = []
 
   if (format === `matplotlib`) {
@@ -524,19 +510,11 @@ function extract_matplotlib_labels(doc: Document, labels: Label[]): void {
     const text = clean_latex(comment.trim())
 
     // Get position from transform="translate(x, y)"
-    const inner_g = group.querySelector(`g[transform]`)
-    const transform = inner_g?.getAttribute(`transform`) ??
-      group.getAttribute(`transform`) ?? ``
-    const translate_match = transform.match(
-      /translate\(\s*([\d.-]+)\s*[,\s]\s*([\d.-]+)/,
-    )
-    if (!translate_match) continue
+    const pos = parse_translate(group.querySelector(`g[transform]`)) ??
+      parse_translate(group)
+    if (!pos) continue
 
-    labels.push({
-      text,
-      px_x: parseFloat(translate_match[1]),
-      px_y: parseFloat(translate_match[2]),
-    })
+    labels.push({ text, px_x: pos[0], px_y: pos[1] })
   }
 }
 
@@ -547,19 +525,10 @@ function extract_simple_labels(doc: Document, labels: Label[]): void {
     const text = (text_el.textContent ?? ``).replace(/\s+/g, ` `).trim()
     if (!text.includes(`+`)) continue // skip non-phase labels
 
-    // Get position - either x/y attributes or transform
-    let px_x = parse_float_attr(text_el, `x`)
-    let px_y = parse_float_attr(text_el, `y`)
-
-    // Check for transform="translate(x, y)"
-    const transform = text_el.getAttribute(`transform`) ?? ``
-    const translate_match = transform.match(
-      /translate\(\s*([\d.-]+)\s*[,\s]\s*([\d.-]+)/,
-    )
-    if (translate_match) {
-      px_x = parseFloat(translate_match[1])
-      px_y = parseFloat(translate_match[2])
-    }
+    // Get position from transform or x/y attributes
+    const pos = parse_translate(text_el)
+    const px_x = pos?.[0] ?? parse_float_attr(text_el, `x`)
+    const px_y = pos?.[1] ?? parse_float_attr(text_el, `y`)
 
     if (px_x !== null && px_y !== null) {
       labels.push({ text, px_x, px_y })
@@ -784,27 +753,17 @@ function flood_fill(
 // === Curve Generation ===
 
 // Generate named curves from boundaries for the DiagramInput format
-function generate_curves(
-  boundaries: Boundary[],
-): Record<string, DiagramPoint[]> {
+function generate_curves(boundaries: Boundary[]): Record<string, DiagramPoint[]> {
   const curves: Record<string, DiagramPoint[]> = {}
-  let vert_idx = 0
-  let horiz_idx = 0
+  const counts = { vertical: 0, horizontal: 0 }
 
-  for (const boundary of boundaries) {
-    if (boundary.orientation === `vertical`) {
-      const name = `vertical_${vert_idx++}`
-      curves[name] = [
-        [round(boundary.x1), round(boundary.y1)],
-        [round(boundary.x1), round(boundary.y2)],
-      ]
-    } else {
-      const name = `horizontal_${horiz_idx++}`
-      curves[name] = [
-        [round(boundary.x1), round(boundary.y1)],
-        [round(boundary.x2), round(boundary.y1)],
-      ]
-    }
+  for (const bnd of boundaries) {
+    const is_vert = bnd.orientation === `vertical`
+    const name = `${bnd.orientation}_${counts[bnd.orientation]++}`
+    curves[name] = [
+      [round(bnd.x1), round(bnd.y1)],
+      [round(is_vert ? bnd.x1 : bnd.x2), round(is_vert ? bnd.y2 : bnd.y1)],
+    ]
   }
 
   return curves
@@ -857,20 +816,25 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
 // Infer components from MPDS SVGs by finding element-like text content
 // MPDS SVGs have readable element names as text (e.g., "Cu", "Si")
 function infer_mpds_components(doc: Document): [string, string] {
-  const element_pattern = /^[A-Z][a-z]?$/
-  const elements: string[] = []
+  const elements = new Set<string>()
   for (const text_el of Array.from(doc.querySelectorAll(`text`))) {
     const content = text_el.textContent?.trim() ?? ``
-    if (element_pattern.test(content)) {
-      elements.push(content)
+    // Match single/two-letter element symbols, exclude common non-element text
+    if (/^[A-Z][a-z]?$/.test(content) && content !== `L` && content !== `M`) {
+      elements.add(content)
     }
   }
-  // Remove duplicates and common non-element text
-  const unique = [...new Set(elements)].filter((el) => el !== `L` && el !== `M`)
+  const unique = [...elements]
   return [unique[0] ?? `A`, unique[1] ?? `B`]
 }
 
 // === Utility Functions ===
+
+// Parse stroke-width from an element's style attribute (returns 0 if not found)
+function parse_stroke_width(el: Element): number {
+  const match = (el.getAttribute(`style`) ?? ``).match(/stroke-width:\s*([\d.]+)/)
+  return match ? parseFloat(match[1]) : 0
+}
 
 // Parse a float attribute from an SVG element
 function parse_float_attr(el: Element, attr: string): number | null {
@@ -926,7 +890,8 @@ function clean_latex(text: string): string {
 }
 
 // Parse SVG path data into absolute line segments [x1,y1,x2,y2]
-// Handles M/m, L/l, H/h, V/v, C/c commands (both absolute and relative)
+// Handles all SVG path commands (M/L/H/V/C/S/Q/T/A/Z, both absolute and relative)
+// Curves (C/S/Q/T/A) are approximated as straight lines from start to endpoint
 // After M/m, implicit coordinates are treated as L/l per SVG spec
 function parse_path_segments(d: string): [number, number, number, number][] {
   const segments: [number, number, number, number][] = []
@@ -934,6 +899,8 @@ function parse_path_segments(d: string): [number, number, number, number][] {
   let [start_x, start_y] = [0, 0]
   let last_cmd = ``
 
+  // Numbers to skip before the endpoint x,y for each curve command
+  const curve_skip: Record<string, number> = { C: 4, S: 2, Q: 2, T: 0, A: 5 }
   const tokens = d.match(/[MmLlHhVvCcSsQqTtAaZz]|[-+]?[\d]*\.?[\d]+(?:[eE][-+]?\d+)?/g)
   if (!tokens) return segments
 
@@ -978,16 +945,6 @@ function parse_path_segments(d: string): [number, number, number, number][] {
       const y2 = cmd === `V` ? next_y : cursor_y + next_y
       segments.push([cursor_x, cursor_y, cursor_x, y2])
       cursor_y = y2
-    } else if (cmd === `C` || cmd === `c`) {
-      // Cubic bezier: skip control points, use endpoint only
-      for (let _skip = 0; _skip < 4; _skip++) next_num()
-      const end_x = next_num()
-      const end_y = next_num()
-      const x2 = cmd === `C` ? end_x : cursor_x + end_x
-      const y2 = cmd === `C` ? end_y : cursor_y + end_y
-      segments.push([cursor_x, cursor_y, x2, y2])
-      cursor_x = x2
-      cursor_y = y2
     } else if (cmd === `Z` || cmd === `z`) {
       if (cursor_x !== start_x || cursor_y !== start_y) {
         segments.push([cursor_x, cursor_y, start_x, start_y])
@@ -995,7 +952,22 @@ function parse_path_segments(d: string): [number, number, number, number][] {
       cursor_x = start_x
       cursor_y = start_y
     } else {
-      idx++ // skip unsupported commands
+      // Curve commands: skip control/arc params, use endpoint as straight line
+      // C=4 skip, S=2, Q=2, T=0, A=5 (numbers before the final x,y endpoint)
+      const upper = cmd.toUpperCase()
+      const skip = curve_skip[upper]
+      if (skip !== undefined) {
+        for (let _skip = 0; _skip < skip; _skip++) next_num()
+        const end_x = next_num()
+        const end_y = next_num()
+        const x2 = cmd === upper ? end_x : cursor_x + end_x
+        const y2 = cmd === upper ? end_y : cursor_y + end_y
+        segments.push([cursor_x, cursor_y, x2, y2])
+        cursor_x = x2
+        cursor_y = y2
+      } else {
+        idx++ // skip unknown tokens
+      }
     }
   }
   return segments
@@ -1012,13 +984,18 @@ function parse_ml_path(
   return { x1, y1, x2, y2 }
 }
 
+// Parse translate(x, y) from a transform attribute, returns [x, y] or null
+function parse_translate(el: Element | null): [number, number] | null {
+  const match = (el?.getAttribute(`transform`) ?? ``).match(
+    /translate\(\s*([\d.-]+)\s*[,\s]\s*([\d.-]+)/,
+  )
+  return match ? [parseFloat(match[1]), parseFloat(match[2])] : null
+}
+
 // Get translate X or Y from a group's transform attribute
 function get_group_translate(el: Element | null, axis: `x` | `y`): number {
-  if (!el) return 0
-  const transform = el.getAttribute(`transform`) ?? ``
-  const match = transform.match(/translate\(\s*([\d.-]+)\s*[,\s]\s*([\d.-]+)/)
-  if (!match) return 0
-  return parseFloat(match[axis === `x` ? 1 : 2])
+  const coords = parse_translate(el)
+  return coords ? coords[axis === `x` ? 0 : 1] : 0
 }
 
 // Collect unique sorted values from an array (with epsilon deduplication)
