@@ -1,8 +1,8 @@
 <script lang="ts">
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
-  import { tooltip } from 'svelte-multiselect/attachments'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { ComponentProps } from 'svelte'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { PhaseDiagramData } from './types'
 
@@ -89,90 +89,116 @@
     ...caller_toggle_props,
   }}
 >
-  <h4
-    {@attach tooltip({
-      content: `Download or copy the phase diagram`,
-    })}
-  >
-    Export as image
-  </h4>
-  <label>
-    SVG
-    <button
-      type="button"
-      onclick={() => svg && export_svg_as_svg(svg, `${full_filename}.svg`)}
-      disabled={!svg}
-      title="Download SVG"
+  <div class="export-grid">
+    <h4
+      {@attach tooltip({
+        content: `Download or copy the phase diagram`,
+      })}
     >
-      ⬇
-    </button>
-    <button
-      type="button"
-      onclick={copy_svg}
-      disabled={!svg}
-      title="Copy SVG to clipboard"
-    >
-      {copy_status.svg ? copy_confirm : `📋`}
-    </button>
-  </label>
-  <label>
-    PNG
-    <button
-      type="button"
-      onclick={() => svg && export_svg_as_png(svg, `${full_filename}.png`, png_dpi)}
-      disabled={!svg}
-      title={`Download PNG (${png_dpi} DPI)`}
-    >
-      ⬇
-    </button>
-    &nbsp;(DPI: <input
-      type="number"
-      min={50}
-      max={600}
-      bind:value={png_dpi}
-      title="Export resolution in dots per inch"
-    />)
-  </label>
+      Image
+    </h4>
+    <label>
+      SVG
+      <button
+        type="button"
+        onclick={() => svg && export_svg_as_svg(svg, `${full_filename}.svg`)}
+        disabled={!svg}
+        title="Download SVG"
+      >
+        ⬇
+      </button>
+      <button
+        type="button"
+        onclick={copy_svg}
+        disabled={!svg}
+        title="Copy SVG to clipboard"
+      >
+        {copy_status.svg ? copy_confirm : `📋`}
+      </button>
+    </label>
+    <label>
+      PNG
+      <button
+        type="button"
+        onclick={() => svg && export_svg_as_png(svg, `${full_filename}.png`, png_dpi)}
+        disabled={!svg}
+        title={`Download PNG (${png_dpi} DPI)`}
+      >
+        ⬇
+      </button>
+      <span class="dpi-input"
+      >(DPI: <input
+          type="number"
+          min={50}
+          max={600}
+          bind:value={png_dpi}
+          title="Export resolution in dots per inch"
+        />)</span>
+    </label>
 
-  <h4
-    {@attach tooltip({
-      content: `Export phase diagram data as JSON`,
-    })}
-  >
-    Export as data
-  </h4>
-  <label>
-    JSON
-    <button type="button" onclick={download_json} disabled={!data} title="Download JSON">
-      ⬇
-    </button>
-    <button
-      type="button"
-      onclick={copy_json}
-      disabled={!data}
-      title="Copy JSON to clipboard"
+    <h4
+      {@attach tooltip({
+        content: `Export phase diagram data as JSON`,
+      })}
     >
-      {copy_status.json ? copy_confirm : `📋`}
-    </button>
-  </label>
+      Data
+    </h4>
+    <label>
+      JSON
+      <button
+        type="button"
+        onclick={download_json}
+        disabled={!data}
+        title="Download JSON"
+      >
+        ⬇
+      </button>
+      <button
+        type="button"
+        onclick={copy_json}
+        disabled={!data}
+        title="Copy JSON to clipboard"
+      >
+        {copy_status.json ? copy_confirm : `📋`}
+      </button>
+    </label>
+  </div>
 </DraggablePane>
 
 <style>
-  label {
+  .export-grid {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    gap: 4pt 10pt;
+  }
+  .export-grid h4 {
+    width: 100%;
+    margin: 4pt 0 0;
+  }
+  .export-grid h4:first-child {
+    margin-top: 0;
+  }
+  label {
+    display: flex;
+    align-items: center;
     gap: 4pt;
     font-size: 0.95em;
+    white-space: nowrap;
+  }
+  .dpi-input {
+    display: inline-flex;
+    align-items: center;
+    gap: 2pt;
+    white-space: nowrap;
   }
   button {
     width: 1.9em;
     height: 1.6em;
     padding: 0 6pt;
-    margin: 0 0 0 4pt;
     box-sizing: border-box;
   }
   input {
-    margin: 0 0 0 2pt;
+    width: 3.5em;
   }
 </style>
