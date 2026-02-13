@@ -4,8 +4,17 @@
   import { page } from '$app/state'
   import FilePicker from '$lib/FilePicker.svelte'
   import { decompress_data } from '$lib/io/decompress'
-  import type { PhaseDiagramData, TdbParseResult } from '$lib/phase-diagram'
-  import { IsobaricBinaryPhaseDiagram, TdbInfoPanel } from '$lib/phase-diagram'
+  import type {
+    DiagramInput,
+    PhaseDiagramData,
+    TdbParseResult,
+  } from '$lib/phase-diagram'
+  import {
+    build_diagram,
+    IsobaricBinaryPhaseDiagram,
+    parse_phase_diagram_svg,
+    TdbInfoPanel,
+  } from '$lib/phase-diagram'
   import {
     all_phase_diagram_files,
     find_precomputed_url,
@@ -17,6 +26,7 @@
   let current_file = $state<string>(``)
   let loading = $state(false)
   let error_message = $state<string | null>(null)
+  let current_diagram_input = $state<DiagramInput | null>(null)
 
   // Consolidated TDB file state
   interface TdbState {
@@ -30,6 +40,7 @@
   // Helper to check file type from filename
   const has_ext = (name: string, ext: string) => name.toLowerCase().endsWith(ext)
   const is_tdb = (name: string) => has_ext(name, `.tdb`)
+  const is_svg = (name: string) => has_ext(name, `.svg`)
   const is_gzipped = (name: string) => has_ext(name, `.gz`)
 
   // Helper for consistent error formatting
@@ -98,6 +109,17 @@
           }
         }
         return true
+      } else if (is_svg(filename)) {
+        const res = await fetch(url)
+        if (is_stale(token)) return false
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+        const content = await res.text()
+        if (is_stale(token)) return false
+        current_diagram_input = parse_phase_diagram_svg(content)
+        current_data = build_diagram(current_diagram_input)
+        current_file = filename
+        if (update_url_param) update_url(filename)
+        return true
       } else {
         // JSON files: load directly
         const data = await load_binary_phase_diagram(url)
@@ -165,6 +187,16 @@
               tdb.is_loaded = true
             }
           }
+        }
+        return
+      }
+      if (is_svg(filename)) {
+        if (typeof content === `string`) {
+          current_diagram_input = parse_phase_diagram_svg(content)
+          current_data = build_diagram(current_diagram_input)
+          current_file = filename
+          update_url(filename)
+          tdb = null
         }
         return
       }
@@ -313,7 +345,11 @@
     {#if current_data.title}
       <h3 class="diagram-title">{current_data.title}</h3>
     {/if}
-    <IsobaricBinaryPhaseDiagram data={current_data} style="height: 600px" />
+    <IsobaricBinaryPhaseDiagram
+      data={current_data}
+      bind:diagram_input={current_diagram_input}
+      style="height: 600px"
+    />
   {/if}
   {#if tdb}
     <TdbInfoPanel

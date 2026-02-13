@@ -20,6 +20,7 @@
     on_drag_start = () => {},
     toggle_pane_btn = $bindable(),
     pane_div = $bindable(),
+    persistent = false,
     has_been_dragged = $bindable(false),
     currently_dragging = $bindable(false),
   }: {
@@ -42,6 +43,8 @@
     offset?: { x?: number; y?: number }
     max_width?: string
     pane_props?: HTMLAttributes<HTMLDivElement>
+    // If true, only closes via Escape or explicit close button (not click-outside)
+    persistent?: boolean
     // Callbacks
     onclose?: () => void
     on_drag_start?: () => void
@@ -118,9 +121,9 @@
     return { left, top } // Position relative to positioned ancestor
   }
 
-  // Click outside handler
+  // Click outside handler (skipped when persistent)
   function handle_click_outside(event: MouseEvent) {
-    if (!show) return
+    if (!show || persistent) return
 
     const target = event.target as HTMLElement
     const is_toggle_button = toggle_pane_btn &&
@@ -351,14 +354,14 @@
   .draggable-pane :global(input::-webkit-inner-spin-button) {
     display: none;
   }
-  .draggable-pane :global(button) {
+  .draggable-pane :global(:where(button)) {
     width: max-content;
     background-color: var(
       --pane-btn-bg,
       var(--btn-bg, light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1)))
     );
   }
-  .draggable-pane :global(button:hover) {
+  .draggable-pane :global(:where(button:hover)) {
     background-color: var(
       --pane-btn-bg-hover,
       var(--btn-bg-hover, light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2)))

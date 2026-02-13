@@ -415,6 +415,40 @@ export function values_equal(val_a: unknown, val_b: unknown): boolean {
   return false
 }
 
+// Parse a raw edited string into a typed JSON value
+// Numbers, booleans, and null are auto-detected; everything else stays as string
+export function parse_edited_value(text: string): unknown {
+  const trimmed = text.trim()
+  if (trimmed === `null`) return null
+  if (trimmed === `true`) return true
+  if (trimmed === `false`) return false
+  const num = Number(trimmed)
+  if (trimmed !== `` && Number.isFinite(num)) return num
+  return text
+}
+
+// Set a value at a dot/bracket path in a deep-cloned copy of root
+// root_label is stripped from the path prefix if present
+export function set_at_path(
+  root: unknown,
+  path_str: string,
+  new_value: unknown,
+  root_label?: string,
+): unknown {
+  const segments = parse_path(path_str)
+  const start = root_label && segments[0] === root_label ? 1 : 0
+  if (start >= segments.length) return new_value
+  const cloned = JSON.parse(JSON.stringify(root))
+  let current: Record<string | number, unknown> = cloned
+  for (let idx = start; idx < segments.length - 1; idx++) {
+    const next = current[segments[idx]]
+    if (next === undefined || next === null) return root // bail — path no longer valid
+    current = next as Record<string | number, unknown>
+  }
+  current[segments[segments.length - 1]] = new_value
+  return cloned
+}
+
 // URL regex for auto-detection in string values
 const URL_RE = /^https?:\/\/\S+$/
 
