@@ -269,7 +269,11 @@ function build_scale(ticks: { px: number; value: number }[]): LinearScale {
   const first = ticks[0]
   const last = ticks[ticks.length - 1]
 
-  const px_per_unit = (last.px - first.px) / (last.value - first.value)
+  const range = last.value - first.value
+  if (range === 0) {
+    return { to_data: () => first.value, domain: [first.value, last.value] }
+  }
+  const px_per_unit = (last.px - first.px) / range
 
   return {
     to_data: (px: number) => first.value + (px - first.px) / px_per_unit,

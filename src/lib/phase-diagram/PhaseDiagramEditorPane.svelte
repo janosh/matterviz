@@ -72,6 +72,7 @@
     if (!original_input) return
     const cloned = JSON.parse(JSON.stringify(original_input)) as DiagramInput
     diagram_input = cloned
+    last_synced_input = cloned
     text_content = JSON.stringify(cloned, null, 2)
     parse_error = null
     try {

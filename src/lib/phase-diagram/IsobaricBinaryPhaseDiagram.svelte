@@ -133,8 +133,8 @@
     }
     try {
       rebuilt_data = build_diagram(diagram_input)
-    } catch {
-      // Keep last good data on build errors
+    } catch (err) {
+      console.warn(`Failed to rebuild diagram from input:`, err)
     }
   })
 
