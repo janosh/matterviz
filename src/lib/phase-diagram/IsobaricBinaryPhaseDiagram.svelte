@@ -11,13 +11,9 @@
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { build_diagram } from './build-diagram'
-  import type { DiagramInput } from './diagram-input'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
-  import PhaseDiagramEditorPane from './PhaseDiagramEditorPane.svelte'
   import PhaseDiagramExportPane from './PhaseDiagramExportPane.svelte'
   import PhaseDiagramTooltip from './PhaseDiagramTooltip.svelte'
-  import { parse_phase_diagram_svg } from './svg-to-diagram'
   import type {
     LeverRuleMode,
     PhaseDiagramConfig,
@@ -75,9 +71,6 @@
     export_filename?: string
     // Lever rule mode (horizontal = composition tie-line, vertical = temperature tie-line)
     lever_rule_mode?: LeverRuleMode
-    // Diagram input editor (for SVG drop editing)
-    diagram_input?: DiagramInput | null
-    editor_open?: boolean
     // Axis configuration
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -111,8 +104,6 @@
     png_dpi = $bindable(150),
     export_filename = `phase-diagram`,
     lever_rule_mode = $bindable(`horizontal`),
-    diagram_input = $bindable<DiagramInput | null>(null),
-    editor_open = $bindable(false),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     tooltip,
@@ -123,39 +114,6 @@
   // Shared icon/toggle styling for controls and export panes
   const pane_icon_style = `width: 14px; height: 14px`
   const pane_toggle_props = { style: `padding: 0; font-size: 18px` }
-
-  // When diagram_input is provided and changes, rebuild data from it
-  let rebuilt_data = $state<PhaseDiagramData | null>(null)
-  $effect(() => {
-    if (diagram_input) {
-      try {
-        rebuilt_data = build_diagram(diagram_input)
-      } catch {
-        // Keep last good data on build errors
-      }
-    } else {
-      rebuilt_data = null
-    }
-  })
-
-  // Use rebuilt data if available, otherwise fall back to the data prop
-  const effective_data = $derived(rebuilt_data ?? data)
-
-  // Handle SVG file drop directly on the component
-  function handle_svg_drop(event: DragEvent) {
-    event.preventDefault()
-    const file = event.dataTransfer?.files[0]
-    if (!file || !file.name.endsWith(`.svg`)) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      try {
-        diagram_input = parse_phase_diagram_svg(reader.result as string)
-      } catch (err) {
-        console.error(`Failed to parse dropped SVG:`, err)
-      }
-    }
-    reader.readAsText(file)
-  }
 
   // Merge config with centralized defaults using shared helper
   const merged_config = $derived(merge_phase_diagram_config(config))
@@ -182,7 +140,7 @@
     const hi = x_axis.range?.[1]
     if (lo != null && hi != null) return [lo, hi]
 
-    if (effective_data) {
+    if (data) {
       // Loop-based min/max to avoid stack overflow with large datasets
       let data_min = Infinity
       let data_max = -Infinity
@@ -190,13 +148,13 @@
         if (val < data_min) data_min = val
         if (val > data_max) data_max = val
       }
-      for (const region of effective_data.regions) {
+      for (const region of data.regions) {
         for (const vertex of region.vertices) update(vertex[0])
       }
-      for (const boundary of effective_data.boundaries) {
+      for (const boundary of data.boundaries) {
         for (const point of boundary.points) update(point[0])
       }
-      for (const sp of effective_data.special_points ?? []) update(sp.position[0])
+      for (const sp of data.special_points ?? []) update(sp.position[0])
 
       if (data_min <= data_max) {
         let x_min = lo ?? data_min
@@ -210,22 +168,20 @@
           const re = new RegExp(
             `\\b${comp.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`,
           )
-          return effective_data.regions.some((region) =>
+          return data.regions.some((region) =>
             re.test(region.name) &&
             region.vertices.some((v) => Math.abs(v[0] - x_val) < 1e-6)
           )
         }
         if (
           lo == null && x_min < 0.05 &&
-          effective_data.components[0] &&
-          comp_at_edge(effective_data.components[0], x_min)
+          data.components[0] && comp_at_edge(data.components[0], x_min)
         ) {
           x_min = 0
         }
         if (
           hi == null && x_max > 0.95 &&
-          effective_data.components[1] &&
-          comp_at_edge(effective_data.components[1], x_max)
+          data.components[1] && comp_at_edge(data.components[1], x_max)
         ) {
           x_max = 1
         }
@@ -241,10 +197,10 @@
 
   // Temperature units (guard for initial render when data may be undefined)
   const data_temp_unit = $derived<TempUnit>(
-    (effective_data?.temperature_unit ?? `K`) as TempUnit,
+    (data?.temperature_unit ?? `K`) as TempUnit,
   )
   const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
-  const temp_range = $derived(effective_data?.temperature_range ?? [0, 1000])
+  const temp_range = $derived(data?.temperature_range ?? [0, 1000])
 
   // Convert temperature range for display
   const display_temp_range = $derived<Vec2>([
@@ -277,7 +233,7 @@
 
   // Transform regions to SVG coordinates
   const transformed_regions = $derived(
-    (effective_data?.regions ?? []).map((region) => {
+    (data?.regions ?? []).map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
       const { width, height } = compute_bounding_box_2d(svg_vertices)
       const label_props = compute_label_properties(
@@ -306,7 +262,7 @@
 
   // Transform boundaries to SVG coordinates
   const transformed_boundaries = $derived(
-    (effective_data?.boundaries ?? []).map((boundary) => ({
+    (data?.boundaries ?? []).map((boundary) => ({
       ...boundary,
       svg_path: generate_boundary_path(
         transform_vertices(boundary.points, x_scale, y_scale),
@@ -316,7 +272,7 @@
 
   // Transform special points to SVG coordinates
   const transformed_special_points = $derived(
-    (effective_data?.special_points ?? []).map((point) => ({
+    (data?.special_points ?? []).map((point) => ({
       ...point,
       svg_x: x_scale(point.position[0]),
       svg_y: y_scale(point.position[1]),
@@ -424,10 +380,7 @@
     const svg_y = event.clientY - rect.top
 
     // Check if within plot area
-    if (
-      svg_x < left || svg_x > right || svg_y < top || svg_y > bottom ||
-      !effective_data
-    ) {
+    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom || !data) {
       clear_hover()
       return
     }
@@ -435,7 +388,7 @@
     // Convert to data coordinates and find phase
     const composition = x_scale.invert(svg_x)
     const temperature = y_scale.invert(svg_y)
-    const region = find_phase_at_point(composition, temperature, effective_data)
+    const region = find_phase_at_point(composition, temperature, data)
 
     // Check for nearby special point
     const nearby_special = show_special_points
@@ -500,22 +453,20 @@
   })
 
   // Component labels (guard for initial render when data may be undefined)
-  const component_a = $derived(effective_data?.components?.[0] ?? ``)
-  const component_b = $derived(effective_data?.components?.[1] ?? ``)
-  const comp_unit = $derived(effective_data?.composition_unit ?? `at%`)
+  const component_a = $derived(data?.components?.[0] ?? ``)
+  const component_b = $derived(data?.components?.[1] ?? ``)
+  const comp_unit = $derived(data?.composition_unit ?? `at%`)
 
   // Pseudo-binary support: format compound names with subscripts when enabled
-  const use_subscripts = $derived(
-    effective_data?.pseudo_binary?.use_subscripts ?? true,
-  )
+  const use_subscripts = $derived(data?.pseudo_binary?.use_subscripts ?? true)
 
   // Formatted component labels for SVG axis labels (with tspan subscripts if compound)
   const component_a_svg = $derived(format_formula_svg(component_a, use_subscripts))
   const component_b_svg = $derived(format_formula_svg(component_b, use_subscripts))
 
   // Custom axis labels from data (for pseudo-binary or special cases)
-  const data_x_axis_label = $derived(effective_data?.x_axis_label)
-  const data_y_axis_label = $derived(effective_data?.y_axis_label)
+  const data_x_axis_label = $derived(data?.x_axis_label)
+  const data_y_axis_label = $derived(data?.y_axis_label)
 
   // Default x-axis label as a single string (avoids mixing plain text with {@html})
   const default_x_axis_label = $derived.by(() => {
@@ -599,8 +550,6 @@
   bind:clientHeight={height}
   role="img"
   aria-label={`${component_a}-${component_b} binary phase diagram`}
-  ondrop={handle_svg_drop}
-  ondragover={(ev) => ev.preventDefault()}
 >
   {#if width > 0 && height > 0}
     <!-- Header controls -->
@@ -632,15 +581,6 @@
           {data}
           {wrapper}
           filename={export_filename}
-          icon_style={pane_icon_style}
-          toggle_props={pane_toggle_props}
-        />
-      {/if}
-      {#if diagram_input}
-        <PhaseDiagramEditorPane
-          bind:editor_open
-          bind:diagram_input
-          on_rebuild={(built) => rebuilt_data = built}
           icon_style={pane_icon_style}
           toggle_props={pane_toggle_props}
         />

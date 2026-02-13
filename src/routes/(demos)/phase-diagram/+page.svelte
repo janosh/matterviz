@@ -4,11 +4,7 @@
   import { page } from '$app/state'
   import FilePicker from '$lib/FilePicker.svelte'
   import { decompress_data } from '$lib/io/decompress'
-  import type {
-    DiagramInput,
-    PhaseDiagramData,
-    TdbParseResult,
-  } from '$lib/phase-diagram'
+  import type { PhaseDiagramData, TdbParseResult } from '$lib/phase-diagram'
   import {
     build_diagram,
     IsobaricBinaryPhaseDiagram,
@@ -26,7 +22,6 @@
   let current_file = $state<string>(``)
   let loading = $state(false)
   let error_message = $state<string | null>(null)
-  let current_diagram_input = $state<DiagramInput | null>(null)
 
   // Consolidated TDB file state
   interface TdbState {
@@ -181,8 +176,8 @@
       }
       if (is_svg(filename)) {
         if (typeof content === `string`) {
-          current_diagram_input = parse_phase_diagram_svg(content)
-          current_data = build_diagram(current_diagram_input)
+          const diagram_input = parse_phase_diagram_svg(content)
+          current_data = build_diagram(diagram_input)
           current_file = filename
           update_url(filename)
           tdb = null
@@ -334,11 +329,7 @@
     {#if current_data.title}
       <h3 class="diagram-title">{current_data.title}</h3>
     {/if}
-    <IsobaricBinaryPhaseDiagram
-      data={current_data}
-      bind:diagram_input={current_diagram_input}
-      style="height: 600px"
-    />
+    <IsobaricBinaryPhaseDiagram data={current_data} style="height: 600px" />
   {/if}
   {#if tdb}
     <TdbInfoPanel
