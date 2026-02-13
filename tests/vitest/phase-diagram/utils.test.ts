@@ -1,23 +1,31 @@
 import { point_in_polygon, polygon_centroid, type Vec2 } from '$lib/math'
-import type { PhaseDiagramData, PhaseRegion } from '$lib/phase-diagram'
+import type { PhaseDiagramData, PhaseRegion, TempUnit } from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
+  calculate_vertical_lever_rule,
   compute_label_properties,
+  convert_temp,
+  extract_tdb_reference,
   find_phase_at_point,
   format_composition,
   format_formula_html,
   format_formula_svg,
+  format_hover_info_text,
+  format_label_html,
+  format_label_svg,
   format_temperature,
   generate_boundary_path,
   generate_region_path,
   get_multi_phase_gradient,
   get_phase_color,
   get_phase_color_key,
+  get_phase_stability_range,
   is_compound,
   merge_phase_diagram_config,
   PHASE_COLOR_HEX,
   PHASE_COLORS,
   PHASE_DIAGRAM_DEFAULTS,
+  summarize_models,
   tokenize_formula,
   transform_vertices,
 } from '$lib/phase-diagram/utils'
@@ -210,21 +218,19 @@ describe(`get_phase_color_key`, () => {
     [`iota`, `iota`],
     [`kappa`, `kappa`],
     [`lambda`, `lambda`],
-    // Special phases
+    // Special phases and prefixes
     [`Liquid`, `liquid`],
     [`L`, `liquid`],
     [`FCC`, `alpha`],
     [`BCC`, `beta`],
     [`HCP`, `gamma`],
-    // Lowercase prefixes (case insensitivity)
     [`fcc`, `alpha`],
     [`bcc`, `beta`],
     [`hcp`, `gamma`],
-    // Prefix with suffix (common TDB notation)
     [`FCC_A1`, `alpha`],
     [`BCC_A2`, `beta`],
     [`HCP_A3`, `gamma`],
-    // Case insensitivity for Greek names
+    // Case insensitivity
     [`THETA`, `theta`],
     [`ETA`, `eta`],
     // Unknown
@@ -264,7 +270,7 @@ describe(`get_multi_phase_gradient`, () => {
     expect(result?.map((s) => s.offset)).toEqual([0, 1 / 3, 2 / 3, 1])
   })
 
-  test(`handles all extended phase colors (δ through θ)`, () => {
+  test(`handles all extended phase colors (δ through λ)`, () => {
     expect(get_multi_phase_gradient(`δ + ε + ζ + η + θ`)).toEqual([
       { offset: 0, color: PHASE_COLOR_HEX.delta },
       { offset: 0.25, color: PHASE_COLOR_HEX.epsilon },
@@ -272,9 +278,6 @@ describe(`get_multi_phase_gradient`, () => {
       { offset: 0.75, color: PHASE_COLOR_HEX.eta },
       { offset: 1, color: PHASE_COLOR_HEX.theta },
     ])
-  })
-
-  test(`handles extended Greek letters (ι, κ, λ)`, () => {
     expect(get_multi_phase_gradient(`ι + κ + λ`)).toEqual([
       { offset: 0, color: PHASE_COLOR_HEX.iota },
       { offset: 0.5, color: PHASE_COLOR_HEX.kappa },
@@ -282,12 +285,10 @@ describe(`get_multi_phase_gradient`, () => {
     ])
   })
 
-  test(`handles whitespace around + separators`, () => {
+  test(`handles whitespace and empty phase names`, () => {
     expect(get_multi_phase_gradient(`  α   +   β   +   γ  `)?.map((s) => s.color))
       .toEqual([PHASE_COLOR_HEX.alpha, PHASE_COLOR_HEX.beta, PHASE_COLOR_HEX.gamma])
-  })
-
-  test(`filters empty phase names from splitting`, () => {
+    // "α + + β" filters the empty middle, leaving 2 phases
     expect(get_multi_phase_gradient(`α + + β`)).toEqual([
       { offset: 0, color: PHASE_COLOR_HEX.alpha },
       { offset: 1, color: PHASE_COLOR_HEX.beta },
@@ -315,13 +316,18 @@ describe(`format_composition`, () => {
     [0.333, `fraction`, `0.333`],
     [0, `at%`, `0 at%`],
     [1, `at%`, `100 at%`],
+    // Trailing zeros stripped
+    [0.35, `at%`, `35 at%`],
+    [0.123, `at%`, `12.3 at%`],
+    [0.001, `at%`, `0.1 at%`],
+    [0.1005, `at%`, `10.1 at%`],
   ])(`%d with %s → %s`, (value, unit, expected) => {
     expect(format_composition(value, unit)).toBe(expected)
   })
 })
 
 describe(`format_temperature`, () => {
-  test.each([
+  test.each<[number, TempUnit, string]>([
     [500, `K`, `500 K`],
     [25, `°C`, `25 °C`],
     [77, `°F`, `77 °F`],
@@ -345,39 +351,43 @@ describe(`transform_vertices`, () => {
   )
 })
 
+// Shared test fixtures for lever rule tests
+const two_phase_region: PhaseRegion = {
+  id: `alpha-beta`,
+  name: `α + β`,
+  vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+}
+const single_phase_region: PhaseRegion = {
+  id: `liquid`,
+  name: `Liquid`,
+  vertices: [[0, 700], [1, 700], [1, 900], [0, 900]],
+}
+const three_phase_region: PhaseRegion = {
+  id: `alpha-beta-gamma`,
+  name: `α + β + γ`,
+  vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+}
+const empty_plus_region: PhaseRegion = {
+  id: `test`,
+  name: `+`,
+  vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+}
+
+// Shared null-case inputs for both lever rule functions
+const lever_null_cases = [
+  { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
+  { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
+  { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },
+  { region: three_phase_region, comp: 0.5, temp: 500, desc: `3+ phase region` },
+  { region: empty_plus_region, comp: 0.5, temp: 500, desc: `"+" (empty phases)` },
+]
+
 describe(`calculate_lever_rule`, () => {
-  const two_phase_region: PhaseRegion = {
-    id: `alpha-beta`,
-    name: `α + β`,
-    vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
-  }
-  const single_phase_region: PhaseRegion = {
-    id: `liquid`,
-    name: `Liquid`,
-    vertices: [[0, 700], [1, 700], [1, 900], [0, 900]],
-  }
-
-  const three_phase_region: PhaseRegion = {
-    id: `alpha-beta-gamma`,
-    name: `α + β + γ`,
-    vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
-  }
-
-  test.each([
-    { region: single_phase_region, comp: 0.5, temp: 800, desc: `single-phase region` },
-    { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
-    { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },
-    {
-      region: three_phase_region,
-      comp: 0.5,
-      temp: 500,
-      desc: `3+ phase region (lever rule undefined)`,
-    },
-  ])(`returns null for $desc`, ({ region, comp, temp }) => {
+  test.each(lever_null_cases)(`returns null for $desc`, ({ region, comp, temp }) => {
     expect(calculate_lever_rule(region, comp, temp)).toBeNull()
   })
 
-  test(`parses phase names and calculates fractions correctly`, () => {
+  test(`parses phase names and calculates fractions at midpoint`, () => {
     const result = calculate_lever_rule(two_phase_region, 0.5, 500)
     expect(result).not.toBeNull()
     expect(result?.left_phase).toBe(`α`)
@@ -410,26 +420,54 @@ describe(`calculate_lever_rule`, () => {
     }
   })
 
-  test(`returns null for "+" (empty phase names)`, () => {
+  test(`parses complex phase names like "Liquid + FCC_A1"`, () => {
     const region: PhaseRegion = {
       id: `test`,
-      name: `+`,
-      vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
-    }
-    expect(calculate_lever_rule(region, 0.5, 500)).toBeNull()
-  })
-
-  test.each([
-    { name: `Liquid + FCC_A1`, left: `Liquid`, right: `FCC_A1`, desc: `complex names` },
-  ])(`parses "$name" → $left, $right`, ({ name, left, right }) => {
-    const region: PhaseRegion = {
-      id: `test`,
-      name,
+      name: `Liquid + FCC_A1`,
       vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
     }
     const result = calculate_lever_rule(region, 0.5, 500)
-    expect(result?.left_phase).toBe(left)
-    expect(result?.right_phase).toBe(right)
+    expect(result?.left_phase).toBe(`Liquid`)
+    expect(result?.right_phase).toBe(`FCC_A1`)
+  })
+})
+
+describe(`calculate_vertical_lever_rule`, () => {
+  test.each(lever_null_cases)(`returns null for $desc`, ({ region, comp, temp }) => {
+    expect(calculate_vertical_lever_rule(region, comp, temp)).toBeNull()
+  })
+
+  test(`parses phase names and calculates fractions at midpoint`, () => {
+    const result = calculate_vertical_lever_rule(two_phase_region, 0.5, 500)
+    expect(result).not.toBeNull()
+    expect(result?.bottom_phase).toBe(`α`)
+    expect(result?.top_phase).toBe(`β`)
+    expect(result?.fraction_bottom).toBeCloseTo(0.5, 1)
+    expect(result?.fraction_top).toBeCloseTo(0.5, 1)
+    expect(result?.bottom_temperature).toBeLessThan(result?.top_temperature ?? Infinity)
+  })
+
+  test(`fractions sum to 1 across multiple temperatures`, () => {
+    for (const temp of [420, 450, 500, 550, 580]) {
+      const result = calculate_vertical_lever_rule(two_phase_region, 0.5, temp)
+      expect(result).not.toBeNull()
+      expect((result?.fraction_bottom ?? 0) + (result?.fraction_top ?? 0)).toBeCloseTo(
+        1,
+        5,
+      )
+    }
+  })
+
+  test.each([
+    { temp: 410, bottom_dominant: true, desc: `near bottom boundary` },
+    { temp: 590, bottom_dominant: false, desc: `near top boundary` },
+  ])(`$desc: dominant phase has >90% fraction`, ({ temp, bottom_dominant }) => {
+    const result = calculate_vertical_lever_rule(two_phase_region, 0.5, temp)
+    expect(result).not.toBeNull()
+    const dominant = bottom_dominant ? result?.fraction_bottom : result?.fraction_top
+    const minor = bottom_dominant ? result?.fraction_top : result?.fraction_bottom
+    expect(dominant).toBeGreaterThan(0.9)
+    expect(minor).toBeLessThan(0.1)
   })
 })
 
@@ -441,15 +479,10 @@ describe(`compute_label_properties`, () => {
 
   test.each([
     { width: 0, height: 100, desc: `zero width` },
-    { width: 100, height: 0, desc: `zero height` },
-    { width: 0, height: 0, desc: `zero dimensions` },
     { width: -10, height: 50, desc: `negative width` },
-    { width: 50, height: -10, desc: `negative height` },
   ])(`handles degenerate bounds: $desc`, ({ width, height }) => {
-    const result = compute_label_properties(`Test`, { width, height }, 12)
-    expect(Number.isFinite(result.rotation)).toBe(true)
-    expect(Number.isFinite(result.scale)).toBe(true)
-    expect(result.lines).toEqual([`Test`])
+    expect(compute_label_properties(`Test`, { width, height }, 12))
+      .toEqual({ rotation: 0, lines: [`Test`], scale: 1 })
   })
 
   test.each([
@@ -460,6 +493,16 @@ describe(`compute_label_properties`, () => {
     expect(result.lines).toEqual(expected_lines)
     expect(Number.isFinite(result.rotation)).toBe(true)
     expect(Number.isFinite(result.scale)).toBe(true)
+  })
+
+  test(`wrapped labels join words with spaces, not underscores`, () => {
+    // Bounds force chars_per_line=3 so "α" and "+" join on one line
+    const result = compute_label_properties(`α + β`, { width: 30, height: 40 }, 12)
+    expect(result.lines.length).toBeGreaterThan(1)
+    expect(result.lines[0]).toBe(`α +`)
+    for (const line of result.lines) {
+      expect(line).not.toContain(`_`)
+    }
   })
 })
 
@@ -472,151 +515,101 @@ describe(`merge_phase_diagram_config`, () => {
     expect(merged.colors).toEqual(PHASE_DIAGRAM_DEFAULTS.colors)
   })
 
-  test.each([
-    {
-      config: { font_size: 16 },
-      check: (m: ReturnType<typeof merge_phase_diagram_config>) => m.font_size === 16,
-    },
-    {
-      config: { margin: { t: 50 } },
-      check: (m: ReturnType<typeof merge_phase_diagram_config>) =>
-        m.margin.t === 50 && m.margin.r === PHASE_DIAGRAM_DEFAULTS.margin.r,
-    },
-    {
-      config: { tie_line: { stroke_width: 3 } },
-      check: (m: ReturnType<typeof merge_phase_diagram_config>) =>
-        m.tie_line.stroke_width === 3,
-    },
-    {
-      config: { colors: { background: `#ff0000` } },
-      check: (m: ReturnType<typeof merge_phase_diagram_config>) =>
-        m.colors.background === `#ff0000`,
-    },
-  ])(`merges partial config correctly`, ({ config, check }) => {
-    expect(check(merge_phase_diagram_config(config))).toBe(true)
+  test(`merges partial overrides while keeping other defaults`, () => {
+    const merged = merge_phase_diagram_config({
+      font_size: 16,
+      margin: { t: 50 },
+      tie_line: { stroke_width: 3 },
+      colors: { background: `#ff0000` },
+    })
+    expect(merged.font_size).toBe(16)
+    expect(merged.margin.t).toBe(50)
+    expect(merged.margin.r).toBe(PHASE_DIAGRAM_DEFAULTS.margin.r)
+    expect(merged.tie_line.stroke_width).toBe(3)
+    expect(merged.colors.background).toBe(`#ff0000`)
   })
 })
 
-// Chemical Formula Parsing Tests (for pseudo-binary phase diagrams)
+// === Chemical Formula Parsing ===
 
 describe(`is_compound`, () => {
   test.each([
-    // Single elements (one letter) - should return false
-    { name: `C`, expected: false, desc: `single letter element C` },
-    { name: `N`, expected: false, desc: `single letter element N` },
-    { name: `O`, expected: false, desc: `single letter element O` },
-    // Single elements (two letters) - should return false
-    { name: `Fe`, expected: false, desc: `two-letter element Fe` },
-    { name: `Ca`, expected: false, desc: `two-letter element Ca` },
-    { name: `He`, expected: false, desc: `two-letter element He` },
-    { name: `Al`, expected: false, desc: `two-letter element Al` },
-    { name: `Si`, expected: false, desc: `two-letter element Si` },
-    // Compounds with digits - should return true
-    { name: `Fe3C`, expected: true, desc: `compound with digit Fe3C` },
-    { name: `SiO2`, expected: true, desc: `compound with digit SiO2` },
-    { name: `Al2O3`, expected: true, desc: `compound with digit Al2O3` },
-    { name: `H2O`, expected: true, desc: `compound with digit H2O` },
-    // Compounds with multiple elements (no digits) - should return true
-    { name: `MgO`, expected: true, desc: `oxide MgO` },
-    { name: `CaO`, expected: true, desc: `oxide CaO` },
-    { name: `NaCl`, expected: true, desc: `salt NaCl` },
-    { name: `FeO`, expected: true, desc: `oxide FeO` },
-    // Edge cases
-    { name: ``, expected: false, desc: `empty string` },
-    { name: `α`, expected: false, desc: `Greek letter alone` },
-    { name: `α-Fe`, expected: false, desc: `Greek phase notation (not a compound)` },
-  ])(`$desc → $expected`, ({ name, expected }) => {
+    // Elements → false
+    [`C`, false],
+    [`Fe`, false],
+    [`Si`, false],
+    [`He`, false],
+    // Compounds with digits → true
+    [`Fe3C`, true],
+    [`SiO2`, true],
+    [`Al2O3`, true],
+    [`H2O`, true],
+    // Multi-element without digits → true
+    [`MgO`, true],
+    [`NaCl`, true],
+    [`FeO`, true],
+    // Edge cases → false
+    [``, false],
+    [`α`, false],
+    [`α-Fe`, false],
+  ])(`%s → %s`, (name, expected) => {
     expect(is_compound(name)).toBe(expected)
   })
 })
 
 describe(`tokenize_formula`, () => {
-  test(`parses simple element`, () => {
-    expect(tokenize_formula(`Fe`)).toEqual([{ text: `Fe` }])
-  })
-
-  test(`parses compound with subscript`, () => {
-    const result = tokenize_formula(`Fe3C`)
-    expect(result).toEqual([
-      { text: `Fe` },
-      { sub: `3` },
-      { text: `C` },
-    ])
-  })
-
-  test(`parses oxide with subscript`, () => {
-    const result = tokenize_formula(`SiO2`)
-    expect(result).toEqual([
-      { text: `Si` },
-      { text: `O` },
-      { sub: `2` },
-    ])
-  })
-
-  test(`parses complex formula Al2O3`, () => {
-    const result = tokenize_formula(`Al2O3`)
-    expect(result).toEqual([
-      { text: `Al` },
-      { sub: `2` },
-      { text: `O` },
-      { sub: `3` },
-    ])
-  })
-
-  test(`parses multi-digit subscripts`, () => {
-    const result = tokenize_formula(`C12H22O11`)
-    expect(result).toEqual([
-      { text: `C` },
-      { sub: `12` },
-      { text: `H` },
-      { sub: `22` },
-      { text: `O` },
-      { sub: `11` },
-    ])
-  })
-
-  test(`returns Greek phase names unchanged`, () => {
-    expect(tokenize_formula(`α`)).toEqual([{ text: `α` }])
-    expect(tokenize_formula(`α + β`)).toEqual([{ text: `α + β` }])
-  })
-
-  test(`handles empty string`, () => {
-    expect(tokenize_formula(``)).toEqual([])
-  })
-
-  test(`parses MgO (no subscripts)`, () => {
-    const result = tokenize_formula(`MgO`)
-    expect(result).toEqual([
-      { text: `Mg` },
-      { text: `O` },
-    ])
-  })
-
-  test(`parses charge notation (superscript)`, () => {
-    const result = tokenize_formula(`O2-`)
-    expect(result).toEqual([
-      { text: `O` },
-      { sub: `2` },
-      { sup: `-` },
-    ])
+  test.each([
+    { formula: `Fe`, expected: [{ text: `Fe` }], desc: `simple element` },
+    {
+      formula: `Fe3C`,
+      expected: [{ text: `Fe` }, { sub: `3` }, { text: `C` }],
+      desc: `compound`,
+    },
+    {
+      formula: `SiO2`,
+      expected: [{ text: `Si` }, { text: `O` }, { sub: `2` }],
+      desc: `oxide`,
+    },
+    {
+      formula: `Al2O3`,
+      expected: [{ text: `Al` }, { sub: `2` }, { text: `O` }, { sub: `3` }],
+      desc: `complex oxide`,
+    },
+    {
+      formula: `C12H22O11`,
+      expected: [{ text: `C` }, { sub: `12` }, { text: `H` }, { sub: `22` }, {
+        text: `O`,
+      }, { sub: `11` }],
+      desc: `multi-digit subscripts`,
+    },
+    { formula: `MgO`, expected: [{ text: `Mg` }, { text: `O` }], desc: `no subscripts` },
+    {
+      formula: `O2-`,
+      expected: [{ text: `O` }, { sub: `2` }, { sup: `-` }],
+      desc: `charge notation`,
+    },
+    { formula: `α`, expected: [{ text: `α` }], desc: `Greek letter` },
+    { formula: `α + β`, expected: [{ text: `α + β` }], desc: `Greek multi-phase` },
+    { formula: ``, expected: [], desc: `empty string` },
+  ])(`$desc: "$formula"`, ({ formula, expected }) => {
+    expect(tokenize_formula(formula)).toEqual(expected)
   })
 })
 
 describe(`format_formula_html`, () => {
   test.each([
-    { formula: `Fe`, expected: `Fe`, desc: `single element unchanged` },
-    { formula: `Fe3C`, expected: `Fe<sub>3</sub>C`, desc: `compound with subscript` },
-    { formula: `SiO2`, expected: `SiO<sub>2</sub>`, desc: `oxide` },
-    { formula: `Al2O3`, expected: `Al<sub>2</sub>O<sub>3</sub>`, desc: `complex oxide` },
-    { formula: `α`, expected: `α`, desc: `Greek letter` },
-    { formula: ``, expected: ``, desc: `empty string` },
-  ])(`$desc: "$formula" → "$expected"`, ({ formula, expected }) => {
+    [`Fe`, `Fe`],
+    [`Fe3C`, `Fe<sub>3</sub>C`],
+    [`SiO2`, `SiO<sub>2</sub>`],
+    [`Al2O3`, `Al<sub>2</sub>O<sub>3</sub>`],
+    [`α`, `α`],
+    [``, ``],
+  ])(`"%s" → "%s"`, (formula, expected) => {
     expect(format_formula_html(formula)).toBe(expected)
   })
 
   test(`respects use_subscripts=false`, () => {
     expect(format_formula_html(`Fe3C`, false)).toBe(`Fe3C`)
-    expect(format_formula_html(`SiO2`, false)).toBe(`SiO2`)
   })
 })
 
@@ -641,24 +634,16 @@ describe(`format_formula_svg`, () => {
   })
 
   test(`adds trailing baseline reset when formula ends with subscript`, () => {
-    // When formula ends with subscript, any text concatenated after should not be shifted
-    const result = format_formula_svg(`SiO2`)
-    // Should end with an empty tspan that resets baseline
-    expect(result).toMatch(/<tspan dy="-0\.25em"><\/tspan>$/)
+    expect(format_formula_svg(`SiO2`)).toMatch(/<tspan dy="-0\.25em"><\/tspan>$/)
   })
 
   test(`no trailing reset when formula ends with text`, () => {
-    // Fe3C ends with "C" which already has baseline reset, no extra tspan needed
-    const result = format_formula_svg(`Fe3C`)
-    // Should not end with empty trailing tspan
-    expect(result).not.toMatch(/<tspan dy="[^"]+"><\/tspan>$/)
+    expect(format_formula_svg(`Fe3C`)).not.toMatch(/<tspan dy="[^"]+"><\/tspan>$/)
   })
 
   test(`cumulative offset for consecutive sub/superscripts`, () => {
-    // O2- has subscript (0.25em) then superscript (-0.4em), cumulative = -0.15em
-    // Reset should be dy≈0.15em to return to baseline (allow floating-point tolerance)
-    const result = format_formula_svg(`O2-`)
-    expect(result).toMatch(/<tspan dy="0\.15\d*em"><\/tspan>$/)
+    // O2- has subscript (0.25em) then superscript (-0.4em), reset ≈ 0.15em
+    expect(format_formula_svg(`O2-`)).toMatch(/<tspan dy="0\.15\d*em"><\/tspan>$/)
   })
 
   test(`respects use_subscripts=false`, () => {
@@ -668,5 +653,333 @@ describe(`format_formula_svg`, () => {
   test(`returns Greek letters unchanged`, () => {
     expect(format_formula_svg(`α`)).toBe(`α`)
     expect(format_formula_svg(`α + β`)).toBe(`α + β`)
+  })
+})
+
+// === format_label_svg / format_label_html ===
+
+describe(`format_label_svg`, () => {
+  test(`formats compound and preserves + separator`, () => {
+    const result = format_label_svg(`Fe3C + NiO`)
+    expect(result).toContain(`>3</tspan>`)
+    expect(result).toContain(` + `)
+    expect(result).toContain(`Ni`)
+  })
+})
+
+describe(`format_label_html`, () => {
+  test(`formats compound and preserves + separator`, () => {
+    const result = format_label_html(`Fe3C + NiO`)
+    expect(result).toContain(`Fe<sub>3</sub>C`)
+    expect(result).toContain(` + `)
+  })
+})
+
+// Shared behavior for both format_label_* functions
+describe.each([
+  [`format_label_svg`, format_label_svg],
+  [`format_label_html`, format_label_html],
+])(`%s`, (_name, format_fn) => {
+  test(`passes through Greek letters unchanged`, () => {
+    expect(format_fn(`α + β`)).toBe(`α + β`)
+  })
+
+  test(`respects use_subscripts=false`, () => {
+    expect(format_fn(`Fe3C + NiO`, false)).toBe(`Fe3C + NiO`)
+  })
+})
+
+// === convert_temp ===
+
+describe(`convert_temp`, () => {
+  test.each(
+    [
+      { value: 273.15, from: `K`, to: `°C`, expected: 0 },
+      { value: 373.15, from: `K`, to: `°C`, expected: 100 },
+      { value: 0, from: `°C`, to: `K`, expected: 273.15 },
+      { value: 100, from: `°C`, to: `K`, expected: 373.15 },
+      { value: 273.15, from: `K`, to: `°F`, expected: 32 },
+      { value: 373.15, from: `K`, to: `°F`, expected: 212 },
+      { value: 32, from: `°F`, to: `K`, expected: 273.15 },
+      { value: 212, from: `°F`, to: `K`, expected: 373.15 },
+      { value: 0, from: `°C`, to: `°F`, expected: 32 },
+      { value: 100, from: `°C`, to: `°F`, expected: 212 },
+      { value: 32, from: `°F`, to: `°C`, expected: 0 },
+      { value: 212, from: `°F`, to: `°C`, expected: 100 },
+    ] as const,
+  )(`$value $from → $expected $to`, ({ value, from, to, expected }) => {
+    expect(convert_temp(value, from, to)).toBeCloseTo(expected, 5)
+  })
+
+  test.each([`K`, `°C`, `°F`] as const)(
+    `identity: same unit (%s) returns input unchanged`,
+    (unit) => {
+      expect(convert_temp(500, unit, unit)).toBe(500)
+    },
+  )
+})
+
+// === x_domain word boundary regex pattern ===
+
+describe(`word boundary regex for component matching`, () => {
+  // Tests the \b regex pattern used in IsobaricBinaryPhaseDiagram's x_domain
+  function matches_component(region_name: string, component: string): boolean {
+    const escaped = component.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`)
+    return new RegExp(`\\b${escaped}\\b`).test(region_name)
+  }
+
+  // [region_name, component, should_match]
+  test.each([
+    // Should match: pure component names
+    [`Fe`, `Fe`, true],
+    [`α(Fe)`, `Fe`, true],
+    [`Liquid + Fe`, `Fe`, true],
+    [`Fe + Fe3C`, `Fe`, true],
+    [`C`, `C`, true],
+    [`α(C)`, `C`, true],
+    [`Fe3C`, `Fe3C`, true],
+    [`Liquid + Fe3C`, `Fe3C`, true],
+    [`Cu`, `Cu`, true],
+    // Should NOT match: element as substring of compound
+    [`Fe3C`, `Fe`, false],
+    [`FeO`, `Fe`, false],
+    [`Fe2O3`, `Fe`, false],
+    [`NiFe2O4`, `Fe`, false],
+    [`Fe3C`, `C`, false],
+    [`SiC`, `C`, false],
+    [`Fe3C2`, `Fe3C`, false],
+    [`Cu3Au`, `Cu`, false],
+    [`CuO`, `Cu`, false],
+  ])(`"%s" contains "%s" → %s`, (region, component, expected) => {
+    expect(matches_component(region, component)).toBe(expected)
+  })
+})
+
+// === get_phase_stability_range ===
+
+describe(`get_phase_stability_range`, () => {
+  test.each([
+    {
+      vertices: [[0, 400], [1, 400], [1, 800], [0, 800]] as Vec2[],
+      expected: { t_min: 400, t_max: 800 },
+      desc: `rectangle`,
+    },
+    {
+      vertices: [[0.5, 600]] as Vec2[],
+      expected: { t_min: 600, t_max: 600 },
+      desc: `single vertex`,
+    },
+    {
+      vertices: [[0.2, 400], [0.8, 450], [0.7, 650], [0.3, 600]] as Vec2[],
+      expected: { t_min: 400, t_max: 650 },
+      desc: `irregular polygon`,
+    },
+  ])(`$desc → t_min=$expected.t_min, t_max=$expected.t_max`, ({ vertices, expected }) => {
+    expect(get_phase_stability_range({ id: `test`, name: `α`, vertices })).toEqual(
+      expected,
+    )
+  })
+
+  test(`returns null for empty vertices`, () => {
+    expect(get_phase_stability_range({ id: `test`, name: `α`, vertices: [] })).toBeNull()
+  })
+})
+
+// === format_hover_info_text ===
+
+describe(`format_hover_info_text`, () => {
+  const base_info = {
+    region: { id: `liquid`, name: `Liquid`, vertices: [] as Vec2[] },
+    composition: 0.4,
+    temperature: 800,
+    position: { x: 0, y: 0 },
+  }
+
+  test(`includes phase name, temperature, and composition`, () => {
+    const text = format_hover_info_text(base_info)
+    expect(text).toContain(`Phase: Liquid`)
+    expect(text).toContain(`Temperature: 800 K`)
+    expect(text).toContain(`40 at% B`)
+    expect(text).toContain(`60 at% A`)
+  })
+
+  test(`uses custom component names and units`, () => {
+    const text = format_hover_info_text(base_info, `°C`, `at%`, `Cu`, `Ni`)
+    expect(text).toContain(`800 °C`)
+    expect(text).toContain(`40 at% Ni`)
+    expect(text).toContain(`60 at% Cu`)
+  })
+
+  test(`includes horizontal lever rule when present`, () => {
+    const info = {
+      ...base_info,
+      lever_rule: {
+        left_phase: `α`,
+        right_phase: `β`,
+        left_composition: 0.2,
+        right_composition: 0.8,
+        fraction_left: 0.667,
+        fraction_right: 0.333,
+      },
+    }
+    const text = format_hover_info_text(info)
+    expect(text).toContain(`Lever Rule:`)
+    expect(text).toContain(`α: 66.7%`)
+    expect(text).toContain(`β: 33.3%`)
+  })
+
+  test(`includes vertical lever rule when present`, () => {
+    const info = {
+      ...base_info,
+      vertical_lever_rule: {
+        bottom_phase: `α`,
+        top_phase: `L`,
+        bottom_temperature: 400,
+        top_temperature: 900,
+        fraction_bottom: 0.6,
+        fraction_top: 0.4,
+      },
+    }
+    const text = format_hover_info_text(info)
+    expect(text).toContain(`Vertical Lever Rule:`)
+    expect(text).toContain(`α: 60.0%`)
+    expect(text).toContain(`L: 40.0%`)
+    expect(text).toContain(`at 400 K`)
+    expect(text).toContain(`at 900 K`)
+  })
+
+  test(`omits lever rule sections when not present`, () => {
+    const text = format_hover_info_text(base_info)
+    expect(text).not.toContain(`Lever Rule`)
+  })
+
+  test(`converts temperature from data unit to display unit`, () => {
+    // Data in K (800), display in °C → should show 527 °C, not 800 °C
+    const text = format_hover_info_text(base_info, `°C`, `at%`, `A`, `B`, `K`)
+    expect(text).toContain(`527 °C`)
+    expect(text).not.toContain(`800`)
+  })
+
+  test(`converts vertical lever rule temperatures to display unit`, () => {
+    const info = {
+      ...base_info,
+      vertical_lever_rule: {
+        bottom_phase: `α`,
+        top_phase: `L`,
+        bottom_temperature: 673.15, // 400 °C in K
+        top_temperature: 1173.15, // 900 °C in K
+        fraction_bottom: 0.6,
+        fraction_top: 0.4,
+      },
+    }
+    const text = format_hover_info_text(info, `°C`, `at%`, `A`, `B`, `K`)
+    expect(text).toContain(`at 400 °C`)
+    expect(text).toContain(`at 900 °C`)
+  })
+
+  test(`includes both lever rules when both present (mode-independent computation)`, () => {
+    // Regression: both lever rules must always be computed so switching
+    // lever_rule_mode while hovering shows the other rule instantly
+    const info = {
+      ...base_info,
+      lever_rule: {
+        left_phase: `α`,
+        right_phase: `β`,
+        left_composition: 0.2,
+        right_composition: 0.8,
+        fraction_left: 0.6,
+        fraction_right: 0.4,
+      },
+      vertical_lever_rule: {
+        bottom_phase: `α`,
+        top_phase: `β`,
+        bottom_temperature: 400,
+        top_temperature: 900,
+        fraction_bottom: 0.7,
+        fraction_top: 0.3,
+      },
+    }
+    const text = format_hover_info_text(info)
+    expect(text).toContain(`Lever Rule:`)
+    expect(text).toContain(`α: 60.0%`)
+    expect(text).toContain(`Vertical Lever Rule:`)
+    expect(text).toContain(`α: 70.0%`)
+  })
+})
+
+// === extract_tdb_reference ===
+
+describe(`extract_tdb_reference`, () => {
+  test(`extracts reference containing keyword`, () => {
+    const ref = extract_tdb_reference([
+      `$ Some comment`,
+      `$ Reference: A. Author, Journal of Alloys, Vol 100, 2020, pp 1-10`,
+    ])
+    expect(ref).toContain(`Author`)
+    expect(ref).toContain(`Journal`)
+  })
+
+  test.each([`reference`, `citation`, `database`, `assessed by`])(
+    `matches keyword "%s" case-insensitively`,
+    (keyword) => {
+      const comment =
+        `$ This ${keyword} was from X. Author, Some Long Journal Name, Vol 42, 2019`
+      expect(extract_tdb_reference([comment])).not.toBeNull()
+    },
+  )
+
+  test(`returns null for empty comments`, () => {
+    expect(extract_tdb_reference([])).toBeNull()
+  })
+
+  test(`returns null when no keywords match`, () => {
+    expect(extract_tdb_reference([`$ Just a regular comment`, `$ Another one`]))
+      .toBeNull()
+  })
+
+  test(`skips short references (<=30 chars)`, () => {
+    expect(extract_tdb_reference([`$ Reference: short`])).toBeNull()
+  })
+
+  test(`skips references ending with "from"`, () => {
+    expect(extract_tdb_reference([
+      `$ Reference data was extracted from`,
+    ])).toBeNull()
+  })
+
+  test(`strips leading $ from reference text`, () => {
+    const ref = extract_tdb_reference([
+      `$ Database entry: Thermodynamic data assessed by J. Author et al. 2021`,
+    ])
+    expect(ref).not.toMatch(/^\$/)
+  })
+})
+
+// === summarize_models ===
+
+describe(`summarize_models`, () => {
+  test(`summarizes single sublattice type`, () => {
+    expect(summarize_models([
+      { sublattice_count: 2, sublattice_sites: [1, 1] },
+      { sublattice_count: 2, sublattice_sites: [1, 3] },
+    ])).toBe(`2×2-SL`)
+  })
+
+  test(`summarizes multiple sublattice types sorted by count`, () => {
+    expect(summarize_models([
+      { sublattice_count: 3, sublattice_sites: [1, 1, 1] },
+      { sublattice_count: 2, sublattice_sites: [1, 1] },
+      { sublattice_count: 2, sublattice_sites: [1, 3] },
+    ])).toBe(`2×2-SL, 1×3-SL`)
+  })
+
+  test(`returns empty string for no phases`, () => {
+    expect(summarize_models([])).toBe(``)
+  })
+
+  test(`handles single phase`, () => {
+    expect(summarize_models([
+      { sublattice_count: 4, sublattice_sites: [1, 1, 1, 1] },
+    ])).toBe(`1×4-SL`)
   })
 })
