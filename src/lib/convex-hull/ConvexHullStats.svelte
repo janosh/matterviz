@@ -307,7 +307,7 @@
         get_alphabetical_formula(entry.composition, true, ``)
       const normalized_formula = normalize_formula_markup(formula_source)
       const formatted_formula = get_electro_neg_formula(normalized_formula)
-      const formula_html = formatted_formula || escape_html(formula_source)
+      const formula_html = formatted_formula || escape_html(normalized_formula)
       // Match by entry_id or common data fields (mat_id, structure_id)
       // since entry_id may be wrapped in HTML (e.g. <a> tags)
       const entry_data = entry.data as Record<string, unknown> | undefined

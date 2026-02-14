@@ -24,17 +24,14 @@
     show_pane?: boolean
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    children?: Snippet<[{
-      controls_open: boolean
-    }]>
+    children?: Snippet<[{ controls_open: boolean }]>
   } = $props()
 
   function merge_styles(base_style: string, override_style: unknown): string {
     const override_style_str = typeof override_style === `string`
       ? override_style
       : ``
-    if (!override_style_str) return base_style
-    return `${base_style}; ${override_style_str}`
+    return override_style_str ? `${base_style}; ${override_style_str}` : base_style
   }
 
   let show_toggle = $derived(controls_open || toggle_visible)
@@ -49,7 +46,7 @@
       `transition: var(--heatmap-matrix-controls-toggle-transition, opacity 0.2s ease)`,
     ].join(`; `),
   )
-  let default_pane_style = [
+  const default_pane_style = [
     `z-index: var(--heatmap-matrix-controls-pane-z-index, 25)`,
     `min-width: var(--heatmap-matrix-controls-pane-min-width, 220px)`,
   ].join(`; `)
