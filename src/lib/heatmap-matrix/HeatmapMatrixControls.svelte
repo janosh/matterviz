@@ -67,6 +67,7 @@
     transition: opacity 0.2s ease;
   }
   :global(.heatmap-controls-anchor:hover button.heatmap-matrix-controls-toggle),
+  :global(.heatmap-controls-anchor:focus-within button.heatmap-matrix-controls-toggle),
   :global(button.heatmap-matrix-controls-toggle[aria-expanded='true']) {
     opacity: 1;
     pointer-events: auto;

@@ -1,9 +1,13 @@
 import type { ElementAxisOrderingKey } from '$lib/heatmap-matrix'
 import { HeatmapMatrixControls, ORDERING_LABELS } from '$lib/heatmap-matrix'
 import { mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test } from 'vitest'
 
 describe(`HeatmapMatrixControls`, () => {
+  beforeEach(() => {
+    document.body.innerHTML = ``
+  })
+
   test(`renders draggable toggle and ordering options`, () => {
     mount(HeatmapMatrixControls, {
       target: document.body,
