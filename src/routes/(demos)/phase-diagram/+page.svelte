@@ -109,6 +109,17 @@
           }
         }
         return true
+      } else if (is_svg(filename)) {
+        const res = await fetch(url)
+        if (is_stale(token)) return false
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+        const content = await res.text()
+        if (is_stale(token)) return false
+        current_diagram_input = parse_phase_diagram_svg(content)
+        current_data = build_diagram(current_diagram_input)
+        current_file = filename
+        if (update_url_param) update_url(filename)
+        return true
       } else {
         // JSON files: load directly
         const data = await load_binary_phase_diagram(url)

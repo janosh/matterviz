@@ -5,29 +5,21 @@
   import { tooltip } from 'svelte-multiselect/attachments'
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
-  import type { PhaseDiagramData } from './types'
 
   let {
     editor_open = $bindable(false),
     diagram_input = $bindable<DiagramInput | null>(null),
-    on_rebuild,
     icon_style = ``,
     toggle_props: caller_toggle_props = {},
   }: {
     editor_open?: boolean
     diagram_input?: DiagramInput | null
-    on_rebuild?: (data: PhaseDiagramData) => void
     icon_style?: string
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
 
-  // Track the original input for reset
+  // Track the original input for reset (updated on each new external input)
   let original_input = $state<DiagramInput | null>(null)
-  $effect(() => {
-    if (diagram_input && !original_input) {
-      original_input = JSON.parse(JSON.stringify(diagram_input))
-    }
-  })
 
   // Active tab: edit (textarea) or view (JsonTree)
   let active_tab = $state<`edit` | `view`>(`edit`)
@@ -36,11 +28,12 @@
   let text_content = $state(``)
   let parse_error = $state<string | null>(null)
 
-  // Sync textarea when diagram_input changes externally (e.g. new SVG drop)
+  // Sync textarea and original_input when diagram_input changes externally
   let last_synced_input = $state<DiagramInput | null>(null)
   $effect(() => {
     if (diagram_input && diagram_input !== last_synced_input) {
       text_content = JSON.stringify(diagram_input, null, 2)
+      original_input = JSON.parse(text_content)
       last_synced_input = diagram_input
       parse_error = null
     }
@@ -57,16 +50,21 @@
   function try_rebuild() {
     try {
       const parsed = JSON.parse(text_content) as DiagramInput
-      // Validate minimal structure
-      if (!parsed.meta?.components || !parsed.curves || !parsed.regions) {
-        parse_error = `Missing required fields: meta.components, curves, regions`
+      // Validate minimal structure before passing to build_diagram
+      if (
+        !Array.isArray(parsed.meta?.components) ||
+        parsed.meta.components.length < 2 ||
+        !Array.isArray(parsed.curves) || !Array.isArray(parsed.regions)
+      ) {
+        parse_error =
+          `Missing required fields: meta.components (2+), curves[], regions[]`
         return
       }
+      // Validate it builds successfully before updating diagram_input
+      build_diagram(parsed)
       parse_error = null
-      const built = build_diagram(parsed)
       diagram_input = parsed
       last_synced_input = parsed
-      on_rebuild?.(built)
     } catch (err) {
       parse_error = err instanceof Error ? err.message : String(err)
     }
@@ -74,15 +72,11 @@
 
   function reset() {
     if (!original_input) return
-    diagram_input = JSON.parse(JSON.stringify(original_input))
-    text_content = JSON.stringify(diagram_input, null, 2)
+    const cloned = JSON.parse(JSON.stringify(original_input)) as DiagramInput
+    diagram_input = cloned
+    last_synced_input = cloned
+    text_content = JSON.stringify(cloned, null, 2)
     parse_error = null
-    if (!diagram_input) return
-    try {
-      on_rebuild?.(build_diagram(diagram_input))
-    } catch (err) {
-      parse_error = err instanceof Error ? err.message : String(err)
-    }
   }
 
   function download_json() {
