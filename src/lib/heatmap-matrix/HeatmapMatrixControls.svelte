@@ -11,6 +11,7 @@
     ordering = $bindable(`atomic_number`),
     orderings = ELEMENT_ORDERINGS,
     controls_open = $bindable(false),
+    toggle_visible = $bindable(false),
     show_pane = true,
     pane_props = {},
     toggle_props = {},
@@ -19,6 +20,7 @@
     ordering?: ElementAxisOrderingKey
     orderings?: ElementAxisOrderingKey[]
     controls_open?: boolean
+    toggle_visible?: boolean
     show_pane?: boolean
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
@@ -26,6 +28,31 @@
       controls_open: boolean
     }]>
   } = $props()
+
+  function merge_styles(base_style: string, override_style: unknown): string {
+    const override_style_str = typeof override_style === `string`
+      ? override_style
+      : ``
+    if (!override_style_str) return base_style
+    return `${base_style}; ${override_style_str}`
+  }
+
+  let show_toggle = $derived(controls_open || toggle_visible)
+  let default_toggle_style = $derived(
+    [
+      `position: absolute`,
+      `top: var(--heatmap-matrix-controls-toggle-top, 6px)`,
+      `right: var(--heatmap-matrix-controls-toggle-right, 6px)`,
+      `z-index: var(--heatmap-matrix-controls-toggle-z-index, 20)`,
+      `opacity: ${show_toggle ? `1` : `0`}`,
+      `pointer-events: ${show_toggle ? `auto` : `none`}`,
+      `transition: var(--heatmap-matrix-controls-toggle-transition, opacity 0.2s ease)`,
+    ].join(`; `),
+  )
+  let default_pane_style = [
+    `z-index: var(--heatmap-matrix-controls-pane-z-index, 25)`,
+    `min-width: var(--heatmap-matrix-controls-pane-min-width, 220px)`,
+  ].join(`; `)
 </script>
 
 <DraggablePane
@@ -34,11 +61,13 @@
   pane_props={{
     ...pane_props,
     class: `heatmap-matrix-controls-pane ${pane_props?.class ?? ``}`.trim(),
+    style: merge_styles(default_pane_style, pane_props?.style),
   }}
   toggle_props={{
     ...toggle_props,
     title: toggle_props.title ?? (controls_open ? `` : `Heatmap controls`),
     class: `heatmap-matrix-controls-toggle ${toggle_props?.class ?? ``}`.trim(),
+    style: merge_styles(default_toggle_style, toggle_props?.style),
   }}
   closed_icon="Settings"
   open_icon="Cross"
@@ -57,25 +86,6 @@
 </DraggablePane>
 
 <style>
-  :global(button.heatmap-matrix-controls-toggle) {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    z-index: 20;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-  :global(.heatmap-controls-anchor:hover button.heatmap-matrix-controls-toggle),
-  :global(.heatmap-controls-anchor:focus-within button.heatmap-matrix-controls-toggle),
-  :global(button.heatmap-matrix-controls-toggle[aria-expanded='true']) {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  :global(div.heatmap-matrix-controls-pane.draggable-pane) {
-    z-index: 25;
-    min-width: 220px;
-  }
   .heatmap-matrix-controls {
     display: flex;
     flex-direction: column;

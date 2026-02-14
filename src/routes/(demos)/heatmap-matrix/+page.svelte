@@ -16,6 +16,8 @@
   let axis_items = $derived(elements_to_axis(undefined, ordering))
   let clicked_cell: CellContext | null = $state(null)
   let dblclick_info: string | null = $state(null)
+  let show_primary_controls_toggle = $state(false)
+  let show_secondary_controls_toggle = $state(false)
 
   // Compute pairwise |ΔEN| for a set of axis items
   function en_diff_matrix(items: AxisItem<ChemicalElement>[]): (number | null)[][] {
@@ -93,7 +95,14 @@
   Hover for tooltips, click cells for details.
 </p>
 
-<div class="heatmap-controls-anchor">
+<div
+  class="heatmap-controls-anchor"
+  role="group"
+  onmouseenter={() => (show_primary_controls_toggle = true)}
+  onmouseleave={() => (show_primary_controls_toggle = false)}
+  onfocusin={() => (show_primary_controls_toggle = true)}
+  onfocusout={() => (show_primary_controls_toggle = false)}
+>
   <div class="scroll-container">
     <HeatmapMatrix
       x_items={axis_items}
@@ -105,7 +114,7 @@
       onclick={(cell: CellContext) => (clicked_cell = cell)}
     />
   </div>
-  <HeatmapMatrixControls bind:ordering>
+  <HeatmapMatrixControls bind:ordering toggle_visible={show_primary_controls_toggle}>
     <label>
       Hide empty
       <select bind:value={hide_mode}>
@@ -138,7 +147,14 @@
   updates the status text below.
 </p>
 
-<div class="heatmap-controls-anchor">
+<div
+  class="heatmap-controls-anchor"
+  role="group"
+  onmouseenter={() => (show_secondary_controls_toggle = true)}
+  onmouseleave={() => (show_secondary_controls_toggle = false)}
+  onfocusin={() => (show_secondary_controls_toggle = true)}
+  onfocusout={() => (show_secondary_controls_toggle = false)}
+>
   <HeatmapMatrix
     x_items={small_axis}
     y_items={small_axis}
@@ -163,7 +179,7 @@
       |&Delta;EN| = {typeof ctx.value === `number` ? format_num(ctx.value) : `N/A`}
     {/snippet}
   </HeatmapMatrix>
-  <HeatmapMatrixControls bind:ordering />
+  <HeatmapMatrixControls bind:ordering toggle_visible={show_secondary_controls_toggle} />
 </div>
 {#if dblclick_info}
   <p class="dblclick-info">Last double-click: {dblclick_info}</p>

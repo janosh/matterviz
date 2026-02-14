@@ -241,6 +241,20 @@
       .replace(/>/g, `&gt;`)
       .replace(/"/g, `&quot;`)
       .replace(/'/g, `&#39;`)
+  const unescape_html = (str: string): string =>
+    str
+      .replace(/&lt;/g, `<`)
+      .replace(/&gt;/g, `>`)
+      .replace(/&quot;/g, `"`)
+      .replace(/&#39;/g, `'`)
+      .replace(/&amp;/g, `&`)
+  // Convert legacy/html formula strings like Fe<sub>2</sub>O<sub>3</sub> back to plain
+  // stoichiometric input before parsing/reordering.
+  const normalize_formula_markup = (formula: string): string =>
+    unescape_html(formula)
+      .replaceAll(/<sub>\s*([^<]+?)\s*<\/sub>/gi, `$1`)
+      .replaceAll(/<[^>]+>/g, ``)
+      .replaceAll(/\s+/g, ``)
   const sanitize_href = (href: string | null | undefined): string | null => {
     const trimmed_href = href?.trim()
     if (!trimmed_href) return null
@@ -291,7 +305,8 @@
       const on_hull = is_on_hull(entry)
       const formula_source = entry.reduced_formula ?? entry.name ??
         get_alphabetical_formula(entry.composition, true, ``)
-      const formatted_formula = get_electro_neg_formula(formula_source)
+      const normalized_formula = normalize_formula_markup(formula_source)
+      const formatted_formula = get_electro_neg_formula(normalized_formula)
       const formula_html = formatted_formula || escape_html(formula_source)
       // Match by entry_id or common data fields (mat_id, structure_id)
       // since entry_id may be wrapped in HTML (e.g. <a> tags)

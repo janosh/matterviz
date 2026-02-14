@@ -467,6 +467,27 @@ describe(`ConvexHullStats`, () => {
       )
     })
 
+    test(`reformats reduced_formula containing <sub> markup without losing stoichiometry`, () => {
+      mount_stats_table({
+        stable_entries: [
+          mock_entry({
+            composition: { Fe: 2, O: 3 },
+            reduced_formula: `Fe<sub>2</sub>O<sub>3</sub>`,
+            is_stable: true,
+            e_above_hull: 0,
+          }),
+        ],
+        unstable_entries: [],
+      })
+      const headers = get_headers()
+      const formula_idx = headers.indexOf(`Formula`)
+      const formula_cell = document.querySelector(
+        `tbody tr td:nth-child(${formula_idx + 1})`,
+      ) as HTMLElement | null
+      const formula_text = normalize_formula_text(formula_cell?.textContent ?? ``)
+      expect(formula_text).toMatch(/Fe.*2.*O.*3|O.*3.*Fe.*2/)
+    })
+
     test(`table has # column with row numbers and bold stable formulas`, () => {
       mount_stats_table({
         stable_entries: [

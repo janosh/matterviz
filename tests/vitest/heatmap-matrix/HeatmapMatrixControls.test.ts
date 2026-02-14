@@ -25,6 +25,8 @@ describe(`HeatmapMatrixControls`, () => {
     expect(option_values).toHaveLength(Object.keys(ORDERING_LABELS).length)
     expect(option_values).toContain(`atomic_number`)
     expect(option_values).toContain(`mendeleev_number`)
+    expect(toggle_button?.getAttribute(`style`)).toContain(`opacity: 0`)
+    expect(toggle_button?.getAttribute(`style`)).toContain(`pointer-events: none`)
   })
 
   test(`show_pane=false hides toggle and pane`, () => {
@@ -52,5 +54,20 @@ describe(`HeatmapMatrixControls`, () => {
     ) as HTMLButtonElement | null
     expect(toggle_button?.classList.contains(`heatmap-matrix-controls-toggle`)).toBe(true)
     expect(toggle_button?.classList.contains(`custom-toggle-class`)).toBe(true)
+  })
+
+  test(`toggle_visible=true shows toggle via inline styles`, () => {
+    mount(HeatmapMatrixControls, {
+      target: document.body,
+      props: {
+        ordering: `atomic_number` satisfies ElementAxisOrderingKey,
+        toggle_visible: true,
+      },
+    })
+    const toggle_button = document.querySelector(
+      `button.heatmap-matrix-controls-toggle`,
+    ) as HTMLButtonElement | null
+    expect(toggle_button?.getAttribute(`style`)).toContain(`opacity: 1`)
+    expect(toggle_button?.getAttribute(`style`)).toContain(`pointer-events: auto`)
   })
 })
