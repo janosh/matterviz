@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { get_alphabetical_formula, get_reduced_formula } from '$lib/composition'
+  import {
+    get_alphabetical_formula,
+    get_electro_neg_formula,
+    get_reduced_formula,
+  } from '$lib/composition'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import Histogram from '$lib/plot/Histogram.svelte'
@@ -285,8 +289,10 @@
         0,
       )
       const on_hull = is_on_hull(entry)
-      const formula = entry.reduced_formula ?? entry.name ??
+      const formula_source = entry.reduced_formula ?? entry.name ??
         get_alphabetical_formula(entry.composition, true, ``)
+      const formatted_formula = get_electro_neg_formula(formula_source)
+      const formula_html = formatted_formula || escape_html(formula_source)
       // Match by entry_id or common data fields (mat_id, structure_id)
       // since entry_id may be wrapped in HTML (e.g. <a> tags)
       const entry_data = entry.data as Record<string, unknown> | undefined
@@ -297,18 +303,7 @@
       ))
       const row: RowData = {
         '#': sort_span(idx + 1, `${idx + 1}`),
-        Stable: on_hull
-          ? sort_span(
-            0,
-            `●`,
-            `style="color: var(--hull-stable-color, #22c55e)" title="On hull"`,
-          )
-          : sort_span(
-            1,
-            `●`,
-            `style="color: var(--hull-unstable-color, #666); opacity: 0.4" title="Above hull"`,
-          ),
-        Formula: on_hull ? `<strong>${formula}</strong>` : formula,
+        Formula: on_hull ? `<strong>${formula_html}</strong>` : formula_html,
         'E<sub>hull</sub>': entry.e_above_hull ?? null,
         'E<sub>form</sub>': entry.e_form_per_atom ?? entry.energy_per_atom ?? null,
       }
@@ -348,11 +343,6 @@
   let table_columns: Label[] = $derived(
     [
       { label: `#`, color_scale: null, description: `Row number` },
-      {
-        label: `Stable`,
-        color_scale: null,
-        description: `On convex hull (E above hull ≈ 0)`,
-      },
       { label: `Formula`, color_scale: null },
       {
         label: `E<sub>hull</sub>`,

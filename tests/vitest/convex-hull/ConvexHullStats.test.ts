@@ -70,6 +70,14 @@ const mount_stats_table = (props: Partial<Props> = {}) => {
 }
 const get_headers = () =>
   Array.from(document.querySelectorAll(`th`)).map((th) => th.textContent?.trim())
+const normalize_formula_html = (html: string): string =>
+  html
+    .replace(`<strong>`, ``)
+    .replace(`</strong>`, ``)
+    .replaceAll(/\s+/g, ` `)
+    .trim()
+const normalize_formula_text = (text: string): string =>
+  text.replaceAll(/\s+/g, ` `).trim()
 const get_table_filter_select = (
   label_text: string,
 ): HTMLSelectElement | null => {
@@ -358,10 +366,34 @@ describe(`ConvexHullStats`, () => {
       mount_stats_table({ stable_entries: stable, unstable_entries: unstable })
 
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(4)
-      for (const formula of [`Fe2O3`, `Li`, `LiFeO2`, `Li2O`]) {
-        expect(document.body.textContent).toContain(formula)
-      }
       const headers = get_headers()
+      const formula_idx = headers.indexOf(`Formula`)
+      expect(formula_idx).toBeGreaterThanOrEqual(0)
+      const formula_html_cells = Array.from(document.querySelectorAll(`tbody tr`))
+        .map((row) =>
+          normalize_formula_html(
+            (row.querySelectorAll(`td`)[formula_idx] as HTMLElement)?.innerHTML ?? ``,
+          )
+        )
+      const formula_text_cells = Array.from(document.querySelectorAll(`tbody tr`))
+        .map((row) =>
+          normalize_formula_text(
+            (row.querySelectorAll(`td`)[formula_idx] as HTMLElement)?.textContent ?? ``,
+          )
+        )
+      expect(formula_html_cells.some((formula) => formula.includes(`<sub>`))).toBe(true)
+      expect(formula_text_cells).toContain(`Li`)
+      expect(formula_text_cells.some((formula) => /Fe.*O.*3|O.*3.*Fe/.test(formula)))
+        .toBe(
+          true,
+        )
+      expect(
+        formula_text_cells.some((formula) => /Li.*Fe.*O.*2|Li.*O.*2.*Fe/.test(formula)),
+      ).toBe(true)
+      expect(formula_text_cells.some((formula) => /Li.*2.*O|O.*Li.*2/.test(formula)))
+        .toBe(
+          true,
+        )
       for (const col of [`#`, `Formula`]) {
         expect(headers).toContain(col)
       }
@@ -425,48 +457,48 @@ describe(`ConvexHullStats`, () => {
         ],
         unstable_entries: [],
       })
-      for (const el of [`Ca`, `Ti`, `O`]) {
-        expect(document.body.textContent).toContain(el)
-      }
+      const headers = get_headers()
+      const formula_idx = headers.indexOf(`Formula`)
+      const formula_cell = document.querySelector(
+        `tbody tr td:nth-child(${formula_idx + 1})`,
+      )
+      expect(formula_cell?.innerHTML.replaceAll(/\s+/g, ` `)).toContain(
+        `Ca Ti O<sub>3</sub>`,
+      )
     })
 
-    test(`table has # and stable columns with row numbers and bold stable formulas`, () => {
+    test(`table has # column with row numbers and bold stable formulas`, () => {
       mount_stats_table({
         stable_entries: [
           mock_entry({
+            composition: { Fe: 1 },
             is_stable: true,
             e_above_hull: 0,
-            reduced_formula: `Fe`,
           }),
         ],
         unstable_entries: [
           mock_entry({
+            composition: { Fe: 1, O: 1 },
             is_stable: false,
             e_above_hull: 0.1,
-            reduced_formula: `FeO`,
           }),
         ],
       })
 
       const headers = get_headers()
       expect(headers).toContain(`#`)
-      expect(headers).toContain(`Stable`)
+      expect(headers).toContain(`Formula`)
       // Row numbers start at 1
       const first_cells = Array.from(
         document.querySelectorAll(`tbody tr:first-child td`),
       )
         .map((td) => td.textContent?.trim())
       expect(first_cells).toContain(`1`)
-      // Bold stable formulas
+      // Stable formulas are bold
       const all_cells = Array.from(document.querySelectorAll(`td`))
       expect(
-        all_cells.some((td) => td.innerHTML.includes(`<strong>Fe</strong>`)),
-      )
-        .toBe(true)
-      expect(
-        all_cells.some((td) => td.innerHTML.includes(`<strong>FeO</strong>`)),
-      )
-        .toBe(false)
+        all_cells.some((td) => td.innerHTML.includes(`<strong>`)),
+      ).toBe(true)
     })
 
     test(`on_entry_click callback fires on row click`, () => {
