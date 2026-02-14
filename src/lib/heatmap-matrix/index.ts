@@ -49,9 +49,58 @@ export type ElementAxisOrdering =
 
 // Tooltip snippet type for HeatmapMatrix
 export type HeatmapTooltipProp = Snippet<[CellContext]> | boolean
+export type HeatmapSelection = { x_idx: number; y_idx: number }
+export type HeatmapExportFormat = `csv` | `json`
+export type HeatmapBrushPayload = {
+  x_range: [number, number]
+  y_range: [number, number]
+  cells: CellContext[]
+}
 
 // All built-in string ordering keys
 export const ELEMENT_ORDERINGS = Object.keys(ORDERING_LABELS) as ElementAxisOrderingKey[]
+
+export function matrix_to_rows(
+  x_items: AxisItem[],
+  y_items: AxisItem[],
+  values:
+    | (number | string | null)[][]
+    | Record<string, Record<string, number | string | null>>,
+): Record<string, number | string | null>[] {
+  const get_value = Array.isArray(values)
+    ? (x_idx: number, y_idx: number) => values[y_idx]?.[x_idx] ?? null
+    : (x_idx: number, y_idx: number) => {
+      const y_key = y_items[y_idx].key ?? y_items[y_idx].label
+      const x_key = x_items[x_idx].key ?? x_items[x_idx].label
+      return values[y_key]?.[x_key] ?? null
+    }
+  return y_items.map((y_item, y_idx) => {
+    const row: Record<string, number | string | null> = {
+      y_key: y_item.key ?? y_item.label,
+    }
+    for (const [x_idx, x_item] of x_items.entries()) {
+      row[x_item.key ?? x_item.label] = get_value(x_idx, y_idx)
+    }
+    return row
+  })
+}
+
+export function rows_to_csv(rows: Record<string, number | string | null>[]): string {
+  if (!rows.length) return ``
+  const escape_csv_field = (value: number | string | null | undefined): string => {
+    const field = String(value ?? ``)
+    if (!/[",\n\r]/.test(field)) return field
+    return `"${field.replaceAll(`"`, `""`)}"`
+  }
+  const headers = Object.keys(rows[0])
+  const lines = [
+    headers.map((header) => escape_csv_field(header)).join(`,`),
+    ...rows.map((row) =>
+      headers.map((header) => escape_csv_field(row[header])).join(`,`)
+    ),
+  ]
+  return lines.join(`\n`)
+}
 
 // === Helpers ===
 

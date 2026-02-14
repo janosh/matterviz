@@ -6,7 +6,9 @@ import {
   ELEMENT_ORDERINGS,
   elements_to_axis,
   make_color_override_key,
+  matrix_to_rows,
   ORDERING_LABELS,
+  rows_to_csv,
 } from '$lib/heatmap-matrix'
 import { describe, expect, test } from 'vitest'
 
@@ -164,5 +166,30 @@ describe(`subset + ordering combined`, () => {
       .map((item) => item.label)
     // pauling EN: Fe(1.83) < Cu(1.9) < Pt(2.28) < Au(2.54)
     expect(labels).toEqual([`Fe`, `Cu`, `Pt`, `Au`])
+  })
+})
+
+describe(`export helpers`, () => {
+  test(`matrix_to_rows and rows_to_csv serialize matrix data`, () => {
+    const x_items = [{ label: `A` }, { label: `B` }]
+    const y_items = [{ label: `X` }, { label: `Y` }]
+    const rows = matrix_to_rows(x_items, y_items, [[1, 2], [3, null]])
+    expect(rows).toEqual([
+      { y_key: `X`, A: 1, B: 2 },
+      { y_key: `Y`, A: 3, B: null },
+    ])
+    const csv = rows_to_csv(rows)
+    expect(csv).toContain(`y_key,A,B`)
+    expect(csv).toContain(`X,1,2`)
+    expect(csv).toContain(`Y,3,`)
+  })
+
+  test(`rows_to_csv escapes commas, quotes, and newlines`, () => {
+    const csv = rows_to_csv([
+      { y_key: `Fe,O`, A: `He"Ne`, B: `line1\nline2` },
+    ])
+    expect(csv).toContain(`"Fe,O"`)
+    expect(csv).toContain(`"He""Ne"`)
+    expect(csv).toContain(`"line1\nline2"`)
   })
 })

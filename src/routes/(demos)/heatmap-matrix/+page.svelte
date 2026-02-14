@@ -18,6 +18,31 @@
   let dblclick_info: string | null = $state(null)
   let show_primary_controls_toggle = $state(false)
   let show_secondary_controls_toggle = $state(false)
+  let normalize_mode = $state<`linear` | `log`>(`linear`)
+  let domain_mode = $state<`auto` | `robust` | `fixed`>(`auto`)
+  let show_legend = $state(true)
+  let legend_position = $state<`right` | `bottom`>(`right`)
+  let search_query = $state(``)
+  let selected_cells = $state<{ x_idx: number; y_idx: number }[]>([])
+  let pinned_cell = $state<{ x_idx: number; y_idx: number } | null>(null)
+  let last_export_status = $state<string | null>(null)
+  let brush_info = $state<string | null>(null)
+
+  function set_controls_toggle(
+    controls_group: `primary` | `secondary`,
+    is_visible: boolean,
+  ): void {
+    if (controls_group === `primary`) {
+      show_primary_controls_toggle = is_visible
+      return
+    }
+    show_secondary_controls_toggle = is_visible
+  }
+
+  function format_cell_value(value: number | string | null | undefined): string {
+    if (value === null || value === undefined) return `N/A`
+    return typeof value === `number` ? format_num(value) : value
+  }
 
   // Compute pairwise |ΔEN| for a set of axis items
   function en_diff_matrix(items: AxisItem<ChemicalElement>[]): (number | null)[][] {
@@ -98,10 +123,10 @@
 <div
   class="heatmap-controls-anchor"
   role="group"
-  onmouseenter={() => (show_primary_controls_toggle = true)}
-  onmouseleave={() => (show_primary_controls_toggle = false)}
-  onfocusin={() => (show_primary_controls_toggle = true)}
-  onfocusout={() => (show_primary_controls_toggle = false)}
+  onmouseenter={() => set_controls_toggle(`primary`, true)}
+  onmouseleave={() => set_controls_toggle(`primary`, false)}
+  onfocusin={() => set_controls_toggle(`primary`, true)}
+  onfocusout={() => set_controls_toggle(`primary`, false)}
 >
   <div class="scroll-container">
     <HeatmapMatrix
@@ -109,12 +134,39 @@
       y_items={axis_items}
       values={en_diff_values}
       color_scale="interpolateViridis"
+      normalize={normalize_mode}
+      {domain_mode}
+      {show_legend}
+      {legend_position}
       hide_empty={hide_mode}
+      {search_query}
+      selection_mode="multi"
+      bind:selected_cells
+      bind:pinned_cell
+      tooltip_mode="both"
+      enable_brush
+      onbrush={(payload) =>
+      brush_info = `${payload.cells.length} cells (${payload.x_range[0]}-${
+        payload.x_range[1]
+      }, ${payload.y_range[0]}-${payload.y_range[1]})`}
+      onexport={(format_name) =>
+      last_export_status = `Exported ${format_name.toUpperCase()}`}
+      show_row_summaries
+      show_col_summaries
       tooltip
       onclick={(cell: CellContext) => (clicked_cell = cell)}
     />
   </div>
-  <HeatmapMatrixControls bind:ordering toggle_visible={show_primary_controls_toggle}>
+  <HeatmapMatrixControls
+    bind:ordering
+    bind:normalize={normalize_mode}
+    bind:domain_mode
+    bind:show_legend
+    bind:legend_position
+    bind:search_query
+    onexport={(format_name) => last_export_status = `Exported ${format_name.toUpperCase()}`}
+    toggle_visible={show_primary_controls_toggle}
+  >
     <label>
       Hide empty
       <select bind:value={hide_mode}>
@@ -130,13 +182,23 @@
     Clicked: <strong>{clicked_cell.x_item.label}</strong> &ndash;
     <strong>{clicked_cell.y_item.label}</strong>
     {#if clicked_cell.value != null}
-      = {
-        typeof clicked_cell.value === `number`
-        ? format_num(clicked_cell.value)
-        : clicked_cell.value
-      }
+      = {format_cell_value(clicked_cell.value)}
     {/if}
   </div>
+{/if}
+{#if selected_cells.length}
+  <div class="click-info">
+    Selected cells: <strong>{selected_cells.length}</strong>
+    {#if pinned_cell}
+      | Pinned: <strong>{pinned_cell.x_idx},{pinned_cell.y_idx}</strong>
+    {/if}
+  </div>
+{/if}
+{#if brush_info}
+  <div class="click-info">{brush_info}</div>
+{/if}
+{#if last_export_status}
+  <div class="click-info">{last_export_status}</div>
 {/if}
 
 <!-- Demo 2: Subset with symmetric mode, custom tooltip, dblclick, and different color scale -->
@@ -150,10 +212,10 @@
 <div
   class="heatmap-controls-anchor"
   role="group"
-  onmouseenter={() => (show_secondary_controls_toggle = true)}
-  onmouseleave={() => (show_secondary_controls_toggle = false)}
-  onfocusin={() => (show_secondary_controls_toggle = true)}
-  onfocusout={() => (show_secondary_controls_toggle = false)}
+  onmouseenter={() => set_controls_toggle(`secondary`, true)}
+  onmouseleave={() => set_controls_toggle(`secondary`, false)}
+  onfocusin={() => set_controls_toggle(`secondary`, true)}
+  onfocusout={() => set_controls_toggle(`secondary`, false)}
 >
   <HeatmapMatrix
     x_items={small_axis}
@@ -165,7 +227,7 @@
     gap="1px"
     ondblclick={(cell: CellContext) =>
     dblclick_info = `${cell.x_item.label}-${cell.y_item.label}: ${
-      typeof cell.value === `number` ? format_num(cell.value) : cell.value
+      format_cell_value(cell.value)
     }`}
     style="margin: 1em auto"
   >
@@ -176,7 +238,7 @@
       EN: {x_el.electronegativity_pauling ?? `?`} vs {
         y_el.electronegativity_pauling ?? `?`
       }<br />
-      |&Delta;EN| = {typeof ctx.value === `number` ? format_num(ctx.value) : `N/A`}
+      |&Delta;EN| = {format_cell_value(ctx.value)}
     {/snippet}
   </HeatmapMatrix>
   <HeatmapMatrixControls bind:ordering toggle_visible={show_secondary_controls_toggle} />
@@ -227,7 +289,7 @@
   }
   .click-info {
     margin: 0.5em auto 0;
-    width: fit-content;
+    display: inline-block;
     padding: 0.3em 0.8em;
     border-radius: var(--border-radius, 3pt);
     background: light-dark(#f0f0f0, #333);

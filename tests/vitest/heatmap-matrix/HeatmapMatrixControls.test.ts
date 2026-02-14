@@ -1,7 +1,7 @@
 import type { ElementAxisOrderingKey } from '$lib/heatmap-matrix'
 import { HeatmapMatrixControls, ORDERING_LABELS } from '$lib/heatmap-matrix'
 import { mount } from 'svelte'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 describe(`HeatmapMatrixControls`, () => {
   beforeEach(() => {
@@ -19,9 +19,12 @@ describe(`HeatmapMatrixControls`, () => {
       `button.heatmap-matrix-controls-toggle`,
     ) as HTMLButtonElement | null
     expect(toggle_button).not.toBeNull()
-    const option_values = Array.from(
-      document.querySelectorAll(`.heatmap-matrix-controls option`),
-    ).map((opt) => (opt as HTMLOptionElement).value)
+    const ordering_select = document.querySelector(
+      `.heatmap-matrix-controls label:first-of-type select`,
+    ) as HTMLSelectElement | null
+    const option_values = Array.from(ordering_select?.options ?? []).map((opt) =>
+      opt.value
+    )
     expect(option_values).toHaveLength(Object.keys(ORDERING_LABELS).length)
     expect(option_values).toContain(`atomic_number`)
     expect(option_values).toContain(`mendeleev_number`)
@@ -69,5 +72,36 @@ describe(`HeatmapMatrixControls`, () => {
     ) as HTMLButtonElement | null
     expect(toggle_button?.getAttribute(`style`)).toContain(`opacity: 1`)
     expect(toggle_button?.getAttribute(`style`)).toContain(`pointer-events: auto`)
+  })
+
+  test(`renders foundation controls and export actions`, () => {
+    const export_handler = vi.fn()
+    mount(HeatmapMatrixControls, {
+      target: document.body,
+      props: {
+        ordering: `atomic_number` satisfies ElementAxisOrderingKey,
+        show_legend: true,
+        normalize: `log`,
+        domain_mode: `robust`,
+        search_query: `Fe`,
+        onexport: export_handler,
+      },
+    })
+    const search_input = document.querySelector(
+      `.heatmap-matrix-controls input[placeholder="Filter labels/keys"]`,
+    ) as HTMLInputElement | null
+    expect(search_input?.value).toBe(`Fe`)
+    const normalize_select = Array.from(
+      document.querySelectorAll(`.heatmap-matrix-controls select`),
+    ).find((select_el) =>
+      Array.from((select_el as HTMLSelectElement).options).some((opt) =>
+        opt.value === `log`
+      )
+    ) as HTMLSelectElement | undefined
+    expect(normalize_select).toBeDefined()
+    const export_buttons = document.querySelectorAll(`.exports button`)
+    expect(export_buttons.length).toBeGreaterThan(0)
+    ;(export_buttons[0] as HTMLButtonElement).click()
+    expect(export_handler).toHaveBeenCalledOnce()
   })
 })

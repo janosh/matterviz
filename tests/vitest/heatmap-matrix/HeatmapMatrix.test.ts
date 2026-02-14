@@ -5,6 +5,7 @@ import {
   HeatmapMatrix,
   make_color_override_key,
 } from '$lib/heatmap-matrix'
+import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
 import { mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -266,14 +267,15 @@ describe(`click and dblclick handlers`, () => {
   })
 
   test.each([`Enter`, ` `])(
-    `keyboard %s triggers cell interaction handlers`,
+    `keyboard %s plus native click synthesis triggers once`,
     (key_name) => {
       const click_handler = vi.fn()
       mount_matrix({ values: [[1]], onclick: click_handler })
       const cell = doc_query(`.cell:not(.empty)`) as HTMLElement
-      expect(cell.getAttribute(`role`)).toBe(`button`)
-      expect(cell.getAttribute(`tabindex`)).toBe(`0`)
+      expect(cell.tagName).toBe(`BUTTON`)
+      // Approximate native button activation: keydown then synthesized click.
       cell.dispatchEvent(new KeyboardEvent(`keydown`, { key: key_name, bubbles: true }))
+      cell.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       expect(click_handler).toHaveBeenCalledOnce()
     },
   )
@@ -417,5 +419,115 @@ describe(`axis label placement`, () => {
     for (const x_label of Array.from(x_labels)) {
       expect(x_label.style.gridRow).toBe(`1`)
     }
+  })
+})
+
+describe(`milestone feature props`, () => {
+  test(`search_query filters visible labels`, () => {
+    mount_matrix({
+      x_items: make_items([`Al`, `Fe`, `Ni`]),
+      y_items: make_items([`Al`, `Fe`, `Ni`]),
+      search_query: `fe`,
+    })
+    expect(get_x_labels()).toHaveLength(1)
+    expect(get_y_labels()).toHaveLength(1)
+    expect(get_x_labels()[0].textContent?.trim()).toBe(`Fe`)
+  })
+
+  test(`x_order and y_order reorder labels`, () => {
+    mount_matrix({
+      x_items: [
+        { label: `B`, sort_value: 2 },
+        { label: `A`, sort_value: 1 },
+      ],
+      y_items: [
+        { label: `Y`, sort_value: 2 },
+        { label: `X`, sort_value: 1 },
+      ],
+      x_order: `sort_value`,
+      y_order: `label`,
+    })
+    expect(get_x_labels()[0].textContent?.trim()).toBe(`A`)
+    expect(get_y_labels()[0].textContent?.trim()).toBe(`X`)
+  })
+
+  test(`show_legend renders legend with label`, () => {
+    mount_matrix({ show_legend: true, legend_label: `Custom` })
+    expect(document.querySelector(`.legend`)).not.toBeNull()
+    expect(document.querySelector(`.legend-label`)?.textContent).toContain(`Custom`)
+  })
+
+  test(`legend_format passes through to format_num`, () => {
+    mount_matrix({
+      x_items: make_items([`A`]),
+      y_items: make_items([`X`]),
+      values: [[1.234]],
+      show_legend: true,
+      legend_ticks: 2,
+      legend_format: `.1f`,
+      color_scale_range: [1.234, 1.234],
+    })
+    const tick_text = Array.from(document.querySelectorAll(`.legend-ticks span`))
+      .map((item) => item.textContent?.trim())
+      .filter(Boolean)
+    expect(tick_text[0]).toBe(format_num(1.234, `.1f`))
+  })
+
+  test(`selection_mode multi updates selected class on click`, () => {
+    const select_handler = vi.fn()
+    mount_matrix({
+      selection_mode: `multi`,
+      values: [[1, 2, 3]],
+      onselect: select_handler,
+    })
+    const first_cell = get_data_cells()[0]
+    const second_cell = get_data_cells()[1]
+    first_cell.dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
+    second_cell.dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
+    const last_selection = select_handler.mock.calls.at(-1)?.[0] as
+      | { x_idx: number; y_idx: number }[]
+      | undefined
+    expect(last_selection?.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test(`oncontextmenu is triggered for cell`, () => {
+    const handler = vi.fn()
+    mount_matrix({ oncontextmenu: handler, values: [[1]] })
+    const first_cell = get_data_cells()[0]
+    first_cell.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
+    expect(handler).toHaveBeenCalledOnce()
+  })
+
+  test(`tooltip_mode=both hides hover tooltip when no pinned cell`, async () => {
+    mount_matrix({
+      tooltip: true,
+      tooltip_mode: `both`,
+      values: [[1]],
+    })
+    await Promise.resolve()
+    const first_cell = get_data_cells()[0]
+    const tooltip_el = doc_query(`.tooltip`) as HTMLElement
+    first_cell.dispatchEvent(
+      new MouseEvent(`mouseover`, { bubbles: true, clientX: 10, clientY: 10 }),
+    )
+    await Promise.resolve()
+    first_cell.dispatchEvent(new MouseEvent(`mouseout`, { bubbles: true }))
+    await Promise.resolve()
+    expect(tooltip_el.classList.contains(`visible`)).toBe(false)
+  })
+
+  test(`symmetric summaries ignore hidden upper triangle`, () => {
+    mount_matrix({
+      x_items: make_items([`A`, `B`]),
+      y_items: make_items([`A`, `B`]),
+      values: [[1, 2], [3, 4]],
+      symmetric: true,
+      show_row_summaries: true,
+    })
+    const summary_cells = document.querySelectorAll(`.summary-row`) as NodeListOf<
+      HTMLElement
+    >
+    expect(summary_cells[0].textContent?.trim()).toBe(`1`)
+    expect(summary_cells[1].textContent?.trim()).toBe(`3.5`)
   })
 })

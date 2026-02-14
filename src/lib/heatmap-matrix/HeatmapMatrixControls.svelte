@@ -6,12 +6,23 @@
     type ElementAxisOrderingKey,
     ORDERING_LABELS,
   } from './index'
+  type NormalizeMode = `linear` | `log`
+  type DomainMode = `auto` | `robust` | `fixed`
+  type LegendPosition = `right` | `bottom`
+  type ExportFormat = `csv` | `json`
 
   let {
     ordering = $bindable(`atomic_number`),
     orderings = ELEMENT_ORDERINGS,
     controls_open = $bindable(false),
     toggle_visible = $bindable(false),
+    normalize = $bindable(`linear`),
+    domain_mode = $bindable(`auto`),
+    show_legend = $bindable(false),
+    legend_position = $bindable(`right`),
+    search_query = $bindable(``),
+    export_formats = [`csv`, `json`],
+    onexport,
     show_pane = true,
     pane_props = {},
     toggle_props = {},
@@ -21,6 +32,13 @@
     orderings?: ElementAxisOrderingKey[]
     controls_open?: boolean
     toggle_visible?: boolean
+    normalize?: NormalizeMode
+    domain_mode?: DomainMode
+    show_legend?: boolean
+    legend_position?: LegendPosition
+    search_query?: string
+    export_formats?: ExportFormat[]
+    onexport?: (format: ExportFormat) => void
     show_pane?: boolean
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
@@ -78,6 +96,43 @@
         {/each}
       </select>
     </label>
+    <label>
+      Search
+      <input bind:value={search_query} placeholder="Filter labels/keys" />
+    </label>
+    <label>
+      Normalization
+      <select bind:value={normalize}>
+        <option value="linear">linear</option>
+        <option value="log">log</option>
+      </select>
+    </label>
+    <label>
+      Domain mode
+      <select bind:value={domain_mode}>
+        <option value="auto">auto</option>
+        <option value="robust">robust</option>
+        <option value="fixed">fixed</option>
+      </select>
+    </label>
+    <label>
+      <input type="checkbox" bind:checked={show_legend} />
+      Show legend
+    </label>
+    <label>
+      Legend position
+      <select bind:value={legend_position}>
+        <option value="right">right</option>
+        <option value="bottom">bottom</option>
+      </select>
+    </label>
+    <div class="exports">
+      {#each export_formats as export_format (export_format)}
+        <button type="button" onclick={() => onexport?.(export_format)}>
+          Export {export_format.toUpperCase()}
+        </button>
+      {/each}
+    </div>
     {@render children?.({ controls_open })}
   </div>
 </DraggablePane>
@@ -94,12 +149,26 @@
     gap: 0.2em;
     font-size: 0.9em;
   }
-  select {
+  select,
+  input {
     padding: 0.3em 0.5em;
     border-radius: var(--border-radius, 3pt);
     border: 1px solid light-dark(#ccc, #555);
     background: light-dark(white, #333);
     color: inherit;
     font-size: inherit;
+  }
+  .exports {
+    display: flex;
+    gap: 0.35em;
+    flex-wrap: wrap;
+  }
+  .exports button {
+    padding: 0.25em 0.5em;
+    border-radius: var(--border-radius, 3pt);
+    border: 1px solid light-dark(#ccc, #555);
+    background: light-dark(#f8f8f8, #2a2a2a);
+    color: inherit;
+    cursor: pointer;
   }
 </style>

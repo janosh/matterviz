@@ -509,6 +509,27 @@ describe(`ConvexHullStats`, () => {
       expect(normalize_formula_text(formula_cell?.textContent ?? ``)).toContain(`Xx2O`)
     })
 
+    test(`normalizes double-encoded subscript markup before formula fallback`, () => {
+      mount_stats_table({
+        stable_entries: [],
+        unstable_entries: [
+          mock_entry({
+            composition: { O: 1 },
+            reduced_formula: `Xx&amp;lt;sub&amp;gt;2&amp;lt;/sub&amp;gt;O`,
+            is_stable: false,
+            e_above_hull: 0.1,
+          }),
+        ],
+      })
+      const headers = get_headers()
+      const formula_idx = headers.indexOf(`Formula`)
+      const formula_cell = document.querySelector(
+        `tbody tr td:nth-child(${formula_idx + 1})`,
+      ) as HTMLElement | null
+      expect(formula_cell?.innerHTML).not.toContain(`&amp;lt;sub&amp;gt;`)
+      expect(normalize_formula_text(formula_cell?.textContent ?? ``)).toContain(`Xx2O`)
+    })
+
     test(`table has # column with row numbers and bold stable formulas`, () => {
       mount_stats_table({
         stable_entries: [

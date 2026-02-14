@@ -3,13 +3,29 @@
   import { is_color, pick_contrast_color } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import * as d3_sc from 'd3-scale-chromatic'
-  import { onDestroy, type Snippet } from 'svelte'
+  import { onDestroy, onMount, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
-  import type { AxisItem, CellContext, HeatmapTooltipProp } from './index'
+  import type {
+    AxisItem,
+    CellContext,
+    HeatmapExportFormat,
+    HeatmapTooltipProp,
+  } from './index'
+  import { matrix_to_rows, rows_to_csv } from './index'
   import { make_color_override_key } from './shared'
 
   type CellValue = number | string | null
+  type DomainMode = `auto` | `robust` | `fixed`
+  type NormalizeMode =
+    | `linear`
+    | `log`
+    | ((value: number, min: number, max: number) => number)
+  type LegendPosition = `right` | `bottom`
+  type SelectionMode = `single` | `multi` | `range`
+  type AxisOrderKey = `label` | `key` | `sort_value`
+  type AxisOrder = AxisOrderKey | ((a: AxisItem, b: AxisItem) => number)
+  type CellPos = { x_idx: number; y_idx: number }
 
   let {
     // Data props
@@ -21,11 +37,29 @@
     color_overrides = {},
     missing_color = `transparent`,
     log = false,
+    value_transform,
+    normalize = `linear`,
+    domain_mode = `auto`,
+    quantile_clip = [0.02, 0.98],
+    show_legend = false,
+    legend_position = `right`,
+    legend_label = `Value`,
+    legend_ticks = 5,
+    legend_format = `.3~f`,
     // Interaction props
     active_cell = $bindable(null),
+    selected_cells = $bindable([]),
+    selection_mode = `single`,
+    pinned_cell = $bindable(null),
+    tooltip_mode = `hover`,
     disabled = false,
     onclick,
     ondblclick,
+    onselect,
+    onpin,
+    oncontextmenu,
+    enable_brush = false,
+    onbrush,
     // Display props
     tile_size = `6px`,
     gap = `0px`,
@@ -36,6 +70,26 @@
     symmetric = false,
     symmetric_label_position = `diagonal`,
     label_style = ``,
+    x_order,
+    y_order,
+    highlight_x_keys = [],
+    highlight_y_keys = [],
+    search_query = ``,
+    sticky_x_labels = false,
+    sticky_y_labels = false,
+    virtualize = false,
+    overscan = 3,
+    export_formats = [`csv`, `json`],
+    onexport,
+    show_gridlines = false,
+    gridline_color = `color-mix(in srgb, currentColor 18%, transparent)`,
+    gridline_width = `1px`,
+    animate_updates = false,
+    animation_duration = `120ms`,
+    show_row_summaries = false,
+    show_col_summaries = false,
+    summary_fn,
+    theme = `default`,
     // Snippet props
     tooltip = false,
     cell,
@@ -54,10 +108,35 @@
     color_overrides?: Record<string, string>
     missing_color?: string
     log?: boolean
+    value_transform?: (
+      value: number,
+      ctx: { x_item: AxisItem; y_item: AxisItem; x_idx: number; y_idx: number },
+    ) => number | null
+    normalize?: NormalizeMode
+    domain_mode?: DomainMode
+    quantile_clip?: [number, number]
+    show_legend?: boolean
+    legend_position?: LegendPosition
+    legend_label?: string
+    legend_ticks?: number
+    legend_format?: string
     active_cell?: { x_idx: number; y_idx: number } | null
+    selected_cells?: CellPos[]
+    selection_mode?: SelectionMode
+    pinned_cell?: CellPos | null
+    tooltip_mode?: `hover` | `pinned` | `both`
     disabled?: boolean
     onclick?: (cell: CellContext) => void
     ondblclick?: (cell: CellContext) => void
+    onselect?: (cells: CellPos[]) => void
+    onpin?: (cell: CellPos | null) => void
+    oncontextmenu?: (cell: CellContext, event: MouseEvent) => void
+    enable_brush?: boolean
+    onbrush?: (payload: {
+      x_range: [number, number]
+      y_range: [number, number]
+      cells: CellContext[]
+    }) => void
     tile_size?: string
     gap?: string
     // false: show all rows/cols. 'compact': remove all-null rows/cols.
@@ -69,6 +148,26 @@
     symmetric?: boolean
     symmetric_label_position?: `diagonal` | `edge`
     label_style?: string
+    x_order?: AxisOrder
+    y_order?: AxisOrder
+    highlight_x_keys?: string[]
+    highlight_y_keys?: string[]
+    search_query?: string
+    sticky_x_labels?: boolean
+    sticky_y_labels?: boolean
+    virtualize?: boolean
+    overscan?: number
+    export_formats?: HeatmapExportFormat[]
+    onexport?: (format: HeatmapExportFormat, payload: unknown) => void
+    show_gridlines?: boolean
+    gridline_color?: string
+    gridline_width?: string
+    animate_updates?: boolean
+    animation_duration?: string
+    show_row_summaries?: boolean
+    show_col_summaries?: boolean
+    summary_fn?: (values: number[]) => number | null
+    theme?: `default` | `light` | `dark` | `publication`
     tooltip?: HeatmapTooltipProp
     cell?: Snippet<[CellContext]>
     x_label_cell?: Snippet<[{ item: AxisItem; idx: number }]>
@@ -79,6 +178,9 @@
   // === Value resolution ===
   let x_keys = $derived(x_items.map((item) => item.key ?? item.label))
   let y_keys = $derived(y_items.map((item) => item.key ?? item.label))
+  let highlight_x_key_set = $derived(new Set(highlight_x_keys))
+  let highlight_y_key_set = $derived(new Set(highlight_y_keys))
+  let search_query_norm = $derived(search_query.trim().toLowerCase())
 
   let get_value = $derived.by(() => {
     if (Array.isArray(values)) {
@@ -97,10 +199,58 @@
 
   // === Visibility filtering ===
   // Single pass to find which columns and rows have at least one non-null value
+  function sort_indices(
+    indices: number[],
+    items: AxisItem[],
+    axis_order: AxisOrder | undefined,
+  ): number[] {
+    if (!axis_order) return indices
+    const sorted = [...indices]
+    if (typeof axis_order === `function`) {
+      sorted.sort((idx_a, idx_b) => axis_order(items[idx_a], items[idx_b]))
+      return sorted
+    }
+    sorted.sort((idx_a, idx_b) => {
+      const item_a = items[idx_a]
+      const item_b = items[idx_b]
+      if (axis_order === `sort_value`) {
+        const a_val = item_a.sort_value ?? Number.POSITIVE_INFINITY
+        const b_val = item_b.sort_value ?? Number.POSITIVE_INFINITY
+        return a_val - b_val
+      }
+      if (axis_order === `key`) {
+        return (item_a.key ?? item_a.label).localeCompare(item_b.key ?? item_b.label)
+      }
+      return item_a.label.localeCompare(item_b.label)
+    })
+    return sorted
+  }
+
   let { vis_x, vis_y } = $derived.by(() => {
     const all_x = Array.from({ length: x_items.length }, (_, idx) => idx)
     const all_y = Array.from({ length: y_items.length }, (_, idx) => idx)
-    if (!hide_empty) return { vis_x: all_x, vis_y: all_y }
+    const filtered_x = search_query_norm
+      ? all_x.filter((idx) => {
+        const item = x_items[idx]
+        const key = item.key ?? item.label
+        return key.toLowerCase().includes(search_query_norm) ||
+          item.label.toLowerCase().includes(search_query_norm)
+      })
+      : all_x
+    const filtered_y = search_query_norm
+      ? all_y.filter((idx) => {
+        const item = y_items[idx]
+        const key = item.key ?? item.label
+        return key.toLowerCase().includes(search_query_norm) ||
+          item.label.toLowerCase().includes(search_query_norm)
+      })
+      : all_y
+    if (!hide_empty) {
+      return {
+        vis_x: sort_indices(filtered_x, x_items, x_order),
+        vis_y: sort_indices(filtered_y, y_items, y_order),
+      }
+    }
 
     const col_has_data = new Array(x_items.length).fill(false)
     const row_has_data = new Array(y_items.length).fill(false)
@@ -113,8 +263,16 @@
       }
     }
     return {
-      vis_x: all_x.filter((idx) => col_has_data[idx]),
-      vis_y: all_y.filter((idx) => row_has_data[idx]),
+      vis_x: sort_indices(
+        filtered_x.filter((idx) => col_has_data[idx]),
+        x_items,
+        x_order,
+      ),
+      vis_y: sort_indices(
+        filtered_y.filter((idx) => row_has_data[idx]),
+        y_items,
+        y_order,
+      ),
     }
   })
 
@@ -125,25 +283,84 @@
     return typeof named_scale === `function` ? named_scale : d3_sc.interpolateViridis
   })
 
+  function get_transformed_value(x_idx: number, y_idx: number): number | null {
+    const raw_value = get_value(x_idx, y_idx)
+    if (typeof raw_value !== `number` || !Number.isFinite(raw_value)) return null
+    if (!value_transform) return raw_value
+    const transformed_value = value_transform(raw_value, {
+      x_item: x_items[x_idx],
+      y_item: y_items[y_idx],
+      x_idx,
+      y_idx,
+    })
+    if (transformed_value === null || !Number.isFinite(transformed_value)) return null
+    return transformed_value
+  }
+
+  function get_quantile(sorted_values: number[], quantile: number): number {
+    if (!sorted_values.length) return 0
+    const clipped_quantile = Math.max(0, Math.min(1, quantile))
+    const float_idx = (sorted_values.length - 1) * clipped_quantile
+    const low_idx = Math.floor(float_idx)
+    const high_idx = Math.ceil(float_idx)
+    if (low_idx === high_idx) return sorted_values[low_idx]
+    const low_weight = high_idx - float_idx
+    const high_weight = float_idx - low_idx
+    return sorted_values[low_idx] * low_weight + sorted_values[high_idx] * high_weight
+  }
+
+  let valid_numeric_values = $derived.by(() => {
+    const numeric_values: number[] = []
+    for (let y_idx = 0; y_idx < y_items.length; y_idx++) {
+      for (let x_idx = 0; x_idx < x_items.length; x_idx++) {
+        if (symmetric && x_idx > y_idx) continue
+        const value = get_transformed_value(x_idx, y_idx)
+        if (value === null) continue
+        numeric_values.push(value)
+      }
+    }
+    return numeric_values
+  })
+
   // Single-pass min/max to avoid spreading large arrays into Math.min/max
   let [auto_min, auto_max] = $derived.by(() => {
     let min = Infinity
     let max = -Infinity
-    for (let y_idx = 0; y_idx < y_items.length; y_idx++) {
-      for (let x_idx = 0; x_idx < x_items.length; x_idx++) {
-        if (symmetric && x_idx > y_idx) continue
-        const val = get_value(x_idx, y_idx)
-        if (typeof val === `number` && Number.isFinite(val) && (!log || val > 0)) {
-          if (val < min) min = val
-          if (val > max) max = val
-        }
-      }
+    for (const value of valid_numeric_values) {
+      if (value < min) min = value
+      if (value > max) max = value
     }
     return min <= max ? [min, max] as const : [0, 1] as const
   })
 
-  let cs_min = $derived(color_scale_range[0] ?? auto_min)
-  let cs_max = $derived(color_scale_range[1] ?? auto_max)
+  let [robust_min, robust_max] = $derived.by(() => {
+    if (!valid_numeric_values.length) return [0, 1] as const
+    const sorted_values = [...valid_numeric_values].sort((value_a, value_b) =>
+      value_a - value_b
+    )
+    const [q_low, q_high] = quantile_clip
+    const clipped_min = get_quantile(sorted_values, q_low)
+    const clipped_max = get_quantile(sorted_values, q_high)
+    return clipped_min <= clipped_max
+      ? [clipped_min, clipped_max] as const
+      : [clipped_max, clipped_min] as const
+  })
+
+  let [domain_min, domain_max] = $derived.by(() => {
+    if (
+      domain_mode === `fixed` &&
+      color_scale_range[0] !== null &&
+      color_scale_range[1] !== null
+    ) {
+      return [color_scale_range[0], color_scale_range[1]] as const
+    }
+    if (domain_mode === `robust`) return [robust_min, robust_max] as const
+    return [auto_min, auto_max] as const
+  })
+
+  let cs_min = $derived(color_scale_range[0] ?? domain_min)
+  let cs_max = $derived(color_scale_range[1] ?? domain_max)
+  let use_log_norm = $derived(normalize === `log` || log)
 
   // Map a single value to a background color
   function value_to_color(val: CellValue): string | null {
@@ -153,13 +370,15 @@
       return missing_color || null
     }
     if (!Number.isFinite(val) || !color_scale_fn) return missing_color || null
-    if (log && val <= 0) return missing_color || null
+    if (use_log_norm && val <= 0) return missing_color || null
 
     const span = cs_max - cs_min
     if (!Number.isFinite(span) || span === 0) return color_scale_fn(0.5)
 
-    let normalized = (val - cs_min) / span
-    if (log) {
+    let normalized = typeof normalize === `function`
+      ? normalize(val, cs_min, cs_max)
+      : (val - cs_min) / span
+    if (use_log_norm) {
       const is_descending_range = cs_min > cs_max
       const lower_bound = Math.min(cs_min, cs_max)
       const upper_bound = Math.max(cs_min, cs_max)
@@ -194,9 +413,13 @@
           continue
         }
         const override_key = make_color_override_key(x_keys[x_idx], y_keys[y_idx])
+        const raw_value = get_value(x_idx, y_idx)
+        const transformed_value = typeof raw_value === `number`
+          ? get_transformed_value(x_idx, y_idx)
+          : raw_value
         colors[row_offset + x_idx] = override_key in color_overrides
           ? color_overrides[override_key]
-          : value_to_color(get_value(x_idx, y_idx))
+          : value_to_color(transformed_value)
       }
     }
     return colors
@@ -210,9 +433,13 @@
     )
   })
 
+  function get_flat_idx(x_idx: number, y_idx: number): number {
+    return y_idx * n_x + x_idx
+  }
+
   // Look up bg color by indices
   function get_bg(x_idx: number, y_idx: number): string | null {
-    return bg_flat[y_idx * n_x + x_idx]
+    return bg_flat[get_flat_idx(x_idx, y_idx)]
   }
 
   // === Cell context builder (only called for clicks, not per-hover) ===
@@ -237,6 +464,16 @@
   const dblclick_delay_ms = 250
   let last_hover_x = -1
   let last_hover_y = -1
+  let matrix_el: HTMLDivElement | undefined = $state()
+  let scroll_left = $state(0)
+  let scroll_top = $state(0)
+  let viewport_width = $state(0)
+  let viewport_height = $state(0)
+  let grid_offset_left = $state(0)
+  let grid_offset_top = $state(0)
+  let brush_start: CellPos | null = $state(null)
+  let brush_end: CellPos | null = $state(null)
+  let last_selected_cell: CellPos | null = $state(null)
 
   // In symmetric mode, labels can either stay on outer edges ('edge')
   // or move toward the missing triangle and hug the diagonal ('diagonal').
@@ -254,11 +491,65 @@
   let use_side_split_x_labels = $derived(
     use_staggered_x_labels && !use_diagonal_symmetric_labels,
   )
-  let use_side_split_y_labels = $derived(use_staggered_y_labels)
+  // Don't split y-labels to both sides when symmetric -- the right side has no cells
+  let use_side_split_y_labels = $derived(use_staggered_y_labels && !symmetric)
   // For 'gaps' mode: explicit grid placement to preserve positional alignment
   let gaps_mode = $derived(hide_empty === `gaps`)
   let visible_col_count = $derived(gaps_mode ? x_items.length : vis_x.length)
   let visible_row_count = $derived(gaps_mode ? y_items.length : vis_y.length)
+  let show_bottom_summary_row = $derived(show_col_summaries)
+  let show_right_summary_col = $derived(show_row_summaries)
+  let grid_col_count = $derived(visible_col_count + (show_right_summary_col ? 1 : 0))
+  let grid_row_count = $derived(visible_row_count + (show_bottom_summary_row ? 1 : 0))
+
+  function cell_pos_key(x_idx: number, y_idx: number): string {
+    return `${x_idx}:${y_idx}`
+  }
+
+  let selected_cell_key_set = $derived(
+    new Set(
+      selected_cells.map((cell_pos) => cell_pos_key(cell_pos.x_idx, cell_pos.y_idx)),
+    ),
+  )
+
+  function parse_px_size(size: string): number {
+    const parsed = Number.parseFloat(size)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 12
+  }
+
+  let tile_size_px = $derived(parse_px_size(tile_size))
+  let gap_px = $derived(parse_px_size(gap))
+  let tile_stride_px = $derived(tile_size_px + gap_px)
+  let render_vis_x = $derived.by(() => {
+    if (!virtualize) return vis_x
+    const start_pos = Math.max(
+      0,
+      Math.floor((scroll_left - grid_offset_left) / tile_stride_px) - overscan,
+    )
+    const end_pos = Math.min(
+      vis_x.length,
+      Math.ceil((scroll_left - grid_offset_left + viewport_width) / tile_stride_px) +
+        overscan,
+    )
+    return vis_x.slice(start_pos, end_pos)
+  })
+  let render_vis_y = $derived.by(() => {
+    if (!virtualize) return vis_y
+    const start_pos = Math.max(
+      0,
+      Math.floor((scroll_top - grid_offset_top) / tile_stride_px) - overscan,
+    )
+    const end_pos = Math.min(
+      vis_y.length,
+      Math.ceil((scroll_top - grid_offset_top + viewport_height) / tile_stride_px) +
+        overscan,
+    )
+    return vis_y.slice(start_pos, end_pos)
+  })
+
+  function is_selected_cell(x_idx: number, y_idx: number): boolean {
+    return selected_cell_key_set.has(cell_pos_key(x_idx, y_idx))
+  }
 
   let vis_x_pos_map = $derived.by(() => {
     const position_map = new SvelteMap<number, number>()
@@ -275,6 +566,20 @@
     }
     return position_map
   })
+  let highlight_x_by_idx = $derived(
+    new Set(
+      vis_x.filter((idx) =>
+        highlight_x_key_set.has(x_items[idx].key ?? x_items[idx].label)
+      ),
+    ),
+  )
+  let highlight_y_by_idx = $derived(
+    new Set(
+      vis_y.filter((idx) =>
+        highlight_y_key_set.has(y_items[idx].key ?? y_items[idx].label)
+      ),
+    ),
+  )
 
   function get_vis_col(item_idx: number): number | null {
     if (gaps_mode) return item_idx
@@ -362,10 +667,10 @@
     return { x_idx: x_value, y_idx: y_value }
   }
 
-  function get_cell_context_from_event(
-    event: MouseEvent | KeyboardEvent,
+  function get_cell_context_from_target(
+    event_target: EventTarget | null,
   ): CellContext | null {
-    const cell_el = get_cell_el(event as MouseEvent)
+    const cell_el = get_cell_el_from_target(event_target)
     if (!cell_el) return null
     const indices = parse_cell_indices(cell_el)
     if (!indices) return null
@@ -385,14 +690,75 @@
     }, dblclick_delay_ms)
   }
 
-  function get_cell_el(event: MouseEvent): HTMLElement | null {
-    const target_node = event.target
+  function get_cell_el_from_target(
+    event_target: EventTarget | null,
+  ): HTMLElement | null {
+    const target_node = event_target
     if (!(target_node instanceof Element)) return null
     if (target_node instanceof HTMLElement && target_node.dataset.x !== undefined) {
       return target_node
     }
     const closest_cell = target_node.closest(`[data-x][data-y]`)
     return closest_cell instanceof HTMLElement ? closest_cell : null
+  }
+
+  function update_selected_cells(
+    event: MouseEvent,
+    clicked_cell: CellPos,
+  ): void {
+    if (selection_mode === `single`) {
+      selected_cells = [clicked_cell]
+      last_selected_cell = clicked_cell
+      onselect?.(selected_cells)
+      return
+    }
+    if (
+      selection_mode === `range` &&
+      event.shiftKey &&
+      last_selected_cell
+    ) {
+      const x_min = Math.min(last_selected_cell.x_idx, clicked_cell.x_idx)
+      const x_max = Math.max(last_selected_cell.x_idx, clicked_cell.x_idx)
+      const y_min = Math.min(last_selected_cell.y_idx, clicked_cell.y_idx)
+      const y_max = Math.max(last_selected_cell.y_idx, clicked_cell.y_idx)
+      const next_cells: CellPos[] = []
+      for (let y_idx = y_min; y_idx <= y_max; y_idx++) {
+        for (let x_idx = x_min; x_idx <= x_max; x_idx++) {
+          if (symmetric && x_idx > y_idx) continue
+          next_cells.push({ x_idx, y_idx })
+        }
+      }
+      selected_cells = next_cells
+      onselect?.(selected_cells)
+      return
+    }
+    const clicked_key = cell_pos_key(clicked_cell.x_idx, clicked_cell.y_idx)
+    const next_cells = [...selected_cells]
+    const existing_idx = next_cells.findIndex((pos) =>
+      cell_pos_key(pos.x_idx, pos.y_idx) === clicked_key
+    )
+    const toggle_mode = selection_mode === `multi` && (event.metaKey || event.ctrlKey)
+    if (existing_idx >= 0 && toggle_mode) {
+      next_cells.splice(existing_idx, 1)
+    } else if (selection_mode === `multi` && toggle_mode) {
+      next_cells.push(clicked_cell)
+    } else {
+      next_cells.splice(0, next_cells.length, clicked_cell)
+    }
+    selected_cells = next_cells
+    last_selected_cell = clicked_cell
+    onselect?.(selected_cells)
+  }
+
+  function update_tooltip_position(client_x: number, client_y: number): void {
+    if (!tooltip_div) return
+    tooltip_div.style.left = `${client_x + 10}px`
+    tooltip_div.style.top = `${client_y + 12}px`
+  }
+
+  function set_pinned_cell(next_cell: CellPos | null): void {
+    pinned_cell = next_cell
+    onpin?.(next_cell)
   }
 
   // Write default tooltip content imperatively (no reactive state)
@@ -416,7 +782,7 @@
 
   function handle_mouseover(event: MouseEvent) {
     if (disabled) return
-    const cell_el = get_cell_el(event)
+    const cell_el = get_cell_el_from_target(event.target)
     if (!cell_el) return
     const indices = parse_cell_indices(cell_el)
     if (!indices) return
@@ -435,11 +801,11 @@
       active_cell = { x_idx, y_idx }
     })
 
-    if (tooltip === false || !tooltip_div) return
+    if (enable_brush && brush_start) brush_end = { x_idx, y_idx }
+    if (tooltip === false || !tooltip_div || tooltip_mode === `pinned`) return
 
     // Use viewport coordinates to avoid forced layout reads on large grids
-    tooltip_div.style.left = `${event.clientX + 10}px`
-    tooltip_div.style.top = `${event.clientY + 12}px`
+    update_tooltip_position(event.clientX, event.clientY)
     tooltip_div.classList.add(`visible`)
 
     if (typeof tooltip === `function`) {
@@ -456,48 +822,273 @@
     // Clear active state imperatively
     last_hover_x = -1
     last_hover_y = -1
-    tooltip_div?.classList.remove(`visible`)
+    const keep_tooltip_visible = tooltip_mode === `pinned` ||
+      (tooltip_mode === `both` && pinned_cell !== null)
+    if (!keep_tooltip_visible) {
+      tooltip_div?.classList.remove(`visible`)
+    }
     // Defer reactive cleanup to rAF
     cancel_raf(active_cell_raf)
     active_cell_raf = schedule_raf(() => {
       active_cell = null
-      tooltip_cell = null
+      if (!keep_tooltip_visible) tooltip_cell = null
     })
   }
 
   function handle_click(event: MouseEvent) {
-    if (disabled || !onclick) return
-    const cell_context = get_cell_context_from_event(event)
+    if (disabled) return
+    const cell_context = get_cell_context_from_target(event.target)
     if (!cell_context) return
+    update_selected_cells(event, {
+      x_idx: cell_context.x_idx,
+      y_idx: cell_context.y_idx,
+    })
+    if (tooltip_mode === `both` || tooltip_mode === `pinned`) {
+      set_pinned_cell({ x_idx: cell_context.x_idx, y_idx: cell_context.y_idx })
+      if (tooltip !== false && tooltip_div) {
+        update_tooltip_position(event.clientX, event.clientY)
+        tooltip_div.classList.add(`visible`)
+        if (typeof tooltip === `function`) {
+          tooltip_cell = cell_context
+        } else {
+          update_tooltip_content(
+            tooltip_div,
+            cell_context.x_idx,
+            cell_context.y_idx,
+          )
+        }
+      }
+    }
+    if (!onclick) return
     trigger_click(cell_context)
   }
 
   function handle_dblclick(event: MouseEvent) {
     if (disabled || !ondblclick) return
-    const cell_context = get_cell_context_from_event(event)
+    const cell_context = get_cell_context_from_target(event.target)
     if (!cell_context) return
     clear_pending_click()
     ondblclick(cell_context)
   }
 
-  function handle_cell_keydown(key_event: KeyboardEvent): void {
-    if (disabled || (key_event.key !== `Enter` && key_event.key !== ` `)) return
-    key_event.preventDefault()
-    const cell_context = get_cell_context_from_event(key_event)
+  function handle_contextmenu(event: MouseEvent): void {
+    if (disabled || !oncontextmenu) return
+    const cell_context = get_cell_context_from_target(event.target)
     if (!cell_context) return
-    if (onclick) {
-      trigger_click(cell_context)
-      return
-    }
-    ondblclick?.(cell_context)
+    event.preventDefault()
+    oncontextmenu(cell_context, event)
   }
 
+  function handle_mousedown(event: MouseEvent): void {
+    if (disabled || !enable_brush) return
+    const cell_context = get_cell_context_from_target(event.target)
+    if (!cell_context) return
+    brush_start = { x_idx: cell_context.x_idx, y_idx: cell_context.y_idx }
+    brush_end = { x_idx: cell_context.x_idx, y_idx: cell_context.y_idx }
+  }
+
+  function handle_mouseup(): void {
+    if (!enable_brush || !brush_start || !brush_end || !onbrush) {
+      brush_start = null
+      brush_end = null
+      return
+    }
+    const x_min = Math.min(brush_start.x_idx, brush_end.x_idx)
+    const x_max = Math.max(brush_start.x_idx, brush_end.x_idx)
+    const y_min = Math.min(brush_start.y_idx, brush_end.y_idx)
+    const y_max = Math.max(brush_start.y_idx, brush_end.y_idx)
+    const cells: CellContext[] = []
+    for (let y_idx = y_min; y_idx <= y_max; y_idx++) {
+      for (let x_idx = x_min; x_idx <= x_max; x_idx++) {
+        if (symmetric && x_idx > y_idx) continue
+        cells.push(build_cell_context(x_idx, y_idx))
+      }
+    }
+    onbrush({ x_range: [x_min, x_max], y_range: [y_min, y_max], cells })
+    brush_start = null
+    brush_end = null
+  }
+
+  function focus_cell(x_idx: number, y_idx: number): boolean {
+    const target = matrix_el?.querySelector(`[data-x="${x_idx}"][data-y="${y_idx}"]`)
+    if (!(target instanceof HTMLElement)) return false
+    target.focus()
+    active_cell = { x_idx, y_idx }
+    return true
+  }
+
+  function handle_keydown(event: KeyboardEvent): void {
+    const active_el = document.activeElement
+    if (!(active_el instanceof HTMLElement)) return
+    if (!(active_el.dataset.x && active_el.dataset.y)) return
+    const x_idx = Number(active_el.dataset.x)
+    const y_idx = Number(active_el.dataset.y)
+    if (!Number.isInteger(x_idx) || !Number.isInteger(y_idx)) return
+    let x_step = 0
+    let y_step = 0
+    if (event.key === `ArrowRight`) x_step = 1
+    else if (event.key === `ArrowLeft`) x_step = -1
+    else if (event.key === `ArrowDown`) y_step = 1
+    else if (event.key === `ArrowUp`) y_step = -1
+    else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === `e`) {
+      const format = export_formats[0]
+      if (format && onexport) onexport(format, build_export_payload(format))
+      return
+    } else return
+    event.preventDefault()
+    let next_x = x_idx
+    let next_y = y_idx
+    const max_steps = Math.max(x_items.length, y_items.length) + 1
+    for (let step_idx = 0; step_idx < max_steps; step_idx++) {
+      next_x += x_step
+      next_y += y_step
+      if (
+        next_x < 0 || next_y < 0 || next_x >= x_items.length ||
+        next_y >= y_items.length
+      ) {
+        return
+      }
+      if (symmetric && next_x > next_y) continue
+      if (focus_cell(next_x, next_y)) return
+    }
+  }
+
+  function build_export_payload(format: HeatmapExportFormat): unknown {
+    const rows = matrix_to_rows(
+      vis_x.map((x_idx) => x_items[x_idx]),
+      vis_y.map((y_idx) => y_items[y_idx]),
+      vis_y.map((y_idx) => vis_x.map((x_idx) => get_value(x_idx, y_idx))),
+    )
+    if (format === `json`) return rows
+    return rows_to_csv(rows)
+  }
+
+  function update_viewport_state(): void {
+    if (!matrix_el) return
+    scroll_left = matrix_el.scrollLeft
+    scroll_top = matrix_el.scrollTop
+    viewport_width = matrix_el.clientWidth
+    viewport_height = matrix_el.clientHeight
+    const first_rendered_cell = matrix_el.querySelector(
+      `.cell[data-x][data-y]`,
+    ) as HTMLElement | null
+    if (!first_rendered_cell) return
+    const x_idx = Number(first_rendered_cell.dataset.x)
+    const y_idx = Number(first_rendered_cell.dataset.y)
+    if (!Number.isInteger(x_idx) || !Number.isInteger(y_idx)) return
+    const vis_col = get_vis_col(x_idx) ?? 0
+    const vis_row = get_vis_row(y_idx) ?? 0
+    grid_offset_left = first_rendered_cell.offsetLeft - vis_col * tile_stride_px
+    grid_offset_top = first_rendered_cell.offsetTop - vis_row * tile_stride_px
+  }
+
+  function compute_summary(values: number[]): number | null {
+    if (!values.length) return null
+    if (summary_fn) return summary_fn(values)
+    const total = values.reduce((sum, value) => sum + value, 0)
+    return total / values.length
+  }
+
+  function summarize_axis_values(
+    primary_indices: number[],
+    secondary_indices: number[],
+    get_x_idx: (primary_idx: number, secondary_idx: number) => number,
+    get_y_idx: (primary_idx: number, secondary_idx: number) => number,
+  ): SvelteMap<number, number | null> {
+    const summary_map = new SvelteMap<number, number | null>()
+    for (const primary_idx of primary_indices) {
+      const values_for_summary: number[] = []
+      for (const secondary_idx of secondary_indices) {
+        const x_idx = get_x_idx(primary_idx, secondary_idx)
+        const y_idx = get_y_idx(primary_idx, secondary_idx)
+        if (symmetric && x_idx > y_idx) continue
+        const value = get_value(x_idx, y_idx)
+        if (typeof value === `number` && Number.isFinite(value)) {
+          values_for_summary.push(value)
+        }
+      }
+      summary_map.set(primary_idx, compute_summary(values_for_summary))
+    }
+    return summary_map
+  }
+
+  let row_summaries = $derived.by(() => {
+    if (!show_row_summaries) return new SvelteMap<number, number | null>()
+    return summarize_axis_values(
+      vis_y,
+      vis_x,
+      (_y_idx, x_idx) => x_idx,
+      (y_idx) => y_idx,
+    )
+  })
+
+  let col_summaries = $derived.by(() => {
+    if (!show_col_summaries) return new SvelteMap<number, number | null>()
+    return summarize_axis_values(
+      vis_x,
+      vis_y,
+      (x_idx) => x_idx,
+      (_x_idx, y_idx) => y_idx,
+    )
+  })
+
+  let legend_ticks_values = $derived.by(() => {
+    const tick_count = Math.max(2, legend_ticks)
+    const ticks: number[] = []
+    const safe_min = use_log_norm ? Math.max(cs_min, Number.MIN_VALUE) : cs_min
+    const safe_max = use_log_norm ? Math.max(cs_max, Number.MIN_VALUE) : cs_max
+    for (let tick_idx = 0; tick_idx < tick_count; tick_idx++) {
+      const ratio = tick_idx / (tick_count - 1)
+      const tick_value = use_log_norm
+        ? Math.exp(
+          Math.log(safe_min) + ratio * (Math.log(safe_max) - Math.log(safe_min)),
+        )
+        : cs_min + ratio * (cs_max - cs_min)
+      ticks.push(tick_value)
+    }
+    return ticks
+  })
+
+  function format_legend_value(value: number): string {
+    return format_num(value, legend_format)
+  }
+
+  let legend_gradient = $derived.by(() => {
+    const stops = [0, 0.25, 0.5, 0.75, 1]
+      .map((ratio) => `${color_scale_fn(ratio)} ${Math.round(ratio * 100)}%`)
+      .join(`, `)
+    return legend_position === `right`
+      ? `linear-gradient(to top, ${stops})`
+      : `linear-gradient(to right, ${stops})`
+  })
+
   let has_interaction_handlers = $derived(
-    !disabled && (Boolean(onclick) || Boolean(ondblclick)),
+    !disabled &&
+      (
+        Boolean(onclick) ||
+        Boolean(ondblclick) ||
+        Boolean(oncontextmenu) ||
+        selection_mode !== `single` ||
+        tooltip_mode !== `hover`
+      ),
+  )
+  let cell_tag_name = $derived(has_interaction_handlers ? `button` : `div`)
+  let cell_class_name = $derived(
+    has_interaction_handlers ? `cell cell-interactive` : `cell`,
   )
 
   // Tooltip state: only used for custom tooltip snippets (function tooltips)
   let tooltip_cell: CellContext | null = $state(null)
+
+  onMount(() => {
+    update_viewport_state()
+    if (!is_browser) return
+    const handle_window_mouseup = () => handle_mouseup()
+    window.addEventListener(`mouseup`, handle_window_mouseup)
+    return () => {
+      window.removeEventListener(`mouseup`, handle_window_mouseup)
+    }
+  })
 
   onDestroy(() => {
     cancel_raf(active_cell_raf)
@@ -507,19 +1098,28 @@
 
 <div
   {...rest}
-  class="heatmap-matrix {rest.class ?? ``}"
-  style:--n-cols={gaps_mode ? x_items.length : vis_x.length}
-  style:--n-rows={gaps_mode ? y_items.length : vis_y.length}
+  bind:this={matrix_el}
+  class="heatmap-matrix theme-{theme} legend-{legend_position} {rest.class ?? ``}"
+  style:--n-cols={gaps_mode ? x_items.length : grid_col_count}
+  style:--n-rows={gaps_mode ? y_items.length : grid_row_count}
   style:--extra-right-y={use_side_split_y_labels ? 1 : 0}
   style:--extra-bottom-x={use_side_split_x_labels ? 1 : 0}
   style:--right-y-track={use_side_split_y_labels ? `max-content` : `0`}
   style:--bottom-x-track={use_side_split_x_labels ? `max-content` : `0`}
   style:--tile-size={tile_size}
+  style:--heatmap-gridline-color={gridline_color}
+  style:--heatmap-gridline-width={gridline_width}
+  style:--heatmap-anim-duration={animation_duration}
   style:gap
   onmouseover={handle_mouseover}
   onmouseout={handle_mouseout}
+  onmousedown={handle_mousedown}
+  onmouseup={handle_mouseup}
   onclick={handle_click}
   ondblclick={handle_dblclick}
+  oncontextmenu={handle_contextmenu}
+  onkeydown={handle_keydown}
+  onscroll={update_viewport_state}
 >
   <!-- Top-left corner spacer (when both axes have labels) -->
   {#if show_x_labels && show_y_labels}
@@ -534,6 +1134,8 @@
         class="x-label"
         class:x-edge-top={use_side_split_x_labels && x_idx % 2 === 0}
         class:x-edge-bottom={use_side_split_x_labels && x_idx % 2 !== 0}
+        class:highlighted-axis={highlight_x_by_idx.has(x_idx)}
+        class:sticky-axis={sticky_x_labels}
         style={label_style || undefined}
         style:grid-column={x_label_grid_col(x_idx)}
         style:grid-row={x_label_grid_row(x_idx)}
@@ -549,13 +1151,15 @@
   {/if}
 
   <!-- Grid rows: y-label + cells -->
-  {#each vis_y as y_idx (y_items[y_idx].key ?? y_items[y_idx].label)}
+  {#each render_vis_y as y_idx (y_items[y_idx].key ?? y_items[y_idx].label)}
     {@const y_item = y_items[y_idx]}
     {#if show_y_labels}
       <div
         class="y-label"
         class:y-edge-left={use_side_split_y_labels && y_idx % 2 === 0}
         class:y-edge-right={use_side_split_y_labels && y_idx % 2 !== 0}
+        class:highlighted-axis={highlight_y_by_idx.has(y_idx)}
+        class:sticky-axis={sticky_y_labels}
         style={label_style || undefined}
         style:grid-row={y_label_edge_grid_row(y_idx)}
         style:grid-column={y_label_grid_col(y_idx)}
@@ -570,26 +1174,28 @@
     {/if}
 
     <!-- Cells for this row -->
-    {#each vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
-      {@const bg = bg_flat[y_idx * n_x + x_idx]}
+    {#each render_vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
+      {@const flat_idx = get_flat_idx(x_idx, y_idx)}
+      {@const bg = bg_flat[flat_idx]}
       {@const should_render = !symmetric || x_idx <= y_idx}
       {#if should_render}
-        <div
-          class="cell"
+        <svelte:element
+          this={cell_tag_name}
+          class={cell_class_name}
+          class:selected={is_selected_cell(x_idx, y_idx)}
+          class:with-gridlines={show_gridlines}
+          class:animate-updates={animate_updates}
           data-x={x_idx}
           data-y={y_idx}
-          role={has_interaction_handlers ? `button` : undefined}
-          tabindex={has_interaction_handlers ? 0 : undefined}
           style:background-color={bg}
-          style:color={text_flat?.[y_idx * n_x + x_idx]}
+          style:color={text_flat?.[flat_idx]}
           style:grid-column={cell_grid_col(x_idx)}
           style:grid-row={cell_grid_row(y_idx)}
-          onkeydown={handle_cell_keydown}
         >
           {#if cell}
             {@render cell(build_cell_context(x_idx, y_idx))}
           {/if}
-        </div>
+        </svelte:element>
       {:else}
         <div
           class="cell empty"
@@ -601,12 +1207,52 @@
     {/each}
   {/each}
 
+  {#if show_row_summaries}
+    {#each vis_y as y_idx (y_items[y_idx].key ?? y_items[y_idx].label)}
+      <div
+        class="summary summary-row"
+        style:grid-column={visible_col_count + 2}
+        style:grid-row={cell_grid_row(y_idx)}
+      >
+        {#if row_summaries.get(y_idx) !== null}
+          {format_num(row_summaries.get(y_idx) ?? 0)}
+        {/if}
+      </div>
+    {/each}
+  {/if}
+
+  {#if show_col_summaries}
+    {#each vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
+      <div
+        class="summary summary-col"
+        style:grid-column={cell_grid_col(x_idx)}
+        style:grid-row={visible_row_count + 2}
+      >
+        {#if col_summaries.get(x_idx) !== null}
+          {format_num(col_summaries.get(x_idx) ?? 0)}
+        {/if}
+      </div>
+    {/each}
+  {/if}
+
   <!-- Tooltip: always in DOM, visibility toggled imperatively via classList -->
   {#if tooltip !== false}
     <div class="tooltip" bind:this={tooltip_div}>
       {#if typeof tooltip === `function` && tooltip_cell}
         {@render tooltip(tooltip_cell)}
       {/if}
+    </div>
+  {/if}
+
+  {#if show_legend}
+    <div class="legend legend-{legend_position}">
+      <div class="legend-label">{legend_label}</div>
+      <div class="legend-bar" style:background={legend_gradient}></div>
+      <div class="legend-ticks">
+        {#each legend_ticks_values as tick, tick_idx (tick_idx)}
+          <span>{format_legend_value(tick)}</span>
+        {/each}
+      </div>
     </div>
   {/if}
 
@@ -639,6 +1285,20 @@
     );
     overflow: auto;
   }
+  .heatmap-matrix.legend-right {
+    padding-right: 56px;
+  }
+  .heatmap-matrix.legend-bottom {
+    padding-bottom: 42px;
+  }
+  .heatmap-matrix.theme-publication {
+    --tooltip-bg: rgba(255, 255, 255, 0.98);
+    --tooltip-color: #111;
+  }
+  .heatmap-matrix.theme-dark {
+    --tooltip-bg: rgba(0, 0, 0, 0.9);
+    --tooltip-color: #eee;
+  }
   .corner {
     min-width: 0; /* spacer in top-left when both axes have labels */
   }
@@ -652,6 +1312,23 @@
     align-items: center;
     justify-content: center;
     cursor: default;
+  }
+  .cell-interactive {
+    border: none;
+    padding: 0;
+    font: inherit;
+    line-height: inherit;
+    cursor: pointer;
+  }
+  .cell.selected {
+    outline: 2px solid color-mix(in srgb, currentColor 65%, transparent);
+    outline-offset: -2px;
+  }
+  .cell.with-gridlines {
+    border: var(--heatmap-gridline-width) solid var(--heatmap-gridline-color);
+  }
+  .cell.animate-updates {
+    transition: background-color var(--heatmap-anim-duration) ease;
   }
   .cell.empty {
     pointer-events: none;
@@ -696,6 +1373,74 @@
   .y-label.y-edge-right {
     justify-content: flex-start;
     text-align: left;
+  }
+  .sticky-axis.x-label {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg, transparent);
+  }
+  .sticky-axis.y-label {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--bg, transparent);
+  }
+  .highlighted-axis {
+    font-weight: 700;
+    text-decoration: underline;
+  }
+  .summary {
+    font-size: clamp(9px, calc(var(--tile-size, 6px) * 0.6), 14px);
+    align-self: center;
+    justify-self: center;
+    color: var(--text-color-muted, currentColor);
+    opacity: 0.9;
+  }
+  .legend {
+    position: absolute;
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    background: color-mix(in srgb, var(--bg, #fff) 80%, transparent);
+    padding: 0.3rem 0.4rem;
+    border-radius: var(--border-radius, 3pt);
+  }
+  .legend-right {
+    right: 4px;
+    top: 8px;
+    flex-direction: column;
+  }
+  .legend-bottom {
+    left: 8px;
+    bottom: 4px;
+    flex-direction: row;
+  }
+  .legend-label {
+    font-size: 0.72rem;
+    opacity: 0.8;
+  }
+  .legend-bar {
+    box-sizing: border-box;
+    width: 14px;
+    height: 120px;
+    border-radius: 3px;
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  }
+  .legend-bottom .legend-bar {
+    width: 120px;
+    height: 12px;
+  }
+  .legend-ticks {
+    display: flex;
+    gap: 0.35rem;
+    font-size: 0.68rem;
+  }
+  .legend-right .legend-ticks {
+    flex-direction: column-reverse;
+  }
+  .legend-bottom .legend-ticks {
+    flex-direction: row;
   }
   .tooltip {
     display: none;

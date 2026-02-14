@@ -243,11 +243,11 @@
       .replace(/'/g, `&#39;`)
   const unescape_html = (str: string): string =>
     str
+      .replace(/&amp;/g, `&`)
       .replace(/&lt;/g, `<`)
       .replace(/&gt;/g, `>`)
       .replace(/&quot;/g, `"`)
       .replace(/&#39;/g, `'`)
-      .replace(/&amp;/g, `&`)
   // Convert legacy/html formula strings like Fe<sub>2</sub>O<sub>3</sub> back to plain
   // stoichiometric input before parsing/reordering.
   const normalize_formula_markup = (formula: string): string =>
