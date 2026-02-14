@@ -830,10 +830,12 @@ function infer_mpds_components(doc: Document): [string, string] {
 
 // === Utility Functions ===
 
-// Parse stroke-width from an element's style attribute (returns 0 if not found)
+// Parse stroke-width from style attribute or direct attribute (returns 0 if not found)
 function parse_stroke_width(el: Element): number {
-  const match = (el.getAttribute(`style`) ?? ``).match(/stroke-width:\s*([\d.]+)/)
-  return match ? parseFloat(match[1]) : 0
+  const style_match = (el.getAttribute(`style`) ?? ``).match(/stroke-width:\s*([\d.]+)/)
+  if (style_match) return parseFloat(style_match[1])
+  const attr = el.getAttribute(`stroke-width`)
+  return attr ? parseFloat(attr) || 0 : 0
 }
 
 // Parse a float attribute from an SVG element
@@ -984,12 +986,14 @@ function parse_ml_path(
   return { x1, y1, x2, y2 }
 }
 
-// Parse translate(x, y) from a transform attribute, returns [x, y] or null
+// Parse translate(x, y) or translate(x) from a transform attribute
+// Single-arg translate uses implicit y=0 per SVG spec
 function parse_translate(el: Element | null): [number, number] | null {
   const match = (el?.getAttribute(`transform`) ?? ``).match(
-    /translate\(\s*([\d.-]+)\s*[,\s]\s*([\d.-]+)/,
+    /translate\(\s*([\d.eE+-]+)(?:\s*[,\s]\s*([\d.eE+-]+))?\s*\)/,
   )
-  return match ? [parseFloat(match[1]), parseFloat(match[2])] : null
+  if (!match) return null
+  return [parseFloat(match[1]), match[2] ? parseFloat(match[2]) : 0]
 }
 
 // Get translate X or Y from a group's transform attribute
