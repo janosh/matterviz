@@ -393,17 +393,50 @@
     font-size: var(--jt-font-size, 13px);
     line-height: var(--jt-line-height, 1.5);
     outline: none;
-  }
-  .json-node:focus {
-    outline: none;
-  }
-  .json-node.focused > .node-content {
-    background: var(--jt-focus-bg, light-dark(#e3f2fd, #0d3a58));
-    border-radius: 2px;
-  }
-  .json-node.current-match > .node-content {
-    background: var(--jt-current-match-bg, light-dark(#ffcc80, #8a5600));
-    border-radius: 2px;
+    &:focus {
+      outline: none;
+    }
+    &.focused > .node-content {
+      background: var(--jt-focus-bg, light-dark(#e3f2fd, #0d3a58));
+      border-radius: 2px;
+    }
+    &.current-match > .node-content {
+      background: var(--jt-current-match-bg, light-dark(#ffcc80, #8a5600));
+      border-radius: 2px;
+    }
+    &.selected > .node-content {
+      background: var(--jt-select-bg, light-dark(#bbdefb, #0a3050));
+    }
+    &.diff-added > .node-content {
+      background: var(
+        --jt-diff-added,
+        light-dark(rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.2))
+      );
+    }
+    &.diff-removed > .node-content {
+      background: var(
+        --jt-diff-removed,
+        light-dark(rgba(244, 67, 54, 0.12), rgba(244, 67, 54, 0.18))
+      );
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+    &.diff-changed > .node-content {
+      background: var(
+        --jt-diff-changed,
+        light-dark(rgba(255, 193, 7, 0.15), rgba(255, 193, 7, 0.2))
+      );
+    }
+    &.sticky-header > .node-content {
+      position: sticky;
+      top: calc(var(--jt-sticky-depth) * 20px);
+      z-index: calc(100 - var(--jt-sticky-depth));
+      background: var(--jt-sticky-bg, var(--jt-bg, transparent));
+      display: flex;
+    }
+    &:hover > .node-content > .collapse-level-btn {
+      opacity: 0.5;
+    }
   }
   .node-content {
     display: inline-flex;
@@ -411,15 +444,22 @@
     gap: 2px;
     padding: 1px 2px;
     border-radius: 2px;
+    /* Higher specificity than DraggablePane's :where(button) so our reset wins when nested */
+    button {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      font: inherit;
+      color: inherit;
+    }
   }
-  /* Higher specificity than DraggablePane's :where(button) so our reset wins when nested */
-  .node-content button {
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    font: inherit;
-    color: inherit;
+  .ghost .node-content {
+    background: var(
+      --jt-diff-removed,
+      light-dark(rgba(244, 67, 54, 0.12), rgba(244, 67, 54, 0.18))
+    );
+    text-decoration: line-through;
   }
   .collapse-toggle {
     display: inline-flex;
@@ -430,17 +470,17 @@
     margin: 0;
     color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
     flex-shrink: 0;
-  }
-  .collapse-toggle:hover {
-    color: light-dark(#000, #fff);
+    &:hover {
+      color: light-dark(#000, #fff);
+    }
   }
   .arrow {
     display: inline-block;
     font-size: 0.7em;
     transition: transform 0.15s ease;
-  }
-  .arrow.collapsed {
-    transform: rotate(-90deg);
+    &.collapsed {
+      transform: rotate(-90deg);
+    }
   }
   .no-toggle {
     display: inline-block;
@@ -449,30 +489,29 @@
   }
   .node-key {
     color: var(--jt-key, light-dark(#001080, #9cdcfe));
+    &:hover {
+      text-decoration: underline;
+      .action-hint {
+        opacity: 0.6;
+      }
+    }
+    &.array-index .index {
+      color: var(--jt-number, light-dark(#098658, #b5cea8));
+    }
   }
-  .node-key:hover {
-    text-decoration: underline;
-  }
-  .node-key.array-index .index {
-    color: var(--jt-number, light-dark(#098658, #b5cea8));
+  .colon, .comma, .bracket {
+    color: var(--jt-punctuation, light-dark(#000, #d4d4d4));
   }
   .colon {
-    color: var(--jt-punctuation, light-dark(#000, #d4d4d4));
     margin-right: 4px;
-  }
-  .bracket {
-    color: var(--jt-punctuation, light-dark(#000, #d4d4d4));
   }
   .preview {
     color: var(--jt-preview, light-dark(#808080, #808080));
     font-style: italic;
     margin: 0 4px;
-  }
-  .preview:hover {
-    text-decoration: underline;
-  }
-  .comma {
-    color: var(--jt-punctuation, light-dark(#000, #d4d4d4));
+    &:hover {
+      text-decoration: underline;
+    }
   }
   .children {
     padding-left: var(--jt-indent, 1.2em);
@@ -480,48 +519,12 @@
       var(--jt-indent-guide, light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.1)));
     margin-left: 0.5em;
   }
-  .json-node.selected > .node-content {
-    background: var(--jt-select-bg, light-dark(#bbdefb, #0a3050));
-  }
-  .json-node.diff-added > .node-content {
-    background: var(
-      --jt-diff-added,
-      light-dark(rgba(76, 175, 80, 0.15), rgba(76, 175, 80, 0.2))
-    );
-  }
-  .json-node.diff-removed > .node-content,
-  .ghost .node-content {
-    background: var(
-      --jt-diff-removed,
-      light-dark(rgba(244, 67, 54, 0.12), rgba(244, 67, 54, 0.18))
-    );
-    text-decoration: line-through;
-  }
-  .json-node.diff-removed > .node-content {
-    opacity: 0.7;
-  }
-  .json-node.diff-changed > .node-content {
-    background: var(
-      --jt-diff-changed,
-      light-dark(rgba(255, 193, 7, 0.15), rgba(255, 193, 7, 0.2))
-    );
-  }
-  .json-node.sticky-header > .node-content {
-    position: sticky;
-    top: calc(var(--jt-sticky-depth) * 20px);
-    z-index: calc(100 - var(--jt-sticky-depth));
-    background: var(--jt-sticky-bg, var(--jt-bg, light-dark(white, #1e1e1e)));
-    display: flex;
-  }
   .action-hint {
     opacity: 0;
     font-size: 0.8em;
     margin-left: 2px;
     transition: opacity 0.15s;
     color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
-  }
-  .node-key:hover .action-hint {
-    opacity: 0.6;
   }
   .size-hint {
     font-size: 0.8em;
@@ -536,13 +539,10 @@
     color: var(--jt-arrow, light-dark(#6e6e6e, #858585));
     transition: opacity 0.15s;
     margin-left: 4px;
-  }
-  .json-node:hover > .node-content > .collapse-level-btn {
-    opacity: 0.5;
-  }
-  .collapse-level-btn:hover {
-    opacity: 1;
-    color: light-dark(#000, #fff);
+    &:hover {
+      opacity: 1;
+      color: light-dark(#000, #fff);
+    }
   }
   .ghost {
     opacity: 0.5;

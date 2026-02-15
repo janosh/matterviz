@@ -1249,61 +1249,55 @@
     contain: layout;
     z-index: var(--traj-z-index, 1);
     container-type: size; /* enable cqh for panes if explicit height is set */
-  }
-  .trajectory :global(.plot) {
-    background: var(--surface-bg);
-  }
-  .trajectory.active {
-    z-index: 2; /* needed so info/control panes from an active viewer overlay those of the next (if there is one) */
-  }
-  .trajectory.active .trajectory-controls {
-    z-index: 5; /* needed so info/control panes from an active viewer its own plot when active, not sure why needed */
-  }
-  .trajectory:fullscreen {
-    height: 100vh !important;
-    width: 100vw !important;
-    border-radius: 0 !important;
-    background: var(--surface-bg);
-    overflow: hidden;
+    :global(.plot) {
+      background: var(--surface-bg);
+    }
+    &.active {
+      z-index: 2; /* needed so info/control panes from an active viewer overlay those of the next (if there is one) */
+      .trajectory-controls {
+        z-index: 5; /* needed so info/control panes from an active viewer its own plot when active, not sure why needed */
+      }
+    }
+    &:fullscreen {
+      height: 100vh !important;
+      width: 100vw !important;
+      border-radius: 0 !important;
+      background: var(--surface-bg);
+      overflow: hidden;
+    }
+    &.horizontal .content-area {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr;
+    }
+    &.vertical .content-area {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+    /* Display mode specific layouts */
+    &:is(.horizontal, .vertical) .content-area:is(.show-structure-only, .show-plot-only) {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: 1fr !important;
+    }
+    &.dragover {
+      background-color: var(--traj-dragover-bg, var(--dragover-bg));
+      border: var(--traj-dragover-border, var(--dragover-border));
+    }
+    /* Mode: hover - controls visible on component hover */
+    &:hover .trajectory-controls.hover-visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
   }
   /* Content area - grid container for equal sizing */
   .content-area {
     display: grid;
     flex: 1;
     min-height: 0; /* important for tall structure viewers not to overflow */
-  }
-  .trajectory.horizontal .content-area {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr;
-  }
-  .trajectory.vertical .content-area {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
-  }
-  /* When plot is hidden, structure takes full space */
-  .content-area.hide-plot {
-    grid-template-columns: 1fr !important;
-    grid-template-rows: 1fr !important;
-  }
-  /* When structure is hidden, plot takes full space */
-  .content-area.hide-structure {
-    grid-template-columns: 1fr !important;
-    grid-template-rows: 1fr !important;
-  }
-  /* Display mode specific layouts */
-  .trajectory.horizontal .content-area.show-structure-only,
-  .trajectory.vertical .content-area.show-structure-only {
-    grid-template-columns: 1fr !important;
-    grid-template-rows: 1fr !important;
-  }
-  .trajectory.horizontal .content-area.show-plot-only,
-  .trajectory.vertical .content-area.show-plot-only {
-    grid-template-columns: 1fr !important;
-    grid-template-rows: 1fr !important;
-  }
-  .trajectory.dragover {
-    background-color: var(--traj-dragover-bg, var(--dragover-bg));
-    border: var(--traj-dragover-border, var(--dragover-border));
+    /* When plot or structure is hidden, the other takes full space */
+    &:is(.hide-plot, .hide-structure) {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: 1fr !important;
+    }
   }
   .trajectory-controls {
     display: flex;
@@ -1317,27 +1311,29 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
-  }
-  /* Mode: always - controls always visible */
-  .trajectory-controls.always-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: hover - controls visible on component hover */
-  .trajectory:hover .trajectory-controls.hover-visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  /* Mode: never - stays hidden (default state, no additional CSS needed) */
-  .trajectory-controls:focus-within {
-    z-index: var(--traj-controls-z-index, 999999999);
-  }
-  .trajectory-controls button {
-    background: var(--btn-bg);
-    font-size: clamp(0.8rem, 2cqw, 1rem);
-  }
-  .trajectory-controls button:hover:not(:disabled) {
-    background: var(--btn-bg-hover);
+    /* Mode: always - controls always visible */
+    &.always-visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    /* Mode: never - stays hidden (default state, no additional CSS needed) */
+    &:focus-within {
+      z-index: var(--traj-controls-z-index, 999999999);
+    }
+    button {
+      background: var(--btn-bg);
+      font-size: clamp(0.8rem, 2cqw, 1rem);
+      &:hover:not(:disabled) {
+        background: var(--btn-bg-hover);
+      }
+    }
+    input[type='number'] {
+      &::-webkit-outer-spin-button,
+      &::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+    }
   }
   .nav-section {
     display: flex;
@@ -1410,9 +1406,9 @@
   .fullscreen-button {
     background: transparent !important;
     padding: 0;
-  }
-  .fullscreen-button:hover:not(:disabled) {
-    background: var(--border-color);
+    &:hover:not(:disabled) {
+      background: var(--border-color);
+    }
   }
   .info-section {
     display: flex;
@@ -1422,56 +1418,58 @@
   }
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);
-  }
-  .play-button:hover:not(:disabled) {
-    background: var(--traj-play-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.2)));
-  }
-  .play-button.playing {
-    background: var(--traj-pause-btn-bg, var(--btn-bg, rgba(0, 0, 0, 0.1)));
-  }
-  .play-button.playing:hover:not(:disabled) {
-    background: var(--traj-pause-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.1)));
+    &:hover:not(:disabled) {
+      background: var(--traj-play-btn-bg-hover, var(--btn-bg-hover, rgba(0, 0, 0, 0.2)));
+    }
+    &.playing {
+      background: var(--traj-pause-btn-bg, var(--btn-bg, rgba(0, 0, 0, 0.1)));
+      &:hover:not(:disabled) {
+        background: var(
+          --traj-pause-btn-bg-hover,
+          var(--btn-bg-hover, rgba(0, 0, 0, 0.1))
+        );
+      }
+    }
   }
   :global(.trajectory-empty-state) {
     padding: 2rem;
     border-radius: var(--border-radius, 3pt);
     background: var(--dropzone-bg);
+    :where(p, ul) {
+      color: var(--text-color-muted);
+    }
+    :where(ul, li, strong) {
+      max-width: var(--trajectory-empty-state-max-width, 500px);
+      margin-inline: auto;
+    }
   }
-  :global(.trajectory-empty-state) :where(p, ul) {
-    color: var(--text-color-muted);
-  }
-  :global(.trajectory-empty-state) :where(ul, li, strong) {
-    max-width: var(--trajectory-empty-state-max-width, 500px);
-    margin-inline: auto;
-  }
-  button:hover:not(:disabled) {
-    background: var(--border-color);
-  }
-  button:disabled {
-    background: var(--btn-disabled-bg);
-    color: var(--text-color-muted);
-    cursor: not-allowed;
-  }
-  .trajectory-controls input[type='number']::-webkit-outer-spin-button,
-  .trajectory-controls input[type='number']::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
+  button {
+    &:hover:not(:disabled) {
+      background: var(--border-color);
+    }
+    &:disabled {
+      background: var(--btn-disabled-bg);
+      color: var(--text-color-muted);
+      cursor: not-allowed;
+    }
   }
   /* Responsive design */
   @media (orientation: portrait) {
-    /* Fallback class for browsers without :has() support */
-    .trajectory.show-both-views {
-      min-height: calc(var(--min-height) * 2);
-    }
-    /* Modern browsers: use :has() for same effect */
-    @supports selector(:has(.content-area)) {
-      .trajectory:has(.content-area.show-both:not(.hide-plot):not(.hide-structure)) {
+    .trajectory {
+      /* Fallback class for browsers without :has() support */
+      &.show-both-views {
         min-height: calc(var(--min-height) * 2);
       }
-    }
-    .trajectory .content-area.show-both:not(.hide-plot):not(.hide-structure) {
-      grid-template-columns: 1fr !important;
-      grid-template-rows: 1fr 1fr !important;
+      /* Modern browsers: use :has() for same effect */
+      @supports selector(:has(.content-area)) {
+        &:has(.content-area.show-both:not(.hide-plot):not(.hide-structure)) {
+          min-height: calc(var(--min-height) * 2);
+        }
+      }
+      .content-area.show-both:not(.hide-plot):not(.hide-structure) {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: 1fr 1fr !important;
+      }
     }
   }
   .view-mode-dropdown-wrapper {
@@ -1497,19 +1495,19 @@
     border-radius: 0;
     text-align: left;
     transition: background-color 0.15s ease;
-  }
-  .view-mode-option:first-child {
-    border-top-left-radius: 3px;
-    border-top-right-radius: 3px;
-  }
-  .view-mode-option.selected {
-    color: var(--accent-color);
-  }
-  .view-mode-option span {
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
+    &:first-child {
+      border-top-left-radius: 3px;
+      border-top-right-radius: 3px;
+    }
+    &.selected {
+      color: var(--accent-color);
+    }
+    span {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
   }
 </style>
