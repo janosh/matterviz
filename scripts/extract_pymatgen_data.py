@@ -1,6 +1,7 @@
-"""Extract oxidation states and Shannon radii from pymatgen's periodic table data.
+"""Extract oxidation states, Shannon radii, and Mendeleev numbers from pymatgen data.
 
 This script reads pymatgen's periodic_table.json.gz and extracts:
+- Mendeleev number (Pettifor's chemical scale for crystal-structure maps)
 - Oxidation states (all known)
 - Common oxidation states
 - ICSD oxidation states
@@ -62,6 +63,10 @@ def extract_pymatgen_properties(
     elem_data = pymatgen_data[symbol]
     result: dict[str, Any] = {}
 
+    # Mendeleev number (Pettifor's chemical scale for crystal-structure maps)
+    if "Mendeleev no" in elem_data:
+        result["mendeleev_number"] = elem_data["Mendeleev no"]
+
     # Oxidation states
     if "Oxidation states" in elem_data:
         result["oxidation_states"] = sorted(elem_data["Oxidation states"])
@@ -120,7 +125,7 @@ def main() -> None:
     print("Merging data...")
     merged_data = merge_data(existing_data, pymatgen_data)
 
-    # Verify we have oxidation states for common elements
+    # Verify we have key properties for common elements
     sample_elements = ["Fe", "O", "Na", "Cl"]
     for symbol in sample_elements:
         elem = next((el for el in merged_data if el["symbol"] == symbol), None)
@@ -128,8 +133,10 @@ def main() -> None:
             oxi = elem.get("oxidation_states", [])
             common = elem.get("common_oxidation_states", [])
             shannon = "yes" if elem.get("shannon_radii") else "no"
+            mendeleev = elem.get("mendeleev_number", "N/A")
             print(
-                f"  {symbol}: oxidation_states={oxi}, common={common}, shannon={shannon}"
+                f"  {symbol}: mendeleev_number={mendeleev}, "
+                f"oxidation_states={oxi}, common={common}, shannon={shannon}"
             )
 
     # Write gzipped JSON (used by TypeScript via Vite plugin and Rust via flate2)

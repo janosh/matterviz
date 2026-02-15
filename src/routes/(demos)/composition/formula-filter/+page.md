@@ -2,9 +2,9 @@
 
 An interactive search filter for chemical formulas. The search mode is automatically inferred from input format:
 
-- **Comma-separated** (Li,Fe,O) → has these elements
-- **Dash-separated** (Li-Fe-O) → chemical system (only these elements)
-- **Formula** (LiFePO4) → exact match
+- **Dash-separated** (Li-Fe-O) → chemical system (has only these elements)
+- **Comma-separated** (Li,Fe,O) → set algorithm (has at least these elements)
+- **Formula** (LiFePO4) → exact composition match (canonicalized to alphabetical order)
 
 ## Interactive Demo
 
