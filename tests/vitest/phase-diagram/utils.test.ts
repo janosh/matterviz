@@ -377,6 +377,38 @@ const empty_plus_region: PhaseRegion = {
   name: `+`,
   vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
 }
+const split_region_horizontal: PhaseRegion = {
+  id: `alpha-beta-split`,
+  name: `α + β`,
+  vertices: [
+    [0.1, 400],
+    [0.9, 400],
+    [0.9, 600],
+    [0.6, 600],
+    [0.6, 450],
+    [0.4, 450],
+    [0.4, 600],
+    [0.1, 600],
+  ],
+}
+const split_region_vertical: PhaseRegion = {
+  id: `alpha-beta-split-vertical`,
+  name: `α + β`,
+  vertices: [
+    [0.4, 0.1],
+    [0.4, 0.9],
+    [0.6, 0.9],
+    [0.6, 0.6],
+    [0.45, 0.6],
+    [0.45, 0.4],
+    [0.6, 0.4],
+    [0.6, 0.1],
+  ],
+}
+const split_region_boundary_cases = [
+  { position: 0.35, expected_bounds: [0.1, 0.4] as [number, number] },
+  { position: 0.65, expected_bounds: [0.6, 0.9] as [number, number] },
+]
 
 // Shared null-case inputs for both lever rule functions
 const lever_null_cases = [
@@ -387,40 +419,39 @@ const lever_null_cases = [
   { region: empty_plus_region, comp: 0.5, temp: 500, desc: `"+" (empty phases)` },
 ]
 
+function expect_non_null<T>(value: T | null): T {
+  expect(value).not.toBeNull()
+  return value as T
+}
+
 describe(`calculate_lever_rule`, () => {
   test.each(lever_null_cases)(`returns null for $desc`, ({ region, comp, temp }) => {
     expect(calculate_lever_rule(region, comp, temp)).toBeNull()
   })
 
   test(`parses phase names and calculates fractions at midpoint`, () => {
-    const result = calculate_lever_rule(two_phase_region, 0.5, 500)
-    expect(result).not.toBeNull()
-    expect(result?.left_phase).toBe(`α`)
-    expect(result?.right_phase).toBe(`β`)
-    expect(result?.fraction_left).toBeCloseTo(0.5, 1)
-    expect(result?.fraction_right).toBeCloseTo(0.5, 1)
-    expect(result?.left_composition).toBeLessThan(result?.right_composition ?? Infinity)
+    const result = expect_non_null(calculate_lever_rule(two_phase_region, 0.5, 500))
+    expect(result.left_phase).toBe(`α`)
+    expect(result.right_phase).toBe(`β`)
+    expect(result.fraction_left).toBeCloseTo(0.5, 1)
+    expect(result.fraction_right).toBeCloseTo(0.5, 1)
+    expect(result.left_composition).toBeLessThan(result.right_composition)
   })
 
   test.each([
     { comp: 0.26, left_dominant: true, desc: `near left boundary` },
     { comp: 0.74, left_dominant: false, desc: `near right boundary` },
   ])(`$desc: dominant phase has >90% fraction`, ({ comp, left_dominant }) => {
-    const result = calculate_lever_rule(two_phase_region, comp, 500)
-    expect(result).not.toBeNull()
-    const dominant = left_dominant ? result?.fraction_left : result?.fraction_right
-    const minor = left_dominant ? result?.fraction_right : result?.fraction_left
+    const result = expect_non_null(calculate_lever_rule(two_phase_region, comp, 500))
+    const dominant = left_dominant ? result.fraction_left : result.fraction_right
+    const minor = left_dominant ? result.fraction_right : result.fraction_left
     expect(dominant).toBeGreaterThan(0.9)
     expect(minor).toBeLessThan(0.1)
   })
 
   test.each([0.3, 0.4, 0.5, 0.6, 0.7])(`fractions sum to 1 at comp=%f`, (comp) => {
-    const result = calculate_lever_rule(two_phase_region, comp, 500)
-    expect(result).not.toBeNull()
-    expect((result?.fraction_left ?? 0) + (result?.fraction_right ?? 0)).toBeCloseTo(
-      1,
-      5,
-    )
+    const result = expect_non_null(calculate_lever_rule(two_phase_region, comp, 500))
+    expect(result.fraction_left + result.fraction_right).toBeCloseTo(1, 5)
   })
 
   test(`parses complex phase names like "Liquid + FCC_A1"`, () => {
@@ -433,6 +464,17 @@ describe(`calculate_lever_rule`, () => {
     expect(result?.left_phase).toBe(`Liquid`)
     expect(result?.right_phase).toBe(`FCC_A1`)
   })
+
+  test.each(split_region_boundary_cases)(
+    `uses the nearest two-phase bounds at composition=$position when multiple intersections exist`,
+    ({ position, expected_bounds }) => {
+      const result = expect_non_null(
+        calculate_lever_rule(split_region_horizontal, position, 500),
+      )
+      expect(result.left_composition).toBeCloseTo(expected_bounds[0], 6)
+      expect(result.right_composition).toBeCloseTo(expected_bounds[1], 6)
+    },
+  )
 })
 
 describe(`calculate_vertical_lever_rule`, () => {
@@ -441,35 +483,46 @@ describe(`calculate_vertical_lever_rule`, () => {
   })
 
   test(`parses phase names and calculates fractions at midpoint`, () => {
-    const result = calculate_vertical_lever_rule(two_phase_region, 0.5, 500)
-    expect(result).not.toBeNull()
-    expect(result?.bottom_phase).toBe(`α`)
-    expect(result?.top_phase).toBe(`β`)
-    expect(result?.fraction_bottom).toBeCloseTo(0.5, 1)
-    expect(result?.fraction_top).toBeCloseTo(0.5, 1)
-    expect(result?.bottom_temperature).toBeLessThan(result?.top_temperature ?? Infinity)
+    const result = expect_non_null(
+      calculate_vertical_lever_rule(two_phase_region, 0.5, 500),
+    )
+    expect(result.bottom_phase).toBe(`α`)
+    expect(result.top_phase).toBe(`β`)
+    expect(result.fraction_bottom).toBeCloseTo(0.5, 1)
+    expect(result.fraction_top).toBeCloseTo(0.5, 1)
+    expect(result.bottom_temperature).toBeLessThan(result.top_temperature)
   })
 
   test.each([420, 450, 500, 550, 580])(`fractions sum to 1 at temp=%d`, (temp) => {
-    const result = calculate_vertical_lever_rule(two_phase_region, 0.5, temp)
-    expect(result).not.toBeNull()
-    expect((result?.fraction_bottom ?? 0) + (result?.fraction_top ?? 0)).toBeCloseTo(
-      1,
-      5,
+    const result = expect_non_null(
+      calculate_vertical_lever_rule(two_phase_region, 0.5, temp),
     )
+    expect(result.fraction_bottom + result.fraction_top).toBeCloseTo(1, 5)
   })
 
   test.each([
     { temp: 410, bottom_dominant: true, desc: `near bottom boundary` },
     { temp: 590, bottom_dominant: false, desc: `near top boundary` },
   ])(`$desc: dominant phase has >90% fraction`, ({ temp, bottom_dominant }) => {
-    const result = calculate_vertical_lever_rule(two_phase_region, 0.5, temp)
-    expect(result).not.toBeNull()
-    const dominant = bottom_dominant ? result?.fraction_bottom : result?.fraction_top
-    const minor = bottom_dominant ? result?.fraction_top : result?.fraction_bottom
+    const result = expect_non_null(
+      calculate_vertical_lever_rule(two_phase_region, 0.5, temp),
+    )
+    const dominant = bottom_dominant ? result.fraction_bottom : result.fraction_top
+    const minor = bottom_dominant ? result.fraction_top : result.fraction_bottom
     expect(dominant).toBeGreaterThan(0.9)
     expect(minor).toBeLessThan(0.1)
   })
+
+  test.each(split_region_boundary_cases)(
+    `uses nearest temperature bounds at temperature=$position when multiple intersections exist`,
+    ({ position, expected_bounds }) => {
+      const result = expect_non_null(
+        calculate_vertical_lever_rule(split_region_vertical, 0.5, position),
+      )
+      expect(result.bottom_temperature).toBeCloseTo(expected_bounds[0], 6)
+      expect(result.top_temperature).toBeCloseTo(expected_bounds[1], 6)
+    },
+  )
 })
 
 describe(`compute_label_properties`, () => {
