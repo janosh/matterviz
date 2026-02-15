@@ -217,63 +217,66 @@
 {/if}
 
 <style>
+  /* Type-specific colors shared between display and edit input */
+  :is(.json-value, .edit-input) {
+    &.string {
+      color: var(--jt-string, light-dark(#a31515, #ce9178));
+    }
+    &.number {
+      color: var(--jt-number, light-dark(#098658, #b5cea8));
+    }
+    &.boolean {
+      color: var(--jt-boolean, light-dark(#0000ff, #569cd6));
+    }
+    &.null {
+      color: var(--jt-null, light-dark(#808080, #808080));
+    }
+  }
   .json-value {
     cursor: pointer;
     border-radius: 2px;
     transition: background-color 0.15s, color 0.15s;
-  }
-  .json-value:hover {
-    background: var(
-      --jt-hover-bg,
-      light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.08))
-    );
-  }
-  /* Type-specific colors (shared between display and edit input) */
-  :is(.json-value, .edit-input).string {
-    color: var(--jt-string, light-dark(#a31515, #ce9178));
-  }
-  .json-value.string {
-    word-break: break-word;
-  }
-  :is(.json-value, .edit-input).number {
-    color: var(--jt-number, light-dark(#098658, #b5cea8));
-  }
-  :is(.json-value, .edit-input).boolean {
-    color: var(--jt-boolean, light-dark(#0000ff, #569cd6));
-  }
-  :is(.json-value, .edit-input).null {
-    color: var(--jt-null, light-dark(#808080, #808080));
-  }
-  .json-value.null,
-  .json-value.undefined {
-    font-style: italic;
-  }
-  .json-value.date {
-    color: var(--jt-date, light-dark(#098658, #dcdcaa));
-  }
-  .json-value.regexp {
-    color: var(--jt-regexp, light-dark(#811f3f, #d16969));
-  }
-  .json-value.symbol {
-    color: var(--jt-symbol, light-dark(#267f99, #4ec9b0));
-  }
-  .json-value.bigint {
-    color: var(--jt-bigint, light-dark(#098658, #b5cea8));
-  }
-  .json-value.function {
-    color: var(--jt-function, light-dark(#795e26, #dcdcaa));
-    font-style: italic;
-  }
-  .json-value.error {
-    color: var(--jt-error, light-dark(#a31515, #f48771));
-  }
-  .json-value.circular {
-    color: var(--jt-circular, light-dark(#808080, #808080));
-    font-style: italic;
-  }
-  /* Change animation */
-  .json-value.changed {
-    animation: value-change 1s ease-out;
+    &:hover {
+      background: var(
+        --jt-hover-bg,
+        light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.08))
+      );
+    }
+    &.string {
+      word-break: break-word;
+    }
+    &:is(.null, .undefined) {
+      font-style: italic;
+    }
+    &.date {
+      color: var(--jt-date, light-dark(#098658, #dcdcaa));
+    }
+    &.regexp {
+      color: var(--jt-regexp, light-dark(#811f3f, #d16969));
+    }
+    &.symbol {
+      color: var(--jt-symbol, light-dark(#267f99, #4ec9b0));
+    }
+    &.bigint {
+      color: var(--jt-bigint, light-dark(#098658, #b5cea8));
+    }
+    &.function {
+      color: var(--jt-function, light-dark(#795e26, #dcdcaa));
+      font-style: italic;
+    }
+    &.error {
+      color: var(--jt-error, light-dark(#a31515, #f48771));
+    }
+    &.circular {
+      color: var(--jt-circular, light-dark(#808080, #808080));
+      font-style: italic;
+    }
+    &.changed {
+      animation: value-change 1s ease-out;
+    }
+    &.editable {
+      cursor: default;
+    }
   }
   @keyframes value-change {
     0% {
@@ -283,7 +286,6 @@
       background: transparent;
     }
   }
-  /* Expand/collapse button for long strings */
   .expand-btn {
     display: inline;
     background: none;
@@ -293,11 +295,10 @@
     font-size: 0.85em;
     padding: 0 2px;
     margin-left: 2px;
+    &:hover {
+      text-decoration: underline;
+    }
   }
-  .expand-btn:hover {
-    text-decoration: underline;
-  }
-  /* Type annotation */
   .type-annotation {
     font-size: 0.7em;
     color: var(--jt-type-annotation, light-dark(#808080, #6a6a6a));
@@ -307,12 +308,9 @@
   .url-link {
     color: var(--jt-url, light-dark(#0066cc, #4fc3f7));
     text-decoration: none;
-  }
-  .url-link:hover {
-    text-decoration: underline;
-  }
-  .json-value.editable {
-    cursor: default;
+    &:hover {
+      text-decoration: underline;
+    }
   }
   .edit-input {
     font: inherit;

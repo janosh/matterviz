@@ -652,40 +652,40 @@
     background: var(--cbar-tick-label-bg);
     padding: var(--cbar-tick-label-padding, 0 2px);
     white-space: nowrap;
-  }
-  /* --- Horizontal Ticks --- */
-  .tick-label.horizontal {
-    transform: translateX(-50%); /* Center horizontally by default */
-  }
-  .tick-label.horizontal.tick-primary {
-    top: 100%; /* Position below bar */
-    margin-top: var(--cbar-tick-offset, 0);
-  }
-  .tick-label.horizontal.tick-secondary {
-    bottom: 100%; /* Position above bar */
-    margin-bottom: var(--cbar-tick-offset, 0);
-  }
-  .tick-label.horizontal.tick-inside {
-    top: 50%; /* Center vertically */
-    transform: translate(-50%, -50%); /* Center horizontally and vertically */
-    margin: 0; /* No extra margin for inside */
-  }
-  /* --- Vertical Ticks --- */
-  .tick-label.vertical {
-    transform: translateY(-50%); /* Center vertically by default */
-  }
-  .tick-label.vertical.tick-primary {
-    left: 100%; /* Position right of bar */
-    margin-left: var(--cbar-tick-offset, 1pt);
-  }
-  .tick-label.vertical.tick-secondary {
-    right: 100%; /* Position left of bar */
-    margin-right: var(--cbar-tick-offset, 1pt);
-  }
-  .tick-label.vertical.tick-inside {
-    left: 50%; /* Center horizontally */
-    transform: translate(-50%, -50%); /* Center horizontally and vertically */
-    padding: 0; /* No extra padding for inside */
+    /* --- Horizontal Ticks --- */
+    &.horizontal {
+      transform: translateX(-50%); /* Center horizontally by default */
+      &.tick-primary {
+        top: 100%; /* Position below bar */
+        margin-top: var(--cbar-tick-offset, 0);
+      }
+      &.tick-secondary {
+        bottom: 100%; /* Position above bar */
+        margin-bottom: var(--cbar-tick-offset, 0);
+      }
+      &.tick-inside {
+        top: 50%; /* Center vertically */
+        transform: translate(-50%, -50%); /* Center horizontally and vertically */
+        margin: 0; /* No extra margin for inside */
+      }
+    }
+    /* --- Vertical Ticks --- */
+    &.vertical {
+      transform: translateY(-50%); /* Center vertically by default */
+      &.tick-primary {
+        left: 100%; /* Position right of bar */
+        margin-left: var(--cbar-tick-offset, 1pt);
+      }
+      &.tick-secondary {
+        right: 100%; /* Position left of bar */
+        margin-right: var(--cbar-tick-offset, 1pt);
+      }
+      &.tick-inside {
+        left: 50%; /* Center horizontally */
+        transform: translate(-50%, -50%); /* Center horizontally and vertically */
+        padding: 0; /* No extra padding for inside */
+      }
+    }
   }
   /* Title row with optional selects */
   .title-row {
@@ -694,25 +694,25 @@
     gap: var(--cbar-select-gap, 0.3em);
     white-space: nowrap;
     width: auto;
-  }
-  .title-row:is(.left, .right) {
-    flex-direction: column;
-  }
-  /* Rotate only the label element, not the entire row (keeps selects usable) */
-  /* Only rotate when orientation is vertical AND title is on left/right side */
-  .title-row.vertical:is(.left, .right) .label {
-    writing-mode: vertical-lr;
-    white-space: nowrap;
-  }
-  .title-row.vertical.left .label {
-    transform: rotate(180deg);
-  }
-  /* Style PortalSelect triggers in colorbar context */
-  .title-row :global(:is(.property-select, .color-scale-select)) {
-    padding: 0 4px;
-  }
-  .title-row.loading :global(.property-select) {
-    opacity: 0.6;
-    pointer-events: none;
+    &:is(.left, .right) {
+      flex-direction: column;
+    }
+    /* Rotate only the label element, not the entire row (keeps selects usable) */
+    /* Only rotate when orientation is vertical AND title is on left/right side */
+    &.vertical:is(.left, .right) .label {
+      writing-mode: vertical-lr;
+      white-space: nowrap;
+    }
+    &.vertical.left .label {
+      transform: rotate(180deg);
+    }
+    /* Style PortalSelect triggers in colorbar context */
+    :global(:is(.property-select, .color-scale-select)) {
+      padding: 0 4px;
+    }
+    &.loading :global(.property-select) {
+      opacity: 0.6;
+      pointer-events: none;
+    }
   }
 </style>

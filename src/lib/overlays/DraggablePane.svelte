@@ -314,12 +314,12 @@
   .draggable-pane :global(> section > div) {
     text-align: right; /* right align long line-breaking trajectory file names */
   }
-  .draggable-pane :global(label) {
+  .draggable-pane :global(:where(label)) {
     display: inline-flex;
     align-items: center;
     gap: var(--pane-label-gap, 2pt);
   }
-  .draggable-pane :global(input[type='text']) {
+  .draggable-pane :global(:where(input[type='text'])) {
     flex: 1;
     padding: var(--pane-input-padding, 4px 6px);
     margin: var(--pane-input-margin, 0 0 0 5pt);

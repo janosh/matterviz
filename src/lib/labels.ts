@@ -76,6 +76,7 @@ export const ELEM_PROPERTY_LABELS: Partial<
   electronegativity: [`Electronegativity`, null],
   first_ionization: [`First Ionization Energy`, `eV`],
   melting_point: [`Melting Point`, `K`],
+  mendeleev_number: [`Mendeleev Number`, null],
   // molar_heat: [`Molar Heat`, `J/(mol·K)`],
   n_shells: [`Number of Shells`, null],
   n_valence: [`Electron Valency`, null],

@@ -122,7 +122,7 @@
 
   // Shared icon/toggle styling for controls and export panes
   const pane_icon_style = `width: 14px; height: 14px`
-  const pane_toggle_props = { style: `padding: 0; font-size: 18px` }
+  const pane_toggle_props = { style: `padding: 0` }
 
   // Rebuild diagram data when diagram_input changes ($derived auto-recomputes)
   const rebuilt_data = $derived.by(() => {
