@@ -586,6 +586,75 @@ export const ICON_DATA = {
     path:
       `M4 18q-1.25 0-2.125-.875T1 15V9q0-1.25.875-2.125T4 6h13.5q1.25 0 2.125.875T20.5 9v6q0 1.25-.875 2.125T17.5 18zm0-2h13.5q.425 0 .713-.288T18.5 15V9q0-.425-.288-.712T17.5 8H4q-.425 0-.712.288T3 9v6q0 .425.288.713T4 16m17.5-1.5v-5h.5q.425 0 .713.288T23 10.5v3q0 .425-.288.713T22 14.5zM4 14v-4q0-.425.288-.712T5 9h10q.425 0 .713.288T16 10v4q0 .425-.288.713T15 15H5q-.425 0-.712-.288T4 14`,
   },
+  Filter: { // Lucide by Lucide Contributors
+    viewBox: `0 0 24 24`,
+    path: `M22 3H2l8 9.46V19l4 2v-8.54z`,
+  },
+  Eye: { // Material Symbols by Google
+    viewBox: `0 0 24 24`,
+    path:
+      `M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6m0 8a5 5 0 1 1 0-10a5 5 0 0 1 0 10m0-12.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5`,
+  },
+  EyeOff: { // Material Design Icons by Pictogrammers
+    viewBox: `0 0 24 24`,
+    path:
+      `M11.83 9L15 12.16V12a3 3 0 0 0-3-3zm-4.3.8l1.55 1.55c-.05.21-.08.42-.08.65a3 3 0 0 0 3 3c.22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53a5 5 0 0 1-5-5c0-.79.2-1.53.53-2.2M2 4.27l2.28 2.28l.45.45C3.08 8.3 1.78 10 1 12c1.73 4.39 6 7.5 11 7.5c1.55 0 3.03-.3 4.38-.84l.43.42L19.73 22L21 20.73L3.27 3M12 7a5 5 0 0 1 5 5c0 .64-.13 1.26-.36 1.82l2.93 2.93c1.5-1.25 2.7-2.89 3.43-4.75c-1.73-4.39-6-7.5-11-7.5c-1.4 0-2.74.25-4 .7l2.17 2.15C10.74 7.13 11.35 7 12 7`,
+  },
+  Pin: { // Material Design Icons by Pictogrammers
+    viewBox: `0 0 24 24`,
+    path: `M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z`,
+  },
+  Unpin: { // Material Design Icons by Pictogrammers
+    viewBox: `0 0 24 24`,
+    path:
+      `M2 5.27L3.28 4L20 20.72L18.73 22l-5.93-5.93V22h-1.6v-6H6v-2l2-2v-.73zM16 12l2 2v2h-.18L8 6.18V4H7V2h10v2h-1z`,
+  },
+  ArrowLeft: { // Material Symbols by Google
+    viewBox: `0 0 24 24`,
+    path: `M20 11H7.83l5.59-5.59L12 4l-8 8l8 8l1.41-1.41L7.83 13H20z`,
+  },
+  ArrowRight: { // Material Symbols by Google
+    viewBox: `0 0 24 24`,
+    path: `M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z`,
+  },
+  ZoomIn: { // Lucide by Lucide Contributors
+    viewBox: `0 0 24 24`,
+    stroke: `currentColor`,
+    path:
+      `<g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></g>`,
+  },
+  ZoomOut: { // Lucide by Lucide Contributors
+    viewBox: `0 0 24 24`,
+    stroke: `currentColor`,
+    path:
+      `<g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></g>`,
+  },
+  Play: { // Material Symbols by Google
+    viewBox: `0 0 24 24`,
+    path: `M8 5v14l11-7z`,
+  },
+  Pause: { // Material Symbols by Google
+    viewBox: `0 0 24 24`,
+    path: `M6 19h4V5H6zm8-14v14h4V5z`,
+  },
+  ExternalLink: { // Lucide by Lucide Contributors
+    viewBox: `0 0 24 24`,
+    stroke: `currentColor`,
+    path:
+      `<g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></g>`,
+  },
+  Sort: { // Material Symbols by Google
+    viewBox: `0 0 24 24`,
+    path: `M3 18h6v-2H3zM3 6v2h18V6zm0 7h12v-2H3z`,
+  },
+  SortAsc: { // Sort base + up arrow (composed from Material Symbols Sort)
+    viewBox: `0 0 24 24`,
+    path: `M3 18v-2h6v2zM3 13v-2h12v2zM3 8V6h13v2zM19 18V10h-2l3-5l3 5h-2v8z`,
+  },
+  SortDesc: { // Sort base + down arrow (composed from Material Symbols Sort)
+    viewBox: `0 0 24 24`,
+    path: `M3 18v-2h6v2zM3 13v-2h12v2zM3 8V6h13v2zM19 6v8h-2l3 5l3-5h-2V6z`,
+  },
 } as const
 
 export type IconName = keyof typeof ICON_DATA

@@ -56,6 +56,7 @@ export type ChemicalElement = {
   symbol: ElementSymbol
   year: number | string
   // Properties from pymatgen
+  mendeleev_number?: number // Pettifor's chemical scale for crystal-structure maps
   oxidation_states?: number[]
   common_oxidation_states?: number[]
   icsd_oxidation_states?: number[]
