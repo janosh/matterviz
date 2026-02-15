@@ -357,6 +357,44 @@ function find_polygon_intersections(
   return intersections.sort((a, b) => a - b)
 }
 
+function pick_bracketing_intersection_pair(
+  intersections: number[],
+  position: number,
+): [number, number] | null {
+  if (intersections.length < 2) return null
+
+  const unique_intersections: number[] = []
+  const dedup_tol = 1e-9
+  for (const value of intersections) {
+    const prev_value = unique_intersections.at(-1)
+    if (prev_value === undefined || Math.abs(value - prev_value) > dedup_tol) {
+      unique_intersections.push(value)
+    }
+  }
+  if (unique_intersections.length < 2) return null
+
+  const bound_tol = 1e-10
+  for (let pair_idx = 0; pair_idx + 1 < unique_intersections.length; pair_idx += 2) {
+    const low_bound = unique_intersections[pair_idx]
+    const high_bound = unique_intersections[pair_idx + 1]
+    if (position >= low_bound - bound_tol && position <= high_bound + bound_tol) {
+      return [low_bound, high_bound]
+    }
+  }
+
+  // Fallback for numerical edge cases where even-odd pairing fails:
+  // pick nearest enclosing neighbors around the hovered point.
+  let left_idx = -1
+  for (let idx = 0; idx < unique_intersections.length; idx++) {
+    if (unique_intersections[idx] <= position + bound_tol) left_idx = idx
+  }
+  if (left_idx < 0 || left_idx + 1 >= unique_intersections.length) return null
+
+  const left_bound = unique_intersections[left_idx]
+  const right_bound = unique_intersections[left_idx + 1]
+  return right_bound - left_bound > bound_tol ? [left_bound, right_bound] : null
+}
+
 // Shared core for lever rule calculations (horizontal and vertical)
 // Parses phases, finds intersections along the scan axis, validates bounds,
 // and computes the fractional position within the two-phase region.
@@ -370,11 +408,9 @@ function lever_rule_core(
   if (!phases) return null
 
   const intersections = find_polygon_intersections(region.vertices, scan_val, axis)
-  if (intersections.length < 2) return null
-
-  const lo = intersections[0]
-  const hi = intersections[intersections.length - 1]
-  if (position < lo || position > hi) return null
+  const bounds = pick_bracketing_intersection_pair(intersections, position)
+  if (!bounds) return null
+  const [lo, hi] = bounds
 
   const span = hi - lo
   if (span < 1e-10) return null
