@@ -51,6 +51,14 @@ function get_y_labels(): HTMLElement[] {
   )
 }
 
+function get_summary_row(): HTMLElement {
+  return doc_query(`.summary-row`) as HTMLElement
+}
+
+function get_summary_col(): HTMLElement {
+  return doc_query(`.summary-col`) as HTMLElement
+}
+
 describe(`HeatmapMatrix rendering`, () => {
   test(`renders cells, labels, corner, data attributes, and CSS vars`, () => {
     mount_matrix()
@@ -420,6 +428,30 @@ describe(`axis label placement`, () => {
       expect(x_label.style.gridRow).toBe(`1`)
     }
   })
+
+  test(`staggered labels avoid summary row and summary column tracks`, () => {
+    mount_matrix({
+      x_items: make_items([`A`, `B`, `C`, `D`]),
+      y_items: make_items([`W`, `X`, `Y`, `Z`]),
+      values: [
+        [1, 2, 3, 4],
+        [5, 6, 7, 8],
+        [9, 10, 11, 12],
+        [13, 14, 15, 16],
+      ],
+      stagger_axis_labels: true,
+      show_row_summaries: true,
+      show_col_summaries: true,
+    })
+    const x_labels = get_x_labels()
+    const y_labels = get_y_labels()
+    // With summaries enabled, odd labels move one extra track outward.
+    expect(x_labels[1].style.gridRow).toBe(`7`)
+    expect(y_labels[1].style.gridColumn).toBe(`7`)
+    // Summary tracks still occupy the immediate next track.
+    expect(get_summary_col().style.gridRow).toBe(`6`)
+    expect(get_summary_row().style.gridColumn).toBe(`6`)
+  })
 })
 
 describe(`milestone feature props`, () => {
@@ -454,7 +486,7 @@ describe(`milestone feature props`, () => {
   test(`show_legend renders legend with label`, () => {
     mount_matrix({ show_legend: true, legend_label: `Custom` })
     expect(document.querySelector(`.legend`)).not.toBeNull()
-    expect(document.querySelector(`.legend-label`)?.textContent).toContain(`Custom`)
+    expect(document.querySelector(`.legend .label`)?.textContent).toContain(`Custom`)
   })
 
   test(`legend_format passes through to format_num`, () => {
@@ -467,7 +499,7 @@ describe(`milestone feature props`, () => {
       legend_format: `.1f`,
       color_scale_range: [1.234, 1.234],
     })
-    const tick_text = Array.from(document.querySelectorAll(`.legend-ticks span`))
+    const tick_text = Array.from(document.querySelectorAll(`.legend .tick-label`))
       .map((item) => item.textContent?.trim())
       .filter(Boolean)
     expect(tick_text[0]).toBe(format_num(1.234, `.1f`))
@@ -488,6 +520,19 @@ describe(`milestone feature props`, () => {
       | { x_idx: number; y_idx: number }[]
       | undefined
     expect(last_selection?.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test(`selected outline color token contrasts with dark cell backgrounds`, () => {
+    mount_matrix({
+      x_items: make_items([`A`]),
+      y_items: make_items([`X`]),
+      selection_mode: `single`,
+      values: [[`#000000`]],
+    })
+    const first_cell = get_data_cells()[0]
+    expect(first_cell.style.getPropertyValue(`--heatmap-selected-outline-color`)).toBe(
+      `white`,
+    )
   })
 
   test(`oncontextmenu is triggered for cell`, () => {

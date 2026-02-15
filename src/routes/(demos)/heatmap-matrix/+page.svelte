@@ -21,7 +21,7 @@
   let normalize_mode = $state<`linear` | `log`>(`linear`)
   let domain_mode = $state<`auto` | `robust` | `fixed`>(`auto`)
   let show_legend = $state(true)
-  let legend_position = $state<`right` | `bottom`>(`right`)
+  let legend_position = $state<`right` | `bottom`>(`bottom`)
   let search_query = $state(``)
   let selected_cells = $state<{ x_idx: number; y_idx: number }[]>([])
   let pinned_cell = $state<{ x_idx: number; y_idx: number } | null>(null)
@@ -151,8 +151,6 @@
       }, ${payload.y_range[0]}-${payload.y_range[1]})`}
       onexport={(format_name) =>
       last_export_status = `Exported ${format_name.toUpperCase()}`}
-      show_row_summaries
-      show_col_summaries
       tooltip
       onclick={(cell: CellContext) => (clicked_cell = cell)}
     />
@@ -299,7 +297,8 @@
     position: relative;
   }
   .scroll-container {
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
     max-width: 100%;
     margin: 1em 0;
   }

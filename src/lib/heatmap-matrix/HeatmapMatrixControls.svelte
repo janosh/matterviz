@@ -19,7 +19,7 @@
     normalize = $bindable(`linear`),
     domain_mode = $bindable(`auto`),
     show_legend = $bindable(false),
-    legend_position = $bindable(`right`),
+    legend_position = $bindable(`bottom`),
     search_query = $bindable(``),
     export_formats = [`csv`, `json`],
     onexport,
@@ -142,12 +142,16 @@
     display: flex;
     flex-direction: column;
     gap: 0.5em;
+    align-items: stretch;
+    text-align: left;
   }
   label {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: 0.2em;
     font-size: 0.9em;
+    text-align: left;
   }
   select,
   input {
@@ -162,6 +166,7 @@
     display: flex;
     gap: 0.35em;
     flex-wrap: wrap;
+    justify-content: flex-start;
   }
   .exports button {
     padding: 0.25em 0.5em;

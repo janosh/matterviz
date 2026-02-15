@@ -2,10 +2,11 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { is_color, pick_contrast_color } from '$lib/colors'
   import { format_num } from '$lib/labels'
+  import ColorBar from '$lib/plot/ColorBar.svelte'
   import * as d3_sc from 'd3-scale-chromatic'
   import { onDestroy, onMount, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SvelteMap } from 'svelte/reactivity'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type {
     AxisItem,
     CellContext,
@@ -22,6 +23,7 @@
     | `log`
     | ((value: number, min: number, max: number) => number)
   type LegendPosition = `right` | `bottom`
+  type ColorBarOrientation = `vertical` | `horizontal`
   type SelectionMode = `single` | `multi` | `range`
   type AxisOrderKey = `label` | `key` | `sort_value`
   type AxisOrder = AxisOrderKey | ((a: AxisItem, b: AxisItem) => number)
@@ -42,7 +44,7 @@
     domain_mode = `auto`,
     quantile_clip = [0.02, 0.98],
     show_legend = false,
-    legend_position = `right`,
+    legend_position = `bottom`,
     legend_label = `Value`,
     legend_ticks = 5,
     legend_format = `.3~f`,
@@ -178,8 +180,8 @@
   // === Value resolution ===
   let x_keys = $derived(x_items.map((item) => item.key ?? item.label))
   let y_keys = $derived(y_items.map((item) => item.key ?? item.label))
-  let highlight_x_key_set = $derived(new Set(highlight_x_keys))
-  let highlight_y_key_set = $derived(new Set(highlight_y_keys))
+  let highlight_x_key_set = $derived(new SvelteSet(highlight_x_keys))
+  let highlight_y_key_set = $derived(new SvelteSet(highlight_y_keys))
   let search_query_norm = $derived(search_query.trim().toLowerCase())
 
   let get_value = $derived.by(() => {
@@ -425,13 +427,20 @@
     return colors
   })
 
+  function to_contrast_colors(bg_values: Array<string | null>): Array<string | null> {
+    return bg_values.map((bg_color) =>
+      bg_color ? pick_contrast_color({ bg_color }) : null
+    )
+  }
+
   // Only compute text colors if a cell snippet is provided (cells render content that needs contrast)
   let text_flat = $derived.by(() => {
     if (!cell) return null
-    return bg_flat.map((bg: string | null) =>
-      bg ? pick_contrast_color({ bg_color: bg }) : null
-    )
+    return to_contrast_colors(bg_flat)
   })
+
+  // Keep selected outlines visible against each cell's background.
+  let selected_outline_flat = $derived.by(() => to_contrast_colors(bg_flat))
 
   function get_flat_idx(x_idx: number, y_idx: number): number {
     return y_idx * n_x + x_idx
@@ -507,7 +516,7 @@
   }
 
   let selected_cell_key_set = $derived(
-    new Set(
+    new SvelteSet(
       selected_cells.map((cell_pos) => cell_pos_key(cell_pos.x_idx, cell_pos.y_idx)),
     ),
   )
@@ -567,14 +576,14 @@
     return position_map
   })
   let highlight_x_by_idx = $derived(
-    new Set(
+    new SvelteSet(
       vis_x.filter((idx) =>
         highlight_x_key_set.has(x_items[idx].key ?? x_items[idx].label)
       ),
     ),
   )
   let highlight_y_by_idx = $derived(
-    new Set(
+    new SvelteSet(
       vis_y.filter((idx) =>
         highlight_y_key_set.has(y_items[idx].key ?? y_items[idx].label)
       ),
@@ -618,12 +627,16 @@
 
   function x_label_grid_row(x_idx: number): number | undefined {
     if (use_diagonal_symmetric_labels) return x_label_diag_grid_row(x_idx)
-    if (use_side_split_x_labels && x_idx % 2 !== 0) return visible_row_count + 2
+    if (use_side_split_x_labels && x_idx % 2 !== 0) {
+      return visible_row_count + 2 + (show_bottom_summary_row ? 1 : 0)
+    }
     return 1
   }
 
   function y_label_grid_col(y_idx: number): number {
-    if (use_side_split_y_labels && y_idx % 2 !== 0) return visible_col_count + 2
+    if (use_side_split_y_labels && y_idx % 2 !== 0) {
+      return visible_col_count + 2 + (show_right_summary_col ? 1 : 0)
+    }
     return 1
   }
 
@@ -1032,35 +1045,14 @@
     )
   })
 
-  let legend_ticks_values = $derived.by(() => {
-    const tick_count = Math.max(2, legend_ticks)
-    const ticks: number[] = []
-    const safe_min = use_log_norm ? Math.max(cs_min, Number.MIN_VALUE) : cs_min
-    const safe_max = use_log_norm ? Math.max(cs_max, Number.MIN_VALUE) : cs_max
-    for (let tick_idx = 0; tick_idx < tick_count; tick_idx++) {
-      const ratio = tick_idx / (tick_count - 1)
-      const tick_value = use_log_norm
-        ? Math.exp(
-          Math.log(safe_min) + ratio * (Math.log(safe_max) - Math.log(safe_min)),
-        )
-        : cs_min + ratio * (cs_max - cs_min)
-      ticks.push(tick_value)
-    }
-    return ticks
-  })
-
-  function format_legend_value(value: number): string {
-    return format_num(value, legend_format)
-  }
-
-  let legend_gradient = $derived.by(() => {
-    const stops = [0, 0.25, 0.5, 0.75, 1]
-      .map((ratio) => `${color_scale_fn(ratio)} ${Math.round(ratio * 100)}%`)
-      .join(`, `)
-    return legend_position === `right`
-      ? `linear-gradient(to top, ${stops})`
-      : `linear-gradient(to right, ${stops})`
-  })
+  let legend_orientation = $derived<ColorBarOrientation>(
+    legend_position === `right` ? `vertical` : `horizontal`,
+  )
+  let legend_wrapper_style = $derived.by(() =>
+    legend_position === `right`
+      ? `--cbar-height: 120px; --cbar-min-height: 120px; --cbar-max-height: 120px;`
+      : `--cbar-width: 180px;`
+  )
 
   let has_interaction_handlers = $derived(
     !disabled &&
@@ -1083,10 +1075,9 @@
   onMount(() => {
     update_viewport_state()
     if (!is_browser) return
-    const handle_window_mouseup = () => handle_mouseup()
-    window.addEventListener(`mouseup`, handle_window_mouseup)
+    window.addEventListener(`mouseup`, handle_mouseup)
     return () => {
-      window.removeEventListener(`mouseup`, handle_window_mouseup)
+      window.removeEventListener(`mouseup`, handle_mouseup)
     }
   })
 
@@ -1096,170 +1087,184 @@
   })
 </script>
 
-<div
-  {...rest}
-  bind:this={matrix_el}
-  class="heatmap-matrix theme-{theme} legend-{legend_position} {rest.class ?? ``}"
-  style:--n-cols={gaps_mode ? x_items.length : grid_col_count}
-  style:--n-rows={gaps_mode ? y_items.length : grid_row_count}
-  style:--extra-right-y={use_side_split_y_labels ? 1 : 0}
-  style:--extra-bottom-x={use_side_split_x_labels ? 1 : 0}
-  style:--right-y-track={use_side_split_y_labels ? `max-content` : `0`}
-  style:--bottom-x-track={use_side_split_x_labels ? `max-content` : `0`}
-  style:--tile-size={tile_size}
-  style:--heatmap-gridline-color={gridline_color}
-  style:--heatmap-gridline-width={gridline_width}
-  style:--heatmap-anim-duration={animation_duration}
-  style:gap
-  onmouseover={handle_mouseover}
-  onmouseout={handle_mouseout}
-  onmousedown={handle_mousedown}
-  onmouseup={handle_mouseup}
-  onclick={handle_click}
-  ondblclick={handle_dblclick}
-  oncontextmenu={handle_contextmenu}
-  onkeydown={handle_keydown}
-  onscroll={update_viewport_state}
->
-  <!-- Top-left corner spacer (when both axes have labels) -->
-  {#if show_x_labels && show_y_labels}
-    <div class="corner"></div>
-  {/if}
+<div class="heatmap-matrix-shell legend-{legend_position}">
+  <div
+    {...rest}
+    bind:this={matrix_el}
+    class="heatmap-matrix theme-{theme} {rest.class ?? ``}"
+    style:--n-cols={gaps_mode ? x_items.length : grid_col_count}
+    style:--n-rows={gaps_mode ? y_items.length : grid_row_count}
+    style:--extra-right-y={use_side_split_y_labels ? 1 : 0}
+    style:--extra-bottom-x={use_side_split_x_labels ? 1 : 0}
+    style:--right-y-track={use_side_split_y_labels ? `max-content` : `0`}
+    style:--bottom-x-track={use_side_split_x_labels ? `max-content` : `0`}
+    style:--tile-size={tile_size}
+    style:--heatmap-gridline-color={gridline_color}
+    style:--heatmap-gridline-width={gridline_width}
+    style:--heatmap-anim-duration={animation_duration}
+    style:gap
+    onmouseover={handle_mouseover}
+    onmouseout={handle_mouseout}
+    onmousedown={handle_mousedown}
+    onmouseup={handle_mouseup}
+    onclick={handle_click}
+    ondblclick={handle_dblclick}
+    oncontextmenu={handle_contextmenu}
+    onkeydown={handle_keydown}
+    onscroll={update_viewport_state}
+  >
+    <!-- Top-left corner spacer (when both axes have labels) -->
+    {#if show_x_labels && show_y_labels}
+      <div class="corner"></div>
+    {/if}
 
-  <!-- X-axis labels (top row) -->
-  {#if show_x_labels}
-    {#each vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
-      {@const item = x_items[x_idx]}
-      <div
-        class="x-label"
-        class:x-edge-top={use_side_split_x_labels && x_idx % 2 === 0}
-        class:x-edge-bottom={use_side_split_x_labels && x_idx % 2 !== 0}
-        class:highlighted-axis={highlight_x_by_idx.has(x_idx)}
-        class:sticky-axis={sticky_x_labels}
-        style={label_style || undefined}
-        style:grid-column={x_label_grid_col(x_idx)}
-        style:grid-row={x_label_grid_row(x_idx)}
-        title={x_label_cell ? undefined : item.label}
-      >
-        {#if x_label_cell}
-          {@render x_label_cell({ item, idx: x_idx })}
+    <!-- X-axis labels (top row) -->
+    {#if show_x_labels}
+      {#each vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
+        {@const item = x_items[x_idx]}
+        <div
+          class="x-label"
+          class:x-edge-top={use_side_split_x_labels && x_idx % 2 === 0}
+          class:x-edge-bottom={use_side_split_x_labels && x_idx % 2 !== 0}
+          class:highlighted-axis={highlight_x_by_idx.has(x_idx)}
+          class:sticky-axis={sticky_x_labels}
+          style={label_style || undefined}
+          style:grid-column={x_label_grid_col(x_idx)}
+          style:grid-row={x_label_grid_row(x_idx)}
+          title={x_label_cell ? undefined : item.label}
+        >
+          {#if x_label_cell}
+            {@render x_label_cell({ item, idx: x_idx })}
+          {:else}
+            {item.label}
+          {/if}
+        </div>
+      {/each}
+    {/if}
+
+    <!-- Grid rows: y-label + cells -->
+    {#each render_vis_y as y_idx (y_items[y_idx].key ?? y_items[y_idx].label)}
+      {@const y_item = y_items[y_idx]}
+      {#if show_y_labels}
+        <div
+          class="y-label"
+          class:y-edge-left={use_side_split_y_labels && y_idx % 2 === 0}
+          class:y-edge-right={use_side_split_y_labels && y_idx % 2 !== 0}
+          class:highlighted-axis={highlight_y_by_idx.has(y_idx)}
+          class:sticky-axis={sticky_y_labels}
+          style={label_style || undefined}
+          style:grid-row={y_label_edge_grid_row(y_idx)}
+          style:grid-column={y_label_grid_col(y_idx)}
+          title={y_label_cell ? undefined : y_item.label}
+        >
+          {#if y_label_cell}
+            {@render y_label_cell({ item: y_item, idx: y_idx })}
+          {:else}
+            {y_item.label}
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Cells for this row -->
+      {#each render_vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
+        {@const flat_idx = get_flat_idx(x_idx, y_idx)}
+        {@const bg = bg_flat[flat_idx]}
+        {@const should_render = !symmetric || x_idx <= y_idx}
+        {#if should_render}
+          <svelte:element
+            this={cell_tag_name}
+            class={cell_class_name}
+            class:selected={is_selected_cell(x_idx, y_idx)}
+            class:with-gridlines={show_gridlines}
+            class:animate-updates={animate_updates}
+            data-x={x_idx}
+            data-y={y_idx}
+            style:background-color={bg}
+            style:color={text_flat?.[flat_idx]}
+            style:--heatmap-selected-outline-color={selected_outline_flat[flat_idx]}
+            style:grid-column={cell_grid_col(x_idx)}
+            style:grid-row={cell_grid_row(y_idx)}
+          >
+            {#if cell}
+              {@render cell(build_cell_context(x_idx, y_idx))}
+            {/if}
+          </svelte:element>
         {:else}
-          {item.label}
+          <div
+            class="cell empty"
+            style:grid-column={cell_grid_col(x_idx)}
+            style:grid-row={cell_grid_row(y_idx)}
+          >
+          </div>
         {/if}
-      </div>
+      {/each}
     {/each}
-  {/if}
 
-  <!-- Grid rows: y-label + cells -->
-  {#each render_vis_y as y_idx (y_items[y_idx].key ?? y_items[y_idx].label)}
-    {@const y_item = y_items[y_idx]}
-    {#if show_y_labels}
-      <div
-        class="y-label"
-        class:y-edge-left={use_side_split_y_labels && y_idx % 2 === 0}
-        class:y-edge-right={use_side_split_y_labels && y_idx % 2 !== 0}
-        class:highlighted-axis={highlight_y_by_idx.has(y_idx)}
-        class:sticky-axis={sticky_y_labels}
-        style={label_style || undefined}
-        style:grid-row={y_label_edge_grid_row(y_idx)}
-        style:grid-column={y_label_grid_col(y_idx)}
-        title={y_label_cell ? undefined : y_item.label}
-      >
-        {#if y_label_cell}
-          {@render y_label_cell({ item: y_item, idx: y_idx })}
-        {:else}
-          {y_item.label}
+    {#if show_row_summaries}
+      {#each vis_y as y_idx (y_items[y_idx].key ?? y_items[y_idx].label)}
+        <div
+          class="summary summary-row"
+          style:grid-column={visible_col_count + 2}
+          style:grid-row={cell_grid_row(y_idx)}
+        >
+          {#if row_summaries.get(y_idx) !== null}
+            {format_num(row_summaries.get(y_idx) ?? 0)}
+          {/if}
+        </div>
+      {/each}
+    {/if}
+
+    {#if show_col_summaries}
+      {#each vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
+        <div
+          class="summary summary-col"
+          style:grid-column={cell_grid_col(x_idx)}
+          style:grid-row={visible_row_count + 2}
+        >
+          {#if col_summaries.get(x_idx) !== null}
+            {format_num(col_summaries.get(x_idx) ?? 0)}
+          {/if}
+        </div>
+      {/each}
+    {/if}
+
+    <!-- Tooltip: always in DOM, visibility toggled imperatively via classList -->
+    {#if tooltip !== false}
+      <div class="tooltip" bind:this={tooltip_div}>
+        {#if typeof tooltip === `function` && tooltip_cell}
+          {@render tooltip(tooltip_cell)}
         {/if}
       </div>
     {/if}
 
-    <!-- Cells for this row -->
-    {#each render_vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
-      {@const flat_idx = get_flat_idx(x_idx, y_idx)}
-      {@const bg = bg_flat[flat_idx]}
-      {@const should_render = !symmetric || x_idx <= y_idx}
-      {#if should_render}
-        <svelte:element
-          this={cell_tag_name}
-          class={cell_class_name}
-          class:selected={is_selected_cell(x_idx, y_idx)}
-          class:with-gridlines={show_gridlines}
-          class:animate-updates={animate_updates}
-          data-x={x_idx}
-          data-y={y_idx}
-          style:background-color={bg}
-          style:color={text_flat?.[flat_idx]}
-          style:grid-column={cell_grid_col(x_idx)}
-          style:grid-row={cell_grid_row(y_idx)}
-        >
-          {#if cell}
-            {@render cell(build_cell_context(x_idx, y_idx))}
-          {/if}
-        </svelte:element>
-      {:else}
-        <div
-          class="cell empty"
-          style:grid-column={cell_grid_col(x_idx)}
-          style:grid-row={cell_grid_row(y_idx)}
-        >
-        </div>
-      {/if}
-    {/each}
-  {/each}
-
-  {#if show_row_summaries}
-    {#each vis_y as y_idx (y_items[y_idx].key ?? y_items[y_idx].label)}
-      <div
-        class="summary summary-row"
-        style:grid-column={visible_col_count + 2}
-        style:grid-row={cell_grid_row(y_idx)}
-      >
-        {#if row_summaries.get(y_idx) !== null}
-          {format_num(row_summaries.get(y_idx) ?? 0)}
-        {/if}
-      </div>
-    {/each}
-  {/if}
-
-  {#if show_col_summaries}
-    {#each vis_x as x_idx (x_items[x_idx].key ?? x_items[x_idx].label)}
-      <div
-        class="summary summary-col"
-        style:grid-column={cell_grid_col(x_idx)}
-        style:grid-row={visible_row_count + 2}
-      >
-        {#if col_summaries.get(x_idx) !== null}
-          {format_num(col_summaries.get(x_idx) ?? 0)}
-        {/if}
-      </div>
-    {/each}
-  {/if}
-
-  <!-- Tooltip: always in DOM, visibility toggled imperatively via classList -->
-  {#if tooltip !== false}
-    <div class="tooltip" bind:this={tooltip_div}>
-      {#if typeof tooltip === `function` && tooltip_cell}
-        {@render tooltip(tooltip_cell)}
-      {/if}
-    </div>
-  {/if}
+    {@render children?.()}
+  </div>
 
   {#if show_legend}
-    <div class="legend legend-{legend_position}">
-      <div class="legend-label">{legend_label}</div>
-      <div class="legend-bar" style:background={legend_gradient}></div>
-      <div class="legend-ticks">
-        {#each legend_ticks_values as tick, tick_idx (tick_idx)}
-          <span>{format_legend_value(tick)}</span>
-        {/each}
-      </div>
-    </div>
+    <ColorBar
+      class="legend legend-{legend_position}"
+      title={legend_label}
+      orientation={legend_orientation}
+      tick_labels={legend_ticks}
+      tick_format={legend_format}
+      range={[cs_min, cs_max]}
+      scale_type={use_log_norm ? `log` : `linear`}
+      {color_scale}
+      wrapper_style={legend_wrapper_style}
+    />
   {/if}
-
-  {@render children?.()}
 </div>
 
 <style>
+  .heatmap-matrix-shell {
+    position: relative;
+    width: min(100%, var(--heatmap-max-width, 1200px));
+    max-width: var(--heatmap-max-width, 1200px);
+    box-sizing: border-box;
+  }
+  .heatmap-matrix-shell.legend-bottom {
+    padding-bottom: 44px;
+  }
   .heatmap-matrix {
     display: grid;
     grid-template-columns:
@@ -1285,12 +1290,6 @@
     );
     overflow: auto;
   }
-  .heatmap-matrix.legend-right {
-    padding-right: 56px;
-  }
-  .heatmap-matrix.legend-bottom {
-    padding-bottom: 42px;
-  }
   .heatmap-matrix.theme-publication {
     --tooltip-bg: rgba(255, 255, 255, 0.98);
     --tooltip-color: #111;
@@ -1307,6 +1306,10 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
+    border-radius: var(
+      --heatmap-cell-border-radius,
+      calc(var(--tile-size, 6px) * var(--heatmap-cell-radius-ratio, 0.12))
+    );
     overflow: hidden;
     display: flex;
     align-items: center;
@@ -1321,8 +1324,16 @@
     cursor: pointer;
   }
   .cell.selected {
-    outline: 2px solid color-mix(in srgb, currentColor 65%, transparent);
-    outline-offset: -2px;
+    box-shadow: inset 0 0 0
+      var(
+        --heatmap-selected-outline-width,
+        clamp(1px, calc(var(--tile-size, 6px) * 0.16), 3px)
+      )
+      color-mix(
+        in srgb,
+        var(--heatmap-selected-outline-color, currentColor) 75%,
+        transparent
+      );
   }
   .cell.with-gridlines {
     border: var(--heatmap-gridline-width) solid var(--heatmap-gridline-color);
@@ -1397,50 +1408,20 @@
     color: var(--text-color-muted, currentColor);
     opacity: 0.9;
   }
-  .legend {
+  .heatmap-matrix-shell :global(.legend) {
     position: absolute;
-    display: flex;
-    gap: 0.35rem;
-    align-items: center;
     background: color-mix(in srgb, var(--bg, #fff) 80%, transparent);
     padding: 0.3rem 0.4rem;
     border-radius: var(--border-radius, 3pt);
   }
-  .legend-right {
-    right: 4px;
+  .heatmap-matrix-shell.legend-right :global(.legend.legend-right) {
+    right: 8px;
     top: 8px;
-    flex-direction: column;
   }
-  .legend-bottom {
-    left: 8px;
-    bottom: 4px;
-    flex-direction: row;
-  }
-  .legend-label {
-    font-size: 0.72rem;
-    opacity: 0.8;
-  }
-  .legend-bar {
-    box-sizing: border-box;
-    width: 14px;
-    height: 120px;
-    border-radius: 3px;
-    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-  }
-  .legend-bottom .legend-bar {
-    width: 120px;
-    height: 12px;
-  }
-  .legend-ticks {
-    display: flex;
-    gap: 0.35rem;
-    font-size: 0.68rem;
-  }
-  .legend-right .legend-ticks {
-    flex-direction: column-reverse;
-  }
-  .legend-bottom .legend-ticks {
-    flex-direction: row;
+  .heatmap-matrix-shell.legend-bottom :global(.legend.legend-bottom) {
+    left: 50%;
+    bottom: 80px;
+    transform: translateX(-50%);
   }
   .tooltip {
     display: none;

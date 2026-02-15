@@ -241,13 +241,20 @@
       .replace(/>/g, `&gt;`)
       .replace(/"/g, `&quot;`)
       .replace(/'/g, `&#39;`)
-  const unescape_html = (str: string): string =>
-    str
-      .replace(/&amp;/g, `&`)
-      .replace(/&lt;/g, `<`)
-      .replace(/&gt;/g, `>`)
-      .replace(/&quot;/g, `"`)
-      .replace(/&#39;/g, `'`)
+  const unescape_html = (str: string, max_rounds = 5): string => {
+    let decoded = str
+    for (let round_idx = 0; round_idx < max_rounds; round_idx++) {
+      const next_decoded = decoded
+        .replace(/&amp;/g, `&`)
+        .replace(/&lt;/g, `<`)
+        .replace(/&gt;/g, `>`)
+        .replace(/&quot;/g, `"`)
+        .replace(/&#39;/g, `'`)
+      if (next_decoded === decoded) break
+      decoded = next_decoded
+    }
+    return decoded
+  }
   // Convert legacy/html formula strings like Fe<sub>2</sub>O<sub>3</sub> back to plain
   // stoichiometric input before parsing/reordering.
   const normalize_formula_markup = (formula: string): string =>
