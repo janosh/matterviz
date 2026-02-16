@@ -8,7 +8,7 @@
     watch_dark_mode,
   } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
-  import { ClickFeedback, DragOverlay } from '$lib/feedback'
+  import { ClickFeedback, DragOverlay, Spinner } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
   import {
     set_fullscreen_bg,
@@ -885,16 +885,17 @@
     ctx.fillRect(0, 0, display_width, display_height)
 
     if (elements.length !== 4) {
-      ctx.fillStyle = text_color
-      ctx.font = `16px Arial`
-      ctx.textAlign = `center`
-      ctx.textBaseline = `middle`
-
-      ctx.fillText(
-        `Quaternary convex hull requires exactly 4 elements (got ${pd_data.elements.length})`,
-        display_width / 2,
-        display_height / 2,
-      )
+      if (elements.length > 0) {
+        ctx.fillStyle = text_color
+        ctx.font = `16px Arial`
+        ctx.textAlign = `center`
+        ctx.textBaseline = `middle`
+        ctx.fillText(
+          `Quaternary convex hull requires exactly 4 elements (got ${elements.length})`,
+          display_width / 2,
+          display_height / 2,
+        )
+      }
       return
     }
 
@@ -1139,6 +1140,13 @@
     ondblclick={handle_double_click}
     onwheel={handle_wheel}
   ></canvas>
+
+  {#if entries.length === 0}
+    <Spinner
+      text="Loading data..."
+      style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center"
+    />
+  {/if}
 
   <!-- Energy above hull Color Bar -->
   {#if color_mode === `energy` && plot_entries.length > 0}

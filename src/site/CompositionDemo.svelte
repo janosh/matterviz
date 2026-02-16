@@ -119,6 +119,6 @@
   .card-formula {
     font-size: 0.75rem;
     color: var(--text-color-muted);
-    font-weight: lighter;
+    font-weight: 450;
   }
 </style>

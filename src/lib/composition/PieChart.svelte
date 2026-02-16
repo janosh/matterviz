@@ -71,8 +71,42 @@
       .map(([element_key, amount]) => {
         const element = element_key as ElementSymbol
         const fraction = fractions[element] || 0
-        // use 359.99° to avoid 360° for single-element compositions which cause SVG arc issues
-        const angle_span = fraction === 1 ? 359.99 : fraction * 360
+        const color = element_colors[element] || `#cccccc`
+
+        // Single element: full circle with no radial stroke line, label at center
+        if (fraction === 1) {
+          const r = outer_radius
+          const ir = inner_radius_adjusted
+          // Two semicircular arcs to form a full circle (avoids SVG 360° arc bug)
+          const outer_arc = `M ${center} ${center - r} A ${r} ${r} 0 1 1 ${center} ${
+            center + r
+          } A ${r} ${r} 0 1 1 ${center} ${center - r} Z`
+          const path = ir > 0
+            ? `${outer_arc} M ${center} ${
+              center - ir
+            } A ${ir} ${ir} 0 1 0 ${center} ${
+              center + ir
+            } A ${ir} ${ir} 0 1 0 ${center} ${center - ir} Z`
+            : outer_arc
+          const label_text = element + (show_amounts ? String(amount) : ``) +
+            (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
+          return {
+            element,
+            amount,
+            fraction,
+            color,
+            start_angle: -90,
+            end_angle: 270,
+            path,
+            label_x: center,
+            label_y: center,
+            is_outside_slice: false,
+            font_scale: get_chart_font_scale(2.6, label_text, r * 2),
+            text_color: pick_contrast_color({ bg_color: color }),
+          }
+        }
+
+        const angle_span = fraction * 360
         const start_angle = current_angle
         const end_angle = current_angle + angle_span
 
@@ -143,7 +177,6 @@
           label_text,
           available_space,
         )
-        const color = element_colors[element] || `#cccccc`
 
         return {
           element,
@@ -178,7 +211,11 @@
       d={segment.path}
       fill={segment.color}
       stroke="white"
-      stroke-width={hovered_element === segment.element ? stroke_width + 1 : stroke_width}
+      stroke-width={segments.length === 1
+      ? 0
+      : hovered_element === segment.element
+      ? stroke_width + 1
+      : stroke_width}
       class="pie-segment"
       class:interactive
       class:hovered={hovered_element === segment.element}
