@@ -1,4 +1,5 @@
 export * from './brillouin'
+export * from './chempot-diagram'
 export * from './colors'
 export * from './composition'
 export * from './constants'
@@ -8,13 +9,13 @@ export * from './coordination'
 export * from './element'
 export { default as EmptyState } from './EmptyState.svelte'
 export * from './feedback'
-export * from './heatmap-matrix'
 export * from './fermi-surface'
 export { default as FilePicker } from './FilePicker.svelte'
+export * from './heatmap-matrix'
 export { default as Icon } from './Icon.svelte'
-export { default as MillerIndexInput } from './MillerIndexInput.svelte'
 export * from './icons'
 export * from './io'
+export { default as MillerIndexInput } from './MillerIndexInput.svelte'
 // Explicit exports to avoid name clash with fermi-surface's Isosurface type
 export {
   auto_isosurface_settings,
