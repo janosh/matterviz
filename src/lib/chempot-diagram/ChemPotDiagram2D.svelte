@@ -302,7 +302,7 @@
   </DraggablePane>
 {/snippet}
 
-{#snippet chempot_controls()}
+{#snippet chempot_controls(_props: unknown)}
   <h4>ChemPot</h4>
   <label>
     <span>Formal chempots:</span>
