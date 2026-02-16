@@ -173,11 +173,9 @@
     gap: 4pt 10pt;
   }
   .export-grid h4 {
-    width: 100%;
-    margin: 4pt 0 0;
-  }
-  .export-grid h4:first-child {
-    margin-top: 0;
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
   }
   label {
     display: flex;

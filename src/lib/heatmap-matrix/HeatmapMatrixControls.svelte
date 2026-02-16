@@ -65,6 +65,9 @@
     return override_style_str ? `${base_style}; ${override_style_str}` : base_style
   }
 
+  // Stash custom format string so toggling the checkbox preserves it
+  let stashed_format = $state<string | null>(null)
+
   let show_toggle = $derived(controls_open || toggle_visible)
   let default_toggle_style = $derived(
     [
@@ -165,7 +168,18 @@
   </div>
   <div class="pane-row">
     <label>
-      <input type="checkbox" bind:checked={show_values} />
+      <input
+        type="checkbox"
+        checked={!!show_values}
+        onchange={(evt) => {
+          if (evt.currentTarget.checked) {
+            show_values = stashed_format ?? true
+          } else {
+            if (typeof show_values === `string`) stashed_format = show_values
+            show_values = false
+          }
+        }}
+      />
       Values
     </label>
     <label>

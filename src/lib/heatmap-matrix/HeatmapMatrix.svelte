@@ -1146,9 +1146,9 @@
     class="grid theme-{theme} {rest.class ?? ``}"
     style:--n-cols={gaps_mode ? x_items.length : grid_col_count}
     style:--n-rows={gaps_mode ? y_items.length : grid_row_count}
-    style:--extra-right-y={use_side_split_y_labels ? 1 : 0}
+    style:--extra-right-y={(use_side_split_y_labels || symmetric === `upper`) ? 1 : 0}
     style:--extra-bottom-x={use_side_split_x_labels ? 1 : 0}
-    style:--right-y-track={use_side_split_y_labels || symmetric === `upper` ? `max-content` : `0`}
+    style:--right-y-track={(use_side_split_y_labels || symmetric === `upper`) ? `max-content` : `0`}
     style:--bottom-x-track={use_side_split_x_labels ? `max-content` : `0`}
     style:--tile-size={tile_size}
     style:--heatmap-gridline-color={gridline_color}

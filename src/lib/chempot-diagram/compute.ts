@@ -20,7 +20,7 @@ import {
 // === Entry Helpers ===
 
 // Get energy per atom for a PhaseData entry
-function get_energy_per_atom(entry: PhaseData): number {
+export function get_energy_per_atom(entry: PhaseData): number {
   if (typeof entry.energy_per_atom === `number`) return entry.energy_per_atom
   const atoms = count_atoms_in_composition(entry.composition)
   if (atoms <= 0) {
@@ -385,6 +385,21 @@ export function pad_domain_points(
   })
 }
 
+// Build per-axis min/max ranges for a set of points
+export function build_axis_ranges(
+  points: number[][],
+  elements: string[],
+): { element: string; min_val: number; max_val: number }[] {
+  return elements.map((element, axis_idx) => {
+    const axis_vals = points.map((point) => point[axis_idx])
+    return {
+      element: element ?? `\u03BC${axis_idx}`,
+      min_val: Math.min(...axis_vals),
+      max_val: Math.max(...axis_vals),
+    }
+  })
+}
+
 // === Label Placement Helpers ===
 
 // Simple PCA: center data, compute covariance, eigendecompose, project to top-k.
@@ -427,7 +442,6 @@ export function simple_pca(
 
   // Power iteration for top-k eigenvectors (sufficient for k=2 on small matrices)
   const eigenvectors: number[][] = []
-  const eigenvalues: number[] = []
   const work_cov = cov.map((row) => [...row])
 
   for (let comp = 0; comp < k; comp++) {
@@ -449,13 +463,13 @@ export function simple_pca(
       vec = new_vec.map((val) => val / norm)
     }
 
+    // Rayleigh quotient for deflation
     const eigenvalue = vec.reduce((sum, val, idx) => {
       let mv = 0
       for (let jdx = 0; jdx < n_cols; jdx++) mv += work_cov[idx][jdx] * vec[jdx]
       return sum + val * mv
     }, 0)
 
-    eigenvalues.push(eigenvalue)
     eigenvectors.push(vec)
 
     // Deflate: remove this component from the covariance matrix
