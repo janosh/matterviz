@@ -1,6 +1,29 @@
-import type { Vec3 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { describe, expect, it, test } from 'vitest'
+
+describe(`combinations`, () => {
+  test.each([
+    [[], 0, [[]]],
+    [[`a`, `b`, `c`], 0, [[]]],
+    [[], 1, []],
+    [[`a`], 2, []],
+    [[`La`, `Ni`, `O`], 3, [[`La`, `Ni`, `O`]]],
+    [[`A`, `B`, `C`], 2, [[`A`, `B`], [`A`, `C`], [`B`, `C`]]],
+    [[`A`, `B`, `C`, `D`], 1, [[`A`], [`B`], [`C`], [`D`]]],
+    [[1, 2, 3], 2, [[1, 2], [1, 3], [2, 3]]],
+  ])(`C(%j, %i) -> %j`, (arr, k, expected) => {
+    expect(math.combinations(arr as unknown[], k as number)).toEqual(expected)
+  })
+
+  test(`C(5,3) returns 10 unique 3-element combos`, () => {
+    const result = math.combinations([`A`, `B`, `C`, `D`, `E`], 3)
+    expect(result).toHaveLength(10)
+    const keys = new Set(result.map((combo) => combo.join(`-`)))
+    expect(keys.size).toBe(10)
+    for (const combo of result) expect(combo).toHaveLength(3)
+  })
+})
 
 test(`scale vector`, () => {
   expect(math.scale([1, 2, 3], 3)).toEqual([3, 6, 9])
@@ -1749,3 +1772,371 @@ describe(`create_frac_to_cart and create_cart_to_frac`, () => {
     recovered.forEach((val, idx) => expect(val).toBeCloseTo(cart[idx], 10))
   })
 })
+
+// === point_in_polygon ===
+
+describe(`point_in_polygon`, () => {
+  const square: Vec2[] = [[0, 0], [4, 0], [4, 4], [0, 4]]
+  const tri: Vec2[] = [[0, 0], [10, 0], [5, 10]]
+
+  test.each([
+    { point_x: 2, point_y: 2, poly: square, expected: true, label: `inside square` },
+    { point_x: 5, point_y: 5, poly: square, expected: false, label: `outside square` },
+    { point_x: 5, point_y: 3, poly: tri, expected: true, label: `inside triangle` },
+    { point_x: 0, point_y: 10, poly: tri, expected: false, label: `outside triangle` },
+    {
+      point_x: 0,
+      point_y: 0,
+      poly: [] as Vec2[],
+      expected: false,
+      label: `empty polygon`,
+    },
+    {
+      point_x: 0,
+      point_y: 0,
+      poly: [[0, 0], [1, 1]] as Vec2[],
+      expected: false,
+      label: `< 3 vertices`,
+    },
+  ])(`$label`, ({ point_x, point_y, poly, expected }) => {
+    expect(math.point_in_polygon(point_x, point_y, poly)).toBe(expected)
+  })
+})
+
+// === compute_bounding_box_2d ===
+
+describe(`compute_bounding_box_2d`, () => {
+  test.each([
+    {
+      pts: [[0, 0], [1, 0], [1, 1], [0, 1]] as Vec2[],
+      min: [0, 0],
+      max: [1, 1],
+      width: 1,
+      height: 1,
+      label: `unit square`,
+    },
+    {
+      pts: [[-3, -2], [1, 4]] as Vec2[],
+      min: [-3, -2],
+      max: [1, 4],
+      width: 4,
+      height: 6,
+      label: `negative coords`,
+    },
+    { pts: [] as Vec2[], min: [0, 0], max: [0, 0], width: 0, height: 0, label: `empty` },
+    {
+      pts: [[5, 7]] as Vec2[],
+      min: [5, 7],
+      max: [5, 7],
+      width: 0,
+      height: 0,
+      label: `single point`,
+    },
+  ])(`$label`, ({ pts, min, max, width, height }) => {
+    const bbox = math.compute_bounding_box_2d(pts)
+    expect(bbox).toEqual({ min, max, width, height })
+  })
+})
+
+// === solve_linear_system ===
+
+describe(`solve_linear_system`, () => {
+  test(`1x1 system`, () => {
+    expect(math.solve_linear_system([[3]], [9])).toEqual([3])
+  })
+
+  test(`5x5 identity`, () => {
+    const identity = Array.from(
+      { length: 5 },
+      (_, row) => Array.from({ length: 5 }, (_, col) => row === col ? 1 : 0),
+    )
+    const rhs = [2, 4, 6, 8, 10]
+    const result = math.solve_linear_system(identity, rhs)
+    if (!result) throw new Error(`expected non-null result`)
+    rhs.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 8))
+  })
+
+  test(`non-square returns null`, () => {
+    expect(math.solve_linear_system([[1, 2, 3], [4, 5, 6]], [1, 2])).toBeNull()
+  })
+})
+
+// === convex_hull_2d ===
+
+describe(`convex_hull_2d`, () => {
+  test(`pentagon with interior point`, () => {
+    const pts: Vec2[] = [
+      [0, 0],
+      [4, 0],
+      [5, 3],
+      [2.5, 5],
+      [0, 3],
+      [2.5, 2], // interior
+    ]
+    const hull = math.convex_hull_2d(pts)
+    expect(hull.length).toBe(5) // interior excluded
+  })
+
+  test(`duplicate points`, () => {
+    const pts: Vec2[] = [[0, 0], [1, 0], [1, 0], [0, 1], [0, 1]]
+    const hull = math.convex_hull_2d(pts)
+    expect(hull.length).toBe(3)
+  })
+
+  test(`all same point`, () => {
+    const hull = math.convex_hull_2d([[3, 3], [3, 3], [3, 3]])
+    expect(hull.length).toBeLessThanOrEqual(3)
+  })
+
+  test(`counter-clockwise winding`, () => {
+    const pts: Vec2[] = [[0, 0], [1, 0], [1, 1], [0, 1]]
+    const hull = math.convex_hull_2d(pts)
+    // Shoelace signed area should be positive for CCW
+    let signed_area = 0
+    for (let idx = 0; idx < hull.length; idx++) {
+      const [x0, y0] = hull[idx]
+      const [x1, y1] = hull[(idx + 1) % hull.length]
+      signed_area += x0 * y1 - x1 * y0
+    }
+    expect(signed_area).toBeGreaterThan(0)
+  })
+})
+
+// === polygon_centroid ===
+
+describe(`polygon_centroid (from math)`, () => {
+  test(`rectangle centroid`, () => {
+    const pts: Vec2[] = [[0, 0], [4, 0], [4, 2], [0, 2]]
+    const centroid = math.polygon_centroid(pts)
+    expect(centroid[0]).toBeCloseTo(2, 6)
+    expect(centroid[1]).toBeCloseTo(1, 6)
+  })
+
+  test(`degenerate collinear polygon falls back to average`, () => {
+    const pts: Vec2[] = [[0, 0], [1, 0], [2, 0]]
+    const centroid = math.polygon_centroid(pts)
+    expect(centroid[0]).toBeCloseTo(1, 6)
+    expect(centroid[1]).toBeCloseTo(0, 6)
+  })
+})
+
+// === are_coplanar ===
+
+describe(`are_coplanar`, () => {
+  it.each([
+    {
+      desc: `4 points on xy-plane`,
+      pts: [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]],
+      expected: true,
+    },
+    {
+      desc: `4 points on tilted plane (x+y+z=3)`,
+      pts: [[3, 0, 0], [0, 3, 0], [0, 0, 3], [1, 1, 1]],
+      expected: true,
+    },
+    {
+      desc: `5 points on plane 2x-y+3z=6`,
+      pts: [[3, 0, 0], [0, -6, 0], [0, 0, 2], [1, -1, 1], [1.5, 0, 1]],
+      expected: true,
+    },
+    {
+      desc: `tetrahedron (non-coplanar)`,
+      pts: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      expected: false,
+    },
+    {
+      desc: `3 collinear points`,
+      pts: [[0, 0, 0], [1, 1, 1], [2, 2, 2]],
+      expected: true,
+    },
+    { desc: `2 points (trivial)`, pts: [[0, 0, 0], [1, 2, 3]], expected: true },
+    { desc: `1 point (trivial)`, pts: [[5, 5, 5]], expected: true },
+  ])(`$desc → $expected`, ({ pts, expected }) => {
+    expect(math.are_coplanar(pts)).toBe(expected)
+  })
+
+  test(`nearly coplanar within tolerance returns true`, () => {
+    expect(math.are_coplanar([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 1e-8]], 1e-6)).toBe(
+      true,
+    )
+  })
+
+  test(`point offset beyond tolerance returns false`, () => {
+    expect(math.are_coplanar([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.5, 0.5, 0.01]], 1e-6))
+      .toBe(false)
+  })
+})
+
+// === merge_coplanar_triangles ===
+
+describe(`merge_coplanar_triangles`, () => {
+  test(`empty input returns empty Float32Array`, () => {
+    const result = math.merge_coplanar_triangles(new Float32Array(0))
+    expect(result).toBeInstanceOf(Float32Array)
+    expect(result.length).toBe(0)
+  })
+
+  test(`single triangle passes through unchanged`, () => {
+    // Triangle on xy-plane
+    const input = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    const result = math.merge_coplanar_triangles(input)
+    expect(result.length).toBe(9)
+    // Vertices should match (order may differ within fan)
+    const verts_in = extract_triangle_verts(input)
+    const verts_out = extract_triangle_verts(result)
+    expect(same_vertex_set(verts_in, verts_out)).toBe(true)
+  })
+
+  test(`two coplanar adjacent triangles forming a quad are merged`, () => {
+    // Quad: A(0,0,0) B(1,0,0) C(1,1,0) D(0,1,0)
+    // Input triangles start with DIFFERENT vertices (A and C), so only
+    // a successful merge + fan re-triangulation can produce output where
+    // both triangles share a common fan origin.
+    // deno-fmt-ignore
+    const input = new Float32Array([
+      0, 0, 0,  1, 0, 0,  1, 1, 0, // tri1: A-B-C  (starts with A)
+      1, 1, 0,  0, 1, 0,  0, 0, 0, // tri2: C-D-A  (starts with C)
+    ])
+    const result = math.merge_coplanar_triangles(input)
+    expect(result.length).toBe(18)
+    const out_verts = extract_triangle_verts(result)
+    const expected_verts: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
+    for (const ev of expected_verts) {
+      expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
+    }
+    // Fan triangulation: both output triangles must share the same fan origin.
+    // This can ONLY be true if the merge ran (input tri1 starts with A, tri2 with C).
+    const fan_origin: Vec3 = [result[0], result[1], result[2]]
+    const second_tri_origin: Vec3 = [result[9], result[10], result[11]]
+    expect(vec3_close(fan_origin, second_tri_origin)).toBe(true)
+  })
+
+  test(`two non-coplanar adjacent triangles remain unchanged`, () => {
+    // Two triangles sharing edge (0,0,0)-(1,0,0) but at 90° dihedral
+    // deno-fmt-ignore
+    const input = new Float32Array([
+      0, 0, 0,  1, 0, 0,  0.5, 1, 0, // xy-plane
+      0, 0, 0,  1, 0, 0,  0.5, 0, 1, // xz-plane
+    ])
+    const result = math.merge_coplanar_triangles(input)
+    expect(result.length).toBe(18)
+    expect(same_vertex_set(extract_triangle_verts(input), extract_triangle_verts(result)))
+      .toBe(true)
+  })
+
+  test(`four coplanar triangles forming a hexagonal face`, () => {
+    // Regular hexagon on z=0 centered at origin, split into 4 triangles
+    // (fan from center would give 6, but convex hull gives 6 vertices → 4 fan triangles)
+    const hex_verts: Vec3[] = [
+      [1, 0, 0],
+      [0.5, 0.866, 0],
+      [-0.5, 0.866, 0],
+      [-1, 0, 0],
+      [-0.5, -0.866, 0],
+      [0.5, -0.866, 0],
+    ]
+    // Triangulate as fan from vertex 0
+    const input = new Float32Array([
+      ...hex_verts[0],
+      ...hex_verts[1],
+      ...hex_verts[2],
+      ...hex_verts[0],
+      ...hex_verts[2],
+      ...hex_verts[3],
+      ...hex_verts[0],
+      ...hex_verts[3],
+      ...hex_verts[4],
+      ...hex_verts[0],
+      ...hex_verts[4],
+      ...hex_verts[5],
+    ])
+    const result = math.merge_coplanar_triangles(input)
+    // Should merge to 4 fan triangles from 6 hull vertices
+    expect(result.length).toBe(4 * 9)
+    // All 6 hex vertices should appear in output
+    const out_verts = extract_triangle_verts(result)
+    for (const hv of hex_verts) {
+      expect(out_verts.some((ov) => vec3_close(ov, hv, 0.01))).toBe(true)
+    }
+  })
+
+  test(`mixed coplanar and non-coplanar triangles`, () => {
+    // Two coplanar triangles on z=0 (a quad) + one triangle on z=1
+    // deno-fmt-ignore
+    const input = new Float32Array([
+      0, 0, 0,  1, 0, 0,  1, 1, 0, // quad tri1
+      0, 0, 0,  1, 1, 0,  0, 1, 0, // quad tri2
+      0, 0, 1,  1, 0, 1,  0.5, 1, 1, // separate triangle on z=1
+    ])
+    const result = math.merge_coplanar_triangles(input)
+    expect(result.length).toBe(3 * 9)
+  })
+
+  test(`degenerate zero-area triangle passes through`, () => {
+    // All 3 vertices are the same point
+    const input = new Float32Array([1, 1, 1, 1, 1, 1, 1, 1, 1])
+    const result = math.merge_coplanar_triangles(input)
+    expect(result.length).toBe(9)
+  })
+
+  test(`coplanar triangles on axis-aligned plane merge despite winding differences`, () => {
+    // Two triangles on x=5 plane with opposite winding. Tests CANON_EPS fix.
+    // deno-fmt-ignore
+    const input = new Float32Array([
+      5, 0, 0,  5, 1, 0,  5, 1, 1, // tri1
+      5, 0, 0,  5, 1, 1,  5, 0, 1, // tri2 (opposite winding)
+    ])
+    const result = math.merge_coplanar_triangles(input)
+    expect(result.length).toBe(18)
+    const out_verts = extract_triangle_verts(result)
+    for (const ev of [[5, 0, 0], [5, 1, 0], [5, 1, 1], [5, 0, 1]] as Vec3[]) {
+      expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
+    }
+  })
+
+  test(`three coplanar triangles sharing fan vertex merge correctly`, () => {
+    // Pentagon A-B-C-D-E split into 3 fan triangles from A
+    // deno-fmt-ignore
+    const input = new Float32Array([
+      0, 0, 0,  2, 0, 0,  2, 1, 0, // A-B-C
+      0, 0, 0,  2, 1, 0,  1, 2, 0, // A-C-D
+      0, 0, 0,  1, 2, 0,  0, 1, 0, // A-D-E
+    ])
+    const result = math.merge_coplanar_triangles(input)
+    expect(result.length).toBe(3 * 9)
+    const out_verts = extract_triangle_verts(result)
+    for (const ev of [[0, 0, 0], [2, 0, 0], [2, 1, 0], [1, 2, 0], [0, 1, 0]] as Vec3[]) {
+      expect(out_verts.some((ov) => vec3_close(ov, ev))).toBe(true)
+    }
+  })
+})
+
+// === Test helpers for merge_coplanar_triangles ===
+
+// Extract all triangle vertices as Vec3[] from flat Float32Array
+function extract_triangle_verts(positions: Float32Array): Vec3[] {
+  const verts: Vec3[] = []
+  for (let idx = 0; idx < positions.length; idx += 3) {
+    verts.push([positions[idx], positions[idx + 1], positions[idx + 2]])
+  }
+  return verts
+}
+
+// Check if two Vec3 are close within tolerance
+function vec3_close(va: Vec3, vb: Vec3, tol = 1e-4): boolean {
+  return Math.abs(va[0] - vb[0]) < tol &&
+    Math.abs(va[1] - vb[1]) < tol &&
+    Math.abs(va[2] - vb[2]) < tol
+}
+
+// Check if two vertex sets contain the same vertices (unordered, within tolerance)
+function same_vertex_set(set_a: Vec3[], set_b: Vec3[]): boolean {
+  if (set_a.length !== set_b.length) return false
+  const used = new Set<number>()
+  for (const va of set_a) {
+    const match_idx = set_b.findIndex((vb, idx) => !used.has(idx) && vec3_close(va, vb))
+    if (match_idx < 0) return false
+    used.add(match_idx)
+  }
+  return true
+}

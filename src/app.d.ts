@@ -10,7 +10,7 @@ declare module '*-colors.yml' {
   export default content
 }
 
-// Global type declarations for theme system
+// Global type declarations for theme system and CDN-loaded libraries
 declare global {
   interface Window {
     MATTERVIZ_THEMES?: Record<string, Record<string, string>>

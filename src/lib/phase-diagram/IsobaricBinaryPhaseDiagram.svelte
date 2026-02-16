@@ -602,7 +602,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   role="img"
-  aria-label={`${component_a}-${component_b} binary phase diagram`}
+  aria-label="{component_a}-{component_b} binary phase diagram"
   ondrop={handle_svg_drop}
   ondragover={(ev) => ev.preventDefault()}
 >

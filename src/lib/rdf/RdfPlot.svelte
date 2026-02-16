@@ -189,7 +189,7 @@
     x_axis={{ label: `r (Å)`, range: [0, max_r], ...x_axis }}
     y_axis={{ label: `g(r)`, range: [0, max_g * 1.05], ...y_axis }}
     styles={{ show_lines: true, show_points: false }}
-    class={`${rest.class ?? ``} ${dragging ? `dragging` : ``}`}
+    class="{rest.class ?? ``} {dragging ? `dragging` : ``}"
     style={rest.style ?? `height: 400px;`}
     ondragover={enable_drop
     ? (ev) => {
