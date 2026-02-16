@@ -60,17 +60,18 @@ export function formula_key_from_composition(
 export function get_min_entries_and_el_refs(
   entries: PhaseData[],
 ): { min_entries: PhaseData[]; el_refs: Record<string, PhaseData> } {
-  const by_formula = new Map<string, PhaseData>()
+  const by_formula = new Map<string, { entry: PhaseData; epa: number }>()
 
   for (const entry of entries) {
     const key = formula_key_from_composition(entry.composition)
+    const epa = get_energy_per_atom(entry)
     const existing = by_formula.get(key)
-    if (!existing || get_energy_per_atom(entry) < get_energy_per_atom(existing)) {
-      by_formula.set(key, entry)
+    if (!existing || epa < existing.epa) {
+      by_formula.set(key, { entry, epa })
     }
   }
 
-  const min_entries = Array.from(by_formula.values())
+  const min_entries = Array.from(by_formula.values(), ({ entry }) => entry)
   const el_refs: Record<string, PhaseData> = {}
 
   for (const entry of min_entries) {
@@ -462,7 +463,10 @@ export function simple_pca(
       // Normalize
       const norm = Math.hypot(...new_vec)
       if (norm < EPS) break
+      const prev = vec
       vec = new_vec.map((val) => val / norm)
+      // Early exit when eigenvector has converged
+      if (prev.every((val, idx) => Math.abs(val - vec[idx]) < EPS)) break
     }
 
     // Rayleigh quotient for deflation

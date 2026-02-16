@@ -4,6 +4,13 @@
   import { toggle_fullscreen } from '$lib/layout'
   import { format_num } from '$lib/labels'
   import { convex_hull_2d, type Vec2 } from '$lib/math'
+  import { ScatterPlot3DControls } from '$lib/plot'
+  import type {
+    AxisConfig3D,
+    CameraProjection3D,
+    DataSeries3D,
+    DisplayConfig3D,
+  } from '$lib/plot/types'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -96,7 +103,6 @@
 
   let wrapper = $state<HTMLDivElement>()
   let fullscreen = $state(false)
-  let controls_open = $state(false)
   let export_pane_open = $state(false)
   let copy_status = $state(false)
   let copy_timeout_id: ReturnType<typeof setTimeout> | null = null
@@ -121,6 +127,20 @@
   }
   let orbit_controls_ref = $state<OrbitControlsLike | null>(null)
   const dynamic_axis_angle_deg = $state<number[]>([0, 0, 90])
+  let camera_projection = $state<CameraProjection3D>(`orthographic`)
+  let auto_rotate = $state(0)
+  let display = $state<DisplayConfig3D>({
+    show_axes: true,
+    show_grid: true,
+    show_axis_labels: true,
+    show_bounding_box: false,
+    projections: { xy: false, xz: false, yz: false },
+    projection_opacity: 0.15,
+    projection_scale: 0.5,
+  })
+  let x_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
+  let y_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
+  let z_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
 
   // Plotly/pymatgen uses Z-up with x-axis projecting left in isometric view.
   // Three.js uses Y-up with X projecting right. To match pymatgen's visual layout:
@@ -398,6 +418,7 @@
           const hull_vectors = unique_points.map((point) => to_vec3(point))
           const hull_geometry = new ConvexGeometry(hull_vectors)
           const hull_edges = new THREE.EdgesGeometry(hull_geometry)
+          hull_geometry.dispose()
           return hull_edges
         } catch {
           // Fall back to per-domain edges below.
@@ -452,6 +473,21 @@
     }
     return unique
   }
+
+  const controls_series = $derived<DataSeries3D[]>([
+    {
+      x: render_domains.flatMap((domain) =>
+        domain.points_3d.map((point) => point[1])
+      ),
+      y: render_domains.flatMap((domain) =>
+        domain.points_3d.map((point) => point[2])
+      ),
+      z: render_domains.flatMap((domain) =>
+        domain.points_3d.map((point) => point[0])
+      ),
+      label: `domains`,
+    },
+  ])
 
   // Build formula overlay edge geometries (per formula, colored) using crease edges
   const formula_edge_data = $derived.by(() => {
@@ -603,6 +639,11 @@
   })
 
   $effect(() => {
+    const geometry = bounding_box_geometry
+    return () => dispose_geometry(geometry)
+  })
+
+  $effect(() => {
     const geometries = formula_edge_data.map((data) => data.geometry)
     return () => dispose_geometries(geometries)
   })
@@ -620,7 +661,7 @@
   // === Grid, axes, ticks (matching ScatterPlot3D style) ===
 
   // Bounding box of all data points in DATA coordinates (before swizzle)
-  const data_bbox = $derived.by(() => {
+  const raw_data_bbox = $derived.by(() => {
     const pts = render_domains.flatMap((d) => d.points_3d)
     if (pts.length === 0) return { mins: [0, 0, 0], maxs: [1, 1, 1] }
     const mins = [Infinity, Infinity, Infinity]
@@ -630,6 +671,26 @@
         if (pt[dim] < mins[dim]) mins[dim] = pt[dim]
         if (pt[dim] > maxs[dim]) maxs[dim] = pt[dim]
       }
+    }
+    return { mins, maxs }
+  })
+
+  // Axis range controls are in swizzled axis order:
+  // x-axis control -> data axis 1, y-axis control -> data axis 2, z-axis control -> data axis 0
+  const data_bbox = $derived.by(() => {
+    const mins = [...raw_data_bbox.mins]
+    const maxs = [...raw_data_bbox.maxs]
+    const range_by_data_axis: ([number | null, number | null] | undefined)[] = [
+      z_axis.range,
+      x_axis.range,
+      y_axis.range,
+    ]
+    for (let axis_idx = 0; axis_idx < 3; axis_idx++) {
+      const range = range_by_data_axis[axis_idx]
+      if (!range) continue
+      const [range_min, range_max] = range
+      if (range_min !== null) mins[axis_idx] = range_min
+      if (range_max !== null) maxs[axis_idx] = range_max
     }
     return { mins, maxs }
   })
@@ -687,6 +748,11 @@
 
   const axis_colors = [`#e74c3c`, `#2ecc71`, `#3498db`] as const
   const axis_label_standoff = [0.25, 0.45, 0.45] as const
+  function chem_axis_label(data_axis: number): string {
+    return formal_chempots
+      ? `\u0394\u03BC(${plot_elements[data_axis]}) (eV)`
+      : `\u03BC(${plot_elements[data_axis]}) (eV)`
+  }
 
   // Grid/axis configuration for each data axis
   // Each axis has: line geometry, tick geometries, grid geometries, label positions
@@ -700,9 +766,11 @@
     return [0, 1, 2].map((axis) => {
       const ticks = data_ticks[axis]
       const color = axis_colors[axis]
-      const label = formal_chempots
-        ? `\u0394\u03BC(${plot_elements[axis]}) (eV)`
-        : `\u03BC(${plot_elements[axis]}) (eV)`
+      const label = axis === 0
+        ? (z_axis.label || chem_axis_label(0))
+        : axis === 1
+        ? (x_axis.label || chem_axis_label(1))
+        : (y_axis.label || chem_axis_label(2))
 
       let line_start: [number, number, number]
       let line_end: [number, number, number]
@@ -844,6 +912,88 @@
     ]
   })
 
+  const projection_planes = $derived.by(() => {
+    const projections = display.projections
+    if (!projections) return []
+    const [r0, r1, r2] = niced_range
+    const b0 = r0[0], b1 = r1[0], b2 = r2[0]
+    const s0 = (r0[1] - r0[0]) * (display.projection_scale ?? 0.5)
+    const s1 = (r1[1] - r1[0]) * (display.projection_scale ?? 0.5)
+    const s2 = (r2[1] - r2[0]) * (display.projection_scale ?? 0.5)
+    const planes: {
+      key: string
+      pos: [number, number, number]
+      rot: [number, number, number]
+      size: [number, number]
+      color: string
+    }[] = []
+    if (projections.xy) {
+      planes.push({
+        key: `xy`,
+        pos: swiz((r0[0] + r0[1]) / 2, (r1[0] + r1[1]) / 2, b2),
+        rot: [-Math.PI / 2, 0, 0],
+        size: [s1, s0],
+        color: `#5dade2`,
+      })
+    }
+    if (projections.xz) {
+      planes.push({
+        key: `xz`,
+        pos: swiz((r0[0] + r0[1]) / 2, b1, (r2[0] + r2[1]) / 2),
+        rot: [0, Math.PI / 2, 0],
+        size: [s0, s2],
+        color: `#58d68d`,
+      })
+    }
+    if (projections.yz) {
+      planes.push({
+        key: `yz`,
+        pos: swiz(b0, (r1[0] + r1[1]) / 2, (r2[0] + r2[1]) / 2),
+        rot: [0, 0, 0],
+        size: [s1, s2],
+        color: `#f5b041`,
+      })
+    }
+    return planes
+  })
+
+  const bounding_box_geometry = $derived.by(() => {
+    const [r0, r1, r2] = niced_range
+    const vertices = [
+      swiz(r0[0], r1[0], r2[0]),
+      swiz(r0[1], r1[0], r2[0]),
+      swiz(r0[1], r1[1], r2[0]),
+      swiz(r0[0], r1[1], r2[0]),
+      swiz(r0[0], r1[0], r2[1]),
+      swiz(r0[1], r1[0], r2[1]),
+      swiz(r0[1], r1[1], r2[1]),
+      swiz(r0[0], r1[1], r2[1]),
+    ]
+    const edges = [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 0],
+      [4, 5],
+      [5, 6],
+      [6, 7],
+      [7, 4],
+      [0, 4],
+      [1, 5],
+      [2, 6],
+      [3, 7],
+    ]
+    const positions: number[] = []
+    for (const [start_idx, end_idx] of edges) {
+      const start = vertices[start_idx]
+      const end = vertices[end_idx]
+      positions.push(start[0], start[1], start[2], end[0], end[1], end[2])
+    }
+    const geom = new THREE.BufferGeometry()
+    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
+    return geom
+  })
+
   function reset_controls(): void {
     formal_chempots_override = null
     label_stable_override = null
@@ -905,11 +1055,6 @@
 
   onDestroy(() => {
     if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
-    // Dispose GPU geometries created in $derived blocks
-    edge_geometry?.dispose()
-    occlusion_hull_geometry?.dispose()
-    for (const { geometry } of formula_edge_data) geometry.dispose()
-    for (const { geometry } of formula_mesh_data) geometry.dispose()
   })
 
   function get_pointer_coords(
@@ -1012,12 +1157,19 @@
       </label>
     </DraggablePane>
 
-    <DraggablePane
-      bind:show={controls_open}
-      open_icon="Cross"
-      closed_icon="Settings"
+    <ScatterPlot3DControls
+      bind:x_axis
+      bind:y_axis
+      bind:z_axis
+      bind:display
+      bind:camera_projection
+      bind:auto_rotate
+      series={controls_series}
+      toggle_props={{
+        class: `chempot-controls-toggle`,
+        title: `3D plot controls`,
+      }}
       pane_props={{ class: `chempot-controls-pane` }}
-      toggle_props={{ class: `chempot-controls-toggle`, title: `Chemical potential controls` }}
     >
       <h4>ChemPot Controls</h4>
       <label>
@@ -1091,7 +1243,7 @@
         />
       </label>
       <button type="button" onclick={reset_controls}>Reset to config defaults</button>
-    </DraggablePane>
+    </ScatterPlot3DControls>
 
     <button
       type="button"
@@ -1110,26 +1262,52 @@
   {:else if mounted && typeof WebGLRenderingContext !== `undefined`}
     <Canvas>
       <ChemPotScene3D>
-        <!-- Orthographic camera matching pymatgen's projection style -->
-        <T.OrthographicCamera
-          makeDefault
-          position={[
-            data_center.x + data_extent,
-            data_center.y + data_extent,
-            data_center.z + data_extent,
-          ]}
-          zoom={Math.min(render_width, render_height) / (data_extent * 1.6)}
-          near={0.1}
-          far={data_extent * 10}
-        >
-          <extras.OrbitControls
-            bind:ref={orbit_controls_ref}
-            enableRotate
-            enableZoom
-            enablePan
-            target={[data_center.x, data_center.y, data_center.z]}
-          />
-        </T.OrthographicCamera>
+        {#if camera_projection === `orthographic`}
+          <!-- Orthographic camera matching pymatgen's projection style -->
+          <T.OrthographicCamera
+            makeDefault
+            position={[
+              data_center.x + data_extent,
+              data_center.y + data_extent,
+              data_center.z + data_extent,
+            ]}
+            zoom={Math.min(render_width, render_height) / (data_extent * 1.6)}
+            near={0.1}
+            far={data_extent * 10}
+          >
+            <extras.OrbitControls
+              bind:ref={orbit_controls_ref}
+              enableRotate
+              enableZoom
+              enablePan
+              autoRotate={auto_rotate > 0}
+              autoRotateSpeed={auto_rotate}
+              target={[data_center.x, data_center.y, data_center.z]}
+            />
+          </T.OrthographicCamera>
+        {:else}
+          <T.PerspectiveCamera
+            makeDefault
+            position={[
+              data_center.x + data_extent,
+              data_center.y + data_extent,
+              data_center.z + data_extent,
+            ]}
+            fov={50}
+            near={0.1}
+            far={data_extent * 10}
+          >
+            <extras.OrbitControls
+              bind:ref={orbit_controls_ref}
+              enableRotate
+              enableZoom
+              enablePan
+              autoRotate={auto_rotate > 0}
+              autoRotateSpeed={auto_rotate}
+              target={[data_center.x, data_center.y, data_center.z]}
+            />
+          </T.PerspectiveCamera>
+        {/if}
 
         <!-- Ambient light for visibility -->
         <T.AmbientLight intensity={0.8} />
@@ -1198,17 +1376,32 @@
           {/each}
         {/if}
 
-        <!-- Background planes -->
-        {#each bg_planes as plane, idx (idx)}
-          <T.Mesh
-            position={plane.pos}
-            rotation={plane.rot}
-            renderOrder={-1}
-          >
+        {#if display.show_grid}
+          <!-- Background planes -->
+          {#each bg_planes as plane, idx (idx)}
+            <T.Mesh
+              position={plane.pos}
+              rotation={plane.rot}
+              renderOrder={-1}
+            >
+              <T.PlaneGeometry args={plane.size} />
+              <T.MeshBasicMaterial
+                color="#888"
+                opacity={0.04}
+                transparent
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </T.Mesh>
+          {/each}
+        {/if}
+
+        {#each projection_planes as plane (plane.key)}
+          <T.Mesh position={plane.pos} rotation={plane.rot}>
             <T.PlaneGeometry args={plane.size} />
             <T.MeshBasicMaterial
-              color="#888"
-              opacity={0.04}
+              color={plane.color}
+              opacity={display.projection_opacity ?? 0.15}
               transparent
               side={THREE.DoubleSide}
               depthWrite={false}
@@ -1216,55 +1409,67 @@
           </T.Mesh>
         {/each}
 
+        {#if display.show_bounding_box}
+          <T.LineSegments geometry={bounding_box_geometry}>
+            <T.LineBasicMaterial color="#666" opacity={0.6} transparent />
+          </T.LineSegments>
+        {/if}
+
         <!-- Axes, ticks, grid lines, and labels -->
         {#each grid_config as gc (gc.axis)}
-          <!-- Main axis line -->
-          <T.Line geometry={gc.line_geom}>
-            <T.LineBasicMaterial color={gc.color} linewidth={2} />
-          </T.Line>
-          <!-- Tick marks -->
-          {#each gc.tick_geoms as tick_geom, tdx (tdx)}
-            <T.Line geometry={tick_geom}>
-              <T.LineBasicMaterial color={gc.color} />
+          {#if display.show_axes}
+            <!-- Main axis line -->
+            <T.Line geometry={gc.line_geom}>
+              <T.LineBasicMaterial color={gc.color} linewidth={2} />
             </T.Line>
-          {/each}
-          <!-- Grid lines -->
-          {#each gc.grid_geoms as grid_geom, gdx (gdx)}
-            <T.Line geometry={grid_geom}>
-              <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
-            </T.Line>
-          {/each}
-          <!-- Tick labels -->
-          {#each gc.tick_labels as tick (tick.text)}
+            <!-- Tick marks -->
+            {#each gc.tick_geoms as tick_geom, tdx (tdx)}
+              <T.Line geometry={tick_geom}>
+                <T.LineBasicMaterial color={gc.color} />
+              </T.Line>
+            {/each}
+          {/if}
+          {#if display.show_grid}
+            <!-- Grid lines -->
+            {#each gc.grid_geoms as grid_geom, gdx (gdx)}
+              <T.Line geometry={grid_geom}>
+                <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
+              </T.Line>
+            {/each}
+          {/if}
+          {#if display.show_axis_labels}
+            <!-- Tick labels -->
+            {#each gc.tick_labels as tick (tick.text)}
+              <extras.HTML
+                position={tick.pos}
+                center
+                portal={wrapper}
+                zIndexRange={[1, 0]}
+              >
+                <span
+                  class="tick-label"
+                  style:transform={`rotate(${dynamic_axis_angle_deg[gc.axis]}deg)`}
+                >
+                  {tick.text}
+                </span>
+              </extras.HTML>
+            {/each}
+            <!-- Axis label -->
             <extras.HTML
-              position={tick.pos}
+              position={gc.label_pos}
               center
               portal={wrapper}
               zIndexRange={[1, 0]}
             >
               <span
-                class="tick-label"
+                class="axis-label"
+                style:color={gc.color}
                 style:transform={`rotate(${dynamic_axis_angle_deg[gc.axis]}deg)`}
               >
-                {tick.text}
+                {gc.label}
               </span>
             </extras.HTML>
-          {/each}
-          <!-- Axis label -->
-          <extras.HTML
-            position={gc.label_pos}
-            center
-            portal={wrapper}
-            zIndexRange={[1, 0]}
-          >
-            <span
-              class="axis-label"
-              style:color={gc.color}
-              style:transform={`rotate(${dynamic_axis_angle_deg[gc.axis]}deg)`}
-            >
-              {gc.label}
-            </span>
-          </extras.HTML>
+          {/if}
         {/each}
 
         <!-- Domain labels -->

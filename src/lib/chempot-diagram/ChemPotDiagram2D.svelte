@@ -128,8 +128,15 @@
     return `\u03BC(${element}) (eV)`
   }
 
-  let x_axis = $derived({ label: axis_label(plot_elements[0] ?? ``) })
-  let y_axis = $derived({ label: axis_label(plot_elements[1] ?? ``) })
+  let x_axis = $state({ label: `` })
+  let y_axis = $state({ label: `` })
+
+  $effect(() => {
+    const next_x_label = axis_label(plot_elements[0] ?? ``)
+    const next_y_label = axis_label(plot_elements[1] ?? ``)
+    if (x_axis.label !== next_x_label) x_axis = { ...x_axis, label: next_x_label }
+    if (y_axis.label !== next_y_label) y_axis = { ...y_axis, label: next_y_label }
+  })
 
   // === Domain label annotations (in data coordinates) ===
   const annotations = $derived.by(() => {
