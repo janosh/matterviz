@@ -655,6 +655,40 @@ export const ICON_DATA = {
     viewBox: `0 0 24 24`,
     path: `M3 18v-2h6v2zM3 13v-2h12v2zM3 8V6h13v2zM19 6v8h-2l3 5l3-5h-2V6z`,
   },
+  BrillouinZone: {
+    viewBox: `0 0 24 24`,
+    stroke: `currentColor`,
+    path:
+      `<g stroke-width="1.3" fill="none"><polygon points="12,1 22,7 22,17 12,23 2,17 2,7"/><line x1="2" y1="7" x2="22" y2="17"/><line x1="12" y1="1" x2="12" y2="23"/><line x1="22" y1="7" x2="2" y2="17"/></g>`,
+  },
+  BandStructure: {
+    viewBox: `0 0 28 24`,
+    stroke: `currentColor`,
+    path:
+      `<g stroke-width="1.3" fill="none" stroke-linecap="round"><path d="M1 20c3-4 5-6 7-6s5 5 7 5 5-4 7-4"/><path d="M1 17c2-3 5-5 7-3s5 4 7 3 5-5 7-3"/><line x1="1" y1="12" x2="27" y2="12" stroke-dasharray="2 1.5" opacity="0.2"/><path d="M1 9c3 3 5 5 7 5s5-5 7-5 5 3 7 3"/><path d="M1 6c2 2 5 4 7 2s5-3 7-2 5 4 7 2"/><path d="M1 4c3 1 5 1 7 0s5-1 7 0 5 1 7 0" opacity="0.5"/><line x1="8" y1="1" x2="8" y2="23" stroke-dasharray="1.5 1.5" opacity="0.2"/><line x1="15" y1="1" x2="15" y2="23" stroke-dasharray="1.5 1.5" opacity="0.2"/><line x1="22" y1="1" x2="22" y2="23" stroke-dasharray="1.5 1.5" opacity="0.2"/></g>`,
+  },
+  DensityOfStates: {
+    viewBox: `0 0 24 24`,
+    stroke: `currentColor`,
+    path:
+      `<line x1="3" y1="21" x2="21" y2="21" stroke-width="0.7" opacity="0.3"/><path d="M3 21C3 21 4 21 5 11C6 21 7 21 9 21C9 21 10 21 11 15C12 21 13 21 14 21C14 21 15 21 16.5 6C18 21 19 21 21 21" stroke-width="1.2" fill="none" stroke-linecap="round"/><path d="M3 21C3 21 4 21 5 11C6 21 7 21 9 21C9 21 10 21 11 15C12 21 13 21 14 21C14 21 15 21 16.5 6C18 21 19 21 21 21Z" fill="currentColor" stroke="none" opacity="0.12"/>`,
+  },
+  BandsDOS: {
+    viewBox: `0 0 24 24`,
+    path:
+      `<path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2M4 4h10v16H4zm12 0h4v16h-4z"/>`,
+  },
+  ThreePanels: {
+    viewBox: `0 0 24 24`,
+    path:
+      `<path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2M4 4h5v16H4zm7 0h9v8h-9zm0 10h9v6h-9z"/>`,
+  },
+  FermiSurface: {
+    viewBox: `0 0 24 24`,
+    stroke: `currentColor`,
+    path:
+      `<g stroke-width="1.3" fill="none"><circle cx="12" cy="12" r="9" opacity="0.3"/><ellipse cx="12" cy="12" rx="9" ry="4"/><ellipse cx="12" cy="12" rx="4" ry="9"/><ellipse cx="12" cy="12" rx="6" ry="7" transform="rotate(45 12 12)" opacity="0.5"/></g>`,
+  },
 } as const
 
 export type IconName = keyof typeof ICON_DATA
