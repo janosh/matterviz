@@ -511,8 +511,8 @@ export function dedup_points(pts: number[][], tol: number = 1e-4): {
   const orig_indices: number[] = []
   for (let idx = 0; idx < pts.length; idx++) {
     const pt = pts[idx]
-    const is_dup = unique.some((u) =>
-      u.every((val, dim) => Math.abs(val - pt[dim]) < tol)
+    const is_dup = unique.some((existing) =>
+      existing.every((val, dim) => Math.abs(val - pt[dim]) < tol)
     )
     if (!is_dup) {
       unique.push(pt)

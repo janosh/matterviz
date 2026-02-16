@@ -296,24 +296,33 @@
   // Categorical palette for arity mode (element count)
   const arity_colors = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
 
+  // Find min and max of a numeric array (single pass, no allocation)
+  function find_min_max(values: number[]): { min: number; max: number } | null {
+    if (values.length === 0) return null
+    let min = values[0], max = values[0]
+    for (let idx = 1; idx < values.length; idx++) {
+      if (values[idx] < min) min = values[idx]
+      if (values[idx] > max) max = values[idx]
+    }
+    return { min, max }
+  }
+
   // Build a sequential color scale from a D3 interpolator name
   function make_color_scale(
     values: number[],
     interpolator_name: D3InterpolateName,
   ): ((val: number) => string) | null {
     const finite = values.filter(Number.isFinite)
-    if (finite.length === 0) return null
-    let lo = finite[0], hi_raw = finite[0]
-    for (let idx = 1; idx < finite.length; idx++) {
-      if (finite[idx] < lo) lo = finite[idx]
-      if (finite[idx] > hi_raw) hi_raw = finite[idx]
-    }
-    const hi = Math.max(hi_raw, lo + 1e-6)
+    const range = find_min_max(finite)
+    if (!range) return null
     const interp = (d3_sc as unknown as Record<string, (t: number) => string>)[
       interpolator_name
     ] ??
       d3_sc.interpolateViridis
-    return scaleSequential(interp).domain([lo, hi])
+    return scaleSequential(interp).domain([
+      range.min,
+      Math.max(range.max, range.min + 1e-6),
+    ])
   }
 
   // Per-domain color map keyed by formula
@@ -424,20 +433,16 @@
           if (stats) values.push(stats.matching_entry_count)
         }
       }
-      if (values.length === 0) return null
-      let lo = values[0], hi = values[0]
-      for (let idx = 1; idx < values.length; idx++) {
-        if (values[idx] < lo) lo = values[idx]
-        if (values[idx] > hi) hi = values[idx]
-      }
+      const range = find_min_max(values)
+      if (!range) return null
       const labels: Record<string, string> = {
         energy: `Energy per atom (eV)`,
         formation_energy: `Formation energy (eV/atom)`,
         entries: `Entry count`,
       }
       return {
-        min: lo,
-        max: Math.max(hi, lo + 1e-6),
+        min: range.min,
+        max: Math.max(range.max, range.min + 1e-6),
         label: labels[color_mode] ?? ``,
       }
     },
@@ -445,7 +450,7 @@
 
   // Compute data center and extent for camera positioning (in swizzled coords)
   const { data_center, data_extent } = $derived.by(() => {
-    const pts = render_domains.flatMap((d) => d.points_3d)
+    const pts = render_domains.flatMap((domain) => domain.points_3d)
     if (pts.length === 0) {
       return { data_center: new THREE.Vector3(0, 0, 0), data_extent: 10 }
     }
@@ -601,8 +606,8 @@
       // Compute edges in swizzled (Three.js) coords since ConvexGeometry works there
       const swizzled = domain.points_3d.map((pt) => [pt[1], pt[2], pt[0]])
       for (const [pa, pb] of get_domain_edges(swizzled)) {
-        const ka = pa.map((v) => v.toFixed(4)).join(`,`)
-        const kb = pb.map((v) => v.toFixed(4)).join(`,`)
+        const ka = pa.map((val) => val.toFixed(4)).join(`,`)
+        const kb = pb.map((val) => val.toFixed(4)).join(`,`)
         const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -619,8 +624,8 @@
   // edges on the back side. Using all vertices together avoids gaps between domains.
   const occlusion_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
     const all_pts = render_domains
-      .filter((d) => !d.is_draw_formula)
-      .flatMap((d) => d.points_3d)
+      .filter((domain) => !domain.is_draw_formula)
+      .flatMap((domain) => domain.points_3d)
     const unique = dedup_3d(all_pts)
     if (unique.length < 4) return null
     const vectors = unique.map((pt) => to_vec3(pt))
@@ -651,16 +656,21 @@
 
     // Domain vertex centroids in swizzled Three.js coords: data[1]→X, data[2]→Y, data[0]→Z
     const centroids = render_domains
-      .filter((d) => !d.is_draw_formula && d.points_3d.length > 0)
-      .map((d) => {
+      .filter((domain) => !domain.is_draw_formula && domain.points_3d.length > 0)
+      .map((domain) => {
         let sx = 0, sy = 0, sz = 0
-        for (const pt of d.points_3d) {
+        for (const pt of domain.points_3d) {
           sx += pt[1]
           sy += pt[2]
           sz += pt[0]
         }
-        const n = d.points_3d.length
-        return { formula: d.formula, cx: sx / n, cy: sy / n, cz: sz / n }
+        const n_pts = domain.points_3d.length
+        return {
+          formula: domain.formula,
+          cx: sx / n_pts,
+          cy: sy / n_pts,
+          cz: sz / n_pts,
+        }
       })
 
     const result: string[] = []
@@ -950,7 +960,7 @@
 
   // Bounding box of all data points in DATA coordinates (before swizzle)
   const raw_data_bbox = $derived.by(() => {
-    const pts = render_domains.flatMap((d) => d.points_3d)
+    const pts = render_domains.flatMap((domain) => domain.points_3d)
     if (pts.length === 0) return { mins: [0, 0, 0], maxs: [1, 1, 1] }
     const mins = [Infinity, Infinity, Infinity]
     const maxs = [-Infinity, -Infinity, -Infinity]
@@ -1936,7 +1946,7 @@
 
         <!-- Domain labels (only for surface domains, not interior ones) -->
         {#if label_stable}
-          {#each render_domains.filter((d) => surface_formulas.has(d.formula)) as
+          {#each render_domains.filter((dom) => surface_formulas.has(dom.formula)) as
             domain
             (domain.formula)
           }
@@ -2058,7 +2068,7 @@
     color: var(--text-color, currentColor);
     transition: background-color 0.2s;
     display: flex;
-    font-size: clamp(0.85em, 2cqmin, 1.3em);
+    font-size: clamp(0.75em, 1.5cqmin, 1em);
   }
   .control-buttons > :global(button:hover),
   .control-buttons > :global(.pane-toggle:hover) {

@@ -891,7 +891,7 @@
         ctx.textAlign = `center`
         ctx.textBaseline = `middle`
         ctx.fillText(
-          `Quaternary convex hull requires exactly 4 elements (got ${elements.length})`,
+          `Quaternary convex hull requires exactly 4 elements (got ${pd_data.elements.length})`,
           display_width / 2,
           display_height / 2,
         )

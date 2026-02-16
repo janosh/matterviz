@@ -896,50 +896,50 @@ describe(`config.elements projection vs subsystem`, () => {
       Object.keys(cpd_ternary.domains).length,
     )
   })
-})
 
-// === Stability: configuration sensitivity ===
+  // === Stability: configuration sensitivity ===
 
-describe(`configuration sensitivity`, () => {
-  test(`default_min_limit does not affect interior vertices`, () => {
-    const tight = compute_chempot_diagram(entries, {
-      default_min_limit: -15,
-      formal_chempots: false,
-    })
-    const wide = compute_chempot_diagram(entries, {
-      default_min_limit: -50,
-      formal_chempots: false,
-    })
-    // Interior vertices (not touching any boundary limit) must be identical
-    // regardless of default_min_limit. Filter to only vertices far from both limits.
-    const is_interior = (pt: number[], min_lim: number) =>
-      pt.every((val) => Math.abs(val - min_lim) > 1 && Math.abs(val) > 1)
+  describe(`configuration sensitivity`, () => {
+    test(`default_min_limit does not affect interior vertices`, () => {
+      const tight = compute_chempot_diagram(entries, {
+        default_min_limit: -15,
+        formal_chempots: false,
+      })
+      const wide = compute_chempot_diagram(entries, {
+        default_min_limit: -50,
+        formal_chempots: false,
+      })
+      // Interior vertices (not touching any boundary limit) must be identical
+      // regardless of default_min_limit. Filter to only vertices far from both limits.
+      const is_interior = (pt: number[], min_lim: number) =>
+        pt.every((val) => Math.abs(val - min_lim) > 1 && Math.abs(val) > 1)
 
-    const feo_tight_interior = dedup_vertices(tight.domains[`FeO`] ?? [])
-      .filter((pt) => is_interior(pt, -15))
-    const feo_wide_interior = dedup_vertices(wide.domains[`FeO`] ?? [])
-      .filter((pt) => is_interior(pt, -50))
+      const feo_tight_interior = dedup_vertices(tight.domains[`FeO`] ?? [])
+        .filter((pt) => is_interior(pt, -15))
+      const feo_wide_interior = dedup_vertices(wide.domains[`FeO`] ?? [])
+        .filter((pt) => is_interior(pt, -50))
 
-    expect(feo_tight_interior.length).toBe(feo_wide_interior.length)
-    const sorted_t = sort_rows(feo_tight_interior)
-    const sorted_w = sort_rows(feo_wide_interior)
-    for (let idx = 0; idx < sorted_t.length; idx++) {
-      for (let jdx = 0; jdx < sorted_t[idx].length; jdx++) {
-        expect(sorted_t[idx][jdx]).toBeCloseTo(sorted_w[idx][jdx], 3)
+      expect(feo_tight_interior.length).toBe(feo_wide_interior.length)
+      const sorted_t = sort_rows(feo_tight_interior)
+      const sorted_w = sort_rows(feo_wide_interior)
+      for (let idx = 0; idx < sorted_t.length; idx++) {
+        for (let jdx = 0; jdx < sorted_t[idx].length; jdx++) {
+          expect(sorted_t[idx][jdx]).toBeCloseTo(sorted_w[idx][jdx], 3)
+        }
       }
-    }
-  })
+    })
 
-  test(`formal vs absolute produces same number of domains`, () => {
-    const n_absolute = Object.keys(cpd_ternary.domains).length
-    const n_formal = Object.keys(cpd_ternary_formal.domains).length
-    expect(n_formal).toBe(n_absolute)
-  })
+    test(`formal vs absolute produces same number of domains`, () => {
+      const n_absolute = Object.keys(cpd_ternary.domains).length
+      const n_formal = Object.keys(cpd_ternary_formal.domains).length
+      expect(n_formal).toBe(n_absolute)
+    })
 
-  test(`formal vs absolute produces same formulas`, () => {
-    const formulas_abs = Object.keys(cpd_ternary.domains).sort()
-    const formulas_formal = Object.keys(cpd_ternary_formal.domains).sort()
-    expect(formulas_formal).toEqual(formulas_abs)
+    test(`formal vs absolute produces same formulas`, () => {
+      const formulas_abs = Object.keys(cpd_ternary.domains).sort()
+      const formulas_formal = Object.keys(cpd_ternary_formal.domains).sort()
+      expect(formulas_formal).toEqual(formulas_abs)
+    })
   })
 })
 

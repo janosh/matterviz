@@ -1,9 +1,7 @@
 <script lang="ts">
   import { get_hill_formula } from '$lib/composition/format'
-  import { extract_formula_elements } from '$lib/composition/parse'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { format_num } from '$lib/labels'
-  import { SvelteSet } from 'svelte/reactivity'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
   import { CHEMPOT_DEFAULTS } from './types'
@@ -27,22 +25,19 @@
     hover_info?: ChemPotHoverInfo | null
   } = $props()
 
-  // Extract unique elements from all entries
-  const elements = $derived.by(() => {
-    const elem_set = new SvelteSet<string>()
-    for (const entry of entries) {
-      for (const key of Object.keys(entry.composition)) {
-        for (const elem of extract_formula_elements(key, { unique: false })) {
-          elem_set.add(elem)
-        }
-      }
-    }
-    return Array.from(elem_set).sort()
-  })
+  // Extract unique elements from all entries (composition keys are element symbols)
+  const all_elements = $derived(
+    [
+      ...new Set(entries.flatMap((entry) =>
+        Object.entries(entry.composition)
+          .filter(([, amount]) => amount > 0)
+          .map(([element]) => element)
+      )),
+    ].sort(),
+  )
 
   // How many display axes (2 = binary/2D, 3+ = ternary/3D)
-
-  const display_elements = $derived(config.elements ?? elements)
+  const display_elements = $derived(config.elements ?? all_elements)
   const n_display = $derived(display_elements.length)
   const show_tooltip = $derived(
     config.show_tooltip ?? CHEMPOT_DEFAULTS.show_tooltip,

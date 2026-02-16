@@ -315,6 +315,7 @@
           value={axis.label}
           oninput={update_axis_label(axis, set)}
           placeholder="{name} label"
+          aria-label="{name} label"
           class="axis-label-input"
         />
         <input
@@ -326,6 +327,7 @@
             if (Number.isNaN(val)) return
             set({ ...axis, range: [val, axis.range?.[1] ?? auto_range[1]] })
           }}
+          aria-label="{name} min"
           class="axis-range-input"
         />
         <span class="axis-to">–</span>
@@ -338,6 +340,7 @@
             if (Number.isNaN(val)) return
             set({ ...axis, range: [axis.range?.[0] ?? auto_range[0], val] })
           }}
+          aria-label="{name} max"
           class="axis-range-input"
         />
       </div>

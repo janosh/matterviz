@@ -89,25 +89,26 @@
   const draw_domains = $derived.by(() => {
     if (!diagram_data || plot_elements.length < 2) return {}
     const indices = [0, 1]
-    const new_lims = element_padding > 0
-      ? apply_element_padding(
-        diagram_data.domains,
-        indices,
-        element_padding,
-        default_min_limit,
+    if (element_padding <= 0) {
+      return Object.fromEntries(
+        Object.entries(diagram_data.domains).filter(([, pts]) => pts.length > 0),
       )
-      : null
+    }
+    const new_lims = apply_element_padding(
+      diagram_data.domains,
+      indices,
+      element_padding,
+      default_min_limit,
+    )
     const result: Record<string, number[][]> = {}
     for (const [formula, pts] of Object.entries(diagram_data.domains)) {
-      const padded = new_lims
-        ? pad_domain_points(
-          pts,
-          indices,
-          new_lims,
-          default_min_limit,
-          element_padding,
-        )
-        : pts
+      const padded = pad_domain_points(
+        pts,
+        indices,
+        new_lims,
+        default_min_limit,
+        element_padding,
+      )
       if (padded.length > 0) result[formula] = padded
     }
     return result
@@ -203,14 +204,16 @@
     return scatter_wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
   }
 
-  const export_json_data = $derived({
-    elements: diagram_data?.elements ?? [],
-    domains: draw_domains,
-    lims: diagram_data?.lims ?? [],
-  })
-
   function get_json_string(): string {
-    return JSON.stringify(export_json_data, null, 2)
+    return JSON.stringify(
+      {
+        elements: diagram_data?.elements ?? [],
+        domains: draw_domains,
+        lims: diagram_data?.lims ?? [],
+      },
+      null,
+      2,
+    )
   }
 
   function export_json_file(): void {
