@@ -9,7 +9,10 @@
   let {
     export_pane_open = $bindable(false),
     data,
+    json_payload = undefined,
     wrapper,
+    svg_element = undefined,
+    svg_query_selector = `svg.binary-phase-diagram`,
     filename = `phase-diagram`,
     png_dpi = $bindable(150),
     icon_style = ``,
@@ -18,7 +21,10 @@
   }: HTMLAttributes<HTMLDivElement> & {
     export_pane_open?: boolean
     data?: PhaseDiagramData
+    json_payload?: unknown
     wrapper?: HTMLDivElement
+    svg_element?: SVGSVGElement | null
+    svg_query_selector?: string
     filename?: string
     png_dpi?: number
     icon_style?: string
@@ -40,8 +46,11 @@
   )
 
   const svg = $derived(
-    wrapper?.querySelector(`svg.binary-phase-diagram`) as SVGSVGElement | null,
+    svg_element ??
+      (wrapper?.querySelector(svg_query_selector) as SVGSVGElement | null),
   )
+
+  const json_export_data = $derived(json_payload ?? data)
 
   async function copy_svg() {
     if (!svg) return
@@ -52,9 +61,9 @@
   }
 
   function download_json() {
-    if (!data) return
+    if (!json_export_data) return
 
-    const json_string = JSON.stringify(data, null, 2)
+    const json_string = JSON.stringify(json_export_data, null, 2)
     const blob = new Blob([json_string], { type: `application/json` })
     const url = URL.createObjectURL(blob)
 
@@ -67,9 +76,9 @@
   }
 
   async function copy_json() {
-    if (!data) return
+    if (!json_export_data) return
 
-    const json_string = JSON.stringify(data, null, 2)
+    const json_string = JSON.stringify(json_export_data, null, 2)
     await navigator.clipboard.writeText(json_string)
 
     copy_status.json = true
@@ -148,7 +157,7 @@
       <button
         type="button"
         onclick={download_json}
-        disabled={!data}
+        disabled={!json_export_data}
         title="Download JSON"
       >
         ⬇
@@ -156,7 +165,7 @@
       <button
         type="button"
         onclick={copy_json}
-        disabled={!data}
+        disabled={!json_export_data}
         title="Copy JSON to clipboard"
       >
         {copy_status.json ? copy_confirm : `📋`}
@@ -173,11 +182,9 @@
     gap: 4pt 10pt;
   }
   .export-grid h4 {
-    width: 100%;
-    margin: 4pt 0 0;
-  }
-  .export-grid h4:first-child {
-    margin-top: 0;
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
   }
   label {
     display: flex;

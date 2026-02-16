@@ -863,6 +863,7 @@
     color: var(--text-color-muted, light-dark(#666, #bbb));
     font-size: 0.9em;
   }
+
   .subsystem-coverage-row {
     flex-wrap: wrap;
     gap: 4pt 1em;
