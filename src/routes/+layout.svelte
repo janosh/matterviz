@@ -10,6 +10,7 @@
   import pkg from '$root/package.json'
   import { Footer } from '$site'
   import { demo_routes, routes } from '$site/state.svelte'
+  import type { RouteEntry } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
   import { CmdPalette, CopyButton, GitHubCorner, Nav } from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -54,6 +55,47 @@
     .map(({ route }) => route)
     .concat(element_data.map(({ name }) => `/${name.toLowerCase()}`))
     .map((name) => ({ label: name, action: () => goto(name) }))
+
+  function route_path(route_entry: RouteEntry): string {
+    return typeof route_entry === `string` ? route_entry : route_entry[0]
+  }
+
+  function nest_chempot_under_convex_hull(route_entries: RouteEntry[]): RouteEntry[] {
+    const chempot_path = `/chempot-diagram`
+    const convex_hull_path = `/convex-hull`
+    let has_chempot = false
+
+    const without_chempot = route_entries.filter((route_entry) => {
+      const path = route_path(route_entry)
+      if (path !== chempot_path) return true
+      has_chempot = true
+      return false
+    })
+    if (!has_chempot) return without_chempot
+
+    let found_convex_hull = false
+    const nested_routes = without_chempot.map((route_entry) => {
+      if (route_path(route_entry) !== convex_hull_path) return route_entry
+      found_convex_hull = true
+      if (typeof route_entry === `string`) {
+        return [route_entry, [route_entry, chempot_path]] satisfies [string, string[]]
+      }
+      const [parent, children] = route_entry
+      if (children.includes(chempot_path)) return route_entry
+      return [parent, [...children, chempot_path]] satisfies [string, string[]]
+    })
+
+    if (found_convex_hull) return nested_routes
+    return nested_routes
+  }
+
+  const nav_routes = $derived.by(() => {
+    const nested_demo_routes = nest_chempot_under_convex_hull(demo_routes)
+    return nested_demo_routes.filter((route_entry) => {
+      const path = route_path(route_entry)
+      return !path.startsWith(`/layout`)
+    })
+  })
 </script>
 
 <!-- z-index: 10000000001 needed to render above Structure control toggles -->
@@ -71,10 +113,7 @@
 <Nav
   routes={[
     [`/`, `Home`],
-    ...demo_routes.filter((route) => {
-      const path = typeof route === `string` ? route : route[0]
-      return !path.startsWith(`/layout`)
-    }),
+    ...nav_routes,
   ]}
   labels={{
     '/how-to/hook-up-to-external-api': `Hook up to external API`,

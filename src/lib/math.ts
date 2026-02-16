@@ -612,3 +612,132 @@ export function polygon_centroid(vertices: Vec2[]): Vec2 {
   const factor = 1 / (6 * signed_area)
   return [cx * factor, cy * factor]
 }
+
+// Solve linear system Ax = b via LU decomposition with partial pivoting.
+// Returns null if the system is singular (no unique solution).
+// Fast-paths for 2x2 (Cramer's rule) and 3x3 (matrix inverse).
+export function solve_linear_system(
+  A: number[][], // NxN coefficient matrix
+  b: number[], // N-element right-hand side
+): number[] | null {
+  const n = A.length
+  if (n === 0 || b.length !== n || !A.every((row) => row.length === n)) return null
+
+  // 2x2 fast path via Cramer's rule
+  if (n === 2) {
+    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0]
+    if (Math.abs(det) < EPS) return null
+    return [
+      (b[0] * A[1][1] - b[1] * A[0][1]) / det,
+      (A[0][0] * b[1] - A[1][0] * b[0]) / det,
+    ]
+  }
+
+  // 3x3 fast path via matrix inverse
+  if (n === 3) {
+    const det = det_3x3(A as Matrix3x3)
+    if (Math.abs(det) < EPS) return null
+    const inv = matrix_inverse_3x3(A as Matrix3x3)
+    return mat3x3_vec3_multiply(inv, b as Vec3) as number[]
+  }
+
+  // General NxN: LU decomposition with partial pivoting + forward/back substitution
+  const lu = A.map((row) => [...row])
+  const perm = Array.from({ length: n }, (_, idx) => idx)
+
+  for (let col = 0; col < n; col++) {
+    // Find pivot
+    let max_row = col
+    let max_val = Math.abs(lu[col][col])
+    for (let row = col + 1; row < n; row++) {
+      const val = Math.abs(lu[row][col])
+      if (val > max_val) {
+        max_val = val
+        max_row = row
+      }
+    }
+    if (max_val < EPS) return null // singular
+
+    // Swap rows
+    if (max_row !== col) {
+      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
+      ;[perm[col], perm[max_row]] = [perm[max_row], perm[col]]
+    }
+
+    // Eliminate below pivot
+    const pivot = lu[col][col]
+    for (let row = col + 1; row < n; row++) {
+      const factor = lu[row][col] / pivot
+      lu[row][col] = factor // store L factor in lower triangle
+      for (let k = col + 1; k < n; k++) {
+        lu[row][k] -= factor * lu[col][k]
+      }
+    }
+  }
+
+  // Apply permutation to b
+  const pb = perm.map((idx) => b[idx])
+
+  // Forward substitution (Ly = Pb)
+  for (let row = 1; row < n; row++) {
+    for (let col = 0; col < row; col++) {
+      pb[row] -= lu[row][col] * pb[col]
+    }
+  }
+
+  // Back substitution (Ux = y)
+  const x = new Array(n).fill(0)
+  for (let row = n - 1; row >= 0; row--) {
+    let sum = pb[row]
+    for (let col = row + 1; col < n; col++) {
+      sum -= lu[row][col] * x[col]
+    }
+    x[row] = sum / lu[row][row]
+  }
+
+  return x
+}
+
+// Full 2D convex hull via Andrew's monotone chain algorithm.
+// Returns vertices in counter-clockwise order.
+export function convex_hull_2d(points: Vec2[]): Vec2[] {
+  if (points.length < 3) return [...points]
+
+  const sorted = [...points].sort(
+    (a, b) => (a[0] - b[0]) || (a[1] - b[1]),
+  )
+
+  const cross = (o: Vec2, a: Vec2, b: Vec2): number =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+  // Lower hull
+  const lower: Vec2[] = []
+  for (const pt of sorted) {
+    while (
+      lower.length >= 2 &&
+      cross(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0
+    ) {
+      lower.pop()
+    }
+    lower.push(pt)
+  }
+
+  // Upper hull
+  const upper: Vec2[] = []
+  for (let idx = sorted.length - 1; idx >= 0; idx--) {
+    const pt = sorted[idx]
+    while (
+      upper.length >= 2 &&
+      cross(upper[upper.length - 2], upper[upper.length - 1], pt) <= 0
+    ) {
+      upper.pop()
+    }
+    upper.push(pt)
+  }
+
+  // Remove last point of each half (it's the first point of the other)
+  lower.pop()
+  upper.pop()
+
+  return [...lower, ...upper]
+}
