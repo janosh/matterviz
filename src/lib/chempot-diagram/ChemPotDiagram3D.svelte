@@ -303,8 +303,11 @@
   ): ((val: number) => string) | null {
     const finite = values.filter(Number.isFinite)
     if (finite.length === 0) return null
-    const lo = Math.min(...finite)
-    const hi_raw = Math.max(...finite)
+    let lo = finite[0], hi_raw = finite[0]
+    for (let idx = 1; idx < finite.length; idx++) {
+      if (finite[idx] < lo) lo = finite[idx]
+      if (finite[idx] > hi_raw) hi_raw = finite[idx]
+    }
     const hi = Math.max(hi_raw, lo + 1e-6)
     const interp = (d3_sc as unknown as Record<string, (t: number) => string>)[
       interpolator_name
@@ -422,14 +425,19 @@
         }
       }
       if (values.length === 0) return null
+      let lo = values[0], hi = values[0]
+      for (let idx = 1; idx < values.length; idx++) {
+        if (values[idx] < lo) lo = values[idx]
+        if (values[idx] > hi) hi = values[idx]
+      }
       const labels: Record<string, string> = {
         energy: `Energy per atom (eV)`,
         formation_energy: `Formation energy (eV/atom)`,
         entries: `Entry count`,
       }
       return {
-        min: Math.min(...values),
-        max: Math.max(...values, Math.min(...values) + 1e-6),
+        min: lo,
+        max: Math.max(hi, lo + 1e-6),
         label: labels[color_mode] ?? ``,
       }
     },
@@ -623,61 +631,90 @@
     }
   })
 
-  // Flat-shaded, vertex-colored hull for gap-free domain coloring.
-  // Each face gets a uniform color from the nearest domain centroid.
-  // Rebuilt on color_mode/domain_colors change (infrequent user action).
-  const colored_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
+  // Non-indexed hull geometry (stable — only changes when occlusion hull changes).
+  // toNonIndexed gives each triangle its own 3 vertices for flat per-face coloring.
+  const hull_base_geometry = $derived.by((): THREE.BufferGeometry | null => {
     if (!occlusion_hull_geometry) return null
-    // toNonIndexed gives each triangle its own 3 vertices for flat shading
     const geom = occlusion_hull_geometry.toNonIndexed()
     const pos = geom.getAttribute(`position`)
+    const colors = new Float32Array(pos.count * 3).fill(0.965)
+    geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
+    return geom
+  })
+
+  // Per-face domain assignment (stable — only changes when geometry or domains change).
+  // Uses actual vertex centroid (mean of points_3d) for robust nearest-face matching.
+  const face_domain_map = $derived.by((): string[] => {
+    if (!hull_base_geometry) return []
+    const pos = hull_base_geometry.getAttribute(`position`)
     const n_faces = pos.count / 3
-    const colors_arr = new Float32Array(pos.count * 3)
 
-    // Domain centroids in swizzled (Three.js) coords
-    const centroids: { formula: string; cx: number; cy: number; cz: number }[] = []
-    for (const domain of render_domains) {
-      if (domain.is_draw_formula) continue
-      const ann = domain.ann_loc
-      centroids.push({ formula: domain.formula, cx: ann[1], cy: ann[2], cz: ann[0] })
-    }
+    // Domain vertex centroids in swizzled Three.js coords: data[1]→X, data[2]→Y, data[0]→Z
+    const centroids = render_domains
+      .filter((d) => !d.is_draw_formula && d.points_3d.length > 0)
+      .map((d) => {
+        let sx = 0, sy = 0, sz = 0
+        for (const pt of d.points_3d) {
+          sx += pt[1]
+          sy += pt[2]
+          sz += pt[0]
+        }
+        const n = d.points_3d.length
+        return { formula: d.formula, cx: sx / n, cy: sy / n, cz: sz / n }
+      })
 
-    const use_colors = color_mode !== `none` && domain_colors.size > 0
-    const fallback = new THREE.Color(use_colors ? 0xe8e8e8 : 0xf6f6f6)
-
+    const result: string[] = []
     for (let face_idx = 0; face_idx < n_faces; face_idx++) {
       const base = face_idx * 3
-      let color = fallback
-      if (use_colors) {
-        const fcx = (pos.getX(base) + pos.getX(base + 1) + pos.getX(base + 2)) / 3
-        const fcy = (pos.getY(base) + pos.getY(base + 1) + pos.getY(base + 2)) / 3
-        const fcz = (pos.getZ(base) + pos.getZ(base + 1) + pos.getZ(base + 2)) / 3
-        let best_formula = ``
-        let best_dist = Infinity
-        for (const dc of centroids) {
-          const dist = (fcx - dc.cx) ** 2 + (fcy - dc.cy) ** 2 + (fcz - dc.cz) ** 2
-          if (dist < best_dist) {
-            best_dist = dist
-            best_formula = dc.formula
-          }
+      const fcx = (pos.getX(base) + pos.getX(base + 1) + pos.getX(base + 2)) / 3
+      const fcy = (pos.getY(base) + pos.getY(base + 1) + pos.getY(base + 2)) / 3
+      const fcz = (pos.getZ(base) + pos.getZ(base + 1) + pos.getZ(base + 2)) / 3
+      let best_formula = ``
+      let best_dist = Infinity
+      for (const dc of centroids) {
+        const dist = (fcx - dc.cx) ** 2 + (fcy - dc.cy) ** 2 + (fcz - dc.cz) ** 2
+        if (dist < best_dist) {
+          best_dist = dist
+          best_formula = dc.formula
         }
-        const hex = best_formula ? domain_colors.get(best_formula) : null
-        if (hex) color = new THREE.Color(hex)
       }
-      for (let vi = 0; vi < 3; vi++) {
-        const idx = (base + vi) * 3
-        colors_arr[idx] = color.r
-        colors_arr[idx + 1] = color.g
-        colors_arr[idx + 2] = color.b
-      }
+      result.push(best_formula)
+    }
+    return result
+  })
+
+  // Reactive color fill: updates vertex colors on the stable hull geometry.
+  // Only runs when color_mode or domain_colors change — no geometry re-creation.
+  const colored_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
+    const geom = hull_base_geometry
+    const mapping = face_domain_map
+    if (!geom || mapping.length === 0) return geom
+
+    const color_attr = geom.getAttribute(`color`) as THREE.BufferAttribute
+    const use_colors = color_mode !== `none` && domain_colors.size > 0
+    const fb = use_colors
+      ? [0.91, 0.91, 0.91] // #e8e8e8
+      : [0.965, 0.965, 0.965] // #f6f6f6
+
+    // Cache parsed RGB per formula to avoid redundant THREE.Color allocations
+    const rgb_cache = new SvelteMap<string, [number, number, number]>()
+    for (const [formula, hex] of domain_colors) {
+      const clr = new THREE.Color(hex)
+      rgb_cache.set(formula, [clr.r, clr.g, clr.b])
     }
 
-    geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors_arr, 3))
+    for (let face_idx = 0; face_idx < mapping.length; face_idx++) {
+      const rgb = use_colors ? rgb_cache.get(mapping[face_idx]) : null
+      const [red, green, blue] = rgb ?? fb
+      const base = face_idx * 3
+      for (let vi = 0; vi < 3; vi++) color_attr.setXYZ(base + vi, red, green, blue)
+    }
+    color_attr.needsUpdate = true
     return geom
   })
 
   $effect(() => {
-    const geom = colored_hull_geometry
+    const geom = hull_base_geometry
     return () => dispose_geometry(geom)
   })
 
@@ -1451,6 +1488,19 @@
       pointer: get_hover_pointer(raw_event) ?? undefined,
     }
   }
+
+  // Color mode cycling (keyboard shortcut 'c')
+  const color_modes: ChemPotColorMode[] = [
+    `none`,
+    `energy`,
+    `formation_energy`,
+    `arity`,
+    `entries`,
+  ]
+  function cycle_color_mode(): void {
+    const idx = color_modes.indexOf(color_mode)
+    color_mode_override = color_modes[(idx + 1) % color_modes.length]
+  }
 </script>
 
 <svelte:document
@@ -1459,6 +1509,8 @@
   }}
 />
 
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   bind:this={wrapper}
   bind:clientWidth={container_width}
@@ -1467,6 +1519,16 @@
   class:fullscreen
   style:width={fullscreen ? `100vw` : `100%`}
   style:height={fullscreen ? `100vh` : `${render_height}px`}
+  role="application"
+  tabindex="0"
+  onkeydown={(event) => {
+    if (
+      event.target instanceof HTMLInputElement ||
+      event.target instanceof HTMLSelectElement
+    ) return
+    if (event.key === `c`) cycle_color_mode()
+    else if (event.key === `f`) toggle_fullscreen(wrapper)
+  }}
 >
   <section class="control-buttons">
     <DraggablePane
@@ -1620,6 +1682,28 @@
             <option value="entries">Entry count</option>
           </select>
         </div>
+        {#if color_mode !== `none` && color_mode !== `arity`}
+          <div class="pane-row">
+            <label for="chempot-color-scale">Scale:</label>
+            <select
+              id="chempot-color-scale"
+              value={color_scale}
+              onchange={(event) => {
+                color_scale_override = event.currentTarget
+                  .value as D3InterpolateName
+              }}
+            >
+              <option value="interpolateViridis">Viridis</option>
+              <option value="interpolatePlasma">Plasma</option>
+              <option value="interpolateInferno">Inferno</option>
+              <option value="interpolateMagma">Magma</option>
+              <option value="interpolateCividis">Cividis</option>
+              <option value="interpolateTurbo">Turbo</option>
+              <option value="interpolateRdYlBu">RdYlBu</option>
+              <option value="interpolateSpectral">Spectral</option>
+            </select>
+          </div>
+        {/if}
       </SettingsSection>
     </ScatterPlot3DControls>
 
@@ -1700,11 +1784,11 @@
         <T.DirectionalLight position={[1, 1, 1]} intensity={0.5} />
 
         <!-- Vertex-colored hull for both plain and colored modes.
-           {#key color_mode} forces Threlte to re-create the mesh when the
-           color mode changes, since on-demand rendering won't detect new
-           vertex color buffers on an existing geometry object. -->
+           {#key domain_colors} forces Threlte to re-create the mesh whenever
+           colors change (covers color_mode, color_scale, and data updates),
+           since on-demand rendering won't detect mutated vertex color buffers. -->
         {#if colored_hull_geometry}
-          {#key color_mode}
+          {#key domain_colors}
             <T.Mesh geometry={colored_hull_geometry}>
               <T.MeshBasicMaterial
                 vertexColors

@@ -77,7 +77,7 @@
       .map((entry) => {
         if (route_path(entry) !== convex_hull_path) return entry
         if (typeof entry === `string`) {
-          return [entry, [chempot_path]] satisfies [string, string[]]
+          return [entry, [entry, chempot_path]] satisfies [string, string[]]
         }
         const [parent, existing] = entry
         const existing_arr = typeof existing === `string` ? [existing] : existing
