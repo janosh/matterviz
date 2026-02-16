@@ -36,7 +36,9 @@ export interface ChemPotDiagramConfig {
   // Region coloring mode for 3D diagram
   color_mode?: ChemPotColorMode // default none
   // D3 interpolator for continuous color scales (energy, formation_energy, entries)
-  color_scale?: D3InterpolateName // default interpolateViridis
+  color_scale?: D3InterpolateName // default interpolateSpectral
+  // Reverse the color scale direction
+  reverse_color_scale?: boolean // default true
 }
 
 // Computed chemical potential diagram data
@@ -93,6 +95,7 @@ export interface ChemPotHoverInfo3D extends ChemPotHoverInfoBase {
   matching_entry_count: number
   min_energy_per_atom: number | null
   max_energy_per_atom: number | null
+  neighbors: string[]
 }
 
 export type ChemPotHoverInfo = ChemPotHoverInfo2D | ChemPotHoverInfo3D
@@ -107,8 +110,9 @@ export const CHEMPOT_DEFAULTS = {
   draw_formula_lines: true,
   show_tooltip: true,
   tooltip_detail_level: `detailed`,
-  color_mode: `none` as ChemPotColorMode,
-  color_scale: `interpolateViridis` as D3InterpolateName,
+  color_mode: `formation_energy` as ChemPotColorMode,
+  color_scale: `interpolateSpectral` as D3InterpolateName,
+  reverse_color_scale: true,
   // Dark2 qualitative palette (same as pymatgen/plotly default)
   formula_colors: [
     `#1b9e77`,

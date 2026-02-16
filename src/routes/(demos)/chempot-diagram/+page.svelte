@@ -84,8 +84,17 @@
 <h1>Chemical Potential Diagram</h1>
 <p>
   The chemical potential diagram is the mathematical dual of the compositional phase
-  diagram. Each phase becomes a convex polytope domain in chemical potential (μ) space,
-  showing the region where that phase is thermodynamically most stable.
+  diagram, related by a
+  <a
+    href="https://en.wikipedia.org/wiki/Legendre_transformation"
+    target="_blank"
+    rel="noopener"
+  >
+    Legendre transform
+  </a>
+  that swaps composition variables for their conjugate chemical potentials. Each phase
+  becomes a convex polytope domain in chemical potential (μ) space, showing the region
+  where that phase is thermodynamically most stable.
 </p>
 
 {#if loading}

@@ -496,10 +496,12 @@ export function simple_pca(
 
 // Compute orthonormal vector to a 2D line segment (for label offset in 2D diagrams)
 export function orthonormal_2d(line_pts: number[][]): [number, number] {
-  const x_diff = Math.abs(line_pts[1][0] - line_pts[0][0])
-  const y_diff = Math.abs(line_pts[1][1] - line_pts[0][1])
-  const theta = x_diff < EPS ? Math.PI / 2 : Math.atan(y_diff / x_diff)
-  return [Math.sin(theta), Math.cos(theta)]
+  const dx = line_pts[1][0] - line_pts[0][0]
+  const dy = line_pts[1][1] - line_pts[0][1]
+  const perp: [number, number] = [-dy, dx]
+  const len = Math.hypot(perp[0], perp[1])
+  if (len < EPS) return [0, 1]
+  return [perp[0] / len, perp[1] / len]
 }
 
 // Deduplicate points within tolerance, returning unique points and index mapping

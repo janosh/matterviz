@@ -1,7 +1,10 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
-  import { extract_formula_elements } from '$lib/composition/parse'
+  import {
+    count_atoms_in_composition,
+    extract_formula_elements,
+  } from '$lib/composition/parse'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
   import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
@@ -32,6 +35,7 @@
     formula_key_from_composition,
     get_3d_domain_simplexes_and_ann_loc,
     get_energy_per_atom,
+    get_min_entries_and_el_refs,
     pad_domain_points,
   } from './compute'
   import { CHEMPOT_DEFAULTS } from './types'
@@ -90,11 +94,16 @@
   )
   let color_mode_override = $state<ChemPotColorMode | null>(null)
   let color_scale_override = $state<D3InterpolateName | null>(null)
+  let reverse_color_scale_override = $state<boolean | null>(null)
   const color_mode = $derived(
     color_mode_override ?? (config.color_mode ?? CHEMPOT_DEFAULTS.color_mode),
   )
   const color_scale = $derived(
     color_scale_override ?? (config.color_scale ?? CHEMPOT_DEFAULTS.color_scale),
+  )
+  const reverse_color_scale = $derived(
+    reverse_color_scale_override ??
+      (config.reverse_color_scale ?? CHEMPOT_DEFAULTS.reverse_color_scale),
   )
   const show_tooltip = $derived(config.show_tooltip ?? CHEMPOT_DEFAULTS.show_tooltip)
   const tooltip_detail_level = $derived(
@@ -296,15 +305,45 @@
   // Categorical palette for arity mode (element count)
   const arity_colors = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
 
-  // Find min and max of a numeric array (single pass, no allocation)
-  function find_min_max(values: number[]): { min: number; max: number } | null {
-    if (values.length === 0) return null
-    let min = values[0], max = values[0]
-    for (let idx = 1; idx < values.length; idx++) {
-      if (values[idx] < min) min = values[idx]
-      if (values[idx] > max) max = values[idx]
+  // Original (non-renormalized) elemental references for formation energy computation.
+  // diagram_data.el_refs may be renormalized to zero when formal_chempots is true,
+  // so we compute our own from the raw entries to get true DFT reference energies.
+  const raw_el_refs = $derived(get_min_entries_and_el_refs(entries).el_refs)
+
+  // Compute formation energy per atom for an entry using elemental reference energies.
+  // e_form = energy_per_atom - sum(fraction_i * ref_energy_per_atom_i)
+  function compute_e_form(
+    entry: PhaseData,
+    el_refs: Record<string, PhaseData>,
+  ): number {
+    const atoms = count_atoms_in_composition(entry.composition)
+    const epa = get_energy_per_atom(entry)
+    let ref_energy = 0
+    for (const [el, amt] of Object.entries(entry.composition)) {
+      if (amt <= 0) continue
+      const frac = amt / atoms
+      const ref = el_refs[el]
+      if (ref) ref_energy += frac * get_energy_per_atom(ref)
     }
-    return { min, max }
+    return epa - ref_energy
+  }
+
+  // Find the minimum formation energy across all entries matching a formula
+  function best_e_form_for_formula(formula: string): number | undefined {
+    let best: number | undefined
+    for (const entry of entries) {
+      if (formula_key_from_composition(entry.composition) !== formula) continue
+      const e_form = entry.e_form_per_atom ?? compute_e_form(entry, raw_el_refs)
+      if (best === undefined || e_form < best) best = e_form
+    }
+    return best
+  }
+
+  // Resolve a D3 interpolator name to a function, optionally reversed
+  function get_interpolator(name: D3InterpolateName): (t: number) => string {
+    const raw = (d3_sc as unknown as Record<string, (t: number) => string>)[name] ??
+      d3_sc.interpolateViridis
+    return reverse_color_scale ? (t: number) => raw(1 - t) : raw
   }
 
   // Build a sequential color scale from a D3 interpolator name
@@ -313,16 +352,14 @@
     interpolator_name: D3InterpolateName,
   ): ((val: number) => string) | null {
     const finite = values.filter(Number.isFinite)
-    const range = find_min_max(finite)
-    if (!range) return null
-    const interp = (d3_sc as unknown as Record<string, (t: number) => string>)[
-      interpolator_name
-    ] ??
-      d3_sc.interpolateViridis
-    return scaleSequential(interp).domain([
-      range.min,
-      Math.max(range.max, range.min + 1e-6),
-    ])
+    if (finite.length === 0) return null
+    let lo = finite[0], hi_raw = finite[0]
+    for (let idx = 1; idx < finite.length; idx++) {
+      if (finite[idx] < lo) lo = finite[idx]
+      if (finite[idx] > hi_raw) hi_raw = finite[idx]
+    }
+    const hi = Math.max(hi_raw, lo + 1e-6)
+    return scaleSequential(get_interpolator(interpolator_name)).domain([lo, hi])
   }
 
   // Per-domain color map keyed by formula
@@ -361,22 +398,10 @@
       const values: number[] = []
       const val_by_formula = new SvelteMap<string, number>()
       for (const domain of render_domains) {
-        const formula_key = domain.formula
-        // Find the minimum-energy entry matching this formula
-        let best_e_form: number | undefined
-        for (const entry of entries) {
-          if (formula_key_from_composition(entry.composition) !== formula_key) {
-            continue
-          }
-          if (entry.e_form_per_atom != null) {
-            if (best_e_form === undefined || entry.e_form_per_atom < best_e_form) {
-              best_e_form = entry.e_form_per_atom
-            }
-          }
-        }
-        if (best_e_form != null) {
-          values.push(best_e_form)
-          val_by_formula.set(formula_key, best_e_form)
+        const e_form = best_e_form_for_formula(domain.formula)
+        if (e_form != null) {
+          values.push(e_form)
+          val_by_formula.set(domain.formula, e_form)
         }
       }
       const scale = make_color_scale(values, color_scale)
@@ -419,30 +444,27 @@
             values.push(stats.min_energy_per_atom)
           }
         } else if (color_mode === `formation_energy`) {
-          for (const entry of entries) {
-            if (
-              formula_key_from_composition(entry.composition) === domain.formula &&
-              entry.e_form_per_atom != null
-            ) {
-              values.push(entry.e_form_per_atom)
-              break
-            }
-          }
+          const e_form = best_e_form_for_formula(domain.formula)
+          if (e_form != null) values.push(e_form)
         } else if (color_mode === `entries`) {
           const stats = entry_energy_stats_by_formula.get(domain.formula)
           if (stats) values.push(stats.matching_entry_count)
         }
       }
-      const range = find_min_max(values)
-      if (!range) return null
+      if (values.length === 0) return null
+      let lo = values[0], hi = values[0]
+      for (let idx = 1; idx < values.length; idx++) {
+        if (values[idx] < lo) lo = values[idx]
+        if (values[idx] > hi) hi = values[idx]
+      }
       const labels: Record<string, string> = {
         energy: `Energy per atom (eV)`,
         formation_energy: `Formation energy (eV/atom)`,
         entries: `Entry count`,
       }
       return {
-        min: range.min,
-        max: Math.max(range.max, range.min + 1e-6),
+        min: lo,
+        max: Math.max(hi, lo + 1e-6),
         label: labels[color_mode] ?? ``,
       }
     },
@@ -450,7 +472,7 @@
 
   // Compute data center and extent for camera positioning (in swizzled coords)
   const { data_center, data_extent } = $derived.by(() => {
-    const pts = render_domains.flatMap((domain) => domain.points_3d)
+    const pts = render_domains.flatMap((d) => d.points_3d)
     if (pts.length === 0) {
       return { data_center: new THREE.Vector3(0, 0, 0), data_extent: 10 }
     }
@@ -606,8 +628,8 @@
       // Compute edges in swizzled (Three.js) coords since ConvexGeometry works there
       const swizzled = domain.points_3d.map((pt) => [pt[1], pt[2], pt[0]])
       for (const [pa, pb] of get_domain_edges(swizzled)) {
-        const ka = pa.map((val) => val.toFixed(4)).join(`,`)
-        const kb = pb.map((val) => val.toFixed(4)).join(`,`)
+        const ka = pa.map((v) => v.toFixed(4)).join(`,`)
+        const kb = pb.map((v) => v.toFixed(4)).join(`,`)
         const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -624,8 +646,8 @@
   // edges on the back side. Using all vertices together avoids gaps between domains.
   const occlusion_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
     const all_pts = render_domains
-      .filter((domain) => !domain.is_draw_formula)
-      .flatMap((domain) => domain.points_3d)
+      .filter((d) => !d.is_draw_formula)
+      .flatMap((d) => d.points_3d)
     const unique = dedup_3d(all_pts)
     if (unique.length < 4) return null
     const vectors = unique.map((pt) => to_vec3(pt))
@@ -656,21 +678,16 @@
 
     // Domain vertex centroids in swizzled Three.js coords: data[1]→X, data[2]→Y, data[0]→Z
     const centroids = render_domains
-      .filter((domain) => !domain.is_draw_formula && domain.points_3d.length > 0)
-      .map((domain) => {
+      .filter((d) => !d.is_draw_formula && d.points_3d.length > 0)
+      .map((d) => {
         let sx = 0, sy = 0, sz = 0
-        for (const pt of domain.points_3d) {
+        for (const pt of d.points_3d) {
           sx += pt[1]
           sy += pt[2]
           sz += pt[0]
         }
-        const n_pts = domain.points_3d.length
-        return {
-          formula: domain.formula,
-          cx: sx / n_pts,
-          cy: sy / n_pts,
-          cz: sz / n_pts,
-        }
+        const n = d.points_3d.length
+        return { formula: d.formula, cx: sx / n, cy: sy / n, cz: sz / n }
       })
 
     const result: string[] = []
@@ -693,13 +710,13 @@
     return result
   })
 
-  // Reactive color fill: updates vertex colors on the stable hull geometry.
-  // Only runs when color_mode or domain_colors change — no geometry re-creation.
+  // Reactive color fill: creates a cloned geometry with vertex colors applied.
+  // Only runs when color_mode or domain_colors change — no mutation of hull_base_geometry.
   const colored_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
-    const geom = hull_base_geometry
     const mapping = face_domain_map
-    if (!geom || mapping.length === 0) return geom
+    if (!hull_base_geometry || mapping.length === 0) return hull_base_geometry
 
+    const geom = hull_base_geometry.clone()
     const color_attr = geom.getAttribute(`color`) as THREE.BufferAttribute
     const use_colors = color_mode !== `none` && domain_colors.size > 0
     const fb = use_colors
@@ -726,6 +743,12 @@
   $effect(() => {
     const geom = hull_base_geometry
     return () => dispose_geometry(geom)
+  })
+
+  $effect(() => {
+    const geom = colored_hull_geometry
+    // Don't dispose if it's the same object as hull_base_geometry (no clone was made)
+    if (geom && geom !== hull_base_geometry) return () => dispose_geometry(geom)
   })
 
   // Domains on the outer surface: annotation point NOT strictly inside the hull.
@@ -857,7 +880,17 @@
     points_3d: number[][],
   ): { geometry: THREE.BufferGeometry; n_vertices: number } | null {
     const unique_points = dedup_3d(points_3d)
-    if (unique_points.length < 4) return null
+    if (unique_points.length < 3) return null
+    // For exactly 3 unique points (planar/degenerate domain), create a triangle
+    // geometry directly since ConvexGeometry requires 4+ points for a 3D hull
+    if (unique_points.length === 3) {
+      const geom = new THREE.BufferGeometry()
+      const verts = new Float32Array(unique_points.flat())
+      geom.setAttribute(`position`, new THREE.Float32BufferAttribute(verts, 3))
+      geom.setIndex([0, 1, 2, 2, 1, 0]) // both winding orders for double-sided pick
+      geom.computeVertexNormals()
+      return { geometry: geom, n_vertices: 3 }
+    }
     try {
       return {
         geometry: new ConvexGeometry(unique_points.map((point) => to_vec3(point))),
@@ -868,6 +901,39 @@
     }
   }
 
+  // Domain adjacency: two domains are neighbors if they share any vertex (within tolerance)
+  const domain_neighbors = $derived.by((): SvelteMap<string, string[]> => {
+    const tol = 1e-4
+    const vertex_owners = new SvelteMap<string, string[]>()
+    for (const domain of render_domains) {
+      for (const pt of domain.points_3d) {
+        const key = pt.map((val) => (Math.round(val / tol) * tol).toFixed(4)).join(
+          `,`,
+        )
+        const owners = vertex_owners.get(key)
+        if (owners) {
+          if (!owners.includes(domain.formula)) owners.push(domain.formula)
+        } else vertex_owners.set(key, [domain.formula])
+      }
+    }
+    const neighbors = new SvelteMap<string, SvelteSet<string>>()
+    for (const domain of render_domains) {
+      neighbors.set(domain.formula, new SvelteSet())
+    }
+    for (const owners of vertex_owners.values()) {
+      if (owners.length < 2) continue
+      for (let idx = 0; idx < owners.length; idx++) {
+        for (let jdx = idx + 1; jdx < owners.length; jdx++) {
+          neighbors.get(owners[idx])?.add(owners[jdx])
+          neighbors.get(owners[jdx])?.add(owners[idx])
+        }
+      }
+    }
+    const result = new SvelteMap<string, string[]>()
+    for (const [formula, set] of neighbors) result.set(formula, [...set].sort())
+    return result
+  })
+
   const hover_mesh_data = $derived.by((): HoverMeshData[] => {
     if (!diagram_data) return []
     const result: HoverMeshData[] = []
@@ -875,7 +941,7 @@
     const energy_stats_by_formula = entry_energy_stats_by_formula
 
     for (const domain of render_domains) {
-      if (domain.points_3d.length < 4) continue
+      if (domain.points_3d.length < 3) continue
       const hover_geometry = create_hover_geometry(domain.points_3d)
       if (!hover_geometry) continue
       const { geometry, n_vertices } = hover_geometry
@@ -904,6 +970,7 @@
         matching_entry_count: energy_stats.matching_entry_count,
         min_energy_per_atom: energy_stats.min_energy_per_atom,
         max_energy_per_atom: energy_stats.max_energy_per_atom,
+        neighbors: domain_neighbors.get(domain.formula) ?? [],
       }
 
       result.push({
@@ -960,7 +1027,7 @@
 
   // Bounding box of all data points in DATA coordinates (before swizzle)
   const raw_data_bbox = $derived.by(() => {
-    const pts = render_domains.flatMap((domain) => domain.points_3d)
+    const pts = render_domains.flatMap((d) => d.points_3d)
     if (pts.length === 0) return { mins: [0, 0, 0], maxs: [1, 1, 1] }
     const mins = [Infinity, Infinity, Infinity]
     const maxs = [-Infinity, -Infinity, -Infinity]
@@ -1353,6 +1420,7 @@
     draw_formula_lines_override = null
     color_mode_override = null
     color_scale_override = null
+    reverse_color_scale_override = null
   }
 
   function download_blob(blob: Blob, filename: string): void {
@@ -1606,6 +1674,8 @@
           draw_formula_meshes,
           draw_formula_lines,
           color_mode,
+          color_scale,
+          reverse_color_scale,
         }}
         on_reset={reset_controls}
       >
@@ -1687,7 +1757,7 @@
           >
             <option value="none">None</option>
             <option value="energy">Energy/atom</option>
-            <option value="formation_energy">Formation E</option>
+            <option value="formation_energy">Formation energy</option>
             <option value="arity">Element count</option>
             <option value="entries">Entry count</option>
           </select>
@@ -1712,6 +1782,15 @@
               <option value="interpolateRdYlBu">RdYlBu</option>
               <option value="interpolateSpectral">Spectral</option>
             </select>
+            <label>
+              <input
+                type="checkbox"
+                checked={reverse_color_scale}
+                onchange={() => {
+                  reverse_color_scale_override = !reverse_color_scale
+                }}
+              /> Rev
+            </label>
           </div>
         {/if}
       </SettingsSection>
@@ -1803,7 +1882,7 @@
               <T.MeshBasicMaterial
                 vertexColors
                 transparent
-                opacity={color_mode === `none` ? 0.28 : 0.7}
+                opacity={color_mode === `none` ? 0.25 : 0.4}
                 side={THREE.DoubleSide}
                 polygonOffset
                 polygonOffsetFactor={1}
@@ -1946,7 +2025,7 @@
 
         <!-- Domain labels (only for surface domains, not interior ones) -->
         {#if label_stable}
-          {#each render_domains.filter((dom) => surface_formulas.has(dom.formula)) as
+          {#each render_domains.filter((d) => surface_formulas.has(d.formula)) as
             domain
             (domain.formula)
           }
@@ -2016,7 +2095,8 @@
       <ColorBar
         title={color_range.label}
         range={[color_range.min, color_range.max]}
-        {color_scale}
+        color_scale_fn={get_interpolator(color_scale)}
+        color_scale_domain={[0, 1]}
         wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
         bar_style="height: 12px;"
         title_style="margin-bottom: 4px;"

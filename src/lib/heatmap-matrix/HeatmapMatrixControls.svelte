@@ -173,9 +173,9 @@
         checked={!!show_values}
         onchange={(evt) => {
           if (evt.currentTarget.checked) {
-            show_values = stashed_format ?? true
+            show_values = stashed_format || true
           } else {
-            if (typeof show_values === `string`) stashed_format = show_values
+            stashed_format = typeof show_values === `string` ? show_values : null
             show_values = false
           }
         }}

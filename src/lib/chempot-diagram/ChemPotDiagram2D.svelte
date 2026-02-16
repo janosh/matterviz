@@ -356,7 +356,11 @@
       step="1"
       value={default_min_limit}
       oninput={(event) => {
-        default_min_limit_override = Number(event.currentTarget.value) || 0
+        const raw = event.currentTarget.value
+        const parsed = parseFloat(raw)
+        default_min_limit_override = raw === `` || isNaN(parsed)
+          ? default_min_limit
+          : parsed
       }}
     />
   </label>

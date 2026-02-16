@@ -142,6 +142,16 @@
               )
             })
           </div>
+          {#if hover_info.neighbors.length > 0}
+            <div class="ranges-title">Neighbors ({hover_info.neighbors.length})</div>
+            <div class="meta-row">
+              {
+                hover_info.neighbors.map((f) => get_hill_formula(f, true, ``)).join(
+                  `, `,
+                )
+              }
+            </div>
+          {/if}
           {#if hover_info.touches_limits.length > 0}
             <div class="ranges-title">Touches bounds</div>
             <div class="meta-row">{hover_info.touches_limits.join(`, `)}</div>

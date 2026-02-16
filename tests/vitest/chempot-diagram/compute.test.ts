@@ -797,29 +797,27 @@ describe(`simple_pca`, () => {
 
 describe(`orthonormal_2d`, () => {
   test.each([
-    { pts: [[1, 1], [2, 2]], expected: [0.70710678, 0.70710678] },
-    { pts: [[-2, -5], [-4, 6]], expected: [0.98386991, 0.17888544] },
-  ])(`matches pymatgen for $pts`, ({ pts, expected }) => {
+    // perp = [-dy, dx] normalized
+    { pts: [[1, 1], [2, 2]], expected: [-0.70710678, 0.70710678], label: `45°` },
+    { pts: [[-2, -5], [-4, 6]], expected: [-0.98386991, -0.17888544], label: `steep` },
+    { pts: [[0, 0], [3, 4]], expected: [-0.8, 0.6], label: `diagonal` },
+    { pts: [[0, 5], [10, 5]], expected: [0, 1], label: `horizontal` },
+    { pts: [[5, 0], [5, 10]], expected: [-1, 0], label: `vertical` },
+  ])(`$label: correct value, unit length, perpendicular`, ({ pts, expected }) => {
     const vec = orthonormal_2d(pts)
+    // exact value
     expect(vec[0]).toBeCloseTo(expected[0], 5)
     expect(vec[1]).toBeCloseTo(expected[1], 5)
-  })
-
-  test(`result is unit length`, () => {
-    const vec = orthonormal_2d([[0, 0], [3, 4]])
+    // unit length
     expect(Math.hypot(vec[0], vec[1])).toBeCloseTo(1.0, 8)
+    // perpendicular to line direction (dot product = 0)
+    const dx = pts[1][0] - pts[0][0]
+    const dy = pts[1][1] - pts[0][1]
+    expect(Math.abs(vec[0] * dx + vec[1] * dy)).toBeLessThan(1e-10)
   })
 
-  test(`horizontal line gives [0, 1]`, () => {
-    const vec = orthonormal_2d([[0, 5], [10, 5]])
-    expect(vec[0]).toBeCloseTo(0, 5)
-    expect(vec[1]).toBeCloseTo(1, 5)
-  })
-
-  test(`vertical line gives [1, 0]`, () => {
-    const vec = orthonormal_2d([[5, 0], [5, 10]])
-    expect(vec[0]).toBeCloseTo(1, 5)
-    expect(vec[1]).toBeCloseTo(0, 5)
+  test(`degenerate (zero-length) line returns safe default [0, 1]`, () => {
+    expect(orthonormal_2d([[3, 7], [3, 7]])).toEqual([0, 1])
   })
 })
 
@@ -1408,6 +1406,106 @@ describe(`compute_chempot_diagram edge cases`, () => {
     expect(result.lims.length).toBe(n_axes)
     for (const pts of Object.values(result.domains)) {
       for (const pt of pts) expect(pt.length).toBe(n_axes)
+    }
+  })
+})
+
+// === Formation energy computation ===
+// Tests the math used by ChemPotDiagram3D.compute_e_form:
+// e_form = energy_per_atom - sum(fraction_i * ref_energy_per_atom_i)
+
+describe(`formation energy from elemental refs`, () => {
+  // Reproduce the compute_e_form logic using exported helpers
+  function compute_e_form(
+    entry: PhaseData,
+    el_refs: Record<string, PhaseData>,
+  ): number {
+    const atoms = Object.values(entry.composition).reduce((s, v) => s + v, 0)
+    const epa = get_energy_per_atom(entry)
+    let ref_energy = 0
+    for (const [el, amt] of Object.entries(entry.composition)) {
+      if (amt <= 0) continue
+      ref_energy += (amt / atoms) * get_energy_per_atom(el_refs[el])
+    }
+    return epa - ref_energy
+  }
+
+  const el_refs: Record<string, PhaseData> = {
+    A: make_entry({ A: 1 }, -2.0),
+    B: make_entry({ B: 1 }, -3.0),
+  }
+
+  test.each([
+    { comp: { A: 1 }, epa: -2.0, expected: 0, label: `element A` },
+    { comp: { B: 1 }, epa: -3.0, expected: 0, label: `element B` },
+    // AB: frac_A=0.5, frac_B=0.5, ref = 0.5*(-2) + 0.5*(-3) = -2.5
+    // e_form = -3.5 - (-2.5) = -1.0
+    { comp: { A: 1, B: 1 }, epa: -3.5, expected: -1.0, label: `AB stable compound` },
+    // A2B: frac_A=2/3, frac_B=1/3, ref = 2/3*(-2) + 1/3*(-3) = -7/3
+    // e_form = -3.0 - (-7/3) = -3 + 7/3 = -2/3
+    { comp: { A: 2, B: 1 }, epa: -3.0, expected: -2 / 3, label: `A2B compound` },
+    // Unstable compound: e_form > 0
+    {
+      comp: { A: 1, B: 1 },
+      epa: -2.0,
+      expected: 0.5,
+      label: `AB unstable (positive e_form)`,
+    },
+  ])(`$label → e_form = $expected`, ({ comp, epa, expected }) => {
+    const entry = make_entry(comp as Record<string, number>, epa)
+    expect(compute_e_form(entry, el_refs)).toBeCloseTo(expected, 8)
+  })
+
+  test(`raw_el_refs from get_min_entries_and_el_refs give correct formation energies`, () => {
+    const all_entries: PhaseData[] = [
+      make_entry({ A: 1 }, -2.0),
+      make_entry({ B: 1 }, -3.0),
+      make_entry({ A: 1, B: 1 }, -3.5),
+    ]
+    const { el_refs: raw_refs } = get_min_entries_and_el_refs(all_entries)
+    // AB: e_form = -3.5 - (0.5*(-2) + 0.5*(-3)) = -3.5 + 2.5 = -1.0
+    const ab_entry = all_entries[2]
+    expect(compute_e_form(ab_entry, raw_refs)).toBeCloseTo(-1.0, 8)
+    // Elements should be exactly 0
+    expect(compute_e_form(all_entries[0], raw_refs)).toBeCloseTo(0, 8)
+    expect(compute_e_form(all_entries[1], raw_refs)).toBeCloseTo(0, 8)
+  })
+
+  test(`renormalized el_refs (formal_chempots) produce zero-energy refs`, () => {
+    const all_entries: PhaseData[] = [
+      make_entry({ A: 1 }, -2.0),
+      make_entry({ B: 1 }, -3.0),
+    ]
+    const { el_refs: raw_refs } = get_min_entries_and_el_refs(all_entries)
+    const renormed = renormalize_entries(all_entries, raw_refs, [`A`, `B`])
+    const { el_refs: renorm_refs } = get_min_entries_and_el_refs(renormed)
+    // Renormalized refs have epa=0, so compute_e_form degenerates to just epa
+    expect(get_energy_per_atom(renorm_refs[`A`])).toBeCloseTo(0, 8)
+    expect(get_energy_per_atom(renorm_refs[`B`])).toBeCloseTo(0, 8)
+    // Using renormalized refs, e_form equals raw epa (not true formation energy!)
+    const ab = make_entry({ A: 1, B: 1 }, -3.5)
+    expect(compute_e_form(ab, renorm_refs)).toBeCloseTo(-3.5, 8)
+    // This confirms raw_el_refs (not diagram_data.el_refs) must be used
+  })
+
+  test(`formation energy from real data: Fe-Li-O system`, () => {
+    const { el_refs: raw_refs } = get_min_entries_and_el_refs(entries)
+    // All elemental refs should have zero formation energy
+    for (const [el, ref] of Object.entries(raw_refs)) {
+      expect(compute_e_form(ref, raw_refs), `${el} should have e_form=0`).toBeCloseTo(
+        0,
+        8,
+      )
+    }
+    // Find a compound entry (Fe2O3) and verify formation energy is negative (stable)
+    const fe2o3 = entries.find(
+      (entry) => formula_key_from_composition(entry.composition) === `Fe2O3`,
+    )
+    if (fe2o3) {
+      const e_form = compute_e_form(fe2o3, raw_refs)
+      expect(e_form).toBeLessThan(0)
+      // Fe2O3 formation energy should be in a reasonable range (-3 to 0 eV/atom)
+      expect(e_form).toBeGreaterThan(-3)
     }
   })
 })

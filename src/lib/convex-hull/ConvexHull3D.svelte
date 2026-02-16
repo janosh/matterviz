@@ -1065,13 +1065,13 @@
     ctx.fillRect(0, 0, display_width, display_height)
 
     if (elements.length !== 3) {
-      if (pd_data.elements.length > 0) {
+      if (elements.length > 0) {
         ctx.fillStyle = text_color
         ctx.font = `16px Arial`
         ctx.textAlign = `center`
         ctx.textBaseline = `middle`
         ctx.fillText(
-          `Ternary convex hull requires exactly 3 elements (got ${pd_data.elements.length})`,
+          `Ternary convex hull requires exactly 3 elements (got ${elements.length})`,
           display_width / 2,
           display_height / 2,
         )
