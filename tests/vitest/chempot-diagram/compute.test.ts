@@ -270,10 +270,7 @@ describe(`physical invariants`, () => {
 
   test(`every element has a domain (no element vanishes from the diagram)`, () => {
     for (const el of cpd_ternary.elements) {
-      const has_domain = Object.keys(cpd_ternary.domains).some(
-        (formula) => cpd_ternary.el_refs[el] && formula === el,
-      )
-      expect(has_domain, `Element ${el} has no elemental domain`).toBe(true)
+      expect(cpd_ternary.domains[el], `Element ${el} has no domain`).toBeDefined()
     }
   })
 
@@ -308,33 +305,23 @@ describe(`physical invariants`, () => {
     }
   })
 
-  test(`domains partition mu-space: no overlapping domains at test points`, () => {
-    // At any point in mu-space, exactly one phase should be most stable.
-    // Test at centroids of each domain.
+  test(`domain vertex centroids satisfy hyperplane feasibility`, () => {
+    // Vertex centroids aren't guaranteed to lie inside their own domain
+    // (boundary-clamped vertices can skew centroids into neighbors), so we only
+    // check that the energy at centroids is feasible (non-positive score).
     const dim = cpd_ternary.elements.length
     for (const pts of Object.values(cpd_ternary.domains)) {
       const unique = dedup_vertices(pts)
       if (unique.length < 2) continue
-      // Compute centroid of this domain
       const centroid = unique[0].map((_, col) =>
         unique.reduce((s, p) => s + p[col], 0) / unique.length
       )
-      // Check which phase has lowest energy at this point
       let best_energy = Infinity
-      for (let hp_idx = 0; hp_idx < cpd_ternary.hyperplanes.length; hp_idx++) {
-        const hs = cpd_ternary.hyperplanes[hp_idx]
-        // Energy = -(a·mu) - b = sum(x_i * mu_i) - E_per_atom (negated form)
-        let val = 0
+      for (const hs of cpd_ternary.hyperplanes) {
+        let val = hs[dim]
         for (let jdx = 0; jdx < dim; jdx++) val += hs[jdx] * centroid[jdx]
-        val += hs[dim] // add b (which is -E_per_atom)
-        if (val < best_energy) {
-          best_energy = val
-        }
+        if (val < best_energy) best_energy = val
       }
-      // The winning phase at the centroid should be the domain's own phase
-      // (or at least be one of the phases sharing a boundary -- we just verify it's
-      // the right phase for "interior" points, allowing small numerical tolerance)
-      // This is a weak check but catches gross errors
       expect(best_energy).toBeLessThanOrEqual(1e-4)
     }
   })
@@ -407,16 +394,12 @@ describe(`pure binary (no compounds)`, () => {
     expect(Object.keys(pure_binary.domains).sort()).toEqual([`X`, `Y`])
   })
 
-  test(`X domain has mu_X = E_X (reference energy) at its upper bound`, () => {
-    const x_domain = dedup_vertices(pure_binary.domains[`X`])
-    const x_vals = x_domain.map((pt) => pt[0]) // X is alphabetically first
-    expect(Math.max(...x_vals)).toBeCloseTo(-1.0, 4)
-  })
-
-  test(`Y domain has mu_Y = E_Y (reference energy) at its upper bound`, () => {
-    const y_domain = dedup_vertices(pure_binary.domains[`Y`])
-    const y_vals = y_domain.map((pt) => pt[1]) // Y is alphabetically second
-    expect(Math.max(...y_vals)).toBeCloseTo(-2.0, 4)
+  test.each([
+    { el: `X`, axis: 0, ref_epa: -1.0 },
+    { el: `Y`, axis: 1, ref_epa: -2.0 },
+  ])(`$el domain touches mu=$ref_epa at upper bound`, ({ el, axis, ref_epa }) => {
+    const vals = dedup_vertices(pure_binary.domains[el]).map((pt) => pt[axis])
+    expect(Math.max(...vals)).toBeCloseTo(ref_epa, 4)
   })
 })
 
@@ -459,21 +442,13 @@ describe(`get_min_entries_and_el_refs`, () => {
     expect(min_entries[0].energy_per_atom).toBe(-2.0)
   })
 
-  test(`distinguishes different compositions`, () => {
-    const { min_entries } = get_min_entries_and_el_refs([
+  test(`distinguishes compositions and identifies elemental refs`, () => {
+    const { min_entries, el_refs } = get_min_entries_and_el_refs([
       make_entry({ A: 1 }, -1.0),
       make_entry({ B: 1 }, -2.0),
       make_entry({ A: 1, B: 1 }, -3.0),
     ])
     expect(min_entries.length).toBe(3)
-  })
-
-  test(`identifies elemental references`, () => {
-    const { el_refs } = get_min_entries_and_el_refs([
-      make_entry({ A: 1 }, -1.0),
-      make_entry({ B: 1 }, -2.0),
-      make_entry({ A: 1, B: 1 }, -3.0),
-    ])
     expect(el_refs[`A`].energy_per_atom).toBe(-1.0)
     expect(el_refs[`B`].energy_per_atom).toBe(-2.0)
   })
@@ -528,46 +503,25 @@ describe(`renormalize_entries`, () => {
 // === build_hyperplanes ===
 
 describe(`build_hyperplanes`, () => {
+  const el_refs: Record<string, PhaseData> = {
+    A: make_entry({ A: 1 }, -2.0),
+    B: make_entry({ B: 1 }, -3.0),
+  }
+  const ab_entry = make_entry({ A: 1, B: 1 }, -6.0)
+  const { hyperplanes, hyperplane_entries } = build_hyperplanes(
+    [el_refs[`A`], el_refs[`B`], ab_entry],
+    el_refs,
+    [`A`, `B`],
+  )
+
   test(`always includes elemental references`, () => {
-    const el_refs: Record<string, PhaseData> = {
-      A: make_entry({ A: 1 }, -2.0),
-      B: make_entry({ B: 1 }, -3.0),
-    }
-    const min_entries = [el_refs[`A`], el_refs[`B`]]
-    const { hyperplane_entries } = build_hyperplanes(min_entries, el_refs, [`A`, `B`])
     expect(hyperplane_entries.length).toBeGreaterThanOrEqual(2)
   })
 
-  test(`hyperplane rows have correct dimensionality`, () => {
-    const el_refs: Record<string, PhaseData> = {
-      A: make_entry({ A: 1 }, -2.0),
-      B: make_entry({ B: 1 }, -3.0),
-    }
-    const { hyperplanes } = build_hyperplanes(
-      [el_refs[`A`], el_refs[`B`], make_entry({ A: 1, B: 1 }, -6.0)],
-      el_refs,
-      [`A`, `B`],
-    )
-    // Each row should have dim+1 = 3 columns [x_A, x_B, -E]
+  test(`rows have dim+1 columns and atomic fractions sum to 1`, () => {
     for (const row of hyperplanes) {
-      expect(row.length).toBe(3)
-    }
-  })
-
-  test(`atomic fractions in hyperplane rows sum to 1`, () => {
-    const el_refs: Record<string, PhaseData> = {
-      A: make_entry({ A: 1 }, -2.0),
-      B: make_entry({ B: 1 }, -3.0),
-    }
-    const { hyperplanes } = build_hyperplanes(
-      [el_refs[`A`], el_refs[`B`], make_entry({ A: 1, B: 1 }, -6.0)],
-      el_refs,
-      [`A`, `B`],
-    )
-    for (const row of hyperplanes) {
-      // First dim columns are atomic fractions, should sum to 1
-      const frac_sum = row.slice(0, 2).reduce((s, v) => s + v, 0)
-      expect(frac_sum).toBeCloseTo(1.0, 8)
+      expect(row.length).toBe(3) // [x_A, x_B, -E]
+      expect(row[0] + row[1]).toBeCloseTo(1.0, 8)
     }
   })
 })
@@ -620,111 +574,79 @@ describe(`element padding`, () => {
 // === solve_linear_system ===
 
 describe(`solve_linear_system`, () => {
-  test(`2x2 identity`, () => {
-    expect(solve_linear_system([[1, 0], [0, 1]], [3, 7])).toEqual([3, 7])
-  })
-
-  test(`2x2 general`, () => {
-    const result = solve_linear_system([[2, 1], [1, 3]], [5, 10])
-    expect(result).not.toBeNull()
-    if (!result) throw new Error(`Expected non-null 2x2 solution`)
-    expect(result[0]).toBeCloseTo(1, 8)
-    expect(result[1]).toBeCloseTo(3, 8)
-  })
-
-  test(`2x2 singular returns null`, () => {
-    expect(solve_linear_system([[1, 2], [2, 4]], [1, 2])).toBeNull()
-  })
-
-  test(`3x3 identity`, () => {
-    const result = solve_linear_system(
-      [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-      [1, 2, 3],
-    )
-    expect(result).toEqual([1, 2, 3])
-  })
-
-  test(`3x3 general`, () => {
-    // A=[1,2,3;4,5,6;7,8,10], x=[1,2,3] → b = [1*1+2*2+3*3, 4+10+18, 7+16+30] = [14, 32, 53]
-    const result = solve_linear_system(
-      [[1, 2, 3], [4, 5, 6], [7, 8, 10]],
-      [14, 32, 53],
-    )
-    expect(result).not.toBeNull()
-    if (!result) throw new Error(`Expected non-null 3x3 solution`)
-    expect(result[0]).toBeCloseTo(1, 6)
-    expect(result[1]).toBeCloseTo(2, 6)
-    expect(result[2]).toBeCloseTo(3, 6)
-  })
-
-  test(`3x3 singular returns null`, () => {
-    expect(solve_linear_system(
-      [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-      [1, 2, 3],
-    )).toBeNull()
-  })
-
-  test(`4x4 general (LU path)`, () => {
-    const result = solve_linear_system(
-      [[2, 1, -1, 0], [1, 3, 0, -1], [-1, 0, 2, 1], [0, -1, 1, 3]],
-      [1, 2, 3, 4],
-    )
-    expect(result).not.toBeNull()
-    if (!result) throw new Error(`Expected non-null 4x4 solution`)
-    // Verify Ax = b
-    const A = [[2, 1, -1, 0], [1, 3, 0, -1], [-1, 0, 2, 1], [0, -1, 1, 3]]
-    for (let row = 0; row < 4; row++) {
-      const val = A[row].reduce((s, v, col) => s + v * result[col], 0)
-      expect(val).toBeCloseTo([1, 2, 3, 4][row], 6)
+  test.each([
+    {
+      label: `2x2 identity`,
+      mat: [[1, 0], [0, 1]],
+      rhs: [3, 7],
+      expected: [3, 7],
+    },
+    {
+      label: `2x2 general`,
+      mat: [[2, 1], [1, 3]],
+      rhs: [5, 10],
+      expected: [1, 3],
+    },
+    {
+      label: `3x3 identity`,
+      mat: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      rhs: [1, 2, 3],
+      expected: [1, 2, 3],
+    },
+    {
+      label: `3x3 general`,
+      mat: [[1, 2, 3], [4, 5, 6], [7, 8, 10]],
+      rhs: [14, 32, 53],
+      expected: [1, 2, 3],
+    },
+  ])(`$label → solves correctly`, ({ mat, rhs, expected }) => {
+    const result = solve_linear_system(mat, rhs)
+    if (!result) throw new Error(`expected non-null solution`)
+    for (let idx = 0; idx < expected.length; idx++) {
+      expect(result[idx]).toBeCloseTo(expected[idx], 6)
     }
   })
 
-  test(`returns null for empty input`, () => {
-    expect(solve_linear_system([], [])).toBeNull()
+  test(`4x4 general: Ax=b round-trip`, () => {
+    const mat = [[2, 1, -1, 0], [1, 3, 0, -1], [-1, 0, 2, 1], [0, -1, 1, 3]]
+    const rhs = [1, 2, 3, 4]
+    const result = solve_linear_system(mat, rhs)
+    if (!result) throw new Error(`expected non-null solution`)
+    for (let row = 0; row < 4; row++) {
+      const val = mat[row].reduce((s, v, col) => s + v * result[col], 0)
+      expect(val).toBeCloseTo(rhs[row], 6)
+    }
   })
 
-  test(`returns null for mismatched dimensions`, () => {
-    expect(solve_linear_system([[1, 2], [3, 4]], [1])).toBeNull()
+  test.each([
+    { mat: [[1, 2], [2, 4]], rhs: [1, 2], label: `2x2 singular` },
+    { mat: [[1, 2, 3], [4, 5, 6], [7, 8, 9]], rhs: [1, 2, 3], label: `3x3 singular` },
+    { mat: [] as number[][], rhs: [] as number[], label: `empty` },
+    { mat: [[1, 2], [3, 4]], rhs: [1], label: `mismatched dims` },
+  ])(`$label → returns null`, ({ mat, rhs }) => {
+    expect(solve_linear_system(mat, rhs)).toBeNull()
   })
 })
 
 // === convex_hull_2d ===
 
 describe(`convex_hull_2d`, () => {
-  test(`triangle returns all 3 vertices`, () => {
-    const pts: Vec2[] = [[0, 0], [1, 0], [0, 1]]
-    const hull = convex_hull_2d(pts)
-    expect(hull.length).toBe(3)
-  })
-
-  test(`square returns 4 vertices`, () => {
-    const pts: Vec2[] = [[0, 0], [1, 0], [1, 1], [0, 1]]
-    const hull = convex_hull_2d(pts)
-    expect(hull.length).toBe(4)
-  })
-
-  test(`interior points are excluded`, () => {
-    const pts: Vec2[] = [[0, 0], [2, 0], [2, 2], [0, 2], [1, 1]] // last is interior
-    const hull = convex_hull_2d(pts)
-    expect(hull.length).toBe(4)
-  })
-
-  test(`collinear points`, () => {
-    const pts: Vec2[] = [[0, 0], [1, 1], [2, 2], [3, 3]]
-    const hull = convex_hull_2d(pts)
-    // Collinear points give a degenerate hull (line), 2 endpoints
-    expect(hull.length).toBe(2)
-  })
-
-  test(`< 3 points returns copy`, () => {
-    expect(convex_hull_2d([[1, 2]]).length).toBe(1)
-    expect(convex_hull_2d([[1, 2], [3, 4]]).length).toBe(2)
-  })
+  test.each([
+    { pts: [[0, 0], [1, 0], [0, 1]], n: 3, label: `triangle` },
+    { pts: [[0, 0], [1, 0], [1, 1], [0, 1]], n: 4, label: `square` },
+    { pts: [[0, 0], [2, 0], [2, 2], [0, 2], [1, 1]], n: 4, label: `square + interior` },
+    { pts: [[0, 0], [1, 1], [2, 2], [3, 3]], n: 2, label: `collinear` },
+    { pts: [[1, 2]], n: 1, label: `single point` },
+    { pts: [[1, 2], [3, 4]], n: 2, label: `two points` },
+  ] as { pts: Vec2[]; n: number; label: string }[])(
+    `$label → $n hull vertices`,
+    ({ pts, n }) => {
+      expect(convex_hull_2d(pts).length).toBe(n)
+    },
+  )
 
   test(`hull area is correct for unit square`, () => {
-    const pts: Vec2[] = [[0, 0], [1, 0], [1, 1], [0, 1]]
-    const hull = convex_hull_2d(pts)
-    // Shoelace formula for area
+    const hull = convex_hull_2d([[0, 0], [1, 0], [1, 1], [0, 1]])
     let area = 0
     for (let idx = 0; idx < hull.length; idx++) {
       const [x0, y0] = hull[idx]

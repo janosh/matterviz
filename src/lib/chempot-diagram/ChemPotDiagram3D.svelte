@@ -2119,10 +2119,10 @@
 <style>
   .chempot-diagram-3d {
     position: relative;
+    overflow: clip;
   }
   .chempot-diagram-3d:fullscreen {
     background: var(--chempot-3d-bg-fullscreen, var(--bg-color, #fff));
-    overflow: hidden;
   }
   /* Threlte <extras.HTML portal={wrapper}> appends absolutely-positioned divs
      directly to the wrapper. Without pointer-events: none, they intercept mouse
