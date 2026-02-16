@@ -182,8 +182,8 @@
       axis_ranges: build_axis_ranges(pts, plot_elements),
       pointer: bounds
         ? {
-          x: data.event.clientX - bounds.left + 12,
-          y: data.event.clientY - bounds.top + 12,
+          x: data.event.clientX - bounds.left + 4,
+          y: data.event.clientY - bounds.top + 4,
         }
         : undefined,
     }
@@ -193,8 +193,8 @@
   let scatter_wrapper = $state<HTMLDivElement>()
   let export_pane_open = $state(false)
 
-  function get_svg_element(): SVGElement | null {
-    return scatter_wrapper?.querySelector(`svg`) ?? null
+  function get_svg_element(): SVGSVGElement | null {
+    return scatter_wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
   }
 
   const export_json_data = $derived({
@@ -276,7 +276,7 @@
     <section class="control-buttons">
       <PhaseDiagramExportPane
         bind:export_pane_open
-        svg_element={get_svg_element() as SVGSVGElement | null}
+        svg_element={get_svg_element()}
         json_payload={export_json_data}
         filename="chempot-diagram"
         toggle_props={{
@@ -301,8 +301,8 @@
     {#if render_local_tooltip && show_tooltip && hover_info?.view === `2d`}
       <aside
         class="tooltip"
-        style:left={`${hover_info.pointer?.x ?? 12}px`}
-        style:top={`${hover_info.pointer?.y ?? 12}px`}
+        style:left={`${hover_info.pointer?.x ?? 4}px`}
+        style:top={`${hover_info.pointer?.y ?? 4}px`}
       >
         <strong>{hover_info.formula}</strong>
       </aside>

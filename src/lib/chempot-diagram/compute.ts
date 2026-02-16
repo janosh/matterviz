@@ -503,7 +503,7 @@ export function orthonormal_2d(line_pts: number[][]): [number, number] {
 }
 
 // Deduplicate points within tolerance, returning unique points and index mapping
-function dedup_points(pts: number[][], tol: number = 1e-4): {
+export function dedup_points(pts: number[][], tol: number = 1e-4): {
   unique: number[][]
   orig_indices: number[] // for each unique point, the index in the original array
 } {

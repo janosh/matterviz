@@ -97,8 +97,8 @@
   {#if show_tooltip && hover_info}
     <aside
       class="chempot-tooltip"
-      style:left={`${hover_info.pointer?.x ?? 12}px`}
-      style:top={`${hover_info.pointer?.y ?? 12}px`}
+      style:left={`${hover_info.pointer?.x ?? 4}px`}
+      style:top={`${hover_info.pointer?.y ?? 4}px`}
     >
       <h4>{hover_info.formula}</h4>
       {#if hover_info.view === `2d`}

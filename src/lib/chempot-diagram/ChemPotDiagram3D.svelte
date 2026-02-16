@@ -24,6 +24,7 @@
     apply_element_padding,
     build_axis_ranges,
     compute_chempot_diagram,
+    dedup_points,
     formula_key_from_composition,
     get_3d_domain_simplexes_and_ann_loc,
     get_energy_per_atom,
@@ -126,7 +127,13 @@
     removeEventListener: (event_name: string, callback: () => void) => void
   }
   let orbit_controls_ref = $state<OrbitControlsLike | null>(null)
-  const dynamic_axis_angle_deg = $state<number[]>([0, 0, 90])
+  // Backside tracking: axes/ticks/labels render on the far side from the camera
+  // back[i] = backside data coordinate value for data axis i
+  // Matches ScatterPlot3DScene pattern where pos tracks the opposite side from camera
+  let back = $state([0, 0, 0])
+  // Outward offset signs for tick/label placement (away from bounding box)
+  let out_x = $state(-1) // sign for Three.js X (data axis 1) direction
+  let out_y = $state(-1) // sign for Three.js Y (data axis 2) direction
   let camera_projection = $state<CameraProjection3D>(`orthographic`)
   let auto_rotate = $state(0)
   let display = $state<DisplayConfig3D>({
@@ -185,7 +192,6 @@
   interface DomainRenderData {
     formula: string
     points_3d: number[][]
-    simplex_indices: number[][]
     ann_loc: number[]
     is_draw_formula: boolean
   }
@@ -230,27 +236,13 @@
       if (padded.length < 2) continue
       const is_draw = formulas_to_draw.includes(formula)
       if (padded.length >= 3) {
-        const { simplex_indices, ann_loc } = get_3d_domain_simplexes_and_ann_loc(
-          padded,
-        )
-        result.push({
-          formula,
-          points_3d: padded,
-          simplex_indices,
-          ann_loc,
-          is_draw_formula: is_draw,
-        })
+        const { ann_loc } = get_3d_domain_simplexes_and_ann_loc(padded)
+        result.push({ formula, points_3d: padded, ann_loc, is_draw_formula: is_draw })
       } else {
-        const center = padded[0].map((_, col) =>
+        const ann_loc = padded[0].map((_, col) =>
           padded.reduce((s, p) => s + p[col], 0) / padded.length
         )
-        result.push({
-          formula,
-          points_3d: padded,
-          simplex_indices: [[0, 1]],
-          ann_loc: center,
-          is_draw_formula: is_draw,
-        })
+        result.push({ formula, points_3d: padded, ann_loc, is_draw_formula: is_draw })
       }
     }
     return result
@@ -463,15 +455,9 @@
     }
   })
 
-  // Deduplicate 3D points within tolerance
+  // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)
   function dedup_3d(pts: number[][], tol: number = 1e-4): number[][] {
-    const unique: number[][] = []
-    for (const pt of pts) {
-      if (!unique.some((u) => u.every((v, idx) => Math.abs(v - pt[idx]) < tol))) {
-        unique.push(pt)
-      }
-    }
-    return unique
+    return dedup_points(pts, tol).unique
   }
 
   const controls_series = $derived<DataSeries3D[]>([
@@ -747,21 +733,35 @@
   }
 
   const axis_colors = [`#e74c3c`, `#2ecc71`, `#3498db`] as const
-  const axis_label_standoff = [0.25, 0.45, 0.45] as const
   function chem_axis_label(data_axis: number): string {
     return formal_chempots
       ? `\u0394\u03BC(${plot_elements[data_axis]}) (eV)`
       : `\u03BC(${plot_elements[data_axis]}) (eV)`
   }
 
-  // Grid/axis configuration for each data axis
-  // Each axis has: line geometry, tick geometries, grid geometries, label positions
+  // Proportional offsets for tick marks and labels, scaled to data extent
+  const tick_size = $derived(data_extent * 0.015)
+  const tick_label_dist = $derived(data_extent * 0.04)
+  const axis_label_dist = $derived(data_extent * 0.08)
+
+  // Place axis label just past the outer end of the axis (the end closer to 0).
+  // In isometric 3D, the end near 0 projects outward at the front edge of the
+  // bounding box, while the negative end projects inward toward the center.
+  function outer_end(range: [number, number]): number {
+    return Math.abs(range[0]) <= Math.abs(range[1]) ? range[0] : range[1]
+  }
+  // Direction from range center toward outer end (to extend the label beyond the grid)
+  function outer_dir(range: [number, number]): number {
+    const end = outer_end(range)
+    const mid = (range[0] + range[1]) / 2
+    return end >= mid ? 1 : -1
+  }
+
+  // Grid/axis configuration for each data axis.
+  // Axes, ticks, and labels are placed on the backside (far from camera)
+  // matching ScatterPlot3DScene's dynamic backside tracking pattern.
   const grid_config = $derived.by(() => {
     const [r0, r1, r2] = niced_range
-    // Back-side positions for grid planes (minimums in data coords)
-    const b0 = r0[0], b1 = r1[0], b2 = r2[0]
-    // Front-side positions for axes/ticks (maximums, facing the camera)
-    const f0 = r0[1], f1 = r1[1]
 
     return [0, 1, 2].map((axis) => {
       const ticks = data_ticks[axis]
@@ -772,53 +772,92 @@
         ? (x_axis.label || chem_axis_label(1))
         : (y_axis.label || chem_axis_label(2))
 
-      let line_start: [number, number, number]
-      let line_end: [number, number, number]
       const tick_geoms: THREE.BufferGeometry[] = []
       const grid_geoms: THREE.BufferGeometry[] = []
       const tick_labels: { pos: [number, number, number]; text: string }[] = []
+      let line_geom: THREE.BufferGeometry
       let label_pos: [number, number, number]
 
       if (axis === 0) {
-        // Data axis 0 (Li/plotly-x): front-bottom edge at max data[1], min data[2]
-        line_start = swiz(r0[0], f1, b2)
-        line_end = swiz(r0[1], f1, b2)
-        label_pos = swiz((r0[0] + r0[1]) / 2, f1 + axis_label_standoff[0], b2)
+        // Data axis 0 (Three.js Z, depth): axis at backside d1 and d2
+        const ls = swiz(r0[0], back[1], back[2])
+        const le = swiz(r0[1], back[1], back[2])
+        line_geom = make_line_geom(ls, le)
+        // Axis label past the outer end of the axis (near 0, projects outward)
+        label_pos = swiz(
+          outer_end(r0) + outer_dir(r0) * axis_label_dist,
+          back[1] + out_x * tick_label_dist * 0.5,
+          back[2] + out_y * tick_label_dist,
+        )
         for (const val of ticks) {
-          tick_geoms.push(make_line_geom(swiz(val, f1, b2), swiz(val, f1 + 0.15, b2)))
-          // Grid lines stay on back planes
-          grid_geoms.push(make_line_geom(swiz(val, r1[0], b2), swiz(val, r1[1], b2)))
-          grid_geoms.push(make_line_geom(swiz(val, b1, r2[0]), swiz(val, b1, r2[1])))
+          tick_geoms.push(make_line_geom(
+            swiz(val, back[1], back[2]),
+            swiz(val, back[1], back[2] + out_y * tick_size),
+          ))
+          grid_geoms.push(
+            make_line_geom(swiz(val, r1[0], back[2]), swiz(val, r1[1], back[2])),
+          )
+          grid_geoms.push(
+            make_line_geom(swiz(val, back[1], r2[0]), swiz(val, back[1], r2[1])),
+          )
           tick_labels.push({
-            pos: swiz(val, f1 + 0.4, b2),
+            pos: swiz(
+              val,
+              back[1] + out_x * tick_label_dist * 0.5,
+              back[2] + out_y * tick_label_dist,
+            ),
             text: format_num(val, `.3~g`),
           })
         }
       } else if (axis === 1) {
-        // Data axis 1 (Fe/plotly-y): front-bottom edge at max data[0], min data[2]
-        line_start = swiz(f0, r1[0], b2)
-        line_end = swiz(f0, r1[1], b2)
-        label_pos = swiz(f0 + axis_label_standoff[1], (r1[0] + r1[1]) / 2, b2)
+        // Data axis 1 (Three.js X, horizontal): axis at backside d0 and d2
+        const ls = swiz(back[0], r1[0], back[2])
+        const le = swiz(back[0], r1[1], back[2])
+        line_geom = make_line_geom(ls, le)
+        label_pos = swiz(
+          back[0],
+          outer_end(r1) + outer_dir(r1) * axis_label_dist,
+          back[2] + out_y * tick_label_dist,
+        )
         for (const val of ticks) {
-          tick_geoms.push(make_line_geom(swiz(f0, val, b2), swiz(f0 + 0.15, val, b2)))
-          grid_geoms.push(make_line_geom(swiz(r0[0], val, b2), swiz(r0[1], val, b2)))
-          grid_geoms.push(make_line_geom(swiz(b0, val, r2[0]), swiz(b0, val, r2[1])))
+          tick_geoms.push(make_line_geom(
+            swiz(back[0], val, back[2]),
+            swiz(back[0], val, back[2] + out_y * tick_size),
+          ))
+          grid_geoms.push(
+            make_line_geom(swiz(r0[0], val, back[2]), swiz(r0[1], val, back[2])),
+          )
+          grid_geoms.push(
+            make_line_geom(swiz(back[0], val, r2[0]), swiz(back[0], val, r2[1])),
+          )
           tick_labels.push({
-            pos: swiz(f0 + 0.4, val, b2),
+            pos: swiz(back[0], val, back[2] + out_y * tick_label_dist),
             text: format_num(val, `.3~g`),
           })
         }
       } else {
-        // Data axis 2 (O/plotly-z, vertical): front-left edge at max data[0], min data[1]
-        line_start = swiz(f0, b1, r2[0])
-        line_end = swiz(f0, b1, r2[1])
-        label_pos = swiz(f0 + axis_label_standoff[2], b1, (r2[0] + r2[1]) / 2)
+        // Data axis 2 (Three.js Y, vertical): axis at backside d0 and d1
+        const ls = swiz(back[0], back[1], r2[0])
+        const le = swiz(back[0], back[1], r2[1])
+        line_geom = make_line_geom(ls, le)
+        label_pos = swiz(
+          back[0],
+          back[1] + out_x * tick_label_dist,
+          outer_end(r2) + outer_dir(r2) * axis_label_dist,
+        )
         for (const val of ticks) {
-          tick_geoms.push(make_line_geom(swiz(f0, b1, val), swiz(f0 + 0.15, b1, val)))
-          grid_geoms.push(make_line_geom(swiz(r0[0], b1, val), swiz(r0[1], b1, val)))
-          grid_geoms.push(make_line_geom(swiz(b0, r1[0], val), swiz(b0, r1[1], val)))
+          tick_geoms.push(make_line_geom(
+            swiz(back[0], back[1], val),
+            swiz(back[0], back[1] + out_x * tick_size, val),
+          ))
+          grid_geoms.push(
+            make_line_geom(swiz(r0[0], back[1], val), swiz(r0[1], back[1], val)),
+          )
+          grid_geoms.push(
+            make_line_geom(swiz(back[0], r1[0], val), swiz(back[0], r1[1], val)),
+          )
           tick_labels.push({
-            pos: swiz(f0 + 0.4, b1, val),
+            pos: swiz(back[0], back[1] + out_x * tick_label_dist, val),
             text: format_num(val, `.3~g`),
           })
         }
@@ -828,9 +867,7 @@
         axis,
         color,
         label,
-        axis_line_start: line_start,
-        axis_line_end: line_end,
-        line_geom: make_line_geom(line_start, line_end),
+        line_geom,
         tick_geoms,
         grid_geoms,
         tick_labels,
@@ -839,18 +876,20 @@
     })
   })
 
-  function update_axis_label_angles(camera: THREE.Camera): void {
-    if (grid_config.length < 3) return
-    for (const axis_config of grid_config) {
-      const start_ndc = new THREE.Vector3(...axis_config.axis_line_start).project(
-        camera,
-      )
-      const end_ndc = new THREE.Vector3(...axis_config.axis_line_end).project(camera)
-      let angle_deg = Math.atan2(end_ndc.y - start_ndc.y, end_ndc.x - start_ndc.x) *
-        180 / Math.PI
-      if (angle_deg > 90) angle_deg -= 180
-      else if (angle_deg < -90) angle_deg += 180
-      dynamic_axis_angle_deg[axis_config.axis] = angle_deg
+  // Update backside positions when camera crosses axis planes.
+  // Only updates when sign changes to avoid triggering geometry recreation every frame.
+  function update_backside(): void {
+    const cam = orbit_controls_ref?.object?.position
+    if (!cam) return
+    const [r0, r1, r2] = niced_range
+    // swiz: data[0]→Z, data[1]→X, data[2]→Y
+    const new_back_0 = cam.z > data_center.z ? r0[0] : r0[1]
+    const new_back_1 = cam.x > data_center.x ? r1[0] : r1[1]
+    const new_back_2 = cam.y > data_center.y ? r2[0] : r2[1]
+    if (back[0] !== new_back_0 || back[1] !== new_back_1 || back[2] !== new_back_2) {
+      back = [new_back_0, new_back_1, new_back_2]
+      out_x = cam.x > data_center.x ? -1 : 1
+      out_y = cam.y > data_center.y ? -1 : 1
     }
   }
 
@@ -862,12 +901,9 @@
     }
     controls.object.lookAt(data_center)
     controls.update?.()
-    const handle_controls_change = (): void => {
-      update_axis_label_angles(controls.object)
-    }
-    controls.addEventListener(`change`, handle_controls_change)
-    handle_controls_change()
-    return () => controls.removeEventListener(`change`, handle_controls_change)
+    controls.addEventListener(`change`, update_backside)
+    update_backside()
+    return () => controls.removeEventListener(`change`, update_backside)
   })
 
   $effect(() => {
@@ -885,27 +921,26 @@
     }
   })
 
-  // Background planes at back sides of bounding box (in swizzled coords)
+  // Background planes at back sides of bounding box (camera-dependent)
   const bg_planes = $derived.by(() => {
     const [r0, r1, r2] = niced_range
-    const b0 = r0[0], b1 = r1[0], b2 = r2[0]
     const s0 = r0[1] - r0[0], s1 = r1[1] - r1[0], s2 = r2[1] - r2[0]
     return [
-      // XY plane (floor): data axes 0,1 at data axis 2 = b2
+      // XY plane (floor/ceiling): data axes 0,1 at backside d2
       {
-        pos: swiz((r0[0] + r0[1]) / 2, (r1[0] + r1[1]) / 2, b2),
+        pos: swiz((r0[0] + r0[1]) / 2, (r1[0] + r1[1]) / 2, back[2]),
         rot: [-Math.PI / 2, 0, 0] as [number, number, number],
         size: [s1, s0] as [number, number],
       },
-      // XZ plane (back wall): data axes 0,2 at data axis 1 = b1
+      // XZ plane (side wall): data axes 0,2 at backside d1
       {
-        pos: swiz((r0[0] + r0[1]) / 2, b1, (r2[0] + r2[1]) / 2),
+        pos: swiz((r0[0] + r0[1]) / 2, back[1], (r2[0] + r2[1]) / 2),
         rot: [0, Math.PI / 2, 0] as [number, number, number],
         size: [s0, s2] as [number, number],
       },
-      // YZ plane (side wall): data axes 1,2 at data axis 0 = b0
+      // YZ plane (back wall): data axes 1,2 at backside d0
       {
-        pos: swiz(b0, (r1[0] + r1[1]) / 2, (r2[0] + r2[1]) / 2),
+        pos: swiz(back[0], (r1[0] + r1[1]) / 2, (r2[0] + r2[1]) / 2),
         rot: [0, 0, 0] as [number, number, number],
         size: [s1, s2] as [number, number],
       },
@@ -916,7 +951,6 @@
     const projections = display.projections
     if (!projections) return []
     const [r0, r1, r2] = niced_range
-    const b0 = r0[0], b1 = r1[0], b2 = r2[0]
     const s0 = (r0[1] - r0[0]) * (display.projection_scale ?? 0.5)
     const s1 = (r1[1] - r1[0]) * (display.projection_scale ?? 0.5)
     const s2 = (r2[1] - r2[0]) * (display.projection_scale ?? 0.5)
@@ -930,7 +964,7 @@
     if (projections.xy) {
       planes.push({
         key: `xy`,
-        pos: swiz((r0[0] + r0[1]) / 2, (r1[0] + r1[1]) / 2, b2),
+        pos: swiz((r0[0] + r0[1]) / 2, (r1[0] + r1[1]) / 2, back[2]),
         rot: [-Math.PI / 2, 0, 0],
         size: [s1, s0],
         color: `#5dade2`,
@@ -939,7 +973,7 @@
     if (projections.xz) {
       planes.push({
         key: `xz`,
-        pos: swiz((r0[0] + r0[1]) / 2, b1, (r2[0] + r2[1]) / 2),
+        pos: swiz((r0[0] + r0[1]) / 2, back[1], (r2[0] + r2[1]) / 2),
         rot: [0, Math.PI / 2, 0],
         size: [s0, s2],
         color: `#58d68d`,
@@ -948,7 +982,7 @@
     if (projections.yz) {
       planes.push({
         key: `yz`,
-        pos: swiz(b0, (r1[0] + r1[1]) / 2, (r2[0] + r2[1]) / 2),
+        pos: swiz(back[0], (r1[0] + r1[1]) / 2, (r2[0] + r2[1]) / 2),
         rot: [0, 0, 0],
         size: [s1, s2],
         color: `#f5b041`,
@@ -1095,8 +1129,8 @@
     if (!pointer_event || !wrapper) return null
     const bounds = wrapper.getBoundingClientRect()
     return {
-      x: pointer_event.clientX - bounds.left + 12,
-      y: pointer_event.clientY - bounds.top + 12,
+      x: pointer_event.clientX - bounds.left + 4,
+      y: pointer_event.clientY - bounds.top + 4,
     }
   }
 
@@ -1177,9 +1211,8 @@
         <input
           type="checkbox"
           checked={formal_chempots}
-          onchange={(event) => {
-            const target = event.currentTarget as HTMLInputElement
-            formal_chempots_override = target.checked
+          onchange={() => {
+            formal_chempots_override = !formal_chempots
           }}
         />
       </label>
@@ -1188,9 +1221,8 @@
         <input
           type="checkbox"
           checked={label_stable}
-          onchange={(event) => {
-            const target = event.currentTarget as HTMLInputElement
-            label_stable_override = target.checked
+          onchange={() => {
+            label_stable_override = !label_stable
           }}
         />
       </label>
@@ -1202,8 +1234,7 @@
           step="0.1"
           value={element_padding}
           oninput={(event) => {
-            const target = event.currentTarget as HTMLInputElement
-            element_padding_override = Number(target.value)
+            element_padding_override = Number(event.currentTarget.value)
           }}
         />
       </label>
@@ -1215,8 +1246,7 @@
           step="1"
           value={default_min_limit}
           oninput={(event) => {
-            const target = event.currentTarget as HTMLInputElement
-            default_min_limit_override = Number(target.value)
+            default_min_limit_override = Number(event.currentTarget.value)
           }}
         />
       </label>
@@ -1225,9 +1255,8 @@
         <input
           type="checkbox"
           checked={draw_formula_meshes}
-          onchange={(event) => {
-            const target = event.currentTarget as HTMLInputElement
-            draw_formula_meshes_override = target.checked
+          onchange={() => {
+            draw_formula_meshes_override = !draw_formula_meshes
           }}
         />
       </label>
@@ -1236,9 +1265,8 @@
         <input
           type="checkbox"
           checked={draw_formula_lines}
-          onchange={(event) => {
-            const target = event.currentTarget as HTMLInputElement
-            draw_formula_lines_override = target.checked
+          onchange={() => {
+            draw_formula_lines_override = !draw_formula_lines
           }}
         />
       </label>
@@ -1438,7 +1466,7 @@
             {/each}
           {/if}
           {#if display.show_axis_labels}
-            <!-- Tick labels -->
+            <!-- Tick labels (billboarded, always face camera) -->
             {#each gc.tick_labels as tick (tick.text)}
               <extras.HTML
                 position={tick.pos}
@@ -1446,12 +1474,7 @@
                 portal={wrapper}
                 zIndexRange={[1, 0]}
               >
-                <span
-                  class="tick-label"
-                  style:transform={`rotate(${dynamic_axis_angle_deg[gc.axis]}deg)`}
-                >
-                  {tick.text}
-                </span>
+                <span class="tick-label">{tick.text}</span>
               </extras.HTML>
             {/each}
             <!-- Axis label -->
@@ -1461,13 +1484,7 @@
               portal={wrapper}
               zIndexRange={[1, 0]}
             >
-              <span
-                class="axis-label"
-                style:color={gc.color}
-                style:transform={`rotate(${dynamic_axis_angle_deg[gc.axis]}deg)`}
-              >
-                {gc.label}
-              </span>
+              <span class="axis-label" style:color={gc.color}>{gc.label}</span>
             </extras.HTML>
           {/if}
         {/each}
@@ -1490,8 +1507,8 @@
     {#if render_local_tooltip && show_tooltip && hover_info?.view === `3d`}
       <aside
         class="phase-tooltip"
-        style:left={`${hover_info.pointer?.x ?? 12}px`}
-        style:top={`${hover_info.pointer?.y ?? 12}px`}
+        style:left={`${hover_info.pointer?.x ?? 4}px`}
+        style:top={`${hover_info.pointer?.y ?? 4}px`}
       >
         <h4>{hover_info.formula}</h4>
         <div class="meta-row">
@@ -1594,7 +1611,6 @@
     color: var(--text-color, #666);
   }
   :is(.axis-label, .tick-label) {
-    display: inline-block;
     pointer-events: none;
     user-select: none;
     white-space: nowrap;
