@@ -1507,8 +1507,8 @@
     {#if render_local_tooltip && show_tooltip && hover_info?.view === `3d`}
       <aside
         class="phase-tooltip"
-        style:left={`${hover_info.pointer?.x ?? 4}px`}
-        style:top={`${hover_info.pointer?.y ?? 4}px`}
+        style:left="{hover_info.pointer?.x ?? 4}px"
+        style:top="{hover_info.pointer?.y ?? 4}px"
       >
         <h4>{hover_info.formula}</h4>
         <div class="meta-row">

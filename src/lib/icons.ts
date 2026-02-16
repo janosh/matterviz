@@ -689,6 +689,31 @@ export const ICON_DATA = {
     path:
       `<g stroke-width="1.3" fill="none"><circle cx="12" cy="12" r="9" opacity="0.3"/><ellipse cx="12" cy="12" rx="9" ry="4"/><ellipse cx="12" cy="12" rx="4" ry="9"/><ellipse cx="12" cy="12" rx="6" ry="7" transform="rotate(45 12 12)" opacity="0.5"/></g>`,
   },
+  ScatterPlot3D: {
+    viewBox: `0 0 24 24`,
+    path:
+      `<g stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"><line x1="3" y1="21" x2="3" y2="5"/><line x1="3" y1="21" x2="21" y2="21"/><line x1="3" y1="21" x2="9" y2="15"/></g><circle cx="11" cy="11" r="1.5" fill="currentColor"/><circle cx="16" cy="15" r="1.5" fill="currentColor"/><circle cx="8" cy="16" r="1.5" fill="currentColor"/><circle cx="15" cy="8" r="1.5" fill="currentColor"/>`,
+  },
+  SpacegroupBarPlot: {
+    viewBox: `0 0 24 24`,
+    path:
+      `<rect x="2" y="13" width="3.5" height="8" fill="currentColor"/><rect x="7" y="7" width="3.5" height="14" fill="currentColor"/><rect x="12" y="10" width="3.5" height="11" fill="currentColor"/><rect x="17" y="5" width="3.5" height="16" fill="currentColor"/><path d="M21 2l1.5 2.5h-3z" fill="currentColor" opacity="0.5"/>`,
+  },
+  HeatmapMatrix: {
+    viewBox: `0 0 24 24`,
+    path:
+      `<rect x="2" y="2" width="5.5" height="5.5" rx="0.8" fill="currentColor" opacity="0.9"/><rect x="9.2" y="2" width="5.5" height="5.5" rx="0.8" fill="currentColor" opacity="0.4"/><rect x="16.5" y="2" width="5.5" height="5.5" rx="0.8" fill="currentColor" opacity="0.15"/><rect x="2" y="9.2" width="5.5" height="5.5" rx="0.8" fill="currentColor" opacity="0.5"/><rect x="9.2" y="9.2" width="5.5" height="5.5" rx="0.8" fill="currentColor" opacity="0.8"/><rect x="16.5" y="9.2" width="5.5" height="5.5" rx="0.8" fill="currentColor" opacity="0.35"/><rect x="2" y="16.5" width="5.5" height="5.5" rx="0.8" fill="currentColor" opacity="0.2"/><rect x="9.2" y="16.5" width="5.5" height="5.5" rx="0.8" fill="currentColor" opacity="0.65"/><rect x="16.5" y="16.5" width="5.5" height="5.5" rx="0.8" fill="currentColor"/>`,
+  },
+  HeatmapTable: {
+    viewBox: `0 0 24 24`,
+    path:
+      `<rect x="2" y="2" width="20" height="4" rx="1" fill="currentColor" opacity="0.25"/><rect x="2" y="8" width="9" height="3.5" rx="0.5" fill="currentColor" opacity="0.6"/><rect x="13" y="8" width="9" height="3.5" rx="0.5" fill="currentColor" opacity="0.35"/><rect x="2" y="13.5" width="9" height="3.5" rx="0.5" fill="currentColor" opacity="0.85"/><rect x="13" y="13.5" width="9" height="3.5" rx="0.5" fill="currentColor" opacity="0.5"/><rect x="2" y="19" width="9" height="3.5" rx="0.5" fill="currentColor" opacity="0.3"/><rect x="13" y="19" width="9" height="3.5" rx="0.5" fill="currentColor" opacity="0.9"/>`,
+  },
+  ColorBar: {
+    viewBox: `0 0 24 24`,
+    path:
+      `<rect x="6" y="2" width="5" height="20" rx="2.5" fill="currentColor" opacity="0.15"/><rect x="6" y="2" width="5" height="15" rx="2.5" fill="currentColor" opacity="0.4"/><rect x="6" y="2" width="5" height="10" rx="2.5" fill="currentColor" opacity="0.7"/><rect x="6" y="2" width="5" height="5" rx="2.5" fill="currentColor"/><g stroke="currentColor" stroke-width="1.2" opacity="0.5"><line x1="13" y1="4" x2="16" y2="4"/><line x1="13" y1="12" x2="16" y2="12"/><line x1="13" y1="20" x2="16" y2="20"/></g>`,
+  },
 } as const
 
 export type IconName = keyof typeof ICON_DATA

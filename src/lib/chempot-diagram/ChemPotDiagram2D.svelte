@@ -301,8 +301,8 @@
     {#if render_local_tooltip && show_tooltip && hover_info?.view === `2d`}
       <aside
         class="tooltip"
-        style:left={`${hover_info.pointer?.x ?? 4}px`}
-        style:top={`${hover_info.pointer?.y ?? 4}px`}
+        style:left="{hover_info.pointer?.x ?? 4}px"
+        style:top="{hover_info.pointer?.y ?? 4}px"
       >
         <strong>{hover_info.formula}</strong>
       </aside>
