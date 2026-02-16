@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { get_hill_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { format_num } from '$lib/labels'
@@ -100,7 +101,7 @@
       style:left="{hover_info.pointer?.x ?? 4}px"
       style:top="{hover_info.pointer?.y ?? 4}px"
     >
-      <h4>{hover_info.formula}</h4>
+      <h4>{@html get_hill_formula(hover_info.formula, false, ``)}</h4>
       {#if hover_info.view === `2d`}
         <div class="meta-row">2D domain · Points: {hover_info.n_points}</div>
         {#if tooltip_detail_level === `detailed`}

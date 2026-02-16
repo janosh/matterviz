@@ -1,4 +1,4 @@
-import type { Vec3 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { describe, expect, it, test } from 'vitest'
 
@@ -1747,5 +1747,152 @@ describe(`create_frac_to_cart and create_cart_to_frac`, () => {
     const frac = cart_to_frac(cart)
     const recovered = frac_to_cart(frac)
     recovered.forEach((val, idx) => expect(val).toBeCloseTo(cart[idx], 10))
+  })
+})
+
+// === point_in_polygon ===
+
+describe(`point_in_polygon`, () => {
+  const square: Vec2[] = [[0, 0], [4, 0], [4, 4], [0, 4]]
+  const tri: Vec2[] = [[0, 0], [10, 0], [5, 10]]
+
+  test.each([
+    { point_x: 2, point_y: 2, poly: square, expected: true, label: `inside square` },
+    { point_x: 5, point_y: 5, poly: square, expected: false, label: `outside square` },
+    { point_x: 5, point_y: 3, poly: tri, expected: true, label: `inside triangle` },
+    { point_x: 0, point_y: 10, poly: tri, expected: false, label: `outside triangle` },
+    {
+      point_x: 0,
+      point_y: 0,
+      poly: [] as Vec2[],
+      expected: false,
+      label: `empty polygon`,
+    },
+    {
+      point_x: 0,
+      point_y: 0,
+      poly: [[0, 0], [1, 1]] as Vec2[],
+      expected: false,
+      label: `< 3 vertices`,
+    },
+  ])(`$label`, ({ point_x, point_y, poly, expected }) => {
+    expect(math.point_in_polygon(point_x, point_y, poly)).toBe(expected)
+  })
+})
+
+// === compute_bounding_box_2d ===
+
+describe(`compute_bounding_box_2d`, () => {
+  test.each([
+    {
+      pts: [[0, 0], [1, 0], [1, 1], [0, 1]] as Vec2[],
+      min: [0, 0],
+      max: [1, 1],
+      width: 1,
+      height: 1,
+      label: `unit square`,
+    },
+    {
+      pts: [[-3, -2], [1, 4]] as Vec2[],
+      min: [-3, -2],
+      max: [1, 4],
+      width: 4,
+      height: 6,
+      label: `negative coords`,
+    },
+    { pts: [] as Vec2[], min: [0, 0], max: [0, 0], width: 0, height: 0, label: `empty` },
+    {
+      pts: [[5, 7]] as Vec2[],
+      min: [5, 7],
+      max: [5, 7],
+      width: 0,
+      height: 0,
+      label: `single point`,
+    },
+  ])(`$label`, ({ pts, min, max, width, height }) => {
+    const bbox = math.compute_bounding_box_2d(pts)
+    expect(bbox).toEqual({ min, max, width, height })
+  })
+})
+
+// === solve_linear_system ===
+
+describe(`solve_linear_system`, () => {
+  test(`1x1 system`, () => {
+    expect(math.solve_linear_system([[3]], [9])).toEqual([3])
+  })
+
+  test(`5x5 identity`, () => {
+    const identity = Array.from(
+      { length: 5 },
+      (_, row) => Array.from({ length: 5 }, (_, col) => row === col ? 1 : 0),
+    )
+    const rhs = [2, 4, 6, 8, 10]
+    const result = math.solve_linear_system(identity, rhs)
+    if (!result) throw new Error(`expected non-null result`)
+    rhs.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 8))
+  })
+
+  test(`non-square returns null`, () => {
+    expect(math.solve_linear_system([[1, 2, 3], [4, 5, 6]], [1, 2])).toBeNull()
+  })
+})
+
+// === convex_hull_2d ===
+
+describe(`convex_hull_2d`, () => {
+  test(`pentagon with interior point`, () => {
+    const pts: Vec2[] = [
+      [0, 0],
+      [4, 0],
+      [5, 3],
+      [2.5, 5],
+      [0, 3],
+      [2.5, 2], // interior
+    ]
+    const hull = math.convex_hull_2d(pts)
+    expect(hull.length).toBe(5) // interior excluded
+  })
+
+  test(`duplicate points`, () => {
+    const pts: Vec2[] = [[0, 0], [1, 0], [1, 0], [0, 1], [0, 1]]
+    const hull = math.convex_hull_2d(pts)
+    expect(hull.length).toBe(3)
+  })
+
+  test(`all same point`, () => {
+    const hull = math.convex_hull_2d([[3, 3], [3, 3], [3, 3]])
+    expect(hull.length).toBeLessThanOrEqual(3)
+  })
+
+  test(`counter-clockwise winding`, () => {
+    const pts: Vec2[] = [[0, 0], [1, 0], [1, 1], [0, 1]]
+    const hull = math.convex_hull_2d(pts)
+    // Shoelace signed area should be positive for CCW
+    let signed_area = 0
+    for (let idx = 0; idx < hull.length; idx++) {
+      const [x0, y0] = hull[idx]
+      const [x1, y1] = hull[(idx + 1) % hull.length]
+      signed_area += x0 * y1 - x1 * y0
+    }
+    expect(signed_area).toBeGreaterThan(0)
+  })
+})
+
+// === polygon_centroid ===
+
+describe(`polygon_centroid (from math)`, () => {
+  test(`rectangle centroid`, () => {
+    const pts: Vec2[] = [[0, 0], [4, 0], [4, 2], [0, 2]]
+    const centroid = math.polygon_centroid(pts)
+    expect(centroid[0]).toBeCloseTo(2, 6)
+    expect(centroid[1]).toBeCloseTo(1, 6)
+  })
+
+  test(`degenerate collinear polygon falls back to average`, () => {
+    const pts: Vec2[] = [[0, 0], [1, 0], [2, 0]]
+    const centroid = math.polygon_centroid(pts)
+    expect(centroid[0]).toBeCloseTo(1, 6)
+    expect(centroid[1]).toBeCloseTo(0, 6)
   })
 })

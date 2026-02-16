@@ -8,9 +8,13 @@
 
 import {
   apply_element_padding,
+  build_axis_ranges,
   build_border_hyperplanes,
   build_hyperplanes,
   compute_chempot_diagram,
+  dedup_points,
+  formula_key_from_composition,
+  get_energy_per_atom,
   get_min_entries_and_el_refs,
   orthonormal_2d,
   pad_domain_points,
@@ -1054,5 +1058,109 @@ describe(`YTOS quaternary system (projection mode)`, () => {
     // Projection should have strictly more domains (includes S-containing phases)
     expect(Object.keys(ytos_y_ti_o.domains).length)
       .toBeGreaterThan(Object.keys(subsystem.domains).length)
+  })
+})
+
+// === build_axis_ranges ===
+
+describe(`build_axis_ranges`, () => {
+  test(`computes min/max per axis`, () => {
+    const points = [[-3, 1], [2, 5], [0, -4]]
+    const result = build_axis_ranges(points, [`X`, `Y`])
+    expect(result).toEqual([
+      { element: `X`, min_val: -3, max_val: 2 },
+      { element: `Y`, min_val: -4, max_val: 5 },
+    ])
+  })
+
+  test(`single point has equal min/max`, () => {
+    const result = build_axis_ranges([[7, -2]], [`A`, `B`])
+    expect(result[0].min_val).toBe(7)
+    expect(result[0].max_val).toBe(7)
+    expect(result[1].min_val).toBe(-2)
+    expect(result[1].max_val).toBe(-2)
+  })
+
+  test(`elements longer than point dimensions produces Infinity`, () => {
+    const result = build_axis_ranges([[1, 2]], [`A`, `B`, `C`])
+    expect(result.length).toBe(3)
+    // axis 2 reads undefined from points → loop finds no finite values
+    expect(result[2].min_val).toBe(Infinity)
+    expect(result[2].max_val).toBe(-Infinity)
+  })
+})
+
+// === dedup_points ===
+
+describe(`dedup_points`, () => {
+  test.each([
+    {
+      pts: [[1, 2], [3, 4], [1, 2]],
+      tol: 1e-4,
+      n_unique: 2,
+      indices: [0, 1],
+      label: `exact duplicates`,
+    },
+    {
+      pts: [[0, 0], [0.00005, 0.00005]],
+      tol: 1e-4,
+      n_unique: 1,
+      indices: [0],
+      label: `within tolerance`,
+    },
+    {
+      pts: [[0, 0], [0.001, 0.001]],
+      tol: 1e-4,
+      n_unique: 2,
+      indices: [0, 1],
+      label: `beyond tolerance`,
+    },
+    {
+      pts: [] as number[][],
+      tol: 1e-4,
+      n_unique: 0,
+      indices: [] as number[],
+      label: `empty`,
+    },
+    { pts: [[5, 6, 7]], tol: 1e-4, n_unique: 1, indices: [0], label: `single point` },
+  ])(`$label → $n_unique unique`, ({ pts, tol, n_unique, indices }) => {
+    const result = dedup_points(pts, tol)
+    expect(result.unique.length).toBe(n_unique)
+    expect(result.orig_indices).toEqual(indices)
+  })
+})
+
+// === get_energy_per_atom ===
+
+describe(`get_energy_per_atom`, () => {
+  test(`returns energy_per_atom when present`, () => {
+    const entry = make_entry({ Fe: 2 }, -3.0)
+    expect(get_energy_per_atom(entry)).toBe(-3.0)
+  })
+
+  test(`computes from energy / atoms when energy_per_atom missing`, () => {
+    const entry: PhaseData = {
+      composition: { Fe: 2, O: 1 },
+      energy: -9.0,
+    }
+    expect(get_energy_per_atom(entry)).toBeCloseTo(-3.0, 8)
+  })
+
+  test(`throws for zero atom count`, () => {
+    const entry = { composition: {}, energy: -1.0 } as PhaseData
+    expect(() => get_energy_per_atom(entry)).toThrow(`non-positive`)
+  })
+})
+
+// === formula_key_from_composition ===
+
+describe(`formula_key_from_composition`, () => {
+  test.each([
+    { comp: { Fe: 1 }, expected: `Fe`, label: `single element` },
+    { comp: { O: 3, Li: 2, Fe: 1 }, expected: `FeLi2O3`, label: `alphabetical sorting` },
+    { comp: { Fe: 2, O: 4 }, expected: `FeO2`, label: `reduces to lowest terms` },
+    { comp: { Fe: 1, O: 0 }, expected: `Fe`, label: `ignores zero amounts` },
+  ])(`$label → $expected`, ({ comp, expected }) => {
+    expect(formula_key_from_composition(comp as Record<string, number>)).toBe(expected)
   })
 })

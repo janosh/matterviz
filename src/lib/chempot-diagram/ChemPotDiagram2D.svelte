@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { get_hill_formula } from '$lib/composition/format'
   import type { PhaseData } from '$lib/convex-hull/types'
   import PhaseDiagramExportPane from '$lib/phase-diagram/PhaseDiagramExportPane.svelte'
   import { ScatterPlot } from '$lib/plot'
@@ -212,7 +213,7 @@
       text-anchor="middle"
       class="domain-label"
     >
-      {formula}
+      {get_hill_formula(formula, true, ``)}
     </text>
   {/each}
 {/snippet}
@@ -304,7 +305,7 @@
         style:left="{hover_info.pointer?.x ?? 4}px"
         style:top="{hover_info.pointer?.y ?? 4}px"
       >
-        <strong>{hover_info.formula}</strong>
+        <strong>{@html get_hill_formula(hover_info.formula, false, ``)}</strong>
       </aside>
     {/if}
   </div>
