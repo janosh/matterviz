@@ -10,7 +10,7 @@
     watch_dark_mode,
   } from '$lib/colors'
   import { normalize_show_controls } from '$lib/controls'
-  import { ClickFeedback, DragOverlay } from '$lib/feedback'
+  import { ClickFeedback, DragOverlay, Spinner } from '$lib/feedback'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import {
@@ -1065,16 +1065,17 @@
     ctx.fillRect(0, 0, display_width, display_height)
 
     if (elements.length !== 3) {
-      ctx.fillStyle = text_color
-      ctx.font = `16px Arial`
-      ctx.textAlign = `center`
-      ctx.textBaseline = `middle`
-
-      ctx.fillText(
-        `Ternary convex hull requires exactly 3 elements (got ${pd_data.elements.length})`,
-        display_width / 2,
-        display_height / 2,
-      )
+      if (elements.length > 0) {
+        ctx.fillStyle = text_color
+        ctx.font = `16px Arial`
+        ctx.textAlign = `center`
+        ctx.textBaseline = `middle`
+        ctx.fillText(
+          `Ternary convex hull requires exactly 3 elements (got ${elements.length})`,
+          display_width / 2,
+          display_height / 2,
+        )
+      }
       return
     }
 
@@ -1343,6 +1344,13 @@
     ondblclick={handle_double_click}
     onwheel={handle_wheel}
   ></canvas>
+
+  {#if entries.length === 0}
+    <Spinner
+      text="Loading data..."
+      style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center"
+    />
+  {/if}
 
   <!-- Formation Energy Color Bar (bottom-left corner) -->
   {#if color_mode === `energy` && plot_entries.length > 0}

@@ -27,6 +27,17 @@ export type Matrix4Tuple = [
   number, number, number, number,
 ]
 
+// Generate all k-element combinations from an array.
+export function combinations<T>(arr: T[], k: number): T[][] {
+  if (k === 0) return [[]]
+  if (arr.length < k) return []
+  const [first, ...rest] = arr
+  return [
+    ...combinations(rest, k - 1).map((combo) => [first, ...combo]),
+    ...combinations(rest, k),
+  ]
+}
+
 export const LOG_EPS = 1e-9
 export const EPS = 1e-10
 export const RAD_TO_DEG = 180 / Math.PI
@@ -498,6 +509,238 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   return [u_vec, v_vec]
 }
 
+// Check whether N 3D points all lie on the same plane within tolerance.
+// Fewer than 3 points are trivially coplanar.
+// Uses cross product to find a plane normal from non-collinear edges,
+// then checks all remaining points have zero distance to that plane.
+export function are_coplanar(points: number[][], tolerance = 1e-6): boolean {
+  if (points.length < 3) return true
+  const origin = points[0]
+  // Find first pair of edges from origin that are not collinear
+  let normal: Vec3 | null = null
+  for (let idx = 1; idx < points.length - 1; idx++) {
+    const edge_a: Vec3 = [
+      points[idx][0] - origin[0],
+      points[idx][1] - origin[1],
+      points[idx][2] - origin[2],
+    ]
+    for (let jdx = idx + 1; jdx < points.length; jdx++) {
+      const edge_b: Vec3 = [
+        points[jdx][0] - origin[0],
+        points[jdx][1] - origin[1],
+        points[jdx][2] - origin[2],
+      ]
+      const cross = cross_3d(edge_a, edge_b)
+      const len = Math.hypot(cross[0], cross[1], cross[2])
+      if (len > tolerance) {
+        normal = [cross[0] / len, cross[1] / len, cross[2] / len]
+        break
+      }
+    }
+    if (normal) break
+  }
+  // All edges are collinear -> all points lie on a line -> coplanar
+  if (!normal) return true
+  const plane_d = dot(normal, origin) as number
+  for (let idx = 1; idx < points.length; idx++) {
+    const dist = Math.abs((dot(normal, points[idx]) as number) - plane_d)
+    if (dist > tolerance) return false
+  }
+  return true
+}
+
+// Merge coplanar adjacent triangles in a flat non-indexed position array.
+// Takes 9 floats per triangle (3 vertices x 3 coords), groups adjacent coplanar
+// triangles via union-find, then re-triangulates each group with fan triangulation
+// to eliminate internal diagonal edges.
+export function merge_coplanar_triangles(
+  positions: Float32Array,
+  tolerance = 1e-4,
+): Float32Array {
+  const n_triangles = Math.floor(positions.length / 9)
+  if (n_triangles === 0) return new Float32Array(positions)
+
+  // === Step 1: Extract triangles and compute plane for each ===
+  type TriPlane = {
+    verts: [Vec3, Vec3, Vec3]
+    normal: Vec3
+    plane_d: number
+    degenerate: boolean
+  }
+  const tri_planes: TriPlane[] = []
+  for (let tri_idx = 0; tri_idx < n_triangles; tri_idx++) {
+    const base = tri_idx * 9
+    const va: Vec3 = [positions[base], positions[base + 1], positions[base + 2]]
+    const vb: Vec3 = [positions[base + 3], positions[base + 4], positions[base + 5]]
+    const vc: Vec3 = [positions[base + 6], positions[base + 7], positions[base + 8]]
+    const edge_ab: Vec3 = [vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]]
+    const edge_ac: Vec3 = [vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]]
+    const raw_normal = cross_3d(edge_ab, edge_ac)
+    const len = Math.hypot(raw_normal[0], raw_normal[1], raw_normal[2])
+    if (len < tolerance) {
+      tri_planes.push({
+        verts: [va, vb, vc],
+        normal: [0, 0, 0],
+        plane_d: 0,
+        degenerate: true,
+      })
+      continue
+    }
+    // Normalize and canonicalize: first non-zero component must be positive
+    let normal: Vec3 = [raw_normal[0] / len, raw_normal[1] / len, raw_normal[2] / len]
+    const CANON_EPS = 1e-12
+    const first_nonzero = Math.abs(normal[0]) > CANON_EPS
+      ? normal[0]
+      : Math.abs(normal[1]) > CANON_EPS
+      ? normal[1]
+      : normal[2]
+    if (first_nonzero < 0) normal = [-normal[0], -normal[1], -normal[2]]
+    const plane_d = dot(normal, va) as number
+    tri_planes.push({ verts: [va, vb, vc], normal, plane_d, degenerate: false })
+  }
+
+  // === Step 2: Build adjacency via edge hash map ===
+  // Quantize vertex to integer grid for hashing (only used for equality, not coords)
+  const vert_key = (v: Vec3): string =>
+    `${Math.round(v[0] / tolerance)},${Math.round(v[1] / tolerance)},${
+      Math.round(v[2] / tolerance)
+    }`
+  const edge_key = (va: Vec3, vb: Vec3): string => {
+    const ka = vert_key(va)
+    const kb = vert_key(vb)
+    return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
+  }
+  // Map edge -> list of triangle indices sharing that edge
+  const edge_to_tris = new Map<string, number[]>()
+  for (let tri_idx = 0; tri_idx < n_triangles; tri_idx++) {
+    const { verts, degenerate } = tri_planes[tri_idx]
+    if (degenerate) continue
+    const edges = [
+      edge_key(verts[0], verts[1]),
+      edge_key(verts[1], verts[2]),
+      edge_key(verts[0], verts[2]),
+    ]
+    for (const ek of edges) {
+      const existing = edge_to_tris.get(ek)
+      if (existing) existing.push(tri_idx)
+      else edge_to_tris.set(ek, [tri_idx])
+    }
+  }
+
+  // === Step 3: Union-Find grouping of coplanar adjacent triangles ===
+  const parent = new Int32Array(n_triangles)
+  const rank = new Int32Array(n_triangles)
+  for (let idx = 0; idx < n_triangles; idx++) parent[idx] = idx
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]] // path compression
+      x = parent[x]
+    }
+    return x
+  }
+  const union = (a: number, b: number): void => {
+    const ra = find(a), rb = find(b)
+    if (ra === rb) return
+    if (rank[ra] < rank[rb]) parent[ra] = rb
+    else if (rank[ra] > rank[rb]) parent[rb] = ra
+    else {
+      parent[rb] = ra
+      rank[ra]++
+    }
+  }
+  for (const tri_list of edge_to_tris.values()) {
+    if (tri_list.length !== 2) continue
+    const [idx_a, idx_b] = tri_list
+    const pa = tri_planes[idx_a]
+    const pb = tri_planes[idx_b]
+    if (pa.degenerate || pb.degenerate) continue
+    // Check coplanarity: same canonical normal direction AND same plane distance
+    const normal_dot = pa.normal[0] * pb.normal[0] + pa.normal[1] * pb.normal[1] +
+      pa.normal[2] * pb.normal[2]
+    if (Math.abs(normal_dot) < 1 - tolerance) continue
+    if (Math.abs(pa.plane_d - pb.plane_d) > tolerance) continue
+    union(idx_a, idx_b)
+  }
+
+  // === Step 4: Collect groups ===
+  const groups = new Map<number, number[]>()
+  for (let idx = 0; idx < n_triangles; idx++) {
+    const root = find(idx)
+    const group = groups.get(root)
+    if (group) group.push(idx)
+    else groups.set(root, [idx])
+  }
+
+  // === Step 5: Merge each group and re-triangulate ===
+  const output: number[] = []
+  // Push a triangle's 3 vertices (9 floats) to the output
+  const emit_tri = (va: Vec3, vb: Vec3, vc: Vec3): void => {
+    output.push(va[0], va[1], va[2], vb[0], vb[1], vb[2], vc[0], vc[1], vc[2])
+  }
+  const emit_original = (members: number[]): void => {
+    for (const tri_idx of members) {
+      const { verts } = tri_planes[tri_idx]
+      emit_tri(verts[0], verts[1], verts[2])
+    }
+  }
+  for (const members of groups.values()) {
+    if (members.length === 1) {
+      emit_original(members)
+      continue
+    }
+
+    const { normal } = tri_planes[members[0]]
+    // Collect all unique vertices from the group
+    const seen_keys = new Map<string, Vec3>()
+    for (const tri_idx of members) {
+      for (const vert of tri_planes[tri_idx].verts) {
+        const key = vert_key(vert)
+        if (!seen_keys.has(key)) seen_keys.set(key, vert)
+      }
+    }
+    const unique_verts = [...seen_keys.values()]
+    if (unique_verts.length < 3) {
+      emit_original(members)
+      continue
+    }
+
+    // Project to 2D using in-plane basis
+    const [u_vec, v_vec] = compute_in_plane_basis(normal)
+    const pts_2d: Vec2[] = unique_verts.map((vert) =>
+      [dot(u_vec, vert) as number, dot(v_vec, vert) as number] as Vec2
+    )
+
+    const hull = convex_hull_2d(pts_2d)
+    if (hull.length < 3) {
+      emit_original(members)
+      continue
+    }
+
+    // Map 2D hull vertices back to nearest 3D vertex
+    const hull_3d: Vec3[] = hull.map((pt) => {
+      let best_dist = Infinity
+      let best_idx = 0
+      for (let idx = 0; idx < pts_2d.length; idx++) {
+        const du = pts_2d[idx][0] - pt[0]
+        const dv = pts_2d[idx][1] - pt[1]
+        const dist = du * du + dv * dv
+        if (dist < best_dist) {
+          best_dist = dist
+          best_idx = idx
+        }
+      }
+      return unique_verts[best_idx]
+    })
+
+    // Fan-triangulate from hull vertex 0
+    for (let idx = 1; idx < hull_3d.length - 1; idx++) {
+      emit_tri(hull_3d[0], hull_3d[idx], hull_3d[idx + 1])
+    }
+  }
+
+  return new Float32Array(output)
+}
+
 // Compute axis-aligned bounding box of Vec3 vertices
 export function compute_bounding_box(vertices: Vec3[]): { min: Vec3; max: Vec3 } {
   if (vertices.length === 0) {
@@ -611,4 +854,133 @@ export function polygon_centroid(vertices: Vec2[]): Vec2 {
 
   const factor = 1 / (6 * signed_area)
   return [cx * factor, cy * factor]
+}
+
+// Solve linear system Ax = b via LU decomposition with partial pivoting.
+// Returns null if the system is singular (no unique solution).
+// Fast-paths for 2x2 (Cramer's rule) and 3x3 (matrix inverse).
+export function solve_linear_system(
+  A: number[][], // NxN coefficient matrix
+  b: number[], // N-element right-hand side
+): number[] | null {
+  const n = A.length
+  if (n === 0 || b.length !== n || !A.every((row) => row.length === n)) return null
+
+  // 2x2 fast path via Cramer's rule
+  if (n === 2) {
+    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0]
+    if (Math.abs(det) < EPS) return null
+    return [
+      (b[0] * A[1][1] - b[1] * A[0][1]) / det,
+      (A[0][0] * b[1] - A[1][0] * b[0]) / det,
+    ]
+  }
+
+  // 3x3 fast path via matrix inverse
+  if (n === 3) {
+    const det = det_3x3(A as Matrix3x3)
+    if (Math.abs(det) < EPS) return null
+    const inv = matrix_inverse_3x3(A as Matrix3x3)
+    return mat3x3_vec3_multiply(inv, b as Vec3) as number[]
+  }
+
+  // General NxN: LU decomposition with partial pivoting + forward/back substitution
+  const lu = A.map((row) => [...row])
+  const perm = Array.from({ length: n }, (_, idx) => idx)
+
+  for (let col = 0; col < n; col++) {
+    // Find pivot
+    let max_row = col
+    let max_val = Math.abs(lu[col][col])
+    for (let row = col + 1; row < n; row++) {
+      const val = Math.abs(lu[row][col])
+      if (val > max_val) {
+        max_val = val
+        max_row = row
+      }
+    }
+    if (max_val < EPS) return null // singular
+
+    // Swap rows
+    if (max_row !== col) {
+      ;[lu[col], lu[max_row]] = [lu[max_row], lu[col]]
+      ;[perm[col], perm[max_row]] = [perm[max_row], perm[col]]
+    }
+
+    // Eliminate below pivot
+    const pivot = lu[col][col]
+    for (let row = col + 1; row < n; row++) {
+      const factor = lu[row][col] / pivot
+      lu[row][col] = factor // store L factor in lower triangle
+      for (let k = col + 1; k < n; k++) {
+        lu[row][k] -= factor * lu[col][k]
+      }
+    }
+  }
+
+  // Apply permutation to b
+  const pb = perm.map((idx) => b[idx])
+
+  // Forward substitution (Ly = Pb)
+  for (let row = 1; row < n; row++) {
+    for (let col = 0; col < row; col++) {
+      pb[row] -= lu[row][col] * pb[col]
+    }
+  }
+
+  // Back substitution (Ux = y)
+  const x = new Array(n).fill(0)
+  for (let row = n - 1; row >= 0; row--) {
+    let sum = pb[row]
+    for (let col = row + 1; col < n; col++) {
+      sum -= lu[row][col] * x[col]
+    }
+    x[row] = sum / lu[row][row]
+  }
+
+  return x
+}
+
+// Full 2D convex hull via Andrew's monotone chain algorithm.
+// Returns vertices in counter-clockwise order.
+export function convex_hull_2d(points: Vec2[]): Vec2[] {
+  if (points.length < 3) return [...points]
+
+  const sorted = [...points].sort(
+    (a, b) => (a[0] - b[0]) || (a[1] - b[1]),
+  )
+
+  const cross = (o: Vec2, a: Vec2, b: Vec2): number =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+  // Lower hull
+  const lower: Vec2[] = []
+  for (const pt of sorted) {
+    while (
+      lower.length >= 2 &&
+      cross(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0
+    ) {
+      lower.pop()
+    }
+    lower.push(pt)
+  }
+
+  // Upper hull
+  const upper: Vec2[] = []
+  for (let idx = sorted.length - 1; idx >= 0; idx--) {
+    const pt = sorted[idx]
+    while (
+      upper.length >= 2 &&
+      cross(upper[upper.length - 2], upper[upper.length - 1], pt) <= 0
+    ) {
+      upper.pop()
+    }
+    upper.push(pt)
+  }
+
+  // Remove last point of each half (it's the first point of the other)
+  lower.pop()
+  upper.pop()
+
+  return [...lower, ...upper]
 }

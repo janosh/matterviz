@@ -121,6 +121,10 @@
       "types": "./dist/composition/index.d.ts",
       "default": "./dist/composition/index.js"
     },
+    "./chempot-diagram": {
+      "types": "./dist/chempot-diagram/index.d.ts",
+      "default": "./dist/chempot-diagram/index.js"
+    },
     "./colors": {
       "types": "./dist/colors/index.d.ts",
       "default": "./dist/colors/index.js"

@@ -77,7 +77,6 @@ describe(`pan_range + pixels_to_data_delta integration`, () => {
 })
 
 describe(`normalize_y2_sync`, () => {
-  // prettier-ignore
   it.each<
     { input: Y2SyncConfig | Y2SyncMode | undefined; expected: Y2SyncConfig; desc: string }
   >([
