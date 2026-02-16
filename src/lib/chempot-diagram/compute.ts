@@ -532,11 +532,11 @@ export function get_3d_domain_simplexes_and_ann_loc(
   const { unique, orig_indices } = dedup_points(points_3d)
 
   if (unique.length < 3) {
-    const center = unique[0] ?? points_3d[0] ?? [0, 0, 0]
     if (unique.length === 2) {
-      return { simplex_indices: [[orig_indices[0], orig_indices[1]]], ann_loc: center }
+      const midpoint = unique[0].map((val, dim) => (val + unique[1][dim]) / 2)
+      return { simplex_indices: [[orig_indices[0], orig_indices[1]]], ann_loc: midpoint }
     }
-    return { simplex_indices: [], ann_loc: center }
+    return { simplex_indices: [], ann_loc: unique[0] ?? points_3d[0] ?? [0, 0, 0] }
   }
 
   const { scores, eigenvectors } = simple_pca(unique, 2)
