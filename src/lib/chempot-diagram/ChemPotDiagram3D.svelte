@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { count_atoms_in_composition } from '$lib/composition'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
   import { toggle_fullscreen } from '$lib/layout'
@@ -8,6 +7,7 @@
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
+  import ChemPotScene3D from './ChemPotScene3D.svelte'
   import { scaleLinear } from 'd3-scale'
   import { onDestroy, onMount } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -15,14 +15,15 @@
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import {
     apply_element_padding,
+    build_axis_ranges,
     compute_chempot_diagram,
     formula_key_from_composition,
     get_3d_domain_simplexes_and_ann_loc,
+    get_energy_per_atom,
     pad_domain_points,
   } from './compute'
   import { CHEMPOT_DEFAULTS } from './types'
   import type {
-    AxisRangeData,
     ChemPotDiagramConfig,
     ChemPotHoverInfo,
     ChemPotHoverInfo3D,
@@ -79,7 +80,9 @@
     config.tooltip_detail_level ?? CHEMPOT_DEFAULTS.tooltip_detail_level,
   )
   const formula_colors = $derived(
-    config.formula_colors ?? CHEMPOT_DEFAULTS.formula_colors,
+    config.formula_colors?.length
+      ? config.formula_colors
+      : CHEMPOT_DEFAULTS.formula_colors,
   )
   const effective_config = $derived({
     ...config,
@@ -126,11 +129,12 @@
     return new THREE.Vector3(pt[1], pt[2], pt[0])
   }
 
-  // Compute diagram data
+  // Compute diagram data (requires >= 3 elements for 3D rendering)
   const diagram_data = $derived.by(() => {
-    if (entries.length < 2) return null
+    if (entries.length < 3) return null
     try {
-      return compute_chempot_diagram(entries, effective_config)
+      const data = compute_chempot_diagram(entries, effective_config)
+      return data.elements.length >= 3 ? data : null
     } catch (err) {
       console.error(`ChemPotDiagram3D:`, err)
       return null
@@ -230,25 +234,12 @@
     return result
   })
 
-  function get_entry_energy_per_atom(entry: PhaseData): number {
-    if (typeof entry.energy_per_atom === `number`) return entry.energy_per_atom
-    const atom_count = count_atoms_in_composition(entry.composition)
-    if (atom_count <= 0) {
-      throw new Error(
-        `Invalid composition with non-positive atom count: ${
-          JSON.stringify(entry.composition)
-        }`,
-      )
-    }
-    return entry.energy / atom_count
-  }
-
   const entry_energy_stats_by_formula = $derived.by(
     (): SvelteMap<string, FormulaEnergyStats> => {
       const stats_by_formula = new SvelteMap<string, FormulaEnergyStats>()
       for (const entry of entries) {
         const formula_key = formula_key_from_composition(entry.composition)
-        const energy_per_atom = get_entry_energy_per_atom(entry)
+        const energy_per_atom = get_energy_per_atom(entry)
         const existing = stats_by_formula.get(formula_key)
         if (!existing) {
           stats_by_formula.set(formula_key, {
@@ -275,33 +266,27 @@
   )
 
   // Compute data center and extent for camera positioning (in swizzled coords)
-  const data_center = $derived.by(() => {
+  const { data_center, data_extent } = $derived.by(() => {
     const pts = render_domains.flatMap((d) => d.points_3d)
-    if (pts.length === 0) return new THREE.Vector3(0, 0, 0)
+    if (pts.length === 0) {
+      return { data_center: new THREE.Vector3(0, 0, 0), data_extent: 10 }
+    }
+    // Compute center (swizzled: data[1]→X, data[2]→Y, data[0]→Z)
     let [sx, sy, sz] = [0, 0, 0]
     for (const pt of pts) {
-      sx += pt[1] // swizzle: data[1] → Three.js X
-      sy += pt[2] // swizzle: data[2] → Three.js Y (up)
-      sz += pt[0] // swizzle: data[0] → Three.js Z
+      sx += pt[1]
+      sy += pt[2]
+      sz += pt[0]
     }
     const n = pts.length
-    return new THREE.Vector3(sx / n, sy / n, sz / n)
-  })
-
-  const data_extent = $derived.by(() => {
-    const pts = render_domains.flatMap((d) => d.points_3d)
-    if (pts.length === 0) return 10
+    const center = new THREE.Vector3(sx / n, sy / n, sz / n)
+    // Compute max distance from center
     let max_dist = 0
     for (const pt of pts) {
-      const swizzled_pt = [pt[1], pt[2], pt[0]]
-      const dist = Math.hypot(
-        swizzled_pt[0] - data_center.x,
-        swizzled_pt[1] - data_center.y,
-        swizzled_pt[2] - data_center.z,
-      )
+      const dist = Math.hypot(pt[1] - center.x, pt[2] - center.y, pt[0] - center.z)
       if (dist > max_dist) max_dist = dist
     }
-    return Math.max(max_dist * 1.3, 1)
+    return { data_center: center, data_extent: Math.max(max_dist * 1.3, 1) }
   })
 
   // Compute domain boundary edges via axis-aligned 2D convex hull projection.
@@ -310,7 +295,6 @@
   // convex hull boundary. This reliably handles both flat and 3D domains.
   function get_domain_edges(
     pts: number[][],
-    formula: string,
   ): [number[], number[]][] {
     const unique = dedup_3d(pts)
     if (unique.length < 2) return []
@@ -318,7 +302,7 @@
     if (unique.length === 3) {
       return [[unique[0], unique[1]], [unique[1], unique[2]], [unique[0], unique[2]]]
     }
-    return get_2d_hull_edges(unique, formula)
+    return get_2d_hull_edges(unique)
   }
 
   function polygon_area_2d(points_2d: Vec2[]): number {
@@ -335,13 +319,10 @@
   // Compute domain edges from the single best axis-aligned projection
   // (largest non-degenerate hull area). Unioning multiple projections can add
   // non-physical diagonals for nearly coplanar domains.
+  // Called only from get_domain_edges with 4+ unique points
   function get_2d_hull_edges(
     pts: number[][],
-    _formula: string,
   ): [number[], number[]][] {
-    if (pts.length < 2) return []
-    if (pts.length === 2) return [[pts[0], pts[1]]]
-
     let selected_hull: Vec2[] = []
     let selected_coord_to_idx: SvelteMap<string, number> | null = null
     let selected_hull_area = -1
@@ -428,7 +409,7 @@
       if (domain.is_draw_formula) continue
       // Compute edges in swizzled (Three.js) coords since ConvexGeometry works there
       const swizzled = domain.points_3d.map((pt) => [pt[1], pt[2], pt[0]])
-      for (const [pa, pb] of get_domain_edges(swizzled, domain.formula)) {
+      for (const [pa, pb] of get_domain_edges(swizzled)) {
         const ka = pa.map((v) => v.toFixed(4)).join(`,`)
         const kb = pb.map((v) => v.toFixed(4)).join(`,`)
         const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
@@ -472,6 +453,7 @@
 
   // Build formula overlay edge geometries (per formula, colored) using crease edges
   const formula_edge_data = $derived.by(() => {
+    if (!draw_formula_lines || formulas_to_draw.length === 0) return []
     const result: { geometry: THREE.BufferGeometry; color: string }[] = []
     for (const domain of render_domains) {
       if (!domain.is_draw_formula) continue
@@ -479,7 +461,7 @@
         formula_colors.length
       const swizzled = domain.points_3d.map((pt) => [pt[1], pt[2], pt[0]])
       const positions: number[] = []
-      for (const [pa, pb] of get_domain_edges(swizzled, domain.formula)) {
+      for (const [pa, pb] of get_domain_edges(swizzled)) {
         positions.push(pa[0], pa[1], pa[2], pb[0], pb[1], pb[2])
       }
       const geom = new THREE.BufferGeometry()
@@ -509,19 +491,6 @@
     }
     return result
   })
-
-  function build_axis_ranges(points_3d: number[][]): AxisRangeData[] {
-    const axis_ranges: AxisRangeData[] = []
-    for (let axis_idx = 0; axis_idx < plot_elements.length; axis_idx++) {
-      const axis_vals = points_3d.map((point) => point[axis_idx])
-      axis_ranges.push({
-        element: plot_elements[axis_idx] ?? `\u03BC${axis_idx}`,
-        min_val: Math.min(...axis_vals),
-        max_val: Math.max(...axis_vals),
-      })
-    }
-    return axis_ranges
-  }
 
   function get_touches_limits(
     points_3d: number[][],
@@ -576,8 +545,8 @@
       const { geometry, n_vertices } = hover_geometry
 
       const swizzled_points = domain.points_3d.map((pt) => [pt[1], pt[2], pt[0]])
-      const edge_count = get_domain_edges(swizzled_points, domain.formula).length
-      const axis_ranges = build_axis_ranges(domain.points_3d)
+      const edge_count = get_domain_edges(swizzled_points).length
+      const axis_ranges = build_axis_ranges(domain.points_3d, plot_elements)
       const touches_limits = get_touches_limits(domain.points_3d, lims)
       const energy_stats = energy_stats_by_formula.get(domain.formula) ?? {
         matching_entry_count: 0,
@@ -800,30 +769,19 @@
     })
   })
 
-  function normalize_screen_angle_deg(angle_deg: number): number {
-    let normalized_angle = angle_deg
-    if (normalized_angle > 90) normalized_angle -= 180
-    if (normalized_angle < -90) normalized_angle += 180
-    return normalized_angle
-  }
-
   function update_axis_label_angles(camera: THREE.Camera): void {
     if (grid_config.length < 3) return
-    const next_angles = [...dynamic_axis_angle_deg]
     for (const axis_config of grid_config) {
       const start_ndc = new THREE.Vector3(...axis_config.axis_line_start).project(
         camera,
       )
       const end_ndc = new THREE.Vector3(...axis_config.axis_line_end).project(camera)
-      const angle_rad = Math.atan2(end_ndc.y - start_ndc.y, end_ndc.x - start_ndc.x)
-      const angle_deg = normalize_screen_angle_deg(
-        (angle_rad * 180) / Math.PI,
-      )
-      next_angles[axis_config.axis] = angle_deg
+      let angle_deg = Math.atan2(end_ndc.y - start_ndc.y, end_ndc.x - start_ndc.x) *
+        180 / Math.PI
+      if (angle_deg > 90) angle_deg -= 180
+      else if (angle_deg < -90) angle_deg += 180
+      dynamic_axis_angle_deg[axis_config.axis] = angle_deg
     }
-    dynamic_axis_angle_deg[0] = next_angles[0]
-    dynamic_axis_angle_deg[1] = next_angles[1]
-    dynamic_axis_angle_deg[2] = next_angles[2]
   }
 
   $effect(() => {
@@ -906,31 +864,30 @@
     }, `image/png`)
   }
 
+  function get_json_string(): string {
+    return JSON.stringify(
+      {
+        elements: diagram_data?.elements ?? [],
+        domains: render_domains.map((domain) => ({
+          formula: domain.formula,
+          points_3d: domain.points_3d,
+        })),
+        lims: diagram_data?.lims ?? [],
+      },
+      null,
+      2,
+    )
+  }
+
   function export_json_file(): void {
-    const payload = {
-      elements: diagram_data?.elements ?? [],
-      domains: render_domains.map((domain) => ({
-        formula: domain.formula,
-        points_3d: domain.points_3d,
-      })),
-      lims: diagram_data?.lims ?? [],
-    }
     download_blob(
-      new Blob([JSON.stringify(payload, null, 2)], { type: `application/json` }),
+      new Blob([get_json_string()], { type: `application/json` }),
       `chempot-diagram-3d.json`,
     )
   }
 
   async function copy_json(): Promise<void> {
-    const payload = {
-      elements: diagram_data?.elements ?? [],
-      domains: render_domains.map((domain) => ({
-        formula: domain.formula,
-        points_3d: domain.points_3d,
-      })),
-      lims: diagram_data?.lims ?? [],
-    }
-    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+    await navigator.clipboard.writeText(get_json_string())
     copy_status = true
     if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
     copy_timeout_id = setTimeout(() => {
@@ -941,6 +898,11 @@
 
   onDestroy(() => {
     if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
+    // Dispose GPU geometries created in $derived blocks
+    edge_geometry?.dispose()
+    occlusion_hull_geometry?.dispose()
+    for (const { geometry } of formula_edge_data) geometry.dispose()
+    for (const { geometry } of formula_mesh_data) geometry.dispose()
   })
 
   function get_pointer_coords(
@@ -986,29 +948,11 @@
     }
   }
 
-  function handle_phase_pointer_enter(
-    domain_data: HoverMeshData,
-    raw_event: unknown,
-  ): void {
-    const pointer = get_hover_pointer(raw_event)
-    hover_info = {
-      ...domain_data.info,
-      pointer: pointer ?? undefined,
-    }
-  }
-
-  function handle_phase_pointer_move(
-    domain_data: HoverMeshData,
-    raw_event: unknown,
-  ): void {
+  function handle_phase_hover(domain_data: HoverMeshData, raw_event: unknown): void {
     hover_info = {
       ...domain_data.info,
       pointer: get_hover_pointer(raw_event) ?? undefined,
     }
-  }
-
-  function handle_phase_pointer_leave(formula: string): void {
-    if (hover_info?.formula === formula) hover_info = null
   }
 </script>
 
@@ -1158,163 +1102,178 @@
     </div>
   {:else if mounted && typeof WebGLRenderingContext !== `undefined`}
     <Canvas>
-      <!-- Orthographic camera matching pymatgen's projection style -->
-      <T.OrthographicCamera
-        makeDefault
-        position={[
-          data_center.x + data_extent,
-          data_center.y + data_extent,
-          data_center.z + data_extent,
-        ]}
-        zoom={Math.min(render_width, render_height) / (data_extent * 1.6)}
-        near={0.1}
-        far={data_extent * 10}
-      >
-        <extras.OrbitControls
-          bind:ref={orbit_controls_ref}
-          enableRotate
-          enableZoom
-          enablePan
-          target={[data_center.x, data_center.y, data_center.z]}
-        />
-      </T.OrthographicCamera>
+      <ChemPotScene3D>
+        <!-- Orthographic camera matching pymatgen's projection style -->
+        <T.OrthographicCamera
+          makeDefault
+          position={[
+            data_center.x + data_extent,
+            data_center.y + data_extent,
+            data_center.z + data_extent,
+          ]}
+          zoom={Math.min(render_width, render_height) / (data_extent * 1.6)}
+          near={0.1}
+          far={data_extent * 10}
+        >
+          <extras.OrbitControls
+            bind:ref={orbit_controls_ref}
+            enableRotate
+            enableZoom
+            enablePan
+            target={[data_center.x, data_center.y, data_center.z]}
+          />
+        </T.OrthographicCamera>
 
-      <!-- Ambient light for visibility -->
-      <T.AmbientLight intensity={0.8} />
-      <T.DirectionalLight position={[1, 1, 1]} intensity={0.5} />
+        <!-- Ambient light for visibility -->
+        <T.AmbientLight intensity={0.8} />
+        <T.DirectionalLight position={[1, 1, 1]} intensity={0.5} />
 
-      <!-- Opaque convex hull of all domain vertices for depth occlusion.
+        <!-- Opaque convex hull of all domain vertices for depth occlusion.
            This seamless surface writes to the depth buffer so wireframe edges
            on the back side are hidden by WebGL depth testing. -->
-      {#if occlusion_hull_geometry}
-        <T.Mesh geometry={occlusion_hull_geometry}>
-          <T.MeshBasicMaterial
-            color={0xf6f6f6}
-            transparent
-            opacity={0.28}
-            side={THREE.DoubleSide}
-            polygonOffset
-            polygonOffsetFactor={1}
-            polygonOffsetUnits={1}
-          />
-        </T.Mesh>
-      {/if}
+        {#if occlusion_hull_geometry}
+          <T.Mesh geometry={occlusion_hull_geometry}>
+            <T.MeshBasicMaterial
+              color={0xf6f6f6}
+              transparent
+              opacity={0.28}
+              side={THREE.DoubleSide}
+              polygonOffset
+              polygonOffsetFactor={1}
+              polygonOffsetUnits={1}
+            />
+          </T.Mesh>
+        {/if}
 
-      <!-- Domain boundary edges (wireframe on top of opaque fills) -->
-      <T.LineSegments geometry={edge_geometry}>
-        <T.LineBasicMaterial color={0x333333} linewidth={1} />
-      </T.LineSegments>
+        <!-- Domain boundary edges (wireframe on top of opaque fills) -->
+        <T.LineSegments geometry={edge_geometry}>
+          <T.LineBasicMaterial color={0x333333} linewidth={1} />
+        </T.LineSegments>
 
-      <!-- Invisible pick meshes for per-phase hover tooltip -->
-      {#each hover_mesh_data as domain_hover (domain_hover.formula)}
-        <T.Mesh
-          geometry={domain_hover.geometry}
-          onpointerenter={(event: unknown) => handle_phase_pointer_enter(domain_hover, event)}
-          onpointermove={(event: unknown) => handle_phase_pointer_move(domain_hover, event)}
-          onpointerleave={() => handle_phase_pointer_leave(domain_hover.formula)}
-        >
-          <T.MeshBasicMaterial
-            transparent
-            opacity={0}
-            side={THREE.DoubleSide}
-            depthWrite={false}
-          />
-        </T.Mesh>
-      {/each}
-
-      <!-- Formula overlay meshes (semi-transparent colored fill) -->
-      {#each formula_mesh_data as { geometry, color } (color)}
-        <T.Mesh {geometry}>
-          <T.MeshBasicMaterial
-            color={new THREE.Color(color)}
-            transparent
-            opacity={0.13}
-            side={THREE.DoubleSide}
-            depthWrite={false}
-          />
-        </T.Mesh>
-      {/each}
-
-      <!-- Formula overlay edges (colored, thicker) -->
-      {#if draw_formula_lines}
-        {#each formula_edge_data as { geometry, color } (color)}
-          <T.LineSegments {geometry}>
-            <T.LineBasicMaterial color={new THREE.Color(color)} linewidth={2} />
-          </T.LineSegments>
+        <!-- Invisible pick meshes for per-phase hover tooltip -->
+        {#each hover_mesh_data as domain_hover (domain_hover.formula)}
+          <T.Mesh
+            geometry={domain_hover.geometry}
+            onpointerenter={(event: unknown) => handle_phase_hover(domain_hover, event)}
+            onpointermove={(event: unknown) => handle_phase_hover(domain_hover, event)}
+            onpointerleave={() => {
+              if (hover_info?.formula === domain_hover.formula) hover_info = null
+            }}
+          >
+            <T.MeshBasicMaterial
+              transparent
+              opacity={0}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
+          </T.Mesh>
         {/each}
-      {/if}
 
-      <!-- Background planes -->
-      {#each bg_planes as plane, idx (idx)}
-        <T.Mesh
-          position={plane.pos}
-          rotation={plane.rot}
-          renderOrder={-1}
-        >
-          <T.PlaneGeometry args={plane.size} />
-          <T.MeshBasicMaterial
-            color="#888"
-            opacity={0.04}
-            transparent
-            side={THREE.DoubleSide}
-            depthWrite={false}
-          />
-        </T.Mesh>
-      {/each}
+        <!-- Formula overlay meshes (semi-transparent colored fill) -->
+        {#each formula_mesh_data as { geometry, color }, mesh_idx (mesh_idx)}
+          <T.Mesh {geometry}>
+            <T.MeshBasicMaterial
+              color={new THREE.Color(color)}
+              transparent
+              opacity={0.13}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
+          </T.Mesh>
+        {/each}
 
-      <!-- Axes, ticks, grid lines, and labels -->
-      {#each grid_config as gc (gc.axis)}
-        <!-- Main axis line -->
-        <T.Line geometry={gc.line_geom}>
-          <T.LineBasicMaterial color={gc.color} linewidth={2} />
-        </T.Line>
-        <!-- Tick marks -->
-        {#each gc.tick_geoms as tick_geom, tdx (tdx)}
-          <T.Line geometry={tick_geom}>
-            <T.LineBasicMaterial color={gc.color} />
+        <!-- Formula overlay edges (colored, thicker) -->
+        {#if draw_formula_lines}
+          {#each formula_edge_data as { geometry, color }, edge_idx (edge_idx)}
+            <T.LineSegments {geometry}>
+              <T.LineBasicMaterial color={new THREE.Color(color)} linewidth={2} />
+            </T.LineSegments>
+          {/each}
+        {/if}
+
+        <!-- Background planes -->
+        {#each bg_planes as plane, idx (idx)}
+          <T.Mesh
+            position={plane.pos}
+            rotation={plane.rot}
+            renderOrder={-1}
+          >
+            <T.PlaneGeometry args={plane.size} />
+            <T.MeshBasicMaterial
+              color="#888"
+              opacity={0.04}
+              transparent
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
+          </T.Mesh>
+        {/each}
+
+        <!-- Axes, ticks, grid lines, and labels -->
+        {#each grid_config as gc (gc.axis)}
+          <!-- Main axis line -->
+          <T.Line geometry={gc.line_geom}>
+            <T.LineBasicMaterial color={gc.color} linewidth={2} />
           </T.Line>
-        {/each}
-        <!-- Grid lines -->
-        {#each gc.grid_geoms as grid_geom, gdx (gdx)}
-          <T.Line geometry={grid_geom}>
-            <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
-          </T.Line>
-        {/each}
-        <!-- Tick labels -->
-        {#each gc.tick_labels as tick (tick.text)}
-          <extras.HTML position={tick.pos} center portal={wrapper}>
+          <!-- Tick marks -->
+          {#each gc.tick_geoms as tick_geom, tdx (tdx)}
+            <T.Line geometry={tick_geom}>
+              <T.LineBasicMaterial color={gc.color} />
+            </T.Line>
+          {/each}
+          <!-- Grid lines -->
+          {#each gc.grid_geoms as grid_geom, gdx (gdx)}
+            <T.Line geometry={grid_geom}>
+              <T.LineBasicMaterial color="#888" opacity={0.3} transparent />
+            </T.Line>
+          {/each}
+          <!-- Tick labels -->
+          {#each gc.tick_labels as tick (tick.text)}
+            <extras.HTML
+              position={tick.pos}
+              center
+              portal={wrapper}
+              zIndexRange={[1, 0]}
+            >
+              <span
+                class="tick-label"
+                style:transform={`rotate(${dynamic_axis_angle_deg[gc.axis]}deg)`}
+              >
+                {tick.text}
+              </span>
+            </extras.HTML>
+          {/each}
+          <!-- Axis label -->
+          <extras.HTML
+            position={gc.label_pos}
+            center
+            portal={wrapper}
+            zIndexRange={[1, 0]}
+          >
             <span
-              class="tick-label"
+              class="axis-label"
+              style:color={gc.color}
               style:transform={`rotate(${dynamic_axis_angle_deg[gc.axis]}deg)`}
             >
-              {tick.text}
+              {gc.label}
             </span>
           </extras.HTML>
         {/each}
-        <!-- Axis label -->
-        <extras.HTML position={gc.label_pos} center portal={wrapper}>
-          <span
-            class="axis-label"
-            style:color={gc.color}
-            style:transform={`rotate(${dynamic_axis_angle_deg[gc.axis]}deg)`}
-          >
-            {gc.label}
-          </span>
-        </extras.HTML>
-      {/each}
 
-      <!-- Domain labels -->
-      {#if label_stable}
-        {#each render_domains as domain (domain.formula)}
-          <extras.HTML
-            position={[domain.ann_loc[1], domain.ann_loc[2], domain.ann_loc[0]]}
-            center
-            portal={wrapper}
-          >
-            <span class="domain-label">{domain.formula}</span>
-          </extras.HTML>
-        {/each}
-      {/if}
+        <!-- Domain labels -->
+        {#if label_stable}
+          {#each render_domains as domain (domain.formula)}
+            <extras.HTML
+              position={[domain.ann_loc[1], domain.ann_loc[2], domain.ann_loc[0]]}
+              center
+              portal={wrapper}
+              zIndexRange={[1, 0]}
+            >
+              <span class="domain-label">{domain.formula}</span>
+            </extras.HTML>
+          {/each}
+        {/if}
+      </ChemPotScene3D>
     </Canvas>
     {#if render_local_tooltip && show_tooltip && hover_info?.view === `3d`}
       <aside
@@ -1370,6 +1329,12 @@
   .chempot-diagram-3d {
     position: relative;
     overflow: hidden;
+  }
+  /* Threlte <extras.HTML portal={wrapper}> appends absolutely-positioned divs
+     directly to the wrapper. Without pointer-events: none, they intercept mouse
+     events and prevent the Three.js raycaster from detecting hover meshes. */
+  .chempot-diagram-3d > :global(div[style*='position: absolute'][style*='top: 0']) {
+    pointer-events: none !important;
   }
   .control-buttons {
     position: absolute;
@@ -1448,7 +1413,7 @@
     font-size: 12px;
     line-height: 1.35;
     pointer-events: none;
-    z-index: 30;
+    z-index: 100;
   }
   .phase-tooltip h4 {
     margin: 0 0 4px;

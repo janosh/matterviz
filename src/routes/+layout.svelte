@@ -60,33 +60,29 @@
     return typeof route_entry === `string` ? route_entry : route_entry[0]
   }
 
+  // Nest chempot-diagram as a child of convex-hull in the nav tree.
+  // If convex-hull is absent, keep chempot-diagram as a standalone route.
   function nest_chempot_under_convex_hull(route_entries: RouteEntry[]): RouteEntry[] {
     const chempot_path = `/chempot-diagram`
     const convex_hull_path = `/convex-hull`
-    let has_chempot = false
-
-    const without_chempot = route_entries.filter((route_entry) => {
-      const path = route_path(route_entry)
-      if (path !== chempot_path) return true
-      has_chempot = true
-      return false
-    })
-    if (!has_chempot) return without_chempot
-
-    let found_convex_hull = false
-    const nested_routes = without_chempot.map((route_entry) => {
-      if (route_path(route_entry) !== convex_hull_path) return route_entry
-      found_convex_hull = true
-      if (typeof route_entry === `string`) {
-        return [route_entry, [route_entry, chempot_path]] satisfies [string, string[]]
-      }
-      const [parent, children] = route_entry
-      if (children.includes(chempot_path)) return route_entry
-      return [parent, [...children, chempot_path]] satisfies [string, string[]]
-    })
-
-    if (found_convex_hull) return nested_routes
-    return nested_routes
+    const has_chempot = route_entries.some((entry) =>
+      route_path(entry) === chempot_path
+    )
+    const has_convex = route_entries.some((entry) =>
+      route_path(entry) === convex_hull_path
+    )
+    if (!has_chempot || !has_convex) return route_entries
+    return route_entries
+      .filter((entry) => route_path(entry) !== chempot_path)
+      .map((entry) => {
+        if (route_path(entry) !== convex_hull_path) return entry
+        if (typeof entry === `string`) {
+          return [entry, [entry, chempot_path]] satisfies [string, string[]]
+        }
+        const [parent, children] = entry
+        if (children.includes(chempot_path)) return entry
+        return [parent, [...children, chempot_path]] satisfies [string, string[]]
+      })
   }
 
   const nav_routes = $derived.by(() => {
