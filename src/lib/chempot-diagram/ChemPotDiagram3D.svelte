@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { get_hill_formula } from '$lib/composition/format'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
   import { toggle_fullscreen } from '$lib/layout'
@@ -453,6 +454,45 @@
     } catch {
       return null
     }
+  })
+
+  // Domains on the outer surface: annotation point NOT strictly inside the hull.
+  // Interior domains are hidden behind the surface and shouldn't show labels.
+  const surface_formulas = $derived.by((): SvelteSet<string> => {
+    const on_surface = new SvelteSet<string>()
+    if (!occlusion_hull_geometry) {
+      for (const domain of render_domains) on_surface.add(domain.formula)
+      return on_surface
+    }
+    // Raycast from each domain's centroid outward -- if it hits the hull,
+    // the centroid is inside (interior domain). Use multiple ray directions
+    // and count: if most hit, the point is interior.
+    const raycaster = new THREE.Raycaster()
+    const hull_mesh = new THREE.Mesh(occlusion_hull_geometry)
+    const directions = [
+      new THREE.Vector3(1, 0, 0),
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(0, 0, 1),
+      new THREE.Vector3(-1, 0, 0),
+      new THREE.Vector3(0, -1, 0),
+      new THREE.Vector3(0, 0, -1),
+    ]
+    for (const domain of render_domains) {
+      if (domain.is_draw_formula) {
+        on_surface.add(domain.formula)
+        continue
+      }
+      const origin = to_vec3(domain.ann_loc)
+      // Count how many rays hit the hull from the centroid
+      let hits = 0
+      for (const dir of directions) {
+        raycaster.set(origin, dir)
+        if (raycaster.intersectObject(hull_mesh).length > 0) hits++
+      }
+      // If fewer than 4 of 6 rays hit, centroid is on or near the surface
+      if (hits < 4) on_surface.add(domain.formula)
+    }
+    return on_surface
   })
 
   // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)
@@ -1489,16 +1529,21 @@
           {/if}
         {/each}
 
-        <!-- Domain labels -->
+        <!-- Domain labels (only for surface domains, not interior ones) -->
         {#if label_stable}
-          {#each render_domains as domain (domain.formula)}
+          {#each render_domains.filter((d) => surface_formulas.has(d.formula)) as
+            domain
+            (domain.formula)
+          }
             <extras.HTML
               position={[domain.ann_loc[1], domain.ann_loc[2], domain.ann_loc[0]]}
               center
               portal={wrapper}
               zIndexRange={[1, 0]}
             >
-              <span class="domain-label">{domain.formula}</span>
+              <span
+                class="domain-label"
+              >{@html get_hill_formula(domain.formula, false, ``)}</span>
             </extras.HTML>
           {/each}
         {/if}
@@ -1510,7 +1555,7 @@
         style:left="{hover_info.pointer?.x ?? 4}px"
         style:top="{hover_info.pointer?.y ?? 4}px"
       >
-        <h4>{hover_info.formula}</h4>
+        <h4>{@html get_hill_formula(hover_info.formula, false, ``)}</h4>
         <div class="meta-row">
           {hover_info.is_elemental ? `Elemental phase` : `Compound phase`}
           {#if hover_info.is_draw_formula}
