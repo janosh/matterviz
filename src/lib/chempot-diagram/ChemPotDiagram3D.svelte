@@ -1,11 +1,13 @@
 <script lang="ts">
+  import type { D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
+  import { extract_formula_elements } from '$lib/composition/parse'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
-  import { toggle_fullscreen } from '$lib/layout'
+  import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import { format_num } from '$lib/labels'
   import { convex_hull_2d, type Vec2 } from '$lib/math'
-  import { ScatterPlot3DControls } from '$lib/plot'
+  import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -16,7 +18,8 @@
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
-  import { scaleLinear } from 'd3-scale'
+  import { scaleLinear, scaleSequential } from 'd3-scale'
+  import * as d3_sc from 'd3-scale-chromatic'
   import { onDestroy, onMount } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three'
@@ -33,6 +36,7 @@
   } from './compute'
   import { CHEMPOT_DEFAULTS } from './types'
   import type {
+    ChemPotColorMode,
     ChemPotDiagramConfig,
     ChemPotHoverInfo,
     ChemPotHoverInfo3D,
@@ -83,6 +87,14 @@
   const draw_formula_lines = $derived(
     draw_formula_lines_override ??
       (config.draw_formula_lines ?? CHEMPOT_DEFAULTS.draw_formula_lines),
+  )
+  let color_mode_override = $state<ChemPotColorMode | null>(null)
+  let color_scale_override = $state<D3InterpolateName | null>(null)
+  const color_mode = $derived(
+    color_mode_override ?? (config.color_mode ?? CHEMPOT_DEFAULTS.color_mode),
+  )
+  const color_scale = $derived(
+    color_scale_override ?? (config.color_scale ?? CHEMPOT_DEFAULTS.color_scale),
   )
   const show_tooltip = $derived(config.show_tooltip ?? CHEMPOT_DEFAULTS.show_tooltip)
   const tooltip_detail_level = $derived(
@@ -280,6 +292,149 @@
     },
   )
 
+  // === Region coloring ===
+  // Categorical palette for arity mode (element count)
+  const arity_colors = [`#3498db`, `#2ecc71`, `#e67e22`, `#9b59b6`] as const
+
+  // Build a sequential color scale from a D3 interpolator name
+  function make_color_scale(
+    values: number[],
+    interpolator_name: D3InterpolateName,
+  ): ((val: number) => string) | null {
+    const finite = values.filter(Number.isFinite)
+    if (finite.length === 0) return null
+    const lo = Math.min(...finite)
+    const hi_raw = Math.max(...finite)
+    const hi = Math.max(hi_raw, lo + 1e-6)
+    const interp = (d3_sc as unknown as Record<string, (t: number) => string>)[
+      interpolator_name
+    ] ??
+      d3_sc.interpolateViridis
+    return scaleSequential(interp).domain([lo, hi])
+  }
+
+  // Per-domain color map keyed by formula
+  const domain_colors = $derived.by((): SvelteMap<string, string> => {
+    const colors = new SvelteMap<string, string>()
+    if (color_mode === `none`) return colors
+
+    if (color_mode === `arity`) {
+      for (const domain of render_domains) {
+        const n_elements = extract_formula_elements(domain.formula).length
+        const idx = Math.min(n_elements, arity_colors.length) - 1
+        colors.set(domain.formula, arity_colors[Math.max(0, idx)])
+      }
+      return colors
+    }
+
+    if (color_mode === `energy`) {
+      const values: number[] = []
+      const val_by_formula = new SvelteMap<string, number>()
+      for (const domain of render_domains) {
+        const stats = entry_energy_stats_by_formula.get(domain.formula)
+        if (stats?.min_energy_per_atom != null) {
+          values.push(stats.min_energy_per_atom)
+          val_by_formula.set(domain.formula, stats.min_energy_per_atom)
+        }
+      }
+      const scale = make_color_scale(values, color_scale)
+      for (const domain of render_domains) {
+        const val = val_by_formula.get(domain.formula)
+        colors.set(domain.formula, val != null && scale ? scale(val) : `#999`)
+      }
+      return colors
+    }
+
+    if (color_mode === `formation_energy`) {
+      const values: number[] = []
+      const val_by_formula = new SvelteMap<string, number>()
+      for (const domain of render_domains) {
+        const formula_key = domain.formula
+        // Find the minimum-energy entry matching this formula
+        let best_e_form: number | undefined
+        for (const entry of entries) {
+          if (formula_key_from_composition(entry.composition) !== formula_key) {
+            continue
+          }
+          if (entry.e_form_per_atom != null) {
+            if (best_e_form === undefined || entry.e_form_per_atom < best_e_form) {
+              best_e_form = entry.e_form_per_atom
+            }
+          }
+        }
+        if (best_e_form != null) {
+          values.push(best_e_form)
+          val_by_formula.set(formula_key, best_e_form)
+        }
+      }
+      const scale = make_color_scale(values, color_scale)
+      for (const domain of render_domains) {
+        const val = val_by_formula.get(domain.formula)
+        colors.set(domain.formula, val != null && scale ? scale(val) : `#999`)
+      }
+      return colors
+    }
+
+    if (color_mode === `entries`) {
+      const values: number[] = []
+      const val_by_formula = new SvelteMap<string, number>()
+      for (const domain of render_domains) {
+        const stats = entry_energy_stats_by_formula.get(domain.formula)
+        const count = stats?.matching_entry_count ?? 0
+        values.push(count)
+        val_by_formula.set(domain.formula, count)
+      }
+      const scale = make_color_scale(values, color_scale)
+      for (const domain of render_domains) {
+        const val = val_by_formula.get(domain.formula) ?? 0
+        colors.set(domain.formula, scale ? scale(val) : `#999`)
+      }
+      return colors
+    }
+
+    return colors
+  })
+
+  // Range and label for the color bar (null for none/arity which are categorical)
+  const color_range = $derived.by(
+    (): { min: number; max: number; label: string } | null => {
+      if (color_mode === `none` || color_mode === `arity`) return null
+      const values: number[] = []
+      for (const domain of render_domains) {
+        if (color_mode === `energy`) {
+          const stats = entry_energy_stats_by_formula.get(domain.formula)
+          if (stats?.min_energy_per_atom != null) {
+            values.push(stats.min_energy_per_atom)
+          }
+        } else if (color_mode === `formation_energy`) {
+          for (const entry of entries) {
+            if (
+              formula_key_from_composition(entry.composition) === domain.formula &&
+              entry.e_form_per_atom != null
+            ) {
+              values.push(entry.e_form_per_atom)
+              break
+            }
+          }
+        } else if (color_mode === `entries`) {
+          const stats = entry_energy_stats_by_formula.get(domain.formula)
+          if (stats) values.push(stats.matching_entry_count)
+        }
+      }
+      if (values.length === 0) return null
+      const labels: Record<string, string> = {
+        energy: `Energy per atom (eV)`,
+        formation_energy: `Formation energy (eV/atom)`,
+        entries: `Entry count`,
+      }
+      return {
+        min: Math.min(...values),
+        max: Math.max(...values, Math.min(...values) + 1e-6),
+        label: labels[color_mode] ?? ``,
+      }
+    },
+  )
+
   // Compute data center and extent for camera positioning (in swizzled coords)
   const { data_center, data_extent } = $derived.by(() => {
     const pts = render_domains.flatMap((d) => d.points_3d)
@@ -388,10 +543,22 @@
       const point_b = selected_hull[(idx + 1) % selected_hull.length]
       const point_a_idx = selected_coord_to_idx.get(
         `${point_a[0].toFixed(6)},${point_a[1].toFixed(6)}`,
-      ) ?? 0
+      )
       const point_b_idx = selected_coord_to_idx.get(
         `${point_b[0].toFixed(6)},${point_b[1].toFixed(6)}`,
-      ) ?? 0
+      )
+      if (
+        point_a_idx == null || point_b_idx == null || point_a_idx >= pts.length ||
+        point_b_idx >= pts.length
+      ) {
+        console.warn(`get_2d_hull_edges: invalid edge`, {
+          point_a,
+          point_b,
+          point_a_idx,
+          point_b_idx,
+        })
+        continue
+      }
       edges.push([pts[point_a_idx], pts[point_b_idx]])
     }
 
@@ -454,6 +621,64 @@
     } catch {
       return null
     }
+  })
+
+  // Flat-shaded, vertex-colored hull for gap-free domain coloring.
+  // Each face gets a uniform color from the nearest domain centroid.
+  // Rebuilt on color_mode/domain_colors change (infrequent user action).
+  const colored_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
+    if (!occlusion_hull_geometry) return null
+    // toNonIndexed gives each triangle its own 3 vertices for flat shading
+    const geom = occlusion_hull_geometry.toNonIndexed()
+    const pos = geom.getAttribute(`position`)
+    const n_faces = pos.count / 3
+    const colors_arr = new Float32Array(pos.count * 3)
+
+    // Domain centroids in swizzled (Three.js) coords
+    const centroids: { formula: string; cx: number; cy: number; cz: number }[] = []
+    for (const domain of render_domains) {
+      if (domain.is_draw_formula) continue
+      const ann = domain.ann_loc
+      centroids.push({ formula: domain.formula, cx: ann[1], cy: ann[2], cz: ann[0] })
+    }
+
+    const use_colors = color_mode !== `none` && domain_colors.size > 0
+    const fallback = new THREE.Color(use_colors ? 0xe8e8e8 : 0xf6f6f6)
+
+    for (let face_idx = 0; face_idx < n_faces; face_idx++) {
+      const base = face_idx * 3
+      let color = fallback
+      if (use_colors) {
+        const fcx = (pos.getX(base) + pos.getX(base + 1) + pos.getX(base + 2)) / 3
+        const fcy = (pos.getY(base) + pos.getY(base + 1) + pos.getY(base + 2)) / 3
+        const fcz = (pos.getZ(base) + pos.getZ(base + 1) + pos.getZ(base + 2)) / 3
+        let best_formula = ``
+        let best_dist = Infinity
+        for (const dc of centroids) {
+          const dist = (fcx - dc.cx) ** 2 + (fcy - dc.cy) ** 2 + (fcz - dc.cz) ** 2
+          if (dist < best_dist) {
+            best_dist = dist
+            best_formula = dc.formula
+          }
+        }
+        const hex = best_formula ? domain_colors.get(best_formula) : null
+        if (hex) color = new THREE.Color(hex)
+      }
+      for (let vi = 0; vi < 3; vi++) {
+        const idx = (base + vi) * 3
+        colors_arr[idx] = color.r
+        colors_arr[idx + 1] = color.g
+        colors_arr[idx + 2] = color.b
+      }
+    }
+
+    geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors_arr, 3))
+    return geom
+  })
+
+  $effect(() => {
+    const geom = colored_hull_geometry
+    return () => dispose_geometry(geom)
   })
 
   // Domains on the outer surface: annotation point NOT strictly inside the hull.
@@ -939,11 +1164,15 @@
     if (controls.target) {
       controls.target.set(data_center.x, data_center.y, data_center.z)
     }
-    controls.object.lookAt(data_center)
+    controls.object?.lookAt(data_center)
     controls.update?.()
     controls.addEventListener(`change`, update_backside)
     update_backside()
     return () => controls.removeEventListener(`change`, update_backside)
+  })
+
+  $effect(() => {
+    set_fullscreen_bg(wrapper, fullscreen, `--chempot-3d-bg-fullscreen`)
   })
 
   $effect(() => {
@@ -1075,6 +1304,8 @@
     default_min_limit_override = null
     draw_formula_meshes_override = null
     draw_formula_lines_override = null
+    color_mode_override = null
+    color_scale_override = null
   }
 
   function download_blob(blob: Blob, filename: string): void {
@@ -1086,12 +1317,47 @@
     URL.revokeObjectURL(url)
   }
 
+  let png_dpi = $state(150)
+
   function export_png_file(): void {
-    const canvas = wrapper?.querySelector(`canvas`)
-    if (!(canvas instanceof HTMLCanvasElement)) return
-    canvas.toBlob((blob) => {
+    if (!wrapper) return
+    const gl_canvas = wrapper.querySelector(`canvas`)
+    if (!(gl_canvas instanceof HTMLCanvasElement)) return
+
+    // Composite WebGL canvas + HTML overlay labels into a single image
+    const rect = gl_canvas.getBoundingClientRect()
+    const scale = Math.min(png_dpi / 72, 10)
+    const out = document.createElement(`canvas`)
+    out.width = Math.round(rect.width * scale)
+    out.height = Math.round(rect.height * scale)
+    const ctx = out.getContext(`2d`)
+    if (!ctx) return
+    ctx.scale(scale, scale)
+
+    // Draw the WebGL canvas as background
+    ctx.drawImage(gl_canvas, 0, 0, rect.width, rect.height)
+
+    // Draw all HTML overlay text (tick labels, axis labels, domain labels)
+    const canvas_rect = gl_canvas.getBoundingClientRect()
+    for (
+      const el of wrapper.querySelectorAll(`.tick-label, .axis-label, .domain-label`)
+    ) {
+      const html_el = el as HTMLElement
+      const style = getComputedStyle(html_el)
+      if (style.display === `none` || style.visibility === `hidden`) continue
+      const el_rect = html_el.getBoundingClientRect()
+      const x = el_rect.left + el_rect.width / 2 - canvas_rect.left
+      const y = el_rect.top + el_rect.height / 2 - canvas_rect.top
+      ctx.font = style.font || `${style.fontSize} ${style.fontFamily}`
+      ctx.fillStyle = style.color || `#333`
+      ctx.textAlign = `center`
+      ctx.textBaseline = `middle`
+      ctx.fillText(html_el.textContent ?? ``, x, y)
+    }
+
+    out.toBlob((blob) => {
       if (!blob) return
-      download_blob(blob, `chempot-diagram-3d.png`)
+      download_blob(blob, `chempot-${plot_elements.join(`-`)}.png`)
     }, `image/png`)
   }
 
@@ -1113,13 +1379,18 @@
   function export_json_file(): void {
     download_blob(
       new Blob([get_json_string()], { type: `application/json` }),
-      `chempot-diagram-3d.json`,
+      `chempot-${plot_elements.join(`-`)}.json`,
     )
   }
 
   async function copy_json(): Promise<void> {
-    await navigator.clipboard.writeText(get_json_string())
-    copy_status = true
+    try {
+      await navigator.clipboard.writeText(get_json_string())
+      copy_status = true
+    } catch (err) {
+      copy_status = false
+      console.error(`Failed to copy JSON to clipboard:`, err)
+    }
     if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
     copy_timeout_id = setTimeout(() => {
       copy_status = false
@@ -1211,9 +1482,17 @@
       <h4>Export Image</h4>
       <label>
         PNG
-        <button type="button" onclick={export_png_file} aria-label="Download PNG">
+        <button type="button" onclick={export_png_file} title="PNG ({png_dpi} DPI)">
           ⬇
         </button>
+        &nbsp;(DPI: <input
+          type="number"
+          min={50}
+          max={500}
+          bind:value={png_dpi}
+          title="Export resolution in dots per inch"
+          style="margin: 0 0 0 2pt"
+        />)
       </label>
       <h4>Export Data</h4>
       <label>
@@ -1245,72 +1524,103 @@
       }}
       pane_props={{ class: `chempot-controls-pane` }}
     >
-      <h4>ChemPot Controls</h4>
-      <label>
-        <span>Formal chempots:</span>
-        <input
-          type="checkbox"
-          checked={formal_chempots}
-          onchange={() => {
-            formal_chempots_override = !formal_chempots
-          }}
-        />
-      </label>
-      <label>
-        <span>Label stable phases:</span>
-        <input
-          type="checkbox"
-          checked={label_stable}
-          onchange={() => {
-            label_stable_override = !label_stable
-          }}
-        />
-      </label>
-      <label>
-        <span>Element padding (eV):</span>
-        <input
-          type="number"
-          min="0"
-          step="0.1"
-          value={element_padding}
-          oninput={(event) => {
-            element_padding_override = Number(event.currentTarget.value)
-          }}
-        />
-      </label>
-      <label>
-        <span>Default min limit (eV):</span>
-        <input
-          type="number"
-          max="0"
-          step="1"
-          value={default_min_limit}
-          oninput={(event) => {
-            default_min_limit_override = Number(event.currentTarget.value)
-          }}
-        />
-      </label>
-      <label>
-        <span>Draw overlay meshes:</span>
-        <input
-          type="checkbox"
-          checked={draw_formula_meshes}
-          onchange={() => {
-            draw_formula_meshes_override = !draw_formula_meshes
-          }}
-        />
-      </label>
-      <label>
-        <span>Draw overlay lines:</span>
-        <input
-          type="checkbox"
-          checked={draw_formula_lines}
-          onchange={() => {
-            draw_formula_lines_override = !draw_formula_lines
-          }}
-        />
-      </label>
-      <button type="button" onclick={reset_controls}>Reset to config defaults</button>
+      <SettingsSection
+        title="ChemPot"
+        current_values={{
+          formal_chempots,
+          label_stable,
+          element_padding,
+          default_min_limit,
+          draw_formula_meshes,
+          draw_formula_lines,
+          color_mode,
+        }}
+        on_reset={reset_controls}
+      >
+        <div class="chempot-checks">
+          <label>
+            <input
+              type="checkbox"
+              checked={formal_chempots}
+              onchange={() => {
+                formal_chempots_override = !formal_chempots
+              }}
+            /> Formal
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={label_stable}
+              onchange={() => {
+                label_stable_override = !label_stable
+              }}
+            /> Labels
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={draw_formula_meshes}
+              onchange={() => {
+                draw_formula_meshes_override = !draw_formula_meshes
+              }}
+            /> Meshes
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={draw_formula_lines}
+              onchange={() => {
+                draw_formula_lines_override = !draw_formula_lines
+              }}
+            /> Lines
+          </label>
+        </div>
+        <div class="chempot-nums">
+          <label>
+            Pad (eV)
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              value={element_padding}
+              oninput={(event) => {
+                element_padding_override = Number(event.currentTarget.value)
+              }}
+            />
+          </label>
+          <label>
+            Min (eV)
+            <input
+              type="number"
+              max="0"
+              step="1"
+              value={default_min_limit}
+              oninput={(event) => {
+                default_min_limit_override = Number(
+                  event.currentTarget.value,
+                )
+              }}
+            />
+          </label>
+        </div>
+        <div class="pane-row">
+          <label for="chempot-color-mode">Color:</label>
+          <select
+            id="chempot-color-mode"
+            value={color_mode}
+            onchange={(event) => {
+              color_mode_override = event.currentTarget
+                .value as ChemPotColorMode
+            }}
+          >
+            <option value="none">None</option>
+            <option value="energy">Energy/atom</option>
+            <option value="formation_energy">Formation E</option>
+            <option value="arity">Element count</option>
+            <option value="entries">Entry count</option>
+          </select>
+        </div>
+      </SettingsSection>
     </ScatterPlot3DControls>
 
     <button
@@ -1328,7 +1638,15 @@
       <p>Need at least 2 elements with elemental reference entries.</p>
     </div>
   {:else if mounted && typeof WebGLRenderingContext !== `undefined`}
-    <Canvas>
+    <Canvas
+      createRenderer={(cvs) =>
+      new THREE.WebGLRenderer({
+        canvas: cvs,
+        alpha: true,
+        antialias: true,
+        preserveDrawingBuffer: true,
+      })}
+    >
       <ChemPotScene3D>
         {#if camera_projection === `orthographic`}
           <!-- Orthographic camera matching pymatgen's projection style -->
@@ -1381,21 +1699,24 @@
         <T.AmbientLight intensity={0.8} />
         <T.DirectionalLight position={[1, 1, 1]} intensity={0.5} />
 
-        <!-- Opaque convex hull of all domain vertices for depth occlusion.
-           This seamless surface writes to the depth buffer so wireframe edges
-           on the back side are hidden by WebGL depth testing. -->
-        {#if occlusion_hull_geometry}
-          <T.Mesh geometry={occlusion_hull_geometry}>
-            <T.MeshBasicMaterial
-              color={0xf6f6f6}
-              transparent
-              opacity={0.28}
-              side={THREE.DoubleSide}
-              polygonOffset
-              polygonOffsetFactor={1}
-              polygonOffsetUnits={1}
-            />
-          </T.Mesh>
+        <!-- Vertex-colored hull for both plain and colored modes.
+           {#key color_mode} forces Threlte to re-create the mesh when the
+           color mode changes, since on-demand rendering won't detect new
+           vertex color buffers on an existing geometry object. -->
+        {#if colored_hull_geometry}
+          {#key color_mode}
+            <T.Mesh geometry={colored_hull_geometry}>
+              <T.MeshBasicMaterial
+                vertexColors
+                transparent
+                opacity={color_mode === `none` ? 0.28 : 0.7}
+                side={THREE.DoubleSide}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+              />
+            </T.Mesh>
+          {/key}
         {/if}
 
         <!-- Domain boundary edges (wireframe on top of opaque fills) -->
@@ -1507,7 +1828,7 @@
           {/if}
           {#if display.show_axis_labels}
             <!-- Tick labels (billboarded, always face camera) -->
-            {#each gc.tick_labels as tick (tick.text)}
+            {#each gc.tick_labels as tick, tick_idx (tick_idx)}
               <extras.HTML
                 position={tick.pos}
                 center
@@ -1596,12 +1917,37 @@
         {/if}
       </aside>
     {/if}
+    <!-- Color bar for continuous modes -->
+    {#if color_mode !== `none` && color_mode !== `arity` && color_range}
+      <ColorBar
+        title={color_range.label}
+        range={[color_range.min, color_range.max]}
+        {color_scale}
+        wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
+        bar_style="height: 12px;"
+        title_style="margin-bottom: 4px;"
+      />
+    {/if}
+    <!-- Categorical legend for arity mode -->
+    {#if color_mode === `arity`}
+      <div class="arity-legend">
+        {#each [`Unary`, `Binary`, `Ternary`, `4+`] as label, idx (label)}
+          <span class="arity-item">
+            <span class="arity-dot" style:background={arity_colors[idx]}></span>
+            {label}
+          </span>
+        {/each}
+      </div>
+    {/if}
   {/if}
 </div>
 
 <style>
   .chempot-diagram-3d {
     position: relative;
+  }
+  .chempot-diagram-3d:fullscreen {
+    background: var(--chempot-3d-bg-fullscreen, var(--bg-color, #fff));
     overflow: hidden;
   }
   /* Threlte <extras.HTML portal={wrapper}> appends absolutely-positioned divs
@@ -1637,15 +1983,27 @@
   .chempot-diagram-3d :global(.draggable-pane label) {
     display: flex;
     align-items: center;
-    gap: 6pt;
+    gap: 4pt;
+    font-size: 0.9em;
+  }
+  .chempot-diagram-3d :global(.chempot-checks) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1ex;
+  }
+  .chempot-diagram-3d :global(.chempot-nums) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1ex;
     margin: 4pt 0;
-    font-size: 0.95em;
   }
-  .chempot-diagram-3d :global(.draggable-pane label > span) {
-    min-width: 10em;
+  .chempot-diagram-3d :global(.chempot-nums input[type='number']) {
+    width: 5em;
   }
-  .chempot-diagram-3d :global(.draggable-pane input[type='number']) {
-    width: 6em;
+  .chempot-diagram-3d :global(.draggable-pane select) {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 4px;
   }
   .error-state {
     display: flex;
@@ -1706,5 +2064,26 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .arity-legend {
+    position: absolute;
+    bottom: 16px;
+    left: 1em;
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .arity-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .arity-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 </style>

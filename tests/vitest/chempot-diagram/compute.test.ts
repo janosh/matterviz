@@ -12,6 +12,7 @@ import {
   build_border_hyperplanes,
   build_hyperplanes,
   compute_chempot_diagram,
+  compute_domains,
   dedup_points,
   formula_key_from_composition,
   get_3d_domain_simplexes_and_ann_loc,
@@ -1120,10 +1121,28 @@ describe(`dedup_points`, () => {
       label: `empty`,
     },
     { pts: [[5, 6, 7]], tol: 1e-4, n_unique: 1, indices: [0], label: `single point` },
+    {
+      pts: [[0, 0], [1e-7, 1e-7], [0.001, 0.001]],
+      tol: 1e-6,
+      n_unique: 2,
+      indices: [0, 2],
+      label: `sub-tolerance pair merged, distant point kept`,
+    },
+    {
+      pts: [[1, 2], [3, 4], [1, 2], [5, 6], [3, 4]],
+      tol: 1e-4,
+      n_unique: 3,
+      indices: [0, 1, 3],
+      label: `multiple duplicates scattered`,
+    },
   ])(`$label → $n_unique unique`, ({ pts, tol, n_unique, indices }) => {
     const result = dedup_points(pts, tol)
     expect(result.unique.length).toBe(n_unique)
     expect(result.orig_indices).toEqual(indices)
+    // unique points should match the points at orig_indices
+    for (let idx = 0; idx < result.unique.length; idx++) {
+      expect(result.unique[idx]).toEqual(pts[result.orig_indices[idx]])
+    }
   })
 })
 
@@ -1164,19 +1183,53 @@ describe(`formula_key_from_composition`, () => {
 
 // === get_3d_domain_simplexes_and_ann_loc ===
 
+// Helper: verify all edge indices are in [0, n_pts) and distinct within each edge
+function assert_valid_edges(
+  result: { simplex_indices: number[][] },
+  n_pts: number,
+): void {
+  for (const [idx_a, idx_b] of result.simplex_indices) {
+    expect(idx_a).toBeGreaterThanOrEqual(0)
+    expect(idx_a).toBeLessThan(n_pts)
+    expect(idx_b).toBeGreaterThanOrEqual(0)
+    expect(idx_b).toBeLessThan(n_pts)
+    expect(idx_a).not.toBe(idx_b)
+  }
+}
+
 describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
   test.each([
-    { pts: [[1, 2, 3]], n_edges: 0, label: `single point` },
-    { pts: [[0, 0, 0], [10, 0, 0], [5, 10, 0]], n_edges: 3, label: `triangle` },
+    { pts: [] as number[][], n_edges: 0, ann_loc: [0, 0, 0], label: `empty` },
+    { pts: [[1, 2, 3]], n_edges: 0, ann_loc: [1, 2, 3], label: `single point` },
+    {
+      pts: [[5, 5, 5], [5, 5, 5], [5, 5, 5]],
+      n_edges: 0,
+      ann_loc: [5, 5, 5],
+      label: `all duplicates`,
+    },
+    {
+      pts: [[0, 0, 0], [10, 0, 0], [5, 10, 0]],
+      n_edges: 3,
+      ann_loc: null,
+      label: `triangle`,
+    },
     {
       pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0]],
       n_edges: 4,
+      ann_loc: null,
       label: `square`,
     },
-    { pts: [] as number[][], n_edges: 0, label: `empty` },
-  ])(`$label → $n_edges edges`, ({ pts, n_edges }) => {
+    {
+      pts: [[0, 0, 0], [10, 0, 0], [12, 8, 0], [5, 14, 0], [-2, 8, 0]],
+      n_edges: 5,
+      ann_loc: null,
+      label: `pentagon`,
+    },
+  ])(`$label → $n_edges edges`, ({ pts, n_edges, ann_loc }) => {
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
     expect(result.simplex_indices.length).toBe(n_edges)
+    if (ann_loc) expect(result.ann_loc).toEqual(ann_loc)
+    if (n_edges > 0) assert_valid_edges(result, pts.length)
   })
 
   test(`two points returns midpoint ann_loc`, () => {
@@ -1188,16 +1241,173 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
   })
 
   test(`dedup maps indices to first occurrences`, () => {
+    // Dups at 3,4 → 3 unique points → 3 triangle edges referencing indices <= 2
     const pts = [[0, 0, 0], [10, 0, 0], [5, 10, 0], [0, 0, 0], [10, 0, 0]]
-    const all_indices = get_3d_domain_simplexes_and_ann_loc(pts).simplex_indices.flat()
-    expect(all_indices.every((idx) => idx <= 2)).toBe(true)
+    const result = get_3d_domain_simplexes_and_ann_loc(pts)
+    expect(result.simplex_indices.length).toBe(3)
+    expect(result.simplex_indices.flat().every((idx) => idx <= 2)).toBe(true)
+    assert_valid_edges(result, pts.length)
   })
 
-  test(`empty fallback is origin`, () => {
-    expect(get_3d_domain_simplexes_and_ann_loc([]).ann_loc).toEqual([0, 0, 0])
+  test(`dup at non-zero position maps to correct original indices`, () => {
+    // Dup at idx 1 → orig_indices = [0, 2, 3], edges must skip index 1
+    const pts = [[5, 10, 0], [5, 10, 0], [0, 0, 0], [10, 0, 0]]
+    const result = get_3d_domain_simplexes_and_ann_loc(pts)
+    expect(new Set(result.simplex_indices.flat())).toEqual(new Set([0, 2, 3]))
   })
 
-  test(`single point ann_loc equals input`, () => {
-    expect(get_3d_domain_simplexes_and_ann_loc([[1, 2, 3]]).ann_loc).toEqual([1, 2, 3])
+  test(`nearly collinear 3D points produce valid edges`, () => {
+    const pts = [[0, 0, 0], [10, 0.001, 0], [5, 0.0005, 0], [20, 0.002, 0]]
+    const result = get_3d_domain_simplexes_and_ann_loc(pts)
+    expect(result.simplex_indices.length).toBeGreaterThanOrEqual(1)
+    assert_valid_edges(result, pts.length)
+  })
+})
+
+// === Domain edge indices from real diagram data ===
+
+describe.each([
+  { label: `ternary (Fe-Li-O)`, domains: cpd_ternary.domains },
+  {
+    label: `YTOS projection (O-Ti-Y)`,
+    domains: compute_chempot_diagram(ytos_entries, {
+      elements: [`O`, `Ti`, `Y`],
+      default_min_limit: -25,
+      formal_chempots: true,
+    }).domains,
+  },
+])(`domain edge indices: $label`, ({ domains }) => {
+  test(`all simplex indices reference valid points`, () => {
+    for (const [formula, pts] of Object.entries(domains)) {
+      const result = get_3d_domain_simplexes_and_ann_loc(pts)
+      for (const [idx_a, idx_b] of result.simplex_indices) {
+        expect(idx_a, `${formula}: idx_a=${idx_a} >= ${pts.length}`).toBeLessThan(
+          pts.length,
+        )
+        expect(idx_b, `${formula}: idx_b=${idx_b} >= ${pts.length}`).toBeLessThan(
+          pts.length,
+        )
+      }
+    }
+  })
+})
+
+// === compute_domains (vertex enumeration) ===
+
+describe(`compute_domains`, () => {
+  const ab_refs: Record<string, PhaseData> = {
+    A: make_entry({ A: 1 }, -2.0),
+    B: make_entry({ B: 1 }, -3.0),
+  }
+  const border = build_border_hyperplanes([[-20, 0], [-20, 0]])
+
+  function make_ab_domains(ab_energy_per_atom: number) {
+    const { hyperplanes, hyperplane_entries } = build_hyperplanes(
+      [ab_refs.A, ab_refs.B, make_entry({ A: 1, B: 1 }, ab_energy_per_atom)],
+      ab_refs,
+      [`A`, `B`],
+    )
+    return {
+      domains: compute_domains(hyperplanes, border, hyperplane_entries, 2),
+      hyperplanes,
+    }
+  }
+
+  test(`stable compound → 3 domains with valid vertices`, () => {
+    const { domains, hyperplanes } = make_ab_domains(-6.0)
+    expect(Object.keys(domains).sort()).toEqual([`A`, `AB`, `B`])
+    for (const pts of Object.values(domains)) {
+      expect(pts.length).toBeGreaterThanOrEqual(2)
+    }
+    // All vertices satisfy all halfspace constraints
+    const all_hs = [...hyperplanes, ...border]
+    for (const [formula, pts] of Object.entries(domains)) {
+      for (const pt of pts) {
+        for (const hs of all_hs) {
+          const val = hs[0] * pt[0] + hs[1] * pt[1] + hs[2]
+          expect(val, `Vertex of ${formula} violates halfspace`).toBeLessThanOrEqual(1e-4)
+        }
+      }
+    }
+  })
+
+  test(`unstable compound → no domain for AB`, () => {
+    // AB with E_per_atom = -2.0 is above hull → no stability domain
+    const { domains } = make_ab_domains(-2.0)
+    expect(domains[`AB`]).toBeUndefined()
+  })
+})
+
+// === compute_chempot_diagram edge cases ===
+
+describe(`compute_chempot_diagram edge cases`, () => {
+  test(`custom limits restrict domain vertices`, () => {
+    const result = compute_chempot_diagram([
+      make_entry({ A: 1 }, -2.0),
+      make_entry({ B: 1 }, -3.0),
+      make_entry({ A: 1, B: 1 }, -6.0),
+    ], { default_min_limit: -20, limits: { A: [-5, 0] }, formal_chempots: false })
+    for (const pts of Object.values(result.domains)) {
+      for (const pt of pts) {
+        expect(pt[0]).toBeGreaterThanOrEqual(-5 - 1e-4)
+      }
+    }
+  })
+
+  test(`config.elements reorders axes`, () => {
+    const reordered = compute_chempot_diagram(entries, {
+      elements: [`O`, `Fe`, `Li`],
+      default_min_limit: -25,
+      formal_chempots: false,
+    })
+    expect(reordered.elements).toEqual([`O`, `Fe`, `Li`])
+    // Same domains as default order, just reordered columns
+    expect(Object.keys(reordered.domains).sort()).toEqual(
+      Object.keys(cpd_ternary.domains).sort(),
+    )
+    // Verify axes actually swapped: Fe domain's O-axis range (col 0 in reordered)
+    // should match its col 2 range in default [Fe,Li,O] order
+    const fe_reordered = dedup_vertices(reordered.domains[`Fe`])
+    const fe_default = dedup_vertices(cpd_ternary.domains[`Fe`])
+    const re_o_vals = fe_reordered.map((pt) => pt[0]).sort()
+    const def_o_vals = fe_default.map((pt) => pt[2]).sort() // O is axis 2 in default
+    expect(re_o_vals.length).toBe(def_o_vals.length)
+    for (let idx = 0; idx < re_o_vals.length; idx++) {
+      expect(re_o_vals[idx]).toBeCloseTo(def_o_vals[idx], 4)
+    }
+  })
+
+  test(`config.elements with unknown element throws`, () => {
+    expect(() =>
+      compute_chempot_diagram([
+        make_entry({ A: 1 }, -1.0),
+        make_entry({ B: 1 }, -2.0),
+      ], { elements: [`A`, `C`] })
+    ).toThrow(`Missing elemental reference`)
+  })
+
+  test(`identical polymorphs keep one domain`, () => {
+    const result = compute_chempot_diagram([
+      make_entry({ A: 1 }, -2.0),
+      make_entry({ A: 1 }, -2.0),
+      make_entry({ B: 1 }, -3.0),
+    ], { default_min_limit: -10, formal_chempots: false })
+    expect(Object.keys(result.domains).sort()).toEqual([`A`, `B`])
+  })
+
+  test.each([
+    { elements: [`Ti`, `S`, `Y`], n_axes: 3, label: `3-axis projection` },
+    { elements: [`Ti`, `Y`], n_axes: 2, label: `2-axis projection` },
+  ])(`4-element YTOS → $label`, ({ elements, n_axes }) => {
+    const result = compute_chempot_diagram(ytos_entries, {
+      elements,
+      default_min_limit: -25,
+      formal_chempots: true,
+    })
+    expect(result.elements).toEqual(elements)
+    expect(result.lims.length).toBe(n_axes)
+    for (const pts of Object.values(result.domains)) {
+      for (const pt of pts) expect(pt.length).toBe(n_axes)
+    }
   })
 })

@@ -4,6 +4,7 @@
   import { decompress_data } from '$lib/io/decompress'
   import li_fe_o_entries_url from '$site/chempot-diagram/li-fe-o-entries.json.gz?url'
   import ytos_entries_url from '$site/chempot-diagram/ytos_entries.json.gz?url'
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import { onMount } from 'svelte'
 
   const quaternary_files = (import.meta as unknown as {
@@ -71,7 +72,9 @@
       const loader = quaternary_files[li_co_ni_o_path]
       all_entries = await load_phase_entries((await loader()).default)
     } catch (err) {
-      error_msg = `Failed to load data: ${err}`
+      error_msg = `Failed to load data: ${
+        err instanceof Error ? err.message : String(err)
+      }`
     } finally {
       loading = false
     }
@@ -86,7 +89,7 @@
 </p>
 
 {#if loading}
-  <p>Loading phase diagram data...</p>
+  <Spinner text="Loading phase diagram data..." style="--spinner-size: 1.5em" />
 {:else if error_msg}
   <p class="error">{error_msg}</p>
 {:else}
@@ -128,12 +131,16 @@
   <section>
     <h2>Ternary System (Li-Fe-O) &mdash; 3D</h2>
     <p>Li-Fe-O ternary from pymatgen test data. Axes: x=Li, y=Fe, z=O.</p>
-    <ChemPotDiagram3D
-      entries={li_fe_o_entries}
-      config={{ elements: [`Li`, `Fe`, `O`] }}
-      width={550}
-      height={500}
-    />
+    {#if li_fe_o_entries.length > 0}
+      <ChemPotDiagram3D
+        entries={li_fe_o_entries}
+        config={{ elements: [`Li`, `Fe`, `O`] }}
+        width={550}
+        height={500}
+      />
+    {:else}
+      <p>No Li-Fe-O entries found.</p>
+    {/if}
   </section>
 
   <section>
@@ -142,15 +149,19 @@
       Full Y-Ti-O-S quaternary projected onto Ti-S-Y axes with Y<sub>2</sub>Ti<sub
       >2</sub>S<sub>2</sub>O<sub>5</sub> overlay.
     </p>
-    <ChemPotDiagram3D
-      entries={ytos_entries}
-      config={{
-        elements: [`Ti`, `S`, `Y`],
-        formulas_to_draw: [`O5S2Ti2Y2`],
-      }}
-      width={550}
-      height={500}
-    />
+    {#if ytos_entries.length > 0}
+      <ChemPotDiagram3D
+        entries={ytos_entries}
+        config={{
+          elements: [`Ti`, `S`, `Y`],
+          formulas_to_draw: [`O5S2Ti2Y2`],
+        }}
+        width={550}
+        height={500}
+      />
+    {:else}
+      <p>No YTOS entries found.</p>
+    {/if}
   </section>
 
   <section>
@@ -158,15 +169,19 @@
     <p>
       Same quaternary data projected onto Ti-Y-O axes.
     </p>
-    <ChemPotDiagram3D
-      entries={ytos_entries}
-      config={{
-        elements: [`Ti`, `Y`, `O`],
-        formulas_to_draw: [`O7Ti2Y2`],
-      }}
-      width={550}
-      height={500}
-    />
+    {#if ytos_entries.length > 0}
+      <ChemPotDiagram3D
+        entries={ytos_entries}
+        config={{
+          elements: [`Ti`, `Y`, `O`],
+          formulas_to_draw: [`O7Ti2Y2`],
+        }}
+        width={550}
+        height={500}
+      />
+    {:else}
+      <p>No YTOS entries found.</p>
+    {/if}
   </section>
 {/if}
 

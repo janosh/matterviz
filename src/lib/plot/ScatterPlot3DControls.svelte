@@ -81,12 +81,42 @@
     }
   }
 
+  // Round to 4 decimal places for display
+  const round4 = (val: number) => Math.round(val * 1e4) / 1e4
+
   // Helper for axis label updates
   const update_axis_label =
     <T extends { label?: string }>(axis: T, setter: (val: T) => void) =>
     (event: Event) => {
       setter({ ...axis, label: get_input_value(event) })
     }
+
+  type AxisEntry = {
+    name: string
+    axis: AxisConfig3D
+    auto_range: [number, number]
+    set: (val: AxisConfig3D) => void
+  }
+  const axes = $derived<AxisEntry[]>([
+    {
+      name: `X`,
+      axis: x_axis,
+      auto_range: auto_x_range,
+      set: (val) => (x_axis = val),
+    },
+    {
+      name: `Y`,
+      axis: y_axis,
+      auto_range: auto_y_range,
+      set: (val) => (y_axis = val),
+    },
+    {
+      name: `Z`,
+      axis: z_axis,
+      auto_range: auto_z_range,
+      set: (val) => (z_axis = val),
+    },
+  ])
 </script>
 
 <DraggablePane
@@ -263,177 +293,69 @@
     </div>
   </SettingsSection>
 
-  <!-- X Axis Range -->
+  <!-- Axes (merged X/Y/Z) -->
   <SettingsSection
-    title="X Axis"
-    current_values={{ range: x_axis.range }}
-    on_reset={() => (x_axis = { ...x_axis, range: [null, null] })}
+    title="Axes"
+    current_values={{
+      x_range: x_axis.range,
+      y_range: y_axis.range,
+      z_range: z_axis.range,
+    }}
+    on_reset={() => {
+      x_axis = { ...x_axis, range: [null, null] }
+      y_axis = { ...y_axis, range: [null, null] }
+      z_axis = { ...z_axis, range: [null, null] }
+    }}
   >
-    <div class="pane-row">
-      <label for="{uid}-x-label">Label:</label>
-      <input
-        id="{uid}-x-label"
-        type="text"
-        value={x_axis.label}
-        oninput={update_axis_label(x_axis, (val) => (x_axis = val))}
-        placeholder="X"
-      />
-    </div>
-    <div class="pane-row">
-      <label for="{uid}-x-range-min">Range:</label>
-      <input
-        id="{uid}-x-range-min"
-        type="number"
-        step="any"
-        value={x_axis.range?.[0] ?? auto_x_range[0]}
-        oninput={(event) => {
-          const val = parseFloat((event.target as HTMLInputElement).value)
-          if (Number.isNaN(val)) return
-          x_axis = {
-            ...x_axis,
-            range: [val, x_axis.range?.[1] ?? auto_x_range[1]],
-          }
-        }}
-      />
-      <span>to</span>
-      <input
-        id="{uid}-x-range-max"
-        type="number"
-        step="any"
-        value={x_axis.range?.[1] ?? auto_x_range[1]}
-        oninput={(event) => {
-          const val = parseFloat((event.target as HTMLInputElement).value)
-          if (Number.isNaN(val)) return
-          x_axis = {
-            ...x_axis,
-            range: [x_axis.range?.[0] ?? auto_x_range[0], val],
-          }
-        }}
-      />
-    </div>
-  </SettingsSection>
-
-  <!-- Y Axis Range -->
-  <SettingsSection
-    title="Y Axis"
-    current_values={{ range: y_axis.range }}
-    on_reset={() => (y_axis = { ...y_axis, range: [null, null] })}
-  >
-    <div class="pane-row">
-      <label for="{uid}-y-label">Label:</label>
-      <input
-        id="{uid}-y-label"
-        type="text"
-        value={y_axis.label}
-        oninput={update_axis_label(y_axis, (val) => (y_axis = val))}
-        placeholder="Y"
-      />
-    </div>
-    <div class="pane-row">
-      <label for="{uid}-y-range-min">Range:</label>
-      <input
-        id="{uid}-y-range-min"
-        type="number"
-        step="any"
-        value={y_axis.range?.[0] ?? auto_y_range[0]}
-        oninput={(event) => {
-          const val = parseFloat((event.target as HTMLInputElement).value)
-          if (Number.isNaN(val)) return
-          y_axis = {
-            ...y_axis,
-            range: [val, y_axis.range?.[1] ?? auto_y_range[1]],
-          }
-        }}
-      />
-      <span>to</span>
-      <input
-        id="{uid}-y-range-max"
-        type="number"
-        step="any"
-        value={y_axis.range?.[1] ?? auto_y_range[1]}
-        oninput={(event) => {
-          const val = parseFloat((event.target as HTMLInputElement).value)
-          if (Number.isNaN(val)) return
-          y_axis = {
-            ...y_axis,
-            range: [y_axis.range?.[0] ?? auto_y_range[0], val],
-          }
-        }}
-      />
-    </div>
-  </SettingsSection>
-
-  <!-- Z Axis Range -->
-  <SettingsSection
-    title="Z Axis"
-    current_values={{ range: z_axis.range }}
-    on_reset={() => (z_axis = { ...z_axis, range: [null, null] })}
-  >
-    <div class="pane-row">
-      <label for="{uid}-z-label">Label:</label>
-      <input
-        id="{uid}-z-label"
-        type="text"
-        value={z_axis.label}
-        oninput={update_axis_label(z_axis, (val) => (z_axis = val))}
-        placeholder="Z"
-      />
-    </div>
-    <div class="pane-row">
-      <label for="{uid}-z-range-min">Range:</label>
-      <input
-        id="{uid}-z-range-min"
-        type="number"
-        step="any"
-        value={z_axis.range?.[0] ?? auto_z_range[0]}
-        oninput={(event) => {
-          const val = parseFloat((event.target as HTMLInputElement).value)
-          if (Number.isNaN(val)) return
-          z_axis = {
-            ...z_axis,
-            range: [val, z_axis.range?.[1] ?? auto_z_range[1]],
-          }
-        }}
-      />
-      <span>to</span>
-      <input
-        id="{uid}-z-range-max"
-        type="number"
-        step="any"
-        value={z_axis.range?.[1] ?? auto_z_range[1]}
-        oninput={(event) => {
-          const val = parseFloat((event.target as HTMLInputElement).value)
-          if (Number.isNaN(val)) return
-          z_axis = {
-            ...z_axis,
-            range: [z_axis.range?.[0] ?? auto_z_range[0], val],
-          }
-        }}
-      />
-    </div>
-  </SettingsSection>
-
-  <!-- Series Info -->
-  {#if series.length > 0}
-    <SettingsSection title="Data" current_values={{ series_count: series.length }}>
-      <div class="pane-row">
-        <span>Series: {series.length}</span>
+    {#each axes as { name, axis, auto_range, set } (name)}
+      <div class="axis-row">
+        <span class="axis-name">{name}</span>
+        <input
+          type="text"
+          value={axis.label}
+          oninput={update_axis_label(axis, set)}
+          placeholder="{name} label"
+          class="axis-label-input"
+        />
+        <input
+          type="number"
+          step="any"
+          value={round4(axis.range?.[0] ?? auto_range[0])}
+          oninput={(event) => {
+            const val = parseFloat((event.target as HTMLInputElement).value)
+            if (Number.isNaN(val)) return
+            set({ ...axis, range: [val, axis.range?.[1] ?? auto_range[1]] })
+          }}
+          class="axis-range-input"
+        />
+        <span class="axis-to">–</span>
+        <input
+          type="number"
+          step="any"
+          value={round4(axis.range?.[1] ?? auto_range[1])}
+          oninput={(event) => {
+            const val = parseFloat((event.target as HTMLInputElement).value)
+            if (Number.isNaN(val)) return
+            set({ ...axis, range: [axis.range?.[0] ?? auto_range[0], val] })
+          }}
+          class="axis-range-input"
+        />
       </div>
-      <div class="pane-row">
-        <span>
-          Points: {series.reduce((sum, srs) => sum + srs.x.length, 0).toLocaleString()}
-        </span>
-      </div>
-    </SettingsSection>
-  {/if}
+    {/each}
+  </SettingsSection>
 
-  <!-- Surfaces Info -->
-  {#if surfaces.length > 0}
-    <SettingsSection title="Surfaces" current_values={{ surface_count: surfaces.length }}>
-      <div class="pane-row">
+  <!-- Data summary -->
+  {#if series.length > 0 || surfaces.length > 0}
+    <div class="data-summary">
+      {#if series.length > 0}
+        <span>Series: {series.length} · Points: {
+            series.reduce((sum, srs) => sum + srs.x.length, 0).toLocaleString()
+          }</span>
+      {/if}
+      {#if surfaces.length > 0}
         <span>Surfaces: {surfaces.length}</span>
-      </div>
-    </SettingsSection>
+      {/if}
+    </div>
   {/if}
 
   <!-- User-provided children -->
@@ -455,10 +377,6 @@
   .pane-row input[type='number'] {
     width: 5em;
   }
-  .pane-row input[type='text'] {
-    flex: 1;
-    min-width: 0;
-  }
   .pane-row input[type='range'] {
     flex: 1;
     min-width: 4em;
@@ -467,7 +385,45 @@
     flex: 1;
     min-width: 0;
   }
-  .pane-row span {
+  .axis-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 2px 0;
+    font-size: 0.9em;
+  }
+  .axis-row input {
+    box-sizing: border-box;
+    height: 1.4em;
+    padding: 0 3px;
+    font-size: inherit;
+    line-height: 1;
+  }
+  .axis-name {
+    font-weight: 600;
+    width: 1.2em;
     flex-shrink: 0;
+  }
+  .axis-label-input {
+    width: 6em;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .axis-range-input {
+    width: 7em;
+    flex: 1;
+    min-width: 5em;
+  }
+  .axis-to {
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+  .data-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1ex;
+    font-size: 0.85em;
+    opacity: 0.7;
+    margin-top: 4px;
   }
 </style>

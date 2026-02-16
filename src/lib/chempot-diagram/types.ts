@@ -1,8 +1,16 @@
+import type { D3InterpolateName } from '$lib/colors'
 import type { PhaseData } from '$lib/convex-hull/types'
 
 // Per-element chemical potential bounds [min, max] in eV
 // Default is [-50, 0] matching pymatgen
 export type ChemPotLimits = Partial<Record<string, [number, number]>>
+
+export type ChemPotColorMode =
+  | `none`
+  | `energy`
+  | `formation_energy`
+  | `arity`
+  | `entries`
 
 // Visual and behavioral configuration for the diagram
 export interface ChemPotDiagramConfig {
@@ -25,6 +33,10 @@ export interface ChemPotDiagramConfig {
   formula_colors?: string[] // default Dark2 palette
   show_tooltip?: boolean // default true
   tooltip_detail_level?: `compact` | `detailed` // default detailed
+  // Region coloring mode for 3D diagram
+  color_mode?: ChemPotColorMode // default none
+  // D3 interpolator for continuous color scales (energy, formation_energy, entries)
+  color_scale?: D3InterpolateName // default interpolateViridis
 }
 
 // Computed chemical potential diagram data
@@ -95,6 +107,8 @@ export const CHEMPOT_DEFAULTS = {
   draw_formula_lines: true,
   show_tooltip: true,
   tooltip_detail_level: `detailed`,
+  color_mode: `none` as ChemPotColorMode,
+  color_scale: `interpolateViridis` as D3InterpolateName,
   // Dark2 qualitative palette (same as pymatgen/plotly default)
   formula_colors: [
     `#1b9e77`,

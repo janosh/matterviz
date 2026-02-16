@@ -214,12 +214,21 @@
   }
 
   function export_json_file(): void {
-    download(get_json_string(), `chempot-diagram-2d.json`, `application/json`)
+    download(
+      get_json_string(),
+      `chempot-${plot_elements.join(`-`)}.json`,
+      `application/json`,
+    )
   }
 
   async function copy_json(): Promise<void> {
-    await navigator.clipboard.writeText(get_json_string())
-    copy_status = true
+    try {
+      await navigator.clipboard.writeText(get_json_string())
+      copy_status = true
+    } catch (err) {
+      copy_status = false
+      console.error(`Failed to copy JSON to clipboard:`, err)
+    }
     if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
     copy_timeout_id = setTimeout(() => {
       copy_status = false
@@ -265,7 +274,7 @@
         type="button"
         onclick={() => {
           const svg = get_svg_element()
-          if (svg) export_svg_as_svg(svg, `chempot-diagram-2d.svg`)
+          if (svg) export_svg_as_svg(svg, `chempot-${plot_elements.join(`-`)}.svg`)
         }}
         aria-label="Download SVG"
       >
@@ -278,7 +287,7 @@
         type="button"
         onclick={() => {
           const svg = get_svg_element()
-          if (svg) export_svg_as_png(svg, `chempot-diagram-2d.png`)
+          if (svg) export_svg_as_png(svg, `chempot-${plot_elements.join(`-`)}.png`)
         }}
         aria-label="Download PNG"
       >
@@ -332,7 +341,7 @@
       step="0.1"
       value={element_padding}
       oninput={(event) => {
-        element_padding_override = Number(event.currentTarget.value)
+        element_padding_override = Number(event.currentTarget.value) || 0
       }}
     />
   </label>
@@ -344,7 +353,7 @@
       step="1"
       value={default_min_limit}
       oninput={(event) => {
-        default_min_limit_override = Number(event.currentTarget.value)
+        default_min_limit_override = Number(event.currentTarget.value) || 0
       }}
     />
   </label>
