@@ -14,6 +14,7 @@ import {
   compute_chempot_diagram,
   dedup_points,
   formula_key_from_composition,
+  get_3d_domain_simplexes_and_ann_loc,
   get_energy_per_atom,
   get_min_entries_and_el_refs,
   orthonormal_2d,
@@ -22,12 +23,8 @@ import {
   simple_pca,
 } from '$lib/chempot-diagram/compute'
 import type { PhaseData } from '$lib/convex-hull/types'
-import {
-  convex_hull_2d,
-  polygon_centroid,
-  solve_linear_system,
-  type Vec2,
-} from '$lib/math'
+import type { Vec2 } from '$lib/math'
+import { convex_hull_2d, polygon_centroid, solve_linear_system } from '$lib/math'
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1162,5 +1159,45 @@ describe(`formula_key_from_composition`, () => {
     { comp: { Fe: 1, O: 0 }, expected: `Fe`, label: `ignores zero amounts` },
   ])(`$label → $expected`, ({ comp, expected }) => {
     expect(formula_key_from_composition(comp as Record<string, number>)).toBe(expected)
+  })
+})
+
+// === get_3d_domain_simplexes_and_ann_loc ===
+
+describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
+  test.each([
+    { pts: [[1, 2, 3]], n_edges: 0, label: `single point` },
+    { pts: [[0, 0, 0], [10, 0, 0], [5, 10, 0]], n_edges: 3, label: `triangle` },
+    {
+      pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0]],
+      n_edges: 4,
+      label: `square`,
+    },
+    { pts: [] as number[][], n_edges: 0, label: `empty` },
+  ])(`$label → $n_edges edges`, ({ pts, n_edges }) => {
+    const result = get_3d_domain_simplexes_and_ann_loc(pts)
+    expect(result.simplex_indices.length).toBe(n_edges)
+  })
+
+  test(`two points returns midpoint ann_loc`, () => {
+    const result = get_3d_domain_simplexes_and_ann_loc([[0, 0, 0], [4, 6, 2]])
+    expect(result.simplex_indices).toEqual([[0, 1]])
+    expect(result.ann_loc[0]).toBeCloseTo(2, 6)
+    expect(result.ann_loc[1]).toBeCloseTo(3, 6)
+    expect(result.ann_loc[2]).toBeCloseTo(1, 6)
+  })
+
+  test(`dedup maps indices to first occurrences`, () => {
+    const pts = [[0, 0, 0], [10, 0, 0], [5, 10, 0], [0, 0, 0], [10, 0, 0]]
+    const all_indices = get_3d_domain_simplexes_and_ann_loc(pts).simplex_indices.flat()
+    expect(all_indices.every((idx) => idx <= 2)).toBe(true)
+  })
+
+  test(`empty fallback is origin`, () => {
+    expect(get_3d_domain_simplexes_and_ann_loc([]).ann_loc).toEqual([0, 0, 0])
+  })
+
+  test(`single point ann_loc equals input`, () => {
+    expect(get_3d_domain_simplexes_and_ann_loc([[1, 2, 3]]).ann_loc).toEqual([1, 2, 3])
   })
 })

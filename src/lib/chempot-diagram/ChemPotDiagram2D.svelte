@@ -1,9 +1,12 @@
 <script lang="ts">
   import { get_hill_formula } from '$lib/composition/format'
   import type { PhaseData } from '$lib/convex-hull/types'
-  import PhaseDiagramExportPane from '$lib/phase-diagram/PhaseDiagramExportPane.svelte'
+  import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
+  import { download } from '$lib/io/fetch'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ScatterPlot } from '$lib/plot'
   import type { DataSeries, UserContentProps } from '$lib/plot/types'
+  import { onDestroy } from 'svelte'
   import {
     apply_element_padding,
     build_axis_ranges,
@@ -193,6 +196,8 @@
   // === Export ===
   let scatter_wrapper = $state<HTMLDivElement>()
   let export_pane_open = $state(false)
+  let copy_status = $state(false)
+  let copy_timeout_id: ReturnType<typeof setTimeout> | null = null
 
   function get_svg_element(): SVGSVGElement | null {
     return scatter_wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
@@ -202,6 +207,28 @@
     elements: diagram_data?.elements ?? [],
     domains: draw_domains,
     lims: diagram_data?.lims ?? [],
+  })
+
+  function get_json_string(): string {
+    return JSON.stringify(export_json_data, null, 2)
+  }
+
+  function export_json_file(): void {
+    download(get_json_string(), `chempot-diagram-2d.json`, `application/json`)
+  }
+
+  async function copy_json(): Promise<void> {
+    await navigator.clipboard.writeText(get_json_string())
+    copy_status = true
+    if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
+    copy_timeout_id = setTimeout(() => {
+      copy_status = false
+      copy_timeout_id = null
+    }, 1000)
+  }
+
+  onDestroy(() => {
+    if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
   })
 </script>
 
@@ -216,6 +243,63 @@
       {get_hill_formula(formula, true, ``)}
     </text>
   {/each}
+{/snippet}
+
+{#snippet export_toggle()}
+  <DraggablePane
+    bind:show={export_pane_open}
+    open_icon="Cross"
+    closed_icon="Export"
+    pane_props={{ class: `chempot-export-pane` }}
+    toggle_props={{
+      class: `chempot-export-toggle`,
+      title: `Export chemical potential diagram`,
+      style:
+        `position: absolute; top: var(--ctrl-btn-top, 5pt); right: 36px; z-index: 10`,
+    }}
+  >
+    <h4>Export Image</h4>
+    <label>
+      SVG
+      <button
+        type="button"
+        onclick={() => {
+          const svg = get_svg_element()
+          if (svg) export_svg_as_svg(svg, `chempot-diagram-2d.svg`)
+        }}
+        aria-label="Download SVG"
+      >
+        ⬇
+      </button>
+    </label>
+    <label>
+      PNG
+      <button
+        type="button"
+        onclick={() => {
+          const svg = get_svg_element()
+          if (svg) export_svg_as_png(svg, `chempot-diagram-2d.png`)
+        }}
+        aria-label="Download PNG"
+      >
+        ⬇
+      </button>
+    </label>
+    <h4>Export Data</h4>
+    <label>
+      JSON
+      <button type="button" onclick={export_json_file} aria-label="Download JSON">
+        ⬇
+      </button>
+      <button
+        type="button"
+        onclick={copy_json}
+        aria-label="Copy JSON to clipboard"
+      >
+        {copy_status ? `✅` : `📋`}
+      </button>
+    </label>
+  </DraggablePane>
 {/snippet}
 
 {#snippet chempot_controls()}
@@ -274,19 +358,7 @@
   </div>
 {:else}
   <div class="chempot-diagram-2d" bind:clientWidth={container_width}>
-    <section class="control-buttons">
-      <PhaseDiagramExportPane
-        bind:export_pane_open
-        svg_element={get_svg_element()}
-        json_payload={export_json_data}
-        filename="chempot-diagram"
-        toggle_props={{
-          class: `chempot-export-toggle`,
-          title: `Export chemical potential diagram`,
-        }}
-      />
-    </section>
-
+    {@render export_toggle()}
     <ScatterPlot
       bind:wrapper={scatter_wrapper}
       {series}
@@ -297,7 +369,7 @@
       controls_extra={chempot_controls}
       user_content={domain_labels}
       on_point_hover={handle_hover}
-      style="--scatter-width: 100%; --scatter-height: {render_height}px"
+      style="--scatter-width: 100%; --scatter-height: {render_height}px; --fullscreen-btn-offset: 68px"
     />
     {#if render_local_tooltip && show_tooltip && hover_info?.view === `2d`}
       <aside
@@ -316,19 +388,21 @@
     position: relative;
     width: 100%;
   }
-  .control-buttons {
-    position: absolute;
-    top: 0.75em;
-    right: 0.75em;
-    z-index: 12;
-    pointer-events: none;
+  .chempot-diagram-2d > :global(.pane-toggle) {
+    opacity: 0;
+    transition: opacity 0.2s, background-color 0.2s;
   }
-  .control-buttons > :global(.pane-toggle) {
-    pointer-events: auto;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  .chempot-diagram-2d:hover > :global(.pane-toggle),
+  .chempot-diagram-2d > :global(.pane-toggle:focus-visible),
+  .chempot-diagram-2d > :global(.pane-toggle[aria-expanded='true']) {
+    opacity: 1;
   }
-  .control-buttons > :global(.pane-toggle:hover) {
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.16);
+  .chempot-diagram-2d :global(.draggable-pane label) {
+    display: flex;
+    align-items: center;
+    gap: 6pt;
+    margin: 4pt 0;
+    font-size: 0.95em;
   }
   .error-state {
     display: flex;
