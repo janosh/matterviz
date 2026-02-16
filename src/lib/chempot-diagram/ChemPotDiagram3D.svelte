@@ -114,6 +114,8 @@
   onMount(() => mounted = true)
   type OrbitControlsLike = {
     object: THREE.Camera
+    target?: THREE.Vector3
+    update?: () => void
     addEventListener: (event_name: string, callback: () => void) => void
     removeEventListener: (event_name: string, callback: () => void) => void
   }
@@ -787,6 +789,11 @@
   $effect(() => {
     const controls = orbit_controls_ref
     if (!controls) return
+    if (controls.target) {
+      controls.target.set(data_center.x, data_center.y, data_center.z)
+    }
+    controls.object.lookAt(data_center)
+    controls.update?.()
     const handle_controls_change = (): void => {
       update_axis_label_angles(controls.object)
     }
@@ -1042,7 +1049,7 @@
           min="0"
           step="0.1"
           value={element_padding}
-          onchange={(event) => {
+          oninput={(event) => {
             const target = event.currentTarget as HTMLInputElement
             element_padding_override = Number(target.value)
           }}
@@ -1055,7 +1062,7 @@
           max="0"
           step="1"
           value={default_min_limit}
-          onchange={(event) => {
+          oninput={(event) => {
             const target = event.currentTarget as HTMLInputElement
             default_min_limit_override = Number(target.value)
           }}

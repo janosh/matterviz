@@ -391,12 +391,14 @@ export function build_axis_ranges(
   elements: string[],
 ): { element: string; min_val: number; max_val: number }[] {
   return elements.map((element, axis_idx) => {
-    const axis_vals = points.map((point) => point[axis_idx])
-    return {
-      element: element ?? `\u03BC${axis_idx}`,
-      min_val: Math.min(...axis_vals),
-      max_val: Math.max(...axis_vals),
+    let min_val = Infinity
+    let max_val = -Infinity
+    for (const point of points) {
+      const val = point[axis_idx]
+      if (val < min_val) min_val = val
+      if (val > max_val) max_val = val
     }
+    return { element: element ?? `\u03BC${axis_idx}`, min_val, max_val }
   })
 }
 
