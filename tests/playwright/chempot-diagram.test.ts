@@ -45,7 +45,7 @@ const expect_download_suffix = async (
     page.waitForEvent(`download`, { timeout: 20_000 }),
     trigger_button.click(),
   ])
-  expect(download.suggestedFilename()).toMatch(new RegExp(`${expected_suffix}$`))
+  expect(download.suggestedFilename().endsWith(expected_suffix)).toBe(true)
 }
 
 const count_checked = (checkboxes: Locator): Promise<number> =>
@@ -227,8 +227,8 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const view_export_button = export_pane.locator(`label:has-text("View") button`)
       .first()
     const glb_export_button = export_pane.locator(`label:has-text("GLB") button`).first()
-    await expect_download_suffix(page, svg_export_button, `\\.svg`)
-    await expect_download_suffix(page, view_export_button, `-view\\.json`)
-    await expect_download_suffix(page, glb_export_button, `\\.glb`)
+    await expect_download_suffix(page, svg_export_button, `.svg`)
+    await expect_download_suffix(page, view_export_button, `-view.json`)
+    await expect_download_suffix(page, glb_export_button, `.glb`)
   })
 })
