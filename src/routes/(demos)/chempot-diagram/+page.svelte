@@ -1,10 +1,11 @@
 <script lang="ts">
   import { ChemPotDiagram2D, ChemPotDiagram3D } from '$lib/chempot-diagram'
   import type { PhaseData } from '$lib/convex-hull'
+  import { create_temp_ternary_entries_li_fe_o } from '$lib/convex-hull/demo-temperature'
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import { decompress_data } from '$lib/io/decompress'
   import li_fe_o_entries_url from '$site/chempot-diagram/li-fe-o-entries.json.gz?url'
   import ytos_entries_url from '$site/chempot-diagram/ytos_entries.json.gz?url'
-  import Spinner from '$lib/feedback/Spinner.svelte'
   import { onMount } from 'svelte'
 
   const quaternary_files = (import.meta as unknown as {
@@ -20,6 +21,7 @@
   let all_entries = $state<PhaseData[]>([])
   let li_fe_o_entries = $state<PhaseData[]>([])
   let ytos_entries = $state<PhaseData[]>([])
+  let temp_demo_temperature = $state<number | undefined>(700)
   let loading = $state(true)
   let error_msg = $state<string | null>(null)
 
@@ -37,6 +39,8 @@
   const binary_entries = $derived(filter_by_elements(all_entries, [`Li`, `O`]))
   // Ternary subset for 3D demo
   const ternary_entries = $derived(filter_by_elements(all_entries, [`Li`, `Co`, `O`]))
+
+  const temp_ternary_entries = create_temp_ternary_entries_li_fe_o()
 
   async function load_phase_entries(url: string): Promise<PhaseData[]> {
     const response = await fetch(url)
@@ -171,6 +175,23 @@
     {:else}
       <p>No Li-Fe-O entries found.</p>
     {/if}
+  </section>
+
+  <section>
+    <h2>Ternary System (Li-Fe-O) with Temperature Slider &mdash; 3D</h2>
+    <p>
+      This demo uses the same synthetic G(T) dataset recipe as the convex-hull demo page.
+      Drag the temperature slider to recompute stability domains from free energies.
+    </p>
+    <ChemPotDiagram3D
+      entries={temp_ternary_entries}
+      config={{
+        elements: [`Li`, `Fe`, `O`],
+      }}
+      bind:temperature={temp_demo_temperature}
+      width={550}
+      height={500}
+    />
   </section>
 
   <section>

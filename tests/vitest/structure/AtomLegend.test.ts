@@ -13,26 +13,26 @@ describe(`AtomLegend Component`, () => {
     {
       desc: `basic rendering with default amounts`,
       props: { elements: mock_elements, style: `margin: 20px;` },
-      expected_labels: [`Fe 2`, `O 3`, `H 1.5`, `C 12.123`],
+      expected_labels: [`H 1.5`, `C 12.123`, `O 3`, `Fe 2`],
       expected_count: 4,
       check_styling: true,
     },
     {
       desc: `custom amount formatting`,
       props: { elements: { Fe: 2.123456, O: 3.0 }, amount_format: `.2r` },
-      expected_labels: [`Fe 2.1`, `O 3.0`],
+      expected_labels: [`O 3.0`, `Fe 2.1`],
       expected_count: 2,
     },
     {
       desc: `floating point precision`,
       props: { elements: { P: 1.4849999999999999, Ge: 0.515, S: 3 } },
-      expected_labels: [`P 1.485`, `Ge 0.515`, `S 3`],
+      expected_labels: [`P 1.485`, `S 3`, `Ge 0.515`],
       expected_count: 3,
     },
     {
       desc: `hide amounts`,
       props: { elements: mock_elements, show_amounts: false },
-      expected_labels: [`Fe`, `O`, `H`, `C`],
+      expected_labels: [`H`, `C`, `O`, `Fe`],
       expected_count: 4,
     },
     {
@@ -52,12 +52,16 @@ describe(`AtomLegend Component`, () => {
 
     if (check_styling) {
       // Check styling and inputs
-      const iron_label = labels[0] as HTMLLabelElement
+      const iron_label = Array.from(labels).find((label) =>
+        label.textContent?.trim().startsWith(`Fe `)
+      )
+      if (!iron_label) throw new Error(`Expected Fe label to exist`)
       expect(iron_label.style.backgroundColor).toBe(colors.element.Fe)
 
       const color_inputs = document.querySelectorAll(`input[type="color"]`)
       expect(color_inputs).toHaveLength(expected_count)
-      expect((color_inputs[0] as HTMLInputElement).value).toBe(colors.element.Fe)
+      const iron_color_input = iron_label?.querySelector(`input[type="color"]`)
+      expect((iron_color_input as HTMLInputElement | null)?.value).toBe(colors.element.Fe)
 
       // Check custom style
       expect(doc_query(`div`).getAttribute(`style`)).toBe(props.style)
@@ -113,14 +117,14 @@ describe(`AtomLegend Component`, () => {
       get_element_label: (element: string, amount: number) =>
         `${element.toUpperCase()}: ${amount.toFixed(1)}`,
       elements: { Fe: 2.5, O: 1.234 },
-      expected: [`FE: 2.5`, `O: 1.2`],
+      expected: [`O: 1.2`, `FE: 2.5`],
     },
     {
       desc: `custom labels override show_amounts`,
       get_element_label: (element: string) => `Element ${element}`,
       elements: { Fe: 2.5, O: 1.234 },
       show_amounts: false,
-      expected: [`Element Fe`, `Element O`],
+      expected: [`Element O`, `Element Fe`],
     },
     {
       desc: `custom labels with spy function`,
@@ -943,8 +947,8 @@ describe(`AtomLegend Component`, () => {
       })
 
       const toggle_buttons = document.querySelectorAll(`button.toggle-visibility`)
-      expect((toggle_buttons[0] as HTMLButtonElement).title).toBe(`Hide Fe atoms`)
-      expect((toggle_buttons[1] as HTMLButtonElement).title).toBe(`Hide O atoms`)
+      expect((toggle_buttons[0] as HTMLButtonElement).title).toBe(`Hide O atoms`)
+      expect((toggle_buttons[1] as HTMLButtonElement).title).toBe(`Hide Fe atoms`)
     })
 
     test(`property value toggle buttons have descriptive titles`, () => {
