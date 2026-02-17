@@ -698,9 +698,6 @@
         title_style="margin-bottom: 3px;"
       />
     {/if}
-    {#if show_temperature_slider && temperature !== undefined}
-      <TemperatureSlider {available_temperatures} bind:temperature />
-    {/if}
     {#if color_mode === `arity`}
       <div class="arity-legend">
         {#each [`Unary`, `Binary`, `Ternary`, `4+`] as label_text, color_idx (label_text)}
@@ -724,6 +721,9 @@
       </aside>
     {/if}
   </div>
+{/if}
+{#if show_temperature_slider && temperature !== undefined}
+  <TemperatureSlider {available_temperatures} bind:temperature />
 {/if}
 
 <style>

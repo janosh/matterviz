@@ -107,6 +107,7 @@ describe(`ChemPot temperature config wiring`, () => {
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
     await mount_2d_with_config(config)
     expect(document.querySelector(`.error-state`)).toBeTruthy()
+    expect(document.querySelector(`.temperature-slider`)).toBeTruthy()
   })
 
   test(`2D computes successfully with permissive interpolation config`, async () => {

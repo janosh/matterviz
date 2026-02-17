@@ -313,7 +313,7 @@
 
 {#if show_element_legend}
   <div {...rest} class="atom-legend element-legend {rest.class ?? ``}">
-    {#each sorted_element_entries as [elem, amt], idx (elem + amt)}
+    {#each sorted_element_entries as [elem, amt], idx (elem)}
       {@const is_hidden = hidden_elements.has(elem as ElementSymbol)}
       {@const displayed_elem = element_mapping?.[elem as ElementSymbol] || elem}
       <div class="legend-item">

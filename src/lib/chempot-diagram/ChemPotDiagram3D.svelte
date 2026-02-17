@@ -212,7 +212,8 @@
     }),
   )
 
-  $effect(() => { // Keep bound temperature aligned with available data points.
+  // Keep bound temperature aligned with available data points.
+  $effect(() => {
     const next_temperature = get_valid_temperature(
       temperature,
       has_temp_data,
@@ -546,6 +547,19 @@
     },
   )
 
+  const arity_legend_labels = $derived.by((): string[] => {
+    let has_four_plus_regions = false
+    for (const domain of render_domains) {
+      if (extract_formula_elements(domain.formula).length >= 4) {
+        has_four_plus_regions = true
+        break
+      }
+    }
+    return has_four_plus_regions
+      ? [`Unary`, `Binary`, `Ternary`, `4+`]
+      : [`Unary`, `Binary`, `Ternary`]
+  })
+
   // Stretch short axes to improve screen-space utilization for highly anisotropic systems.
   // Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
   const render_axis_scale = $derived.by((): [number, number, number] => {
@@ -607,6 +621,33 @@
     }
     return { data_center: center, data_extent: Math.max(max_dist * 1.3, 1) }
   })
+  const default_camera_position = $derived<[number, number, number]>([
+    data_center.x + data_extent,
+    data_center.y + data_extent,
+    data_center.z + data_extent,
+  ])
+  const default_camera_target = $derived<[number, number, number]>([
+    data_center.x,
+    data_center.y,
+    data_center.z,
+  ])
+  const default_orthographic_zoom = $derived(
+    Math.min(render_width, render_height) / (data_extent * 1.6),
+  )
+  let camera_position_override = $state<[number, number, number] | null>(null)
+  let camera_target_override = $state<[number, number, number] | null>(null)
+  let orthographic_zoom_override = $state<number | null>(null)
+  const camera_position = $derived(
+    camera_position_override ?? default_camera_position,
+  )
+  const camera_target = $derived(
+    camera_target_override ?? default_camera_target,
+  )
+  const orthographic_zoom = $derived(
+    orthographic_zoom_override ?? default_orthographic_zoom,
+  )
+  let last_data_center = $state<[number, number, number] | null>(null)
+  let last_data_extent = $state<number | null>(null)
 
   // Compute domain boundary edges via axis-aligned 2D convex hull projection.
   // Each domain in a chem pot diagram is a convex polygon/polyhedron. We project
@@ -1554,17 +1595,72 @@
     }
   }
 
+  function store_camera_view_state(): void {
+    const controls = orbit_controls_ref
+    const controls_camera = controls?.object
+    if (controls_camera) {
+      camera_position_override = [
+        controls_camera.position.x,
+        controls_camera.position.y,
+        controls_camera.position.z,
+      ]
+      if (controls_camera instanceof THREE.OrthographicCamera) {
+        orthographic_zoom_override = controls_camera.zoom
+      }
+    }
+    const controls_target = controls?.target
+    if (controls_target) {
+      camera_target_override = [
+        controls_target.x,
+        controls_target.y,
+        controls_target.z,
+      ]
+    }
+  }
+
+  // Preserve user framing across temperature-driven geometry changes:
+  // shift camera/target with domain center and keep orthographic zoom relative to extent.
+  $effect(() => {
+    if (camera_position_override && camera_target_override && last_data_center) {
+      const [last_x, last_y, last_z] = last_data_center
+      const delta_x = data_center.x - last_x
+      const delta_y = data_center.y - last_y
+      const delta_z = data_center.z - last_z
+      if (delta_x !== 0 || delta_y !== 0 || delta_z !== 0) {
+        camera_position_override = [
+          camera_position_override[0] + delta_x,
+          camera_position_override[1] + delta_y,
+          camera_position_override[2] + delta_z,
+        ]
+        camera_target_override = [
+          camera_target_override[0] + delta_x,
+          camera_target_override[1] + delta_y,
+          camera_target_override[2] + delta_z,
+        ]
+      }
+    }
+    if (
+      orthographic_zoom_override !== null &&
+      last_data_extent !== null &&
+      last_data_extent > 0 &&
+      data_extent > 0
+    ) {
+      orthographic_zoom_override *= last_data_extent / data_extent
+    }
+    last_data_center = [data_center.x, data_center.y, data_center.z]
+    last_data_extent = data_extent
+  })
+
   $effect(() => {
     const controls = orbit_controls_ref
     if (!controls) return
-    if (controls.target) {
-      controls.target.set(data_center.x, data_center.y, data_center.z)
+    const on_controls_change = (): void => {
+      update_backside()
+      store_camera_view_state()
     }
-    controls.object?.lookAt(data_center)
-    controls.update?.()
-    controls.addEventListener(`change`, update_backside)
+    controls.addEventListener(`change`, on_controls_change)
     update_backside()
-    return () => controls.removeEventListener(`change`, update_backside)
+    return () => controls.removeEventListener(`change`, on_controls_change)
   })
 
   $effect(() => {
@@ -2503,12 +2599,8 @@
           <!-- Orthographic camera matching pymatgen's projection style -->
           <T.OrthographicCamera
             makeDefault
-            position={[
-              data_center.x + data_extent,
-              data_center.y + data_extent,
-              data_center.z + data_extent,
-            ]}
-            zoom={Math.min(render_width, render_height) / (data_extent * 1.6)}
+            position={camera_position}
+            zoom={orthographic_zoom}
             near={0.1}
             far={data_extent * 10}
           >
@@ -2519,17 +2611,13 @@
               enablePan
               autoRotate={auto_rotate > 0}
               autoRotateSpeed={auto_rotate}
-              target={[data_center.x, data_center.y, data_center.z]}
+              target={camera_target}
             />
           </T.OrthographicCamera>
         {:else}
           <T.PerspectiveCamera
             makeDefault
-            position={[
-              data_center.x + data_extent,
-              data_center.y + data_extent,
-              data_center.z + data_extent,
-            ]}
+            position={camera_position}
             fov={50}
             near={0.1}
             far={data_extent * 10}
@@ -2541,7 +2629,7 @@
               enablePan
               autoRotate={auto_rotate > 0}
               autoRotateSpeed={auto_rotate}
-              target={[data_center.x, data_center.y, data_center.z]}
+              target={camera_target}
             />
           </T.PerspectiveCamera>
         {/if}
@@ -2722,7 +2810,7 @@
     <!-- Categorical legend for arity mode -->
     {#if color_mode === `arity`}
       <div class="arity-legend">
-        {#each [`Unary`, `Binary`, `Ternary`, `4+`] as label, idx (label)}
+        {#each arity_legend_labels as label, idx (label)}
           <span>
             <span style:background={arity_colors[idx]}></span>
             {label}

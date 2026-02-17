@@ -3,8 +3,8 @@ import {
   filter_entries_at_temperature,
 } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
-import { CHEMPOT_DEFAULTS } from './types'
 import type { ChemPotDiagramConfig } from './types'
+import { CHEMPOT_DEFAULTS } from './types'
 
 interface Temp_control_props {
   interpolate_temperature?: boolean
@@ -67,8 +67,13 @@ export function get_valid_temperature(
   available_temperatures: number[],
 ): number | undefined {
   if (!has_temp_data || available_temperatures.length === 0) return temperature
-  if (temperature !== undefined && available_temperatures.includes(temperature)) {
-    return temperature
+  if (temperature !== undefined) {
+    if (available_temperatures.includes(temperature)) return temperature
+    const min_temperature = available_temperatures[0]
+    const max_temperature = available_temperatures.at(-1) ?? min_temperature
+    if (temperature >= min_temperature && temperature <= max_temperature) {
+      return temperature
+    }
   }
   return available_temperatures[0]
 }

@@ -215,8 +215,14 @@ describe(`get_valid_temperature`, () => {
       expected_temperature: 300,
     },
     {
-      label: `falls back to first available temperature when value is unavailable`,
+      label: `keeps non-exact temperature inside available range`,
       temperature: 500,
+      has_temp_data: true,
+      expected_temperature: 500,
+    },
+    {
+      label: `falls back to first available temperature when value is out of range`,
+      temperature: 1200,
       has_temp_data: true,
       expected_temperature: 300,
     },

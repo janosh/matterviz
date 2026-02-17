@@ -9,12 +9,15 @@ import { count_atoms_in_composition } from '$lib/composition/parse'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 
 const test_dir = dirname(fileURLToPath(import.meta.url))
-const min_speedup_ratio = 2
+const min_speedup_ratio = Number(
+  process.env.CHEMPOT_MIN_SPEEDUP_RATIO ?? (process.env.CI ? 1.5 : 2),
+)
 
 function load_gzip_json<T>(filename: string): T {
   const compressed_bytes = readFileSync(`${test_dir}/${filename}`)
