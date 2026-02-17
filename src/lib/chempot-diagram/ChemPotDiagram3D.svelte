@@ -1,10 +1,7 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
-  import {
-    count_atoms_in_composition,
-    extract_formula_elements,
-  } from '$lib/composition/parse'
+  import { extract_formula_elements } from '$lib/composition/parse'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
   import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
@@ -33,9 +30,12 @@
   import { onDestroy, onMount } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three'
+  import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
+  import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import {
     apply_element_padding,
+    best_form_energy_for_formula,
     build_axis_ranges,
     compute_chempot_diagram,
     dedup_points,
@@ -90,7 +90,10 @@
     default_min_limit_override ??
       (config.default_min_limit ?? CHEMPOT_DEFAULTS.default_min_limit),
   )
-  const formulas_to_draw = $derived(config.formulas_to_draw ?? [])
+  let formulas_to_draw_override = $state<string[] | null>(null)
+  const formulas_to_draw = $derived(
+    formulas_to_draw_override ?? (config.formulas_to_draw ?? []),
+  )
   const draw_formula_meshes = $derived(
     draw_formula_meshes_override ??
       (config.draw_formula_meshes ?? CHEMPOT_DEFAULTS.draw_formula_meshes),
@@ -121,19 +124,22 @@
       ? config.formula_colors
       : CHEMPOT_DEFAULTS.formula_colors,
   )
-  const effective_config = $derived({
-    ...config,
-    formal_chempots,
-    label_stable,
-    element_padding,
-    default_min_limit,
-    draw_formula_meshes,
-    draw_formula_lines,
-  })
+
+  function normalize_projection_triplet(
+    maybe_triplet: string[] | undefined,
+    available_elements: string[],
+  ): string[] | null {
+    if (!maybe_triplet || maybe_triplet.length !== 3) return null
+    const deduped = Array.from(new Set(maybe_triplet))
+    if (deduped.length !== 3) return null
+    if (deduped.some((element) => !available_elements.includes(element))) return null
+    return deduped
+  }
 
   let wrapper = $state<HTMLDivElement>()
   let fullscreen = $state(false)
   let export_pane_open = $state(false)
+  let formula_picker_open = $state(false)
   let copy_status = $state(false)
   let copy_timeout_id: ReturnType<typeof setTimeout> | null = null
   let container_width = $state(0)
@@ -148,14 +154,7 @@
 
   let mounted = $state(false)
   onMount(() => mounted = true)
-  type OrbitControlsLike = {
-    object: THREE.Camera
-    target?: THREE.Vector3
-    update?: () => void
-    addEventListener: (event_name: string, callback: () => void) => void
-    removeEventListener: (event_name: string, callback: () => void) => void
-  }
-  let orbit_controls_ref = $state<OrbitControlsLike | null>(null)
+  let orbit_controls_ref = $state<OrbitControls | undefined>(undefined)
   // Backside tracking: axes/ticks/labels render on the far side from the camera
   // back[i] = backside data coordinate value for data axis i
   // Matches ScatterPlot3DScene pattern where pos tracks the opposite side from camera
@@ -177,6 +176,7 @@
   let x_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
   let y_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
   let z_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
+  const projection_opacity = $derived(display.projection_opacity ?? 0.15)
 
   // Plotly/pymatgen uses Z-up with x-axis projecting left in isometric view.
   // Three.js uses Y-up with X projecting right. To match pymatgen's visual layout:
@@ -184,10 +184,52 @@
   //   data[1] (plotly y, projects right) → Three.js X (projects right)
   //   data[2] (plotly z, projects up)    → Three.js Y (projects up)
   function to_vec3(pt: number[]): THREE.Vector3 {
-    return new THREE.Vector3(pt[1], pt[2], pt[0])
+    const [x_val, y_val, z_val] = to_render_xyz(pt)
+    return new THREE.Vector3(x_val, y_val, z_val)
   }
 
   // Compute diagram data (requires >= 3 elements for 3D rendering)
+  const all_entry_elements = $derived.by(() =>
+    Array.from(
+      new SvelteSet(
+        entries.flatMap((entry) =>
+          Object.entries(entry.composition)
+            .filter(([, amount]) => amount > 0)
+            .map(([element]) => element)
+        ),
+      ),
+    ).sort()
+  )
+  const has_multinary_system = $derived(all_entry_elements.length > 3)
+  let projection_elements_override = $state<string[] | null>(null)
+  const config_projection_elements = $derived(
+    normalize_projection_triplet(config.elements, all_entry_elements),
+  )
+  const projection_elements = $derived.by(() => {
+    if (all_entry_elements.length < 3) return []
+    if (!has_multinary_system) {
+      return config_projection_elements ?? all_entry_elements.slice(0, 3)
+    }
+    const override_projection = normalize_projection_triplet(
+      projection_elements_override ?? undefined,
+      all_entry_elements,
+    )
+    if (override_projection) return override_projection
+    if (config_projection_elements) return config_projection_elements
+    return all_entry_elements.slice(0, 3)
+  })
+  const effective_config = $derived({
+    ...config,
+    elements: projection_elements.length === 3
+      ? projection_elements
+      : config.elements,
+    formal_chempots,
+    label_stable,
+    element_padding,
+    default_min_limit,
+    draw_formula_meshes,
+    draw_formula_lines,
+  })
   const diagram_data = $derived.by(() => {
     if (entries.length < 3) return null
     try {
@@ -199,29 +241,60 @@
     }
   })
 
-  const plot_elements = $derived(diagram_data?.elements.slice(0, 3) ?? [])
-  const all_entry_elements = $derived.by(() =>
-    Array.from(
-      new SvelteSet(
-        entries.flatMap((entry) =>
-          Object.entries(entry.composition)
-            .filter(([, amount]) => amount > 0)
-            .map(([element]) => element)
-        ),
-      ),
-    )
-  )
+  const plot_elements = $derived(diagram_data?.elements ?? projection_elements)
   const is_projection_mode = $derived(
     plot_elements.length > 0 &&
       plot_elements.length < all_entry_elements.length &&
       plot_elements.every((element) => all_entry_elements.includes(element)),
   )
+  const projection_presets = $derived.by(() => {
+    const presets: string[][] = []
+    const seen_triplets = new SvelteSet<string>()
+    const add_triplet = (candidate: string[] | null): void => {
+      if (!candidate) return
+      const key = candidate.join(`|`)
+      if (seen_triplets.has(key)) return
+      seen_triplets.add(key)
+      presets.push(candidate)
+    }
+    add_triplet(config_projection_elements)
+    add_triplet(plot_elements.length === 3 ? plot_elements : null)
+    if (all_entry_elements.length >= 3) {
+      const n_elements = all_entry_elements.length
+      for (let first_idx = 0; first_idx < n_elements; first_idx++) {
+        for (let second_idx = first_idx + 1; second_idx < n_elements; second_idx++) {
+          for (let third_idx = second_idx + 1; third_idx < n_elements; third_idx++) {
+            add_triplet([
+              all_entry_elements[first_idx],
+              all_entry_elements[second_idx],
+              all_entry_elements[third_idx],
+            ])
+            if (presets.length >= 12) return presets
+          }
+        }
+      }
+    }
+    return presets
+  })
+  const current_projection_key = $derived(plot_elements.join(`|`))
+  let formula_filter_query = $state(``)
+  const available_formulas = $derived.by(() =>
+    Object.keys(diagram_data?.domains ?? {}).sort()
+  )
+  const filtered_formulas = $derived.by(() => {
+    const query = formula_filter_query.trim().toLowerCase()
+    if (!query) return available_formulas
+    return available_formulas.filter((formula) =>
+      formula.toLowerCase().includes(query)
+    )
+  })
 
   // Process domains for rendering
   interface DomainRenderData {
     formula: string
     points_3d: number[][]
     ann_loc: number[]
+    label_loc: number[]
     is_draw_formula: boolean
   }
 
@@ -236,6 +309,7 @@
     min_energy_per_atom: number | null
     max_energy_per_atom: number | null
   }
+  type NumericColorMode = Exclude<ChemPotColorMode, `none` | `arity`>
 
   const render_domains = $derived.by((): DomainRenderData[] => {
     if (!diagram_data || plot_elements.length < 2) return []
@@ -264,14 +338,26 @@
         : pts
       if (padded.length < 2) continue
       const is_draw = formulas_to_draw.includes(formula)
+      const label_loc = padded[0].map((_, col_idx) =>
+        padded.reduce((sum, point) => sum + point[col_idx], 0) / padded.length
+      )
       if (padded.length >= 3) {
         const { ann_loc } = get_3d_domain_simplexes_and_ann_loc(padded)
-        result.push({ formula, points_3d: padded, ann_loc, is_draw_formula: is_draw })
+        result.push({
+          formula,
+          points_3d: padded,
+          ann_loc,
+          label_loc,
+          is_draw_formula: is_draw,
+        })
       } else {
-        const ann_loc = padded[0].map((_, col) =>
-          padded.reduce((s, p) => s + p[col], 0) / padded.length
-        )
-        result.push({ formula, points_3d: padded, ann_loc, is_draw_formula: is_draw })
+        result.push({
+          formula,
+          points_3d: padded,
+          ann_loc: label_loc,
+          label_loc,
+          is_draw_formula: is_draw,
+        })
       }
     }
     return result
@@ -317,35 +403,6 @@
   // so we compute our own from the raw entries to get true DFT reference energies.
   const raw_el_refs = $derived(get_min_entries_and_el_refs(entries).el_refs)
 
-  // Compute formation energy per atom for an entry using elemental reference energies.
-  // e_form = energy_per_atom - sum(fraction_i * ref_energy_per_atom_i)
-  function compute_e_form(
-    entry: PhaseData,
-    el_refs: Record<string, PhaseData>,
-  ): number {
-    const atoms = count_atoms_in_composition(entry.composition)
-    const epa = get_energy_per_atom(entry)
-    let ref_energy = 0
-    for (const [el, amt] of Object.entries(entry.composition)) {
-      if (amt <= 0) continue
-      const frac = amt / atoms
-      const ref = el_refs[el]
-      if (ref) ref_energy += frac * get_energy_per_atom(ref)
-    }
-    return epa - ref_energy
-  }
-
-  // Find the minimum formation energy across all entries matching a formula
-  function best_e_form_for_formula(formula: string): number | undefined {
-    let best: number | undefined
-    for (const entry of entries) {
-      if (formula_key_from_composition(entry.composition) !== formula) continue
-      const e_form = entry.e_form_per_atom ?? compute_e_form(entry, raw_el_refs)
-      if (best === undefined || e_form < best) best = e_form
-    }
-    return best
-  }
-
   // Resolve a D3 interpolator name to a function, optionally reversed
   function get_interpolator(name: D3InterpolateName): (t: number) => string {
     const raw = (d3_sc as unknown as Record<string, (t: number) => string>)[name] ??
@@ -368,6 +425,38 @@
     const hi = Math.max(hi_raw, lo + 1e-6)
     return scaleSequential(get_interpolator(interpolator_name)).domain([lo, hi])
   }
+  const color_mode_labels: Record<NumericColorMode, string> = {
+    energy: `Energy per atom (eV)`,
+    formation_energy: `Formation energy (eV/atom)`,
+    entries: `Entry count`,
+  }
+  function get_numeric_color_value(
+    formula: string,
+    active_color_mode: NumericColorMode,
+  ): number | null {
+    if (active_color_mode === `energy`) {
+      return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
+    }
+    if (active_color_mode === `formation_energy`) {
+      return best_form_energy_for_formula(entries, formula, raw_el_refs) ?? null
+    }
+    return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
+  }
+  const domain_color_values = $derived.by(
+    (): { value_by_formula: SvelteMap<string, number>; values: number[] } | null => {
+      if (color_mode === `none` || color_mode === `arity`) return null
+      const active_color_mode = color_mode as NumericColorMode
+      const value_by_formula = new SvelteMap<string, number>()
+      const values: number[] = []
+      for (const domain of render_domains) {
+        const value = get_numeric_color_value(domain.formula, active_color_mode)
+        if (value == null || !Number.isFinite(value)) continue
+        values.push(value)
+        value_by_formula.set(domain.formula, value)
+      }
+      return { value_by_formula, values }
+    },
+  )
 
   // Per-domain color map keyed by formula
   const domain_colors = $derived.by((): SvelteMap<string, string> => {
@@ -382,120 +471,92 @@
       }
       return colors
     }
-
-    if (color_mode === `energy`) {
-      const values: number[] = []
-      const val_by_formula = new SvelteMap<string, number>()
-      for (const domain of render_domains) {
-        const stats = entry_energy_stats_by_formula.get(domain.formula)
-        if (stats?.min_energy_per_atom != null) {
-          values.push(stats.min_energy_per_atom)
-          val_by_formula.set(domain.formula, stats.min_energy_per_atom)
-        }
-      }
-      const scale = make_color_scale(values, color_scale)
-      for (const domain of render_domains) {
-        const val = val_by_formula.get(domain.formula)
-        colors.set(domain.formula, val != null && scale ? scale(val) : `#999`)
-      }
-      return colors
+    const values_payload = domain_color_values
+    const scale = make_color_scale(values_payload?.values ?? [], color_scale)
+    for (const domain of render_domains) {
+      const value = values_payload?.value_by_formula.get(domain.formula)
+      colors.set(domain.formula, value != null && scale ? scale(value) : `#999`)
     }
-
-    if (color_mode === `formation_energy`) {
-      const values: number[] = []
-      const val_by_formula = new SvelteMap<string, number>()
-      for (const domain of render_domains) {
-        const e_form = best_e_form_for_formula(domain.formula)
-        if (e_form != null) {
-          values.push(e_form)
-          val_by_formula.set(domain.formula, e_form)
-        }
-      }
-      const scale = make_color_scale(values, color_scale)
-      for (const domain of render_domains) {
-        const val = val_by_formula.get(domain.formula)
-        colors.set(domain.formula, val != null && scale ? scale(val) : `#999`)
-      }
-      return colors
-    }
-
-    if (color_mode === `entries`) {
-      const values: number[] = []
-      const val_by_formula = new SvelteMap<string, number>()
-      for (const domain of render_domains) {
-        const stats = entry_energy_stats_by_formula.get(domain.formula)
-        const count = stats?.matching_entry_count ?? 0
-        values.push(count)
-        val_by_formula.set(domain.formula, count)
-      }
-      const scale = make_color_scale(values, color_scale)
-      for (const domain of render_domains) {
-        const val = val_by_formula.get(domain.formula) ?? 0
-        colors.set(domain.formula, scale ? scale(val) : `#999`)
-      }
-      return colors
-    }
-
     return colors
   })
 
   // Range and label for the color bar (null for none/arity which are categorical)
   const color_range = $derived.by(
     (): { min: number; max: number; label: string } | null => {
-      if (color_mode === `none` || color_mode === `arity`) return null
-      const values: number[] = []
-      for (const domain of render_domains) {
-        if (color_mode === `energy`) {
-          const stats = entry_energy_stats_by_formula.get(domain.formula)
-          if (stats?.min_energy_per_atom != null) {
-            values.push(stats.min_energy_per_atom)
-          }
-        } else if (color_mode === `formation_energy`) {
-          const e_form = best_e_form_for_formula(domain.formula)
-          if (e_form != null) values.push(e_form)
-        } else if (color_mode === `entries`) {
-          const stats = entry_energy_stats_by_formula.get(domain.formula)
-          if (stats) values.push(stats.matching_entry_count)
-        }
-      }
+      const values = domain_color_values?.values ?? []
       if (values.length === 0) return null
       let lo = values[0], hi = values[0]
       for (let idx = 1; idx < values.length; idx++) {
         if (values[idx] < lo) lo = values[idx]
         if (values[idx] > hi) hi = values[idx]
       }
-      const labels: Record<string, string> = {
-        energy: `Energy per atom (eV)`,
-        formation_energy: `Formation energy (eV/atom)`,
-        entries: `Entry count`,
-      }
       return {
         min: lo,
         max: Math.max(hi, lo + 1e-6),
-        label: labels[color_mode] ?? ``,
+        label: color_mode === `none` || color_mode === `arity`
+          ? ``
+          : color_mode_labels[color_mode],
       }
     },
   )
 
+  // Stretch short axes to improve screen-space utilization for highly anisotropic systems.
+  // Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
+  const render_axis_scale = $derived.by((): [number, number, number] => {
+    const points = render_domains.flatMap((domain) => domain.points_3d)
+    if (points.length === 0) return [1, 1, 1]
+    let min0 = Infinity, max0 = -Infinity
+    let min1 = Infinity, max1 = -Infinity
+    let min2 = Infinity, max2 = -Infinity
+    for (const point of points) {
+      if (point[0] < min0) min0 = point[0]
+      if (point[0] > max0) max0 = point[0]
+      if (point[1] < min1) min1 = point[1]
+      if (point[1] > max1) max1 = point[1]
+      if (point[2] < min2) min2 = point[2]
+      if (point[2] > max2) max2 = point[2]
+    }
+    const span_x = Math.max(max1 - min1, 1e-6) // render X from data axis 1
+    const span_y = Math.max(max2 - min2, 1e-6) // render Y from data axis 2
+    const span_z = Math.max(max0 - min0, 1e-6) // render Z from data axis 0
+    const max_span = Math.max(span_x, span_y, span_z)
+    return [
+      Math.min(Math.max(max_span / span_x, 1), 4),
+      Math.min(Math.max(max_span / span_y, 1), 4),
+      Math.min(Math.max(max_span / span_z, 1), 4),
+    ]
+  })
+
+  function to_render_xyz(point: number[]): [number, number, number] {
+    const [scale_x, scale_y, scale_z] = render_axis_scale
+    return [point[1] * scale_x, point[2] * scale_y, point[0] * scale_z]
+  }
+
   // Compute data center and extent for camera positioning (in swizzled coords)
   const { data_center, data_extent } = $derived.by(() => {
-    const pts = render_domains.flatMap((d) => d.points_3d)
-    if (pts.length === 0) {
+    const points = render_domains.flatMap((domain) => domain.points_3d)
+    if (points.length === 0) {
       return { data_center: new THREE.Vector3(0, 0, 0), data_extent: 10 }
     }
-    // Compute center (swizzled: data[1]→X, data[2]→Y, data[0]→Z)
-    let [sx, sy, sz] = [0, 0, 0]
-    for (const pt of pts) {
-      sx += pt[1]
-      sy += pt[2]
-      sz += pt[0]
+    // Compute center in rendered coordinates (swizzled + axis stretch)
+    let sum_x = 0, sum_y = 0, sum_z = 0
+    for (const point of points) {
+      const [x_val, y_val, z_val] = to_render_xyz(point)
+      sum_x += x_val
+      sum_y += y_val
+      sum_z += z_val
     }
-    const n = pts.length
-    const center = new THREE.Vector3(sx / n, sy / n, sz / n)
+    const n_points = points.length
+    const center = new THREE.Vector3(
+      sum_x / n_points,
+      sum_y / n_points,
+      sum_z / n_points,
+    )
     // Compute max distance from center
     let max_dist = 0
-    for (const pt of pts) {
-      const dist = Math.hypot(pt[1] - center.x, pt[2] - center.y, pt[0] - center.z)
+    for (const point of points) {
+      const [x_val, y_val, z_val] = to_render_xyz(point)
+      const dist = Math.hypot(x_val - center.x, y_val - center.y, z_val - center.z)
       if (dist > max_dist) max_dist = dist
     }
     return { data_center: center, data_extent: Math.max(max_dist * 1.3, 1) }
@@ -633,7 +694,7 @@
     for (const domain of render_domains) {
       if (domain.is_draw_formula) continue
       // Compute edges in swizzled (Three.js) coords since ConvexGeometry works there
-      const swizzled = domain.points_3d.map((pt) => [pt[1], pt[2], pt[0]])
+      const swizzled = domain.points_3d.map((point) => to_render_xyz(point))
       for (const [pa, pb] of get_domain_edges(swizzled)) {
         const ka = pa.map((v) => v.toFixed(4)).join(`,`)
         const kb = pb.map((v) => v.toFixed(4)).join(`,`)
@@ -730,15 +791,16 @@
     const pos = hull_base_geometry.getAttribute(`position`)
     const n_faces = pos.count / 3
 
-    // Domain vertex centroids in swizzled Three.js coords: data[1]→X, data[2]→Y, data[0]→Z
+    // Domain vertex centroids in render coords (swizzled + axis stretch), matching hull_base_geometry.
     const centroids = render_domains
       .filter((d) => !d.is_draw_formula && d.points_3d.length > 0)
       .map((d) => {
         let sx = 0, sy = 0, sz = 0
         for (const pt of d.points_3d) {
-          sx += pt[1]
-          sy += pt[2]
-          sz += pt[0]
+          const [x_val, y_val, z_val] = to_render_xyz(pt)
+          sx += x_val
+          sy += y_val
+          sz += z_val
         }
         const n = d.points_3d.length
         return { formula: d.formula, cx: sx / n, cy: sy / n, cz: sz / n }
@@ -970,7 +1032,7 @@
       if (!domain.is_draw_formula) continue
       const color_idx = formulas_to_draw.indexOf(domain.formula) %
         formula_colors.length
-      const swizzled = domain.points_3d.map((pt) => [pt[1], pt[2], pt[0]])
+      const swizzled = domain.points_3d.map((point) => to_render_xyz(point))
       const positions: number[] = []
       for (const [pa, pb] of get_domain_edges(swizzled)) {
         positions.push(pa[0], pa[1], pa[2], pb[0], pb[1], pb[2])
@@ -1117,7 +1179,7 @@
       if (!hover_geometry) continue
       const { geometry, n_vertices } = hover_geometry
 
-      const swizzled_points = domain.points_3d.map((pt) => [pt[1], pt[2], pt[0]])
+      const swizzled_points = domain.points_3d.map((point) => to_render_xyz(point))
       const edge_count = get_domain_edges(swizzled_points).length
       const axis_ranges = build_axis_ranges(domain.points_3d, plot_elements)
       const touches_limits = get_touches_limits(domain.points_3d, lims)
@@ -1279,7 +1341,8 @@
 
   // Swizzle a data-coord triple to Three.js coords
   function swiz(d0: number, d1: number, d2: number): [number, number, number] {
-    return [d1, d2, d0] // data[0]→Z, data[1]→X, data[2]→Y
+    const [scale_x, scale_y, scale_z] = render_axis_scale
+    return [d1 * scale_x, d2 * scale_y, d0 * scale_z] // data[0]→Z, data[1]→X, data[2]→Y
   }
 
   const axis_colors = [`#e74c3c`, `#2ecc71`, `#3498db`] as const
@@ -1566,6 +1629,52 @@
     color_mode_override = null
     color_scale_override = null
     reverse_color_scale_override = null
+    projection_elements_override = null
+    formulas_to_draw_override = null
+    formula_filter_query = ``
+  }
+
+  function set_projection_axis(axis_idx: number, element: string): void {
+    if (!all_entry_elements.includes(element)) return
+    const next_projection = [...plot_elements]
+    if (next_projection.length !== 3) return
+    const current_owner_idx = next_projection.indexOf(element)
+    if (current_owner_idx !== -1 && current_owner_idx !== axis_idx) {
+      next_projection[current_owner_idx] = next_projection[axis_idx]
+    }
+    next_projection[axis_idx] = element
+    const normalized = normalize_projection_triplet(
+      next_projection,
+      all_entry_elements,
+    )
+    if (normalized) projection_elements_override = normalized
+  }
+
+  function apply_projection_preset(preset_elements: string[]): void {
+    const normalized = normalize_projection_triplet(
+      preset_elements,
+      all_entry_elements,
+    )
+    if (normalized) projection_elements_override = normalized
+  }
+
+  function toggle_formula_selection(formula: string): void {
+    const selected_formulas = new SvelteSet(formulas_to_draw)
+    if (selected_formulas.has(formula)) selected_formulas.delete(formula)
+    else selected_formulas.add(formula)
+    formulas_to_draw_override = [...selected_formulas]
+  }
+
+  function select_surface_formulas(): void {
+    formulas_to_draw_override = render_domains
+      .filter((domain) => surface_formulas.has(domain.formula))
+      .map((domain) => domain.formula)
+  }
+
+  function select_neighbor_formulas(): void {
+    if (hover_info?.view !== `3d`) return
+    const neighbors = domain_neighbors.get(hover_info.formula) ?? []
+    formulas_to_draw_override = [hover_info.formula, ...neighbors]
   }
 
   function download_blob(blob: Blob, filename: string): void {
@@ -1578,6 +1687,62 @@
   }
 
   let png_dpi = $state(150)
+  const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)
+
+  function get_view_settings(): Record<string, unknown> {
+    const camera_position = orbit_controls_ref?.object?.position
+    const camera_target = orbit_controls_ref?.target
+    return {
+      elements: plot_elements,
+      camera_projection,
+      auto_rotate,
+      color_mode,
+      color_scale,
+      reverse_color_scale,
+      camera_position: camera_position
+        ? [camera_position.x, camera_position.y, camera_position.z]
+        : null,
+      camera_target: camera_target
+        ? [camera_target.x, camera_target.y, camera_target.z]
+        : null,
+    }
+  }
+
+  interface OverlayTextItem {
+    x: number
+    y: number
+    text: string
+    font: string
+    font_size: string
+    font_family: string
+    font_weight: string
+    color: string
+  }
+  function get_overlay_text_items(canvas_rect: DOMRect): OverlayTextItem[] {
+    if (!wrapper) return []
+    const text_items: OverlayTextItem[] = []
+    for (
+      const element of wrapper.querySelectorAll(
+        `.tick-label, .axis-label, .domain-label`,
+      )
+    ) {
+      const html_element = element as HTMLElement
+      const style = getComputedStyle(html_element)
+      if (style.display === `none` || style.visibility === `hidden`) continue
+      const element_rect = html_element.getBoundingClientRect()
+      text_items.push({
+        x: element_rect.left + element_rect.width / 2 - canvas_rect.left,
+        y: element_rect.top + element_rect.height / 2 - canvas_rect.top,
+        text: html_element.textContent ?? ``,
+        font: style.font || `${style.fontSize} ${style.fontFamily}`,
+        font_size: style.fontSize || `11px`,
+        font_family: style.fontFamily || `sans-serif`,
+        font_weight: style.fontWeight || `400`,
+        color: style.color || `#333`,
+      })
+    }
+    return text_items
+  }
 
   function export_png_file(): void {
     if (!wrapper) return
@@ -1598,27 +1763,129 @@
     ctx.drawImage(gl_canvas, 0, 0, rect.width, rect.height)
 
     // Draw all HTML overlay text (tick labels, axis labels, domain labels)
-    const canvas_rect = gl_canvas.getBoundingClientRect()
-    for (
-      const el of wrapper.querySelectorAll(`.tick-label, .axis-label, .domain-label`)
-    ) {
-      const html_el = el as HTMLElement
-      const style = getComputedStyle(html_el)
-      if (style.display === `none` || style.visibility === `hidden`) continue
-      const el_rect = html_el.getBoundingClientRect()
-      const x = el_rect.left + el_rect.width / 2 - canvas_rect.left
-      const y = el_rect.top + el_rect.height / 2 - canvas_rect.top
-      ctx.font = style.font || `${style.fontSize} ${style.fontFamily}`
-      ctx.fillStyle = style.color || `#333`
+    for (const text_item of get_overlay_text_items(rect)) {
+      ctx.font = text_item.font
+      ctx.fillStyle = text_item.color
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
-      ctx.fillText(html_el.textContent ?? ``, x, y)
+      ctx.fillText(text_item.text, text_item.x, text_item.y)
     }
 
     out.toBlob((blob) => {
       if (!blob) return
-      download_blob(blob, `chempot-${plot_elements.join(`-`)}.png`)
+      download_blob(blob, `${export_basename}.png`)
     }, `image/png`)
+  }
+
+  function xml_escape(text: string): string {
+    return text
+      .replaceAll(`&`, `&amp;`)
+      .replaceAll(`<`, `&lt;`)
+      .replaceAll(`>`, `&gt;`)
+      .replaceAll(`"`, `&quot;`)
+      .replaceAll(`'`, `&#39;`)
+  }
+
+  function export_svg_file(): void {
+    if (!wrapper) return
+    const gl_canvas = wrapper.querySelector(`canvas`)
+    if (!(gl_canvas instanceof HTMLCanvasElement)) return
+    const canvas_rect = gl_canvas.getBoundingClientRect()
+    if (canvas_rect.width === 0 || canvas_rect.height === 0) return
+    const png_data_url = gl_canvas.toDataURL(`image/png`)
+    const text_nodes = get_overlay_text_items(canvas_rect).map((text_item) =>
+      `<text x="${text_item.x.toFixed(2)}" y="${
+        text_item.y.toFixed(2)
+      }" text-anchor="middle" dominant-baseline="central" fill="${
+        xml_escape(text_item.color)
+      }" font-size="${xml_escape(text_item.font_size)}" font-family="${
+        xml_escape(text_item.font_family)
+      }" font-weight="${xml_escape(text_item.font_weight)}">${
+        xml_escape(text_item.text)
+      }</text>`
+    )
+    const metadata = xml_escape(JSON.stringify(get_view_settings()))
+    const svg = [
+      `<?xml version="1.0" encoding="UTF-8"?>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas_rect.width}" height="${canvas_rect.height}" viewBox="0 0 ${canvas_rect.width} ${canvas_rect.height}">`,
+      `<metadata>${metadata}</metadata>`,
+      `<image href="${png_data_url}" x="0" y="0" width="${canvas_rect.width}" height="${canvas_rect.height}" />`,
+      ...text_nodes,
+      `</svg>`,
+    ].join(``)
+    download_blob(
+      new Blob([svg], { type: `image/svg+xml` }),
+      `${export_basename}.svg`,
+    )
+  }
+
+  function export_view_json_file(): void {
+    const json_text = JSON.stringify(get_view_settings(), null, 2)
+    download_blob(
+      new Blob([json_text], { type: `application/json` }),
+      `${export_basename}-view.json`,
+    )
+  }
+
+  function export_glb_file(): void {
+    const gltf_exporter = new GLTFExporter()
+    const export_root = new THREE.Group()
+    if (colored_hull_geometry) {
+      export_root.add(
+        new THREE.Mesh(
+          colored_hull_geometry.clone(),
+          new THREE.MeshBasicMaterial({
+            vertexColors: true,
+            transparent: true,
+            opacity: color_mode === `none` ? 0.25 : 0.4,
+            side: THREE.DoubleSide,
+          }),
+        ),
+      )
+    }
+    export_root.add(
+      new THREE.LineSegments(
+        edge_geometry.clone(),
+        new THREE.LineBasicMaterial({ color: 0x333333 }),
+      ),
+    )
+    for (const { geometry, color } of formula_mesh_data) {
+      export_root.add(
+        new THREE.Mesh(
+          geometry.clone(),
+          new THREE.MeshBasicMaterial({
+            color: new THREE.Color(color),
+            transparent: true,
+            opacity: 0.13,
+            side: THREE.DoubleSide,
+          }),
+        ),
+      )
+    }
+    if (draw_formula_lines) {
+      for (const { geometry, color } of formula_edge_data) {
+        export_root.add(
+          new THREE.LineSegments(
+            geometry.clone(),
+            new THREE.LineBasicMaterial({ color: new THREE.Color(color) }),
+          ),
+        )
+      }
+    }
+    gltf_exporter.parse(
+      export_root,
+      (result) => {
+        if (!(result instanceof ArrayBuffer)) return
+        download_blob(
+          new Blob([result], { type: `model/gltf-binary` }),
+          `${export_basename}.glb`,
+        )
+      },
+      (err) => {
+        console.error(`Failed to export GLB:`, err)
+      },
+      { binary: true, onlyVisible: false },
+    )
   }
 
   function get_json_string(): string {
@@ -1630,6 +1897,7 @@
           points_3d: domain.points_3d,
         })),
         lims: diagram_data?.lims ?? [],
+        view: get_view_settings(),
       },
       null,
       2,
@@ -1639,7 +1907,7 @@
   function export_json_file(): void {
     download_blob(
       new Blob([get_json_string()], { type: `application/json` }),
-      `chempot-${plot_elements.join(`-`)}.json`,
+      `${export_basename}.json`,
     )
   }
 
@@ -1705,11 +1973,32 @@
     }
   }
 
-  function handle_phase_hover(domain_data: HoverMeshData, raw_event: unknown): void {
+  let locked_hover_formula = $state<string | null>(null)
+
+  function set_hover_info(domain_data: HoverMeshData, raw_event: unknown): void {
     hover_info = {
       ...domain_data.info,
       pointer: get_hover_pointer(raw_event) ?? undefined,
     }
+  }
+
+  function clear_hover_lock(): void {
+    locked_hover_formula = null
+    hover_info = null
+  }
+
+  function handle_phase_hover(domain_data: HoverMeshData, raw_event: unknown): void {
+    if (locked_hover_formula && locked_hover_formula !== domain_data.formula) return
+    set_hover_info(domain_data, raw_event)
+  }
+
+  function toggle_phase_lock(domain_data: HoverMeshData, raw_event: unknown): void {
+    if (locked_hover_formula === domain_data.formula) {
+      clear_hover_lock()
+      return
+    }
+    locked_hover_formula = domain_data.formula
+    set_hover_info(domain_data, raw_event)
   }
 
   // Color mode cycling (keyboard shortcut 'c')
@@ -1749,11 +2038,21 @@
       event.target instanceof HTMLInputElement ||
       event.target instanceof HTMLSelectElement
     ) return
-    if (event.key === `c`) cycle_color_mode()
+    if (event.key === `Escape`) clear_hover_lock()
+    else if (event.key === `c`) cycle_color_mode()
     else if (event.key === `f`) toggle_fullscreen(wrapper)
   }}
+  onpointerdown={(event) => {
+    const target = event.target
+    if (
+      locked_hover_formula &&
+      (target === wrapper || target instanceof HTMLCanvasElement)
+    ) {
+      clear_hover_lock()
+    }
+  }}
 >
-  <section class="control-buttons">
+  <section>
     <DraggablePane
       bind:show={export_pane_open}
       open_icon="Cross"
@@ -1765,34 +2064,111 @@
       }}
     >
       <h4>Export Image</h4>
-      <label>
-        PNG
-        <button type="button" onclick={export_png_file} title="PNG ({png_dpi} DPI)">
-          ⬇
-        </button>
-        &nbsp;(DPI: <input
-          type="number"
-          min={50}
-          max={500}
-          bind:value={png_dpi}
-          title="Export resolution in dots per inch"
-          style="margin: 0 0 0 2pt"
-        />)
-      </label>
+      <div class="export-row">
+        <label>
+          SVG
+          <button type="button" onclick={export_svg_file} title="SVG snapshot export">
+            ⬇
+          </button>
+        </label>
+        <label>
+          PNG
+          <button type="button" onclick={export_png_file} title="PNG ({png_dpi} DPI)">
+            ⬇
+          </button>
+          &nbsp;(DPI: <input
+            type="number"
+            min={50}
+            max={500}
+            bind:value={png_dpi}
+            title="Export resolution in dots per inch"
+            style="margin: 0 0 0 2pt"
+          />)
+        </label>
+      </div>
       <h4>Export Data</h4>
-      <label>
-        JSON
-        <button type="button" onclick={export_json_file} aria-label="Download JSON">
-          ⬇
+      <div class="export-row">
+        <label>
+          JSON
+          <button type="button" onclick={export_json_file} aria-label="Download JSON">
+            ⬇
+          </button>
+          <button
+            type="button"
+            onclick={copy_json}
+            aria-label="Copy JSON to clipboard"
+          >
+            {copy_status ? `✅` : `📋`}
+          </button>
+        </label>
+        <label>
+          View
+          <button
+            type="button"
+            onclick={export_view_json_file}
+            aria-label="Download view JSON"
+          >
+            ⬇
+          </button>
+        </label>
+        <label>
+          GLB
+          <button type="button" onclick={export_glb_file} aria-label="Download GLB">
+            ⬇
+          </button>
+        </label>
+      </div>
+    </DraggablePane>
+    <DraggablePane
+      bind:show={formula_picker_open}
+      open_icon="Cross"
+      closed_icon="Filter"
+      pane_props={{ class: `chempot-formula-pane` }}
+      toggle_props={{
+        class: `chempot-formula-toggle`,
+        title: `Formula overlays`,
+      }}
+    >
+      <h4>Formula Overlays</h4>
+      <div class="overlay-actions">
+        <button type="button" onclick={() => formulas_to_draw_override = []}>
+          Clear
         </button>
-        <button
-          type="button"
-          onclick={copy_json}
-          aria-label="Copy JSON to clipboard"
-        >
-          {copy_status ? `✅` : `📋`}
-        </button>
+        <button type="button" onclick={select_surface_formulas}>Surface</button>
+        <button type="button" onclick={select_neighbor_formulas}>Neighbors</button>
+      </div>
+      <label class="overlay-search">
+        Search:
+        <input
+          type="text"
+          placeholder="Formula filter"
+          bind:value={formula_filter_query}
+        />
       </label>
+      <div class="formula-list">
+        {#if filtered_formulas.length === 0}
+          <div class="formula-empty">No matching formulas</div>
+        {:else}
+          {#each filtered_formulas as formula, formula_idx (formula)}
+            {@const formula_overlay_idx = formulas_to_draw.indexOf(formula)}
+            <label>
+              <input
+                type="checkbox"
+                checked={formulas_to_draw.includes(formula)}
+                onchange={() => toggle_formula_selection(formula)}
+              />
+              <span
+                class="formula-color-dot"
+                style:background={formula_colors[
+                  (formula_overlay_idx >= 0 ? formula_overlay_idx : formula_idx) %
+                  formula_colors.length
+                ]}
+              ></span>
+              {get_hill_formula(formula, true, ``)}
+            </label>
+          {/each}
+        {/if}
+      </div>
     </DraggablePane>
 
     <ScatterPlot3DControls
@@ -1824,6 +2200,54 @@
         }}
         on_reset={reset_controls}
       >
+        {#if has_multinary_system && plot_elements.length === 3}
+          <div class="projection-controls">
+            <div class="pane-row">
+              <label for="chempot-proj-x">X:</label>
+              <select
+                id="chempot-proj-x"
+                value={plot_elements[0]}
+                onchange={(event) => set_projection_axis(0, event.currentTarget.value)}
+              >
+                {#each all_entry_elements as element_name (element_name)}
+                  <option value={element_name}>{element_name}</option>
+                {/each}
+              </select>
+              <label for="chempot-proj-y">Y:</label>
+              <select
+                id="chempot-proj-y"
+                value={plot_elements[1]}
+                onchange={(event) => set_projection_axis(1, event.currentTarget.value)}
+              >
+                {#each all_entry_elements as element_name (element_name)}
+                  <option value={element_name}>{element_name}</option>
+                {/each}
+              </select>
+              <label for="chempot-proj-z">Z:</label>
+              <select
+                id="chempot-proj-z"
+                value={plot_elements[2]}
+                onchange={(event) => set_projection_axis(2, event.currentTarget.value)}
+              >
+                {#each all_entry_elements as element_name (element_name)}
+                  <option value={element_name}>{element_name}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="projection-presets">
+              {#each projection_presets as preset_elements (preset_elements.join(`|`))}
+                <button
+                  type="button"
+                  class:selected={preset_elements.join(`|`) === current_projection_key}
+                  onclick={() => apply_projection_preset(preset_elements)}
+                  title="Switch projection"
+                >
+                  {preset_elements.join(`-`)}
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
         <div class="chempot-checks">
           <label>
             <input
@@ -1945,7 +2369,6 @@
       type="button"
       onclick={() => toggle_fullscreen(wrapper)}
       title="{fullscreen ? `Exit` : `Enter`} fullscreen"
-      class="fullscreen-btn"
     >
       <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
     </button>
@@ -2048,8 +2471,14 @@
             geometry={domain_hover.geometry}
             onpointerenter={(event: unknown) => handle_phase_hover(domain_hover, event)}
             onpointermove={(event: unknown) => handle_phase_hover(domain_hover, event)}
+            onpointerdown={(event: unknown) => toggle_phase_lock(domain_hover, event)}
             onpointerleave={() => {
-              if (hover_info?.formula === domain_hover.formula) hover_info = null
+              if (
+                !locked_hover_formula &&
+                hover_info?.formula === domain_hover.formula
+              ) {
+                hover_info = null
+              }
             }}
           >
             <T.MeshBasicMaterial
@@ -2083,12 +2512,12 @@
           {/each}
         {/if}
 
-        {#each projection_planes as plane (plane.key)}
+        {#each projection_planes as plane (`${plane.key}-${projection_opacity}`)}
           <T.Mesh position={plane.pos} rotation={plane.rot}>
             <T.PlaneGeometry args={plane.size} />
             <T.MeshBasicMaterial
               color={plane.color}
-              opacity={display.projection_opacity ?? 0.15}
+              opacity={projection_opacity}
               transparent
               side={THREE.DoubleSide}
               depthWrite={false}
@@ -2155,7 +2584,7 @@
             (domain.formula)
           }
             <extras.HTML
-              position={[domain.ann_loc[1], domain.ann_loc[2], domain.ann_loc[0]]}
+              position={swiz(domain.label_loc[0], domain.label_loc[1], domain.label_loc[2])}
               center
               portal={wrapper}
               zIndexRange={[1, 0]}
@@ -2184,8 +2613,8 @@
     {#if color_mode === `arity`}
       <div class="arity-legend">
         {#each [`Unary`, `Binary`, `Ternary`, `4+`] as label, idx (label)}
-          <span class="arity-item">
-            <span class="arity-dot" style:background={arity_colors[idx]}></span>
+          <span>
+            <span style:background={arity_colors[idx]}></span>
             {label}
           </span>
         {/each}
@@ -2199,36 +2628,39 @@
       style:top="{hover_info.pointer?.y ?? 4}px"
     >
       <h4>{@html get_hill_formula(hover_info.formula, false, ``)}</h4>
-      <div class="meta-row">
+      {#if locked_hover_formula === hover_info.formula}
+        <p>Pinned · Press Esc to unlock</p>
+      {/if}
+      <p>
         Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
         {hover_info.n_points}
-      </div>
-      <div class="meta-row">
+      </p>
+      <p>
         Entries: {hover_info.matching_entry_count}
         {#if hover_info.min_energy_per_atom !== null &&
           hover_info.max_energy_per_atom !== null}
           · E/atom: {format_num(hover_info.min_energy_per_atom, `.4~g`)}
           to {format_num(hover_info.max_energy_per_atom, `.4~g`)} eV
         {/if}
-      </div>
+      </p>
       {#if tooltip_detail_level === `detailed`}
-        <div class="ranges-title">Axis ranges</div>
+        <h5>Axis ranges</h5>
         {#each hover_info.axis_ranges as axis_range (axis_range.element)}
-          <div class="range-row">
+          <p>
             {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
             {format_num(axis_range.max_val, `.4~g`)} eV
-          </div>
+          </p>
         {/each}
-        <div class="meta-row">
+        <p>
           Centroid: ({
             hover_info.ann_loc.map((value) => format_num(value, `.3~g`)).join(
               `, `,
             )
           })
-        </div>
+        </p>
         {#if hover_info.touches_limits.length > 0}
-          <div class="ranges-title">Touches bounds</div>
-          <div class="meta-row">{hover_info.touches_limits.join(`, `)}</div>
+          <h5>Touches bounds</h5>
+          <p>{hover_info.touches_limits.join(`, `)}</p>
         {/if}
       {/if}
     </aside>
@@ -2249,7 +2681,7 @@
   .chempot-diagram-3d > :global(div[style*='position: absolute'][style*='top: 0']) {
     pointer-events: none !important;
   }
-  .control-buttons {
+  .chempot-diagram-3d > section {
     position: absolute;
     top: 1ex;
     right: 1ex;
@@ -2257,8 +2689,8 @@
     gap: 8px;
     z-index: 20;
   }
-  .control-buttons > :global(button),
-  .control-buttons > :global(.pane-toggle) {
+  .chempot-diagram-3d > section > :global(button),
+  .chempot-diagram-3d > section > :global(.pane-toggle) {
     background: transparent;
     border: none;
     padding: 4px;
@@ -2269,8 +2701,8 @@
     display: flex;
     font-size: clamp(0.75em, 1.5cqmin, 1em);
   }
-  .control-buttons > :global(button:hover),
-  .control-buttons > :global(.pane-toggle:hover) {
+  .chempot-diagram-3d > section > :global(button:hover),
+  .chempot-diagram-3d > section > :global(.pane-toggle:hover) {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
   }
   .chempot-diagram-3d :global(.draggable-pane label) {
@@ -2278,6 +2710,15 @@
     align-items: center;
     gap: 4pt;
     font-size: 0.9em;
+  }
+  .chempot-diagram-3d :global(.export-row) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4pt 10pt;
+    margin: 0 0 4pt;
+  }
+  .chempot-diagram-3d :global(.export-row > label) {
+    margin: 0;
   }
   .chempot-diagram-3d :global(.chempot-checks) {
     display: flex;
@@ -2289,6 +2730,80 @@
     flex-wrap: wrap;
     gap: 1ex;
     margin: 4pt 0;
+  }
+  .chempot-diagram-3d :global(.projection-controls) {
+    margin: 0 0 6pt;
+  }
+  .chempot-diagram-3d :global(.projection-controls .pane-row) {
+    display: grid;
+    grid-template-columns:
+      auto minmax(4.5em, 1fr) auto minmax(4.5em, 1fr) auto minmax(4.5em, 1fr);
+    align-items: center;
+    gap: 3pt;
+  }
+  .chempot-diagram-3d :global(.projection-presets) {
+    margin-top: 4pt;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4pt;
+  }
+  .chempot-diagram-3d :global(.projection-presets button) {
+    border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    border-radius: 3px;
+    padding: 1px 5px;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.85em;
+    color: var(--text-color, currentColor);
+  }
+  .chempot-diagram-3d :global(.projection-presets button.selected) {
+    background: color-mix(in srgb, currentColor 14%, transparent);
+  }
+  .chempot-diagram-3d :global(.overlay-actions) {
+    display: flex;
+    gap: 4pt;
+    margin: 0 0 4pt;
+  }
+  .chempot-diagram-3d :global(.overlay-actions button) {
+    border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    border-radius: 3px;
+    padding: 2px 6px;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-color, currentColor);
+  }
+  .chempot-diagram-3d :global(.overlay-search) {
+    display: flex;
+    align-items: center;
+    gap: 4pt;
+    margin: 0 0 4pt;
+  }
+  .chempot-diagram-3d :global(.overlay-search input) {
+    width: 100%;
+    min-width: 10em;
+  }
+  .chempot-diagram-3d :global(.formula-list) {
+    max-height: min(42vh, 18rem);
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    border-radius: 4px;
+    padding: 4pt;
+  }
+  .chempot-diagram-3d :global(.formula-list label) {
+    display: flex;
+    align-items: center;
+    gap: 5pt;
+    margin: 2pt 0;
+  }
+  .chempot-diagram-3d :global(.formula-color-dot) {
+    width: 0.65em;
+    height: 0.65em;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .chempot-diagram-3d :global(.formula-empty) {
+    font-size: 0.9em;
+    opacity: 0.7;
   }
   .chempot-diagram-3d :global(.chempot-nums input[type='number']) {
     width: 5em;
@@ -2328,8 +2843,11 @@
   .phase-tooltip {
     position: fixed;
     max-width: min(32rem, 92vw);
-    background: color-mix(in srgb, var(--bg-color, #fff) 94%, black 6%);
-    color: var(--text-color, #222);
+    background: var(
+      --tooltip-bg,
+      light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9))
+    );
+    color: var(--tooltip-text, var(--text-color, #222));
     border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
     border-radius: 6px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
@@ -2343,20 +2861,17 @@
     margin: 0 0 4px;
     font-size: 13px;
   }
-  .meta-row {
+  .phase-tooltip p {
     margin: 1px 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .ranges-title {
+  .phase-tooltip h5 {
     margin-top: 6px;
+    margin-bottom: 0;
+    font-size: 12px;
     font-weight: 600;
-  }
-  .range-row {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .arity-legend {
     position: absolute;
@@ -2368,12 +2883,12 @@
     z-index: 10;
     pointer-events: none;
   }
-  .arity-item {
+  .arity-legend > span {
     display: flex;
     align-items: center;
     gap: 4px;
   }
-  .arity-dot {
+  .arity-legend > span > span {
     width: 10px;
     height: 10px;
     border-radius: 50%;

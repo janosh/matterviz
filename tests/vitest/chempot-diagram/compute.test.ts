@@ -1330,6 +1330,42 @@ describe(`compute_chempot_diagram edge cases`, () => {
       for (const pt of pts) expect(pt.length).toBe(n_axes)
     }
   })
+
+  test(`non-sequential 4D projection preserves domain dimensionality`, () => {
+    const projected = compute_chempot_diagram(ytos_entries, {
+      elements: [`Y`, `Ti`, `S`],
+      default_min_limit: -25,
+      formal_chempots: true,
+    })
+    expect(projected.elements).toEqual([`Y`, `Ti`, `S`])
+    const domain_keys = Object.keys(projected.domains)
+    expect(domain_keys.length).toBeGreaterThan(0)
+    for (const pts of Object.values(projected.domains)) {
+      for (const pt of pts) {
+        expect(pt.length).toBe(3)
+        for (const coord of pt) expect(Number.isFinite(coord)).toBe(true)
+      }
+    }
+  })
+
+  test(`different projection triplets keep stable formula set overlap`, () => {
+    const proj_tsy = compute_chempot_diagram(ytos_entries, {
+      elements: [`Ti`, `S`, `Y`],
+      default_min_limit: -25,
+      formal_chempots: true,
+    })
+    const proj_tyo = compute_chempot_diagram(ytos_entries, {
+      elements: [`Ti`, `Y`, `O`],
+      default_min_limit: -25,
+      formal_chempots: true,
+    })
+    const tsy_formulas = new Set(Object.keys(proj_tsy.domains))
+    const tyo_formulas = new Set(Object.keys(proj_tyo.domains))
+    const overlap = [...tsy_formulas].filter((formula) => tyo_formulas.has(formula))
+    expect(overlap.length).toBeGreaterThan(0)
+    expect(overlap).toContain(`Ti`)
+    expect(overlap).toContain(`Y`)
+  })
 })
 
 // === Formation energy computation ===

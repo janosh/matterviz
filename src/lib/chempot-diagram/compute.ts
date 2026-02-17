@@ -82,6 +82,38 @@ export function get_min_entries_and_el_refs(
   return { min_entries, el_refs }
 }
 
+// Compute formation energy per atom against elemental references.
+export function compute_form_energy_per_atom(
+  entry: PhaseData,
+  el_refs: Record<string, PhaseData>,
+): number {
+  const atom_count = count_atoms_in_composition(entry.composition)
+  const energy_per_atom = get_energy_per_atom(entry)
+  let ref_energy = 0
+  for (const [element, amount] of Object.entries(entry.composition)) {
+    if (amount <= 0) continue
+    const fraction = amount / atom_count
+    const ref_entry = el_refs[element]
+    if (ref_entry) ref_energy += fraction * get_energy_per_atom(ref_entry)
+  }
+  return energy_per_atom - ref_energy
+}
+
+// Find minimum formation energy per atom across entries of one formula.
+export function best_form_energy_for_formula(
+  entries: PhaseData[],
+  formula: string,
+  el_refs: Record<string, PhaseData>,
+): number | undefined {
+  let best_value: number | undefined
+  for (const entry of entries) {
+    if (formula_key_from_composition(entry.composition) !== formula) continue
+    const e_form = entry.e_form_per_atom ?? compute_form_energy_per_atom(entry, el_refs)
+    if (best_value === undefined || e_form < best_value) best_value = e_form
+  }
+  return best_value
+}
+
 // Renormalize entry energies to be relative to elemental references (formal chemical potentials).
 // For each entry, subtracts sum(x_i * E_ref_i) from its energy per atom.
 export function renormalize_entries(

@@ -62,7 +62,7 @@
       style:width="{width}px"
       style:height="{height}px"
     >
-      <div class="error-content">
+      <div>
         <h3>Unsupported Chemical System</h3>
         <p>
           Chemical potential diagrams require at least 2 elements. Found {n_display}
@@ -98,63 +98,63 @@
     >
       <h4>{@html get_hill_formula(hover_info.formula, false, ``)}</h4>
       {#if hover_info.view === `2d`}
-        <div class="meta-row">2D domain · Points: {hover_info.n_points}</div>
+        <p>2D domain · Points: {hover_info.n_points}</p>
         {#if tooltip_detail_level === `detailed`}
-          <div class="ranges-title">Axis ranges</div>
+          <h5>Axis ranges</h5>
           {#each hover_info.axis_ranges as axis_range (axis_range.element)}
-            <div class="range-row">
+            <p>
               {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
               {format_num(axis_range.max_val, `.4~g`)} eV
-            </div>
+            </p>
           {/each}
         {/if}
       {:else if is_hover_info_3d(hover_info)}
-        <div class="meta-row">
+        <p>
           {hover_info.is_elemental ? `Elemental phase` : `Compound phase`}
           {#if hover_info.is_draw_formula}
             <span> · Overlay target</span>
           {/if}
-        </div>
-        <div class="meta-row">
+        </p>
+        <p>
           Vertices: {hover_info.n_vertices} · Edges: {hover_info.n_edges} · Points:
           {hover_info.n_points}
-        </div>
-        <div class="meta-row">
+        </p>
+        <p>
           Entries: {hover_info.matching_entry_count}
           {#if hover_info.min_energy_per_atom !== null &&
           hover_info.max_energy_per_atom !== null}
             · E/atom: {format_num(hover_info.min_energy_per_atom, `.4~g`)}
             to {format_num(hover_info.max_energy_per_atom, `.4~g`)} eV
           {/if}
-        </div>
+        </p>
         {#if tooltip_detail_level === `detailed`}
-          <div class="ranges-title">Axis ranges</div>
+          <h5>Axis ranges</h5>
           {#each hover_info.axis_ranges as axis_range (axis_range.element)}
-            <div class="range-row">
+            <p>
               {axis_range.element}: {format_num(axis_range.min_val, `.4~g`)} to
               {format_num(axis_range.max_val, `.4~g`)} eV
-            </div>
+            </p>
           {/each}
-          <div class="meta-row">
+          <p>
             Centroid: ({
               hover_info.ann_loc.map((value) => format_num(value, `.3~g`)).join(
                 `, `,
               )
             })
-          </div>
+          </p>
           {#if hover_info.neighbors.length > 0}
-            <div class="ranges-title">Neighbors ({hover_info.neighbors.length})</div>
-            <div class="meta-row">
+            <h5>Neighbors ({hover_info.neighbors.length})</h5>
+            <p>
               {
                 hover_info.neighbors.map((f) => get_hill_formula(f, true, ``)).join(
                   `, `,
                 )
               }
-            </div>
+            </p>
           {/if}
           {#if hover_info.touches_limits.length > 0}
-            <div class="ranges-title">Touches bounds</div>
-            <div class="meta-row">{hover_info.touches_limits.join(`, `)}</div>
+            <h5>Touches bounds</h5>
+            <p>{hover_info.touches_limits.join(`, `)}</p>
           {/if}
         {/if}
       {/if}
@@ -174,22 +174,25 @@
     border-radius: var(--border-radius, 3pt);
     background: var(--bg-color, transparent);
   }
-  .error-content {
+  .chempot-error > div {
     text-align: center;
     padding: 2em;
     color: var(--text-color, #666);
   }
-  .error-content h3 {
+  .chempot-error h3 {
     margin: 0 0 1em;
   }
-  .error-content p {
+  .chempot-error p {
     margin: 0;
   }
   .chempot-tooltip {
     position: absolute;
     max-width: min(32rem, 92vw);
-    background: color-mix(in srgb, var(--bg-color, #fff) 94%, black 6%);
-    color: var(--text-color, #222);
+    background: var(
+      --tooltip-bg,
+      light-dark(rgba(255, 255, 255, 0.95), rgba(0, 0, 0, 0.9))
+    );
+    color: var(--tooltip-text, var(--text-color, #222));
     border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
     border-radius: 6px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
@@ -203,19 +206,16 @@
     margin: 0 0 4px;
     font-size: 13px;
   }
-  .meta-row {
+  .chempot-tooltip p {
     margin: 1px 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .ranges-title {
+  .chempot-tooltip h5 {
     margin-top: 6px;
+    margin-bottom: 0;
+    font-size: 12px;
     font-weight: 600;
-  }
-  .range-row {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 </style>
