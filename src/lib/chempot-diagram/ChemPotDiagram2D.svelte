@@ -1,10 +1,7 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
-  import {
-    count_atoms_in_composition,
-    extract_formula_elements,
-  } from '$lib/composition/parse'
+  import { extract_formula_elements } from '$lib/composition/parse'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { download } from '$lib/io/fetch'
@@ -17,6 +14,7 @@
   import { SvelteMap } from 'svelte/reactivity'
   import {
     apply_element_padding,
+    best_form_energy_for_formula,
     build_axis_ranges,
     compute_chempot_diagram,
     formula_key_from_composition,
@@ -154,32 +152,12 @@
     matching_entry_count: number
     min_energy_per_atom: number | null
   }
+  type NumericColorMode = Exclude<
+    NonNullable<ChemPotDiagramConfig[`color_mode`]>,
+    `none` | `arity`
+  >
 
   const raw_el_refs = $derived(get_min_entries_and_el_refs(entries).el_refs)
-  function compute_e_form(
-    entry: PhaseData,
-    el_refs: Record<string, PhaseData>,
-  ): number {
-    const atom_count = count_atoms_in_composition(entry.composition)
-    const energy_per_atom = get_energy_per_atom(entry)
-    let ref_energy = 0
-    for (const [element, amount] of Object.entries(entry.composition)) {
-      if (amount <= 0) continue
-      const fraction = amount / atom_count
-      const ref_entry = el_refs[element]
-      if (ref_entry) ref_energy += fraction * get_energy_per_atom(ref_entry)
-    }
-    return energy_per_atom - ref_energy
-  }
-  function best_e_form_for_formula(formula: string): number | undefined {
-    let best_val: number | undefined
-    for (const entry of entries) {
-      if (formula_key_from_composition(entry.composition) !== formula) continue
-      const e_form = entry.e_form_per_atom ?? compute_e_form(entry, raw_el_refs)
-      if (best_val === undefined || e_form < best_val) best_val = e_form
-    }
-    return best_val
-  }
   function get_interpolator(
     interpolator_name: D3InterpolateName,
   ): (t: number) => string {
@@ -228,6 +206,38 @@
       return stats
     },
   )
+  const color_mode_labels: Record<NumericColorMode, string> = {
+    energy: `Energy per atom (eV)`,
+    formation_energy: `Formation energy (eV/atom)`,
+    entries: `Entry count`,
+  }
+  function get_numeric_color_value(
+    formula: string,
+    active_color_mode: NumericColorMode,
+  ): number | null {
+    if (active_color_mode === `energy`) {
+      return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
+    }
+    if (active_color_mode === `formation_energy`) {
+      return best_form_energy_for_formula(entries, formula, raw_el_refs) ?? null
+    }
+    return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
+  }
+  const domain_color_values = $derived.by(
+    (): { value_by_formula: SvelteMap<string, number>; values: number[] } | null => {
+      if (color_mode === `none` || color_mode === `arity`) return null
+      const active_color_mode = color_mode as NumericColorMode
+      const value_by_formula = new SvelteMap<string, number>()
+      const values: number[] = []
+      for (const formula of domain_formulas) {
+        const value = get_numeric_color_value(formula, active_color_mode)
+        if (value == null || !Number.isFinite(value)) continue
+        values.push(value)
+        value_by_formula.set(formula, value)
+      }
+      return { value_by_formula, values }
+    },
+  )
   const domain_colors = $derived.by((): SvelteMap<string, string> => {
     const colors = new SvelteMap<string, string>()
     if (color_mode === `none`) return colors
@@ -239,67 +249,29 @@
       }
       return colors
     }
-    const values: number[] = []
-    const value_by_formula = new SvelteMap<string, number>()
+    const values_payload = domain_color_values
+    const scale = make_color_scale(values_payload?.values ?? [], color_scale)
     for (const formula of domain_formulas) {
-      if (color_mode === `energy`) {
-        const epa = entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom
-        if (epa != null) {
-          values.push(epa)
-          value_by_formula.set(formula, epa)
-        }
-      } else if (color_mode === `formation_energy`) {
-        const e_form = best_e_form_for_formula(formula)
-        if (e_form != null) {
-          values.push(e_form)
-          value_by_formula.set(formula, e_form)
-        }
-      } else if (color_mode === `entries`) {
-        const count =
-          entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
-        values.push(count)
-        value_by_formula.set(formula, count)
-      }
-    }
-    const scale = make_color_scale(values, color_scale)
-    for (const formula of domain_formulas) {
-      const color_val = value_by_formula.get(formula)
+      const color_val = values_payload?.value_by_formula.get(formula)
       colors.set(formula, color_val != null && scale ? scale(color_val) : `#999`)
     }
     return colors
   })
   const color_range = $derived.by(
     (): { min: number; max: number; label: string } | null => {
-      if (color_mode === `none` || color_mode === `arity`) return null
-      const values: number[] = []
-      for (const formula of domain_formulas) {
-        if (color_mode === `energy`) {
-          const epa = entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom
-          if (epa != null) values.push(epa)
-        } else if (color_mode === `formation_energy`) {
-          const e_form = best_e_form_for_formula(formula)
-          if (e_form != null) values.push(e_form)
-        } else if (color_mode === `entries`) {
-          values.push(
-            entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0,
-          )
-        }
-      }
+      const values = domain_color_values?.values ?? []
       if (values.length === 0) return null
       let min_val = values[0], max_val = values[0]
       for (let idx = 1; idx < values.length; idx++) {
         if (values[idx] < min_val) min_val = values[idx]
         if (values[idx] > max_val) max_val = values[idx]
       }
-      const color_labels: Record<string, string> = {
-        energy: `Energy per atom (eV)`,
-        formation_energy: `Formation energy (eV/atom)`,
-        entries: `Entry count`,
-      }
       return {
         min: min_val,
         max: Math.max(max_val, min_val + 1e-6),
-        label: color_labels[color_mode] ?? ``,
+        label: color_mode === `none` || color_mode === `arity`
+          ? ``
+          : color_mode_labels[color_mode],
       }
     },
   )

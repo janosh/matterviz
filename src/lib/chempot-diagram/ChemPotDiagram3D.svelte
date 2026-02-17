@@ -1,10 +1,7 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
-  import {
-    count_atoms_in_composition,
-    extract_formula_elements,
-  } from '$lib/composition/parse'
+  import { extract_formula_elements } from '$lib/composition/parse'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
   import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
@@ -38,6 +35,7 @@
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import {
     apply_element_padding,
+    best_form_energy_for_formula,
     build_axis_ranges,
     compute_chempot_diagram,
     dedup_points,
@@ -311,6 +309,7 @@
     min_energy_per_atom: number | null
     max_energy_per_atom: number | null
   }
+  type NumericColorMode = Exclude<ChemPotColorMode, `none` | `arity`>
 
   const render_domains = $derived.by((): DomainRenderData[] => {
     if (!diagram_data || plot_elements.length < 2) return []
@@ -404,35 +403,6 @@
   // so we compute our own from the raw entries to get true DFT reference energies.
   const raw_el_refs = $derived(get_min_entries_and_el_refs(entries).el_refs)
 
-  // Compute formation energy per atom for an entry using elemental reference energies.
-  // e_form = energy_per_atom - sum(fraction_i * ref_energy_per_atom_i)
-  function compute_e_form(
-    entry: PhaseData,
-    el_refs: Record<string, PhaseData>,
-  ): number {
-    const atoms = count_atoms_in_composition(entry.composition)
-    const epa = get_energy_per_atom(entry)
-    let ref_energy = 0
-    for (const [el, amt] of Object.entries(entry.composition)) {
-      if (amt <= 0) continue
-      const frac = amt / atoms
-      const ref = el_refs[el]
-      if (ref) ref_energy += frac * get_energy_per_atom(ref)
-    }
-    return epa - ref_energy
-  }
-
-  // Find the minimum formation energy across all entries matching a formula
-  function best_e_form_for_formula(formula: string): number | undefined {
-    let best: number | undefined
-    for (const entry of entries) {
-      if (formula_key_from_composition(entry.composition) !== formula) continue
-      const e_form = entry.e_form_per_atom ?? compute_e_form(entry, raw_el_refs)
-      if (best === undefined || e_form < best) best = e_form
-    }
-    return best
-  }
-
   // Resolve a D3 interpolator name to a function, optionally reversed
   function get_interpolator(name: D3InterpolateName): (t: number) => string {
     const raw = (d3_sc as unknown as Record<string, (t: number) => string>)[name] ??
@@ -455,6 +425,38 @@
     const hi = Math.max(hi_raw, lo + 1e-6)
     return scaleSequential(get_interpolator(interpolator_name)).domain([lo, hi])
   }
+  const color_mode_labels: Record<NumericColorMode, string> = {
+    energy: `Energy per atom (eV)`,
+    formation_energy: `Formation energy (eV/atom)`,
+    entries: `Entry count`,
+  }
+  function get_numeric_color_value(
+    formula: string,
+    active_color_mode: NumericColorMode,
+  ): number | null {
+    if (active_color_mode === `energy`) {
+      return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
+    }
+    if (active_color_mode === `formation_energy`) {
+      return best_form_energy_for_formula(entries, formula, raw_el_refs) ?? null
+    }
+    return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
+  }
+  const domain_color_values = $derived.by(
+    (): { value_by_formula: SvelteMap<string, number>; values: number[] } | null => {
+      if (color_mode === `none` || color_mode === `arity`) return null
+      const active_color_mode = color_mode as NumericColorMode
+      const value_by_formula = new SvelteMap<string, number>()
+      const values: number[] = []
+      for (const domain of render_domains) {
+        const value = get_numeric_color_value(domain.formula, active_color_mode)
+        if (value == null || !Number.isFinite(value)) continue
+        values.push(value)
+        value_by_formula.set(domain.formula, value)
+      }
+      return { value_by_formula, values }
+    },
+  )
 
   // Per-domain color map keyed by formula
   const domain_colors = $derived.by((): SvelteMap<string, string> => {
@@ -469,97 +471,31 @@
       }
       return colors
     }
-
-    if (color_mode === `energy`) {
-      const values: number[] = []
-      const val_by_formula = new SvelteMap<string, number>()
-      for (const domain of render_domains) {
-        const stats = entry_energy_stats_by_formula.get(domain.formula)
-        if (stats?.min_energy_per_atom != null) {
-          values.push(stats.min_energy_per_atom)
-          val_by_formula.set(domain.formula, stats.min_energy_per_atom)
-        }
-      }
-      const scale = make_color_scale(values, color_scale)
-      for (const domain of render_domains) {
-        const val = val_by_formula.get(domain.formula)
-        colors.set(domain.formula, val != null && scale ? scale(val) : `#999`)
-      }
-      return colors
+    const values_payload = domain_color_values
+    const scale = make_color_scale(values_payload?.values ?? [], color_scale)
+    for (const domain of render_domains) {
+      const value = values_payload?.value_by_formula.get(domain.formula)
+      colors.set(domain.formula, value != null && scale ? scale(value) : `#999`)
     }
-
-    if (color_mode === `formation_energy`) {
-      const values: number[] = []
-      const val_by_formula = new SvelteMap<string, number>()
-      for (const domain of render_domains) {
-        const e_form = best_e_form_for_formula(domain.formula)
-        if (e_form != null) {
-          values.push(e_form)
-          val_by_formula.set(domain.formula, e_form)
-        }
-      }
-      const scale = make_color_scale(values, color_scale)
-      for (const domain of render_domains) {
-        const val = val_by_formula.get(domain.formula)
-        colors.set(domain.formula, val != null && scale ? scale(val) : `#999`)
-      }
-      return colors
-    }
-
-    if (color_mode === `entries`) {
-      const values: number[] = []
-      const val_by_formula = new SvelteMap<string, number>()
-      for (const domain of render_domains) {
-        const stats = entry_energy_stats_by_formula.get(domain.formula)
-        const count = stats?.matching_entry_count ?? 0
-        values.push(count)
-        val_by_formula.set(domain.formula, count)
-      }
-      const scale = make_color_scale(values, color_scale)
-      for (const domain of render_domains) {
-        const val = val_by_formula.get(domain.formula) ?? 0
-        colors.set(domain.formula, scale ? scale(val) : `#999`)
-      }
-      return colors
-    }
-
     return colors
   })
 
   // Range and label for the color bar (null for none/arity which are categorical)
   const color_range = $derived.by(
     (): { min: number; max: number; label: string } | null => {
-      if (color_mode === `none` || color_mode === `arity`) return null
-      const values: number[] = []
-      for (const domain of render_domains) {
-        if (color_mode === `energy`) {
-          const stats = entry_energy_stats_by_formula.get(domain.formula)
-          if (stats?.min_energy_per_atom != null) {
-            values.push(stats.min_energy_per_atom)
-          }
-        } else if (color_mode === `formation_energy`) {
-          const e_form = best_e_form_for_formula(domain.formula)
-          if (e_form != null) values.push(e_form)
-        } else if (color_mode === `entries`) {
-          const stats = entry_energy_stats_by_formula.get(domain.formula)
-          if (stats) values.push(stats.matching_entry_count)
-        }
-      }
+      const values = domain_color_values?.values ?? []
       if (values.length === 0) return null
       let lo = values[0], hi = values[0]
       for (let idx = 1; idx < values.length; idx++) {
         if (values[idx] < lo) lo = values[idx]
         if (values[idx] > hi) hi = values[idx]
       }
-      const labels: Record<string, string> = {
-        energy: `Energy per atom (eV)`,
-        formation_energy: `Formation energy (eV/atom)`,
-        entries: `Entry count`,
-      }
       return {
         min: lo,
         max: Math.max(hi, lo + 1e-6),
-        label: labels[color_mode] ?? ``,
+        label: color_mode === `none` || color_mode === `arity`
+          ? ``
+          : color_mode_labels[color_mode],
       }
     },
   )
@@ -1772,6 +1708,42 @@
     }
   }
 
+  interface OverlayTextItem {
+    x: number
+    y: number
+    text: string
+    font: string
+    font_size: string
+    font_family: string
+    font_weight: string
+    color: string
+  }
+  function get_overlay_text_items(canvas_rect: DOMRect): OverlayTextItem[] {
+    if (!wrapper) return []
+    const text_items: OverlayTextItem[] = []
+    for (
+      const element of wrapper.querySelectorAll(
+        `.tick-label, .axis-label, .domain-label`,
+      )
+    ) {
+      const html_element = element as HTMLElement
+      const style = getComputedStyle(html_element)
+      if (style.display === `none` || style.visibility === `hidden`) continue
+      const element_rect = html_element.getBoundingClientRect()
+      text_items.push({
+        x: element_rect.left + element_rect.width / 2 - canvas_rect.left,
+        y: element_rect.top + element_rect.height / 2 - canvas_rect.top,
+        text: html_element.textContent ?? ``,
+        font: style.font || `${style.fontSize} ${style.fontFamily}`,
+        font_size: style.fontSize || `11px`,
+        font_family: style.fontFamily || `sans-serif`,
+        font_weight: style.fontWeight || `400`,
+        color: style.color || `#333`,
+      })
+    }
+    return text_items
+  }
+
   function export_png_file(): void {
     if (!wrapper) return
     const gl_canvas = wrapper.querySelector(`canvas`)
@@ -1791,21 +1763,12 @@
     ctx.drawImage(gl_canvas, 0, 0, rect.width, rect.height)
 
     // Draw all HTML overlay text (tick labels, axis labels, domain labels)
-    const canvas_rect = gl_canvas.getBoundingClientRect()
-    for (
-      const el of wrapper.querySelectorAll(`.tick-label, .axis-label, .domain-label`)
-    ) {
-      const html_el = el as HTMLElement
-      const style = getComputedStyle(html_el)
-      if (style.display === `none` || style.visibility === `hidden`) continue
-      const el_rect = html_el.getBoundingClientRect()
-      const x = el_rect.left + el_rect.width / 2 - canvas_rect.left
-      const y = el_rect.top + el_rect.height / 2 - canvas_rect.top
-      ctx.font = style.font || `${style.fontSize} ${style.fontFamily}`
-      ctx.fillStyle = style.color || `#333`
+    for (const text_item of get_overlay_text_items(rect)) {
+      ctx.font = text_item.font
+      ctx.fillStyle = text_item.color
       ctx.textAlign = `center`
       ctx.textBaseline = `middle`
-      ctx.fillText(html_el.textContent ?? ``, x, y)
+      ctx.fillText(text_item.text, text_item.x, text_item.y)
     }
 
     out.toBlob((blob) => {
@@ -1830,33 +1793,17 @@
     const canvas_rect = gl_canvas.getBoundingClientRect()
     if (canvas_rect.width === 0 || canvas_rect.height === 0) return
     const png_data_url = gl_canvas.toDataURL(`image/png`)
-    const text_nodes: string[] = []
-    for (
-      const element of wrapper.querySelectorAll(
-        `.tick-label, .axis-label, .domain-label`,
-      )
-    ) {
-      const html_element = element as HTMLElement
-      const style = getComputedStyle(html_element)
-      if (style.display === `none` || style.visibility === `hidden`) continue
-      const el_rect = html_element.getBoundingClientRect()
-      const x = el_rect.left + el_rect.width / 2 - canvas_rect.left
-      const y = el_rect.top + el_rect.height / 2 - canvas_rect.top
-      const font_size = style.fontSize || `11px`
-      const font_family = style.fontFamily || `sans-serif`
-      const font_weight = style.fontWeight || `400`
-      const fill_color = style.color || `#333`
-      const text = xml_escape(html_element.textContent ?? ``)
-      text_nodes.push(
-        `<text x="${x.toFixed(2)}" y="${
-          y.toFixed(2)
-        }" text-anchor="middle" dominant-baseline="central" fill="${
-          xml_escape(fill_color)
-        }" font-size="${xml_escape(font_size)}" font-family="${
-          xml_escape(font_family)
-        }" font-weight="${xml_escape(font_weight)}">${text}</text>`,
-      )
-    }
+    const text_nodes = get_overlay_text_items(canvas_rect).map((text_item) =>
+      `<text x="${text_item.x.toFixed(2)}" y="${
+        text_item.y.toFixed(2)
+      }" text-anchor="middle" dominant-baseline="central" fill="${
+        xml_escape(text_item.color)
+      }" font-size="${xml_escape(text_item.font_size)}" font-family="${
+        xml_escape(text_item.font_family)
+      }" font-weight="${xml_escape(text_item.font_weight)}">${
+        xml_escape(text_item.text)
+      }</text>`
+    )
     const metadata = xml_escape(JSON.stringify(get_view_settings()))
     const svg = [
       `<?xml version="1.0" encoding="UTF-8"?>`,
