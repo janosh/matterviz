@@ -98,7 +98,9 @@
 </p>
 
 {#if loading}
-  <Spinner text="Loading phase diagram data..." style="--spinner-size: 1.5em" />
+  <div class="loading-state">
+    <Spinner text="Loading phase diagram data..." style="--spinner-size: 1.5em" />
+  </div>
 {:else if error_msg}
   <p class="error">{error_msg}</p>
 {:else}
@@ -107,6 +109,13 @@
     <p>
       For a binary system, the chemical potential diagram shows domain boundaries as line
       segments in 2D μ-space. Each line represents the stability region of a phase.
+    </p>
+    <p>
+      <strong>Features in this demo:</strong>
+      interactive hover + click-to-pin tooltips, control pane for formal potentials and
+      bounds/padding, and export options (SVG, PNG, JSON). This panel also supports the
+      full 2D color modes (none, energy/atom, formation energy, arity, entry count) with
+      color bar/legend where applicable.
     </p>
     {#if binary_entries.length > 0}
       <ChemPotDiagram2D
@@ -125,6 +134,13 @@
     <p>
       For a ternary system, stability domains are 3D polytopes. Drag to rotate the view.
     </p>
+    <p>
+      <strong>Features in this demo:</strong>
+      3D hull rendering with domain boundaries, hover + click-to-pin tooltips, camera and
+      display controls, color modes/scales, and export options (PNG, SVG snapshot, JSON,
+      view JSON, GLB). Projection switching is intentionally hidden here because this is a
+      true ternary system.
+    </p>
     {#if ternary_entries.length > 0}
       <ChemPotDiagram3D
         entries={ternary_entries}
@@ -140,6 +156,11 @@
   <section>
     <h2>Ternary System (Li-Fe-O) &mdash; 3D</h2>
     <p>Li-Fe-O ternary from pymatgen test data. Axes: x=Li, y=Fe, z=O.</p>
+    <p>
+      <strong>Features in this demo:</strong>
+      same core 3D interactions as Li-Co-O, useful as a parity/reference dataset against
+      pymatgen expectations (domain topology, labels, and energy-aware coloring).
+    </p>
     {#if li_fe_o_entries.length > 0}
       <ChemPotDiagram3D
         entries={li_fe_o_entries}
@@ -157,6 +178,12 @@
     <p>
       Full Y-Ti-O-S quaternary projected onto Ti-S-Y axes with Y<sub>2</sub>Ti<sub
       >2</sub>S<sub>2</sub>O<sub>5</sub> overlay.
+    </p>
+    <p>
+      <strong>Features in this demo:</strong>
+      multinary projection mode (4D system projected into 3D), runtime projection axis
+      switching in the 3D controls pane (X/Y/Z selectors + presets), and formula overlay
+      tooling (searchable picker, surface/neighbor quick-select actions).
     </p>
     {#if ytos_entries.length > 0}
       <ChemPotDiagram3D
@@ -177,6 +204,12 @@
     <h2>YTOS &mdash; Ti-Y-O with Y<sub>2</sub>Ti<sub>2</sub>O<sub>7</sub></h2>
     <p>
       Same quaternary data projected onto Ti-Y-O axes.
+    </p>
+    <p>
+      <strong>Features in this demo:</strong>
+      alternative projection of the same multinary dataset, showing how domain geometry
+      and visible phase relationships change with axis selection while preserving the same
+      underlying computed chemical-potential domains.
     </p>
     {#if ytos_entries.length > 0}
       <ChemPotDiagram3D
@@ -210,5 +243,11 @@
   }
   .error {
     color: red;
+  }
+  .loading-state {
+    min-height: 30vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 </style>
