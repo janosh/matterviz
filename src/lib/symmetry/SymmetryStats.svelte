@@ -32,6 +32,7 @@
   const wyckoff_count = $derived(
     sym_data ? wyckoff_positions_from_moyo(sym_data).length : 0,
   )
+  const display_hm_symbol = $derived(sym_data?.hm_symbol?.replace(/\s+/g, ``) ?? `?`)
 
   const sym_ops_counts = $derived.by(() => {
     const EPS = 1e-10
@@ -78,6 +79,14 @@
     roto_translations: `Number of roto-translations in the crystal structure.`,
   }
   const tooltips: Record<string, string> = $derived(show_tooltips ? titles : {})
+
+  function get_step_from_order_of_magnitude(value: number): number {
+    if (!Number.isFinite(value) || value <= 0) return 1e-5
+    const exponent = Math.floor(Math.log10(value))
+    return Math.pow(10, exponent)
+  }
+
+  const symprec_step = $derived(get_step_from_order_of_magnitude(settings.symprec))
 </script>
 
 <div {...rest} class="symmetry-stats {rest.class ?? ``}">
@@ -97,13 +106,19 @@
       <span {@attach tooltip()} title={tooltips?.symprec}>Precision</span>
       <input
         type="number"
-        step="1e-5"
+        step={symprec_step}
         value={settings.symprec}
-        onchange={(evt) => {
+        oninput={(evt) => {
           const { value } = evt.currentTarget
-          const parsed = parseFloat(value)
+          if (value === ``) return
+          const parsed = Number(value)
           if (Number.isFinite(parsed)) {
             settings = { ...settings, symprec: parsed }
+          }
+        }}
+        onkeydown={(evt) => {
+          if (evt.key === `Escape`) {
+            evt.currentTarget.blur()
           }
         }}
       />
@@ -133,7 +148,7 @@
         title="{tooltips?.space_group} at {settings.symprec} (using {settings.algo} algo). {tooltips?.hermann_mauguin}"
         {@attach tooltip()}
       >
-        Space Group <strong>{sym_data.number} ({sym_data.hm_symbol ?? `?`})</strong>
+        Space Group <strong>{sym_data.number} ({display_hm_symbol})</strong>
       </div>
       <div title={tooltips?.crystal_system} {@attach tooltip()}>
         Crystal System <strong>{spg.spacegroup_to_crystal_sys(sym_data.number)}</strong>

@@ -749,7 +749,7 @@
   }
   .view-toggle button {
     flex: 1;
-    padding: 4pt 8pt;
+    padding: 2pt 8pt;
     border: 1px solid
       var(--hull-stats-border-color, color-mix(in srgb, currentColor 20%, transparent));
     background: transparent;
@@ -863,7 +863,6 @@
     color: var(--text-color-muted, light-dark(#666, #bbb));
     font-size: 0.9em;
   }
-
   .subsystem-coverage-row {
     flex-wrap: wrap;
     gap: 4pt 1em;

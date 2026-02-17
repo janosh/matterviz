@@ -156,6 +156,23 @@
     })
   })
 
+  const known_element_symbols = new Set(ELEM_SYMBOLS)
+  let sorted_element_entries = $derived.by(() => {
+    if (!elements) return []
+    const element_amounts = elements as Record<string, number>
+    const ordered_known_entries = ELEM_SYMBOLS
+      .flatMap((element_symbol) => {
+        const amount = element_amounts[element_symbol]
+        return amount === undefined ? [] : [[element_symbol, amount] as const]
+      })
+    const unknown_entries = Object.entries(element_amounts)
+      .filter(([element_symbol]) =>
+        !known_element_symbols.has(element_symbol as ElementSymbol)
+      )
+      .sort(([element_a], [element_b]) => element_a.localeCompare(element_b))
+    return [...ordered_known_entries, ...unknown_entries]
+  })
+
   function remap_element(from: ElementSymbol, to: ElementSymbol) {
     if (from === to && element_mapping?.[from]) {
       // Remove mapping if mapping back to original element
@@ -296,7 +313,7 @@
 
 {#if show_element_legend}
   <div {...rest} class="atom-legend element-legend {rest.class ?? ``}">
-    {#each Object.entries(elements!) as [elem, amt], idx (elem + amt)}
+    {#each sorted_element_entries as [elem, amt], idx (elem)}
       {@const is_hidden = hidden_elements.has(elem as ElementSymbol)}
       {@const displayed_elem = element_mapping?.[elem as ElementSymbol] || elem}
       <div class="legend-item">
