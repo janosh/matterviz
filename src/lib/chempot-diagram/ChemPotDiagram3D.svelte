@@ -178,6 +178,7 @@
   let x_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
   let y_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
   let z_axis = $state<AxisConfig3D>({ label: ``, range: [null, null] })
+  const projection_opacity = $derived(display.projection_opacity ?? 0.15)
 
   // Plotly/pymatgen uses Z-up with x-axis projecting left in isometric view.
   // Three.js uses Y-up with X projecting right. To match pymatgen's visual layout:
@@ -2563,12 +2564,12 @@
           {/each}
         {/if}
 
-        {#each projection_planes as plane (plane.key)}
+        {#each projection_planes as plane (`${plane.key}-${projection_opacity}`)}
           <T.Mesh position={plane.pos} rotation={plane.rot}>
             <T.PlaneGeometry args={plane.size} />
             <T.MeshBasicMaterial
               color={plane.color}
-              opacity={display.projection_opacity ?? 0.15}
+              opacity={projection_opacity}
               transparent
               side={THREE.DoubleSide}
               depthWrite={false}

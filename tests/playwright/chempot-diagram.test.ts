@@ -3,10 +3,10 @@ import { IS_CI } from './helpers'
 
 const TEST_URL = `/chempot-diagram`
 
-async function get_section_by_heading(
+const get_section_by_heading = async (
   page: Page,
   heading_text: RegExp,
-): Promise<Locator> {
+): Promise<Locator> => {
   const section = page.locator(`section`).filter({
     has: page.getByRole(`heading`, { name: heading_text }),
   }).first()
@@ -14,11 +14,11 @@ async function get_section_by_heading(
   return section
 }
 
-async function click_until_visible_tooltip(
+const click_until_visible_tooltip = async (
   page: Page,
   target_surface: Locator,
   tooltip: Locator,
-): Promise<{ x: number; y: number }> {
+): Promise<{ x: number; y: number }> => {
   const box = await target_surface.boundingBox()
   if (!box) throw new Error(`Target surface bounding box not found`)
   for (let x_frac = 0.25; x_frac <= 0.75; x_frac += 0.08) {
@@ -36,11 +36,11 @@ async function click_until_visible_tooltip(
   throw new Error(`Failed to find clickable phase region`)
 }
 
-async function expect_download_suffix(
+const expect_download_suffix = async (
   page: Page,
   trigger_button: Locator,
   expected_suffix: string,
-): Promise<void> {
+): Promise<void> => {
   const [download] = await Promise.all([
     page.waitForEvent(`download`, { timeout: 20_000 }),
     trigger_button.click(),
@@ -48,11 +48,10 @@ async function expect_download_suffix(
   expect(download.suggestedFilename()).toMatch(new RegExp(`${expected_suffix}$`))
 }
 
-function count_checked(checkboxes: Locator): Promise<number> {
-  return checkboxes.evaluateAll((nodes) =>
+const count_checked = (checkboxes: Locator): Promise<number> =>
+  checkboxes.evaluateAll((nodes) =>
     nodes.filter((node) => (node as HTMLInputElement).checked).length
   )
-}
 
 test.describe(`ChemPot Diagram interactions`, () => {
   test.beforeEach(async ({ page }) => {
