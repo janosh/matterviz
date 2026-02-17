@@ -65,7 +65,7 @@ describe(`SymmetryStats`, () => {
 
       const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
       expect(symprec_input.value).toBe(`0.0001`) // 1e-4
-      expect(parseFloat(symprec_input.step)).toBe(1e-4)
+      expect(parseFloat(symprec_input.step)).toBeCloseTo(1e-4, 12)
 
       const algo_select = doc_query<HTMLSelectElement>(`.controls select`)
       expect(algo_select.value).toBe(`Moyo`)
@@ -138,6 +138,33 @@ describe(`SymmetryStats`, () => {
       expect(update_count).toBe(3)
     })
 
+    test(`symprec ignores incomplete scientific notation while typing`, () => {
+      let update_count = 0
+      const current_settings = { symprec: 1e-4, algo: `Moyo` as const }
+
+      mount(SymmetryStats, {
+        target: document.body,
+        props: {
+          sym_data: create_mock_sym_data(),
+          get settings() {
+            return current_settings
+          },
+          set settings(val) {
+            update_count++
+            Object.assign(current_settings, val)
+          },
+        },
+      })
+
+      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+      symprec_input.value = `1e-`
+      symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+
+      expect(update_count).toBe(0)
+      expect(current_settings.symprec).toBe(1e-4)
+    })
+
     test.each([
       { symprec_input_value: `0.01`, expected_step: 0.01 },
       { symprec_input_value: `0.002`, expected_step: 0.001 },
@@ -152,12 +179,12 @@ describe(`SymmetryStats`, () => {
       })
 
       const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
-      expect(parseFloat(symprec_input.step)).toBe(1e-4)
+      expect(parseFloat(symprec_input.step)).toBeCloseTo(1e-4, 12)
 
       symprec_input.value = symprec_input_value
       symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
       flushSync()
-      expect(parseFloat(symprec_input.step)).toBe(expected_step)
+      expect(parseFloat(symprec_input.step)).toBeCloseTo(expected_step, 12)
     })
 
     test(`symprec input keeps focus while typing`, () => {

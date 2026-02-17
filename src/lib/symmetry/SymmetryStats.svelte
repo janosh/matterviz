@@ -110,7 +110,8 @@
         value={settings.symprec}
         oninput={(evt) => {
           const { value } = evt.currentTarget
-          const parsed = parseFloat(value)
+          if (value === ``) return
+          const parsed = Number(value)
           if (Number.isFinite(parsed)) {
             settings = { ...settings, symprec: parsed }
           }

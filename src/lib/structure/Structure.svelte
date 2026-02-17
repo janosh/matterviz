@@ -339,6 +339,7 @@
 
   let symmetry_run_id = 0
   let symmetry_error = $state<string>()
+  let last_symmetry_structure_ref: AnyStructure | null = null
 
   // Trigger symmetry analysis when structure is loaded or settings change.
   // Skip during atom drags — symmetry doesn't change from moving atoms,
@@ -350,18 +351,28 @@
         sym_data = null
         symmetry_error = undefined
       })
+      last_symmetry_structure_ref = null
       return
     }
 
     const current_structure = structure
+    const structure_changed = current_structure !== last_symmetry_structure_ref
+    if (structure_changed) {
+      untrack(() => {
+        sym_data = null
+        symmetry_error = undefined
+      })
+      last_symmetry_structure_ref = current_structure
+    } else {
+      // Keep previous symmetry data while recomputing so bound consumers
+      // (e.g. SymmetryStats inputs) do not unmount and lose focus.
+      untrack(() => symmetry_error = undefined)
+    }
     const run_id = ++symmetry_run_id
     // Destructure symmetry_settings to ensure Svelte tracks changes to symprec and algo
     // (reading just the object reference isn't sufficient for fine-grained reactivity)
     const { symprec, algo } = symmetry_settings ?? symmetry.default_sym_settings
     const current_settings = { symprec, algo }
-    // Keep previous symmetry data while recomputing so bound consumers
-    // (e.g. SymmetryStats inputs) do not unmount and lose focus.
-    untrack(() => symmetry_error = undefined)
 
     symmetry.ensure_moyo_wasm_ready()
       .then(() =>
@@ -376,6 +387,7 @@
       })
       .catch((err) => {
         if (run_id === symmetry_run_id) {
+          untrack(() => sym_data = null)
           symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
           console.error(`Symmetry analysis failed:`, err)
         }
