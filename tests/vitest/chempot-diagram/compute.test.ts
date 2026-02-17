@@ -23,6 +23,7 @@ import {
   renormalize_entries,
   simple_pca,
 } from '$lib/chempot-diagram/compute'
+import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
 import { convex_hull_2d, polygon_centroid, solve_linear_system } from '$lib/math'
@@ -1465,5 +1466,129 @@ describe(`formation energy from elemental refs`, () => {
       // Fe2O3 formation energy should be in a reasonable range (-3 to 0 eV/atom)
       expect(e_form).toBeGreaterThan(-3)
     }
+  })
+})
+
+describe(`temperature filtering integration behavior`, () => {
+  const baseline_entries: PhaseData[] = [
+    {
+      composition: { Li: 1 },
+      energy: -1,
+      energy_per_atom: -1,
+      temperatures: [300, 600],
+      free_energies: [-1.1, -0.9],
+    },
+    {
+      composition: { O: 1 },
+      energy: -2,
+      energy_per_atom: -2,
+      temperatures: [300, 600],
+      free_energies: [-2.2, -1.8],
+    },
+    {
+      composition: { Li: 1, O: 1 },
+      energy: -3.2,
+      energy_per_atom: -1.6,
+      temperatures: [300, 600],
+      free_energies: [-1.7, -1.5],
+    },
+    {
+      composition: { Li: 2, O: 1 },
+      energy: -5.1,
+      energy_per_atom: -1.7,
+      temperatures: [300, 900],
+      free_energies: [-1.9, -1.3],
+    },
+    {
+      composition: { Li: 1, O: 2 },
+      energy: -4.5,
+      energy_per_atom: -1.5,
+    },
+  ]
+
+  test.each([
+    { selected_temperature: 300, expected_energy: -1.1 },
+    { selected_temperature: 600, expected_energy: -0.9 },
+  ])(
+    `exact temperature selection replaces entry energies at $selected_temperature K`,
+    ({ selected_temperature, expected_energy }) => {
+      const filtered_entries = filter_entries_at_temperature(
+        baseline_entries,
+        selected_temperature,
+      )
+      const elemental_li_entry = filtered_entries.find((entry) =>
+        formula_key_from_composition(entry.composition) === `Li`
+      )
+      expect(elemental_li_entry).toBeDefined()
+      expect(elemental_li_entry?.energy).toBeCloseTo(expected_energy, 8)
+      expect(elemental_li_entry?.energy_per_atom).toBeCloseTo(expected_energy, 8)
+    },
+  )
+
+  test(`interpolation works within max_interpolation_gap`, () => {
+    const interpolated_entries = filter_entries_at_temperature(
+      baseline_entries,
+      700,
+      { interpolate: true, max_interpolation_gap: 700 },
+    )
+    const li2o_entry = interpolated_entries.find((entry) =>
+      formula_key_from_composition(entry.composition) === `Li2O`
+    )
+    expect(li2o_entry).toBeDefined()
+    // Linear interpolation between 300K (-1.9) and 900K (-1.3):
+    // fraction = (700 - 300) / (900 - 300) = 2/3 => -1.9 + 2/3 * 0.6 = -1.5
+    expect(li2o_entry?.energy).toBeCloseTo(-1.5, 8)
+    expect(li2o_entry?.energy_per_atom).toBeCloseTo(-1.5, 8)
+  })
+
+  test(`entries lacking temperature arrays are preserved`, () => {
+    const filtered_entries = filter_entries_at_temperature(
+      baseline_entries,
+      600,
+    )
+    const lio2_entry = filtered_entries.find((entry) =>
+      formula_key_from_composition(entry.composition) === `LiO2`
+    )
+    expect(lio2_entry).toBeDefined()
+    expect(lio2_entry?.energy).toBeCloseTo(-4.5, 8)
+    expect(lio2_entry?.energy_per_atom).toBeCloseTo(-1.5, 8)
+  })
+
+  test(`entries with unavailable temperatures are excluded when interpolation is off or invalid`, () => {
+    const non_interpolated_entries = filter_entries_at_temperature(
+      baseline_entries,
+      700,
+      { interpolate: false },
+    )
+    const strict_gap_entries = filter_entries_at_temperature(
+      baseline_entries,
+      700,
+      { interpolate: true, max_interpolation_gap: 500 },
+    )
+    expect(
+      non_interpolated_entries.some((entry) =>
+        formula_key_from_composition(entry.composition) === `Li2O`
+      ),
+    ).toBe(false)
+    expect(
+      strict_gap_entries.some((entry) =>
+        formula_key_from_composition(entry.composition) === `Li2O`
+      ),
+    ).toBe(false)
+  })
+
+  test(`filtered entries still compute a valid 2D chempot diagram`, () => {
+    const filtered_entries = filter_entries_at_temperature(
+      baseline_entries,
+      600,
+    )
+    const result = compute_chempot_diagram(filtered_entries, {
+      default_min_limit: -20,
+      formal_chempots: false,
+    })
+    expect(result.elements.length).toBe(2)
+    expect(Object.keys(result.domains)).toEqual(
+      expect.arrayContaining([`Li`, `O`]),
+    )
   })
 })

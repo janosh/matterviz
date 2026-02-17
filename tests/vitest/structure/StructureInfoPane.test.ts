@@ -1,4 +1,5 @@
 import { StructureInfoPane } from '$lib'
+import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { mount } from 'svelte'
 import { expect, test } from 'vitest'
 import { get_dummy_structure } from '../setup'
@@ -105,6 +106,35 @@ test(`symmetry section displays when symmetry data is available`, () => {
     expect(content).toContain(`rot`)
     expect(content).toContain(`roto-trans`)
   }
+})
+
+test(`symmetry section shows space-group symbol with number`, () => {
+  const structure = get_dummy_structure(`H`, 2, true)
+  const sym_data = {
+    number: 227,
+    hm_symbol: `F d -3 m`,
+    hall_number: 523,
+    pearson_symbol: `cF4`,
+    operations: [{
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      translation: [0, 0, 0],
+    }],
+    std_cell: {
+      lattice: { basis: [5, 0, 0, 0, 5, 0, 0, 0, 5] },
+      positions: [[0, 0, 0]],
+      numbers: [1],
+    },
+    wyckoffs: [`a`],
+  } as unknown as MoyoDataset
+
+  mount(StructureInfoPane, {
+    target: document.body,
+    props: { structure, pane_open: true, sym_data },
+  })
+
+  const content = document.body.textContent || ``
+  expect(content).toContain(`Space Group`)
+  expect(content).toContain(`227 (Fd-3m)`)
 })
 
 test(`symmetry section behavior for different structure types`, () => {
