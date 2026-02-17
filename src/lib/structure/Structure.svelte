@@ -359,8 +359,9 @@
     // (reading just the object reference isn't sufficient for fine-grained reactivity)
     const { symprec, algo } = symmetry_settings ?? symmetry.default_sym_settings
     const current_settings = { symprec, algo }
-    // Use untrack to prevent cascading reactivity when resetting state
-    untrack(() => [sym_data, symmetry_error] = [null, undefined])
+    // Keep previous symmetry data while recomputing so bound consumers
+    // (e.g. SymmetryStats inputs) do not unmount and lose focus.
+    untrack(() => symmetry_error = undefined)
 
     symmetry.ensure_moyo_wasm_ready()
       .then(() =>

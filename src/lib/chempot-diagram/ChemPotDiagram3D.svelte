@@ -1596,6 +1596,14 @@
   }
 
   function store_camera_view_state(): void {
+    // Prime framing baseline on first user interaction so the next geometry
+    // change can preserve zoom/center immediately (not only from second change).
+    if (last_data_center === null) {
+      last_data_center = [data_center.x, data_center.y, data_center.z]
+    }
+    if (last_data_extent === null) {
+      last_data_extent = data_extent
+    }
     const controls = orbit_controls_ref
     const controls_camera = controls?.object
     if (controls_camera) {

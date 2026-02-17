@@ -68,12 +68,15 @@ async function mount_2d_with_config(
     max_interpolation_gap: number
   },
 ): Promise<void> {
+  const { interpolate_temperature, max_interpolation_gap } = config
   const mounted_component = mount(ChemPotDiagram2D, {
     target: document.body,
     props: {
       entries: binary_temp_entries,
       temperature: 700,
-      config: { ...base_config, ...config },
+      config: base_config,
+      interpolate_temperature,
+      max_interpolation_gap,
     },
   })
   mounted_components.push(mounted_component)
@@ -107,7 +110,7 @@ describe(`ChemPot temperature config wiring`, () => {
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
     await mount_2d_with_config(config)
     expect(document.querySelector(`.error-state`)).toBeTruthy()
-    expect(document.querySelector(`.temperature-slider`)).toBeTruthy()
+    expect(document.querySelector(`.temperature-slider`)).toBeFalsy()
   })
 
   test(`2D computes successfully with permissive interpolation config`, async () => {
@@ -121,16 +124,16 @@ describe(`ChemPot temperature config wiring`, () => {
 
   test(`3D honors interpolate_temperature override`, async () => {
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
+    const interpolate_temperature = false
+    const max_interpolation_gap = 700
     const mounted_component = mount(ChemPotDiagram3D, {
       target: document.body,
       props: {
         entries: ternary_temp_entries,
         temperature: 700,
-        config: {
-          ...base_config,
-          interpolate_temperature: false,
-          max_interpolation_gap: 700,
-        },
+        config: base_config,
+        interpolate_temperature,
+        max_interpolation_gap,
       },
     })
     mounted_components.push(mounted_component)

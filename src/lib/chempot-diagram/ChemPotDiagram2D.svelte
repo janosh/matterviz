@@ -720,10 +720,14 @@
         {/if}
       </aside>
     {/if}
+    {#if show_temperature_slider && temperature !== undefined}
+      <TemperatureSlider
+        class="chempot-temp-slider"
+        {available_temperatures}
+        bind:temperature
+      />
+    {/if}
   </div>
-{/if}
-{#if show_temperature_slider && temperature !== undefined}
-  <TemperatureSlider {available_temperatures} bind:temperature />
 {/if}
 
 <style>
@@ -755,6 +759,11 @@
   }
   .chempot-diagram-2d :global(.export-row > label) {
     margin: 0;
+  }
+  .chempot-diagram-2d :global(.chempot-temp-slider) {
+    top: var(--chempot-temp-slider-top, calc(1ex + 108px));
+    right: 4px;
+    z-index: 11;
   }
   .chempot-diagram-2d :global(.reverse-scale-toggle) {
     display: flex;

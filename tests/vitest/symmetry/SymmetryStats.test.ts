@@ -65,7 +65,7 @@ describe(`SymmetryStats`, () => {
 
       const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
       expect(symprec_input.value).toBe(`0.0001`) // 1e-4
-      expect(parseFloat(symprec_input.step)).toBe(1e-5)
+      expect(parseFloat(symprec_input.step)).toBe(1e-4)
 
       const algo_select = doc_query<HTMLSelectElement>(`.controls select`)
       expect(algo_select.value).toBe(`Moyo`)
@@ -103,8 +103,8 @@ describe(`SymmetryStats`, () => {
       },
     )
 
-    test(`symprec uses onchange (not oninput) to prevent excessive updates`, () => {
-      // Verifies symprec input only triggers on commit (blur/Enter), not every keystroke
+    test(`symprec uses oninput for immediate updates`, () => {
+      // Verifies symprec input triggers updates while typing.
       let update_count = 0
       const current_settings = { symprec: 1e-4, algo: `Moyo` as const }
 
@@ -124,18 +124,73 @@ describe(`SymmetryStats`, () => {
 
       const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
 
-      // Simulate typing (input events should NOT trigger updates)
+      // Simulate typing (input events should trigger updates)
       for (const val of [`0.0`, `0.00`, `0.001`]) {
         symprec_input.value = val
         symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
         flushSync()
       }
-      expect(update_count).toBe(0)
+      expect(update_count).toBe(3)
 
-      // Change event (blur/Enter) should trigger exactly once
+      // Change event no longer drives the update.
       symprec_input.dispatchEvent(new Event(`change`, { bubbles: true }))
       flushSync()
-      expect(update_count).toBe(1)
+      expect(update_count).toBe(3)
+    })
+
+    test.each([
+      { symprec_input_value: `0.01`, expected_step: 0.01 },
+      { symprec_input_value: `0.002`, expected_step: 0.001 },
+      { symprec_input_value: `0.00067`, expected_step: 0.0001 },
+    ])(`symprec step follows order of magnitude for $symprec_input_value`, ({
+      symprec_input_value,
+      expected_step,
+    }) => {
+      mount(SymmetryStats, {
+        target: document.body,
+        props: { sym_data: create_mock_sym_data() },
+      })
+
+      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+      expect(parseFloat(symprec_input.step)).toBe(1e-4)
+
+      symprec_input.value = symprec_input_value
+      symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      flushSync()
+      expect(parseFloat(symprec_input.step)).toBe(expected_step)
+    })
+
+    test(`symprec input keeps focus while typing`, () => {
+      mount(SymmetryStats, {
+        target: document.body,
+        props: { sym_data: create_mock_sym_data() },
+      })
+      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+      symprec_input.focus()
+
+      for (const val of [`0.0`, `0.00`, `0.001`]) {
+        symprec_input.value = val
+        symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        flushSync()
+        expect(document.activeElement).toBe(symprec_input)
+      }
+    })
+
+    test(`escape blurs symprec input`, () => {
+      mount(SymmetryStats, {
+        target: document.body,
+        props: { sym_data: create_mock_sym_data() },
+      })
+      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+      symprec_input.focus()
+      expect(document.activeElement).toBe(symprec_input)
+
+      symprec_input.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
+      )
+      flushSync()
+
+      expect(document.activeElement).not.toBe(symprec_input)
     })
   })
 
@@ -173,6 +228,15 @@ describe(`SymmetryStats`, () => {
       const text = doc_query(`.stats-grid`).textContent
       // HM symbol is now shown inline with space group number as "225 (?)"
       expect(text).toContain(`225 (?)`)
+    })
+
+    test(`removes whitespace in Hermann-Mauguin symbol display`, () => {
+      mount(SymmetryStats, {
+        target: document.body,
+        props: { sym_data: create_mock_sym_data({ number: 227, hm_symbol: `F d -3 m` }) },
+      })
+      const text = doc_query(`.stats-grid`).textContent
+      expect(text).toContain(`227 (Fd-3m)`)
     })
 
     test.each(
