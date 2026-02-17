@@ -110,6 +110,7 @@ describe(`get_temp_filter_payload`, () => {
   ])(`$label`, ({ config, props, expect_li_included }) => {
     const payload = get_payload_at_700(config, props)
     expect(has_formula(payload.temp_filtered_entries, `Li`)).toBe(expect_li_included)
+    // Guard against creating spurious formulas during temperature filtering/interpolation.
     expect(has_formula(payload.temp_filtered_entries, `LiO2`)).toBe(false)
   })
 

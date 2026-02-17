@@ -53,7 +53,7 @@ const ternary_temp_entries: PhaseData[] = [
 ]
 
 const base_config = { default_min_limit: -20, formal_chempots: false }
-const mounted_components: object[] = []
+const mounted_components: ReturnType<typeof mount>[] = []
 
 afterEach(() => {
   for (const mounted_component of mounted_components.splice(0)) {
@@ -126,9 +126,9 @@ describe(`ChemPot temperature config wiring`, () => {
         entries: ternary_temp_entries,
         temperature: 700,
         config: {
+          ...base_config,
           interpolate_temperature: false,
           max_interpolation_gap: 700,
-          ...base_config,
         },
       },
     })

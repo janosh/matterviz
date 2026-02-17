@@ -33,6 +33,7 @@
     config = {},
     width = $bindable(800),
     height = $bindable(600),
+    // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
     interpolate_temperature = CHEMPOT_DEFAULTS.interpolate_temperature,
     max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
@@ -108,6 +109,7 @@
   )
 
   $effect(() => {
+    // Keep bound temperature aligned with available data points.
     const next_temperature = get_valid_temperature(
       temperature,
       has_temp_data,
@@ -696,7 +698,7 @@
         title_style="margin-bottom: 3px;"
       />
     {/if}
-    {#if show_temperature_slider}
+    {#if show_temperature_slider && temperature !== undefined}
       <TemperatureSlider {available_temperatures} bind:temperature />
     {/if}
     {#if color_mode === `arity`}

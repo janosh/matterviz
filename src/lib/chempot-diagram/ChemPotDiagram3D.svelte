@@ -5,8 +5,8 @@
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
-  import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import { format_num } from '$lib/labels'
+  import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import {
     convex_hull_2d,
     cross_3d,
@@ -15,6 +15,7 @@
     type Vec2,
     type Vec3,
   } from '$lib/math'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
   import type {
     AxisConfig3D,
@@ -22,18 +23,17 @@
     DataSeries3D,
     DisplayConfig3D,
   } from '$lib/plot/types'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import ChemPotScene3D from './ChemPotScene3D.svelte'
   import { scaleLinear, scaleSequential } from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
   import { onDestroy, onMount } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three'
+  import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
-  import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+  import ChemPotScene3D from './ChemPotScene3D.svelte'
   import {
     apply_element_padding,
     best_form_energy_for_formula,
@@ -51,19 +51,20 @@
     get_temp_filter_payload,
     get_valid_temperature,
   } from './temperature'
-  import { CHEMPOT_DEFAULTS } from './types'
   import type {
     ChemPotColorMode,
     ChemPotDiagramConfig,
     ChemPotHoverInfo,
     ChemPotHoverInfo3D,
   } from './types'
+  import { CHEMPOT_DEFAULTS } from './types'
 
   let {
     entries = [],
     config = {},
     width = $bindable(800),
     height = $bindable(600),
+    // Auto-corrected to a valid available temperature when needed.
     temperature = $bindable<number | undefined>(undefined),
     interpolate_temperature = CHEMPOT_DEFAULTS.interpolate_temperature,
     max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
@@ -211,7 +212,7 @@
     }),
   )
 
-  $effect(() => {
+  $effect(() => { // Keep bound temperature aligned with available data points.
     const next_temperature = get_valid_temperature(
       temperature,
       has_temp_data,
@@ -583,12 +584,13 @@
     if (points.length === 0) {
       return { data_center: new THREE.Vector3(0, 0, 0), data_extent: 10 }
     }
-    // Compute center (swizzled: data[1]→X, data[2]→Y, data[0]→Z)
+    // Compute center in rendered coordinates (swizzled + axis scaling).
     let [sum_x, sum_y, sum_z] = [0, 0, 0]
     for (const point_3d of points) {
-      sum_x += point_3d[1]
-      sum_y += point_3d[2]
-      sum_z += point_3d[0]
+      const [x_val, y_val, z_val] = to_render_xyz(point_3d)
+      sum_x += x_val
+      sum_y += y_val
+      sum_z += z_val
     }
     const n_points = points.length
     const center = new THREE.Vector3(
@@ -2474,7 +2476,7 @@
       <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
     </button>
   </section>
-  {#if show_temperature_slider}
+  {#if show_temperature_slider && temperature !== undefined}
     <TemperatureSlider
       class="chempot-temp-slider"
       {available_temperatures}

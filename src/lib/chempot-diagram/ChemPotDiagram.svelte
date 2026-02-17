@@ -16,7 +16,8 @@
     config = {},
     width = $bindable(600),
     height = $bindable(600),
-    temperature = $bindable<number | undefined>(undefined),
+    // Bound temperature may be auto-corrected by 2D/3D child components.
+    temperature = $bindable(),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
   }: {
     entries: PhaseData[]

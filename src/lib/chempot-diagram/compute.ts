@@ -347,14 +347,25 @@ export function compute_domains(
 
     if (solved) {
       // Feasibility check: all halfspaces must be satisfied (a·mu + b <= tol)
-      const selected_hs_idx_0 = dim <= 3 ? combo[0] : -1
-      const selected_hs_idx_1 = dim <= 3 && dim > 1 ? combo[1] : -1
-      const selected_hs_idx_2 = dim <= 3 && dim > 2 ? combo[2] : -1
+      const selected_hs_idx_0 = dim > 0 ? combo[0] : -1
+      const selected_hs_idx_1 = dim > 1 ? combo[1] : -1
+      const selected_hs_idx_2 = dim > 2 ? combo[2] : -1
       for (let idx = 0; idx < n_total; idx++) {
-        if (
-          idx === selected_hs_idx_0 || idx === selected_hs_idx_1 ||
-          idx === selected_hs_idx_2
-        ) continue
+        if (dim <= 3) {
+          if (
+            idx === selected_hs_idx_0 || idx === selected_hs_idx_1 ||
+            idx === selected_hs_idx_2
+          ) continue
+        } else {
+          let is_active_halfspace = false
+          for (let combo_idx = 0; combo_idx < dim; combo_idx++) {
+            if (combo[combo_idx] === idx) {
+              is_active_halfspace = true
+              break
+            }
+          }
+          if (is_active_halfspace) continue
+        }
         const hs = all_hs[idx]
         let val = hs[dim]
         if (dim === 2) {
@@ -380,7 +391,7 @@ export function compute_domains(
         for (let idx = 0; idx < dim; idx++) {
           const hs_idx = combo[idx]
           if (hs_idx < n_entries) {
-            domains[entry_formulas[hs_idx]].push(vertex)
+            domains[entry_formulas[hs_idx]].push([...vertex])
           }
         }
       }
