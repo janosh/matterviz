@@ -2,10 +2,11 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
+  import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
-  import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import { format_num } from '$lib/labels'
+  import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import {
     convex_hull_2d,
     cross_3d,
@@ -14,6 +15,7 @@
     type Vec2,
     type Vec3,
   } from '$lib/math'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
   import type {
     AxisConfig3D,
@@ -21,18 +23,17 @@
     DataSeries3D,
     DisplayConfig3D,
   } from '$lib/plot/types'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import ChemPotScene3D from './ChemPotScene3D.svelte'
   import { scaleLinear, scaleSequential } from 'd3-scale'
   import * as d3_sc from 'd3-scale-chromatic'
   import { onDestroy, onMount } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three'
+  import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
-  import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+  import ChemPotScene3D from './ChemPotScene3D.svelte'
   import {
     apply_element_padding,
     best_form_energy_for_formula,
@@ -45,19 +46,28 @@
     get_min_entries_and_el_refs,
     pad_domain_points,
   } from './compute'
-  import { CHEMPOT_DEFAULTS } from './types'
+  import {
+    get_projection_source_entries,
+    get_temp_filter_payload,
+    get_valid_temperature,
+  } from './temperature'
   import type {
     ChemPotColorMode,
     ChemPotDiagramConfig,
     ChemPotHoverInfo,
     ChemPotHoverInfo3D,
   } from './types'
+  import { CHEMPOT_DEFAULTS } from './types'
 
   let {
     entries = [],
     config = {},
     width = $bindable(800),
     height = $bindable(600),
+    // Auto-corrected to a valid available temperature when needed.
+    temperature = $bindable<number | undefined>(undefined),
+    interpolate_temperature = CHEMPOT_DEFAULTS.interpolate_temperature,
+    max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     render_local_tooltip = true,
   }: {
@@ -65,6 +75,9 @@
     config?: ChemPotDiagramConfig
     width?: number
     height?: number
+    temperature?: number
+    interpolate_temperature?: boolean
+    max_interpolation_gap?: number
     hover_info?: ChemPotHoverInfo | null
     render_local_tooltip?: boolean
   } = $props()
@@ -154,6 +167,9 @@
 
   let mounted = $state(false)
   onMount(() => mounted = true)
+  let fixed_container_element = $state<HTMLElement | null>(null)
+  let fixed_container_rect = $state<DOMRect | null>(null)
+  let fixed_container_frame_id: number | null = null
   let orbit_controls_ref = $state<OrbitControls | undefined>(undefined)
   // Backside tracking: axes/ticks/labels render on the far side from the camera
   // back[i] = backside data coordinate value for data axis i
@@ -189,10 +205,35 @@
   }
 
   // Compute diagram data (requires >= 3 elements for 3D rendering)
+  const { has_temp_data, available_temperatures, temp_filtered_entries } = $derived(
+    get_temp_filter_payload(entries, temperature, config, {
+      interpolate_temperature,
+      max_interpolation_gap,
+    }),
+  )
+
+  // Keep bound temperature aligned with available data points.
+  $effect(() => {
+    const next_temperature = get_valid_temperature(
+      temperature,
+      has_temp_data,
+      available_temperatures,
+    )
+    if (next_temperature !== temperature) temperature = next_temperature
+  })
+
+  const show_temperature_slider = $derived(
+    has_temp_data && available_temperatures.length > 0,
+  )
+
+  const projection_source_entries = $derived(
+    get_projection_source_entries(entries, temp_filtered_entries),
+  )
+
   const all_entry_elements = $derived.by(() =>
     Array.from(
       new SvelteSet(
-        entries.flatMap((entry) =>
+        projection_source_entries.flatMap((entry) =>
           Object.entries(entry.composition)
             .filter(([, amount]) => amount > 0)
             .map(([element]) => element)
@@ -231,9 +272,9 @@
     draw_formula_lines,
   })
   const diagram_data = $derived.by(() => {
-    if (entries.length < 3) return null
+    if (temp_filtered_entries.length < 3) return null
     try {
-      const data = compute_chempot_diagram(entries, effective_config)
+      const data = compute_chempot_diagram(temp_filtered_entries, effective_config)
       return data.elements.length >= 3 ? data : null
     } catch (err) {
       console.error(`ChemPotDiagram3D:`, err)
@@ -366,7 +407,7 @@
   const entry_energy_stats_by_formula = $derived.by(
     (): SvelteMap<string, FormulaEnergyStats> => {
       const stats_by_formula = new SvelteMap<string, FormulaEnergyStats>()
-      for (const entry of entries) {
+      for (const entry of temp_filtered_entries) {
         const formula_key = formula_key_from_composition(entry.composition)
         const energy_per_atom = get_energy_per_atom(entry)
         const existing = stats_by_formula.get(formula_key)
@@ -401,7 +442,9 @@
   // Original (non-renormalized) elemental references for formation energy computation.
   // diagram_data.el_refs may be renormalized to zero when formal_chempots is true,
   // so we compute our own from the raw entries to get true DFT reference energies.
-  const raw_el_refs = $derived(get_min_entries_and_el_refs(entries).el_refs)
+  const raw_el_refs = $derived(
+    get_min_entries_and_el_refs(temp_filtered_entries).el_refs,
+  )
 
   // Resolve a D3 interpolator name to a function, optionally reversed
   function get_interpolator(name: D3InterpolateName): (t: number) => string {
@@ -438,7 +481,11 @@
       return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
     }
     if (active_color_mode === `formation_energy`) {
-      return best_form_energy_for_formula(entries, formula, raw_el_refs) ?? null
+      return best_form_energy_for_formula(
+        temp_filtered_entries,
+        formula,
+        raw_el_refs,
+      ) ?? null
     }
     return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
   }
@@ -500,6 +547,19 @@
     },
   )
 
+  const arity_legend_labels = $derived.by((): string[] => {
+    let has_four_plus_regions = false
+    for (const domain of render_domains) {
+      if (extract_formula_elements(domain.formula).length >= 4) {
+        has_four_plus_regions = true
+        break
+      }
+    }
+    return has_four_plus_regions
+      ? [`Unary`, `Binary`, `Ternary`, `4+`]
+      : [`Unary`, `Binary`, `Ternary`]
+  })
+
   // Stretch short axes to improve screen-space utilization for highly anisotropic systems.
   // Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
   const render_axis_scale = $derived.by((): [number, number, number] => {
@@ -538,10 +598,10 @@
     if (points.length === 0) {
       return { data_center: new THREE.Vector3(0, 0, 0), data_extent: 10 }
     }
-    // Compute center in rendered coordinates (swizzled + axis stretch)
-    let sum_x = 0, sum_y = 0, sum_z = 0
-    for (const point of points) {
-      const [x_val, y_val, z_val] = to_render_xyz(point)
+    // Compute center in rendered coordinates (swizzled + axis scaling).
+    let [sum_x, sum_y, sum_z] = [0, 0, 0]
+    for (const point_3d of points) {
+      const [x_val, y_val, z_val] = to_render_xyz(point_3d)
       sum_x += x_val
       sum_y += y_val
       sum_z += z_val
@@ -561,6 +621,33 @@
     }
     return { data_center: center, data_extent: Math.max(max_dist * 1.3, 1) }
   })
+  const default_camera_position = $derived<[number, number, number]>([
+    data_center.x + data_extent,
+    data_center.y + data_extent,
+    data_center.z + data_extent,
+  ])
+  const default_camera_target = $derived<[number, number, number]>([
+    data_center.x,
+    data_center.y,
+    data_center.z,
+  ])
+  const default_orthographic_zoom = $derived(
+    Math.min(render_width, render_height) / (data_extent * 1.6),
+  )
+  let camera_position_override = $state<[number, number, number] | null>(null)
+  let camera_target_override = $state<[number, number, number] | null>(null)
+  let orthographic_zoom_override = $state<number | null>(null)
+  const camera_position = $derived(
+    camera_position_override ?? default_camera_position,
+  )
+  const camera_target = $derived(
+    camera_target_override ?? default_camera_target,
+  )
+  const orthographic_zoom = $derived(
+    orthographic_zoom_override ?? default_orthographic_zoom,
+  )
+  let last_data_center = $state<[number, number, number] | null>(null)
+  let last_data_extent = $state<number | null>(null)
 
   // Compute domain boundary edges via axis-aligned 2D convex hull projection.
   // Each domain in a chem pot diagram is a convex polygon/polyhedron. We project
@@ -713,13 +800,15 @@
   // occlusion. This seamless surface writes to the depth buffer, hiding wireframe
   // edges on the back side. Using all vertices together avoids gaps between domains.
   const occlusion_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
-    const all_pts = render_domains
-      .filter((d) => !d.is_draw_formula)
-      .flatMap((d) => d.points_3d)
-    const unique = dedup_3d(all_pts)
-    if (unique.length < 4) return null
-    const vectors = unique.map((pt) => to_vec3(pt))
     try {
+      const all_points: number[][] = []
+      for (const domain of render_domains) {
+        if (domain.is_draw_formula) continue
+        all_points.push(...domain.points_3d)
+      }
+      const unique_points = dedup_3d(all_points)
+      if (unique_points.length < 4) return null
+      const vectors = unique_points.map((point) => to_vec3(point))
       return merge_coplanar_geometry(new ConvexGeometry(vectors))
     } catch {
       return null
@@ -1506,17 +1595,80 @@
     }
   }
 
+  function store_camera_view_state(): void {
+    // Prime framing baseline on first user interaction so the next geometry
+    // change can preserve zoom/center immediately (not only from second change).
+    if (last_data_center === null) {
+      last_data_center = [data_center.x, data_center.y, data_center.z]
+    }
+    if (last_data_extent === null) {
+      last_data_extent = data_extent
+    }
+    const controls = orbit_controls_ref
+    const controls_camera = controls?.object
+    if (controls_camera) {
+      camera_position_override = [
+        controls_camera.position.x,
+        controls_camera.position.y,
+        controls_camera.position.z,
+      ]
+      if (controls_camera instanceof THREE.OrthographicCamera) {
+        orthographic_zoom_override = controls_camera.zoom
+      }
+    }
+    const controls_target = controls?.target
+    if (controls_target) {
+      camera_target_override = [
+        controls_target.x,
+        controls_target.y,
+        controls_target.z,
+      ]
+    }
+  }
+
+  // Preserve user framing across temperature-driven geometry changes:
+  // shift camera/target with domain center and keep orthographic zoom relative to extent.
+  $effect(() => {
+    if (camera_position_override && camera_target_override && last_data_center) {
+      const [last_x, last_y, last_z] = last_data_center
+      const delta_x = data_center.x - last_x
+      const delta_y = data_center.y - last_y
+      const delta_z = data_center.z - last_z
+      if (delta_x !== 0 || delta_y !== 0 || delta_z !== 0) {
+        camera_position_override = [
+          camera_position_override[0] + delta_x,
+          camera_position_override[1] + delta_y,
+          camera_position_override[2] + delta_z,
+        ]
+        camera_target_override = [
+          camera_target_override[0] + delta_x,
+          camera_target_override[1] + delta_y,
+          camera_target_override[2] + delta_z,
+        ]
+      }
+    }
+    if (
+      orthographic_zoom_override !== null &&
+      last_data_extent !== null &&
+      last_data_extent > 0 &&
+      data_extent > 0
+    ) {
+      orthographic_zoom_override *= last_data_extent / data_extent
+    }
+    last_data_center = [data_center.x, data_center.y, data_center.z]
+    last_data_extent = data_extent
+  })
+
   $effect(() => {
     const controls = orbit_controls_ref
     if (!controls) return
-    if (controls.target) {
-      controls.target.set(data_center.x, data_center.y, data_center.z)
+    const on_controls_change = (): void => {
+      update_backside()
+      store_camera_view_state()
     }
-    controls.object?.lookAt(data_center)
-    controls.update?.()
-    controls.addEventListener(`change`, update_backside)
+    controls.addEventListener(`change`, on_controls_change)
     update_backside()
-    return () => controls.removeEventListener(`change`, update_backside)
+    return () => controls.removeEventListener(`change`, on_controls_change)
   })
 
   $effect(() => {
@@ -1928,6 +2080,60 @@
 
   onDestroy(() => {
     if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
+    if (fixed_container_frame_id !== null) {
+      cancelAnimationFrame(fixed_container_frame_id)
+      fixed_container_frame_id = null
+    }
+  })
+
+  function find_fixed_container_element(): HTMLElement | null {
+    if (!wrapper) return null
+    let ancestor_element: HTMLElement | null = wrapper.parentElement
+    while (ancestor_element && ancestor_element !== document.documentElement) {
+      const computed_style = getComputedStyle(ancestor_element)
+      const contain_value = computed_style.contain
+      const container_type_value = computed_style.getPropertyValue(`container-type`)
+        .trim()
+      const creates_fixed_containing_block = computed_style.transform !== `none` ||
+        computed_style.perspective !== `none` ||
+        computed_style.filter !== `none` ||
+        computed_style.backdropFilter !== `none` ||
+        contain_value.includes(`layout`) ||
+        contain_value.includes(`paint`) ||
+        contain_value.includes(`strict`) ||
+        contain_value.includes(`content`) ||
+        (container_type_value && container_type_value !== `normal`)
+      if (creates_fixed_containing_block) return ancestor_element
+      ancestor_element = ancestor_element.parentElement
+    }
+    return null
+  }
+
+  function refresh_fixed_container_rect(): void {
+    fixed_container_rect = fixed_container_element?.getBoundingClientRect() ?? null
+  }
+
+  function queue_fixed_container_rect_refresh(): void {
+    if (fixed_container_frame_id !== null) return
+    fixed_container_frame_id = requestAnimationFrame(() => {
+      fixed_container_frame_id = null
+      refresh_fixed_container_rect()
+    })
+  }
+
+  $effect(() => {
+    fixed_container_element = find_fixed_container_element()
+    refresh_fixed_container_rect()
+  })
+
+  onMount(() => {
+    const handle_layout_change = (): void => queue_fixed_container_rect_refresh()
+    window.addEventListener(`resize`, handle_layout_change)
+    window.addEventListener(`scroll`, handle_layout_change, true)
+    return () => {
+      window.removeEventListener(`resize`, handle_layout_change)
+      window.removeEventListener(`scroll`, handle_layout_change, true)
+    }
   })
 
   function get_pointer_coords(
@@ -1966,10 +2172,11 @@
   function get_hover_pointer(raw_event: unknown): { x: number; y: number } | null {
     const pointer_event = get_pointer_coords(raw_event)
     if (!pointer_event) return null
-    // Use viewport coordinates so the tooltip (position: fixed) isn't clipped
+    const offset_x = fixed_container_rect?.left ?? 0
+    const offset_y = fixed_container_rect?.top ?? 0
     return {
-      x: pointer_event.clientX + 4,
-      y: pointer_event.clientY + 4,
+      x: pointer_event.clientX - offset_x + 4,
+      y: pointer_event.clientY - offset_y + 4,
     }
   }
 
@@ -2373,6 +2580,13 @@
       <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
     </button>
   </section>
+  {#if show_temperature_slider && temperature !== undefined}
+    <TemperatureSlider
+      class="chempot-temp-slider"
+      {available_temperatures}
+      bind:temperature
+    />
+  {/if}
   {#if !diagram_data}
     <div class="error-state" role="alert" aria-live="polite">
       <p>Cannot compute chemical potential diagram.</p>
@@ -2393,12 +2607,8 @@
           <!-- Orthographic camera matching pymatgen's projection style -->
           <T.OrthographicCamera
             makeDefault
-            position={[
-              data_center.x + data_extent,
-              data_center.y + data_extent,
-              data_center.z + data_extent,
-            ]}
-            zoom={Math.min(render_width, render_height) / (data_extent * 1.6)}
+            position={camera_position}
+            zoom={orthographic_zoom}
             near={0.1}
             far={data_extent * 10}
           >
@@ -2409,17 +2619,13 @@
               enablePan
               autoRotate={auto_rotate > 0}
               autoRotateSpeed={auto_rotate}
-              target={[data_center.x, data_center.y, data_center.z]}
+              target={camera_target}
             />
           </T.OrthographicCamera>
         {:else}
           <T.PerspectiveCamera
             makeDefault
-            position={[
-              data_center.x + data_extent,
-              data_center.y + data_extent,
-              data_center.z + data_extent,
-            ]}
+            position={camera_position}
             fov={50}
             near={0.1}
             far={data_extent * 10}
@@ -2431,7 +2637,7 @@
               enablePan
               autoRotate={auto_rotate > 0}
               autoRotateSpeed={auto_rotate}
-              target={[data_center.x, data_center.y, data_center.z]}
+              target={camera_target}
             />
           </T.PerspectiveCamera>
         {/if}
@@ -2612,7 +2818,7 @@
     <!-- Categorical legend for arity mode -->
     {#if color_mode === `arity`}
       <div class="arity-legend">
-        {#each [`Unary`, `Binary`, `Ternary`, `4+`] as label, idx (label)}
+        {#each arity_legend_labels as label, idx (label)}
           <span>
             <span style:background={arity_colors[idx]}></span>
             {label}
@@ -2704,6 +2910,11 @@
   .chempot-diagram-3d > section > :global(button:hover),
   .chempot-diagram-3d > section > :global(.pane-toggle:hover) {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
+  }
+  .chempot-diagram-3d :global(.chempot-temp-slider) {
+    top: var(--chempot-temp-slider-top, calc(1ex + 108px));
+    right: 4px;
+    z-index: 11;
   }
   .chempot-diagram-3d :global(.draggable-pane label) {
     display: flex;

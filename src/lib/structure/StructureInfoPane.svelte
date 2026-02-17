@@ -133,12 +133,24 @@
         else roto_translations++
       }
 
+      const international_symbol = (sym_data as MoyoDataset & {
+        international_short?: string
+      }).international_short
+      const space_group_symbol = (sym_data.hm_symbol ?? international_symbol)
+        ?.replace(
+          /\s+/g,
+          ``,
+        )
+      const space_group_value = space_group_symbol
+        ? `${sym_data.number} (${space_group_symbol})`
+        : String(sym_data.number)
+
       sections.push({
         title: `Symmetry`,
         items: [
           {
             label: `Space Group`,
-            value: String(sym_data.number),
+            value: space_group_value,
             key: `symmetry-space-group`,
           },
           {

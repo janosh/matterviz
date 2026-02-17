@@ -39,6 +39,10 @@ export interface ChemPotDiagramConfig {
   color_scale?: D3InterpolateName // default interpolateSpectral
   // Reverse the color scale direction
   reverse_color_scale?: boolean // default true
+  // Enable linear interpolation for temperatures not in the data (default: true)
+  interpolate_temperature?: boolean
+  // Maximum temperature gap (Kelvin) allowed for interpolation (default: 500)
+  max_interpolation_gap?: number
 }
 
 // Computed chemical potential diagram data
@@ -113,6 +117,8 @@ export const CHEMPOT_DEFAULTS = {
   color_mode: `formation_energy` as ChemPotColorMode,
   color_scale: `interpolateSpectral` as D3InterpolateName,
   reverse_color_scale: true,
+  interpolate_temperature: true,
+  max_interpolation_gap: 500,
   // Dark2 qualitative palette (same as pymatgen/plotly default)
   formula_colors: [
     `#1b9e77`,

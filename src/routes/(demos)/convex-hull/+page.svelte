@@ -13,7 +13,10 @@
     ConvexHull3D,
     ConvexHull4D,
     ConvexHullStats,
+    create_temp_ternary_entries_li_fe_o,
+    demo_temperatures,
     GAS_SPECIES,
+    make_demo_phase,
     process_hull_for_stats,
   } from '$lib/convex-hull'
   import { decompress_data } from '$lib/io/decompress'
@@ -275,30 +278,9 @@
 
   // === Temperature-dependent G(T) synthetic data ===
   // G(T) ≈ E_0K + entropy_coef * T * 0.0001 - 0.00005 * T * ln(T)
-  const temperatures = Array.from({ length: 13 }, (_, idx) => 300 + idx * 100) // 300-1500K
-
-  // Seeded pseudo-random for reproducible demo data
-  const seeded_random = (seed: number) => {
-    const x = Math.sin(seed * 9999) * 10000
-    return x - Math.floor(x)
-  }
-
-  // Generate phase with computed energy/entropy from composition
+  const temperatures = demo_temperatures // 300-1500K
   type Comp = Record<string, number>
-  const make_phase = (comp: Comp, seed: number, entropy_boost = 0): PhaseData => {
-    const n_elements = Object.keys(comp).length
-    const energy = -0.3 * n_elements - seeded_random(seed) * 0.5
-    const entropy_coef = 0.5 + n_elements * 0.3 + seeded_random(seed + 1) * 2 +
-      entropy_boost
-    return {
-      composition: comp,
-      energy,
-      temperatures,
-      free_energies: temperatures.map(
-        (T) => energy + entropy_coef * T * 0.0001 - 0.00005 * T * Math.log(T),
-      ),
-    }
-  }
+  const make_phase = make_demo_phase
 
   // Binary Li-Fe: elements + 7 compositions at different x values
   const temp_binary_entries: PhaseData[] = [
@@ -311,27 +293,7 @@
   ]
 
   // Ternary Li-Fe-O: elements + binary edges + interior points + polymorphs
-  const temp_ternary_entries: PhaseData[] = [
-    // Pure elements
-    ...[`Li`, `Fe`, `O`].map((el, idx) => make_phase({ [el]: 1 }, idx)),
-    // Binary edges (6 pairs × 2 polymorphs)
-    ...[[`Li`, `Fe`], [`Li`, `O`], [`Fe`, `O`]].flatMap(([a, b], idx) =>
-      [0.33, 0.5, 0.67].flatMap((x, jdx) => [
-        make_phase({ [a]: x, [b]: 1 - x }, 100 + idx * 10 + jdx),
-        make_phase({ [a]: x, [b]: 1 - x }, 200 + idx * 10 + jdx, 3),
-      ])
-    ),
-    // Ternary interior with competing polymorphs
-    ...[
-      { Li: 0.33, Fe: 0.33, O: 0.34 },
-      { Li: 0.5, Fe: 0.25, O: 0.25 },
-      { Li: 0.25, Fe: 0.5, O: 0.25 },
-      { Li: 0.25, Fe: 0.25, O: 0.5 },
-    ].flatMap((comp, idx) => [
-      make_phase(comp, 300 + idx), // ordered (low S)
-      make_phase(comp, 400 + idx, 4), // disordered (high S)
-    ]),
-  ]
+  const temp_ternary_entries = create_temp_ternary_entries_li_fe_o()
 
   // Quaternary Li-Fe-Ni-O: programmatic generation
   const temp_quaternary_entries: PhaseData[] = [
