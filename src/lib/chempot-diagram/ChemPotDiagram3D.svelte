@@ -2,6 +2,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
+  import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
   import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
@@ -45,6 +46,11 @@
     get_min_entries_and_el_refs,
     pad_domain_points,
   } from './compute'
+  import {
+    get_projection_source_entries,
+    get_temp_filter_payload,
+    get_valid_temperature,
+  } from './temperature'
   import { CHEMPOT_DEFAULTS } from './types'
   import type {
     ChemPotColorMode,
@@ -58,6 +64,9 @@
     config = {},
     width = $bindable(800),
     height = $bindable(600),
+    temperature = $bindable<number | undefined>(undefined),
+    interpolate_temperature = CHEMPOT_DEFAULTS.interpolate_temperature,
+    max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     render_local_tooltip = true,
   }: {
@@ -65,6 +74,9 @@
     config?: ChemPotDiagramConfig
     width?: number
     height?: number
+    temperature?: number
+    interpolate_temperature?: boolean
+    max_interpolation_gap?: number
     hover_info?: ChemPotHoverInfo | null
     render_local_tooltip?: boolean
   } = $props()
@@ -154,6 +166,9 @@
 
   let mounted = $state(false)
   onMount(() => mounted = true)
+  let fixed_container_element = $state<HTMLElement | null>(null)
+  let fixed_container_rect = $state<DOMRect | null>(null)
+  let fixed_container_frame_id: number | null = null
   let orbit_controls_ref = $state<OrbitControls | undefined>(undefined)
   // Backside tracking: axes/ticks/labels render on the far side from the camera
   // back[i] = backside data coordinate value for data axis i
@@ -189,10 +204,34 @@
   }
 
   // Compute diagram data (requires >= 3 elements for 3D rendering)
+  const { has_temp_data, available_temperatures, temp_filtered_entries } = $derived(
+    get_temp_filter_payload(entries, temperature, config, {
+      interpolate_temperature,
+      max_interpolation_gap,
+    }),
+  )
+
+  $effect(() => {
+    const next_temperature = get_valid_temperature(
+      temperature,
+      has_temp_data,
+      available_temperatures,
+    )
+    if (next_temperature !== temperature) temperature = next_temperature
+  })
+
+  const show_temperature_slider = $derived(
+    has_temp_data && available_temperatures.length > 0,
+  )
+
+  const projection_source_entries = $derived(
+    get_projection_source_entries(entries, temp_filtered_entries),
+  )
+
   const all_entry_elements = $derived.by(() =>
     Array.from(
       new SvelteSet(
-        entries.flatMap((entry) =>
+        projection_source_entries.flatMap((entry) =>
           Object.entries(entry.composition)
             .filter(([, amount]) => amount > 0)
             .map(([element]) => element)
@@ -231,9 +270,9 @@
     draw_formula_lines,
   })
   const diagram_data = $derived.by(() => {
-    if (entries.length < 3) return null
+    if (temp_filtered_entries.length < 3) return null
     try {
-      const data = compute_chempot_diagram(entries, effective_config)
+      const data = compute_chempot_diagram(temp_filtered_entries, effective_config)
       return data.elements.length >= 3 ? data : null
     } catch (err) {
       console.error(`ChemPotDiagram3D:`, err)
@@ -366,7 +405,7 @@
   const entry_energy_stats_by_formula = $derived.by(
     (): SvelteMap<string, FormulaEnergyStats> => {
       const stats_by_formula = new SvelteMap<string, FormulaEnergyStats>()
-      for (const entry of entries) {
+      for (const entry of temp_filtered_entries) {
         const formula_key = formula_key_from_composition(entry.composition)
         const energy_per_atom = get_energy_per_atom(entry)
         const existing = stats_by_formula.get(formula_key)
@@ -401,7 +440,9 @@
   // Original (non-renormalized) elemental references for formation energy computation.
   // diagram_data.el_refs may be renormalized to zero when formal_chempots is true,
   // so we compute our own from the raw entries to get true DFT reference energies.
-  const raw_el_refs = $derived(get_min_entries_and_el_refs(entries).el_refs)
+  const raw_el_refs = $derived(
+    get_min_entries_and_el_refs(temp_filtered_entries).el_refs,
+  )
 
   // Resolve a D3 interpolator name to a function, optionally reversed
   function get_interpolator(name: D3InterpolateName): (t: number) => string {
@@ -438,7 +479,11 @@
       return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
     }
     if (active_color_mode === `formation_energy`) {
-      return best_form_energy_for_formula(entries, formula, raw_el_refs) ?? null
+      return best_form_energy_for_formula(
+        temp_filtered_entries,
+        formula,
+        raw_el_refs,
+      ) ?? null
     }
     return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
   }
@@ -538,13 +583,12 @@
     if (points.length === 0) {
       return { data_center: new THREE.Vector3(0, 0, 0), data_extent: 10 }
     }
-    // Compute center in rendered coordinates (swizzled + axis stretch)
-    let sum_x = 0, sum_y = 0, sum_z = 0
-    for (const point of points) {
-      const [x_val, y_val, z_val] = to_render_xyz(point)
-      sum_x += x_val
-      sum_y += y_val
-      sum_z += z_val
+    // Compute center (swizzled: data[1]→X, data[2]→Y, data[0]→Z)
+    let [sum_x, sum_y, sum_z] = [0, 0, 0]
+    for (const point_3d of points) {
+      sum_x += point_3d[1]
+      sum_y += point_3d[2]
+      sum_z += point_3d[0]
     }
     const n_points = points.length
     const center = new THREE.Vector3(
@@ -713,13 +757,15 @@
   // occlusion. This seamless surface writes to the depth buffer, hiding wireframe
   // edges on the back side. Using all vertices together avoids gaps between domains.
   const occlusion_hull_geometry = $derived.by((): THREE.BufferGeometry | null => {
-    const all_pts = render_domains
-      .filter((d) => !d.is_draw_formula)
-      .flatMap((d) => d.points_3d)
-    const unique = dedup_3d(all_pts)
-    if (unique.length < 4) return null
-    const vectors = unique.map((pt) => to_vec3(pt))
     try {
+      const all_points: number[][] = []
+      for (const domain of render_domains) {
+        if (domain.is_draw_formula) continue
+        all_points.push(...domain.points_3d)
+      }
+      const unique_points = dedup_3d(all_points)
+      if (unique_points.length < 4) return null
+      const vectors = unique_points.map((point) => to_vec3(point))
       return merge_coplanar_geometry(new ConvexGeometry(vectors))
     } catch {
       return null
@@ -1928,6 +1974,60 @@
 
   onDestroy(() => {
     if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
+    if (fixed_container_frame_id !== null) {
+      cancelAnimationFrame(fixed_container_frame_id)
+      fixed_container_frame_id = null
+    }
+  })
+
+  function find_fixed_container_element(): HTMLElement | null {
+    if (!wrapper) return null
+    let ancestor_element: HTMLElement | null = wrapper.parentElement
+    while (ancestor_element && ancestor_element !== document.documentElement) {
+      const computed_style = getComputedStyle(ancestor_element)
+      const contain_value = computed_style.contain
+      const container_type_value = computed_style.getPropertyValue(`container-type`)
+        .trim()
+      const creates_fixed_containing_block = computed_style.transform !== `none` ||
+        computed_style.perspective !== `none` ||
+        computed_style.filter !== `none` ||
+        computed_style.backdropFilter !== `none` ||
+        contain_value.includes(`layout`) ||
+        contain_value.includes(`paint`) ||
+        contain_value.includes(`strict`) ||
+        contain_value.includes(`content`) ||
+        (container_type_value && container_type_value !== `normal`)
+      if (creates_fixed_containing_block) return ancestor_element
+      ancestor_element = ancestor_element.parentElement
+    }
+    return null
+  }
+
+  function refresh_fixed_container_rect(): void {
+    fixed_container_rect = fixed_container_element?.getBoundingClientRect() ?? null
+  }
+
+  function queue_fixed_container_rect_refresh(): void {
+    if (fixed_container_frame_id !== null) return
+    fixed_container_frame_id = requestAnimationFrame(() => {
+      fixed_container_frame_id = null
+      refresh_fixed_container_rect()
+    })
+  }
+
+  $effect(() => {
+    fixed_container_element = find_fixed_container_element()
+    refresh_fixed_container_rect()
+  })
+
+  onMount(() => {
+    const handle_layout_change = (): void => queue_fixed_container_rect_refresh()
+    window.addEventListener(`resize`, handle_layout_change)
+    window.addEventListener(`scroll`, handle_layout_change, true)
+    return () => {
+      window.removeEventListener(`resize`, handle_layout_change)
+      window.removeEventListener(`scroll`, handle_layout_change, true)
+    }
   })
 
   function get_pointer_coords(
@@ -1966,10 +2066,11 @@
   function get_hover_pointer(raw_event: unknown): { x: number; y: number } | null {
     const pointer_event = get_pointer_coords(raw_event)
     if (!pointer_event) return null
-    // Use viewport coordinates so the tooltip (position: fixed) isn't clipped
+    const offset_x = fixed_container_rect?.left ?? 0
+    const offset_y = fixed_container_rect?.top ?? 0
     return {
-      x: pointer_event.clientX + 4,
-      y: pointer_event.clientY + 4,
+      x: pointer_event.clientX - offset_x + 4,
+      y: pointer_event.clientY - offset_y + 4,
     }
   }
 
@@ -2373,6 +2474,13 @@
       <Icon icon="{fullscreen ? `Exit` : ``}Fullscreen" />
     </button>
   </section>
+  {#if show_temperature_slider}
+    <TemperatureSlider
+      class="chempot-temp-slider"
+      {available_temperatures}
+      bind:temperature
+    />
+  {/if}
   {#if !diagram_data}
     <div class="error-state" role="alert" aria-live="polite">
       <p>Cannot compute chemical potential diagram.</p>
@@ -2704,6 +2812,11 @@
   .chempot-diagram-3d > section > :global(button:hover),
   .chempot-diagram-3d > section > :global(.pane-toggle:hover) {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
+  }
+  .chempot-diagram-3d :global(.chempot-temp-slider) {
+    top: var(--chempot-temp-slider-top, calc(1ex + 108px));
+    right: 4px;
+    z-index: 11;
   }
   .chempot-diagram-3d :global(.draggable-pane label) {
     display: flex;

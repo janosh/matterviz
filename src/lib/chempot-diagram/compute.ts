@@ -149,53 +149,36 @@ export function build_hyperplanes(
   elements: string[],
 ): { hyperplanes: number[][]; hyperplane_entries: PhaseData[] } {
   const n_elems = elements.length
-  // Build data matrix: [atomic_fracs..., energy_per_atom]
-  const data = min_entries.map((entry) => {
-    const atoms = count_atoms_in_composition(entry.composition)
-    const comp = entry.composition as Record<string, number>
-    const row = elements.map((el) => atoms > 0 ? (comp[el] ?? 0) / atoms : 0)
-    row.push(get_energy_per_atom(entry))
-    return row
+  const element_ref_energies = elements.map((element) => {
+    const ref_entry = el_refs[element]
+    return ref_entry ? get_energy_per_atom(ref_entry) : 0
   })
-
-  // Formation energy vector: ref_energies per atom for each element, then -1
-  const vec = elements.map((el) => {
-    const ref = el_refs[el]
-    return ref ? get_energy_per_atom(ref) : 0
-  })
-  vec.push(-1)
-
-  // form_e = -dot(data_row, vec) for each entry
-  const form_energies = data.map((row) => {
-    let val = 0
-    for (let idx = 0; idx < row.length; idx++) val += row[idx] * vec[idx]
-    return -val
-  })
-
-  // Keep entries with negative formation energy or elemental refs (use Set for O(1) lookup)
+  const always_include = new Set<PhaseData>(Object.values(el_refs))
   const tol = 1e-6 // PhaseDiagram.formation_energy_tol
-  const index_set = new Set<number>()
+  const hyperplanes: number[][] = []
+  const hyperplane_entries: PhaseData[] = []
 
-  for (let idx = 0; idx < form_energies.length; idx++) {
-    if (form_energies[idx] < -tol) index_set.add(idx)
-  }
-  // Always include elemental references
-  for (const ref of Object.values(el_refs)) {
-    const ref_idx = min_entries.indexOf(ref)
-    if (ref_idx >= 0) index_set.add(ref_idx)
+  for (const entry of min_entries) {
+    const atom_count = count_atoms_in_composition(entry.composition)
+    const composition = entry.composition as Record<string, number>
+    const energy_per_atom = get_energy_per_atom(entry)
+    const row = new Array(n_elems + 1).fill(0)
+    let ref_energy = 0
+    for (let elem_idx = 0; elem_idx < n_elems; elem_idx++) {
+      const element = elements[elem_idx]
+      const fraction = atom_count > 0 ? (composition[element] ?? 0) / atom_count : 0
+      row[elem_idx] = fraction
+      ref_energy += fraction * element_ref_energies[elem_idx]
+    }
+    const form_energy = energy_per_atom - ref_energy
+    if (form_energy < -tol || always_include.has(entry)) {
+      row[n_elems] = -energy_per_atom
+      hyperplanes.push(row)
+      hyperplane_entries.push(entry)
+    }
   }
 
-  const indices = Array.from(index_set)
-  const hyperplanes = indices.map((idx) => {
-    const row = [...data[idx]]
-    row[n_elems] *= -1 // negate energy column
-    return row
-  })
-
-  return {
-    hyperplanes,
-    hyperplane_entries: indices.map((idx) => min_entries[idx]),
-  }
+  return { hyperplanes, hyperplane_entries }
 }
 
 // Build border hyperplanes from per-element limits.
@@ -301,7 +284,37 @@ export function compute_domains(
   const combo = new Array(dim).fill(0)
   for (let idx = 0; idx < dim; idx++) combo[idx] = idx
 
+  function advance_combo(): boolean {
+    let pos = dim - 1
+    while (pos >= 0 && combo[pos] >= n_total - dim + pos) pos--
+    if (pos < 0) return false
+    combo[pos]++
+    for (let idx = pos + 1; idx < dim; idx++) combo[idx] = combo[idx - 1] + 1
+    return true
+  }
+
   while (true) {
+    // Combinations containing only border halfspaces cannot be assigned to any
+    // entry domain, so skip solving them entirely.
+    let has_entry_hyperplane = false
+    if (dim === 2) {
+      has_entry_hyperplane = combo[0] < n_entries || combo[1] < n_entries
+    } else if (dim === 3) {
+      has_entry_hyperplane = combo[0] < n_entries || combo[1] < n_entries ||
+        combo[2] < n_entries
+    } else {
+      for (let row = 0; row < dim; row++) {
+        if (combo[row] < n_entries) {
+          has_entry_hyperplane = true
+          break
+        }
+      }
+    }
+    if (!has_entry_hyperplane) {
+      if (!advance_combo()) break
+      continue
+    }
+
     // Compute offsets (negated last column of selected halfspaces)
     for (let row = 0; row < dim; row++) offsets[row] = -all_hs[combo[row]][dim]
 
@@ -334,10 +347,23 @@ export function compute_domains(
 
     if (solved) {
       // Feasibility check: all halfspaces must be satisfied (a·mu + b <= tol)
+      const selected_hs_idx_0 = dim <= 3 ? combo[0] : -1
+      const selected_hs_idx_1 = dim <= 3 && dim > 1 ? combo[1] : -1
+      const selected_hs_idx_2 = dim <= 3 && dim > 2 ? combo[2] : -1
       for (let idx = 0; idx < n_total; idx++) {
+        if (
+          idx === selected_hs_idx_0 || idx === selected_hs_idx_1 ||
+          idx === selected_hs_idx_2
+        ) continue
         const hs = all_hs[idx]
         let val = hs[dim]
-        for (let jdx = 0; jdx < dim; jdx++) val += hs[jdx] * mu[jdx]
+        if (dim === 2) {
+          val += hs[0] * mu[0] + hs[1] * mu[1]
+        } else if (dim === 3) {
+          val += hs[0] * mu[0] + hs[1] * mu[1] + hs[2] * mu[2]
+        } else {
+          for (let jdx = 0; jdx < dim; jdx++) val += hs[jdx] * mu[jdx]
+        }
         if (val > tol) {
           solved = false
           break
@@ -346,21 +372,22 @@ export function compute_domains(
 
       if (solved) {
         // Assign vertex to entries whose hyperplanes are active
+        const vertex = dim === 2
+          ? [mu[0], mu[1]]
+          : dim === 3
+          ? [mu[0], mu[1], mu[2]]
+          : [...mu]
         for (let idx = 0; idx < dim; idx++) {
           const hs_idx = combo[idx]
           if (hs_idx < n_entries) {
-            domains[entry_formulas[hs_idx]].push([...mu])
+            domains[entry_formulas[hs_idx]].push(vertex)
           }
         }
       }
     }
 
     // Advance to next combination (lexicographic order)
-    let pos = dim - 1
-    while (pos >= 0 && combo[pos] >= n_total - dim + pos) pos--
-    if (pos < 0) break
-    combo[pos]++
-    for (let idx = pos + 1; idx < dim; idx++) combo[idx] = combo[idx - 1] + 1
+    if (!advance_combo()) break
   }
 
   // Remove empty domains
@@ -645,14 +672,14 @@ export function compute_chempot_diagram(
     limits,
   } = config
 
-  // Detect all unique elements across all input entries
-  const all_data_elements = Array.from(
-    new Set(
-      entries.flatMap((entry) =>
-        Object.entries(entry.composition).filter(([, amt]) => amt > 0).map(([el]) => el)
-      ),
-    ),
-  ).sort()
+  // Detect all unique elements across all input entries (single pass, low allocation)
+  const all_data_elements_set = new Set<string>()
+  for (const entry of entries) {
+    for (const [element, amount] of Object.entries(entry.composition)) {
+      if (amount > 0) all_data_elements_set.add(element)
+    }
+  }
+  const all_data_elements = Array.from(all_data_elements_set).sort()
 
   // Display elements: user-specified order (controls axis mapping), or auto-detect
   const display_elements = config.elements?.length
@@ -671,11 +698,12 @@ export function compute_chempot_diagram(
   let working_entries = entries
   if (!is_projection && config.elements?.length) {
     const target_set = new Set(config.elements)
-    working_entries = entries.filter((entry) =>
-      Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0)
-        .every(([el]) => target_set.has(el))
-    )
+    working_entries = entries.filter((entry) => {
+      for (const [element, amount] of Object.entries(entry.composition)) {
+        if (amount > 0 && !target_set.has(element)) return false
+      }
+      return true
+    })
   }
 
   // Sort entries by composition (Schwartzian transform to avoid recomputing keys)
@@ -730,7 +758,19 @@ export function compute_chempot_diagram(
   // Project domain vertices from N-D to display axes (column extraction)
   let output_lims = compute_lims
   if (is_projection) {
-    const col_indices = display_elements.map((el) => compute_elements.indexOf(el))
+    const compute_index_by_element = new Map<string, number>()
+    for (let idx = 0; idx < compute_elements.length; idx++) {
+      compute_index_by_element.set(compute_elements[idx], idx)
+    }
+    const col_indices = display_elements.map((element) => {
+      const idx = compute_index_by_element.get(element)
+      if (idx === undefined) {
+        throw new Error(
+          `Display element ${element} not present in compute element set`,
+        )
+      }
+      return idx
+    })
     const projected: Record<string, number[][]> = {}
     for (const [formula, pts] of Object.entries(domains)) {
       projected[formula] = pts.map((pt) => col_indices.map((idx) => pt[idx]))

@@ -4,24 +4,26 @@
   import { format_num } from '$lib/labels'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
-  import { CHEMPOT_DEFAULTS } from './types'
   import type {
     ChemPotDiagramConfig,
     ChemPotHoverInfo,
     ChemPotHoverInfo3D,
   } from './types'
+  import { CHEMPOT_DEFAULTS } from './types'
 
   let {
     entries = [],
     config = {},
     width = $bindable(600),
     height = $bindable(600),
+    temperature = $bindable<number | undefined>(undefined),
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
   }: {
     entries: PhaseData[]
     config?: ChemPotDiagramConfig
     width?: number
     height?: number
+    temperature?: number
     hover_info?: ChemPotHoverInfo | null
   } = $props()
 
@@ -77,6 +79,7 @@
       {config}
       bind:width
       bind:height
+      bind:temperature
       bind:hover_info
       render_local_tooltip={false}
     />
@@ -86,6 +89,7 @@
       {config}
       bind:width
       bind:height
+      bind:temperature
       bind:hover_info
       render_local_tooltip={false}
     />

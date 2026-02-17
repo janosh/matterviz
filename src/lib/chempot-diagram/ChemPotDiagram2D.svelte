@@ -2,6 +2,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
+  import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { download } from '$lib/io/fetch'
@@ -23,6 +24,7 @@
     orthonormal_2d,
     pad_domain_points,
   } from './compute'
+  import { get_temp_filter_payload, get_valid_temperature } from './temperature'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
@@ -31,6 +33,9 @@
     config = {},
     width = $bindable(800),
     height = $bindable(600),
+    temperature = $bindable<number | undefined>(undefined),
+    interpolate_temperature = CHEMPOT_DEFAULTS.interpolate_temperature,
+    max_interpolation_gap = CHEMPOT_DEFAULTS.max_interpolation_gap,
     hover_info = $bindable<ChemPotHoverInfo | null>(null),
     render_local_tooltip = true,
   }: {
@@ -38,6 +43,9 @@
     config?: ChemPotDiagramConfig
     width?: number
     height?: number
+    temperature?: number
+    interpolate_temperature?: boolean
+    max_interpolation_gap?: number
     hover_info?: ChemPotHoverInfo | null
     render_local_tooltip?: boolean
   } = $props()
@@ -92,6 +100,25 @@
     element_padding,
     default_min_limit,
   })
+  const { has_temp_data, available_temperatures, temp_filtered_entries } = $derived(
+    get_temp_filter_payload(entries, temperature, config, {
+      interpolate_temperature,
+      max_interpolation_gap,
+    }),
+  )
+
+  $effect(() => {
+    const next_temperature = get_valid_temperature(
+      temperature,
+      has_temp_data,
+      available_temperatures,
+    )
+    if (next_temperature !== temperature) temperature = next_temperature
+  })
+
+  const show_temperature_slider = $derived(
+    has_temp_data && available_temperatures.length > 0,
+  )
 
   function reset_controls(): void {
     formal_chempots_override = null
@@ -105,9 +132,9 @@
 
   // === Diagram computation ===
   const diagram_data = $derived.by(() => {
-    if (entries.length < 2) return null
+    if (temp_filtered_entries.length < 2) return null
     try {
-      return compute_chempot_diagram(entries, effective_config)
+      return compute_chempot_diagram(temp_filtered_entries, effective_config)
     } catch (err) {
       console.error(`ChemPotDiagram2D:`, err)
       return null
@@ -157,7 +184,9 @@
     `none` | `arity`
   >
 
-  const raw_el_refs = $derived(get_min_entries_and_el_refs(entries).el_refs)
+  const raw_el_refs = $derived(
+    get_min_entries_and_el_refs(temp_filtered_entries).el_refs,
+  )
   function get_interpolator(
     interpolator_name: D3InterpolateName,
   ): (t: number) => string {
@@ -187,7 +216,7 @@
   const entry_energy_stats_by_formula = $derived.by(
     (): SvelteMap<string, FormulaEnergyStats> => {
       const stats = new SvelteMap<string, FormulaEnergyStats>()
-      for (const entry of entries) {
+      for (const entry of temp_filtered_entries) {
         const formula_key = formula_key_from_composition(entry.composition)
         const epa = get_energy_per_atom(entry)
         const prev_stats = stats.get(formula_key)
@@ -219,7 +248,11 @@
       return entry_energy_stats_by_formula.get(formula)?.min_energy_per_atom ?? null
     }
     if (active_color_mode === `formation_energy`) {
-      return best_form_energy_for_formula(entries, formula, raw_el_refs) ?? null
+      return best_form_energy_for_formula(
+        temp_filtered_entries,
+        formula,
+        raw_el_refs,
+      ) ?? null
     }
     return entry_energy_stats_by_formula.get(formula)?.matching_entry_count ?? 0
   }
@@ -662,6 +695,9 @@
         bar_style="height: 10px;"
         title_style="margin-bottom: 3px;"
       />
+    {/if}
+    {#if show_temperature_slider}
+      <TemperatureSlider {available_temperatures} bind:temperature />
     {/if}
     {#if color_mode === `arity`}
       <div class="arity-legend">
