@@ -855,15 +855,16 @@
     const pos = hull_base_geometry.getAttribute(`position`)
     const n_faces = pos.count / 3
 
-    // Domain vertex centroids in swizzled Three.js coords: data[1]→X, data[2]→Y, data[0]→Z
+    // Domain vertex centroids in render coords (swizzled + axis stretch), matching hull_base_geometry.
     const centroids = render_domains
       .filter((d) => !d.is_draw_formula && d.points_3d.length > 0)
       .map((d) => {
         let sx = 0, sy = 0, sz = 0
         for (const pt of d.points_3d) {
-          sx += pt[1]
-          sy += pt[2]
-          sz += pt[0]
+          const [x_val, y_val, z_val] = to_render_xyz(pt)
+          sx += x_val
+          sy += y_val
+          sz += z_val
         }
         const n = d.points_3d.length
         return { formula: d.formula, cx: sx / n, cy: sy / n, cz: sz / n }
