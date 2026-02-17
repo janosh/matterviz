@@ -53,6 +53,32 @@ const count_checked = (checkboxes: Locator): Promise<number> =>
     nodes.filter((node) => (node as HTMLInputElement).checked).length
   )
 
+const open_pane = async (
+  diagram: Locator,
+  toggle: Locator,
+  pane: Locator,
+): Promise<void> => {
+  await diagram.hover()
+  await toggle.click({ force: true })
+  await expect(pane).toBeVisible()
+}
+
+const assert_pin_toggle_and_escape = async (
+  page: Page,
+  surface: Locator,
+  tooltip: Locator,
+): Promise<void> => {
+  const hit_point = await click_until_visible_tooltip(page, surface, tooltip)
+  await page.mouse.click(hit_point.x, hit_point.y)
+  await expect(tooltip).toContainText(`Pinned · Press Esc to unlock`)
+  await page.mouse.click(hit_point.x, hit_point.y)
+  await expect(tooltip).not.toContainText(`Pinned · Press Esc to unlock`)
+  await page.mouse.click(hit_point.x, hit_point.y)
+  await expect(tooltip).toContainText(`Pinned · Press Esc to unlock`)
+  await page.keyboard.press(`Escape`)
+  await expect(tooltip).toBeHidden()
+}
+
 test.describe(`ChemPot Diagram interactions`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ChemPot interactions rely on WebGL-heavy rendering`)
@@ -68,19 +94,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const svg_surface = diagram.locator(`svg[role="application"]`).first()
     await expect(svg_surface).toBeVisible()
     const tooltip = diagram.locator(`.tooltip`)
-
-    const hit_point = await click_until_visible_tooltip(page, svg_surface, tooltip)
-
-    await page.mouse.click(hit_point.x, hit_point.y)
-    await expect(tooltip).toContainText(`Pinned · Press Esc to unlock`)
-
-    await page.mouse.click(hit_point.x, hit_point.y)
-    await expect(tooltip).not.toContainText(`Pinned · Press Esc to unlock`)
-
-    await page.mouse.click(hit_point.x, hit_point.y)
-    await expect(tooltip).toContainText(`Pinned · Press Esc to unlock`)
-    await page.keyboard.press(`Escape`)
-    await expect(tooltip).toBeHidden()
+    await assert_pin_toggle_and_escape(page, svg_surface, tooltip)
   })
 
   test(`2D color controls switch between colorbar and arity legend`, async ({ page }) => {
@@ -88,14 +102,12 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const diagram = binary_section.locator(`.chempot-diagram-2d`).first()
     await expect(diagram).toBeVisible()
 
-    await diagram.hover()
     const controls_toggle = diagram.locator(`button.pane-toggle[title*="plot controls"]`)
       .first()
-    await controls_toggle.click()
     const controls_pane = diagram.locator(`.draggable-pane`).filter({
       hasText: `Color mode:`,
     }).first()
-    await expect(controls_pane).toBeVisible()
+    await open_pane(diagram, controls_toggle, controls_pane)
 
     const color_mode_select = controls_pane.getByLabel(`Color mode:`)
     await color_mode_select.selectOption(`energy`)
@@ -128,11 +140,10 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const controls_toggle = diagram.locator(
       `button.pane-toggle[title="3D plot controls"]`,
     ).first()
-    await controls_toggle.click()
     const controls_pane = diagram.locator(`.draggable-pane`).filter({
       hasText: `ChemPot`,
     }).first()
-    await expect(controls_pane).toBeVisible()
+    await open_pane(diagram, controls_toggle, controls_pane)
 
     const x_select = controls_pane.locator(`#chempot-proj-x`).first()
     const y_select = controls_pane.locator(`#chempot-proj-y`).first()
@@ -152,11 +163,10 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const formula_toggle = diagram.locator(
       `button.pane-toggle[title="Formula overlays"]`,
     ).first()
-    await formula_toggle.click()
     const formula_pane = diagram.locator(`.draggable-pane`).filter({
       hasText: `Formula Overlays`,
     }).first()
-    await expect(formula_pane).toBeVisible()
+    await open_pane(diagram, formula_toggle, formula_pane)
 
     const checkboxes = formula_pane.locator(`input[type="checkbox"]`)
     await expect(checkboxes.first()).toBeVisible()
@@ -208,20 +218,15 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect(canvas).toBeVisible()
 
     const phase_tooltip = diagram.locator(`.phase-tooltip`)
-    const hit_point = await click_until_visible_tooltip(page, canvas, phase_tooltip)
-    await page.mouse.click(hit_point.x, hit_point.y)
-    await expect(phase_tooltip).toContainText(`Pinned · Press Esc to unlock`)
-    await page.mouse.click(hit_point.x, hit_point.y)
-    await expect(phase_tooltip).not.toContainText(`Pinned · Press Esc to unlock`)
+    await assert_pin_toggle_and_escape(page, canvas, phase_tooltip)
 
     const export_toggle = diagram.locator(
       `button.pane-toggle[title="Export chemical potential diagram"]`,
     ).first()
-    await export_toggle.click()
     const export_pane = diagram.locator(`.draggable-pane`).filter({
       hasText: `Export Image`,
     }).first()
-    await expect(export_pane).toBeVisible()
+    await open_pane(diagram, export_toggle, export_pane)
 
     const svg_export_button = export_pane.locator(`label:has-text("SVG") button`).first()
     const view_export_button = export_pane.locator(`label:has-text("View") button`)
