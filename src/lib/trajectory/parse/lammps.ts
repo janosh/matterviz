@@ -6,7 +6,11 @@ import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure'
 import type { AtomTypeMapping } from '../types'
 import type { TrajectoryFrame, TrajectoryType } from '../index'
-import { create_trajectory_frame } from '../helpers'
+import {
+  coerce_element_symbol,
+  create_trajectory_frame,
+  is_valid_element_symbol,
+} from '../helpers'
 
 // Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
 // Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
@@ -101,11 +105,18 @@ export function parse_lammps_trajectory(
       ? [`xs`, `ys`, `zs`]
       : [`x`, `y`, `z`]
     const pos_cols = pos_keys.map((key) => col[key])
-    // Atom type column: prefer type > element > id (fallback treats id as atomic number)
-    const type_col = col.type ?? col.element ?? col.id ?? 0
+    // Atom identity: prefer numeric type, else explicit element symbol.
+    const type_col = col.type
+    const element_col = col.element
     const use_scaled = pos_keys[0] === `xs`
 
     if (pos_cols.some((col_idx) => col_idx === undefined)) continue
+    if (type_col === undefined && element_col === undefined) {
+      console.warn(
+        `Skipping LAMMPS frame at timestep ${timestep}: missing type/element column`,
+      )
+      continue
+    }
 
     // Parse atom data
     const positions: number[][] = []
@@ -116,16 +127,28 @@ export function parse_lammps_trajectory(
       const parts = read_line().split(/\s+/)
       const coords = pos_cols.map((col_idx) => parseFloat(parts[col_idx]))
 
-      if (coords.some(isNaN) || parts.length <= Math.max(...pos_cols, type_col)) continue
+      const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1)
+      if (coords.some(isNaN) || parts.length <= max_col_idx) continue
 
       // Convert scaled coordinates to Cartesian if needed
       const xyz = frac_to_cart ? frac_to_cart(coords as Vec3) : coords
       positions.push(xyz)
 
-      // Map atom type to element using custom mapping or default (type 1 → H, etc.)
-      const atom_type = parseInt(parts[type_col], 10) || 1
-      atom_types_found.add(atom_type)
-      elements.push(get_element(atom_type))
+      if (type_col !== undefined) {
+        // Map atom type to element using custom mapping or default (type 1 -> H, etc.)
+        const atom_type = parseInt(parts[type_col], 10) || 1
+        atom_types_found.add(atom_type)
+        elements.push(get_element(atom_type))
+      } else if (element_col !== undefined) {
+        const raw_symbol = parts[element_col]
+        if (!raw_symbol) continue
+        if (!is_valid_element_symbol(raw_symbol)) {
+          console.warn(
+            `Unknown LAMMPS element symbol "${raw_symbol}" at timestep ${timestep}, using X`,
+          )
+        }
+        elements.push(coerce_element_symbol(raw_symbol))
+      }
     }
 
     if (positions.length === num_atoms) {

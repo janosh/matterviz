@@ -10,9 +10,11 @@ import type {
 } from './index'
 import { MAX_METADATA_SIZE } from './constants'
 import {
+  coerce_element_symbol,
   convert_atomic_numbers,
   count_xyz_frames,
   create_trajectory_frame,
+  is_valid_element_symbol,
   read_ndarray_from_view,
   validate_3x3_matrix,
 } from './helpers'
@@ -266,7 +268,13 @@ export class TrajFrameReader implements FrameLoader {
     for (let idx = 0; idx < num_atoms; idx++) {
       const parts = lines[line_idx + 2 + idx]?.trim().split(/\s+/)
       if (parts?.length >= 4) {
-        elements.push(parts[0] as ElementSymbol)
+        const raw_symbol = parts[0]
+        if (!is_valid_element_symbol(raw_symbol)) {
+          console.warn(
+            `Unknown XYZ element symbol "${raw_symbol}" in indexed frame ${frame_number}`,
+          )
+        }
+        elements.push(coerce_element_symbol(raw_symbol))
         positions.push([parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])])
       }
     }
@@ -277,7 +285,7 @@ export class TrajFrameReader implements FrameLoader {
       elements,
       undefined,
       undefined,
-      frame_number,
+      metadata.step,
       metadata.properties,
     )
   }

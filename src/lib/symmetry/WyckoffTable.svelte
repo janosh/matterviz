@@ -66,7 +66,6 @@
           onkeydown={(event) => {
             if ([`Enter`, ` `].includes(event.key)) {
               event.preventDefault()
-              const is_selected = selected_key === row_key
               selected_key = is_selected ? null : row_key
               on_click?.(is_selected ? null : (wyckoff_pos.site_indices ?? null))
             }

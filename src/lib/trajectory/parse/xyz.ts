@@ -2,7 +2,11 @@
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
 import type { TrajectoryFrame, TrajectoryType } from '../index'
-import { create_trajectory_frame } from '../helpers'
+import {
+  coerce_element_symbol,
+  create_trajectory_frame,
+  is_valid_element_symbol,
+} from '../helpers'
 
 export function parse_xyz_trajectory(content: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
@@ -66,10 +70,18 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     const forces: number[][] = []
     const has_forces = comment.includes(`forces:R:3`)
 
-    for (let idx = 0; idx < num_atoms && ++line_idx < lines.length; idx++) {
+    for (let idx = 0; idx < num_atoms; idx++) {
+      line_idx++
+      if (line_idx >= lines.length) break
       const parts = lines[line_idx].trim().split(/\s+/)
       if (parts.length >= 4) {
-        elements.push(parts[0] as ElementSymbol)
+        const raw_symbol = parts[0]
+        if (!is_valid_element_symbol(raw_symbol)) {
+          console.warn(
+            `Unknown XYZ element symbol "${raw_symbol}" in frame ${frames.length}`,
+          )
+        }
+        elements.push(coerce_element_symbol(raw_symbol))
         positions.push([parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])])
 
         if (has_forces && parts.length >= 7) {

@@ -68,13 +68,14 @@
   const format_input_handler = (format_type: AxisKey) => (event: Event) => {
     const input = event.target
     if (!(input instanceof HTMLInputElement)) return
-    const axes = { x: x_axis, y: y_axis, y2: y2_axis }
-    const axis = axes[format_type]
-
-    if (is_valid_format(input.value)) {
-      input.classList.remove(`invalid`)
-      axis.format = input.value
-    } else input.classList.add(`invalid`)
+    if (!is_valid_format(input.value)) {
+      input.classList.add(`invalid`)
+      return
+    }
+    input.classList.remove(`invalid`)
+    if (format_type === `x`) x_axis = { ...x_axis, format: input.value }
+    else if (format_type === `y`) y_axis = { ...y_axis, format: input.value }
+    else y2_axis = { ...y2_axis, format: input.value }
   }
 
   // Handle range input changes
@@ -88,11 +89,14 @@
     range_els[`${axis}-max`]?.classList.toggle(`invalid`, invalid)
     if (invalid) return
     const axis_config = { x: x_axis, y: y_axis, y2: y2_axis }[axis]
-    // If auto range is undefined, only set if both min and max are provided
-    if (!auto && (min === null || max === null)) return
-    axis_config.range = min === null && max === null
+    const next_range = min === null && max === null
       ? undefined
       : [min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2
+    // If auto range is undefined, only set if both min and max are provided
+    if (!auto && (min === null || max === null)) return
+    if (axis === `x`) x_axis = { ...axis_config, range: next_range }
+    else if (axis === `y`) y_axis = { ...axis_config, range: next_range }
+    else y2_axis = { ...axis_config, range: next_range }
   }
 
   // Sync range inputs from props

@@ -4,7 +4,11 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure'
 import type { TrajectoryFrame, TrajectoryType } from '../index'
-import { create_trajectory_frame, validate_3x3_matrix } from '../helpers'
+import {
+  create_trajectory_frame,
+  is_valid_element_symbol,
+  validate_3x3_matrix,
+} from '../helpers'
 
 export function parse_vasp_xdatcar(
   content: string,
@@ -24,7 +28,13 @@ export function parse_vasp_xdatcar(
 
   const element_names = lines[5].trim().split(/\s+/)
   const element_counts = lines[6].trim().split(/\s+/).map(Number)
-  const elements: ElementSymbol[] = element_names.flatMap((name, idx) =>
+  const validated_element_names = element_names.map((name) => {
+    if (!is_valid_element_symbol(name)) {
+      throw new Error(`Invalid element symbol in XDATCAR: ${name}`)
+    }
+    return name
+  })
+  const elements: ElementSymbol[] = validated_element_names.flatMap((name, idx) =>
     Array(element_counts[idx]).fill(name as ElementSymbol)
   )
 
@@ -33,12 +43,13 @@ export function parse_vasp_xdatcar(
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
   while (line_idx < lines.length) {
-    const config_line = lines.find((line, idx) =>
+    const config_idx = lines.findIndex((line, idx) =>
       idx >= line_idx && line.includes(`Direct configuration=`)
     )
-    if (!config_line) break
+    if (config_idx === -1) break
 
-    line_idx = lines.indexOf(config_line) + 1
+    const config_line = lines[config_idx]
+    line_idx = config_idx + 1
     const step_match = config_line.match(/configuration=\s*(\d+)/)
     const step = step_match ? parseInt(step_match[1]) : frames.length + 1
 

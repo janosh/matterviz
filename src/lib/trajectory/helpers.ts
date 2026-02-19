@@ -1,10 +1,24 @@
 // Shared utilities for trajectory parsing
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import type { ElementSymbol } from '$lib/element'
+import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure, Pbc } from '$lib/structure'
 import type { TrajectoryFrame } from './index'
+
+const element_symbol_set = new Set<string>(ELEM_SYMBOLS)
+
+export function is_valid_element_symbol(symbol: string): symbol is ElementSymbol {
+  return element_symbol_set.has(symbol)
+}
+
+export function coerce_element_symbol(
+  symbol: string,
+  fallback: ElementSymbol = `X` as unknown as ElementSymbol,
+): ElementSymbol {
+  return is_valid_element_symbol(symbol) ? symbol : fallback
+}
 
 // Validate that data is a proper 3x3 matrix
 // Accepts both regular arrays and typed arrays (Float32Array, Float64Array, etc.)

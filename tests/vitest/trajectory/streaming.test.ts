@@ -235,6 +235,7 @@ describe(`Trajectory Streaming`, () => {
       expect(result.indexed_frames).toBeInstanceOf(Array)
       expect(result.indexed_frames?.length).toBeGreaterThan(0)
       expect(result.indexed_frames?.[0]).toHaveProperty(`frame_number`)
+      expect(result.frame_loader).toBeDefined()
     })
 
     it(`should use direct parsing for small files`, async () => {

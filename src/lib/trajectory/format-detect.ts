@@ -13,7 +13,8 @@ import { count_xyz_frames } from './helpers'
 // Unified format detection
 export const FORMAT_PATTERNS = {
   ase: (data: unknown, filename?: string) => {
-    if (!filename?.toLowerCase().endsWith(`.traj`) || !(data instanceof ArrayBuffer)) {
+    const base_name = filename?.toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    if (!base_name?.endsWith(`.traj`) || !(data instanceof ArrayBuffer)) {
       return false
     }
     const view = new Uint8Array(data.slice(0, 24))
@@ -23,7 +24,8 @@ export const FORMAT_PATTERNS = {
   },
 
   hdf5: (data: unknown, filename?: string) => {
-    const has_ext = filename?.toLowerCase().match(/\.(h5|hdf5)$/)
+    const base_name = filename?.toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    const has_ext = base_name?.match(/\.(h5|hdf5)$/)
     if (!has_ext || !(data instanceof ArrayBuffer) || data.byteLength < 8) return false
     const signature = new Uint8Array(data.slice(0, 8))
     return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every((b, idx) =>

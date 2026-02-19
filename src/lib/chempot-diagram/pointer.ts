@@ -4,7 +4,13 @@
 export function get_pointer_coords(
   raw_event: unknown,
 ): { clientX: number; clientY: number } | null {
-  if (raw_event instanceof PointerEvent || raw_event instanceof MouseEvent) {
+  const is_pointer_like_event = (
+    event_val: unknown,
+  ): event_val is PointerEvent | MouseEvent =>
+    (typeof PointerEvent !== `undefined` && event_val instanceof PointerEvent) ||
+    (typeof MouseEvent !== `undefined` && event_val instanceof MouseEvent)
+
+  if (is_pointer_like_event(raw_event)) {
     return raw_event
   }
   if (!raw_event || typeof raw_event !== `object`) return null
@@ -15,11 +21,11 @@ export function get_pointer_coords(
     clientY?: number
   }
   const native_event = event_obj.nativeEvent
-  if (native_event instanceof PointerEvent || native_event instanceof MouseEvent) {
+  if (is_pointer_like_event(native_event)) {
     return native_event
   }
   const src_event = event_obj.srcEvent
-  if (src_event instanceof PointerEvent || src_event instanceof MouseEvent) {
+  if (is_pointer_like_event(src_event)) {
     return src_event
   }
   const client_x = event_obj.clientX

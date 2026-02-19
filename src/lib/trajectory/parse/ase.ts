@@ -61,7 +61,14 @@ export function parse_ase_trajectory(
         : numbers_ref as number[]
 
       if (numbers) global_numbers = numbers
-      if (!numbers || !positions) continue
+      if (!numbers || !positions) {
+        console.warn(
+          `Skipping ASE frame ${idx + 1}/${n_items}: missing ${
+            !numbers ? `numbers` : `positions`
+          }`,
+        )
+        continue
+      }
 
       const elements = convert_atomic_numbers(numbers)
       const metadata = {

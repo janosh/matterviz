@@ -9,9 +9,7 @@ export { default as TrajectoryExportPane } from './TrajectoryExportPane.svelte'
 export { default as TrajectoryInfoPane } from './TrajectoryInfoPane.svelte'
 
 export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`
-
-// Mapping from LAMMPS atom type numbers to element symbols (e.g. {1: 'Na', 2: 'Cl'})
-export type AtomTypeMapping = Record<number, import('$lib/element').ElementSymbol>
+export type { AtomTypeMapping } from './types'
 
 // Core trajectory types
 export interface ParseProgress {

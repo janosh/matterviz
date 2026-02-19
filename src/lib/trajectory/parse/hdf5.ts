@@ -20,9 +20,10 @@ export async function parse_torch_sim_hdf5(
   buffer: ArrayBuffer,
   filename?: string,
 ): Promise<TrajectoryType> {
-  await h5wasm.ready
   const { FS } = await h5wasm.ready
-  const temp_filename = filename || `temp.h5`
+  const file_basename = filename?.split(`/`).at(-1)?.replace(/[^\w.-]/g, `_`) || `temp`
+  const unique_suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const temp_filename = `${file_basename}-${unique_suffix}.h5`
 
   FS.writeFile(temp_filename, new Uint8Array(buffer))
   const h5_file = new h5wasm.File(temp_filename, `r`)
@@ -49,10 +50,11 @@ export async function parse_torch_sim_hdf5(
       return discover(h5_file as unknown as Group)
     }
 
-    const positions_data = find_dataset([`positions`])?.to_array() as
-      | number[][]
-      | number[][][]
-      | null
+    const positions_data = find_dataset([`positions`, `coords`, `coordinates`])
+      ?.to_array() as
+        | number[][]
+        | number[][][]
+        | null
     const atomic_numbers_data = find_dataset(
       [`atomic_numbers`, `numbers`, `Z`, `species`],
     )?.to_array() as number[] | number[][] | null
@@ -92,9 +94,9 @@ export async function parse_torch_sim_hdf5(
     const atomic_numbers = atomic_numbers_are_frames
       ? atomic_numbers_data as number[][]
       : [atomic_numbers_data as number[]]
-    const elements = convert_atomic_numbers(atomic_numbers[0])
-
     const frames = positions.map((frame_pos, idx) => {
+      const frame_atomic_numbers = atomic_numbers[idx] || atomic_numbers[0]
+      const frame_elements = convert_atomic_numbers(frame_atomic_numbers)
       const cell = cells_data?.[idx]
       const lattice_mat = cell
         ? math.transpose_3x3_matrix(validate_3x3_matrix(cell))
@@ -107,24 +109,41 @@ export async function parse_torch_sim_hdf5(
       }
       const pbc: Pbc = lattice_mat ? [true, true, true] : [false, false, false]
 
-      return create_trajectory_frame(frame_pos, elements, lattice_mat, pbc, idx, metadata)
+      return create_trajectory_frame(
+        frame_pos,
+        frame_elements,
+        lattice_mat,
+        pbc,
+        idx,
+        metadata,
+      )
     })
+
+    const first_frame_elements = frames[0]?.structure.sites.map((site) =>
+      site.species[0].element
+    ) ??
+      []
 
     return {
       frames,
       metadata: {
         source_format: `hdf5_trajectory`,
         frame_count: frames.length,
-        num_atoms: elements.length,
+        num_atoms: first_frame_elements.length,
         periodic_boundary_conditions: cells_data
           ? [true, true, true]
           : [false, false, false],
-        element_counts: elements.reduce((counts: Record<string, number>, element) => {
-          counts[element] = (counts[element] || 0) + 1
-          return counts
-        }, {}),
+        element_counts: first_frame_elements.reduce(
+          (counts: Record<string, number>, element) => {
+            counts[element] = (counts[element] || 0) + 1
+            return counts
+          },
+          {},
+        ),
         discovered_datasets: {
-          positions: found_paths.positions || `positions`,
+          positions: found_paths.positions || found_paths.coords ||
+            found_paths.coordinates ||
+            `unknown`,
           atomic_numbers: found_paths.atomic_numbers || found_paths.numbers ||
             found_paths.Z || found_paths.species || `unknown`,
           cells: found_paths.cell || found_paths.cells || found_paths.lattice,

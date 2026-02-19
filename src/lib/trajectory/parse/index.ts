@@ -69,12 +69,19 @@ export async function parse_trajectory_data(
             metadata: { source_format: `single_xyz`, frame_count: 1 },
           }
         }
-      } catch { /* single-frame XYZ parsing failed, continue to JSON parsing */ }
+      } catch (error) {
+        // Single-frame XYZ parsing failed, continue to JSON parsing.
+        console.debug(
+          `Single XYZ parse fallback failed for ${filename ?? `unknown file`}:`,
+          error,
+        )
+      }
     }
 
     try {
       data = JSON.parse(content)
-    } catch {
+    } catch (error) {
+      console.debug(`JSON parse failed for ${filename ?? `unknown file`}:`, error)
       throw new Error(`Unsupported text format`)
     }
   }
@@ -357,6 +364,7 @@ async function parse_with_unified_loader(
     indexed_frames: frame_index,
     plot_metadata,
     is_indexed: true,
+    frame_loader: loader,
   }
 }
 
