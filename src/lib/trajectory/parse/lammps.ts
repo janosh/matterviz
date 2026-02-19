@@ -106,14 +106,16 @@ export function parse_lammps_trajectory(
       : [`x`, `y`, `z`]
     const pos_cols = pos_keys.map((key) => col[key])
     // Atom identity: prefer numeric type, else explicit element symbol.
+    // Keep id fallback for backward compatibility with older dumps.
     const type_col = col.type
     const element_col = col.element
+    const id_col = col.id
     const use_scaled = pos_keys[0] === `xs`
 
     if (pos_cols.some((col_idx) => col_idx === undefined)) continue
-    if (type_col === undefined && element_col === undefined) {
+    if (type_col === undefined && element_col === undefined && id_col === undefined) {
       console.warn(
-        `Skipping LAMMPS frame at timestep ${timestep}: missing type/element column`,
+        `Skipping LAMMPS frame at timestep ${timestep}: missing type/element/id column`,
       )
       continue
     }
@@ -127,7 +129,12 @@ export function parse_lammps_trajectory(
       const parts = read_line().split(/\s+/)
       const coords = pos_cols.map((col_idx) => parseFloat(parts[col_idx]))
 
-      const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1)
+      const max_col_idx = Math.max(
+        ...pos_cols,
+        type_col ?? -1,
+        element_col ?? -1,
+        id_col ?? -1,
+      )
       if (coords.some(isNaN) || parts.length <= max_col_idx) continue
 
       // Convert scaled coordinates to Cartesian if needed
@@ -148,6 +155,10 @@ export function parse_lammps_trajectory(
           )
         }
         elements.push(coerce_element_symbol(raw_symbol))
+      } else if (id_col !== undefined) {
+        const atom_id = parseInt(parts[id_col], 10) || 1
+        atom_types_found.add(atom_id)
+        elements.push(get_element(atom_id))
       }
     }
 
