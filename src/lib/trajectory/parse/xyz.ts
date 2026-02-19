@@ -2,11 +2,7 @@
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
 import type { TrajectoryFrame, TrajectoryType } from '../index'
-import {
-  coerce_element_symbol,
-  create_trajectory_frame,
-  is_valid_element_symbol,
-} from '../helpers'
+import { coerce_element_symbol, create_trajectory_frame } from '../helpers'
 
 export function parse_xyz_trajectory(content: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
@@ -75,14 +71,31 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
       if (line_idx >= lines.length) break
       const parts = lines[line_idx].trim().split(/\s+/)
       if (parts.length >= 4) {
-        const raw_symbol = parts[0]
-        if (!is_valid_element_symbol(raw_symbol)) {
+        const x_coord = parseFloat(parts[1])
+        const y_coord = parseFloat(parts[2])
+        const z_coord = parseFloat(parts[3])
+        if (
+          !Number.isFinite(x_coord) || !Number.isFinite(y_coord) ||
+          !Number.isFinite(z_coord)
+        ) {
           console.warn(
-            `Unknown XYZ element symbol "${raw_symbol}" in frame ${frames.length}`,
+            `Skipping XYZ atom with invalid coordinates in frame ${frames.length} at line ${
+              line_idx + 1
+            }`,
           )
+          continue
         }
-        elements.push(coerce_element_symbol(raw_symbol))
-        positions.push([parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])])
+
+        const raw_symbol = parts[0]
+        const element_symbol = coerce_element_symbol(raw_symbol)
+        if (!element_symbol) {
+          console.warn(
+            `Skipping XYZ atom with unknown element symbol "${raw_symbol}" in frame ${frames.length}`,
+          )
+          continue
+        }
+        elements.push(element_symbol)
+        positions.push([x_coord, y_coord, z_coord])
 
         if (has_forces && parts.length >= 7) {
           forces.push([parseFloat(parts[4]), parseFloat(parts[5]), parseFloat(parts[6])])

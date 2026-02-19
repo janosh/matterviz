@@ -15,9 +15,8 @@ export function is_valid_element_symbol(symbol: string): symbol is ElementSymbol
 
 export function coerce_element_symbol(
   symbol: string,
-  fallback: ElementSymbol = `X` as unknown as ElementSymbol,
-): ElementSymbol {
-  return is_valid_element_symbol(symbol) ? symbol : fallback
+): ElementSymbol | undefined {
+  return is_valid_element_symbol(symbol) ? symbol : undefined
 }
 
 // Validate that data is a proper 3x3 matrix
@@ -66,12 +65,25 @@ export const create_structure = (
   force_data?: number[][],
 ): AnyStructure => {
   const inv_matrix = lattice_matrix ? get_inverse_matrix(lattice_matrix) : null
+
+  const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
+    Array.isArray(coords) &&
+    coords.length === 3 &&
+    coords.every((value) => typeof value === `number` && Number.isFinite(value))
+
   const sites = positions.map((pos, idx) => {
-    const xyz = pos as Vec3
+    if (!is_valid_vec3(pos)) {
+      throw new Error(`Invalid position at index ${idx}: expected 3 finite coordinates`)
+    }
+
+    const xyz = pos
     const abc = inv_matrix
       ? math.mat3x3_vec3_multiply(inv_matrix, xyz)
       : [0, 0, 0] as Vec3
-    const properties = force_data?.[idx] ? { force: force_data[idx] as Vec3 } : {}
+
+    const force = force_data?.[idx]
+    const properties = is_valid_vec3(force) ? { force } : {}
+
     return {
       species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
       abc,
@@ -112,37 +124,62 @@ export const read_ndarray_from_view = (
   ref: { ndarray: unknown[] },
 ): number[][] => {
   const [shape, dtype, array_offset] = ref.ndarray as [number[], string, number]
-  const total = shape.reduce((a, b) => a * b, 1)
+  const total = shape.reduce((product, dim_size) => product * dim_size, 1)
   const data: number[] = []
   let pos = array_offset
 
   const readers = {
-    int64: () => {
-      const v = Number(view.getBigInt64(pos, true))
-      pos += 8
-      return v
+    int64: {
+      bytes_per_element: 8,
+      read: () => {
+        const value = Number(view.getBigInt64(pos, true))
+        pos += 8
+        return value
+      },
     },
-    int32: () => {
-      const v = view.getInt32(pos, true)
-      pos += 4
-      return v
+    int32: {
+      bytes_per_element: 4,
+      read: () => {
+        const value = view.getInt32(pos, true)
+        pos += 4
+        return value
+      },
     },
-    float64: () => {
-      const v = view.getFloat64(pos, true)
-      pos += 8
-      return v
+    float64: {
+      bytes_per_element: 8,
+      read: () => {
+        const value = view.getFloat64(pos, true)
+        pos += 8
+        return value
+      },
     },
-    float32: () => {
-      const v = view.getFloat32(pos, true)
-      pos += 4
-      return v
+    float32: {
+      bytes_per_element: 4,
+      read: () => {
+        const value = view.getFloat32(pos, true)
+        pos += 4
+        return value
+      },
     },
   }
 
-  const reader = readers[dtype as keyof typeof readers]
-  if (!reader) throw new Error(`Unsupported dtype: ${dtype}`)
+  const reader_config = readers[dtype as keyof typeof readers]
+  if (!reader_config) throw new Error(`Unsupported dtype: ${dtype}`)
 
-  for (let i = 0; i < total; i++) data.push(reader())
+  if (!Number.isInteger(array_offset) || array_offset < 0) {
+    throw new Error(
+      `Invalid array_offset: expected non-negative integer, got ${array_offset}`,
+    )
+  }
+
+  const bytes_needed = total * reader_config.bytes_per_element
+  if (array_offset + bytes_needed > view.byteLength) {
+    throw new Error(
+      `Out-of-bounds read: array_offset + bytesNeeded exceeds view.byteLength`,
+    )
+  }
+
+  for (let idx = 0; idx < total; idx++) data.push(reader_config.read())
 
   return shape.length === 1
     ? [data]

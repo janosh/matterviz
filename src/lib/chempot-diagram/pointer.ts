@@ -19,13 +19,11 @@ export function get_pointer_coords(
     clientX?: number
     clientY?: number
   }
-  const native_event = event_obj.nativeEvent
-  if (is_pointer_like_event(native_event)) {
-    return native_event
+  if (is_pointer_like_event(event_obj.nativeEvent)) {
+    return event_obj.nativeEvent
   }
-  const src_event = event_obj.srcEvent
-  if (is_pointer_like_event(src_event)) {
-    return src_event
+  if (is_pointer_like_event(event_obj.srcEvent)) {
+    return event_obj.srcEvent
   }
   const client_x = event_obj.clientX
   const client_y = event_obj.clientY
@@ -55,6 +53,6 @@ export function with_hover_pointer<T extends { pointer?: { x: number; y: number 
   raw_event: unknown,
   container_rect: DOMRect | null | undefined,
 ): T {
-  const ptr = get_hover_pointer(raw_event, container_rect)
-  return { ...info, pointer: ptr ?? undefined } as T
+  const pointer = get_hover_pointer(raw_event, container_rect)
+  return { ...info, pointer: pointer ?? undefined } as T
 }

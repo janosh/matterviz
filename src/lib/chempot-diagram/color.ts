@@ -16,18 +16,18 @@ export function make_chempot_color_scale(
   interpolator_name: D3InterpolateName,
   reverse: boolean,
 ): ((val: number) => string) | null {
-  const finite = values.filter(Number.isFinite)
-  if (finite.length === 0) return null
-  let lo = finite[0]
-  let hi_raw = finite[0]
-  for (let idx = 1; idx < finite.length; idx++) {
-    if (finite[idx] < lo) lo = finite[idx]
-    if (finite[idx] > hi_raw) hi_raw = finite[idx]
+  const finite_values = values.filter(Number.isFinite)
+  if (finite_values.length === 0) return null
+  let min_value = finite_values[0]
+  let max_raw_value = finite_values[0]
+  for (let idx = 1; idx < finite_values.length; idx++) {
+    if (finite_values[idx] < min_value) min_value = finite_values[idx]
+    if (finite_values[idx] > max_raw_value) max_raw_value = finite_values[idx]
   }
-  const hi = Math.max(hi_raw, lo + 1e-6)
+  const max_value = Math.max(max_raw_value, min_value + 1e-6)
   return scaleSequential(get_chempot_interpolator(interpolator_name, reverse)).domain([
-    lo,
-    hi,
+    min_value,
+    max_value,
   ])
 }
 

@@ -5,7 +5,7 @@ import { create_structure_filename } from '$lib/structure/export'
 import { type Camera, type Scene, Vector2, WebGLRenderer } from 'three'
 
 function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
-  if (!value || typeof value !== `object`) return false
+  if (typeof value !== `object` || !value) return false
   const renderer_obj = value as Record<string, unknown>
   return typeof renderer_obj.render === `function` &&
     typeof renderer_obj.getPixelRatio === `function` &&

@@ -6,11 +6,7 @@ import * as math from '$lib/math'
 import type { Pbc } from '$lib/structure'
 import type { AtomTypeMapping } from '../types'
 import type { TrajectoryFrame, TrajectoryType } from '../index'
-import {
-  coerce_element_symbol,
-  create_trajectory_frame,
-  is_valid_element_symbol,
-} from '../helpers'
+import { coerce_element_symbol, create_trajectory_frame } from '../helpers'
 
 // Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
 // Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
@@ -138,27 +134,32 @@ export function parse_lammps_trajectory(
 
       // Convert scaled coordinates to Cartesian if needed
       const xyz = frac_to_cart ? frac_to_cart(coords as Vec3) : coords
-      positions.push(xyz)
+      let element_symbol: ElementSymbol | undefined
 
       if (type_col !== undefined) {
         // Map atom type to element using custom mapping or default (type 1 -> H, etc.)
         const atom_type = parseInt(parts[type_col], 10) || 1
         atom_types_found.add(atom_type)
-        elements.push(get_element(atom_type))
+        element_symbol = get_element(atom_type)
       } else if (element_col !== undefined) {
         const raw_symbol = parts[element_col]
         if (!raw_symbol) continue
-        if (!is_valid_element_symbol(raw_symbol)) {
+        element_symbol = coerce_element_symbol(raw_symbol)
+        if (!element_symbol) {
           console.warn(
-            `Unknown LAMMPS element symbol "${raw_symbol}" at timestep ${timestep}, using X`,
+            `Skipping LAMMPS atom with unknown element symbol "${raw_symbol}" at timestep ${timestep}`,
           )
+          continue
         }
-        elements.push(coerce_element_symbol(raw_symbol))
       } else if (id_col !== undefined) {
         const atom_id = parseInt(parts[id_col], 10) || 1
         atom_types_found.add(atom_id)
-        elements.push(get_element(atom_id))
+        element_symbol = get_element(atom_id)
       }
+
+      if (!element_symbol) continue
+      positions.push(xyz)
+      elements.push(element_symbol)
     }
 
     if (positions.length === num_atoms) {

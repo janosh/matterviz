@@ -5,6 +5,7 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { parse_xyz } from '$lib/structure/parse'
+import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '../constants'
 import { FORMAT_PATTERNS, is_trajectory_file } from '../format-detect'
 import { TrajFrameReader } from '../frame-reader'
@@ -190,13 +191,11 @@ export async function parse_trajectory_data(
   }
 
   // Object with frames
-  if (obj.frames && Array.isArray(obj.frames)) {
+  if (Array.isArray(obj.frames)) {
+    const metadata = (obj.metadata ?? {}) as Record<string, unknown>
     return {
       frames: obj.frames as TrajectoryFrame[],
-      metadata: {
-        ...obj.metadata as Record<string, unknown>,
-        source_format: `object_with_frames`,
-      },
+      metadata: { ...metadata, source_format: `object_with_frames` },
     }
   }
 
@@ -276,8 +275,12 @@ export async function parse_trajectory_async(
       update_progress(5, `Large file detected (${Math.round(data_size / 1024 / 1024)}MB)`)
     }
 
-    // Use indexed loading for supported large files
-    if (should_use_indexing && filename.toLowerCase().match(/\.(xyz|extxyz|traj)$/)) {
+    // Use indexed loading for supported large files (including compressed names).
+    let base_filename = filename.toLowerCase()
+    while (COMPRESSION_EXTENSIONS_REGEX.test(base_filename)) {
+      base_filename = base_filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    }
+    if (should_use_indexing && /\.(xyz|extxyz|traj)$/.test(base_filename)) {
       return await parse_with_unified_loader(data, filename, {
         index_sample_rate,
         extract_plot_metadata,

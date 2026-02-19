@@ -11,24 +11,18 @@ import type {
   SurfaceDimensionality,
 } from './types'
 
+function parse_number_tokens(line: string): string[] {
+  return line.split(/\s+/).filter(Boolean)
+}
+
 // Parse whitespace-separated floats from a line (optimized with unary +)
 function parse_floats(line: string): number[] {
-  const parts = line.split(/\s+/)
-  const result: number[] = []
-  for (let idx = 0; idx < parts.length; idx++) {
-    if (parts[idx]) result.push(+parts[idx])
-  }
-  return result
+  return parse_number_tokens(line).map((part) => +part)
 }
 
 // Parse whitespace-separated integers from a line
 function parse_ints(line: string): number[] {
-  const parts = line.split(/\s+/)
-  const result: number[] = []
-  for (let idx = 0; idx < parts.length; idx++) {
-    if (parts[idx]) result.push(parseInt(parts[idx], 10))
-  }
-  return result
+  return parse_number_tokens(line).map((part) => parseInt(part, 10))
 }
 
 // Parse BXSF (Band-XSF) format used by XCrySDen, Quantum ESPRESSO, etc.

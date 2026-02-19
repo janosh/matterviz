@@ -266,6 +266,20 @@ describe(`Trajectory Streaming`, () => {
       expect(result.indexed_frames).toBeDefined()
       expect(result.plot_metadata).toBeDefined()
     })
+
+    it(`should enable indexed loading for compressed xyz filenames`, async () => {
+      const data = create_synthetic_xyz(5)
+      const result = await parse_trajectory_async(
+        data,
+        `compressed-trajectory.xyz.gz`,
+        undefined,
+        { use_indexing: true },
+      )
+
+      expect(result.is_indexed).toBe(true)
+      expect(result.indexed_frames).toBeDefined()
+      expect(result.total_frames).toBe(5)
+    })
   })
 
   describe(`Memory Efficiency`, () => {

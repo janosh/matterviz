@@ -1,5 +1,6 @@
 // Unified frame loader for XYZ and ASE trajectories (large file indexing)
 import type { ElementSymbol } from '$lib/element'
+import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import * as math from '$lib/math'
 import type {
   FrameIndex,
@@ -14,7 +15,6 @@ import {
   convert_atomic_numbers,
   count_xyz_frames,
   create_trajectory_frame,
-  is_valid_element_symbol,
   read_ndarray_from_view,
   validate_3x3_matrix,
 } from './helpers'
@@ -24,7 +24,11 @@ export class TrajFrameReader implements FrameLoader {
   private global_numbers?: number[]
 
   constructor(filename: string) {
-    this.format = filename.toLowerCase().endsWith(`.traj`) ? `ase` : `xyz`
+    let base_filename = filename.toLowerCase()
+    while (COMPRESSION_EXTENSIONS_REGEX.test(base_filename)) {
+      base_filename = base_filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    }
+    this.format = base_filename.endsWith(`.traj`) ? `ase` : `xyz`
   }
 
   // deno-lint-ignore require-await
@@ -268,14 +272,32 @@ export class TrajFrameReader implements FrameLoader {
     for (let idx = 0; idx < num_atoms; idx++) {
       const parts = lines[line_idx + 2 + idx]?.trim().split(/\s+/)
       if (parts?.length >= 4) {
-        const raw_symbol = parts[0]
-        if (!is_valid_element_symbol(raw_symbol)) {
+        const x_coord = parseFloat(parts[1])
+        const y_coord = parseFloat(parts[2])
+        const z_coord = parseFloat(parts[3])
+        if (
+          !Number.isFinite(x_coord) || !Number.isFinite(y_coord) ||
+          !Number.isFinite(z_coord)
+        ) {
           console.warn(
-            `Unknown XYZ element symbol "${raw_symbol}" in indexed frame ${frame_number}`,
+            `Skipping XYZ atom with invalid coordinates in indexed frame ${frame_number} at line ${
+              line_idx + 2 + idx
+            }`,
           )
+          continue
         }
-        elements.push(coerce_element_symbol(raw_symbol))
-        positions.push([parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])])
+
+        const raw_symbol = parts[0]
+        const element_symbol = coerce_element_symbol(raw_symbol)
+        if (!element_symbol) {
+          console.warn(
+            `Skipping XYZ atom with unknown element symbol "${raw_symbol}" in indexed frame ${frame_number}`,
+          )
+          continue
+        }
+
+        elements.push(element_symbol)
+        positions.push([x_coord, y_coord, z_coord])
       }
     }
 

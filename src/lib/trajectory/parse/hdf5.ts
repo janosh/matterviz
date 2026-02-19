@@ -1,5 +1,5 @@
 // HDF5 trajectory parsing (torch-sim / generic format)
-import * as math from '$lib/math'
+import { calc_lattice_params, transpose_3x3_matrix } from '$lib/math'
 import type { Pbc } from '$lib/structure'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import * as h5wasm from 'h5wasm'
@@ -100,14 +100,14 @@ export async function parse_torch_sim_hdf5(
       const frame_elements = convert_atomic_numbers(frame_atomic_numbers)
       const cell = cells_data?.[idx]
       const lattice_mat = cell
-        ? math.transpose_3x3_matrix(validate_3x3_matrix(cell))
+        ? transpose_3x3_matrix(validate_3x3_matrix(cell))
         : undefined
       const energy_entry = energies_data?.[idx]
       const energy = Array.isArray(energy_entry) ? energy_entry[0] : energy_entry
       const metadata: Record<string, unknown> = {}
       if (energy !== undefined) metadata.energy = energy
       if (lattice_mat) {
-        metadata.volume = math.calc_lattice_params(lattice_mat).volume
+        metadata.volume = calc_lattice_params(lattice_mat).volume
       }
       const pbc: Pbc = lattice_mat ? [true, true, true] : [false, false, false]
 
