@@ -28,6 +28,20 @@ export function parse_vasp_xdatcar(
 
   const element_names = lines[5].trim().split(/\s+/)
   const element_counts = lines[6].trim().split(/\s+/).map(Number)
+  if (element_names.length !== element_counts.length) {
+    throw new Error(
+      `XDATCAR element names/counts mismatch: names=${element_names.length}, counts=${element_counts.length}`,
+    )
+  }
+  if (
+    element_counts.some((count) =>
+      !Number.isFinite(count) || !Number.isInteger(count) || count <= 0
+    )
+  ) {
+    throw new Error(
+      `XDATCAR contains invalid element counts: expected finite positive integers`,
+    )
+  }
   const validated_element_names = element_names.map((name) => {
     if (!is_valid_element_symbol(name)) {
       throw new Error(`Invalid element symbol in XDATCAR: ${name}`)

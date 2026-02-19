@@ -141,7 +141,10 @@ export async function parse_trajectory_data(
             const forces = array_obj.data as number[][]
             const force_magnitudes = forces.map((force) => Math.hypot(...force))
             if (force_magnitudes.length > 0) {
-              processed_properties.force_max = Math.max(...force_magnitudes)
+              processed_properties.force_max = force_magnitudes.reduce(
+                (max_val, magnitude) => magnitude > max_val ? magnitude : max_val,
+                force_magnitudes[0],
+              )
               processed_properties.force_norm = Math.sqrt(
                 force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
                   force_magnitudes.length,
@@ -271,7 +274,9 @@ export async function parse_trajectory_async(
   try {
     update_progress(0, `Detecting format...`)
 
-    const data_size = data instanceof ArrayBuffer ? data.byteLength : data.length
+    const data_size = data instanceof ArrayBuffer
+      ? data.byteLength
+      : new TextEncoder().encode(data).byteLength
     const is_large_file = data_size > LARGE_FILE_THRESHOLD
     const should_use_indexing = use_indexing ?? is_large_file
 

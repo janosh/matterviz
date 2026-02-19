@@ -46,6 +46,7 @@ export function parse_lammps_trajectory(
   const lines = content.trim().split(/\r?\n/)
   const frames: TrajectoryFrame[] = []
   const atom_types_found = new Set<number>()
+  let id_fallback_warning_emitted = false
   let idx = 0
 
   const read_line = (): string => lines[idx++]?.trim() ?? ``
@@ -102,7 +103,8 @@ export function parse_lammps_trajectory(
       : [`x`, `y`, `z`]
     const pos_cols = pos_keys.map((key) => col[key])
     // Atom identity: prefer numeric type, else explicit element symbol.
-    // Keep id fallback for backward compatibility with older dumps.
+    // Fallback to ID-based mapping only for legacy dumps; this can be inaccurate
+    // for large or non-element-like IDs, so prefer TYPE column when available.
     const type_col = col.type
     const element_col = col.element
     const id_col = col.id
@@ -153,7 +155,12 @@ export function parse_lammps_trajectory(
         }
       } else if (id_col !== undefined) {
         const atom_id = parseInt(parts[id_col], 10) || 1
-        atom_types_found.add(atom_id)
+        if (!id_fallback_warning_emitted) {
+          console.warn(
+            `LAMMPS parser fallback: mapping atom IDs to elements from ID column; this may be incorrect for large or sequential IDs. Prefer a TYPE column when available.`,
+          )
+          id_fallback_warning_emitted = true
+        }
         element_symbol = get_element(atom_id)
       }
 

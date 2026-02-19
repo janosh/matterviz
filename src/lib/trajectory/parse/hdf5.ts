@@ -11,7 +11,7 @@ import {
 import type { TrajectoryType } from '../index'
 
 const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
-  entity !== null && (`to_array` in entity || entity instanceof h5wasm.Dataset)
+  entity !== null && (`to_array` in entity && entity instanceof h5wasm.Dataset)
 
 const is_hdf5_group = (entity: Entity | null): entity is Group =>
   entity !== null && (`keys` in entity && entity instanceof h5wasm.Group)
@@ -26,9 +26,10 @@ export async function parse_torch_sim_hdf5(
   const temp_filename = `${file_basename}-${unique_suffix}.h5`
 
   FS.writeFile(temp_filename, new Uint8Array(buffer))
-  const h5_file = new h5wasm.File(temp_filename, `r`)
+  let h5_file: h5wasm.File | null = null
 
   try {
+    h5_file = new h5wasm.File(temp_filename, `r`)
     const found_paths: Record<string, string> = {}
     const find_dataset = (names: string[]) => {
       const discover = (parent: Group, path = ``): Dataset | null => {
@@ -151,12 +152,11 @@ export async function parse_torch_sim_hdf5(
           cells: found_paths.cell || found_paths.cells || found_paths.lattice,
           energies: found_paths.potential_energy || found_paths.energy,
         },
-        total_groups_found: 1,
         has_cell_info: Boolean(cells_data),
       },
     }
   } finally {
-    h5_file.close()
+    h5_file?.close()
     try {
       FS.unlink(temp_filename)
     } catch { /* temp file cleanup is best-effort */ }

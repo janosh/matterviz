@@ -403,7 +403,7 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 5, b: 50, l: 50, r: 20 }
-  let pad = $derived(filter_padding(padding, default_padding))
+  let pad = $state(untrack(() => filter_padding(padding, default_padding)))
 
   // Update padding when format or ticks change
   $effect(() => {

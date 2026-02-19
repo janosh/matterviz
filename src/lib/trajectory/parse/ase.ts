@@ -26,6 +26,14 @@ export function parse_ase_trajectory(
   const offsets_pos = Number(view.getBigInt64(offset, true))
 
   if (n_items <= 0) throw new Error(`Invalid frame count`)
+  if (
+    offsets_pos < 0 ||
+    offsets_pos + n_items * 8 > buffer.byteLength
+  ) {
+    throw new Error(
+      `Invalid ASE frame offsets table bounds: offsets_pos=${offsets_pos}, n_items=${n_items}, byte_length=${buffer.byteLength}`,
+    )
+  }
 
   const frame_offsets = Array.from(
     { length: n_items },
@@ -92,18 +100,19 @@ export function parse_ase_trajectory(
 
   if (frames.length === 0) throw new Error(`No valid frames found`)
 
-  const periodic_boundary_conditions = (`lattice` in frames[0]?.structure)
-    ? frames[0].structure.lattice.pbc
-    : [true, true, true]
+  const first_struct = frames[0]?.structure
+  const periodic_boundary_conditions =
+    first_struct !== null && first_struct !== undefined &&
+      typeof first_struct === `object` && `lattice` in first_struct
+      ? first_struct.lattice.pbc
+      : [true, true, true]
 
-  return {
-    frames,
-    metadata: {
-      filename,
-      source_format: `ase_trajectory`,
-      frame_count: frames.length,
-      total_atoms: global_numbers?.length || 0,
-      periodic_boundary_conditions,
-    },
+  const metadata = {
+    filename,
+    source_format: `ase_trajectory`,
+    frame_count: frames.length,
+    total_atoms: global_numbers?.length || 0,
+    periodic_boundary_conditions,
   }
+  return { frames, metadata }
 }

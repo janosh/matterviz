@@ -70,6 +70,11 @@ export const create_structure = (
   pbc?: Pbc,
   force_data?: number[][],
 ): AnyStructure => {
+  if (positions.length !== elements.length) {
+    throw new Error(
+      `create_structure requires matching positions and elements lengths, got positions=${positions.length}, elements=${elements.length}`,
+    )
+  }
   const inv_matrix = lattice_matrix ? get_inverse_matrix(lattice_matrix) : null
 
   const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
@@ -211,7 +216,7 @@ export function count_xyz_frames(data: string): number {
     }
 
     const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 > lines.length) {
+    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 2 > lines.length) {
       line_idx++
       continue
     }

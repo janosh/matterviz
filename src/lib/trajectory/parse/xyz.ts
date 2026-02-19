@@ -16,7 +16,7 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     }
 
     const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 > lines.length) {
+    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
       line_idx++
       continue
     }
@@ -50,7 +50,7 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     let lattice_matrix: math.Matrix3x3 | undefined
     if (lattice_match) {
       const values = lattice_match[1].split(/\s+/).map(Number)
-      if (values.length === 9) {
+      if (values.length === 9 && values.every((value) => Number.isFinite(value))) {
         lattice_matrix = [[values[0], values[1], values[2]], [
           values[3],
           values[4],
@@ -98,7 +98,16 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
         positions.push([x_coord, y_coord, z_coord])
 
         if (has_forces && parts.length >= 7) {
-          forces.push([parseFloat(parts[4]), parseFloat(parts[5]), parseFloat(parts[6])])
+          const force_x = parseFloat(parts[4])
+          const force_y = parseFloat(parts[5])
+          const force_z = parseFloat(parts[6])
+          if (
+            Number.isFinite(force_x) &&
+            Number.isFinite(force_y) &&
+            Number.isFinite(force_z)
+          ) {
+            forces.push([force_x, force_y, force_z])
+          }
         }
       }
     }

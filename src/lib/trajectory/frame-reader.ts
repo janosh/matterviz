@@ -132,8 +132,22 @@ export class TrajFrameReader implements FrameLoader {
     data: string | ArrayBuffer,
     frame_number: number,
   ): Promise<TrajectoryFrame | null> {
-    if (this.format === `xyz`) return this.load_xyz_frame(data as string, frame_number)
-    return this.load_ase_frame(data as ArrayBuffer, frame_number)
+    const actual_data_type = data instanceof ArrayBuffer ? `ArrayBuffer` : typeof data
+
+    if (this.format === `xyz`) {
+      if (typeof data !== `string`) {
+        throw new TypeError(
+          `load_frame expected string data for xyz format, received ${actual_data_type}`,
+        )
+      }
+      return this.load_xyz_frame(data, frame_number)
+    }
+    if (!(data instanceof ArrayBuffer)) {
+      throw new TypeError(
+        `load_frame expected ArrayBuffer data for ase format, received ${actual_data_type}`,
+      )
+    }
+    return this.load_ase_frame(data, frame_number)
   }
 
   async extract_plot_metadata(
@@ -165,9 +179,19 @@ export class TrajFrameReader implements FrameLoader {
 
         if (current_frame % sample_rate === 0) {
           const comment = lines[line_idx + 1] || ``
-          const frame_metadata = this.parse_xyz_metadata(comment, current_frame)
+          let frame_metadata: TrajectoryMetadata | null = null
+          try {
+            frame_metadata = this.parse_xyz_metadata(comment, current_frame)
+          } catch (error) {
+            console.warn(
+              `Failed to parse XYZ metadata for frame ${current_frame} at line ${
+                line_idx + 1
+              }:`,
+              error,
+            )
+          }
 
-          if (properties) {
+          if (frame_metadata && properties) {
             const filtered = Object.fromEntries(
               Object.entries(frame_metadata.properties).filter(([key]) =>
                 properties.includes(key)
@@ -176,7 +200,7 @@ export class TrajFrameReader implements FrameLoader {
             frame_metadata.properties = filtered
           }
 
-          metadata_list.push(frame_metadata)
+          if (frame_metadata) metadata_list.push(frame_metadata)
         }
 
         line_idx += 2 + num_atoms
