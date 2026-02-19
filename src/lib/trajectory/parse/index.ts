@@ -392,15 +392,20 @@ export async function load_binary_traj(
   try {
     // Read binary from a clone so the original can be used for text fallback
     return await resp.clone().arrayBuffer()
-  } catch (err1) {
+  } catch (binary_error) {
     if (fallback) {
-      console.warn(`Binary load failed for ${type}, using text:`, err1)
+      console.warn(`Binary load failed for ${type}, using text fallback:`, binary_error)
       try {
         return await resp.text()
-      } catch (err2) {
-        console.error(`Fallback to text also failed for ${type}:`, err2)
+      } catch (text_error) {
+        const combined_error = new AggregateError(
+          [binary_error, text_error],
+          `Failed to load ${type} as binary or text`,
+        )
+        console.error(`Binary and text fallback both failed for ${type}:`, combined_error)
+        throw combined_error
       }
     }
-    throw new Error(`Failed to load ${type} as binary: ${err1}`)
+    throw new Error(`Failed to load ${type} as binary`, { cause: binary_error })
   }
 }

@@ -162,7 +162,7 @@ export function parse_lammps_trajectory(
       elements.push(element_symbol)
     }
 
-    if (positions.length === num_atoms) {
+    if (positions.length === elements.length && positions.length === num_atoms) {
       const { volume } = math.calc_lattice_params(lattice_matrix)
       frames.push(create_trajectory_frame(
         positions,
