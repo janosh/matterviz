@@ -953,4 +953,29 @@ describe(`Structure string parsing`, () => {
     await tick()
     expect(filename).toBe(`test.poscar`)
   })
+
+  test(`load error state is rendered as centered overlay`, async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: () => Promise.resolve(``),
+    })
+    mount(Structure, {
+      target: document.body,
+      props: {
+        data_url: `/missing-structure.json`,
+      },
+    })
+    await tick()
+    await tick()
+
+    const error_state = document.querySelector(`.error-state`) as HTMLElement
+    expect(error_state).toBeTruthy()
+    const computed_style = getComputedStyle(error_state)
+    expect(computed_style.position).toBe(`absolute`)
+    expect(computed_style.display).toBe(`grid`)
+    expect(computed_style.placeContent).toBe(`center`)
+    expect(computed_style.justifyItems).toBe(`center`)
+    expect(error_state.textContent).toContain(`Failed to load structure`)
+  })
 })

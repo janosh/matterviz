@@ -190,6 +190,13 @@ function generate(): { output: string; n_typed: number } {
     [/\bJsMatrix3x3\b/g, `Matrix3x3`],
     [/\bJsIntMatrix3x3\b/g, `Matrix3x3`],
     [/\bJsMillerIndex\b/g, `Vec3`],
+    // wasm-pack may inline tuple literals instead of named aliases.
+    // Normalize these to shared Vec3 aliases to keep generated types DRY/stable.
+    [
+      /\[\[number, number, number\], \[number, number, number\], \[number, number, number\]\]/g,
+      `[Vec3, Vec3, Vec3]`,
+    ],
+    [/\[number, number, number\]/g, `Vec3`],
     [
       /fit_anonymous\(struct1: Crystal, struct2: Crystal, mapping_name\?: string \| null, mapping\?: any \| null\): WasmResult<boolean>/g,
       `fit_anonymous(struct1: Crystal, struct2: Crystal, mapping_name?: string | null, mapping?: Record<string, string> | null): WasmResult<boolean>`,

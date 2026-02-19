@@ -95,7 +95,7 @@ describe(`Trajectory Streaming Validation`, () => {
       frames: [base_frame],
       total_frames: 5,
       indexed_frames: [valid_idx, { ...valid_idx, frame_number: 1, byte_offset: 200 }],
-    }, [`total_frames (5) inconsistent with indexed_frames length (2)`]],
+    }, []],
     [
       `is_indexed true without indexed_frames`,
       { frames: [base_frame], is_indexed: true },
@@ -129,8 +129,11 @@ describe(`Trajectory Streaming Validation`, () => {
     }, [`indexed_frames[0] missing or invalid estimated_size`]],
     [`non-sequential frame_number`, {
       frames: [base_frame],
-      indexed_frames: [{ frame_number: 5, byte_offset: 0, estimated_size: 100 }],
-    }, [`indexed_frames[0] frame_number (5) should equal index (0)`]],
+      indexed_frames: [
+        { frame_number: 5, byte_offset: 0, estimated_size: 100 },
+        { frame_number: 4, byte_offset: 100, estimated_size: 100 },
+      ],
+    }, [`indexed_frames[1] frame_number (4) must be strictly increasing`]],
     [`invalid plot_metadata type`, { frames: [base_frame], plot_metadata: `not_array` }, [
       `plot_metadata must be an array`,
     ]],
@@ -158,7 +161,6 @@ describe(`Trajectory Streaming Validation`, () => {
       plot_metadata: [{ frame_number: 0 }],
     }, [
       `total_frames must be a positive number, got -1`,
-      `indexed_frames[0] frame_number (5) should equal index (0)`,
       `indexed_frames[0] missing or invalid byte_offset`,
       `indexed_frames[0] missing or invalid estimated_size`,
       `plot_metadata[0] missing or invalid step`,

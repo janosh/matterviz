@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { WasmResult } from '../types.d.ts'
+import type { Vec3, WasmResult } from '../types.d.ts'
 
 let wasm: Awaited<typeof import('../pkg/ferrox.js')>
 
@@ -184,9 +184,9 @@ describe(`supercell functions`, () => {
 
   it(`creates supercell with matrix`, () => {
     const matrix: [
-      [number, number, number],
-      [number, number, number],
-      [number, number, number],
+      Vec3,
+      Vec3,
+      Vec3,
     ] = [[2, 0, 0], [0, 2, 0], [0, 0, 1]]
     expect(unwrap(wasm.make_supercell(nacl_json, matrix)).sites).toHaveLength(8)
   })

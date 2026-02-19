@@ -157,8 +157,11 @@
 
   function handle_click_outside(evt: MouseEvent) {
     if (!dropdown_open) return
-    const target = evt.target as Node
-    if (!trigger_el?.contains(target) && !portal_el?.contains(target)) {
+    const target = evt.target
+    if (
+      !(target instanceof Node) ||
+      (!trigger_el?.contains(target) && !portal_el?.contains(target))
+    ) {
       close_dropdown()
     }
   }

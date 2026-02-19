@@ -282,9 +282,9 @@
     }}
   >
     {#if active_file}
-      <h3 class="filename-label">
+      <p class="filename-label">
         {active_file.replace(/\.gz$/, ``)}
-      </h3>
+      </p>
     {/if}
   </Structure>
 </div>
@@ -314,7 +314,7 @@
 {#if volumetric_data?.[active_volume_idx]}
   <div class="slice-section">
     <div class="slice-header">
-      <h3>Cross-Section Slice</h3>
+      <h2>Cross-Section Slice</h2>
       <MillerIndexInput bind:value={miller_indices} />
       <label class="slice-position">
         d = {format_num(slice_position, `.2f`)}
@@ -465,7 +465,7 @@
     gap: 0.5em 0.8em;
     margin-bottom: 0.5em;
     font-size: 0.9em;
-    h3 {
+    h2 {
       margin: 0;
       font-size: 1rem;
     }

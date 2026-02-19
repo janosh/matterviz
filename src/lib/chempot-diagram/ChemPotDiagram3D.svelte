@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
+  import { type D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
@@ -25,15 +25,15 @@
   } from '$lib/plot/types'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { scaleLinear, scaleSequential } from 'd3-scale'
-  import * as d3_sc from 'd3-scale-chromatic'
-  import { onDestroy, onMount } from 'svelte'
+  import { scaleLinear } from 'd3-scale'
+  import { onDestroy, onMount, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
+  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
   import {
     apply_element_padding,
     best_form_energy_for_formula,
@@ -46,6 +46,7 @@
     get_min_entries_and_el_refs,
     pad_domain_points,
   } from './compute'
+  import { with_hover_pointer } from './pointer'
   import {
     get_projection_source_entries,
     get_temp_filter_payload,
@@ -446,28 +447,6 @@
     get_min_entries_and_el_refs(temp_filtered_entries).el_refs,
   )
 
-  // Resolve a D3 interpolator name to a function, optionally reversed
-  function get_interpolator(name: D3InterpolateName): (t: number) => string {
-    const raw = (d3_sc as unknown as Record<string, (t: number) => string>)[name] ??
-      d3_sc.interpolateViridis
-    return reverse_color_scale ? (t: number) => raw(1 - t) : raw
-  }
-
-  // Build a sequential color scale from a D3 interpolator name
-  function make_color_scale(
-    values: number[],
-    interpolator_name: D3InterpolateName,
-  ): ((val: number) => string) | null {
-    const finite = values.filter(Number.isFinite)
-    if (finite.length === 0) return null
-    let lo = finite[0], hi_raw = finite[0]
-    for (let idx = 1; idx < finite.length; idx++) {
-      if (finite[idx] < lo) lo = finite[idx]
-      if (finite[idx] > hi_raw) hi_raw = finite[idx]
-    }
-    const hi = Math.max(hi_raw, lo + 1e-6)
-    return scaleSequential(get_interpolator(interpolator_name)).domain([lo, hi])
-  }
   const color_mode_labels: Record<NumericColorMode, string> = {
     energy: `Energy per atom (eV)`,
     formation_energy: `Formation energy (eV/atom)`,
@@ -519,7 +498,11 @@
       return colors
     }
     const values_payload = domain_color_values
-    const scale = make_color_scale(values_payload?.values ?? [], color_scale)
+    const scale = make_chempot_color_scale(
+      values_payload?.values ?? [],
+      color_scale,
+      reverse_color_scale,
+    )
     for (const domain of render_domains) {
       const value = values_payload?.value_by_formula.get(domain.formula)
       colors.set(domain.formula, value != null && scale ? scale(value) : `#999`)
@@ -562,7 +545,7 @@
 
   // Stretch short axes to improve screen-space utilization for highly anisotropic systems.
   // Mapping is in rendered axis order: X=data[1], Y=data[2], Z=data[0].
-  const render_axis_scale = $derived.by((): [number, number, number] => {
+  const render_axis_scale = $derived.by((): Vec3 => {
     const points = render_domains.flatMap((domain) => domain.points_3d)
     if (points.length === 0) return [1, 1, 1]
     let min0 = Infinity, max0 = -Infinity
@@ -587,7 +570,7 @@
     ]
   })
 
-  function to_render_xyz(point: number[]): [number, number, number] {
+  function to_render_xyz(point: number[]): Vec3 {
     const [scale_x, scale_y, scale_z] = render_axis_scale
     return [point[1] * scale_x, point[2] * scale_y, point[0] * scale_z]
   }
@@ -621,12 +604,12 @@
     }
     return { data_center: center, data_extent: Math.max(max_dist * 1.3, 1) }
   })
-  const default_camera_position = $derived<[number, number, number]>([
+  const default_camera_position = $derived<Vec3>([
     data_center.x + data_extent,
     data_center.y + data_extent,
     data_center.z + data_extent,
   ])
-  const default_camera_target = $derived<[number, number, number]>([
+  const default_camera_target = $derived<Vec3>([
     data_center.x,
     data_center.y,
     data_center.z,
@@ -634,8 +617,8 @@
   const default_orthographic_zoom = $derived(
     Math.min(render_width, render_height) / (data_extent * 1.6),
   )
-  let camera_position_override = $state<[number, number, number] | null>(null)
-  let camera_target_override = $state<[number, number, number] | null>(null)
+  let camera_position_override = $state<Vec3 | null>(null)
+  let camera_target_override = $state<Vec3 | null>(null)
   let orthographic_zoom_override = $state<number | null>(null)
   const camera_position = $derived(
     camera_position_override ?? default_camera_position,
@@ -646,8 +629,8 @@
   const orthographic_zoom = $derived(
     orthographic_zoom_override ?? default_orthographic_zoom,
   )
-  let last_data_center = $state<[number, number, number] | null>(null)
-  let last_data_extent = $state<number | null>(null)
+  let last_data_center: Vec3 | null = null
+  let last_data_extent: number | null = null
 
   // Compute domain boundary edges via axis-aligned 2D convex hull projection.
   // Each domain in a chem pot diagram is a convex polygon/polyhedron. We project
@@ -825,7 +808,9 @@
   // normal component (pointing toward 0 eV / the elemental reference).
   const hull_base_geometry = $derived.by((): THREE.BufferGeometry | null => {
     if (!occlusion_hull_geometry) return null
-    const src = occlusion_hull_geometry.toNonIndexed()
+    const src = occlusion_hull_geometry.index
+      ? occlusion_hull_geometry.toNonIndexed()
+      : occlusion_hull_geometry.clone()
     const pos = src.getAttribute(`position`)
     const n_verts = pos.count
     const n_faces = n_verts / 3
@@ -1025,7 +1010,7 @@
       : [0.965, 0.965, 0.965] // #f6f6f6
 
     // Cache parsed RGB per formula to avoid redundant THREE.Color allocations
-    const rgb_cache = new SvelteMap<string, [number, number, number]>()
+    const rgb_cache = new SvelteMap<string, Vec3>()
     for (const [formula, hex] of domain_colors) {
       const clr = new THREE.Color(hex)
       rgb_cache.set(formula, [clr.r, clr.g, clr.b])
@@ -1417,8 +1402,8 @@
 
   // Helper to create a line geometry from two Vec3 arrays
   function make_line_geom(
-    start: [number, number, number],
-    end: [number, number, number],
+    start: Vec3,
+    end: Vec3,
   ): THREE.BufferGeometry {
     const geom = new THREE.BufferGeometry()
     geom.setAttribute(
@@ -1429,7 +1414,7 @@
   }
 
   // Swizzle a data-coord triple to Three.js coords
-  function swiz(d0: number, d1: number, d2: number): [number, number, number] {
+  function swiz(d0: number, d1: number, d2: number): Vec3 {
     const [scale_x, scale_y, scale_z] = render_axis_scale
     return [d1 * scale_x, d2 * scale_y, d0 * scale_z] // data[0]→Z, data[1]→X, data[2]→Y
   }
@@ -1476,9 +1461,9 @@
 
       const tick_geoms: THREE.BufferGeometry[] = []
       const grid_geoms: THREE.BufferGeometry[] = []
-      const tick_labels: { pos: [number, number, number]; text: string }[] = []
+      const tick_labels: { pos: Vec3; text: string }[] = []
       let line_geom: THREE.BufferGeometry
-      let label_pos: [number, number, number]
+      let label_pos: Vec3
 
       if (axis === 0) {
         // Data axis 0 (Three.js Z, depth): axis at backside d1 and d2
@@ -1667,7 +1652,8 @@
       store_camera_view_state()
     }
     controls.addEventListener(`change`, on_controls_change)
-    update_backside()
+    untrack(() => update_backside())
+    controls.update()
     return () => controls.removeEventListener(`change`, on_controls_change)
   })
 
@@ -1699,8 +1685,8 @@
     const s2 = (r2[1] - r2[0]) * (display.projection_scale ?? 0.5)
     const planes: {
       key: string
-      pos: [number, number, number]
-      rot: [number, number, number]
+      pos: Vec3
+      rot: Vec3
       size: [number, number]
       color: string
     }[] = []
@@ -2109,8 +2095,10 @@
     return null
   }
 
-  function refresh_fixed_container_rect(): void {
-    fixed_container_rect = fixed_container_element?.getBoundingClientRect() ?? null
+  function refresh_fixed_container_rect(
+    container_element: HTMLElement | null = fixed_container_element,
+  ): void {
+    fixed_container_rect = container_element?.getBoundingClientRect() ?? null
   }
 
   function queue_fixed_container_rect_refresh(): void {
@@ -2122,8 +2110,9 @@
   }
 
   $effect(() => {
-    fixed_container_element = find_fixed_container_element()
-    refresh_fixed_container_rect()
+    const next_fixed_container_element = find_fixed_container_element()
+    fixed_container_element = next_fixed_container_element
+    refresh_fixed_container_rect(next_fixed_container_element)
   })
 
   onMount(() => {
@@ -2136,57 +2125,14 @@
     }
   })
 
-  function get_pointer_coords(
-    raw_event: unknown,
-  ): { clientX: number; clientY: number } | null {
-    if (raw_event instanceof PointerEvent || raw_event instanceof MouseEvent) {
-      return raw_event
-    }
-    if (!raw_event || typeof raw_event !== `object`) return null
-    const event_obj = raw_event as {
-      nativeEvent?: unknown
-      srcEvent?: unknown
-      clientX?: number
-      clientY?: number
-    }
-    if (
-      event_obj.nativeEvent instanceof PointerEvent ||
-      event_obj.nativeEvent instanceof MouseEvent
-    ) {
-      return event_obj.nativeEvent
-    }
-    if (
-      event_obj.srcEvent instanceof PointerEvent ||
-      event_obj.srcEvent instanceof MouseEvent
-    ) {
-      return event_obj.srcEvent
-    }
-    if (
-      typeof event_obj.clientX === `number` && typeof event_obj.clientY === `number`
-    ) {
-      return { clientX: event_obj.clientX, clientY: event_obj.clientY }
-    }
-    return null
-  }
-
-  function get_hover_pointer(raw_event: unknown): { x: number; y: number } | null {
-    const pointer_event = get_pointer_coords(raw_event)
-    if (!pointer_event) return null
-    const offset_x = fixed_container_rect?.left ?? 0
-    const offset_y = fixed_container_rect?.top ?? 0
-    return {
-      x: pointer_event.clientX - offset_x + 4,
-      y: pointer_event.clientY - offset_y + 4,
-    }
-  }
-
   let locked_hover_formula = $state<string | null>(null)
 
   function set_hover_info(domain_data: HoverMeshData, raw_event: unknown): void {
-    hover_info = {
-      ...domain_data.info,
-      pointer: get_hover_pointer(raw_event) ?? undefined,
-    }
+    hover_info = with_hover_pointer<ChemPotHoverInfo>(
+      domain_data.info,
+      raw_event,
+      fixed_container_rect,
+    )
   }
 
   function clear_hover_lock(): void {
@@ -2805,11 +2751,15 @@
     </Canvas>
     <!-- Color bar for continuous modes -->
     {#if color_mode !== `none` && color_mode !== `arity` && color_range}
+      {@const color_bar_config = get_chempot_color_bar_config(
+      color_scale,
+      reverse_color_scale,
+    )}
       <ColorBar
         title={color_range.label}
         range={[color_range.min, color_range.max]}
-        color_scale_fn={get_interpolator(color_scale)}
-        color_scale_domain={[0, 1]}
+        color_scale_fn={color_bar_config.color_scale_fn}
+        color_scale_domain={color_bar_config.color_scale_domain}
         wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
         bar_style="height: 12px;"
         title_style="margin-bottom: 4px;"

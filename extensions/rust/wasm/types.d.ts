@@ -23,11 +23,11 @@ export interface JsSymmetryOperation {
   /**
    * 3x3 rotation matrix (integer elements in fractional basis)
    */
-  rotation: [[number, number, number], [number, number, number], [number, number, number]]
+  rotation: [Vec3, Vec3, Vec3]
   /**
    * Translation vector in fractional coordinates
    */
-  translation: [number, number, number]
+  translation: Vec3
 }
 
 /**
@@ -41,11 +41,11 @@ export interface JsAseAtoms {
   /**
    * Cartesian positions [[x1, y1, z1], ...] in Angstroms
    */
-  positions: [number, number, number][]
+  positions: Vec3[]
   /**
    * Cell matrix (3x3), omitted for molecules
    */
-  cell?: [[number, number, number], [number, number, number], [number, number, number]]
+  cell?: [Vec3, Vec3, Vec3]
   /**
    * Periodic boundary conditions
    */
@@ -127,7 +127,7 @@ export interface JsNeighborInfo {
   /**
    * Periodic image offset
    */
-  image: [number, number, number]
+  image: Vec3
 }
 
 /**
@@ -246,11 +246,11 @@ export interface JsStructureMetadata {
   /**
    * Lattice parameters [a, b, c] in Angstroms
    */
-  lattice_params: [number, number, number]
+  lattice_params: Vec3
   /**
    * Lattice angles [alpha, beta, gamma] in degrees
    */
-  lattice_angles: [number, number, number]
+  lattice_angles: Vec3
   /**
    * Whether structure is ordered (no partial occupancies)
    */
@@ -264,7 +264,7 @@ export interface JsHklInfo {
   /**
    * Miller indices [h, k, l]
    */
-  hkl: [number, number, number]
+  hkl: Vec3
   /**
    * Multiplicity (number of symmetry-equivalent reflections)
    */
@@ -315,7 +315,7 @@ export interface JsNeighborList {
   /**
    * Periodic image offsets [h, k, l] for each neighbor
    */
-  image_offsets: [number, number, number][]
+  image_offsets: Vec3[]
   /**
    * Distances from center to neighbor (Angstroms)
    */

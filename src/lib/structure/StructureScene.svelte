@@ -25,6 +25,11 @@
     get_property_colors,
   } from '$lib/structure/atom-properties'
   import * as measure from '$lib/structure/measure'
+  import {
+    compute_slice_geometry,
+    merge_split_partial_sites,
+    PARTIAL_OCCUPANCY_CAP_ARC,
+  } from '$lib/structure/partial-occupancy'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
@@ -228,9 +233,7 @@
     scene = threlte.scene
     camera = threlte.camera.current
     if (threlte.renderer) {
-      Object.assign(threlte.renderer.domElement, {
-        __renderer: threlte.renderer,
-      })
+      Object.assign(threlte.renderer.domElement, { __renderer: threlte.renderer })
     }
   })
 
@@ -311,11 +314,8 @@
       bond_pairs.some((bond) =>
         get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
       )
-    ) {
-      removed_bonds = [...removed_bonds, [idx_i, idx_j]]
-    } else {
-      added_bonds = [...added_bonds, [idx_i, idx_j]]
-    }
+    ) removed_bonds = [...removed_bonds, [idx_i, idx_j]]
+    else added_bonds = [...added_bonds, [idx_i, idx_j]]
   }
 
   // Deduplicate clicks: when a highlight sphere and the underlying atom both
@@ -325,9 +325,12 @@
 
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
-    const native = (evt as unknown as { nativeEvent?: Event })?.nativeEvent
-    if (native && native === last_native_event) return
-    if (native) last_native_event = native
+    const native_event = (evt as Event & { nativeEvent?: unknown } | undefined)
+      ?.nativeEvent
+    if (native_event instanceof Event) {
+      if (native_event === last_native_event) return
+      last_native_event = native_event
+    }
 
     if (measure_mode === `edit-bonds`) {
       // In edit-bonds mode, select atoms to add/remove bonds between them
@@ -474,7 +477,6 @@
       sym_data,
     ),
   )
-
   // Compute weighted average radius for a site based on species occupancies
   // Normalizes by total occupancy so vacancy-containing sites render at full size
   const calc_weighted_radius = (site: Site): number => {
@@ -488,7 +490,8 @@
 
   let atom_data = $derived.by(() => {
     if (!show_atoms || !structure?.sites) return []
-    return structure.sites.flatMap((site, site_idx) => {
+    const render_sites = merge_split_partial_sites(structure.sites, hidden_elements)
+    return render_sites.flatMap(({ site_idx, site, is_image_atom }) => {
       const orig_idx = get_orig_site_idx(site, site_idx)
 
       // Skip sites with hidden property values
@@ -506,24 +509,27 @@
       // Otherwise, each species gets its own element color (important for disordered sites)
       const site_property_color = property_colors?.colors[orig_idx]
 
-      // Detect image atoms by presence of orig_site_idx property (set by get_pbc_image_sites)
-      const is_image_atom = site.properties?.orig_site_idx != null
-
-      let start_angle = 0
-      return site.species
-        .filter(({ element }) => !hidden_elements.has(element))
-        .map(({ element, occu }) => ({
+      const visible_species = site.species.filter(({ element }) =>
+        !hidden_elements.has(element)
+      )
+      const slice_geometry = compute_slice_geometry(visible_species)
+      return slice_geometry.map((slice_data) => {
+        return {
           site_idx,
-          element,
-          occupancy: occu,
+          element: slice_data.element,
+          occupancy: slice_data.occupancy,
           position: site.xyz,
           radius,
-          color: site_property_color ?? colors.element?.[element],
-          has_partial_occupancy: occu < 1,
-          start_phi: 2 * Math.PI * start_angle,
-          end_phi: 2 * Math.PI * (start_angle += occu),
+          color: site_property_color ?? colors.element?.[slice_data.element],
+          has_partial_occupancy: slice_data.occupancy < 1,
+          start_phi: slice_data.start_phi,
+          end_phi: slice_data.end_phi,
+          phi_length: slice_data.phi_length,
+          render_start_cap: slice_data.render_start_cap,
+          render_end_cap: slice_data.render_end_cap,
           is_image_atom,
-        }))
+        }
+      })
     })
   })
 
@@ -905,7 +911,7 @@
                   sphere_segments,
                   sphere_segments,
                   atom.start_phi,
-                  2 * Math.PI * atom.occupancy,
+                  atom.phi_length,
                 ]}
               />
               <T.MeshStandardMaterial
@@ -915,9 +921,16 @@
               />
             </T.Mesh>
 
-            {#if atom.has_partial_occupancy}
+            {#if atom.has_partial_occupancy && atom.render_start_cap}
               <T.Mesh rotation={[0, atom.start_phi, 0]}>
-                <T.CircleGeometry args={[0.5, sphere_segments]} />
+                <T.CircleGeometry
+                  args={[
+                    0.5,
+                    sphere_segments,
+                    PARTIAL_OCCUPANCY_CAP_ARC.start_cap_arc_start,
+                    PARTIAL_OCCUPANCY_CAP_ARC.arc_length,
+                  ]}
+                />
                 <T.MeshStandardMaterial
                   color={partial_color}
                   side={2}
@@ -925,8 +938,17 @@
                   transparent={partial_edit_image}
                 />
               </T.Mesh>
+            {/if}
+            {#if atom.has_partial_occupancy && atom.render_end_cap}
               <T.Mesh rotation={[0, atom.end_phi, 0]}>
-                <T.CircleGeometry args={[0.5, sphere_segments]} />
+                <T.CircleGeometry
+                  args={[
+                    0.5,
+                    sphere_segments,
+                    PARTIAL_OCCUPANCY_CAP_ARC.end_cap_arc_start,
+                    PARTIAL_OCCUPANCY_CAP_ARC.arc_length,
+                  ]}
+                />
                 <T.MeshStandardMaterial
                   color={partial_color}
                   side={2}
@@ -1142,7 +1164,7 @@
           structure?.sites}
         {@const selected_atoms = selected_sites
           .map((idx) => structure?.sites?.[idx])
-          .filter(Boolean) as Site[]}
+          .filter((site): site is Site => site != null)}
         {#if selected_atoms.length > 0}
           {@const avg = (dim: number) =>
           selected_atoms.reduce((sum, atom) => sum + atom.xyz[dim], 0) /

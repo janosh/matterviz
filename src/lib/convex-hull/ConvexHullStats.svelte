@@ -357,7 +357,7 @@
     return { table_data: rows, entry_by_row: map }
   })
 
-  function handle_row_click(_event: MouseEvent, row: RowData): void {
+  function handle_row_click(_event: KeyboardEvent | MouseEvent, row: RowData): void {
     const entry = entry_by_row.get(row)
     if (entry) on_entry_click?.(entry)
   }

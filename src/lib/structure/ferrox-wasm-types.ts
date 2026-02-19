@@ -1,3 +1,5 @@
+import type { Vec3 } from '$lib/math'
+
 // Pure type definitions and utility functions for ferrox-wasm results.
 // This module has no WASM side effects, making it safe to import in tests
 // without triggering WASM resolution.
@@ -31,7 +33,7 @@ export function unwrap_or<T>(result: WasmResult<T>, default_value: T): T {
 export interface NeighborListResult {
   center_indices: number[]
   neighbor_indices: number[]
-  image_offsets: [number, number, number][]
+  image_offsets: Vec3[]
   distances: number[]
 }
 
@@ -53,7 +55,7 @@ export type ReductionAlgorithm = `niggli` | `lll`
 
 // XRD Types
 export interface HklInfo {
-  hkl: [number, number, number]
+  hkl: Vec3
   multiplicity: number
 }
 

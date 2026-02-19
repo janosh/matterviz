@@ -207,6 +207,12 @@ export interface ArcsinhScaleConfig {
 // Scale type can be a simple string or arcsinh config object
 export type ScaleType = `linear` | `log` | `arcsinh` | `time` | ArcsinhScaleConfig
 
+// Type guard for select value narrowing (avoids unsafe casts)
+const SCALE_TYPE_NAMES: ScaleTypeName[] = [`linear`, `log`, `arcsinh`, `time`]
+export function is_scale_type_name(val: string): val is ScaleTypeName {
+  return SCALE_TYPE_NAMES.includes(val as ScaleTypeName)
+}
+
 // Helper to normalize ScaleType to base type name
 export function get_scale_type_name(scale_type: ScaleType | undefined): ScaleTypeName {
   if (!scale_type) return `linear`
@@ -396,6 +402,12 @@ export interface AxisOption {
 // - 'synced': Y2 has exact same range as Y1
 // - 'align': Y2 expands to show all data while keeping align_value (default 0) at same position as Y1
 export type Y2SyncMode = `none` | `synced` | `align`
+
+// Type guard for select value narrowing (avoids unsafe casts)
+const Y2_SYNC_MODES: Y2SyncMode[] = [`none`, `synced`, `align`]
+export function is_y2_sync_mode(val: string): val is Y2SyncMode {
+  return Y2_SYNC_MODES.includes(val as Y2SyncMode)
+}
 
 export interface Y2SyncConfig {
   mode: Y2SyncMode

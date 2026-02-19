@@ -4,6 +4,7 @@
   import { page } from '$app/state'
   import EmptyState from '$lib/EmptyState.svelte'
   import FilePicker from '$lib/FilePicker.svelte'
+  import type { Vec3 } from '$lib/math'
   import type { Crystal } from '$lib/structure'
   import { Structure } from '$lib/structure'
   import type { MatcherOptions } from '$lib/structure/ferrox-wasm'
@@ -387,14 +388,14 @@
         const dc = (Math.random() - 0.5) * 2 * frac_magnitude
 
         // Apply fractional displacement and wrap to [0, 1)
-        const abc: [number, number, number] = [
+        const abc: Vec3 = [
           ((site.abc[0] + da) % 1 + 1) % 1,
           ((site.abc[1] + db) % 1 + 1) % 1,
           ((site.abc[2] + dc) % 1 + 1) % 1,
         ]
 
         // Recalculate Cartesian coordinates from fractional
-        const xyz: [number, number, number] = [
+        const xyz: Vec3 = [
           abc[0] * lattice[0][0] + abc[1] * lattice[1][0] + abc[2] * lattice[2][0],
           abc[0] * lattice[0][1] + abc[1] * lattice[1][1] + abc[2] * lattice[2][1],
           abc[0] * lattice[0][2] + abc[1] * lattice[1][2] + abc[2] * lattice[2][2],

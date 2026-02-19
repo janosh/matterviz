@@ -244,11 +244,6 @@
     align-items: center;
     gap: 3pt;
   }
-  section.slice-section input[type='text'] {
-    width: 4em;
-    text-align: center;
-    font-family: monospace;
-  }
   section.slice-section input[type='range'] {
     pointer-events: auto;
   }

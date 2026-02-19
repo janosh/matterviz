@@ -84,7 +84,7 @@ export function trilinear_interpolate(
 // Returns null if indices are all zero.
 export function sample_hkl_slice(
   volume: VolumetricData,
-  miller_indices: [number, number, number],
+  miller_indices: Vec3,
   distance: number,
 ): SliceResult | null {
   const [h_idx, k_idx, l_idx] = miller_indices

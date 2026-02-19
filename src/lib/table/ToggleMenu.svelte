@@ -98,7 +98,8 @@
   }
 
   function toggle_column_visibility(col: Label, event: Event) {
-    col.visible = (event.target as HTMLInputElement).checked
+    if (!(event.target instanceof HTMLInputElement)) return
+    col.visible = event.target.checked
     columns = [...columns] // trigger reactivity on parent binding
   }
 

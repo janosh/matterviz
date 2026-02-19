@@ -100,7 +100,8 @@
       if (!is_clickable) return
 
       // For keyboard activation, use center of element or default coordinates
-      const target = event.currentTarget as SVGElement
+      const target = event.currentTarget
+      if (!(target instanceof SVGElement)) return
       const rect = target.ownerSVGElement?.getBoundingClientRect()
       const element_rect = target.getBoundingClientRect()
 
@@ -132,7 +133,8 @@
 
   // Construct FillHandlerEvent from MouseEvent
   function construct_event(event: MouseEvent): FillHandlerEvent {
-    const rect = (event.currentTarget as SVGElement).ownerSVGElement
+    const current = event.currentTarget
+    const rect = (current instanceof SVGElement ? current.ownerSVGElement : null)
       ?.getBoundingClientRect()
     const px = event.clientX - (rect?.left ?? 0)
     const py = event.clientY - (rect?.top ?? 0)

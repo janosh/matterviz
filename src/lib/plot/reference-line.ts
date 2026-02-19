@@ -1,15 +1,5 @@
 // Reference line utilities: helper functions and coordinate resolution
-import type { Vec3 } from '$lib/math'
-import type {
-  LayerZIndex,
-  RefLine,
-  RefLine3D,
-  RefLine3DBase,
-  RefLineBase,
-  RefLineValue,
-  RefPlane,
-  RefPlaneBase,
-} from './types'
+import type { LayerZIndex, RefLine, RefLineValue } from './types'
 
 export type IndexedRefLine = RefLine & { idx: number }
 
@@ -71,149 +61,9 @@ export function normalize_value(value: RefLineValue): number {
 }
 
 // Normalize a point tuple
-export function normalize_point(
+export const normalize_point = (
   point: [RefLineValue, RefLineValue],
-): [number, number] {
-  return [normalize_value(point[0]), normalize_value(point[1])]
-}
-
-// Create a horizontal reference line at y = value
-export function horizontal_line(
-  y_value: RefLineValue,
-  opts?: Partial<RefLineBase>,
-): RefLine {
-  return { type: `horizontal`, y: y_value, ...opts }
-}
-
-// Create a vertical reference line at x = value
-export function vertical_line(
-  x_value: RefLineValue,
-  opts?: Partial<RefLineBase>,
-): RefLine {
-  return { type: `vertical`, x: x_value, ...opts }
-}
-
-// Create a diagonal reference line with y = slope * x + intercept
-export function diagonal_line(
-  slope: number,
-  intercept: number,
-  opts?: Partial<RefLineBase>,
-): RefLine {
-  return { type: `diagonal`, slope, intercept, ...opts }
-}
-
-// Create a line segment between two points
-export function line_segment(
-  p1: [RefLineValue, RefLineValue],
-  p2: [RefLineValue, RefLineValue],
-  opts?: Partial<RefLineBase>,
-): RefLine {
-  return { type: `segment`, p1, p2, ...opts }
-}
-
-// Create a line through two points, extended to plot edges
-export function line_through(
-  p1: [RefLineValue, RefLineValue],
-  p2: [RefLineValue, RefLineValue],
-  opts?: Partial<RefLineBase>,
-): RefLine {
-  return { type: `line`, p1, p2, ...opts }
-}
-
-// Batch helper: create multiple horizontal lines
-export function horizontal_lines(
-  values: RefLineValue[],
-  opts?: Partial<RefLineBase>,
-): RefLine[] {
-  return values.map((y_value) => horizontal_line(y_value, opts))
-}
-
-// Batch helper: create multiple vertical lines
-export function vertical_lines(
-  values: RefLineValue[],
-  opts?: Partial<RefLineBase>,
-): RefLine[] {
-  return values.map((x_value) => vertical_line(x_value, opts))
-}
-
-// Create an XY plane at z = value (horizontal plane)
-export function plane_xy(z_value: number, opts?: Partial<RefPlaneBase>): RefPlane {
-  return { type: `xy`, z: z_value, ...opts }
-}
-
-// Create an XZ plane at y = value
-export function plane_xz(y_value: number, opts?: Partial<RefPlaneBase>): RefPlane {
-  return { type: `xz`, y: y_value, ...opts }
-}
-
-// Create a YZ plane at x = value
-export function plane_yz(x_value: number, opts?: Partial<RefPlaneBase>): RefPlane {
-  return { type: `yz`, x: x_value, ...opts }
-}
-
-// Create a plane defined by normal vector and a point on the plane
-export function plane_normal(
-  normal: Vec3,
-  point: Vec3,
-  opts?: Partial<RefPlaneBase>,
-): RefPlane {
-  return { type: `normal`, normal, point, ...opts }
-}
-
-// Create a plane through three points
-export function plane_through_points(
-  p1: Vec3,
-  p2: Vec3,
-  p3: Vec3,
-  opts?: Partial<RefPlaneBase>,
-): RefPlane {
-  return { type: `points`, p1, p2, p3, ...opts }
-}
-
-// Create a 3D line parallel to x-axis at given y, z
-export function line_x_axis(
-  y_value: number,
-  z_value: number,
-  opts?: Partial<RefLine3DBase>,
-): RefLine3D {
-  return { type: `x-axis`, y: y_value, z: z_value, ...opts }
-}
-
-// Create a 3D line parallel to y-axis at given x, z
-export function line_y_axis(
-  x_value: number,
-  z_value: number,
-  opts?: Partial<RefLine3DBase>,
-): RefLine3D {
-  return { type: `y-axis`, x: x_value, z: z_value, ...opts }
-}
-
-// Create a 3D line parallel to z-axis at given x, y
-export function line_z_axis(
-  x_value: number,
-  y_value: number,
-  opts?: Partial<RefLine3DBase>,
-): RefLine3D {
-  return { type: `z-axis`, x: x_value, y: y_value, ...opts }
-}
-
-// Create a 3D line segment between two points
-export function line_segment_3d(
-  p1: [number, number, number],
-  p2: [number, number, number],
-  opts?: Partial<RefLine3DBase>,
-): RefLine3D {
-  return { type: `segment`, p1, p2, ...opts }
-}
-
-// Create a 3D line through two points, extended to bounds
-export function line_through_3d(
-  p1: [number, number, number],
-  p2: [number, number, number],
-  opts?: Partial<RefLine3DBase>,
-): RefLine3D {
-  return { type: `line`, p1, p2, ...opts }
-}
+): [number, number] => [normalize_value(point[0]), normalize_value(point[1])]
 
 // Clip a line segment to a rectangle using Liang-Barsky algorithm
 // Returns clipped [x1, y1, x2, y2] or null if segment is entirely outside
@@ -252,12 +102,7 @@ function clip_segment_to_rect(
 
   if (t_enter > t_leave) return null // Segment entirely outside
 
-  return [
-    p1x + t_enter * dx,
-    p1y + t_enter * dy,
-    p1x + t_leave * dx,
-    p1y + t_leave * dy,
-  ]
+  return [p1x + t_enter * dx, p1y + t_enter * dy, p1x + t_leave * dx, p1y + t_leave * dy]
 }
 
 // Compute the screen coordinates for a reference line
