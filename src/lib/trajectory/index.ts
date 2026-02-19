@@ -10,6 +10,9 @@ export { default as TrajectoryInfoPane } from './TrajectoryInfoPane.svelte'
 
 export type TrajectoryFormat = `hdf5` | `json` | `xyz` | `xdatcar` | `traj` | `unknown`
 
+// Mapping from LAMMPS atom type numbers to element symbols (e.g. {1: 'Na', 2: 'Cl'})
+export type AtomTypeMapping = Record<number, import('$lib/element').ElementSymbol>
+
 // Core trajectory types
 export interface ParseProgress {
   current: number
@@ -106,10 +109,13 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] { // w
   if (total_frames !== undefined) {
     if (typeof total_frames !== `number` || total_frames < 1) {
       errors.push(`total_frames must be a positive number, got ${total_frames}`)
-    } else if (indexed_frames && total_frames !== indexed_frames.length) {
-      errors.push(
-        `total_frames (${total_frames}) inconsistent with indexed_frames length (${indexed_frames.length})`,
-      )
+    } else if (indexed_frames?.length) {
+      const last_indexed_frame = indexed_frames.at(-1)
+      if (last_indexed_frame && last_indexed_frame.frame_number >= total_frames) {
+        errors.push(
+          `indexed_frames contains frame_number >= total_frames (${total_frames})`,
+        )
+      }
     }
   }
 
@@ -124,9 +130,16 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] { // w
       indexed_frames.forEach((frame_idx, idx) => {
         if (typeof frame_idx.frame_number !== `number`) {
           errors.push(`indexed_frames[${idx}] missing or invalid frame_number`)
-        } else if (frame_idx.frame_number !== idx) {
+        } else if (frame_idx.frame_number < 0) {
           errors.push(
-            `indexed_frames[${idx}] frame_number (${frame_idx.frame_number}) should equal index (${idx})`,
+            `indexed_frames[${idx}] frame_number (${frame_idx.frame_number}) must be non-negative`,
+          )
+        } else if (
+          idx > 0 &&
+          frame_idx.frame_number <= indexed_frames[idx - 1].frame_number
+        ) {
+          errors.push(
+            `indexed_frames[${idx}] frame_number (${frame_idx.frame_number}) must be strictly increasing`,
           )
         }
         if (typeof frame_idx.byte_offset !== `number`) {

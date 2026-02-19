@@ -13,6 +13,12 @@ export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
 export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
   ? Name
   : never
+export const get_d3_interpolator = (
+  name: D3InterpolateName,
+): (t: number) => string => {
+  const candidate = d3_sc[name]
+  return typeof candidate === `function` ? candidate : d3_sc.interpolateViridis
+}
 export const COLOR_SCALE_TYPES = [`continuous`, `categorical`] as const
 export type ColorScaleType = (typeof COLOR_SCALE_TYPES)[number]
 
