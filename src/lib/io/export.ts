@@ -4,6 +4,16 @@ import { download } from '$lib/io/fetch'
 import { create_structure_filename } from '$lib/structure/export'
 import { type Camera, type Scene, Vector2, WebGLRenderer } from 'three'
 
+function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
+  if (!value || typeof value !== `object`) return false
+  const renderer_obj = value as Record<string, unknown>
+  return typeof renderer_obj.render === `function` &&
+    typeof renderer_obj.getPixelRatio === `function` &&
+    typeof renderer_obj.setPixelRatio === `function` &&
+    typeof renderer_obj.getSize === `function` &&
+    typeof renderer_obj.setSize === `function`
+}
+
 // Export structure as PNG image from canvas
 export function export_canvas_as_png(
   canvas: HTMLCanvasElement | null,
@@ -37,7 +47,7 @@ export function export_canvas_as_png(
     // Cap to a reasonable upper bound to avoid excessive memory use
     const resolution_multiplier = Math.min(png_dpi / 72, 10)
     const renderer_val = (canvas as { __renderer?: unknown }).__renderer
-    const renderer = renderer_val instanceof WebGLRenderer ? renderer_val : undefined
+    const renderer = is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
 
     // Force render to populate buffer
     if (renderer && scene && camera) renderer.render(scene, camera)
@@ -270,7 +280,7 @@ export async function export_trajectory_video(
   ) throw new Error(`WebM video recording not supported in this browser`)
 
   const renderer_val = (canvas as { __renderer?: unknown }).__renderer
-  const renderer = renderer_val instanceof WebGLRenderer ? renderer_val : undefined
+  const renderer = is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
 
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined

@@ -33,6 +33,7 @@
   import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
+  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
   import {
     apply_element_padding,
     best_form_energy_for_formula,
@@ -45,7 +46,6 @@
     get_min_entries_and_el_refs,
     pad_domain_points,
   } from './compute'
-  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
   import { with_hover_pointer } from './pointer'
   import {
     get_projection_source_entries,

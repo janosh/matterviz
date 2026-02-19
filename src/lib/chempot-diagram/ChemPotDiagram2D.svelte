@@ -11,6 +11,7 @@
   import type { DataSeries, UserContentProps } from '$lib/plot/types'
   import { onDestroy } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
   import {
     apply_element_padding,
     best_form_energy_for_formula,
@@ -22,7 +23,6 @@
     orthonormal_2d,
     pad_domain_points,
   } from './compute'
-  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
   import { with_hover_pointer } from './pointer'
   import { get_temp_filter_payload, get_valid_temperature } from './temperature'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'

@@ -119,7 +119,7 @@
       ⬇
     </button>
     <CopyButton
-      content={json_string ?? ``}
+      content={json_string ?? undefined}
       bind:state={json_copy_state}
       title="Copy JSON to clipboard"
     />
