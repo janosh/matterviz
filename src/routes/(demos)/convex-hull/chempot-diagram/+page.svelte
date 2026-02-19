@@ -97,7 +97,7 @@
     Legendre transform
   </a>
   that swaps composition variables for their conjugate chemical potentials. Each phase
-  becomes a convex polytope domain in chemical potential (μ) space, showing the region
+  becomes a convex polytope domain in chemical potential (mu) space, showing the region
   where that phase is thermodynamically most stable.
 </p>
 
@@ -112,7 +112,7 @@
     <h2>Binary System (Li-O) &mdash; 2D</h2>
     <p>
       For a binary system, the chemical potential diagram shows domain boundaries as line
-      segments in 2D μ-space. Each line represents the stability region of a phase.
+      segments in 2D mu-space. Each line represents the stability region of a phase.
     </p>
     <p>
       <strong>Features in this demo:</strong>

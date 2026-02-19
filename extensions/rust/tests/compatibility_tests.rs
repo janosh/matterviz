@@ -12,7 +12,7 @@
 //! authoritative source for compatibility verification.
 
 use ferrox::element::Element;
-use ferrox::io::{parse_structure_json, structure_to_json};
+use ferrox::io::{parse_structure_json, structure_to_pymatgen_json};
 use ferrox::lattice::Lattice;
 use ferrox::species::Species;
 use ferrox::structure::Structure;
@@ -251,8 +251,8 @@ fn test_json_roundtrip() {
     let direct_result = matcher.fit(&s1, &s2);
 
     // Serialize and deserialize
-    let json1 = structure_to_json(&s1);
-    let json2 = structure_to_json(&s2);
+    let json1 = structure_to_pymatgen_json(&s1);
+    let json2 = structure_to_pymatgen_json(&s2);
     let s1_parsed = parse_structure_json(&json1).unwrap();
     let s2_parsed = parse_structure_json(&json2).unwrap();
 

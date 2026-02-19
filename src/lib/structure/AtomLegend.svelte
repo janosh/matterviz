@@ -291,8 +291,11 @@
             max={MAX_RADIUS}
             step={0.05}
             value={get_site_radius(site_idx)}
-            oninput={(event) =>
-            update_site_radius(site_idx, (event.target as HTMLInputElement).value)}
+            oninput={(event) => {
+              if (event.target instanceof HTMLInputElement) {
+                update_site_radius(site_idx, event.target.value)
+              }
+            }}
           />
           <span class="unit">Å</span>
         </label>
@@ -389,11 +392,14 @@
                   max={MAX_RADIUS}
                   step={0.05}
                   value={get_element_radius(elem as ElementSymbol)}
-                  oninput={(event) =>
-                  update_element_radius(
-                    elem as ElementSymbol,
-                    (event.target as HTMLInputElement).value,
-                  )}
+                  oninput={(event) => {
+                    if (event.target instanceof HTMLInputElement) {
+                      update_element_radius(
+                        elem as ElementSymbol,
+                        event.target.value,
+                      )
+                    }
+                  }}
                 />
                 <span class="unit">Å</span>
               </label>

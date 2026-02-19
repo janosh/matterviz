@@ -13,7 +13,7 @@ export interface DataRange {
 // Volumetric scalar data on a 3D grid (e.g. charge density, electrostatic potential)
 export interface VolumetricData {
   grid: number[][][] // scalar values [nx][ny][nz]
-  grid_dims: [number, number, number] // [nx, ny, nz]
+  grid_dims: Vec3 // [nx, ny, nz]
   lattice: Matrix3x3 // real-space lattice vectors (rows are a, b, c)
   origin: Vec3 // grid origin in Cartesian coordinates
   data_range: DataRange // precomputed min/max/mean statistics

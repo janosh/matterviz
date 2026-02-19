@@ -213,17 +213,22 @@ export function dot(
   vec1: NdVector | NdVector[],
   vec2: NdVector | NdVector[],
 ): number | number[] | number[][] {
+  const vec1_is_matrix = vec1.some((entry) => Array.isArray(entry))
+  const vec2_is_matrix = vec2.some((entry) => Array.isArray(entry))
+
   // Vector dot product
-  if (!Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
-    const v1 = vec1 as number[]
-    const v2 = vec2 as number[]
-    if (v1.length !== v2.length) throw new Error(`Vectors must be of same length`)
-    return v1.reduce((sum, val, idx) => sum + val * v2[idx], 0)
+  if (!vec1_is_matrix && !vec2_is_matrix) {
+    const left_vec = vec1 as number[]
+    const right_vec = vec2 as number[]
+    if (left_vec.length !== right_vec.length) {
+      throw new Error(`Vectors must be of same length`)
+    }
+    return left_vec.reduce((sum, val, idx) => sum + val * right_vec[idx], 0)
   }
 
   // Matrix-vector multiplication
-  if (Array.isArray(vec1[0]) && !Array.isArray(vec2[0])) {
-    const mat = vec1 as unknown as number[][]
+  if (vec1_is_matrix && !vec2_is_matrix) {
+    const mat = vec1 as number[][]
     const vec = vec2 as number[]
     const cols = validate_matrix(mat, `Matrix`)
     if (cols !== vec.length) {
@@ -233,9 +238,9 @@ export function dot(
   }
 
   // Matrix-matrix multiplication
-  if (Array.isArray(vec1[0]) && Array.isArray(vec2[0])) {
-    const mat1 = vec1 as unknown as number[][]
-    const mat2 = vec2 as unknown as number[][]
+  if (vec1_is_matrix && vec2_is_matrix) {
+    const mat1 = vec1 as number[][]
+    const mat2 = vec2 as number[][]
     const mat1_cols = validate_matrix(mat1, `First matrix`)
     const mat2_cols = validate_matrix(mat2, `Second matrix`)
     if (mat1_cols !== mat2.length) {

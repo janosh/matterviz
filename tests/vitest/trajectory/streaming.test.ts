@@ -235,6 +235,7 @@ describe(`Trajectory Streaming`, () => {
       expect(result.indexed_frames).toBeInstanceOf(Array)
       expect(result.indexed_frames?.length).toBeGreaterThan(0)
       expect(result.indexed_frames?.[0]).toHaveProperty(`frame_number`)
+      expect(result.frame_loader).toBeDefined()
     })
 
     it(`should use direct parsing for small files`, async () => {
@@ -264,6 +265,20 @@ describe(`Trajectory Streaming`, () => {
       expect(result.is_indexed).toBe(true)
       expect(result.indexed_frames).toBeDefined()
       expect(result.plot_metadata).toBeDefined()
+    })
+
+    it(`should enable indexed loading for compressed xyz filenames`, async () => {
+      const data = create_synthetic_xyz(5)
+      const result = await parse_trajectory_async(
+        data,
+        `compressed-trajectory.xyz.gz`,
+        undefined,
+        { use_indexing: true },
+      )
+
+      expect(result.is_indexed).toBe(true)
+      expect(result.indexed_frames).toBeDefined()
+      expect(result.total_frames).toBe(5)
     })
   })
 

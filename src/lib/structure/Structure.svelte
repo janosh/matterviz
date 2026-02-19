@@ -1658,11 +1658,12 @@
     place-content: center;
   }
   .error-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: var(--struct-height, 500px);
+    /* Full-overlay grid keeps load errors centered independent of parent layout flow. */
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
     padding: 2rem;
     text-align: center;
     box-sizing: border-box;

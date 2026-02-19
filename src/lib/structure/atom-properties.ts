@@ -1,10 +1,10 @@
 // Utility functions for computing atom properties and applying color scales
 
-import type { AnyStructure, Site } from '$lib/structure'
 import type { ColorScaleType, D3InterpolateName } from '$lib/colors'
 import { calc_coordination_nums } from '$lib/coordination'
 import * as math from '$lib/math'
 import type { AtomColorMode } from '$lib/settings'
+import type { AnyStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
@@ -27,6 +27,7 @@ export interface AtomPropertyColors {
 
 const GRAY = `#808080`
 const DEFAULT_COLOR_SCALE = `interpolateViridis`
+type SymmetryDataWithOrigMap = MoyoDataset & { orig_site_indices_by_std_idx?: number[][] }
 
 export const get_d3_color_scales = (): string[] =>
   Object.keys(d3_sc).filter((key) => key.startsWith(`interpolate`))
@@ -42,6 +43,39 @@ const get_interpolator = (scale: string) => {
 
 const to_hex = (interp_fn: (t: number) => string, t: number) =>
   rgb(interp_fn(t)).formatHex()
+const build_image_site = (
+  site: Site,
+  lattice_T: math.Matrix3x3,
+  offset: readonly [number, number, number],
+  orig_idx: number,
+): Site => {
+  const img_abc: math.Vec3 = [
+    site.abc[0] + offset[0],
+    site.abc[1] + offset[1],
+    site.abc[2] + offset[2],
+  ]
+  return {
+    ...site,
+    abc: img_abc,
+    xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
+    properties: { ...site.properties, orig_site_idx: orig_idx },
+  }
+}
+
+const get_all_offsets = (
+  pbc: readonly [boolean, boolean, boolean],
+): readonly (readonly [number, number, number])[] =>
+  [-1, 0, 1]
+    .flatMap((dx) =>
+      [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dz) => [dx, dy, dz] as const))
+    )
+    .filter(
+      ([dx, dy, dz]) =>
+        !(dx === 0 && dy === 0 && dz === 0) &&
+        (pbc[0] || dx === 0) &&
+        (pbc[1] || dy === 0) &&
+        (pbc[2] || dz === 0),
+    )
 
 const make_categorical = <T>(
   vals: T[],
@@ -124,32 +158,12 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
   const { sites, lattice } = structure
   const lattice_T = math.transpose_3x3_matrix(lattice.matrix)
   const pbc = lattice.pbc ?? [true, true, true]
-
-  // All valid image offsets respecting PBC
-  const all_offsets = [-1, 0, 1]
-    .flatMap((dx) =>
-      [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dz) => [dx, dy, dz] as const))
-    )
-    .filter(
-      ([dx, dy, dz]) =>
-        !(dx === 0 && dy === 0 && dz === 0) &&
-        (pbc[0] || dx === 0) &&
-        (pbc[1] || dy === 0) &&
-        (pbc[2] || dz === 0),
-    )
+  const all_offsets = get_all_offsets(pbc)
 
   // Small structures: expand all atoms
   if (sites.length < 20 || !pbc.some((periodic) => periodic)) {
     const image_sites = sites.flatMap((site, orig_idx) =>
-      all_offsets.map(([dx, dy, dz]) => {
-        const img_abc: math.Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
-        return {
-          ...site,
-          abc: img_abc,
-          xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
-          properties: { ...site.properties, orig_site_idx: orig_idx },
-        }
-      })
+      all_offsets.map((offset) => build_image_site(site, lattice_T, offset, orig_idx))
     )
     return { ...structure, sites: [...sites, ...image_sites] }
   }
@@ -167,15 +181,7 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
           (dy === 0 || (dy === -1 ? norm[1] <= cutoff[1] : norm[1] >= 1 - cutoff[1])) &&
           (dz === 0 || (dz === -1 ? norm[2] <= cutoff[2] : norm[2] >= 1 - cutoff[2])),
       )
-      .map(([dx, dy, dz]) => {
-        const img_abc: math.Vec3 = [site.abc[0] + dx, site.abc[1] + dy, site.abc[2] + dz]
-        return {
-          ...site,
-          abc: img_abc,
-          xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
-          properties: { ...site.properties, orig_site_idx: orig_idx },
-        }
-      })
+      .map((offset) => build_image_site(site, lattice_T, offset, orig_idx))
   })
 
   return { ...structure, sites: [...sites, ...image_sites] }
@@ -212,7 +218,7 @@ export function get_coordination_colors(
 
 export function get_wyckoff_colors(
   structure: AnyStructure,
-  sym_data: MoyoDataset | null,
+  sym_data: SymmetryDataWithOrigMap | null,
   scale = DEFAULT_COLOR_SCALE,
 ): AtomPropertyColors {
   const n = structure.sites.length
@@ -224,9 +230,25 @@ export function get_wyckoff_colors(
     }
   }
 
+  const wyckoff_by_orig_idx = new Map<number, string | null>()
+  const mapping_by_std_idx = sym_data.orig_site_indices_by_std_idx
+  if (mapping_by_std_idx) {
+    for (let std_idx = 0; std_idx < sym_data.wyckoffs.length; std_idx += 1) {
+      const wyckoff = sym_data.wyckoffs[std_idx]
+      for (const orig_idx of mapping_by_std_idx[std_idx] ?? []) {
+        if (!wyckoff_by_orig_idx.has(orig_idx)) wyckoff_by_orig_idx.set(orig_idx, wyckoff)
+      }
+    }
+  }
+
   // Create unique orbit identifiers: Wyckoff position + element symbol
   const orbit_ids = structure.sites.map((site, idx) => {
     const sym_idx = get_orig_site_idx(site, idx)
+    const mapped_wyckoff = wyckoff_by_orig_idx.get(sym_idx)
+    if (mapped_wyckoff !== undefined) {
+      const element = site.species[0]?.element ?? `?`
+      return mapped_wyckoff ? `${mapped_wyckoff}|${element}` : `unknown`
+    }
 
     if (sym_idx >= sym_data.wyckoffs.length) {
       console.error(

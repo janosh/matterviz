@@ -11,24 +11,18 @@ import type {
   SurfaceDimensionality,
 } from './types'
 
+function parse_number_tokens(line: string): string[] {
+  return line.split(/\s+/).filter(Boolean)
+}
+
 // Parse whitespace-separated floats from a line (optimized with unary +)
 function parse_floats(line: string): number[] {
-  const parts = line.split(/\s+/)
-  const result: number[] = []
-  for (let idx = 0; idx < parts.length; idx++) {
-    if (parts[idx]) result.push(+parts[idx])
-  }
-  return result
+  return parse_number_tokens(line).map((part) => +part)
 }
 
 // Parse whitespace-separated integers from a line
 function parse_ints(line: string): number[] {
-  const parts = line.split(/\s+/)
-  const result: number[] = []
-  for (let idx = 0; idx < parts.length; idx++) {
-    if (parts[idx]) result.push(parseInt(parts[idx], 10))
-  }
-  return result
+  return parse_number_tokens(line).map((part) => parseInt(part, 10))
 }
 
 // Parse BXSF (Band-XSF) format used by XCrySDen, Quantum ESPRESSO, etc.
@@ -272,16 +266,18 @@ function parse_frmsf(content: string): BandGridData {
 // Validate that an object has the required Isosurface shape
 function is_valid_isosurface(obj: unknown): obj is Isosurface {
   if (!obj || typeof obj !== `object`) return false
-  const iso = obj as Record<string, unknown>
+  const isosurface_obj = obj as Record<string, unknown>
+  const vertices = isosurface_obj.vertices
+  const faces = isosurface_obj.faces
+  const normals = isosurface_obj.normals
+  const band_index = isosurface_obj.band_index
+  const spin = isosurface_obj.spin
 
-  // Required array fields
-  if (!Array.isArray(iso.vertices) || iso.vertices.length === 0) return false
-  if (!Array.isArray(iso.faces)) return false
-  if (!Array.isArray(iso.normals)) return false
-
-  // Required scalar fields
-  if (typeof iso.band_index !== `number`) return false
-  if (iso.spin !== null && iso.spin !== `up` && iso.spin !== `down`) return false
+  if (!Array.isArray(vertices) || vertices.length === 0) return false
+  if (!Array.isArray(faces)) return false
+  if (!Array.isArray(normals)) return false
+  if (typeof band_index !== `number` || !Number.isFinite(band_index)) return false
+  if (spin !== null && spin !== `up` && spin !== `down`) return false
 
   return true
 }

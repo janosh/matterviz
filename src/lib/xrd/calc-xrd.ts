@@ -10,6 +10,11 @@ import { is_crystal } from '$lib/structure/validation'
 import ATOMIC_SCATTERING_PARAMS from './atomic_scattering_params.json' with {
   type: 'json',
 }
+
+// JSON import yields Record<string, number[][]>; type for element-keyed scattering params
+type ScatteringParamsRecord = Partial<
+  Record<ElementSymbol, number[][] | { a: number[]; b: number[]; c?: number }>
+>
 import type {
   Hkl,
   HklObj,
@@ -202,15 +207,8 @@ export function compute_xrd_pattern(
       if (ELEMENT_Z[element_symbol] === undefined) {
         throw new Error(`Unknown atomic number for element ${element_symbol}`)
       }
-      // Cast needed: imported JSON has different type structure than our union type
-      const raw_coeff = (
-        ATOMIC_SCATTERING_PARAMS as unknown as Partial<
-          Record<
-            ElementSymbol,
-            [number, number][] | { a: number[]; b: number[]; c?: number }
-          >
-        >
-      )[element_symbol]
+      const raw_coeff =
+        (ATOMIC_SCATTERING_PARAMS as ScatteringParamsRecord)[element_symbol]
       if (!raw_coeff) {
         throw new Error(
           `No atomic scattering coefficients for ${element_symbol}. Extend ATOMIC_SCATTERING_PARAMS.`,

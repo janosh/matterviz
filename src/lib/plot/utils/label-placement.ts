@@ -13,6 +13,9 @@ export interface AnchorNode {
   point_radius: number
 }
 
+type SimulationNode = LabelNode | AnchorNode
+const is_label_node = (node: SimulationNode): node is LabelNode => `label_width` in node
+
 function parse_font_size(size_str?: string): number {
   if (!size_str) return 12
   const match = size_str.match(/^(\d+(?:\.\d+)?)(px|em|rem)?$/)
@@ -83,27 +86,28 @@ export function compute_label_positions(
     )
   }
 
-  const sim = forceSimulation([...label_nodes, ...anchor_nodes])
+  const sim = forceSimulation<SimulationNode>([...label_nodes, ...anchor_nodes])
     .force(
       `link`,
-      forceLink(links).id((d) => (d as { id: string }).id).distance(config.link_distance)
+      forceLink<SimulationNode, { source: string; target: string }>(links)
+        .id((node) => node.id)
+        .distance(config.link_distance)
         .strength(config.link_strength),
     )
     .force(
       `collide`,
-      forceCollide().radius((n) => {
-        const l = n as LabelNode
-        const a = n as AnchorNode
-        return l.label_width
-          ? Math.sqrt(l.label_width ** 2 + l.label_height ** 2) / 2 + 2
-          : (a.point_radius ?? 0) + 2
+      forceCollide<SimulationNode>().radius((node) => {
+        if (is_label_node(node)) {
+          return Math.sqrt(node.label_width ** 2 + node.label_height ** 2) / 2 + 2
+        }
+        return node.point_radius + 2
       }).strength(config.collision_strength),
     )
     .force(
       `charge`,
-      forceManyBody().strength((n) => {
-        const a = n as AnchorNode
-        return a.point_radius !== undefined && a.fx !== undefined
+      forceManyBody<SimulationNode>().strength((node) => {
+        if (is_label_node(node)) return 0
+        return node.point_radius !== undefined && node.fx !== undefined
           ? -(config.charge_strength ?? 50)
           : 0
       }).distanceMax(config.charge_distance_max ?? 30),

@@ -208,6 +208,28 @@ END_BLOCK_BANDGRID_3D`
       expect(`isosurfaces` in (result ?? {})).toBe(true)
     })
 
+    test(`accepts isosurfaces with empty face arrays`, () => {
+      const json_content = JSON.stringify({
+        isosurfaces: [
+          {
+            vertices: [[0, 0, 0]],
+            faces: [],
+            normals: [],
+            band_index: 0,
+            spin: null,
+          },
+        ],
+        k_lattice: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        fermi_energy: 5.0,
+        reciprocal_cell: `wigner_seitz`,
+        metadata: { n_bands: 1, n_surfaces: 1, total_area: 0 },
+      })
+
+      const result = parse_fermi_file(json_content, `test.json`)
+      expect(result).not.toBeNull()
+      expect(`isosurfaces` in (result ?? {})).toBe(true)
+    })
+
     test(`parses IFermi JSON format`, () => {
       const ifermi_json = JSON.stringify({
         '@module': `ifermi.surface`,
