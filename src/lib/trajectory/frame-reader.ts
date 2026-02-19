@@ -1,6 +1,5 @@
 // Unified frame loader for XYZ and ASE trajectories (large file indexing)
 import type { ElementSymbol } from '$lib/element'
-import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import * as math from '$lib/math'
 import type {
   FrameIndex,
@@ -18,16 +17,14 @@ import {
   read_ndarray_from_view,
   validate_3x3_matrix,
 } from './helpers'
+import { strip_compression_extensions } from './format-detect'
 
 export class TrajFrameReader implements FrameLoader {
   private format: `xyz` | `ase`
   private global_numbers?: number[]
 
   constructor(filename: string) {
-    let base_filename = filename.toLowerCase()
-    while (COMPRESSION_EXTENSIONS_REGEX.test(base_filename)) {
-      base_filename = base_filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-    }
+    const base_filename = strip_compression_extensions(filename)
     this.format = base_filename.endsWith(`.traj`) ? `ase` : `xyz`
   }
 
@@ -68,7 +65,7 @@ export class TrajFrameReader implements FrameLoader {
 
         const num_atoms = parseInt(lines[line_idx].trim(), 10)
         if (
-          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 > lines.length
+          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
         ) {
           byte_offset += encoder.encode(lines[line_idx]).length + newline_byte_len
           line_idx++
@@ -160,7 +157,7 @@ export class TrajFrameReader implements FrameLoader {
 
         const num_atoms = parseInt(lines[line_idx].trim(), 10)
         if (
-          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 > lines.length
+          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
         ) {
           line_idx++
           continue
@@ -263,7 +260,7 @@ export class TrajFrameReader implements FrameLoader {
 
     if (line_idx >= lines.length) return null
     const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || line_idx + num_atoms + 1 > lines.length) return null
+    if (isNaN(num_atoms) || line_idx + num_atoms + 1 >= lines.length) return null
 
     const comment = lines[line_idx + 1] || ``
     const positions: number[][] = []

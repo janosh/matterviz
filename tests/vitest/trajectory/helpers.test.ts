@@ -1,4 +1,8 @@
-import { create_structure, read_ndarray_from_view } from '$lib/trajectory/helpers'
+import {
+  convert_atomic_numbers,
+  create_structure,
+  read_ndarray_from_view,
+} from '$lib/trajectory/helpers'
 import type { ElementSymbol } from '$lib/element'
 import { describe, expect, it } from 'vitest'
 
@@ -69,5 +73,19 @@ describe(`trajectory helpers`, () => {
     }
 
     expect(read_ndarray_from_view(view, ref)).toEqual([[42.5]])
+  })
+
+  it.each([
+    { atomic_numbers: [1, 2, 8], expected_symbols: [`H`, `He`, `O`] },
+    { atomic_numbers: [26], expected_symbols: [`Fe`] },
+  ])(
+    `converts known atomic numbers to symbols`,
+    ({ atomic_numbers, expected_symbols }) => {
+      expect(convert_atomic_numbers(atomic_numbers)).toEqual(expected_symbols)
+    },
+  )
+
+  it(`throws for unknown atomic numbers`, () => {
+    expect(() => convert_atomic_numbers([999])).toThrow(/Unknown atomic number/)
   })
 })

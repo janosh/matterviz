@@ -5,9 +5,12 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { parse_xyz } from '$lib/structure/parse'
-import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '../constants'
-import { FORMAT_PATTERNS, is_trajectory_file } from '../format-detect'
+import {
+  FORMAT_PATTERNS,
+  is_trajectory_file,
+  strip_compression_extensions,
+} from '../format-detect'
 import { TrajFrameReader } from '../frame-reader'
 import { create_trajectory_frame, validate_3x3_matrix } from '../helpers'
 import type {
@@ -111,6 +114,7 @@ export async function parse_trajectory_data(
   // Pymatgen format
   if (obj[`@class`] === `Trajectory` && obj.species && obj.coords && obj.lattice) {
     const species = obj.species as { element: ElementSymbol }[]
+    const frame_elements = species.map((specie) => specie.element)
     const coords = obj.coords as number[][][]
     const matrix = validate_3x3_matrix(obj.lattice)
     const frame_properties = obj.frame_properties as Record<string, unknown>[] || []
@@ -170,7 +174,7 @@ export async function parse_trajectory_data(
 
       return create_trajectory_frame(
         positions,
-        species.map((specie) => specie.element),
+        frame_elements,
         matrix,
         [true, true, true],
         idx,
@@ -276,10 +280,7 @@ export async function parse_trajectory_async(
     }
 
     // Use indexed loading for supported large files (including compressed names).
-    let base_filename = filename.toLowerCase()
-    while (COMPRESSION_EXTENSIONS_REGEX.test(base_filename)) {
-      base_filename = base_filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-    }
+    const base_filename = strip_compression_extensions(filename)
     if (should_use_indexing && /\.(xyz|extxyz|traj)$/.test(base_filename)) {
       return await parse_with_unified_loader(data, filename, {
         index_sample_rate,

@@ -10,10 +10,18 @@ import {
 } from '$lib/constants'
 import { count_xyz_frames } from './helpers'
 
+export function strip_compression_extensions(filename: string): string {
+  let base_name = filename.toLowerCase()
+  while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
+    base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  }
+  return base_name
+}
+
 // Unified format detection
 export const FORMAT_PATTERNS = {
   ase: (data: unknown, filename?: string) => {
-    const base_name = filename?.toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    const base_name = filename ? strip_compression_extensions(filename) : undefined
     if (!base_name?.endsWith(`.traj`) || !(data instanceof ArrayBuffer)) {
       return false
     }
@@ -24,7 +32,7 @@ export const FORMAT_PATTERNS = {
   },
 
   hdf5: (data: unknown, filename?: string) => {
-    const base_name = filename?.toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    const base_name = filename ? strip_compression_extensions(filename) : undefined
     const has_ext = base_name?.match(/\.(h5|hdf5)$/)
     if (!has_ext || !(data instanceof ArrayBuffer) || data.byteLength < 8) return false
     const signature = new Uint8Array(data.slice(0, 8))
@@ -44,15 +52,13 @@ export const FORMAT_PATTERNS = {
   },
 
   xyz_multi: (data: string, filename?: string) => {
-    const lower = filename?.toLowerCase() ?? ``
-    const base = lower.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    const base = filename ? strip_compression_extensions(filename) : ``
     if (!/\.(xyz|extxyz)$/.test(base)) return false
     return count_xyz_frames(data) >= 2
   },
 
   lammpstrj: (data: string, filename?: string) => {
-    const lower = filename?.toLowerCase() ?? ``
-    const base = lower.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+    const base = filename ? strip_compression_extensions(filename) : ``
     if (!/\.lammpstrj$/.test(base)) return false
     return data.includes(`ITEM: TIMESTEP`) && data.includes(`ITEM: ATOMS`)
   },
@@ -61,10 +67,7 @@ export const FORMAT_PATTERNS = {
 // Check if file is a trajectory (supports both filename-only and content-based detection)
 export function is_trajectory_file(filename: string, content?: string): boolean {
   if (CONFIG_DIRS_REGEX.test(filename)) return false
-  let base_name = filename.toLowerCase()
-  while (COMPRESSION_EXTENSIONS_REGEX.test(base_name)) {
-    base_name = base_name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-  }
+  const base_name = strip_compression_extensions(filename)
 
   // For xyz/extxyz files, use content-based detection if available
   if (/\.(xyz|extxyz)$/i.test(base_name)) {
