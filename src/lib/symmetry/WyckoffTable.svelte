@@ -18,7 +18,12 @@
     active_color?: string
   } = $props()
 
-  let selected_wyckoff = $state<WyckoffPos | null>(null)
+  let selected_key = $state<string | null>(null)
+
+  const get_row_key = (wyckoff_pos: WyckoffPos, row_idx: number) =>
+    `${wyckoff_pos.wyckoff}-${wyckoff_pos.elem}-${
+      wyckoff_pos.site_indices?.join(`,`) ?? row_idx
+    }`
 </script>
 
 {#if wyckoff_positions && wyckoff_positions.length > 0}
@@ -38,10 +43,14 @@
       </tr>
     </thead>
     <tbody>
-      {#each wyckoff_positions as wyckoff_pos (JSON.stringify(wyckoff_pos))}
+      {#each wyckoff_positions as
+        wyckoff_pos,
+        row_idx
+        (get_row_key(wyckoff_pos, row_idx))
+      }
         {@const { wyckoff, elem, abc, site_indices } = wyckoff_pos}
-        {@const is_selected =
-        JSON.stringify(selected_wyckoff) === JSON.stringify(wyckoff_pos)}
+        {@const row_key = get_row_key(wyckoff_pos, row_idx)}
+        {@const is_selected = selected_key === row_key}
         <tr
           class="wyckoff-row"
           tabindex="0"
@@ -51,16 +60,15 @@
           onmouseenter={() => on_hover?.(site_indices ?? null)}
           onmouseleave={() => on_hover?.(null)}
           onclick={() => {
-            selected_wyckoff = is_selected ? null : wyckoff_pos
-            on_click?.(selected_wyckoff?.site_indices ?? null)
+            selected_key = is_selected ? null : row_key
+            on_click?.(is_selected ? null : (wyckoff_pos.site_indices ?? null))
           }}
           onkeydown={(event) => {
             if ([`Enter`, ` `].includes(event.key)) {
               event.preventDefault()
-              const is_selected =
-                JSON.stringify(selected_wyckoff) === JSON.stringify(wyckoff_pos)
-              selected_wyckoff = is_selected ? null : wyckoff_pos
-              on_click?.(selected_wyckoff?.site_indices ?? null)
+              const is_selected = selected_key === row_key
+              selected_key = is_selected ? null : row_key
+              on_click?.(is_selected ? null : (wyckoff_pos.site_indices ?? null))
             }
           }}
         >

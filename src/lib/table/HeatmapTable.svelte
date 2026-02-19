@@ -17,6 +17,7 @@
     SpecialCells,
   } from '$lib/table'
   import { calc_cell_color, strip_html } from '$lib/table'
+  import { normalize_unicode_minus } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import { flip } from 'svelte/animate'
@@ -71,7 +72,7 @@
     default_num_format?: string
     show_heatmap?: boolean
     heatmap_class?: string
-    onrowclick?: (event: MouseEvent, row: RowData) => void
+    onrowclick?: (event: MouseEvent | KeyboardEvent, row: RowData) => void
     onrowdblclick?: (event: MouseEvent, row: RowData) => void
     // Array of column IDs to control display order. IDs are derived as:
     // - Ungrouped columns: col.key ?? col.label
@@ -247,7 +248,7 @@
     // Add columns in specified order, then any remaining columns that weren't in the order list
     const ordered = column_order
       .map((id) => col_map.get(id))
-      .filter(Boolean) as Label[]
+      .filter((col): col is Label => col != null)
 
     const ordered_ids = new Set(ordered.map(get_col_id))
     const remaining = columns.filter((col) => !ordered_ids.has(get_col_id(col)))
@@ -577,13 +578,13 @@
     )
     if (error_match) {
       // Normalize unicode minus (U+2212) to ASCII hyphen for Number()
-      const normalized = error_match[1].replace(/−/g, `-`)
+      const normalized = normalize_unicode_minus(error_match[1])
       const num = Number(normalized)
       if (!isNaN(num)) return num
     }
     // Try parsing as a plain number (handles "1.23" strings)
     // Also normalize unicode minus for plain numbers
-    const normalized_val = val.replace(/−/g, `-`)
+    const normalized_val = normalize_unicode_minus(val)
     const plain_num = Number(normalized_val)
     if (!isNaN(plain_num) && val.trim() !== ``) return plain_num
     return null
@@ -773,7 +774,7 @@
     event.stopPropagation()
     resize_col_id = get_col_id(col)
     resize_start_x = event.clientX
-    const th = (event.target as HTMLElement).parentElement
+    const th = event.target instanceof Element ? event.target.parentElement : null
     resize_start_width = th?.offsetWidth ?? 100
 
     document.addEventListener(`mousemove`, handle_resize)
@@ -1099,15 +1100,15 @@
             ? (event) => {
               if (event.key === `Enter` || event.key === ` `) {
                 event.preventDefault()
-                onrowclick(event as unknown as MouseEvent, row)
+                onrowclick(event, row)
               } else if (event.key === `ArrowDown`) {
                 event.preventDefault()
-                ;(event.currentTarget.nextElementSibling as HTMLElement)
-                  ?.focus()
+                const next = event.currentTarget.nextElementSibling
+                if (next instanceof HTMLElement) next.focus()
               } else if (event.key === `ArrowUp`) {
                 event.preventDefault()
-                ;(event.currentTarget.previousElementSibling as HTMLElement)
-                  ?.focus()
+                const prev = event.currentTarget.previousElementSibling
+                if (prev instanceof HTMLElement) prev.focus()
               }
             }
             : undefined}

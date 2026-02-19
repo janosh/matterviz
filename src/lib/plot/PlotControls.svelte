@@ -11,8 +11,7 @@
   import type { Vec2 } from '../math'
   import type { AxisKey, PlotControlsProps } from './index'
   import { normalize_y2_sync } from './interactions'
-  import type { ScaleTypeName, Y2SyncMode } from './types'
-  import { get_scale_type_name } from './types'
+  import { get_scale_type_name, is_scale_type_name, is_y2_sync_mode } from './types'
 
   let {
     show_controls = $bindable(false),
@@ -67,7 +66,8 @@
 
   // Handle format input changes
   const format_input_handler = (format_type: AxisKey) => (event: Event) => {
-    const input = event.target as HTMLInputElement
+    const input = event.target
+    if (!(input instanceof HTMLInputElement)) return
     const axes = { x: x_axis, y: y_axis, y2: y2_axis }
     const axis = axes[format_type]
 
@@ -201,7 +201,7 @@
             placeholder="auto"
             class="range-input"
             oninput={(e) => update_range(axis, 0, e.currentTarget.value)}
-            onkeydown={(e) => e.key === `Enter` && e.currentTarget.blur()}
+            onkeydown={(e) => e.key === `Enter` && e.currentTarget?.blur()}
           /> to <input
             type="number"
             value={range_inputs[axis][1] ?? ``}
@@ -209,7 +209,7 @@
             placeholder="auto"
             class="range-input"
             oninput={(e) => update_range(axis, 1, e.currentTarget.value)}
-            onkeydown={(e) => e.key === `Enter` && e.currentTarget.blur()}
+            onkeydown={(e) => e.key === `Enter` && e.currentTarget?.blur()}
           />
         </label>
       {/each}
@@ -283,9 +283,10 @@
         <select
           value={get_scale_type_name(x_axis.scale_type)}
           onchange={(e) => {
+            const val = e.currentTarget.value
             x_axis = {
               ...x_axis,
-              scale_type: e.currentTarget.value as ScaleTypeName,
+              scale_type: is_scale_type_name(val) ? val : `linear`,
             }
           }}
         >
@@ -298,9 +299,10 @@
         <select
           value={get_scale_type_name(y_axis.scale_type)}
           onchange={(e) => {
+            const val = e.currentTarget.value
             y_axis = {
               ...y_axis,
-              scale_type: e.currentTarget.value as ScaleTypeName,
+              scale_type: is_scale_type_name(val) ? val : `linear`,
             }
           }}
         >
@@ -314,9 +316,10 @@
           <select
             value={get_scale_type_name(y2_axis.scale_type)}
             onchange={(e) => {
+              const val = e.currentTarget.value
               y2_axis = {
                 ...y2_axis,
-                scale_type: e.currentTarget.value as ScaleTypeName,
+                scale_type: is_scale_type_name(val) ? val : `linear`,
               }
             }}
           >
@@ -348,7 +351,8 @@
             value={current_sync.mode}
             aria-label="Y2 axis synchronization mode"
             onchange={(e) => {
-              const mode = e.currentTarget.value as Y2SyncMode
+              const val = e.currentTarget.value
+              const mode = is_y2_sync_mode(val) ? val : `none`
               if (mode === `none`) {
                 y2_axis = { ...y2_axis, sync: undefined }
               } else if (mode === `align`) {

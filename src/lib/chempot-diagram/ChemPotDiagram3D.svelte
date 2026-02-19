@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
+  import { type D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
@@ -25,8 +25,7 @@
   } from '$lib/plot/types'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { scaleLinear, scaleSequential } from 'd3-scale'
-  import * as d3_sc from 'd3-scale-chromatic'
+  import { scaleLinear } from 'd3-scale'
   import { onDestroy, onMount } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import * as THREE from 'three'
@@ -46,6 +45,8 @@
     get_min_entries_and_el_refs,
     pad_domain_points,
   } from './compute'
+  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
+  import { with_hover_pointer } from './pointer'
   import {
     get_projection_source_entries,
     get_temp_filter_payload,
@@ -446,28 +447,6 @@
     get_min_entries_and_el_refs(temp_filtered_entries).el_refs,
   )
 
-  // Resolve a D3 interpolator name to a function, optionally reversed
-  function get_interpolator(name: D3InterpolateName): (t: number) => string {
-    const raw = (d3_sc as unknown as Record<string, (t: number) => string>)[name] ??
-      d3_sc.interpolateViridis
-    return reverse_color_scale ? (t: number) => raw(1 - t) : raw
-  }
-
-  // Build a sequential color scale from a D3 interpolator name
-  function make_color_scale(
-    values: number[],
-    interpolator_name: D3InterpolateName,
-  ): ((val: number) => string) | null {
-    const finite = values.filter(Number.isFinite)
-    if (finite.length === 0) return null
-    let lo = finite[0], hi_raw = finite[0]
-    for (let idx = 1; idx < finite.length; idx++) {
-      if (finite[idx] < lo) lo = finite[idx]
-      if (finite[idx] > hi_raw) hi_raw = finite[idx]
-    }
-    const hi = Math.max(hi_raw, lo + 1e-6)
-    return scaleSequential(get_interpolator(interpolator_name)).domain([lo, hi])
-  }
   const color_mode_labels: Record<NumericColorMode, string> = {
     energy: `Energy per atom (eV)`,
     formation_energy: `Formation energy (eV/atom)`,
@@ -519,7 +498,11 @@
       return colors
     }
     const values_payload = domain_color_values
-    const scale = make_color_scale(values_payload?.values ?? [], color_scale)
+    const scale = make_chempot_color_scale(
+      values_payload?.values ?? [],
+      color_scale,
+      reverse_color_scale,
+    )
     for (const domain of render_domains) {
       const value = values_payload?.value_by_formula.get(domain.formula)
       colors.set(domain.formula, value != null && scale ? scale(value) : `#999`)
@@ -2136,57 +2119,14 @@
     }
   })
 
-  function get_pointer_coords(
-    raw_event: unknown,
-  ): { clientX: number; clientY: number } | null {
-    if (raw_event instanceof PointerEvent || raw_event instanceof MouseEvent) {
-      return raw_event
-    }
-    if (!raw_event || typeof raw_event !== `object`) return null
-    const event_obj = raw_event as {
-      nativeEvent?: unknown
-      srcEvent?: unknown
-      clientX?: number
-      clientY?: number
-    }
-    if (
-      event_obj.nativeEvent instanceof PointerEvent ||
-      event_obj.nativeEvent instanceof MouseEvent
-    ) {
-      return event_obj.nativeEvent
-    }
-    if (
-      event_obj.srcEvent instanceof PointerEvent ||
-      event_obj.srcEvent instanceof MouseEvent
-    ) {
-      return event_obj.srcEvent
-    }
-    if (
-      typeof event_obj.clientX === `number` && typeof event_obj.clientY === `number`
-    ) {
-      return { clientX: event_obj.clientX, clientY: event_obj.clientY }
-    }
-    return null
-  }
-
-  function get_hover_pointer(raw_event: unknown): { x: number; y: number } | null {
-    const pointer_event = get_pointer_coords(raw_event)
-    if (!pointer_event) return null
-    const offset_x = fixed_container_rect?.left ?? 0
-    const offset_y = fixed_container_rect?.top ?? 0
-    return {
-      x: pointer_event.clientX - offset_x + 4,
-      y: pointer_event.clientY - offset_y + 4,
-    }
-  }
-
   let locked_hover_formula = $state<string | null>(null)
 
   function set_hover_info(domain_data: HoverMeshData, raw_event: unknown): void {
-    hover_info = {
-      ...domain_data.info,
-      pointer: get_hover_pointer(raw_event) ?? undefined,
-    }
+    hover_info = with_hover_pointer<ChemPotHoverInfo>(
+      domain_data.info,
+      raw_event,
+      fixed_container_rect,
+    )
   }
 
   function clear_hover_lock(): void {
@@ -2805,11 +2745,15 @@
     </Canvas>
     <!-- Color bar for continuous modes -->
     {#if color_mode !== `none` && color_mode !== `arity` && color_range}
+      {@const color_bar_config = get_chempot_color_bar_config(
+      color_scale,
+      reverse_color_scale,
+    )}
       <ColorBar
         title={color_range.label}
         range={[color_range.min, color_range.max]}
-        color_scale_fn={get_interpolator(color_scale)}
-        color_scale_domain={[0, 1]}
+        color_scale_fn={color_bar_config.color_scale_fn}
+        color_scale_domain={color_bar_config.color_scale_domain}
         wrapper_style="position: absolute; bottom: 16px; left: 1em; width: 200px; z-index: 10;"
         bar_style="height: 12px;"
         title_style="margin-bottom: 4px;"

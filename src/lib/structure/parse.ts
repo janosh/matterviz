@@ -16,6 +16,7 @@ import * as math from '$lib/math'
 import type { AnyStructure, Crystal, Site } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
+import { normalize_scientific_notation } from '$lib/utils'
 import { load as yaml_load } from 'js-yaml'
 
 export interface ParsedStructure {
@@ -66,10 +67,6 @@ export interface PhonopyData {
   phonon_displacements?: unknown[] // Ignored for performance
   [key: string]: unknown
 }
-
-// Normalize scientific notation in coordinate strings (handles eEdD and *^ notation variants)
-const normalize_scientific_notation = (str: string): string =>
-  str.toLowerCase().replace(/d/g, `e`).replace(/\*\^/g, `e`)
 
 // Parse a coordinate value that might be in various scientific notation formats
 function parse_coordinate(str: string): number {
@@ -1180,11 +1177,10 @@ function find_structure_in_json(
   }
 
   // Check if this object looks like a valid structure
-  const potential_structure = obj as Record<string, unknown>
-  if (is_parsed_structure(potential_structure)) return potential_structure
+  if (is_parsed_structure(obj)) return obj
 
   // Otherwise, recursively search through all properties
-  for (const value of Object.values(potential_structure)) {
+  for (const value of Object.values(obj)) {
     const result = find_structure_in_json(value, visited)
     if (result) return result
   }
@@ -1195,17 +1191,19 @@ function find_structure_in_json(
 // Type guard to validate structure-like objects
 function is_parsed_structure(obj: unknown): obj is ParsedStructure {
   if (!obj || typeof obj !== `object`) return false
-  const record = obj as Record<string, unknown>
-  // Must have non-empty sites array
-  if (!Array.isArray(record.sites) || record.sites.length === 0) return false
+  const parsed_obj = obj as { sites?: unknown }
+  const sites = parsed_obj.sites
+  if (!Array.isArray(sites) || sites.length === 0) return false
 
-  // Check if first site looks valid (has species and coordinates)
-  const first_site = record.sites[0] as Record<string, unknown> | undefined
+  const first_site = sites[0]
   if (!first_site || typeof first_site !== `object`) return false
 
-  // Must have species (array) and either abc or xyz coordinates
-  const has_species = Array.isArray(first_site.species) && first_site.species.length > 0
-  const has_coords = Array.isArray(first_site.abc) || Array.isArray(first_site.xyz)
+  const first_site_obj = first_site as { species?: unknown; abc?: unknown; xyz?: unknown }
+  const species = first_site_obj.species
+  const abc = first_site_obj.abc
+  const xyz = first_site_obj.xyz
+  const has_species = Array.isArray(species) && species.length > 0
+  const has_coords = Array.isArray(abc) || Array.isArray(xyz)
   return has_species && has_coords
 }
 
@@ -1439,8 +1437,8 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
     const attrs = structure.attributes
 
     // Inline validation for conciseness
-    const positions_raw = (attrs as Record<string, unknown>).cartesian_site_positions
-    const species_raw = (attrs as Record<string, unknown>).species_at_sites
+    const positions_raw = attrs.cartesian_site_positions
+    const species_raw = attrs.species_at_sites
     if (!(Array.isArray(positions_raw) && Array.isArray(species_raw))) {
       console.error(`OPTIMADE JSON missing required position or species data`)
       return null
@@ -1537,20 +1535,23 @@ export const is_optimade_raw = (raw: unknown): boolean =>
 function extract_optimade_structure_from_raw(raw: unknown): OptimadeStructure | null {
   const payload = unwrap_data(raw)
   const candidate = Array.isArray(payload) ? payload[0] : payload
-  return is_optimade_structure_object(candidate) ? (candidate as OptimadeStructure) : null
+  return is_optimade_structure_object(candidate) ? candidate : null
 }
 
 const unwrap_data = (value: unknown): unknown =>
-  (value && typeof value === `object` && `data` in (value as Record<string, unknown>))
-    ? (value as { data: unknown }).data
+  (value && typeof value === `object` && `data` in value)
+    ? (value as { data?: unknown }).data
     : value
 
 // Type guard: verify minimal OPTIMADE structure shape
 function is_optimade_structure_object(value: unknown): value is OptimadeStructure {
   if (!value || typeof value !== `object`) return false
   const obj = value as { type?: unknown; id?: unknown; attributes?: unknown }
-  return obj.type === `structures` && typeof obj.id === `string` &&
-    typeof obj.attributes === `object` && obj.attributes !== null
+  const type = obj.type
+  const id = obj.id
+  const attributes = obj.attributes
+  return type === `structures` && typeof id === `string` &&
+    typeof attributes === `object` && attributes !== null
 }
 
 // Convert OPTIMADE structure to Crystal format

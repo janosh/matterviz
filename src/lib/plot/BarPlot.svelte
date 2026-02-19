@@ -1590,15 +1590,14 @@
                 {/if}
                 {#if show_points}
                   {@const clickable = on_bar_click || on_point_click}
-                  {@const get_pt = (evt: Event) =>
-            points.find((pt) =>
-              pt.idx ===
-                parseInt(
-                  (evt.target as Element)?.closest(`[data-bar-idx]`)
-                    ?.getAttribute(`data-bar-idx`) ?? ``,
-                  10,
-                )
-            )}
+                  {@const get_pt = (evt: Event) => {
+            const attr = evt.target instanceof Element
+              ? evt.target.closest(`[data-bar-idx]`)?.getAttribute(
+                `data-bar-idx`,
+              )
+              : null
+            return points.find((pt) => pt.idx === parseInt(attr ?? ``, 10))
+          }}
                   {@const fill = (pt: LineSeriesPoint) =>
             pt.color_value != null
               ? color_scale_fn(pt.color_value)
@@ -1629,8 +1628,9 @@
             on_point_click?.({ ...bar_data, event: evt, point: pt })
           }}
                   {@const leaving = (evt: MouseEvent | FocusEvent) =>
-            (evt.relatedTarget as Element)?.closest(`.line-points`) !==
-              evt.currentTarget}
+            (evt.relatedTarget instanceof Element
+              ? evt.relatedTarget.closest(`.line-points`)
+              : null) !== evt.currentTarget}
                   <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_mouse_events_have_key_events -->
                   <g
                     class="line-points"

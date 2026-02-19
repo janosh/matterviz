@@ -649,7 +649,7 @@
     </T.Mesh>
 
     <!-- BZ edges -->
-    {#each bz_data.edges as edge_segment (JSON.stringify(edge_segment))}
+    {#each bz_data.edges as edge_segment, edge_idx (`bz-edge-${edge_idx}`)}
       {@const [from, to] = edge_segment}
       <Cylinder {from} {to} thickness={bz_edge_width} color={bz_edge_color} />
     {/each}

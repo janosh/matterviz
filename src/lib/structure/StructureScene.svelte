@@ -228,9 +228,7 @@
     scene = threlte.scene
     camera = threlte.camera.current
     if (threlte.renderer) {
-      Object.assign(threlte.renderer.domElement, {
-        __renderer: threlte.renderer,
-      })
+      Object.assign(threlte.renderer.domElement, { __renderer: threlte.renderer })
     }
   })
 
@@ -311,11 +309,8 @@
       bond_pairs.some((bond) =>
         get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
       )
-    ) {
-      removed_bonds = [...removed_bonds, [idx_i, idx_j]]
-    } else {
-      added_bonds = [...added_bonds, [idx_i, idx_j]]
-    }
+    ) removed_bonds = [...removed_bonds, [idx_i, idx_j]]
+    else added_bonds = [...added_bonds, [idx_i, idx_j]]
   }
 
   // Deduplicate clicks: when a highlight sphere and the underlying atom both
@@ -325,9 +320,12 @@
 
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
-    const native = (evt as unknown as { nativeEvent?: Event })?.nativeEvent
-    if (native && native === last_native_event) return
-    if (native) last_native_event = native
+    const native_event = (evt as Event & { nativeEvent?: unknown } | undefined)
+      ?.nativeEvent
+    if (native_event instanceof Event) {
+      if (native_event === last_native_event) return
+      last_native_event = native_event
+    }
 
     if (measure_mode === `edit-bonds`) {
       // In edit-bonds mode, select atoms to add/remove bonds between them
@@ -1142,7 +1140,7 @@
           structure?.sites}
         {@const selected_atoms = selected_sites
           .map((idx) => structure?.sites?.[idx])
-          .filter(Boolean) as Site[]}
+          .filter((site): site is Site => site != null)}
         {#if selected_atoms.length > 0}
           {@const avg = (dim: number) =>
           selected_atoms.reduce((sum, atom) => sum + atom.xyz[dim], 0) /

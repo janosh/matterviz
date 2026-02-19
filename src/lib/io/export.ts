@@ -2,7 +2,7 @@
 import type { AnyStructure } from '$lib/structure'
 import { download } from '$lib/io/fetch'
 import { create_structure_filename } from '$lib/structure/export'
-import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
+import { type Camera, type Scene, Vector2, WebGLRenderer } from 'three'
 
 // Export structure as PNG image from canvas
 export function export_canvas_as_png(
@@ -36,7 +36,8 @@ export function export_canvas_as_png(
     // Convert DPI to multiplier (72 DPI is baseline web resolution)
     // Cap to a reasonable upper bound to avoid excessive memory use
     const resolution_multiplier = Math.min(png_dpi / 72, 10)
-    const renderer = (canvas as { __renderer?: WebGLRenderer }).__renderer
+    const renderer_val = (canvas as { __renderer?: unknown }).__renderer
+    const renderer = renderer_val instanceof WebGLRenderer ? renderer_val : undefined
 
     // Force render to populate buffer
     if (renderer && scene && camera) renderer.render(scene, camera)
@@ -268,7 +269,8 @@ export async function export_trajectory_video(
     !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
   ) throw new Error(`WebM video recording not supported in this browser`)
 
-  const renderer = (canvas as { __renderer?: WebGLRenderer }).__renderer
+  const renderer_val = (canvas as { __renderer?: unknown }).__renderer
+  const renderer = renderer_val instanceof WebGLRenderer ? renderer_val : undefined
 
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined
