@@ -1,4 +1,5 @@
 import type { ChemicalElement, ElementCategory } from '$lib/element/types'
+import type { Vec3 } from '$lib/math'
 import { format } from 'd3-format'
 import type { SymbolType } from 'd3-shape'
 import * as d3_symbols from 'd3-shape'
@@ -141,7 +142,7 @@ export const format_num = (num: number, fmt?: string | number) => {
 
 // Format a 3D vector as "(x, y, z)" with configurable precision
 export const format_vec3 = (
-  vec: readonly [number, number, number],
+  vec: Readonly<Vec3>,
   fmt_spec = `.4~`,
 ): string =>
   `(${format_num(vec[0], fmt_spec)}, ${format_num(vec[1], fmt_spec)}, ${

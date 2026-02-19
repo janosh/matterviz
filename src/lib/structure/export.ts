@@ -13,15 +13,15 @@ import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js'
 export function has_color_property(mat: Material): mat is Material & { color: Color } {
   if (!(`color` in mat)) return false
   const color = (mat as { color: unknown }).color
-  // Check for Color-like object with r, g, b properties (duck typing)
-  return (
-    color !== null &&
-    typeof color === `object` &&
-    `r` in color &&
-    `g` in color &&
-    `b` in color &&
-    typeof (color as { r: unknown }).r === `number`
-  )
+  if (!color || typeof color !== `object`) return false
+  // Check for Color-like object with numeric r/g/b channels (duck typing)
+  const color_obj = color as { r?: unknown; g?: unknown; b?: unknown }
+  const red_channel = color_obj.r
+  const green_channel = color_obj.g
+  const blue_channel = color_obj.b
+  return typeof red_channel === `number` &&
+    typeof green_channel === `number` &&
+    typeof blue_channel === `number`
 }
 
 // Extract color from a ShaderMaterial by checking common color uniform patterns

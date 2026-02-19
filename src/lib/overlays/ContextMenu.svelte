@@ -40,8 +40,8 @@
 
   // Handle click outside to close
   function handle_click_outside(event: MouseEvent) {
-    const target = event.target as Element
-    if (visible) {
+    const target = event.target
+    if (target instanceof Element && visible) {
       const menu = target.closest(`.context-menu`)
       if (!menu) on_close?.()
     }
@@ -50,7 +50,8 @@
   // Handle right-click outside to close
   function handle_right_click_outside(event: MouseEvent) {
     if (!visible) return
-    const menu = (event.target as Element).closest(`.context-menu`)
+    const target = event.target
+    const menu = target instanceof Element ? target.closest(`.context-menu`) : null
     if (!menu) {
       event.preventDefault()
       on_close?.()

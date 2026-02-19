@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ScatterPlot3D } from '$lib'
+  import type { Vec3 } from '$lib/math'
   import type { DataSeries3D } from '$lib/plot/types'
 
   // Generate test data with color values to trigger ColorBar rendering
@@ -14,7 +15,7 @@
   }
 
   // Expose camera position for testing
-  let camera_position = $state<[number, number, number]>([8, 8, 8])
+  let camera_position = $state<Vec3>([8, 8, 8])
   let wrapper: HTMLDivElement | undefined = $state()
 </script>
 

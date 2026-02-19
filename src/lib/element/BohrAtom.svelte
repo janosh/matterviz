@@ -85,7 +85,7 @@
   {/if}
 
   <!-- electron orbitals -->
-  {#each shells as electrons, shell_idx ([electrons, shell_idx])}
+  {#each shells as electrons, shell_idx (`${shell_idx}-${electrons}`)}
     {@const n = shell_idx + 1}
     {@const shell_radius = _nucleus_props.r + n * shell_width}
     {@const active = n === highlight_shell}

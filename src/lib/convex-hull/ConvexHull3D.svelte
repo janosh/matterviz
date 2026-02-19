@@ -18,7 +18,7 @@
     setup_fullscreen_effect,
     toggle_fullscreen,
   } from '$lib/layout'
-  import { to_radians } from '$lib/math'
+  import { to_radians, type Vec3 } from '$lib/math'
   import { ColorBar, PlotTooltip } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
@@ -27,6 +27,7 @@
   import { ticks } from 'd3-array'
   import { SvelteMap } from 'svelte/reactivity'
   import { PerspectiveCamera, WebGLRenderer } from 'three'
+  import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import {
     get_ternary_3d_coordinates,
     get_triangle_centroid,
@@ -313,14 +314,14 @@
   const GIZMO_CAM_DIST = 5
   const MIN_ELEV_FOR_Z_AXIS = 5 // degrees — below this, z-axis ticks collapse to a point
   let gizmo_cam_ref = $state<PerspectiveCamera>()
-  let gizmo_orbit_ref = $state<{ update?: () => void }>()
+  let gizmo_orbit_ref = $state<OrbitControls | undefined>(undefined)
   let gizmo_active = $state(false)
 
   // Convert elevation/azimuth (degrees) to Three.js camera position + up vector.
   function gizmo_camera(
     elev_deg: number,
     azim_deg: number,
-  ): { position: [number, number, number]; up: [number, number, number] } {
+  ): { position: Vec3; up: Vec3 } {
     const [elev, azim] = [to_radians(elev_deg), to_radians(azim_deg)]
     const [se, ce, sa, ca] = [
       Math.sin(elev),

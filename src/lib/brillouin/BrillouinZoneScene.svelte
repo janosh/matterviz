@@ -355,7 +355,7 @@
     {/if}
 
     <!-- BZ edges -->
-    {#each bz_data.edges as edge_segment (JSON.stringify(edge_segment))}
+    {#each bz_data.edges as edge_segment, edge_idx (`bz-edge-${edge_idx}`)}
       {@const [from, to] = edge_segment}
       <Cylinder {from} {to} thickness={edge_width} color={edge_color} />
     {/each}
@@ -379,7 +379,7 @@
 
     <!-- IBZ edges -->
     {#if show_ibz && ibz_data}
-      {#each ibz_data.edges as edge_segment (JSON.stringify(edge_segment))}
+      {#each ibz_data.edges as edge_segment, edge_idx (`ibz-edge-${edge_idx}`)}
         {@const [from, to] = edge_segment}
         <Cylinder {from} {to} thickness={edge_width * 1.5} color={ibz_color} />
       {/each}

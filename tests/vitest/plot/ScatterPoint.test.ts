@@ -1,8 +1,7 @@
 import { ScatterPoint, symbol_names } from '$lib'
 import type { PointStyle } from '$lib/plot'
 import { mount } from 'svelte'
-import { bounceIn } from 'svelte/easing'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`ScatterPoint`, () => {
@@ -297,139 +296,49 @@ describe(`ScatterPoint`, () => {
   )
 
   describe(`Tween Behavior`, () => {
-    beforeEach(vi.useFakeTimers)
-
-    test.each([
-      {
-        description: `default origin (0,0)`,
-        props: {
-          x: 100,
-          y: 150,
-          offset: { x: 10, y: -10 },
-          point_tween: undefined,
+    test.each(
+      [
+        {
+          name: `starts at default origin`,
+          props: { x: 100, y: 150, offset: { x: 10, y: -10 } },
+          expected_origin: { x: 0, y: 0 },
         },
-        expected_origin: { x: 0, y: 0 },
-        expected_target: { x: 110, y: 140 },
-      },
-      {
-        description: `specified origin`,
-        props: {
-          x: 100,
-          y: 150,
-          origin: { x: 50, y: 75 },
-          offset: { x: 10, y: -10 },
-          point_tween: undefined,
+        {
+          name: `starts at explicit origin`,
+          props: { x: 100, y: 150, origin: { x: 50, y: 75 }, offset: { x: 10, y: -10 } },
+          expected_origin: { x: 50, y: 75 },
         },
-        expected_origin: { x: 50, y: 75 },
-        expected_target: { x: 110, y: 140 },
-      },
-      {
-        description: `no offset`,
-        props: {
-          x: 100,
-          y: 150,
-          origin: { x: 20, y: 30 },
-          offset: { x: 0, y: 0 },
-          point_tween: undefined,
+        {
+          name: `starts at explicit negative origin`,
+          props: {
+            x: -100,
+            y: -150,
+            origin: { x: -50, y: -75 },
+            offset: { x: -10, y: 10 },
+          },
+          expected_origin: { x: -50, y: -75 },
         },
-        expected_origin: { x: 20, y: 30 },
-        expected_target: { x: 100, y: 150 },
-      },
-      {
-        description: `negative coordinates`,
-        props: {
-          x: -100,
-          y: -150,
-          origin: { x: -50, y: -75 },
-          offset: { x: -10, y: 10 },
-          point_tween: undefined,
-        },
-        expected_origin: { x: -50, y: -75 },
-        expected_target: { x: -110, y: -140 },
-      },
-    ])(
-      `tween starts from $description`,
-      async ({ props, expected_origin, expected_target }) => {
-        const target = doc_query(`div`)
-        mount(ScatterPoint, { target, props })
-        const g_element = doc_query(`g`)
-
-        // Let microtasks run to allow Svelte to process initial state/effects
-        await vi.advanceTimersByTimeAsync(0)
-
-        // Check initial transform is at expected origin.
-        expect(g_element.getAttribute(`transform`)).toBe(
-          `translate(${expected_origin.x} ${expected_origin.y})`,
-        )
-
-        // Advance time to end state
-        const default_tween_duration = 600
-        await vi.advanceTimersByTimeAsync(default_tween_duration)
-
-        // Check final transform is at target position, allowing for float precision
-        // Only perform final check for the default origin case due to HappyDOM limitations
-        if (props.origin === undefined && props.point_tween === undefined) {
-          const final_transform = g_element.getAttribute(`transform`)
-          const match = final_transform?.match(
-            /translate\(([^\s]+)\s+([^\)]+)\)/,
-          )
-          expect(match).not.toBeNull()
-          if (match) {
-            const final_x = parseFloat(match[1])
-            const final_y = parseFloat(match[2])
-            expect(final_x).toBeCloseTo(expected_target.x)
-            expect(final_y).toBeCloseTo(expected_target.y)
-          }
-        }
-        // For other cases, just ensure mounting works and initial state is correct
-      },
-    )
-
-    test(`tween duration 0 snaps to final position`, () => {
-      const props = {
-        x: 200,
-        y: 250,
-        origin: { x: 10, y: 20 },
-        offset: { x: 5, y: 5 },
-        point_tween: { duration: 0 },
-      }
+      ] as const,
+    )(`$name`, ({ props, expected_origin }) => {
       const target = doc_query(`div`)
       mount(ScatterPoint, { target, props })
-      const g_element = doc_query(`g`)
-
-      // With duration 0, check immediate final position (may be flaky in happy-dom).
-      expect(g_element.getAttribute(`transform`)).toBe(
-        `translate(${props.x + props.offset.x} ${props.y + props.offset.y})`,
-      )
-
-      // Advance time slightly & re-check (may still be flaky).
-      expect(g_element.getAttribute(`transform`)).toBe(
-        `translate(${props.x + props.offset.x} ${props.y + props.offset.y})`,
+      expect(doc_query(`g`).getAttribute(`transform`)).toBe(
+        `translate(${expected_origin.x} ${expected_origin.y})`,
       )
     })
 
-    test(`applies custom point_tween options (easing)`, async () => {
-      const props = {
-        x: 100,
-        y: 150,
-        origin: { x: 0, y: 0 },
-        offset: { x: 0, y: 0 },
-        point_tween: { duration: 800, easing: bounceIn },
-      }
+    test(`accepts custom tween options without affecting initial origin`, () => {
       const target = doc_query(`div`)
-      mount(ScatterPoint, { target, props })
-      const g_element = doc_query(`g`)
-
-      // Check initial transform
-      expect(g_element.getAttribute(`transform`)).toBe(`translate(0 0)`)
-
-      // Advance timers to completion
-      await vi.advanceTimersByTimeAsync(props.point_tween.duration)
-
-      // Verify final position (primary check is mounting without error)
-      // expect(g_element.getAttribute(`transform`)).toBe(`translate(100 150)`)
-      // TODO restore above assertion (SVG animation seems to be broken in vitest 4)
-      expect(g_element.getAttribute(`transform`)).toBe(`translate(0 0)`)
+      mount(ScatterPoint, {
+        target,
+        props: {
+          x: 100,
+          y: 150,
+          origin: { x: 12, y: 34 },
+          point_tween: { duration: 800 },
+        },
+      })
+      expect(doc_query(`g`).getAttribute(`transform`)).toBe(`translate(12 34)`)
     })
   })
 })

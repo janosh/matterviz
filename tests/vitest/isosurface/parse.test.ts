@@ -1,5 +1,6 @@
 // Tests for isosurface volumetric file parsers (CHGCAR, .cube)
 import { parse_chgcar, parse_cube, parse_volumetric_file } from '$lib/isosurface/parse'
+import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 
 // === Helper to build minimal CHGCAR content ===
@@ -244,13 +245,13 @@ describe(`parse_chgcar`, () => {
 function make_cube({
   titles = [`title`, `comment`],
   n_atoms = 2,
-  origin = [0, 0, 0] as [number, number, number],
-  grid_n = [2, 2, 2] as [number, number, number],
+  origin = [0, 0, 0] as Vec3,
+  grid_n = [2, 2, 2] as Vec3,
   voxels = [
     [1.889726, 0, 0],
     [0, 1.889726, 0],
     [0, 0, 1.889726],
-  ] as [number, number, number][],
+  ] as Vec3[],
   atoms = [
     [1, 0, 0, 0, 0],
     [1, 0, 0, 0, 1.4],
@@ -384,12 +385,12 @@ describe(`parse_cube`, () => {
 
   test.each([
     {
-      origin: [0, 0, 0] as [number, number, number],
+      origin: [0, 0, 0] as Vec3,
       pbc: true,
       label: `periodic (origin at 0)`,
     },
     {
-      origin: [-5, -5, -5] as [number, number, number],
+      origin: [-5, -5, -5] as Vec3,
       pbc: false,
       label: `molecular (non-zero origin)`,
     },
@@ -418,7 +419,7 @@ describe(`parse_cube`, () => {
 
   test(`periodic option overrides origin-based heuristic`, () => {
     // Non-zero origin would normally be detected as non-periodic
-    const molecular_origin: [number, number, number] = [-5, -5, -5]
+    const molecular_origin: Vec3 = [-5, -5, -5]
     const auto_result = parse_cube(make_cube({ origin: molecular_origin }))
     expect(auto_result?.volumes[0].periodic).toBe(false)
     // Explicit override forces periodic=true despite non-zero origin

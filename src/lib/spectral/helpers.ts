@@ -514,8 +514,8 @@ function convert_pymatgen_band_structure(
   ) return null
 
   const qpoints = raw_qpts.map((q) => parse_qpoint(q, labels_dict)).filter(
-    Boolean,
-  ) as types.QPoint[]
+    (q): q is types.QPoint => q !== null,
+  )
   if (!qpoints.length) return null
 
   // Step distances and discontinuity detection (5x median threshold)

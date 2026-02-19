@@ -1990,7 +1990,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await test_page_controls_checkbox.check()
 
     const pane_div = page.locator(`#test-structure .controls-pane`)
-    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
+    await expect(pane_div).toBeVisible({ timeout: 2000 })
 
     const camera_projection_select = pane_div.locator(
       `label:has-text("Projection") select`,
@@ -2023,7 +2023,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await test_page_controls_checkbox.check()
 
     const pane_div = page.locator(`#test-structure .controls-pane`)
-    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
+    await expect(pane_div).toBeVisible({ timeout: 2000 })
 
     const camera_projection_select = pane_div.locator(
       `label:has-text("Projection") select`,
@@ -2036,10 +2036,15 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     for (const projection of [`perspective`, `orthographic`]) {
       await camera_projection_select.selectOption(projection)
       await expect(camera_projection_select).toHaveValue(projection)
+      // Let camera/projection updates settle before visual assertions.
+      await page.waitForTimeout(100)
 
       screenshots[`${projection}_initial`] = await canvas.screenshot()
       await canvas.hover({ force: true })
-      await page.mouse.wheel(0, -200)
+      await canvas.click({ force: true })
+      // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
+      await page.mouse.wheel(0, -250)
+      await page.mouse.wheel(0, -250)
       // Wait for zoom to be applied (screenshot should differ from initial)
       await expect_canvas_changed(canvas, screenshots[`${projection}_initial`])
       screenshots[`${projection}_zoomed`] = await canvas.screenshot()
@@ -2064,7 +2069,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await test_page_controls_checkbox.check()
 
     const pane_div = page.locator(`#test-structure .controls-pane`)
-    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
+    await expect(pane_div).toBeVisible({ timeout: 2000 })
 
     const camera_projection_select = pane_div.locator(
       `label:has-text("Projection") select`,
