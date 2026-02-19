@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@spglib/moyo-wasm": "^0.7.7",
-    "@sveltejs/kit": "^2.52.2",
+    "@sveltejs/kit": "2.50.2",
     "@threlte/core": "^8.3.1",
     "@threlte/extras": "^9.7.1",
     "@types/d3-force": "^3.0.10",
@@ -45,7 +45,7 @@
     "h5wasm": "^0.8.11",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.1.1",
-    "svelte": "5.53.0",
+    "svelte": "5.50.0",
     "svelte-multiselect": "^11.6.2",
     "svelte-toc": "^0.6.2",
     "three": "^0.183.0"
