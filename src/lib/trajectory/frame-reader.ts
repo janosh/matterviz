@@ -68,7 +68,7 @@ export class TrajFrameReader implements FrameLoader {
 
         const num_atoms = parseInt(lines[line_idx].trim(), 10)
         if (
-          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
+          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 > lines.length
         ) {
           byte_offset += encoder.encode(lines[line_idx]).length + newline_byte_len
           line_idx++
@@ -160,7 +160,7 @@ export class TrajFrameReader implements FrameLoader {
 
         const num_atoms = parseInt(lines[line_idx].trim(), 10)
         if (
-          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
+          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 > lines.length
         ) {
           line_idx++
           continue
@@ -263,7 +263,7 @@ export class TrajFrameReader implements FrameLoader {
 
     if (line_idx >= lines.length) return null
     const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || line_idx + num_atoms + 1 >= lines.length) return null
+    if (isNaN(num_atoms) || line_idx + num_atoms + 1 > lines.length) return null
 
     const comment = lines[line_idx + 1] || ``
     const positions: number[][] = []

@@ -42,7 +42,13 @@ export function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
 }
 
 export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
-  numbers.map((num) => ATOMIC_NUMBER_TO_SYMBOL[num] || `X`)
+  numbers.map((num) => {
+    const symbol = ATOMIC_NUMBER_TO_SYMBOL[num]
+    if (!symbol || !is_valid_element_symbol(symbol)) {
+      throw new Error(`Unknown atomic number in trajectory data: ${num}`)
+    }
+    return symbol
+  })
 
 // Cache inverse matrices by original matrix reference for performance
 // IMPORTANT: This cache assumes lattice matrices are immutable. Mutating a cached
@@ -205,7 +211,7 @@ export function count_xyz_frames(data: string): number {
     }
 
     const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
+    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 > lines.length) {
       line_idx++
       continue
     }

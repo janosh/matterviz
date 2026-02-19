@@ -16,7 +16,7 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     }
 
     const num_atoms = parseInt(lines[line_idx].trim(), 10)
-    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
+    if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 > lines.length) {
       line_idx++
       continue
     }
