@@ -62,6 +62,7 @@ export async function parse_torch_sim_hdf5(
       | number[][][]
       | null
     const energies_data = find_dataset([`potential_energy`, `energy`])?.to_array() as
+      | number[]
       | number[][]
       | null
 
@@ -101,7 +102,8 @@ export async function parse_torch_sim_hdf5(
       const lattice_mat = cell
         ? math.transpose_3x3_matrix(validate_3x3_matrix(cell))
         : undefined
-      const energy = energies_data?.[idx]?.[0]
+      const energy_entry = energies_data?.[idx]
+      const energy = Array.isArray(energy_entry) ? energy_entry[0] : energy_entry
       const metadata: Record<string, unknown> = {}
       if (energy !== undefined) metadata.energy = energy
       if (lattice_mat) {

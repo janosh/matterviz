@@ -5,6 +5,10 @@ import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { AnyStructure } from '$lib/structure'
 import { parse_xyz } from '$lib/structure/parse'
+import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '../constants'
+import { FORMAT_PATTERNS, is_trajectory_file } from '../format-detect'
+import { TrajFrameReader } from '../frame-reader'
+import { create_trajectory_frame, validate_3x3_matrix } from '../helpers'
 import type {
   FrameLoader,
   ParseProgress,
@@ -12,16 +16,12 @@ import type {
   TrajectoryMetadata,
   TrajectoryType,
 } from '../index'
-import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '../constants'
-import { FORMAT_PATTERNS, is_trajectory_file } from '../format-detect'
-import { create_trajectory_frame, validate_3x3_matrix } from '../helpers'
-import { parse_lammps_trajectory } from './lammps'
-import { parse_torch_sim_hdf5 } from './hdf5'
+import type { AtomTypeMapping, LoadingOptions } from '../types'
 import { parse_ase_trajectory } from './ase'
+import { parse_torch_sim_hdf5 } from './hdf5'
+import { parse_lammps_trajectory } from './lammps'
 import { parse_vasp_xdatcar } from './vasp'
 import { parse_xyz_trajectory } from './xyz'
-import type { AtomTypeMapping, LoadingOptions } from '../types'
-import { TrajFrameReader } from '../frame-reader'
 
 const log_parse_debug = (message: string, error: unknown): void => {
   if (import.meta.env?.DEV) console.debug(message, error)
@@ -37,8 +37,7 @@ export {
   MAX_TEXT_FILE_SIZE,
 } from '../constants'
 export type { AtomTypeMapping, LoadingOptions } from '../types'
-export { is_trajectory_file }
-export { TrajFrameReader }
+export { is_trajectory_file, TrajFrameReader }
 
 export async function parse_trajectory_data(
   data: unknown,
@@ -136,11 +135,13 @@ export async function parse_trajectory_data(
           if (key === `forces` && Array.isArray(array_obj.data)) {
             const forces = array_obj.data as number[][]
             const force_magnitudes = forces.map((force) => Math.hypot(...force))
-            processed_properties.force_max = Math.max(...force_magnitudes)
-            processed_properties.force_norm = Math.sqrt(
-              force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
-                force_magnitudes.length,
-            )
+            if (force_magnitudes.length > 0) {
+              processed_properties.force_max = Math.max(...force_magnitudes)
+              processed_properties.force_norm = Math.sqrt(
+                force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
+                  force_magnitudes.length,
+              )
+            }
           }
 
           // Calculate stress statistics for stress tensor

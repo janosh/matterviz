@@ -2546,7 +2546,6 @@
         {#if camera_projection === `orthographic`}
           <!-- Orthographic camera matching pymatgen's projection style -->
           <T.OrthographicCamera
-            makeDefault
             position={camera_position}
             zoom={orthographic_zoom}
             near={0.1}
@@ -2564,7 +2563,6 @@
           </T.OrthographicCamera>
         {:else}
           <T.PerspectiveCamera
-            makeDefault
             position={camera_position}
             fov={50}
             near={0.1}

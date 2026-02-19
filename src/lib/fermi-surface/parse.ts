@@ -280,7 +280,7 @@ function is_valid_isosurface(obj: unknown): obj is Isosurface {
   const spin = isosurface_obj.spin
 
   if (!Array.isArray(vertices) || vertices.length === 0) return false
-  if (!Array.isArray(faces) || faces.length === 0) return false
+  if (!Array.isArray(faces)) return false
   if (!Array.isArray(normals)) return false
   if (typeof band_index !== `number` || !Number.isFinite(band_index)) return false
   if (spin !== null && spin !== `up` && spin !== `down`) return false

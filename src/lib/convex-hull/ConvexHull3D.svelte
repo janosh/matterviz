@@ -27,6 +27,7 @@
   import { ticks } from 'd3-array'
   import { SvelteMap } from 'svelte/reactivity'
   import { PerspectiveCamera, WebGLRenderer } from 'three'
+  import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import {
     get_ternary_3d_coordinates,
     get_triangle_centroid,
@@ -313,7 +314,7 @@
   const GIZMO_CAM_DIST = 5
   const MIN_ELEV_FOR_Z_AXIS = 5 // degrees — below this, z-axis ticks collapse to a point
   let gizmo_cam_ref = $state<PerspectiveCamera>()
-  let gizmo_orbit_ref = $state<{ update?: () => void }>()
+  let gizmo_orbit_ref = $state<OrbitControls | undefined>(undefined)
   let gizmo_active = $state(false)
 
   // Convert elevation/azimuth (degrees) to Three.js camera position + up vector.
@@ -1467,7 +1468,6 @@
         new WebGLRenderer({ canvas: cvs, alpha: true, antialias: true })}
       >
         <T.PerspectiveCamera
-          makeDefault
           bind:ref={gizmo_cam_ref}
           position={gizmo_cam_state.position}
           up={gizmo_cam_state.up}

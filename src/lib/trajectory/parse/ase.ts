@@ -1,12 +1,12 @@
 // ASE trajectory (.traj) parsing - binary format
-import type { TrajectoryFrame, TrajectoryType } from '../index'
+import { MAX_SAFE_STRING_LENGTH } from '../constants'
 import {
   convert_atomic_numbers,
   create_trajectory_frame,
   read_ndarray_from_view,
   validate_3x3_matrix,
 } from '../helpers'
-import { MAX_SAFE_STRING_LENGTH } from '../constants'
+import type { TrajectoryFrame, TrajectoryType } from '../index'
 
 export function parse_ase_trajectory(
   buffer: ArrayBuffer,
@@ -92,6 +92,10 @@ export function parse_ase_trajectory(
 
   if (frames.length === 0) throw new Error(`No valid frames found`)
 
+  const periodic_boundary_conditions = (`lattice` in frames[0]?.structure)
+    ? frames[0].structure.lattice.pbc
+    : [true, true, true]
+
   return {
     frames,
     metadata: {
@@ -99,7 +103,7 @@ export function parse_ase_trajectory(
       source_format: `ase_trajectory`,
       frame_count: frames.length,
       total_atoms: global_numbers?.length || 0,
-      periodic_boundary_conditions: [true, true, true],
+      periodic_boundary_conditions,
     },
   }
 }

@@ -658,14 +658,13 @@
 </script>
 
 {#if camera_projection === `perspective`}
-  <T.PerspectiveCamera makeDefault position={camera_position} {fov} near={0.1} far={1000}>
+  <T.PerspectiveCamera position={camera_position} {fov} near={0.1} far={1000}>
     <extras.OrbitControls bind:ref={orbit_controls} {...orbit_controls_props}>
       {#if gizmo_props}<extras.Gizmo {...gizmo_props} />{/if}
     </extras.OrbitControls>
   </T.PerspectiveCamera>
 {:else}
   <T.OrthographicCamera
-    makeDefault
     position={camera_position}
     zoom={Math.min(width, height) / Math.max(scene_x, scene_y) / 2 || 50}
     near={-100}

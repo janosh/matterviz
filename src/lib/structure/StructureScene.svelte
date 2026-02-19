@@ -796,7 +796,6 @@
 
 {#if camera_projection === `perspective`}
   <T.PerspectiveCamera
-    makeDefault
     position={camera_position}
     {fov}
     near={camera_near}
@@ -808,7 +807,6 @@
   </T.PerspectiveCamera>
 {:else}
   <T.OrthographicCamera
-    makeDefault
     position={camera_position}
     zoom={computed_zoom}
     near={-100}
