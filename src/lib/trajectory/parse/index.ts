@@ -23,6 +23,10 @@ import { parse_xyz_trajectory } from './xyz'
 import type { AtomTypeMapping, LoadingOptions } from '../types'
 import { TrajFrameReader } from '../frame-reader'
 
+const log_parse_debug = (message: string, error: unknown): void => {
+  if (import.meta.env?.DEV) console.debug(message, error)
+}
+
 // Re-export constants and types for consumers
 export {
   INDEX_SAMPLE_RATE,
@@ -71,7 +75,7 @@ export async function parse_trajectory_data(
         }
       } catch (error) {
         // Single-frame XYZ parsing failed, continue to JSON parsing.
-        console.debug(
+        log_parse_debug(
           `Single XYZ parse fallback failed for ${filename ?? `unknown file`}:`,
           error,
         )
@@ -81,7 +85,7 @@ export async function parse_trajectory_data(
     try {
       data = JSON.parse(content)
     } catch (error) {
-      console.debug(`JSON parse failed for ${filename ?? `unknown file`}:`, error)
+      log_parse_debug(`JSON parse failed for ${filename ?? `unknown file`}:`, error)
       throw new Error(`Unsupported text format`)
     }
   }

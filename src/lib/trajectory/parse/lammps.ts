@@ -111,6 +111,12 @@ export function parse_lammps_trajectory(
     const element_col = col.element
     const id_col = col.id
     const use_scaled = pos_keys[0] === `xs`
+    const max_col_idx = Math.max(
+      ...pos_cols,
+      type_col ?? -1,
+      element_col ?? -1,
+      id_col ?? -1,
+    )
 
     if (pos_cols.some((col_idx) => col_idx === undefined)) continue
     if (type_col === undefined && element_col === undefined && id_col === undefined) {
@@ -128,13 +134,6 @@ export function parse_lammps_trajectory(
     for (let atom = 0; atom < num_atoms && idx < lines.length; atom++) {
       const parts = read_line().split(/\s+/)
       const coords = pos_cols.map((col_idx) => parseFloat(parts[col_idx]))
-
-      const max_col_idx = Math.max(
-        ...pos_cols,
-        type_col ?? -1,
-        element_col ?? -1,
-        id_col ?? -1,
-      )
       if (coords.some(isNaN) || parts.length <= max_col_idx) continue
 
       // Convert scaled coordinates to Cartesian if needed

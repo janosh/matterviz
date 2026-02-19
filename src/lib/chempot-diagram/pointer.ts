@@ -1,15 +1,14 @@
 // Event/pointer normalization for hover tooltips.
 // Handles DOM events and Threlte/Three.js event wrappers (nativeEvent, srcEvent).
+const is_pointer_like_event = (
+  event_val: unknown,
+): event_val is PointerEvent | MouseEvent =>
+  (typeof PointerEvent !== `undefined` && event_val instanceof PointerEvent) ||
+  (typeof MouseEvent !== `undefined` && event_val instanceof MouseEvent)
 
 export function get_pointer_coords(
   raw_event: unknown,
 ): { clientX: number; clientY: number } | null {
-  const is_pointer_like_event = (
-    event_val: unknown,
-  ): event_val is PointerEvent | MouseEvent =>
-    (typeof PointerEvent !== `undefined` && event_val instanceof PointerEvent) ||
-    (typeof MouseEvent !== `undefined` && event_val instanceof MouseEvent)
-
   if (is_pointer_like_event(raw_event)) {
     return raw_event
   }

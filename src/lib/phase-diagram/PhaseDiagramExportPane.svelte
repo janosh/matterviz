@@ -101,20 +101,12 @@
       >
         ⬇
       </button>
-      {#if svg_string}
-        <CopyButton
-          content={svg_string}
-          title="Copy SVG to clipboard"
-          bind:state={svg_copy_state}
-          labels={{
-            ready: { icon: `Copy`, text: `📋` },
-            success: { icon: `Check`, text: `✅` },
-            error: { icon: `Alert`, text: `❌` },
-          }}
-        />
-      {:else}
-        <button type="button" disabled title="Copy SVG to clipboard">📋</button>
-      {/if}
+      <CopyButton
+        content={svg_string ?? ``}
+        title="Copy SVG to clipboard"
+        bind:state={svg_copy_state}
+        disabled={!svg_string}
+      />
     </label>
     <label>
       PNG
@@ -153,20 +145,12 @@
       >
         ⬇
       </button>
-      {#if json_string}
-        <CopyButton
-          content={json_string}
-          title="Copy JSON to clipboard"
-          bind:state={json_copy_state}
-          labels={{
-            ready: { icon: `Copy`, text: `📋` },
-            success: { icon: `Check`, text: `✅` },
-            error: { icon: `Alert`, text: `❌` },
-          }}
-        />
-      {:else}
-        <button type="button" disabled title="Copy JSON to clipboard">📋</button>
-      {/if}
+      <CopyButton
+        content={json_string ?? ``}
+        title="Copy JSON to clipboard"
+        bind:state={json_copy_state}
+        disabled={!json_string}
+      />
     </label>
   </div>
 </DraggablePane>
