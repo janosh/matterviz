@@ -608,14 +608,6 @@ pub fn parse_structures_glob(pattern: &str) -> Result<Vec<(String, Structure)>> 
     Ok(results)
 }
 
-/// Serialize a structure to pymatgen JSON format.
-///
-/// Alias for [`structure_to_pymatgen_json`] for backwards compatibility.
-#[inline]
-pub fn structure_to_json(structure: &Structure) -> String {
-    structure_to_pymatgen_json(structure)
-}
-
 // === POSCAR Parser ===
 
 /// Parse a structure from VASP POSCAR format.
@@ -2897,7 +2889,7 @@ mod tests {
         let coords = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.5, 0.5)];
         let s1 = Structure::new(lattice, species, coords);
 
-        let json = structure_to_json(&s1);
+        let json = structure_to_pymatgen_json(&s1);
         let s2 = parse_structure_json(&json).unwrap();
 
         assert_eq!(s1.num_sites(), s2.num_sites());
@@ -2916,7 +2908,7 @@ mod tests {
         let coords = vec![Vector3::new(0.5, 0.5, 0.5)];
         let s1 = Structure::new(lattice, species, coords);
 
-        let json = structure_to_json(&s1);
+        let json = structure_to_pymatgen_json(&s1);
         assert!(
             json.contains(r#""pbc":[true,true,false]"#),
             "JSON should contain pbc: {json}"
@@ -2945,7 +2937,7 @@ mod tests {
         assert_eq!(s1.properties["source"], serde_json::json!("dft"));
 
         // Round-trip through JSON
-        let json_out = structure_to_json(&s1);
+        let json_out = structure_to_pymatgen_json(&s1);
         let s2 = parse_structure_json(&json_out).unwrap();
 
         assert_eq!(s2.properties.len(), 3);

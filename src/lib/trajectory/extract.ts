@@ -177,22 +177,9 @@ function property_varies(
     let value: number | undefined
 
     if (`lattice` in frame.structure) {
-      const lattice = frame.structure.lattice as {
-        [key: string]: unknown
-        volume: number
-        a: number
-        b: number
-        c: number
-        alpha: number
-        beta: number
-        gamma: number
-      }
-      if (
-        property_key in lattice &&
-        typeof lattice[property_key] === `number`
-      ) {
-        value = lattice[property_key] as number
-      }
+      const lattice_value =
+        (frame.structure.lattice as Record<string, unknown>)[property_key]
+      if (typeof lattice_value === `number`) value = lattice_value
     }
 
     if (

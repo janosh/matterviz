@@ -28,6 +28,7 @@
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
   import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
   import { get_series_color } from './data-transform'
+  import { normalize_to_scene } from './reference-line'
   import ReferenceLine3D from './ReferenceLine3D.svelte'
   import ReferencePlane from './ReferencePlane.svelte'
   import { create_color_scale, create_size_scale } from './scales'
@@ -247,17 +248,9 @@
     ], z_axis.range),
   )
 
-  // Normalize value to scene coordinates (centered around 0)
-  function normalize(
-    value: number,
-    [min_val, max_val]: [number, number],
-    scene_size: number,
-  ): number {
-    return ((value - min_val) / (max_val - min_val || 1) - 0.5) * scene_size
-  }
-  const normalize_x = (v: number) => normalize(v, x_range, scene_x)
-  const normalize_y = (v: number) => normalize(v, y_range, scene_y)
-  const normalize_z = (v: number) => normalize(v, z_range, scene_z)
+  const normalize_x = (value: number) => normalize_to_scene(value, x_range, scene_x)
+  const normalize_y = (value: number) => normalize_to_scene(value, y_range, scene_y)
+  const normalize_z = (value: number) => normalize_to_scene(value, z_range, scene_z)
 
   // Color/size scales
   let all_color_values = $derived(

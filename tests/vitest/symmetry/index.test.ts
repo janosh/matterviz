@@ -4,8 +4,10 @@ import type { Crystal } from '$lib/structure'
 import type { WyckoffPos } from '$lib/symmetry'
 import {
   apply_symmetry_operations,
+  map_std_to_orig_site_indices,
   map_wyckoff_to_all_atoms,
   simplicity_score,
+  to_cell_json,
   wyckoff_positions_from_moyo,
 } from '$lib/symmetry'
 import { structures } from '$site/structures'
@@ -340,6 +342,59 @@ describe(`stable atom ordering`, () => {
     expect(results[0][0].elem).toBe(`O`)
     expect(results[0][1].wyckoff).toBe(`3a`)
     expect(results[0][1].elem).toBe(`H`)
+  })
+})
+
+describe(`to_cell_json`, () => {
+  test(`merges split disordered sites before moyo conversion`, () => {
+    const disordered_split_site = make_crystal(5, [
+      { element: `O`, abc: [0, 0, 0], occu: 0.5 },
+      { element: `F`, abc: [0, 0, 0], occu: 0.5 },
+      { element: `Li`, abc: [0.5, 0.5, 0.5], occu: 1 },
+    ])
+
+    const parsed_cell = JSON.parse(to_cell_json(disordered_split_site))
+    expect(parsed_cell.positions).toHaveLength(2)
+    expect(parsed_cell.numbers).toHaveLength(2)
+    expect(parsed_cell.positions).toContainEqual([0, 0, 0])
+    expect(parsed_cell.positions).toContainEqual([0.5, 0.5, 0.5])
+    // 50/50 tie resolves by alphabetical element symbol: F before O
+    expect(new Set(parsed_cell.numbers)).toEqual(new Set([3, 9]))
+  })
+})
+
+describe(`orig site mapping`, () => {
+  const with_orig_site_map = (
+    input: Record<string, unknown>,
+  ): MoyoDataset & { orig_site_indices_by_std_idx?: number[][] } =>
+    input as unknown as MoyoDataset & { orig_site_indices_by_std_idx?: number[][] }
+
+  test(`wyckoff table expands merged standardized indices to original sites`, () => {
+    const sym_data = with_orig_site_map({
+      std_cell: {
+        positions: [[0, 0, 0], [0.5, 0.5, 0.5]],
+        numbers: [8, 3],
+      },
+      wyckoffs: [`2a`, `1b`],
+      orig_site_indices_by_std_idx: [[0, 1], [2]],
+    })
+
+    const rows = wyckoff_positions_from_moyo(sym_data)
+    const oxygen_row = rows.find((row) => row.elem === `O`)
+    const lithium_row = rows.find((row) => row.elem === `Li`)
+    expect(oxygen_row?.site_indices).toEqual([0, 1])
+    expect(lithium_row?.site_indices).toEqual([2])
+  })
+
+  test(`std-to-orig mapping respects atomic number when positions overlap`, () => {
+    const mapped = map_std_to_orig_site_indices(
+      [[0, 0, 0]],
+      [3],
+      [[0, 0, 0], [0, 0, 0.001]],
+      [8, 3],
+      [[0], [1]],
+    )
+    expect(mapped).toEqual([[1]])
   })
 })
 

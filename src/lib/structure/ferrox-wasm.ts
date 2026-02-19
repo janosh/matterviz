@@ -3,6 +3,7 @@
 // Provides lazy initialization, typed wrappers, and result handling utilities
 // for the matterviz WASM module (structure matching, analysis, etc).
 
+import type { Vec3 } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import type {
   MatcherOptions,
@@ -434,7 +435,7 @@ export async function wrap_to_unit_cell(
 // Supercell with Full Matrix
 export async function create_supercell_matrix(
   structure: Crystal,
-  matrix: [[number, number, number], [number, number, number], [number, number, number]],
+  matrix: [Vec3, Vec3, Vec3],
 ): Promise<WasmResult<Crystal>> {
   const mod = await ensure_ferrox_wasm_ready()
   return mod.make_supercell(structure, matrix)
@@ -444,7 +445,7 @@ export async function create_supercell_matrix(
 export async function translate_sites(
   structure: Crystal,
   indices: number[],
-  vector: [number, number, number],
+  vector: Vec3,
   frac_coords: boolean = false,
 ): Promise<WasmResult<Crystal>> {
   const mod = await ensure_ferrox_wasm_ready()

@@ -1,4 +1,5 @@
 import type { Crystal } from '$lib/structure'
+import type { Vec3 } from '$lib/math'
 // Import types and utilities from the pure types module (no WASM side effects)
 import {
   is_error,
@@ -223,7 +224,7 @@ function make_displaced_nacl(): Crystal {
   // NaCl with atoms slightly displaced from ideal positions
   const nacl = make_nacl_structure()
   // Convert fractional to Cartesian coords (for cubic lattice: xyz = abc * a)
-  const to_xyz = (abc: [number, number, number]): [number, number, number] => {
+  const to_xyz = (abc: Vec3): Vec3 => {
     const [[a0, a1, a2], [b0, b1, b2], [c0, c1, c2]] = nacl.lattice.matrix
     return [
       abc[0] * a0 + abc[1] * b0 + abc[2] * c0,
@@ -299,7 +300,7 @@ describe(`Neighbor list result types`, () => {
   })
 
   it(`image offsets are 3-element arrays`, () => {
-    const offset: [number, number, number] = [1, -1, 0]
+    const offset: Vec3 = [1, -1, 0]
     expect(offset).toHaveLength(3)
     expect(offset[0]).toBe(1)
     expect(offset[1]).toBe(-1)
@@ -442,9 +443,9 @@ describe(`Supercell result types`, () => {
   it(`3x3 matrix supercell is valid`, () => {
     // Full transformation matrix
     const matrix: [
-      [number, number, number],
-      [number, number, number],
-      [number, number, number],
+      Vec3,
+      Vec3,
+      Vec3,
     ] = [
       [2, 0, 0],
       [0, 2, 0],
@@ -474,7 +475,7 @@ describe(`Site manipulation result types`, () => {
   })
 
   it(`translation vector has 3 components`, () => {
-    const vector: [number, number, number] = [0.1, 0.2, 0.3]
+    const vector: Vec3 = [0.1, 0.2, 0.3]
     expect(vector).toHaveLength(3)
   })
 

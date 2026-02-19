@@ -58,7 +58,6 @@
     process_prop,
   } from '$lib/plot/data-transform'
   import { AXIS_DEFAULTS } from '$lib/plot/defaults'
-  import { untrack } from 'svelte'
   import {
     create_dimension_tracker,
     create_hover_lock,
@@ -78,6 +77,7 @@
   import { extent } from 'd3-array'
   import { scaleTime } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
@@ -403,7 +403,7 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 5, b: 50, l: 50, r: 20 }
-  let pad = $derived(filter_padding(padding, default_padding))
+  let pad = $state(untrack(() => filter_padding(padding, default_padding)))
 
   // Update padding when format or ticks change
   $effect(() => {
@@ -416,7 +416,12 @@
       })
       : filter_padding(padding, default_padding)
 
-    if (JSON.stringify(pad) !== JSON.stringify(new_pad)) pad = new_pad
+    if (
+      pad.t !== new_pad.t ||
+      pad.b !== new_pad.b ||
+      pad.l !== new_pad.l ||
+      pad.r !== new_pad.r
+    ) pad = new_pad
   })
 
   // Reactive clip area dimensions to ensure proper responsiveness
@@ -1579,7 +1584,8 @@
     legend_is_dragging = true
 
     // Get the actual rendered position of the legend element (accounts for transforms)
-    const legend_el = event.currentTarget as HTMLElement
+    const legend_el = event.currentTarget
+    if (!(legend_el instanceof HTMLElement)) return
     const legend_rect = legend_el.getBoundingClientRect()
 
     // Calculate offset from mouse to legend's actual rendered position relative to SVG

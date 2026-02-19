@@ -12,7 +12,7 @@ repos:
         pass_filenames: false
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.0
+    rev: v0.15.2
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -78,7 +78,7 @@ repos:
         pass_filenames: false
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.36.1
+    rev: 0.36.2
     hooks:
       - id: check-jsonschema
         name: Validate element data JSON

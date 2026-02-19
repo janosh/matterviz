@@ -432,7 +432,7 @@ export function parse_cube(
     return null
   }
 
-  const n_grid: [number, number, number] = [
+  const n_grid: Vec3 = [
     Math.abs(voxel_lines[0][0]),
     Math.abs(voxel_lines[1][0]),
     Math.abs(voxel_lines[2][0]),

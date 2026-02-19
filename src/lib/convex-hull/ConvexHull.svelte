@@ -83,6 +83,7 @@
   )
   let hull_face_opacity = $derived(hull_face_opacity_prop ?? default_opacity)
   $effect(() => {
+    if (hull_face_opacity_prop === hull_face_opacity) return
     hull_face_opacity_prop = hull_face_opacity
   })
 

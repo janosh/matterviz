@@ -102,7 +102,7 @@
 
     const toggle_rect = toggle_pane_btn.getBoundingClientRect()
     const pane_width = pane_div?.getBoundingClientRect().width || 450
-    const positioned_ancestor = toggle_pane_btn.offsetParent as HTMLElement
+    const positioned_ancestor = toggle_pane_btn.offsetParent
     const ancestor_rect = positioned_ancestor?.getBoundingClientRect()
 
     if (!ancestor_rect) { // Fallback to document positioning
@@ -125,10 +125,10 @@
   function handle_click_outside(event: MouseEvent) {
     if (!show || persistent) return
 
-    const target = event.target as HTMLElement
-    const is_toggle_button = toggle_pane_btn &&
+    const target = event.target
+    const is_toggle_button = target instanceof Node && toggle_pane_btn &&
       (target === toggle_pane_btn || toggle_pane_btn.contains(target))
-    const is_inside_pane = pane_div &&
+    const is_inside_pane = target instanceof Node && pane_div &&
       (target === pane_div || pane_div.contains(target))
 
     if (!is_toggle_button && !is_inside_pane && !currently_dragging) close_pane()
