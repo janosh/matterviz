@@ -38,9 +38,8 @@
   let [z_min, z_max] = $derived(span_or(ref_plane.z_span, z_range))
 
   // Helper to create quad from 4 corner coords
-  function quad(coords: [number, number, number][]) {
-    return create_quad_geometry(coords.map(([ux, uy, uz]) => to_vec3(ux, uy, uz)))
-  }
+  const quad = (coords: Vec3[]) =>
+    create_quad_geometry(coords.map(([ux, uy, uz]) => to_vec3(ux, uy, uz)))
 
   // Compute plane geometry based on type - returns result to use in $effect
   function compute_geometry(): THREE.BufferGeometry | null {
@@ -114,10 +113,7 @@
   }
 
   // Create plane from normal and point, scaled to cover bounding box
-  function create_plane_from_normal(
-    normal: [number, number, number],
-    point: [number, number, number],
-  ): THREE.BufferGeometry {
+  function create_plane_from_normal(normal: Vec3, point: Vec3): THREE.BufferGeometry {
     const normalized = normalize_vec3(normal)
     // Pick u perpendicular to normal (use axis least aligned with normal)
     const u_dir = normalize_vec3(

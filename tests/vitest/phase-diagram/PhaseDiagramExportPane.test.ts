@@ -5,7 +5,7 @@ import { mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 // Real Al-Cu phase diagram data from pycalphad computation (subset of 5 boundaries)
-import al_cu_data from './fixtures/al-cu-sample.json'
+import al_cu_data from './fixtures/al-cu-sample.json' with { type: 'json' }
 
 // Mock the export functions
 vi.mock(`$lib/io/export`, () => ({
@@ -108,78 +108,36 @@ describe(`PhaseDiagramExportPane`, () => {
     })
   })
 
-  test(`SVG copy button copies SVG to clipboard`, async () => {
+  test.each([
+    {
+      copy_title: `Copy SVG`,
+      expected_clipboard: expect.stringContaining(`<svg`),
+    },
+    {
+      copy_title: `Copy JSON`,
+      expected_clipboard: JSON.stringify(mock_phase_data, null, 2),
+    },
+  ])(`$copy_title button copies content and remains stable after timeout`, async ({
+    copy_title,
+    expected_clipboard,
+  }) => {
+    vi.useFakeTimers()
     mount(PhaseDiagramExportPane, {
       target: document.body,
       props: { data: mock_phase_data, wrapper: wrapper_div },
     })
 
-    const copy_btn = get_button(`Copy SVG`)
+    const copy_btn = get_button(copy_title)
     expect(copy_btn).toBeTruthy()
-
     copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     await vi.waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        expect.stringContaining(`<svg`),
-      )
-    })
-  })
-
-  test(`JSON copy button copies data to clipboard`, async () => {
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { data: mock_phase_data, wrapper: wrapper_div },
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_clipboard)
     })
 
-    const copy_btn = get_button(`Copy JSON`)
+    vi.advanceTimersByTime(1500)
     expect(copy_btn).toBeTruthy()
-
-    copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    await vi.waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        JSON.stringify(mock_phase_data, null, 2),
-      )
-    })
-  })
-
-  test(`shows checkmark feedback after successful SVG copy`, async () => {
-    vi.useFakeTimers()
-
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { data: mock_phase_data, wrapper: wrapper_div },
-    })
-
-    const copy_btn = get_button(`Copy SVG`)
-    expect(copy_btn.textContent).toContain(`📋`)
-
-    copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    await vi.waitFor(() => expect(copy_btn.textContent).toContain(`✅`))
-
-    vi.advanceTimersByTime(1500)
-    await vi.waitFor(() => expect(copy_btn.textContent).toContain(`📋`))
-  })
-
-  test(`shows checkmark feedback after successful JSON copy`, async () => {
-    vi.useFakeTimers()
-
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { data: mock_phase_data, wrapper: wrapper_div },
-    })
-
-    const copy_btn = get_button(`Copy JSON`)
-    expect(copy_btn.textContent).toContain(`📋`)
-
-    copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
-
-    await vi.waitFor(() => expect(copy_btn.textContent).toContain(`✅`))
-
-    vi.advanceTimersByTime(1500)
-    await vi.waitFor(() => expect(copy_btn.textContent).toContain(`📋`))
+    vi.useRealTimers()
   })
 
   test(`JSON buttons disabled when data is undefined`, () => {

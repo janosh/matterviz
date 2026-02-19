@@ -108,11 +108,11 @@ describe(`validate_trajectory`, () => {
       ],
       [
         (traj: TrajectoryType) => {
-          traj.total_frames = 5
+          traj.total_frames = 2
           traj.indexed_frames =
             make_trajectory(3, { with_indexed_frames: true }).indexed_frames
         },
-        `inconsistent with indexed_frames`,
+        `frame_number >= total_frames`,
         1,
       ],
       [
@@ -157,14 +157,14 @@ describe(`validate_trajectory`, () => {
       expect(errors).toHaveLength(expected_count)
     })
 
-    test(`validates frame_number equals index`, () => {
+    test(`validates strictly increasing frame_number`, () => {
       const traj = make_trajectory(3, { with_indexed_frames: true })
       const indexed = traj.indexed_frames
       if (!indexed) throw new Error(`indexed_frames should exist`)
-      indexed[1].frame_number = 5
+      indexed[1].frame_number = 0
       expect(
         validate_trajectory(traj).some((err) =>
-          err.includes(`frame_number (5) should equal index (1)`)
+          err.includes(`frame_number (0) must be strictly increasing`)
         ),
       ).toBe(true)
     })

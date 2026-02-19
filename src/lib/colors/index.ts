@@ -1,5 +1,6 @@
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
+import type { Vec3 } from '$lib/math'
 import type { ELEM_SYMBOLS } from '../labels'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
@@ -13,6 +14,12 @@ export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
 export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
   ? Name
   : never
+export const get_d3_interpolator = (
+  name: D3InterpolateName,
+): (t: number) => string => {
+  const candidate = d3_sc[name]
+  return typeof candidate === `function` ? candidate : d3_sc.interpolateViridis
+}
 export const COLOR_SCALE_TYPES = [`continuous`, `categorical`] as const
 export type ColorScaleType = (typeof COLOR_SCALE_TYPES)[number]
 
@@ -44,7 +51,7 @@ export const NEG_AXIS_COLORS = [
   [`nz`, `#4444b8`, `#5555c9`],
 ] as const
 
-export type RGBColor = [number, number, number]
+export type RGBColor = Vec3
 export type ElementColorScheme = Record<(typeof ELEM_SYMBOLS)[number], RGBColor>
 
 const rgb_scheme_to_hex = (obj: Record<string, number[]>): Record<string, string> =>

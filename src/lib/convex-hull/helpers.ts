@@ -1,10 +1,9 @@
-import type { D3InterpolateName } from '$lib/colors'
+import { type D3InterpolateName, get_d3_interpolator } from '$lib/colors'
 import { ELEM_SYMBOL_TO_NAME } from '$lib/composition'
 import type { EnergyModeInfo } from '$lib/convex-hull'
 import type { ElementSymbol } from '$lib/element'
 import { format_fractional, format_num, symbol_map } from '$lib/labels'
 import { scaleSequential } from 'd3-scale'
-import * as d3_sc from 'd3-scale-chromatic'
 import { symbol } from 'd3-shape'
 import {
   analyze_gas_data as _analyze_gas_data,
@@ -35,10 +34,7 @@ export function get_energy_color_scale(
   const lo = Math.min(...hull_distances)
   const hi_raw = Math.max(...hull_distances, 0.1)
   const hi = Math.max(hi_raw, lo + 1e-6)
-  // Cast needed: d3-scale-chromatic module has non-interpolator exports (e.g. `default`)
-  const interpolator =
-    (d3_sc as unknown as Record<string, (t: number) => string>)[color_scale] ||
-    d3_sc.interpolateViridis
+  const interpolator = get_d3_interpolator(color_scale)
   return scaleSequential(interpolator).domain([lo, hi])
 }
 

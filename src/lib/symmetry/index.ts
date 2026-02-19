@@ -2,6 +2,7 @@ import { ATOMIC_NUMBER_TO_SYMBOL, SYMBOL_TO_ATOMIC_NUMBER } from '$lib/compositi
 import type { Vec3 } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { AnyStructure, Crystal } from '$lib/structure'
+import { merge_split_partial_sites } from '$lib/structure/partial-occupancy'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import init, { analyze_cell } from '@spglib/moyo-wasm'
 import moyo_wasm_url from '@spglib/moyo-wasm/moyo_wasm_bg.wasm?url'
@@ -39,8 +40,15 @@ export type WyckoffPos = {
   abc: Vec3
   site_indices?: number[]
 }
+export type SymmetryDataset = MoyoDataset & {
+  // Legacy one-to-one standardized-index mapping.
+  orig_indices?: number[]
+  // Preferred mapping for merged disordered-site inputs (one standardized index -> many originals).
+  orig_site_indices_by_std_idx?: number[][]
+}
 
 let initialized = false
+const OCCUPANCY_EPS = 1e-8
 
 export async function ensure_moyo_wasm_ready(wasm_url?: string) {
   if (initialized) return
@@ -52,38 +60,135 @@ export async function ensure_moyo_wasm_ready(wasm_url?: string) {
   initialized = true
 }
 
-export function to_cell_json(structure: Crystal): string {
+function get_site_atomic_number(
+  site: Crystal[`sites`][number],
+  site_idx: number,
+): number {
+  const occupancy_by_element = new Map<keyof typeof SYMBOL_TO_ATOMIC_NUMBER, number>()
+  for (const { element, occu } of site.species) {
+    if (occu <= OCCUPANCY_EPS) continue
+    occupancy_by_element.set(element, (occupancy_by_element.get(element) ?? 0) + occu)
+  }
+
+  let selected_element: (typeof site.species)[number][`element`] | undefined = site
+    .species[0]?.element
+  let best_occupancy = -Infinity
+  occupancy_by_element.forEach((occupancy, element) => {
+    if (
+      occupancy > best_occupancy ||
+      (occupancy === best_occupancy && element.localeCompare(selected_element ?? ``) < 0)
+    ) {
+      selected_element = element
+      best_occupancy = occupancy
+    }
+  })
+
+  if (selected_element === undefined) {
+    throw new Error(`Unknown element at site ${site_idx}: ${String(selected_element)}`)
+  }
+  const atomic_number = SYMBOL_TO_ATOMIC_NUMBER[selected_element]
+  if (atomic_number === undefined) {
+    throw new Error(`Unknown element at site ${site_idx}: ${String(selected_element)}`)
+  }
+  return atomic_number
+}
+
+function build_moyo_input_cell(
+  structure: Crystal,
+): Pick<MoyoCell, `positions` | `numbers`> & {
+  orig_site_indices_by_input_idx: number[][]
+} {
+  const merged_render_sites = merge_split_partial_sites(structure.sites)
+  return {
+    positions: merged_render_sites.map(({ site }) => site.abc),
+    numbers: merged_render_sites.map(({ site, site_idx }) =>
+      get_site_atomic_number(site, site_idx)
+    ),
+    orig_site_indices_by_input_idx: merged_render_sites.map(({ source_site_indices }) =>
+      source_site_indices
+    ),
+  }
+}
+
+function build_moyo_cell(
+  structure: Crystal,
+  positions: Vec3[],
+  numbers: number[],
+): MoyoCell {
   // nalgebra Matrix3 deserializes as a flat list in COLUMN-MAJOR of the internal basis B
   // Internal B = transpose(row-basis RB). column-major(B) == row-major(RB).
   // So supply row-major of the pymatgen lattice.matrix (RB).
   const [v_a, v_b, v_c] = structure.lattice.matrix
-  const basis: MoyoCell[`lattice`][`basis`] = [...v_a, ...v_b, ...v_c]
-  const positions = structure.sites.map((site) => site.abc)
-  const numbers = structure.sites.map((site, idx) => {
-    const sym = site.species?.[0]?.element
-    const num = sym !== null ? SYMBOL_TO_ATOMIC_NUMBER[sym] : undefined
-    if (typeof num !== `number`) {
-      throw new Error(`Unknown element at site ${idx}: ${String(sym)}`)
+  return {
+    lattice: { basis: [...v_a, ...v_b, ...v_c] },
+    positions,
+    numbers,
+  }
+}
+
+export function to_cell_json(structure: Crystal): string {
+  const { positions, numbers } = build_moyo_input_cell(structure)
+  return JSON.stringify(build_moyo_cell(structure, positions as Vec3[], numbers))
+}
+
+const fractional_sq_dist = (pos_1: Vec3, pos_2: Vec3): number =>
+  (pos_1[0] - pos_2[0] - Math.round(pos_1[0] - pos_2[0])) ** 2 +
+  (pos_1[1] - pos_2[1] - Math.round(pos_1[1] - pos_2[1])) ** 2 +
+  (pos_1[2] - pos_2[2] - Math.round(pos_1[2] - pos_2[2])) ** 2
+
+export function map_std_to_orig_site_indices(
+  std_positions: Vec3[],
+  std_numbers: number[],
+  input_positions: Vec3[],
+  input_numbers: number[],
+  orig_site_indices_by_input_idx: number[][],
+): number[][] {
+  return std_positions.map((std_pos, std_idx) => {
+    const std_number = std_numbers[std_idx]
+    let nearest_input_idx = -1
+    let nearest_sq_dist = Infinity
+    for (let input_idx = 0; input_idx < input_positions.length; input_idx += 1) {
+      if (input_numbers[input_idx] !== std_number) continue
+      const sq_dist = fractional_sq_dist(std_pos, input_positions[input_idx])
+      if (sq_dist < nearest_sq_dist) {
+        nearest_sq_dist = sq_dist
+        nearest_input_idx = input_idx
+      }
     }
-    return num
+
+    if (nearest_input_idx === -1) return []
+    return orig_site_indices_by_input_idx[nearest_input_idx] ?? []
   })
-  const cell: MoyoCell = { lattice: { basis }, positions, numbers }
-  return JSON.stringify(cell)
 }
 
 export async function analyze_structure_symmetry(
   struct_or_mol: AnyStructure,
   settings: Partial<SymmetrySettings>,
-): Promise<MoyoDataset> {
+): Promise<SymmetryDataset> {
   await ensure_moyo_wasm_ready()
   if (!(`lattice` in struct_or_mol)) {
     throw new Error(`Symmetry analysis requires a periodic structure with a lattice`)
   }
-  const cell_json = to_cell_json(struct_or_mol)
+  const moyo_input_cell = build_moyo_input_cell(struct_or_mol)
+  const cell_json = JSON.stringify(
+    build_moyo_cell(
+      struct_or_mol,
+      moyo_input_cell.positions as Vec3[],
+      moyo_input_cell.numbers,
+    ) satisfies MoyoCell,
+  )
   const { symprec, algo } = { ...default_sym_settings, ...settings }
   // Map "Moyo" to "Standard" for moyo-wasm
   const moyo_algo = algo === `Moyo` ? `Standard` : algo
-  return analyze_cell(cell_json, symprec, moyo_algo)
+  const sym_data = analyze_cell(cell_json, symprec, moyo_algo)
+  const orig_site_indices_by_std_idx = map_std_to_orig_site_indices(
+    sym_data.std_cell.positions as Vec3[],
+    sym_data.std_cell.numbers,
+    moyo_input_cell.positions as Vec3[],
+    moyo_input_cell.numbers,
+    moyo_input_cell.orig_site_indices_by_input_idx,
+  )
+  return { ...sym_data, orig_site_indices_by_std_idx }
 }
 
 // Helper function to score coordinate simplicity for Wyckoff table
@@ -100,12 +205,12 @@ export function simplicity_score(vec: number[]): number {
 
 // Generate Wyckoff table rows from symmetry data
 export function wyckoff_positions_from_moyo(
-  sym_data: (MoyoDataset & { orig_indices?: number[] }) | null,
+  sym_data: SymmetryDataset | null,
 ): WyckoffPos[] {
   if (!sym_data) return []
 
   const { positions, numbers } = sym_data.std_cell
-  const { wyckoffs, orig_indices } = sym_data
+  const { wyckoffs, orig_indices, orig_site_indices_by_std_idx } = sym_data
 
   // Group sites by letter-element combination and track all indices
   const groups = new Map<string, {
@@ -140,12 +245,19 @@ export function wyckoff_positions_from_moyo(
     }, { pos: positions[0], score: simplicity_score(positions[0]) }).pos
 
     // Map standardized cell indices back to original structure indices
-    const orig_site_indices = orig_indices
-      ? indices.map((i) => orig_indices[i]).filter((idx) => idx !== undefined)
+    const orig_site_indices = orig_site_indices_by_std_idx
+      ? indices.flatMap((std_idx) => orig_site_indices_by_std_idx[std_idx] ?? [])
+      : orig_indices
+      ? indices.map((std_idx) => orig_indices[std_idx]).filter((idx) => idx !== undefined)
       : indices
 
     const wyckoff = letter ? `${indices.length}${letter}` : `1`
-    return { wyckoff, elem, abc: best_pos, site_indices: orig_site_indices }
+    return {
+      wyckoff,
+      elem,
+      abc: best_pos,
+      site_indices: [...new Set(orig_site_indices)].sort((idx_a, idx_b) => idx_a - idx_b),
+    }
   })
 
   rows.sort((w1, w2) => {

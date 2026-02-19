@@ -113,8 +113,8 @@
     if (!draggable) return
 
     // Only start drag if clicking on empty areas (not on legend items)
-    const target = event.target as HTMLElement
-    if (target.closest(`.legend-item`)) return
+    const target = event.target
+    if (target instanceof Element && target.closest(`.legend-item`)) return
 
     event.preventDefault()
     event.stopPropagation()

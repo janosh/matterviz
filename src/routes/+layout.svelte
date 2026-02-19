@@ -9,8 +9,8 @@
   import ThemeControl from '$lib/theme/ThemeControl.svelte'
   import pkg from '$root/package.json'
   import { Footer } from '$site'
-  import { demo_routes, routes } from '$site/state.svelte'
   import type { RouteEntry } from '$site/state.svelte'
+  import { demo_routes, routes } from '$site/state.svelte'
   import type { Snippet } from 'svelte'
   import { CmdPalette, CopyButton, GitHubCorner, Nav } from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -60,35 +60,8 @@
     return typeof route_entry === `string` ? route_entry : route_entry[0]
   }
 
-  // Nest chempot-diagram as a child of convex-hull in the nav tree.
-  // If convex-hull is absent, keep chempot-diagram as a standalone route.
-  function nest_chempot_under_convex_hull(route_entries: RouteEntry[]): RouteEntry[] {
-    const chempot_path = `/chempot-diagram`
-    const convex_hull_path = `/convex-hull`
-    const has_chempot = route_entries.some((entry) =>
-      route_path(entry) === chempot_path
-    )
-    const has_convex = route_entries.some((entry) =>
-      route_path(entry) === convex_hull_path
-    )
-    if (!has_chempot || !has_convex) return route_entries
-    return route_entries
-      .filter((entry) => route_path(entry) !== chempot_path)
-      .map((entry) => {
-        if (route_path(entry) !== convex_hull_path) return entry
-        if (typeof entry === `string`) {
-          return [entry, [chempot_path]] satisfies [string, string[]]
-        }
-        const [parent, existing] = entry
-        const existing_arr = typeof existing === `string` ? [existing] : existing
-        if (existing_arr.includes(chempot_path)) return entry
-        return [parent, [...existing_arr, chempot_path]] satisfies [string, string[]]
-      })
-  }
-
   const nav_routes = $derived.by(() => {
-    const nested_demo_routes = nest_chempot_under_convex_hull(demo_routes)
-    return nested_demo_routes.filter((route_entry) => {
+    return demo_routes.filter((route_entry) => {
       const path = route_path(route_entry)
       return !path.startsWith(`/layout`)
     })

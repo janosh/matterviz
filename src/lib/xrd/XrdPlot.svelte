@@ -28,11 +28,13 @@
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
     if (!obj || typeof obj !== `object`) return false
-    const record = obj as Record<string, unknown>
+    const pattern_obj = obj as { x?: unknown; y?: unknown }
+    const x = pattern_obj.x
+    const y = pattern_obj.y
     return (
-      Array.isArray(record.x) &&
-      Array.isArray(record.y) &&
-      record.x.length === record.y.length
+      Array.isArray(x) &&
+      Array.isArray(y) &&
+      x.length === y.length
     )
   }
 

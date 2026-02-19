@@ -2,6 +2,7 @@
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { ComponentProps } from 'svelte'
+  import { CopyButton } from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { PhaseDiagramData } from './types'
@@ -31,12 +32,8 @@
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
   } = $props()
 
-  // Copy button feedback state
-  let copy_status = $state<{ json: boolean; svg: boolean }>({
-    json: false,
-    svg: false,
-  })
-  const copy_confirm = `✅`
+  let json_copy_state = $state<ComponentProps<typeof CopyButton>[`state`]>(`ready`)
+  let svg_copy_state = $state<ComponentProps<typeof CopyButton>[`state`]>(`ready`)
 
   // Generate filename with components if available (requires exactly 2 components)
   const full_filename = $derived(
@@ -52,13 +49,7 @@
 
   const json_export_data = $derived(json_payload ?? data)
 
-  async function copy_svg() {
-    if (!svg) return
-    const svg_string = new XMLSerializer().serializeToString(svg)
-    await navigator.clipboard.writeText(svg_string)
-    copy_status.svg = true
-    setTimeout(() => (copy_status.svg = false), 1500)
-  }
+  const svg_string = $derived(svg ? new XMLSerializer().serializeToString(svg) : null)
 
   function download_json() {
     if (!json_export_data) return
@@ -75,15 +66,9 @@
     URL.revokeObjectURL(url)
   }
 
-  async function copy_json() {
-    if (!json_export_data) return
-
-    const json_string = JSON.stringify(json_export_data, null, 2)
-    await navigator.clipboard.writeText(json_string)
-
-    copy_status.json = true
-    setTimeout(() => (copy_status.json = false), 1500)
-  }
+  const json_string = $derived(
+    json_export_data ? JSON.stringify(json_export_data, null, 2) : null,
+  )
 </script>
 
 <DraggablePane
@@ -116,14 +101,12 @@
       >
         ⬇
       </button>
-      <button
-        type="button"
-        onclick={copy_svg}
-        disabled={!svg}
+      <CopyButton
+        content={svg_string ?? ``}
         title="Copy SVG to clipboard"
-      >
-        {copy_status.svg ? copy_confirm : `📋`}
-      </button>
+        bind:state={svg_copy_state}
+        disabled={!svg_string}
+      />
     </label>
     <label>
       PNG
@@ -162,14 +145,12 @@
       >
         ⬇
       </button>
-      <button
-        type="button"
-        onclick={copy_json}
-        disabled={!json_export_data}
+      <CopyButton
+        content={json_string ?? ``}
         title="Copy JSON to clipboard"
-      >
-        {copy_status.json ? copy_confirm : `📋`}
-      </button>
+        bind:state={json_copy_state}
+        disabled={!json_string}
+      />
     </label>
   </div>
 </DraggablePane>

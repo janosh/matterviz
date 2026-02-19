@@ -984,10 +984,10 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 6pt;
-    padding: 4pt 8pt;
-    border-radius: 6px;
-    background: var(--filter-bg, rgba(128, 128, 128, 0.05));
+    gap: var(--formula-filter-gap, 1pt);
+    padding: var(--formula-filter-padding, 4pt 8pt);
+    border-radius: var(--formula-filter-border-radius, var(--border-radius, 3pt));
+    background: var(--formula-filter-bg, rgba(128, 128, 128, 0.05));
     transition: background 0.15s;
     &.invalid {
       outline: 1px solid rgba(239, 68, 68, 0.65);

@@ -1,6 +1,8 @@
 <script lang="ts">
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { export_canvas_as_png } from '$lib/io/export'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import type { ComponentProps } from 'svelte'
+  import { CopyButton } from 'svelte-multiselect'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { Camera, Scene } from 'three'
@@ -25,8 +27,7 @@
     png_dpi?: number
   } = $props()
 
-  let copy_status = $state(false)
-  const copy_confirm = `✅`
+  let json_copy_state = $state<ComponentProps<typeof CopyButton>[`state`]>(`ready`)
 
   function export_as_png() {
     const canvas = wrapper?.querySelector(`canvas`)
@@ -64,16 +65,10 @@
     }
   }
 
-  async function copy_json() {
+  let json_string = $derived.by(() => {
     const json_data = get_json_data()
-    if (!json_data) return
-
-    await navigator.clipboard.writeText(JSON.stringify(json_data, null, 2))
-    copy_status = true
-    setTimeout(() => {
-      copy_status = false
-    }, 1000)
-  }
+    return json_data ? JSON.stringify(json_data, null, 2) : null
+  })
 </script>
 
 <DraggablePane
@@ -123,14 +118,12 @@
     >
       ⬇
     </button>
-    <button
-      type="button"
-      onclick={copy_json}
-      disabled={!bz_data}
+    <CopyButton
+      content={json_string ?? ``}
+      bind:state={json_copy_state}
+      disabled={!json_string}
       title="Copy JSON to clipboard"
-    >
-      {copy_status ? copy_confirm : `📋`}
-    </button>
+    />
   </label>
 </DraggablePane>
 

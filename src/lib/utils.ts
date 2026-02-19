@@ -24,3 +24,10 @@ export const escape_html = (unsafe_string: string): string =>
     .replaceAll(`>`, `&gt;`)
     .replaceAll(`"`, `&quot;`)
     .replaceAll(`'`, `&#39;`)
+
+// Normalize unicode minus (U+2212) to ASCII hyphen-minus.
+export const normalize_unicode_minus = (value: string): string => value.replace(/−/g, `-`)
+
+// Normalize scientific notation variants (d/D exponent, Mathematica *^).
+export const normalize_scientific_notation = (value: string): string =>
+  normalize_unicode_minus(value).toLowerCase().replace(/d/g, `e`).replace(/\*\^/g, `e`)

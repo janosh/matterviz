@@ -107,6 +107,7 @@
 <style>
   .tooltip-content {
     max-width: var(--tooltip-max-width, 200px);
+    text-align: left;
   }
   .tooltip-content > div {
     overflow: hidden;

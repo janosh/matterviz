@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { D3InterpolateName } from '$lib/colors'
+  import { type D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
@@ -9,10 +9,9 @@
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot } from '$lib/plot'
   import type { DataSeries, UserContentProps } from '$lib/plot/types'
-  import { scaleSequential } from 'd3-scale'
-  import * as d3_sc from 'd3-scale-chromatic'
   import { onDestroy } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+  import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
   import {
     apply_element_padding,
     best_form_energy_for_formula,
@@ -24,6 +23,7 @@
     orthonormal_2d,
     pad_domain_points,
   } from './compute'
+  import { with_hover_pointer } from './pointer'
   import { get_temp_filter_payload, get_valid_temperature } from './temperature'
   import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
@@ -189,32 +189,6 @@
   const raw_el_refs = $derived(
     get_min_entries_and_el_refs(temp_filtered_entries).el_refs,
   )
-  function get_interpolator(
-    interpolator_name: D3InterpolateName,
-  ): (t: number) => string {
-    const raw = (d3_sc as unknown as Record<string, (t: number) => string>)[
-      interpolator_name
-    ] ??
-      d3_sc.interpolateViridis
-    return reverse_color_scale ? (param_t: number) => raw(1 - param_t) : raw
-  }
-  function make_color_scale(
-    values: number[],
-    interpolator_name: D3InterpolateName,
-  ): ((val: number) => string) | null {
-    const finite_vals = values.filter(Number.isFinite)
-    if (finite_vals.length === 0) return null
-    let min_val = finite_vals[0], max_val_raw = finite_vals[0]
-    for (let idx = 1; idx < finite_vals.length; idx++) {
-      if (finite_vals[idx] < min_val) min_val = finite_vals[idx]
-      if (finite_vals[idx] > max_val_raw) max_val_raw = finite_vals[idx]
-    }
-    const max_val = Math.max(max_val_raw, min_val + 1e-6)
-    return scaleSequential(get_interpolator(interpolator_name)).domain([
-      min_val,
-      max_val,
-    ])
-  }
   const entry_energy_stats_by_formula = $derived.by(
     (): SvelteMap<string, FormulaEnergyStats> => {
       const stats = new SvelteMap<string, FormulaEnergyStats>()
@@ -285,7 +259,11 @@
       return colors
     }
     const values_payload = domain_color_values
-    const scale = make_color_scale(values_payload?.values ?? [], color_scale)
+    const scale = make_chempot_color_scale(
+      values_payload?.values ?? [],
+      color_scale,
+      reverse_color_scale,
+    )
     for (const formula of domain_formulas) {
       const color_val = values_payload?.value_by_formula.get(formula)
       colors.set(formula, color_val != null && scale ? scale(color_val) : `#999`)
@@ -373,18 +351,16 @@
     event: MouseEvent,
   ): void {
     const bounds = scatter_wrapper?.getBoundingClientRect()
-    hover_info = {
-      formula,
-      view: `2d`,
-      n_points: pts.length,
-      axis_ranges: build_axis_ranges(pts, plot_elements),
-      pointer: bounds
-        ? {
-          x: event.clientX - bounds.left + 4,
-          y: event.clientY - bounds.top + 4,
-        }
-        : undefined,
-    }
+    hover_info = with_hover_pointer<ChemPotHoverInfo>(
+      {
+        formula,
+        view: `2d`,
+        n_points: pts.length,
+        axis_ranges: build_axis_ranges(pts, plot_elements),
+      },
+      event,
+      bounds,
+    )
   }
 
   function clear_hover_lock(): void {
@@ -688,11 +664,15 @@
       style="--scatter-width: 100%; --scatter-height: {render_height}px; --fullscreen-btn-offset: 68px"
     />
     {#if color_mode !== `none` && color_mode !== `arity` && color_range}
+      {@const color_bar_config = get_chempot_color_bar_config(
+      color_scale,
+      reverse_color_scale,
+    )}
       <ColorBar
         title={color_range.label}
         range={[color_range.min, color_range.max]}
-        color_scale_fn={get_interpolator(color_scale)}
-        color_scale_domain={[0, 1]}
+        color_scale_fn={color_bar_config.color_scale_fn}
+        color_scale_domain={color_bar_config.color_scale_domain}
         wrapper_style="position: absolute; bottom: 70px; left: 50px; width: 180px; z-index: 10;"
         bar_style="height: 10px;"
         title_style="margin-bottom: 3px;"

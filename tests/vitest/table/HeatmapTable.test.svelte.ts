@@ -1995,8 +1995,10 @@ describe(`HeatmapTable`, () => {
         props: {
           data: sample_data,
           columns: sample_columns,
-          onrowclick: (_event: MouseEvent, row: Record<string, unknown>) =>
-            clicked.push(row),
+          onrowclick: (
+            _event: KeyboardEvent | MouseEvent,
+            row: Record<string, unknown>,
+          ) => clicked.push(row),
         },
       })
 

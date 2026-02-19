@@ -17,6 +17,7 @@
   import { ScatterPlot } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
+  import { SvelteMap } from 'svelte/reactivity'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
@@ -33,7 +34,7 @@
     HoverData3D,
     PhaseData,
   } from './types'
-  import { is_unary_entry } from './types'
+  import { HULL_STABILITY_TOL, is_unary_entry } from './types'
 
   // Binary convex hull rendered as energy vs composition (x in [0, 1])
   let {
@@ -241,40 +242,6 @@
     return coords
   }
 
-  // Lower hull and above-hull distances --------------------------------------
-  type HullVertex = { x: number; y: number }
-
-  function compute_lower_hull(points: HullVertex[]): HullVertex[] {
-    // Andrew's monotone chain for lower hull
-    const sorted = [...points].sort((p1, p2) => (p1.x - p2.x) || (p1.y - p2.y))
-    const lower: HullVertex[] = []
-    const cross = (o: HullVertex, a: HullVertex, b: HullVertex) =>
-      (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
-    for (const p of sorted) {
-      while (
-        lower.length >= 2 &&
-        cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
-      ) lower.pop()
-      lower.push(p)
-    }
-    return lower
-  }
-
-  function interpolate_on_hull(hull: HullVertex[], x: number): number | null {
-    if (hull.length < 2) return null
-    if (x <= hull[0].x) return hull[0].y
-    if (x >= hull[hull.length - 1].x) return hull[hull.length - 1].y
-    for (let i = 0; i < hull.length - 1; i++) {
-      const p1 = hull[i]
-      const p2 = hull[i + 1]
-      if (x >= p1.x && x <= p2.x) {
-        const t = (x - p1.x) / Math.max(1e-12, p2.x - p1.x)
-        return p1.y * (1 - t) + p2.y * t
-      }
-    }
-    return null
-  }
-
   const coords_entries = $derived.by(() => {
     if (elements.length !== 2) return []
     try {
@@ -291,28 +258,28 @@
       return { all_enriched_entries: [], hull_points: [] }
     }
 
-    // Build lower hull: group by x, use lowest energy per x
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local var in derived
-    const by_x = new Map<number, ConvexHullEntry[]>()
+    // Build lower hull input: one minimum-energy point per composition x.
+    const min_y_by_x = new SvelteMap<number, number>()
     for (const entry of coords_entries) {
-      const group = by_x.get(entry.x)
-      if (group) group.push(entry)
-      else by_x.set(entry.x, [entry])
+      const current_min_y = min_y_by_x.get(entry.x)
+      if (current_min_y === undefined || entry.y < current_min_y) {
+        min_y_by_x.set(entry.x, entry.y)
+      }
     }
 
-    const hull_input: HullVertex[] = [...by_x].map(([x_coord, entries]) => ({
+    const hull_input = [...min_y_by_x].map(([x_coord, min_y]) => ({
       x: x_coord,
-      y: Math.min(...entries.map((e) => e.y)),
+      y: min_y,
     }))
-    const hull_points = compute_lower_hull(hull_input)
+    const hull_points = thermo.compute_lower_hull_2d(hull_input)
 
     const all_enriched_entries = coords_entries.map((entry) => {
-      const y_hull = interpolate_on_hull(hull_points, entry.x)
+      const y_hull = thermo.interpolate_hull_2d(hull_points, entry.x)
       const e_above_hull = y_hull == null ? 0 : Math.max(0, entry.y - y_hull)
       return {
         ...entry,
         e_above_hull,
-        is_stable: e_above_hull <= 1e-9,
+        is_stable: e_above_hull <= HULL_STABILITY_TOL,
         visible: true,
       }
     })

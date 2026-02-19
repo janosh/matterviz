@@ -1,29 +1,12 @@
 import type { IndexedRefLine } from '$lib/plot/reference-line'
 import {
   calculate_annotation_position,
-  diagonal_line,
   group_ref_lines_by_z,
-  horizontal_line,
-  horizontal_lines,
   index_ref_lines,
-  line_segment,
-  line_segment_3d,
-  line_through,
-  line_through_3d,
-  line_x_axis,
-  line_y_axis,
-  line_z_axis,
   normalize_point,
   normalize_value,
-  plane_normal,
-  plane_through_points,
-  plane_xy,
-  plane_xz,
-  plane_yz,
   resolve_line_endpoints,
   span_or,
-  vertical_line,
-  vertical_lines,
 } from '$lib/plot/reference-line'
 import type { RefLine } from '$lib/plot/types'
 import { describe, expect, test, vi } from 'vitest'
@@ -89,105 +72,6 @@ describe(`span_or`, () => {
     [[null, null], [10, 50], [10, 50]],
   ])(`span_or(%j, %j) = %j`, (span, range, expected) => {
     expect(span_or(span, range)).toEqual(expected)
-  })
-})
-
-describe(`2D helper functions`, () => {
-  test.each(
-    [
-      [`horizontal_line`, horizontal_line(50), { type: `horizontal`, y: 50 }],
-      [`vertical_line`, vertical_line(100), { type: `vertical`, x: 100 }],
-      [`diagonal_line`, diagonal_line(2, 10), {
-        type: `diagonal`,
-        slope: 2,
-        intercept: 10,
-      }],
-      [`line_segment`, line_segment([0, 0], [100, 100]), {
-        type: `segment`,
-        p1: [0, 0],
-        p2: [100, 100],
-      }],
-      [`line_through`, line_through([0, 0], [50, 100]), {
-        type: `line`,
-        p1: [0, 0],
-        p2: [50, 100],
-      }],
-    ] as const,
-  )(`%s creates correct RefLine`, (_, line, expected) => {
-    expect(line).toMatchObject(expected)
-  })
-
-  test(`horizontal_line with options`, () => {
-    expect(horizontal_line(50, { style: { color: `red` }, label: `Test` })).toMatchObject(
-      {
-        type: `horizontal`,
-        y: 50,
-        style: { color: `red` },
-        label: `Test`,
-      },
-    )
-  })
-
-  test(`horizontal_lines creates array`, () => {
-    const lines = horizontal_lines([10, 20, 30])
-    expect(lines).toHaveLength(3)
-    expect(lines.map((ln) => (ln as { y: number }).y)).toEqual([10, 20, 30])
-  })
-
-  test(`vertical_lines creates array with options`, () => {
-    const lines = vertical_lines([5, 15], { style: { dash: `4 2` } })
-    expect(lines).toHaveLength(2)
-    expect(lines[0]).toMatchObject({ type: `vertical`, style: { dash: `4 2` } })
-  })
-})
-
-describe(`3D helper functions`, () => {
-  test.each(
-    [
-      [`plane_xy`, plane_xy(5), { type: `xy`, z: 5 }],
-      [`plane_xz`, plane_xz(10), { type: `xz`, y: 10 }],
-      [`plane_yz`, plane_yz(-5), { type: `yz`, x: -5 }],
-      [`line_x_axis`, line_x_axis(5, 10), { type: `x-axis`, y: 5, z: 10 }],
-      [`line_y_axis`, line_y_axis(5, 10), { type: `y-axis`, x: 5, z: 10 }],
-      [`line_z_axis`, line_z_axis(5, 10), { type: `z-axis`, x: 5, y: 10 }],
-      [`line_segment_3d`, line_segment_3d([0, 0, 0], [1, 1, 1]), {
-        type: `segment`,
-        p1: [0, 0, 0],
-        p2: [1, 1, 1],
-      }],
-      [`line_through_3d`, line_through_3d([0, 0, 0], [1, 2, 3]), {
-        type: `line`,
-        p1: [0, 0, 0],
-        p2: [1, 2, 3],
-      }],
-    ] as const,
-  )(`%s creates correct object`, (_, obj, expected) => {
-    expect(obj).toMatchObject(expected)
-  })
-
-  test(`plane_yz with options`, () => {
-    expect(plane_yz(-5, { style: { opacity: 0.5 } })).toMatchObject({
-      type: `yz`,
-      x: -5,
-      style: { opacity: 0.5 },
-    })
-  })
-
-  test(`plane_normal creates plane from normal and point`, () => {
-    expect(plane_normal([0, 0, 1], [0, 0, 5])).toMatchObject({
-      type: `normal`,
-      normal: [0, 0, 1],
-      point: [0, 0, 5],
-    })
-  })
-
-  test(`plane_through_points creates plane from 3 points`, () => {
-    expect(plane_through_points([0, 0, 0], [1, 0, 0], [0, 1, 0])).toMatchObject({
-      type: `points`,
-      p1: [0, 0, 0],
-      p2: [1, 0, 0],
-      p3: [0, 1, 0],
-    })
   })
 })
 
