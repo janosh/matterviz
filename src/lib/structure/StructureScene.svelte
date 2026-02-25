@@ -72,6 +72,7 @@
     atom_radius = DEFAULTS.structure.atom_radius,
     same_size_atoms = false,
     camera_position = DEFAULTS.structure.camera_position,
+    camera_target = undefined,
     camera_projection = DEFAULTS.structure.camera_projection,
     rotation_damping = DEFAULTS.structure.rotation_damping,
     max_zoom = DEFAULTS.structure.max_zoom,
@@ -153,6 +154,7 @@
     same_size_atoms?: boolean // whether to use the same radius for all atoms. if not, the radius will be
     // determined by the atomic radius of the element
     camera_position?: [x: number, y: number, z: number] // initial camera position from which to render the scene
+    camera_target?: Vec3 // external orbit-controls target for pan synchronization
     camera_projection?: CameraProjection // camera projection type
     rotation_damping?: number // rotation damping factor (how quickly the rotation comes to rest after mouse release)
     // zoom level of the camera
@@ -726,7 +728,7 @@
     zoomToCursor: zoom_to_cursor,
     enablePan: pan_speed > 0,
     panSpeed: pan_speed,
-    target: rotation_target,
+    target: camera_target ?? rotation_target,
     maxZoom: max_zoom,
     minZoom: min_zoom,
     autoRotate: Boolean(auto_rotate),

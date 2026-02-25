@@ -51,6 +51,7 @@ describe(`parse_chgcar`, () => {
     expect(result?.volumes).toHaveLength(1)
     expect(result?.volumes[0].grid_dims).toEqual([2, 2, 2])
     expect(result?.volumes[0].label).toBe(`charge density`)
+    expect(result?.volumes[0].data_order).toBe(`x_fastest`)
     expect(result?.volumes[0].lattice[0][0]).toBeCloseTo(5.43)
     expect(result?.volumes[0].origin).toEqual([0, 0, 0])
     expect(result?.volumes[0].periodic).toBe(true) // VASP grids are periodic
@@ -63,6 +64,23 @@ describe(`parse_chgcar`, () => {
     const cell_volume = result?.structure.lattice?.volume ?? 1
     expect(grid?.[0][0][0]).toBeCloseTo(1.0 / cell_volume, 5)
     expect(grid?.[1][1][1]).toBeCloseTo(8.0 / cell_volume, 5)
+  })
+
+  test(`maps CHGCAR flattened data using x-fastest order`, () => {
+    const result = parse_chgcar(make_chgcar({
+      grid_dims: `2   3   2`,
+      data: `1 2 3 4 5 6 7 8 9 10 11 12`,
+    }))
+    expect(result).not.toBeNull()
+    const grid = result?.volumes[0].grid
+    const cell_volume = result?.structure.lattice?.volume ?? 1
+
+    expect(grid?.[0][0][0]).toBeCloseTo(1 / cell_volume, 8)
+    expect(grid?.[1][0][0]).toBeCloseTo(2 / cell_volume, 8)
+    expect(grid?.[0][1][0]).toBeCloseTo(3 / cell_volume, 8)
+    expect(grid?.[1][1][0]).toBeCloseTo(4 / cell_volume, 8)
+    expect(grid?.[0][0][1]).toBeCloseTo(7 / cell_volume, 8)
+    expect(grid?.[1][2][1]).toBeCloseTo(12 / cell_volume, 8)
   })
 
   test(`handles scale factor != 1.0`, () => {
@@ -219,6 +237,26 @@ describe(`parse_chgcar`, () => {
     expect(grid?.[1][1][1]).toBeCloseTo(8.0 / cell_vol, 5)
   })
 
+  test(`maps non-cubic CHGCAR volumetric data with VASP x-fastest ordering`, () => {
+    const result = parse_chgcar(make_chgcar({
+      counts: `1`,
+      positions: [`0.0  0.0  0.0`],
+      grid_dims: `2   3   2`,
+      // Values generated in VASP order: for z, then y, then x -> 100*x + 10*y + z + 5.
+      // Sequence:
+      // z=0: 5,105, 15,115, 25,125
+      // z=1: 6,106, 16,116, 26,126
+      data: `5 105 15 115 25 125 6 106 16 116 26 126`,
+    }))
+    expect(result).not.toBeNull()
+    const grid = result?.volumes[0].grid
+    const cell_vol = result?.structure.lattice?.volume ?? 1
+    expect(grid?.[0][0][0]).toBeCloseTo(5 / cell_vol, 5)
+    expect(grid?.[1][0][0]).toBeCloseTo(105 / cell_vol, 5)
+    expect(grid?.[0][2][1]).toBeCloseTo(26 / cell_vol, 5)
+    expect(grid?.[1][2][1]).toBeCloseTo(126 / cell_vol, 5)
+  })
+
   test(`non-orthogonal lattice produces correct lattice params`, () => {
     const result = parse_chgcar(make_chgcar({
       lattice: [
@@ -286,6 +324,7 @@ describe(`parse_cube`, () => {
     expect(result?.structure.sites).toHaveLength(2)
     expect(result?.volumes).toHaveLength(1)
     expect(result?.volumes[0].label).toBe(`volumetric data`)
+    expect(result?.volumes[0].data_order).toBe(`z_fastest`)
     // Grid dimensions
     expect(result?.volumes[0].grid_dims).toEqual([2, 2, 2])
     expect(result?.volumes[0].grid.length).toBe(2)

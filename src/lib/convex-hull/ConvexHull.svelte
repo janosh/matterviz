@@ -74,8 +74,8 @@
   const element_count = $derived(elements.length)
 
   // Resolve hull face opacity: use caller's value if provided,
-  // otherwise pick the right default for the dimensionality (ternary=30%, quaternary=3%)
-  // Writable $derived handles forward sync (prop→local), back-sync $effect handles local→prop
+  // otherwise pick the right default for the dimensionality (ternary=30%, quaternary=3%).
+  // Use writable derived so child bind updates can sync back to parent.
   const default_opacity = $derived(
     element_count === 4
       ? DEFAULTS.convex_hull.quaternary.hull_face_opacity

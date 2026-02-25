@@ -1,10 +1,10 @@
 <script lang="ts">
-  import SettingsSection from '$lib/layout/SettingsSection.svelte'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import {
     export_trajectory_video,
     get_ffmpeg_conversion_command,
   } from '$lib/io/export'
+  import SettingsSection from '$lib/layout/SettingsSection.svelte'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { TrajectoryType } from '$lib/trajectory'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -296,8 +296,9 @@
 <style>
   .field-label {
     display: flex;
-    flex-direction: column;
-    gap: 2pt;
+    align-items: center;
+    gap: 6pt;
+    white-space: nowrap;
   }
   .warning, .error-message {
     padding: 1ex;
@@ -329,13 +330,16 @@
     color: var(--text-color-muted);
   }
   .resolution-buttons {
-    display: flex;
-    gap: 6pt;
-    margin: 4pt;
+    display: inline-flex;
+    gap: 3pt;
+    margin: 0;
+    margin-left: auto;
+    white-space: nowrap;
   }
   .resolution-buttons button {
-    flex: 1;
-    padding: 1pt 4pt;
+    flex: 0 0 auto;
+    min-width: 2.8em;
+    padding: 1pt 3pt;
     border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
     background: var(--btn-bg, rgba(255, 255, 255, 0.1));
     color: var(--text-color);

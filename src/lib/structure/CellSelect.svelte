@@ -41,6 +41,10 @@
     primitive: `Primitive cell (smallest repeating unit)`,
     conventional: `Conventional cell (standardized representation)`,
   }
+  const hair_space = `\u200A`
+
+  const format_supercell_label = (supercell_value: string): string =>
+    supercell_value.replaceAll(`x`, `${hair_space}x${hair_space}`)
 
   function apply_preset(preset: string) {
     supercell_scaling = preset
@@ -53,6 +57,21 @@
       supercell_scaling = input_value
       menu_open = false
     }
+  }
+
+  function handle_focus_out(event: FocusEvent) {
+    const next_target = event.relatedTarget
+    const current_target = event.currentTarget
+    if (
+      !(current_target instanceof Node) ||
+      !(next_target instanceof Node) ||
+      !current_target.contains(next_target)
+    ) menu_open = false
+  }
+
+  function handle_key_down(event: KeyboardEvent, submit_on_enter: boolean = false) {
+    if (event.key === `Escape`) menu_open = false
+    if (submit_on_enter && event.key === `Enter`) handle_input_submit()
   }
 
   // Sync input value when external prop changes
@@ -70,10 +89,12 @@
   onmouseenter={() => (menu_open = true)}
   onmouseleave={() => (menu_open = false)}
   onfocusin={() => (menu_open = true)}
+  onfocusout={handle_focus_out}
 >
   <button
     type="button"
     onclick={() => (menu_open = !menu_open)}
+    onkeydown={handle_key_down}
     class="toggle-btn"
     class:active={menu_open}
     aria-expanded={menu_open}
@@ -84,7 +105,9 @@
         style="--spinner-border-width: 2px; --spinner-size: 1em; --spinner-margin: 0; display: inline-block; vertical-align: middle"
       />
     {:else}
-      {cell_type !== `original` ? `${cell_labels[cell_type]} ` : ``}{supercell_scaling}
+      {cell_type !== `original` ? `${cell_labels[cell_type]} ` : ``}{
+        format_supercell_label(supercell_scaling)
+      }
     {/if}
   </button>
 
@@ -125,7 +148,7 @@
             class:selected={supercell_scaling === preset}
             onclick={() => apply_preset(preset)}
           >
-            {preset}
+            {format_supercell_label(preset)}
           </button>
         {/each}
       </div>
@@ -137,7 +160,7 @@
           bind:value={input_value}
           placeholder="e.g. 2x2x2"
           class:invalid={!input_valid}
-          onkeydown={(event) => event.key === `Enter` && handle_input_submit()}
+          onkeydown={(event) => handle_key_down(event, true)}
         />
         <button
           class="apply-btn"
@@ -156,26 +179,45 @@
   .cell-select {
     position: relative;
     font-size: var(--struct-legend-font, clamp(9pt, 3.5cqmin, 12pt));
+    --cell-select-accent: var(--accent-color, light-dark(#2563eb, #60a5fa));
+    --cell-select-surface: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
+    --cell-select-border: var(
+      --border-color,
+      light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.25))
+    );
   }
   .toggle-btn {
     padding: var(--struct-legend-padding, 0 4pt);
     line-height: var(--struct-legend-line-height, 1.3);
     vertical-align: middle;
+    color: var(--text-color);
+    background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius, 3pt);
+    transition: background 0.15s ease;
+  }
+  @media (hover: hover) {
+    .toggle-btn:hover {
+      background: var(
+        --btn-bg-hover,
+        light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
+      );
+    }
   }
   .dropdown {
     position: absolute;
     top: 100%;
     right: 0;
     margin-top: 2px;
-    background: var(--surface-bg, #222);
-    padding: 5px;
+    background: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
+    padding: 6px;
     border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 5px;
     z-index: 100;
-    min-width: 95px;
+    min-width: 118px;
   }
   /* Invisible bridge to prevent menu closing when moving mouse from toggle to dropdown */
   .dropdown::before {
@@ -204,26 +246,41 @@
   /* Cell type row - compact buttons with minimal padding */
   .cell-type-row {
     display: flex;
-    gap: 1px;
+    gap: 3px;
     padding-bottom: 3px;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+    border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
   }
   .cell-type-btn {
     flex: 1;
-    padding: 1px 0;
+    padding: 2px 6px;
     font-size: 0.9em;
+    color: var(--text-color);
+    background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
+    border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
     transition: background 0.15s ease;
     white-space: nowrap;
   }
   @media (hover: hover) {
     .cell-type-btn:hover:not(.disabled) {
-      background: rgba(255, 255, 255, 0.15);
+      background: var(
+        --btn-bg-hover,
+        light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
+      );
     }
   }
   .cell-type-btn.selected {
-    background: rgba(0, 255, 255, 0.4);
-    border-color: rgba(0, 255, 255, 0.5);
+    color: var(--cell-select-accent);
+    background: color-mix(
+      in srgb,
+      var(--cell-select-accent) 18%,
+      var(--cell-select-surface)
+    );
+    border-color: color-mix(
+      in srgb,
+      var(--cell-select-accent) 45%,
+      var(--cell-select-border)
+    );
   }
   .cell-type-btn.disabled {
     opacity: 0.4;
@@ -239,16 +296,31 @@
   .preset-btn {
     padding: 2px 4px;
     font-size: 0.9em;
+    color: var(--text-color);
+    background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
+    border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
   }
   @media (hover: hover) {
     .preset-btn:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: var(
+        --btn-bg-hover,
+        light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
+      );
     }
   }
   .preset-btn.selected {
-    border-color: rgba(0, 255, 255, 0.5);
-    background: rgba(0, 255, 255, 0.4);
+    color: var(--cell-select-accent);
+    background: color-mix(
+      in srgb,
+      var(--cell-select-accent) 18%,
+      var(--cell-select-surface)
+    );
+    border-color: color-mix(
+      in srgb,
+      var(--cell-select-accent) 45%,
+      var(--cell-select-border)
+    );
   }
 
   /* Custom input row */
@@ -258,10 +330,10 @@
     gap: 4px;
   }
   .custom-input-row input {
-    max-width: 50px;
-    padding: 2px 4px;
-    margin-inline: 6px 0;
-    font-size: 0.9em;
+    max-width: 60px;
+    min-height: 0;
+    padding: 1px 4px;
+    font-size: 0.85em;
   }
   .custom-input-row input.invalid {
     border-color: rgba(255, 100, 100, 0.6);

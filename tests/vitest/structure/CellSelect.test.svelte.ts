@@ -22,6 +22,9 @@ type CellSelectProps = {
   align?: `left` | `right`
 }
 
+const normalize_supercell_label = (label: string | undefined): string | undefined =>
+  label?.replaceAll(`\u200A`, ``).trim()
+
 // Helper to mount component and open dropdown.
 async function mount_and_open(props: CellSelectProps): Promise<void> {
   mount(CellSelect, { target: document.body, props })
@@ -48,7 +51,9 @@ describe(`CellSelect`, () => {
           target: document.body,
           props: { supercell_scaling: scaling, cell_type },
         })
-        expect(doc_query(`.toggle-btn`).textContent?.trim()).toBe(expected)
+        expect(normalize_supercell_label(doc_query(`.toggle-btn`).textContent)).toBe(
+          expected,
+        )
       },
     )
 
@@ -212,13 +217,17 @@ describe(`CellSelect`, () => {
       await mount_and_open({ supercell_scaling: `1x1x1` })
       const buttons = document.querySelectorAll(`.preset-btn`)
       expect(buttons).toHaveLength(6)
-      expect(Array.from(buttons).map((btn) => btn.textContent?.trim())).toEqual(presets)
+      expect(
+        Array.from(buttons).map((button_elem) =>
+          normalize_supercell_label(button_elem.textContent)
+        ),
+      ).toEqual(presets)
     })
 
     test.each(presets)(`marks %s as selected when active`, async (preset) => {
       await mount_and_open({ supercell_scaling: preset })
       const selected = document.querySelector(`.preset-btn.selected`)
-      expect(selected?.textContent?.trim()).toBe(preset)
+      expect(normalize_supercell_label(selected?.textContent)).toBe(preset)
       expect(document.querySelectorAll(`.preset-btn.selected`)).toHaveLength(1)
     })
 
@@ -234,7 +243,9 @@ describe(`CellSelect`, () => {
       })
 
       const btn = Array.from(document.querySelectorAll<HTMLButtonElement>(`.preset-btn`))
-        .find((btn) => btn.textContent?.trim() === `2x2x2`)
+        .find((button_elem) =>
+          normalize_supercell_label(button_elem.textContent) === `2x2x2`
+        )
       expect(btn).toBeTruthy()
       btn?.click()
       await tick()
@@ -371,15 +382,15 @@ describe(`CellSelect`, () => {
       })
 
       const toggle = doc_query<HTMLButtonElement>(`.toggle-btn`)
-      expect(toggle.textContent?.trim()).toBe(`1x1x1`)
+      expect(normalize_supercell_label(toggle.textContent)).toBe(`1x1x1`)
 
       scaling = `2x2x2`
       await tick()
-      expect(toggle.textContent?.trim()).toBe(`2x2x2`)
+      expect(normalize_supercell_label(toggle.textContent)).toBe(`2x2x2`)
 
       cell_type = `primitive`
       await tick()
-      expect(toggle.textContent?.trim()).toBe(`Prim 2x2x2`)
+      expect(normalize_supercell_label(toggle.textContent)).toBe(`Prim 2x2x2`)
     })
   })
 
