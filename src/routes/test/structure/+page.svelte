@@ -258,7 +258,6 @@
   on_file_load={create_event_handler(`on_file_load`)}
   on_error={create_event_handler(`on_error`)}
   on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
-  on_camera_move={create_event_handler(`on_camera_move`)}
   on_camera_reset={create_event_handler(`on_camera_reset`)}
   bind:selected_sites
   bind:measured_sites

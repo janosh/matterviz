@@ -8,6 +8,7 @@
   import { sample_hkl_slice } from '$lib/isosurface/slice'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
+  import { calc_lattice_params } from '$lib/math'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import { ColorBar } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
@@ -18,7 +19,7 @@
     DEFAULT_ISOSURFACE_SETTINGS,
     Structure,
   } from 'matterviz'
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
 
   let structure = $state<AnyStructure | undefined>()
   let volumetric_data = $state<VolumetricData[] | undefined>()
@@ -31,6 +32,22 @@
   let error_msg = $state<string | undefined>()
   let parse_time_ms = $state<number | undefined>()
   let dragover_hint = $state(false)
+  let parse_source = $state<`volumetric` | `structure` | undefined>()
+  let parsed_file_type = $state<string | undefined>()
+
+  // Reference-comparison mode state
+  let show_comparison_mode = $state(false)
+  let uploaded_reference_image_url = $state<string | undefined>()
+  let reference_image_url = $state(``)
+  let reference_overlay_opacity = $state(0.45)
+  let reference_overlay_enabled = $state(true)
+  // Shared scene props keep both viewers camera-synced in comparison mode.
+  let synced_scene_props = $state<{ camera_position: Vec3; camera_target?: Vec3 }>({
+    camera_position: [0, 0, 0],
+  })
+
+  // Provenance/debug panel state
+  let show_debug_panel = $state(false)
 
   // HKL slice view state
   let miller_indices = $state<Vec3>([0, 0, 1]) // default (001) = z-plane
@@ -41,6 +58,70 @@
 
   // Use precomputed data_range from the active volume
   let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
+  let active_volume = $derived(volumetric_data?.[active_volume_idx])
+  let active_lattice_params = $derived.by(() =>
+    active_volume?.lattice ? calc_lattice_params(active_volume.lattice) : undefined
+  )
+  let reference_image_src = $derived.by(() => {
+    if (uploaded_reference_image_url) return uploaded_reference_image_url
+    const trimmed_url = reference_image_url.trim()
+    return trimmed_url || undefined
+  })
+
+  function infer_file_type(filename: string): string {
+    const normalized = filename.toLowerCase().replace(/\.(gz|bz2|xz|zst)$/, ``)
+    if (normalized.endsWith(`.cube`)) return `.cube`
+    if (normalized.includes(`chgcar`)) return `CHGCAR`
+    if (normalized.includes(`elfcar`)) return `ELFCAR`
+    if (normalized.includes(`locpot`)) return `LOCPOT`
+    if (normalized.includes(`aeccar`)) return `AECCAR`
+    return `unknown`
+  }
+
+  function decode_content(content: string | ArrayBuffer): string {
+    return content instanceof ArrayBuffer
+      ? new TextDecoder().decode(content)
+      : content
+  }
+
+  function reset_loaded_content() {
+    structure = undefined
+    volumetric_data = undefined
+    active_volume_idx = 0
+    synced_scene_props = { camera_position: [0, 0, 0], camera_target: undefined }
+  }
+
+  function reset_parse_metadata() {
+    parse_time_ms = undefined
+    parse_source = undefined
+    parsed_file_type = undefined
+  }
+
+  function parse_and_apply(text: string, filename: string) {
+    const detected_file_type = infer_file_type(filename)
+    const vol_result = parse_volumetric_file(text, filename)
+    if (vol_result) {
+      structure = vol_result.structure as AnyStructure
+      volumetric_data = vol_result.volumes
+      active_volume_idx = 0
+      parse_source = `volumetric`
+      parsed_file_type = detected_file_type
+      const vol = vol_result.volumes[0]
+      if (vol) isosurface_settings = auto_isosurface_settings(vol.data_range)
+      return
+    }
+
+    const parsed = parse_any_structure(text, filename)
+    if (parsed) {
+      structure = parsed
+      volumetric_data = undefined
+      parse_source = `structure`
+      parsed_file_type = detected_file_type
+      return
+    }
+
+    error_msg = `Failed to parse ${filename}`
+  }
 
   function update_url() {
     if (!browser || !active_file) return
@@ -67,36 +148,13 @@
     active_file = name
     loading = true
     error_msg = undefined
-    parse_time_ms = undefined
-    structure = undefined
-    volumetric_data = undefined
+    reset_parse_metadata()
+    reset_loaded_content()
 
     try {
       const parse_start = performance.now()
       await load_from_url(url, (content, filename) => {
-        const text = content instanceof ArrayBuffer
-          ? new TextDecoder().decode(content)
-          : content
-
-        const vol_result = parse_volumetric_file(text, filename)
-        if (vol_result) {
-          structure = vol_result.structure as AnyStructure
-          volumetric_data = vol_result.volumes
-          active_volume_idx = 0
-          // Auto-set reasonable isovalue based on precomputed data range
-          const vol = vol_result.volumes[0]
-          if (vol) {
-            isosurface_settings = auto_isosurface_settings(vol.data_range)
-          }
-        } else {
-          // Fall back to regular structure parsing
-          const parsed = parse_any_structure(text, filename)
-          if (parsed) {
-            structure = parsed
-          } else {
-            error_msg = `Failed to parse ${filename}`
-          }
-        }
+        parse_and_apply(decode_content(content), filename)
       })
       parse_time_ms = Math.round(performance.now() - parse_start)
     } catch (err) {
@@ -220,6 +278,54 @@
       })
     }
   })
+
+  function handle_reference_image_upload(event: Event) {
+    const input_elem = event.target as HTMLInputElement
+    const file = input_elem.files?.[0]
+    if (!file) return
+    if (uploaded_reference_image_url) {
+      URL.revokeObjectURL(uploaded_reference_image_url)
+    }
+    uploaded_reference_image_url = URL.createObjectURL(file)
+    reference_image_url = ``
+  }
+
+  function handle_dropped_file(content: string | ArrayBuffer, filename: string) {
+    active_file = filename
+    error_msg = undefined
+    reset_parse_metadata()
+    reset_loaded_content()
+    const parse_start = performance.now()
+    const text = decode_content(content)
+    parse_and_apply(text, filename)
+    parse_time_ms = Math.round(performance.now() - parse_start)
+  }
+
+  const is_valid_vec3 = (vector?: Vec3): vector is Vec3 =>
+    Array.isArray(vector) && vector.every((coord) => Number.isFinite(coord))
+
+  function sync_camera_state(
+    data: { camera_position?: Vec3; camera_target?: Vec3 },
+    clear_target_if_missing: boolean,
+  ) {
+    if (!is_valid_vec3(data.camera_position)) return
+    const next_camera_target = is_valid_vec3(data.camera_target)
+      ? [...data.camera_target] as Vec3
+      : clear_target_if_missing
+      ? undefined
+      : synced_scene_props.camera_target
+    synced_scene_props = {
+      ...synced_scene_props,
+      camera_position: [...data.camera_position] as Vec3,
+      camera_target: next_camera_target,
+    }
+  }
+
+  onDestroy(() => {
+    if (uploaded_reference_image_url) {
+      URL.revokeObjectURL(uploaded_reference_image_url)
+    }
+  })
 </script>
 
 <svelte:head>
@@ -248,8 +354,50 @@
   {/each}
 </nav>
 
+<section class="compare-toolbar">
+  <label>
+    <input type="checkbox" bind:checked={show_comparison_mode} />
+    Compare mode
+  </label>
+  <span class="toolbar-divider" aria-hidden="true"></span>
+  <div class="ref-controls">
+    <span class="group-label">Reference overlay</span>
+    <label>
+      Ref URL
+      <input
+        type="url"
+        placeholder="https://.../vesta.png"
+        bind:value={reference_image_url}
+      />
+    </label>
+    <label>
+      Upload ref
+      <input type="file" accept="image/*" onchange={handle_reference_image_upload} />
+    </label>
+    <label>
+      <input type="checkbox" bind:checked={reference_overlay_enabled} />
+      Overlay
+    </label>
+    <label>
+      Opacity
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        bind:value={reference_overlay_opacity}
+      />
+      <span>{format_num(reference_overlay_opacity, `.2f`)}</span>
+    </label>
+  </div>
+  <label>
+    <input type="checkbox" bind:checked={show_debug_panel} />
+    Debug panel
+  </label>
+</section>
+
 <div
-  class="viewer-container"
+  class={`viewer-container ${show_comparison_mode ? `bleed-1400` : ``}`}
   class:dragover-hint={dragover_hint}
   role="region"
   aria-label="Isosurface viewer - drop volumetric files here"
@@ -269,24 +417,68 @@
   ondrop={() => (dragover_hint = false)}
 >
   <DragOverlay visible={dragover_hint} message="Drop CHGCAR, ELFCAR, LOCPOT, or .cube" />
-  <Structure
-    bind:structure
-    bind:volumetric_data
-    bind:isosurface_settings
-    bind:active_volume_idx
-    bind:loading
-    bind:error_msg
-    show_controls="always"
-    on_file_load={(data) => {
-      active_file = data.filename
-    }}
-  >
-    {#if active_file}
-      <p class="filename-label">
-        {active_file.replace(/\.gz$/, ``)}
-      </p>
+  <div class="viewer-grid" class:compare-mode={show_comparison_mode}>
+    <div class="viewer-pane">
+      <Structure
+        bind:structure
+        bind:volumetric_data
+        bind:isosurface_settings
+        bind:active_volume_idx
+        bind:loading
+        bind:error_msg
+        bind:scene_props={synced_scene_props}
+        show_controls="always"
+        on_file_drop={handle_dropped_file}
+        on_camera_move={(data) => sync_camera_state(data, false)}
+        on_camera_reset={(data) => sync_camera_state(data, true)}
+        on_file_load={(data) => {
+          active_file = data.filename
+          reset_parse_metadata()
+        }}
+      >
+        {#if active_file}
+          <p class="filename-label">
+            {active_file.replace(/\.gz$/, ``)}
+          </p>
+        {/if}
+      </Structure>
+      {#if reference_overlay_enabled && reference_image_src}
+        <img
+          class="reference-overlay"
+          src={reference_image_src}
+          alt="Reference isosurface overlay view"
+          style:opacity={reference_overlay_opacity}
+        />
+      {/if}
+    </div>
+    {#if show_comparison_mode}
+      <div class="viewer-pane comparison-pane">
+        <Structure
+          bind:structure
+          bind:volumetric_data
+          bind:isosurface_settings
+          bind:active_volume_idx
+          bind:loading
+          bind:error_msg
+          bind:scene_props={synced_scene_props}
+          show_controls="never"
+          on_camera_move={(data) => sync_camera_state(data, false)}
+          on_camera_reset={(data) => sync_camera_state(data, true)}
+          enable_info_pane={false}
+          enable_measure_mode={false}
+          allow_file_drop={false}
+        />
+        {#if reference_overlay_enabled && reference_image_src}
+          <img
+            class="reference-overlay"
+            src={reference_image_src}
+            alt="Reference isosurface view"
+            style:opacity={reference_overlay_opacity}
+          />
+        {/if}
+      </div>
     {/if}
-  </Structure>
+  </div>
 </div>
 
 {#if error_msg}
@@ -294,7 +486,7 @@
 {/if}
 
 {#if data_range && volumetric_data}
-  {@const vol = volumetric_data[active_volume_idx]}
+  {@const vol = active_volume}
   <div class="stats-bar">
     {#if vol}
       <span title="Grid dimensions">Grid: {vol.grid_dims.join(` × `)}</span>
@@ -309,6 +501,70 @@
       <span title="Parse + decompress time">Parse: {parse_time_ms} ms</span>
     {/if}
   </div>
+{/if}
+
+{#if show_debug_panel}
+  <section class="debug-panel">
+    <h2>Volumetric Debug Panel</h2>
+    <div class="debug-grid">
+      <span>File</span>
+      <code>{active_file ?? `-`}</code>
+      <span>Type</span>
+      <code>{parsed_file_type ?? `-`}</code>
+      <span>Parse source</span>
+      <code>{parse_source ?? `-`}</code>
+      <span>Volume block</span>
+      <code>{
+        volumetric_data
+        ? `${active_volume_idx + 1} / ${volumetric_data.length}`
+        : `-`
+      }</code>
+      <span>Data ordering</span>
+      <code>{active_volume?.data_order ?? `-`}</code>
+      <span>Periodic</span>
+      <code>{active_volume ? String(active_volume.periodic) : `-`}</code>
+      <span>Grid dims</span>
+      <code>{active_volume ? active_volume.grid_dims.join(` × `) : `-`}</code>
+      <span>Isovalue</span>
+      <code>{format_num(isosurface_settings.isovalue, `.4~g`)}</code>
+      <span>Data min/max/mean</span>
+      <code>
+        {
+          active_volume
+          ? `${format_num(active_volume.data_range.min, `.3~g`)} / ${
+            format_num(active_volume.data_range.max, `.3~g`)
+          } / ${format_num(active_volume.data_range.mean, `.3~g`)}`
+          : `-`
+        }
+      </code>
+      <span>Lattice params</span>
+      <code>
+        {
+          active_lattice_params
+          ? `a=${format_num(active_lattice_params.a, `.3~g`)}, b=${
+            format_num(active_lattice_params.b, `.3~g`)
+          }, c=${format_num(active_lattice_params.c, `.3~g`)}, α=${
+            format_num(active_lattice_params.alpha, `.3~g`)
+          }, β=${format_num(active_lattice_params.beta, `.3~g`)}, γ=${
+            format_num(active_lattice_params.gamma, `.3~g`)
+          }`
+          : `-`
+        }
+      </code>
+      <span>Lattice matrix</span>
+      <code>
+        {
+          active_volume
+          ? active_volume.lattice
+            .map((row) =>
+              `[${row.map((val) => format_num(val, `.3~g`)).join(`, `)}]`
+            )
+            .join(` `)
+          : `-`
+        }
+      </code>
+    </div>
+  </section>
 {/if}
 
 {#if volumetric_data?.[active_volume_idx]}
@@ -424,9 +680,73 @@
   }
   .viewer-container {
     position: relative;
+    min-height: 500px;
+  }
+  .viewer-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.7em;
     height: 500px;
+    &.compare-mode {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  .viewer-pane {
+    position: relative;
+    height: 100%;
     :global(.matterviz-structure) {
       height: 100%;
+    }
+  }
+  .comparison-pane {
+    border: 1px dashed var(--border-color, #ccc);
+    border-radius: 6px;
+  }
+  .reference-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .compare-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em 1em;
+    margin: 0.5em 0 0.8em;
+    padding: 0.5em;
+    background: var(--surface-bg, #f5f5f5);
+    border-radius: 6px;
+    align-items: center;
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4em;
+      font-size: 0.85em;
+      input[type='url'] {
+        min-width: 220px;
+      }
+    }
+  }
+  .toolbar-divider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border-color, #ccc);
+    opacity: 0.6;
+  }
+  .ref-controls {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em 1em;
+    padding: 0.2em 0.6em;
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 5px;
+    .group-label {
+      font-size: 0.8em;
+      opacity: 0.8;
     }
   }
   .filename-label {
@@ -508,6 +828,31 @@
       padding: 0;
       list-style: none;
       font-size: 0.9rem;
+    }
+  }
+  .debug-panel {
+    margin-top: 0.8em;
+    padding: 0.7em;
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 6px;
+    h2 {
+      margin: 0 0 0.5em;
+      font-size: 0.95rem;
+    }
+  }
+  .debug-grid {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0.2em 0.8em;
+    align-items: start;
+    span {
+      font-size: 0.8em;
+      opacity: 0.75;
+      white-space: nowrap;
+    }
+    code {
+      font-size: 0.8em;
+      overflow-wrap: anywhere;
     }
   }
 </style>

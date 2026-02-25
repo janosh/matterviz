@@ -1413,8 +1413,11 @@
   .info-section {
     display: flex;
     align-items: center;
-    gap: clamp(6pt, 1cqw, 1.5ex);
+    gap: clamp(3pt, 0.6cqw, 1ex);
     position: relative;
+  }
+  .info-section :global(:is(.trajectory-info-toggle, .trajectory-export-toggle)) {
+    font-size: clamp(1rem, 2.2cqw, 1.1rem);
   }
   .play-button {
     min-width: clamp(32px, 4cqw, 36px);
