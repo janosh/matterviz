@@ -153,9 +153,10 @@ def write_chgcar(
     for block_fn, aug_text in all_blocks:
         lines.append(f"   {nx}   {ny}   {nz}")
         values = []
-        for ix in range(nx):
+        # VASP volumetric ordering: x varies fastest, then y, then z.
+        for iz in range(nz):
             for iy in range(ny):
-                for iz in range(nz):
+                for ix in range(nx):
                     fx, fy, fz = ix / nx, iy / ny, iz / nz
                     # Convert fractional to Cartesian
                     x = fx * lattice[0][0] + fy * lattice[1][0] + fz * lattice[2][0]
