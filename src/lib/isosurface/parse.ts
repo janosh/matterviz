@@ -116,12 +116,12 @@ function build_grid(
   ny: number,
   nz: number,
   divisor: number = 1,
+  data_order: `x_fastest` | `z_fastest` = `z_fastest`,
 ): { grid: number[][][]; data_range: DataRange } {
   const grid: number[][][] = new Array(nx)
   let min_val = Infinity
   let max_val = -Infinity
   let sum = 0
-  const ny_nz = ny * nz
   const total = nx * ny * nz
   const data_len = Math.min(data.length, total)
 
@@ -135,22 +135,47 @@ function build_grid(
     return { grid, data_range: { min: 0, max: 0, abs_max: 0, mean: 0 } }
   }
 
-  for (let ix = 0; ix < nx; ix++) {
-    const plane: number[][] = new Array(ny)
-    for (let iy = 0; iy < ny; iy++) {
-      const row = new Array<number>(nz).fill(0)
-      const base = ix * ny_nz + iy * nz
-      const row_end = Math.min(base + nz, data_len)
-      for (let flat_idx = base; flat_idx < row_end; flat_idx++) {
-        const val = data[flat_idx] / divisor
-        row[flat_idx - base] = val
-        if (val < min_val) min_val = val
-        if (val > max_val) max_val = val
-        sum += val
+  if (data_order === `z_fastest`) {
+    // .cube convention: z varies fastest, then y, then x.
+    const ny_nz = ny * nz
+    for (let ix = 0; ix < nx; ix++) {
+      const plane: number[][] = new Array(ny)
+      for (let iy = 0; iy < ny; iy++) {
+        const row = new Array<number>(nz).fill(0)
+        const base = ix * ny_nz + iy * nz
+        const row_end = Math.min(base + nz, data_len)
+        for (let flat_idx = base; flat_idx < row_end; flat_idx++) {
+          const val = data[flat_idx] / divisor
+          row[flat_idx - base] = val
+          if (val < min_val) min_val = val
+          if (val > max_val) max_val = val
+          sum += val
+        }
+        plane[iy] = row
       }
-      plane[iy] = row
+      grid[ix] = plane
     }
-    grid[ix] = plane
+  } else {
+    // VASP CHGCAR/ELFCAR/LOCPOT convention: x varies fastest, then y, then z.
+    for (let ix = 0; ix < nx; ix++) {
+      const plane: number[][] = new Array(ny)
+      for (let iy = 0; iy < ny; iy++) plane[iy] = new Array(nz).fill(0)
+      grid[ix] = plane
+    }
+    let flat_idx = 0
+    for (let iz = 0; iz < nz; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          if (flat_idx >= data_len) continue
+          const val = data[flat_idx] / divisor
+          grid[ix][iy][iz] = val
+          if (val < min_val) min_val = val
+          if (val > max_val) max_val = val
+          sum += val
+          flat_idx++
+        }
+      }
+    }
   }
 
   const abs_max = Math.max(Math.abs(min_val), Math.abs(max_val))
@@ -356,6 +381,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
       ngy,
       ngz,
       divisor,
+      `x_fastest`,
     )
 
     volumes.push({
@@ -364,6 +390,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
       lattice,
       origin: [0, 0, 0],
       data_range,
+      data_order: `x_fastest`,
       periodic: true, // VASP grids span [0,1) with N points, wrapping at boundaries
       label: volume_labels[vol_idx],
     })
@@ -556,6 +583,7 @@ export function parse_cube(
     lattice,
     origin,
     data_range,
+    data_order: `z_fastest`,
     periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
     label: `volumetric data`,
   }]

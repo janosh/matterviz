@@ -17,6 +17,9 @@ export interface VolumetricData {
   lattice: Matrix3x3 // real-space lattice vectors (rows are a, b, c)
   origin: Vec3 // grid origin in Cartesian coordinates
   data_range: DataRange // precomputed min/max/mean statistics
+  // Linearization order of values in the source file.
+  // VASP files are x-fastest; Gaussian .cube is z-fastest.
+  data_order?: `x_fastest` | `z_fastest`
   // Whether the grid has periodic boundary conditions (affects coordinate scaling).
   // Periodic grids (CHGCAR) span [0,1) with spacing 1/N; non-periodic (.cube molecular)
   // span [0,1] with spacing 1/(N-1).

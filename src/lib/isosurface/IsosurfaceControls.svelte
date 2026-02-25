@@ -210,14 +210,26 @@
       </label>
       <label {@attach tooltip({ content: `Color for the positive isovalue surface` })}>
         <span>+ Color</span>
-        <input type="color" bind:value={settings.positive_color} />
+        <input
+          type="color"
+          value={settings.positive_color}
+          onchange={(event) => {
+            settings.positive_color = (event.target as HTMLInputElement).value
+          }}
+        />
       </label>
       {#if settings.show_negative}
         <label
           {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}
         >
           <span>&minus; Color</span>
-          <input type="color" bind:value={settings.negative_color} />
+          <input
+            type="color"
+            value={settings.negative_color}
+            onchange={(event) => {
+              settings.negative_color = (event.target as HTMLInputElement).value
+            }}
+          />
         </label>
       {/if}
     </div>

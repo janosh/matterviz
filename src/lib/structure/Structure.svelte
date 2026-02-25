@@ -688,7 +688,13 @@
         // Debounce camera move events to avoid excessive emissions
         if (camera_move_timeout) clearTimeout(camera_move_timeout)
         camera_move_timeout = setTimeout(() => {
-          const { camera_position } = scene_props
+          // Use the live camera position from OrbitControls interactions.
+          // scene_props.camera_position is only the initial/reset position.
+          const camera_position: Vec3 | undefined = camera
+            ? [camera.position.x, camera.position.y, camera.position.z]
+            : scene_props.camera_position
+          if (camera_position === undefined) return
+          scene_props.camera_position = camera_position
           on_camera_move?.({ structure, camera_has_moved, camera_position })
         }, 200)
       }
