@@ -189,15 +189,8 @@ function build_grid(
   }
 
   const abs_max = Math.max(Math.abs(min_val), Math.abs(max_val))
-  return {
-    grid,
-    data_range: {
-      min: min_val,
-      max: max_val,
-      abs_max,
-      mean: sum / data_len,
-    },
-  }
+  const data_range = { min: min_val, max: max_val, abs_max, mean: sum / data_len }
+  return { grid, data_range }
 }
 
 // === CHGCAR Parser ===
@@ -585,6 +578,7 @@ export function parse_cube(
     nx: n_grid[0],
     ny: n_grid[1],
     nz: n_grid[2],
+    data_order: `z_fastest`,
   })
 
   const volumes: VolumetricData[] = [{

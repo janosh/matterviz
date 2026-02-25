@@ -246,6 +246,10 @@
 {/if}
 
 <style>
+  :global(.hover-visible:has(.draggable-pane.pane-open)) {
+    opacity: 1;
+    pointer-events: auto;
+  }
   button.pane-toggle {
     box-sizing: border-box;
     display: flex;

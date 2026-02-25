@@ -92,6 +92,11 @@
   .wyckoff-table {
     margin-top: 1em;
   }
+  .wyckoff-table :is(th, td) {
+    padding: 2px 6px;
+    text-align: center;
+    vertical-align: middle;
+  }
   .wyckoff-row {
     cursor: pointer;
     transition: background-color 0.2s ease;

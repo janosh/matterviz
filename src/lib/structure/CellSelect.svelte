@@ -59,6 +59,21 @@
     }
   }
 
+  function handle_focus_out(event: FocusEvent) {
+    const next_target = event.relatedTarget
+    const current_target = event.currentTarget
+    if (
+      !(current_target instanceof Node) ||
+      !(next_target instanceof Node) ||
+      !current_target.contains(next_target)
+    ) menu_open = false
+  }
+
+  function handle_key_down(event: KeyboardEvent, submit_on_enter: boolean = false) {
+    if (event.key === `Escape`) menu_open = false
+    if (submit_on_enter && event.key === `Enter`) handle_input_submit()
+  }
+
   // Sync input value when external prop changes
   $effect(() => {
     if (!menu_open && supercell_scaling && supercell_scaling !== input_value) {
@@ -74,10 +89,12 @@
   onmouseenter={() => (menu_open = true)}
   onmouseleave={() => (menu_open = false)}
   onfocusin={() => (menu_open = true)}
+  onfocusout={handle_focus_out}
 >
   <button
     type="button"
-    onclick={() => (menu_open = true)}
+    onclick={() => (menu_open = !menu_open)}
+    onkeydown={handle_key_down}
     class="toggle-btn"
     class:active={menu_open}
     aria-expanded={menu_open}
@@ -143,7 +160,7 @@
           bind:value={input_value}
           placeholder="e.g. 2x2x2"
           class:invalid={!input_valid}
-          onkeydown={(event) => event.key === `Enter` && handle_input_submit()}
+          onkeydown={(event) => handle_key_down(event, true)}
         />
         <button
           class="apply-btn"
