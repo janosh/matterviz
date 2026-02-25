@@ -51,7 +51,11 @@
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
-  let scene_props = $state(structuredClone(DEFAULTS.structure))
+  let scene_props = $state(
+    structuredClone(DEFAULTS.structure) as typeof DEFAULTS.structure & {
+      camera_target?: Vec3
+    },
+  )
   let lattice_props = $state({
     cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
@@ -657,7 +661,6 @@
   >(undefined)
   let rotation_target_ref = $state<Vec3 | undefined>(undefined)
   let initial_computed_zoom = $state<number | undefined>(undefined)
-  let camera_move_timeout: ReturnType<typeof setTimeout> | null = $state(null)
 
   // Mutual exclusion: opening one pane closes others
   $effect(() => {
@@ -680,38 +683,63 @@
   $effect(() => {
     if (structure) camera_has_moved = false
   })
-  // Set camera_has_moved to true when camera starts moving
-  $effect(() =>
-    untrack(() => {
-      if (camera_is_moving) {
-        camera_has_moved = true
-        // Debounce camera move events to avoid excessive emissions
-        if (camera_move_timeout) clearTimeout(camera_move_timeout)
-        camera_move_timeout = setTimeout(() => {
-          // Use the live camera position from OrbitControls interactions.
-          // scene_props.camera_position is only the initial/reset position.
-          const camera_position: Vec3 | undefined = camera
-            ? [camera.position.x, camera.position.y, camera.position.z]
-            : scene_props.camera_position
-          if (camera_position === undefined) return
-          scene_props.camera_position = camera_position
-          on_camera_move?.({ structure, camera_has_moved, camera_position })
-        }, 200)
-      }
-    })
-  )
+
+  const read_orbit_target = (): Vec3 | undefined => {
+    if (!orbit_controls?.target) return
+    return [
+      orbit_controls.target.x,
+      orbit_controls.target.y,
+      orbit_controls.target.z,
+    ]
+  }
+
+  const read_camera_position = (): Vec3 | undefined =>
+    camera
+      ? [camera.position.x, camera.position.y, camera.position.z]
+      : scene_props.camera_position
+
+  // Emit debounced camera updates while controls are active.
+  $effect(() => {
+    if (!camera_is_moving) return
+    camera_has_moved = true
+
+    const emit_camera_move = () => {
+      const camera_position = read_camera_position()
+      if (camera_position === undefined) return
+      const camera_target = read_orbit_target()
+      scene_props.camera_position = camera_position
+      scene_props.camera_target = camera_target
+      on_camera_move?.({
+        structure,
+        camera_has_moved,
+        camera_position,
+        camera_target,
+      })
+    }
+
+    emit_camera_move()
+    const emit_interval = setInterval(emit_camera_move, 200)
+    return () => clearInterval(emit_interval)
+  })
 
   function reset_camera() {
-    // Reset camera position to trigger automatic positioning
+    // Reset camera position to trigger automatic positioning.
     scene_props.camera_position = [0, 0, 0]
+    scene_props.camera_target = rotation_target_ref
     camera_has_moved = false
 
-    // Manually reset zoom and pan using the exposed initial values
+    let camera_position: Vec3 = [0, 0, 0]
+    let camera_target: Vec3 | undefined = rotation_target_ref
+
+    // Reset pan/zoom and ensure controls target returns to structure center.
     if (orbit_controls && camera) {
-      // Reset the target to the structure center (pan reset)
+      if (
+        `reset` in orbit_controls &&
+        typeof orbit_controls.reset === `function`
+      ) orbit_controls.reset()
       if (orbit_controls.target && rotation_target_ref) {
-        const [x, y, z] = rotation_target_ref
-        orbit_controls.target.set(x, y, z)
+        const [target_x, target_y, target_z] = rotation_target_ref
+        orbit_controls.target.set(target_x, target_y, target_z)
       }
 
       // Reset zoom for orthographic camera
@@ -722,12 +750,14 @@
       }
 
       // Call update to apply changes immediately
-      if (typeof orbit_controls.update === `function`) {
-        orbit_controls.update()
-      }
+      if (typeof orbit_controls.update === `function`) orbit_controls.update()
+      camera_position = read_camera_position() ?? camera_position
+      camera_target = read_orbit_target()
     }
 
-    on_camera_reset?.({ structure, camera_has_moved, camera_position: [0, 0, 0] })
+    scene_props.camera_position = camera_position
+    scene_props.camera_target = camera_target
+    on_camera_reset?.({ structure, camera_has_moved, camera_position, camera_target })
   }
 
   const emit_file_load_event = (

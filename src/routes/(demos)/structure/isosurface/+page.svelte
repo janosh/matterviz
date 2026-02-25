@@ -7,8 +7,8 @@
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { sample_hkl_slice } from '$lib/isosurface/slice'
   import { format_num } from '$lib/labels'
-  import { calc_lattice_params } from '$lib/math'
   import type { Vec3 } from '$lib/math'
+  import { calc_lattice_params } from '$lib/math'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import { ColorBar } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
@@ -42,7 +42,7 @@
   let reference_overlay_opacity = $state(0.45)
   let reference_overlay_enabled = $state(true)
   // Shared scene props keep both viewers camera-synced in comparison mode.
-  let synced_scene_props = $state<{ camera_position: Vec3 }>({
+  let synced_scene_props = $state<{ camera_position: Vec3; camera_target?: Vec3 }>({
     camera_position: [0, 0, 0],
   })
 
@@ -88,6 +88,7 @@
     structure = undefined
     volumetric_data = undefined
     active_volume_idx = 0
+    synced_scene_props = { camera_position: [0, 0, 0], camera_target: undefined }
   }
 
   function reset_parse_metadata() {
@@ -300,12 +301,24 @@
     parse_time_ms = Math.round(performance.now() - parse_start)
   }
 
-  function handle_camera_move(data: { camera_position?: Vec3 }) {
-    const camera_position = data.camera_position
-    if (
-      !camera_position || camera_position.some((val) => !isFinite(val))
-    ) return
-    synced_scene_props.camera_position = [...camera_position] as Vec3
+  const is_valid_vec3 = (vector?: Vec3): vector is Vec3 =>
+    Array.isArray(vector) && vector.every((coord) => Number.isFinite(coord))
+
+  function sync_camera_state(
+    data: { camera_position?: Vec3; camera_target?: Vec3 },
+    clear_target_if_missing: boolean,
+  ) {
+    if (!is_valid_vec3(data.camera_position)) return
+    const next_camera_target = is_valid_vec3(data.camera_target)
+      ? [...data.camera_target] as Vec3
+      : clear_target_if_missing
+      ? undefined
+      : synced_scene_props.camera_target
+    synced_scene_props = {
+      ...synced_scene_props,
+      camera_position: [...data.camera_position] as Vec3,
+      camera_target: next_camera_target,
+    }
   }
 
   onDestroy(() => {
@@ -384,7 +397,7 @@
 </section>
 
 <div
-  class="viewer-container"
+  class={`viewer-container ${show_comparison_mode ? `bleed-1400` : ``}`}
   class:dragover-hint={dragover_hint}
   role="region"
   aria-label="Isosurface viewer - drop volumetric files here"
@@ -416,7 +429,8 @@
         bind:scene_props={synced_scene_props}
         show_controls="always"
         on_file_drop={handle_dropped_file}
-        on_camera_move={handle_camera_move}
+        on_camera_move={(data) => sync_camera_state(data, false)}
+        on_camera_reset={(data) => sync_camera_state(data, true)}
         on_file_load={(data) => {
           active_file = data.filename
           reset_parse_metadata()
@@ -448,7 +462,8 @@
           bind:error_msg
           bind:scene_props={synced_scene_props}
           show_controls="never"
-          on_camera_move={handle_camera_move}
+          on_camera_move={(data) => sync_camera_state(data, false)}
+          on_camera_reset={(data) => sync_camera_state(data, true)}
           enable_info_pane={false}
           enable_measure_mode={false}
           allow_file_drop={false}
