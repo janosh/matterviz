@@ -162,6 +162,12 @@
   .cell-select {
     position: relative;
     font-size: var(--struct-legend-font, clamp(9pt, 3.5cqmin, 12pt));
+    --cell-select-accent: var(--accent-color, light-dark(#2563eb, #60a5fa));
+    --cell-select-surface: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
+    --cell-select-border: var(
+      --border-color,
+      light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.25))
+    );
   }
   .toggle-btn {
     padding: var(--struct-legend-padding, 0 4pt);
@@ -247,9 +253,17 @@
     }
   }
   .cell-type-btn.selected {
-    color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 18%, var(--surface-bg));
-    border-color: color-mix(in srgb, var(--accent-color) 45%, var(--border-color));
+    color: var(--cell-select-accent);
+    background: color-mix(
+      in srgb,
+      var(--cell-select-accent) 18%,
+      var(--cell-select-surface)
+    );
+    border-color: color-mix(
+      in srgb,
+      var(--cell-select-accent) 45%,
+      var(--cell-select-border)
+    );
   }
   .cell-type-btn.disabled {
     opacity: 0.4;
@@ -279,9 +293,17 @@
     }
   }
   .preset-btn.selected {
-    color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 18%, var(--surface-bg));
-    border-color: color-mix(in srgb, var(--accent-color) 45%, var(--border-color));
+    color: var(--cell-select-accent);
+    background: color-mix(
+      in srgb,
+      var(--cell-select-accent) 18%,
+      var(--cell-select-surface)
+    );
+    border-color: color-mix(
+      in srgb,
+      var(--cell-select-accent) 45%,
+      var(--cell-select-border)
+    );
   }
 
   /* Custom input row */

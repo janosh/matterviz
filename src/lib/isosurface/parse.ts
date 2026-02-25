@@ -167,10 +167,14 @@ function build_grid(
       grid[ix] = plane
     }
     let flat_idx = 0
+    let data_exhausted = false
     for (let iz = 0; iz < nz; iz++) {
       for (let iy = 0; iy < ny; iy++) {
         for (let ix = 0; ix < nx; ix++) {
-          if (flat_idx >= data_len) continue
+          if (flat_idx >= data_len) {
+            data_exhausted = true
+            break
+          }
           const val = data[flat_idx] / divisor
           grid[ix][iy][iz] = val
           if (val < min_val) min_val = val
@@ -178,7 +182,9 @@ function build_grid(
           sum += val
           flat_idx++
         }
+        if (data_exhausted) break
       }
+      if (data_exhausted) break
     }
   }
 
