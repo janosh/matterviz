@@ -47,7 +47,7 @@
   })
 
   // Provenance/debug panel state
-  let show_debug_panel = $state(true)
+  let show_debug_panel = $state(false)
 
   // HKL slice view state
   let miller_indices = $state<Vec3>([0, 0, 1]) // default (001) = z-plane
@@ -346,33 +346,37 @@
     <input type="checkbox" bind:checked={show_comparison_mode} />
     Compare mode
   </label>
-  <label>
-    Ref URL
-    <input
-      type="url"
-      placeholder="https://.../vesta.png"
-      bind:value={reference_image_url}
-    />
-  </label>
-  <label>
-    Upload ref
-    <input type="file" accept="image/*" onchange={handle_reference_image_upload} />
-  </label>
-  <label>
-    <input type="checkbox" bind:checked={reference_overlay_enabled} />
-    Overlay
-  </label>
-  <label>
-    Opacity
-    <input
-      type="range"
-      min={0}
-      max={1}
-      step={0.01}
-      bind:value={reference_overlay_opacity}
-    />
-    <span>{format_num(reference_overlay_opacity, `.2f`)}</span>
-  </label>
+  <span class="toolbar-divider" aria-hidden="true"></span>
+  <div class="ref-controls">
+    <span class="group-label">Reference overlay</span>
+    <label>
+      Ref URL
+      <input
+        type="url"
+        placeholder="https://.../vesta.png"
+        bind:value={reference_image_url}
+      />
+    </label>
+    <label>
+      Upload ref
+      <input type="file" accept="image/*" onchange={handle_reference_image_upload} />
+    </label>
+    <label>
+      <input type="checkbox" bind:checked={reference_overlay_enabled} />
+      Overlay
+    </label>
+    <label>
+      Opacity
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        bind:value={reference_overlay_opacity}
+      />
+      <span>{format_num(reference_overlay_opacity, `.2f`)}</span>
+    </label>
+  </div>
   <label>
     <input type="checkbox" bind:checked={show_debug_panel} />
     Debug panel
@@ -709,6 +713,25 @@
       input[type='url'] {
         min-width: 220px;
       }
+    }
+  }
+  .toolbar-divider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border-color, #ccc);
+    opacity: 0.6;
+  }
+  .ref-controls {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em 1em;
+    padding: 0.2em 0.6em;
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 5px;
+    .group-label {
+      font-size: 0.8em;
+      opacity: 0.8;
     }
   }
   .filename-label {

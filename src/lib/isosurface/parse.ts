@@ -110,13 +110,17 @@ function read_lines(
 }
 
 // Build 3D grid directly from Float64Array, computing data_range in the same pass.
+type BuildGridOptions = {
+  data: Float64Array
+  nx: number
+  ny: number
+  nz: number
+  divisor?: number
+  data_order?: `x_fastest` | `z_fastest`
+}
+
 function build_grid(
-  data: Float64Array,
-  nx: number,
-  ny: number,
-  nz: number,
-  divisor: number = 1,
-  data_order: `x_fastest` | `z_fastest` = `z_fastest`,
+  { data, nx, ny, nz, divisor = 1, data_order = `z_fastest` }: BuildGridOptions,
 ): { grid: number[][][]; data_range: DataRange } {
   const grid: number[][][] = new Array(nx)
   let min_val = Infinity
@@ -375,14 +379,14 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
     // Use Math.abs to guard against negative determinant (left-handed lattice).
     const cell_volume = Math.abs(lattice_params.volume)
     const divisor = cell_volume > 1e-30 ? cell_volume : 1
-    const { grid, data_range } = build_grid(
-      data.subarray(0, parsed_count),
-      ngx,
-      ngy,
-      ngz,
+    const { grid, data_range } = build_grid({
+      data: data.subarray(0, parsed_count),
+      nx: ngx,
+      ny: ngy,
+      nz: ngz,
       divisor,
-      `x_fastest`,
-    )
+      data_order: `x_fastest`,
+    })
 
     volumes.push({
       grid,
@@ -570,12 +574,12 @@ export function parse_cube(
     }
   }
 
-  const { grid, data_range } = build_grid(
-    data.subarray(0, parsed_count),
-    n_grid[0],
-    n_grid[1],
-    n_grid[2],
-  )
+  const { grid, data_range } = build_grid({
+    data: data.subarray(0, parsed_count),
+    nx: n_grid[0],
+    ny: n_grid[1],
+    nz: n_grid[2],
+  })
 
   const volumes: VolumetricData[] = [{
     grid,

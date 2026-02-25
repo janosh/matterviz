@@ -137,22 +137,18 @@ textarea {
 
 /* Theme-aware form controls (works consistently in notebooks and VSCode/Cursor webviews) */
 :is(
-  input:not([type='checkbox']):not([type='radio']):not([type='range']):not(
-    [type='color']
-  ),
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
   textarea,
   select
 ) {
   background-color: var(--surface-bg);
   color: var(--text-color);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--border-radius);
   padding: 6px 8px;
 }
 :is(
-  input:not([type='checkbox']):not([type='radio']):not([type='range']):not(
-    [type='color']
-  ),
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
   textarea,
   select
 ):focus {

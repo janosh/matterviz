@@ -66,6 +66,23 @@ describe(`parse_chgcar`, () => {
     expect(grid?.[1][1][1]).toBeCloseTo(8.0 / cell_volume, 5)
   })
 
+  test(`maps CHGCAR flattened data using x-fastest order`, () => {
+    const result = parse_chgcar(make_chgcar({
+      grid_dims: `2   3   2`,
+      data: `1 2 3 4 5 6 7 8 9 10 11 12`,
+    }))
+    expect(result).not.toBeNull()
+    const grid = result?.volumes[0].grid
+    const cell_volume = result?.structure.lattice?.volume ?? 1
+
+    expect(grid?.[0][0][0]).toBeCloseTo(1 / cell_volume, 8)
+    expect(grid?.[1][0][0]).toBeCloseTo(2 / cell_volume, 8)
+    expect(grid?.[0][1][0]).toBeCloseTo(3 / cell_volume, 8)
+    expect(grid?.[1][1][0]).toBeCloseTo(4 / cell_volume, 8)
+    expect(grid?.[0][0][1]).toBeCloseTo(7 / cell_volume, 8)
+    expect(grid?.[1][2][1]).toBeCloseTo(12 / cell_volume, 8)
+  })
+
   test(`handles scale factor != 1.0`, () => {
     const result = parse_chgcar(make_chgcar({
       scale: `2.0`,

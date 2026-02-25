@@ -41,6 +41,10 @@
     primitive: `Primitive cell (smallest repeating unit)`,
     conventional: `Conventional cell (standardized representation)`,
   }
+  const hair_space = `\u200A`
+
+  const format_supercell_label = (supercell_value: string): string =>
+    supercell_value.replaceAll(`x`, `${hair_space}x${hair_space}`)
 
   function apply_preset(preset: string) {
     supercell_scaling = preset
@@ -84,7 +88,9 @@
         style="--spinner-border-width: 2px; --spinner-size: 1em; --spinner-margin: 0; display: inline-block; vertical-align: middle"
       />
     {:else}
-      {cell_type !== `original` ? `${cell_labels[cell_type]} ` : ``}{supercell_scaling}
+      {cell_type !== `original` ? `${cell_labels[cell_type]} ` : ``}{
+        format_supercell_label(supercell_scaling)
+      }
     {/if}
   </button>
 
@@ -125,7 +131,7 @@
             class:selected={supercell_scaling === preset}
             onclick={() => apply_preset(preset)}
           >
-            {preset}
+            {format_supercell_label(preset)}
           </button>
         {/each}
       </div>
@@ -162,14 +168,17 @@
     line-height: var(--struct-legend-line-height, 1.3);
     vertical-align: middle;
     color: var(--text-color);
-    background: var(--btn-bg);
+    background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
     transition: background 0.15s ease;
   }
   @media (hover: hover) {
     .toggle-btn:hover {
-      background: var(--btn-bg-hover);
+      background: var(
+        --btn-bg-hover,
+        light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
+      );
     }
   }
   .dropdown {
@@ -177,7 +186,7 @@
     top: 100%;
     right: 0;
     margin-top: 2px;
-    background: var(--surface-bg, #222);
+    background: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
     padding: 6px;
     border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -223,7 +232,7 @@
     padding: 2px 6px;
     font-size: 0.9em;
     color: var(--text-color);
-    background: var(--btn-bg);
+    background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
     transition: background 0.15s ease;
@@ -231,7 +240,10 @@
   }
   @media (hover: hover) {
     .cell-type-btn:hover:not(.disabled) {
-      background: var(--btn-bg-hover);
+      background: var(
+        --btn-bg-hover,
+        light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
+      );
     }
   }
   .cell-type-btn.selected {
@@ -254,13 +266,16 @@
     padding: 2px 4px;
     font-size: 0.9em;
     color: var(--text-color);
-    background: var(--btn-bg);
+    background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
   }
   @media (hover: hover) {
     .preset-btn:hover {
-      background: var(--btn-bg-hover);
+      background: var(
+        --btn-bg-hover,
+        light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15))
+      );
     }
   }
   .preset-btn.selected {
@@ -278,10 +293,7 @@
   .custom-input-row input {
     max-width: 60px;
     min-height: 0;
-    height: 0.75em;
-    line-height: 1;
-    padding: 0 4px;
-    margin-inline: 6px 0;
+    padding: 1px 4px;
     font-size: 0.85em;
   }
   .custom-input-row input.invalid {
