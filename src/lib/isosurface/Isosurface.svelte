@@ -123,14 +123,21 @@
     raf_id = requestAnimationFrame(() => {
       const old = active_geometries
       const entries: GeoEntry[] = []
+      // Render lower-isovalue (outer) shells earlier so per-layer back/front passes
+      // interleave back-to-front across shells and reduce transparency artefacts.
+      const layer_render_rank = new Map<number, number>(
+        layers
+          .map((layer, layer_idx) => ({ layer_idx, isovalue: layer.isovalue }))
+          .sort((layer_a, layer_b) => layer_a.isovalue - layer_b.isovalue)
+          .map(({ layer_idx }, rank) => [layer_idx, rank]),
+      )
 
       for (let layer_idx = 0; layer_idx < layers.length; layer_idx++) {
         const layer = layers[layer_idx]
         if (!layer.visible || layer.isovalue <= 0) continue
 
-        // Render order: inner shells (higher isovalue) first for correct transparency.
         // Each layer gets 4 slots (positive back/front + negative back/front).
-        const base_order = (layers.length - 1 - layer_idx) * 4
+        const base_order = (layer_render_rank.get(layer_idx) ?? layer_idx) * 4
 
         const pos_geo = extract_surface(layer.isovalue)
         if (pos_geo) {

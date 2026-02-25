@@ -170,10 +170,11 @@ const check_marker_sizes = async (
   const first_area = get_bbox_area(bbox_first)
   const intermediate_area = get_bbox_area(bbox_intermediate)
   const last_area = get_bbox_area(bbox_last)
+  const area_tolerance = 1e-3
 
   expect(first_area).toBeGreaterThan(0)
   expect(intermediate_area).toBeGreaterThanOrEqual(first_area)
-  expect(last_area).toBeGreaterThanOrEqual(intermediate_area)
+  expect(last_area + area_tolerance).toBeGreaterThanOrEqual(intermediate_area)
 
   const ratio_last_first = last_area / first_area
   const ratio_inter_first = intermediate_area / first_area

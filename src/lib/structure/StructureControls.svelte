@@ -187,6 +187,14 @@
   }}
   {...rest}
 >
+  {#if volumetric_data?.length && isosurface_settings}
+    <IsosurfaceControls
+      bind:settings={isosurface_settings}
+      volumes={volumetric_data}
+      bind:active_volume_idx
+    />
+  {/if}
+
   <SettingsSection
     title="Visibility"
     current_values={{
@@ -959,14 +967,6 @@
         />
       </label>
     </SettingsSection>
-  {/if}
-
-  {#if volumetric_data?.length && isosurface_settings}
-    <IsosurfaceControls
-      bind:settings={isosurface_settings}
-      volumes={volumetric_data}
-      bind:active_volume_idx
-    />
   {/if}
 </DraggablePane>
 

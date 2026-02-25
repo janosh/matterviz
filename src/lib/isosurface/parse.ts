@@ -110,18 +110,22 @@ function read_lines(
 }
 
 // Build 3D grid directly from Float64Array, computing data_range in the same pass.
+type BuildGridOptions = {
+  data: Float64Array
+  nx: number
+  ny: number
+  nz: number
+  divisor?: number
+  data_order?: `x_fastest` | `z_fastest`
+}
+
 function build_grid(
-  data: Float64Array,
-  nx: number,
-  ny: number,
-  nz: number,
-  divisor: number = 1,
+  { data, nx, ny, nz, divisor = 1, data_order = `z_fastest` }: BuildGridOptions,
 ): { grid: number[][][]; data_range: DataRange } {
   const grid: number[][][] = new Array(nx)
   let min_val = Infinity
   let max_val = -Infinity
   let sum = 0
-  const ny_nz = ny * nz
   const total = nx * ny * nz
   const data_len = Math.min(data.length, total)
 
@@ -135,34 +139,58 @@ function build_grid(
     return { grid, data_range: { min: 0, max: 0, abs_max: 0, mean: 0 } }
   }
 
-  for (let ix = 0; ix < nx; ix++) {
-    const plane: number[][] = new Array(ny)
-    for (let iy = 0; iy < ny; iy++) {
-      const row = new Array<number>(nz).fill(0)
-      const base = ix * ny_nz + iy * nz
-      const row_end = Math.min(base + nz, data_len)
-      for (let flat_idx = base; flat_idx < row_end; flat_idx++) {
-        const val = data[flat_idx] / divisor
-        row[flat_idx - base] = val
-        if (val < min_val) min_val = val
-        if (val > max_val) max_val = val
-        sum += val
+  if (data_order === `z_fastest`) {
+    // .cube convention: z varies fastest, then y, then x.
+    const ny_nz = ny * nz
+    for (let ix = 0; ix < nx; ix++) {
+      const plane: number[][] = new Array(ny)
+      for (let iy = 0; iy < ny; iy++) {
+        const row = new Array<number>(nz).fill(0)
+        const base = ix * ny_nz + iy * nz
+        const row_end = Math.min(base + nz, data_len)
+        for (let flat_idx = base; flat_idx < row_end; flat_idx++) {
+          const val = data[flat_idx] / divisor
+          row[flat_idx - base] = val
+          if (val < min_val) min_val = val
+          if (val > max_val) max_val = val
+          sum += val
+        }
+        plane[iy] = row
       }
-      plane[iy] = row
+      grid[ix] = plane
     }
-    grid[ix] = plane
+  } else {
+    // VASP CHGCAR/ELFCAR/LOCPOT convention: x varies fastest, then y, then z.
+    for (let ix = 0; ix < nx; ix++) {
+      const plane: number[][] = new Array(ny)
+      for (let iy = 0; iy < ny; iy++) plane[iy] = new Array(nz).fill(0)
+      grid[ix] = plane
+    }
+    let flat_idx = 0
+    let data_exhausted = false
+    for (let iz = 0; iz < nz; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          if (flat_idx >= data_len) {
+            data_exhausted = true
+            break
+          }
+          const val = data[flat_idx] / divisor
+          grid[ix][iy][iz] = val
+          if (val < min_val) min_val = val
+          if (val > max_val) max_val = val
+          sum += val
+          flat_idx++
+        }
+        if (data_exhausted) break
+      }
+      if (data_exhausted) break
+    }
   }
 
   const abs_max = Math.max(Math.abs(min_val), Math.abs(max_val))
-  return {
-    grid,
-    data_range: {
-      min: min_val,
-      max: max_val,
-      abs_max,
-      mean: sum / data_len,
-    },
-  }
+  const data_range = { min: min_val, max: max_val, abs_max, mean: sum / data_len }
+  return { grid, data_range }
 }
 
 // === CHGCAR Parser ===
@@ -350,13 +378,14 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
     // Use Math.abs to guard against negative determinant (left-handed lattice).
     const cell_volume = Math.abs(lattice_params.volume)
     const divisor = cell_volume > 1e-30 ? cell_volume : 1
-    const { grid, data_range } = build_grid(
-      data.subarray(0, parsed_count),
-      ngx,
-      ngy,
-      ngz,
+    const { grid, data_range } = build_grid({
+      data: data.subarray(0, parsed_count),
+      nx: ngx,
+      ny: ngy,
+      nz: ngz,
       divisor,
-    )
+      data_order: `x_fastest`,
+    })
 
     volumes.push({
       grid,
@@ -364,6 +393,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
       lattice,
       origin: [0, 0, 0],
       data_range,
+      data_order: `x_fastest`,
       periodic: true, // VASP grids span [0,1) with N points, wrapping at boundaries
       label: volume_labels[vol_idx],
     })
@@ -543,12 +573,13 @@ export function parse_cube(
     }
   }
 
-  const { grid, data_range } = build_grid(
-    data.subarray(0, parsed_count),
-    n_grid[0],
-    n_grid[1],
-    n_grid[2],
-  )
+  const { grid, data_range } = build_grid({
+    data: data.subarray(0, parsed_count),
+    nx: n_grid[0],
+    ny: n_grid[1],
+    nz: n_grid[2],
+    data_order: `z_fastest`,
+  })
 
   const volumes: VolumetricData[] = [{
     grid,
@@ -556,6 +587,7 @@ export function parse_cube(
     lattice,
     origin,
     data_range,
+    data_order: `z_fastest`,
     periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
     label: `volumetric data`,
   }]
