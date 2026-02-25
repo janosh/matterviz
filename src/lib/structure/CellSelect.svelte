@@ -73,7 +73,7 @@
 >
   <button
     type="button"
-    onclick={() => (menu_open = !menu_open)}
+    onclick={() => (menu_open = true)}
     class="toggle-btn"
     class:active={menu_open}
     aria-expanded={menu_open}
@@ -161,6 +161,16 @@
     padding: var(--struct-legend-padding, 0 4pt);
     line-height: var(--struct-legend-line-height, 1.3);
     vertical-align: middle;
+    color: var(--text-color);
+    background: var(--btn-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius, 3pt);
+    transition: background 0.15s ease;
+  }
+  @media (hover: hover) {
+    .toggle-btn:hover {
+      background: var(--btn-bg-hover);
+    }
   }
   .dropdown {
     position: absolute;
@@ -168,14 +178,14 @@
     right: 0;
     margin-top: 2px;
     background: var(--surface-bg, #222);
-    padding: 5px;
+    padding: 6px;
     border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 5px;
     z-index: 100;
-    min-width: 95px;
+    min-width: 118px;
   }
   /* Invisible bridge to prevent menu closing when moving mouse from toggle to dropdown */
   .dropdown::before {
@@ -204,26 +214,30 @@
   /* Cell type row - compact buttons with minimal padding */
   .cell-type-row {
     display: flex;
-    gap: 1px;
+    gap: 3px;
     padding-bottom: 3px;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+    border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
   }
   .cell-type-btn {
     flex: 1;
-    padding: 1px 0;
+    padding: 2px 6px;
     font-size: 0.9em;
+    color: var(--text-color);
+    background: var(--btn-bg);
+    border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
     transition: background 0.15s ease;
     white-space: nowrap;
   }
   @media (hover: hover) {
     .cell-type-btn:hover:not(.disabled) {
-      background: rgba(255, 255, 255, 0.15);
+      background: var(--btn-bg-hover);
     }
   }
   .cell-type-btn.selected {
-    background: rgba(0, 255, 255, 0.4);
-    border-color: rgba(0, 255, 255, 0.5);
+    color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 18%, var(--surface-bg));
+    border-color: color-mix(in srgb, var(--accent-color) 45%, var(--border-color));
   }
   .cell-type-btn.disabled {
     opacity: 0.4;
@@ -239,16 +253,20 @@
   .preset-btn {
     padding: 2px 4px;
     font-size: 0.9em;
+    color: var(--text-color);
+    background: var(--btn-bg);
+    border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
   }
   @media (hover: hover) {
     .preset-btn:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: var(--btn-bg-hover);
     }
   }
   .preset-btn.selected {
-    border-color: rgba(0, 255, 255, 0.5);
-    background: rgba(0, 255, 255, 0.4);
+    color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 18%, var(--surface-bg));
+    border-color: color-mix(in srgb, var(--accent-color) 45%, var(--border-color));
   }
 
   /* Custom input row */
@@ -258,10 +276,13 @@
     gap: 4px;
   }
   .custom-input-row input {
-    max-width: 50px;
-    padding: 2px 4px;
+    max-width: 60px;
+    min-height: 0;
+    height: 0.75em;
+    line-height: 1;
+    padding: 0 4px;
     margin-inline: 6px 0;
-    font-size: 0.9em;
+    font-size: 0.85em;
   }
   .custom-input-row input.invalid {
     border-color: rgba(255, 100, 100, 0.6);

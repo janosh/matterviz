@@ -135,6 +135,39 @@ textarea {
   margin: 1em auto;
 }
 
+/* Theme-aware form controls (works consistently in notebooks and VSCode/Cursor webviews) */
+:is(
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not(
+    [type='color']
+  ),
+  textarea,
+  select
+) {
+  background-color: var(--surface-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+:is(
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not(
+    [type='color']
+  ),
+  textarea,
+  select
+):focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 25%, transparent);
+}
+:is(input, textarea)::placeholder {
+  color: var(--text-color-muted);
+}
+select option {
+  background-color: var(--surface-bg);
+  color: var(--text-color);
+}
+
 /* Modern flat input styling */
 input {
   border: none;
