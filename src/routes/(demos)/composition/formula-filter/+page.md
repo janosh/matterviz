@@ -15,6 +15,19 @@ An interactive search filter for chemical formulas. The search mode is automatic
     FormulaFilter,
     get_alphabetical_formula,
   } from 'matterviz/composition'
+  import { tooltip } from 'svelte-multiselect'
+
+  // Seed history so the dropdown is visible on focus
+  const history_key = `formula-filter-demo`
+  const has_local_storage_api = typeof localStorage !== `undefined` &&
+    typeof localStorage.getItem === `function` &&
+    typeof localStorage.setItem === `function`
+  if (has_local_storage_api && !localStorage.getItem(history_key)) {
+    localStorage.setItem(
+      history_key,
+      JSON.stringify([`Fe,O`, `Li-Fe-O`, `Fe2O3`, `Co,Ni`]),
+    )
+  }
 
   let value = $state(`Li,Fe`)
   let mode = $state(`elements`)

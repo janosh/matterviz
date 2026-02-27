@@ -64,9 +64,5 @@ export default defineConfig(({ mode }) => ({
   ssr: {
     external: [`matterviz-wasm`],
   },
-  build: {
-    rollupOptions: {
-      external: [`matterviz-wasm`],
-    },
-  },
+  build: {},
 }))

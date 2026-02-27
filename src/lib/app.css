@@ -33,18 +33,23 @@
 }
 body {
   background: var(--page-bg);
-  padding: 6vh 3vw;
+  padding: 5vh 3vw 3vh;
   font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   margin: auto;
   color: var(--text-color);
   line-height: 1.5;
+  /* Sticky footer: footer stays at bottom when content is short */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 main {
   margin: auto;
-  margin-bottom: 3em;
   width: 100%;
   max-width: var(--max-text-width);
   container-type: inline-size;
+  flex: 1; /* Grow to fill available space (sticky footer) */
 }
 a {
   color: var(--accent-color, cornflowerblue);
