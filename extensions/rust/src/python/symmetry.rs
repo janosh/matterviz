@@ -4,12 +4,14 @@ use nalgebra::{Matrix3, Vector3};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::structure::{SymmOp, spacegroup_to_crystal_system};
 
 use super::helpers::{StructureJson, parse_struct, structure_to_pydict};
 
 /// Get the space group number.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_spacegroup_number(structure: StructureJson, symprec: f64) -> PyResult<i32> {
@@ -20,6 +22,7 @@ fn get_spacegroup_number(structure: StructureJson, symprec: f64) -> PyResult<i32
 }
 
 /// Get the space group symbol.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_spacegroup_symbol(structure: StructureJson, symprec: f64) -> PyResult<String> {
@@ -30,6 +33,7 @@ fn get_spacegroup_symbol(structure: StructureJson, symprec: f64) -> PyResult<Str
 }
 
 /// Get the Hall number.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_hall_number(structure: StructureJson, symprec: f64) -> PyResult<i32> {
@@ -40,6 +44,7 @@ fn get_hall_number(structure: StructureJson, symprec: f64) -> PyResult<i32> {
 }
 
 /// Get the crystal system.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_crystal_system(structure: StructureJson, symprec: f64) -> PyResult<String> {
@@ -51,6 +56,7 @@ fn get_crystal_system(structure: StructureJson, symprec: f64) -> PyResult<String
 }
 
 /// Get the Pearson symbol.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_pearson_symbol(structure: StructureJson, symprec: f64) -> PyResult<String> {
@@ -61,6 +67,7 @@ fn get_pearson_symbol(structure: StructureJson, symprec: f64) -> PyResult<String
 }
 
 /// Get Wyckoff letters for all sites.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_wyckoff_letters(structure: StructureJson, symprec: f64) -> PyResult<Vec<String>> {
@@ -72,6 +79,7 @@ fn get_wyckoff_letters(structure: StructureJson, symprec: f64) -> PyResult<Vec<S
 }
 
 /// Get symmetry operations.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_symmetry_operations(
@@ -95,6 +103,7 @@ fn get_symmetry_operations(
 }
 
 /// Get equivalent sites.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_equivalent_sites(structure: StructureJson, symprec: f64) -> PyResult<Vec<usize>> {
@@ -105,6 +114,7 @@ fn get_equivalent_sites(structure: StructureJson, symprec: f64) -> PyResult<Vec<
 }
 
 /// Get the primitive cell.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_primitive(py: Python<'_>, structure: StructureJson, symprec: f64) -> PyResult<Py<PyDict>> {
@@ -116,6 +126,7 @@ fn get_primitive(py: Python<'_>, structure: StructureJson, symprec: f64) -> PyRe
 }
 
 /// Get the conventional cell.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_conventional(
@@ -131,6 +142,7 @@ fn get_conventional(
 }
 
 /// Get the full symmetry dataset.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, symprec = 0.01))]
 fn get_symmetry_dataset(
@@ -192,6 +204,7 @@ fn get_symmetry_dataset(
 }
 
 /// Apply a symmetry operation (rotation + translation) to a structure.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, rotation, translation, fractional = true))]
 fn apply_operation(
@@ -209,6 +222,7 @@ fn apply_operation(
 }
 
 /// Apply inversion through the origin.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, fractional = true))]
 fn apply_inversion(
@@ -222,6 +236,7 @@ fn apply_inversion(
 }
 
 /// Apply a translation to all sites.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, translation, fractional = true))]
 fn apply_translation(

@@ -35,6 +35,35 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
+  verify-stubs:
+    name: Verify Python stubs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: extensions/rust
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate stubs and check for drift
+        run: |
+          pip install ruff==0.14.14
+          python scripts/generate_stubs.py
+          ruff check --fix python/ferrox
+          ruff format python/ferrox
+          if ! git diff --exit-code python/ferrox; then
+            echo "::error::Python stubs are out of sync with Rust code!"
+            echo "Please run 'python scripts/generate_stubs.py' and commit the changes."
+            git diff python/ferrox
+            exit 1
+          fi
+          echo "Stubs are up to date!"
+
   python-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -131,7 +160,7 @@ jobs:
           fi
 
   build-wheels:
-    needs: [rust-tests, python-tests, wasm-tests, check-version]
+    needs: [rust-tests, python-tests, wasm-tests, verify-stubs, check-version]
     if: needs.check-version.outputs.should_publish_pypi == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -160,7 +189,7 @@ jobs:
           path: ${{ env.WORKING_DIR }}/dist
 
   build-sdist:
-    needs: [rust-tests, python-tests, wasm-tests, check-version]
+    needs: [rust-tests, python-tests, wasm-tests, verify-stubs, check-version]
     if: needs.check-version.outputs.should_publish_pypi == 'true'
     runs-on: ubuntu-latest
     steps:

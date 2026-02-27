@@ -1,12 +1,18 @@
 # ferrox
 
-High-performance structure matching for crystallographic data, written in Rust with Python bindings.
+High-performance computational materials toolkit with Rust, Python, and WebAssembly bindings.
 
 ## Features
 
-- **Fast matching**: Compare crystal structures for equivalence using the same algorithm as pymatgen's StructureMatcher
-- **Batch processing**: Efficiently deduplicate and group large sets of structures with automatic parallelization
-- **Python bindings**: Use from Python via PyO3 bindings, accepting pymatgen Structure.as_dict() JSON format
+- **Structure I/O**: Parse CIF, POSCAR, extXYZ, LAMMPS, and more
+- **Structure Matching**: Fast deduplication and grouping with parallel processing
+- **Symmetry Analysis**: Space groups, Wyckoff positions, primitive/conventional cells
+- **Molecular Dynamics**: NVE/NVT integrators, thermostats, classical potentials
+- **Surface Science**: Slab generation, Miller indices, adsorption sites, Wulff shapes
+- **Defect Engineering**: Vacancies, substitutions, interstitials, Voronoi sites
+- **Trajectory Analysis**: RDF, MSD, diffusion coefficients, order parameters
+- **Properties**: XRD patterns, elastic tensors, coordination numbers
+- **Python bindings**: Drop-in compatible with pymatgen Structure dictionaries
 
 ## Installation
 
@@ -38,7 +44,7 @@ groups = matcher.group(json_strs)
 
 ## Development
 
-Requires Rust 1.70+ and Python 3.10+.
+Requires Rust 1.93+ and Python 3.11+.
 
 ```bash
 # Build and install in development mode
@@ -48,6 +54,21 @@ maturin develop --features python --release
 # Run tests
 cargo test
 ```
+
+### Python Type Stubs
+
+Python type stubs (`.pyi` files) are auto-generated from Rust code using `pyo3-stub-gen`. After modifying PyO3-exposed functions or classes, regenerate stubs:
+
+```bash
+python scripts/generate_stubs.py
+
+# Verify stubs pass type checking
+ty check python/ferrox
+```
+
+The script runs `cargo` to generate raw stubs, then cleans them to use modern Python type syntax (`X | None` instead of `Optional[X]`, `list[float]` instead of `builtins.list[builtins.float]`).
+
+The CI pipeline automatically verifies stubs are in sync with Rust code.
 
 ## License
 

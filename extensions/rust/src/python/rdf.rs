@@ -3,6 +3,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::rdf;
 
@@ -26,6 +27,7 @@ fn validate_rdf_params(r_max: f64, n_bins: usize, expansion_factor: f64) -> PyRe
 }
 
 /// Compute the radial distribution function.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, r_max = 15.0, n_bins = 75, normalize = true, auto_expand = true, expansion_factor = 2.0))]
 fn compute_rdf(
@@ -54,6 +56,7 @@ fn compute_rdf(
 }
 
 /// Compute the element-specific RDF. Returns (radii, g_of_r) tuple.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, element1, element2, r_max = 15.0, n_bins = 75, normalize = true, auto_expand = true, expansion_factor = 2.0))]
 fn compute_element_rdf(
@@ -90,6 +93,7 @@ fn compute_element_rdf(
 }
 
 /// Compute RDFs for all element pairs. Returns dict keyed by element pair.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, r_max = 15.0, n_bins = 75, normalize = true, auto_expand = true, expansion_factor = 2.0))]
 fn compute_all_element_rdfs(

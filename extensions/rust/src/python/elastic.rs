@@ -2,12 +2,14 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::elastic;
 
 use super::helpers::{array_to_mat3, mat3_to_array};
 
 /// Generate strain matrices for elastic constant calculation.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (magnitude = 0.01, shear = true))]
 fn generate_strains(magnitude: f64, shear: bool) -> Vec<[[f64; 3]; 3]> {
@@ -18,6 +20,7 @@ fn generate_strains(magnitude: f64, shear: bool) -> Vec<[[f64; 3]; 3]> {
 }
 
 /// Apply a strain to a cell matrix.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn apply_strain(cell: [[f64; 3]; 3], strain: [[f64; 3]; 3]) -> [[f64; 3]; 3] {
     mat3_to_array(&elastic::apply_strain(
@@ -27,18 +30,21 @@ fn apply_strain(cell: [[f64; 3]; 3], strain: [[f64; 3]; 3]) -> [[f64; 3]; 3] {
 }
 
 /// Convert stress tensor to Voigt notation.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn stress_to_voigt(stress: [[f64; 3]; 3]) -> [f64; 6] {
     elastic::stress_to_voigt(&array_to_mat3(stress))
 }
 
 /// Convert strain tensor to Voigt notation.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn strain_to_voigt(strain: [[f64; 3]; 3]) -> [f64; 6] {
     elastic::strain_to_voigt(&array_to_mat3(strain))
 }
 
 /// Calculate the elastic tensor from strains and stresses.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn tensor_from_stresses(
     strains: Vec<[[f64; 3]; 3]>,
@@ -59,36 +65,42 @@ fn tensor_from_stresses(
 }
 
 /// Calculate the bulk modulus from elastic tensor.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn bulk_modulus(tensor: [[f64; 6]; 6]) -> f64 {
     elastic::bulk_modulus(&tensor)
 }
 
 /// Calculate the shear modulus from elastic tensor.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn shear_modulus(tensor: [[f64; 6]; 6]) -> f64 {
     elastic::shear_modulus(&tensor)
 }
 
 /// Calculate Young's modulus from bulk and shear moduli.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn youngs_modulus(bulk: f64, shear: f64) -> f64 {
     elastic::youngs_modulus(bulk, shear)
 }
 
 /// Calculate Poisson's ratio from bulk and shear moduli.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn poisson_ratio(bulk: f64, shear: f64) -> f64 {
     elastic::poisson_ratio(bulk, shear)
 }
 
 /// Check if an elastic tensor indicates mechanical stability.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn is_stable(tensor: [[f64; 6]; 6]) -> bool {
     elastic::is_mechanically_stable(&tensor)
 }
 
 /// Calculate the Zener anisotropy ratio.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn zener_ratio(c11: f64, c12: f64, c44: f64) -> f64 {
     elastic::zener_ratio(c11, c12, c44)

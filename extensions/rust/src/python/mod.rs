@@ -25,6 +25,9 @@
 
 use pyo3::prelude::*;
 
+// Define stub info gatherer for pyo3-stub-gen
+pyo3_stub_gen::define_stub_info_gatherer!(stub_info);
+
 // Shared helpers
 pub mod helpers;
 
