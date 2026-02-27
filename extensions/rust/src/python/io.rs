@@ -8,6 +8,7 @@ use std::path::Path;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
 use crate::io::{
     parse_extxyz_trajectory, parse_structure, parse_structure_json, structure_to_extxyz,
@@ -20,6 +21,7 @@ use crate::structure::Structure;
 // === Structure Reading Functions ===
 
 /// Parse a structure file (auto-detects format from extension).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_structure_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
     let structure = parse_structure(Path::new(path))
@@ -28,6 +30,7 @@ fn parse_structure_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
 }
 
 /// Parse trajectory file (extXYZ format).
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_trajectory(py: Python<'_>, path: &str) -> PyResult<Vec<Py<PyDict>>> {
     let frames = parse_extxyz_trajectory(Path::new(path))
@@ -45,6 +48,7 @@ fn parse_trajectory(py: Python<'_>, path: &str) -> PyResult<Vec<Py<PyDict>>> {
 // === Structure Writing Functions ===
 
 /// Write a structure to a file with automatic format detection.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn write_structure_file(structure: StructureJson, path: &str) -> PyResult<()> {
     let struc = parse_struct(&structure)?;
@@ -53,6 +57,7 @@ fn write_structure_file(structure: StructureJson, path: &str) -> PyResult<()> {
 }
 
 /// Convert a structure to POSCAR format string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, comment = None))]
 fn to_poscar(structure: StructureJson, comment: Option<&str>) -> PyResult<String> {
@@ -61,6 +66,7 @@ fn to_poscar(structure: StructureJson, comment: Option<&str>) -> PyResult<String
 }
 
 /// Convert a structure to CIF format string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (structure, data_name = None))]
 fn to_cif(structure: StructureJson, data_name: Option<&str>) -> PyResult<String> {
@@ -69,6 +75,7 @@ fn to_cif(structure: StructureJson, data_name: Option<&str>) -> PyResult<String>
 }
 
 /// Convert a structure to extXYZ format string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn to_extxyz(structure: StructureJson) -> PyResult<String> {
     let struc = parse_struct(&structure)?;
@@ -76,6 +83,7 @@ fn to_extxyz(structure: StructureJson) -> PyResult<String> {
 }
 
 /// Convert a structure to pymatgen JSON format string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn to_pymatgen_json(structure: StructureJson) -> PyResult<String> {
     let struc = parse_struct(&structure)?;
@@ -83,6 +91,7 @@ fn to_pymatgen_json(structure: StructureJson) -> PyResult<String> {
 }
 
 /// Alias for to_pymatgen_json for convenience.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn to_json(structure: StructureJson) -> PyResult<String> {
     let struc = parse_struct(&structure)?;
@@ -92,6 +101,7 @@ fn to_json(structure: StructureJson) -> PyResult<String> {
 // === Molecule I/O Functions ===
 
 /// Parse a molecule from pymatgen Molecule JSON format.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_molecule_json(py: Python<'_>, json_str: &str) -> PyResult<Py<PyDict>> {
     let mol = crate::io::parse_molecule_json(json_str)
@@ -101,6 +111,7 @@ fn parse_molecule_json(py: Python<'_>, json_str: &str) -> PyResult<Py<PyDict>> {
 }
 
 /// Convert a molecule to pymatgen JSON format string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn molecule_to_json(molecule: StructureJson) -> PyResult<String> {
     let mol = crate::io::parse_molecule_json(&molecule.0)
@@ -109,6 +120,7 @@ fn molecule_to_json(molecule: StructureJson) -> PyResult<String> {
 }
 
 /// Convert a molecule to XYZ format string.
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (molecule, comment = None))]
 fn molecule_to_xyz(molecule: StructureJson, comment: Option<&str>) -> PyResult<String> {
@@ -118,6 +130,7 @@ fn molecule_to_xyz(molecule: StructureJson, comment: Option<&str>) -> PyResult<S
 }
 
 /// Parse a molecule from XYZ file content.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_xyz_str(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
     let mol = crate::io::parse_xyz_str(content)
@@ -127,6 +140,7 @@ fn parse_xyz_str(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
 }
 
 /// Parse a molecule from an XYZ file.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_xyz_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
     let mol = crate::io::parse_xyz(Path::new(path))
@@ -136,6 +150,7 @@ fn parse_xyz_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
 }
 
 /// Parse ASE Atoms dict, returning either a Structure or Molecule dict.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_ase_dict(py: Python<'_>, ase_dict: &Bound<'_, PyDict>) -> PyResult<(String, Py<PyDict>)> {
     let json_module = py.import("json")?;
@@ -145,7 +160,8 @@ fn parse_ase_dict(py: Python<'_>, ase_dict: &Bound<'_, PyDict>) -> PyResult<(Str
     struct_or_mol_to_pydict(py, result)
 }
 
-/// Parse XYZ content flexibly, returning Structure if lattice present, Molecule otherwise.
+/// Parse XYZ file path flexibly, returning Structure if lattice present, Molecule otherwise.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_xyz_flexible(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyDict>)> {
     let result = crate::io::parse_xyz_flexible(Path::new(path))
@@ -156,6 +172,7 @@ fn parse_xyz_flexible(py: Python<'_>, path: &str) -> PyResult<(String, Py<PyDict
 /// Parse a structure from POSCAR content string.
 ///
 /// Supports VASP 5+ format with element symbols. VASP 4 format is not supported.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_poscar_str(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
     let structure = crate::io::parse_poscar_str(content)
@@ -167,6 +184,7 @@ fn parse_poscar_str(py: Python<'_>, content: &str) -> PyResult<Py<PyDict>> {
 /// Parse a structure from a POSCAR file.
 ///
 /// Supports VASP 5+ format with element symbols. VASP 4 format is not supported.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_poscar_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
     let structure = crate::io::parse_poscar(Path::new(path))
@@ -188,6 +206,7 @@ fn parse_poscar_file(py: Python<'_>, path: &str) -> PyResult<Py<PyDict>> {
 /// - system_idx: list of system indices (all 0 for single structure)
 /// - charge: list of system charges
 /// - spin: list of system spins
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn to_torch_sim_state(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyDict>> {
     let struc = parse_struct(&structure)?;
@@ -202,6 +221,7 @@ fn to_torch_sim_state(py: Python<'_>, structure: StructureJson) -> PyResult<Py<P
 /// - system_idx indicates which system each atom belongs to
 /// - cell contains one 3x3 matrix per system
 /// - charge/spin have one value per system
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn structures_to_torch_sim_state(
     py: Python<'_>,
@@ -228,6 +248,7 @@ fn structures_to_pydicts(py: Python<'_>, structures: &[Structure]) -> PyResult<V
 /// Parse a TorchSim SimState dict to a list of Structure dicts.
 ///
 /// Converts a batched state back to individual structures.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn from_torch_sim_state(
     py: Python<'_>,
@@ -243,6 +264,7 @@ fn from_torch_sim_state(
 }
 
 /// Parse a TorchSim SimState JSON string to a list of Structure dicts.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn parse_torch_sim_state_json(py: Python<'_>, json_str: &str) -> PyResult<Vec<Py<PyDict>>> {
     let structures = crate::io::parse_torch_sim_state(json_str)
@@ -252,106 +274,190 @@ fn parse_torch_sim_state_json(py: Python<'_>, json_str: &str) -> PyResult<Vec<Py
 
 // === Direct Object Conversion ===
 
-/// Convert a pymatgen Structure directly to ferrox dict format.
+// Extract species-occupancy pairs from a pymatgen site's species composition.
+fn extract_site_species(
+    species_comp: &Bound<'_, PyAny>,
+) -> PyResult<Vec<(crate::species::Species, f64)>> {
+    let mut species_vec = Vec::new();
+    for item_result in species_comp.call_method0("items")?.try_iter()? {
+        let item = item_result?;
+        let (sp, occu): (pyo3::Bound<'_, PyAny>, f64) = item.extract()?;
+        let symbol: String = sp.getattr("symbol")?.extract()?;
+        if !occu.is_finite() || occu < 0.0 {
+            return Err(PyValueError::new_err(format!(
+                "Invalid occupancy {occu} for {symbol}; must be finite and non-negative"
+            )));
+        }
+        let elem = crate::element::Element::from_symbol(&symbol)
+            .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {symbol}")))?;
+
+        let oxi_state: Option<i8> = sp
+            .getattr("oxi_state")
+            .and_then(|o| o.extract::<f64>())
+            .ok()
+            .and_then(|oxi| {
+                if oxi.abs() < 1e-10 {
+                    None
+                } else if oxi.fract().abs() < 1e-10 {
+                    Some(oxi.round() as i8)
+                } else {
+                    None
+                }
+            });
+
+        species_vec.push((crate::species::Species::new(elem, oxi_state), occu));
+    }
+    Ok(species_vec)
+}
+
+/// Convert a pymatgen Structure or Molecule directly to ferrox dict format.
+///
+/// Handles both periodic structures (with lattice) and non-periodic molecules.
+/// Detection is automatic based on whether the object has a `lattice` attribute.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn from_pymatgen_structure(py: Python<'_>, structure: &Bound<'_, PyAny>) -> PyResult<Py<PyDict>> {
-    let lattice = structure.getattr("lattice")?;
-    let matrix: Vec<Vec<f64>> = lattice.getattr("matrix")?.extract()?;
-
-    // Validate matrix dimensions and finite values
-    if matrix.len() != 3 || matrix.iter().any(|row| row.len() != 3) {
-        return Err(PyValueError::new_err(format!(
-            "Lattice matrix must be 3x3, got {}x{}",
-            matrix.len(),
-            matrix.first().map_or(0, |r| r.len())
-        )));
-    }
-    for (row_idx, row) in matrix.iter().enumerate() {
-        for (col_idx, &val) in row.iter().enumerate() {
-            if !val.is_finite() {
-                return Err(PyValueError::new_err(format!(
-                    "Lattice matrix[{row_idx}][{col_idx}] must be finite, got {val}"
-                )));
-            }
-        }
-    }
-
-    let pbc: [bool; 3] = lattice
-        .getattr("pbc")
-        .and_then(|p| p.extract())
-        .unwrap_or([true, true, true]);
     let charge: f64 = structure
         .getattr("charge")
         .and_then(|c| c.extract())
         .unwrap_or(0.0);
 
-    let mut lattice_obj = crate::lattice::Lattice::new(nalgebra::Matrix3::from_row_slice(&[
-        matrix[0][0],
-        matrix[0][1],
-        matrix[0][2],
-        matrix[1][0],
-        matrix[1][1],
-        matrix[1][2],
-        matrix[2][0],
-        matrix[2][1],
-        matrix[2][2],
-    ]));
-    lattice_obj.pbc = pbc;
+    // Check if this is a periodic structure (has lattice) or molecule (no lattice)
+    let has_lattice = structure
+        .getattr("lattice")
+        .ok()
+        .map(|l| !l.is_none())
+        .unwrap_or(false);
 
-    let sites = structure.getattr("sites")?;
-    let mut site_occupancies = Vec::new();
-    let mut frac_coords = Vec::new();
+    if has_lattice {
+        // Periodic structure path
+        let lattice = structure.getattr("lattice")?;
+        let matrix: Vec<Vec<f64>> = lattice.getattr("matrix")?.extract()?;
 
-    for site_result in sites.try_iter()? {
-        let site = site_result?;
-        let frac: [f64; 3] = site.getattr("frac_coords")?.extract()?;
-        frac_coords.push(nalgebra::Vector3::new(frac[0], frac[1], frac[2]));
-
-        let species_comp = site.getattr("species")?;
-        let mut species_vec: Vec<(crate::species::Species, f64)> = Vec::new();
-
-        for item_result in species_comp.call_method0("items")?.try_iter()? {
-            let item = item_result?;
-            let (sp, occu): (pyo3::Bound<'_, PyAny>, f64) = item.extract()?;
-            let symbol: String = sp.getattr("symbol")?.extract()?;
-            let elem = crate::element::Element::from_symbol(&symbol)
-                .ok_or_else(|| PyValueError::new_err(format!("Unknown element: {symbol}")))?;
-
-            let oxi_state: Option<i8> = sp
-                .getattr("oxi_state")
-                .and_then(|o| o.extract::<f64>())
-                .ok()
-                .and_then(|oxi| {
-                    if oxi.abs() < 1e-10 {
-                        None
-                    } else if oxi.fract().abs() < 1e-10 {
-                        Some(oxi.round() as i8)
-                    } else {
-                        None
-                    }
-                });
-
-            species_vec.push((crate::species::Species::new(elem, oxi_state), occu));
+        if matrix.len() != 3 || matrix.iter().any(|row| row.len() != 3) {
+            return Err(PyValueError::new_err(format!(
+                "Lattice matrix must be 3x3, got {}x{}",
+                matrix.len(),
+                matrix.first().map_or(0, |r| r.len())
+            )));
+        }
+        for (row_idx, row) in matrix.iter().enumerate() {
+            for (col_idx, &val) in row.iter().enumerate() {
+                if !val.is_finite() {
+                    return Err(PyValueError::new_err(format!(
+                        "Lattice matrix[{row_idx}][{col_idx}] must be finite, got {val}"
+                    )));
+                }
+            }
         }
 
-        site_occupancies.push(crate::species::SiteOccupancy::new(species_vec));
+        let pbc: [bool; 3] = lattice
+            .getattr("pbc")
+            .and_then(|p| p.extract())
+            .unwrap_or([true, true, true]);
+
+        let mut lattice_obj = crate::lattice::Lattice::new(nalgebra::Matrix3::from_row_slice(&[
+            matrix[0][0],
+            matrix[0][1],
+            matrix[0][2],
+            matrix[1][0],
+            matrix[1][1],
+            matrix[1][2],
+            matrix[2][0],
+            matrix[2][1],
+            matrix[2][2],
+        ]));
+        lattice_obj.pbc = pbc;
+
+        let sites = structure.getattr("sites")?;
+        let mut site_occupancies = Vec::new();
+        let mut frac_coords = Vec::new();
+
+        for site_result in sites.try_iter()? {
+            let site = site_result?;
+            let frac: [f64; 3] = site.getattr("frac_coords")?.extract()?;
+            for (idx, &val) in frac.iter().enumerate() {
+                if !val.is_finite() {
+                    return Err(PyValueError::new_err(format!(
+                        "Fractional coordinate[{idx}] must be finite, got {val}"
+                    )));
+                }
+            }
+            frac_coords.push(nalgebra::Vector3::new(frac[0], frac[1], frac[2]));
+
+            let species_comp = site.getattr("species")?;
+            let species_vec = extract_site_species(&species_comp)?;
+            site_occupancies.push(crate::species::SiteOccupancy::new(species_vec));
+        }
+
+        let struc = crate::structure::Structure::try_new_full(
+            lattice_obj,
+            site_occupancies,
+            frac_coords,
+            pbc,
+            charge,
+            std::collections::HashMap::new(),
+        )
+        .map_err(|err| PyValueError::new_err(format!("Error creating structure: {err}")))?;
+
+        let json = structure_to_pymatgen_json(&struc);
+        json_to_pydict(py, &json)
+    } else {
+        // Non-periodic molecule path
+        let sites = structure.getattr("sites")?;
+        let mut species_vec = Vec::new();
+        let mut cart_coords = Vec::new();
+
+        for site_result in sites.try_iter()? {
+            let site = site_result?;
+            let coords: [f64; 3] = site.getattr("coords")?.extract()?;
+            for (idx, &val) in coords.iter().enumerate() {
+                if !val.is_finite() {
+                    return Err(PyValueError::new_err(format!(
+                        "Coordinate[{idx}] must be finite, got {val}"
+                    )));
+                }
+            }
+            cart_coords.push(nalgebra::Vector3::new(coords[0], coords[1], coords[2]));
+
+            let species_comp = site.getattr("species")?;
+            let site_species = extract_site_species(&species_comp)?;
+
+            // Warn if partial occupancy is being discarded
+            if site_species.len() > 1 || site_species.iter().any(|(_, occ)| *occ < 1.0 - 1e-6) {
+                let warnings = py.import("warnings")?;
+                warnings.call_method1(
+                    "warn",
+                    ("Molecule site has partial occupancy; using dominant species only",),
+                )?;
+            }
+
+            // For molecules, use dominant species (highest occupancy)
+            if let Some((dominant_species, _)) = site_species
+                .iter()
+                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            {
+                species_vec.push(*dominant_species);
+            } else {
+                return Err(PyValueError::new_err("Site has no species"));
+            }
+        }
+
+        let mol = crate::structure::Structure::try_new_molecule(
+            species_vec,
+            cart_coords,
+            charge,
+            std::collections::HashMap::new(),
+        )
+        .map_err(|err| PyValueError::new_err(format!("Error creating molecule: {err}")))?;
+
+        let json = crate::io::molecule_to_pymatgen_json(&mol);
+        json_to_pydict(py, &json)
     }
-
-    let struc = crate::structure::Structure::try_new_full(
-        lattice_obj,
-        site_occupancies,
-        frac_coords,
-        pbc,
-        charge,
-        std::collections::HashMap::new(),
-    )
-    .map_err(|err| PyValueError::new_err(format!("Error creating structure: {err}")))?;
-
-    let json = structure_to_pymatgen_json(&struc);
-    json_to_pydict(py, &json)
 }
 
 /// Convert a ferrox dict to a pymatgen Structure object.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn to_pymatgen_structure(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyAny>> {
     let pymatgen = py.import("pymatgen.core.structure")?;
@@ -365,6 +471,7 @@ fn to_pymatgen_structure(py: Python<'_>, structure: StructureJson) -> PyResult<P
 }
 
 /// Convert a ferrox dict to a pymatgen Molecule object.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn to_pymatgen_molecule(py: Python<'_>, molecule: StructureJson) -> PyResult<Py<PyAny>> {
     let pymatgen = py.import("pymatgen.core.structure")?;
@@ -379,6 +486,7 @@ fn to_pymatgen_molecule(py: Python<'_>, molecule: StructureJson) -> PyResult<Py<
 }
 
 /// Convert an ASE Atoms object directly to ferrox dict format.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDict>> {
     let symbols: Vec<String> = atoms.call_method0("get_chemical_symbols")?.extract()?;
@@ -470,6 +578,7 @@ fn from_ase_atoms(py: Python<'_>, atoms: &Bound<'_, PyAny>) -> PyResult<Py<PyDic
 }
 
 /// Convert a ferrox dict to an ASE Atoms object.
+#[gen_stub_pyfunction]
 #[pyfunction]
 fn to_ase_atoms(py: Python<'_>, structure: StructureJson) -> PyResult<Py<PyAny>> {
     let ase = py.import("ase")?;

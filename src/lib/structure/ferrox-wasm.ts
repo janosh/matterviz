@@ -139,9 +139,7 @@ export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
     init_promise = (async () => {
       try {
         // Dynamic import to avoid loading WASM until needed
-        const { default: init } = (await import(
-          /* @vite-ignore */ `matterviz-wasm`
-        )) as unknown as {
+        const { default: init } = (await import(`matterviz-wasm`)) as unknown as {
           default: (opts?: { module_or_path?: string }) => Promise<FerroxWasmModule>
         }
 

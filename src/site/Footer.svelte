@@ -23,7 +23,7 @@
 
 <style>
   footer {
-    margin: 6em 0 2em;
+    margin: 2em 0 0;
     text-align: center;
   }
   footer small {
