@@ -69,6 +69,7 @@
     DEFAULT_GRID_STYLE,
     DEFAULT_MARKERS,
     get_scale_type_name,
+    is_time_scale,
   } from '$lib/plot/types'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import {
@@ -250,7 +251,9 @@
   const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...(y_axis ?? {}) })
   const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...(y2_axis ?? {}) })
   // Cache time-axis check — used in ~10 places for scale/tick/tooltip logic
-  let is_time_x = $derived(final_x_axis.format?.startsWith(`%`) ?? false)
+  let is_time_x = $derived(
+    is_time_scale(final_x_axis.scale_type, final_x_axis.format),
+  )
   const final_display = $derived({ ...DEFAULTS.scatter.display, ...(display ?? {}) })
   // Local state for styles (initialized from prop, owned by this component for controls)
   // Using $state because styles has bindings in ScatterPlotControls
@@ -2018,9 +2021,13 @@
         {/if}
 
         {#if height > 0 && (final_y_axis.label || final_y_axis.options?.length)}
-          {@const { label_shift, label = ``, options, selected_key, color } = final_y_axis}
-          {@const y_label_x =
-          Math.max(12, pad.l - tick_label_widths.y_max - LABEL_GAP_DEFAULT) +
+          {@const { label_shift, label = ``, options, selected_key, color, tick } =
+          final_y_axis}
+          {@const y_inside = tick?.label?.inside ?? false}
+          {@const y_label_x = Math.max(
+          12,
+          pad.l - (y_inside ? 0 : tick_label_widths.y_max) - LABEL_GAP_DEFAULT,
+        ) +
           (label_shift?.x ?? 0)}
           {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 + (label_shift?.y ?? 0)}
           <foreignObject

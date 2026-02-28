@@ -1194,9 +1194,13 @@
         </g>
       {/each}
       {#if final_y_axis.label || y_axis.options?.length}
-        {@const { label_shift, label = ``, options, selected_key, color } = final_y_axis}
-        {@const y_label_x =
-          Math.max(12, pad.l - tick_label_widths.y_max - LABEL_GAP_DEFAULT) +
+        {@const { label_shift, label = ``, options, selected_key, color, tick } =
+          final_y_axis}
+        {@const y_inside = tick?.label?.inside ?? false}
+        {@const y_label_x = Math.max(
+          12,
+          pad.l - (y_inside ? 0 : tick_label_widths.y_max) - LABEL_GAP_DEFAULT,
+        ) +
           (label_shift?.x ?? 0)}
         {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 +
           (label_shift?.y ?? 0)}
