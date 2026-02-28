@@ -11,17 +11,14 @@
     RefLineEvent,
   } from '$lib/plot'
   import {
+    AxisLabel,
     compute_element_placement,
     HistogramControls,
-    InteractiveAxisLabel,
     PlotLegend,
     ReferenceLine,
   } from '$lib/plot'
   import type { AxisChangeState } from '$lib/plot/axis-utils'
-  import {
-    AXIS_LABEL_CONTAINER,
-    create_axis_change_handler,
-  } from '$lib/plot/axis-utils'
+  import { create_axis_change_handler } from '$lib/plot/axis-utils'
   import { extract_series_color, prepare_legend_data } from '$lib/plot/data-transform'
   import { AXIS_DEFAULTS } from '$lib/plot/defaults'
   import {
@@ -1121,28 +1118,17 @@
       {/each}
       {#if final_x_axis.label || x_axis.options?.length}
         {@const { label_shift, label = ``, options, selected_key, color } = final_x_axis}
-        <foreignObject
-          x={(pad.l + width - pad.r) / 2 + (label_shift?.x ?? 0) -
-          AXIS_LABEL_CONTAINER.x_offset}
-          y={height - 10 + (label_shift?.y ?? 0) -
-          AXIS_LABEL_CONTAINER.y_offset}
-          width={AXIS_LABEL_CONTAINER.width}
-          height={AXIS_LABEL_CONTAINER.height}
-          style="overflow: visible; pointer-events: none"
-        >
-          <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
-            <InteractiveAxisLabel
-              {label}
-              {options}
-              {selected_key}
-              loading={axis_loading === `x`}
-              axis_type="x"
-              {color}
-              on_select={(key) => handle_axis_change(`x`, key)}
-              class="axis-label x-label"
-            />
-          </div>
-        </foreignObject>
+        <AxisLabel
+          x={(pad.l + width - pad.r) / 2 + (label_shift?.x ?? 0)}
+          y={height - 10 + (label_shift?.y ?? 0)}
+          {label}
+          {options}
+          {selected_key}
+          loading={axis_loading === `x`}
+          axis_type="x"
+          {color}
+          on_select={(key) => handle_axis_change(`x`, key)}
+        />
       {/if}
     </g>
 
@@ -1197,34 +1183,22 @@
         {@const { label_shift, label = ``, options, selected_key, color, tick } =
           final_y_axis}
         {@const y_inside = tick?.label?.inside ?? false}
-        {@const y_label_x = Math.max(
-          12,
-          pad.l - (y_inside ? 0 : tick_label_widths.y_max) - LABEL_GAP_DEFAULT,
-        ) +
-          (label_shift?.x ?? 0)}
-        {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 +
-          (label_shift?.y ?? 0)}
-        <foreignObject
-          x={y_label_x - AXIS_LABEL_CONTAINER.x_offset}
-          y={y_label_y - AXIS_LABEL_CONTAINER.y_offset}
-          width={AXIS_LABEL_CONTAINER.width}
-          height={AXIS_LABEL_CONTAINER.height}
-          style="overflow: visible; pointer-events: none"
-          transform="rotate(-90, {y_label_x}, {y_label_y})"
-        >
-          <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
-            <InteractiveAxisLabel
-              {label}
-              {options}
-              {selected_key}
-              loading={axis_loading === `y`}
-              axis_type="y"
-              {color}
-              on_select={(key) => handle_axis_change(`y`, key)}
-              class="axis-label y-label"
-            />
-          </div>
-        </foreignObject>
+        <AxisLabel
+          x={Math.max(
+            12,
+            pad.l - (y_inside ? 0 : tick_label_widths.y_max) - LABEL_GAP_DEFAULT,
+          ) +
+            (label_shift?.x ?? 0)}
+          y={pad.t + (height - pad.t - pad.b) / 2 + (label_shift?.y ?? 0)}
+          rotate
+          {label}
+          {options}
+          {selected_key}
+          loading={axis_loading === `y`}
+          axis_type="y"
+          {color}
+          on_select={(key) => handle_axis_change(`y`, key)}
+        />
       {/if}
     </g>
 
@@ -1281,31 +1255,19 @@
           {@const inside = tick?.label?.inside ?? false}
           {@const tick_shift = inside ? 0 : (tick?.label?.shift?.x ?? 0) + 8}
           {@const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max}
-          {@const y2_label_x = width - pad.r + tick_shift + tick_width_contribution +
-          LABEL_GAP_DEFAULT + (label_shift?.x ?? 0)}
-          {@const y2_label_y = pad.t + (height - pad.t - pad.b) / 2 +
-          (label_shift?.y ?? 0)}
-          <foreignObject
-            x={y2_label_x - AXIS_LABEL_CONTAINER.x_offset}
-            y={y2_label_y - AXIS_LABEL_CONTAINER.y_offset}
-            width={AXIS_LABEL_CONTAINER.width}
-            height={AXIS_LABEL_CONTAINER.height}
-            style="overflow: visible; pointer-events: none"
-            transform="rotate(-90, {y2_label_x}, {y2_label_y})"
-          >
-            <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
-              <InteractiveAxisLabel
-                {label}
-                {options}
-                {selected_key}
-                loading={axis_loading === `y2`}
-                axis_type="y2"
-                {color}
-                on_select={(key) => handle_axis_change(`y2`, key)}
-                class="axis-label y2-label"
-              />
-            </div>
-          </foreignObject>
+          <AxisLabel
+            x={width - pad.r + tick_shift + tick_width_contribution +
+            LABEL_GAP_DEFAULT + (label_shift?.x ?? 0)}
+            y={pad.t + (height - pad.t - pad.b) / 2 + (label_shift?.y ?? 0)}
+            rotate
+            {label}
+            {options}
+            {selected_key}
+            loading={axis_loading === `y2`}
+            axis_type="y2"
+            {color}
+            on_select={(key) => handle_axis_change(`y2`, key)}
+          />
         {/if}
       </g>
     {/if}
