@@ -70,10 +70,12 @@
   let {
     series = $bindable([]),
     x_axis: x_axis_init = {},
+    x2_axis: x2_axis_init = {},
     y_axis: y_axis_init = {},
     y2_axis: y2_axis_init = {},
     display: display_init = DEFAULTS.histogram.display,
     x_range = [null, null],
+    x2_range = [null, null],
     y_range = [null, null],
     y2_range = [null, null],
     range_padding = 0.05,
@@ -142,7 +144,7 @@
     // Interactive axis props
     data_loader?: DataLoaderFn
     on_axis_change?: (
-      axis: `x` | `y` | `y2`,
+      axis: `x` | `x2` | `y` | `y2`,
       key: string,
       new_series: DataSeries[],
     ) => void
@@ -157,6 +159,12 @@
   const { format: _, ...axis_state_defaults } = AXIS_DEFAULTS // Exclude format (has component-specific default)
   let bar = $state(untrack(() => ({ ...DEFAULTS.histogram.bar, ...bar_init })))
   let x_axis = $state(untrack(() => ({ ...axis_state_defaults, ...x_axis_init })))
+  // x2-axis needs different default label_shift for top-side positioning
+  let x2_axis = $state(untrack(() => ({
+    ...axis_state_defaults,
+    label_shift: { x: 0, y: 40 },
+    ...x2_axis_init,
+  })))
   let y_axis = $state(untrack(() => ({ ...axis_state_defaults, ...y_axis_init })))
   // y2-axis needs different default label_shift for right-side positioning
   let y2_axis = $state(untrack(() => ({
@@ -170,6 +178,7 @@
 
   // Merge component-specific defaults with local state (format comes from here, not AXIS_DEFAULTS)
   const final_x_axis = $derived({ label: `Value`, format: `.2~s`, ...x_axis })
+  const final_x2_axis = $derived({ label: `Value`, format: `.2~s`, ...x2_axis })
   const final_y_axis = $derived({ label: `Count`, format: `d`, ...y_axis })
   const final_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
   const final_y2_axis = $derived({ label: `Count`, format: `d`, ...y2_axis })
@@ -185,7 +194,7 @@
   let hovered_ref_line_idx = $state<number | null>(null)
 
   // Interactive axis loading state
-  let axis_loading = $state<`x` | `y` | `y2` | null>(null)
+  let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
   // Compute ref_lines with index and group by z-index (using shared utilities)
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
@@ -232,6 +241,11 @@
   let y2_series = $derived(
     selected_series.filter((srs: DataSeries) => srs.y_axis === `y2`),
   )
+  let x2_series = $derived(
+    selected_series.filter((srs: DataSeries) =>
+      (srs.visible ?? true) && srs.x_axis === `x2`
+    ),
+  )
 
   let auto_ranges = $derived.by(() => {
     const all_values = selected_series.flatMap((srs: DataSeries) => srs.y)
@@ -243,6 +257,18 @@
       range_padding,
       false,
     )
+
+    const x2_values = x2_series.flatMap((srs: DataSeries) => srs.y)
+    const auto_x2 = x2_values.length > 0
+      ? get_nice_data_range(
+        x2_values.map((val) => ({ x: val, y: 0 })),
+        ({ x }) => x,
+        x2_range,
+        final_x2_axis.scale_type ?? `linear`,
+        range_padding,
+        false,
+      )
+      : [0, 1] as Vec2
 
     // Calculate y-range for a specific set of series
     const calc_y_range = (
@@ -294,18 +320,20 @@
       final_y2_axis.scale_type ?? `linear`,
     )
 
-    return { x: auto_x, y: y1_range, y2: y2_auto_range }
+    return { x: auto_x, x2: auto_x2, y: y1_range, y2: y2_auto_range }
   })
 
   // Initialize ranges
   let ranges = $state({
     initial: {
       x: [0, 1] as Vec2,
+      x2: [0, 1] as Vec2,
       y: [0, 1] as Vec2,
       y2: [0, 1] as Vec2,
     },
     current: {
       x: [0, 1] as Vec2,
+      x2: [0, 1] as Vec2,
       y: [0, 1] as Vec2,
       y2: [0, 1] as Vec2,
     },
@@ -319,6 +347,12 @@
         final_x_axis.range[1] ?? auto_ranges.x[1],
       ]
       : auto_ranges.x
+    const new_x2: [number, number] = final_x2_axis.range
+      ? [
+        final_x2_axis.range[0] ?? auto_ranges.x2[0],
+        final_x2_axis.range[1] ?? auto_ranges.x2[1],
+      ]
+      : auto_ranges.x2
     const new_y: [number, number] = final_y_axis.range
       ? [
         final_y_axis.range[0] ?? auto_ranges.y[0],
@@ -336,12 +370,15 @@
     // Comparing against initial preserves user's pan/zoom state
     const x_changed = new_x[0] !== ranges.initial.x[0] ||
       new_x[1] !== ranges.initial.x[1]
+    const x2_changed = new_x2[0] !== ranges.initial.x2[0] ||
+      new_x2[1] !== ranges.initial.x2[1]
     const y_changed = new_y[0] !== ranges.initial.y[0] ||
       new_y[1] !== ranges.initial.y[1]
     const y2_changed = new_y2[0] !== ranges.initial.y2[0] ||
       new_y2[1] !== ranges.initial.y2[1]
 
     if (x_changed) [ranges.initial.x, ranges.current.x] = [new_x, new_x]
+    if (x2_changed) [ranges.initial.x2, ranges.current.x2] = [new_x2, new_x2]
     if (y_changed) [ranges.initial.y, ranges.current.y] = [new_y, new_y]
     if (y2_changed) [ranges.initial.y2, ranges.current.y2] = [new_y2, new_y2]
   })
@@ -352,6 +389,7 @@
 
   // Update padding based on tick label widths (untrack breaks circular dependency)
   $effect(() => {
+    const current_ticks_x2 = untrack(() => ticks.x2)
     const current_ticks_y = untrack(() => ticks.y)
     const current_ticks_y2 = untrack(() => ticks.y2)
 
@@ -359,6 +397,7 @@
       ? calc_auto_padding({
         padding,
         default_padding,
+        x2_axis: { ...final_x2_axis, tick_values: current_ticks_x2 },
         y_axis: { ...final_y_axis, tick_values: current_ticks_y },
         y2_axis: { ...final_y2_axis, tick_values: current_ticks_y2 },
       })
@@ -394,6 +433,11 @@
       ranges.current.x,
       [pad.l, width - pad.r],
     ),
+    x2: create_scale(
+      final_x2_axis.scale_type ?? `linear`,
+      ranges.current.x2,
+      [pad.l, width - pad.r],
+    ),
     y: create_scale(
       final_y_axis.scale_type ?? `linear`,
       ranges.current.y,
@@ -411,8 +455,15 @@
     const hist_generator = bin()
       .domain([ranges.current.x[0], ranges.current.x[1]])
       .thresholds(bins)
+    const x2_hist_generator = x2_series.length > 0
+      ? bin().domain([ranges.current.x2[0], ranges.current.x2[1]]).thresholds(bins)
+      : null
     return selected_series.map((series_data, series_idx) => {
-      const bins_arr = hist_generator(series_data.y)
+      const use_x2 = series_data.x_axis === `x2`
+      const active_hist = use_x2 && x2_hist_generator
+        ? x2_hist_generator
+        : hist_generator
+      const bins_arr = active_hist(series_data.y)
       const use_y2 = series_data.y_axis === `y2`
       return {
         id: series_data.id ?? series_idx,
@@ -423,7 +474,9 @@
           : extract_series_color(series_data),
         bins: bins_arr,
         max_count: max(bins_arr, (data) => data.length) || 0,
+        x_axis: series_data.x_axis,
         y_axis: series_data.y_axis,
+        x_scale: use_x2 ? scales.x2 : scales.x,
         y_scale: use_y2 ? scales.y2 : scales.y,
       }
     })
@@ -436,6 +489,15 @@
         final_x_axis.scale_type ?? `linear`,
         final_x_axis.ticks,
         scales.x,
+        { default_count: 8 },
+      )
+      : [],
+    x2: width && height && x2_series.length > 0
+      ? generate_ticks(
+        ranges.current.x2,
+        final_x2_axis.scale_type ?? `linear`,
+        final_x2_axis.ticks,
+        scales.x2,
         { default_count: 8 },
       )
       : [],
@@ -462,6 +524,7 @@
   // Cache measured tick-label widths so expensive text measurement only runs
   // when tick values/format change, not on every template rerender.
   let tick_label_widths = $derived({
+    x2_max: measure_max_tick_width(ticks.x2, final_x2_axis.format ?? ``),
     y_max: measure_max_tick_width(ticks.y, final_y_axis.format ?? ``),
     y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format ?? ``),
   })
@@ -474,10 +537,10 @@
 
     const points: { x: number; y: number }[] = []
 
-    for (const { bins, y_scale } of histogram_data) {
+    for (const { bins, x_scale, y_scale } of histogram_data) {
       for (const bin of bins) {
         if (bin.length > 0) {
-          const bar_x = scales.x((bin.x0! + bin.x1!) / 2)
+          const bar_x = x_scale((bin.x0! + bin.x1!) / 2)
           const bar_y = y_scale(bin.length)
           if (isFinite(bar_x) && isFinite(bar_y)) {
             // Add multiple points for taller bars to increase their weight
@@ -553,6 +616,8 @@
     if (!drag_state.start || !drag_state.current) return
     const start_x = scales.x.invert(drag_state.start.x)
     const end_x = scales.x.invert(drag_state.current.x)
+    const start_x2 = scales.x2.invert(drag_state.start.x)
+    const end_x2 = scales.x2.invert(drag_state.current.x)
     const start_y = scales.y.invert(drag_state.start.y)
     const end_y = scales.y.invert(drag_state.current.y)
     const start_y2 = scales.y2.invert(drag_state.start.y)
@@ -566,6 +631,12 @@
         x_axis = {
           ...x_axis,
           range: [Math.min(start_x, end_x), Math.max(start_x, end_x)],
+        }
+        if (x2_series.length > 0) {
+          x2_axis = {
+            ...x2_axis,
+            range: [Math.min(start_x2, end_x2), Math.max(start_x2, end_x2)],
+          }
         }
         y_axis = {
           ...y_axis,
@@ -611,6 +682,11 @@
       pan_drag_state.initial_x_range,
       plot_width,
     )
+    const x2_delta = pixels_to_data_delta(
+      -dx * sensitivity,
+      pan_drag_state.initial_x2_range,
+      plot_width,
+    )
     const y_delta = pixels_to_data_delta(
       dy * sensitivity,
       pan_drag_state.initial_y_range,
@@ -623,6 +699,7 @@
     )
 
     ranges.current.x = pan_range(pan_drag_state.initial_x_range, x_delta)
+    ranges.current.x2 = pan_range(pan_drag_state.initial_x2_range, x2_delta)
     ranges.current.y = pan_range(pan_drag_state.initial_y_range, y_delta)
     ranges.current.y2 = pan_range(pan_drag_state.initial_y2_range, y2_delta)
   }
@@ -645,6 +722,7 @@
       pan_drag_state = {
         start: { x: evt.clientX, y: evt.clientY },
         initial_x_range: [...ranges.current.x] as [number, number],
+        initial_x2_range: [...ranges.current.x2] as [number, number],
         initial_y_range: [...ranges.current.y] as [number, number],
         initial_y2_range: [...ranges.current.y2] as [number, number],
       }
@@ -684,6 +762,11 @@
       ranges.current.x,
       plot_width,
     )
+    const x2_delta = pixels_to_data_delta(
+      evt.deltaX * sensitivity,
+      ranges.current.x2,
+      plot_width,
+    )
     const y_delta = pixels_to_data_delta(
       evt.deltaY * sensitivity,
       ranges.current.y,
@@ -697,6 +780,7 @@
 
     if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
       ranges.current.x = pan_range(ranges.current.x, x_delta)
+      ranges.current.x2 = pan_range(ranges.current.x2, x2_delta)
     } else {
       ranges.current.y = pan_range(ranges.current.y, y_delta)
       ranges.current.y2 = pan_range(ranges.current.y2, y2_delta)
@@ -713,6 +797,7 @@
     touch_state = {
       start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
       initial_x_range: [...ranges.current.x] as [number, number],
+      initial_x2_range: [...ranges.current.x2] as [number, number],
       initial_y_range: [...ranges.current.y] as [number, number],
       initial_y2_range: [...ranges.current.y2] as [number, number],
     }
@@ -751,11 +836,15 @@
       // Pinch zoom centered on gesture center
       // Divide by scale so spread (scale > 1) = smaller span (zoom in)
       const x_span = touch_state.initial_x_range[1] - touch_state.initial_x_range[0]
+      const x2_span = touch_state.initial_x2_range[1] -
+        touch_state.initial_x2_range[0]
       const y_span = touch_state.initial_y_range[1] - touch_state.initial_y_range[0]
       const y2_span = touch_state.initial_y2_range[1] -
         touch_state.initial_y2_range[0]
       const x_center =
         (touch_state.initial_x_range[0] + touch_state.initial_x_range[1]) / 2
+      const x2_center =
+        (touch_state.initial_x2_range[0] + touch_state.initial_x2_range[1]) / 2
       const y_center =
         (touch_state.initial_y_range[0] + touch_state.initial_y_range[1]) / 2
       const y2_center =
@@ -764,6 +853,10 @@
       ranges.current.x = [
         x_center - x_span / scale / 2,
         x_center + x_span / scale / 2,
+      ]
+      ranges.current.x2 = [
+        x2_center - x2_span / scale / 2,
+        x2_center + x2_span / scale / 2,
       ]
       ranges.current.y = [
         y_center - y_span / scale / 2,
@@ -780,6 +873,11 @@
         touch_state.initial_x_range,
         plot_width,
       )
+      const x2_delta = pixels_to_data_delta(
+        -dx,
+        touch_state.initial_x2_range,
+        plot_width,
+      )
       const y_delta = pixels_to_data_delta(
         dy,
         touch_state.initial_y_range,
@@ -791,6 +889,7 @@
         plot_height,
       )
       ranges.current.x = pan_range(touch_state.initial_x_range, x_delta)
+      ranges.current.x2 = pan_range(touch_state.initial_x2_range, x2_delta)
       ranges.current.y = pan_range(touch_state.initial_y_range, y_delta)
       ranges.current.y2 = pan_range(touch_state.initial_y2_range, y2_delta)
     }
@@ -803,10 +902,12 @@
   function handle_double_click() {
     // Reset zoom to initial ranges (undo any pan/zoom)
     ranges.current.x = [...ranges.initial.x] as [number, number]
+    ranges.current.x2 = [...ranges.initial.x2] as [number, number]
     ranges.current.y = [...ranges.initial.y] as [number, number]
     ranges.current.y2 = [...ranges.initial.y2] as [number, number]
     // Also reset axis props so future data changes recalculate auto ranges
     x_axis = { ...x_axis, range: [null, null] }
+    x2_axis = { ...x2_axis, range: [null, null] }
     y_axis = { ...y_axis, range: [null, null] }
     y2_axis = { ...y2_axis, range: [null, null] }
   }
@@ -856,10 +957,16 @@
 
   // State accessors for shared axis change handler
   const axis_state: AxisChangeState<DataSeries> = {
-    get_axis: (axis) => (axis === `x` ? x_axis : axis === `y` ? y_axis : y2_axis),
+    get_axis: (axis) => {
+      if (axis === `x`) return x_axis
+      if (axis === `x2`) return x2_axis
+      if (axis === `y`) return y_axis
+      return y2_axis
+    },
     set_axis: (axis, config) => {
       // Spread into existing state to preserve merged type structure
       if (axis === `x`) x_axis = { ...x_axis, ...config }
+      else if (axis === `x2`) x2_axis = { ...x2_axis, ...config }
       else if (axis === `y`) y_axis = { ...y_axis, ...config }
       else y2_axis = { ...y2_axis, ...config }
     },
@@ -902,11 +1009,12 @@
     <ReferenceLine
       ref_line={line}
       line_idx={line.idx}
-      x_min={ranges.current.x[0]}
-      x_max={ranges.current.x[1]}
+      x_min={line.x_axis === `x2` ? ranges.current.x2[0] : ranges.current.x[0]}
+      x_max={line.x_axis === `x2` ? ranges.current.x2[1] : ranges.current.x[1]}
       y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
       y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
       x_scale={scales.x}
+      x2_scale={scales.x2}
       y_scale={scales.y}
       y2_scale={scales.y2}
       {clip_path_id}
@@ -1008,14 +1116,18 @@
     <ZeroLines
       {display}
       x_scale_fn={scales.x}
+      x2_scale_fn={scales.x2}
       y_scale_fn={scales.y}
       y2_scale_fn={scales.y2}
       x_range={ranges.current.x}
+      x2_range={ranges.current.x2}
       y_range={ranges.current.y}
       y2_range={ranges.current.y2}
       x_scale_type={final_x_axis.scale_type}
+      x2_scale_type={final_x2_axis.scale_type}
       y_scale_type={final_y_axis.scale_type}
       y2_scale_type={final_y2_axis.scale_type}
+      has_x2={x2_series.length > 0}
       has_y2={y2_series.length > 0}
       {width}
       {height}
@@ -1027,14 +1139,14 @@
 
     <!-- Histogram bars (rendered before axes so tick labels appear on top) -->
     {#each histogram_data as
-      { id, bins, color, label, y_scale, y_axis },
+      { id, bins, color, label, x_scale, y_scale, y_axis },
       series_idx
       (id ?? series_idx)
     }
       <g class="histogram-series" data-series-idx={series_idx}>
         {#each bins as bin, bin_idx (bin_idx)}
-          {@const bar_x = scales.x(bin.x0!)}
-          {@const bar_width = Math.max(1, Math.abs(scales.x(bin.x1!) - bar_x))}
+          {@const bar_x = x_scale(bin.x0!)}
+          {@const bar_width = Math.max(1, Math.abs(x_scale(bin.x1!) - bar_x))}
           {@const bar_height = Math.max(0, (height - pad.b) - y_scale(bin.length))}
           {@const bar_y = y_scale(bin.length)}
           {@const value = (bin.x0! + bin.x1!) / 2}
@@ -1148,6 +1260,72 @@
         />
       {/if}
     </g>
+
+    <!-- X2-axis (Top) -->
+    {#if x2_series.length > 0}
+      <g class="x2-axis">
+        <line
+          x1={pad.l}
+          x2={width - pad.r}
+          y1={pad.t}
+          y2={pad.t}
+          stroke={final_x2_axis.color || `var(--border-color, gray)`}
+          stroke-width="1"
+        />
+        {#each ticks.x2 as tick (tick)}
+          {@const tick_x = scales.x2(tick as number)}
+          {@const custom_label = get_tick_label(tick as number, final_x2_axis.ticks)}
+          {@const inside = final_x2_axis.tick?.label?.inside ?? false}
+          {@const shift_x = final_x2_axis.tick?.label?.shift?.x ?? 0}
+          {@const shift_y = final_x2_axis.tick?.label?.shift?.y ?? 0}
+          {@const base_y = inside ? 8 : -20}
+          {@const text_y = base_y + shift_y}
+          {@const dominant_baseline = inside ? `hanging` : `auto`}
+          <g class="tick" transform="translate({tick_x}, {pad.t})">
+            {#if display.x2_grid}
+              <line
+                y1="0"
+                y2={height - pad.b - pad.t}
+                stroke="var(--border-color, gray)"
+                stroke-dasharray="4"
+                stroke-width="1"
+                {...final_x2_axis.grid_style ?? {}}
+              />
+            {/if}
+            <line
+              y1={inside ? 0 : -5}
+              y2={inside ? 5 : 0}
+              stroke={final_x2_axis.color || `var(--border-color, gray)`}
+              stroke-width="1"
+            />
+            <text
+              x={shift_x}
+              y={text_y}
+              text-anchor="middle"
+              dominant-baseline={dominant_baseline}
+              fill={final_x2_axis.color || `var(--text-color)`}
+            >
+              {custom_label ?? format_value(tick, final_x2_axis.format)}
+            </text>
+          </g>
+        {/each}
+        {#if final_x2_axis.label || x2_axis.options?.length}
+          {@const { label_shift, label = ``, options, selected_key, color } =
+          final_x2_axis}
+          <AxisLabel
+            x={(pad.l + width - pad.r) / 2 + (label_shift?.x ?? 0)}
+            y={pad.t - (label_shift?.y ?? 40)}
+            {label}
+            {options}
+            {selected_key}
+            loading={axis_loading === `x2`}
+            axis_type="x2"
+            {color}
+            on_select={(key) => handle_axis_change(`x2`, key)}
+          />
+        {/if}
+      </g>
+    {/if}
 
     <!-- Y-axis -->
     <g class="y-axis">
@@ -1342,9 +1520,11 @@
       bind:display
       bind:bar
       bind:x_axis
+      bind:x2_axis
       bind:y_axis
       bind:y2_axis
       auto_x_range={auto_ranges.x}
+      auto_x2_range={auto_ranges.x2}
       auto_y_range={auto_ranges.y}
       auto_y2_range={auto_ranges.y2}
       {series}
@@ -1440,7 +1620,7 @@
     font-weight: var(--histogram-font-weight);
     font-size: var(--histogram-font-size);
   }
-  g:is(.x-axis, .y-axis, .y2-axis) .tick text {
+  g:is(.x-axis, .x2-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
   }
   .histogram-series path {

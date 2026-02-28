@@ -23,7 +23,7 @@
     selected_key?: string
     color?: string | null
     loading?: boolean
-    axis_type: `x` | `y` | `y2`
+    axis_type: `x` | `x2` | `y` | `y2`
     on_select?: (key: string) => void
   } = $props()
 </script>

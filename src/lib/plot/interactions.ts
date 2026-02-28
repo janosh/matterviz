@@ -1,7 +1,8 @@
-import type { Y2SyncConfig, Y2SyncMode } from './types'
+import type { Vec2 } from '$lib/math'
+import type { XyObj, Y2SyncConfig, Y2SyncMode } from './types'
 
 // Get relative coordinates from a mouse event
-export function get_relative_coords(evt: MouseEvent): { x: number; y: number } | null {
+export function get_relative_coords(evt: MouseEvent): XyObj | null {
   const current_target = evt.currentTarget
   if (!(current_target instanceof SVGElement)) return null
 
@@ -20,21 +21,21 @@ export function normalize_y2_sync(
 }
 
 // Helper to check if all values in ranges are finite
-const all_finite = (...ranges: [number, number][]) =>
+const all_finite = (...ranges: Vec2[]) =>
   ranges.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))
 
 // Calculate synced y2 range based on sync mode
 export function sync_y2_range(
-  y1_range: [number, number],
-  y2_base_range: [number, number],
+  y1_range: Vec2,
+  y2_base_range: Vec2,
   sync: Y2SyncConfig,
-): [number, number] {
+): Vec2 {
   if (sync.mode === `none`) return y2_base_range
   if (!all_finite(y1_range, y2_base_range)) return y2_base_range
 
   // Synced: Y2 has exact same range as Y1
   if (sync.mode === `synced`) {
-    return [...y1_range] as [number, number]
+    return [...y1_range] as Vec2
   }
 
   // Align: Position so align_val (default 0) is at same relative position on both axes
@@ -75,16 +76,16 @@ export function sync_y2_range(
 
 // Shift a range by a delta amount (no bounds constraint for free panning)
 export function pan_range(
-  current: [number, number],
+  current: Vec2,
   delta: number,
-): [number, number] {
+): Vec2 {
   return [current[0] + delta, current[1] + delta]
 }
 
 // Convert pixel delta to data delta using current data range and pixel range
 export function pixels_to_data_delta(
   pixel_delta: number,
-  data_range: [number, number],
+  data_range: Vec2,
   pixel_range: number,
 ): number {
   if (pixel_range === 0) return 0
@@ -98,15 +99,15 @@ export const PINCH_ZOOM_THRESHOLD = 0.1
 
 // Helper to check if range is the default [0, 1] sentinel (no data)
 // Note: min === 0 handles -0 correctly since -0 === 0 in JavaScript
-const is_default_range = ([min, max]: [number, number]) => min === 0 && max === 1
+const is_default_range = ([min, max]: Vec2) => min === 0 && max === 1
 
 // Adopt the new data range, unless all series were hidden (sentinel [0, 1] fallback).
 // NOTE: [0, 1] is the "no data" sentinel - when all series are hidden, auto ranges
 // fall back to [0, 1]. Actual data spanning exactly [0, 1] is a rare edge case.
 export function expand_range_if_needed(
-  current: [number, number],
-  new_range: [number, number],
-): { range: [number, number]; changed: boolean } {
+  current: Vec2,
+  new_range: Vec2,
+): { range: Vec2; changed: boolean } {
   // Guard against NaN/Infinity - prefer valid range, fall back to sentinel [0, 1] if both invalid
   const current_valid = all_finite(current)
   const new_valid = all_finite(new_range)

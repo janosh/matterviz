@@ -31,11 +31,12 @@ export function measure_text_width(text: string, font: string = `12px sans-serif
   return ctx.measureText(text).width
 }
 
-// Calculate auto-adjusted padding based on tick label widths
+// Calculate auto-adjusted padding based on tick label widths/heights
 // This ensures tick labels don't overlap with axis labels
 export interface AutoPaddingConfig {
   padding: Partial<Sides> // User padding (undefined sides will be auto-calculated)
   default_padding: Required<Sides> // Default padding to use as baseline
+  x2_axis?: AxisConfig & { tick_values?: (string | number)[] }
   y_axis?: AxisConfig & { tick_values?: (string | number)[] }
   y2_axis?: AxisConfig & { tick_values?: (string | number)[] }
   label_gap?: number // Gap between tick labels and axis labels (default: LABEL_GAP_DEFAULT)
@@ -50,20 +51,31 @@ export const measure_max_tick_width = (ticks: (string | number)[], format: strin
     }),
   )
 
+// Estimated height of a single tick label line (font-size 0.8em ≈ 12px + leading)
+export const TICK_LABEL_HEIGHT = 16
+
 export const calc_auto_padding = ({
   padding,
   default_padding,
+  x2_axis = {},
   y_axis = {},
   y2_axis = {},
   label_gap = LABEL_GAP_DEFAULT,
 }: AutoPaddingConfig): Required<Sides> => {
+  const x2_ticks = x2_axis.tick_values ?? []
   const y_ticks = y_axis.tick_values ?? []
   const y_format = y_axis.format ?? ``
   const y2_ticks = y2_axis.tick_values ?? []
   const y2_format = y2_axis.format ?? ``
 
   return {
-    t: padding.t ?? default_padding.t,
+    t: padding.t ??
+      (x2_ticks.length > 0
+        ? Math.max(
+          default_padding.t,
+          TICK_LABEL_HEIGHT + label_gap + (x2_axis.label ? 20 : 0),
+        )
+        : default_padding.t),
     b: padding.b ?? default_padding.b,
     l: padding.l ??
       Math.max(default_padding.l, measure_max_tick_width(y_ticks, y_format) + label_gap),

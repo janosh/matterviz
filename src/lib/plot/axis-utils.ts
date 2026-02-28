@@ -9,7 +9,7 @@ import type {
   DataSeries,
 } from './types'
 
-type AxisType = `x` | `y` | `y2`
+type AxisType = `x` | `x2` | `y` | `y2`
 
 // Merge new series with preserved UI state from old series
 // Matches by id first (string or number), then falls back to index

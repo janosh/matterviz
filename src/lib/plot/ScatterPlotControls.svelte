@@ -17,6 +17,7 @@
   let {
     series = [],
     x_axis = $bindable({}),
+    x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
@@ -47,8 +48,24 @@
   }
 </script>
 
-<PlotControls bind:x_axis bind:y_axis bind:y2_axis bind:display show_controls {...rest}>
-  {@render children?.({ x_axis, y_axis, y2_axis, display, styles, selected_series_idx })}
+<PlotControls
+  bind:x_axis
+  bind:x2_axis
+  bind:y_axis
+  bind:y2_axis
+  bind:display
+  show_controls
+  {...rest}
+>
+  {@render children?.({
+      x_axis,
+      x2_axis,
+      y_axis,
+      y2_axis,
+      display,
+      styles,
+      selected_series_idx,
+    })}
   <SettingsSection
     title="Markers"
     current_values={{ show_points: styles.show_points, show_lines: styles.show_lines }}

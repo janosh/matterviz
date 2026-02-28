@@ -1,34 +1,45 @@
 <script lang="ts">
+  import type { Vec2 } from '$lib/math'
   import { get_scale_type_name, type ScaleType, type Sides } from '$lib/plot'
 
   let {
     display,
     x_scale_fn,
+    x2_scale_fn,
     y_scale_fn,
     y2_scale_fn,
     x_range,
+    x2_range,
     y_range,
     y2_range,
     x_scale_type,
+    x2_scale_type,
     y_scale_type,
     y2_scale_type,
     x_is_time = false,
+    x2_is_time = false,
+    has_x2 = false,
     has_y2 = false,
     width,
     height,
     pad,
   }: {
-    display: { x_zero_line?: boolean; y_zero_line?: boolean }
+    display: { x_zero_line?: boolean; x2_zero_line?: boolean; y_zero_line?: boolean }
     x_scale_fn: (val: number) => number
+    x2_scale_fn?: (val: number) => number
     y_scale_fn: (val: number) => number
     y2_scale_fn?: (val: number) => number
-    x_range: [number, number]
-    y_range: [number, number]
-    y2_range?: [number, number]
+    x_range: Vec2
+    x2_range?: Vec2
+    y_range: Vec2
+    y2_range?: Vec2
     x_scale_type?: ScaleType
+    x2_scale_type?: ScaleType
     y_scale_type?: ScaleType
     y2_scale_type?: ScaleType
     x_is_time?: boolean
+    x2_is_time?: boolean
+    has_x2?: boolean
     has_y2?: boolean
     width: number
     height: number
@@ -42,6 +53,15 @@
   {@const zero_x = x_scale_fn(0)}
   {#if isFinite(zero_x)}
     <line class="zero-line" x1={zero_x} x2={zero_x} y1={pad.t} y2={height - pad.b} />
+  {/if}
+{/if}
+
+{#if display.x2_zero_line && has_x2 && x2_scale_fn && x2_range &&
+    get_scale_type_name(x2_scale_type) !== `log` &&
+    !x2_is_time && x2_range[0] <= 0 && x2_range[1] >= 0}
+  {@const zero_x2 = x2_scale_fn(0)}
+  {#if isFinite(zero_x2)}
+    <line class="zero-line" x1={zero_x2} x2={zero_x2} y1={pad.t} y2={height - pad.b} />
   {/if}
 {/if}
 

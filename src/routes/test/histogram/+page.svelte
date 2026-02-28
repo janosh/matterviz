@@ -511,3 +511,33 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
     y2_axis={{ label: `Large Count` }}
   />
 </section>
+
+<section id="x2-axis-histogram">
+  <h2>X2 Axis Histogram (Dual X-Axes)</h2>
+  <p>Bottom: mass in kg. Top: mass in lbs. Each distribution on its own x-scale.</p>
+  <Histogram
+    series={[
+      {
+        x: Array.from({ length: 400 }, (_, idx) => idx),
+        y: generate_normal(400, 70, 10),
+        label: `Mass (kg)`,
+        line_style: { stroke: `#0ea5e9` },
+        point_style: { fill: `#0ea5e9` },
+      },
+      {
+        x: Array.from({ length: 400 }, (_, idx) => idx),
+        y: generate_normal(400, 154, 22),
+        label: `Mass (lbs)`,
+        x_axis: `x2`,
+        line_style: { stroke: `#f97316` },
+        point_style: { fill: `#f97316` },
+      },
+    ]}
+    bins={25}
+    mode="overlay"
+    show_legend
+    x_axis={{ label: `Mass (kg)`, color: `#0ea5e9` }}
+    x2_axis={{ label: `Mass (lbs)`, color: `#f97316` }}
+    y_axis={{ label: `Count` }}
+  />
+</section>

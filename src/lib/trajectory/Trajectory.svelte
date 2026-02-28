@@ -351,14 +351,12 @@
     if (!plot_series.length) return
 
     // Extract property keys from visible series metadata
-    const visible_keys = plot_series
-      .filter((srs) => srs.visible)
-      // Get property key from series metadata (stored during series generation)
-      .map((srs) => {
-        const metadata = Array.isArray(srs.metadata) ? srs.metadata[0] : srs.metadata
-        return metadata?.property_key
-      })
-      .filter((key): key is string => Boolean(key))
+    const visible_keys = plot_series.flatMap((srs) => {
+      if (!srs.visible) return []
+      const metadata = Array.isArray(srs.metadata) ? srs.metadata[0] : srs.metadata
+      const key = metadata?.property_key
+      return key ? [key as string] : []
+    })
 
     // Only update if changed (use untrack to avoid circular dependency)
     const current = untrack(() => visible_properties) || []
