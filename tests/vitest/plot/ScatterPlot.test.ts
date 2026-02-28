@@ -46,6 +46,19 @@ describe(`ScatterPlot`, () => {
     mount(ScatterPlot, { target: document.body, props })
   })
 
+  test(`mounts with x2-axis series without error`, () => {
+    mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [
+          { x: [1, 2, 3], y: [10, 20, 30], label: `Primary` },
+          { x: [100, 200, 300], y: [5, 15, 25], x_axis: `x2`, label: `Secondary` },
+        ],
+        x2_axis: { label: `Temperature (K)` },
+      },
+    })
+  })
+
   test.each([
     {
       x: [0, 10, 20, 30, 40, 50],

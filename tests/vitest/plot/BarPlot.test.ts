@@ -68,6 +68,25 @@ describe(`BarPlot`, () => {
     mount(BarPlot, { target: document.body, props })
   })
 
+  test(`mounts with x2-axis series without error`, () => {
+    mount(BarPlot, {
+      target: document.body,
+      props: {
+        series: [
+          basic,
+          {
+            x: [100, 200, 300],
+            y: [5, 15, 25],
+            x_axis: `x2`,
+            label: `X2 Series`,
+            color: `orangered`,
+          },
+        ],
+        x2_axis: { label: `Temperature (K)` },
+      },
+    })
+  })
+
   test.each<[Orientation, BarMode]>([
     [`vertical`, `overlay`],
     [`horizontal`, `overlay`],
