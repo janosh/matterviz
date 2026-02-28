@@ -1,7 +1,9 @@
 import {
+  calc_auto_padding,
   compute_element_placement,
   constrain_tooltip_position,
   filter_padding,
+  measure_max_tick_width,
 } from '$lib/plot/layout'
 import { describe, expect, it, test } from 'vitest'
 
@@ -414,6 +416,22 @@ describe(`layout utility functions`, () => {
         // Any corner is acceptable for center cluster
         expect(result.x).toBeDefined()
       }
+    })
+  })
+
+  it(`measure_max_tick_width returns 0 for empty ticks`, () => {
+    expect(measure_max_tick_width([], `.2s`)).toBe(0)
+  })
+
+  describe(`calc_auto_padding`, () => {
+    const defaults = { t: 20, b: 60, l: 60, r: 20 }
+
+    it(`preserves explicit padding, fills missing from defaults`, () => {
+      const result = calc_auto_padding({
+        padding: { t: 10, l: 80 },
+        default_padding: defaults,
+      })
+      expect(result).toMatchObject({ t: 10, l: 80, b: 60 })
     })
   })
 })

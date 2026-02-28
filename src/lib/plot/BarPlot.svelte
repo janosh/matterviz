@@ -1500,20 +1500,25 @@
                 {#if polyline_str && !show_points && (on_bar_hover || on_bar_click)}
                   {@const find_closest = (evt: MouseEvent) => {
             const svg_el = (evt.target as Element).closest(`svg`)
-            if (!svg_el) return null
+            if (!svg_el || points.length === 0) return null
             const rect = svg_el.getBoundingClientRect()
             const mx = evt.clientX - rect.left
             const my = evt.clientY - rect.top
-            let best: LineSeriesPoint | null = null
-            let best_dist = Infinity
-            for (const pt of points) {
-              const dist = (pt.x - mx) ** 2 + (pt.y - my) ** 2
-              if (dist < best_dist) {
-                best_dist = dist
-                best = pt
-              }
+            // Binary search on x for O(log n) instead of O(n) scan
+            let lo = 0
+            let hi = points.length - 1
+            while (lo < hi) {
+              const mid = (lo + hi) >> 1
+              if (points[mid].x < mx) lo = mid + 1
+              else hi = mid
             }
-            return best
+            // Compare nearest x-neighbor and its predecessor
+            const candidate = points[lo]
+            const prev = lo > 0 ? points[lo - 1] : null
+            if (!prev) return candidate
+            const dist_sq = (pt: LineSeriesPoint) =>
+              (pt.x - mx) ** 2 + (pt.y - my) ** 2
+            return dist_sq(prev) < dist_sq(candidate) ? prev : candidate
           }}
                   {@const fill_fn = (pt: LineSeriesPoint) =>
             pt.color_value != null
