@@ -1534,6 +1534,29 @@
                   />
                 {/if}
                 {#if polyline_str && !show_points && (on_bar_hover || on_bar_click)}
+                  {@const find_closest = (evt: MouseEvent) => {
+            const svg_el = (evt.target as Element).closest(`svg`)
+            if (!svg_el) return null
+            const rect = svg_el.getBoundingClientRect()
+            const mx = evt.clientX - rect.left
+            const my = evt.clientY - rect.top
+            let best: LineSeriesPoint | null = null
+            let best_dist = Infinity
+            for (const pt of points) {
+              const dist = (pt.x - mx) ** 2 + (pt.y - my) ** 2
+              if (dist < best_dist) {
+                best_dist = dist
+                best = pt
+              }
+            }
+            return best
+          }}
+                  {@const fill_fn = (pt: LineSeriesPoint) =>
+            pt.color_value != null
+              ? color_scale_fn(pt.color_value)
+              : pt.point_style?.fill ?? color}
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
                   <polyline
                     points={polyline_str}
                     fill="none"
@@ -1542,6 +1565,25 @@
                     stroke-linejoin="round"
                     stroke-linecap="round"
                     style:cursor={on_bar_click ? `pointer` : undefined}
+                    onmousemove={(evt) => {
+                      const pt = find_closest(evt)
+                      if (!pt) return
+                      hovered = true
+                      hover_info = get_bar_data(series_idx, pt.idx, fill_fn(pt))
+                      change(hover_info)
+                      on_bar_hover?.({ ...hover_info!, event: evt })
+                    }}
+                    onmouseleave={() => {
+                      change(null)
+                      hover_info = null
+                      on_bar_hover?.(null)
+                    }}
+                    onclick={(evt) => {
+                      const pt = find_closest(evt)
+                      if (!pt) return
+                      const bar_data = get_bar_data(series_idx, pt.idx, fill_fn(pt))
+                      on_bar_click?.({ ...bar_data, event: evt })
+                    }}
                   />
                 {/if}
                 {#if show_points}
