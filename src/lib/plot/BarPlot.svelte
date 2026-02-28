@@ -1418,6 +1418,7 @@
           x_scale_type={x_axis.scale_type}
           y_scale_type={y_axis.scale_type}
           y2_scale_type={y2_axis.scale_type}
+          x_is_time={x_axis.format?.startsWith(`%`) ?? false}
           has_y2={y2_series.length > 0}
           {width}
           {height}

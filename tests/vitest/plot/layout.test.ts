@@ -431,7 +431,7 @@ describe(`layout utility functions`, () => {
         padding: { t: 10, l: 80 },
         default_padding: defaults,
       })
-      expect(result).toMatchObject({ t: 10, l: 80, b: 60 })
+      expect(result).toEqual({ t: 10, l: 80, b: 60, r: 30 })
     })
   })
 })

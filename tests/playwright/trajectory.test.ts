@@ -298,12 +298,11 @@ test.describe(`Trajectory Component`, () => {
       await first_item.click()
       await expect(first_item).toHaveClass(/hidden/)
 
-      // Regression check: hidden series should remain hidden after a reactive update.
-      const next_btn = trajectory_viewer.locator(`button[aria-label="Next step"]`)
-      if (await next_btn.isVisible()) {
-        await next_btn.click()
-        await expect(first_item).toHaveClass(/hidden/)
-      }
+      // Regression: trigger a reactive update and verify hidden state persists.
+      const next_btn = trajectory_viewer.locator(`button[title="Next step"]`)
+      await expect(next_btn).toBeVisible()
+      await next_btn.click()
+      await expect(first_item).toHaveClass(/hidden/)
     })
 
     test(`scatter plot displays with legend`, async ({ page }) => {

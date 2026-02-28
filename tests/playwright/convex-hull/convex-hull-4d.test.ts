@@ -344,7 +344,7 @@ test(`drag-right increases rotation_y (natural direction)`, async ({ page }) => 
   expect(rot_after).toBeGreaterThan(rot_before)
 })
 
-test(`drag-down increases rotation_x (natural direction)`, async ({ page }) => {
+test(`drag-down decreases rotation_x (natural direction)`, async ({ page }) => {
   await page.goto(`/test/convex-hull-performance?dim=4d&count=20`, {
     waitUntil: `networkidle`,
   })
