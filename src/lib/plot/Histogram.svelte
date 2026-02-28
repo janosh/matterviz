@@ -1005,6 +1005,23 @@
 
     <ZoomRect start={drag_state.start} current={drag_state.current} />
 
+    <ZeroLines
+      {display}
+      x_scale_fn={scales.x}
+      y_scale_fn={scales.y}
+      y2_scale_fn={scales.y2}
+      x_range={ranges.current.x}
+      y_range={ranges.current.y}
+      y2_range={ranges.current.y2}
+      x_scale_type={final_x_axis.scale_type}
+      y_scale_type={final_y_axis.scale_type}
+      y2_scale_type={final_y2_axis.scale_type}
+      has_y2={y2_series.length > 0}
+      {width}
+      {height}
+      {pad}
+    />
+
     <!-- Reference lines: below lines -->
     {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
@@ -1271,23 +1288,6 @@
         {/if}
       </g>
     {/if}
-
-    <ZeroLines
-      {display}
-      x_scale_fn={scales.x}
-      y_scale_fn={scales.y}
-      y2_scale_fn={scales.y2}
-      x_range={ranges.current.x}
-      y_range={ranges.current.y}
-      y2_range={ranges.current.y2}
-      x_scale_type={final_x_axis.scale_type}
-      y_scale_type={final_y_axis.scale_type}
-      y2_scale_type={final_y2_axis.scale_type}
-      has_y2={y2_series.length > 0}
-      {width}
-      {height}
-      {pad}
-    />
 
     <!-- Reference lines: above all -->
     {@render ref_lines_layer(ref_lines_by_z.above_all)}
