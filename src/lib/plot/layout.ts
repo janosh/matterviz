@@ -41,8 +41,8 @@ export interface AutoPaddingConfig {
   label_gap?: number // Gap between tick labels and axis labels (default: LABEL_GAP_DEFAULT)
 }
 
-// Helper to measure max tick width
-const measure_max_tick_width = (ticks: (string | number)[], format: string = ``) =>
+// Measure the widest formatted tick label. Used for auto-padding and label placement.
+export const measure_max_tick_width = (ticks: (string | number)[], format: string = ``) =>
   ticks.length === 0 ? 0 : Math.max(
     ...ticks.map((tick) => {
       const label = typeof tick === `string` ? tick : format_value(tick, format)

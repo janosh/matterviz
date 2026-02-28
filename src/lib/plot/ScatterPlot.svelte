@@ -17,6 +17,7 @@
     FillHandlerEvent,
     FillRegion,
     HoverConfig,
+    InitialRanges,
     InternalPoint,
     LabelPlacementConfig,
     LegendConfig,
@@ -46,6 +47,8 @@
     ReferenceLine,
     ScatterPlotControls,
     ScatterPoint,
+    ZeroLines,
+    ZoomRect,
   } from '$lib/plot'
   import type { AxisChangeState } from '$lib/plot/axis-utils'
   import {
@@ -105,6 +108,8 @@
     calc_auto_padding,
     constrain_tooltip_position,
     filter_padding,
+    LABEL_GAP_DEFAULT,
+    measure_max_tick_width,
   } from './layout'
   import type { IndexedRefLine } from './reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from './reference-line'
@@ -244,6 +249,8 @@
   })
   const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...(y_axis ?? {}) })
   const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...(y2_axis ?? {}) })
+  // Cache time-axis check — used in ~10 places for scale/tick/tooltip logic
+  let is_time_x = $derived(final_x_axis.format?.startsWith(`%`) ?? false)
   const final_display = $derived({ ...DEFAULTS.scatter.display, ...(display ?? {}) })
   // Local state for styles (initialized from prop, owned by this component for controls)
   // Using $state because styles has bindings in ScatterPlotControls
@@ -323,20 +330,10 @@
   let is_focused = $state(false)
   let shift_held = $state(false)
   let pan_drag_state = $state<
-    {
-      start: { x: number; y: number }
-      initial_x_range: [number, number]
-      initial_y_range: [number, number]
-      initial_y2_range: [number, number]
-    } | null
+    InitialRanges & { start: { x: number; y: number } } | null
   >(null)
   let touch_state = $state<
-    {
-      start_touches: { x: number; y: number }[]
-      initial_x_range: [number, number]
-      initial_y_range: [number, number]
-      initial_y2_range: [number, number]
-    } | null
+    InitialRanges & { start_touches: { x: number; y: number }[] } | null
   >(null)
 
   // Fill region hover state
@@ -457,10 +454,10 @@
     get_nice_data_range(
       all_points,
       ({ x }) => x,
-      (final_x_axis.range ?? [null, null]) as [number | null, number | null],
-      final_x_axis.scale_type!,
+      final_x_axis.range ?? [null, null],
+      final_x_axis.scale_type ?? `linear`,
       range_padding,
-      final_x_axis.format?.startsWith(`%`) || false,
+      is_time_x,
     ),
   )
 
@@ -468,8 +465,8 @@
     get_nice_data_range(
       y1_points,
       ({ y }) => y,
-      (final_y_axis.range ?? [null, null]) as [number | null, number | null],
-      final_y_axis.scale_type!,
+      final_y_axis.range ?? [null, null],
+      final_y_axis.scale_type ?? `linear`,
       range_padding,
       false,
     ),
@@ -479,8 +476,8 @@
     get_nice_data_range(
       y2_points,
       ({ y }) => y,
-      (final_y2_axis.range ?? [null, null]) as [number | null, number | null],
-      final_y2_axis.scale_type!,
+      final_y2_axis.range ?? [null, null],
+      final_y2_axis.scale_type ?? `linear`,
       range_padding,
       false,
     ),
@@ -560,7 +557,7 @@
   // Create scale functions
   // For time scales, use scaleTime directly; otherwise use create_scale (supports linear/log/arcsinh)
   let x_scale_fn = $derived(
-    final_x_axis.format?.startsWith(`%`)
+    is_time_x
       ? scaleTime()
         .domain([new Date(x_min), new Date(x_max)])
         .range([pad.l, width - pad.r])
@@ -682,7 +679,7 @@
     for (const series_data of filtered_series) {
       if (!series_data?.filtered_data) continue
       for (const point of series_data.filtered_data) {
-        const point_x_coord = final_x_axis.format?.startsWith(`%`)
+        const point_x_coord = is_time_x
           ? x_scale_fn(new Date(point.x))
           : x_scale_fn(point.x)
         const point_y_coord =
@@ -1149,7 +1146,7 @@
 
     // X-axis ticks: choose appropriate scale for tick generation
     // Time scales (format starts with %) use scaleTime for better tick placement
-    const x_scale_for_ticks = final_x_axis.format?.startsWith(`%`)
+    const x_scale_for_ticks = is_time_x
       ? scaleTime().domain([new Date(x_min), new Date(x_max)])
       : create_scale(final_x_axis.scale_type ?? `linear`, [x_min, x_max], [0, 1])
 
@@ -1183,6 +1180,13 @@
   let x_tick_values = $derived(axis_ticks.x)
   let y_tick_values = $derived(axis_ticks.y)
   let y2_tick_values = $derived(axis_ticks.y2)
+
+  // Cache measured tick-label widths so expensive text measurement only runs
+  // when tick values/format change, not on every template rerender.
+  let tick_label_widths = $derived({
+    y_max: measure_max_tick_width(y_tick_values, final_y_axis.format ?? ``),
+    y2_max: measure_max_tick_width(y2_tick_values, final_y2_axis.format ?? ``),
+  })
 
   // Define global handlers reference for adding/removing listeners
   const on_window_mouse_move = (evt: MouseEvent) => {
@@ -1497,7 +1501,7 @@
 
       for (const point of series_data.filtered_data) {
         // Calculate screen coordinates of the point
-        const point_cx = final_x_axis.format?.startsWith(`%`)
+        const point_cx = is_time_x
           ? x_scale_fn(new Date(point.x))
           : x_scale_fn(point.x)
         const point_cy = (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(
@@ -1615,9 +1619,7 @@
 
   function get_screen_coords(point: Point, series?: DataSeries): [number, number] {
     // convert data coordinates to potentially non-finite screen coordinates
-    const screen_x = final_x_axis.format?.startsWith(`%`)
-      ? x_scale_fn(new Date(point.x))
-      : x_scale_fn(point.x)
+    const screen_x = is_time_x ? x_scale_fn(new Date(point.x)) : x_scale_fn(point.x)
 
     const y_val = point.y
     // Determine which y-scale to use based on series y_axis property
@@ -1641,9 +1643,7 @@
     const hovered_series = series_with_ids[point.series_idx]
     if (!hovered_series) return null
     const { x, y, color_value, metadata, series_idx } = point
-    const cx = final_x_axis.format?.startsWith(`%`)
-      ? x_scale_fn(new Date(x))
-      : x_scale_fn(x)
+    const cx = is_time_x ? x_scale_fn(new Date(x)) : x_scale_fn(x)
     const cy = (hovered_series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)
     const coords = {
       x,
@@ -1685,6 +1685,14 @@
 
   let using_controls = $derived(controls.show)
   let has_multiple_series = $derived(series_with_ids.filter(Boolean).length > 1)
+
+  // Precompute non-click event names from point_events so we don't rebuild
+  // the entries array on every point render.
+  let point_event_names = $derived(
+    point_events
+      ? Object.keys(point_events).filter((name) => name !== `onclick`)
+      : [],
+  )
 
   // Set theme-aware background when entering fullscreen
   $effect(() => {
@@ -1882,9 +1890,7 @@
       <g class="x-axis">
         {#if width > 0 && height > 0}
           {#each x_tick_values as tick (tick)}
-            {@const tick_pos_raw = final_x_axis.format?.startsWith(`%`)
-          ? x_scale_fn(new Date(tick))
-          : x_scale_fn(tick)}
+            {@const tick_pos_raw = is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick)}
             {#if isFinite(tick_pos_raw)}
               // Check if tick position is finite
               {@const tick_pos = tick_pos_raw}
@@ -1920,7 +1926,7 @@
 
         <!-- Current frame indicator -->
         {#if current_x_value !== null && current_x_value !== undefined}
-          {@const current_pos_raw = final_x_axis.format?.startsWith(`%`)
+          {@const current_pos_raw = is_time_x
           ? x_scale_fn(new Date(current_x_value))
           : x_scale_fn(current_x_value)}
           {#if isFinite(current_pos_raw)}
@@ -2012,26 +2018,27 @@
         {/if}
 
         {#if height > 0 && (final_y_axis.label || final_y_axis.options?.length)}
+          {@const { label_shift, label = ``, options, selected_key, color } = final_y_axis}
+          {@const y_label_x =
+          Math.max(12, pad.l - tick_label_widths.y_max - LABEL_GAP_DEFAULT) +
+          (label_shift?.x ?? 0)}
+          {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 + (label_shift?.y ?? 0)}
           <foreignObject
-            x={-AXIS_LABEL_CONTAINER.x_offset}
-            y={-AXIS_LABEL_CONTAINER.y_offset}
+            x={y_label_x - AXIS_LABEL_CONTAINER.x_offset}
+            y={y_label_y - AXIS_LABEL_CONTAINER.y_offset}
             width={AXIS_LABEL_CONTAINER.width}
             height={AXIS_LABEL_CONTAINER.height}
             style="overflow: visible; pointer-events: none"
-            transform="rotate(-90, {(final_y_axis.label_shift?.y ?? 12)}, {pad.t +
-              (height - pad.t - pad.b) / 2 +
-              ((final_y_axis.label_shift?.x ?? 0))}) translate({(final_y_axis.label_shift?.y ?? 12)}, {pad.t +
-              (height - pad.t - pad.b) / 2 +
-              ((final_y_axis.label_shift?.x ?? 0))})"
+            transform="rotate(-90, {y_label_x}, {y_label_y})"
           >
             <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
               <InteractiveAxisLabel
-                label={final_y_axis.label ?? ``}
-                options={final_y_axis.options}
-                selected_key={final_y_axis.selected_key}
+                {label}
+                {options}
+                {selected_key}
                 loading={axis_loading === `y`}
                 axis_type="y"
-                color={final_y_axis.color}
+                {color}
                 on_select={(key) => handle_axis_change(`y`, key)}
                 class="axis-label y-label"
               />
@@ -2087,28 +2094,31 @@
           {/if}
 
           {#if height > 0 && (final_y2_axis.label || final_y2_axis.options?.length)}
+            {@const { label_shift, label = ``, options, selected_key, color, tick } =
+          final_y2_axis}
+            {@const inside = tick?.label?.inside ?? false}
+            {@const tick_shift = inside ? 0 : (tick?.label?.shift?.x ?? 0) + 8}
+            {@const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max}
+            {@const y2_label_x = width - pad.r + tick_shift + tick_width_contribution +
+          LABEL_GAP_DEFAULT + (label_shift?.x ?? 0)}
+            {@const y2_label_y = pad.t + (height - pad.t - pad.b) / 2 +
+          (label_shift?.y ?? 0)}
             <foreignObject
-              x={-AXIS_LABEL_CONTAINER.x_offset}
-              y={-AXIS_LABEL_CONTAINER.y_offset}
+              x={y2_label_x - AXIS_LABEL_CONTAINER.x_offset}
+              y={y2_label_y - AXIS_LABEL_CONTAINER.y_offset}
               width={AXIS_LABEL_CONTAINER.width}
               height={AXIS_LABEL_CONTAINER.height}
               style="overflow: visible; pointer-events: none"
-              transform="rotate(-90, {width - pad.r + ((final_y2_axis.label_shift?.y ?? 0))}, {pad.t +
-                (height - pad.t - pad.b) / 2 +
-                ((final_y2_axis.label_shift?.x ?? 0))}) translate({width -
-                pad.r +
-                ((final_y2_axis.label_shift?.y ?? 0))}, {pad.t +
-                (height - pad.t - pad.b) / 2 +
-                ((final_y2_axis.label_shift?.x ?? 0))})"
+              transform="rotate(-90, {y2_label_x}, {y2_label_y})"
             >
               <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
                 <InteractiveAxisLabel
-                  label={final_y2_axis.label ?? ``}
-                  options={final_y2_axis.options}
-                  selected_key={final_y2_axis.selected_key}
+                  {label}
+                  {options}
+                  {selected_key}
                   loading={axis_loading === `y2`}
                   axis_type="y2"
-                  color={final_y2_axis.color}
+                  {color}
                   on_select={(key) => handle_axis_change(`y2`, key)}
                   class="axis-label y2-label"
                 />
@@ -2120,60 +2130,25 @@
 
       <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
 
-      <!-- Zoom Selection Rectangle -->
-      {#if drag_start_coords && drag_current_coords && isFinite(drag_start_coords.x) &&
-        isFinite(drag_start_coords.y) && isFinite(drag_current_coords.x) &&
-        isFinite(drag_current_coords.y)}
-        {@const x = Math.min(drag_start_coords.x, drag_current_coords.x)}
-        {@const y = Math.min(drag_start_coords.y, drag_current_coords.y)}
-        {@const rect_width = Math.abs(drag_start_coords.x - drag_current_coords.x)}
-        {@const rect_height = Math.abs(drag_start_coords.y - drag_current_coords.y)}
-        <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
-      {/if}
+      <ZoomRect start={drag_start_coords} current={drag_current_coords} />
 
-      <!-- Zero lines (shown for linear and arcsinh scales, not log) -->
-      {#if final_display.x_zero_line &&
-        get_scale_type_name(final_x_axis.scale_type) !== `log` &&
-        !final_x_axis.format?.startsWith(`%`) && x_min <= 0 && x_max >= 0}
-        {@const zero_x_pos = x_scale_fn(0)}
-        {#if isFinite(zero_x_pos)}
-          <line
-            class="zero-line"
-            x1={zero_x_pos}
-            x2={zero_x_pos}
-            y1={pad.t}
-            y2={height - pad.b}
-          />
-        {/if}
-      {/if}
-      {#if final_display.y_zero_line &&
-        get_scale_type_name(final_y_axis.scale_type) !== `log` &&
-        y_min <= 0 && y_max >= 0}
-        {@const zero_y_pos = y_scale_fn(0)}
-        {#if isFinite(zero_y_pos)}
-          <line
-            class="zero-line"
-            x1={pad.l}
-            x2={width - pad.r}
-            y1={zero_y_pos}
-            y2={zero_y_pos}
-          />
-        {/if}
-      {/if}
-      {#if final_display.y_zero_line && y2_points.length > 0 &&
-        get_scale_type_name(final_y2_axis.scale_type) !== `log` && y2_min <= 0 &&
-        y2_max >= 0}
-        {@const zero_y2_pos = y2_scale_fn(0)}
-        {#if isFinite(zero_y2_pos)}
-          <line
-            class="zero-line"
-            x1={pad.l}
-            x2={width - pad.r}
-            y1={zero_y2_pos}
-            y2={zero_y2_pos}
-          />
-        {/if}
-      {/if}
+      <ZeroLines
+        display={final_display}
+        {x_scale_fn}
+        {y_scale_fn}
+        {y2_scale_fn}
+        x_range={zoom_x_range}
+        y_range={zoom_y_range}
+        y2_range={zoom_y2_range}
+        x_scale_type={final_x_axis.scale_type}
+        y_scale_type={final_y_axis.scale_type}
+        y2_scale_type={final_y2_axis.scale_type}
+        x_is_time={is_time_x}
+        has_y2={y2_points.length > 0}
+        {width}
+        {height}
+        {pad}
+      />
 
       <defs>
         <clipPath id={clip_path_id}>
@@ -2220,9 +2195,7 @@
               <Line
                 points={finite_screen_points}
                 origin={[
-                  final_x_axis.format?.startsWith(`%`)
-                    ? x_scale_fn(new Date(x_min))
-                    : x_scale_fn(x_min),
+                  is_time_x ? x_scale_fn(new Date(x_min)) : x_scale_fn(x_min),
                   series_data.y_axis === `y2` ? y2_scale_fn(y2_min) : y_scale_fn(y_min),
                 ]}
                 line_color={(tc(`line.color`) ? styles.line?.color : null) ?? color_fallback}
@@ -2261,9 +2234,7 @@
             ...label_style,
             offset: {
               x: calculated_label_pos.x -
-                (final_x_axis.format?.startsWith(`%`)
-                  ? x_scale_fn(new Date(point.x))
-                  : x_scale_fn(point.x)),
+                (is_time_x ? x_scale_fn(new Date(point.x)) : x_scale_fn(point.x)),
               y: calculated_label_pos.y - (series_data.y_axis === `y2`
                 ? y2_scale_fn(point.y)
                 : y_scale_fn(point.y)),
@@ -2320,10 +2291,9 @@
                     series_default_color}
                   {...point_events &&
                   Object.fromEntries(
-                    Object.entries(point_events)
-                      .filter(([event_name]) => event_name !== `onclick`).map((
-                        [event_name, handler],
-                      ) => [event_name, (event: Event) => handler({ point, event })]),
+                    point_event_names.map((name) => [name, (event: Event) =>
+                      point_events?.[name]?.({ point, event })]
+                    ),
                   )}
                   onclick={(event: MouseEvent) => {
                     // Call user-provided onclick handler first if it exists
@@ -2667,17 +2637,5 @@
   }
   .current-frame-indicator:hover {
     opacity: 0.8;
-  }
-  .zoom-rect {
-    fill: var(--scatter-zoom-rect-fill, rgba(100, 100, 255, 0.2));
-    stroke: var(--scatter-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
-    stroke-width: var(--scatter-zoom-rect-stroke-width, 1);
-    pointer-events: none; /* Prevent rect from interfering with mouse events */
-  }
-  .zero-line {
-    stroke: var(--scatter-zero-line-color, light-dark(black, white));
-    stroke-width: var(--scatter-zero-line-width, 1);
-    stroke-dasharray: none;
-    opacity: var(--scatter-zero-line-opacity, 0.3);
   }
 </style>

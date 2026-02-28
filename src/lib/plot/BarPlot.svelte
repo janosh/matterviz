@@ -13,6 +13,7 @@
     BarStyle,
     BasePlotProps,
     DataLoaderFn,
+    InitialRanges,
     InternalPoint,
     LegendConfig,
     LegendItem,
@@ -78,10 +79,12 @@
     constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
-    measure_text_width,
+    measure_max_tick_width,
   } from './layout'
   import PlotTooltip from './PlotTooltip.svelte'
   import { bar_path } from './svg'
+  import ZeroLines from './ZeroLines.svelte'
+  import ZoomRect from './ZoomRect.svelte'
 
   // Handler props for line marker events (extends BarHandlerProps with point-specific data)
   interface LineMarkerHandlerProps extends BarHandlerProps<Metadata> {
@@ -415,17 +418,11 @@
       width && height && y2_series.length && ticks.y2.length &&
       orientation === `vertical`
     ) {
-      const y2_tick_width = Math.max(
-        0,
-        ...ticks.y2.map((tick) =>
-          measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
-        ),
-      )
       // Need space for: tick shift + tick width + gap (30px) + label space (20px if present)
       // When ticks are inside, they don't contribute to padding
       const inside = y2_axis.tick?.label?.inside ?? false
       const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
-      const tick_width_contribution = inside ? 0 : y2_tick_width
+      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
       const label_space = y2_axis.label ? 20 : 0
       new_pad.r = Math.max(
         new_pad.r,
@@ -534,6 +531,13 @@
       : [],
   })
 
+  // Cache measured tick-label widths so expensive canvas text measurement
+  // only runs when ticks/format change, not on every template rerender.
+  let tick_label_widths = $derived({
+    y_max: measure_max_tick_width(ticks.y, y_axis.format ?? ``),
+    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format ?? ``),
+  })
+
   // Zoom drag state
   let drag_state = $state<{
     start: { x: number; y: number } | null
@@ -545,20 +549,10 @@
   let is_focused = $state(false)
   let shift_held = $state(false)
   let pan_drag_state = $state<
-    {
-      start: { x: number; y: number }
-      initial_x_range: [number, number]
-      initial_y_range: [number, number]
-      initial_y2_range: [number, number]
-    } | null
+    InitialRanges & { start: { x: number; y: number } } | null
   >(null)
   let touch_state = $state<
-    {
-      start_touches: { x: number; y: number }[]
-      initial_x_range: [number, number]
-      initial_y_range: [number, number]
-      initial_y2_range: [number, number]
-    } | null
+    InitialRanges & { start_touches: { x: number; y: number }[] } | null
   >(null)
   const on_window_mouse_move = (evt: MouseEvent) => {
     if (!drag_state.start || !drag_state.bounds) return
@@ -1175,16 +1169,7 @@
       ? `grab`
       : `crosshair`}
     >
-      <!-- Zoom rectangle -->
-      {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
-        isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&
-        isFinite(drag_state.current.y)}
-        {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
-        {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
-        {@const rect_w = Math.abs(drag_state.start.x - drag_state.current.x)}
-        {@const rect_h = Math.abs(drag_state.start.y - drag_state.current.y)}
-        <rect class="zoom-rect" {x} {y} width={rect_w} height={rect_h} />
-      {/if}
+      <ZoomRect start={drag_state.start} current={drag_state.current} />
 
       <!-- User content (custom overlays, reference lines, etc.) -->
       {@render user_content?.({
@@ -1255,23 +1240,24 @@
           {/if}
         {/each}
         {#if x_axis.label || x_axis.options?.length}
-          {@const shift_x = x_axis.label_shift?.x ?? 0}
-          {@const shift_y = x_axis.label_shift?.y ?? 0}
+          {@const { label_shift, label = ``, options, selected_key, color } = x_axis}
           <foreignObject
-            x={pad.l + chart_width / 2 + shift_x - AXIS_LABEL_CONTAINER.x_offset}
-            y={height - (pad.b / 3) + shift_y - AXIS_LABEL_CONTAINER.y_offset}
+            x={pad.l + chart_width / 2 + (label_shift?.x ?? 0) -
+            AXIS_LABEL_CONTAINER.x_offset}
+            y={height - (pad.b / 3) + (label_shift?.y ?? 0) -
+            AXIS_LABEL_CONTAINER.y_offset}
             width={AXIS_LABEL_CONTAINER.width}
             height={AXIS_LABEL_CONTAINER.height}
             style="overflow: visible; pointer-events: none"
           >
             <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
               <InteractiveAxisLabel
-                label={x_axis.label ?? ``}
-                options={x_axis.options}
-                selected_key={x_axis.selected_key}
+                {label}
+                {options}
+                {selected_key}
                 loading={axis_loading === `x`}
                 axis_type="x"
-                color={x_axis.color}
+                {color}
                 on_select={(key) => handle_axis_change(`x`, key)}
                 class="axis-label x-label"
               />
@@ -1331,20 +1317,11 @@
           {/if}
         {/each}
         {#if y_axis.label || y_axis.options?.length}
-          {@const max_y_tick_width = Math.max(
-          0,
-          ...ticks.y.map((tick) =>
-            measure_text_width(
-              format_value(tick, y_axis.format),
-              `12px sans-serif`,
-            )
-          ),
-        )}
-          {@const shift_x = y_axis.label_shift?.x ?? 0}
-          {@const shift_y = y_axis.label_shift?.y ?? 0}
-          {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - LABEL_GAP_DEFAULT) +
-          shift_x}
-          {@const y_label_y = pad.t + chart_height / 2 + shift_y}
+          {@const { label_shift, label = ``, options, selected_key, color } = y_axis}
+          {@const y_label_x =
+          Math.max(12, pad.l - tick_label_widths.y_max - LABEL_GAP_DEFAULT) +
+          (label_shift?.x ?? 0)}
+          {@const y_label_y = pad.t + chart_height / 2 + (label_shift?.y ?? 0)}
           <foreignObject
             x={y_label_x - AXIS_LABEL_CONTAINER.x_offset}
             y={y_label_y - AXIS_LABEL_CONTAINER.y_offset}
@@ -1355,12 +1332,12 @@
           >
             <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
               <InteractiveAxisLabel
-                label={y_axis.label ?? ``}
-                options={y_axis.options}
-                selected_key={y_axis.selected_key}
+                {label}
+                {options}
+                {selected_key}
                 loading={axis_loading === `y`}
                 axis_type="y"
-                color={y_axis.color}
+                {color}
                 on_select={(key) => handle_axis_change(`y`, key)}
                 class="axis-label y-label"
               />
@@ -1421,24 +1398,14 @@
             {/if}
           {/each}
           {#if y2_axis.label || y2_axis.options?.length}
-            {@const max_y2_tick_width = Math.max(
-          0,
-          ...ticks.y2.map((tick) =>
-            measure_text_width(
-              format_value(tick, y2_axis.format),
-              `12px sans-serif`,
-            )
-          ),
-        )}
-            {@const shift_x = y2_axis.label_shift?.x ?? 0}
-            {@const shift_y = y2_axis.label_shift?.y ?? 0}
-            {@const inside = y2_axis.tick?.label?.inside ?? false}
-            {@const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8}
-            {@const tick_width_contribution = inside ? 0 : max_y2_tick_width}
+            {@const { label_shift, label = ``, options, selected_key, color, tick } =
+          y2_axis}
+            {@const inside = tick?.label?.inside ?? false}
+            {@const tick_shift = inside ? 0 : (tick?.label?.shift?.x ?? 0) + 8}
+            {@const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max}
             {@const y2_label_x = width - pad.r + tick_shift + tick_width_contribution +
-          LABEL_GAP_DEFAULT +
-          shift_x}
-            {@const y2_label_y = pad.t + chart_height / 2 + shift_y}
+          LABEL_GAP_DEFAULT + (label_shift?.x ?? 0)}
+            {@const y2_label_y = pad.t + chart_height / 2 + (label_shift?.y ?? 0)}
             <foreignObject
               x={y2_label_x - AXIS_LABEL_CONTAINER.x_offset}
               y={y2_label_y - AXIS_LABEL_CONTAINER.y_offset}
@@ -1449,12 +1416,12 @@
             >
               <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
                 <InteractiveAxisLabel
-                  label={y2_axis.label ?? ``}
-                  options={y2_axis.options}
-                  selected_key={y2_axis.selected_key}
+                  {label}
+                  {options}
+                  {selected_key}
                   loading={axis_loading === `y2`}
                   axis_type="y2"
-                  color={y2_axis.color}
+                  {color}
                   on_select={(key) => handle_axis_change(`y2`, key)}
                   class="axis-label y2-label"
                 />
@@ -1473,37 +1440,22 @@
 
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
-        <!-- Zero lines (shown for linear and arcsinh scales, not log) -->
-        {#if display.x_zero_line &&
-          get_scale_type_name(x_axis.scale_type) !== `log` &&
-          ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-          {@const zx = scales.x(0)}
-          {#if isFinite(zx)}
-            <line class="zero-line" x1={zx} x2={zx} y1={pad.t} y2={height - pad.b} />
-          {/if}
-        {/if}
-        {#if display.y_zero_line &&
-          get_scale_type_name(y_axis.scale_type) !== `log` &&
-          ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
-          {@const zy = scales.y(0)}
-          {#if isFinite(zy)}
-            <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zy} y2={zy} />
-          {/if}
-        {/if}
-        {#if display.y_zero_line && y2_series.length > 0 &&
-          get_scale_type_name(y2_axis.scale_type) !== `log` &&
-          ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
-          {@const zero_y2 = scales.y2(0)}
-          {#if isFinite(zero_y2)}
-            <line
-              class="zero-line"
-              x1={pad.l}
-              x2={width - pad.r}
-              y1={zero_y2}
-              y2={zero_y2}
-            />
-          {/if}
-        {/if}
+        <ZeroLines
+          {display}
+          x_scale_fn={scales.x}
+          y_scale_fn={scales.y}
+          y2_scale_fn={scales.y2}
+          x_range={ranges.current.x}
+          y_range={ranges.current.y}
+          y2_range={ranges.current.y2}
+          x_scale_type={x_axis.scale_type}
+          y_scale_type={y_axis.scale_type}
+          y2_scale_type={y2_axis.scale_type}
+          has_y2={y2_series.length > 0}
+          {width}
+          {height}
+          {pad}
+        />
 
         <!-- Reference lines: below lines -->
         {@render ref_lines_layer(ref_lines_by_z.below_lines)}
@@ -1564,9 +1516,12 @@
               point_idx: idx,
             } as LineSeriesPoint
           }).filter((pt) => isFinite(pt.x) && isFinite(pt.y))}
-                {#if show_line && points.length > 1}
+                {@const polyline_str = show_line && points.length > 1
+            ? points.map((pt) => `${pt.x},${pt.y}`).join(` `)
+            : ``}
+                {#if polyline_str}
                   <polyline
-                    points={points.map((pt) => `${pt.x},${pt.y}`).join(` `)}
+                    points={polyline_str}
                     fill="none"
                     stroke={color}
                     stroke-width={stroke_width}
@@ -1575,11 +1530,9 @@
                     stroke-linecap="round"
                   />
                 {/if}
-                <!-- Add invisible wider line for easier hovering (only if no points shown) -->
-                {#if show_line && !show_points && points.length > 1 &&
-            (on_bar_hover || on_bar_click)}
+                {#if polyline_str && !show_points && (on_bar_hover || on_bar_click)}
                   <polyline
-                    points={points.map((pt) => `${pt.x},${pt.y}`).join(` `)}
+                    points={polyline_str}
                     fill="none"
                     stroke="transparent"
                     stroke-width={Math.max(10, stroke_width * 3)}
@@ -1961,19 +1914,8 @@
   g:is(.x-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em);
   }
-  .zoom-rect {
-    fill: var(--barplot-zoom-rect-fill, rgba(100, 100, 255, 0.2));
-    stroke: var(--barplot-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
-    stroke-width: var(--barplot-zoom-rect-stroke-width, 1);
-    pointer-events: none;
-  }
   .bar-label {
     fill: var(--text-color);
     font-size: 11px;
-  }
-  .zero-line {
-    stroke: var(--barplot-zero-line-color, light-dark(black, white));
-    stroke-width: var(--barplot-zero-line-width, 1);
-    opacity: var(--barplot-zero-line-opacity, 0.3);
   }
 </style>

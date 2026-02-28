@@ -39,7 +39,7 @@
     constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
-    measure_text_width,
+    measure_max_tick_width,
   } from '$lib/plot/layout'
   import type { IndexedRefLine } from '$lib/plot/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/reference-line'
@@ -52,11 +52,14 @@
   import type {
     BasePlotProps,
     DataSeries,
+    InitialRanges,
     LegendConfig,
     PlotConfig,
     ScaleType,
   } from '$lib/plot/types'
   import { get_scale_type_name } from '$lib/plot/types'
+  import ZeroLines from '$lib/plot/ZeroLines.svelte'
+  import ZoomRect from '$lib/plot/ZoomRect.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { bin, max } from 'd3-array'
   import type { Snippet } from 'svelte'
@@ -201,20 +204,10 @@
   let is_focused = $state(false)
   let shift_held = $state(false)
   let pan_drag_state = $state<
-    {
-      start: { x: number; y: number }
-      initial_x_range: [number, number]
-      initial_y_range: [number, number]
-      initial_y2_range: [number, number]
-    } | null
+    InitialRanges & { start: { x: number; y: number } } | null
   >(null)
   let touch_state = $state<
-    {
-      start_touches: { x: number; y: number }[]
-      initial_x_range: [number, number]
-      initial_y_range: [number, number]
-      initial_y2_range: [number, number]
-    } | null
+    InitialRanges & { start_touches: { x: number; y: number }[] } | null
   >(null)
 
   // Legend placement stability state
@@ -379,19 +372,10 @@
       width && height && y2_series.length && current_ticks_y2.length &&
       final_y2_axis.label
     ) {
-      const y2_tick_width = Math.max(
-        0,
-        ...current_ticks_y2.map((tick) =>
-          measure_text_width(
-            format_value(tick, final_y2_axis.format),
-            `12px sans-serif`,
-          )
-        ),
-      )
       const inside = final_y2_axis.tick?.label?.inside ?? false
       // When ticks are inside, they don't contribute to padding
       const tick_shift = inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8
-      const tick_width_contribution = inside ? 0 : y2_tick_width
+      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
       const label_thickness = Math.round(12 * 1.2)
       new_pad.r = Math.max(
         new_pad.r,
@@ -476,6 +460,13 @@
         { default_count: 6 },
       )
       : [],
+  })
+
+  // Cache measured tick-label widths so expensive text measurement only runs
+  // when tick values/format change, not on every template rerender.
+  let tick_label_widths = $derived({
+    y_max: measure_max_tick_width(ticks.y, final_y_axis.format ?? ``),
+    y2_max: measure_max_tick_width(ticks.y2, final_y2_axis.format ?? ``),
   })
 
   let legend_data = $derived(prepare_legend_data(series))
@@ -1015,16 +1006,7 @@
     <!-- Reference lines: below grid (must render first to appear behind grid) -->
     {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
-    <!-- Zoom Selection Rectangle -->
-    {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
-        isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&
-        isFinite(drag_state.current.y)}
-      {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
-      {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
-      {@const rect_width = Math.abs(drag_state.start.x - drag_state.current.x)}
-      {@const rect_height = Math.abs(drag_state.start.y - drag_state.current.y)}
-      <rect class="zoom-rect" {x} {y} width={rect_width} height={rect_height} />
-    {/if}
+    <ZoomRect start={drag_state.start} current={drag_state.current} />
 
     <!-- Reference lines: below lines -->
     {@render ref_lines_layer(ref_lines_by_z.below_lines)}
@@ -1138,10 +1120,11 @@
         </g>
       {/each}
       {#if final_x_axis.label || x_axis.options?.length}
+        {@const { label_shift, label = ``, options, selected_key, color } = final_x_axis}
         <foreignObject
-          x={(pad.l + width - pad.r) / 2 + (final_x_axis.label_shift?.x ?? 0) -
+          x={(pad.l + width - pad.r) / 2 + (label_shift?.x ?? 0) -
           AXIS_LABEL_CONTAINER.x_offset}
-          y={height - 10 + (final_x_axis.label_shift?.y ?? 0) -
+          y={height - 10 + (label_shift?.y ?? 0) -
           AXIS_LABEL_CONTAINER.y_offset}
           width={AXIS_LABEL_CONTAINER.width}
           height={AXIS_LABEL_CONTAINER.height}
@@ -1149,12 +1132,12 @@
         >
           <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
             <InteractiveAxisLabel
-              label={final_x_axis.label ?? ``}
-              options={x_axis.options}
-              selected_key={x_axis.selected_key}
+              {label}
+              {options}
+              {selected_key}
               loading={axis_loading === `x`}
               axis_type="x"
-              color={final_x_axis.color}
+              {color}
               on_select={(key) => handle_axis_change(`x`, key)}
               class="axis-label x-label"
             />
@@ -1211,20 +1194,12 @@
         </g>
       {/each}
       {#if final_y_axis.label || y_axis.options?.length}
-        {@const max_y_tick_width = Math.max(
-          0,
-          ...ticks.y.map((tick) =>
-            measure_text_width(
-              format_value(tick, final_y_axis.format),
-              `12px sans-serif`,
-            )
-          ),
-        )}
-        {@const shift_x = final_y_axis.label_shift?.x ?? 0}
-        {@const shift_y = final_y_axis.label_shift?.y ?? 0}
-        {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - LABEL_GAP_DEFAULT) +
-          shift_x}
-        {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 + shift_y}
+        {@const { label_shift, label = ``, options, selected_key, color } = final_y_axis}
+        {@const y_label_x =
+          Math.max(12, pad.l - tick_label_widths.y_max - LABEL_GAP_DEFAULT) +
+          (label_shift?.x ?? 0)}
+        {@const y_label_y = pad.t + (height - pad.t - pad.b) / 2 +
+          (label_shift?.y ?? 0)}
         <foreignObject
           x={y_label_x - AXIS_LABEL_CONTAINER.x_offset}
           y={y_label_y - AXIS_LABEL_CONTAINER.y_offset}
@@ -1235,12 +1210,12 @@
         >
           <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
             <InteractiveAxisLabel
-              label={final_y_axis.label ?? ``}
-              options={y_axis.options}
-              selected_key={y_axis.selected_key}
+              {label}
+              {options}
+              {selected_key}
               loading={axis_loading === `y`}
               axis_type="y"
-              color={final_y_axis.color}
+              {color}
               on_select={(key) => handle_axis_change(`y`, key)}
               class="axis-label y-label"
             />
@@ -1297,24 +1272,15 @@
           </g>
         {/each}
         {#if final_y2_axis.label || y2_axis.options?.length}
-          {@const max_y2_tick_width = Math.max(
-          0,
-          ...ticks.y2.map((tick) =>
-            measure_text_width(
-              format_value(tick, final_y2_axis.format),
-              `12px sans-serif`,
-            )
-          ),
-        )}
-          {@const shift_x = final_y2_axis.label_shift?.x ?? 0}
-          {@const shift_y = final_y2_axis.label_shift?.y ?? 0}
-          {@const inside = final_y2_axis.tick?.label?.inside ?? false}
-          {@const tick_shift = inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8}
-          {@const tick_width_contribution = inside ? 0 : max_y2_tick_width}
+          {@const { label_shift, label = ``, options, selected_key, color, tick } =
+          final_y2_axis}
+          {@const inside = tick?.label?.inside ?? false}
+          {@const tick_shift = inside ? 0 : (tick?.label?.shift?.x ?? 0) + 8}
+          {@const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max}
           {@const y2_label_x = width - pad.r + tick_shift + tick_width_contribution +
-          LABEL_GAP_DEFAULT +
-          shift_x}
-          {@const y2_label_y = pad.t + (height - pad.t - pad.b) / 2 + shift_y}
+          LABEL_GAP_DEFAULT + (label_shift?.x ?? 0)}
+          {@const y2_label_y = pad.t + (height - pad.t - pad.b) / 2 +
+          (label_shift?.y ?? 0)}
           <foreignObject
             x={y2_label_x - AXIS_LABEL_CONTAINER.x_offset}
             y={y2_label_y - AXIS_LABEL_CONTAINER.y_offset}
@@ -1325,12 +1291,12 @@
           >
             <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
               <InteractiveAxisLabel
-                label={final_y2_axis.label ?? ``}
-                options={y2_axis.options}
-                selected_key={y2_axis.selected_key}
+                {label}
+                {options}
+                {selected_key}
                 loading={axis_loading === `y2`}
                 axis_type="y2"
-                color={final_y2_axis.color}
+                {color}
                 on_select={(key) => handle_axis_change(`y2`, key)}
                 class="axis-label y2-label"
               />
@@ -1340,37 +1306,22 @@
       </g>
     {/if}
 
-    <!-- Zero lines (shown for linear and arcsinh scales, not log) -->
-    {#if display.x_zero_line &&
-        get_scale_type_name(final_x_axis.scale_type) !== `log` &&
-        ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-      {@const x0 = scales.x(0)}
-      {#if isFinite(x0)}
-        <line class="zero-line" x1={x0} x2={x0} y1={pad.t} y2={height - pad.b} />
-      {/if}
-    {/if}
-    {#if display.y_zero_line &&
-        get_scale_type_name(final_y_axis.scale_type) !== `log` &&
-        ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
-      {@const zero_y = scales.y(0)}
-      {#if isFinite(zero_y)}
-        <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zero_y} y2={zero_y} />
-      {/if}
-    {/if}
-    {#if display.y_zero_line && y2_series.length > 0 &&
-        get_scale_type_name(final_y2_axis.scale_type) !== `log` &&
-        ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
-      {@const zero_y2 = scales.y2(0)}
-      {#if isFinite(zero_y2)}
-        <line
-          class="zero-line"
-          x1={pad.l}
-          x2={width - pad.r}
-          y1={zero_y2}
-          y2={zero_y2}
-        />
-      {/if}
-    {/if}
+    <ZeroLines
+      {display}
+      x_scale_fn={scales.x}
+      y_scale_fn={scales.y}
+      y2_scale_fn={scales.y2}
+      x_range={ranges.current.x}
+      y_range={ranges.current.y}
+      y2_range={ranges.current.y2}
+      x_scale_type={final_x_axis.scale_type}
+      y_scale_type={final_y_axis.scale_type}
+      y2_scale_type={final_y2_axis.scale_type}
+      has_y2={y2_series.length > 0}
+      {width}
+      {height}
+      {pad}
+    />
 
     <!-- Reference lines: above all -->
     {@render ref_lines_layer(ref_lines_by_z.above_all)}
@@ -1531,16 +1482,5 @@
   }
   .histogram-series path:hover {
     opacity: 1 !important;
-  }
-  .zoom-rect {
-    fill: var(--histogram-zoom-rect-fill, rgba(100, 100, 255, 0.2));
-    stroke: var(--histogram-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
-    stroke-width: var(--histogram-zoom-rect-stroke-width, 1);
-    pointer-events: none;
-  }
-  .zero-line {
-    stroke: var(--histogram-zero-line-color, light-dark(black, white));
-    stroke-width: var(--histogram-zero-line-width, 1);
-    opacity: var(--histogram-zero-line-opacity);
   }
 </style>

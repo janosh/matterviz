@@ -1,5 +1,5 @@
 import type { D3SymbolName } from '$lib/labels'
-import type { Vec3 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
@@ -20,6 +20,13 @@ export interface TweenedOptions<T> {
 export type XyObj = { x: number; y: number }
 export type XyShift = { x?: number; y?: number } // For optional shift/offset values
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
+
+// Snapshot of axis ranges at interaction start (shared by pan/zoom/touch handlers)
+export type InitialRanges = {
+  initial_x_range: Vec2
+  initial_y_range: Vec2
+  initial_y2_range: Vec2
+}
 
 export type Point<Metadata = Record<string, unknown>> = {
   x: number

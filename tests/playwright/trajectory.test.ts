@@ -283,6 +283,27 @@ test.describe(`Trajectory Component`, () => {
   describe_local_only(`plot and data visualization`, () => {
     // Skipped on CI because scatter plot rendering times out
 
+    test(`legend toggle keeps a series hidden`, async () => {
+      const scatter_plot = trajectory_viewer.locator(`.scatter`)
+      await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
+
+      const legend_items = scatter_plot.locator(`.legend .legend-item`)
+      const item_count = await legend_items.count()
+      test.skip(item_count < 2, `Need at least two legend items to test toggling`)
+
+      const first_item = legend_items.first()
+      await expect(first_item).toBeVisible()
+      await expect(first_item).not.toHaveClass(/hidden/)
+
+      await first_item.click()
+      await expect(first_item).toHaveClass(/hidden/)
+
+      // Regression check: hidden series should remain hidden after reactive updates.
+      await expect(async () => {
+        await expect(first_item).toHaveClass(/hidden/)
+      }).toPass({ timeout: 2000 })
+    })
+
     test(`scatter plot displays with legend`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const scatter_plot = trajectory.locator(`.scatter`)

@@ -16,13 +16,7 @@ import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/types'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 import { describe, expect, test } from 'vitest'
 
-const sample_points = [
-  { x: 1, y: 10 },
-  { x: 2, y: 20 },
-  { x: 3, y: 30 },
-  { x: 4, y: 40 },
-  { x: 5, y: 50 },
-]
+const sample_points = [1, 2, 3, 4, 5].map((x) => ({ x, y: x * 10 }))
 
 describe(`scales`, () => {
   describe(`create_scale`, () => {

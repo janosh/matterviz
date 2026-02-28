@@ -323,9 +323,12 @@
 
   // Plot series state (not derived so we can update on legend toggle)
   let plot_series = $state<DataSeries[]>([])
+  // Prevent circular updates when syncing legend toggles back to bindable visible_properties.
+  let syncing_visible_properties = false
 
   // Regenerate plot series when trajectory, config, or visible_properties change
   $effect(() => {
+    if (syncing_visible_properties) return
     const keys_set = visible_properties ? new Set(visible_properties) : undefined
 
     if (trajectory?.plot_metadata) {
@@ -363,7 +366,9 @@
       !visible_keys.every((key, idx) => key === current[idx])
 
     if (has_changed) {
+      syncing_visible_properties = true
       visible_properties = visible_keys
+      queueMicrotask(() => (syncing_visible_properties = false))
     }
   })
 
@@ -382,7 +387,7 @@
   let y_axis = $derived({
     label: y_axis_labels.y1,
     format: `.2~s`,
-    label_shift: { y: 20 },
+    label_shift: { y: 10 },
   })
   let y2_axis = $derived({
     label: y_axis_labels.y2,
@@ -1160,7 +1165,7 @@
             controls={scatter_controls}
             current_x_value={current_step_idx}
             change={plot_skimming ? handle_plot_change : undefined}
-            padding={{ t: 20, b: 60, l: 100, r: has_y2_series ? 100 : 20 }}
+            padding={{ t: 20, b: 60, l: 52, r: has_y2_series ? 100 : 20 }}
             range_padding={0}
             style="height: 100%"
             {...scatter_props}
