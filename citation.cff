@@ -15,10 +15,10 @@ authors:
     orcid: https://orcid.org/0000-0002-1182-9098
     github: ml-evs
 license: MIT
-license-url: https://github.com/janosh/matterviz/blob/main/license"
+license-url: https://github.com/janosh/matterviz/blob/main/license
 repository-code: https://github.com/janosh/matterviz
 type: software
 url: https://github.com/janosh/matterviz
 doi: 10.5281/zenodo.17094509
-version: 0.1.9 # replace with whatever version you use
-date-released: 2025-09-05
+version: 0.3.1 # replace with whatever version you use
+date-released: 2026-02-09

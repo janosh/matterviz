@@ -133,14 +133,11 @@
   <tspan class="element-symbol" style:font-size="{10 * segment.font_scale}px">
     {segment.element}
   </tspan>
-  {#if show_amounts}
-    <tspan class="amount" style:font-size="{8 * segment.font_scale}px" dx="1" dy="5">
-      {segment.amount}
-    </tspan>
-  {/if}
-  {#if show_percentages}
-    <tspan class="percentage" style:font-size="{8 * segment.font_scale}px" dx="1" dy="5">
-      {format_num(segment.fraction, `.1~%`)}
+  {#if show_amounts || show_percentages}
+    <tspan class="amount" style:font-size="{6.5 * segment.font_scale}px" dx="1" dy="5">
+      {show_amounts ? segment.amount : ``}{show_amounts && show_percentages ? `=` : ``}{
+        show_percentages ? format_num(segment.fraction, `.1~%`) : ``
+      }
     </tspan>
   {/if}
 {/snippet}
@@ -149,9 +146,7 @@
   viewBox="0 0 {size} {svg_height}"
   {...rest}
   class="bar-chart {rest.class ?? ``}"
-  style={`--bar-height: ${bar_height}px; --label-height: ${label_height}px; --gap: ${gap}px; --border-radius: ${
-    outer_corners_only ? 4 : 0
-  }px; ${rest.style ?? ``}`}
+  style:max-width="{size}px"
   bind:this={svg_node}
 >
   <!-- Background and border -->
@@ -160,11 +155,8 @@
     y={bar_y}
     width={size}
     height={bar_height}
-    rx={outer_corners_only ? 4 : 0}
-    ry={outer_corners_only ? 4 : 0}
-    fill="var(--bar-bg, #fff)"
-    stroke="var(--bar-border, #ccc)"
-    stroke-width="1"
+    fill="var(--bar-bg)"
+    stroke="var(--bar-border, none)"
   />
 
   <!-- External labels above -->
@@ -192,8 +184,8 @@
         y={bar_y}
         width={size}
         height={bar_height}
-        rx={outer_corners_only ? 4 : 0}
-        ry={outer_corners_only ? 4 : 0}
+        rx={outer_corners_only ? 2 : 0}
+        ry={outer_corners_only ? 2 : 0}
       />
     </clipPath>
   </defs>
@@ -242,7 +234,7 @@
         x={segment.label_x}
         y={segment.label_y}
         text-anchor="middle"
-        dominant-baseline="middle"
+        dominant-baseline={show_amounts || show_percentages ? `middle` : `central`}
         class="bar-label"
         style:fill={segment.text_color}
       >
@@ -274,8 +266,7 @@
 <style>
   .bar-chart {
     display: inline-block;
-    width: 100%;
-    max-width: var(--bar-max-width, 100%);
+    --bar-bg: light-dark(#fff, #333);
   }
   .bar-segment {
     transition: all 0.2s ease;
@@ -300,7 +291,7 @@
   .element-symbol {
     font-weight: 700;
   }
-  .amount, .percentage {
+  .amount {
     font-weight: 500;
   }
 </style>

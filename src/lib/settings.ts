@@ -69,7 +69,11 @@ type LineStyleType = {
   dash: SettingType<string>
 }
 
-type SimpleBarStyleType = { color: SettingType<string>; opacity: SettingType<number> }
+type SimpleBarStyleType = {
+  color: SettingType<string>
+  opacity: SettingType<number>
+  border_radius: SettingType<number>
+}
 
 type SimpleLineStyleType = { width: SettingType<number>; color: SettingType<string> }
 
@@ -867,6 +871,12 @@ export const SETTINGS_CONFIG: SettingsConfig = {
         description: `Bar plot opacity (overlay mode)`,
         minimum: 0,
         maximum: 1,
+      },
+      border_radius: {
+        value: 3,
+        description: `Corner radius for bar tops (px)`,
+        minimum: 0,
+        maximum: 10,
       },
     },
     line: {

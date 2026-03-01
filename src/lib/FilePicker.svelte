@@ -145,7 +145,9 @@
         {category}
       </span>
     {/each}
-    {#if uniq_categories.length > 0 && uniq_formats.length > 0}&emsp;{/if}
+    {#if uniq_categories.length > 0 && uniq_formats.length > 0}
+      <span class="divider"></span>
+    {/if}
 
     {#each uniq_formats as format (format)}
       {@const is_active = active_type_filter === format}
@@ -261,6 +263,12 @@
     font-size: 0.6em;
     opacity: 0.8;
     margin: 0 0 0.5em;
+  }
+  .divider {
+    width: 1px;
+    align-self: stretch;
+    background: light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.2));
+    margin-inline: 0.3em;
   }
   .legend-item {
     cursor: pointer;
