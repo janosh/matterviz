@@ -1,6 +1,6 @@
 import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
-import { type ComponentProps, createRawSnippet, mount } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 
 const basic: BarSeries = {
@@ -66,6 +66,32 @@ describe(`BarPlot`, () => {
     },
   ] as Partial<ComponentProps<typeof BarPlot>>[])(`renders various configs`, (props) => {
     mount(BarPlot, { target: document.body, props })
+  })
+
+  test(`mounts with x2-axis series and renders x2 axis`, async () => {
+    mount(BarPlot, {
+      target: document.body,
+      props: {
+        series: [
+          basic,
+          {
+            x: [100, 200, 300],
+            y: [5, 15, 25],
+            x_axis: `x2`,
+            label: `X2 Series`,
+            color: `orangered`,
+          },
+        ],
+        x2_axis: { label: `Temperature (K)` },
+        style: `width: 400px; height: 300px`,
+      },
+    })
+    await tick()
+    expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+    expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
+    expect(document.querySelector(`.x2-label`)?.textContent).toBe(
+      `Temperature (K)`,
+    )
   })
 
   test.each<[Orientation, BarMode]>([

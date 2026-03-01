@@ -1,7 +1,13 @@
 import {
+  AXIS_LABEL_HEIGHT,
+  calc_auto_padding,
   compute_element_placement,
   constrain_tooltip_position,
   filter_padding,
+  LABEL_GAP_DEFAULT,
+  measure_max_tick_width,
+  measure_text_width,
+  TICK_LABEL_HEIGHT,
 } from '$lib/plot/layout'
 import { describe, expect, it, test } from 'vitest'
 
@@ -30,236 +36,51 @@ describe(`layout utility functions`, () => {
   })
 
   describe(`constrain_tooltip_position`, () => {
-    // New behavior: tooltip positioned bottom-right of cursor (+offset for both x,y)
-    // Flips to opposite side when it would overflow viewport
-    test.each([
-      // Basic positioning (no flip needed)
-      {
-        name: `tooltip within bounds`,
-        base_x: 300,
-        base_y: 200,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 310, y: 210 }, // 300+10, 200+10
-      },
-      // Flip cases
-      {
-        name: `tooltip flips left when too far right`,
-        base_x: 750,
-        base_y: 200,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 640, y: 210 }, // 750-10-100, 200+10
-      },
-      {
-        name: `tooltip flips up when too far down`,
-        base_x: 300,
-        base_y: 560,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 310, y: 500 }, // 300+10, 560-10-50
-      },
-      {
-        name: `tooltip near left edge (no flip, clamped)`,
-        base_x: 0,
-        base_y: 200,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 10, y: 210 }, // 0+10, 200+10
-      },
-      {
-        name: `tooltip near top edge (no flip needed)`,
-        base_x: 300,
-        base_y: 0,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 310, y: 10 }, // 300+10, 0+10
-      },
-      // Corner cases (double flip)
-      {
-        name: `tooltip at bottom-right corner (flips both)`,
-        base_x: 800,
-        base_y: 600,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 690, y: 540 }, // 800-10-100, 600-10-50
-      },
-      {
-        name: `tooltip at top-left corner (clamped to 0,0)`,
-        base_x: -10,
-        base_y: -10,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 0, y: 0 }, // -10+10=0, -10+10=0
-      },
-      {
-        name: `tooltip at top-right corner (flips x, clamps y)`,
-        base_x: 850,
-        base_y: -20,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 700, y: 0 }, // 850-10-100=740→clamped to 700, -20+10=-10→clamped to 0
-      },
-      {
-        name: `tooltip at bottom-left corner (flips y, clamps x)`,
-        base_x: -50,
-        base_y: 650,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 0, y: 550 }, // -50+10=-40→0, 650-10-50=590→clamped to 550
-      },
-      // Edge cases
-      {
-        name: `zero-size tooltip`,
-        base_x: 300,
-        base_y: 200,
-        tooltip_width: 0,
-        tooltip_height: 0,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 310, y: 210 },
-      },
-      {
-        name: `very large tooltip (flips both, clamped)`,
-        base_x: 300,
-        base_y: 200,
-        tooltip_width: 900,
-        tooltip_height: 700,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 0, y: 0 }, // Flips to negative, clamped to 0
-      },
-      {
-        name: `small chart dimensions`,
-        base_x: 25,
-        base_y: 15,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 50,
-        chart_height: 30,
-        expected: { x: 0, y: 0 }, // Tooltip larger than chart, clamped
-      },
-      {
-        name: `tooltip exactly at flip threshold`,
-        base_x: 690,
-        base_y: 200,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 700, y: 210 }, // 690+10+100=800, no flip (not >800)
-      },
-      {
-        name: `tooltip just past flip threshold`,
-        base_x: 691,
-        base_y: 200,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 581, y: 210 }, // 691+10+100=801>800, flips: 691-10-100=581
-      },
-      // Small tooltips
-      {
-        name: `1x1 tooltip`,
-        base_x: 400,
-        base_y: 300,
-        tooltip_width: 1,
-        tooltip_height: 1,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 410, y: 310 },
-      },
-      // Near boundary (should flip)
-      {
-        name: `tooltip near right boundary (flips)`,
-        base_x: 700,
-        base_y: 300,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 590, y: 310 }, // 700+10+100=810>800, flips: 700-10-100=590
-      },
-      {
-        name: `tooltip near bottom boundary (flips)`,
-        base_x: 400,
-        base_y: 550,
-        tooltip_width: 100,
-        tooltip_height: 50,
-        chart_width: 800,
-        chart_height: 600,
-        expected: { x: 410, y: 490 }, // 550+10+50=610>600, flips: 550-10-50=490
-      },
-    ])(
-      `constrains $name correctly`,
-      (
-        {
-          base_x,
-          base_y,
-          tooltip_width,
-          tooltip_height,
-          chart_width,
-          chart_height,
-          expected,
-        },
-      ) => {
-        const result = constrain_tooltip_position(
-          base_x,
-          base_y,
-          tooltip_width,
-          tooltip_height,
-          chart_width,
-          chart_height,
-        )
-        expect(result).toEqual(expected)
-      },
-    )
-
-    // Tests for custom offsets (negative = above/left of cursor)
-    // Format: [name, cursor_x, cursor_y, offset_x, offset_y, expected_x, expected_y]
-    // All use 100x50 tooltip in 800x600 viewport
+    // [desc, cursor_x, cursor_y, tip_w, tip_h, vp_w, vp_h, exp_x, exp_y]
+    // Default offset is 10px in each direction
     test.each(
       [
-        [`negative y-offset above cursor`, 300, 200, 5, -10, 305, 140],
-        [`negative y-offset flips down near top`, 300, 50, 5, -10, 305, 60],
-        [`negative x-offset left of cursor`, 400, 300, -10, 10, 290, 310],
-        [`negative x-offset flips right near left`, 50, 300, -10, 10, 60, 310],
-        [`both negative offsets top-left`, 400, 300, -10, -10, 290, 240],
+        [`within bounds`, 300, 200, 100, 50, 800, 600, 310, 210],
+        [`flips left`, 750, 200, 100, 50, 800, 600, 640, 210],
+        [`flips up`, 300, 560, 100, 50, 800, 600, 310, 500],
+        [`left edge clamp`, 0, 200, 100, 50, 800, 600, 10, 210],
+        [`top edge`, 300, 0, 100, 50, 800, 600, 310, 10],
+        [`bottom-right corner (flips both)`, 800, 600, 100, 50, 800, 600, 690, 540],
+        [`top-left corner (clamp)`, -10, -10, 100, 50, 800, 600, 0, 0],
+        [`top-right corner`, 850, -20, 100, 50, 800, 600, 700, 0],
+        [`bottom-left corner`, -50, 650, 100, 50, 800, 600, 0, 550],
+        [`zero-size tooltip`, 300, 200, 0, 0, 800, 600, 310, 210],
+        [`tooltip > viewport`, 300, 200, 900, 700, 800, 600, 0, 0],
+        [`small viewport`, 25, 15, 100, 50, 50, 30, 0, 0],
+        [`at flip threshold`, 690, 200, 100, 50, 800, 600, 700, 210],
+        [`past flip threshold`, 691, 200, 100, 50, 800, 600, 581, 210],
+        [`1x1 tooltip`, 400, 300, 1, 1, 800, 600, 410, 310],
+        [`near right (flips)`, 700, 300, 100, 50, 800, 600, 590, 310],
+        [`near bottom (flips)`, 400, 550, 100, 50, 800, 600, 410, 490],
       ] as const,
-    )(
-      `custom offsets: %s`,
-      (_, cursor_x, cursor_y, offset_x, offset_y, exp_x, exp_y) => {
-        const result = constrain_tooltip_position(
-          cursor_x,
-          cursor_y,
-          100,
-          50,
-          800,
-          600,
-          { offset_x, offset_y },
-        )
-        expect(result).toEqual({ x: exp_x, y: exp_y })
-      },
-    )
+    )(`%s`, (_, cx, cy, tw, th, vw, vh, ex, ey) => {
+      expect(constrain_tooltip_position(cx, cy, tw, th, vw, vh)).toEqual({ x: ex, y: ey })
+    })
+
+    // Custom offsets — all use 100x50 tooltip in 800x600 viewport
+    // [desc, cursor_x, cursor_y, offset_x, offset_y, exp_x, exp_y]
+    test.each(
+      [
+        [`neg y above cursor`, 300, 200, 5, -10, 305, 140],
+        [`neg y flips down near top`, 300, 50, 5, -10, 305, 60],
+        [`neg x left of cursor`, 400, 300, -10, 10, 290, 310],
+        [`neg x flips right near left`, 50, 300, -10, 10, 60, 310],
+        [`both negative`, 400, 300, -10, -10, 290, 240],
+      ] as const,
+    )(`offset: %s`, (_, cx, cy, ox, oy, ex, ey) => {
+      expect(
+        constrain_tooltip_position(cx, cy, 100, 50, 800, 600, {
+          offset_x: ox,
+          offset_y: oy,
+        }),
+      )
+        .toEqual({ x: ex, y: ey })
+    })
   })
 
   describe(`compute_element_placement`, () => {
@@ -414,6 +235,102 @@ describe(`layout utility functions`, () => {
         // Any corner is acceptable for center cluster
         expect(result.x).toBeDefined()
       }
+    })
+  })
+
+  describe(`measure_max_tick_width`, () => {
+    it(`returns 0 for empty ticks`, () => {
+      expect(measure_max_tick_width([], `.2s`)).toBe(0)
+    })
+
+    it(`returns 0 in jsdom (no canvas rendering)`, () => {
+      expect(measure_text_width(`hello`)).toBe(0)
+      expect(measure_max_tick_width([1, 2, 3])).toBe(0)
+    })
+  })
+
+  describe(`calc_auto_padding`, () => {
+    const defaults = { t: 20, b: 60, l: 60, r: 20 }
+
+    it(`preserves explicit padding, fills missing from defaults`, () => {
+      const result = calc_auto_padding({
+        padding: { t: 10, l: 80 },
+        default_padding: defaults,
+      })
+      expect(result).toEqual({ t: 10, l: 80, b: 60, r: 30 })
+    })
+
+    it(`left padding is at least default when y-axis has ticks`, () => {
+      const result = calc_auto_padding({
+        padding: {},
+        default_padding: defaults,
+        y_axis: { tick_values: [1, 2, 3] },
+      })
+      expect(result.l).toBeGreaterThanOrEqual(defaults.l)
+    })
+
+    it(`right padding is at least default when y2-axis has ticks`, () => {
+      const result = calc_auto_padding({
+        padding: {},
+        default_padding: defaults,
+        y2_axis: { tick_values: [1, 2] },
+      })
+      expect(result.r).toBeGreaterThanOrEqual(defaults.r)
+    })
+
+    it(`right padding includes label_gap even with zero-width ticks`, () => {
+      const result = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        y2_axis: { tick_values: [1] },
+      })
+      expect(result.r).toBe(LABEL_GAP_DEFAULT)
+    })
+
+    it(`explicit padding overrides auto-computed padding`, () => {
+      const result = calc_auto_padding({
+        padding: { l: 10, r: 10, t: 10 },
+        default_padding: defaults,
+        y_axis: { tick_values: [100000, 200000] },
+        y2_axis: { tick_values: [100000, 200000] },
+        x2_axis: { tick_values: [1, 2, 3], label: `Top` },
+      })
+      expect(result.l).toBe(10)
+      expect(result.r).toBe(10)
+      expect(result.t).toBe(10)
+    })
+
+    it(`expands top padding for x2 ticks`, () => {
+      const result = calc_auto_padding({
+        padding: {},
+        default_padding: defaults,
+        x2_axis: { tick_values: [0, 1, 2] },
+      })
+      expect(result.t).toBeGreaterThanOrEqual(TICK_LABEL_HEIGHT + 30)
+    })
+
+    it(`does not expand top padding when x2 has no ticks`, () => {
+      const result = calc_auto_padding({
+        padding: {},
+        default_padding: defaults,
+        x2_axis: { tick_values: [] },
+      })
+      expect(result.t).toBe(defaults.t)
+    })
+
+    it(`x2 label adds exactly AXIS_LABEL_HEIGHT (>0) to top padding`, () => {
+      expect(AXIS_LABEL_HEIGHT).toBeGreaterThan(0)
+      const without = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        x2_axis: { tick_values: [1, 2] },
+      })
+      const with_label = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        x2_axis: { tick_values: [1, 2], label: `Energy` },
+      })
+      expect(with_label.t - without.t).toBe(AXIS_LABEL_HEIGHT)
     })
   })
 })

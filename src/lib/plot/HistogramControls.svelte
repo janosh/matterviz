@@ -1,6 +1,7 @@
 <script lang="ts">
   // NOTE: Axis config objects must be reassigned (not mutated) to trigger $bindable reactivity.
   import { SettingsSection } from '$lib/layout'
+  import type { Vec2 } from '$lib/math'
   import type { BarStyle, DataSeries, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/types'
@@ -15,11 +16,13 @@
     show_legend = $bindable(DEFAULTS.histogram.show_legend),
     selected_property = $bindable(``),
     x_axis = $bindable({}),
+    x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
     show_controls = $bindable(false),
     controls_open = $bindable(false),
+    auto_x2_range = undefined,
     auto_y2_range = undefined,
     children,
     ...rest
@@ -34,7 +37,8 @@
     selected_property?: string
     show_controls?: boolean
     controls_open?: boolean
-    auto_y2_range?: [number, number]
+    auto_x2_range?: Vec2
+    auto_y2_range?: Vec2
     children?: Snippet<[Required<PlotConfig>]>
   } = $props()
 
@@ -50,12 +54,14 @@
   bind:controls_open
   bind:display
   bind:x_axis
+  bind:x2_axis
   bind:y_axis
   bind:y2_axis
+  {auto_x2_range}
   {auto_y2_range}
   {...rest}
 >
-  {@render children?.({ x_axis, y_axis, y2_axis, display })}
+  {@render children?.({ x_axis, x2_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Histogram"
     current_values={{ bins, mode, show_legend }}
@@ -149,12 +155,17 @@
     data-testid="scale-type-section"
     current_values={{
       x_scale_type: x_axis.scale_type,
+      x2_scale_type: x2_axis.scale_type,
       y_scale_type: y_axis.scale_type,
       y2_scale_type: y2_axis.scale_type,
     }}
     on_reset={() => {
       x_axis = {
         ...x_axis,
+        scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
+      }
+      x2_axis = {
+        ...x2_axis,
         scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
       }
       y_axis = {
@@ -170,6 +181,10 @@
     style="grid-template-columns: 1fr 1fr"
   >
     <label>X: <select bind:value={x_axis.scale_type}>
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select></label>
+    <label>X2: <select bind:value={x2_axis.scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select></label>

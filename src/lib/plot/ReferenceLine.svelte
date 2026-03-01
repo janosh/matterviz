@@ -15,6 +15,7 @@
     y_min,
     y_max,
     x_scale,
+    x2_scale,
     y_scale,
     y2_scale,
     clip_path_id,
@@ -29,6 +30,7 @@
     y_min: number
     y_max: number
     x_scale: (val: number) => number
+    x2_scale?: (val: number) => number
     y_scale: (val: number) => number
     y2_scale?: (val: number) => number
     clip_path_id: string
@@ -40,6 +42,7 @@
   let endpoints = $derived(
     resolve_line_endpoints(ref_line, { x_min, x_max, y_min, y_max }, {
       x_scale,
+      x2_scale,
       y_scale,
       y2_scale,
     }),

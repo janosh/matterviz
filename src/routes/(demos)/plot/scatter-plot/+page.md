@@ -3209,3 +3209,52 @@ Click the gear icon to access the Y2 Sync dropdown in PlotControls.
   style="height: 450px"
 />
 ```
+
+## Dual X-Axes (X2)
+
+Plot two series with independent x-scales on the same chart. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. For inversely related quantities like wavelength (nm) and photon energy (eV) where E = 1240/λ, invert the x2 range so the axes align correctly — high energy at short wavelength (left) and low energy at long wavelength (right).
+
+```svelte example
+<script lang="ts">
+  import { ScatterPlot } from 'matterviz'
+
+  // Emission spectrum vs wavelength (bottom x-axis, nm)
+  const wavelengths = [380, 430, 480, 530, 580, 630, 680, 730, 780]
+  const intensity = wavelengths.map((wl) =>
+    0.85 * Math.exp(-0.5 * ((wl - 550) / 80) ** 2)
+  )
+
+  const wavelength_series = {
+    x: wavelengths,
+    y: intensity,
+    label: `Wavelength (nm)`,
+    markers: `line+points`,
+    line_style: { stroke: `#7c3aed`, stroke_width: 2 },
+    point_style: { fill: `#7c3aed`, radius: 5 },
+  }
+
+  // Same spectrum plotted against energy (top x2-axis, eV) — E = 1240 / λ
+  const energy_series = {
+    x: wavelengths.map((wl) => 1240 / wl),
+    y: intensity,
+    label: `Energy (eV)`,
+    x_axis: `x2`,
+    markers: `line+points`,
+    line_style: { stroke: `#ea580c`, stroke_width: 2 },
+    point_style: { fill: `#ea580c`, radius: 5 },
+  }
+</script>
+
+Same emission spectrum plotted on two x-scales. Bottom: wavelength in nm (purple,
+increasing left→right). Top: photon energy in eV (orange, decreasing left→right via
+inverted `range`). The x2 range is set high→low so 380 nm aligns with 3.26 eV at the left
+edge.
+
+<ScatterPlot
+  series={[wavelength_series, energy_series]}
+  x_axis={{ label: `Wavelength (nm)`, color: `#7c3aed` }}
+  x2_axis={{ label: `Energy (eV)`, color: `#ea580c`, range: [3.5, 1.4] }}
+  y_axis={{ label: `Intensity (a.u.)` }}
+  style="height: 400px"
+/>
+```

@@ -115,13 +115,15 @@ export function resolve_line_endpoints(
     y_min: number
     y_max: number
   },
-  { x_scale, y_scale, y2_scale }: {
+  { x_scale, x2_scale, y_scale, y2_scale }: {
     x_scale: (val: number) => number
+    x2_scale?: (val: number) => number
     y_scale: (val: number) => number
     y2_scale?: (val: number) => number
   },
 ): [number, number, number, number] | null {
-  // Determine which y-scale to use
+  // Determine which scales to use based on axis assignment
+  const active_x_scale = ref_line.x_axis === `x2` && x2_scale ? x2_scale : x_scale
   const active_y_scale = ref_line.y_axis === `y2` && y2_scale ? y2_scale : y_scale
 
   // Check if value is within plot bounds (for visibility)
@@ -249,9 +251,9 @@ export function resolve_line_endpoints(
   }
 
   // Convert data coordinates to screen pixels
-  const x1_px = x_scale(x1_data)
+  const x1_px = active_x_scale(x1_data)
   const y1_px = active_y_scale(y1_data)
-  const x2_px = x_scale(x2_data)
+  const x2_px = active_x_scale(x2_data)
   const y2_px = active_y_scale(y2_data)
 
   // Validate that pixels are finite
