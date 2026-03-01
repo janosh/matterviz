@@ -62,7 +62,7 @@ describe(`Composition component`, () => {
       },
     })
     const container = doc_query(`.composition`)
-    expect(container.getAttribute(`style`)).toBe(`background-color: red;`)
+    expect(container.getAttribute(`style`)).toContain(`background-color: red;`)
     expect(container.classList.contains(`my-custom-class`)).toBe(true)
   })
 

@@ -107,6 +107,7 @@
 
 <svg
   viewBox="0 0 {size} {size}"
+  style:max-width="{size}px"
   {...rest}
   class="bubble-chart {rest.class ?? ``}"
   bind:this={svg_node}
@@ -157,9 +158,10 @@
             bubble.element
           }</span>
           {#if show_amounts}
-            <sub class="amount" style:font-size="{10 * bubble.font_scale}px">
-              {bubble.amount}
-            </sub>{/if}
+            <sub class="amount" style:font-size="{8 * bubble.font_scale}px">{
+              bubble.amount
+            }</sub>
+          {/if}
         </div>
       </foreignObject>
     {/each}

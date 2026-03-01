@@ -55,7 +55,7 @@ Rich element pages with physical properties, electron configurations, Bohr atom 
 ## 🔨 &thinsp; Installation
 
 ```sh
-npm install --dev matterviz
+pnpm add -D matterviz
 ```
 
 ## 📙 &thinsp; Usage
@@ -114,10 +114,10 @@ npm install --dev matterviz
 
 ## 🙏 &thinsp; Acknowledgements
 
-- Element properties in `src/lib/element-data.ts` were combined from [`Bowserinator/Periodic-Table-JSON`](https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json) under Creative Commons license and [`robertwb/Periodic Table of Elements.csv`](https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952) (unlicensed).
+- Element properties in `src/lib/element/data.ts` were combined from [`Bowserinator/Periodic-Table-JSON`](https://github.com/Bowserinator/Periodic-Table-JSON/blob/master/PeriodicTableJSON.json) under Creative Commons license and [`robertwb/Periodic Table of Elements.csv`](https://gist.github.com/robertwb/22aa4dbfb6bcecd94f2176caa912b952) (unlicensed).
 - Thanks to [Images of Elements](https://images-of-elements.com) for providing photos of elemental crystals and glowing excited gases.
 - Thanks to [@kadinzhang](https://github.com/kadinzhang) and their [Periodicity project](https://ptable.netlify.app) [[code](https://github.com/kadinzhang/Periodicity)] for the idea to display animated Bohr model atoms and inset a scatter plot into the periodic table to visualize the periodic nature of elemental properties.
-- Big thanks to all sources of element images. See [`fetch-elem-images.ts`](https://github.com/janosh/matterviz/blob/-/src/fetch-elem-images.ts) and [`static/elements`](https://github.com/janosh/matterviz/tree/main/static/elements).
+- Big thanks to all sources of element images. See [`fetch-elem-images.ts`](https://github.com/janosh/matterviz/blob/-/src/scripts/fetch-elem-images.ts) and [`static/elements`](https://github.com/janosh/matterviz/tree/main/static/elements).
 - Thanks to [@ixxie](https://github.com/ixxie) ([shenhav.fyi](https://shenhav.fyi)) for great suggestions.
 
 This project would not have been possible as a one-person side project without many fine open-source projects. 🙏 To name just a few:
@@ -141,6 +141,6 @@ Use [`citation.cff`](citation.cff) or cite the [Zenodo record](https://zenodo.or
   url = {https://github.com/janosh/matterviz},
   note = {10.5281/zenodo.17094509 - https://github.com/janosh/matterviz},
   urldate = {2026-01-23}, % optional, replace with your date of access
-  version = {0.2.2}, % replace with the version you use
+  version = {0.3.1}, % replace with the version you use
 }
 ```

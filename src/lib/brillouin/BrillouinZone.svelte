@@ -1,13 +1,14 @@
 <script lang="ts">
-  import { toggle_fullscreen } from '$lib/layout'
-  import { normalize_show_controls } from '$lib/controls'
   import type { ShowControlsProp } from '$lib/controls'
+  import { normalize_show_controls } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
+  import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
-  import { set_fullscreen_bg } from '$lib/layout'
+  import { create_file_drop_handler, load_from_url } from '$lib/io'
+  import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
+  import { PlotTooltip } from '$lib/plot'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
   import { parse_any_structure } from '$lib/structure/parse'
@@ -17,7 +18,6 @@
   import { untrack } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { PlotTooltip } from '$lib/plot'
   import BrillouinZoneControls from './BrillouinZoneControls.svelte'
   import BrillouinZoneExportPane from './BrillouinZoneExportPane.svelte'
   import BrillouinZoneInfoPane from './BrillouinZoneInfoPane.svelte'
@@ -279,31 +279,18 @@
     }
   })
 
-  async function handle_file_drop(event: DragEvent) {
-    event.preventDefault()
-    dragover = false
-    if (!allow_file_drop) return
-
-    loading = true
-    error_msg = undefined
-
-    try {
-      const handler = on_file_drop || safe_parse
-      const handled = await handle_url_drop(event, handler).catch(() => false)
-      if (handled) return
-
-      const file = event.dataTransfer?.files[0]
-      if (file) {
-        const { content, filename } = await decompress_file(file)
-        if (content) handler(content, filename)
-      }
-    } catch (err) {
-      error_msg = `File drop failed: ${err}`
-      on_error?.({ error_msg })
-    } finally {
-      loading = false
-    }
-  }
+  const handle_file_drop = create_file_drop_handler({
+    allow: () => allow_file_drop,
+    on_drop: (content, filename) => (on_file_drop || safe_parse)(content, filename),
+    on_error: (msg) => {
+      error_msg = msg
+      on_error?.({ error_msg: msg })
+    },
+    set_loading: (val) => {
+      loading = val
+      if (val) [error_msg, dragover] = [undefined, false]
+    },
+  })
 
   function onkeydown(event: KeyboardEvent) {
     const target = event.target as HTMLElement
@@ -362,10 +349,7 @@
   {#if loading}
     <Spinner text="Loading structure..." {...spinner_props} />
   {:else if error_msg}
-    <div class="error-state">
-      <p class="error">{error_msg}</p>
-      <button onclick={() => (error_msg = undefined)}>Dismiss</button>
-    </div>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
   {:else if structure && `lattice` in structure}
     <section
       class="control-buttons {controls_config.class}"
@@ -554,30 +538,5 @@
   p.warn {
     text-align: center;
     padding: 2rem;
-  }
-  .error-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    padding: 2rem;
-    text-align: center;
-    box-sizing: border-box;
-  }
-  .error-state p {
-    color: var(--error-color, #ff6b6b);
-    margin: 0 0 1rem;
-  }
-  .error-state button {
-    padding: 0.5rem 1rem;
-    background: var(--error-color, #ff6b6b);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .error-state button:hover {
-    background: var(--error-color-hover, #ff5252);
   }
 </style>
