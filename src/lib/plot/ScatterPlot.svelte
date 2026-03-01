@@ -2561,9 +2561,16 @@
         {#if tooltip}
           {@render tooltip(handler_props)}
         {:else}
-          {@html point_label?.text ? `${point_label.text}<br />` : ``}x: {
-            handler_props.x_formatted
-          }<br />y: {handler_props.y_formatted}
+          {@const hp = handler_props}
+          {#if has_multiple_series && hp.label}<strong>{hp.label}</strong><br />{/if}
+          {@html point_label?.text ? `${point_label.text}<br />` : ``}
+          {hp.x_axis.label || `x`}: {hp.x_formatted}<br />
+          {hp.y_axis.label || `y`}: {hp.y_formatted}
+          {#if hp.colorbar?.value != null && hp.colorbar.title}
+            <br />{hp.colorbar.title}: {
+              format_value(hp.colorbar.value, hp.colorbar.tick_format || `.3~g`)
+            }
+          {/if}
         {/if}
       </PlotTooltip>
     {/if}

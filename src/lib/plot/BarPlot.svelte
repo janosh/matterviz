@@ -2034,6 +2034,10 @@
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
+          {@const series_label = series[hover_info.series_idx]?.label}
+          {#if series.length > 1 && series_label}
+            <div><strong>{series_label}</strong></div>
+          {/if}
           <div>
             {@html hover_info.x_axis.label || `x`}: {
               format_value(hover_info.orient_x, hover_info.x_axis.format || `.3~s`)

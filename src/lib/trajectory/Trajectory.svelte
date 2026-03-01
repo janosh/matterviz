@@ -1176,13 +1176,12 @@
             }}
             class="plot {scatter_props.class ?? ``}"
           >
-            {#snippet tooltip({ x, y, metadata })}
+            {#snippet tooltip({ x, y, metadata, label })}
+              Step: {Math.round(x)}<br />
               {#if metadata?.series_label}
-                Step: {Math.round(x)}<br />
                 {@html metadata.series_label}: {typeof y === `number` ? format_num(y) : y}
               {:else}
-                Step: {Math.round(x)}<br />
-                Value: {typeof y === `number` ? format_num(y) : y}
+                {label || `Value`}: {typeof y === `number` ? format_num(y) : y}
               {/if}
             {/snippet}
           </ScatterPlot>
@@ -1207,9 +1206,9 @@
             --ctrl-btn-top="6ex"
           >
             {#snippet tooltip({ value, count, property })}
+              {#if property}<div><strong>{property}</strong></div>{/if}
               <div>Value: {format_num(value)}</div>
               <div>Count: {count}</div>
-              <div>{property}</div>
             {/snippet}
           </Histogram>
         {/if}
