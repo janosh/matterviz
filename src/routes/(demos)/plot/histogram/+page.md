@@ -43,17 +43,26 @@ This example demonstrates bar styling options including `border_radius` for roun
     'margin: 1em 0; padding: 2pt 5pt; background-color: rgba(255, 255, 255, 0.1); border-radius: 4px'
 </script>
 
-<label>Bins: {bins}<input type="range" bind:value={bins} min="5" max="200" /></label>
-<label>Size: {sample_size}
-  <input type="range" bind:value={sample_size} min="100" max="10000" step="100" />
-</label>
-<label><input type="checkbox" bind:checked={show_controls} />Controls</label>
-<label>Radius: {border_radius}<input
-    type="range"
-    bind:value={border_radius}
-    min="0"
-    max="8"
-  /></label>
+<div
+  style="display: flex; flex-wrap: wrap; gap: 1em; align-items: center; margin-bottom: 1em"
+>
+  <label style="display: flex; align-items: center; gap: 4px">Bins: {bins}<input
+      type="range"
+      bind:value={bins}
+      min="5"
+      max="200"
+    /></label>
+  <label style="display: flex; align-items: center; gap: 4px">Size: {sample_size}
+    <input type="range" bind:value={sample_size} min="100" max="10000" step="100" />
+  </label>
+  <label style="display: flex; align-items: center; gap: 4px"><input
+      type="checkbox"
+      bind:checked={show_controls}
+    />Controls</label>
+  <label style="display: flex; align-items: center; gap: 4px">Radius: {border_radius}
+    <input type="range" bind:value={border_radius} min="0" max="8" />
+  </label>
+</div>
 
 {#snippet tooltip({ value, count })}
   Value: {value.toFixed(1)}<br>Count: {count}<br>
@@ -100,10 +109,19 @@ When comparing distributions with vastly different sample sizes, use **dual y-ax
   ])
 </script>
 
-<div style="display: flex; gap: 1em; margin-bottom: 1em">
-  <label><input type="checkbox" bind:checked={display.x_grid} />X grid</label>
-  <label><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label>
-  <label><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
+<div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
+  <label style="display: flex; align-items: center; gap: 4px"><input
+      type="checkbox"
+      bind:checked={display.x_grid}
+    />X grid</label>
+  <label style="display: flex; align-items: center; gap: 4px"><input
+      type="checkbox"
+      bind:checked={display.y_grid}
+    />Y1 grid</label>
+  <label style="display: flex; align-items: center; gap: 4px"><input
+      type="checkbox"
+      bind:checked={display.y2_grid}
+    />Y2 grid</label>
 </div>
 
 <Histogram
@@ -172,15 +190,15 @@ Compare distributions with vastly different scales using **dual y-axes**. Some d
     <input type="radio" bind:group={y2_axis.scale_type} value={scale} />{scale}
   {/each}</label>
 
-  <label><input type="checkbox" bind:checked={display.x_grid} />X grid</label>
-  <label><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label>
-  <label><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
+  <label style="display: flex; align-items: center; gap: 4px"><input type="checkbox" bind:checked={display.x_grid} />X grid</label>
+  <label style="display: flex; align-items: center; gap: 4px"><input type="checkbox" bind:checked={display.y_grid} />Y1 grid</label>
+  <label style="display: flex; align-items: center; gap: 4px"><input type="checkbox" bind:checked={display.y2_grid} />Y2 grid</label>
 </div>
 
 {#each series as srs, idx (srs.label)}
-  <label>
+  <label style="display: flex; align-items: center; gap: 4px">
     <input type="checkbox" checked={srs.visible} onchange={() => toggle_series(idx)} />
-    <span style="width: 16px; height: 16px; margin: 0 0.5em; background: {srs.line_style.stroke}"></span>
+    <span style="width: 16px; height: 16px; background: {srs.line_style.stroke}"></span>
     {srs.label} {srs.y_axis === `y2` ? `(Y2)` : `(Y1)`}
   </label>
 {/each}
@@ -442,11 +460,15 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
   {/each}
 </select>
 
-{#each [`single`, `overlay`] as display_mode (display_mode)}
-  <label><input type="radio" bind:group={mode} value={display_mode} />{
-      display_mode
-    }</label>
-{/each}
+<div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
+  {#each [`single`, `overlay`] as display_mode (display_mode)}
+    <label style="display: flex; align-items: center; gap: 4px"><input
+        type="radio"
+        bind:group={mode}
+        value={display_mode}
+      />{display_mode}</label>
+  {/each}
+</div>
 
 <Histogram
   series={series_data}
@@ -475,52 +497,39 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
   import * as utils from '$site/plot-utils'
 
   let bin_counts = $state([10, 25, 50, 100])
-  let show_overlay = $state(true)
   let data_type = $state(`mixed`)
-  let bar = $state({ opacity: 0.6 })
+  let bar = $state({ opacity: 0.8 })
 
   const base_data = $derived(data_type === `mixed` ? utils.generate_mixed_data(3000) : utils.generate_complex_distribution(3000))
   const colors = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`]
-
-  let series = $derived(
-    show_overlay
-      ? bin_counts.map((bins, idx) => ({
-        y: base_data,
-        label: `${bins} bins`,
-        line_style: { stroke: colors[idx] },
-      }))
-      : [{ y: base_data, label: `${data_type === `mixed` ? `Mixed` : `Complex`} Distribution`, line_style: { stroke: `#8e44ad` } }]
-  )
 </script>
 
-{#each [`mixed`, `complex`] as type (type)}
-  <label><input type="radio" bind:group={data_type} value={type} />{type}</label>
-{/each}
-
-<label><input type="checkbox" bind:checked={show_overlay} />Multiple Bin Sizes</label>
-
-<label>Opacity: {bar.opacity}<input type="range" bind:value={bar.opacity} min="0.1" max="1" step="0.1" /></label>
-
-{#if !show_overlay}
-  <label>Bins: {bin_counts[1]}<input type="range" bind:value={bin_counts[1]} min="5" max="200" step="5" /></label>
-{:else}
-  {#each bin_counts as count, idx (idx)}
-    <label style="color: {colors[idx]}">{count} bins: <input type="range" bind:value={bin_counts[idx]} min="5" max="200" step="5" /></label>
+<div style="display: flex; flex-wrap: wrap; gap: 1em; align-items: center; margin-bottom: 1em">
+  {#each [`mixed`, `complex`] as type (type)}
+    <label style="display: flex; align-items: center; gap: 4px">
+      <input type="radio" bind:group={data_type} value={type} />{type}
+    </label>
   {/each}
-{/if}
+  {#each bin_counts as count, idx (idx)}
+    <label style="display: flex; align-items: center; gap: 4px; color: {colors[idx]}">
+      {count} bins:
+      <input type="range" bind:value={bin_counts[idx]} min="5" max="200" step="5" />
+    </label>
+  {/each}
+</div>
 
-<Histogram
-  {series}
-  bins={show_overlay ? 25 : bin_counts[1]}
-  mode={show_overlay ? `overlay` : `single`}
-  bind:bar
-  show_legend={show_overlay}
-  style="height: 450px; margin-block: 1em;"
->
-  {#snippet tooltip({ value, count, property })}
-    <strong>{property}</strong><br>Range: {value.toFixed(1)}<br>Count: {count}
-  {/snippet}
-</Histogram>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0">
+  {#each bin_counts as bins, idx (idx)}
+    <Histogram
+      series={[{ y: base_data, label: `${bins} bins`, line_style: { stroke: colors[idx] } }]}
+      {bins}
+      bar={{ ...bar, color: colors[idx] }}
+      x_axis={{ label: `Value` }}
+      y_axis={{ label: `Count` }}
+      style="height: 280px"
+    />
+  {/each}
+</div>
 ```
 
 ## Custom Styling
@@ -559,7 +568,11 @@ The **arcsinh scale** (`scale_type='arcsinh'`) is perfect for data spanning both
   }])
 </script>
 
-{#each [`financial`, `scientific`] as source (source)}<label><input type="radio" bind:group={data_source} value={source} />{source}</label>{/each}
+<div style="display: flex; gap: 1em; align-items: center; margin-bottom: 1em">
+  {#each [`financial`, `scientific`] as source (source)}
+    <label style="display: flex; align-items: center; gap: 4px"><input type="radio" bind:group={data_source} value={source} />{source}</label>
+  {/each}
+</div>
 
 <select bind:value={color_scheme}>
   {#each Object.keys(color_schemes) as scheme (scheme)}<option value={scheme}>{scheme}</option>{/each}
@@ -1188,6 +1201,78 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
     sync: sync_mode,
   }}
   bar={{ opacity: 0.6 }}
+  style="height: 400px"
+/>
+```
+
+## Dual X-Axes (X2)
+
+Plot two distributions with independent x-scales on the same histogram. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. This is useful when comparing the same physical quantity measured in different units — for example, mass in kilograms vs pounds.
+
+```svelte example
+<script lang="ts">
+  import { Histogram } from 'matterviz'
+
+  // Seeded random for reproducible normal distributions
+  function seeded_random(seed: number): () => number {
+    let state = seed
+    return () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff
+      return state / 0x7fffffff
+    }
+  }
+
+  function generate_normal(
+    rng: () => number,
+    count: number,
+    mean: number,
+    std: number,
+  ): number[] {
+    const values: number[] = []
+    for (let idx = 0; idx < count; idx++) {
+      // Box-Muller transform
+      const u1 = rng()
+      const u2 = rng()
+      const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+      values.push(mean + std * z)
+    }
+    return values
+  }
+
+  const rng = seeded_random(42)
+  const kg_values = generate_normal(rng, 400, 70, 10)
+  const lbs_values = generate_normal(rng, 400, 154, 22)
+
+  const series = [
+    {
+      x: kg_values.map((_, idx) => idx),
+      y: kg_values,
+      label: `Mass (kg)`,
+      line_style: { stroke: `#0ea5e9` },
+      point_style: { fill: `#0ea5e9` },
+    },
+    {
+      x: lbs_values.map((_, idx) => idx),
+      y: lbs_values,
+      label: `Mass (lbs)`,
+      x_axis: `x2`,
+      line_style: { stroke: `#f97316` },
+      point_style: { fill: `#f97316` },
+    },
+  ]
+</script>
+
+Two normal distributions on independent x-scales. Bottom: mass in kg (blue). Top: mass in
+lbs (orange). Each series bins against its own x-axis range.
+
+<Histogram
+  {series}
+  bins={25}
+  mode="overlay"
+  show_legend
+  x_axis={{ label: `Mass (kg)`, color: `#0ea5e9` }}
+  x2_axis={{ label: `Mass (lbs)`, color: `#f97316` }}
+  y_axis={{ label: `Count` }}
   style="height: 400px"
 />
 ```

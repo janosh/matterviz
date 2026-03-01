@@ -1,5 +1,5 @@
 <script lang="ts">
-  // NOTE: Axis config objects (x_axis, y_axis, y2_axis) must be reassigned (not mutated)
+  // NOTE: Axis config objects (x_axis, x2_axis, y_axis, y2_axis) must be reassigned (not mutated)
   // to trigger $bindable reactivity propagation to parent components.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
@@ -19,12 +19,15 @@
     children,
     post_children,
     x_axis = $bindable({}),
+    x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
     auto_x_range = [0, 1],
+    auto_x2_range = undefined,
     auto_y_range = [0, 1],
     auto_y2_range = undefined,
+    has_x2_points = false,
     has_y2_points = false,
     show_ticks = false,
     controls_title = `plot`,
@@ -35,17 +38,39 @@
 
   // Range input state
   let range_inputs: Record<AxisKey, [number | null, number | null]> = $state(
-    { x: [null, null], y: [null, null], y2: [null, null] },
+    { x: [null, null], x2: [null, null], y: [null, null], y2: [null, null] },
   )
   let range_els = $state<Record<string, HTMLInputElement>>({})
 
+  // Check if an axis range spans zero (handles inverted ranges like [3.5, 1.4])
+  const range_spans_zero = (lo: number, hi: number): boolean =>
+    Math.min(lo, hi) <= 0 && Math.max(lo, hi) >= 0
+
   let x_includes_zero = $derived(
-    ((x_axis.range?.[0] ?? auto_x_range[0]) <= 0) &&
-      ((x_axis.range?.[1] ?? auto_x_range[1]) >= 0),
+    range_spans_zero(
+      x_axis.range?.[0] ?? auto_x_range[0],
+      x_axis.range?.[1] ?? auto_x_range[1],
+    ),
+  )
+  let x2_includes_zero = $derived(
+    has_x2_points && auto_x2_range != null &&
+      range_spans_zero(
+        x2_axis.range?.[0] ?? auto_x2_range[0],
+        x2_axis.range?.[1] ?? auto_x2_range[1],
+      ),
   )
   let y_includes_zero = $derived(
-    ((y_axis.range?.[0] ?? auto_y_range[0]) <= 0) &&
-      ((y_axis.range?.[1] ?? auto_y_range[1]) >= 0),
+    range_spans_zero(
+      y_axis.range?.[0] ?? auto_y_range[0],
+      y_axis.range?.[1] ?? auto_y_range[1],
+    ),
+  )
+  let y2_includes_zero = $derived(
+    has_y2_points && auto_y2_range != null &&
+      range_spans_zero(
+        y2_axis.range?.[0] ?? auto_y2_range[0],
+        y2_axis.range?.[1] ?? auto_y2_range[1],
+      ),
   )
 
   // Validation function for format specifiers
@@ -74,6 +99,7 @@
     }
     input.classList.remove(`invalid`)
     if (format_type === `x`) x_axis = { ...x_axis, format: input.value }
+    else if (format_type === `x2`) x2_axis = { ...x2_axis, format: input.value }
     else if (format_type === `y`) y_axis = { ...y_axis, format: input.value }
     else y2_axis = { ...y2_axis, format: input.value }
   }
@@ -83,18 +109,20 @@
     const parsed = value === `` ? null : Number(value)
     range_inputs[axis][bound] = Number.isFinite(parsed) ? parsed : null
     const [min, max] = range_inputs[axis]
-    const auto = { x: auto_x_range, y: auto_y_range, y2: auto_y2_range }[axis]
+    const auto =
+      { x: auto_x_range, x2: auto_x2_range, y: auto_y_range, y2: auto_y2_range }[axis]
     const invalid = min !== null && max !== null && min >= max
     range_els[`${axis}-min`]?.classList.toggle(`invalid`, invalid)
     range_els[`${axis}-max`]?.classList.toggle(`invalid`, invalid)
     if (invalid) return
-    const axis_config = { x: x_axis, y: y_axis, y2: y2_axis }[axis]
+    const axis_config = { x: x_axis, x2: x2_axis, y: y_axis, y2: y2_axis }[axis]
     const next_range = min === null && max === null
       ? undefined
       : [min ?? auto?.[0] ?? 0, max ?? auto?.[1] ?? 1] as Vec2
     // If auto range is undefined, only set if both min and max are provided
     if (!auto && (min === null || max === null)) return
     if (axis === `x`) x_axis = { ...axis_config, range: next_range }
+    else if (axis === `x2`) x2_axis = { ...axis_config, range: next_range }
     else if (axis === `y`) y_axis = { ...axis_config, range: next_range }
     else y2_axis = { ...axis_config, range: next_range }
   }
@@ -102,6 +130,7 @@
   // Sync range inputs from props
   $effect(() => {
     range_inputs.x = [x_axis.range?.[0] ?? null, x_axis.range?.[1] ?? null]
+    range_inputs.x2 = [x2_axis.range?.[0] ?? null, x2_axis.range?.[1] ?? null]
     range_inputs.y = [y_axis.range?.[0] ?? null, y_axis.range?.[1] ?? null]
     range_inputs.y2 = [y2_axis.range?.[0] ?? null, y2_axis.range?.[1] ?? null]
   })
@@ -110,6 +139,7 @@
     show_controls,
     controls_open,
     x_axis,
+    x2_axis,
     y_axis,
     y2_axis,
     display,
@@ -143,32 +173,49 @@
       title="Display"
       current_values={{
         x_zero_line: display.x_zero_line,
+        x2_zero_line: display.x2_zero_line,
         y_zero_line: display.y_zero_line,
+        y2_zero_line: display.y2_zero_line,
         x_grid: display.x_grid,
+        x2_grid: display.x2_grid,
         y_grid: display.y_grid,
         y2_grid: display.y2_grid,
       }}
       on_reset={() => {
         display.x_zero_line = false
+        display.x2_zero_line = false
         display.y_zero_line = false
+        display.y2_zero_line = false
         display.x_grid = DEFAULTS.plot.show_x_grid
+        display.x2_grid = DEFAULTS.plot.show_x2_grid
         display.y_grid = DEFAULTS.plot.show_y_grid
         display.y2_grid = DEFAULTS.plot.show_y2_grid
       }}
       style="display: flex; flex-wrap: wrap; gap: 1ex; align-items: center"
     >
-      {#if x_includes_zero || y_includes_zero}
+      {#if x_includes_zero || x2_includes_zero || y_includes_zero || y2_includes_zero}
         <span class="control-group" data-label="zero line">Zero line:
           {#if x_includes_zero}
             <label><input type="checkbox" bind:checked={display.x_zero_line} /> X</label>
           {/if}
+          {#if x2_includes_zero}
+            <label><input type="checkbox" bind:checked={display.x2_zero_line} />
+              X2</label>
+          {/if}
           {#if y_includes_zero}
             <label><input type="checkbox" bind:checked={display.y_zero_line} /> Y</label>
+          {/if}
+          {#if y2_includes_zero}
+            <label><input type="checkbox" bind:checked={display.y2_zero_line} />
+              Y2</label>
           {/if}
         </span>
       {/if}
       <span class="control-group" data-label="grid">Grid:
         <label><input type="checkbox" bind:checked={display.x_grid} /> X</label>
+        {#if has_x2_points}
+          <label><input type="checkbox" bind:checked={display.x2_grid} /> X2</label>
+        {/if}
         <label><input type="checkbox" bind:checked={display.y_grid} /> Y</label>
         {#if has_y2_points}
           <label><input type="checkbox" bind:checked={display.y2_grid} /> Y2</label>
@@ -179,9 +226,15 @@
     <!-- Base Axis Range controls -->
     <SettingsSection
       title="Axis Range"
-      current_values={{ x_range: x_axis.range, y_range: y_axis.range, y2_range: y2_axis.range }}
+      current_values={{
+        x_range: x_axis.range,
+        x2_range: x2_axis.range,
+        y_range: y_axis.range,
+        y2_range: y2_axis.range,
+      }}
       on_reset={() => {
         x_axis = { ...x_axis, range: [null, null] }
+        x2_axis = { ...x2_axis, range: [null, null] }
         y_axis = { ...y_axis, range: [null, null] }
         y2_axis = { ...y2_axis, range: [null, null] }
         Object.values(range_els).forEach((el) => el.classList.remove(`invalid`))
@@ -190,6 +243,7 @@
     >
       {#each [
         [`x`, `X`],
+        ...(has_x2_points ? [[`x2`, `X2`]] : []),
         [`y`, `Y`],
         ...(has_y2_points ? [[`y2`, `Y2`]] : []),
       ] as
@@ -273,11 +327,13 @@
       title="Scale Type"
       current_values={{
         x_scale: get_scale_type_name(x_axis.scale_type),
+        x2_scale: get_scale_type_name(x2_axis.scale_type),
         y_scale: get_scale_type_name(y_axis.scale_type),
         y2_scale: get_scale_type_name(y2_axis.scale_type),
       }}
       on_reset={() => {
         x_axis = { ...x_axis, scale_type: `linear` }
+        x2_axis = { ...x2_axis, scale_type: `linear` }
         y_axis = { ...y_axis, scale_type: `linear` }
         y2_axis = { ...y2_axis, scale_type: `linear` }
       }}
@@ -299,6 +355,24 @@
           <option value="arcsinh">Arcsinh</option>
         </select>
       </label>
+      {#if has_x2_points}
+        <label>X2:
+          <select
+            value={get_scale_type_name(x2_axis.scale_type)}
+            onchange={(e) => {
+              const val = e.currentTarget.value
+              x2_axis = {
+                ...x2_axis,
+                scale_type: is_scale_type_name(val) ? val : `linear`,
+              }
+            }}
+          >
+            <option value="linear">Linear</option>
+            <option value="log">Log</option>
+            <option value="arcsinh">Arcsinh</option>
+          </select>
+        </label>
+      {/if}
       <label>Y:
         <select
           value={get_scale_type_name(y_axis.scale_type)}
@@ -403,11 +477,13 @@
       data-testid="tick-format-section"
       current_values={{
         x_format: x_axis.format,
+        x2_format: x2_axis.format,
         y_format: y_axis.format,
         y2_format: y2_axis.format,
       }}
       on_reset={() => {
         x_axis = { ...x_axis, format: DEFAULTS.plot.x_format }
+        x2_axis = { ...x2_axis, format: DEFAULTS.plot.x2_format }
         y_axis = { ...y_axis, format: DEFAULTS.plot.y_format }
         y2_axis = { ...y2_axis, format: DEFAULTS.plot.y2_format }
       }}
@@ -422,6 +498,17 @@
           oninput={format_input_handler(`x`)}
         />
       </label>
+      {#if has_x2_points}
+        <label style="white-space: nowrap">X2-axis:
+          <input
+            type="text"
+            value={x2_axis.format ?? DEFAULTS.plot.x2_format}
+            placeholder=".2~s / .0% / %Y-%m-%d"
+            oninput={format_input_handler(`x2`)}
+            style="width: 100%"
+          />
+        </label>
+      {/if}
       <label style="white-space: nowrap">Y-axis:
         <input
           type="text"

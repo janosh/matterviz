@@ -3,7 +3,7 @@ import type { Vec2 } from '$lib/math'
 import type { DataSeries } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
-import { createRawSnippet, mount } from 'svelte'
+import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 const basic = {
@@ -44,6 +44,26 @@ describe(`ScatterPlot`, () => {
     },
   ])(`renders with series/limits/markers`, (props) => {
     mount(ScatterPlot, { target: document.body, props })
+  })
+
+  test(`mounts with x2-axis series and renders x2 axis`, async () => {
+    mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [
+          { x: [1, 2, 3], y: [10, 20, 30], label: `Primary` },
+          { x: [100, 200, 300], y: [5, 15, 25], x_axis: `x2`, label: `Secondary` },
+        ],
+        x2_axis: { label: `Temperature (K)` },
+        style: `width: 400px; height: 300px`,
+      },
+    })
+    await tick()
+    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
+    expect(document.querySelector(`.x2-label`)?.textContent).toBe(
+      `Temperature (K)`,
+    )
   })
 
   test.each([
