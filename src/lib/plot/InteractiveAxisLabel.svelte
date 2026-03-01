@@ -17,7 +17,7 @@
     options?: AxisOption[]
     selected_key?: string
     loading?: boolean
-    axis_type?: `x` | `y` | `y2`
+    axis_type?: `x` | `x2` | `y` | `y2`
     color?: string | null
     on_select?: (key: string) => void
     [key: string]: unknown

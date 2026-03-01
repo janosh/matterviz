@@ -223,6 +223,27 @@
       render_mode: `line`,
     },
   ]
+
+  // X2 axis demo — two series with different x scales (e.g. Celsius vs Fahrenheit)
+  const x2_axis_series: BarSeries[] = [
+    {
+      x: [10, 20, 30, 40],
+      y: [5, 12, 8, 15],
+      label: `Celsius`,
+      color: `#2563eb`,
+      bar_width: 3,
+      visible: true,
+    },
+    {
+      x: [50, 68, 86, 104],
+      y: [3, 9, 6, 11],
+      label: `Fahrenheit`,
+      color: `#dc2626`,
+      bar_width: 5,
+      x_axis: `x2`,
+      visible: true,
+    },
+  ]
 </script>
 
 <svelte:head>
@@ -389,6 +410,20 @@
     x_axis={{ label: `X` }}
     y_axis={{ label: `Bars` }}
     y2_axis={{ label: `Line` }}
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+</section>
+
+<section id="x2-axis-bar">
+  <h2>X2 Axis (Dual X-Axes)</h2>
+  <p>Bottom axis shows °C, top axis shows °F — each series mapped to its own x-scale.</p>
+  <BarPlot
+    series={x2_axis_series}
+    x_axis={{ label: `Temperature (°C)` }}
+    x2_axis={{ label: `Temperature (°F)` }}
+    y_axis={{ label: `Count` }}
+    show_legend
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
   />

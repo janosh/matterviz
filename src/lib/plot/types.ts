@@ -1,5 +1,5 @@
 import type { D3SymbolName } from '$lib/labels'
-import type { Vec3 } from '$lib/math'
+import type { Vec2, Vec3 } from '$lib/math'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
@@ -20,6 +20,14 @@ export interface TweenedOptions<T> {
 export type XyObj = { x: number; y: number }
 export type XyShift = { x?: number; y?: number } // For optional shift/offset values
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
+
+// Snapshot of axis ranges at interaction start (shared by pan/zoom/touch handlers)
+export type InitialRanges = {
+  initial_x_range: Vec2
+  initial_x2_range: Vec2
+  initial_y_range: Vec2
+  initial_y2_range: Vec2
+}
 
 export type Point<Metadata = Record<string, unknown>> = {
   x: number
@@ -99,6 +107,8 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   y: readonly number[]
   // Optional marker display type override for this specific series
   markers?: Markers
+  // Specify which x-axis to use: 'x1' (bottom, default) or 'x2' (top)
+  x_axis?: `x1` | `x2`
   // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
   y_axis?: `y1` | `y2`
   color_values?: (number | null)[] | null
@@ -150,6 +160,7 @@ export interface HandlerProps<Metadata = Record<string, unknown>> {
   label?: string | null
   series_idx: number
   x_axis: AxisConfig
+  x2_axis?: AxisConfig
   y_axis: AxisConfig
   y2_axis?: AxisConfig
   fullscreen?: boolean
@@ -179,6 +190,7 @@ export interface BarHandlerProps<Metadata = Record<string, unknown>>
   orient_x: number
   orient_y: number
   active_y_axis: `y1` | `y2`
+  active_x_axis: `x1` | `x2`
   color: string
 }
 
@@ -188,6 +200,7 @@ export interface HistogramHandlerProps<Metadata = Record<string, unknown>>
   count: number
   property: string
   active_y_axis: `y1` | `y2`
+  active_x_axis: `x1` | `x2`
 }
 
 export type TimeInterval = `day` | `month` | `year`
@@ -335,12 +348,14 @@ export type UserContentProps = {
   height: number
   width: number
   x_scale_fn: (x: number) => number
+  x2_scale_fn?: (x: number) => number
   y_scale_fn: (y: number) => number
   y2_scale_fn?: (y: number) => number
   pad: Required<Sides>
-  x_range: [number, number]
-  y_range: [number, number]
-  y2_range?: [number, number]
+  x_range: Vec2
+  x2_range?: Vec2
+  y_range: Vec2
+  y2_range?: Vec2
   fullscreen: boolean
 }
 
@@ -362,6 +377,8 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   metadata?: Metadata[] | Metadata
   labels?: readonly (string | null | undefined)[]
   render_mode?: `bar` | `line` // Render as bars (default) or as a line
+  // Specify which x-axis to use: 'x1' (bottom, default) or 'x2' (top)
+  x_axis?: `x1` | `x2`
   // Specify which y-axis to use: 'y1' (left, default) or 'y2' (right)
   y_axis?: `y1` | `y2`
   line_style?: {
@@ -479,15 +496,18 @@ export interface ColorScaleOption {
 // Data loader for ColorBar property changes
 export type ColorBarDataLoaderFn = (
   property_key: string,
-) => Promise<{ range: [number, number]; title?: string }>
+) => Promise<{ range: Vec2; title?: string }>
 
 // Display configuration for grid lines and zero lines
 export interface DisplayConfig {
   x_grid?: boolean
+  x2_grid?: boolean
   y_grid?: boolean
   y2_grid?: boolean
   x_zero_line?: boolean
+  x2_zero_line?: boolean
   y_zero_line?: boolean
+  y2_zero_line?: boolean
 }
 
 // Style overrides for point and line properties
@@ -510,9 +530,10 @@ export interface StyleOverrides {
   show_lines?: boolean
 }
 
-export type AxisKey = `x` | `y` | `y2`
+export type AxisKey = `x` | `x2` | `y` | `y2`
 export interface PlotConfig { // Grouped configuration for plot axes and display settings
   x_axis?: AxisConfig
+  x2_axis?: AxisConfig
   y_axis?: AxisConfig
   y2_axis?: AxisConfig
   display?: DisplayConfig
@@ -548,10 +569,12 @@ export interface PlotControlsProps extends PlotConfig {
   children?: Snippet<[ControlsState]>
   post_children?: Snippet<[ControlsState]>
   // Auto ranges for reset functionality
-  auto_x_range?: [number, number]
-  auto_y_range?: [number, number]
-  auto_y2_range?: [number, number]
+  auto_x_range?: Vec2
+  auto_x2_range?: Vec2
+  auto_y_range?: Vec2
+  auto_y2_range?: Vec2
   // Helper flags
+  has_x2_points?: boolean
   has_y2_points?: boolean
   show_ticks?: boolean
   // Component props
@@ -566,6 +589,7 @@ export interface PlotControlsProps extends PlotConfig {
 export interface BasePlotProps {
   // Axis limits (non-bindable - used for auto-range calculation)
   x_range?: [number | null, number | null]
+  x2_range?: [number | null, number | null]
   y_range?: [number | null, number | null]
   y2_range?: [number | null, number | null]
   range_padding?: number // Factor to pad auto-detected ranges before nicing (e.g. 0.05 = 5%)
@@ -681,13 +705,13 @@ export interface Surface3DConfig {
   id?: string | number
   type: SurfaceType
   // For grid surfaces: regular grid with z values
-  x_range?: [number, number]
-  y_range?: [number, number]
-  resolution?: number | [number, number] // grid resolution (x, y)
+  x_range?: Vec2
+  y_range?: Vec2
+  resolution?: number | Vec2 // grid resolution (x, y)
   z_fn?: (x: number, y: number) => number
   // For parametric surfaces: u,v parameterization
-  u_range?: [number, number]
-  v_range?: [number, number]
+  u_range?: Vec2
+  v_range?: Vec2
   parametric_fn?: (u: number, v: number) => XyzObj
   // For triangulated surfaces: explicit geometry (only x,y,z needed, not scatter-specific fields)
   points?: XyzObj[]
@@ -782,7 +806,7 @@ export type FillBoundary =
   | { type: `series`; series_idx: number }
   | { type: `series`; series_id: string | number }
   | { type: `constant`; value: number }
-  | { type: `axis`; axis: `x` | `y` | `y2`; value?: number }
+  | { type: `axis`; axis: `x` | `x2` | `y` | `y2`; value?: number }
   | { type: `function`; fn: (coord: number) => number }
   | { type: `data`; values: readonly number[] }
   | number // Shorthand for constant value
@@ -956,7 +980,8 @@ export interface RefLineBase {
   x_span?: [number | null, number | null]
   y_span?: [number | null, number | null]
   coord_mode?: `data` | `relative` // default: 'data'
-  y_axis?: `y1` | `y2` // for horizontal lines with dual axes
+  x_axis?: `x1` | `x2` // for vertical lines with dual x-axes
+  y_axis?: `y1` | `y2` // for horizontal lines with dual y-axes
   style?: RefLineStyle
   annotation?: RefLineAnnotation
   z_index?: LayerZIndex
@@ -1131,7 +1156,7 @@ export interface CleaningQuality {
   oscillation_score?: number // Combined weighted score
   bounds_violations: number
   outliers_removed?: number // Count of local outliers removed
-  stable_range?: [number, number] // [start_x, end_x] if mark_unstable mode
+  stable_range?: Vec2 // [start_x, end_x] if mark_unstable mode
   truncated_at_x?: number // x value if hard_cut mode
 }
 

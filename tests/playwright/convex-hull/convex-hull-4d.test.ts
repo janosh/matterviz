@@ -343,3 +343,30 @@ test(`drag-right increases rotation_y (natural direction)`, async ({ page }) => 
   const rot_after = Number(await diagram.getAttribute(`data-rotation-y`))
   expect(rot_after).toBeGreaterThan(rot_before)
 })
+
+test(`drag-down decreases rotation_x (natural direction)`, async ({ page }) => {
+  await page.goto(`/test/convex-hull-performance?dim=4d&count=20`, {
+    waitUntil: `networkidle`,
+  })
+  const diagram = page.locator(`.convex-hull-4d`).first()
+  const canvas = diagram.locator(`canvas`)
+  await expect(canvas).toBeVisible({ timeout: 15000 })
+
+  const rot_before = Number(await diagram.getAttribute(`data-rotation-x`))
+  expect(Number.isFinite(rot_before)).toBe(true)
+  const box = await canvas.boundingBox()
+  expect(box).toBeTruthy()
+  if (!box) throw new Error(`Canvas bounding box not found`)
+
+  // Drag down across the canvas — should tilt view downward (decrease rotation_x)
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  await page.mouse.move(cx, cy + 80, { steps: 5 })
+  await page.mouse.up()
+  await page.waitForTimeout(50)
+
+  const rot_after = Number(await diagram.getAttribute(`data-rotation-x`))
+  expect(rot_after).toBeLessThan(rot_before)
+})

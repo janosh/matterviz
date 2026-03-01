@@ -929,7 +929,7 @@
       camera.rotation_y += dx * 0.005
       camera.rotation_x = Math.max(
         -Math.PI / 3,
-        Math.min(Math.PI / 3, camera.rotation_x + dy * 0.005),
+        Math.min(Math.PI / 3, camera.rotation_x - dy * 0.005),
       )
     }
     last_mouse = { x: event.clientX, y: event.clientY }
@@ -1103,6 +1103,7 @@
   data-has-selection={selected_entry !== null}
   data-has-hover={hover_data !== null}
   data-is-dragging={is_dragging}
+  data-rotation-x={camera.rotation_x.toFixed(4)}
   data-rotation-y={camera.rotation_y.toFixed(4)}
   bind:this={wrapper}
   role="application"

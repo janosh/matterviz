@@ -229,9 +229,11 @@ export interface SettingsConfig {
     show_x_zero_line: SettingType<boolean>
     show_y_zero_line: SettingType<boolean>
     show_x_grid: SettingType<boolean>
+    show_x2_grid: SettingType<boolean>
     show_y_grid: SettingType<boolean>
     show_y2_grid: SettingType<boolean>
     x_format: SettingType<string>
+    x2_format: SettingType<string>
     y_format: SettingType<string>
     y2_format: SettingType<string>
     x_scale_type: SettingType<string>
@@ -1029,6 +1031,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       value: true,
       description: `Show X-axis grid lines`,
     },
+    show_x2_grid: {
+      value: false,
+      description: `Show secondary X-axis grid lines`,
+    },
     show_y_grid: {
       value: true,
       description: `Show Y-axis grid lines`,
@@ -1040,6 +1046,10 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     x_format: {
       value: `.2~s`,
       description: `Number format for X-axis ticks (D3 format specifier)`,
+    },
+    x2_format: {
+      value: ``,
+      description: `Number format for secondary X-axis ticks (D3 format specifier)`,
     },
     y_format: {
       value: `d`,
