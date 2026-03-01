@@ -1077,6 +1077,37 @@
     y_axis={{ label: `Y1 Axis` }}
     y2_axis={{ label: `Y2 Axis` }}
   />
+
+  <h3>X2 Axis (Dual X-Axes)</h3>
+  <p>
+    Bottom axis: wavelength (nm). Top axis: energy (eV). Each series plotted on its own
+    x-scale.
+  </p>
+  <ScatterPlot
+    id="x2-axis-plot"
+    series={[
+      {
+        x: [400, 500, 600, 700, 800],
+        y: [0.2, 0.8, 0.95, 0.7, 0.3],
+        label: `Wavelength`,
+        markers: `line+points`,
+        line_style: { stroke: `#7c3aed`, stroke_width: 2 },
+        point_style: { fill: `#7c3aed`, radius: 4 },
+      },
+      {
+        x: [1.55, 1.77, 2.07, 2.48, 3.10],
+        y: [0.35, 0.6, 0.9, 0.75, 0.15],
+        label: `Energy`,
+        x_axis: `x2`,
+        markers: `line+points`,
+        line_style: { stroke: `#ea580c`, stroke_width: 2 },
+        point_style: { fill: `#ea580c`, radius: 4 },
+      },
+    ]}
+    x_axis={{ label: `Wavelength (nm)`, color: `#7c3aed` }}
+    x2_axis={{ label: `Energy (eV)`, color: `#ea580c` }}
+    y_axis={{ label: `Intensity` }}
+  />
 </section>
 
 <!-- Point Event Test -->

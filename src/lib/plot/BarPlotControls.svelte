@@ -12,6 +12,7 @@
     orientation = $bindable(`vertical`),
     mode = $bindable(`overlay`),
     x_axis = $bindable({}),
+    x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable({}),
@@ -34,12 +35,13 @@
   bind:show_controls
   bind:controls_open
   bind:x_axis
+  bind:x2_axis
   bind:y_axis
   bind:y2_axis
   bind:display
   {...rest}
 >
-  {@render children?.({ orientation, mode, x_axis, y_axis, y2_axis, display })}
+  {@render children?.({ orientation, mode, x_axis, x2_axis, y_axis, y2_axis, display })}
   <SettingsSection
     title="Layout"
     current_values={{ orientation, mode }}

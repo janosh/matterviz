@@ -12,17 +12,16 @@ import {
   scale_arcsinh,
 } from '$lib/plot/scales'
 import type { ArcsinhScaleConfig, ScaleType } from '$lib/plot/types'
-import { get_arcsinh_threshold, get_scale_type_name } from '$lib/plot/types'
+import {
+  get_arcsinh_threshold,
+  get_scale_type_name,
+  is_scale_type_name,
+  is_time_scale,
+} from '$lib/plot/types'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
 import { describe, expect, test } from 'vitest'
 
-const sample_points = [
-  { x: 1, y: 10 },
-  { x: 2, y: 20 },
-  { x: 3, y: 30 },
-  { x: 4, y: 40 },
-  { x: 5, y: 50 },
-]
+const sample_points = [1, 2, 3, 4, 5].map((x) => ({ x, y: x * 10 }))
 
 describe(`scales`, () => {
   describe(`create_scale`, () => {
@@ -502,11 +501,44 @@ describe(`scales`, () => {
       [`linear`, `linear`],
       [`log`, `log`],
       [`arcsinh`, `arcsinh`],
+      [`time`, `time`],
       [undefined, `linear`],
       [{ type: `arcsinh`, threshold: 10 } as ArcsinhScaleConfig, `arcsinh`],
     ])(`get_scale_type_name(%s) = %s`, (input, expected) => {
       expect(get_scale_type_name(input as ScaleType | undefined)).toBe(expected)
     })
+
+    test.each([
+      [`linear`, true],
+      [`log`, true],
+      [`arcsinh`, true],
+      [`time`, true],
+      [`foo`, false],
+      [``, false],
+      [`Linear`, false],
+    ])(`is_scale_type_name(%s) = %s`, (input, expected) => {
+      expect(is_scale_type_name(input)).toBe(expected)
+    })
+
+    test.each([
+      // explicit scale_type: 'time' → always true regardless of format
+      { scale_type: `time` as ScaleType, format: undefined, expected: true },
+      { scale_type: `time` as ScaleType, format: `.2f`, expected: true },
+      // format heuristic: starts with '%' → true
+      { scale_type: undefined, format: `%Y-%m`, expected: true },
+      { scale_type: undefined, format: `%b %d`, expected: true },
+      { scale_type: `linear` as ScaleType, format: `%Y`, expected: true },
+      // not time
+      { scale_type: undefined, format: undefined, expected: false },
+      { scale_type: `linear` as ScaleType, format: `.2f`, expected: false },
+      { scale_type: `log` as ScaleType, format: undefined, expected: false },
+      { scale_type: undefined, format: ``, expected: false },
+    ])(
+      `is_time_scale($scale_type, $format) = $expected`,
+      ({ scale_type, format, expected }) => {
+        expect(is_time_scale(scale_type, format)).toBe(expected)
+      },
+    )
 
     test.each([
       [{ type: `arcsinh`, threshold: 42 } as ArcsinhScaleConfig, 42],

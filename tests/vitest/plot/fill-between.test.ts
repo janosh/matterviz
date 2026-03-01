@@ -182,7 +182,7 @@ describe(`apply_range_constraints`, () => {
     const x_values = [1, 2, 3]
     const y1_values = [10, 20, 30]
     const y2_values = [5, 15, 25]
-    const region = { x_range: [null, 2] as [number | null, number | null] }
+    const region = { x_range: [null, 2] } as FillRegion
 
     const result = apply_range_constraints(x_values, y1_values, y2_values, region)
 

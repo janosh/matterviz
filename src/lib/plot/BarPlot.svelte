@@ -13,6 +13,7 @@
     BarStyle,
     BasePlotProps,
     DataLoaderFn,
+    InitialRanges,
     InternalPoint,
     LegendConfig,
     LegendItem,
@@ -28,18 +29,15 @@
     XyObj,
   } from '$lib/plot'
   import {
+    AxisLabel,
     BarPlotControls,
     compute_element_placement,
-    InteractiveAxisLabel,
     PlotLegend,
     ReferenceLine,
     ScatterPoint,
   } from '$lib/plot'
   import type { AxisChangeState } from '$lib/plot/axis-utils'
-  import {
-    AXIS_LABEL_CONTAINER,
-    create_axis_change_handler,
-  } from '$lib/plot/axis-utils'
+  import { create_axis_change_handler } from '$lib/plot/axis-utils'
   import { process_prop } from '$lib/plot/data-transform'
   import {
     create_dimension_tracker,
@@ -78,10 +76,12 @@
     constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
-    measure_text_width,
+    measure_max_tick_width,
   } from './layout'
   import PlotTooltip from './PlotTooltip.svelte'
   import { bar_path } from './svg'
+  import ZeroLines from './ZeroLines.svelte'
+  import ZoomRect from './ZoomRect.svelte'
 
   // Handler props for line marker events (extends BarHandlerProps with point-specific data)
   interface LineMarkerHandlerProps extends BarHandlerProps<Metadata> {
@@ -102,10 +102,12 @@
     orientation = $bindable(`vertical`),
     mode = $bindable(`overlay`),
     x_axis = $bindable({}),
+    x2_axis = $bindable({}),
     y_axis = $bindable({}),
     y2_axis = $bindable({}),
     display = $bindable(DEFAULTS.bar.display),
     x_range = [null, null],
+    x2_range = [null, null],
     y_range = [null, null],
     y2_range = [null, null],
     range_padding = 0.05,
@@ -206,7 +208,7 @@
     // Interactive axis props
     data_loader?: DataLoaderFn<Metadata, BarSeries<Metadata>>
     on_axis_change?: (
-      axis: `x` | `y` | `y2`,
+      axis: `x` | `x2` | `y` | `y2`,
       key: string,
       new_series: BarSeries<Metadata>[],
     ) => void
@@ -226,6 +228,15 @@
     range: [null, null],
     ...y2_axis,
   }
+  x2_axis = {
+    format: ``,
+    scale_type: `linear`,
+    ticks: 5,
+    label_shift: { x: 0, y: 40 },
+    tick: { label: { shift: { x: 0, y: 0 } } },
+    range: [null, null],
+    ...x2_axis,
+  }
 
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
@@ -236,7 +247,7 @@
   let hovered_ref_line_idx = $state<number | null>(null)
 
   // Interactive axis loading state
-  let axis_loading = $state<`x` | `y` | `y2` | null>(null)
+  let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
   // Compute ref_lines with index and group by z-index (using shared utilities)
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
@@ -255,6 +266,9 @@
   )
   let y2_series = $derived(
     visible_series.filter((srs: BarSeries<Metadata>) => srs.y_axis === `y2`),
+  )
+  let x2_series = $derived(
+    visible_series.filter((srs: BarSeries<Metadata>) => srs.x_axis === `x2`),
   )
 
   let auto_ranges = $derived.by(() => {
@@ -327,20 +341,37 @@
       return y_range
     }
 
-    // Get all x values for x_range calculation
-    const all_x_points = visible_series.flatMap((srs: BarSeries<Metadata>) =>
+    // Get x values split by axis for range calculation
+    const x1_x_points = visible_series
+      .filter((srs: BarSeries<Metadata>) => (srs.x_axis ?? `x1`) === `x1`)
+      .flatMap((srs: BarSeries<Metadata>) =>
+        srs.x.map((x_val) => ({ x: x_val, y: 0 }))
+      )
+    const x2_x_points = x2_series.flatMap((srs: BarSeries<Metadata>) =>
       srs.x.map((x_val) => ({ x: x_val, y: 0 }))
     )
 
     const x_scale_type = x_axis.scale_type ?? `linear`
-    const x_auto_range = all_x_points.length
+    const x_auto_range = x1_x_points.length
       ? get_nice_data_range(
-        all_x_points,
+        x1_x_points,
         (pt) => pt.x,
         x_range,
         x_scale_type,
         range_padding,
         x_axis.format?.startsWith(`%`) || false,
+      )
+      : [0, 1]
+
+    const x2_scale_type = x2_axis.scale_type ?? `linear`
+    const x2_auto_range = x2_x_points.length
+      ? get_nice_data_range(
+        x2_x_points,
+        (pt) => pt.x,
+        x2_range,
+        x2_scale_type,
+        range_padding,
+        x2_axis.format?.startsWith(`%`) || false,
       )
       : [0, 1]
 
@@ -353,23 +384,27 @@
 
     // Map data ranges to axis ranges depending on orientation
     return orientation === `horizontal`
-      ? ({ x: y1_range, y: x_auto_range, y2: y2_auto_range })
-      : ({ x: x_auto_range, y: y1_range, y2: y2_auto_range })
+      ? ({ x: y1_range, x2: x2_auto_range, y: x_auto_range, y2: y2_auto_range })
+      : ({ x: x_auto_range, x2: x2_auto_range, y: y1_range, y2: y2_auto_range })
   })
 
   // Initialize and current ranges
   let ranges = $state<{
-    initial: { x: Vec2; y: Vec2; y2: Vec2 }
-    current: { x: Vec2; y: Vec2; y2: Vec2 }
+    initial: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
+    current: { x: Vec2; x2: Vec2; y: Vec2; y2: Vec2 }
   }>({
-    initial: { x: [0, 1], y: [0, 1], y2: [0, 1] },
-    current: { x: [0, 1], y: [0, 1], y2: [0, 1] },
+    initial: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
+    current: { x: [0, 1], x2: [0, 1], y: [0, 1], y2: [0, 1] },
   })
 
-  $effect(() => { // handle x_axis.range / y_axis.range / y2_axis.range changes
+  $effect(() => { // handle x_axis.range / x2_axis.range / y_axis.range / y2_axis.range changes
     const new_x = [
       x_axis.range?.[0] ?? auto_ranges.x[0],
       x_axis.range?.[1] ?? auto_ranges.x[1],
+    ] as Vec2
+    const new_x2 = [
+      x2_axis.range?.[0] ?? auto_ranges.x2[0],
+      x2_axis.range?.[1] ?? auto_ranges.x2[1],
     ] as Vec2
     const new_y = [
       y_axis.range?.[0] ?? auto_ranges.y[0],
@@ -384,14 +419,16 @@
     if (
       ranges.initial.x[0] !== new_x[0] ||
       ranges.initial.x[1] !== new_x[1] ||
+      ranges.initial.x2[0] !== new_x2[0] ||
+      ranges.initial.x2[1] !== new_x2[1] ||
       ranges.initial.y[0] !== new_y[0] ||
       ranges.initial.y[1] !== new_y[1] ||
       ranges.initial.y2[0] !== new_y2[0] ||
       ranges.initial.y2[1] !== new_y2[1]
     ) {
       ranges = {
-        initial: { x: new_x, y: new_y, y2: new_y2 },
-        current: { x: new_x, y: new_y, y2: new_y2 },
+        initial: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
+        current: { x: new_x, x2: new_x2, y: new_y, y2: new_y2 },
       }
     }
   })
@@ -406,6 +443,7 @@
       ? calc_auto_padding({
         padding,
         default_padding,
+        x2_axis: { ...x2_axis, tick_values: ticks.x2 },
         y_axis: { ...y_axis, tick_values: ticks.y },
         y2_axis: { ...y2_axis, tick_values: ticks.y2 },
       })
@@ -415,22 +453,27 @@
       width && height && y2_series.length && ticks.y2.length &&
       orientation === `vertical`
     ) {
-      const y2_tick_width = Math.max(
-        0,
-        ...ticks.y2.map((tick) =>
-          measure_text_width(format_value(tick, y2_axis.format), `12px sans-serif`)
-        ),
-      )
       // Need space for: tick shift + tick width + gap (30px) + label space (20px if present)
       // When ticks are inside, they don't contribute to padding
       const inside = y2_axis.tick?.label?.inside ?? false
       const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8
-      const tick_width_contribution = inside ? 0 : y2_tick_width
+      const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max
       const label_space = y2_axis.label ? 20 : 0
       new_pad.r = Math.max(
         new_pad.r,
         tick_shift + tick_width_contribution + 30 + label_space,
       )
+    }
+    // Expand top padding if x2 ticks are shown (only for vertical orientation)
+    if (
+      width && height && x2_series.length && ticks.x2.length &&
+      orientation === `vertical`
+    ) {
+      const inside = x2_axis.tick?.label?.inside ?? false
+      const tick_shift = inside ? 0 : Math.abs(x2_axis.tick?.label?.shift?.y ?? 0) + 5
+      const tick_height = inside ? 0 : 16
+      const label_space = x2_axis.label ? 20 : 0
+      new_pad.t = Math.max(new_pad.t, tick_shift + tick_height + 30 + label_space)
     }
 
     // Only update if padding actually changed (prevents infinite loop)
@@ -445,6 +488,10 @@
   // Scales
   let scales = $derived({
     x: create_scale(x_axis.scale_type ?? `linear`, ranges.current.x, [
+      pad.l,
+      width - pad.r,
+    ]),
+    x2: create_scale(x2_axis.scale_type ?? `linear`, ranges.current.x2, [
       pad.l,
       width - pad.r,
     ]),
@@ -532,6 +579,25 @@
         },
       )
       : [],
+    x2: width && height && x2_series.length > 0 && orientation === `vertical`
+      ? generate_ticks(
+        ranges.current.x2,
+        x2_axis.scale_type ?? `linear`,
+        x2_axis.ticks,
+        scales.x2,
+        {
+          default_count: 8,
+        },
+      )
+      : [],
+  })
+
+  // Cache measured tick-label widths so expensive canvas text measurement
+  // only runs when ticks/format change, not on every template rerender.
+  let tick_label_widths = $derived({
+    y_max: measure_max_tick_width(ticks.y, y_axis.format ?? ``),
+    y2_max: measure_max_tick_width(ticks.y2, y2_axis.format ?? ``),
+    x2_max: measure_max_tick_width(ticks.x2, x2_axis.format ?? ``),
   })
 
   // Zoom drag state
@@ -545,20 +611,10 @@
   let is_focused = $state(false)
   let shift_held = $state(false)
   let pan_drag_state = $state<
-    {
-      start: { x: number; y: number }
-      initial_x_range: [number, number]
-      initial_y_range: [number, number]
-      initial_y2_range: [number, number]
-    } | null
+    InitialRanges & { start: { x: number; y: number } } | null
   >(null)
   let touch_state = $state<
-    {
-      start_touches: { x: number; y: number }[]
-      initial_x_range: [number, number]
-      initial_y_range: [number, number]
-      initial_y2_range: [number, number]
-    } | null
+    InitialRanges & { start_touches: { x: number; y: number }[] } | null
   >(null)
   const on_window_mouse_move = (evt: MouseEvent) => {
     if (!drag_state.start || !drag_state.bounds) return
@@ -575,6 +631,8 @@
       const y2 = scales.y.invert(drag_state.current.y)
       const y2_1 = scales.y2.invert(drag_state.start.y)
       const y2_2 = scales.y2.invert(drag_state.current.y)
+      const x2a_1_raw = scales.x2.invert(drag_state.start.x) as number | Date
+      const x2a_2_raw = scales.x2.invert(drag_state.current.x) as number | Date
       const dx = Math.abs(drag_state.start.x - drag_state.current.x)
       const dy = Math.abs(drag_state.start.y - drag_state.current.y)
 
@@ -585,9 +643,22 @@
         ;[xr1, xr2] = [x1_raw, x2_raw]
       } else [xr1, xr2] = [NaN, NaN] // bail: mixed types
 
+      let x2r1: number, x2r2: number
+      if (x2a_1_raw instanceof Date && x2a_2_raw instanceof Date) {
+        ;[x2r1, x2r2] = [x2a_1_raw.getTime(), x2a_2_raw.getTime()]
+      } else if (typeof x2a_1_raw === `number` && typeof x2a_2_raw === `number`) {
+        ;[x2r1, x2r2] = [x2a_1_raw, x2a_2_raw]
+      } else [x2r1, x2r2] = [NaN, NaN]
+
       if (dx > 5 && dy > 5 && Number.isFinite(xr1) && Number.isFinite(xr2)) {
         // Update axis ranges to trigger reactivity and prevent effect from overriding
         x_axis = { ...x_axis, range: [Math.min(xr1, xr2), Math.max(xr1, xr2)] }
+        if (x2_series.length > 0 && Number.isFinite(x2r1) && Number.isFinite(x2r2)) {
+          x2_axis = {
+            ...x2_axis,
+            range: [Math.min(x2r1, x2r2), Math.max(x2r1, x2r2)],
+          }
+        }
         y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
         y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
       }
@@ -612,6 +683,11 @@
       pan_drag_state.initial_x_range,
       chart_width,
     )
+    const x2_delta = pixels_to_data_delta(
+      -dx * sensitivity,
+      pan_drag_state.initial_x2_range,
+      chart_width,
+    )
     const y_delta = pixels_to_data_delta(
       dy * sensitivity,
       pan_drag_state.initial_y_range,
@@ -624,6 +700,7 @@
     )
 
     ranges.current.x = pan_range(pan_drag_state.initial_x_range, x_delta)
+    ranges.current.x2 = pan_range(pan_drag_state.initial_x2_range, x2_delta)
     ranges.current.y = pan_range(pan_drag_state.initial_y_range, y_delta)
     ranges.current.y2 = pan_range(pan_drag_state.initial_y2_range, y2_delta)
   }
@@ -646,6 +723,7 @@
       pan_drag_state = {
         start: { x: evt.clientX, y: evt.clientY },
         initial_x_range: [...ranges.current.x] as [number, number],
+        initial_x2_range: [...ranges.current.x2] as [number, number],
         initial_y_range: [...ranges.current.y] as [number, number],
         initial_y2_range: [...ranges.current.y2] as [number, number],
       }
@@ -682,6 +760,11 @@
       ranges.current.x,
       chart_width,
     )
+    const x2_delta = pixels_to_data_delta(
+      evt.deltaX * sensitivity,
+      ranges.current.x2,
+      chart_width,
+    )
     const y_delta = pixels_to_data_delta(
       evt.deltaY * sensitivity,
       ranges.current.y,
@@ -695,6 +778,7 @@
 
     if (Math.abs(evt.deltaX) > Math.abs(evt.deltaY)) {
       ranges.current.x = pan_range(ranges.current.x, x_delta)
+      ranges.current.x2 = pan_range(ranges.current.x2, x2_delta)
     } else {
       ranges.current.y = pan_range(ranges.current.y, y_delta)
       ranges.current.y2 = pan_range(ranges.current.y2, y2_delta)
@@ -711,6 +795,7 @@
     touch_state = {
       start_touches: touches.map((touch) => ({ x: touch.clientX, y: touch.clientY })),
       initial_x_range: [...ranges.current.x] as [number, number],
+      initial_x2_range: [...ranges.current.x2] as [number, number],
       initial_y_range: [...ranges.current.y] as [number, number],
       initial_y2_range: [...ranges.current.y2] as [number, number],
     }
@@ -745,11 +830,15 @@
       // Pinch zoom centered on gesture center
       // Divide by scale so spread (scale > 1) = smaller span (zoom in)
       const x_span = touch_state.initial_x_range[1] - touch_state.initial_x_range[0]
+      const x2_span = touch_state.initial_x2_range[1] -
+        touch_state.initial_x2_range[0]
       const y_span = touch_state.initial_y_range[1] - touch_state.initial_y_range[0]
       const y2_span = touch_state.initial_y2_range[1] -
         touch_state.initial_y2_range[0]
       const x_center =
         (touch_state.initial_x_range[0] + touch_state.initial_x_range[1]) / 2
+      const x2_center =
+        (touch_state.initial_x2_range[0] + touch_state.initial_x2_range[1]) / 2
       const y_center =
         (touch_state.initial_y_range[0] + touch_state.initial_y_range[1]) / 2
       const y2_center =
@@ -758,6 +847,10 @@
       ranges.current.x = [
         x_center - x_span / scale / 2,
         x_center + x_span / scale / 2,
+      ]
+      ranges.current.x2 = [
+        x2_center - x2_span / scale / 2,
+        x2_center + x2_span / scale / 2,
       ]
       ranges.current.y = [
         y_center - y_span / scale / 2,
@@ -774,6 +867,11 @@
         touch_state.initial_x_range,
         chart_width,
       )
+      const x2_delta = pixels_to_data_delta(
+        -dx,
+        touch_state.initial_x2_range,
+        chart_width,
+      )
       const y_delta = pixels_to_data_delta(
         dy,
         touch_state.initial_y_range,
@@ -785,6 +883,7 @@
         chart_height,
       )
       ranges.current.x = pan_range(touch_state.initial_x_range, x_delta)
+      ranges.current.x2 = pan_range(touch_state.initial_x2_range, x2_delta)
       ranges.current.y = pan_range(touch_state.initial_y_range, y_delta)
       ranges.current.y2 = pan_range(touch_state.initial_y2_range, y2_delta)
     }
@@ -887,6 +986,8 @@
       const series_offsets = stacked_offsets[series_idx] ?? []
       const use_y2 = srs.y_axis === `y2`
       const y_scale = use_y2 ? scales.y2 : scales.y
+      const use_x2_pl = srs.x_axis === `x2`
+      const x_scale_pl = use_x2_pl ? scales.x2 : scales.x
       return srs.x
         .map((x_val, bar_idx) => {
           const y_val = srs.y[bar_idx]
@@ -894,8 +995,8 @@
             ? (series_offsets[bar_idx] ?? 0)
             : 0
           const [bar_x, bar_y] = orientation === `vertical`
-            ? [scales.x(x_val), y_scale(base + y_val)]
-            : [scales.x(base + y_val), scales.y(x_val)]
+            ? [x_scale_pl(x_val), y_scale(base + y_val)]
+            : [x_scale_pl(base + y_val), scales.y(x_val)]
           return { x: bar_x, y: bar_y }
         })
         .filter(({ x, y }) => isFinite(x) && isFinite(y))
@@ -982,9 +1083,55 @@
       : srs.metadata
     const label = srs.labels?.[bar_idx] ?? null
     const active_y_axis = srs.y_axis ?? `y1`
-    const coords = { x, y, orient_x, orient_y, x_axis, y_axis, y2_axis }
-    return { ...coords, metadata, color, label, series_idx, bar_idx, active_y_axis }
+    const active_x_axis = srs.x_axis ?? `x1`
+    const coords = {
+      x,
+      y,
+      orient_x,
+      orient_y,
+      x_axis: active_x_axis === `x2` ? x2_axis : x_axis,
+      x2_axis,
+      y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
+      y2_axis,
+    }
+    return {
+      ...coords,
+      metadata,
+      color,
+      label,
+      series_idx,
+      bar_idx,
+      active_y_axis,
+      active_x_axis,
+    }
   }
+
+  // Find the point closest to the cursor on a polyline overlay (O(n) scan).
+  function find_closest_point(
+    evt: MouseEvent,
+    points: LineSeriesPoint[],
+  ): LineSeriesPoint | null {
+    const svg_el = (evt.target as Element).closest(`svg`)
+    if (!svg_el) return null
+    const rect = svg_el.getBoundingClientRect()
+    const mx = evt.clientX - rect.left
+    const my = evt.clientY - rect.top
+    let best: LineSeriesPoint | null = null
+    let best_dist = Infinity
+    for (const pt of points) {
+      const dist = (pt.x - mx) ** 2 + (pt.y - my) ** 2
+      if (dist < best_dist) {
+        best_dist = dist
+        best = pt
+      }
+    }
+    return best
+  }
+
+  const line_point_fill = (pt: LineSeriesPoint, series_color: string): string =>
+    pt.color_value != null
+      ? color_scale_fn(pt.color_value)
+      : pt.point_style?.fill ?? series_color
 
   const handle_bar_hover =
     (series_idx: number, bar_idx: number, color: string) => (event: MouseEvent) => {
@@ -1044,10 +1191,16 @@
 
   // State accessors for shared axis change handler
   const axis_state: AxisChangeState<BarSeries<Metadata>> = {
-    get_axis: (axis) => (axis === `x` ? x_axis : axis === `y` ? y_axis : y2_axis),
+    get_axis: (axis) => {
+      if (axis === `x`) return x_axis
+      if (axis === `x2`) return x2_axis
+      if (axis === `y`) return y_axis
+      return y2_axis
+    },
     set_axis: (axis, config) => {
       // Spread into existing state to preserve merged type structure
       if (axis === `x`) x_axis = { ...x_axis, ...config }
+      else if (axis === `x2`) x2_axis = { ...x2_axis, ...config }
       else if (axis === `y`) y_axis = { ...y_axis, ...config }
       else y2_axis = { ...y2_axis, ...config }
     },
@@ -1090,11 +1243,12 @@
     <ReferenceLine
       ref_line={line}
       line_idx={line.idx}
-      x_min={ranges.current.x[0]}
-      x_max={ranges.current.x[1]}
+      x_min={line.x_axis === `x2` ? ranges.current.x2[0] : ranges.current.x[0]}
+      x_max={line.x_axis === `x2` ? ranges.current.x2[1] : ranges.current.x[1]}
       y_min={line.y_axis === `y2` ? ranges.current.y2[0] : ranges.current.y[0]}
       y_max={line.y_axis === `y2` ? ranges.current.y2[1] : ranges.current.y[1]}
       x_scale={scales.x}
+      x2_scale={scales.x2}
       y_scale={scales.y}
       y2_scale={scales.y2}
       {clip_path_id}
@@ -1152,10 +1306,12 @@
       ondblclick={() => {
         // Reset zoom to initial ranges (undo any pan/zoom)
         ranges.current.x = [...ranges.initial.x] as [number, number]
+        ranges.current.x2 = [...ranges.initial.x2] as [number, number]
         ranges.current.y = [...ranges.initial.y] as [number, number]
         ranges.current.y2 = [...ranges.initial.y2] as [number, number]
         // Also reset axis props so future data changes recalculate auto ranges
         x_axis = { ...x_axis, range: [null, null] }
+        x2_axis = { ...x2_axis, range: [null, null] }
         y_axis = { ...y_axis, range: [null, null] }
         y2_axis = { ...y2_axis, range: [null, null] }
       }}
@@ -1175,26 +1331,19 @@
       ? `grab`
       : `crosshair`}
     >
-      <!-- Zoom rectangle -->
-      {#if drag_state.start && drag_state.current && isFinite(drag_state.start.x) &&
-        isFinite(drag_state.start.y) && isFinite(drag_state.current.x) &&
-        isFinite(drag_state.current.y)}
-        {@const x = Math.min(drag_state.start.x, drag_state.current.x)}
-        {@const y = Math.min(drag_state.start.y, drag_state.current.y)}
-        {@const rect_w = Math.abs(drag_state.start.x - drag_state.current.x)}
-        {@const rect_h = Math.abs(drag_state.start.y - drag_state.current.y)}
-        <rect class="zoom-rect" {x} {y} width={rect_w} height={rect_h} />
-      {/if}
+      <ZoomRect start={drag_state.start} current={drag_state.current} />
 
       <!-- User content (custom overlays, reference lines, etc.) -->
       {@render user_content?.({
         height,
         width,
         x_scale_fn: scales.x,
+        x2_scale_fn: scales.x2,
         y_scale_fn: scales.y,
         y2_scale_fn: scales.y2,
         pad,
         x_range: ranges.current.x,
+        x2_range: ranges.current.x2,
         y_range: ranges.current.y,
         y2_range: ranges.current.y2,
         fullscreen,
@@ -1255,30 +1404,90 @@
           {/if}
         {/each}
         {#if x_axis.label || x_axis.options?.length}
-          {@const shift_x = x_axis.label_shift?.x ?? 0}
-          {@const shift_y = x_axis.label_shift?.y ?? 0}
-          <foreignObject
-            x={pad.l + chart_width / 2 + shift_x - AXIS_LABEL_CONTAINER.x_offset}
-            y={height - (pad.b / 3) + shift_y - AXIS_LABEL_CONTAINER.y_offset}
-            width={AXIS_LABEL_CONTAINER.width}
-            height={AXIS_LABEL_CONTAINER.height}
-            style="overflow: visible; pointer-events: none"
-          >
-            <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
-              <InteractiveAxisLabel
-                label={x_axis.label ?? ``}
-                options={x_axis.options}
-                selected_key={x_axis.selected_key}
-                loading={axis_loading === `x`}
-                axis_type="x"
-                color={x_axis.color}
-                on_select={(key) => handle_axis_change(`x`, key)}
-                class="axis-label x-label"
-              />
-            </div>
-          </foreignObject>
+          {@const { label_shift, label = ``, options, selected_key, color } = x_axis}
+          <AxisLabel
+            x={pad.l + chart_width / 2 + (label_shift?.x ?? 0)}
+            y={height - (pad.b / 3) + (label_shift?.y ?? 0)}
+            {label}
+            {options}
+            {selected_key}
+            loading={axis_loading === `x`}
+            axis_type="x"
+            {color}
+            on_select={(key) => handle_axis_change(`x`, key)}
+          />
         {/if}
       </g>
+
+      <!-- X2-axis (Top) -->
+      <!-- Note: x2 axis is only supported for vertical orientation -->
+      {#if x2_series.length > 0 && orientation === `vertical`}
+        <g class="x2-axis">
+          <line
+            x1={pad.l}
+            x2={width - pad.r}
+            y1={pad.t}
+            y2={pad.t}
+            stroke={x2_axis.color || `var(--border-color, gray)`}
+            stroke-width="1"
+          />
+          {#each ticks.x2 as tick (tick)}
+            {@const tick_x = scales.x2(tick as number)}
+            {#if isFinite(tick_x)}
+              {@const rotation = x2_axis.tick?.label?.rotation ?? 0}
+              {@const shift_x = x2_axis.tick?.label?.shift?.x ?? 0}
+              {@const shift_y = x2_axis.tick?.label?.shift?.y ?? 0}
+              {@const inside = x2_axis.tick?.label?.inside ?? false}
+              {@const base_y = inside ? 8 : (rotation !== 0 ? -8 : -18)}
+              {@const text_y = base_y + shift_y}
+              {@const text_anchor = rotation !== 0 ? (inside ? `start` : `end`) : `middle`}
+              {@const dominant_baseline = inside ? `hanging` : `auto`}
+              <g class="tick" transform="translate({tick_x}, {pad.t})">
+                {#if display.x2_grid}
+                  <line
+                    y1="0"
+                    y2={height - pad.b - pad.t}
+                    {...DEFAULT_GRID_STYLE}
+                    {...(x2_axis.grid_style ?? {})}
+                  />
+                {/if}
+                <line
+                  y1={inside ? 5 : 0}
+                  y2={inside ? 0 : -5}
+                  stroke={x2_axis.color || `var(--border-color, gray)`}
+                  stroke-width="1"
+                />
+                <text
+                  x={shift_x}
+                  y={text_y}
+                  text-anchor={text_anchor}
+                  dominant-baseline={dominant_baseline}
+                  fill={x2_axis.color || `var(--text-color)`}
+                  transform={rotation !== 0
+                  ? `rotate(${rotation}, ${shift_x}, ${text_y})`
+                  : undefined}
+                >
+                  {format_value(tick, x2_axis.format)}
+                </text>
+              </g>
+            {/if}
+          {/each}
+          {#if x2_axis.label || x2_axis.options?.length}
+            {@const { label_shift, label = ``, options, selected_key, color } = x2_axis}
+            <AxisLabel
+              x={pad.l + chart_width / 2 + (label_shift?.x ?? 0)}
+              y={Math.max(12, pad.t - (label_shift?.y ?? 40))}
+              {label}
+              {options}
+              {selected_key}
+              loading={axis_loading === `x2`}
+              axis_type="x2"
+              {color}
+              on_select={(key) => handle_axis_change(`x2`, key)}
+            />
+          {/if}
+        </g>
+      {/if}
 
       <!-- Y-axis -->
       <g class="y-axis">
@@ -1331,41 +1540,24 @@
           {/if}
         {/each}
         {#if y_axis.label || y_axis.options?.length}
-          {@const max_y_tick_width = Math.max(
-          0,
-          ...ticks.y.map((tick) =>
-            measure_text_width(
-              format_value(tick, y_axis.format),
-              `12px sans-serif`,
-            )
-          ),
-        )}
-          {@const shift_x = y_axis.label_shift?.x ?? 0}
-          {@const shift_y = y_axis.label_shift?.y ?? 0}
-          {@const y_label_x = Math.max(12, pad.l - max_y_tick_width - LABEL_GAP_DEFAULT) +
-          shift_x}
-          {@const y_label_y = pad.t + chart_height / 2 + shift_y}
-          <foreignObject
-            x={y_label_x - AXIS_LABEL_CONTAINER.x_offset}
-            y={y_label_y - AXIS_LABEL_CONTAINER.y_offset}
-            width={AXIS_LABEL_CONTAINER.width}
-            height={AXIS_LABEL_CONTAINER.height}
-            style="overflow: visible; pointer-events: none"
-            transform="rotate(-90, {y_label_x}, {y_label_y})"
-          >
-            <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
-              <InteractiveAxisLabel
-                label={y_axis.label ?? ``}
-                options={y_axis.options}
-                selected_key={y_axis.selected_key}
-                loading={axis_loading === `y`}
-                axis_type="y"
-                color={y_axis.color}
-                on_select={(key) => handle_axis_change(`y`, key)}
-                class="axis-label y-label"
-              />
-            </div>
-          </foreignObject>
+          {@const { label_shift, label = ``, options, selected_key, color, tick } = y_axis}
+          {@const y_inside = tick?.label?.inside ?? false}
+          <AxisLabel
+            x={Math.max(
+              12,
+              pad.l - (y_inside ? 0 : tick_label_widths.y_max) - LABEL_GAP_DEFAULT,
+            ) +
+              (label_shift?.x ?? 0)}
+            y={pad.t + chart_height / 2 + (label_shift?.y ?? 0)}
+            rotate
+            {label}
+            {options}
+            {selected_key}
+            loading={axis_loading === `y`}
+            axis_type="y"
+            {color}
+            on_select={(key) => handle_axis_change(`y`, key)}
+          />
         {/if}
       </g>
 
@@ -1421,45 +1613,24 @@
             {/if}
           {/each}
           {#if y2_axis.label || y2_axis.options?.length}
-            {@const max_y2_tick_width = Math.max(
-          0,
-          ...ticks.y2.map((tick) =>
-            measure_text_width(
-              format_value(tick, y2_axis.format),
-              `12px sans-serif`,
-            )
-          ),
-        )}
-            {@const shift_x = y2_axis.label_shift?.x ?? 0}
-            {@const shift_y = y2_axis.label_shift?.y ?? 0}
-            {@const inside = y2_axis.tick?.label?.inside ?? false}
-            {@const tick_shift = inside ? 0 : (y2_axis.tick?.label?.shift?.x ?? 0) + 8}
-            {@const tick_width_contribution = inside ? 0 : max_y2_tick_width}
-            {@const y2_label_x = width - pad.r + tick_shift + tick_width_contribution +
-          LABEL_GAP_DEFAULT +
-          shift_x}
-            {@const y2_label_y = pad.t + chart_height / 2 + shift_y}
-            <foreignObject
-              x={y2_label_x - AXIS_LABEL_CONTAINER.x_offset}
-              y={y2_label_y - AXIS_LABEL_CONTAINER.y_offset}
-              width={AXIS_LABEL_CONTAINER.width}
-              height={AXIS_LABEL_CONTAINER.height}
-              style="overflow: visible; pointer-events: none"
-              transform="rotate(-90, {y2_label_x}, {y2_label_y})"
-            >
-              <div xmlns="http://www.w3.org/1999/xhtml" style="pointer-events: auto">
-                <InteractiveAxisLabel
-                  label={y2_axis.label ?? ``}
-                  options={y2_axis.options}
-                  selected_key={y2_axis.selected_key}
-                  loading={axis_loading === `y2`}
-                  axis_type="y2"
-                  color={y2_axis.color}
-                  on_select={(key) => handle_axis_change(`y2`, key)}
-                  class="axis-label y2-label"
-                />
-              </div>
-            </foreignObject>
+            {@const { label_shift, label = ``, options, selected_key, color, tick } =
+          y2_axis}
+            {@const inside = tick?.label?.inside ?? false}
+            {@const tick_shift = inside ? 0 : (tick?.label?.shift?.x ?? 0) + 8}
+            {@const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max}
+            <AxisLabel
+              x={width - pad.r + tick_shift + tick_width_contribution +
+              LABEL_GAP_DEFAULT + (label_shift?.x ?? 0)}
+              y={pad.t + chart_height / 2 + (label_shift?.y ?? 0)}
+              rotate
+              {label}
+              {options}
+              {selected_key}
+              loading={axis_loading === `y2`}
+              axis_type="y2"
+              {color}
+              on_select={(key) => handle_axis_change(`y2`, key)}
+            />
           {/if}
         </g>
       {/if}
@@ -1473,37 +1644,28 @@
 
       <!-- Clipped content: zero lines, bars, and lines -->
       <g clip-path="url(#{clip_path_id})">
-        <!-- Zero lines (shown for linear and arcsinh scales, not log) -->
-        {#if display.x_zero_line &&
-          get_scale_type_name(x_axis.scale_type) !== `log` &&
-          ranges.current.x[0] <= 0 && ranges.current.x[1] >= 0}
-          {@const zx = scales.x(0)}
-          {#if isFinite(zx)}
-            <line class="zero-line" x1={zx} x2={zx} y1={pad.t} y2={height - pad.b} />
-          {/if}
-        {/if}
-        {#if display.y_zero_line &&
-          get_scale_type_name(y_axis.scale_type) !== `log` &&
-          ranges.current.y[0] <= 0 && ranges.current.y[1] >= 0}
-          {@const zy = scales.y(0)}
-          {#if isFinite(zy)}
-            <line class="zero-line" x1={pad.l} x2={width - pad.r} y1={zy} y2={zy} />
-          {/if}
-        {/if}
-        {#if display.y_zero_line && y2_series.length > 0 &&
-          get_scale_type_name(y2_axis.scale_type) !== `log` &&
-          ranges.current.y2[0] <= 0 && ranges.current.y2[1] >= 0}
-          {@const zero_y2 = scales.y2(0)}
-          {#if isFinite(zero_y2)}
-            <line
-              class="zero-line"
-              x1={pad.l}
-              x2={width - pad.r}
-              y1={zero_y2}
-              y2={zero_y2}
-            />
-          {/if}
-        {/if}
+        <ZeroLines
+          {display}
+          x_scale_fn={scales.x}
+          x2_scale_fn={scales.x2}
+          y_scale_fn={scales.y}
+          y2_scale_fn={scales.y2}
+          x_range={ranges.current.x}
+          x2_range={ranges.current.x2}
+          y_range={ranges.current.y}
+          y2_range={ranges.current.y2}
+          x_scale_type={x_axis.scale_type}
+          x2_scale_type={x2_axis.scale_type}
+          y_scale_type={y_axis.scale_type}
+          y2_scale_type={y2_axis.scale_type}
+          x_is_time={x_axis.format?.startsWith(`%`) ?? false}
+          x2_is_time={x2_axis.format?.startsWith(`%`) ?? false}
+          has_x2={x2_series.length > 0}
+          has_y2={y2_series.length > 0}
+          {width}
+          {height}
+          {pad}
+        />
 
         <!-- Reference lines: below lines -->
         {@render ref_lines_layer(ref_lines_by_z.below_lines)}
@@ -1523,6 +1685,8 @@
                 {@const line_dash = srs.line_style?.line_dash ?? `none`}
                 {@const use_y2 = srs.y_axis === `y2`}
                 {@const y_scale = use_y2 ? scales.y2 : scales.y}
+                {@const use_x2 = srs.x_axis === `x2`}
+                {@const x_scale = use_x2 ? scales.x2 : scales.x}
                 {@const series_markers = srs.markers ?? DEFAULT_MARKERS}
                 {@const show_line = series_markers === `line` ||
             series_markers === `line+points`}
@@ -1532,8 +1696,8 @@
             const y_val = srs.y[idx]
             // Lines don't stack - they show absolute values (useful for totals/trends)
             const plot_x = orientation === `vertical`
-              ? scales.x(x_val)
-              : scales.x(y_val)
+              ? x_scale(x_val)
+              : x_scale(y_val)
             const plot_y = orientation === `vertical`
               ? y_scale(y_val)
               : scales.y(x_val)
@@ -1564,9 +1728,12 @@
               point_idx: idx,
             } as LineSeriesPoint
           }).filter((pt) => isFinite(pt.x) && isFinite(pt.y))}
-                {#if show_line && points.length > 1}
+                {@const polyline_str = show_line && points.length > 1
+            ? points.map((pt) => `${pt.x},${pt.y}`).join(` `)
+            : ``}
+                {#if polyline_str}
                   <polyline
-                    points={points.map((pt) => `${pt.x},${pt.y}`).join(` `)}
+                    points={polyline_str}
                     fill="none"
                     stroke={color}
                     stroke-width={stroke_width}
@@ -1575,17 +1742,38 @@
                     stroke-linecap="round"
                   />
                 {/if}
-                <!-- Add invisible wider line for easier hovering (only if no points shown) -->
-                {#if show_line && !show_points && points.length > 1 &&
-            (on_bar_hover || on_bar_click)}
+                {#if polyline_str && !show_points && (on_bar_hover || on_bar_click)}
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
                   <polyline
-                    points={points.map((pt) => `${pt.x},${pt.y}`).join(` `)}
+                    points={polyline_str}
                     fill="none"
                     stroke="transparent"
                     stroke-width={Math.max(10, stroke_width * 3)}
                     stroke-linejoin="round"
                     stroke-linecap="round"
                     style:cursor={on_bar_click ? `pointer` : undefined}
+                    onmousemove={(evt) => {
+                      const pt = find_closest_point(evt, points)
+                      if (!pt) return
+                      hovered = true
+                      const fill = line_point_fill(pt, color)
+                      hover_info = get_bar_data(series_idx, pt.idx, fill)
+                      change(hover_info)
+                      on_bar_hover?.({ ...hover_info!, event: evt })
+                    }}
+                    onmouseleave={() => {
+                      change(null)
+                      hover_info = null
+                      on_bar_hover?.(null)
+                    }}
+                    onclick={(evt) => {
+                      const pt = find_closest_point(evt, points)
+                      if (!pt) return
+                      const fill = line_point_fill(pt, color)
+                      const bar_data = get_bar_data(series_idx, pt.idx, fill)
+                      on_bar_click?.({ ...bar_data, event: evt })
+                    }}
                   />
                 {/if}
                 {#if show_points}
@@ -1598,17 +1786,14 @@
               : null
             return points.find((pt) => pt.idx === parseInt(attr ?? ``, 10))
           }}
-                  {@const fill = (pt: LineSeriesPoint) =>
-            pt.color_value != null
-              ? color_scale_fn(pt.color_value)
-              : pt.point_style?.fill ?? color}
                   {@const set_hover = (
             pt: LineSeriesPoint | null,
             evt: MouseEvent | FocusEvent,
           ) => {
             if (pt) {
               hovered = true
-              hover_info = get_bar_data(series_idx, pt.idx, fill(pt))
+              const fill = line_point_fill(pt, color)
+              hover_info = get_bar_data(series_idx, pt.idx, fill)
               change(hover_info)
             } else {
               change(null)
@@ -1623,7 +1808,8 @@
             pt: LineSeriesPoint,
             evt: MouseEvent | KeyboardEvent,
           ) => {
-            const bar_data = get_bar_data(series_idx, pt.idx, fill(pt))
+            const fill = line_point_fill(pt, color)
+            const bar_data = get_bar_data(series_idx, pt.idx, fill)
             on_bar_click?.({ ...bar_data, event: evt })
             on_point_click?.({ ...bar_data, event: evt, point: pt })
           }}
@@ -1663,7 +1849,7 @@
                   >
                     {#each points as pt (pt.idx)}
                       {@const sty = pt.point_style}
-                      {@const fl = fill(pt)}
+                      {@const fl = line_point_fill(pt, color)}
                       {@const rad = pt.size_value != null
               ? size_scale_fn(pt.size_value)
               : sty?.radius ?? 4}
@@ -1722,9 +1908,11 @@
                   {@const val = y_val}
                   {@const use_y2 = srs.y_axis === `y2`}
                   {@const y_scale = use_y2 ? scales.y2 : scales.y}
+                  {@const use_x2_bar = srs.x_axis === `x2`}
+                  {@const x_scale_bar = use_x2_bar ? scales.x2 : scales.x}
                   {@const [cat_scale, val_scale] = is_vertical
-            ? [scales.x, y_scale]
-            : [scales.y, scales.x]}
+            ? [x_scale_bar, y_scale]
+            : [scales.y, x_scale_bar]}
                   {@const c0 = cat_scale(cat_val + group_offset - half)}
                   {@const c1 = cat_scale(cat_val + group_offset + half)}
                   {@const v0 = val_scale(base)}
@@ -1821,7 +2009,9 @@
     {/if}
 
     {#if hover_info && hovered}
-      {@const cx = scales.x(hover_info.orient_x)}
+      {@const cx = (hover_info.active_x_axis === `x2` ? scales.x2 : scales.x)(
+      hover_info.orient_x,
+    )}
       {@const cy = (hover_info.active_y_axis === `y2` ? scales.y2 : scales.y)(
       hover_info.orient_y,
     )}
@@ -1834,7 +2024,6 @@
       height,
       { offset_x: 10, offset_y: 5 },
     )}
-      {@const active_y_config = hover_info.active_y_axis === `y2` ? y2_axis : y_axis}
       <PlotTooltip
         x={tooltip_pos.x}
         y={tooltip_pos.y}
@@ -1846,13 +2035,13 @@
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
           <div>
-            {@html x_axis.label || `x`}: {
-              format_value(hover_info.orient_x, x_axis.format || `.3~s`)
+            {@html hover_info.x_axis.label || `x`}: {
+              format_value(hover_info.orient_x, hover_info.x_axis.format || `.3~s`)
             }
           </div>
           <div>
-            {@html active_y_config.label || `y`}: {
-              format_value(hover_info.orient_y, active_y_config.format || `.3~s`)
+            {@html hover_info.y_axis.label || `y`}: {
+              format_value(hover_info.orient_y, hover_info.y_axis.format || `.3~s`)
             }
           </div>
         {/if}
@@ -1863,7 +2052,7 @@
       <BarPlotControls
         toggle_props={{
           ...controls_toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
             controls_toggle_props?.style ?? ``
           }`,
         }}
@@ -1873,12 +2062,16 @@
         bind:orientation
         bind:mode
         bind:x_axis
+        bind:x2_axis
         bind:y_axis
         bind:y2_axis
         bind:display
         auto_x_range={auto_ranges.x as Vec2}
+        auto_x2_range={auto_ranges.x2 as Vec2}
         auto_y_range={auto_ranges.y as Vec2}
         auto_y2_range={auto_ranges.y2 as Vec2}
+        has_x2_points={x2_series.length > 0}
+        has_y2_points={y2_series.length > 0}
         children={controls_extra}
       />
     {/if}
@@ -1958,22 +2151,11 @@
     border: var(--barplot-dragover-border, var(--dragover-border));
     background-color: var(--barplot-dragover-bg, var(--dragover-bg));
   }
-  g:is(.x-axis, .y-axis, .y2-axis) .tick text {
+  g:is(.x-axis, .x2-axis, .y-axis, .y2-axis) .tick text {
     font-size: var(--tick-font-size, 0.8em);
-  }
-  .zoom-rect {
-    fill: var(--barplot-zoom-rect-fill, rgba(100, 100, 255, 0.2));
-    stroke: var(--barplot-zoom-rect-stroke, rgba(100, 100, 255, 0.8));
-    stroke-width: var(--barplot-zoom-rect-stroke-width, 1);
-    pointer-events: none;
   }
   .bar-label {
     fill: var(--text-color);
     font-size: 11px;
-  }
-  .zero-line {
-    stroke: var(--barplot-zero-line-color, light-dark(black, white));
-    stroke-width: var(--barplot-zero-line-width, 1);
-    opacity: var(--barplot-zero-line-opacity, 0.3);
   }
 </style>

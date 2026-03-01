@@ -66,11 +66,11 @@ describe(`create_axis_change_handler`, () => {
   function create_mock_state(initial_key: string = `energy`) {
     let axis_config: AxisConfig = { selected_key: initial_key }
     let series: DataSeries[] = []
-    let loading: `x` | `y` | `y2` | null = null
+    let loading: `x` | `x2` | `y` | `y2` | null = null
 
     return {
-      get_axis: vi.fn((_axis: `x` | `y` | `y2`) => axis_config),
-      set_axis: vi.fn((_axis: `x` | `y` | `y2`, config: AxisConfig) => {
+      get_axis: vi.fn((_axis: `x` | `x2` | `y` | `y2`) => axis_config),
+      set_axis: vi.fn((_axis: `x` | `x2` | `y` | `y2`, config: AxisConfig) => {
         axis_config = config
       }),
       get_series: vi.fn(() => series),
@@ -78,7 +78,7 @@ describe(`create_axis_change_handler`, () => {
         series = new_series
       }),
       get_loading: vi.fn(() => loading),
-      set_loading: vi.fn((axis: `x` | `y` | `y2` | null) => {
+      set_loading: vi.fn((axis: `x` | `x2` | `y` | `y2` | null) => {
         loading = axis
       }),
     }
