@@ -1299,6 +1299,8 @@
     <svg
       bind:this={svg_element}
       role="application"
+      aria-label={rest[`aria-label`] ??
+      ([x_axis.label, y_axis.label].filter(Boolean).join(` vs `) || `Bar chart`)}
       tabindex="0"
       onfocusin={() => (is_focused = true)}
       onfocusout={() => (is_focused = false)}

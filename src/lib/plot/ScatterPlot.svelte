@@ -1962,6 +1962,9 @@
     <svg
       bind:this={svg_element}
       role="application"
+      aria-label={rest[`aria-label`] ??
+      ([final_x_axis.label, final_y_axis.label].filter(Boolean).join(` vs `) ||
+        `Scatter plot`)}
       tabindex="0"
       onfocusin={() => (is_focused = true)}
       onfocusout={() => (is_focused = false)}

@@ -4,14 +4,15 @@
   import type { ShowControlsProp } from '$lib/controls'
   import { normalize_show_controls } from '$lib/controls'
   import EmptyState from '$lib/EmptyState.svelte'
+  import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
+  import { create_file_drop_handler, load_from_url } from '$lib/io'
   import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
+  import { PlotTooltip } from '$lib/plot'
   import type { CameraProjection } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
-  import { PlotTooltip } from '$lib/plot'
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
@@ -321,35 +322,21 @@
     }
   })
 
-  async function handle_file_drop(event: DragEvent) {
-    event.preventDefault()
-    dragover = false
-    if (!allow_file_drop) return
-
-    loading = true
-    error_msg = undefined
-
-    try {
-      // Check for URL drop first
-      const url = event.dataTransfer?.getData(`text/uri-list`)
-      const url_filename = url?.split(`/`).pop()?.split(`?`)[0]
-      if (url_filename) on_file_drop?.(url_filename)
-      const handled = await handle_url_drop(event, safe_parse).catch(() => false)
-      if (handled) return
-
-      const file = event.dataTransfer?.files[0]
-      if (file) {
-        if (!url_filename) on_file_drop?.(file.name) // notify if not already
-        const { content, filename } = await decompress_file(file)
-        if (content) await safe_parse(content, filename)
-      }
-    } catch (err) {
-      error_msg = `File drop failed: ${err}`
-      on_error?.({ error_msg })
-    } finally {
-      loading = false
-    }
-  }
+  const handle_file_drop = create_file_drop_handler({
+    allow: () => allow_file_drop,
+    on_drop: async (content, filename) => {
+      on_file_drop?.(filename)
+      await safe_parse(content, filename)
+    },
+    on_error: (msg) => {
+      error_msg = msg
+      on_error?.({ error_msg: msg })
+    },
+    set_loading: (val) => {
+      loading = val
+      if (val) [error_msg, dragover] = [undefined, false]
+    },
+  })
 
   function handle_keydown(event: KeyboardEvent) {
     const target = event.target as HTMLElement
@@ -414,10 +401,7 @@
       {...spinner_props}
     />
   {:else if error_msg}
-    <div class="error-state">
-      <p class="error">{error_msg}</p>
-      <button onclick={() => (error_msg = undefined)}>Dismiss</button>
-    </div>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
   {:else if fermi_data || band_data}
     <section
       class="control-buttons {controls_config.class}"
@@ -608,30 +592,5 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .error-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    padding: 2rem;
-    text-align: center;
-    box-sizing: border-box;
-  }
-  .error-state p {
-    color: var(--error-color, #ff6b6b);
-    margin: 0 0 1rem;
-  }
-  .error-state button {
-    padding: 0.5rem 1rem;
-    background: var(--error-color, #ff6b6b);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .error-state button:hover {
-    background: var(--error-color-hover, #ff5252);
   }
 </style>
