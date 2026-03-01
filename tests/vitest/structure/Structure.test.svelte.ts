@@ -954,7 +954,7 @@ describe(`Structure string parsing`, () => {
     expect(filename).toBe(`test.poscar`)
   })
 
-  test(`load error state is rendered as centered overlay`, async () => {
+  test(`load error state renders StatusMessage`, async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 404,
@@ -969,13 +969,9 @@ describe(`Structure string parsing`, () => {
     await tick()
     await tick()
 
-    const error_state = document.querySelector(`.error-state`) as HTMLElement
-    expect(error_state).toBeTruthy()
-    const computed_style = getComputedStyle(error_state)
-    expect(computed_style.position).toBe(`absolute`)
-    expect(computed_style.display).toBe(`grid`)
-    expect(computed_style.placeContent).toBe(`center`)
-    expect(computed_style.justifyItems).toBe(`center`)
-    expect(error_state.textContent).toContain(`Failed to load structure`)
+    const status_msg = document.querySelector(`.status-message.error`) as HTMLElement
+    expect(status_msg).toBeTruthy()
+    expect(status_msg.getAttribute(`role`)).toBe(`alert`)
+    expect(status_msg.textContent).toContain(`Failed to load structure`)
   })
 })

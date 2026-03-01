@@ -38,9 +38,9 @@ describe(`handle_url_drop`, () => {
     expect(callback).toHaveBeenCalledWith(`data`, `test.json`)
   })
 
-  test(`JSON parsing error`, async () => {
+  test(`returns false for malformed JSON`, async () => {
     get_data.mockReturnValue(`invalid`)
-    await expect(handle_url_drop(drag_event, callback)).rejects.toThrow()
+    expect(await handle_url_drop(drag_event, callback)).toBe(false)
     expect(callback).not.toHaveBeenCalled()
   })
 })

@@ -3018,14 +3018,7 @@ All changes trigger lazy data loading with simulated network delays.
   }}
   style="height: 450px"
   legend={null}
->
-  {#snippet tooltip({ x, y, color_value, metadata })}
-    <strong>Point #{metadata.idx + 1}</strong><br>
-    {properties[x_key].label}: {fmt(x)}<br>
-    {properties[y_key].label}: {fmt(y)}<br>
-    {properties[color_key].label}: {fmt(color_value)}
-  {/snippet}
-</ScatterPlot>
+/>
 ```
 
 ## Stress Test: Many Interpolated Fills

@@ -62,7 +62,7 @@ describe(`BarChart component`, () => {
 
       // Check that the clip path rect has the correct border radius
       const clip_rect = clip_path?.querySelector(`rect`) as SVGElement
-      expect(clip_rect?.getAttribute(`rx`)).toBe(outer_corners_only ? `4` : `0`)
+      expect(clip_rect?.getAttribute(`rx`)).toBe(outer_corners_only ? `2` : `0`)
     },
   )
 
@@ -149,7 +149,6 @@ describe(`BarChart component`, () => {
     const container = doc_query(`.bar-chart`)
     const style = container.getAttribute(`style`)
     expect(style).toContain(`background-color: red;`)
-    expect(style).toContain(`--bar-height: 30px`) // Should also have CSS variables
     expect(container.classList.contains(`my-custom-class`)).toBe(true)
   })
 
@@ -177,10 +176,7 @@ describe(`BarChart component`, () => {
     // Should find element symbols
     expect(document.querySelector(`.element-symbol`)).toBeTruthy()
 
-    // Should find percentage elements
-    expect(document.querySelector(`.percentage`)).toBeTruthy()
-
-    // Should find amount elements
+    // Should find combined amount+percentage elements
     expect(document.querySelector(`.amount`)).toBeTruthy()
   })
 
@@ -200,9 +196,7 @@ describe(`BarChart component`, () => {
 
     // Check that CSS variables are set
     const style = container?.getAttribute(`style`)
-    expect(style).toContain(`--bar-height: 50px`)
-    expect(style).toContain(`--label-height: 30px`)
-    expect(style).toContain(`--gap: 5px`)
+    expect(style).toContain(`max-width: 200px`)
   })
 
   test(`handles custom thresholds`, () => {

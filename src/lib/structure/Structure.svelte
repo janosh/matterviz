@@ -4,9 +4,10 @@
   import type { ShowControlsProp } from '$lib/controls'
   import { normalize_show_controls } from '$lib/controls'
   import type { ElementSymbol } from '$lib/element'
+  import { StatusMessage } from '$lib/feedback'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
-  import { decompress_file, handle_url_drop, load_from_url } from '$lib/io'
+  import { create_file_drop_handler, load_from_url } from '$lib/io'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import {
@@ -806,60 +807,32 @@
     return parsed
   }
 
-  async function handle_file_drop(event: DragEvent) {
-    event.preventDefault()
-    dragover = false
-    if (!allow_file_drop) return
-    loading = true
-    error_msg = undefined // Clear previous error when a new file is dropped
-
-    try {
-      // Handle URL-based files (e.g. from FilePicker)
-      const handled = await handle_url_drop(
-        event,
-        on_file_drop || ((content, filename) => {
-          try {
-            const text_content = content instanceof ArrayBuffer
-              ? new TextDecoder().decode(content)
-              : content
-            const parsed = parse_file_content(text_content, filename)
-            emit_file_load_event(parsed, filename, content)
-          } catch (err) {
-            error_msg = `Failed to parse structure: ${err}`
-            on_error?.({ error_msg, filename })
-          }
-        }),
-      ).catch(() => false)
-
-      if (handled) return
-
-      // Handle file system drops
-      const file = event.dataTransfer?.files[0]
-      if (file) {
-        try {
-          const { content, filename } = await decompress_file(file)
-          if (content) {
-            if (on_file_drop) on_file_drop(content, filename)
-            else {
-              // Parse structure internally when no handler provided
-              try {
-                const parsed = parse_file_content(content, filename)
-                emit_file_load_event(parsed, filename, content)
-              } catch (err) {
-                error_msg = `Failed to parse structure: ${err}`
-                on_error?.({ error_msg, filename })
-              }
-            }
-          }
-        } catch (error) {
-          error_msg = `Failed to load file ${file.name}: ${error}`
-          on_error?.({ error_msg, filename: file.name })
-        }
+  const handle_file_drop = create_file_drop_handler({
+    allow: () => allow_file_drop,
+    on_drop: (content, filename) => {
+      if (on_file_drop) return on_file_drop(content, filename)
+      try {
+        const text_content = content instanceof ArrayBuffer
+          ? new TextDecoder().decode(content)
+          : content
+        const parsed = parse_file_content(text_content, filename)
+        emit_file_load_event(parsed, filename, content)
+      } catch (err) {
+        error_msg = `Failed to parse structure: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+        on_error?.({ error_msg, filename })
       }
-    } finally {
-      loading = false
-    }
-  }
+    },
+    on_error: (msg) => {
+      error_msg = msg
+      on_error?.({ error_msg: msg })
+    },
+    set_loading: (val) => {
+      loading = val
+      if (val) [error_msg, dragover] = [undefined, false]
+    },
+  })
 
   function handle_keydown(event: KeyboardEvent) {
     // Don't handle shortcuts if user is typing in an input field
@@ -1206,10 +1179,7 @@
       style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%)"
     />
   {:else if error_msg}
-    <div class="error-state">
-      <p class="error">{error_msg}</p>
-      <button onclick={() => (error_msg = undefined)}>Dismiss</button>
-    </div>
+    <StatusMessage bind:message={error_msg} type="error" dismissible />
   {:else if (structure?.sites?.length ?? 0) > 0}
     <section
       class="control-buttons {controls_config.class}"
@@ -1689,33 +1659,6 @@
     inset: 0;
     display: grid;
     place-content: center;
-  }
-  .error-state {
-    /* Full-overlay grid keeps load errors centered independent of parent layout flow. */
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-content: center;
-    justify-items: center;
-    padding: 2rem;
-    text-align: center;
-    box-sizing: border-box;
-  }
-  .error-state p {
-    color: var(--error-color, #ff6b6b);
-    margin: 0 0 1rem;
-  }
-  .error-state button {
-    padding: 0.5rem 1rem;
-    background: var(--error-color, #ff6b6b);
-    color: white;
-    border: none;
-    border-radius: var(--border-radius, 3pt);
-    cursor: pointer;
-    font-size: 0.9rem;
-  }
-  .error-state button:hover {
-    background: var(--error-color-hover, #ff5252);
   }
   .symmetry-error {
     position: absolute;

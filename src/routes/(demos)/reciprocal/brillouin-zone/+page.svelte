@@ -1,6 +1,18 @@
 <script lang="ts">
   import { BrillouinZone } from '$lib'
-  import { structure_map } from '$site/structures'
+  import FilePicker from '$lib/FilePicker.svelte'
+  import type { FileInfo } from '$lib/io/types'
+  import { parse_any_structure } from '$lib/structure/parse'
+  import type { Crystal } from '$lib/structure'
+  import { structure_files, structure_map } from '$site/structures'
+
+  let dropped_structure = $state<Crystal | undefined>()
+
+  function handle_file_pick(file: FileInfo) {
+    if (!file.url) return
+    const struct = structure_map.get(file.name.replace(/\.\w+$/, ``))
+    if (struct && `lattice` in struct) dropped_structure = struct
+  }
 
   type BZExample = {
     id: string
@@ -115,6 +127,34 @@
   {/each}
 </div>
 
+<h2 style="text-align: center; margin-block: 3em 1em">Try Your Own Structure</h2>
+<p style="text-align: center; color: var(--text-color-muted)">
+  Pick a file or drag &amp; drop a structure (CIF, POSCAR, JSON) onto the viewer.
+</p>
+
+<div class="try-own">
+  <FilePicker
+    files={structure_files}
+    show_category_filters
+    on_click={handle_file_pick}
+    style="max-width: 600px; margin-inline: auto"
+  />
+  <BrillouinZone
+    structure={dropped_structure}
+    {surface_opacity}
+    show_controls
+    allow_file_drop
+    on_file_drop={(content, filename) => {
+      const text = content instanceof ArrayBuffer
+        ? new TextDecoder().decode(content)
+        : content
+      const parsed = parse_any_structure(text, filename)
+      if (parsed && `lattice` in parsed) dropped_structure = parsed
+    }}
+    style="height: 450px"
+  />
+</div>
+
 <h2 style="text-align: center; margin-block: 3em 1em">Higher-Order Brillouin Zones</h2>
 
 <div class="full-bleed grid">
@@ -148,6 +188,12 @@
   label {
     display: block;
     text-align: center;
+  }
+  .try-own {
+    max-width: 800px;
+    margin: 1em auto 0;
+    display: grid;
+    gap: 1em;
   }
   .full-bleed {
     h2 {
