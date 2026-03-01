@@ -2567,10 +2567,10 @@
           {@const hp = handler_props}
           {#if has_multiple_series && hp.label}<strong>{hp.label}</strong><br />{/if}
           {@html point_label?.text ? `${point_label.text}<br />` : ``}
-          {hp.x_axis.label || `x`}: {hp.x_formatted}<br />
-          {hp.y_axis.label || `y`}: {hp.y_formatted}
+          {@html hp.x_axis.label || `x`}: {hp.x_formatted}<br />
+          {@html hp.y_axis.label || `y`}: {hp.y_formatted}
           {#if hp.colorbar?.value != null}
-            <br />{hp.colorbar.title || `Color`}: {
+            <br />{@html hp.colorbar.title || `Color`}: {
               format_value(hp.colorbar.value, hp.colorbar.tick_format || `.3~g`)
             }
           {/if}

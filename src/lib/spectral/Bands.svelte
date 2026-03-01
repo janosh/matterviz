@@ -753,7 +753,7 @@
     } = (metadata ?? {}) as Partial<helpers.BandPointMeta>}
       {@const num_structs = Object.keys(band_structs_dict).length}
       {#if num_structs > 1 && label}<strong>{label}</strong><br />{/if}
-      {y_label || `Value`}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
+      {@html y_label || `Value`}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
       {#if path}Path: {path}<br />{/if}
       {#if typeof band_idx === `number`}
         Band: {band_idx + 1}{#if typeof nb_bands === `number`}&thinsp;/&thinsp;{
