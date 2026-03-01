@@ -7,6 +7,19 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, vi } from 'vitest'
 
+// Node 22+ has a built-in localStorage Proxy that lacks the standard Storage
+// API (getItem/setItem/etc). Vitest's populateGlobal skips overriding globals
+// already present unless explicitly allowlisted — localStorage isn't.
+// Replace with happy-dom's spec-compliant Storage when methods are missing.
+if (typeof localStorage.getItem !== `function`) {
+  const { Storage } = await import(`happy-dom`)
+  Object.defineProperty(globalThis, `localStorage`, {
+    value: new Storage(),
+    writable: true,
+    configurable: true,
+  })
+}
+
 // Resolve WASM path for Node.js environment (used by moyo-wasm integration tests)
 const current_dir = dirname(fileURLToPath(import.meta.url))
 const MOYO_WASM_PATH = resolve(
@@ -33,6 +46,7 @@ console.warn = (...args: unknown[]) => {
 
 beforeEach(() => {
   document.body.innerHTML = ``
+  localStorage.clear()
   // Mock clientWidth/clientHeight (happy-dom has no layout engine, returns 0 by default)
   Object.defineProperty(HTMLElement.prototype, `clientWidth`, {
     get: () => 800,

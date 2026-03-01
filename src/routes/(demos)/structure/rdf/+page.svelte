@@ -1,9 +1,11 @@
 <script lang="ts">
   import type { ElementSymbol, Matrix3x3 } from '$lib'
+  import FilePicker from '$lib/FilePicker.svelte'
   import { PLOT_COLORS } from '$lib/colors'
   import { RdfPlot } from '$lib/rdf'
   import type { Crystal, Pbc } from '$lib/structure'
   import { Structure } from '$lib/structure'
+  import { structure_files } from '$site/structures'
   import bi2zr2o8 from '$site/structures/Bi2Zr2O8-Fm3m.json'
   import nacl from '$site/structures/mp-1234.json'
   import pd from '$site/structures/mp-2.json'
@@ -117,7 +119,7 @@
   </section>
 
   <h2>Compare Structures</h2>
-  <nav>
+  <div class="controls">
     {#each Object.keys(structures) as key, idx (key)}
       <button
         class:active={selected.includes(key)}
@@ -129,9 +131,7 @@
         {key}
       </button>
     {/each}
-  </nav>
-
-  <nav>
+    <span class="separator">|</span>
     <button
       class:active={mode === `element_pairs`}
       onclick={() => (mode = `element_pairs`)}
@@ -141,9 +141,7 @@
     <button class:active={mode === `full`} onclick={() => (mode = `full`)}>
       Full RDF
     </button>
-  </nav>
-
-  <div class="controls">
+    <span class="separator">|</span>
     <label>Cutoff: <input type="range" min="3" max="12" step="0.5" bind:value={cutoff} />
       {cutoff} Å</label>
     <label>Bins: <input type="range" min="30" max="200" bind:value={n_bins} /> {
@@ -168,13 +166,6 @@
   </p>
 
   <div class="controls">
-    <label>Atoms: <input type="range" min="50" max="500" step="50" bind:value={n_atoms} />
-      {n_atoms}</label>
-    <label>Box: <input type="range" min="15" max="30" bind:value={box_size} /> {box_size}
-      Å</label>
-  </div>
-
-  <nav>
     {#each [[`element_pairs`, `Element Pairs`], [`full`, `Full`]] as const as
       [mode, label]
       (mode)
@@ -186,7 +177,12 @@
         {label}
       </button>
     {/each}
-  </nav>
+    <span class="separator">|</span>
+    <label>Atoms: <input type="range" min="50" max="500" step="50" bind:value={n_atoms} />
+      {n_atoms}</label>
+    <label>Box: <input type="range" min="15" max="30" bind:value={box_size} /> {box_size}
+      Å</label>
+  </div>
 
   <section class="grid">
     <Structure structure={amorphous} />
@@ -199,7 +195,9 @@
     />
   </section>
 
-  <h2>Drag & Drop</h2>
+  <h2>Try Your Own Structure</h2>
+  <p>Pick a file below or drag &amp; drop onto the plot.</p>
+  <FilePicker files={structure_files} show_category_filters style="margin-bottom: 1em" />
   <RdfPlot mode="element_pairs" enable_drop cutoff={7} style="height: 500px" />
 </div>
 
@@ -221,15 +219,12 @@
       grid-template-columns: 1fr;
     }
   }
-  nav {
-    display: flex;
-    flex-wrap: wrap;
-    place-content: center;
-    gap: 8px;
-    margin: 1em 0;
+  .separator {
+    color: #ccc;
+    user-select: none;
   }
   button {
-    padding: 8px 16px;
+    padding: 4px 12px;
     border: 1px solid #999;
     background: transparent;
     border-radius: 4px;
@@ -247,5 +242,7 @@
     flex-wrap: wrap;
     gap: 8px;
     place-content: center;
+    align-items: center;
+    margin: 1em 0;
   }
 </style>

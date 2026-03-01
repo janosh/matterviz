@@ -1,9 +1,9 @@
 <script lang="ts">
+  import type { ColorSchemeName } from '$lib/colors'
+  import { ELEMENT_COLOR_SCHEMES, pick_contrast_color } from '$lib/colors'
   import type { CompositionType } from '$lib/composition'
   import type { ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
-  import type { ColorSchemeName } from '$lib/colors'
-  import { ELEMENT_COLOR_SCHEMES, pick_contrast_color } from '$lib/colors'
   import type { Snippet } from 'svelte'
   import type { SVGAttributes } from 'svelte/elements'
   import { type ChartSegmentData, get_chart_font_scale } from './index'
@@ -202,6 +202,7 @@
 
 <svg
   viewBox="0 0 {size} {size}"
+  style:max-width="{size}px"
   {...rest}
   class="pie-chart {rest.class ?? ``}"
   bind:this={svg_node}
@@ -258,14 +259,12 @@
           <span class="element-symbol" style:font-size="{14 * segment.font_scale}px">{
             segment.element
           }</span>
-          {#if show_amounts}
-            <sub class="amount" style:font-size="{10 * segment.font_scale}px">
-              {segment.amount}
-            </sub>{/if}
-          {#if show_percentages}
-            <sub class="percentage" style:font-size="{11 * segment.font_scale}px">
-              {format_num(segment.fraction, `.1~%`)}
-            </sub>
+          {#if show_amounts || show_percentages}
+            <sub class="amount" style:font-size="{8 * segment.font_scale}px">{
+              show_amounts ? segment.amount : ``
+            }{show_amounts && show_percentages ? `=` : ``}{
+              show_percentages ? format_num(segment.fraction, `.1~%`) : ``
+            }</sub>
           {/if}
         </div>
       </foreignObject>
@@ -319,9 +318,6 @@
   }
   .amount {
     margin-left: 1px;
-    transform: translateY(9pt);
-  }
-  .percentage {
-    transform: translateY(4px);
+    transform: translateY(5pt);
   }
 </style>

@@ -201,6 +201,27 @@ describe(`BarPlot`, () => {
     })
   })
 
+  test(`default tooltip shows series label for multi-series on hover`, async () => {
+    const series_a: BarSeries = { x: [1, 2], y: [10, 20], label: `Group A`, color: `red` }
+    const series_b: BarSeries = { x: [1, 2], y: [5, 15], label: `Group B`, color: `blue` }
+    mount(BarPlot, {
+      target: document.body,
+      props: {
+        series: [series_a, series_b],
+        x_axis: { label: `X` },
+        y_axis: { label: `Count` },
+      },
+    })
+    await tick()
+    const bar = document.querySelector(`path[role="button"]`)
+    expect(bar).toBeTruthy()
+    bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    const text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    expect(text).toContain(`Group A`)
+    expect(text).toContain(`Count`)
+  })
+
   test(`custom tooltip snippet`, () => {
     mount(BarPlot, {
       target: document.body,

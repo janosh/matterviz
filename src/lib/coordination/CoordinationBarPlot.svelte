@@ -1,7 +1,7 @@
 <script lang="ts">
   import { PLOT_COLORS } from '$lib/colors'
   import { StatusMessage } from '$lib/feedback'
-  import { decompress_file, handle_url_drop } from '$lib/io'
+  import { create_file_drop_handler } from '$lib/io'
   import { format_value } from '$lib/labels'
   import { BarPlot } from '$lib/plot'
   import type {
@@ -204,57 +204,40 @@
     }
   })
 
-  async function handle_file_drop(event: DragEvent) {
-    event.preventDefault()
-    dragover = false
-    if (!allow_file_drop) return
-    loading = true
-    error_msg = undefined
-
-    const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
-      try {
-        const text_content = content instanceof ArrayBuffer
-          ? new TextDecoder().decode(content)
-          : content
-        const parsed_structure = parse_any_structure(text_content, filename)
-        if (is_crystal(parsed_structure)) {
-          dropped_entries = [{
-            label: filename || `Dropped structure`,
-            structure: parsed_structure,
-          }, ...dropped_entries]
-        } else {
-          error_msg = `Structure has no lattice or sites; cannot compute coordination`
-        }
-      } catch (exc) {
-        error_msg = `Failed to process structure: ${
-          exc instanceof Error ? exc.message : String(exc)
-        }`
-      }
-    }
-
+  const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
     try {
-      // Handle URL-based drops
-      const handled = await handle_url_drop(event, on_file_drop || compute_and_add)
-        .catch(
-          () => false,
-        )
-      if (handled) return
-
-      const file = event.dataTransfer?.files?.[0]
-      if (file) {
-        try {
-          const { content, filename } = await decompress_file(file)
-          if (content) (on_file_drop || compute_and_add)(content, filename)
-        } catch (exc) {
-          error_msg = `Failed to load file ${file.name}: ${
-            exc instanceof Error ? exc.message : String(exc)
-          }`
-        }
+      const text_content = content instanceof ArrayBuffer
+        ? new TextDecoder().decode(content)
+        : content
+      const parsed_structure = parse_any_structure(text_content, filename)
+      if (is_crystal(parsed_structure)) {
+        dropped_entries = [{
+          label: filename || `Dropped structure`,
+          structure: parsed_structure,
+        }, ...dropped_entries]
+      } else {
+        error_msg = `Structure has no lattice or sites; cannot compute coordination`
       }
-    } finally {
-      loading = false
+    } catch (exc) {
+      error_msg = `Failed to process structure: ${
+        exc instanceof Error ? exc.message : String(exc)
+      }`
     }
   }
+
+  const handle_file_drop = create_file_drop_handler({
+    allow: () => allow_file_drop,
+    on_drop: (content, filename) =>
+      (on_file_drop || compute_and_add)(content, filename),
+    on_error: (msg) => {
+      error_msg = msg
+    },
+    set_loading: (val) => {
+      loading = val
+      if (val) [error_msg, dragover] = [undefined, false]
+    },
+  })
+
   let display = $state({ x_zero_line: false, y_zero_line: false })
   // Update display when orientation changes
   $effect(() => {

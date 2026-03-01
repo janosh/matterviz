@@ -178,7 +178,8 @@
 <style>
   .cell-select {
     position: relative;
-    font-size: var(--struct-legend-font, clamp(9pt, 3.5cqmin, 12pt));
+    font-size: inherit;
+    align-self: center;
     --cell-select-accent: var(--accent-color, light-dark(#2563eb, #60a5fa));
     --cell-select-surface: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
     --cell-select-border: var(
@@ -247,7 +248,7 @@
   .cell-type-row {
     display: flex;
     gap: 3px;
-    padding-bottom: 3px;
+    padding-bottom: 5px;
     border-bottom: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
   }
   .cell-type-btn {
