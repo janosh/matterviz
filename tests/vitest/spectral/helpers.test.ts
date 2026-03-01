@@ -1,11 +1,16 @@
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
+  ACOUSTIC_FREQ_THRESHOLD,
   apply_gaussian_smearing,
+  build_point_metadata,
+  classify_acoustic,
   compute_frequency_range,
+  compute_slope,
   convert_frequencies,
   detect_zoom_change,
   extract_k_path_points,
+  find_gamma_indices,
   find_qpoint_at_distance,
   find_qpoint_at_rescaled_x,
   generate_ribbon_path,
@@ -1624,5 +1629,223 @@ describe(`negative_fraction`, () => {
   it(`ignores NaN and Infinity`, () => {
     expect(negative_fraction([NaN, -1, 1, Infinity])).toBeCloseTo(0.5, 5)
     expect(negative_fraction([NaN, Infinity, -Infinity])).toBe(0)
+  })
+})
+
+// === Band Tooltip Helper Tests ===
+
+describe(`compute_slope`, () => {
+  it.each([
+    { y: [0, 2], x: [0, 1], idx: 0, expected: 2, desc: `forward diff at start` },
+    { y: [0, 2], x: [0, 1], idx: 1, expected: 2, desc: `backward diff at end` },
+    { y: [0, 2, 6], x: [0, 1, 2], idx: 1, expected: 3, desc: `central diff interior` },
+    {
+      y: [1, 3, 3, 7],
+      x: [0, 1, 2, 3],
+      idx: 1,
+      expected: 1,
+      desc: `central (3-3)/(2-0)`,
+    },
+    {
+      y: [1, 3, 3, 7],
+      x: [0, 1, 2, 3],
+      idx: 2,
+      expected: 2,
+      desc: `central (7-3)/(3-1)`,
+    },
+    { y: [10, 0], x: [0, 5], idx: 0, expected: -2, desc: `negative slope` },
+  ])(`$desc → $expected`, ({ y, x, idx, expected }) => {
+    expect(compute_slope(y, x, idx)).toBeCloseTo(expected, 10)
+  })
+
+  it.each([
+    { y: [5], x: [0], idx: 0, desc: `single point` },
+    { y: [] as number[], x: [] as number[], idx: 0, desc: `empty arrays` },
+    { y: [1, 2], x: [3, 3], idx: 0, desc: `forward dx=0` },
+    { y: [1, 2], x: [3, 3], idx: 1, desc: `backward dx=0` },
+    { y: [1, 2, 3], x: [0, 5, 0], idx: 1, desc: `central dx=0` },
+  ])(`returns null for $desc`, ({ y, x, idx }) => {
+    expect(compute_slope(y, x, idx)).toBeNull()
+  })
+})
+
+describe(`find_gamma_indices`, () => {
+  const make_bs = (
+    qpoints: { label: string | null; frac_coords: Vec3 }[],
+  ): BaseBandStructure => ({
+    qpoints,
+    branches: [],
+    distance: [],
+    bands: [],
+    nb_bands: 0,
+    labels_dict: {},
+    recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3 },
+  })
+
+  it.each([
+    {
+      desc: `exact Gamma [0,0,0]`,
+      qpoints: [[`GAMMA`, [0, 0, 0]], [`X`, [0.5, 0, 0]]],
+      expected: [0],
+    },
+    {
+      desc: `periodic images [1,0,0] and [-1,0,0]`,
+      qpoints: [[null, [1, 0, 0]], [null, [0.5, 0, 0]], [null, [-1, 0, 0]]],
+      expected: [0, 2],
+    },
+    {
+      desc: `multiple Gamma in path (Γ→X→Γ)`,
+      qpoints: [[`GAMMA`, [0, 0, 0]], [`X`, [0.5, 0, 0]], [`GAMMA`, [0, 0, 0]]],
+      expected: [0, 2],
+    },
+    {
+      desc: `no Gamma points`,
+      qpoints: [[`X`, [0.5, 0, 0]], [`K`, [0.5, 0.5, 0]]],
+      expected: [],
+    },
+    { desc: `empty qpoints`, qpoints: [], expected: [] },
+    {
+      desc: `excludes 0.02 (outside tolerance)`,
+      qpoints: [[null, [0.02, 0, 0]]],
+      expected: [],
+    },
+    {
+      desc: `includes within 0.01 tolerance`,
+      qpoints: [[null, [0.009, -0.005, 0.001]]],
+      expected: [0],
+    },
+  ] as { desc: string; qpoints: [string | null, Vec3][]; expected: number[] }[])(
+    `$desc → $expected`,
+    ({ qpoints, expected }) => {
+      const bs = make_bs(
+        qpoints.map(([label, frac_coords]) => ({ label, frac_coords })),
+      )
+      expect(find_gamma_indices(bs)).toEqual(expected)
+    },
+  )
+})
+
+describe(`classify_acoustic`, () => {
+  const make_bs = (bands: number[][]): BaseBandStructure => ({
+    qpoints: [
+      { label: `GAMMA`, frac_coords: [0, 0, 0] },
+      { label: null, frac_coords: [0.25, 0, 0] },
+      { label: `X`, frac_coords: [0.5, 0, 0] },
+    ],
+    branches: [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
+    distance: [0, 1, 2],
+    bands,
+    nb_bands: bands.length,
+    labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [0.5, 0, 0] as Vec3 },
+    recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
+  })
+
+  it(`returns null when no Gamma indices`, () => {
+    expect(classify_acoustic(make_bs([[5, 10, 15]]), 0, [])).toBeNull()
+  })
+
+  it.each([
+    { freq: 0, expected: true, desc: `zero at Gamma` },
+    { freq: 0.3, expected: true, desc: `below threshold` },
+    { freq: -0.3, expected: true, desc: `negative (imaginary acoustic)` },
+    { freq: ACOUSTIC_FREQ_THRESHOLD, expected: false, desc: `at threshold boundary` },
+    { freq: 2.5, expected: false, desc: `above threshold` },
+  ])(`$desc (freq=$freq) → $expected`, ({ freq, expected }) => {
+    expect(classify_acoustic(make_bs([[freq, 5, 10]]), 0, [0])).toBe(expected)
+  })
+
+  it(`acoustic if ANY Gamma point has near-zero freq`, () => {
+    // freq at idx 0 is 5 (optical), but at idx 2 is 0.1 (acoustic)
+    expect(classify_acoustic(make_bs([[5, 10, 0.1]]), 0, [0, 2])).toBe(true)
+  })
+
+  it(`returns false for out-of-range band_idx`, () => {
+    expect(classify_acoustic(make_bs([[0, 5, 10]]), 99, [0])).toBe(false)
+  })
+
+  it.each([
+    { band_idx: 0, freq: 0, expected: true },
+    { band_idx: 1, freq: 0.1, expected: true },
+    { band_idx: 2, freq: 0.2, expected: true },
+    { band_idx: 3, freq: 3.0, expected: false },
+    { band_idx: 4, freq: 5.0, expected: false },
+  ])(`mixed bands: band $band_idx (freq=$freq) → $expected`, ({ band_idx, expected }) => {
+    const bs = make_bs([
+      [0, 2, 4],
+      [0.1, 3, 6],
+      [0.2, 4, 8],
+      [3.0, 5, 10],
+      [5.0, 8, 12],
+    ])
+    expect(classify_acoustic(bs, band_idx, [0])).toBe(expected)
+  })
+})
+
+describe(`build_point_metadata`, () => {
+  const test_bs: BaseBandStructure = {
+    qpoints: [
+      { label: `GAMMA`, frac_coords: [0, 0, 0] },
+      { label: null, frac_coords: [0.25, 0, 0] },
+      { label: `X`, frac_coords: [0.5, 0, 0] },
+    ],
+    branches: [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
+    distance: [0, 1, 2],
+    bands: [[0, 5, 10], [3, 6, 9]],
+    nb_bands: 2,
+    labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [0.5, 0, 0] as Vec3 },
+    recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
+  }
+
+  it(`populates per-series fields correctly`, () => {
+    const result = build_point_metadata([0, 1], [0, 5], 1, `down`, false, test_bs, 0)
+    expect(result).toHaveLength(2)
+    expect(result[0]).toMatchObject({
+      band_idx: 1,
+      spin: `down`,
+      is_acoustic: false,
+      nb_bands: 2,
+    })
+  })
+
+  it(`resolves qpoint labels and frac_coords via start_idx`, () => {
+    const result = build_point_metadata([0, 1, 2], [0, 5, 10], 0, `up`, true, test_bs, 0)
+    expect(result[0]).toMatchObject({ qpoint_label: `GAMMA`, frac_coords: [0, 0, 0] })
+    expect(result[1]).toMatchObject({ qpoint_label: null, frac_coords: [0.25, 0, 0] })
+    expect(result[2]).toMatchObject({ qpoint_label: `X`, frac_coords: [0.5, 0, 0] })
+  })
+
+  it(`offsets into qpoints via start_idx`, () => {
+    const result = build_point_metadata([0, 1], [5, 10], 0, `up`, null, test_bs, 1)
+    expect(result[0]).toMatchObject({ frac_coords: [0.25, 0, 0], is_acoustic: null })
+    expect(result[1]).toMatchObject({ qpoint_label: `X` })
+  })
+
+  it(`band_width is null when absent, populated when present`, () => {
+    expect(build_point_metadata([0], [5], 0, `up`, true, test_bs, 0)[0].band_width)
+      .toBeNull()
+
+    const bs_widths: BaseBandStructure = {
+      ...test_bs,
+      band_widths: [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
+    }
+    const result = build_point_metadata(
+      [0, 1, 2],
+      [0, 5, 10],
+      1,
+      `up`,
+      false,
+      bs_widths,
+      0,
+    )
+    expect(result.map((meta) => meta.band_width)).toEqual([0.4, 0.5, 0.6])
+  })
+
+  it(`computes slopes for each point`, () => {
+    const result = build_point_metadata([0, 1, 2], [0, 5, 10], 0, `up`, true, test_bs, 0)
+    for (const meta of result) expect(meta.slope).toBeCloseTo(5, 10)
+  })
+
+  it(`returns empty array for empty input`, () => {
+    expect(build_point_metadata([], [], 0, `up`, null, test_bs, 0)).toEqual([])
   })
 })

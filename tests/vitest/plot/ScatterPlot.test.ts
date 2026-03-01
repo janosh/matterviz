@@ -94,20 +94,50 @@ describe(`ScatterPlot`, () => {
     },
   )
 
-  test(`labels/padding/tooltip`, () => {
-    mount(ScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{
-          x: [1, 2, 3, 4, 5],
-          y: [10, 20, 30, 40, 50],
-          point_style: { fill: `steelblue`, radius: 5 },
-        }],
+  describe(`default tooltip content`, () => {
+    const tooltip_text = async (props: Record<string, unknown>): Promise<string> => {
+      document.body.innerHTML = ``
+      mount(ScatterPlot, { target: document.body, props: { hovered: true, ...props } })
+      await tick()
+      return document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+    }
+
+    test(`shows axis labels instead of bare x/y`, async () => {
+      const text = await tooltip_text({
+        series: [{ x: [1, 2, 3], y: [10, 20, 30] }],
         x_axis: { label: `Time (s)` },
-        y_axis: { label: `Speed`, unit: `m/s` },
-        tooltip_point: { x: 3, y: 30, series_idx: 0, point_idx: 2 },
-        hovered: true,
-      },
+        y_axis: { label: `Speed` },
+        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
+      })
+      expect(text).toContain(`Time (s)`)
+      expect(text).toContain(`Speed`)
+    })
+
+    test(`shows series label only when multiple series`, async () => {
+      const multi = await tooltip_text({
+        series: [
+          { x: [1, 2, 3], y: [10, 20, 30], label: `Alpha` },
+          { x: [1, 2, 3], y: [5, 15, 25], label: `Beta` },
+        ],
+        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
+      })
+      expect(multi).toContain(`Alpha`)
+
+      const single = await tooltip_text({
+        series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Only` }],
+        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 },
+      })
+      expect(single).not.toContain(`Only`)
+    })
+
+    test(`shows color value when colorbar has title`, async () => {
+      const text = await tooltip_text({
+        series: [{ x: [1, 2, 3], y: [10, 20, 30], color_values: [100, 200, 300] }],
+        color_bar: { title: `Temperature` },
+        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1, color_value: 200 },
+      })
+      expect(text).toContain(`Temperature`)
+      expect(text).toContain(`200`)
     })
   })
 
