@@ -1438,8 +1438,8 @@ describe(`generate_ribbon_path`, () => {
 })
 
 describe(`compute_frequency_range`, () => {
-  // Create valid band structure with matching array lengths
-  const make_bs = (bands: number[][]) => {
+  // Create valid band structure with matching array lengths (distinct from module-level make_bs)
+  const make_freq_bs = (bands: number[][]) => {
     const num_kpoints = bands[0]?.length ?? 0
     return {
       qpoints: Array.from({ length: num_kpoints }, (_, idx) => ({
@@ -1456,7 +1456,7 @@ describe(`compute_frequency_range`, () => {
   }
 
   it(`computes range from band structure`, () => {
-    const bs = make_bs([[0, 5, 10], [2, 8, 15]])
+    const bs = make_freq_bs([[0, 5, 10], [2, 8, 15]])
     const range = compute_frequency_range(bs, undefined)
     expect(range).toBeDefined()
     // Phonon with min>=0 clamps to 0, plus 2% padding on max
@@ -1473,7 +1473,7 @@ describe(`compute_frequency_range`, () => {
   })
 
   it(`combines bands and DOS ranges`, () => {
-    const bs = make_bs([[0, 5], [1, 3]])
+    const bs = make_freq_bs([[0, 5], [1, 3]])
     const dos = { frequencies: [0, 10, 20], densities: [0, 1, 0] }
     const range = compute_frequency_range(bs, dos)
     expect(range?.[0]).toBe(0)
@@ -1490,8 +1490,8 @@ describe(`compute_frequency_range`, () => {
   })
 
   it(`handles multiple band structures`, () => {
-    const bs1 = make_bs([[0, 5], [1, 4]])
-    const bs2 = make_bs([[2, 12], [3, 10]])
+    const bs1 = make_freq_bs([[0, 5], [1, 4]])
+    const bs2 = make_freq_bs([[2, 12], [3, 10]])
     const range = compute_frequency_range({ bs1, bs2 }, undefined)
     expect(range?.[0]).toBe(0)
     expect(range?.[1]).toBeCloseTo(12.24, 1)
@@ -1517,7 +1517,7 @@ describe(`compute_frequency_range`, () => {
   })
 
   it(`ignores non-finite values`, () => {
-    const bs = make_bs([[0, NaN, 5, Infinity, 10]])
+    const bs = make_freq_bs([[0, NaN, 5, Infinity, 10]])
     const range = compute_frequency_range(bs, undefined)
     expect(range?.[0]).toBe(0)
     expect(range?.[1]).toBeCloseTo(10.2, 1)
@@ -1551,7 +1551,7 @@ describe(`compute_frequency_range`, () => {
 
   it(`clamps small negative noise in phonon bands`, () => {
     // Bands with tiny negative values (< 0.5% of total |freq|)
-    const bs = make_bs([[-0.01, 5, 10], [0, 8, 15]])
+    const bs = make_freq_bs([[-0.01, 5, 10], [0, 8, 15]])
     const range = compute_frequency_range(bs, undefined)
     expect(range).toBeDefined()
     // Should clamp to 0 since negative contribution is negligible
@@ -1560,7 +1560,7 @@ describe(`compute_frequency_range`, () => {
 
   it(`preserves significant imaginary modes in phonon bands`, () => {
     // Bands with substantial negative frequencies (imaginary modes)
-    const bs = make_bs([[-2, -1, 0, 5, 10], [-3, 0, 2, 8, 15]])
+    const bs = make_freq_bs([[-2, -1, 0, 5, 10], [-3, 0, 2, 8, 15]])
     const range = compute_frequency_range(bs, undefined)
     expect(range).toBeDefined()
     // Should preserve negative range since imaginary modes are significant
@@ -1587,7 +1587,7 @@ describe(`compute_frequency_range`, () => {
       desc: `phonon @class`,
     },
   ])(`detects band structure type via $desc`, ({ marker, is_electronic }) => {
-    const bs = { ...make_bs([[-0.01, 5, 10]]), ...marker }
+    const bs = { ...make_freq_bs([[-0.01, 5, 10]]), ...marker }
     const range = compute_frequency_range(bs, undefined)
     expect(range).toBeDefined()
     // Electronic preserves small negatives, phonon clamps to 0
@@ -1600,7 +1600,7 @@ describe(`compute_frequency_range`, () => {
 
   it(`handles electronic DOS overriding phonon band structure detection`, () => {
     // Mixed: phonon-like band structure with electronic DOS - DOS type is authoritative
-    const bs = make_bs([[0, 5, 10]])
+    const bs = make_freq_bs([[0, 5, 10]])
     const dos = {
       type: `electronic` as const,
       energies: [-5, 0, 5],
@@ -1660,39 +1660,41 @@ function make_bs(overrides: Partial<BaseBandStructure> = {}): BaseBandStructure 
 
 describe(`compute_slope`, () => {
   it.each([
-    { y: [0, 2], x: [0, 1], idx: 0, expected: 2, desc: `forward diff at start` },
-    { y: [0, 2], x: [0, 1], idx: 1, expected: 2, desc: `backward diff at end` },
-    { y: [0, 2, 6], x: [0, 1, 2], idx: 1, expected: 3, desc: `central diff interior` },
+    { x: [0, 1], y: [0, 2], idx: 0, expected: 2, desc: `forward diff at start` },
+    { x: [0, 1], y: [0, 2], idx: 1, expected: 2, desc: `backward diff at end` },
+    { x: [0, 1, 2], y: [0, 2, 6], idx: 1, expected: 3, desc: `central diff interior` },
     {
-      y: [1, 3, 3, 7],
       x: [0, 1, 2, 3],
+      y: [1, 3, 3, 7],
       idx: 1,
       expected: 1,
       desc: `central (3-3)/(2-0)`,
     },
     {
-      y: [1, 3, 3, 7],
       x: [0, 1, 2, 3],
+      y: [1, 3, 3, 7],
       idx: 2,
       expected: 2,
       desc: `central (7-3)/(3-1)`,
     },
-    { y: [10, 0], x: [0, 5], idx: 0, expected: -2, desc: `negative slope` },
-  ])(`$desc → $expected`, ({ y, x, idx, expected }) => {
-    expect(compute_slope(y, x, idx)).toBeCloseTo(expected, 10)
+    { x: [0, 5], y: [10, 0], idx: 0, expected: -2, desc: `negative slope` },
+  ])(`$desc → $expected`, ({ x, y, idx, expected }) => {
+    expect(compute_slope(x, y, idx)).toBeCloseTo(expected, 10)
   })
 
   it.each([
-    { y: [5], x: [0], idx: 0, desc: `single point` },
-    { y: [] as number[], x: [] as number[], idx: 0, desc: `empty arrays` },
-    { y: [1, 2], x: [3, 3], idx: 0, desc: `forward dx=0` },
-    { y: [1, 2], x: [3, 3], idx: 1, desc: `backward dx=0` },
-    { y: [1, 2, 3], x: [0, 5, 0], idx: 1, desc: `central dx=0` },
-    { y: [1, 2, 3], x: [0, 1, 2], idx: -1, desc: `negative idx` },
-    { y: [1, 2, 3], x: [0, 1, 2], idx: 3, desc: `idx = length (out of bounds)` },
-    { y: [1, 2, 3], x: [0, 1, 2], idx: 99, desc: `idx >> length` },
-  ])(`returns null for $desc`, ({ y, x, idx }) => {
-    expect(compute_slope(y, x, idx)).toBeNull()
+    { x: [0], y: [5], idx: 0, desc: `single point` },
+    { x: [] as number[], y: [] as number[], idx: 0, desc: `empty arrays` },
+    { x: [3, 3], y: [1, 2], idx: 0, desc: `forward dx=0` },
+    { x: [3, 3], y: [1, 2], idx: 1, desc: `backward dx=0` },
+    { x: [0, 5, 0], y: [1, 2, 3], idx: 1, desc: `central dx=0` },
+    { x: [0, 1, 2], y: [1, 2, 3], idx: -1, desc: `negative idx` },
+    { x: [0, 1, 2], y: [1, 2, 3], idx: 3, desc: `idx = length (out of bounds)` },
+    { x: [0, 1, 2], y: [1, 2, 3], idx: 99, desc: `idx >> length` },
+    { x: [0, 1, 2], y: [0, 2], idx: 2, desc: `x longer than y` },
+    { x: [0, 1], y: [0, 2, 6], idx: 2, desc: `y longer than x` },
+  ])(`returns null for $desc`, ({ x, y, idx }) => {
+    expect(compute_slope(x, y, idx)).toBeNull()
   })
 })
 

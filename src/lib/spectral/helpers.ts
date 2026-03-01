@@ -1292,13 +1292,14 @@ export interface BandPointMeta extends Record<string, unknown> {
 // Central difference for local slope (dω/dk or dE/dk).
 // Uses forward/backward difference at endpoints, central difference for interior points.
 export function compute_slope(
-  y_vals: number[],
   x_vals: number[],
+  y_vals: number[],
   idx: number,
 ): number | null {
-  if (y_vals.length < 2 || idx < 0 || idx >= y_vals.length) return null
+  const len = Math.min(x_vals.length, y_vals.length)
+  if (len < 2 || idx < 0 || idx >= len) return null
   const lo = idx === 0 ? 0 : idx - 1
-  const hi = idx >= y_vals.length - 1 ? y_vals.length - 1 : idx + 1
+  const hi = idx >= len - 1 ? len - 1 : idx + 1
   const dx = x_vals[hi] - x_vals[lo]
   return dx ? (y_vals[hi] - y_vals[lo]) / dx : null
 }
@@ -1316,7 +1317,8 @@ export function find_gamma_indices(bs: types.BaseBandStructure): number[] {
   return indices
 }
 
-// Threshold below which a band's frequency at Gamma is considered acoustic (THz)
+// Threshold below which a band's frequency at Gamma is considered acoustic (THz).
+// Assumes bands are stored in THz (normalize_band_structure converts to THz).
 export const ACOUSTIC_FREQ_THRESHOLD = 0.5
 
 // Classify a band as acoustic based on near-zero frequency at Gamma points.
@@ -1355,7 +1357,7 @@ export function build_point_metadata(opts: {
       frac_coords: qpoint?.frac_coords ?? null,
       qpoint_label: qpoint?.label ?? null,
       band_width: bs.band_widths?.[band_idx]?.[global_idx] ?? null,
-      slope: compute_slope(y_vals, x_vals, pt_idx),
+      slope: compute_slope(x_vals, y_vals, pt_idx),
     }
   })
 }

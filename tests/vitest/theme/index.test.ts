@@ -120,17 +120,11 @@ describe(`Theme System`, () => {
 
   describe(`Theme preference storage`, () => {
     test.each([...Object.keys(COLOR_THEMES), `auto`])(
-      `save_theme_preference stores "%s" in localStorage`,
+      `save/get_theme_preference round-trips "%s"`,
       (theme) => {
         save_theme_preference(theme as ThemeMode)
-        expect(localStorage.getItem(`matterviz-theme`)).toBe(theme)
-      },
-    )
-
-    test.each([...Object.keys(COLOR_THEMES), `auto`])(
-      `get_theme_preference retrieves stored theme "%s"`,
-      (theme) => {
-        localStorage.setItem(`matterviz-theme`, theme)
+        // Source uses bracket notation: localStorage[key] = mode
+        expect(localStorage[`matterviz-theme`]).toBe(theme)
         expect(get_theme_preference()).toBe(theme)
       },
     )
@@ -140,22 +134,26 @@ describe(`Theme System`, () => {
     })
 
     test(`get_theme_preference handles localStorage errors gracefully`, () => {
-      // Mock localStorage.getItem to throw
-      const orig_get_item = localStorage.getItem
-      localStorage.getItem = vi.fn().mockImplementation(() => {
-        throw new Error(`localStorage not available`)
+      // Temporarily replace localStorage with a throwing proxy
+      const orig_localStorage = globalThis.localStorage
+      Object.defineProperty(globalThis, `localStorage`, {
+        get() {
+          throw new Error(`localStorage not available`)
+        },
+        configurable: true,
       })
 
       expect(get_theme_preference()).toBe(`auto`)
 
       // Restore
-      localStorage.getItem = orig_get_item
+      const attrs = { writable: true, configurable: true, value: orig_localStorage }
+      Object.defineProperty(globalThis, `localStorage`, attrs)
     })
   })
 
   describe(`DOM theme application`, () => {
     test.each(Object.keys(COLOR_THEMES))(
-      `apply_theme_to_dom("%s") sets CSS variables correctly`,
+      `apply_theme_to_dom("%s") sets CSS variables and data-theme`,
       (theme) => {
         apply_theme_to_dom(theme as ThemeName)
 
@@ -166,14 +164,7 @@ describe(`Theme System`, () => {
         }
         expect(root.style.getPropertyValue(`--surface-bg`)).toBe(expected.surface_bg)
         expect(root.style.getPropertyValue(`--text-color`)).toBe(expected.text_color)
-      },
-    )
-
-    test.each(Object.keys(COLOR_THEMES))(
-      `apply_theme_to_dom("%s") sets data-theme attribute`,
-      (theme) => {
-        apply_theme_to_dom(theme as ThemeName)
-        expect(document.documentElement.getAttribute(`data-theme`)).toBe(theme)
+        expect(root.getAttribute(`data-theme`)).toBe(theme)
       },
     )
 
@@ -223,20 +214,12 @@ describe(`Theme System`, () => {
   })
 
   describe(`Color scheme mapping consistency`, () => {
-    test(`THEME_TYPE maps all COLOR_THEMES to valid color-scheme values`, () => {
+    test(`THEME_TYPE covers all COLOR_THEMES with valid color-scheme values`, () => {
       const theme_names = Object.keys(COLOR_THEMES) as ThemeName[]
-      const valid_schemes = [`light`, `dark`]
-
+      expect(Object.keys(THEME_TYPE).sort()).toEqual(theme_names.sort())
       for (const theme of theme_names) {
-        expect(valid_schemes).toContain(THEME_TYPE[theme])
+        expect([`light`, `dark`]).toContain(THEME_TYPE[theme])
       }
-    })
-
-    test(`adding new themes requires updating THEME_TYPE`, () => {
-      const theme_names = Object.keys(COLOR_THEMES)
-      const type_keys = Object.keys(THEME_TYPE)
-
-      expect(type_keys.sort()).toEqual(theme_names.sort())
     })
   })
 
@@ -286,38 +269,16 @@ describe(`Theme System`, () => {
   })
 
   describe(`Theme data integrity`, () => {
-    test(`all theme keys have complete variant coverage`, () => {
+    test(`all themes have identical property keys`, () => {
       if (!globalThis.MATTERVIZ_THEMES) return
       const theme_names = Object.keys(globalThis.MATTERVIZ_THEMES)
-      const first_theme = globalThis.MATTERVIZ_THEMES[theme_names[0] as ThemeName]
-      const expected_keys = Object.keys(first_theme)
-      const missing_variants: string[] = []
-
-      for (const theme_name of theme_names) {
-        const theme_keys = Object.keys(
-          globalThis.MATTERVIZ_THEMES[theme_name as ThemeName],
+      const expected_keys = Object.keys(
+        globalThis.MATTERVIZ_THEMES[theme_names[0] as ThemeName],
+      )
+      for (const name of theme_names) {
+        expect(Object.keys(globalThis.MATTERVIZ_THEMES[name as ThemeName])).toEqual(
+          expected_keys,
         )
-        for (const key of expected_keys) {
-          if (!theme_keys.includes(key)) {
-            missing_variants.push(`${key} missing from theme: ${theme_name}`)
-          }
-        }
-      }
-
-      expect(missing_variants).toEqual([])
-    })
-
-    test(`all theme variants have consistent keys`, () => {
-      if (!globalThis.MATTERVIZ_THEMES) return
-      const theme_names = Object.keys(globalThis.MATTERVIZ_THEMES)
-      const first_theme = globalThis.MATTERVIZ_THEMES[theme_names[0] as ThemeName]
-      const expected_keys = Object.keys(first_theme)
-
-      for (const theme_name of theme_names) {
-        const theme_keys = Object.keys(
-          globalThis.MATTERVIZ_THEMES[theme_name as ThemeName],
-        )
-        expect(theme_keys).toEqual(expected_keys)
       }
     })
   })

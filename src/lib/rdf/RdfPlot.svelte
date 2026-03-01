@@ -84,6 +84,12 @@
     },
   })
 
+  function handle_dragover(ev: DragEvent) {
+    ev.preventDefault()
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = `copy`
+    dragging = true
+  }
+
   const entries = $derived.by(() => {
     const result: RdfEntry[] = []
 
@@ -166,11 +172,19 @@
 {/if}
 
 {#if series.length === 0}
-  <StatusMessage
-    message={enable_drop
-    ? `Drag and drop structure files here to visualize RDFs`
-    : `No RDF data to display`}
-  />
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="empty-drop {dragging ? `dragging` : ``}"
+    ondragover={enable_drop ? handle_dragover : undefined}
+    ondragleave={enable_drop ? () => (dragging = false) : undefined}
+    ondrop={enable_drop ? handle_drop : undefined}
+  >
+    <StatusMessage
+      message={enable_drop
+      ? `Drag and drop structure files here to visualize RDFs`
+      : `No RDF data to display`}
+    />
+  </div>
 {:else}
   <ScatterPlot
     {...rest}
@@ -180,13 +194,7 @@
     styles={{ show_lines: true, show_points: false }}
     class="{rest.class ?? ``} {dragging ? `dragging` : ``}"
     style={rest.style ?? `height: 400px;`}
-    ondragover={enable_drop
-    ? (ev) => {
-      ev.preventDefault()
-      if (ev.dataTransfer) ev.dataTransfer.dropEffect = `copy`
-      dragging = true
-    }
-    : undefined}
+    ondragover={enable_drop ? handle_dragover : undefined}
     ondragleave={enable_drop ? () => (dragging = false) : undefined}
     ondrop={enable_drop ? handle_drop : undefined}
   >
@@ -221,9 +229,15 @@
 {/if}
 
 <style>
-  :global(.dragging) {
+  :global(.dragging),
+  .empty-drop.dragging {
     outline: 2px dashed #4e79a7;
     outline-offset: 4px;
+  }
+  .empty-drop {
+    width: 100%;
+    padding: 2em;
+    box-sizing: border-box;
   }
   .dropped-info {
     padding: 0.5em;

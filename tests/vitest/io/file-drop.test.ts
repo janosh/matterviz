@@ -15,32 +15,27 @@ const make_event = (files: File[] = []) =>
   }) as unknown as DragEvent
 
 describe(`create_file_drop_handler`, () => {
-  let on_drop: ReturnType<typeof vi.fn>
-  let on_error: ReturnType<typeof vi.fn>
-  let set_loading: ReturnType<typeof vi.fn>
+  let on_drop: FileDropOptions[`on_drop`]
+  let on_error: FileDropOptions[`on_error`]
+  let set_loading: FileDropOptions[`set_loading`]
 
   beforeEach(() => {
     vi.clearAllMocks()
-    on_drop = vi.fn()
-    on_error = vi.fn()
-    set_loading = vi.fn()
+    on_drop = vi.fn<FileDropOptions[`on_drop`]>()
+    on_error = vi.fn<NonNullable<FileDropOptions[`on_error`]>>()
+    set_loading = vi.fn<NonNullable<FileDropOptions[`set_loading`]>>()
     vi.mocked(handle_url_drop).mockResolvedValue(false)
   })
 
-  // Helper: create handler with defaults, run against event
-  const run = async (
-    opts: Partial<FileDropOptions> = {},
-    files: File[] = [],
-  ) => {
+  const run = async (opts: Partial<FileDropOptions> = {}, files: File[] = []) => {
     const event = make_event(files)
-    const handler = create_file_drop_handler({
+    const defaults: FileDropOptions = {
       allow: () => true,
-      on_drop: on_drop as FileDropOptions[`on_drop`],
-      on_error: on_error as FileDropOptions[`on_error`],
-      set_loading: set_loading as FileDropOptions[`set_loading`],
-      ...opts,
-    })
-    await handler(event)
+      on_drop,
+      on_error,
+      set_loading,
+    }
+    await create_file_drop_handler({ ...defaults, ...opts })(event)
     return event
   }
 
@@ -49,6 +44,7 @@ describe(`create_file_drop_handler`, () => {
     expect(event.preventDefault).toHaveBeenCalled()
     expect(on_drop).not.toHaveBeenCalled()
     expect(handle_url_drop).not.toHaveBeenCalled()
+    expect(set_loading).not.toHaveBeenCalled()
   })
 
   test(`calls preventDefault and sets loading true then false`, async () => {
@@ -73,9 +69,17 @@ describe(`create_file_drop_handler`, () => {
     expect(on_drop).toHaveBeenCalledWith(`data`, `f.cif`)
   })
 
-  test(`does nothing when no files in dataTransfer`, async () => {
+  test(`does nothing when no files and no URL error`, async () => {
     await run()
     expect(decompress_file).not.toHaveBeenCalled()
+    expect(on_drop).not.toHaveBeenCalled()
+    expect(on_error).not.toHaveBeenCalled()
+  })
+
+  test(`reports URL error when URL drop fails and no files present`, async () => {
+    vi.mocked(handle_url_drop).mockRejectedValue(new Error(`fetch failed`))
+    await run()
+    expect(on_error).toHaveBeenCalledWith(`Failed to load from URL: fetch failed`)
     expect(on_drop).not.toHaveBeenCalled()
   })
 
@@ -99,8 +103,8 @@ describe(`create_file_drop_handler`, () => {
 
   test(`sets loading false even when on_drop throws`, async () => {
     vi.mocked(decompress_file).mockResolvedValue({ content: `x`, filename: `f.txt` })
-    on_drop.mockRejectedValue(new Error(`parse failed`))
-    await run({}, [new File([`x`], `f.txt`)])
+    const throwing_drop = vi.fn().mockRejectedValue(new Error(`parse failed`))
+    await run({ on_drop: throwing_drop }, [new File([`x`], `f.txt`)])
     expect(set_loading).toHaveBeenLastCalledWith(false)
     expect(on_error).toHaveBeenCalledWith(`Failed to load file f.txt: parse failed`)
   })

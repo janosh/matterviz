@@ -333,13 +333,17 @@
     x_positions = positions
   })
 
-  // Convert band structures to scatter plot series
-  let series_data = $derived.by((): DataSeries[] => {
+  // Convert band structures to scatter plot series + track max slope in one pass
+  let { series_data, max_abs_slope } = $derived.by((): {
+    series_data: DataSeries[]
+    max_abs_slope: number
+  } => {
     if (Object.keys(band_structs_dict).length === 0 || segments_to_plot.size === 0) {
-      return []
+      return { series_data: [], max_abs_slope: 1 }
     }
 
     const all_series: DataSeries[] = []
+    let max_slope = 0
 
     for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
       const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
@@ -390,7 +394,25 @@
             Array.isArray(spin_down_band) &&
             spin_down_band.length >= end_idx
 
+          const track_max_slope = (meta: helpers.BandPointMeta[]) => {
+            for (const pt of meta) {
+              if (typeof pt.slope === `number` && Number.isFinite(pt.slope)) {
+                max_slope = Math.max(max_slope, Math.abs(pt.slope))
+              }
+            }
+          }
+
           if (effective_spin_mode !== `down_only`) {
+            const meta = helpers.build_point_metadata({
+              x_vals: scaled_distances,
+              y_vals: frequencies,
+              band_idx,
+              spin: `up`,
+              is_acoustic,
+              bs,
+              start_idx,
+            })
+            track_max_slope(meta)
             all_series.push({
               x: scaled_distances,
               y: frequencies,
@@ -399,15 +421,7 @@
                 ? `${structure_label} (↑)`
                 : structure_label,
               line_style: line_style_up,
-              metadata: helpers.build_point_metadata({
-                x_vals: scaled_distances,
-                y_vals: frequencies,
-                band_idx,
-                spin: `up`,
-                is_acoustic,
-                bs,
-                start_idx,
-              }),
+              metadata: meta,
             })
           }
 
@@ -415,6 +429,16 @@
             const spin_down_frequencies = convert_band_values(
               spin_down_band.slice(start_idx, end_idx),
             )
+            const meta = helpers.build_point_metadata({
+              x_vals: scaled_distances,
+              y_vals: spin_down_frequencies,
+              band_idx,
+              spin: `down`,
+              is_acoustic,
+              bs,
+              start_idx,
+            })
+            track_max_slope(meta)
             all_series.push({
               x: scaled_distances,
               y: spin_down_frequencies,
@@ -425,36 +449,14 @@
                 line_dash: `4,2`,
                 stroke_width: Math.max(1, line_style_up.stroke_width - 0.1),
               },
-              metadata: helpers.build_point_metadata({
-                x_vals: scaled_distances,
-                y_vals: spin_down_frequencies,
-                band_idx,
-                spin: `down`,
-                is_acoustic,
-                bs,
-                start_idx,
-              }),
+              metadata: meta,
             })
           }
         }
       }
     }
 
-    return all_series
-  })
-
-  // Max absolute slope across all bands, used to normalize dispersion labels
-  let max_abs_slope = $derived.by(() => {
-    let max_slope = 0
-    for (const series of series_data) {
-      if (!Array.isArray(series.metadata)) continue
-      for (const meta of series.metadata as helpers.BandPointMeta[]) {
-        if (typeof meta.slope === `number` && Number.isFinite(meta.slope)) {
-          max_slope = Math.max(max_slope, Math.abs(meta.slope))
-        }
-      }
-    }
-    return max_slope || 1
+    return { series_data: all_series, max_abs_slope: max_slope || 1 }
   })
 
   // Compute ribbon data for bands with width information
@@ -770,7 +772,7 @@
         <br />At: {helpers.pretty_sym_point(qpoint_label)}
       {/if}
       {#if Array.isArray(frac_coords)}
-        <br />q: [{
+        <br />{detected_band_type === `electronic` ? `k` : `q`}: [{
           frac_coords.map((coord: number) => format_num(coord, `.3f`)).join(`, `)
         }]
       {/if}

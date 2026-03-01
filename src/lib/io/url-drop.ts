@@ -35,7 +35,12 @@ export async function handle_url_drop(
   const json_data = drag_event.dataTransfer?.getData(`application/json`)
   if (!json_data) return false
 
-  const file_info: FileInfo = JSON.parse(json_data)
+  let file_info: FileInfo
+  try {
+    file_info = JSON.parse(json_data)
+  } catch {
+    return false
+  }
   if (!file_info.url) return false
 
   await load_from_url(file_info.url, callback)
@@ -72,7 +77,7 @@ export async function load_from_url(
 
     // For H5 files, always load as binary regardless of signature
     // to handle files that have .h5/.hdf5 extensions but may not have the proper HDF5 signature
-    if ([`h5`, `hdf5`].includes(ext)) {
+    if (ext === `h5` || ext === `hdf5`) {
       const result = await load_binary_traj(resp, `H5`, true)
 
       // Log warning if signature doesn't match (only for ArrayBuffer results)
