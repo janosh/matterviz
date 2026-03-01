@@ -653,7 +653,12 @@
       if (dx > 5 && dy > 5 && Number.isFinite(xr1) && Number.isFinite(xr2)) {
         // Update axis ranges to trigger reactivity and prevent effect from overriding
         x_axis = { ...x_axis, range: [Math.min(xr1, xr2), Math.max(xr1, xr2)] }
-        x2_axis = { ...x2_axis, range: [Math.min(x2r1, x2r2), Math.max(x2r1, x2r2)] }
+        if (x2_series.length > 0 && Number.isFinite(x2r1) && Number.isFinite(x2r2)) {
+          x2_axis = {
+            ...x2_axis,
+            range: [Math.min(x2r1, x2r2), Math.max(x2r1, x2r2)],
+          }
+        }
         y_axis = { ...y_axis, range: [Math.min(y1, y2), Math.max(y1, y2)] }
         y2_axis = { ...y2_axis, range: [Math.min(y2_1, y2_2), Math.max(y2_1, y2_2)] }
       }
@@ -1078,8 +1083,27 @@
       : srs.metadata
     const label = srs.labels?.[bar_idx] ?? null
     const active_y_axis = srs.y_axis ?? `y1`
-    const coords = { x, y, orient_x, orient_y, x_axis, x2_axis, y_axis, y2_axis }
-    return { ...coords, metadata, color, label, series_idx, bar_idx, active_y_axis }
+    const active_x_axis = srs.x_axis ?? `x1`
+    const coords = {
+      x,
+      y,
+      orient_x,
+      orient_y,
+      x_axis: active_x_axis === `x2` ? x2_axis : x_axis,
+      x2_axis,
+      y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
+      y2_axis,
+    }
+    return {
+      ...coords,
+      metadata,
+      color,
+      label,
+      series_idx,
+      bar_idx,
+      active_y_axis,
+      active_x_axis,
+    }
   }
 
   // Find the point closest to the cursor on a polyline overlay (O(n) scan).
@@ -1985,7 +2009,9 @@
     {/if}
 
     {#if hover_info && hovered}
-      {@const cx = scales.x(hover_info.orient_x)}
+      {@const cx = (hover_info.active_x_axis === `x2` ? scales.x2 : scales.x)(
+      hover_info.orient_x,
+    )}
       {@const cy = (hover_info.active_y_axis === `y2` ? scales.y2 : scales.y)(
       hover_info.orient_y,
     )}
@@ -1998,7 +2024,6 @@
       height,
       { offset_x: 10, offset_y: 5 },
     )}
-      {@const active_y_config = hover_info.active_y_axis === `y2` ? y2_axis : y_axis}
       <PlotTooltip
         x={tooltip_pos.x}
         y={tooltip_pos.y}
@@ -2010,13 +2035,13 @@
           {@render tooltip({ ...hover_info, fullscreen })}
         {:else}
           <div>
-            {@html x_axis.label || `x`}: {
-              format_value(hover_info.orient_x, x_axis.format || `.3~s`)
+            {@html hover_info.x_axis.label || `x`}: {
+              format_value(hover_info.orient_x, hover_info.x_axis.format || `.3~s`)
             }
           </div>
           <div>
-            {@html active_y_config.label || `y`}: {
-              format_value(hover_info.orient_y, active_y_config.format || `.3~s`)
+            {@html hover_info.y_axis.label || `y`}: {
+              format_value(hover_info.orient_y, hover_info.y_axis.format || `.3~s`)
             }
           </div>
         {/if}
@@ -2027,7 +2052,7 @@
       <BarPlotControls
         toggle_props={{
           ...controls_toggle_props,
-          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
+          style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
             controls_toggle_props?.style ?? ``
           }`,
         }}

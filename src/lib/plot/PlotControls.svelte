@@ -42,13 +42,35 @@
   )
   let range_els = $state<Record<string, HTMLInputElement>>({})
 
+  // Check if an axis range spans zero (handles inverted ranges like [3.5, 1.4])
+  const range_spans_zero = (lo: number, hi: number): boolean =>
+    Math.min(lo, hi) <= 0 && Math.max(lo, hi) >= 0
+
   let x_includes_zero = $derived(
-    ((x_axis.range?.[0] ?? auto_x_range[0]) <= 0) &&
-      ((x_axis.range?.[1] ?? auto_x_range[1]) >= 0),
+    range_spans_zero(
+      x_axis.range?.[0] ?? auto_x_range[0],
+      x_axis.range?.[1] ?? auto_x_range[1],
+    ),
+  )
+  let x2_includes_zero = $derived(
+    has_x2_points && auto_x2_range != null &&
+      range_spans_zero(
+        x2_axis.range?.[0] ?? auto_x2_range[0],
+        x2_axis.range?.[1] ?? auto_x2_range[1],
+      ),
   )
   let y_includes_zero = $derived(
-    ((y_axis.range?.[0] ?? auto_y_range[0]) <= 0) &&
-      ((y_axis.range?.[1] ?? auto_y_range[1]) >= 0),
+    range_spans_zero(
+      y_axis.range?.[0] ?? auto_y_range[0],
+      y_axis.range?.[1] ?? auto_y_range[1],
+    ),
+  )
+  let y2_includes_zero = $derived(
+    has_y2_points && auto_y2_range != null &&
+      range_spans_zero(
+        y2_axis.range?.[0] ?? auto_y2_range[0],
+        y2_axis.range?.[1] ?? auto_y2_range[1],
+      ),
   )
 
   // Validation function for format specifiers
@@ -151,7 +173,9 @@
       title="Display"
       current_values={{
         x_zero_line: display.x_zero_line,
+        x2_zero_line: display.x2_zero_line,
         y_zero_line: display.y_zero_line,
+        y2_zero_line: display.y2_zero_line,
         x_grid: display.x_grid,
         x2_grid: display.x2_grid,
         y_grid: display.y_grid,
@@ -159,7 +183,9 @@
       }}
       on_reset={() => {
         display.x_zero_line = false
+        display.x2_zero_line = false
         display.y_zero_line = false
+        display.y2_zero_line = false
         display.x_grid = DEFAULTS.plot.show_x_grid
         display.x2_grid = DEFAULTS.plot.show_x2_grid
         display.y_grid = DEFAULTS.plot.show_y_grid
@@ -167,13 +193,21 @@
       }}
       style="display: flex; flex-wrap: wrap; gap: 1ex; align-items: center"
     >
-      {#if x_includes_zero || y_includes_zero}
+      {#if x_includes_zero || x2_includes_zero || y_includes_zero || y2_includes_zero}
         <span class="control-group" data-label="zero line">Zero line:
           {#if x_includes_zero}
             <label><input type="checkbox" bind:checked={display.x_zero_line} /> X</label>
           {/if}
+          {#if x2_includes_zero}
+            <label><input type="checkbox" bind:checked={display.x2_zero_line} />
+              X2</label>
+          {/if}
           {#if y_includes_zero}
             <label><input type="checkbox" bind:checked={display.y_zero_line} /> Y</label>
+          {/if}
+          {#if y2_includes_zero}
+            <label><input type="checkbox" bind:checked={display.y2_zero_line} />
+              Y2</label>
           {/if}
         </span>
       {/if}

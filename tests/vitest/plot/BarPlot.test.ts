@@ -85,6 +85,7 @@ describe(`BarPlot`, () => {
         x2_axis: { label: `Temperature (K)` },
       },
     })
+    expect(document.querySelector(`.bar-plot`)).toBeTruthy()
   })
 
   test.each<[Orientation, BarMode]>([

@@ -293,6 +293,30 @@
       },
     ] as DataSeries[]
   })
+
+  let x2_axis_data = $derived.by(() => {
+    const kg_values = generate_normal(400, 70, 10)
+    const lbs_values = generate_normal(400, 154, 22)
+    return [
+      {
+        x: kg_values.map((_, idx) => idx),
+        y: kg_values,
+        label: `Mass (kg)`,
+        visible: true,
+        line_style: { stroke: `#0ea5e9` },
+        point_style: { fill: `#0ea5e9` },
+      },
+      {
+        x: lbs_values.map((_, idx) => idx),
+        y: lbs_values,
+        label: `Mass (lbs)`,
+        visible: true,
+        x_axis: `x2`,
+        line_style: { stroke: `#f97316` },
+        point_style: { fill: `#f97316` },
+      },
+    ] as DataSeries[]
+  })
 </script>
 
 <section data-testid="basic-single-series-section">
@@ -516,23 +540,7 @@ Plot is currently hovered: <strong>{is_plot_hovered}</strong>
   <h2>X2 Axis Histogram (Dual X-Axes)</h2>
   <p>Bottom: mass in kg. Top: mass in lbs. Each distribution on its own x-scale.</p>
   <Histogram
-    series={[
-      {
-        x: Array.from({ length: 400 }, (_, idx) => idx),
-        y: generate_normal(400, 70, 10),
-        label: `Mass (kg)`,
-        line_style: { stroke: `#0ea5e9` },
-        point_style: { fill: `#0ea5e9` },
-      },
-      {
-        x: Array.from({ length: 400 }, (_, idx) => idx),
-        y: generate_normal(400, 154, 22),
-        label: `Mass (lbs)`,
-        x_axis: `x2`,
-        line_style: { stroke: `#f97316` },
-        point_style: { fill: `#f97316` },
-      },
-    ]}
+    series={x2_axis_data}
     bins={25}
     mode="overlay"
     show_legend

@@ -190,6 +190,7 @@ export interface BarHandlerProps<Metadata = Record<string, unknown>>
   orient_x: number
   orient_y: number
   active_y_axis: `y1` | `y2`
+  active_x_axis: `x1` | `x2`
   color: string
 }
 
@@ -199,6 +200,7 @@ export interface HistogramHandlerProps<Metadata = Record<string, unknown>>
   count: number
   property: string
   active_y_axis: `y1` | `y2`
+  active_x_axis: `x1` | `x2`
 }
 
 export type TimeInterval = `day` | `month` | `year`
@@ -505,6 +507,7 @@ export interface DisplayConfig {
   x_zero_line?: boolean
   x2_zero_line?: boolean
   y_zero_line?: boolean
+  y2_zero_line?: boolean
 }
 
 // Style overrides for point and line properties

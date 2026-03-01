@@ -1235,3 +1235,43 @@ Dual y-axes with `y2_axis.sync` controlling the Y2 axis range. Modes: `'synced'`
   style="height: 400px"
 />
 ```
+
+## Dual X-Axes (X2)
+
+Plot two bar series with independent x-scales on the same chart. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. This is useful when comparing measurements in different units that share the same y-axis — for example, temperature in Celsius vs Fahrenheit.
+
+```svelte example
+<script lang="ts">
+  import { BarPlot } from 'matterviz'
+
+  const series = [
+    {
+      x: [10, 20, 30, 40],
+      y: [5, 12, 8, 15],
+      label: `Celsius`,
+      color: `#2563eb`,
+      bar_width: 3,
+    },
+    {
+      x: [50, 68, 86, 104],
+      y: [3, 9, 6, 11],
+      label: `Fahrenheit`,
+      color: `#dc2626`,
+      bar_width: 5,
+      x_axis: `x2`,
+    },
+  ]
+</script>
+
+Two bar series on independent x-scales. Bottom: temperature in °C (blue). Top: temperature
+in °F (red). Each series is positioned using its own x-axis scale.
+
+<BarPlot
+  {series}
+  x_axis={{ label: `Temperature (°C)` }}
+  x2_axis={{ label: `Temperature (°F)` }}
+  y_axis={{ label: `Count` }}
+  show_legend
+  style="height: 400px"
+/>
+```

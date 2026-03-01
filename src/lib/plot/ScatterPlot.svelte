@@ -686,13 +686,10 @@
           }),
         )
 
-        // Filter to points within the plot bounds
-        const is_valid_dim = (
-          val: number | null | undefined,
-          min: number,
-          max: number,
-        ) =>
-          val !== null && val !== undefined && !isNaN(val) && val >= min && val <= max
+        // Filter to points within the plot bounds (handles inverted ranges like [3.5, 1.4])
+        const in_range = (val: number | null | undefined, lo: number, hi: number) =>
+          val != null && !isNaN(val) && val >= Math.min(lo, hi) &&
+          val <= Math.max(lo, hi)
 
         // Determine which ranges to use based on series axis properties
         const [series_x_min, series_x_max] = (data_series.x_axis ?? `x1`) === `x2`
@@ -704,8 +701,8 @@
 
         const filtered_data_with_extras = processed_points.filter(
           ({ x, y }) =>
-            is_valid_dim(x, series_x_min, series_x_max) &&
-            is_valid_dim(y, series_y_min, series_y_max),
+            in_range(x, series_x_min, series_x_max) &&
+            in_range(y, series_y_min, series_y_max),
         )
 
         // Return structure consistent with DataSeries but acknowledge internal data structure (filtered_data)
@@ -1772,14 +1769,18 @@
     const handler_is_time_x = handler_use_x2 ? is_time_x2 : is_time_x
     const cx = handler_is_time_x ? handler_x_scale(new Date(x)) : handler_x_scale(x)
     const cy = (hovered_series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(y)
+    const active_x_config = handler_use_x2 ? final_x2_axis : final_x_axis
+    const active_y_config = hovered_series.y_axis === `y2`
+      ? final_y2_axis
+      : final_y_axis
     const coords = {
       x,
       y,
       cx,
       cy,
-      x_axis: final_x_axis,
+      x_axis: active_x_config,
       x2_axis: final_x2_axis,
-      y_axis: final_y_axis,
+      y_axis: active_y_config,
       y2_axis: final_y2_axis,
     }
     return {
@@ -1788,13 +1789,8 @@
       metadata,
       label: hovered_series.label ?? null,
       series_idx,
-      x_formatted: format_value(x, final_x_axis.format || `.3~s`),
-      y_formatted: format_value(
-        y,
-        (hovered_series.y_axis === `y2`
-          ? final_y2_axis.format
-          : final_y_axis.format) || `.3~s`,
-      ),
+      x_formatted: format_value(x, active_x_config.format || `.3~s`),
+      y_formatted: format_value(y, active_y_config.format || `.3~s`),
       color_value: color_value ?? null,
       colorbar: {
         value: color_value ?? null,
@@ -2047,14 +2043,19 @@
                   {/if}
                   <line y1="0" y2={inside ? -5 : 5} stroke="var(--border-color, gray)" />
 
-                  {#if tick >= x_min && tick <= x_max}
+                  {#if tick >= Math.min(x_min, x_max) && tick <= Math.max(x_min, x_max)}
                     {@const base_y = inside ? -8 : 20}
                     {@const shift = final_x_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                     {@const x = shift.x ?? 0}
                     {@const y = base_y + (shift.y ?? 0)}
                     {@const custom_label = get_tick_label(tick, final_x_axis.ticks)}
                     {@const dominant_baseline = inside ? `auto` : `hanging`}
-                    <text {x} {y} dominant-baseline={dominant_baseline}>
+                    <text
+                      {x}
+                      {y}
+                      dominant-baseline={dominant_baseline}
+                      fill={final_x_axis.color}
+                    >
                       {custom_label ?? format_value(tick, final_x_axis.format ?? ``)}
                     </text>
                   {/if}
@@ -2127,7 +2128,7 @@
                     stroke="var(--border-color, gray)"
                   />
 
-                  {#if tick >= y_min && tick <= y_max}
+                  {#if tick >= Math.min(y_min, y_max) && tick <= Math.max(y_min, y_max)}
                     {@const base_x = inside ? 8 : -8}
                     {@const shift = final_y_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                     {@const x = base_x + (shift.x ?? 0)}
@@ -2197,7 +2198,7 @@
                       stroke="var(--border-color, gray)"
                     />
 
-                    {#if tick >= y2_min && tick <= y2_max}
+                    {#if tick >= Math.min(y2_min, y2_max) && tick <= Math.max(y2_min, y2_max)}
                       {@const base_x = inside ? -8 : 8}
                       {@const shift = final_y2_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                       {@const x = base_x + (shift.x ?? 0)}
@@ -2264,17 +2265,22 @@
                     <line
                       y1="0"
                       y2={inside ? 5 : -5}
-                      stroke="var(--border-color, gray)"
+                      stroke={final_x2_axis.color || `var(--border-color, gray)`}
                     />
 
-                    {#if tick >= x2_min && tick <= x2_max}
+                    {#if tick >= Math.min(x2_min, x2_max) && tick <= Math.max(x2_min, x2_max)}
                       {@const base_y = inside ? 8 : -20}
                       {@const shift = final_x2_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
                       {@const x = shift.x ?? 0}
                       {@const y = base_y + (shift.y ?? 0)}
                       {@const custom_label = get_tick_label(tick, final_x2_axis.ticks)}
                       {@const dominant_baseline = inside ? `hanging` : `auto`}
-                      <text {x} {y} dominant-baseline={dominant_baseline}>
+                      <text
+                        {x}
+                        {y}
+                        dominant-baseline={dominant_baseline}
+                        fill={final_x2_axis.color}
+                      >
                         {custom_label ?? format_value(tick, final_x2_axis.format ?? ``)}
                       </text>
                     {/if}
@@ -2289,7 +2295,7 @@
           final_x2_axis}
             <AxisLabel
               x={width / 2 + (label_shift?.x ?? 0)}
-              y={pad.t - (label_shift?.y ?? 40)}
+              y={Math.max(12, pad.t - (label_shift?.y ?? 40))}
               {label}
               {options}
               {selected_key}
@@ -2568,7 +2574,7 @@
         toggle_props={{
           ...controls.toggle_props,
           style:
-            `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: var(--ctrl-btn-top, 5pt); ${
+            `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); top: var(--ctrl-btn-top, 5pt); ${
               controls.toggle_props?.style ?? ``
             }`,
         }}

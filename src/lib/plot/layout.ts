@@ -53,6 +53,8 @@ export const measure_max_tick_width = (ticks: (string | number)[], format: strin
 
 // Estimated height of a single tick label line (font-size 0.8em ≈ 12px + leading)
 export const TICK_LABEL_HEIGHT = 16
+// Estimated height of an axis label (font-size ~14px + margin)
+export const AXIS_LABEL_HEIGHT = 20
 
 export const calc_auto_padding = ({
   padding,
@@ -73,7 +75,7 @@ export const calc_auto_padding = ({
       (x2_ticks.length > 0
         ? Math.max(
           default_padding.t,
-          TICK_LABEL_HEIGHT + label_gap + (x2_axis.label ? 20 : 0),
+          TICK_LABEL_HEIGHT + label_gap + (x2_axis.label ? AXIS_LABEL_HEIGHT : 0),
         )
         : default_padding.t),
     b: padding.b ?? default_padding.b,

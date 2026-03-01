@@ -133,7 +133,7 @@ describe(`sync_y2_range`, () => {
   })
 
   // Edge case: align_value outside y1_range — result must contain both data and align_value
-  it.each([
+  it.each<{ y1: Vec2; y2_base: Vec2; align_value: number }>([
     { y1: [10, 20], y2_base: [60, 140], align_value: 0 },
     { y1: [10, 20], y2_base: [60, 140], align_value: 30 },
     { y1: [0, 100], y2_base: [200, 300], align_value: -50 },
@@ -141,7 +141,7 @@ describe(`sync_y2_range`, () => {
   ])(
     `align edge: align_value=$align_value with y1=$y1`,
     ({ y1, y2_base, align_value }) => {
-      const result = sync_y2_range(y1 as Vec2, y2_base as Vec2, {
+      const result = sync_y2_range(y1, y2_base, {
         mode: `align`,
         align_value,
       })
@@ -190,6 +190,10 @@ describe(`expand_range_if_needed`, () => {
       [[0, 100], [0, Infinity], [0, 100], false, `Infinity in new → keeps current`],
       [[NaN, 100], [0, 50], [0, 50], true, `NaN in current → adopts valid`],
       [[NaN, Infinity], [NaN, 50], [0, 1], true, `both invalid → sentinel`],
+      // Inverted ranges (e.g. x2 axis with range [3.5, 1.4])
+      [[0, 1], [3.5, 1.4], [3.5, 1.4], true, `inverted range adopted from default`],
+      [[3.5, 1.4], [3.5, 1.4], [3.5, 1.4], false, `identical inverted`],
+      [[3.5, 1.4], [4, 1], [4, 1], true, `inverted range updated`],
     ] as const,
   )(`%s`, (current, new_r, expected, changed, _desc) => {
     expect(expand_range_if_needed([...current], [...new_r]))

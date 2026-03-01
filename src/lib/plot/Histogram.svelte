@@ -242,9 +242,7 @@
     selected_series.filter((srs: DataSeries) => srs.y_axis === `y2`),
   )
   let x2_series = $derived(
-    selected_series.filter((srs: DataSeries) =>
-      (srs.visible ?? true) && srs.x_axis === `x2`
-    ),
+    selected_series.filter((srs: DataSeries) => srs.x_axis === `x2`),
   )
 
   let auto_ranges = $derived.by(() => {
@@ -416,6 +414,22 @@
       new_pad.r = Math.max(
         new_pad.r,
         tick_width_contribution + LABEL_GAP_DEFAULT + tick_shift + label_thickness,
+      )
+    }
+
+    // Add x2 axis label space (mirroring y2 logic for top padding)
+    if (
+      width && height && x2_series.length && current_ticks_x2.length &&
+      final_x2_axis.label
+    ) {
+      const inside = final_x2_axis.tick?.label?.inside ?? false
+      const tick_shift = inside
+        ? 0
+        : Math.abs(final_x2_axis.tick?.label?.shift?.y ?? 0) + 8
+      const label_thickness = Math.round(12 * 1.2)
+      new_pad.t = Math.max(
+        new_pad.t,
+        tick_shift + LABEL_GAP_DEFAULT + label_thickness,
       )
     }
 
@@ -919,6 +933,7 @@
     property: string,
     active_y_axis: `y1` | `y2` = `y1`,
     series_idx: number = 0,
+    active_x_axis: `x1` | `x2` = `x1`,
   ) {
     hovered = true
     hover_info = {
@@ -926,12 +941,14 @@
       count,
       property,
       active_y_axis,
+      active_x_axis,
       x: value,
       y: count,
       series_idx,
       metadata: null,
       label: property,
-      x_axis,
+      x_axis: active_x_axis === `x2` ? x2_axis : x_axis,
+      x2_axis,
       y_axis: active_y_axis === `y2` ? y2_axis : y_axis,
       y2_axis,
     }
@@ -1139,7 +1156,7 @@
 
     <!-- Histogram bars (rendered before axes so tick labels appear on top) -->
     {#each histogram_data as
-      { id, bins, color, label, x_scale, y_scale, y_axis },
+      { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis },
       series_idx
       (id ?? series_idx)
     }
@@ -1174,6 +1191,7 @@
                 label,
                 (y_axis ?? `y1`) as `y1` | `y2`,
                 series_idx,
+                (srs_x_axis ?? `x1`) as `x1` | `x2`,
               )}
               onmouseleave={() => {
                 hover_info = null
@@ -1314,7 +1332,7 @@
           final_x2_axis}
           <AxisLabel
             x={(pad.l + width - pad.r) / 2 + (label_shift?.x ?? 0)}
-            y={pad.t - (label_shift?.y ?? 40)}
+            y={Math.max(12, pad.t - (label_shift?.y ?? 40))}
             {label}
             {options}
             {selected_key}
@@ -1473,8 +1491,8 @@
 
   <!-- Tooltip (outside SVG for proper HTML rendering) -->
   {#if hover_info}
-    {@const { value, count, property, active_y_axis } = hover_info}
-    {@const tooltip_x = scales.x(value)}
+    {@const { value, count, property, active_y_axis, active_x_axis } = hover_info}
+    {@const tooltip_x = (active_x_axis === `x2` ? scales.x2 : scales.x)(value)}
     {@const tooltip_y = (active_y_axis === `y2` ? scales.y2 : scales.y)(count)}
     {@const tooltip_pos = constrain_tooltip_position(
       tooltip_x,
@@ -1485,7 +1503,6 @@
       height,
       { offset_x: 5, offset_y: -10 },
     )}
-    {@const active_y_config = active_y_axis === `y2` ? final_y2_axis : final_y_axis}
     <PlotTooltip
       x={tooltip_pos.x}
       y={tooltip_pos.y}
@@ -1495,8 +1512,8 @@
       {#if tooltip}
         {@render tooltip({ ...hover_info, fullscreen })}
       {:else}
-        <div>Value: {format_value(value, final_x_axis.format || `.3~s`)}</div>
-        <div>Count: {format_value(count, active_y_config.format || `.3~s`)}</div>
+        <div>Value: {format_value(value, hover_info.x_axis.format || `.3~s`)}</div>
+        <div>Count: {format_value(count, hover_info.y_axis.format || `.3~s`)}</div>
         {#if mode === `overlay`}<div>{property}</div>{/if}
       {/if}
     </PlotTooltip>
@@ -1506,7 +1523,7 @@
     <HistogramControls
       toggle_props={{
         ...controls_toggle_props,
-        style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 36px); top: 4px; ${
+        style: `--ctrl-btn-right: var(--fullscreen-btn-offset, 30px); ${
           controls_toggle_props?.style ?? ``
         }`,
       }}

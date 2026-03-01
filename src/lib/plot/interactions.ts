@@ -35,7 +35,7 @@ export function sync_y2_range(
 
   // Synced: Y2 has exact same range as Y1
   if (sync.mode === `synced`) {
-    return [...y1_range] as Vec2
+    return [y1_range[0], y1_range[1]]
   }
 
   // Align: Position so align_val (default 0) is at same relative position on both axes

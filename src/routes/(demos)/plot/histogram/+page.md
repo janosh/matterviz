@@ -1191,3 +1191,75 @@ Compare distributions on different scales with dual y-axes. Use `y2_axis.sync` t
   style="height: 400px"
 />
 ```
+
+## Dual X-Axes (X2)
+
+Plot two distributions with independent x-scales on the same histogram. The primary x-axis (bottom) shows one unit while the secondary x2-axis (top) shows another. This is useful when comparing the same physical quantity measured in different units — for example, mass in kilograms vs pounds.
+
+```svelte example
+<script lang="ts">
+  import { Histogram } from 'matterviz'
+
+  // Seeded random for reproducible normal distributions
+  function seeded_random(seed: number): () => number {
+    let state = seed
+    return () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff
+      return state / 0x7fffffff
+    }
+  }
+
+  function generate_normal(
+    rng: () => number,
+    count: number,
+    mean: number,
+    std: number,
+  ): number[] {
+    const values: number[] = []
+    for (let idx = 0; idx < count; idx++) {
+      // Box-Muller transform
+      const u1 = rng()
+      const u2 = rng()
+      const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+      values.push(mean + std * z)
+    }
+    return values
+  }
+
+  const rng = seeded_random(42)
+  const kg_values = generate_normal(rng, 400, 70, 10)
+  const lbs_values = generate_normal(rng, 400, 154, 22)
+
+  const series = [
+    {
+      x: kg_values.map((_, idx) => idx),
+      y: kg_values,
+      label: `Mass (kg)`,
+      line_style: { stroke: `#0ea5e9` },
+      point_style: { fill: `#0ea5e9` },
+    },
+    {
+      x: lbs_values.map((_, idx) => idx),
+      y: lbs_values,
+      label: `Mass (lbs)`,
+      x_axis: `x2`,
+      line_style: { stroke: `#f97316` },
+      point_style: { fill: `#f97316` },
+    },
+  ]
+</script>
+
+Two normal distributions on independent x-scales. Bottom: mass in kg (blue). Top: mass in
+lbs (orange). Each series bins against its own x-axis range.
+
+<Histogram
+  {series}
+  bins={25}
+  mode="overlay"
+  show_legend
+  x_axis={{ label: `Mass (kg)`, color: `#0ea5e9` }}
+  x2_axis={{ label: `Mass (lbs)`, color: `#f97316` }}
+  y_axis={{ label: `Count` }}
+  style="height: 400px"
+/>
+```

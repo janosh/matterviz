@@ -353,6 +353,7 @@ test(`drag-down decreases rotation_x (natural direction)`, async ({ page }) => {
   await expect(canvas).toBeVisible({ timeout: 15000 })
 
   const rot_before = Number(await diagram.getAttribute(`data-rotation-x`))
+  expect(Number.isFinite(rot_before)).toBe(true)
   const box = await canvas.boundingBox()
   expect(box).toBeTruthy()
   if (!box) throw new Error(`Canvas bounding box not found`)

@@ -57,6 +57,7 @@ describe(`ScatterPlot`, () => {
         x2_axis: { label: `Temperature (K)` },
       },
     })
+    expect(document.querySelector(`.scatter`)).toBeTruthy()
   })
 
   test.each([

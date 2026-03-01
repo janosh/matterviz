@@ -1,4 +1,5 @@
 import {
+  AXIS_LABEL_HEIGHT,
   calc_auto_padding,
   compute_element_placement,
   constrain_tooltip_position,
@@ -308,20 +309,6 @@ describe(`layout utility functions`, () => {
       expect(result.t).toBeGreaterThanOrEqual(TICK_LABEL_HEIGHT + 30)
     })
 
-    it(`expands top padding further when x2 has a label`, () => {
-      const without_label = calc_auto_padding({
-        padding: {},
-        default_padding: defaults,
-        x2_axis: { tick_values: [0, 1, 2] },
-      })
-      const with_label = calc_auto_padding({
-        padding: {},
-        default_padding: defaults,
-        x2_axis: { tick_values: [0, 1, 2], label: `Temperature` },
-      })
-      expect(with_label.t).toBeGreaterThan(without_label.t)
-    })
-
     it(`does not expand top padding when x2 has no ticks`, () => {
       const result = calc_auto_padding({
         padding: {},
@@ -329,6 +316,21 @@ describe(`layout utility functions`, () => {
         x2_axis: { tick_values: [] },
       })
       expect(result.t).toBe(defaults.t)
+    })
+
+    it(`x2 label adds exactly AXIS_LABEL_HEIGHT (>0) to top padding`, () => {
+      expect(AXIS_LABEL_HEIGHT).toBeGreaterThan(0)
+      const without = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        x2_axis: { tick_values: [1, 2] },
+      })
+      const with_label = calc_auto_padding({
+        padding: {},
+        default_padding: { t: 0, b: 0, l: 0, r: 0 },
+        x2_axis: { tick_values: [1, 2], label: `Energy` },
+      })
+      expect(with_label.t - without.t).toBe(AXIS_LABEL_HEIGHT)
     })
   })
 })

@@ -140,6 +140,19 @@ describe(`Histogram`, () => {
     expect(Math.min(...ticks)).toBeGreaterThan(0)
   })
 
+  test(`mounts with x2-axis series without error`, () => {
+    ensure_client_size()
+    mount_histogram({
+      series: [
+        { x: [0, 1, 2], y: [70, 72, 68], label: `Mass (kg)` },
+        { x: [0, 1, 2], y: [154, 158, 150], label: `Mass (lbs)`, x_axis: `x2` },
+      ],
+      x2_axis: { label: `Mass (lbs)` },
+      mode: `overlay`,
+    })
+    expect(document.querySelector(`.histogram`)).toBeTruthy()
+  })
+
   test(`renders without error when legend prop is null`, async () => {
     ensure_client_size()
     // Should not throw when legend={null} is passed

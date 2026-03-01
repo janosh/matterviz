@@ -232,6 +232,7 @@
       label: `Celsius`,
       color: `#2563eb`,
       bar_width: 3,
+      visible: true,
     },
     {
       x: [50, 68, 86, 104],
@@ -240,6 +241,7 @@
       color: `#dc2626`,
       bar_width: 5,
       x_axis: `x2`,
+      visible: true,
     },
   ]
 </script>
