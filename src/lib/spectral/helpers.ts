@@ -1277,6 +1277,18 @@ export function calculate_sigma_step(range: [number, number]): number {
 
 // === Band Tooltip Helpers ===
 
+// Per-point metadata for band tooltip display
+export interface BandPointMeta extends Record<string, unknown> {
+  band_idx: number
+  spin: `up` | `down`
+  is_acoustic: boolean | null
+  nb_bands: number
+  frac_coords: Vec3 | null
+  qpoint_label: string | null
+  band_width: number | null
+  slope: number | null
+}
+
 // Central difference for local slope (dω/dk or dE/dk).
 // Uses forward/backward difference at endpoints, central difference for interior points.
 export function compute_slope(
@@ -1284,27 +1296,21 @@ export function compute_slope(
   x_vals: number[],
   idx: number,
 ): number | null {
-  if (y_vals.length < 2) return null
-  if (idx === 0) {
-    const dx = x_vals[1] - x_vals[0]
-    return dx ? (y_vals[1] - y_vals[0]) / dx : null
-  }
-  if (idx === y_vals.length - 1) {
-    const dx = x_vals[idx] - x_vals[idx - 1]
-    return dx ? (y_vals[idx] - y_vals[idx - 1]) / dx : null
-  }
-  const dx = x_vals[idx + 1] - x_vals[idx - 1]
-  return dx ? (y_vals[idx + 1] - y_vals[idx - 1]) / dx : null
+  if (y_vals.length < 2 || idx < 0 || idx >= y_vals.length) return null
+  const lo = idx === 0 ? 0 : idx - 1
+  const hi = idx >= y_vals.length - 1 ? y_vals.length - 1 : idx + 1
+  const dx = x_vals[hi] - x_vals[lo]
+  return dx ? (y_vals[hi] - y_vals[lo]) / dx : null
 }
 
 // Find Gamma-point indices (q ≈ integer lattice point) in a band structure.
 // Returns indices of q-points whose fractional coordinates are all within 0.01 of integers.
 export function find_gamma_indices(bs: types.BaseBandStructure): number[] {
   const indices: number[] = []
-  for (let qi = 0; qi < bs.qpoints.length; qi++) {
-    const coords = bs.qpoints[qi]?.frac_coords
+  for (let q_idx = 0; q_idx < bs.qpoints.length; q_idx++) {
+    const coords = bs.qpoints[q_idx]?.frac_coords
     if (coords?.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01)) {
-      indices.push(qi)
+      indices.push(q_idx)
     }
   }
   return indices
@@ -1319,24 +1325,26 @@ export function classify_acoustic(
   bs: types.BaseBandStructure,
   band_idx: number,
   gamma_indices: number[],
+  threshold = ACOUSTIC_FREQ_THRESHOLD,
 ): boolean | null {
   if (gamma_indices.length === 0) return null
   return gamma_indices.some(
-    (gi) => Math.abs(bs.bands[band_idx]?.[gi] ?? Infinity) < ACOUSTIC_FREQ_THRESHOLD,
+    (gamma_idx) => Math.abs(bs.bands[band_idx]?.[gamma_idx] ?? Infinity) < threshold,
   )
 }
 
 // Build per-point metadata array for a band series in the tooltip.
-export function build_point_metadata(
-  scaled_distances: number[],
-  frequencies: number[],
-  band_idx: number,
-  spin: `up` | `down`,
-  is_acoustic: boolean | null,
-  bs: types.BaseBandStructure,
-  start_idx: number,
-): Record<string, unknown>[] {
-  return scaled_distances.map((_, pt_idx) => {
+export function build_point_metadata(opts: {
+  x_vals: number[]
+  y_vals: number[]
+  band_idx: number
+  spin: `up` | `down`
+  is_acoustic: boolean | null
+  bs: types.BaseBandStructure
+  start_idx: number
+}): BandPointMeta[] {
+  const { x_vals, y_vals, band_idx, spin, is_acoustic, bs, start_idx } = opts
+  return x_vals.map((_, pt_idx) => {
     const global_idx = start_idx + pt_idx
     const qpoint = bs.qpoints[global_idx]
     return {
@@ -1347,7 +1355,7 @@ export function build_point_metadata(
       frac_coords: qpoint?.frac_coords ?? null,
       qpoint_label: qpoint?.label ?? null,
       band_width: bs.band_widths?.[band_idx]?.[global_idx] ?? null,
-      slope: compute_slope(frequencies, scaled_distances, pt_idx),
+      slope: compute_slope(y_vals, x_vals, pt_idx),
     }
   })
 }

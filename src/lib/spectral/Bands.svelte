@@ -377,11 +377,10 @@
             bs.bands[band_idx].slice(start_idx, end_idx),
           )
           const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
-          const acoustic = is_acoustic === true
 
           const line_style_up = get_line_style(
             color,
-            acoustic,
+            is_acoustic === true,
             frequencies,
             band_idx,
           )
@@ -400,15 +399,15 @@
                 ? `${structure_label} (↑)`
                 : structure_label,
               line_style: line_style_up,
-              metadata: helpers.build_point_metadata(
-                scaled_distances,
-                frequencies,
+              metadata: helpers.build_point_metadata({
+                x_vals: scaled_distances,
+                y_vals: frequencies,
                 band_idx,
-                `up`,
+                spin: `up`,
                 is_acoustic,
                 bs,
                 start_idx,
-              ),
+              }),
             })
           }
 
@@ -426,15 +425,15 @@
                 line_dash: `4,2`,
                 stroke_width: Math.max(1, line_style_up.stroke_width - 0.1),
               },
-              metadata: helpers.build_point_metadata(
-                scaled_distances,
-                spin_down_frequencies,
+              metadata: helpers.build_point_metadata({
+                x_vals: scaled_distances,
+                y_vals: spin_down_frequencies,
                 band_idx,
-                `down`,
+                spin: `down`,
                 is_acoustic,
                 bs,
                 start_idx,
-              ),
+              }),
             })
           }
         }
@@ -449,9 +448,9 @@
     let max_slope = 0
     for (const series of series_data) {
       if (!Array.isArray(series.metadata)) continue
-      for (const { slope } of series.metadata as { slope?: number }[]) {
-        if (typeof slope === `number` && Number.isFinite(slope)) {
-          max_slope = Math.max(max_slope, Math.abs(slope))
+      for (const meta of series.metadata as helpers.BandPointMeta[]) {
+        if (typeof meta.slope === `number` && Number.isFinite(meta.slope)) {
+          max_slope = Math.max(max_slope, Math.abs(meta.slope))
         }
       }
     }
@@ -740,14 +739,16 @@
       {@const path = segment?.[0].split(`_`).map((lbl) =>
       lbl !== `null` ? helpers.pretty_sym_point(lbl) : ``
     ).filter(Boolean).join(` → `) || null}
-      {@const band_idx = metadata?.band_idx}
-      {@const spin = metadata?.spin}
-      {@const is_acoustic = metadata?.is_acoustic}
-      {@const nb_bands = metadata?.nb_bands}
-      {@const frac_coords = metadata?.frac_coords}
-      {@const qpoint_label = metadata?.qpoint_label}
-      {@const band_width = metadata?.band_width}
-      {@const slope = metadata?.slope}
+      {@const {
+      band_idx,
+      spin,
+      is_acoustic,
+      nb_bands,
+      frac_coords,
+      qpoint_label,
+      band_width,
+      slope,
+    } = (metadata ?? {}) as Partial<helpers.BandPointMeta>}
       {@const num_structs = Object.keys(band_structs_dict).length}
       {#if num_structs > 1 && label}<strong>{label}</strong><br />{/if}
       {y_label || `Value`}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
@@ -996,8 +997,8 @@
           font-size="10"
           fill="var(--text-color)"
         >
-          E<tspan dy="2" font-size="8">g</tspan>
-          <tspan dy="-2">: {Number(gap_data.gap.toPrecision(4))} eV</tspan>
+          E<tspan dy="2" font-size="8">g:</tspan>
+          <tspan dy="-2">{Number(gap_data.gap.toPrecision(4))} eV</tspan>
         </text>
       {/if}
     {/snippet}

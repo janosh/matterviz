@@ -1177,12 +1177,9 @@
             class="plot {scatter_props.class ?? ``}"
           >
             {#snippet tooltip({ x, y, metadata, label })}
+              {@const formatted_y = typeof y === `number` ? format_num(y) : y}
               Step: {Math.round(x)}<br />
-              {#if metadata?.series_label}
-                {@html metadata.series_label}: {typeof y === `number` ? format_num(y) : y}
-              {:else}
-                {label || `Value`}: {typeof y === `number` ? format_num(y) : y}
-              {/if}
+              {@html metadata?.series_label || label || `Value`}: {formatted_y}
             {/snippet}
           </ScatterPlot>
         {:else if display_mode === `histogram` || display_mode === `structure+histogram`}
