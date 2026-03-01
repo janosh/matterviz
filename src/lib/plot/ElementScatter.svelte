@@ -55,7 +55,8 @@
   {...rest}
 >
   {#snippet tooltip({ x, y })}
-    <strong>{x} - {element_data[x - 1]?.name}</strong><br />
-    {y_axis.label} = {format_num(y, y_axis.format ?? `~s`)}{y_unit ?? ``}
+    {@const elem = element_data[x - 1]}
+    <strong>{elem ? `${x} ${elem.symbol} - ${elem.name}` : `Element ${x}`}</strong><br />
+    {y_axis.label || `Value`}: {format_num(y, y_axis.format ?? `~s`)}{y_unit ?? ``}
   {/snippet}
 </ScatterPlot>

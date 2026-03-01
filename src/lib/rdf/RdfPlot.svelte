@@ -2,7 +2,7 @@
   import { PLOT_COLORS } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition'
   import { StatusMessage } from '$lib/feedback'
-  import { decompress_file, handle_url_drop } from '$lib/io'
+  import { create_file_drop_handler } from '$lib/io'
   import type { DataSeries } from '$lib/plot'
   import { ScatterPlot } from '$lib/plot'
   import type { Crystal, Pbc } from '$lib/structure'
@@ -53,46 +53,41 @@
     return formula && label_base ? `${formula}: ${label_base}` : formula || label_base
   }
 
-  async function handle_drop(event: DragEvent) {
-    event.preventDefault()
-    dragging = false
-    if (!enable_drop) return
-    loading = true
-    error_msg = undefined
-
-    const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
-      try {
-        const text = content instanceof ArrayBuffer
-          ? new TextDecoder().decode(content)
-          : content
-        const parsed_struct = parse_any_structure(text, filename)
-        if (is_crystal(parsed_struct)) {
-          drag_dropped = [...drag_dropped, parsed_struct]
-        } else error_msg = `Crystal has no lattice or sites; cannot compute RDF`
-      } catch (exc) {
-        error_msg = `Failed to process structure: ${
-          exc instanceof Error ? exc.message : String(exc)
-        }`
-      }
-    }
-
+  const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
     try {
-      const handled = await handle_url_drop(event, on_file_drop || compute_and_add)
-        .catch(() => false)
-      if (handled) return
-
-      const file = event.dataTransfer?.files?.[0]
-      if (file) {
-        const { content, filename } = await decompress_file(file)
-        if (content) (on_file_drop || compute_and_add)(content, filename)
+      const text = content instanceof ArrayBuffer
+        ? new TextDecoder().decode(content)
+        : content
+      const parsed_struct = parse_any_structure(text, filename)
+      if (is_crystal(parsed_struct)) {
+        drag_dropped = [...drag_dropped, parsed_struct]
+      } else {
+        error_msg = `Crystal has no lattice or sites; cannot compute RDF`
       }
     } catch (exc) {
-      error_msg = `Failed to load file: ${
+      error_msg = `Failed to process structure: ${
         exc instanceof Error ? exc.message : String(exc)
       }`
-    } finally {
-      loading = false
     }
+  }
+
+  const handle_drop = create_file_drop_handler({
+    allow: () => enable_drop,
+    on_drop: (content, filename) =>
+      (on_file_drop || compute_and_add)(content, filename),
+    on_error: (msg) => {
+      error_msg = msg
+    },
+    set_loading: (val) => {
+      loading = val
+      if (val) [error_msg, dragging] = [undefined, false]
+    },
+  })
+
+  function handle_dragover(ev: DragEvent) {
+    ev.preventDefault()
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = `copy`
+    dragging = true
   }
 
   const entries = $derived.by(() => {
@@ -177,11 +172,19 @@
 {/if}
 
 {#if series.length === 0}
-  <StatusMessage
-    message={enable_drop
-    ? `Drag and drop structure files here to visualize RDFs`
-    : `No RDF data to display`}
-  />
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="empty-drop {dragging ? `dragging` : ``}"
+    ondragover={enable_drop ? handle_dragover : undefined}
+    ondragleave={enable_drop ? () => (dragging = false) : undefined}
+    ondrop={enable_drop ? handle_drop : undefined}
+  >
+    <StatusMessage
+      message={enable_drop
+      ? `Drag and drop structure files here to visualize RDFs`
+      : `No RDF data to display`}
+    />
+  </div>
 {:else}
   <ScatterPlot
     {...rest}
@@ -191,13 +194,7 @@
     styles={{ show_lines: true, show_points: false }}
     class="{rest.class ?? ``} {dragging ? `dragging` : ``}"
     style={rest.style ?? `height: 400px;`}
-    ondragover={enable_drop
-    ? (ev) => {
-      ev.preventDefault()
-      if (ev.dataTransfer) ev.dataTransfer.dropEffect = `copy`
-      dragging = true
-    }
-    : undefined}
+    ondragover={enable_drop ? handle_dragover : undefined}
     ondragleave={enable_drop ? () => (dragging = false) : undefined}
     ondrop={enable_drop ? handle_drop : undefined}
   >
@@ -232,9 +229,15 @@
 {/if}
 
 <style>
-  :global(.dragging) {
+  :global(.dragging),
+  .empty-drop.dragging {
     outline: 2px dashed #4e79a7;
     outline-offset: 4px;
+  }
+  .empty-drop {
+    width: 100%;
+    padding: 2em;
+    box-sizing: border-box;
   }
   .dropped-info {
     padding: 0.5em;
