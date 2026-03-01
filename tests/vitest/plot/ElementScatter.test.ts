@@ -9,7 +9,7 @@ describe(`ElementScatter`, () => {
   const tooltip_text = async (
     props: Record<string, unknown>,
   ): Promise<string> => {
-    document.body.innerHTML = ``
+    document.body.replaceChildren()
     mount(ElementScatter, {
       target: document.body,
       props: { y: y_values, hovered: true, ...props },

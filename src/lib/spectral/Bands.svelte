@@ -898,20 +898,22 @@
         />
       {/each}
 
-      <!-- Fermi level line for electronic bands -->
+      <!-- Shared geometry for Fermi level and gap annotations -->
       {@const fermi_y = effective_fermi_level !== undefined
       ? y_scale_fn(effective_fermi_level)
       : NaN}
       {@const bands_x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
-      {@const gap_data_for_ef = electronic_gap_annotation}
-      {@const gap_mid_y_ef = gap_data_for_ef
-      ? (y_scale_fn(gap_data_for_ef.vbm) + y_scale_fn(gap_data_for_ef.cbm)) / 2
-      : NaN}
-      {@const ef_needs_offset = Number.isFinite(gap_mid_y_ef) &&
-      Number.isFinite(fermi_y) && Math.abs(fermi_y - gap_mid_y_ef) < 16}
+      {@const gap_data = electronic_gap_annotation}
+      {@const vbm_y = gap_data ? y_scale_fn(gap_data.vbm) : NaN}
+      {@const cbm_y = gap_data ? y_scale_fn(gap_data.cbm) : NaN}
+      {@const gap_mid_y = (vbm_y + cbm_y) / 2}
+      {@const ef_needs_offset = Number.isFinite(gap_mid_y) &&
+      Math.abs(fermi_y - gap_mid_y) < 16}
       {@const ef_label_y = ef_needs_offset
-      ? gap_mid_y_ef + (fermi_y >= gap_mid_y_ef ? 16 : -16)
+      ? gap_mid_y + (fermi_y >= gap_mid_y ? 16 : -16)
       : fermi_y}
+
+      <!-- Fermi level line for electronic bands -->
       {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
         <line
           class="fermi-level-line"
@@ -967,51 +969,26 @@
       {/if}
 
       <!-- Electronic band edge and gap annotation -->
-      {@const gap_data = electronic_gap_annotation}
-      {@const vbm_y = gap_data ? y_scale_fn(gap_data.vbm) : NaN}
-      {@const cbm_y = gap_data ? y_scale_fn(gap_data.cbm) : NaN}
       {#if gap_data && Number.isFinite(vbm_y) && Number.isFinite(cbm_y) &&
       Number.isFinite(bands_x_end)}
-        {@const gap_mid_y = (vbm_y + cbm_y) / 2}
-        <line
-          x1={pad.l}
-          x2={bands_x_end}
-          y1={vbm_y}
-          y2={vbm_y}
-          stroke="var(--bands-gap-vbm-color, light-dark(#1f77b4, #7db7ff))"
-          stroke-width="var(--bands-gap-line-width, 1)"
-          stroke-dasharray="var(--bands-gap-line-dash, 2,2)"
-          opacity="0.7"
-        />
-        <line
-          x1={pad.l}
-          x2={bands_x_end}
-          y1={cbm_y}
-          y2={cbm_y}
-          stroke="var(--bands-gap-cbm-color, light-dark(#2ca02c, #7ddc7d))"
-          stroke-width="var(--bands-gap-line-width, 1)"
-          stroke-dasharray="var(--bands-gap-line-dash, 2,2)"
-          opacity="0.7"
-        />
-        <!-- Small ticks at VBM and CBM on the right edge to show E_g range -->
-        <line
-          x1={bands_x_end}
-          x2={bands_x_end + 3}
-          y1={vbm_y}
-          y2={vbm_y}
-          stroke="var(--text-color)"
-          stroke-width="1"
-          opacity="0.5"
-        />
-        <line
-          x1={bands_x_end}
-          x2={bands_x_end + 3}
-          y1={cbm_y}
-          y2={cbm_y}
-          stroke="var(--text-color)"
-          stroke-width="1"
-          opacity="0.5"
-        />
+        {#each [
+      [vbm_y, `var(--bands-gap-vbm-color, light-dark(#1f77b4, #7db7ff))`],
+      [cbm_y, `var(--bands-gap-cbm-color, light-dark(#2ca02c, #7ddc7d))`],
+    ] as [number, string][] as
+          [edge_y, color]
+          (edge_y)
+        }
+          <line
+            x1={pad.l}
+            x2={bands_x_end + 3}
+            y1={edge_y}
+            y2={edge_y}
+            stroke={color}
+            stroke-width="var(--bands-gap-line-width, 1)"
+            stroke-dasharray="var(--bands-gap-line-dash, 2,2)"
+            opacity="0.7"
+          />
+        {/each}
         <text
           x={bands_x_end + 4}
           y={gap_mid_y}

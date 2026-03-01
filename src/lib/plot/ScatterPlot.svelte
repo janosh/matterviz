@@ -2566,8 +2566,8 @@
           {@html point_label?.text ? `${point_label.text}<br />` : ``}
           {hp.x_axis.label || `x`}: {hp.x_formatted}<br />
           {hp.y_axis.label || `y`}: {hp.y_formatted}
-          {#if hp.colorbar?.value != null && hp.colorbar.title}
-            <br />{hp.colorbar.title}: {
+          {#if hp.colorbar?.value != null}
+            <br />{hp.colorbar.title || `Color`}: {
               format_value(hp.colorbar.value, hp.colorbar.tick_format || `.3~g`)
             }
           {/if}

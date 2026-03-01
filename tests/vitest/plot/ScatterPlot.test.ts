@@ -96,7 +96,7 @@ describe(`ScatterPlot`, () => {
 
   describe(`default tooltip content`, () => {
     const tooltip_text = async (props: Record<string, unknown>): Promise<string> => {
-      document.body.innerHTML = ``
+      document.body.replaceChildren()
       mount(ScatterPlot, { target: document.body, props: { hovered: true, ...props } })
       await tick()
       return document.querySelector(`.plot-tooltip`)?.textContent ?? ``
@@ -130,14 +130,22 @@ describe(`ScatterPlot`, () => {
       expect(single).not.toContain(`Only`)
     })
 
-    test(`shows color value when colorbar has title`, async () => {
-      const text = await tooltip_text({
+    test(`shows color value with title, falls back to "Color"`, async () => {
+      const with_title = await tooltip_text({
         series: [{ x: [1, 2, 3], y: [10, 20, 30], color_values: [100, 200, 300] }],
         color_bar: { title: `Temperature` },
         tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1, color_value: 200 },
       })
-      expect(text).toContain(`Temperature`)
-      expect(text).toContain(`200`)
+      expect(with_title).toContain(`Temperature`)
+      expect(with_title).toContain(`200`)
+
+      const no_title = await tooltip_text({
+        series: [{ x: [1, 2, 3], y: [10, 20, 30], color_values: [100, 200, 300] }],
+        color_bar: {},
+        tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1, color_value: 200 },
+      })
+      expect(no_title).toContain(`Color`)
+      expect(no_title).toContain(`200`)
     })
   })
 
