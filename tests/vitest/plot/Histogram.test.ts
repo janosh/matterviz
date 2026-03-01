@@ -1,6 +1,6 @@
 import { Histogram } from '$lib'
 import { bin, max as d3max } from 'd3-array'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 function mount_histogram(props: Record<string, unknown>) {
@@ -39,7 +39,7 @@ describe(`Histogram`, () => {
     },
   ])(`$name`, async ({ series, bins, expected_min_max }) => {
     mount_histogram({ series, bins })
-    await Promise.resolve()
+    await tick()
     const ticks = get_y_tick_numbers()
     expect(ticks.length).toBeGreaterThan(0)
     const max_tick = Math.max(...ticks)
@@ -55,7 +55,7 @@ describe(`Histogram`, () => {
       ],
       bins: 5,
     })
-    await Promise.resolve()
+    await tick()
     const ticks = get_y_tick_numbers()
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeGreaterThanOrEqual(5)
@@ -65,12 +65,12 @@ describe(`Histogram`, () => {
     const series = [{ x: [], y: [1, 2, 3, 4, 5, 6, 7, 8, 9], label: `A` }]
 
     mount_histogram({ series, bins: 9 })
-    await Promise.resolve()
+    await tick()
     const ticks_many = get_y_tick_numbers()
     const max_many = Math.max(...ticks_many)
 
     mount_histogram({ series, bins: 3 })
-    await Promise.resolve()
+    await tick()
     const ticks_few = get_y_tick_numbers()
     const max_few = Math.max(...ticks_few)
 
@@ -79,7 +79,7 @@ describe(`Histogram`, () => {
 
   test(`y_range caps auto count domain`, async () => {
     mount_histogram({ series: [{ x: [], y: [1, 1, 1, 1, 1] }], bins: 5, y_range: [0, 3] })
-    await Promise.resolve()
+    await tick()
     const ticks = get_y_tick_numbers()
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeLessThanOrEqual(3)
@@ -89,7 +89,7 @@ describe(`Histogram`, () => {
     const series = [{ x: [], y: [0, 0, 1, 1, 1, 2, 2, 10, 10, 10], label: `A` }]
 
     mount_histogram({ series, bins: 5 })
-    await Promise.resolve()
+    await tick()
     const ticks_full = get_y_tick_numbers()
     const full_max = Math.max(...ticks_full)
     const full_hist = bin().thresholds(5)(series[0].y)
@@ -97,7 +97,7 @@ describe(`Histogram`, () => {
     expect(full_max).toBeGreaterThanOrEqual(full_expected)
 
     mount_histogram({ series, bins: 5, x_range: [0, 3] })
-    await Promise.resolve()
+    await tick()
     const ticks_zoom = get_y_tick_numbers()
     const zoom_max = Math.max(...ticks_zoom)
     const zoom_hist = bin().domain([0, 3]).thresholds(5)(series[0].y)
@@ -112,13 +112,13 @@ describe(`Histogram`, () => {
       y_axis: { scale_type: `log`, format: `.2r` },
       y_range: [1, null],
     })
-    await Promise.resolve()
+    await tick()
     const ticks = get_y_tick_numbers()
     // log scale should not include non-positive ticks
     expect(Math.min(...ticks)).toBeGreaterThan(0)
   })
 
-  test(`mounts with x2-axis series without error`, () => {
+  test(`mounts with x2-axis series and renders x2 axis`, async () => {
     mount_histogram({
       series: [
         { x: [0, 1, 2], y: [70, 72, 68], label: `Mass (kg)` },
@@ -127,7 +127,12 @@ describe(`Histogram`, () => {
       x2_axis: { label: `Mass (lbs)` },
       mode: `overlay`,
     })
+    await tick()
     expect(document.querySelector(`.histogram`)).toBeTruthy()
+    expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
+    expect(document.querySelector(`.x2-label`)?.textContent).toBe(
+      `Mass (lbs)`,
+    )
   })
 
   test(`renders without error when legend prop is null`, async () => {
@@ -140,7 +145,7 @@ describe(`Histogram`, () => {
       legend: null,
       show_legend: true,
     })
-    await Promise.resolve()
+    await tick()
     // Verify component mounted without crashing
     expect(document.querySelector(`.histogram`)).toBeTruthy()
   })

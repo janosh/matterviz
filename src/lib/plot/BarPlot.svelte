@@ -232,7 +232,7 @@
     format: ``,
     scale_type: `linear`,
     ticks: 5,
-    label_shift: { x: 0, y: 0 },
+    label_shift: { x: 0, y: 40 },
     tick: { label: { shift: { x: 0, y: 0 } } },
     range: [null, null],
     ...x2_axis,
