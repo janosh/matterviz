@@ -1,6 +1,7 @@
 <script lang="ts">
   import { PLOT_COLORS } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
+  import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
@@ -90,7 +91,6 @@
   function get_line_style(
     color: string,
     is_acoustic: boolean,
-    mode_type: `acoustic` | `optical`,
     frequencies: number[],
     band_idx: number,
   ): { stroke: string; stroke_width: number } {
@@ -105,7 +105,8 @@
     }
 
     if (typeof line_kwargs === `object` && line_kwargs !== null) {
-      const mode_kwargs = (line_kwargs as Record<string, unknown>)[mode_type] as
+      const mode_key = is_acoustic ? `acoustic` : `optical`
+      const mode_kwargs = (line_kwargs as Record<string, unknown>)[mode_key] as
         | Record<string, unknown>
         | undefined
       const source = (mode_kwargs ?? line_kwargs) as Record<string, unknown>
@@ -343,6 +344,9 @@
     for (const [bs_idx, [label, bs]] of Object.entries(band_structs_dict).entries()) {
       const color = PLOT_COLORS[bs_idx % PLOT_COLORS.length]
       const structure_label = label || `Structure ${bs_idx + 1}`
+      const gamma_indices = detected_band_type === `phonon`
+        ? helpers.find_gamma_indices(bs)
+        : []
 
       for (const branch of bs.branches) {
         const start_idx = branch.start_index
@@ -372,14 +376,12 @@
           const frequencies = convert_band_values(
             bs.bands[band_idx].slice(start_idx, end_idx),
           )
-          const is_acoustic = detected_band_type === `phonon` &&
-            band_idx < helpers.N_ACOUSTIC_MODES
-          const mode_type = is_acoustic ? `acoustic` : `optical`
+          const is_acoustic = helpers.classify_acoustic(bs, band_idx, gamma_indices)
+          const acoustic = is_acoustic === true
 
           const line_style_up = get_line_style(
             color,
-            is_acoustic,
-            mode_type,
+            acoustic,
             frequencies,
             band_idx,
           )
@@ -398,7 +400,15 @@
                 ? `${structure_label} (↑)`
                 : structure_label,
               line_style: line_style_up,
-              metadata: { band_idx, spin: `up` },
+              metadata: helpers.build_point_metadata(
+                scaled_distances,
+                frequencies,
+                band_idx,
+                `up`,
+                is_acoustic,
+                bs,
+                start_idx,
+              ),
             })
           }
 
@@ -416,7 +426,15 @@
                 line_dash: `4,2`,
                 stroke_width: Math.max(1, line_style_up.stroke_width - 0.1),
               },
-              metadata: { band_idx, spin: `down` },
+              metadata: helpers.build_point_metadata(
+                scaled_distances,
+                spin_down_frequencies,
+                band_idx,
+                `down`,
+                is_acoustic,
+                bs,
+                start_idx,
+              ),
             })
           }
         }
@@ -424,6 +442,20 @@
     }
 
     return all_series
+  })
+
+  // Max absolute slope across all bands, used to normalize dispersion labels
+  let max_abs_slope = $derived.by(() => {
+    let max_slope = 0
+    for (const series of series_data) {
+      if (!Array.isArray(series.metadata)) continue
+      for (const { slope } of series.metadata as { slope?: number }[]) {
+        if (typeof slope === `number` && Number.isFinite(slope)) {
+          max_slope = Math.max(max_slope, Math.abs(slope))
+        }
+      }
+    }
+    return max_slope || 1
   })
 
   // Compute ribbon data for bands with width information
@@ -698,7 +730,7 @@
     controls={{ show: show_controls }}
     {...rest}
   >
-    {#snippet tooltip({ x, y_formatted, label, metadata })}
+    {#snippet tooltip({ x, y, y_formatted, label, metadata })}
       {@const y_label_full = internal_y_axis.label ?? ``}
       {@const [, y_label, y_unit] = y_label_full.match(/^(.+?)\s*\(([^)]+)\)$/) ??
       [, y_label_full, ``]}
@@ -710,13 +742,44 @@
     ).filter(Boolean).join(` → `) || null}
       {@const band_idx = metadata?.band_idx}
       {@const spin = metadata?.spin}
+      {@const is_acoustic = metadata?.is_acoustic}
+      {@const nb_bands = metadata?.nb_bands}
+      {@const frac_coords = metadata?.frac_coords}
+      {@const qpoint_label = metadata?.qpoint_label}
+      {@const band_width = metadata?.band_width}
+      {@const slope = metadata?.slope}
       {@const num_structs = Object.keys(band_structs_dict).length}
       {#if num_structs > 1 && label}<strong>{label}</strong><br />{/if}
       {y_label || `Value`}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
       {#if path}Path: {path}<br />{/if}
-      {#if typeof band_idx === `number`}Band: {band_idx + 1}{/if}
-      {#if spin === `up` || spin === `down`}
-        ({spin === `up` ? `↑` : `↓`}){/if}
+      {#if typeof band_idx === `number`}
+        Band: {band_idx + 1}{#if typeof nb_bands === `number`}&thinsp;/&thinsp;{
+            nb_bands
+          }{/if}
+        {#if typeof is_acoustic === `boolean`}
+          ({is_acoustic ? `acoustic` : `optical`})
+        {:else if detected_band_type === `electronic` && effective_fermi_level !== undefined}
+          ({y <= effective_fermi_level ? `valence` : `conduction`})
+        {/if}
+        {#if spin === `up` || spin === `down`}
+          {spin === `up` ? `↑` : `↓`}
+        {/if}
+      {/if}
+      {#if typeof qpoint_label === `string` && qpoint_label}
+        <br />At: {helpers.pretty_sym_point(qpoint_label)}
+      {/if}
+      {#if Array.isArray(frac_coords)}
+        <br />q: [{
+          frac_coords.map((coord: number) => format_num(coord, `.3f`)).join(`, `)
+        }]
+      {/if}
+      {#if typeof band_width === `number` && band_width > 0}
+        <br />Projection: {format_num(band_width, `.3~g`)}
+      {/if}
+      {#if typeof slope === `number` && Number.isFinite(slope)}
+        {@const rel = Math.abs(slope) / max_abs_slope}
+        <br />Dispersion: {rel < 0.15 ? `flat` : rel < 0.5 ? `moderate` : `steep`}
+      {/if}
     {/snippet}
 
     {#snippet controls_extra()}
@@ -840,6 +903,15 @@
       ? y_scale_fn(effective_fermi_level)
       : NaN}
       {@const bands_x_end = x_scale_fn(Object.values(x_positions ?? {}).flat().at(-1) ?? 1)}
+      {@const gap_data_for_ef = electronic_gap_annotation}
+      {@const gap_mid_y_ef = gap_data_for_ef
+      ? (y_scale_fn(gap_data_for_ef.vbm) + y_scale_fn(gap_data_for_ef.cbm)) / 2
+      : NaN}
+      {@const ef_needs_offset = Number.isFinite(gap_mid_y_ef) &&
+      Number.isFinite(fermi_y) && Math.abs(fermi_y - gap_mid_y_ef) < 16}
+      {@const ef_label_y = ef_needs_offset
+      ? gap_mid_y_ef + (fermi_y >= gap_mid_y_ef ? 16 : -16)
+      : fermi_y}
       {#if Number.isFinite(fermi_y) && Number.isFinite(bands_x_end)}
         <line
           class="fermi-level-line"
@@ -852,10 +924,21 @@
           stroke-dasharray="var(--bands-fermi-line-dash, 6,3)"
           opacity="var(--bands-fermi-line-opacity, 0.8)"
         />
+        {#if ef_needs_offset}
+          <line
+            x1={bands_x_end}
+            y1={fermi_y}
+            x2={bands_x_end + 3}
+            y2={ef_label_y}
+            stroke="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
+            stroke-width="0.7"
+            opacity="0.5"
+          />
+        {/if}
         <text
           class="fermi-level-label"
           x={bands_x_end + 4}
-          y={fermi_y}
+          y={ef_label_y}
           dy="0.35em"
           font-size="10"
           fill="var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))"
@@ -889,6 +972,7 @@
       {@const cbm_y = gap_data ? y_scale_fn(gap_data.cbm) : NaN}
       {#if gap_data && Number.isFinite(vbm_y) && Number.isFinite(cbm_y) &&
       Number.isFinite(bands_x_end)}
+        {@const gap_mid_y = (vbm_y + cbm_y) / 2}
         <line
           x1={pad.l}
           x2={bands_x_end}
@@ -909,14 +993,34 @@
           stroke-dasharray="var(--bands-gap-line-dash, 2,2)"
           opacity="0.7"
         />
+        <!-- Small ticks at VBM and CBM on the right edge to show E_g range -->
+        <line
+          x1={bands_x_end}
+          x2={bands_x_end + 3}
+          y1={vbm_y}
+          y2={vbm_y}
+          stroke="var(--text-color)"
+          stroke-width="1"
+          opacity="0.5"
+        />
+        <line
+          x1={bands_x_end}
+          x2={bands_x_end + 3}
+          y1={cbm_y}
+          y2={cbm_y}
+          stroke="var(--text-color)"
+          stroke-width="1"
+          opacity="0.5"
+        />
         <text
-          x={bands_x_end + 6}
-          y={(vbm_y + cbm_y) / 2}
-          dominant-baseline="middle"
+          x={bands_x_end + 4}
+          y={gap_mid_y}
+          dy="0.35em"
           font-size="10"
           fill="var(--text-color)"
         >
-          E<tspan dy="2" font-size="8">g</tspan>: {Number(gap_data.gap.toPrecision(4))} eV
+          E<tspan dy="2" font-size="8">g</tspan>
+          <tspan dy="-2">: {Number(gap_data.gap.toPrecision(4))} eV</tspan>
         </text>
       {/if}
     {/snippet}

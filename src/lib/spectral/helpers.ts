@@ -79,7 +79,6 @@ const THz_TO_HA = THz_TO_EV / 27.211386245988 // Hartree
 const THz_TO_CM = THz_TO_HZ / (C_LIGHT * 100) // cm^-1 (c in cm/s)
 
 // Band structure constants
-export const N_ACOUSTIC_MODES = 3 // Number of acoustic modes in typical 3D crystals
 export const IMAGINARY_MODE_NOISE_THRESHOLD = 0.005 // Clamp negatives < 0.5% as noise
 
 // Convert symmetry point symbols to pretty-printed versions.
@@ -1274,4 +1273,81 @@ export function validate_sigma_range([min, max]: [number, number]): [number, num
 export function calculate_sigma_step(range: [number, number]): number {
   const [min, max] = validate_sigma_range(range)
   return (max - min) / 100 || 0.01
+}
+
+// === Band Tooltip Helpers ===
+
+// Central difference for local slope (dω/dk or dE/dk).
+// Uses forward/backward difference at endpoints, central difference for interior points.
+export function compute_slope(
+  y_vals: number[],
+  x_vals: number[],
+  idx: number,
+): number | null {
+  if (y_vals.length < 2) return null
+  if (idx === 0) {
+    const dx = x_vals[1] - x_vals[0]
+    return dx ? (y_vals[1] - y_vals[0]) / dx : null
+  }
+  if (idx === y_vals.length - 1) {
+    const dx = x_vals[idx] - x_vals[idx - 1]
+    return dx ? (y_vals[idx] - y_vals[idx - 1]) / dx : null
+  }
+  const dx = x_vals[idx + 1] - x_vals[idx - 1]
+  return dx ? (y_vals[idx + 1] - y_vals[idx - 1]) / dx : null
+}
+
+// Find Gamma-point indices (q ≈ integer lattice point) in a band structure.
+// Returns indices of q-points whose fractional coordinates are all within 0.01 of integers.
+export function find_gamma_indices(bs: types.BaseBandStructure): number[] {
+  const indices: number[] = []
+  for (let qi = 0; qi < bs.qpoints.length; qi++) {
+    const coords = bs.qpoints[qi]?.frac_coords
+    if (coords?.every((coord) => Math.abs(coord - Math.round(coord)) < 0.01)) {
+      indices.push(qi)
+    }
+  }
+  return indices
+}
+
+// Threshold below which a band's frequency at Gamma is considered acoustic (THz)
+export const ACOUSTIC_FREQ_THRESHOLD = 0.5
+
+// Classify a band as acoustic based on near-zero frequency at Gamma points.
+// Returns true (acoustic), false (optical), or null (no Gamma points → can't determine).
+export function classify_acoustic(
+  bs: types.BaseBandStructure,
+  band_idx: number,
+  gamma_indices: number[],
+): boolean | null {
+  if (gamma_indices.length === 0) return null
+  return gamma_indices.some(
+    (gi) => Math.abs(bs.bands[band_idx]?.[gi] ?? Infinity) < ACOUSTIC_FREQ_THRESHOLD,
+  )
+}
+
+// Build per-point metadata array for a band series in the tooltip.
+export function build_point_metadata(
+  scaled_distances: number[],
+  frequencies: number[],
+  band_idx: number,
+  spin: `up` | `down`,
+  is_acoustic: boolean | null,
+  bs: types.BaseBandStructure,
+  start_idx: number,
+): Record<string, unknown>[] {
+  return scaled_distances.map((_, pt_idx) => {
+    const global_idx = start_idx + pt_idx
+    const qpoint = bs.qpoints[global_idx]
+    return {
+      band_idx,
+      spin,
+      is_acoustic,
+      nb_bands: bs.nb_bands,
+      frac_coords: qpoint?.frac_coords ?? null,
+      qpoint_label: qpoint?.label ?? null,
+      band_width: bs.band_widths?.[band_idx]?.[global_idx] ?? null,
+      slope: compute_slope(frequencies, scaled_distances, pt_idx),
+    }
+  })
 }
