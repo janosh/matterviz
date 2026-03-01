@@ -1154,66 +1154,7 @@
     <!-- Reference lines: below lines -->
     {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
-    <!-- Histogram bars (rendered before axes so tick labels appear on top) -->
-    {#each histogram_data as
-      { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis },
-      series_idx
-      (id ?? series_idx)
-    }
-      <g class="histogram-series" data-series-idx={series_idx}>
-        {#each bins as bin, bin_idx (bin_idx)}
-          {@const bar_x = x_scale(bin.x0!)}
-          {@const bar_width = Math.max(1, Math.abs(x_scale(bin.x1!) - bar_x))}
-          {@const bar_height = Math.max(0, (height - pad.b) - y_scale(bin.length))}
-          {@const bar_y = y_scale(bin.length)}
-          {@const value = (bin.x0! + bin.x1!) / 2}
-          {#if bar_height > 0}
-            <path
-              d={bar_path(
-                bar_x,
-                bar_y,
-                bar_width,
-                bar_height,
-                Math.min(final_bar.border_radius ?? 0, bar_width / 2, bar_height / 2),
-              )}
-              fill={color}
-              opacity={final_bar.opacity}
-              stroke={final_bar.stroke_color}
-              stroke-opacity={final_bar.stroke_opacity}
-              stroke-width={final_bar.stroke_width}
-              role="button"
-              tabindex="0"
-              onmousemove={(evt) =>
-              handle_mouse_move(
-                evt,
-                value,
-                bin.length,
-                label,
-                (y_axis ?? `y1`) as `y1` | `y2`,
-                series_idx,
-                (srs_x_axis ?? `x1`) as `x1` | `x2`,
-              )}
-              onmouseleave={() => {
-                hover_info = null
-                change(null)
-                on_bar_hover?.(null)
-              }}
-              onclick={(event) =>
-              on_bar_click?.({ value, count: bin.length, property: label, event })}
-              onkeydown={(event: KeyboardEvent) => {
-                if ([`Enter`, ` `].includes(event.key)) {
-                  event.preventDefault()
-                  on_bar_click?.({ value, count: bin.length, property: label, event })
-                }
-              }}
-              style:cursor={on_bar_click ? `pointer` : undefined}
-            />
-          {/if}
-        {/each}
-      </g>
-    {/each}
-
-    <!-- Reference lines: below points (after bars, before axes/labels) -->
+    <!-- Reference lines: below points -->
     {@render ref_lines_layer(ref_lines_by_z.below_points)}
 
     <!-- X-axis -->
@@ -1484,6 +1425,65 @@
         {/if}
       </g>
     {/if}
+
+    <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
+    {#each histogram_data as
+      { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis },
+      series_idx
+      (id ?? series_idx)
+    }
+      <g class="histogram-series" data-series-idx={series_idx}>
+        {#each bins as bin, bin_idx (bin_idx)}
+          {@const bar_x = x_scale(bin.x0!)}
+          {@const bar_width = Math.max(1, Math.abs(x_scale(bin.x1!) - bar_x))}
+          {@const bar_height = Math.max(0, (height - pad.b) - y_scale(bin.length))}
+          {@const bar_y = y_scale(bin.length)}
+          {@const value = (bin.x0! + bin.x1!) / 2}
+          {#if bar_height > 0}
+            <path
+              d={bar_path(
+                bar_x,
+                bar_y,
+                bar_width,
+                bar_height,
+                Math.min(final_bar.border_radius ?? 0, bar_width / 2, bar_height / 2),
+              )}
+              fill={color}
+              opacity={final_bar.opacity}
+              stroke={final_bar.stroke_color}
+              stroke-opacity={final_bar.stroke_opacity}
+              stroke-width={final_bar.stroke_width}
+              role="button"
+              tabindex="0"
+              onmousemove={(evt) =>
+              handle_mouse_move(
+                evt,
+                value,
+                bin.length,
+                label,
+                (y_axis ?? `y1`) as `y1` | `y2`,
+                series_idx,
+                (srs_x_axis ?? `x1`) as `x1` | `x2`,
+              )}
+              onmouseleave={() => {
+                hover_info = null
+                change(null)
+                on_bar_hover?.(null)
+              }}
+              onclick={(event) =>
+              on_bar_click?.({ value, count: bin.length, property: label, event })}
+              onkeydown={(event: KeyboardEvent) => {
+                if ([`Enter`, ` `].includes(event.key)) {
+                  event.preventDefault()
+                  on_bar_click?.({ value, count: bin.length, property: label, event })
+                }
+              }}
+              style:cursor={on_bar_click ? `pointer` : undefined}
+            />
+          {/if}
+        {/each}
+      </g>
+    {/each}
 
     <!-- Reference lines: above all -->
     {@render ref_lines_layer(ref_lines_by_z.above_all)}

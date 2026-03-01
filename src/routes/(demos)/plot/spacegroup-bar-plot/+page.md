@@ -90,10 +90,17 @@ Display spacegroup distributions horizontally:
   )
 </script>
 
-<div style="margin-bottom: 1em; display: flex; gap: 1em">
-  <label><input type="radio" bind:group={orientation} value="vertical" /> Vertical</label>
-  <label><input type="radio" bind:group={orientation} value="horizontal" />
-    Horizontal</label>
+<div style="margin-bottom: 1em; display: flex; gap: 1em; align-items: center">
+  <label style="display: flex; align-items: center; gap: 4px"><input
+      type="radio"
+      bind:group={orientation}
+      value="vertical"
+    /> Vertical</label>
+  <label style="display: flex; align-items: center; gap: 4px"><input
+      type="radio"
+      bind:group={orientation}
+      value="horizontal"
+    /> Horizontal</label>
 </div>
 
 <SpacegroupBarPlot

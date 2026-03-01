@@ -60,11 +60,22 @@ Compare overlay, stacked, and grouped (side-by-side) modes using band gap data f
   let mode = $state(`grouped`)
 </script>
 
-<div style="margin-bottom: 1em; display: flex; gap: 1em">
-  <label><input type="radio" bind:group={mode} value="overlay" /> Overlay</label>
-  <label><input type="radio" bind:group={mode} value="stacked" /> Stacked (Sum)</label>
-  <label><input type="radio" bind:group={mode} value="grouped" /> Grouped
-    (Side-by-Side)</label>
+<div style="margin-bottom: 1em; display: flex; gap: 1em; align-items: center">
+  <label style="display: flex; align-items: center; gap: 4px"><input
+      type="radio"
+      bind:group={mode}
+      value="overlay"
+    /> Overlay</label>
+  <label style="display: flex; align-items: center; gap: 4px"><input
+      type="radio"
+      bind:group={mode}
+      value="stacked"
+    /> Stacked (Sum)</label>
+  <label style="display: flex; align-items: center; gap: 4px"><input
+      type="radio"
+      bind:group={mode}
+      value="grouped"
+    /> Grouped (Side-by-Side)</label>
 </div>
 
 <BarPlot

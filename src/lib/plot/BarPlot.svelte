@@ -232,7 +232,7 @@
     format: ``,
     scale_type: `linear`,
     ticks: 5,
-    label_shift: { x: 0 },
+    label_shift: { x: 0, y: 0 },
     tick: { label: { shift: { x: 0, y: 0 } } },
     range: [null, null],
     ...x2_axis,
@@ -1476,7 +1476,7 @@
             {@const { label_shift, label = ``, options, selected_key, color } = x2_axis}
             <AxisLabel
               x={pad.l + chart_width / 2 + (label_shift?.x ?? 0)}
-              y={Math.max(6, pad.t / 3) + (label_shift?.y ?? 0)}
+              y={Math.max(12, pad.t - (label_shift?.y ?? 40))}
               {label}
               {options}
               {selected_key}
