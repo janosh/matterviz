@@ -462,6 +462,106 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(y2_axis).toBeVisible()
   })
 
+  // CATEGORICAL BAR CHART TESTS
+
+  test(`categorical bar chart renders bars with category tick labels`, async ({ page }) => {
+    const plot = page.locator(`#categorical-bar .bar-plot`)
+    await plot.scrollIntoViewIfNeeded()
+    await expect(plot).toBeVisible()
+
+    // Bars should render
+    const bars = plot.locator(`svg path[aria-label^="bar "]`)
+    await expect(bars.first()).toBeVisible()
+
+    // X-axis should show category labels, not numeric indices
+    const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
+    expect(x_ticks).toContain(`Si`)
+    expect(x_ticks).toContain(`GaAs`)
+    expect(x_ticks).toContain(`Diamond`)
+    expect(x_ticks).toContain(`CdTe`)
+    // Should NOT show numeric indices
+    expect(x_ticks).not.toContain(`0`)
+    expect(x_ticks).not.toContain(`5`)
+  })
+
+  test(`categorical stacked has correct tick count and y-range from zero-padding`, async ({ page }) => {
+    const plot = page.locator(`#categorical-stacked .bar-plot`)
+    await plot.scrollIntoViewIfNeeded()
+    await expect(plot).toBeVisible()
+    await expect(plot.locator(`svg path[aria-label^="bar "]`).first()).toBeVisible()
+
+    // Union of all categories: Si, GaAs, GaN, ZnO, Diamond, CdTe = 6 ticks
+    const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
+    expect(x_ticks.length).toBe(6)
+
+    // Padding uses y=0 for missing categories — y-range should stay reasonable
+    const y_values = (await plot.locator(`g.y-axis .tick text`).allTextContents())
+      .map(Number).filter(Number.isFinite)
+    const y_max = Math.max(...y_values)
+    expect(y_max).toBeLessThan(20)
+    expect(y_max).toBeGreaterThan(0)
+  })
+
+  test(`categorical horizontal shows categories on y-axis`, async ({ page }) => {
+    const plot = page.locator(`#categorical-horizontal .bar-plot`)
+    await plot.scrollIntoViewIfNeeded()
+    await expect(plot).toBeVisible()
+
+    const bars = plot.locator(`svg path[aria-label^="bar "]`)
+    await expect(bars.first()).toBeVisible()
+
+    // In horizontal orientation, category labels should be on the y-axis
+    const y_ticks = await plot.locator(`g.y-axis .tick text`).allTextContents()
+    expect(y_ticks).toContain(`Si`)
+    expect(y_ticks).toContain(`Diamond`)
+
+    // X-axis should show numeric value ticks, not categories
+    const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
+    expect(x_ticks).not.toContain(`Si`)
+    expect(x_ticks).not.toContain(`Diamond`)
+  })
+
+  test(`categorical custom order respects x_axis.categories`, async ({ page }) => {
+    const plot = page.locator(`#categorical-custom-order .bar-plot`)
+    await plot.scrollIntoViewIfNeeded()
+    await expect(plot).toBeVisible()
+
+    const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
+    // Custom order: Diamond, GaN, Si, GaAs (4 categories, filtered subset)
+    expect(x_ticks.length).toBe(4)
+    expect(x_ticks[0]).toBe(`Diamond`)
+    expect(x_ticks[1]).toBe(`GaN`)
+    expect(x_ticks[2]).toBe(`Si`)
+    expect(x_ticks[3]).toBe(`GaAs`)
+  })
+
+  test(`categorical tooltip and handlers show category_label`, async ({ page }) => {
+    const section = page.locator(`#categorical-handlers`)
+    const plot = section.locator(`.bar-plot`)
+    await plot.scrollIntoViewIfNeeded()
+    await expect(plot).toBeVisible()
+
+    const bar = plot.locator(`svg path[aria-label^="bar "]`).first()
+    await bar.hover()
+
+    // Tooltip should show element name, not a number
+    const tooltip = plot.locator(`.plot-tooltip`)
+    await expect(tooltip).toBeVisible({ timeout: 5000 })
+    expect(await tooltip.textContent()).toMatch(/Oxygen|Silicon|Aluminum|Iron/)
+
+    // Handler hover message should contain the category label
+    const info = section.locator(`.categorical-handler-info`)
+    const hover_p = info.locator(`p`).first()
+    await expect(hover_p).toContainText(`Hovering:`, { timeout: 5000 })
+    expect(await hover_p.textContent()).toMatch(/Oxygen|Silicon|Aluminum|Iron/)
+
+    // Click handler should also have category label
+    await bar.click()
+    const click_p = info.locator(`p`).last()
+    await expect(click_p).toContainText(`Clicked:`)
+    expect(await click_p.textContent()).toMatch(/Oxygen|Silicon|Aluminum|Iron/)
+  })
+
   // PAN FUNCTIONALITY TESTS
 
   test(`Shift+drag pans the bar plot instead of zooming`, async ({ page }) => {

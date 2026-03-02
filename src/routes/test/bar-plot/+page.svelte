@@ -224,6 +224,39 @@
     },
   ]
 
+  // Categorical bar chart series — string x values with different categories per series
+  const categorical_series: BarSeries[] = [
+    {
+      x: [`Si`, `GaAs`, `GaN`, `ZnO`, `Diamond`],
+      y: [1.12, 1.43, 3.4, 3.37, 5.47],
+      label: `Experimental`,
+      color: `#4c6ef5`,
+    },
+    {
+      x: [`Si`, `GaAs`, `GaN`, `ZnO`, `Diamond`, `CdTe`],
+      y: [0.56, 0.55, 1.87, 0.73, 4.14, 0.58],
+      label: `DFT (PBE)`,
+      color: `#e15759`,
+    },
+    {
+      x: [`Si`, `GaAs`, `Diamond`],
+      y: [1.17, 1.52, 5.48],
+      label: `GW`,
+      color: `#59a14f`,
+    },
+  ]
+
+  const categorical_single_series: BarSeries[] = [
+    {
+      x: [`Oxygen`, `Silicon`, `Aluminum`, `Iron`],
+      y: [461000, 277200, 82300, 50000],
+      label: `Abundance`,
+      color: `#845ef7`,
+    },
+  ]
+  let cat_hover_msg = $state(`Hover over a bar`)
+  let cat_click_msg = $state(`Click on a bar`)
+
   // X2 axis demo — two series with different x scales (e.g. Celsius vs Fahrenheit)
   const x2_axis_series: BarSeries[] = [
     {
@@ -427,4 +460,78 @@
     controls_toggle_props={{ class: `bar-controls-toggle` }}
     style="height: 360px"
   />
+</section>
+
+<section id="categorical-bar">
+  <h2>Categorical Bar Charts</h2>
+  <BarPlot
+    series={categorical_series}
+    x_axis={{ label: `Material` }}
+    y_axis={{ label: `Band Gap (eV)` }}
+    mode="grouped"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+</section>
+
+<section id="categorical-stacked">
+  <h2>Categorical Stacked</h2>
+  <BarPlot
+    series={categorical_series}
+    x_axis={{ label: `Material` }}
+    y_axis={{ label: `Band Gap (eV)` }}
+    mode="stacked"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+</section>
+
+<section id="categorical-horizontal">
+  <h2>Categorical Horizontal</h2>
+  <BarPlot
+    series={categorical_series}
+    x_axis={{ label: `Material` }}
+    y_axis={{ label: `Band Gap (eV)` }}
+    mode="grouped"
+    orientation="horizontal"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+</section>
+
+<section id="categorical-custom-order">
+  <h2>Categorical Custom Order</h2>
+  <BarPlot
+    series={categorical_series}
+    x_axis={{ label: `Material`, categories: [`Diamond`, `GaN`, `Si`, `GaAs`] }}
+    y_axis={{ label: `Band Gap (eV)` }}
+    mode="grouped"
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+</section>
+
+<section id="categorical-handlers">
+  <h2>Categorical With Handlers</h2>
+  <BarPlot
+    series={categorical_single_series}
+    x_axis={{ label: `Element` }}
+    y_axis={{ label: `Abundance (ppm)` }}
+    on_bar_hover={(data) => {
+      if (data) {
+        cat_hover_msg = `Hovering: ${data.category_label} (y=${data.y})`
+      } else {
+        cat_hover_msg = `Hover over a bar`
+      }
+    }}
+    on_bar_click={(data) => {
+      cat_click_msg = `Clicked: ${data.category_label} (y=${data.y})`
+    }}
+    controls_toggle_props={{ class: `bar-controls-toggle` }}
+    style="height: 360px"
+  />
+  <div class="handler-info categorical-handler-info">
+    <p>{cat_hover_msg}</p>
+    <p>{cat_click_msg}</p>
+  </div>
 </section>
