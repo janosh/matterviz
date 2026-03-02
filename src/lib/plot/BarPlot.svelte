@@ -57,6 +57,7 @@
     create_size_scale,
     generate_ticks,
     get_nice_data_range,
+    get_tick_label,
   } from '$lib/plot/scales'
   import {
     DEFAULT_GRID_STYLE,
@@ -253,22 +254,71 @@
   let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
   let ref_lines_by_z = $derived(group_ref_lines_by_z(indexed_ref_lines))
 
+  // === Categorical Normalization ===
+  // Internal type with guaranteed numeric x (for downstream scale/rendering code)
+  type NumericBarSeries = Omit<BarSeries<Metadata>, `x`> & { x: readonly number[] }
+
+  let is_categorical = $derived(
+    series.some((srs) => srs.x.some((val) => typeof val === `string`)),
+  )
+
+  let category_list = $derived.by(() => {
+    if (!is_categorical) return [] as string[]
+    if (x_axis.categories?.length) return [...x_axis.categories]
+    return [...new Set(series.flatMap((srs) => srs.x.map(String)))]
+  })
+
+  let category_indices = $derived(
+    category_list.length ? category_list.map((_, idx) => idx) : null,
+  )
+
+  let internal_series = $derived.by<NumericBarSeries[]>(() => {
+    // safe: when !category_indices, all x values are numeric (is_categorical is false)
+    if (!category_indices) return series as unknown as NumericBarSeries[]
+    return series.map((srs) => {
+      const orig_map = new Map(srs.x.map((val, idx) => [String(val), idx]))
+      if (import.meta.env?.DEV && orig_map.size < srs.x.length) {
+        console.warn(
+          `BarPlot: series "${
+            srs.label ?? `?`
+          }" has duplicate x values — last occurrence wins`,
+        )
+      }
+      // Resolve original index for each category (undefined if series lacks it)
+      const orig_indices = category_list.map((cat) => orig_map.get(cat))
+      const remap = <T>(arr: readonly T[] | null | undefined, fallback: T): T[] =>
+        orig_indices.map((oi) => oi != null ? (arr?.[oi] ?? fallback) : fallback)
+      const bw_arr = Array.isArray(srs.bar_width) ? srs.bar_width : null
+      const meta_arr = Array.isArray(srs.metadata) ? srs.metadata : null
+      return {
+        ...srs,
+        x: category_indices,
+        y: remap(srs.y, 0),
+        labels: remap(srs.labels, null),
+        metadata: orig_indices.map((oi) =>
+          oi != null ? (meta_arr ? meta_arr[oi] : srs.metadata) : undefined
+        ) as Metadata[],
+        ...(bw_arr ? { bar_width: remap(bw_arr, 0.5) } : {}),
+        ...(srs.color_values ? { color_values: remap(srs.color_values, null) } : {}),
+        ...(srs.size_values ? { size_values: remap(srs.size_values, null) } : {}),
+      } as NumericBarSeries
+    })
+  })
+
   // Compute auto ranges from visible series
   let visible_series = $derived(
-    series.filter((srs: BarSeries<Metadata>) => srs?.visible ?? true),
+    internal_series.filter((srs) => srs?.visible ?? true),
   )
 
   // Separate series by y-axis
   let y1_series = $derived(
-    visible_series.filter((srs: BarSeries<Metadata>) =>
-      (srs.y_axis ?? `y1`) === `y1`
-    ),
+    visible_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`),
   )
   let y2_series = $derived(
-    visible_series.filter((srs: BarSeries<Metadata>) => srs.y_axis === `y2`),
+    visible_series.filter((srs) => srs.y_axis === `y2`),
   )
   let x2_series = $derived(
-    visible_series.filter((srs: BarSeries<Metadata>) => srs.x_axis === `x2`),
+    visible_series.filter((srs) => srs.x_axis === `x2`),
   )
 
   let auto_ranges = $derived.by(() => {
@@ -278,7 +328,7 @@
       y_limit: typeof y_range,
       scale_type: ScaleType,
     ) => {
-      let points = series_list.flatMap((srs: BarSeries<Metadata>) =>
+      let points = series_list.flatMap((srs) =>
         srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
       )
 
@@ -288,8 +338,8 @@
 
         // Only include visible bar series (not lines) in stacking
         series_list
-          .filter((srs: BarSeries<Metadata>) => srs.render_mode !== `line`)
-          .forEach((srs: BarSeries<Metadata>) =>
+          .filter((srs) => srs.render_mode !== `line`)
+          .forEach((srs) =>
             srs.x.forEach((x_val, idx) => {
               const y_val = srs.y[idx] ?? 0
               const totals = stacked_totals.get(x_val) ?? { pos: 0, neg: 0 }
@@ -306,8 +356,8 @@
             ...(neg < 0 ? [{ x: x_val, y: neg }] : []),
           ]),
           ...series_list
-            .filter((srs: BarSeries<Metadata>) => srs.render_mode === `line`)
-            .flatMap((srs: BarSeries<Metadata>) =>
+            .filter((srs) => srs.render_mode === `line`)
+            .flatMap((srs) =>
               srs.x.map((x_val, idx) => ({ x: x_val, y: srs.y[idx] }))
             ),
         ]
@@ -342,27 +392,29 @@
     }
 
     // Get x values split by axis for range calculation
-    const x1_x_points = visible_series
-      .filter((srs: BarSeries<Metadata>) => (srs.x_axis ?? `x1`) === `x1`)
-      .flatMap((srs: BarSeries<Metadata>) =>
-        srs.x.map((x_val) => ({ x: x_val, y: 0 }))
-      )
-    const x2_x_points = x2_series.flatMap((srs: BarSeries<Metadata>) =>
+    // For categorical data, use fixed range centered on integer indices
+    let x_auto_range: number[]
+    if (category_list.length) {
+      x_auto_range = [-0.5, category_list.length - 0.5]
+    } else {
+      const x1_x_points = visible_series
+        .filter((srs) => (srs.x_axis ?? `x1`) === `x1`)
+        .flatMap((srs) => srs.x.map((x_val) => ({ x: x_val, y: 0 })))
+      x_auto_range = x1_x_points.length
+        ? get_nice_data_range(
+          x1_x_points,
+          (pt) => pt.x,
+          x_range,
+          x_axis.scale_type ?? `linear`,
+          range_padding,
+          x_axis.format?.startsWith(`%`) || false,
+        )
+        : [0, 1]
+    }
+
+    const x2_x_points = x2_series.flatMap((srs) =>
       srs.x.map((x_val) => ({ x: x_val, y: 0 }))
     )
-
-    const x_scale_type = x_axis.scale_type ?? `linear`
-    const x_auto_range = x1_x_points.length
-      ? get_nice_data_range(
-        x1_x_points,
-        (pt) => pt.x,
-        x_range,
-        x_scale_type,
-        range_padding,
-        x_axis.format?.startsWith(`%`) || false,
-      )
-      : [0, 1]
-
     const x2_scale_type = x2_axis.scale_type ?? `linear`
     const x2_auto_range = x2_x_points.length
       ? get_nice_data_range(
@@ -544,29 +596,42 @@
   // Size scale function (using shared utility)
   let size_scale_fn = $derived(create_size_scale(size_scale, all_size_values))
 
+  // Auto-generate tick labels for categorical data (unless user provides explicit ticks)
+  // In vertical mode categories are on x-axis; in horizontal mode on y-axis
+  let cat_axis = $derived(orientation === `horizontal` ? `y` : `x`)
+  let effective_cat_ticks = $derived.by(() => {
+    if (!category_list.length) return undefined
+    // Only respect user ticks when they're a Record (custom label mapping),
+    // not a number (tick count) or array (tick positions)
+    const user_ticks = cat_axis === `x` ? x_axis.ticks : y_axis.ticks
+    if (
+      user_ticks != null && typeof user_ticks === `object` &&
+      !Array.isArray(user_ticks)
+    ) return user_ticks
+    return Object.fromEntries(
+      category_list.map((cat, idx) => [idx, cat]),
+    ) as Record<number, string>
+  })
+
   // Ticks
   let ticks = $derived({
     x: width && height
-      ? generate_ticks(
+      ? (category_indices && cat_axis === `x` ? category_indices : generate_ticks(
         ranges.current.x,
         x_axis.scale_type ?? `linear`,
         x_axis.ticks,
         scales.x,
-        {
-          default_count: 8,
-        },
-      )
+        { default_count: 8 },
+      ))
       : [],
     y: width && height
-      ? generate_ticks(
+      ? (category_indices && cat_axis === `y` ? category_indices : generate_ticks(
         ranges.current.y,
         y_axis.scale_type ?? `linear`,
         y_axis.ticks,
         scales.y,
-        {
-          default_count: 6,
-        },
-      )
+        { default_count: 6 },
+      ))
       : [],
     y2: width && height && y2_series.length > 0 && orientation === `vertical`
       ? generate_ticks(
@@ -979,10 +1044,9 @@
   let bar_points_for_placement = $derived.by(() => {
     if (!width || !height || !visible_series.length) return []
 
-    return visible_series.flatMap((srs: BarSeries<Metadata>) => {
+    return internal_series.flatMap((srs, series_idx) => {
+      if (!(srs?.visible ?? true)) return []
       const is_line = srs.render_mode === `line`
-      // Use original series index to look up stacked_offsets
-      const series_idx = series.indexOf(srs)
       const series_offsets = stacked_offsets[series_idx] ?? []
       const use_y2 = srs.y_axis === `y2`
       const y_scale = use_y2 ? scales.y2 : scales.y
@@ -1075,7 +1139,7 @@
     bar_idx: number,
     color: string,
   ): BarHandlerProps<Metadata> {
-    const srs = series[series_idx]
+    const srs = internal_series[series_idx]
     const [x, y] = [srs.x[bar_idx], srs.y[bar_idx]]
     const [orient_x, orient_y] = orientation === `horizontal` ? [y, x] : [x, y]
     const metadata = Array.isArray(srs.metadata)
@@ -1084,6 +1148,7 @@
     const label = srs.labels?.[bar_idx] ?? null
     const active_y_axis = srs.y_axis ?? `y1`
     const active_x_axis = srs.x_axis ?? `x1`
+    const category_label = category_list[x]
     const coords = {
       x,
       y,
@@ -1103,6 +1168,7 @@
       bar_idx,
       active_y_axis,
       active_x_axis,
+      category_label,
     }
   }
 
@@ -1146,9 +1212,11 @@
     if (mode !== `stacked`) return [] as number[][]
     const max_len = Math.max(
       0,
-      ...series.map((srs: BarSeries<Metadata>) => srs.y.length),
+      ...internal_series.map((srs) => srs.y.length),
     )
-    const offsets = series.map(() => Array.from({ length: max_len }, () => 0))
+    const offsets = internal_series.map(() =>
+      Array.from({ length: max_len }, () => 0)
+    )
 
     // Separate accumulators for y1 and y2 axes
     const y1_pos_acc = Array.from({ length: max_len }, () => 0)
@@ -1156,7 +1224,7 @@
     const y2_pos_acc = Array.from({ length: max_len }, () => 0)
     const y2_neg_acc = Array.from({ length: max_len }, () => 0)
 
-    series.forEach((srs: BarSeries<Metadata>, series_idx: number) => {
+    internal_series.forEach((srs, series_idx) => {
       if (!(srs?.visible ?? true) || srs.render_mode === `line`) return
 
       const use_y2 = srs.y_axis === `y2`
@@ -1176,8 +1244,8 @@
   // Calculate group positions for grouped mode (side-by-side bars)
   let group_info = $derived.by(() => {
     if (mode !== `grouped`) return { bar_series_count: 0, bar_series_indices: [] }
-    const bar_series_indices = series
-      .map((srs: BarSeries<Metadata>, idx: number) =>
+    const bar_series_indices = internal_series
+      .map((srs, idx) =>
         (srs?.visible ?? true) && srs.render_mode !== `line` ? idx : -1
       )
       .filter((idx) => idx >= 0)
@@ -1400,7 +1468,13 @@
                 ? `rotate(${rotation}, ${shift_x}, ${text_y})`
                 : undefined}
               >
-                {format_value(tick, x_axis.format)}
+                {
+                  get_tick_label(
+                    tick as number,
+                    cat_axis === `x` ? effective_cat_ticks : x_axis.ticks,
+                  ) ??
+                    format_value(tick, x_axis.format)
+                }
               </text>
             </g>
           {/if}
@@ -1469,7 +1543,10 @@
                   ? `rotate(${rotation}, ${shift_x}, ${text_y})`
                   : undefined}
                 >
-                  {format_value(tick, x2_axis.format)}
+                  {
+                    get_tick_label(tick as number, x2_axis.ticks) ??
+                    format_value(tick, x2_axis.format)
+                  }
                 </text>
               </g>
             {/if}
@@ -1536,7 +1613,13 @@
                 ? `rotate(${rotation}, ${text_x}, ${shift_y})`
                 : undefined}
               >
-                {format_value(tick, y_axis.format)}
+                {
+                  get_tick_label(
+                    tick as number,
+                    cat_axis === `y` ? effective_cat_ticks : y_axis.ticks,
+                  ) ??
+                    format_value(tick, y_axis.format)
+                }
               </text>
             </g>
           {/if}
@@ -1609,7 +1692,10 @@
                   ? `rotate(${rotation}, ${shift_x}, ${shift_y})`
                   : undefined}
                 >
-                  {format_value(tick, y2_axis.format)}
+                  {
+                    get_tick_label(tick as number, y2_axis.ticks) ??
+                    format_value(tick, y2_axis.format)
+                  }
                 </text>
               </g>
             {/if}
@@ -1673,7 +1759,7 @@
         {@render ref_lines_layer(ref_lines_by_z.below_lines)}
 
         <!-- Bars and Lines -->
-        {#each series as srs, series_idx (srs?.id ?? series_idx)}
+        {#each internal_series as srs, series_idx (srs?.id ?? series_idx)}
           {#if srs?.visible ?? true}
             {@const is_line = srs.render_mode === `line`}
             <g
@@ -2042,11 +2128,13 @@
           {/if}
           <div>
             {@html hover_info.x_axis.label || `x`}: {
+              (cat_axis === `x` ? hover_info.category_label : undefined) ??
               format_value(hover_info.orient_x, hover_info.x_axis.format || `.3~s`)
             }
           </div>
           <div>
             {@html hover_info.y_axis.label || `y`}: {
+              (cat_axis === `y` ? hover_info.category_label : undefined) ??
               format_value(hover_info.orient_y, hover_info.y_axis.format || `.3~s`)
             }
           </div>
