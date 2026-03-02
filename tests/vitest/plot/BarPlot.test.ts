@@ -256,6 +256,119 @@ describe(`BarPlot`, () => {
     )
   })
 
+  describe(`categorical bar charts`, () => {
+    const cat_series: BarSeries[] = [
+      { x: [`A`, `B`, `C`], y: [10, 20, 30], label: `S1`, color: `blue` },
+      { x: [`B`, `C`, `D`], y: [5, 15, 25], label: `S2`, color: `red` },
+    ]
+
+    // Fold all mount-and-check configs into a single parameterized test
+    test.each([
+      [`overlay mode`, { series: cat_series, mode: `overlay` as BarMode }],
+      [`stacked mode`, { series: cat_series, mode: `stacked` as BarMode }],
+      [`grouped mode`, { series: cat_series, mode: `grouped` as BarMode }],
+      [`vertical`, { series: cat_series, orientation: `vertical` as Orientation }],
+      [`horizontal`, { series: cat_series, orientation: `horizontal` as Orientation }],
+      [`explicit category order`, {
+        series: cat_series,
+        x_axis: { categories: [`D`, `C`, `B`, `A`] },
+      }],
+      [`category subset filter`, {
+        series: cat_series,
+        x_axis: { categories: [`A`, `C`] },
+      }],
+      [`empty categorical series`, {
+        series: [{ x: [] as string[], y: [], color: `blue` }],
+      }],
+      [`single category`, { series: [{ x: [`Only`], y: [42], color: `blue` }] }],
+      [`mixed bar+line`, {
+        series: [
+          { x: [`A`, `B`, `C`], y: [10, 20, 30], color: `blue` },
+          {
+            x: [`A`, `B`, `C`],
+            y: [15, 25, 35],
+            color: `red`,
+            render_mode: `line` as const,
+            markers: `line+points` as const,
+          },
+        ],
+      }],
+      [`numeric x (not categorical)`, {
+        series: [{ x: [1, 2, 3], y: [10, 20, 30], color: `blue` }],
+      }],
+    ] as [string, Partial<ComponentProps<typeof BarPlot>>][])(
+      `renders %s`,
+      async (_label, props) => {
+        mount(BarPlot, {
+          target: document.body,
+          props: { ...props, style: `width: 400px; height: 300px` },
+        })
+        await tick()
+        const plot = document.querySelector(`.bar-plot`)
+        expect(plot).toBeTruthy()
+        expect(plot?.querySelector(`svg`)).toBeTruthy()
+      },
+    )
+
+    test(`single series with 3 categories renders 3 bars`, async () => {
+      mount(BarPlot, {
+        target: document.body,
+        props: {
+          series: [{ x: [`Foo`, `Bar`, `Baz`], y: [1, 2, 3], color: `blue` }],
+          style: `width: 400px; height: 300px`,
+        },
+      })
+      await tick()
+      expect(document.querySelectorAll(`path[role="button"]`).length).toBe(3)
+    })
+
+    test(`hover provides category_label and preserves metadata`, async () => {
+      const hover_fn = vi.fn()
+      mount(BarPlot, {
+        target: document.body,
+        props: {
+          series: [{
+            x: [`X`, `Y`],
+            y: [10, 20],
+            color: `blue`,
+            metadata: [{ id: 1 }, { id: 2 }],
+            labels: [`Label X`, `Label Y`],
+          }],
+          on_bar_hover: hover_fn,
+          style: `width: 400px; height: 300px`,
+        },
+      })
+      await tick()
+      const bar = document.querySelector(`path[role="button"]`)
+      if (!bar) throw new Error(`bar element not found`)
+      bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+      await tick()
+      expect(hover_fn).toHaveBeenCalled()
+      const data = hover_fn.mock.calls[0][0]
+      expect(typeof data.category_label).toBe(`string`)
+      expect(data.metadata).toBeDefined()
+    })
+
+    test(`tooltip shows category name, not numeric index`, async () => {
+      mount(BarPlot, {
+        target: document.body,
+        props: {
+          series: [{ x: [`Alpha`, `Beta`, `Gamma`], y: [10, 20, 30], color: `blue` }],
+          x_axis: { label: `Greek` },
+          style: `width: 400px; height: 300px`,
+        },
+      })
+      await tick()
+      const bar = document.querySelector(`path[role="button"]`)
+      if (!bar) throw new Error(`bar element not found`)
+      bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+      await tick()
+      const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
+      expect(tooltip_text).toMatch(/Alpha|Beta|Gamma/)
+      expect(tooltip_text).not.toMatch(/\b0\b/)
+    })
+  })
+
   describe(`legend grouping`, () => {
     const grouped_series: BarSeries[] = [
       {
