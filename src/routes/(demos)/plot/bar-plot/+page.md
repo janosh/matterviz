@@ -28,6 +28,82 @@ A simple bar plot showing lattice parameters across different crystal systems. U
 />
 ```
 
+## Categorical Bar Charts
+
+Pass string categories directly as `x` values instead of numeric indices. Categories are automatically detected, positioned, and labeled on the axis. Multiple series with different categories are aligned correctly for stacking and grouping. Use `x_axis.categories` to control category order:
+
+```svelte example
+<script lang="ts">
+  import { BarPlot } from 'matterviz'
+
+  let mode = $state(`grouped`)
+  let orientation = $state(`vertical`)
+  let custom_order = $state(false)
+
+  const band_gaps = [
+    {
+      x: [`Si`, `GaAs`, `GaN`, `ZnO`, `Diamond`],
+      y: [1.12, 1.43, 3.4, 3.37, 5.47],
+      label: `Experimental`,
+      color: `#4c6ef5`,
+    },
+    {
+      x: [`Si`, `GaAs`, `GaN`, `ZnO`, `Diamond`, `CdTe`],
+      y: [0.56, 0.55, 1.87, 0.73, 4.14, 0.58],
+      label: `DFT (PBE)`,
+      color: `#ff6b6b`,
+    },
+    {
+      x: [`Si`, `GaAs`, `Diamond`],
+      y: [1.17, 1.52, 5.48],
+      label: `GW Calculation`,
+      color: `#51cf66`,
+    },
+  ]
+
+  let x_axis = $derived({
+    label: orientation === `horizontal` ? `Band Gap (eV)` : `Semiconductor`,
+    categories: custom_order
+      ? [`Diamond`, `GaN`, `ZnO`, `GaAs`, `CdTe`, `Si`]
+      : undefined,
+  })
+  let y_axis = $derived({
+    label: orientation === `horizontal` ? `Semiconductor` : `Band Gap (eV)`,
+  })
+</script>
+
+<div
+  style="display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap; align-items: center"
+>
+  {#each [`grouped`, `stacked`, `overlay`] as m (m)}
+    <label><input type="radio" bind:group={mode} value={m} /> {m}</label>
+  {/each}
+  <label style="margin-left: 1em">
+    <input type="checkbox" bind:checked={custom_order} /> Sort by band gap
+  </label>
+  <label>
+    <input
+      type="checkbox"
+      checked={orientation === `horizontal`}
+      onchange={(
+        evt,
+      ) => (orientation = evt.currentTarget.checked ? `horizontal` : `vertical`)}
+    /> Horizontal
+  </label>
+</div>
+
+<BarPlot
+  series={band_gaps}
+  {mode}
+  {orientation}
+  {x_axis}
+  {y_axis}
+  style="height: 400px"
+/>
+```
+
+Note how series can have **different categories** -- DFT (PBE) includes CdTe while GW only covers three materials. Missing categories render as zero-height bars in stacked mode, and are simply absent in grouped mode.
+
 ## Mode Comparison: Band Gap Measurements
 
 Compare overlay, stacked, and grouped (side-by-side) modes using band gap data from different measurement techniques. Click legend items to toggle series visibility:
@@ -231,7 +307,7 @@ Horizontal bar charts work well for categorical data with long labels. This exam
   <input
     type="checkbox"
     checked={orientation === `horizontal`}
-    onchange={(evt) => (orientation = evt.target.checked ? `horizontal` : `vertical`)}
+    onchange={(evt) => (orientation = evt.currentTarget.checked ? `horizontal` : `vertical`)}
   />
   Horizontal Orientation
 </label>
