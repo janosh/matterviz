@@ -192,6 +192,7 @@ export interface BarHandlerProps<Metadata = Record<string, unknown>>
   active_y_axis: `y1` | `y2`
   active_x_axis: `x1` | `x2`
   color: string
+  category_label?: string // original string category (undefined when numeric x)
 }
 
 export interface HistogramHandlerProps<Metadata = Record<string, unknown>>
@@ -364,7 +365,7 @@ export type BarMode = `overlay` | `stacked` | `grouped`
 
 export interface BarSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier for the series (used for keying)
-  x: readonly number[]
+  x: readonly (number | string)[]
   y: readonly number[]
   label?: string
   // Group name for organizing legend items. Series with the same legend_group
@@ -454,6 +455,7 @@ export interface AxisConfig {
   // Shorthand: 'synced' | 'align' | 'none'
   // Full config: { mode: Y2SyncMode, align_value?: number }
   sync?: Y2SyncConfig | Y2SyncMode
+  categories?: readonly string[] // explicit category order/filter for categorical bar plots
 }
 
 // Result from data loader - returns complete series array
