@@ -339,8 +339,9 @@ describe(`BarPlot`, () => {
         },
       })
       await tick()
-      document.querySelector(`path[role="button"]`)
-        ?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+      const bar = document.querySelector(`path[role="button"]`)
+      if (!bar) throw new Error(`bar element not found`)
+      bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
       await tick()
       expect(hover_fn).toHaveBeenCalled()
       const data = hover_fn.mock.calls[0][0]
@@ -358,8 +359,9 @@ describe(`BarPlot`, () => {
         },
       })
       await tick()
-      document.querySelector(`path[role="button"]`)
-        ?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+      const bar = document.querySelector(`path[role="button"]`)
+      if (!bar) throw new Error(`bar element not found`)
+      bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
       await tick()
       const tooltip_text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
       expect(tooltip_text).toMatch(/Alpha|Beta|Gamma/)

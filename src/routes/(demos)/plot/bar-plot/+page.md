@@ -62,10 +62,13 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
   ]
 
   let x_axis = $derived({
-    label: `Semiconductor`,
+    label: orientation === `horizontal` ? `Band Gap (eV)` : `Semiconductor`,
     categories: custom_order
       ? [`Diamond`, `GaN`, `ZnO`, `GaAs`, `CdTe`, `Si`]
       : undefined,
+  })
+  let y_axis = $derived({
+    label: orientation === `horizontal` ? `Semiconductor` : `Band Gap (eV)`,
   })
 </script>
 
@@ -94,7 +97,7 @@ Pass string categories directly as `x` values instead of numeric indices. Catego
   {mode}
   {orientation}
   {x_axis}
-  y_axis={{ label: `Band Gap (eV)` }}
+  {y_axis}
   style="height: 400px"
 />
 ```

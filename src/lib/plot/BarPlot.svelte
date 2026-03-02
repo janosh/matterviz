@@ -293,7 +293,7 @@
       return {
         ...srs,
         x: category_indices,
-        y: remap(srs.y, 0),
+        y: remap(srs.y, srs.render_mode === `line` ? NaN : 0),
         labels: remap(srs.labels, null),
         metadata: orig_indices.map((oi) =>
           oi != null ? (meta_arr ? meta_arr[oi] : srs.metadata) : undefined
