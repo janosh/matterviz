@@ -44,7 +44,7 @@ export function extract_columns(data: unknown): Map<string, ColumnInfo> {
     const array_entries = Object.entries(data as Record<string, unknown>).filter((
       [, val],
     ) => Array.isArray(val) && (val as unknown[]).length > 0)
-    if (array_entries.length < 2) return columns
+    if (array_entries.length < 1) return columns
     const target_len = (array_entries[0][1] as unknown[]).length
     for (const [key, val] of array_entries) {
       const arr = val as unknown[]
@@ -99,13 +99,8 @@ export function suggest_mapping(
   // Assign x: prefer named numeric match, then string column (bar chart), then first numeric
   const x_match = numeric_cols.find((key) => X_NAMES.has(key.toLowerCase()))
   const x_string_match = string_cols.find((key) => !Y_NAMES.has(key.toLowerCase()))
-  if (x_match) {
-    mapping.x = x_match
-  } else if (x_string_match) {
-    mapping.x = x_string_match
-  } else if (numeric_cols.length >= 2) {
-    mapping.x = numeric_cols[0]
-  }
+  mapping.x = x_match ?? x_string_match ??
+    (numeric_cols.length >= 2 ? numeric_cols[0] : undefined)
 
   // Assign y
   const remaining_numeric = numeric_cols.filter((key) => key !== mapping.x)
@@ -152,6 +147,25 @@ function optional_numbers(col?: ColumnInfo): number[] | undefined {
   return col ? to_numbers(col.values) : undefined
 }
 
+// Filter N axis arrays to only include indices where all axes are finite,
+// keeping optional color/size arrays aligned
+function filter_finite(
+  axes: number[][],
+  color?: number[],
+  size?: number[],
+): { axes: number[][]; color_values?: number[]; size_values?: number[] } {
+  const out = axes.map(() => [] as number[])
+  const color_values = color ? [] as number[] : undefined
+  const size_values = size ? [] as number[] : undefined
+  for (let idx = 0; idx < axes[0].length; idx++) {
+    if (axes.some((arr) => !isFinite(arr[idx]))) continue
+    for (let dim = 0; dim < axes.length; dim++) out[dim].push(axes[dim][idx])
+    if (color && color_values) color_values.push(color[idx])
+    if (size && size_values) size_values.push(size[idx])
+  }
+  return { axes: out, color_values, size_values }
+}
+
 export function build_scatter_series(
   columns: Map<string, ColumnInfo>,
   mapping: AxisMapping,
@@ -160,23 +174,11 @@ export function build_scatter_series(
   const y_col = get_col(columns, mapping.y)
   if (!x_col || !y_col) return { x: [], y: [] }
 
-  const raw_x = to_numbers(x_col.values)
-  const raw_y = to_numbers(y_col.values)
-  const raw_color = optional_numbers(get_col(columns, mapping.color))
-  const raw_size = optional_numbers(get_col(columns, mapping.size))
-
-  // Filter to only points with finite x and y, keeping color/size aligned
-  const x: number[] = []
-  const y: number[] = []
-  const color_values = raw_color ? [] as number[] : undefined
-  const size_values = raw_size ? [] as number[] : undefined
-  for (let idx = 0; idx < raw_x.length; idx++) {
-    if (!isFinite(raw_x[idx]) || !isFinite(raw_y[idx])) continue
-    x.push(raw_x[idx])
-    y.push(raw_y[idx])
-    if (raw_color && color_values) color_values.push(raw_color[idx])
-    if (raw_size && size_values) size_values.push(raw_size[idx])
-  }
+  const { axes: [x, y], color_values, size_values } = filter_finite(
+    [to_numbers(x_col.values), to_numbers(y_col.values)],
+    optional_numbers(get_col(columns, mapping.color)),
+    optional_numbers(get_col(columns, mapping.size)),
+  )
 
   return {
     x,
@@ -197,25 +199,11 @@ export function build_scatter3d_series(
   const z_col = get_col(columns, mapping.z)
   if (!x_col || !y_col || !z_col) return { x: [], y: [], z: [] }
 
-  const raw_x = to_numbers(x_col.values)
-  const raw_y = to_numbers(y_col.values)
-  const raw_z = to_numbers(z_col.values)
-  const raw_color = optional_numbers(get_col(columns, mapping.color))
-  const raw_size = optional_numbers(get_col(columns, mapping.size))
-
-  const x: number[] = []
-  const y: number[] = []
-  const z: number[] = []
-  const color_values = raw_color ? [] as number[] : undefined
-  const size_values = raw_size ? [] as number[] : undefined
-  for (let idx = 0; idx < raw_x.length; idx++) {
-    if (!isFinite(raw_x[idx]) || !isFinite(raw_y[idx]) || !isFinite(raw_z[idx])) continue
-    x.push(raw_x[idx])
-    y.push(raw_y[idx])
-    z.push(raw_z[idx])
-    if (raw_color && color_values) color_values.push(raw_color[idx])
-    if (raw_size && size_values) size_values.push(raw_size[idx])
-  }
+  const { axes: [x, y, z], color_values, size_values } = filter_finite(
+    [to_numbers(x_col.values), to_numbers(y_col.values), to_numbers(z_col.values)],
+    optional_numbers(get_col(columns, mapping.color)),
+    optional_numbers(get_col(columns, mapping.size)),
+  )
 
   return { x, y, z, markers: `points`, color_values, size_values }
 }

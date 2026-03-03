@@ -161,11 +161,14 @@
     return filename ? (clean ? `${filename}.${clean}` : filename) : clean
   }
 
-  // Build a Set of tree paths that are renderable (for fast draggable lookup)
+  // Build a map of tree paths that are renderable (for fast draggable lookup).
+  // Skip synthetic suffix paths (\x00...) since those have their own badge drag handlers.
   let renderable_tree_paths = $derived(new Map(
-    [...renderable_paths].map(([data_path, info]) =>
-      [data_to_tree_path(data_path), { data_path, ...info }]
-    )
+    [...renderable_paths]
+      .filter(([data_path]) => !data_path.includes(`\x00`))
+      .map(([data_path, info]) =>
+        [data_to_tree_path(data_path), { data_path, ...info }]
+      )
   ))
 
   // Mark renderable tree nodes as draggable via attribute (no per-node listeners)
@@ -520,8 +523,9 @@
       const parsed = JSON.parse(raw) as { data_path: string; detected_type: RenderableType }
       const data_path = strip_type_suffix(parsed.data_path)
       const { detected_type } = parsed
+      if (!detected_type || !(detected_type in TYPE_LABELS)) return
       const val = resolve_path(value, data_path)
-      if (val === undefined || !detected_type) return
+      if (val === undefined) return
       if (panels.length === 0 || zone === `center` || !zone) {
         replace_or_add_panel(data_path, detected_type, val)
       } else {

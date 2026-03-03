@@ -293,8 +293,8 @@ export function is_plottable_data(obj: unknown): boolean {
       unknown
     >[]
     if (sample.length === 0) return false
-    const all_keys = Object.keys(sample[0])
-    const num_cols = all_keys.filter((key) =>
+    const all_keys = new Set(sample.flatMap(Object.keys))
+    const num_cols = [...all_keys].filter((key) =>
       sample.some((row) => typeof row[key] === `number`)
     ).length
     return num_cols >= 2

@@ -10,7 +10,7 @@ import {
 
 const fixture = JSON.parse(
   gunzipSync(
-    readFileSync(new URL(`../test-fixtures/all-viz-types.json.gz`, import.meta.url)),
+    readFileSync(`${import.meta.dirname}/../test-fixtures/all-viz-types.json.gz`),
   ).toString(),
 )
 

@@ -41,10 +41,16 @@ describe(`extract_columns`, () => {
     expect(cols.get(`energy`)?.values).toEqual([-5.4, -4.6, -7.4])
   })
 
-  test.each([null, `hello`, 42, { single: [1, 2] }])(
+  test.each([null, `hello`, 42, [null, { x: 1 }]])(
     `returns empty map for non-tabular data: %j`,
     (data) => expect(extract_columns(data).size).toBe(0),
   )
+
+  test(`single-column column-based data produces one column for histogram`, () => {
+    const cols = extract_columns({ energy: [1, 2, 3] })
+    expect(cols.size).toBe(1)
+    expect(cols.get(`energy`)?.type).toBe(`numeric`)
+  })
 
   test(`handles null values in columns`, () => {
     const data = { x: [1, null, 3], y: [4, 5, null] }
@@ -209,6 +215,28 @@ describe(`build_scatter3d_series`, () => {
     expect(series.color_values).toEqual([7, 8])
     expect(series.size_values).toEqual([9, 10])
   })
+
+  test(`filters non-finite x/y/z with aligned color and size`, () => {
+    const cols = extract_columns({
+      x: [1, null, 3, 4],
+      y: [5, 6, 7, 8],
+      z: [9, 10, null, 12],
+      c: [100, 200, 300, 400],
+      sz: [10, 20, 30, 40],
+    })
+    const series = build_scatter3d_series(cols, {
+      x: `x`,
+      y: `y`,
+      z: `z`,
+      color: `c`,
+      size: `sz`,
+    })
+    expect(series.x).toEqual([1, 4])
+    expect(series.y).toEqual([5, 8])
+    expect(series.z).toEqual([9, 12])
+    expect(series.color_values).toEqual([100, 400])
+    expect(series.size_values).toEqual([10, 40])
+  })
 })
 
 describe(`build_bar_series`, () => {
@@ -231,10 +259,11 @@ describe(`build functions return empty on missing columns`, () => {
     [`scatter3d`, () => build_scatter3d_series(cols, { x: `x`, y: `y`, z: `missing` })],
     [`bar`, () => build_bar_series(cols, { x: `missing`, y: `y` })],
     [`histogram`, () => build_histogram_series(cols, { y: `missing` })],
-  ])(`%s returns empty arrays`, (_, build) => {
+  ])(`%s returns empty arrays`, (name, build) => {
     const series = build()
     expect(series.x).toEqual([])
     expect(series.y).toEqual([])
+    if (name === `scatter3d`) expect((series as { z: number[] }).z).toEqual([])
   })
 })
 
