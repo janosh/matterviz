@@ -81,7 +81,7 @@ const mock_vscode = vi.hoisted(() => ({
     })),
     parse: vi.fn((url: string) => ({ toString: () => url })),
   },
-  ViewColumn: { Beside: 2 },
+  ViewColumn: { Active: 1, Beside: 2 },
   ColorThemeKind: { Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 },
   UIKind: { Desktop: 1, Web: 2 },
   RelativePattern: class {
@@ -566,7 +566,7 @@ describe(`MatterViz Extension`, () => {
     expect(mock_vscode.window.createWebviewPanel).toHaveBeenCalledWith(
       `matterviz`,
       `MatterViz - active.cif`,
-      mock_vscode.ViewColumn.Beside,
+      mock_vscode.ViewColumn.Active,
       expect.any(Object),
     )
   })

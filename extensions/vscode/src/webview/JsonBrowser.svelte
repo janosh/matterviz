@@ -25,8 +25,6 @@
       parse_optimade_from_raw,
   } from '$lib/structure/parse';
   import Structure from '$lib/structure/Structure.svelte';
-  import type { RowData } from '$lib/table';
-  import HeatmapTable from '$lib/table/HeatmapTable.svelte';
   import type { XrdPattern } from '$lib/xrd';
   import XrdPlot from '$lib/xrd/XrdPlot.svelte';
   import { mount, unmount } from 'svelte';
@@ -37,6 +35,7 @@
       TYPE_LABELS,
       type RenderableType
   } from './detect';
+  import PlotPanel from './PlotPanel.svelte';
 
   let {
     value,
@@ -150,16 +149,26 @@
 
   let sidebar_element: HTMLElement | undefined = $state()
 
-  // Convert a data path (relative to JSON root) to the tree path used by JsonTree
-  function data_to_tree_path(data_path: string): string {
-    return filename ? (data_path ? `${filename}.${data_path}` : filename) : data_path
+  // Strip internal suffix used to register multiple renderable types at the same path
+  function strip_type_suffix(path: string): string {
+    const idx = path.indexOf(`\x00`)
+    return idx >= 0 ? path.slice(0, idx) : path
   }
 
-  // Build a Set of tree paths that are renderable (for fast draggable lookup)
+  // Convert a data path (relative to JSON root) to the tree path used by JsonTree
+  function data_to_tree_path(data_path: string): string {
+    const clean = strip_type_suffix(data_path)
+    return filename ? (clean ? `${filename}.${clean}` : filename) : clean
+  }
+
+  // Build a map of tree paths that are renderable (for fast draggable lookup).
+  // Skip synthetic suffix paths (\x00...) since those have their own badge drag handlers.
   let renderable_tree_paths = $derived(new Map(
-    [...renderable_paths].map(([data_path, info]) =>
-      [data_to_tree_path(data_path), { data_path, ...info }]
-    )
+    [...renderable_paths]
+      .filter(([data_path]) => !data_path.includes(`\x00`))
+      .map(([data_path, info]) =>
+        [data_to_tree_path(data_path), { data_path, ...info }]
+      )
   ))
 
   // Mark renderable tree nodes as draggable via attribute (no per-node listeners)
@@ -176,11 +185,22 @@
   $effect(() => {
     if (!sidebar_element) return
     function on_dragstart(event: DragEvent): void {
+      if (!event.dataTransfer) { event.preventDefault(); return }
+      // If dragging a badge directly, use its own data attributes
+      const badge = (event.target as HTMLElement).closest(`.renderable-badge`) as HTMLElement | null
+      if (badge) {
+        const data_path = badge.dataset.renderable_path ?? ``
+        const detected_type = badge.dataset.renderable_type ?? ``
+        event.dataTransfer.setData(`text/plain`, JSON.stringify({ data_path, detected_type }))
+        event.dataTransfer.effectAllowed = `copy`
+        return
+      }
+      // Otherwise dragging a tree node -- look up from tree path
       const target = (event.target as HTMLElement).closest(`[data-path]`) as HTMLElement | null
       if (!target) return
       const tree_path = target.getAttribute(`data-path`) ?? ``
       const info = renderable_tree_paths.get(tree_path)
-      if (!info || !event.dataTransfer) { event.preventDefault(); return }
+      if (!info) { event.preventDefault(); return }
       event.dataTransfer.setData(`text/plain`, JSON.stringify({ data_path: info.data_path, detected_type: info.type }))
       event.dataTransfer.effectAllowed = `copy`
     }
@@ -206,25 +226,42 @@
       badge.dataset.renderable_path = data_path
       badge.dataset.renderable_type = info.type
       badge.style.background = TYPE_COLORS[info.type]
+      badge.draggable = true
       insert_after.after(badge)
     }
   }
 
   // Delegated click handler for badges (avoids per-badge listeners that leak on re-render)
+  // Uses capture phase to intercept before tree node fold/select handlers
   $effect(() => {
     if (!sidebar_element) return
     function on_badge_click(event: MouseEvent): void {
       const badge = (event.target as HTMLElement).closest(`.renderable-badge`) as HTMLElement | null
       if (!badge) return
       event.stopPropagation()
-      const data_path = badge.dataset.renderable_path ?? ``
-      const detected_type = badge.dataset.renderable_type as RenderableType | undefined
-      if (!detected_type) return
+      event.preventDefault()
+      const raw_path = badge.dataset.renderable_path ?? ``
+      const data_path = strip_type_suffix(raw_path)
+      const detected_type = badge.dataset.renderable_type
+      if (!detected_type || !(detected_type in TYPE_LABELS)) return
       const val = resolve_path(value, data_path)
-      if (val !== undefined) replace_or_add_panel(data_path, detected_type, val)
+      if (val !== undefined) replace_or_add_panel(data_path, detected_type as RenderableType, val)
     }
-    sidebar_element.addEventListener(`click`, on_badge_click)
-    return () => sidebar_element!.removeEventListener(`click`, on_badge_click)
+    sidebar_element.addEventListener(`click`, on_badge_click, true)
+    return () => sidebar_element!.removeEventListener(`click`, on_badge_click, true)
+  })
+
+  // Escape key closes all panels, returning to the overview
+  $effect(() => {
+    if (panels.length === 0) return
+    function on_keydown(event: KeyboardEvent): void {
+      if (event.key !== `Escape`) return
+      const tag = (event.target as HTMLElement)?.tagName
+      if (tag === `INPUT` || tag === `SELECT` || tag === `TEXTAREA`) return
+      close_all_panels()
+    }
+    window.addEventListener(`keydown`, on_keydown)
+    return () => window.removeEventListener(`keydown`, on_keydown)
   })
 
   // Re-apply badges + draggable attributes when tree DOM changes.
@@ -328,6 +365,13 @@
     split_directions = new_dirs
   }
 
+  function close_all_panels(): void {
+    for (let idx = panels.length - 1; idx >= 0; idx--) unmount_panel(idx)
+    panels = []
+    panel_sizes = []
+    split_directions = []
+  }
+
   function unmount_panel(idx: number): void {
     const panel = panels[idx]
     if (panel?.component) {
@@ -349,18 +393,6 @@
       return normalize_fractional_coords(val as Parameters<typeof normalize_fractional_coords>[0])
     }
     return val
-  }
-
-  // Convert column-based or row-based data to RowData[] for HeatmapTable
-  function prepare_table_data(val: unknown): RowData[] {
-    if (Array.isArray(val)) return val as RowData[]
-    // Column-based: { col_a: [1,2,3], col_b: [4,5,6] } -> [{ col_a: 1, col_b: 4 }, ...]
-    const data = val as Record<string, unknown[]>
-    const keys = Object.keys(data).filter((key) => Array.isArray(data[key]))
-    if (keys.length === 0) return []
-    return Array.from({ length: (data[keys[0]] as unknown[]).length }, (_, idx) =>
-      Object.fromEntries(keys.map((key) => [key, (data[key] as unknown[])[idx]])) as RowData
-    )
   }
 
   // Map user defaults to structure component props (mirrors main.ts structure_props)
@@ -386,7 +418,15 @@
   const merged_defaults = $derived(merge(defaults))
   const common_props = { fullscreen_toggle: false, style: `height:100%` }
 
-  function mount_into(target: HTMLElement, val: unknown, detected_type: RenderableType): ReturnType<typeof mount> | null {
+  function mount_into(target: HTMLElement, val: unknown, detected_type: RenderableType, panel_id?: string): ReturnType<typeof mount> | null {
+    const onclose = panel_id !== undefined
+      ? () => {
+        const idx = panels.findIndex((p) => p.id === panel_id)
+        if (idx < 0) return
+        if (panels.length > 1) close_panel(idx)
+        else close_all_panels()
+      }
+      : undefined
     target.innerHTML = ``
     // Force layout so Three.js gets real dimensions
     void target.offsetHeight
@@ -428,8 +468,9 @@
       } else if (detected_type === `xrd`) {
         return mount(XrdPlot, { target, props: { patterns: val as XrdPattern, allow_file_drop: false, ...common_props } })
       } else if (detected_type === `table`) {
-        const table_data = prepare_table_data(val)
-        return mount(HeatmapTable, { target, props: { data: table_data, ...common_props } })
+        return mount(PlotPanel, { target, props: { data: val, initial_type: `table`, onclose, ...common_props } })
+      } else if (detected_type === `plot`) {
+        return mount(PlotPanel, { target, props: { data: val, onclose, ...common_props } })
       }
     } catch (err) {
       console.error(`JsonBrowser: mount failed for ${detected_type}:`, err)
@@ -444,7 +485,7 @@
       const el = document.getElementById(panel.id)
       if (!el) continue
       panel.element = el
-      panel.component = mount_into(el, panel.val, panel.detected_type)
+      panel.component = mount_into(el, panel.val, panel.detected_type, panel.id)
     }
   }
 
@@ -507,9 +548,12 @@
     drop_target_panel_idx = -1
     if (!raw) return
     try {
-      const { data_path, detected_type } = JSON.parse(raw) as { data_path: string; detected_type: RenderableType }
+      const parsed = JSON.parse(raw) as { data_path: string; detected_type: RenderableType }
+      const data_path = strip_type_suffix(parsed.data_path)
+      const { detected_type } = parsed
+      if (!detected_type || !(detected_type in TYPE_LABELS)) return
       const val = resolve_path(value, data_path)
-      if (val === undefined || !detected_type) return
+      if (val === undefined) return
       if (panels.length === 0 || zone === `center` || !zone) {
         replace_or_add_panel(data_path, detected_type, val)
       } else {
@@ -654,14 +698,15 @@
                 class="renderable-chip"
                 style="background: {type_color(info.type)}22; border: 1px solid {type_color(info.type)}66;"
                 onclick={() => {
-                  const val = resolve_path(value, data_path)
+                  const clean_path = strip_type_suffix(data_path)
+                  const val = resolve_path(value, clean_path)
                   if (val !== undefined) {
-                    replace_or_add_panel(data_path, info.type, val)
+                    replace_or_add_panel(clean_path, info.type, val)
                   }
                 }}
               >
                 <span class="chip-dot" style="background: {type_color(info.type)};"></span>
-                {info.label}: <code>{data_path || `root`}</code>
+                {info.label}: <code>{strip_type_suffix(data_path) || `root`}</code>
               </button>
             {/each}
           </div>
@@ -682,23 +727,11 @@
               onmousedown={(event) => on_split_divider_mousedown(event, idx - 1)}
             ></div>
           {/if}
-          <div
-            class="viz-panel"
-            id={panel.id}
-            style="flex: {panel_sizes[idx] ?? 1}"
-          >
-            <!-- Close button -->
-            {#if panels.length > 1}
-              <button
-                type="button"
-                class="panel-close"
-                title="Close this panel"
-                onclick={() => close_panel(idx)}
-              >&times;</button>
-            {/if}
+          <div class="viz-panel" style="flex: {panel_sizes[idx] ?? 1}">
+            <div class="panel-mount" id={panel.id}></div>
             <!-- Panel label -->
             <div class="panel-label" style="background: {TYPE_COLORS[panel.detected_type]}cc;">
-              {TYPE_LABELS[panel.detected_type]}: {panel.data_path}
+              {TYPE_LABELS[panel.detected_type]}: {strip_type_suffix(panel.data_path)}
             </div>
           </div>
         {/each}
@@ -766,32 +799,9 @@
     min-width: 100px;
     min-height: 80px;
   }
-  .panel-close {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    z-index: 10;
-    width: 20px;
-    height: 20px;
-    border: none;
-    border-radius: 3px;
-    background: rgba(0,0,0,0.5);
-    color: white;
-    font-size: 14px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
-  .viz-panel:hover .panel-close {
-    opacity: 0.8;
-  }
-  .panel-close:hover {
-    opacity: 1;
-    background: rgba(200,0,0,0.7);
+  .panel-mount {
+    width: 100%;
+    height: 100%;
   }
   .panel-label {
     position: absolute;

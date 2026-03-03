@@ -171,7 +171,7 @@
     }}
     role="button"
     tabindex="-1"
-    title={ctx?.settings.editable ? `Click to copy · Double-click to edit` : `Click to copy`}
+    title={ctx?.settings.editable ? `Double-click to edit` : undefined}
   >
     {#if color_detected}
       <span class="color-swatch" style:background={color_detected}></span>
