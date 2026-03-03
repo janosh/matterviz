@@ -237,10 +237,11 @@
       if (!badge) return
       event.stopPropagation()
       event.preventDefault()
-      const data_path = badge.dataset.renderable_path ?? ``
+      const raw_path = badge.dataset.renderable_path ?? ``
+      const data_path = strip_type_suffix(raw_path)
       const detected_type = badge.dataset.renderable_type as RenderableType | undefined
       if (!detected_type) return
-      const val = resolve_path(value, strip_type_suffix(data_path))
+      const val = resolve_path(value, data_path)
       if (val !== undefined) replace_or_add_panel(data_path, detected_type, val)
     }
     sidebar_element.addEventListener(`click`, on_badge_click, true)
@@ -516,8 +517,10 @@
     drop_target_panel_idx = -1
     if (!raw) return
     try {
-      const { data_path, detected_type } = JSON.parse(raw) as { data_path: string; detected_type: RenderableType }
-      const val = resolve_path(value, strip_type_suffix(data_path))
+      const parsed = JSON.parse(raw) as { data_path: string; detected_type: RenderableType }
+      const data_path = strip_type_suffix(parsed.data_path)
+      const { detected_type } = parsed
+      const val = resolve_path(value, data_path)
       if (val === undefined || !detected_type) return
       if (panels.length === 0 || zone === `center` || !zone) {
         replace_or_add_panel(data_path, detected_type, val)

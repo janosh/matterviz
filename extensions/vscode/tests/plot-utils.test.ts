@@ -135,16 +135,15 @@ describe(`suggest_mapping`, () => {
     expect(mapping.color).toBe(`temp`)
   })
 
-  test(`single numeric column defaults to scatter (y assigned, x empty)`, () => {
+  test(`single numeric column falls back to histogram`, () => {
     const cols = new Map([[`a`, {
       values: [1, 2, 3],
       type: `numeric` as const,
       n_valid: 3,
     }]])
     const { plot_type, mapping } = suggest_mapping(cols)
-    expect(plot_type).toBe(`scatter`)
-    expect(mapping.y).toBe(`a`)
-    expect(mapping.x).toBeUndefined()
+    expect(plot_type).toBe(`histogram`)
+    expect(mapping.x).toBe(`a`)
   })
 
   test(`empty columns map falls back to histogram`, () => {

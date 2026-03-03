@@ -128,9 +128,10 @@ export function suggest_mapping(
     plot_type = `scatter3d`
   } else if (mapping.x && columns.get(mapping.x)?.type === `string`) {
     plot_type = `bar`
-  } else if (!mapping.y) {
+  } else if (!mapping.x || !mapping.y) {
     plot_type = `histogram`
-    if (!mapping.x && numeric_cols[0]) mapping.x = numeric_cols[0]
+    // Ensure at least one axis is assigned for the histogram
+    mapping.x ??= mapping.y ?? numeric_cols[0]
   }
 
   return { plot_type, mapping }
