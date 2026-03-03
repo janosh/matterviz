@@ -207,91 +207,93 @@
     </label>
   </SettingsSection>
 
-  <!-- Projections -->
-  <SettingsSection
-    title="Projections"
-    current_values={{
-      xy: display.projections?.xy,
-      xz: display.projections?.xz,
-      yz: display.projections?.yz,
-      opacity: display.projection_opacity,
-      scale: display.projection_scale,
-    }}
-    on_reset={() => {
-      display = {
-        ...display,
-        projections: { xy: false, xz: false, yz: false },
-        projection_opacity: 0.3,
-        projection_scale: 0.5,
-      }
-    }}
-  >
-    <div style="display: flex; flex-wrap: wrap; gap: 1ex">
-      <label>
+  <!-- Projections: only when there's data to project -->
+  {#if series.length > 0}
+    <SettingsSection
+      title="Projections"
+      current_values={{
+        xy: display.projections?.xy,
+        xz: display.projections?.xz,
+        yz: display.projections?.yz,
+        opacity: display.projection_opacity,
+        scale: display.projection_scale,
+      }}
+      on_reset={() => {
+        display = {
+          ...display,
+          projections: { xy: false, xz: false, yz: false },
+          projection_opacity: 0.3,
+          projection_scale: 0.5,
+        }
+      }}
+    >
+      <div style="display: flex; flex-wrap: wrap; gap: 1ex">
+        <label>
+          <input
+            type="checkbox"
+            checked={display.projections?.xy}
+            onchange={toggle_projection(`xy`)}
+          /> XY
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={display.projections?.xz}
+            onchange={toggle_projection(`xz`)}
+          /> XZ
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={display.projections?.yz}
+            onchange={toggle_projection(`yz`)}
+          /> YZ
+        </label>
+      </div>
+      <div class="pane-row">
+        <label for="{uid}-proj-opacity">Opacity:</label>
         <input
-          type="checkbox"
-          checked={display.projections?.xy}
-          onchange={toggle_projection(`xy`)}
-        /> XY
-      </label>
-      <label>
+          id="{uid}-proj-opacity"
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={display.projection_opacity ?? 0.3}
+          oninput={update_display(`projection_opacity`)}
+        />
         <input
-          type="checkbox"
-          checked={display.projections?.xz}
-          onchange={toggle_projection(`xz`)}
-        /> XZ
-      </label>
-      <label>
+          type="number"
+          min="0"
+          max="1"
+          step="0.05"
+          value={display.projection_opacity ?? 0.3}
+          oninput={update_display(`projection_opacity`)}
+          style="width: 3.5em"
+        />
+      </div>
+      <div class="pane-row">
+        <label for="{uid}-proj-scale">Size:</label>
         <input
-          type="checkbox"
-          checked={display.projections?.yz}
-          onchange={toggle_projection(`yz`)}
-        /> YZ
-      </label>
-    </div>
-    <div class="pane-row">
-      <label for="{uid}-proj-opacity">Opacity:</label>
-      <input
-        id="{uid}-proj-opacity"
-        type="range"
-        min="0"
-        max="1"
-        step="0.05"
-        value={display.projection_opacity ?? 0.3}
-        oninput={update_display(`projection_opacity`)}
-      />
-      <input
-        type="number"
-        min="0"
-        max="1"
-        step="0.05"
-        value={display.projection_opacity ?? 0.3}
-        oninput={update_display(`projection_opacity`)}
-        style="width: 3.5em"
-      />
-    </div>
-    <div class="pane-row">
-      <label for="{uid}-proj-scale">Size:</label>
-      <input
-        id="{uid}-proj-scale"
-        type="range"
-        min="0.1"
-        max="1"
-        step="0.05"
-        value={display.projection_scale ?? 0.5}
-        oninput={update_display(`projection_scale`)}
-      />
-      <input
-        type="number"
-        min="0.1"
-        max="1"
-        step="0.05"
-        value={display.projection_scale ?? 0.5}
-        oninput={update_display(`projection_scale`)}
-        style="width: 3.5em"
-      />
-    </div>
-  </SettingsSection>
+          id="{uid}-proj-scale"
+          type="range"
+          min="0.1"
+          max="1"
+          step="0.05"
+          value={display.projection_scale ?? 0.5}
+          oninput={update_display(`projection_scale`)}
+        />
+        <input
+          type="number"
+          min="0.1"
+          max="1"
+          step="0.05"
+          value={display.projection_scale ?? 0.5}
+          oninput={update_display(`projection_scale`)}
+          style="width: 3.5em"
+        />
+      </div>
+    </SettingsSection>
+  {/if}
 
   <!-- Axes (merged X/Y/Z) -->
   <SettingsSection
@@ -347,16 +349,16 @@
     {/each}
   </SettingsSection>
 
-  <!-- Data summary -->
+  <!-- Data summary: only when there's data -->
   {#if series.length > 0 || surfaces.length > 0}
     <div class="data-summary">
       {#if series.length > 0}
-        <span>Series: {series.length} · Points: {
+        <span>{series.length} series · {
             series.reduce((sum, srs) => sum + srs.x.length, 0).toLocaleString()
-          }</span>
+          } points</span>
       {/if}
       {#if surfaces.length > 0}
-        <span>Surfaces: {surfaces.length}</span>
+        <span>{surfaces.length} {surfaces.length === 1 ? `surface` : `surfaces`}</span>
       {/if}
     </div>
   {/if}

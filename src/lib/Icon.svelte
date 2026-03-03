@@ -32,8 +32,8 @@
 
 <style>
   svg {
-    width: 1em;
-    height: auto;
+    width: var(--icon-size, 1em);
+    height: var(--icon-size, auto);
     display: inline-block;
     vertical-align: middle;
   }

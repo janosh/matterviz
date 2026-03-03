@@ -2155,6 +2155,23 @@ describe(`HeatmapTable`, () => {
     })
   })
 
+  describe(`Controls Pane`, () => {
+    it.each(
+      [
+        [false, null],
+        [true, `.pane-toggle`],
+      ] as const,
+    )(`show_controls=%s -> gear icon %s`, (show_controls, expected_selector) => {
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data: sample_data, columns: sample_columns, show_controls },
+      })
+      const toggle = document.querySelector(`.pane-toggle`)
+      if (expected_selector) expect(toggle).not.toBeNull()
+      else expect(toggle).toBeNull()
+    })
+  })
+
   describe(`Page Size Selector`, () => {
     const large_data = Array.from({ length: 50 }, (_, idx) => ({
       Model: `Model ${idx}`,
