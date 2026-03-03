@@ -197,14 +197,27 @@ export function build_scatter3d_series(
   const z_col = get_col(columns, mapping.z)
   if (!x_col || !y_col || !z_col) return { x: [], y: [], z: [] }
 
-  return {
-    x: to_numbers(x_col.values),
-    y: to_numbers(y_col.values),
-    z: to_numbers(z_col.values),
-    markers: `points`,
-    color_values: optional_numbers(get_col(columns, mapping.color)),
-    size_values: optional_numbers(get_col(columns, mapping.size)),
+  const raw_x = to_numbers(x_col.values)
+  const raw_y = to_numbers(y_col.values)
+  const raw_z = to_numbers(z_col.values)
+  const raw_color = optional_numbers(get_col(columns, mapping.color))
+  const raw_size = optional_numbers(get_col(columns, mapping.size))
+
+  const x: number[] = []
+  const y: number[] = []
+  const z: number[] = []
+  const color_values = raw_color ? [] as number[] : undefined
+  const size_values = raw_size ? [] as number[] : undefined
+  for (let idx = 0; idx < raw_x.length; idx++) {
+    if (!isFinite(raw_x[idx]) || !isFinite(raw_y[idx]) || !isFinite(raw_z[idx])) continue
+    x.push(raw_x[idx])
+    y.push(raw_y[idx])
+    z.push(raw_z[idx])
+    if (raw_color && color_values) color_values.push(raw_color[idx])
+    if (raw_size && size_values) size_values.push(raw_size[idx])
   }
+
+  return { x, y, z, markers: `points`, color_values, size_values }
 }
 
 export function build_bar_series(

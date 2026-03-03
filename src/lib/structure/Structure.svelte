@@ -308,13 +308,13 @@
       const has_vector_data = structure.sites.some((site) =>
         get_site_vector(site) !== null
       )
-
-      if (has_vector_data && !scene_props.show_force_vectors) {
+      if (!has_vector_data) return
+      if (!scene_props.show_force_vectors) {
         scene_props.show_force_vectors = true
         scene_props.force_scale ??= DEFAULTS.structure.force_scale
         scene_props.force_color ??= DEFAULTS.structure.force_color
-        force_vectors_auto_enabled = true
       }
+      force_vectors_auto_enabled = true
     }
   })
 

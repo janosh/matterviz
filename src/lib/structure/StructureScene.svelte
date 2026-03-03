@@ -655,12 +655,15 @@
         let is_magnetic = false
         for (const key of [`force`, `magmom`, `spin`]) {
           const val = props[key]
-          if (Array.isArray(val) && val.length === 3) {
+          if (
+            Array.isArray(val) && val.length === 3 &&
+            val.every((v) => typeof v === `number` && isFinite(v))
+          ) {
             vec = val as Vec3
             is_magnetic = key !== `force`
             break
           }
-          if (typeof val === `number`) {
+          if (typeof val === `number` && isFinite(val)) {
             vec = [0, 0, val]
             is_magnetic = key !== `force`
             break
@@ -682,10 +685,12 @@
             grn.toString(16).padStart(2, `0`)
           }${blu.toString(16).padStart(2, `0`)}`
         } else {
-          const majority_element = site.species.reduce((max, spec) =>
-            spec.occu > max.occu ? spec : max
-          ).element
-          arrow_color = colors.element?.[majority_element] || force_color
+          const majority_element = site.species.length > 0
+            ? site.species.reduce((max, spec) => spec.occu > max.occu ? spec : max)
+              .element
+            : undefined
+          arrow_color = (majority_element && colors.element?.[majority_element]) ||
+            force_color
         }
 
         return {

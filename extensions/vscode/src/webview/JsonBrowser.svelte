@@ -666,14 +666,15 @@
                 class="renderable-chip"
                 style="background: {type_color(info.type)}22; border: 1px solid {type_color(info.type)}66;"
                 onclick={() => {
-                  const val = resolve_path(value, data_path)
+                  const clean_path = strip_type_suffix(data_path)
+                  const val = resolve_path(value, clean_path)
                   if (val !== undefined) {
-                    replace_or_add_panel(data_path, info.type, val)
+                    replace_or_add_panel(clean_path, info.type, val)
                   }
                 }}
               >
                 <span class="chip-dot" style="background: {type_color(info.type)};"></span>
-                {info.label}: <code>{data_path || `root`}</code>
+                {info.label}: <code>{strip_type_suffix(data_path) || `root`}</code>
               </button>
             {/each}
           </div>
