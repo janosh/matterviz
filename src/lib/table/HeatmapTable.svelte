@@ -2,6 +2,9 @@
   import { luminance, watch_dark_mode } from '$lib/colors'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
+  import { SettingsSection } from '$lib/layout'
+  import ContextMenu from '$lib/overlays/ContextMenu.svelte'
+  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type {
     CellSnippet,
     CellVal,
@@ -57,6 +60,8 @@
     empty_message = `No data`,
     show_row_numbers = false,
     allow_better_toggle = false,
+    show_controls = $bindable(false),
+    controls_open = $bindable(false),
     header_cell,
     footer,
     ...rest
@@ -109,6 +114,10 @@
     show_row_numbers?: boolean
     // When true, show a toggle in colored column headers to cycle gradient direction
     allow_better_toggle?: boolean
+    // Whether the gear icon for the controls pane is visible
+    show_controls?: boolean
+    // Whether the controls pane is expanded
+    controls_open?: boolean
     // Custom snippet for rendering header cells. Falls back to {@html col.label}.
     header_cell?: Snippet<[{ col: Label }]>
     // Footer snippet rendered inside <tfoot> below the table body
@@ -211,6 +220,28 @@
 
   // Per-column gradient direction overrides (user-toggled via header)
   let better_overrides = new SvelteMap<string, `higher` | `lower`>()
+
+  // Per-column color scale overrides
+  let color_scale_overrides = new SvelteMap<string, string>()
+
+  const color_scale_options = [
+    `interpolateViridis`,
+    `interpolatePlasma`,
+    `interpolateInferno`,
+    `interpolateCividis`,
+    `interpolateTurbo`,
+    `interpolateBlues`,
+    `interpolateGreens`,
+    `interpolateReds`,
+    `interpolateYlOrRd`,
+  ] as const
+
+  // Columns that have a color gradient
+  let colored_columns = $derived(
+    columns.filter((col) =>
+      col.color_scale !== null && col.color_scale !== undefined
+    ),
+  )
 
   // Column resize state
   let resize_col_id = $state<string | null>(null)
@@ -633,11 +664,13 @@
     const numeric_vals = parsed_column_values.get(col_id) ?? []
 
     const better = better_overrides.get(col_id) ?? col.better
+    const scale = (color_scale_overrides.get(col_id) ?? col.color_scale ??
+      `interpolateViridis`) as Parameters<typeof calc_cell_color>[3]
     const color = calc_cell_color(
       numeric_val,
       numeric_vals,
       better,
-      col.color_scale || `interpolateViridis`,
+      scale,
       col.scale_type || `linear`,
     )
 
@@ -680,13 +713,19 @@
     return arrow ? `<span style="font-size: 0.8em;">${arrow}</span>` : ``
   }
 
-  // Cycle gradient direction: undefined -> higher -> lower -> undefined
-  function toggle_better(col_id: string): void {
-    const current = better_overrides.get(col_id)
-    if (current === undefined) better_overrides.set(col_id, `higher`)
-    else if (current === `higher`) better_overrides.set(col_id, `lower`)
-    else better_overrides.delete(col_id)
-  }
+  // Context menu state for column header right-click
+  let context_menu_col = $state<string | null>(null)
+  let context_menu_pos = $state({ x: 0, y: 0 })
+
+  const better_sections = [
+    {
+      title: `Gradient direction`,
+      options: [
+        { value: `higher`, label: `▲ Higher is better` },
+        { value: `lower`, label: `▼ Lower is better` },
+      ],
+    },
+  ] as const
 
   // Row selection using WeakMap-based ID lookup instead of O(n) JSON.stringify comparison
   function toggle_row_select(row: RowData) {
@@ -850,7 +889,11 @@
   bind:this={container_el}
   class="table-container {rest_props.class ?? ``}"
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
-  onmouseleave={() => [show_column_dropdown, show_export_dropdown] = [false, false]}
+  onmouseleave={() => {
+    show_column_dropdown = false
+    show_export_dropdown = false
+    context_menu_col = null
+  }}
 >
   <!-- Floating control buttons -->
   <section class="control-buttons">
@@ -978,6 +1021,106 @@
     {/if}
   </section>
 
+  {#if show_controls}
+    <DraggablePane
+      bind:show={controls_open}
+      closed_icon="Settings"
+      open_icon="Cross"
+      toggle_props={{
+        title: `${controls_open ? `Close` : `Open`} table controls`,
+        style: `position: absolute; top: 5pt; right: 1ex; z-index: 10`,
+      }}
+      pane_props={{ style: `max-height: 60vh; overflow-y: auto; font-size: 0.85em` }}
+    >
+      <SettingsSection
+        title="Heatmap"
+        current_values={{ show_heatmap, heatmap_opacity }}
+        on_reset={() => {
+          show_heatmap = true
+          heatmap_opacity = 1
+        }}
+      >
+        <label><input type="checkbox" bind:checked={show_heatmap} /> Show heatmap</label>
+        {#if show_heatmap}
+          <label>
+            Opacity
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={heatmap_opacity}
+            />
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              bind:value={heatmap_opacity}
+              style="width: 3.5em"
+            />
+          </label>
+        {/if}
+      </SettingsSection>
+
+      <SettingsSection
+        title="Display"
+        current_values={{ show_row_numbers }}
+        on_reset={() => {
+          show_row_numbers = false
+        }}
+      >
+        <label><input type="checkbox" bind:checked={show_row_numbers} /> Row
+          numbers</label>
+      </SettingsSection>
+
+      {#if colored_columns.length > 0}
+        <SettingsSection
+          title="Column Colors"
+          current_values={Object.fromEntries([...better_overrides, ...color_scale_overrides])}
+          on_reset={() => {
+            better_overrides.clear()
+            color_scale_overrides.clear()
+          }}
+        >
+          {#each colored_columns as col (get_col_id(col))}
+            {@const col_id = get_col_id(col)}
+            <div class="col-color-row">
+              <span class="col-color-label">{@html col.label}</span>
+              <select
+                value={color_scale_overrides.get(col_id) ?? col.color_scale ??
+                `interpolateViridis`}
+                onchange={(event) => {
+                  const val = event.currentTarget.value
+                  if (
+                    val === (col.color_scale ?? `interpolateViridis`)
+                  ) color_scale_overrides.delete(col_id)
+                  else color_scale_overrides.set(col_id, val)
+                }}
+              >
+                {#each color_scale_options as scale (scale)}
+                  <option value={scale}>{scale.replace(`interpolate`, ``)}</option>
+                {/each}
+              </select>
+              <select
+                value={better_overrides.get(col_id) ?? col.better ?? ``}
+                onchange={(event) => {
+                  const val = event.currentTarget.value
+                  if (!val) better_overrides.delete(col_id)
+                  else better_overrides.set(col_id, val as `higher` | `lower`)
+                }}
+              >
+                <option value="">Default</option>
+                <option value="higher">▲ High</option>
+                <option value="lower">▼ Low</option>
+              </select>
+            </div>
+          {/each}
+        </SettingsSection>
+      {/if}
+    </DraggablePane>
+  {/if}
+
   {@render sort_hint_element(`top`)}
 
   <div
@@ -1049,6 +1192,20 @@
               title={col.description}
               tabindex={col.sortable === false ? undefined : 0}
               role={col.sortable === false ? undefined : `button`}
+              oncontextmenu={(event) => {
+                if (
+                  !allow_better_toggle || col.color_scale === null ||
+                  col.color_scale === undefined
+                ) return
+                event.preventDefault()
+                event.stopPropagation()
+                context_menu_col = col_id
+                const rect = container_el?.getBoundingClientRect()
+                context_menu_pos = {
+                  x: event.clientX - (rect?.left ?? 0),
+                  y: event.clientY - (rect?.top ?? 0),
+                }
+              }}
               onclick={(event) => {
                 if (!drag_col_id && !resize_col_id) {
                   sort_rows(
@@ -1100,32 +1257,6 @@
                 {@html col.label}
               {/if}
               {@html sort_indicator(col, sort_state)}
-              {#if allow_better_toggle && col.color_scale !== null &&
-                col.color_scale !== undefined}
-                {@const col_id = get_col_id(col)}
-                {@const current_better = better_overrides.get(col_id) ?? col.better}
-                <button
-                  class="better-toggle"
-                  class:active={better_overrides.has(col_id)}
-                  title={current_better === `higher`
-                  ? `High is better (click to cycle)`
-                  : current_better === `lower`
-                  ? `Low is better (click to cycle)`
-                  : `No preference (click to set)`}
-                  onclick={(event) => {
-                    event.stopPropagation()
-                    toggle_better(col_id)
-                  }}
-                >
-                  {
-                    current_better === `higher`
-                    ? `▲`
-                    : current_better === `lower`
-                    ? `▼`
-                    : `◆`
-                  }
-                </button>
-              {/if}
               <!-- Column resize handle -->
               <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <span
@@ -1306,6 +1437,30 @@
       {/if}
     </div>
   {/if}
+
+  <ContextMenu
+    sections={better_sections}
+    selected_values={{ 'Gradient direction': better_overrides.get(context_menu_col ?? ``) ?? `` }}
+    position={context_menu_pos}
+    visible={context_menu_col !== null}
+    on_close={() => context_menu_col = null}
+    style={[
+      `--surface-bg: light-dark(#fff, #1e1e1e)`,
+      `--border-color: light-dark(rgba(0,0,0,0.15), rgba(255,255,255,0.15))`,
+      `--text-color: light-dark(#333, #eee)`,
+      `--text-color-muted: light-dark(#888, #999)`,
+      `--surface-bg-hover: light-dark(rgba(0,0,0,0.06), rgba(255,255,255,0.1))`,
+      `--accent-color: light-dark(rgba(0,0,0,0.1), rgba(255,255,255,0.15))`,
+      `z-index: 200`,
+    ].join(`; `)}
+    on_select={(_, option) => {
+      if (!context_menu_col) return
+      const current = better_overrides.get(context_menu_col)
+      if (current === option.value) better_overrides.delete(context_menu_col)
+      else better_overrides.set(context_menu_col, option.value as `higher` | `lower`)
+      context_menu_col = null
+    }}
+  />
 </div>
 
 <style>
@@ -1615,19 +1770,22 @@
     font-size: 0.85em;
   }
 
-  .better-toggle {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 0.6em;
-    line-height: 1;
-    padding: 0 1px;
-    opacity: 0.4;
-    color: inherit;
-    vertical-align: middle;
+  .col-color-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 0;
+    select {
+      font-size: 0.85em;
+      padding: 1px 2px;
+    }
   }
-  .better-toggle:hover, .better-toggle.active {
-    opacity: 1;
+  .col-color-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
   /* Column resize */
   .resize-handle {

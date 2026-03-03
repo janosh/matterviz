@@ -240,6 +240,7 @@
             search
             export_data
             allow_better_toggle
+            show_controls
             scroll_style="max-height: 100%"
             style="height: 100%; text-align: left"
           />
