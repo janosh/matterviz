@@ -159,26 +159,30 @@
     data-testid="scale-type-section"
     current_values={{
       x_scale_type: x_axis.scale_type,
-      x2_scale_type: x2_axis.scale_type,
+      ...(has_x2_points ? { x2_scale_type: x2_axis.scale_type } : {}),
       y_scale_type: y_axis.scale_type,
-      y2_scale_type: y2_axis.scale_type,
+      ...(has_y2_points ? { y2_scale_type: y2_axis.scale_type } : {}),
     }}
     on_reset={() => {
       x_axis = {
         ...x_axis,
         scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
       }
-      x2_axis = {
-        ...x2_axis,
-        scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
-      }
       y_axis = {
         ...y_axis,
         scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
       }
-      y2_axis = {
-        ...y2_axis,
-        scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
+      if (has_x2_points) {
+        x2_axis = {
+          ...x2_axis,
+          scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
+        }
+      }
+      if (has_y2_points) {
+        y2_axis = {
+          ...y2_axis,
+          scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
+        }
       }
     }}
     class="pane-grid"

@@ -61,9 +61,11 @@ function classify_column(values: unknown[]): ColumnInfo {
   let n_string = 0
   let n_valid = 0
   for (const val of values) {
-    if (val === null || val === undefined) continue
+    if (
+      val === null || val === undefined || (typeof val === `number` && !isFinite(val))
+    ) continue
     n_valid++
-    if (typeof val === `number` && isFinite(val)) n_numeric++
+    if (typeof val === `number`) n_numeric++
     else if (typeof val === `string`) n_string++
   }
   let type: ColumnInfo[`type`] = `mixed`
@@ -123,10 +125,11 @@ export function suggest_mapping(
     plot_type = `scatter3d`
   } else if (mapping.x && columns.get(mapping.x)?.type === `string`) {
     plot_type = `bar`
-  } else if (!mapping.x || !mapping.y) {
+  } else if ((!mapping.x || !mapping.y) && numeric_cols.length >= 1) {
     plot_type = `histogram`
-    // Ensure at least one axis is assigned for the histogram
     mapping.x ??= mapping.y ?? numeric_cols[0]
+  } else if (!mapping.x || !mapping.y) {
+    plot_type = `table`
   }
 
   return { plot_type, mapping }
@@ -216,18 +219,22 @@ export function build_bar_series(
   const y_col = get_col(columns, mapping.y)
   if (!x_col || !y_col) return { x: [], y: [] }
 
-  return {
-    x: x_col.values.map((val) => String(val ?? ``)),
-    y: to_numbers(y_col.values),
-    color: `#4c6ef5`,
+  const raw_y = to_numbers(y_col.values)
+  const x: string[] = []
+  const y: number[] = []
+  for (let idx = 0; idx < raw_y.length; idx++) {
+    if (!isFinite(raw_y[idx])) continue
+    x.push(String(x_col.values[idx] ?? ``))
+    y.push(raw_y[idx])
   }
+  return { x, y, color: `#4c6ef5` }
 }
 
 export function build_histogram_series(
   columns: Map<string, ColumnInfo>,
   mapping: AxisMapping,
 ): DataSeries {
-  const col = get_col(columns, mapping.y ?? mapping.x)
+  const col = get_col(columns, mapping.x ?? mapping.y)
   if (!col) return { x: [], y: [] }
 
   const values = to_numbers(col.values).filter(isFinite)

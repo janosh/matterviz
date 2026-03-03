@@ -152,9 +152,9 @@ describe(`suggest_mapping`, () => {
     expect(mapping.x).toBe(`a`)
   })
 
-  test(`empty columns map falls back to histogram`, () => {
+  test(`empty columns map falls back to table`, () => {
     const { plot_type, mapping } = suggest_mapping(new Map())
-    expect(plot_type).toBe(`histogram`)
+    expect(plot_type).toBe(`table`)
     expect(mapping.x).toBeUndefined()
     expect(mapping.y).toBeUndefined()
   })
@@ -272,7 +272,7 @@ describe(`build_histogram_series`, () => {
     const cols = extract_columns({ values: [1.5, 2.3, 3.1, 4.7], idx: [0, 1, 2, 3] })
     const series = build_histogram_series(cols, { y: `values` })
     expect(series.y).toEqual([1.5, 2.3, 3.1, 4.7])
-    expect(series.x.length).toBe(4)
+    expect(series.x).toEqual([0, 1, 2, 3])
   })
 
   test(`falls back to x mapping when y is absent`, () => {

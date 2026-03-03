@@ -242,13 +242,26 @@
       event.preventDefault()
       const raw_path = badge.dataset.renderable_path ?? ``
       const data_path = strip_type_suffix(raw_path)
-      const detected_type = badge.dataset.renderable_type as RenderableType | undefined
-      if (!detected_type) return
+      const detected_type = badge.dataset.renderable_type
+      if (!detected_type || !(detected_type in TYPE_LABELS)) return
       const val = resolve_path(value, data_path)
-      if (val !== undefined) replace_or_add_panel(data_path, detected_type, val)
+      if (val !== undefined) replace_or_add_panel(data_path, detected_type as RenderableType, val)
     }
     sidebar_element.addEventListener(`click`, on_badge_click, true)
     return () => sidebar_element!.removeEventListener(`click`, on_badge_click, true)
+  })
+
+  // Escape key closes all panels, returning to the overview
+  $effect(() => {
+    if (panels.length === 0) return
+    function on_keydown(event: KeyboardEvent): void {
+      if (event.key !== `Escape`) return
+      const tag = (event.target as HTMLElement)?.tagName
+      if (tag === `INPUT` || tag === `SELECT` || tag === `TEXTAREA`) return
+      close_all_panels()
+    }
+    window.addEventListener(`keydown`, on_keydown)
+    return () => window.removeEventListener(`keydown`, on_keydown)
   })
 
   // Re-apply badges + draggable attributes when tree DOM changes.
@@ -352,6 +365,13 @@
     split_directions = new_dirs
   }
 
+  function close_all_panels(): void {
+    for (let idx = panels.length - 1; idx >= 0; idx--) unmount_panel(idx)
+    panels = []
+    panel_sizes = []
+    split_directions = []
+  }
+
   function unmount_panel(idx: number): void {
     const panel = panels[idx]
     if (panel?.component) {
@@ -398,7 +418,15 @@
   const merged_defaults = $derived(merge(defaults))
   const common_props = { fullscreen_toggle: false, style: `height:100%` }
 
-  function mount_into(target: HTMLElement, val: unknown, detected_type: RenderableType): ReturnType<typeof mount> | null {
+  function mount_into(target: HTMLElement, val: unknown, detected_type: RenderableType, panel_id?: string): ReturnType<typeof mount> | null {
+    const onclose = panel_id !== undefined
+      ? () => {
+        const idx = panels.findIndex((p) => p.id === panel_id)
+        if (idx < 0) return
+        if (panels.length > 1) close_panel(idx)
+        else close_all_panels()
+      }
+      : undefined
     target.innerHTML = ``
     // Force layout so Three.js gets real dimensions
     void target.offsetHeight
@@ -440,9 +468,9 @@
       } else if (detected_type === `xrd`) {
         return mount(XrdPlot, { target, props: { patterns: val as XrdPattern, allow_file_drop: false, ...common_props } })
       } else if (detected_type === `table`) {
-        return mount(PlotPanel, { target, props: { data: val, initial_type: `table`, ...common_props } })
+        return mount(PlotPanel, { target, props: { data: val, initial_type: `table`, onclose, ...common_props } })
       } else if (detected_type === `plot`) {
-        return mount(PlotPanel, { target, props: { data: val, ...common_props } })
+        return mount(PlotPanel, { target, props: { data: val, onclose, ...common_props } })
       }
     } catch (err) {
       console.error(`JsonBrowser: mount failed for ${detected_type}:`, err)
@@ -457,7 +485,7 @@
       const el = document.getElementById(panel.id)
       if (!el) continue
       panel.element = el
-      panel.component = mount_into(el, panel.val, panel.detected_type)
+      panel.component = mount_into(el, panel.val, panel.detected_type, panel.id)
     }
   }
 
@@ -699,20 +727,8 @@
               onmousedown={(event) => on_split_divider_mousedown(event, idx - 1)}
             ></div>
           {/if}
-          <div
-            class="viz-panel"
-            id={panel.id}
-            style="flex: {panel_sizes[idx] ?? 1}"
-          >
-            <!-- Close button -->
-            {#if panels.length > 1}
-              <button
-                type="button"
-                class="panel-close"
-                title="Close this panel"
-                onclick={() => close_panel(idx)}
-              >&times;</button>
-            {/if}
+          <div class="viz-panel" style="flex: {panel_sizes[idx] ?? 1}">
+            <div class="panel-mount" id={panel.id}></div>
             <!-- Panel label -->
             <div class="panel-label" style="background: {TYPE_COLORS[panel.detected_type]}cc;">
               {TYPE_LABELS[panel.detected_type]}: {strip_type_suffix(panel.data_path)}
@@ -783,32 +799,9 @@
     min-width: 100px;
     min-height: 80px;
   }
-  .panel-close {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    z-index: 10;
-    width: 20px;
-    height: 20px;
-    border: none;
-    border-radius: 3px;
-    background: rgba(0,0,0,0.5);
-    color: white;
-    font-size: 14px;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
-  .viz-panel:hover .panel-close {
-    opacity: 0.8;
-  }
-  .panel-close:hover {
-    opacity: 1;
-    background: rgba(200,0,0,0.7);
+  .panel-mount {
+    width: 100%;
+    height: 100%;
   }
   .panel-label {
     position: absolute;

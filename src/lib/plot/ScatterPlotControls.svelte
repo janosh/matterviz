@@ -36,10 +36,11 @@
     >
   } = $props()
 
+  let non_null_series = $derived(series.filter((srs) => srs != null))
   let visible_series = $derived(
-    series.filter((srs) => srs != null && (srs.visible ?? true)),
+    non_null_series.filter((srs) => (srs.visible ?? true)),
   )
-  let has_multiple_series = $derived(visible_series.length > 1)
+  let has_multiple_series = $derived(non_null_series.length > 1)
 
   // Derive what marker types are present, and whether color/size are data-driven
   const markers_include = (mode: string) =>

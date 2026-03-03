@@ -306,7 +306,7 @@ export function is_plottable_data(obj: unknown): boolean {
   )
   const num_cols =
     array_entries.filter(([, val]) =>
-      (val as unknown[]).some((v) => typeof v === `number`)
+      (val as unknown[]).some((elem) => typeof elem === `number`)
     ).length
   return num_cols >= 2
 }

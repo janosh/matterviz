@@ -56,6 +56,7 @@
     heatmap_opacity = $bindable(1),
     empty_message = `No data`,
     show_row_numbers = false,
+    allow_better_toggle = false,
     header_cell,
     footer,
     ...rest
@@ -106,6 +107,8 @@
     empty_message?: string
     // Show a row number column as the first column
     show_row_numbers?: boolean
+    // When true, show a toggle in colored column headers to cycle gradient direction
+    allow_better_toggle?: boolean
     // Custom snippet for rendering header cells. Falls back to {@html col.label}.
     header_cell?: Snippet<[{ col: Label }]>
     // Footer snippet rendered inside <tfoot> below the table body
@@ -206,11 +209,26 @@
   let show_column_dropdown = $state(false)
   let show_export_dropdown = $state(false)
 
+  // Per-column gradient direction overrides (user-toggled via header)
+  let better_overrides = new SvelteMap<string, `higher` | `lower`>()
+
   // Column resize state
   let resize_col_id = $state<string | null>(null)
   let resize_start_x = $state(0)
   let resize_start_width = $state(0)
   let column_widths = $state<Record<string, number>>({})
+
+  // Auto-discover columns from data keys when none are provided
+  $effect.pre(() => {
+    if (columns.length > 0 || data.length === 0) return
+    const seen: Record<string, true> = {}
+    for (const row of data.slice(0, 50)) {
+      for (const key of Object.keys(row)) {
+        if (key !== `style` && key !== `class`) seen[key] = true
+      }
+    }
+    columns = Object.keys(seen).map((key) => ({ label: key }))
+  })
 
   // Helper to make column IDs (needed since column labels in different groups can be repeated)
   const get_col_id = (col: Label) =>
@@ -614,11 +632,11 @@
     // Use memoized parsed values for the column
     const numeric_vals = parsed_column_values.get(col_id) ?? []
 
-    // calc_cell_color handles null/NaN filtering internally
+    const better = better_overrides.get(col_id) ?? col.better
     const color = calc_cell_color(
       numeric_val,
       numeric_vals,
-      col.better,
+      better,
       col.color_scale || `interpolateViridis`,
       col.scale_type || `linear`,
     )
@@ -660,6 +678,14 @@
     const arrow = sort_state.ascending ? `↓` : `↑`
 
     return arrow ? `<span style="font-size: 0.8em;">${arrow}</span>` : ``
+  }
+
+  // Cycle gradient direction: undefined -> higher -> lower -> undefined
+  function toggle_better(col_id: string): void {
+    const current = better_overrides.get(col_id)
+    if (current === undefined) better_overrides.set(col_id, `higher`)
+    else if (current === `higher`) better_overrides.set(col_id, `lower`)
+    else better_overrides.delete(col_id)
   }
 
   // Row selection using WeakMap-based ID lookup instead of O(n) JSON.stringify comparison
@@ -845,12 +871,16 @@
             search_query = ``
             search_expanded = false
           }}
-          title="Clear"
+          {@attach tooltip({ content: `Clear`, placement: `top` })}
         >
           <Icon icon="Cross" style="width: 10px" />
         </button>
       {:else}
-        <button class="icon-btn" onclick={() => search_expanded = true} title="Search">
+        <button
+          class="icon-btn"
+          onclick={() => search_expanded = true}
+          {@attach tooltip({ content: `Search`, placement: `top` })}
+        >
           <Icon icon="Search" style="width: 14px" />
         </button>
       {/if}
@@ -862,7 +892,7 @@
           class="icon-btn"
           class:active={show_column_dropdown}
           onclick={() => show_column_dropdown = !show_column_dropdown}
-          title="Columns"
+          {@attach tooltip({ content: `Columns`, placement: `top` })}
         >
           <Icon icon="Columns" style="width: 14px" />
         </button>
@@ -890,7 +920,7 @@
           class="icon-btn"
           class:active={show_export_dropdown}
           onclick={() => show_export_dropdown = !show_export_dropdown}
-          title="Export"
+          {@attach tooltip({ content: `Export`, placement: `top` })}
         >
           <Icon icon="Export" style="width: 14px" />
         </button>
@@ -1070,6 +1100,32 @@
                 {@html col.label}
               {/if}
               {@html sort_indicator(col, sort_state)}
+              {#if allow_better_toggle && col.color_scale !== null &&
+                col.color_scale !== undefined}
+                {@const col_id = get_col_id(col)}
+                {@const current_better = better_overrides.get(col_id) ?? col.better}
+                <button
+                  class="better-toggle"
+                  class:active={better_overrides.has(col_id)}
+                  title={current_better === `higher`
+                  ? `High is better (click to cycle)`
+                  : current_better === `lower`
+                  ? `Low is better (click to cycle)`
+                  : `No preference (click to set)`}
+                  onclick={(event) => {
+                    event.stopPropagation()
+                    toggle_better(col_id)
+                  }}
+                >
+                  {
+                    current_better === `higher`
+                    ? `▲`
+                    : current_better === `lower`
+                    ? `▼`
+                    : `◆`
+                  }
+                </button>
+              {/if}
               <!-- Column resize handle -->
               <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <span
@@ -1359,7 +1415,7 @@
     justify-content: flex-end;
     align-items: center;
     gap: 2px;
-    margin-bottom: 4px;
+    margin-bottom: 1px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s;
@@ -1370,21 +1426,21 @@
     pointer-events: auto;
   }
   .icon-btn {
-    padding: 5px 8px;
+    padding: 2px 4px;
     border: none;
-    border-radius: 4px;
+    border-radius: 3px;
     background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
     color: light-dark(#333, #ddd);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    font-size: 0.95em;
+    gap: 2px;
+    font-size: 0.8em;
   }
   .icon-btn :global(svg) {
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
   }
   .icon-btn:hover {
     background: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2));
@@ -1446,13 +1502,13 @@
     gap: 6px;
   }
   .search-input {
-    padding: 5px 8px;
+    padding: 2px 4px;
     border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
-    border-radius: 4px;
+    border-radius: 3px;
     background: light-dark(rgba(255, 255, 255, 0.9), rgba(0, 0, 0, 0.3));
     color: light-dark(#333, #eee);
-    font-size: 0.95em;
-    width: 120px;
+    font-size: 0.8em;
+    width: 110px;
     box-sizing: border-box;
   }
   .search-input:focus {
@@ -1559,6 +1615,20 @@
     font-size: 0.85em;
   }
 
+  .better-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.6em;
+    line-height: 1;
+    padding: 0 1px;
+    opacity: 0.4;
+    color: inherit;
+    vertical-align: middle;
+  }
+  .better-toggle:hover, .better-toggle.active {
+    opacity: 1;
+  }
   /* Column resize */
   .resize-handle {
     position: absolute;

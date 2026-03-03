@@ -17,6 +17,7 @@
     atomic_radii,
     Cylinder,
     get_center_of_mass,
+    get_site_vector_info,
     Lattice,
   } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
@@ -641,49 +642,31 @@
     return base_radius * atom_radius
   }
 
+  // Interpolate between spin-down (#3498db blue) and spin-up (#e74c3c red)
+  // based on the z-component direction of a magnetic vector
+  function spin_direction_color(vec: Vec3): string {
+    const mag = Math.hypot(...vec)
+    const z_frac = mag > 1e-10 ? (vec[2] / mag + 1) / 2 : 0.5 // 0=down, 1=up
+    const red = Math.round(52 + (231 - 52) * z_frac)
+    const grn = Math.round(152 + (76 - 152) * z_frac)
+    const blu = Math.round(219 + (60 - 219) * z_frac)
+    return `#${red.toString(16).padStart(2, `0`)}${
+      grn.toString(16).padStart(2, `0`)
+    }${blu.toString(16).padStart(2, `0`)}`
+  }
+
   // Extract per-site vectors from force, magmom, or spin properties.
-  // Scalar magmom values are converted to z-directed vectors [0, 0, magmom].
-  // For magmom/spin, color interpolates between spin-up (#e74c3c red) and
-  // spin-down (#3498db blue) based on the z-component direction.
+  // For magmom/spin, color interpolates between spin-up (red) and spin-down (blue).
   let force_data = $derived.by(() => {
     if (!show_force_vectors || !structure?.sites) return []
     return structure.sites
       .map((site) => {
-        const props = site.properties
-        if (!props) return null
-        let vec: Vec3 | null = null
-        let is_magnetic = false
-        for (const key of [`force`, `magmom`, `spin`]) {
-          const val = props[key]
-          if (
-            Array.isArray(val) && val.length === 3 &&
-            val.every((v) => typeof v === `number` && isFinite(v))
-          ) {
-            vec = val as Vec3
-            is_magnetic = key !== `force`
-            break
-          }
-          if (typeof val === `number` && isFinite(val)) {
-            vec = [0, 0, val]
-            is_magnetic = key !== `force`
-            break
-          }
-        }
-        if (!vec) return null
+        const info = get_site_vector_info(site)
+        if (!info) return null
 
         let arrow_color: string
-        if (is_magnetic) {
-          // Direction-based color: red (#e74c3c) for spin-up, blue (#3498db) for spin-down
-          const mag = Math.hypot(...vec)
-          const z_frac = mag > 1e-10 ? (vec[2] / mag + 1) / 2 : 0.5 // 0=down, 1=up
-          const r_up = 231, g_up = 76, b_up = 60
-          const r_dn = 52, g_dn = 152, b_dn = 219
-          const red = Math.round(r_dn + (r_up - r_dn) * z_frac)
-          const grn = Math.round(g_dn + (g_up - g_dn) * z_frac)
-          const blu = Math.round(b_dn + (b_up - b_dn) * z_frac)
-          arrow_color = `#${red.toString(16).padStart(2, `0`)}${
-            grn.toString(16).padStart(2, `0`)
-          }${blu.toString(16).padStart(2, `0`)}`
+        if (info.key !== `force`) {
+          arrow_color = spin_direction_color(info.vec)
         } else {
           const majority_element = site.species.length > 0
             ? site.species.reduce((max, spec) => spec.occu > max.occu ? spec : max)
@@ -695,7 +678,7 @@
 
         return {
           position: site.xyz,
-          vector: vec,
+          vector: info.vec,
           scale: force_scale,
           color: arrow_color,
         }

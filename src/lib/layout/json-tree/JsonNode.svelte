@@ -268,9 +268,6 @@
         type="button"
         class="node-key"
         class:array-index={typeof node_key === `number`}
-        title={expandable && is_collapsed
-        ? `Click to expand · Shift+click: copy path · Ctrl+click: select`
-        : `Click to copy value · Shift+click: copy path · Ctrl+click: select`}
         tabindex="-1"
         onclick={(event) => {
           event.stopPropagation()

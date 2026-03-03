@@ -148,20 +148,25 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 {
 // Property keys checked for per-site vector data (force, magnetic moment, spin)
 const VECTOR_PROPERTY_KEYS = [`force`, `magmom`, `spin`] as const
 
-// Extract a vector from a site's properties. Checks force, magmom, and spin
-// in priority order. Scalar values are converted to z-directed vectors [0, 0, val].
-export function get_site_vector(site: Site): Vec3 | null {
+// Extract a vector and its source key from a site's properties. Checks force, magmom,
+// and spin in priority order. Scalar values are converted to z-directed vectors [0, 0, val].
+export function get_site_vector_info(site: Site): { vec: Vec3; key: string } | null {
   const props = site.properties
   if (!props) return null
   for (const key of VECTOR_PROPERTY_KEYS) {
     const val = props[key]
     if (
       Array.isArray(val) && val.length === 3 &&
-      val.every((v) => typeof v === `number` && isFinite(v))
-    ) return val as Vec3
-    if (typeof val === `number` && isFinite(val)) return [0, 0, val]
+      val.every((elem) => typeof elem === `number` && isFinite(elem))
+    ) return { vec: val as Vec3, key }
+    if (typeof val === `number` && isFinite(val)) return { vec: [0, 0, val], key }
   }
   return null
+}
+
+// Convenience wrapper returning just the vector (preserves existing API)
+export function get_site_vector(site: Site): Vec3 | null {
+  return get_site_vector_info(site)?.vec ?? null
 }
 
 export interface StructureHandlerData {

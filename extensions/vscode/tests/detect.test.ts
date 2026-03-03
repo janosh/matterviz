@@ -373,6 +373,23 @@ describe(`is_plottable_data`, () => {
       { a: 1, name: `x` },
       { a: 2, name: `y` },
     ]],
+    [`column-based with NaN values (typeof NaN === number)`, true, {
+      a: [NaN, 2, 3],
+      b: [4, 5, 6],
+    }],
+    [`column-based with Infinity values`, true, {
+      a: [Infinity, 2, 3],
+      b: [4, 5, 6],
+    }],
+    [`column-based with mixed types (some numbers)`, true, {
+      a: [1, `two`, 3],
+      b: [4, 5, 6],
+    }],
+    [`row-based with NaN and mixed values`, true, [
+      { a: 1, b: `x` },
+      { a: NaN, b: 4 },
+      { a: 3, b: 6 },
+    ]],
     [`empty array`, false, []],
     [`non-tabular object`, false, { foo: `bar` }],
     [`null`, false, null],
