@@ -24,6 +24,8 @@
     controls_open = $bindable(false),
     auto_x2_range = undefined,
     auto_y2_range = undefined,
+    has_x2_points = false,
+    has_y2_points = false,
     children,
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
@@ -39,6 +41,8 @@
     controls_open?: boolean
     auto_x2_range?: Vec2
     auto_y2_range?: Vec2
+    has_x2_points?: boolean
+    has_y2_points?: boolean
     children?: Snippet<[Required<PlotConfig>]>
   } = $props()
 
@@ -184,17 +188,21 @@
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select></label>
-    <label>X2: <select bind:value={x2_axis.scale_type}>
-        <option value="linear">Linear</option>
-        <option value="log">Log</option>
-      </select></label>
+    {#if has_x2_points}
+      <label>X2: <select bind:value={x2_axis.scale_type}>
+          <option value="linear">Linear</option>
+          <option value="log">Log</option>
+        </select></label>
+    {/if}
     <label>Y: <select bind:value={y_axis.scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select></label>
-    <label>Y2: <select bind:value={y2_axis.scale_type}>
-        <option value="linear">Linear</option>
-        <option value="log">Log</option>
-      </select></label>
+    {#if has_y2_points}
+      <label>Y2: <select bind:value={y2_axis.scale_type}>
+          <option value="linear">Linear</option>
+          <option value="log">Log</option>
+        </select></label>
+    {/if}
   </SettingsSection>
 </PlotControls>

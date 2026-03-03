@@ -25,8 +25,6 @@
       parse_optimade_from_raw,
   } from '$lib/structure/parse';
   import Structure from '$lib/structure/Structure.svelte';
-  import type { RowData } from '$lib/table';
-  import HeatmapTable from '$lib/table/HeatmapTable.svelte';
   import type { XrdPattern } from '$lib/xrd';
   import XrdPlot from '$lib/xrd/XrdPlot.svelte';
   import { mount, unmount } from 'svelte';
@@ -37,6 +35,7 @@
       TYPE_LABELS,
       type RenderableType
   } from './detect';
+  import PlotPanel from './PlotPanel.svelte';
 
   let {
     value,
@@ -150,9 +149,16 @@
 
   let sidebar_element: HTMLElement | undefined = $state()
 
+  // Strip internal suffix used to register multiple renderable types at the same path
+  function strip_type_suffix(path: string): string {
+    const idx = path.indexOf(`\x00`)
+    return idx >= 0 ? path.slice(0, idx) : path
+  }
+
   // Convert a data path (relative to JSON root) to the tree path used by JsonTree
   function data_to_tree_path(data_path: string): string {
-    return filename ? (data_path ? `${filename}.${data_path}` : filename) : data_path
+    const clean = strip_type_suffix(data_path)
+    return filename ? (clean ? `${filename}.${clean}` : filename) : clean
   }
 
   // Build a Set of tree paths that are renderable (for fast draggable lookup)
@@ -176,11 +182,22 @@
   $effect(() => {
     if (!sidebar_element) return
     function on_dragstart(event: DragEvent): void {
+      if (!event.dataTransfer) { event.preventDefault(); return }
+      // If dragging a badge directly, use its own data attributes
+      const badge = (event.target as HTMLElement).closest(`.renderable-badge`) as HTMLElement | null
+      if (badge) {
+        const data_path = badge.dataset.renderable_path ?? ``
+        const detected_type = badge.dataset.renderable_type ?? ``
+        event.dataTransfer.setData(`text/plain`, JSON.stringify({ data_path, detected_type }))
+        event.dataTransfer.effectAllowed = `copy`
+        return
+      }
+      // Otherwise dragging a tree node -- look up from tree path
       const target = (event.target as HTMLElement).closest(`[data-path]`) as HTMLElement | null
       if (!target) return
       const tree_path = target.getAttribute(`data-path`) ?? ``
       const info = renderable_tree_paths.get(tree_path)
-      if (!info || !event.dataTransfer) { event.preventDefault(); return }
+      if (!info) { event.preventDefault(); return }
       event.dataTransfer.setData(`text/plain`, JSON.stringify({ data_path: info.data_path, detected_type: info.type }))
       event.dataTransfer.effectAllowed = `copy`
     }
@@ -206,25 +223,28 @@
       badge.dataset.renderable_path = data_path
       badge.dataset.renderable_type = info.type
       badge.style.background = TYPE_COLORS[info.type]
+      badge.draggable = true
       insert_after.after(badge)
     }
   }
 
   // Delegated click handler for badges (avoids per-badge listeners that leak on re-render)
+  // Uses capture phase to intercept before tree node fold/select handlers
   $effect(() => {
     if (!sidebar_element) return
     function on_badge_click(event: MouseEvent): void {
       const badge = (event.target as HTMLElement).closest(`.renderable-badge`) as HTMLElement | null
       if (!badge) return
       event.stopPropagation()
+      event.preventDefault()
       const data_path = badge.dataset.renderable_path ?? ``
       const detected_type = badge.dataset.renderable_type as RenderableType | undefined
       if (!detected_type) return
-      const val = resolve_path(value, data_path)
+      const val = resolve_path(value, strip_type_suffix(data_path))
       if (val !== undefined) replace_or_add_panel(data_path, detected_type, val)
     }
-    sidebar_element.addEventListener(`click`, on_badge_click)
-    return () => sidebar_element!.removeEventListener(`click`, on_badge_click)
+    sidebar_element.addEventListener(`click`, on_badge_click, true)
+    return () => sidebar_element!.removeEventListener(`click`, on_badge_click, true)
   })
 
   // Re-apply badges + draggable attributes when tree DOM changes.
@@ -351,18 +371,6 @@
     return val
   }
 
-  // Convert column-based or row-based data to RowData[] for HeatmapTable
-  function prepare_table_data(val: unknown): RowData[] {
-    if (Array.isArray(val)) return val as RowData[]
-    // Column-based: { col_a: [1,2,3], col_b: [4,5,6] } -> [{ col_a: 1, col_b: 4 }, ...]
-    const data = val as Record<string, unknown[]>
-    const keys = Object.keys(data).filter((key) => Array.isArray(data[key]))
-    if (keys.length === 0) return []
-    return Array.from({ length: (data[keys[0]] as unknown[]).length }, (_, idx) =>
-      Object.fromEntries(keys.map((key) => [key, (data[key] as unknown[])[idx]])) as RowData
-    )
-  }
-
   // Map user defaults to structure component props (mirrors main.ts structure_props)
   function struct_props(merged: DefaultSettings): Record<string, unknown> {
     const { structure } = merged
@@ -428,8 +436,9 @@
       } else if (detected_type === `xrd`) {
         return mount(XrdPlot, { target, props: { patterns: val as XrdPattern, allow_file_drop: false, ...common_props } })
       } else if (detected_type === `table`) {
-        const table_data = prepare_table_data(val)
-        return mount(HeatmapTable, { target, props: { data: table_data, ...common_props } })
+        return mount(PlotPanel, { target, props: { data: val, initial_type: `table`, ...common_props } })
+      } else if (detected_type === `plot`) {
+        return mount(PlotPanel, { target, props: { data: val, ...common_props } })
       }
     } catch (err) {
       console.error(`JsonBrowser: mount failed for ${detected_type}:`, err)
@@ -508,7 +517,7 @@
     if (!raw) return
     try {
       const { data_path, detected_type } = JSON.parse(raw) as { data_path: string; detected_type: RenderableType }
-      const val = resolve_path(value, data_path)
+      const val = resolve_path(value, strip_type_suffix(data_path))
       if (val === undefined || !detected_type) return
       if (panels.length === 0 || zone === `center` || !zone) {
         replace_or_add_panel(data_path, detected_type, val)
@@ -698,7 +707,7 @@
             {/if}
             <!-- Panel label -->
             <div class="panel-label" style="background: {TYPE_COLORS[panel.detected_type]}cc;">
-              {TYPE_LABELS[panel.detected_type]}: {panel.data_path}
+              {TYPE_LABELS[panel.detected_type]}: {strip_type_suffix(panel.data_path)}
             </div>
           </div>
         {/each}

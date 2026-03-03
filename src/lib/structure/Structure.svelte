@@ -21,7 +21,11 @@
   import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure, Crystal, MeasureMode } from '$lib/structure'
-  import { get_element_counts, get_pbc_image_sites } from '$lib/structure'
+  import {
+    get_element_counts,
+    get_pbc_image_sites,
+    get_site_vector,
+  } from '$lib/structure'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
@@ -298,15 +302,14 @@
   // Track if force vectors were auto-enabled to prevent repeated triggering
   let force_vectors_auto_enabled = $state(false)
 
-  // Auto-enable force vectors when structure has force data
+  // Auto-enable force vectors when structure has vector data (force, magmom, or spin)
   $effect(() => {
     if (structure?.sites && !force_vectors_auto_enabled) {
-      const has_force_data = structure.sites.some((site) =>
-        site.properties?.force && Array.isArray(site.properties.force)
+      const has_vector_data = structure.sites.some((site) =>
+        get_site_vector(site) !== null
       )
 
-      // Enable force vectors if structure has force data
-      if (has_force_data && !scene_props.show_force_vectors) {
+      if (has_vector_data && !scene_props.show_force_vectors) {
         scene_props.show_force_vectors = true
         scene_props.force_scale ??= DEFAULTS.structure.force_scale
         scene_props.force_color ??= DEFAULTS.structure.force_color

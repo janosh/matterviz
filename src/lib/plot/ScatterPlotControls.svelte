@@ -36,7 +36,21 @@
     >
   } = $props()
 
-  let has_multiple_series = $derived(series.filter(Boolean).length > 1)
+  let visible_series = $derived(series.filter((srs) => srs?.visible ?? true))
+  let has_multiple_series = $derived(visible_series.length > 1)
+
+  // Derive what marker types are present, and whether color/size are data-driven
+  const markers_include = (mode: string) =>
+    visible_series.some((srs) => (srs?.markers ?? `line+points`).includes(mode))
+  let has_any_lines = $derived(markers_include(`line`))
+  let has_any_points = $derived(markers_include(`points`))
+  let has_color_data = $derived(
+    visible_series.some((srs) => srs?.color_values?.some((val) => val != null)),
+  )
+  let has_size_data = $derived(
+    visible_series.some((srs) => srs?.size_values?.some((val) => val != null)),
+  )
+
   $effect(() => { // Initialize show_points/show_lines from defaults
     styles.show_points ??= DEFAULTS.scatter.show_points
     styles.show_lines ??= DEFAULTS.scatter.show_lines
@@ -66,28 +80,34 @@
       styles,
       selected_series_idx,
     })}
-  <SettingsSection
-    title="Markers"
-    current_values={{ show_points: styles.show_points, show_lines: styles.show_lines }}
-    on_reset={() => {
-      styles.show_points = DEFAULTS.scatter.show_points
-      styles.show_lines = DEFAULTS.scatter.show_lines
-    }}
-    style="display: flex; flex-wrap: wrap; gap: 1ex"
-  >
-    <label
-      {@attach tooltip({ content: `Toggle visibility of data points in the scatter plot` })}
+  {#if has_any_points || has_any_lines}
+    <SettingsSection
+      title="Markers"
+      current_values={{ show_points: styles.show_points, show_lines: styles.show_lines }}
+      on_reset={() => {
+        styles.show_points = DEFAULTS.scatter.show_points
+        styles.show_lines = DEFAULTS.scatter.show_lines
+      }}
+      style="display: flex; flex-wrap: wrap; gap: 1ex"
     >
-      <input type="checkbox" bind:checked={styles.show_points} /> Show points
-    </label>
-    <label
-      {@attach tooltip({
-        content: `Toggle visibility of connecting lines between data points`,
-      })}
-    >
-      <input type="checkbox" bind:checked={styles.show_lines} /> Show lines
-    </label>
-  </SettingsSection>
+      {#if has_any_points}
+        <label
+          {@attach tooltip({ content: `Toggle visibility of data points in the scatter plot` })}
+        >
+          <input type="checkbox" bind:checked={styles.show_points} /> Show points
+        </label>
+      {/if}
+      {#if has_any_lines}
+        <label
+          {@attach tooltip({
+            content: `Toggle visibility of connecting lines between data points`,
+          })}
+        >
+          <input type="checkbox" bind:checked={styles.show_lines} /> Show lines
+        </label>
+      {/if}
+    </SettingsSection>
+  {/if}
 
   {#snippet post_children()}
     <!-- Series Selection (for multi-series style controls) -->
@@ -106,8 +126,8 @@
       </div>
     {/if}
 
-    <!-- Point Style Controls -->
-    {#if styles.show_points}
+    <!-- Point Style Controls: only when points exist and are visible -->
+    {#if has_any_points && styles.show_points}
       <SettingsSection
         title="Point Style"
         current_values={styles.point ?? {}}
@@ -118,28 +138,36 @@
         oninput={touch}
       >
         {#if styles.point}
-          <div class="pane-row" data-key="point.size">
-            <label for="{uid}-point-size">Size:</label>
-            <input
-              id="{uid}-point-size"
-              type="range"
-              min="1"
-              max="20"
-              step="0.5"
-              bind:value={styles.point.size}
-            />
-            <input
-              type="number"
-              min="1"
-              max="20"
-              step="0.5"
-              bind:value={styles.point.size}
-            />
-          </div>
-          <div class="pane-row" data-key="point.color">
-            <label for="{uid}-point-color">Color:</label>
-            <input id="{uid}-point-color" type="color" bind:value={styles.point.color} />
-          </div>
+          {#if !has_size_data}
+            <div class="pane-row" data-key="point.size">
+              <label for="{uid}-point-size">Size:</label>
+              <input
+                id="{uid}-point-size"
+                type="range"
+                min="1"
+                max="20"
+                step="0.5"
+                bind:value={styles.point.size}
+              />
+              <input
+                type="number"
+                min="1"
+                max="20"
+                step="0.5"
+                bind:value={styles.point.size}
+              />
+            </div>
+          {/if}
+          {#if !has_color_data}
+            <div class="pane-row" data-key="point.color">
+              <label for="{uid}-point-color">Color:</label>
+              <input
+                id="{uid}-point-color"
+                type="color"
+                bind:value={styles.point.color}
+              />
+            </div>
+          {/if}
           <div class="pane-row" data-key="point.opacity">
             <label for="{uid}-point-opacity">Opacity:</label>
             <input
@@ -206,8 +234,8 @@
       </SettingsSection>
     {/if}
 
-    <!-- Line Style Controls -->
-    {#if styles.show_lines}
+    <!-- Line Style Controls: only when lines exist and are visible -->
+    {#if has_any_lines && styles.show_lines}
       <SettingsSection
         title="Line Style"
         current_values={styles.line ?? {}}
@@ -236,10 +264,12 @@
               bind:value={styles.line.width}
             />
           </div>
-          <div class="pane-row" data-key="line.color">
-            <label for="{uid}-line-color">Color:</label>
-            <input id="{uid}-line-color" type="color" bind:value={styles.line.color} />
-          </div>
+          {#if !has_color_data}
+            <div class="pane-row" data-key="line.color">
+              <label for="{uid}-line-color">Color:</label>
+              <input id="{uid}-line-color" type="color" bind:value={styles.line.color} />
+            </div>
+          {/if}
           <div class="pane-row" data-key="line.opacity">
             <label for="{uid}-line-opacity">Opacity:</label>
             <input

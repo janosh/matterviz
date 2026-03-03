@@ -451,7 +451,7 @@
   })
 
   $effect.pre(() => { // Simple initial camera auto-position: proportional to structure size and fov
-    if (camera_position.every((v) => v === 0) && structure) {
+    if (camera_position.every((val) => val === 0) && structure) {
       const distance = Math.max(1, structure_size) * (60 / fov)
       camera_position = [distance, distance * 0.3, distance * 0.8]
     }
@@ -641,26 +641,62 @@
     return base_radius * atom_radius
   }
 
-  let force_data = $derived.by(() =>
-    show_force_vectors && structure?.sites
-      ? structure?.sites
-        .map((site) => {
-          if (
-            !site.properties?.force || !Array.isArray(site.properties.force)
-          ) return null
+  // Extract per-site vectors from force, magmom, or spin properties.
+  // Scalar magmom values are converted to z-directed vectors [0, 0, magmom].
+  // For magmom/spin, color interpolates between spin-up (#e74c3c red) and
+  // spin-down (#3498db blue) based on the z-component direction.
+  let force_data = $derived.by(() => {
+    if (!show_force_vectors || !structure?.sites) return []
+    return structure.sites
+      .map((site) => {
+        const props = site.properties
+        if (!props) return null
+        let vec: Vec3 | null = null
+        let is_magnetic = false
+        for (const key of [`force`, `magmom`, `spin`]) {
+          const val = props[key]
+          if (Array.isArray(val) && val.length === 3) {
+            vec = val as Vec3
+            is_magnetic = key !== `force`
+            break
+          }
+          if (typeof val === `number`) {
+            vec = [0, 0, val]
+            is_magnetic = key !== `force`
+            break
+          }
+        }
+        if (!vec) return null
+
+        let arrow_color: string
+        if (is_magnetic) {
+          // Direction-based color: red (#e74c3c) for spin-up, blue (#3498db) for spin-down
+          const mag = Math.hypot(...vec)
+          const z_frac = mag > 1e-10 ? (vec[2] / mag + 1) / 2 : 0.5 // 0=down, 1=up
+          const r_up = 231, g_up = 76, b_up = 60
+          const r_dn = 52, g_dn = 152, b_dn = 219
+          const red = Math.round(r_dn + (r_up - r_dn) * z_frac)
+          const grn = Math.round(g_dn + (g_up - g_dn) * z_frac)
+          const blu = Math.round(b_dn + (b_up - b_dn) * z_frac)
+          arrow_color = `#${red.toString(16).padStart(2, `0`)}${
+            grn.toString(16).padStart(2, `0`)
+          }${blu.toString(16).padStart(2, `0`)}`
+        } else {
           const majority_element = site.species.reduce((max, spec) =>
             spec.occu > max.occu ? spec : max
           ).element
-          return {
-            position: site.xyz,
-            vector: site.properties.force as Vec3,
-            scale: force_scale,
-            color: colors.element?.[majority_element] || force_color,
-          }
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null)
-      : []
-  )
+          arrow_color = colors.element?.[majority_element] || force_color
+        }
+
+        return {
+          position: site.xyz,
+          vector: vec,
+          scale: force_scale,
+          color: arrow_color,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+  })
 
   let instanced_atom_groups = $derived(
     Object.values(
@@ -774,27 +810,17 @@
         style:padding="{site_label_padding}px"
         style:color={site_label_color}
       >
-        {#if show_site_labels && show_site_indices}
+        {#if show_site_labels}
           {#if site.species.length === 1}
-            {site.species[0].element}-{site_idx + 1}
+            {site.species[0].element}{#if show_site_indices}-{site_idx + 1}{/if}
           {:else}
             {@html site.species.map((spec) =>
         `${spec.element}<sub>${
           format_num(spec.occu, `.3~`).replace(`0.`, `.`)
         }</sub>`
-      ).join(``)}-{
-              site_idx + 1
-            }
-          {/if}
-        {:else if show_site_labels}
-          {#if site.species.length === 1}
-            {site.species[0].element}
-          {:else}
-            {@html site.species.map((spec) =>
-        `${spec.element}<sub>${
-          format_num(spec.occu, `.3~`).replace(`0.`, `.`)
-        }</sub>`
-      ).join(``)}
+      ).join(``)}{#if show_site_indices}-{
+                site_idx + 1
+              }{/if}
           {/if}
         {:else if show_site_indices}
           {site_idx + 1}
@@ -1098,8 +1124,12 @@
 
       <!-- hovered site tooltip -->
       {#if hovered_site && !camera_is_moving && active_tooltip === `atom`}
-        {@const abc = hovered_site.abc.map((x) => format_num(x, float_fmt)).join(`, `)}
-        {@const xyz = hovered_site.xyz.map((x) => format_num(x, float_fmt)).join(`, `)}
+        {@const abc = hovered_site.abc.map((val) => format_num(val, float_fmt)).join(
+          `, `,
+        )}
+        {@const xyz = hovered_site.xyz.map((val) => format_num(val, float_fmt)).join(
+          `, `,
+        )}
         {@const bond_neighbors = (() => {
           if (hovered_idx == null || !structure?.sites) return []
           return filtered_bond_pairs
@@ -1286,12 +1316,12 @@
         {:else if measure_mode === `angle` && measured_sites.length >= 3}
           {#each measured_sites as idx_center (idx_center)}
             {@const center = structure.sites[idx_center]}
-            {#each measured_sites.filter((x) => x !== idx_center) as
+            {#each measured_sites.filter((idx) => idx !== idx_center) as
               idx_a,
               loop_idx
               (idx_center + `-` + idx_a)
             }
-              {#each measured_sites.filter((x) => x !== idx_center).slice(loop_idx + 1) as
+              {#each measured_sites.filter((idx) => idx !== idx_center).slice(loop_idx + 1) as
                 idx_b
                 (idx_center + `-` + idx_a + `-` + idx_b)
               }

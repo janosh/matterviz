@@ -18,6 +18,7 @@ export type RenderableType =
   | `brillouin_zone`
   | `xrd`
   | `table`
+  | `plot`
 
 // Human-readable labels for badge display
 export const TYPE_LABELS: Record<RenderableType, string> = {
@@ -33,6 +34,7 @@ export const TYPE_LABELS: Record<RenderableType, string> = {
   brillouin_zone: `Brillouin Zone`,
   xrd: `XRD`,
   table: `Table`,
+  plot: `Plot`,
 }
 
 // Badge colors per type (CSS color values)
@@ -49,6 +51,7 @@ export const TYPE_COLORS: Record<RenderableType, string> = {
   brillouin_zone: `#8d6e63`,
   xrd: `#ec407a`,
   table: `#78909c`,
+  plot: `#7c3aed`,
 }
 
 // === Type Guards ===
@@ -280,6 +283,34 @@ function is_tabular_data(obj: unknown): boolean {
   return array_entries.some(([, val]) => typeof (val as unknown[])[0] === `number`)
 }
 
+// Plottable data: tabular data with at least 2 numeric columns (enough for a scatter plot).
+// Samples multiple rows/elements to handle leading nulls.
+export function is_plottable_data(obj: unknown): boolean {
+  if (!is_tabular_data(obj)) return false
+  if (Array.isArray(obj)) {
+    const sample = obj.slice(0, 10).map(as_record).filter(Boolean) as Record<
+      string,
+      unknown
+    >[]
+    if (sample.length === 0) return false
+    const all_keys = Object.keys(sample[0])
+    const num_cols = all_keys.filter((key) =>
+      sample.some((row) => typeof row[key] === `number`)
+    ).length
+    return num_cols >= 2
+  }
+  const data = as_record(obj)
+  if (!data) return false
+  const array_entries = Object.entries(data).filter(([, val]) =>
+    Array.isArray(val) && (val as unknown[]).length > 0
+  )
+  const num_cols =
+    array_entries.filter(([, val]) =>
+      (val as unknown[]).some((v) => typeof v === `number`)
+    ).length
+  return num_cols >= 2
+}
+
 // === Main Detection Function ===
 
 // Detect the visualization type for a given JSON value.
@@ -363,6 +394,11 @@ export function scan_renderable_paths(
     const detected_type = detect_view_type(value)
     if (detected_type) {
       results.set(path, { type: detected_type, label: TYPE_LABELS[detected_type] })
+      // If tabular data is also plottable, register a plot badge too
+      if (detected_type === `table` && is_plottable_data(value)) {
+        const plot_path = path ? `${path}\x00plot` : `\x00plot`
+        results.set(plot_path, { type: `plot`, label: TYPE_LABELS.plot })
+      }
       // Don't recurse into renderable objects -- their children are part of the data
       return
     }
