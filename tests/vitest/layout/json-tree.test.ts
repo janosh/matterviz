@@ -916,7 +916,7 @@ describe(`accessibility`, () => {
     // Clickable values
     const value_el = document.querySelector(`.json-value`)
     expect(value_el?.getAttribute(`role`)).toBe(`button`)
-    expect(value_el?.getAttribute(`title`)).toBe(`Click to copy`)
+    expect(value_el?.getAttribute(`title`)).toBeNull()
   })
 })
 
@@ -1193,7 +1193,7 @@ describe(`copy path functionality`, () => {
     expect(write_text).toHaveBeenCalledWith(`42`)
   })
 
-  it(`key title shows action hints`, () => {
+  it(`key has no obtrusive title tooltip`, () => {
     mount(JsonTree, {
       target: document.body,
       props: {
@@ -1206,8 +1206,7 @@ describe(`copy path functionality`, () => {
     const keys = document.querySelectorAll(`.node-key`)
     const child_key = Array.from(keys).find((el) => el.textContent?.includes(`child`))
 
-    expect(child_key?.getAttribute(`title`)).toContain(`copy value`)
-    expect(child_key?.getAttribute(`title`)).toContain(`copy path`)
+    expect(child_key?.getAttribute(`title`)).toBeNull()
   })
 })
 

@@ -1548,6 +1548,8 @@
       auto_y_range={auto_ranges.y}
       auto_y2_range={auto_ranges.y2}
       {series}
+      has_x2_points={x2_series.length > 0}
+      has_y2_points={y2_series.length > 0}
       children={controls_extra}
     />
   {/if}

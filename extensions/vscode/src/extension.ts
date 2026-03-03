@@ -594,17 +594,27 @@ function stop_watching_file(file_path: string): void {
   }
 }
 
+// Resolve which ViewColumn to use based on user settings and explicit override
+function get_view_column(explicit?: vscode.ViewColumn): vscode.ViewColumn {
+  if (explicit !== undefined) return explicit
+  const open_beside = vscode.workspace.getConfiguration(`matterviz`).get(
+    `open_beside`,
+    false,
+  )
+  return open_beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active
+}
+
 // Create webview panel with common setup
 function create_webview_panel(
   context: vscode.ExtensionContext,
   file_data: FileData,
   file_path?: string,
-  view_column: vscode.ViewColumn = vscode.ViewColumn.Beside,
+  view_column?: vscode.ViewColumn,
 ): vscode.WebviewPanel {
   const panel = vscode.window.createWebviewPanel(
     `matterviz`,
     `MatterViz - ${file_data.filename}`,
-    view_column,
+    get_view_column(view_column),
     {
       enableScripts: true,
       retainContextWhenHidden: true,

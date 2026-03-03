@@ -140,19 +140,7 @@ describe(`calc_cell_color`, () => {
     expect(result.text).not.toBeNull()
   })
 
-  it(`reverses color scale for lower-is-better vs higher-is-better`, () => {
-    const values = [1, 50, 100]
-    // min with higher == max with lower, and vice versa
-    expect(calc_cell_color(1, values, `higher`).bg).toBe(
-      calc_cell_color(100, values, `lower`).bg,
-    )
-    expect(calc_cell_color(100, values, `higher`).bg).toBe(
-      calc_cell_color(1, values, `lower`).bg,
-    )
-  })
-
   it(`returns appropriate contrast text colors`, () => {
-    // Viridis: dark purple at min -> light yellow at max
     const values = [1, 50, 100]
     expect(calc_cell_color(1, values, `higher`, `interpolateViridis`).text).toBe(`white`)
     expect(calc_cell_color(100, values, `higher`, `interpolateViridis`).text).toBe(
@@ -167,10 +155,50 @@ describe(`calc_cell_color`, () => {
     )
   })
 
-  it(`uses different colors for different color scales`, () => {
+  it.each(
+    [
+      `interpolateViridis`,
+      `interpolatePlasma`,
+      `interpolateInferno`,
+      `interpolateCividis`,
+      `interpolateTurbo`,
+      `interpolateBlues`,
+      `interpolateGreens`,
+      `interpolateReds`,
+      `interpolateYlOrRd`,
+    ] as const,
+  )(`produces valid colors with %s scale`, (scale) => {
+    const result = calc_cell_color(50, [1, 50, 100], `higher`, scale)
+    expect(result.bg).toMatch(/^(rgb|#)/)
+    expect(result.text).toMatch(/^(black|white)$/)
+  })
+
+  it.each(
+    [
+      `interpolateViridis`,
+      `interpolatePlasma`,
+      `interpolateInferno`,
+      `interpolateTurbo`,
+    ] as const,
+  )(`reverses gradient direction consistently with %s`, (scale) => {
+    const values = [1, 50, 100]
+    expect(calc_cell_color(1, values, `higher`, scale).bg).toBe(
+      calc_cell_color(100, values, `lower`, scale).bg,
+    )
+    expect(calc_cell_color(100, values, `higher`, scale).bg).toBe(
+      calc_cell_color(1, values, `lower`, scale).bg,
+    )
+  })
+
+  it(`falls back to viridis for invalid color scale name`, () => {
+    const result = calc_cell_color(
+      50,
+      [1, 50, 100],
+      `higher`,
+      `interpolateNonExistent` as Parameters<typeof calc_cell_color>[3],
+    )
     const viridis = calc_cell_color(50, [1, 50, 100], `higher`, `interpolateViridis`)
-    const plasma = calc_cell_color(50, [1, 50, 100], `higher`, `interpolatePlasma`)
-    expect(viridis.bg).not.toEqual(plasma.bg)
+    expect(result.bg).toBe(viridis.bg)
   })
 })
 

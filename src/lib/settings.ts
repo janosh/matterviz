@@ -578,21 +578,21 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       description: `Color for force vectors`,
     },
     force_shaft_radius: {
-      value: -0.01,
+      value: -0.03,
       description:
         `Radius of force vector shaft (negative = relative to length, positive = absolute)`,
       minimum: -0.1,
       maximum: 0.1,
     },
     force_arrow_head_radius: {
-      value: -0.025,
+      value: -0.06,
       description:
         `Radius of force vector arrow head (negative = relative to length, positive = absolute)`,
       minimum: -0.2,
       maximum: 0.2,
     },
     force_arrow_head_length: {
-      value: -0.1,
+      value: -0.15,
       description:
         `Length of force vector arrow head (negative = relative to length, positive = absolute)`,
       minimum: -0.5,

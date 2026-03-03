@@ -92,7 +92,7 @@ repos:
         stages: [pre-commit, commit-msg]
         args:
           - --ignore-words-list
-          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc'
+          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac'
           - --check-filenames
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
