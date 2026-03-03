@@ -24,6 +24,8 @@
     controls_open = $bindable(false),
     auto_x2_range = undefined,
     auto_y2_range = undefined,
+    has_x2_points = false,
+    has_y2_points = false,
     children,
     ...rest
   }: Omit<PlotControlsProps, `children` | `post_children`> & {
@@ -39,6 +41,8 @@
     controls_open?: boolean
     auto_x2_range?: Vec2
     auto_y2_range?: Vec2
+    has_x2_points?: boolean
+    has_y2_points?: boolean
     children?: Snippet<[Required<PlotConfig>]>
   } = $props()
 
@@ -155,26 +159,30 @@
     data-testid="scale-type-section"
     current_values={{
       x_scale_type: x_axis.scale_type,
-      x2_scale_type: x2_axis.scale_type,
+      ...(has_x2_points ? { x2_scale_type: x2_axis.scale_type } : {}),
       y_scale_type: y_axis.scale_type,
-      y2_scale_type: y2_axis.scale_type,
+      ...(has_y2_points ? { y2_scale_type: y2_axis.scale_type } : {}),
     }}
     on_reset={() => {
       x_axis = {
         ...x_axis,
         scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
       }
-      x2_axis = {
-        ...x2_axis,
-        scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
-      }
       y_axis = {
         ...y_axis,
         scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
       }
-      y2_axis = {
-        ...y2_axis,
-        scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
+      if (has_x2_points) {
+        x2_axis = {
+          ...x2_axis,
+          scale_type: DEFAULTS.plot.x_scale_type as `linear` | `log`,
+        }
+      }
+      if (has_y2_points) {
+        y2_axis = {
+          ...y2_axis,
+          scale_type: DEFAULTS.plot.y_scale_type as `linear` | `log`,
+        }
       }
     }}
     class="pane-grid"
@@ -184,17 +192,21 @@
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select></label>
-    <label>X2: <select bind:value={x2_axis.scale_type}>
-        <option value="linear">Linear</option>
-        <option value="log">Log</option>
-      </select></label>
+    {#if has_x2_points}
+      <label>X2: <select bind:value={x2_axis.scale_type}>
+          <option value="linear">Linear</option>
+          <option value="log">Log</option>
+        </select></label>
+    {/if}
     <label>Y: <select bind:value={y_axis.scale_type}>
         <option value="linear">Linear</option>
         <option value="log">Log</option>
       </select></label>
-    <label>Y2: <select bind:value={y2_axis.scale_type}>
-        <option value="linear">Linear</option>
-        <option value="log">Log</option>
-      </select></label>
+    {#if has_y2_points}
+      <label>Y2: <select bind:value={y2_axis.scale_type}>
+          <option value="linear">Linear</option>
+          <option value="log">Log</option>
+        </select></label>
+    {/if}
   </SettingsSection>
 </PlotControls>

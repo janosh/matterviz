@@ -2,11 +2,15 @@
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
-import { detect_view_type, scan_renderable_paths } from '../src/webview/detect'
+import {
+  detect_view_type,
+  is_plottable_data,
+  scan_renderable_paths,
+} from '../src/webview/detect'
 
 const fixture = JSON.parse(
   gunzipSync(
-    readFileSync(`extensions/vscode/test-fixtures/all-viz-types.json.gz`),
+    readFileSync(`${import.meta.dirname}/../test-fixtures/all-viz-types.json.gz`),
   ).toString(),
 )
 
@@ -340,6 +344,79 @@ describe(`scan_renderable_paths`, () => {
       // Re-detect should return the same type
       expect(detect_view_type(resolved)).toBe(fixture_paths.get(path)?.type)
     }
+  })
+})
+
+describe(`is_plottable_data`, () => {
+  test.each([
+    [`column-based with 2 numeric cols`, true, { x: [1, 2, 3], y: [4, 5, 6] }],
+    [`column-based with 3 numeric cols`, true, { x: [1, 2], y: [3, 4], z: [5, 6] }],
+    [`row-based with 2 numeric cols`, true, [
+      { a: 1, b: 2, name: `x` },
+      { a: 3, b: 4, name: `y` },
+      { a: 5, b: 6, name: `z` },
+    ]],
+    [`column-based with null first elements`, true, {
+      x: [null, 2, 3],
+      y: [4, 5, 6],
+    }],
+    [`row-based with null first row values`, true, [
+      { a: null, b: 4 },
+      { a: 2, b: 5 },
+      { a: 3, b: 6 },
+    ]],
+    [`column-based with 1 numeric col (not plottable)`, false, {
+      name: [`Si`, `Ge`, `C`],
+      energy: [-5.4, -4.6, -7.4],
+    }],
+    [`row-based with 1 numeric col (not plottable)`, false, [
+      { a: 1, name: `x` },
+      { a: 2, name: `y` },
+    ]],
+    [`column-based with NaN values (typeof NaN === number)`, true, {
+      a: [NaN, 2, 3],
+      b: [4, 5, 6],
+    }],
+    [`column-based with Infinity values`, true, {
+      a: [Infinity, 2, 3],
+      b: [4, 5, 6],
+    }],
+    [`column-based with mixed types (some numbers)`, true, {
+      a: [1, `two`, 3],
+      b: [4, 5, 6],
+    }],
+    [`row-based with NaN and mixed values`, true, [
+      { a: 1, b: `x` },
+      { a: NaN, b: 4 },
+      { a: 3, b: 6 },
+    ]],
+    [`empty array`, false, []],
+    [`non-tabular object`, false, { foo: `bar` }],
+    [`null`, false, null],
+    [`undefined`, false, undefined],
+  ] as [string, boolean, unknown][])(`%s -> %s`, (_, expected, val) => {
+    expect(is_plottable_data(val)).toBe(expected)
+  })
+})
+
+describe(`scan_renderable_paths with plot`, () => {
+  test(`registers both table and plot badges for plottable tabular data`, () => {
+    const data = { x: [1, 2, 3], y: [4, 5, 6], z: [7, 8, 9] }
+    const paths = scan_renderable_paths(data)
+    const types = [...paths.values()].map((info) => info.type)
+    expect(types).toContain(`table`)
+    expect(types).toContain(`plot`)
+    // plot path uses \x00 suffix to co-exist with table at same data path
+    expect(paths.has(`\x00plot`)).toBe(true)
+    expect(paths.get(`\x00plot`)?.type).toBe(`plot`)
+  })
+
+  test(`registers only table badge for non-plottable tabular data`, () => {
+    const data = { name: [`Si`, `Ge`, `C`], energy: [-5.4, -4.6, -7.4] }
+    const paths = scan_renderable_paths(data)
+    const types = [...paths.values()].map((info) => info.type)
+    expect(types).toContain(`table`)
+    expect(types).not.toContain(`plot`)
   })
 })
 
