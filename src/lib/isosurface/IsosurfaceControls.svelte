@@ -57,6 +57,7 @@
     opacity: settings.opacity,
     show_negative: settings.show_negative,
     wireframe: settings.wireframe,
+    wrap_periodic: settings.wrap_periodic,
     layers: n_layers,
   }}
   on_reset={() => {

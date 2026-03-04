@@ -298,6 +298,12 @@
         class:resize-width={resizable === `width`}
         class:resize-height={resizable === `height`}
         onpointerdown={handle_resize_start}
+        ondblclick={() => {
+          if (pane_div) {
+            pane_div.style.width = ``
+            pane_div.style.maxHeight = ``
+          }
+        }}
       >
         <svg viewBox="0 0 10 10" width="10" height="10">
           <line x1="9" y1="1" x2="1" y2="9" />
