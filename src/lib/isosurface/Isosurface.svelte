@@ -14,7 +14,7 @@
     Uint32BufferAttribute,
   } from 'three'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, downsample_grid } from './types'
 
   let {
     volume,
@@ -72,21 +72,23 @@
     return geometry
   }
 
+  // Downsample large grids once when volume changes to keep marching cubes interactive
+  let ds_result = $derived.by(() => {
+    if (!volume) return undefined
+    return downsample_grid(volume.grid, volume.grid_dims)
+  })
+
   // Run marching cubes at the given isovalue.
-  // Uses volume.periodic for correct coordinate scaling:
-  // periodic grids (CHGCAR) use 1/N spacing, non-periodic (.cube) use 1/(N-1).
+  // Always use periodic=false so the isosurface is clipped at cell boundaries
+  // (matching VESTA behavior). With periodic=true, marching cubes wraps the last
+  // grid layer back to the first, creating triangles that span the full cell.
   function extract_surface(isovalue: number): BufferGeometry | null {
-    if (!volume || isovalue === 0) return null
+    if (!volume || !ds_result || isovalue === 0) return null
     const result = marching_cubes(
-      volume.grid,
+      ds_result.grid,
       isovalue,
       volume.lattice,
-      {
-        periodic: volume.periodic,
-        interpolate: true,
-        centered: false,
-        normals: false,
-      },
+      { periodic: false, interpolate: true, centered: false, normals: false },
     )
     return build_geometry(result.vertices, result.faces)
   }
@@ -102,6 +104,7 @@
   }
   let active_geometries = $state<GeoEntry[]>([])
   let raf_id = 0
+  let debounce_id = 0
 
   // Dispose all current geometries
   function dispose_all() {
@@ -112,60 +115,70 @@
   // Dispose on unmount
   $effect(() => () => dispose_all())
 
-  // Rebuild all layer geometries on next animation frame when layers or volume change
+  function rebuild_geometries(layers: IsosurfaceLayer[]) {
+    const old = active_geometries
+    const entries: GeoEntry[] = []
+    // Render lower-isovalue (outer) shells earlier so per-layer back/front passes
+    // interleave back-to-front across shells and reduce transparency artefacts.
+    const layer_render_rank = new Map<number, number>(
+      layers
+        .map((layer, layer_idx) => ({ layer_idx, isovalue: layer.isovalue }))
+        .sort((layer_a, layer_b) => layer_a.isovalue - layer_b.isovalue)
+        .map(({ layer_idx }, rank) => [layer_idx, rank]),
+    )
+
+    for (let layer_idx = 0; layer_idx < layers.length; layer_idx++) {
+      const layer = layers[layer_idx]
+      if (!layer.visible || layer.isovalue <= 0) continue
+
+      // Each layer gets 4 slots (positive back/front + negative back/front).
+      const base_order = (layer_render_rank.get(layer_idx) ?? layer_idx) * 4
+
+      const pos_geo = extract_surface(layer.isovalue)
+      if (pos_geo) {
+        entries.push({
+          geometry: pos_geo,
+          color: layer.color,
+          opacity: layer.opacity,
+          render_order: base_order,
+        })
+      }
+
+      if (layer.show_negative) {
+        const neg_geo = extract_surface(-layer.isovalue)
+        if (neg_geo) {
+          entries.push({
+            geometry: neg_geo,
+            color: layer.negative_color,
+            opacity: layer.opacity,
+            render_order: base_order + 2,
+          })
+        }
+      }
+    }
+
+    active_geometries = entries
+    for (const entry of old) entry.geometry.dispose()
+  }
+
+  // Rebuild all layer geometries when layers or volume change.
+  // Debounces rapid changes (e.g. slider drags) to avoid repeated expensive marching cubes.
   $effect(() => {
     const layers = resolved_layers
-    const vol = volume
-    if (!vol) {
+    void volume
+    if (!ds_result) {
       dispose_all()
       return
     }
-    raf_id = requestAnimationFrame(() => {
-      const old = active_geometries
-      const entries: GeoEntry[] = []
-      // Render lower-isovalue (outer) shells earlier so per-layer back/front passes
-      // interleave back-to-front across shells and reduce transparency artefacts.
-      const layer_render_rank = new Map<number, number>(
-        layers
-          .map((layer, layer_idx) => ({ layer_idx, isovalue: layer.isovalue }))
-          .sort((layer_a, layer_b) => layer_a.isovalue - layer_b.isovalue)
-          .map(({ layer_idx }, rank) => [layer_idx, rank]),
-      )
-
-      for (let layer_idx = 0; layer_idx < layers.length; layer_idx++) {
-        const layer = layers[layer_idx]
-        if (!layer.visible || layer.isovalue <= 0) continue
-
-        // Each layer gets 4 slots (positive back/front + negative back/front).
-        const base_order = (layer_render_rank.get(layer_idx) ?? layer_idx) * 4
-
-        const pos_geo = extract_surface(layer.isovalue)
-        if (pos_geo) {
-          entries.push({
-            geometry: pos_geo,
-            color: layer.color,
-            opacity: layer.opacity,
-            render_order: base_order,
-          })
-        }
-
-        if (layer.show_negative) {
-          const neg_geo = extract_surface(-layer.isovalue)
-          if (neg_geo) {
-            entries.push({
-              geometry: neg_geo,
-              color: layer.negative_color,
-              opacity: layer.opacity,
-              render_order: base_order + 2,
-            })
-          }
-        }
-      }
-
-      active_geometries = entries
-      for (const entry of old) entry.geometry.dispose()
-    })
-    return () => cancelAnimationFrame(raf_id)
+    clearTimeout(debounce_id)
+    cancelAnimationFrame(raf_id)
+    debounce_id = window.setTimeout(() => {
+      raf_id = requestAnimationFrame(() => rebuild_geometries(layers))
+    }, 50)
+    return () => {
+      clearTimeout(debounce_id)
+      cancelAnimationFrame(raf_id)
+    }
   })
 </script>
 
