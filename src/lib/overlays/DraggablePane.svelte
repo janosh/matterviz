@@ -223,7 +223,10 @@
         <button
           type="button"
           class="reset-button"
-          onclick={reset_position}
+          onclick={(event: MouseEvent) => {
+            event.stopPropagation()
+            reset_position()
+          }}
           title="Reset pane position"
           aria-label="Reset pane position"
         >
