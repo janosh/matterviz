@@ -23,6 +23,7 @@
     persistent = false,
     has_been_dragged = $bindable(false),
     currently_dragging = $bindable(false),
+    resizable = `both`,
   }: {
     show?: boolean
     show_pane?: boolean
@@ -45,6 +46,8 @@
     pane_props?: HTMLAttributes<HTMLDivElement>
     // If true, only closes via Escape or explicit close button (not click-outside)
     persistent?: boolean
+    // Resize mode: 'both' | 'width' | 'height' | 'none'
+    resizable?: `both` | `width` | `height` | `none`
     // Callbacks
     onclose?: () => void
     on_drag_start?: () => void
@@ -57,6 +60,40 @@
 
   let initial_position = $state({ left: `50px`, top: `50px` })
   let show_control_buttons = $state(false)
+  let resizing = $state(false)
+
+  // Resize via bottom-right grip
+  function handle_resize_start(event: PointerEvent) {
+    if (resizable === `none` || !pane_div) return
+    event.preventDefault()
+    event.stopPropagation()
+    resizing = true
+    has_been_dragged = true
+    show_control_buttons = true
+    const start_x = event.clientX
+    const start_y = event.clientY
+    const start_w = pane_div.offsetWidth
+    const start_h = pane_div.offsetHeight
+
+    function on_move(evt: PointerEvent) {
+      if (!pane_div) return
+      if (resizable !== `height`) {
+        pane_div.style.width = `${Math.max(200, start_w + evt.clientX - start_x)}px`
+      }
+      if (resizable !== `width`) {
+        pane_div.style.maxHeight = `${
+          Math.max(100, start_h + evt.clientY - start_y)
+        }px`
+      }
+    }
+    function on_up() {
+      resizing = false
+      document.removeEventListener(`pointermove`, on_move)
+      document.removeEventListener(`pointerup`, on_up)
+    }
+    document.addEventListener(`pointermove`, on_move)
+    document.addEventListener(`pointerup`, on_up)
+  }
 
   function toggle_pane(event: MouseEvent) {
     event.stopPropagation()
@@ -80,6 +117,7 @@
           right: `auto`,
           bottom: `auto`,
           width: ``,
+          maxHeight: ``,
         })
       }
     }
@@ -131,7 +169,9 @@
     const is_inside_pane = target instanceof Node && pane_div &&
       (target === pane_div || pane_div.contains(target))
 
-    if (!is_toggle_button && !is_inside_pane && !currently_dragging) close_pane()
+    if (!is_toggle_button && !is_inside_pane && !currently_dragging && !resizing) {
+      close_pane()
+    }
   }
 
   // Debounced resize handler for better performance
@@ -251,6 +291,21 @@
         currently_dragging,
       })}
     </div>
+    {#if resizable !== `none`}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="resize-grip"
+        class:resize-width={resizable === `width`}
+        class:resize-height={resizable === `height`}
+        onpointerdown={handle_resize_start}
+      >
+        <svg viewBox="0 0 10 10" width="10" height="10">
+          <line x1="9" y1="1" x2="1" y2="9" />
+          <line x1="9" y1="4" x2="4" y2="9" />
+          <line x1="9" y1="7" x2="7" y2="9" />
+        </svg>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -462,5 +517,29 @@
   .draggable-pane :where(.reset-button:hover, .close-button:hover) {
     opacity: 0.8;
     background-color: color-mix(in srgb, currentColor 15%, transparent);
+  }
+  .draggable-pane .resize-grip {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    padding: 2px;
+    cursor: nwse-resize;
+    opacity: 0.3;
+    touch-action: none;
+    line-height: 0;
+    svg {
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+    }
+  }
+  .draggable-pane .resize-grip:hover {
+    opacity: 0.6;
+  }
+  .draggable-pane .resize-grip.resize-width {
+    cursor: ew-resize;
+  }
+  .draggable-pane .resize-grip.resize-height {
+    cursor: ns-resize;
   }
 </style>
