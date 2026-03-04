@@ -86,6 +86,7 @@ export function sample_hkl_slice(
   volume: VolumetricData,
   miller_indices: Vec3,
   distance: number,
+  n_points?: number,
 ): SliceResult | null {
   const [h_idx, k_idx, l_idx] = miller_indices
   if (h_idx === 0 && k_idx === 0 && l_idx === 0) return null
@@ -143,8 +144,8 @@ export function sample_hkl_slice(
   // Plane position: fractional distance [0,1] along the normal extent
   const d_cartesian = normal_min + distance * (normal_max - normal_min)
 
-  // Sampling resolution: square grid using max dimension
-  const width = Math.max(nx, ny, nz)
+  // Sampling resolution: caller-specified or default to max grid dimension
+  const width = n_points ?? Math.max(nx, ny, nz)
   const height = width
 
   const data = new Float64Array(width * height)

@@ -28,7 +28,7 @@ import { parse_vasp_xdatcar } from './vasp'
 import { parse_xyz_trajectory } from './xyz'
 
 const log_parse_debug = (message: string, error: unknown): void => {
-  if (import.meta.env?.DEV) console.debug(message, error)
+  console.debug(message, error)
 }
 
 // Re-export constants and types for consumers

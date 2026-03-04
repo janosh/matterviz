@@ -29,6 +29,10 @@
       yaml: `rgba(255, 0, 255, 0.8)`,
       xdatcar: `rgba(255, 215, 0, 0.8)`,
       tdb: `rgba(0, 188, 212, 0.8)`,
+      chgcar: `rgba(59, 130, 246, 0.8)`,
+      locpot: `rgba(245, 158, 11, 0.8)`,
+      elfcar: `rgba(16, 185, 129, 0.8)`,
+      cube: `rgba(168, 85, 247, 0.8)`,
     },
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -60,13 +64,11 @@
 
   // Helper function to get the base file type (removing .gz extension)
   const get_base_file_type = (file: FileInfo): string => {
-    // Use custom type mapper if provided
     if (type_mapper) return type_mapper(file)
+    if (file.type) return file.type.toLowerCase()
 
     let base_name = file.name.toLowerCase()
-    // Remove .gz extension if present
     if (base_name.endsWith(`.gz`)) base_name = base_name.slice(0, -3)
-
     return base_name.split(`.`).pop() || `file`
   }
 
@@ -145,7 +147,8 @@
         {category}
       </span>
     {/each}
-    {#if uniq_categories.length > 0 && uniq_formats.length > 0}
+    {#if show_category_filters && uniq_categories.length > 0 &&
+        uniq_formats.length > 0}
       <span class="divider"></span>
     {/if}
 
@@ -181,11 +184,9 @@
 
   {#each filtered_files as file (file.name)}
     {@const base_type = get_base_file_type(file)}
-    {@const is_compressed = file.name.toLowerCase().endsWith(`.gz`)}
     <div
       class="file-item"
       class:active={active_files.includes(file.name)}
-      class:compressed={is_compressed}
       style:background-color={file_type_colors[base_type]?.replace(`0.8`, `0.08`)}
       draggable="true"
       ondragstart={handle_drag_start(file)}
@@ -223,9 +224,14 @@
       ? `Click to load or drag this ${base_type.toUpperCase()} file`
       : `Drag this ${base_type.toUpperCase()} file`}
     >
+      {#if file.label}
+        <span
+          class="file-type-badge"
+          style:background-color={file_type_colors[base_type] ?? `rgba(128,128,128,0.8)`}
+        >{base_type.toUpperCase()}</span>
+      {/if}
       <div class="file-name">
-        {file.category ? `${file.category_icon} ` : ``}{file.name}
-        {#if is_compressed}<span class="compression-indicator">📦</span>{/if}
+        {file.category ? `${file.category_icon} ` : ``}{file.label ?? file.name}
       </div>
     </div>
   {/each}
@@ -317,7 +323,10 @@
     cursor: grab;
     background: light-dark(rgba(0, 0, 0, 0.02), rgba(255, 255, 255, 0.1));
     transition: all 0.2s ease;
-    gap: 0.5em;
+    gap: 4pt;
+    &:has(.file-type-badge) {
+      padding-left: 3pt;
+    }
   }
   .file-item.active {
     border-color: var(--success-color, #00ff00);
@@ -332,21 +341,19 @@
     background: light-dark(rgba(0, 122, 204, 0.15), rgba(0, 122, 204, 0.25));
     filter: brightness(1.1);
   }
+  .file-type-badge {
+    font-size: 0.5em;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 1px 5px;
+    border-radius: 10px;
+    color: white;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
   .file-name {
     font-size: 0.7em;
     line-height: 1.1;
     white-space: pre-line;
-  }
-  .compression-indicator {
-    opacity: 0.7;
-    font-size: 0.8em;
-    margin-left: 0.2em;
-  }
-  .file-item.compressed {
-    border-style: dashed;
-    opacity: 0.9;
-  }
-  .file-item.compressed:hover {
-    opacity: 1;
   }
 </style>

@@ -180,9 +180,9 @@ describe(`DraggablePane`, () => {
       target: document.body,
       props: { ...default_props, show: true },
     })
-    const control_buttons = document.querySelector(`.control-buttons`)
-    expect(control_buttons).toBeInstanceOf(HTMLDivElement)
+    const control_tab = document.querySelector(`.control-tab`)
+    expect(control_tab).toBeInstanceOf(HTMLDivElement)
     // Drag handle is always visible for dragging the pane
-    expect(control_buttons?.querySelector(`.drag-handle`)).toBeTruthy()
+    expect(control_tab?.querySelector(`.drag-handle`)).toBeTruthy()
   })
 })

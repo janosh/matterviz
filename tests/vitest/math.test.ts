@@ -1682,6 +1682,30 @@ describe(`normalize_vec3`, () => {
   })
 })
 
+describe(`vecs_equal`, () => {
+  test.each([
+    { vec_a: [1, 2, 3], vec_b: [1, 2, 3], expected: true, label: `equal components` },
+    { vec_a: [0, 0, 0], vec_b: [0, 0, 0], expected: true, label: `both zero` },
+    { vec_a: [1, 2, 3], vec_b: [1, 2, 4], expected: false, label: `differ in z` },
+    { vec_a: [1, 2, 3], vec_b: [1, 3, 3], expected: false, label: `differ in y` },
+    { vec_a: [2, 2, 3], vec_b: [1, 2, 3], expected: false, label: `differ in x` },
+    { vec_a: undefined, vec_b: undefined, expected: true, label: `both undefined` },
+    { vec_a: [1, 2, 3], vec_b: undefined, expected: false, label: `second undefined` },
+    { vec_a: undefined, vec_b: [1, 2, 3], expected: false, label: `first undefined` },
+  ])(`$label → $expected`, ({ vec_a, vec_b, expected }) => {
+    expect(math.vecs_equal(vec_a as Vec3, vec_b as Vec3)).toBe(expected)
+  })
+
+  it(`returns true for same reference`, () => {
+    const vec: Vec3 = [1, 2, 3]
+    expect(math.vecs_equal(vec, vec)).toBe(true)
+  })
+
+  it(`uses strict equality, not approximate`, () => {
+    expect(math.vecs_equal([0.1 + 0.2, 0, 0], [0.3, 0, 0])).toBe(false)
+  })
+})
+
 describe(`compute_bounding_box`, () => {
   it(`returns zero box for empty array`, () => {
     const result = math.compute_bounding_box([])

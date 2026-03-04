@@ -277,7 +277,7 @@
     if (!category_indices) return series as unknown as NumericBarSeries[]
     return series.map((srs) => {
       const orig_map = new Map(srs.x.map((val, idx) => [String(val), idx]))
-      if (import.meta.env?.DEV && orig_map.size < srs.x.length) {
+      if (orig_map.size < srs.x.length) {
         console.warn(
           `BarPlot: series "${
             srs.label ?? `?`

@@ -67,13 +67,15 @@ describe(`FilePicker`, () => {
       },
     )
 
-    it(`shows compression indicator for .gz files`, () => {
-      mount(FilePicker, {
-        target: document.body,
-        props: { files: mock_files },
-      })
-      expect(doc_query(`.file-item.compressed`)).toBeTruthy()
-      expect(document.body.textContent).toContain(`📦`)
+    it(`shows file type badge only when label is set`, () => {
+      const labeled: FileInfo[] = [
+        { name: `Si-CHGCAR.gz`, url: `/files/Si`, type: `chgcar`, label: `Si diamond` },
+        { name: `structure.cif`, url: `/files/cif`, type: `cif` },
+      ]
+      mount(FilePicker, { target: document.body, props: { files: labeled } })
+      const badges = document.querySelectorAll(`.file-type-badge`)
+      expect(badges.length).toBe(1)
+      expect(badges[0].textContent).toBe(`CHGCAR`)
     })
   })
 
