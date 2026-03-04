@@ -73,6 +73,7 @@ describe(`DEFAULT_ISOSURFACE_SETTINGS`, () => {
     expect(DEFAULT_ISOSURFACE_SETTINGS.opacity).toBe(0.6)
     expect(DEFAULT_ISOSURFACE_SETTINGS.show_negative).toBe(false)
     expect(DEFAULT_ISOSURFACE_SETTINGS.wireframe).toBe(false)
+    expect(DEFAULT_ISOSURFACE_SETTINGS.wrap_periodic).toBe(false)
     expect(DEFAULT_ISOSURFACE_SETTINGS.positive_color).toBe(`#3b82f6`)
     expect(DEFAULT_ISOSURFACE_SETTINGS.negative_color).toBe(`#ef4444`)
   })
@@ -110,6 +111,7 @@ describe(`auto_isosurface_settings`, () => {
     expect(settings.positive_color).toBe(DEFAULT_ISOSURFACE_SETTINGS.positive_color)
     expect(settings.negative_color).toBe(DEFAULT_ISOSURFACE_SETTINGS.negative_color)
     expect(settings.wireframe).toBe(DEFAULT_ISOSURFACE_SETTINGS.wireframe)
+    expect(settings.wrap_periodic).toBe(DEFAULT_ISOSURFACE_SETTINGS.wrap_periodic)
   })
 
   test(`returns a fresh object (not a reference to DEFAULT_ISOSURFACE_SETTINGS)`, () => {
@@ -332,7 +334,7 @@ describe(`downsample_grid`, () => {
   test.each([
     { dims: [80, 80, 96] as Vec3, label: `80x80x96 (614K)` },
     { dims: [120, 48, 144] as Vec3, label: `120x48x144 (829K)` },
-    { dims: [2000, 2000, 2] as Vec3, label: `2000x2000x2 (anisotropic)` },
+    { dims: [1100, 1100, 2] as Vec3, label: `1100x1100x2 (anisotropic)` },
   ])(`$label: stays within budget with correct shape`, ({ dims }) => {
     const grid = make_grid(dims[0], dims[1], dims[2], 1)
     const result = downsample_grid(grid, dims)

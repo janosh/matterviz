@@ -88,7 +88,12 @@
       ds_result.grid,
       isovalue,
       volume.lattice,
-      { periodic: false, interpolate: true, centered: false, normals: false },
+      {
+        periodic: settings.wrap_periodic && volume.periodic,
+        interpolate: true,
+        centered: false,
+        normals: false,
+      },
     )
     return build_geometry(result.vertices, result.faces)
   }

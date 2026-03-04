@@ -127,6 +127,15 @@
       <span>Wireframe</span>
       <input type="checkbox" bind:checked={settings.wireframe} />
     </label>
+    <label
+      {@attach tooltip({
+        content:
+          `Wrap isosurface across periodic cell boundaries to show full atom-enclosing surfaces`,
+      })}
+    >
+      <span>Periodic</span>
+      <input type="checkbox" bind:checked={settings.wrap_periodic} />
+    </label>
   </div>
 
   {#if is_multi_layer && settings.layers}

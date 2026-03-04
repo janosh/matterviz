@@ -52,6 +52,7 @@ export interface IsosurfaceSettings {
   negative_color: string // color for negative isovalue lobe
   show_negative: boolean // whether to render the negative lobe (-isovalue)
   wireframe: boolean
+  wrap_periodic: boolean // wrap isosurface across periodic cell boundaries (shows full atom surfaces)
   layers?: IsosurfaceLayer[] // if set, overrides single-isovalue mode
 }
 
@@ -173,6 +174,7 @@ export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
   negative_color: `#ef4444`, // red
   show_negative: false,
   wireframe: false,
+  wrap_periodic: false,
 }
 
 // Compute reasonable isosurface settings from a volume's data range.
