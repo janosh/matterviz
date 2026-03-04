@@ -82,49 +82,24 @@
     return downsample_grid(volume.grid, volume.grid_dims)
   })
 
-  // Run marching cubes at the given isovalue.
-  // When halo > 0 for periodic volumes, the grid is padded with halo cells from
-  // the opposite face so isosurfaces extend beyond the unit cell and close into
-  // complete enclosed shapes around boundary atoms.
-  function extract_surface(isovalue: number): BufferGeometry | null {
-    if (!volume || !ds_result || isovalue === 0) return null
-    const use_padding = settings.halo > 0 && volume.periodic
-
-    let mc_grid = ds_result.grid
-    let mc_lattice: Matrix3x3 = volume.lattice
-    let origin_shift: Vec3 = [0, 0, 0]
-
-    if (use_padding) {
-      const padded = pad_periodic_grid(ds_result.grid, ds_result.dims, settings.halo)
-      mc_grid = padded.grid
-      // marching_cubes maps [0,1] fractional -> Cartesian via lattice.
-      // The padded grid covers a wider fractional range, so scale the lattice
-      // to match. Then shift all vertices by the fractional offset.
-      const [la, lb, lc] = volume.lattice
-      const sx = padded.dims[0] / ds_result.dims[0]
-      const sy = padded.dims[1] / ds_result.dims[1]
-      const sz = padded.dims[2] / ds_result.dims[2]
-      mc_lattice = [
-        [la[0] * sx, la[1] * sx, la[2] * sx],
-        [lb[0] * sy, lb[1] * sy, lb[2] * sy],
-        [lc[0] * sz, lc[1] * sz, lc[2] * sz],
-      ]
-      const [ox, oy, oz] = padded.offset
-      origin_shift = [
-        ox * la[0] + oy * lb[0] + oz * lc[0],
-        ox * la[1] + oy * lb[1] + oz * lc[1],
-        ox * la[2] + oy * lb[2] + oz * lc[2],
-      ]
-    }
+  // Run marching cubes at the given isovalue with pre-prepared grid/lattice/shift.
+  function extract_surface(
+    isovalue: number,
+    mc_grid: number[][][],
+    mc_lattice: Matrix3x3,
+    origin_shift: Vec3 | null,
+    periodic: boolean,
+  ): BufferGeometry | null {
+    if (isovalue === 0) return null
 
     const result = marching_cubes(mc_grid, isovalue, mc_lattice, {
-      periodic: false,
+      periodic,
       interpolate: true,
       centered: false,
       normals: false,
     })
 
-    if (use_padding) {
+    if (origin_shift) {
       for (const vert of result.vertices) {
         vert[0] += origin_shift[0]
         vert[1] += origin_shift[1]
@@ -158,8 +133,49 @@
   $effect(() => () => dispose_all())
 
   function rebuild_geometries(layers: IsosurfaceLayer[]) {
+    if (!volume || !ds_result) return
     const old = active_geometries
     const entries: GeoEntry[] = []
+
+    // Prepare grid/lattice/shift once for all layers.
+    // When halo > 0 for periodic volumes, the downsampled grid is padded with
+    // halo cells from the opposite face so isosurfaces extend beyond the unit
+    // cell and close into complete enclosed shapes around boundary atoms.
+    let mc_grid = ds_result.grid
+    let mc_lattice: Matrix3x3 = volume.lattice
+    let origin_shift: Vec3 | null = null
+
+    if (settings.halo > 0 && volume.periodic) {
+      const padded = pad_periodic_grid(ds_result.grid, ds_result.dims, settings.halo)
+      mc_grid = padded.grid
+      // marching_cubes maps [0,1] fractional -> Cartesian via lattice.
+      // The padded grid covers a wider fractional range, so scale the lattice
+      // to match. Then shift all vertices by the fractional offset.
+      const [la, lb, lc] = volume.lattice
+      const sx = padded.dims[0] / ds_result.dims[0]
+      const sy = padded.dims[1] / ds_result.dims[1]
+      const sz = padded.dims[2] / ds_result.dims[2]
+      mc_lattice = [
+        [la[0] * sx, la[1] * sx, la[2] * sx],
+        [lb[0] * sy, lb[1] * sy, lb[2] * sy],
+        [lc[0] * sz, lc[1] * sz, lc[2] * sz],
+      ]
+      const [ox, oy, oz] = padded.offset
+      origin_shift = [
+        ox * la[0] + oy * lb[0] + oz * lc[0],
+        ox * la[1] + oy * lb[1] + oz * lc[1],
+        ox * la[2] + oy * lb[2] + oz * lc[2],
+      ]
+    }
+
+    // When halo padding is applied, MC must not wrap at edges (the padding
+    // already extends the grid). Otherwise respect the volume's periodicity
+    // for correct 1/N vs 1/(N-1) coordinate scaling and full grid iteration.
+    const mc_periodic = !origin_shift && volume.periodic
+
+    const surface_at = (isovalue: number) =>
+      extract_surface(isovalue, mc_grid, mc_lattice, origin_shift, mc_periodic)
+
     // Render lower-isovalue (outer) shells earlier so per-layer back/front passes
     // interleave back-to-front across shells and reduce transparency artefacts.
     const layer_render_rank = new Map<number, number>(
@@ -176,7 +192,7 @@
       // Each layer gets 4 slots (positive back/front + negative back/front).
       const base_order = (layer_render_rank.get(layer_idx) ?? layer_idx) * 4
 
-      const pos_geo = extract_surface(layer.isovalue)
+      const pos_geo = surface_at(layer.isovalue)
       if (pos_geo) {
         entries.push({
           geometry: pos_geo,
@@ -187,7 +203,7 @@
       }
 
       if (layer.show_negative) {
-        const neg_geo = extract_surface(-layer.isovalue)
+        const neg_geo = surface_at(-layer.isovalue)
         if (neg_geo) {
           entries.push({
             geometry: neg_geo,
@@ -212,8 +228,6 @@
       dispose_all()
       return
     }
-    clearTimeout(debounce_id)
-    cancelAnimationFrame(raf_id)
     debounce_id = window.setTimeout(() => {
       raf_id = requestAnimationFrame(() => rebuild_geometries(layers))
     }, 50)

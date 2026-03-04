@@ -23,7 +23,7 @@
     persistent = false,
     has_been_dragged = $bindable(false),
     currently_dragging = $bindable(false),
-    resizable = `both`,
+    resizable = `none`,
   }: {
     show?: boolean
     show_pane?: boolean
@@ -62,7 +62,8 @@
   let show_control_buttons = $state(false)
   let resizing = $state(false)
 
-  // Resize via bottom-right grip
+  // Resize via bottom-right grip. Uses pointer capture so fast drags
+  // outside the browser window are still tracked.
   function handle_resize_start(event: PointerEvent) {
     if (resizable === `none` || !pane_div) return
     event.preventDefault()
@@ -70,6 +71,8 @@
     resizing = true
     has_been_dragged = true
     show_control_buttons = true
+    const grip = event.currentTarget as HTMLElement
+    grip.setPointerCapture(event.pointerId)
     const start_x = event.clientX
     const start_y = event.clientY
     const start_w = pane_div.offsetWidth
@@ -87,8 +90,8 @@
       }
     }
     function on_up() {
-      document.removeEventListener(`pointermove`, on_move)
-      document.removeEventListener(`pointerup`, on_up)
+      grip.removeEventListener(`pointermove`, on_move)
+      grip.removeEventListener(`pointerup`, on_up)
       // Defer clearing resizing to next frame so any stray click event
       // (fired in the same task after pointerup) still sees resizing=true
       // and doesn't trigger click-outside closure
@@ -96,8 +99,8 @@
         resizing = false
       })
     }
-    document.addEventListener(`pointermove`, on_move)
-    document.addEventListener(`pointerup`, on_up)
+    grip.addEventListener(`pointermove`, on_move)
+    grip.addEventListener(`pointerup`, on_up)
   }
 
   function toggle_pane(event: MouseEvent) {
@@ -495,7 +498,7 @@
     );
     border-left: none;
     border-radius: 0 5px 5px 0;
-    z-index: var(--pane-control-buttons-z-index, 1);
+    z-index: var(--pane-control-tab-z-index, var(--pane-control-buttons-z-index, 1));
   }
   .draggable-pane :global(.drag-handle) {
     width: 1.1em;

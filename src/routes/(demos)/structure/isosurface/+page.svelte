@@ -8,7 +8,7 @@
   import { sample_hkl_slice } from '$lib/isosurface/slice'
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
-  import { calc_lattice_params } from '$lib/math'
+  import { calc_lattice_params, vecs_equal } from '$lib/math'
   import MillerIndexInput from '$lib/MillerIndexInput.svelte'
   import { ColorBar } from '$lib/plot'
   import { parse_any_structure } from '$lib/structure/parse'
@@ -303,10 +303,6 @@
 
   const is_valid_vec3 = (vector?: Vec3): vector is Vec3 =>
     Array.isArray(vector) && vector.every((coord) => Number.isFinite(coord))
-
-  const vecs_equal = (vec_a?: Vec3, vec_b?: Vec3): boolean =>
-    vec_a === vec_b || (!!vec_a && !!vec_b &&
-      vec_a[0] === vec_b[0] && vec_a[1] === vec_b[1] && vec_a[2] === vec_b[2])
 
   function sync_camera_state(
     data: { camera_position?: Vec3; camera_target?: Vec3 },

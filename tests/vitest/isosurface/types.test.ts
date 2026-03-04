@@ -356,4 +356,13 @@ describe(`pad_periodic_grid`, () => {
     const result = pad_periodic_grid(grid, [20, 20, 20], 0.3)
     assert_all_cells(result.grid, (val) => expect(val).toBe(5))
   })
+
+  test(`pad_fraction=0 returns original grid unchanged`, () => {
+    const grid = make_grid(10, 10, 10, 3)
+    const dims: Vec3 = [10, 10, 10]
+    const result = pad_periodic_grid(grid, dims, 0)
+    expect(result.grid).toBe(grid)
+    expect(result.dims).toBe(dims)
+    expect(result.offset).toEqual([0, 0, 0])
+  })
 })

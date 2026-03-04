@@ -490,6 +490,12 @@ export const centered_frac = (val: number): number => {
   return wrapped || 0 // normalize -0 to 0
 }
 
+// Element-wise equality check for two optional Vec3s.
+// Returns true if both are the same reference, or both are defined with equal components.
+export const vecs_equal = (vec_a?: Vec3, vec_b?: Vec3): boolean =>
+  vec_a === vec_b || (!!vec_a && !!vec_b &&
+    vec_a[0] === vec_b[0] && vec_a[1] === vec_b[1] && vec_a[2] === vec_b[2])
+
 // Normalize a Vec3 to unit length, returns zero vector if input is zero
 export function normalize_vec3(vec: Vec3, fallback?: Vec3): Vec3 {
   const len = Math.hypot(vec[0], vec[1], vec[2])

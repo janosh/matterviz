@@ -102,9 +102,10 @@ export function pad_periodic_grid(
   pad_fraction: number,
 ): { grid: number[][][]; dims: Vec3; offset: Vec3 } {
   const [nx, ny, nz] = dims
-  const px = Math.min(Math.ceil(nx * pad_fraction), Math.floor(nx / 2))
-  const py = Math.min(Math.ceil(ny * pad_fraction), Math.floor(ny / 2))
-  const pz = Math.min(Math.ceil(nz * pad_fraction), Math.floor(nz / 2))
+  const frac = Math.max(0, pad_fraction)
+  const px = Math.min(Math.ceil(nx * frac), Math.floor(nx / 2))
+  const py = Math.min(Math.ceil(ny * frac), Math.floor(ny / 2))
+  const pz = Math.min(Math.ceil(nz * frac), Math.floor(nz / 2))
   if (px === 0 && py === 0 && pz === 0) return { grid, dims, offset: [0, 0, 0] }
 
   const out_nx = nx + 2 * px
@@ -167,25 +168,26 @@ export function downsample_grid(
   // Proportional partitioning: evenly divides [0, n) into new_n non-empty blocks.
   // Unlike fixed-stride (ix * factor), this is safe when max(2,...) clamping
   // produces more output cells than ceil(n/factor) would — no empty blocks.
-  const partition = (
-    idx: number,
-    n_out: number,
-    n_src: number,
-  ): [number, number] => [
-    Math.round(idx * n_src / n_out),
-    Math.round((idx + 1) * n_src / n_out),
-  ]
+  const partition = (n_out: number, n_src: number): [number, number][] =>
+    Array.from({ length: n_out }, (_, idx) => [
+      Math.round(idx * n_src / n_out),
+      Math.round((idx + 1) * n_src / n_out),
+    ])
+
+  const x_ranges = partition(new_nx, nx)
+  const y_ranges = partition(new_ny, ny)
+  const z_ranges = partition(new_nz, nz)
 
   const out: number[][][] = new Array(new_nx)
   for (let ix = 0; ix < new_nx; ix++) {
     const plane: number[][] = new Array(new_ny)
-    const [sx_start, sx_end] = partition(ix, new_nx, nx)
+    const [sx_start, sx_end] = x_ranges[ix]
     for (let iy = 0; iy < new_ny; iy++) {
       const row = new Array<number>(new_nz)
-      const [sy_start, sy_end] = partition(iy, new_ny, ny)
+      const [sy_start, sy_end] = y_ranges[iy]
       for (let iz = 0; iz < new_nz; iz++) {
         let sum = 0
-        const [sz_start, sz_end] = partition(iz, new_nz, nz)
+        const [sz_start, sz_end] = z_ranges[iz]
         for (let sx = sx_start; sx < sx_end; sx++) {
           const src_plane = grid[sx]
           for (let sy = sy_start; sy < sy_end; sy++) {

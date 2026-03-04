@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 
 const ISO_URL = `/structure/isosurface?file=Si-CHGCAR.gz`
 
@@ -10,8 +10,8 @@ async function wait_for_isosurface(page: Page) {
 async function open_settings_pane(page: Page) {
   await page.evaluate(() => {
     const style = document.createElement(`style`)
-    style.textContent = `section[class*="control-buttons"],
-      .hover-visible { opacity: 1 !important; pointer-events: auto !important; }`
+    style.textContent =
+      `.hover-visible { opacity: 1 !important; pointer-events: auto !important; }`
     document.head.appendChild(style)
   })
   const gear = page.locator(`button.structure-controls-toggle`)
@@ -23,16 +23,16 @@ async function open_settings_pane(page: Page) {
 }
 
 // Get center of a bounding box, throwing if null
-async function get_center(locator: import('@playwright/test').Locator) {
+async function get_center(locator: Locator) {
   const box = await locator.boundingBox()
   if (!box) throw new Error(`Element has no bounding box`)
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2, box }
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 }
 
 // Drag from a locator's center by a given offset
 async function drag_from(
   page: Page,
-  locator: import('@playwright/test').Locator,
+  locator: Locator,
   dx: number,
   dy: number,
 ) {
