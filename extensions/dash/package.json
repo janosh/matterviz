@@ -1,6 +1,6 @@
 {
   "name": "matterviz-dash-components",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Plotly Dash wrapper for MatterViz (Svelte) components",
   "license": "MIT",
   "private": true,
@@ -18,7 +18,7 @@
     "react-dom": ">=16.14.0"
   },
   "dependencies": {
-    "matterviz": "^0.2.1",
+    "matterviz": "^0.3.2",
     "prop-types": "^15.8.1"
   },
   "devDependencies": {

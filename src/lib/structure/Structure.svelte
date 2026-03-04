@@ -281,6 +281,7 @@
     if (!structure_string || data_url) return
     loading = true
     error_msg = undefined
+    clear_camera_state()
     try {
       const parsed = parse_any_structure(structure_string, `string`)
       if (parsed) {
@@ -688,6 +689,13 @@
     if (structure) camera_has_moved = false
   })
 
+  // Clear stale camera target and position so StructureScene uses the new
+  // structure's rotation_target (unit cell center) and auto-positions the camera.
+  function clear_camera_state() {
+    scene_props.camera_target = undefined
+    scene_props.camera_position = [0, 0, 0]
+  }
+
   const read_orbit_target = (): Vec3 | undefined => {
     if (!orbit_controls?.target) return
     const { x, y, z } = orbit_controls.target
@@ -800,6 +808,7 @@
   // Parse file content, trying volumetric format first then falling back to plain structure.
   // Returns the parsed structure on success, throws on failure.
   function parse_file_content(text_content: string, filename: string): AnyStructure {
+    clear_camera_state()
     const vol_struct = try_parse_volumetric(text_content, filename)
     if (vol_struct) return vol_struct
     // Clear stale volumetric data when loading a non-volumetric file

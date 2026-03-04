@@ -1,7 +1,7 @@
 [meta]
 schema_version = 1
 matterviz_npm_package = "matterviz"
-matterviz_version = "0.2.1"
+matterviz_version = "0.3.2"
 
 # Curated typed wrappers.
 # Add/remove entries freely; run scripts/sync_typed_wrappers.py to regenerate Python wrappers.
