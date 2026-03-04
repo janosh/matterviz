@@ -1,5 +1,35 @@
 # Changelog
 
+## [v0.3.2](https://github.com/janosh/matterviz/compare/v0.3.1...v0.3.2)
+
+> 4 March 2026
+
+### 🚀 New Features
+
+- Add side-by-side layout mode to ConvexHullStats by @janosh in https://github.com/janosh/matterviz/pull/307
+- Add HeatmapMatrix component with controls and ordering by @janosh in https://github.com/janosh/matterviz/pull/311
+- Add ChemPotDiagram component for chemical potential diagrams by @janosh in https://github.com/janosh/matterviz/pull/312
+- Add categorical bar chart support by @janosh in https://github.com/janosh/matterviz/pull/320
+- Add PlotPanel for interactive JSON data visualization by @janosh in https://github.com/janosh/matterviz/pull/321
+
+### 🛠 Enhancements
+
+- Phase diagram: vertical lever rule, dynamic x-domain, formula formatting, inline JSON editing via JsonTree, always-visible phase diagram editor by @janosh in https://github.com/janosh/matterviz/pull/309
+- Polish chempot diagram UX and interaction coverage by @janosh in https://github.com/janosh/matterviz/pull/313
+- Speed up chempot construction and add temperature filtering by @janosh in https://github.com/janosh/matterviz/pull/314
+- Improve isosurface render ordering and comparison sync by @janosh in https://github.com/janosh/matterviz/pull/316
+- Improve plot tooltips with richer defaults and physics-based band classification by @janosh in https://github.com/janosh/matterviz/pull/319
+
+### 🐛 Bug Fixes
+
+- Fix packaging json.gz to NPM + more component updates by @janosh in https://github.com/janosh/matterviz/pull/308
+- Isosurface performance: grid downsampling, debounced rendering, UI fixes by @janosh in https://github.com/janosh/matterviz/pull/322
+
+### 💡 Refactoring
+
+- Refactor trajectory parsing and tighten runtime type guards by @janosh in https://github.com/janosh/matterviz/pull/315
+- Unify plot components and add x2-axis (secondary top x-axis) support by @janosh in https://github.com/janosh/matterviz/pull/318
+
 ## [v0.3.1](https://github.com/janosh/matterviz/compare/v0.3.0...v0.3.1)
 
 > 9 February 2026

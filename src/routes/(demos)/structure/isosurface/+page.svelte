@@ -40,6 +40,7 @@
   let max_grid_dim = $derived(
     Math.max(...(volumetric_data?.[active_volume_idx]?.grid_dims ?? [64])),
   )
+  let effective_resolution = $derived(slice_resolution || max_grid_dim)
   let slice_canvas = $state<HTMLCanvasElement | undefined>()
   let slice_range = $state<[number, number]>([0, 1])
   let slice_canvas_height = $state(200)
@@ -370,12 +371,9 @@
           min={8}
           max={max_grid_dim * 4}
           step={1}
-          value={slice_resolution || max_grid_dim}
-          onchange={(evt) => {
-            slice_resolution = Math.max(
-              8,
-              parseInt((evt.target as HTMLInputElement).value) || 0,
-            )
+          bind:value={effective_resolution}
+          onchange={() => {
+            slice_resolution = Math.max(8, effective_resolution)
           }}
         />
         <input
@@ -383,9 +381,9 @@
           min={8}
           max={max_grid_dim * 4}
           step={1}
-          value={slice_resolution || max_grid_dim}
-          oninput={(evt) => {
-            slice_resolution = parseInt((evt.target as HTMLInputElement).value) || 0
+          bind:value={effective_resolution}
+          oninput={() => {
+            slice_resolution = effective_resolution
           }}
         />
       </label>

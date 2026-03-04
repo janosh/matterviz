@@ -20,10 +20,7 @@
     pad_periodic_grid,
   } from './types'
 
-  let {
-    volume,
-    settings = DEFAULT_ISOSURFACE_SETTINGS,
-  }: {
+  let { volume, settings = DEFAULT_ISOSURFACE_SETTINGS }: {
     volume: VolumetricData
     settings?: IsosurfaceSettings
   } = $props()
