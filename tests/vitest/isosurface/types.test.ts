@@ -254,44 +254,37 @@ describe(`downsample_grid`, () => {
   })
 
   test(`preserves negative values correctly`, () => {
-    const grid = make_grid(100, 100, 100, () => -3)
-    const { grid: out, dims } = downsample_grid(grid, [100, 100, 100])
+    // 80^3 = 512K > 500K, triggers downsampling
+    const grid = make_grid(80, 80, 80, () => -3)
+    const { grid: out, dims } = downsample_grid(grid, [80, 80, 80])
     expect(out[0][0][0]).toBeCloseTo(-3)
     expect(out[dims[0] - 1][dims[1] - 1][dims[2] - 1]).toBeCloseTo(-3)
   })
 
-  test(`output shape matches reported dims`, () => {
-    const grid = make_grid(100, 100, 100)
-    const { grid: out, dims } = downsample_grid(grid, [100, 100, 100])
-    expect(out.length).toBe(dims[0])
-    expect(out[0].length).toBe(dims[1])
-    expect(out[0][0].length).toBe(dims[2])
-  })
-
-  test(`every source cell is covered exactly once (no gaps or overlaps)`, () => {
-    // Use index-based values so we can verify the weighted sum
+  test(`no source cells lost or double-counted`, () => {
+    // Non-uniform data: if any source cell is missed or counted twice,
+    // the weighted reconstruction (sum of block_mean * block_size) won't
+    // equal the source total.
     const nx = 100
     const ny = 80
     const nz = 90
-    const grid = make_grid(nx, ny, nz, 1)
+    const grid = make_grid(nx, ny, nz, (ix, iy, iz) => ix + iy + iz)
+    const src_total = grid.flat(2).reduce((acc, val) => acc + val, 0)
     const { grid: out, dims } = downsample_grid(grid, [nx, ny, nz])
-    // Total of downsampled * block_sizes should equal total of source
-    const src_total = nx * ny * nz // all 1s
-    let weighted_sum = 0
+    // Reconstruct source total: each output cell's mean * block_size
+    // should sum to the original total if no cells are lost or duplicated.
+    let reconstructed = 0
     for (let ix = 0; ix < dims[0]; ix++) {
+      const bx = Math.round((ix + 1) * nx / dims[0]) - Math.round(ix * nx / dims[0])
       for (let iy = 0; iy < dims[1]; iy++) {
+        const by = Math.round((iy + 1) * ny / dims[1]) - Math.round(iy * ny / dims[1])
         for (let iz = 0; iz < dims[2]; iz++) {
-          // Each output cell is the mean of its block, so mean * block_size = block_sum
-          // For uniform=1, mean=1, block_sum=block_size, total = sum of block_sizes = nx*ny*nz
-          weighted_sum += out[ix][iy][iz]
+          const bz = Math.round((iz + 1) * nz / dims[2]) - Math.round(iz * nz / dims[2])
+          reconstructed += out[ix][iy][iz] * bx * by * bz
         }
       }
     }
-    // mean of all-1 grid is 1, so weighted_sum = number of output cells
-    expect(weighted_sum).toBeCloseTo(dims[0] * dims[1] * dims[2])
-    // Verify no source cells lost: total output cells * avg block size ≈ total source cells
-    const avg_block = src_total / (dims[0] * dims[1] * dims[2])
-    expect(avg_block).toBeGreaterThanOrEqual(1)
+    expect(reconstructed).toBeCloseTo(src_total, 5)
   })
 
   test(`dims are at least 2 even for extreme aspect ratios`, () => {

@@ -165,7 +165,6 @@
   // Debounces rapid changes (e.g. slider drags) to avoid repeated expensive marching cubes.
   $effect(() => {
     const layers = resolved_layers
-    void volume
     if (!ds_result) {
       dispose_all()
       return
