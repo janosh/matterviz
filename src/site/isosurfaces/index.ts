@@ -81,6 +81,11 @@ const file_metadata: Record<
     label: `Caffeine LUMO`,
     description: `Caffeine LUMO orbital, B3LYP/6-31G(d) via Psi4`,
   },
+  'large-grid-CHGCAR.gz': {
+    format: `CHGCAR`,
+    label: `Large grid (perf)`,
+    description: `Large 80×80×96 grid for performance testing (issue #317)`,
+  },
 }
 
 export const volumetric_files: VolumetricFileInfo[] = Object.entries(
