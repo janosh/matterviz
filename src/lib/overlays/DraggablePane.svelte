@@ -205,6 +205,7 @@
           right: `auto`,
           bottom: `auto`,
           width: ``,
+          maxHeight: ``,
         })
       }
     }
@@ -367,6 +368,7 @@
     overflow-x: var(--pane-overflow-x, hidden);
     overflow-y: var(--pane-overflow-y, auto);
     max-height: inherit;
+    box-sizing: border-box;
     overscroll-behavior: contain;
   }
   :global(body.fullscreen) .draggable-pane {
