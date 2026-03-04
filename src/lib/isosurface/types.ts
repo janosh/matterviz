@@ -99,7 +99,7 @@ export function grid_data_range(grid: number[][][]): DataRange {
 export function pad_periodic_grid(
   grid: number[][][],
   dims: Vec3,
-  pad_fraction = 0.15,
+  pad_fraction = 0.3,
 ): { grid: number[][][]; dims: Vec3; offset: Vec3 } {
   const [nx, ny, nz] = dims
   const px = Math.min(Math.ceil(nx * pad_fraction), Math.floor(nx / 2))

@@ -307,32 +307,32 @@ describe(`pad_periodic_grid`, () => {
   test(`output is larger than input by 2*pad per axis`, () => {
     const grid = make_grid(10, 10, 10, (ix, iy, iz) => ix + iy + iz)
     const result = pad_periodic_grid(grid, [10, 10, 10])
-    // pad = ceil(10 * 0.15) = 2 per axis
-    expect(result.dims[0]).toBe(14)
-    expect(result.dims[1]).toBe(14)
-    expect(result.dims[2]).toBe(14)
-    expect(result.grid.length).toBe(14)
-    expect(result.grid[0].length).toBe(14)
-    expect(result.grid[0][0].length).toBe(14)
+    // pad = ceil(10 * 0.3) = 3 per axis
+    expect(result.dims[0]).toBe(16)
+    expect(result.dims[1]).toBe(16)
+    expect(result.dims[2]).toBe(16)
+    expect(result.grid.length).toBe(16)
+    expect(result.grid[0].length).toBe(16)
+    expect(result.grid[0][0].length).toBe(16)
   })
 
   test(`offset is negative fractional shift`, () => {
     const grid = make_grid(10, 10, 10)
     const result = pad_periodic_grid(grid, [10, 10, 10])
-    // pad = 2, offset = -2/10 = -0.2
-    expect(result.offset[0]).toBeCloseTo(-0.2)
-    expect(result.offset[1]).toBeCloseTo(-0.2)
-    expect(result.offset[2]).toBeCloseTo(-0.2)
+    // pad = 3, offset = -3/10 = -0.3
+    expect(result.offset[0]).toBeCloseTo(-0.3)
+    expect(result.offset[1]).toBeCloseTo(-0.3)
+    expect(result.offset[2]).toBeCloseTo(-0.3)
   })
 
   test(`original data is preserved in the center of padded grid`, () => {
     const grid = make_grid(10, 10, 10, (ix, iy, iz) => ix * 100 + iy * 10 + iz)
     const result = pad_periodic_grid(grid, [10, 10, 10])
-    // pad = 2, so original data starts at index 2
+    // pad = 3, so original data starts at index 3
     for (let ix = 0; ix < 10; ix++) {
       for (let iy = 0; iy < 10; iy++) {
         for (let iz = 0; iz < 10; iz++) {
-          expect(result.grid[ix + 2][iy + 2][iz + 2]).toBe(grid[ix][iy][iz])
+          expect(result.grid[ix + 3][iy + 3][iz + 3]).toBe(grid[ix][iy][iz])
         }
       }
     }
@@ -341,12 +341,14 @@ describe(`pad_periodic_grid`, () => {
   test(`halo cells wrap from opposite face`, () => {
     const grid = make_grid(10, 10, 10, (ix) => ix)
     const result = pad_periodic_grid(grid, [10, 10, 10])
-    // pad = 2. Left halo (ix=0,1) should be grid[8,9] (opposite face)
-    expect(result.grid[0][2][2]).toBe(8) // grid[8]
-    expect(result.grid[1][2][2]).toBe(9) // grid[9]
-    // Right halo (ix=12,13) should be grid[0,1]
-    expect(result.grid[12][2][2]).toBe(0) // grid[0]
-    expect(result.grid[13][2][2]).toBe(1) // grid[1]
+    // pad = 3. Left halo (ix=0,1,2) should be grid[7,8,9] (opposite face)
+    expect(result.grid[0][3][3]).toBe(7)
+    expect(result.grid[1][3][3]).toBe(8)
+    expect(result.grid[2][3][3]).toBe(9)
+    // Right halo (ix=13,14,15) should be grid[0,1,2]
+    expect(result.grid[13][3][3]).toBe(0)
+    expect(result.grid[14][3][3]).toBe(1)
+    expect(result.grid[15][3][3]).toBe(2)
   })
 
   test(`uniform grid stays uniform after padding`, () => {
