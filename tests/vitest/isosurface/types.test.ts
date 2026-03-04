@@ -217,20 +217,15 @@ function assert_all_cells(
 }
 
 describe(`downsample_grid`, () => {
-  test(`returns original grid reference when under budget`, () => {
-    const grid = make_grid(10, 10, 10)
-    const dims: Vec3 = [10, 10, 10]
+  test.each([
+    { dims: [10, 10, 10] as Vec3, label: `under budget (1K)` },
+    { dims: [100, 100, 50] as Vec3, label: `at exactly 500K` },
+  ])(`$label: returns original grid reference`, ({ dims }) => {
+    const grid = make_grid(dims[0], dims[1], dims[2])
     const result = downsample_grid(grid, dims)
     expect(result.factor).toBe(1)
     expect(result.grid).toBe(grid)
     expect(result.dims).toBe(dims)
-  })
-
-  test(`returns original at exactly 500K points`, () => {
-    const grid = make_grid(100, 100, 50, 7)
-    const result = downsample_grid(grid, [100, 100, 50])
-    expect(result.factor).toBe(1)
-    expect(result.grid).toBe(grid)
   })
 
   test.each([
@@ -304,22 +299,15 @@ describe(`downsample_grid`, () => {
 })
 
 describe(`pad_periodic_grid`, () => {
-  test(`output is larger than input by 2*pad per axis`, () => {
-    const grid = make_grid(10, 10, 10, (ix, iy, iz) => ix + iy + iz)
+  test(`dims, grid shape, and offset correct for 0.3 padding on 10^3 grid`, () => {
+    const grid = make_grid(10, 10, 10)
     const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
-    // pad = ceil(10 * 0.3) = 3 per axis
-    expect(result.dims[0]).toBe(16)
-    expect(result.dims[1]).toBe(16)
-    expect(result.dims[2]).toBe(16)
+    // pad = ceil(10 * 0.3) = 3 per axis → dims 10+6=16
+    expect(result.dims).toEqual([16, 16, 16])
     expect(result.grid.length).toBe(16)
     expect(result.grid[0].length).toBe(16)
     expect(result.grid[0][0].length).toBe(16)
-  })
-
-  test(`offset is negative fractional shift`, () => {
-    const grid = make_grid(10, 10, 10)
-    const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
-    // pad = 3, offset = -3/10 = -0.3
+    // offset = -3/10 = -0.3
     expect(result.offset[0]).toBeCloseTo(-0.3)
     expect(result.offset[1]).toBeCloseTo(-0.3)
     expect(result.offset[2]).toBeCloseTo(-0.3)
@@ -357,12 +345,33 @@ describe(`pad_periodic_grid`, () => {
     assert_all_cells(result.grid, (val) => expect(val).toBe(5))
   })
 
-  test(`pad_fraction=0 returns original grid unchanged`, () => {
+  test.each([0, -0.5, -1])(`pad_fraction=%d returns original grid unchanged`, (frac) => {
     const grid = make_grid(10, 10, 10, 3)
     const dims: Vec3 = [10, 10, 10]
-    const result = pad_periodic_grid(grid, dims, 0)
+    const result = pad_periodic_grid(grid, dims, frac)
     expect(result.grid).toBe(grid)
     expect(result.dims).toBe(dims)
     expect(result.offset).toEqual([0, 0, 0])
+  })
+
+  test(`padding capped at floor(n/2) per axis`, () => {
+    const grid = make_grid(6, 6, 6, 1)
+    // pad_fraction=0.5 → ceil(6*0.5)=3, floor(6/2)=3, so pad=3
+    const result = pad_periodic_grid(grid, [6, 6, 6], 0.5)
+    expect(result.dims).toEqual([12, 12, 12])
+    // pad_fraction=0.9 → ceil(6*0.9)=6, but floor(6/2)=3 caps it
+    const result_large = pad_periodic_grid(grid, [6, 6, 6], 0.9)
+    expect(result_large.dims).toEqual([12, 12, 12])
+  })
+
+  test(`anisotropic dims get independent padding`, () => {
+    const grid = make_grid(20, 4, 10, 2)
+    const result = pad_periodic_grid(grid, [20, 4, 10], 0.3)
+    // px=ceil(20*0.3)=6, py=ceil(4*0.3)=2(capped by floor(4/2)=2), pz=ceil(10*0.3)=3
+    expect(result.dims).toEqual([32, 8, 16])
+    expect(result.offset[0]).toBeCloseTo(-6 / 20)
+    expect(result.offset[1]).toBeCloseTo(-2 / 4)
+    expect(result.offset[2]).toBeCloseTo(-3 / 10)
+    assert_all_cells(result.grid, (val) => expect(val).toBe(2))
   })
 })
