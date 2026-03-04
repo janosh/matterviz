@@ -304,6 +304,10 @@
   const is_valid_vec3 = (vector?: Vec3): vector is Vec3 =>
     Array.isArray(vector) && vector.every((coord) => Number.isFinite(coord))
 
+  const vecs_equal = (vec_a?: Vec3, vec_b?: Vec3): boolean =>
+    vec_a === vec_b || (!!vec_a && !!vec_b &&
+      vec_a[0] === vec_b[0] && vec_a[1] === vec_b[1] && vec_a[2] === vec_b[2])
+
   function sync_camera_state(
     data: { camera_position?: Vec3; camera_target?: Vec3 },
     clear_target_if_missing: boolean,
@@ -314,6 +318,12 @@
       : clear_target_if_missing
       ? undefined
       : synced_scene_props.camera_target
+    // Skip write if unchanged to prevent effect_update_depth_exceeded cycle:
+    // on_camera_move → sync_camera_state → bind:scene_props → $effect.pre → on_camera_move
+    if (
+      vecs_equal(data.camera_position, synced_scene_props.camera_position) &&
+      vecs_equal(next_camera_target, synced_scene_props.camera_target)
+    ) return
     synced_scene_props = {
       ...synced_scene_props,
       camera_position: [...data.camera_position] as Vec3,
