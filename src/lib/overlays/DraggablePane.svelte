@@ -89,9 +89,12 @@
     function on_up() {
       document.removeEventListener(`pointermove`, on_move)
       document.removeEventListener(`pointerup`, on_up)
-      // Defer clearing resizing to next frame so any stray click event
-      // (fired in the same task after pointerup) still sees resizing=true
-      // and doesn't trigger click-outside closure
+      // Swallow the click that fires after pointerup in the same task to
+      // prevent the click-outside handler from closing the pane
+      document.addEventListener(`click`, (evt) => evt.stopPropagation(), {
+        capture: true,
+        once: true,
+      })
       requestAnimationFrame(() => {
         resizing = false
       })
