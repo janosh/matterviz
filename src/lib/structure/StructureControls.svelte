@@ -179,7 +179,11 @@
 
 <DraggablePane
   bind:show={controls_open}
-  pane_props={{ ...pane_props, class: `controls-pane ${pane_props?.class ?? ``}` }}
+  pane_props={{
+    ...pane_props,
+    class: `controls-pane ${pane_props?.class ?? ``}`,
+    style: `--pane-max-height: 70vh; ${pane_props?.style ?? ``}`,
+  }}
   toggle_props={{
     title: controls_open ? `` : `Structure controls`,
     ...toggle_props,

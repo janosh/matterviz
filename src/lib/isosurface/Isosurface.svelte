@@ -170,6 +170,7 @@
   // Debounces rapid changes (e.g. slider drags) to avoid repeated expensive marching cubes.
   $effect(() => {
     const layers = resolved_layers
+    void settings.wrap_periodic
     if (!ds_result) {
       dispose_all()
       return

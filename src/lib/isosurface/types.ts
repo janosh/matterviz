@@ -110,8 +110,7 @@ export function downsample_grid(
   // Increase factor until the clamped output fits within budget.
   // A single cbrt step can overshoot for anisotropic grids where max(2,...)
   // clamping prevents a small axis from shrinking below 2.
-  // Clamp each output axis to [2, source_dim] — never exceed the source
-  // (max(2,...) must not inflate beyond the input or partition produces empty blocks)
+  // clamp_dim: returns 1 for single-cell axes, otherwise clamps to [2, src]
   const clamp_dim = (src: number, fac: number) =>
     Math.min(src, Math.max(2, Math.ceil(src / fac)))
   let factor = Math.ceil(Math.cbrt(total / MAX_GRID_POINTS))
