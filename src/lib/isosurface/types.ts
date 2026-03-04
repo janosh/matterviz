@@ -91,6 +91,58 @@ export function grid_data_range(grid: number[][][]): DataRange {
   return { min: min_val, max: max_val, abs_max, mean: count > 0 ? sum / count : 0 }
 }
 
+// Max total grid points before downsampling is applied for isosurface extraction.
+// 500K balances visual quality with interactive performance (<200ms marching cubes).
+const MAX_GRID_POINTS = 500_000
+
+// Downsample a 3D volumetric grid to keep total point count under MAX_GRID_POINTS.
+// Uses block averaging to preserve data fidelity while reducing grid dimensions.
+// Returns original grid/dims if already within budget.
+export function downsample_grid(
+  grid: number[][][],
+  dims: Vec3,
+): { grid: number[][][]; dims: Vec3; factor: number } {
+  const [nx, ny, nz] = dims
+  const total = nx * ny * nz
+  if (total <= MAX_GRID_POINTS) return { grid, dims, factor: 1 }
+
+  // Compute uniform downsample factor (round up so result fits within budget)
+  const factor = Math.ceil(Math.cbrt(total / MAX_GRID_POINTS))
+  const new_nx = Math.max(2, Math.ceil(nx / factor))
+  const new_ny = Math.max(2, Math.ceil(ny / factor))
+  const new_nz = Math.max(2, Math.ceil(nz / factor))
+  const out: number[][][] = new Array(new_nx)
+  for (let ix = 0; ix < new_nx; ix++) {
+    const plane: number[][] = new Array(new_ny)
+    const sx_start = ix * factor
+    const sx_end = Math.min(sx_start + factor, nx)
+    for (let iy = 0; iy < new_ny; iy++) {
+      const row = new Array<number>(new_nz)
+      const sy_start = iy * factor
+      const sy_end = Math.min(sy_start + factor, ny)
+      for (let iz = 0; iz < new_nz; iz++) {
+        let sum = 0
+        const sz_start = iz * factor
+        const sz_end = Math.min(sz_start + factor, nz)
+        for (let sx = sx_start; sx < sx_end; sx++) {
+          const src_plane = grid[sx]
+          for (let sy = sy_start; sy < sy_end; sy++) {
+            const src_row = src_plane[sy]
+            for (let sz = sz_start; sz < sz_end; sz++) {
+              sum += src_row[sz]
+            }
+          }
+        }
+        row[iz] = sum / ((sx_end - sx_start) * (sy_end - sy_start) * (sz_end - sz_start))
+      }
+      plane[iy] = row
+    }
+    out[ix] = plane
+  }
+
+  return { grid: out, dims: [new_nx, new_ny, new_nz], factor }
+}
+
 // Default isosurface rendering settings
 export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
   isovalue: 0.05,
