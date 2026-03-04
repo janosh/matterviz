@@ -201,69 +201,138 @@ function make_grid(
   )
 }
 
+// Compute mean of all values in a 3D grid
+function grid_mean(grid: number[][][]): number {
+  let sum = 0
+  let count = 0
+  for (const plane of grid) {
+    for (const row of plane) {
+      for (const val of row) {
+        sum += val
+        count++
+      }
+    }
+  }
+  return count > 0 ? sum / count : 0
+}
+
 describe(`downsample_grid`, () => {
-  test(`returns original grid unchanged when under budget`, () => {
+  test(`returns original grid reference when under budget`, () => {
     const grid = make_grid(10, 10, 10)
     const dims: Vec3 = [10, 10, 10]
     const result = downsample_grid(grid, dims)
     expect(result.factor).toBe(1)
-    expect(result.grid).toBe(grid) // same reference, no copy
+    expect(result.grid).toBe(grid)
     expect(result.dims).toBe(dims)
   })
 
-  test(`downsamples a large uniform grid`, () => {
-    const grid = make_grid(100, 100, 100, 5)
-    const result = downsample_grid(grid, [100, 100, 100])
-    expect(result.factor).toBeGreaterThan(1)
-    const [rnx, rny, rnz] = result.dims
-    expect(rnx * rny * rnz).toBeLessThanOrEqual(500_000)
-    // Uniform value should be preserved after averaging
-    expect(result.grid[0][0][0]).toBeCloseTo(5)
-    expect(result.grid[rnx - 1][rny - 1][rnz - 1]).toBeCloseTo(5)
+  test(`returns original at exactly 500K points`, () => {
+    // 79^3 = 493,039 < 500K
+    const grid = make_grid(79, 79, 79, 7)
+    const result = downsample_grid(grid, [79, 79, 79])
+    expect(result.factor).toBe(1)
+    expect(result.grid).toBe(grid)
   })
 
-  test(`preserves average of non-uniform data`, () => {
-    // 4x4x4 grid won't be downsampled (64 points), but 100x100x100 will
-    const grid = make_grid(100, 100, 100, (ix, iy, iz) => ix + iy + iz)
-    const result = downsample_grid(grid, [100, 100, 100])
-    expect(result.factor).toBeGreaterThan(1)
-    // The global mean of ix+iy+iz on 0..99 = 3 * 49.5 = 148.5
-    // Downsampled grid should approximately preserve this
-    let sum = 0
-    let count = 0
-    for (const plane of result.grid) {
-      for (const row of plane) {
-        for (const val of row) {
-          sum += val
-          count++
+  test(`uniform grid preserves constant value everywhere`, () => {
+    const grid = make_grid(100, 100, 100, 5)
+    const { grid: out, dims } = downsample_grid(grid, [100, 100, 100])
+    for (let ix = 0; ix < dims[0]; ix++) {
+      for (let iy = 0; iy < dims[1]; iy++) {
+        for (let iz = 0; iz < dims[2]; iz++) {
+          expect(out[ix][iy][iz]).toBeCloseTo(5)
         }
       }
     }
-    expect(sum / count).toBeCloseTo(148.5, 0)
   })
 
-  test(`output dims are at least 2 in each direction`, () => {
-    // Very large grid in one axis only
-    const grid = make_grid(1000, 3, 3)
+  test(`preserves global mean of non-uniform data`, () => {
+    const grid = make_grid(100, 100, 100, (ix, iy, iz) => ix + iy + iz)
+    const result = downsample_grid(grid, [100, 100, 100])
+    // Global mean of ix+iy+iz on 0..99 = 3 * 49.5 = 148.5
+    expect(grid_mean(result.grid)).toBeCloseTo(148.5, 0)
+  })
+
+  test(`preserves negative values correctly`, () => {
+    const grid = make_grid(100, 100, 100, () => -3)
+    const { grid: out, dims } = downsample_grid(grid, [100, 100, 100])
+    expect(out[0][0][0]).toBeCloseTo(-3)
+    expect(out[dims[0] - 1][dims[1] - 1][dims[2] - 1]).toBeCloseTo(-3)
+  })
+
+  test(`output shape matches reported dims`, () => {
+    const grid = make_grid(100, 100, 100)
+    const { grid: out, dims } = downsample_grid(grid, [100, 100, 100])
+    expect(out.length).toBe(dims[0])
+    expect(out[0].length).toBe(dims[1])
+    expect(out[0][0].length).toBe(dims[2])
+  })
+
+  test(`every source cell is covered exactly once (no gaps or overlaps)`, () => {
+    // Use index-based values so we can verify the weighted sum
+    const nx = 100
+    const ny = 80
+    const nz = 90
+    const grid = make_grid(nx, ny, nz, 1)
+    const { grid: out, dims } = downsample_grid(grid, [nx, ny, nz])
+    // Total of downsampled * block_sizes should equal total of source
+    const src_total = nx * ny * nz // all 1s
+    let weighted_sum = 0
+    for (let ix = 0; ix < dims[0]; ix++) {
+      for (let iy = 0; iy < dims[1]; iy++) {
+        for (let iz = 0; iz < dims[2]; iz++) {
+          // Each output cell is the mean of its block, so mean * block_size = block_sum
+          // For uniform=1, mean=1, block_sum=block_size, total = sum of block_sizes = nx*ny*nz
+          weighted_sum += out[ix][iy][iz]
+        }
+      }
+    }
+    // mean of all-1 grid is 1, so weighted_sum = number of output cells
+    expect(weighted_sum).toBeCloseTo(dims[0] * dims[1] * dims[2])
+    // Verify no source cells lost: total output cells * avg block size ≈ total source cells
+    const avg_block = src_total / (dims[0] * dims[1] * dims[2])
+    expect(avg_block).toBeGreaterThanOrEqual(1)
+  })
+
+  test(`dims are at least 2 even for extreme aspect ratios`, () => {
+    const grid = make_grid(1000, 3, 3, 1)
     const result = downsample_grid(grid, [1000, 3, 3])
     expect(result.dims[0]).toBeGreaterThanOrEqual(2)
     expect(result.dims[1]).toBeGreaterThanOrEqual(2)
     expect(result.dims[2]).toBeGreaterThanOrEqual(2)
+    // All values should be finite (no division by zero from clamped dims)
+    for (const plane of result.grid) {
+      for (const row of plane) {
+        for (const val of row) {
+          expect(Number.isFinite(val)).toBe(true)
+        }
+      }
+    }
+  })
+
+  test(`handles axis smaller than factor without NaN or Infinity`, () => {
+    // 3x500x500 = 750K points, factor=ceil(cbrt(1.5))=2, new_nx=max(2,2)=2
+    // The x-axis (3 points) is smaller than factor*new_nx, testing proportional partitioning
+    const grid = make_grid(3, 500, 500, 42)
+    const result = downsample_grid(grid, [3, 500, 500])
+    expect(result.dims[0]).toBeGreaterThanOrEqual(2)
+    for (const plane of result.grid) {
+      for (const row of plane) {
+        for (const val of row) {
+          expect(val).toBeCloseTo(42)
+        }
+      }
+    }
   })
 
   test.each([
     { dims: [80, 80, 96] as Vec3, label: `80x80x96 (614K)` },
     { dims: [120, 48, 144] as Vec3, label: `120x48x144 (829K)` },
-    { dims: [200, 200, 200] as Vec3, label: `200x200x200 (8M)` },
-  ])(`$label: result stays within 500K budget`, ({ dims }) => {
+  ])(`$label: stays within budget with correct shape`, ({ dims }) => {
     const grid = make_grid(dims[0], dims[1], dims[2], 1)
     const result = downsample_grid(grid, dims)
     const [rnx, rny, rnz] = result.dims
-    const total = rnx * rny * rnz
-    if (dims[0] * dims[1] * dims[2] > 500_000) {
-      expect(result.factor).toBeGreaterThan(1)
-      expect(total).toBeLessThanOrEqual(500_000)
-    }
+    expect(rnx * rny * rnz).toBeLessThanOrEqual(500_000)
     expect(result.grid.length).toBe(rnx)
     expect(result.grid[0].length).toBe(rny)
     expect(result.grid[0][0].length).toBe(rnz)

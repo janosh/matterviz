@@ -111,19 +111,29 @@ export function downsample_grid(
   const new_nx = Math.max(2, Math.ceil(nx / factor))
   const new_ny = Math.max(2, Math.ceil(ny / factor))
   const new_nz = Math.max(2, Math.ceil(nz / factor))
+
+  // Proportional partitioning: evenly divides [0, n) into new_n non-empty blocks.
+  // Unlike fixed-stride (ix * factor), this is safe when max(2,...) clamping
+  // produces more output cells than ceil(n/factor) would — no empty blocks.
+  const partition = (
+    idx: number,
+    n_out: number,
+    n_src: number,
+  ): [number, number] => [
+    Math.round(idx * n_src / n_out),
+    Math.round((idx + 1) * n_src / n_out),
+  ]
+
   const out: number[][][] = new Array(new_nx)
   for (let ix = 0; ix < new_nx; ix++) {
     const plane: number[][] = new Array(new_ny)
-    const sx_start = ix * factor
-    const sx_end = Math.min(sx_start + factor, nx)
+    const [sx_start, sx_end] = partition(ix, new_nx, nx)
     for (let iy = 0; iy < new_ny; iy++) {
       const row = new Array<number>(new_nz)
-      const sy_start = iy * factor
-      const sy_end = Math.min(sy_start + factor, ny)
+      const [sy_start, sy_end] = partition(iy, new_ny, ny)
       for (let iz = 0; iz < new_nz; iz++) {
         let sum = 0
-        const sz_start = iz * factor
-        const sz_end = Math.min(sz_start + factor, nz)
+        const [sz_start, sz_end] = partition(iz, new_nz, nz)
         for (let sx = sx_start; sx < sx_end; sx++) {
           const src_plane = grid[sx]
           for (let sy = sy_start; sy < sy_end; sy++) {
