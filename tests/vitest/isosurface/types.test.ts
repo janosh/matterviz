@@ -74,7 +74,7 @@ describe(`DEFAULT_ISOSURFACE_SETTINGS`, () => {
     expect(DEFAULT_ISOSURFACE_SETTINGS.opacity).toBe(0.6)
     expect(DEFAULT_ISOSURFACE_SETTINGS.show_negative).toBe(false)
     expect(DEFAULT_ISOSURFACE_SETTINGS.wireframe).toBe(false)
-    expect(DEFAULT_ISOSURFACE_SETTINGS.wrap_periodic).toBe(false)
+    expect(DEFAULT_ISOSURFACE_SETTINGS.halo).toBe(0)
     expect(DEFAULT_ISOSURFACE_SETTINGS.positive_color).toBe(`#3b82f6`)
     expect(DEFAULT_ISOSURFACE_SETTINGS.negative_color).toBe(`#ef4444`)
   })
@@ -112,7 +112,7 @@ describe(`auto_isosurface_settings`, () => {
     expect(settings.positive_color).toBe(DEFAULT_ISOSURFACE_SETTINGS.positive_color)
     expect(settings.negative_color).toBe(DEFAULT_ISOSURFACE_SETTINGS.negative_color)
     expect(settings.wireframe).toBe(DEFAULT_ISOSURFACE_SETTINGS.wireframe)
-    expect(settings.wrap_periodic).toBe(DEFAULT_ISOSURFACE_SETTINGS.wrap_periodic)
+    expect(settings.halo).toBe(DEFAULT_ISOSURFACE_SETTINGS.halo)
   })
 
   test(`returns a fresh object (not a reference to DEFAULT_ISOSURFACE_SETTINGS)`, () => {
@@ -306,7 +306,7 @@ describe(`downsample_grid`, () => {
 describe(`pad_periodic_grid`, () => {
   test(`output is larger than input by 2*pad per axis`, () => {
     const grid = make_grid(10, 10, 10, (ix, iy, iz) => ix + iy + iz)
-    const result = pad_periodic_grid(grid, [10, 10, 10])
+    const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
     // pad = ceil(10 * 0.3) = 3 per axis
     expect(result.dims[0]).toBe(16)
     expect(result.dims[1]).toBe(16)
@@ -318,7 +318,7 @@ describe(`pad_periodic_grid`, () => {
 
   test(`offset is negative fractional shift`, () => {
     const grid = make_grid(10, 10, 10)
-    const result = pad_periodic_grid(grid, [10, 10, 10])
+    const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
     // pad = 3, offset = -3/10 = -0.3
     expect(result.offset[0]).toBeCloseTo(-0.3)
     expect(result.offset[1]).toBeCloseTo(-0.3)
@@ -327,7 +327,7 @@ describe(`pad_periodic_grid`, () => {
 
   test(`original data is preserved in the center of padded grid`, () => {
     const grid = make_grid(10, 10, 10, (ix, iy, iz) => ix * 100 + iy * 10 + iz)
-    const result = pad_periodic_grid(grid, [10, 10, 10])
+    const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
     // pad = 3, so original data starts at index 3
     for (let ix = 0; ix < 10; ix++) {
       for (let iy = 0; iy < 10; iy++) {
@@ -340,7 +340,7 @@ describe(`pad_periodic_grid`, () => {
 
   test(`halo cells wrap from opposite face`, () => {
     const grid = make_grid(10, 10, 10, (ix) => ix)
-    const result = pad_periodic_grid(grid, [10, 10, 10])
+    const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
     // pad = 3. Left halo (ix=0,1,2) should be grid[7,8,9] (opposite face)
     expect(result.grid[0][3][3]).toBe(7)
     expect(result.grid[1][3][3]).toBe(8)
@@ -353,7 +353,7 @@ describe(`pad_periodic_grid`, () => {
 
   test(`uniform grid stays uniform after padding`, () => {
     const grid = make_grid(20, 20, 20, 5)
-    const result = pad_periodic_grid(grid, [20, 20, 20])
+    const result = pad_periodic_grid(grid, [20, 20, 20], 0.3)
     assert_all_cells(result.grid, (val) => expect(val).toBe(5))
   })
 })

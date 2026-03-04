@@ -52,7 +52,7 @@ export interface IsosurfaceSettings {
   negative_color: string // color for negative isovalue lobe
   show_negative: boolean // whether to render the negative lobe (-isovalue)
   wireframe: boolean
-  wrap_periodic: boolean // wrap isosurface across periodic cell boundaries (shows full atom surfaces)
+  halo: number // fraction of cell to extend isosurface beyond boundaries (0 = clip at cell edge, 0.5 = half cell)
   layers?: IsosurfaceLayer[] // if set, overrides single-isovalue mode
 }
 
@@ -99,7 +99,7 @@ export function grid_data_range(grid: number[][][]): DataRange {
 export function pad_periodic_grid(
   grid: number[][][],
   dims: Vec3,
-  pad_fraction = 0.3,
+  pad_fraction: number,
 ): { grid: number[][][]; dims: Vec3; offset: Vec3 } {
   const [nx, ny, nz] = dims
   const px = Math.min(Math.ceil(nx * pad_fraction), Math.floor(nx / 2))
@@ -213,7 +213,7 @@ export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
   negative_color: `#ef4444`, // red
   show_negative: false,
   wireframe: false,
-  wrap_periodic: false,
+  halo: 0,
 }
 
 // Compute reasonable isosurface settings from a volume's data range.

@@ -3,7 +3,7 @@
   // Supports multiple layers at different isovalues with independent colors,
   // plus positive/negative lobes and two-pass transparency.
   import { marching_cubes } from '$lib/marching-cubes'
-  import type { Vec3 } from '$lib/math'
+  import type { Matrix3x3, Vec3 } from '$lib/math'
   import { T } from '@threlte/core'
   import {
     BackSide,
@@ -13,7 +13,6 @@
     FrontSide,
     Uint32BufferAttribute,
   } from 'three'
-  import type { Matrix3x3 } from '$lib/math'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
   import {
     DEFAULT_ISOSURFACE_SETTINGS,
@@ -84,19 +83,19 @@
   })
 
   // Run marching cubes at the given isovalue.
-  // When wrap_periodic is enabled for periodic volumes, the grid is padded with
-  // halo cells from the opposite face so isosurfaces extend beyond the unit cell
-  // and close into complete enclosed shapes around boundary atoms.
+  // When halo > 0 for periodic volumes, the grid is padded with halo cells from
+  // the opposite face so isosurfaces extend beyond the unit cell and close into
+  // complete enclosed shapes around boundary atoms.
   function extract_surface(isovalue: number): BufferGeometry | null {
     if (!volume || !ds_result || isovalue === 0) return null
-    const use_padding = settings.wrap_periodic && volume.periodic
+    const use_padding = settings.halo > 0 && volume.periodic
 
     let mc_grid = ds_result.grid
     let mc_lattice: Matrix3x3 = volume.lattice
     let origin_shift: Vec3 = [0, 0, 0]
 
     if (use_padding) {
-      const padded = pad_periodic_grid(ds_result.grid, ds_result.dims)
+      const padded = pad_periodic_grid(ds_result.grid, ds_result.dims, settings.halo)
       mc_grid = padded.grid
       // marching_cubes maps [0,1] fractional -> Cartesian via lattice.
       // The padded grid covers a wider fractional range, so scale the lattice
@@ -208,7 +207,7 @@
   // Debounces rapid changes (e.g. slider drags) to avoid repeated expensive marching cubes.
   $effect(() => {
     const layers = resolved_layers
-    void settings.wrap_periodic
+    void settings.halo
     if (!ds_result) {
       dispose_all()
       return

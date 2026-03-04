@@ -58,17 +58,11 @@ test.describe(`Isosurface controls`, () => {
     await expect(neg_cb).not.toBeChecked()
   })
 
-  test(`periodic toggle is present and toggleable`, async ({ page }) => {
+  test(`halo slider is present for periodic volumes`, async ({ page }) => {
     const pane = await open_settings_pane(page)
-    const periodic_cb = pane.locator(
-      `label:has-text("Periodic") input[type="checkbox"]`,
-    )
-    await expect(periodic_cb).toBeVisible()
-    await expect(periodic_cb).not.toBeChecked()
-    await periodic_cb.check()
-    await expect(periodic_cb).toBeChecked()
-    await periodic_cb.uncheck()
-    await expect(periodic_cb).not.toBeChecked()
+    const halo_slider = pane.locator(`label:has-text("Halo") input[type="range"]`)
+    await expect(halo_slider).toBeVisible()
+    await expect(halo_slider).toHaveValue(`0`)
   })
 })
 

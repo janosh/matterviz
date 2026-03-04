@@ -57,7 +57,7 @@
     opacity: settings.opacity,
     show_negative: settings.show_negative,
     wireframe: settings.wireframe,
-    wrap_periodic: settings.wrap_periodic,
+    halo: settings.halo,
     layers: n_layers,
   }}
   on_reset={() => {
@@ -127,15 +127,6 @@
     >
       <span>Wireframe</span>
       <input type="checkbox" bind:checked={settings.wireframe} />
-    </label>
-    <label
-      {@attach tooltip({
-        content:
-          `Wrap isosurface across periodic cell boundaries to show full atom-enclosing surfaces`,
-      })}
-    >
-      <span>Periodic</span>
-      <input type="checkbox" bind:checked={settings.wrap_periodic} />
     </label>
   </div>
 
@@ -231,6 +222,24 @@
         </label>
       {/if}
     </div>
+  {/if}
+
+  {#if volumes?.[active_volume_idx]?.periodic}
+    <label
+      {@attach tooltip({
+        content:
+          `Extend isosurface beyond cell boundaries to close partial spheres (fraction of cell)`,
+      })}
+    >
+      Halo: {format_num(settings.halo, `.2f`)}
+      <input
+        type="range"
+        min={0}
+        max={0.5}
+        step={0.01}
+        bind:value={settings.halo}
+      />
+    </label>
   {/if}
 
   {#if volumes[active_volume_idx]}
