@@ -1,14 +1,14 @@
 <script lang="ts">
   import type { ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { AXIS_COLORS, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
+  import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
+  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import { format_num } from '$lib/labels'
   import { SettingsSection } from '$lib/layout'
   import { to_degrees, to_radians } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorScaleSelect } from '$lib/plot'
   import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
-  import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
-  import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import type { AnyStructure } from '$lib/structure'
   import { Lattice, StructureScene } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
@@ -179,7 +179,12 @@
 
 <DraggablePane
   bind:show={controls_open}
-  pane_props={{ ...pane_props, class: `controls-pane ${pane_props?.class ?? ``}` }}
+  resizable="both"
+  pane_props={{
+    ...pane_props,
+    class: `controls-pane ${pane_props?.class ?? ``}`,
+    style: `--pane-max-height: 70vh; ${pane_props?.style ?? ``}`,
+  }}
   toggle_props={{
     title: controls_open ? `` : `Structure controls`,
     ...toggle_props,
@@ -508,9 +513,7 @@
       Same size atoms
       <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
     </label>
-    <span
-      class="label"
-      style="align-items: start"
+    <label
       {@attach tooltip({ content: SETTINGS_CONFIG.color_scheme.description })}
     >
       Color scheme
@@ -520,7 +523,10 @@
         minSelect={1}
         bind:selected={color_scheme_selected}
         liOptionStyle="padding: 3pt 6pt;"
-        style="width: 10em; border: none"
+        liSelectedStyle="background-color: transparent;"
+        ulSelectedStyle="display: contents;"
+        inputStyle="flex: none; min-width: 0; width: 0; opacity: 0;"
+        style="flex: 1; min-width: 0; border: none; margin-left: 4pt"
         aria-label="Color scheme"
       >
         {#snippet children({ option })}
@@ -538,9 +544,8 @@
           </div>
         {/snippet}
       </Select>
-    </span>
+    </label>
     <label
-      style="align-items: start"
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_mode.description })}
     >
       Atom coloring
@@ -554,9 +559,7 @@
       </select>
     </label>
     {#if atom_color_config.mode !== `element`}
-      <span
-        class="label"
-        style="align-items: start; white-space: nowrap"
+      <label
         {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_scale.description })}
       >
         Color scale
@@ -568,10 +571,10 @@
             wrapper_style: `width: 100%;`,
             title_style: `font-size: 0.95em;`,
           }}
-          style="width: 100%; border: none"
+          style="flex: 1; min-width: 0; border: none"
           aria-label="Color scale"
         />
-      </span>
+      </label>
     {/if}
   </SettingsSection>
 
@@ -1001,7 +1004,7 @@
     justify-content: space-between;
     width: 100%;
   }
-  label, .label {
+  label {
     display: flex;
     align-items: center;
     gap: 10pt;
