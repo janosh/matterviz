@@ -13,8 +13,13 @@
     FrontSide,
     Uint32BufferAttribute,
   } from 'three'
+  import type { Matrix3x3 } from '$lib/math'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, downsample_grid } from './types'
+  import {
+    DEFAULT_ISOSURFACE_SETTINGS,
+    downsample_grid,
+    pad_periodic_grid,
+  } from './types'
 
   let {
     volume,
@@ -79,21 +84,55 @@
   })
 
   // Run marching cubes at the given isovalue.
-  // periodic defaults to false (clips at cell boundaries, matching VESTA).
-  // When wrap_periodic is enabled, periodic volumes wrap across boundaries.
+  // When wrap_periodic is enabled for periodic volumes, the grid is padded with
+  // halo cells from the opposite face so isosurfaces extend beyond the unit cell
+  // and close into complete enclosed shapes around boundary atoms.
   function extract_surface(isovalue: number): BufferGeometry | null {
     if (!volume || !ds_result || isovalue === 0) return null
-    const result = marching_cubes(
-      ds_result.grid,
-      isovalue,
-      volume.lattice,
-      {
-        periodic: settings.wrap_periodic && volume.periodic,
-        interpolate: true,
-        centered: false,
-        normals: false,
-      },
-    )
+    const use_padding = settings.wrap_periodic && volume.periodic
+
+    let mc_grid = ds_result.grid
+    let mc_lattice: Matrix3x3 = volume.lattice
+    let origin_shift: Vec3 = [0, 0, 0]
+
+    if (use_padding) {
+      const padded = pad_periodic_grid(ds_result.grid, ds_result.dims)
+      mc_grid = padded.grid
+      // marching_cubes maps [0,1] fractional -> Cartesian via lattice.
+      // The padded grid covers a wider fractional range, so scale the lattice
+      // to match. Then shift all vertices by the fractional offset.
+      const [la, lb, lc] = volume.lattice
+      const sx = padded.dims[0] / ds_result.dims[0]
+      const sy = padded.dims[1] / ds_result.dims[1]
+      const sz = padded.dims[2] / ds_result.dims[2]
+      mc_lattice = [
+        [la[0] * sx, la[1] * sx, la[2] * sx],
+        [lb[0] * sy, lb[1] * sy, lb[2] * sy],
+        [lc[0] * sz, lc[1] * sz, lc[2] * sz],
+      ]
+      const [ox, oy, oz] = padded.offset
+      origin_shift = [
+        ox * la[0] + oy * lb[0] + oz * lc[0],
+        ox * la[1] + oy * lb[1] + oz * lc[1],
+        ox * la[2] + oy * lb[2] + oz * lc[2],
+      ]
+    }
+
+    const result = marching_cubes(mc_grid, isovalue, mc_lattice, {
+      periodic: false,
+      interpolate: true,
+      centered: false,
+      normals: false,
+    })
+
+    if (use_padding) {
+      for (const vert of result.vertices) {
+        vert[0] += origin_shift[0]
+        vert[1] += origin_shift[1]
+        vert[2] += origin_shift[2]
+      }
+    }
+
     return build_geometry(result.vertices, result.faces)
   }
 

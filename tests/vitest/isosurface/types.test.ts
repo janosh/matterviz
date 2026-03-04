@@ -6,6 +6,7 @@ import {
   generate_layers,
   grid_data_range,
   LAYER_COLORS,
+  pad_periodic_grid,
 } from '$lib/isosurface/types'
 import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
@@ -299,5 +300,58 @@ describe(`downsample_grid`, () => {
     expect(result.grid.length).toBe(rnx)
     expect(result.grid[0].length).toBe(rny)
     expect(result.grid[0][0].length).toBe(rnz)
+  })
+})
+
+describe(`pad_periodic_grid`, () => {
+  test(`output is larger than input by 2*pad per axis`, () => {
+    const grid = make_grid(10, 10, 10, (ix, iy, iz) => ix + iy + iz)
+    const result = pad_periodic_grid(grid, [10, 10, 10])
+    // pad = ceil(10 * 0.15) = 2 per axis
+    expect(result.dims[0]).toBe(14)
+    expect(result.dims[1]).toBe(14)
+    expect(result.dims[2]).toBe(14)
+    expect(result.grid.length).toBe(14)
+    expect(result.grid[0].length).toBe(14)
+    expect(result.grid[0][0].length).toBe(14)
+  })
+
+  test(`offset is negative fractional shift`, () => {
+    const grid = make_grid(10, 10, 10)
+    const result = pad_periodic_grid(grid, [10, 10, 10])
+    // pad = 2, offset = -2/10 = -0.2
+    expect(result.offset[0]).toBeCloseTo(-0.2)
+    expect(result.offset[1]).toBeCloseTo(-0.2)
+    expect(result.offset[2]).toBeCloseTo(-0.2)
+  })
+
+  test(`original data is preserved in the center of padded grid`, () => {
+    const grid = make_grid(10, 10, 10, (ix, iy, iz) => ix * 100 + iy * 10 + iz)
+    const result = pad_periodic_grid(grid, [10, 10, 10])
+    // pad = 2, so original data starts at index 2
+    for (let ix = 0; ix < 10; ix++) {
+      for (let iy = 0; iy < 10; iy++) {
+        for (let iz = 0; iz < 10; iz++) {
+          expect(result.grid[ix + 2][iy + 2][iz + 2]).toBe(grid[ix][iy][iz])
+        }
+      }
+    }
+  })
+
+  test(`halo cells wrap from opposite face`, () => {
+    const grid = make_grid(10, 10, 10, (ix) => ix)
+    const result = pad_periodic_grid(grid, [10, 10, 10])
+    // pad = 2. Left halo (ix=0,1) should be grid[8,9] (opposite face)
+    expect(result.grid[0][2][2]).toBe(8) // grid[8]
+    expect(result.grid[1][2][2]).toBe(9) // grid[9]
+    // Right halo (ix=12,13) should be grid[0,1]
+    expect(result.grid[12][2][2]).toBe(0) // grid[0]
+    expect(result.grid[13][2][2]).toBe(1) // grid[1]
+  })
+
+  test(`uniform grid stays uniform after padding`, () => {
+    const grid = make_grid(20, 20, 20, 5)
+    const result = pad_periodic_grid(grid, [20, 20, 20])
+    assert_all_cells(result.grid, (val) => expect(val).toBe(5))
   })
 })

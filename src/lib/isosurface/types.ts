@@ -92,6 +92,46 @@ export function grid_data_range(grid: number[][][]): DataRange {
   return { min: min_val, max: max_val, abs_max, mean: count > 0 ? sum / count : 0 }
 }
 
+// Pad a periodic 3D grid with halo cells from the opposite face so isosurfaces
+// extend beyond the unit cell and close into complete enclosed shapes.
+// Returns a larger grid with dims [nx+2*pad, ny+2*pad, nz+2*pad] and the
+// fractional offset that the padded grid's origin has shifted by.
+export function pad_periodic_grid(
+  grid: number[][][],
+  dims: Vec3,
+  pad_fraction = 0.15,
+): { grid: number[][][]; dims: Vec3; offset: Vec3 } {
+  const [nx, ny, nz] = dims
+  const px = Math.min(Math.ceil(nx * pad_fraction), Math.floor(nx / 2))
+  const py = Math.min(Math.ceil(ny * pad_fraction), Math.floor(ny / 2))
+  const pz = Math.min(Math.ceil(nz * pad_fraction), Math.floor(nz / 2))
+  if (px === 0 && py === 0 && pz === 0) return { grid, dims, offset: [0, 0, 0] }
+
+  const out_nx = nx + 2 * px
+  const out_ny = ny + 2 * py
+  const out_nz = nz + 2 * pz
+  const wrap = (val: number, size: number) => ((val % size) + size) % size
+
+  const out: number[][][] = new Array(out_nx)
+  for (let ix = 0; ix < out_nx; ix++) {
+    const plane: number[][] = new Array(out_ny)
+    const src_x = wrap(ix - px, nx)
+    for (let iy = 0; iy < out_ny; iy++) {
+      const row = new Array<number>(out_nz)
+      const src_y = wrap(iy - py, ny)
+      for (let iz = 0; iz < out_nz; iz++) {
+        row[iz] = grid[src_x][src_y][wrap(iz - pz, nz)]
+      }
+      plane[iy] = row
+    }
+    out[ix] = plane
+  }
+
+  // Fractional offset: the padded grid starts at -pad/n in each axis
+  const offset: Vec3 = [-px / nx, -py / ny, -pz / nz]
+  return { grid: out, dims: [out_nx, out_ny, out_nz], offset }
+}
+
 // Max total grid points before downsampling is applied for isosurface extraction.
 // 500K balances visual quality with interactive performance (<200ms marching cubes).
 const MAX_GRID_POINTS = 500_000
