@@ -227,9 +227,8 @@ describe(`downsample_grid`, () => {
   })
 
   test(`returns original at exactly 500K points`, () => {
-    // 79^3 = 493,039 < 500K
-    const grid = make_grid(79, 79, 79, 7)
-    const result = downsample_grid(grid, [79, 79, 79])
+    const grid = make_grid(100, 100, 50, 7)
+    const result = downsample_grid(grid, [100, 100, 50])
     expect(result.factor).toBe(1)
     expect(result.grid).toBe(grid)
   })
@@ -321,6 +320,7 @@ describe(`downsample_grid`, () => {
   test.each([
     { dims: [80, 80, 96] as Vec3, label: `80x80x96 (614K)` },
     { dims: [120, 48, 144] as Vec3, label: `120x48x144 (829K)` },
+    { dims: [2000, 2000, 2] as Vec3, label: `2000x2000x2 (anisotropic)` },
   ])(`$label: stays within budget with correct shape`, ({ dims }) => {
     const grid = make_grid(dims[0], dims[1], dims[2], 1)
     const result = downsample_grid(grid, dims)

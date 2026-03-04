@@ -106,11 +106,19 @@ export function downsample_grid(
   const total = nx * ny * nz
   if (total <= MAX_GRID_POINTS) return { grid, dims, factor: 1 }
 
-  // Compute uniform downsample factor (round up so result fits within budget)
-  const factor = Math.ceil(Math.cbrt(total / MAX_GRID_POINTS))
-  const new_nx = Math.max(2, Math.ceil(nx / factor))
-  const new_ny = Math.max(2, Math.ceil(ny / factor))
-  const new_nz = Math.max(2, Math.ceil(nz / factor))
+  // Increase factor until the clamped output fits within budget.
+  // A single cbrt step can overshoot for anisotropic grids where max(2,...)
+  // clamping prevents a small axis from shrinking below 2.
+  let factor = Math.ceil(Math.cbrt(total / MAX_GRID_POINTS))
+  let new_nx = Math.max(2, Math.ceil(nx / factor))
+  let new_ny = Math.max(2, Math.ceil(ny / factor))
+  let new_nz = Math.max(2, Math.ceil(nz / factor))
+  while (new_nx * new_ny * new_nz > MAX_GRID_POINTS) {
+    factor++
+    new_nx = Math.max(2, Math.ceil(nx / factor))
+    new_ny = Math.max(2, Math.ceil(ny / factor))
+    new_nz = Math.max(2, Math.ceil(nz / factor))
+  }
 
   // Proportional partitioning: evenly divides [0, n) into new_n non-empty blocks.
   // Unlike fixed-stride (ix * factor), this is safe when max(2,...) clamping

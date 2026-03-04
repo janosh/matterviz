@@ -302,7 +302,7 @@
     gap: var(--pane-gap, 4pt);
     overflow-x: var(--pane-overflow-x, hidden);
     overflow-y: var(--pane-overflow-y, auto);
-    max-height: calc(var(--pane-max-height, 80vh) - 4px);
+    max-height: inherit;
     overscroll-behavior: contain;
   }
   :global(body.fullscreen) .draggable-pane {
@@ -325,7 +325,7 @@
     margin: var(--pane-hr-margin, 4pt 0);
     height: 1px;
   }
-  .draggable-pane :global(> section > div) {
+  .draggable-pane :global(section > div) {
     text-align: right; /* right align long line-breaking trajectory file names */
   }
   .draggable-pane :global(:where(label)) {
