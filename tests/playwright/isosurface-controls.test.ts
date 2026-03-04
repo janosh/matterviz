@@ -81,6 +81,7 @@ test.describe(`DraggablePane resize grip`, () => {
     const initial_box = await pane.boundingBox()
     expect(initial_box).toBeTruthy()
     await drag_from(page, pane.locator(`.resize-grip`), 100, 0)
+    await expect(pane).toBeVisible()
     const resized_box = await pane.boundingBox()
     expect(resized_box).toBeTruthy()
     expect(resized_box?.width).toBeGreaterThan((initial_box?.width ?? 0) + 50)
@@ -89,6 +90,7 @@ test.describe(`DraggablePane resize grip`, () => {
   test(`double-clicking resize grip resets pane size`, async ({ page }) => {
     const pane = await open_settings_pane(page)
     await drag_from(page, pane.locator(`.resize-grip`), 150, 0)
+    await expect(pane).toBeVisible()
     await pane.locator(`.resize-grip`).dblclick()
     const inline_width = await pane.evaluate((el) => el.style.width)
     expect(inline_width).toBe(``)
