@@ -287,12 +287,13 @@ describe(`downsample_grid`, () => {
   })
 
   test(`dims are at least 2 even for extreme aspect ratios`, () => {
-    const grid = make_grid(1000, 3, 3, 1)
-    const result = downsample_grid(grid, [1000, 3, 3])
+    // 500x500x3 = 750K > 500K, triggers downsampling with one very small axis
+    const grid = make_grid(500, 500, 3, 1)
+    const result = downsample_grid(grid, [500, 500, 3])
+    expect(result.factor).toBeGreaterThan(1)
     expect(result.dims[0]).toBeGreaterThanOrEqual(2)
     expect(result.dims[1]).toBeGreaterThanOrEqual(2)
     expect(result.dims[2]).toBeGreaterThanOrEqual(2)
-    // All values should be finite (no division by zero from clamped dims)
     for (const plane of result.grid) {
       for (const row of plane) {
         for (const val of row) {
