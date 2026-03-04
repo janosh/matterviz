@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { DragOverlay, StatusMessage } from '$lib/feedback'
+  import FilePicker from '$lib/FilePicker.svelte'
   import { load_from_url } from '$lib/io'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import { sample_hkl_slice } from '$lib/isosurface/slice'
@@ -35,6 +36,10 @@
   // HKL slice view state
   let miller_indices = $state<Vec3>([0, 0, 1]) // default (001) = z-plane
   let slice_position = $state(0.5) // fractional distance along plane normal [0, 1]
+  let slice_resolution = $state(0) // 0 = auto (max grid dim), otherwise explicit n_points
+  let max_grid_dim = $derived(
+    Math.max(...(volumetric_data?.[active_volume_idx]?.grid_dims ?? [64])),
+  )
   let slice_canvas = $state<HTMLCanvasElement | undefined>()
   let slice_range = $state<[number, number]>([0, 1])
   let slice_canvas_height = $state(200)
@@ -142,7 +147,12 @@
     if (!vol || !slice_canvas) return
 
     // Sample the slice along the HKL plane
-    const result = sample_hkl_slice(vol, miller_indices, slice_position)
+    const result = sample_hkl_slice(
+      vol,
+      miller_indices,
+      slice_position,
+      slice_resolution > 0 ? slice_resolution : undefined,
+    )
     if (!result) return
     const { data: slice_data, width, height, min: s_min, max: s_max } = result
 
@@ -261,18 +271,12 @@
   viewer.
 </p>
 
-<nav class="file-buttons">
-  {#each volumetric_files as file (file.name)}
-    <button
-      class:active={active_file === file.name}
-      onclick={() => load_file(file.name, file.url)}
-      title={file.description}
-    >
-      <strong>{file.format}</strong>
-      <span>{file.label}</span>
-    </button>
-  {/each}
-</nav>
+<FilePicker
+  files={volumetric_files}
+  active_files={active_file ? [active_file] : []}
+  on_click={(file) => load_file(file.name, file.url)}
+  style="margin-bottom: 0.5em"
+/>
 
 <div
   class="viewer-container"
@@ -348,14 +352,47 @@
     <div class="slice-header">
       <h2>Cross-Section Slice</h2>
       <MillerIndexInput bind:value={miller_indices} />
-      <label class="slice-position">
-        d = {format_num(slice_position, `.2f`)}
+      <label class="slice-control">
+        d =
+        <input
+          type="number"
+          min={0}
+          max={1}
+          step={0.01}
+          bind:value={slice_position}
+        />
         <input
           type="range"
           min={0}
           max={1}
           step={0.01}
           bind:value={slice_position}
+        />
+      </label>
+      <label class="slice-control">
+        Resolution
+        <input
+          type="number"
+          min={8}
+          max={max_grid_dim * 4}
+          step={1}
+          value={slice_resolution || max_grid_dim}
+          onchange={(evt) => {
+            slice_resolution = Math.max(
+              8,
+              parseInt((evt.target as HTMLInputElement).value) || 0,
+            )
+          }}
+        />
+        <input
+          type="range"
+          min={8}
+          max={max_grid_dim * 4}
+          step={1}
+          value={slice_resolution || max_grid_dim}
+          oninput={(evt) => {
+            slice_resolution = parseInt((evt.target as HTMLInputElement).value) || 0
+          }}
         />
       </label>
     </div>
@@ -416,44 +453,6 @@
     margin-bottom: 1em;
     max-width: 60em;
   }
-  .file-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4em;
-    margin-bottom: 0.5em;
-    button {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      padding: 0.3em 0.7em;
-      border: 1px solid var(--border-color, #ccc);
-      border-radius: 6px;
-      background: var(--surface-bg, #f5f5f5);
-      cursor: pointer;
-      transition: all 0.15s;
-      &:hover {
-        background: var(--surface-hover, #e8e8e8);
-        border-color: var(--primary, #3b82f6);
-      }
-      &.active {
-        background: var(--primary, #3b82f6);
-        color: white;
-        border-color: var(--primary, #3b82f6);
-        strong {
-          opacity: 1;
-        }
-      }
-      strong {
-        font-size: 0.65em;
-        text-transform: uppercase;
-        opacity: 0.6;
-        letter-spacing: 0.03em;
-      }
-      span {
-        font-size: 0.85em;
-      }
-    }
-  }
   .viewer-container {
     position: relative;
     min-height: 500px;
@@ -511,14 +510,21 @@
       margin: 0;
       font-size: 1rem;
     }
-    .slice-position {
+    .slice-control {
       white-space: nowrap;
       display: flex;
       align-items: center;
       gap: 0.4em;
       font-family: monospace;
       input[type='range'] {
-        width: 200px;
+        width: 150px;
+      }
+      input[type='number'] {
+        width: 4em;
+        text-align: center;
+        font-family: inherit;
+        padding: 1px 2px;
+        box-sizing: border-box;
       }
     }
   }
