@@ -1489,6 +1489,75 @@ H    1.261    0.728   -0.890`
     // Poll for canvas change after structure load
     await expect_canvas_changed(canvas, initial_screenshot)
   })
+
+  // Regression: commit 10477bb9 added scene_props.camera_target for comparison-view
+  // sync. It persisted across structure loads, causing the orbit center to shift to a
+  // corner of the new cell instead of its center. The fix clears camera_target in
+  // parse_file_content so rotation_target (unit cell center) takes precedence.
+  test(`rotation center resets to new lattice center after file drop`, async ({ page }) => {
+    const structure_div = page.locator(`#test-structure`)
+    const canvas = structure_div.locator(`canvas`)
+    await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
+
+    // Rotate the initial structure (CsCl, ~6.26 Å cubic, center ≈ 3.13)
+    // to populate scene_props.camera_target with the old structure's orbit center
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error(`Canvas has no bounding box`)
+    const cx = box.width / 2
+    const cy = box.height / 2
+    await canvas.dragTo(canvas, {
+      sourcePosition: { x: cx - 60, y: cy },
+      targetPosition: { x: cx + 60, y: cy },
+    })
+    await page.waitForTimeout(300)
+
+    // Drop a BaTiO3 POSCAR (4 Å cubic, center = [2, 2, 2])
+    const poscar = [
+      `BaTiO3\n1.0`,
+      `4.0 0.0 0.0\n0.0 4.0 0.0\n0.0 0.0 4.0`,
+      `Ba Ti O\n1 1 3\nDirect`,
+      `0.0 0.0 0.0\n0.5 0.5 0.5\n0.5 0.5 0.0\n0.5 0.0 0.5\n0.0 0.5 0.5`,
+    ].join(`\n`)
+    const pre_drop = await canvas.screenshot()
+    const dt = await page.evaluateHandle((content) => {
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([content], `BaTiO3.poscar`, { type: `text/plain` }))
+      return transfer
+    }, poscar)
+    await structure_div.dispatchEvent(`dragenter`, { dataTransfer: dt })
+    await structure_div.dispatchEvent(`dragover`, { dataTransfer: dt })
+    await structure_div.dispatchEvent(`drop`, { dataTransfer: dt })
+    await dt.dispose()
+
+    // Wait for the new structure to load and render
+    await expect_canvas_changed(canvas, pre_drop)
+    // Also verify on_file_load fired (confirms parse_file_content ran)
+    await expect(page.locator(`[data-testid="event-calls-status"]`)).toContainText(
+      `on_file_load`,
+      { timeout: get_canvas_timeout() },
+    )
+
+    // Clear stale camera target from first rotation, then rotate the NEW structure.
+    // on_camera_move writes the orbit target to globalThis.__camera_target.
+    await page.evaluate(() => {
+      ;(globalThis as Record<string, unknown>).__camera_target = undefined
+    })
+    const post_load = await canvas.screenshot()
+    await canvas.dragTo(canvas, {
+      sourcePosition: { x: cx - 80, y: cy },
+      targetPosition: { x: cx + 80, y: cy },
+    })
+    await expect_canvas_changed(canvas, post_load)
+
+    // Orbit target should be near BaTiO3 center [2,2,2], not stale CsCl center [~3.13,~3.13,~3.13]
+    const read_target = () =>
+      page.evaluate(() =>
+        (globalThis as Record<string, unknown>).__camera_target as number[]
+      )
+    await expect(read_target).toPass({ timeout: get_canvas_timeout() })
+    const camera_target = await read_target()
+    expect(camera_target).toEqual(camera_target.map(() => expect.closeTo(2, 0)))
+  })
 })
 
 test.describe(`Reset Camera Button Tests`, () => {

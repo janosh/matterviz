@@ -453,6 +453,7 @@
 
   $effect.pre(() => { // Simple initial camera auto-position: proportional to structure size and fov
     if (camera_position.every((val) => val === 0) && structure) {
+      stored_initial_zoom = undefined
       const distance = Math.max(1, structure_size) * (60 / fov)
       camera_position = [distance, distance * 0.3, distance * 0.8]
     }

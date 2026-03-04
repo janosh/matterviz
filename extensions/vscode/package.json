@@ -2,7 +2,7 @@
   "name": "matterviz",
   "displayName": "MatterViz",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "janosh",
   "icon": "icon.png",
   "repository": "https://github.com/janosh/matterviz",
@@ -432,21 +432,21 @@
         },
         "matterviz.structure.force_shaft_radius": {
           "type": "number",
-          "default": -0.01,
+          "default": -0.03,
           "description": "Radius of force vector shaft (negative = relative to length, positive = absolute)",
           "minimum": -0.1,
           "maximum": 0.1
         },
         "matterviz.structure.force_arrow_head_radius": {
           "type": "number",
-          "default": -0.025,
+          "default": -0.06,
           "description": "Radius of force vector arrow head (negative = relative to length, positive = absolute)",
           "minimum": -0.2,
           "maximum": 0.2
         },
         "matterviz.structure.force_arrow_head_length": {
           "type": "number",
-          "default": -0.1,
+          "default": -0.15,
           "description": "Length of force vector arrow head (negative = relative to length, positive = absolute)",
           "minimum": -0.5,
           "maximum": 0.5
@@ -762,6 +762,13 @@
           "minimum": 0,
           "maximum": 1
         },
+        "matterviz.bar.bar.border_radius": {
+          "type": "number",
+          "default": 3,
+          "description": "Corner radius for bar tops (px)",
+          "minimum": 0,
+          "maximum": 10
+        },
         "matterviz.bar.line.width": {
           "type": "number",
           "default": 2,
@@ -993,6 +1000,11 @@
           "default": true,
           "description": "Show X-axis grid lines"
         },
+        "matterviz.plot.show_x2_grid": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show secondary X-axis grid lines"
+        },
         "matterviz.plot.show_y_grid": {
           "type": "boolean",
           "default": true,
@@ -1007,6 +1019,11 @@
           "type": "string",
           "default": ".2~s",
           "description": "Number format for X-axis ticks (D3 format specifier)"
+        },
+        "matterviz.plot.x2_format": {
+          "type": "string",
+          "default": "",
+          "description": "Number format for secondary X-axis ticks (D3 format specifier)"
         },
         "matterviz.plot.y_format": {
           "type": "string",
