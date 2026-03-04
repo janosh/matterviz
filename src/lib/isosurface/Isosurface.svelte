@@ -79,9 +79,8 @@
   })
 
   // Run marching cubes at the given isovalue.
-  // Always use periodic=false so the isosurface is clipped at cell boundaries
-  // (matching VESTA behavior). With periodic=true, marching cubes wraps the last
-  // grid layer back to the first, creating triangles that span the full cell.
+  // periodic defaults to false (clips at cell boundaries, matching VESTA).
+  // When wrap_periodic is enabled, periodic volumes wrap across boundaries.
   function extract_surface(isovalue: number): BufferGeometry | null {
     if (!volume || !ds_result || isovalue === 0) return null
     const result = marching_cubes(
