@@ -1,4 +1,3 @@
-import type { Route } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import {
   MOCK_PROVIDERS,
@@ -19,96 +18,56 @@ test.describe(`OPTIMADE route`, () => {
   test.describe.configure({ retries: 2 })
 
   test.beforeEach(async ({ page }) => {
-    // Extract target URL from CORS proxy requests
-    const extract_target_url = (url: string): string | null => {
-      // corsproxy.io: https://corsproxy.io/?https%3A%2F%2Ftarget.com
-      const corsproxy_match = url.match(/corsproxy\.io\/\?(.+)/)
-      if (corsproxy_match) return decodeURIComponent(corsproxy_match[1])
-
-      // allorigins.win: https://api.allorigins.win/raw?url=https%3A%2F%2Ftarget.com
-      const allorigins_match = url.match(/allorigins\.win\/raw\?url=(.+)/)
-      if (allorigins_match) return decodeURIComponent(allorigins_match[1])
-
-      // cors-anywhere: https://cors-anywhere.herokuapp.com/https://target.com
-      const cors_anywhere_match = url.match(/cors-anywhere\.herokuapp\.com\/(.+)/)
-      if (cors_anywhere_match) return cors_anywhere_match[1]
-
-      // thingproxy: https://thingproxy.freeboard.io/fetch/https://target.com
-      const thingproxy_match = url.match(/thingproxy\.freeboard\.io\/fetch\/(.+)/)
-      if (thingproxy_match) return thingproxy_match[1]
-
-      // cors.bridged.cc: https://cors.bridged.cc/https://target.com
-      const bridged_match = url.match(/cors\.bridged\.cc\/(.+)/)
-      if (bridged_match) return bridged_match[1]
-
-      return null
-    }
-
-    // Check if URL is an OPTIMADE API request (direct or via proxy)
-    const is_optimade_request = (url: string): boolean => {
-      const target = extract_target_url(url) ?? url
-      return (
-        target.includes(`providers.optimade.org`) ||
-        target.includes(`optimade.materialsproject.org`) ||
-        target.includes(`crystallography.net`) ||
-        target.includes(`oqmd.org`) ||
-        target.includes(`odbx.io`) ||
-        target.includes(`/v1/`) ||
-        target.includes(`/structures`) ||
-        target.includes(`/links`)
-      )
-    }
-
-    // Handle OPTIMADE API responses
-    const handle_optimade_request = (url: string, route: Route) => {
-      const target = extract_target_url(url) ?? url
-
-      // Provider links from providers.optimade.org
-      if (target.includes(`providers.optimade.org`) && target.includes(`links`)) {
-        return route.fulfill({ json: { data: MOCK_PROVIDERS } })
-      }
-
-      // Structure requests - match by ID in URL
-      if (target.includes(`structures`)) {
-        const struct_match = target.match(/\/structures\/([^/?]+)/)
-        if (struct_match) {
-          const struct_data = MOCK_STRUCTURES[struct_match[1]]
-          if (struct_data) return route.fulfill({ json: { data: struct_data } })
-        }
-        if (target.includes(`page_limit`) || target.includes(`filter=`)) {
-          return route.fulfill({ json: { data: MOCK_SUGGESTIONS } })
-        }
-        return route.fulfill({
-          status: 404,
-          json: { errors: [{ detail: `Structure not found`, status: `404` }] },
-        })
-      }
-
-      // Provider-specific links or catch-all
-      return route.fulfill({ json: { data: [] } })
-    }
-
-    // Asset extensions to allow through (local resources)
-    const asset_extensions = [`.js`, `.css`, `.svg`, `.png`, `.webp`, `.woff`, `.woff2`]
-
-    // Single route handler that intercepts all external requests
-    // This ensures all OPTIMADE traffic is caught regardless of timing
-    await page.route(`**/*`, (route) => {
-      const url = route.request().url()
-
-      // Let local/internal requests through
-      const is_local = url.startsWith(`http://localhost`) ||
-        url.startsWith(`http://127.0.0.1`)
-      const is_internal = url.includes(`/_app/`) || url.includes(`/__`)
-      const is_asset = asset_extensions.some((ext) => url.endsWith(ext))
-      if (is_local || is_internal || is_asset) return route.continue()
-
-      // Handle OPTIMADE requests with mocks
-      if (is_optimade_request(url)) return handle_optimade_request(url, route)
-
-      // Let other external requests through (they'll fail naturally if unreachable)
-      return route.continue()
+    // Mock fetch at the JS level instead of page.route() because route
+    // interception is unreliable on CI for cross-origin requests (providers
+    // never load, cause unknown). addInitScript patches fetch before any
+    // page code runs, bypassing all browser network stack concerns.
+    const mocks = JSON.stringify({
+      providers: MOCK_PROVIDERS,
+      structures: MOCK_STRUCTURES,
+      suggestions: MOCK_SUGGESTIONS,
     })
+    await page.addInitScript((serialized: string) => {
+      const { providers, structures, suggestions } = JSON.parse(serialized)
+      const _fetch = globalThis.fetch
+      globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
+        const url = typeof input === `string`
+          ? input
+          : input instanceof URL
+          ? input.href
+          : input.url
+        // Let local requests through unchanged
+        if (url.startsWith(location.origin)) return _fetch.call(globalThis, input, init)
+        // Decode CORS proxy wrappers to get the actual target URL
+        const decoded = decodeURIComponent(url)
+        const json = (body: unknown, status = 200) =>
+          Promise.resolve(
+            new Response(JSON.stringify(body), {
+              status,
+              headers: { 'Content-Type': `application/json` },
+            }),
+          )
+        if (decoded.includes(`providers.optimade.org`) && decoded.includes(`links`)) {
+          return json({ data: providers })
+        }
+        if (decoded.includes(`/structures`)) {
+          const match = decoded.match(/\/structures\/([^/?]+)/)
+          if (match?.[1] && structures[match[1]]) {
+            return json({ data: structures[match[1]] })
+          }
+          if (decoded.includes(`page_limit`) || decoded.includes(`filter=`)) {
+            return json({ data: suggestions })
+          }
+          return json(
+            { errors: [{ detail: `Structure not found`, status: `404` }] },
+            404,
+          )
+        }
+        if (decoded.includes(`/links`)) return json({ data: [] })
+        // Non-OPTIMADE external requests: let through (will fail naturally)
+        return _fetch.call(globalThis, input, init)
+      }
+    }, mocks)
   })
 
   test(`page loads correctly`, async ({ page }) => {

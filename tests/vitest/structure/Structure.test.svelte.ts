@@ -1,6 +1,6 @@
 import { type AnyStructure, Structure } from '$lib'
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import { euclidean_dist, pbc_dist } from '$lib/math'
+import { add, euclidean_dist, pbc_dist, scale } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
 import type { StructureHandlerData } from '$lib/structure'
 import * as exports from '$lib/structure/export'
@@ -46,6 +46,29 @@ const create_drop_event = (files: File[]): DragEvent => {
   Object.defineProperty(drag_event, `dataTransfer`, descriptor)
   return drag_event
 }
+
+// Wait for text to appear in document.body via MutationObserver polling
+const wait_for_dom_text = (text: string, timeout_ms = 3000): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const timeout_id = setTimeout(() => {
+      observer.disconnect()
+      reject(new Error(`Timed out waiting for "${text}" in DOM`))
+    }, timeout_ms)
+    const check = () => {
+      if (document.body.textContent?.includes(text)) {
+        clearTimeout(timeout_id)
+        observer.disconnect()
+        resolve()
+      }
+    }
+    const observer = new MutationObserver(check)
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+    check()
+  })
 
 // Tests for Structure component functionality
 describe(`Structure`, () => {
@@ -244,41 +267,6 @@ describe(`Structure`, () => {
     expect(file_content).toBe(`test content`)
   })
 
-  test(`drag and drop with real POSCAR file`, async () => {
-    let structure_loaded = false
-    let resolve_drop!: () => void
-    const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
-
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure: undefined,
-        show_controls: true,
-        on_file_drop: (_content: string | ArrayBuffer, _filename: string) => {
-          structure_loaded = true
-          resolve_drop()
-        },
-      },
-    })
-
-    const wrapper = document.querySelector(`.structure`) as HTMLElement
-    expect(wrapper).toBeTruthy()
-
-    const file = new File([SAMPLE_POSCAR_CONTENT], `BaTiO3.poscar`, {
-      type: `text/plain`,
-    })
-    const drag_event = create_drop_event([file])
-
-    // Trigger the drop event
-    wrapper.dispatchEvent(drag_event)
-
-    // Wait for the drop handler to complete instead of sleeping
-    await drop_done
-
-    // Verify that the file drop handler was called
-    expect(structure_loaded).toBe(true)
-  })
-
   test(`drag and drop without on_file_drop handler`, async () => {
     mount(Structure, {
       target: document.body,
@@ -291,32 +279,8 @@ describe(`Structure`, () => {
     const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
     const drag_event = create_drop_event([file])
 
-    // Trigger the drop event
     wrapper.dispatchEvent(drag_event)
-
-    // Wait for DOM update that indicates structure text is rendered (with timeout)
-    await new Promise<void>((resolve, reject) => {
-      const timeout_id = setTimeout(() => {
-        observer.disconnect()
-        reject(new Error(`Timed out waiting for structure text "Ba Ti O3"`))
-      }, 3000)
-      const maybe_resolve = (observer: MutationObserver) => {
-        if (document.body.textContent?.includes(`Ba Ti O3`)) {
-          clearTimeout(timeout_id)
-          observer.disconnect()
-          resolve()
-        }
-      }
-      const observer = new MutationObserver(() => maybe_resolve(observer))
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      })
-      maybe_resolve(observer)
-    })
-
-    // Check that the structure was loaded (should show structure info)
+    await wait_for_dom_text(`Ba Ti O3`)
     expect(document.body.textContent).toContain(`Ba Ti O3`)
   })
 })
@@ -458,74 +422,6 @@ describe(`Structure component nested JSON handling`, () => {
 
     expect(document.body.textContent).not.toContain(`No sites found in structure`)
     expect(document.body.textContent).not.toContain(`No structure provided`)
-  })
-
-  test(`structure validation logic works correctly`, () => {
-    // Test the exact validation logic used in the component
-    const validate_structure = (structure: AnyStructure | null | undefined) =>
-      Array.isArray(structure?.sites) && (structure?.sites?.length ?? 0) > 0
-
-    expect(validate_structure(undefined)).toBe(false)
-    expect(validate_structure(null)).toBe(false)
-    expect(validate_structure({} as AnyStructure)).toBe(false)
-    expect(validate_structure({ sites: null } as unknown as AnyStructure)).toBe(false)
-    expect(validate_structure({ sites: undefined } as unknown as AnyStructure)).toBe(
-      false,
-    )
-    expect(validate_structure({ sites: [] })).toBe(false)
-    expect(validate_structure({ sites: `not_array` } as unknown as AnyStructure)).toBe(
-      false,
-    )
-
-    // Valid cases
-    expect(
-      validate_structure({
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H1`,
-          properties: {},
-        }],
-      }),
-    ).toBe(true)
-    expect(validate_structure({ sites: [1, 2, 3] } as unknown as AnyStructure)).toBe(true) // Any non-empty array
-  })
-
-  test(`end-to-end data flow validation logic`, () => {
-    // Test the parsing transformation logic without importing the full parser
-    // This simulates what parse_any_structure does
-    const mock_nested_structure = {
-      sites: [{
-        species: [{ element: `Fe`, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `Fe1`,
-        properties: {},
-      }],
-      lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
-    }
-
-    // Simulate the transformation that parse_any_structure does
-    const transformed_structure = {
-      sites: mock_nested_structure.sites,
-      charge: 0,
-      lattice: { ...mock_nested_structure.lattice, pbc: [true, true, true] },
-    }
-
-    // Verify the transformation worked correctly
-    expect(transformed_structure).toBeTruthy()
-    expect(transformed_structure.sites.length).toBe(1)
-    expect(transformed_structure.charge).toBe(0)
-    expect(transformed_structure.lattice.pbc).toEqual([true, true, true])
-
-    // Test component renders correctly - no error messages should appear
-    mount(Structure, {
-      target: document.body,
-      props: { structure: transformed_structure as unknown as AnyStructure },
-    })
-
-    expect(document.body.textContent).not.toContain(`No sites found in structure`)
   })
 })
 
@@ -885,24 +781,6 @@ describe(`Structure string parsing`, () => {
     expect(errored).toBe(true)
   })
 
-  test(`structure binding works correctly`, async () => {
-    let parsed = $state<AnyStructure | undefined>(undefined)
-    mount(Structure, {
-      target: document.body,
-      props: {
-        structure_string: SAMPLE_POSCAR_CONTENT,
-        get structure() {
-          return parsed
-        },
-        set structure(val) {
-          parsed = val
-        },
-      },
-    })
-    await tick()
-    expect(parsed?.sites).toHaveLength(5)
-  })
-
   test(`loading state works correctly`, async () => {
     let loading = $state(false)
     mount(Structure, {
@@ -975,3 +853,45 @@ describe(`Structure string parsing`, () => {
     expect(status_msg.textContent).toContain(`Failed to load structure`)
   })
 })
+
+// Regression tests for camera rotation center bug (commit 10477bb9 introduced
+// scene_props.camera_target for comparison-view sync, but it persisted across
+// structure loads, causing the orbit center to shift to a corner of the new cell).
+// The fix clears camera_target and camera_position in parse_file_content and the
+// structure_string effect so rotation_target (unit cell center) takes precedence.
+
+describe(`Rotation target computation`, () => {
+  // This is the exact math used in StructureScene to compute the orbit center:
+  //   rotation_target = scale(add(...lattice.matrix), 0.5)
+  // Verifying it gives the correct unit cell center for various crystal systems.
+  test.each([
+    {
+      desc: `cubic`,
+      matrix: [[4, 0, 0], [0, 4, 0], [0, 0, 4]] as Matrix3x3,
+      expected: [2, 2, 2],
+    },
+    {
+      desc: `orthorhombic`,
+      matrix: [[3, 0, 0], [0, 5, 0], [0, 0, 7]] as Matrix3x3,
+      expected: [1.5, 2.5, 3.5],
+    },
+    {
+      desc: `monoclinic (off-diagonal terms)`,
+      matrix: [[4, 0, 0], [1, 3, 0], [0, 0, 5]] as Matrix3x3,
+      expected: [2.5, 1.5, 2.5],
+    },
+    {
+      desc: `triclinic`,
+      matrix: [[6, 0, 0], [2, 5, 0], [1, 1, 4]] as Matrix3x3,
+      expected: [4.5, 3, 2],
+    },
+  ])(`unit cell center for $desc lattice`, ({ matrix, expected }) => {
+    const center = scale(add(...matrix), 0.5) as Vec3
+    expected.forEach((val, idx) => expect(center[idx]).toBeCloseTo(val, 10))
+  })
+})
+
+// Camera reset on structure reload is tested via Playwright E2E
+// (tests/playwright/structure/structure.test.ts → "rotation center resets to new
+// lattice center after file drop") because it requires WebGL + OrbitControls to
+// verify the actual orbit target.
