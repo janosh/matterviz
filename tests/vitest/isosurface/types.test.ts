@@ -318,6 +318,17 @@ describe(`downsample_grid`, () => {
     }
   })
 
+  test(`output dims never exceed source dims`, () => {
+    // 1x1000x1000 = 1M, would crash if new_nx=2 > nx=1
+    const grid = make_grid(1, 1000, 1000, 7)
+    const result = downsample_grid(grid, [1, 1000, 1000])
+    expect(result.dims[0]).toBe(1)
+    expect(result.dims[0]).toBeLessThanOrEqual(1)
+    expect(result.dims[1]).toBeLessThanOrEqual(1000)
+    expect(result.dims[2]).toBeLessThanOrEqual(1000)
+    expect(result.grid[0][0][0]).toBeCloseTo(7)
+  })
+
   test.each([
     { dims: [80, 80, 96] as Vec3, label: `80x80x96 (614K)` },
     { dims: [120, 48, 144] as Vec3, label: `120x48x144 (829K)` },

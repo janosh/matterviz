@@ -109,15 +109,19 @@ export function downsample_grid(
   // Increase factor until the clamped output fits within budget.
   // A single cbrt step can overshoot for anisotropic grids where max(2,...)
   // clamping prevents a small axis from shrinking below 2.
+  // Clamp each output axis to [2, source_dim] — never exceed the source
+  // (max(2,...) must not inflate beyond the input or partition produces empty blocks)
+  const clamp_dim = (src: number, fac: number) =>
+    Math.min(src, Math.max(2, Math.ceil(src / fac)))
   let factor = Math.ceil(Math.cbrt(total / MAX_GRID_POINTS))
-  let new_nx = Math.max(2, Math.ceil(nx / factor))
-  let new_ny = Math.max(2, Math.ceil(ny / factor))
-  let new_nz = Math.max(2, Math.ceil(nz / factor))
+  let new_nx = clamp_dim(nx, factor)
+  let new_ny = clamp_dim(ny, factor)
+  let new_nz = clamp_dim(nz, factor)
   while (new_nx * new_ny * new_nz > MAX_GRID_POINTS) {
     factor++
-    new_nx = Math.max(2, Math.ceil(nx / factor))
-    new_ny = Math.max(2, Math.ceil(ny / factor))
-    new_nz = Math.max(2, Math.ceil(nz / factor))
+    new_nx = clamp_dim(nx, factor)
+    new_ny = clamp_dim(ny, factor)
+    new_nz = clamp_dim(nz, factor)
   }
 
   // Proportional partitioning: evenly divides [0, n) into new_n non-empty blocks.
