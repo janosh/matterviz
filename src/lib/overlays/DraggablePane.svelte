@@ -23,6 +23,7 @@
     persistent = false,
     has_been_dragged = $bindable(false),
     currently_dragging = $bindable(false),
+    resizable = `none`,
   }: {
     show?: boolean
     show_pane?: boolean
@@ -45,6 +46,8 @@
     pane_props?: HTMLAttributes<HTMLDivElement>
     // If true, only closes via Escape or explicit close button (not click-outside)
     persistent?: boolean
+    // Resize mode: 'both' | 'width' | 'height' | 'none'
+    resizable?: `both` | `width` | `height` | `none`
     // Callbacks
     onclose?: () => void
     on_drag_start?: () => void
@@ -57,6 +60,44 @@
 
   let initial_position = $state({ left: `50px`, top: `50px` })
   let show_control_buttons = $state(false)
+  let resizing = $state(false)
+  let resize_end_time = 0
+
+  // Resize via bottom-right grip
+  function handle_resize_start(event: PointerEvent) {
+    if (resizable === `none` || !pane_div) return
+    event.preventDefault()
+    event.stopPropagation()
+    resizing = true
+    has_been_dragged = true
+    show_control_buttons = true
+    const start_x = event.clientX
+    const start_y = event.clientY
+    const start_w = pane_div.offsetWidth
+    const start_h = pane_div.offsetHeight
+
+    function on_move(evt: PointerEvent) {
+      if (!pane_div) return
+      if (resizable !== `height`) {
+        pane_div.style.width = `${Math.max(200, start_w + evt.clientX - start_x)}px`
+      }
+      if (resizable !== `width`) {
+        pane_div.style.maxHeight = `${
+          Math.max(100, start_h + evt.clientY - start_y)
+        }px`
+      }
+    }
+    function on_up() {
+      document.removeEventListener(`pointermove`, on_move)
+      document.removeEventListener(`pointerup`, on_up)
+      resize_end_time = Date.now()
+      requestAnimationFrame(() => {
+        resizing = false
+      })
+    }
+    document.addEventListener(`pointermove`, on_move)
+    document.addEventListener(`pointerup`, on_up)
+  }
 
   function toggle_pane(event: MouseEvent) {
     event.stopPropagation()
@@ -80,6 +121,7 @@
           right: `auto`,
           bottom: `auto`,
           width: ``,
+          maxHeight: ``,
         })
       }
     }
@@ -124,6 +166,9 @@
   // Click outside handler (skipped when persistent)
   function handle_click_outside(event: MouseEvent) {
     if (!show || persistent) return
+    // Ignore click events fired shortly after a resize/drag operation ends
+    // (Playwright and some browsers synthesize a click after pointer up)
+    if (Date.now() - resize_end_time < 200) return
 
     const target = event.target
     const is_toggle_button = target instanceof Node && toggle_pane_btn &&
@@ -131,7 +176,9 @@
     const is_inside_pane = target instanceof Node && pane_div &&
       (target === pane_div || pane_div.contains(target))
 
-    if (!is_toggle_button && !is_inside_pane && !currently_dragging) close_pane()
+    if (!is_toggle_button && !is_inside_pane && !currently_dragging && !resizing) {
+      close_pane()
+    }
   }
 
   // Debounced resize handler for better performance
@@ -165,6 +212,7 @@
           right: `auto`,
           bottom: `auto`,
           width: ``,
+          maxHeight: ``,
         })
       }
     }
@@ -213,16 +261,24 @@
     {...pane_props}
     class="draggable-pane {show ? `pane-open` : ``} {pane_props.class ?? ``}"
   >
-    <div class="control-buttons">
+    <div class="control-tab">
+      <Icon
+        icon="DragIndicator"
+        class="drag-handle"
+        style="width: 1em; height: 1em"
+      />
       {#if show_control_buttons}
         <button
           type="button"
           class="reset-button"
-          onclick={reset_position}
+          onclick={(event: MouseEvent) => {
+            event.stopPropagation()
+            reset_position()
+          }}
           title="Reset pane position"
           aria-label="Reset pane position"
         >
-          <Icon icon="Reset" style="width: 1.25em; height: 1.25em" />
+          <Icon icon="Reset" style="width: 1em; height: 1em" />
         </button>
         <button
           type="button"
@@ -231,17 +287,39 @@
           title="Close pane"
           aria-label="Close pane"
         >
-          <Icon icon="Cross" style="width: 1.25em; height: 1.25em" />
+          <Icon icon="Cross" style="width: 1em; height: 1em" />
         </button>
       {/if}
-      <Icon
-        icon="DragIndicator"
-        class="drag-handle"
-        style="width: 1.25em; height: 1.25em"
-      />
     </div>
-
-    {@render children?.({ show, show_control_buttons, has_been_dragged, currently_dragging })}
+    <div class="pane-content">
+      {@render children?.({
+        show,
+        show_control_buttons,
+        has_been_dragged,
+        currently_dragging,
+      })}
+    </div>
+    {#if resizable !== `none`}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="resize-grip"
+        class:resize-width={resizable === `width`}
+        class:resize-height={resizable === `height`}
+        onpointerdown={handle_resize_start}
+        ondblclick={() => {
+          if (pane_div) {
+            pane_div.style.width = ``
+            pane_div.style.maxHeight = ``
+          }
+        }}
+      >
+        <svg viewBox="0 0 10 10" width="10" height="10">
+          <line x1="9" y1="1" x2="1" y2="9" />
+          <line x1="9" y1="4" x2="4" y2="9" />
+          <line x1="9" y1="7" x2="7" y2="9" />
+        </svg>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -258,7 +336,7 @@
     border-radius: var(--pane-toggle-border-radius, var(--border-radius, 3pt));
     background-color: transparent;
     transition: var(--pane-toggle-transition, background-color 0.2s);
-    font-size: var(--pane-toggle-font-size, 14px);
+    font-size: var(--pane-toggle-font-size, 0.875rem);
   }
   button.pane-toggle:hover {
     background-color: color-mix(in srgb, currentColor 8%, transparent);
@@ -271,7 +349,6 @@
       1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15))
     );
     border-radius: var(--pane-border-radius, var(--border-radius, 3pt));
-    padding: var(--pane-padding, 1ex);
     box-sizing: border-box;
     box-shadow: var(
       --pane-box-shadow,
@@ -282,18 +359,24 @@
     );
     z-index: var(--pane-z-index, 10);
     display: grid;
-    gap: var(--pane-gap, 4pt);
     text-align: left;
     /* Exclude position from being transitioned to prevent sluggish dragging */
     transition: opacity 0.3s, background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
     width: 28em;
     max-width: var(--pane-max-width, 80cqw);
-    overflow-x: var(--pane-overflow-x, hidden);
-    overflow-y: var(--pane-overflow-y, auto);
-    /* Height constraints: use viewport-based max-height as primary constraint */
+    overflow: visible; /* Allow control-tab to protrude above the pane border */
     min-height: var(--pane-min-height, auto);
     max-height: var(--pane-max-height, 80vh);
-    overscroll-behavior: contain; /* Prevent scroll chaining to parent containers (e.g. Jupyter cells) */
+  }
+  .draggable-pane .pane-content {
+    padding: var(--pane-padding, 1ex);
+    display: grid;
+    gap: var(--pane-gap, 4pt);
+    overflow-x: var(--pane-overflow-x, hidden);
+    overflow-y: var(--pane-overflow-y, auto);
+    max-height: inherit;
+    box-sizing: border-box;
+    overscroll-behavior: contain;
   }
   :global(body.fullscreen) .draggable-pane {
     position: fixed !important; /* In fullscreen, we want viewport-relative positioning */
@@ -315,7 +398,7 @@
     margin: var(--pane-hr-margin, 4pt 0);
     height: 1px;
   }
-  .draggable-pane :global(> section > div) {
+  .draggable-pane :global(section > div) {
     text-align: right; /* right align long line-breaking trajectory file names */
   }
   .draggable-pane :global(:where(label)) {
@@ -397,59 +480,81 @@
   .draggable-pane :global(label:has(input[type='range'])) {
     flex: 1;
   }
-  .draggable-pane .control-buttons {
+  .draggable-pane .control-tab {
+    position: absolute;
+    top: 6px;
+    right: -1px;
+    transform: translateX(100%);
     display: flex;
-    justify-content: end;
+    flex-direction: column;
     align-items: center;
-    position: sticky;
-    top: 0;
-    right: 0;
-    height: 0;
-    /* Cancel the 12 pt top/bottom padding without relying on width-based percentages */
-    gap: 5px;
-    padding: 12pt 3pt;
-    margin-bottom: calc(-2 * 12pt);
-    box-sizing: border-box;
-    justify-self: end;
-    z-index: var(--pane-control-buttons-z-index, 1);
+    gap: 1px;
+    padding: 3px 2px;
+    background: var(--pane-bg, var(--page-bg, light-dark(white, black)));
+    border: var(
+      --pane-border,
+      1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15))
+    );
+    border-left: none;
+    border-radius: 0 5px 5px 0;
+    z-index: var(--pane-control-tab-z-index, var(--pane-control-buttons-z-index, 1));
   }
   .draggable-pane :global(.drag-handle) {
-    width: 1.3em;
-    height: 1.3em;
+    width: 1.1em;
+    height: 1.1em;
     cursor: grab;
     border-radius: 3px;
-    padding: 2px;
+    padding: 1px;
     box-sizing: border-box;
-    opacity: 0.6;
-    background-color: color-mix(in srgb, currentColor 10%, transparent);
-    pointer-events: auto; /* Re-enable pointer events for drag handle */
+    opacity: 0.5;
+    pointer-events: auto;
   }
   .draggable-pane :global(.drag-handle:hover) {
     opacity: 0.8;
-    background-color: color-mix(in srgb, currentColor 20%, transparent);
+    background-color: color-mix(in srgb, currentColor 15%, transparent);
   }
-  /* Ensure drag handle cursor changes properly */
   .draggable-pane :global(.drag-handle:active) {
     cursor: grabbing;
   }
-  /* Reset and close button styling */
   .draggable-pane :where(.reset-button, .close-button) {
     background: none;
     border: none;
-    padding: 2px;
+    padding: 1px;
     border-radius: 3px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
-    width: 1.3em;
-    height: 1.3em;
-    opacity: 0.6;
-    background-color: color-mix(in srgb, currentColor 10%, transparent);
+    width: 1.1em;
+    height: 1.1em;
+    opacity: 0.5;
   }
   .draggable-pane :where(.reset-button:hover, .close-button:hover) {
     opacity: 0.8;
-    background-color: color-mix(in srgb, currentColor 20%, transparent);
+    background-color: color-mix(in srgb, currentColor 15%, transparent);
+  }
+  .draggable-pane .resize-grip {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    padding: 2px;
+    cursor: nwse-resize;
+    opacity: 0.3;
+    touch-action: none;
+    line-height: 0;
+    svg {
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+    }
+  }
+  .draggable-pane .resize-grip:hover {
+    opacity: 0.6;
+  }
+  .draggable-pane .resize-grip.resize-width {
+    cursor: ew-resize;
+  }
+  .draggable-pane .resize-grip.resize-height {
+    cursor: ns-resize;
   }
 </style>

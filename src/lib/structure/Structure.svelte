@@ -958,10 +958,15 @@
       }
     }
 
-    // Interface shortcuts
-    if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
-    else if (event.key === `i` && enable_info_pane) info_pane_open = !info_pane_open
-    else if (event.key === `Escape`) {
+    // Interface shortcuts (require Ctrl/Cmd modifier to avoid accidental triggers)
+    const has_modifier = event.ctrlKey || event.metaKey
+    if (event.key === `f` && has_modifier && fullscreen_toggle) {
+      event.preventDefault()
+      toggle_fullscreen(wrapper)
+    } else if (event.key === `i` && has_modifier && enable_info_pane) {
+      event.preventDefault()
+      info_pane_open = !info_pane_open
+    } else if (event.key === `Escape`) {
       // Prioritize closing panes, then exit edit modes, then exit fullscreen
       if (info_pane_open) info_pane_open = false
       else if (controls_open) controls_open = false

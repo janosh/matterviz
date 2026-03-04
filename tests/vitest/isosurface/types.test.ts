@@ -2,10 +2,13 @@
 import {
   auto_isosurface_settings,
   DEFAULT_ISOSURFACE_SETTINGS,
+  downsample_grid,
   generate_layers,
   grid_data_range,
   LAYER_COLORS,
+  pad_periodic_grid,
 } from '$lib/isosurface/types'
+import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 
 describe(`grid_data_range`, () => {
@@ -71,6 +74,7 @@ describe(`DEFAULT_ISOSURFACE_SETTINGS`, () => {
     expect(DEFAULT_ISOSURFACE_SETTINGS.opacity).toBe(0.6)
     expect(DEFAULT_ISOSURFACE_SETTINGS.show_negative).toBe(false)
     expect(DEFAULT_ISOSURFACE_SETTINGS.wireframe).toBe(false)
+    expect(DEFAULT_ISOSURFACE_SETTINGS.halo).toBe(0)
     expect(DEFAULT_ISOSURFACE_SETTINGS.positive_color).toBe(`#3b82f6`)
     expect(DEFAULT_ISOSURFACE_SETTINGS.negative_color).toBe(`#ef4444`)
   })
@@ -108,6 +112,7 @@ describe(`auto_isosurface_settings`, () => {
     expect(settings.positive_color).toBe(DEFAULT_ISOSURFACE_SETTINGS.positive_color)
     expect(settings.negative_color).toBe(DEFAULT_ISOSURFACE_SETTINGS.negative_color)
     expect(settings.wireframe).toBe(DEFAULT_ISOSURFACE_SETTINGS.wireframe)
+    expect(settings.halo).toBe(DEFAULT_ISOSURFACE_SETTINGS.halo)
   })
 
   test(`returns a fresh object (not a reference to DEFAULT_ISOSURFACE_SETTINGS)`, () => {
@@ -177,5 +182,196 @@ describe(`LAYER_COLORS`, () => {
   test(`has at least 8 distinct colors`, () => {
     expect(LAYER_COLORS.length).toBeGreaterThanOrEqual(8)
     expect(new Set(LAYER_COLORS).size).toBe(LAYER_COLORS.length)
+  })
+})
+
+// Helper to build a 3D grid filled with a constant or computed value
+function make_grid(
+  nx: number,
+  ny: number,
+  nz: number,
+  fill: number | ((ix: number, iy: number, iz: number) => number) = 1,
+): number[][][] {
+  return Array.from(
+    { length: nx },
+    (_, ix) =>
+      Array.from(
+        { length: ny },
+        (_, iy) =>
+          Array.from({ length: nz }, (_, iz) =>
+            typeof fill === `function` ? fill(ix, iy, iz) : fill),
+      ),
+  )
+}
+
+// Assert every cell in a 3D grid satisfies a predicate
+function assert_all_cells(
+  grid: number[][][],
+  check: (val: number) => void,
+) {
+  for (const plane of grid) {
+    for (const row of plane) {
+      for (const val of row) check(val)
+    }
+  }
+}
+
+describe(`downsample_grid`, () => {
+  test.each([
+    { dims: [10, 10, 10] as Vec3, label: `under budget (1K)` },
+    { dims: [100, 100, 50] as Vec3, label: `at exactly 500K` },
+  ])(`$label: returns original grid reference`, ({ dims }) => {
+    const grid = make_grid(dims[0], dims[1], dims[2])
+    const result = downsample_grid(grid, dims)
+    expect(result.factor).toBe(1)
+    expect(result.grid).toBe(grid)
+    expect(result.dims).toBe(dims)
+  })
+
+  test.each([
+    { dims: [100, 100, 100] as Vec3, fill: 5, label: `positive uniform` },
+    { dims: [80, 80, 80] as Vec3, fill: -3, label: `negative uniform` },
+    { dims: [3, 500, 500] as Vec3, fill: 42, label: `small axis uniform` },
+  ])(`$label: preserves constant $fill after downsampling`, ({ dims, fill }) => {
+    const grid = make_grid(dims[0], dims[1], dims[2], fill)
+    const result = downsample_grid(grid, dims)
+    assert_all_cells(result.grid, (val) => expect(val).toBeCloseTo(fill))
+  })
+
+  test(`preserves global mean of non-uniform data`, () => {
+    const grid = make_grid(100, 100, 100, (ix, iy, iz) => ix + iy + iz)
+    const result = downsample_grid(grid, [100, 100, 100])
+    const flat = result.grid.flat(2)
+    const mean = flat.reduce((acc, val) => acc + val, 0) / flat.length
+    expect(mean).toBeCloseTo(148.5, 0)
+  })
+
+  test(`no source cells lost or double-counted`, () => {
+    const nx = 100
+    const ny = 80
+    const nz = 90
+    const grid = make_grid(nx, ny, nz, (ix, iy, iz) => ix + iy + iz)
+    const src_total = grid.flat(2).reduce((acc, val) => acc + val, 0)
+    const { grid: out, dims } = downsample_grid(grid, [nx, ny, nz])
+    // Weighted reconstruction: sum(block_mean * block_size) must equal source total
+    let reconstructed = 0
+    for (let ix = 0; ix < dims[0]; ix++) {
+      const bx = Math.round((ix + 1) * nx / dims[0]) - Math.round(ix * nx / dims[0])
+      for (let iy = 0; iy < dims[1]; iy++) {
+        const by = Math.round((iy + 1) * ny / dims[1]) - Math.round(iy * ny / dims[1])
+        for (let iz = 0; iz < dims[2]; iz++) {
+          const bz = Math.round((iz + 1) * nz / dims[2]) - Math.round(iz * nz / dims[2])
+          reconstructed += out[ix][iy][iz] * bx * by * bz
+        }
+      }
+    }
+    expect(reconstructed).toBeCloseTo(src_total, 5)
+  })
+
+  test(`dims >= 2 and all values finite for extreme aspect ratios`, () => {
+    const grid = make_grid(500, 500, 3, 1)
+    const result = downsample_grid(grid, [500, 500, 3])
+    expect(result.factor).toBeGreaterThan(1)
+    for (const dim of result.dims) expect(dim).toBeGreaterThanOrEqual(2)
+    assert_all_cells(result.grid, (val) => expect(Number.isFinite(val)).toBe(true))
+  })
+
+  test(`output dims never exceed source dims`, () => {
+    const grid = make_grid(1, 1000, 1000, 7)
+    const result = downsample_grid(grid, [1, 1000, 1000])
+    expect(result.dims[0]).toBe(1)
+    expect(result.grid[0][0][0]).toBeCloseTo(7)
+  })
+
+  test.each([
+    { dims: [80, 80, 96] as Vec3, label: `80x80x96 (614K)` },
+    { dims: [120, 48, 144] as Vec3, label: `120x48x144 (829K)` },
+    { dims: [1100, 1100, 2] as Vec3, label: `1100x1100x2 (anisotropic)` },
+  ])(`$label: stays within budget with correct shape`, ({ dims }) => {
+    const grid = make_grid(dims[0], dims[1], dims[2], 1)
+    const result = downsample_grid(grid, dims)
+    const [rnx, rny, rnz] = result.dims
+    expect(rnx * rny * rnz).toBeLessThanOrEqual(500_000)
+    expect(result.grid.length).toBe(rnx)
+    expect(result.grid[0].length).toBe(rny)
+    expect(result.grid[0][0].length).toBe(rnz)
+  })
+})
+
+describe(`pad_periodic_grid`, () => {
+  test(`dims, grid shape, and offset correct for 0.3 padding on 10^3 grid`, () => {
+    const grid = make_grid(10, 10, 10)
+    const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
+    // pad = ceil(10 * 0.3) = 3 per axis → dims 10+6=16
+    expect(result.dims).toEqual([16, 16, 16])
+    expect(result.grid.length).toBe(16)
+    expect(result.grid[0].length).toBe(16)
+    expect(result.grid[0][0].length).toBe(16)
+    // offset = -3/10 = -0.3
+    expect(result.offset[0]).toBeCloseTo(-0.3)
+    expect(result.offset[1]).toBeCloseTo(-0.3)
+    expect(result.offset[2]).toBeCloseTo(-0.3)
+  })
+
+  test(`original data is preserved in the center of padded grid`, () => {
+    const grid = make_grid(10, 10, 10, (ix, iy, iz) => ix * 100 + iy * 10 + iz)
+    const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
+    // pad = 3, so original data starts at index 3
+    for (let ix = 0; ix < 10; ix++) {
+      for (let iy = 0; iy < 10; iy++) {
+        for (let iz = 0; iz < 10; iz++) {
+          expect(result.grid[ix + 3][iy + 3][iz + 3]).toBe(grid[ix][iy][iz])
+        }
+      }
+    }
+  })
+
+  test(`halo cells wrap from opposite face`, () => {
+    const grid = make_grid(10, 10, 10, (ix) => ix)
+    const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
+    // pad = 3. Left halo (ix=0,1,2) should be grid[7,8,9] (opposite face)
+    expect(result.grid[0][3][3]).toBe(7)
+    expect(result.grid[1][3][3]).toBe(8)
+    expect(result.grid[2][3][3]).toBe(9)
+    // Right halo (ix=13,14,15) should be grid[0,1,2]
+    expect(result.grid[13][3][3]).toBe(0)
+    expect(result.grid[14][3][3]).toBe(1)
+    expect(result.grid[15][3][3]).toBe(2)
+  })
+
+  test(`uniform grid stays uniform after padding`, () => {
+    const grid = make_grid(20, 20, 20, 5)
+    const result = pad_periodic_grid(grid, [20, 20, 20], 0.3)
+    assert_all_cells(result.grid, (val) => expect(val).toBe(5))
+  })
+
+  test.each([0, -0.5, -1])(`pad_fraction=%d returns original grid unchanged`, (frac) => {
+    const grid = make_grid(10, 10, 10, 3)
+    const dims: Vec3 = [10, 10, 10]
+    const result = pad_periodic_grid(grid, dims, frac)
+    expect(result.grid).toBe(grid)
+    expect(result.dims).toBe(dims)
+    expect(result.offset).toEqual([0, 0, 0])
+  })
+
+  test(`padding capped at floor(n/2) per axis`, () => {
+    const grid = make_grid(6, 6, 6, 1)
+    // pad_fraction=0.5 → ceil(6*0.5)=3, floor(6/2)=3, so pad=3
+    const result = pad_periodic_grid(grid, [6, 6, 6], 0.5)
+    expect(result.dims).toEqual([12, 12, 12])
+    // pad_fraction=0.9 → ceil(6*0.9)=6, but floor(6/2)=3 caps it
+    const result_large = pad_periodic_grid(grid, [6, 6, 6], 0.9)
+    expect(result_large.dims).toEqual([12, 12, 12])
+  })
+
+  test(`anisotropic dims get independent padding`, () => {
+    const grid = make_grid(20, 4, 10, 2)
+    const result = pad_periodic_grid(grid, [20, 4, 10], 0.3)
+    // px=ceil(20*0.3)=6, py=ceil(4*0.3)=2(capped by floor(4/2)=2), pz=ceil(10*0.3)=3
+    expect(result.dims).toEqual([32, 8, 16])
+    expect(result.offset[0]).toBeCloseTo(-6 / 20)
+    expect(result.offset[1]).toBeCloseTo(-2 / 4)
+    expect(result.offset[2]).toBeCloseTo(-3 / 10)
+    assert_all_cells(result.grid, (val) => expect(val).toBe(2))
   })
 })

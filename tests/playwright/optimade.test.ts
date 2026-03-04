@@ -70,34 +70,21 @@ test.describe(`OPTIMADE route`, () => {
 
       // Structure requests - match by ID in URL
       if (target.includes(`structures`)) {
-        // Extract structure ID from URL path (e.g., /structures/mp-149?foo=bar -> mp-149)
         const struct_match = target.match(/\/structures\/([^/?]+)/)
         if (struct_match) {
-          const struct_id = struct_match[1]
-          const struct_data = MOCK_STRUCTURES[struct_id]
-          if (struct_data) {
-            return route.fulfill({ json: { data: struct_data } })
-          }
+          const struct_data = MOCK_STRUCTURES[struct_match[1]]
+          if (struct_data) return route.fulfill({ json: { data: struct_data } })
         }
-        // Suggestions query (page_limit or filter)
         if (target.includes(`page_limit`) || target.includes(`filter=`)) {
           return route.fulfill({ json: { data: MOCK_SUGGESTIONS } })
         }
-        // Invalid/unknown structure - return OPTIMADE-compliant error response
         return route.fulfill({
           status: 404,
-          json: {
-            errors: [{ detail: `Structure not found`, status: `404` }],
-          },
+          json: { errors: [{ detail: `Structure not found`, status: `404` }] },
         })
       }
 
-      // Provider-specific links endpoints
-      if (target.includes(`links`)) {
-        return route.fulfill({ json: { data: [] } })
-      }
-
-      // Catch-all for OPTIMADE requests - return empty data
+      // Provider-specific links or catch-all
       return route.fulfill({ json: { data: [] } })
     }
 
@@ -119,8 +106,8 @@ test.describe(`OPTIMADE route`, () => {
       // Handle OPTIMADE requests with mocks
       if (is_optimade_request(url)) return handle_optimade_request(url, route)
 
-      // Block any other external requests to prevent flakiness
-      return route.abort()
+      // Let other external requests through (they'll fail naturally if unreachable)
+      return route.continue()
     })
   })
 
