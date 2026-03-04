@@ -184,11 +184,9 @@
 
   {#each filtered_files as file (file.name)}
     {@const base_type = get_base_file_type(file)}
-    {@const is_compressed = file.name.toLowerCase().endsWith(`.gz`)}
     <div
       class="file-item"
       class:active={active_files.includes(file.name)}
-      class:compressed={is_compressed}
       style:background-color={file_type_colors[base_type]?.replace(`0.8`, `0.08`)}
       draggable="true"
       ondragstart={handle_drag_start(file)}
@@ -226,9 +224,14 @@
       ? `Click to load or drag this ${base_type.toUpperCase()} file`
       : `Drag this ${base_type.toUpperCase()} file`}
     >
+      {#if file.label}
+        <span
+          class="file-type-badge"
+          style:background-color={file_type_colors[base_type] ?? `rgba(128,128,128,0.8)`}
+        >{base_type.toUpperCase()}</span>
+      {/if}
       <div class="file-name">
         {file.category ? `${file.category_icon} ` : ``}{file.label ?? file.name}
-        {#if is_compressed}<span class="compression-indicator">📦</span>{/if}
       </div>
     </div>
   {/each}
@@ -320,7 +323,10 @@
     cursor: grab;
     background: light-dark(rgba(0, 0, 0, 0.02), rgba(255, 255, 255, 0.1));
     transition: all 0.2s ease;
-    gap: 0.5em;
+    gap: 4pt;
+    &:has(.file-type-badge) {
+      padding-left: 3pt;
+    }
   }
   .file-item.active {
     border-color: var(--success-color, #00ff00);
@@ -335,21 +341,19 @@
     background: light-dark(rgba(0, 122, 204, 0.15), rgba(0, 122, 204, 0.25));
     filter: brightness(1.1);
   }
+  .file-type-badge {
+    font-size: 0.5em;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 1px 5px;
+    border-radius: 10px;
+    color: white;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
   .file-name {
     font-size: 0.7em;
     line-height: 1.1;
     white-space: pre-line;
-  }
-  .compression-indicator {
-    opacity: 0.7;
-    font-size: 0.8em;
-    margin-left: 0.2em;
-  }
-  .file-item.compressed {
-    border-style: dashed;
-    opacity: 0.9;
-  }
-  .file-item.compressed:hover {
-    opacity: 1;
   }
 </style>

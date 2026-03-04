@@ -60,10 +60,6 @@
     active_volume_idx = 0
   }
 
-  function reset_parse_metadata() {
-    parse_time_ms = undefined
-  }
-
   function parse_and_apply(text: string, filename: string) {
     const vol_result = parse_volumetric_file(text, filename)
     if (vol_result) {
@@ -110,7 +106,7 @@
     active_file = name
     loading = true
     error_msg = undefined
-    reset_parse_metadata()
+    parse_time_ms = undefined
     reset_loaded_content()
 
     try {
@@ -249,7 +245,7 @@
   function handle_dropped_file(content: string | ArrayBuffer, filename: string) {
     active_file = filename
     error_msg = undefined
-    reset_parse_metadata()
+    parse_time_ms = undefined
     reset_loaded_content()
     const parse_start = performance.now()
     const text = decode_content(content)
@@ -299,29 +295,27 @@
   ondrop={() => (dragover_hint = false)}
 >
   <DragOverlay visible={dragover_hint} message="Drop CHGCAR, ELFCAR, LOCPOT, or .cube" />
-  <div class="viewer-grid">
-    <div class="viewer-pane">
-      <Structure
-        bind:structure
-        bind:volumetric_data
-        bind:isosurface_settings
-        bind:active_volume_idx
-        bind:loading
-        bind:error_msg
-        show_controls="always"
-        on_file_drop={handle_dropped_file}
-        on_file_load={(data) => {
-          active_file = data.filename
-          reset_parse_metadata()
-        }}
-      >
-        {#if active_file}
-          <p class="filename-label">
-            {active_file.replace(/\.gz$/, ``)}
-          </p>
-        {/if}
-      </Structure>
-    </div>
+  <div class="viewer-pane">
+    <Structure
+      bind:structure
+      bind:volumetric_data
+      bind:isosurface_settings
+      bind:active_volume_idx
+      bind:loading
+      bind:error_msg
+      show_controls="always"
+      on_file_drop={handle_dropped_file}
+      on_file_load={(data) => {
+        active_file = data.filename
+        parse_time_ms = undefined
+      }}
+    >
+      {#if active_file}
+        <p class="filename-label">
+          {active_file.replace(/\.gz$/, ``)}
+        </p>
+      {/if}
+    </Structure>
   </div>
 </div>
 
@@ -457,15 +451,9 @@
     position: relative;
     min-height: 500px;
   }
-  .viewer-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.7em;
-    height: 500px;
-  }
   .viewer-pane {
     position: relative;
-    height: 100%;
+    height: 500px;
     :global(.matterviz-structure) {
       height: 100%;
     }
