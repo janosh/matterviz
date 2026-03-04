@@ -88,12 +88,11 @@
     mc_grid: number[][][],
     mc_lattice: Matrix3x3,
     origin_shift: Vec3 | null,
-    periodic: boolean,
   ): BufferGeometry | null {
     if (isovalue === 0) return null
 
     const result = marching_cubes(mc_grid, isovalue, mc_lattice, {
-      periodic,
+      periodic: false,
       interpolate: true,
       centered: false,
       normals: false,
@@ -168,13 +167,8 @@
       ]
     }
 
-    // When halo padding is applied, MC must not wrap at edges (the padding
-    // already extends the grid). Otherwise respect the volume's periodicity
-    // for correct 1/N vs 1/(N-1) coordinate scaling and full grid iteration.
-    const mc_periodic = !origin_shift && volume.periodic
-
     const surface_at = (isovalue: number) =>
-      extract_surface(isovalue, mc_grid, mc_lattice, origin_shift, mc_periodic)
+      extract_surface(isovalue, mc_grid, mc_lattice, origin_shift)
 
     // Render lower-isovalue (outer) shells earlier so per-layer back/front passes
     // interleave back-to-front across shells and reduce transparency artefacts.
