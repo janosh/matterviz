@@ -9,9 +9,8 @@ import {
 // Despite mocking, we need extra time for:
 // - Svelte 5 $effect reactivity (runs after initial render)
 // - Component hydration after SSR
-// - CI environment variability
-// Increased from 10s to 15s to handle slower CI environments
-const DATA_LOAD_TIMEOUT = 15_000
+// - CI environment variability (software-rendered WebGL, slow I/O)
+const DATA_LOAD_TIMEOUT = 30_000
 
 test.describe(`OPTIMADE route`, () => {
   // Network mocking can be flaky in CI due to race conditions
@@ -79,9 +78,8 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`handles invalid structure ID gracefully`, async ({ page }) => {
-    await page.goto(`/optimade-invalid-id-12345`)
+    await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `networkidle` })
 
-    // First wait for the page to be interactive
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)
 
     // Wait for providers to load - either buttons appear or error message shown
