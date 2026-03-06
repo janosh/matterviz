@@ -1601,7 +1601,8 @@
     pointer-events: auto;
   }
   /* Mode: hover - controls visible on component hover */
-  .structure:hover section.control-buttons.hover-visible {
+  .structure:hover section.control-buttons.hover-visible,
+  .structure:focus-within section.control-buttons.hover-visible {
     opacity: 1;
     pointer-events: auto;
   }
@@ -1609,7 +1610,7 @@
   section.control-buttons > :global(button) {
     background-color: transparent;
     display: flex;
-    padding: 4px;
+    padding: 1px 6px;
     border-radius: var(--border-radius, 3pt);
     font-size: clamp(0.85em, 2cqmin, 1.3em);
   }
@@ -1661,7 +1662,7 @@
   }
   .measure-mode-dropdown > button {
     background: transparent;
-    padding: 0 0 0 4px;
+    padding: 1px 6px;
     font-size: clamp(0.85em, 2cqmin, 1.3em);
   }
   .selection-limit-text {

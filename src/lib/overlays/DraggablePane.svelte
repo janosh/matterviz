@@ -442,16 +442,19 @@
     display: none;
   }
   .draggable-pane :global(:where(button)) {
-    width: max-content;
     background-color: var(
       --pane-btn-bg,
-      var(--btn-bg, light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1)))
+      var(--btn-bg, light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.1)))
     );
+  }
+  .draggable-pane .pane-content :global(:where(button)) {
+    font-size: 1em;
+    padding: var(--pane-btn-padding, 3px 6px);
   }
   .draggable-pane :global(:where(button:hover)) {
     background-color: var(
       --pane-btn-bg-hover,
-      var(--btn-bg-hover, light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.2)))
+      var(--btn-bg-hover, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.2)))
     );
   }
   .draggable-pane :global(select) {

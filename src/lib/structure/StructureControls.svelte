@@ -549,7 +549,7 @@
       {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_mode.description })}
     >
       Atom coloring
-      <select bind:value={atom_color_config.mode} style="font-size: 0.95em">
+      <select bind:value={atom_color_config.mode}>
         {#each Object.entries(SETTINGS_CONFIG.structure.atom_color_mode.enum || {}) as
           [value, label]
           (value)
@@ -569,7 +569,6 @@
           colorbar={{
             tick_labels: 0,
             wrapper_style: `width: 100%;`,
-            title_style: `font-size: 0.95em;`,
           }}
           style="flex: 1; min-width: 0; border: none"
           aria-label="Color scale"
