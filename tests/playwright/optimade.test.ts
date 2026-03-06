@@ -78,6 +78,7 @@ test.describe(`OPTIMADE route`, () => {
   })
 
   test(`handles invalid structure ID gracefully`, async ({ page }) => {
+    // invalid ID triggers async provider fetches; networkidle ensures stability
     await page.goto(`/optimade-invalid-id-12345`, { waitUntil: `networkidle` })
 
     await expect(page.locator(`h1`)).toContainText(`OPTIMADE Explorer`)

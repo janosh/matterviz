@@ -109,14 +109,11 @@ function set_svg_font_family(svg: SVGElement) {
 }
 
 // Serialize an SVG element to a standalone SVG string with proper XML headers.
-// Clones the element to avoid mutation, sets font-family/xmlns/viewBox, and
+// Clones the element to avoid mutation, sets font-family/xmlns, and
 // prepends XML declaration + SVG DOCTYPE. Returns a complete SVG document string
 // suitable for saving to file or further processing.
 export function svg_to_svg_string(svg_element: SVGElement): string {
   const cloned_svg = svg_element.cloneNode(true) as SVGElement
-
-  const viewBox = svg_element.getAttribute(`viewBox`)
-  if (viewBox) cloned_svg.setAttribute(`viewBox`, viewBox)
 
   set_svg_font_family(cloned_svg)
   if (!cloned_svg.hasAttribute(`xmlns`)) {
@@ -153,10 +150,14 @@ export function svg_to_png_blob(
   svg_element: SVGElement,
   png_dpi = 150,
 ): Promise<Blob> {
-  const viewBox = svg_element.getAttribute(`viewBox`)
+  const viewBox = svg_element.getAttribute(`viewBox`)?.trim()
   if (!viewBox) return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
 
-  const [, , width, height] = viewBox.split(` `).map(Number)
+  const parts = viewBox.split(/[\s,]+/).map(Number)
+  if (parts.length < 4 || parts.some(Number.isNaN)) {
+    return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
+  }
+  const [, , width, height] = parts
   if (!width || !height) {
     return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
   }

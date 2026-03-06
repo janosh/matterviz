@@ -229,10 +229,19 @@ describe(`svg_to_png_blob`, () => {
     [`0 0 0 100`, `zero width`],
     [`0 0 100 0`, `zero height`],
     [`0 0 0 0`, `zero both`],
+    [`0 0 foo 100`, `NaN width`],
+    [`0 0`, `too few values`],
   ])(`rejects for invalid viewBox %s (%s)`, async (viewBox: string) => {
     await expect(svg_to_png_blob(make_svg(viewBox))).rejects.toThrow(
       `Invalid SVG dimensions`,
     )
+  })
+
+  test(`parses comma-separated viewBox`, async () => {
+    const svg = make_svg(`0,0,100,100`)
+    await svg_to_png_blob(svg, 72)
+    expect(mock_canvas_element.width).toBe(100)
+    expect(mock_canvas_element.height).toBe(100)
   })
 
   test(`rejects when canvas 2D context unavailable`, async () => {
@@ -247,28 +256,26 @@ describe(`svg_to_png_blob`, () => {
   test.each([
     [144, 200, `2x multiplier`],
     [1440, 1000, `capped at 10x`],
-  ])(`DPI %d → canvas size %dpx (%s)`, (dpi: number, expected_size: number) => {
+  ])(`DPI %d → canvas size %dpx (%s)`, async (dpi: number, expected_size: number) => {
     const svg = make_svg(`0 0 100 100`)
-    svg_to_png_blob(svg, dpi)
+    await svg_to_png_blob(svg, dpi)
     expect(mock_canvas_element.width).toBe(expected_size)
     expect(mock_canvas_element.height).toBe(expected_size)
   })
 
-  test(`sets font-family on the cloned SVG`, () => {
+  test(`sets font-family on the cloned SVG`, async () => {
     const svg = make_svg(`0 0 100 100`)
-    svg_to_png_blob(svg, 72)
-    // The cloned SVG should have font-family set (checked via URL.createObjectURL call)
+    await svg_to_png_blob(svg, 72)
     expect(URL.createObjectURL).toHaveBeenCalledWith(
       expect.objectContaining({ type: `image/svg+xml;charset=utf-8` }),
     )
   })
 
-  test(`revokes object URL after load`, () => {
+  test(`revokes object URL after load`, async () => {
     const svg = make_svg(`0 0 100 100`)
-    svg_to_png_blob(svg, 72)
-    // Simulate image load by triggering the onload handler
-    // URL.revokeObjectURL is called in the finally block
+    await svg_to_png_blob(svg, 72)
     expect(URL.createObjectURL).toHaveBeenCalled()
+    expect(URL.revokeObjectURL).toHaveBeenCalled()
   })
 })
 
