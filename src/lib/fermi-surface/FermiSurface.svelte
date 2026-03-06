@@ -567,7 +567,8 @@
     pointer-events: auto;
   }
   /* Mode: hover - controls visible on component hover */
-  .fermi-surface:hover section.control-buttons.hover-visible {
+  .fermi-surface:hover section.control-buttons.hover-visible,
+  .fermi-surface:focus-within section.control-buttons.hover-visible {
     opacity: 1;
     pointer-events: auto;
   }

@@ -1,8 +1,8 @@
 // deno-lint-ignore-file no-await-in-loop
-import type { AnyStructure } from '$lib/structure'
 import { download } from '$lib/io/fetch'
+import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
-import { type Camera, type Scene, Vector2, WebGLRenderer } from 'three'
+import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
 
 function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
   if (typeof value !== `object` || !value) return false
@@ -14,7 +14,62 @@ function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
     typeof renderer_obj.setSize === `function`
 }
 
-// Export structure as PNG image from canvas
+// Capture a WebGL canvas as a PNG Blob at the given DPI.
+// Temporarily adjusts renderer pixel ratio for high-res capture, then restores.
+// Returns data directly (no browser download), suitable for programmatic capture
+// in test suites, server-side rendering, or Python widget integration via anywidget.
+// DPI is converted to a resolution multiplier relative to 72 DPI baseline, capped at 10x.
+export function canvas_to_png_blob(
+  canvas: HTMLCanvasElement,
+  png_dpi = 150,
+  scene: Scene | null = null,
+  camera: Camera | null = null,
+): Promise<Blob> {
+  const resolution_multiplier = Math.min(png_dpi / 72, 10)
+  const renderer_val = (canvas as { __renderer?: unknown }).__renderer
+  const renderer = is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
+
+  if (resolution_multiplier <= 1.1 || !renderer) {
+    if (renderer && scene && camera) renderer.render(scene, camera)
+    return new Promise((resolve, reject) => {
+      try {
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob)
+          else reject(new Error(`Failed to generate PNG - canvas may be empty`))
+        }, `image/png`)
+      } catch (error) {
+        reject(error)
+      }
+    })
+  }
+
+  // Temporarily modify the renderer's pixel ratio for high-res capture
+  const orig_pixel_ratio = renderer.getPixelRatio()
+  const orig_size = renderer.getSize(new Vector2())
+  const restore = () => {
+    renderer.setPixelRatio(orig_pixel_ratio)
+    renderer.setSize(orig_size.width, orig_size.height, false)
+  }
+
+  renderer.setPixelRatio(resolution_multiplier)
+  renderer.setSize(orig_size.width, orig_size.height, false)
+  if (scene && camera) renderer.render(scene, camera)
+
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob((blob) => {
+        restore()
+        if (blob) resolve(blob)
+        else reject(new Error(`Failed to generate high-resolution PNG`))
+      }, `image/png`)
+    } catch (error) {
+      restore()
+      reject(error)
+    }
+  })
+}
+
+// Export structure as PNG image from canvas (triggers browser download)
 export function export_canvas_as_png(
   canvas: HTMLCanvasElement | null,
   structure_or_filename: AnyStructure | string | undefined,
@@ -22,201 +77,113 @@ export function export_canvas_as_png(
   scene: Scene | null = null,
   camera: Camera | null = null,
 ): void {
-  try {
-    if (!canvas) {
-      if (typeof window !== `undefined`) {
-        console.warn(`Canvas not found for PNG export`)
-      }
-      return
-    }
-
-    // Determine filename from either structure or direct filename
-    let filename = typeof structure_or_filename === `string`
-      ? structure_or_filename
-      : create_structure_filename(structure_or_filename, `png`)
-
-    // Inject DPI into filename
-    const suffix = `-${Math.round(png_dpi)}dpi`
-    if (filename.toLowerCase().endsWith(`.png`)) {
-      filename = filename.replace(/\.png$/i, `${suffix}.png`)
-    } else {
-      filename = `${filename}${suffix}.png`
-    }
-
-    // Convert DPI to multiplier (72 DPI is baseline web resolution)
-    // Cap to a reasonable upper bound to avoid excessive memory use
-    const resolution_multiplier = Math.min(png_dpi / 72, 10)
-    const renderer_val = (canvas as { __renderer?: unknown }).__renderer
-    const renderer = is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
-
-    // Force render to populate buffer
-    if (renderer && scene && camera) renderer.render(scene, camera)
-
-    if (resolution_multiplier <= 1.1 || !renderer) {
-      // Direct capture at current resolution (if DPI is close to 72 or renderer not available)
-      try {
-        canvas.toBlob((blob) => {
-          if (blob) {
-            download(blob, filename, `image/png`)
-          } else {
-            if (typeof window !== `undefined`) {
-              console.warn(`Failed to generate PNG - canvas may be empty`)
-            }
-          }
-        }, `image/png`)
-      } catch (error) {
-        console.error(`Error during PNG export:`, error)
-      }
-      return
-    }
-
-    // Temporarily modify the renderer's pixel ratio for high-res capture
-    const orig_pixel_ratio = renderer.getPixelRatio()
-    const orig_size = renderer.getSize(new Vector2())
-
-    try {
-      // Set higher pixel ratio to increase rendering resolution
-      renderer.setPixelRatio(resolution_multiplier)
-
-      // Force the canvas to update its resolution
-      renderer.setSize(orig_size.width, orig_size.height, false)
-
-      if (scene && camera) {
-        renderer.render(scene, camera)
-      }
-
-      // Capture the high-resolution render after paint completion
-      canvas.toBlob((blob) => {
-        // Restore original settings immediately
-        renderer.setPixelRatio(orig_pixel_ratio)
-        renderer.setSize(orig_size.width, orig_size.height, false)
-
-        if (blob) {
-          download(blob, filename, `image/png`)
-        } else {
-          if (typeof window !== `undefined`) {
-            console.warn(`Failed to generate high-resolution PNG`)
-          }
-        }
-      }, `image/png`)
-    } catch (error) {
-      console.error(`Error during high-res rendering:`, error)
-      // Restore original settings
-      renderer.setPixelRatio(orig_pixel_ratio)
-      renderer.setSize(orig_size.width, orig_size.height, false)
-      if (typeof window !== `undefined`) {
-        console.warn(
-          `Failed to render at high resolution: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        )
-      }
-    }
-  } catch (error) {
-    console.error(`Error exporting PNG:`, error)
+  if (!canvas) {
+    if (typeof window !== `undefined`) console.warn(`Canvas not found for PNG export`)
+    return
   }
+
+  let filename = typeof structure_or_filename === `string`
+    ? structure_or_filename
+    : create_structure_filename(structure_or_filename, `png`)
+
+  const suffix = `-${Math.round(png_dpi)}dpi`
+  if (filename.toLowerCase().endsWith(`.png`)) {
+    filename = filename.replace(/\.png$/i, `${suffix}.png`)
+  } else {
+    filename = `${filename}${suffix}.png`
+  }
+
+  canvas_to_png_blob(canvas, png_dpi, scene, camera)
+    .then((blob) => download(blob, filename, `image/png`))
+    .catch((error) => console.error(`Error exporting PNG:`, error))
 }
 
 // Helper to ensure font-family is set on SVG root
 function set_svg_font_family(svg: SVGElement) {
   const style = svg.getAttribute(`style`) || ``
   if (!/font-family/.test(style)) {
-    svg.setAttribute(`style`, `${style};font-family:sans-serif;`)
+    svg.setAttribute(`style`, `${style}${style ? `;` : ``}font-family:sans-serif;`)
   }
   // Also set as attribute for extra robustness
   svg.setAttribute(`font-family`, `sans-serif`)
 }
 
-// Export SVG element as SVG file
+// Serialize an SVG element to a standalone SVG string with proper XML headers.
+// Clones the element to avoid mutation, sets font-family/xmlns, and
+// prepends XML declaration + SVG DOCTYPE. Returns a complete SVG document string
+// suitable for saving to file or further processing.
+export function svg_to_svg_string(svg_element: SVGElement): string {
+  const cloned_svg = svg_element.cloneNode(true) as SVGElement
+
+  set_svg_font_family(cloned_svg)
+  if (!cloned_svg.hasAttribute(`xmlns`)) {
+    cloned_svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
+  }
+
+  const svg_string = new XMLSerializer().serializeToString(cloned_svg)
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${svg_string}`
+}
+
+// Export SVG element as SVG file (triggers browser download)
 export function export_svg_as_svg(
   svg_element: SVGElement | null,
   filename: string,
 ): void {
+  if (!svg_element) {
+    console.warn(`SVG element not found for export`)
+    return
+  }
   try {
-    if (!svg_element) {
-      console.warn(`SVG element not found for export`)
-      return
-    }
-
-    // Clone the SVG to avoid modifying the original
-    const cloned_svg = svg_element.cloneNode(true) as SVGElement
-
-    // Ensure the SVG has proper dimensions and viewBox
-    const viewBox = svg_element.getAttribute(`viewBox`)
-    if (viewBox) cloned_svg.setAttribute(`viewBox`, viewBox)
-
-    // Ensure font-family is set
-    set_svg_font_family(cloned_svg)
-    // Ensure xmlns is set
-    if (!cloned_svg.hasAttribute(`xmlns`)) {
-      cloned_svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
-    }
-
-    // Convert SVG to string
-    const svg_string = new XMLSerializer().serializeToString(cloned_svg)
-
-    // Add XML declaration and DOCTYPE for proper SVG format
-    const svg_content =
-      `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${svg_string}`
-
+    const svg_content = svg_to_svg_string(svg_element)
     download(svg_content, filename, `image/svg+xml;charset=utf-8`)
   } catch (error) {
     console.error(`Error exporting SVG:`, error)
   }
 }
 
-// Export SVG element as PNG by converting to canvas
-export function export_svg_as_png(
-  svg_element: SVGElement | null,
-  filename: string,
+// Rasterize an SVG element to a PNG Blob at the given DPI.
+// Creates an offscreen canvas at the scaled resolution, draws the SVG via an
+// Image element, and returns the resulting PNG Blob. Rejects if viewBox is
+// missing or dimensions are invalid (zero width/height).
+// DPI is converted to a resolution multiplier relative to 72 DPI baseline, capped at 10x.
+export function svg_to_png_blob(
+  svg_element: SVGElement,
   png_dpi = 150,
-): void {
-  try {
-    if (!svg_element) {
-      console.warn(`SVG element not found for PNG export`)
-      return
-    }
+): Promise<Blob> {
+  const viewBox = svg_element.getAttribute(`viewBox`)?.trim()
+  if (!viewBox) return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
 
-    // Get SVG dimensions
-    const viewBox = svg_element.getAttribute(`viewBox`)
-    if (!viewBox) {
-      console.warn(`SVG viewBox not found for PNG export`)
-      return
-    }
+  const parts = viewBox.split(/[\s,]+/).map(Number)
+  if (parts.length < 4 || !parts.every(Number.isFinite)) {
+    return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
+  }
+  const [, , width, height] = parts
+  if (!(width > 0) || !(height > 0)) {
+    return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
+  }
+  if (!Number.isFinite(png_dpi) || png_dpi <= 0) {
+    return Promise.reject(new Error(`Invalid PNG DPI for export`))
+  }
 
-    const [, , width, height] = viewBox.split(` `).map(Number)
-    if (!width || !height) {
-      console.warn(`Invalid SVG dimensions for PNG export`)
-      return
-    }
+  const resolution_multiplier = Math.min(png_dpi / 72, 10)
+  const pixel_width = Math.round(width * resolution_multiplier)
+  const pixel_height = Math.round(height * resolution_multiplier)
 
-    // Convert DPI to pixel dimensions
-    const resolution_multiplier = Math.min(png_dpi / 72, 10)
-    const pixel_width = Math.round(width * resolution_multiplier)
-    const pixel_height = Math.round(height * resolution_multiplier)
+  const canvas = document.createElement(`canvas`)
+  const ctx = canvas.getContext(`2d`)
+  if (!ctx) return Promise.reject(new Error(`Canvas 2D context not available`))
 
-    // Create a canvas for rendering
-    const canvas = document.createElement(`canvas`)
-    const ctx = canvas.getContext(`2d`)
-    if (!ctx) {
-      console.warn(`Canvas 2D context not available for PNG export`)
-      return
-    }
+  canvas.width = pixel_width
+  canvas.height = pixel_height
 
-    // Set canvas dimensions
-    canvas.width = pixel_width
-    canvas.height = pixel_height
+  const cloned_svg = svg_element.cloneNode(true) as SVGElement
+  set_svg_font_family(cloned_svg)
 
-    // Clone and patch SVG for font-family
-    const cloned_svg = svg_element.cloneNode(true) as SVGElement
-    set_svg_font_family(cloned_svg)
+  const serialized = new XMLSerializer().serializeToString(cloned_svg)
+  const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
+  const svg_data_url = URL.createObjectURL(svg_blob)
 
-    // Create an object URL from SVG Blob
-    const svg_string = new XMLSerializer().serializeToString(cloned_svg)
-    const svg_blob = new Blob([svg_string], { type: `image/svg+xml;charset=utf-8` })
-    const svg_data_url = URL.createObjectURL(svg_blob)
-
-    // Create an image element to load the SVG
+  return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
       try {
@@ -224,26 +191,39 @@ export function export_svg_as_png(
         ctx.drawImage(img, 0, 0, pixel_width, pixel_height)
         canvas.toBlob(
           (blob) => {
-            if (blob) download(blob, filename, `image/png`)
-            else console.warn(`Failed to generate PNG blob`)
+            if (blob) resolve(blob)
+            else reject(new Error(`Failed to generate PNG blob`))
           },
           `image/png`,
-          1, // set max PNG quality
+          1,
         )
       } catch (error) {
-        console.error(`Error during PNG generation:`, error)
+        reject(error)
       } finally {
         URL.revokeObjectURL(svg_data_url)
       }
     }
     img.onerror = () => {
-      console.error(`Failed to load SVG for PNG export`)
       URL.revokeObjectURL(svg_data_url)
+      reject(new Error(`Failed to load SVG for PNG export`))
     }
     img.src = svg_data_url
-  } catch (error) {
-    console.error(`Error exporting PNG:`, error)
+  })
+}
+
+// Export SVG element as PNG (triggers browser download)
+export function export_svg_as_png(
+  svg_element: SVGElement | null,
+  filename: string,
+  png_dpi = 150,
+): void {
+  if (!svg_element) {
+    console.warn(`SVG element not found for PNG export`)
+    return
   }
+  svg_to_png_blob(svg_element, png_dpi)
+    .then((blob) => download(blob, filename, `image/png`))
+    .catch((error) => console.error(`Error exporting PNG:`, error))
 }
 
 // Generate FFmpeg command for WebM to MP4 conversion

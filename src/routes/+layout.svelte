@@ -75,7 +75,10 @@
   placeholder="Go to..."
   dialog_style="z-index: 10000000001"
 />
-<GitHubCorner href={pkg.repository} />
+<GitHubCorner
+  href={pkg.repository}
+  --github-corner-bg-hover="var(--github-corner-bg-hover)"
+/>
 <CopyButton global class="copy-btn" />
 
 <ThemeControl />

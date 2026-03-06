@@ -337,7 +337,7 @@
             value={hull_face_color}
             oninput={(e) => on_hull_face_color_change?.((e.target as HTMLInputElement).value)}
             {@attach tooltip({ content: `Set hull face color` })}
-            style="width: 40px; height: 28px"
+            style="width: 40px; height: 20px"
           />
         {/if}
         <input
@@ -480,9 +480,7 @@
     border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
   }
   .toggle-btn.active, .toggle-btn:hover.active {
-    background: var(--accent-color, #1976d2);
-    color: white;
-    border-color: var(--accent-color, #1976d2);
+    background: light-dark(rgba(25, 118, 210, 0.15), rgba(100, 180, 255, 0.2));
   }
   .legend-items-container {
     display: flex;
@@ -531,7 +529,6 @@
     flex-wrap: wrap;
   }
   .face-mode-btn {
-    padding: 2px 6px;
     min-width: auto;
     flex: 0 1 auto;
   }
@@ -543,7 +540,6 @@
     margin-top: 12px;
   }
   .color-scale-row :global(.multiselect) {
-    font-size: 0.85em;
     --sms-min-height: 24px;
   }
 </style>

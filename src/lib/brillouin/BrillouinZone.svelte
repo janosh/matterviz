@@ -509,7 +509,8 @@
     pointer-events: auto;
   }
   /* Mode: hover - controls visible on component hover */
-  .brillouin-zone:hover section.control-buttons.hover-visible {
+  .brillouin-zone:hover section.control-buttons.hover-visible,
+  .brillouin-zone:focus-within section.control-buttons.hover-visible {
     opacity: 1;
     pointer-events: auto;
   }

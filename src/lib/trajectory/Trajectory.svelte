@@ -1282,7 +1282,8 @@
       border: var(--traj-dragover-border, var(--dragover-border));
     }
     /* Mode: hover - controls visible on component hover */
-    &:hover .trajectory-controls.hover-visible {
+    &:hover .trajectory-controls.hover-visible,
+    &:focus-within .trajectory-controls.hover-visible {
       opacity: 1;
       pointer-events: auto;
     }
