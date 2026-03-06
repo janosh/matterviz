@@ -40,6 +40,17 @@ function make_mock_renderer(): Partial<WebGLRenderer> {
   }
 }
 
+function make_canvas_with_renderer(
+  toBlob_impl?: (cb: BlobCallback) => void,
+): { canvas: HTMLCanvasElement; renderer: Partial<WebGLRenderer> } {
+  const renderer = make_mock_renderer()
+  const canvas = {
+    ...make_mock_canvas(toBlob_impl),
+    __renderer: renderer as WebGLRenderer,
+  } as unknown as HTMLCanvasElement
+  return { canvas, renderer }
+}
+
 function make_svg(viewBox?: string): SVGElement {
   const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
   if (viewBox) svg.setAttribute(`viewBox`, viewBox)
@@ -79,43 +90,25 @@ describe(`canvas_to_png_blob`, () => {
   })
 
   test(`uses direct capture when DPI <= ~72 (multiplier ≤ 1.1)`, async () => {
-    const mock_renderer = make_mock_renderer()
-    const canvas = {
-      ...make_mock_canvas(),
-      __renderer: mock_renderer as WebGLRenderer,
-    } as unknown as HTMLCanvasElement
-
+    const { canvas, renderer } = make_canvas_with_renderer()
     await canvas_to_png_blob(canvas, 72)
-    // Should NOT modify pixel ratio for low-DPI capture
-    expect(mock_renderer.setPixelRatio).not.toHaveBeenCalled()
+    expect(renderer.setPixelRatio).not.toHaveBeenCalled()
   })
 
   test(`high-DPI capture adjusts and restores renderer pixel ratio`, async () => {
-    const mock_renderer = make_mock_renderer()
-    const canvas = {
-      ...make_mock_canvas(),
-      __renderer: mock_renderer as WebGLRenderer,
-    } as unknown as HTMLCanvasElement
-
+    const { canvas, renderer } = make_canvas_with_renderer()
     await canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)
-
-    expect(mock_renderer.setPixelRatio).toHaveBeenCalledTimes(2) // set high + restore
-    expect(mock_renderer.setSize).toHaveBeenCalledTimes(2)
-    // Last call should restore original pixel ratio
-    expect(mock_renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+    expect(renderer.setPixelRatio).toHaveBeenCalledTimes(2) // set high + restore
+    expect(renderer.setSize).toHaveBeenCalledTimes(2)
+    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
   })
 
   test(`high-DPI capture renders scene before capture`, async () => {
-    const mock_renderer = make_mock_renderer()
-    const canvas = {
-      ...make_mock_canvas(),
-      __renderer: mock_renderer as WebGLRenderer,
-    } as unknown as HTMLCanvasElement
+    const { canvas, renderer } = make_canvas_with_renderer()
     const scene = {} as Scene
     const camera = {} as Camera
-
     await canvas_to_png_blob(canvas, 300, scene, camera)
-    expect(mock_renderer.render).toHaveBeenCalledWith(scene, camera)
+    expect(renderer.render).toHaveBeenCalledWith(scene, camera)
   })
 
   test(`rejects when toBlob returns null`, async () => {
@@ -133,29 +126,17 @@ describe(`canvas_to_png_blob`, () => {
   })
 
   test(`restores renderer state when toBlob throws during high-DPI capture`, async () => {
-    const mock_renderer = make_mock_renderer()
-    const canvas = {
-      ...make_mock_canvas(() => {
-        throw new Error(`tainted`)
-      }),
-      __renderer: mock_renderer as WebGLRenderer,
-    } as unknown as HTMLCanvasElement
-
+    const { canvas, renderer } = make_canvas_with_renderer(() => {
+      throw new Error(`tainted`)
+    })
     await expect(canvas_to_png_blob(canvas, 300)).rejects.toThrow(`tainted`)
-    // Verify renderer was restored despite the error
-    expect(mock_renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+    expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
   })
 
   test(`caps DPI multiplier at 10x`, async () => {
-    const mock_renderer = make_mock_renderer()
-    const canvas = {
-      ...make_mock_canvas(),
-      __renderer: mock_renderer as WebGLRenderer,
-    } as unknown as HTMLCanvasElement
-
+    const { canvas, renderer } = make_canvas_with_renderer()
     await canvas_to_png_blob(canvas, 7200) // 7200/72 = 100x, should cap at 10
-    // Verify pixel ratio was set to 10 (the cap), not 100
-    expect(mock_renderer.setPixelRatio).toHaveBeenCalledWith(10)
+    expect(renderer.setPixelRatio).toHaveBeenCalledWith(10)
   })
 })
 
@@ -203,8 +184,13 @@ describe(`svg_to_svg_string`, () => {
 
 describe(`svg_to_png_blob`, () => {
   let mock_canvas_element: HTMLCanvasElement
+  let orig_createObjectURL: typeof URL.createObjectURL
+  let orig_revokeObjectURL: typeof URL.revokeObjectURL
 
   beforeEach(() => {
+    orig_createObjectURL = globalThis.URL.createObjectURL
+    orig_revokeObjectURL = globalThis.URL.revokeObjectURL
+
     mock_canvas_element = {
       getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn() }),
       toBlob: vi.fn((cb: BlobCallback) => cb(new Blob([`test`], { type: `image/png` }))),
@@ -219,6 +205,11 @@ describe(`svg_to_png_blob`, () => {
     globalThis.URL.revokeObjectURL = vi.fn()
   })
 
+  afterEach(() => {
+    globalThis.URL.createObjectURL = orig_createObjectURL
+    globalThis.URL.revokeObjectURL = orig_revokeObjectURL
+  })
+
   test(`rejects when viewBox is missing`, async () => {
     await expect(svg_to_png_blob(make_svg())).rejects.toThrow(
       `SVG viewBox not found for PNG export`,
@@ -231,9 +222,23 @@ describe(`svg_to_png_blob`, () => {
     [`0 0 0 0`, `zero both`],
     [`0 0 foo 100`, `NaN width`],
     [`0 0`, `too few values`],
+    [`0 0 -100 100`, `negative width`],
+    [`0 0 100 -50`, `negative height`],
+    [`0 0 Infinity 100`, `Infinity width`],
   ])(`rejects for invalid viewBox %s (%s)`, async (viewBox: string) => {
     await expect(svg_to_png_blob(make_svg(viewBox))).rejects.toThrow(
       `Invalid SVG dimensions`,
+    )
+  })
+
+  test.each([
+    [0, `zero DPI`],
+    [-72, `negative DPI`],
+    [Infinity, `Infinity DPI`],
+    [NaN, `NaN DPI`],
+  ])(`rejects for invalid DPI %s (%s)`, async (dpi: number) => {
+    await expect(svg_to_png_blob(make_svg(`0 0 100 100`), dpi)).rejects.toThrow(
+      `Invalid PNG DPI`,
     )
   })
 
@@ -265,7 +270,7 @@ describe(`svg_to_png_blob`, () => {
     expect(mock_canvas_element.height).toBe(expected_size)
   })
 
-  test(`sets font-family on the cloned SVG`, () => {
+  test(`serializes cloned SVG as blob for image loading`, () => {
     const svg = make_svg(`0 0 100 100`)
     svg_to_png_blob(svg, 72)
     expect(URL.createObjectURL).toHaveBeenCalledWith(
@@ -343,16 +348,11 @@ describe(`export_canvas_as_png`, () => {
   })
 
   test(`delegates to canvas_to_png_blob for high-DPI with renderer`, async () => {
-    const mock_renderer = make_mock_renderer()
-    const canvas = {
-      ...make_mock_canvas(),
-      __renderer: mock_renderer as WebGLRenderer,
-    } as unknown as HTMLCanvasElement
-
+    const { canvas, renderer } = make_canvas_with_renderer()
     export_canvas_as_png(canvas, `test.png`, 150, {} as Scene, {} as Camera)
     await vi.waitFor(() => {
-      expect(mock_renderer.setPixelRatio).toHaveBeenCalled()
-      expect(mock_renderer.render).toHaveBeenCalled()
+      expect(renderer.setPixelRatio).toHaveBeenCalled()
+      expect(renderer.render).toHaveBeenCalled()
       expect(download).toHaveBeenCalled()
     })
   })
@@ -390,20 +390,21 @@ describe(`export_svg_as_svg`, () => {
 describe(`export_svg_as_png`, () => {
   let console_warn_spy: ReturnType<typeof vi.spyOn>
   let console_error_spy: ReturnType<typeof vi.spyOn>
+  let mock_canvas_element: HTMLCanvasElement
 
   beforeEach(() => {
     vi.clearAllMocks()
     console_warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
     console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
 
-    const mock_canvas = {
+    mock_canvas_element = {
       getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn() }),
       toBlob: vi.fn((cb: BlobCallback) => cb(new Blob([`test`]))),
       width: 0,
       height: 0,
     } as unknown as HTMLCanvasElement
     vi.spyOn(document, `createElement`).mockReturnValue(
-      mock_canvas as unknown as HTMLElement,
+      mock_canvas_element as unknown as HTMLElement,
     )
     globalThis.URL.createObjectURL = vi.fn().mockReturnValue(`blob:test-url`)
     globalThis.URL.revokeObjectURL = vi.fn()
@@ -433,18 +434,9 @@ describe(`export_svg_as_png`, () => {
     [144, 200],
     [1440, 1000],
   ])(`DPI %d → canvas dimensions %dpx`, (dpi: number, expected_size: number) => {
-    const mock_canvas = {
-      getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn() }),
-      toBlob: vi.fn((cb: BlobCallback) => cb(new Blob([`test`]))),
-      width: 0,
-      height: 0,
-    } as unknown as HTMLCanvasElement
-    vi.spyOn(document, `createElement`).mockReturnValue(
-      mock_canvas as unknown as HTMLElement,
-    )
     export_svg_as_png(make_svg(`0 0 100 100`), `test.png`, dpi)
-    expect(mock_canvas.width).toBe(expected_size)
-    expect(mock_canvas.height).toBe(expected_size)
+    expect(mock_canvas_element.width).toBe(expected_size)
+    expect(mock_canvas_element.height).toBe(expected_size)
   })
 })
 

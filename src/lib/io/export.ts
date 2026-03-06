@@ -2,7 +2,7 @@
 import { download } from '$lib/io/fetch'
 import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
-import { type Camera, type Scene, Vector2, WebGLRenderer } from 'three'
+import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
 
 function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
   if (typeof value !== `object` || !value) return false
@@ -29,10 +29,8 @@ export function canvas_to_png_blob(
   const renderer_val = (canvas as { __renderer?: unknown }).__renderer
   const renderer = is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
 
-  // Force render to populate buffer
-  if (renderer && scene && camera) renderer.render(scene, camera)
-
   if (resolution_multiplier <= 1.1 || !renderer) {
+    if (renderer && scene && camera) renderer.render(scene, camera)
     return new Promise((resolve, reject) => {
       try {
         canvas.toBlob((blob) => {
@@ -48,6 +46,10 @@ export function canvas_to_png_blob(
   // Temporarily modify the renderer's pixel ratio for high-res capture
   const orig_pixel_ratio = renderer.getPixelRatio()
   const orig_size = renderer.getSize(new Vector2())
+  const restore = () => {
+    renderer.setPixelRatio(orig_pixel_ratio)
+    renderer.setSize(orig_size.width, orig_size.height, false)
+  }
 
   renderer.setPixelRatio(resolution_multiplier)
   renderer.setSize(orig_size.width, orig_size.height, false)
@@ -56,14 +58,12 @@ export function canvas_to_png_blob(
   return new Promise((resolve, reject) => {
     try {
       canvas.toBlob((blob) => {
-        renderer.setPixelRatio(orig_pixel_ratio)
-        renderer.setSize(orig_size.width, orig_size.height, false)
+        restore()
         if (blob) resolve(blob)
         else reject(new Error(`Failed to generate high-resolution PNG`))
       }, `image/png`)
     } catch (error) {
-      renderer.setPixelRatio(orig_pixel_ratio)
-      renderer.setSize(orig_size.width, orig_size.height, false)
+      restore()
       reject(error)
     }
   })
@@ -102,7 +102,7 @@ export function export_canvas_as_png(
 function set_svg_font_family(svg: SVGElement) {
   const style = svg.getAttribute(`style`) || ``
   if (!/font-family/.test(style)) {
-    svg.setAttribute(`style`, `${style};font-family:sans-serif;`)
+    svg.setAttribute(`style`, `${style}${style ? `;` : ``}font-family:sans-serif;`)
   }
   // Also set as attribute for extra robustness
   svg.setAttribute(`font-family`, `sans-serif`)
@@ -154,12 +154,15 @@ export function svg_to_png_blob(
   if (!viewBox) return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
 
   const parts = viewBox.split(/[\s,]+/).map(Number)
-  if (parts.length < 4 || parts.some(Number.isNaN)) {
+  if (parts.length < 4 || !parts.every(Number.isFinite)) {
     return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
   }
   const [, , width, height] = parts
-  if (!width || !height) {
+  if (!(width > 0) || !(height > 0)) {
     return Promise.reject(new Error(`Invalid SVG dimensions for PNG export`))
+  }
+  if (!Number.isFinite(png_dpi) || png_dpi <= 0) {
+    return Promise.reject(new Error(`Invalid PNG DPI for export`))
   }
 
   const resolution_multiplier = Math.min(png_dpi / 72, 10)
