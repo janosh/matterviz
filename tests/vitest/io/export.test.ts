@@ -237,9 +237,10 @@ describe(`svg_to_png_blob`, () => {
     )
   })
 
-  test(`parses comma-separated viewBox`, async () => {
+  test(`parses comma-separated viewBox`, () => {
     const svg = make_svg(`0,0,100,100`)
-    await svg_to_png_blob(svg, 72)
+    // canvas dimensions are set synchronously before the Image load promise
+    svg_to_png_blob(svg, 72)
     expect(mock_canvas_element.width).toBe(100)
     expect(mock_canvas_element.height).toBe(100)
   })
@@ -253,29 +254,42 @@ describe(`svg_to_png_blob`, () => {
     )
   })
 
+  // canvas dimensions and createObjectURL are set synchronously before Image load
   test.each([
     [144, 200, `2x multiplier`],
     [1440, 1000, `capped at 10x`],
-  ])(`DPI %d → canvas size %dpx (%s)`, async (dpi: number, expected_size: number) => {
+  ])(`DPI %d → canvas size %dpx (%s)`, (dpi: number, expected_size: number) => {
     const svg = make_svg(`0 0 100 100`)
-    await svg_to_png_blob(svg, dpi)
+    svg_to_png_blob(svg, dpi)
     expect(mock_canvas_element.width).toBe(expected_size)
     expect(mock_canvas_element.height).toBe(expected_size)
   })
 
-  test(`sets font-family on the cloned SVG`, async () => {
+  test(`sets font-family on the cloned SVG`, () => {
     const svg = make_svg(`0 0 100 100`)
-    await svg_to_png_blob(svg, 72)
+    svg_to_png_blob(svg, 72)
     expect(URL.createObjectURL).toHaveBeenCalledWith(
       expect.objectContaining({ type: `image/svg+xml;charset=utf-8` }),
     )
   })
 
-  test(`revokes object URL after load`, async () => {
-    const svg = make_svg(`0 0 100 100`)
-    await svg_to_png_blob(svg, 72)
-    expect(URL.createObjectURL).toHaveBeenCalled()
-    expect(URL.revokeObjectURL).toHaveBeenCalled()
+  test(`revokes object URL after image load`, async () => {
+    // Mock Image so setting src synchronously triggers onload
+    const orig_image = globalThis.Image
+    globalThis.Image = class MockImage {
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+      set src(_url: string) {
+        queueMicrotask(() => this.onload?.())
+      }
+    } as unknown as typeof Image
+    try {
+      const svg = make_svg(`0 0 100 100`)
+      await svg_to_png_blob(svg, 72)
+      expect(URL.revokeObjectURL).toHaveBeenCalled()
+    } finally {
+      globalThis.Image = orig_image
+    }
   })
 })
 
