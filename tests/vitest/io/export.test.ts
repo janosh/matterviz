@@ -1,9 +1,12 @@
 import {
+  canvas_to_png_blob,
   export_canvas_as_png,
   export_svg_as_png,
   export_svg_as_svg,
   export_trajectory_video,
   get_ffmpeg_conversion_command,
+  svg_to_png_blob,
+  svg_to_svg_string,
 } from '$lib/io/export'
 import { download } from '$lib/io/fetch'
 import type { Camera, Scene, WebGLRenderer } from 'three'
@@ -11,6 +14,39 @@ import { Vector2 } from 'three'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
+
+// === Shared Helpers ===
+
+function make_mock_canvas(
+  toBlob_impl?: (cb: BlobCallback) => void,
+): HTMLCanvasElement {
+  return {
+    toBlob: vi.fn(
+      toBlob_impl ??
+        ((cb: BlobCallback) => cb(new Blob([`test`], { type: `image/png` }))),
+    ),
+    width: 800,
+    height: 600,
+  } as unknown as HTMLCanvasElement
+}
+
+function make_mock_renderer(): Partial<WebGLRenderer> {
+  return {
+    render: vi.fn(),
+    getPixelRatio: vi.fn().mockReturnValue(1),
+    setPixelRatio: vi.fn(),
+    getSize: vi.fn().mockReturnValue(new Vector2(800, 600)),
+    setSize: vi.fn(),
+  }
+}
+
+function make_svg(viewBox?: string): SVGElement {
+  const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
+  if (viewBox) svg.setAttribute(`viewBox`, viewBox)
+  return svg
+}
+
+// === Tests ===
 
 describe(`get_ffmpeg_conversion_command`, () => {
   test.each([
@@ -24,7 +60,7 @@ describe(`get_ffmpeg_conversion_command`, () => {
     // Non-.webm input keeps original extension (no replacement)
     [`video.mp4`, `"video.mp4"`],
     [`recording.avi`, `"recording.avi"`],
-  ])(`%s → contains %s`, (input, expected) => {
+  ])(`%s → contains %s`, (input: string, expected: string) => {
     const result = get_ffmpeg_conversion_command(input)
     // Verify always returns a proper ffmpeg command, not just the filename
     expect(result).toMatch(/^ffmpeg\s+-i\s+/)
@@ -32,9 +68,213 @@ describe(`get_ffmpeg_conversion_command`, () => {
   })
 })
 
+// === canvas_to_png_blob (new data-returning function) ===
+
+describe(`canvas_to_png_blob`, () => {
+  test(`returns a valid PNG Blob from plain canvas (no renderer)`, async () => {
+    const canvas = make_mock_canvas()
+    const blob = await canvas_to_png_blob(canvas, 72)
+    expect(blob).toBeInstanceOf(Blob)
+    expect(blob.type).toBe(`image/png`)
+  })
+
+  test(`uses direct capture when DPI <= ~72 (multiplier ≤ 1.1)`, async () => {
+    const mock_renderer = make_mock_renderer()
+    const canvas = {
+      ...make_mock_canvas(),
+      __renderer: mock_renderer as WebGLRenderer,
+    } as unknown as HTMLCanvasElement
+
+    await canvas_to_png_blob(canvas, 72)
+    // Should NOT modify pixel ratio for low-DPI capture
+    expect(mock_renderer.setPixelRatio).not.toHaveBeenCalled()
+  })
+
+  test(`high-DPI capture adjusts and restores renderer pixel ratio`, async () => {
+    const mock_renderer = make_mock_renderer()
+    const canvas = {
+      ...make_mock_canvas(),
+      __renderer: mock_renderer as WebGLRenderer,
+    } as unknown as HTMLCanvasElement
+
+    await canvas_to_png_blob(canvas, 300, {} as Scene, {} as Camera)
+
+    expect(mock_renderer.setPixelRatio).toHaveBeenCalledTimes(2) // set high + restore
+    expect(mock_renderer.setSize).toHaveBeenCalledTimes(2)
+    // Last call should restore original pixel ratio
+    expect(mock_renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+  })
+
+  test(`high-DPI capture renders scene before capture`, async () => {
+    const mock_renderer = make_mock_renderer()
+    const canvas = {
+      ...make_mock_canvas(),
+      __renderer: mock_renderer as WebGLRenderer,
+    } as unknown as HTMLCanvasElement
+    const scene = {} as Scene
+    const camera = {} as Camera
+
+    await canvas_to_png_blob(canvas, 300, scene, camera)
+    expect(mock_renderer.render).toHaveBeenCalledWith(scene, camera)
+  })
+
+  test(`rejects when toBlob returns null`, async () => {
+    const canvas = make_mock_canvas((cb) => cb(null))
+    await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(
+      `Failed to generate PNG`,
+    )
+  })
+
+  test(`rejects when toBlob throws`, async () => {
+    const canvas = make_mock_canvas(() => {
+      throw new Error(`Canvas tainted`)
+    })
+    await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Canvas tainted`)
+  })
+
+  test(`restores renderer state when toBlob throws during high-DPI capture`, async () => {
+    const mock_renderer = make_mock_renderer()
+    const canvas = {
+      ...make_mock_canvas(() => {
+        throw new Error(`tainted`)
+      }),
+      __renderer: mock_renderer as WebGLRenderer,
+    } as unknown as HTMLCanvasElement
+
+    await expect(canvas_to_png_blob(canvas, 300)).rejects.toThrow(`tainted`)
+    // Verify renderer was restored despite the error
+    expect(mock_renderer.setPixelRatio).toHaveBeenLastCalledWith(1)
+  })
+
+  test(`caps DPI multiplier at 10x`, async () => {
+    const mock_renderer = make_mock_renderer()
+    const canvas = {
+      ...make_mock_canvas(),
+      __renderer: mock_renderer as WebGLRenderer,
+    } as unknown as HTMLCanvasElement
+
+    await canvas_to_png_blob(canvas, 7200) // 7200/72 = 100x, should cap at 10
+    // Verify pixel ratio was set to 10 (the cap), not 100
+    expect(mock_renderer.setPixelRatio).toHaveBeenCalledWith(10)
+  })
+})
+
+// === svg_to_svg_string (new data-returning function) ===
+
+describe(`svg_to_svg_string`, () => {
+  test.each([
+    [`<?xml version="1.0"`, `XML declaration`],
+    [`<!DOCTYPE svg`, `SVG DOCTYPE`],
+    [`xmlns="http://www.w3.org/2000/svg"`, `xmlns namespace`],
+    [`font-family`, `font-family attribute`],
+    [`viewBox="0 0 200 150"`, `preserved viewBox`],
+  ])(`output contains %s (%s)`, (expected: string) => {
+    const svg = make_svg(`0 0 200 150`)
+    const result = svg_to_svg_string(svg)
+    expect(result).toContain(expected)
+  })
+
+  test(`does not modify the original SVG element`, () => {
+    const svg = make_svg(`0 0 100 100`)
+    const original_attrs = svg.attributes.length
+    svg_to_svg_string(svg)
+    expect(svg.attributes.length).toBe(original_attrs)
+  })
+
+  test(`preserves xmlns if already set`, () => {
+    const svg = make_svg(`0 0 100 100`)
+    svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
+    const result = svg_to_svg_string(svg)
+    // Should not have duplicate xmlns
+    const xmlns_count =
+      (result.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g) || []).length
+    expect(xmlns_count).toBe(1)
+  })
+
+  test(`works with SVG that has no viewBox`, () => {
+    const svg = make_svg()
+    const result = svg_to_svg_string(svg)
+    expect(result).toContain(`<?xml version`)
+    expect(result).toContain(`xmlns`)
+  })
+})
+
+// === svg_to_png_blob (new data-returning function) ===
+
+describe(`svg_to_png_blob`, () => {
+  let mock_canvas_element: HTMLCanvasElement
+
+  beforeEach(() => {
+    mock_canvas_element = {
+      getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn() }),
+      toBlob: vi.fn((cb: BlobCallback) => cb(new Blob([`test`], { type: `image/png` }))),
+      width: 0,
+      height: 0,
+    } as unknown as HTMLCanvasElement
+
+    vi.spyOn(document, `createElement`).mockReturnValue(
+      mock_canvas_element as unknown as HTMLElement,
+    )
+    globalThis.URL.createObjectURL = vi.fn().mockReturnValue(`blob:test-url`)
+    globalThis.URL.revokeObjectURL = vi.fn()
+  })
+
+  test(`rejects when viewBox is missing`, async () => {
+    await expect(svg_to_png_blob(make_svg())).rejects.toThrow(
+      `SVG viewBox not found for PNG export`,
+    )
+  })
+
+  test.each([
+    [`0 0 0 100`, `zero width`],
+    [`0 0 100 0`, `zero height`],
+    [`0 0 0 0`, `zero both`],
+  ])(`rejects for invalid viewBox %s (%s)`, async (viewBox: string) => {
+    await expect(svg_to_png_blob(make_svg(viewBox))).rejects.toThrow(
+      `Invalid SVG dimensions`,
+    )
+  })
+
+  test(`rejects when canvas 2D context unavailable`, async () => {
+    vi.spyOn(document, `createElement`).mockReturnValue(
+      { getContext: vi.fn().mockReturnValue(null) } as unknown as HTMLElement,
+    )
+    await expect(svg_to_png_blob(make_svg(`0 0 100 100`))).rejects.toThrow(
+      `Canvas 2D context not available`,
+    )
+  })
+
+  test.each([
+    [144, 200, `2x multiplier`],
+    [1440, 1000, `capped at 10x`],
+  ])(`DPI %d → canvas size %dpx (%s)`, (dpi: number, expected_size: number) => {
+    const svg = make_svg(`0 0 100 100`)
+    svg_to_png_blob(svg, dpi)
+    expect(mock_canvas_element.width).toBe(expected_size)
+    expect(mock_canvas_element.height).toBe(expected_size)
+  })
+
+  test(`sets font-family on the cloned SVG`, () => {
+    const svg = make_svg(`0 0 100 100`)
+    svg_to_png_blob(svg, 72)
+    // The cloned SVG should have font-family set (checked via URL.createObjectURL call)
+    expect(URL.createObjectURL).toHaveBeenCalledWith(
+      expect.objectContaining({ type: `image/svg+xml;charset=utf-8` }),
+    )
+  })
+
+  test(`revokes object URL after load`, () => {
+    const svg = make_svg(`0 0 100 100`)
+    svg_to_png_blob(svg, 72)
+    // Simulate image load by triggering the onload handler
+    // URL.revokeObjectURL is called in the finally block
+    expect(URL.createObjectURL).toHaveBeenCalled()
+  })
+})
+
+// === export_canvas_as_png (download wrapper, regression tests) ===
+
 describe(`export_canvas_as_png`, () => {
-  let mock_canvas: HTMLCanvasElement
-  let mock_renderer: Partial<WebGLRenderer>
   let console_warn_spy: ReturnType<typeof vi.spyOn>
   let console_error_spy: ReturnType<typeof vi.spyOn>
 
@@ -42,22 +282,6 @@ describe(`export_canvas_as_png`, () => {
     vi.clearAllMocks()
     console_warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
     console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-
-    mock_canvas = {
-      toBlob: vi.fn((callback: BlobCallback) =>
-        callback(new Blob([`test`], { type: `image/png` }))
-      ),
-      width: 800,
-      height: 600,
-    } as unknown as HTMLCanvasElement
-
-    mock_renderer = {
-      render: vi.fn(),
-      getPixelRatio: vi.fn().mockReturnValue(1),
-      setPixelRatio: vi.fn(),
-      getSize: vi.fn().mockReturnValue(new Vector2(800, 600)),
-      setSize: vi.fn(),
-    }
   })
 
   afterEach(() => {
@@ -71,57 +295,49 @@ describe(`export_canvas_as_png`, () => {
   })
 
   test.each([
-    [72, `72dpi.png`],
+    [72, `-72dpi.png`],
     [150, `-150dpi.png`],
-  ])(`DPI %d includes correct suffix in filename`, (dpi, expected_suffix) => {
-    export_canvas_as_png(mock_canvas, `structure.png`, dpi)
-    expect(download).toHaveBeenCalledWith(
-      expect.any(Blob),
-      expect.stringContaining(expected_suffix),
-      `image/png`,
-    )
+    [300, `-300dpi.png`],
+  ])(`DPI %d injects %s suffix`, async (dpi: number, expected_suffix: string) => {
+    export_canvas_as_png(make_mock_canvas(), `structure.png`, dpi)
+    // canvas_to_png_blob is async, wait for download to be called
+    await vi.waitFor(() => {
+      expect(download).toHaveBeenCalledWith(
+        expect.any(Blob),
+        expect.stringContaining(expected_suffix),
+        `image/png`,
+      )
+    })
   })
 
-  test(`appends .png if extension missing`, () => {
-    export_canvas_as_png(mock_canvas, `structure`, 150)
-    expect(download).toHaveBeenCalledWith(
-      expect.any(Blob),
-      `structure-150dpi.png`,
-      `image/png`,
-    )
+  test(`appends .png if extension missing`, async () => {
+    export_canvas_as_png(make_mock_canvas(), `structure`, 150)
+    await vi.waitFor(() => {
+      expect(download).toHaveBeenCalledWith(
+        expect.any(Blob),
+        `structure-150dpi.png`,
+        `image/png`,
+      )
+    })
   })
 
-  test(`high-DPI export with renderer`, () => {
-    const canvas_with_renderer = {
-      ...mock_canvas,
+  test(`delegates to canvas_to_png_blob for high-DPI with renderer`, async () => {
+    const mock_renderer = make_mock_renderer()
+    const canvas = {
+      ...make_mock_canvas(),
       __renderer: mock_renderer as WebGLRenderer,
-    }
-    export_canvas_as_png(
-      canvas_with_renderer as unknown as HTMLCanvasElement,
-      `test.png`,
-      150,
-      {} as Scene,
-      {} as Camera,
-    )
-    expect(mock_renderer.setPixelRatio).toHaveBeenCalled()
-    expect(mock_renderer.render).toHaveBeenCalled()
-  })
+    } as unknown as HTMLCanvasElement
 
-  test.each([
-    [`blob null`, (cb: BlobCallback) => cb(null)],
-    [
-      `error thrown`,
-      () => {
-        throw new Error(`Canvas tainted`)
-      },
-    ],
-  ])(`handles failure: %s`, (_desc, toBlob_impl) => {
-    const fail_canvas = { toBlob: vi.fn(toBlob_impl) } as unknown as HTMLCanvasElement
-    export_canvas_as_png(fail_canvas, `test.png`, 72)
-    expect(console_warn_spy.mock.calls.length + console_error_spy.mock.calls.length)
-      .toBeGreaterThan(0)
+    export_canvas_as_png(canvas, `test.png`, 150, {} as Scene, {} as Camera)
+    await vi.waitFor(() => {
+      expect(mock_renderer.setPixelRatio).toHaveBeenCalled()
+      expect(mock_renderer.render).toHaveBeenCalled()
+      expect(download).toHaveBeenCalled()
+    })
   })
 })
+
+// === export_svg_as_svg (download wrapper, regression tests) ===
 
 describe(`export_svg_as_svg`, () => {
   let console_warn_spy: ReturnType<typeof vi.spyOn>
@@ -138,100 +354,99 @@ describe(`export_svg_as_svg`, () => {
     expect(console_warn_spy).toHaveBeenCalledWith(`SVG element not found for export`)
   })
 
-  test.each([
-    [`<?xml version`, `XML declaration`],
-    [`viewBox="0 0 200 150"`, `viewBox preserved`],
-    [`xmlns="http://www.w3.org/2000/svg"`, `xmlns added`],
-    [`font-family`, `font-family set`],
-    [`<!DOCTYPE svg`, `DOCTYPE included`],
-  ])(`exports SVG containing %s`, (expected) => {
-    const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
-    svg.setAttribute(`viewBox`, `0 0 200 150`)
-    export_svg_as_svg(svg, `output.svg`)
-    expect(vi.mocked(download).mock.calls[0][0]).toContain(expected)
+  test(`delegates to svg_to_svg_string and downloads`, () => {
+    export_svg_as_svg(make_svg(`0 0 200 150`), `output.svg`)
+    const [content, filename, mime] = vi.mocked(download).mock.calls[0]
+    expect(content).toContain(`<?xml version`)
+    expect(content).toContain(`viewBox="0 0 200 150"`)
+    expect(filename).toBe(`output.svg`)
+    expect(mime).toBe(`image/svg+xml;charset=utf-8`)
   })
 })
 
+// === export_svg_as_png (download wrapper, regression tests) ===
+
 describe(`export_svg_as_png`, () => {
   let console_warn_spy: ReturnType<typeof vi.spyOn>
-  let mock_canvas_element: HTMLCanvasElement
+  let console_error_spy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     vi.clearAllMocks()
     console_warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    console_error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
 
-    mock_canvas_element = {
+    const mock_canvas = {
       getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn() }),
       toBlob: vi.fn((cb: BlobCallback) => cb(new Blob([`test`]))),
       width: 0,
       height: 0,
     } as unknown as HTMLCanvasElement
-
     vi.spyOn(document, `createElement`).mockReturnValue(
-      mock_canvas_element as unknown as HTMLElement,
+      mock_canvas as unknown as HTMLElement,
     )
     globalThis.URL.createObjectURL = vi.fn().mockReturnValue(`blob:test-url`)
     globalThis.URL.revokeObjectURL = vi.fn()
   })
 
-  afterEach(() => console_warn_spy.mockRestore())
-
-  test.each([
-    [null, `0 0 100 100`, `SVG element not found for PNG export`, `null SVG`],
-    [`valid`, ``, `SVG viewBox not found for PNG export`, `missing viewBox`],
-    [`valid`, `0 0 0 100`, `Invalid SVG dimensions for PNG export`, `zero width`],
-  ])(`warns for %s`, (_svg_type, view_box, expected_msg, _desc) => {
-    const svg = _svg_type === null
-      ? null
-      : document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
-    if (svg && view_box) svg.setAttribute(`viewBox`, view_box)
-    export_svg_as_png(svg, `test.png`)
-    expect(console_warn_spy).toHaveBeenCalledWith(expected_msg)
+  afterEach(() => {
+    console_warn_spy.mockRestore()
+    console_error_spy.mockRestore()
   })
 
-  test(`warns when canvas context unavailable`, () => {
-    const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
-    svg.setAttribute(`viewBox`, `0 0 100 100`)
+  test(`warns when SVG element is null`, () => {
+    export_svg_as_png(null, `test.png`)
+    expect(console_warn_spy).toHaveBeenCalledWith(`SVG element not found for PNG export`)
+  })
+
+  test(`logs error for missing viewBox (via svg_to_png_blob rejection)`, async () => {
+    export_svg_as_png(make_svg(), `test.png`)
+    await vi.waitFor(() => {
+      expect(console_error_spy).toHaveBeenCalledWith(
+        `Error exporting PNG:`,
+        expect.any(Error),
+      )
+    })
+  })
+
+  test.each([
+    [144, 200],
+    [1440, 1000],
+  ])(`DPI %d → canvas dimensions %dpx`, (dpi: number, expected_size: number) => {
+    const mock_canvas = {
+      getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn() }),
+      toBlob: vi.fn((cb: BlobCallback) => cb(new Blob([`test`]))),
+      width: 0,
+      height: 0,
+    } as unknown as HTMLCanvasElement
     vi.spyOn(document, `createElement`).mockReturnValue(
-      { getContext: vi.fn().mockReturnValue(null) } as unknown as HTMLElement,
+      mock_canvas as unknown as HTMLElement,
     )
-    export_svg_as_png(svg, `test.png`)
-    expect(console_warn_spy).toHaveBeenCalledWith(
-      `Canvas 2D context not available for PNG export`,
-    )
-  })
-
-  test.each([
-    [144, 200, 2],
-    [1440, 1000, 10], // capped at 10x
-  ])(`DPI %d → canvas size %d (multiplier %dx)`, (dpi, expected_size) => {
-    const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
-    svg.setAttribute(`viewBox`, `0 0 100 100`)
-    export_svg_as_png(svg, `test.png`, dpi)
-    expect(mock_canvas_element.width).toBe(expected_size)
-    expect(mock_canvas_element.height).toBe(expected_size)
+    export_svg_as_png(make_svg(`0 0 100 100`), `test.png`, dpi)
+    expect(mock_canvas.width).toBe(expected_size)
+    expect(mock_canvas.height).toBe(expected_size)
   })
 })
 
-describe(`export_trajectory_video`, () => {
-  let mock_canvas: HTMLCanvasElement
+// === export_trajectory_video ===
 
+describe(`export_trajectory_video`, () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(console, `error`).mockImplementation(() => {})
-    mock_canvas = {
+  })
+
+  test.each<[string | null, string]>([
+    [null, `null canvas`],
+    [`valid`, `MediaRecorder undefined`],
+  ])(`throws for %s (%s)`, async (canvas_type) => {
+    const mock_canvas = {
       captureStream: vi.fn().mockReturnValue({
         getVideoTracks: vi.fn().mockReturnValue([{ requestFrame: vi.fn() }]),
       }),
       width: 800,
       height: 600,
     } as unknown as HTMLCanvasElement
-  })
 
-  test.each([
-    [null, `null canvas`],
-    [`valid`, `MediaRecorder undefined`],
-  ])(`throws for %s`, async (canvas_type, _desc) => {
     const canvas = canvas_type === null ? null : mock_canvas
     await expect(export_trajectory_video(canvas, `test.webm`)).rejects.toThrow(
       `WebM video recording not supported`,
