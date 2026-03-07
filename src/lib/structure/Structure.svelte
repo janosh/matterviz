@@ -24,7 +24,8 @@
   import {
     get_element_counts,
     get_pbc_image_sites,
-    get_site_vector,
+    get_structure_vector_keys,
+    VECTOR_PALETTE,
   } from '$lib/structure'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
@@ -300,23 +301,28 @@
     }
   })
 
-  // Track if force vectors were auto-enabled to prevent repeated triggering
-  let force_vectors_auto_enabled = $state(false)
+  // Reset auto-populate flag when the structure changes so vector configs
+  // are re-populated for each new structure loaded into the same component.
+  let vectors_auto_populated_for: AnyStructure | undefined = undefined
 
-  // Auto-enable force vectors when structure has vector data (force, magmom, or spin)
+  // Auto-populate vector_configs when structure has vector data (force, magmom, spin, etc.)
+  // Skip if configs were already provided externally (non-empty object).
   $effect(() => {
-    if (structure?.sites && !force_vectors_auto_enabled) {
-      const has_vector_data = structure.sites.some((site) =>
-        get_site_vector(site) !== null
-      )
-      if (!has_vector_data) return
-      if (!scene_props.show_force_vectors) {
-        scene_props.show_force_vectors = true
-        scene_props.force_scale ??= DEFAULTS.structure.force_scale
-        scene_props.force_color ??= DEFAULTS.structure.force_color
-      }
-      force_vectors_auto_enabled = true
-    }
+    if (!structure?.sites || structure === vectors_auto_populated_for) return
+    vectors_auto_populated_for = structure
+    const keys = get_structure_vector_keys(structure)
+    if (keys.length === 0) return
+    const existing = scene_props.vector_configs
+    if (existing && Object.keys(existing).length > 0) return
+    scene_props.vector_configs = Object.fromEntries(
+      keys.map((key, idx) => [key, {
+        visible: true,
+        color: keys.length > 1 ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length] : null,
+        scale: null,
+      }]),
+    )
+    scene_props.vector_scale ??= DEFAULTS.structure.vector_scale
+    scene_props.vector_color ??= DEFAULTS.structure.vector_color
   })
 
   // Optimize scene props for performance based on structure size and mode

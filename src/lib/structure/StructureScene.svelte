@@ -9,16 +9,23 @@
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import { type CameraProjection, DEFAULTS, type ShowBonds } from '$lib/settings'
+  import {
+    type CameraProjection,
+    DEFAULTS,
+    type ShowBonds,
+    type VectorLayerConfig,
+  } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure, BondPair, MeasureMode, Site } from '$lib/structure'
   import {
     Arrow,
     atomic_radii,
     Cylinder,
+    get_all_site_vectors,
     get_center_of_mass,
-    get_site_vector_info,
+    get_structure_vector_keys,
     Lattice,
+    VECTOR_PALETTE,
   } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
   import {
@@ -91,9 +98,15 @@
     site_label_bg_color = `color-mix(in srgb, #000000 0%, transparent)`,
     site_label_color = `#ffffff`,
     site_label_padding = 3,
-    show_force_vectors = DEFAULTS.structure.show_force_vectors,
-    force_scale = DEFAULTS.structure.force_scale,
-    force_color = DEFAULTS.structure.force_color,
+    vector_configs = $bindable<Record<string, VectorLayerConfig>>({}),
+    vector_scale = DEFAULTS.structure.vector_scale,
+    vector_color = DEFAULTS.structure.vector_color,
+    vector_normalize = DEFAULTS.structure.vector_normalize,
+    vector_uniform_thickness = DEFAULTS.structure.vector_uniform_thickness,
+    vector_origin_gap = DEFAULTS.structure.vector_origin_gap,
+    vector_shaft_radius = DEFAULTS.structure.vector_shaft_radius,
+    vector_arrow_head_radius = DEFAULTS.structure.vector_arrow_head_radius,
+    vector_arrow_head_length = DEFAULTS.structure.vector_arrow_head_length,
     gizmo = DEFAULTS.structure.show_gizmo,
     hovered_idx = $bindable(null),
     hovered_site = $bindable(null),
@@ -169,9 +182,15 @@
     show_bonds?: ShowBonds
     show_site_labels?: boolean
     show_site_indices?: boolean
-    show_force_vectors?: boolean
-    force_scale?: number
-    force_color?: string
+    vector_configs?: Record<string, VectorLayerConfig>
+    vector_scale?: number
+    vector_color?: string
+    vector_normalize?: boolean
+    vector_uniform_thickness?: boolean
+    vector_origin_gap?: number
+    vector_shaft_radius?: number
+    vector_arrow_head_radius?: number
+    vector_arrow_head_length?: number
     gizmo?: boolean | ComponentProps<typeof extras.Gizmo>
     hovered_idx?: number | null
     hovered_site?: Site | null
@@ -433,6 +452,32 @@
     lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
   )
 
+  // Characteristic inter-atomic spacing: cube root of volume per atom.
+  // Better than lattice params for arrow sizing in small cells (e.g. BCC Fe).
+  let char_atom_spacing = $derived(
+    lattice && structure?.sites?.length
+      ? Math.cbrt(lattice.volume / structure.sites.length)
+      : structure_size,
+  )
+
+  // When uniform thickness is on, convert negative (length-relative) radii to
+  // positive (absolute) values scaled by inter-atomic spacing.
+  let eff_shaft_radius = $derived(
+    vector_uniform_thickness
+      ? char_atom_spacing * Math.abs(vector_shaft_radius)
+      : vector_shaft_radius,
+  )
+  let eff_head_radius = $derived(
+    vector_uniform_thickness
+      ? char_atom_spacing * Math.abs(vector_arrow_head_radius)
+      : vector_arrow_head_radius,
+  )
+  let eff_head_length = $derived(
+    vector_uniform_thickness
+      ? char_atom_spacing * Math.abs(vector_arrow_head_length)
+      : vector_arrow_head_length,
+  )
+
   // Compute dynamic camera clipping planes based on structure size
   // This prevents z-fighting and disappearing objects when zooming in close on large supercells
   let camera_near = $derived(Math.max(0.01, structure_size * 0.01))
@@ -656,35 +701,117 @@
     }${blu.toString(16).padStart(2, `0`)}`
   }
 
-  // Extract per-site vectors from force, magmom, or spin properties.
-  // For magmom/spin, color interpolates between spin-up (red) and spin-down (blue).
-  let force_data = $derived.by(() => {
-    if (!show_force_vectors || !structure?.sites) return []
-    return structure.sites
-      .map((site) => {
-        const info = get_site_vector_info(site)
-        if (!info) return null
+  // Build one arrow layer per visible vector key. Auto-scales the longest
+  // vector to 1.8× char_atom_spacing (cube root of volume per atom).
+  // When vector_normalize is on, effective_max is 1 so all arrows get equal length.
+  // Single active key preserves legacy coloring (element for force,
+  // spin-direction for magmom/spin). Multiple keys use flat palette colors.
+  let vector_layers = $derived.by(() => {
+    if (!structure?.sites) return []
+    const keys = get_structure_vector_keys(structure)
+    const active_keys = keys.filter((key) => vector_configs[key]?.visible !== false)
+    if (active_keys.length === 0) return []
 
-        let arrow_color: string
-        if (info.key !== `force`) {
-          arrow_color = spin_direction_color(info.vec)
-        } else {
-          const majority_element = site.species.length > 0
-            ? site.species.reduce((max, spec) => spec.occu > max.occu ? spec : max)
-              .element
-            : undefined
-          arrow_color = (majority_element && colors.element?.[majority_element]) ||
-            force_color
+    // Build per-site lookup; only count active (visible) keys toward max_mag
+    const active_set = new Set(active_keys)
+    let max_mag = 0
+    const site_vec_maps = structure.sites.map((site) => {
+      const map = new SvelteMap<string, Vec3>()
+      for (const { key, vec } of get_all_site_vectors(site)) {
+        map.set(key, vec)
+        if (active_set.has(key)) {
+          max_mag = Math.max(max_mag, Math.hypot(...vec))
         }
+      }
+      return map
+    })
 
-        return {
-          position: site.xyz,
-          vector: info.vec,
-          scale: force_scale,
-          color: arrow_color,
+    // When normalize is on, treat all magnitudes as 1 so arrows have equal length
+    const effective_max = vector_normalize ? 1 : max_mag
+    const auto_scale = effective_max > 1e-10
+      ? (char_atom_spacing * 1.8) / effective_max
+      : 1
+    const is_single = active_keys.length === 1
+    const effective_global_scale = auto_scale * vector_scale
+
+    // When vector_origin_gap > 0 and multiple vectors exist at a site,
+    // arrange arrow origins on a regular polygon centered on the atom, in a
+    // plane perpendicular to the mean vector direction. The gap is a fraction
+    // of the visual atom radius (0 = center, 0.5 = halfway to surface).
+    // get_site_radius() returns the uniform scale applied to SphereGeometry(0.5),
+    // so visual_radius = get_site_radius() * 0.5.
+    const site_offsets = (vector_origin_gap > 0 && !is_single)
+      ? structure.sites.map((site, site_idx) => {
+        const vec_map = site_vec_maps[site_idx]
+        const site_keys = active_keys.filter((key) => vec_map.has(key))
+        const n_keys = site_keys.length
+        if (n_keys <= 1) return null
+        const visual_radius = get_site_radius(site, site_idx) * 0.5
+        const gap_abs = vector_origin_gap * visual_radius
+        let mean: Vec3 = [0, 0, 0]
+        for (const key of site_keys) {
+          const vec = vec_map.get(key)
+          if (vec) mean = math.add(mean, math.normalize_vec3(vec)) as Vec3
         }
+        const mean_dir = math.normalize_vec3(mean, [0, 1, 0] as Vec3)
+        const [u_vec, v_vec] = math.compute_in_plane_basis(mean_dir)
+        const offsets = new SvelteMap<string, Vec3>()
+        for (const [idx, key] of site_keys.entries()) {
+          const angle = (2 * Math.PI * idx) / n_keys
+          const dx = math.scale(u_vec, gap_abs * Math.cos(angle)) as Vec3
+          const dy = math.scale(v_vec, gap_abs * Math.sin(angle)) as Vec3
+          offsets.set(key, math.add(dx, dy) as Vec3)
+        }
+        return offsets
       })
-      .filter((item): item is NonNullable<typeof item> => item !== null)
+      : null
+
+    return active_keys.map((key, layer_idx) => {
+      const layer_cfg = vector_configs[key]
+      const layer_scale = effective_global_scale * (layer_cfg?.scale ?? 1.0)
+      const layer_color = layer_cfg?.color ??
+        VECTOR_PALETTE[layer_idx % VECTOR_PALETTE.length]
+
+      const arrows = structure.sites
+        .map((site, site_idx) => {
+          const vec = site_vec_maps[site_idx].get(key)
+          if (!vec) return null
+
+          // Single key with no explicit color uses semantic coloring
+          // (element for force, spin-direction for magmom/spin).
+          // Everything else uses layer_color (explicit color ?? palette).
+          let arrow_color: string
+          if (is_single && !layer_cfg?.color) {
+            if (key.startsWith(`magmom`) || key.startsWith(`spin`)) {
+              arrow_color = spin_direction_color(vec)
+            } else {
+              const majority_element = site.species.length > 0
+                ? site.species.reduce((max, spec) =>
+                  spec.occu > max.occu ? spec : max
+                ).element
+                : undefined
+              arrow_color =
+                (majority_element && colors.element?.[majority_element]) ||
+                vector_color
+            }
+          } else arrow_color = layer_color
+
+          const offset = site_offsets?.[site_idx]?.get(key)
+          const position = offset ? math.add(site.xyz, offset) as Vec3 : site.xyz
+          const arrow_vec = vector_normalize ? math.normalize_vec3(vec) : vec
+
+          return {
+            site_idx,
+            position,
+            vector: arrow_vec,
+            scale: layer_scale,
+            color: arrow_color,
+          }
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+
+      return { key, arrows }
+    })
   })
 
   let instanced_atom_groups = $derived(
@@ -991,11 +1118,16 @@
         {/if}
       {/if}
 
-      {#if force_data.length > 0}
-        {#each force_data as force (force.position.join(`,`) + force.vector.join(`,`))}
-          <Arrow {...force} />
+      {#each vector_layers as layer (layer.key)}
+        {#each layer.arrows as arrow (`${layer.key}-${arrow.site_idx}`)}
+          <Arrow
+            {...arrow}
+            shaft_radius={eff_shaft_radius}
+            arrow_head_radius={eff_head_radius}
+            arrow_head_length={eff_head_length}
+          />
         {/each}
-      {/if}
+      {/each}
 
       <!-- Instanced bond rendering with gradient colors -->
       {#if instanced_bond_groups.length > 0}
