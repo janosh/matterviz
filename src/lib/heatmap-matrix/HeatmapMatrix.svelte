@@ -358,8 +358,7 @@
 
   // Single-pass min/max to avoid spreading large arrays into Math.min/max
   let [auto_min, auto_max] = $derived.by(() => {
-    let min = Infinity
-    let max = -Infinity
+    let [min, max] = [Infinity, -Infinity]
     for (const value of valid_numeric_values) {
       if (value < min) min = value
       if (value > max) max = value

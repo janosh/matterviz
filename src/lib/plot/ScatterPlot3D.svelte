@@ -203,8 +203,7 @@
 
   let auto_color_range = $derived.by((): [number, number] => {
     if (all_color_values.length === 0) return [0, 1]
-    let min = Infinity
-    let max = -Infinity
+    let [min, max] = [Infinity, -Infinity]
     for (const val of all_color_values) {
       if (val < min) min = val
       if (val > max) max = val

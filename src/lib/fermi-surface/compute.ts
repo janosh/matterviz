@@ -527,7 +527,7 @@ function slice_surface_with_plane(
 
   // Compute signed distance of each vertex to plane
   const vertex_distances = surface.vertices.map(
-    (vert) => (math.dot(vert, plane_normal) as number) - plane_distance,
+    (vert) => math.dot(vert, plane_normal) - plane_distance,
   )
 
   // Build edge-to-faces map and collect face segments

@@ -1386,17 +1386,16 @@
   // For horizontal axes (0,1): pad both sides.
   // For vertical axis (2): use actual data range and round min down to an integer.
   const niced_range = $derived.by(() => {
-    return [0, 1, 2].map((axis) => {
+    return [0, 1, 2].map((axis): Vec2 => {
       const ticks = data_ticks[axis]
       const lo = ticks[0]
       const hi = ticks.at(-1) ?? lo
       const step = ticks.length > 1 ? ticks[1] - ticks[0] : 1
       if (axis === 2) {
-        const min_data = data_bbox.mins[2]
-        const max_data = data_bbox.maxs[2]
-        return [Math.floor(min_data), max_data] as [number, number]
+        const [min_data, max_data] = [data_bbox.mins[2], data_bbox.maxs[2]]
+        return [Math.floor(min_data), max_data]
       }
-      return [lo - step, hi + step] as [number, number]
+      return [lo - step, hi + step]
     })
   })
 

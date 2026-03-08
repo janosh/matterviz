@@ -576,9 +576,9 @@
     )
   })
 
-  let x_range = $derived.by(() => {
+  let x_range = $derived.by((): Vec2 => {
     const flat = Object.values(x_positions ?? {}).flat()
-    return [flat[0] ?? 0, flat.at(-1) ?? 1] as Vec2
+    return [flat[0] ?? 0, flat.at(-1) ?? 1]
   })
 
   // Calculate y-range, enforcing 0 minimum for phonon bands without imaginary modes

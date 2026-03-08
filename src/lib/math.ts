@@ -209,6 +209,9 @@ function validate_matrix(mat: number[][], name: string): number {
   return cols
 }
 
+export function dot(vec1: NdVector, vec2: NdVector): number
+export function dot(vec1: NdVector[], vec2: NdVector): number[]
+export function dot(vec1: NdVector[], vec2: NdVector[]): number[][]
 export function dot(
   vec1: NdVector | NdVector[],
   vec2: NdVector | NdVector[],
@@ -509,7 +512,7 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   let ref_vec: Vec3 = [1, 0, 0]
   if (Math.abs(normal[0]) > 0.9) ref_vec = [0, 1, 0]
 
-  const dot_nr = dot(normal, ref_vec) as number
+  const dot_nr = dot(normal, ref_vec)
   const u_raw: Vec3 = [
     ref_vec[0] - dot_nr * normal[0],
     ref_vec[1] - dot_nr * normal[1],
@@ -517,7 +520,7 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   ]
   const u_vec = normalize_vec3(u_raw, [0, 1, 0])
   const v_vec = cross_3d(normal, u_vec)
-  return [u_vec, v_vec]
+  return [u_vec, v_vec] // u, v basis vectors
 }
 
 // Check whether N 3D points all lie on the same plane within tolerance.
@@ -552,9 +555,9 @@ export function are_coplanar(points: number[][], tolerance = 1e-6): boolean {
   }
   // All edges are collinear -> all points lie on a line -> coplanar
   if (!normal) return true
-  const plane_d = dot(normal, origin) as number
+  const plane_d = dot(normal, origin)
   for (let idx = 1; idx < points.length; idx++) {
-    const dist = Math.abs((dot(normal, points[idx]) as number) - plane_d)
+    const dist = Math.abs(dot(normal, points[idx]) - plane_d)
     if (dist > tolerance) return false
   }
   return true
@@ -606,7 +609,7 @@ export function merge_coplanar_triangles(
       ? normal[1]
       : normal[2]
     if (first_nonzero < 0) normal = [-normal[0], -normal[1], -normal[2]]
-    const plane_d = dot(normal, va) as number
+    const plane_d = dot(normal, va)
     tri_planes.push({ verts: [va, vb, vc], normal, plane_d, degenerate: false })
   }
 
@@ -717,9 +720,9 @@ export function merge_coplanar_triangles(
 
     // Project to 2D using in-plane basis
     const [u_vec, v_vec] = compute_in_plane_basis(normal)
-    const pts_2d: Vec2[] = unique_verts.map((vert) =>
-      [dot(u_vec, vert) as number, dot(v_vec, vert) as number] as Vec2
-    )
+    const pts_2d = unique_verts.map((
+      vertex,
+    ): Vec2 => [dot(u_vec, vertex), dot(v_vec, vertex)])
 
     const hull = convex_hull_2d(pts_2d)
     if (hull.length < 3) {

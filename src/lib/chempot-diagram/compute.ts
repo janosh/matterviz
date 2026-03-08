@@ -462,8 +462,7 @@ export function build_axis_ranges(
   elements: string[],
 ): { element: string; min_val: number; max_val: number }[] {
   return elements.map((element, axis_idx) => {
-    let min_val = Infinity
-    let max_val = -Infinity
+    let [min_val, max_val] = [Infinity, -Infinity]
     for (const point of points) {
       const val = point[axis_idx]
       if (val < min_val) min_val = val

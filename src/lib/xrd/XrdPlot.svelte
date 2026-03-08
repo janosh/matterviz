@@ -142,10 +142,9 @@
   })
 
   // Compute overall 2θ domain (degrees)
-  const angle_range = $derived.by(() => {
-    if (pattern_entries.length === 0) return [0, 90] as Vec2 // Default range
-    let min_x = Infinity
-    let max_x = 0
+  const angle_range = $derived.by((): Vec2 => {
+    if (pattern_entries.length === 0) return [0, 90] // Default range
+    let [min_x, max_x] = [Infinity, 0]
     for (const entry of pattern_entries) {
       const entry_min = Math.min(...entry.pattern.x)
       const entry_max = Math.max(...entry.pattern.x)
@@ -154,7 +153,7 @@
     }
     // Use data min if it's significantly above 0, otherwise start at 0
     const x_min = min_x > 10 ? Math.floor(min_x) : 0
-    return [x_min, Math.ceil(max_x)] as Vec2
+    return [x_min, Math.ceil(max_x)]
   })
 
   // Scaled intensities are normalized to 0..100, add 10% top padding for peak labels

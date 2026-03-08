@@ -123,8 +123,7 @@ function build_grid(
   { data, nx, ny, nz, divisor = 1, data_order = `z_fastest` }: BuildGridOptions,
 ): { grid: number[][][]; data_range: DataRange } {
   const grid: number[][][] = new Array(nx)
-  let min_val = Infinity
-  let max_val = -Infinity
+  let [min_val, max_val] = [Infinity, -Infinity]
   let sum = 0
   const total = nx * ny * nz
   const data_len = Math.min(data.length, total)
