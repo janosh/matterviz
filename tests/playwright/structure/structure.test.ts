@@ -242,8 +242,9 @@ test.describe(`Structure Component Tests`, () => {
       `false`,
     )
     await expect(control_pane).toBeHidden()
+    // tooltip attachment moves title to data-original-title
     await expect(controls_toggle_button).toHaveAttribute(
-      `title`,
+      `data-original-title`,
       `Structure controls`,
     )
   })
@@ -308,8 +309,9 @@ test.describe(`Structure Component Tests`, () => {
       `false`,
     )
     await expect(control_pane).toBeHidden()
+    // tooltip attachment moves title to data-original-title
     await expect(controls_toggle_button).toHaveAttribute(
-      `title`,
+      `data-original-title`,
       `Structure controls`,
     )
   })

@@ -322,7 +322,11 @@
     if (keys.length === 0) return
     const configs = default_vector_configs(keys)
     scene_props.vector_configs = configs
-    last_auto_configs = configs
+    // Read back the proxied reference — Svelte 5 $state wraps objects in
+    // proxies, so `scene_props.vector_configs !== configs`. Storing the proxy
+    // lets the identity check above detect unmodified auto-configs.
+    // See https://svelte.dev/e/state_proxy_equality_mismatch
+    last_auto_configs = scene_props.vector_configs
     scene_props.vector_scale ??= DEFAULTS.structure.vector_scale
     scene_props.vector_color ??= DEFAULTS.structure.vector_color
   })

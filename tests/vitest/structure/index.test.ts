@@ -1,9 +1,11 @@
 import type { AnyStructure, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import {
+  default_vector_configs,
   get_all_site_vectors,
   get_structure_vector_keys,
   is_vector_key,
+  VECTOR_PALETTE,
 } from '$lib/structure'
 import { structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
@@ -231,17 +233,37 @@ describe(`get_center_of_mass`, () => {
   )
 })
 
-const make_site = (properties: Record<string, unknown>): Site =>
+const make_site = (properties?: Record<string, unknown>): Site =>
   ({ species: [], abc: [0, 0, 0], xyz: [0, 0, 0], label: `X`, properties }) as Site
 
-// Assert first vector entry is non-null and return the narrowed result
-function expect_vector_info(site: Site): { vec: Vec3; key: string } {
-  const info = get_all_site_vectors(site)[0] ?? null
-  expect(info).not.toBeNull()
-  return info as { vec: Vec3; key: string }
-}
+describe(`is_vector_key`, () => {
+  test.each([
+    [`force`, true],
+    [`forces`, true],
+    [`magmom`, true],
+    [`magmoms`, true],
+    [`spin`, true],
+    [`spins`, true],
+    [`force_DFT`, true],
+    [`force_MLFF`, true],
+    [`forces_PBE`, true],
+    [`magmom_experiment`, true],
+    [`spin_up`, true],
+    [`spins_down`, true],
+    [`force_`, true],
+    [`magmom_`, true],
+    [`velocity`, false],
+    [`charge`, false],
+    [`energy`, false],
+    [`forceful`, false],
+    [`my_force`, false],
+    [``, false],
+  ])(`is_vector_key(%s) = %s`, (key, expected) => {
+    expect(is_vector_key(key)).toBe(expected)
+  })
+})
 
-describe(`get_all_site_vectors first entry`, () => {
+describe(`get_all_site_vectors`, () => {
   test.each(
     [
       [`force`, [1, 2, 3]],
@@ -250,11 +272,11 @@ describe(`get_all_site_vectors first entry`, () => {
       [`magmoms`, [0.4, 0.5, 0.6]],
       [`spin`, [0, 0, 1]],
       [`spins`, [0, 0, -1]],
+      [`force_DFT`, [1, 0, 0]],
     ] as const,
   )(`accepts 3D vector in %s`, (key, vec) => {
-    const info = expect_vector_info(make_site({ [key]: [...vec] }))
-    expect(info.key).toBe(key)
-    expect(info.vec).toEqual([...vec])
+    const result = get_all_site_vectors(make_site({ [key]: [...vec] }))
+    expect(result[0]).toEqual({ key, vec: [...vec] })
   })
 
   test.each(
@@ -263,24 +285,19 @@ describe(`get_all_site_vectors first entry`, () => {
       [`magmom`, -1.0, [0, 0, -1.0]],
       [`magmoms`, 0.5, [0, 0, 0.5]],
       [`spin`, 1, [0, 0, 1]],
+      [`spin`, -3.5, [0, 0, -3.5]],
+      [`magmom`, 0, [0, 0, 0]],
     ] as const,
   )(`converts scalar %s=%s to z-vector`, (key, scalar, expected) => {
-    expect(expect_vector_info(make_site({ [key]: scalar })).vec).toEqual(expected)
+    expect(get_all_site_vectors(make_site({ [key]: scalar }))[0].vec).toEqual(expected)
   })
 
-  test(`returns null for site without vector properties`, () => {
-    expect(get_all_site_vectors(make_site({}))).toHaveLength(0)
-    expect(get_all_site_vectors(make_site({ charge: 1 }))).toHaveLength(0)
-  })
-
-  test(`singular key takes priority over plural`, () => {
-    const info = expect_vector_info(make_site({ force: [1, 0, 0], forces: [0, 1, 0] }))
-    expect(info).toEqual({ key: `force`, vec: [1, 0, 0] })
-  })
-
-  test(`force takes priority over magmom`, () => {
-    expect(expect_vector_info(make_site({ magmom: [0, 1, 0], force: [1, 0, 0] })).key)
-      .toBe(`force`)
+  test.each([
+    [`empty props`, make_site({})],
+    [`non-vector keys only`, make_site({ charge: 1 })],
+    [`undefined properties`, make_site()],
+  ])(`returns [] for %s`, (_desc, site) => {
+    expect(get_all_site_vectors(site)).toEqual([])
   })
 
   test.each([
@@ -298,46 +315,6 @@ describe(`get_all_site_vectors first entry`, () => {
     expect(get_all_site_vectors(make_site(properties))).toHaveLength(0)
   })
 
-  test(`skips invalid key and falls through to valid one`, () => {
-    const info = expect_vector_info(make_site({ force: [NaN, 0, 0], magmom: [0, 0, 1] }))
-    expect(info).toEqual({ key: `magmom`, vec: [0, 0, 1] })
-  })
-
-  test(`matches prefixed keys like force_DFT`, () => {
-    const info = expect_vector_info(make_site({ force_DFT: [1, 0, 0] }))
-    expect(info.key).toBe(`force_DFT`)
-    expect(info.vec).toEqual([1, 0, 0])
-  })
-})
-
-describe(`is_vector_key`, () => {
-  test.each([
-    [`force`, true],
-    [`forces`, true],
-    [`magmom`, true],
-    [`magmoms`, true],
-    [`spin`, true],
-    [`spins`, true],
-    [`force_DFT`, true],
-    [`force_MLFF`, true],
-    [`forces_PBE`, true],
-    [`magmom_experiment`, true],
-    [`spin_up`, true],
-    [`spins_down`, true],
-    [`velocity`, false],
-    [`charge`, false],
-    [`energy`, false],
-    [`forceful`, false],
-    [`my_force`, false],
-    [``, false],
-    [`force_`, true],
-    [`magmom_`, true],
-  ])(`is_vector_key(%s) = %s`, (key, expected) => {
-    expect(is_vector_key(key)).toBe(expected)
-  })
-})
-
-describe(`get_all_site_vectors`, () => {
   test.each([
     {
       desc: `bare keys by prefix priority`,
@@ -359,20 +336,15 @@ describe(`get_all_site_vectors`, () => {
       props: { force_C: [3, 0, 0], force_A: [1, 0, 0], force_B: [2, 0, 0] },
       expected_keys: [`force_A`, `force_B`, `force_C`],
     },
+    {
+      desc: `singular < prefixed < plural`,
+      props: { force: [1, 0, 0], forces: [0, 1, 0], force_DFT: [0, 0, 1] },
+      expected_keys: [`force`, `force_DFT`, `forces`],
+    },
   ])(`ordering: $desc`, ({ props, expected_keys }) => {
-    const vecs = get_all_site_vectors(make_site(props))
-    expect(vecs.map((v) => v.key)).toEqual(expected_keys)
-  })
-
-  test(`converts scalar values to z-directed vectors`, () => {
-    const site = make_site({ magmom: 2.5 })
-    const vecs = get_all_site_vectors(site)
-    expect(vecs).toHaveLength(1)
-    expect(vecs[0].vec).toEqual([0, 0, 2.5])
-  })
-
-  test(`returns empty array for site without properties`, () => {
-    expect(get_all_site_vectors(make_site({}))).toEqual([])
+    expect(get_all_site_vectors(make_site(props)).map((v) => v.key)).toEqual(
+      expected_keys,
+    )
   })
 
   test.each([
@@ -382,7 +354,7 @@ describe(`get_all_site_vectors`, () => {
       expected: [{ key: `force`, vec: [1, 0, 0] }],
     },
     {
-      desc: `invalid values (NaN, Infinity, wrong-length, string) skipped`,
+      desc: `invalid values skipped, valid ones kept`,
       props: {
         force: [NaN, 0, 0],
         magmom: [0, 0, 1],
@@ -402,19 +374,18 @@ describe(`get_all_site_vectors`, () => {
       },
       expected: [{ key: `forces`, vec: [0, 0, 1] }],
     },
+    {
+      desc: `zero vector [0,0,0] is valid`,
+      props: { force: [0, 0, 0] },
+      expected: [{ key: `force`, vec: [0, 0, 0] }],
+    },
+    {
+      desc: `mix of zero and nonzero vectors`,
+      props: { force: [0, 0, 0], magmom: [0, 0, 2.2] },
+      expected: [{ key: `force`, vec: [0, 0, 0] }, { key: `magmom`, vec: [0, 0, 2.2] }],
+    },
   ])(`filtering: $desc`, ({ props, expected }) => {
     expect(get_all_site_vectors(make_site(props))).toEqual(expected)
-  })
-
-  test(`singular + plural + prefixed force keys ordered correctly`, () => {
-    const vecs = get_all_site_vectors(make_site({
-      force: [1, 0, 0],
-      forces: [0, 1, 0],
-      force_DFT: [0, 0, 1],
-    }))
-    // force (prefix_idx=0, bare) < force_DFT (prefix_idx=0, prefixed) < forces (prefix_idx=1, bare)
-    expect(vecs.map((v) => v.key)).toEqual([`force`, `force_DFT`, `forces`])
-    expect(vecs.map((v) => v.vec)).toEqual([[1, 0, 0], [0, 0, 1], [0, 1, 0]])
   })
 })
 
@@ -430,63 +401,81 @@ describe(`get_structure_vector_keys`, () => {
     charge: 0,
   })
 
-  test(`collects unique keys across all sites in priority order`, () => {
-    const structure = make_structure([
-      { force: [1, 0, 0], magmom: [0, 0, 1] },
-      { force: [0, 1, 0] },
-    ])
-    const keys = get_structure_vector_keys(structure)
-    expect(keys).toEqual([`force`, `magmom`])
+  test.each([
+    {
+      desc: `unique keys across sites in priority order`,
+      sites: [{ force: [1, 0, 0], magmom: [0, 0, 1] }, { force: [0, 1, 0] }],
+      expected: [`force`, `magmom`],
+    },
+    {
+      desc: `prefixed keys across sites`,
+      sites: [{ force_DFT: [1, 0, 0] }, {
+        force_MLFF: [0.9, 0, 0],
+        force_DFT: [1, 0, 0],
+      }],
+      expected: [`force_DFT`, `force_MLFF`],
+    },
+    {
+      desc: `empty for structure without vectors`,
+      sites: [{ charge: 1 }, {}],
+      expected: [],
+    },
+    {
+      desc: `bare before prefixed`,
+      sites: [{ force_DFT: [1, 0, 0], force: [0, 1, 0], magmom: [0, 0, 1] }],
+      expected: [`force`, `force_DFT`, `magmom`],
+    },
+    {
+      desc: `deduplicates across sites`,
+      sites: [
+        { force_DFT: [1, 0, 0], force_MLFF: [0.9, 0, 0] },
+        { force_DFT: [0, 1, 0], force_MLFF: [0, 0.9, 0] },
+        { force_DFT: [0, 0, 1] },
+      ],
+      expected: [`force_DFT`, `force_MLFF`],
+    },
+    {
+      desc: `union across heterogeneous sites`,
+      sites: [{ force: [1, 0, 0] }, { magmom: [0, 0, 1] }, {
+        spin_DFT: 0.5,
+        force_MLFF: [0, 1, 0],
+      }],
+      expected: [`force`, `force_MLFF`, `magmom`, `spin_DFT`],
+    },
+    {
+      desc: `skips sites with all-invalid vector values`,
+      sites: [{ force: [NaN, 0, 0], magmom: `bad` }, { force: [1, 0, 0] }],
+      expected: [`force`],
+    },
+  ])(`$desc`, ({ sites, expected }) => {
+    expect(get_structure_vector_keys(make_structure(sites))).toEqual(expected)
+  })
+})
+
+describe(`default_vector_configs`, () => {
+  test(`single key gets null color (semantic coloring)`, () => {
+    expect(default_vector_configs([`force`])).toEqual({
+      force: { visible: true, color: null, scale: null },
+    })
   })
 
-  test(`handles prefixed keys across sites`, () => {
-    const structure = make_structure([
-      { force_DFT: [1, 0, 0] },
-      { force_MLFF: [0.9, 0, 0], force_DFT: [1, 0, 0] },
-    ])
-    const keys = get_structure_vector_keys(structure)
-    expect(keys).toEqual([`force_DFT`, `force_MLFF`])
+  test(`multiple keys get distinct palette colors`, () => {
+    const configs = default_vector_configs([`force_DFT`, `force_MLFF`, `magmom`])
+    expect(configs).toEqual({
+      force_DFT: { visible: true, color: VECTOR_PALETTE[0], scale: null },
+      force_MLFF: { visible: true, color: VECTOR_PALETTE[1], scale: null },
+      magmom: { visible: true, color: VECTOR_PALETTE[2], scale: null },
+    })
   })
 
-  test(`returns empty array for structure without vectors`, () => {
-    const structure = make_structure([{ charge: 1 }, {}])
-    expect(get_structure_vector_keys(structure)).toEqual([])
+  test(`empty keys array returns empty object`, () => {
+    expect(default_vector_configs([])).toEqual({})
   })
 
-  test(`bare keys sort before prefixed keys`, () => {
-    const structure = make_structure([
-      { force_DFT: [1, 0, 0], force: [0, 1, 0], magmom: [0, 0, 1] },
-    ])
-    const keys = get_structure_vector_keys(structure)
-    expect(keys).toEqual([`force`, `force_DFT`, `magmom`])
-  })
-
-  test(`deduplicates keys appearing on multiple sites`, () => {
-    const structure = make_structure([
-      { force_DFT: [1, 0, 0], force_MLFF: [0.9, 0, 0] },
-      { force_DFT: [0, 1, 0], force_MLFF: [0, 0.9, 0] },
-      { force_DFT: [0, 0, 1] },
-    ])
-    const keys = get_structure_vector_keys(structure)
-    expect(keys).toEqual([`force_DFT`, `force_MLFF`])
-  })
-
-  test(`sites with different key subsets contribute to union`, () => {
-    const structure = make_structure([
-      { force: [1, 0, 0] },
-      { magmom: [0, 0, 1] },
-      { spin_DFT: 0.5, force_MLFF: [0, 1, 0] },
-    ])
-    const keys = get_structure_vector_keys(structure)
-    expect(keys).toEqual([`force`, `force_MLFF`, `magmom`, `spin_DFT`])
-  })
-
-  test(`skips sites where all vector keys have invalid values`, () => {
-    const structure = make_structure([
-      { force: [NaN, 0, 0], magmom: `bad` },
-      { force: [1, 0, 0] },
-    ])
-    const keys = get_structure_vector_keys(structure)
-    expect(keys).toEqual([`force`])
+  test(`palette wraps around for more keys than palette entries`, () => {
+    const keys = Array.from({ length: 8 }, (_, idx) => `force_${idx}`)
+    const configs = default_vector_configs(keys)
+    expect(configs.force_6.color).toBe(VECTOR_PALETTE[6 % VECTOR_PALETTE.length])
+    expect(configs.force_7.color).toBe(VECTOR_PALETTE[7 % VECTOR_PALETTE.length])
   })
 })
