@@ -453,12 +453,14 @@
   )
 
   // Characteristic inter-atomic spacing: cube root of volume per atom.
-  // Better than lattice params for arrow sizing in small cells (e.g. BCC Fe).
-  let char_atom_spacing = $derived(
-    lattice && structure?.sites?.length
-      ? Math.cbrt(lattice.volume / structure.sites.length)
-      : structure_size,
-  )
+  // Excludes PBC image atoms (orig_site_idx) so toggling image atoms doesn't affect arrow sizing.
+  let char_atom_spacing = $derived.by(() => {
+    if (!lattice || !structure?.sites?.length) return structure_size
+    const n_real = structure.sites.filter((site) =>
+      site.properties?.orig_site_idx == null
+    ).length
+    return n_real > 0 ? Math.cbrt(lattice.volume / n_real) : structure_size
+  })
 
   // When uniform thickness is on, convert negative (length-relative) radii to
   // positive (absolute) values scaled by inter-atomic spacing.
