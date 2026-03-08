@@ -401,28 +401,27 @@ export function det_4x4(matrix: Matrix4x4): number {
 // More numerically stable than cofactor expansion for N > 4
 // Returns 0 for singular/near-singular matrices (pivot < EPS ≈ 1e-10)
 export function det_nxn(matrix: number[][]): number {
-  const n = matrix.length
-  if (n === 0) return 1
-  if (!matrix.every((row) => row.length === n)) {
+  const mat_size = matrix.length
+  if (mat_size === 0) return 1
+  if (!matrix.every((row) => row.length === mat_size)) {
     throw new Error(`det_nxn requires a square matrix`)
   }
 
   // Fast paths for small matrices
-  if (n === 1) return matrix[0][0]
-  if (n === 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
-  if (n === 3) return det_3x3(matrix as Matrix3x3)
-  if (n === 4) return det_4x4(matrix as Matrix4x4)
+  if (mat_size === 1) return matrix[0][0]
+  if (mat_size === 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
+  if (mat_size === 3) return det_3x3(matrix as Matrix3x3)
+  if (mat_size === 4) return det_4x4(matrix as Matrix4x4)
 
   // LU decomposition with partial pivoting
   // Create a working copy to avoid mutating input
   const lu = matrix.map((row) => [...row])
   let swaps = 0
 
-  for (let col = 0; col < n; col++) {
+  for (let col = 0; col < mat_size; col++) {
     // Find pivot (largest absolute value in column)
-    let max_row = col
-    let max_val = Math.abs(lu[col][col])
-    for (let row = col + 1; row < n; row++) {
+    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
+    for (let row = col + 1; row < mat_size; row++) {
       const val = Math.abs(lu[row][col])
       if (val > max_val) {
         max_val = val
@@ -441,10 +440,10 @@ export function det_nxn(matrix: number[][]): number {
 
     // Eliminate below pivot
     const pivot = lu[col][col]
-    for (let row = col + 1; row < n; row++) {
+    for (let row = col + 1; row < mat_size; row++) {
       const factor = lu[row][col] / pivot
       lu[row][col] = 0
-      for (let k = col + 1; k < n; k++) {
+      for (let k = col + 1; k < mat_size; k++) {
         lu[row][k] -= factor * lu[col][k]
       }
     }
@@ -452,7 +451,7 @@ export function det_nxn(matrix: number[][]): number {
 
   // Determinant is product of diagonal elements × (-1)^swaps
   let det = swaps % 2 === 0 ? 1 : -1
-  for (let idx = 0; idx < n; idx++) {
+  for (let idx = 0; idx < mat_size; idx++) {
     det *= lu[idx][idx]
   }
   return det

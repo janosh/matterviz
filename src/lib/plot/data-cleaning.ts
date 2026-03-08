@@ -360,8 +360,7 @@ export function smooth_savitzky_golay(
   const coeffs_sum = coeffs.reduce((a, b) => a + b, 0)
 
   for (let idx = 0; idx < values.length; idx++) {
-    let sum = 0
-    let weight_sum = 0
+    let [sum, weight_sum] = [0, 0]
 
     for (let jdx = 0; jdx < actual_window; jdx++) {
       const data_idx = idx - half + jdx
