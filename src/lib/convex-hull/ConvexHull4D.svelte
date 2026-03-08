@@ -514,9 +514,7 @@
     if (!canvas) return { x: 0, y: 0, depth: 0 }
 
     // Center coordinates around tetrahedron/triangle centroid
-    let centered_x = x
-    let centered_y = y
-    let centered_z = z
+    let [centered_x, centered_y, centered_z] = [x, y, z]
 
     // Tetrahedron centroid: average of vertices (1,0,0), (0.5,√3/2,0), (0.5,√3/6,√6/3), (0,0,0)
     const centroid_x = (1 + 0.5 + 0.5 + 0) / 4 // = 0.5

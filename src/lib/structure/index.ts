@@ -145,28 +145,92 @@ export function get_center_of_mass(structure: AnyStructure): Vec3 {
   return math.scale(center, 1 / total_weight)
 }
 
-// Property keys checked for per-site vector data (force, magnetic moment, spin)
-const VECTOR_PROPERTY_KEYS = [`force`, `magmom`, `spin`] as const
+// Recognized prefixes for per-site vector data (force, magnetic moment, spin).
+// Both singular and plural forms are accepted. Keys matching exactly or starting
+// with one of these followed by `_` (e.g. `force_DFT`) are treated as vectors.
+export const VECTOR_KEY_PREFIXES = [
+  `force`,
+  `forces`,
+  `magmom`,
+  `magmoms`,
+  `spin`,
+  `spins`,
+] as const
 
-// Extract a vector and its source key from a site's properties. Checks force, magmom,
-// and spin in priority order. Scalar values are converted to z-directed vectors [0, 0, val].
-export function get_site_vector_info(site: Site): { vec: Vec3; key: string } | null {
-  const props = site.properties
-  if (!props) return null
-  for (const key of VECTOR_PROPERTY_KEYS) {
-    const val = props[key]
-    if (
-      Array.isArray(val) && val.length === 3 &&
-      val.every((elem) => typeof elem === `number` && isFinite(elem))
-    ) return { vec: val as Vec3, key }
-    if (typeof val === `number` && isFinite(val)) return { vec: [0, 0, val], key }
-  }
+export function is_vector_key(key: string): boolean {
+  return VECTOR_KEY_PREFIXES.some(
+    (prefix) => key === prefix || key.startsWith(`${prefix}_`),
+  )
+}
+
+// Default color palette for distinguishing multiple vector layers
+export const VECTOR_PALETTE = [
+  `#e74c3c`,
+  `#3498db`,
+  `#2ecc71`,
+  `#f39c12`,
+  `#9b59b6`,
+  `#1abc9c`,
+] as const
+
+// Single key → null color (semantic coloring); multiple keys → palette colors.
+export const default_vector_configs = (keys: string[]) =>
+  Object.fromEntries(
+    keys.map((key, idx) => [key, {
+      visible: true,
+      color: keys.length > 1 ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length] : null,
+      scale: null,
+    }]),
+  )
+
+function try_parse_vec3(val: unknown): Vec3 | null {
+  if (
+    Array.isArray(val) && val.length === 3 &&
+    val.every((elem) => typeof elem === `number` && isFinite(elem))
+  ) return val as Vec3
+  if (typeof val === `number` && isFinite(val)) return [0, 0, val]
   return null
 }
 
-// Convenience wrapper returning just the vector (preserves existing API)
-export function get_site_vector(site: Site): Vec3 | null {
-  return get_site_vector_info(site)?.vec ?? null
+// Priority index for ordering: bare names first in VECTOR_KEY_PREFIXES order,
+// then prefixed keys in the same prefix order, alphabetically within each prefix group.
+function vector_key_sort_order(key: string): [number, number, string] {
+  for (const [prefix_idx, prefix] of VECTOR_KEY_PREFIXES.entries()) {
+    if (key === prefix) return [prefix_idx, 0, ``]
+    if (key.startsWith(`${prefix}_`)) return [prefix_idx, 1, key]
+  }
+  return [VECTOR_KEY_PREFIXES.length, 0, key]
+}
+
+function compare_vector_keys(left: string, right: string): number {
+  const ord_l = vector_key_sort_order(left)
+  const ord_r = vector_key_sort_order(right)
+  return ord_l[0] - ord_r[0] || ord_l[1] - ord_r[1] || ord_l[2].localeCompare(ord_r[2])
+}
+
+// Extract ALL vector properties from a site (not just the first match).
+// Returns entries for every key that is_vector_key() and has a valid 3D vector value.
+// Ordered by VECTOR_KEY_PREFIXES priority, then alphabetically for prefixed keys.
+export function get_all_site_vectors(site: Site): { vec: Vec3; key: string }[] {
+  const props = site.properties
+  if (!props) return []
+  const results: { vec: Vec3; key: string }[] = []
+  for (const key of Object.keys(props)) {
+    if (!is_vector_key(key)) continue
+    const vec = try_parse_vec3(props[key])
+    if (vec) results.push({ vec, key })
+  }
+  return results.sort((left, right) => compare_vector_keys(left.key, right.key))
+}
+
+// Collect the union of all vector property keys across all sites in a structure,
+// preserving VECTOR_KEY_PREFIXES priority order.
+export function get_structure_vector_keys(structure: AnyStructure): string[] {
+  const seen = new Set<string>()
+  for (const site of structure.sites) {
+    for (const { key } of get_all_site_vectors(site)) seen.add(key)
+  }
+  return [...seen].sort(compare_vector_keys)
 }
 
 export interface StructureHandlerData {

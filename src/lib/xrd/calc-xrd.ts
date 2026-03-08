@@ -10,11 +10,6 @@ import { is_crystal } from '$lib/structure/validation'
 import ATOMIC_SCATTERING_PARAMS from './atomic_scattering_params.json' with {
   type: 'json',
 }
-
-// JSON import yields Record<string, number[][]>; type for element-keyed scattering params
-type ScatteringParamsRecord = Partial<
-  Record<ElementSymbol, number[][] | { a: number[]; b: number[]; c?: number }>
->
 import type {
   Hkl,
   HklObj,
@@ -24,6 +19,11 @@ import type {
   XrdPattern,
 } from './index'
 import { is_xrd_data_file, parse_xrd_file } from './parse'
+
+// JSON import yields Record<string, number[][]>; type for element-keyed scattering params
+type ScatteringParamsRecord = Partial<
+  Record<ElementSymbol, number[][] | { a: number[]; b: number[]; c?: number }>
+>
 
 // XRD wavelengths in Angstrom (Å)
 export const WAVELENGTHS = {
@@ -248,9 +248,7 @@ export function compute_xrd_pattern(
     const sin_theta_over_lambda_sq = sin_theta_over_lambda * sin_theta_over_lambda
 
     // g.r for all fractional coords
-    const g_dot_r_all = frac_coords.map((frac_coord) =>
-      math.dot(frac_coord, hkl) as number
-    )
+    const g_dot_r_all = frac_coords.map((frac_coord) => math.dot(frac_coord, hkl))
 
     // Atomic scattering factors (vectorized style)
     const f_scattering: number[] = coeffs.map((coeff_entry) => {

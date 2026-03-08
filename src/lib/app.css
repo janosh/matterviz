@@ -1,6 +1,9 @@
 /* Starry-night syntax highlighting (GitHub-style, auto light/dark) */
 @import '@wooorm/starry-night/style/both';
 
+/* CSS variables are unlayered so they're available to both layers and to
+   components that reference them via var(). Custom properties inherit
+   naturally regardless of layer ordering. */
 :root {
   --theme-transition-duration: 0.3s;
   --text-color: #eee;
@@ -19,213 +22,217 @@
   --border-radius: 3pt;
 }
 
-/* Targeted theme transitions for performance */
-:where(body, main, button, a, code, kbd, pre, blockquote, textarea, table, input),
-:where(select, label, .theme-control, .toc, svg, path, circle, rect, text),
-:where(.info-pane, .pane-header, .pane-content, .close-button),
-:where(nav > a),
-:where(.theme-control, .theme-control label, .theme-control select) {
-  transition:
-    background-color var(--theme-transition-duration) ease,
-    color var(--theme-transition-duration) ease,
-    border-color var(--theme-transition-duration) ease,
-    fill var(--theme-transition-duration) ease,
-    stroke var(--theme-transition-duration) ease,
-    box-shadow var(--theme-transition-duration) ease;
-}
-body {
-  background: var(--page-bg);
-  padding: 5vh 3vw 3vh;
-  font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-  margin: auto;
-  color: var(--text-color);
-  line-height: 1.5;
-  /* Sticky footer: footer stays at bottom when content is short */
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  box-sizing: border-box;
-}
-main {
-  margin: auto;
-  width: 100%;
-  max-width: var(--max-text-width);
-  container-type: inline-size;
-  flex: 1; /* Grow to fill available space (sticky footer) */
-}
-a {
-  color: var(--accent-color, cornflowerblue);
-  text-decoration: none;
-}
-
-button, a.btn {
-  color: var(--text-color);
-  cursor: pointer;
-  border: none;
-  border-radius: var(--border-radius);
-  padding: 2pt 4pt;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-a:hover {
-  color: var(--accent-hover-color, orange);
-}
-code, kbd {
-  overflow-wrap: break-word;
-  padding: 1pt 3pt;
-  border-radius: var(--border-radius);
-  background-color: var(--code-bg);
-}
-kbd {
-  font-size: larger;
-}
-pre code {
-  background-color: transparent;
-  display: inline-block;
-  padding: 0;
-  width: 100%;
-}
-pre {
-  position: relative;
-  border-radius: var(--border-radius);
-  font-size: 0.95em;
-  background-color: var(--pre-bg);
-  padding: 1ex 1em;
-  overflow-x: auto;
-}
-blockquote {
-  border-left: 3pt solid var(--accent-color, cornflowerblue);
-  padding: 3pt 7pt;
-  background: rgba(255, 255, 255, 0.2);
-  margin: 1em 0;
-}
-blockquote p:first-child {
-  margin-top: 0;
-}
-blockquote p:last-child {
-  margin-bottom: 0;
-}
-
-:where(h1, h2, h3, h4, h5, h6) {
-  scroll-margin-top: 100px;
-}
-:where(h1, h2, h3, h4, h5, h6):target {
-  color: var(--accent-color, cornflowerblue);
-}
-body main > :where(h1, h2, h3, h4, h5, h6) {
-  text-align: center;
-}
-/* style heading anchors added by heading_anchors attachment from svelte-multiselect */
-:where(h2, h3, h4, h5, h6) a[aria-hidden='true'] {
-  transition: 0.3s;
-  margin-left: 4pt;
-  opacity: 0;
-}
-:where(h2, h3, h4, h5, h6):hover a[aria-hidden='true'] {
-  opacity: 1;
+/* App-shell styles: page layout, typography, headings, navigation.
+   These are only needed by the standalone matterviz demo site.
+   When embedded in a host framework (Dash/Mantine, React, etc.),
+   the host's unlayered CSS automatically takes precedence. */
+@layer matterviz-shell {
+  /* Targeted theme transitions for performance */
+  :where(body, main, button, a, code, kbd, pre, blockquote, textarea, table, input),
+  :where(select, label, .theme-control, .toc, svg, path, circle, rect, text),
+  :where(.info-pane, .pane-header, .pane-content, .close-button),
+  :where(nav > a),
+  :where(.theme-control, .theme-control label, .theme-control select) {
+    transition:
+      background-color var(--theme-transition-duration) ease,
+      color var(--theme-transition-duration) ease,
+      border-color var(--theme-transition-duration) ease,
+      fill var(--theme-transition-duration) ease,
+      stroke var(--theme-transition-duration) ease,
+      box-shadow var(--theme-transition-duration) ease;
+  }
+  body {
+    background: var(--page-bg);
+    padding: 5vh 3vw 3vh;
+    font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    margin: auto;
+    color: var(--text-color);
+    line-height: 1.5;
+    /* Sticky footer: footer stays at bottom when content is short */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+  main {
+    margin: auto;
+    width: 100%;
+    max-width: var(--max-text-width);
+    container-type: inline-size;
+    flex: 1; /* Grow to fill available space (sticky footer) */
+  }
+  a {
+    color: var(--accent-color, cornflowerblue);
+    text-decoration: none;
+  }
+  a:hover {
+    color: var(--accent-hover-color, orange);
+  }
+  blockquote {
+    border-left: 3pt solid var(--accent-color, cornflowerblue);
+    padding: 3pt 7pt;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 1em 0;
+  }
+  blockquote p:first-child {
+    margin-top: 0;
+  }
+  blockquote p:last-child {
+    margin-bottom: 0;
+  }
+  :where(h1, h2, h3, h4, h5, h6) {
+    scroll-margin-top: 100px;
+  }
+  :where(h1, h2, h3, h4, h5, h6):target {
+    color: var(--accent-color, cornflowerblue);
+  }
+  body main > :where(h1, h2, h3, h4, h5, h6) {
+    text-align: center;
+  }
+  /* style heading anchors added by heading_anchors attachment from svelte-multiselect */
+  :where(h2, h3, h4, h5, h6) a[aria-hidden='true'] {
+    transition: 0.3s;
+    margin-left: 4pt;
+    opacity: 0;
+  }
+  :where(h2, h3, h4, h5, h6):hover a[aria-hidden='true'] {
+    opacity: 1;
+  }
+  .full-bleed {
+    --margin: 5vw;
+    width: calc(100vw - 2 * var(--margin)) !important;
+    margin-left: calc(-50vw + 50% + var(--margin));
+    max-width: none !important;
+  }
+  .bleed-1400 {
+    --margin: 5vw;
+    width: min(1400px, calc(100vw - 2 * var(--margin))) !important;
+    margin-left: calc(-50vw + 50% + max(var(--margin), (100vw - 1400px) / 2));
+    max-width: none !important;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 9pt;
+    right: 9pt;
+    background: var(--btn-bg);
+    color: var(--btn-color);
+  }
 }
 
-textarea {
-  display: block;
-  width: 100%;
-  min-height: 100px;
-  box-sizing: border-box;
-  margin: 1em auto;
-}
-
-/* Theme-aware form controls (works consistently in notebooks and VSCode/Cursor webviews) */
-:is(
-  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
-  textarea,
-  select
-) {
-  background-color: var(--surface-bg);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: 2px 6px;
-}
-:is(
-  input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
-  textarea,
-  select
-):focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 25%, transparent);
-}
-:is(input, textarea)::placeholder {
-  color: var(--text-color-muted);
-}
-select option {
-  background-color: var(--surface-bg);
-  color: var(--text-color);
-}
-
-/* Modern flat input styling */
-input {
-  border: none;
-  border-radius: var(--border-radius);
-}
-input[type='number'] {
-  min-width: 40px;
-  width: auto;
-}
-input[type='color'] {
-  border: none;
-  padding: 0;
-  outline: none;
-  border-radius: var(--border-radius);
-  overflow: hidden;
-  cursor: pointer;
-}
-input[type='color']::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-input[type='color']::-webkit-color-swatch {
-  border: none;
-}
-
-table {
-  display: block;
-  max-width: 100%;
-  overflow: scroll;
-  border-collapse: collapse;
-}
-table :is(td, th) {
-  border: 1px solid var(--border-color, gray);
-  padding: 3pt 12pt;
-}
-table.roomy :is(td, th) {
-  padding: 5pt 9pt;
-}
-tbody tr:nth-child(odd) {
-  background: color-mix(in hsl, var(--page-bg, black), var(--text-color) 2%);
-}
-
-:where(ul.selected > li button, button.remove-all) {
-  background-color: transparent !important;
-}
-
-.full-bleed {
-  --margin: 5vw;
-  width: calc(100vw - 2 * var(--margin)) !important;
-  margin-left: calc(-50vw + 50% + var(--margin));
-  max-width: none !important;
-}
-.bleed-1400 {
-  --margin: 5vw;
-  width: min(1400px, calc(100vw - 2 * var(--margin))) !important;
-  margin-left: calc(-50vw + 50% + max(var(--margin), (100vw - 1400px) / 2));
-  max-width: none !important;
-}
-
-.copy-btn {
-  position: absolute;
-  top: 9pt;
-  right: 9pt;
-  background: var(--btn-bg);
-  color: var(--btn-color);
+/* Component base styles: form controls, tables, code blocks.
+   MatterViz components (Structure, ConvexHull, plots, etc.) depend on
+   these for consistent appearance. Also layered so host frameworks
+   can override if needed, but these target elements that typically
+   only appear inside MatterViz component trees. */
+@layer matterviz-components {
+  button, a.btn {
+    color: var(--text-color);
+    cursor: pointer;
+    border: none;
+    border-radius: var(--border-radius);
+    padding: 2pt 4pt;
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  code, kbd {
+    overflow-wrap: break-word;
+    padding: 1pt 3pt;
+    border-radius: var(--border-radius);
+    background-color: var(--code-bg);
+  }
+  kbd {
+    font-size: larger;
+  }
+  pre code {
+    background-color: transparent;
+    display: inline-block;
+    padding: 0;
+    width: 100%;
+  }
+  pre {
+    position: relative;
+    border-radius: var(--border-radius);
+    font-size: 0.95em;
+    background-color: var(--pre-bg);
+    padding: 1ex 1em;
+    overflow-x: auto;
+  }
+  textarea {
+    display: block;
+    width: 100%;
+    min-height: 100px;
+    box-sizing: border-box;
+    margin: 1em auto;
+  }
+  /* Theme-aware form controls (works consistently in notebooks and VSCode/Cursor webviews) */
+  :is(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    textarea,
+    select
+  ) {
+    background-color: var(--surface-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 2px 6px;
+  }
+  :is(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+    textarea,
+    select
+  ):focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 25%, transparent);
+  }
+  :is(input, textarea)::placeholder {
+    color: var(--text-color-muted);
+  }
+  select option {
+    background-color: var(--surface-bg);
+    color: var(--text-color);
+  }
+  /* Modern flat input styling — only reset border for non-text inputs */
+  input:is([type='checkbox'], [type='radio'], [type='range'], [type='color']) {
+    border: none;
+  }
+  input[type='number'] {
+    min-width: 40px;
+    width: auto;
+  }
+  input[type='color'] {
+    border: none;
+    padding: 0;
+    outline: none;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    cursor: pointer;
+  }
+  input[type='color']::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  input[type='color']::-webkit-color-swatch {
+    border: none;
+  }
+  table {
+    display: block;
+    max-width: 100%;
+    overflow: auto;
+    border-collapse: collapse;
+  }
+  table :is(td, th) {
+    border: 1px solid var(--border-color, gray);
+    padding: 3pt 12pt;
+  }
+  table.roomy :is(td, th) {
+    padding: 5pt 9pt;
+  }
+  tbody tr:nth-child(odd) {
+    background: color-mix(in hsl, var(--page-bg, black), var(--text-color) 2%);
+  }
+  :where(ul.selected > li button, button.remove-all) {
+    background-color: transparent !important;
+  }
 }

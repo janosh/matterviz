@@ -358,8 +358,7 @@
 
   // Single-pass min/max to avoid spreading large arrays into Math.min/max
   let [auto_min, auto_max] = $derived.by(() => {
-    let min = Infinity
-    let max = -Infinity
+    let [min, max] = [Infinity, -Infinity]
     for (const value of valid_numeric_values) {
       if (value < min) min = value
       if (value > max) max = value
@@ -783,13 +782,9 @@
       cell_pos_key(pos.x_idx, pos.y_idx) === clicked_key
     )
     const toggle_mode = selection_mode === `multi` && (event.metaKey || event.ctrlKey)
-    if (existing_idx >= 0 && toggle_mode) {
-      next_cells.splice(existing_idx, 1)
-    } else if (selection_mode === `multi` && toggle_mode) {
-      next_cells.push(clicked_cell)
-    } else {
-      next_cells.splice(0, next_cells.length, clicked_cell)
-    }
+    if (existing_idx >= 0 && toggle_mode) next_cells.splice(existing_idx, 1)
+    else if (selection_mode === `multi` && toggle_mode) next_cells.push(clicked_cell)
+    else next_cells.splice(0, next_cells.length, clicked_cell)
     selected_cells = next_cells
     last_selected_cell = clicked_cell
     onselect?.(selected_cells)
@@ -884,24 +879,15 @@
     if (disabled) return
     const cell_context = get_cell_context_from_target(event.target)
     if (!cell_context) return
-    update_selected_cells(event, {
-      x_idx: cell_context.x_idx,
-      y_idx: cell_context.y_idx,
-    })
+    const { x_idx, y_idx } = cell_context
+    update_selected_cells(event, { x_idx, y_idx })
     if (tooltip_mode === `both` || tooltip_mode === `pinned`) {
-      set_pinned_cell({ x_idx: cell_context.x_idx, y_idx: cell_context.y_idx })
+      set_pinned_cell({ x_idx, y_idx })
       if (tooltip !== false && tooltip_div) {
         update_tooltip_position(event.clientX, event.clientY)
         tooltip_div.classList.add(`visible`)
-        if (typeof tooltip === `function`) {
-          tooltip_cell = cell_context
-        } else {
-          update_tooltip_content(
-            tooltip_div,
-            cell_context.x_idx,
-            cell_context.y_idx,
-          )
-        }
+        if (typeof tooltip === `function`) tooltip_cell = cell_context
+        else update_tooltip_content(tooltip_div, x_idx, y_idx)
       }
     }
     if (!onclick) return
@@ -969,8 +955,7 @@
     const x_idx = Number(active_el.dataset.x)
     const y_idx = Number(active_el.dataset.y)
     if (!Number.isInteger(x_idx) || !Number.isInteger(y_idx)) return
-    let x_step = 0
-    let y_step = 0
+    let [x_step, y_step] = [0, 0]
     if (event.key === `ArrowRight`) x_step = 1
     else if (event.key === `ArrowLeft`) x_step = -1
     else if (event.key === `ArrowDown`) y_step = 1
@@ -981,8 +966,7 @@
       return
     } else return
     event.preventDefault()
-    let next_x = x_idx
-    let next_y = y_idx
+    let [next_x, next_y] = [x_idx, y_idx]
     const max_steps = Math.max(x_items.length, y_items.length) + 1
     for (let step_idx = 0; step_idx < max_steps; step_idx++) {
       next_x += x_step

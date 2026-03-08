@@ -1898,7 +1898,8 @@ H 0.0 1.0 0.0`
       [`structure.site_label_padding`, 4],
       [`structure.ambient_light`, 0.6],
       [`structure.directional_light`, 0.8],
-      [`structure.force_scale`, 2.0],
+      [`structure.vector_scale`, 2.0],
+      [`structure.vector_origin_gap`, 0.25],
       [`structure.cell_edge_opacity`, 0.5],
       [`structure.cell_surface_opacity`, 0.2],
       [`background_opacity`, 0.8],
@@ -1910,7 +1911,6 @@ H 0.0 1.0 0.0`
       [`structure.show_atoms`, false],
       [`structure.show_bonds`, `always`],
       [`structure.show_site_labels`, true],
-      [`structure.show_force_vectors`, true],
       [`structure.show_cell`, true],
       [`structure.show_cell_vectors`, true],
       [`structure.show_image_atoms`, true],
@@ -1924,7 +1924,7 @@ H 0.0 1.0 0.0`
       [`structure.site_label_bg_color`, `#333333`],
       [`structure.cell_edge_color`, `#aaaaaa`],
       [`structure.cell_surface_color`, `#bbbbbb`],
-      [`structure.force_color`, `#ffff00`],
+      [`structure.vector_color`, `#ffff00`],
       [`background_color`, `#111111`],
 
       // String enums

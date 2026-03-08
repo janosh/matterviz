@@ -41,8 +41,49 @@ describe(`XrdPlot`, () => {
       `multiple`,
     ],
     [{ patterns: pattern, annotate_peaks: 5, show_angles: true }, `annotated`],
-  ])(`renders %s`, (props, _desc) => {
-    mount(XrdPlot, { target: document.body, props })
+    [
+      {
+        patterns: {
+          'Empty': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+          'Valid': { pattern, color: `blue` },
+        },
+      },
+      `mixed empty and valid patterns`,
+    ],
+    [
+      {
+        patterns: {
+          'A': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+          'B': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+        },
+      },
+      `all empty patterns`,
+    ],
+  ])(`renders %s without Infinity/NaN in DOM`, (props, _desc) => {
+    const target = document.createElement(`div`)
+    mount(XrdPlot, { target, props })
+    const text = target.textContent ?? ``
+    expect(text).not.toContain(`Infinity`)
+    expect(text).not.toContain(`NaN`)
+  })
+
+  test(`all-empty patterns produce valid axis ticks from [0, 90] fallback`, async () => {
+    const target = create_sized_container()
+    mount(XrdPlot, {
+      target,
+      props: {
+        patterns: {
+          'A': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+          'B': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+        },
+      },
+    })
+    await wait_for_plot_render(target)
+    // With correct [0, 90] fallback, x-axis should have tick elements.
+    // With the bug (angle_range = [Infinity, 0]), isFinite guard skips all ticks.
+    const x_axis_ticks = target.querySelectorAll(`.x-axis .tick`)
+    expect(x_axis_ticks.length, `x-axis should have ticks from [0, 90] fallback`)
+      .toBeGreaterThan(0)
   })
 
   test.each([[`compact`], [`full`], [`vertical`], [`horizontal`]] as const)(

@@ -209,6 +209,9 @@ function validate_matrix(mat: number[][], name: string): number {
   return cols
 }
 
+export function dot(vec1: NdVector, vec2: NdVector): number
+export function dot(vec1: NdVector[], vec2: NdVector): number[]
+export function dot(vec1: NdVector[], vec2: NdVector[]): number[][]
 export function dot(
   vec1: NdVector | NdVector[],
   vec2: NdVector | NdVector[],
@@ -398,28 +401,27 @@ export function det_4x4(matrix: Matrix4x4): number {
 // More numerically stable than cofactor expansion for N > 4
 // Returns 0 for singular/near-singular matrices (pivot < EPS ≈ 1e-10)
 export function det_nxn(matrix: number[][]): number {
-  const n = matrix.length
-  if (n === 0) return 1
-  if (!matrix.every((row) => row.length === n)) {
+  const mat_size = matrix.length
+  if (mat_size === 0) return 1
+  if (!matrix.every((row) => row.length === mat_size)) {
     throw new Error(`det_nxn requires a square matrix`)
   }
 
   // Fast paths for small matrices
-  if (n === 1) return matrix[0][0]
-  if (n === 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
-  if (n === 3) return det_3x3(matrix as Matrix3x3)
-  if (n === 4) return det_4x4(matrix as Matrix4x4)
+  if (mat_size === 1) return matrix[0][0]
+  if (mat_size === 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
+  if (mat_size === 3) return det_3x3(matrix as Matrix3x3)
+  if (mat_size === 4) return det_4x4(matrix as Matrix4x4)
 
   // LU decomposition with partial pivoting
   // Create a working copy to avoid mutating input
   const lu = matrix.map((row) => [...row])
   let swaps = 0
 
-  for (let col = 0; col < n; col++) {
+  for (let col = 0; col < mat_size; col++) {
     // Find pivot (largest absolute value in column)
-    let max_row = col
-    let max_val = Math.abs(lu[col][col])
-    for (let row = col + 1; row < n; row++) {
+    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
+    for (let row = col + 1; row < mat_size; row++) {
       const val = Math.abs(lu[row][col])
       if (val > max_val) {
         max_val = val
@@ -438,10 +440,10 @@ export function det_nxn(matrix: number[][]): number {
 
     // Eliminate below pivot
     const pivot = lu[col][col]
-    for (let row = col + 1; row < n; row++) {
+    for (let row = col + 1; row < mat_size; row++) {
       const factor = lu[row][col] / pivot
       lu[row][col] = 0
-      for (let k = col + 1; k < n; k++) {
+      for (let k = col + 1; k < mat_size; k++) {
         lu[row][k] -= factor * lu[col][k]
       }
     }
@@ -449,7 +451,7 @@ export function det_nxn(matrix: number[][]): number {
 
   // Determinant is product of diagonal elements × (-1)^swaps
   let det = swaps % 2 === 0 ? 1 : -1
-  for (let idx = 0; idx < n; idx++) {
+  for (let idx = 0; idx < mat_size; idx++) {
     det *= lu[idx][idx]
   }
   return det
@@ -509,7 +511,7 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   let ref_vec: Vec3 = [1, 0, 0]
   if (Math.abs(normal[0]) > 0.9) ref_vec = [0, 1, 0]
 
-  const dot_nr = dot(normal, ref_vec) as number
+  const dot_nr = dot(normal, ref_vec)
   const u_raw: Vec3 = [
     ref_vec[0] - dot_nr * normal[0],
     ref_vec[1] - dot_nr * normal[1],
@@ -517,7 +519,7 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   ]
   const u_vec = normalize_vec3(u_raw, [0, 1, 0])
   const v_vec = cross_3d(normal, u_vec)
-  return [u_vec, v_vec]
+  return [u_vec, v_vec] // u, v basis vectors
 }
 
 // Check whether N 3D points all lie on the same plane within tolerance.
@@ -552,9 +554,9 @@ export function are_coplanar(points: number[][], tolerance = 1e-6): boolean {
   }
   // All edges are collinear -> all points lie on a line -> coplanar
   if (!normal) return true
-  const plane_d = dot(normal, origin) as number
+  const plane_d = dot(normal, origin)
   for (let idx = 1; idx < points.length; idx++) {
-    const dist = Math.abs((dot(normal, points[idx]) as number) - plane_d)
+    const dist = Math.abs(dot(normal, points[idx]) - plane_d)
     if (dist > tolerance) return false
   }
   return true
@@ -606,7 +608,7 @@ export function merge_coplanar_triangles(
       ? normal[1]
       : normal[2]
     if (first_nonzero < 0) normal = [-normal[0], -normal[1], -normal[2]]
-    const plane_d = dot(normal, va) as number
+    const plane_d = dot(normal, va)
     tri_planes.push({ verts: [va, vb, vc], normal, plane_d, degenerate: false })
   }
 
@@ -717,9 +719,9 @@ export function merge_coplanar_triangles(
 
     // Project to 2D using in-plane basis
     const [u_vec, v_vec] = compute_in_plane_basis(normal)
-    const pts_2d: Vec2[] = unique_verts.map((vert) =>
-      [dot(u_vec, vert) as number, dot(v_vec, vert) as number] as Vec2
-    )
+    const pts_2d = unique_verts.map((
+      vertex,
+    ): Vec2 => [dot(u_vec, vertex), dot(v_vec, vertex)])
 
     const hull = convex_hull_2d(pts_2d)
     if (hull.length < 3) {
@@ -901,14 +903,11 @@ export function solve_linear_system(
 
   for (let col = 0; col < n; col++) {
     // Find pivot
-    let max_row = col
-    let max_val = Math.abs(lu[col][col])
+    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
+
     for (let row = col + 1; row < n; row++) {
       const val = Math.abs(lu[row][col])
-      if (val > max_val) {
-        max_val = val
-        max_row = row
-      }
+      if (val > max_val) [max_val, max_row] = [val, row]
     }
     if (max_val < EPS) return null // singular
 

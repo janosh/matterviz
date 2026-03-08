@@ -129,8 +129,7 @@ describe(`sample_hkl_slice`, () => {
 
   test(`min and max are consistent with data`, () => {
     const result = expect_slice(sample_hkl_slice(z_gradient, [0, 0, 1], 0.5))
-    let actual_min = Infinity
-    let actual_max = -Infinity
+    let [actual_min, actual_max] = [Infinity, -Infinity]
     for (const val of result.data) {
       if (val < actual_min) actual_min = val
       if (val > actual_max) actual_max = val

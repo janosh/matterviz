@@ -1,5 +1,6 @@
-// Global MatterViz styles (exported by matterviz).
+// Global MatterViz styles. Shell-layer rules (body, main, headings) are in
+// @layer matterviz-shell so host-dash-app unlayered CSS automatically wins.
 import 'matterviz/app.css'
 
-// Importing the custom element module defines <mv-matterviz>.
+// this import defines the custom element <mv-matterviz>
 import '../svelte/MatterViz.ce.svelte'
