@@ -22,10 +22,10 @@
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure, Crystal, MeasureMode } from '$lib/structure'
   import {
+    default_vector_configs,
     get_element_counts,
     get_pbc_image_sites,
     get_structure_vector_keys,
-    VECTOR_PALETTE,
   } from '$lib/structure'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
@@ -320,13 +320,7 @@
     }
     vectors_auto_populated_for = structure
     if (keys.length === 0) return
-    const configs = Object.fromEntries(
-      keys.map((key, idx) => [key, {
-        visible: true,
-        color: keys.length > 1 ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length] : null,
-        scale: null,
-      }]),
-    )
+    const configs = default_vector_configs(keys)
     scene_props.vector_configs = configs
     last_auto_configs = configs
     scene_props.vector_scale ??= DEFAULTS.structure.vector_scale

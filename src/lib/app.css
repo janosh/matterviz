@@ -220,7 +220,7 @@
   table {
     display: block;
     max-width: 100%;
-    overflow: scroll;
+    overflow: auto;
     border-collapse: collapse;
   }
   table :is(td, th) {

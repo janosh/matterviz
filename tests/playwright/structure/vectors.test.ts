@@ -8,6 +8,12 @@ import {
   wait_for_3d_canvas,
 } from '../helpers'
 
+const VECTOR_PREFIXES = [`force`, `forces`, `magmom`, `magmoms`, `spin`, `spins`]
+
+function is_vector_key(key: string): boolean {
+  return VECTOR_PREFIXES.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
+}
+
 const SITE_PROPS = {
   multi: [
     {
@@ -30,7 +36,7 @@ const SITE_PROPS = {
 // Inject a test structure with vector site properties via custom event
 async function inject_vectors(page: Page, mode: `multi` | `single`) {
   const props = mode === `multi` ? SITE_PROPS.multi : SITE_PROPS.single
-  await page.evaluate((site_props) => {
+  await page.evaluate(({ site_props, prefixes }) => {
     const palette = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`, `#9b59b6`, `#1abc9c`]
     const structure = {
       '@module': `pymatgen.core.structure`,
@@ -56,9 +62,7 @@ async function inject_vectors(page: Page, mode: `multi` | `single`) {
       })),
     }
     const keys = Object.keys(site_props[0]).filter((key) =>
-      [`force`, `forces`, `magmom`, `magmoms`, `spin`, `spins`].some((prefix) =>
-        key === prefix || key.startsWith(`${prefix}_`)
-      )
+      prefixes.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
     )
     const configs: Record<
       string,
@@ -76,19 +80,15 @@ async function inject_vectors(page: Page, mode: `multi` | `single`) {
         detail: { structure, vector_configs: configs },
       }),
     )
-  }, [...props])
-  const expected_keys = Object.keys(props[0]).filter((key) =>
-    [`force`, `forces`, `magmom`, `magmoms`, `spin`, `spins`].some((prefix) =>
-      key === prefix || key.startsWith(`${prefix}_`)
-    )
-  )
+  }, { site_props: [...props], prefixes: VECTOR_PREFIXES })
+  const expected_keys = Object.keys(props[0]).filter(is_vector_key)
   await page.waitForFunction(
     (keys) => {
       const el = document.querySelector(`[data-testid="vector-configs-status"]`)
       return keys.every((key) => el?.textContent?.includes(key))
     },
     expected_keys,
-    { timeout: 5000 },
+    { timeout: get_canvas_timeout() },
   )
 }
 

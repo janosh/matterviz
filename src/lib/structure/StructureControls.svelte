@@ -11,6 +11,7 @@
   import { DEFAULTS, SETTINGS_CONFIG, type VectorLayerConfig } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import {
+    default_vector_configs,
     get_structure_vector_keys,
     Lattice,
     StructureScene,
@@ -233,15 +234,7 @@
       scene_props.show_bonds = DEFAULTS.structure.show_bonds
       scene_props.show_site_labels = DEFAULTS.structure.show_site_labels
       scene_props.show_site_indices = DEFAULTS.structure.show_site_indices
-      scene_props.vector_configs = Object.fromEntries(
-        available_vector_keys.map((key, idx) => [key, {
-          visible: true,
-          color: available_vector_keys.length > 1
-            ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length]
-            : null,
-          scale: null,
-        }]),
-      )
+      scene_props.vector_configs = default_vector_configs(available_vector_keys)
       show_image_atoms = DEFAULTS.structure.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}

@@ -367,7 +367,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     // Atoms & Bonds
     atom_radius: {
       value: 0.7,
-      description: `Radius multiplier for atoms (1.0 = standard atomic radii)`,
+      description: `Radius multiplier for atoms (0.7 = standard atomic radii)`,
       minimum: 0.1,
       maximum: 3.0,
     },

@@ -173,6 +173,16 @@ export const VECTOR_PALETTE = [
   `#1abc9c`,
 ] as const
 
+// Single key → null color (semantic coloring); multiple keys → palette colors.
+export const default_vector_configs = (keys: string[]) =>
+  Object.fromEntries(
+    keys.map((key, idx) => [key, {
+      visible: true,
+      color: keys.length > 1 ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length] : null,
+      scale: null,
+    }]),
+  )
+
 function try_parse_vec3(val: unknown): Vec3 | null {
   if (
     Array.isArray(val) && val.length === 3 &&
