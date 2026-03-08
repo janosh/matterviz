@@ -194,10 +194,9 @@
     background-color: var(--surface-bg);
     color: var(--text-color);
   }
-  /* Modern flat input styling */
-  input {
+  /* Modern flat input styling — only reset border for non-text inputs */
+  input:is([type='checkbox'], [type='radio'], [type='range'], [type='color']) {
     border: none;
-    border-radius: var(--border-radius);
   }
   input[type='number'] {
     min-width: 40px;

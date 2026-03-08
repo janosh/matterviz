@@ -36,8 +36,9 @@ const SITE_PROPS = {
 // Inject a test structure with vector site properties via custom event
 async function inject_vectors(page: Page, mode: `multi` | `single`) {
   const props = mode === `multi` ? SITE_PROPS.multi : SITE_PROPS.single
-  await page.evaluate(({ site_props, prefixes }) => {
-    const palette = [`#e74c3c`, `#3498db`, `#2ecc71`, `#f39c12`, `#9b59b6`, `#1abc9c`]
+  // Let the component auto-populate vector_configs from the structure's vector data
+  // instead of bypassing auto-population with pre-computed configs
+  await page.evaluate((site_props) => {
     const structure = {
       '@module': `pymatgen.core.structure`,
       '@class': `Structure`,
@@ -61,27 +62,18 @@ async function inject_vectors(page: Page, mode: `multi` | `single`) {
         properties: props,
       })),
     }
-    const keys = Object.keys(site_props[0]).filter((key) =>
-      prefixes.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
-    )
-    const configs: Record<
-      string,
-      { visible: boolean; color: string | null; scale: number | null }
-    > = {}
-    for (const [idx, key] of keys.entries()) {
-      configs[key] = {
-        visible: true,
-        color: keys.length > 1 ? palette[idx % palette.length] : null,
-        scale: null,
-      }
-    }
     globalThis.dispatchEvent(
-      new CustomEvent(`set-structure`, {
-        detail: { structure, vector_configs: configs },
-      }),
+      new CustomEvent(`set-structure`, { detail: { structure } }),
     )
-  }, { site_props: [...props], prefixes: VECTOR_PREFIXES })
-  const expected_keys = Object.keys(props[0]).filter(is_vector_key)
+  }, [...props])
+  // Derive expected keys from ALL sites (union) to catch union-of-all-sites regressions
+  const all_keys = new Set<string>()
+  for (const site of props) {
+    for (const key of Object.keys(site)) {
+      if (is_vector_key(key)) all_keys.add(key)
+    }
+  }
+  const expected_keys = [...all_keys]
   await page.waitForFunction(
     (keys) => {
       const el = document.querySelector(`[data-testid="vector-configs-status"]`)

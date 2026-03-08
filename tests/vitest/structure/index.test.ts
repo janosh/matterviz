@@ -2,8 +2,6 @@ import type { AnyStructure, Site, Species, Vec3 } from '$lib'
 import * as struct_utils from '$lib/structure'
 import {
   get_all_site_vectors,
-  get_site_vector,
-  get_site_vector_info,
   get_structure_vector_keys,
   is_vector_key,
 } from '$lib/structure'
@@ -236,14 +234,14 @@ describe(`get_center_of_mass`, () => {
 const make_site = (properties: Record<string, unknown>): Site =>
   ({ species: [], abc: [0, 0, 0], xyz: [0, 0, 0], label: `X`, properties }) as Site
 
-// Assert get_site_vector_info returns non-null and return the narrowed result
+// Assert first vector entry is non-null and return the narrowed result
 function expect_vector_info(site: Site): { vec: Vec3; key: string } {
-  const info = get_site_vector_info(site)
+  const info = get_all_site_vectors(site)[0] ?? null
   expect(info).not.toBeNull()
   return info as { vec: Vec3; key: string }
 }
 
-describe(`get_site_vector_info`, () => {
+describe(`get_all_site_vectors first entry`, () => {
   test.each(
     [
       [`force`, [1, 2, 3]],
@@ -271,9 +269,8 @@ describe(`get_site_vector_info`, () => {
   })
 
   test(`returns null for site without vector properties`, () => {
-    expect(get_site_vector_info(make_site({}))).toBeNull()
-    expect(get_site_vector_info(make_site({ charge: 1 }))).toBeNull()
-    expect(get_site_vector(make_site({}))).toBeNull()
+    expect(get_all_site_vectors(make_site({}))).toHaveLength(0)
+    expect(get_all_site_vectors(make_site({ charge: 1 }))).toHaveLength(0)
   })
 
   test(`singular key takes priority over plural`, () => {
@@ -298,7 +295,7 @@ describe(`get_site_vector_info`, () => {
     [`NaN scalar`, { spin: NaN }],
     [`Infinity scalar`, { magmom: Infinity }],
   ])(`rejects invalid vector: %s`, (_label, properties) => {
-    expect(get_site_vector_info(make_site(properties))).toBeNull()
+    expect(get_all_site_vectors(make_site(properties))).toHaveLength(0)
   })
 
   test(`skips invalid key and falls through to valid one`, () => {
@@ -306,8 +303,10 @@ describe(`get_site_vector_info`, () => {
     expect(info).toEqual({ key: `magmom`, vec: [0, 0, 1] })
   })
 
-  test(`only matches bare VECTOR_KEY_PREFIXES, not prefixed keys`, () => {
-    expect(get_site_vector_info(make_site({ force_DFT: [1, 0, 0] }))).toBeNull()
+  test(`matches prefixed keys like force_DFT`, () => {
+    const info = expect_vector_info(make_site({ force_DFT: [1, 0, 0] }))
+    expect(info.key).toBe(`force_DFT`)
+    expect(info.vec).toEqual([1, 0, 0])
   })
 })
 

@@ -1392,8 +1392,8 @@
       const hi = ticks.at(-1) ?? lo
       const step = ticks.length > 1 ? ticks[1] - ticks[0] : 1
       if (axis === 2) {
-        const [min_data, max_data] = [data_bbox.mins[2], data_bbox.maxs[2]]
-        return [Math.floor(min_data), max_data]
+        const min_data = data_bbox.mins[2]
+        return [Math.floor(min_data), hi]
       }
       return [lo - step, hi + step]
     })

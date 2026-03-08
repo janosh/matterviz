@@ -208,24 +208,6 @@ function compare_vector_keys(left: string, right: string): number {
   return ord_l[0] - ord_r[0] || ord_l[1] - ord_r[1] || ord_l[2].localeCompare(ord_r[2])
 }
 
-// Extract a vector and its source key from a site's properties. Checks force, magmom,
-// and spin in priority order. Scalar values are converted to z-directed vectors [0, 0, val].
-export function get_site_vector_info(site: Site): { vec: Vec3; key: string } | null {
-  const props = site.properties
-  if (!props) return null
-  for (const prefix of VECTOR_KEY_PREFIXES) {
-    const val = props[prefix]
-    const vec = try_parse_vec3(val)
-    if (vec) return { vec, key: prefix }
-  }
-  return null
-}
-
-// Convenience wrapper returning just the vector (preserves existing API)
-export function get_site_vector(site: Site): Vec3 | null {
-  return get_site_vector_info(site)?.vec ?? null
-}
-
 // Extract ALL vector properties from a site (not just the first match).
 // Returns entries for every key that is_vector_key() and has a valid 3D vector value.
 // Ordered by VECTOR_KEY_PREFIXES priority, then alphabetically for prefixed keys.
