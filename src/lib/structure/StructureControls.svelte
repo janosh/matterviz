@@ -8,7 +8,8 @@
   import { to_degrees, to_radians } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorScaleSelect } from '$lib/plot'
-  import { DEFAULTS, SETTINGS_CONFIG, type VectorLayerConfig } from '$lib/settings'
+  import type { VectorLayerConfig } from '$lib/settings'
+  import { DEFAULTS, SETTINGS_CONFIG, VECTOR_COLOR_MODES } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import {
     default_vector_configs,
@@ -299,6 +300,16 @@
             style="width: 22px; height: 22px; padding: 0; border: none; cursor: pointer"
           />
           {key}
+          {#if scene_props.vector_configs?.[key]?.color != null}
+            <button
+              type="button"
+              aria-label={`Reset ${key} color to default`}
+              onclick={() => update_vector_config(key, { color: null })}
+              style="padding: 0 3pt; font-size: 0.8em; line-height: 1; cursor: pointer"
+            >
+              ×
+            </button>
+          {/if}
         </label>
       {/each}
     {/if}
@@ -716,11 +727,15 @@
         vector_color: scene_props.vector_color,
         vector_normalize: scene_props.vector_normalize,
         vector_uniform_thickness: scene_props.vector_uniform_thickness,
+        vector_color_mode: scene_props.vector_color_mode,
+        vector_color_scale: scene_props.vector_color_scale,
         vector_origin_gap: scene_props.vector_origin_gap,
       }}
       on_reset={() => {
         scene_props.vector_scale = DEFAULTS.structure.vector_scale
         scene_props.vector_color = DEFAULTS.structure.vector_color
+        scene_props.vector_color_mode = DEFAULTS.structure.vector_color_mode
+        scene_props.vector_color_scale = DEFAULTS.structure.vector_color_scale
         scene_props.vector_normalize = DEFAULTS.structure.vector_normalize
         scene_props.vector_uniform_thickness =
           DEFAULTS.structure.vector_uniform_thickness
@@ -765,6 +780,33 @@
         <input type="checkbox" bind:checked={scene_props.vector_uniform_thickness} />
         Uniform Thickness
       </label>
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.vector_color_mode.description,
+        })}
+      >
+        Color Mode
+        <select bind:value={scene_props.vector_color_mode}>
+          {#each VECTOR_COLOR_MODES as mode (mode)}
+            <option value={mode}>{mode.replaceAll(`_`, ` `)}</option>
+          {/each}
+        </select>
+      </label>
+      {#if scene_props.vector_color_mode === `magnitude`}
+        <label>
+          Scale
+          <ColorScaleSelect
+            bind:value={scene_props.vector_color_scale}
+            style="max-width: 180px"
+          />
+        </label>
+      {/if}
+      {#if scene_props.vector_color_mode === `uniform`}
+        <label>
+          Color
+          <input type="color" bind:value={scene_props.vector_color} />
+        </label>
+      {/if}
       {#if available_vector_keys.length > 1}
         <label
           {@attach tooltip({

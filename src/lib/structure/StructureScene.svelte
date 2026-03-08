@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { D3InterpolateName } from '$lib/colors'
-  import { AXIS_COLORS, NEG_AXIS_COLORS } from '$lib/colors'
+  import { AXIS_COLORS, get_d3_interpolator, NEG_AXIS_COLORS } from '$lib/colors'
   import type { ElementSymbol } from '$lib/element'
   import { element_data } from '$lib/element'
   import Isosurface from '$lib/isosurface/Isosurface.svelte'
@@ -9,12 +9,13 @@
   import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import * as math from '$lib/math'
-  import {
-    type CameraProjection,
-    DEFAULTS,
-    type ShowBonds,
-    type VectorLayerConfig,
+  import type {
+    CameraProjection,
+    ShowBonds,
+    VectorColorMode,
+    VectorLayerConfig,
   } from '$lib/settings'
+  import { DEFAULTS } from '$lib/settings'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure, BondPair, MeasureMode, Site } from '$lib/structure'
   import {
@@ -101,6 +102,8 @@
     vector_configs = $bindable<Record<string, VectorLayerConfig>>({}),
     vector_scale = DEFAULTS.structure.vector_scale,
     vector_color = DEFAULTS.structure.vector_color,
+    vector_color_mode = DEFAULTS.structure.vector_color_mode as VectorColorMode,
+    vector_color_scale = DEFAULTS.structure.vector_color_scale,
     vector_normalize = DEFAULTS.structure.vector_normalize,
     vector_uniform_thickness = DEFAULTS.structure.vector_uniform_thickness,
     vector_origin_gap = DEFAULTS.structure.vector_origin_gap,
@@ -185,6 +188,8 @@
     vector_configs?: Record<string, VectorLayerConfig>
     vector_scale?: number
     vector_color?: string
+    vector_color_mode?: VectorColorMode
+    vector_color_scale?: D3InterpolateName
     vector_normalize?: boolean
     vector_uniform_thickness?: boolean
     vector_origin_gap?: number
@@ -585,20 +590,23 @@
     })
   })
 
+  // Shared visibility check: site has at least one non-hidden element and
+  // its property value (if any) isn't hidden. Used by both bond and vector filtering.
+  const is_site_visible = (site_idx: number): boolean => {
+    if (!structure?.sites) return false
+    const site = structure.sites[site_idx]
+    const has_visible_element = site?.species.some(({ element }) =>
+      !hidden_elements.has(element)
+    )
+    const orig_idx = get_orig_site_idx(site, site_idx)
+    const prop_val = property_colors?.values[orig_idx]
+    const prop_visible = prop_val === undefined ||
+      !hidden_prop_vals.has(prop_val)
+    return has_visible_element && prop_visible
+  }
+
   let filtered_bond_pairs = $derived.by(() => {
     if (!structure?.sites) return bond_pairs
-
-    const is_site_visible = (site_idx: number) => {
-      const site = structure.sites[site_idx]
-      const has_visible_element = site?.species.some(({ element }) =>
-        !hidden_elements.has(element)
-      )
-      const orig_idx = get_orig_site_idx(site, site_idx)
-      const prop_val = property_colors?.values[orig_idx]
-      const prop_visible = prop_val === undefined ||
-        !hidden_prop_vals.has(prop_val)
-      return has_visible_element && prop_visible
-    }
 
     // Build set of removed bond keys for efficient lookup
     const removed_keys = new Set(
@@ -715,10 +723,12 @@
     const active_keys = keys.filter((key) => vector_configs[key]?.visible !== false)
     if (active_keys.length === 0) return []
 
-    // Build per-site lookup; only count active (visible) keys toward max_mag
+    // Build per-site lookup; skip hidden sites so they don't contribute
+    // arrows or affect autoscaling. null entries = hidden site.
     const active_set = new Set(active_keys)
     let max_mag = 0
-    const site_vec_maps = structure.sites.map((site) => {
+    const site_vec_maps = structure.sites.map((site, site_idx) => {
+      if (!is_site_visible(site_idx)) return null
       const map = new SvelteMap<string, Vec3>()
       for (const { key, vec } of get_all_site_vectors(site)) {
         map.set(key, vec)
@@ -746,6 +756,7 @@
     const site_offsets = (vector_origin_gap > 0 && !is_single)
       ? structure.sites.map((site, site_idx) => {
         const vec_map = site_vec_maps[site_idx]
+        if (!vec_map) return null
         const site_keys = active_keys.filter((key) => vec_map.has(key))
         const n_keys = site_keys.length
         if (n_keys <= 1) return null
@@ -769,6 +780,8 @@
       })
       : null
 
+    const mag_interpolator = get_d3_interpolator(vector_color_scale)
+
     return active_keys.map((key, layer_idx) => {
       const layer_cfg = vector_configs[key]
       const layer_scale = effective_global_scale * (layer_cfg?.scale ?? 1.0)
@@ -777,16 +790,31 @@
 
       const arrows = structure.sites
         .map((site, site_idx) => {
-          const vec = site_vec_maps[site_idx].get(key)
+          const vec_map = site_vec_maps[site_idx]
+          if (!vec_map) return null
+          const vec = vec_map.get(key)
           if (!vec) return null
 
-          // Single key with no explicit color uses semantic coloring
-          // (element for force, spin-direction for magmom/spin).
-          // Everything else uses layer_color (explicit color ?? palette).
+          // Resolve color mode: explicit per-key color always wins,
+          // then multi-key uses palette, then mode-based coloring
           let arrow_color: string
-          if (is_single && !layer_cfg?.color) {
-            if (key.startsWith(`magmom`) || key.startsWith(`spin`)) {
+          if (layer_cfg?.color) {
+            arrow_color = layer_cfg.color
+          } else if (!is_single) arrow_color = layer_color
+          else {
+            const effective_mode = vector_color_mode === `auto`
+              ? (key.startsWith(`magmom`) || key.startsWith(`spin`)
+                ? `spin_direction`
+                : `element`)
+              : vector_color_mode
+            if (effective_mode === `magnitude`) {
+              const mag = Math.hypot(...vec)
+              const norm = max_mag > 1e-10 ? mag / max_mag : 0
+              arrow_color = mag_interpolator(norm)
+            } else if (effective_mode === `spin_direction`) {
               arrow_color = spin_direction_color(vec)
+            } else if (effective_mode === `uniform`) {
+              arrow_color = vector_color
             } else {
               const majority_element = site.species.length > 0
                 ? site.species.reduce((max, spec) =>
@@ -797,7 +825,7 @@
                 (majority_element && colors.element?.[majority_element]) ||
                 vector_color
             }
-          } else arrow_color = layer_color
+          }
 
           const offset = site_offsets?.[site_idx]?.get(key)
           const position = offset ? math.add(site.xyz, offset) as Vec3 : site.xyz

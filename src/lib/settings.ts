@@ -28,6 +28,15 @@ export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
 
 export type CameraProjection = `perspective` | `orthographic`
 
+export const VECTOR_COLOR_MODES = [
+  `auto`,
+  `element`,
+  `spin_direction`,
+  `magnitude`,
+  `uniform`,
+] as const
+export type VectorColorMode = (typeof VECTOR_COLOR_MODES)[number]
+
 // Per-key configuration for site vector layers (force, magmom, spin, etc.)
 export type VectorLayerConfig = {
   visible: boolean
@@ -167,6 +176,8 @@ export interface SettingsConfig {
     vector_configs: SettingType<Record<string, VectorLayerConfig>>
     vector_scale: SettingType<number>
     vector_color: SettingType<string>
+    vector_color_mode: SettingType<VectorColorMode>
+    vector_color_scale: SettingType<D3InterpolateName>
     vector_normalize: SettingType<boolean>
     vector_uniform_thickness: SettingType<boolean>
     vector_origin_gap: SettingType<number>
@@ -586,7 +597,16 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     vector_color: {
       value: `#ff0000`,
-      description: `Color for site vector arrows`,
+      description: `Color for site vector arrows (used in uniform mode and as fallback)`,
+    },
+    vector_color_mode: {
+      value: `auto` as VectorColorMode,
+      description:
+        `How to color arrows. auto = element for force, spin-direction for magmom/spin. element = majority species color. spin_direction = red/blue by z-component. magnitude = continuous color scale by vector length. uniform = single color (vector_color).`,
+    },
+    vector_color_scale: {
+      value: `interpolateViridis` as D3InterpolateName,
+      description: `D3 color scale for magnitude coloring mode`,
     },
     vector_normalize: {
       value: false,

@@ -2,6 +2,18 @@
 
 Structures can carry per-site vector data in their `properties` dict. Recognized keys include `force`, `magmom`, `spin` and prefixed variants like `force_DFT` or `magmom_MLFF`. When multiple vector keys are present, each gets its own color, toggle, and per-key scale slider.
 
+## Color Modes
+
+The **Color** dropdown in the Site Vectors panel controls how arrows are colored:
+
+- **auto** (default) — Picks the best mode based on the vector key name. Force vectors use **element** coloring (arrow color matches the atom's element, so you can see which species has large forces). Magmom and spin vectors use **spin direction** coloring (red = up, blue = down by z-component).
+- **element** — Arrow color matches the majority element at each site. Useful for force analysis on multi-element structures.
+- **spin direction** — Red/blue gradient based on the z-component of the vector. Spin-up (positive z) is red, spin-down is blue, canted spins interpolate between.
+- **magnitude** — Continuous color scale (Viridis by default) mapped to vector length. Shows spatial distribution of force/moment magnitudes. A color scale selector appears when this mode is active.
+- **uniform** — All arrows use a single color (`vector_color`). A color picker appears when this mode is active.
+
+For **multi-key** structures (e.g. `force_DFT` + `force_MLFF`), each key gets a distinct palette color regardless of the color mode — use the per-key inline color pickers in the Visibility section to customize.
+
 ```svelte example
 <script lang="ts">
   import { Structure } from 'matterviz'

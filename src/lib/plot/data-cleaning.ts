@@ -24,10 +24,7 @@ const DEFAULT_POLYNOMIAL_ORDER = 2
 
 // Compute rolling variance using Welford's online algorithm - O(n)
 // Returns variance for each point based on surrounding window
-export function compute_local_variance(
-  values: number[],
-  window_size: number,
-): number[] {
+export function compute_local_variance(values: number[], window_size: number): number[] {
   const len = values.length
   if (len === 0) return []
   if (len === 1) return [0]
@@ -41,10 +38,7 @@ export function compute_local_variance(
     const end = Math.min(len, idx + half_window + 1)
 
     // Welford's online variance calculation
-    let mean = 0
-    let m2 = 0
-    let count = 0
-
+    let [mean, m2, count] = [0, 0, 0]
     for (let jdx = start; jdx < end; jdx++) {
       const val = values[jdx]
       if (!Number.isFinite(val)) continue
@@ -231,13 +225,9 @@ export function detect_instability(
   }
 
   if (valid_y.length < window_size * 2) {
-    return {
-      detected: false,
-      onset_index: -1,
-      onset_x: NaN,
-      combined_score: 0,
-      method_scores: { derivative_variance: 0, amplitude_growth: 0, sign_changes: 0 },
-    }
+    const method_scores = { derivative_variance: 0, amplitude_growth: 0, sign_changes: 0 }
+    const detected = false
+    return { detected, onset_index: -1, onset_x: NaN, combined_score: 0, method_scores }
   }
 
   // Run all three detection methods
@@ -285,13 +275,7 @@ export function detect_instability(
     ? x_values[onset_index]
     : NaN
 
-  return {
-    detected,
-    onset_index,
-    onset_x,
-    combined_score,
-    method_scores,
-  }
+  return { detected, onset_index, onset_x, combined_score, method_scores }
 }
 
 // --- Smoothing Functions ---
@@ -306,8 +290,7 @@ export function smooth_moving_average(values: number[], window: number): number[
   for (let idx = 0; idx < values.length; idx++) {
     const start = Math.max(0, idx - half_window)
     const end = Math.min(values.length, idx + half_window + 1)
-    let sum = 0
-    let count = 0
+    let [sum, count] = [0, 0]
 
     for (let jdx = start; jdx < end; jdx++) {
       if (Number.isFinite(values[jdx])) {
