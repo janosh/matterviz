@@ -296,6 +296,7 @@
           />
           <input
             type="color"
+            aria-label={`${key} vector color`}
             value={scene_props.vector_configs?.[key]?.color ??
             VECTOR_PALETTE[idx % VECTOR_PALETTE.length]}
             onchange={(evt) =>

@@ -150,9 +150,7 @@
     const handle_set_structure = (event: Event) => {
       const { detail } = event as CustomEvent
       structure = detail.structure as Crystal
-      if (detail.vector_configs) {
-        scene_props.vector_configs = detail.vector_configs
-      }
+      scene_props.vector_configs = detail.vector_configs ?? {}
     }
 
     window.addEventListener(`set-lattice-props`, handle_lattice_props)

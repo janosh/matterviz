@@ -301,19 +301,25 @@
     }
   })
 
-  // Reset auto-populate flag when the structure changes so vector configs
-  // are re-populated for each new structure loaded into the same component.
-  let vectors_auto_populated_for: AnyStructure | undefined = undefined
-
   // Auto-populate vector_configs when structure has vector data (force, magmom, spin, etc.)
-  // Skip if configs were already provided externally (non-empty object).
+  // Skip if configs were externally provided. Clear auto-generated configs on structure change.
+  let vectors_auto_populated_for: AnyStructure | undefined = undefined
+  let vector_configs_auto_generated = false
+
   $effect(() => {
     if (!structure?.sites || structure === vectors_auto_populated_for) return
-    vectors_auto_populated_for = structure
     const keys = get_structure_vector_keys(structure)
-    if (keys.length === 0) return
+    // Clear auto-generated configs from previous structure; preserve external ones
     const existing = scene_props.vector_configs
-    if (existing && Object.keys(existing).length > 0) return
+    if (vector_configs_auto_generated) {
+      scene_props.vector_configs = {}
+      vector_configs_auto_generated = false
+    } else if (existing && Object.keys(existing).length > 0) {
+      vectors_auto_populated_for = structure
+      return
+    }
+    vectors_auto_populated_for = structure
+    if (keys.length === 0) return
     scene_props.vector_configs = Object.fromEntries(
       keys.map((key, idx) => [key, {
         visible: true,
@@ -321,6 +327,7 @@
         scale: null,
       }]),
     )
+    vector_configs_auto_generated = true
     scene_props.vector_scale ??= DEFAULTS.structure.vector_scale
     scene_props.vector_color ??= DEFAULTS.structure.vector_color
   })

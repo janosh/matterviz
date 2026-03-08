@@ -462,19 +462,20 @@
 
   // When uniform thickness is on, convert negative (length-relative) radii to
   // positive (absolute) values scaled by inter-atomic spacing.
+  // Already-positive (absolute) values are preserved as-is.
   let eff_shaft_radius = $derived(
-    vector_uniform_thickness
-      ? char_atom_spacing * Math.abs(vector_shaft_radius)
+    vector_uniform_thickness && vector_shaft_radius < 0
+      ? char_atom_spacing * -vector_shaft_radius
       : vector_shaft_radius,
   )
   let eff_head_radius = $derived(
-    vector_uniform_thickness
-      ? char_atom_spacing * Math.abs(vector_arrow_head_radius)
+    vector_uniform_thickness && vector_arrow_head_radius < 0
+      ? char_atom_spacing * -vector_arrow_head_radius
       : vector_arrow_head_radius,
   )
   let eff_head_length = $derived(
-    vector_uniform_thickness
-      ? char_atom_spacing * Math.abs(vector_arrow_head_length)
+    vector_uniform_thickness && vector_arrow_head_length < 0
+      ? char_atom_spacing * -vector_arrow_head_length
       : vector_arrow_head_length,
   )
 

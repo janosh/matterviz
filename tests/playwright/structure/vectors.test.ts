@@ -227,6 +227,13 @@ test.describe(`Multi-Vector Site Vectors`, () => {
     await expect(
       pane_div.locator(`label`).filter({ hasText: `Origin Gap` }),
     ).toBeVisible()
+    // No standalone "Color" label in multi-vector mode
+    const site_vectors_section = site_vectors_heading.locator(
+      `xpath=following-sibling::*[1]`,
+    )
+    await expect(
+      site_vectors_section.locator(`label`).filter({ hasText: /^Color$/ }),
+    ).toHaveCount(0)
   })
 })
 
