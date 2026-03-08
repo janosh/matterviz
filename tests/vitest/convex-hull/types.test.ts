@@ -14,7 +14,7 @@ import {
 import { describe, expect, test } from 'vitest'
 
 describe(`arity helpers`, () => {
-  const make = (comp: Record<string, number>) => ({ composition: comp } as PhaseData)
+  const make = (composition: Record<string, number>) => ({ composition } as PhaseData)
 
   test(`get_arity counts positive amounts only`, () => {
     expect(get_arity(make({ A: 1, B: 0, C: -1 }))).toBe(1)

@@ -107,8 +107,7 @@ describe(`calculate_rdf`, () => {
   )
 
   test(`should have correct radii spacing`, () => {
-    const cutoff = 15
-    const n_bins = 75
+    const [cutoff, n_bins] = [15, 75]
     const result = calculate_rdf(pd_structure, { cutoff, n_bins })
     const bin_size = cutoff / n_bins
     for (let idx = 0; idx < n_bins; idx++) {

@@ -634,8 +634,7 @@ export function get_3d_domain_simplexes_and_ann_loc(
   // Map hull vertices back to original point indices using nearest projected
   // vertex instead of stringified coordinates to avoid precision aliasing.
   function nearest_projected_idx(target: Vec2): number {
-    let nearest_idx = 0
-    let min_sq_dist = Infinity
+    let [nearest_idx, min_sq_dist] = [0, Infinity]
     for (let idx = 0; idx < pts_2d.length; idx++) {
       const dx = pts_2d[idx][0] - target[0]
       const dy = pts_2d[idx][1] - target[1]

@@ -903,14 +903,11 @@ export function solve_linear_system(
 
   for (let col = 0; col < n; col++) {
     // Find pivot
-    let max_row = col
-    let max_val = Math.abs(lu[col][col])
+    let [max_row, max_val] = [col, Math.abs(lu[col][col])]
+
     for (let row = col + 1; row < n; row++) {
       const val = Math.abs(lu[row][col])
-      if (val > max_val) {
-        max_val = val
-        max_row = row
-      }
+      if (val > max_val) [max_val, max_row] = [val, row]
     }
     if (max_val < EPS) return null // singular
 
