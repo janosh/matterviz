@@ -242,8 +242,9 @@ test.describe(`Structure Component Tests`, () => {
       `false`,
     )
     await expect(control_pane).toBeHidden()
+    // tooltip attachment moves title to data-original-title
     await expect(controls_toggle_button).toHaveAttribute(
-      `title`,
+      `data-original-title`,
       `Structure controls`,
     )
   })
@@ -308,8 +309,9 @@ test.describe(`Structure Component Tests`, () => {
       `false`,
     )
     await expect(control_pane).toBeHidden()
+    // tooltip attachment moves title to data-original-title
     await expect(controls_toggle_button).toHaveAttribute(
-      `title`,
+      `data-original-title`,
       `Structure controls`,
     )
   })
@@ -2357,8 +2359,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       // Click reset button
       await atoms_reset.click()
 
-      // Radius should be back to default (1)
-      await expect(radius_input).toHaveValue(`1`)
+      // Radius should be back to default
+      await expect(radius_input).toHaveValue(`${DEFAULTS.structure.atom_radius}`)
     })
 
     test(`cell section reset button appears and works`, async ({ page }) => {

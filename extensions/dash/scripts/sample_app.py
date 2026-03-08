@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 import dash
-import matterviz_dash_components as mvc
 from dash import Input, Output, dcc, html
+
+import matterviz_dash_components as mvc
 
 # Path to the matterviz root directory (scripts/ -> dash/ -> extensions/ -> root)
 # Override with MATTERVIZ_ROOT env var if script is run from a different location
@@ -256,9 +257,7 @@ _DEMO_HULL_ENTRIES: list[dict] = [
 def layout() -> html.Div:
     """Build the main layout with demo sections for each MatterViz component."""
     sections: list[tuple[str, str]] = [
-        ("periodic-table-section", "Periodic Table"),
         ("structure-section", "Structure"),
-        ("composition-section", "Composition"),
         ("trajectory-section", "Trajectory"),
         ("brillouin-section", "Brillouin Zone"),
         ("convex-2d-section", "Convex Hull"),
@@ -267,6 +266,7 @@ def layout() -> html.Div:
         ("dos-section", "Electronic DOS"),
         ("bands-section", "Electronic Bands"),
         ("xrd-section", "XRD Plot"),
+        ("composition-section", "Composition"),
         ("callback-section", "Callback Demo"),
     ]
 
@@ -286,7 +286,20 @@ def layout() -> html.Div:
     initial_bands = get_cached(initial_bands_key, load_electronic_bands)
     initial_xrd = get_cached(initial_xrd_key, load_xrd_pattern)
 
-    # Get dark mode preference from localStorage via clientside callback
+    # Second structure: pick first one that differs from the primary
+    initial_structure_key_2 = _safe_first(
+        [s for s in AVAILABLE_STRUCTURES if s != initial_structure_key],
+        initial_structure_key,
+    )
+    initial_structure_2 = get_cached(initial_structure_key_2, load_structure)
+
+    _border = "1px solid var(--mv-border, #ddd)"
+    _two_col = {
+        "display": "grid",
+        "gridTemplateColumns": "repeat(auto-fit, minmax(min(600px, 100%), 1fr))",
+        "gap": "16px",
+    }
+
     return html.Div(
         id="main-container",
         style={
@@ -356,6 +369,7 @@ def layout() -> html.Div:
                     style={
                         "display": "flex",
                         "flexWrap": "wrap",
+                        "justifyContent": "center",
                         "listStyle": "none",
                         "padding": "0",
                         "margin": "0",
@@ -369,210 +383,106 @@ def layout() -> html.Div:
                 type="circle",
                 children=html.Div(id="loading-output", style={"display": "none"}),
             ),
-            # Periodic Table
+            # Structure (2-up)
+            html.H4("Structure", id="structure-section"),
             html.Div(
                 [
-                    html.H4("Periodic Table"),
-                    mvc.MatterViz(
-                        id="periodic-table",
-                        component="periodic-table/PeriodicTable",
-                        mv_props={
-                            "height": 480,
-                            "show_color_bar": True,
-                            "heatmap_values": {"Si": 1.0, "C": 0.7, "O": 0.5},
-                        },
-                        style={
-                            "minHeight": "340px",
-                            "border": "1px solid var(--mv-border, #ddd)",
-                        },
-                    ),
-                ],
-                id="periodic-table-section",
-            ),
-            # Structure
-            html.Div(
-                [
-                    html.H4("Structure"),
                     html.Div(
                         [
-                            html.Label(
-                                "Select structure: ",
-                                style={"fontWeight": "500", "marginRight": "8px"},
-                            ),
                             dcc.Dropdown(
-                                id="structure-selector",
+                                id=sel_id,
+                                clearable=False,
                                 options=[
                                     {"label": s, "value": s}
                                     for s in AVAILABLE_STRUCTURES
                                 ],
-                                value=initial_structure_key,
-                                clearable=False,
-                                style={"width": "200px", "display": "inline-block"},
+                                value=val,
+                                style={"width": "200px", "marginBottom": "8px"},
                             ),
-                        ],
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "marginBottom": "12px",
-                        },
-                    ),
-                    mvc.MatterViz(
-                        id="structure",
-                        component="structure/Structure",
-                        mv_props={
-                            "structure": initial_structure,
-                            "show_controls": True,
-                            "height": 400,
-                        },
-                        style={
-                            "minHeight": "420px",
-                            "border": "1px solid var(--mv-border, #ddd)",
-                        },
-                    ),
+                            mvc.MatterViz(
+                                id=mv_id,
+                                component="structure/Structure",
+                                mv_props={
+                                    "structure": data,
+                                    "show_controls": True,
+                                },
+                                style={"border": _border},
+                            ),
+                        ]
+                    )
+                    for sel_id, mv_id, val, data in [
+                        (
+                            "structure-selector",
+                            "structure",
+                            initial_structure_key,
+                            initial_structure,
+                        ),
+                        (
+                            "structure-selector-2",
+                            "structure-2",
+                            initial_structure_key_2,
+                            initial_structure_2,
+                        ),
+                    ]
                 ],
-                id="structure-section",
+                style=_two_col,
             ),
-            # Composition
+            # Trajectory + Brillouin Zone (2-up)
             html.Div(
                 [
-                    html.H4("Composition"),
                     html.Div(
                         [
+                            html.H4("Trajectory"),
                             mvc.MatterViz(
-                                id="composition-1",
-                                component="composition/Composition",
+                                id="trajectory",
+                                component="trajectory/Trajectory",
                                 mv_props={
-                                    "composition": "LiFePO4",
-                                    "mode": "pie",
-                                    "size": 180,
-                                    "color_scheme": "Vesta",
+                                    "trajectory": {"frames": _DEMO_TRAJECTORY_FRAMES},
+                                    "show_controls": True,
+                                    "fps": 1,
                                 },
-                                style={
-                                    "border": "1px solid var(--mv-border, #ddd)",
-                                    "padding": "8px",
-                                },
-                            ),
-                            mvc.MatterViz(
-                                id="composition-2",
-                                component="composition/Composition",
-                                mv_props={
-                                    "composition": "BaTiO3",
-                                    "mode": "bar",
-                                    "size": 180,
-                                    "color_scheme": "Jmol",
-                                },
-                                style={
-                                    "border": "1px solid var(--mv-border, #ddd)",
-                                    "padding": "8px",
-                                },
-                            ),
-                            mvc.MatterViz(
-                                id="composition-3",
-                                component="composition/Composition",
-                                mv_props={
-                                    "composition": "Sr2FeMoO6",
-                                    "mode": "pie",
-                                    "size": 180,
-                                    "color_scheme": "Vesta",
-                                },
-                                style={
-                                    "border": "1px solid var(--mv-border, #ddd)",
-                                    "padding": "8px",
-                                },
-                            ),
-                            mvc.MatterViz(
-                                id="composition-4",
-                                component="composition/Composition",
-                                mv_props={
-                                    "composition": {"Mg": 2, "Si": 1, "O": 4},
-                                    "mode": "bar",
-                                    "size": 180,
-                                    "color_scheme": "Jmol",
-                                },
-                                style={
-                                    "border": "1px solid var(--mv-border, #ddd)",
-                                    "padding": "8px",
-                                },
+                                style={"border": _border},
                             ),
                         ],
-                        style={
-                            "display": "grid",
-                            "gridTemplateColumns": "repeat(auto-fit, minmax(200px, 1fr))",
-                            "gap": "12px",
-                        },
+                        id="trajectory-section",
                     ),
-                ],
-                id="composition-section",
-            ),
-            # Trajectory (using simple 2-frame demo)
-            html.Div(
-                [
-                    html.H4("Trajectory (2-frame demo)"),
-                    mvc.MatterViz(
-                        id="trajectory",
-                        component="trajectory/Trajectory",
-                        mv_props={
-                            "trajectory": {"frames": _DEMO_TRAJECTORY_FRAMES},
-                            "show_controls": True,
-                            "fps": 1,
-                            "height": 360,
-                        },
-                        style={
-                            "minHeight": "380px",
-                            "border": "1px solid var(--mv-border, #ddd)",
-                        },
-                    ),
-                ],
-                id="trajectory-section",
-            ),
-            # Brillouin Zone (using simple cubic demo structure)
-            html.Div(
-                [
-                    html.H4("Brillouin Zone (Simple Cubic)"),
-                    mvc.MatterViz(
-                        id="brillouin",
-                        component="brillouin/BrillouinZone",
-                        mv_props={
-                            "structure": _DEMO_STRUCTURE,
-                            "height": 360,
-                        },
-                        style={
-                            "minHeight": "380px",
-                            "border": "1px solid var(--mv-border, #ddd)",
-                        },
-                    ),
-                ],
-                id="brillouin-section",
-            ),
-            # Convex Hull
-            html.Div(
-                [
-                    html.H4("Convex Hull (Li-Co demo)"),
-                    mvc.MatterViz(
-                        id="convex-2d",
-                        component="convex-hull/ConvexHull2D",
-                        mv_props={
-                            "entries": _DEMO_HULL_ENTRIES,
-                            "height": 400,
-                        },
-                        style={
-                            "minHeight": "470px",
-                            "border": "1px solid var(--mv-border, #ddd)",
-                        },
-                    ),
-                ],
-                id="convex-2d-section",
-            ),
-            # Phase Diagram
-            html.Div(
-                [
-                    html.H4("Binary Phase Diagram"),
                     html.Div(
                         [
-                            html.Label(
-                                "Select system: ",
-                                style={"fontWeight": "500", "marginRight": "8px"},
+                            html.H4("Brillouin Zone"),
+                            mvc.MatterViz(
+                                id="brillouin",
+                                component="brillouin/BrillouinZone",
+                                mv_props={
+                                    "structure": _DEMO_STRUCTURE,
+                                },
+                                style={"border": _border},
                             ),
+                        ],
+                        id="brillouin-section",
+                    ),
+                ],
+                style=_two_col,
+            ),
+            # Convex Hull + Phase Diagram (2-up)
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.H4("Convex Hull"),
+                            mvc.MatterViz(
+                                id="convex-2d",
+                                component="convex-hull/ConvexHull2D",
+                                mv_props={
+                                    "entries": _DEMO_HULL_ENTRIES,
+                                },
+                                style={"border": _border},
+                            ),
+                        ],
+                        id="convex-2d-section",
+                    ),
+                    html.Div(
+                        [
+                            html.H4("Phase Diagram"),
                             dcc.Dropdown(
                                 id="phase-diagram-selector",
                                 options=[
@@ -581,40 +491,28 @@ def layout() -> html.Div:
                                 ],
                                 value=initial_phase_key,
                                 clearable=False,
-                                style={"width": "200px", "display": "inline-block"},
+                                style={"width": "200px", "marginBottom": "8px"},
+                            ),
+                            mvc.MatterViz(
+                                id="phase-binary",
+                                component="phase-diagram/IsobaricBinaryPhaseDiagram",
+                                mv_props={
+                                    "data": initial_phase,
+                                },
+                                style={"border": _border},
                             ),
                         ],
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "marginBottom": "12px",
-                        },
-                    ),
-                    mvc.MatterViz(
-                        id="phase-binary",
-                        component="phase-diagram/IsobaricBinaryPhaseDiagram",
-                        mv_props={
-                            "data": initial_phase,
-                            "height": 500,
-                        },
-                        style={
-                            "minHeight": "520px",
-                            "border": "1px solid var(--mv-border, #ddd)",
-                        },
+                        id="phase-binary-section",
                     ),
                 ],
-                id="phase-binary-section",
+                style=_two_col,
             ),
-            # Phonon Band Structure
+            # Phonon Bands + Electronic DOS (2-up)
             html.Div(
                 [
-                    html.H4("Phonon Band Structure"),
                     html.Div(
                         [
-                            html.Label(
-                                "Select material: ",
-                                style={"fontWeight": "500", "marginRight": "8px"},
-                            ),
+                            html.H4("Phonon Bands"),
                             dcc.Dropdown(
                                 id="phonon-selector",
                                 options=[
@@ -623,42 +521,24 @@ def layout() -> html.Div:
                                 ],
                                 value=initial_phonon_key,
                                 clearable=False,
-                                style={"width": "250px", "display": "inline-block"},
+                                style={"width": "250px", "marginBottom": "8px"},
                             ),
+                            mvc.MatterViz(
+                                id="phonon-bands",
+                                component="spectral/Bands",
+                                mv_props={
+                                    "band_structs": initial_phonon,
+                                },
+                                style={"border": _border},
+                            )
+                            if initial_phonon
+                            else html.P("Phonon data not found"),
                         ],
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "marginBottom": "12px",
-                        },
+                        id="phonon-section",
                     ),
-                    mvc.MatterViz(
-                        id="phonon-bands",
-                        component="spectral/Bands",
-                        mv_props={
-                            "band_structs": initial_phonon,
-                            "height": 400,
-                        },
-                        style={
-                            "minHeight": "420px",
-                            "border": "1px solid var(--mv-border, #ddd)",
-                        },
-                    )
-                    if initial_phonon
-                    else html.P("Phonon data not found"),
-                ],
-                id="phonon-section",
-            ),
-            # Electronic DOS
-            html.Div(
-                [
-                    html.H4("Electronic Density of States"),
                     html.Div(
                         [
-                            html.Label(
-                                "Select DOS: ",
-                                style={"fontWeight": "500", "marginRight": "8px"},
-                            ),
+                            html.H4("Electronic DOS"),
                             dcc.Dropdown(
                                 id="dos-selector",
                                 options=[
@@ -666,42 +546,30 @@ def layout() -> html.Div:
                                 ],
                                 value=initial_dos_key,
                                 clearable=False,
-                                style={"width": "300px", "display": "inline-block"},
+                                style={"width": "250px", "marginBottom": "8px"},
                             ),
+                            mvc.MatterViz(
+                                id="electronic-dos",
+                                component="spectral/Dos",
+                                mv_props={
+                                    "doses": initial_dos,
+                                },
+                                style={"border": _border},
+                            )
+                            if initial_dos
+                            else html.P("DOS data not found"),
                         ],
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "marginBottom": "12px",
-                        },
+                        id="dos-section",
                     ),
-                    mvc.MatterViz(
-                        id="electronic-dos",
-                        component="spectral/Dos",
-                        mv_props={
-                            "doses": initial_dos,
-                            "height": 350,
-                        },
-                        style={
-                            "minHeight": "370px",
-                            "border": "1px solid var(--mv-border, #ddd)",
-                        },
-                    )
-                    if initial_dos
-                    else html.P("DOS data not found"),
                 ],
-                id="dos-section",
+                style=_two_col,
             ),
-            # Electronic Band Structure
+            # Electronic Bands + XRD (2-up)
             html.Div(
                 [
-                    html.H4("Electronic Band Structure"),
                     html.Div(
                         [
-                            html.Label(
-                                "Select bands: ",
-                                style={"fontWeight": "500", "marginRight": "8px"},
-                            ),
+                            html.H4("Electronic Bands"),
                             dcc.Dropdown(
                                 id="bands-selector",
                                 options=[
@@ -709,113 +577,182 @@ def layout() -> html.Div:
                                 ],
                                 value=initial_bands_key,
                                 clearable=False,
-                                style={"width": "250px", "display": "inline-block"},
+                                style={"width": "250px", "marginBottom": "8px"},
+                            ),
+                            mvc.MatterViz(
+                                id="electronic-bands",
+                                component="spectral/Bands",
+                                mv_props={
+                                    "band_structs": initial_bands,
+                                },
+                                style={"border": _border},
+                            )
+                            if initial_bands
+                            else html.P("Band structure data not found"),
+                        ],
+                        id="bands-section",
+                    ),
+                    html.Div(
+                        [
+                            html.H4("XRD Plot"),
+                            dcc.Dropdown(
+                                id="xrd-selector",
+                                options=[
+                                    {"label": s, "value": s} for s in AVAILABLE_XRD
+                                ],
+                                value=initial_xrd_key,
+                                clearable=False,
+                                style={"width": "250px", "marginBottom": "8px"},
+                            ),
+                            mvc.MatterViz(
+                                id="xrd",
+                                component="xrd/XrdPlot",
+                                mv_props={
+                                    "patterns": initial_xrd
+                                    or {"x": [20, 30, 40], "y": [100, 50, 25]},
+                                    "peak_width": 0.5,
+                                    "annotate_peaks": 5,
+                                },
+                                style={"border": _border},
                             ),
                         ],
-                        style={
-                            "display": "flex",
-                            "alignItems": "center",
-                            "marginBottom": "12px",
-                        },
+                        id="xrd-section",
                     ),
-                    mvc.MatterViz(
-                        id="electronic-bands",
-                        component="spectral/Bands",
-                        mv_props={
-                            "band_structs": initial_bands,
-                            "height": 400,
-                        },
-                        style={
-                            "minHeight": "420px",
-                            "border": "1px solid var(--mv-border, #ddd)",
-                        },
-                    )
-                    if initial_bands
-                    else html.P("Band structure data not found"),
                 ],
-                id="bands-section",
+                style=_two_col,
             ),
-            # XRD Plot
+            # Composition
             html.Div(
                 [
-                    html.H4("XRD Plot (Quartz)"),
-                    mvc.MatterViz(
-                        id="xrd",
-                        component="xrd/XrdPlot",
-                        mv_props={
-                            "patterns": initial_xrd
-                            or {"x": [20, 30, 40], "y": [100, 50, 25]},
-                            "peak_width": 0.5,
-                            "annotate_peaks": 5,
-                            "height": 320,
-                        },
+                    html.H4("Composition"),
+                    html.Div(
+                        [
+                            mvc.MatterViz(
+                                id=f"comp-{idx}",
+                                component=comp,
+                                mv_props={
+                                    "composition": formula,
+                                    "size": 120,
+                                    **({"mode": mode} if mode else {}),
+                                    "color_scheme": scheme,
+                                },
+                                style={"border": _border, "padding": "4px"},
+                            )
+                            for idx, (comp, formula, mode, scheme) in enumerate(
+                                [
+                                    (
+                                        "composition/Composition",
+                                        "LiFePO4",
+                                        "pie",
+                                        "Vesta",
+                                    ),
+                                    (
+                                        "composition/Composition",
+                                        "BaTiO3",
+                                        "bar",
+                                        "Jmol",
+                                    ),
+                                    (
+                                        "composition/BubbleChart",
+                                        {"Sr": 2, "Fe": 1, "Mo": 1, "O": 6},
+                                        None,
+                                        "Vesta",
+                                    ),  # noqa: E501
+                                    (
+                                        "composition/Composition",
+                                        "CaTiO3",
+                                        "pie",
+                                        "Jmol",
+                                    ),
+                                    (
+                                        "composition/Composition",
+                                        {"Mg": 2, "Si": 1, "O": 4},
+                                        "bar",
+                                        "Vesta",
+                                    ),
+                                    (
+                                        "composition/BubbleChart",
+                                        {"La": 2, "Cu": 1, "O": 4},
+                                        None,
+                                        "Jmol",
+                                    ),
+                                    (
+                                        "composition/BubbleChart",
+                                        {"Y": 1, "Ba": 2, "Cu": 3, "O": 7},
+                                        None,
+                                        "Vesta",
+                                    ),
+                                    ("composition/Composition", "Fe2O3", "pie", "Jmol"),
+                                    (
+                                        "composition/Composition",
+                                        "Na2SO4",
+                                        "bar",
+                                        "Vesta",
+                                    ),
+                                ]
+                            )
+                        ],
                         style={
-                            "minHeight": "340px",
-                            "border": "1px solid var(--mv-border, #ddd)",
+                            "display": "grid",
+                            "gridTemplateColumns": "repeat(auto-fill, minmax(140px, 1fr))",
+                            "gap": "8px",
                         },
                     ),
                 ],
-                id="xrd-section",
+                id="composition-section",
             ),
             # Callback Demo (bidirectional)
             html.Div(
                 [
                     html.H4("Callback Demo (Click Detection)"),
-                    html.P(
-                        "Click on elements or hull points to see callbacks in action.",
-                        className="text-muted",
-                    ),
-                    # Output panel (at top for visibility)
                     html.Div(
                         [
-                            html.H5("Last Clicked", style={"marginTop": "0"}),
-                            html.Pre(
-                                id="callback-output",
-                                children="Click an element or hull point...",
-                                className="callback-output",
+                            # Periodic Table with callback output overlaid on inset area
+                            html.Div(
+                                [
+                                    mvc.MatterViz(
+                                        id="callback-periodic-table",
+                                        component="periodic-table/PeriodicTable",
+                                        mv_props={"show_color_bar": False},
+                                        event_props=["tile_props.onclick"],
+                                        style={"border": _border},
+                                    ),
+                                    html.Pre(
+                                        id="callback-output",
+                                        children="Click an element…",
+                                        className="callback-output",
+                                        style={
+                                            "margin": "0",
+                                            "padding": "6px 8px",
+                                            "overflow": "auto",
+                                            "fontSize": "10px",
+                                            "lineHeight": "1.3",
+                                            "boxSizing": "border-box",
+                                        },
+                                    ),
+                                ],
+                                style={"position": "relative"},
+                            ),
+                            # Convex Hull (clickable with callback)
+                            html.Div(
+                                [
+                                    html.H5(
+                                        "Convex Hull (click points)",
+                                        style={"marginTop": "0"},
+                                    ),
+                                    mvc.MatterViz(
+                                        id="callback-convex-hull",
+                                        component="convex-hull/ConvexHull2D",
+                                        mv_props={
+                                            "entries": _DEMO_HULL_ENTRIES,
+                                        },
+                                        event_props=["on_point_click"],
+                                        style={"border": _border},
+                                    ),
+                                ],
                             ),
                         ],
-                    ),
-                    # Periodic Table (clickable via tile_props.onclick)
-                    html.Div(
-                        [
-                            html.H5(
-                                "Periodic Table (click elements)",
-                                style={"marginTop": "0"},
-                            ),
-                            mvc.MatterViz(
-                                id="callback-periodic-table",
-                                component="periodic-table/PeriodicTable",
-                                mv_props={"show_color_bar": False},
-                                # Use dot notation for nested event props
-                                event_props=["tile_props.onclick"],
-                                style={
-                                    "border": "1px solid var(--mv-border, #ddd)",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "16px"},
-                    ),
-                    # Convex Hull (clickable with callback)
-                    html.Div(
-                        [
-                            html.H5(
-                                "Convex Hull (click points)", style={"marginTop": "0"}
-                            ),
-                            mvc.MatterViz(
-                                id="callback-convex-hull",
-                                component="convex-hull/ConvexHull2D",
-                                mv_props={
-                                    "entries": _DEMO_HULL_ENTRIES,
-                                    "height": 280,
-                                },
-                                event_props=["on_point_click"],
-                                style={
-                                    "border": "1px solid var(--mv-border, #ddd)",
-                                    "maxWidth": "500px",
-                                },
-                            ),
-                        ],
+                        style=_two_col,
                     ),
                 ],
                 id="callback-section",
@@ -826,7 +763,9 @@ def layout() -> html.Div:
 
 def create_app() -> dash.Dash:
     """Create and configure the Dash application."""
-    app = dash.Dash(__name__, suppress_callback_exceptions=True)
+    app = dash.Dash(
+        __name__, suppress_callback_exceptions=True, title="MatterViz Dash Demo"
+    )
     app.layout = layout
     # Theme styles with CSS variables (mv- prefixed to avoid collisions)
     app.index_string = """<!DOCTYPE html>
@@ -844,7 +783,7 @@ def create_app() -> dash.Dash:
                 --mv-text-muted: #666;
                 --mv-border: #ddd;
                 --mv-surface: #f8f9fa;
-                --mv-nav-bg: #f5f5f5;
+                --mv-nav-bg: #d6dde6;
                 --mv-nav-link: #1a56db;
                 /* MatterViz component CSS variables (must match themes.js) */
                 --text-color: #374151;
@@ -880,7 +819,9 @@ def create_app() -> dash.Dash:
             html, body {
                 background: var(--mv-bg);
                 color: var(--mv-text);
+                font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
                 margin: 0;
+                padding: 0;
                 overflow-x: hidden;
                 transition: background 0.3s, color 0.3s;
             }
@@ -959,72 +900,106 @@ def create_app() -> dash.Dash:
         prevent_initial_call=True,
     )
 
-    # Phase diagram callback
-    @app.callback(
-        Output("phase-binary", "mv_props"),
-        Input("phase-diagram-selector", "value"),
+    # Move callback output into periodic table grid inset area
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            const out = document.getElementById('callback-output');
+            const grid = document.querySelector('#callback-periodic-table .periodic-table');
+            if (out && grid && out.parentNode !== grid) {
+                Object.assign(out.style, {
+                    gridRow: '1 / span 3',
+                    gridColumn: '3 / span 10',
+                    alignSelf: 'stretch',
+                    zIndex: '1',
+                });
+                grid.appendChild(out);
+            }
+            return window.dash_clientside.no_update;
+        }
+        """,
+        Output("callback-output", "id"),
+        Input("callback-periodic-table", "id"),
     )
-    def update_phase_diagram(selected_system: str) -> dict:
-        """Update phase diagram when dropdown selection changes."""
-        data = get_cached(selected_system, load_phase_diagram)
-        if not data:
-            fallback_key = _safe_first(
-                AVAILABLE_PHASE_DIAGRAMS, _FALLBACK_PHASE_DIAGRAM
-            )
-            data = get_cached(fallback_key, load_phase_diagram) or _EMPTY_PHASE
-        return {"data": data, "height": 500}
 
-    # Structure callback
-    @app.callback(
-        Output("structure", "mv_props"),
-        Input("structure-selector", "value"),
-    )
-    def update_structure(selected_structure: str) -> dict:
-        """Update structure when dropdown selection changes."""
-        data = get_cached(selected_structure, load_structure)
-        if not data:
-            fallback_key = _safe_first(AVAILABLE_STRUCTURES, _FALLBACK_STRUCTURE)
-            data = get_cached(fallback_key, load_structure)
-        return {"structure": data, "show_controls": True, "height": 400}
+    # Data-driven callbacks: each entry is (input_id, output_id, loader, fallback_list,
+    # fallback_default, props_builder). Eliminates repetitive load-fallback-return pattern.
+    _data_callbacks: list[tuple[str, str, Callable, list[str], str, Callable]] = [
+        (
+            "structure-selector",
+            "structure",
+            load_structure,
+            AVAILABLE_STRUCTURES,
+            _FALLBACK_STRUCTURE,
+            lambda d: {"structure": d, "show_controls": True},
+        ),
+        (
+            "structure-selector-2",
+            "structure-2",
+            load_structure,
+            AVAILABLE_STRUCTURES,
+            _FALLBACK_STRUCTURE,
+            lambda d: {"structure": d, "show_controls": True},
+        ),
+        (
+            "phase-diagram-selector",
+            "phase-binary",
+            load_phase_diagram,
+            AVAILABLE_PHASE_DIAGRAMS,
+            _FALLBACK_PHASE_DIAGRAM,
+            lambda d: {"data": d or _EMPTY_PHASE},
+        ),
+        (
+            "phonon-selector",
+            "phonon-bands",
+            load_phonon_bands,
+            AVAILABLE_PHONONS,
+            _FALLBACK_PHONON,
+            lambda d: {"band_structs": d},
+        ),
+        (
+            "dos-selector",
+            "electronic-dos",
+            load_electronic_dos,
+            AVAILABLE_DOS,
+            _FALLBACK_DOS,
+            lambda d: {"doses": d},
+        ),
+        (
+            "bands-selector",
+            "electronic-bands",
+            load_electronic_bands,
+            AVAILABLE_BANDS,
+            _FALLBACK_BANDS,
+            lambda d: {"band_structs": d},
+        ),
+        (
+            "xrd-selector",
+            "xrd",
+            load_xrd_pattern,
+            AVAILABLE_XRD,
+            _FALLBACK_XRD,
+            lambda d: {
+                "patterns": d or {"x": [20, 30, 40], "y": [100, 50, 25]},
+                "peak_width": 0.5,
+                "annotate_peaks": 5,
+            },
+        ),
+    ]
+    for input_id, output_id, loader, avail, fallback, build_props in _data_callbacks:
 
-    # Phonon bands callback
-    @app.callback(
-        Output("phonon-bands", "mv_props"),
-        Input("phonon-selector", "value"),
-    )
-    def update_phonon_bands(selected: str) -> dict:
-        """Update phonon bands when dropdown selection changes."""
-        data = get_cached(selected, load_phonon_bands)
-        if not data:
-            fallback_key = _safe_first(AVAILABLE_PHONONS, _FALLBACK_PHONON)
-            data = get_cached(fallback_key, load_phonon_bands)
-        return {"band_structs": data, "height": 400}
-
-    # DOS callback
-    @app.callback(
-        Output("electronic-dos", "mv_props"),
-        Input("dos-selector", "value"),
-    )
-    def update_dos(selected: str) -> dict:
-        """Update DOS when dropdown selection changes."""
-        data = get_cached(selected, load_electronic_dos)
-        if not data:
-            fallback_key = _safe_first(AVAILABLE_DOS, _FALLBACK_DOS)
-            data = get_cached(fallback_key, load_electronic_dos)
-        return {"doses": data, "height": 350}
-
-    # Electronic bands callback
-    @app.callback(
-        Output("electronic-bands", "mv_props"),
-        Input("bands-selector", "value"),
-    )
-    def update_bands(selected: str) -> dict:
-        """Update electronic bands when dropdown selection changes."""
-        data = get_cached(selected, load_electronic_bands)
-        if not data:
-            fallback_key = _safe_first(AVAILABLE_BANDS, _FALLBACK_BANDS)
-            data = get_cached(fallback_key, load_electronic_bands)
-        return {"band_structs": data, "height": 400}
+        @app.callback(Output(output_id, "mv_props"), Input(input_id, "value"))
+        def _update(
+            selected: str,
+            _loader: Callable = loader,
+            _avail: list[str] = avail,
+            _fb: str = fallback,
+            _build: Callable = build_props,
+        ) -> dict:
+            data = get_cached(selected, _loader)
+            if not data:
+                data = get_cached(_safe_first(_avail, _fb), _loader)
+            return _build(data)
 
     # Callback demo - display clicked phase entry
     @app.callback(

@@ -223,8 +223,7 @@ export function parse_ras_file(content: string): XrdPattern | null {
     // Check if first column values are monotonically increasing (characteristic of angle data)
     // Sample a few lines to verify the pattern
     const sample_count = Math.min(5, data_lines.length)
-    let is_monotonic = true
-    let prev_angle = first_values[0]
+    let [is_monotonic, prev_angle] = [true, first_values[0]]
 
     for (let idx = 1; idx < sample_count; idx++) {
       const values = parse_number_list(data_lines[idx])

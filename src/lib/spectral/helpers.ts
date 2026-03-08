@@ -750,7 +750,7 @@ export function extract_k_path_points(
 
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = recip_lattice_matrix
 
-  return band_struct.qpoints.map((qpoint) => {
+  return band_struct.qpoints.map((qpoint): Vec3 => {
     let [x, y, z] = qpoint.frac_coords
     // Wrap to first BZ if enabled (handles [0,1] vs [-0.5,0.5] convention difference)
     if (wrap_to_bz) {
@@ -758,11 +758,10 @@ export function extract_k_path_points(
       y = centered_frac(y)
       z = centered_frac(z)
     }
-    return [
-      x * m00 + y * m10 + z * m20,
-      x * m01 + y * m11 + z * m21,
-      x * m02 + y * m12 + z * m22,
-    ] as Vec3
+    const kx = x * m00 + y * m10 + z * m20
+    const ky = x * m01 + y * m11 + z * m21
+    const kz = x * m02 + y * m12 + z * m22
+    return [kx, ky, kz]
   })
 }
 

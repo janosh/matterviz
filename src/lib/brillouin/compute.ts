@@ -235,8 +235,8 @@ function compute_hull_volume(vertices: Vec3[], faces: number[][]): number {
       const area_normal = math.scale(
         math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)),
         0.5,
-      ) as Vec3
-      return sum + (math.dot(v0, area_normal) as number) / 3
+      )
+      return sum + math.dot(v0, area_normal) / 3
     }, 0),
   )
 }
@@ -310,7 +310,7 @@ export function compute_convex_hull(
   for (const [key, adj] of edge_to_faces) {
     const is_sharp = adj.length === 1 ||
       (adj.length === 2 &&
-        (math.dot(face_normals[adj[0]], face_normals[adj[1]]) as number) < cos_threshold)
+        math.dot(face_normals[adj[0]], face_normals[adj[1]]) < cos_threshold)
     if (is_sharp) edges.push(key.split(`,`).map(Number) as Vec2)
   }
 
@@ -405,7 +405,7 @@ function clip_polyhedron_by_plane(
   plane: ClippingPlane,
 ): Vec3[] {
   const { normal, dist } = plane
-  const signed_dists = vertices.map((v) => (math.dot(v, normal) as number) - dist)
+  const signed_dists = vertices.map((v) => math.dot(v, normal) - dist)
 
   // Keep vertices inside the half-space
   const result = vertices.filter((_, idx) => signed_dists[idx] <= TOL)

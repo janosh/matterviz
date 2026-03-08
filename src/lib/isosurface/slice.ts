@@ -130,9 +130,9 @@ export function sample_hkl_slice(
       fi * lattice[0][1] + fj * lattice[1][1] + fk * lattice[2][1],
       fi * lattice[0][2] + fj * lattice[1][2] + fk * lattice[2][2],
     ]
-    const u_proj = math.dot(corner, u_vec) as number
-    const v_proj = math.dot(corner, v_vec) as number
-    const n_proj = math.dot(corner, unit_normal) as number
+    const u_proj = math.dot(corner, u_vec)
+    const v_proj = math.dot(corner, v_vec)
+    const n_proj = math.dot(corner, unit_normal)
     if (u_proj < u_min) u_min = u_proj
     if (u_proj > u_max) u_max = u_proj
     if (v_proj < v_min) v_min = v_proj

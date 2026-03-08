@@ -9,11 +9,11 @@
   let {
     position,
     vector,
-    scale = DEFAULTS.structure.force_scale,
-    color = DEFAULTS.structure.force_color,
-    shaft_radius = DEFAULTS.structure.force_shaft_radius,
-    arrow_head_radius = DEFAULTS.structure.force_arrow_head_radius,
-    arrow_head_length = DEFAULTS.structure.force_arrow_head_length,
+    scale = DEFAULTS.structure.vector_scale,
+    color = DEFAULTS.structure.vector_color,
+    shaft_radius = DEFAULTS.structure.vector_shaft_radius,
+    arrow_head_radius = DEFAULTS.structure.vector_arrow_head_radius,
+    arrow_head_length = DEFAULTS.structure.vector_arrow_head_length,
     ...rest
   }: ComponentProps<typeof T.Mesh> & {
     position: Vec3

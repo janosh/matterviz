@@ -105,8 +105,7 @@ export function parse_tdb(content: string): TdbParseResult {
 
     // Extract temperature range from functions/parameters
     // Find the actual min and max temperatures across all ranges
-    let min_temp = Infinity
-    let max_temp = -Infinity
+    let [min_temp, max_temp] = [Infinity, -Infinity]
     for (const func of data.functions) {
       for (const range of func.temperature_ranges) {
         if (range.min < min_temp) min_temp = range.min

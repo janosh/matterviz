@@ -20,6 +20,6 @@
     container-type: inline-size;
     container-name: table-inset;
     overflow: visible;
-    padding: var(--ptable-inset-padding, 0 0 5px 15px);
+    padding: var(--ptable-inset-padding);
   }
 </style>

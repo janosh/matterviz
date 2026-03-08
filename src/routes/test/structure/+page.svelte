@@ -116,6 +116,12 @@
       const param = url_params.get(`show_site_indices`)
       scene_props.show_site_indices = param === `true`
     }
+
+    // Vector origin gap
+    if (url_params.has(`vector_origin_gap`)) {
+      const gap = parseFloat(url_params.get(`vector_origin_gap`) || `0`)
+      if (!isNaN(gap)) scene_props.vector_origin_gap = gap
+    }
   })
 
   $effect(() => { // Listen for custom events from tests
@@ -136,12 +142,27 @@
       }
     }
 
+    const handle_scene_props = (event: Event) => {
+      const { detail } = event as CustomEvent
+      Object.assign(scene_props, detail)
+    }
+
+    const handle_set_structure = (event: Event) => {
+      const { detail } = event as CustomEvent
+      structure = detail.structure as Crystal
+      scene_props.vector_configs = detail.vector_configs ?? {}
+    }
+
     window.addEventListener(`set-lattice-props`, handle_lattice_props)
     window.addEventListener(`set-show-buttons`, handle_show_controls)
+    window.addEventListener(`set-scene-props`, handle_scene_props)
+    window.addEventListener(`set-structure`, handle_set_structure)
 
     return () => {
       window.removeEventListener(`set-lattice-props`, handle_lattice_props)
       window.removeEventListener(`set-show-buttons`, handle_show_controls)
+      window.removeEventListener(`set-scene-props`, handle_scene_props)
+      window.removeEventListener(`set-structure`, handle_set_structure)
     }
   })
 
@@ -291,6 +312,20 @@
 <div data-testid="camera-projection-status">
   Camera Projection Status: {
     scene_props.camera_projection || DEFAULTS.structure.camera_projection
+  }
+</div>
+
+<div
+  data-testid="vector-configs-status"
+  data-configs={JSON.stringify(scene_props.vector_configs ?? DEFAULTS.structure.vector_configs)}
+>
+  Vector Configs: {
+    JSON.stringify(scene_props.vector_configs ?? DEFAULTS.structure.vector_configs)
+  }
+</div>
+<div data-testid="vector-origin-gap-status">
+  Vector Origin Gap: {
+    scene_props.vector_origin_gap ?? DEFAULTS.structure.vector_origin_gap
   }
 </div>
 

@@ -413,41 +413,53 @@
           "minimum": 0,
           "maximum": 4
         },
-        "matterviz.structure.show_force_vectors": {
-          "type": "boolean",
-          "default": false,
-          "description": "Display force vectors on atoms"
-        },
-        "matterviz.structure.force_scale": {
+        "matterviz.structure.vector_scale": {
           "type": "number",
           "default": 1,
-          "description": "Scale factor for force vector arrows",
+          "description": "Scale factor for site vector arrows",
           "minimum": 0.1,
           "maximum": 10
         },
-        "matterviz.structure.force_color": {
+        "matterviz.structure.vector_color": {
           "type": "string",
           "default": "#ff0000",
-          "description": "Color for force vectors"
+          "description": "Color for site vector arrows"
         },
-        "matterviz.structure.force_shaft_radius": {
+        "matterviz.structure.vector_normalize": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show all arrows at the same length (direction only). Useful for spin/magmom visualization where orientation matters but magnitude does not."
+        },
+        "matterviz.structure.vector_uniform_thickness": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use the same shaft and head size for all arrows regardless of length. When off (default), thickness scales with arrow length."
+        },
+        "matterviz.structure.vector_origin_gap": {
+          "type": "number",
+          "default": 0,
+          "description": "Fraction of visual atom radius to offset each arrow origin when multiple vectors are shown per site. 0 = all from atom center, 0.5 = halfway to surface.",
+          "minimum": 0,
+          "maximum": 0.5
+        },
+        "matterviz.structure.vector_shaft_radius": {
           "type": "number",
           "default": -0.03,
-          "description": "Radius of force vector shaft (negative = relative to length, positive = absolute)",
+          "description": "Radius of vector shaft (negative = relative to length, positive = absolute)",
           "minimum": -0.1,
           "maximum": 0.1
         },
-        "matterviz.structure.force_arrow_head_radius": {
+        "matterviz.structure.vector_arrow_head_radius": {
           "type": "number",
           "default": -0.06,
-          "description": "Radius of force vector arrow head (negative = relative to length, positive = absolute)",
+          "description": "Radius of vector arrow head (negative = relative to length, positive = absolute)",
           "minimum": -0.2,
           "maximum": 0.2
         },
-        "matterviz.structure.force_arrow_head_length": {
+        "matterviz.structure.vector_arrow_head_length": {
           "type": "number",
           "default": -0.15,
-          "description": "Length of force vector arrow head (negative = relative to length, positive = absolute)",
+          "description": "Length of vector arrow head (negative = relative to length, positive = absolute)",
           "minimum": -0.5,
           "maximum": 0.5
         },

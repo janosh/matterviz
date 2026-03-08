@@ -22,9 +22,10 @@
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure, Crystal, MeasureMode } from '$lib/structure'
   import {
+    default_vector_configs,
     get_element_counts,
     get_pbc_image_sites,
-    get_site_vector,
+    get_structure_vector_keys,
   } from '$lib/structure'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
   import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
@@ -300,23 +301,34 @@
     }
   })
 
-  // Track if force vectors were auto-enabled to prevent repeated triggering
-  let force_vectors_auto_enabled = $state(false)
+  // Auto-populate vector_configs when structure has vector data (force, magmom, spin, etc.)
+  // Skip if configs were externally provided. Clear auto-generated configs on structure change.
+  let vectors_auto_populated_for: AnyStructure | undefined = undefined
+  let last_auto_configs: Record<string, unknown> | undefined = undefined
 
-  // Auto-enable force vectors when structure has vector data (force, magmom, or spin)
   $effect(() => {
-    if (structure?.sites && !force_vectors_auto_enabled) {
-      const has_vector_data = structure.sites.some((site) =>
-        get_site_vector(site) !== null
-      )
-      if (!has_vector_data) return
-      if (!scene_props.show_force_vectors) {
-        scene_props.show_force_vectors = true
-        scene_props.force_scale ??= DEFAULTS.structure.force_scale
-        scene_props.force_color ??= DEFAULTS.structure.force_color
-      }
-      force_vectors_auto_enabled = true
+    if (!structure?.sites || structure === vectors_auto_populated_for) return
+    const keys = get_structure_vector_keys(structure)
+    // Clear auto-generated configs from previous structure; preserve externally-modified ones
+    const existing = scene_props.vector_configs
+    if (last_auto_configs && existing === last_auto_configs) {
+      scene_props.vector_configs = {}
+      last_auto_configs = undefined
+    } else if (existing && Object.keys(existing).length > 0) {
+      vectors_auto_populated_for = structure
+      return
     }
+    vectors_auto_populated_for = structure
+    if (keys.length === 0) return
+    const configs = default_vector_configs(keys)
+    scene_props.vector_configs = configs
+    // Read back the proxied reference — Svelte 5 $state wraps objects in
+    // proxies, so `scene_props.vector_configs !== configs`. Storing the proxy
+    // lets the identity check above detect unmodified auto-configs.
+    // See https://svelte.dev/e/state_proxy_equality_mismatch
+    last_auto_configs = scene_props.vector_configs
+    scene_props.vector_scale ??= DEFAULTS.structure.vector_scale
+    scene_props.vector_color ??= DEFAULTS.structure.vector_color
   })
 
   // Optimize scene props for performance based on structure size and mode
@@ -1461,7 +1473,7 @@
     <!-- prevent from rendering in vitest runner since WebGLRenderingContext not available -->
     {#if typeof WebGLRenderingContext !== `undefined`}
       <!-- prevent HTML labels from rendering outside of the canvas -->
-      <div style="overflow: hidden; height: 100%; flex: 1">
+      <div style="overflow: hidden; height: 100%; width: 100%">
         <Canvas>
           <StructureScene
             structure={displayed_structure}

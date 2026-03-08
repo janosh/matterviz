@@ -684,10 +684,8 @@ function infer_regions(
     ) || `region_${region_id + 1}`
 
     // Find bounding box of all cells in this region
-    let min_x = Infinity
-    let max_x = -Infinity
-    let min_y = Infinity
-    let max_y = -Infinity
+    let [min_x, max_x] = [Infinity, -Infinity]
+    let [min_y, max_y] = [Infinity, -Infinity]
     for (let col = 0; col < n_cols; col++) {
       for (let row = 0; row < n_rows; row++) {
         if (cell_ids[col][row] !== region_id) continue

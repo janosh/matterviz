@@ -274,20 +274,20 @@
   })
 
   // Calculate heat range for color bar
-  let heat_range = $derived.by(() => {
-    if (!should_show_color_bar) return [0, 1] as Vec2
+  let heat_range = $derived.by((): Vec2 => {
+    if (!should_show_color_bar) return [0, 1]
 
     const numeric_values = heat_values
       .flat()
       .filter((v): v is number => typeof v === `number`)
     const usable_values = log ? numeric_values.filter((v) => v > 0) : numeric_values
 
-    if (usable_values.length === 0) return [0, 1] as Vec2
+    if (usable_values.length === 0) return [0, 1]
 
     const min = color_scale_range[0] ?? Math.min(...usable_values)
     const max = color_scale_range[1] ?? Math.max(...usable_values)
 
-    return [min, max] as Vec2
+    return [min, max]
   })
 </script>
 

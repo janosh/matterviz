@@ -95,10 +95,15 @@
   </div>
 {/snippet}
 
-<form style="display: flex; place-content: center; gap: 1em; margin-block: 1em 2em">
+<form style="display: flex; place-content: center; gap: 1em; margin-block: 0 2em">
   <PropertySelect empty id="heatmap-select" bind:key={heatmap_key} />
   {#if heatmap_key}
-    <ColorScaleSelect bind:value={color_scale} minSelect={1} selected={[color_scale]} />
+    <ColorScaleSelect
+      bind:value={color_scale}
+      minSelect={1}
+      selected={[color_scale]}
+      style="flex: 1"
+    />
   {/if}
 </form>
 

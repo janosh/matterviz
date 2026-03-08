@@ -233,8 +233,10 @@ describe(`Structure`, () => {
   })
 
   test(`drag and drop event handling`, async () => {
-    let event_handled = false
-    let file_content = null
+    let [event_handled, file_content]: [boolean, string | ArrayBuffer | null] = [
+      false,
+      null,
+    ]
     let resolve_drop!: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 

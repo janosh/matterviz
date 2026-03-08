@@ -220,8 +220,7 @@
     if (color_property !== `velocity` && color_property !== `custom`) {
       return [0, 1]
     }
-    let min_val = Infinity
-    let max_val = -Infinity
+    let [min_val, max_val] = [Infinity, -Infinity]
     for (const surface of visible_surfaces) {
       if (!surface.properties) continue
       for (const prop of surface.properties) {
@@ -537,8 +536,7 @@
 
   // Find index of nearest vertex to a point in a surface
   function find_nearest_vertex(surface: Isosurface, point: Vec3): number {
-    let min_dist = Infinity
-    let nearest_idx = 0
+    let [min_dist, nearest_idx] = [Infinity, 0]
     for (let idx = 0; idx < surface.vertices.length; idx++) {
       const vertex = surface.vertices[idx]
       const dist = Math.hypot(

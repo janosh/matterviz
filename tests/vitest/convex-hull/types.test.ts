@@ -8,47 +8,32 @@ import type {
 import {
   get_arity,
   HULL_FACE_COLOR_MODES,
-  is_binary_entry,
-  is_denary_entry,
-  is_nonary_entry,
-  is_octonary_entry,
   is_on_hull,
-  is_quaternary_entry,
-  is_quinary_entry,
-  is_senary_entry,
-  is_septenary_entry,
-  is_ternary_entry,
   is_unary_entry,
 } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`arity helpers`, () => {
-  const make = (comp: Record<string, number>) => ({ composition: comp } as PhaseData)
+  const make = (composition: Record<string, number>) => ({ composition } as PhaseData)
 
   test(`get_arity counts positive amounts only`, () => {
     expect(get_arity(make({ A: 1, B: 0, C: -1 }))).toBe(1)
   })
 
-  test(`predicates for different arities`, () => {
+  const elements = `A B C D E F G H I J`.split(` `)
+  test.each(
+    Array.from({ length: 10 }, (_, idx) => {
+      const n_elems = idx + 1
+      const comp = Object.fromEntries(elements.slice(0, n_elems).map((el) => [el, 1]))
+      return [n_elems, comp] as const
+    }),
+  )(`get_arity returns %i for %j`, (expected, comp) => {
+    expect(get_arity(make(comp))).toBe(expected)
+  })
+
+  test(`is_unary_entry matches arity 1`, () => {
     expect(is_unary_entry(make({ A: 1 }))).toBe(true)
-    expect(is_binary_entry(make({ A: 1, B: 1 }))).toBe(true)
-    expect(is_ternary_entry(make({ A: 1, B: 1, C: 1 }))).toBe(true)
-    expect(is_quaternary_entry(make({ A: 1, B: 1, C: 1, D: 1 }))).toBe(true)
-    expect(is_quinary_entry(make({ A: 1, B: 1, C: 1, D: 1, E: 1 }))).toBe(true)
-    expect(is_senary_entry(make({ A: 1, B: 1, C: 1, D: 1, E: 1, F: 1 }))).toBe(true)
-    expect(is_septenary_entry(make({ A: 1, B: 1, C: 1, D: 1, E: 1, F: 1, G: 1 }))).toBe(
-      true,
-    )
-    expect(is_octonary_entry(make({ A: 1, B: 1, C: 1, D: 1, E: 1, F: 1, G: 1, H: 1 })))
-      .toBe(true)
-    expect(
-      is_nonary_entry(make({ A: 1, B: 1, C: 1, D: 1, E: 1, F: 1, G: 1, H: 1, I: 1 })),
-    ).toBe(true)
-    expect(
-      is_denary_entry(
-        make({ A: 1, B: 1, C: 1, D: 1, E: 1, F: 1, G: 1, H: 1, I: 1, J: 1 }),
-      ),
-    ).toBe(true)
+    expect(is_unary_entry(make({ A: 1, B: 1 }))).toBe(false)
   })
 })
 

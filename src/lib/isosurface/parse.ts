@@ -123,9 +123,7 @@ function build_grid(
   { data, nx, ny, nz, divisor = 1, data_order = `z_fastest` }: BuildGridOptions,
 ): { grid: number[][][]; data_range: DataRange } {
   const grid: number[][][] = new Array(nx)
-  let min_val = Infinity
-  let max_val = -Infinity
-  let sum = 0
+  let [min_val, max_val, sum] = [Infinity, -Infinity, 0]
   const total = nx * ny * nz
   const data_len = Math.min(data.length, total)
 
@@ -166,8 +164,7 @@ function build_grid(
       for (let iy = 0; iy < ny; iy++) plane[iy] = new Array(nz).fill(0)
       grid[ix] = plane
     }
-    let flat_idx = 0
-    let data_exhausted = false
+    let [flat_idx, data_exhausted] = [0, false]
     for (let iz = 0; iz < nz; iz++) {
       for (let iy = 0; iy < ny; iy++) {
         for (let ix = 0; ix < nx; ix++) {

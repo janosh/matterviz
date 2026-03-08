@@ -8,9 +8,16 @@
   import { to_degrees, to_radians } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorScaleSelect } from '$lib/plot'
-  import { DEFAULTS, SETTINGS_CONFIG } from '$lib/settings'
+  import type { VectorLayerConfig } from '$lib/settings'
+  import { DEFAULTS, SETTINGS_CONFIG, VECTOR_COLOR_MODES } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
-  import { Lattice, StructureScene } from '$lib/structure'
+  import {
+    default_vector_configs,
+    get_structure_vector_keys,
+    Lattice,
+    StructureScene,
+    VECTOR_PALETTE,
+  } from '$lib/structure'
   import type { AtomColorConfig } from '$lib/structure/atom-properties'
   import { is_valid_supercell_input } from '$lib/structure/supercell'
   import type { CellType } from '$lib/symmetry'
@@ -125,12 +132,24 @@
   // Ensure site_label_offset is always available
   scene_props.site_label_offset ??= [...DEFAULTS.structure.site_label_offset]
 
-  // Detect if structure has force data
-  let has_forces = $derived(
-    structure?.sites?.some((site) =>
-      site.properties?.force && Array.isArray(site.properties.force)
-    ) ?? false,
+  // Collect available vector property keys from the structure
+  let available_vector_keys = $derived(
+    structure ? get_structure_vector_keys(structure) : [],
   )
+  function is_key_visible(key: string): boolean {
+    return scene_props.vector_configs?.[key]?.visible !== false
+  }
+
+  let any_vectors_visible = $derived(available_vector_keys.some(is_key_visible))
+
+  function update_vector_config(key: string, patch: Partial<VectorLayerConfig>) {
+    const configs = { ...scene_props.vector_configs }
+    configs[key] = {
+      ...(configs[key] ?? { visible: true, color: null, scale: null }),
+      ...patch,
+    }
+    scene_props.vector_configs = configs
+  }
 
   // Detect if structure has lattice (can create supercells)
   let has_lattice = $derived(
@@ -208,7 +227,7 @@
       show_image_atoms,
       show_site_labels: scene_props.show_site_labels,
       show_site_indices: scene_props.show_site_indices,
-      show_force_vectors: scene_props.show_force_vectors,
+      vector_configs: scene_props.vector_configs,
       show_cell_vectors: lattice_props.show_cell_vectors,
     }}
     on_reset={() => {
@@ -216,7 +235,7 @@
       scene_props.show_bonds = DEFAULTS.structure.show_bonds
       scene_props.show_site_labels = DEFAULTS.structure.show_site_labels
       scene_props.show_site_indices = DEFAULTS.structure.show_site_indices
-      scene_props.show_force_vectors = DEFAULTS.structure.show_force_vectors
+      scene_props.vector_configs = default_vector_configs(available_vector_keys)
       show_image_atoms = DEFAULTS.structure.show_image_atoms
       lattice_props.show_cell_vectors = DEFAULTS.structure.show_cell_vectors
     }}
@@ -256,16 +275,43 @@
       <input type="checkbox" bind:checked={scene_props.show_site_indices} />
       Site Indices
     </label>
-    {#if has_forces}
-      <label
-        {@attach tooltip({
-          content: SETTINGS_CONFIG.structure.show_force_vectors.description,
-        })}
-        style="gap: 6pt"
-      >
-        <input type="checkbox" bind:checked={scene_props.show_force_vectors} />
-        Force Vectors
-      </label>
+    {#if available_vector_keys.length > 0}
+      {#each available_vector_keys as key, idx (key)}
+        <label
+          {@attach tooltip({
+            content: `Toggle ${key} vectors`,
+          })}
+          style="gap: 4pt"
+        >
+          <input
+            type="checkbox"
+            checked={is_key_visible(key)}
+            onchange={() => update_vector_config(key, { visible: !is_key_visible(key) })}
+          />
+          <input
+            type="color"
+            aria-label={`${key} vector color`}
+            value={scene_props.vector_configs?.[key]?.color ??
+            VECTOR_PALETTE[idx % VECTOR_PALETTE.length]}
+            onchange={(evt) =>
+            update_vector_config(key, {
+              color: (evt.target as HTMLInputElement).value,
+            })}
+            style="width: 22px; height: 22px; padding: 0; border: none; cursor: pointer"
+          />
+          {key}
+          {#if scene_props.vector_configs?.[key]?.color != null}
+            <button
+              type="button"
+              aria-label={`Reset ${key} color to default`}
+              onclick={() => update_vector_config(key, { color: null })}
+              style="padding: 0 3pt; font-size: 0.8em; line-height: 1; cursor: pointer"
+            >
+              ×
+            </button>
+          {/if}
+        </label>
+      {/each}
     {/if}
     <label style="gap: 6pt">
       <input type="checkbox" bind:checked={lattice_props.show_cell_vectors} />
@@ -673,39 +719,149 @@
     </SettingsSection>
   {/if}
 
-  {#if has_forces && scene_props.show_force_vectors}
+  {#if available_vector_keys.length > 0 && any_vectors_visible}
     <SettingsSection
-      title="Force Vectors"
+      title="Site Vectors"
       current_values={{
-        force_scale: scene_props.force_scale,
-        force_color: scene_props.force_color,
+        vector_scale: scene_props.vector_scale,
+        vector_color: scene_props.vector_color,
+        vector_normalize: scene_props.vector_normalize,
+        vector_uniform_thickness: scene_props.vector_uniform_thickness,
+        vector_color_mode: scene_props.vector_color_mode,
+        vector_color_scale: scene_props.vector_color_scale,
+        vector_origin_gap: scene_props.vector_origin_gap,
       }}
       on_reset={() => {
-        scene_props.force_scale = DEFAULTS.structure.force_scale
-        scene_props.force_color = DEFAULTS.structure.force_color
+        scene_props.vector_scale = DEFAULTS.structure.vector_scale
+        scene_props.vector_color = DEFAULTS.structure.vector_color
+        scene_props.vector_color_mode = DEFAULTS.structure.vector_color_mode
+        scene_props.vector_color_scale = DEFAULTS.structure.vector_color_scale
+        scene_props.vector_normalize = DEFAULTS.structure.vector_normalize
+        scene_props.vector_uniform_thickness =
+          DEFAULTS.structure.vector_uniform_thickness
+        scene_props.vector_origin_gap = DEFAULTS.structure.vector_origin_gap
+        for (const key of available_vector_keys) {
+          update_vector_config(key, { scale: null })
+        }
       }}
     >
       <label>
-        Scale
+        Global Scale
         <input
           type="number"
           min={0.001}
           max={5}
           step={0.001}
-          bind:value={scene_props.force_scale}
+          bind:value={scene_props.vector_scale}
         />
         <input
           type="range"
           min={0.001}
           max={5}
           step={0.001}
-          bind:value={scene_props.force_scale}
+          bind:value={scene_props.vector_scale}
         />
       </label>
-      <label>
-        Color
-        <input type="color" bind:value={scene_props.force_color} />
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.vector_normalize.description,
+        })}
+        style="gap: 6pt"
+      >
+        <input type="checkbox" bind:checked={scene_props.vector_normalize} />
+        Normalize
       </label>
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.vector_uniform_thickness.description,
+        })}
+        style="gap: 6pt"
+      >
+        <input type="checkbox" bind:checked={scene_props.vector_uniform_thickness} />
+        Uniform Thickness
+      </label>
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.vector_color_mode.description,
+        })}
+      >
+        Color Mode
+        <select bind:value={scene_props.vector_color_mode}>
+          {#each VECTOR_COLOR_MODES as mode (mode)}
+            <option value={mode}>{mode.replaceAll(`_`, ` `)}</option>
+          {/each}
+        </select>
+      </label>
+      {#if scene_props.vector_color_mode === `magnitude`}
+        <label>
+          Scale
+          <ColorScaleSelect
+            bind:value={scene_props.vector_color_scale}
+            style="max-width: 180px"
+          />
+        </label>
+      {/if}
+      {#if scene_props.vector_color_mode === `uniform`}
+        <label>
+          Color
+          <input type="color" bind:value={scene_props.vector_color} />
+        </label>
+      {/if}
+      {#if available_vector_keys.length > 1}
+        <label
+          {@attach tooltip({
+            content: SETTINGS_CONFIG.structure.vector_origin_gap.description,
+          })}
+        >
+          Origin Gap
+          <input
+            type="number"
+            min={0}
+            max={0.5}
+            step={0.02}
+            bind:value={scene_props.vector_origin_gap}
+          />
+          <input
+            type="range"
+            min={0}
+            max={0.5}
+            step={0.02}
+            bind:value={scene_props.vector_origin_gap}
+          />
+        </label>
+        {#each available_vector_keys as key (key)}
+          {#if is_key_visible(key)}
+            {@const on_scale = (evt: Event) => {
+        const parsed = parseFloat((evt.target as HTMLInputElement).value)
+        update_vector_config(key, { scale: Number.isNaN(parsed) ? 1.0 : parsed })
+      }}
+            <label
+              {@attach tooltip({
+                content:
+                  `Scale multiplier for ${key} arrows (applied on top of global scale)`,
+              })}
+            >
+              {key} scale
+              <input
+                type="number"
+                min={0.1}
+                max={5}
+                step={0.1}
+                value={scene_props.vector_configs?.[key]?.scale ?? 1.0}
+                onchange={on_scale}
+              />
+              <input
+                type="range"
+                min={0.1}
+                max={5}
+                step={0.1}
+                value={scene_props.vector_configs?.[key]?.scale ?? 1.0}
+                oninput={on_scale}
+              />
+            </label>
+          {/if}
+        {/each}
+      {/if}
     </SettingsSection>
   {/if}
 

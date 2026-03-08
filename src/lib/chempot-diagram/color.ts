@@ -18,8 +18,7 @@ export function make_chempot_color_scale(
 ): ((val: number) => string) | null {
   const finite_values = values.filter(Number.isFinite)
   if (finite_values.length === 0) return null
-  let min_value = finite_values[0]
-  let max_raw_value = finite_values[0]
+  let [min_value, max_raw_value] = [finite_values[0], finite_values[0]]
   for (let idx = 1; idx < finite_values.length; idx++) {
     if (finite_values[idx] < min_value) min_value = finite_values[idx]
     if (finite_values[idx] > max_raw_value) max_raw_value = finite_values[idx]

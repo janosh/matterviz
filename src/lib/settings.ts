@@ -28,6 +28,22 @@ export type ShowBonds = (typeof SHOW_BONDS_OPTIONS)[number]
 
 export type CameraProjection = `perspective` | `orthographic`
 
+export const VECTOR_COLOR_MODES = [
+  `auto`,
+  `element`,
+  `spin_direction`,
+  `magnitude`,
+  `uniform`,
+] as const
+export type VectorColorMode = (typeof VECTOR_COLOR_MODES)[number]
+
+// Per-key configuration for site vector layers (force, magmom, spin, etc.)
+export type VectorLayerConfig = {
+  visible: boolean
+  color: string | null // null = auto from palette
+  scale: number | null // null = use global scale only (multiplier of 1.0)
+}
+
 export const ATOM_COLOR_MODE_OPTIONS = [
   `element`,
   `coordination`,
@@ -156,13 +172,18 @@ export interface SettingsConfig {
     ambient_light: SettingType<number>
     directional_light: SettingType<number>
 
-    // Forces & Lattice
-    show_force_vectors: SettingType<boolean>
-    force_scale: SettingType<number>
-    force_color: SettingType<string>
-    force_shaft_radius: SettingType<number>
-    force_arrow_head_radius: SettingType<number>
-    force_arrow_head_length: SettingType<number>
+    // Site Vectors (force, magmom, spin) & Lattice
+    vector_configs: SettingType<Record<string, VectorLayerConfig>>
+    vector_scale: SettingType<number>
+    vector_color: SettingType<string>
+    vector_color_mode: SettingType<VectorColorMode>
+    vector_color_scale: SettingType<D3InterpolateName>
+    vector_normalize: SettingType<boolean>
+    vector_uniform_thickness: SettingType<boolean>
+    vector_origin_gap: SettingType<number>
+    vector_shaft_radius: SettingType<number>
+    vector_arrow_head_radius: SettingType<number>
+    vector_arrow_head_length: SettingType<number>
     show_cell: SettingType<boolean>
     show_cell_vectors: SettingType<boolean>
     cell_edge_opacity: SettingType<number>
@@ -356,8 +377,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   structure: {
     // Atoms & Bonds
     atom_radius: {
-      value: 1.0,
-      description: `Radius multiplier for atoms (1.0 = standard atomic radii)`,
+      value: 0.7,
+      description: `Radius multiplier for atoms (0.7 = standard atomic radii)`,
       minimum: 0.1,
       maximum: 3.0,
     },
@@ -562,39 +583,66 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 4,
     },
 
-    // Forces & Lattice
-    show_force_vectors: {
-      value: false,
-      description: `Display force vectors on atoms`,
+    // Site Vectors (force, magmom, spin) & Lattice
+    vector_configs: {
+      value: {} as Record<string, VectorLayerConfig>,
+      description:
+        `Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads.`,
     },
-    force_scale: {
+    vector_scale: {
       value: 1.0,
-      description: `Scale factor for force vector arrows`,
+      description: `Scale factor for site vector arrows`,
       minimum: 0.1,
       maximum: 10.0,
     },
-    force_color: {
+    vector_color: {
       value: `#ff0000`,
-      description: `Color for force vectors`,
+      description: `Color for site vector arrows (used in uniform mode and as fallback)`,
     },
-    force_shaft_radius: {
+    vector_color_mode: {
+      value: `auto` as VectorColorMode,
+      description:
+        `How to color arrows. auto = element for force, spin-direction for magmom/spin. element = majority species color. spin_direction = red/blue by z-component. magnitude = continuous color scale by vector length. uniform = single color (vector_color).`,
+    },
+    vector_color_scale: {
+      value: `interpolateViridis` as D3InterpolateName,
+      description: `D3 color scale for magnitude coloring mode`,
+    },
+    vector_normalize: {
+      value: false,
+      description:
+        `Show all arrows at the same length (direction only). Useful for spin/magmom visualization where orientation matters but magnitude does not.`,
+    },
+    vector_uniform_thickness: {
+      value: false,
+      description:
+        `Use the same shaft and head size for all arrows regardless of length. When off (default), thickness scales with arrow length.`,
+    },
+    vector_origin_gap: {
+      value: 0,
+      description:
+        `Fraction of visual atom radius to offset each arrow origin when multiple vectors are shown per site. 0 = all from atom center, 0.5 = halfway to surface.`,
+      minimum: 0,
+      maximum: 0.5,
+    },
+    vector_shaft_radius: {
       value: -0.03,
       description:
-        `Radius of force vector shaft (negative = relative to length, positive = absolute)`,
+        `Radius of vector shaft (negative = relative to length, positive = absolute)`,
       minimum: -0.1,
       maximum: 0.1,
     },
-    force_arrow_head_radius: {
+    vector_arrow_head_radius: {
       value: -0.06,
       description:
-        `Radius of force vector arrow head (negative = relative to length, positive = absolute)`,
+        `Radius of vector arrow head (negative = relative to length, positive = absolute)`,
       minimum: -0.2,
       maximum: 0.2,
     },
-    force_arrow_head_length: {
+    vector_arrow_head_length: {
       value: -0.15,
       description:
-        `Length of force vector arrow head (negative = relative to length, positive = absolute)`,
+        `Length of vector arrow head (negative = relative to length, positive = absolute)`,
       minimum: -0.5,
       maximum: 0.5,
     },

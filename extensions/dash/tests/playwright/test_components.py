@@ -23,26 +23,22 @@ class TestPageLoad:
 
 
 class TestPeriodicTable:
-    """Test PeriodicTable component rendering."""
+    """Test PeriodicTable component rendering (in callback section)."""
 
     def test_periodic_table_renders(self, dash_page: Page) -> None:
-        """PeriodicTable component should render."""
-        section = dash_page.locator("#periodic-table-section")
+        """PeriodicTable component should render in callback demo."""
+        section = dash_page.locator("#callback-section")
         expect(section).to_be_visible()
 
-        # The MatterViz custom element should be present
-        matterviz = section.locator("mv-matterviz")
+        matterviz = section.locator("mv-matterviz#callback-periodic-table")
         expect(matterviz).to_be_visible()
 
     def test_periodic_table_has_elements(self, dash_page: Page) -> None:
         """PeriodicTable should display element tiles."""
-        section = dash_page.locator("#periodic-table-section")
-        # Wait for the component to fully render (elements should appear)
+        section = dash_page.locator("#callback-section")
         dash_page.wait_for_timeout(2000)
 
-        # Check for element tiles or SVG content
-        matterviz = section.locator("mv-matterviz")
-        # The component should have some content (not be empty)
+        matterviz = section.locator("mv-matterviz#callback-periodic-table")
         expect(matterviz).not_to_be_empty()
 
 
@@ -51,10 +47,10 @@ class TestStructure:
 
     def test_structure_renders(self, dash_page: Page) -> None:
         """Structure component should render."""
-        section = dash_page.locator("#structure-section")
-        expect(section).to_be_visible()
+        heading = dash_page.locator("#structure-section")
+        expect(heading).to_be_visible()
 
-        matterviz = section.locator("mv-matterviz")
+        matterviz = dash_page.locator("mv-matterviz#structure")
         expect(matterviz).to_be_visible()
 
 
@@ -189,7 +185,6 @@ class TestInteractivity:
     @pytest.mark.parametrize(
         "section_id",
         [
-            "periodic-table-section",
             "structure-section",
             "composition-section",
             "trajectory-section",
@@ -197,6 +192,7 @@ class TestInteractivity:
             "convex-2d-section",
             "phase-binary-section",
             "xrd-section",
+            "callback-section",
         ],
     )
     def test_all_sections_have_content(self, dash_page: Page, section_id: str) -> None:
@@ -204,8 +200,12 @@ class TestInteractivity:
         section = dash_page.locator(f"#{section_id}")
         expect(section).to_be_visible()
 
-        # Each section should have at least a heading and the mv-matterviz element
-        # Use .first to avoid strict mode violations when multiple h4 exist
+        # structure-section is an h4 anchor, not a container div
+        if section_id == "structure-section":
+            matterviz = dash_page.locator("mv-matterviz#structure")
+            expect(matterviz).to_be_visible()
+            return
+
         heading = section.locator("h4").first
         expect(heading).to_be_visible()
 

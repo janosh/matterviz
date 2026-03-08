@@ -273,11 +273,11 @@
       series_list: typeof selected_series,
       y_limit: typeof y_range,
       scale_type: ScaleType,
-    ) => {
+    ): Vec2 => {
       const type_name = get_scale_type_name(scale_type)
       if (!series_list.length) {
         const fallback = type_name === `log` ? 1 : 0
-        return [fallback, 1] as Vec2
+        return [fallback, 1]
       }
       const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
       const max_count = Math.max(
@@ -290,7 +290,7 @@
       // If there's effectively no data, avoid log-range issues (counts can't be <= 0 on log)
       if (max_count <= 0) {
         const fallback = type_name === `log` ? 1 : 0
-        return [fallback, 1] as Vec2
+        return [fallback, 1]
       }
 
       const [y0, y1] = get_nice_data_range(
@@ -304,7 +304,7 @@
       // For log scale, minimum must be >= 1 (count can't be 0 on log)
       // For linear/arcsinh, start from 0
       const y_min = type_name === `log` ? Math.max(1, y0) : Math.max(0, y0)
-      return [y_min, y1] as Vec2
+      return [y_min, y1]
     }
 
     const y1_range = calc_y_range(

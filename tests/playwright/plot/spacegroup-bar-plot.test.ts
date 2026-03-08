@@ -52,8 +52,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // Try hovering over multiple bars to find one that shows tooltip
     const bar_count = await bars.count()
-    let tooltip_visible = false
-    let tooltip_text = ``
+    let [tooltip_visible, tooltip_text] = [false, ``]
 
     // Try several bars in sequence - BarPlot uses PlotTooltip with class 'plot-tooltip'
     const tooltip = plot.locator(`.plot-tooltip`)

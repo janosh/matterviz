@@ -444,9 +444,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const last_idx = marker_count - 1
 
     // Test 1: Verify size progression with per-point styling arrays (use toPass for timing)
-    let area_0 = 0
-    let area_mid = 0
-    let area_last = 0
+    let [area_0, area_mid, area_last] = [0, 0, 0]
     await expect(async () => {
       const bbox_0 = await get_marker_bbox(plot_locator, 0)
       const bbox_mid = await get_marker_bbox(plot_locator, mid_idx)

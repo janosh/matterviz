@@ -519,12 +519,10 @@
     const get_range = (
       axis: { range?: [number | null, number | null] },
       auto: Vec2,
-    ) => {
+    ): { explicit: boolean; range: Vec2 } => {
       const explicit = axis.range?.[0] != null && axis.range?.[1] != null
-      return {
-        explicit,
-        range: [axis.range?.[0] ?? auto[0], axis.range?.[1] ?? auto[1]] as Vec2,
-      }
+      const range = [axis.range?.[0] ?? auto[0], axis.range?.[1] ?? auto[1]] as Vec2
+      return { explicit, range }
     }
 
     const x = get_range(final_x_axis, auto_x_range)
