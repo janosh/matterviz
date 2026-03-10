@@ -42,8 +42,6 @@ export default [
       `.svelte-kit/`,
       `package/`,
       `dist/`,
-      `extensions/rust/pkg/`,
-      `extensions/rust/wasm/pkg/`,
     ],
   },
 ]

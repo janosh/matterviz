@@ -1,16 +1,6 @@
 default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
-  # python-stubs MUST come before ruff so ruff formats the freshly generated stubs
-  - repo: local
-    hooks:
-      - id: python-stubs
-        name: Clean Python stubs
-        entry: python extensions/rust/scripts/generate_stubs.py --clean-only
-        language: system
-        files: ^extensions/rust/(src/python/.*\.rs|python/ferrox/(_ferrox|optimizers)/.*\.pyi)$
-        pass_filenames: false
-
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.2
     hooks:
@@ -64,19 +54,6 @@ repos:
         types_or: [ts, svelte]
         pass_filenames: false
 
-      - id: cargo-fmt
-        name: Cargo format
-        entry: cargo fmt --manifest-path extensions/rust/Cargo.toml --
-        language: system
-        types: [rust]
-        pass_filenames: false
-      - id: cargo-clippy
-        name: Cargo clippy
-        entry: cargo clippy --manifest-path extensions/rust/Cargo.toml --all-targets -- -D warnings
-        language: system
-        types: [rust]
-        pass_filenames: false
-
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0.36.2
     hooks:
@@ -92,7 +69,7 @@ repos:
         stages: [pre-commit, commit-msg]
         args:
           - --ignore-words-list
-          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac'
+          - "te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac"
           - --check-filenames
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
@@ -102,7 +79,7 @@ repos:
         # MD013: line too long
         # MD033: no inline HTML
         # MD041: first line in a file should be a top-level heading
-        args: [--disable, MD013, MD033, MD041, '--']
+        args: [--disable, MD013, MD033, MD041, "--"]
         exclude: changelog\.md$
 
   - repo: https://github.com/pre-commit/mirrors-eslint
@@ -118,4 +95,4 @@ repos:
           - svelte
           - typescript
           - typescript-eslint
-          - '@stylistic/eslint-plugin'
+          - "@stylistic/eslint-plugin"
