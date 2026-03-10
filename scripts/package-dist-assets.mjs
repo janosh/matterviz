@@ -9,7 +9,7 @@ const out_dir = resolve(root_dir, `dist/element`)
 const out_path = resolve(out_dir, `data.js`)
 const xrd_src_path = resolve(
   root_dir,
-  `extensions/rust/src/atomic_scattering_params.json`,
+  `src/lib/xrd/atomic_scattering_params.json`,
 )
 const xrd_out_dir = resolve(root_dir, `dist/xrd`)
 const xrd_out_path = resolve(xrd_out_dir, `atomic_scattering_params.json`)

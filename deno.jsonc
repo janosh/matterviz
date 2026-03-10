@@ -2,7 +2,6 @@
   "tasks": {
     "dev": "deno run -A --node-modules-dir npm:vite dev",
     "build": "deno run -A --node-modules-dir npm:vite build",
-    "docs:ferrox": "deno run -A scripts/generate-ferrox-docs.ts",
     "preview": "deno run -A --node-modules-dir npm:vite preview",
     "serve": "deno task build && deno task preview",
     "test": "deno task vitest && deno task e2e",
@@ -21,7 +20,7 @@
     "$site/": "./src/site/"
   },
   "lint": {
-    "exclude": ["extensions/rust/wasm/types.d.ts"],
+    "exclude": [],
     "rules": {
       "tags": ["recommended"],
       "include": [
@@ -60,9 +59,6 @@
       "src/site/trajectories/*.json",
       "tests/vitest/fixtures/xrd/*.json",
       "src/site/phonons/*.json",
-      "src/routes/ferrox/rust",
-      "src/routes/ferrox/python",
-      "src/routes/ferrox/wasm",
       "extensions/vscode/src/webview/*.svelte",
       "tmp"
     ],
