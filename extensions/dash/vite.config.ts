@@ -47,8 +47,7 @@ function deduplicate_wasm_plugin(): Plugin {
         if (occurrences.length > 1) {
           const var_name = `__wasm_data_${var_idx++}__`
           // Add variable declaration at the start of the chunk
-          result = `var ${var_name}=${wasm_str};\n` +
-            result.replaceAll(wasm_str, var_name)
+          result = `var ${var_name}=${wasm_str};\n` + result.replaceAll(wasm_str, var_name)
         }
       }
 

@@ -96,7 +96,7 @@
       congruent: `Congruent phase change at ${temp}`,
     }
 
-    const badge = type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ` `)
+    const badge = type.charAt(0).toUpperCase() + type.slice(1).replaceAll(`_`, ` `)
     return {
       badge,
       description: type_descriptions[type] ?? null,

@@ -68,11 +68,13 @@
 
     for (const item of series_data) {
       const group_key = item.legend_group ?? null
-      if (!group_map.has(group_key)) {
-        group_map.set(group_key, [])
-        groups.push({ group_name: group_key, items: group_map.get(group_key)! })
+      let group_items = group_map.get(group_key)
+      if (!group_items) {
+        group_items = []
+        group_map.set(group_key, group_items)
+        groups.push({ group_name: group_key, items: group_items })
       }
-      group_map.get(group_key)!.push(item)
+      group_items.push(item)
     }
     return groups
   })

@@ -59,8 +59,7 @@ PHASE FCC_A1 %A 2 1 1 !`
 
   test(`parses GHSER functions with temperature ranges`, () => {
     // Use explicit content to test function parsing
-    const content =
-      `FUNCTION GHSERAL 298.15 -7976.15+137*T; 700 Y -11276+223*T; 933.47 Y -11278+188*T; 2900 N !`
+    const content = `FUNCTION GHSERAL 298.15 -7976.15+137*T; 700 Y -11276+223*T; 933.47 Y -11278+188*T; 2900 N !`
     const result = parse_tdb(content)
     expect(result.data?.functions.length).toBe(1)
     const ghseral = result.data?.functions[0]
@@ -103,8 +102,7 @@ PHASE FCC_A1 %A 2 1 1 !`
   })
 
   test(`handles Windows line endings`, () => {
-    const content =
-      `ELEMENT AL FCC_A1 0.02698 4577.3 28.32!\r\nELEMENT ZN HCP_ZN 0.06538 5656.8 41.63!`
+    const content = `ELEMENT AL FCC_A1 0.02698 4577.3 28.32!\r\nELEMENT ZN HCP_ZN 0.06538 5656.8 41.63!`
     const result = parse_tdb(content)
     expect(result.data?.elements.length).toBe(2)
   })
@@ -205,8 +203,7 @@ describe(`parse_tdb edge cases`, () => {
   })
 
   test(`handles nested parentheses in PARAMETER expressions`, () => {
-    const content =
-      `PARAMETER G(FCC_A1,AL:VA;0) 298.15 +GHSER(AL)+1000*(T-298.15); 6000 N !`
+    const content = `PARAMETER G(FCC_A1,AL:VA;0) 298.15 +GHSER(AL)+1000*(T-298.15); 6000 N !`
     const result = parse_tdb(content)
     expect(result.data?.parameters.length).toBe(1)
     expect(result.data?.parameters[0]?.expression).toContain(`GHSER(AL)`)

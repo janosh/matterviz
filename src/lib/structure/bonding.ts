@@ -9,9 +9,9 @@ type SpatialGrid = Map<string, number[]>
 
 const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
 const covalent_radii: Map<string, number> = new Map(
-  element_data.filter((el) => el.covalent_radius !== null).map((
-    el,
-  ) => [el.symbol, el.covalent_radius as number]),
+  element_data
+    .filter((el) => el.covalent_radius !== null)
+    .map((el) => [el.symbol, el.covalent_radius as number]),
 )
 
 // Get the species with highest occupancy from a site.
@@ -84,7 +84,8 @@ export function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
     (pos_1[2] + pos_2[2]) / 2,
   ]
 
-  return new Float32Array([ // Return flattened column-major 4x4 matrix for Three.js
+  return new Float32Array([
+    // Return flattened column-major 4x4 matrix for Three.js
     ...[m00, m10, m20, 0],
     ...[m01 * height, m11 * height, m21 * height, 0],
     ...[m02, m12, m22, 0],
@@ -106,11 +107,7 @@ function build_spatial_grid(sites: Site[], cell_size: number): SpatialGrid {
 }
 
 // Get all site indices in 3x3x3 cube of cells around position.
-function get_neighbors_from_grid(
-  pos: Vec3,
-  grid: SpatialGrid,
-  cell_size: number,
-): number[] {
+function get_neighbors_from_grid(pos: Vec3, grid: SpatialGrid, cell_size: number): number[] {
   const [cx, cy, cz] = [
     Math.floor(pos[0] / cell_size),
     Math.floor(pos[1] / cell_size),
@@ -313,10 +310,7 @@ export function electroneg_ratio(
         site_idx_2,
         bond_length: dist,
         strength,
-        transform_matrix: compute_bond_transform(
-          sites[site_idx_1].xyz,
-          sites[site_idx_2].xyz,
-        ),
+        transform_matrix: compute_bond_transform(sites[site_idx_1].xyz, sites[site_idx_2].xyz),
       })
     }
   }
@@ -350,18 +344,14 @@ export function solid_angle(
   for (let idx_a = 0; idx_a < sites.length - 1; idx_a++) {
     const [x1, y1, z1] = sites[idx_a].xyz
     const majority_a = get_majority_species(sites[idx_a])
-    const radius_a = majority_a.element
-      ? covalent_radii.get(majority_a.element)
-      : undefined
+    const radius_a = majority_a.element ? covalent_radii.get(majority_a.element) : undefined
 
     for (const idx_b of get_candidates(sites[idx_a].xyz, sites, spatial)) {
       if (idx_b <= idx_a) continue
 
       const [x2, y2, z2] = sites[idx_b].xyz
       const majority_b = get_majority_species(sites[idx_b])
-      const radius_b = majority_b.element
-        ? covalent_radii.get(majority_b.element)
-        : undefined
+      const radius_b = majority_b.element ? covalent_radii.get(majority_b.element) : undefined
 
       const [dx, dy, dz] = [x2 - x1, y2 - y1, z2 - z1]
       const dist_sq = dx * dx + dy * dy + dz * dz

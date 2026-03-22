@@ -32,9 +32,7 @@ test.describe(`BrillouinZone Component Tests`, () => {
     const projection = page.locator(`#camera-projection`)
     await expect(projection).toHaveValue(`perspective`)
     await projection.selectOption(`orthographic`)
-    await expect(page.locator(`[data-testid="camera-projection"]`)).toHaveText(
-      `orthographic`,
-    )
+    await expect(page.locator(`[data-testid="camera-projection"]`)).toHaveText(`orthographic`)
     await projection.selectOption(`perspective`)
   })
 
@@ -147,14 +145,11 @@ Si
 Direct
 0.0 0.0 0.0`
 
-    const data_transfer = await page.evaluateHandle(
-      (content) => {
-        const dt = new DataTransfer()
-        dt.items.add(new File([content], `test.poscar`, { type: `text/plain` }))
-        return dt
-      },
-      poscar,
-    )
+    const data_transfer = await page.evaluateHandle((content) => {
+      const dt = new DataTransfer()
+      dt.items.add(new File([content], `test.poscar`, { type: `text/plain` }))
+      return dt
+    }, poscar)
 
     const bz = page.locator(BZ_SELECTOR)
     await bz.dispatchEvent(`dragover`, { dataTransfer: data_transfer })
@@ -167,10 +162,7 @@ Direct
 
 test.describe(`BrillouinZone Event Handler Tests`, () => {
   test.beforeEach(() => {
-    test.skip(
-      IS_CI,
-      `BrillouinZone 3D tests timeout in CI due to WebGL software rendering`,
-    )
+    test.skip(IS_CI, `BrillouinZone 3D tests timeout in CI due to WebGL software rendering`)
   })
 
   test(`triggers on_file_load with data_url`, async ({ page }) => {

@@ -36,7 +36,7 @@
           .filter(([, amount]) => amount > 0)
           .map(([element]) => element)
       )),
-    ].sort(),
+    ].toSorted(),
   )
 
   // How many display axes (2 = binary/2D, 3+ = ternary/3D)

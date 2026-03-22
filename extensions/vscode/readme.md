@@ -196,8 +196,8 @@ We welcome contributions! Please see our [Contributing Guide](../../contributing
 ```bash
 git clone https://github.com/janosh/matterviz
 cd matterviz/extensions/vscode
-pnpm install
-pnpm build
+npm install
+npm run build
 vsce package  # creates .vsix for local install
 ```
 
@@ -207,7 +207,7 @@ Publish to both [Open VSX](https://open-vsx.org/extension/janosh/matterviz) and 
 
 ```bash
 cd extensions/vscode
-pnpm package
+npm run package
 
 # Open VSX (token at ~/.config/matterviz/ovsx-token)
 npx ovsx publish matterviz-*.vsix -p $(cat ~/.config/matterviz/ovsx-token)

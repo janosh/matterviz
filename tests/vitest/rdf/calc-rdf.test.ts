@@ -44,10 +44,12 @@ describe(`calculate_rdf`, () => {
   test.each([
     { sites: [], name: `empty structure`, should_be_zero: true },
     {
-      sites: [{
-        species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-        xyz: [0, 0, 0],
-      }],
+      sites: [
+        {
+          species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+          xyz: [0, 0, 0],
+        },
+      ],
       name: `single atom`,
       should_be_zero: true,
     },
@@ -80,18 +82,15 @@ describe(`calculate_rdf`, () => {
     { center: `Bi`, neighbor: `O`, has_signal: true, structure: bi2zr2o8_structure },
     { center: `Pd`, neighbor: `Pd`, has_signal: true, structure: pd_structure },
     { center: `Au`, neighbor: `Au`, has_signal: false, structure: pd_structure },
-  ])(
-    `element pairs: $center-$neighbor`,
-    ({ center, neighbor, has_signal, structure }) => {
-      const result = calculate_rdf(structure, {
-        center_species: center,
-        neighbor_species: neighbor,
-        n_bins: 50,
-      })
-      expect(result.element_pair).toEqual([center, neighbor])
-      expect(result.g_r.some((val) => val > 0)).toBe(has_signal)
-    },
-  )
+  ])(`element pairs: $center-$neighbor`, ({ center, neighbor, has_signal, structure }) => {
+    const result = calculate_rdf(structure, {
+      center_species: center,
+      neighbor_species: neighbor,
+      n_bins: 50,
+    })
+    expect(result.element_pair).toEqual([center, neighbor])
+    expect(result.g_r.some((val) => val > 0)).toBe(has_signal)
+  })
 
   test.each([
     { cutoff: -5, n_bins: 50 },
@@ -118,8 +117,7 @@ describe(`calculate_rdf`, () => {
   test(`RDF should approach 1 for large separations (random structure)`, () => {
     const n_atoms = 100
     let seed = 12345
-    const random =
-      () => ((seed = (seed * 1664525 + 1013904223) % 2 ** 32), seed / 2 ** 32)
+    const random = () => ((seed = (seed * 1664525 + 1013904223) % 2 ** 32), seed / 2 ** 32)
 
     const sites = Array.from({ length: n_atoms }, () => ({
       species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
@@ -241,7 +239,11 @@ describe(`calculate_rdf`, () => {
   test.each([
     {
       name: `triclinic`,
-      lattice: [[5.0, 0.0, 0.0], [1.0, 6.0, 0.0], [0.5, 1.5, 7.0]] satisfies Matrix3x3,
+      lattice: [
+        [5.0, 0.0, 0.0],
+        [1.0, 6.0, 0.0],
+        [0.5, 1.5, 7.0],
+      ] satisfies Matrix3x3,
       sites: [
         {
           species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
@@ -271,7 +273,11 @@ describe(`calculate_rdf`, () => {
     },
     {
       name: `monoclinic`,
-      lattice: [[5.0, 0.0, 0.0], [0.0, 6.0, 0.0], [2.0, 0.0, 7.0]] satisfies Matrix3x3,
+      lattice: [
+        [5.0, 0.0, 0.0],
+        [0.0, 6.0, 0.0],
+        [2.0, 0.0, 7.0],
+      ] satisfies Matrix3x3,
       sites: [
         {
           species: [{ element: `Na`, occu: 1, oxidation_state: 0 }],
@@ -336,12 +342,15 @@ describe(`calculate_rdf`, () => {
       // For at least one site, verify xyz = lattice · abc
       const site = structure.sites[0]
       const xyz_from_abc = [
-        lattice[0][0] * site.abc[0] + lattice[1][0] * site.abc[1] +
-        lattice[2][0] * site.abc[2],
-        lattice[0][1] * site.abc[0] + lattice[1][1] * site.abc[1] +
-        lattice[2][1] * site.abc[2],
-        lattice[0][2] * site.abc[0] + lattice[1][2] * site.abc[1] +
-        lattice[2][2] * site.abc[2],
+        lattice[0][0] * site.abc[0] +
+          lattice[1][0] * site.abc[1] +
+          lattice[2][0] * site.abc[2],
+        lattice[0][1] * site.abc[0] +
+          lattice[1][1] * site.abc[1] +
+          lattice[2][1] * site.abc[2],
+        lattice[0][2] * site.abc[0] +
+          lattice[1][2] * site.abc[1] +
+          lattice[2][2] * site.abc[2],
       ]
       expect(xyz_from_abc[0]).toBeCloseTo(site.xyz[0], 10)
       expect(xyz_from_abc[1]).toBeCloseTo(site.xyz[1], 10)
@@ -504,7 +513,12 @@ describe(`calculate_all_pair_rdfs`, () => {
     const factors = [1.5, 2.0, 2.5]
 
     const results = factors.map((expansion_factor) =>
-      calculate_rdf(pd_structure, { cutoff, n_bins, auto_expand: true, expansion_factor })
+      calculate_rdf(pd_structure, {
+        cutoff,
+        n_bins,
+        auto_expand: true,
+        expansion_factor,
+      }),
     )
 
     for (const result of results) {
@@ -543,8 +557,8 @@ describe(`calculate_all_pair_rdfs`, () => {
     const partial_rdfs = calculate_all_pair_rdfs(bi2zr2o8_structure, { cutoff, n_bins })
     const full_rdf_wrong = {
       r: partial_rdfs[0]?.r ?? [],
-      g_r: partial_rdfs[0].r.map((_, idx) =>
-        partial_rdfs.reduce((sum, p) => sum + p.g_r[idx], 0) / partial_rdfs.length
+      g_r: partial_rdfs[0].r.map(
+        (_, idx) => partial_rdfs.reduce((sum, p) => sum + p.g_r[idx], 0) / partial_rdfs.length,
       ),
     }
 

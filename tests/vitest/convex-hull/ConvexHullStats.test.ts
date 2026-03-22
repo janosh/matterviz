@@ -21,9 +21,7 @@ const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({
   ...overrides,
 })
 
-const mock_entry = (
-  overrides: Partial<ConvexHullEntry> = {},
-): ConvexHullEntry => ({
+const mock_entry = (overrides: Partial<ConvexHullEntry> = {}): ConvexHullEntry => ({
   composition: { Li: 1, Fe: 1, P: 1, O: 4 },
   energy: -50,
   e_form_per_atom: -0.5,
@@ -71,30 +69,19 @@ const mount_stats_table = (props: Partial<Props> = {}) => {
 const get_headers = () =>
   Array.from(document.querySelectorAll(`th`)).map((th) => th.textContent?.trim())
 const normalize_formula_html = (html: string): string =>
-  html
-    .replace(`<strong>`, ``)
-    .replace(`</strong>`, ``)
-    .replaceAll(/\s+/g, ` `)
-    .trim()
-const normalize_formula_text = (text: string): string =>
-  text.replaceAll(/\s+/g, ` `).trim()
-const get_table_filter_select = (
-  label_text: string,
-): HTMLSelectElement | null => {
-  const filter_labels = Array.from(
-    document.querySelectorAll(`.table-filters label`),
-  )
+  html.replace(`<strong>`, ``).replace(`</strong>`, ``).replaceAll(/\s+/g, ` `).trim()
+const normalize_formula_text = (text: string): string => text.replaceAll(/\s+/g, ` `).trim()
+const get_table_filter_select = (label_text: string): HTMLSelectElement | null => {
+  const filter_labels = Array.from(document.querySelectorAll(`.table-filters label`))
   const matching_label = filter_labels.find((label_element) =>
-    label_element.textContent?.includes(label_text)
+    label_element.textContent?.includes(label_text),
   )
-  return (matching_label?.querySelector(`select`) as
-    | HTMLSelectElement
-    | null) ?? null
+  return (matching_label?.querySelector(`select`) as HTMLSelectElement | null) ?? null
 }
 const set_select_value = (select_element: HTMLSelectElement, value: string) => {
-  const option_idx = Array.from(select_element.options).findIndex((
-    option_element,
-  ) => option_element.value === value)
+  const option_idx = Array.from(select_element.options).findIndex(
+    (option_element) => option_element.value === value,
+  )
   if (option_idx >= 0) select_element.selectedIndex = option_idx
   select_element.value = value
   select_element.dispatchEvent(new Event(`change`, { bubbles: true }))
@@ -132,12 +119,12 @@ describe(`ConvexHullStats`, () => {
     expect(buttons[0].textContent?.trim()).toBe(`Stats`)
     expect(buttons[1].textContent?.trim()).toBe(`Table`)
     expect(buttons[0].classList.contains(`active`)).toBe(true)
-    for (
-      const [type, count] of [[`Unary`, 4], [`Binary`, 20], [`Ternary`, 50], [
-        `Quaternary`,
-        26,
-      ]] as const
-    ) {
+    for (const [type, count] of [
+      [`Unary`, 4],
+      [`Binary`, 20],
+      [`Ternary`, 50],
+      [`Quaternary`, 26],
+    ] as const) {
       expect(text).toContain(`${type} phases`)
       expect(text).toContain(`${count}`)
     }
@@ -172,16 +159,12 @@ describe(`ConvexHullStats`, () => {
     [
       `Enter key`,
       (el: HTMLElement) =>
-        el.dispatchEvent(
-          new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
-        ),
+        el.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true })),
     ],
     [
       `Space key`,
       (el: HTMLElement) =>
-        el.dispatchEvent(
-          new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }),
-        ),
+        el.dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true })),
     ],
   ])(`copies stat item on %s`, (_, trigger) => {
     mount_stats()
@@ -232,11 +215,7 @@ describe(`ConvexHullStats`, () => {
 
   test(`renders empty stat items when phase_stats is null`, () => {
     mount_stats({ phase_stats: null })
-    expect(
-      doc_query(`.convex-hull-stats`).querySelectorAll(`.stat-item`).length,
-    ).toBe(
-      0,
-    )
+    expect(doc_query(`.convex-hull-stats`).querySelectorAll(`.stat-item`).length).toBe(0)
   })
 
   test(`energy_per_atom fallback renders both histograms`, () => {
@@ -274,9 +253,7 @@ describe(`ConvexHullStats`, () => {
 
   test(`missing energy fields render without errors`, () => {
     mount_stats({
-      stable_entries: [
-        mock_entry({ e_form_per_atom: undefined, energy_per_atom: undefined }),
-      ],
+      stable_entries: [mock_entry({ e_form_per_atom: undefined, energy_per_atom: undefined })],
     })
     expect(doc_query(`.convex-hull-stats`)).toBeTruthy()
   })
@@ -288,10 +265,9 @@ describe(`ConvexHullStats`, () => {
       expect(item.getAttribute(`role`)).toBe(`button`)
       expect(item.getAttribute(`tabindex`)).toBe(`0`)
     }
-    expect(doc_query(`[data-testid="pd-total-entries"]`).getAttribute(`title`))
-      .toContain(
-        `Click to copy`,
-      )
+    expect(doc_query(`[data-testid="pd-total-entries"]`).getAttribute(`title`)).toContain(
+      `Click to copy`,
+    )
   })
 
   test(`passes through HTML attributes`, () => {
@@ -369,31 +345,27 @@ describe(`ConvexHullStats`, () => {
       const headers = get_headers()
       const formula_idx = headers.indexOf(`Formula`)
       expect(formula_idx).toBeGreaterThanOrEqual(0)
-      const formula_html_cells = Array.from(document.querySelectorAll(`tbody tr`))
-        .map((row) =>
-          normalize_formula_html(
-            (row.querySelectorAll(`td`)[formula_idx] as HTMLElement)?.innerHTML ?? ``,
-          )
-        )
-      const formula_text_cells = Array.from(document.querySelectorAll(`tbody tr`))
-        .map((row) =>
-          normalize_formula_text(
-            (row.querySelectorAll(`td`)[formula_idx] as HTMLElement)?.textContent ?? ``,
-          )
-        )
+      const formula_html_cells = Array.from(document.querySelectorAll(`tbody tr`)).map((row) =>
+        normalize_formula_html(
+          (row.querySelectorAll(`td`)[formula_idx] as HTMLElement)?.innerHTML ?? ``,
+        ),
+      )
+      const formula_text_cells = Array.from(document.querySelectorAll(`tbody tr`)).map((row) =>
+        normalize_formula_text(
+          (row.querySelectorAll(`td`)[formula_idx] as HTMLElement)?.textContent ?? ``,
+        ),
+      )
       expect(formula_html_cells.some((formula) => formula.includes(`<sub>`))).toBe(true)
       expect(formula_text_cells).toContain(`Li`)
-      expect(formula_text_cells.some((formula) => /Fe.*O.*3|O.*3.*Fe/.test(formula)))
-        .toBe(
-          true,
-        )
+      expect(formula_text_cells.some((formula) => /Fe.*O.*3|O.*3.*Fe/.test(formula))).toBe(
+        true,
+      )
       expect(
         formula_text_cells.some((formula) => /Li.*Fe.*O.*2|Li.*O.*2.*Fe/.test(formula)),
       ).toBe(true)
-      expect(formula_text_cells.some((formula) => /Li.*2.*O|O.*Li.*2/.test(formula)))
-        .toBe(
-          true,
-        )
+      expect(formula_text_cells.some((formula) => /Li.*2.*O|O.*Li.*2/.test(formula))).toBe(
+        true,
+      )
       for (const col of [`#`, `Formula`]) {
         expect(headers).toContain(col)
       }
@@ -411,7 +383,7 @@ describe(`ConvexHullStats`, () => {
 
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
       const cells = Array.from(document.querySelectorAll(`td`)).map((td) =>
-        td.textContent?.trim()
+        td.textContent?.trim(),
       )
       expect(cells).not.toContain(`Zr`)
     })
@@ -437,9 +409,7 @@ describe(`ConvexHullStats`, () => {
 
     test(`ID column and value shown when entry_id available`, () => {
       mount_stats_table({
-        stable_entries: [
-          mock_entry({ entry_id: `mp-1234`, reduced_formula: `X` }),
-        ],
+        stable_entries: [mock_entry({ entry_id: `mp-1234`, reduced_formula: `X` })],
         unstable_entries: [],
       })
       expect(get_headers()).toContain(`ID`)
@@ -459,12 +429,8 @@ describe(`ConvexHullStats`, () => {
       })
       const headers = get_headers()
       const formula_idx = headers.indexOf(`Formula`)
-      const formula_cell = document.querySelector(
-        `tbody tr td:nth-child(${formula_idx + 1})`,
-      )
-      expect(formula_cell?.innerHTML.replaceAll(/\s+/g, ` `)).toContain(
-        `Ca Ti O<sub>3</sub>`,
-      )
+      const formula_cell = document.querySelector(`tbody tr td:nth-child(${formula_idx + 1})`)
+      expect(formula_cell?.innerHTML.replaceAll(/\s+/g, ` `)).toContain(`Ca Ti O<sub>3</sub>`)
     })
 
     test(`reformats reduced_formula containing <sub> markup without losing stoichiometry`, () => {
@@ -536,8 +502,7 @@ describe(`ConvexHullStats`, () => {
         unstable_entries: [
           mock_entry({
             composition: { O: 1 },
-            reduced_formula:
-              `Xx&amp;amp;lt;sub&amp;amp;gt;2&amp;amp;lt;/sub&amp;amp;gt;O`,
+            reduced_formula: `Xx&amp;amp;lt;sub&amp;amp;gt;2&amp;amp;lt;/sub&amp;amp;gt;O`,
             is_stable: false,
             e_above_hull: 0.1,
           }),
@@ -575,16 +540,13 @@ describe(`ConvexHullStats`, () => {
       expect(headers).toContain(`#`)
       expect(headers).toContain(`Formula`)
       // Row numbers start at 1
-      const first_cells = Array.from(
-        document.querySelectorAll(`tbody tr:first-child td`),
+      const first_cells = Array.from(document.querySelectorAll(`tbody tr:first-child td`)).map(
+        (td) => td.textContent?.trim(),
       )
-        .map((td) => td.textContent?.trim())
       expect(first_cells).toContain(`1`)
       // Stable formulas are bold
       const all_cells = Array.from(document.querySelectorAll(`td`))
-      expect(
-        all_cells.some((td) => td.innerHTML.includes(`<strong>`)),
-      ).toBe(true)
+      expect(all_cells.some((td) => td.innerHTML.includes(`<strong>`))).toBe(true)
     })
 
     test(`on_entry_click callback fires on row click`, () => {
@@ -663,8 +625,7 @@ describe(`ConvexHullStats`, () => {
       // With only binary entries, max_n_el ≤ 2 so no min N_el filter shown
       expect(get_table_filter_select(`Min N`)).toBeNull()
       // Export controls should still be available without filters
-      expect(document.querySelector(`.export-actions .icon-btn`)).not
-        .toBeNull()
+      expect(document.querySelector(`.export-actions .icon-btn`)).not.toBeNull()
     })
   })
 
@@ -686,46 +647,39 @@ describe(`ConvexHullStats`, () => {
         ext: `json`,
         mime_type: `application/json;charset=utf-8`,
       },
-    ])(
-      `exports $format via dropdown and closes menu`,
-      ({ format, ext, mime_type }) => {
-        const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(
-          `blob:test`,
-        )
-        const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(
-          () => {},
-        )
-        const anchor_click = vi.spyOn(HTMLAnchorElement.prototype, `click`)
-          .mockImplementation(() => {})
-        const append = vi.spyOn(document.body, `append`)
-        try {
-          mount_stats_table(export_props)
-          doc_query(`.export-actions .icon-btn`).click()
-          flushSync()
+    ])(`exports $format via dropdown and closes menu`, ({ format, ext, mime_type }) => {
+      const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
+      const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
+      const anchor_click = vi
+        .spyOn(HTMLAnchorElement.prototype, `click`)
+        .mockImplementation(() => {})
+      const append = vi.spyOn(document.body, `append`)
+      try {
+        mount_stats_table(export_props)
+        doc_query(`.export-actions .icon-btn`).click()
+        flushSync()
 
-          const options = Array.from(
-            document.querySelectorAll(`.export-dropdown .dropdown-option`),
-          ) as HTMLButtonElement[]
-          options.find((el) => el.textContent?.includes(format))?.click()
-          flushSync()
+        const options = Array.from(
+          document.querySelectorAll(`.export-dropdown .dropdown-option`),
+        ) as HTMLButtonElement[]
+        options.find((el) => el.textContent?.includes(format))?.click()
+        flushSync()
 
-          expect(document.querySelector(`.export-dropdown`)).toBeNull()
-          expect(create_url).toHaveBeenCalledTimes(1)
-          expect((create_url.mock.calls[0]?.[0] as Blob).type).toBe(mime_type)
-          expect(anchor_click).toHaveBeenCalledTimes(1)
-          expect(revoke_url).toHaveBeenCalledTimes(1)
-          expect((append.mock.calls[0]?.[0] as HTMLAnchorElement).download)
-            .toBe(
-              `li-fe-p-o.${ext}`,
-            )
-        } finally {
-          create_url.mockRestore()
-          revoke_url.mockRestore()
-          anchor_click.mockRestore()
-          append.mockRestore()
-        }
-      },
-    )
+        expect(document.querySelector(`.export-dropdown`)).toBeNull()
+        expect(create_url).toHaveBeenCalledTimes(1)
+        expect((create_url.mock.calls[0][0] as Blob).type).toBe(mime_type)
+        expect(anchor_click).toHaveBeenCalledTimes(1)
+        expect(revoke_url).toHaveBeenCalledTimes(1)
+        expect((append.mock.calls[0][0] as HTMLAnchorElement).download).toBe(
+          `li-fe-p-o.${ext}`,
+        )
+      } finally {
+        create_url.mockRestore()
+        revoke_url.mockRestore()
+        anchor_click.mockRestore()
+        append.mockRestore()
+      }
+    })
   })
 
   test.each([
@@ -741,10 +695,7 @@ describe(`ConvexHullStats`, () => {
   )
 
   describe(`highlighted_entry_id`, () => {
-    const make_entry_with_id = (
-      entry_id: string,
-      data?: Record<string, unknown>,
-    ) =>
+    const make_entry_with_id = (entry_id: string, data?: Record<string, unknown>) =>
       mock_entry({
         entry_id,
         reduced_formula: entry_id,
@@ -756,8 +707,8 @@ describe(`ConvexHullStats`, () => {
     // We detect highlighted rows by the style attribute being present (even if empty)
     // vs absent for non-highlighted rows.
     const get_rows_with_style = () =>
-      Array.from(document.querySelectorAll(`tbody tr`)).filter((row) =>
-        row.hasAttribute(`style`) && row.getAttribute(`style`) !== `null`
+      Array.from(document.querySelectorAll(`tbody tr`)).filter(
+        (row) => row.hasAttribute(`style`) && row.getAttribute(`style`) !== `null`,
       )
 
     test.each([
@@ -782,21 +733,18 @@ describe(`ConvexHullStats`, () => {
         highlight_id: `struct-42`,
         expected_text: `entry-A`,
       },
-    ])(
-      `highlights row matching $desc`,
-      ({ entries, highlight_id, expected_text }) => {
-        mount_stats({
-          stable_entries: entries(),
-          unstable_entries: [],
-          highlighted_entry_id: highlight_id,
-        })
-        switch_to_table()
+    ])(`highlights row matching $desc`, ({ entries, highlight_id, expected_text }) => {
+      mount_stats({
+        stable_entries: entries(),
+        unstable_entries: [],
+        highlighted_entry_id: highlight_id,
+      })
+      switch_to_table()
 
-        const styled = get_rows_with_style()
-        expect(styled).toHaveLength(1)
-        expect(styled[0].textContent).toContain(expected_text)
-      },
-    )
+      const styled = get_rows_with_style()
+      expect(styled).toHaveLength(1)
+      expect(styled[0].textContent).toContain(expected_text)
+    })
 
     test.each([
       { desc: `undefined`, highlight_id: undefined as string | undefined },
@@ -834,8 +782,8 @@ describe(`ConvexHullStats`, () => {
   describe(`Poly column (polymorph counting)`, () => {
     const get_poly_values = () => {
       const poly_idx = get_headers().indexOf(`Poly`)
-      return Array.from(document.querySelectorAll(`tbody tr`)).map((row) =>
-        row.querySelectorAll(`td`)[poly_idx]?.textContent?.trim() ?? ``
+      return Array.from(document.querySelectorAll(`tbody tr`)).map(
+        (row) => row.querySelectorAll(`td`)[poly_idx]?.textContent?.trim() ?? ``,
       )
     }
 
@@ -900,9 +848,12 @@ describe(`ConvexHullStats`, () => {
       { desc: `entry_href returns null`, href: () => null },
       { desc: `entry_href not provided`, href: undefined },
     ])(`renders plain ID when $desc`, ({ href }) => {
-      mount_table_with_single_entry({ entry_id: `mp-456` }, {
-        entry_href: href,
-      })
+      mount_table_with_single_entry(
+        { entry_id: `mp-456` },
+        {
+          entry_href: href,
+        },
+      )
 
       expect(document.querySelector(`td a[href]`)).toBeNull()
       expect(document.body.textContent).toContain(`mp-456`)
@@ -930,9 +881,7 @@ describe(`ConvexHullStats`, () => {
 
       expect(document.querySelector(`td img`)).toBeNull()
       expect(document.querySelector(`td a[href]`)).toBeNull()
-      expect(document.body.textContent).toContain(
-        `<img src=x onerror=alert(1)>`,
-      )
+      expect(document.body.textContent).toContain(`<img src=x onerror=alert(1)>`)
     })
 
     test.each([
@@ -943,9 +892,12 @@ describe(`ConvexHullStats`, () => {
       },
       { desc: `vbscript URL`, href: () => `vbscript:msgbox("xss")` },
     ])(`renders plain ID when entry_href returns unsafe $desc`, ({ href }) => {
-      mount_table_with_single_entry({ entry_id: `mp-unsafe` }, {
-        entry_href: href,
-      })
+      mount_table_with_single_entry(
+        { entry_id: `mp-unsafe` },
+        {
+          entry_href: href,
+        },
+      )
 
       expect(document.querySelector(`td a[href]`)).toBeNull()
       expect(document.body.textContent).toContain(`mp-unsafe`)
@@ -982,9 +934,7 @@ describe(`ConvexHullStats`, () => {
       expect(poly_select).not.toBeNull()
       if (!poly_select) return
 
-      const options = Array.from(poly_select.options).map((opt) =>
-        opt.textContent?.trim()
-      )
+      const options = Array.from(poly_select.options).map((opt) => opt.textContent?.trim())
       expect(options[0]).toBe(`all`)
       // Fe2O3 has 2 polymorphs → option shows count
       expect(options.some((opt) => opt?.includes(`2`))).toBe(true)
@@ -999,9 +949,9 @@ describe(`ConvexHullStats`, () => {
       expect(poly_select).not.toBeNull()
       if (!poly_select) return
 
-      const first_polymorph_option = Array.from(poly_select.options).find((
-        option,
-      ) => option.value !== ``)
+      const first_polymorph_option = Array.from(poly_select.options).find(
+        (option) => option.value !== ``,
+      )
       expect(first_polymorph_option).toBeDefined()
       if (!first_polymorph_option) return
 
@@ -1032,9 +982,7 @@ describe(`ConvexHullStats`, () => {
         ],
       })
       const header = doc_query(`[data-testid="pd-binary-subsystem-coverage"]`)
-      expect(header.textContent).toContain(
-        `Binary subsystem coverage (3 pairs)`,
-      )
+      expect(header.textContent).toContain(`Binary subsystem coverage (3 pairs)`)
       const chips = Array.from(document.querySelectorAll(`.subsystem-chip`))
       expect(chips).toHaveLength(3)
       const chip_text = chips.map((chip) => chip.textContent?.trim())
@@ -1054,8 +1002,9 @@ describe(`ConvexHullStats`, () => {
           }),
         ],
       })
-      const chip_text = Array.from(document.querySelectorAll(`.subsystem-chip`))
-        .map((chip) => chip.textContent?.trim())
+      const chip_text = Array.from(document.querySelectorAll(`.subsystem-chip`)).map((chip) =>
+        chip.textContent?.trim(),
+      )
       expect(chip_text).toContain(`Fe-Li 1`)
       expect(chip_text).toContain(`Fe-O 1`)
       expect(chip_text).toContain(`Li-O 1`)
@@ -1077,10 +1026,7 @@ describe(`ConvexHullStats`, () => {
         phase_stats: system ? mock_stats({ chemical_system: system }) : null,
         stable_entries: system ? [mock_entry({ composition: { Fe: 1, O: 1 } })] : [],
       })
-      expect(
-        document.querySelector(`[data-testid="pd-binary-subsystem-coverage"]`),
-      )
-        .toBeNull()
+      expect(document.querySelector(`[data-testid="pd-binary-subsystem-coverage"]`)).toBeNull()
     })
   })
 })

@@ -1,12 +1,12 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import {
-  angle_between_vectors,
-  displacement_pbc,
-  distance_pbc,
-} from '$lib/structure/measure'
+import { angle_between_vectors, displacement_pbc, distance_pbc } from '$lib/structure/measure'
 import { describe, expect, test } from 'vitest'
 
-const cubic = (a: number): Matrix3x3 => [[a, 0, 0], [0, a, 0], [0, 0, a]]
+const cubic = (a: number): Matrix3x3 => [
+  [a, 0, 0],
+  [0, a, 0],
+  [0, 0, a],
+]
 
 describe(`measure: distances`, () => {
   test(`pbc distance and displacement`, () => {
@@ -94,11 +94,7 @@ describe(`measure: angles`, () => {
     const triangles = [
       {
         name: `equilateral`,
-        vertices: [
-          [0, 0, 0] as Vec3,
-          [1, 0, 0] as Vec3,
-          [0.5, Math.sqrt(3) / 2, 0] as Vec3,
-        ],
+        vertices: [[0, 0, 0] as Vec3, [1, 0, 0] as Vec3, [0.5, Math.sqrt(3) / 2, 0] as Vec3],
         expected_angles: [60, 60, 60],
       },
       {
@@ -106,8 +102,8 @@ describe(`measure: angles`, () => {
         vertices: [[0, 0, 0] as Vec3, [3, 0, 0] as Vec3, [0, 4, 0] as Vec3],
         expected_angles: [
           90,
-          Math.atan(4 / 3) * 180 / Math.PI,
-          Math.atan(3 / 4) * 180 / Math.PI,
+          (Math.atan(4 / 3) * 180) / Math.PI,
+          (Math.atan(3 / 4) * 180) / Math.PI,
         ],
       },
       {
@@ -190,10 +186,7 @@ describe(`measure: angles`, () => {
     expect(angle_between_vectors([0, 0, 0], [1, 0, 0])).toBe(0)
 
     // Radians mode
-    expect(angle_between_vectors([1, 0, 0], [0, 1, 0], `radians`)).toBeCloseTo(
-      Math.PI / 2,
-      10,
-    )
+    expect(angle_between_vectors([1, 0, 0], [0, 1, 0], `radians`)).toBeCloseTo(Math.PI / 2, 10)
 
     // Collinear precision
     expect(angle_between_vectors([1, 2, 3], [2, 4, 6])).toBeCloseTo(0, 12)
@@ -235,7 +228,11 @@ describe(`measure: angles`, () => {
     const test_cases = [
       {
         name: `cubic`,
-        lattice: [[3, 0, 0], [0, 3, 0], [0, 0, 3]] satisfies Matrix3x3,
+        lattice: [
+          [3, 0, 0],
+          [0, 3, 0],
+          [0, 0, 3],
+        ] satisfies Matrix3x3,
         pos1: [0, 0, 0] as Vec3,
         pos2: [1.5, 1.5, 1.5] as Vec3,
       },
@@ -252,11 +249,7 @@ describe(`measure: angles`, () => {
     ]
 
     for (const { lattice, pos1, pos2 } of test_cases) {
-      const direct_dist = Math.hypot(
-        pos2[0] - pos1[0],
-        pos2[1] - pos1[1],
-        pos2[2] - pos1[2],
-      )
+      const direct_dist = Math.hypot(pos2[0] - pos1[0], pos2[1] - pos1[1], pos2[2] - pos1[2])
       const pbc_dist = distance_pbc(pos1, pos2, lattice)
 
       // The fundamental PBC invariant: PBC distance ≤ direct distance

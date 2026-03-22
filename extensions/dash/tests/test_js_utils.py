@@ -18,12 +18,10 @@ REACT_TS_PATH = (
 )
 
 
-def run_js_test(js_code: str) -> dict:  # type: ignore[return]
+def run_js_test(js_code: str) -> dict:
     """Run JavaScript code and return the JSON result."""
-    # Read the TS file and extract the functions we need
     js_file = REACT_TS_PATH.read_text()
 
-    # Create a test script that imports the functions and runs the test
     test_script = f"""
     {js_file}
 
@@ -42,17 +40,20 @@ def run_js_test(js_code: str) -> dict:  # type: ignore[return]
             text=True,
             timeout=5,
         )
-        if result.returncode != 0:
-            err_msg = result.stderr.strip() or "(no stderr output)"
-            pytest.fail(f"Node.js execution failed: {err_msg}")
-        stdout = result.stdout.strip()
-        if not stdout:
-            pytest.fail("Node.js produced empty stdout")
-        return json.loads(stdout)
     except FileNotFoundError:
         pytest.skip("Node.js not available")
+
+    if result.returncode != 0:
+        err_msg = result.stderr.strip() or "(no stderr output)"
+        pytest.fail(f"Node.js execution failed: {err_msg}")
+    stdout = result.stdout.strip()
+    if not stdout:
+        pytest.fail("Node.js produced empty stdout")
+    try:
+        return json.loads(stdout)
     except json.JSONDecodeError as exc:
         pytest.fail(f"Invalid JSON output: {result.stdout!r}, error: {exc}")
+        raise  # unreachable, but satisfies type checker
 
 
 class TestSanitizeForJsonEdgeCases:

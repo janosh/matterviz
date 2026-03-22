@@ -101,11 +101,14 @@ describe(`Dos component`, () => {
     [`horizontal orientation`, { doses: phonon_dos, orientation: `horizontal` as const }],
     [`atom pDOS`, { doses: pymatgen_complete_dos, pdos_type: `atom` as const }],
     [`orbital pDOS`, { doses: pymatgen_complete_dos, pdos_type: `orbital` as const }],
-    [`filtered pDOS`, {
-      doses: pymatgen_complete_dos,
-      pdos_type: `atom` as const,
-      pdos_filter: [`Fe`],
-    }],
+    [
+      `filtered pDOS`,
+      {
+        doses: pymatgen_complete_dos,
+        pdos_type: `atom` as const,
+        pdos_filter: [`Fe`],
+      },
+    ],
   ])(`renders %s`, (_desc, props) => {
     mount(Dos, { target: document.body, props })
     expect(document.querySelector(`.scatter`)).toBeTruthy()
@@ -275,7 +278,7 @@ describe(`normalize_dos`, () => {
   )
 
   it(`auto-converts cm⁻¹ to THz when frequencies > 100`, () => {
-    const info_spy = vi.spyOn(console, `info`).mockImplementation(() => {})
+    const info_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const result = normalize_dos({
       frequencies: [0, 100, 200, 300, 400],
       densities: [0, 0.5, 1, 0.5, 0],
@@ -329,12 +332,10 @@ describe(`extract_spin_channels`, () => {
 })
 
 describe(`extract_pdos`, () => {
-  it.each(
-    [
-      [`atom`, [`Fe`, `O`]],
-      [`orbital`, [`s`, `p`, `d`]],
-    ] as const,
-  )(`extracts %s DOS with expected keys`, (pdos_type, expected_keys) => {
+  it.each([
+    [`atom`, [`Fe`, `O`]],
+    [`orbital`, [`s`, `p`, `d`]],
+  ] as const)(`extracts %s DOS with expected keys`, (pdos_type, expected_keys) => {
     const result = extract_pdos(pymatgen_complete_dos, pdos_type)
     expect(result).toBeTruthy()
     expected_keys.forEach((key) => expect(Object.keys(result ?? {})).toContain(key))

@@ -76,17 +76,11 @@ export function calc_coordination_nums(
     cn_by_element.set(element, element_array)
 
     // Update overall cn_histogram
-    cn_histogram.set(
-      coordination_num,
-      (cn_histogram.get(coordination_num) ?? 0) + 1,
-    )
+    cn_histogram.set(coordination_num, (cn_histogram.get(coordination_num) ?? 0) + 1)
 
     // Update cn_histogram_by_element
     const element_histogram = cn_histogram_by_element.get(element) ?? new Map()
-    element_histogram.set(
-      coordination_num,
-      (element_histogram.get(coordination_num) ?? 0) + 1,
-    )
+    element_histogram.set(coordination_num, (element_histogram.get(coordination_num) ?? 0) + 1)
     cn_histogram_by_element.set(element, element_histogram)
   }
 

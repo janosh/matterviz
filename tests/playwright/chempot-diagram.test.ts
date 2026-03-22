@@ -3,13 +3,13 @@ import { IS_CI } from './helpers'
 
 const TEST_URL = `/chempot-diagram`
 
-const get_section_by_heading = async (
-  page: Page,
-  heading_text: RegExp,
-): Promise<Locator> => {
-  const section = page.locator(`section`).filter({
-    has: page.getByRole(`heading`, { name: heading_text }),
-  }).first()
+const get_section_by_heading = async (page: Page, heading_text: RegExp): Promise<Locator> => {
+  const section = page
+    .locator(`section`)
+    .filter({
+      has: page.getByRole(`heading`, { name: heading_text }),
+    })
+    .first()
   await expect(section).toBeVisible({ timeout: 20_000 })
   return section
 }
@@ -35,11 +35,8 @@ const click_until_visible_tooltip = async (
     for (let y_frac = 0.25; y_frac <= 0.75; y_frac += 0.08) {
       const click_x = box.x + box.width * x_frac
       const click_y = box.y + box.height * y_frac
-      // deno-lint-ignore no-await-in-loop -- probing requires sequential clicks
       await page.mouse.click(click_x, click_y)
-      // deno-lint-ignore no-await-in-loop -- small delay for hover/pick updates
       await page.waitForTimeout(40)
-      // deno-lint-ignore no-await-in-loop -- visibility check after each probe
       if (await tooltip.isVisible()) return { x: click_x, y: click_y }
     }
   }
@@ -61,15 +58,11 @@ const get_export_button = (export_pane: Locator, label_text: string): Locator =>
   export_pane.locator(`label:has-text("${label_text}") button`).first()
 
 const count_checked = (checkboxes: Locator): Promise<number> =>
-  checkboxes.evaluateAll((nodes) =>
-    nodes.filter((node) => (node as HTMLInputElement).checked).length
+  checkboxes.evaluateAll(
+    (nodes) => nodes.filter((node) => (node as HTMLInputElement).checked).length,
   )
 
-const open_pane = async (
-  diagram: Locator,
-  toggle: Locator,
-  pane: Locator,
-): Promise<void> => {
+const open_pane = async (diagram: Locator, toggle: Locator, pane: Locator): Promise<void> => {
   await diagram.hover()
   await toggle.click({ force: true })
   await expect(pane).toBeVisible()
@@ -105,8 +98,9 @@ test.describe(`ChemPot Diagram interactions`, () => {
   test.beforeEach(async ({ page }) => {
     test.skip(IS_CI, `ChemPot interactions rely on WebGL-heavy rendering`)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
-    await expect(page.getByRole(`heading`, { name: `Chemical Potential Diagram` }))
-      .toBeVisible()
+    await expect(
+      page.getByRole(`heading`, { name: `Chemical Potential Diagram` }),
+    ).toBeVisible()
   })
 
   test(`2D tooltip lock toggles and unlocks with Escape`, async ({ page }) => {
@@ -128,11 +122,15 @@ test.describe(`ChemPot Diagram interactions`, () => {
       `.chempot-diagram-2d`,
     )
 
-    const controls_toggle = diagram.locator(`button.pane-toggle[title*="plot controls"]`)
+    const controls_toggle = diagram
+      .locator(`button.pane-toggle[title*="plot controls"]`)
       .first()
-    const controls_pane = diagram.locator(`.draggable-pane`).filter({
-      hasText: `Color mode:`,
-    }).first()
+    const controls_pane = diagram
+      .locator(`.draggable-pane`)
+      .filter({
+        hasText: `Color mode:`,
+      })
+      .first()
     await open_pane(diagram, controls_toggle, controls_pane)
 
     const color_mode_select = controls_pane.getByLabel(`Color mode:`)
@@ -155,19 +153,24 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect(colorbar).toContainText(`Entry count`)
   })
 
-  test(`3D projection controls and formula picker actions work in multinary mode`, async ({ page }) => {
+  test(`3D projection controls and formula picker actions work in multinary mode`, async ({
+    page,
+  }) => {
     const diagram = await get_diagram_by_heading(
       page,
       /YTOS Quaternary.*Ti-S-Y Projection/,
       `.chempot-diagram-3d`,
     )
 
-    const controls_toggle = diagram.locator(
-      `button.pane-toggle[title="3D plot controls"]`,
-    ).first()
-    const controls_pane = diagram.locator(`.draggable-pane`).filter({
-      hasText: `ChemPot`,
-    }).first()
+    const controls_toggle = diagram
+      .locator(`button.pane-toggle[title="3D plot controls"]`)
+      .first()
+    const controls_pane = diagram
+      .locator(`.draggable-pane`)
+      .filter({
+        hasText: `ChemPot`,
+      })
+      .first()
     await open_pane(diagram, controls_toggle, controls_pane)
 
     const x_select = controls_pane.locator(`#chempot-proj-x`).first()
@@ -181,12 +184,15 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const selected_projection = await get_projection_values(x_select, y_select, z_select)
     expect(new Set(selected_projection).size).toBe(3)
 
-    const formula_toggle = diagram.locator(
-      `button.pane-toggle[title="Formula overlays"]`,
-    ).first()
-    const formula_pane = diagram.locator(`.draggable-pane`).filter({
-      hasText: `Formula Overlays`,
-    }).first()
+    const formula_toggle = diagram
+      .locator(`button.pane-toggle[title="Formula overlays"]`)
+      .first()
+    const formula_pane = diagram
+      .locator(`.draggable-pane`)
+      .filter({
+        hasText: `Formula Overlays`,
+      })
+      .first()
     await open_pane(diagram, formula_toggle, formula_pane)
 
     const checkboxes = formula_pane.locator(`input[type="checkbox"]`)
@@ -208,23 +214,16 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await expect(formula_pane.locator(`input[type="checkbox"]`).first()).toBeVisible()
 
     const preset_buttons = controls_pane.locator(`.projection-presets button`)
-    await expect
-      .poll(() => preset_buttons.count())
-      .toBeGreaterThan(1)
-    const alternate_preset = controls_pane.locator(
-      `.projection-presets button:not(.selected)`,
-    )
+    await expect.poll(() => preset_buttons.count()).toBeGreaterThan(1)
+    const alternate_preset = controls_pane
+      .locator(`.projection-presets button:not(.selected)`)
       .first()
     const preset_text = ((await alternate_preset.textContent()) ?? ``).trim()
     expect(preset_text).toMatch(/^[A-Za-z]+-[A-Za-z]+-[A-Za-z]+$/)
     await alternate_preset.click()
     await expect(alternate_preset).toHaveClass(/selected/)
     const expected_projection = preset_text.split(`-`)
-    const projection_after_click = await get_projection_values(
-      x_select,
-      y_select,
-      z_select,
-    )
+    const projection_after_click = await get_projection_values(x_select, y_select, z_select)
     expect(projection_after_click).toEqual(expected_projection)
   })
 
@@ -240,20 +239,19 @@ test.describe(`ChemPot Diagram interactions`, () => {
     const phase_tooltip = diagram.locator(`.phase-tooltip`)
     await assert_pin_toggle_and_escape(page, canvas, phase_tooltip)
 
-    const export_toggle = diagram.locator(
-      `button.pane-toggle[title="Export chemical potential diagram"]`,
-    ).first()
-    const export_pane = diagram.locator(`.draggable-pane`).filter({
-      hasText: `Export Image`,
-    }).first()
+    const export_toggle = diagram
+      .locator(`button.pane-toggle[title="Export chemical potential diagram"]`)
+      .first()
+    const export_pane = diagram
+      .locator(`.draggable-pane`)
+      .filter({
+        hasText: `Export Image`,
+      })
+      .first()
     await open_pane(diagram, export_toggle, export_pane)
 
     await expect_download_suffix(page, get_export_button(export_pane, `SVG`), `.svg`)
-    await expect_download_suffix(
-      page,
-      get_export_button(export_pane, `View`),
-      `-view.json`,
-    )
+    await expect_download_suffix(page, get_export_button(export_pane, `View`), `-view.json`)
     await expect_download_suffix(page, get_export_button(export_pane, `GLB`), `.glb`)
   })
 })

@@ -37,20 +37,18 @@ beforeEach(() => {
   gltf_should_fail = false
 
   stl_spy.mockImplementation(() =>
-    stl_return_dataview ? new DataView(new ArrayBuffer(84)) : new ArrayBuffer(84)
+    stl_return_dataview ? new DataView(new ArrayBuffer(84)) : new ArrayBuffer(84),
   )
   obj_spy.mockImplementation(() => `# OBJ file\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n`)
-  gltf_spy.mockImplementation(
-    (_: Scene, ok: (g: object) => void, err: (e: Error) => void) => {
-      setTimeout(
-        () =>
-          gltf_should_fail
-            ? err(new Error(`GLTF export failed`))
-            : ok({ asset: { version: `2.0` }, scenes: [{}] }),
-        0,
-      )
-    },
-  )
+  gltf_spy.mockImplementation((_: Scene, ok: (g: object) => void, err: (e: Error) => void) => {
+    setTimeout(
+      () =>
+        gltf_should_fail
+          ? err(new Error(`GLTF export failed`))
+          : ok({ asset: { version: `2.0` }, scenes: [{}] }),
+      0,
+    )
+  })
 
   vi.stubGlobal(`URL`, {
     createObjectURL: vi.fn((blob: Blob) => {
@@ -88,45 +86,39 @@ describe(`export_scene`, () => {
     expect(gltf_spy).not.toHaveBeenCalled()
   })
 
-  it.each(
-    [
-      [`stl`, `test.stl`, `application/octet-stream`, stl_spy, { binary: true }, 1],
-      [`obj`, `test.obj`, `text/plain`, obj_spy, undefined, 1],
-      [`gltf`, `test.gltf`, `application/json`, gltf_spy, { binary: false }, 3],
-    ] as const,
-  )(`%s: correct exporter options, MIME type, and download flow`, async (
-    format,
-    filename,
-    mime,
-    spy,
-    options,
-    options_idx,
-  ) => {
-    await export_scene(mock_scene, format, `test`)
+  it.each([
+    [`stl`, `test.stl`, `application/octet-stream`, stl_spy, { binary: true }, 1],
+    [`obj`, `test.obj`, `text/plain`, obj_spy, undefined, 1],
+    [`gltf`, `test.gltf`, `application/json`, gltf_spy, { binary: false }, 3],
+  ] as const)(
+    `%s: correct exporter options, MIME type, and download flow`,
+    async (format, filename, mime, spy, options, options_idx) => {
+      await export_scene(mock_scene, format, `test`)
 
-    // Verify exporter called with scene and options
-    expect(spy).toHaveBeenCalledOnce()
-    expect(spy.mock.calls[0][0]).toBe(mock_scene)
-    if (options) expect(spy.mock.calls[0][options_idx]).toEqual(options)
+      // Verify exporter called with scene and options
+      expect(spy).toHaveBeenCalledOnce()
+      expect(spy.mock.calls[0][0]).toBe(mock_scene)
+      if (options) expect(spy.mock.calls[0][options_idx]).toEqual(options)
 
-    // Verify blob and download
-    expect(captured_blobs[0].type).toBe(mime)
-    expect(mock_link.download).toBe(filename)
-    expect(call_order).toEqual([`appendChild`, `click`, `removeChild`])
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith(`blob:mock`)
-  })
+      // Verify blob and download
+      expect(captured_blobs[0].type).toBe(mime)
+      expect(mock_link.download).toBe(filename)
+      expect(call_order).toEqual([`appendChild`, `click`, `removeChild`])
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith(`blob:mock`)
+    },
+  )
 })
 
 describe(`format-specific edge cases`, () => {
-  it.each([[`DataView`, true], [`ArrayBuffer`, false]] as const)(
-    `STL handles %s return type`,
-    async (_, use_dataview) => {
-      stl_return_dataview = use_dataview
-      await export_to_stl(mock_scene, `test`)
-      expect(captured_blobs[0].size).toBe(84)
-      expect(captured_blobs[0].type).toBe(`application/octet-stream`)
-    },
-  )
+  it.each([
+    [`DataView`, true],
+    [`ArrayBuffer`, false],
+  ] as const)(`STL handles %s return type`, async (_, use_dataview) => {
+    stl_return_dataview = use_dataview
+    await export_to_stl(mock_scene, `test`)
+    expect(captured_blobs[0].size).toBe(84)
+    expect(captured_blobs[0].type).toBe(`application/octet-stream`)
+  })
 
   it(`OBJ creates valid text structure`, async () => {
     await export_scene(mock_scene, `obj`, `test`)

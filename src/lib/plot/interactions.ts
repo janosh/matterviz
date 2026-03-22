@@ -12,9 +12,7 @@ export function get_relative_coords(evt: MouseEvent): XyObj | null {
 }
 
 // Normalize Y2 sync config (handle shorthand string vs full object)
-export function normalize_y2_sync(
-  sync: Y2SyncConfig | Y2SyncMode | undefined,
-): Y2SyncConfig {
+export function normalize_y2_sync(sync: Y2SyncConfig | Y2SyncMode | undefined): Y2SyncConfig {
   if (!sync || sync === `none`) return { mode: `none` }
   if (typeof sync === `string`) return { mode: sync }
   return sync
@@ -25,11 +23,7 @@ const all_finite = (...ranges: Vec2[]) =>
   ranges.every(([a, b]) => Number.isFinite(a) && Number.isFinite(b))
 
 // Calculate synced y2 range based on sync mode
-export function sync_y2_range(
-  y1_range: Vec2,
-  y2_base_range: Vec2,
-  sync: Y2SyncConfig,
-): Vec2 {
+export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncConfig): Vec2 {
   if (sync.mode === `none`) return y2_base_range
   if (!all_finite(y1_range, y2_base_range)) return y2_base_range
 
@@ -75,10 +69,7 @@ export function sync_y2_range(
 }
 
 // Shift a range by a delta amount (no bounds constraint for free panning)
-export function pan_range(
-  current: Vec2,
-  delta: number,
-): Vec2 {
+export function pan_range(current: Vec2, delta: number): Vec2 {
   return [current[0] + delta, current[1] + delta]
 }
 

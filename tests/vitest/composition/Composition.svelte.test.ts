@@ -6,9 +6,7 @@ import { doc_query } from '../setup'
 
 function open_context_menu() {
   const wrapper = doc_query(`.composition`)
-  wrapper.dispatchEvent(
-    new MouseEvent(`contextmenu`, { bubbles: true, cancelable: true }),
-  )
+  wrapper.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true, cancelable: true }))
 }
 
 describe(`Composition component`, () => {
@@ -115,8 +113,7 @@ describe(`Composition component`, () => {
 
     const bubble_option = Array.from(
       document.querySelectorAll<HTMLButtonElement>(`.context-menu button`),
-    )
-      .find((opt) => opt.textContent?.includes(`Bubble Chart`))
+    ).find((opt) => opt.textContent?.includes(`Bubble Chart`))
     if (!bubble_option) throw new Error(`Bubble Chart option not found`)
     bubble_option.click()
 
@@ -130,10 +127,9 @@ describe(`Composition component`, () => {
     open_context_menu()
     await new Promise((r) => setTimeout(r, 0))
 
-    const export_options = Array.from(document.querySelectorAll(`.context-menu button`))
-      .filter((opt) =>
-        opt.textContent?.includes(`Export`) || opt.textContent?.includes(`Copy`)
-      )
+    const export_options = Array.from(
+      document.querySelectorAll(`.context-menu button`),
+    ).filter((opt) => opt.textContent?.includes(`Export`) || opt.textContent?.includes(`Copy`))
     expect(export_options.length).toBe(4)
 
     const option_texts = export_options.map((opt) => opt.textContent?.trim())

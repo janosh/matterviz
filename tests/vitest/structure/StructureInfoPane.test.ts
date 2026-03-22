@@ -33,13 +33,11 @@ describe(`StructureInfoPane`, () => {
       wyckoffs: [`a`],
     }) as unknown as MoyoDataset
 
-  test.each(
-    [
-      [`small`, 2, true],
-      [`collapsed_with_toggle`, 50, false],
-      [`upper_bound_collapsed`, 500, false],
-    ] as const,
-  )(
+  test.each([
+    [`small`, 2, true],
+    [`collapsed_with_toggle`, 50, false],
+    [`upper_bound_collapsed`, 500, false],
+  ] as const)(
     `sites visibility behavior: %s`,
     (_scenario_name, atom_count, shows_site_details) => {
       const structure = get_dummy_structure(`H`, atom_count, true)
@@ -103,8 +101,8 @@ describe(`StructureInfoPane`, () => {
       atom_count_thresholds: [10, 500],
     })
 
-    const section_titles = Array.from(document.querySelectorAll(`h4`)).map((heading) =>
-      heading.textContent ?? ``
+    const section_titles = Array.from(document.querySelectorAll(`h4`)).map(
+      (heading) => heading.textContent ?? ``,
     )
     const cell_idx = section_titles.indexOf(`Cell`)
     const symmetry_idx = section_titles.indexOf(`Symmetry`)

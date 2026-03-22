@@ -46,7 +46,8 @@ function sanitize_for_json(value: unknown): unknown {
     if (val instanceof DataView) {
       return [...new Uint8Array(val.buffer, val.byteOffset, val.byteLength)]
     }
-    if (ArrayBuffer.isView(val)) return [...(val as Iterable<unknown>)]
+    // DataView (non-iterable) is handled above, so remaining ArrayBufferViews are TypedArrays
+    if (ArrayBuffer.isView(val)) return Array.from(val as unknown as ArrayLike<unknown>)
     if (val instanceof ArrayBuffer) return [...new Uint8Array(val)]
     if (typeof File !== `undefined` && val instanceof File) {
       return {
@@ -173,8 +174,7 @@ class MatterVizErrorBoundary extends Component<MatterVizProps, ErrorBoundaryStat
         React.createElement(
           `button`,
           {
-            onClick: () =>
-              this.setState({ has_error: false, error: null, error_info: null }),
+            onClick: () => this.setState({ has_error: false, error: null, error_info: null }),
             style: {
               padding: `6px 12px`,
               border: `1px solid #dc3545`,
@@ -206,13 +206,7 @@ interface MatterVizElement extends HTMLElement {
 
 // Inner component that handles the actual MatterViz custom element.
 const MatterVizInner = (props: MatterVizProps) => {
-  const {
-    id,
-    component = `Structure`,
-    className,
-    style,
-    setProps,
-  } = props
+  const { id, component = `Structure`, className, style, setProps } = props
   // Handle null values from Python (destructuring defaults only apply to undefined)
   const mv_props = props.mv_props ?? {}
   const set_props = props.set_props ?? []
@@ -256,9 +250,7 @@ const MatterVizInner = (props: MatterVizProps) => {
         } else if (typeof target[part] !== `object`) {
           // Conflict: e.g. flat "foo" already registered, "foo.bar" can't nest
           console.warn(
-            `Event prop "${prop_name}" conflicts with "${
-              parts.slice(0, idx + 1).join(`.`)
-            }"`,
+            `Event prop "${prop_name}" conflicts with "${parts.slice(0, idx + 1).join(`.`)}"`,
           )
           conflict = true
           break
@@ -290,11 +282,7 @@ const MatterVizInner = (props: MatterVizProps) => {
     if (!element) return
 
     // Convert and deep-merge with callbacks (supports nested event props)
-    const converted_props = convert_dash_props_to_matterviz(
-      mv_props,
-      set_props,
-      float32_props,
-    )
+    const converted_props = convert_dash_props_to_matterviz(mv_props, set_props, float32_props)
     const resolved_props = deep_merge(
       converted_props,
       callbacks_ref.current as Record<string, unknown>,

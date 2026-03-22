@@ -63,7 +63,9 @@ test.describe(`StructureExportPane Tests`, () => {
     ])
   })
 
-  test(`text export buttons have download and copy actions with tooltips`, async ({ page }) => {
+  test(`text export buttons have download and copy actions with tooltips`, async ({
+    page,
+  }) => {
     const { pane_div } = await open_export_pane(page)
 
     const json_row = pane_div.locator(`div:has-text("JSON")`).first()
@@ -71,10 +73,7 @@ test.describe(`StructureExportPane Tests`, () => {
     const copy_btn = json_row.locator(`button[title*="Copy"]`).first()
 
     await expect(download_btn).toBeVisible()
-    await expect(download_btn).toHaveAttribute(
-      `title`,
-      expect.stringContaining(`Download`),
-    )
+    await expect(download_btn).toHaveAttribute(`title`, expect.stringContaining(`Download`))
 
     await expect(copy_btn).toBeVisible()
     await expect(copy_btn).toHaveAttribute(`title`, expect.stringContaining(`Copy`))
@@ -126,9 +125,7 @@ test.describe(`StructureExportPane Tests`, () => {
     await export_toggle.click()
     await expect(pane_div).toBeVisible()
 
-    const dpi_input_reopened = pane_div.locator(
-      `input[type="number"][title*="dots per inch"]`,
-    )
+    const dpi_input_reopened = pane_div.locator(`input[type="number"][title*="dots per inch"]`)
     await expect(dpi_input_reopened).toHaveValue(`250`)
   })
 
@@ -150,9 +147,7 @@ test.describe(`StructureExportPane Tests`, () => {
   })
 
   test(`export pane and control pane have mutual exclusion`, async ({ page }) => {
-    const { structure, pane_div: export_pane, export_toggle } = await open_export_pane(
-      page,
-    )
+    const { structure, pane_div: export_pane, export_toggle } = await open_export_pane(page)
     await expect(export_pane).toBeVisible()
 
     // Opening control pane closes export pane (mutual exclusion)

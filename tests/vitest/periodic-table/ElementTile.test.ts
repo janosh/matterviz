@@ -4,12 +4,7 @@ import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
-type SplitLayout =
-  | `diagonal`
-  | `horizontal`
-  | `vertical`
-  | `triangular`
-  | `quadrant`
+type SplitLayout = `diagonal` | `horizontal` | `vertical` | `triangular` | `quadrant`
 
 // test random element for increased robustness
 const rand_idx = Math.floor(Math.random() * element_data.length)
@@ -47,13 +42,11 @@ describe(`ElementTile`, () => {
   })
 
   describe(`show_* props`, () => {
-    test.each(
-      [
-        [`show_name`, `name`],
-        [`show_symbol`, `symbol`],
-        [`show_number`, `number`],
-      ] as const,
-    )(`%s prop controls %s visibility`, (prop, selector) => {
+    test.each([
+      [`show_name`, `name`],
+      [`show_symbol`, `symbol`],
+      [`show_number`, `number`],
+    ] as const)(`%s prop controls %s visibility`, (prop, selector) => {
       // Test showing
       mount(ElementTile, {
         target: document.body,
@@ -73,12 +66,7 @@ describe(`ElementTile`, () => {
     })
 
     test.each([
-      [
-        true,
-        true,
-        true,
-        `${rand_element.number} ${rand_element.symbol} ${rand_element.name}`,
-      ],
+      [true, true, true, `${rand_element.number} ${rand_element.symbol} ${rand_element.name}`],
       [false, false, false, ``],
       [true, false, true, `${rand_element.number} ${rand_element.symbol}`],
       [false, true, false, `${rand_element.name}`],
@@ -96,7 +84,7 @@ describe(`ElementTile`, () => {
 
         const tile = doc_query(`.element-tile`)
         // Clean up extra whitespace from text content
-        const actual_text = tile.textContent?.replace(/\s+/g, ` `).trim() || ``
+        const actual_text = tile.textContent?.replaceAll(/\s+/g, ` `).trim() || ``
         expect(actual_text).toBe(expected.trim())
       },
     )
@@ -437,14 +425,12 @@ describe(`ElementTile`, () => {
         })
 
         segments.forEach((cls) =>
-          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy()
+          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy(),
         )
         positions.forEach((cls) =>
-          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy()
+          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy(),
         )
-        expect(doc_query(`.element-tile`).style.backgroundColor).toBe(
-          `transparent`,
-        )
+        expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
         expect(document.querySelector(`.number`)).toBeNull() // Auto-hide atomic number
       },
     )
@@ -459,12 +445,7 @@ describe(`ElementTile`, () => {
       {
         value: [1, 2, 3, 4],
         layout: `triangular`,
-        segments: [
-          `triangle-top`,
-          `triangle-right`,
-          `triangle-bottom`,
-          `triangle-left`,
-        ],
+        segments: [`triangle-top`, `triangle-right`, `triangle-bottom`, `triangle-left`],
         positions: [
           `triangle-top-pos`,
           `triangle-right-pos`,
@@ -486,23 +467,18 @@ describe(`ElementTile`, () => {
         })
 
         segments.forEach((cls) =>
-          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy()
+          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy(),
         )
         positions.forEach((cls) =>
-          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy()
+          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy(),
         )
-        expect(doc_query(`.element-tile`).style.backgroundColor).toBe(
-          `transparent`,
-        )
+        expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
         expect(document.querySelector(`.number`)).toBeNull()
       },
     )
 
     test(`atomic number behavior with multi-value splits`, () => {
-      const test_show_number = (
-        props: Record<string, unknown>,
-        should_show: boolean,
-      ) => {
+      const test_show_number = (props: Record<string, unknown>, should_show: boolean) => {
         document.body.innerHTML = ``
         mount(ElementTile, {
           target: document.body,
@@ -512,10 +488,7 @@ describe(`ElementTile`, () => {
       }
 
       test_show_number({ value: 42 }, true) // Single value - show by default
-      test_show_number(
-        { value: [1, 2], bg_colors: [`#ff0000`, `#00ff00`] },
-        false,
-      ) // Multi-value - hide by default
+      test_show_number({ value: [1, 2], bg_colors: [`#ff0000`, `#00ff00`] }, false) // Multi-value - hide by default
       test_show_number(
         { value: [1, 2], bg_colors: [`#ff0000`, `#00ff00`], show_number: true },
         true,
@@ -551,14 +524,10 @@ describe(`ElementTile`, () => {
 
       expect(document.querySelector(`.element-tile`)).toBeTruthy()
       if (expected_count !== undefined) {
-        expect(document.querySelectorAll(`.multi-value`).length).toBe(
-          expected_count,
-        )
+        expect(document.querySelectorAll(`.multi-value`).length).toBe(expected_count)
       }
       if (expected_segments !== undefined) {
-        expect(document.querySelectorAll(`.segment`).length).toBe(
-          expected_segments,
-        )
+        expect(document.querySelectorAll(`.segment`).length).toBe(expected_segments)
       }
     })
   })
@@ -585,25 +554,25 @@ describe(`ElementTile`, () => {
       expect(!!document.querySelector(`.name`)).toBe(is_detected)
     })
 
-    test.each([[true, `shows color as text`], [false, `hides all values`]])(
-      `show_values=%s`,
-      (show_values, _desc) => {
-        mount(ElementTile, {
-          target: document.body,
-          props: {
-            element: rand_element,
-            value: `#ff0000`,
-            bg_color: `#ff0000`,
-            show_values,
-          },
-        })
+    test.each([
+      [true, `shows color as text`],
+      [false, `hides all values`],
+    ])(`show_values=%s`, (show_values, _desc) => {
+      mount(ElementTile, {
+        target: document.body,
+        props: {
+          element: rand_element,
+          value: `#ff0000`,
+          bg_color: `#ff0000`,
+          show_values,
+        },
+      })
 
-        const has_value = !!document.querySelector(`.value`)
-        const has_name = !!document.querySelector(`.name`)
-        expect(has_value).toBe(show_values)
-        expect(has_name).toBe(!show_values)
-      },
-    )
+      const has_value = !!document.querySelector(`.value`)
+      const has_name = !!document.querySelector(`.name`)
+      expect(has_value).toBe(show_values)
+      expect(has_name).toBe(!show_values)
+    })
 
     test.each([
       [[`#ff0000`, `#00ff00`], 2],
@@ -616,9 +585,7 @@ describe(`ElementTile`, () => {
       })
 
       expect(document.querySelectorAll(`.segment`).length).toBe(segments)
-      expect(doc_query(`.element-tile`).style.backgroundColor).toBe(
-        `transparent`,
-      )
+      expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
       expect(document.querySelector(`.value`)).toBeNull()
     })
 
@@ -635,9 +602,7 @@ describe(`ElementTile`, () => {
         },
       })
 
-      expect(document.querySelectorAll(`.multi-value`).length).toBe(
-        expected_spans,
-      )
+      expect(document.querySelectorAll(`.multi-value`).length).toBe(expected_spans)
       expect(!!document.querySelector(`.name`)).toBe(!should_show)
     })
   })

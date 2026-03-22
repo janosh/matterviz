@@ -55,7 +55,7 @@
     try {
       const { load_from_url } = await import(`$lib/io`)
 
-      await load_from_url(file.url, async (content, filename) => {
+      await load_from_url(file.url, (content, filename) => {
         const text = content instanceof ArrayBuffer
           ? new TextDecoder().decode(content)
           : content
@@ -71,8 +71,8 @@
           error_msg = `Unable to parse ${filename}`
         }
       })
-    } catch (err) {
-      error_msg = err instanceof Error ? err.message : String(err)
+    } catch (error) {
+      error_msg = error instanceof Error ? error.message : String(error)
     } finally {
       loading = false
     }
@@ -80,8 +80,8 @@
 
   // Wrapper to handle async load_file for synchronous callbacks
   function handle_file_click(file: FileInfo) {
-    load_file(file).catch((err) => {
-      error_msg = err instanceof Error ? err.message : String(err)
+    load_file(file).catch((error) => {
+      error_msg = error instanceof Error ? error.message : String(error)
     })
   }
 
@@ -101,8 +101,8 @@
       fermi_surface_files.find((file) => file.name.endsWith(`.bxsf.gz`))
 
     if (target_file) {
-      load_file(target_file).catch((err) => {
-        error_msg = err instanceof Error ? err.message : String(err)
+      load_file(target_file).catch((error) => {
+        error_msg = error instanceof Error ? error.message : String(error)
       })
     }
   })

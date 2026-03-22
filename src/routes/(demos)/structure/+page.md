@@ -13,6 +13,8 @@
   import { get_electro_neg_formula } from '$lib'
 
   let current_filename = $state(`Bi2Zr2O8-Fm3m.json`)
+  // Inline structure data from URL hash (used by ferrox render CLI)
+  let hash_structure_string = $state<string | undefined>(undefined)
 
   const all_files = [...structure_files, ...molecule_files]
   function get_file_url(filename: string): string {
@@ -22,13 +24,24 @@
 
   $effect(() => {
     if (!browser) return
+    // Support #structure=BASE64 for CLI-generated links (ferrox render)
+    const hash = page.url.hash
+    if (hash.startsWith(`#structure=`)) {
+      const raw = hash.slice(`#structure=`.length)
+      // Convert URL-safe base64 (RFC 4648 §5) back to standard base64 for atob()
+      const std_b64 = raw.replace(/-/g, `+`).replace(/_/g, `/`)
+      hash_structure_string = atob(std_b64)
+      current_filename = `CLI structure`
+      return
+    }
     const file = page.url.searchParams.get(`file`)
     if (file && file !== current_filename) current_filename = file
   })
 </script>
 
 <Structure
-  data_url={get_file_url(current_filename)}
+  data_url={hash_structure_string ? undefined : get_file_url(current_filename)}
+  structure_string={hash_structure_string}
   on_file_load={(data: { filename: string }) => {
     current_filename = data.filename
     page.url.searchParams.set(`file`, current_filename)

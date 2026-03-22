@@ -7,11 +7,7 @@ import {
 } from '$lib/structure/partial-occupancy'
 import { describe, expect, test } from 'vitest'
 
-const make_site = (
-  species: Site[`species`],
-  xyz: Vec3,
-  label: string,
-): Site => ({
+const make_site = (species: Site[`species`], xyz: Vec3, label: string): Site => ({
   species,
   abc: [0, 0, 0],
   xyz,
@@ -49,15 +45,10 @@ describe(`partial occupancy render-site logic`, () => {
       expected_merged_elements: null,
     },
     {
-      name:
-        `does not merge nearby split partial sites that differ by tiny coordinate offset`,
+      name: `does not merge nearby split partial sites that differ by tiny coordinate offset`,
       sites: [
         make_site([{ element: `O`, occu: 0.5, oxidation_state: 0 }], [0, 0, 0], `O`),
-        make_site(
-          [{ element: `F`, occu: 0.5, oxidation_state: 0 }],
-          [0, 0, 0.000004],
-          `F`,
-        ),
+        make_site([{ element: `F`, occu: 0.5, oxidation_state: 0 }], [0, 0, 0.000004], `F`),
       ],
       expected_count: 2,
       expected_merged_elements: null,
@@ -66,14 +57,15 @@ describe(`partial occupancy render-site logic`, () => {
     const render_sites = merge_split_partial_sites(sites)
     expect(render_sites).toHaveLength(expected_count)
     if (!expected_merged_elements) return
-    const merged_site = render_sites.find((site_data) =>
-      site_data.site.species.length === 2 &&
-      site_data.site.species.some((species) => species.element === `O`) &&
-      site_data.site.species.some((species) => species.element === `F`)
+    const merged_site = render_sites.find(
+      (site_data) =>
+        site_data.site.species.length === 2 &&
+        site_data.site.species.some((species) => species.element === `O`) &&
+        site_data.site.species.some((species) => species.element === `F`),
     )
     expect(merged_site).toBeDefined()
     if (!merged_site) throw new Error(`Expected merged O/F site to exist`)
-    expect(merged_site.site.species.map((species) => species.element).sort()).toEqual(
+    expect(merged_site.site.species.map((species) => species.element).toSorted()).toEqual(
       expected_merged_elements,
     )
   })
@@ -109,9 +101,7 @@ describe(`partial occupancy slice flags`, () => {
       expect(slices[slice_idx].start_phi).toBeGreaterThanOrEqual(
         slices[slice_idx - 1].start_phi,
       )
-      expect(slices[slice_idx].end_phi).toBeGreaterThanOrEqual(
-        slices[slice_idx - 1].end_phi,
-      )
+      expect(slices[slice_idx].end_phi).toBeGreaterThanOrEqual(slices[slice_idx - 1].end_phi)
     }
   })
 

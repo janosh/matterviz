@@ -66,9 +66,10 @@ export function process_hull_entries(entries: PhaseData[]): ProcessedPhaseData {
   const stable_entries: PhaseData[] = []
   const unstable_entries: PhaseData[] = []
   for (const entry of normalized_entries) {
-    const stable = typeof entry.is_stable === `boolean`
-      ? entry.is_stable
-      : (entry.e_above_hull ?? Infinity) <= 1e-6
+    const stable =
+      typeof entry.is_stable === `boolean`
+        ? entry.is_stable
+        : (entry.e_above_hull ?? Infinity) <= HULL_STABILITY_TOL
     ;(stable ? stable_entries : unstable_entries).push(entry)
   }
 
@@ -99,9 +100,10 @@ function get_energy_per_atom(entry: PhaseData): number {
   // Use Math.max instead of || to prevent pathological negative totals from flipping sign
   const atoms = Math.max(count_atoms_in_composition(entry.composition), 1e-12)
   if (typeof entry.correction === `number`) {
-    const total = typeof entry.energy_per_atom === `number`
-      ? entry.energy_per_atom * atoms
-      : (entry.energy ?? 0)
+    const total =
+      typeof entry.energy_per_atom === `number`
+        ? entry.energy_per_atom * atoms
+        : (entry.energy ?? 0)
     return (total + entry.correction) / atoms
   }
   return entry.energy_per_atom ?? (entry.energy ?? 0) / atoms
@@ -172,9 +174,7 @@ export function calculate_e_above_hull(
     for (const el of Object.keys(entry.composition)) {
       if (!element_set.has(el as ElementSymbol)) {
         throw new Error(
-          `Entry contains element ${el} not present in reference system: ${
-            elements.join(`-`)
-          }`,
+          `Entry contains element ${el} not present in reference system: ${elements.join(`-`)}`,
         )
       }
     }
@@ -267,8 +267,8 @@ export function calculate_e_above_hull(
         0,
       )
       if (
-        !ref_points.some((p) =>
-          Math.hypot(p.x - corner.x, p.y - corner.y, p.z - corner.z) < 1e-9
+        !ref_points.some(
+          (p) => Math.hypot(p.x - corner.x, p.y - corner.y, p.z - corner.z) < 1e-9,
         )
       ) {
         ref_points.push(corner)
@@ -363,9 +363,7 @@ export function calculate_e_above_hull(
         return [...composition_to_barycentric_nd(entry.composition, elements), e_form]
       } catch (err) {
         // Skip expected errors (missing elements), warn on unexpected
-        if (
-          err instanceof Error && !err.message.includes(`no elements from the system`)
-        ) {
+        if (err instanceof Error && !err.message.includes(`no elements from the system`)) {
           console.warn(`Skipping entry: ${err.message}`)
         }
         return null
@@ -416,9 +414,10 @@ export function calculate_e_above_hull(
     }
 
     // Compute hull distances (empty array if degenerate hull)
-    const distances = hull_facets.length > 0
-      ? compute_e_above_hull_nd(interest_points, hull_facets, ref_points)
-      : []
+    const distances =
+      hull_facets.length > 0
+        ? compute_e_above_hull_nd(interest_points, hull_facets, ref_points)
+        : []
 
     // Map results back to entries
     for (let idx = 0; idx < interest_data.length; idx++) {
@@ -438,8 +437,8 @@ export function calculate_e_above_hull(
   }
 
   if (is_single) {
-    const id = entries_of_interest[0].entry_id ??
-      JSON.stringify(entries_of_interest[0].composition)
+    const id =
+      entries_of_interest[0].entry_id ?? JSON.stringify(entries_of_interest[0].composition)
     return results[id]
   }
   return results
@@ -477,29 +476,31 @@ export function get_convex_hull_stats(
   const unstable_count = processed_entries.length - stable_count
 
   const energies = processed_entries
-    .map((entry) =>
-      entry.e_form_per_atom ?? entry.energy_per_atom ?? get_energy_per_atom(entry)
+    .map(
+      (entry) => entry.e_form_per_atom ?? entry.energy_per_atom ?? get_energy_per_atom(entry),
     )
     .filter(Number.isFinite)
 
   // Use reduce instead of Math.min/max(...arr) to avoid stack overflow on large datasets
-  const energy_range = energies.length > 0
-    ? {
-      min: energies.reduce((min, val) => val < min ? val : min, Infinity),
-      max: energies.reduce((max, val) => val > max ? val : max, -Infinity),
-      avg: energies.reduce((sum, val) => sum + val, 0) / energies.length,
-    }
-    : { min: 0, max: 0, avg: 0 }
+  const energy_range =
+    energies.length > 0
+      ? {
+          min: energies.reduce((min, val) => (val < min ? val : min), Infinity),
+          max: energies.reduce((max, val) => (val > max ? val : max), -Infinity),
+          avg: energies.reduce((sum, val) => sum + val, 0) / energies.length,
+        }
+      : { min: 0, max: 0, avg: 0 }
 
   const hull_distances = processed_entries
     .map((entry) => entry.e_above_hull)
     .filter((val): val is number => typeof val === `number` && val >= 0)
-  const hull_distance = hull_distances.length > 0
-    ? {
-      max: hull_distances.reduce((max, val) => val > max ? val : max, -Infinity),
-      avg: hull_distances.reduce((sum, val) => sum + val, 0) / hull_distances.length,
-    }
-    : { max: 0, avg: 0 }
+  const hull_distance =
+    hull_distances.length > 0
+      ? {
+          max: hull_distances.reduce((max, val) => (val > max ? val : max), -Infinity),
+          avg: hull_distances.reduce((sum, val) => sum + val, 0) / hull_distances.length,
+        }
+      : { max: 0, avg: 0 }
 
   return {
     total: processed_entries.length,
@@ -566,10 +567,7 @@ export function process_hull_for_stats(
   // JSON.stringify(composition), so polymorphs at the same composition
   // collide — the last-processed entry's distance wins for all of them.
   try {
-    const hull_distances = calculate_e_above_hull(
-      processed.entries,
-      processed.entries,
-    )
+    const hull_distances = calculate_e_above_hull(processed.entries, processed.entries)
 
     for (const entry of processed.entries) {
       const dist = hull_distances[entry.entry_id ?? JSON.stringify(entry.composition)]
@@ -591,11 +589,7 @@ export function process_hull_for_stats(
   return {
     stable_entries: hull_entries.filter((entry) => is_on_hull(entry)),
     unstable_entries: hull_entries.filter((entry) => !is_on_hull(entry)),
-    phase_stats: get_convex_hull_stats(
-      processed.entries,
-      hull_elements,
-      hull_elements.length,
-    ),
+    phase_stats: get_convex_hull_stats(processed.entries, hull_elements, hull_elements.length),
   }
 }
 
@@ -604,7 +598,7 @@ export function process_hull_for_stats(
 export function compute_lower_hull_2d(points: Point2D[]): Point2D[] {
   // Andrew's monotone chain for lower hull
   // Sort by x then y
-  const sorted = [...points].sort((p1, p2) => (p1.x - p2.x) || (p1.y - p2.y))
+  const sorted = [...points].sort((p1, p2) => p1.x - p2.x || p1.y - p2.y)
   const lower: Point2D[] = []
   const cross = (o: Point2D, a: Point2D, b: Point2D) =>
     (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
@@ -613,7 +607,8 @@ export function compute_lower_hull_2d(points: Point2D[]): Point2D[] {
     while (
       lower.length >= 2 &&
       cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
-    ) lower.pop()
+    )
+      lower.pop()
     lower.push(p)
   }
   return lower
@@ -670,8 +665,7 @@ function compute_plane(p1: Point3D, p2: Point3D, p3: Point3D): Plane {
 }
 
 const point_plane_signed_distance = (plane: Plane, point: Point3D): number =>
-  plane.normal.x * point.x + plane.normal.y * point.y + plane.normal.z * point.z +
-  plane.offset
+  plane.normal.x * point.x + plane.normal.y * point.y + plane.normal.z * point.z + plane.offset
 
 const compute_centroid = (p1: Point3D, p2: Point3D, p3: Point3D): Point3D => ({
   x: (p1.x + p2.x + p3.x) / 3,
@@ -790,7 +784,11 @@ function build_horizon(
   for (const face_idx of visible_face_indices) {
     const face = faces[face_idx]
     const [a, b, c] = face.vertices
-    const edges: [number, number][] = [[a, b], [b, c], [c, a]]
+    const edges: [number, number][] = [
+      [a, b],
+      [b, c],
+      [c, a],
+    ]
     for (const [u, v] of edges) {
       const key = u < v ? `${u}|${v}` : `${v}|${u}`
       if (!edge_count.has(key)) edge_count.set(key, [u, v])
@@ -851,9 +849,7 @@ export function compute_quickhull_triangles(points: Point3D[]): ConvexHullTriang
     }
     const horizon_edges = build_horizon(faces, visible_face_indices)
     const visible_faces = Array.from(visible_face_indices).sort((a, b) => b - a)
-    const candidate_points = collect_candidate_points(
-      visible_faces.map((idx) => faces[idx]),
-    )
+    const candidate_points = collect_candidate_points(visible_faces.map((idx) => faces[idx]))
     for (const idx of visible_faces) faces.splice(idx, 1)
     const new_faces: ConvexHullFace[] = []
     for (const [u, v] of horizon_edges) {
@@ -912,22 +908,25 @@ export interface HullFaceModel {
   denom: number
 }
 
-export const build_lower_hull_model = (
-  faces: ConvexHullTriangle[],
-): HullFaceModel[] =>
+export const build_lower_hull_model = (faces: ConvexHullTriangle[]): HullFaceModel[] =>
   faces.map((tri) => {
     const [p1, p2, p3] = tri.vertices
     const plane = (() => {
-      const x1 = p1.x, y1 = p1.y, z1 = p1.z
-      const x2 = p2.x, y2 = p2.y, z2 = p2.z
-      const x3 = p3.x, y3 = p3.y, z3 = p3.z
+      const x1 = p1.x,
+        y1 = p1.y,
+        z1 = p1.z
+      const x2 = p2.x,
+        y2 = p2.y,
+        z2 = p2.z
+      const x3 = p3.x,
+        y3 = p3.y,
+        z3 = p3.z
       const det = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)
       if (Math.abs(det) < 1e-12) return { a: 0, b: 0, c: (z1 + z2 + z3) / 3 }
       const a = (z1 * (y2 - y3) + z2 * (y3 - y1) + z3 * (y1 - y2)) / det
       const b = (z1 * (x3 - x2) + z2 * (x1 - x3) + z3 * (x2 - x1)) / det
       const c =
-        (z1 * (x2 * y3 - x3 * y2) + z2 * (x3 * y1 - x1 * y3) + z3 * (x1 * y2 - x2 * y1)) /
-        det
+        (z1 * (x2 * y3 - x3 * y2) + z2 * (x3 * y1 - x1 * y3) + z3 * (x1 * y2 - x2 * y1)) / det
       return { a, b, c }
     })()
     const [min_x, _mx, max_x] = [p1.x, p2.x, p3.x].sort((a, b) => a - b)
@@ -967,9 +966,8 @@ function point_in_triangle_xy(model: HullFaceModel, x: number, y: number): boole
 export function e_hull_at_xy(models: HullFaceModel[], x: number, y: number) {
   let z: number | null = null
   for (const m of models) {
-    if (
-      x < m.min_x - 1e-9 || x > m.max_x + 1e-9 || y < m.min_y - 1e-9 || y > m.max_y + 1e-9
-    ) continue
+    if (x < m.min_x - 1e-9 || x > m.max_x + 1e-9 || y < m.min_y - 1e-9 || y > m.max_y + 1e-9)
+      continue
     if (!point_in_triangle_xy(m, x, y)) continue
     const z_face = m.a * x + m.b * y + m.c
     z = z === null ? z_face : Math.min(z, z_face)
@@ -977,10 +975,7 @@ export function e_hull_at_xy(models: HullFaceModel[], x: number, y: number) {
   return z
 }
 
-export const compute_e_above_hull_for_points = (
-  points: Point3D[],
-  models: HullFaceModel[],
-) =>
+export const compute_e_above_hull_for_points = (points: Point3D[], models: HullFaceModel[]) =>
   points.map((p) => {
     const z_hull = e_hull_at_xy(models, p.x, p.y)
     if (z_hull === null) return 0
@@ -1095,8 +1090,8 @@ function compute_plane_4d(p1: Point4D, p2: Point4D, p3: Point4D, p4: Point4D): P
   const normal = normalize_4d({ x, y, z, w })
 
   // Guard against degenerate (nearly co-planar) points
-  const normal_magnitude = Math.abs(normal.x) + Math.abs(normal.y) + Math.abs(normal.z) +
-    Math.abs(normal.w)
+  const normal_magnitude =
+    Math.abs(normal.x) + Math.abs(normal.y) + Math.abs(normal.z) + Math.abs(normal.w)
   if (normal_magnitude < EPS) {
     return { normal: { x: 0, y: 0, z: 0, w: 0 }, offset: 0 }
   }
@@ -1109,12 +1104,7 @@ function compute_plane_4d(p1: Point4D, p2: Point4D, p3: Point4D, p4: Point4D): P
 const point_plane_signed_distance_4d = (plane: Plane4D, point: Point4D): number =>
   dot_4d(plane.normal, point) + plane.offset
 
-const compute_centroid_4d = (
-  p1: Point4D,
-  p2: Point4D,
-  p3: Point4D,
-  p4: Point4D,
-): Point4D => ({
+const compute_centroid_4d = (p1: Point4D, p2: Point4D, p3: Point4D, p4: Point4D): Point4D => ({
   x: (p1.x + p2.x + p3.x + p4.x) / 4,
   y: (p1.y + p2.y + p3.y + p4.y) / 4,
   z: (p1.z + p2.z + p3.z + p4.z) / 4,
@@ -1196,10 +1186,12 @@ function choose_initial_4_simplex(
   // Find two points farthest apart across all dimensions for better numerical stability
   // Sample a small subset if dataset is large to avoid O(n²) scaling
   const sample_size = Math.min(points.length, INITIAL_SIMPLEX_SAMPLE_SIZE)
-  const sample_indices = points.length <= sample_size
-    ? points.map((_, idx) => idx)
-    : Array.from({ length: sample_size }, (_, idx) =>
-      Math.floor((idx * points.length) / sample_size))
+  const sample_indices =
+    points.length <= sample_size
+      ? points.map((_, idx) => idx)
+      : Array.from({ length: sample_size }, (_, idx) =>
+          Math.floor((idx * points.length) / sample_size),
+        )
 
   let idx_far_a = 0
   let idx_far_b = 0
@@ -1210,8 +1202,8 @@ function choose_initial_4_simplex(
       if (idx_a >= idx_b) continue
       const pa = points[idx_a]
       const pb = points[idx_b]
-      const dist_sq = (pa.x - pb.x) ** 2 + (pa.y - pb.y) ** 2 + (pa.z - pb.z) ** 2 +
-        (pa.w - pb.w) ** 2
+      const dist_sq =
+        (pa.x - pb.x) ** 2 + (pa.y - pb.y) ** 2 + (pa.z - pb.z) ** 2 + (pa.w - pb.w) ** 2
       if (dist_sq > max_dist_sq) {
         max_dist_sq = dist_sq
         idx_far_a = idx_a
@@ -1226,11 +1218,7 @@ function choose_initial_4_simplex(
   let best_dist_line = -1
   for (let idx = 0; idx < points.length; idx++) {
     if (idx === idx_far_a || idx === idx_far_b) continue
-    const dist = distance_point_to_line_4d(
-      points[idx_far_a],
-      points[idx_far_b],
-      points[idx],
-    )
+    const dist = distance_point_to_line_4d(points[idx_far_a], points[idx_far_b], points[idx])
     if (dist > best_dist_line) {
       best_dist_line = dist
       idx_far_line = idx
@@ -1267,9 +1255,12 @@ function choose_initial_4_simplex(
   let best_dist_hyperplane = -1
   for (let idx = 0; idx < points.length; idx++) {
     if (
-      idx === idx_far_a || idx === idx_far_b || idx === idx_far_line ||
+      idx === idx_far_a ||
+      idx === idx_far_b ||
+      idx === idx_far_line ||
       idx === idx_far_plane
-    ) continue
+    )
+      continue
     const dist = Math.abs(point_plane_signed_distance_4d(plane0, points[idx]))
     if (dist > best_dist_hyperplane) {
       best_dist_hyperplane = dist
@@ -1354,7 +1345,12 @@ function build_horizon_4d(
     const [a, b, c, d] = face.vertices
 
     // Each tetrahedron face has 4 triangular ridges
-    const ridges: math.Vec3[] = [[a, b, c], [a, b, d], [a, c, d], [b, c, d]]
+    const ridges: math.Vec3[] = [
+      [a, b, c],
+      [a, b, d],
+      [a, c, d],
+      [b, c, d],
+    ]
 
     for (const ridge of ridges) {
       const sorted = ridge.slice().sort((x, y) => x - y)
@@ -1545,8 +1541,8 @@ function point_in_tetrahedron_3d(
 
   // Check if inside: all barycentric coords must be >= 0 and sum to 1
   const eps_bary = -1e-9
-  const inside = bary.every((l) => l >= eps_bary) &&
-    Math.abs(bary.reduce((s, l) => s + l, 0) - 1) < 1e-6
+  const inside =
+    bary.every((l) => l >= eps_bary) && Math.abs(bary.reduce((s, l) => s + l, 0) - 1) < 1e-6
 
   return { inside, bary }
 }
@@ -1605,10 +1601,14 @@ export const compute_e_above_hull_4d = (
     for (const model of models) {
       // Fast bounding box prefilter
       if (
-        x < model.min_x - EPS || x > model.max_x + EPS ||
-        y < model.min_y - EPS || y > model.max_y + EPS ||
-        z < model.min_z - EPS || z > model.max_z + EPS
-      ) continue
+        x < model.min_x - EPS ||
+        x > model.max_x + EPS ||
+        y < model.min_y - EPS ||
+        y > model.max_y + EPS ||
+        z < model.min_z - EPS ||
+        z > model.max_z + EPS
+      )
+        continue
 
       // Check if point's (x,y,z) is inside the 3D projection of the tetrahedron
       const { inside, bary } = point_in_tetrahedron_3d(
@@ -1622,8 +1622,7 @@ export const compute_e_above_hull_4d = (
       if (inside) {
         // Compute w on the hull at this (x,y,z) using barycentric interpolation
         const [p0, p1, p2, p3] = model.vertices
-        const w_on_hull = bary[0] * p0.w + bary[1] * p1.w + bary[2] * p2.w +
-          bary[3] * p3.w
+        const w_on_hull = bary[0] * p0.w + bary[1] * p1.w + bary[2] * p2.w + bary[3] * p3.w
         hull_w = hull_w === null ? w_on_hull : Math.min(hull_w, w_on_hull)
       }
     }
@@ -1641,18 +1640,14 @@ export const compute_e_above_hull_4d = (
 // N-dimensional vector operations with dimension validation
 const subtract_nd = (vec_a: number[], vec_b: number[]): number[] => {
   if (vec_a.length !== vec_b.length) {
-    throw new Error(
-      `Vector dimension mismatch: ${vec_a.length} vs ${vec_b.length}`,
-    )
+    throw new Error(`Vector dimension mismatch: ${vec_a.length} vs ${vec_b.length}`)
   }
   return vec_a.map((val, idx) => val - vec_b[idx])
 }
 
 const dot_nd = (vec_a: number[], vec_b: number[]): number => {
   if (vec_a.length !== vec_b.length) {
-    throw new Error(
-      `Vector dimension mismatch: ${vec_a.length} vs ${vec_b.length}`,
-    )
+    throw new Error(`Vector dimension mismatch: ${vec_a.length} vs ${vec_b.length}`)
   }
   return vec_a.reduce((sum, val, idx) => sum + val * vec_b[idx], 0)
 }
@@ -1695,10 +1690,7 @@ function compute_hyperplane_nd(points: number[][]): HyperplaneND {
 
   for (let col = 0; col < dim; col++) {
     // Build (N-1)×(N-1) submatrix by removing column col
-    const submatrix = edges.map((row) => [
-      ...row.slice(0, col),
-      ...row.slice(col + 1),
-    ])
+    const submatrix = edges.map((row) => [...row.slice(0, col), ...row.slice(col + 1)])
     const sign = col % 2 === 0 ? 1 : -1
     normal_components.push(sign * math.det_nxn(submatrix))
   }
@@ -1712,10 +1704,8 @@ function compute_hyperplane_nd(points: number[][]): HyperplaneND {
   return { normal, offset }
 }
 
-const point_hyperplane_signed_distance_nd = (
-  plane: HyperplaneND,
-  point: number[],
-): number => dot_nd(plane.normal, point) + plane.offset
+const point_hyperplane_signed_distance_nd = (plane: HyperplaneND, point: number[]): number =>
+  dot_nd(plane.normal, point) + plane.offset
 
 const compute_centroid_nd = (points: number[][]): number[] => {
   if (points.length === 0) return []
@@ -1737,10 +1727,12 @@ function choose_initial_simplex_nd(points: number[][]): number[] | null {
   // Start with two points that are farthest apart
   let [best_i, best_j, best_dist] = [0, 1, -1]
   const sample_size = Math.min(points.length, 100)
-  const sample_indices = points.length <= sample_size
-    ? points.map((_, idx) => idx)
-    : Array.from({ length: sample_size }, (_, idx) =>
-      Math.floor((idx * points.length) / sample_size))
+  const sample_indices =
+    points.length <= sample_size
+      ? points.map((_, idx) => idx)
+      : Array.from({ length: sample_size }, (_, idx) =>
+          Math.floor((idx * points.length) / sample_size),
+        )
 
   for (const idx_a of sample_indices) {
     for (const idx_b of sample_indices) {
@@ -1844,8 +1836,8 @@ function distance_to_affine_hull_nd(point: number[], hull_points: number[][]): n
   }
 
   // Compute projection: origin + sum(coeffs[i] * edges[i])
-  const proj = origin.map((val, dim) =>
-    val + coeffs.reduce((sum, coeff, idx) => sum + coeff * edges[idx][dim], 0)
+  const proj = origin.map(
+    (val, dim) => val + coeffs.reduce((sum, coeff, idx) => sum + coeff * edges[idx][dim], 0),
   )
   return norm_nd(subtract_nd(point, proj))
 }
@@ -1945,10 +1937,7 @@ function farthest_outside_point_nd(
 
 // Build horizon ridges (boundary between visible and non-visible faces)
 // In N dimensions, ridges are (N-2)-simplices with (N-1) vertices
-function build_horizon_nd(
-  faces: SimplexFaceND[],
-  visible_indices: Set<number>,
-): number[][] {
+function build_horizon_nd(faces: SimplexFaceND[], visible_indices: Set<number>): number[][] {
   const ridge_count = new Map<string, number[]>()
 
   for (const face_idx of visible_indices) {
@@ -2025,10 +2014,7 @@ export function compute_quickhull_nd(points: number[][]): SimplexFaceND[] {
     // Find all faces visible from eye point
     const visible_indices = new Set<number>()
     for (let face_idx = 0; face_idx < faces.length; face_idx++) {
-      const dist = point_hyperplane_signed_distance_nd(
-        faces[face_idx].plane,
-        points[eye_idx],
-      )
+      const dist = point_hyperplane_signed_distance_nd(faces[face_idx].plane, points[eye_idx])
       if (dist > EPS) visible_indices.add(face_idx)
     }
 
@@ -2108,13 +2094,11 @@ function build_simplex_models_nd(
 
     // Compute bounding box in spatial dimensions
     const spatial_dim = n - 1
-    const bbox_min = Array.from(
-      { length: spatial_dim },
-      (_, idx) => Math.min(...vertices_spatial.map((pt) => pt[idx])),
+    const bbox_min = Array.from({ length: spatial_dim }, (_, idx) =>
+      Math.min(...vertices_spatial.map((pt) => pt[idx])),
     )
-    const bbox_max = Array.from(
-      { length: spatial_dim },
-      (_, idx) => Math.max(...vertices_spatial.map((pt) => pt[idx])),
+    const bbox_max = Array.from({ length: spatial_dim }, (_, idx) =>
+      Math.max(...vertices_spatial.map((pt) => pt[idx])),
     )
 
     return { vertices, vertices_spatial, bbox_min, bbox_max }
@@ -2123,10 +2107,7 @@ function build_simplex_models_nd(
 
 // Check if point is inside simplex and return barycentric coordinates
 // Uses linear system solution: point = sum(bary[i] * vertex[i]) with sum(bary) = 1
-function point_in_simplex_nd(
-  point: number[],
-  simplex_vertices: number[][],
-): number[] | null {
+function point_in_simplex_nd(point: number[], simplex_vertices: number[][]): number[] | null {
   const n = simplex_vertices.length // Number of vertices = spatial_dim + 1
   if (n === 0) return null
 

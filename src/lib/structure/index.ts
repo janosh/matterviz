@@ -42,9 +42,11 @@ export type Site = {
 export const LATTICE_PARAM_KEYS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
 export type LatticeParams = { [key in (typeof LATTICE_PARAM_KEYS)[number]]: number }
 
-export type LatticeType =
-  & { matrix: math.Matrix3x3; pbc: Pbc; volume: number }
-  & LatticeParams
+export type LatticeType = {
+  matrix: math.Matrix3x3
+  pbc: Pbc
+  volume: number
+} & LatticeParams
 
 export type Molecule = {
   sites: Site[]
@@ -94,15 +96,15 @@ export function format_chemical_formula(
 
 export function format_formula_by_electronegativity(structure: AnyStructure): string {
   // concatenate elements in a structure followed by their amount sorted by electronegativity
-  return format_chemical_formula(structure, (symbols) => (symbols.sort((el1, el2) => {
-    const elec_neg1 = element_data.find((el) => el.symbol === el1)?.electronegativity ??
-      0
-    const elec_neg2 = element_data.find((el) => el.symbol === el2)?.electronegativity ??
-      0
-    // Sort by electronegativity (ascending), then alphabetically for ties
-    if (elec_neg1 !== elec_neg2) return elec_neg1 - elec_neg2
-    return el1.localeCompare(el2)
-  })))
+  return format_chemical_formula(structure, (symbols) =>
+    symbols.sort((el1, el2) => {
+      const elec_neg1 = element_data.find((el) => el.symbol === el1)?.electronegativity ?? 0
+      const elec_neg2 = element_data.find((el) => el.symbol === el2)?.electronegativity ?? 0
+      // Sort by electronegativity (ascending), then alphabetically for ties
+      if (elec_neg1 !== elec_neg2) return elec_neg1 - elec_neg2
+      return el1.localeCompare(el2)
+    }),
+  )
 }
 
 // Atomic radii in Angstroms (used for relative sizing, not absolute rendering scale)
@@ -158,9 +160,7 @@ export const VECTOR_KEY_PREFIXES = [
 ] as const
 
 export function is_vector_key(key: string): boolean {
-  return VECTOR_KEY_PREFIXES.some(
-    (prefix) => key === prefix || key.startsWith(`${prefix}_`),
-  )
+  return VECTOR_KEY_PREFIXES.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
 }
 
 // Default color palette for distinguishing multiple vector layers
@@ -176,18 +176,23 @@ export const VECTOR_PALETTE = [
 // Single key → null color (semantic coloring); multiple keys → palette colors.
 export const default_vector_configs = (keys: string[]) =>
   Object.fromEntries(
-    keys.map((key, idx) => [key, {
-      visible: true,
-      color: keys.length > 1 ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length] : null,
-      scale: null,
-    }]),
+    keys.map((key, idx) => [
+      key,
+      {
+        visible: true,
+        color: keys.length > 1 ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length] : null,
+        scale: null,
+      },
+    ]),
   )
 
 function try_parse_vec3(val: unknown): Vec3 | null {
   if (
-    Array.isArray(val) && val.length === 3 &&
+    Array.isArray(val) &&
+    val.length === 3 &&
     val.every((elem) => typeof elem === `number` && isFinite(elem))
-  ) return val as Vec3
+  )
+    return val as Vec3
   if (typeof val === `number` && isFinite(val)) return [0, 0, val]
   return null
 }

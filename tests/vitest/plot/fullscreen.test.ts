@@ -37,9 +37,7 @@ describe(`Plot Fullscreen Toggle`, () => {
     expect(plot_div).toBeTruthy()
     expect(plot_div?.classList.contains(`fullscreen`)).toBe(false)
 
-    const toggle_btn = document.querySelector(
-      `button.fullscreen-toggle`,
-    ) as HTMLButtonElement
+    const toggle_btn = document.querySelector(`button.fullscreen-toggle`) as HTMLButtonElement
     expect(toggle_btn).toBeTruthy()
     expect(toggle_btn.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
 

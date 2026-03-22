@@ -25,9 +25,8 @@ export function merge_series_state<T extends DataSeries | BarSeries>(
 
   return new_series.map((new_srs, idx) => {
     // Match by id if available (string or number), otherwise fall back to index
-    const old_srs = (new_srs.id !== undefined && new_srs.id !== ``
-      ? by_id.get(new_srs.id)
-      : undefined) ??
+    const old_srs =
+      (new_srs.id !== undefined && new_srs.id !== `` ? by_id.get(new_srs.id) : undefined) ??
       old_series[idx]
     if (!old_srs) {
       return new_srs

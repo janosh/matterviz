@@ -17,9 +17,7 @@ export const R_EV_PER_K = 8.617333262e-5 // Gas constant in eV/K (k_B)
 export const P_REF = 1.0 // Reference pressure in bar
 
 // Default element-to-gas mapping (which element comes from which gas)
-export const DEFAULT_ELEMENT_TO_GAS: Readonly<
-  Partial<Record<ElementSymbol, GasSpecies>>
-> = {
+export const DEFAULT_ELEMENT_TO_GAS: Readonly<Partial<Record<ElementSymbol, GasSpecies>>> = {
   O: `O2`,
   N: `N2`,
   H: `H2`,
@@ -55,7 +53,7 @@ interface TabulatedTSData {
 // Source: Barin Thermochemical Tables and NBS Thermochemical Tables
 // Data compiled to match PIRO (https://github.com/GENESIS-EFRC/piro)
 // Note: These values are T*S in eV/molecule
-// deno-fmt-ignore
+// oxfmt-ignore
 const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, TabulatedTSData>> = {
   O2: {
     temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
@@ -83,8 +81,14 @@ const DEFAULT_TS_DATA: Readonly<Record<GasSpecies, TabulatedTSData>> = {
   },
   F2: {
     // F2 not in Barin/NBS tables used by PIRO - approximated from similar homonuclear diatomics (O2, N2)
-    temperatures: [0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000],
-    values: [0, 0.31, 0.312, 0.435, 0.56, 0.69, 0.82, 0.96, 1.1, 1.24, 1.38, 1.53, 1.68, 1.83, 1.98, 2.13, 2.29, 2.45, 2.61, 2.77],
+    temperatures: [
+      0, 298, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600,
+      1700, 1800, 1900, 2000,
+    ],
+    values: [
+      0, 0.31, 0.312, 0.435, 0.56, 0.69, 0.82, 0.96, 1.1, 1.24, 1.38, 1.53, 1.68, 1.83,
+      1.98, 2.13, 2.29, 2.45, 2.61, 2.77,
+    ],
   },
 }
 
@@ -194,8 +198,7 @@ export function compute_gas_chemical_potential(
   // μ_per_atom(T, P) = μ°_per_atom(T) + k_B·T·ln(P/P₀) / num_atoms
   // The RT·ln(P) term must be divided by num_atoms to match PIRO's per-atom convention
   const num_atoms = GAS_NUM_ATOMS[gas]
-  return mu_standard +
-    (R_EV_PER_K * T * Math.log(effective_P / P_REF)) / num_atoms
+  return mu_standard + (R_EV_PER_K * T * Math.log(effective_P / P_REF)) / num_atoms
 }
 
 // Compute chemical potential per atom of a specific element from a gas

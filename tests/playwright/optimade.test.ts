@@ -1,9 +1,5 @@
 import { expect, test } from '@playwright/test'
-import {
-  MOCK_PROVIDERS,
-  MOCK_STRUCTURES,
-  MOCK_SUGGESTIONS,
-} from '../fixtures/optimade-mocks'
+import { MOCK_PROVIDERS, MOCK_STRUCTURES, MOCK_SUGGESTIONS } from '../fixtures/optimade-mocks'
 
 // Timeout for waiting on async data loading (providers, structures).
 // Despite mocking, we need extra time for:
@@ -30,11 +26,8 @@ test.describe(`OPTIMADE route`, () => {
       const { providers, structures, suggestions } = JSON.parse(serialized)
       const _fetch = globalThis.fetch
       globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-        const url = typeof input === `string`
-          ? input
-          : input instanceof URL
-          ? input.href
-          : input.url
+        const url =
+          typeof input === `string` ? input : input instanceof URL ? input.href : input.url
         // Let local requests through unchanged
         if (url.startsWith(location.origin)) return _fetch.call(globalThis, input, init)
         // Decode CORS proxy wrappers to get the actual target URL
@@ -57,10 +50,7 @@ test.describe(`OPTIMADE route`, () => {
           if (decoded.includes(`page_limit`) || decoded.includes(`filter=`)) {
             return json({ data: suggestions })
           }
-          return json(
-            { errors: [{ detail: `Structure not found`, status: `404` }] },
-            404,
-          )
+          return json({ errors: [{ detail: `Structure not found`, status: `404` }] }, 404)
         }
         if (decoded.includes(`/links`)) return json({ data: [] })
         // Non-OPTIMADE external requests: let through (will fail naturally)
@@ -85,14 +75,11 @@ test.describe(`OPTIMADE route`, () => {
 
     // Wait for providers to load - either buttons appear or error message shown
     await expect(
-      page.locator(`button.db-select`).first().or(
-        page.locator(`.db-column .error-message`),
-      ),
+      page.locator(`button.db-select`).first().or(page.locator(`.db-column .error-message`)),
     ).toBeVisible({ timeout: DATA_LOAD_TIMEOUT })
 
     // If there's a providers error, click retry and wait again
-    const providers_error_visible = await page.locator(`.db-column .error-message`)
-      .isVisible()
+    const providers_error_visible = await page.locator(`.db-column .error-message`).isVisible()
     if (providers_error_visible) {
       await page.locator(`.retry-button`).click()
       await expect(page.locator(`button.db-select`).first()).toBeVisible({
@@ -129,9 +116,7 @@ test.describe(`OPTIMADE route`, () => {
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
 
     // Verify OQMD provider is selected
-    await expect(page.locator(`.db-grid > div`, { hasText: `oqmd` })).toHaveClass(
-      /selected/,
-    )
+    await expect(page.locator(`.db-grid > div`, { hasText: `oqmd` })).toHaveClass(/selected/)
 
     // Verify suggestions section appears
     await expect(page.locator(`text=Suggested Structures`)).toBeVisible()
@@ -231,16 +216,12 @@ test.describe(`OPTIMADE route`, () => {
     // Switch to COD provider
     await page.locator(`button.db-select`, { hasText: `cod` }).click()
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
-    await expect(page.locator(`.db-grid > div`, { hasText: `cod` })).toHaveClass(
-      /selected/,
-    )
+    await expect(page.locator(`.db-grid > div`, { hasText: `cod` })).toHaveClass(/selected/)
 
     // Switch back to MP provider
     await page.locator(`button.db-select`, { hasText: `mp` }).click()
     await expect(page.locator(`input.structure-input`)).toHaveValue(``)
-    await expect(page.locator(`.db-grid > div`, { hasText: `mp` })).toHaveClass(
-      /selected/,
-    )
+    await expect(page.locator(`.db-grid > div`, { hasText: `mp` })).toHaveClass(/selected/)
   })
 
   test(`can click on suggested structures to load them`, async ({ page }) => {

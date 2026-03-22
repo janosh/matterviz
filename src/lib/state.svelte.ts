@@ -2,7 +2,7 @@ import type { ChemicalElement, ElementCategory } from '$lib/element/types'
 import { AUTO_THEME, COLOR_THEMES, THEME_TYPE } from '$lib/theme/index'
 import { DEFAULT_CATEGORY_COLORS, default_element_colors } from './colors'
 import type { Tooltip } from './plot'
-import type { ThemeMode, ThemeType } from './theme'
+import { is_valid_theme_mode, type ThemeMode, type ThemeType } from './theme'
 
 export const selected = $state<{
   category: ElementCategory | null
@@ -39,8 +39,8 @@ let initial_system_mode: ThemeType = COLOR_THEMES.light
 // Safe theme initialization for test environments
 try {
   if (typeof window !== `undefined` && globalThis.localStorage) {
-    initial_theme_mode = (localStorage.getItem(`matterviz-theme`) as ThemeMode) ||
-      AUTO_THEME
+    const saved_theme = localStorage.getItem(`matterviz-theme`) ?? ``
+    initial_theme_mode = is_valid_theme_mode(saved_theme) ? saved_theme : AUTO_THEME
   } else {
     initial_theme_mode = AUTO_THEME
     initial_system_mode = COLOR_THEMES.light
@@ -49,9 +49,11 @@ try {
   // Fallback for test environments or when localStorage is not available
 }
 
-export const theme_state = $state<
-  { mode: ThemeMode; system_mode: ThemeType; type: ThemeType }
->({
+export const theme_state = $state<{
+  mode: ThemeMode
+  system_mode: ThemeType
+  type: ThemeType
+}>({
   mode: initial_theme_mode,
   system_mode: initial_system_mode,
   get type() {

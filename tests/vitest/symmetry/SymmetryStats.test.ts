@@ -169,23 +169,23 @@ describe(`SymmetryStats`, () => {
       { symprec_input_value: `0.01`, expected_step: 0.01 },
       { symprec_input_value: `0.002`, expected_step: 0.001 },
       { symprec_input_value: `0.00067`, expected_step: 0.0001 },
-    ])(`symprec step follows order of magnitude for $symprec_input_value`, ({
-      symprec_input_value,
-      expected_step,
-    }) => {
-      mount(SymmetryStats, {
-        target: document.body,
-        props: { sym_data: create_mock_sym_data() },
-      })
+    ])(
+      `symprec step follows order of magnitude for $symprec_input_value`,
+      ({ symprec_input_value, expected_step }) => {
+        mount(SymmetryStats, {
+          target: document.body,
+          props: { sym_data: create_mock_sym_data() },
+        })
 
-      const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
-      expect(parseFloat(symprec_input.step)).toBeCloseTo(1e-4, 12)
+        const symprec_input = doc_query<HTMLInputElement>(`.controls input[type="number"]`)
+        expect(parseFloat(symprec_input.step)).toBeCloseTo(1e-4, 12)
 
-      symprec_input.value = symprec_input_value
-      symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      flushSync()
-      expect(parseFloat(symprec_input.step)).toBeCloseTo(expected_step, 12)
-    })
+        symprec_input.value = symprec_input_value
+        symprec_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+        flushSync()
+        expect(parseFloat(symprec_input.step)).toBeCloseTo(expected_step, 12)
+      },
+    )
 
     test(`symprec input keeps focus while typing`, () => {
       mount(SymmetryStats, {
@@ -238,9 +238,10 @@ describe(`SymmetryStats`, () => {
         mount(SymmetryStats, {
           target: document.body,
           props: {
-            sym_data: create_mock_sym_data(
-              { wyckoffs, std_cell } as Partial<MoyoDataset>,
-            ),
+            sym_data: create_mock_sym_data({
+              wyckoffs,
+              std_cell,
+            } as Partial<MoyoDataset>),
           },
         })
         expect(doc_query(`.stats-grid`).textContent).toContain(`${expected}`)
@@ -266,17 +267,15 @@ describe(`SymmetryStats`, () => {
       expect(text).toContain(`227 (Fd-3m)`)
     })
 
-    test.each(
-      [
-        [1, `triclinic`],
-        [15, `monoclinic`],
-        [74, `orthorhombic`],
-        [142, `tetragonal`],
-        [167, `trigonal`],
-        [194, `hexagonal`],
-        [225, `cubic`],
-      ] as const,
-    )(`space group %d → %s crystal system`, (space_group, crystal_system) => {
+    test.each([
+      [1, `triclinic`],
+      [15, `monoclinic`],
+      [74, `orthorhombic`],
+      [142, `tetragonal`],
+      [167, `trigonal`],
+      [194, `hexagonal`],
+      [225, `cubic`],
+    ] as const)(`space group %d → %s crystal system`, (space_group, crystal_system) => {
       mount(SymmetryStats, {
         target: document.body,
         props: { sym_data: create_mock_sym_data({ number: space_group }) },
@@ -307,9 +306,10 @@ describe(`SymmetryStats`, () => {
         expected: { total: `3`, patterns: [`1T`, `1R`, `1RT`] },
       },
     ])(`$desc`, ({ operations, expected }) => {
-      const sym_data = operations === undefined
-        ? create_mock_sym_data()
-        : create_mock_sym_data({ operations })
+      const sym_data =
+        operations === undefined
+          ? create_mock_sym_data()
+          : create_mock_sym_data({ operations })
       mount(SymmetryStats, { target: document.body, props: { sym_data } })
 
       const text = doc_query(`.sym-ops-summary`).textContent || ``
@@ -336,8 +336,7 @@ describe(`SymmetryStats`, () => {
           props: { sym_data: create_mock_sym_data(), show_tooltips },
         })
 
-        const symprec_title =
-          doc_query(`.controls label:has(input[type="number"]) span`).title
+        const symprec_title = doc_query(`.controls label:has(input[type="number"]) span`).title
         const algo_title = doc_query(`.controls label:has(select) span`).title
 
         if (show_tooltips) {

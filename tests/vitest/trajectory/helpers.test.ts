@@ -10,9 +10,12 @@ describe(`trajectory helpers`, () => {
   it(`throws clear error for invalid position vectors`, () => {
     expect(() =>
       create_structure(
-        [[0, 0], [1, 2, 3]],
+        [
+          [0, 0],
+          [1, 2, 3],
+        ],
         [`H`, `He`],
-      )
+      ),
     ).toThrow(/Invalid position at index 0/)
   })
 
@@ -26,7 +29,10 @@ describe(`trajectory helpers`, () => {
   })
 
   it(`creates structure for valid 3D positions`, () => {
-    const positions = [[0, 0, 0], [1, 1, 1]]
+    const positions = [
+      [0, 0, 0],
+      [1, 1, 1],
+    ]
     const elements: ElementSymbol[] = [`H`, `He`]
     const structure = create_structure(positions, elements)
 
@@ -62,7 +68,10 @@ describe(`trajectory helpers`, () => {
     set_values(view)
     const ref = { ndarray: [[2, 2], dtype, 0] as unknown[] }
 
-    expect(read_ndarray_from_view(view, ref)).toEqual([[1, 2], [3, 4]])
+    expect(read_ndarray_from_view(view, ref)).toEqual([
+      [1, 2],
+      [3, 4],
+    ])
   })
 
   it(`allows boundary ndarray read that exactly fits buffer`, () => {
@@ -78,12 +87,9 @@ describe(`trajectory helpers`, () => {
   it.each([
     { atomic_numbers: [1, 2, 8], expected_symbols: [`H`, `He`, `O`] },
     { atomic_numbers: [26], expected_symbols: [`Fe`] },
-  ])(
-    `converts known atomic numbers to symbols`,
-    ({ atomic_numbers, expected_symbols }) => {
-      expect(convert_atomic_numbers(atomic_numbers)).toEqual(expected_symbols)
-    },
-  )
+  ])(`converts known atomic numbers to symbols`, ({ atomic_numbers, expected_symbols }) => {
+    expect(convert_atomic_numbers(atomic_numbers)).toEqual(expected_symbols)
+  })
 
   it(`throws for unknown atomic numbers`, () => {
     expect(() => convert_atomic_numbers([999])).toThrow(/Unknown atomic number/)

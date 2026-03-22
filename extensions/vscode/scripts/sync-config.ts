@@ -26,13 +26,14 @@ function sync_package_config() {
 
       // This is a SettingSchema - cast to any to access dynamic properties
       const config: Record<string, unknown> = {
-        type: typeof schema.value === `boolean`
-          ? `boolean`
-          : typeof schema.value === `number`
-          ? `number`
-          : Array.isArray(schema.value)
-          ? `array`
-          : `string`,
+        type:
+          typeof schema.value === `boolean`
+            ? `boolean`
+            : typeof schema.value === `number`
+              ? `number`
+              : Array.isArray(schema.value)
+                ? `array`
+                : `string`,
         default: schema.value,
         description: schema.description,
       }
@@ -48,11 +49,12 @@ function sync_package_config() {
       if (Array.isArray(schema.value)) {
         const first_item = schema.value[0]
         config.items = {
-          type: typeof first_item === `boolean`
-            ? `boolean`
-            : typeof first_item === `string`
-            ? `string`
-            : `number`,
+          type:
+            typeof first_item === `boolean`
+              ? `boolean`
+              : typeof first_item === `string`
+                ? `string`
+                : `number`,
         }
       }
 
@@ -79,9 +81,10 @@ function sync_package_config() {
   for (const [key, value] of Object.entries(existing_props)) {
     // Preserve settings that aren't auto-generated from SETTINGS_CONFIG
     // Exclude both old .defaults.* settings and new schema-generated settings
-    const is_schema_setting = Object.keys(SETTINGS_CONFIG).some((config_key) =>
-      key.startsWith(`matterviz.${config_key}`) ||
-      key.startsWith(`matterviz.defaults.${config_key}`)
+    const is_schema_setting = Object.keys(SETTINGS_CONFIG).some(
+      (config_key) =>
+        key.startsWith(`matterviz.${config_key}`) ||
+        key.startsWith(`matterviz.defaults.${config_key}`),
     )
     if (!is_schema_setting) preserved_props[key] = value
   }
@@ -96,9 +99,7 @@ function sync_package_config() {
 
   writeFileSync(package_path, JSON.stringify(package_content, null, 2) + `\n`)
   console.log(
-    `✅ Synced ${
-      Object.keys(vscode_config).length
-    } settings from SETTINGS_CONFIG to package.json`,
+    `✅ Synced ${Object.keys(vscode_config).length} settings from SETTINGS_CONFIG to package.json`,
   )
 }
 

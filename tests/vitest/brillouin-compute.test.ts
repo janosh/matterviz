@@ -14,20 +14,43 @@ import { describe, expect, test } from 'vitest'
 import reference_data from './bz_reference_data.json' with { type: 'json' }
 
 // Common test constants
-const CUBIC_5: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
-const IDENTITY_MAT: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-const INVERSION_MAT: Matrix3x3 = [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]
+const CUBIC_5: Matrix3x3 = [
+  [5, 0, 0],
+  [0, 5, 0],
+  [0, 0, 5],
+]
+const IDENTITY_MAT: Matrix3x3 = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+]
+const INVERSION_MAT: Matrix3x3 = [
+  [-1, 0, 0],
+  [0, -1, 0],
+  [0, 0, -1],
+]
 
 // Hexagonal 3-fold rotation in fractional coords (non-orthogonal: W^T ≠ W^{-1})
-const C3_HEX: Matrix3x3 = [[0, -1, 0], [1, -1, 0], [0, 0, 1]]
-const C3_HEX_SQ: Matrix3x3 = [[-1, 1, 0], [-1, 0, 0], [0, 0, 1]] // C3²
+const C3_HEX: Matrix3x3 = [
+  [0, -1, 0],
+  [1, -1, 0],
+  [0, 0, 1],
+]
+const C3_HEX_SQ: Matrix3x3 = [
+  [-1, 1, 0],
+  [-1, 0, 0],
+  [0, 0, 1],
+] // C3²
 
 // Helpers
 const has_vertex = (vertices: Vec3[], target: Vec3, tol = 1e-8) =>
   vertices.some((v) => v.every((c, idx) => Math.abs(c - target[idx]) < tol))
 
 const edge_key = (v1: Vec3, v2: Vec3) =>
-  [v1, v2].map((v) => v.map((c) => c.toFixed(8)).join(`,`)).sort().join(`|`)
+  [v1, v2]
+    .map((v) => v.map((c) => c.toFixed(8)).join(`,`))
+    .sort()
+    .join(`|`)
 
 describe(`reciprocal_lattice`, () => {
   test(`correct for all crystal systems`, () => {
@@ -35,7 +58,7 @@ describe(`reciprocal_lattice`, () => {
       const computed = reciprocal_lattice(data.real_lattice as Matrix3x3)
       const expected = data.reciprocal_lattice as Matrix3x3
       computed.forEach((row, idx_i) =>
-        row.forEach((val, idx_j) => expect(val).toBeCloseTo(expected[idx_i][idx_j], 10))
+        row.forEach((val, idx_j) => expect(val).toBeCloseTo(expected[idx_i][idx_j], 10)),
       )
     }
   })
@@ -54,14 +77,15 @@ describe(`reciprocal_lattice`, () => {
   })
 
   test(`non-orthogonal FCC: a_i · b_j = 2π δ_ij`, () => {
-    const fcc: Matrix3x3 = [[0, 2.5, 2.5], [2.5, 0, 2.5], [2.5, 2.5, 0]]
+    const fcc: Matrix3x3 = [
+      [0, 2.5, 2.5],
+      [2.5, 0, 2.5],
+      [2.5, 2.5, 0],
+    ]
     const recip = reciprocal_lattice(fcc)
     for (let idx_i = 0; idx_i < 3; idx_i++) {
       for (let idx_j = 0; idx_j < 3; idx_j++) {
-        const dot = fcc[idx_i].reduce(
-          (sum, val, idx_k) => sum + val * recip[idx_j][idx_k],
-          0,
-        )
+        const dot = fcc[idx_i].reduce((sum, val, idx_k) => sum + val * recip[idx_j][idx_k], 0)
         expect(dot).toBeCloseTo(idx_i === idx_j ? 2 * Math.PI : 0, 8)
       }
     }
@@ -80,10 +104,7 @@ describe(`compute_brillouin_zone`, () => {
   })
 
   test(`cubic BZ: 8 vertices, 12 triangulated faces, 12 edges`, () => {
-    const bz = compute_brillouin_zone(
-      reference_data.cubic.reciprocal_lattice as Matrix3x3,
-      1,
-    )
+    const bz = compute_brillouin_zone(reference_data.cubic.reciprocal_lattice as Matrix3x3, 1)
     expect(bz.vertices.length).toBe(8)
     expect(bz.faces.length).toBe(12)
     expect(bz.edges.length).toBe(12)
@@ -105,16 +126,10 @@ describe(`BZ edge filtering`, () => {
     [`tetragonal`, 12],
     [`orthorhombic`, 12],
     [`hexagonal`, 18],
-  ] as [keyof typeof reference_data, number][])(
-    `%s has %d edges`,
-    (name, expected_count) => {
-      const bz = compute_brillouin_zone(
-        reference_data[name].reciprocal_lattice as Matrix3x3,
-        1,
-      )
-      expect(bz.edges.length).toBe(expected_count)
-    },
-  )
+  ] as [keyof typeof reference_data, number][])(`%s has %d edges`, (name, expected_count) => {
+    const bz = compute_brillouin_zone(reference_data[name].reciprocal_lattice as Matrix3x3, 1)
+    expect(bz.edges.length).toBe(expected_count)
+  })
 
   test(`valid edge topology: no duplicates, edges shared by 2 faces`, () => {
     for (const [_type, data] of Object.entries(reference_data)) {
@@ -158,10 +173,7 @@ describe(`BZ edge filtering`, () => {
   })
 
   test(`valid face indices`, () => {
-    const bz = compute_brillouin_zone(
-      reference_data.cubic.reciprocal_lattice as Matrix3x3,
-      1,
-    )
+    const bz = compute_brillouin_zone(reference_data.cubic.reciprocal_lattice as Matrix3x3, 1)
     for (const face of bz.faces) {
       expect(face.length).toBeGreaterThanOrEqual(3)
       for (const idx of face) {
@@ -190,30 +202,40 @@ describe(`generate_bz_vertices`, () => {
 
 describe(`compute_convex_hull`, () => {
   test(`throws for <4 vertices`, () => {
-    expect(() => compute_convex_hull([[0, 0, 0], [1, 0, 0], [0, 1, 0]])).toThrow(
-      /Need ≥4 vertices/,
-    )
+    expect(() =>
+      compute_convex_hull([
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+      ]),
+    ).toThrow(/Need ≥4 vertices/)
   })
 
   test.each([
     [
       `tetrahedron`,
-      [[0, 0, 0], [1, 0, 0], [0.5, Math.sqrt(3) / 2, 0], [
-        0.5,
-        Math.sqrt(3) / 6,
-        Math.sqrt(2 / 3),
-      ]],
+      [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0.5, Math.sqrt(3) / 2, 0],
+        [0.5, Math.sqrt(3) / 6, Math.sqrt(2 / 3)],
+      ],
       4,
       4,
       6,
     ],
     [
       `cube`,
-      [[-1, -1, -1], [1, -1, -1], [-1, 1, -1], [1, 1, -1], [-1, -1, 1], [1, -1, 1], [
-        -1,
-        1,
-        1,
-      ], [1, 1, 1]],
+      [
+        [-1, -1, -1],
+        [1, -1, -1],
+        [-1, 1, -1],
+        [1, 1, -1],
+        [-1, -1, 1],
+        [1, -1, 1],
+        [-1, 1, 1],
+        [1, 1, 1],
+      ],
       8,
       12,
       12,
@@ -248,13 +270,21 @@ describe(`compute_convex_hull`, () => {
 
 describe(`BZ volume`, () => {
   test.each([5.0, 3.0])(`cubic a=%d → volume ≈ (2π)³/a³`, (a) => {
-    const real: Matrix3x3 = [[a, 0, 0], [0, a, 0], [0, 0, a]]
+    const real: Matrix3x3 = [
+      [a, 0, 0],
+      [0, a, 0],
+      [0, 0, a],
+    ]
     const bz = compute_brillouin_zone(reciprocal_lattice(real), 1)
     expect(bz.volume).toBeCloseTo((2 * Math.PI) ** 3 / a ** 3, 4)
   })
 
   test(`volume = |b1 · (b2 × b3)|`, () => {
-    const k_lattice = reciprocal_lattice([[4, 0, 0], [0, 5, 0], [0, 0, 6]])
+    const k_lattice = reciprocal_lattice([
+      [4, 0, 0],
+      [0, 5, 0],
+      [0, 0, 6],
+    ])
     const bz = compute_brillouin_zone(k_lattice, 1)
     const [b1, b2, b3] = k_lattice
     const cross: Vec3 = [
@@ -262,10 +292,7 @@ describe(`BZ volume`, () => {
       b2[2] * b3[0] - b2[0] * b3[2],
       b2[0] * b3[1] - b2[1] * b3[0],
     ]
-    expect(bz.volume).toBeCloseTo(
-      Math.abs(b1.reduce((s, v, idx) => s + v * cross[idx], 0)),
-      6,
-    )
+    expect(bz.volume).toBeCloseTo(Math.abs(b1.reduce((s, v, idx) => s + v * cross[idx], 0)), 6)
   })
 })
 
@@ -285,7 +312,11 @@ describe(`BZ order`, () => {
 
 describe(`error handling`, () => {
   test(`throws for degenerate lattice`, () => {
-    const degenerate: Matrix3x3 = [[1e-15, 0, 0], [0, 1e-15, 0], [0, 0, 1e-15]]
+    const degenerate: Matrix3x3 = [
+      [1e-15, 0, 0],
+      [0, 1e-15, 0],
+      [0, 0, 1e-15],
+    ]
     expect(() => compute_brillouin_zone(reciprocal_lattice(degenerate), 1)).toThrow()
   })
 
@@ -308,10 +339,7 @@ const MIRROR_Z: Vec9 = [1, 0, 0, 0, 1, 0, 0, 0, -1]
 const INVERSION_ROT: Vec9 = [-1, 0, 0, 0, -1, 0, 0, 0, -1]
 
 // Create mock operation for testing (Vec9 substitutes for Float64Array in tests)
-const make_op = (
-  rot: Vec9,
-  trans: Vec3 = [0, 0, 0],
-): MoyoDataset[`operations`][number] =>
+const make_op = (rot: Vec9, trans: Vec3 = [0, 0, 0]): MoyoDataset[`operations`][number] =>
   ({ rotation: rot, translation: trans }) as unknown as MoyoDataset[`operations`][number]
 
 describe(`extract_point_group_from_operations`, () => {
@@ -349,9 +377,21 @@ describe(`extract_point_group_from_operations`, () => {
 })
 
 describe(`compute_ibz_clipping_planes`, () => {
-  const ROT_90: Matrix3x3 = [[0, 1, 0], [-1, 0, 0], [0, 0, 1]]
-  const ROT_180: Matrix3x3 = [[-1, 0, 0], [0, -1, 0], [0, 0, 1]]
-  const ROT_270: Matrix3x3 = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
+  const ROT_90: Matrix3x3 = [
+    [0, 1, 0],
+    [-1, 0, 0],
+    [0, 0, 1],
+  ]
+  const ROT_180: Matrix3x3 = [
+    [-1, 0, 0],
+    [0, -1, 0],
+    [0, 0, 1],
+  ]
+  const ROT_270: Matrix3x3 = [
+    [0, -1, 0],
+    [1, 0, 0],
+    [0, 0, 1],
+  ]
 
   test(`identity-only → no planes`, () => {
     expect(compute_ibz_clipping_planes([IDENTITY_MAT])).toHaveLength(0)
@@ -371,7 +411,11 @@ describe(`compute_ibz_clipping_planes`, () => {
 
 describe(`compute_irreducible_bz`, () => {
   const bz = compute_brillouin_zone(reciprocal_lattice(CUBIC_5), 1)
-  const MIRROR_Z_MAT: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, -1]]
+  const MIRROR_Z_MAT: Matrix3x3 = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, -1],
+  ]
 
   test(`P1 (identity only) → full BZ`, () => {
     const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT])
@@ -439,7 +483,8 @@ describe(`fractional_to_cartesian_rotation`, () => {
     const R = fractional_to_cartesian_rotation(C3_HEX, k_lattice)
 
     // det(R) should be +1 for proper rotation
-    const det = R[0][0] * (R[1][1] * R[2][2] - R[1][2] * R[2][1]) -
+    const det =
+      R[0][0] * (R[1][1] * R[2][2] - R[1][2] * R[2][1]) -
       R[0][1] * (R[1][0] * R[2][2] - R[1][2] * R[2][0]) +
       R[0][2] * (R[1][0] * R[2][1] - R[1][1] * R[2][0])
     expect(det).toBeCloseTo(1, 10)
@@ -453,19 +498,27 @@ describe(`fractional_to_cartesian_rotation`, () => {
   test.each([
     {
       name: `singular W`,
-      W: [[0, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3,
+      W: [
+        [0, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ] as Matrix3x3,
       k: k_lattice,
     },
     {
       name: `singular k_lattice`,
       W: IDENTITY_MAT,
-      k: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] as Matrix3x3,
+      k: [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+      ] as Matrix3x3,
     },
   ])(`returns identity matrix for $name`, ({ W, k }) => {
-    expect(fractional_to_cartesian_rotation(W, k)).toEqual([[1, 0, 0], [0, 1, 0], [
-      0,
-      0,
-      1,
-    ]])
+    expect(fractional_to_cartesian_rotation(W, k)).toEqual([
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ])
   })
 })

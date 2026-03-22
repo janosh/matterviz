@@ -8,10 +8,7 @@ export type ShannonRadiusPair = {
   crystal_radius: number
   ionic_radius: number
 }
-export type ShannonRadii = Record<
-  string,
-  Record<string, Record<string, ShannonRadiusPair>>
->
+export type ShannonRadii = Record<string, Record<string, Record<string, ShannonRadiusPair>>>
 
 export type ChemicalElement = {
   'cpk-hex': string | null

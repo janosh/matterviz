@@ -51,9 +51,7 @@ interface Label {
 // Detect whether the SVG is matplotlib, MPDS, or simple format
 function detect_format(doc: Document): SvgFormat {
   // Matplotlib SVGs have xtick/ytick group IDs
-  if (
-    doc.querySelector(`[id^="xtick_"]`) || doc.querySelector(`[id^="ytick_"]`)
-  ) {
+  if (doc.querySelector(`[id^="xtick_"]`) || doc.querySelector(`[id^="ytick_"]`)) {
     return `matplotlib`
   }
   // MPDS SVGs (from CorelDRAW/Inkscape) have sodipodi namespace or inkscape attributes
@@ -61,10 +59,7 @@ function detect_format(doc: Document): SvgFormat {
   if (
     svg_el?.getAttribute(`sodipodi:docname`) ||
     svg_el?.getAttribute(`inkscape:version`) ||
-    svg_el?.getAttributeNS(
-      `http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd`,
-      `docname`,
-    )
+    svg_el?.getAttributeNS(`http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd`, `docname`)
   ) {
     return `mpds`
   }
@@ -162,9 +157,10 @@ function extract_simple_ticks(
 // MPDS SVGs store tick marks as multi-segment paths with major ticks (longer)
 // and minor ticks (shorter). Text values are not positionally useful but
 // tell us the data range.
-function extract_mpds_scales(
-  doc: Document,
-): { x_scale: LinearScale; y_scale: LinearScale } {
+function extract_mpds_scales(doc: Document): {
+  x_scale: LinearScale
+  y_scale: LinearScale
+} {
   // Extract all numeric text values to infer axis ranges
   const numbers: number[] = []
   for (const text_el of Array.from(doc.querySelectorAll(`text`))) {
@@ -177,10 +173,10 @@ function extract_mpds_scales(
   // This is intentional — only endpoints are used for scale mapping.
   const comp_vals = [
     ...new Set(numbers.filter((v) => v >= 0 && v <= 100 && v % 10 === 0)),
-  ].sort((a, b) => a - b)
+  ].toSorted((a, b) => a - b)
   const temp_vals = [
     ...new Set(numbers.filter((v) => v >= 100 && v % 100 === 0 && v <= 3000)),
-  ].sort((a, b) => a - b)
+  ].toSorted((a, b) => a - b)
 
   if (comp_vals.length < 2 || temp_vals.length < 2) {
     throw new Error(
@@ -223,10 +219,12 @@ function extract_mpds_scales(
   }
 
   // Deduplicate and sort
-  const x_ticks_sorted = [...new Set(x_major_ticks.map((v) => Math.round(v * 10) / 10))]
-    .sort((a, b) => a - b)
-  const y_ticks_sorted = [...new Set(y_major_ticks.map((v) => Math.round(v * 10) / 10))]
-    .sort((a, b) => a - b)
+  const x_ticks_sorted = [
+    ...new Set(x_major_ticks.map((v) => Math.round(v * 10) / 10)),
+  ].toSorted((a, b) => a - b)
+  const y_ticks_sorted = [
+    ...new Set(y_major_ticks.map((v) => Math.round(v * 10) / 10)),
+  ].toSorted((a, b) => a - b)
 
   if (x_ticks_sorted.length < 2 || y_ticks_sorted.length < 2) {
     throw new Error(
@@ -319,11 +317,9 @@ function extract_boundaries(
     }
   } else {
     // Simple: <line class="phase-boundary">
-    for (
-      const line_el of Array.from(
-        doc.querySelectorAll(`.phase-boundary, line[class*="phase-boundary"]`),
-      )
-    ) {
+    for (const line_el of Array.from(
+      doc.querySelectorAll(`.phase-boundary, line[class*="phase-boundary"]`),
+    )) {
       const x1 = parse_float_attr(line_el, `x1`)
       const y1 = parse_float_attr(line_el, `y1`)
       const x2 = parse_float_attr(line_el, `x2`)
@@ -362,9 +358,11 @@ function extract_mpds_boundaries(
 
     // Skip filled regions (phase region fills)
     if (
-      style.includes(`fill-rule`) || style.includes(`fill: #`) || style.includes(`fill:#`)
+      (style.includes(`fill-rule`) || style.includes(`fill: #`) || style.includes(`fill:#`)) &&
+      !style.includes(`fill: none`) &&
+      !style.includes(`fill:none`)
     ) {
-      if (!style.includes(`fill: none`) && !style.includes(`fill:none`)) continue
+      continue
     }
 
     // Skip red annotation lines
@@ -375,10 +373,15 @@ function extract_mpds_boundaries(
     if (!coords) continue
 
     // Must be inside the plot area
-    const inside = coords.x1 >= left - 1 && coords.x1 <= right + 1 &&
-      coords.x2 >= left - 1 && coords.x2 <= right + 1 &&
-      coords.y1 >= top - 1 && coords.y1 <= bottom + 1 &&
-      coords.y2 >= top - 1 && coords.y2 <= bottom + 1
+    const inside =
+      coords.x1 >= left - 1 &&
+      coords.x1 <= right + 1 &&
+      coords.x2 >= left - 1 &&
+      coords.x2 <= right + 1 &&
+      coords.y1 >= top - 1 &&
+      coords.y1 <= bottom + 1 &&
+      coords.y2 >= top - 1 &&
+      coords.y2 <= bottom + 1
     if (!inside) continue
 
     // Skip very short segments (< 10px)
@@ -388,8 +391,7 @@ function extract_mpds_boundaries(
 
     // Skip the plot border itself (connects all 4 edges)
     const touches_left = Math.abs(coords.x1 - left) < 2 || Math.abs(coords.x2 - left) < 2
-    const touches_right = Math.abs(coords.x1 - right) < 2 ||
-      Math.abs(coords.x2 - right) < 2
+    const touches_right = Math.abs(coords.x1 - right) < 2 || Math.abs(coords.x2 - right) < 2
     if (touches_left && touches_right) continue // spans full width = likely axis
 
     add_boundary(boundaries, coords, x_scale, y_scale, epsilon)
@@ -510,8 +512,7 @@ function extract_matplotlib_labels(doc: Document, labels: Label[]): void {
     const text = clean_latex(comment.trim())
 
     // Get position from transform="translate(x, y)"
-    const pos = parse_translate(group.querySelector(`g[transform]`)) ??
-      parse_translate(group)
+    const pos = parse_translate(group.querySelector(`g[transform]`)) ?? parse_translate(group)
     if (!pos) continue
 
     labels.push({ text, px_x: pos[0], px_y: pos[1] })
@@ -522,7 +523,7 @@ function extract_matplotlib_labels(doc: Document, labels: Label[]): void {
 function extract_simple_labels(doc: Document, labels: Label[]): void {
   for (const text_el of Array.from(doc.querySelectorAll(`.label-main`))) {
     // Get plain text content (strips tspan tags)
-    const text = (text_el.textContent ?? ``).replace(/\s+/g, ` `).trim()
+    const text = (text_el.textContent ?? ``).replaceAll(/\s+/g, ` `).trim()
     if (!text.includes(`+`)) continue // skip non-phase labels
 
     // Get position from transform or x/y attributes
@@ -541,7 +542,7 @@ function extract_simple_labels(doc: Document, labels: Label[]): void {
 // Infer binary components from region labels
 function infer_components(labels: Label[]): [string, string] {
   // Sort labels by x position, split each into phases
-  const sorted = [...labels].sort((a, b) => a.px_x - b.px_x)
+  const sorted = labels.toSorted((a, b) => a.px_x - b.px_x)
   if (sorted.length < 2) return [`A`, `B`]
 
   const split = (label: Label) => label.text.split(/\s*\+\s*/)
@@ -552,15 +553,15 @@ function infer_components(labels: Label[]): [string, string] {
   // For "La2NiO4 + La2O3", La2O3 is the pure A endpoint
   let comp_a = `A`
   if (leftmost.length === 2) {
-    const right_phases = sorted.slice(-3).flatMap(split)
-    comp_a = leftmost.find((p) => !right_phases.includes(p)) ?? leftmost[1] ?? `A`
+    const right_phases = new Set(sorted.slice(-3).flatMap(split))
+    comp_a = leftmost.find((p) => !right_phases.has(p)) ?? leftmost[1] ?? `A`
   }
 
   // Component B: the unique phase in the rightmost region that doesn't appear on the left
   let comp_b = `B`
   if (rightmost.length === 2) {
-    const left_phases = sorted.slice(0, 3).flatMap(split)
-    comp_b = rightmost.find((p) => !left_phases.includes(p)) ?? rightmost[1] ?? `B`
+    const left_phases = new Set(sorted.slice(0, 3).flatMap(split))
+    comp_b = rightmost.find((p) => !left_phases.has(p)) ?? rightmost[1] ?? `B`
   }
 
   return [comp_a, comp_b]
@@ -594,19 +595,14 @@ function infer_regions(
   // Build cell grid: cells[col][row]
   const n_cols = x_coords.length - 1
   const n_rows = y_coords.length - 1
-  const cell_ids = Array.from(
-    { length: n_cols },
-    () => new Array<number>(n_rows).fill(-1),
-  )
+  const cell_ids = Array.from({ length: n_cols }, () => new Array<number>(n_rows).fill(-1))
 
   // Check which cell edges have boundaries
-  const h_walls = Array.from(
-    { length: n_cols },
-    () => new Array<boolean>(n_rows + 1).fill(false),
+  const h_walls = Array.from({ length: n_cols }, () =>
+    new Array<boolean>(n_rows + 1).fill(false),
   )
-  const v_walls = Array.from(
-    { length: n_cols + 1 },
-    () => new Array<boolean>(n_rows).fill(false),
+  const v_walls = Array.from({ length: n_cols + 1 }, () =>
+    new Array<boolean>(n_rows).fill(false),
   )
 
   // Mark horizontal walls (bottom/top of cells)
@@ -678,10 +674,11 @@ function infer_regions(
   for (let region_id = 0; region_id < next_region_id; region_id++) {
     const name = region_labels.get(region_id) ?? `Region ${region_id + 1}`
     // Slug can be empty for non-ASCII labels like "α + β" — fall back to region_N
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, `_`).replace(
-      /^_|_$/g,
-      ``,
-    ) || `region_${region_id + 1}`
+    const slug =
+      name
+        .toLowerCase()
+        .replaceAll(/[^a-z0-9]+/g, `_`)
+        .replaceAll(/^_|_$/g, ``) || `region_${region_id + 1}`
 
     // Find bounding box of all cells in this region
     let [min_x, max_x] = [Infinity, -Infinity]
@@ -784,9 +781,7 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
   const { x_scale, y_scale } = extract_axis_scales(doc, format)
   const boundaries = extract_boundaries(doc, format, x_scale, y_scale)
   const labels = extract_labels(doc, format)
-  const components = format === `mpds`
-    ? infer_mpds_components(doc)
-    : infer_components(labels)
+  const components = format === `mpds` ? infer_mpds_components(doc) : infer_components(labels)
 
   if (boundaries.length === 0) {
     throw new Error(`No phase boundaries found in SVG`)
@@ -882,10 +877,10 @@ function find_comment_text(group: Element): string | null {
 // Clean LaTeX subscript notation: "La$_2$NiO$_4$" -> "La2NiO4"
 function clean_latex(text: string): string {
   return text
-    .replace(/\$_\{([^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
-    .replace(/\$_(\d)\$/g, `$1`) // $_2$ -> 2
-    .replace(/\$/g, ``) // remove any remaining $
-    .replace(/\s+/g, ` `)
+    .replaceAll(/\$_\{([^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
+    .replaceAll(/\$_(\d)\$/g, `$1`) // $_2$ -> 2
+    .replaceAll(`$`, ``) // remove any remaining $
+    .replaceAll(/\s+/g, ` `)
     .trim()
 }
 
@@ -975,9 +970,7 @@ function parse_path_segments(d: string): [number, number, number, number][] {
 
 // Parse a simple 2-point line path (M...L only). Returns null for multi-segment paths
 // to enforce the single-line contract expected by boundary extraction.
-function parse_ml_path(
-  d: string,
-): { x1: number; y1: number; x2: number; y2: number } | null {
+function parse_ml_path(d: string): { x1: number; y1: number; x2: number; y2: number } | null {
   const segments = parse_path_segments(d)
   if (segments.length !== 1) return null
   const [x1, y1, x2, y2] = segments[0]
@@ -1003,7 +996,7 @@ function get_group_translate(el: Element | null, axis: `x` | `y`): number {
 // Collect unique sorted values from an array (with epsilon deduplication)
 function collect_unique_sorted(values: number[]): number[] {
   if (values.length === 0) return []
-  const sorted = [...values].sort((a, b) => a - b)
+  const sorted = values.toSorted((a, b) => a - b)
   const unique: number[] = [sorted[0]]
   for (let idx = 1; idx < sorted.length; idx++) {
     if (Math.abs(sorted[idx] - unique[unique.length - 1]) > 1e-4) {

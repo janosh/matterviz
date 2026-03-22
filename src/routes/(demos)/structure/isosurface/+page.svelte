@@ -96,7 +96,7 @@
     }
     // Use window.location instead of page.url to avoid creating a reactive
     // dependency that would cause an infinite loop with the $effect
-    goto(`${window.location.pathname}?${params.toString()}`, {
+    goto(`${globalThis.location.pathname}?${params.toString()}`, {
       replaceState: true,
       keepFocus: true,
       noScroll: true,
@@ -116,8 +116,8 @@
         parse_and_apply(decode_content(content), filename)
       })
       parse_time_ms = Math.round(performance.now() - parse_start)
-    } catch (err) {
-      error_msg = err instanceof Error ? err.message : String(err)
+    } catch (error) {
+      error_msg = error instanceof Error ? error.message : String(error)
     } finally {
       loading = false
     }

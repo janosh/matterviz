@@ -44,8 +44,7 @@ describe(`Surface3D configuration logic`, () => {
 
   describe(`grid surface z-value sampling`, () => {
     test(`samples z values correctly for paraboloid`, () => {
-      const z_fn = (x_coord: number, y_coord: number) =>
-        x_coord * x_coord + y_coord * y_coord
+      const z_fn = (x_coord: number, y_coord: number) => x_coord * x_coord + y_coord * y_coord
 
       // Test corners, center, and intermediate points
       expect(z_fn(-1, -1)).toBe(2)
@@ -64,8 +63,7 @@ describe(`Surface3D configuration logic`, () => {
     })
 
     test(`handles saddle surface with positive and negative z`, () => {
-      const z_fn = (x_coord: number, y_coord: number) =>
-        x_coord * x_coord - y_coord * y_coord
+      const z_fn = (x_coord: number, y_coord: number) => x_coord * x_coord - y_coord * y_coord
 
       expect(z_fn(2, 0)).toBe(4)
       expect(z_fn(0, 2)).toBe(-4)

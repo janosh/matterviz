@@ -121,9 +121,9 @@ export function sample_hkl_slice(
   let normal_max = -Infinity
 
   for (let ci = 0; ci < 8; ci++) {
-    const fi = (ci & 1) ? 1 : 0
-    const fj = (ci & 2) ? 1 : 0
-    const fk = (ci & 4) ? 1 : 0
+    const fi = ci & 1 ? 1 : 0
+    const fj = ci & 2 ? 1 : 0
+    const fk = ci & 4 ? 1 : 0
     // Corner in Cartesian: frac * lattice
     const corner: Vec3 = [
       fi * lattice[0][0] + fj * lattice[1][0] + fk * lattice[2][0],

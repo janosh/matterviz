@@ -1,4 +1,3 @@
-// deno-lint-ignore-file require-await
 // Import MatterViz parsing functions and components
 import '$lib/app.css'
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
@@ -81,7 +80,10 @@ export interface FileChangeMessage {
 
 // VS Code Frame Loader - streams frames via extension communication
 class VSCodeFrameLoader implements FrameLoader {
-  constructor(private file_path: string, private vscode_api: VSCodeAPI) {}
+  constructor(
+    private file_path: string,
+    private vscode_api: VSCodeAPI,
+  ) {}
 
   // Only implement the method we actually use
   async load_frame(
@@ -332,9 +334,7 @@ const parse_file_content = async (
     const [, file_path, file_size_str] = content.split(`:`)
     const file_size = parseInt(file_size_str, 10)
 
-    console.log(
-      `Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`,
-    )
+    console.log(`Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`)
 
     const parsed_trajectory = await request_large_file_content(
       file_path,
@@ -344,8 +344,10 @@ const parse_file_content = async (
 
     // Check if we received a pre-parsed trajectory with VS Code streaming support
     if (
-      parsed_trajectory && typeof parsed_trajectory === `object` &&
-      `trajectory` in parsed_trajectory && `supports_streaming` in parsed_trajectory
+      parsed_trajectory &&
+      typeof parsed_trajectory === `object` &&
+      `trajectory` in parsed_trajectory &&
+      `supports_streaming` in parsed_trajectory
     ) {
       const { trajectory, supports_streaming, file_path } = parsed_trajectory
       const streaming_info = { supports_streaming, file_path }
@@ -373,7 +375,8 @@ const parse_file_content = async (
 
     // Unified handling for all supported compression formats
     const format = detect_compression_format(filename)
-    if (format && format !== `zip`) { // Skip ZIP as it's not supported in browser
+    if (format && format !== `zip`) {
+      // Skip ZIP as it's not supported in browser
       content = await decompress_data(buffer, format)
       filename = filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
     }
@@ -453,8 +456,12 @@ const parse_file_content = async (
 
 // Escape HTML special chars to prevent XSS when inserting into innerHTML
 function escape_html(text: string): string {
-  return text.replace(/&/g, `&amp;`).replace(/</g, `&lt;`).replace(/>/g, `&gt;`)
-    .replace(/"/g, `&quot;`).replace(/'/g, `&#39;`)
+  return text
+    .replace(/&/g, `&amp;`)
+    .replace(/</g, `&lt;`)
+    .replace(/>/g, `&gt;`)
+    .replace(/"/g, `&quot;`)
+    .replace(/'/g, `&#39;`)
 }
 
 // Create error display in container
@@ -471,9 +478,7 @@ const create_error_display = (
       <h2 style="margin: 0 0 15px 0;">Failed to Parse File</h2>
       <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 8px; max-width: 600px;">
         <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
-        <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${
-    escape_html(error.message)
-  }</p>
+        <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${escape_html(error.message)}</p>
         <p style="margin: 0; font-size: 14px; opacity: 0.8;">
           Supported formats: XYZ, CIF, JSON, POSCAR, trajectory files (.traj, .h5, .extxyz), etc.
         </p>
@@ -518,8 +523,7 @@ const create_display = (
     type StreamingTrajectory = TrajectoryType & { frame_loader?: FrameLoader }
 
     // Prepare trajectory data for VS Code streaming if supported
-    let final_trajectory: TrajectoryType | StreamingTrajectory = result
-      .data as TrajectoryType
+    let final_trajectory: TrajectoryType | StreamingTrajectory = result.data as TrajectoryType
 
     if (result.streaming_info?.supports_streaming) {
       const trajectory = result.data as TrajectoryType
@@ -528,10 +532,7 @@ const create_display = (
           ...trajectory,
           is_indexed: true,
           frames: trajectory.frames || [],
-          frame_loader: new VSCodeFrameLoader(
-            result.streaming_info.file_path,
-            vscode_api,
-          ),
+          frame_loader: new VSCodeFrameLoader(result.streaming_info.file_path, vscode_api),
         }
       }
     }
@@ -549,9 +550,7 @@ const create_display = (
     } initial frames, ${final_trajectory.total_frames ?? `unknown`} total)`
   } else if (result.type === `fermi_surface`) {
     const fermi_props: Record<string, unknown> = { ...common_props }
-    if (
-      is_fermi_surface_data(result.data as Parameters<typeof is_fermi_surface_data>[0])
-    ) {
+    if (is_fermi_surface_data(result.data as Parameters<typeof is_fermi_surface_data>[0])) {
       fermi_props.fermi_data = result.data
     } else {
       fermi_props.band_data = result.data
@@ -576,9 +575,7 @@ const create_display = (
       target: container,
       props: { entries: result.data as unknown[], ...common_props },
     })
-    log_message = `Convex hull rendered: ${filename} (${
-      (result.data as unknown[]).length
-    } entries)`
+    log_message = `Convex hull rendered: ${filename} (${(result.data as unknown[]).length} entries)`
   } else if (result.type === `phase_diagram`) {
     app = mount(IsobaricBinaryPhaseDiagram, {
       target: container,
@@ -727,10 +724,12 @@ async function cleanup_matterviz(): Promise<void> {
   }
 } // Export initialization and cleanup functions to global scope
 
-;(globalThis as unknown as {
-  initializeMatterViz?: () => Promise<MatterVizApp | null>
-  cleanupMatterViz?: () => Promise<void>
-}).initializeMatterViz = async (): Promise<MatterVizApp | null> => {
+;(
+  globalThis as unknown as {
+    initializeMatterViz?: () => Promise<MatterVizApp | null>
+    cleanupMatterViz?: () => Promise<void>
+  }
+).initializeMatterViz = async (): Promise<MatterVizApp | null> => {
   if (!globalThis.matterviz_data) {
     console.warn(`No matterviz_data found on window`)
     return null
@@ -759,5 +758,5 @@ async function cleanup_matterviz(): Promise<void> {
     return null
   }
 }
-;(globalThis as unknown as { cleanupMatterViz?: () => Promise<void> })
-  .cleanupMatterViz = cleanup_matterviz
+;(globalThis as unknown as { cleanupMatterViz?: () => Promise<void> }).cleanupMatterViz =
+  cleanup_matterviz

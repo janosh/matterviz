@@ -53,7 +53,11 @@ describe(`Line`, () => {
       },
     },
   ])(`renders with $name`, ({ props, expected_line, expected_area }) => {
-    const points: [number, number][] = [[10, 10], [50, 50], [100, 20]]
+    const points: [number, number][] = [
+      [10, 10],
+      [50, 50],
+      [100, 20],
+    ]
     const origin: [number, number] = [0, 200]
 
     mount(Line, { target: document.body, props: { points, origin, ...props } })
@@ -81,7 +85,11 @@ describe(`Line`, () => {
     const origin: [number, number] = [0, 100]
 
     // Test with 3 points (expects curve 'C')
-    const points_3: [number, number][] = [[0, 100], [100, 0], [200, 100]]
+    const points_3: [number, number][] = [
+      [0, 100],
+      [100, 0],
+      [200, 100],
+    ]
     mount(Line, {
       target: document.body,
       props: { points: points_3, origin, line_tween: { duration: 0 } },
@@ -94,7 +102,10 @@ describe(`Line`, () => {
     document.body.innerHTML = ``
 
     // Test with 2 points (expects line 'L')
-    const points_2: [number, number][] = [[0, 100], [100, 0]]
+    const points_2: [number, number][] = [
+      [0, 100],
+      [100, 0],
+    ]
     mount(Line, {
       target: document.body, // Reuse the cleaned div
       props: { points: points_2, origin, line_tween: { duration: 0 } },

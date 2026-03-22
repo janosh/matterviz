@@ -7,21 +7,15 @@ import sharp from 'npm:sharp'
 fs.mkdirSync(`./static/elements`, { recursive: true })
 
 const fallback_urls: Record<string, string> = {
-  '55-cesium':
-    `https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Cesium.jpg/2560px-Cesium.jpg`,
-  '105-dubnium':
-    `https://cdn.dribbble.com/users/3013/screenshots/10679769/media/8ad2ce46f162ae93ba7ba464482f65c8.png`,
+  '55-cesium': `https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Cesium.jpg/2560px-Cesium.jpg`,
+  '105-dubnium': `https://cdn.dribbble.com/users/3013/screenshots/10679769/media/8ad2ce46f162ae93ba7ba464482f65c8.png`,
   '106-seaborgium': `https://periodiske-system.dk/img/images/lowRes/106.jpg`,
   '107-bohrium': `https://periodiske-system.dk/img/images/lowRes/107.jpg`,
-  '108-hassium':
-    `https://i0.wp.com/periodic-table.com/wp-content/uploads/2018/12/Hassium.png?w=225&ssl=1`,
-  '109-meitnerium':
-    `https://www.rsc-cdn.org/www.rsc.org/periodic-table/content/Images/Elements/Meitnerium-L.jpg`,
+  '108-hassium': `https://i0.wp.com/periodic-table.com/wp-content/uploads/2018/12/Hassium.png?w=225&ssl=1`,
+  '109-meitnerium': `https://www.rsc-cdn.org/www.rsc.org/periodic-table/content/Images/Elements/Meitnerium-L.jpg`,
   // '109-meitnerium': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Meitnerium-2.jpg`, // lower res but but looks more like raw crystal
-  '110-darmstadtium':
-    `https://cdn1.byjus.com/wp-content/uploads/2018/08/Darmstadtium-2.jpg`,
-  '111-roentgenium':
-    `https://cdn1.byjus.com/wp-content/uploads/2018/08/Roentgenium-2.jpg`,
+  '110-darmstadtium': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Darmstadtium-2.jpg`,
+  '111-roentgenium': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Roentgenium-2.jpg`,
   '112-copernicum': `https://cdn1.byjus.com/wp-content/uploads/2018/08/Copernicum-2.jpg`,
 }
 
@@ -36,9 +30,7 @@ async function download_elem_image(num_name: string) {
   }
 
   if (!response.ok) {
-    console.error(
-      `Error downloading image for ${num_name}: ${response.statusText}`,
-    )
+    console.error(`Error downloading image for ${num_name}: ${response.statusText}`)
     return undefined
   }
   // check we got jpg or png mime type
@@ -59,10 +51,10 @@ async function download_elem_image(num_name: string) {
 
 const action = process.env.ACTION ?? ``
 if (![`report`, `download`, `re-download`].includes(action)) {
-  throw `Correct usage: ACTION=... deno -A fetch-elem-images.ts, got ${action}\n`
+  throw `Correct usage: ACTION=... npx tsx src/scripts/fetch-elem-images.ts, got ${action}\n`
 }
-if (action.endsWith(`download`)) console.log(`Downloading images...`)
-if (action === `report`) console.log(`Missing images`)
+if (action.endsWith(`download`)) console.warn(`Downloading images...`)
+if (action === `report`) console.warn(`Missing images`)
 
 const download_promises: Promise<{ num_name: string; url: string | undefined }>[] = []
 
@@ -72,11 +64,9 @@ for (const { name, number } of element_data) {
 
   if (!have_img || action === `re-download`) {
     if (action === `report`) {
-      console.log(num_name)
+      console.warn(num_name)
     } else if (action.endsWith(`download`)) {
-      download_promises.push(
-        download_elem_image(num_name).then((url) => ({ num_name, url })),
-      )
+      download_promises.push(download_elem_image(num_name).then((url) => ({ num_name, url })))
     }
   }
 }

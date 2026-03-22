@@ -15,9 +15,7 @@ import { make_crystal } from '../setup'
 const mp_1_struct = structure_map.get(`mp-1`) as Crystal
 const mp_2_struct = structure_map.get(`mp-2`) as Crystal
 const mp_1204603_struct = structure_map.get(`mp-1204603`) as Crystal
-const tl_bi_se2_struct = structure_map.get(
-  `TlBiSe2-highly-oblique-cell`,
-) as Crystal
+const tl_bi_se2_struct = structure_map.get(`TlBiSe2-highly-oblique-cell`) as Crystal
 
 // Helpers to reduce duplication while preserving coverage
 function assert_xyz_matches_lattice(
@@ -32,9 +30,10 @@ function assert_xyz_matches_lattice(
     math.scale(lattice_matrix[2], frac[2]),
   )
   const expected_mul = mat3x3_vec3_multiply(lattice_matrix, frac)
-  const matches_either = [0, 1, 2].every((dim) =>
-    Math.abs(xyz[dim] - expected_rows[dim]) < 10 ** -digits ||
-    Math.abs(xyz[dim] - expected_mul[dim]) < 10 ** -digits
+  const matches_either = [0, 1, 2].every(
+    (dim) =>
+      Math.abs(xyz[dim] - expected_rows[dim]) < 10 ** -digits ||
+      Math.abs(xyz[dim] - expected_mul[dim]) < 10 ** -digits,
   )
   expect(matches_either).toBe(true)
 }
@@ -93,10 +92,7 @@ Cl       0.0       0.0       2.5
 Cl       0.0       2.5       0.0
 Cl       2.5       2.5       2.5`
 
-  const normal_trajectory = await parse_trajectory_data(
-    normal_structure_extxyz,
-    `test.xyz`,
-  )
+  const normal_trajectory = await parse_trajectory_data(normal_structure_extxyz, `test.xyz`)
   const normal_structure = normal_trajectory.frames[0].structure as Crystal
 
   // Test that the structure has lattice information
@@ -118,7 +114,7 @@ Cl       2.5       2.5       2.5`
 
   // Verify that few/no atoms are outside the unit cell (making it a normal crystal structure)
   const atoms_outside = normal_structure.sites.filter(({ abc }) =>
-    abc.some((coord) => coord < -0.1 || coord > 1.1)
+    abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
 
   // This structure should have few atoms outside the unit cell (<10% threshold)
@@ -130,8 +126,7 @@ Cl       2.5       2.5       2.5`
     frame_idx < Math.min(normal_trajectory.frames.length, 3);
     frame_idx++
   ) {
-    const frame_structure = normal_trajectory.frames[frame_idx]
-      .structure as Crystal
+    const frame_structure = normal_trajectory.frames[frame_idx].structure as Crystal
     const frame_image_atoms = find_image_atoms(frame_structure)
     expect(frame_image_atoms.length).toBeGreaterThan(0) // Should consistently treat as normal crystal
   }
@@ -156,11 +151,11 @@ test.each([
   `trajectory detection threshold: $description`,
   ({ total_atoms, outside_atoms, expect_skip }) => {
     const lattice_len = 5
-    const lattice: Matrix3x3 = [[lattice_len, 0, 0], [0, lattice_len, 0], [
-      0,
-      0,
-      lattice_len,
-    ]]
+    const lattice: Matrix3x3 = [
+      [lattice_len, 0, 0],
+      [0, lattice_len, 0],
+      [0, 0, lattice_len],
+    ]
 
     const sites = Array.from({ length: total_atoms }, (_, idx) => {
       const is_outside = idx < outside_atoms
@@ -314,13 +309,11 @@ C        -2.0      10.0      12.0`
   expect(image_atoms.length).toBe(0)
 
   // For trajectory data, get_pbc_image_sites returns the structure unchanged
-  expect(processed_structure.sites.length).toBe(
-    trajectory_structure.sites.length,
-  )
+  expect(processed_structure.sites.length).toBe(trajectory_structure.sites.length)
 
   // Verify that some atoms are outside the unit cell (making it trajectory data)
   const atoms_outside = trajectory_structure.sites.filter(({ abc }) =>
-    abc.some((coord) => coord < -0.1 || coord > 1.1)
+    abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
   expect(atoms_outside.length).toBe(0)
 
@@ -330,8 +323,7 @@ C        -2.0      10.0      12.0`
     frame_idx < Math.min(trajectory_like.frames.length, 3);
     frame_idx++
   ) {
-    const frame_structure = trajectory_like.frames[frame_idx]
-      .structure as Crystal
+    const frame_structure = trajectory_like.frames[frame_idx].structure as Crystal
     const frame_image_atoms = find_image_atoms(frame_structure)
     expect(frame_image_atoms.length).toBe(0) // Should consistently treat as trajectory data
   }
@@ -528,7 +520,8 @@ test.each([
     if (expected_count === 0) {
       // When we expect no images, assert exactly zero - any non-zero result indicates a regression
       expect(image_atoms.length).toBe(0)
-    } else { // For non-zero expectations, check minimum but cap maximum to catch runaway generation
+    } else {
+      // For non-zero expectations, check minimum but cap maximum to catch runaway generation
       expect(image_atoms.length).toBeGreaterThanOrEqual(expected_count)
       expect(image_atoms.length).toBeLessThanOrEqual(26) // Max possible for a cube - prevent runaway generation
     }
@@ -638,65 +631,74 @@ test(`image atom generation should not create duplicates`, () => {
 test.each([
   {
     name: `cubic`,
-    lattice: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
+    lattice: [
+      [5.0, 0.0, 0.0],
+      [0.0, 5.0, 0.0],
+      [0.0, 0.0, 5.0],
+    ],
     sites: [{ abc: [0.0, 0.0, 0.0], xyz: [0.0, 0.0, 0.0] }],
     expected_min: 7, // 7 images for corner atom in cubic
   },
   {
     name: `orthorhombic`,
-    lattice: [[4.0, 0.0, 0.0], [0.0, 6.0, 0.0], [0.0, 0.0, 8.0]],
+    lattice: [
+      [4.0, 0.0, 0.0],
+      [0.0, 6.0, 0.0],
+      [0.0, 0.0, 8.0],
+    ],
     sites: [{ abc: [0.0, 0.0, 0.0], xyz: [0.0, 0.0, 0.0] }],
     expected_min: 7, // 7 images for corner atom
   },
   {
     name: `face-centered`,
-    lattice: [[3.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 3.0]],
+    lattice: [
+      [3.0, 0.0, 0.0],
+      [0.0, 3.0, 0.0],
+      [0.0, 0.0, 3.0],
+    ],
     sites: [
       { abc: [0.0, 0.0, 0.0], xyz: [0.0, 0.0, 0.0] },
       { abc: [0.5, 0.5, 0.0], xyz: [1.5, 1.5, 0.0] },
     ],
     expected_min: 7, // At least 7 from corner atom
   },
-])(
-  `image atom generation for $name crystal system`,
-  ({ lattice, sites, expected_min }) => {
-    const test_structure: Crystal = {
-      sites: sites.map((site, idx) => ({
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-        abc: site.abc as Vec3,
-        xyz: site.xyz as Vec3,
-        label: `C${idx + 1}`,
-        properties: {},
-      })),
-      lattice: {
-        matrix: lattice as Matrix3x3,
-        pbc: [true, true, true],
-        a: lattice[0][0],
-        b: lattice[1][1],
-        c: lattice[2][2],
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: lattice[0][0] * lattice[1][1] * lattice[2][2],
-      },
-    }
+])(`image atom generation for $name crystal system`, ({ lattice, sites, expected_min }) => {
+  const test_structure: Crystal = {
+    sites: sites.map((site, idx) => ({
+      species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+      abc: site.abc as Vec3,
+      xyz: site.xyz as Vec3,
+      label: `C${idx + 1}`,
+      properties: {},
+    })),
+    lattice: {
+      matrix: lattice as Matrix3x3,
+      pbc: [true, true, true],
+      a: lattice[0][0],
+      b: lattice[1][1],
+      c: lattice[2][2],
+      alpha: 90,
+      beta: 90,
+      gamma: 90,
+      volume: lattice[0][0] * lattice[1][1] * lattice[2][2],
+    },
+  }
 
-    const image_atoms = find_image_atoms(test_structure)
-    expect(image_atoms.length).toBeGreaterThanOrEqual(expected_min)
+  const image_atoms = find_image_atoms(test_structure)
+  expect(image_atoms.length).toBeGreaterThanOrEqual(expected_min)
 
-    // Validate all image atoms
-    for (const [orig_idx, image_xyz, image_abc] of image_atoms) {
-      expect(orig_idx).toBeGreaterThanOrEqual(0)
-      expect(orig_idx).toBeLessThan(test_structure.sites.length)
-      expect(image_xyz.every((coord) => Number.isFinite(coord))).toBe(true)
-      expect(image_abc.every((coord) => Number.isFinite(coord))).toBe(true)
+  // Validate all image atoms
+  for (const [orig_idx, image_xyz, image_abc] of image_atoms) {
+    expect(orig_idx).toBeGreaterThanOrEqual(0)
+    expect(orig_idx).toBeLessThan(test_structure.sites.length)
+    expect(image_xyz.every((coord) => Number.isFinite(coord))).toBe(true)
+    expect(image_abc.every((coord) => Number.isFinite(coord))).toBe(true)
 
-      // Verify fractional coordinates are related by integer translations
-      const orig_abc = test_structure.sites[orig_idx].abc
-      assert_integer_translation(orig_abc, image_abc, 1e-8)
-    }
-  },
-)
+    // Verify fractional coordinates are related by integer translations
+    const orig_abc = test_structure.sites[orig_idx].abc
+    assert_integer_translation(orig_abc, image_abc, 1e-8)
+  }
+})
 
 // Test the new behavior: abc coordinates should be preserved and synchronized with xyz
 test(`image atoms preserve fractional coordinates correctly`, () => {
@@ -819,9 +821,10 @@ test(`mp-1204603 image sites are valid integer translations`, () => {
       math.scale(lattice_matrix[2], site.abc[2]),
     )
     const expected_mul = mat3x3_vec3_multiply(lattice_matrix, site.abc)
-    const matches_either = [0, 1, 2].every((dim) =>
-      Math.abs(site.xyz[dim] - expected_rows[dim]) < 1e-9 ||
-      Math.abs(site.xyz[dim] - expected_mul[dim]) < 1e-9
+    const matches_either = [0, 1, 2].every(
+      (dim) =>
+        Math.abs(site.xyz[dim] - expected_rows[dim]) < 1e-9 ||
+        Math.abs(site.xyz[dim] - expected_mul[dim]) < 1e-9,
     )
     expect(matches_either).toBe(true)
   }

@@ -17,19 +17,11 @@ describe(`compute_broadened_pattern`, () => {
       { step: 0.02, range: [10, Infinity], err: `range must be finite and max > min` },
       { step: 0.02, range: [50, 40], err: `range must be finite and max > min` },
       { step: 0.02, range: [40, 40], err: `range must be finite and max > min` },
-    ])(
-      `throws "$err" for step=$step, range=$range`,
-      ({ step, range, err }) => {
-        expect(() =>
-          compute_broadened_pattern(
-            dummy_pattern,
-            DEFAULT_BROADENING,
-            range as Vec2,
-            step,
-          )
-        ).toThrow(err)
-      },
-    )
+    ])(`throws "$err" for step=$step, range=$range`, ({ step, range, err }) => {
+      expect(() =>
+        compute_broadened_pattern(dummy_pattern, DEFAULT_BROADENING, range as Vec2, step),
+      ).toThrow(err)
+    })
   })
 
   describe(`functional behavior`, () => {
@@ -95,12 +87,7 @@ describe(`compute_broadened_pattern`, () => {
 
     test(`ignores negligible peaks (< 1e-5 intensity)`, () => {
       const pattern = { x: [20], y: [1e-6] }
-      const result = compute_broadened_pattern(
-        pattern,
-        DEFAULT_BROADENING,
-        [10, 30],
-        0.1,
-      )
+      const result = compute_broadened_pattern(pattern, DEFAULT_BROADENING, [10, 30], 0.1)
       const max_y = Math.max(...result.y)
       expect(max_y).toBe(0)
     })
@@ -110,12 +97,7 @@ describe(`compute_broadened_pattern`, () => {
       // Broad parameters to ensure overlap
       const broad_params = { ...DEFAULT_BROADENING, U: 0.5 }
 
-      const result = compute_broadened_pattern(
-        pattern,
-        broad_params,
-        [15, 25],
-        0.1,
-      )
+      const result = compute_broadened_pattern(pattern, broad_params, [15, 25], 0.1)
 
       // Should produce a single merged hump or two very close ones.
       // With U=0.5, FWHM will be large, so likely merged.

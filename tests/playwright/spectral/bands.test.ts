@@ -8,7 +8,9 @@ test.describe(`Bands Component Tests`, () => {
     await page.goto(`/test/bands`, { waitUntil: `networkidle` })
   })
 
-  test(`renders single band structure with axes and high-symmetry labels`, async ({ page }) => {
+  test(`renders single band structure with axes and high-symmetry labels`, async ({
+    page,
+  }) => {
     const plot = page.getByTestId(`single-bands-plot`)
     await expect(plot).toBeVisible()
 
@@ -55,9 +57,7 @@ test.describe(`Bands Component Tests`, () => {
     const custom_plot = page.getByTestId(`custom-styling-plot`)
     const first_path = custom_plot.locator(`path[fill="none"]`).first()
     await expect(first_path).toBeVisible()
-    expect(
-      await first_path.evaluate((el) => getComputedStyle(el).stroke),
-    ).toBeTruthy()
+    expect(await first_path.evaluate((el) => getComputedStyle(el).stroke)).toBeTruthy()
 
     // Check legend hidden
     const no_legend_plot = page.getByTestId(`no-legend-plot`)
@@ -249,7 +249,9 @@ test.describe(`Bands Component Tests`, () => {
     expect(path_count).toBe(8)
   })
 
-  test(`applies phonon unit conversion and renders custom highlight region`, async ({ page }) => {
+  test(`applies phonon unit conversion and renders custom highlight region`, async ({
+    page,
+  }) => {
     const plot = page.getByTestId(`phonon-units-highlight-plot`)
     await expect(plot).toBeVisible()
 

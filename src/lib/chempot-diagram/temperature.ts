@@ -34,9 +34,12 @@ function resolve_temp_filter_options(
   props: TempFilterProps,
 ): ResolvedTempFilterOptions {
   return {
-    interpolate: config.interpolate_temperature ?? props.interpolate_temperature ??
+    interpolate:
+      config.interpolate_temperature ??
+      props.interpolate_temperature ??
       CHEMPOT_DEFAULTS.interpolate_temperature,
-    max_interpolation_gap: config.max_interpolation_gap ??
+    max_interpolation_gap:
+      config.max_interpolation_gap ??
       props.max_interpolation_gap ??
       CHEMPOT_DEFAULTS.max_interpolation_gap,
   }

@@ -1,14 +1,10 @@
 import { point_in_polygon, polygon_centroid, type Vec2 } from '$lib/math'
-import type {
-  CompUnit,
-  PhaseDiagramData,
-  PhaseRegion,
-  TempUnit,
-} from '$lib/phase-diagram'
+import type { CompUnit, PhaseDiagramData, PhaseRegion, TempUnit } from '$lib/phase-diagram'
 import {
   calculate_lever_rule,
   calculate_vertical_lever_rule,
   compute_label_properties,
+  compute_x_domain,
   convert_temp,
   extract_tdb_reference,
   find_phase_at_point,
@@ -37,8 +33,17 @@ import {
 import { describe, expect, test } from 'vitest'
 
 describe(`point_in_polygon`, () => {
-  const square: Vec2[] = [[0, 0], [1, 0], [1, 1], [0, 1]]
-  const triangle: Vec2[] = [[0, 0], [1, 0], [0.5, 1]]
+  const square: Vec2[] = [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+  ]
+  const triangle: Vec2[] = [
+    [0, 0],
+    [1, 0],
+    [0.5, 1],
+  ]
 
   test.each([
     {
@@ -74,7 +79,10 @@ describe(`point_in_polygon`, () => {
     {
       point_x: 0.5,
       point_y: 0.5,
-      polygon: [[0, 0], [1, 1]] as Vec2[],
+      polygon: [
+        [0, 0],
+        [1, 1],
+      ] as Vec2[],
       expected: false,
       desc: `2 vertices`,
     },
@@ -85,12 +93,9 @@ describe(`point_in_polygon`, () => {
       expected: false,
       desc: `empty polygon`,
     },
-  ])(
-    `$desc → $expected`,
-    ({ point_x, point_y, polygon, expected }) => {
-      expect(point_in_polygon(point_x, point_y, polygon)).toBe(expected)
-    },
-  )
+  ])(`$desc → $expected`, ({ point_x, point_y, polygon, expected }) => {
+    expect(point_in_polygon(point_x, point_y, polygon)).toBe(expected)
+  })
 })
 
 describe(`find_phase_at_point`, () => {
@@ -101,9 +106,23 @@ describe(`find_phase_at_point`, () => {
       {
         id: `liquid`,
         name: `Liquid`,
-        vertices: [[0, 700], [1, 700], [1, 900], [0, 900]],
+        vertices: [
+          [0, 700],
+          [1, 700],
+          [1, 900],
+          [0, 900],
+        ],
       },
-      { id: `solid`, name: `Solid`, vertices: [[0, 300], [1, 300], [1, 700], [0, 700]] },
+      {
+        id: `solid`,
+        name: `Solid`,
+        vertices: [
+          [0, 300],
+          [1, 300],
+          [1, 700],
+          [0, 700],
+        ],
+      },
     ],
     boundaries: [],
   }
@@ -121,11 +140,25 @@ describe(`find_phase_at_point`, () => {
     const overlapping_data: PhaseDiagramData = {
       ...test_data,
       regions: [
-        { id: `first`, name: `First`, vertices: [[0, 0], [1, 0], [1, 1], [0, 1]] },
+        {
+          id: `first`,
+          name: `First`,
+          vertices: [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+          ],
+        },
         {
           id: `second`,
           name: `Second`,
-          vertices: [[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75]],
+          vertices: [
+            [0.25, 0.25],
+            [0.75, 0.25],
+            [0.75, 0.75],
+            [0.25, 0.75],
+          ],
         },
       ],
     }
@@ -136,10 +169,21 @@ describe(`find_phase_at_point`, () => {
 describe(`generate_region_path`, () => {
   test.each([
     {
-      vertices: [[0, 0], [100, 0], [100, 100], [0, 100]],
+      vertices: [
+        [0, 0],
+        [100, 0],
+        [100, 100],
+        [0, 100],
+      ],
       expected: `M0,0L100,0L100,100L0,100 Z`,
     },
-    { vertices: [[0, 0], [1, 1]], expected: `` },
+    {
+      vertices: [
+        [0, 0],
+        [1, 1],
+      ],
+      expected: ``,
+    },
     { vertices: [[0, 0]], expected: `` },
     { vertices: [], expected: `` },
   ] as { vertices: Vec2[]; expected: string }[])(
@@ -152,7 +196,14 @@ describe(`generate_region_path`, () => {
 
 describe(`generate_boundary_path`, () => {
   test.each([
-    { points: [[0, 0], [50, 50], [100, 100]], expected: `M0,0L50,50L100,100` },
+    {
+      points: [
+        [0, 0],
+        [50, 50],
+        [100, 100],
+      ],
+      expected: `M0,0L50,50L100,100`,
+    },
     { points: [[0, 0]], expected: `` },
     { points: [], expected: `` },
   ] as { points: Vec2[]; expected: string }[])(
@@ -164,16 +215,47 @@ describe(`generate_boundary_path`, () => {
 })
 
 describe(`polygon_centroid`, () => {
-  test.each(
-    [
-      { vertices: [[0, 0], [2, 0], [2, 2], [0, 2]], expected: [1, 1], desc: `square` },
-      { vertices: [[0, 0], [3, 0], [0, 3]], expected: [1, 1], desc: `triangle` },
-      { vertices: [[0, 0], [4, 0], [4, 2], [0, 2]], expected: [2, 1], desc: `rectangle` },
-      { vertices: [[5, 10]], expected: [5, 10], desc: `single vertex` },
-      { vertices: [[0, 0], [10, 10]], expected: [5, 5], desc: `two vertices` },
-      { vertices: [], expected: [0, 0], desc: `empty array` },
-    ] as const,
-  )(`$desc → ($expected)`, ({ vertices, expected }) => {
+  test.each([
+    {
+      vertices: [
+        [0, 0],
+        [2, 0],
+        [2, 2],
+        [0, 2],
+      ],
+      expected: [1, 1],
+      desc: `square`,
+    },
+    {
+      vertices: [
+        [0, 0],
+        [3, 0],
+        [0, 3],
+      ],
+      expected: [1, 1],
+      desc: `triangle`,
+    },
+    {
+      vertices: [
+        [0, 0],
+        [4, 0],
+        [4, 2],
+        [0, 2],
+      ],
+      expected: [2, 1],
+      desc: `rectangle`,
+    },
+    { vertices: [[5, 10]], expected: [5, 10], desc: `single vertex` },
+    {
+      vertices: [
+        [0, 0],
+        [10, 10],
+      ],
+      expected: [5, 5],
+      desc: `two vertices`,
+    },
+    { vertices: [], expected: [0, 0], desc: `empty array` },
+  ] as const)(`$desc → ($expected)`, ({ vertices, expected }) => {
     const [cx, cy] = polygon_centroid([...vertices] as Vec2[])
     expect(cx).toBeCloseTo(expected[0], 5)
     expect(cy).toBeCloseTo(expected[1], 5)
@@ -291,8 +373,11 @@ describe(`get_multi_phase_gradient`, () => {
   })
 
   test(`handles whitespace and empty phase names`, () => {
-    expect(get_multi_phase_gradient(`  α   +   β   +   γ  `)?.map((s) => s.color))
-      .toEqual([PHASE_COLOR_HEX.alpha, PHASE_COLOR_HEX.beta, PHASE_COLOR_HEX.gamma])
+    expect(get_multi_phase_gradient(`  α   +   β   +   γ  `)?.map((s) => s.color)).toEqual([
+      PHASE_COLOR_HEX.alpha,
+      PHASE_COLOR_HEX.beta,
+      PHASE_COLOR_HEX.gamma,
+    ])
     // "α + + β" filters the empty middle, leaving 2 phases
     expect(get_multi_phase_gradient(`α + + β`)).toEqual([
       { offset: 0, color: PHASE_COLOR_HEX.alpha },
@@ -309,8 +394,11 @@ describe(`get_multi_phase_gradient`, () => {
   })
 
   test(`Liquid + FCC + BCC → liquid + alpha + beta colors`, () => {
-    expect(get_multi_phase_gradient(`Liquid + FCC + BCC`)?.map((s) => s.color))
-      .toEqual([PHASE_COLOR_HEX.liquid, PHASE_COLOR_HEX.alpha, PHASE_COLOR_HEX.beta])
+    expect(get_multi_phase_gradient(`Liquid + FCC + BCC`)?.map((s) => s.color)).toEqual([
+      PHASE_COLOR_HEX.liquid,
+      PHASE_COLOR_HEX.alpha,
+      PHASE_COLOR_HEX.beta,
+    ])
   })
 })
 
@@ -346,7 +434,18 @@ describe(`transform_vertices`, () => {
   const y_scale = (val: number) => 100 - val
 
   test.each([
-    { input: [[0, 0], [1, 100], [0.5, 50]], expected: [[0, 100], [200, 0], [100, 50]] },
+    {
+      input: [
+        [0, 0],
+        [1, 100],
+        [0.5, 50],
+      ],
+      expected: [
+        [0, 100],
+        [200, 0],
+        [100, 50],
+      ],
+    },
     { input: [], expected: [] },
   ] as { input: Vec2[]; expected: Vec2[] }[])(
     `transforms $input.length vertices`,
@@ -360,22 +459,42 @@ describe(`transform_vertices`, () => {
 const two_phase_region: PhaseRegion = {
   id: `alpha-beta`,
   name: `α + β`,
-  vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+  vertices: [
+    [0.2, 400],
+    [0.8, 400],
+    [0.7, 600],
+    [0.3, 600],
+  ],
 }
 const single_phase_region: PhaseRegion = {
   id: `liquid`,
   name: `Liquid`,
-  vertices: [[0, 700], [1, 700], [1, 900], [0, 900]],
+  vertices: [
+    [0, 700],
+    [1, 700],
+    [1, 900],
+    [0, 900],
+  ],
 }
 const three_phase_region: PhaseRegion = {
   id: `alpha-beta-gamma`,
   name: `α + β + γ`,
-  vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+  vertices: [
+    [0.2, 400],
+    [0.8, 400],
+    [0.7, 600],
+    [0.3, 600],
+  ],
 }
 const empty_plus_region: PhaseRegion = {
   id: `test`,
   name: `+`,
-  vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+  vertices: [
+    [0.2, 400],
+    [0.8, 400],
+    [0.7, 600],
+    [0.3, 600],
+  ],
 }
 const split_region_horizontal: PhaseRegion = {
   id: `alpha-beta-split`,
@@ -458,7 +577,12 @@ describe(`calculate_lever_rule`, () => {
     const region: PhaseRegion = {
       id: `test`,
       name: `Liquid + FCC_A1`,
-      vertices: [[0.2, 400], [0.8, 400], [0.7, 600], [0.3, 600]],
+      vertices: [
+        [0.2, 400],
+        [0.8, 400],
+        [0.7, 600],
+        [0.3, 600],
+      ],
     }
     const result = calculate_lever_rule(region, 0.5, 500)
     expect(result?.left_phase).toBe(`Liquid`)
@@ -483,9 +607,7 @@ describe(`calculate_vertical_lever_rule`, () => {
   })
 
   test(`parses phase names and calculates fractions at midpoint`, () => {
-    const result = expect_non_null(
-      calculate_vertical_lever_rule(two_phase_region, 0.5, 500),
-    )
+    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, 0.5, 500))
     expect(result.bottom_phase).toBe(`α`)
     expect(result.top_phase).toBe(`β`)
     expect(result.fraction_bottom).toBeCloseTo(0.5, 1)
@@ -494,9 +616,7 @@ describe(`calculate_vertical_lever_rule`, () => {
   })
 
   test.each([420, 450, 500, 550, 580])(`fractions sum to 1 at temp=%d`, (temp) => {
-    const result = expect_non_null(
-      calculate_vertical_lever_rule(two_phase_region, 0.5, temp),
-    )
+    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, 0.5, temp))
     expect(result.fraction_bottom + result.fraction_top).toBeCloseTo(1, 5)
   })
 
@@ -504,9 +624,7 @@ describe(`calculate_vertical_lever_rule`, () => {
     { temp: 410, bottom_dominant: true, desc: `near bottom boundary` },
     { temp: 590, bottom_dominant: false, desc: `near top boundary` },
   ])(`$desc: dominant phase has >90% fraction`, ({ temp, bottom_dominant }) => {
-    const result = expect_non_null(
-      calculate_vertical_lever_rule(two_phase_region, 0.5, temp),
-    )
+    const result = expect_non_null(calculate_vertical_lever_rule(two_phase_region, 0.5, temp))
     const dominant = bottom_dominant ? result.fraction_bottom : result.fraction_top
     const minor = bottom_dominant ? result.fraction_top : result.fraction_bottom
     expect(dominant).toBeGreaterThan(0.9)
@@ -537,18 +655,27 @@ describe(`compute_label_properties`, () => {
     { width: 100, height: 0, desc: `zero height` },
     { width: 50, height: -5, desc: `negative height` },
   ])(`handles degenerate bounds: $desc`, ({ width, height }) => {
-    expect(compute_label_properties(`Test`, { width, height }, 12))
-      .toEqual({ rotation: 0, lines: [`Test`], scale: 1 })
+    expect(compute_label_properties(`Test`, { width, height }, 12)).toEqual({
+      rotation: 0,
+      lines: [`Test`],
+      scale: 1,
+    })
   })
 
   test(`empty label returns no lines`, () => {
-    expect(compute_label_properties(``, { width: 100, height: 80 }, 12))
-      .toEqual({ rotation: 0, lines: [], scale: 1 })
+    expect(compute_label_properties(``, { width: 100, height: 80 }, 12)).toEqual({
+      rotation: 0,
+      lines: [],
+      scale: 1,
+    })
   })
 
   test(`zero font_size returns scale=1`, () => {
-    expect(compute_label_properties(`Test`, { width: 100, height: 80 }, 0))
-      .toEqual({ rotation: 0, lines: [`Test`], scale: 1 })
+    expect(compute_label_properties(`Test`, { width: 100, height: 80 }, 0)).toEqual({
+      rotation: 0,
+      lines: [`Test`],
+      scale: 1,
+    })
   })
 
   test(`wrapped labels join words with spaces, not underscores`, () => {
@@ -633,9 +760,16 @@ describe(`tokenize_formula`, () => {
     },
     {
       formula: `C12H22O11`,
-      expected: [{ text: `C` }, { sub: `12` }, { text: `H` }, { sub: `22` }, {
-        text: `O`,
-      }, { sub: `11` }],
+      expected: [
+        { text: `C` },
+        { sub: `12` },
+        { text: `H` },
+        { sub: `22` },
+        {
+          text: `O`,
+        },
+        { sub: `11` },
+      ],
       desc: `multi-digit subscripts`,
     },
     { formula: `MgO`, expected: [{ text: `Mg` }, { text: `O` }], desc: `no subscripts` },
@@ -747,22 +881,20 @@ describe.each([
 // === convert_temp ===
 
 describe(`convert_temp`, () => {
-  test.each(
-    [
-      { value: 273.15, from: `K`, to: `°C`, expected: 0 },
-      { value: 373.15, from: `K`, to: `°C`, expected: 100 },
-      { value: 0, from: `°C`, to: `K`, expected: 273.15 },
-      { value: 100, from: `°C`, to: `K`, expected: 373.15 },
-      { value: 273.15, from: `K`, to: `°F`, expected: 32 },
-      { value: 373.15, from: `K`, to: `°F`, expected: 212 },
-      { value: 32, from: `°F`, to: `K`, expected: 273.15 },
-      { value: 212, from: `°F`, to: `K`, expected: 373.15 },
-      { value: 0, from: `°C`, to: `°F`, expected: 32 },
-      { value: 100, from: `°C`, to: `°F`, expected: 212 },
-      { value: 32, from: `°F`, to: `°C`, expected: 0 },
-      { value: 212, from: `°F`, to: `°C`, expected: 100 },
-    ] as const,
-  )(`$value $from → $expected $to`, ({ value, from, to, expected }) => {
+  test.each([
+    { value: 273.15, from: `K`, to: `°C`, expected: 0 },
+    { value: 373.15, from: `K`, to: `°C`, expected: 100 },
+    { value: 0, from: `°C`, to: `K`, expected: 273.15 },
+    { value: 100, from: `°C`, to: `K`, expected: 373.15 },
+    { value: 273.15, from: `K`, to: `°F`, expected: 32 },
+    { value: 373.15, from: `K`, to: `°F`, expected: 212 },
+    { value: 32, from: `°F`, to: `K`, expected: 273.15 },
+    { value: 212, from: `°F`, to: `K`, expected: 373.15 },
+    { value: 0, from: `°C`, to: `°F`, expected: 32 },
+    { value: 100, from: `°C`, to: `°F`, expected: 212 },
+    { value: 32, from: `°F`, to: `°C`, expected: 0 },
+    { value: 212, from: `°F`, to: `°C`, expected: 100 },
+  ] as const)(`$value $from → $expected $to`, ({ value, from, to, expected }) => {
     expect(convert_temp(value, from, to)).toBeCloseTo(expected, 5)
   })
 
@@ -815,7 +947,12 @@ describe(`word boundary regex for component matching`, () => {
 describe(`get_phase_stability_range`, () => {
   test.each([
     {
-      vertices: [[0, 400], [1, 400], [1, 800], [0, 800]] as Vec2[],
+      vertices: [
+        [0, 400],
+        [1, 400],
+        [1, 800],
+        [0, 800],
+      ] as Vec2[],
       expected: { t_min: 400, t_max: 800 },
       desc: `rectangle`,
     },
@@ -825,14 +962,17 @@ describe(`get_phase_stability_range`, () => {
       desc: `single vertex`,
     },
     {
-      vertices: [[0.2, 400], [0.8, 450], [0.7, 650], [0.3, 600]] as Vec2[],
+      vertices: [
+        [0.2, 400],
+        [0.8, 450],
+        [0.7, 650],
+        [0.3, 600],
+      ] as Vec2[],
       expected: { t_min: 400, t_max: 650 },
       desc: `irregular polygon`,
     },
   ])(`$desc → t_min=$expected.t_min, t_max=$expected.t_max`, ({ vertices, expected }) => {
-    expect(get_phase_stability_range({ id: `test`, name: `α`, vertices })).toEqual(
-      expected,
-    )
+    expect(get_phase_stability_range({ id: `test`, name: `α`, vertices })).toEqual(expected)
   })
 
   test(`returns null for empty vertices`, () => {
@@ -982,8 +1122,7 @@ describe(`extract_tdb_reference`, () => {
   test.each([`reference`, `citation`, `database`, `assessed by`])(
     `matches keyword "%s" case-insensitively`,
     (keyword) => {
-      const comment =
-        `$ This ${keyword} was from X. Author, Some Long Journal Name, Vol 42, 2019`
+      const comment = `$ This ${keyword} was from X. Author, Some Long Journal Name, Vol 42, 2019`
       expect(extract_tdb_reference([comment])).not.toBeNull()
     },
   )
@@ -993,8 +1132,7 @@ describe(`extract_tdb_reference`, () => {
   })
 
   test(`returns null when no keywords match`, () => {
-    expect(extract_tdb_reference([`$ Just a regular comment`, `$ Another one`]))
-      .toBeNull()
+    expect(extract_tdb_reference([`$ Just a regular comment`, `$ Another one`])).toBeNull()
   })
 
   test(`skips short references (<=30 chars)`, () => {
@@ -1002,9 +1140,7 @@ describe(`extract_tdb_reference`, () => {
   })
 
   test(`skips references ending with "from"`, () => {
-    expect(extract_tdb_reference([
-      `$ Reference data was extracted from`,
-    ])).toBeNull()
+    expect(extract_tdb_reference([`$ Reference data was extracted from`])).toBeNull()
   })
 
   test(`strips leading $ from reference text`, () => {
@@ -1019,18 +1155,22 @@ describe(`extract_tdb_reference`, () => {
 
 describe(`summarize_models`, () => {
   test(`summarizes single sublattice type`, () => {
-    expect(summarize_models([
-      { sublattice_count: 2, sublattice_sites: [1, 1] },
-      { sublattice_count: 2, sublattice_sites: [1, 3] },
-    ])).toBe(`2×2-SL`)
+    expect(
+      summarize_models([
+        { sublattice_count: 2, sublattice_sites: [1, 1] },
+        { sublattice_count: 2, sublattice_sites: [1, 3] },
+      ]),
+    ).toBe(`2×2-SL`)
   })
 
   test(`summarizes multiple sublattice types sorted by count`, () => {
-    expect(summarize_models([
-      { sublattice_count: 3, sublattice_sites: [1, 1, 1] },
-      { sublattice_count: 2, sublattice_sites: [1, 1] },
-      { sublattice_count: 2, sublattice_sites: [1, 3] },
-    ])).toBe(`2×2-SL, 1×3-SL`)
+    expect(
+      summarize_models([
+        { sublattice_count: 3, sublattice_sites: [1, 1, 1] },
+        { sublattice_count: 2, sublattice_sites: [1, 1] },
+        { sublattice_count: 2, sublattice_sites: [1, 3] },
+      ]),
+    ).toBe(`2×2-SL, 1×3-SL`)
   })
 
   test(`returns empty string for no phases`, () => {
@@ -1038,8 +1178,82 @@ describe(`summarize_models`, () => {
   })
 
   test(`handles single phase`, () => {
-    expect(summarize_models([
-      { sublattice_count: 4, sublattice_sites: [1, 1, 1, 1] },
-    ])).toBe(`1×4-SL`)
+    expect(summarize_models([{ sublattice_count: 4, sublattice_sites: [1, 1, 1, 1] }])).toBe(
+      `1×4-SL`,
+    )
+  })
+})
+
+describe(`compute_x_domain`, () => {
+  const make_region = (name: string, x_lo: number, x_hi: number): PhaseRegion => ({
+    id: name,
+    name,
+    vertices: [
+      [x_lo, 300],
+      [x_hi, 300],
+      [x_hi, 600],
+      [x_lo, 600],
+    ],
+  })
+
+  const make_data = (regions: PhaseRegion[]): PhaseDiagramData => ({
+    components: [`Al`, `Cu`],
+    temperature_range: [300, 1200],
+    regions,
+    boundaries: [],
+  })
+
+  // Al near 0 boundary, Cu near 1 boundary — triggers auto-extend
+  const edge_data = make_data([make_region(`Al`, 0.02, 0.3), make_region(`Cu`, 0.7, 0.98)])
+
+  test.each([
+    {
+      range: [0.2, 0.8] as [number, number],
+      data: null,
+      expected: [0.2, 0.8],
+      desc: `explicit range returned as-is`,
+    },
+    {
+      range: undefined,
+      data: null,
+      expected: [0, 1],
+      desc: `no range + no data defaults to [0, 1]`,
+    },
+    {
+      range: undefined,
+      data: edge_data,
+      expected: [0, 1],
+      desc: `undefined range auto-extends both edges`,
+    },
+    {
+      range: [null, null] as [null, null],
+      data: edge_data,
+      expected: [0, 1],
+      desc: `null range auto-extends both edges`,
+    },
+    {
+      range: [0.1, null] as [number, null],
+      data: edge_data,
+      expected: [0.1, 1],
+      desc: `explicit lo preserved, hi auto-extends`,
+    },
+    {
+      range: [null, 0.9] as [null, number],
+      data: edge_data,
+      expected: [0, 0.9],
+      desc: `lo auto-extends, explicit hi preserved`,
+    },
+  ])(`$desc`, ({ range, data, expected }) => {
+    expect(compute_x_domain(range, data)).toEqual(expected)
+  })
+
+  test(`does not auto-extend when data is far from boundary (section diagram)`, () => {
+    const section = make_data([make_region(`Al`, 0.3, 0.5), make_region(`Cu`, 0.5, 0.7)])
+    expect(compute_x_domain(undefined, section)).toEqual([0.3, 0.7])
+  })
+
+  test(`uses data extent when region names don't match component names`, () => {
+    const non_matching = make_data([make_region(`Liquid`, 0.1, 0.9)])
+    expect(compute_x_domain(undefined, non_matching)).toEqual([0.1, 0.9])
   })
 })

@@ -1,28 +1,35 @@
 {
   "name": "matterviz",
   "displayName": "MatterViz",
-  "description": "Visualize crystal structures and MD trajectories in VSCode",
   "version": "0.3.2",
-  "publisher": "janosh",
-  "icon": "icon.png",
-  "repository": "https://github.com/janosh/matterviz",
+  "description": "Visualize crystal structures and MD trajectories in VSCode",
   "categories": [
     "Data Science",
+    "Education",
     "Machine Learning",
-    "Visualization",
     "Notebooks",
-    "Education"
+    "Visualization"
   ],
-  "engines": {
-    "vscode": "^1.100.0"
-  },
+  "repository": "https://github.com/janosh/matterviz",
+  "publisher": "janosh",
+  "type": "module",
   "main": "./dist/extension.mjs",
-  "extensionKind": [
-    "workspace"
-  ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
+  "scripts": {
+    "sync-config": "deno run -A --node-modules-dir scripts/sync-config.ts",
+    "prebuild": "npm run sync-config",
+    "build": "rm -rf dist && vite build --config vite.extension.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
+    "package": "npm run build && vsce package --no-dependencies",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.1.4",
+    "@types/node": "^24.3.1",
+    "@types/vscode": "^1.96.0",
+    "svelte": "^5.38.7",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.4",
+    "vitest": "^3.2.4"
+  },
   "contributes": {
     "commands": [
       {
@@ -1406,20 +1413,14 @@
       }
     }
   },
-  "scripts": {
-    "sync-config": "deno run -A --node-modules-dir scripts/sync-config.ts",
-    "prebuild": "pnpm sync-config",
-    "build": "rm -rf dist && vite build --config vite.extension.config.ts && mkdir -p dist/src && cp -r ../../src/lib dist/src/lib/ && vite build",
-    "package": "pnpm build && vsce package --no-dependencies",
-    "test": "vitest"
-  },
-  "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^6.1.4",
-    "@types/node": "^24.3.1",
-    "@types/vscode": "^1.96.0",
-    "svelte": "^5.38.7",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.4",
-    "vitest": "^3.2.4"
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.100.0"
   }
 }

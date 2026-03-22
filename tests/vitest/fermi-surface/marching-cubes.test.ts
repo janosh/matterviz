@@ -10,9 +10,8 @@ const create_uniform_grid = (
   nz: number,
   value: number,
 ): number[][][] =>
-  Array.from(
-    { length: nx },
-    () => Array.from({ length: ny }, () => Array.from({ length: nz }, () => value)),
+  Array.from({ length: nx }, () =>
+    Array.from({ length: ny }, () => Array.from({ length: nz }, () => value)),
   )
 
 // Helper: create gradient grid along specified axis
@@ -25,34 +24,29 @@ const create_gradient_grid = (
   max_val: number,
 ): number[][][] => {
   const n_axis = axis === `x` ? nx : axis === `y` ? ny : nz
-  return Array.from(
-    { length: nx },
-    (_, x_idx) =>
-      Array.from({ length: ny }, (_, y_idx) =>
-        Array.from({ length: nz }, (_, z_idx) => {
-          const t_val = axis === `x` ? x_idx : axis === `y` ? y_idx : z_idx
-          const denom = n_axis > 1 ? n_axis - 1 : 1
-          return min_val + (t_val / denom) * (max_val - min_val)
-        })),
+  return Array.from({ length: nx }, (_, x_idx) =>
+    Array.from({ length: ny }, (_, y_idx) =>
+      Array.from({ length: nz }, (_, z_idx) => {
+        const t_val = axis === `x` ? x_idx : axis === `y` ? y_idx : z_idx
+        const denom = n_axis > 1 ? n_axis - 1 : 1
+        return min_val + (t_val / denom) * (max_val - min_val)
+      }),
+    ),
   )
 }
 
 // Helper: create spherical grid (distance² from center)
 const create_spherical_grid = (size: number): number[][][] => {
   const center = (size - 1) / 2
-  return Array.from(
-    { length: size },
-    (_, x_idx) =>
-      Array.from(
-        { length: size },
-        (_, y_idx) =>
-          Array.from({ length: size }, (_, z_idx) => {
-            const dx = x_idx - center
-            const dy = y_idx - center
-            const dz = z_idx - center
-            return dx * dx + dy * dy + dz * dz
-          }),
-      ),
+  return Array.from({ length: size }, (_, x_idx) =>
+    Array.from({ length: size }, (_, y_idx) =>
+      Array.from({ length: size }, (_, z_idx) => {
+        const dx = x_idx - center
+        const dy = y_idx - center
+        const dz = z_idx - center
+        return dx * dx + dy * dy + dz * dz
+      }),
+    ),
   )
 }
 
@@ -60,7 +54,11 @@ const create_spherical_grid = (size: number): number[][][] => {
 // (fermi-surface re-exports from the same module)
 
 describe(`marching_cubes (fermi-surface re-export)`, () => {
-  const identity_lattice: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+  const identity_lattice: Matrix3x3 = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
 
   test.each([
     [`below`, 0.5, 1.0],
@@ -92,7 +90,11 @@ describe(`marching_cubes (fermi-surface re-export)`, () => {
     [1, [-0.501, 0.501]],
     [2, [-1.01, 1.01]],
   ])(`vertices within bounds with scale=%d`, (scale, [min_bound, max_bound]) => {
-    const lattice: Matrix3x3 = [[scale, 0, 0], [0, scale, 0], [0, 0, scale]]
+    const lattice: Matrix3x3 = [
+      [scale, 0, 0],
+      [0, scale, 0],
+      [0, 0, scale],
+    ]
     const grid = create_gradient_grid(4, 4, 4, `x`, 0, 2)
     const result = marching_cubes(grid, 1.0, lattice, { periodic: false })
 
@@ -123,12 +125,11 @@ describe(`marching_cubes (fermi-surface re-export)`, () => {
     expect(result.faces.length).toBeGreaterThan(10)
     // All vertices should be at roughly the same distance from the centroid
     // (a sphere's isosurface has uniform radius)
-    const centroid = result.vertices.reduce(
-      (acc, vert) => [acc[0] + vert[0], acc[1] + vert[1], acc[2] + vert[2]],
-      [0, 0, 0],
-    ).map((val) => val / result.vertices.length)
+    const centroid = result.vertices
+      .reduce((acc, vert) => [acc[0] + vert[0], acc[1] + vert[1], acc[2] + vert[2]], [0, 0, 0])
+      .map((val) => val / result.vertices.length)
     const dists = result.vertices.map((vert) =>
-      Math.hypot(vert[0] - centroid[0], vert[1] - centroid[1], vert[2] - centroid[2])
+      Math.hypot(vert[0] - centroid[0], vert[1] - centroid[1], vert[2] - centroid[2]),
     )
     const mean_dist = dists.reduce((sum, dist) => sum + dist, 0) / dists.length
     // All distances should be within 15% of the mean (tight for a sphere)

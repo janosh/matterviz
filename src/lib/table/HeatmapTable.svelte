@@ -132,7 +132,8 @@
   $effect(() => {
     if (!container_el) return
     const read_page_bg = () => {
-      const page_bg = getComputedStyle(container_el!).getPropertyValue(`--page-bg`)
+      if (!container_el) return
+      const page_bg = getComputedStyle(container_el).getPropertyValue(`--page-bg`)
         .trim()
       page_bg_lum = luminance(page_bg || `white`)
     }

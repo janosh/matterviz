@@ -368,7 +368,7 @@
 
   let [robust_min, robust_max] = $derived.by(() => {
     if (!valid_numeric_values.length) return [0, 1] as const
-    const sorted_values = [...valid_numeric_values].sort((value_a, value_b) =>
+    const sorted_values = valid_numeric_values.toSorted((value_a, value_b) =>
       value_a - value_b
     )
     const [q_low, q_high] = quantile_clip
@@ -688,12 +688,12 @@
       callback()
       return 0
     }
-    return window.requestAnimationFrame(callback)
+    return globalThis.requestAnimationFrame(callback)
   }
 
   function cancel_raf(raf_handle: number): void {
     if (!is_browser || raf_handle === 0) return
-    window.cancelAnimationFrame(raf_handle)
+    globalThis.cancelAnimationFrame(raf_handle)
   }
 
   function clear_pending_click(): void {
@@ -810,7 +810,7 @@
     const x_label = x_items[x_idx]?.label ?? ``
     const y_label = y_items[y_idx]?.label ?? ``
     const val = get_value(x_idx, y_idx)
-    const value_str = val === null || val === undefined
+    const value_str = val == null
       ? ``
       : typeof val === `number`
       ? format_num(val)
@@ -1091,9 +1091,9 @@
   onMount(() => {
     update_viewport_state()
     if (!is_browser) return
-    window.addEventListener(`mouseup`, handle_mouseup)
+    globalThis.addEventListener(`mouseup`, handle_mouseup)
     return () => {
-      window.removeEventListener(`mouseup`, handle_mouseup)
+      globalThis.removeEventListener(`mouseup`, handle_mouseup)
     }
   })
 

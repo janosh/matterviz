@@ -77,7 +77,7 @@
       // Restore previous visibility state
       series_data = series_data.map((item, idx) => ({
         ...item,
-        visible: previous_visibility![idx],
+        visible: previous_visibility?.[idx] ?? item.visible,
       }))
       previous_visibility = null // Clear memory
     } else {

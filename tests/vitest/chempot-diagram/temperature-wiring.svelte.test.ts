@@ -62,12 +62,10 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function mount_2d_with_config(
-  config: {
-    interpolate_temperature: boolean
-    max_interpolation_gap: number
-  },
-): Promise<void> {
+async function mount_2d_with_config(config: {
+  interpolate_temperature: boolean
+  max_interpolation_gap: number
+}): Promise<void> {
   const { interpolate_temperature, max_interpolation_gap } = config
   const mounted_component = mount(ChemPotDiagram2D, {
     target: document.body,

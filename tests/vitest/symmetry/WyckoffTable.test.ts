@@ -9,9 +9,7 @@ describe(`WyckoffTable`, () => {
     document.body.innerHTML = ``
   })
 
-  const mount_table = (
-    wyckoff_positions: WyckoffPos[] | null | undefined,
-  ) =>
+  const mount_table = (wyckoff_positions: WyckoffPos[] | null | undefined) =>
     mount(WyckoffTable, {
       target: document.body,
       props: {
@@ -21,16 +19,17 @@ describe(`WyckoffTable`, () => {
       },
     })
 
-  test.each(
-    [
-      [`empty array`, [] as WyckoffPos[]],
-      [`null`, null],
-      [`undefined`, undefined],
-    ] as [string, WyckoffPos[] | null | undefined][],
-  )(`renders nothing when wyckoff_positions is %s`, (_, wyckoff_positions) => {
-    mount_table(wyckoff_positions)
-    expect(document.querySelector(`table`)).toBeFalsy()
-  })
+  test.each([
+    [`empty array`, [] as WyckoffPos[]],
+    [`null`, null],
+    [`undefined`, undefined],
+  ] as [string, WyckoffPos[] | null | undefined][])(
+    `renders nothing when wyckoff_positions is %s`,
+    (_, wyckoff_positions) => {
+      mount_table(wyckoff_positions)
+      expect(document.querySelector(`table`)).toBeFalsy()
+    },
+  )
 
   test(`renders duplicate semantic rows without keyed-each crash`, () => {
     const duplicate_semantic_rows: WyckoffPos[] = [

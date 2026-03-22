@@ -10,9 +10,8 @@ async function wait_for_isosurface(page: Page) {
 async function open_settings_pane(page: Page) {
   await page.evaluate(() => {
     const style = document.createElement(`style`)
-    style.textContent =
-      `.hover-visible { opacity: 1 !important; pointer-events: auto !important; }`
-    document.head.appendChild(style)
+    style.textContent = `.hover-visible { opacity: 1 !important; pointer-events: auto !important; }`
+    document.head.append(style)
   })
   const gear = page.locator(`button.structure-controls-toggle`)
   await expect(gear).toBeVisible({ timeout: 5000 })
@@ -30,12 +29,7 @@ async function get_center(locator: Locator) {
 }
 
 // Drag from a locator's center by a given offset
-async function drag_from(
-  page: Page,
-  locator: Locator,
-  dx: number,
-  dy: number,
-) {
+async function drag_from(page: Page, locator: Locator, dx: number, dy: number) {
   // Scroll element into view so mouse coordinates are within the viewport
   await locator.scrollIntoViewIfNeeded()
   const { x, y } = await get_center(locator)

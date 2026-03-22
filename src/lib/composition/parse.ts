@@ -28,8 +28,10 @@ export const is_valid_element = (sym: string): sym is ElementSymbol =>
 // Check if object has atomic numbers as keys (1-118)
 const is_atomic_number_composition = (obj: Record<string | number, number>): boolean => {
   const keys = Object.keys(obj)
-  return keys.length > 0 &&
+  return (
+    keys.length > 0 &&
     keys.map(Number).every((num) => Number.isInteger(num) && num >= 1 && num <= 118)
+  )
 }
 
 // Convert atomic numbers to element symbols
@@ -97,9 +99,7 @@ export const normalize_composition = (
   composition: CompositionType | Record<number, number> | Record<string | number, number>,
 ): CompositionType => {
   if (is_atomic_number_composition(composition)) {
-    return normalize_composition(
-      atomic_num_to_symbols(composition as Record<number, number>),
-    )
+    return normalize_composition(atomic_num_to_symbols(composition as Record<number, number>))
   }
 
   const normalized: CompositionType = {}
@@ -174,11 +174,7 @@ export const fractional_composition = (
 
 // Parse composition from various input types
 export const parse_composition = (
-  input:
-    | string
-    | CompositionType
-    | Record<number, number>
-    | Record<string | number, number>,
+  input: string | CompositionType | Record<number, number> | Record<string | number, number>,
 ): CompositionType => {
   if (typeof input === `string`) {
     if (input.trim().startsWith(`{`) && input.trim().endsWith(`}`)) {
@@ -194,10 +190,8 @@ export const parse_composition = (
 }
 
 // Calculate GCD of two numbers
-const gcd = (
-  num_a: number,
-  num_b: number,
-): number => (num_b === 0 ? num_a : gcd(num_b, num_a % num_b))
+const gcd = (num_a: number, num_b: number): number =>
+  num_b === 0 ? num_a : gcd(num_b, num_a % num_b)
 
 // Get reduced formula by dividing all amounts by their GCD
 // Example: Fe2O4 -> FeO2, H4O2 -> H2O
@@ -286,9 +280,7 @@ export const parse_formula_with_oxidation = (
 
     if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
 
-    const oxidation_state = oxidation_str
-      ? parse_oxidation_state(oxidation_str)
-      : undefined
+    const oxidation_state = oxidation_str ? parse_oxidation_state(oxidation_str) : undefined
 
     // Find or add element entry
     const existing = elements.find((el) => el.element === element)
@@ -305,9 +297,9 @@ export const parse_formula_with_oxidation = (
         // In strict mode, throw on conflicting oxidation states
         const format_state = (state: number) => (state > 0 ? `+` : ``) + state
         throw new Error(
-          `Conflicting oxidation states for ${element}: ${
-            format_state(existing.oxidation_state)
-          } and ${format_state(oxidation_state)}`,
+          `Conflicting oxidation states for ${element}: ${format_state(
+            existing.oxidation_state,
+          )} and ${format_state(oxidation_state)}`,
         )
       }
     } else {
@@ -396,11 +388,14 @@ export const normalize_element_symbols = <T extends string>(
   csv: string,
   all_symbols?: T[],
 ): T[] => {
-  const input_set = new Set(csv.split(`,`).map((sym) => sym.trim()).filter(Boolean))
-  // Cast needed: ELEM_SYMBOLS is readonly const tuple, T is generic string subtype
-  return (all_symbols ?? (ELEM_SYMBOLS as unknown as T[])).filter((sym) =>
-    input_set.has(sym)
+  const input_set = new Set(
+    csv
+      .split(`,`)
+      .map((sym) => sym.trim())
+      .filter(Boolean),
   )
+  // Cast needed: ELEM_SYMBOLS is readonly const tuple, T is generic string subtype
+  return (all_symbols ?? (ELEM_SYMBOLS as unknown as T[])).filter((sym) => input_set.has(sym))
 }
 
 // --- Wildcard formula parsing utilities ---
@@ -425,9 +420,11 @@ export const has_wildcards = (input: string): boolean => input.includes(`*`)
 // Accepts both hyphen and comma separators.
 // Throws if any non-wildcard token is not a valid element symbol.
 export function parse_chemsys_with_wildcards(input: string): ChemsysWithWildcards {
-  const tokens = input.replace(/-/g, `,`).split(`,`).map((tok) => tok.trim()).filter(
-    Boolean,
-  )
+  const tokens = input
+    .replace(/-/g, `,`)
+    .split(`,`)
+    .map((tok) => tok.trim())
+    .filter(Boolean)
 
   const elements: ElementSymbol[] = []
   let wildcard_count = 0
@@ -544,9 +541,7 @@ export function matches_formula_wildcard(
         wildcard_counts.push(token.count)
       } else {
         // Merge counts for same element (e.g. "LiLi" -> Li with count 2)
-        const existing = explicit_requirements.find((req) =>
-          req.element === token.element
-        )
+        const existing = explicit_requirements.find((req) => req.element === token.element)
         if (existing) {
           existing.count += token.count
         } else {

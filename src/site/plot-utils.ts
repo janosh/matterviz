@@ -26,18 +26,11 @@ export function generate_exponential(count: number, lambda: number): number[] {
 }
 
 // Generate uniform distribution data
-export function generate_uniform(
-  count: number,
-  min_val: number,
-  max_val: number,
-): number[] {
+export function generate_uniform(count: number, min_val: number, max_val: number): number[] {
   if (count <= 0) throw new Error(`Count must be positive`)
   if (min_val >= max_val) throw new Error(`min_val must be less than max_val`)
 
-  return Array.from(
-    { length: count },
-    () => min_val + Math.random() * (max_val - min_val),
-  )
+  return Array.from({ length: count }, () => min_val + Math.random() * (max_val - min_val))
 }
 
 // Generate log-normal distribution data
@@ -81,9 +74,10 @@ export function generate_gamma(count: number, alpha: number, beta: number): numb
     if (frac_alpha > 0 && !is_integer) {
       const u1 = Math.max(Math.random(), Number.EPSILON)
       const u2 = Math.max(Math.random(), Number.EPSILON)
-      const beta_sample = Math.pow(u1, 1 / frac_alpha) /
+      const beta_sample =
+        Math.pow(u1, 1 / frac_alpha) /
         (Math.pow(u1, 1 / frac_alpha) + Math.pow(u2, 1 / (1 - frac_alpha)))
-      sum += -Math.log(Math.max(Math.random(), Number.EPSILON)) * beta_sample / beta
+      sum += (-Math.log(Math.max(Math.random(), Number.EPSILON)) * beta_sample) / beta
     }
 
     return sum

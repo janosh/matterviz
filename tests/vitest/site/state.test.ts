@@ -17,11 +17,7 @@ describe(`group_demo_routes`, () => {
   })
 
   test.each([
-    [
-      `standalone routes only`,
-      [`/about`, `/contact`],
-      [`/about`, `/contact`],
-    ],
+    [`standalone routes only`, [`/about`, `/contact`], [`/about`, `/contact`]],
     [
       `mixed standalone and grouped`,
       [`/about`, `/plot`, `/plot/color-bar`, `/contact`],

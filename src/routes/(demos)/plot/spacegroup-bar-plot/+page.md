@@ -11,7 +11,7 @@ Pass space group numbers (1-230) to visualize their distribution with automatic 
   import { SpacegroupBarPlot } from 'matterviz'
 
   // Sample data: space group numbers from a materials database
-  // deno-fmt-ignore
+  // oxfmt-ignore
   const diverse_materials = [
     221, 221, 221, // Cubic perovskites
     225, 225, 225, 225, 225, 229, 229, 229, // Cubic metals
@@ -49,7 +49,7 @@ The component also accepts space group symbols (Hermann-Mauguin notation):
 <script lang="ts">
   import { SpacegroupBarPlot } from 'matterviz'
 
-  // deno-fmt-ignore
+  // oxfmt-ignore
   const spacegroups_symbols = [
     'Fm-3m', 'Fm-3m', 'Fd-3m', 'Im-3m', 'Fm-3m', // Cubic
     'P63/mmc', 'P63/mmc', 'P63mc', 'P6/mmm', // Hexagonal
@@ -72,7 +72,7 @@ Display spacegroup distributions horizontally:
 <script lang="ts">
   import { SpacegroupBarPlot } from 'matterviz'
 
-  // deno-fmt-ignore
+  // oxfmt-ignore
   const high_symmetry = [
     225, 225, 225, 225, 225, 225, 225, 225, 225, 225, // Fm-3m
     229, 229, 229, 229, 229, 229, // Im-3m

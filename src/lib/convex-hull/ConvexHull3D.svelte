@@ -460,9 +460,8 @@
 
   // Re-render when important state changes
   $effect(() => {
-    // deno-fmt-ignore
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, text_color]
+    // oxfmt-ignore
+    void [show_hull_faces, color_mode, color_scale, show_stable_labels, show_unstable_labels, max_hull_dist_show_labels, camera.elevation, camera.azimuth, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, highlighted_entries, text_color] // track reactively
 
     render_once()
   })
@@ -817,7 +816,7 @@
       }
       if (hull_face_color_mode === `formation_energy`) {
         const avg_z = (tri.vertices[0].z + tri.vertices[1].z + tri.vertices[2].z) / 3
-        return energy_face_scale!(avg_z - min_z)
+        return energy_face_scale?.(avg_z - min_z) ?? hull_face_color
       }
       if (hull_face_color_mode === `dominant_element`) {
         // Find element vertex closest to face centroid in 2D ternary space
@@ -860,9 +859,9 @@
       // For other modes, use fixed opacity
       if (hull_face_color_mode === `uniform`) {
         // Build per-face linear gradient in screen space matching linear variation of formation energy
-        const a1 = norm_alpha!(p1.z)
-        const a2 = norm_alpha!(p2.z)
-        const a3 = norm_alpha!(p3.z)
+        const a1 = norm_alpha?.(p1.z) ?? 0
+        const a2 = norm_alpha?.(p2.z) ?? 0
+        const a3 = norm_alpha?.(p3.z) ?? 0
 
         // Solve a*x + b*y + c = alpha at the three projected vertices
         const x1 = proj1.x, y1 = proj1.y
@@ -878,20 +877,21 @@
             det
         }
 
-        // Helper to draw filled+stroked triangle (ctx guaranteed non-null by early return)
+        // Helper to draw filled+stroked triangle
         const draw_tri = (fill: string | CanvasGradient, stroke_alpha: number) => {
-          ctx!.save()
-          ctx!.beginPath()
-          ctx!.moveTo(proj1.x, proj1.y)
-          ctx!.lineTo(proj2.x, proj2.y)
-          ctx!.lineTo(proj3.x, proj3.y)
-          ctx!.closePath()
-          ctx!.fillStyle = fill
-          ctx!.fill()
-          ctx!.strokeStyle = add_alpha(face_color, Math.min(0.6, stroke_alpha))
-          ctx!.lineWidth = 1
-          ctx!.stroke()
-          ctx!.restore()
+          if (!ctx) return
+          ctx.save()
+          ctx.beginPath()
+          ctx.moveTo(proj1.x, proj1.y)
+          ctx.lineTo(proj2.x, proj2.y)
+          ctx.lineTo(proj3.x, proj3.y)
+          ctx.closePath()
+          ctx.fillStyle = fill
+          ctx.fill()
+          ctx.strokeStyle = add_alpha(face_color, Math.min(0.6, stroke_alpha))
+          ctx.lineWidth = 1
+          ctx.stroke()
+          ctx.restore()
         }
 
         // Gradient direction is the screen-space gradient of alpha

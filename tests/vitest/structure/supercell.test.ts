@@ -15,7 +15,10 @@ import { make_crystal } from '../setup'
 // Sample structure for testing
 const sample_structure = make_crystal(
   4,
-  [[`Ba`, [0, 0, 0], 2], [`Ti`, [0.5, 0.5, 0.5], 4]],
+  [
+    [`Ba`, [0, 0, 0], 2],
+    [`Ti`, [0.5, 0.5, 0.5], 4],
+  ],
   { charge: 0 },
 )
 
@@ -28,8 +31,14 @@ describe(`parse_supercell_scaling`, () => {
     [`2 3 1`, [2, 3, 1]],
     [`5`, [5, 5, 5]],
     [2, [2, 2, 2]],
-    [[2, 2, 2], [2, 2, 2]],
-    [[3, 1, 2], [3, 1, 2]],
+    [
+      [2, 2, 2],
+      [2, 2, 2],
+    ],
+    [
+      [3, 1, 2],
+      [3, 1, 2],
+    ],
   ])(`parses %s to %s`, (input, expected) => {
     expect(parse_supercell_scaling(input as string | number | Vec3)).toEqual(expected)
   })
@@ -65,13 +74,35 @@ describe(`parse_supercell_scaling`, () => {
 describe(`generate_lattice_points`, () => {
   test.each([
     [[1, 1, 1], [[0, 0, 0]]],
-    [[2, 1, 1], [[0, 0, 0], [1, 0, 0]]],
-    [[2, 2, 1], [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]]],
-    [[2, 2, 2], [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [
-      0,
-      1,
-      1,
-    ], [1, 1, 1]]],
+    [
+      [2, 1, 1],
+      [
+        [0, 0, 0],
+        [1, 0, 0],
+      ],
+    ],
+    [
+      [2, 2, 1],
+      [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [1, 1, 0],
+      ],
+    ],
+    [
+      [2, 2, 2],
+      [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [1, 1, 0],
+        [0, 0, 1],
+        [1, 0, 1],
+        [0, 1, 1],
+        [1, 1, 1],
+      ],
+    ],
   ])(`generates correct lattice points for %s`, (scaling, expected) => {
     const result = generate_lattice_points(scaling as Vec3)
     expect(result).toEqual(expected)
@@ -80,25 +111,57 @@ describe(`generate_lattice_points`, () => {
 })
 
 describe(`scale_lattice_matrix`, () => {
-  const diagonal_matrix: Matrix3x3 = [[2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 4.0]]
-  const non_diagonal_matrix: Matrix3x3 = [[2.0, 1.5, 0.5], [0.5, 3.0, 1.0], [
-    1.0,
-    0.5,
-    4.0,
-  ]]
+  const diagonal_matrix: Matrix3x3 = [
+    [2.0, 0.0, 0.0],
+    [0.0, 3.0, 0.0],
+    [0.0, 0.0, 4.0],
+  ]
+  const non_diagonal_matrix: Matrix3x3 = [
+    [2.0, 1.5, 0.5],
+    [0.5, 3.0, 1.0],
+    [1.0, 0.5, 4.0],
+  ]
 
   test.each([
     [[1, 1, 1], diagonal_matrix],
-    [[2, 1, 1], [[4.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 4.0]]],
-    [[2, 2, 2], [[4.0, 0.0, 0.0], [0.0, 6.0, 0.0], [0.0, 0.0, 8.0]]],
+    [
+      [2, 1, 1],
+      [
+        [4.0, 0.0, 0.0],
+        [0.0, 3.0, 0.0],
+        [0.0, 0.0, 4.0],
+      ],
+    ],
+    [
+      [2, 2, 2],
+      [
+        [4.0, 0.0, 0.0],
+        [0.0, 6.0, 0.0],
+        [0.0, 0.0, 8.0],
+      ],
+    ],
   ])(`scales diagonal matrix correctly for %s`, (scaling, expected) => {
     expect(scale_lattice_matrix(diagonal_matrix, scaling as Vec3)).toEqual(expected)
   })
 
   test.each([
     [[1, 1, 1], non_diagonal_matrix],
-    [[2, 1, 1], [[4.0, 3.0, 1.0], [0.5, 3.0, 1.0], [1.0, 0.5, 4.0]]],
-    [[2, 2, 2], [[4.0, 3.0, 1.0], [1.0, 6.0, 2.0], [2.0, 1.0, 8.0]]],
+    [
+      [2, 1, 1],
+      [
+        [4.0, 3.0, 1.0],
+        [0.5, 3.0, 1.0],
+        [1.0, 0.5, 4.0],
+      ],
+    ],
+    [
+      [2, 2, 2],
+      [
+        [4.0, 3.0, 1.0],
+        [1.0, 6.0, 2.0],
+        [2.0, 1.0, 8.0],
+      ],
+    ],
   ])(`scales non-diagonal matrix correctly for %s`, (scaling, expected) => {
     expect(scale_lattice_matrix(non_diagonal_matrix, scaling as Vec3)).toEqual(expected)
   })
@@ -113,10 +176,7 @@ describe(`make_supercell`, () => {
   ])(
     `creates supercell with scaling %s`,
     (scaling, expected_sites, expected_volume, expected_lattice) => {
-      const supercell = make_supercell(
-        sample_structure,
-        scaling as string | number | Vec3,
-      )
+      const supercell = make_supercell(sample_structure, scaling as string | number | Vec3)
 
       expect(supercell.sites).toHaveLength(expected_sites)
       expect(supercell.lattice.volume).toBe(expected_volume)
@@ -223,7 +283,11 @@ describe(`integration tests`, () => {
     const hexagonal_structure: Crystal = {
       ...sample_structure,
       lattice: {
-        matrix: [[3.0, 0.0, 0.0], [-1.5, 2.598, 0.0], [0.0, 0.0, 5.0]],
+        matrix: [
+          [3.0, 0.0, 0.0],
+          [-1.5, 2.598, 0.0],
+          [0.0, 0.0, 5.0],
+        ],
         pbc: [true, true, true],
         volume: 39.0,
         a: 3.0,
@@ -287,7 +351,7 @@ describe(`image atom behavior`, () => {
 
     // No distant negative coordinates in supercell
     const distant_negative = supercell_images.filter(([_idx, xyz]) =>
-      xyz.some((coord) => coord < -1.0)
+      xyz.some((coord) => coord < -1.0),
     )
     expect(distant_negative.length).toBe(0)
   })
@@ -298,14 +362,7 @@ describe(`oblique cell bug tests`, () => {
     // MgNiF6.cif structure with oblique lattice (56.455° angles)
     const mgf6_structure: Crystal = {
       lattice: {
-        matrix: math.cell_to_lattice_matrix(
-          5.2219,
-          5.2219,
-          5.2219,
-          56.455,
-          56.455,
-          56.455,
-        ),
+        matrix: math.cell_to_lattice_matrix(5.2219, 5.2219, 5.2219, 56.455, 56.455, 56.455),
         pbc: [true, true, true],
         volume: 92.43478979,
         a: 5.2219,
@@ -414,11 +471,10 @@ describe(`oblique cell bug tests`, () => {
           {
             species: [{ element: `H`, occu: 1.0, oxidation_state: 0 }],
             abc: [0.25, 0.25, 0.25],
-            xyz: math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(lattice_matrix), [
-              0.25,
-              0.25,
-              0.25,
-            ]),
+            xyz: math.mat3x3_vec3_multiply(
+              math.transpose_3x3_matrix(lattice_matrix),
+              [0.25, 0.25, 0.25],
+            ),
             label: `H1`,
             properties: {},
           },
@@ -463,7 +519,11 @@ describe(`performance tests`, () => {
     (atom_count, scaling, expected_atoms, timeout_ms) => {
       const test_structure = {
         lattice: {
-          matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
+          matrix: [
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+          ] satisfies Matrix3x3,
           a: 1,
           b: 1,
           c: 1,
@@ -475,8 +535,8 @@ describe(`performance tests`, () => {
         },
         sites: Array.from({ length: atom_count }, (_, idx) => ({
           species: [{ element: `H` as const, occu: 1.0, oxidation_state: 0 }],
-          abc: [idx % 10 / 10, (idx % 100) / 100, idx / 1000] as Vec3,
-          xyz: [idx % 10 / 10, (idx % 100) / 100, idx / 1000] as Vec3,
+          abc: [(idx % 10) / 10, (idx % 100) / 100, idx / 1000] as Vec3,
+          xyz: [(idx % 10) / 10, (idx % 100) / 100, idx / 1000] as Vec3,
           label: `H${idx}`,
           properties: {},
         })),

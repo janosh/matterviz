@@ -41,28 +41,31 @@ function make_trajectory(
   } = options
 
   const frames = Array.from({ length: frame_count }, (_, idx) => {
-    const atoms = typeof atoms_per_frame === `number`
-      ? atoms_per_frame
-      : atoms_per_frame[idx] ?? 3
+    const atoms =
+      typeof atoms_per_frame === `number` ? atoms_per_frame : (atoms_per_frame[idx] ?? 3)
     return make_frame(idx * 10, atoms)
   })
 
   const trajectory: TrajectoryType = { frames }
   if (total_frames !== undefined) trajectory.total_frames = total_frames
   if (with_indexed_frames) {
-    trajectory.indexed_frames = frames.map((_, idx): FrameIndex => ({
-      frame_number: idx,
-      byte_offset: idx * 1000,
-      estimated_size: 1000,
-    }))
+    trajectory.indexed_frames = frames.map(
+      (_, idx): FrameIndex => ({
+        frame_number: idx,
+        byte_offset: idx * 1000,
+        estimated_size: 1000,
+      }),
+    )
     trajectory.is_indexed = true
   }
   if (with_plot_metadata) {
-    trajectory.plot_metadata = frames.map((frame, idx): TrajectoryMetadata => ({
-      frame_number: idx,
-      step: frame.step,
-      properties: { energy: -idx * 0.1, temperature: 300 + idx },
-    }))
+    trajectory.plot_metadata = frames.map(
+      (frame, idx): TrajectoryMetadata => ({
+        frame_number: idx,
+        step: frame.step,
+        properties: { energy: -idx * 0.1, temperature: 300 + idx },
+      }),
+    )
   }
   return trajectory
 }
@@ -109,8 +112,9 @@ describe(`validate_trajectory`, () => {
       [
         (traj: TrajectoryType) => {
           traj.total_frames = 2
-          traj.indexed_frames =
-            make_trajectory(3, { with_indexed_frames: true }).indexed_frames
+          traj.indexed_frames = make_trajectory(3, {
+            with_indexed_frames: true,
+          }).indexed_frames
         },
         `frame_number >= total_frames`,
         1,
@@ -122,16 +126,13 @@ describe(`validate_trajectory`, () => {
         `is_indexed is true but indexed_frames is missing`,
         1,
       ],
-    ])(
-      `validates streaming property errors`,
-      (mutate, expected_substr, expected_count) => {
-        const traj = make_trajectory(3)
-        mutate(traj)
-        const errors = validate_trajectory(traj)
-        expect(errors.some((err) => err.includes(expected_substr))).toBe(true)
-        expect(errors).toHaveLength(expected_count)
-      },
-    )
+    ])(`validates streaming property errors`, (mutate, expected_substr, expected_count) => {
+      const traj = make_trajectory(3)
+      mutate(traj)
+      const errors = validate_trajectory(traj)
+      expect(errors.some((err) => err.includes(expected_substr))).toBe(true)
+      expect(errors).toHaveLength(expected_count)
+    })
   })
 
   describe(`indexed_frames validation`, () => {
@@ -164,7 +165,7 @@ describe(`validate_trajectory`, () => {
       indexed[1].frame_number = 0
       expect(
         validate_trajectory(traj).some((err) =>
-          err.includes(`frame_number (0) must be strictly increasing`)
+          err.includes(`frame_number (0) must be strictly increasing`),
         ),
       ).toBe(true)
     })
@@ -235,15 +236,12 @@ describe(`get_trajectory_stats`, () => {
     [`constant`, 5, { atoms_per_frame: 10 }, true, 10, undefined],
     [`variable`, 5, { atoms_per_frame: [3, 5, 4, 6, 3] }, false, undefined, [3, 6]],
     [`single frame`, 1, { atoms_per_frame: 5 }, true, 5, undefined],
-  ])(
-    `atom count: %s`,
-    (_desc, frame_count, options, const_count, total_atoms, range) => {
-      const stats = get_trajectory_stats(make_trajectory(frame_count, options))
-      expect(stats.constant_atom_count).toBe(const_count)
-      if (total_atoms !== undefined) expect(stats.total_atoms).toBe(total_atoms)
-      if (range !== undefined) expect(stats.atom_count_range).toEqual(range)
-    },
-  )
+  ])(`atom count: %s`, (_desc, frame_count, options, const_count, total_atoms, range) => {
+    const stats = get_trajectory_stats(make_trajectory(frame_count, options))
+    expect(stats.constant_atom_count).toBe(const_count)
+    if (total_atoms !== undefined) expect(stats.total_atoms).toBe(total_atoms)
+    if (range !== undefined) expect(stats.atom_count_range).toEqual(range)
+  })
 
   test(`streaming metadata`, () => {
     const traj = make_trajectory(5, {

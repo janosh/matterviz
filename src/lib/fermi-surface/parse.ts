@@ -170,7 +170,10 @@ function parse_bxsf(content: string): BandGridData {
 // Parse FRMSF format used by FermiSurfer
 // Format: https://mitsuaki1987.github.io/fermisurfer/en/_build/html/ops.html
 function parse_frmsf(content: string): BandGridData {
-  const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
   let line_idx = 0
 
   // Line 1: grid dimensions (ng[0] ng[1] ng[2])
@@ -201,9 +204,15 @@ function parse_frmsf(content: string): BandGridData {
   // Lines 4-6: reciprocal lattice vectors (in Bohr^-1, convert to Å^-1)
   const inv_bohr = 1 / constants.BOHR_TO_ANGSTROM
   const k_lattice: Matrix3x3 = [
-    parse_floats(lines[line_idx++]).slice(0, 3).map((val) => val * inv_bohr) as Vec3,
-    parse_floats(lines[line_idx++]).slice(0, 3).map((val) => val * inv_bohr) as Vec3,
-    parse_floats(lines[line_idx++]).slice(0, 3).map((val) => val * inv_bohr) as Vec3,
+    parse_floats(lines[line_idx++])
+      .slice(0, 3)
+      .map((val) => val * inv_bohr) as Vec3,
+    parse_floats(lines[line_idx++])
+      .slice(0, 3)
+      .map((val) => val * inv_bohr) as Vec3,
+    parse_floats(lines[line_idx++])
+      .slice(0, 3)
+      .map((val) => val * inv_bohr) as Vec3,
   ]
 
   const [nx, ny, nz] = k_grid
@@ -291,9 +300,7 @@ function is_valid_fermi_surface_data(obj: unknown): obj is FermiSurfaceData {
   if (!Array.isArray(data.isosurfaces)) return false
   if (!Array.isArray(data.k_lattice) || data.k_lattice.length !== 3) return false
   if (typeof data.fermi_energy !== `number`) return false
-  if (
-    data.reciprocal_cell !== `wigner_seitz` && data.reciprocal_cell !== `parallelepiped`
-  ) {
+  if (data.reciprocal_cell !== `wigner_seitz` && data.reciprocal_cell !== `parallelepiped`) {
     return false
   }
   if (!data.metadata || typeof data.metadata !== `object`) return false
@@ -308,9 +315,7 @@ function is_valid_fermi_surface_data(obj: unknown): obj is FermiSurfaceData {
 
 // Parse Matterviz/IFermi JSON format for Fermi surface data
 // Throws on invalid input; returns parsed data on success
-function parse_fermi_json(
-  content: string,
-): FermiSurfaceData | BandGridData {
+function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
   const data = JSON.parse(content)
 
   // Check if it's already in our FermiSurfaceData format with full validation
@@ -325,7 +330,8 @@ function parse_fermi_json(
 
   // Check if it's IFermi format (isosurfaces is an object keyed by band index)
   if (
-    data[`@class`] === `FermiSurface` && data.isosurfaces &&
+    data[`@class`] === `FermiSurface` &&
+    data.isosurfaces &&
     typeof data.isosurfaces === `object`
   ) {
     return parse_ifermi_surface(data)
@@ -340,7 +346,8 @@ function parse_fermi_json(
       data.k_grid.length !== 3 ||
       !Array.isArray(data.k_lattice) ||
       data.k_lattice.length !== 3
-    ) throw new Error(`Invalid BandGridData JSON: malformed required fields`)
+    )
+      throw new Error(`Invalid BandGridData JSON: malformed required fields`)
     return data as BandGridData
   }
 
@@ -371,9 +378,7 @@ function parse_fermi_json(
     )
   }
 
-  throw new Error(
-    `Unrecognized JSON format: missing required fields for Fermi surface data`,
-  )
+  throw new Error(`Unrecognized JSON format: missing required fields for Fermi surface data`)
 }
 
 // Helper type for IFermi Isosurface format
@@ -389,16 +394,22 @@ interface IFermiIsosurface {
 // Parse IFermi's JSON output format
 function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   const isosurfaces_obj = data.isosurfaces as Record<string, IFermiIsosurface[]>
-  const reciprocal_space = data.reciprocal_space as {
-    reciprocal_lattice?: number[][]
-    vertices?: number[][]
-    faces?: number[][]
-  } | undefined
+  const reciprocal_space = data.reciprocal_space as
+    | {
+        reciprocal_lattice?: number[][]
+        vertices?: number[][]
+        faces?: number[][]
+      }
+    | undefined
 
   // Extract reciprocal lattice
   const k_lattice: Matrix3x3 = reciprocal_space?.reciprocal_lattice
     ? (reciprocal_space.reciprocal_lattice as Matrix3x3)
-    : [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    : [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ]
 
   // Convert IFermi isosurfaces to our format
   const isosurfaces: Isosurface[] = []
@@ -535,10 +546,7 @@ export function parse_fermi_file(
   const trimmed = content.trim()
 
   // BXSF format detection
-  if (
-    trimmed.includes(`BEGIN_BLOCK_BANDGRID_3D`) ||
-    trimmed.includes(`BEGIN_BANDGRID_3D`)
-  ) {
+  if (trimmed.includes(`BEGIN_BLOCK_BANDGRID_3D`) || trimmed.includes(`BEGIN_BANDGRID_3D`)) {
     try {
       return parse_bxsf(content)
     } catch (error) {
@@ -558,10 +566,7 @@ export function parse_fermi_file(
   // FRMSF format detection (starts with grid dimensions)
   const first_line = trimmed.split(/\r?\n/)[0]
   const first_tokens = first_line.split(/\s+/).filter(Boolean)
-  if (
-    first_tokens.length === 3 &&
-    first_tokens.every((t) => /^\d+$/.test(t))
-  ) {
+  if (first_tokens.length === 3 && first_tokens.every((t) => /^\d+$/.test(t))) {
     try {
       return parse_frmsf(content)
     } catch (error) {

@@ -132,11 +132,7 @@ describe(`resolve_boundary`, () => {
     [`number shorthand`, 42 as FillBoundary, [42, 42, 42]],
     [`constant`, { type: `constant`, value: 50 } as FillBoundary, [50, 50, 50]],
     [`series`, { type: `series`, series_idx: 0 } as FillBoundary, [10, 20, 30]],
-    [`function`, { type: `function`, fn: (c: number) => c * 5 } as FillBoundary, [
-      5,
-      10,
-      15,
-    ]],
+    [`function`, { type: `function`, fn: (c: number) => c * 5 } as FillBoundary, [5, 10, 15]],
     [`data`, { type: `data`, values: [100, 200, 300] } as FillBoundary, [100, 200, 300]],
     [`axis`, { type: `axis`, axis: `y`, value: 0 } as FillBoundary, [0, 0, 0]],
   ])(`resolves %s boundary`, (_, boundary, expected) => {
@@ -281,13 +277,7 @@ describe(`clamp_for_log_scale`, () => {
   })
 
   it(`clamps non-positive x values when x-axis is log`, () => {
-    const result = clamp_for_log_scale(
-      [-1, 0, 1],
-      [10, 20, 30],
-      [5, 15, 25],
-      `linear`,
-      `log`,
-    )
+    const result = clamp_for_log_scale([-1, 0, 1], [10, 20, 30], [5, 15, 25], `linear`, `log`)
     expect(result.x).toEqual([LOG_EPSILON, LOG_EPSILON, 1])
   })
 
@@ -343,20 +333,18 @@ describe(`generate_fill_path`, () => {
     expect(path).toMatch(/Z$/)
   })
 
-  it.each(
-    [
-      `linear`,
-      `monotoneX`,
-      `monotoneY`,
-      `step`,
-      `stepBefore`,
-      `stepAfter`,
-      `basis`,
-      `cardinal`,
-      `catmullRom`,
-      `natural`,
-    ] as const,
-  )(`supports %s curve type`, (curve_type) => {
+  it.each([
+    `linear`,
+    `monotoneX`,
+    `monotoneY`,
+    `step`,
+    `stepBefore`,
+    `stepAfter`,
+    `basis`,
+    `cardinal`,
+    `catmullRom`,
+    `natural`,
+  ] as const)(`supports %s curve type`, (curve_type) => {
     const data = [
       { x: 0, y1: 0, y2: 10 },
       { x: 50, y1: 5, y2: 15 },
@@ -419,8 +407,28 @@ describe(`convert_error_band_to_fill_region`, () => {
 
 describe(`is_fill_gradient`, () => {
   it.each<[string, unknown, boolean]>([
-    [`linear gradient`, { type: `linear`, stops: [[0, `red`], [1, `blue`]] }, true],
-    [`radial gradient`, { type: `radial`, stops: [[0, `white`], [1, `black`]] }, true],
+    [
+      `linear gradient`,
+      {
+        type: `linear`,
+        stops: [
+          [0, `red`],
+          [1, `blue`],
+        ],
+      },
+      true,
+    ],
+    [
+      `radial gradient`,
+      {
+        type: `radial`,
+        stops: [
+          [0, `white`],
+          [1, `black`],
+        ],
+      },
+      true,
+    ],
     [`string color`, `steelblue`, false],
     [`undefined`, undefined, false],
     [`null`, null, false],
@@ -466,12 +474,28 @@ describe(`Fill type structures`, () => {
   })
 
   it.each<[string, FillGradient]>([
-    [`linear`, { type: `linear`, angle: 45, stops: [[0, `red`], [1, `blue`]] }],
-    [`radial`, {
-      type: `radial`,
-      center: { x: 0.5, y: 0.5 },
-      stops: [[0, `white`], [1, `black`]],
-    }],
+    [
+      `linear`,
+      {
+        type: `linear`,
+        angle: 45,
+        stops: [
+          [0, `red`],
+          [1, `blue`],
+        ],
+      },
+    ],
+    [
+      `radial`,
+      {
+        type: `radial`,
+        center: { x: 0.5, y: 0.5 },
+        stops: [
+          [0, `white`],
+          [1, `black`],
+        ],
+      },
+    ],
   ])(`FillGradient supports %s type`, (type, gradient) => {
     expect(gradient.type).toBe(type)
     expect(gradient.stops.length).toBe(2)
@@ -509,7 +533,13 @@ describe(`Fill type structures`, () => {
       x_range: [0, 10],
       y_range: [null, 100],
       where: (_x, y1, y2) => y1 > y2,
-      fill: { type: `linear`, stops: [[0, `red`], [1, `blue`]] },
+      fill: {
+        type: `linear`,
+        stops: [
+          [0, `red`],
+          [1, `blue`],
+        ],
+      },
       fill_opacity: 0.5,
       curve: `monotoneX`,
       z_index: `below-lines`,

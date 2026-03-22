@@ -30,15 +30,17 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await expect(container.locator(`canvas`).first()).toBeVisible()
     const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
     await expect(bands_svg).toBeVisible({ timeout: 10_000 })
-    await expect(bands_svg.locator(`path[fill="none"]`).first())
-      .toBeVisible({ timeout: 5000 })
+    await expect(bands_svg.locator(`path[fill="none"]`).first()).toBeVisible({
+      timeout: 5000,
+    })
 
     // DOS SVG - find by looking for the second SVG with axes
     const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
     await expect(dos_svg).toBeVisible({ timeout: 10_000 })
     await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 5000 })
-    await expect(dos_svg.locator(`path[fill="none"]`).first())
-      .toBeVisible({ timeout: 5000 })
+    await expect(dos_svg.locator(`path[fill="none"]`).first()).toBeVisible({
+      timeout: 5000,
+    })
 
     // Check for high-symmetry labels in bands
     const x_labels = await bands_svg.locator(`g.x-axis text`).allTextContents()
@@ -55,9 +57,11 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Custom bands styling (red, thick lines)
     const styling_container = page.locator(`[data-testid="bz-bands-dos-bands-styling"]`)
-    const first_path = styling_container.locator(`svg:has(g.x-axis)`).first().locator(
-      `path[fill="none"]`,
-    ).first()
+    const first_path = styling_container
+      .locator(`svg:has(g.x-axis)`)
+      .first()
+      .locator(`path[fill="none"]`)
+      .first()
     const stroke = await first_path.evaluate((el) => getComputedStyle(el).stroke)
     expect(stroke).toContain(`rgb(255, 0, 0)`)
   })
@@ -65,13 +69,15 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
   test(`handles independent y-axes and custom BZ appearance`, async ({ page }) => {
     // Independent axes with mismatched ranges
     const indep_container = page.locator(`[data-testid="bz-bands-dos-independent-axes"]`)
-    const bands_y = await indep_container.locator(`svg:has(g.x-axis)`).first().locator(
-      `g.y-axis text`,
-    )
+    const bands_y = await indep_container
+      .locator(`svg:has(g.x-axis)`)
+      .first()
+      .locator(`g.y-axis text`)
       .allTextContents()
-    const dos_y = await indep_container.locator(`svg:has(g.y-axis)`).nth(1).locator(
-      `g.y-axis text`,
-    )
+    const dos_y = await indep_container
+      .locator(`svg:has(g.y-axis)`)
+      .nth(1)
+      .locator(`g.y-axis text`)
       .allTextContents()
     expect(bands_y).not.toEqual(dos_y)
 
@@ -132,13 +138,15 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
   test(`shared y-axis synchronizes bands and DOS ticks`, async ({ page }) => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
-    const bands_y = await container.locator(`svg:has(g.x-axis)`).first().locator(
-      `g.y-axis text`,
-    )
+    const bands_y = await container
+      .locator(`svg:has(g.x-axis)`)
+      .first()
+      .locator(`g.y-axis text`)
       .allTextContents()
-    const dos_y = await container.locator(`svg:has(g.y-axis)`).nth(1).locator(
-      `g.y-axis text`,
-    )
+    const dos_y = await container
+      .locator(`svg:has(g.y-axis)`)
+      .nth(1)
+      .locator(`g.y-axis text`)
       .allTextContents()
 
     expect(bands_y.some((tick) => dos_y.includes(tick))).toBe(true)
@@ -169,15 +177,13 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     await expect(container.locator(`canvas`).first()).toBeVisible()
 
-    const grid_template = await container
-      .locator(`.bands-dos-brillouin`)
-      .evaluate((el) => {
-        const style = getComputedStyle(el)
-        return {
-          areas: style.gridTemplateAreas,
-          columns: style.gridTemplateColumns,
-        }
-      })
+    const grid_template = await container.locator(`.bands-dos-brillouin`).evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        areas: style.gridTemplateAreas,
+        columns: style.gridTemplateColumns,
+      }
+    })
 
     // Tablet layout should have bands spanning top, bz and dos below
     expect(grid_template.areas).toMatch(/bands.*bands/)
@@ -194,15 +200,13 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     await expect(container.locator(`canvas`).first()).toBeVisible()
 
-    const grid_template = await container
-      .locator(`.bands-dos-brillouin`)
-      .evaluate((el) => {
-        const style = getComputedStyle(el)
-        return {
-          areas: style.gridTemplateAreas,
-          columns: style.gridTemplateColumns,
-        }
-      })
+    const grid_template = await container.locator(`.bands-dos-brillouin`).evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        areas: style.gridTemplateAreas,
+        columns: style.gridTemplateColumns,
+      }
+    })
 
     // Phone layout: vertical stack
     const area_lines = grid_template.areas.split(`"`)
@@ -308,17 +312,20 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
       await page.mouse.up()
 
       // Wait for canvas to repaint after drag
-      await page.waitForFunction(() =>
-        new Promise((resolve) => requestAnimationFrame(() => resolve(true)))
+      await page.waitForFunction(
+        () => new Promise((resolve) => requestAnimationFrame(() => resolve(true))),
       )
     }
     expect(Buffer.compare(initial, await bz_canvas.screenshot())).not.toBe(0)
 
     // Bands should still be hoverable
-    await bands_svg.locator(`path[fill="none"]`).first().hover({
-      position: { x: 50, y: 50 },
-      force: true,
-    })
+    await bands_svg
+      .locator(`path[fill="none"]`)
+      .first()
+      .hover({
+        position: { x: 50, y: 50 },
+        force: true,
+      })
     await expect(bands_svg).toBeVisible()
   })
 
@@ -345,8 +352,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Wait for hover state to update - reference lines with stroke-dasharray should appear
     await expect(async () => {
-      const current_dashed_count = await bands_svg.locator(`line[stroke-dasharray]`)
-        .count()
+      const current_dashed_count = await bands_svg.locator(`line[stroke-dasharray]`).count()
       // Reference line should be added on hover (in addition to any existing fermi level lines)
       expect(current_dashed_count).toBeGreaterThan(initial_dashed_count)
     }).toPass({ timeout: 3000 })

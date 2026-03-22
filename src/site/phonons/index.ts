@@ -24,11 +24,15 @@ function calc_recip_distance(q1: math.Vec3, q2: math.Vec3, lattice_T: math.Matri
 // Transform raw phonon band structure to expected format
 function transform_band_structure(raw: RawPhononBandStructure): PhononBandStructure {
   // Guard against invalid/incomplete data
-  if (
-    !raw || !raw.recip_lattice?.matrix || !raw.qpoints || !raw.bands || !raw.labels_dict
-  ) throw new Error(`Invalid or incomplete phonon band structure data`)
+  if (!raw || !raw.recip_lattice?.matrix || !raw.qpoints || !raw.bands || !raw.labels_dict)
+    throw new Error(`Invalid or incomplete phonon band structure data`)
 
-  const { recip_lattice: { matrix: lattice }, qpoints, bands, labels_dict } = raw
+  const {
+    recip_lattice: { matrix: lattice },
+    qpoints,
+    bands,
+    labels_dict,
+  } = raw
   const [n_qpoints, n_bands] = [qpoints.length, bands.length]
 
   // Guard against empty data
@@ -41,9 +45,9 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
   const band_lens = bands.map((band) => band.length)
   if (new Set(band_lens).size !== 1) {
     throw new Error(
-      `all bands should each have length ${n_qpoints}, received lengths=${
-        [...new Set(band_lens)].join(`, `)
-      }`,
+      `all bands should each have length ${n_qpoints}, received lengths=${[
+        ...new Set(band_lens),
+      ].join(`, `)}`,
     )
   }
 
@@ -52,9 +56,10 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
   const lattice_T = math.transpose_3x3_matrix(lattice)
   const distance: number[] = []
   qpoints.forEach((q_pt, idx) => {
-    distance[idx] = idx === 0
-      ? 0
-      : distance[idx - 1] + calc_recip_distance(q_pt, qpoints[idx - 1], lattice_T)
+    distance[idx] =
+      idx === 0
+        ? 0
+        : distance[idx - 1] + calc_recip_distance(q_pt, qpoints[idx - 1], lattice_T)
   })
 
   // Find labeled points by matching coordinates with labels_dict
@@ -94,7 +99,8 @@ function transform_band_structure(raw: RawPhononBandStructure): PhononBandStruct
         })
       }
     }
-  } else { // Optional head segment (if path doesn't start at a labeled point)
+  } else {
+    // Optional head segment (if path doesn't start at a labeled point)
     if (sorted_indices[0] > 0) {
       const name = `0-${labeled_indices.get(sorted_indices[0])}`
       branches.push({ start_index: 0, end_index: sorted_indices[0], name })

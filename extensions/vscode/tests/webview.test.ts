@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { base64_to_array_buffer, setup_vscode_download } from '../src/webview/main'
 
-declare global { // download function added by VSCode integration
+declare global {
+  // download function added by VSCode integration
   var download: (content: string | Blob, filename: string, contentType: string) => void
 }
 
@@ -12,33 +13,16 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
     [``, ``, 0], // Empty string
     [`QQ==`, `A`, 1], // Single character
     [`QUI=`, `AB`, 2], // Two characters
-  ])(
-    `base64_to_array_buffer: %s → %s (%i bytes)`,
-    (base64, expected, byte_length) => {
-      const result = base64_to_array_buffer(base64)
-      expect(result).toBeInstanceOf(ArrayBuffer)
-      expect(result.byteLength).toBe(byte_length)
-      expect(new TextDecoder().decode(result)).toBe(expected)
-    },
-  )
+  ])(`base64_to_array_buffer: %s → %s (%i bytes)`, (base64, expected, byte_length) => {
+    const result = base64_to_array_buffer(base64)
+    expect(result).toBeInstanceOf(ArrayBuffer)
+    expect(result.byteLength).toBe(byte_length)
+    expect(new TextDecoder().decode(result)).toBe(expected)
+  })
 
   test(`handles ASE trajectory file header correctly`, () => {
     const ase_header = new Uint8Array([
-      0x2d,
-      0x20,
-      0x6f,
-      0x66,
-      0x20,
-      0x55,
-      0x6c,
-      0x6d,
-      0x41,
-      0x53,
-      0x45,
-      0x2d,
-      0x54,
-      0x72,
-      0x61,
+      0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d, 0x41, 0x53, 0x45, 0x2d, 0x54, 0x72, 0x61,
       0x6a,
     ])
     const result = base64_to_array_buffer(btoa(String.fromCharCode(...ase_header)))
@@ -47,7 +31,7 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
   })
 
   test(`preserves byte order and handles performance`, () => {
-    const test_bytes = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD, 0xFC])
+    const test_bytes = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0xff, 0xfe, 0xfd, 0xfc])
     const result = base64_to_array_buffer(btoa(String.fromCharCode(...test_bytes)))
     expect(Array.from(new Uint8Array(result))).toEqual(Array.from(test_bytes))
 

@@ -58,19 +58,16 @@ function compute_e_form(entry: PhaseData, el_refs: Record<string, PhaseData>): n
 }
 
 function hash_points(points_3d: number[][]): string {
-  return points_3d.map((point) => point.map((value) => value.toFixed(4)).join(`,`)).join(
-    `;`,
-  )
+  return points_3d.map((point) => point.map((value) => value.toFixed(4)).join(`,`)).join(`;`)
 }
 
 const pd_entries = load_gzip_json<PhaseData[]>(`pd_entries_test.json.gz`)
 const ytos_entries = load_gzip_json<PhaseData[]>(`ytos_entries.json.gz`)
 
-const dataset_cases: { name: string; entries: PhaseData[]; default_min_limit: number }[] =
-  [
-    { name: `li_fe_o`, entries: pd_entries, default_min_limit: -25 },
-    { name: `ytos`, entries: ytos_entries, default_min_limit: -50 },
-  ]
+const dataset_cases: { name: string; entries: PhaseData[]; default_min_limit: number }[] = [
+  { name: `li_fe_o`, entries: pd_entries, default_min_limit: -25 },
+  { name: `ytos`, entries: ytos_entries, default_min_limit: -50 },
+]
 
 describe(`chempot performance gates`, () => {
   test.each(dataset_cases)(

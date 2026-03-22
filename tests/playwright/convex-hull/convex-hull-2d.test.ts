@@ -17,10 +17,10 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     // so shorter timeouts are appropriate for 100 entries
     test.setTimeout(30000)
 
-    await page.goto(
-      `/test/convex-hull-performance?dim=2d&count=100&click_selection=false`,
-      { waitUntil: `networkidle`, timeout: 15000 },
-    )
+    await page.goto(`/test/convex-hull-performance?dim=2d&count=100&click_selection=false`, {
+      waitUntil: `networkidle`,
+      timeout: 15000,
+    })
     const diagram = page.locator(`.scatter.convex-hull-2d`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     const markers = diagram.locator(`path.marker`)
@@ -120,15 +120,16 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     expect(count_after).toBeLessThanOrEqual(count_before)
   })
 
-  test(`stability mode 'Above hull' toggle hides unstable points (info pane)`, async ({ page }) => {
+  test(`stability mode 'Above hull' toggle hides unstable points (info pane)`, async ({
+    page,
+  }) => {
     const pd2d = page.locator(`.binary-grid .scatter.convex-hull-2d`).first()
     await expect(pd2d).toBeVisible()
 
     // Open info pane and controls
     await dom_click(pd2d.locator(`.info-btn`))
     const info = pd2d.locator(`.draggable-pane.convex-hull-info-pane`)
-    await expect(info.getByText(`Convex Hull Stats`, { exact: false }))
-      .toBeVisible()
+    await expect(info.getByText(`Convex Hull Stats`, { exact: false })).toBeVisible()
     await dom_click(pd2d.locator(`.legend-controls-btn`))
     const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()

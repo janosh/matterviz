@@ -53,7 +53,7 @@ export function toggle_group_visibility<Metadata extends StrRecord = StrRecord>(
   const new_visibility = !all_visible
 
   return series.map((srs, idx) =>
-    idx_set.has(idx) ? { ...srs, visible: new_visibility } : srs
+    idx_set.has(idx) ? { ...srs, visible: new_visibility } : srs,
   )
 }
 
@@ -72,7 +72,7 @@ export function handle_legend_double_click<Metadata extends StrRecord = StrRecor
   const check_series = prev_visibility ? series.slice(0, prev_visibility.length) : series
   const is_isolated = check_series.every((srs, srs_idx) => {
     const in_group = label ? srs.label === label : srs_idx === idx
-    return in_group ? srs.visible ?? true : !(srs.visible ?? true)
+    return in_group ? (srs.visible ?? true) : !(srs.visible ?? true)
   })
 
   // Restore from isolation
@@ -81,15 +81,15 @@ export function handle_legend_double_click<Metadata extends StrRecord = StrRecor
       series: series.map((srs, srs_idx) =>
         srs_idx < prev_visibility.length && current[srs_idx] !== prev_visibility[srs_idx]
           ? { ...srs, visible: prev_visibility[srs_idx] }
-          : srs
+          : srs,
       ),
       previous_visibility: null,
     }
   }
 
   // Isolate series
-  const new_prev = prev_visibility ??
-    (current.filter(Boolean).length > 1 ? [...current] : null)
+  const new_prev =
+    prev_visibility ?? (current.filter(Boolean).length > 1 ? [...current] : null)
   return {
     series: series.map((srs, srs_idx) => {
       const in_group = label ? srs.label === label : srs_idx === idx

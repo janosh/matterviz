@@ -21,14 +21,7 @@ where = ["."]
 include = ["matterviz_dash_components"]
 
 [tool.setuptools.package-data]
-matterviz_dash_components = [
-  "*.css",
-  "*.js",
-  "*.json",
-  "*.map",
-  "*.txt",
-  "py.typed",
-]
+matterviz_dash_components = ["*.css", "*.js", "*.json", "*.map", "*.txt", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -38,4 +31,4 @@ python_functions = ["test_*"]
 markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
 
 [tool.ruff]
-extend-exclude = ["**/typed.py"]  # auto-generated file
+extend-exclude = ["**/typed.py"] # auto-generated file

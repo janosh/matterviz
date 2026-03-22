@@ -171,20 +171,17 @@ describe(`handle_legend_double_click`, () => {
   test.each([
     { new_vis: true, desc: `keeps true visibility` },
     { new_vis: false, desc: `keeps false visibility` },
-  ])(
-    `handles new series added after isolation - $desc`,
-    ({ new_vis }) => {
-      const series: DataSeries[] = [
-        { x: [1], y: [2], label: `A`, visible: false },
-        { x: [3], y: [4], label: `B`, visible: true },
-        { x: [5], y: [6], label: `C`, visible: false },
-        { x: [7], y: [8], label: `D`, visible: new_vis },
-      ]
-      const result = handle_legend_double_click(series, 1, [true, true, true])
-      expect(result.series.map((srs) => srs.visible)).toEqual([true, true, true, new_vis])
-      expect(result.previous_visibility).toBe(null)
-    },
-  )
+  ])(`handles new series added after isolation - $desc`, ({ new_vis }) => {
+    const series: DataSeries[] = [
+      { x: [1], y: [2], label: `A`, visible: false },
+      { x: [3], y: [4], label: `B`, visible: true },
+      { x: [5], y: [6], label: `C`, visible: false },
+      { x: [7], y: [8], label: `D`, visible: new_vis },
+    ]
+    const result = handle_legend_double_click(series, 1, [true, true, true])
+    expect(result.series.map((srs) => srs.visible)).toEqual([true, true, true, new_vis])
+    expect(result.previous_visibility).toBe(null)
+  })
 
   test(`isolates series by label`, () => {
     const series: DataSeries[] = [

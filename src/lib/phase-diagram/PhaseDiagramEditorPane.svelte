@@ -53,8 +53,8 @@
       try {
         build_diagram(updated as DiagramInput)
         diagram_input = updated as DiagramInput
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
         show_rejection(msg)
       }
       return

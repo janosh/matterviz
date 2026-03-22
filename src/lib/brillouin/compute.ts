@@ -17,7 +17,7 @@ const normalize = (vec: Vec3): Vec3 => {
 // Check if rotation matrix is identity
 function is_identity_rotation(rot: Matrix3x3): boolean {
   return rot.every((row, idx) =>
-    row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL)
+    row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL),
   )
 }
 
@@ -44,11 +44,14 @@ export function extract_point_group_from_operations(
 
 // Multiply two 3x3 matrices: C = A · B
 function mat3x3_multiply(A: Matrix3x3, B: Matrix3x3): Matrix3x3 {
-  const result: Matrix3x3 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+  const result: Matrix3x3 = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 3; col++) {
-      result[row][col] = A[row][0] * B[0][col] + A[row][1] * B[1][col] +
-        A[row][2] * B[2][col]
+      result[row][col] = A[row][0] * B[0][col] + A[row][1] * B[1][col] + A[row][2] * B[2][col]
     }
   }
   return result
@@ -124,12 +127,14 @@ class VertexDeduplicator {
         for (let dz = -1; dz <= 1; dz++) {
           const neighbors = this.grid.get(`${base_x + dx},${base_y + dy},${base_z + dz}`)
           if (
-            neighbors?.some(([v1, v2, v3]) =>
-              Math.abs(v1 - vertex[0]) < TOL &&
-              Math.abs(v2 - vertex[1]) < TOL &&
-              Math.abs(v3 - vertex[2]) < TOL
+            neighbors?.some(
+              ([v1, v2, v3]) =>
+                Math.abs(v1 - vertex[0]) < TOL &&
+                Math.abs(v2 - vertex[1]) < TOL &&
+                Math.abs(v3 - vertex[2]) < TOL,
             )
-          ) return true
+          )
+            return true
         }
       }
     }
@@ -205,7 +210,9 @@ export function generate_bz_vertices(
         // Count how many planes this vertex is beyond (with early termination)
         let beyond_count = 0
         for (let p_idx = 0; p_idx < normals.length; p_idx++) {
-          const dot = vertex[0] * normals[p_idx][0] + vertex[1] * normals[p_idx][1] +
+          const dot =
+            vertex[0] * normals[p_idx][0] +
+            vertex[1] * normals[p_idx][1] +
             vertex[2] * normals[p_idx][2]
           if (dot > distances[p_idx] + TOL) {
             beyond_count++
@@ -262,13 +269,11 @@ export function compute_convex_hull(
     const vert: Vec3 = [pos.getX(idx_vertex), pos.getY(idx_vertex), pos.getZ(idx_vertex)]
     const existing_idx = unique_verts.findIndex(
       (u) =>
-        Math.abs(u[0] - vert[0]) < TOL && Math.abs(u[1] - vert[1]) < TOL &&
+        Math.abs(u[0] - vert[0]) < TOL &&
+        Math.abs(u[1] - vert[1]) < TOL &&
         Math.abs(u[2] - vert[2]) < TOL,
     )
-    vert_map.set(
-      idx_vertex,
-      existing_idx === -1 ? (unique_verts.push(vert) - 1) : existing_idx,
-    )
+    vert_map.set(idx_vertex, existing_idx === -1 ? unique_verts.push(vert) - 1 : existing_idx)
   }
 
   // Build faces with deduplicated vertex indices
@@ -279,11 +284,13 @@ export function compute_convex_hull(
     const tri = idx
       ? [idx.getX(idx_face * 3), idx.getX(idx_face * 3 + 1), idx.getX(idx_face * 3 + 2)]
       : [idx_face * 3, idx_face * 3 + 1, idx_face * 3 + 2]
-    faces.push(tri.map((j) => {
-      const mapped = vert_map.get(j)
-      if (mapped === undefined) throw new Error(`Vertex ${j} not mapped`)
-      return mapped
-    }))
+    faces.push(
+      tri.map((j) => {
+        const mapped = vert_map.get(j)
+        if (mapped === undefined) throw new Error(`Vertex ${j} not mapped`)
+        return mapped
+      }),
+    )
   }
 
   // Compute face normals and build edge-to-face adjacency
@@ -308,7 +315,8 @@ export function compute_convex_hull(
   const edges: Vec2[] = []
 
   for (const [key, adj] of edge_to_faces) {
-    const is_sharp = adj.length === 1 ||
+    const is_sharp =
+      adj.length === 1 ||
       (adj.length === 2 &&
         math.dot(face_normals[adj[0]], face_normals[adj[1]]) < cos_threshold)
     if (is_sharp) edges.push(key.split(`,`).map(Number) as Vec2)
@@ -363,9 +371,7 @@ const IBZ_TEST_POINTS: Vec3[] = [
 // Compute clipping planes from point group operations.
 // For each non-identity rotation, we define a plane that selects one representative
 // from each equivalence class.
-export function compute_ibz_clipping_planes(
-  point_group_ops: Matrix3x3[],
-): ClippingPlane[] {
+export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): ClippingPlane[] {
   const planes: ClippingPlane[] = []
   const seen_normals = new Set<string>()
 
@@ -471,7 +477,7 @@ export function compute_irreducible_bz(
   // Convert fractional rotations to Cartesian k-space rotations
   // R_cart = B · W^{-T} · B^{-1}, where B is k_lattice and W^{-T} is inverse-transpose
   const cartesian_ops = point_group_ops.map((W) =>
-    fractional_to_cartesian_rotation(W, bz_data.k_lattice)
+    fractional_to_cartesian_rotation(W, bz_data.k_lattice),
   )
   const clipping_planes = compute_ibz_clipping_planes(cartesian_ops)
 
@@ -503,9 +509,7 @@ export function compute_irreducible_bz(
     }
     // If both orientations failed, vertices unchanged - continue with best effort
     if (!clipped_successfully) {
-      console.warn(
-        `IBZ clipping: plane orientation failed, continuing with current geometry`,
-      )
+      console.warn(`IBZ clipping: plane orientation failed, continuing with current geometry`)
     }
   }
 

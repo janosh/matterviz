@@ -4,21 +4,16 @@ import { describe, expect, test } from 'vitest'
 import { doc_query } from './setup'
 
 describe(`StatusMessage`, () => {
-  test.each([``, undefined])(
-    `renders nothing when message is $message`,
-    (message) => {
-      mount(StatusMessage, { target: document.body, props: { message } })
-      expect(document.querySelector(`.status-message`)).toBeFalsy()
-    },
-  )
+  test.each([``, undefined])(`renders nothing when message is $message`, (message) => {
+    mount(StatusMessage, { target: document.body, props: { message } })
+    expect(document.querySelector(`.status-message`)).toBeFalsy()
+  })
 
-  test.each(
-    [
-      { type: `info`, role: `status`, aria_live: `polite` },
-      { type: `error`, role: `alert`, aria_live: `assertive` },
-      { type: `warning`, role: `status`, aria_live: `polite` },
-    ] as const,
-  )(
+  test.each([
+    { type: `info`, role: `status`, aria_live: `polite` },
+    { type: `error`, role: `alert`, aria_live: `assertive` },
+    { type: `warning`, role: `status`, aria_live: `polite` },
+  ] as const)(
     `renders $type message with correct ARIA attributes`,
     ({ type, role, aria_live }) => {
       mount(StatusMessage, {

@@ -41,7 +41,11 @@ function create_mock_fermi_data(band_indices: number[] = [0, 1]): FermiSurfaceDa
       band_index,
       spin: null,
     })),
-    k_lattice: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3,
+    k_lattice: [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ] as Matrix3x3,
     fermi_energy: 0,
     reciprocal_cell: `wigner_seitz`,
     metadata: {
@@ -114,7 +118,11 @@ describe(`FermiSlice`, () => {
   test(`on_error callback when compute_fermi_slice throws`, async () => {
     const mock_error = vi.fn()
     const fermi_data = create_mock_fermi_data([0])
-    fermi_data.k_lattice = [[0, 0, 0], [0, 0, 0], [0, 0, 0]] // degenerate
+    fermi_data.k_lattice = [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ] // degenerate
     mount(FermiSlice, {
       target: document.body,
       props: { fermi_data, miller_indices: [1, 0, 0], on_error: mock_error },
@@ -137,9 +145,8 @@ describe(`FermiSlice`, () => {
   test(`children snippet receives export_svg and slice_data`, async () => {
     let snippet_called = false
     let export_svg_fn: (() => string | null) | undefined
-    let received_slice_data: FermiSliceData | null = `not-set` as unknown as
-      | FermiSliceData
-      | null
+    let received_slice_data: FermiSliceData | null =
+      `not-set` as unknown as FermiSliceData | null
 
     const children_snippet = createRawSnippet<
       [{ slice_data: FermiSliceData | null; export_svg: () => string | null }]

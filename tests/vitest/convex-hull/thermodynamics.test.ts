@@ -22,12 +22,7 @@ import {
   process_hull_entries,
   process_hull_for_stats,
 } from '$lib/convex-hull/thermodynamics'
-import type {
-  ConvexHullTriangle,
-  PhaseData,
-  Point2D,
-  Point3D,
-} from '$lib/convex-hull/types'
+import type { ConvexHullTriangle, PhaseData, Point2D, Point3D } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 // Test fixture factory - derives total energy from energy_per_atom and composition
@@ -90,8 +85,10 @@ describe(`compute_e_form_per_atom`, () => {
   const el_refs = { Fe: make_phase({ Fe: 1 }, -4.0), O: make_phase({ O: 1 }, -2.0) }
 
   test(`calculates formation energy: FeO at -7.0 eV/atom → e_form = -4.0`, () => {
-    expect(compute_e_form_per_atom(make_phase({ Fe: 1, O: 1 }, -7.0), el_refs))
-      .toBeCloseTo(-4.0, 10)
+    expect(compute_e_form_per_atom(make_phase({ Fe: 1, O: 1 }, -7.0), el_refs)).toBeCloseTo(
+      -4.0,
+      10,
+    )
   })
 
   test.each([
@@ -138,18 +135,34 @@ describe(`2D Convex Hull`, () => {
     ]
     const hull = compute_lower_hull_2d(points)
     expect(hull).toHaveLength(3)
-    expect(hull).toEqual([{ x: 0, y: 0 }, { x: 0.5, y: -0.5 }, { x: 1, y: 0 }])
+    expect(hull).toEqual([
+      { x: 0, y: 0 },
+      { x: 0.5, y: -0.5 },
+      { x: 1, y: 0 },
+    ])
   })
 
   test.each([
     [[{ x: 0.5, y: 0 }], 1, `single point`],
-    [[{ x: 0, y: 0 }, { x: 0.5, y: -0.25 }, { x: 1, y: -0.5 }], 2, `collinear (≥2)`],
+    [
+      [
+        { x: 0, y: 0 },
+        { x: 0.5, y: -0.25 },
+        { x: 1, y: -0.5 },
+      ],
+      2,
+      `collinear (≥2)`,
+    ],
   ])(`compute_lower_hull_2d handles %s`, (points, min_length) => {
     expect(compute_lower_hull_2d(points).length).toBeGreaterThanOrEqual(min_length)
   })
 
   describe(`interpolate_hull_2d`, () => {
-    const hull: Point2D[] = [{ x: 0, y: 0 }, { x: 0.5, y: -0.5 }, { x: 1, y: 0 }]
+    const hull: Point2D[] = [
+      { x: 0, y: 0 },
+      { x: 0.5, y: -0.5 },
+      { x: 1, y: 0 },
+    ]
 
     test.each([
       [0.25, -0.25],
@@ -159,12 +172,12 @@ describe(`2D Convex Hull`, () => {
       expect(interpolate_hull_2d(hull, x_val)).toBeCloseTo(expected, 10)
     })
 
-    test.each([[-0.5, 0], [1.5, 0]])(
-      `clamps x=%d to endpoint y=%d`,
-      (x_val, expected) => {
-        expect(interpolate_hull_2d(hull, x_val)).toBe(expected)
-      },
-    )
+    test.each([
+      [-0.5, 0],
+      [1.5, 0],
+    ])(`clamps x=%d to endpoint y=%d`, (x_val, expected) => {
+      expect(interpolate_hull_2d(hull, x_val)).toBe(expected)
+    })
 
     test.each([
       [[], `empty hull`],
@@ -188,12 +201,27 @@ describe(`3D Convex Hull`, () => {
   })
 
   test.each([
-    [[{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }], `<4 points`],
-    [[{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, {
-      x: 1,
-      y: 1,
-      z: 0,
-    }], `coplanar`],
+    [
+      [
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: 0, y: 1, z: 0 },
+      ],
+      `<4 points`,
+    ],
+    [
+      [
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: 0, y: 1, z: 0 },
+        {
+          x: 1,
+          y: 1,
+          z: 0,
+        },
+      ],
+      `coplanar`,
+    ],
   ])(`compute_quickhull_triangles returns empty for %s`, (points) => {
     expect(compute_quickhull_triangles(points)).toHaveLength(0)
   })
@@ -212,11 +240,17 @@ describe(`3D Convex Hull`, () => {
   })
 
   test(`e_hull_at_xy interpolates correctly`, () => {
-    const triangles: ConvexHullTriangle[] = [{
-      vertices: [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 0.5, y: 1, z: -1 }],
-      normal: { x: 0, y: 0.707, z: -0.707 },
-      centroid: { x: 0.5, y: 1 / 3, z: -1 / 3 },
-    }]
+    const triangles: ConvexHullTriangle[] = [
+      {
+        vertices: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 0.5, y: 1, z: -1 },
+        ],
+        normal: { x: 0, y: 0.707, z: -0.707 },
+        centroid: { x: 0.5, y: 1 / 3, z: -1 / 3 },
+      },
+    ]
     const models = build_lower_hull_model(triangles)
     expect(e_hull_at_xy(models, 0.5, 1 / 3)).toBeCloseTo(-1 / 3, 5)
     expect(e_hull_at_xy(models, 10, 10)).toBeNull()
@@ -226,11 +260,17 @@ describe(`3D Convex Hull`, () => {
     [{ x: 0.5, y: 0.3, z: 0 }, 0, `on hull`],
     [{ x: 0.5, y: 0.3, z: 0.5 }, 0.5, `above hull`],
   ])(`compute_e_above_hull_for_points: %s → %d`, (point, expected) => {
-    const triangles: ConvexHullTriangle[] = [{
-      vertices: [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 0.5, y: 1, z: 0 }],
-      normal: { x: 0, y: 0, z: -1 },
-      centroid: { x: 0.5, y: 1 / 3, z: 0 },
-    }]
+    const triangles: ConvexHullTriangle[] = [
+      {
+        vertices: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 0.5, y: 1, z: 0 },
+        ],
+        normal: { x: 0, y: 0, z: -1 },
+        centroid: { x: 0.5, y: 1 / 3, z: 0 },
+      },
+    ]
     const models = build_lower_hull_model(triangles)
     expect(compute_e_above_hull_for_points([point], models)[0]).toBeCloseTo(expected, 10)
   })
@@ -273,8 +313,9 @@ describe(`4D Convex Hull`, () => {
     ]
     const hull = compute_lower_hull_4d(points)
     expect(hull.length).toBeGreaterThan(0)
-    expect(compute_e_above_hull_4d([{ x: 0.25, y: 0.25, z: 0.25, w: 0 }], hull)[0])
-      .toBeGreaterThanOrEqual(0)
+    expect(
+      compute_e_above_hull_4d([{ x: 0.25, y: 0.25, z: 0.25, w: 0 }], hull)[0],
+    ).toBeGreaterThanOrEqual(0)
   })
 })
 
@@ -346,24 +387,21 @@ describe(`calculate_e_above_hull`, () => {
     ]
     expect(
       calculate_e_above_hull(make_phase({ Li: 1 }, -1.9, { entry_id: `Li-test` }), refs),
-    )
-      .toBeCloseTo(0, 5)
+    ).toBeCloseTo(0, 5)
     expect(
-      calculate_e_above_hull(
-        make_phase({ Li: 1 }, -1.5, { entry_id: `Li-unstable` }),
-        refs,
-      ),
-    )
-      .toBeCloseTo(0.4, 5)
+      calculate_e_above_hull(make_phase({ Li: 1 }, -1.5, { entry_id: `Li-unstable` }), refs),
+    ).toBeCloseTo(0.4, 5)
   })
 
   test(`quinary: interior point above hull has positive distance`, () => {
     const refs = [`Li`, `Na`, `K`, `Rb`, `Cs`].map((el) => make_quinary_elem(el))
-    refs.push(make_phase(
-      { Li: 1, Na: 1, K: 1, Rb: 1, Cs: 1 } as Partial<Record<ElementSymbol, number>>,
-      -1.5,
-      { entry_id: `stable-interior` },
-    ))
+    refs.push(
+      make_phase(
+        { Li: 1, Na: 1, K: 1, Rb: 1, Cs: 1 } as Partial<Record<ElementSymbol, number>>,
+        -1.5,
+        { entry_id: `stable-interior` },
+      ),
+    )
     const unstable = make_phase(
       { Li: 1, Na: 1, K: 1, Rb: 1, Cs: 1 } as Partial<Record<ElementSymbol, number>>,
       -0.8,
@@ -376,19 +414,14 @@ describe(`calculate_e_above_hull`, () => {
     { id: `Li-1`, energy: -1.0, expected: 0 },
     { id: `Li-2`, energy: -0.5, expected: 0.5 },
     { id: `Na-1`, energy: -1.0, expected: 0 },
-  ])(
-    `quinary batch: $id at e=$energy → e_above=$expected`,
-    ({ id, energy, expected }) => {
-      const refs = [`Li`, `Na`, `K`, `Rb`, `Cs`].map((el) => make_quinary_elem(el))
-      const el = id.split(`-`)[0] as ElementSymbol
-      const entry = make_phase(
-        { [el]: 1 } as Partial<Record<ElementSymbol, number>>,
-        energy,
-        { entry_id: id },
-      )
-      expect(calculate_e_above_hull(entry, refs)).toBeCloseTo(expected, 5)
-    },
-  )
+  ])(`quinary batch: $id at e=$energy → e_above=$expected`, ({ id, energy, expected }) => {
+    const refs = [`Li`, `Na`, `K`, `Rb`, `Cs`].map((el) => make_quinary_elem(el))
+    const el = id.split(`-`)[0] as ElementSymbol
+    const entry = make_phase({ [el]: 1 } as Partial<Record<ElementSymbol, number>>, energy, {
+      entry_id: id,
+    })
+    expect(calculate_e_above_hull(entry, refs)).toBeCloseTo(expected, 5)
+  })
 
   test(`batch mode`, () => {
     const entries = [
@@ -446,9 +479,7 @@ describe(`get_convex_hull_stats`, () => {
 
   test(`includes quaternary when max_arity=4`, () => {
     const entries = [make_phase({ Li: 1, Fe: 1, P: 1, O: 4 }, -10.0)]
-    expect(get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], 4)?.quaternary).toBe(
-      1,
-    )
+    expect(get_convex_hull_stats(entries, [`Li`, `Fe`, `P`, `O`], 4)?.quaternary).toBe(1)
   })
 
   test(`sorts chemical system by electronegativity`, () => {
@@ -507,8 +538,10 @@ describe(`Edge cases`, () => {
   test(`formation energy with explicit energy_per_atom`, () => {
     const refs = [make_phase({ Fe: 1 }, -4.0), make_phase({ O: 1 }, -2.0)]
     const compound = make_phase({ Fe: 1, O: 1 }, -3.5)
-    expect(compute_e_form_per_atom(compound, find_lowest_energy_unary_refs(refs)))
-      .toBeCloseTo(-0.5, 10)
+    expect(compute_e_form_per_atom(compound, find_lowest_energy_unary_refs(refs))).toBeCloseTo(
+      -0.5,
+      10,
+    )
   })
 
   test(`pre-computed e_form_per_atom is used`, () => {
@@ -555,11 +588,7 @@ describe(`process_hull_for_stats`, () => {
     // Unary refs are on the hull
     expect(result?.stable_entries.length).toBeGreaterThanOrEqual(2)
     // FeO at -2.5 eV/atom is above the tie-line (-3.0) → unstable
-    expect(
-      result?.unstable_entries.some(
-        (entry) => entry.entry_id === `FeO`,
-      ),
-    ).toBe(true)
+    expect(result?.unstable_entries.some((entry) => entry.entry_id === `FeO`)).toBe(true)
     // Phase stats should be populated
     expect(result?.phase_stats?.total).toBe(3)
     expect(result?.phase_stats?.unary).toBe(2)
@@ -592,8 +621,7 @@ describe(`process_hull_for_stats`, () => {
     const compound = [
       ...(result?.stable_entries ?? []),
       ...(result?.unstable_entries ?? []),
-    ]
-      .find((entry) => Object.keys(entry.composition).length === 2)
+    ].find((entry) => Object.keys(entry.composition).length === 2)
     expect(compound?.e_form_per_atom).toBe(-99)
   })
 })

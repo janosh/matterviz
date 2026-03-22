@@ -2,10 +2,10 @@
 // Glob handles both .json (dev) and .json.gz (production)
 import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 
-const imports = import.meta.glob<PymatgenCompleteDos>(
-  [`./*.json`, `./*.json.gz`],
-  { eager: true, import: `default` },
-)
+const imports = import.meta.glob<PymatgenCompleteDos>([`./*.json`, `./*.json.gz`], {
+  eager: true,
+  import: `default`,
+})
 
 // Extract files by pattern matching
 const entries = Object.entries(imports)

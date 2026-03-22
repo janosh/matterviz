@@ -14,16 +14,14 @@ describe(`PeriodicTable`, () => {
     // Restore console.error if it was mocked
     vi.restoreAllMocks()
   })
-  test.each([[true, 120], [false, 118]] as const)(
-    `renders lanth_act_tiles=%s -> %s tiles`,
-    (show_lanth_act, expected_tiles) => {
-      const props = show_lanth_act ? {} : { lanth_act_tiles: [] }
-      mount(PeriodicTable, { target: document.body, props })
-      expect(document.querySelectorAll(`.element-tile`).length).toBe(
-        expected_tiles,
-      )
-    },
-  )
+  test.each([
+    [true, 120],
+    [false, 118],
+  ] as const)(`renders lanth_act_tiles=%s -> %s tiles`, (show_lanth_act, expected_tiles) => {
+    const props = show_lanth_act ? {} : { lanth_act_tiles: [] }
+    mount(PeriodicTable, { target: document.body, props })
+    expect(document.querySelectorAll(`.element-tile`).length).toBe(expected_tiles)
+  })
 
   test(`empty tiles are rendered`, () => {
     mount(PeriodicTable, { target: document.body })
@@ -50,9 +48,7 @@ describe(`PeriodicTable`, () => {
     element_tile?.dispatchEvent(mouseenter)
     await tick()
 
-    expect(doc_query(`img[alt="Hydrogen"]`)?.style.gridArea).toBe(
-      `9/1/span 2/span 2`,
-    )
+    expect(doc_query(`img[alt="Hydrogen"]`)?.style.gridArea).toBe(`9/1/span 2/span 2`)
 
     element_tile?.dispatchEvent(mouseleave)
     await tick()
@@ -103,15 +99,11 @@ describe(`PeriodicTable`, () => {
     const li = doc_query(`ul.options > li`)
     li.dispatchEvent(new MouseEvent(`mouseup`))
 
-    const selected_text = doc_query(
-      `div.multiselect > ul.selected`,
-    ).textContent?.trim()
+    const selected_text = doc_query(`div.multiselect > ul.selected`).textContent?.trim()
     if (selected_text && ELEM_HEATMAP_LABELS[selected_text]) {
       const heatmap_key = ELEM_HEATMAP_LABELS[selected_text]
 
-      props.heatmap_values = element_data.map(
-        (elem) => elem[heatmap_key] as number,
-      )
+      props.heatmap_values = element_data.map((elem) => elem[heatmap_key] as number)
       // Check that a background color has been applied (exact color may vary based on color scale)
       const bg_color = doc_query(`div.element-tile`).style.backgroundColor
       expect(bg_color).not.toBe(`transparent`)
@@ -119,34 +111,25 @@ describe(`PeriodicTable`, () => {
     }
   })
 
-  test.each(
-    [
-      [[0], [0.5], [1], [2]], // inner_transition_metal_offset values
-      [[`0`], [`10px`], [`1cqw`]], // gap values
-    ] as const,
-  )(`styling props work correctly`, (...args) => {
+  test.each([
+    [[0], [0.5], [1], [2]], // inner_transition_metal_offset values
+    [[`0`], [`10px`], [`1cqw`]], // gap values
+  ] as const)(`styling props work correctly`, (...args) => {
     const values = args[0]
     values.forEach((value) => {
-      const props = typeof value === `string`
-        ? { gap: value }
-        : { inner_transition_metal_offset: value }
+      const props =
+        typeof value === `string` ? { gap: value } : { inner_transition_metal_offset: value }
       mount(PeriodicTable, { target: document.body, props })
 
       if (typeof value === `string`) {
         expect(
-          (
-            getComputedStyle(
-              doc_query(`.periodic-table`) as Element,
-            ) as CSSStyleDeclaration
-          ).gap,
+          (getComputedStyle(doc_query(`.periodic-table`) as Element) as CSSStyleDeclaration)
+            .gap,
         ).toBe(value)
       } else if (value > 0) {
         expect(
-          (
-            getComputedStyle(
-              doc_query(`div.spacer`) as Element,
-            ) as CSSStyleDeclaration
-          ).gridRow,
+          (getComputedStyle(doc_query(`div.spacer`) as Element) as CSSStyleDeclaration)
+            .gridRow,
         ).toBe(`8`)
       } else {
         expect(document.querySelector(`div.spacer`)).toBeNull()
@@ -161,20 +144,16 @@ describe(`PeriodicTable`, () => {
         target: document.body,
         props: { active_category },
       })
-      expect(document.querySelectorAll(`.element-tile.active`).length).toBe(
-        expected_active,
-      )
+      expect(document.querySelectorAll(`.element-tile.active`).length).toBe(expected_active)
     },
   )
 
-  test.each(
-    [
-      [[`H`, `He`, `Li`], 3, `element symbols`],
-      [[element_data[0], element_data[1]], 2, `ChemicalElement objects`],
-      [[`H`, element_data[1], `Li`], 3, `mixed symbols and objects`],
-      [[], 0, `empty array`],
-    ] as const,
-  )(
+  test.each([
+    [[`H`, `He`, `Li`], 3, `element symbols`],
+    [[element_data[0], element_data[1]], 2, `ChemicalElement objects`],
+    [[`H`, element_data[1], `Li`], 3, `mixed symbols and objects`],
+    [[], 0, `empty array`],
+  ] as const)(
     `active_elements=%s highlights %s tiles (%s)`,
     (active_elements, expected_active, _description) => {
       mount(PeriodicTable, {
@@ -203,40 +182,31 @@ describe(`PeriodicTable`, () => {
     expect(active_tiles.length).toBeGreaterThanOrEqual(6)
   })
 
-  test.each(
-    [
-      [[...Array(200).keys()], `length should be 118 or less`],
-      [[...Array(119).keys()], `length should be 118 or less`],
-      [{ he: 0 }, `keys should be element symbols`],
-      [{ foo: 42 }, `keys should be element symbols`],
-    ] as const,
-  )(
-    `error handling for invalid heatmap_values`,
-    (heatmap_values, error_msg) => {
-      const orig_console_error = console.error
-      console.error = vi.fn()
+  test.each([
+    [[...Array(200).keys()], `length should be 118 or less`],
+    [[...Array(119).keys()], `length should be 118 or less`],
+    [{ he: 0 }, `keys should be element symbols`],
+    [{ foo: 42 }, `keys should be element symbols`],
+  ] as const)(`error handling for invalid heatmap_values`, (heatmap_values, error_msg) => {
+    const orig_console_error = console.error
+    console.error = vi.fn()
 
-      mount(PeriodicTable, {
-        target: document.body,
-        props: { heatmap_values: heatmap_values as never },
-      })
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { heatmap_values: heatmap_values as never },
+    })
 
-      expect(console.error).toHaveBeenCalledOnce()
-      expect(console.error).toBeCalledWith(
-        expect.stringContaining(error_msg),
-      )
+    expect(console.error).toHaveBeenCalledOnce()
+    expect(console.error).toBeCalledWith(expect.stringContaining(error_msg))
 
-      console.error = orig_console_error
-    },
-  )
+    console.error = orig_console_error
+  })
 
-  test.each(
-    [
-      [`element-category`, `#ff8c00`], // now returns actual color from DEFAULT_CATEGORY_COLORS
-      [`#ff0000`, `#ff0000`],
-      [`#666666`, `#666666`],
-    ] as const,
-  )(`missing_color=%s -> %s`, (missing_color, expected_bg) => {
+  test.each([
+    [`element-category`, `#ff8c00`], // now returns actual color from DEFAULT_CATEGORY_COLORS
+    [`#ff0000`, `#ff0000`],
+    [`#666666`, `#666666`],
+  ] as const)(`missing_color=%s -> %s`, (missing_color, expected_bg) => {
     mount(PeriodicTable, {
       target: document.body,
       props: { heatmap_values: [0, 0, 0, 0], missing_color },
@@ -245,38 +215,29 @@ describe(`PeriodicTable`, () => {
     expect(tile?.style.backgroundColor).toBe(expected_bg)
   })
 
-  test.each(
-    [
-      [{ values: [undefined, null, false, 10.5], missing_color: `#123456`, log: false }],
-      [{ values: [0, -5, 1, 10], missing_color: `#abcdef`, log: true }],
-    ] as const,
-  )(
-    `missing_color edge cases`,
-    ({ values, missing_color, log }) => {
-      mount(PeriodicTable, {
-        target: document.body,
-        props: { heatmap_values: values as never, missing_color, log },
-      })
-      const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
+  test.each([
+    [{ values: [undefined, null, false, 10.5], missing_color: `#123456`, log: false }],
+    [{ values: [0, -5, 1, 10], missing_color: `#abcdef`, log: true }],
+  ] as const)(`missing_color edge cases`, ({ values, missing_color, log }) => {
+    mount(PeriodicTable, {
+      target: document.body,
+      props: { heatmap_values: values as never, missing_color, log },
+    })
+    const tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
 
-      // First two tiles should use missing color
-      expect(tiles[0].style.backgroundColor).toBe(missing_color)
-      expect(tiles[1].style.backgroundColor).toBe(missing_color)
+    // First two tiles should use missing color
+    expect(tiles[0].style.backgroundColor).toBe(missing_color)
+    expect(tiles[1].style.backgroundColor).toBe(missing_color)
 
-      // Later tiles with valid values should use color scale
-      const valid_tile_idx = log ? 2 : 3
-      expect(tiles[valid_tile_idx].style.backgroundColor).not.toBe(
-        missing_color,
-      )
-    },
-  )
+    // Later tiles with valid values should use color scale
+    const valid_tile_idx = log ? 2 : 3
+    expect(tiles[valid_tile_idx].style.backgroundColor).not.toBe(missing_color)
+  })
 
-  test.each(
-    [
-      [true, null, null, `disabled prevents hover`],
-      [false, null, `H`, `enabled allows hover`],
-    ] as const,
-  )(`disabled=%s (%s)`, (disabled, initial, expected, _description) => {
+  test.each([
+    [true, null, null, `disabled prevents hover`],
+    [false, null, `H`, `enabled allows hover`],
+  ] as const)(`disabled=%s (%s)`, (disabled, initial, expected, _description) => {
     let active_element: ChemicalElement | null = initial
     mount(PeriodicTable, {
       target: document.body,
@@ -290,23 +251,17 @@ describe(`PeriodicTable`, () => {
         },
       },
     })
-    ;(document.querySelector(`.element-tile`) as HTMLElement).dispatchEvent(
-      mouseenter,
-    )
+    ;(document.querySelector(`.element-tile`) as HTMLElement).dispatchEvent(mouseenter)
     expect((active_element as ChemicalElement | null)?.symbol || null).toBe(expected)
   })
 
-  test.each(
-    [
-      [`symbol`, `A`, `/h`],
-      [{ H: `/hydrogen`, He: `/helium` }, `A`, `/hydrogen`],
-      [null, `DIV`, null],
-    ] as const,
-  )(`links=%o -> %s tag, %s href`, (links, expected_tag, expected_href) => {
+  test.each([
+    [`symbol`, `A`, `/h`],
+    [{ H: `/hydrogen`, He: `/helium` }, `A`, `/hydrogen`],
+    [null, `DIV`, null],
+  ] as const)(`links=%o -> %s tag, %s href`, (links, expected_tag, expected_href) => {
     mount(PeriodicTable, { target: document.body, props: { links: links as never } })
-    const hydrogen_tile = document.querySelector(
-      `.element-tile`,
-    ) as HTMLElement
+    const hydrogen_tile = document.querySelector(`.element-tile`) as HTMLElement
     expect(hydrogen_tile.tagName).toBe(expected_tag)
     expect(hydrogen_tile.getAttribute(`href`)).toBe(expected_href)
   })
@@ -324,40 +279,36 @@ describe(`PeriodicTable`, () => {
     mount(PeriodicTable, { target: document.body, props })
 
     const hydrogen_tile = document.querySelector(`.element-tile`) as HTMLElement
-    const helium_tile = document.querySelectorAll(
-      `.element-tile`,
-    )[1] as HTMLElement
+    const helium_tile = document.querySelectorAll(`.element-tile`)[1] as HTMLElement
 
     // Color overrides work
     expect(hydrogen_tile.style.backgroundColor).toBe(`#ff0000`)
     expect(helium_tile.style.backgroundColor).toBe(`#00ff00`)
 
     // Should have lanthanide/actinide tiles
-    expect(document.querySelectorAll(`.element-tile`).length).toBeGreaterThan(
-      118,
-    )
+    expect(document.querySelectorAll(`.element-tile`).length).toBeGreaterThan(118)
   })
 
-  test.each([[true, true], [false, false]] as const)(
-    `tooltip=%s -> %s`,
-    async (tooltip, should_show) => {
-      mount(PeriodicTable, { target: document.body, props: { tooltip } })
+  test.each([
+    [true, true],
+    [false, false],
+  ] as const)(`tooltip=%s -> %s`, async (tooltip, should_show) => {
+    mount(PeriodicTable, { target: document.body, props: { tooltip } })
 
-      const hydrogen_tile = document.querySelector(`.element-tile`) as HTMLElement
-      hydrogen_tile.dispatchEvent(mouseenter)
+    const hydrogen_tile = document.querySelector(`.element-tile`) as HTMLElement
+    hydrogen_tile.dispatchEvent(mouseenter)
+    await tick()
+
+    const tooltip_el = document.querySelector(`.tooltip`)
+    expect(!!tooltip_el).toBe(should_show)
+
+    if (should_show) {
+      expect(tooltip_el?.textContent).toContain(`Hydrogen`)
+      hydrogen_tile.dispatchEvent(mouseleave)
       await tick()
-
-      const tooltip_el = document.querySelector(`.tooltip`)
-      expect(!!tooltip_el).toBe(should_show)
-
-      if (should_show) {
-        expect(tooltip_el?.textContent).toContain(`Hydrogen`)
-        hydrogen_tile.dispatchEvent(mouseleave)
-        await tick()
-        expect(document.querySelector(`.tooltip`)).toBeFalsy()
-      }
-    },
-  )
+      expect(document.querySelector(`.tooltip`)).toBeFalsy()
+    }
+  })
 
   test(`tooltip has pointer-events:none for stability`, async () => {
     // Regression test: pointer-events:none prevents tooltip flashing on mouse move
@@ -475,12 +426,18 @@ describe(`PeriodicTable`, () => {
 
     test.each([
       [
-        [[`#ff0000`, `#00ff00`], [`#0000ff`, `#ffff00`]],
+        [
+          [`#ff0000`, `#00ff00`],
+          [`#0000ff`, `#ffff00`],
+        ],
         [`diagonal-top`, `diagonal-bottom`],
         `two colors`,
       ],
       [
-        [[`#ff0000`, `#00ff00`, `#0000ff`], [`#ffff00`, `#ff00ff`, `#00ffff`]],
+        [
+          [`#ff0000`, `#00ff00`, `#0000ff`],
+          [`#ffff00`, `#ff00ff`, `#00ffff`],
+        ],
         [`horizontal-top`, `horizontal-middle`, `horizontal-bottom`],
         `three colors`,
       ],
@@ -501,9 +458,7 @@ describe(`PeriodicTable`, () => {
         },
       })
 
-      segments.forEach((cls) =>
-        expect(document.querySelector(`.segment.${cls}`)).toBeTruthy()
-      )
+      segments.forEach((cls) => expect(document.querySelector(`.segment.${cls}`)).toBeTruthy())
 
       const multi_tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
       expect(multi_tiles[0].style.backgroundColor).toBe(`transparent`)
@@ -528,14 +483,8 @@ describe(`PeriodicTable`, () => {
     })
 
     test.each([
-      [
-        `color_overrides take precedence`,
-        { color_overrides: { H: `purple`, He: `orange` } },
-      ],
-      [
-        `show_values displays colors as text`,
-        { tile_props: { show_values: true } },
-      ],
+      [`color_overrides take precedence`, { color_overrides: { H: `purple`, He: `orange` } }],
+      [`show_values displays colors as text`, { tile_props: { show_values: true } }],
     ])(`%s`, (_desc, extra_props) => {
       mount(PeriodicTable, {
         target: document.body,
@@ -604,9 +553,7 @@ describe(`PeriodicTable`, () => {
       const bar = colorbar?.querySelector(`.bar`)
 
       // Structure: TableInset > ColorBar > bar with gradient
-      expect(document.querySelector(`.periodic-table`)?.firstElementChild).toBe(
-        table_inset,
-      )
+      expect(document.querySelector(`.periodic-table`)?.firstElementChild).toBe(table_inset)
       expect(colorbar).toBeTruthy()
       expect((bar as HTMLElement)?.style.background).toContain(`linear-gradient`)
 
@@ -654,8 +601,7 @@ describe(`PeriodicTable`, () => {
         tiles[0].style.backgroundColor,
         tiles[1].style.backgroundColor,
         tiles[2].style.backgroundColor,
-      ])
-        .toEqual([`#ff0000`, `#00ff00`, `#0000ff`])
+      ]).toEqual([`#ff0000`, `#00ff00`, `#0000ff`])
     })
 
     test(`respects color_bar_props.title and positioning styles`, () => {
@@ -682,8 +628,9 @@ describe(`PeriodicTable`, () => {
         props: { heatmap_values: [1, 10, 100, 1000], log: true },
       })
 
-      const tick_text = Array.from(document.querySelectorAll(`.tick-label`))
-        .map((el) => el.textContent?.trim())
+      const tick_text = Array.from(document.querySelectorAll(`.tick-label`)).map((el) =>
+        el.textContent?.trim(),
+      )
 
       expect(tick_text.some((t) => t === `1`)).toBeTruthy()
       expect(tick_text.some((t) => t && t.includes(`1`) && t.length > 1)).toBeTruthy()

@@ -11,17 +11,20 @@ const make_grid = (
   nz: number,
   fill_fn: (ix: number, iy: number, iz: number) => number,
 ): number[][][] =>
-  Array.from(
-    { length: nx },
-    (_, ix) =>
-      Array.from({ length: ny }, (_, iy) =>
-        Array.from({ length: nz }, (_, iz) => fill_fn(ix, iy, iz))),
+  Array.from({ length: nx }, (_, ix) =>
+    Array.from({ length: ny }, (_, iy) =>
+      Array.from({ length: nz }, (_, iz) => fill_fn(ix, iy, iz)),
+    ),
   )
 
 // Helper: create a minimal VolumetricData for testing
 function make_volume(
   grid: number[][][],
-  lattice: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+  lattice: Matrix3x3 = [
+    [5, 0, 0],
+    [0, 5, 0],
+    [0, 0, 5],
+  ],
   periodic = true,
 ): VolumetricData {
   const nx = grid.length
@@ -109,8 +112,7 @@ describe(`sample_hkl_slice`, () => {
     const low = expect_slice(sample_hkl_slice(z_gradient, [0, 0, 1], 0.2))
     const high = expect_slice(sample_hkl_slice(z_gradient, [0, 0, 1], 0.8))
     // Mean of low slice should be less than mean of high slice (z-gradient increases with z)
-    const mean = (data: Float64Array) =>
-      data.reduce((sum, val) => sum + val, 0) / data.length
+    const mean = (data: Float64Array) => data.reduce((sum, val) => sum + val, 0) / data.length
     expect(mean(low.data)).toBeLessThan(mean(high.data))
   })
 
@@ -146,18 +148,29 @@ describe(`sample_hkl_slice`, () => {
   })
 
   test(`works with non-cubic lattice`, () => {
-    const hex_lattice: Matrix3x3 = [[2.5, 0, 0], [1.25, 2.165, 0], [0, 0, 6.66]]
-    const vol = make_volume(make_grid(4, 4, 4, (ix) => ix), hex_lattice)
+    const hex_lattice: Matrix3x3 = [
+      [2.5, 0, 0],
+      [1.25, 2.165, 0],
+      [0, 0, 6.66],
+    ]
+    const vol = make_volume(
+      make_grid(4, 4, 4, (ix) => ix),
+      hex_lattice,
+    )
     const result = expect_slice(sample_hkl_slice(vol, [0, 0, 1], 0.5))
     expect(result.data.length).toBe(result.width * result.height)
   })
 
   test(`non-periodic volume with out-of-bounds plane returns zeros at edges`, () => {
-    const vol = make_volume(make_grid(4, 4, 4, () => 5), [[5, 0, 0], [0, 5, 0], [
-      0,
-      0,
-      5,
-    ]], false)
+    const vol = make_volume(
+      make_grid(4, 4, 4, () => 5),
+      [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ],
+      false,
+    )
     const result = expect_slice(sample_hkl_slice(vol, [0, 0, 1], 0.5))
     // Interior should have value 5, edges may have 0 if they extend beyond [0,1]
     const nonzero = result.data.filter((val) => val > 0).length

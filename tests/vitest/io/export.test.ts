@@ -17,13 +17,10 @@ vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
 
 // === Shared Helpers ===
 
-function make_mock_canvas(
-  toBlob_impl?: (cb: BlobCallback) => void,
-): HTMLCanvasElement {
+function make_mock_canvas(toBlob_impl?: (cb: BlobCallback) => void): HTMLCanvasElement {
   return {
     toBlob: vi.fn(
-      toBlob_impl ??
-        ((cb: BlobCallback) => cb(new Blob([`test`], { type: `image/png` }))),
+      toBlob_impl ?? ((cb: BlobCallback) => cb(new Blob([`test`], { type: `image/png` }))),
     ),
     width: 800,
     height: 600,
@@ -40,14 +37,14 @@ function make_mock_renderer(): Partial<WebGLRenderer> {
   }
 }
 
-function make_canvas_with_renderer(
-  toBlob_impl?: (cb: BlobCallback) => void,
-): { canvas: HTMLCanvasElement; renderer: Partial<WebGLRenderer> } {
+function make_canvas_with_renderer(toBlob_impl?: (cb: BlobCallback) => void): {
+  canvas: HTMLCanvasElement
+  renderer: Partial<WebGLRenderer>
+} {
   const renderer = make_mock_renderer()
-  const canvas = {
-    ...make_mock_canvas(toBlob_impl),
+  const canvas = Object.assign(make_mock_canvas(toBlob_impl), {
     __renderer: renderer as WebGLRenderer,
-  } as unknown as HTMLCanvasElement
+  }) as unknown as HTMLCanvasElement
   return { canvas, renderer }
 }
 
@@ -113,9 +110,7 @@ describe(`canvas_to_png_blob`, () => {
 
   test(`rejects when toBlob returns null`, async () => {
     const canvas = make_mock_canvas((cb) => cb(null))
-    await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(
-      `Failed to generate PNG`,
-    )
+    await expect(canvas_to_png_blob(canvas, 72)).rejects.toThrow(`Failed to generate PNG`)
   })
 
   test(`rejects when toBlob throws`, async () => {
@@ -167,8 +162,8 @@ describe(`svg_to_svg_string`, () => {
     svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
     const result = svg_to_svg_string(svg)
     // Should not have duplicate xmlns
-    const xmlns_count =
-      (result.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g) || []).length
+    const xmlns_count = (result.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g) || [])
+      .length
     expect(xmlns_count).toBe(1)
   })
 
@@ -226,9 +221,7 @@ describe(`svg_to_png_blob`, () => {
     [`0 0 100 -50`, `negative height`],
     [`0 0 Infinity 100`, `Infinity width`],
   ])(`rejects for invalid viewBox %s (%s)`, async (viewBox: string) => {
-    await expect(svg_to_png_blob(make_svg(viewBox))).rejects.toThrow(
-      `Invalid SVG dimensions`,
-    )
+    await expect(svg_to_png_blob(make_svg(viewBox))).rejects.toThrow(`Invalid SVG dimensions`)
   })
 
   test.each([
@@ -251,9 +244,9 @@ describe(`svg_to_png_blob`, () => {
   })
 
   test(`rejects when canvas 2D context unavailable`, async () => {
-    vi.spyOn(document, `createElement`).mockReturnValue(
-      { getContext: vi.fn().mockReturnValue(null) } as unknown as HTMLElement,
-    )
+    vi.spyOn(document, `createElement`).mockReturnValue({
+      getContext: vi.fn().mockReturnValue(null),
+    } as unknown as HTMLElement)
     await expect(svg_to_png_blob(make_svg(`0 0 100 100`))).rejects.toThrow(
       `Canvas 2D context not available`,
     )
@@ -423,10 +416,7 @@ describe(`export_svg_as_png`, () => {
   test(`logs error for missing viewBox (via svg_to_png_blob rejection)`, async () => {
     export_svg_as_png(make_svg(), `test.png`)
     await vi.waitFor(() => {
-      expect(console_error_spy).toHaveBeenCalledWith(
-        `Error exporting PNG:`,
-        expect.any(Error),
-      )
+      expect(console_error_spy).toHaveBeenCalledWith(`Error exporting PNG:`, expect.any(Error))
     })
   })
 

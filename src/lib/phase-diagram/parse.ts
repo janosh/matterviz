@@ -99,9 +99,8 @@ export function parse_tdb(content: string): TdbParseResult {
     // Derive binary system from elements (excluding VA)
     const real_elements = data.elements.map((el) => el.symbol).filter(is_real_element)
 
-    const binary_system: [string, string] | undefined = real_elements.length === 2
-      ? [real_elements[0], real_elements[1]]
-      : undefined
+    const binary_system: [string, string] | undefined =
+      real_elements.length === 2 ? [real_elements[0], real_elements[1]] : undefined
 
     // Extract temperature range from functions/parameters
     // Find the actual min and max temperatures across all ranges
@@ -187,7 +186,7 @@ const LINE_PARSERS: LineParser[] = [
         sub
           .split(`,`)
           .map((name) => name.trim())
-          .filter((name) => name.length > 0)
+          .filter((name) => name.length > 0),
       )
       const phase = data.phases.find(
         (phase) => phase.name.toUpperCase() === phase_name.toUpperCase(),
@@ -230,9 +229,7 @@ const LINE_PARSERS: LineParser[] = [
 ]
 
 // Parse temperature ranges from FUNCTION body string
-function parse_temperature_ranges(
-  body: string,
-): { min: number; max: number; expr: string }[] {
+function parse_temperature_ranges(body: string): { min: number; max: number; expr: string }[] {
   const ranges: { min: number; max: number; expr: string }[] = []
   for (const segment of body.split(/;\s*/)) {
     const trimmed = segment.trim()
@@ -277,7 +274,11 @@ function parse_tdb_line(line: string, data: TdbData): void {
 
 // Get a normalized system name from elements (e.g., "AL-ZN" always alphabetically sorted)
 export function get_system_name(elements: string[]): string {
-  return elements.filter(is_real_element).map((el) => el.toUpperCase()).sort().join(`-`)
+  return elements
+    .filter(is_real_element)
+    .map((el) => el.toUpperCase())
+    .sort()
+    .join(`-`)
 }
 
 // Check if a TDB file represents a binary system

@@ -2,24 +2,17 @@ import { decompress_data } from '$lib/io/decompress'
 
 // Convert params object to URL query string, omitting empty/undefined values.
 // Example: {foo: "bar", baz: 42, empty: ""} → "foo=bar&baz=42"
-export const to_query = (
-  params: Record<string, string | number | undefined>,
-): string =>
+export const to_query = (params: Record<string, string | number | undefined>): string =>
   new URLSearchParams(
     Object.entries(params)
       .filter(([, val]) => val !== `` && val !== undefined)
       .map(([key, val]) => [key, String(val)]),
   ).toString()
 
-export async function fetch_zipped<T>(
-  url: string,
-  { unzip = true } = {},
-): Promise<T | null> {
+export async function fetch_zipped<T>(url: string, { unzip = true } = {}): Promise<T | null> {
   const response = await fetch(url)
   if (!response.ok) {
-    console.error(
-      `${response.status} ${response.statusText} for ${response.url}`,
-    )
+    console.error(`${response.status} ${response.statusText} for ${response.url}`)
     return null
   }
   if (!unzip) return (await response.blob()) as T

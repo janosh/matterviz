@@ -6,7 +6,6 @@ export function is_crystal(obj: unknown): obj is Crystal {
   const sites = structure_obj.sites
   const lattice = structure_obj.lattice
   const has_sites = Array.isArray(sites) && sites.length > 0
-  const has_lattice = lattice !== undefined && lattice !== null &&
-    typeof lattice === `object`
+  const has_lattice = lattice !== undefined && lattice !== null && typeof lattice === `object`
   return has_sites && has_lattice
 }

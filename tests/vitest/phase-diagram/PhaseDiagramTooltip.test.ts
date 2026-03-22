@@ -32,9 +32,7 @@ describe(`PhaseDiagramTooltip`, () => {
       props: { hover_info, temperature_unit: unit },
     })
 
-    expect(document.querySelector(`.phase-diagram-tooltip`)?.textContent).toContain(
-      expected,
-    )
+    expect(document.querySelector(`.phase-diagram-tooltip`)?.textContent).toContain(expected)
   })
 
   test.each([
@@ -101,7 +99,15 @@ describe(`PhaseDiagramTooltip`, () => {
 
   test(`displays stability range from region vertices`, () => {
     const hover_info = create_hover_info({
-      region: { id: `alpha`, name: `α`, vertices: [[0, 500], [0.3, 800], [0.2, 600]] },
+      region: {
+        id: `alpha`,
+        name: `α`,
+        vertices: [
+          [0, 500],
+          [0.3, 800],
+          [0.2, 600],
+        ],
+      },
     })
     mount(PhaseDiagramTooltip, {
       target: document.body,
@@ -139,7 +145,7 @@ describe(`PhaseDiagramTooltip`, () => {
 
       const phase_info = document.querySelector(`.phase-info`)
       // Normalize whitespace since formatter may introduce line breaks
-      const text = phase_info?.textContent?.replace(/\s+/g, ` `)
+      const text = phase_info?.textContent?.replaceAll(/\s+/g, ` `)
       expect(text).toContain(`α: 60%`)
       expect(text).toContain(`at 20 at%`)
       expect(text).toContain(`β: 40%`)
@@ -207,10 +213,7 @@ describe(`PhaseDiagramTooltip`, () => {
       expect(document.querySelector(`.lever > span`)?.textContent).toBe(
         `Lever Rule (vertical)`,
       )
-      const text = document.querySelector(`.phase-info`)?.textContent?.replace(
-        /\s+/g,
-        ` `,
-      )
+      const text = document.querySelector(`.phase-info`)?.textContent?.replaceAll(/\s+/g, ` `)
       expect(text).toContain(`α: 60%`)
       expect(text).toContain(`at 400 K`)
       expect(text).toContain(`L: 40%`)
@@ -312,11 +315,13 @@ describe(`PhaseDiagramTooltip`, () => {
 
     test(`not shown for non-relevant boundary types`, () => {
       const hover_info = create_hover_info({ composition: 0.5, temperature: 900 })
-      const boundaries: PhaseBoundary[] = [{
-        id: `t1`,
-        type: `tie-line`,
-        points: [[0.5, 900]],
-      }]
+      const boundaries: PhaseBoundary[] = [
+        {
+          id: `t1`,
+          type: `tie-line`,
+          points: [[0.5, 900]],
+        },
+      ]
       mount(PhaseDiagramTooltip, {
         target: document.body,
         props: { hover_info, boundaries },
@@ -328,9 +333,7 @@ describe(`PhaseDiagramTooltip`, () => {
   describe(`tooltip customization`, () => {
     test(`snippet function hides default tooltip`, () => {
       const hover_info = create_hover_info()
-      const mock_snippet = (() => {}) as unknown as import('svelte').Snippet<
-        [PhaseHoverInfo]
-      >
+      const mock_snippet = (() => {}) as unknown as import('svelte').Snippet<[PhaseHoverInfo]>
       mount(PhaseDiagramTooltip, {
         target: document.body,
         props: { hover_info, tooltip: mock_snippet },
@@ -338,12 +341,10 @@ describe(`PhaseDiagramTooltip`, () => {
       expect(document.querySelector(`.phase-diagram-tooltip`)).toBeNull()
     })
 
-    test.each(
-      [
-        [`prefix`, `<strong>Header</strong>`, `.tooltip-prefix`],
-        [`suffix`, `<em>Footer</em>`, `.tooltip-suffix`],
-      ] as const,
-    )(`renders static %s string`, (key, html, selector) => {
+    test.each([
+      [`prefix`, `<strong>Header</strong>`, `.tooltip-prefix`],
+      [`suffix`, `<em>Footer</em>`, `.tooltip-suffix`],
+    ] as const)(`renders static %s string`, (key, html, selector) => {
       const hover_info = create_hover_info()
       mount(PhaseDiagramTooltip, {
         target: document.body,
@@ -353,22 +354,20 @@ describe(`PhaseDiagramTooltip`, () => {
       expect(document.querySelector(`.phase-diagram-tooltip`)).not.toBeNull()
     })
 
-    test.each(
+    test.each([
       [
-        [
-          `prefix`,
-          (info: PhaseHoverInfo) => `T=${info.temperature}`,
-          `.tooltip-prefix`,
-          `T=850`,
-        ],
-        [
-          `suffix`,
-          (info: PhaseHoverInfo) => `x=${info.composition}`,
-          `.tooltip-suffix`,
-          `x=0.5`,
-        ],
-      ] as const,
-    )(`renders %s from function`, (key, fn, selector, expected) => {
+        `prefix`,
+        (info: PhaseHoverInfo) => `T=${info.temperature}`,
+        `.tooltip-prefix`,
+        `T=850`,
+      ],
+      [
+        `suffix`,
+        (info: PhaseHoverInfo) => `x=${info.composition}`,
+        `.tooltip-suffix`,
+        `x=0.5`,
+      ],
+    ] as const)(`renders %s from function`, (key, fn, selector, expected) => {
       const hover_info = create_hover_info()
       mount(PhaseDiagramTooltip, {
         target: document.body,
@@ -416,7 +415,7 @@ describe(`PhaseDiagramTooltip`, () => {
         props: {
           hover_info,
           tooltip: {
-            prefix: (info) =>
+            prefix: (info: { lever_rule?: { left_phase: string; right_phase: string } }) =>
               info.lever_rule
                 ? `${info.lever_rule.left_phase}/${info.lever_rule.right_phase}`
                 : ``,
