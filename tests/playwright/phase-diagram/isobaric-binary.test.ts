@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop -- Playwright tests require sequential awaits for UI interactions
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
 
@@ -153,9 +152,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     // X-axis: composition 0-100
     const x_ticks = svg.locator(`g.x-axis > g text`)
     expect(parseFloat((await x_ticks.first().textContent()) || ``)).toBe(0)
-    expect(parseFloat((await x_ticks.last().textContent()) || ``)).toBeGreaterThanOrEqual(
-      80,
-    )
+    expect(parseFloat((await x_ticks.last().textContent()) || ``)).toBeGreaterThanOrEqual(80)
 
     // Y-axis: temperature label
     await expect(
@@ -254,9 +251,9 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     )
 
     // Verify the active file changed
-    const new_active_text =
-      (await page.locator(`.file-picker .file-item.active`).textContent())
-        ?.trim()
+    const new_active_text = (
+      await page.locator(`.file-picker .file-item.active`).textContent()
+    )?.trim()
     expect(new_active_text).not.toBe(initial_active_text)
 
     // Verify diagram still renders correctly after switch

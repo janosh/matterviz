@@ -79,7 +79,7 @@ function expand_bounds(
 
       // Apply reverse first (to match Python's `reversed(curve)[1:]` pattern)
       if (ref.reverse) {
-        points = [...points].reverse()
+        points = points.toReversed()
       }
 
       // Then apply slice

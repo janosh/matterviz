@@ -79,13 +79,11 @@ describe(`Settings`, () => {
       expect(Array.isArray(value)).toBe(true)
     })
 
-    test.each(
-      [
-        [`structure`, `atom_radius`],
-        [`trajectory`, `auto_play`],
-        [`composition`, `display_mode`],
-      ] as const,
-    )(`DEFAULTS.%s has property %s`, (section, prop) => {
+    test.each([
+      [`structure`, `atom_radius`],
+      [`trajectory`, `auto_play`],
+      [`composition`, `display_mode`],
+    ] as const)(`DEFAULTS.%s has property %s`, (section, prop) => {
       expect(DEFAULTS[section]).toHaveProperty(prop)
     })
 
@@ -123,9 +121,9 @@ describe(`Settings`, () => {
     })
 
     test(`partial updates don't affect other sections`, () => {
-      const result = merge(
-        { structure: { atom_radius: 2.0 } } as Partial<DefaultSettings>,
-      )
+      const result = merge({
+        structure: { atom_radius: 2.0 },
+      } as Partial<DefaultSettings>)
 
       expect(result.structure.atom_radius).toBe(2.0)
       expect(result.trajectory).toEqual(DEFAULTS.trajectory)
@@ -135,8 +133,7 @@ describe(`Settings`, () => {
 
   describe(`Edge cases and robustness`, () => {
     test(`handles undefined structure input without throwing`, () => {
-      expect(() => merge({ structure: undefined } as Partial<DefaultSettings>)).not
-        .toThrow()
+      expect(() => merge({ structure: undefined } as Partial<DefaultSettings>)).not.toThrow()
     })
 
     test(`merge preserves immutability of DEFAULTS`, () => {

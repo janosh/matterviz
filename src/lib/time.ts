@@ -40,14 +40,14 @@ export const format_utc_time = (date?: Date | string): string => {
   if (!date) return `N/A`
   const timestamp = typeof date === `string` ? new Date(date) : date
   if (isNaN(timestamp.getTime())) return `N/A`
-  return timestamp.toISOString().replace(`T`, ` `).replace(/\.\d+Z$/, ` UTC`)
+  return timestamp
+    .toISOString()
+    .replace(`T`, ` `)
+    .replace(/\.\d+Z$/, ` UTC`)
 }
 
 // Format duration between two dates: "5h 23m", "2d 3h", "45m".
-export const format_duration = (
-  start?: Date | string,
-  end?: Date | string,
-): string => {
+export const format_duration = (start?: Date | string, end?: Date | string): string => {
   if (!start || !end) return `N/A`
   const start_time = typeof start === `string` ? new Date(start) : start
   const end_time = typeof end === `string` ? new Date(end) : end

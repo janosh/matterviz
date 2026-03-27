@@ -87,7 +87,7 @@
 
       const segment_size = Math.min(width, size)
       const base_scale = Math.min(2, Math.max(1, segment_size / 40))
-      const label_text = element + (show_amounts ? amount!.toString() : ``) +
+      const label_text = element + (show_amounts ? amount?.toString() ?? `` : ``) +
         (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
       const font_scale = get_chart_font_scale(
         base_scale,

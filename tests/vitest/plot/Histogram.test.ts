@@ -18,9 +18,7 @@ function mount_histogram(props: Record<string, unknown>) {
 
 function get_y_tick_numbers(): number[] {
   const nodes = Array.from(document.querySelectorAll(`g.y-axis .tick text`))
-  return nodes.map((n) => Number((n.textContent || ``).trim())).filter((v) =>
-    !Number.isNaN(v)
-  )
+  return nodes.map((n) => Number((n.textContent || ``).trim())).filter((v) => !Number.isNaN(v))
 }
 
 describe(`Histogram`, () => {
@@ -130,9 +128,7 @@ describe(`Histogram`, () => {
     await tick()
     expect(document.querySelector(`.histogram`)).toBeTruthy()
     expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
-    expect(document.querySelector(`.x2-label`)?.textContent).toBe(
-      `Mass (lbs)`,
-    )
+    expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Mass (lbs)`)
   })
 
   test(`renders without error when legend prop is null`, async () => {

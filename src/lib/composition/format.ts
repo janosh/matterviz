@@ -39,9 +39,7 @@ export const format_composition_formula = (
       const amount = composition[el]
       if (amount === 1) return el
       const formatted_amount = format_num(Number(amount), amount_format)
-      return plain_text
-        ? `${el}${formatted_amount}`
-        : `${el}<sub>${formatted_amount}</sub>`
+      return plain_text ? `${el}${formatted_amount}` : `${el}<sub>${formatted_amount}</sub>`
     })
     .join(delim)
 }
@@ -62,13 +60,7 @@ const format_formula_generic = (
       composition = structure_to_composition(input as AnyStructure)
     } else composition = input as CompositionType
 
-    return format_composition_formula(
-      composition,
-      sort_fn,
-      plain_text,
-      delim,
-      amount_format,
-    )
+    return format_composition_formula(composition, sort_fn, plain_text, delim, amount_format)
   } catch {
     return ``
   }
@@ -81,13 +73,7 @@ export const get_alphabetical_formula = (
   delim = ` `,
   amount_format = `.3~s`,
 ): string =>
-  format_formula_generic(
-    input,
-    (symbols) => symbols.sort(),
-    plain_text,
-    delim,
-    amount_format,
-  )
+  format_formula_generic(input, (symbols) => symbols.sort(), plain_text, delim, amount_format)
 
 export const sort_by_electronegativity = (symbols: ElementSymbol[]): ElementSymbol[] =>
   symbols.sort((el_1, el_2) => {
@@ -122,13 +108,7 @@ export const get_electro_neg_formula = (
   delim = ` `,
   amount_format = `.3~f`,
 ): string =>
-  format_formula_generic(
-    input,
-    sort_by_electronegativity,
-    plain_text,
-    delim,
-    amount_format,
-  )
+  format_formula_generic(input, sort_by_electronegativity, plain_text, delim, amount_format)
 
 // Create Hill notation formula (C first, H second, then alphabetical)
 export const get_hill_formula = (

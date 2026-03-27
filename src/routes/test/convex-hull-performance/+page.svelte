@@ -104,7 +104,7 @@
 
   $effect(() => {
     if (typeof window === `undefined`) return
-    const params = new URLSearchParams(window.location.search)
+    const params = new URLSearchParams(globalThis.location.search)
     const dim = params.get(`dim`)
     if (dim && [`2d`, `3d`, `4d`].includes(dim)) dimension = dim as Dimension
     const cnt = parseInt(params.get(`count`) ?? ``)

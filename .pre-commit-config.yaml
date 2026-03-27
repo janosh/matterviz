@@ -35,21 +35,21 @@ repos:
 
   - repo: local
     hooks:
-      - id: deno-fmt
-        name: Deno format
-        entry: deno fmt
+      - id: vp-fmt
+        name: Format (oxfmt)
+        entry: npx --package=vite-plus vp fmt --write
         types_or: [file]
         language: system
-        args: [--config, deno.jsonc, --permit-no-files]
-      - id: deno-lint
-        name: Deno lint
-        entry: deno lint
+        pass_filenames: false
+      - id: vp-lint
+        name: Lint (oxlint)
+        entry: npx --package=vite-plus vp lint --fix
         types_or: [file]
         language: system
-        args: [--config, deno.jsonc, --permit-no-files, --fix]
+        pass_filenames: false
       - id: svelte-check
         name: Svelte type check
-        entry: bash -c 'deno install --allow-scripts && deno run -A --node-modules-dir npm:@sveltejs/kit sync && deno run -A --node-modules-dir npm:svelte-check-rs@latest --fail-on-warnings --threshold error'
+        entry: bash -c 'npx svelte-kit sync && npx svelte-check-rs --threshold error'
         language: system
         types_or: [ts, svelte]
         pass_filenames: false
@@ -69,7 +69,7 @@ repos:
         stages: [pre-commit, commit-msg]
         args:
           - --ignore-words-list
-          - "te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac"
+          - 'te,ba,nd,ore,claus,manuel,ges,mey,curvelinear,tennant,struc,slac'
           - --check-filenames
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
@@ -79,20 +79,5 @@ repos:
         # MD013: line too long
         # MD033: no inline HTML
         # MD041: first line in a file should be a top-level heading
-        args: [--disable, MD013, MD033, MD041, "--"]
+        args: [--disable, MD013, MD033, MD041, '--']
         exclude: changelog\.md$
-
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v10.0.0
-    hooks:
-      - id: eslint
-        types: [file]
-        args: [--fix]
-        files: \.(js|ts|svelte)$
-        additional_dependencies:
-          - eslint
-          - eslint-plugin-svelte
-          - svelte
-          - typescript
-          - typescript-eslint
-          - "@stylistic/eslint-plugin"

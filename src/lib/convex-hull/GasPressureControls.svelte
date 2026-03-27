@@ -67,7 +67,7 @@
 
   // Format gas name for display (subscript numbers)
   const format_gas_name = (gas: GasSpecies): string =>
-    gas.replace(/(\d+)/g, `<sub>$1</sub>`)
+    gas.replaceAll(/(\d+)/g, `<sub>$1</sub>`)
 
   // Format pressure as plain text (no HTML) for the number input
   function format_pressure(P: number): string {
@@ -131,7 +131,6 @@
             }}
             aria-label="{gas} pressure (bar)"
           />
-          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
           <span class="gas-name">{@html format_gas_name(gas)}</span>
         </label>
         <div class="slider-wrapper">

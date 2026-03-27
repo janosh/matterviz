@@ -41,9 +41,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
     const plots = container.locator(`.scatter`)
 
     // Check grid layout
-    expect(await container.evaluate((el) => getComputedStyle(el).display)).toBe(
-      `grid`,
-    )
+    expect(await container.evaluate((el) => getComputedStyle(el).display)).toBe(`grid`)
 
     // Check shared y-axis aligns plots vertically
     const bands_box = await plots.first().boundingBox()
@@ -70,24 +68,20 @@ test.describe(`BandsAndDos Component Tests`, () => {
     // Check custom widths
     const custom_container = page.locator(`#custom-widths + .bands-and-dos`)
     await expect(custom_container).toBeVisible()
-    expect(await custom_container.getAttribute(`style`)).toContain(
-      `grid-template-columns`,
-    )
+    expect(await custom_container.getAttribute(`style`)).toContain(`grid-template-columns`)
 
     // Check bands props passed
     const bands_container = page.locator(`#bands-custom-styling + .bands-and-dos`)
-    const bands_path = bands_container.locator(`.scatter`).first().locator(
-      `path[fill="none"]`,
-    ).first()
-    expect(
-      await bands_path.evaluate((el) => getComputedStyle(el).stroke),
-    ).toBeTruthy()
+    const bands_path = bands_container
+      .locator(`.scatter`)
+      .first()
+      .locator(`path[fill="none"]`)
+      .first()
+    expect(await bands_path.evaluate((el) => getComputedStyle(el).stroke)).toBeTruthy()
 
     // Check DOS props passed (normalization)
     const dos_container = page.locator(`#dos-normalization + .bands-and-dos`)
-    await expect(
-      dos_container.locator(`.scatter`).nth(1).locator(`g.y-axis`),
-    ).toBeVisible()
+    await expect(dos_container.locator(`.scatter`).nth(1).locator(`g.y-axis`)).toBeVisible()
   })
 
   test(`handles independent y-axes with different ranges`, async ({ page }) => {
@@ -128,28 +122,19 @@ test.describe(`BandsAndDos Component Tests`, () => {
     const dos_plot = plots.nth(1)
 
     // Initially no reference lines should be visible
-    const initial_bands_lines = await bands_plot
-      .locator(`line[stroke-dasharray]`)
-      .count()
+    const initial_bands_lines = await bands_plot.locator(`line[stroke-dasharray]`).count()
     const initial_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
 
     // Hover over DOS plot
     const dos_svg = get_chart_svg(dos_plot)
     const dos_box = await dos_svg.boundingBox()
     if (dos_box) {
-      await page.mouse.move(
-        dos_box.x + dos_box.width / 2,
-        dos_box.y + dos_box.height / 2,
-      )
+      await page.mouse.move(dos_box.x + dos_box.width / 2, dos_box.y + dos_box.height / 2)
 
       // Wait for hover state to update - reference lines should appear
       await expect(async () => {
-        const hovered_bands_lines = await bands_plot
-          .locator(`line[stroke-dasharray]`)
-          .count()
-        const hovered_dos_lines = await dos_plot
-          .locator(`line[stroke-dasharray]`)
-          .count()
+        const hovered_bands_lines = await bands_plot.locator(`line[stroke-dasharray]`).count()
+        const hovered_dos_lines = await dos_plot.locator(`line[stroke-dasharray]`).count()
 
         expect(hovered_bands_lines).toBeGreaterThan(initial_bands_lines)
         expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)

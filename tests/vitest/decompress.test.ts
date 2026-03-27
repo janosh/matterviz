@@ -55,9 +55,9 @@ describe(`decompress utility functions`, () => {
         const view = new Uint8Array(invalid_data)
         view.fill(255)
 
-        await expect(
-          decompress_data(invalid_data, format),
-        ).rejects.toThrow(`Failed to decompress ${format} file`)
+        await expect(decompress_data(invalid_data, format)).rejects.toThrow(
+          `Failed to decompress ${format} file`,
+        )
       },
     )
 
@@ -112,13 +112,11 @@ describe(`decompress utility functions`, () => {
       expect(JSON.parse(result.content)).toEqual(test_json)
     })
 
-    test.each(
-      [
-        [`gzip`, `test.json.gz`],
-        [`deflate`, `test.json.deflate`],
-        [`deflate-raw`, `test.json.z`],
-      ] as const,
-    )(
+    test.each([
+      [`gzip`, `test.json.gz`],
+      [`deflate`, `test.json.deflate`],
+      [`deflate-raw`, `test.json.z`],
+    ] as const)(
       `should process %s compressed files and remove extension`,
       async (format, filename) => {
         if (!globalThis.CompressionStream || !globalThis.DecompressionStream) return

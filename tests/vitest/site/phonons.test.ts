@@ -77,8 +77,8 @@ describe(`Phonon Module Tests`, () => {
           const dict_coords = band_struct.labels_dict[qpt.label]
           expect(dict_coords).toBeDefined()
           if (dict_coords) {
-            const coord_diff = qpt.frac_coords.map(
-              (coord, idx) => Math.abs(coord - dict_coords[idx]),
+            const coord_diff = qpt.frac_coords.map((coord, idx) =>
+              Math.abs(coord - dict_coords[idx]),
             )
             coord_diff.forEach((diff) => {
               expect(diff).toBeLessThan(1e-5)
@@ -322,12 +322,10 @@ describe(`Phonon Module Tests`, () => {
 
       // Verify raw data exists
       expect(raw, `${id}: raw data should exist`).toBeDefined()
-      expect(raw.phonon_bandstructure, `${id}: should have phonon_bandstructure`)
-        .toBeDefined()
+      expect(raw.phonon_bandstructure, `${id}: should have phonon_bandstructure`).toBeDefined()
 
       // Verify transformation produces valid output - fail fast with clear message
-      expect(transformed, `${id}: transformed data should exist in phonon_bands`)
-        .toBeDefined()
+      expect(transformed, `${id}: transformed data should exist in phonon_bands`).toBeDefined()
       if (!transformed) return // Guard for TypeScript and clearer stack traces
 
       // Verify required raw fields exist (these are mandatory in valid phonon data)
@@ -343,9 +341,7 @@ describe(`Phonon Module Tests`, () => {
       expect(transformed.qpoints.length, `${id}: qpoint count should match`).toBe(
         raw_qpoints.length,
       )
-      expect(transformed.nb_bands, `${id}: band count should match`).toBe(
-        raw_bands.length,
-      )
+      expect(transformed.nb_bands, `${id}: band count should match`).toBe(raw_bands.length)
       expect(
         Object.keys(transformed.labels_dict).sort(),
         `${id}: labels should match`,
@@ -362,10 +358,9 @@ describe(`Phonon Module Tests`, () => {
       const all_freqs = band_struct.bands.flat()
 
       // All frequencies should be finite
-      expect(
-        all_freqs.every(Number.isFinite),
-        `${id}: all frequencies should be finite`,
-      ).toBe(true)
+      expect(all_freqs.every(Number.isFinite), `${id}: all frequencies should be finite`).toBe(
+        true,
+      )
 
       // Max frequency should be reasonable (< 100 THz even for light elements like H)
       const max_freq = Math.max(...all_freqs)

@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 // OPTIMADE API utilities for fetching structure data
 // Based on OPTIMADE 1.2.0 specification
 
@@ -63,7 +62,7 @@ const RESOLVED_URLS_CACHE_DURATION = 10 * 60 * 1000
 async function fetch_with_cors_proxy(url: string): Promise<Response> {
   try {
     const direct_response = await fetch(url, {
-      headers: { 'Accept': `application/vnd.api+json`, 'User-Agent': `MatterViz/1.0` },
+      headers: { Accept: `application/vnd.api+json`, 'User-Agent': `MatterViz/1.0` },
     })
     if (direct_response.ok) return direct_response
   } catch {
@@ -73,7 +72,7 @@ async function fetch_with_cors_proxy(url: string): Promise<Response> {
   for (const proxy of CORS_PROXIES) {
     try {
       const response = await fetch(`${proxy}${encodeURIComponent(url)}`, {
-        headers: { 'Accept': `application/vnd.api+json`, 'User-Agent': `MatterViz/1.0` },
+        headers: { Accept: `application/vnd.api+json`, 'User-Agent': `MatterViz/1.0` },
       })
       if (response.ok) return response
     } catch {
@@ -88,7 +87,7 @@ async function resolve_provider_url(provider_base_url: string): Promise<string> 
   const now = Date.now()
   if (
     resolved_provider_urls[provider_base_url] &&
-    (now - resolved_urls_cache_time) < RESOLVED_URLS_CACHE_DURATION
+    now - resolved_urls_cache_time < RESOLVED_URLS_CACHE_DURATION
   ) {
     return resolved_provider_urls[provider_base_url]
   }
@@ -98,11 +97,11 @@ async function resolve_provider_url(provider_base_url: string): Promise<string> 
       const response = await fetch_with_cors_proxy(`${provider_base_url}${endpoint}`)
       const data = await response.json()
 
-      const self_link = data.data?.find((
-        link: { type: string; attributes?: { base_url?: string; link_type?: string } },
-      ) =>
-        link.type === `links` && link.attributes?.base_url &&
-        link.attributes.link_type === `child`
+      const self_link = data.data?.find(
+        (link: { type: string; attributes?: { base_url?: string; link_type?: string } }) =>
+          link.type === `links` &&
+          link.attributes?.base_url &&
+          link.attributes.link_type === `child`,
       )
 
       if (self_link?.attributes.base_url) {
@@ -122,14 +121,12 @@ async function resolve_provider_url(provider_base_url: string): Promise<string> 
 
 export async function fetch_optimade_providers(): Promise<OptimadeProvider[]> {
   const now = Date.now()
-  if (cached_providers && (now - providers_cache_time) < CACHE_DURATION) {
+  if (cached_providers && now - providers_cache_time < CACHE_DURATION) {
     return cached_providers
   }
 
   try {
-    const response = await fetch_with_cors_proxy(
-      `https://providers.optimade.org/v1/links`,
-    )
+    const response = await fetch_with_cors_proxy(`https://providers.optimade.org/v1/links`)
     const data: { data: OptimadeProvider[] } = await response.json()
     const providers = data.data
       .filter((provider) => provider.attributes.base_url)

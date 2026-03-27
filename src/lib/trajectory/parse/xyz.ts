@@ -27,13 +27,11 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     // Extract properties efficiently
     const extractors = {
       step: /(?:step|frame|ionic_step)\s*[=:]?\s*(\d+)/i,
-      energy:
-        /(?:energy|E|etot|total_energy)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      energy: /(?:energy|E|etot|total_energy)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
       volume: /(?:volume|vol|V)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
       pressure: /(?:pressure|press|P)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
       temperature: /(?:temperature|temp|T)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
-      force_max:
-        /(?:max_force|force_max|fmax)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
+      force_max: /(?:max_force|force_max|fmax)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
       bandgap: /(?:bandgap|E_gap|gap)\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i,
     }
 
@@ -51,11 +49,11 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     if (lattice_match) {
       const values = lattice_match[1].split(/\s+/).map(Number)
       if (values.length === 9 && values.every((value) => Number.isFinite(value))) {
-        lattice_matrix = [[values[0], values[1], values[2]], [
-          values[3],
-          values[4],
-          values[5],
-        ], [values[6], values[7], values[8]]]
+        lattice_matrix = [
+          [values[0], values[1], values[2]],
+          [values[3], values[4], values[5]],
+          [values[6], values[7], values[8]],
+        ]
         metadata.volume = math.calc_lattice_params(lattice_matrix).volume
       }
     }
@@ -75,7 +73,8 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
         const y_coord = parseFloat(parts[2])
         const z_coord = parseFloat(parts[3])
         if (
-          !Number.isFinite(x_coord) || !Number.isFinite(y_coord) ||
+          !Number.isFinite(x_coord) ||
+          !Number.isFinite(y_coord) ||
           !Number.isFinite(z_coord)
         ) {
           console.warn(

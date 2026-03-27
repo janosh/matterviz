@@ -21,8 +21,8 @@ const get_toggle = () =>
 
 // Find the legend position select by its option values (right/bottom)
 const find_position_select = () =>
-  Array.from(document.querySelectorAll(`.heatmap-controls select`)).find(
-    (sel) => (sel as HTMLSelectElement).querySelector(`option[value="right"]`),
+  Array.from(document.querySelectorAll(`.heatmap-controls select`)).find((sel) =>
+    (sel as HTMLSelectElement).querySelector(`option[value="right"]`),
   ) as HTMLSelectElement | undefined
 
 describe(`HeatmapMatrixControls`, () => {
@@ -99,7 +99,7 @@ describe(`HeatmapMatrixControls`, () => {
     mount_controls({ normalize: `log`, domain_mode: `robust` })
     const selects = document.querySelectorAll(`.heatmap-controls select`)
     const all_options = Array.from(selects).flatMap((sel) =>
-      Array.from((sel as HTMLSelectElement).options).map((opt) => opt.value)
+      Array.from((sel as HTMLSelectElement).options).map((opt) => opt.value),
     )
     // Normalize options
     expect(all_options).toContain(`linear`)
@@ -143,9 +143,9 @@ describe(`HeatmapMatrixControls`, () => {
 
   test(`labels use shortened text`, () => {
     mount_controls()
-    const label_texts = Array.from(
-      document.querySelectorAll(`.heatmap-controls label`),
-    ).map((label) => label.childNodes[0]?.textContent?.trim())
+    const label_texts = Array.from(document.querySelectorAll(`.heatmap-controls label`)).map(
+      (label) => label.childNodes[0]?.textContent?.trim(),
+    )
     expect(label_texts).toContain(`Ordering`)
     expect(label_texts).toContain(`Search`)
     expect(label_texts).toContain(`Normalize`)

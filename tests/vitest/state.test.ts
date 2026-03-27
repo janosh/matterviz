@@ -52,13 +52,13 @@ describe(`State Management`, () => {
       })
     })
 
-    test.each([[`mode`, COLOR_THEMES.dark], [`system_mode`, COLOR_THEMES.dark]] as const)(
-      `allows %s mutations`,
-      (key, value) => {
-        theme_state[key] = value
-        expect(theme_state[key]).toBe(value)
-      },
-    )
+    test.each([
+      [`mode`, COLOR_THEMES.dark],
+      [`system_mode`, COLOR_THEMES.dark],
+    ] as const)(`allows %s mutations`, (key, value) => {
+      theme_state[key] = value
+      expect(theme_state[key]).toBe(value)
+    })
 
     describe(`type getter`, () => {
       test.each([
@@ -68,13 +68,10 @@ describe(`State Management`, () => {
         [COLOR_THEMES.black, COLOR_THEMES.light, `dark`],
         [AUTO_THEME, COLOR_THEMES.light, `light`],
         [AUTO_THEME, COLOR_THEMES.dark, `dark`],
-      ])(
-        `returns %s for mode %s with system_mode %s`,
-        (mode, system_mode, expected_type) => {
-          Object.assign(theme_state, { mode, system_mode })
-          expect(theme_state.type).toBe(expected_type)
-        },
-      )
+      ])(`returns %s for mode %s with system_mode %s`, (mode, system_mode, expected_type) => {
+        Object.assign(theme_state, { mode, system_mode })
+        expect(theme_state.type).toBe(expected_type)
+      })
 
       test.each([
         [AUTO_THEME, `uses system_mode when mode is AUTO_THEME`],
@@ -82,9 +79,8 @@ describe(`State Management`, () => {
       ])(`correctly handles %s`, (mode, _description) => {
         theme_state.mode = mode
         theme_state.system_mode = COLOR_THEMES.dark
-        const expected = mode === AUTO_THEME
-          ? `dark`
-          : THEME_TYPE[mode as keyof typeof THEME_TYPE]
+        const expected =
+          mode === AUTO_THEME ? `dark` : THEME_TYPE[mode as keyof typeof THEME_TYPE]
         expect(theme_state.type).toBe(expected)
       })
 

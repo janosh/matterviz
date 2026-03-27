@@ -951,7 +951,7 @@
           if (!legend_line_color) {
             // Try color scale if available
             const first_cv = Array.isArray(data_series?.color_values)
-              ? data_series!.color_values!.find((color_val: number | null) =>
+              ? data_series?.color_values?.find((color_val: number | null) =>
                 color_val != null
               )
               : undefined
@@ -1006,7 +1006,7 @@
       .filter((fill) => fill.show_in_legend !== false && fill.label)
       .filter((fill) => {
         // Use same composite key as series: legend_group::label
-        const unique_key = `${fill.legend_group ?? ``}::${fill.label!}`
+        const unique_key = `${fill.legend_group ?? ``}::${fill.label ?? ``}`
         if (seen_labels.has(unique_key)) return false
         seen_labels.add(unique_key)
         return true
@@ -1022,7 +1022,7 @@
           fill_source_type: fill.source_type,
           fill_source_idx: fill.source_idx,
           item_type: `fill` as const,
-          label: fill.label!,
+          label: fill.label ?? ``,
           visible: fill.visible !== false,
           legend_group: fill.legend_group,
           display_style: {
@@ -2067,7 +2067,7 @@
         {/if}
 
         <!-- Current frame indicator -->
-        {#if current_x_value !== null && current_x_value !== undefined}
+        {#if current_x_value != null}
           {@const current_pos_raw = is_time_x
           ? x_scale_fn(new Date(current_x_value))
           : x_scale_fn(current_x_value)}

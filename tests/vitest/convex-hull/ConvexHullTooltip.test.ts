@@ -118,8 +118,9 @@ describe(`ConvexHullTooltip`, () => {
     test(`shows badge with color when highlight_style provided`, () => {
       mount_tooltip({ highlight_style: { color: `#00ff00` } })
       expect(doc_query(`.highlight-badge`).textContent).toContain(`★ Highlighted`)
-      expect(doc_query(`.tooltip-content`).style.getPropertyValue(`--highlight-color`))
-        .toBe(`#00ff00`)
+      expect(doc_query(`.tooltip-content`).style.getPropertyValue(`--highlight-color`)).toBe(
+        `#00ff00`,
+      )
     })
 
     test(`hides badge without highlight_style`, () => {

@@ -6,10 +6,7 @@ const TEST_FRAME_RATE_FPS = 30
 test.describe(`Trajectory Performance Tests`, () => {
   // TODO: Add CI fixtures for trajectory performance testing
   // Tracking: Large trajectory test files (>100MB) need to be hosted separately for CI
-  test.skip(
-    IS_CI,
-    `Large trajectory test files not available in CI - run locally to test`,
-  )
+  test.skip(IS_CI, `Large trajectory test files not available in CI - run locally to test`)
   test(`large MOF5 trajectory playback performance`, async ({ page }) => {
     test.setTimeout(120000) // 2 minutes timeout for performance test
 
@@ -41,7 +38,8 @@ test.describe(`Trajectory Performance Tests`, () => {
     // Check if trajectory loaded successfully
     const has_error = await trajectory.locator(`.trajectory-error`).isVisible()
     if (has_error) {
-      const error_text = await trajectory.locator(`.trajectory-error .error-message`)
+      const error_text = await trajectory
+        .locator(`.trajectory-error .error-message`)
         .textContent()
       throw new Error(`Trajectory failed to load: ${error_text}`)
     }
@@ -90,7 +88,7 @@ test.describe(`Trajectory Performance Tests`, () => {
     const frames_to_measure = 10
     const target_step = Math.min(frames_to_measure, max_step - 1)
 
-    console.log(
+    console.warn(
       `Starting performance measurement from step 0, measuring ${target_step} frames`,
     )
     const start_time = Date.now()
@@ -117,10 +115,10 @@ test.describe(`Trajectory Performance Tests`, () => {
     const playback_duration = end_time - start_time
     const actual_fps = (target_step / playback_duration) * 1000
 
-    console.log(`Playback performance results:`)
-    console.log(`- Frames measured: ${target_step}`)
-    console.log(`- Duration: ${(playback_duration / 1000).toFixed(1)}s`)
-    console.log(`- Actual FPS: ${actual_fps.toFixed(2)}`)
+    console.warn(`Playback performance results:`)
+    console.warn(`- Frames measured: ${target_step}`)
+    console.warn(`- Duration: ${(playback_duration / 1000).toFixed(1)}s`)
+    console.warn(`- Actual FPS: ${actual_fps.toFixed(2)}`)
 
     // Performance thresholds for headless browser with 424 atoms/frame
     // Based on observed ~1-2 FPS in headless mode, we set minimum at 0.5 FPS (2s/frame)
@@ -157,12 +155,13 @@ test.describe(`Trajectory Performance Tests`, () => {
     // Check for errors
     const has_error = await trajectory.locator(`.trajectory-error`).isVisible()
     if (has_error) {
-      const error_text = await trajectory.locator(`.trajectory-error .error-message`)
+      const error_text = await trajectory
+        .locator(`.trajectory-error .error-message`)
         .textContent()
       throw new Error(`Trajectory failed to load: ${error_text}`)
     }
 
-    console.log(`- Loading time: ${(loading_duration / 1000).toFixed(1)}s`)
+    console.warn(`- Loading time: ${(loading_duration / 1000).toFixed(1)}s`)
 
     // Loading should complete in under 10 seconds
     expect(loading_duration).toBeLessThan(10000)
@@ -190,7 +189,8 @@ test.describe(`Trajectory Performance Tests`, () => {
 
     const has_error = await trajectory.locator(`.trajectory-error`).isVisible()
     if (has_error) {
-      const error_text = await trajectory.locator(`.trajectory-error .error-message`)
+      const error_text = await trajectory
+        .locator(`.trajectory-error .error-message`)
         .textContent()
       throw new Error(`Trajectory failed to load: ${error_text}`)
     }
@@ -201,8 +201,8 @@ test.describe(`Trajectory Performance Tests`, () => {
     // Get initial memory usage
     const initial_memory = await page.evaluate(() => {
       if (`memory` in performance) {
-        return (performance as Performance & { memory: { usedJSHeapSize: number } })
-          .memory.usedJSHeapSize
+        return (performance as Performance & { memory: { usedJSHeapSize: number } }).memory
+          .usedJSHeapSize
       }
       return null
     })
@@ -258,8 +258,8 @@ test.describe(`Trajectory Performance Tests`, () => {
     // Get final memory usage
     const final_memory = await page.evaluate(() => {
       if (`memory` in performance) {
-        return (performance as Performance & { memory: { usedJSHeapSize: number } })
-          .memory.usedJSHeapSize
+        return (performance as Performance & { memory: { usedJSHeapSize: number } }).memory
+          .usedJSHeapSize
       }
       return null
     })
@@ -268,10 +268,10 @@ test.describe(`Trajectory Performance Tests`, () => {
       const memory_increase = final_memory - initial_memory
       const memory_increase_mb = memory_increase / (1024 * 1024)
 
-      console.log(`Memory usage results:`)
-      console.log(`- Initial: ${(initial_memory / (1024 * 1024)).toFixed(1)}MB`)
-      console.log(`- Final: ${(final_memory / (1024 * 1024)).toFixed(1)}MB`)
-      console.log(`- Increase: ${memory_increase_mb.toFixed(1)}MB`)
+      console.warn(`Memory usage results:`)
+      console.warn(`- Initial: ${(initial_memory / (1024 * 1024)).toFixed(1)}MB`)
+      console.warn(`- Final: ${(final_memory / (1024 * 1024)).toFixed(1)}MB`)
+      console.warn(`- Increase: ${memory_increase_mb.toFixed(1)}MB`)
 
       // Memory increase should be reasonable (less than 200MB for large structure test)
       // Note: This threshold may need adjustment as it can be affected by GC timing

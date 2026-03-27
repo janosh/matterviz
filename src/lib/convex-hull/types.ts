@@ -56,13 +56,7 @@ export interface Point3D extends Point2D {
 }
 
 export type MarkerSymbol = // Marker symbol types for convex hull entries
-  | `circle`
-  | `star`
-  | `triangle`
-  | `cross`
-  | `diamond`
-  | `square`
-  | `wye`
+  `circle` | `star` | `triangle` | `cross` | `diamond` | `square` | `wye`
 
 // Hull face coloring modes for 3D/4D convex hull visualizations
 export type HullFaceColorMode =

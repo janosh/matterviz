@@ -34,28 +34,21 @@ async function mount_and_open(props: CellSelectProps): Promise<void> {
 
 describe(`CellSelect`, () => {
   describe(`rendering`, () => {
-    test.each(
-      [
-        [`1x1x1`, `original`, `1x1x1`],
-        [`2x2x2`, `original`, `2x2x2`],
-        [`3x3x1`, `original`, `3x3x1`],
-        [`1x1x1`, `primitive`, `Prim 1x1x1`],
-        [`2x2x2`, `primitive`, `Prim 2x2x2`],
-        [`1x1x1`, `conventional`, `Conv 1x1x1`],
-        [`3x3x3`, `conventional`, `Conv 3x3x3`],
-      ] as const,
-    )(
-      `displays "%s" with cell_type=%s as "%s"`,
-      (scaling, cell_type, expected) => {
-        mount(CellSelect, {
-          target: document.body,
-          props: { supercell_scaling: scaling, cell_type },
-        })
-        expect(normalize_supercell_label(doc_query(`.toggle-btn`).textContent)).toBe(
-          expected,
-        )
-      },
-    )
+    test.each([
+      [`1x1x1`, `original`, `1x1x1`],
+      [`2x2x2`, `original`, `2x2x2`],
+      [`3x3x1`, `original`, `3x3x1`],
+      [`1x1x1`, `primitive`, `Prim 1x1x1`],
+      [`2x2x2`, `primitive`, `Prim 2x2x2`],
+      [`1x1x1`, `conventional`, `Conv 1x1x1`],
+      [`3x3x3`, `conventional`, `Conv 3x3x3`],
+    ] as const)(`displays "%s" with cell_type=%s as "%s"`, (scaling, cell_type, expected) => {
+      mount(CellSelect, {
+        target: document.body,
+        props: { supercell_scaling: scaling, cell_type },
+      })
+      expect(normalize_supercell_label(doc_query(`.toggle-btn`).textContent)).toBe(expected)
+    })
 
     test.each([
       [true, true],
@@ -85,28 +78,22 @@ describe(`CellSelect`, () => {
       expect(document.querySelector(`.dropdown`)).toBeTruthy()
 
       // Close by mouseleave
-      doc_query(`.cell-select`).dispatchEvent(
-        new MouseEvent(`mouseleave`, { bubbles: true }),
-      )
+      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeFalsy()
 
       // Opens on mouseenter
-      doc_query(`.cell-select`).dispatchEvent(
-        new MouseEvent(`mouseenter`, { bubbles: true }),
-      )
+      doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
       await tick()
       expect(document.querySelector(`.dropdown`)).toBeTruthy()
     })
 
-    test.each(
-      [
-        [`down`, `right`, false, false],
-        [`up`, `right`, true, false],
-        [`down`, `left`, false, true],
-        [`up`, `left`, true, true],
-      ] as const,
-    )(
+    test.each([
+      [`down`, `right`, false, false],
+      [`up`, `right`, true, false],
+      [`down`, `left`, false, true],
+      [`up`, `left`, true, true],
+    ] as const)(
       `direction=%s, align=%s applies open-up=%s, align-left=%s`,
       async (direction, align, has_open_up, has_align_left) => {
         await mount_and_open({ supercell_scaling: `1x1x1`, direction, align })
@@ -129,47 +116,41 @@ describe(`CellSelect`, () => {
       ])
     })
 
-    test.each(
-      [
-        [null, [false, true, true]],
-        [mock_sym_data, [false, false, false]],
-      ] as const,
-    )(
-      `sym_data=%s sets disabled states %s`,
-      async (sym_data, expected_disabled) => {
-        await mount_and_open({ supercell_scaling: `1x1x1`, sym_data })
-        const buttons = document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)
-        expected_disabled.forEach((disabled, idx) => {
-          expect(buttons[idx].disabled).toBe(disabled)
+    test.each([
+      [null, [false, true, true]],
+      [mock_sym_data, [false, false, false]],
+    ] as const)(`sym_data=%s sets disabled states %s`, async (sym_data, expected_disabled) => {
+      await mount_and_open({ supercell_scaling: `1x1x1`, sym_data })
+      const buttons = document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)
+      expected_disabled.forEach((disabled, idx) => {
+        expect(buttons[idx].disabled).toBe(disabled)
+      })
+    })
+
+    test.each([
+      [`original`, 0],
+      [`primitive`, 1],
+      [`conventional`, 2],
+    ] as const)(
+      `cell_type=%s marks button at index %d as selected`,
+      async (cell_type, idx) => {
+        await mount_and_open({
+          supercell_scaling: `1x1x1`,
+          cell_type,
+          sym_data: mock_sym_data,
+        })
+        const buttons = document.querySelectorAll(`.cell-type-btn`)
+        buttons.forEach((btn, btn_idx) => {
+          expect(btn.classList.contains(`selected`)).toBe(btn_idx === idx)
         })
       },
     )
 
-    test.each(
-      [
-        [`original`, 0],
-        [`primitive`, 1],
-        [`conventional`, 2],
-      ] as const,
-    )(`cell_type=%s marks button at index %d as selected`, async (cell_type, idx) => {
-      await mount_and_open({
-        supercell_scaling: `1x1x1`,
-        cell_type,
-        sym_data: mock_sym_data,
-      })
-      const buttons = document.querySelectorAll(`.cell-type-btn`)
-      buttons.forEach((btn, btn_idx) => {
-        expect(btn.classList.contains(`selected`)).toBe(btn_idx === idx)
-      })
-    })
-
-    test.each(
-      [
-        [`original`, `Original unit cell (as provided)`],
-        [`primitive`, `Primitive cell (smallest repeating unit)`],
-        [`conventional`, `Conventional cell (standardized representation)`],
-      ] as const,
-    )(`%s button has tooltip "%s"`, async (cell_type, expected_tooltip) => {
+    test.each([
+      [`original`, `Original unit cell (as provided)`],
+      [`primitive`, `Primitive cell (smallest repeating unit)`],
+      [`conventional`, `Conventional cell (standardized representation)`],
+    ] as const)(`%s button has tooltip "%s"`, async (cell_type, expected_tooltip) => {
       await mount_and_open({ supercell_scaling: `1x1x1`, sym_data: mock_sym_data })
       const idx = cell_type === `original` ? 0 : cell_type === `primitive` ? 1 : 2
       const btn = document.querySelectorAll<HTMLButtonElement>(`.cell-type-btn`)[idx]
@@ -187,12 +168,10 @@ describe(`CellSelect`, () => {
       }
     })
 
-    test.each(
-      [
-        [mock_sym_data, `primitive`],
-        [null, `original`], // Disabled button - no change
-      ] as const,
-    )(
+    test.each([
+      [mock_sym_data, `primitive`],
+      [null, `original`], // Disabled button - no change
+    ] as const)(
       `clicking Prim button with sym_data=%s results in cell_type=%s`,
       async (sym_data, expected) => {
         let cell_type = $state<CellType>(`original`)
@@ -222,7 +201,7 @@ describe(`CellSelect`, () => {
       expect(buttons).toHaveLength(6)
       expect(
         Array.from(buttons).map((button_elem) =>
-          normalize_supercell_label(button_elem.textContent)
+          normalize_supercell_label(button_elem.textContent),
         ),
       ).toEqual(presets)
     })
@@ -245,10 +224,9 @@ describe(`CellSelect`, () => {
         },
       })
 
-      const btn = Array.from(document.querySelectorAll<HTMLButtonElement>(`.preset-btn`))
-        .find((button_elem) =>
-          normalize_supercell_label(button_elem.textContent) === `2x2x2`
-        )
+      const btn = Array.from(document.querySelectorAll<HTMLButtonElement>(`.preset-btn`)).find(
+        (button_elem) => normalize_supercell_label(button_elem.textContent) === `2x2x2`,
+      )
       expect(btn).toBeTruthy()
       btn?.click()
       await tick()
@@ -327,9 +305,7 @@ describe(`CellSelect`, () => {
         if (method === `click`) {
           doc_query<HTMLButtonElement>(`.apply-btn`).click()
         } else {
-          input.dispatchEvent(
-            new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
-          )
+          input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
         }
         await tick()
 

@@ -71,13 +71,7 @@ describe(`calc_cell_color`, () => {
       scale_type: `log`,
     },
   ])(`returns null colors for $name`, ({ val, all_values, color_scale, scale_type }) => {
-    const result = calc_cell_color(
-      val,
-      [...all_values],
-      `higher`,
-      color_scale,
-      scale_type,
-    )
+    const result = calc_cell_color(val, [...all_values], `higher`, color_scale, scale_type)
     expect(result).toEqual({ bg: null, text: null })
   })
 
@@ -143,9 +137,7 @@ describe(`calc_cell_color`, () => {
   it(`returns appropriate contrast text colors`, () => {
     const values = [1, 50, 100]
     expect(calc_cell_color(1, values, `higher`, `interpolateViridis`).text).toBe(`white`)
-    expect(calc_cell_color(100, values, `higher`, `interpolateViridis`).text).toBe(
-      `black`,
-    )
+    expect(calc_cell_color(100, values, `higher`, `interpolateViridis`).text).toBe(`black`)
   })
 
   it(`uses different colors for min vs max values`, () => {
@@ -155,32 +147,28 @@ describe(`calc_cell_color`, () => {
     )
   })
 
-  it.each(
-    [
-      `interpolateViridis`,
-      `interpolatePlasma`,
-      `interpolateInferno`,
-      `interpolateCividis`,
-      `interpolateTurbo`,
-      `interpolateBlues`,
-      `interpolateGreens`,
-      `interpolateReds`,
-      `interpolateYlOrRd`,
-    ] as const,
-  )(`produces valid colors with %s scale`, (scale) => {
+  it.each([
+    `interpolateViridis`,
+    `interpolatePlasma`,
+    `interpolateInferno`,
+    `interpolateCividis`,
+    `interpolateTurbo`,
+    `interpolateBlues`,
+    `interpolateGreens`,
+    `interpolateReds`,
+    `interpolateYlOrRd`,
+  ] as const)(`produces valid colors with %s scale`, (scale) => {
     const result = calc_cell_color(50, [1, 50, 100], `higher`, scale)
     expect(result.bg).toMatch(/^(rgb|#)/)
     expect(result.text).toMatch(/^(black|white)$/)
   })
 
-  it.each(
-    [
-      `interpolateViridis`,
-      `interpolatePlasma`,
-      `interpolateInferno`,
-      `interpolateTurbo`,
-    ] as const,
-  )(`reverses gradient direction consistently with %s`, (scale) => {
+  it.each([
+    `interpolateViridis`,
+    `interpolatePlasma`,
+    `interpolateInferno`,
+    `interpolateTurbo`,
+  ] as const)(`reverses gradient direction consistently with %s`, (scale) => {
     const values = [1, 50, 100]
     expect(calc_cell_color(1, values, `higher`, scale).bg).toBe(
       calc_cell_color(100, values, `lower`, scale).bg,

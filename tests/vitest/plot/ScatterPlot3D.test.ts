@@ -172,7 +172,7 @@ describe(`ScatterPlot3D data processing`, () => {
         z: srs.z[point_idx],
         series_idx,
         point_idx,
-      }))
+      })),
     )
   }
 
@@ -219,9 +219,7 @@ describe(`ScatterPlot3D data processing`, () => {
     const points_with_undefined = all_points.filter(
       (pt) => pt.y === undefined || pt.z === undefined,
     )
-    expect(points_with_undefined).toHaveLength(
-      mismatched_series.x.length - expected_count,
-    )
+    expect(points_with_undefined).toHaveLength(mismatched_series.x.length - expected_count)
   })
 
   test(`equal length arrays produces all valid points`, () => {

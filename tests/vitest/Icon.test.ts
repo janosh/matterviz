@@ -4,19 +4,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { svg_query } from './setup'
 
 describe(`Icon`, () => {
-  it.each([`Check`, `Cross`, `GitHub`] as const)(
-    `renders %s icon from ICON_DATA`,
-    (icon) => {
-      mount(Icon, { target: document.body, props: { icon } })
+  it.each([`Check`, `Cross`, `GitHub`] as const)(`renders %s icon from ICON_DATA`, (icon) => {
+    mount(Icon, { target: document.body, props: { icon } })
 
-      const svg = svg_query(`svg[role="img"]`)
-      expect(svg.getAttribute(`viewBox`)).toBe(ICON_DATA[icon].viewBox)
-      expect(svg.getAttribute(`fill`)).toBe(`currentColor`)
-      expect(svg_query(`svg path`).getAttribute(`d`)).toBe(
-        ICON_DATA[icon].path,
-      )
-    },
-  )
+    const svg = svg_query(`svg[role="img"]`)
+    expect(svg.getAttribute(`viewBox`)).toBe(ICON_DATA[icon].viewBox)
+    expect(svg.getAttribute(`fill`)).toBe(`currentColor`)
+    expect(svg_query(`svg path`).getAttribute(`d`)).toBe(ICON_DATA[icon].path)
+  })
 
   it(`renders custom path as d attribute`, () => {
     const custom_path = `M0 0 L10 10 L20 0 Z`
@@ -46,8 +41,7 @@ describe(`Icon`, () => {
   })
 
   it(`stroke icons from ICON_DATA render with fill=none`, () => {
-    const [icon_name] = Object.entries(ICON_DATA).find(([, data]) => `stroke` in data) ??
-      []
+    const [icon_name] = Object.entries(ICON_DATA).find(([, data]) => `stroke` in data) ?? []
     if (!icon_name) return
 
     mount(Icon, {
@@ -62,21 +56,17 @@ describe(`Icon`, () => {
 
   it(`falls back to Alert for invalid icon`, () => {
     const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
-    // @ts-expect-error testing invalid icon name
+    // @ts-ignore testing invalid icon name
     mount(Icon, { target: document.body, props: { icon: `InvalidIcon` } })
 
-    expect(svg_query(`svg`).getAttribute(`viewBox`)).toBe(
-      ICON_DATA.Alert.viewBox,
-    )
+    expect(svg_query(`svg`).getAttribute(`viewBox`)).toBe(ICON_DATA.Alert.viewBox)
     expect(console_error).toHaveBeenCalledWith(`Icon 'InvalidIcon' not found`)
     console_error.mockRestore()
   })
 
   it(`falls back to Alert when no props provided`, () => {
     mount(Icon, { target: document.body, props: {} })
-    expect(svg_query(`svg`).getAttribute(`viewBox`)).toBe(
-      ICON_DATA.Alert.viewBox,
-    )
+    expect(svg_query(`svg`).getAttribute(`viewBox`)).toBe(ICON_DATA.Alert.viewBox)
   })
 
   it(`custom path takes precedence over icon`, () => {

@@ -14,7 +14,8 @@ const get_trigger = () =>
 
 describe(`PortalSelect`, () => {
   afterEach(() => {
-    document.body.querySelectorAll(`.portal-select-dropdown, .portal-select-trigger`)
+    document.body
+      .querySelectorAll(`.portal-select-dropdown, .portal-select-trigger`)
       .forEach((el) => el.remove())
   })
 

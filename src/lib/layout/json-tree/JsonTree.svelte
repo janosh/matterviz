@@ -145,7 +145,6 @@
       current_match_index = -1
       return
     }
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local variable, not reactive state
     const paths_to_expand = new Set<string>()
     for (const match of search_matches) {
       for (const ancestor of get_ancestor_paths(match)) {
@@ -330,7 +329,7 @@
 
     for (let idx = start_idx; idx < segments.length; idx++) {
       const segment = segments[idx]
-      if (current === null || current === undefined) return undefined
+      if (current == null) return undefined
 
       // Map/Set use numeric indexing
       if (current instanceof Map || current instanceof Set) {

@@ -48,10 +48,7 @@ const make_structure = (
 }
 
 // Helper to create a mock MoyoDataset
-const make_mock_sym_data = (
-  std_cell: MoyoCell,
-  prim_std_cell: MoyoCell,
-): MoyoDataset =>
+const make_mock_sym_data = (std_cell: MoyoCell, prim_std_cell: MoyoCell): MoyoDataset =>
   ({
     std_cell,
     prim_std_cell,
@@ -78,11 +75,18 @@ describe(`moyo_cell_to_structure`, () => {
   test(`converts cubic cell correctly`, () => {
     const moyo_cell = make_moyo_cell(
       [5, 0, 0, 0, 5, 0, 0, 0, 5], // 5Å cubic cell
-      [[0, 0, 0], [0.5, 0.5, 0.5]],
+      [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+      ],
       [14, 8], // Si, O
     )
     const original = make_structure(
-      [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+      [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ],
       [{ elem: `Si`, abc: [0, 0, 0], xyz: [0, 0, 0] }],
     )
 
@@ -111,7 +115,11 @@ describe(`moyo_cell_to_structure`, () => {
       [26], // Fe
     )
     const original = make_structure(
-      [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
+      [
+        [4, 0, 0],
+        [0, 4, 0],
+        [0, 0, 4],
+      ],
       [],
     )
 
@@ -125,17 +133,8 @@ describe(`moyo_cell_to_structure`, () => {
 
   test(`handles non-orthogonal lattice`, () => {
     // Hexagonal cell: a=3, b=3, c=5, gamma=120°
-    const hex_basis: [
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-    ] = [3, 0, 0, -1.5, 2.598, 0, 0, 0, 5]
+    const hex_basis: [number, number, number, number, number, number, number, number, number] =
+      [3, 0, 0, -1.5, 2.598, 0, 0, 0, 5]
 
     const moyo_cell = make_moyo_cell(hex_basis, [[0, 0, 0]], [6]) // Carbon
 
@@ -160,7 +159,14 @@ describe(`moyo_cell_to_structure`, () => {
 
   test(`throws error for unknown atomic number`, () => {
     const moyo_cell = make_moyo_cell([5, 0, 0, 0, 5, 0, 0, 0, 5], [[0, 0, 0]], [999])
-    const original = make_structure([[5, 0, 0], [0, 5, 0], [0, 0, 5]], [])
+    const original = make_structure(
+      [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ],
+      [],
+    )
 
     expect(() => moyo_cell_to_structure(moyo_cell, original)).toThrow(
       `Unknown atomic number: 999`,
@@ -187,7 +193,11 @@ describe(`moyo_cell_to_structure`, () => {
       [26, 26], // Fe
     )
     const original = make_structure(
-      [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
+      [
+        [4, 0, 0],
+        [0, 4, 0],
+        [0, 0, 4],
+      ],
       [],
     )
 
@@ -212,22 +222,25 @@ describe(`moyo_cell_to_structure`, () => {
 describe(`get_conventional_cell`, () => {
   test(`returns conventional cell from sym_data`, () => {
     const original = make_structure(
-      [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
+      [
+        [4, 0, 0],
+        [0, 4, 0],
+        [0, 0, 4],
+      ],
       [{ elem: `Fe`, abc: [0, 0, 0], xyz: [0, 0, 0] }],
       { a: 4, b: 4, c: 4, alpha: 90, beta: 90, gamma: 90, volume: 64 },
     )
 
     const std_cell = make_moyo_cell(
       [5, 0, 0, 0, 5, 0, 0, 0, 5], // Larger conventional cell
-      [[0, 0, 0], [0.5, 0.5, 0.5]],
+      [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+      ],
       [26, 26], // Two Fe atoms
     )
 
-    const prim_cell = make_moyo_cell(
-      [2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5],
-      [[0, 0, 0]],
-      [26],
-    )
+    const prim_cell = make_moyo_cell([2.5, 0, 0, 0, 2.5, 0, 0, 0, 2.5], [[0, 0, 0]], [26])
 
     const sym_data = make_mock_sym_data(std_cell, prim_cell)
 
@@ -241,7 +254,11 @@ describe(`get_conventional_cell`, () => {
 describe(`get_primitive_cell`, () => {
   test(`returns primitive cell from sym_data`, () => {
     const original = make_structure(
-      [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+      [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ],
       [
         { elem: `Fe`, abc: [0, 0, 0], xyz: [0, 0, 0] },
         { elem: `Fe`, abc: [0.5, 0.5, 0.5], xyz: [2.5, 2.5, 2.5] },
@@ -251,7 +268,10 @@ describe(`get_primitive_cell`, () => {
 
     const std_cell = make_moyo_cell(
       [5, 0, 0, 0, 5, 0, 0, 0, 5],
-      [[0, 0, 0], [0.5, 0.5, 0.5]],
+      [
+        [0, 0, 0],
+        [0.5, 0.5, 0.5],
+      ],
       [26, 26],
     )
 
@@ -273,7 +293,11 @@ describe(`get_primitive_cell`, () => {
 describe(`transform_cell`, () => {
   // Use distinct lattice parameter (a=4) so we can detect if transformation happened
   const original = make_structure(
-    [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
+    [
+      [4, 0, 0],
+      [0, 4, 0],
+      [0, 0, 4],
+    ],
     [{ elem: `Na`, abc: [0, 0, 0], xyz: [0, 0, 0] }],
     { a: 4, b: 4, c: 4, alpha: 90, beta: 90, gamma: 90, volume: 64 },
   )

@@ -26,32 +26,22 @@ interface FrameLoaderData {
 }
 
 // WebviewLike and ExtensionContextLike are unions to allow both real vscode types and mock types for testing
-type WebviewLike = vscode.Webview | {
-  cspSource: string
-  asWebviewUri: (uri: { fsPath: string }) => string | { toString(): string }
-  onDidReceiveMessage: (
-    listener: (message: unknown) => void,
-  ) => { dispose(): void } | void
-  postMessage: (message: unknown) => Promise<boolean> | void
-  html: string
-}
+type WebviewLike =
+  | vscode.Webview
+  | {
+      cspSource: string
+      asWebviewUri: (uri: { fsPath: string }) => string | { toString(): string }
+      onDidReceiveMessage: (listener: (message: unknown) => void) => { dispose(): void } | void
+      postMessage: (message: unknown) => Promise<boolean> | void
+      html: string
+    }
 
-type ExtensionContextLike = vscode.ExtensionContext | {
-  extensionUri: { fsPath: string }
-  subscriptions: { dispose(): void }[]
-  workspaceState?: {
-    get<T>(key: string): T | undefined
-    update(key: string, value: unknown): Promise<void>
-  }
-  globalState?: {
-    get<T>(key: string): T | undefined
-    update(key: string, value: unknown): Promise<void>
-  }
-  extensionPath?: string
-  storageUri?: { fsPath: string }
-  globalStorageUri?: { fsPath: string }
-  logUri?: { fsPath: string }
-}
+type ExtensionContextLike =
+  | vscode.ExtensionContext
+  | {
+      extensionUri: { fsPath: string }
+      subscriptions: { dispose(): void }[]
+    }
 
 interface FileData {
   filename: string
@@ -111,9 +101,9 @@ function get_wasm_filename(ext_path: string): string | null {
     return null
   }
 
-  const wasm_file = fs.readdirSync(assets_dir).find((file) =>
-    file.startsWith(`moyo_wasm_bg-`) && file.endsWith(`.wasm`)
-  )
+  const wasm_file = fs
+    .readdirSync(assets_dir)
+    .find((file) => file.startsWith(`moyo_wasm_bg-`) && file.endsWith(`.wasm`))
   if (!wasm_file) {
     console.warn(`moyo-wasm not found in ${assets_dir}`)
     return null
@@ -153,15 +143,11 @@ const update_supported_resource_context = (uri?: vscode.Uri): void => {
   // Prefer explicit URI; otherwise fall back to the active editor filename
   const filename = uri?.fsPath
     ? path.basename(uri.fsPath)
-    : (vscode.window.activeTextEditor?.document?.fileName
+    : vscode.window.activeTextEditor?.document?.fileName
       ? path.basename(vscode.window.activeTextEditor.document.fileName)
-      : ``)
+      : ``
   const is_supported = should_auto_render(filename)
-  vscode.commands.executeCommand(
-    `setContext`,
-    `matterviz.supported_resource`,
-    is_supported,
-  )
+  vscode.commands.executeCommand(`setContext`, `matterviz.supported_resource`, is_supported)
 }
 
 // Read file from filesystem using VSCode API (works with remote SSH)
@@ -170,8 +156,8 @@ export const read_file = async (file_path: string): Promise<FileData> => {
   const uri = vscode.Uri.file(file_path)
 
   // Files we serialize as base64 for the webview (compressed OR binary)
-  const is_base64_payload = COMPRESSION_EXTENSIONS_REGEX.test(filename) ||
-    /\.(traj|h5|hdf5)$/i.test(filename)
+  const is_base64_payload =
+    COMPRESSION_EXTENSIONS_REGEX.test(filename) || /\.(traj|h5|hdf5)$/i.test(filename)
 
   // Check file size to avoid loading huge files into memory
   let file_size: number
@@ -205,9 +191,7 @@ export const read_file = async (file_path: string): Promise<FileData> => {
     return { filename, content, is_base64: is_base64_payload }
   } catch (error) {
     throw new Error(
-      `Failed to read file ${filename}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Failed to read file ${filename}: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
 }
@@ -224,13 +208,14 @@ export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
 
   const active_tab = vscode.window.tabGroups.activeTabGroup.activeTab
   if (
-    active_tab?.input && typeof active_tab.input === `object` &&
-    active_tab.input !== null && `uri` in active_tab.input
-  ) return await read_file(active_tab.input.uri.fsPath)
-
-  throw new Error(
-    `No file selected. MatterViz needs an active editor to know what to render.`,
+    active_tab?.input &&
+    typeof active_tab.input === `object` &&
+    active_tab.input !== null &&
+    `uri` in active_tab.input
   )
+    return await read_file(active_tab.input.uri.fsPath)
+
+  throw new Error(`No file selected. MatterViz needs an active editor to know what to render.`)
 }
 
 // Detect VSCode theme and user preference
@@ -240,9 +225,7 @@ export const get_theme = (): ThemeName => {
 
   // Validate theme setting
   if (!is_valid_theme_mode(theme_setting)) {
-    console.warn(
-      `Invalid theme setting: ${theme_setting}, falling back to auto`,
-    )
+    console.warn(`Invalid theme setting: ${theme_setting}, falling back to auto`)
     return get_system_theme()
   }
 
@@ -354,7 +337,7 @@ export const create_html = (
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' 'unsafe-eval' 'wasm-unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script nonce="${nonce}">
-      window.matterviz_data=${JSON.stringify(webview_data)};
+      window.matterviz_data=${JSON.stringify(webview_data).replace(/<\//g, `<\\/`)};
     </script>
   </head>
   <body>
@@ -368,10 +351,7 @@ export const create_html = (
 }
 
 // Handle messages from webview
-export const handle_msg = async (
-  msg: MessageData,
-  webview?: WebviewLike,
-): Promise<void> => {
+export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promise<void> => {
   if (msg.command === `info` && msg.text) {
     vscode.window.showInformationMessage(msg.text)
   } else if (msg.command === `error` && msg.text) {
@@ -396,7 +376,10 @@ export const handle_msg = async (
         array_buffer,
         filename,
         undefined,
-        { use_indexing: true, extract_plot_metadata: true },
+        {
+          use_indexing: true,
+          extract_plot_metadata: true,
+        },
       )
 
       active_frame_loaders.set(file_path, {
@@ -433,10 +416,7 @@ export const handle_msg = async (
       const loader_data = active_frame_loaders.get(file_path)
       if (!loader_data) throw new Error(`No frame loader found for file: ${file_path}`)
 
-      const frame = await loader_data.loader.load_frame(
-        loader_data.file_data,
-        frame_index,
-      )
+      const frame = await loader_data.loader.load_frame(loader_data.file_data, frame_index)
       const command = `frame_response`
       webview.postMessage({ command, request_id, frame, frame_index })
     } catch (error) {
@@ -454,7 +434,7 @@ export const handle_msg = async (
     try {
       const uri = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(msg.filename || `structure`),
-        filters: { 'Files': [`*`] },
+        filters: { Files: [`*`] },
       })
 
       if (uri && msg.content) {
@@ -483,15 +463,11 @@ export const handle_msg = async (
     path.isAbsolute(msg.file_path)
   ) {
     // Handle request to start watching a file
-    start_watching_file(
-      msg.file_path,
-      webview,
-      {
-        request_id: msg.request_id,
-        filename: msg.filename,
-        frame_index: msg.frame_index,
-      },
-    )
+    start_watching_file(msg.file_path, webview, {
+      request_id: msg.request_id,
+      filename: msg.filename,
+      frame_index: msg.frame_index,
+    })
   } else if (msg.command === `stopWatching` && msg.file_path) {
     // Handle request to stop watching a file
     stop_watching_file(msg.file_path)
@@ -545,7 +521,8 @@ async function handle_file_change(
   meta?: WatcherMeta,
 ): Promise<void> {
   if (event_type === `delete`) {
-    try { // File was deleted - send notification
+    try {
+      // File was deleted - send notification
       webview.postMessage({ command: `fileDeleted`, file_path, ...(meta || {}) })
     } catch (error) {
       console.error(`[MatterViz] Failed to send fileDeleted message:`, error)
@@ -597,10 +574,7 @@ function stop_watching_file(file_path: string): void {
 // Resolve which ViewColumn to use based on user settings and explicit override
 function get_view_column(explicit?: vscode.ViewColumn): vscode.ViewColumn {
   if (explicit !== undefined) return explicit
-  const open_beside = vscode.workspace.getConfiguration(`matterviz`).get(
-    `open_beside`,
-    false,
-  )
+  const open_beside = vscode.workspace.getConfiguration(`matterviz`).get(`open_beside`, false)
   return open_beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active
 }
 
@@ -676,8 +650,7 @@ export const render = async (
 ): Promise<void> => {
   try {
     const file = await get_file(uri)
-    const file_path = uri?.fsPath ||
-      vscode.window.activeTextEditor?.document.fileName
+    const file_path = uri?.fsPath || vscode.window.activeTextEditor?.document.fileName
 
     await create_webview_panel(context, file, file_path)
   } catch (error: unknown) {
@@ -717,16 +690,12 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
         ],
       }
       const current = await read_file(document.uri.fsPath)
-      webview_panel.webview.html = create_html(
-        webview_panel.webview,
-        this.context,
-        {
-          type: infer_view_type(current),
-          data: current,
-          theme: get_theme(),
-          defaults: get_defaults(),
-        },
-      )
+      webview_panel.webview.html = create_html(webview_panel.webview, this.context, {
+        type: infer_view_type(current),
+        data: current,
+        theme: get_theme(),
+        defaults: get_defaults(),
+      })
       webview_panel.webview.onDidReceiveMessage(
         (msg: MessageData) => handle_msg(msg, webview_panel.webview),
         undefined,
@@ -740,22 +709,16 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
       const update_theme = async () => {
         if (webview_panel.visible) {
           const current = await read_file(document.uri.fsPath)
-          webview_panel.webview.html = create_html(
-            webview_panel.webview,
-            this.context,
-            {
-              type: infer_view_type(current),
-              data: current,
-              theme: get_theme(),
-              defaults: get_defaults(),
-            },
-          )
+          webview_panel.webview.html = create_html(webview_panel.webview, this.context, {
+            type: infer_view_type(current),
+            data: current,
+            theme: get_theme(),
+            defaults: get_defaults(),
+          })
         }
       }
 
-      const theme_change_listener = vscode.window.onDidChangeActiveColorTheme(
-        update_theme,
-      )
+      const theme_change_listener = vscode.window.onDidChangeActiveColorTheme(update_theme)
       const config_change_listener = vscode.workspace.onDidChangeConfiguration(
         (event: vscode.ConfigurationChangeEvent) => {
           if (event.affectsConfiguration(`matterviz`)) update_theme()
@@ -785,19 +748,13 @@ export const activate = (context: vscode.ExtensionContext) => {
   update_supported_resource_context(vscode.window.activeTextEditor?.document.uri)
 
   context.subscriptions.push(
-    vscode.commands.registerCommand(
-      `matterviz.open`,
-      (uri?: vscode.Uri) => render(context, uri),
+    vscode.commands.registerCommand(`matterviz.open`, (uri?: vscode.Uri) =>
+      render(context, uri),
     ),
-    vscode.commands.registerCommand(
-      `matterviz.report_bug`,
-      report_bug,
-    ),
-    vscode.window.registerCustomEditorProvider(
-      `matterviz.viewer`,
-      new Provider(context),
-      { webviewOptions: { retainContextWhenHidden: true } },
-    ),
+    vscode.commands.registerCommand(`matterviz.report_bug`, report_bug),
+    vscode.window.registerCustomEditorProvider(`matterviz.viewer`, new Provider(context), {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
     vscode.workspace.onDidOpenTextDocument((document: vscode.TextDocument) => {
       // Update context on any document open
       update_supported_resource_context(document.uri)
@@ -820,9 +777,8 @@ export const activate = (context: vscode.ExtensionContext) => {
 
         const timer = setTimeout(async () => {
           try {
-            if (
-              !vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true)
-            ) return
+            if (!vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true))
+              return
             const panel = await create_webview_panel(
               context,
               await read_file(file_path),
@@ -878,7 +834,7 @@ async function collect_debug_info(): Promise<string> {
     return { filename, file_path, file_size, has_watcher: true, has_frame_loader }
   })
 
-  active_files.push(...await Promise.all(file_stat_promises))
+  active_files.push(...(await Promise.all(file_stat_promises)))
 
   // Get memory usage if available (use global process object)
   const memory_usage = globalThis.process?.memoryUsage() ?? {
@@ -897,9 +853,7 @@ async function collect_debug_info(): Promise<string> {
   report += `- **OS**: ${os.type()} ${os.platform()} ${os.arch()}\n`
   report += `- **OS Version**: ${os.release()}\n`
   report += `- **UI Kind**: ${ui_kind}\n`
-  report += `- **Remote Session**: ${
-    is_remote ? `Yes (${remote_name})` : `No (Local)`
-  }\n\n`
+  report += `- **Remote Session**: ${is_remote ? `Yes (${remote_name})` : `No (Local)`}\n\n`
 
   report += `### System Resources\n\n`
   report += `- **Total Memory**: ${format_bytes(os.totalmem())}\n`
@@ -932,11 +886,9 @@ async function collect_debug_info(): Promise<string> {
   report += `1. Open Developer Tools:\n`
   report += `   - Cursor/VSCode: Help → Toggle Developer Tools (or Cmd/Ctrl+Shift+I)\n`
   report += `2. Go to the "Console" tab\n`
-  report +=
-    `3. Look for any errors or warnings related to MatterViz (especially in red)\n`
+  report += `3. Look for any errors or warnings related to MatterViz (especially in red)\n`
   report += `4. Copy and paste any relevant error messages into your GitHub issue\n\n`
-  report +=
-    `Tip: You can filter console messages by typing "matterviz" in the filter box.\n\n`
+  report += `Tip: You can filter console messages by typing "matterviz" in the filter box.\n\n`
 
   report += `---\n\n`
   report += `**Generated**: ${new Date().toISOString()}\n\n`

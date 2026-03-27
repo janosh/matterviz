@@ -242,13 +242,15 @@ export function detect_instability(
   }
 
   // Compute weighted combined score
-  const total_weight = weights.derivative_variance + weights.amplitude_growth +
-    weights.sign_changes
-  const combined_score = total_weight > 0
-    ? (weights.derivative_variance * deriv_result.score +
-      weights.amplitude_growth * amp_result.score +
-      weights.sign_changes * sign_result.score) / total_weight
-    : 0
+  const total_weight =
+    weights.derivative_variance + weights.amplitude_growth + weights.sign_changes
+  const combined_score =
+    total_weight > 0
+      ? (weights.derivative_variance * deriv_result.score +
+          weights.amplitude_growth * amp_result.score +
+          weights.sign_changes * sign_result.score) /
+        total_weight
+      : 0
 
   // Find earliest onset across all methods that exceeded threshold
   const onset_candidates = [
@@ -271,9 +273,8 @@ export function detect_instability(
   }
 
   const detected = combined_score >= threshold || onset_index >= 0
-  const onset_x = onset_index >= 0 && onset_index < x_values.length
-    ? x_values[onset_index]
-    : NaN
+  const onset_x =
+    onset_index >= 0 && onset_index < x_values.length ? x_values[onset_index] : NaN
 
   return { detected, onset_index, onset_x, combined_score, method_scores }
 }
@@ -364,15 +365,13 @@ export function smooth_savitzky_golay(
 
     for (let jdx = 0; jdx < actual_window; jdx++) {
       const data_idx = idx - half + jdx
-      if (
-        data_idx >= 0 && data_idx < values.length && Number.isFinite(values[data_idx])
-      ) {
+      if (data_idx >= 0 && data_idx < values.length && Number.isFinite(values[data_idx])) {
         sum += coeffs[jdx] * values[data_idx]
         weight_sum += coeffs[jdx]
       }
     }
 
-    result[idx] = weight_sum !== 0 ? sum / weight_sum * coeffs_sum : values[idx]
+    result[idx] = weight_sum !== 0 ? (sum / weight_sum) * coeffs_sum : values[idx]
   }
 
   return result
@@ -780,7 +779,7 @@ export function clean_multi_series(
   let kept_indices = Array.from({ length }, (_, idx) => idx)
   if (invalid_mode === `remove`) {
     kept_indices = kept_indices.filter((idx) =>
-      y_arrays.every((y_arr) => Number.isFinite(y_arr[idx]))
+      y_arrays.every((y_arr) => Number.isFinite(y_arr[idx])),
     )
   }
 
@@ -853,7 +852,7 @@ export function clean_xyz(
   let kept_indices = Array.from({ length }, (_, idx) => idx)
   if (invalid_mode === `remove`) {
     kept_indices = kept_indices.filter((idx) =>
-      all_arrays.every((arr) => Number.isFinite(arr[idx]))
+      all_arrays.every((arr) => Number.isFinite(arr[idx])),
     )
   }
 
@@ -940,7 +939,7 @@ export function clean_trajectory_props(
   let kept_indices = Array.from({ length }, (_, idx) => idx)
   if (invalid_mode === `remove`) {
     kept_indices = kept_indices.filter((idx) =>
-      entries.every(([, arr]) => Number.isFinite(arr[idx]))
+      entries.every(([, arr]) => Number.isFinite(arr[idx])),
     )
   }
 
@@ -1010,10 +1009,7 @@ function multiply_matrices(a: number[][], b: number[][]): number[][] {
   const cols_a = a[0]?.length ?? 0
   const cols_b = b[0]?.length ?? 0
 
-  const result: number[][] = Array.from(
-    { length: rows_a },
-    () => new Array(cols_b).fill(0),
-  )
+  const result: number[][] = Array.from({ length: rows_a }, () => new Array(cols_b).fill(0))
 
   for (let row = 0; row < rows_a; row++) {
     for (let col = 0; col < cols_b; col++) {

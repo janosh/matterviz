@@ -14,7 +14,7 @@ import {
 import { describe, expect, test } from 'vitest'
 
 describe(`arity helpers`, () => {
-  const make = (composition: Record<string, number>) => ({ composition } as PhaseData)
+  const make = (composition: Record<string, number>) => ({ composition }) as PhaseData
 
   test(`get_arity counts positive amounts only`, () => {
     expect(get_arity(make({ A: 1, B: 0, C: -1 }))).toBe(1)
@@ -43,29 +43,18 @@ describe(`is_on_hull`, () => {
 
   test.each([
     [{ is_stable: true }, true, `explicitly stable`],
-    [
-      { is_stable: true, e_above_hull: 0.5 },
-      true,
-      `is_stable overrides large e_above_hull`,
-    ],
+    [{ is_stable: true, e_above_hull: 0.5 }, true, `is_stable overrides large e_above_hull`],
     [{ e_above_hull: 0 }, true, `e_above_hull exactly 0`],
     [{ e_above_hull: 1e-7 }, true, `e_above_hull within default tolerance`],
     [{ e_above_hull: -1e-8 }, true, `negative e_above_hull (numerical noise)`],
     [{ e_above_hull: 0.1 }, false, `e_above_hull above tolerance`],
-    [
-      { is_stable: false, e_above_hull: 0.1 },
-      false,
-      `unstable with positive e_above_hull`,
-    ],
+    [{ is_stable: false, e_above_hull: 0.1 }, false, `unstable with positive e_above_hull`],
     [{}, false, `neither is_stable nor e_above_hull set`],
     [{ is_stable: false }, false, `is_stable false, no e_above_hull`],
     [{ e_above_hull: undefined }, false, `e_above_hull undefined`],
-  ] as [Partial<PhaseData>, boolean, string][])(
-    `%o → %s (%s)`,
-    (overrides, expected) => {
-      expect(is_on_hull(make(overrides))).toBe(expected)
-    },
-  )
+  ] as [Partial<PhaseData>, boolean, string][])(`%o → %s (%s)`, (overrides, expected) => {
+    expect(is_on_hull(make(overrides))).toBe(expected)
+  })
 
   test(`custom tolerance overrides default`, () => {
     const entry = make({ e_above_hull: 0.05 })
@@ -94,13 +83,11 @@ describe(`ConvexHullControlsType.show`, () => {
 describe(`HullFaceColorMode`, () => {
   // toEqual validates content, order, length, and array-ness in one assertion
   test(`HULL_FACE_COLOR_MODES contains expected modes in order`, () => {
-    expect(HULL_FACE_COLOR_MODES).toEqual(
-      [
-        `uniform`,
-        `formation_energy`,
-        `dominant_element`,
-        `facet_index`,
-      ] satisfies HullFaceColorMode[],
-    )
+    expect(HULL_FACE_COLOR_MODES).toEqual([
+      `uniform`,
+      `formation_energy`,
+      `dominant_element`,
+      `facet_index`,
+    ] satisfies HullFaceColorMode[])
   })
 })

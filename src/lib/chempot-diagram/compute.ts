@@ -11,11 +11,7 @@ import {
   solve_linear_system,
   type Vec2,
 } from '$lib/math'
-import {
-  CHEMPOT_DEFAULTS,
-  type ChemPotDiagramConfig,
-  type ChemPotDiagramData,
-} from './types'
+import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
 
 // === Entry Helpers ===
 
@@ -25,9 +21,7 @@ export function get_energy_per_atom(entry: PhaseData): number {
   const atoms = count_atoms_in_composition(entry.composition)
   if (atoms <= 0) {
     throw new Error(
-      `Invalid composition with non-positive atom count: ${
-        JSON.stringify(entry.composition)
-      }`,
+      `Invalid composition with non-positive atom count: ${JSON.stringify(entry.composition)}`,
     )
   }
   return entry.energy / atoms
@@ -38,9 +32,7 @@ export function get_energy_per_atom(entry: PhaseData): number {
 const formula_cache = new WeakMap<Record<string, number>, string>()
 
 // Get a stable reduced formula string from composition dict (cached)
-export function formula_key_from_composition(
-  composition: Record<string, number>,
-): string {
+export function formula_key_from_composition(composition: Record<string, number>): string {
   const cached = formula_cache.get(composition)
   if (cached) return cached
   const reduced = get_reduced_formula(composition)
@@ -57,9 +49,10 @@ export function formula_key_from_composition(
 
 // Group entries by reduced formula, keep only the minimum-energy entry per composition.
 // Also extract elemental reference entries.
-export function get_min_entries_and_el_refs(
-  entries: PhaseData[],
-): { min_entries: PhaseData[]; el_refs: Record<string, PhaseData> } {
+export function get_min_entries_and_el_refs(entries: PhaseData[]): {
+  min_entries: PhaseData[]
+  el_refs: Record<string, PhaseData>
+} {
   const by_formula = new Map<string, { entry: PhaseData; epa: number }>()
 
   for (const entry of entries) {
@@ -125,9 +118,8 @@ export function renormalize_entries(
     const atoms = count_atoms_in_composition(entry.composition)
     let renorm_energy = 0
     for (const el of elements) {
-      const frac = atoms > 0
-        ? ((entry.composition as Record<string, number>)[el] ?? 0) / atoms
-        : 0
+      const frac =
+        atoms > 0 ? ((entry.composition as Record<string, number>)[el] ?? 0) / atoms : 0
       const ref = el_refs[el]
       if (ref) renorm_energy += frac * get_energy_per_atom(ref)
     }
@@ -229,20 +221,27 @@ function solve_3x3(
   offsets: number[],
   out: number[],
 ): boolean {
-  const det = a[0] * (b[1] * c[2] - b[2] * c[1]) -
+  const det =
+    a[0] * (b[1] * c[2] - b[2] * c[1]) -
     a[1] * (b[0] * c[2] - b[2] * c[0]) +
     a[2] * (b[0] * c[1] - b[1] * c[0])
   if (Math.abs(det) < EPS) return false
   const inv = 1 / det
-  out[0] = (offsets[0] * (b[1] * c[2] - b[2] * c[1]) -
-    a[1] * (offsets[1] * c[2] - b[2] * offsets[2]) +
-    a[2] * (offsets[1] * c[1] - b[1] * offsets[2])) * inv
-  out[1] = (a[0] * (offsets[1] * c[2] - b[2] * offsets[2]) -
-    offsets[0] * (b[0] * c[2] - b[2] * c[0]) +
-    a[2] * (b[0] * offsets[2] - offsets[1] * c[0])) * inv
-  out[2] = (a[0] * (b[1] * offsets[2] - offsets[1] * c[1]) -
-    a[1] * (b[0] * offsets[2] - offsets[1] * c[0]) +
-    offsets[0] * (b[0] * c[1] - b[1] * c[0])) * inv
+  out[0] =
+    (offsets[0] * (b[1] * c[2] - b[2] * c[1]) -
+      a[1] * (offsets[1] * c[2] - b[2] * offsets[2]) +
+      a[2] * (offsets[1] * c[1] - b[1] * offsets[2])) *
+    inv
+  out[1] =
+    (a[0] * (offsets[1] * c[2] - b[2] * offsets[2]) -
+      offsets[0] * (b[0] * c[2] - b[2] * c[0]) +
+      a[2] * (b[0] * offsets[2] - offsets[1] * c[0])) *
+    inv
+  out[2] =
+    (a[0] * (b[1] * offsets[2] - offsets[1] * c[1]) -
+      a[1] * (b[0] * offsets[2] - offsets[1] * c[0]) +
+      offsets[0] * (b[0] * c[1] - b[1] * c[0])) *
+    inv
   return true
 }
 
@@ -264,7 +263,7 @@ export function compute_domains(
 
   // Pre-compute formula keys for entry hyperplanes (avoid repeated work in hot loop)
   const entry_formulas = hyperplane_entries.map((entry) =>
-    formula_key_from_composition(entry.composition)
+    formula_key_from_composition(entry.composition),
   )
 
   const domains: Record<string, number[][]> = {}
@@ -276,9 +275,8 @@ export function compute_domains(
   const mu = new Array(dim).fill(0)
   const offsets = new Array(dim).fill(0)
   // For dim <= 3, use inline solvers; for larger dims, build A on the fly
-  const A_rows: number[][] = dim > 3
-    ? Array.from({ length: dim }, () => new Array(dim).fill(0))
-    : []
+  const A_rows: number[][] =
+    dim > 3 ? Array.from({ length: dim }, () => new Array(dim).fill(0)) : []
 
   // Generate all combinations of dim indices from n_total halfspaces
   const combo = new Array(dim).fill(0)
@@ -300,8 +298,8 @@ export function compute_domains(
     if (dim === 2) {
       has_entry_hyperplane = combo[0] < n_entries || combo[1] < n_entries
     } else if (dim === 3) {
-      has_entry_hyperplane = combo[0] < n_entries || combo[1] < n_entries ||
-        combo[2] < n_entries
+      has_entry_hyperplane =
+        combo[0] < n_entries || combo[1] < n_entries || combo[2] < n_entries
     } else {
       for (let row = 0; row < dim; row++) {
         if (combo[row] < n_entries) {
@@ -325,13 +323,7 @@ export function compute_domains(
       const h1 = all_hs[combo[1]]
       solved = solve_2x2(h0[0], h0[1], offsets[0], h1[0], h1[1], offsets[1], mu)
     } else if (dim === 3) {
-      solved = solve_3x3(
-        all_hs[combo[0]],
-        all_hs[combo[1]],
-        all_hs[combo[2]],
-        offsets,
-        mu,
-      )
+      solved = solve_3x3(all_hs[combo[0]], all_hs[combo[1]], all_hs[combo[2]], offsets, mu)
     } else {
       // General case: build A matrix and use LU solver
       for (let row = 0; row < dim; row++) {
@@ -353,9 +345,11 @@ export function compute_domains(
       for (let idx = 0; idx < n_total; idx++) {
         if (dim <= 3) {
           if (
-            idx === selected_hs_idx_0 || idx === selected_hs_idx_1 ||
+            idx === selected_hs_idx_0 ||
+            idx === selected_hs_idx_1 ||
             idx === selected_hs_idx_2
-          ) continue
+          )
+            continue
         } else {
           let is_active_halfspace = false
           for (let combo_idx = 0; combo_idx < dim; combo_idx++) {
@@ -383,11 +377,7 @@ export function compute_domains(
 
       if (solved) {
         // Assign vertex to entries whose hyperplanes are active
-        const vertex = dim === 2
-          ? [mu[0], mu[1]]
-          : dim === 3
-          ? [mu[0], mu[1], mu[2]]
-          : [...mu]
+        const vertex = dim === 2 ? [mu[0], mu[1]] : dim === 3 ? [mu[0], mu[1], mu[2]] : [...mu]
         for (let idx = 0; idx < dim; idx++) {
           const hs_idx = combo[idx]
           if (hs_idx < n_entries) {
@@ -430,8 +420,8 @@ export function apply_element_padding(
       }
     }
   }
-  return mins.map((min_val) =>
-    (Number.isFinite(min_val) ? min_val : default_min_limit) - padding
+  return mins.map(
+    (min_val) => (Number.isFinite(min_val) ? min_val : default_min_limit) - padding,
   )
 }
 
@@ -557,7 +547,7 @@ export function simple_pca(
 
   // Project data onto eigenvectors
   const scores = centered.map((row) =>
-    eigenvectors.map((ev) => row.reduce((sum, val, idx) => sum + val * ev[idx], 0))
+    eigenvectors.map((ev) => row.reduce((sum, val, idx) => sum + val * ev[idx], 0)),
   )
 
   return { scores, eigenvectors }
@@ -574,7 +564,10 @@ export function orthonormal_2d(line_pts: number[][]): [number, number] {
 }
 
 // Deduplicate points within tolerance, returning unique points and index mapping
-export function dedup_points(pts: number[][], tol: number = 1e-4): {
+export function dedup_points(
+  pts: number[][],
+  tol: number = 1e-4,
+): {
   unique: number[][]
   orig_indices: number[] // for each unique point, the index in the original array
 } {
@@ -583,7 +576,7 @@ export function dedup_points(pts: number[][], tol: number = 1e-4): {
   for (let idx = 0; idx < pts.length; idx++) {
     const pt = pts[idx]
     const is_dup = unique.some((existing) =>
-      existing.every((val, dim) => Math.abs(val - pt[dim]) < tol)
+      existing.every((val, dim) => Math.abs(val - pt[dim]) < tol),
     )
     if (!is_dup) {
       unique.push(pt)
@@ -596,9 +589,10 @@ export function dedup_points(pts: number[][], tol: number = 1e-4): {
 // For a 3D domain, compute convex hull boundary edges and annotation location.
 // Deduplicates vertices first, then uses PCA to project to 2D for the convex
 // hull computation. Returns only the outer boundary edges, not interior lines.
-export function get_3d_domain_simplexes_and_ann_loc(
-  points_3d: number[][],
-): { simplex_indices: number[][]; ann_loc: number[] } {
+export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
+  simplex_indices: number[][]
+  ann_loc: number[]
+} {
   // Deduplicate vertices to avoid cluttered interior edges
   const { unique, orig_indices } = dedup_points(points_3d)
 
@@ -627,8 +621,8 @@ export function get_3d_domain_simplexes_and_ann_loc(
   const centroid_y = centroid[1] ?? 0
   const first_eigenvector = eigenvectors[0] ?? new Array(n_dims).fill(0)
   const second_eigenvector = eigenvectors[1] ?? new Array(n_dims).fill(0)
-  const ann_loc = mean_3d.map((m, dim) =>
-    m + centroid_x * first_eigenvector[dim] + centroid_y * second_eigenvector[dim]
+  const ann_loc = mean_3d.map(
+    (m, dim) => m + centroid_x * first_eigenvector[dim] + centroid_y * second_eigenvector[dim],
   )
 
   // Map hull vertices back to original point indices using nearest projected
@@ -691,13 +685,12 @@ export function compute_chempot_diagram(
   const all_data_elements = Array.from(all_data_elements_set).sort()
 
   // Display elements: user-specified order (controls axis mapping), or auto-detect
-  const display_elements = config.elements?.length
-    ? [...config.elements]
-    : all_data_elements
+  const display_elements = config.elements?.length ? [...config.elements] : all_data_elements
 
   // Projection mode: display fewer axes than the data has elements
   // In this mode, compute in full N-D and project afterward
-  const is_projection = display_elements.length < all_data_elements.length &&
+  const is_projection =
+    display_elements.length < all_data_elements.length &&
     display_elements.every((el) => all_data_elements.includes(el))
 
   // Computation elements: full element set for projection, display set for subsystem
@@ -757,12 +750,7 @@ export function compute_chempot_diagram(
 
   const border_hyperplanes = build_border_hyperplanes(compute_lims)
 
-  let domains = compute_domains(
-    hyperplanes,
-    border_hyperplanes,
-    hyperplane_entries,
-    dim,
-  )
+  let domains = compute_domains(hyperplanes, border_hyperplanes, hyperplane_entries, dim)
 
   // Project domain vertices from N-D to display axes (column extraction)
   let output_lims = compute_lims
@@ -774,9 +762,7 @@ export function compute_chempot_diagram(
     const col_indices = display_elements.map((element) => {
       const idx = compute_index_by_element.get(element)
       if (idx === undefined) {
-        throw new Error(
-          `Display element ${element} not present in compute element set`,
-        )
+        throw new Error(`Display element ${element} not present in compute element set`)
       }
       return idx
     })

@@ -146,10 +146,7 @@ export interface FermiHoverData {
 
 // Tooltip config for prefix/suffix content
 export type FermiTooltipConfig = TooltipConfig<FermiHoverData>
-export type FermiTooltipProp = TooltipProp<
-  FermiHoverData,
-  [{ hover_data: FermiHoverData }]
->
+export type FermiTooltipProp = TooltipProp<FermiHoverData, [{ hover_data: FermiHoverData }]>
 
 // Type guard: checks if parsed result is FermiSurfaceData (has pre-computed isosurfaces)
 export const is_fermi_surface_data = (

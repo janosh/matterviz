@@ -33,12 +33,17 @@ function create_synthetic_pattern(
 describe(`RdfPlot`, () => {
   test.each([
     [{ patterns: { label: `Test`, pattern: create_synthetic_pattern() } }],
-    [{
-      patterns: [{ label: `P1`, pattern: create_synthetic_pattern() }, {
-        label: `P2`,
-        pattern: create_synthetic_pattern(50, [3, 5], [1.8, 1.2]),
-      }],
-    }],
+    [
+      {
+        patterns: [
+          { label: `P1`, pattern: create_synthetic_pattern() },
+          {
+            label: `P2`,
+            pattern: create_synthetic_pattern(50, [3, 5], [1.8, 1.2]),
+          },
+        ],
+      },
+    ],
     [{ structures: nacl_structure }],
     [{ structures: [nacl_structure, pd_structure] }],
     [{ structures: { NaCl: nacl_structure, Pd: pd_structure } }],
@@ -47,13 +52,11 @@ describe(`RdfPlot`, () => {
     mount(RdfPlot, { target: document.body, props })
   })
 
-  test.each(
-    [
-      [`element_pairs`, nacl_structure],
-      [`full`, pd_structure],
-      [`element_pairs`, bi2zr2o8_structure],
-    ] as const,
-  )(`mode=%s`, (mode, structure) => {
+  test.each([
+    [`element_pairs`, nacl_structure],
+    [`full`, pd_structure],
+    [`element_pairs`, bi2zr2o8_structure],
+  ] as const)(`mode=%s`, (mode, structure) => {
     mount(RdfPlot, { target: document.body, props: { structures: structure, mode } })
   })
 
@@ -61,18 +64,22 @@ describe(`RdfPlot`, () => {
     [{ cutoff: 1, n_bins: 20 }],
     [{ cutoff: 10, n_bins: 100 }],
     [{ cutoff: 20, n_bins: 200 }],
-  ])(`cutoff/n_bins %s`, (opts) => {
+  ])(
+    `cutoff/n_bins %s`,
+    (opts) => {
+      mount(RdfPlot, {
+        target: document.body,
+        props: { structures: pd_structure, ...opts },
+      })
+    },
+    10_000,
+  )
+
+  test.each([[[true, true, true] as Pbc], [[false, false, false] as Pbc]])(`pbc=%s`, (pbc) => {
     mount(RdfPlot, {
       target: document.body,
-      props: { structures: pd_structure, ...opts },
+      props: { structures: nacl_structure, pbc },
     })
-  }, 10_000)
-
-  test.each([
-    [[true, true, true] as Pbc],
-    [[false, false, false] as Pbc],
-  ])(`pbc=%s`, (pbc) => {
-    mount(RdfPlot, { target: document.body, props: { structures: nacl_structure, pbc } })
   })
 
   test.each([[true], [false]])(`show_reference_line=%s`, (show_ref) => {
@@ -124,11 +131,14 @@ describe(`RdfPlot`, () => {
     mount(RdfPlot, {
       target: document.body,
       props: {
-        patterns: [{ label: `Red`, pattern: create_synthetic_pattern(), color: `red` }, {
-          label: `Blue`,
-          pattern: create_synthetic_pattern(50, [3], [2]),
-          color: `blue`,
-        }],
+        patterns: [
+          { label: `Red`, pattern: create_synthetic_pattern(), color: `red` },
+          {
+            label: `Blue`,
+            pattern: create_synthetic_pattern(50, [3], [2]),
+            color: `blue`,
+          },
+        ],
       },
     })
   })

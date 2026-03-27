@@ -7,19 +7,16 @@ import {
   structural_data_extractor,
 } from '$lib/trajectory/extract'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
-import { readFileSync } from 'fs'
+import { readFileSync } from 'node:fs'
 import process from 'node:process'
-import { join } from 'path'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 // Helper to read binary test files (for HDF5)
 function read_binary_test_file(filename: string): ArrayBuffer {
   const file_path = join(process.cwd(), `src/site/trajectories`, filename)
   const buffer = readFileSync(file_path)
-  return buffer.buffer.slice(
-    buffer.byteOffset,
-    buffer.byteOffset + buffer.byteLength,
-  )
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 }
 
 // Helper to create a basic frame structure
@@ -28,13 +25,15 @@ const create_basic_frame = (
   metadata: Record<string, unknown> = {},
 ): TrajectoryFrame => ({
   structure: {
-    sites: [{
-      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-      abc: [0, 0, 0],
-      xyz: [0, 0, 0],
-      label: `H1`,
-      properties: {},
-    }],
+    sites: [
+      {
+        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+        abc: [0, 0, 0],
+        xyz: [0, 0, 0],
+        label: `H1`,
+        properties: {},
+      },
+    ],
     charge: 0,
   },
   step,
@@ -48,13 +47,15 @@ const create_frame_with_lattice = (
   metadata: Record<string, unknown> = {},
 ): TrajectoryFrame => ({
   structure: {
-    sites: [{
-      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-      abc: [0, 0, 0],
-      xyz: [0, 0, 0],
-      label: `H1`,
-      properties: {},
-    }],
+    sites: [
+      {
+        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+        abc: [0, 0, 0],
+        xyz: [0, 0, 0],
+        label: `H1`,
+        properties: {},
+      },
+    ],
     charge: 0,
     lattice: {
       matrix: [
@@ -110,7 +111,13 @@ describe(`Force and Stress Data Extractor`, () => {
     {
       name: `calculate force properties from forces array`,
       step: 1,
-      metadata: { forces: [[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]] },
+      metadata: {
+        forces: [
+          [1.0, 0.0, 0.0],
+          [0.0, 2.0, 0.0],
+          [0.0, 0.0, 3.0],
+        ],
+      },
       expected: {
         Step: 1,
         force_max: 3.0, // max magnitude
@@ -226,16 +233,24 @@ describe(`Full Data Extractor`, () => {
   it(`should combine all extractors`, () => {
     const trajectory: TrajectoryType = {
       frames: [
-        create_frame_with_lattice(0, { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 }, {
-          energy: -10.0,
-          force_max: 2.0,
-          density: 2.5,
-        }),
-        create_frame_with_lattice(1, { a: 1.1, b: 1.1, c: 1.1, volume: 1.331 }, {
-          energy: -10.5,
-          force_max: 1.5,
-          density: 2.3,
-        }),
+        create_frame_with_lattice(
+          0,
+          { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 },
+          {
+            energy: -10.0,
+            force_max: 2.0,
+            density: 2.5,
+          },
+        ),
+        create_frame_with_lattice(
+          1,
+          { a: 1.1, b: 1.1, c: 1.1, volume: 1.331 },
+          {
+            energy: -10.5,
+            force_max: 1.5,
+            density: 2.3,
+          },
+        ),
       ],
       metadata: {
         source_format: `test`,
@@ -289,14 +304,8 @@ describe(`Full Data Extractor`, () => {
       },
     }
 
-    const frame1_data = full_data_extractor(
-      constant_trajectory.frames[0],
-      constant_trajectory,
-    )
-    const frame2_data = full_data_extractor(
-      constant_trajectory.frames[1],
-      constant_trajectory,
-    )
+    const frame1_data = full_data_extractor(constant_trajectory.frames[0], constant_trajectory)
+    const frame2_data = full_data_extractor(constant_trajectory.frames[1], constant_trajectory)
 
     // Should have constant lattice markers for all parameters
     expect(frame1_data._constant_a).toBe(1)
@@ -324,11 +333,7 @@ describe(`Default Plotting Behavior`, () => {
       name: `default to volume and density when no other metadata is available`,
       trajectory_frames: [
         create_frame_with_lattice(0, { a: 1, b: 1, c: 1, volume: 1.0 }, {}),
-        create_frame_with_lattice(
-          1,
-          { a: 1.1, b: 1.1, c: 1.1, volume: 1.331 },
-          {},
-        ),
+        create_frame_with_lattice(1, { a: 1.1, b: 1.1, c: 1.1, volume: 1.331 }, {}),
       ],
       expected_volumes: [1.0, 1.331],
       should_vary: true,
@@ -336,16 +341,8 @@ describe(`Default Plotting Behavior`, () => {
     {
       name: `detect constant values in trajectory`,
       trajectory_frames: [
-        create_frame_with_lattice(
-          0,
-          { a: 1, b: 1, c: 1, volume: 1.0 },
-          { energy: -10.0 },
-        ),
-        create_frame_with_lattice(
-          1,
-          { a: 1, b: 1, c: 1, volume: 1.0 },
-          { energy: -10.0 },
-        ),
+        create_frame_with_lattice(0, { a: 1, b: 1, c: 1, volume: 1.0 }, { energy: -10.0 }),
+        create_frame_with_lattice(1, { a: 1, b: 1, c: 1, volume: 1.0 }, { energy: -10.0 }),
       ],
       expected_volumes: [1.0, 1.0],
       should_vary: false,
@@ -359,9 +356,7 @@ describe(`Default Plotting Behavior`, () => {
       },
     }
 
-    const frame_data = trajectory_frames.map((frame) =>
-      full_data_extractor(frame, trajectory)
-    )
+    const frame_data = trajectory_frames.map((frame) => full_data_extractor(frame, trajectory))
 
     // Should have volume in all frames
     frame_data.forEach((data, idx) => {
@@ -380,9 +375,7 @@ describe(`Default Plotting Behavior`, () => {
 
 describe(`HDF5 Trajectory Data Extraction`, () => {
   it(`should extract data from HDF5 trajectory`, async () => {
-    const hdf5_content = read_binary_test_file(
-      `flame-gold-cluster-55-atoms.h5`,
-    )
+    const hdf5_content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
     const trajectory = await parse_trajectory_data(
       hdf5_content,
       `flame-gold-cluster-55-atoms.h5`,
@@ -407,16 +400,14 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
   })
 
   it(`should handle all frames and lattice consistency`, async () => {
-    const hdf5_content = read_binary_test_file(
-      `flame-gold-cluster-55-atoms.h5`,
-    )
+    const hdf5_content = read_binary_test_file(`flame-gold-cluster-55-atoms.h5`)
     const trajectory = await parse_trajectory_data(
       hdf5_content,
       `flame-gold-cluster-55-atoms.h5`,
     )
 
     const all_frame_data = trajectory.frames.map((frame: TrajectoryFrame) =>
-      full_data_extractor(frame, trajectory)
+      full_data_extractor(frame, trajectory),
     )
 
     expect(all_frame_data).toHaveLength(20)
@@ -473,10 +464,7 @@ describe(`regression tests for trajectory plotting integration`, () => {
       metadata: { source_format: `test`, frame_count: 2 },
     }
 
-    const lattice_data = full_data_extractor(
-      lattice_trajectory.frames[0],
-      lattice_trajectory,
-    )
+    const lattice_data = full_data_extractor(lattice_trajectory.frames[0], lattice_trajectory)
     expect(lattice_data.a).toBeDefined()
     expect(lattice_data.b).toBeDefined()
     expect(lattice_data.c).toBeDefined()
@@ -507,7 +495,7 @@ describe(`regression tests for trajectory plotting integration`, () => {
 
     // Test data compatibility with trajectory plotting requirements
     const plot_data = mixed_trajectory.frames.map((frame) =>
-      full_data_extractor(frame, mixed_trajectory)
+      full_data_extractor(frame, mixed_trajectory),
     )
     const properties = Object.keys(plot_data[0])
     expect(properties).toContain(`energy`)
@@ -534,7 +522,7 @@ describe(`regression tests for trajectory plotting integration`, () => {
     }
 
     const single_data = single_prop_trajectory.frames.map((frame) =>
-      full_data_extractor(frame, single_prop_trajectory)
+      full_data_extractor(frame, single_prop_trajectory),
     )
     expect(single_data[0].energy).not.toBe(single_data[1].energy) // Energy varies
     expect(single_data[0].a).toBe(single_data[1].a) // Lattice constant

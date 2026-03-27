@@ -75,9 +75,9 @@
 
       const loader = quaternary_files[li_co_ni_o_path]
       all_entries = await load_phase_entries((await loader()).default)
-    } catch (err) {
+    } catch (error) {
       error_msg = `Failed to load data: ${
-        err instanceof Error ? err.message : String(err)
+        error instanceof Error ? error.message : String(error)
       }`
     } finally {
       loading = false

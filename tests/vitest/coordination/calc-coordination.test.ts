@@ -38,7 +38,10 @@ describe(`calc_coordination_nums`, () => {
   test(`should handle structure with distant atoms`, () => {
     const isolated_atoms = make_crystal(
       100,
-      [[`H`, [0, 0, 0]], [`He`, [0.5, 0.5, 0.5]]],
+      [
+        [`H`, [0, 0, 0]],
+        [`He`, [0.5, 0.5, 0.5]],
+      ],
       { pbc: [false, false, false] },
     )
 

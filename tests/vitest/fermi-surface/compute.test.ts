@@ -17,10 +17,7 @@ describe(`extract_fermi_surface`, () => {
   ]
 
   // Create a simple band data with spherical-like isosurface
-  function create_spherical_band_data(
-    grid_size: number,
-    fermi_energy: number,
-  ): BandGridData {
+  function create_spherical_band_data(grid_size: number, fermi_energy: number): BandGridData {
     const energies: number[][][][][] = [[]]
     const center = (grid_size - 1) / 2
     const band: number[][][] = []
@@ -347,10 +344,7 @@ describe(`compute_fermi_slice`, () => {
 
     // The isoline should form a closed rectangular contour
     // With quad faces, edges 3->0 (the 4th edge) must be checked for intersections
-    const total_points = slice.isolines.reduce(
-      (sum, line) => sum + line.points_2d.length,
-      0,
-    )
+    const total_points = slice.isolines.reduce((sum, line) => sum + line.points_2d.length, 0)
     expect(total_points).toBeGreaterThan(0)
   })
 })

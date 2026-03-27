@@ -61,7 +61,10 @@ describe(`FillArea`, () => {
     const gradient: FillGradient = {
       type: `linear`,
       angle: 45,
-      stops: [[0, `red`], [1, `blue`]],
+      stops: [
+        [0, `red`],
+        [1, `blue`],
+      ],
     }
     mount(FillArea, {
       target: document.body,
@@ -76,7 +79,11 @@ describe(`FillArea`, () => {
     const gradient: FillGradient = {
       type: `radial`,
       center: { x: 0.3, y: 0.7 },
-      stops: [[0, `white`], [0.5, `gray`], [1, `black`]],
+      stops: [
+        [0, `white`],
+        [0.5, `gray`],
+        [1, `black`],
+      ],
     }
     mount(FillArea, {
       target: document.body,
@@ -133,18 +140,15 @@ describe(`FillArea`, () => {
       mount(FillArea, { target: document.body, props })
 
       const group = doc_query(`.fill-region`)
-      const mouse_event = type === `click`
-        ? new MouseEvent(`click`, { bubbles: true, clientX: 50, clientY: 50 })
-        : new MouseEvent(`mouseenter`, { bubbles: true })
+      const mouse_event =
+        type === `click`
+          ? new MouseEvent(`click`, { bubbles: true, clientX: 50, clientY: 50 })
+          : new MouseEvent(`mouseenter`, { bubbles: true })
       group.dispatchEvent(mouse_event)
       await tick()
 
-      expect(region_handler).toHaveBeenCalledWith(
-        expect.objectContaining({ region_idx: 0 }),
-      )
-      expect(prop_handler).toHaveBeenCalledWith(
-        expect.objectContaining({ region_idx: 0 }),
-      )
+      expect(region_handler).toHaveBeenCalledWith(expect.objectContaining({ region_idx: 0 }))
+      expect(prop_handler).toHaveBeenCalledWith(expect.objectContaining({ region_idx: 0 }))
 
       // Hover also tests mouseleave → null
       if (type === `hover`) {

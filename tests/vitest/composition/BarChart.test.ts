@@ -1,8 +1,4 @@
-import {
-  BarChart,
-  count_atoms_in_composition,
-  fractional_composition,
-} from '$lib/composition'
+import { BarChart, count_atoms_in_composition, fractional_composition } from '$lib/composition'
 import { createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'
@@ -42,29 +38,26 @@ describe(`BarChart component`, () => {
   test.each([
     [false, `all segments`],
     [true, `outer corners only`],
-  ])(
-    `applies border radius correctly when outer_corners_only is %s`,
-    (outer_corners_only) => {
-      mount(BarChart, {
-        target: document.body,
-        props: {
-          composition: { H: 2, O: 1, C: 1 },
-          outer_corners_only,
-        },
-      })
+  ])(`applies border radius correctly when outer_corners_only is %s`, (outer_corners_only) => {
+    mount(BarChart, {
+      target: document.body,
+      props: {
+        composition: { H: 2, O: 1, C: 1 },
+        outer_corners_only,
+      },
+    })
 
-      const segments = document.querySelectorAll(`rect.bar-segment`)
-      expect(segments.length).toBeGreaterThan(0)
+    const segments = document.querySelectorAll(`rect.bar-segment`)
+    expect(segments.length).toBeGreaterThan(0)
 
-      // Check that clip path exists for border radius
-      const clip_path = document.querySelector(`clipPath`)
-      expect(clip_path).toBeTruthy()
+    // Check that clip path exists for border radius
+    const clip_path = document.querySelector(`clipPath`)
+    expect(clip_path).toBeTruthy()
 
-      // Check that the clip path rect has the correct border radius
-      const clip_rect = clip_path?.querySelector(`rect`) as SVGElement
-      expect(clip_rect?.getAttribute(`rx`)).toBe(outer_corners_only ? `2` : `0`)
-    },
-  )
+    // Check that the clip path rect has the correct border radius
+    const clip_rect = clip_path?.querySelector(`rect`) as SVGElement
+    expect(clip_rect?.getAttribute(`rx`)).toBe(outer_corners_only ? `2` : `0`)
+  })
 
   test.each([true, false])(`handles labels`, (show_labels) => {
     const composition = { H: 2, O: 1 }
@@ -241,44 +234,30 @@ describe(`BarChart calculations`, () => {
     [{ H: 2, O: 1 }, { H: 0.6667, O: 0.3333 }, 3],
     [{}, {}, 0],
     [{ H: 5 }, { H: 1.0 }, 5],
-    [
-      { C: 8, H: 10, N: 4, O: 2 },
-      { C: 0.3333, H: 0.4167, N: 0.1667, O: 0.0833 },
-      24,
-    ],
-  ])(
-    `processes composition correctly`,
-    (composition, expected_fractions, expected_total) => {
-      expect(count_atoms_in_composition(composition)).toBe(expected_total)
+    [{ C: 8, H: 10, N: 4, O: 2 }, { C: 0.3333, H: 0.4167, N: 0.1667, O: 0.0833 }, 24],
+  ])(`processes composition correctly`, (composition, expected_fractions, expected_total) => {
+    expect(count_atoms_in_composition(composition)).toBe(expected_total)
 
-      const fractions = fractional_composition(composition)
-      if (Object.keys(expected_fractions).length === 0) {
-        expect(Object.keys(fractions)).toHaveLength(0)
-      } else {
-        Object.entries(expected_fractions).forEach(
-          ([element, expected_frac]) => {
-            expect(
-              fractions[element as keyof typeof fractions],
-            ).toBeCloseTo(expected_frac as number, 3)
-          },
+    const fractions = fractional_composition(composition)
+    if (Object.keys(expected_fractions).length === 0) {
+      expect(Object.keys(fractions)).toHaveLength(0)
+    } else {
+      Object.entries(expected_fractions).forEach(([element, expected_frac]) => {
+        expect(fractions[element as keyof typeof fractions]).toBeCloseTo(
+          expected_frac as number,
+          3,
         )
-      }
-    },
-  )
+      })
+    }
+  })
 
   test(`calculates font scaling correctly`, () => {
     const min_font_scale = 0.6
     const max_font_scale = 1.2
 
     // Test different segment sizes
-    expect(Math.min(max_font_scale, Math.max(min_font_scale, 80 / 40))).toBe(
-      max_font_scale,
-    )
-    expect(Math.min(max_font_scale, Math.max(min_font_scale, 20 / 40))).toBe(
-      min_font_scale,
-    )
-    expect(Math.min(max_font_scale, Math.max(min_font_scale, 40 / 40))).toBe(
-      1.0,
-    )
+    expect(Math.min(max_font_scale, Math.max(min_font_scale, 80 / 40))).toBe(max_font_scale)
+    expect(Math.min(max_font_scale, Math.max(min_font_scale, 20 / 40))).toBe(min_font_scale)
+    expect(Math.min(max_font_scale, Math.max(min_font_scale, 40 / 40))).toBe(1.0)
   })
 })

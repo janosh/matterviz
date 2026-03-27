@@ -41,10 +41,7 @@ describe(`merge_series_state`, () => {
       ],
     },
   ])(`matches by id when available ($name)`, ({ old_series, new_series }) => {
-    const merged = merge_series_state(
-      old_series as DataSeries[],
-      new_series as DataSeries[],
-    )
+    const merged = merge_series_state(old_series as DataSeries[], new_series as DataSeries[])
     // Second id should get visibility from old second (true), first from old first (false)
     expect(merged[0].visible).toBe(true)
     expect(merged[1].visible).toBe(false)

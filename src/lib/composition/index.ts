@@ -32,9 +32,6 @@ export function get_chart_font_scale(
   const text_width = label_text.length * 0.6 * base_font_size * base_scale
 
   return available_space > 0 && text_width > available_space
-    ? Math.max(
-      base_scale * (available_space / text_width),
-      base_scale * min_scale_factor,
-    )
+    ? Math.max(base_scale * (available_space / text_width), base_scale * min_scale_factor)
     : base_scale
 }

@@ -60,11 +60,11 @@
 
     for (const [sg, count] of histogram) {
       const system = spg.spacegroup_to_crystal_sys(sg)
-      if (system) {
-        const stat = stats.get(system)!
-        stat.count += count
-        stat.spacegroups.push(sg)
-      }
+      if (!system) continue
+      const stat = stats.get(system)
+      if (!stat) continue
+      stat.count += count
+      stat.spacegroups.push(sg)
     }
 
     return stats

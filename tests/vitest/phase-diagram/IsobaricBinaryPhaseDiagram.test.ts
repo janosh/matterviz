@@ -175,14 +175,11 @@ describe(`format_hover_info_text`, () => {
     { temperature: 273.15, expected: `273 K` },
     { temperature: 1000, expected: `1000 K` },
     { temperature: 2500.7, expected: `2501 K` },
-  ])(
-    `correctly formats temperature $temperature`,
-    ({ temperature, expected }) => {
-      const hover_info = create_hover_info({ temperature })
+  ])(`correctly formats temperature $temperature`, ({ temperature, expected }) => {
+    const hover_info = create_hover_info({ temperature })
 
-      const text = format_hover_info_text(hover_info, `K`)
+    const text = format_hover_info_text(hover_info, `K`)
 
-      expect(text).toContain(`Temperature: ${expected}`)
-    },
-  )
+    expect(text).toContain(`Temperature: ${expected}`)
+  })
 })

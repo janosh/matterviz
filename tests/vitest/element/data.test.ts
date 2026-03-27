@@ -25,7 +25,11 @@ const ATOMIC_MASS_INVERSIONS = [
   [`Pu`, `Am`],
   [`Bh`, `Hs`],
 ] as const
-const EQUAL_MASS_PAIRS = [[`Cm`, `Bk`], [`Fl`, `Mc`], [`Ts`, `Og`]] as const
+const EQUAL_MASS_PAIRS = [
+  [`Cm`, `Bk`],
+  [`Fl`, `Mc`],
+  [`Ts`, `Og`],
+] as const
 
 test(`element data basics`, () => {
   expect(element_data.length).toBe(118)
@@ -170,9 +174,7 @@ describe(`covalent_radius`, () => {
     const smaller_el = get_element(smaller)
     expect(larger_el.covalent_radius).not.toBeNull()
     expect(smaller_el.covalent_radius).not.toBeNull()
-    expect(larger_el.covalent_radius).toBeGreaterThan(
-      smaller_el.covalent_radius as number,
-    )
+    expect(larger_el.covalent_radius).toBeGreaterThan(smaller_el.covalent_radius as number)
   })
 
   test(`all radii in valid range (0.1, 2.6] Å`, () => {
@@ -202,13 +204,15 @@ describe(`electronegativity`, () => {
     const lower_el = get_element(lower)
     expect(higher_el.electronegativity).not.toBeNull()
     expect(lower_el.electronegativity).not.toBeNull()
-    expect(higher_el.electronegativity).toBeGreaterThan(
-      lower_el.electronegativity as number,
-    )
+    expect(higher_el.electronegativity).toBeGreaterThan(lower_el.electronegativity as number)
   })
 
   // Alkali metals decrease down group (K == Rb in this dataset, so skip Rb)
-  const ALKALI_PAIRS = [[`Li`, `Na`], [`Na`, `K`], [`K`, `Cs`]] as const
+  const ALKALI_PAIRS = [
+    [`Li`, `Na`],
+    [`Na`, `K`],
+    [`K`, `Cs`],
+  ] as const
 
   test.each(ALKALI_PAIRS)(`%s >= %s`, (higher, lower) => {
     expect(get_element(higher).electronegativity).toBeGreaterThanOrEqual(
@@ -218,7 +222,8 @@ describe(`electronegativity`, () => {
 
   test(`fluorine has highest electronegativity`, () => {
     const max = Math.max(
-      ...element_data.filter((el) => el.electronegativity !== null)
+      ...element_data
+        .filter((el) => el.electronegativity !== null)
         .map((el) => el.electronegativity as number),
     )
     expect(get_element(`F`).electronegativity).toBe(max)
@@ -236,7 +241,12 @@ describe(`electronegativity`, () => {
 
 describe(`first_ionization`, () => {
   // Noble gases decrease down group
-  const NOBLE_PAIRS = [[`He`, `Ne`], [`Ne`, `Ar`], [`Ar`, `Kr`], [`Kr`, `Xe`]] as const
+  const NOBLE_PAIRS = [
+    [`He`, `Ne`],
+    [`Ne`, `Ar`],
+    [`Ar`, `Kr`],
+    [`Kr`, `Xe`],
+  ] as const
 
   test.each(NOBLE_PAIRS)(`%s > %s`, (higher, lower) => {
     expect(get_element(higher).first_ionization).toBeGreaterThan(
@@ -245,7 +255,12 @@ describe(`first_ionization`, () => {
   })
 
   // Alkali metals decrease down group
-  const ALKALI_PAIRS = [[`Li`, `Na`], [`Na`, `K`], [`K`, `Rb`], [`Rb`, `Cs`]] as const
+  const ALKALI_PAIRS = [
+    [`Li`, `Na`],
+    [`Na`, `K`],
+    [`K`, `Rb`],
+    [`Rb`, `Cs`],
+  ] as const
 
   test.each(ALKALI_PAIRS)(`%s > %s`, (higher, lower) => {
     expect(get_element(higher).first_ionization).toBeGreaterThan(
@@ -254,10 +269,13 @@ describe(`first_ionization`, () => {
   })
 
   // Noble gases > adjacent alkali metals
-  const NOBLE_VS_ALKALI = [[`He`, `Li`], [`Ne`, `Na`], [`Ar`, `K`], [`Kr`, `Rb`], [
-    `Xe`,
-    `Cs`,
-  ]] as const
+  const NOBLE_VS_ALKALI = [
+    [`He`, `Li`],
+    [`Ne`, `Na`],
+    [`Ar`, `K`],
+    [`Kr`, `Rb`],
+    [`Xe`, `Cs`],
+  ] as const
 
   test.each(NOBLE_VS_ALKALI)(`%s > %s`, (noble, alkali) => {
     expect(get_element(noble).first_ionization).toBeGreaterThan(

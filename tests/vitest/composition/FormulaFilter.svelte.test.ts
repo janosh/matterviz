@@ -184,9 +184,7 @@ describe(`FormulaFilter`, () => {
       target: document.body,
       props: { value: `Fe`, onclear: onclear2 },
     })
-    get_input().dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
-    )
+    get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
     flushSync()
     expect(get_input().value).toBe(``)
     expect(onclear2).toHaveBeenCalled()
@@ -324,29 +322,26 @@ describe(`FormulaFilter`, () => {
     { input: `Fe,O`, expected: `Fe,O`, mode: `elements` },
     { input: `Fe-Li`, expected: `Fe-Li`, mode: `chemsys` },
     { input: `NaCl`, expected: `ClNa`, mode: `exact` },
-  ])(
-    `normalizes "$input" to "$expected" (mode=$mode)`,
-    async ({ input, expected, mode }) => {
-      const onchange = vi.fn()
-      let val = $state(input)
-      mount(FormulaFilter, {
-        target: document.body,
-        props: {
-          get value() {
-            return val
-          },
-          set value(v: string) {
-            val = v
-          },
-          onchange,
+  ])(`normalizes "$input" to "$expected" (mode=$mode)`, async ({ input, expected, mode }) => {
+    const onchange = vi.fn()
+    let val = $state(input)
+    mount(FormulaFilter, {
+      target: document.body,
+      props: {
+        get value() {
+          return val
         },
-      })
-      await tick()
-      get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
-      flushSync()
-      expect(onchange).toHaveBeenCalledWith(expected, mode)
-    },
-  )
+        set value(v: string) {
+          val = v
+        },
+        onchange,
+      },
+    })
+    await tick()
+    get_input().dispatchEvent(new Event(`blur`, { bubbles: true }))
+    flushSync()
+    expect(onchange).toHaveBeenCalledWith(expected, mode)
+  })
 
   test(`Enter key triggers normalization`, async () => {
     const onchange = vi.fn()
@@ -364,9 +359,7 @@ describe(`FormulaFilter`, () => {
       },
     })
     await tick()
-    get_input().dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
-    )
+    get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     flushSync()
     // Alphabetical order: Fe before Li
     expect(onchange).toHaveBeenCalledWith(`Fe-Li`, `chemsys`)
@@ -377,9 +370,7 @@ describe(`FormulaFilter`, () => {
       target: document.body,
       props: { value: ``, 'data-testid': `test` },
     })
-    expect(doc_query(`[data-testid="test"]`).classList.contains(`formula-filter`)).toBe(
-      true,
-    )
+    expect(doc_query(`[data-testid="test"]`).classList.contains(`formula-filter`)).toBe(true)
   })
 
   describe(`examples dropdown`, () => {
@@ -425,18 +416,14 @@ describe(`FormulaFilter`, () => {
       expect(document.querySelector(`.examples-dropdown`)).toBeTruthy()
 
       // First Escape closes dropdown
-      get_input().dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
-      )
+      get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
       flushSync()
       expect(document.querySelector(`.examples-dropdown`)).toBeNull()
       expect(get_input().value).toBe(`Fe`)
       expect(onclear).not.toHaveBeenCalled()
 
       // Second Escape clears value
-      get_input().dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }),
-      )
+      get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
       flushSync()
       expect(get_input().value).toBe(``)
       expect(onclear).toHaveBeenCalled()
@@ -691,9 +678,7 @@ describe(`FormulaFilter`, () => {
         },
       })
       await tick()
-      get_input().dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
-      )
+      get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
       flushSync()
       // Elements are sorted alphabetically, wildcards appended
       expect(onchange).toHaveBeenCalledWith(`Fe,Li,*,*`, `elements`)
@@ -704,15 +689,12 @@ describe(`FormulaFilter`, () => {
     const HISTORY_KEY = `formula-filter-test-history`
     const keydown = (key: string) =>
       get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
-    const focus_input = () =>
-      get_input().dispatchEvent(new Event(`focus`, { bubbles: true }))
+    const focus_input = () => get_input().dispatchEvent(new Event(`focus`, { bubbles: true }))
     const history_dropdown = () => document.querySelector(`.history-dropdown`)
     const history_items = () => document.querySelectorAll(`.history-item`)
     const history_values = () => document.querySelectorAll(`.history-value`)
-    const remove_btns = () =>
-      document.querySelectorAll<HTMLButtonElement>(`.history-remove`)
-    const get_stored = () =>
-      JSON.parse(localStorage.getItem(HISTORY_KEY) ?? `[]`) as string[]
+    const remove_btns = () => document.querySelectorAll<HTMLButtonElement>(`.history-remove`)
+    const get_stored = () => JSON.parse(localStorage.getItem(HISTORY_KEY) ?? `[]`) as string[]
 
     beforeEach(() => localStorage.removeItem(HISTORY_KEY))
     afterEach(() => localStorage.removeItem(HISTORY_KEY))
@@ -957,9 +939,9 @@ describe(`FormulaFilter`, () => {
     test(`pins history entries and keeps pinned entries first`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
       // Pin second entry
-      document.querySelectorAll<HTMLButtonElement>(`.history-pin`)[1].dispatchEvent(
-        new MouseEvent(`mousedown`, { bubbles: true }),
-      )
+      document
+        .querySelectorAll<HTMLButtonElement>(`.history-pin`)[1]
+        .dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
       flushSync()
 
       const values = Array.from(history_values()).map((item) => item.textContent?.trim())
@@ -1023,10 +1005,9 @@ describe(`FormulaFilter`, () => {
       expect(onparse).toHaveBeenCalled()
       const last = onparse.mock.calls[onparse.mock.calls.length - 1][0]
       expect(last.tokens.length).toBeGreaterThan(0)
-      expect(last.tokens.some((tok: { operator: string }) => tok.operator === `exclude`))
-        .toBe(
-          true,
-        )
+      expect(last.tokens.some((tok: { operator: string }) => tok.operator === `exclude`)).toBe(
+        true,
+      )
     })
 
     test(`custom validate hook controls validation message`, () => {
@@ -1049,11 +1030,12 @@ describe(`FormulaFilter`, () => {
       mount_filter({ value: ``, on_validation })
       submit_input(`Xx2`)
 
-      const last_validation = on_validation.mock
-        .calls[on_validation.mock.calls.length - 1][0] as {
-          state: string
-          message: string | null
-        }
+      const last_validation = on_validation.mock.calls[
+        on_validation.mock.calls.length - 1
+      ][0] as {
+        state: string
+        message: string | null
+      }
       expect(last_validation.state).toBe(`invalid`)
       expect(last_validation.message).toContain(`Invalid element symbol`)
       expect(doc_query(`.formula-filter`).classList.contains(`invalid`)).toBe(true)
@@ -1066,20 +1048,22 @@ describe(`FormulaFilter`, () => {
       submit_input(`Li,Xx`)
       expect(onchange).not.toHaveBeenCalled()
       const invalid_validation = on_validation.mock.calls
-        .map((call) =>
-          call[0] as {
-            state: string
-            message: string | null
-          }
+        .map(
+          (call) =>
+            call[0] as {
+              state: string
+              message: string | null
+            },
         )
         .find((validation) => validation.state === `invalid`)
       expect(invalid_validation).toBeTruthy()
       expect(invalid_validation?.message).toContain(`Invalid token`)
-      const last_validation = on_validation.mock
-        .calls[on_validation.mock.calls.length - 1][0] as {
-          state: string
-          message: string | null
-        }
+      const last_validation = on_validation.mock.calls[
+        on_validation.mock.calls.length - 1
+      ][0] as {
+        state: string
+        message: string | null
+      }
       expect(last_validation.state).toBe(`valid`)
     })
 
@@ -1177,18 +1161,19 @@ describe(`FormulaFilter`, () => {
       mount_filter({
         value: ``,
         onchange,
-        examples: [{
-          label: `Custom`,
-          description: `Custom example set`,
-          examples: [`Co,Ni`, `Mn-Fe-O`],
-        }],
+        examples: [
+          {
+            label: `Custom`,
+            description: `Custom example set`,
+            examples: [`Co,Ni`, `Mn-Fe-O`],
+          },
+        ],
       })
       doc_query<HTMLButtonElement>(`.help-btn`).click()
       flushSync()
       const example_btn = Array.from(
         document.querySelectorAll<HTMLButtonElement>(`.example-tag`),
-      )
-        .find((btn) => btn.textContent === `Co,Ni`)
+      ).find((btn) => btn.textContent === `Co,Ni`)
       expect(example_btn).toBeTruthy()
       example_btn?.click()
       flushSync()

@@ -82,13 +82,11 @@ describe(`colors module`, () => {
     })
 
     it(`returns values between 0 and 1`, () => {
-      ;[`#000000`, `#ffffff`, `#ff0000`, `#00ff00`, `#0000ff`, `#808080`].forEach(
-        (color) => {
-          const lum = luminance(color)
-          expect(lum).toBeGreaterThanOrEqual(0)
-          expect(lum).toBeLessThanOrEqual(1)
-        },
-      )
+      ;[`#000000`, `#ffffff`, `#ff0000`, `#00ff00`, `#0000ff`, `#808080`].forEach((color) => {
+        const lum = luminance(color)
+        expect(lum).toBeGreaterThanOrEqual(0)
+        expect(lum).toBeLessThanOrEqual(1)
+      })
     })
   })
 
@@ -114,7 +112,8 @@ describe(`colors module`, () => {
     it(`recurses up DOM tree for transparent backgrounds`, () => {
       const mock_parent = { style: {}, parentElement: null } as HTMLElement
       const mock_element = { style: {}, parentElement: mock_parent } as HTMLElement
-      const mock_get_computed_style = vi.fn()
+      const mock_get_computed_style = vi
+        .fn()
         .mockReturnValueOnce({ backgroundColor: `rgba(0, 0, 0, 0)` })
         .mockReturnValueOnce({ backgroundColor: `#00ff00` })
 
@@ -136,27 +135,21 @@ describe(`colors module`, () => {
           luminance_threshold: 0.7,
           choices: [`black`, `white`],
         }),
-      ).toBe(
-        `black`,
-      )
+      ).toBe(`black`)
       expect(
         pick_contrast_color({
           bg_color: `#000000`,
           luminance_threshold: 0.7,
           choices: [`black`, `white`],
         }),
-      ).toBe(
-        `white`,
-      )
+      ).toBe(`white`)
       expect(
         pick_contrast_color({
           bg_color: `#404040`,
           luminance_threshold: 0.5,
           choices: [`black`, `white`],
         }),
-      ).toBe(
-        `white`,
-      )
+      ).toBe(`white`)
       expect(
         pick_contrast_color({
           bg_color: `#ffffff`,

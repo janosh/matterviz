@@ -148,17 +148,12 @@ describe(`format_relative_time`, () => {
 
   describe(`string inputs`, () => {
     test(`handles ISO string dates`, () => {
-      expect(format_relative_time(`2024-01-15T11:00:00.000Z`, reference)).toBe(
-        `1 hour ago`,
-      )
+      expect(format_relative_time(`2024-01-15T11:00:00.000Z`, reference)).toBe(`1 hour ago`)
     })
 
     test(`handles ISO string reference`, () => {
       expect(
-        format_relative_time(
-          `2024-01-15T11:00:00.000Z`,
-          `2024-01-15T12:00:00.000Z`,
-        ),
+        format_relative_time(`2024-01-15T11:00:00.000Z`, `2024-01-15T12:00:00.000Z`),
       ).toBe(`1 hour ago`)
     })
   })
@@ -296,9 +291,9 @@ describe(`format_duration`, () => {
 
   describe(`string inputs`, () => {
     test(`handles ISO string dates`, () => {
-      expect(
-        format_duration(`2024-01-15T10:00:00.000Z`, `2024-01-15T11:30:00.000Z`),
-      ).toBe(`1h 30m`)
+      expect(format_duration(`2024-01-15T10:00:00.000Z`, `2024-01-15T11:30:00.000Z`)).toBe(
+        `1h 30m`,
+      )
     })
 
     test(`handles mixed Date and string`, () => {

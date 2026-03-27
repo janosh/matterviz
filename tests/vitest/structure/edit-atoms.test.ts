@@ -33,12 +33,9 @@ describe(`edit-atoms: element normalization`, () => {
     expect(normalize_element(input)).toBe(expected)
   })
 
-  test.each([`Xx`, `ZZ`, ``, `123`, `Abc`])(
-    `rejects invalid symbol "%s"`,
-    (input) => {
-      expect(normalize_element(input)).toBeNull()
-    },
-  )
+  test.each([`Xx`, `ZZ`, ``, `123`, `Abc`])(`rejects invalid symbol "%s"`, (input) => {
+    expect(normalize_element(input)).toBeNull()
+  })
 })
 
 // === Scene-to-Structure Index Mapping ===
@@ -71,10 +68,7 @@ function scene_to_structure_indices(
 }
 
 describe(`edit-atoms: scene-to-structure index mapping`, () => {
-  const base_site = (
-    idx: number,
-    props: Record<string, unknown> = {},
-  ): DisplayedSite => ({
+  const base_site = (idx: number, props: Record<string, unknown> = {}): DisplayedSite => ({
     species: [{ element: `Si` as ElementSymbol, occu: 1, oxidation_state: 0 }],
     xyz: [idx, 0, 0] as Vec3,
     abc: [idx * 0.2, 0, 0] as Vec3,
@@ -99,21 +93,13 @@ describe(`edit-atoms: scene-to-structure index mapping`, () => {
   })
 
   test(`skips image atoms when skip_image_atoms is true`, () => {
-    const sites = [
-      base_site(0),
-      base_site(1, { orig_site_idx: 0 }),
-      base_site(2),
-    ]
+    const sites = [base_site(0), base_site(1, { orig_site_idx: 0 }), base_site(2)]
     const result = scene_to_structure_indices(sites, [0, 1, 2], false, true)
     expect(result).toEqual(new Set([0, 2]))
   })
 
   test(`maps image atoms back to orig_site_idx when not skipped`, () => {
-    const sites = [
-      base_site(0),
-      base_site(1, { orig_site_idx: 0 }),
-      base_site(2),
-    ]
+    const sites = [base_site(0), base_site(1, { orig_site_idx: 0 }), base_site(2)]
     const result = scene_to_structure_indices(sites, [0, 1, 2], false, false)
     // Image atom at scene index 1 maps back to original site 0 (deduped with site 0)
     expect(result).toEqual(new Set([0, 2]))
@@ -260,10 +246,7 @@ describe(`edit-atoms: undo/redo stack`, () => {
 
   test(`multiple undo/redo round-trips preserve order`, () => {
     const ops = create_stack_ops()
-    const structs = Array.from(
-      { length: 5 },
-      (_, idx) => get_dummy_structure(`H`, idx + 1),
-    )
+    const structs = Array.from({ length: 5 }, (_, idx) => get_dummy_structure(`H`, idx + 1))
 
     // Push v0..v3 to undo stack (editing forward)
     for (const struct of structs.slice(0, 4)) ops.push_undo(struct)
@@ -347,9 +330,7 @@ function create_bond_state(calculated: BondPair[] = []) {
     }
 
     const key = `${idx_i}-${idx_j}`
-    if (
-      calculated.some((bond) => get_bond_key(bond.site_idx_1, bond.site_idx_2) === key)
-    ) {
+    if (calculated.some((bond) => get_bond_key(bond.site_idx_1, bond.site_idx_2) === key)) {
       removed = [...removed, [idx_i, idx_j]]
     } else {
       added = [...added, [idx_i, idx_j]]
@@ -415,7 +396,10 @@ describe(`edit-bonds: toggle_bond`, () => {
     state.toggle_bond(2, 3) // add new
     state.toggle_bond(4, 5) // add new
     expect(state.removed_bonds).toEqual([[0, 1]])
-    expect(state.added_bonds).toEqual([[2, 3], [4, 5]])
+    expect(state.added_bonds).toEqual([
+      [2, 3],
+      [4, 5],
+    ])
   })
 })
 
@@ -538,8 +522,9 @@ describe(`edit-atoms: change element`, () => {
   })
 
   test.each([`Xx`, ``, `123`])(`rejects invalid symbol "%s"`, (sym) => {
-    expect(change_element_on_structure(get_dummy_structure(`H`, 1), new Set([0]), sym))
-      .toBeNull()
+    expect(
+      change_element_on_structure(get_dummy_structure(`H`, 1), new Set([0]), sym),
+    ).toBeNull()
   })
 
   test(`preserves unselected atoms by reference`, () => {
@@ -551,13 +536,15 @@ describe(`edit-atoms: change element`, () => {
 
   test(`resets oxidation state to 0`, () => {
     const struct: AnyStructure = {
-      sites: [{
-        species: [{ element: `Fe` as ElementSymbol, occu: 1, oxidation_state: 3 }],
-        xyz: [0, 0, 0] as Vec3,
-        abc: [0, 0, 0] as Vec3,
-        label: `Fe`,
-        properties: {},
-      }],
+      sites: [
+        {
+          species: [{ element: `Fe` as ElementSymbol, occu: 1, oxidation_state: 3 }],
+          xyz: [0, 0, 0] as Vec3,
+          abc: [0, 0, 0] as Vec3,
+          label: `Fe`,
+          properties: {},
+        },
+      ],
     }
     const result = change_element_on_structure(struct, new Set([0]), `Mn`)
     expect(result?.sites[0].species[0].oxidation_state).toBe(0)
@@ -576,11 +563,7 @@ function duplicate_atoms(
     .filter((_, idx) => selected_indices.has(idx))
     .map((site) => ({
       ...site,
-      xyz: [
-        site.xyz[0] + offset[0],
-        site.xyz[1] + offset[1],
-        site.xyz[2] + offset[2],
-      ] as Vec3,
+      xyz: [site.xyz[0] + offset[0], site.xyz[1] + offset[1], site.xyz[2] + offset[2]] as Vec3,
       abc: [site.abc[0] + 0.05, site.abc[1] + 0.05, site.abc[2] + 0.05] as Vec3,
       properties: { ...site.properties },
     }))
@@ -709,23 +692,27 @@ describe(`canvas cursor`, () => {
       expected: `default`,
     },
   ])(`$desc`, ({ mode, add, hover, image, expected }) => {
-    expect(get_canvas_cursor({
-      measure_mode: mode,
-      add_atom_mode: add,
-      hovered_idx: hover,
-      site_is_image: image ? all_image : no_image,
-    })).toBe(expected)
+    expect(
+      get_canvas_cursor({
+        measure_mode: mode,
+        add_atom_mode: add,
+        hovered_idx: hover,
+        site_is_image: image ? all_image : no_image,
+      }),
+    ).toBe(expected)
   })
 
   test.each([`distance`, `angle`, `edit-bonds`])(
     `shows pointer in %s mode when hovering`,
     (mode) => {
-      expect(get_canvas_cursor({
-        measure_mode: mode,
-        add_atom_mode: false,
-        hovered_idx: 0,
-        site_is_image: no_image,
-      })).toBe(`pointer`)
+      expect(
+        get_canvas_cursor({
+          measure_mode: mode,
+          add_atom_mode: false,
+          hovered_idx: 0,
+          site_is_image: no_image,
+        }),
+      ).toBe(`pointer`)
     },
   )
 })
@@ -816,10 +803,12 @@ describe(`edit-atoms: selection toggle`, () => {
 
 describe(`edit-atoms: coordinate conversion`, () => {
   test(`cart_to_frac produces correct fractional coords for cubic lattice`, () => {
-    const lattice_matrix = [[5, 0, 0], [0, 5, 0], [0, 0, 5]] as const
-    const cart_to_frac = create_cart_to_frac(
-      lattice_matrix as unknown as [Vec3, Vec3, Vec3],
-    )
+    const lattice_matrix = [
+      [5, 0, 0],
+      [0, 5, 0],
+      [0, 0, 5],
+    ] as const
+    const cart_to_frac = create_cart_to_frac(lattice_matrix as unknown as [Vec3, Vec3, Vec3])
 
     const xyz: Vec3 = [2.5, 2.5, 2.5]
     const abc = cart_to_frac(xyz)

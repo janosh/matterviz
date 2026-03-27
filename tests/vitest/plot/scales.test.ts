@@ -103,7 +103,11 @@ describe(`scales`, () => {
         check: (range: [number, number]) => expect(range).toEqual([0, 10]),
       },
       {
-        points: [{ x: 1, y: 10 }, { x: 10, y: 20 }, { x: 100, y: 30 }],
+        points: [
+          { x: 1, y: 10 },
+          { x: 10, y: 20 },
+          { x: 100, y: 30 },
+        ],
         limits: [null, null],
         scale_type: `log`,
         is_time: false,
@@ -114,10 +118,13 @@ describe(`scales`, () => {
         },
       },
       {
-        points: [{ x: new Date(2023, 0, 1).getTime(), y: 10 }, {
-          x: new Date(2023, 11, 1).getTime(),
-          y: 30,
-        }],
+        points: [
+          { x: new Date(2023, 0, 1).getTime(), y: 10 },
+          {
+            x: new Date(2023, 11, 1).getTime(),
+            y: 30,
+          },
+        ],
         limits: [null, null],
         scale_type: `linear`,
         is_time: true,
@@ -200,13 +207,10 @@ describe(`scales`, () => {
       expect(result.some((t) => t >= min && t <= max)).toBe(true)
     })
 
-    test.each([[100], [1], [0.001]])(
-      `single value domain %s includes that value`,
-      (value) => {
-        const result = generate_log_ticks(value, value, 5)
-        expect(result).toContain(value)
-      },
-    )
+    test.each([[100], [1], [0.001]])(`single value domain %s includes that value`, (value) => {
+      const result = generate_log_ticks(value, value, 5)
+      expect(result).toContain(value)
+    })
 
     test(`negative min clamped to LOG_EPS`, () => {
       const result = generate_log_ticks(-10, 100, 5)
@@ -256,10 +260,9 @@ describe(`scales`, () => {
       const start_time = new Date(2023, 0, 1).getTime()
       const end_time = new Date(2023, 2, 15).getTime()
       const domain: [number, number] = [start_time, end_time]
-      const scale = scaleTime().domain([new Date(start_time), new Date(end_time)]).range([
-        0,
-        500,
-      ])
+      const scale = scaleTime()
+        .domain([new Date(start_time), new Date(end_time)])
+        .range([0, 500])
 
       const result = generate_ticks(domain, `linear`, 5, scale, { format: `%Y-%m-%d` })
       expect(result.length).toBeGreaterThan(0)
@@ -338,10 +341,9 @@ describe(`scales`, () => {
       const start_time = new Date(start[0], start[1], start[2]).getTime()
       const end_time = new Date(end[0], end[1], end[2]).getTime()
       const domain: [number, number] = [start_time, end_time]
-      const scale = scaleTime().domain([new Date(start_time), new Date(end_time)]).range([
-        0,
-        500,
-      ])
+      const scale = scaleTime()
+        .domain([new Date(start_time), new Date(end_time)])
+        .range([0, 500])
 
       const result = generate_ticks(domain, `linear`, interval, scale, {
         format: `%Y-%m-%d`,
@@ -366,9 +368,20 @@ describe(`scales`, () => {
     test.each([
       {
         domain: [0, 100] as Vec2,
-        checks: [[0, 0], [100, 100], [50, `between`]] as const,
+        checks: [
+          [0, 0],
+          [100, 100],
+          [50, `between`],
+        ] as const,
       },
-      { domain: [-100, 100] as Vec2, checks: [[-100, 0], [0, 50], [100, 100]] as const },
+      {
+        domain: [-100, 100] as Vec2,
+        checks: [
+          [-100, 0],
+          [0, 50],
+          [100, 100],
+        ] as const,
+      },
     ])(`forward transform (domain=$domain)`, ({ domain, checks }) => {
       const scale = scale_arcsinh(1).domain(domain).range([0, 100])
       checks.forEach(([input, expected]) => {
@@ -467,9 +480,7 @@ describe(`scales`, () => {
       // When min=0, should use positive tick generation (not mixed with half_count)
       const ticks_from_zero = generate_arcsinh_ticks(0, 1000, 1, 10)
       const ticks_from_positive = generate_arcsinh_ticks(1, 1000, 1, 10)
-      expect(ticks_from_zero.length).toBeGreaterThanOrEqual(
-        ticks_from_positive.length - 1,
-      )
+      expect(ticks_from_zero.length).toBeGreaterThanOrEqual(ticks_from_positive.length - 1)
       expect(ticks_from_zero.every((t) => t >= 0)).toBe(true)
       expect(ticks_from_zero[0]).toBeLessThanOrEqual(1)
     })
@@ -557,14 +568,11 @@ describe(`scales`, () => {
       [NaN, `arcsinh threshold must be a positive finite number, got NaN`],
       [Infinity, `arcsinh threshold must be a positive finite number, got Infinity`],
       [-Infinity, `arcsinh threshold must be a positive finite number, got -Infinity`],
-    ])(
-      `get_arcsinh_threshold throws for invalid threshold %s`,
-      (threshold, error_msg) => {
-        expect(() =>
-          get_arcsinh_threshold({ type: `arcsinh`, threshold } as ArcsinhScaleConfig)
-        ).toThrow(error_msg)
-      },
-    )
+    ])(`get_arcsinh_threshold throws for invalid threshold %s`, (threshold, error_msg) => {
+      expect(() =>
+        get_arcsinh_threshold({ type: `arcsinh`, threshold } as ArcsinhScaleConfig),
+      ).toThrow(error_msg)
+    })
   })
 
   describe(`scale_arcsinh identical domain edge cases`, () => {
@@ -601,10 +609,7 @@ describe(`scales`, () => {
     })
 
     test.each([1e-10, 1e10, 0.001, 1000])(`handles threshold=%s`, (threshold) => {
-      const scale = create_color_scale(
-        { type: { type: `arcsinh`, threshold } },
-        [-100, 100],
-      )
+      const scale = create_color_scale({ type: { type: `arcsinh`, threshold } }, [-100, 100])
       expect(scale(-100)).not.toBe(scale(100)) // boundaries differ
     })
 

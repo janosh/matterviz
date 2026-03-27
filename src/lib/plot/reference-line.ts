@@ -61,9 +61,10 @@ export function normalize_value(value: RefLineValue): number {
 }
 
 // Normalize a point tuple
-export const normalize_point = (
-  point: [RefLineValue, RefLineValue],
-): [number, number] => [normalize_value(point[0]), normalize_value(point[1])]
+export const normalize_point = (point: [RefLineValue, RefLineValue]): [number, number] => [
+  normalize_value(point[0]),
+  normalize_value(point[1]),
+]
 
 // Clip a line segment to a rectangle using Liang-Barsky algorithm
 // Returns clipped [x1, y1, x2, y2] or null if segment is entirely outside
@@ -109,13 +110,23 @@ function clip_segment_to_rect(
 // Returns [x1, y1, x2, y2] in pixel coordinates, or null if line is not visible
 export function resolve_line_endpoints(
   ref_line: RefLine,
-  { x_min, x_max, y_min, y_max }: {
+  {
+    x_min,
+    x_max,
+    y_min,
+    y_max,
+  }: {
     x_min: number
     x_max: number
     y_min: number
     y_max: number
   },
-  { x_scale, x2_scale, y_scale, y2_scale }: {
+  {
+    x_scale,
+    x2_scale,
+    y_scale,
+    y2_scale,
+  }: {
     x_scale: (val: number) => number
     x2_scale?: (val: number) => number
     y_scale: (val: number) => number
@@ -324,7 +335,7 @@ export function calculate_annotation_position(
     if (side === `above` || side === `below`) {
       // In SVG, y increases downward. Flip sign if 'above' and perpendicular points down (ny > 0),
       // or if 'below' and perpendicular points up (ny <= 0), to ensure offset is in correct direction
-      const sign = (side === `above`) === (ny > 0) ? -1 : 1
+      const sign = (side === `above`) === ny > 0 ? -1 : 1
       perp_x = sign * nx * gap
       perp_y = sign * ny * gap
     } else {
@@ -347,8 +358,10 @@ export function calculate_annotation_position(
   } else if (side === `right`) {
     text_anchor = `start` // text starts at gap point, extends right
   } else {
-    text_anchor = ({ start: `start`, end: `end`, center: `middle` }[position] ??
-      `middle`) as `start` | `middle` | `end`
+    text_anchor = ({ start: `start`, end: `end`, center: `middle` }[position] ?? `middle`) as
+      | `start`
+      | `middle`
+      | `end`
   }
   const dominant_baseline = ({
     above: `auto`,
@@ -402,11 +415,9 @@ export function normalize_to_scene(
 // - user X → Three.js X (horizontal)
 // - user Y → Three.js Z (depth/horizontal)
 // - user Z → Three.js Y (vertical)
-export function create_to_threejs(params: Scene3DParams): (
-  user_x: number,
-  user_y: number,
-  user_z: number,
-) => { x: number; y: number; z: number } {
+export function create_to_threejs(
+  params: Scene3DParams,
+): (user_x: number, user_y: number, user_z: number) => { x: number; y: number; z: number } {
   const { scene_x, scene_y, scene_z, x_range, y_range, z_range } = params
   return (user_x: number, user_y: number, user_z: number) => ({
     x: normalize_to_scene(user_x, x_range, scene_x),

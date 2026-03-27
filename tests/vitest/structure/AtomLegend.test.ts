@@ -53,7 +53,7 @@ describe(`AtomLegend Component`, () => {
     if (check_styling) {
       // Check styling and inputs
       const iron_label = Array.from(labels).find((label) =>
-        label.textContent?.trim().startsWith(`Fe `)
+        label.textContent?.trim().startsWith(`Fe `),
       )
       if (!iron_label) throw new Error(`Expected Fe label to exist`)
       expect(iron_label.style.backgroundColor).toBe(colors.element.Fe)
@@ -93,23 +93,20 @@ describe(`AtomLegend Component`, () => {
     [{ Fe: 0 }, 1, `Fe 0`], // Zero amount
     [{ Fe: 0.0001 }, 1, `Fe 0`], // Very small decimal (trimmed by .3~f format)
     [{ Xx: 1 } as unknown as CompositionType, 1, `Xx 1`], // Non-existent element
-  ])(
-    `handles edge cases correctly`,
-    (elements, expected_count, expected_text) => {
-      mount(AtomLegend, { target: document.body, props: { elements } })
+  ])(`handles edge cases correctly`, (elements, expected_count, expected_text) => {
+    mount(AtomLegend, { target: document.body, props: { elements } })
 
-      const labels = document.querySelectorAll(`label`)
-      expect(labels).toHaveLength(expected_count)
+    const labels = document.querySelectorAll(`label`)
+    expect(labels).toHaveLength(expected_count)
 
-      if (expected_text) {
-        expect(labels[0].textContent?.trim()).toBe(expected_text)
-        // Test accessibility - label contains input
-        const input = labels[0].querySelector(`input[type="color"]`)
-        expect(input).not.toBeNull()
-        expect(labels[0].contains(input)).toBe(true)
-      }
-    },
-  )
+    if (expected_text) {
+      expect(labels[0].textContent?.trim()).toBe(expected_text)
+      // Test accessibility - label contains input
+      const input = labels[0].querySelector(`input[type="color"]`)
+      expect(input).not.toBeNull()
+      expect(labels[0].contains(input)).toBe(true)
+    }
+  })
 
   test.each([
     {
@@ -128,9 +125,7 @@ describe(`AtomLegend Component`, () => {
     },
     {
       desc: `custom labels with spy function`,
-      get_element_label: vi.fn((element: string, amount: number) =>
-        `${element}-${amount}`
-      ),
+      get_element_label: vi.fn((element: string, amount: number) => `${element}-${amount}`),
       elements: { Cu: 3.14, Zn: 2.71 },
       expected: [`Cu-3.14`, `Zn-2.71`],
       verify_spy: true,
@@ -148,7 +143,7 @@ describe(`AtomLegend Component`, () => {
       })
 
       const label_texts = Array.from(document.querySelectorAll(`label`)).map((l) =>
-        l.textContent?.trim()
+        l.textContent?.trim(),
       )
       expect(label_texts).toEqual(expected)
 
@@ -163,7 +158,8 @@ describe(`AtomLegend Component`, () => {
 
   test(`updates label text color when background changes`, async () => {
     const orig_fe_color = colors.element.Fe // Capture original value to restore after test
-    try { // 1. Initialize with a known color
+    try {
+      // 1. Initialize with a known color
       colors.element.Fe = `#000000`
       mount(AtomLegend, {
         target: document.body,
@@ -178,7 +174,8 @@ describe(`AtomLegend Component`, () => {
 
       // 3. Expect contrast_color to update the text color
       expect(getComputedStyle(label).color).not.toBe(initial_color)
-    } finally { // Restore original value to avoid state leakage
+    } finally {
+      // Restore original value to avoid state leakage
       colors.element.Fe = orig_fe_color
     }
   })
@@ -281,9 +278,9 @@ describe(`AtomLegend Component`, () => {
       mode_toggle.click()
       await tick()
 
-      const coord_option = Array.from(
-        document.querySelectorAll(`.mode-option`),
-      ).find((opt) => opt.textContent?.includes(`Coordination`)) as HTMLButtonElement
+      const coord_option = Array.from(document.querySelectorAll(`.mode-option`)).find((opt) =>
+        opt.textContent?.includes(`Coordination`),
+      ) as HTMLButtonElement
 
       expect(coord_option).toBeTruthy()
       coord_option.click()
@@ -303,9 +300,9 @@ describe(`AtomLegend Component`, () => {
       mode_toggle.click()
       await tick()
 
-      const wyckoff_option = Array.from(
-        document.querySelectorAll(`.mode-option`),
-      ).find((opt) => opt.textContent?.includes(`Wyckoff`)) as HTMLButtonElement
+      const wyckoff_option = Array.from(document.querySelectorAll(`.mode-option`)).find(
+        (opt) => opt.textContent?.includes(`Wyckoff`),
+      ) as HTMLButtonElement
 
       expect(wyckoff_option).toBeTruthy()
       expect(wyckoff_option.classList.contains(`disabled`)).toBe(true)
@@ -505,12 +502,12 @@ describe(`AtomLegend Component`, () => {
 
       const property_colors = unique_values.length
         ? {
-          colors: legend_colors,
-          values: [...unique_values, ...unique_values], // Add duplicates
-          min_value: Math.min(...(unique_values as number[])),
-          max_value: Math.max(...(unique_values as number[])),
-          unique_values,
-        }
+            colors: legend_colors,
+            values: [...unique_values, ...unique_values], // Add duplicates
+            min_value: Math.min(...(unique_values as number[])),
+            max_value: Math.max(...(unique_values as number[])),
+            unique_values,
+          }
         : null
 
       expect(() => {
@@ -620,9 +617,7 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      const labels = Array.from(
-        document.querySelectorAll(`.category-label`),
-      ) as HTMLElement[]
+      const labels = Array.from(document.querySelectorAll(`.category-label`)) as HTMLElement[]
       const color_map = new Map(
         labels.map((l) => [l.textContent?.trim(), l.style.backgroundColor]),
       )
@@ -738,7 +733,7 @@ describe(`AtomLegend Component`, () => {
         props: { elements: { H: 2, He: 3 }, element_mapping: { H: `Na`, He: `Cl` } },
       })
       const labels = Array.from(document.querySelectorAll(`label`)).map((l) =>
-        l.textContent?.trim()
+        l.textContent?.trim(),
       )
       expect(labels).toEqual([`Na 2`, `Cl 3`])
     })
@@ -821,8 +816,8 @@ describe(`AtomLegend Component`, () => {
 
       // Find and click Na option
       const options = Array.from(document.querySelectorAll(`.remap-option`))
-      const na_option = options.find((opt) =>
-        opt.querySelector(`b`)?.textContent === `Na`
+      const na_option = options.find(
+        (opt) => opt.querySelector(`b`)?.textContent === `Na`,
       ) as HTMLButtonElement
 
       expect(na_option).toBeTruthy()
@@ -977,10 +972,7 @@ describe(`AtomLegend Component`, () => {
 // Regression test for commit 16dbcf0b where disordered sites incorrectly used only first species color
 describe(`Disordered Site Color Assignment`, () => {
   // Recreate the atom_data color logic from StructureScene.svelte
-  const compute_atom_colors = (
-    species: Species[],
-    site_property_color?: string,
-  ) =>
+  const compute_atom_colors = (species: Species[], site_property_color?: string) =>
     species.map(({ element }) => ({
       element,
       color: site_property_color ?? colors.element?.[element],
@@ -992,20 +984,14 @@ describe(`Disordered Site Color Assignment`, () => {
     oxidation_state: 0,
   })
 
-  const get_color = (
-    result: ReturnType<typeof compute_atom_colors>,
-    element: string,
-  ) => {
+  const get_color = (result: ReturnType<typeof compute_atom_colors>, element: string) => {
     const item = result.find((a) => a.element === element)
     if (!item) throw new Error(`Element ${element} not found`)
     return item.color
   }
 
   test(`each species at disordered site gets own element color`, () => {
-    const result = compute_atom_colors([
-      create_species(`Bi`, 0.5),
-      create_species(`Zr`, 0.5),
-    ])
+    const result = compute_atom_colors([create_species(`Bi`, 0.5), create_species(`Zr`, 0.5)])
 
     expect(get_color(result, `Bi`)).toBe(colors.element[`Bi`])
     expect(get_color(result, `Zr`)).toBe(colors.element[`Zr`])

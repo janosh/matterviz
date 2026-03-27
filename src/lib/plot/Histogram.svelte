@@ -554,7 +554,7 @@
     for (const { bins, x_scale, y_scale } of histogram_data) {
       for (const bin of bins) {
         if (bin.length > 0) {
-          const bar_x = x_scale((bin.x0! + bin.x1!) / 2)
+          const bar_x = x_scale(((bin.x0 ?? 0) + (bin.x1 ?? 0)) / 2)
           const bar_y = y_scale(bin.length)
           if (isFinite(bar_x) && isFinite(bar_y)) {
             // Add multiple points for taller bars to increase their weight

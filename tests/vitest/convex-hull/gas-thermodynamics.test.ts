@@ -13,16 +13,8 @@ import {
   P_REF,
   R_EV_PER_K,
 } from '$lib/convex-hull/gas-thermodynamics'
-import type {
-  GasSpecies,
-  GasThermodynamicsConfig,
-  PhaseData,
-} from '$lib/convex-hull/types'
-import {
-  DEFAULT_GAS_PRESSURES,
-  DEFAULT_GAS_TEMP,
-  GAS_SPECIES,
-} from '$lib/convex-hull/types'
+import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '$lib/convex-hull/types'
+import { DEFAULT_GAS_PRESSURES, DEFAULT_GAS_TEMP, GAS_SPECIES } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 // Helper to create test entries with default energy=0
@@ -42,32 +34,28 @@ describe(`gas-thermodynamics: constants`, () => {
   })
 
   test(`GAS_SPECIES contains all expected gases`, () => {
-    expect([...GAS_SPECIES].sort()).toEqual([`CO`, `CO2`, `F2`, `H2`, `H2O`, `N2`, `O2`])
+    expect([...GAS_SPECIES].toSorted()).toEqual([`CO`, `CO2`, `F2`, `H2`, `H2O`, `N2`, `O2`])
   })
 
-  test.each(
-    [
-      [`O2`, { O: 2 }],
-      [`N2`, { N: 2 }],
-      [`H2`, { H: 2 }],
-      [`F2`, { F: 2 }],
-      [`CO`, { C: 1, O: 1 }],
-      [`CO2`, { C: 1, O: 2 }],
-      [`H2O`, { H: 2, O: 1 }],
-    ] as const,
-  )(`GAS_STOICHIOMETRY[%s] has correct atom counts`, (gas, expected) => {
+  test.each([
+    [`O2`, { O: 2 }],
+    [`N2`, { N: 2 }],
+    [`H2`, { H: 2 }],
+    [`F2`, { F: 2 }],
+    [`CO`, { C: 1, O: 1 }],
+    [`CO2`, { C: 1, O: 2 }],
+    [`H2O`, { H: 2, O: 1 }],
+  ] as const)(`GAS_STOICHIOMETRY[%s] has correct atom counts`, (gas, expected) => {
     expect(GAS_STOICHIOMETRY[gas]).toEqual(expected)
   })
 
-  test.each(
-    [
-      [`O`, `O2`],
-      [`N`, `N2`],
-      [`H`, `H2`],
-      [`F`, `F2`],
-      [`C`, `CO2`],
-    ] as const,
-  )(`DEFAULT_ELEMENT_TO_GAS[%s] = %s`, (element, gas) => {
+  test.each([
+    [`O`, `O2`],
+    [`N`, `N2`],
+    [`H`, `H2`],
+    [`F`, `F2`],
+    [`C`, `CO2`],
+  ] as const)(`DEFAULT_ELEMENT_TO_GAS[%s] = %s`, (element, gas) => {
     expect(DEFAULT_ELEMENT_TO_GAS[element]).toBe(gas)
   })
 
@@ -400,11 +388,7 @@ describe(`gas-thermodynamics: multi-gas scenarios`, () => {
   })
 
   test(`apply_gas_corrections applies to both O and N unary references`, () => {
-    const entries = [
-      make_entry({ O: 1 }),
-      make_entry({ N: 1 }),
-      make_entry({ Fe: 1 }),
-    ]
+    const entries = [make_entry({ O: 1 }), make_entry({ N: 1 }), make_entry({ Fe: 1 })]
     const config: GasThermodynamicsConfig = {
       enabled_gases: [`O2`, `N2`],
       pressures: { O2: 0.21, N2: 0.78 },
@@ -487,9 +471,7 @@ describe(`gas-thermodynamics: boundary pressures`, () => {
 
   test(`monotonic increase in μ across full pressure range`, () => {
     const pressures = [1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1, 100]
-    const mus = pressures.map((P) =>
-      compute_gas_chemical_potential(provider, `O2`, 500, P)
-    )
+    const mus = pressures.map((P) => compute_gas_chemical_potential(provider, `O2`, 500, P))
     // Each subsequent μ should be greater (less negative)
     for (let idx = 1; idx < mus.length; idx++) {
       expect(mus[idx]).toBeGreaterThan(mus[idx - 1])

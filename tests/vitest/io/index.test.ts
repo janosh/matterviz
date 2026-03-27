@@ -4,10 +4,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 globalThis.fetch = vi.fn()
 
 describe(`handle_url_drop`, () => {
-  let callback: (
-    content: string | ArrayBuffer,
-    filename: string,
-  ) => void | Promise<void>
+  let callback: (content: string | ArrayBuffer, filename: string) => void | Promise<void>
   let get_data: ReturnType<typeof vi.fn>
   let drag_event: DragEvent
 
@@ -30,9 +27,10 @@ describe(`handle_url_drop`, () => {
     get_data.mockReturnValue(
       JSON.stringify({ name: `test.json`, url: `https://example.com/test.json` }),
     )
-    vi.mocked(fetch).mockResolvedValue(
-      { ok: true, text: () => Promise.resolve(`data`) } as Response,
-    )
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(`data`),
+    } as Response)
 
     expect(await handle_url_drop(drag_event, callback)).toBe(true)
     expect(callback).toHaveBeenCalledWith(`data`, `test.json`)
@@ -219,10 +217,13 @@ describe(`load_from_url`, () => {
       })
       const mock_full_response = create_mock_response(
         expected_content || new ArrayBuffer(100),
-        { 'content-type': expected_content ? `text/plain` : `application/octet-stream` },
+        {
+          'content-type': expected_content ? `text/plain` : `application/octet-stream`,
+        },
       )
 
-      globalThis.fetch = vi.fn()
+      globalThis.fetch = vi
+        .fn()
         .mockResolvedValueOnce(mock_head_response)
         .mockResolvedValueOnce(mock_full_response)
 
@@ -247,15 +248,17 @@ describe(`load_from_url`, () => {
 
   test(`fetch error`, async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error(`Network error`))
-    await expect(load_from_url(`https://example.com/data.txt`, () => {})).rejects
-      .toThrow(`Network error`)
+    await expect(load_from_url(`https://example.com/data.txt`, () => {})).rejects.toThrow(
+      `Network error`,
+    )
   })
 
   test(`HEAD request failure falls back to text`, async () => {
     const mock_full_response = create_mock_response(`fallback content`, {
       'content-type': `text/plain`,
     })
-    globalThis.fetch = vi.fn()
+    globalThis.fetch = vi
+      .fn()
       .mockResolvedValueOnce(new Response(null, { status: 404 }))
       .mockResolvedValueOnce(mock_full_response)
 
@@ -289,13 +292,11 @@ describe(`load_from_url`, () => {
   })
 
   test(`fetch error with status`, async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(null, { status: 404 }),
-    )
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 404 }))
 
-    await expect(
-      load_from_url(`https://example.com/missing.json`, () => {}),
-    ).rejects.toThrow(`Fetch failed: 404`)
+    await expect(load_from_url(`https://example.com/missing.json`, () => {})).rejects.toThrow(
+      `Fetch failed: 404`,
+    )
   })
 
   test(`Content-Disposition filename is respected`, async () => {
@@ -418,14 +419,11 @@ describe(`load_from_url`, () => {
       globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
       const processed_files: string[] = []
-      await load_from_url(
-        `https://example.com/test.xyz`,
-        async (_content, filename) => {
-          // Async callback with zero delay - still tests await behavior
-          await Promise.resolve()
-          processed_files.push(filename)
-        },
-      )
+      await load_from_url(`https://example.com/test.xyz`, async (_content, filename) => {
+        // Async callback with zero delay - still tests await behavior
+        await Promise.resolve()
+        processed_files.push(filename)
+      })
 
       expect(processed_files).toContain(`test.xyz`)
     })

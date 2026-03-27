@@ -90,10 +90,7 @@ export function get_child_count(value: unknown): number {
 // Format a path segment for display
 // Handles both string keys and numeric indices
 // is_first: true for the first segment (no leading dot for valid identifiers)
-function format_path_segment(
-  segment: string | number,
-  is_first: boolean = false,
-): string {
+function format_path_segment(segment: string | number, is_first: boolean = false): string {
   if (typeof segment === `number`) {
     return `[${segment}]`
   }
@@ -150,11 +147,12 @@ export function serialize_for_copy(value: unknown): string {
   if (special !== null) return special
 
   // Map/Set/Object/Array - try JSON stringify
-  const data = type === `map`
-    ? Array.from((value as Map<unknown, unknown>).entries())
-    : type === `set`
-    ? Array.from(value as Set<unknown>)
-    : value
+  const data =
+    type === `map`
+      ? Array.from((value as Map<unknown, unknown>).entries())
+      : type === `set`
+        ? Array.from(value as Set<unknown>)
+        : value
   try {
     return safe_stringify(data)
   } catch {
@@ -379,7 +377,8 @@ export function values_equal(val_a: unknown, val_b: unknown): boolean {
     typeof val_b === `number` &&
     Number.isNaN(val_a) &&
     Number.isNaN(val_b)
-  ) return true
+  )
+    return true
   if (val_a === null || val_b === null) return false
   if (typeof val_a !== typeof val_b) return false
 
@@ -528,9 +527,7 @@ export interface GhostEntry {
 
 // Pre-compute a map of parent_path -> removed children from a diff map
 // This avoids O(diff_size) iteration per expanded node
-export function build_ghost_map(
-  diff_map: Map<string, DiffEntry>,
-): Map<string, GhostEntry[]> {
+export function build_ghost_map(diff_map: Map<string, DiffEntry>): Map<string, GhostEntry[]> {
   const ghost_map = new Map<string, GhostEntry[]>()
   for (const [diff_path, entry] of diff_map) {
     if (entry.status !== `removed`) continue
@@ -577,8 +574,11 @@ export function compute_diff(
 
   // Both primitive: compare values (with NaN === NaN special case)
   if (is_primitive_type(old_type)) {
-    const both_nan = typeof old_val === `number` && typeof new_val === `number` &&
-      Number.isNaN(old_val) && Number.isNaN(new_val)
+    const both_nan =
+      typeof old_val === `number` &&
+      typeof new_val === `number` &&
+      Number.isNaN(old_val) &&
+      Number.isNaN(new_val)
     if (!both_nan && old_val !== new_val) {
       result.set(current_path, {
         status: `changed`,

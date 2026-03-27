@@ -33,12 +33,7 @@ describe(`FilePicker`, () => {
     it.each([
       [`empty carousel`, [], 1], // Only legend
       [`all files`, mock_files, mock_files.length + 1], // Files + legend
-      [
-        `active files with selection`,
-        [`structure1.cif`, `molecule.xyz`],
-        2,
-        `active`,
-      ],
+      [`active files with selection`, [`structure1.cif`, `molecule.xyz`], 2, `active`],
       [`no active files`, [], 0, `active`],
     ])(
       `renders %s correctly`,
@@ -87,22 +82,19 @@ describe(`FilePicker`, () => {
       [`compressed.cif.gz`],
       [`trajectory.traj`],
       [`poscar`],
-    ])(
-      `correctly identifies %s as a file type`,
-      (filename: string) => {
-        const test_file = create_mock_file(filename, `content`)
-        mount(FilePicker, {
-          target: document.body,
-          props: { files: [test_file] },
-        })
+    ])(`correctly identifies %s as a file type`, (filename: string) => {
+      const test_file = create_mock_file(filename, `content`)
+      mount(FilePicker, {
+        target: document.body,
+        props: { files: [test_file] },
+      })
 
-        // Check that the file item has the correct background color style
-        const file_item = doc_query(`.file-item`)
-        const background_color = file_item.style.backgroundColor
-        expect(background_color).toBeTruthy()
-        expect(background_color).toContain(`rgba`)
-      },
-    )
+      // Check that the file item has the correct background color style
+      const file_item = doc_query(`.file-item`)
+      const background_color = file_item.style.backgroundColor
+      expect(background_color).toBeTruthy()
+      expect(background_color).toContain(`rgba`)
+    })
   })
 
   describe(`filtering functionality`, () => {
@@ -112,14 +104,11 @@ describe(`FilePicker`, () => {
       [true, [`CIF`, `XYZ`, `JSON`, `TRAJ`], `format_filters`],
     ])(
       `shows filters correctly when enabled=%s`,
-      (
-        show_filters: boolean,
-        expected_filters: string[],
-        test_key: string,
-      ) => {
-        const props = test_key === `show_category_filters`
-          ? { files: mock_files, show_category_filters: show_filters }
-          : { files: mock_files }
+      (show_filters: boolean, expected_filters: string[], test_key: string) => {
+        const props =
+          test_key === `show_category_filters`
+            ? { files: mock_files, show_category_filters: show_filters }
+            : { files: mock_files }
 
         mount(FilePicker, { target: document.body, props })
 
@@ -154,9 +143,9 @@ describe(`FilePicker`, () => {
         props: { files: traj_files },
       })
 
-      const traj_filter = Array.from(
-        document.querySelectorAll(`.legend-item`),
-      ).find((el) => el.textContent?.includes(`TRAJ`))
+      const traj_filter = Array.from(document.querySelectorAll(`.legend-item`)).find((el) =>
+        el.textContent?.includes(`TRAJ`),
+      )
       expect(traj_filter).toBeTruthy()
       expect(document.querySelectorAll(`.file-item`)).toHaveLength(3)
     })
@@ -286,11 +275,7 @@ describe(`FilePicker`, () => {
       [false, `crystal`, `crystal`],
     ])(
       `shows category names %s correctly`,
-      (
-        show_categories: boolean,
-        category: string,
-        expected_text: string,
-      ) => {
+      (show_categories: boolean, category: string, expected_text: string) => {
         const test_files = [
           create_mock_file(
             `test.cif`,
@@ -325,20 +310,17 @@ describe(`FilePicker`, () => {
       [`very_long_filename_that_should_wrap_properly.cif`],
       [`edge case`],
       [`no_extension`],
-    ])(
-      `handles %s gracefully`,
-      (filename: string) => {
-        const test_file = create_mock_file(filename, `content`)
-        mount(FilePicker, {
-          target: document.body,
-          props: { files: [test_file] },
-        })
+    ])(`handles %s gracefully`, (filename: string) => {
+      const test_file = create_mock_file(filename, `content`)
+      mount(FilePicker, {
+        target: document.body,
+        props: { files: [test_file] },
+      })
 
-        const file_item = doc_query(`.file-item`)
-        expect(file_item).toBeTruthy()
-        expect(file_item.textContent).toContain(filename)
-      },
-    )
+      const file_item = doc_query(`.file-item`)
+      expect(file_item).toBeTruthy()
+      expect(file_item.textContent).toContain(filename)
+    })
 
     it(`handles minimal props correctly`, () => {
       mount(FilePicker, {

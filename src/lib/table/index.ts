@@ -68,32 +68,24 @@ export type MultiSortState = SortState[]
 export type SortHint =
   | string
   | {
-    text: string
-    position?: `top` | `bottom`
-    permanent?: boolean
-    style?: string
-    class?: string
-  }
+      text: string
+      position?: `top` | `bottom`
+      permanent?: boolean
+      style?: string
+      class?: string
+    }
 
 // Initial sort configuration (string for column name, object for full control)
-export type InitialSort =
-  | string
-  | { column: string; direction?: `asc` | `desc` }
+export type InitialSort = string | { column: string; direction?: `asc` | `desc` }
 
 // Pagination configuration (boolean to enable, object for full control)
-export type Pagination =
-  | boolean
-  | { page_size?: number; page_sizes?: number[] }
+export type Pagination = boolean | { page_size?: number; page_sizes?: number[] }
 
 // Search configuration (boolean to enable, object for full control)
-export type Search =
-  | boolean
-  | { placeholder?: string; expanded?: boolean }
+export type Search = boolean | { placeholder?: string; expanded?: boolean }
 
 // Export configuration (boolean to enable, object for full control)
-export type ExportData =
-  | boolean
-  | { formats?: (`csv` | `json`)[]; filename?: string }
+export type ExportData = boolean | { formats?: (`csv` | `json`)[]; filename?: string }
 
 // Callback type for async server-side sorting
 export type OnSortCallback = (column: string, dir: `asc` | `desc`) => Promise<RowData[]>
@@ -110,7 +102,7 @@ export function calc_cell_color(
   scale_type: `linear` | `log` = `linear`, // scale type
 ): { bg: string | null; text: string | null } {
   // Skip color calculation for null/undefined/NaN values or if color_scale is null
-  if (val === null || val === undefined || Number.isNaN(val) || color_scale === null) {
+  if (val == null || Number.isNaN(val) || color_scale === null) {
     return { bg: null, text: null }
   }
 
@@ -121,9 +113,7 @@ export function calc_cell_color(
 
   const numeric_vals = all_values.filter(
     (v): v is number =>
-      typeof v === `number` &&
-      !Number.isNaN(v) &&
-      (scale_type === `log` ? v > 0 : true), // Only filter non-positives for log scale
+      typeof v === `number` && !Number.isNaN(v) && (scale_type === `log` ? v > 0 : true), // Only filter non-positives for log scale
   )
 
   if (numeric_vals.length === 0) return { bg: null, text: null }
@@ -135,15 +125,15 @@ export function calc_cell_color(
 
   // Get interpolator function, fallback to viridis if not a valid function
   const scale_fn = d3sc[color_scale]
-  const interpolator =
-    (typeof scale_fn === `function` ? scale_fn : d3sc.interpolateViridis) as (
-      t: number,
-    ) => string
+  const interpolator = (
+    typeof scale_fn === `function` ? scale_fn : d3sc.interpolateViridis
+  ) as (t: number) => string
 
   // Use log scale for positive values, otherwise linear/sequential scale
-  const bg = scale_type === `log` && range[0] > 0 && range[1] > 0
-    ? interpolator(scaleLog().domain(range).range([0, 1]).clamp(true)(val))
-    : scaleSequential().domain(range).interpolator(interpolator)(val)
+  const bg =
+    scale_type === `log` && range[0] > 0 && range[1] > 0
+      ? interpolator(scaleLog().domain(range).range([0, 1]).clamp(true)(val))
+      : scaleSequential().domain(range).interpolator(interpolator)(val)
 
   return { bg, text: pick_contrast_color({ bg_color: bg }) }
 }

@@ -11,9 +11,22 @@ import { doc_query } from '../setup'
 
 // Minimal VolumetricData fixture for testing controls
 const make_volume = (overrides?: Partial<VolumetricData>): VolumetricData => ({
-  grid: [[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+  grid: [
+    [
+      [1, 2],
+      [3, 4],
+    ],
+    [
+      [5, 6],
+      [7, 8],
+    ],
+  ],
   grid_dims: [2, 2, 2],
-  lattice: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+  lattice: [
+    [5, 0, 0],
+    [0, 5, 0],
+    [0, 0, 5],
+  ],
   origin: [0, 0, 0],
   data_range: { min: 1, max: 8, abs_max: 8, mean: 4.5 },
   periodic: true,
@@ -51,44 +64,40 @@ describe(`IsosurfaceControls`, () => {
     expect(sliders.length).toBeGreaterThanOrEqual(2)
     expect(Array.from(sliders).some((slider) => slider.max === `1`)).toBe(true)
 
-    const color_inputs = document.querySelectorAll<HTMLInputElement>(
-      `input[type="color"]`,
-    )
+    const color_inputs = document.querySelectorAll<HTMLInputElement>(`input[type="color"]`)
     expect(color_inputs.length).toBeGreaterThanOrEqual(1)
     expect(color_inputs[0].value).toBe(DEFAULT_ISOSURFACE_SETTINGS.positive_color)
   })
 
   test(`shows negative color picker only when show_negative is true`, () => {
     mount_controls({ settings: { ...DEFAULT_ISOSURFACE_SETTINGS, show_negative: false } })
-    const color_inputs = document.querySelectorAll<HTMLInputElement>(
-      `input[type="color"]`,
-    )
+    const color_inputs = document.querySelectorAll<HTMLInputElement>(`input[type="color"]`)
     expect(color_inputs.length).toBe(1) // only positive color
 
     document.body.innerHTML = ``
     mount_controls({ settings: { ...DEFAULT_ISOSURFACE_SETTINGS, show_negative: true } })
-    const color_inputs_with_neg = document.querySelectorAll<HTMLInputElement>(
-      `input[type="color"]`,
-    )
+    const color_inputs_with_neg =
+      document.querySelectorAll<HTMLInputElement>(`input[type="color"]`)
     expect(color_inputs_with_neg.length).toBe(2) // positive + negative
   })
 
   test(`renders wireframe checkbox unchecked by default`, () => {
     mount_controls()
-    const wireframe_label = Array.from(document.querySelectorAll(`label`))
-      .find((label) => label.textContent?.includes(`Wireframe`))
-    expect(wireframe_label).toBeDefined()
-    const wireframe_cb = wireframe_label?.querySelector<HTMLInputElement>(
-      `input[type="checkbox"]`,
+    const wireframe_label = Array.from(document.querySelectorAll(`label`)).find((label) =>
+      label.textContent?.includes(`Wireframe`),
     )
+    expect(wireframe_label).toBeDefined()
+    const wireframe_cb =
+      wireframe_label?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
     expect(wireframe_cb?.checked).toBe(false)
   })
 
   test(`hides volume selector for single volume, shows for multiple`, () => {
     mount_controls({ volumes: [make_volume()] })
     const find_vol_label = () =>
-      Array.from(document.querySelectorAll(`label`))
-        .find((label) => label.textContent?.includes(`Volume`))
+      Array.from(document.querySelectorAll(`label`)).find((label) =>
+        label.textContent?.includes(`Volume`),
+      )
     expect(find_vol_label()).toBeUndefined()
 
     document.body.innerHTML = ``
@@ -106,8 +115,9 @@ describe(`IsosurfaceControls`, () => {
 
   test(`layers selector defaults to 1`, () => {
     mount_controls()
-    const layers_label = Array.from(document.querySelectorAll(`label`))
-      .find((label) => label.textContent?.includes(`Layers`))
+    const layers_label = Array.from(document.querySelectorAll(`label`)).find((label) =>
+      label.textContent?.includes(`Layers`),
+    )
     const select = layers_label?.querySelector<HTMLSelectElement>(`select`)
     expect(select?.value).toBe(`1`)
   })
@@ -127,8 +137,9 @@ describe(`IsosurfaceControls`, () => {
     mount_controls({
       settings: { ...DEFAULT_ISOSURFACE_SETTINGS, show_negative: show_neg },
     })
-    const neg_label = Array.from(document.querySelectorAll(`label`))
-      .find((label) => label.textContent?.includes(`Neg. lobe`))
+    const neg_label = Array.from(document.querySelectorAll(`label`)).find((label) =>
+      label.textContent?.includes(`Neg. lobe`),
+    )
     const checkbox = neg_label?.querySelector<HTMLInputElement>(`input[type="checkbox"]`)
     expect(checkbox?.checked).toBe(show_neg)
   })

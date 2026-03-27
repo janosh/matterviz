@@ -4,7 +4,11 @@ import type { BandGridData, FermiSurfaceData } from '$lib/fermi-surface/types'
 import type { Matrix3x3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 
-const identity_lattice: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+const identity_lattice: Matrix3x3 = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+]
 
 const mock_fermi_surface: FermiSurfaceData = {
   isosurfaces: [],

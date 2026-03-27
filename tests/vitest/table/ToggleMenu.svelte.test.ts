@@ -36,9 +36,7 @@ describe(`ToggleMenu`, () => {
       expect(summary?.textContent?.trim()).toBe(`Columns`)
       expect(summary?.getAttribute(`aria-expanded`)).toBe(`false`)
 
-      const checkboxes = document.querySelectorAll<HTMLInputElement>(
-        `input[type="checkbox"]`,
-      )
+      const checkboxes = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
       expect(checkboxes).toHaveLength(3)
       expect(checkboxes[0].checked).toBe(true)
       expect(checkboxes[1].checked).toBe(false)
@@ -93,9 +91,7 @@ describe(`ToggleMenu`, () => {
         { key: `col3`, label: `Explicit false`, visible: false },
       ])
 
-      const checkboxes = document.querySelectorAll<HTMLInputElement>(
-        `input[type="checkbox"]`,
-      )
+      const checkboxes = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
       expect(checkboxes[0].checked).toBe(true) // defaults to true
       expect(checkboxes[1].checked).toBe(true)
       expect(checkboxes[2].checked).toBe(false)
@@ -174,8 +170,7 @@ describe(`ToggleMenu`, () => {
 
       expect(header.textContent).toContain(`▶`)
       expect(header.getAttribute(`aria-expanded`)).toBe(`false`)
-      expect(document.querySelector(`.section`)?.querySelector(`.section-items`))
-        .toBeNull()
+      expect(document.querySelector(`.section`)?.querySelector(`.section-items`)).toBeNull()
     })
 
     it(`pre-collapsed sections hide toggles and expand on click`, async () => {
@@ -220,9 +215,7 @@ describe(`ToggleMenu`, () => {
       ]
       mount_menu(columns, { column_panel_open: true })
 
-      const checkboxes = document.querySelectorAll<HTMLInputElement>(
-        `input[type="checkbox"]`,
-      )
+      const checkboxes = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
       const labels = document.querySelectorAll(`.toggle-label`)
 
       expect(checkboxes[0].disabled).toBe(false)
@@ -282,7 +275,7 @@ describe(`ToggleMenu`, () => {
       const checkboxes = () =>
         document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
       expect(checkboxes()[0].checked).toBe(false) // was toggled off
-       // Click reset all
+      // Click reset all
       ;(document.querySelector(`summary .reset-btn`) as HTMLElement).click()
       await tick()
 
@@ -368,9 +361,7 @@ describe(`ToggleMenu`, () => {
 
       expect(document.querySelector(`.sections-container`)).not.toBeNull()
       expect(document.querySelectorAll(`.section`)).toHaveLength(1)
-      expect(document.querySelector(`.section-header`)?.textContent).toContain(
-        `Only Group`,
-      )
+      expect(document.querySelector(`.section-header`)?.textContent).toContain(`Only Group`)
     })
 
     it(`preserves group order as encountered and handles mixed grouped/ungrouped`, () => {

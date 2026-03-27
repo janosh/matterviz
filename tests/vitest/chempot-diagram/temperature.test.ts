@@ -43,15 +43,11 @@ const static_entries_fixture: PhaseData[] = [
 ]
 
 function has_formula(entries: PhaseData[], formula: string): boolean {
-  return entries.some((entry) =>
-    formula_key_from_composition(entry.composition) === formula
-  )
+  return entries.some((entry) => formula_key_from_composition(entry.composition) === formula)
 }
 
 function get_formula_entry(entries: PhaseData[], formula: string): PhaseData | undefined {
-  return entries.find((entry) =>
-    formula_key_from_composition(entry.composition) === formula
-  )
+  return entries.find((entry) => formula_key_from_composition(entry.composition) === formula)
 }
 
 function get_formula_set(entries: PhaseData[]): Set<string> {
@@ -130,12 +126,8 @@ describe(`get_temp_filter_payload`, () => {
     })
 
     expect(has_formula(config_overrides_props.temp_filtered_entries, `Li`)).toBe(false)
-    expect(has_formula(props_used_when_config_unset.temp_filtered_entries, `Li`)).toBe(
-      true,
-    )
-    expect(
-      get_formula_set(defaults_used_when_both_unset.temp_filtered_entries),
-    ).toEqual(
+    expect(has_formula(props_used_when_config_unset.temp_filtered_entries, `Li`)).toBe(true)
+    expect(get_formula_set(defaults_used_when_both_unset.temp_filtered_entries)).toEqual(
       get_formula_set(explicit_defaults.temp_filtered_entries),
     )
   })
@@ -234,9 +226,9 @@ describe(`get_valid_temperature`, () => {
       expected_temperature,
       custom_temperatures = available_temperatures,
     }) => {
-      expect(
-        get_valid_temperature(temperature, has_temp_data, custom_temperatures),
-      ).toBe(expected_temperature)
+      expect(get_valid_temperature(temperature, has_temp_data, custom_temperatures)).toBe(
+        expected_temperature,
+      )
     },
   )
 })

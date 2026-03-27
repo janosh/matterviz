@@ -46,14 +46,20 @@ describe(`Trajectory Streaming`, () => {
 
     // Simple frame data (minimal JSON)
     const frame_data = JSON.stringify({
-      positions: [[0, 0, 0], [1, 0, 0]],
+      positions: [
+        [0, 0, 0],
+        [1, 0, 0],
+      ],
       numbers: [1, 1],
-      cell: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+      cell: [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ],
       pbc: [true, true, true],
     })
 
-    const total_size = 48 + num_frames * 8 + frame_data.length * num_frames +
-      num_frames * 8
+    const total_size = 48 + num_frames * 8 + frame_data.length * num_frames + num_frames * 8
     const buffer = new ArrayBuffer(total_size)
     const view = new DataView(buffer)
 
@@ -74,8 +80,9 @@ describe(`Trajectory Streaming`, () => {
     current_offset = 48 + num_frames * 8
     for (let i = 0; i < num_frames; i++) {
       view.setBigInt64(current_offset, BigInt(frame_data.length), true)
-      new Uint8Array(buffer, current_offset + 8, frame_data.length)
-        .set(new TextEncoder().encode(frame_data))
+      new Uint8Array(buffer, current_offset + 8, frame_data.length).set(
+        new TextEncoder().encode(frame_data),
+      )
       current_offset += 8 + frame_data.length
     }
 
@@ -254,12 +261,10 @@ describe(`Trajectory Streaming`, () => {
     it(`should force streaming when explicitly requested`, async () => {
       const data = create_synthetic_xyz(5)
 
-      const result = await parse_trajectory_async(
-        data,
-        `force_streaming.xyz`,
-        undefined,
-        { use_indexing: true, extract_plot_metadata: true },
-      )
+      const result = await parse_trajectory_async(data, `force_streaming.xyz`, undefined, {
+        use_indexing: true,
+        extract_plot_metadata: true,
+      })
 
       // Should have streaming metadata even for small file
       expect(result.is_indexed).toBe(true)
@@ -273,7 +278,9 @@ describe(`Trajectory Streaming`, () => {
         data,
         `compressed-trajectory.xyz.gz`,
         undefined,
-        { use_indexing: true },
+        {
+          use_indexing: true,
+        },
       )
 
       expect(result.is_indexed).toBe(true)
@@ -386,8 +393,7 @@ describe(`Trajectory Streaming`, () => {
       }
 
       // Should not crash when progress callback throws
-      await expect(loader.build_frame_index(data, 2, failing_callback)).resolves
-        .toBeDefined()
+      await expect(loader.build_frame_index(data, 2, failing_callback)).resolves.toBeDefined()
     })
   })
 
@@ -499,12 +505,9 @@ describe(`Trajectory Streaming`, () => {
       const data = create_synthetic_xyz(10)
 
       const direct_result = await parse_trajectory_async(data, `test.xyz`)
-      const streaming_result = await parse_trajectory_async(
-        data,
-        `test.xyz`,
-        undefined,
-        { use_indexing: true },
-      )
+      const streaming_result = await parse_trajectory_async(data, `test.xyz`, undefined, {
+        use_indexing: true,
+      })
 
       // First few frames should have identical metadata
       const direct_frame = direct_result.frames[3]

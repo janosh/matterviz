@@ -49,7 +49,7 @@ const fe_o_elements = new Set([`Fe`, `O`])
 const binary_entries = entries.filter((entry) =>
   Object.entries(entry.composition)
     .filter(([, amt]) => amt > 0)
-    .every(([el]) => fe_o_elements.has(el))
+    .every(([el]) => fe_o_elements.has(el)),
 )
 
 const cpd_ternary = compute_chempot_diagram(entries, {
@@ -83,10 +83,7 @@ const pmg_to_ours: Record<string, string> = {
 }
 
 // Helper: make a PhaseData entry from composition and energy_per_atom
-function make_entry(
-  composition: Record<string, number>,
-  energy_per_atom: number,
-): PhaseData {
+function make_entry(composition: Record<string, number>, energy_per_atom: number): PhaseData {
   const atoms = Object.values(composition).reduce((s, v) => s + v, 0)
   return { composition, energy: energy_per_atom * atoms, energy_per_atom }
 }
@@ -151,7 +148,11 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
       [0, 0, -1, -25],
       [0, 0, 1, 0],
     ]
-    const border = build_border_hyperplanes([[-25, 0], [-25, 0], [-25, 0]])
+    const border = build_border_hyperplanes([
+      [-25, 0],
+      [-25, 0],
+      [-25, 0],
+    ])
     for (let idx = 0; idx < desired.length; idx++) {
       for (let jdx = 0; jdx < desired[idx].length; jdx++) {
         expect(border[idx][jdx]).toBeCloseTo(desired[idx][jdx], 5)
@@ -160,12 +161,17 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
   })
 
   test(`lims`, () => {
-    expect(cpd_ternary.lims).toEqual([[-25, 0], [-25, 0], [-25, 0]])
+    expect(cpd_ternary.lims).toEqual([
+      [-25, 0],
+      [-25, 0],
+      [-25, 0],
+    ])
   })
 
-  test.each(
+  test.each([
     [
-      [`Fe`, [
+      `Fe`,
+      [
         [-25.0, -6.596147, -25.0],
         [-25.0, -6.596147, -7.115354],
         [-3.931615, -6.596147, -7.115354],
@@ -173,55 +179,76 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
         [-3.351598, -6.596147, -7.610416],
         [-1.913015, -6.596147, -25.0],
         [-1.913015, -6.596147, -10.487582],
-      ]],
-      [`Fe2O3`, [
+      ],
+    ],
+    [
+      `Fe2O3`,
+      [
         [-25.0, -10.739688, -4.258278],
         [-25.0, -7.29639, -6.55381],
         [-5.550202, -10.739688, -4.258278],
         [-5.406275, -10.451834, -4.450181],
         [-4.35446, -7.29639, -6.55381],
-      ]],
-      [`Fe3O4`, [
+      ],
+    ],
+    [
+      `Fe3O4`,
+      [
         [-25.0, -7.29639, -6.55381],
         [-25.0, -6.741594, -6.969907],
         [-4.35446, -7.29639, -6.55381],
         [-4.077062, -6.741594, -6.969907],
-      ]],
-      [`FeO`, [
+      ],
+    ],
+    [
+      `FeO`,
+      [
         [-25.0, -6.741594, -6.969907],
         [-25.0, -6.596147, -7.115354],
         [-4.077062, -6.741594, -6.969907],
         [-3.931615, -6.596147, -7.115354],
-      ]],
-      [`Li`, [
+      ],
+    ],
+    [
+      `Li`,
+      [
         [-1.913015, -25.0, -25.0],
         [-1.913015, -25.0, -10.487582],
         [-1.913015, -6.596147, -25.0],
         [-1.913015, -6.596147, -10.487582],
-      ]],
-      [`Li2O`, [
+      ],
+    ],
+    [
+      `Li2O`,
+      [
         [-4.612511, -25.0, -5.088591],
         [-4.612511, -10.378885, -5.088591],
         [-3.351598, -6.596147, -7.610416],
         [-1.913015, -25.0, -10.487582],
         [-1.913015, -6.596147, -10.487582],
-      ]],
-      [`Li2O2`, [
+      ],
+    ],
+    [
+      `Li2O2`,
+      [
         [-5.442823, -25.0, -4.258278],
         [-5.442823, -10.954446, -4.258278],
         [-4.739887, -10.251509, -4.961215],
         [-4.612511, -25.0, -5.088591],
         [-4.612511, -10.378885, -5.088591],
-      ]],
-      [`O2`, [
+      ],
+    ],
+    [
+      `O2`,
+      [
         [-25.0, -25.0, -4.258278],
         [-25.0, -10.739688, -4.258278],
         [-5.550202, -10.739688, -4.258278],
         [-5.442823, -25.0, -4.258278],
         [-5.442823, -10.954446, -4.258278],
-      ]],
+      ],
     ],
-  )(`domain vertices for %s match pymatgen`, (pmg_formula, pmg_vertices) => {
+  ])(`domain vertices for %s match pymatgen`, (pmg_formula, pmg_vertices) => {
     const our_key = pmg_to_ours[pmg_formula] ?? pmg_formula
     const actual_pts = cpd_ternary.domains[our_key]
     expect(actual_pts, `Domain missing for ${our_key}`).toBeDefined()
@@ -241,10 +268,7 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
 describe(`physical invariants`, () => {
   test(`all domain vertices satisfy all hyperplane constraints`, () => {
     // Every vertex must lie on or below every hyperplane: a·mu + b <= tol
-    const all_hs = [
-      ...cpd_ternary.hyperplanes,
-      ...build_border_hyperplanes(cpd_ternary.lims),
-    ]
+    const all_hs = [...cpd_ternary.hyperplanes, ...build_border_hyperplanes(cpd_ternary.lims)]
     const dim = cpd_ternary.elements.length
     for (const [formula, pts] of Object.entries(cpd_ternary.domains)) {
       for (const pt of dedup_vertices(pts)) {
@@ -314,8 +338,8 @@ describe(`physical invariants`, () => {
     for (const pts of Object.values(cpd_ternary.domains)) {
       const unique = dedup_vertices(pts)
       if (unique.length < 2) continue
-      const centroid = unique[0].map((_, col) =>
-        unique.reduce((s, p) => s + p[col], 0) / unique.length
+      const centroid = unique[0].map(
+        (_, col) => unique.reduce((s, p) => s + p[col], 0) / unique.length,
       )
       let best_energy = Infinity
       for (const hs of cpd_ternary.hyperplanes) {
@@ -332,11 +356,14 @@ describe(`physical invariants`, () => {
 
 describe(`binary system (2 elements)`, () => {
   // A binary system A-B with compounds AB and A2B gives a well-understood diagram
-  const binary_simple = compute_chempot_diagram([
-    make_entry({ A: 1 }, -2.0), // element A
-    make_entry({ B: 1 }, -3.0), // element B
-    make_entry({ A: 1, B: 1 }, -6.0), // compound AB, formation energy = -6 - (-2 -3) = -1 eV/fu
-  ], { default_min_limit: -20, formal_chempots: false })
+  const binary_simple = compute_chempot_diagram(
+    [
+      make_entry({ A: 1 }, -2.0), // element A
+      make_entry({ B: 1 }, -3.0), // element B
+      make_entry({ A: 1, B: 1 }, -6.0), // compound AB, formation energy = -6 - (-2 -3) = -1 eV/fu
+    ],
+    { default_min_limit: -20, formal_chempots: false },
+  )
 
   test(`produces exactly 3 domains for A-B-AB system`, () => {
     expect(Object.keys(binary_simple.domains).sort()).toEqual([`A`, `AB`, `B`])
@@ -357,22 +384,28 @@ describe(`binary system (2 elements)`, () => {
   })
 
   test(`formal chempots shift all refs to zero`, () => {
-    const formal = compute_chempot_diagram([
-      make_entry({ A: 1 }, -2.0),
-      make_entry({ B: 1 }, -3.0),
-      make_entry({ A: 1, B: 1 }, -6.0),
-    ], { default_min_limit: -20, formal_chempots: true })
+    const formal = compute_chempot_diagram(
+      [
+        make_entry({ A: 1 }, -2.0),
+        make_entry({ B: 1 }, -3.0),
+        make_entry({ A: 1, B: 1 }, -6.0),
+      ],
+      { default_min_limit: -20, formal_chempots: true },
+    )
 
     expect(formal.el_refs[`A`].energy_per_atom).toBeCloseTo(0, 8)
     expect(formal.el_refs[`B`].energy_per_atom).toBeCloseTo(0, 8)
   })
 
   test(`tighter limits produce vertices within bounds`, () => {
-    const tight = compute_chempot_diagram([
-      make_entry({ A: 1 }, -2.0),
-      make_entry({ B: 1 }, -3.0),
-      make_entry({ A: 1, B: 1 }, -6.0),
-    ], { default_min_limit: -10, formal_chempots: false })
+    const tight = compute_chempot_diagram(
+      [
+        make_entry({ A: 1 }, -2.0),
+        make_entry({ B: 1 }, -3.0),
+        make_entry({ A: 1, B: 1 }, -6.0),
+      ],
+      { default_min_limit: -10, formal_chempots: false },
+    )
 
     for (const pts of Object.values(tight.domains)) {
       for (const pt of pts) {
@@ -386,10 +419,10 @@ describe(`binary system (2 elements)`, () => {
 // === Trivial / analytic binary: only two elements, no compounds ===
 
 describe(`pure binary (no compounds)`, () => {
-  const pure_binary = compute_chempot_diagram([
-    make_entry({ X: 1 }, -1.0),
-    make_entry({ Y: 1 }, -2.0),
-  ], { default_min_limit: -10, formal_chempots: false })
+  const pure_binary = compute_chempot_diagram(
+    [make_entry({ X: 1 }, -1.0), make_entry({ Y: 1 }, -2.0)],
+    { default_min_limit: -10, formal_chempots: false },
+  )
 
   test(`produces exactly 2 domains`, () => {
     expect(Object.keys(pure_binary.domains).sort()).toEqual([`X`, `Y`])
@@ -408,11 +441,9 @@ describe(`pure binary (no compounds)`, () => {
 
 describe(`error handling`, () => {
   test(`throws for < 2 elements`, () => {
-    expect(() =>
-      compute_chempot_diagram([
-        make_entry({ A: 1 }, -1.0),
-      ])
-    ).toThrow(`requires 2+ elements`)
+    expect(() => compute_chempot_diagram([make_entry({ A: 1 }, -1.0)])).toThrow(
+      `requires 2+ elements`,
+    )
   })
 
   test(`throws for missing elemental ref`, () => {
@@ -421,7 +452,7 @@ describe(`error handling`, () => {
       compute_chempot_diagram([
         make_entry({ A: 1, B: 1 }, -3.0),
         make_entry({ A: 2, B: 1 }, -5.0),
-      ])
+      ]),
     ).toThrow(`Missing elemental reference`)
   })
 
@@ -490,11 +521,10 @@ describe(`renormalize_entries`, () => {
     // AB: make_entry({A:1, B:1}, -3.0) → E_per_atom = -3.0, energy = -6.0
     // Renorm = E_per_atom - (x_A * E_ref_A + x_B * E_ref_B)
     //        = -3.0 - (0.5*(-2.0) + 0.5*(-3.0)) = -3.0 - (-2.5) = -0.5
-    const renormed = renormalize_entries(
-      [make_entry({ A: 1, B: 1 }, -3.0)],
-      el_refs,
-      [`A`, `B`],
-    )
+    const renormed = renormalize_entries([make_entry({ A: 1, B: 1 }, -3.0)], el_refs, [
+      `A`,
+      `B`,
+    ])
     expect(renormed[0].energy_per_atom).toBeCloseTo(-0.5, 8)
     // Total energy = E_per_atom_renormed * n_atoms = -0.5 * 2 = -1.0
     expect(renormed[0].energy).toBeCloseTo(-1.0, 8)
@@ -531,7 +561,16 @@ describe(`build_hyperplanes`, () => {
 
 describe(`element padding`, () => {
   test(`padding reduces extreme coordinates`, () => {
-    const domains = { A: [[-50, -3], [-2, -3]], B: [[-50, -50], [-50, -5]] }
+    const domains = {
+      A: [
+        [-50, -3],
+        [-2, -3],
+      ],
+      B: [
+        [-50, -50],
+        [-50, -5],
+      ],
+    }
     const new_lims = apply_element_padding(domains, [0, 1], 1.0, -50)
     // For axis 0: non-default min is -2, so new_lim = -2 - 1 = -3
     expect(new_lims[0]).toBeCloseTo(-3, 4)
@@ -540,7 +579,10 @@ describe(`element padding`, () => {
   })
 
   test(`pad_domain_points replaces default_min_limit values`, () => {
-    const pts = [[-50, -3], [-2, -50]]
+    const pts = [
+      [-50, -3],
+      [-2, -50],
+    ]
     const padded = pad_domain_points(pts, [0, 1], [-10, -10], -50, 1.0)
     expect(padded[0][0]).toBe(-10) // was -50 → replaced
     expect(padded[0][1]).toBe(-3) // not near -50 → unchanged
@@ -556,7 +598,13 @@ describe(`element padding`, () => {
   })
 
   test(`padding threshold scales with large padding values`, () => {
-    const domains = { A: [[-50, -50], [-47, -46], [-40, -44]] }
+    const domains = {
+      A: [
+        [-50, -50],
+        [-47, -46],
+        [-40, -44],
+      ],
+    }
     const padding = 5.0
     const new_lims = apply_element_padding(domains, [0, 1], padding, -50)
     // Axis mins should ignore near-default points within 5 eV: use -40 and -44
@@ -578,25 +626,39 @@ describe(`solve_linear_system`, () => {
   test.each([
     {
       label: `2x2 identity`,
-      mat: [[1, 0], [0, 1]],
+      mat: [
+        [1, 0],
+        [0, 1],
+      ],
       rhs: [3, 7],
       expected: [3, 7],
     },
     {
       label: `2x2 general`,
-      mat: [[2, 1], [1, 3]],
+      mat: [
+        [2, 1],
+        [1, 3],
+      ],
       rhs: [5, 10],
       expected: [1, 3],
     },
     {
       label: `3x3 identity`,
-      mat: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      mat: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
       rhs: [1, 2, 3],
       expected: [1, 2, 3],
     },
     {
       label: `3x3 general`,
-      mat: [[1, 2, 3], [4, 5, 6], [7, 8, 10]],
+      mat: [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 10],
+      ],
       rhs: [14, 32, 53],
       expected: [1, 2, 3],
     },
@@ -609,7 +671,12 @@ describe(`solve_linear_system`, () => {
   })
 
   test(`4x4 general: Ax=b round-trip`, () => {
-    const mat = [[2, 1, -1, 0], [1, 3, 0, -1], [-1, 0, 2, 1], [0, -1, 1, 3]]
+    const mat = [
+      [2, 1, -1, 0],
+      [1, 3, 0, -1],
+      [-1, 0, 2, 1],
+      [0, -1, 1, 3],
+    ]
     const rhs = [1, 2, 3, 4]
     const result = solve_linear_system(mat, rhs)
     if (!result) throw new Error(`expected non-null solution`)
@@ -620,10 +687,32 @@ describe(`solve_linear_system`, () => {
   })
 
   test.each([
-    { mat: [[1, 2], [2, 4]], rhs: [1, 2], label: `2x2 singular` },
-    { mat: [[1, 2, 3], [4, 5, 6], [7, 8, 9]], rhs: [1, 2, 3], label: `3x3 singular` },
+    {
+      mat: [
+        [1, 2],
+        [2, 4],
+      ],
+      rhs: [1, 2],
+      label: `2x2 singular`,
+    },
+    {
+      mat: [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+      ],
+      rhs: [1, 2, 3],
+      label: `3x3 singular`,
+    },
     { mat: [] as number[][], rhs: [] as number[], label: `empty` },
-    { mat: [[1, 2], [3, 4]], rhs: [1], label: `mismatched dims` },
+    {
+      mat: [
+        [1, 2],
+        [3, 4],
+      ],
+      rhs: [1],
+      label: `mismatched dims`,
+    },
   ])(`$label → returns null`, ({ mat, rhs }) => {
     expect(solve_linear_system(mat, rhs)).toBeNull()
   })
@@ -633,12 +722,55 @@ describe(`solve_linear_system`, () => {
 
 describe(`convex_hull_2d`, () => {
   test.each([
-    { pts: [[0, 0], [1, 0], [0, 1]], n: 3, label: `triangle` },
-    { pts: [[0, 0], [1, 0], [1, 1], [0, 1]], n: 4, label: `square` },
-    { pts: [[0, 0], [2, 0], [2, 2], [0, 2], [1, 1]], n: 4, label: `square + interior` },
-    { pts: [[0, 0], [1, 1], [2, 2], [3, 3]], n: 2, label: `collinear` },
+    {
+      pts: [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+      ],
+      n: 3,
+      label: `triangle`,
+    },
+    {
+      pts: [
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0, 1],
+      ],
+      n: 4,
+      label: `square`,
+    },
+    {
+      pts: [
+        [0, 0],
+        [2, 0],
+        [2, 2],
+        [0, 2],
+        [1, 1],
+      ],
+      n: 4,
+      label: `square + interior`,
+    },
+    {
+      pts: [
+        [0, 0],
+        [1, 1],
+        [2, 2],
+        [3, 3],
+      ],
+      n: 2,
+      label: `collinear`,
+    },
     { pts: [[1, 2]], n: 1, label: `single point` },
-    { pts: [[1, 2], [3, 4]], n: 2, label: `two points` },
+    {
+      pts: [
+        [1, 2],
+        [3, 4],
+      ],
+      n: 2,
+      label: `two points`,
+    },
   ] as { pts: Vec2[]; n: number; label: string }[])(
     `$label → $n hull vertices`,
     ({ pts, n }) => {
@@ -647,7 +779,12 @@ describe(`convex_hull_2d`, () => {
   )
 
   test(`hull area is correct for unit square`, () => {
-    const hull = convex_hull_2d([[0, 0], [1, 0], [1, 1], [0, 1]])
+    const hull = convex_hull_2d([
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 1],
+    ])
     let area = 0
     for (let idx = 0; idx < hull.length; idx++) {
       const [x0, y0] = hull[idx]
@@ -683,7 +820,12 @@ describe(`simple_pca`, () => {
   })
 
   test(`projections are zero-mean`, () => {
-    const data = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+    const data = [
+      [1, 2, 3],
+      [4, 5, 6],
+      [7, 8, 9],
+      [10, 11, 12],
+    ]
     const { scores } = simple_pca(data, 2)
     for (let col = 0; col < 2; col++) {
       const mean = scores.reduce((s, row) => s + row[col], 0) / scores.length
@@ -698,7 +840,12 @@ describe(`simple_pca`, () => {
   })
 
   test(`eigenvectors are unit length`, () => {
-    const data = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 1]]
+    const data = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+      [1, 1, 1],
+    ]
     const { eigenvectors } = simple_pca(data, 2)
     for (const ev of eigenvectors) {
       const norm = Math.hypot(...ev)
@@ -707,7 +854,12 @@ describe(`simple_pca`, () => {
   })
 
   test(`eigenvectors are orthogonal`, () => {
-    const data = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 1]]
+    const data = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+      [1, 1, 1],
+    ]
     const { eigenvectors } = simple_pca(data, 2)
     if (eigenvectors.length >= 2) {
       const dot = eigenvectors[0].reduce((s, v, idx) => s + v * eigenvectors[1][idx], 0)
@@ -721,11 +873,46 @@ describe(`simple_pca`, () => {
 describe(`orthonormal_2d`, () => {
   test.each([
     // perp = [-dy, dx] normalized
-    { pts: [[1, 1], [2, 2]], expected: [-0.70710678, 0.70710678], label: `45°` },
-    { pts: [[-2, -5], [-4, 6]], expected: [-0.98386991, -0.17888544], label: `steep` },
-    { pts: [[0, 0], [3, 4]], expected: [-0.8, 0.6], label: `diagonal` },
-    { pts: [[0, 5], [10, 5]], expected: [0, 1], label: `horizontal` },
-    { pts: [[5, 0], [5, 10]], expected: [-1, 0], label: `vertical` },
+    {
+      pts: [
+        [1, 1],
+        [2, 2],
+      ],
+      expected: [-0.70710678, 0.70710678],
+      label: `45°`,
+    },
+    {
+      pts: [
+        [-2, -5],
+        [-4, 6],
+      ],
+      expected: [-0.98386991, -0.17888544],
+      label: `steep`,
+    },
+    {
+      pts: [
+        [0, 0],
+        [3, 4],
+      ],
+      expected: [-0.8, 0.6],
+      label: `diagonal`,
+    },
+    {
+      pts: [
+        [0, 5],
+        [10, 5],
+      ],
+      expected: [0, 1],
+      label: `horizontal`,
+    },
+    {
+      pts: [
+        [5, 0],
+        [5, 10],
+      ],
+      expected: [-1, 0],
+      label: `vertical`,
+    },
   ])(`$label: correct value, unit length, perpendicular`, ({ pts, expected }) => {
     const vec = orthonormal_2d(pts)
     // exact value
@@ -740,7 +927,12 @@ describe(`orthonormal_2d`, () => {
   })
 
   test(`degenerate (zero-length) line returns safe default [0, 1]`, () => {
-    expect(orthonormal_2d([[3, 7], [3, 7]])).toEqual([0, 1])
+    expect(
+      orthonormal_2d([
+        [3, 7],
+        [3, 7],
+      ]),
+    ).toEqual([0, 1])
   })
 })
 
@@ -748,13 +940,22 @@ describe(`orthonormal_2d`, () => {
 
 describe(`polygon_centroid`, () => {
   test(`unit square centroid is (0.5, 0.5)`, () => {
-    const c = polygon_centroid([[0, 0], [1, 0], [1, 1], [0, 1]])
+    const c = polygon_centroid([
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 1],
+    ])
     expect(c[0]).toBeCloseTo(0.5, 8)
     expect(c[1]).toBeCloseTo(0.5, 8)
   })
 
   test(`equilateral triangle centroid`, () => {
-    const c = polygon_centroid([[0, 0], [1, 0], [0.5, Math.sqrt(3) / 2]])
+    const c = polygon_centroid([
+      [0, 0],
+      [1, 0],
+      [0.5, Math.sqrt(3) / 2],
+    ])
     expect(c[0]).toBeCloseTo(0.5, 6)
     expect(c[1]).toBeCloseTo(Math.sqrt(3) / 6, 6)
   })
@@ -764,7 +965,10 @@ describe(`polygon_centroid`, () => {
   })
 
   test(`two points returns midpoint`, () => {
-    const c = polygon_centroid([[0, 0], [4, 6]])
+    const c = polygon_centroid([
+      [0, 0],
+      [4, 6],
+    ])
     expect(c[0]).toBeCloseTo(2, 8)
     expect(c[1]).toBeCloseTo(3, 8)
   })
@@ -813,9 +1017,7 @@ describe(`config.elements projection vs subsystem`, () => {
     })
     expect(result.elements).toEqual([`Fe`, `Li`, `O`])
     // Same domain count as cpd_ternary (computed without config.elements)
-    expect(Object.keys(result.domains).length).toBe(
-      Object.keys(cpd_ternary.domains).length,
-    )
+    expect(Object.keys(result.domains).length).toBe(Object.keys(cpd_ternary.domains).length)
   })
 
   // === Stability: configuration sensitivity ===
@@ -835,10 +1037,12 @@ describe(`config.elements projection vs subsystem`, () => {
       const is_interior = (pt: number[], min_lim: number) =>
         pt.every((val) => Math.abs(val - min_lim) > 1 && Math.abs(val) > 1)
 
-      const feo_tight_interior = dedup_vertices(tight.domains[`FeO`] ?? [])
-        .filter((pt) => is_interior(pt, -15))
-      const feo_wide_interior = dedup_vertices(wide.domains[`FeO`] ?? [])
-        .filter((pt) => is_interior(pt, -50))
+      const feo_tight_interior = dedup_vertices(tight.domains[`FeO`] ?? []).filter((pt) =>
+        is_interior(pt, -15),
+      )
+      const feo_wide_interior = dedup_vertices(wide.domains[`FeO`] ?? []).filter((pt) =>
+        is_interior(pt, -50),
+      )
 
       expect(feo_tight_interior.length).toBe(feo_wide_interior.length)
       const sorted_t = sort_rows(feo_tight_interior)
@@ -966,7 +1170,8 @@ describe(`YTOS quaternary system (projection mode)`, () => {
     // Filter to only O-Ti-Y entries (subsystem mode)
     const oty_only = ytos_entries.filter((entry) => {
       const els = Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0).map(([el]) => el)
+        .filter(([, amt]) => amt > 0)
+        .map(([el]) => el)
       return els.every((el) => [`O`, `Ti`, `Y`].includes(el))
     })
     const subsystem = compute_chempot_diagram(oty_only, {
@@ -975,8 +1180,9 @@ describe(`YTOS quaternary system (projection mode)`, () => {
       formal_chempots: true,
     })
     // Projection should have strictly more domains (includes S-containing phases)
-    expect(Object.keys(ytos_y_ti_o.domains).length)
-      .toBeGreaterThan(Object.keys(subsystem.domains).length)
+    expect(Object.keys(ytos_y_ti_o.domains).length).toBeGreaterThan(
+      Object.keys(subsystem.domains).length,
+    )
   })
 })
 
@@ -984,7 +1190,11 @@ describe(`YTOS quaternary system (projection mode)`, () => {
 
 describe(`build_axis_ranges`, () => {
   test(`computes min/max per axis`, () => {
-    const points = [[-3, 1], [2, 5], [0, -4]]
+    const points = [
+      [-3, 1],
+      [2, 5],
+      [0, -4],
+    ]
     const result = build_axis_ranges(points, [`X`, `Y`])
     expect(result).toEqual([
       { element: `X`, min_val: -3, max_val: 2 },
@@ -1014,21 +1224,31 @@ describe(`build_axis_ranges`, () => {
 describe(`dedup_points`, () => {
   test.each([
     {
-      pts: [[1, 2], [3, 4], [1, 2]],
+      pts: [
+        [1, 2],
+        [3, 4],
+        [1, 2],
+      ],
       tol: 1e-4,
       n_unique: 2,
       indices: [0, 1],
       label: `exact duplicates`,
     },
     {
-      pts: [[0, 0], [0.00005, 0.00005]],
+      pts: [
+        [0, 0],
+        [0.00005, 0.00005],
+      ],
       tol: 1e-4,
       n_unique: 1,
       indices: [0],
       label: `within tolerance`,
     },
     {
-      pts: [[0, 0], [0.001, 0.001]],
+      pts: [
+        [0, 0],
+        [0.001, 0.001],
+      ],
       tol: 1e-4,
       n_unique: 2,
       indices: [0, 1],
@@ -1043,14 +1263,24 @@ describe(`dedup_points`, () => {
     },
     { pts: [[5, 6, 7]], tol: 1e-4, n_unique: 1, indices: [0], label: `single point` },
     {
-      pts: [[0, 0], [1e-7, 1e-7], [0.001, 0.001]],
+      pts: [
+        [0, 0],
+        [1e-7, 1e-7],
+        [0.001, 0.001],
+      ],
       tol: 1e-6,
       n_unique: 2,
       indices: [0, 2],
       label: `sub-tolerance pair merged, distant point kept`,
     },
     {
-      pts: [[1, 2], [3, 4], [1, 2], [5, 6], [3, 4]],
+      pts: [
+        [1, 2],
+        [3, 4],
+        [1, 2],
+        [5, 6],
+        [3, 4],
+      ],
       tol: 1e-4,
       n_unique: 3,
       indices: [0, 1, 3],
@@ -1105,10 +1335,7 @@ describe(`formula_key_from_composition`, () => {
 // === get_3d_domain_simplexes_and_ann_loc ===
 
 // Helper: verify all edge indices are in [0, n_pts) and distinct within each edge
-function assert_valid_edges(
-  result: { simplex_indices: number[][] },
-  n_pts: number,
-): void {
+function assert_valid_edges(result: { simplex_indices: number[][] }, n_pts: number): void {
   for (const [idx_a, idx_b] of result.simplex_indices) {
     expect(idx_a).toBeGreaterThanOrEqual(0)
     expect(idx_a).toBeLessThan(n_pts)
@@ -1123,25 +1350,44 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
     { pts: [] as number[][], n_edges: 0, ann_loc: [0, 0, 0], label: `empty` },
     { pts: [[1, 2, 3]], n_edges: 0, ann_loc: [1, 2, 3], label: `single point` },
     {
-      pts: [[5, 5, 5], [5, 5, 5], [5, 5, 5]],
+      pts: [
+        [5, 5, 5],
+        [5, 5, 5],
+        [5, 5, 5],
+      ],
       n_edges: 0,
       ann_loc: [5, 5, 5],
       label: `all duplicates`,
     },
     {
-      pts: [[0, 0, 0], [10, 0, 0], [5, 10, 0]],
+      pts: [
+        [0, 0, 0],
+        [10, 0, 0],
+        [5, 10, 0],
+      ],
       n_edges: 3,
       ann_loc: null,
       label: `triangle`,
     },
     {
-      pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0]],
+      pts: [
+        [0, 0, 0],
+        [10, 0, 0],
+        [10, 10, 0],
+        [0, 10, 0],
+      ],
       n_edges: 4,
       ann_loc: null,
       label: `square`,
     },
     {
-      pts: [[0, 0, 0], [10, 0, 0], [12, 8, 0], [5, 14, 0], [-2, 8, 0]],
+      pts: [
+        [0, 0, 0],
+        [10, 0, 0],
+        [12, 8, 0],
+        [5, 14, 0],
+        [-2, 8, 0],
+      ],
       n_edges: 5,
       ann_loc: null,
       label: `pentagon`,
@@ -1154,7 +1400,10 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
   })
 
   test(`two points returns midpoint ann_loc`, () => {
-    const result = get_3d_domain_simplexes_and_ann_loc([[0, 0, 0], [4, 6, 2]])
+    const result = get_3d_domain_simplexes_and_ann_loc([
+      [0, 0, 0],
+      [4, 6, 2],
+    ])
     expect(result.simplex_indices).toEqual([[0, 1]])
     expect(result.ann_loc[0]).toBeCloseTo(2, 6)
     expect(result.ann_loc[1]).toBeCloseTo(3, 6)
@@ -1163,7 +1412,13 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
 
   test(`dedup maps indices to first occurrences`, () => {
     // Dups at 3,4 → 3 unique points → 3 triangle edges referencing indices <= 2
-    const pts = [[0, 0, 0], [10, 0, 0], [5, 10, 0], [0, 0, 0], [10, 0, 0]]
+    const pts = [
+      [0, 0, 0],
+      [10, 0, 0],
+      [5, 10, 0],
+      [0, 0, 0],
+      [10, 0, 0],
+    ]
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
     expect(result.simplex_indices.length).toBe(3)
     expect(result.simplex_indices.flat().every((idx) => idx <= 2)).toBe(true)
@@ -1172,13 +1427,23 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
 
   test(`dup at non-zero position maps to correct original indices`, () => {
     // Dup at idx 1 → orig_indices = [0, 2, 3], edges must skip index 1
-    const pts = [[5, 10, 0], [5, 10, 0], [0, 0, 0], [10, 0, 0]]
+    const pts = [
+      [5, 10, 0],
+      [5, 10, 0],
+      [0, 0, 0],
+      [10, 0, 0],
+    ]
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
     expect(new Set(result.simplex_indices.flat())).toEqual(new Set([0, 2, 3]))
   })
 
   test(`nearly collinear 3D points produce valid edges`, () => {
-    const pts = [[0, 0, 0], [10, 0.001, 0], [5, 0.0005, 0], [20, 0.002, 0]]
+    const pts = [
+      [0, 0, 0],
+      [10, 0.001, 0],
+      [5, 0.0005, 0],
+      [20, 0.002, 0],
+    ]
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
     expect(result.simplex_indices.length).toBeGreaterThanOrEqual(1)
     assert_valid_edges(result, pts.length)
@@ -1202,12 +1467,8 @@ describe.each([
     for (const [formula, pts] of Object.entries(domains)) {
       const result = get_3d_domain_simplexes_and_ann_loc(pts)
       for (const [idx_a, idx_b] of result.simplex_indices) {
-        expect(idx_a, `${formula}: idx_a=${idx_a} >= ${pts.length}`).toBeLessThan(
-          pts.length,
-        )
-        expect(idx_b, `${formula}: idx_b=${idx_b} >= ${pts.length}`).toBeLessThan(
-          pts.length,
-        )
+        expect(idx_a, `${formula}: idx_a=${idx_a} >= ${pts.length}`).toBeLessThan(pts.length)
+        expect(idx_b, `${formula}: idx_b=${idx_b} >= ${pts.length}`).toBeLessThan(pts.length)
       }
     }
   })
@@ -1220,7 +1481,10 @@ describe(`compute_domains`, () => {
     A: make_entry({ A: 1 }, -2.0),
     B: make_entry({ B: 1 }, -3.0),
   }
-  const border = build_border_hyperplanes([[-20, 0], [-20, 0]])
+  const border = build_border_hyperplanes([
+    [-20, 0],
+    [-20, 0],
+  ])
 
   function make_ab_domains(ab_energy_per_atom: number) {
     const { hyperplanes, hyperplane_entries } = build_hyperplanes(
@@ -1263,11 +1527,14 @@ describe(`compute_domains`, () => {
 
 describe(`compute_chempot_diagram edge cases`, () => {
   test(`custom limits restrict domain vertices`, () => {
-    const result = compute_chempot_diagram([
-      make_entry({ A: 1 }, -2.0),
-      make_entry({ B: 1 }, -3.0),
-      make_entry({ A: 1, B: 1 }, -6.0),
-    ], { default_min_limit: -20, limits: { A: [-5, 0] }, formal_chempots: false })
+    const result = compute_chempot_diagram(
+      [
+        make_entry({ A: 1 }, -2.0),
+        make_entry({ B: 1 }, -3.0),
+        make_entry({ A: 1, B: 1 }, -6.0),
+      ],
+      { default_min_limit: -20, limits: { A: [-5, 0] }, formal_chempots: false },
+    )
     for (const pts of Object.values(result.domains)) {
       for (const pt of pts) {
         expect(pt[0]).toBeGreaterThanOrEqual(-5 - 1e-4)
@@ -1300,19 +1567,17 @@ describe(`compute_chempot_diagram edge cases`, () => {
 
   test(`config.elements with unknown element throws`, () => {
     expect(() =>
-      compute_chempot_diagram([
-        make_entry({ A: 1 }, -1.0),
-        make_entry({ B: 1 }, -2.0),
-      ], { elements: [`A`, `C`] })
+      compute_chempot_diagram([make_entry({ A: 1 }, -1.0), make_entry({ B: 1 }, -2.0)], {
+        elements: [`A`, `C`],
+      }),
     ).toThrow(`Missing elemental reference`)
   })
 
   test(`identical polymorphs keep one domain`, () => {
-    const result = compute_chempot_diagram([
-      make_entry({ A: 1 }, -2.0),
-      make_entry({ A: 1 }, -2.0),
-      make_entry({ B: 1 }, -3.0),
-    ], { default_min_limit: -10, formal_chempots: false })
+    const result = compute_chempot_diagram(
+      [make_entry({ A: 1 }, -2.0), make_entry({ A: 1 }, -2.0), make_entry({ B: 1 }, -3.0)],
+      { default_min_limit: -10, formal_chempots: false },
+    )
     expect(Object.keys(result.domains).sort()).toEqual([`A`, `B`])
   })
 
@@ -1375,10 +1640,7 @@ describe(`compute_chempot_diagram edge cases`, () => {
 
 describe(`formation energy from elemental refs`, () => {
   // Reproduce the compute_e_form logic using exported helpers
-  function compute_e_form(
-    entry: PhaseData,
-    el_refs: Record<string, PhaseData>,
-  ): number {
+  function compute_e_form(entry: PhaseData, el_refs: Record<string, PhaseData>): number {
     const atoms = Object.values(entry.composition).reduce((s, v) => s + v, 0)
     const epa = get_energy_per_atom(entry)
     let ref_energy = 0
@@ -1431,10 +1693,7 @@ describe(`formation energy from elemental refs`, () => {
   })
 
   test(`renormalized el_refs (formal_chempots) produce zero-energy refs`, () => {
-    const all_entries: PhaseData[] = [
-      make_entry({ A: 1 }, -2.0),
-      make_entry({ B: 1 }, -3.0),
-    ]
+    const all_entries: PhaseData[] = [make_entry({ A: 1 }, -2.0), make_entry({ B: 1 }, -3.0)]
     const { el_refs: raw_refs } = get_min_entries_and_el_refs(all_entries)
     const renormed = renormalize_entries(all_entries, raw_refs, [`A`, `B`])
     const { el_refs: renorm_refs } = get_min_entries_and_el_refs(renormed)
@@ -1451,10 +1710,7 @@ describe(`formation energy from elemental refs`, () => {
     const { el_refs: raw_refs } = get_min_entries_and_el_refs(entries)
     // All elemental refs should have zero formation energy
     for (const [el, ref] of Object.entries(raw_refs)) {
-      expect(compute_e_form(ref, raw_refs), `${el} should have e_form=0`).toBeCloseTo(
-        0,
-        8,
-      )
+      expect(compute_e_form(ref, raw_refs), `${el} should have e_form=0`).toBeCloseTo(0, 8)
     }
     // Find a compound entry (Fe2O3) and verify formation energy is negative (stable)
     const fe2o3 = entries.find(
@@ -1516,8 +1772,8 @@ describe(`temperature filtering integration behavior`, () => {
         baseline_entries,
         selected_temperature,
       )
-      const elemental_li_entry = filtered_entries.find((entry) =>
-        formula_key_from_composition(entry.composition) === `Li`
+      const elemental_li_entry = filtered_entries.find(
+        (entry) => formula_key_from_composition(entry.composition) === `Li`,
       )
       expect(elemental_li_entry).toBeDefined()
       expect(elemental_li_entry?.energy).toBeCloseTo(expected_energy, 8)
@@ -1526,13 +1782,12 @@ describe(`temperature filtering integration behavior`, () => {
   )
 
   test(`interpolation works within max_interpolation_gap`, () => {
-    const interpolated_entries = filter_entries_at_temperature(
-      baseline_entries,
-      700,
-      { interpolate: true, max_interpolation_gap: 700 },
-    )
-    const li2o_entry = interpolated_entries.find((entry) =>
-      formula_key_from_composition(entry.composition) === `Li2O`
+    const interpolated_entries = filter_entries_at_temperature(baseline_entries, 700, {
+      interpolate: true,
+      max_interpolation_gap: 700,
+    })
+    const li2o_entry = interpolated_entries.find(
+      (entry) => formula_key_from_composition(entry.composition) === `Li2O`,
     )
     expect(li2o_entry).toBeDefined()
     // Linear interpolation between 300K (-1.9) and 900K (-1.3):
@@ -1542,12 +1797,9 @@ describe(`temperature filtering integration behavior`, () => {
   })
 
   test(`entries lacking temperature arrays are preserved`, () => {
-    const filtered_entries = filter_entries_at_temperature(
-      baseline_entries,
-      600,
-    )
-    const lio2_entry = filtered_entries.find((entry) =>
-      formula_key_from_composition(entry.composition) === `LiO2`
+    const filtered_entries = filter_entries_at_temperature(baseline_entries, 600)
+    const lio2_entry = filtered_entries.find(
+      (entry) => formula_key_from_composition(entry.composition) === `LiO2`,
     )
     expect(lio2_entry).toBeDefined()
     expect(lio2_entry?.energy).toBeCloseTo(-4.5, 8)
@@ -1555,40 +1807,32 @@ describe(`temperature filtering integration behavior`, () => {
   })
 
   test(`entries with unavailable temperatures are excluded when interpolation is off or invalid`, () => {
-    const non_interpolated_entries = filter_entries_at_temperature(
-      baseline_entries,
-      700,
-      { interpolate: false },
-    )
-    const strict_gap_entries = filter_entries_at_temperature(
-      baseline_entries,
-      700,
-      { interpolate: true, max_interpolation_gap: 500 },
-    )
+    const non_interpolated_entries = filter_entries_at_temperature(baseline_entries, 700, {
+      interpolate: false,
+    })
+    const strict_gap_entries = filter_entries_at_temperature(baseline_entries, 700, {
+      interpolate: true,
+      max_interpolation_gap: 500,
+    })
     expect(
-      non_interpolated_entries.some((entry) =>
-        formula_key_from_composition(entry.composition) === `Li2O`
+      non_interpolated_entries.some(
+        (entry) => formula_key_from_composition(entry.composition) === `Li2O`,
       ),
     ).toBe(false)
     expect(
-      strict_gap_entries.some((entry) =>
-        formula_key_from_composition(entry.composition) === `Li2O`
+      strict_gap_entries.some(
+        (entry) => formula_key_from_composition(entry.composition) === `Li2O`,
       ),
     ).toBe(false)
   })
 
   test(`filtered entries still compute a valid 2D chempot diagram`, () => {
-    const filtered_entries = filter_entries_at_temperature(
-      baseline_entries,
-      600,
-    )
+    const filtered_entries = filter_entries_at_temperature(baseline_entries, 600)
     const result = compute_chempot_diagram(filtered_entries, {
       default_min_limit: -20,
       formal_chempots: false,
     })
     expect(result.elements.length).toBe(2)
-    expect(Object.keys(result.domains)).toEqual(
-      expect.arrayContaining([`Li`, `O`]),
-    )
+    expect(Object.keys(result.domains)).toEqual(expect.arrayContaining([`Li`, `O`]))
   })
 })

@@ -25,15 +25,22 @@ export function parse_lammps_box(
   if (!is_triclinic) {
     // Orthogonal: bounds = [lo, hi] per dimension
     const [[lo_x, hi_x], [lo_y, hi_y], [lo_z, hi_z]] = bounds
-    return [[hi_x - lo_x, 0, 0], [0, hi_y - lo_y, 0], [0, 0, hi_z - lo_z]]
+    return [
+      [hi_x - lo_x, 0, 0],
+      [0, hi_y - lo_y, 0],
+      [0, 0, hi_z - lo_z],
+    ]
   }
   // Triclinic: bounds = [lo_bound, hi_bound, tilt] with tilts xy, xz, yz
   const [[xlo_b, xhi_b, xy], [ylo_b, yhi_b, xz], [zlo_b, zhi_b, yz]] = bounds
-  const lx = (xhi_b - Math.max(0, xy, xz, xy + xz)) -
-    (xlo_b - Math.min(0, xy, xz, xy + xz))
-  const ly = (yhi_b - Math.max(0, yz)) - (ylo_b - Math.min(0, yz))
+  const lx = xhi_b - Math.max(0, xy, xz, xy + xz) - (xlo_b - Math.min(0, xy, xz, xy + xz))
+  const ly = yhi_b - Math.max(0, yz) - (ylo_b - Math.min(0, yz))
   const lz = zhi_b - zlo_b
-  return [[lx, 0, 0], [xy, ly, 0], [xz, yz, lz]]
+  return [
+    [lx, 0, 0],
+    [xy, ly, 0],
+    [xz, yz, lz],
+  ]
 }
 
 // Parse LAMMPS trajectory (.lammpstrj). Atom types mapped to elements via atom_type_mapping
@@ -76,13 +83,12 @@ export function parse_lammps_trajectory(
     if (!skip_to(`ITEM: BOX BOUNDS`)) break
     const box_header = read_line()
     const is_triclinic = /BOX BOUNDS\s+xy\s+xz\s+yz/i.test(box_header)
-    const tokens = box_header.replace(`ITEM: BOX BOUNDS`, ``).trim().split(/\s+/).slice(
-      -3,
-    )
+    const tokens = box_header.replace(`ITEM: BOX BOUNDS`, ``).trim().split(/\s+/).slice(-3)
     const is_periodic = (tok: string): boolean => tok.toLowerCase().startsWith(`p`)
-    const pbc: Pbc = tokens.length === 3
-      ? [is_periodic(tokens[0]), is_periodic(tokens[1]), is_periodic(tokens[2])]
-      : [true, true, true]
+    const pbc: Pbc =
+      tokens.length === 3
+        ? [is_periodic(tokens[0]), is_periodic(tokens[1]), is_periodic(tokens[2])]
+        : [true, true, true]
 
     const lattice_matrix = parse_lammps_box(
       [read_line(), read_line(), read_line()],
@@ -99,8 +105,8 @@ export function parse_lammps_trajectory(
     const pos_keys = [`xu`, `yu`, `zu`].every((key) => key in col)
       ? [`xu`, `yu`, `zu`]
       : [`xs`, `ys`, `zs`].every((key) => key in col)
-      ? [`xs`, `ys`, `zs`]
-      : [`x`, `y`, `z`]
+        ? [`xs`, `ys`, `zs`]
+        : [`x`, `y`, `z`]
     const pos_cols = pos_keys.map((key) => col[key])
     // Atom identity: prefer numeric type, else explicit element symbol.
     // Fallback to ID-based mapping only for legacy dumps; this can be inaccurate
@@ -109,12 +115,7 @@ export function parse_lammps_trajectory(
     const element_col = col.element
     const id_col = col.id
     const use_scaled = pos_keys[0] === `xs`
-    const max_col_idx = Math.max(
-      ...pos_cols,
-      type_col ?? -1,
-      element_col ?? -1,
-      id_col ?? -1,
-    )
+    const max_col_idx = Math.max(...pos_cols, type_col ?? -1, element_col ?? -1, id_col ?? -1)
 
     if (pos_cols.some((col_idx) => col_idx === undefined)) continue
     if (type_col === undefined && element_col === undefined && id_col === undefined) {
@@ -172,14 +173,12 @@ export function parse_lammps_trajectory(
 
     if (positions.length === elements.length && positions.length === num_atoms) {
       const { volume } = math.calc_lattice_params(lattice_matrix)
-      frames.push(create_trajectory_frame(
-        positions,
-        elements,
-        lattice_matrix,
-        pbc,
-        timestep,
-        { volume, timestep },
-      ))
+      frames.push(
+        create_trajectory_frame(positions, elements, lattice_matrix, pbc, timestep, {
+          volume,
+          timestep,
+        }),
+      )
     }
   }
 
@@ -204,9 +203,10 @@ export function parse_lammps_trajectory(
       source_format: `lammps_trajectory`,
       frame_count: frames.length,
       total_atoms: first_frame.structure.sites.length,
-      periodic_boundary_conditions: (`lattice` in first_frame.structure)
-        ? first_frame.structure.lattice.pbc
-        : [true, true, true],
+      periodic_boundary_conditions:
+        `lattice` in first_frame.structure
+          ? first_frame.structure.lattice.pbc
+          : [true, true, true],
       atom_types: Array.from(atom_types_found).sort((a, b) => a - b),
       element_counts,
     },

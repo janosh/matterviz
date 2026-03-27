@@ -55,10 +55,10 @@ git checkout -b bug-fix-for-something
 ## Making a Release
 
 1. Update version in `package.json` (follows [semver](https://semver.org))
-1. Generate changelog (requires [`deno`](https://deno.com)):
+1. Generate changelog:
 
    ```sh
-   deno run -A https://github.com/janosh/workflows/raw/refs/heads/main/scripts/make-release-notes.ts
+   npx tsx https://github.com/janosh/workflows/raw/refs/heads/main/scripts/make-release-notes.ts
    ```
 
 1. Commit and tag:

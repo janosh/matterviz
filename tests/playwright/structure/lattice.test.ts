@@ -18,15 +18,12 @@ test.describe(`Lattice Component Tests`, () => {
     await wait_for_canvas_rendered(canvas)
 
     // Use test page checkbox to open controls
-    const checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
+    const checkbox = page.locator(`label:has-text("Controls Open") input[type="checkbox"]`)
     await expect(checkbox).toBeVisible({ timeout: get_canvas_timeout() })
     await checkbox.check()
-    await expect(page.locator(`.draggable-pane.controls-pane`)).toHaveClass(
-      /pane-open/,
-      { timeout: get_canvas_timeout() },
-    )
+    await expect(page.locator(`.draggable-pane.controls-pane`)).toHaveClass(/pane-open/, {
+      timeout: get_canvas_timeout(),
+    })
   })
 
   test(`lattice vectors checkbox toggles visibility`, async ({ page }) => {

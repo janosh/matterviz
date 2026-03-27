@@ -66,9 +66,11 @@ test.describe(`Temperature-Dependent Free Energies`, () => {
       // Tooltip should appear (using the tooltip from svelte-multiselect)
       const tooltip = page.locator(`.tooltip, [role="tooltip"]`)
       // Give tooltip time to appear
-      await expect(tooltip.first()).toBeVisible({ timeout: 3000 }).catch(() => {
-        // Tooltip may not appear in all browsers - not a critical failure
-      })
+      await expect(tooltip.first())
+        .toBeVisible({ timeout: 3000 })
+        .catch(() => {
+          // Tooltip may not appear in all browsers - not a critical failure
+        })
     })
 
     test(`hull updates when temperature changes`, async ({ page }) => {
@@ -229,12 +231,10 @@ test.describe(`Temperature Slider - Static Data`, () => {
   })
 
   // Static data grids should not have temperature sliders
-  for (
-    const [grid, selector] of [
-      [`binary-grid`, `.scatter.convex-hull-2d`],
-      [`ternary-grid`, `.convex-hull-3d`],
-    ]
-  ) {
+  for (const [grid, selector] of [
+    [`binary-grid`, `.scatter.convex-hull-2d`],
+    [`ternary-grid`, `.convex-hull-3d`],
+  ]) {
     test(`${grid} has no temperature slider`, async ({ page }) => {
       const diagram = page.locator(`.${grid} ${selector}`).first()
       await expect(diagram).toBeVisible()

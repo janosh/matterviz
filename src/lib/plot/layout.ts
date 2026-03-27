@@ -10,12 +10,11 @@ export const LABEL_GAP_DEFAULT = 30
 export const filter_padding = <T extends Partial<Sides>>(
   padding: T | undefined | null,
   defaults: Required<Sides>,
-): Required<Sides> => ({
-  ...defaults,
-  ...Object.fromEntries(
-    Object.entries(padding ?? {}).filter(([, v]) => v !== undefined),
-  ),
-} as Required<Sides>)
+): Required<Sides> =>
+  ({
+    ...defaults,
+    ...Object.fromEntries(Object.entries(padding ?? {}).filter(([, v]) => v !== undefined)),
+  }) as Required<Sides>
 
 // Measure text width using canvas (singleton pattern for performance)
 let measurement_canvas: HTMLCanvasElement | null = null
@@ -44,12 +43,14 @@ export interface AutoPaddingConfig {
 
 // Measure the widest formatted tick label. Used for auto-padding and label placement.
 export const measure_max_tick_width = (ticks: (string | number)[], format: string = ``) =>
-  ticks.length === 0 ? 0 : Math.max(
-    ...ticks.map((tick) => {
-      const label = typeof tick === `string` ? tick : format_value(tick, format)
-      return measure_text_width(label, `12px sans-serif`)
-    }),
-  )
+  ticks.length === 0
+    ? 0
+    : Math.max(
+        ...ticks.map((tick) => {
+          const label = typeof tick === `string` ? tick : format_value(tick, format)
+          return measure_text_width(label, `12px sans-serif`)
+        }),
+      )
 
 // Estimated height of a single tick label line (font-size 0.8em ≈ 12px + leading)
 export const TICK_LABEL_HEIGHT = 16
@@ -71,21 +72,21 @@ export const calc_auto_padding = ({
   const y2_format = y2_axis.format ?? ``
 
   return {
-    t: padding.t ??
+    t:
+      padding.t ??
       (x2_ticks.length > 0
         ? Math.max(
-          default_padding.t,
-          TICK_LABEL_HEIGHT + label_gap + (x2_axis.label ? AXIS_LABEL_HEIGHT : 0),
-        )
+            default_padding.t,
+            TICK_LABEL_HEIGHT + label_gap + (x2_axis.label ? AXIS_LABEL_HEIGHT : 0),
+          )
         : default_padding.t),
     b: padding.b ?? default_padding.b,
-    l: padding.l ??
+    l:
+      padding.l ??
       Math.max(default_padding.l, measure_max_tick_width(y_ticks, y_format) + label_gap),
-    r: padding.r ??
-      Math.max(
-        default_padding.r,
-        measure_max_tick_width(y2_ticks, y2_format) + label_gap,
-      ),
+    r:
+      padding.r ??
+      Math.max(default_padding.r, measure_max_tick_width(y2_ticks, y2_format) + label_gap),
   }
 }
 
@@ -105,13 +106,15 @@ export function constrain_tooltip_position(
   const offset_y = options.offset_y ?? offset
 
   // Position to left of cursor if right-side placement overflows (and vice versa)
-  const flip_x = offset_x >= 0
-    ? cursor_x + offset_x + tooltip_width > viewport_width
-    : cursor_x + offset_x - tooltip_width < 0
+  const flip_x =
+    offset_x >= 0
+      ? cursor_x + offset_x + tooltip_width > viewport_width
+      : cursor_x + offset_x - tooltip_width < 0
   // Position above cursor if bottom placement overflows (and vice versa)
-  const flip_y = offset_y >= 0
-    ? cursor_y + offset_y + tooltip_height > viewport_height
-    : cursor_y + offset_y - tooltip_height < 0
+  const flip_y =
+    offset_y >= 0
+      ? cursor_y + offset_y + tooltip_height > viewport_height
+      : cursor_y + offset_y - tooltip_height < 0
 
   // Calculate position: apply offset, flip if needed
   const abs_offset_x = Math.abs(offset_x)
@@ -119,17 +122,21 @@ export function constrain_tooltip_position(
 
   // Determine X position based on preferred side and flip state
   let raw_x: number
-  if (offset_x >= 0) { // Prefer right side: flip to left if overflows
+  if (offset_x >= 0) {
+    // Prefer right side: flip to left if overflows
     raw_x = flip_x ? cursor_x - abs_offset_x - tooltip_width : cursor_x + abs_offset_x
-  } else { // Prefer left side: flip to right if overflows
+  } else {
+    // Prefer left side: flip to right if overflows
     raw_x = flip_x ? cursor_x + abs_offset_x : cursor_x - abs_offset_x - tooltip_width
   }
 
   // Determine Y position based on preferred side and flip state
   let raw_y: number
-  if (offset_y >= 0) { // Prefer bottom: flip to top if overflows
+  if (offset_y >= 0) {
+    // Prefer bottom: flip to top if overflows
     raw_y = flip_y ? cursor_y - abs_offset_y - tooltip_height : cursor_y + abs_offset_y
-  } else { // Prefer top: flip to bottom if overflows
+  } else {
+    // Prefer top: flip to bottom if overflows
     raw_y = flip_y ? cursor_y + abs_offset_y : cursor_y - abs_offset_y - tooltip_height
   }
 
@@ -234,12 +241,13 @@ export function compute_element_placement(
   const effective_y_max = Math.max(valid_y_min, valid_y_max)
 
   // Subsample points for performance
-  const sampled_points = points.length > MAX_SAMPLE_POINTS
-    ? Array.from(
-      { length: MAX_SAMPLE_POINTS },
-      (_, idx) => points[Math.floor(idx * points.length / MAX_SAMPLE_POINTS)],
-    )
-    : points
+  const sampled_points =
+    points.length > MAX_SAMPLE_POINTS
+      ? Array.from(
+          { length: MAX_SAMPLE_POINTS },
+          (_, idx) => points[Math.floor((idx * points.length) / MAX_SAMPLE_POINTS)],
+        )
+      : points
 
   let best_result: ElementPlacementResult = {
     x: effective_x_min,
@@ -248,12 +256,14 @@ export function compute_element_placement(
   }
 
   // Sample candidate positions on a grid
-  const x_step = effective_x_max > effective_x_min
-    ? (effective_x_max - effective_x_min) / (grid_resolution - 1)
-    : 0
-  const y_step = effective_y_max > effective_y_min
-    ? (effective_y_max - effective_y_min) / (grid_resolution - 1)
-    : 0
+  const x_step =
+    effective_x_max > effective_x_min
+      ? (effective_x_max - effective_x_min) / (grid_resolution - 1)
+      : 0
+  const y_step =
+    effective_y_max > effective_y_min
+      ? (effective_y_max - effective_y_min) / (grid_resolution - 1)
+      : 0
 
   // Precompute plot corners (constant across all candidates)
   const plot_left = plot_bounds.x + axis_clearance
@@ -318,12 +328,11 @@ export function compute_element_placement(
         euclidean_dist([elem_right, elem_bottom], [plot_right, plot_bottom]), // bottom-right
       )
       // Higher bonus for positions closer to corners (0 = at corner, 1 = far from all)
-      const corner_bonus = max_corner_dist > 0
-        ? (1 - min_corner_dist / max_corner_dist) * CORNER_WEIGHT
-        : 0
+      const corner_bonus =
+        max_corner_dist > 0 ? (1 - min_corner_dist / max_corner_dist) * CORNER_WEIGHT : 0
 
-      const score = -overlap_count + min_distance * DISTANCE_WEIGHT + corner_bonus -
-        exclusion_penalty
+      const score =
+        -overlap_count + min_distance * DISTANCE_WEIGHT + corner_bonus - exclusion_penalty
 
       if (score > best_result.score) {
         best_result = { x: cand_x, y: cand_y, score }

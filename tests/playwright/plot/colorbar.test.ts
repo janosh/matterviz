@@ -11,10 +11,7 @@ test.describe(`ColorBar Component Tests`, () => {
   })
 
   // Helper to check computed style
-  function get_style(
-    locator: Locator,
-    property: string,
-  ): Promise<string> {
+  function get_style(locator: Locator, property: string): Promise<string> {
     return locator.evaluate(
       (el, prop) => globalThis.getComputedStyle(el).getPropertyValue(prop),
       property,

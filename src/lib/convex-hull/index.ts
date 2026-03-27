@@ -45,16 +45,16 @@ export interface TooltipSnippetProps<AnyDimEntry = PhaseData> {
 
 // ConvexHull-specific tooltip types
 import type { TooltipConfig } from '$lib/tooltip'
-export type ConvexHullTooltipConfig<AnyDimEntry = PhaseData> = TooltipConfig<
-  AnyDimEntry
->
+export type ConvexHullTooltipConfig<AnyDimEntry = PhaseData> = TooltipConfig<AnyDimEntry>
 export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> =
   | Snippet<[TooltipSnippetProps<AnyDimEntry>]>
   | ConvexHullTooltipConfig<AnyDimEntry>
 
 // Base props shared across all convex hull components (2D, 3D, 4D)
-export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
-  extends Omit<HTMLAttributes<HTMLDivElement>, `entries` | `children`> {
+export interface BaseConvexHullProps<AnyDimEntry = PhaseData> extends Omit<
+  HTMLAttributes<HTMLDivElement>,
+  `entries` | `children`
+> {
   entries: PhaseData[]
   controls?: Partial<ConvexHullControlsType>
   config?: Partial<ConvexHullConfig>

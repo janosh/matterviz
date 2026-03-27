@@ -626,8 +626,7 @@
   // (skip first run to preserve parent-provided selections)
   let first_run = true
   $effect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    ;[supercell_scaling, show_image_atoms, structure, cell_type]
+    void [supercell_scaling, show_image_atoms, structure, cell_type] // track reactively
     if (first_run) {
       first_run = false
       return

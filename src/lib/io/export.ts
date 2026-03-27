@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import { download } from '$lib/io/fetch'
 import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
@@ -7,11 +6,13 @@ import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
 function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
   if (typeof value !== `object` || !value) return false
   const renderer_obj = value as Record<string, unknown>
-  return typeof renderer_obj.render === `function` &&
+  return (
+    typeof renderer_obj.render === `function` &&
     typeof renderer_obj.getPixelRatio === `function` &&
     typeof renderer_obj.setPixelRatio === `function` &&
     typeof renderer_obj.getSize === `function` &&
     typeof renderer_obj.setSize === `function`
+  )
 }
 
 // Capture a WebGL canvas as a PNG Blob at the given DPI.
@@ -82,9 +83,10 @@ export function export_canvas_as_png(
     return
   }
 
-  let filename = typeof structure_or_filename === `string`
-    ? structure_or_filename
-    : create_structure_filename(structure_or_filename, `png`)
+  let filename =
+    typeof structure_or_filename === `string`
+      ? structure_or_filename
+      : create_structure_filename(structure_or_filename, `png`)
 
   const suffix = `-${Math.round(png_dpi)}dpi`
   if (filename.toLowerCase().endsWith(`.png`)) {
@@ -125,10 +127,7 @@ export function svg_to_svg_string(svg_element: SVGElement): string {
 }
 
 // Export SVG element as SVG file (triggers browser download)
-export function export_svg_as_svg(
-  svg_element: SVGElement | null,
-  filename: string,
-): void {
+export function export_svg_as_svg(svg_element: SVGElement | null, filename: string): void {
   if (!svg_element) {
     console.warn(`SVG element not found for export`)
     return
@@ -146,10 +145,7 @@ export function export_svg_as_svg(
 // Image element, and returns the resulting PNG Blob. Rejects if viewBox is
 // missing or dimensions are invalid (zero width/height).
 // DPI is converted to a resolution multiplier relative to 72 DPI baseline, capped at 10x.
-export function svg_to_png_blob(
-  svg_element: SVGElement,
-  png_dpi = 150,
-): Promise<Blob> {
+export function svg_to_png_blob(svg_element: SVGElement, png_dpi = 150): Promise<Blob> {
   const viewBox = svg_element.getAttribute(`viewBox`)?.trim()
   if (!viewBox) return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
 
@@ -257,7 +253,8 @@ export async function export_trajectory_video(
     !canvas ||
     typeof MediaRecorder === `undefined` ||
     !MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`)
-  ) throw new Error(`WebM video recording not supported in this browser`)
+  )
+    throw new Error(`WebM video recording not supported in this browser`)
 
   const renderer_val = (canvas as { __renderer?: unknown }).__renderer
   const renderer = is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
@@ -315,7 +312,7 @@ export async function export_trajectory_video(
 
       // Double RAF ensures Three.js completes rendering before capture
       await new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve))
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
       )
 
       // Capture frame

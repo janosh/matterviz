@@ -129,7 +129,8 @@
           if (!element_series_map.has(element)) {
             element_series_map.set(element, new SvelteMap())
           }
-          const element_map = element_series_map.get(element)!
+          const element_map = element_series_map.get(element)
+          if (!element_map) continue
 
           for (const [cn, count] of cn_histogram) {
             all_cns.add(cn)
@@ -188,7 +189,7 @@
       }
 
       const x_vals = Array.from(combined_histogram.keys()).sort((a, b) => a - b)
-      const y_vals = x_vals.map((cn) => combined_histogram.get(cn)!)
+      const y_vals = x_vals.map((cn) => combined_histogram.get(cn) ?? 0)
 
       return [
         {

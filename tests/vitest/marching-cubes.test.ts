@@ -3,7 +3,11 @@ import { compute_vertex_normals, marching_cubes } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
 
-const IDENTITY: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+const IDENTITY: Matrix3x3 = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+]
 const NON_PERIODIC = { periodic: false, centered: false }
 
 // Helper: create a 3D grid filled with a function f(ix, iy, iz)
@@ -13,13 +17,10 @@ const make_grid = (
   nz: number,
   fill_fn: (ix: number, iy: number, iz: number) => number,
 ): number[][][] =>
-  Array.from(
-    { length: nx },
-    (_, ix) =>
-      Array.from(
-        { length: ny },
-        (_, iy) => Array.from({ length: nz }, (_, iz) => fill_fn(ix, iy, iz)),
-      ),
+  Array.from({ length: nx }, (_, ix) =>
+    Array.from({ length: ny }, (_, iy) =>
+      Array.from({ length: nz }, (_, iz) => fill_fn(ix, iy, iz)),
+    ),
   )
 
 const uniform_grid = (nx: number, ny: number, nz: number, value: number): number[][][] =>
@@ -44,17 +45,16 @@ describe(`marching_cubes`, () => {
     { nx: 3, ny: 1, nz: 3 },
     { nx: 3, ny: 3, nz: 1 },
     { nx: 0, ny: 0, nz: 0 },
-  ])(
-    `returns empty result for grid smaller than 2x2x2: $nx×$ny×$nz`,
-    ({ nx, ny, nz }) => {
-      const grid = uniform_grid(Math.max(nx, 1), Math.max(ny, 1), Math.max(nz, 1), 1.0)
-        .slice(0, nx)
-      const result = marching_cubes(grid, 0.5, IDENTITY)
-      expect(result.vertices).toHaveLength(0)
-      expect(result.faces).toHaveLength(0)
-      expect(result.normals).toHaveLength(0)
-    },
-  )
+  ])(`returns empty result for grid smaller than 2x2x2: $nx×$ny×$nz`, ({ nx, ny, nz }) => {
+    const grid = uniform_grid(Math.max(nx, 1), Math.max(ny, 1), Math.max(nz, 1), 1.0).slice(
+      0,
+      nx,
+    )
+    const result = marching_cubes(grid, 0.5, IDENTITY)
+    expect(result.vertices).toHaveLength(0)
+    expect(result.faces).toHaveLength(0)
+    expect(result.normals).toHaveLength(0)
+  })
 
   test.each([
     { iso: 2.0, label: `above all values` },
@@ -134,15 +134,19 @@ describe(`marching_cubes`, () => {
     expect(no_interp.vertices.length).toBeGreaterThan(0)
     expect(no_interp.faces.length).toBe(interp.faces.length)
     // Non-linear gradient means interpolated positions differ from midpoints
-    const any_different = no_interp.vertices.some((vert, idx) =>
-      Math.abs(vert[0] - interp.vertices[idx][0]) > 1e-6
+    const any_different = no_interp.vertices.some(
+      (vert, idx) => Math.abs(vert[0] - interp.vertices[idx][0]) > 1e-6,
     )
     expect(any_different).toBe(true)
   })
 
   test(`lattice transformation scales vertices`, () => {
     const grid = gaussian_grid(6)
-    const scaled_lattice: Matrix3x3 = [[10, 0, 0], [0, 10, 0], [0, 0, 10]]
+    const scaled_lattice: Matrix3x3 = [
+      [10, 0, 0],
+      [0, 10, 0],
+      [0, 0, 10],
+    ]
     const unit = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
     const scaled = marching_cubes(grid, 0.5, scaled_lattice, NON_PERIODIC)
 
@@ -159,13 +163,17 @@ describe(`marching_cubes`, () => {
 
   test(`non-orthogonal lattice transforms vertices differently from identity`, () => {
     const grid = gaussian_grid(6)
-    const sheared: Matrix3x3 = [[1, 0, 0], [0.5, 0.866, 0], [0, 0, 1]]
+    const sheared: Matrix3x3 = [
+      [1, 0, 0],
+      [0.5, 0.866, 0],
+      [0, 0, 1],
+    ]
     const result = marching_cubes(grid, 0.5, sheared, NON_PERIODIC)
     const identity = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
 
     expect(result.vertices.length).toBeGreaterThan(0)
-    const any_different = result.vertices.some((v, idx) =>
-      Math.abs(v[1] - identity.vertices[idx][1]) > 1e-6
+    const any_different = result.vertices.some(
+      (v, idx) => Math.abs(v[1] - identity.vertices[idx][1]) > 1e-6,
     )
     expect(any_different).toBe(true)
   })
@@ -182,7 +190,11 @@ describe(`marching_cubes`, () => {
 
 describe(`compute_vertex_normals`, () => {
   test(`xy-plane triangle produces z-direction unit normals`, () => {
-    const vertices: Vec3[] = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
+    const vertices: Vec3[] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [0, 1, 0],
+    ]
     const normals = compute_vertex_normals(vertices, [[0, 1, 2]])
 
     expect(normals).toHaveLength(3)
@@ -201,7 +213,11 @@ describe(`compute_vertex_normals`, () => {
     { face: [0, 1, 99], label: `out-of-bounds index` },
     { face: [-1, 1, 2], label: `negative index` },
   ])(`skips invalid faces: $label`, ({ face }) => {
-    const vertices: Vec3[] = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
+    const vertices: Vec3[] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [0, 1, 0],
+    ]
     const normals = compute_vertex_normals(vertices, [face])
     // All normals remain at zero (face was skipped)
     for (const normal of normals) {
@@ -210,7 +226,12 @@ describe(`compute_vertex_normals`, () => {
   })
 
   test(`handles quad faces via fan triangulation`, () => {
-    const vertices: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
+    const vertices: Vec3[] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 1, 0],
+      [0, 1, 0],
+    ]
     const normals = compute_vertex_normals(vertices, [[0, 1, 2, 3]])
 
     expect(normals).toHaveLength(4)
@@ -222,8 +243,16 @@ describe(`compute_vertex_normals`, () => {
 
   test(`averages normals from shared vertices`, () => {
     // Two triangles meeting at 90° sharing edge (0-1)
-    const vertices: Vec3[] = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
-    const normals = compute_vertex_normals(vertices, [[0, 1, 2], [0, 1, 3]])
+    const vertices: Vec3[] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]
+    const normals = compute_vertex_normals(vertices, [
+      [0, 1, 2],
+      [0, 1, 3],
+    ])
 
     // Shared vertex 0: averaged normal has both y and z components
     const shared = normals[0]

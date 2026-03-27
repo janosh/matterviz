@@ -16,15 +16,16 @@ export function make_demo_phase(
 ): PhaseData {
   const n_elements = Object.keys(composition).length
   const energy = -0.3 * n_elements - seeded_random(seed) * 0.5
-  const entropy_coef = 0.5 + n_elements * 0.3 + seeded_random(seed + 1) * 2 +
-    entropy_boost
+  const entropy_coef = 0.5 + n_elements * 0.3 + seeded_random(seed + 1) * 2 + entropy_boost
   return {
     composition,
     energy,
     temperatures: demo_temperatures,
-    free_energies: demo_temperatures.map((temp_kelvin) =>
-      energy + entropy_coef * temp_kelvin * 0.0001 -
-      0.00005 * temp_kelvin * Math.log(temp_kelvin)
+    free_energies: demo_temperatures.map(
+      (temp_kelvin) =>
+        energy +
+        entropy_coef * temp_kelvin * 0.0001 -
+        0.00005 * temp_kelvin * Math.log(temp_kelvin),
     ),
   }
 }
@@ -32,7 +33,11 @@ export function make_demo_phase(
 export function create_temp_ternary_entries_li_fe_o(): PhaseData[] {
   return [
     ...[`Li`, `Fe`, `O`].map((element, idx) => make_demo_phase({ [element]: 1 }, idx)),
-    ...[[`Li`, `Fe`], [`Li`, `O`], [`Fe`, `O`]].flatMap(([element_a, element_b], idx) =>
+    ...[
+      [`Li`, `Fe`],
+      [`Li`, `O`],
+      [`Fe`, `O`],
+    ].flatMap(([element_a, element_b], idx) =>
       [0.33, 0.5, 0.67].flatMap((fraction, jdx) => [
         make_demo_phase(
           { [element_a]: fraction, [element_b]: 1 - fraction },
@@ -43,7 +48,7 @@ export function create_temp_ternary_entries_li_fe_o(): PhaseData[] {
           200 + idx * 10 + jdx,
           3,
         ),
-      ])
+      ]),
     ),
     ...[
       { Li: 0.33, Fe: 0.33, O: 0.34 },

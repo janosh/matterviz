@@ -15,9 +15,7 @@
 import { calculate_e_above_hull } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
-import pymatgen_reference from './fixtures/quinary_pymatgen_reference.json' with {
-  type: 'json',
-}
+import pymatgen_reference from './fixtures/quinary_pymatgen_reference.json' with { type: 'json' }
 
 interface PymatgenEntry {
   id: string
@@ -95,7 +93,9 @@ describe(`Pymatgen cross-validation for quinary (5-element) system`, () => {
     const by_composition = new Map<string, PymatgenEntry[]>()
     for (const entry of reference.entries) {
       const key = JSON.stringify(
-        Object.keys(entry.composition).sort().map((el) => [el, entry.composition[el]]),
+        Object.keys(entry.composition)
+          .toSorted()
+          .map((el) => [el, entry.composition[el]]),
       )
       const entries_for_key = by_composition.get(key) ?? []
       entries_for_key.push(entry)
@@ -105,7 +105,7 @@ describe(`Pymatgen cross-validation for quinary (5-element) system`, () => {
     // For each composition, check monotonicity
     for (const entries_same_comp of by_composition.values()) {
       if (entries_same_comp.length < 2) continue
-      const sorted = [...entries_same_comp].sort(
+      const sorted = entries_same_comp.toSorted(
         (a, b) => a.e_form_per_atom - b.e_form_per_atom,
       )
       for (let idx = 1; idx < sorted.length; idx++) {

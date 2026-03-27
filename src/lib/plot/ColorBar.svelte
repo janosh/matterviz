@@ -473,12 +473,12 @@
   // This ensures state matches UI (which shows first option by default)
   $effect(() => {
     if (has_property_select && selected_property_key === undefined) {
-      selected_property_key = property_options![0].key
+      selected_property_key = property_options?.[0]?.key
     }
   })
   $effect(() => {
     if (has_color_scale_select && selected_color_scale_key === undefined) {
-      selected_color_scale_key = color_scale_options![0].key
+      selected_color_scale_key = color_scale_options?.[0]?.key
     }
   })
 

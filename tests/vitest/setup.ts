@@ -75,7 +75,11 @@ export const get_dummy_structure = (
   atoms = 3,
   with_lattice = false,
 ): Crystal => {
-  const matrix: math.Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 5]]
+  const matrix: math.Matrix3x3 = [
+    [5, 0, 0],
+    [0, 5, 0],
+    [0, 0, 5],
+  ]
   const pbc: Pbc = [false, false, false]
   const structure = {
     sites: Array.from({ length: atoms }, (_, idx) => ({
@@ -90,7 +94,11 @@ export const get_dummy_structure = (
   }
 
   if (with_lattice) {
-    const matrix: math.Matrix3x3 = [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]]
+    const matrix: math.Matrix3x3 = [
+      [5.0, 0.0, 0.0],
+      [0.0, 5.0, 0.0],
+      [0.0, 0.0, 5.0],
+    ]
     const pbc: Pbc = [true, true, true]
     const lengths = { a: 5.0, b: 5.0, c: 5.0 }
     const angles = { alpha: 90.0, beta: 90.0, gamma: 90.0 }
@@ -110,18 +118,19 @@ export function create_test_structure(
   elements_or_sites:
     | ElementSymbol[]
     | {
-      species: { element: string; occu: number; oxidation_state: number }[]
-      xyz: number[]
-    }[],
+        species: { element: string; occu: number; oxidation_state: number }[]
+        xyz: number[]
+      }[],
   frac_coords?: Vec3[],
 ): Crystal {
-  const lattice_matrix: math.Matrix3x3 = typeof lattice === `number`
-    ? [
-      [lattice, 0.0, 0.0],
-      [0.0, lattice, 0.0],
-      [0.0, 0.0, lattice],
-    ]
-    : lattice
+  const lattice_matrix: math.Matrix3x3 =
+    typeof lattice === `number`
+      ? [
+          [lattice, 0.0, 0.0],
+          [0.0, lattice, 0.0],
+          [0.0, 0.0, lattice],
+        ]
+      : lattice
 
   // Calculate lattice parameters from matrix
   const { a, b, c, alpha, beta, gamma, volume } = math.calc_lattice_params(lattice_matrix)
@@ -170,7 +179,7 @@ export function create_test_structure(
 // Simplified site input for make_crystal helper
 // Object notation: { element: `Li`, abc: [0, 0, 0], oxidation_state: 1 }
 export type SimpleSiteObject = {
-  element: ElementSymbol | string
+  element: string // usually ElementSymbol but any string is allowed
   abc?: Vec3
   xyz?: Vec3
   occu?: number
@@ -198,9 +207,14 @@ export function make_crystal(
   site_inputs: SimpleSite[],
   options: { pbc?: Pbc; charge?: number } = {},
 ): Crystal {
-  const lattice_matrix: math.Matrix3x3 = typeof lattice_input === `number`
-    ? [[lattice_input, 0, 0], [0, lattice_input, 0], [0, 0, lattice_input]]
-    : lattice_input
+  const lattice_matrix: math.Matrix3x3 =
+    typeof lattice_input === `number`
+      ? [
+          [lattice_input, 0, 0],
+          [0, lattice_input, 0],
+          [0, 0, lattice_input],
+        ]
+      : lattice_input
 
   // Use standard pymatgen convention for frac↔cart conversion:
   // xyz = transpose(lattice) · abc, abc = inv(transpose(lattice)) · xyz
@@ -226,11 +240,13 @@ export function make_crystal(
     }
 
     return {
-      species: [{
-        element,
-        occu: input.occu ?? 1,
-        oxidation_state: input.oxidation_state ?? 0,
-      }],
+      species: [
+        {
+          element,
+          occu: input.occu ?? 1,
+          oxidation_state: input.oxidation_state ?? 0,
+        },
+      ],
       abc,
       xyz,
       label: input.label ?? `${element}${idx}`,
@@ -253,7 +269,7 @@ globalThis.ResizeObserver = class ResizeObserver {
       this.callback(
         [{ target: el, contentRect: { width: 800, height: 600 } } as ResizeObserverEntry],
         this,
-      )
+      ),
     )
   }
   unobserve() {}
@@ -326,9 +342,18 @@ export const simple_structure: AnyStructure = {
     },
   ],
   lattice: {
-    matrix: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
+    matrix: [
+      [10.0, 0.0, 0.0],
+      [0.0, 10.0, 0.0],
+      [0.0, 0.0, 10.0],
+    ],
     pbc: [true, true, true],
-    ...{ a: 10.0, b: 10.0, c: 10.0, alpha: 90.0, beta: 90.0, gamma: 90.0 },
+    a: 10.0,
+    b: 10.0,
+    c: 10.0,
+    alpha: 90.0,
+    beta: 90.0,
+    gamma: 90.0,
     volume: 1000.0,
   },
 }
@@ -387,9 +412,18 @@ export const complex_structure: AnyStructure = {
     },
   ],
   lattice: {
-    matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
+    matrix: [
+      [5.0, 0.0, 0.0],
+      [0.0, 5.0, 0.0],
+      [0.0, 0.0, 5.0],
+    ],
     pbc: [true, true, true],
-    ...{ a: 5.0, b: 5.0, c: 5.0, alpha: 90.0, beta: 90.0, gamma: 90.0 },
+    a: 5.0,
+    b: 5.0,
+    c: 5.0,
+    alpha: 90.0,
+    beta: 90.0,
+    gamma: 90.0,
     volume: 125.0,
   },
 }

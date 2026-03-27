@@ -15,17 +15,15 @@ describe(`CRYSTAL_SYSTEM_RANGES`, () => {
     }
   })
 
-  test.each(
-    [
-      [`triclinic`, 1, 2],
-      [`monoclinic`, 3, 15],
-      [`orthorhombic`, 16, 74],
-      [`tetragonal`, 75, 142],
-      [`trigonal`, 143, 167],
-      [`hexagonal`, 168, 194],
-      [`cubic`, 195, 230],
-    ] as const,
-  )(`should have correct range for %s: [%i, %i]`, (system, min, max) => {
+  test.each([
+    [`triclinic`, 1, 2],
+    [`monoclinic`, 3, 15],
+    [`orthorhombic`, 16, 74],
+    [`tetragonal`, 75, 142],
+    [`trigonal`, 143, 167],
+    [`hexagonal`, 168, 194],
+    [`cubic`, 195, 230],
+  ] as const)(`should have correct range for %s: [%i, %i]`, (system, min, max) => {
     expect(spg.CRYSTAL_SYSTEM_RANGES[system]).toEqual([min, max])
   })
 })
@@ -60,24 +58,22 @@ describe(`CRYSTAL_SYSTEMS`, () => {
 })
 
 describe(`spacegroup_num_to_crystal_sys`, () => {
-  test.each(
-    [
-      [1, `triclinic`],
-      [2, `triclinic`],
-      [3, `monoclinic`],
-      [15, `monoclinic`],
-      [16, `orthorhombic`],
-      [74, `orthorhombic`],
-      [75, `tetragonal`],
-      [142, `tetragonal`],
-      [143, `trigonal`],
-      [167, `trigonal`],
-      [168, `hexagonal`],
-      [194, `hexagonal`],
-      [195, `cubic`],
-      [230, `cubic`],
-    ] as const,
-  )(`should return %s for space group %i`, (spacegroup, expected_system) => {
+  test.each([
+    [1, `triclinic`],
+    [2, `triclinic`],
+    [3, `monoclinic`],
+    [15, `monoclinic`],
+    [16, `orthorhombic`],
+    [74, `orthorhombic`],
+    [75, `tetragonal`],
+    [142, `tetragonal`],
+    [143, `trigonal`],
+    [167, `trigonal`],
+    [168, `hexagonal`],
+    [194, `hexagonal`],
+    [195, `cubic`],
+    [230, `cubic`],
+  ] as const)(`should return %s for space group %i`, (spacegroup, expected_system) => {
     expect(spg.spacegroup_num_to_crystal_sys(spacegroup)).toBe(expected_system)
   })
 
@@ -90,32 +86,30 @@ describe(`spacegroup_num_to_crystal_sys`, () => {
 })
 
 describe(`spacegroup_to_crystal_sys`, () => {
-  test.each(
-    [
-      [1, `triclinic`],
-      [74, `orthorhombic`],
-      [142, `tetragonal`],
-      [230, `cubic`],
-      [`P1`, `triclinic`],
-      [`P-1`, `triclinic`],
-      [`P2`, `monoclinic`],
-      [`C2/c`, `monoclinic`],
-      [`Pnma`, `orthorhombic`],
-      [`P4`, `tetragonal`],
-      [`I4/mmm`, `tetragonal`],
-      [`P3`, `trigonal`],
-      [`R-3m`, `trigonal`],
-      [`P6`, `hexagonal`],
-      [`P6_3/mmc`, `hexagonal`],
-      [`Fm-3m`, `cubic`],
-      [`1`, `triclinic`],
-      [`62`, `orthorhombic`],
-      [`230`, `cubic`],
-      [`P121`, `monoclinic`],
-      [`P2/m2/m2/m`, `orthorhombic`],
-      [`I4_1/a-32/d`, `cubic`],
-    ] as const,
-  )(`should return %s for %s`, (input, expected) => {
+  test.each([
+    [1, `triclinic`],
+    [74, `orthorhombic`],
+    [142, `tetragonal`],
+    [230, `cubic`],
+    [`P1`, `triclinic`],
+    [`P-1`, `triclinic`],
+    [`P2`, `monoclinic`],
+    [`C2/c`, `monoclinic`],
+    [`Pnma`, `orthorhombic`],
+    [`P4`, `tetragonal`],
+    [`I4/mmm`, `tetragonal`],
+    [`P3`, `trigonal`],
+    [`R-3m`, `trigonal`],
+    [`P6`, `hexagonal`],
+    [`P6_3/mmc`, `hexagonal`],
+    [`Fm-3m`, `cubic`],
+    [`1`, `triclinic`],
+    [`62`, `orthorhombic`],
+    [`230`, `cubic`],
+    [`P121`, `monoclinic`],
+    [`P2/m2/m2/m`, `orthorhombic`],
+    [`I4_1/a-32/d`, `cubic`],
+  ] as const)(`should return %s for %s`, (input, expected) => {
     expect(spg.spacegroup_to_crystal_sys(input)).toBe(expected)
   })
 

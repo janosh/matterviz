@@ -35,13 +35,15 @@ function create_tdb_result(
           temperature_ranges: [{ min: 298, max: 693, expr: `` }],
         },
       ],
-      parameters: [{
-        type: `G`,
-        phase: `LIQUID`,
-        constituents: [`AL`],
-        order: 0,
-        expression: ``,
-      }],
+      parameters: [
+        {
+          type: `G`,
+          phase: `LIQUID`,
+          constituents: [`AL`],
+          order: 0,
+          expression: ``,
+        },
+      ],
       comments: [],
       raw_content: ``,
       ...overrides,

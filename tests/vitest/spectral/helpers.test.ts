@@ -92,12 +92,9 @@ describe(`detect_zoom_change`, () => {
     { bands: zoomed, dos: shared, synced: zoomed, dos_en: true, expected: null },
     { bands: null, dos: zoomed, synced: zoomed, dos_en: true, expected: null },
     { bands: zoomed, dos: null, synced: zoomed, dos_en: true, expected: null },
-  ])(
-    `returns null for reset: $bands,$dos`,
-    ({ bands, dos, synced, dos_en, expected }) => {
-      expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toBe(expected)
-    },
-  )
+  ])(`returns null for reset: $bands,$dos`, ({ bands, dos, synced, dos_en, expected }) => {
+    expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toBe(expected)
+  })
 
   // Returns new zoom range
   it.each([
@@ -302,7 +299,11 @@ describe(`get_band_xaxis_ticks`, () => {
         X: [0.5, 0, 0] as Vec3,
       },
       recip_lattice: {
-        matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3,
+        matrix: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ] satisfies Matrix3x3,
       },
     }
 
@@ -343,7 +344,13 @@ describe(`find_qpoint_at_distance`, () => {
       X: [0.5, 0, 0] as Vec3,
       K: [0.5, 0.5, 0] as Vec3,
     },
-    recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3 },
+    recip_lattice: {
+      matrix: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ] satisfies Matrix3x3,
+    },
   }
 
   it.each([
@@ -363,13 +370,11 @@ describe(`find_qpoint_at_distance`, () => {
   })
 
   it(`returns null for empty or invalid band structure`, () => {
-    expect(find_qpoint_at_distance({ distance: [] } as unknown as BaseBandStructure, 1.0))
-      .toBe(null)
     expect(
-      find_qpoint_at_distance(
-        { distance: undefined } as unknown as BaseBandStructure,
-        1.0,
-      ),
+      find_qpoint_at_distance({ distance: [] } as unknown as BaseBandStructure, 1.0),
+    ).toBe(null)
+    expect(
+      find_qpoint_at_distance({ distance: undefined } as unknown as BaseBandStructure, 1.0),
     ).toBe(null)
   })
 
@@ -383,7 +388,11 @@ describe(`find_qpoint_at_distance`, () => {
 })
 
 describe(`extract_k_path_points`, () => {
-  const identity_lattice: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+  const identity_lattice: Matrix3x3 = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
 
   it(`converts fractional coordinates to Cartesian reciprocal space`, () => {
     const band_struct: BaseBandStructure = {
@@ -401,10 +410,20 @@ describe(`extract_k_path_points`, () => {
         X: [0.5, 0, 0] as Vec3,
         K: [1 / 3, 1 / 3, 0] as Vec3,
       },
-      recip_lattice: { matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 1]] satisfies Matrix3x3 },
+      recip_lattice: {
+        matrix: [
+          [2, 0, 0],
+          [0, 2, 0],
+          [0, 0, 1],
+        ] satisfies Matrix3x3,
+      },
     }
 
-    const recip_lattice: Matrix3x3 = [[2, 0, 0], [0, 2, 0], [0, 0, 1]]
+    const recip_lattice: Matrix3x3 = [
+      [2, 0, 0],
+      [0, 2, 0],
+      [0, 0, 1],
+    ]
     // Disable BZ wrapping to test basic coordinate transformation
     const result = extract_k_path_points(band_struct, recip_lattice, {
       wrap_to_bz: false,
@@ -436,7 +455,11 @@ describe(`extract_k_path_points`, () => {
     // Disable BZ wrapping to test basic coordinate transformation
     const result = extract_k_path_points(
       band_struct,
-      [[1, 0.5, 0], [0, 2, 0], [0, 0, 1]],
+      [
+        [1, 0.5, 0],
+        [0, 2, 0],
+        [0, 0, 1],
+      ],
       {
         wrap_to_bz: false,
       },
@@ -459,7 +482,11 @@ describe(`extract_k_path_points`, () => {
 })
 
 describe(`find_qpoint_at_rescaled_x`, () => {
-  const identity_lattice: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+  const identity_lattice: Matrix3x3 = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
 
   // Test band structure: Γ→X→K with rescaled segments
   const rescaled_bs: BaseBandStructure = {
@@ -486,10 +513,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
     recip_lattice: { matrix: identity_lattice },
   }
 
-  const x_pos = { 'GAMMA_X': [0, 1.0], 'X_K': [1.0, 1.5] } as Record<
-    string,
-    [number, number]
-  >
+  const x_pos = { GAMMA_X: [0, 1.0], X_K: [1.0, 1.5] } as Record<string, [number, number]>
 
   it.each([
     { x: 0.0, expected: 0, label: `Γ` },
@@ -525,7 +549,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
       labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [0.5, 0, 0] as Vec3 },
       recip_lattice: { matrix: identity_lattice },
     }
-    const x_pos_repeat = { 'GAMMA_X': [0, 1.0], 'X_GAMMA': [1.0, 2.0] } as Record<
+    const x_pos_repeat = { GAMMA_X: [0, 1.0], X_GAMMA: [1.0, 2.0] } as Record<
       string,
       [number, number]
     >
@@ -558,7 +582,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
       },
       recip_lattice: { matrix: identity_lattice },
     }
-    const x_pos_disc = { 'GAMMA_X': [0, 0.5], 'X_K': [0.5, 0.5] } as Record<
+    const x_pos_disc = { GAMMA_X: [0, 0.5], X_K: [0.5, 0.5] } as Record<
       string,
       [number, number]
     >
@@ -570,17 +594,17 @@ describe(`find_qpoint_at_rescaled_x`, () => {
   it(`returns null for empty or invalid inputs`, () => {
     expect(find_qpoint_at_rescaled_x(rescaled_bs, 0.5, {})).toBe(0) // Fallback
     expect(
-      find_qpoint_at_rescaled_x(
-        { branches: [] } as unknown as BaseBandStructure,
-        0.5,
-        {},
-      ),
+      find_qpoint_at_rescaled_x({ branches: [] } as unknown as BaseBandStructure, 0.5, {}),
     ).toBe(null)
   })
 })
 
 describe(`normalize_band_structure`, () => {
-  const ident: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+  const ident: Matrix3x3 = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
   const make_pmg = (opts: Record<string, unknown>) => ({
     '@class': `PhononBandStructureSymmLine`,
     ...opts,
@@ -589,12 +613,18 @@ describe(`normalize_band_structure`, () => {
   describe(`matterviz format`, () => {
     it(`validates valid band structure`, () => {
       const result = normalize_band_structure({
-        qpoints: [{ label: `GAMMA`, frac_coords: [0, 0, 0] }, {
-          label: `X`,
-          frac_coords: [0.5, 0, 0],
-        }],
+        qpoints: [
+          { label: `GAMMA`, frac_coords: [0, 0, 0] },
+          {
+            label: `X`,
+            frac_coords: [0.5, 0, 0],
+          },
+        ],
         branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
-        bands: [[0, 1], [2, 3]],
+        bands: [
+          [0, 1],
+          [2, 3],
+        ],
         distance: [0, 1.0],
         nb_bands: 2,
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
@@ -630,21 +660,26 @@ describe(`normalize_band_structure`, () => {
           distance: [0],
         },
       },
-    ])(
-      `returns null for $desc`,
-      ({ input }) => expect(normalize_band_structure(input)).toBeNull(),
+    ])(`returns null for $desc`, ({ input }) =>
+      expect(normalize_band_structure(input)).toBeNull(),
     )
   })
 
   describe(`pymatgen format`, () => {
     it(`converts PhononBandStructureSymmLine (default THz, no conversion)`, () => {
       // pymatgen defaults to unit="thz", so no conversion should happen
-      const result = normalize_band_structure(make_pmg({
-        qpoints: [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]],
-        bands: [[0, 5.0, 10.0]], // Already in THz
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
-        lattice_rec: { matrix: ident },
-      }))
+      const result = normalize_band_structure(
+        make_pmg({
+          qpoints: [
+            [0, 0, 0],
+            [0.5, 0, 0],
+            [0.5, 0.5, 0],
+          ],
+          bands: [[0, 5.0, 10.0]], // Already in THz
+          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
+          lattice_rec: { matrix: ident },
+        }),
+      )
       expect(result?.qpoints).toHaveLength(3)
       expect(result?.bands[0][1]).toBe(5.0) // No conversion, stays 5.0 THz
     })
@@ -654,23 +689,28 @@ describe(`normalize_band_structure`, () => {
       {
         desc: `structure`,
         input: {
-          qpoints: [[0, 0, 0], [0.5, 0, 0]],
+          qpoints: [
+            [0, 0, 0],
+            [0.5, 0, 0],
+          ],
           bands: [[0, 1]],
           labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
         },
       },
-    ])(
-      `detects pymatgen by $desc`,
-      ({ input }) => expect(() => normalize_band_structure(input)).not.toThrow(),
+    ])(`detects pymatgen by $desc`, ({ input }) =>
+      expect(() => normalize_band_structure(input)).not.toThrow(),
     )
 
     it(`handles Kpoint objects with labels`, () => {
       const result = normalize_band_structure({
         '@module': `pymatgen.phonon.bandstructure`,
-        qpoints: [{ frac_coords: [0, 0, 0], label: `GAMMA` }, {
-          frac_coords: [0.5, 0, 0],
-          label: `X`,
-        }],
+        qpoints: [
+          { frac_coords: [0, 0, 0], label: `GAMMA` },
+          {
+            frac_coords: [0.5, 0, 0],
+            label: `X`,
+          },
+        ],
         bands: [[0, 1]],
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
@@ -678,103 +718,153 @@ describe(`normalize_band_structure`, () => {
     })
 
     it(`matches labels from labels_dict`, () => {
-      const result = normalize_band_structure(make_pmg({
-        qpoints: [[0, 0, 0], [0.5, 0, 0]],
-        bands: [[0, 1]],
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-      }))
+      const result = normalize_band_structure(
+        make_pmg({
+          qpoints: [
+            [0, 0, 0],
+            [0.5, 0, 0],
+          ],
+          bands: [[0, 1]],
+          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+        }),
+      )
       expect(result?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
     })
 
     it(`creates branches covering k-path`, () => {
-      const result = normalize_band_structure(make_pmg({
-        qpoints: [[0, 0, 0], [0.25, 0, 0], [0.5, 0, 0]],
-        bands: [[0, 1, 2]],
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-      }))
+      const result = normalize_band_structure(
+        make_pmg({
+          qpoints: [
+            [0, 0, 0],
+            [0.25, 0, 0],
+            [0.5, 0, 0],
+          ],
+          bands: [[0, 1, 2]],
+          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+        }),
+      )
       expect(result?.branches[0].start_index).toBe(0)
       expect(result?.branches.at(-1)?.end_index).toBe(2)
     })
 
     it(`calculates monotonic distance array`, () => {
-      const result = normalize_band_structure(make_pmg({
-        qpoints: [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]],
-        bands: [[0, 1, 2]],
-        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-      }))
+      const result = normalize_band_structure(
+        make_pmg({
+          qpoints: [
+            [0, 0, 0],
+            [0.5, 0, 0],
+            [1, 0, 0],
+          ],
+          bands: [[0, 1, 2]],
+          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+        }),
+      )
       expect(result?.distance[0]).toBe(0)
       expect(
         result?.distance.every((dist, idx, arr) => idx === 0 || dist >= arr[idx - 1]),
-      )
-        .toBe(true)
+      ).toBe(true)
     })
 
     it(`handles discontinuities`, () => {
-      const result = normalize_band_structure(make_pmg({
-        qpoints: [[0, 0, 0], [0.05, 0, 0], [0.1, 0, 0], [0.9, 0.9, 0.9], [
-          0.95,
-          0.95,
-          0.95,
-        ], [1, 1, 1]],
-        bands: [[0, 1, 2, 3, 4, 5]],
-        labels_dict: { GAMMA: [0, 0, 0], L: [1, 1, 1] },
-      }))
+      const result = normalize_band_structure(
+        make_pmg({
+          qpoints: [
+            [0, 0, 0],
+            [0.05, 0, 0],
+            [0.1, 0, 0],
+            [0.9, 0.9, 0.9],
+            [0.95, 0.95, 0.95],
+            [1, 1, 1],
+          ],
+          bands: [[0, 1, 2, 3, 4, 5]],
+          labels_dict: { GAMMA: [0, 0, 0], L: [1, 1, 1] },
+        }),
+      )
       expect(Math.max(...(result?.distance ?? []))).toBeLessThan(1.0) // Jump not accumulated
     })
 
     it(`converts eV→THz (factor 241.8) when unit='ev'`, () => {
-      const result = normalize_band_structure(make_pmg({
-        qpoints: [[0, 0, 0], [1, 0, 0]],
-        bands: [[0, 0.001]], // 0.001 eV
-        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-        unit: `ev`, // Explicitly specify eV unit
-      }))
+      const result = normalize_band_structure(
+        make_pmg({
+          qpoints: [
+            [0, 0, 0],
+            [1, 0, 0],
+          ],
+          bands: [[0, 0.001]], // 0.001 eV
+          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+          unit: `ev`, // Explicitly specify eV unit
+        }),
+      )
       expect(result?.bands[0][1]).toBeCloseTo(0.2418, 2) // 0.001 eV * 241.8 = 0.2418 THz
     })
 
     it(`preserves THz values when unit='thz' (default)`, () => {
-      const result = normalize_band_structure(make_pmg({
-        qpoints: [[0, 0, 0], [1, 0, 0]],
-        bands: [[0, 5.0]], // 5.0 THz
-        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-        unit: `thz`, // Explicit THz
-      }))
+      const result = normalize_band_structure(
+        make_pmg({
+          qpoints: [
+            [0, 0, 0],
+            [1, 0, 0],
+          ],
+          bands: [[0, 5.0]], // 5.0 THz
+          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+          unit: `thz`, // Explicit THz
+        }),
+      )
       expect(result?.bands[0][1]).toBe(5.0) // No conversion
     })
 
     it(`converts cm-1→THz when unit='cm-1'`, () => {
-      const result = normalize_band_structure(make_pmg({
-        qpoints: [[0, 0, 0], [1, 0, 0]],
-        bands: [[0, 333.5641]], // 333.5641 cm⁻¹ ≈ 10 THz
-        labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
-        unit: `cm-1`,
-      }))
+      const result = normalize_band_structure(
+        make_pmg({
+          qpoints: [
+            [0, 0, 0],
+            [1, 0, 0],
+          ],
+          bands: [[0, 333.5641]], // 333.5641 cm⁻¹ ≈ 10 THz
+          labels_dict: { GAMMA: [0, 0, 0], X: [1, 0, 0] },
+          unit: `cm-1`,
+        }),
+      )
       expect(result?.bands[0][1]).toBeCloseTo(10.0, 2)
     })
 
     it(`tolerates floating point in labels_dict matching`, () => {
-      const result = normalize_band_structure(make_pmg({
-        qpoints: [[0.00001, -0.00001, 0], [0.49999, 0.00001, 0]],
-        bands: [[0, 1]],
-        labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-      }))
+      const result = normalize_band_structure(
+        make_pmg({
+          qpoints: [
+            [0.00001, -0.00001, 0],
+            [0.49999, 0.00001, 0],
+          ],
+          bands: [[0, 1]],
+          labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+        }),
+      )
       expect(result?.qpoints.map((qpt) => qpt.label)).toEqual([`GAMMA`, `X`])
     })
   })
 
   describe(`branch inference fallback (no pmg.branches)`, () => {
-    const spy_info = () => vi.spyOn(console, `info`).mockImplementation(() => {})
+    const spy_info = () => vi.spyOn(console, `warn`).mockImplementation(() => {})
 
     it.each([
       {
         desc: `logs info and covers unlabeled qpoints`,
-        qpoints: [[0.1, 0, 0], [0.25, 0, 0], [0.4, 0, 0]],
+        qpoints: [
+          [0.1, 0, 0],
+          [0.25, 0, 0],
+          [0.4, 0, 0],
+        ],
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
         expected: [{ start_index: 0, end_index: 2, name: `?-?` }],
       },
       {
         desc: `creates branches at single discontinuity`,
-        qpoints: [[0, 0, 0], [0.1, 0, 0], [0.9, 0.9, 0.9], [1, 1, 1]],
+        qpoints: [
+          [0, 0, 0],
+          [0.1, 0, 0],
+          [0.9, 0.9, 0.9],
+          [1, 1, 1],
+        ],
         labels_dict: { GAMMA: [0, 0, 0], L: [1, 1, 1] },
         expected: [
           { start_index: 0, end_index: 1, name: `GAMMA-?` },
@@ -783,11 +873,14 @@ describe(`normalize_band_structure`, () => {
       },
       {
         desc: `creates branches at multiple discontinuities`,
-        qpoints: [[0, 0, 0], [0.1, 0, 0], [0.5, 0.5, 0], [0.6, 0.5, 0], [1, 1, 1], [
-          1.1,
-          1,
-          1,
-        ]],
+        qpoints: [
+          [0, 0, 0],
+          [0.1, 0, 0],
+          [0.5, 0.5, 0],
+          [0.6, 0.5, 0],
+          [1, 1, 1],
+          [1.1, 1, 1],
+        ],
         labels_dict: { GAMMA: [0, 0, 0], K: [0.5, 0.5, 0], L: [1, 1, 1] },
         expected: [
           { start_index: 0, end_index: 1, name: `GAMMA-?` },
@@ -797,13 +890,22 @@ describe(`normalize_band_structure`, () => {
       },
       {
         desc: `creates single branch with no discontinuities or labels`,
-        qpoints: [[0, 0, 0], [0.1, 0, 0], [0.2, 0, 0], [0.3, 0, 0]],
+        qpoints: [
+          [0, 0, 0],
+          [0.1, 0, 0],
+          [0.2, 0, 0],
+          [0.3, 0, 0],
+        ],
         labels_dict: {},
         expected: [{ start_index: 0, end_index: 3, name: `?-?` }],
       },
       {
         desc: `uses labels for branch names`,
-        qpoints: [[0, 0, 0], [0.25, 0, 0], [0.5, 0, 0]],
+        qpoints: [
+          [0, 0, 0],
+          [0.25, 0, 0],
+          [0.5, 0, 0],
+        ],
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
         expected: [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
       },
@@ -822,7 +924,11 @@ describe(`normalize_band_structure`, () => {
       const spy = spy_info()
       const result = normalize_band_structure({
         '@class': `PhononBandStructureSymmLine`,
-        qpoints: [[0, 0, 0], [0.5, 0, 0], [1, 0, 0]],
+        qpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+          [1, 0, 0],
+        ],
         bands: [[0, 1, 2]],
         branches: [
           { start_index: 0, end_index: 1, name: `custom-1` },
@@ -848,7 +954,10 @@ describe(`normalize_band_structure`, () => {
       const spy = spy_info()
       const result = normalize_band_structure({
         '@class': `PhononBandStructureSymmLine`,
-        qpoints: [[0, 0, 0], [0.5, 0, 0]],
+        qpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+        ],
         bands: [[0, 1]],
         branches,
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
@@ -860,14 +969,18 @@ describe(`normalize_band_structure`, () => {
   })
 
   describe(`edge cases`, () => {
-    it.each([null, undefined, `string`, 123, [], {
-      '@class': `X`,
-      qpoints: [],
-      bands: [],
-    }])(
-      `returns null for %p`,
-      (input) => expect(normalize_band_structure(input)).toBeNull(),
-    )
+    it.each([
+      null,
+      undefined,
+      `string`,
+      123,
+      [],
+      {
+        '@class': `X`,
+        qpoints: [],
+        bands: [],
+      },
+    ])(`returns null for %p`, (input) => expect(normalize_band_structure(input)).toBeNull())
   })
 
   describe(`electronic band structures (pymatgen BandStructureSymmLine)`, () => {
@@ -875,8 +988,17 @@ describe(`normalize_band_structure`, () => {
       const result = normalize_band_structure({
         '@class': `BandStructureSymmLine`,
         '@module': `pymatgen.electronic_structure.bandstructure`,
-        kpoints: [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]],
-        bands: { '1': [[0, 1.5, 3.0], [-2, -1, 0]] }, // 2 bands, spin-keyed
+        kpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+          [0.5, 0.5, 0],
+        ],
+        bands: {
+          '1': [
+            [0, 1.5, 3.0],
+            [-2, -1, 0],
+          ],
+        }, // 2 bands, spin-keyed
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0], K: [0.5, 0.5, 0] },
         lattice_rec: { matrix: ident },
         efermi: 0,
@@ -890,28 +1012,52 @@ describe(`normalize_band_structure`, () => {
     it(`extracts first spin channel from spin-keyed bands`, () => {
       const result = normalize_band_structure({
         '@class': `BandStructureSymmLine`,
-        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        kpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+        ],
         bands: {
-          '1': [[0, 1], [2, 3]], // spin-up: 2 bands
-          '-1': [[0.1, 1.1], [2.1, 3.1]], // spin-down
+          '1': [
+            [0, 1],
+            [2, 3],
+          ], // spin-up: 2 bands
+          '-1': [
+            [0.1, 1.1],
+            [2.1, 3.1],
+          ], // spin-down
         },
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
-      expect(result?.bands).toEqual([[0, 1], [2, 3]]) // First spin channel
-      expect(result?.spin_down_bands).toEqual([[0.1, 1.1], [2.1, 3.1]])
+      expect(result?.bands).toEqual([
+        [0, 1],
+        [2, 3],
+      ]) // First spin channel
+      expect(result?.spin_down_bands).toEqual([
+        [0.1, 1.1],
+        [2.1, 3.1],
+      ])
     })
 
     it(`drops malformed spin-down channel when band shapes mismatch`, () => {
       const result = normalize_band_structure({
         '@class': `BandStructureSymmLine`,
-        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        kpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+        ],
         bands: {
-          '1': [[0, 1], [2, 3]],
+          '1': [
+            [0, 1],
+            [2, 3],
+          ],
           '-1': [[0.1], [2.1, 3.1]], // first spin-down band has wrong length
         },
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
-      expect(result?.bands).toEqual([[0, 1], [2, 3]])
+      expect(result?.bands).toEqual([
+        [0, 1],
+        [2, 3],
+      ])
       expect(result?.spin_down_bands).toBeUndefined()
     })
 
@@ -919,7 +1065,11 @@ describe(`normalize_band_structure`, () => {
       const result = normalize_band_structure({
         '@class': `BandStructure`,
         '@module': `pymatgen.electronic_structure.bandstructure`,
-        kpoints: [[0, 0, 0], [0.25, 0, 0], [0.5, 0, 0]],
+        kpoints: [
+          [0, 0, 0],
+          [0.25, 0, 0],
+          [0.5, 0, 0],
+        ],
         bands: { '1': [[0, 0.5, 1.0]] },
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
@@ -930,7 +1080,11 @@ describe(`normalize_band_structure`, () => {
       // Pymatgen BandStructureSymmLine can include branches
       const result = normalize_band_structure({
         '@class': `BandStructureSymmLine`,
-        kpoints: [[0, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]],
+        kpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+          [0.5, 0.5, 0],
+        ],
         bands: { '1': [[0, 1, 2]] },
         branches: [
           { name: `\\Gamma-X`, start_index: 0, end_index: 1 },
@@ -946,17 +1100,29 @@ describe(`normalize_band_structure`, () => {
     it(`handles electronic bands with array format (already extracted)`, () => {
       const result = normalize_band_structure({
         '@class': `BandStructureSymmLine`,
-        kpoints: [[0, 0, 0], [0.5, 0, 0]],
-        bands: [[0, 1], [2, 3]], // Already an array, not spin-keyed
+        kpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+        ],
+        bands: [
+          [0, 1],
+          [2, 3],
+        ], // Already an array, not spin-keyed
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
-      expect(result?.bands).toEqual([[0, 1], [2, 3]])
+      expect(result?.bands).toEqual([
+        [0, 1],
+        [2, 3],
+      ])
     })
 
     it(`detects electronic format by @module containing electronic_structure`, () => {
       const result = normalize_band_structure({
         '@module': `pymatgen.electronic_structure.bandstructure`,
-        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        kpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+        ],
         bands: { '1': [[0, 1]] },
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
@@ -976,7 +1142,10 @@ describe(`normalize_band_structure`, () => {
     it(`returns null for electronic structure with null bands`, () => {
       const result = normalize_band_structure({
         '@class': `BandStructureSymmLine`,
-        kpoints: [[0, 0, 0], [0.5, 0, 0]],
+        kpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+        ],
         bands: null,
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
@@ -987,8 +1156,14 @@ describe(`normalize_band_structure`, () => {
       // This tests the fallback detection in is_pymatgen_format
       const result = normalize_band_structure({
         // No @class or @module - relies on kpoints detection
-        kpoints: [[0, 0, 0], [0.5, 0, 0]],
-        bands: [[0, 1], [2, 3]],
+        kpoints: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+        ],
+        bands: [
+          [0, 1],
+          [2, 3],
+        ],
         labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
       })
       expect(result?.qpoints).toHaveLength(2)
@@ -998,7 +1173,7 @@ describe(`normalize_band_structure`, () => {
 })
 
 describe(`normalize_dos`, () => {
-  const spy_info = () => vi.spyOn(console, `info`).mockImplementation(() => {})
+  const spy_info = () => vi.spyOn(console, `warn`).mockImplementation(() => {})
 
   describe(`spin-keyed densities (pymatgen format)`, () => {
     it(`extracts first spin channel from {1: [...], -1: [...]} format`, () => {
@@ -1154,9 +1329,7 @@ describe(`normalize_dos`, () => {
     it(`warns on incomplete pymatgen DOS`, () => {
       const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
       expect(normalize_dos({ '@class': `PhononDos`, densities: [0, 0.5, 1] })).toBeNull()
-      expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining(`Pymatgen DOS format detected`),
-      )
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining(`Pymatgen DOS format detected`))
       spy.mockRestore()
     })
 
@@ -1388,11 +1561,7 @@ describe(`generate_ribbon_path`, () => {
     // Verify polygon structure: upper edge 0→1→2, lower edge 2→1→0
     const points = path.match(/[\d.-]+,[\d.-]+/g) ?? []
     expect(points).toHaveLength(6)
-    expect(points.slice(0, 3).map((p) => p.split(`,`)[0])).toEqual([
-      `0.00`,
-      `1.00`,
-      `2.00`,
-    ])
+    expect(points.slice(0, 3).map((p) => p.split(`,`)[0])).toEqual([`0.00`, `1.00`, `2.00`])
     expect(points.slice(3).map((p) => p.split(`,`)[0])).toEqual([`2.00`, `1.00`, `0.00`])
   })
 
@@ -1412,28 +1581,20 @@ describe(`generate_ribbon_path`, () => {
       `1.00,-5.00`,
     )
     // scale=2 doubles the width offset
-    expect(generate_ribbon_path([0, 1], [5, 5], [1, 1], id, id, 10, 2)).toContain(
-      `,-15.00`,
-    )
+    expect(generate_ribbon_path([0, 1], [5, 5], [1, 1], id, id, 10, 2)).toContain(`,-15.00`)
   })
 
   it(`applies custom scale functions`, () => {
-    const path = generate_ribbon_path(
-      [0, 1, 2],
-      [0, 0, 0],
-      [1, 1, 1],
-      (v) => v * 2,
-      id,
-      5,
-    )
+    const path = generate_ribbon_path([0, 1, 2], [0, 0, 0], [1, 1, 1], (v) => v * 2, id, 5)
     expect(path).toContain(`0.00,`)
     expect(path).toContain(`2.00,`)
     expect(path).toContain(`4.00,`) // x doubled: 0→0, 1→2, 2→4
   })
 
   it(`handles Infinity in widths`, () => {
-    expect(generate_ribbon_path([0, 1, 2], [0, 1, 0], [1, Infinity, 1], id, id, 10)).not
-      .toBe(``)
+    expect(generate_ribbon_path([0, 1, 2], [0, 1, 0], [1, Infinity, 1], id, id, 10)).not.toBe(
+      ``,
+    )
   })
 })
 
@@ -1451,12 +1612,21 @@ describe(`compute_frequency_range`, () => {
       distance: Array.from({ length: num_kpoints }, (_, idx) => idx),
       nb_bands: bands.length,
       labels_dict: { Γ: [0, 0, 0] as Vec3, X: [1, 0, 0] as Vec3 },
-      recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Matrix3x3 },
+      recip_lattice: {
+        matrix: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ] as Matrix3x3,
+      },
     }
   }
 
   it(`computes range from band structure`, () => {
-    const bs = make_freq_bs([[0, 5, 10], [2, 8, 15]])
+    const bs = make_freq_bs([
+      [0, 5, 10],
+      [2, 8, 15],
+    ])
     const range = compute_frequency_range(bs, undefined)
     expect(range).toBeDefined()
     // Phonon with min>=0 clamps to 0, plus 2% padding on max
@@ -1473,7 +1643,10 @@ describe(`compute_frequency_range`, () => {
   })
 
   it(`combines bands and DOS ranges`, () => {
-    const bs = make_freq_bs([[0, 5], [1, 3]])
+    const bs = make_freq_bs([
+      [0, 5],
+      [1, 3],
+    ])
     const dos = { frequencies: [0, 10, 20], densities: [0, 1, 0] }
     const range = compute_frequency_range(bs, dos)
     expect(range?.[0]).toBe(0)
@@ -1490,8 +1663,14 @@ describe(`compute_frequency_range`, () => {
   })
 
   it(`handles multiple band structures`, () => {
-    const bs1 = make_freq_bs([[0, 5], [1, 4]])
-    const bs2 = make_freq_bs([[2, 12], [3, 10]])
+    const bs1 = make_freq_bs([
+      [0, 5],
+      [1, 4],
+    ])
+    const bs2 = make_freq_bs([
+      [2, 12],
+      [3, 10],
+    ])
     const range = compute_frequency_range({ bs1, bs2 }, undefined)
     expect(range?.[0]).toBe(0)
     expect(range?.[1]).toBeCloseTo(12.24, 1)
@@ -1528,7 +1707,7 @@ describe(`compute_frequency_range`, () => {
     // 100 points from -0.1 to 10, with most density at positive frequencies
     const frequencies = Array.from({ length: 101 }, (_, idx) => -0.1 + idx * 0.101)
     const densities = frequencies.map((freq) =>
-      freq < 0 ? 0.001 : Math.exp(-Math.pow(freq - 5, 2))
+      freq < 0 ? 0.001 : Math.exp(-Math.pow(freq - 5, 2)),
     )
     const dos = { frequencies, densities }
     const range = compute_frequency_range(undefined, dos)
@@ -1551,7 +1730,10 @@ describe(`compute_frequency_range`, () => {
 
   it(`clamps small negative noise in phonon bands`, () => {
     // Bands with tiny negative values (< 0.5% of total |freq|)
-    const bs = make_freq_bs([[-0.01, 5, 10], [0, 8, 15]])
+    const bs = make_freq_bs([
+      [-0.01, 5, 10],
+      [0, 8, 15],
+    ])
     const range = compute_frequency_range(bs, undefined)
     expect(range).toBeDefined()
     // Should clamp to 0 since negative contribution is negligible
@@ -1560,7 +1742,10 @@ describe(`compute_frequency_range`, () => {
 
   it(`preserves significant imaginary modes in phonon bands`, () => {
     // Bands with substantial negative frequencies (imaginary modes)
-    const bs = make_freq_bs([[-2, -1, 0, 5, 10], [-3, 0, 2, 8, 15]])
+    const bs = make_freq_bs([
+      [-2, -1, 0, 5, 10],
+      [-3, 0, 2, 8, 15],
+    ])
     const range = compute_frequency_range(bs, undefined)
     expect(range).toBeDefined()
     // Should preserve negative range since imaginary modes are significant
@@ -1644,16 +1829,24 @@ function make_bs(overrides: Partial<BaseBandStructure> = {}): BaseBandStructure 
   const bands = overrides.bands ?? []
   return {
     qpoints,
-    branches: [{
-      start_index: 0,
-      end_index: Math.max(0, qpoints.length - 1),
-      name: `GAMMA-X`,
-    }],
+    branches: [
+      {
+        start_index: 0,
+        end_index: Math.max(0, qpoints.length - 1),
+        name: `GAMMA-X`,
+      },
+    ],
     distance: qpoints.map((_, idx) => idx),
     bands,
     nb_bands: bands.length,
     labels_dict: { GAMMA: [0, 0, 0] as Vec3, X: [0.5, 0, 0] as Vec3 },
-    recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] satisfies Matrix3x3 },
+    recip_lattice: {
+      matrix: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ] satisfies Matrix3x3,
+    },
     ...overrides,
   }
 }
@@ -1702,22 +1895,36 @@ describe(`find_gamma_indices`, () => {
   it.each([
     {
       desc: `exact Gamma [0,0,0]`,
-      qpoints: [[`GAMMA`, [0, 0, 0]], [`X`, [0.5, 0, 0]]],
+      qpoints: [
+        [`GAMMA`, [0, 0, 0]],
+        [`X`, [0.5, 0, 0]],
+      ],
       expected: [0],
     },
     {
       desc: `periodic images [1,0,0] and [-1,0,0]`,
-      qpoints: [[null, [1, 0, 0]], [null, [0.5, 0, 0]], [null, [-1, 0, 0]]],
+      qpoints: [
+        [null, [1, 0, 0]],
+        [null, [0.5, 0, 0]],
+        [null, [-1, 0, 0]],
+      ],
       expected: [0, 2],
     },
     {
       desc: `multiple Gamma in path (Γ→X→Γ)`,
-      qpoints: [[`GAMMA`, [0, 0, 0]], [`X`, [0.5, 0, 0]], [`GAMMA`, [0, 0, 0]]],
+      qpoints: [
+        [`GAMMA`, [0, 0, 0]],
+        [`X`, [0.5, 0, 0]],
+        [`GAMMA`, [0, 0, 0]],
+      ],
       expected: [0, 2],
     },
     {
       desc: `no Gamma points`,
-      qpoints: [[`X`, [0.5, 0, 0]], [`K`, [0.5, 0.5, 0]]],
+      qpoints: [
+        [`X`, [0.5, 0, 0]],
+        [`K`, [0.5, 0.5, 0]],
+      ],
       expected: [],
     },
     { desc: `empty qpoints`, qpoints: [], expected: [] },
@@ -1774,14 +1981,25 @@ describe(`classify_acoustic`, () => {
     { band_idx: 4, freq: 5.0, expected: false },
   ])(`mixed bands: band $band_idx (freq=$freq) → $expected`, ({ band_idx, expected }) => {
     const bs = make_bs({
-      bands: [[0, 2, 4], [0.1, 3, 6], [0.2, 4, 8], [3.0, 5, 10], [5.0, 8, 12]],
+      bands: [
+        [0, 2, 4],
+        [0.1, 3, 6],
+        [0.2, 4, 8],
+        [3.0, 5, 10],
+        [5.0, 8, 12],
+      ],
     })
     expect(classify_acoustic(bs, band_idx, [0])).toBe(expected)
   })
 })
 
 describe(`build_point_metadata`, () => {
-  const test_bs = make_bs({ bands: [[0, 5, 10], [3, 6, 9]] })
+  const test_bs = make_bs({
+    bands: [
+      [0, 5, 10],
+      [3, 6, 9],
+    ],
+  })
 
   // Helper: fill defaults so each test only specifies what it cares about
   const bpm = (overrides: Partial<Parameters<typeof build_point_metadata>[0]> = {}) =>
@@ -1835,8 +2053,14 @@ describe(`build_point_metadata`, () => {
     expect(bpm({ x_vals: [0], y_vals: [5] })[0].band_width).toBeNull()
 
     const bs_widths = make_bs({
-      bands: [[0, 5, 10], [3, 6, 9]],
-      band_widths: [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
+      bands: [
+        [0, 5, 10],
+        [3, 6, 9],
+      ],
+      band_widths: [
+        [0.1, 0.2, 0.3],
+        [0.4, 0.5, 0.6],
+      ],
     })
     const result = bpm({ band_idx: 1, is_acoustic: false, bs: bs_widths })
     expect(result.map((pt) => pt.band_width)).toEqual([0.4, 0.5, 0.6])

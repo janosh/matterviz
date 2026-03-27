@@ -28,7 +28,6 @@ export class TrajFrameReader implements FrameLoader {
     this.format = base_filename.endsWith(`.traj`) ? `ase` : `xyz`
   }
 
-  // deno-lint-ignore require-await
   async get_total_frames(data: string | ArrayBuffer): Promise<number> {
     if (this.format === `xyz`) {
       if (data instanceof ArrayBuffer) throw new Error(`XYZ loader requires text data`)
@@ -64,9 +63,7 @@ export class TrajFrameReader implements FrameLoader {
         }
 
         const num_atoms = parseInt(lines[line_idx].trim(), 10)
-        if (
-          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
-        ) {
+        if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
           byte_offset += encoder.encode(lines[line_idx]).length + newline_byte_len
           line_idx++
           continue
@@ -127,7 +124,6 @@ export class TrajFrameReader implements FrameLoader {
     return frame_index
   }
 
-  // deno-lint-ignore require-await
   async load_frame(
     data: string | ArrayBuffer,
     frame_number: number,
@@ -170,9 +166,7 @@ export class TrajFrameReader implements FrameLoader {
         }
 
         const num_atoms = parseInt(lines[line_idx].trim(), 10)
-        if (
-          isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length
-        ) {
+        if (isNaN(num_atoms) || num_atoms <= 0 || line_idx + num_atoms + 1 >= lines.length) {
           line_idx++
           continue
         }
@@ -184,9 +178,7 @@ export class TrajFrameReader implements FrameLoader {
             frame_metadata = this.parse_xyz_metadata(comment, current_frame)
           } catch (error) {
             console.warn(
-              `Failed to parse XYZ metadata for frame ${current_frame} at line ${
-                line_idx + 1
-              }:`,
+              `Failed to parse XYZ metadata for frame ${current_frame} at line ${line_idx + 1}:`,
               error,
             )
           }
@@ -194,7 +186,7 @@ export class TrajFrameReader implements FrameLoader {
           if (frame_metadata && properties) {
             const filtered = Object.fromEntries(
               Object.entries(frame_metadata.properties).filter(([key]) =>
-                properties.includes(key)
+                properties.includes(key),
               ),
             )
             frame_metadata.properties = filtered
@@ -231,16 +223,18 @@ export class TrajFrameReader implements FrameLoader {
             continue
           }
 
-          const frame_data = JSON.parse(new TextDecoder().decode(
-            new Uint8Array(data as ArrayBuffer, frame_offset + 8, json_length),
-          ))
+          const frame_data = JSON.parse(
+            new TextDecoder().decode(
+              new Uint8Array(data as ArrayBuffer, frame_offset + 8, json_length),
+            ),
+          )
 
           const frame_metadata = this.parse_ase_metadata(frame_data, idx)
 
           if (properties) {
             const filtered = Object.fromEntries(
               Object.entries(frame_metadata.properties).filter(([key]) =>
-                properties.includes(key)
+                properties.includes(key),
               ),
             )
             frame_metadata.properties = filtered
@@ -297,7 +291,8 @@ export class TrajFrameReader implements FrameLoader {
         const y_coord = parseFloat(parts[2])
         const z_coord = parseFloat(parts[3])
         if (
-          !Number.isFinite(x_coord) || !Number.isFinite(y_coord) ||
+          !Number.isFinite(x_coord) ||
+          !Number.isFinite(y_coord) ||
           !Number.isFinite(z_coord)
         ) {
           console.warn(
@@ -333,10 +328,7 @@ export class TrajFrameReader implements FrameLoader {
     )
   }
 
-  private load_ase_frame(
-    data: ArrayBuffer,
-    frame_number: number,
-  ): TrajectoryFrame | null {
+  private load_ase_frame(data: ArrayBuffer, frame_number: number): TrajectoryFrame | null {
     try {
       const view = new DataView(data)
       const n_items = Number(view.getBigInt64(32, true))
@@ -347,20 +339,19 @@ export class TrajFrameReader implements FrameLoader {
       const frame_offset = Number(view.getBigInt64(offsets_pos + frame_number * 8, true))
       const json_length = Number(view.getBigInt64(frame_offset, true))
 
-      const frame_data = JSON.parse(new TextDecoder().decode(
-        new Uint8Array(data, frame_offset + 8, json_length),
-      ))
+      const frame_data = JSON.parse(
+        new TextDecoder().decode(new Uint8Array(data, frame_offset + 8, json_length)),
+      )
 
       const positions_ref = frame_data[`positions.`] || frame_data.positions
       const positions = positions_ref?.ndarray
         ? read_ndarray_from_view(view, positions_ref)
-        : positions_ref as number[][]
+        : (positions_ref as number[][])
 
-      const numbers_ref = frame_data[`numbers.`] || frame_data.numbers ||
-        this.global_numbers
+      const numbers_ref = frame_data[`numbers.`] || frame_data.numbers || this.global_numbers
       const numbers: number[] = numbers_ref?.ndarray
         ? read_ndarray_from_view(view, numbers_ref).flat()
-        : numbers_ref as number[]
+        : (numbers_ref as number[])
 
       if (numbers) this.global_numbers = numbers
       if (!numbers || !positions) throw new Error(`Missing atomic numbers or positions`)
@@ -394,10 +385,7 @@ export class TrajFrameReader implements FrameLoader {
     }
   }
 
-  private parse_xyz_metadata(
-    comment: string,
-    frame_number: number,
-  ): TrajectoryMetadata {
+  private parse_xyz_metadata(comment: string, frame_number: number): TrajectoryMetadata {
     const properties: Record<string, number> = {}
 
     const patterns = {
@@ -427,12 +415,7 @@ export class TrajFrameReader implements FrameLoader {
 
     if (frame_data.calculator && typeof frame_data.calculator === `object`) {
       const calculator = frame_data.calculator as Record<string, unknown>
-      const calc_properties = [
-        `energy`,
-        `potential_energy`,
-        `kinetic_energy`,
-        `total_energy`,
-      ]
+      const calc_properties = [`energy`, `potential_energy`, `kinetic_energy`, `total_energy`]
 
       for (const prop of calc_properties) {
         if (prop in calculator && typeof calculator[prop] === `number`) {

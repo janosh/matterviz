@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import type { XyObj } from '$lib/plot'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { get_tick_range, IS_CI } from '../helpers'
@@ -30,9 +29,7 @@ const is_ascending = (arr: number[]): boolean =>
   arr.every((val, idx) => idx === 0 || val >= arr[idx - 1])
 
 // Get label positions based on parent group transform
-const get_label_positions = async (
-  plot_locator: Locator,
-): Promise<Record<string, XyObj>> => {
+const get_label_positions = async (plot_locator: Locator): Promise<Record<string, XyObj>> => {
   await plot_locator.waitFor({ state: `visible` })
   // Wait for markers to be rendered
   await expect(plot_locator.locator(`path.marker`).first()).toBeVisible()
@@ -48,9 +45,7 @@ const get_label_positions = async (
     if (label_text_content) {
       const transform = await parent_group.getAttribute(`transform`)
       if (transform) {
-        const match = transform.match(
-          /translate\(([^\s,]+)\s*,?\s*([^\)]+)\)/,
-        )
+        const match = transform.match(/translate\(([^\s,]+)\s*,?\s*([^)]+)\)/)
         if (match) {
           return {
             label: label_text_content,
@@ -78,9 +73,10 @@ const get_legend_position = async (
 
   return await legend_wrapper.evaluate((el) => {
     const rect = el.getBoundingClientRect()
-    const parent_rect = (
-      el as HTMLElement
-    ).offsetParent?.getBoundingClientRect() || { x: 0, y: 0 }
+    const parent_rect = (el as HTMLElement).offsetParent?.getBoundingClientRect() || {
+      x: 0,
+      y: 0,
+    }
     return { x: rect.x - parent_rect.x, y: rect.y - parent_rect.y }
   })
 }
@@ -91,9 +87,7 @@ const set_density = async (
   densities: { tl: number; tr: number; bl: number; br: number },
 ): Promise<void> => {
   const set_slider = async (label_text: string, value: number) => {
-    const input_locator = section_locator.locator(
-      `label:has-text('${label_text}') input`,
-    )
+    const input_locator = section_locator.locator(`label:has-text('${label_text}') input`)
     await input_locator.evaluate((el, val) => {
       const input = el as HTMLInputElement
       input.value = val.toString()
@@ -110,9 +104,7 @@ const set_density = async (
 
 // Get colorbar relative position within plot for placement tests
 // Returns 'top-left', 'top-right', 'bottom-left', or 'bottom-right'
-const get_colorbar_quadrant = async (
-  section_locator: Locator,
-): Promise<string> => {
+const get_colorbar_quadrant = async (section_locator: Locator): Promise<string> => {
   const plot = section_locator.locator(`.scatter`)
   const colorbar = section_locator.locator(`.colorbar`)
   await colorbar.waitFor({ state: `visible`, timeout: 5000 })
@@ -313,10 +305,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(y_tick_count).toBeLessThanOrEqual(15)
 
     // Check tick text exists and contains valid numeric values
-    const x_tick_texts = await scatter_plot.locator(`g.x-axis .tick text`)
-      .allTextContents()
-    const y_tick_texts = await scatter_plot.locator(`g.y-axis .tick text`)
-      .allTextContents()
+    const x_tick_texts = await scatter_plot.locator(`g.x-axis .tick text`).allTextContents()
+    const y_tick_texts = await scatter_plot.locator(`g.y-axis .tick text`).allTextContents()
     expect(x_tick_texts.length).toBeGreaterThan(0)
     expect(y_tick_texts.length).toBeGreaterThan(0)
 
@@ -418,7 +408,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
   })
 
-  test(`size_values prop with per-point styling and dynamic configuration`, async ({ page }) => {
+  test(`size_values prop with per-point styling and dynamic configuration`, async ({
+    page,
+  }) => {
     // TODO: Consider experimenting with more tolerant area-ratio thresholds
     // so this test can eventually run in CI again
     test.skip(IS_CI, `Size values test has numerical variations in CI`)
@@ -684,8 +676,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const section_selector = `#point-event-test`
     const plot_selector = `${section_selector} .scatter`
     const clicked_text_selector = `${section_selector} [data-testid="last-clicked-point"]`
-    const double_clicked_text_selector =
-      `${section_selector} [data-testid="last-double-clicked-point"]`
+    const double_clicked_text_selector = `${section_selector} [data-testid="last-double-clicked-point"]`
 
     const plot_locator = page.locator(plot_selector)
     const first_marker_path = plot_locator.locator(`path.marker`).first()
@@ -847,7 +838,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   // LABEL AUTO-PLACEMENT TESTS
 
-  test(`label auto-placement repositions dense labels but preserves sparse ones`, async ({ page }) => {
+  test(`label auto-placement repositions dense labels but preserves sparse ones`, async ({
+    page,
+  }) => {
     test.skip(IS_CI, `Label placement varies in CI`)
     const section = page.locator(`#label-auto-placement-test`)
     const plot_locator = section.locator(`.scatter`)
@@ -861,13 +854,11 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(checkbox).not.toBeChecked()
     const positions_manual = await get_label_positions(plot_locator)
 
-    const dense_labels = Object.keys(positions_auto).filter((key) =>
-      key.startsWith(`Dense-`)
-    )
+    const dense_labels = Object.keys(positions_auto).filter((key) => key.startsWith(`Dense-`))
     expect(dense_labels.length).toBeGreaterThan(1)
 
     const sparse_labels = Object.keys(positions_auto).filter((key) =>
-      key.startsWith(`Sparse-`)
+      key.startsWith(`Sparse-`),
     )
     expect(sparse_labels.length).toBe(4)
 
@@ -888,9 +879,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
         const distance_moved = Math.sqrt(dx * dx + dy * dy)
         expect(
           distance_moved,
-          `Label "${label_text}" moved ${distance_moved.toFixed(1)}px (threshold: ${
-            movement_threshold.toFixed(1)
-          }px, 20% of diagonal)`,
+          `Label "${label_text}" moved ${distance_moved.toFixed(1)}px (threshold: ${movement_threshold.toFixed(
+            1,
+          )}px, 20% of diagonal)`,
         ).toBeLessThan(movement_threshold)
       }
     }
@@ -918,7 +909,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     })
   })
 
-  test(`legend renders when explicitly configured or for multiple series`, async ({ page }) => {
+  test(`legend renders when explicitly configured or for multiple series`, async ({
+    page,
+  }) => {
     // Single series with explicit config
     const single_config_plot = page.locator(`#legend-single-config`)
     await expect(single_config_plot).toBeVisible()
@@ -968,12 +961,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
   test(`legend interaction toggles and isolates series visibility`, async ({ page }) => {
     // The id prop is applied directly to the .scatter div
     const plot_locator = page.locator(`#legend-multi-default.scatter`)
-    const series_a_item = plot_locator.locator(`.legend-item >> text=Series A`).locator(
-      `..`,
-    )
-    const series_b_item = plot_locator.locator(`.legend-item >> text=Series B`).locator(
-      `..`,
-    )
+    const series_a_item = plot_locator.locator(`.legend-item >> text=Series A`).locator(`..`)
+    const series_b_item = plot_locator.locator(`.legend-item >> text=Series B`).locator(`..`)
 
     // Wait for plot to fully render
     await expect(plot_locator.locator(`g[data-series-id] .marker`)).toHaveCount(4)
@@ -1018,12 +1007,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const plot_locator = page.locator(`#legend-multi-default.scatter`)
     const x_axis = plot_locator.locator(`g.x-axis`)
     const y_axis = plot_locator.locator(`g.y-axis`)
-    const series_a_item = plot_locator.locator(`.legend-item >> text=Series A`).locator(
-      `..`,
-    )
-    const series_b_item = plot_locator.locator(`.legend-item >> text=Series B`).locator(
-      `..`,
-    )
+    const series_a_item = plot_locator.locator(`.legend-item >> text=Series A`).locator(`..`)
+    const series_b_item = plot_locator.locator(`.legend-item >> text=Series B`).locator(`..`)
 
     // Wait for plot to fully render with both series
     await expect(plot_locator.locator(`g[data-series-id] .marker`)).toHaveCount(4)
@@ -1137,9 +1122,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
     // Verify smart placement positions legend away from data density
     const markers = await plot_locator.locator(`path.marker`).all()
-    const marker_positions = await Promise.all(
-      markers.map((marker) => marker.boundingBox()),
-    )
+    const marker_positions = await Promise.all(markers.map((marker) => marker.boundingBox()))
 
     // Calculate distance from legend center to nearest marker center
     const min_distance = Math.min(
@@ -1160,9 +1143,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Legend should not be too close to any data point (smart placement should avoid markers)
     expect(
       min_distance,
-      `Legend too close to markers: ${min_distance.toFixed(1)}px (threshold: ${
-        distance_threshold.toFixed(1)
-      }px, 5% of diagonal)`,
+      `Legend too close to markers: ${min_distance.toFixed(1)}px (threshold: ${distance_threshold.toFixed(
+        1,
+      )}px, 5% of diagonal)`,
     ).toBeGreaterThan(distance_threshold)
 
     // Test draggable class and cursor
@@ -1188,9 +1171,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(legend_locator.locator(`.legend-item`)).toHaveCount(2)
 
     // Test that drag doesn't interfere with legend item clicks
-    const series_a_item = plot_locator.locator(`.legend-item >> text=Series A`).locator(
-      `..`,
-    )
+    const series_a_item = plot_locator.locator(`.legend-item >> text=Series A`).locator(`..`)
     await expect(series_a_item).not.toHaveClass(/hidden/)
     await series_a_item.click()
     await expect(series_a_item).toHaveClass(/hidden/)
@@ -1331,9 +1312,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     const scatter_plot = page.locator(`#legend-multi-default.scatter`)
     await expect(scatter_plot).toBeVisible()
 
-    const { toggle: controls_toggle, pane: control_pane } = await open_control_pane(
-      scatter_plot,
-    )
+    const { toggle: controls_toggle, pane: control_pane } =
+      await open_control_pane(scatter_plot)
 
     // Test display controls - only test points since legend-multi-default has points only
     const show_points_checkbox = control_pane.getByLabel(`Show points`)
@@ -1381,9 +1361,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // This test verifies that tick formatting in control pane works
     // The id prop is applied directly to the .scatter div
     const scatter_plot = page.locator(`#legend-multi-default.scatter`)
-    const { toggle: controls_toggle, pane: control_pane } = await open_control_pane(
-      scatter_plot,
-    )
+    const { toggle: controls_toggle, pane: control_pane } =
+      await open_control_pane(scatter_plot)
 
     // Verify axis ticks are visible
     const x_tick_text = scatter_plot.locator(`g.x-axis .tick text`).first()
@@ -1420,14 +1399,14 @@ test.describe(`ScatterPlot Component Tests`, () => {
       // Use a format that doesn't start with % to avoid being treated as time format
       await x_format_input.fill(`invalid`)
       const has_invalid_class = await x_format_input.evaluate((el) =>
-        el.classList.contains(`invalid`)
+        el.classList.contains(`invalid`),
       )
       expect(has_invalid_class).toBe(true)
 
       // Restore a valid format and verify invalid class is removed
       await x_format_input.fill(`.2~s`)
-      const invalid_class_removed = await x_format_input.evaluate((el) =>
-        !el.classList.contains(`invalid`)
+      const invalid_class_removed = await x_format_input.evaluate(
+        (el) => !el.classList.contains(`invalid`),
       )
       expect(invalid_class_removed).toBe(true)
     }
@@ -1447,7 +1426,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       // Test invalid format adds "invalid" class (use format not starting with %)
       await y_format_input.fill(`xyz_bad`)
       const y_has_invalid = await y_format_input.evaluate((el) =>
-        el.classList.contains(`invalid`)
+        el.classList.contains(`invalid`),
       )
       expect(y_has_invalid).toBe(true)
 
@@ -1605,7 +1584,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
       // Check for dual-axis specific elements
       if (
-        plot_id.includes(`dual`) || plot_id.includes(`custom`) ||
+        plot_id.includes(`dual`) ||
+        plot_id.includes(`custom`) ||
         plot_id.includes(`disabled`)
       ) {
         await expect(plot_locator.locator(`g.y-axis`)).toBeVisible()
@@ -1672,10 +1652,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(scatter_plot).toBeVisible()
 
     // Get tick values for both axes
-    const x_tick_texts = await scatter_plot.locator(`g.x-axis .tick text`)
-      .allTextContents()
-    const y_tick_texts = await scatter_plot.locator(`g.y-axis .tick text`)
-      .allTextContents()
+    const x_tick_texts = await scatter_plot.locator(`g.x-axis .tick text`).allTextContents()
+    const y_tick_texts = await scatter_plot.locator(`g.y-axis .tick text`).allTextContents()
 
     const parse_tick = (text: string) => parseFloat(text)
     const x_values = x_tick_texts.map(parse_tick).filter((val) => !isNaN(val))
@@ -1767,9 +1745,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
   test(`series-specific controls work correctly in multi-series plots`, async ({ page }) => {
     // The id prop is applied directly to the .scatter div
     const multi_series_plot = page.locator(`#legend-multi-default.scatter`)
-    const { toggle: controls_toggle, pane: control_pane } = await open_control_pane(
-      multi_series_plot,
-    )
+    const { toggle: controls_toggle, pane: control_pane } =
+      await open_control_pane(multi_series_plot)
 
     // Test series selector functionality
     const series_selector = control_pane.getByLabel(`Series`)
@@ -1893,9 +1870,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     if (!plot_box) return
 
     // Find marker closest to right edge (most likely to cause overflow)
-    const rightmost = valid_markers.sort(
-      (a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0),
-    )[0]
+    const rightmost = valid_markers.sort((a, b) => (b.bbox?.x ?? 0) - (a.bbox?.x ?? 0))[0]
 
     // Test tooltip on rightmost marker - verify it doesn't overflow viewport
     await hover_to_show_tooltip(page, plot_locator, rightmost.marker)
@@ -1912,9 +1887,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
     }
 
     // Find marker closest to bottom edge
-    const bottommost = valid_markers.sort(
-      (a, b) => (b.bbox?.y ?? 0) - (a.bbox?.y ?? 0),
-    )[0]
+    const bottommost = valid_markers.sort((a, b) => (b.bbox?.y ?? 0) - (a.bbox?.y ?? 0))[0]
 
     // Test tooltip on bottommost marker - verify it doesn't overflow viewport
     await hover_to_show_tooltip(page, plot_locator, bottommost.marker)
@@ -1987,7 +1960,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
   // CONTROL PRECEDENCE TESTS - explicit styling should win on page load
   // and only user-modified controls should override
 
-  test(`explicit point styling preserved on page load (controls don't override)`, async ({ page }) => {
+  test(`explicit point styling preserved on page load (controls don't override)`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#control-precedence-plot.scatter`)
     await expect(plot).toBeVisible()
 
@@ -2030,7 +2005,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(green_line).toHaveAttribute(`stroke-width`, `4`)
   })
 
-  test(`per-property control touch: only modified control overrides explicit styling`, async ({ page }) => {
+  test(`per-property control touch: only modified control overrides explicit styling`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#control-precedence-plot.scatter`)
     await expect(plot).toBeVisible()
 
@@ -2170,7 +2147,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
 
   // AUTO-CYCLING COLORS AND SYMBOLS TESTS
 
-  test(`auto-cycling assigns different colors to each series legend item`, async ({ page }) => {
+  test(`auto-cycling assigns different colors to each series legend item`, async ({
+    page,
+  }) => {
     const section = page.locator(`#auto-cycling-test`)
     await expect(section).toBeVisible()
 
@@ -2195,7 +2174,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(line_colors).toEqual([`#4e79a7`, `#f28e2c`, `#e15759`])
   })
 
-  test(`auto-cycling assigns different symbols to each series legend item`, async ({ page }) => {
+  test(`auto-cycling assigns different symbols to each series legend item`, async ({
+    page,
+  }) => {
     const section = page.locator(`#auto-cycling-test`)
     await expect(section).toBeVisible()
 
@@ -2236,7 +2217,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await page.setViewportSize({ width: 1280, height: 720 })
   })
 
-  test(`tooltip appears and updates when hovering over different markers`, async ({ page }) => {
+  test(`tooltip appears and updates when hovering over different markers`, async ({
+    page,
+  }) => {
     // Test point hover tooltip behavior on the basic example
     const plot_locator = page.locator(`#basic-example .scatter`)
     await ensure_plot_visible(plot_locator)
@@ -2267,7 +2250,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(second_tooltip_text).not.toBe(first_tooltip_text)
   })
 
-  test(`improved label placement prevents overlap for isolated and clustered markers`, async ({ page }) => {
+  test(`improved label placement prevents overlap for isolated and clustered markers`, async ({
+    page,
+  }) => {
     test.skip(IS_CI, `Label placement varies in CI`)
     const section = page.locator(`#label-auto-placement-test`)
     const plot_locator = section.locator(`.scatter`)
@@ -2278,21 +2263,22 @@ test.describe(`ScatterPlot Component Tests`, () => {
     await expect(checkbox).toBeChecked()
 
     // Wait for simulation to settle: consecutive stable bbox snapshots
-    await page.waitForFunction(() => {
-      const labels = Array.from(
-        document.querySelectorAll(`.scatter g[data-series-id] text`),
-      )
-      const snap = labels.map((el) => el.getBoundingClientRect())
-      const win = window as Window & { __lblSnap__?: DOMRect[] }
-      const prev = win.__lblSnap__
-      win.__lblSnap__ = snap
-      if (!prev || prev.length !== snap.length) return false
-      const moved = snap.some((rect, idx) => {
-        const prev_rect = prev[idx]
-        return Math.hypot(rect.x - prev_rect.x, rect.y - prev_rect.y) > 0.5
-      })
-      return !moved
-    }, { timeout: 2000 })
+    await page.waitForFunction(
+      () => {
+        const labels = Array.from(document.querySelectorAll(`.scatter g[data-series-id] text`))
+        const snap = labels.map((el) => el.getBoundingClientRect())
+        const win = window as Window & { __lblSnap__?: DOMRect[] }
+        const prev = win.__lblSnap__
+        win.__lblSnap__ = snap
+        if (!prev || prev.length !== snap.length) return false
+        const moved = snap.some((rect, idx) => {
+          const prev_rect = prev[idx]
+          return Math.hypot(rect.x - prev_rect.x, rect.y - prev_rect.y) > 0.5
+        })
+        return !moved
+      },
+      { timeout: 2000 },
+    )
 
     // Get label elements and their positions
     const label_elements = await plot_locator.locator(`g[data-series-id] text`).all()

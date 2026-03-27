@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -42,9 +42,7 @@
       } catch {}
 
       // Resolve theme (auto = system preference)
-      const system = matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light'
+      const system = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
       const resolved = mode === 'auto' ? system : mode
 
       // Apply theme CSS variables
@@ -62,8 +60,6 @@
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
-    <div style="display: contents">
-      %sveltekit.body%
-    </div>
+    <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

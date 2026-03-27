@@ -1,9 +1,8 @@
 // Phase diagram color palette
 // Keys can be referenced in diagram JSON files
 
-function rgba(r: number, g: number, b: number, a: number = 0.6): string {
-  return `rgba(${r}, ${g}, ${b}, ${a})`
-}
+const rgba = (r: number, g: number, b: number, a: number = 0.6): string =>
+  `rgba(${r}, ${g}, ${b}, ${a})`
 
 // Color palette for diagram JSON files - keyed colors that can be referenced by name
 export const DIAGRAM_COLORS = {
@@ -47,7 +46,8 @@ export type DiagramColorKey = keyof typeof DIAGRAM_COLORS
 // Resolve color from DIAGRAM_COLORS key or pass through raw CSS color string
 export function resolve_diagram_color(color: string): string {
   const resolved = (DIAGRAM_COLORS as Record<string, string>)[color]
-  const is_raw_color = color.startsWith(`rgb`) ||
+  const is_raw_color =
+    color.startsWith(`rgb`) ||
     color.startsWith(`hsl`) ||
     color.startsWith(`#`) ||
     color.startsWith(`var(`)

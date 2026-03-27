@@ -216,7 +216,7 @@
           const total = amounts.reduce((sum, amt) => sum + amt, 0)
           if (!(total > 0)) return { x: NaN, y: NaN, z: NaN, w: NaN }
           const [x, y, z] = amounts.map((amt) => amt / total)
-          return { x, y, z, w: ent.e_form_per_atom! }
+          return { x, y, z, w: ent.e_form_per_atom ?? NaN }
         })
         .filter((p) => [p.x, p.y, p.z, p.w].every(Number.isFinite))
 
@@ -247,7 +247,7 @@
         if (!(total > 0)) return []
         const [x, y, z] = amounts.map((a) => a / total)
         return [x, y, z].every(Number.isFinite)
-          ? [{ idx, pt: { x, y, z, w: entry.e_form_per_atom! } }]
+          ? [{ idx, pt: { x, y, z, w: entry.e_form_per_atom ?? NaN } }]
           : []
       })
       const e_hulls = thermo.compute_e_above_hull_4d(valid.map((v) => v.pt), hull_4d)
@@ -369,9 +369,8 @@
 
   // Re-render when important state changes
   $effect(() => {
-    // deno-fmt-ignore
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, elements]
+    // oxfmt-ignore
+    void [show_hull_faces, color_mode, color_scale, camera.rotation_x, camera.rotation_y, camera.zoom, camera.center_x, camera.center_y, plot_entries, hull_face_color, hull_face_opacity, hull_face_color_mode, element_colors, text_color, elements] // track reactively
 
     render_once()
   })
@@ -756,7 +755,7 @@
         return hull_face_color
       }
       if (hull_face_color_mode === `formation_energy`) {
-        return energy_face_scale!(tri.avg_w - min_w)
+        return energy_face_scale?.(tri.avg_w - min_w) ?? hull_face_color
       }
       if (hull_face_color_mode === `dominant_element`) {
         // Find element with highest fraction
@@ -775,7 +774,7 @@
       const [v0, v1, v2] = tri.vertices
       // Uniform mode uses variable opacity; other modes use fixed opacity
       const alpha = hull_face_color_mode === `uniform`
-        ? norm_alpha!(tri.avg_w)
+        ? (norm_alpha?.(tri.avg_w) ?? hull_face_opacity)
         : hull_face_opacity
       const face_color = get_face_color(tri)
 

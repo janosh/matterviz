@@ -362,8 +362,7 @@ describe(`Content-Based xyz/extxyz Trajectory Detection`, () => {
       // Create a trajectory with 100 frames (reduced for faster tests)
       const frames = Array.from(
         { length: 100 },
-        (_, idx) =>
-          `2\nstep=${idx}\nH ${idx * 0.01} 0.0 0.0\nH ${1 + idx * 0.01} 0.0 0.0`,
+        (_, idx) => `2\nstep=${idx}\nH ${idx * 0.01} 0.0 0.0\nH ${1 + idx * 0.01} 0.0 0.0`,
       )
       const content = frames.join(`\n`)
 
@@ -433,8 +432,7 @@ describe(`VASP XDATCAR Parser`, () => {
 
   it(`should reject invalid content`, async () => {
     await expect(parse_trajectory_data(`too short`, `XDATCAR`)).rejects.toThrow()
-    await expect(parse_trajectory_data(`invalid\nscale\nfactor`, `XDATCAR`)).rejects
-      .toThrow()
+    await expect(parse_trajectory_data(`invalid\nscale\nfactor`, `XDATCAR`)).rejects.toThrow()
   })
 
   it(`should handle missing configuration lines`, async () => {
@@ -570,13 +568,11 @@ ITEM: ATOMS id type x y z
 
   it(`should reject invalid LAMMPS content`, async () => {
     const invalid_content = `This is not a LAMMPS file`
-    await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects
-      .toThrow()
+    await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects.toThrow()
   })
 
   it(`should use id column as type fallback when no type column exists`, async () => {
-    const content =
-      `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp
+    const content = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp
 0.0 10.0\n0.0 10.0\n0.0 10.0\nITEM: ATOMS id x y z q\n1 2.84 8.17 -5.0 0.1\n2 7.1 8.17 -5.0 0.2`
 
     const traj = await parse_trajectory_data(content, `test.lammpstrj`)
@@ -755,11 +751,7 @@ ITEM: ATOMS id type x y z
       const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
       // z-direction is non-periodic (ff)
-      expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([
-        true,
-        true,
-        false,
-      ])
+      expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, false])
 
       // Still should parse the triclinic cell correctly
       if (`lattice` in trajectory.frames[0].structure) {
@@ -923,11 +915,10 @@ ITEM: ATOMS id type x y z
 1 1 0.1 0.0 0.0
 2 2 5.1 0.0 0.0`
 
-      const trajectory = await parse_trajectory_data(
-        content,
-        `test.lammpstrj`,
-        { 1: `Fe`, 2: `O` },
-      )
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`, {
+        1: `Fe`,
+        2: `O`,
+      })
 
       expect(trajectory.frames).toHaveLength(2)
 
@@ -952,11 +943,10 @@ ITEM: ATOMS id type x y z
 2 118 5.0 0.0 0.0`
 
       // Map to specific elements by type number
-      const trajectory = await parse_trajectory_data(
-        content,
-        `test.lammpstrj`,
-        { 79: `Au`, 118: `Og` },
-      )
+      const trajectory = await parse_trajectory_data(content, `test.lammpstrj`, {
+        79: `Au`,
+        118: `Og`,
+      })
 
       const elements = trajectory.frames[0].structure.sites.map(
         (site) => site.species[0].element,
@@ -987,8 +977,7 @@ describe(`XYZ Trajectory Format`, () => {
   })
 
   it(`should extract energy from comment line`, async () => {
-    const content =
-      `3\nenergy=-10.5 step=42\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2 step=43\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
+    const content = `3\nenergy=-10.5 step=42\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2 step=43\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
 
     expect(trajectory.frames[0]?.metadata?.energy).toBe(-10.5)
@@ -996,8 +985,7 @@ describe(`XYZ Trajectory Format`, () => {
   })
 
   it(`should extract various properties from comment line`, async () => {
-    const content =
-      `3\nenergy=-10.5 volume=100.0 pressure=1.5 temperature=300 force_max=0.1 E_gap=2.0\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
+    const content = `3\nenergy=-10.5 volume=100.0 pressure=1.5 temperature=300 force_max=0.1 E_gap=2.0\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nenergy=-9.2\nH 0.1 0.0 0.0\nH 1.1 0.0 0.0\nH 0.1 1.0 0.0`
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
 
     const metadata = trajectory.frames[0]?.metadata
@@ -1010,8 +998,7 @@ describe(`XYZ Trajectory Format`, () => {
   })
 
   it(`should parse lattice matrix from comment line`, async () => {
-    const content =
-      `3\nLattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0"\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nLattice="5.1 0.0 0.0 0.0 5.1 0.0 0.0 0.0 5.1"\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const content = `3\nLattice="5.0 0.0 0.0 0.0 5.0 0.0 0.0 0.0 5.0"\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n3\nLattice="5.1 0.0 0.0 0.0 5.1 0.0 0.0 0.0 5.1"\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
 
     const structure = trajectory.frames[0].structure
@@ -1026,8 +1013,7 @@ describe(`XYZ Trajectory Format`, () => {
   })
 
   it(`should handle forces in extended XYZ format`, async () => {
-    const content =
-      `3\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 0.0 0.2 0.0\nH 0.0 1.0 0.0 0.0 0.0 0.3\n3\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 0.0 0.2 0.0\nH 0.0 1.0 0.0 0.0 0.0 0.3`
+    const content = `3\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 0.0 0.2 0.0\nH 0.0 1.0 0.0 0.0 0.0 0.3\n3\nProperties=species:S:1:pos:R:3:forces:R:3\nH 0.0 0.0 0.0 0.1 0.0 0.0\nH 1.0 0.0 0.0 0.0 0.2 0.0\nH 0.0 1.0 0.0 0.0 0.0 0.3`
     const trajectory = await parse_trajectory_data(content, `test.extxyz`)
 
     const metadata = trajectory.frames[0]?.metadata
@@ -1040,15 +1026,13 @@ describe(`XYZ Trajectory Format`, () => {
   })
 
   it(`should handle invalid atom counts gracefully`, async () => {
-    const content =
-      `invalid\ncomment\nH 0.0 0.0 0.0\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const content = `invalid\ncomment\nH 0.0 0.0 0.0\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
     expect(trajectory.frames).toHaveLength(1) // Should skip invalid and parse valid frame
   })
 
   it(`should skip empty lines and malformed frames`, async () => {
-    const content =
-      `\n\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n3\nanother valid\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const content = `\n\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n3\nanother valid\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
     const trajectory = await parse_trajectory_data(content, `test.xyz`)
     expect(trajectory.frames).toHaveLength(2)
   })
@@ -1087,8 +1071,8 @@ describe(`HDF5 Format`, () => {
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
     // Check if energy data is present in metadata
-    const has_energy = trajectory.frames.some((frame) =>
-      frame.metadata?.energy !== undefined && frame.metadata?.energy !== null
+    const has_energy = trajectory.frames.some(
+      (frame) => frame.metadata?.energy !== undefined && frame.metadata?.energy !== null,
     )
 
     if (has_energy) {
@@ -1341,13 +1325,11 @@ describe(`Error Handling`, () => {
   })
 
   it(`should handle edge cases in XYZ parsing`, async () => {
-    const negative_atoms =
-      `-1\ncomment\nH 0.0 0.0 0.0\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const negative_atoms = `-1\ncomment\nH 0.0 0.0 0.0\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
     const trajectory = await parse_trajectory_data(negative_atoms, `test.xyz`)
     expect(trajectory.frames).toHaveLength(1) // Should skip negative atoms and parse valid frame
 
-    const zero_atoms =
-      `0\ncomment\n\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+    const zero_atoms = `0\ncomment\n\n3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
     const trajectory2 = await parse_trajectory_data(zero_atoms, `test.xyz`)
     expect(trajectory2.frames).toHaveLength(1) // Should skip zero atoms and parse valid frame
   })
@@ -1355,12 +1337,19 @@ describe(`Error Handling`, () => {
   it.each([
     {
       desc: `2x3 matrix (only 2 rows)`,
-      lattice: [[1, 0, 0], [0, 1, 0]],
+      lattice: [
+        [1, 0, 0],
+        [0, 1, 0],
+      ],
       error: /Expected 3x3 matrix/,
     },
     {
       desc: `3x2 matrix (rows with only 2 elements)`,
-      lattice: [[1, 0], [0, 1], [0, 0]],
+      lattice: [
+        [1, 0],
+        [0, 1],
+        [0, 0],
+      ],
       error: /Invalid 3x3 matrix structure/,
     },
     {
@@ -1519,9 +1508,7 @@ describe(`Trajectory Files with Exact Reference Data`, () => {
       }
 
       // All frames should have same atom count
-      expect(trajectory.frames.every((f) => f.structure.sites.length === atoms)).toBe(
-        true,
-      )
+      expect(trajectory.frames.every((f) => f.structure.sites.length === atoms)).toBe(true)
     },
   )
 })
@@ -1532,15 +1519,16 @@ describe(`Comprehensive File Coverage`, () => {
   // Unsupported compression formats (not available in browser DecompressionStream)
   const unsupported_compression = [`.bz2`, `.xz`, `.zip`]
   const all_trajectory_files = existsSync(trajectory_dir)
-    ? readdirSync(trajectory_dir)
-      .filter((name: string) => {
+    ? readdirSync(trajectory_dir).filter((name: string) => {
         const file_path = join(trajectory_dir, name)
-        return statSync(file_path).isFile() &&
+        return (
+          statSync(file_path).isFile() &&
           !name.startsWith(`.`) &&
           !name.includes(`bad-file`) && // Exclude intentionally broken test files
           !name.endsWith(`.ts`) && // Exclude TypeScript files
           !name.endsWith(`.js`) &&
-          !unsupported_compression.some((ext) => name.endsWith(ext)) // Exclude unsupported compression
+          !unsupported_compression.some((ext) => name.endsWith(ext))
+        ) // Exclude unsupported compression
       })
     : []
 
@@ -1552,9 +1540,7 @@ describe(`Comprehensive File Coverage`, () => {
     `should successfully parse sample file: %s`,
     async (filename) => {
       const is_binary = filename.match(/\.(h5|hdf5|traj)$/)
-      const content = is_binary
-        ? read_binary_test_file(filename)
-        : read_test_file(filename)
+      const content = is_binary ? read_binary_test_file(filename) : read_test_file(filename)
 
       // Should not throw an error
       const trajectory = await parse_trajectory_data(content, filename)

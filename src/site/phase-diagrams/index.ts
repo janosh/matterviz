@@ -26,23 +26,21 @@ for (const [path, input] of Object.entries(diagram_modules)) {
 
 // Convert to FileInfo array for binary phase diagrams
 // These are now built-in (no URL needed), but we keep the API compatible
-export const binary_phase_diagram_files: FileInfo[] = Array.from(
-  built_diagrams.keys(),
-).map((name) => ({
-  name: `${name}.json`,
-  url: `builtin:${name}`, // Special marker for built-in diagrams
-  type: `json`,
-  category: `Binary`,
-  category_icon: `📊`,
-}))
+export const binary_phase_diagram_files: FileInfo[] = Array.from(built_diagrams.keys()).map(
+  (name) => ({
+    name: `${name}.json`,
+    url: `builtin:${name}`, // Special marker for built-in diagrams
+    type: `json`,
+    category: `Binary`,
+    category_icon: `📊`,
+  }),
+)
 
 // Convert glob results to FileInfo array for TDB files
-export const tdb_files: FileInfo[] = Object.entries(tdb_modules).map(
-  ([path, url]) => {
-    const name = path.split(`/`).pop() || path
-    return { name, url, type: `tdb`, category: `TDB`, category_icon: `📄` }
-  },
-)
+export const tdb_files: FileInfo[] = Object.entries(tdb_modules).map(([path, url]) => {
+  const name = path.split(`/`).pop() || path
+  return { name, url, type: `tdb`, category: `TDB`, category_icon: `📄` }
+})
 
 // Combined list of all phase diagram files
 export const all_phase_diagram_files: FileInfo[] = [
@@ -59,9 +57,7 @@ const precomputed_map = new Map(
 )
 
 // Find precomputed phase diagram by system name (handles any format: "Al-Cu", "AlCu", "al_cu")
-export function find_precomputed_diagram(
-  system: string,
-): PhaseDiagramData | undefined {
+export function find_precomputed_diagram(system: string): PhaseDiagramData | undefined {
   return precomputed_map.get(normalize_system_name(system))?.data
 }
 

@@ -15,9 +15,9 @@ export function bar_path(
 
   return vertical
     ? `M${x},${y + h}V${y + r}A${r},${r} 0 0 1 ${x + r},${y}H${
-      x + w - r
-    }A${r},${r} 0 0 1 ${x + w},${y + r}V${y + h}Z`
+        x + w - r
+      }A${r},${r} 0 0 1 ${x + w},${y + r}V${y + h}Z`
     : `M${x},${y}H${x + w - r}A${r},${r} 0 0 1 ${x + w},${y + r}V${
-      y + h - r
-    }A${r},${r} 0 0 1 ${x + w - r},${y + h}H${x}Z`
+        y + h - r
+      }A${r},${r} 0 0 1 ${x + w - r},${y + h}H${x}Z`
 }

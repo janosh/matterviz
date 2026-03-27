@@ -6,9 +6,7 @@ import { describe, expect, test } from 'vitest'
 const y_values = [53, 31, 167, 112, 87, 77, 75, 73, 71, 69]
 
 describe(`ElementScatter`, () => {
-  const tooltip_text = async (
-    props: Record<string, unknown>,
-  ): Promise<string> => {
+  const tooltip_text = async (props: Record<string, unknown>): Promise<string> => {
     document.body.replaceChildren()
     mount(ElementScatter, {
       target: document.body,

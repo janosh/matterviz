@@ -47,7 +47,7 @@ interface ResolveResult {
 }
 
 export function list_component_keys(): string[] {
-  return Array.from(components_by_key.keys()).sort()
+  return Array.from(components_by_key.keys()).toSorted()
 }
 
 // Resolve a MatterViz component from an identifier.

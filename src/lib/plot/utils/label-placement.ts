@@ -81,9 +81,7 @@ export function compute_label_positions(
 
   if (label_nodes.length === 0) return {}
   if (config.max_labels && label_nodes.length > config.max_labels) {
-    return Object.fromEntries(
-      label_nodes.map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]),
-    )
+    return Object.fromEntries(label_nodes.map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]))
   }
 
   const sim = forceSimulation<SimulationNode>([...label_nodes, ...anchor_nodes])
@@ -96,21 +94,25 @@ export function compute_label_positions(
     )
     .force(
       `collide`,
-      forceCollide<SimulationNode>().radius((node) => {
-        if (is_label_node(node)) {
-          return Math.sqrt(node.label_width ** 2 + node.label_height ** 2) / 2 + 2
-        }
-        return node.point_radius + 2
-      }).strength(config.collision_strength),
+      forceCollide<SimulationNode>()
+        .radius((node) => {
+          if (is_label_node(node)) {
+            return Math.sqrt(node.label_width ** 2 + node.label_height ** 2) / 2 + 2
+          }
+          return node.point_radius + 2
+        })
+        .strength(config.collision_strength),
     )
     .force(
       `charge`,
-      forceManyBody<SimulationNode>().strength((node) => {
-        if (is_label_node(node)) return 0
-        return node.point_radius !== undefined && node.fx !== undefined
-          ? -(config.charge_strength ?? 50)
-          : 0
-      }).distanceMax(config.charge_distance_max ?? 30),
+      forceManyBody<SimulationNode>()
+        .strength((node) => {
+          if (is_label_node(node)) return 0
+          return node.point_radius !== undefined && node.fx !== undefined
+            ? -(config.charge_strength ?? 50)
+            : 0
+        })
+        .distanceMax(config.charge_distance_max ?? 30),
     )
 
   sim.stop().tick(config.placement_ticks)

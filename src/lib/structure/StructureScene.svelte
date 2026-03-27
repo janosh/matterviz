@@ -42,8 +42,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import { T, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import type { ComponentProps } from 'svelte'
-  import { type Snippet, untrack } from 'svelte'
+  import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { type Camera, Color, type Mesh, type Scene } from 'three'
   import Bond from './Bond.svelte'
@@ -312,9 +311,8 @@
   // snaps to the new wrapped centroid.
   let frozen_centroid = $state<Vec3 | null>(null)
 
-  function get_bond_key(idx1: number, idx2: number): string {
-    return idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`
-  }
+  const get_bond_key = (idx1: number, idx2: number): string =>
+    idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`
 
   // Toggle a bond between two atoms: cycles through add → remove → restore states
   function toggle_bond(site_1: number, site_2: number) {

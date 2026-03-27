@@ -11,9 +11,7 @@ describe(`ElementStats`, () => {
       mount(ElementStats, { target: document.body, props: { element } })
 
       const atomic_mass = doc_query(`div > section:nth-child(2) > strong`)
-      expect(atomic_mass.textContent?.trim()).toBe(
-        format_num(element.atomic_mass),
-      )
+      expect(atomic_mass.textContent?.trim()).toBe(format_num(element.atomic_mass))
 
       const density = doc_query(`div > section:nth-child(3) > strong`)
       expect(density.textContent?.trim()).toBe(format_num(element.density))

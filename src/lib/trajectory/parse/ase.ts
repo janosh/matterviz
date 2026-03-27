@@ -8,10 +8,7 @@ import {
 } from '../helpers'
 import type { TrajectoryFrame, TrajectoryType } from '../index'
 
-export function parse_ase_trajectory(
-  buffer: ArrayBuffer,
-  filename?: string,
-): TrajectoryType {
+export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): TrajectoryType {
   const view = new DataView(buffer)
   let offset = 0
 
@@ -26,18 +23,14 @@ export function parse_ase_trajectory(
   const offsets_pos = Number(view.getBigInt64(offset, true))
 
   if (n_items <= 0) throw new Error(`Invalid frame count`)
-  if (
-    offsets_pos < 0 ||
-    offsets_pos + n_items * 8 > buffer.byteLength
-  ) {
+  if (offsets_pos < 0 || offsets_pos + n_items * 8 > buffer.byteLength) {
     throw new Error(
       `Invalid ASE frame offsets table bounds: offsets_pos=${offsets_pos}, n_items=${n_items}, byte_length=${buffer.byteLength}`,
     )
   }
 
-  const frame_offsets = Array.from(
-    { length: n_items },
-    (_, idx) => Number(view.getBigInt64(offsets_pos + idx * 8, true)),
+  const frame_offsets = Array.from({ length: n_items }, (_, idx) =>
+    Number(view.getBigInt64(offsets_pos + idx * 8, true)),
   )
 
   const frames: TrajectoryFrame[] = []
@@ -61,19 +54,17 @@ export function parse_ase_trajectory(
       const positions_ref = frame_data[`positions.`] || frame_data.positions
       const positions = positions_ref?.ndarray
         ? read_ndarray_from_view(view, positions_ref)
-        : positions_ref as number[][]
+        : (positions_ref as number[][])
 
       const numbers_ref = frame_data[`numbers.`] || frame_data.numbers || global_numbers
       const numbers: number[] = numbers_ref?.ndarray
         ? read_ndarray_from_view(view, numbers_ref).flat()
-        : numbers_ref as number[]
+        : (numbers_ref as number[])
 
       if (numbers) global_numbers = numbers
       if (!numbers || !positions) {
         console.warn(
-          `Skipping ASE frame ${idx + 1}/${n_items}: missing ${
-            !numbers ? `numbers` : `positions`
-          }`,
+          `Skipping ASE frame ${idx + 1}/${n_items}: missing ${!numbers ? `numbers` : `positions`}`,
         )
         continue
       }
@@ -85,14 +76,16 @@ export function parse_ase_trajectory(
         ...(frame_data.info || {}),
       }
 
-      frames.push(create_trajectory_frame(
-        positions,
-        elements,
-        frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined,
-        frame_data.pbc || [true, true, true],
-        idx,
-        metadata,
-      ))
+      frames.push(
+        create_trajectory_frame(
+          positions,
+          elements,
+          frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined,
+          frame_data.pbc || [true, true, true],
+          idx,
+          metadata,
+        ),
+      )
     } catch (error) {
       console.warn(`Error processing frame ${idx + 1}/${n_items}:`, error)
     }
@@ -102,8 +95,10 @@ export function parse_ase_trajectory(
 
   const first_struct = frames[0]?.structure
   const periodic_boundary_conditions =
-    first_struct !== null && first_struct !== undefined &&
-      typeof first_struct === `object` && `lattice` in first_struct
+    first_struct !== null &&
+    first_struct !== undefined &&
+    typeof first_struct === `object` &&
+    `lattice` in first_struct
       ? first_struct.lattice.pbc
       : [true, true, true]
 

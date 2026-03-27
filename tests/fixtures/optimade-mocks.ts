@@ -7,7 +7,11 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
     type: `structures`,
     attributes: {
       chemical_formula_descriptive: `H`,
-      lattice_vectors: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      lattice_vectors: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
       species: [{ name: `H`, chemical_symbols: [`H`], concentration: [1] }],
       species_at_sites: [`H`],
       cartesian_site_positions: [[0, 0, 0]],
@@ -18,7 +22,11 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
     type: `structures`,
     attributes: {
       chemical_formula_descriptive: `Si`,
-      lattice_vectors: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+      lattice_vectors: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
       species: [{ name: `Si`, chemical_symbols: [`Si`], concentration: [1] }],
       species_at_sites: [`Si`],
       cartesian_site_positions: [[0, 0, 0]],
@@ -29,7 +37,11 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
     type: `structures`,
     attributes: {
       chemical_formula_descriptive: `LiFePO`,
-      lattice_vectors: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+      lattice_vectors: [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ],
       species: [
         { name: `Li`, chemical_symbols: [`Li`], concentration: [1] },
         { name: `Fe`, chemical_symbols: [`Fe`], concentration: [1] },
@@ -37,7 +49,12 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
         { name: `O`, chemical_symbols: [`O`], concentration: [1] },
       ],
       species_at_sites: [`Li`, `Fe`, `P`, `O`],
-      cartesian_site_positions: [[0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3]],
+      cartesian_site_positions: [
+        [0, 0, 0],
+        [1, 1, 1],
+        [2, 2, 2],
+        [3, 3, 3],
+      ],
     },
   },
   'cod-456': {
@@ -45,13 +62,20 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
     type: `structures`,
     attributes: {
       chemical_formula_descriptive: `FeO`,
-      lattice_vectors: [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
+      lattice_vectors: [
+        [3, 0, 0],
+        [0, 3, 0],
+        [0, 0, 3],
+      ],
       species: [
         { name: `Fe`, chemical_symbols: [`Fe`], concentration: [1] },
         { name: `O`, chemical_symbols: [`O`], concentration: [1] },
       ],
       species_at_sites: [`Fe`, `O`],
-      cartesian_site_positions: [[0, 0, 0], [1, 1, 1]],
+      cartesian_site_positions: [
+        [0, 0, 0],
+        [1, 1, 1],
+      ],
     },
   },
   'odbx-9.1': {
@@ -59,7 +83,11 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
     type: `structures`,
     attributes: {
       chemical_formula_descriptive: `Cu`,
-      lattice_vectors: [[2.5, 0, 0], [0, 2.5, 0], [0, 0, 2.5]],
+      lattice_vectors: [
+        [2.5, 0, 0],
+        [0, 2.5, 0],
+        [0, 0, 2.5],
+      ],
       species: [{ name: `Cu`, chemical_symbols: [`Cu`], concentration: [1] }],
       species_at_sites: [`Cu`],
       cartesian_site_positions: [[0, 0, 0]],
@@ -70,7 +98,11 @@ export const MOCK_STRUCTURES: Record<string, OptimadeStructure> = {
     type: `structures`,
     attributes: {
       chemical_formula_descriptive: `Fe`,
-      lattice_vectors: [[2.87, 0, 0], [0, 2.87, 0], [0, 0, 2.87]],
+      lattice_vectors: [
+        [2.87, 0, 0],
+        [0, 2.87, 0],
+        [0, 0, 2.87],
+      ],
       species: [{ name: `Fe`, chemical_symbols: [`Fe`], concentration: [1] }],
       species_at_sites: [`Fe`],
       cartesian_site_positions: [[0, 0, 0]],
@@ -105,8 +137,7 @@ export const MOCK_PROVIDERS: OptimadeProvider[] = [
     type: `links`,
     attributes: {
       name: `OQMD`,
-      description:
-        `The OQMD is a database of DFT calculated thermodynamic and structural properties.`,
+      description: `The OQMD is a database of DFT calculated thermodynamic and structural properties.`,
       base_url: `https://oqmd.org/optimade`,
       homepage: `https://oqmd.org`,
     },

@@ -186,12 +186,14 @@ describe(`data-transform utility functions`, () => {
       },
       {
         name: `handles single series`,
-        series: [{
-          x: [1, 2],
-          y: [1, 2],
-          label: `Single`,
-          point_style: { fill: `orange` },
-        }],
+        series: [
+          {
+            x: [1, 2],
+            y: [1, 2],
+            label: `Single`,
+            point_style: { fill: `orange` },
+          },
+        ],
         expected: [
           {
             series_idx: 0,

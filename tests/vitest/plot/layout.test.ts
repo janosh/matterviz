@@ -21,13 +21,25 @@ describe(`layout utility functions`, () => {
       [null, defaults],
       [{}, defaults],
       // Partial override
-      [{ t: 10, l: 30 }, { t: 10, b: 60, l: 30, r: 20 }],
+      [
+        { t: 10, l: 30 },
+        { t: 10, b: 60, l: 30, r: 20 },
+      ],
       // Full override
-      [{ t: 5, b: 10, l: 15, r: 25 }, { t: 5, b: 10, l: 15, r: 25 }],
+      [
+        { t: 5, b: 10, l: 15, r: 25 },
+        { t: 5, b: 10, l: 15, r: 25 },
+      ],
       // Filters undefined values (preserves defaults)
-      [{ t: 10, b: undefined, r: 5 }, { t: 10, b: 60, l: 60, r: 5 }],
+      [
+        { t: 10, b: undefined, r: 5 },
+        { t: 10, b: 60, l: 60, r: 5 },
+      ],
       // Zero values are preserved (not filtered)
-      [{ t: 0, b: 0 }, { t: 0, b: 0, l: 60, r: 20 }],
+      [
+        { t: 0, b: 0 },
+        { t: 0, b: 0, l: 60, r: 20 },
+      ],
       // Negative values are preserved
       [{ t: -5 }, { t: -5, b: 60, l: 60, r: 20 }],
     ])(`filter_padding(%j) -> %j`, (padding, expected) => {
@@ -38,48 +50,43 @@ describe(`layout utility functions`, () => {
   describe(`constrain_tooltip_position`, () => {
     // [desc, cursor_x, cursor_y, tip_w, tip_h, vp_w, vp_h, exp_x, exp_y]
     // Default offset is 10px in each direction
-    test.each(
-      [
-        [`within bounds`, 300, 200, 100, 50, 800, 600, 310, 210],
-        [`flips left`, 750, 200, 100, 50, 800, 600, 640, 210],
-        [`flips up`, 300, 560, 100, 50, 800, 600, 310, 500],
-        [`left edge clamp`, 0, 200, 100, 50, 800, 600, 10, 210],
-        [`top edge`, 300, 0, 100, 50, 800, 600, 310, 10],
-        [`bottom-right corner (flips both)`, 800, 600, 100, 50, 800, 600, 690, 540],
-        [`top-left corner (clamp)`, -10, -10, 100, 50, 800, 600, 0, 0],
-        [`top-right corner`, 850, -20, 100, 50, 800, 600, 700, 0],
-        [`bottom-left corner`, -50, 650, 100, 50, 800, 600, 0, 550],
-        [`zero-size tooltip`, 300, 200, 0, 0, 800, 600, 310, 210],
-        [`tooltip > viewport`, 300, 200, 900, 700, 800, 600, 0, 0],
-        [`small viewport`, 25, 15, 100, 50, 50, 30, 0, 0],
-        [`at flip threshold`, 690, 200, 100, 50, 800, 600, 700, 210],
-        [`past flip threshold`, 691, 200, 100, 50, 800, 600, 581, 210],
-        [`1x1 tooltip`, 400, 300, 1, 1, 800, 600, 410, 310],
-        [`near right (flips)`, 700, 300, 100, 50, 800, 600, 590, 310],
-        [`near bottom (flips)`, 400, 550, 100, 50, 800, 600, 410, 490],
-      ] as const,
-    )(`%s`, (_, cx, cy, tw, th, vw, vh, ex, ey) => {
+    test.each([
+      [`within bounds`, 300, 200, 100, 50, 800, 600, 310, 210],
+      [`flips left`, 750, 200, 100, 50, 800, 600, 640, 210],
+      [`flips up`, 300, 560, 100, 50, 800, 600, 310, 500],
+      [`left edge clamp`, 0, 200, 100, 50, 800, 600, 10, 210],
+      [`top edge`, 300, 0, 100, 50, 800, 600, 310, 10],
+      [`bottom-right corner (flips both)`, 800, 600, 100, 50, 800, 600, 690, 540],
+      [`top-left corner (clamp)`, -10, -10, 100, 50, 800, 600, 0, 0],
+      [`top-right corner`, 850, -20, 100, 50, 800, 600, 700, 0],
+      [`bottom-left corner`, -50, 650, 100, 50, 800, 600, 0, 550],
+      [`zero-size tooltip`, 300, 200, 0, 0, 800, 600, 310, 210],
+      [`tooltip > viewport`, 300, 200, 900, 700, 800, 600, 0, 0],
+      [`small viewport`, 25, 15, 100, 50, 50, 30, 0, 0],
+      [`at flip threshold`, 690, 200, 100, 50, 800, 600, 700, 210],
+      [`past flip threshold`, 691, 200, 100, 50, 800, 600, 581, 210],
+      [`1x1 tooltip`, 400, 300, 1, 1, 800, 600, 410, 310],
+      [`near right (flips)`, 700, 300, 100, 50, 800, 600, 590, 310],
+      [`near bottom (flips)`, 400, 550, 100, 50, 800, 600, 410, 490],
+    ] as const)(`%s`, (_, cx, cy, tw, th, vw, vh, ex, ey) => {
       expect(constrain_tooltip_position(cx, cy, tw, th, vw, vh)).toEqual({ x: ex, y: ey })
     })
 
     // Custom offsets — all use 100x50 tooltip in 800x600 viewport
     // [desc, cursor_x, cursor_y, offset_x, offset_y, exp_x, exp_y]
-    test.each(
-      [
-        [`neg y above cursor`, 300, 200, 5, -10, 305, 140],
-        [`neg y flips down near top`, 300, 50, 5, -10, 305, 60],
-        [`neg x left of cursor`, 400, 300, -10, 10, 290, 310],
-        [`neg x flips right near left`, 50, 300, -10, 10, 60, 310],
-        [`both negative`, 400, 300, -10, -10, 290, 240],
-      ] as const,
-    )(`offset: %s`, (_, cx, cy, ox, oy, ex, ey) => {
+    test.each([
+      [`neg y above cursor`, 300, 200, 5, -10, 305, 140],
+      [`neg y flips down near top`, 300, 50, 5, -10, 305, 60],
+      [`neg x left of cursor`, 400, 300, -10, 10, 290, 310],
+      [`neg x flips right near left`, 50, 300, -10, 10, 60, 310],
+      [`both negative`, 400, 300, -10, -10, 290, 240],
+    ] as const)(`offset: %s`, (_, cx, cy, ox, oy, ex, ey) => {
       expect(
         constrain_tooltip_position(cx, cy, 100, 50, 800, 600, {
           offset_x: ox,
           offset_y: oy,
         }),
-      )
-        .toEqual({ x: ex, y: ey })
+      ).toEqual({ x: ex, y: ey })
     })
   })
 
@@ -136,11 +143,13 @@ describe(`layout utility functions`, () => {
       })
 
       // Count how many points overlap with the result
-      const overlapping =
-        cluster_points.filter((pt) =>
-          pt.x >= result.x && pt.x <= result.x + base_config.element_size.width &&
-          pt.y >= result.y && pt.y <= result.y + base_config.element_size.height
-        ).length
+      const overlapping = cluster_points.filter(
+        (pt) =>
+          pt.x >= result.x &&
+          pt.x <= result.x + base_config.element_size.width &&
+          pt.y >= result.y &&
+          pt.y <= result.y + base_config.element_size.height,
+      ).length
 
       // Should avoid the cluster - overlap with few or no points
       expect(overlapping).toBeLessThan(10)
@@ -215,11 +224,7 @@ describe(`layout utility functions`, () => {
         Array.from({ length: 15 }, () => ({ x: 400, y: 280 })),
         `top-left`,
       ],
-      [
-        `center cluster`,
-        Array.from({ length: 15 }, () => ({ x: 250, y: 170 })),
-        `corner`,
-      ],
+      [`center cluster`, Array.from({ length: 15 }, () => ({ x: 250, y: 170 })), `corner`],
     ])(`places away from %s`, (_, points, expected_region) => {
       const result = compute_element_placement({
         ...base_config,

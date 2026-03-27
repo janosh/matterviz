@@ -32,14 +32,14 @@ describe(`StructureExportPane`, () => {
   beforeEach(() => {
     wrapper_div = document.createElement(`div`)
     const canvas = document.createElement(`canvas`)
-    wrapper_div.appendChild(canvas)
-    document.body.appendChild(wrapper_div)
+    wrapper_div.append(canvas)
+    document.body.append(wrapper_div)
     mock_scene = {} as Scene
   })
 
   const get_button = (title_part: string) => {
     const matches = Array.from(document.querySelectorAll(`button`)).filter((btn) =>
-      btn.title?.includes(title_part)
+      btn.title?.includes(title_part),
     )
     if (matches.length === 0) {
       throw new Error(`No button found with title containing "${title_part}"`)
@@ -62,8 +62,9 @@ describe(`StructureExportPane`, () => {
     }
 
     // 2 buttons per format (download + copy) * 4 formats = 8
-    const text_section = Array.from(document.querySelectorAll(`h4`))
-      .find((h4) => h4.textContent?.includes(`Export as text`))?.nextElementSibling
+    const text_section = Array.from(document.querySelectorAll(`h4`)).find((h4) =>
+      h4.textContent?.includes(`Export as text`),
+    )?.nextElementSibling
     const buttons = text_section?.querySelectorAll(`button`)
     expect(buttons?.length).toBe(8)
   })
@@ -208,7 +209,7 @@ describe(`StructureExportPane`, () => {
     const png_btn = get_button(`PNG`)
     expect(png_btn?.disabled).toBe(true)
 
-    wrapper_div.appendChild(document.createElement(`canvas`))
+    wrapper_div.append(document.createElement(`canvas`))
     await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
 
     wrapper_div.innerHTML = ``
@@ -242,7 +243,7 @@ describe(`StructureExportPane`, () => {
 
     download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
     await vi.waitFor(() =>
-      expect(export_fn).toHaveBeenCalledWith(mock_scene, simple_structure)
+      expect(export_fn).toHaveBeenCalledWith(mock_scene, simple_structure),
     )
   })
 
@@ -252,8 +253,9 @@ describe(`StructureExportPane`, () => {
       props: { structure: simple_structure, scene: undefined },
     })
 
-    const models_section = Array.from(document.querySelectorAll(`h4`))
-      .find((h4) => h4.textContent?.includes(`Export as 3D model`))?.nextElementSibling
+    const models_section = Array.from(document.querySelectorAll(`h4`)).find((h4) =>
+      h4.textContent?.includes(`Export as 3D model`),
+    )?.nextElementSibling
 
     const buttons = models_section?.querySelectorAll(`button`)
     buttons?.forEach((btn) => expect(btn.disabled).toBe(true))
@@ -334,20 +336,19 @@ describe(`StructureExportPane`, () => {
       props: { structure: simple_structure, scene: mock_scene },
     })
 
-    const text_section = Array.from(document.querySelectorAll(`h4`))
-      .find((h4) => h4.textContent?.includes(`Export as text`))?.nextElementSibling
+    const text_section = Array.from(document.querySelectorAll(`h4`)).find((h4) =>
+      h4.textContent?.includes(`Export as text`),
+    )?.nextElementSibling
 
-    const download_buttons = Array.from(text_section?.querySelectorAll(`button`) || [])
-      .filter(
-        (btn) => btn.title?.includes(`Download`),
-      )
+    const download_buttons = Array.from(text_section?.querySelectorAll(`button`) || []).filter(
+      (btn) => btn.title?.includes(`Download`),
+    )
     expect(download_buttons.length).toBe(4)
     download_buttons.forEach((btn) => expect(btn.title).toContain(`Download`))
 
-    const copy_buttons = Array.from(text_section?.querySelectorAll(`button`) || [])
-      .filter(
-        (btn) => btn.title?.includes(`Copy`) && btn.title?.includes(`clipboard`),
-      )
+    const copy_buttons = Array.from(text_section?.querySelectorAll(`button`) || []).filter(
+      (btn) => btn.title?.includes(`Copy`) && btn.title?.includes(`clipboard`),
+    )
     expect(copy_buttons.length).toBe(4)
     copy_buttons.forEach((btn) => {
       expect(btn.title).toContain(`Copy`)

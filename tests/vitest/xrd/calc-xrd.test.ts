@@ -13,7 +13,11 @@ const xrd_dir = path.resolve(process.cwd(), `tests/vitest/fixtures/xrd`)
 
 // Shared helper for test suites
 function make_simple_cubic_structure(a_len: number): Crystal {
-  const matrix: Matrix3x3 = [[a_len, 0, 0], [0, a_len, 0], [0, 0, a_len]]
+  const matrix: Matrix3x3 = [
+    [a_len, 0, 0],
+    [0, a_len, 0],
+    [0, 0, a_len],
+  ]
   const volume = a_len * a_len * a_len
   const pbc: Pbc = [true, true, true]
   const lattice_params = { a: a_len, b: a_len, c: a_len, alpha: 90, beta: 90, gamma: 90 }
@@ -32,11 +36,7 @@ function list_matching_pairs() {
   const structure_files = fs
     .readdirSync(structures_dir)
     .filter((name) => name.endsWith(`.json`))
-  const xrd_files = new Set(
-    fs
-      .readdirSync(xrd_dir)
-      .filter((name) => name.endsWith(`.json`)),
-  )
+  const xrd_files = new Set(fs.readdirSync(xrd_dir).filter((name) => name.endsWith(`.json`)))
   const pairs = []
   for (const file_name of structure_files) {
     if (!xrd_files.has(file_name)) continue
@@ -124,7 +124,10 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
 
 // Concise edge-case tests for recent fixes
 describe(`compute_xrd_pattern edge cases`, () => {
-  test.each([[`CuKa`, 1.54184], [`MoKa`, 0.71073]] as const)(
+  test.each([
+    [`CuKa`, 1.54184],
+    [`MoKa`, 0.71073],
+  ] as const)(
     `asin clamping yields finite values and 2θ≈180° at boundary (%s)`,
     (_label, wavelength) => {
       const a_len = wavelength / 2
@@ -177,7 +180,7 @@ describe(`compute_xrd_pattern edge cases`, () => {
         wavelength: `AgKa`,
         scaled: true,
         two_theta_range: null,
-      })
+      }),
     ).toThrow(/exceeds cap/i)
   })
 })

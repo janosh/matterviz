@@ -1,4 +1,3 @@
-<!-- eslint-disable @stylistic/quotes -- svelte parser requires non-backtick tag -->
 <svelte:options
   customElement={{
     tag: 'mv-matterviz',

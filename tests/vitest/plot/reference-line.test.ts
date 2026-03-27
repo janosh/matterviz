@@ -39,15 +39,12 @@ describe(`normalize_value`, () => {
     warn_spy.mockRestore()
   })
 
-  test.each([[``], [` `], [`  \t  `]])(
-    `returns 0 for empty/whitespace string %j`,
-    (input) => {
-      const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
-      expect(normalize_value(input)).toBe(0)
-      expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`empty string`))
-      warn_spy.mockRestore()
-    },
-  )
+  test.each([[``], [` `], [`  \t  `]])(`returns 0 for empty/whitespace string %j`, (input) => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    expect(normalize_value(input)).toBe(0)
+    expect(warn_spy).toHaveBeenCalledWith(expect.stringContaining(`empty string`))
+    warn_spy.mockRestore()
+  })
 })
 
 describe(`normalize_point`, () => {
@@ -62,14 +59,28 @@ describe(`normalize_point`, () => {
 })
 
 describe(`span_or`, () => {
-  test.each<
-    [[number | null, number | null] | undefined, [number, number], [number, number]]
-  >([
+  test.each<[[number | null, number | null] | undefined, [number, number], [number, number]]>([
     [undefined, [0, 100], [0, 100]],
-    [[20, 80], [0, 100], [20, 80]],
-    [[null, 80], [0, 100], [0, 80]],
-    [[20, null], [0, 100], [20, 100]],
-    [[null, null], [10, 50], [10, 50]],
+    [
+      [20, 80],
+      [0, 100],
+      [20, 80],
+    ],
+    [
+      [null, 80],
+      [0, 100],
+      [0, 80],
+    ],
+    [
+      [20, null],
+      [0, 100],
+      [20, 100],
+    ],
+    [
+      [null, null],
+      [10, 50],
+      [10, 50],
+    ],
   ])(`span_or(%j, %j) = %j`, (span, range, expected) => {
     expect(span_or(span, range)).toEqual(expected)
   })
@@ -196,50 +207,41 @@ describe(`resolve_line_endpoints`, () => {
   })
 
   // Lines inside bounds should return endpoints
-  test.each(
-    [
-      [{ type: `segment`, p1: [10, 10], p2: [90, 90] }, `segment inside bounds`],
-      [{ type: `diagonal`, slope: 1, intercept: 0 }, `diagonal clipped to bounds`],
-    ] as const,
-  )(`%s returns endpoints`, (line, _desc) => {
+  test.each([
+    [{ type: `segment`, p1: [10, 10], p2: [90, 90] }, `segment inside bounds`],
+    [{ type: `diagonal`, slope: 1, intercept: 0 }, `diagonal clipped to bounds`],
+  ] as const)(`%s returns endpoints`, (line, _desc) => {
     expect(resolve_line_endpoints(line as RefLine, bounds, scales)).not.toBeNull()
   })
 
   // Lines outside bounds should return null
-  test.each(
-    [
-      [{ type: `horizontal`, y: 150 }, `horizontal outside y_max`],
-      [{ type: `diagonal`, slope: 0, intercept: 150 }, `diagonal slope=0 outside bounds`],
-      [{ type: `diagonal`, slope: 1, intercept: 200 }, `diagonal entirely above y_max`],
-      [{ type: `diagonal`, slope: 1, intercept: -200 }, `diagonal entirely below y_min`],
-      [{ type: `diagonal`, slope: -1, intercept: 300 }, `negative slope above y_max`],
-      [{ type: `diagonal`, slope: -1, intercept: -200 }, `negative slope below y_min`],
-      [{ type: `line`, p1: [0, 200], p2: [100, 300] }, `line entirely above y_max`],
-      [{ type: `line`, p1: [0, -200], p2: [100, -100] }, `line entirely below y_min`],
-      [{ type: `line`, p1: [150, 0], p2: [150, 100] }, `nearly vertical outside x_max`],
-      [{ type: `line`, p1: [-50, 0], p2: [-50, 100] }, `nearly vertical outside x_min`],
-      [{ type: `segment`, p1: [150, 150], p2: [200, 200] }, `segment outside top-right`],
-      [
-        { type: `segment`, p1: [-50, -50], p2: [-10, -10] },
-        `segment outside bottom-left`,
-      ],
-      [{ type: `segment`, p1: [150, 50], p2: [200, 50] }, `segment outside x_max`],
-      [{ type: `segment`, p1: [50, 150], p2: [50, 200] }, `segment outside y_max`],
-    ] as const,
-  )(`%s returns null`, (line, _desc) => {
+  test.each([
+    [{ type: `horizontal`, y: 150 }, `horizontal outside y_max`],
+    [{ type: `diagonal`, slope: 0, intercept: 150 }, `diagonal slope=0 outside bounds`],
+    [{ type: `diagonal`, slope: 1, intercept: 200 }, `diagonal entirely above y_max`],
+    [{ type: `diagonal`, slope: 1, intercept: -200 }, `diagonal entirely below y_min`],
+    [{ type: `diagonal`, slope: -1, intercept: 300 }, `negative slope above y_max`],
+    [{ type: `diagonal`, slope: -1, intercept: -200 }, `negative slope below y_min`],
+    [{ type: `line`, p1: [0, 200], p2: [100, 300] }, `line entirely above y_max`],
+    [{ type: `line`, p1: [0, -200], p2: [100, -100] }, `line entirely below y_min`],
+    [{ type: `line`, p1: [150, 0], p2: [150, 100] }, `nearly vertical outside x_max`],
+    [{ type: `line`, p1: [-50, 0], p2: [-50, 100] }, `nearly vertical outside x_min`],
+    [{ type: `segment`, p1: [150, 150], p2: [200, 200] }, `segment outside top-right`],
+    [{ type: `segment`, p1: [-50, -50], p2: [-10, -10] }, `segment outside bottom-left`],
+    [{ type: `segment`, p1: [150, 50], p2: [200, 50] }, `segment outside x_max`],
+    [{ type: `segment`, p1: [50, 150], p2: [50, 200] }, `segment outside y_max`],
+  ] as const)(`%s returns null`, (line, _desc) => {
     expect(resolve_line_endpoints(line as RefLine, bounds, scales)).toBeNull()
   })
 })
 
 describe(`calculate_annotation_position`, () => {
   // Horizontal line: (0, 100) -> (200, 100)
-  test.each(
-    [
-      [`start`, 4, `start`],
-      [`center`, 100, `middle`],
-      [`end`, 196, `end`],
-    ] as const,
-  )(`position %s on horizontal line`, (position, expected_x, expected_anchor) => {
+  test.each([
+    [`start`, 4, `start`],
+    [`center`, 100, `middle`],
+    [`end`, 196, `end`],
+  ] as const)(`position %s on horizontal line`, (position, expected_x, expected_anchor) => {
     const pos = calculate_annotation_position(0, 100, 200, 100, {
       position,
       side: `above`,
@@ -266,12 +268,10 @@ describe(`calculate_annotation_position`, () => {
   })
 
   // Vertical line: (100, 0) -> (100, 200)
-  test.each(
-    [
-      [`left`, 90, 100, `end`],
-      [`right`, 110, 100, `start`],
-    ] as const,
-  )(
+  test.each([
+    [`left`, 90, 100, `end`],
+    [`right`, 110, 100, `start`],
+  ] as const)(
     `%s side offset for vertical line`,
     (side, expected_x, expected_y, expected_anchor) => {
       const pos = calculate_annotation_position(100, 0, 100, 200, {
@@ -286,12 +286,10 @@ describe(`calculate_annotation_position`, () => {
   )
 
   // Diagonal 45° line: (0, 0) -> (100, 100)
-  test.each(
-    [
-      [`left`, 50 - 10 / Math.SQRT2, 50 + 10 / Math.SQRT2, `end`],
-      [`right`, 50 + 10 / Math.SQRT2, 50 - 10 / Math.SQRT2, `start`],
-    ] as const,
-  )(
+  test.each([
+    [`left`, 50 - 10 / Math.SQRT2, 50 + 10 / Math.SQRT2, `end`],
+    [`right`, 50 + 10 / Math.SQRT2, 50 - 10 / Math.SQRT2, `start`],
+  ] as const)(
     `%s side perpendicular offset for diagonal`,
     (side, expected_x, expected_y, expected_anchor) => {
       const pos = calculate_annotation_position(0, 0, 100, 100, {
@@ -306,20 +304,21 @@ describe(`calculate_annotation_position`, () => {
   )
 
   // Horizontal line left/right: perpendicular is vertical
-  test.each(
-    [
-      [`left`, 100, 110],
-      [`right`, 100, 90],
-    ] as const,
-  )(`%s perpendicular offset for horizontal line`, (side, expected_x, expected_y) => {
-    const pos = calculate_annotation_position(0, 100, 200, 100, {
-      position: `center`,
-      side,
-      gap: 10,
-    })
-    expect(pos.x).toBe(expected_x)
-    expect(pos.y).toBe(expected_y)
-  })
+  test.each([
+    [`left`, 100, 110],
+    [`right`, 100, 90],
+  ] as const)(
+    `%s perpendicular offset for horizontal line`,
+    (side, expected_x, expected_y) => {
+      const pos = calculate_annotation_position(0, 100, 200, 100, {
+        position: `center`,
+        side,
+        gap: 10,
+      })
+      expect(pos.x).toBe(expected_x)
+      expect(pos.y).toBe(expected_y)
+    },
+  )
 })
 
 describe(`index_ref_lines`, () => {

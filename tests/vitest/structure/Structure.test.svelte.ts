@@ -5,10 +5,10 @@ import { DEFAULTS } from '$lib/settings'
 import type { StructureHandlerData } from '$lib/structure'
 import * as exports from '$lib/structure/export'
 import { structures } from '$site/structures'
-import { readFileSync } from 'fs'
+import { readFileSync } from 'node:fs'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { gunzipSync } from 'zlib'
+import { gunzipSync } from 'node:zlib'
 import { doc_query } from '../setup'
 
 const structure = structures[0]
@@ -97,9 +97,10 @@ describe(`Structure`, () => {
     ]),
   )(`$format $action button works`, async ({ format, action }) => {
     // Mount component and open controls
-    const export_fn_name = action === `Download`
-      ? `export_structure_as_${format.toLowerCase()}`
-      : `structure_to_${format.toLowerCase()}_str`
+    const export_fn_name =
+      action === `Download`
+        ? `export_structure_as_${format.toLowerCase()}`
+        : `structure_to_${format.toLowerCase()}_str`
     const export_spy = vi.spyOn(exports, export_fn_name as keyof typeof exports)
 
     mount(Structure, {
@@ -115,9 +116,7 @@ describe(`Structure`, () => {
     if (action === `Download`) {
       globalThis.URL.createObjectURL = vi.fn()
       const spy = vi.spyOn(document.body, `appendChild`)
-      const download_btn = doc_query<HTMLButtonElement>(
-        `button[title="Download ${format}"]`,
-      )
+      const download_btn = doc_query<HTMLButtonElement>(`button[title="Download ${format}"]`)
       expect(download_btn, `download button for ${format}`).toBeTruthy()
 
       download_btn.click()
@@ -132,9 +131,7 @@ describe(`Structure`, () => {
       // @ts-expect-error - function is mocked
       globalThis.URL.createObjectURL.mockRestore()
     } else if (action === `Copy`) {
-      const clipboard_spy = vi
-        .spyOn(navigator.clipboard, `writeText`)
-        .mockResolvedValue()
+      const clipboard_spy = vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
 
       const copy_btn = doc_query<HTMLButtonElement>(
         `button[title="Copy ${format} to clipboard"]`,
@@ -174,9 +171,7 @@ describe(`Structure`, () => {
     await tick()
 
     // Click the fullscreen button
-    const fullscreen_button = document.querySelector(
-      `.fullscreen-toggle`,
-    ) as HTMLButtonElement
+    const fullscreen_button = document.querySelector(`.fullscreen-toggle`) as HTMLButtonElement
     expect(fullscreen_button).toBeTruthy()
 
     fullscreen_button.click()
@@ -233,10 +228,7 @@ describe(`Structure`, () => {
   })
 
   test(`drag and drop event handling`, async () => {
-    let [event_handled, file_content]: [boolean, string | ArrayBuffer | null] = [
-      false,
-      null,
-    ]
+    let [event_handled, file_content]: [boolean, string | ArrayBuffer | null] = [false, null]
     let resolve_drop!: () => void
     const drop_done = new Promise<void>((resolve) => (resolve_drop = resolve))
 
@@ -339,37 +331,51 @@ test(`pbc_dist with realistic structure scenarios`, () => {
 
 describe(`Structure component nested JSON handling`, () => {
   test.each([
-    [`valid structure with sites`, {
-      sites: [{
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `H1`,
-        properties: {},
-      }],
-      charge: 0,
-    }],
-    [`structure with lattice`, {
-      sites: [{
-        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-        abc: [0.5, 0.5, 0.5],
-        xyz: [1, 1, 1],
-        label: `C1`,
-        properties: {},
-      }],
-      lattice: {
-        matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
-        pbc: [true, true, true],
-        volume: 8,
-        a: 2,
-        b: 2,
-        c: 2,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
+    [
+      `valid structure with sites`,
+      {
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [0, 0, 0],
+            label: `H1`,
+            properties: {},
+          },
+        ],
+        charge: 0,
       },
-      charge: 0,
-    }],
+    ],
+    [
+      `structure with lattice`,
+      {
+        sites: [
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            abc: [0.5, 0.5, 0.5],
+            xyz: [1, 1, 1],
+            label: `C1`,
+            properties: {},
+          },
+        ],
+        lattice: {
+          matrix: [
+            [2, 0, 0],
+            [0, 2, 0],
+            [0, 0, 2],
+          ],
+          pbc: [true, true, true],
+          volume: 8,
+          a: 2,
+          b: 2,
+          c: 2,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+        },
+        charge: 0,
+      },
+    ],
   ])(`renders successfully with %s`, (_description, structure) => {
     mount(Structure, {
       target: document.body,
@@ -402,8 +408,7 @@ describe(`Structure component nested JSON handling`, () => {
   })
 
   test(`handles real nested JSON structure correctly`, () => {
-    const file_path =
-      `./src/site/structures/nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
+    const file_path = `./src/site/structures/nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
     // Read and parse the actual nested JSON file (compressed)
     const compressed = readFileSync(file_path)
     const content = gunzipSync(compressed).toString(`utf8`)
@@ -445,19 +450,19 @@ test.each([
     await tick()
 
     // Test 1: UI controls are accessible with correct options
-    const projection_label = Array.from(document.querySelectorAll(`label`))
-      .find((label) => label.textContent?.includes(`Projection`))
+    const projection_label = Array.from(document.querySelectorAll(`label`)).find((label) =>
+      label.textContent?.includes(`Projection`),
+    )
     expect(projection_label).toBeTruthy()
 
-    const projection_select = projection_label?.querySelector(
-      `select`,
-    ) as HTMLSelectElement
+    const projection_select = projection_label?.querySelector(`select`) as HTMLSelectElement
     expect(projection_select?.value).toBe(initial_projection)
 
     const options = Array.from(projection_select?.querySelectorAll(`option`) || [])
-    expect(options.map((option) => (option as HTMLOptionElement).value)).toEqual(
-      [`perspective`, `orthographic`],
-    )
+    expect(options.map((option) => (option as HTMLOptionElement).value)).toEqual([
+      `perspective`,
+      `orthographic`,
+    ])
 
     // Test 2: Component renders correctly without errors
     const structure_component = document.querySelector(`.structure`)
@@ -519,35 +524,32 @@ describe(`atom label controls`, () => {
     { axis: `X`, idx: 0, initial: 0.2, new_value: 0.5 },
     { axis: `Y`, idx: 1, initial: -0.5, new_value: 0.1 },
     { axis: `Z`, idx: 2, initial: 0.8, new_value: -0.3 },
-  ])(
-    `$axis offset control works correctly`,
-    ({ idx, initial, new_value }) => {
-      const offset = [0, 0, 0] as Vec3
-      offset[idx] = initial
+  ])(`$axis offset control works correctly`, ({ idx, initial, new_value }) => {
+    const offset = [0, 0, 0] as Vec3
+    offset[idx] = initial
 
-      mount(Structure, {
-        target: document.body,
-        props: {
-          structure,
-          controls_open: true,
-          show_controls: true,
-          scene_props: { show_site_labels: true, site_label_offset: offset },
-        },
-      })
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        controls_open: true,
+        show_controls: true,
+        scene_props: { show_site_labels: true, site_label_offset: offset },
+      },
+    })
 
-      const offset_inputs = document.querySelectorAll(
-        `input[type="number"][min="-1"][max="1"][step="0.1"]`,
-      )
-      expect(offset_inputs.length).toBeGreaterThanOrEqual(3)
+    const offset_inputs = document.querySelectorAll(
+      `input[type="number"][min="-1"][max="1"][step="0.1"]`,
+    )
+    expect(offset_inputs.length).toBeGreaterThanOrEqual(3)
 
-      const input = offset_inputs[idx] as HTMLInputElement
-      expect(parseFloat(input.value)).toBeCloseTo(initial, 1)
+    const input = offset_inputs[idx] as HTMLInputElement
+    expect(parseFloat(input.value)).toBeCloseTo(initial, 1)
 
-      input.value = new_value.toString()
-      input.dispatchEvent(new Event(`input`, { bubbles: true }))
-      expect(parseFloat(input.value)).toBeCloseTo(new_value, 1)
-    },
-  )
+    input.value = new_value.toString()
+    input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    expect(parseFloat(input.value)).toBeCloseTo(new_value, 1)
+  })
 
   test(`color controls work correctly`, () => {
     mount(Structure, {
@@ -705,10 +707,13 @@ describe(`atom label controls`, () => {
 describe(`Structure string parsing`, () => {
   const test_data = [
     [`POSCAR`, SAMPLE_POSCAR_CONTENT, 5, [`Ba`, `Ti`, `O`], true],
-    [`XYZ`, `3\nH2O\nO 0.0 0.0 0.119\nH 0.0 0.763 -0.477\nH 0.0 -0.763 -0.477`, 3, [
-      `O`,
-      `H`,
-    ], false],
+    [
+      `XYZ`,
+      `3\nH2O\nO 0.0 0.0 0.119\nH 0.0 0.763 -0.477\nH 0.0 -0.763 -0.477`,
+      3,
+      [`O`, `H`],
+      false,
+    ],
     [
       `CIF`,
       `data_test\n_cell_length_a 5.0\n_cell_length_b 5.0\n_cell_length_c 5.0\n_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nNa1 Na 0.0 0.0 0.0 1.0\nCl1 Cl 0.5 0.5 0.5 1.0`,
@@ -719,13 +724,15 @@ describe(`Structure string parsing`, () => {
     [
       `JSON`,
       JSON.stringify({
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H1`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [0, 0, 0],
+            label: `H1`,
+            properties: {},
+          },
+        ],
       }),
       1,
       [`H`],
@@ -762,7 +769,7 @@ describe(`Structure string parsing`, () => {
       if (parsed) {
         expect(parsed.sites).toHaveLength(atoms)
         elements.forEach((el) =>
-          expect(parsed?.sites.map((site) => site.species[0].element)).toContain(el)
+          expect(parsed?.sites.map((site) => site.species[0].element)).toContain(el),
         )
         expect(!!(`lattice` in parsed && parsed.lattice)).toBe(has_lattice)
       }
@@ -777,7 +784,7 @@ describe(`Structure string parsing`, () => {
     let errored = false
     mount(Structure, {
       target: document.body,
-      props: { structure_string: content, on_error: () => errored = true },
+      props: { structure_string: content, on_error: () => (errored = true) },
     })
     await tick()
     expect(errored).toBe(true)
@@ -827,7 +834,7 @@ describe(`Structure string parsing`, () => {
       props: {
         data_url: `/test.poscar`,
         structure_string: `ignored`,
-        on_file_load: (data: StructureHandlerData) => filename = data.filename || ``,
+        on_file_load: (data: StructureHandlerData) => (filename = data.filename || ``),
       },
     })
     await tick()
@@ -869,22 +876,38 @@ describe(`Rotation target computation`, () => {
   test.each([
     {
       desc: `cubic`,
-      matrix: [[4, 0, 0], [0, 4, 0], [0, 0, 4]] as Matrix3x3,
+      matrix: [
+        [4, 0, 0],
+        [0, 4, 0],
+        [0, 0, 4],
+      ] as Matrix3x3,
       expected: [2, 2, 2],
     },
     {
       desc: `orthorhombic`,
-      matrix: [[3, 0, 0], [0, 5, 0], [0, 0, 7]] as Matrix3x3,
+      matrix: [
+        [3, 0, 0],
+        [0, 5, 0],
+        [0, 0, 7],
+      ] as Matrix3x3,
       expected: [1.5, 2.5, 3.5],
     },
     {
       desc: `monoclinic (off-diagonal terms)`,
-      matrix: [[4, 0, 0], [1, 3, 0], [0, 0, 5]] as Matrix3x3,
+      matrix: [
+        [4, 0, 0],
+        [1, 3, 0],
+        [0, 0, 5],
+      ] as Matrix3x3,
       expected: [2.5, 1.5, 2.5],
     },
     {
       desc: `triclinic`,
-      matrix: [[6, 0, 0], [2, 5, 0], [1, 1, 4]] as Matrix3x3,
+      matrix: [
+        [6, 0, 0],
+        [2, 5, 0],
+        [1, 1, 4],
+      ] as Matrix3x3,
       expected: [4.5, 3, 2],
     },
   ])(`unit cell center for $desc lattice`, ({ matrix, expected }) => {

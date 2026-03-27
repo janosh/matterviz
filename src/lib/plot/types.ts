@@ -138,8 +138,9 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
 }
 
 // Represents the internal structure used within ScatterPlot, merging series-level and point-level data
-export interface InternalPoint<Metadata = Record<string, unknown>>
-  extends PlotPoint<Metadata> {
+export interface InternalPoint<
+  Metadata = Record<string, unknown>,
+> extends PlotPoint<Metadata> {
   series_idx: number // Index of the series this point belongs to
   point_idx: number // Index of the point within its series
   size_value?: number | null // Size value for the point
@@ -166,8 +167,9 @@ export interface HandlerProps<Metadata = Record<string, unknown>> {
   fullscreen?: boolean
 }
 
-export interface ScatterHandlerProps<Metadata = Record<string, unknown>>
-  extends HandlerProps<Metadata> {
+export interface ScatterHandlerProps<
+  Metadata = Record<string, unknown>,
+> extends HandlerProps<Metadata> {
   cx: number
   cy: number
   x_formatted: string
@@ -181,11 +183,11 @@ export interface ScatterHandlerProps<Metadata = Record<string, unknown>>
   }
 }
 export type ScatterHandlerEvent<Metadata = Record<string, unknown>> =
-  & ScatterHandlerProps<Metadata>
-  & { event: MouseEvent; point: InternalPoint<Metadata> }
+  ScatterHandlerProps<Metadata> & { event: MouseEvent; point: InternalPoint<Metadata> }
 
-export interface BarHandlerProps<Metadata = Record<string, unknown>>
-  extends HandlerProps<Metadata> {
+export interface BarHandlerProps<
+  Metadata = Record<string, unknown>,
+> extends HandlerProps<Metadata> {
   bar_idx: number
   orient_x: number
   orient_y: number
@@ -195,8 +197,9 @@ export interface BarHandlerProps<Metadata = Record<string, unknown>>
   category_label?: string // original string category (undefined when numeric x)
 }
 
-export interface HistogramHandlerProps<Metadata = Record<string, unknown>>
-  extends HandlerProps<Metadata> {
+export interface HistogramHandlerProps<
+  Metadata = Record<string, unknown>,
+> extends HandlerProps<Metadata> {
   value: number
   count: number
   property: string
@@ -222,9 +225,9 @@ export interface ArcsinhScaleConfig {
 export type ScaleType = `linear` | `log` | `arcsinh` | `time` | ArcsinhScaleConfig
 
 // Type guard for select value narrowing (avoids unsafe casts)
-const SCALE_TYPE_NAMES: ScaleTypeName[] = [`linear`, `log`, `arcsinh`, `time`]
+const SCALE_TYPE_NAMES = new Set<ScaleTypeName>([`linear`, `log`, `arcsinh`, `time`])
 export function is_scale_type_name(val: string): val is ScaleTypeName {
-  return SCALE_TYPE_NAMES.includes(val as ScaleTypeName)
+  return SCALE_TYPE_NAMES.has(val as ScaleTypeName)
 }
 
 // Helper to normalize ScaleType to base type name
@@ -240,9 +243,7 @@ export function get_arcsinh_threshold(scale_type: ScaleType | undefined): number
   if (typeof scale_type === `object` && scale_type.type === `arcsinh`) {
     const threshold = scale_type.threshold ?? 1
     if (!Number.isFinite(threshold) || threshold <= 0) {
-      throw new Error(
-        `arcsinh threshold must be a positive finite number, got ${threshold}`,
-      )
+      throw new Error(`arcsinh threshold must be a positive finite number, got ${threshold}`)
     }
     return threshold
   }
@@ -268,8 +269,7 @@ export type QuadrantCounts = {
 }
 
 // Type for nodes used in the d3-force simulation for label placement
-export interface LabelNode<Metadata = Record<string, unknown>>
-  extends SimulationNodeDatum {
+export interface LabelNode<Metadata = Record<string, unknown>> extends SimulationNodeDatum {
   id: string // unique identifier, e.g. series_idx-point_idx
   anchor_x: number // Original x coordinate of the point (scaled)
   anchor_y: number // Original y coordinate of the point (scaled)
@@ -304,19 +304,17 @@ export interface AnchorNode extends SimulationNodeDatum {
 }
 
 // Type for PlotLegend props forwarded from ScatterPlot props
-export type LegendConfig =
-  & Omit<
-    ComponentProps<typeof PlotLegend>,
-    `series_data` | `on_drag_start` | `on_drag` | `on_drag_end`
-  >
-  & {
-    margin?: number | Sides
-    tween?: TweenedOptions<XyObj>
-    responsive?: boolean // Allow legend to move if density changes (default: false)
-    draggable?: boolean // Allow legend to be dragged (default: true)
-    // Minimum distance from plot edges to avoid axis label overlap (default: 40)
-    axis_clearance?: number
-  }
+export type LegendConfig = Omit<
+  ComponentProps<typeof PlotLegend>,
+  `series_data` | `on_drag_start` | `on_drag` | `on_drag_end`
+> & {
+  margin?: number | Sides
+  tween?: TweenedOptions<XyObj>
+  responsive?: boolean // Allow legend to move if density changes (default: false)
+  draggable?: boolean // Allow legend to be dragged (default: true)
+  // Minimum distance from plot edges to avoid axis label overlap (default: 40)
+  axis_clearance?: number
+}
 
 // attributes for each item passed to the legend
 export interface LegendItem {
@@ -422,9 +420,9 @@ export interface AxisOption {
 export type Y2SyncMode = `none` | `synced` | `align`
 
 // Type guard for select value narrowing (avoids unsafe casts)
-const Y2_SYNC_MODES: Y2SyncMode[] = [`none`, `synced`, `align`]
+const Y2_SYNC_MODES = new Set<Y2SyncMode>([`none`, `synced`, `align`])
 export function is_y2_sync_mode(val: string): val is Y2SyncMode {
-  return Y2_SYNC_MODES.includes(val as Y2SyncMode)
+  return Y2_SYNC_MODES.has(val as Y2SyncMode)
 }
 
 export interface Y2SyncConfig {
@@ -533,7 +531,8 @@ export interface StyleOverrides {
 }
 
 export type AxisKey = `x` | `x2` | `y` | `y2`
-export interface PlotConfig { // Grouped configuration for plot axes and display settings
+export interface PlotConfig {
+  // Grouped configuration for plot axes and display settings
   x_axis?: AxisConfig
   x2_axis?: AxisConfig
   y_axis?: AxisConfig
@@ -626,12 +625,7 @@ export const CELLS_3X3 = [
   `bottom-center`,
   `bottom-right`,
 ] as const
-export const CORNER_CELLS = [
-  `top-left`,
-  `top-right`,
-  `bottom-left`,
-  `bottom-right`,
-] as const
+export const CORNER_CELLS = [`top-left`, `top-right`, `bottom-left`, `bottom-right`] as const
 
 // Define the structure for GridCell and GridCellCounts for 3x3 grid
 export type Cell3x3 = (typeof CELLS_3X3)[number]
@@ -639,7 +633,7 @@ export type Corner = (typeof CORNER_CELLS)[number]
 
 // Default grid line style (SSOT for all plot components)
 export const DEFAULT_GRID_STYLE = {
-  'stroke': `var(--border-color, gray)`,
+  stroke: `var(--border-color, gray)`,
   'stroke-dasharray': `4`,
   'stroke-width': `1`,
 } as const
@@ -674,15 +668,16 @@ export const DEFAULT_SERIES_SYMBOLS = [
 export type XyzObj = { x: number; y: number; z: number }
 
 // 3D point extending base Point with z coordinate (prefixed to avoid conflict with convex-hull)
-export interface ScatterPoint3D<Metadata = Record<string, unknown>>
-  extends Point<Metadata> {
+export interface ScatterPoint3D<Metadata = Record<string, unknown>> extends Point<Metadata> {
   z: number
 }
 
 // 3D data series extending DataSeries with z array
 // Omit filtered_data since it uses 2D InternalPoint type, redeclare with 3D type
-export interface DataSeries3D<Metadata = Record<string, unknown>>
-  extends Omit<DataSeries<Metadata>, `x` | `y` | `y_axis` | `filtered_data`> {
+export interface DataSeries3D<Metadata = Record<string, unknown>> extends Omit<
+  DataSeries<Metadata>,
+  `x` | `y` | `y_axis` | `filtered_data`
+> {
   x: readonly number[]
   y: readonly number[]
   z: readonly number[]
@@ -690,8 +685,9 @@ export interface DataSeries3D<Metadata = Record<string, unknown>>
 }
 
 // Internal 3D point for processing within ScatterPlot3D
-export interface InternalPoint3D<Metadata = Record<string, unknown>>
-  extends ScatterPoint3D<Metadata> {
+export interface InternalPoint3D<
+  Metadata = Record<string, unknown>,
+> extends ScatterPoint3D<Metadata> {
   series_idx: number
   point_idx: number
   color_value?: number | null
@@ -775,8 +771,10 @@ export interface Scatter3DHandlerProps<Metadata = Record<string, unknown>> {
 }
 
 export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
-  & Scatter3DHandlerProps<Metadata>
-  & { event?: MouseEvent; point: InternalPoint3D<Metadata> }
+  Scatter3DHandlerProps<Metadata> & {
+    event?: MouseEvent
+    point: InternalPoint3D<Metadata>
+  }
 
 // Camera projection types for 3D
 export type CameraProjection3D = `perspective` | `orthographic`
@@ -920,10 +918,12 @@ export interface FillRegion {
 // Convenience type for error bands (symmetric or asymmetric around a series)
 export interface ErrorBand {
   // Reference to the central series
-  series: { type: `series`; series_idx: number } | {
-    type: `series`
-    series_id: string | number
-  }
+  series:
+    | { type: `series`; series_idx: number }
+    | {
+        type: `series`
+        series_id: string | number
+      }
 
   // Error values - can be symmetric (single value/array) or asymmetric (upper/lower)
   error:
@@ -1001,17 +1001,16 @@ export interface RefLineBase {
 export type RefLineValue = number | Date | string
 
 // Flat discriminated union - type determines required fields
-export type RefLine =
-  & RefLineBase
-  & (
+export type RefLine = RefLineBase &
+  (
     | { type: `horizontal`; y: RefLineValue }
     | { type: `vertical`; x: RefLineValue }
     | { type: `diagonal`; slope: number; intercept: number }
     | {
-      type: `segment`
-      p1: [RefLineValue, RefLineValue]
-      p2: [RefLineValue, RefLineValue]
-    }
+        type: `segment`
+        p1: [RefLineValue, RefLineValue]
+        p2: [RefLineValue, RefLineValue]
+      }
     | { type: `line`; p1: [RefLineValue, RefLineValue]; p2: [RefLineValue, RefLineValue] }
   )
 
@@ -1045,9 +1044,8 @@ export interface RefLine3DBase {
 }
 
 // 3D reference line - discriminated union
-export type RefLine3D =
-  & RefLine3DBase
-  & (
+export type RefLine3D = RefLine3DBase &
+  (
     | { type: `x-axis`; y: number; z: number } // line parallel to x-axis
     | { type: `y-axis`; x: number; z: number } // line parallel to y-axis
     | { type: `z-axis`; x: number; y: number } // line parallel to z-axis
@@ -1078,9 +1076,8 @@ export interface RefPlaneBase {
 }
 
 // 3D reference plane - discriminated union
-export type RefPlane =
-  & RefPlaneBase
-  & (
+export type RefPlane = RefPlaneBase &
+  (
     | { type: `xy`; z: number } // horizontal plane at z
     | { type: `xz`; y: number } // vertical plane at y
     | { type: `yz`; x: number } // vertical plane at x

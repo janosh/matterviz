@@ -52,9 +52,7 @@ describe(`get_alphabetical_formula`, () => {
   ])(
     `input=%p, plain_text=%p, delim=%p, amount_format=%p → %p`,
     (input, plain_text, delim, amount_format, expected) => {
-      expect(get_alphabetical_formula(input, plain_text, delim, amount_format)).toBe(
-        expected,
-      )
+      expect(get_alphabetical_formula(input, plain_text, delim, amount_format)).toBe(expected)
     },
   )
 })
@@ -104,9 +102,7 @@ describe(`get_electro_neg_formula`, () => {
   ])(
     `input=%p, plain_text=%p, delim=%p, amount_format=%p → %p`,
     (input, plain_text, delim, amount_format, expected) => {
-      expect(get_electro_neg_formula(input, plain_text, delim, amount_format)).toBe(
-        expected,
-      )
+      expect(get_electro_neg_formula(input, plain_text, delim, amount_format)).toBe(expected)
     },
   )
 })

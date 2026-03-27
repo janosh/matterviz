@@ -11,10 +11,7 @@ import { ELEM_SYMBOLS } from '$lib/labels'
 import { describe, expect, test, vi } from 'vitest'
 
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
-const EXPECTED_ELEMENTS = Array.from(
-  { length: 109 },
-  (_, idx) => ELEM_SYMBOLS[idx],
-)
+const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
 
 // Test if a string is a valid hex color
 function is_valid_hex_color(color: string): boolean {
@@ -72,19 +69,19 @@ describe(`Element Color Schemes`, () => {
       ).toBe(first_elements.size)
 
       // Check for missing elements
-      const missing_elements = [...first_elements].filter(
-        (el) => !scheme_elements.has(el),
-      ).join(`, `)
+      const missing_elements = [...first_elements]
+        .filter((el) => !scheme_elements.has(el))
+        .join(`, `)
       expect(
         missing_elements,
         `${scheme_name} is missing elements from ${first_scheme_name}: ${missing_elements}`,
       ).toHaveLength(0)
 
       // Check for extra elements
-      const extra_elements = [...scheme_elements].filter((el) => !first_elements.has(el))
+      const extra_elements = [...scheme_elements]
+        .filter((el) => !first_elements.has(el))
         .join(`, `)
-      const fail_msg =
-        `${scheme_name} has extra elements not in ${first_scheme_name}: ${extra_elements}`
+      const fail_msg = `${scheme_name} has extra elements not in ${first_scheme_name}: ${extra_elements}`
       expect(extra_elements, fail_msg).toHaveLength(0)
     }
   })
@@ -93,10 +90,7 @@ describe(`Element Color Schemes`, () => {
     for (const [scheme_name, colors] of Object.entries(ELEMENT_COLOR_SCHEMES)) {
       // Check all colors are valid hex format
       for (const [element, color] of Object.entries(colors)) {
-        expect(
-          typeof color,
-          `${scheme_name}.${element} should be a string`,
-        ).toBe(`string`)
+        expect(typeof color, `${scheme_name}.${element} should be a string`).toBe(`string`)
         expect(
           is_valid_hex_color(color),
           `${scheme_name}.${element} should be valid hex color (got: ${color})`,
@@ -111,19 +105,19 @@ describe(`Element Color Schemes`, () => {
       // Alloy scheme inherits from VESTA so may have more duplicates
       // Muted scheme uses desaturated colors that can result in similar hex values
       // Dark Mode scheme uses bright colors that can result in similar hex values
-      const max_duplicates = {
-        Alloy: 15,
-        Muted: 15,
-        'Dark Mode': 25,
-        Pastel: 10,
-        Vesta: 10,
-        Jmol: 10,
-      }[scheme_name] ?? Infinity
+      const max_duplicates =
+        {
+          Alloy: 15,
+          Muted: 15,
+          'Dark Mode': 25,
+          Pastel: 10,
+          Vesta: 10,
+          Jmol: 10,
+        }[scheme_name] ?? Infinity
       const duplicate_count = color_values.length - unique_colors.size
-      expect(
-        duplicate_count,
-        `${scheme_name} too many duplicate colors`,
-      ).toBeLessThan(max_duplicates)
+      expect(duplicate_count, `${scheme_name} too many duplicate colors`).toBeLessThan(
+        max_duplicates,
+      )
 
       // Check key elements are present
       const key_elements = [`H`, `C`, `N`, `O`, `Fe`, `Au`, `U`]
@@ -148,10 +142,7 @@ describe(`Element Color Schemes`, () => {
 
     for (const element of sample_elements) {
       const color = pastel_colors[element]
-      expect(
-        color,
-        `Pastel scheme should have color for ${element}`,
-      ).toBeDefined()
+      expect(color, `Pastel scheme should have color for ${element}`).toBeDefined()
 
       // Convert hex to RGB and check lightness
       const r = parseInt(color.slice(1, 3), 16)
@@ -230,52 +221,48 @@ describe(`is_color function`, () => {
 describe(`css_color_to_hex`, () => {
   const fallback = `#000000`
 
-  test.each(
-    [
-      // Valid hex colors pass through
-      [`#ff0000`, `#ff0000`],
-      [`#FF0000`, `#ff0000`], // lowercase output
-      [`#f00`, `#ff0000`], // short hex expanded
-      [`#00ff00`, `#00ff00`],
-      // CSS color functions are parsed
-      [`rgb(255, 0, 0)`, `#ff0000`],
-      [`rgb(0, 128, 255)`, `#0080ff`],
-      [`rgba(255, 0, 0, 0.5)`, `#ff0000`], // alpha ignored for hex
-      [`hsl(0, 100%, 50%)`, `#ff0000`],
-      [`hsl(120, 100%, 50%)`, `#00ff00`],
-      [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`],
-      // Named colors
-      [`red`, `#ff0000`],
-      [`blue`, `#0000ff`],
-      [`green`, `#008000`], // CSS green is #008000, not #00ff00
-      [`white`, `#ffffff`],
-      [`black`, `#000000`],
-      [`orange`, `#ffa500`],
-    ] as const,
-  )(`converts %s to %s`, (input, expected) => {
+  test.each([
+    // Valid hex colors pass through
+    [`#ff0000`, `#ff0000`],
+    [`#FF0000`, `#ff0000`], // lowercase output
+    [`#f00`, `#ff0000`], // short hex expanded
+    [`#00ff00`, `#00ff00`],
+    // CSS color functions are parsed
+    [`rgb(255, 0, 0)`, `#ff0000`],
+    [`rgb(0, 128, 255)`, `#0080ff`],
+    [`rgba(255, 0, 0, 0.5)`, `#ff0000`], // alpha ignored for hex
+    [`hsl(0, 100%, 50%)`, `#ff0000`],
+    [`hsl(120, 100%, 50%)`, `#00ff00`],
+    [`hsla(240, 100%, 50%, 0.8)`, `#0000ff`],
+    // Named colors
+    [`red`, `#ff0000`],
+    [`blue`, `#0000ff`],
+    [`green`, `#008000`], // CSS green is #008000, not #00ff00
+    [`white`, `#ffffff`],
+    [`black`, `#000000`],
+    [`orange`, `#ffa500`],
+  ] as const)(`converts %s to %s`, (input, expected) => {
     expect(css_color_to_hex(input, fallback)).toBe(expected)
   })
 
-  test.each(
-    [
-      // Undefined and empty
-      [undefined, fallback, fallback, `returns fallback for undefined`],
-      [``, fallback, fallback, `returns fallback for empty string`],
-      // CSS variables
-      [`var(--primary-color)`, fallback, fallback, `returns fallback for CSS variable`],
-      [`var(--bg)`, fallback, fallback, `returns fallback for CSS variable shorthand`],
-      [`var(--color)`, `#abcdef`, `#abcdef`, `uses custom fallback for CSS variable`],
-      // Invalid colors
-      [`not-a-color`, fallback, fallback, `returns fallback for invalid color name`],
-      [`#gggggg`, fallback, fallback, `returns fallback for invalid hex`],
-      [`rgb(invalid)`, fallback, fallback, `returns fallback for malformed rgb`],
-      // Special cases
-      [`transparent`, fallback, `#ffffff`, `returns #ffffff for transparent`],
-      [undefined, `#abcdef`, `#abcdef`, `uses custom fallback for undefined`],
-      // Element color scheme values
-      [ELEMENT_COLOR_SCHEMES.Jmol.H, fallback, `#ffffff`, `parses Jmol H color`],
-    ] as const,
-  )(`%s: %s`, (input, fb, expected, _description) => {
+  test.each([
+    // Undefined and empty
+    [undefined, fallback, fallback, `returns fallback for undefined`],
+    [``, fallback, fallback, `returns fallback for empty string`],
+    // CSS variables
+    [`var(--primary-color)`, fallback, fallback, `returns fallback for CSS variable`],
+    [`var(--bg)`, fallback, fallback, `returns fallback for CSS variable shorthand`],
+    [`var(--color)`, `#abcdef`, `#abcdef`, `uses custom fallback for CSS variable`],
+    // Invalid colors
+    [`not-a-color`, fallback, fallback, `returns fallback for invalid color name`],
+    [`#gggggg`, fallback, fallback, `returns fallback for invalid hex`],
+    [`rgb(invalid)`, fallback, fallback, `returns fallback for malformed rgb`],
+    // Special cases
+    [`transparent`, fallback, `#ffffff`, `returns #ffffff for transparent`],
+    [undefined, `#abcdef`, `#abcdef`, `uses custom fallback for undefined`],
+    // Element color scheme values
+    [ELEMENT_COLOR_SCHEMES.Jmol.H, fallback, `#ffffff`, `parses Jmol H color`],
+  ] as const)(`%s: %s`, (input, fb, expected, _description) => {
     expect(css_color_to_hex(input, fb)).toBe(expected)
   })
 })
@@ -298,12 +285,7 @@ test.each([
 test.each([
   [null, undefined, `rgba(0, 0, 0, 0)`, `null element`],
   [document.createElement(`div`), `#ff0000`, `#ff0000`, `explicit bg_color`],
-  [
-    document.createElement(`div`),
-    undefined,
-    `rgba(0, 0, 0, 0)`,
-    `transparent background`,
-  ],
+  [document.createElement(`div`), undefined, `rgba(0, 0, 0, 0)`, `transparent background`],
 ])(`get_bg_color: %s`, (elem, bg_color, expected, description) => {
   if (description === `transparent background`) {
     Object.defineProperty(window, `getComputedStyle`, {
@@ -353,22 +335,19 @@ describe(`get_page_background`, () => {
     [`transparent`, `#e0e0e0`, false, `#e0e0e0`, `body background`],
     [`transparent`, `transparent`, true, `#1a1a1a`, `dark mode fallback`],
     [`transparent`, `transparent`, false, `#ffffff`, `light mode fallback`],
-  ])(
-    `$4`,
-    (html_bg, body_bg, prefers_dark, expected) => {
-      let call_idx = 0
-      vi.stubGlobal(`getComputedStyle`, (_elem: Element) => {
-        const bg = call_idx++ === 0 ? html_bg : body_bg
-        return { backgroundColor: bg } as CSSStyleDeclaration
-      })
-      vi.stubGlobal(
-        `matchMedia`,
-        (query: string) => ({ matches: prefers_dark, media: query }),
-      )
-      expect(get_page_background()).toBe(expected)
-      vi.unstubAllGlobals()
-    },
-  )
+  ])(`$4`, (html_bg, body_bg, prefers_dark, expected) => {
+    let call_idx = 0
+    vi.stubGlobal(`getComputedStyle`, (_elem: Element) => {
+      const bg = call_idx++ === 0 ? html_bg : body_bg
+      return { backgroundColor: bg } as CSSStyleDeclaration
+    })
+    vi.stubGlobal(`matchMedia`, (query: string) => ({
+      matches: prefers_dark,
+      media: query,
+    }))
+    expect(get_page_background()).toBe(expected)
+    vi.unstubAllGlobals()
+  })
 
   test(`custom fallback values`, () => {
     vi.stubGlobal(

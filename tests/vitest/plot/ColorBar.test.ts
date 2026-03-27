@@ -35,9 +35,7 @@ describe(`ColorBar Horizontal (Default)`, () => {
     expect(cbar_div.style.width).toBe(`200px`)
     expect(cbar_div.style.height).toBe(`20px`)
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(6)
     const first_tick = tick_label_spans[0] as HTMLElement
     expect(first_tick.style.left).toBe(`0%`)
@@ -88,9 +86,7 @@ describe(`ColorBar Vertical`, () => {
     expect(computed_style.width).toBe(`14px`) // Check computed value of --cbar-thickness
     expect(computed_style.height).not.toBe(`14px`)
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(6)
 
     const first_tick = tick_label_spans[0] as HTMLElement
@@ -121,18 +117,14 @@ describe(`ColorBar Vertical`, () => {
     expect(wrapper_vert_exp.style.flexDirection).toBe(`column`)
     expect(wrapper_vert_exp.style.height).toBe(`300px`)
 
-    const title_span_vert_exp = doc_query(
-      `.colorbar .label`,
-    ) as HTMLElement
+    const title_span_vert_exp = doc_query(`.colorbar .label`) as HTMLElement
     expect(title_span_vert_exp.textContent).toBe(`Test Vertical Explicit`)
 
     const cbar_div = doc_query(`.colorbar > div.bar`)
     expect(cbar_div.style.width).toBe(`20px`)
     expect(cbar_div.style.height).toBe(`300px`)
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(7)
 
     const middle_tick = tick_label_spans[3] as HTMLElement // Tick '0'
@@ -156,9 +148,7 @@ describe(`ColorBar tick_side='inside'`, () => {
       },
     })
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(4)
 
     const first_visible_tick = tick_label_spans[0] as HTMLElement
@@ -184,9 +174,7 @@ describe(`ColorBar tick_side='inside'`, () => {
       },
     })
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(7)
 
     const first_visible_tick = tick_label_spans[0] as HTMLElement
@@ -221,9 +209,7 @@ describe(`ColorBar tick_side='inside'`, () => {
       return luminance(bg_color) > 0.5 ? `black` : `white`
     }
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
 
     // Inside ticks hide first/last, so we check ticks at 0.25, 0.5, 0.75
     expect(tick_label_spans.length).toBe(3)
@@ -246,17 +232,15 @@ describe(`ColorBar tick_side='inside'`, () => {
 })
 
 describe(`ColorBar title_side Default Logic`, () => {
-  test.each(
-    [
-      // [orientation, tick_side, expected_flex_dir]
-      [`horizontal`, `primary`, `column`],
-      [`horizontal`, `secondary`, `column-reverse`],
-      [`vertical`, `primary`, `row`],
-      [`vertical`, `secondary`, `row-reverse`],
-      [`horizontal`, `inside`, `row`],
-      [`vertical`, `inside`, `row`],
-    ] as const,
-  )(
+  test.each([
+    // [orientation, tick_side, expected_flex_dir]
+    [`horizontal`, `primary`, `column`],
+    [`horizontal`, `secondary`, `column-reverse`],
+    [`vertical`, `primary`, `row`],
+    [`vertical`, `secondary`, `row-reverse`],
+    [`horizontal`, `inside`, `row`],
+    [`vertical`, `inside`, `row`],
+  ] as const)(
     `orientation=%s, tick_side=%s -> defaults title flex-direction to %s`,
     (orientation, tick_side, expected_flex_dir) => {
       mount(ColorBar, {
@@ -291,9 +275,7 @@ describe(`ColorBar Date/Time Formatting`, () => {
       },
     })
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(3)
     expect(tick_label_spans[0].textContent).toBe(`2024-01-01`) // Start date
     expect(tick_label_spans[1].textContent).toBe(`2024-07-01`) // Mid-point (approx)
@@ -321,9 +303,7 @@ describe(`ColorBar Date/Time Formatting`, () => {
     )
     expect(tick_label_spans_date_fmt.length).toBe(5)
     expect(tick_label_spans_date_fmt[0].textContent).toBe(`00:00`)
-    expect([`11:59`, `12:00`]).toContain(
-      tick_label_spans_date_fmt[2].textContent,
-    )
+    expect([`11:59`, `12:00`]).toContain(tick_label_spans_date_fmt[2].textContent)
     expect(tick_label_spans_date_fmt[4].textContent).toBe(`23:59`) // Near end of day
   })
 })
@@ -340,9 +320,7 @@ describe(`ColorBar Numeric Formatting`, () => {
       },
     })
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(6)
     expect(tick_label_spans[0].textContent).toBe(`0`)
     expect(tick_label_spans[1].textContent).toBe(`2`)
@@ -363,9 +341,7 @@ describe(`ColorBar Numeric Formatting`, () => {
       },
     })
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(5)
     expect(tick_label_spans[0].textContent).toBe(`0%`)
     expect(tick_label_spans[1].textContent).toBe(`25%`)
@@ -409,9 +385,7 @@ describe(`ColorBar Other Features`, () => {
       },
     })
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(explicit_ticks.length)
     explicit_ticks.forEach((tick, idx) => {
       expect(tick_label_spans[idx].textContent).toBe(tick.toString())
@@ -424,9 +398,7 @@ describe(`ColorBar Other Features`, () => {
       props: { range: [0, 99], tick_labels: 4, snap_ticks: false },
     })
 
-    const tick_label_spans = document.querySelectorAll(
-      `.colorbar > div.bar > span.tick-label`,
-    )
+    const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(4)
     expect(tick_label_spans[0].textContent).toBe(`0`)
     expect(tick_label_spans[1].textContent).toBe(`33`)
@@ -487,12 +459,10 @@ describe(`Vertical Layout Specifics`, () => {
     // We trust the browser to apply the default value from the CSS var.
   })
 
-  test.each(
-    [
-      { side: `left`, flex_dir: `row` },
-      { side: `right`, flex_dir: `row-reverse` },
-    ] as const,
-  )(
+  test.each([
+    { side: `left`, flex_dir: `row` },
+    { side: `right`, flex_dir: `row-reverse` },
+  ] as const)(
     `positions rotated side titles correctly (title_side=$side)`,
     ({ side, flex_dir }) => {
       const title = `Rotated ${side.charAt(0).toUpperCase() + side.slice(1)} Title`

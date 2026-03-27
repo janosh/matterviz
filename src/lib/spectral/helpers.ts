@@ -1,12 +1,6 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import {
-  centered_frac,
-  euclidean_dist,
-  type Matrix3x3,
-  type Vec2,
-  type Vec3,
-} from '$lib/math'
+import { centered_frac, euclidean_dist, type Matrix3x3, type Vec2, type Vec3 } from '$lib/math'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 
@@ -56,10 +50,12 @@ export function detect_zoom_change(
   }
 
   // Check for new zoom from either plot
-  const bands_is_new = bands_valid &&
+  const bands_is_new =
+    bands_valid &&
     !ranges_equal(bands_range, shared_range) &&
     !ranges_equal(bands_range, current_synced)
-  const dos_is_new = dos_valid &&
+  const dos_is_new =
+    dos_valid &&
     !ranges_equal(dos_range, shared_range) &&
     !ranges_equal(dos_range, current_synced)
 
@@ -101,9 +97,10 @@ export function pretty_sym_point(symbol: string): string {
       /(\p{L})(\d+)/gu,
       (_, letter, num) =>
         letter +
-        num.split(``).map((digit: string) =>
-          SUBSCRIPT_MAP[digit as keyof typeof SUBSCRIPT_MAP] ?? digit
-        ).join(``),
+        num
+          .split(``)
+          .map((digit: string) => SUBSCRIPT_MAP[digit as keyof typeof SUBSCRIPT_MAP] ?? digit)
+          .join(``),
     )
 }
 
@@ -122,7 +119,7 @@ export const get_ordered_segments = (
     get_segment_key(
       band_struct.qpoints[br.start_index]?.label ?? undefined,
       band_struct.qpoints[br.end_index]?.label ?? undefined,
-    )
+    ),
   )
   const remaining = Array.from(segments).filter((seg) => !ordered.includes(seg))
   return [...ordered, ...remaining]
@@ -197,9 +194,7 @@ export function get_band_xaxis_ticks(
 
     // Find which branch this point belongs to
     const branch_names = band_struct.branches
-      .filter(
-        (branch) => branch.start_index <= idx && idx <= branch.end_index,
-      )
+      .filter((branch) => branch.start_index <= idx && idx <= branch.end_index)
       .map((b) => b.name)
     const this_branch = branch_names[0] || null
 
@@ -207,9 +202,7 @@ export function get_band_xaxis_ticks(
       // Branch transition - combine labels
       tick_labels[tick_labels.length - 1] = `${prev_label || ``}|${point.label}`
       ticks_x_pos[ticks_x_pos.length - 1] = band_struct.distance[idx]
-    } else if (
-      branches_set.size === 0 || (this_branch && branches_set.has(this_branch))
-    ) {
+    } else if (branches_set.size === 0 || (this_branch && branches_set.has(this_branch))) {
       tick_labels.push(point.label)
       ticks_x_pos.push(band_struct.distance[idx])
     }
@@ -227,10 +220,10 @@ export function convert_frequencies(
   unit: types.FrequencyUnit = `THz`,
 ): number[] {
   const conversion_factors: Record<types.FrequencyUnit, number> = {
-    'THz': 1,
-    'eV': THz_TO_EV,
-    'meV': THz_TO_MEV,
-    'Ha': THz_TO_HA,
+    THz: 1,
+    eV: THz_TO_EV,
+    meV: THz_TO_MEV,
+    Ha: THz_TO_HA,
     'cm-1': THz_TO_CM,
   }
 
@@ -301,9 +294,9 @@ function generate_smearing_cache_key(
 ): string {
   const len = freqs_or_energies.length
   if (len === 0) return `0:${sigma.toFixed(6)}:0:0`
-  return `${len}:${sigma.toFixed(6)}:${fnv1a_hash(freqs_or_energies).toString(16)}:${
-    fnv1a_hash(densities).toString(16)
-  }`
+  return `${len}:${sigma.toFixed(6)}:${fnv1a_hash(freqs_or_energies).toString(16)}:${fnv1a_hash(
+    densities,
+  ).toString(16)}`
 }
 
 // Core Gaussian smearing computation (unmemoized)
@@ -390,7 +383,9 @@ interface PymatgenKpoint {
   label?: string | null
 }
 const is_kpoint = (val: unknown): val is PymatgenKpoint =>
-  !!val && typeof val === `object` && `frac_coords` in val &&
+  !!val &&
+  typeof val === `object` &&
+  `frac_coords` in val &&
   is_vec3((val as PymatgenKpoint).frac_coords)
 
 const is_pymatgen_format = (obj: Record<string, unknown>): boolean => {
@@ -412,17 +407,17 @@ const parse_qpoint = (
   labels_dict?: Record<string, Vec3>,
 ): types.QPoint | null => {
   const frac_coords = is_vec3(qpt)
-    ? [qpt[0], qpt[1], qpt[2]] as Vec3
+    ? ([qpt[0], qpt[1], qpt[2]] as Vec3)
     : is_kpoint(qpt)
-    ? qpt.frac_coords
-    : null
+      ? qpt.frac_coords
+      : null
   if (!frac_coords) return null
 
-  const label = (is_kpoint(qpt) && typeof qpt.label === `string` && qpt.label) ||
-    Object.entries(labels_dict ?? {}).find(([, c]) =>
-      euclidean_dist(frac_coords, c) < 1e-4
-    )
-      ?.[0] ||
+  const label =
+    (is_kpoint(qpt) && typeof qpt.label === `string` && qpt.label) ||
+    Object.entries(labels_dict ?? {}).find(
+      ([, c]) => euclidean_dist(frac_coords, c) < 1e-4,
+    )?.[0] ||
     null
   return { label, frac_coords }
 }
@@ -437,9 +432,7 @@ const SPIN_DOWN_KEYS = [`-1`, `Spin.down`]
 
 // Extract both spin channels from pymatgen spin-keyed data.
 // Returns { up: T, down: T | null } where down is null for non-spin-polarized data.
-export function extract_spin_channels<T>(
-  data: unknown,
-): { up: T; down: T | null } | null {
+export function extract_spin_channels<T>(data: unknown): { up: T; down: T | null } | null {
   if (Array.isArray(data)) return { up: data as T, down: null }
   if (data && typeof data === `object`) {
     const record = data as Record<string, T>
@@ -493,9 +486,8 @@ function convert_pymatgen_band_structure(
     const freqs = pmg.frequencies_cm as number[][]
     if (freqs.length > 0 && Array.isArray(freqs[0])) {
       // Transpose: [n_qpoints x n_branches] -> [n_branches x n_qpoints]
-      raw_bands = Array.from(
-        { length: freqs[0].length },
-        (_, band_idx) => freqs.map((qpt_freqs) => qpt_freqs[band_idx]),
+      raw_bands = Array.from({ length: freqs[0].length }, (_, band_idx) =>
+        freqs.map((qpt_freqs) => qpt_freqs[band_idx]),
       )
       raw_spin_down_bands = null
     }
@@ -504,27 +496,30 @@ function convert_pymatgen_band_structure(
   const labels_dict = pmg.labels_dict as Record<string, Vec3> | undefined
   const lattice_rec = pmg.lattice_rec as { matrix?: Matrix3x3 } | undefined
   // Determine unit: cm-1 if frequencies_cm present, else check explicit unit or default to THz
-  const unit = (pmg.unit as string | undefined)?.toLowerCase() ??
-    (has_frequencies_cm ? `cm-1` : `thz`)
+  const unit =
+    (pmg.unit as string | undefined)?.toLowerCase() ?? (has_frequencies_cm ? `cm-1` : `thz`)
 
   if (
-    !Array.isArray(raw_qpts) || !Array.isArray(raw_bands) ||
-    !raw_qpts.length || !raw_bands.length
-  ) return null
-
-  const qpoints = raw_qpts.map((q) => parse_qpoint(q, labels_dict)).filter(
-    (q): q is types.QPoint => q !== null,
+    !Array.isArray(raw_qpts) ||
+    !Array.isArray(raw_bands) ||
+    !raw_qpts.length ||
+    !raw_bands.length
   )
+    return null
+
+  const qpoints = raw_qpts
+    .map((q) => parse_qpoint(q, labels_dict))
+    .filter((q): q is types.QPoint => q !== null)
   if (!qpoints.length) return null
 
   // Step distances and discontinuity detection (5x median threshold)
-  const steps = qpoints.slice(1).map((q, idx) =>
-    euclidean_dist(qpoints[idx].frac_coords, q.frac_coords)
-  )
+  const steps = qpoints
+    .slice(1)
+    .map((q, idx) => euclidean_dist(qpoints[idx].frac_coords, q.frac_coords))
   const sorted = steps.slice().sort((a, b) => a - b)
   const threshold = (sorted[Math.floor(sorted.length / 2)] ?? 0) * 5
   const disc_set = new Set(
-    steps.map((s, idx) => s > threshold ? idx + 1 : -1).filter((i) => i >= 0),
+    steps.map((s, idx) => (s > threshold ? idx + 1 : -1)).filter((i) => i >= 0),
   )
 
   // Cumulative distance (skip discontinuities)
@@ -540,18 +535,19 @@ function convert_pymatgen_band_structure(
 
   if (Array.isArray(pmg_branches) && pmg_branches.length > 0) {
     // Validate and use pymatgen branches directly
-    branches = pmg_branches.filter((br) =>
-      typeof br.start_index === `number` &&
-      typeof br.end_index === `number` &&
-      br.start_index >= 0 &&
-      br.end_index < qpoints.length &&
-      br.start_index <= br.end_index
+    branches = pmg_branches.filter(
+      (br) =>
+        typeof br.start_index === `number` &&
+        typeof br.end_index === `number` &&
+        br.start_index >= 0 &&
+        br.end_index < qpoints.length &&
+        br.start_index <= br.end_index,
     )
   }
 
   // Fallback: infer branches from discontinuities when none provided or all invalid
   if (branches.length === 0) {
-    console.info(
+    console.warn(
       `Band structure missing 'branches' field - inferring from path discontinuities`,
     )
     // Discontinuity indices mark points where the path jumps (disc before that index)
@@ -587,15 +583,16 @@ function convert_pymatgen_band_structure(
   }
 
   const converted_bands = raw_bands.map((band) => band.map(convert_to_thz))
-  const valid_spin_down_bands = Array.isArray(raw_spin_down_bands) &&
-      raw_spin_down_bands.length === raw_bands.length &&
-      raw_spin_down_bands.every((band, band_idx) =>
-        Array.isArray(band) && band.length === raw_bands[band_idx]?.length
-      )
-    ? raw_spin_down_bands
-    : null
+  const valid_spin_down_bands =
+    Array.isArray(raw_spin_down_bands) &&
+    raw_spin_down_bands.length === raw_bands.length &&
+    raw_spin_down_bands.every(
+      (band, band_idx) => Array.isArray(band) && band.length === raw_bands[band_idx]?.length,
+    )
+      ? raw_spin_down_bands
+      : null
   const converted_spin_down_bands = valid_spin_down_bands?.map((band) =>
-    band.map(convert_to_thz)
+    band.map(convert_to_thz),
   )
 
   return {
@@ -606,13 +603,17 @@ function convert_pymatgen_band_structure(
     spin_down_bands: converted_spin_down_bands,
     nb_bands: raw_bands.length,
     labels_dict: labels_dict ?? {},
-    recip_lattice: { matrix: lattice_rec?.matrix ?? [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
+    recip_lattice: {
+      matrix: lattice_rec?.matrix ?? [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+    },
   }
 }
 
-export function normalize_band_structure(
-  bs: unknown,
-): types.BaseBandStructure | null {
+export function normalize_band_structure(bs: unknown): types.BaseBandStructure | null {
   if (!bs || typeof bs !== `object`) return null
 
   const band_struct = bs as Record<string, unknown>
@@ -623,15 +624,15 @@ export function normalize_band_structure(
   }
 
   // Standard matterviz format validation
-  const { qpoints, branches, bands, distance } = band_struct as Partial<
-    types.BaseBandStructure
-  >
+  const { qpoints, branches, bands, distance } =
+    band_struct as Partial<types.BaseBandStructure>
   if (
     !Array.isArray(qpoints) ||
     !Array.isArray(branches) ||
     !Array.isArray(bands) ||
     !Array.isArray(distance)
-  ) return null
+  )
+    return null
 
   // Validate array lengths and branch indices
   const n_qpts = qpoints.length
@@ -646,7 +647,8 @@ export function normalize_band_structure(
         br.end_index >= n_qpts ||
         br.start_index > br.end_index,
     )
-  ) return null
+  )
+    return null
 
   return band_struct as unknown as types.BaseBandStructure
 }
@@ -664,8 +666,8 @@ export function normalize_dos(
   const dos_obj = dos as Record<string, unknown>
 
   // Check for pymatgen format (has @class or @module)
-  const is_pymatgen = typeof dos_obj[`@class`] === `string` ||
-    typeof dos_obj[`@module`] === `string`
+  const is_pymatgen =
+    typeof dos_obj[`@class`] === `string` || typeof dos_obj[`@module`] === `string`
 
   const { frequencies, energies, spin_polarized } = dos_obj
 
@@ -676,8 +678,8 @@ export function normalize_dos(
 
   const densities = spin_channels.up
   // Use extracted spin-down or fallback to explicit field (for already-normalized DosData)
-  const spin_down_densities = spin_channels.down ??
-    (dos_obj.spin_down_densities as number[] | undefined) ?? null
+  const spin_down_densities =
+    spin_channels.down ?? (dos_obj.spin_down_densities as number[] | undefined) ?? null
 
   if (!Array.isArray(densities)) return null
 
@@ -688,13 +690,13 @@ export function normalize_dos(
     // Auto-detect if frequencies are in cm⁻¹ instead of THz (unless disabled)
     // Typical phonon frequencies are < 50 THz for most materials
     // If max frequency > 100, it's almost certainly in cm⁻¹
-    const max_freq = Math.max(...frequencies as number[])
+    const max_freq = Math.max(...(frequencies as number[]))
     let final_frequencies = frequencies as number[]
 
     if (auto_convert_units && max_freq > 100) {
       // Likely in cm⁻¹, convert to THz
       final_frequencies = (frequencies as number[]).map((f) => f * CM_TO_THZ)
-      console.info(
+      console.warn(
         `Phonon DOS frequencies appear to be in cm⁻¹ (max: ${max_freq.toFixed(1)}). ` +
           `Converting to THz (max: ${(max_freq * CM_TO_THZ).toFixed(1)} THz).`,
       )
@@ -707,15 +709,14 @@ export function normalize_dos(
   if (Array.isArray(energies)) {
     if (energies.length !== densities.length) return null
     // Detect spin-polarized from data if not explicitly set
-    const is_spin_polarized = (spin_polarized as boolean | undefined) ??
+    const is_spin_polarized =
+      (spin_polarized as boolean | undefined) ??
       (spin_down_densities !== null && spin_down_densities.length === densities.length)
     return {
       type: `electronic`,
       energies,
       densities,
-      spin_down_densities: is_spin_polarized
-        ? spin_down_densities ?? undefined
-        : undefined,
+      spin_down_densities: is_spin_polarized ? (spin_down_densities ?? undefined) : undefined,
       spin_polarized: is_spin_polarized,
     }
   }
@@ -746,7 +747,8 @@ export function extract_k_path_points(
   if (
     recip_lattice_matrix.length !== 3 ||
     recip_lattice_matrix.some((row) => row?.length !== 3)
-  ) throw new Error(`reciprocal_lattice_matrix must be a 3×3 matrix`)
+  )
+    throw new Error(`reciprocal_lattice_matrix must be a 3×3 matrix`)
 
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = recip_lattice_matrix
 
@@ -862,9 +864,10 @@ export function find_qpoint_at_rescaled_x(
 
     const [x_start, x_end] = segment_range
 
-    for (
-      const [x_pos, idx] of [[x_start, start_idx], [x_end, end_idx]] as const
-    ) {
+    for (const [x_pos, idx] of [
+      [x_start, start_idx],
+      [x_end, end_idx],
+    ] as const) {
       const dist = Math.abs(rescaled_x - x_pos)
       if (dist < min_dist) {
         min_dist = dist
@@ -911,9 +914,10 @@ export function extract_pdos(
   const dos_obj = dos as Record<string, unknown>
 
   // Get the appropriate projected DOS dict
-  const pdos_dict = pdos_type === `atom`
-    ? (dos_obj.atom_dos as Record<string, PymatgenDos> | undefined)
-    : (dos_obj.spd_dos as Record<string, PymatgenDos> | undefined)
+  const pdos_dict =
+    pdos_type === `atom`
+      ? (dos_obj.atom_dos as Record<string, PymatgenDos> | undefined)
+      : (dos_obj.spd_dos as Record<string, PymatgenDos> | undefined)
 
   if (!pdos_dict || typeof pdos_dict !== `object`) return null
 
@@ -933,16 +937,14 @@ export function extract_pdos(
     const densities = spin_channels.up
     if (!Array.isArray(densities) || energies.length !== densities.length) continue
 
-    const is_spin_polarized = spin_channels.down !== null &&
-      spin_channels.down.length === densities.length
+    const is_spin_polarized =
+      spin_channels.down !== null && spin_channels.down.length === densities.length
 
     result[key] = {
       type: `electronic`,
       energies,
       densities,
-      spin_down_densities: is_spin_polarized
-        ? spin_channels.down ?? undefined
-        : undefined,
+      spin_down_densities: is_spin_polarized ? (spin_channels.down ?? undefined) : undefined,
       spin_polarized: is_spin_polarized,
       efermi: nested_dos.efermi,
     }
@@ -969,21 +971,21 @@ export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
   // Shift nested atom_dos if present
   const atom_dos = dos.atom_dos
     ? Object.fromEntries(
-      Object.entries(dos.atom_dos).map(([key, nested_dos]) => [
-        key,
-        shift_dos_energies(nested_dos, shift),
-      ]),
-    )
+        Object.entries(dos.atom_dos).map(([key, nested_dos]) => [
+          key,
+          shift_dos_energies(nested_dos, shift),
+        ]),
+      )
     : undefined
 
   // Shift nested spd_dos if present
   const spd_dos = dos.spd_dos
     ? Object.fromEntries(
-      Object.entries(dos.spd_dos).map(([key, nested_dos]) => [
-        key,
-        shift_dos_energies(nested_dos, shift),
-      ]),
-    )
+        Object.entries(dos.spd_dos).map(([key, nested_dos]) => [
+          key,
+          shift_dos_energies(nested_dos, shift),
+        ]),
+      )
     : undefined
 
   return {
@@ -1025,9 +1027,8 @@ export function generate_ribbon_path(
     const x_px = x_scale_fn(x_values[idx])
     const y_data = y_values[idx]
     const raw_width = width_values[idx] ?? 0
-    const width_normalized = Number.isFinite(raw_width) && raw_width > 0
-      ? raw_width / max_width_val
-      : 0
+    const width_normalized =
+      Number.isFinite(raw_width) && raw_width > 0 ? raw_width / max_width_val : 0
     const half_width_px = width_normalized * max_width_px * scale
 
     // In SVG, y increases downward, so upper edge has smaller y value
@@ -1042,7 +1043,7 @@ export function generate_ribbon_path(
   const path_parts = [
     `M${upper_points[0]}`,
     ...upper_points.slice(1).map((pt) => `L${pt}`),
-    ...lower_points.reverse().map((pt) => `L${pt}`),
+    ...lower_points.toReversed().map((pt) => `L${pt}`),
     `Z`,
   ]
 
@@ -1096,7 +1097,8 @@ function is_electronic_band_struct(bs: unknown): boolean {
     return true
   }
   // Pymatgen @class: BandStructure* but not Phonon*
-  const py_class_name = String(obj[`@class`] ?? ``)
+  const raw_class = obj[`@class`]
+  const py_class_name = typeof raw_class === `string` ? raw_class : ``
   if (py_class_name.startsWith(`BandStructure`) && !py_class_name.includes(`Phonon`)) {
     return true
   }
@@ -1116,7 +1118,9 @@ export function compute_frequency_range(
   // (normalized structures always have qpoints, so we can't detect from them)
   let has_electronic_bs = false
   // Support both qpoints (phonon) and kpoints (electronic) to detect single vs dict
-  const is_single_bs = band_structs && typeof band_structs === `object` &&
+  const is_single_bs =
+    band_structs &&
+    typeof band_structs === `object` &&
     (`qpoints` in band_structs || `kpoints` in band_structs)
   if (band_structs && typeof band_structs === `object`) {
     // Single structure check
@@ -1174,7 +1178,9 @@ export function compute_frequency_range(
   }
 
   if (!Number.isFinite(min_val) || !Number.isFinite(max_val)) return undefined
-  const clamp_min = is_phonon && min_val < 0 && // clamp phonon noise to 0
+  const clamp_min =
+    is_phonon &&
+    min_val < 0 && // clamp phonon noise to 0
     negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD
   if (clamp_min) min_val = 0
   // Calculate padding from (possibly clamped) range for consistency with Bands.svelte
@@ -1212,21 +1218,21 @@ export function format_dos_tooltip(
 
   const lines = is_horizontal
     ? [
-      format_line(
-        y_parsed.name || freq_defaults.name,
-        y_formatted,
-        y_parsed.unit || freq_defaults.unit,
-      ),
-      format_line(x_parsed.name || `Density`, x_formatted),
-    ]
+        format_line(
+          y_parsed.name || freq_defaults.name,
+          y_formatted,
+          y_parsed.unit || freq_defaults.unit,
+        ),
+        format_line(x_parsed.name || `Density`, x_formatted),
+      ]
     : [
-      format_line(y_parsed.name || `Density`, y_formatted),
-      format_line(
-        x_parsed.name || freq_defaults.name,
-        x_formatted,
-        x_parsed.unit || freq_defaults.unit,
-      ),
-    ]
+        format_line(y_parsed.name || `Density`, y_formatted),
+        format_line(
+          x_parsed.name || freq_defaults.name,
+          x_formatted,
+          x_parsed.unit || freq_defaults.unit,
+        ),
+      ]
 
   return { title: num_series > 1 && label ? label : undefined, lines }
 }
@@ -1290,11 +1296,7 @@ export interface BandPointMeta extends Record<string, unknown> {
 
 // Central difference for local slope (dω/dk or dE/dk).
 // Uses forward/backward difference at endpoints, central difference for interior points.
-export function compute_slope(
-  x_vals: number[],
-  y_vals: number[],
-  idx: number,
-): number | null {
+export function compute_slope(x_vals: number[], y_vals: number[], idx: number): number | null {
   const len = Math.min(x_vals.length, y_vals.length)
   if (len < 2 || idx < 0 || idx >= len) return null
   const lo = idx === 0 ? 0 : idx - 1

@@ -15,12 +15,7 @@ import {
   structure_to_poscar_str,
   structure_to_xyz_str,
 } from '$lib/structure/export'
-import {
-  parse_cif,
-  parse_poscar,
-  parse_structure_file,
-  parse_xyz,
-} from '$lib/structure/parse'
+import { parse_cif, parse_poscar, parse_structure_file, parse_xyz } from '$lib/structure/parse'
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
@@ -38,8 +33,7 @@ vi.mock(`$lib/composition`, async (import_original) => {
 const { get_electro_neg_formula } = await import(`$lib/composition`)
 const mock_get_electro_neg_formula = vi.mocked(get_electro_neg_formula)
 
-const real_structure_json =
-  `{"@module": "pymatgen.core.structure", "@class": "Structure", "charge": 0, "lattice": {"matrix": [[6.256930122878799, 0.0, 3.831264723736088e-16], [1.0061911048045417e-15, 6.256930122878799, 3.831264723736088e-16], [0.0, 0.0, 6.256930122878799]], "pbc": [true, true, true], "a": 6.256930122878799, "b": 6.256930122878799, "c": 6.256930122878799, "alpha": 90.0, "beta": 90.0, "gamma": 90.0, "volume": 244.95364960649798}, "sites": [{"species": [{"element": "Cs", "occu": 1}], "abc": [0.0, 0.0, 0.0], "xyz": [0.0, 0.0, 0.0], "label": "Cs", "properties": {}}]}`
+const real_structure_json = `{"@module": "pymatgen.core.structure", "@class": "Structure", "charge": 0, "lattice": {"matrix": [[6.256930122878799, 0.0, 3.831264723736088e-16], [1.0061911048045417e-15, 6.256930122878799, 3.831264723736088e-16], [0.0, 0.0, 6.256930122878799]], "pbc": [true, true, true], "a": 6.256930122878799, "b": 6.256930122878799, "c": 6.256930122878799, "alpha": 90.0, "beta": 90.0, "gamma": 90.0, "volume": 244.95364960649798}, "sites": [{"species": [{"element": "Cs", "occu": 1}], "abc": [0.0, 0.0, 0.0], "xyz": [0.0, 0.0, 0.0], "label": "Cs", "properties": {}}]}`
 
 // Test cases for structure export
 const export_cases = [
@@ -175,19 +169,14 @@ describe(`Export functionality`, () => {
         to_str: structure_to_json_str,
         preserves_id: false,
       },
-    ])(
-      `round-trips $name export and parse`,
-      ({ structure, ext, to_str, preserves_id }) => {
-        const content = to_str(structure as AnyStructure)
-        const parsed = parse_structure_file(content, `test.${ext}`)
-        expect(parsed?.sites).toHaveLength(structure.sites.length)
-        if (preserves_id && structure.id) {
-          expect((parsed as AnyStructure).id).toBe(
-            structure.id,
-          )
-        }
-      },
-    )
+    ])(`round-trips $name export and parse`, ({ structure, ext, to_str, preserves_id }) => {
+      const content = to_str(structure as AnyStructure)
+      const parsed = parse_structure_file(content, `test.${ext}`)
+      expect(parsed?.sites).toHaveLength(structure.sites.length)
+      if (preserves_id && structure.id) {
+        expect((parsed as AnyStructure).id).toBe(structure.id)
+      }
+    })
   })
 
   describe(`Round-trip exporters (fixtures)`, () => {
@@ -197,22 +186,19 @@ describe(`Export functionality`, () => {
       abc[0] * L[0][1] + abc[1] * L[1][1] + abc[2] * L[2][1],
       abc[0] * L[0][2] + abc[1] * L[1][2] + abc[2] * L[2][2],
     ]
-    const to_any = (
-      ps: {
-        sites: AnyStructure[`sites`]
-        lattice?: Omit<LatticeType, `pbc`> & Partial<Pick<LatticeType, `pbc`>>
-      },
-    ) =>
+    const to_any = (ps: {
+      sites: AnyStructure[`sites`]
+      lattice?: Omit<LatticeType, `pbc`> & Partial<Pick<LatticeType, `pbc`>>
+    }) =>
       ({
         sites: ps.sites,
         charge: 0,
-        ...(ps.lattice &&
-          {
-            lattice: {
-              ...(ps.lattice as Omit<LatticeType, `pbc`>),
-              pbc: [true, true, true],
-            } as LatticeType,
-          }),
+        ...(ps.lattice && {
+          lattice: {
+            ...(ps.lattice as Omit<LatticeType, `pbc`>),
+            pbc: [true, true, true],
+          } as LatticeType,
+        }),
       }) as AnyStructure
 
     it.each([
@@ -248,50 +234,50 @@ describe(`Export functionality`, () => {
   })
 
   describe(`Coordinate handling and conversion`, () => {
-    it.each(
-      [
-        {
-          name: `orthogonal`,
-          lattice_matrix: [
-            [2.0, 0.0, 0.0],
-            [0.0, 2.0, 0.0],
-            [0.0, 0.0, 2.0],
-          ] satisfies Matrix3x3,
-          abc: [0.5, 0.5, 0.5] as math.Vec3,
-        },
-        {
-          name: `non-orthogonal`,
-          lattice_matrix: [
-            [2.0, 0.5, 0.0],
-            [0.0, 2.0, 0.3],
-            [0.0, 0.0, 2.0],
-          ] satisfies Matrix3x3,
-          abc: [0.25, 0.75, 0.5] as math.Vec3,
-        },
-        {
-          name: `triclinic`,
-          lattice_matrix: [
-            [3.0, 0.5, 0.2],
-            [0.0, 2.5, 0.4],
-            [0.0, 0.0, 1.8],
-          ] satisfies Matrix3x3,
-          abc: [0.1, 0.3, 0.7] as math.Vec3,
-        },
-      ],
-    )(
+    it.each([
+      {
+        name: `orthogonal`,
+        lattice_matrix: [
+          [2.0, 0.0, 0.0],
+          [0.0, 2.0, 0.0],
+          [0.0, 0.0, 2.0],
+        ] satisfies Matrix3x3,
+        abc: [0.5, 0.5, 0.5] as math.Vec3,
+      },
+      {
+        name: `non-orthogonal`,
+        lattice_matrix: [
+          [2.0, 0.5, 0.0],
+          [0.0, 2.0, 0.3],
+          [0.0, 0.0, 2.0],
+        ] satisfies Matrix3x3,
+        abc: [0.25, 0.75, 0.5] as math.Vec3,
+      },
+      {
+        name: `triclinic`,
+        lattice_matrix: [
+          [3.0, 0.5, 0.2],
+          [0.0, 2.5, 0.4],
+          [0.0, 0.0, 1.8],
+        ] satisfies Matrix3x3,
+        abc: [0.1, 0.3, 0.7] as math.Vec3,
+      },
+    ])(
       `converts fractional to cartesian when xyz missing ($name)`,
       ({ lattice_matrix, abc }) => {
         const lattice_params = math.calc_lattice_params(lattice_matrix)
         const structure_with_abc: AnyStructure = {
           id: `frac_coords`,
-          sites: [{
-            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-            abc,
-            // @ts-expect-error trigger conversion path
-            xyz: undefined,
-            label: `C`,
-            properties: {},
-          }],
+          sites: [
+            {
+              species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+              abc,
+              // @ts-expect-error trigger conversion path
+              xyz: undefined,
+              label: `C`,
+              properties: {},
+            },
+          ],
           lattice: {
             matrix: lattice_matrix,
             pbc: [true, true, true],
@@ -305,9 +291,9 @@ describe(`Export functionality`, () => {
 
         const L_T = math.transpose_3x3_matrix(lattice_matrix)
         const expected = math.mat3x3_vec3_multiply(L_T, abc)
-        const expected_line = `C ${expected[0].toFixed(6)} ${expected[1].toFixed(6)} ${
-          expected[2].toFixed(6)
-        }`
+        const expected_line = `C ${expected[0].toFixed(6)} ${expected[1].toFixed(6)} ${expected[2].toFixed(
+          6,
+        )}`
         expect(lines[2]).toBe(expected_line)
       },
     )
@@ -321,13 +307,15 @@ describe(`Export functionality`, () => {
       const lattice_params = math.calc_lattice_params(lattice_matrix)
       const structure_both_coords: AnyStructure = {
         id: `both_coords`,
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0.5, 0.5, 0.5], // This should be ignored
-          xyz: [1.0, 2.0, 3.0], // This should be used
-          label: `H`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0.5, 0.5, 0.5], // This should be ignored
+            xyz: [1.0, 2.0, 3.0], // This should be used
+            label: `H`,
+            properties: {},
+          },
+        ],
         lattice: { matrix: lattice_matrix, pbc: [true, true, true], ...lattice_params },
       }
 
@@ -338,13 +326,15 @@ describe(`Export functionality`, () => {
 
     it(`handles short coordinate arrays gracefully`, () => {
       const structure_short_coords: AnyStructure = {
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          xyz: [1.0, 2.0, 0.0], // Only 2 coordinates + padding
-          abc: [0.1, 0.2, 0.0], // Only 2 coordinates + padding
-          label: `H`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            xyz: [1.0, 2.0, 0.0], // Only 2 coordinates + padding
+            abc: [0.1, 0.2, 0.0], // Only 2 coordinates + padding
+            label: `H`,
+            properties: {},
+          },
+        ],
       }
 
       const xyz_content = structure_to_xyz_str(structure_short_coords)
@@ -359,24 +349,29 @@ describe(`Export functionality`, () => {
       { format: `POSCAR`, xyz: [1, 1, 1], desc: `standard xyz` },
       { format: `POSCAR`, xyz: [1, 1, 1, 0.5], desc: `xyz with extra dimension` },
     ])(`$format export converts $desc to fractional coords`, ({ format, xyz }) => {
-      const lattice_matrix: Matrix3x3 = [[2, 0, 0], [0, 2, 0], [0, 0, 2]]
+      const lattice_matrix: Matrix3x3 = [
+        [2, 0, 0],
+        [0, 2, 0],
+        [0, 0, 2],
+      ]
       const structure: AnyStructure = {
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          xyz: xyz as unknown as Vec3,
-          abc: undefined as unknown as Vec3,
-          label: `H`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            xyz: xyz as unknown as Vec3,
+            abc: undefined as unknown as Vec3,
+            label: `H`,
+            properties: {},
+          },
+        ],
         lattice: {
           matrix: lattice_matrix,
           pbc: [true, true, true],
           ...math.calc_lattice_params(lattice_matrix),
         },
       }
-      const content = format === `CIF`
-        ? structure_to_cif_str(structure)
-        : structure_to_poscar_str(structure)
+      const content =
+        format === `CIF` ? structure_to_cif_str(structure) : structure_to_poscar_str(structure)
       expect(content).toContain(`0.50000000 0.50000000 0.50000000`)
     })
   })
@@ -421,7 +416,7 @@ describe(`Export functionality`, () => {
     it(`strips HTML tags from chemical formulas`, () => {
       // Mock returns HTML when called without plain_text flag
       mock_get_electro_neg_formula.mockImplementation((_struct, plain_text) =>
-        plain_text ? `Li2O` : `Li<sub>2</sub>O`
+        plain_text ? `Li2O` : `Li<sub>2</sub>O`,
       )
       const structure = {
         id: `lithium_oxide`,
@@ -439,10 +434,7 @@ describe(`Export functionality`, () => {
       expect(result).not.toContain(`</sub>`)
 
       // Verify plain_text flag is always true to prevent HTML leaking into filenames
-      expect(mock_get_electro_neg_formula).toHaveBeenCalledWith(
-        expect.any(Object),
-        true,
-      )
+      expect(mock_get_electro_neg_formula).toHaveBeenCalledWith(expect.any(Object), true)
     })
 
     it(`removes spaces from chemical formulas`, () => {
@@ -480,13 +472,15 @@ describe(`Export functionality`, () => {
       mock_get_electro_neg_formula.mockReturnValue(formula)
       const structure = {
         id,
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [0, 0, 0],
+            label: `H`,
+            properties: {},
+          },
+        ],
       } as AnyStructure
       const result = create_structure_filename(structure, ext)
       expect(result).toBe(expected)
@@ -497,13 +491,15 @@ describe(`Export functionality`, () => {
       mock_get_electro_neg_formula.mockReturnValue(`Test`)
       const structure = {
         id: `test`,
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [0, 0, 0],
+            label: `H`,
+            properties: {},
+          },
+        ],
         symmetry: { space_group_symbol: null },
         lattice: { lattice_system: undefined },
       } as AnyStructure
@@ -531,47 +527,49 @@ describe(`Export functionality`, () => {
       },
     ])(`throws error for structure without lattice`, ({ func, error_msg }) => {
       const structure_no_lattice: AnyStructure = {
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.0, 0.0, 0.0],
-          abc: [0.0, 0.0, 0.0],
-          label: `H`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            xyz: [0.0, 0.0, 0.0],
+            abc: [0.0, 0.0, 0.0],
+            label: `H`,
+            properties: {},
+          },
+        ],
       }
       expect(() => func(structure_no_lattice)).toThrow(error_msg)
     })
 
-    it.each(
-      [
-        {
-          name: `species without element`,
-          species: [{ element: undefined, occu: 1, oxidation_state: 0 }],
-          expected: `X 0.000000 0.000000 0.000000`,
-        },
-        {
-          name: `empty species array`,
-          species: [],
-          expected: `X 0.000000 0.000000 0.000000`,
-        },
-        {
-          name: `missing coordinates`,
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          xyz: undefined,
-          abc: undefined,
-          expected: `H 0.000000 0.000000 0.000000`,
-        },
-      ] as const,
-    )(`handles $name gracefully`, ({ species, xyz, abc, expected }) => {
+    it.each([
+      {
+        name: `species without element`,
+        species: [{ element: undefined, occu: 1, oxidation_state: 0 }],
+        expected: `X 0.000000 0.000000 0.000000`,
+      },
+      {
+        name: `empty species array`,
+        species: [],
+        expected: `X 0.000000 0.000000 0.000000`,
+      },
+      {
+        name: `missing coordinates`,
+        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+        xyz: undefined,
+        abc: undefined,
+        expected: `H 0.000000 0.000000 0.000000`,
+      },
+    ] as const)(`handles $name gracefully`, ({ species, xyz, abc, expected }) => {
       const structure: AnyStructure = {
-        sites: [{
-          // @ts-expect-error - test invalid species
-          species,
-          xyz: xyz || [0.0, 0.0, 0.0],
-          abc: abc || [0.0, 0.0, 0.0],
-          label: `H`,
-          properties: {},
-        }],
+        sites: [
+          {
+            // @ts-expect-error - test invalid species
+            species,
+            xyz: xyz || [0.0, 0.0, 0.0],
+            abc: abc || [0.0, 0.0, 0.0],
+            label: `H`,
+            properties: {},
+          },
+        ],
       }
       const xyz_content = structure_to_xyz_str(structure)
       const lines = xyz_content.split(`\n`)
@@ -580,16 +578,22 @@ describe(`Export functionality`, () => {
 
     it(`handles invalid lattice matrix in POSCAR`, () => {
       const structure_invalid_lattice: AnyStructure = {
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.0, 0.0, 0.0],
-          abc: [0.0, 0.0, 0.0],
-          label: `H`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            xyz: [0.0, 0.0, 0.0],
+            abc: [0.0, 0.0, 0.0],
+            label: `H`,
+            properties: {},
+          },
+        ],
         lattice: {
-          // @ts-expect-error - test invalid matrix
-          matrix: [[1, 2], [3, 4]], // 2x2 instead of 3x3
+          matrix: [
+            // @ts-ignore - test invalid matrix (2x2 instead of 3x3)
+            [1, 2],
+            // @ts-ignore - test invalid matrix
+            [3, 4],
+          ],
           ...{ a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90, volume: 1 },
         },
       }
@@ -600,15 +604,21 @@ describe(`Export functionality`, () => {
 
     it(`handles non-finite lattice values`, () => {
       const structure_nan_lattice: AnyStructure = {
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          xyz: [0.0, 0.0, 0.0],
-          abc: [0.0, 0.0, 0.0],
-          label: `H`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            xyz: [0.0, 0.0, 0.0],
+            abc: [0.0, 0.0, 0.0],
+            label: `H`,
+            properties: {},
+          },
+        ],
         lattice: {
-          matrix: [[NaN, 0, 0], [0, Infinity, 0], [0, 0, 1]],
+          matrix: [
+            [NaN, 0, 0],
+            [0, Infinity, 0],
+            [0, 0, 1],
+          ],
           pbc: [true, true, true],
           ...{ a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90, volume: 1 },
         },
@@ -732,8 +742,8 @@ describe(`Export functionality`, () => {
       expect(lines[8]).toMatch(/^0\.\d+ 0\.\d+ 0\.\d+$/)
 
       // If selective dynamics is enabled, flags must appear per coordinate line
-      const has_sd = complex_structure.sites.some((site) =>
-        site.properties?.selective_dynamics
+      const has_sd = complex_structure.sites.some(
+        (site) => site.properties?.selective_dynamics,
       )
       if (has_sd) {
         const start = 8
@@ -775,13 +785,15 @@ describe(`Export functionality`, () => {
       },
       {
         name: `without selective dynamics`,
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0.0, 0.0, 0.0],
-          xyz: [0.0, 0.0, 0.0],
-          label: `H1`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0.0, 0.0, 0.0],
+            xyz: [0.0, 0.0, 0.0],
+            label: `H1`,
+            properties: {},
+          },
+        ],
         has_sd: false,
         expected_coords: [`0.00000000 0.00000000 0.00000000`],
       },
@@ -790,7 +802,11 @@ describe(`Export functionality`, () => {
         id: `test_${has_sd ? `sd` : `no_sd`}`,
         sites: sites as unknown as AnyStructure[`sites`],
         lattice: {
-          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          matrix: [
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 2.0],
+          ],
           pbc: [true, true, true],
           a: 2,
           b: 2,
@@ -808,7 +824,7 @@ describe(`Export functionality`, () => {
       if (has_sd) {
         expect(lines).toContain(`Selective dynamics`)
         const coord_lines = lines.filter((line) =>
-          line.match(/^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/)
+          line.match(/^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/),
         )
         expect(coord_lines).toHaveLength(2)
         expected_coords.forEach((expected, idx) => {
@@ -825,15 +841,21 @@ describe(`Export functionality`, () => {
     it(`exports CIF with space group information`, () => {
       const structure_with_symmetry: AnyStructure = {
         id: `test_symmetry`,
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0.0, 0.0, 0.0],
-          xyz: [0.0, 0.0, 0.0],
-          label: `H1`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0.0, 0.0, 0.0],
+            xyz: [0.0, 0.0, 0.0],
+            label: `H1`,
+            properties: {},
+          },
+        ],
         lattice: {
-          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          matrix: [
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 2.0],
+          ],
           pbc: [true, true, true],
           a: 2,
           b: 2,
@@ -860,19 +882,21 @@ describe(`Export functionality`, () => {
     it.each([
       {
         name: `precision in all formats`,
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0.123456789, 0.987654321, 0.555555555],
-          xyz: [1.23456789, 9.87654321, 5.55555555],
-          label: `H1`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0.123456789, 0.987654321, 0.555555555],
+            xyz: [1.23456789, 9.87654321, 5.55555555],
+            label: `H1`,
+            properties: {},
+          },
+        ],
         lattice: {
-          matrix: [[2.123456789, 0.0, 0.0], [0.0, 2.987654321, 0.0], [
-            0.0,
-            0.0,
-            2.555555555,
-          ]],
+          matrix: [
+            [2.123456789, 0.0, 0.0],
+            [0.0, 2.987654321, 0.0],
+            [0.0, 0.0, 2.555555555],
+          ],
           pbc: [true, true, true],
           a: 2.123456789,
           b: 2.987654321,
@@ -890,15 +914,21 @@ describe(`Export functionality`, () => {
       },
       {
         name: `occupancy 0.75`,
-        sites: [{
-          species: [{ element: `H`, occu: 0.75, oxidation_state: 0 }],
-          abc: [0.0, 0.0, 0.0],
-          xyz: [0.0, 0.0, 0.0],
-          label: `H1`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 0.75, oxidation_state: 0 }],
+            abc: [0.0, 0.0, 0.0],
+            xyz: [0.0, 0.0, 0.0],
+            label: `H1`,
+            properties: {},
+          },
+        ],
         lattice: {
-          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          matrix: [
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 2.0],
+          ],
           pbc: [true, true, true],
           a: 2,
           b: 2,
@@ -912,15 +942,21 @@ describe(`Export functionality`, () => {
       },
       {
         name: `missing occupancy (defaults to 1.0)`,
-        sites: [{
-          species: [{ element: `H`, occu: undefined, oxidation_state: 0 }],
-          abc: [0.0, 0.0, 0.0],
-          xyz: [0.0, 0.0, 0.0],
-          label: `H1`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: undefined, oxidation_state: 0 }],
+            abc: [0.0, 0.0, 0.0],
+            xyz: [0.0, 0.0, 0.0],
+            label: `H1`,
+            properties: {},
+          },
+        ],
         lattice: {
-          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          matrix: [
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 2.0],
+          ],
           pbc: [true, true, true],
           a: 2,
           b: 2,
@@ -952,7 +988,8 @@ describe(`Export functionality`, () => {
           const coord_line = lines.find((line) => line.includes(`H1`))
           expect(coord_line).toBeDefined()
           expect(coord_line).toContain(expected)
-        } else { // poscar
+        } else {
+          // poscar
           const coord_line = lines.find((line) => line.match(/^0\.\d+ 0\.\d+ 0\.\d+$/))
           expect(coord_line).toBeDefined()
           expect(coord_line).toContain(expected)
@@ -965,15 +1002,21 @@ describe(`Export functionality`, () => {
         name: `with lattice information`,
         structure: {
           id: `lattice_test`,
-          sites: [{
-            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-            abc: [0.0, 0.0, 0.0],
-            xyz: [0.0, 0.0, 0.0],
-            label: `H1`,
-            properties: {},
-          }],
+          sites: [
+            {
+              species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+              abc: [0.0, 0.0, 0.0],
+              xyz: [0.0, 0.0, 0.0],
+              label: `H1`,
+              properties: {},
+            },
+          ],
           lattice: {
-            matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+            matrix: [
+              [2.0, 0.0, 0.0],
+              [0.0, 2.0, 0.0],
+              [0.0, 0.0, 2.0],
+            ],
             pbc: [true, true, true],
             a: 2,
             b: 2,
@@ -984,20 +1027,21 @@ describe(`Export functionality`, () => {
             volume: 8,
           },
         },
-        expected_comment:
-          `lattice_test H2O Lattice="2.00000000 0.00000000 0.00000000 0.00000000 2.00000000 0.00000000 0.00000000 0.00000000 2.00000000"`,
+        expected_comment: `lattice_test H2O Lattice="2.00000000 0.00000000 0.00000000 0.00000000 2.00000000 0.00000000 0.00000000 0.00000000 2.00000000"`,
       },
       {
         name: `without lattice information`,
         structure: {
           id: `no_lattice_test`,
-          sites: [{
-            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-            abc: [0.0, 0.0, 0.0],
-            xyz: [0.0, 0.0, 0.0],
-            label: `H1`,
-            properties: {},
-          }],
+          sites: [
+            {
+              species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+              abc: [0.0, 0.0, 0.0],
+              xyz: [0.0, 0.0, 0.0],
+              label: `H1`,
+              properties: {},
+            },
+          ],
         },
         expected_comment: `no_lattice_test H2O`,
       },
@@ -1024,15 +1068,21 @@ describe(`Export functionality`, () => {
     ])(`handles $name gracefully`, ({ symmetry, expected }) => {
       const structure: AnyStructure = {
         id: `test`,
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0.0, 0.0, 0.0],
-          xyz: [0.0, 0.0, 0.0],
-          label: `H1`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0.0, 0.0, 0.0],
+            xyz: [0.0, 0.0, 0.0],
+            label: `H1`,
+            properties: {},
+          },
+        ],
         lattice: {
-          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          matrix: [
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 2.0],
+          ],
           pbc: [true, true, true],
           a: 2,
           b: 2,
@@ -1059,15 +1109,21 @@ describe(`Export functionality`, () => {
     it(`handles very large structures efficiently`, () => {
       const large_structure: AnyStructure = {
         id: `large_test`,
-        sites: Array(1000).fill(null).map((_, idx) => ({
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [idx / 1000, 0.0, 0.0],
-          xyz: [idx / 100, 0.0, 0.0],
-          label: `H${idx + 1}`,
-          properties: {},
-        })),
+        sites: Array(1000)
+          .fill(null)
+          .map((_, idx) => ({
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [idx / 1000, 0.0, 0.0],
+            xyz: [idx / 100, 0.0, 0.0],
+            label: `H${idx + 1}`,
+            properties: {},
+          })),
         lattice: {
-          matrix: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
+          matrix: [
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 10.0],
+          ],
           pbc: [true, true, true],
           a: 10,
           b: 10,
@@ -1113,7 +1169,11 @@ describe(`Export functionality`, () => {
           },
         ],
         lattice: {
-          matrix: [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]],
+          matrix: [
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 2.0],
+          ],
           pbc: [true, true, true],
           a: 2,
           b: 2,
@@ -1164,15 +1224,12 @@ function assert_structures_equal(
   )
 
   // Compare lattice for structures that have one
-  if (
-    `lattice` in struct1 && struct1.lattice && `lattice` in struct2 && struct2.lattice
-  ) {
+  if (`lattice` in struct1 && struct1.lattice && `lattice` in struct2 && struct2.lattice) {
     const params = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
     for (const p of params) {
-      expect(
-        struct2.lattice[p],
-        `Lattice param '${p}' mismatch in ${filename}`,
-      ).toBeCloseTo(struct1.lattice[p])
+      expect(struct2.lattice[p], `Lattice param '${p}' mismatch in ${filename}`).toBeCloseTo(
+        struct1.lattice[p],
+      )
     }
   } else {
     expect(`lattice` in struct1).toBe(`lattice` in struct2)
@@ -1230,9 +1287,7 @@ describe(`Round-trip CIF and POSCAR exports`, () => {
     expect(original, `Failed to parse original file ${filename}`).not.toBeNull()
     if (!original) return
 
-    const exporter = filename.endsWith(`.cif`)
-      ? structure_to_cif_str
-      : structure_to_poscar_str
+    const exporter = filename.endsWith(`.cif`) ? structure_to_cif_str : structure_to_poscar_str
 
     const exported_content = exporter(original)
 
@@ -1313,21 +1368,23 @@ describe(`3D Export Color Preservation`, async () => {
         const result = extract_bond_color_for_instance(geom, idx)
         return result ? [result.r, result.g, result.b] : null
       })
-      expect(results).toEqual([[0.5, 0, 0.5], [0.5, 0.5, 0], [0, 0.5, 0.5]])
+      expect(results).toEqual([
+        [0.5, 0, 0.5],
+        [0.5, 0.5, 0],
+        [0, 0.5, 0.5],
+      ])
       expect(extract_bond_color_for_instance(geom, -1)).toBeNull()
       expect(extract_bond_color_for_instance(geom, 3)).toBeNull()
     })
   })
 
   describe(`clean_geometry_for_export`, () => {
-    test.each(
-      [
-        [`instanceColor`, true],
-        [`customColor`, true],
-        [`position`, false],
-        [`color`, false],
-      ] as const,
-    )(`%s removed=%s`, (attr, removed) => {
+    test.each([
+      [`instanceColor`, true],
+      [`customColor`, true],
+      [`position`, false],
+      [`color`, false],
+    ] as const)(`%s removed=%s`, (attr, removed) => {
       const geometry = new BufferGeometry()
       geometry.setAttribute(attr, new Float32BufferAttribute([0, 0, 0], 3))
       clean_geometry_for_export(geometry)

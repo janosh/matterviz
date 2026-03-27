@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
@@ -30,17 +29,11 @@ test.describe(`Structure Component Tests`, () => {
     await expect(canvas).toHaveCSS(`width`, `800px`, { timeout: canvas_timeout })
     await expect(canvas).toHaveCSS(`height`, `500px`, { timeout: canvas_timeout })
 
-    await expect(
-      page.locator(`[data-testid="pane-open-status"]`),
-    ).toContainText(`false`)
+    await expect(page.locator(`[data-testid="pane-open-status"]`)).toContainText(`false`)
 
     await page.waitForLoadState(`networkidle`)
-    await expect(
-      page.locator(`[data-testid="canvas-width-status"]`),
-    ).toContainText(`800`)
-    await expect(
-      page.locator(`[data-testid="canvas-height-status"]`),
-    ).toContainText(`500`)
+    await expect(page.locator(`[data-testid="canvas-width-status"]`)).toContainText(`800`)
+    await expect(page.locator(`[data-testid="canvas-height-status"]`)).toContainText(`500`)
   })
 
   test(`measure mode controls visible by default and hide when disabled`, async ({ page }) => {
@@ -96,12 +89,8 @@ test.describe(`Structure Component Tests`, () => {
   test(`updates width and height from test page controls`, async ({ page }) => {
     const structure_wrapper_div = page.locator(`#test-structure`)
     const canvas = page.locator(`#test-structure canvas`)
-    const width_input = page.locator(
-      `label:has-text("Canvas Width") input[type="number"]`,
-    )
-    const height_input = page.locator(
-      `label:has-text("Canvas Height") input[type="number"]`,
-    )
+    const width_input = page.locator(`label:has-text("Canvas Width") input[type="number"]`)
+    const height_input = page.locator(`label:has-text("Canvas Height") input[type="number"]`)
     const canvas_width_status = page.locator(`[data-testid="canvas-width-status"]`)
     const canvas_height_status = page.locator(`[data-testid="canvas-height-status"]`)
 
@@ -113,9 +102,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(canvas).toHaveCSS(`width`, `800px`)
 
     // Canvas may inherit default height - check actual value
-    const initial_canvas_height = await canvas.evaluate((el) =>
-      getComputedStyle(el).height
-    )
+    const initial_canvas_height = await canvas.evaluate((el) => getComputedStyle(el).height)
     expect([`400px`, `500px`]).toContain(initial_canvas_height) // Allow either value initially
 
     // Update dimensions
@@ -167,9 +154,7 @@ test.describe(`Structure Component Tests`, () => {
         waitUntil: `load`,
       })
       await wait_for_3d_canvas(page, `#test-structure`)
-      await expect(perf_mode_status).toContainText(
-        `Performance Mode Status: ${expected}`,
-      )
+      await expect(perf_mode_status).toContainText(`Performance Mode Status: ${expected}`)
       await expect(perf_mode_select).toHaveValue(expected)
     }
   })
@@ -177,9 +162,7 @@ test.describe(`Structure Component Tests`, () => {
   // Fullscreen testing is complex with Playwright as it requires user gesture and browser API mocking
   test(`fullscreen button click`, async ({ page }: { page: Page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const fullscreen_button = structure_div.locator(
-      `button.fullscreen-toggle`,
-    )
+    const fullscreen_button = structure_div.locator(`button.fullscreen-toggle`)
 
     let error_occurred = false
     page.once(`pageerror`, () => (error_occurred = true))
@@ -230,17 +213,13 @@ test.describe(`Structure Component Tests`, () => {
 
   test(`closes controls pane with Escape key`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const controls_toggle_button = structure_div.locator(
-      `button.structure-controls-toggle`,
-    )
+    const controls_toggle_button = structure_div.locator(`button.structure-controls-toggle`)
 
     const { pane_div: control_pane } = await open_structure_control_pane(page)
 
     await page.keyboard.press(`Escape`)
 
-    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(
-      `false`,
-    )
+    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`false`)
     await expect(control_pane).toBeHidden()
     // tooltip attachment moves title to data-original-title
     await expect(controls_toggle_button).toHaveAttribute(
@@ -253,8 +232,8 @@ test.describe(`Structure Component Tests`, () => {
     const structure_div = page.locator(`#test-structure`)
     await structure_div.click()
 
-    const is_mac = await page.evaluate(() =>
-      navigator.platform.toUpperCase().indexOf(`MAC`) >= 0
+    const is_mac = await page.evaluate(
+      () => navigator.platform.toUpperCase().indexOf(`MAC`) >= 0,
     )
 
     let page_errors = false
@@ -270,9 +249,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test that modifier key combinations can be dispatched without errors
     await page.evaluate((isMac) => {
-      const structureDiv = document.querySelector(
-        `#test-structure`,
-      ) as HTMLElement
+      const structureDiv = document.querySelector(`#test-structure`) as HTMLElement
       if (structureDiv) {
         structureDiv.focus()
         // Test both Ctrl+F and Ctrl+I shortcuts
@@ -296,18 +273,14 @@ test.describe(`Structure Component Tests`, () => {
 
   test(`closes controls pane on outside click`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const controls_toggle_button = structure_div.locator(
-      `button.structure-controls-toggle`,
-    )
+    const controls_toggle_button = structure_div.locator(`button.structure-controls-toggle`)
     const outside_area = page.locator(`body`)
 
     const { pane_div: control_pane } = await open_structure_control_pane(page)
 
     await outside_area.click({ position: { x: 0, y: 0 }, force: true })
 
-    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(
-      `false`,
-    )
+    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`false`)
     await expect(control_pane).toBeHidden()
     // tooltip attachment moves title to data-original-title
     await expect(controls_toggle_button).toHaveAttribute(
@@ -412,9 +385,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check that all label controls are present within Labels section
     const text_color_label = labels_container.locator(`label:has-text("Color")`).first()
-    const background_color_label = labels_container.locator(
-      `label:has-text("Background")`,
-    )
+    const background_color_label = labels_container.locator(`label:has-text("Background")`)
     const padding_label = labels_container.locator(`label:has-text("Padding")`)
 
     const offset_row = labels_container.locator(`.pane-row`).filter({
@@ -442,9 +413,9 @@ test.describe(`Structure Component Tests`, () => {
     await site_labels_checkbox.check()
 
     // Find text color input (first in labels section)
-    const text_color_input = pane_div.locator(
-      `label:has-text("Color") input[type="color"]`,
-    ).first()
+    const text_color_input = pane_div
+      .locator(`label:has-text("Color") input[type="color"]`)
+      .first()
     await expect(text_color_input).toBeVisible()
 
     // Get initial value
@@ -502,9 +473,7 @@ test.describe(`Structure Component Tests`, () => {
     await site_labels_checkbox.check()
 
     // Find background opacity controls
-    const opacity_label = pane_div.locator(
-      `label:has-text("Opacity")`,
-    ).first()
+    const opacity_label = pane_div.locator(`label:has-text("Opacity")`).first()
     const opacity_number_input = opacity_label.locator(`input[type="number"]`)
     const opacity_range_input = opacity_label.locator(`input[type="range"]`)
 
@@ -542,9 +511,7 @@ test.describe(`Structure Component Tests`, () => {
     await site_labels_checkbox.check()
 
     // Find padding controls
-    const padding_label = pane_div.locator(
-      `label:has-text("Padding")`,
-    )
+    const padding_label = pane_div.locator(`label:has-text("Padding")`)
     const padding_number_input = padding_label.locator(`input[type="number"]`)
     const padding_range_input = padding_label.locator(`input[type="range"]`)
 
@@ -675,9 +642,7 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`label font size control works correctly`, async ({ page }) => {
-    const pane_div = page.locator(
-      `#test-structure .controls-pane`,
-    )
+    const pane_div = page.locator(`#test-structure .controls-pane`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
@@ -724,9 +689,9 @@ test.describe(`Structure Component Tests`, () => {
     await site_labels_checkbox.check()
 
     // Check opacity constraints
-    const opacity_number_input = pane_div.locator(
-      `label:has-text("Opacity") input[type="number"]`,
-    ).first()
+    const opacity_number_input = pane_div
+      .locator(`label:has-text("Opacity") input[type="number"]`)
+      .first()
     await expect(opacity_number_input).toHaveAttribute(`min`, `0`)
     await expect(opacity_number_input).toHaveAttribute(`max`, `1`)
     await expect(opacity_number_input).toHaveAttribute(`step`, `0.01`)
@@ -767,9 +732,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(offset_z_number_input).toHaveAttribute(`step`, `0.1`)
 
     // Check font size constraints
-    const size_range_input = pane_div.locator(
-      `label:has-text("Size") input[type="range"]`,
-    )
+    const size_range_input = pane_div.locator(`label:has-text("Size") input[type="range"]`)
     await expect(size_range_input).toHaveAttribute(`min`, `0.5`)
     await expect(size_range_input).toHaveAttribute(`max`, `2`)
     await expect(size_range_input).toHaveAttribute(`step`, `0.1`)
@@ -798,12 +761,8 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check that background color and opacity are in the same row
     const second_row = pane_rows.nth(1)
-    const background_in_second_row = second_row.locator(
-      `label:has-text("Background")`,
-    )
-    const opacity_in_second_row = second_row.locator(
-      `label:has-text("Opacity")`,
-    )
+    const background_in_second_row = second_row.locator(`label:has-text("Background")`)
+    const opacity_in_second_row = second_row.locator(`label:has-text("Opacity")`)
     await expect(background_in_second_row).toBeVisible()
     await expect(opacity_in_second_row).toBeVisible()
 
@@ -831,15 +790,15 @@ test.describe(`Structure Component Tests`, () => {
     const labels_container_for_persist = labels_heading.locator(
       `xpath=following-sibling::*[1]`,
     )
-    const text_color_input = labels_container_for_persist.locator(
-      `label:has-text("Color") input[type="color"]`,
-    ).first()
+    const text_color_input = labels_container_for_persist
+      .locator(`label:has-text("Color") input[type="color"]`)
+      .first()
     const background_color_input = labels_container_for_persist.locator(
       `label:has-text("Background") input[type="color"]`,
     )
-    const opacity_input = labels_container_for_persist.locator(
-      `label:has-text("Opacity") input[type="number"]`,
-    ).first()
+    const opacity_input = labels_container_for_persist
+      .locator(`label:has-text("Opacity") input[type="number"]`)
+      .first()
 
     await text_color_input.fill(`#ff0000`)
     await background_color_input.fill(`#0000ff`)
@@ -868,9 +827,7 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`gizmo is hidden when prop is set to false`, async ({ page }) => {
-    const gizmo_checkbox = page.locator(
-      `label:has-text("Show Gizmo") input[type="checkbox"]`,
-    )
+    const gizmo_checkbox = page.locator(`label:has-text("Show Gizmo") input[type="checkbox"]`)
     await expect(gizmo_checkbox).toBeVisible()
     await expect(gizmo_checkbox).toBeChecked()
 
@@ -884,9 +841,7 @@ test.describe(`Structure Component Tests`, () => {
   })
 
   test(`gizmo is visible by default and can be toggled`, async ({ page }) => {
-    const gizmo_checkbox = page.locator(
-      `label:has-text("Show Gizmo") input[type="checkbox"]`,
-    )
+    const gizmo_checkbox = page.locator(`label:has-text("Show Gizmo") input[type="checkbox"]`)
     const gizmo_status = page.locator(`[data-testid="gizmo-status"]`)
 
     await expect(gizmo_checkbox).toBeChecked()
@@ -967,9 +922,7 @@ test.describe(`Structure Component Tests`, () => {
   test(`controls pane stays open when interacting with control inputs`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const control_pane = structure_div.locator(`.controls-pane`)
-    const controls_open_status = page.locator(
-      `[data-testid="controls-open-status"]`,
-    )
+    const controls_open_status = page.locator(`[data-testid="controls-open-status"]`)
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
@@ -1002,9 +955,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(control_pane).toHaveClass(/pane-open/)
 
     // Bonds uses a native select element with label "Bonds:"
-    const show_bonds_label = control_pane
-      .locator(`label`)
-      .filter({ hasText: `Bonds:` })
+    const show_bonds_label = control_pane.locator(`label`).filter({ hasText: `Bonds:` })
     const show_bonds_select = show_bonds_label.locator(`select`)
     await expect(show_bonds_select).toBeVisible()
     await show_bonds_select.selectOption(`always`)
@@ -1014,18 +965,15 @@ test.describe(`Structure Component Tests`, () => {
     const show_cell_vectors_label = control_pane
       .locator(`label`)
       .filter({ hasText: `Lattice Vectors` })
-    const show_cell_vectors_checkbox = show_cell_vectors_label.locator(
-      `input[type="checkbox"]`,
-    )
+    const show_cell_vectors_checkbox =
+      show_cell_vectors_label.locator(`input[type="checkbox"]`)
     await expect(show_cell_vectors_checkbox).toBeVisible()
     await show_cell_vectors_checkbox.click()
     await expect(controls_open_status).toContainText(`true`)
     await expect(control_pane).toHaveClass(/pane-open/)
 
     // Test number input
-    const atom_radius_label = control_pane
-      .locator(`label`)
-      .filter({ hasText: /Radius/ })
+    const atom_radius_label = control_pane.locator(`label`).filter({ hasText: /Radius/ })
     const atom_radius_input = atom_radius_label.locator(`input[type="number"]`)
     await expect(atom_radius_input).toBeVisible()
     await atom_radius_input.fill(`0.8`)
@@ -1064,9 +1012,7 @@ test.describe(`Structure Component Tests`, () => {
     await expect(control_pane).toHaveClass(/pane-open/, { timeout: 2000 })
 
     // Test atom radius change affects rendering
-    const atom_radius_label = control_pane
-      .locator(`label`)
-      .filter({ hasText: /Radius/ })
+    const atom_radius_label = control_pane.locator(`label`).filter({ hasText: /Radius/ })
     const atom_radius_input = atom_radius_label.locator(`input[type="number"]`)
 
     await expect(atom_radius_input).toBeVisible()
@@ -1097,11 +1043,8 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test show atoms checkbox
     const visibility_heading = control_pane.locator(`h4:has-text("Visibility")`)
-    const visibility_container = visibility_heading.locator(
-      `xpath=following-sibling::*[1]`,
-    )
-    const show_atoms_checkbox = visibility_container.locator(`input[type="checkbox"]`)
-      .first()
+    const visibility_container = visibility_heading.locator(`xpath=following-sibling::*[1]`)
+    const show_atoms_checkbox = visibility_container.locator(`input[type="checkbox"]`).first()
     await show_atoms_checkbox.uncheck()
 
     // Poll for canvas change after hiding atoms
@@ -1113,18 +1056,14 @@ test.describe(`Structure Component Tests`, () => {
 
   test(`controls pane closes only on escape and outside clicks`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
-    const controls_toggle_button = structure_div.locator(
-      `button.structure-controls-toggle`,
-    )
+    const controls_toggle_button = structure_div.locator(`button.structure-controls-toggle`)
     const canvas = structure_div.locator(`canvas`)
 
     const { pane_div: control_pane } = await open_structure_control_pane(page)
 
     // Test that clicking on the canvas DOES close the pane (it's an outside click)
     await canvas.click({ position: { x: 100, y: 100 } })
-    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(
-      `false`,
-    )
+    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`false`)
     await expect(control_pane).toBeHidden()
 
     // Re-open for toggle button test
@@ -1132,9 +1071,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test that clicking controls toggle button does close the pane
     await controls_toggle_button.click()
-    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(
-      `false`,
-    )
+    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`false`)
     await expect(control_pane2).toBeHidden()
 
     // Re-open for escape key test using helper function
@@ -1142,9 +1079,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test escape key closes the pane
     await page.keyboard.press(`Escape`)
-    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(
-      `false`,
-    )
+    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`false`)
     await expect(control_pane3).toBeHidden()
 
     // Re-open for outside click test using helper function
@@ -1152,9 +1087,7 @@ test.describe(`Structure Component Tests`, () => {
 
     // Test clicking outside the controls and toggle button closes the pane
     await page.locator(`body`).click({ position: { x: 10, y: 10 } })
-    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(
-      `false`,
-    )
+    await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`false`)
     await expect(control_pane4).toBeHidden()
   })
 
@@ -1162,9 +1095,7 @@ test.describe(`Structure Component Tests`, () => {
     const { pane_div: control_pane } = await open_structure_control_pane(page)
 
     // Enable bonds via the Visibility section select
-    const visibility_heading_for_bonds = control_pane.locator(
-      `h4:has-text("Visibility")`,
-    )
+    const visibility_heading_for_bonds = control_pane.locator(`h4:has-text("Visibility")`)
     const visibility_container_for_bonds = visibility_heading_for_bonds.locator(
       `xpath=following-sibling::*[1]`,
     )
@@ -1195,9 +1126,9 @@ test.describe(`Structure Component Tests`, () => {
     // The Bonds section labels are: "Strategy", "Color", "Thickness"
     // We use the sibling relationship: Strategy <select>, Color <input type="color">, Thickness <input + range>
     const strategy_label = control_pane.locator(`label:has(select):has-text("Strategy")`)
-    const bond_color_label = control_pane.locator(
-      `label:has(input[type="color"]):has-text("Color")`,
-    ).last()
+    const bond_color_label = control_pane
+      .locator(`label:has(input[type="color"]):has-text("Color")`)
+      .last()
     const thickness_label = control_pane.locator(`label:has-text("Thickness")`)
 
     await expect(strategy_label).toBeVisible()
@@ -1220,9 +1151,7 @@ test.describe(`Structure Component Tests`, () => {
     )
 
     await test_page_controls_checkbox.check()
-    await expect(
-      page.locator(`#test-structure .controls-pane`),
-    ).toHaveClass(/pane-open/)
+    await expect(page.locator(`#test-structure .controls-pane`)).toHaveClass(/pane-open/)
 
     const edge_opacity = page.locator(
       `#test-structure .controls-pane label:has-text("Edge color") + label input[type="range"]`,
@@ -1251,7 +1180,9 @@ test.describe(`Structure Component Tests`, () => {
     await expect(labels).toHaveCount(0)
   })
 
-  test(`measured_sites shows selection order labels and measurement overlays`, async ({ page }) => {
+  test(`measured_sites shows selection order labels and measurement overlays`, async ({
+    page,
+  }) => {
     await goto_structure_test(page)
 
     await page.locator(`[data-testid="btn-set-measured"]`).click()
@@ -1266,7 +1197,9 @@ test.describe(`Structure Component Tests`, () => {
     await expect(labels).toHaveCount(0)
   })
 
-  test(`reset selection button clears both measured_sites and selected_sites`, async ({ page }) => {
+  test(`reset selection button clears both measured_sites and selected_sites`, async ({
+    page,
+  }) => {
     const structure = page.locator(`#test-structure`)
 
     // Set measured sites (which also sets selected_sites)
@@ -1304,7 +1237,9 @@ test.describe(`Structure Component Tests`, () => {
     await page.locator(`[data-testid="btn-clear-measured"]`).click()
   })
 
-  test(`selections are cleared on supercell scaling, image atoms toggle, and structure change`, async ({ page }) => {
+  test(`selections are cleared on supercell scaling, image atoms toggle, and structure change`, async ({
+    page,
+  }) => {
     const labels = page.locator(`.selection-label`)
 
     // Supercell scaling clears selections
@@ -1481,7 +1416,9 @@ H    1.261    0.728   -0.890`
     // Wait for file load event
     await expect(page.locator(`[data-testid="event-calls-status"]`)).toContainText(
       `on_file_load`,
-      { timeout: get_canvas_timeout() },
+      {
+        timeout: get_canvas_timeout(),
+      },
     )
 
     // Re-query canvas
@@ -1536,7 +1473,9 @@ H    1.261    0.728   -0.890`
     // Also verify on_file_load fired (confirms parse_file_content ran)
     await expect(page.locator(`[data-testid="event-calls-status"]`)).toContainText(
       `on_file_load`,
-      { timeout: get_canvas_timeout() },
+      {
+        timeout: get_canvas_timeout(),
+      },
     )
 
     // Clear stale camera target from first rotation, then rotate the NEW structure.
@@ -1553,9 +1492,7 @@ H    1.261    0.728   -0.890`
 
     // Orbit target should be near BaTiO3 center [2,2,2], not stale CsCl center [~3.13,~3.13,~3.13]
     const read_target = () =>
-      page.evaluate(() =>
-        (globalThis as Record<string, unknown>).__camera_target as number[]
-      )
+      page.evaluate(() => (globalThis as Record<string, unknown>).__camera_target as number[])
     await expect(read_target).toPass({ timeout: get_canvas_timeout() })
     const camera_target = await read_target()
     expect(camera_target).toEqual(camera_target.map(() => expect.closeTo(2, 0)))
@@ -1567,7 +1504,9 @@ test.describe(`Reset Camera Button Tests`, () => {
     await goto_structure_test(page)
   })
 
-  test(`reset camera button is hidden initially when camera is at default position`, async ({ page }) => {
+  test(`reset camera button is hidden initially when camera is at default position`, async ({
+    page,
+  }) => {
     const structure_div = page.locator(`#test-structure`)
     const reset_camera_button = structure_div.locator(`button.reset-camera`)
 
@@ -1583,9 +1522,8 @@ test.describe(`Export Button Tests`, () => {
 
   // Helper function to click export buttons using direct DOM manipulation
   async function click_export_button(page: Page, button_type: `JSON` | `PNG`) {
-    const selector = button_type === `JSON`
-      ? `button[title="Download JSON"]`
-      : `button[title*="PNG"]`
+    const selector =
+      button_type === `JSON` ? `button[title="Download JSON"]` : `button[title*="PNG"]`
 
     await page.evaluate((sel) => {
       const btn = document.querySelector(sel) as HTMLButtonElement
@@ -1596,9 +1534,7 @@ test.describe(`Export Button Tests`, () => {
   test(`XYZ export button click does not cause errors`, async ({ page }) => {
     const { pane_div: export_pane } = await open_structure_export_pane(page)
 
-    const xyz_export_btn = export_pane.locator(
-      `button[title="Download XYZ"]`,
-    )
+    const xyz_export_btn = export_pane.locator(`button[title="Download XYZ"]`)
     await expect(xyz_export_btn).toBeVisible()
     await xyz_export_btn.click()
 
@@ -1619,23 +1555,17 @@ test.describe(`Export Button Tests`, () => {
     const { pane_div: export_pane } = await open_structure_export_pane(page)
 
     // Test JSON export button attributes
-    const json_export_btn = export_pane.locator(
-      `button[title="Download JSON"]`,
-    )
+    const json_export_btn = export_pane.locator(`button[title="Download JSON"]`)
     await expect(json_export_btn).toHaveAttribute(`type`, `button`)
     await expect(json_export_btn).toHaveAttribute(`title`, `Download JSON`)
 
     // Test XYZ export button attributes
-    const xyz_export_btn = export_pane.locator(
-      `button[title="Download XYZ"]`,
-    )
+    const xyz_export_btn = export_pane.locator(`button[title="Download XYZ"]`)
     await expect(xyz_export_btn).toHaveAttribute(`type`, `button`)
     await expect(xyz_export_btn).toHaveAttribute(`title`, `Download XYZ`)
 
     // Test PNG export button attributes (includes DPI info)
-    const png_export_btn = export_pane.locator(
-      `button[title*="PNG"]`,
-    )
+    const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
     await expect(png_export_btn).toHaveAttribute(`type`, `button`)
     // PNG button title includes DPI information
     const png_title = await png_export_btn.getAttribute(`title`)
@@ -1688,9 +1618,7 @@ test.describe(`Export Button Tests`, () => {
     const { pane_div: export_pane } = await open_structure_export_pane(page)
 
     // Find DPI input
-    const dpi_input = export_pane.locator(
-      `input[title="Export resolution in dots per inch"]`,
-    )
+    const dpi_input = export_pane.locator(`input[title="Export resolution in dots per inch"]`)
     await expect(dpi_input).toBeVisible()
 
     // Test DPI input attributes
@@ -1707,9 +1635,7 @@ test.describe(`Export Button Tests`, () => {
     expect(await dpi_input.inputValue()).toBe(`200`)
 
     // Verify PNG button title updates with new DPI
-    const png_export_btn = export_pane.locator(
-      `button[title*="PNG"]`,
-    )
+    const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
     const updated_title = await png_export_btn.getAttribute(`title`)
     expect(updated_title).toContain(`(200 DPI)`)
 
@@ -1722,9 +1648,7 @@ test.describe(`Export Button Tests`, () => {
   })
 
   test(`export buttons work with loaded structure`, async ({ page }) => {
-    const { container, pane_div: export_pane } = await open_structure_export_pane(
-      page,
-    )
+    const { container, pane_div: export_pane } = await open_structure_export_pane(page)
 
     const canvas = container.locator(`canvas`)
     await expect(canvas).toBeVisible()
@@ -1752,8 +1676,9 @@ test.describe(`Show Buttons Tests`, () => {
     await page.waitForSelector(`canvas`)
 
     // Verify show_controls is set to never from URL
-    await expect(page.locator(`[data-testid="show-buttons-status"]`))
-      .toContainText(`Show Buttons Status: never`)
+    await expect(page.locator(`[data-testid="show-buttons-status"]`)).toContainText(
+      `Show Buttons Status: never`,
+    )
 
     // Control buttons should have no visibility class (stays hidden)
     const control_buttons = page.locator(`#test-structure section.control-buttons`)
@@ -1762,18 +1687,22 @@ test.describe(`Show Buttons Tests`, () => {
 
     // Buttons should not be visible even on hover
     await page.locator(`#test-structure`).hover()
-    await expect(page.locator(`#test-structure button.structure-info-toggle`)).not
-      .toBeVisible()
+    await expect(
+      page.locator(`#test-structure button.structure-info-toggle`),
+    ).not.toBeVisible()
     await expect(page.locator(`.fullscreen-toggle`)).toBeHidden()
   })
 
-  test(`should show buttons on hover when show_controls is hover (default)`, async ({ page }) => {
+  test(`should show buttons on hover when show_controls is hover (default)`, async ({
+    page,
+  }) => {
     await page.goto(`/test/structure?show_controls=hover`)
     await page.waitForSelector(`canvas`)
 
     // Verify show_controls is set to hover from URL
-    await expect(page.locator(`[data-testid="show-buttons-status"]`))
-      .toContainText(`Show Buttons Status: hover`)
+    await expect(page.locator(`[data-testid="show-buttons-status"]`)).toContainText(
+      `Show Buttons Status: hover`,
+    )
 
     const control_buttons = page.locator(`#test-structure section.control-buttons`)
     await expect(control_buttons).toHaveClass(/hover-visible/)
@@ -1784,8 +1713,7 @@ test.describe(`Show Buttons Tests`, () => {
     // Buttons should become visible on hover
     await page.locator(`#test-structure`).hover()
     await expect(control_buttons).toHaveCSS(`opacity`, `1`)
-    await expect(page.locator(`#test-structure button.structure-info-toggle`))
-      .toBeVisible()
+    await expect(page.locator(`#test-structure button.structure-info-toggle`)).toBeVisible()
   })
 
   test(`should always show buttons when show_controls is always`, async ({ page }) => {
@@ -1793,16 +1721,16 @@ test.describe(`Show Buttons Tests`, () => {
     await page.waitForSelector(`canvas`)
 
     // Verify show_controls is set to always from URL
-    await expect(page.locator(`[data-testid="show-buttons-status"]`))
-      .toContainText(`Show Buttons Status: always`)
+    await expect(page.locator(`[data-testid="show-buttons-status"]`)).toContainText(
+      `Show Buttons Status: always`,
+    )
 
     const control_buttons = page.locator(`#test-structure section.control-buttons`)
     await expect(control_buttons).toHaveClass(/always-visible/)
 
     // Buttons should be visible immediately (no hover required)
     await expect(control_buttons).toHaveCSS(`opacity`, `1`)
-    await expect(page.locator(`#test-structure button.structure-info-toggle`))
-      .toBeVisible()
+    await expect(page.locator(`#test-structure button.structure-info-toggle`)).toBeVisible()
     await expect(page.locator(`.fullscreen-toggle`)).toBeVisible()
   })
 })
@@ -1851,10 +1779,12 @@ test.describe(`Structure Event Handler Tests`, () => {
     await height_input.fill(`600`)
 
     // Verify the input changes were applied (these update the test page state)
-    await expect(page.locator(`[data-testid="canvas-width-status"]`))
-      .toContainText(`Canvas Width Status: 800`)
-    await expect(page.locator(`[data-testid="canvas-height-status"]`))
-      .toContainText(`Canvas Height Status: 600`)
+    await expect(page.locator(`[data-testid="canvas-width-status"]`)).toContainText(
+      `Canvas Width Status: 800`,
+    )
+    await expect(page.locator(`[data-testid="canvas-height-status"]`)).toContainText(
+      `Canvas Height Status: 600`,
+    )
 
     // The structure wrapper dimensions are controlled by CSS (--struct-height defaults to 500px)
     // so the actual CSS may differ from the bound values
@@ -1869,9 +1799,7 @@ test.describe(`Structure Event Handler Tests`, () => {
     const show_atoms_checkbox = page.locator(
       `label:has-text("Show Atoms") input[type="checkbox"]`,
     )
-    const gizmo_checkbox = page.locator(
-      `label:has-text("Show Gizmo") input[type="checkbox"]`,
-    )
+    const gizmo_checkbox = page.locator(`label:has-text("Show Gizmo") input[type="checkbox"]`)
 
     // Toggle show atoms
     await show_atoms_checkbox.uncheck()
@@ -1910,15 +1838,11 @@ test.describe(`Structure Event Handler Tests`, () => {
     await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
 
     // Find the camera projection select dropdown
-    const camera_projection_select = pane_div.locator(
-      `label:has-text("Projection") select`,
-    )
+    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
     await expect(camera_projection_select).toBeVisible()
 
     // Check initial state - the select should have default value
-    await expect(camera_projection_select).toHaveValue(
-      DEFAULTS.structure.camera_projection,
-    )
+    await expect(camera_projection_select).toHaveValue(DEFAULTS.structure.camera_projection)
 
     // Switch to perspective projection
     await camera_projection_select.selectOption(`perspective`)
@@ -1969,8 +1893,8 @@ test.describe(`Structure Event Handler Tests`, () => {
       event_name: string,
       expected_props: string[] = [],
     ) => {
-      const event_calls = await page.evaluate(() =>
-        (globalThis as Record<string, unknown>).event_calls as unknown[] || []
+      const event_calls = await page.evaluate(
+        () => ((globalThis as Record<string, unknown>).event_calls as unknown[]) || [],
       )
 
       const events = event_calls.filter((call) => {
@@ -1988,7 +1912,9 @@ test.describe(`Structure Event Handler Tests`, () => {
       return event
     }
 
-    test(`should trigger on_fullscreen_change event when fullscreen state changes`, async ({ page }) => {
+    test(`should trigger on_fullscreen_change event when fullscreen state changes`, async ({
+      page,
+    }) => {
       const fullscreen_button = page.locator(`#test-structure .fullscreen-toggle`)
       if (!(await fullscreen_button.isVisible())) test.skip()
 
@@ -2008,7 +1934,9 @@ test.describe(`Structure Event Handler Tests`, () => {
       }
     })
 
-    test(`should trigger on_file_load event when structure is loaded via data_url`, async ({ page }) => {
+    test(`should trigger on_file_load event when structure is loaded via data_url`, async ({
+      page,
+    }) => {
       await clear_events_and_wait(page)
       // Use a valid structure file that exists in the static directory
       await goto_structure_test(page, `/test/structure?data_url=/structures/mp-1.json`)
@@ -2050,11 +1978,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   // Helper for camera projection toggle tests
-  async function test_camera_projection_toggle(
-    page: Page,
-    initial: string,
-    target: string,
-  ) {
+  async function test_camera_projection_toggle(page: Page, initial: string, target: string) {
     const test_page_controls_checkbox = page.locator(
       `label:has-text("Controls Open") input[type="checkbox"]`,
     )
@@ -2063,11 +1987,10 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     const pane_div = page.locator(`#test-structure .controls-pane`)
     await expect(pane_div).toBeVisible({ timeout: 2000 })
 
-    const camera_projection_select = pane_div.locator(
-      `label:has-text("Projection") select`,
-    )
+    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
 
-    if (initial !== DEFAULTS.structure.camera_projection) { // Set initial state if not default
+    if (initial !== DEFAULTS.structure.camera_projection) {
+      // Set initial state if not default
       await camera_projection_select.selectOption(initial)
       await expect(camera_projection_select).toHaveValue(initial)
     }
@@ -2079,11 +2002,15 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await expect(page.locator(`#test-structure canvas`)).toBeVisible()
   }
 
-  test(`camera projection can be toggled from perspective to orthographic`, async ({ page }) => {
+  test(`camera projection can be toggled from perspective to orthographic`, async ({
+    page,
+  }) => {
     await test_camera_projection_toggle(page, `perspective`, `orthographic`)
   })
 
-  test(`camera projection can be toggled from orthographic to perspective`, async ({ page }) => {
+  test(`camera projection can be toggled from orthographic to perspective`, async ({
+    page,
+  }) => {
     await test_camera_projection_toggle(page, `orthographic`, `perspective`)
   })
 
@@ -2096,9 +2023,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     const pane_div = page.locator(`#test-structure .controls-pane`)
     await expect(pane_div).toBeVisible({ timeout: 2000 })
 
-    const camera_projection_select = pane_div.locator(
-      `label:has-text("Projection") select`,
-    )
+    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
     const canvas = page.locator(`#test-structure canvas`)
 
     // Test both projections produce different visuals and respond to zoom
@@ -2122,9 +2047,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     }
 
     // Verify zoom responsiveness and visual differences
-    expect(screenshots.perspective_initial.equals(screenshots.perspective_zoomed)).toBe(
-      false,
-    )
+    expect(screenshots.perspective_initial.equals(screenshots.perspective_zoomed)).toBe(false)
     expect(screenshots.orthographic_initial.equals(screenshots.orthographic_zoomed)).toBe(
       false,
     )
@@ -2142,12 +2065,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     const pane_div = page.locator(`#test-structure .controls-pane`)
     await expect(pane_div).toBeVisible({ timeout: 2000 })
 
-    const camera_projection_select = pane_div.locator(
-      `label:has-text("Projection") select`,
-    )
-    const atom_radius_input = pane_div.locator(
-      `label:has-text("Radius") input[type="number"]`,
-    )
+    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
+    const atom_radius_input = pane_div.locator(`label:has-text("Radius") input[type="number"]`)
     const auto_rotate_input = pane_div.locator(
       `label:has-text("Auto-rotate speed") input[type="number"]`,
     )
@@ -2195,9 +2114,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
     for (const projection of [`perspective`, `orthographic`]) {
       // Re-open pane if it was closed by canvas interactions
-      const has_pane_open = await pane_div.evaluate((el) =>
-        el.classList.contains(`pane-open`)
-      )
+      const has_pane_open = await pane_div.evaluate((el) => el.classList.contains(`pane-open`))
       if (!has_pane_open) {
         await test_page_controls_checkbox.check()
         await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
@@ -2233,9 +2150,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     const pane_div = page.locator(`#test-structure .controls-pane`)
     await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
 
-    const camera_projection_select = pane_div.locator(
-      `label:has-text("Projection") select`,
-    )
+    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
     const auto_rotate_input = pane_div.locator(
       `label:has-text("Auto-rotate speed") input[type="number"]`,
     )
@@ -2286,9 +2201,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       const visibility_heading = page.locator(
         `#test-structure .controls-pane h4:has-text("Visibility")`,
       )
-      const visibility_container = visibility_heading.locator(
-        `xpath=following-sibling::*[1]`,
-      )
+      const visibility_container = visibility_heading.locator(`xpath=following-sibling::*[1]`)
       const show_atoms_checkbox = visibility_container.getByLabel(`Atoms`, {
         exact: true,
       })
@@ -2316,9 +2229,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       const camera_reset = camera_heading.locator(`button.reset-button`)
 
       // Find the camera projection select and change it
-      const projection_select = controls_pane.locator(
-        `label:has-text("Projection") select`,
-      )
+      const projection_select = controls_pane.locator(`label:has-text("Projection") select`)
       await projection_select.scrollIntoViewIfNeeded()
 
       // Store initial value
@@ -2343,9 +2254,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
     test(`atoms section reset button appears and works`, async ({ page }) => {
       // Change atom radius within the Atoms section
-      const atoms_heading = page.locator(
-        `#test-structure .controls-pane h4:has-text("Atoms")`,
-      )
+      const atoms_heading = page.locator(`#test-structure .controls-pane h4:has-text("Atoms")`)
       const atoms_container = atoms_heading.locator(`xpath=following-sibling::*[1]`)
       const radius_input = atoms_container.locator(
         `label:has-text("Radius") input[type="number"]`,
@@ -2365,9 +2274,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
     test(`cell section reset button appears and works`, async ({ page }) => {
       // Change cell edge opacity within the Cell section
-      const cell_heading = page.locator(
-        `#test-structure .controls-pane h4:has-text("Cell")`,
-      )
+      const cell_heading = page.locator(`#test-structure .controls-pane h4:has-text("Cell")`)
       const cell_container = cell_heading.locator(`xpath=following-sibling::*[1]`)
       const opacity_input = cell_container.locator(
         `label:has-text("Edge color") + label input[type="number"]`,
@@ -2390,9 +2297,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       const background_heading = page.locator(
         `#test-structure .controls-pane h4:has-text("Background")`,
       )
-      const background_container = background_heading.locator(
-        `xpath=following-sibling::*[1]`,
-      )
+      const background_container = background_heading.locator(`xpath=following-sibling::*[1]`)
       const bg_opacity_input = background_container.locator(
         `label:has-text("Opacity") input[type="number"]`,
       )
@@ -2480,17 +2385,14 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await expect(page.locator(`h4:has-text("Labels")`)).toBeVisible()
 
       // Change label size
-      const size_range = page.locator(`h4:has-text("Labels")`).locator(
-        `xpath=following-sibling::*[1]`,
-      ).locator(
-        `label:has-text("Size") input[type="range"]`,
-      )
+      const size_range = page
+        .locator(`h4:has-text("Labels")`)
+        .locator(`xpath=following-sibling::*[1]`)
+        .locator(`label:has-text("Size") input[type="range"]`)
       await size_range.fill(`1.5`)
 
       // Reset button should appear in Labels section
-      const labels_reset = page.locator(`h4:has-text("Labels")`).locator(
-        `button.reset-button`,
-      )
+      const labels_reset = page.locator(`h4:has-text("Labels")`).locator(`button.reset-button`)
       await expect(labels_reset).toBeVisible()
 
       // Click reset button
@@ -2512,9 +2414,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Change setting in Visibility section
       const visibility_heading = controls_pane.locator(`h4:has-text("Visibility")`)
-      const visibility_container = visibility_heading.locator(
-        `xpath=following-sibling::*[1]`,
-      )
+      const visibility_container = visibility_heading.locator(`xpath=following-sibling::*[1]`)
       const show_atoms_checkbox = visibility_container.getByLabel(`Atoms`, {
         exact: true,
       })
@@ -2522,14 +2422,11 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Change setting in Camera section - toggle to opposite of current value
       const camera_heading = controls_pane.locator(`h4:has-text("Camera")`)
-      const projection_select = controls_pane.locator(
-        `label:has-text("Projection") select`,
-      )
+      const projection_select = controls_pane.locator(`label:has-text("Projection") select`)
       await projection_select.scrollIntoViewIfNeeded()
       const initial_projection = await projection_select.inputValue()
-      const new_projection = initial_projection === `perspective`
-        ? `orthographic`
-        : `perspective`
+      const new_projection =
+        initial_projection === `perspective` ? `orthographic` : `perspective`
       await projection_select.selectOption(new_projection)
 
       // Change setting in Background section - use the specific Opacity label with exact match
@@ -2571,9 +2468,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       const visibility_heading = page.locator(
         `#test-structure .controls-pane h4:has-text("Visibility")`,
       )
-      const visibility_container = visibility_heading.locator(
-        `xpath=following-sibling::*[1]`,
-      )
+      const visibility_container = visibility_heading.locator(`xpath=following-sibling::*[1]`)
       const show_atoms_checkbox = visibility_container.getByLabel(`Atoms`, {
         exact: true,
       })
@@ -2588,9 +2483,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
       // Control pane should still be visible (not closed by the click)
       await expect(page.locator(`.structure-controls-toggle`)).toBeVisible()
-      await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(
-        `true`,
-      )
+      await expect(page.locator(`[data-testid="controls-open-status"]`)).toContainText(`true`)
     })
 
     test(`reset buttons have proper accessibility attributes`, async ({ page }) => {
@@ -2598,9 +2491,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       const visibility_heading = page.locator(
         `#test-structure .controls-pane h4:has-text("Visibility")`,
       )
-      const visibility_container = visibility_heading.locator(
-        `xpath=following-sibling::*[1]`,
-      )
+      const visibility_container = visibility_heading.locator(`xpath=following-sibling::*[1]`)
       const show_atoms_checkbox = visibility_container.getByLabel(`Atoms`, {
         exact: true,
       })
@@ -2611,10 +2502,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
       await expect(visibility_reset).toBeVisible()
 
       // Check accessibility attributes
-      await expect(visibility_reset).toHaveAttribute(
-        `title`,
-        `Reset visibility to defaults`,
-      )
+      await expect(visibility_reset).toHaveAttribute(`title`, `Reset visibility to defaults`)
       await expect(visibility_reset).toHaveAttribute(
         `aria-label`,
         `Reset visibility to defaults`,
@@ -2919,7 +2807,7 @@ test.describe(`Element Visibility Toggle`, () => {
     // Capture initial state
     const initial_screenshot = await canvas.screenshot()
     const initial_opacity = await label.evaluate((el) =>
-      parseFloat(globalThis.getComputedStyle(el).opacity)
+      parseFloat(globalThis.getComputedStyle(el).opacity),
     )
     // Initial check - tooltip stores in data-original-title
     await expect(toggle_button).toHaveAttribute(`data-original-title`, /Hide .+ atoms/)
@@ -2936,7 +2824,7 @@ test.describe(`Element Visibility Toggle`, () => {
     // Wait for CSS transition to complete (opacity 0.2s ease)
     await expect(async () => {
       const hidden_opacity = await label.evaluate((el) =>
-        parseFloat(globalThis.getComputedStyle(el).opacity)
+        parseFloat(globalThis.getComputedStyle(el).opacity),
       )
       expect(hidden_opacity).toBeLessThan(initial_opacity)
       // CSS sets .element-legend label.hidden { opacity: 0.4 }
@@ -3046,7 +2934,7 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // Button hidden initially
     const initial_opacity = await toggle_button.evaluate((el) =>
-      parseFloat(globalThis.getComputedStyle(el).opacity)
+      parseFloat(globalThis.getComputedStyle(el).opacity),
     )
     expect(initial_opacity).toBe(0)
 
@@ -3054,7 +2942,7 @@ test.describe(`Element Visibility Toggle`, () => {
     await first_item.hover()
     await expect(async () => {
       const hover_opacity = await toggle_button.evaluate((el) =>
-        parseFloat(globalThis.getComputedStyle(el).opacity)
+        parseFloat(globalThis.getComputedStyle(el).opacity),
       )
       expect(hover_opacity).toBeGreaterThan(0)
     }).toPass({ timeout: get_canvas_timeout() })
@@ -3068,7 +2956,7 @@ test.describe(`Element Visibility Toggle`, () => {
     await expect(toggle_button).toHaveClass(/element-hidden/)
     await expect(async () => {
       const hidden_opacity = await toggle_button.evaluate((el) =>
-        parseFloat(globalThis.getComputedStyle(el).opacity)
+        parseFloat(globalThis.getComputedStyle(el).opacity),
       )
       expect(hidden_opacity).toBeGreaterThan(0.9)
     }).toPass({ timeout: 2000 })
@@ -3089,24 +2977,18 @@ test.describe(`Fullscreen Background Color Detection`, () => {
   })
 
   // Helper to set background and trigger detection
-  const set_bg = async (
-    page: Page,
-    html_bg: string | null,
-    body_bg: string | null = null,
-  ) => {
+  const set_bg = async (page: Page, html_bg: string | null, body_bg: string | null = null) => {
     await page.evaluate(
       ([html, body]) => {
-        document.querySelectorAll(`style`).forEach((style_el) =>
-          style_el.textContent?.includes(`background`) && style_el.remove()
-        )
+        document
+          .querySelectorAll(`style`)
+          .forEach(
+            (style_el) => style_el.textContent?.includes(`background`) && style_el.remove(),
+          )
         document.documentElement.className = ``
         document.body.className = ``
         if (html) {
-          document.documentElement.style.setProperty(
-            `background-color`,
-            html,
-            `important`,
-          )
+          document.documentElement.style.setProperty(`background-color`, html, `important`)
         }
         if (body) document.body.style.setProperty(`background-color`, body, `important`)
 
@@ -3115,8 +2997,7 @@ test.describe(`Fullscreen Background Color Detection`, () => {
         const get_bg = () => {
           const html_bg = getComputedStyle(document.documentElement).backgroundColor
           const body_bg = getComputedStyle(document.body).backgroundColor
-          const valid = (bg: string) =>
-            bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
+          const valid = (bg: string) => bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
           if (valid(html_bg)) return html_bg
           if (valid(body_bg)) return body_bg
           return globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches
@@ -3130,9 +3011,9 @@ test.describe(`Fullscreen Background Color Detection`, () => {
   }
 
   const get_bg = (page: Page) =>
-    page.locator(`#test-structure`).evaluate((el) =>
-      getComputedStyle(el).getPropertyValue(`--struct-bg-fullscreen`)
-    )
+    page
+      .locator(`#test-structure`)
+      .evaluate((el) => getComputedStyle(el).getPropertyValue(`--struct-bg-fullscreen`))
 
   test(`uses HTML background`, async ({ page }) => {
     await set_bg(page, `rgb(255, 100, 50)`)
@@ -3291,8 +3172,8 @@ test.describe(`Edit Atoms Mode`, () => {
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
     await expect(undo_btn).toBeEnabled({ timeout: 2000 })
 
-    const is_mac = await page.evaluate(() =>
-      navigator.platform.toUpperCase().indexOf(`MAC`) >= 0
+    const is_mac = await page.evaluate(
+      () => navigator.platform.toUpperCase().indexOf(`MAC`) >= 0,
     )
     const undo_combo = is_mac ? `Meta+z` : `Control+z`
     const redo_combo = is_mac ? `Meta+y` : `Control+y`

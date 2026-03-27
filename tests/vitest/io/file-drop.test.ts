@@ -111,9 +111,7 @@ describe(`create_file_drop_handler`, () => {
 
   test(`works without optional callbacks`, async () => {
     vi.mocked(decompress_file).mockResolvedValue({ content: `ok`, filename: `f.cif` })
-    await run({ on_error: undefined, set_loading: undefined }, [
-      new File([`ok`], `f.cif`),
-    ])
+    await run({ on_error: undefined, set_loading: undefined }, [new File([`ok`], `f.cif`)])
     expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`)
   })
 })

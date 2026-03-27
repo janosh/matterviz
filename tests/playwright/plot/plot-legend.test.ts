@@ -3,9 +3,7 @@ import { expect, type Locator, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
 
 // Helper functions for placement stability tests
-async function get_element_center(
-  locator: Locator,
-): Promise<{ x: number; y: number } | null> {
+async function get_element_center(locator: Locator): Promise<{ x: number; y: number } | null> {
   const bbox = await locator.boundingBox()
   if (!bbox) return null
   return { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 }
@@ -24,9 +22,7 @@ async function wait_for_position_stable(
 
   const start = Date.now()
   while (Date.now() - start < timeout) {
-    // deno-lint-ignore no-await-in-loop -- intentional polling pattern
     await new Promise((resolve) => setTimeout(resolve, 50))
-    // deno-lint-ignore no-await-in-loop -- sequential DOM reads required
     const current_pos = await get_element_center(locator)
     if (!current_pos || !last_pos) continue
 
@@ -139,7 +135,9 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     })
   })
 
-  test(`should isolate item on double click and restore on second double click`, async ({ page }) => {
+  test(`should isolate item on double click and restore on second double click`, async ({
+    page,
+  }) => {
     const legend_items = page.locator(main_legend_wrapper).locator(`.legend-item`)
     const last_isolated_tracker = page.locator(`[data-testid="last-isolated"]`)
 
@@ -205,10 +203,7 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
     const legend_wrapper = page.locator(custom_style_legend_wrapper)
     const legend_item = legend_wrapper.locator(`.legend-item`).first()
 
-    await expect(legend_wrapper).toHaveCSS(
-      `background-color`,
-      `rgba(255, 255, 255, 0.95)`,
-    )
+    await expect(legend_wrapper).toHaveCSS(`background-color`, `rgba(255, 255, 255, 0.95)`)
     await expect(legend_wrapper).toHaveCSS(`padding`, `0px`)
     await expect(legend_item).toHaveCSS(`color`, `rgb(55, 65, 81)`)
     await expect(legend_item).toHaveCSS(`padding`, `1px 3px`)
@@ -300,16 +295,12 @@ test.describe(`Legend Placement Stability`, () => {
     expect(count).toBeGreaterThan(0)
 
     for (let idx = 0; idx < count; idx++) {
-      // deno-lint-ignore no-await-in-loop -- sequential UI interactions required
       await series_items.nth(idx).click()
-      // deno-lint-ignore no-await-in-loop -- must verify after each click
       await expect(legend).toBeVisible()
     }
 
     for (let idx = 0; idx < count; idx++) {
-      // deno-lint-ignore no-await-in-loop -- sequential UI interactions required
       await series_items.nth(idx).click()
-      // deno-lint-ignore no-await-in-loop -- must verify after each click
       await expect(legend).toBeVisible()
     }
 
@@ -342,16 +333,11 @@ test.describe(`Legend Placement Stability`, () => {
     const drag_distance = { x: 80, y: 60 } // Distance to drag the legend
 
     // Click in top-left padding area (avoids legend items), then drag
-    await page.mouse.move(
-      initial_bbox.x + padding_offset,
-      initial_bbox.y + padding_offset,
-    )
+    await page.mouse.move(initial_bbox.x + padding_offset, initial_bbox.y + padding_offset)
     await page.mouse.down()
-    await page.mouse.move(
-      initial_bbox.x + drag_distance.x,
-      initial_bbox.y + drag_distance.y,
-      { steps: 10 },
-    )
+    await page.mouse.move(initial_bbox.x + drag_distance.x, initial_bbox.y + drag_distance.y, {
+      steps: 10,
+    })
     await page.mouse.up()
 
     // Capture position after drag

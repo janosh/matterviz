@@ -18,7 +18,8 @@ describe(`symmetry module`, () => {
     it(`should have all matrices with determinant ±1`, () => {
       for (const mat of OH_SYMMETRY_MATRICES) {
         // Extract 3x3 rotation part (column-major)
-        const det = mat[0] * (mat[5] * mat[10] - mat[6] * mat[9]) -
+        const det =
+          mat[0] * (mat[5] * mat[10] - mat[6] * mat[9]) -
           mat[4] * (mat[1] * mat[10] - mat[2] * mat[9]) +
           mat[8] * (mat[1] * mat[6] - mat[2] * mat[5])
 

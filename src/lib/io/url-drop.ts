@@ -116,8 +116,8 @@ export async function load_from_url(
       if (head.ok) {
         const buf = new Uint8Array(await head.arrayBuffer())
         const is_gzip = buf[0] === 0x1f && buf[1] === 0x8b
-        const is_hdf5 = buf[0] === 0x89 && buf[1] === 0x48 && buf[2] === 0x44 &&
-          buf[3] === 0x46
+        const is_hdf5 =
+          buf[0] === 0x89 && buf[1] === 0x48 && buf[2] === 0x44 && buf[3] === 0x46
         if (is_gzip || is_hdf5) {
           const resp = await fetch(url)
           if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)

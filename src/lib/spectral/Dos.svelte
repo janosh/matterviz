@@ -193,7 +193,9 @@
 
           // For stacked plots, accumulate densities (only if array lengths match)
           if (stack && cumulative_spin_up?.length === densities_up.length) {
-            densities_up = densities_up.map((d, idx) => d + cumulative_spin_up![idx])
+            densities_up = densities_up.map((density, idx) =>
+              density + (cumulative_spin_up?.[idx] ?? 0)
+            )
           } else if (stack && cumulative_spin_up) {
             console.warn(`DOS stacking: length mismatch for "${label}"`)
           }
@@ -247,8 +249,8 @@
               ? [...cumulative_spin_down]
               : null
             if (cumulative_spin_down?.length === densities_down.length) {
-              densities_down = densities_down.map((d, idx) =>
-                d + cumulative_spin_down![idx]
+              densities_down = densities_down.map((density, idx) =>
+                density + (cumulative_spin_down?.[idx] ?? 0)
               )
             } else if (cumulative_spin_down) {
               console.warn(`DOS stacking (spin-down): length mismatch for "${label}"`)

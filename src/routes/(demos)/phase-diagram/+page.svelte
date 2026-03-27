@@ -252,7 +252,7 @@
         handle_url_file_drop(url, pseudo_file)
         return
       } catch (exc) {
-        console.debug(
+        console.warn(
           `Failed to parse internal drag data, falling through to file handling ${exc}`,
         )
       }

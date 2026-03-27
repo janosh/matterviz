@@ -1,10 +1,6 @@
 // Tests for HeatmapMatrix Svelte component rendering, interaction, and color computation.
 
-import {
-  type AxisItem,
-  HeatmapMatrix,
-  make_color_override_key,
-} from '$lib/heatmap-matrix'
+import { type AxisItem, HeatmapMatrix, make_color_override_key } from '$lib/heatmap-matrix'
 import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
@@ -17,9 +13,7 @@ const make_items = (labels: string[]): AxisItem[] =>
 const x_items = make_items([`A`, `B`, `C`])
 const y_items = make_items([`X`, `Y`, `Z`])
 
-const mount_matrix = (
-  props: Partial<ComponentProps<typeof HeatmapMatrix>> = {},
-): void => {
+const mount_matrix = (props: Partial<ComponentProps<typeof HeatmapMatrix>> = {}): void => {
   mount(HeatmapMatrix, {
     target: document.body,
     props: { x_items, y_items, ...props },
@@ -100,8 +94,9 @@ describe(`symmetric mode`, () => {
     expect(data_cells).toHaveLength(6)
     expect(empty_cells).toHaveLength(3)
     for (const cell of data_cells) {
-      expect(Number(cell.dataset.x), `(${cell.dataset.x},${cell.dataset.y})`)
-        [check](Number(cell.dataset.y))
+      expect(Number(cell.dataset.x), `(${cell.dataset.x},${cell.dataset.y})`)[check](
+        Number(cell.dataset.y),
+      )
     }
     for (const cell of empty_cells) {
       expect(cell.dataset.x).toBeUndefined()
@@ -111,7 +106,13 @@ describe(`symmetric mode`, () => {
 
 describe(`values and colors`, () => {
   test(`numeric values produce distinct colors from scale`, () => {
-    mount_matrix({ values: [[0, 0.5, 1], [0.25, 0.75, 0], [1, 0, 0.5]] })
+    mount_matrix({
+      values: [
+        [0, 0.5, 1],
+        [0.25, 0.75, 0],
+        [1, 0, 0.5],
+      ],
+    })
     const cells = get_data_cells()
     // All cells should have a background color
     for (const cell of cells) {
@@ -177,9 +178,7 @@ describe(`values and colors`, () => {
         },
       },
     })
-    const cells = document.querySelectorAll(`.cell:not(.empty)`) as NodeListOf<
-      HTMLElement
-    >
+    const cells = document.querySelectorAll(`.cell:not(.empty)`) as NodeListOf<HTMLElement>
     expect(cells[1].style.backgroundColor).toBe(`rgb(1, 2, 3)`)
     expect(cells[0].style.backgroundColor).not.toBe(`rgb(1, 2, 3)`)
   })
@@ -211,7 +210,14 @@ describe(`values and colors`, () => {
 describe(`click and dblclick handlers`, () => {
   test(`onclick receives correct CellContext`, () => {
     const handler = vi.fn()
-    mount_matrix({ values: [[1, 2, 3], [4, 5, 6], [7, 8, 9]], onclick: handler })
+    mount_matrix({
+      values: [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+      ],
+      onclick: handler,
+    })
     // Click cell at x=1, y=2 (value=8)
     const cell = get_data_cells()[7]
     expect(cell.dataset.x).toBe(`1`)
@@ -318,7 +324,11 @@ describe(`hide_empty`, () => {
     mount_matrix({
       x_items: make_items([`A`, `B`, `C`]),
       y_items: make_items([`X`, `Y`, `Z`]),
-      values: [[1, null, 2], [null, null, null], [3, null, 4]],
+      values: [
+        [1, null, 2],
+        [null, null, null],
+        [3, null, 4],
+      ],
       hide_empty: `compact`,
     })
     // Column B (all null) and row Y (all null) should be removed
@@ -338,7 +348,11 @@ describe(`hide_empty`, () => {
     mount_matrix({
       x_items: make_items([`A`, `B`, `C`]),
       y_items: make_items([`X`, `Y`, `Z`]),
-      values: [[1, null, 2], [null, null, null], [3, null, 4]],
+      values: [
+        [1, null, 2],
+        [null, null, null],
+        [3, null, 4],
+      ],
       hide_empty: `gaps`,
     })
     // Same 2 visible labels per axis, but grid template uses full 3 cols/rows
@@ -359,7 +373,11 @@ describe(`hide_empty`, () => {
     mount_matrix({
       x_items: make_items([`A`, `B`, `C`]),
       y_items: make_items([`X`, `Y`, `Z`]),
-      values: [[1, null, 2], [null, null, null], [3, null, 4]],
+      values: [
+        [1, null, 2],
+        [null, null, null],
+        [3, null, 4],
+      ],
       hide_empty: false,
     })
     expect(get_x_labels()).toHaveLength(3)
@@ -483,8 +501,8 @@ describe(`milestone feature props`, () => {
     })
     const tick_text = Array.from(document.querySelectorAll(`.legend .tick-label`))
       .map((item) => item.textContent?.trim())
-      .filter(Boolean)
-    expect(tick_text[0]).toBe(format_num(1.234, `.1f`))
+      .find(Boolean)
+    expect(tick_text).toBe(format_num(1.234, `.1f`))
   })
 
   test(`selection_mode multi updates selected class on click`, async () => {
@@ -520,9 +538,7 @@ describe(`milestone feature props`, () => {
       values: [[`#000000`]],
     })
     const first_cell = get_data_cells()[0]
-    expect(first_cell.style.getPropertyValue(`--heatmap-selected-outline-color`)).toBe(
-      `white`,
-    )
+    expect(first_cell.style.getPropertyValue(`--heatmap-selected-outline-color`)).toBe(`white`)
   })
 
   test(`oncontextmenu is triggered for cell`, () => {
@@ -555,13 +571,14 @@ describe(`milestone feature props`, () => {
     mount_matrix({
       x_items: make_items([`A`, `B`]),
       y_items: make_items([`A`, `B`]),
-      values: [[1, 2], [3, 4]],
+      values: [
+        [1, 2],
+        [3, 4],
+      ],
       symmetric: true,
       show_row_summaries: true,
     })
-    const summary_cells = document.querySelectorAll(`.summary-row`) as NodeListOf<
-      HTMLElement
-    >
+    const summary_cells = document.querySelectorAll(`.summary-row`) as NodeListOf<HTMLElement>
     expect(summary_cells[0].textContent?.trim()).toBe(`1`)
     expect(summary_cells[1].textContent?.trim()).toBe(`3.5`)
   })

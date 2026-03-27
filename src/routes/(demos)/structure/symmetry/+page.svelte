@@ -38,7 +38,7 @@
   onMount(() => { // Initialize WASM
     ensure_moyo_wasm_ready()
       .then(() => wasm_ready = true)
-      .catch((exc) => error = `WASM init failed: ${exc}`)
+      .catch((err) => error = `WASM init failed: ${err}`)
   })
 
   // Update filename from URL

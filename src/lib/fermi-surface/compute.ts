@@ -74,8 +74,9 @@ function tricubic_interpolate(
     for (let yi = 0; yi < 4; yi++) {
       const col = row[wy[yi]]
       // Inline z interpolation
-      y_sum += cy[yi] * (cz[0] * col[wz[0]] + cz[1] * col[wz[1]] +
-        cz[2] * col[wz[2]] + cz[3] * col[wz[3]])
+      y_sum +=
+        cy[yi] *
+        (cz[0] * col[wz[0]] + cz[1] * col[wz[1]] + cz[2] * col[wz[2]] + cz[3] * col[wz[3]])
     }
     result += cx[xi] * y_sum
   }
@@ -84,10 +85,7 @@ function tricubic_interpolate(
 }
 
 // Upsample a 3D grid using tricubic interpolation for smoother surfaces
-function upsample_grid(
-  grid: number[][][],
-  factor: number,
-): number[][][] {
+function upsample_grid(grid: number[][][], factor: number): number[][][] {
   if (factor <= 1) return grid
 
   const nx = grid.length
@@ -149,9 +147,7 @@ export function extract_fermi_surface(
 
   // Process each spin channel and band
   for (let spin_idx = 0; spin_idx < band_data.n_spins; spin_idx++) {
-    const spin: SpinChannel = band_data.n_spins === 2
-      ? (spin_idx === 0 ? `up` : `down`)
-      : null
+    const spin: SpinChannel = band_data.n_spins === 2 ? (spin_idx === 0 ? `up` : `down`) : null
 
     // Skip if spin not selected
     if (selected_spins && !selected_spins.includes(spin)) continue
@@ -166,9 +162,10 @@ export function extract_fermi_surface(
       if (!band_intersects_fermi(raw_energies, iso_value)) continue
 
       // Apply interpolation for smoother surfaces
-      const energies = interpolation_factor > 1
-        ? upsample_grid(raw_energies, interpolation_factor)
-        : raw_energies
+      const energies =
+        interpolation_factor > 1
+          ? upsample_grid(raw_energies, interpolation_factor)
+          : raw_energies
 
       // Extract isosurface using marching cubes
       // Use periodic: false because BXSF grids include both endpoints (k=0 and k=1)
@@ -203,8 +200,8 @@ export function extract_fermi_surface(
           band_data.k_lattice,
           band_data.k_grid,
         )
-        isosurface.avg_velocity = isosurface.properties.reduce((s, v) => s + v, 0) /
-          isosurface.properties.length
+        isosurface.avg_velocity =
+          isosurface.properties.reduce((s, v) => s + v, 0) / isosurface.properties.length
       }
 
       // Compute dimensionality if requested
@@ -319,12 +316,7 @@ function compute_fermi_velocities(
 
 // Trilinear interpolation for Vec3 grid
 // Note: Assumes x, y, z are non-negative (e.g. from wrapped fractional coordinates)
-function trilinear_interpolate_vec3(
-  grid: Vec3[][][],
-  x: number,
-  y: number,
-  z: number,
-): Vec3 {
+function trilinear_interpolate_vec3(grid: Vec3[][][], x: number, y: number, z: number): Vec3 {
   const nx = grid.length
   const ny = grid[0]?.length || 0
   const nz = grid[0]?.[0]?.length || 0
@@ -418,10 +410,7 @@ export function compute_fermi_slice(
   fermi_data: FermiSurfaceData,
   options: FermiSliceOptions = {},
 ): FermiSliceData {
-  const {
-    miller_indices = [0, 0, 1],
-    distance = 0,
-  } = options
+  const { miller_indices = [0, 0, 1], distance = 0 } = options
 
   // Validate miller indices are not all zero
   if (miller_indices[0] === 0 && miller_indices[1] === 0 && miller_indices[2] === 0) {
@@ -442,9 +431,9 @@ export function compute_fermi_slice(
   const normal_len = Math.hypot(...plane_normal)
   if (normal_len < EPS) {
     throw new Error(
-      `Degenerate plane normal: k_lattice vectors produce a zero-length normal for miller indices [${
-        miller_indices.join(`, `)
-      }]`,
+      `Degenerate plane normal: k_lattice vectors produce a zero-length normal for miller indices [${miller_indices.join(
+        `, `,
+      )}]`,
     )
   }
   const unit_normal = math.normalize_vec3(plane_normal)
@@ -507,7 +496,8 @@ function compute_edge_intersection(
 
   let property: number | undefined
   if (surface.properties) {
-    property = surface.properties[v0_idx] +
+    property =
+      surface.properties[v0_idx] +
       t * (surface.properties[v1_idx] - surface.properties[v0_idx])
   }
 
@@ -557,12 +547,7 @@ function slice_surface_with_plane(
       const v1_idx = face[(edge_idx + 1) % face.length]
       const edge_key = make_edge_key(v0_idx, v1_idx)
 
-      const intersection = compute_edge_intersection(
-        surface,
-        vertex_distances,
-        v0_idx,
-        v1_idx,
-      )
+      const intersection = compute_edge_intersection(surface, vertex_distances, v0_idx, v1_idx)
 
       if (intersection) {
         crossing_edges.push({ edge_key, intersection })
@@ -579,15 +564,12 @@ function slice_surface_with_plane(
       face_segments.push({
         face_idx,
         edge_keys: [crossing_edges[0].edge_key, crossing_edges[1].edge_key],
-        points: [
-          crossing_edges[0].intersection.point,
-          crossing_edges[1].intersection.point,
-        ],
+        points: [crossing_edges[0].intersection.point, crossing_edges[1].intersection.point],
         properties: surface.properties
           ? [
-            crossing_edges[0].intersection.property ?? 0,
-            crossing_edges[1].intersection.property ?? 0,
-          ]
+              crossing_edges[0].intersection.property ?? 0,
+              crossing_edges[1].intersection.property ?? 0,
+            ]
           : undefined,
       })
     }
@@ -596,7 +578,7 @@ function slice_surface_with_plane(
   if (face_segments.length === 0) return []
 
   // Build face_idx -> segment map for O(1) lookup
-  const face_to_segment = new Map<number, typeof face_segments[0]>()
+  const face_to_segment = new Map<number, (typeof face_segments)[0]>()
   for (const seg of face_segments) {
     face_to_segment.set(seg.face_idx, seg)
   }
@@ -682,10 +664,10 @@ function slice_surface_with_plane(
       start_segment.points[0],
       ...forward_points,
     ]
-    const contour_props: number[] | undefined = backward_props && forward_props &&
-        start_segment.properties
-      ? [...backward_props, start_segment.properties[0], ...forward_props]
-      : undefined
+    const contour_props: number[] | undefined =
+      backward_props && forward_props && start_segment.properties
+        ? [...backward_props, start_segment.properties[0], ...forward_props]
+        : undefined
 
     // Check if contour is closed
     const first = contour_points[0]
@@ -696,10 +678,7 @@ function slice_surface_with_plane(
     const points_2d: [number, number][] = new Array(contour_points.length)
     for (let idx = 0; idx < contour_points.length; idx++) {
       const p = contour_points[idx]
-      points_2d[idx] = [
-        p[0] * ux + p[1] * uy + p[2] * uz,
-        p[0] * vx + p[1] * vy + p[2] * vz,
-      ]
+      points_2d[idx] = [p[0] * ux + p[1] * uy + p[2] * uz, p[0] * vx + p[1] * vy + p[2] * vz]
     }
 
     isolines.push({

@@ -130,7 +130,7 @@
   }
 
   let is_video_supported = $derived(
-    typeof window !== `undefined` &&
+    typeof globalThis !== `undefined` &&
       typeof MediaRecorder !== `undefined` &&
       MediaRecorder.isTypeSupported(`video/webm;codecs=vp9`),
   )

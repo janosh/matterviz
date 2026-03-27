@@ -26,8 +26,8 @@ export const FORMAT_PATTERNS = {
       return false
     }
     const view = new Uint8Array(data.slice(0, 24))
-    return [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d].every((byte, idx) =>
-      view[idx] === byte
+    return [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d].every(
+      (byte, idx) => view[idx] === byte,
     )
   },
 
@@ -36,8 +36,8 @@ export const FORMAT_PATTERNS = {
     const has_ext = base_name?.match(/\.(h5|hdf5)$/)
     if (!has_ext || !(data instanceof ArrayBuffer) || data.byteLength < 8) return false
     const signature = new Uint8Array(data.slice(0, 8))
-    return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every((b, idx) =>
-      signature[idx] === b
+    return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every(
+      (b, idx) => signature[idx] === b,
     )
   },
 
@@ -45,10 +45,12 @@ export const FORMAT_PATTERNS = {
     const basename = filename?.toLowerCase().split(`/`).pop() || ``
     if (basename === `xdatcar` || basename.startsWith(`xdatcar`)) return true
     const lines = data.trim().split(/\r?\n/)
-    return lines.length >= 10 &&
+    return (
+      lines.length >= 10 &&
       lines.some((line) => line.includes(`Direct configuration=`)) &&
       !isNaN(parseFloat(lines[1])) &&
       lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
+    )
   },
 
   xyz_multi: (data: string, filename?: string) => {
@@ -59,7 +61,7 @@ export const FORMAT_PATTERNS = {
 
   lammpstrj: (data: string, filename?: string) => {
     const base = filename ? strip_compression_extensions(filename) : ``
-    if (!/\.lammpstrj$/.test(base)) return false
+    if (!base.endsWith(`.lammpstrj`)) return false
     return data.includes(`ITEM: TIMESTEP`) && data.includes(`ITEM: ATOMS`)
   },
 } as const
@@ -87,6 +89,8 @@ export function is_trajectory_file(filename: string, content?: string): boolean 
   }
 
   // For other extensions, require both keywords and specific extensions
-  return TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name) &&
+  return (
+    TRAJ_KEYWORDS_SIMPLE_REGEX.test(base_name) &&
     TRAJ_FALLBACK_EXTENSIONS_REGEX.test(base_name)
+  )
 }

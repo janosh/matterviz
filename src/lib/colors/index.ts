@@ -14,9 +14,7 @@ export type D3InterpolateName = keyof typeof d3_sc & `interpolate${string}`
 export type D3ColorSchemeName = D3InterpolateName extends `interpolate${infer Name}`
   ? Name
   : never
-export const get_d3_interpolator = (
-  name: D3InterpolateName,
-): (t: number) => string => {
+export const get_d3_interpolator = (name: D3InterpolateName): ((t: number) => string) => {
   const candidate = d3_sc[name]
   return typeof candidate === `function` ? candidate : d3_sc.interpolateViridis
 }
@@ -85,13 +83,13 @@ export const is_color = (val: unknown): val is string => {
   if (typeof val !== `string`) return false
   // Check for hex colors, rgb/rgba, hsl/hsla, color(), var(), and named colors
   // Exclude incomplete function prefixes like 'rgb', 'hsl', 'var', 'color'
-  return /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|color\([^)]+\)|var\([^)]+\)|(?!rgb$|hsl$|var$|color$)[a-z]+)$/i
-    .test(
-      val.toString().trim(),
-    )
+  return /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|color\([^)]+\)|var\([^)]+\)|(?!rgb$|hsl$|var$|color$)[a-z]+)$/i.test(
+    val.toString().trim(),
+  )
 }
 
-export const PLOT_COLORS = [ // Color series for e.g. line plots
+export const PLOT_COLORS = [
+  // Color series for e.g. line plots
   `#63b3ed`,
   `#68d391`,
   `#fbd38d`,
@@ -139,9 +137,11 @@ export function pick_contrast_color(options: ContrastOptions = {}) {
 }
 
 // Svelte attachment that automatically picks dark or light text color to maximize contrast with node's background color
-export const contrast_color = (options: ContrastOptions = {}) => (node: HTMLElement) => {
-  node.style.color = pick_contrast_color({ ...options, bg_color: get_bg_color(node) })
-}
+export const contrast_color =
+  (options: ContrastOptions = {}) =>
+  (node: HTMLElement) => {
+    node.style.color = pick_contrast_color({ ...options, bg_color: get_bg_color(node) })
+  }
 
 // Detect and return the page background color from html/body elements or user preferences
 export function get_page_background(
@@ -155,8 +155,7 @@ export function get_page_background(
   const body_bg = getComputedStyle(document.body).backgroundColor
 
   // Check if background is not transparent/unset
-  const is_valid_bg = (bg: string) =>
-    bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
+  const is_valid_bg = (bg: string) => bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
 
   // Prefer body background as it's more likely to be styled by the theme
   if (is_valid_bg(body_bg)) return body_bg
@@ -175,7 +174,9 @@ export function is_dark_mode(): boolean {
   try {
     const stored = localStorage.getItem(`theme`)
     if (stored === `dark` || stored === `light`) return stored === `dark`
-  } catch { /* localStorage throws in private browsing mode */ }
+  } catch {
+    /* localStorage throws in private browsing mode */
+  }
   return globalThis.matchMedia?.(`(prefers-color-scheme: dark)`).matches ?? false
 }
 
@@ -208,10 +209,7 @@ export function watch_dark_mode(on_change: (dark: boolean) => void): () => void 
 // Convert a CSS color string to hex format for use with <input type="color">.
 // Returns fallback for CSS variables, transparent, invalid colors, or undefined.
 // Uses d3-color for robust parsing of named colors, rgb(), hsl(), etc.
-export function css_color_to_hex(
-  color: string | undefined,
-  fallback: string,
-): string {
+export function css_color_to_hex(color: string | undefined, fallback: string): string {
   if (!color || color.startsWith(`var(`)) return fallback
   if (color === `transparent`) return `#ffffff`
   const parsed = rgb(color)

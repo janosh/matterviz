@@ -2,10 +2,10 @@
 // Glob handles both .json (dev) and .json.gz (production)
 import type { BaseBandStructure } from '$lib/spectral'
 
-const imports = import.meta.glob<BaseBandStructure>(
-  [`./*-bands.json`, `./*-bands.json.gz`],
-  { eager: true, import: `default` },
-)
+const imports = import.meta.glob<BaseBandStructure>([`./*-bands.json`, `./*-bands.json.gz`], {
+  eager: true,
+  import: `default`,
+})
 
 // Export with IDs extracted from filenames (e.g. ./cao-2605-bands.json -> cao_2605)
 export const electronic_bands = Object.fromEntries(

@@ -36,7 +36,7 @@
           .filter(([, amount]) => amount > 0)
           .map(([element]) => element)
       )),
-    ].sort(),
+    ].toSorted(),
   )
 
   // How many display axes (2 = binary/2D, 3+ = ternary/3D)
@@ -49,11 +49,9 @@
     config.tooltip_detail_level ?? CHEMPOT_DEFAULTS.tooltip_detail_level,
   )
 
-  function is_hover_info_3d(
+  const is_hover_info_3d = (
     value: ChemPotHoverInfo | null,
-  ): value is ChemPotHoverInfo3D {
-    return value?.view === `3d`
-  }
+  ): value is ChemPotHoverInfo3D => value?.view === `3d`
 </script>
 
 <div class="chempot-diagram-wrapper">

@@ -90,10 +90,7 @@ describe(`calculate_e_above_hull`, () => {
   })
 
   it(`handles multiple entries input`, () => {
-    const refs = [
-      make_entry(`A`, { A: 1 }, 0),
-      make_entry(`B`, { B: 1 }, 0),
-    ]
+    const refs = [make_entry(`A`, { A: 1 }, 0), make_entry(`B`, { B: 1 }, 0)]
     const input = [
       make_entry(`A`, { A: 1 }, 0),
       make_entry(`B`, { B: 1 }, 0),

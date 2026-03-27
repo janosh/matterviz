@@ -72,16 +72,13 @@ describe(`PlotTooltip`, () => {
     expect(doc_query(`.plot-tooltip`).style.color).toBe(expected)
   })
 
-  test.each([null, undefined])(
-    `does not set text color when bg_color is %s`,
-    (bg_color) => {
-      mount(PlotTooltip, {
-        target: document.body,
-        props: { x: 0, y: 0, bg_color, children: make_children() },
-      })
-      expect(doc_query(`.plot-tooltip`).style.color).toBe(``)
-    },
-  )
+  test.each([null, undefined])(`does not set text color when bg_color is %s`, (bg_color) => {
+    mount(PlotTooltip, {
+      target: document.body,
+      props: { x: 0, y: 0, bg_color, children: make_children() },
+    })
+    expect(doc_query(`.plot-tooltip`).style.color).toBe(``)
+  })
 
   test(`applies custom class`, () => {
     mount(PlotTooltip, {
@@ -115,8 +112,7 @@ describe(`PlotTooltip`, () => {
         x: 0,
         y: 0,
         children: createRawSnippet(() => ({
-          render: () =>
-            `<div class="tooltip-content"><strong>Label:</strong> Value</div>`,
+          render: () => `<div class="tooltip-content"><strong>Label:</strong> Value</div>`,
         })),
       },
     })

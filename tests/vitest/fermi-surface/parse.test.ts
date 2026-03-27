@@ -197,7 +197,11 @@ END_BLOCK_BANDGRID_3D`
     test(`parses native FermiSurfaceData JSON`, () => {
       const json_content = JSON.stringify({
         isosurfaces: [],
-        k_lattice: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        k_lattice: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ],
         fermi_energy: 5.0,
         reciprocal_cell: `wigner_seitz`,
         metadata: { n_bands: 1, n_surfaces: 0, total_area: 0 },
@@ -219,7 +223,11 @@ END_BLOCK_BANDGRID_3D`
             spin: null,
           },
         ],
-        k_lattice: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        k_lattice: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ],
         fermi_energy: 5.0,
         reciprocal_cell: `wigner_seitz`,
         metadata: { n_bands: 1, n_surfaces: 1, total_area: 0 },

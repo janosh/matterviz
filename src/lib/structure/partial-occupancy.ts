@@ -41,25 +41,15 @@ const make_render_site = (
   site_idx,
   site: site_override ?? sites[site_idx],
   is_image_atom: source_site_indices.some((source_site_idx) =>
-    is_image_atom(sites[source_site_idx])
+    is_image_atom(sites[source_site_idx]),
   ),
   source_site_indices,
 })
-const sq_dist = (
-  xyz_1: Vec3,
-  xyz_2: Vec3,
-): number =>
-  (xyz_1[0] - xyz_2[0]) ** 2 +
-  (xyz_1[1] - xyz_2[1]) ** 2 +
-  (xyz_1[2] - xyz_2[2]) ** 2
+const sq_dist = (xyz_1: Vec3, xyz_2: Vec3): number =>
+  (xyz_1[0] - xyz_2[0]) ** 2 + (xyz_1[1] - xyz_2[1]) ** 2 + (xyz_1[2] - xyz_2[2]) ** 2
 
-const is_split_partial_site = (
-  site: Site,
-  hidden_elements: ReadonlySet<string>,
-): boolean => {
-  const visible_species = site.species.filter(({ element }) =>
-    !hidden_elements.has(element)
-  )
+const is_split_partial_site = (site: Site, hidden_elements: ReadonlySet<string>): boolean => {
+  const visible_species = site.species.filter(({ element }) => !hidden_elements.has(element))
   const total_visible_occupancy = visible_species.reduce(
     (occupancy_sum, { occu }) => occupancy_sum + occu,
     0,
@@ -83,8 +73,8 @@ const group_split_partial_indices = (
       continue
     }
 
-    const matched_group_idx = grouped_centers.findIndex((center_xyz) =>
-      sq_dist(center_xyz, site.xyz) <= MERGE_DISTANCE_TOLERANCE ** 2
+    const matched_group_idx = grouped_centers.findIndex(
+      (center_xyz) => sq_dist(center_xyz, site.xyz) <= MERGE_DISTANCE_TOLERANCE ** 2,
     )
     if (matched_group_idx === -1) {
       grouped_centers.push(site.xyz)
@@ -102,7 +92,7 @@ const build_render_sites = (
   grouped_site_indices: number[][],
 ): RenderSite[] => {
   const render_sites: RenderSite[] = non_grouped_site_indices.map((site_idx) =>
-    make_render_site(sites, site_idx, [site_idx])
+    make_render_site(sites, site_idx, [site_idx]),
   )
 
   for (const grouped_indices of grouped_site_indices) {
@@ -114,16 +104,14 @@ const build_render_sites = (
 
     const representative_site_idx = grouped_indices[0]
     const representative_site = sites[representative_site_idx]
-    const merged_species = grouped_indices.flatMap((grouped_site_idx) =>
-      sites[grouped_site_idx].species
+    const merged_species = grouped_indices.flatMap(
+      (grouped_site_idx) => sites[grouped_site_idx].species,
     )
     render_sites.push(
-      make_render_site(
-        sites,
-        representative_site_idx,
-        [...grouped_indices],
-        { ...representative_site, species: merged_species },
-      ),
+      make_render_site(sites, representative_site_idx, [...grouped_indices], {
+        ...representative_site,
+        species: merged_species,
+      }),
     )
   }
 
@@ -158,9 +146,8 @@ export const compute_slice_geometry = (
     0,
   )
   // Preserve total angular coverage at one full turn for invalid overfull inputs.
-  const occupancy_scale_factor = total_visible_occupancy > 1 + OCCUPANCY_EPS
-    ? 1 / total_visible_occupancy
-    : 1
+  const occupancy_scale_factor =
+    total_visible_occupancy > 1 + OCCUPANCY_EPS ? 1 / total_visible_occupancy : 1
   const normalized_species = visible_species.map(({ element, occu }) => ({
     element,
     occu: occu * occupancy_scale_factor,
@@ -178,9 +165,8 @@ export const compute_slice_geometry = (
     // Keep neighboring wedges from sharing the exact same plane (z-fighting).
     const phi_span_raw = Math.max(0, end_phi_raw - start_phi_raw)
     const max_safe_gap = Math.max(0, phi_span_raw - MIN_PHI_LENGTH)
-    const desired_gap = visible_species.length > 1
-      ? Math.min(slice_gap_rad, phi_span_raw * 0.25)
-      : 0
+    const desired_gap =
+      visible_species.length > 1 ? Math.min(slice_gap_rad, phi_span_raw * 0.25) : 0
     const phi_gap = Math.min(desired_gap, max_safe_gap)
     const start_phi = start_phi_raw + phi_gap / 2
     const end_phi = end_phi_raw - phi_gap / 2

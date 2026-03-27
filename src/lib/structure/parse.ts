@@ -109,9 +109,7 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   // Fallback to default elements by atomic number
   const fallback_elements = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`]
   const fallback = fallback_elements[index % fallback_elements.length]
-  console.warn(
-    `Invalid element symbol '${symbol}', using fallback '${fallback}'`,
-  )
+  console.warn(`Invalid element symbol '${symbol}', using fallback '${fallback}'`)
   return fallback as ElementSymbol
 }
 
@@ -180,9 +178,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
       // Look ahead to find where numbers start (atom counts)
       for (let lookahead_idx = 1; lookahead_idx < 10; lookahead_idx++) {
         if (line_index + lookahead_idx >= lines.length) break
-        const next_line_first_token = lines[line_index + lookahead_idx]
-          .trim()
-          .split(/\s+/)[0]
+        const next_line_first_token = lines[line_index + lookahead_idx].trim().split(/\s+/)[0]
         const next_token_as_number = parseInt(next_line_first_token)
         if (!isNaN(next_token_as_number)) {
           symbol_lines = lookahead_idx
@@ -191,24 +187,14 @@ export function parse_poscar(content: string): ParsedStructure | null {
       }
 
       // Collect all element symbols from the symbol lines
-      for (
-        let symbol_line_idx = 0;
-        symbol_line_idx < symbol_lines;
-        symbol_line_idx++
-      ) {
+      for (let symbol_line_idx = 0; symbol_line_idx < symbol_lines; symbol_line_idx++) {
         if (line_index + symbol_line_idx < lines.length) {
-          element_symbols.push(
-            ...lines[line_index + symbol_line_idx].trim().split(/\s+/),
-          )
+          element_symbols.push(...lines[line_index + symbol_line_idx].trim().split(/\s+/))
         }
       }
 
       // Parse atom counts (may span multiple lines)
-      for (
-        let count_line_idx = 0;
-        count_line_idx < symbol_lines;
-        count_line_idx++
-      ) {
+      for (let count_line_idx = 0; count_line_idx < symbol_lines; count_line_idx++) {
         if (line_index + symbol_lines + count_line_idx < lines.length) {
           const counts = lines[line_index + symbol_lines + count_line_idx]
             .trim()
@@ -223,7 +209,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
       // VASP 4 format - only atom counts, generate default element symbols
       atom_counts = lines[line_index].trim().split(/\s+/).map(Number)
       element_symbols = atom_counts.map((_, idx) =>
-        validate_element_symbol(`Element${idx}`, idx)
+        validate_element_symbol(`Element${idx}`, idx),
       )
       line_index += 1
     }
@@ -251,8 +237,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
 
       // Determine coordinate mode
       const is_direct = coordinate_mode.startsWith(`D`)
-      const is_cartesian = coordinate_mode.startsWith(`C`) ||
-        coordinate_mode.startsWith(`K`)
+      const is_cartesian = coordinate_mode.startsWith(`C`) || coordinate_mode.startsWith(`K`)
 
       if (!is_direct && !is_cartesian) {
         console.error(`Unknown coordinate mode in POSCAR: ${coordinate_mode}`)
@@ -264,10 +249,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
       let atom_index = 0
 
       for (let elem_idx = 0; elem_idx < element_symbols.length; elem_idx++) {
-        const element = validate_element_symbol(
-          element_symbols[elem_idx],
-          elem_idx,
-        )
+        const element = validate_element_symbol(element_symbols[elem_idx], elem_idx)
         const count = atom_counts[elem_idx]
 
         for (let atom_count_idx = 0; atom_count_idx < count; atom_count_idx++) {
@@ -284,11 +266,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
           if (has_selective_dynamics) {
             const tokens = lines[coord_line_idx].trim().split(/\s+/)
             if (tokens.length >= 6) {
-              selective_dynamics = [
-                tokens[3] === `T`,
-                tokens[4] === `T`,
-                tokens[5] === `T`,
-              ]
+              selective_dynamics = [tokens[3] === `T`, tokens[4] === `T`, tokens[5] === `T`]
             }
           }
           let xyz: Vec3
@@ -301,7 +279,8 @@ export function parse_poscar(content: string): ParsedStructure | null {
             // Convert fractional to Cartesian coordinates
             const lattice_transposed = math.transpose_3x3_matrix(scaled_lattice)
             xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
-          } else { // Already Cartesian, scale if needed
+          } else {
+            // Already Cartesian, scale if needed
             xyz = math.scale([x, y, z], scale_factor)
             // Calculate fractional coordinates using proper matrix inversion
             // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
@@ -332,9 +311,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
             abc,
             xyz,
             label: `${element}${atom_index + atom_count_idx + 1}`,
-            properties: selective_dynamics
-              ? { selective_dynamics: selective_dynamics }
-              : {},
+            properties: selective_dynamics ? { selective_dynamics: selective_dynamics } : {},
           }
 
           sites.push(site)
@@ -376,11 +353,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
 
     while (line_idx < all_lines.length) {
       const numAtoms = parseInt(all_lines[line_idx].trim(), 10)
-      if (
-        !isNaN(numAtoms) &&
-        numAtoms > 0 &&
-        line_idx + numAtoms + 1 < all_lines.length
-      ) {
+      if (!isNaN(numAtoms) && numAtoms > 0 && line_idx + numAtoms + 1 < all_lines.length) {
         const frameLines = all_lines.slice(line_idx, line_idx + numAtoms + 2)
         frames.push(frameLines.join(`\n`))
         line_idx += numAtoms + 2
@@ -585,11 +558,8 @@ const apply_symmetry_ops = (
 
   const equivalent_atoms: CifAtom[] = []
   const seen = new Set<string>()
-  const wrap = (
-    coords: Vec3,
-  ): Vec3 => (wrap_fractional_coords
-    ? coords.map((val) => val - Math.floor(val)) as Vec3
-    : coords)
+  const wrap = (coords: Vec3): Vec3 =>
+    wrap_fractional_coords ? (coords.map((val) => val - Math.floor(val)) as Vec3) : coords
   // Use 6 decimal places for deduplication to handle floating point imprecision
   // from compound symmetry operations like x-y, -x+y which can produce small errors
   const key = (coords: Vec3): string =>
@@ -611,7 +581,8 @@ const apply_symmetry_ops = (
     for (let dim = 0; dim < 3; dim++) {
       const { coefficients, translation } = parse_symmetry_expression(parts[dim])
       // Apply: new_coord = coeff_x * x + coeff_y * y + coeff_z * z + translation
-      new_coords[dim] = coefficients[0] * atom.coords[0] +
+      new_coords[dim] =
+        coefficients[0] * atom.coords[0] +
         coefficients[1] * atom.coords[1] +
         coefficients[2] * atom.coords[2] +
         translation
@@ -633,11 +604,7 @@ const apply_symmetry_ops = (
   return equivalent_atoms
 }
 
-const extract_cif_cell_parameters = (
-  text: string,
-  type: string,
-  strict = true,
-): number[] =>
+const extract_cif_cell_parameters = (text: string, type: string, strict = true): number[] =>
   text
     .split(`\n`)
     .filter((line) => line.startsWith(`_${type}`))
@@ -657,9 +624,7 @@ const extract_cif_cell_parameters = (
     .filter((val): val is number => val !== null)
 
 // build header index mapping for atom site data (supports fract and Cartn coordinates)
-const build_cif_atom_site_header_indices = (
-  headers: string[],
-): Record<string, number> => {
+const build_cif_atom_site_header_indices = (headers: string[]): Record<string, number> => {
   const indices: Record<string, number> = {}
   const mappings = [
     [`_atom_site_label`, `label`],
@@ -698,9 +663,10 @@ const parse_cif_atom_data = (
   coords_type: `fract` | `cart`,
 ): CifAtom => {
   const { label = 0, symbol = -1, occupancy = -1 } = indices
-  const coord_indices = coords_type === `fract`
-    ? [indices.x, indices.y, indices.z]
-    : [indices.cart_x, indices.cart_y, indices.cart_z]
+  const coord_indices =
+    coords_type === `fract`
+      ? [indices.x, indices.y, indices.z]
+      : [indices.cart_x, indices.cart_y, indices.cart_z]
 
   if (coord_indices.some((idx) => idx === undefined)) {
     throw new Error(`Missing coordinate indices`)
@@ -715,9 +681,10 @@ const parse_cif_atom_data = (
     return coord
   }) as Vec3
 
-  const occu = occupancy >= 0 && raw_data[occupancy]
-    ? parseFloat(raw_data[occupancy].split(`(`)[0]) || 1.0
-    : 1.0
+  const occu =
+    occupancy >= 0 && raw_data[occupancy]
+      ? parseFloat(raw_data[occupancy].split(`(`)[0]) || 1.0
+      : 1.0
 
   const element_symbol =
     (symbol >= 0 && raw_data[symbol]?.match(/^([A-Z][a-z]*)/)?.[1]) ||
@@ -768,9 +735,10 @@ export function parse_cif(
 
       // Check if this is a symmetry operations loop
       if (
-        headers.some((header) =>
-          header.includes(`_symmetry_equiv_pos_as_xyz`) ||
-          header.includes(`_space_group_symop_operation_xyz`)
+        headers.some(
+          (header) =>
+            header.includes(`_symmetry_equiv_pos_as_xyz`) ||
+            header.includes(`_space_group_symop_operation_xyz`),
         )
       ) {
         // Collect symmetry operations
@@ -791,9 +759,11 @@ export function parse_cif(
       // Check if this loop contains coordinate headers
       const indices_preview = build_cif_atom_site_header_indices(headers)
       const has_coords =
-        (indices_preview.x !== undefined && indices_preview.y !== undefined &&
+        (indices_preview.x !== undefined &&
+          indices_preview.y !== undefined &&
           indices_preview.z !== undefined) ||
-        (indices_preview.cart_x !== undefined && indices_preview.cart_y !== undefined &&
+        (indices_preview.cart_x !== undefined &&
+          indices_preview.cart_y !== undefined &&
           indices_preview.cart_z !== undefined)
 
       if (!has_coords) {
@@ -834,13 +804,15 @@ export function parse_cif(
 
     // Determine available coordinate type
     const coords_type: `fract` | `cart` | null =
-      header_indices.x !== undefined && header_indices.y !== undefined &&
-        header_indices.z !== undefined
+      header_indices.x !== undefined &&
+      header_indices.y !== undefined &&
+      header_indices.z !== undefined
         ? `fract`
-        : header_indices.cart_x !== undefined && header_indices.cart_y !== undefined &&
+        : header_indices.cart_x !== undefined &&
+            header_indices.cart_y !== undefined &&
             header_indices.cart_z !== undefined
-        ? `cart`
-        : null
+          ? `cart`
+          : null
 
     if (!coords_type) {
       console.error(`CIF atom site loop missing coordinates (fract or Cartn)`)
@@ -848,9 +820,10 @@ export function parse_cif(
     }
 
     // Collect required coordinate indices
-    const required_indices = coords_type === `fract`
-      ? [header_indices.x, header_indices.y, header_indices.z]
-      : [header_indices.cart_x, header_indices.cart_y, header_indices.cart_z]
+    const required_indices =
+      coords_type === `fract`
+        ? [header_indices.x, header_indices.y, header_indices.z]
+        : [header_indices.cart_x, header_indices.cart_y, header_indices.cart_z]
 
     const atoms = atom_data_lines
       .map((line) => {
@@ -906,14 +879,14 @@ export function parse_cif(
 
     // Create sites with coordinate conversion and symmetry operations
     const wrap_vec3 = (v: Vec3): Vec3 =>
-      wrap_fractional_coords ? v.map((coord) => coord - Math.floor(coord)) as Vec3 : v
+      wrap_fractional_coords ? (v.map((coord) => coord - Math.floor(coord)) as Vec3) : v
 
     // Apply symmetry operations to generate all equivalent positions
     const all_sites: Site[] = []
 
     // Normalize symmetry operations (trim/strip quotes) but preserve duplicates; we deduplicate positions later
     const normalized_ops = symmetry_ops
-      .map((op) => op.match(/['\"]([^'\"]+)['\"]/)?.[1] || op.trim())
+      .map((op) => op.match(/['"]([^'"]+)['"]/)?.[1] || op.trim())
       .map((op) => op.replace(/\s+/g, ``))
 
     // Rely on symmetry operations list for all centering/translations to avoid double-counting
@@ -946,7 +919,7 @@ export function parse_cif(
               continue
             }
             const toks = (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).map((tok) =>
-              tok.replace(/['"]/g, ``)
+              tok.replace(/['"]/g, ``),
             )
             if (toks.length > Math.max(sym_idx, num_idx)) {
               // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
@@ -969,10 +942,9 @@ export function parse_cif(
     }
 
     const has_expected_counts = Object.keys(atom_type_counts).length > 0
-    const already_enumerated = has_expected_counts &&
-      Object.entries(atom_type_counts).every(([el, exp]) =>
-        (observed_counts[el] || 0) >= exp
-      )
+    const already_enumerated =
+      has_expected_counts &&
+      Object.entries(atom_type_counts).every(([el, exp]) => (observed_counts[el] || 0) >= exp)
 
     const ops_to_use = already_enumerated ? [] : normalized_ops
 
@@ -1050,17 +1022,10 @@ function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   // Process each atomic site
   for (const point of cell.points) {
     const element = validate_element_symbol(point.symbol, sites.length)
-    const abc: Vec3 = [
-      point.coordinates[0],
-      point.coordinates[1],
-      point.coordinates[2],
-    ]
+    const abc: Vec3 = [point.coordinates[0], point.coordinates[1], point.coordinates[2]]
 
     // Convert fractional to Cartesian coordinates
-    const xyz = math.mat3x3_vec3_multiply(
-      math.transpose_3x3_matrix(lattice_matrix),
-      abc,
-    )
+    const xyz = math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(lattice_matrix), abc)
 
     const properties = {
       mass: point.mass,
@@ -1160,7 +1125,7 @@ function find_structure_in_json(
   visited = new WeakSet(),
 ): ParsedStructure | null {
   // Check if current object is null or undefined
-  if (obj === null || obj === undefined) return null
+  if (obj == null) return null
 
   if (typeof obj !== `object`) return null // If it's not an object, skip it
 
@@ -1216,8 +1181,8 @@ export function normalize_fractional_coords(structure: ParsedStructure): ParsedS
   if (!structure.lattice?.matrix) return structure
 
   // Check if any sites have fractional coords outside [0, 1) range
-  const needs_wrapping = structure.sites.some(
-    (site) => site.abc?.some((coord) => coord < 0 || coord >= 1),
+  const needs_wrapping = structure.sites.some((site) =>
+    site.abc?.some((coord) => coord < 0 || coord >= 1),
   )
   if (!needs_wrapping) return structure
 
@@ -1323,11 +1288,8 @@ export function parse_structure_file(
 
           // Check if first token looks like an element symbol (not a number)
           // and the next 3 tokens look like coordinates (numbers)
-          const is_element_symbol = isNaN(parseInt(first_token)) &&
-            first_token.length <= 3
-          const are_coordinates = coords.every(
-            (coord) => !isNaN(parseFloat(coord)),
-          )
+          const is_element_symbol = isNaN(parseInt(first_token)) && first_token.length <= 3
+          const are_coordinates = coords.every((coord) => !isNaN(parseFloat(coord)))
 
           if (is_element_symbol && are_coordinates) {
             // First token is likely an element symbol, likely XYZ
@@ -1371,10 +1333,7 @@ export function parse_structure_file(
 }
 
 // Universal parser that handles JSON and structure files
-export function parse_any_structure(
-  content: string,
-  filename: string,
-): AnyStructure | null {
+export function parse_any_structure(content: string, filename: string): AnyStructure | null {
   // Try JSON first, but handle nested structures properly
   try {
     const parsed = JSON.parse(content)
@@ -1476,9 +1435,7 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
           abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
         } catch {
           // Fallback if matrix inversion fails
-          console.warn(
-            `Failed to calculate fractional coordinates for OPTIMADE structure`,
-          )
+          console.warn(`Failed to calculate fractional coordinates for OPTIMADE structure`)
         }
       }
 
@@ -1539,7 +1496,7 @@ function extract_optimade_structure_from_raw(raw: unknown): OptimadeStructure | 
 }
 
 const unwrap_data = (value: unknown): unknown =>
-  (value && typeof value === `object` && `data` in value)
+  value && typeof value === `object` && `data` in value
     ? (value as { data?: unknown }).data
     : value
 
@@ -1550,14 +1507,16 @@ function is_optimade_structure_object(value: unknown): value is OptimadeStructur
   const type = obj.type
   const id = obj.id
   const attributes = obj.attributes
-  return type === `structures` && typeof id === `string` &&
-    typeof attributes === `object` && attributes !== null
+  return (
+    type === `structures` &&
+    typeof id === `string` &&
+    typeof attributes === `object` &&
+    attributes !== null
+  )
 }
 
 // Convert OPTIMADE structure to Crystal format
-export function optimade_to_crystal(
-  optimade_structure: OptimadeStructure,
-): Crystal | null {
+export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crystal | null {
   const {
     lattice_vectors,
     cartesian_site_positions,
@@ -1644,9 +1603,12 @@ export function is_structure_file(filename: string): boolean {
 
   // More restrictive keyword detection for JSON files
   if (
-    /\.json$/i.test(name) && STRUCT_KEYWORDS_STRICT_REGEX.test(name) &&
-    !TRAJ_KEYWORDS_REGEX.test(name) && !CONFIG_DIRS_REGEX.test(name)
-  ) return true
+    /\.json$/i.test(name) &&
+    STRUCT_KEYWORDS_STRICT_REGEX.test(name) &&
+    !TRAJ_KEYWORDS_REGEX.test(name) &&
+    !CONFIG_DIRS_REGEX.test(name)
+  )
+    return true
 
   // Compressed files - check base filename recursively
   if (COMPRESSION_EXTENSIONS_REGEX.test(name)) {

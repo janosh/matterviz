@@ -33,9 +33,9 @@ describe(`StructurePopup`, () => {
       target: document.body,
       props: { structure: mock_structure, onclose },
     })
-    document.querySelector(`.structure-popup`)?.dispatchEvent(
-      new MouseEvent(`mousedown`, { bubbles: true }),
-    )
+    document
+      .querySelector(`.structure-popup`)
+      ?.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
     expect(onclose).not.toHaveBeenCalled()
   })
 })

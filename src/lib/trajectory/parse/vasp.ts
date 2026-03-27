@@ -10,10 +10,7 @@ import {
   validate_3x3_matrix,
 } from '../helpers'
 
-export function parse_vasp_xdatcar(
-  content: string,
-  filename?: string,
-): TrajectoryType {
+export function parse_vasp_xdatcar(content: string, filename?: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)
   if (lines.length < 10) throw new Error(`XDATCAR file too short`)
 
@@ -22,7 +19,10 @@ export function parse_vasp_xdatcar(
 
   const lattice_matrix = validate_3x3_matrix(
     lines.slice(2, 5).map((line) =>
-      line.trim().split(/\s+/).map((x) => parseFloat(x) * scale)
+      line
+        .trim()
+        .split(/\s+/)
+        .map((x) => parseFloat(x) * scale),
     ),
   )
 
@@ -34,8 +34,8 @@ export function parse_vasp_xdatcar(
     )
   }
   if (
-    element_counts.some((count) =>
-      !Number.isFinite(count) || !Number.isInteger(count) || count <= 0
+    element_counts.some(
+      (count) => !Number.isFinite(count) || !Number.isInteger(count) || count <= 0,
     )
   ) {
     throw new Error(
@@ -49,7 +49,7 @@ export function parse_vasp_xdatcar(
     return name
   })
   const elements: ElementSymbol[] = validated_element_names.flatMap((name, idx) =>
-    Array(element_counts[idx]).fill(name as ElementSymbol)
+    Array(element_counts[idx]).fill(name as ElementSymbol),
   )
 
   const frames: TrajectoryFrame[] = []
@@ -57,8 +57,8 @@ export function parse_vasp_xdatcar(
   const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
   while (line_idx < lines.length) {
-    const config_idx = lines.findIndex((line, idx) =>
-      idx >= line_idx && line.includes(`Direct configuration=`)
+    const config_idx = lines.findIndex(
+      (line, idx) => idx >= line_idx && line.includes(`Direct configuration=`),
     )
     if (config_idx === -1) break
 

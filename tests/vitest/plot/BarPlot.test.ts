@@ -47,10 +47,12 @@ describe(`BarPlot`, () => {
     { series: [{ ...basic, bar_width: 0.8 }] },
     { series: [{ ...basic, bar_width: [0.3, 0.5, 0.7, 0.9, 0.4] }] },
     {
-      series: [{
-        ...basic,
-        metadata: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }],
-      }],
+      series: [
+        {
+          ...basic,
+          metadata: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }],
+        },
+      ],
     },
     { series: [{ ...basic, metadata: { dataset: `Test`, units: `kg` } }] },
     {
@@ -89,9 +91,7 @@ describe(`BarPlot`, () => {
     await tick()
     expect(document.querySelector(`.bar-plot`)).toBeTruthy()
     expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
-    expect(document.querySelector(`.x2-label`)?.textContent).toBe(
-      `Temperature (K)`,
-    )
+    expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
   test.each<[Orientation, BarMode]>([
@@ -113,14 +113,26 @@ describe(`BarPlot`, () => {
   })
 
   test.each<[BarMode, BarSeries[]]>([
-    [`overlay`, [{ x: [1, 2, 3, 4], y: [-10, -5, 15, 20] }, {
-      x: [1, 2, 3, 4],
-      y: [5, -8, 12, -3],
-    }]],
-    [`stacked`, [{ x: [1, 2, 3, 4], y: [10, -5, 15, 20] }, {
-      x: [1, 2, 3, 4],
-      y: [-5, 10, -8, 5],
-    }]],
+    [
+      `overlay`,
+      [
+        { x: [1, 2, 3, 4], y: [-10, -5, 15, 20] },
+        {
+          x: [1, 2, 3, 4],
+          y: [5, -8, 12, -3],
+        },
+      ],
+    ],
+    [
+      `stacked`,
+      [
+        { x: [1, 2, 3, 4], y: [10, -5, 15, 20] },
+        {
+          x: [1, 2, 3, 4],
+          y: [-5, 10, -8, 5],
+        },
+      ],
+    ],
     [
       `grouped`,
       [
@@ -228,8 +240,7 @@ describe(`BarPlot`, () => {
       props: {
         series: [basic],
         tooltip: createRawSnippet<[BarHandlerProps]>((data) => ({
-          render: () =>
-            `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
+          render: () => `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
         })),
         hovered: true,
       },
@@ -251,9 +262,7 @@ describe(`BarPlot`, () => {
       },
     })
     expect(called).toBe(true)
-    expect(document.querySelector(`.custom-bar-child`)?.textContent).toBe(
-      `Custom bar overlay`,
-    )
+    expect(document.querySelector(`.custom-bar-child`)?.textContent).toBe(`Custom bar overlay`)
   })
 
   describe(`categorical bar charts`, () => {
@@ -269,33 +278,48 @@ describe(`BarPlot`, () => {
       [`grouped mode`, { series: cat_series, mode: `grouped` as BarMode }],
       [`vertical`, { series: cat_series, orientation: `vertical` as Orientation }],
       [`horizontal`, { series: cat_series, orientation: `horizontal` as Orientation }],
-      [`explicit category order`, {
-        series: cat_series,
-        x_axis: { categories: [`D`, `C`, `B`, `A`] },
-      }],
-      [`category subset filter`, {
-        series: cat_series,
-        x_axis: { categories: [`A`, `C`] },
-      }],
-      [`empty categorical series`, {
-        series: [{ x: [] as string[], y: [], color: `blue` }],
-      }],
+      [
+        `explicit category order`,
+        {
+          series: cat_series,
+          x_axis: { categories: [`D`, `C`, `B`, `A`] },
+        },
+      ],
+      [
+        `category subset filter`,
+        {
+          series: cat_series,
+          x_axis: { categories: [`A`, `C`] },
+        },
+      ],
+      [
+        `empty categorical series`,
+        {
+          series: [{ x: [] as string[], y: [], color: `blue` }],
+        },
+      ],
       [`single category`, { series: [{ x: [`Only`], y: [42], color: `blue` }] }],
-      [`mixed bar+line`, {
-        series: [
-          { x: [`A`, `B`, `C`], y: [10, 20, 30], color: `blue` },
-          {
-            x: [`A`, `B`, `C`],
-            y: [15, 25, 35],
-            color: `red`,
-            render_mode: `line` as const,
-            markers: `line+points` as const,
-          },
-        ],
-      }],
-      [`numeric x (not categorical)`, {
-        series: [{ x: [1, 2, 3], y: [10, 20, 30], color: `blue` }],
-      }],
+      [
+        `mixed bar+line`,
+        {
+          series: [
+            { x: [`A`, `B`, `C`], y: [10, 20, 30], color: `blue` },
+            {
+              x: [`A`, `B`, `C`],
+              y: [15, 25, 35],
+              color: `red`,
+              render_mode: `line` as const,
+              markers: `line+points` as const,
+            },
+          ],
+        },
+      ],
+      [
+        `numeric x (not categorical)`,
+        {
+          series: [{ x: [1, 2, 3], y: [10, 20, 30], color: `blue` }],
+        },
+      ],
     ] as [string, Partial<ComponentProps<typeof BarPlot>>][])(
       `renders %s`,
       async (_label, props) => {
@@ -327,13 +351,15 @@ describe(`BarPlot`, () => {
       mount(BarPlot, {
         target: document.body,
         props: {
-          series: [{
-            x: [`X`, `Y`],
-            y: [10, 20],
-            color: `blue`,
-            metadata: [{ id: 1 }, { id: 2 }],
-            labels: [`Label X`, `Label Y`],
-          }],
+          series: [
+            {
+              x: [`X`, `Y`],
+              y: [10, 20],
+              color: `blue`,
+              metadata: [{ id: 1 }, { id: 2 }],
+              labels: [`Label X`, `Label Y`],
+            },
+          ],
           on_bar_hover: hover_fn,
           style: `width: 400px; height: 300px`,
         },
@@ -414,7 +440,7 @@ describe(`BarPlot`, () => {
     test(`series visibility can be toggled via legend_group`, () => {
       // Test that series with legend_group can have their visibility toggled
       const series_with_hidden_group: BarSeries[] = grouped_series.map((srs) =>
-        srs.legend_group === `DFT` ? { ...srs, visible: false } : srs
+        srs.legend_group === `DFT` ? { ...srs, visible: false } : srs,
       )
 
       mount(BarPlot, {

@@ -61,9 +61,7 @@ describe(`built-in orderings`, () => {
     expect(axis[1].label).toBe(`He`)
     const z_values = axis.map((item) => item.data?.number ?? 0)
     for (let idx = 1; idx < z_values.length; idx++) {
-      expect(z_values[idx], `Z[${idx}] > Z[${idx - 1}]`).toBeGreaterThan(
-        z_values[idx - 1],
-      )
+      expect(z_values[idx], `Z[${idx}] > Z[${idx - 1}]`).toBeGreaterThan(z_values[idx - 1])
     }
   })
 
@@ -96,9 +94,9 @@ describe(`built-in orderings`, () => {
   })
 
   test(`density puts Os or Ir near end (densest)`, () => {
-    const last_10 = elements_to_axis(undefined, `density`).slice(-10).map((item) =>
-      item.label
-    )
+    const last_10 = elements_to_axis(undefined, `density`)
+      .slice(-10)
+      .map((item) => item.label)
     expect(last_10, `expected Os or Ir in last 10 by density`).toSatisfy(
       (labels: string[]) => labels.includes(`Os`) || labels.includes(`Ir`),
     )
@@ -121,8 +119,9 @@ describe(`built-in orderings`, () => {
   )
 
   test(`first_ionization: He last among non-null (highest IE)`, () => {
-    const non_null = elements_to_axis(undefined, `first_ionization`)
-      .filter((item) => item.data?.first_ionization !== null)
+    const non_null = elements_to_axis(undefined, `first_ionization`).filter(
+      (item) => item.data?.first_ionization !== null,
+    )
     expect(non_null.at(-1)?.label).toBe(`He`)
   })
 })
@@ -154,16 +153,15 @@ describe(`ORDERING_LABELS`, () => {
 
 describe(`make_color_override_key`, () => {
   test(`builds stable unambiguous key format`, () => {
-    expect(make_color_override_key(`Fe`, `O`)).toBe(
-      `Fe${COLOR_OVERRIDE_KEY_SEPARATOR}O`,
-    )
+    expect(make_color_override_key(`Fe`, `O`)).toBe(`Fe${COLOR_OVERRIDE_KEY_SEPARATOR}O`)
   })
 })
 
 describe(`subset + ordering combined`, () => {
   test(`subset sorted by electronegativity`, () => {
-    const labels = elements_to_axis([`Fe`, `Cu`, `Au`, `Pt`], `electronegativity`)
-      .map((item) => item.label)
+    const labels = elements_to_axis([`Fe`, `Cu`, `Au`, `Pt`], `electronegativity`).map(
+      (item) => item.label,
+    )
     // pauling EN: Fe(1.83) < Cu(1.9) < Pt(2.28) < Au(2.54)
     expect(labels).toEqual([`Fe`, `Cu`, `Pt`, `Au`])
   })
@@ -173,7 +171,10 @@ describe(`export helpers`, () => {
   test(`matrix_to_rows and rows_to_csv serialize matrix data`, () => {
     const x_items = [{ label: `A` }, { label: `B` }]
     const y_items = [{ label: `X` }, { label: `Y` }]
-    const rows = matrix_to_rows(x_items, y_items, [[1, 2], [3, null]])
+    const rows = matrix_to_rows(x_items, y_items, [
+      [1, 2],
+      [3, null],
+    ])
     expect(rows).toEqual([
       { y_key: `X`, A: 1, B: 2 },
       { y_key: `Y`, A: 3, B: null },
@@ -185,9 +186,7 @@ describe(`export helpers`, () => {
   })
 
   test(`rows_to_csv escapes commas, quotes, and newlines`, () => {
-    const csv = rows_to_csv([
-      { y_key: `Fe,O`, A: `He"Ne`, B: `line1\nline2` },
-    ])
+    const csv = rows_to_csv([{ y_key: `Fe,O`, A: `He"Ne`, B: `line1\nline2` }])
     expect(csv).toContain(`"Fe,O"`)
     expect(csv).toContain(`"He""Ne"`)
     expect(csv).toContain(`"line1\nline2"`)

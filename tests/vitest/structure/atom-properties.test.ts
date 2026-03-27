@@ -19,7 +19,11 @@ const make_struct = (sites: { xyz: Vec3; element?: string }[]): Crystal => ({
   sites: sites.map(({ xyz, element = `C` }) => make_site(xyz, element)),
   charge: 0,
   lattice: {
-    matrix: [[10, 0, 0], [0, 10, 0], [0, 0, 10]] satisfies Matrix3x3,
+    matrix: [
+      [10, 0, 0],
+      [0, 10, 0],
+      [0, 0, 10],
+    ] satisfies Matrix3x3,
     pbc: [true, true, true],
     a: 10,
     b: 10,
@@ -63,16 +67,13 @@ const make_cubic_structure = (
 })
 
 describe(`Color Scales`, () => {
-  test(`d3 scales`, () =>
-    expect(ap.get_d3_color_scales()).toContain(`interpolateViridis`))
+  test(`d3 scales`, () => expect(ap.get_d3_color_scales()).toContain(`interpolateViridis`))
 
-  test.each(
-    [
-      [[1, 2, 3, 4, 5], `continuous`, true],
-      [[1, 2, 3, 1, 2], `categorical`, false],
-      [[5, 5, 5], `continuous`, false],
-    ] as const,
-  )(`apply_color_scale %s`, (vals, scale_type, diff) => {
+  test.each([
+    [[1, 2, 3, 4, 5], `continuous`, true],
+    [[1, 2, 3, 1, 2], `categorical`, false],
+    [[5, 5, 5], `continuous`, false],
+  ] as const)(`apply_color_scale %s`, (vals, scale_type, diff) => {
     const { colors } = ap.apply_color_scale([...vals], `interpolateViridis`, scale_type)
     expect(colors).toHaveLength(vals.length)
     expect(colors.every((color) => /^#[0-9a-f]{6}$/i.test(color))).toBe(true)
@@ -93,10 +94,13 @@ describe(`Color Scales`, () => {
 
 describe(`Coordination`, () => {
   test(`bonded atoms CN > 0`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0], element: `C` }, {
-      xyz: [1.5, 0, 0],
-      element: `O`,
-    }])
+    const structure = make_struct([
+      { xyz: [0, 0, 0], element: `C` },
+      {
+        xyz: [1.5, 0, 0],
+        element: `O`,
+      },
+    ])
     const { values } = ap.get_coordination_colors(structure)
     expect(values.every((val) => typeof val === `number` && val > 0)).toBe(true)
   })
@@ -108,19 +112,26 @@ describe(`Coordination`, () => {
   })
 
   test(`linear chain middle > end`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0], element: `C` }, {
-      xyz: [1.5, 0, 0],
-      element: `C`,
-    }, { xyz: [3, 0, 0], element: `C` }])
+    const structure = make_struct([
+      { xyz: [0, 0, 0], element: `C` },
+      {
+        xyz: [1.5, 0, 0],
+        element: `C`,
+      },
+      { xyz: [3, 0, 0], element: `C` },
+    ])
     const { values } = ap.get_coordination_colors(structure)
     expect(typeof values[1] === `number` && values[1] > (values[0] as number)).toBe(true)
   })
 
   test.each([`electroneg_ratio`, `solid_angle`] as const)(`%s strategy`, (strategy) => {
-    const structure = make_struct([{ xyz: [0, 0, 0], element: `C` }, {
-      xyz: [1.5, 0, 0],
-      element: `O`,
-    }])
+    const structure = make_struct([
+      { xyz: [0, 0, 0], element: `C` },
+      {
+        xyz: [1.5, 0, 0],
+        element: `O`,
+      },
+    ])
     const { values } = ap.get_coordination_colors(structure, strategy)
     expect(values.some((val) => typeof val === `number` && val > 0)).toBe(true)
   })
@@ -160,7 +171,8 @@ describe(`Coordination`, () => {
         expected_length: 4,
         check: (vals: (number | string)[]) =>
           vals.every((v) => typeof v === `number` && v > 0) &&
-          typeof vals[0] === `number` && vals[0] >= 3,
+          typeof vals[0] === `number` &&
+          vals[0] >= 3,
       },
       {
         name: `partial PBC`,
@@ -219,10 +231,13 @@ describe(`Coordination`, () => {
       test(`small structure with all atoms near boundaries gets correct coordination`, () => {
         // 2-atom structure in small cell - both atoms should be near boundaries
         const structure = make_cubic_structure(
-          [{ abc: [0, 0, 0] as Vec3, element: `C` }, {
-            abc: [0.5, 0.5, 0.5] as Vec3,
-            element: `C`,
-          }],
+          [
+            { abc: [0, 0, 0] as Vec3, element: `C` },
+            {
+              abc: [0.5, 0.5, 0.5] as Vec3,
+              element: `C`,
+            },
+          ],
           3,
         )
         const { values } = ap.get_coordination_colors(structure)
@@ -342,7 +357,10 @@ describe(`Coordination`, () => {
       const { make_supercell } = await import(`$lib/structure/supercell`)
 
       const unit_cell = make_cubic_structure(
-        [{ abc: [0, 0, 0], element: `Fe` }, { abc: [0.5, 0.5, 0.5], element: `Fe` }],
+        [
+          { abc: [0, 0, 0], element: `Fe` },
+          { abc: [0.5, 0.5, 0.5], element: `Fe` },
+        ],
         4,
       )
       const unit_colors = ap.get_coordination_colors(unit_cell)
@@ -382,29 +400,33 @@ describe(`Wyckoff`, () => {
 
   test(`with data`, () => {
     const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }])
-    const { colors, values } = ap.get_wyckoff_colors(
-      structure,
-      { wyckoffs: [`a`, `b`] } as unknown as MoyoDataset,
-    )
+    const { colors, values } = ap.get_wyckoff_colors(structure, {
+      wyckoffs: [`a`, `b`],
+    } as unknown as MoyoDataset)
     expect([values, colors[0] !== colors[1]]).toEqual([[`a|C`, `b|C`], true])
   })
 
   test(`duplicates same color`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }, {
-      xyz: [2, 2, 2],
-    }, { xyz: [3, 3, 3] }])
-    const { colors } = ap.get_wyckoff_colors(
-      structure,
-      { wyckoffs: [`a`, `a`, `b`, `a`] } as unknown as MoyoDataset,
-    )
-    expect([colors[0] === colors[1], colors[0] !== colors[2]])
-      .toEqual([true, true])
+    const structure = make_struct([
+      { xyz: [0, 0, 0] },
+      { xyz: [1, 1, 1] },
+      {
+        xyz: [2, 2, 2],
+      },
+      { xyz: [3, 3, 3] },
+    ])
+    const { colors } = ap.get_wyckoff_colors(structure, {
+      wyckoffs: [`a`, `a`, `b`, `a`],
+    } as unknown as MoyoDataset)
+    expect([colors[0] === colors[1], colors[0] !== colors[2]]).toEqual([true, true])
   })
 
   test(`null positions`, () => {
     const result = ap.get_wyckoff_colors(
       make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }]),
-      { wyckoffs: [null, `b`] } as unknown as MoyoDataset,
+      {
+        wyckoffs: [null, `b`],
+      } as unknown as MoyoDataset,
     )
     expect(result.values).toEqual([`unknown`, `b|C`])
   })
@@ -415,31 +437,36 @@ describe(`Wyckoff`, () => {
       { xyz: [1, 1, 1], element: `F` },
       { xyz: [2, 2, 2], element: `Li` },
     ])
-    const result = ap.get_wyckoff_colors(
-      structure,
-      {
-        wyckoffs: [`a`, `b`],
-        orig_site_indices_by_std_idx: [[0, 1], [2]],
-      } as unknown as MoyoDatasetWithOrigMap,
-    )
+    const result = ap.get_wyckoff_colors(structure, {
+      wyckoffs: [`a`, `b`],
+      orig_site_indices_by_std_idx: [[0, 1], [2]],
+    } as unknown as MoyoDatasetWithOrigMap)
     expect(result.values).toEqual([`a|O`, `a|F`, `b|Li`])
   })
 })
 
 describe(`Custom`, () => {
   test(`numeric`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }, {
-      xyz: [2, 2, 2],
-    }])
+    const structure = make_struct([
+      { xyz: [0, 0, 0] },
+      { xyz: [1, 1, 1] },
+      {
+        xyz: [2, 2, 2],
+      },
+    ])
     const { values } = ap.get_custom_colors(structure, (site) => site.xyz[2])
     expect(values).toEqual([0, 1, 2])
   })
 
   test(`string`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0], element: `C` }, {
-      xyz: [1, 1, 1],
-      element: `O`,
-    }, { xyz: [2, 2, 2], element: `C` }])
+    const structure = make_struct([
+      { xyz: [0, 0, 0], element: `C` },
+      {
+        xyz: [1, 1, 1],
+        element: `O`,
+      },
+      { xyz: [2, 2, 2], element: `C` },
+    ])
     const { values, colors } = ap.get_custom_colors(
       structure,
       (site) => site.species[0].element,
@@ -448,34 +475,44 @@ describe(`Custom`, () => {
   })
 
   test(`site index`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }, {
-      xyz: [2, 2, 2],
-    }])
+    const structure = make_struct([
+      { xyz: [0, 0, 0] },
+      { xyz: [1, 1, 1] },
+      {
+        xyz: [2, 2, 2],
+      },
+    ])
     const { colors } = ap.get_custom_colors(structure, (_, idx) => idx)
     expect(new Set(colors).size).toBe(3)
   })
 
   test(`properties`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 0, 0] }, {
-      xyz: [0, 1, 0],
-    }])
+    const structure = make_struct([
+      { xyz: [0, 0, 0] },
+      { xyz: [1, 0, 0] },
+      {
+        xyz: [0, 1, 0],
+      },
+    ])
     structure.sites[0].properties = { magmom: 2.5 }
     structure.sites[1].properties = { magmom: -1.0 }
     structure.sites[2].properties = { magmom: 0.5 }
-    const { values } = ap.get_custom_colors(
-      structure,
-      (site) => Number(site.properties?.magmom ?? 0),
+    const { values } = ap.get_custom_colors(structure, (site) =>
+      Number(site.properties?.magmom ?? 0),
     )
     expect(values).toEqual([2.5, -1.0, 0.5])
   })
 
   test(`distance`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [3, 4, 0] }, {
-      xyz: [6, 8, 0],
-    }])
-    const { values } = ap.get_custom_colors(
-      structure,
-      (site) => Math.hypot(site.xyz[0], site.xyz[1]),
+    const structure = make_struct([
+      { xyz: [0, 0, 0] },
+      { xyz: [3, 4, 0] },
+      {
+        xyz: [6, 8, 0],
+      },
+    ])
+    const { values } = ap.get_custom_colors(structure, (site) =>
+      Math.hypot(site.xyz[0], site.xyz[1]),
     )
     expect(values).toEqual([0, 5, 10])
   })
@@ -484,13 +521,11 @@ describe(`Custom`, () => {
 describe(`get_atom_colors`, () => {
   const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }])
 
-  test.each(
-    [
-      [`element`, 0],
-      [`coordination`, 2],
-      [`wyckoff`, 2],
-    ] as const,
-  )(`%s mode`, (mode, len) => {
+  test.each([
+    [`element`, 0],
+    [`coordination`, 2],
+    [`wyckoff`, 2],
+  ] as const)(`%s mode`, (mode, len) => {
     const { colors } = ap.get_atom_colors(
       structure,
       { mode },
@@ -544,9 +579,13 @@ describe(`Config`, () => {
   })
 
   test(`color_fn works`, () => {
-    const struct_3 = make_struct([{ xyz: [0, 0, 0] }, { xyz: [5, 5, 5] }, {
-      xyz: [10, 10, 10],
-    }])
+    const struct_3 = make_struct([
+      { xyz: [0, 0, 0] },
+      { xyz: [5, 5, 5] },
+      {
+        xyz: [10, 10, 10],
+      },
+    ])
     const { values } = ap.get_atom_colors(struct_3, {
       mode: `custom`,
       color_fn: (site) => Math.hypot(...site.xyz),
@@ -562,10 +601,13 @@ describe(`Edge Cases`, () => {
   })
 
   test(`uniform same color`, () => {
-    const structure = make_struct([{ xyz: [0, 0, 0], element: `C` }, {
-      xyz: [1.5, 0, 0],
-      element: `C`,
-    }])
+    const structure = make_struct([
+      { xyz: [0, 0, 0], element: `C` },
+      {
+        xyz: [1.5, 0, 0],
+        element: `C`,
+      },
+    ])
     const { colors, values } = ap.get_coordination_colors(structure)
     if (values[0] === values[1]) expect(colors[0]).toBe(colors[1])
   })
@@ -574,73 +616,61 @@ describe(`Edge Cases`, () => {
 describe(`Performance`, () => {
   const CI = 3 // CI multiplier
 
-  test(
-    `500 atoms fast`,
-    () => {
-      const structure = make_struct(
-        Array.from({ length: 500 }, (_, idx) => ({
-          xyz: [idx % 10, Math.floor(idx / 10) % 10, Math.floor(idx / 100)] as Vec3,
-          element: [`C`, `O`, `N`, `H`][idx % 4],
-        })),
-      )
+  test(`500 atoms fast`, () => {
+    const structure = make_struct(
+      Array.from({ length: 500 }, (_, idx) => ({
+        xyz: [idx % 10, Math.floor(idx / 10) % 10, Math.floor(idx / 100)] as Vec3,
+        element: [`C`, `O`, `N`, `H`][idx % 4],
+      })),
+    )
 
-      const start = performance.now()
-      const { colors } = ap.get_coordination_colors(structure)
-      const elapsed = performance.now() - start
+    const start = performance.now()
+    const { colors } = ap.get_coordination_colors(structure)
+    const elapsed = performance.now() - start
 
-      expect(colors).toHaveLength(500)
-      expect(elapsed).toBeLessThan(1000 * CI) // Old: 4s+, New: ~300ms
-    },
-    3500, // Fail fast if > 3.5s
-  )
+    expect(colors).toHaveLength(500)
+    expect(elapsed).toBeLessThan(1000 * CI) // Old: 4s+, New: ~300ms
+  }, 3500) // Fail fast if > 3.5s
 
-  test(
-    `1000 atoms fast`,
-    () => {
-      const structure = make_struct(
-        Array.from({ length: 1000 }, (_, idx) => ({
-          xyz: [
-            (idx % 10) * 1.5,
-            (Math.floor(idx / 10) % 10) * 1.5,
-            Math.floor(idx / 100) * 1.5,
-          ] as Vec3,
-          element: [`C`, `O`][idx % 2],
-        })),
-      )
-
-      const start = performance.now()
-      const { colors } = ap.get_coordination_colors(structure)
-      const elapsed = performance.now() - start
-
-      expect(colors).toHaveLength(1000)
-      expect(elapsed).toBeLessThan(3000 * CI) // Old: 60s+, New: ~1s
-    },
-    10000, // Fail fast if > 10s
-  )
-
-  test(
-    `512 interior atoms fast`,
-    () => {
-      const grid = 8
-      const sites = Array.from({ length: grid ** 3 }, (_, idx) => ({
+  test(`1000 atoms fast`, () => {
+    const structure = make_struct(
+      Array.from({ length: 1000 }, (_, idx) => ({
         xyz: [
-          20 + ((idx % grid) / (grid - 1)) * 60,
-          20 + ((Math.floor(idx / grid) % grid) / (grid - 1)) * 60,
-          20 + ((Math.floor(idx / grid ** 2) % grid) / (grid - 1)) * 60,
+          (idx % 10) * 1.5,
+          (Math.floor(idx / 10) % 10) * 1.5,
+          Math.floor(idx / 100) * 1.5,
         ] as Vec3,
-        element: `C`,
-      }))
+        element: [`C`, `O`][idx % 2],
+      })),
+    )
 
-      const structure = make_struct(sites)
-      const start = performance.now()
-      const { colors } = ap.get_coordination_colors(structure)
-      const elapsed = performance.now() - start
+    const start = performance.now()
+    const { colors } = ap.get_coordination_colors(structure)
+    const elapsed = performance.now() - start
 
-      expect(colors).toHaveLength(512)
-      expect(elapsed).toBeLessThan(500 * CI) // Old: 20s+, New: ~250ms
-    },
-    2000, // Fail fast if > 2s
-  )
+    expect(colors).toHaveLength(1000)
+    expect(elapsed).toBeLessThan(3000 * CI) // Old: 60s+, New: ~1s
+  }, 10000) // Fail fast if > 10s
+
+  test(`512 interior atoms fast`, () => {
+    const grid = 8
+    const sites = Array.from({ length: grid ** 3 }, (_, idx) => ({
+      xyz: [
+        20 + ((idx % grid) / (grid - 1)) * 60,
+        20 + ((Math.floor(idx / grid) % grid) / (grid - 1)) * 60,
+        20 + ((Math.floor(idx / grid ** 2) % grid) / (grid - 1)) * 60,
+      ] as Vec3,
+      element: `C`,
+    }))
+
+    const structure = make_struct(sites)
+    const start = performance.now()
+    const { colors } = ap.get_coordination_colors(structure)
+    const elapsed = performance.now() - start
+
+    expect(colors).toHaveLength(512)
+    expect(elapsed).toBeLessThan(500 * CI) // Old: 20s+, New: ~250ms
+  }, 2000) // Fail fast if > 2s
 
   test(`50 categorical values`, () => {
     const structure = make_struct(

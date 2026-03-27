@@ -66,7 +66,8 @@ export function moyo_cell_to_structure(
 export function get_conventional_cell(
   original_structure: Crystal, // The original input structure
   sym_data: MoyoDataset, // MoyoDataset from symmetry analysis containing std_cell
-): Crystal { // The conventional cell as a Crystal
+): Crystal {
+  // The conventional cell as a Crystal
   return moyo_cell_to_structure(sym_data.std_cell, original_structure)
 }
 
@@ -75,7 +76,8 @@ export function get_conventional_cell(
 export function get_primitive_cell(
   original_structure: Crystal, // The original input structure
   sym_data: MoyoDataset, // MoyoDataset from symmetry analysis containing prim_std_cell
-): Crystal { // The primitive cell as a Crystal
+): Crystal {
+  // The primitive cell as a Crystal
   return moyo_cell_to_structure(sym_data.prim_std_cell, original_structure)
 }
 
@@ -85,7 +87,8 @@ export function transform_cell(
   structure: Crystal, // The original structure
   cell_type: CellType, // The desired cell type ('original', 'conventional', or 'primitive')
   sym_data: MoyoDataset | null, // Optional MoyoDataset from symmetry analysis
-): Crystal { //transformed structure (or original if no transformation needed)
+): Crystal {
+  //transformed structure (or original if no transformation needed)
   if (cell_type === `original` || !sym_data) {
     return structure
   }

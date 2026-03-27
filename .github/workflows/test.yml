@@ -3,28 +3,37 @@ name: Tests
 on:
   pull_request:
     branches: [main]
-    paths: &paths
-      - src/**
-      - tests/**
-      - '*.config.*' # vite, svelte, playwright, eslint
-      - tsconfig*.json
-      - deno.jsonc
-      - package.json
-      - .github/workflows/test.yml
+    paths-ignore: [extensions/dash/**]
   push:
     branches: [main]
-    paths: *paths
+    paths-ignore: [extensions/dash/**]
   workflow_dispatch:
   release:
     types: [published]
 
 jobs:
   tests:
-    uses: janosh/workflows/.github/workflows/deno-test.yml@main
-    with:
-      node-version: 22
-      test-cmd: npx vitest
-      e2e-install-cmd: NODE_OPTIONS=--experimental-strip-types npx svelte-kit sync && npx playwright install chromium
-      e2e-test-cmd: npx playwright test
-      deno-version: 2.3.7
-      e2e-continue-on-error: false
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-type: [unit, end-to-end]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: npm install
+
+      - name: Unit tests
+        if: matrix.test-type == 'unit'
+        run: npx vp test --run
+
+      - name: Install Playwright
+        if: matrix.test-type == 'end-to-end'
+        run: npx playwright install chromium
+
+      - name: E2E tests
+        if: matrix.test-type == 'end-to-end'
+        run: npx playwright test

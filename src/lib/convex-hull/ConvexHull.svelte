@@ -66,7 +66,7 @@
         }
       }
     }
-    return Array.from(elements).sort()
+    return Array.from(elements).toSorted()
   }
 
   // Detect dimensionality by counting unique elements (lightweight operation)

@@ -62,8 +62,7 @@ const ref_data: Record<
     density: 6.107930572082895,
     center_of_mass: [2.216, 3.594, 6.502],
     elements: [`Ag`, `Br`, `Cl`, `Hg`, `S`],
-    formula_by_electronegativity:
-      `Ag<sub>4</sub> Hg<sub>4</sub> S<sub>4</sub> Br Cl<sub>3</sub>`,
+    formula_by_electronegativity: `Ag<sub>4</sub> Hg<sub>4</sub> S<sub>4</sub> Br Cl<sub>3</sub>`,
   },
   'mp-1229168': {
     amounts: { Al: 54, Fe: 4, Ni: 8 },
@@ -106,9 +105,7 @@ describe.each(structures)(`structure-utils`, (structure) => {
       expect(Number.isFinite(density), `${id}: density finite`).toBe(true)
     } else {
       // Without lattice (molecules), density should return 0 or NaN
-      expect(density === 0 || Number.isNaN(density), `${id}: no-lattice density`).toBe(
-        true,
-      )
+      expect(density === 0 || Number.isNaN(density), `${id}: no-lattice density`).toBe(true)
     }
 
     if (expected?.density) {
@@ -214,23 +211,22 @@ describe(`get_center_of_mass`, () => {
       desc: `weighted occupancies`,
     },
     {
-      sites: [{
-        element: `H` as const,
-        xyz: [1, 2, 3] as Vec3,
-        occu: 1,
-        oxidation_state: 0,
-      }],
+      sites: [
+        {
+          element: `H` as const,
+          xyz: [1, 2, 3] as Vec3,
+          occu: 1,
+          oxidation_state: 0,
+        },
+      ],
       expected: [1, 2, 3] as Vec3,
       desc: `single atom structure`,
     },
-  ])(
-    `should calculate center of mass for $desc`,
-    ({ sites, expected }) => {
-      const structure = create_simple_structure(sites)
-      const result = struct_utils.get_center_of_mass(structure)
-      expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 3))
-    },
-  )
+  ])(`should calculate center of mass for $desc`, ({ sites, expected }) => {
+    const structure = create_simple_structure(sites)
+    const result = struct_utils.get_center_of_mass(structure)
+    expected.forEach((val, idx) => expect(result[idx]).toBeCloseTo(val, 3))
+  })
 })
 
 const make_site = (properties?: Record<string, unknown>): Site =>
@@ -264,31 +260,27 @@ describe(`is_vector_key`, () => {
 })
 
 describe(`get_all_site_vectors`, () => {
-  test.each(
-    [
-      [`force`, [1, 2, 3]],
-      [`forces`, [4, 5, 6]],
-      [`magmom`, [0.1, 0.2, 0.3]],
-      [`magmoms`, [0.4, 0.5, 0.6]],
-      [`spin`, [0, 0, 1]],
-      [`spins`, [0, 0, -1]],
-      [`force_DFT`, [1, 0, 0]],
-    ] as const,
-  )(`accepts 3D vector in %s`, (key, vec) => {
+  test.each([
+    [`force`, [1, 2, 3]],
+    [`forces`, [4, 5, 6]],
+    [`magmom`, [0.1, 0.2, 0.3]],
+    [`magmoms`, [0.4, 0.5, 0.6]],
+    [`spin`, [0, 0, 1]],
+    [`spins`, [0, 0, -1]],
+    [`force_DFT`, [1, 0, 0]],
+  ] as const)(`accepts 3D vector in %s`, (key, vec) => {
     const result = get_all_site_vectors(make_site({ [key]: [...vec] }))
     expect(result[0]).toEqual({ key, vec: [...vec] })
   })
 
-  test.each(
-    [
-      [`force`, 2.5, [0, 0, 2.5]],
-      [`magmom`, -1.0, [0, 0, -1.0]],
-      [`magmoms`, 0.5, [0, 0, 0.5]],
-      [`spin`, 1, [0, 0, 1]],
-      [`spin`, -3.5, [0, 0, -3.5]],
-      [`magmom`, 0, [0, 0, 0]],
-    ] as const,
-  )(`converts scalar %s=%s to z-vector`, (key, scalar, expected) => {
+  test.each([
+    [`force`, 2.5, [0, 0, 2.5]],
+    [`magmom`, -1.0, [0, 0, -1.0]],
+    [`magmoms`, 0.5, [0, 0, 0.5]],
+    [`spin`, 1, [0, 0, 1]],
+    [`spin`, -3.5, [0, 0, -3.5]],
+    [`magmom`, 0, [0, 0, 0]],
+  ] as const)(`converts scalar %s=%s to z-vector`, (key, scalar, expected) => {
     expect(get_all_site_vectors(make_site({ [key]: scalar }))[0].vec).toEqual(expected)
   })
 
@@ -342,9 +334,7 @@ describe(`get_all_site_vectors`, () => {
       expected_keys: [`force`, `force_DFT`, `forces`],
     },
   ])(`ordering: $desc`, ({ props, expected_keys }) => {
-    expect(get_all_site_vectors(make_site(props)).map((v) => v.key)).toEqual(
-      expected_keys,
-    )
+    expect(get_all_site_vectors(make_site(props)).map((v) => v.key)).toEqual(expected_keys)
   })
 
   test.each([
@@ -382,7 +372,10 @@ describe(`get_all_site_vectors`, () => {
     {
       desc: `mix of zero and nonzero vectors`,
       props: { force: [0, 0, 0], magmom: [0, 0, 2.2] },
-      expected: [{ key: `force`, vec: [0, 0, 0] }, { key: `magmom`, vec: [0, 0, 2.2] }],
+      expected: [
+        { key: `force`, vec: [0, 0, 0] },
+        { key: `magmom`, vec: [0, 0, 2.2] },
+      ],
     },
   ])(`filtering: $desc`, ({ props, expected }) => {
     expect(get_all_site_vectors(make_site(props))).toEqual(expected)
@@ -409,10 +402,13 @@ describe(`get_structure_vector_keys`, () => {
     },
     {
       desc: `prefixed keys across sites`,
-      sites: [{ force_DFT: [1, 0, 0] }, {
-        force_MLFF: [0.9, 0, 0],
-        force_DFT: [1, 0, 0],
-      }],
+      sites: [
+        { force_DFT: [1, 0, 0] },
+        {
+          force_MLFF: [0.9, 0, 0],
+          force_DFT: [1, 0, 0],
+        },
+      ],
       expected: [`force_DFT`, `force_MLFF`],
     },
     {
@@ -436,10 +432,14 @@ describe(`get_structure_vector_keys`, () => {
     },
     {
       desc: `union across heterogeneous sites`,
-      sites: [{ force: [1, 0, 0] }, { magmom: [0, 0, 1] }, {
-        spin_DFT: 0.5,
-        force_MLFF: [0, 1, 0],
-      }],
+      sites: [
+        { force: [1, 0, 0] },
+        { magmom: [0, 0, 1] },
+        {
+          spin_DFT: 0.5,
+          force_MLFF: [0, 1, 0],
+        },
+      ],
       expected: [`force`, `force_MLFF`, `magmom`, `spin_DFT`],
     },
     {

@@ -163,7 +163,7 @@
         const scale_factor = angle_span / MAX_ANGLE_FOR_FULL_SCALE
         const base_scale = min_font_scale +
           scale_factor * (max_font_scale - min_font_scale)
-        const label_text = element + (show_amounts ? amount!.toString() : ``) +
+        const label_text = element + (show_amounts ? amount?.toString() ?? `` : ``) +
           (show_percentages ? `${format_num(fraction, `.1~%`)}` : ``)
         const available_space = is_very_thin_slice
           ? outer_radius * 0.8 // More space outside the slice

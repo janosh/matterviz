@@ -27,9 +27,9 @@ export async function wait_for_3d_canvas(
   // Wait for WebGL context to be ready (canvas has non-zero dimensions)
   await page.waitForFunction(
     (selector) => {
-      const canvas_el = document.querySelector(`${selector} canvas`) as
-        | HTMLCanvasElement
-        | null
+      const canvas_el = document.querySelector(
+        `${selector} canvas`,
+      ) as HTMLCanvasElement | null
       if (!canvas_el) return false
       const rect = canvas_el.getBoundingClientRect()
       return rect.width > 0 && rect.height > 0
@@ -52,16 +52,13 @@ export async function goto_structure_test(
 
 // Set an input value and dispatch events
 export const set_input_value = async (input: Locator, value: string): Promise<void> => {
-  await input.evaluate(
-    (el, val) => {
-      const inp = el as HTMLInputElement
-      inp.value = val
-      inp.dispatchEvent(new Event(`input`, { bubbles: true }))
-      inp.dispatchEvent(new Event(`change`, { bubbles: true }))
-      inp.blur()
-    },
-    value,
-  )
+  await input.evaluate((el, val) => {
+    const inp = el as HTMLInputElement
+    inp.value = val
+    inp.dispatchEvent(new Event(`input`, { bubbles: true }))
+    inp.dispatchEvent(new Event(`change`, { bubbles: true }))
+    inp.blur()
+  }, value)
 }
 
 // Open a draggable pane via checkbox or toggle button
@@ -80,9 +77,7 @@ export async function open_draggable_pane(
   const pane_div = container.locator(pane_selector)
 
   if (checkbox_text) {
-    const checkbox = page.locator(
-      `label:has-text("${checkbox_text}") input[type="checkbox"]`,
-    )
+    const checkbox = page.locator(`label:has-text("${checkbox_text}") input[type="checkbox"]`)
     await checkbox.uncheck()
     await checkbox.check()
   } else if (options.toggle_selector) {
@@ -203,8 +198,10 @@ export async function assert_test_hook_exists(
   description?: string,
 ): Promise<Locator> {
   const locator = page.locator(`[data-testid="${testid}"]`)
-  await expect(locator, description ?? `Test hook [data-testid="${testid}"] not found`)
-    .toBeVisible()
+  await expect(
+    locator,
+    description ?? `Test hook [data-testid="${testid}"] not found`,
+  ).toBeVisible()
   return locator
 }
 
@@ -216,9 +213,8 @@ export async function enter_edit_atoms_mode(page: Page): Promise<void> {
     if (document.querySelector(`[data-edit-atoms-style]`)) return
     const style = document.createElement(`style`)
     style.setAttribute(`data-edit-atoms-style`, ``)
-    style.textContent =
-      `section[class*="control-buttons"] { opacity: 1 !important; pointer-events: auto !important; }`
-    document.head.appendChild(style)
+    style.textContent = `section[class*="control-buttons"] { opacity: 1 !important; pointer-events: auto !important; }`
+    document.head.append(style)
   })
   const timeout = get_canvas_timeout()
   const structure_div = page.locator(`#test-structure`)

@@ -1,8 +1,4 @@
-import {
-  apply_slice,
-  build_diagram,
-  parse_curve_ref,
-} from '$lib/phase-diagram/build-diagram'
+import { apply_slice, build_diagram, parse_curve_ref } from '$lib/phase-diagram/build-diagram'
 import type { DiagramInput } from '$lib/phase-diagram/diagram-input'
 import { describe, expect, test } from 'vitest'
 
@@ -92,8 +88,16 @@ describe(`build_diagram`, () => {
       title: `Test Diagram`,
     },
     curves: {
-      liquidus: [[0, 800], [0.5, 600], [1, 700]],
-      solidus: [[0, 800], [0.3, 500], [1, 700]],
+      liquidus: [
+        [0, 800],
+        [0.5, 600],
+        [1, 700],
+      ],
+      solidus: [
+        [0, 800],
+        [0.3, 500],
+        [1, 700],
+      ],
     },
     regions: [
       {
@@ -103,9 +107,7 @@ describe(`build_diagram`, () => {
         bounds: [[0, 900], [1, 900], [1, 700], `~liquidus[1:]`],
       },
     ],
-    special_points: [
-      { id: `eutectic`, type: `eutectic`, position: [0.5, 600], label: `E` },
-    ],
+    special_points: [{ id: `eutectic`, type: `eutectic`, position: [0.5, 600], label: `E` }],
   }
 
   test(`builds diagram with correct structure`, () => {
@@ -187,7 +189,10 @@ describe(`build_diagram`, () => {
     const input_with_dupes: DiagramInput = {
       meta: { components: [`A`, `B`], temp_range: [0, 100] },
       curves: {
-        line: [[0, 0], [1, 1]],
+        line: [
+          [0, 0],
+          [1, 1],
+        ],
       },
       regions: [
         {

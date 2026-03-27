@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import { expect, test } from '@playwright/test'
 import { IS_CI } from '../helpers'
 
@@ -6,10 +5,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     // Skip in CI due to mdsvex SSR module resolution issues
     // Error: "SpacegroupBarPlot is not a function" occurs intermittently in CI
-    test.skip(
-      IS_CI,
-      `SpacegroupBarPlot SSR intermittently fails in CI due to mdsvex warm-up`,
-    )
+    test.skip(IS_CI, `SpacegroupBarPlot SSR intermittently fails in CI due to mdsvex warm-up`)
     await page.goto(`/plot/spacegroup-bar-plot`, { waitUntil: `networkidle` })
     // Wait for first bar-plot to render (mdsvex examples may take time)
     await page.waitForSelector(`.bar-plot`, { timeout: 15000 })
@@ -105,7 +101,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     // Count annotations should be visible initially
     const annotations = plot.locator(`g.crystal-system-overlays text`)
     const has_percentage_before = await annotations.evaluateAll((texts) =>
-      texts.some((text) => text.textContent?.includes(`%`))
+      texts.some((text) => text.textContent?.includes(`%`)),
     )
     expect(has_percentage_before).toBe(true)
 
@@ -115,7 +111,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     // Wait for percentage text to disappear
     await expect(async () => {
       const has_percentage_after = await annotations.evaluateAll((texts) =>
-        texts.some((text) => text.textContent?.includes(`%`))
+        texts.some((text) => text.textContent?.includes(`%`)),
       )
       expect(has_percentage_after).toBe(false)
     }).toPass({ timeout: 5000 })
@@ -156,9 +152,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
         await Promise.all(after_bars.slice(0, 5).map(async (h) => await h.boundingBox()))
       ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
 
-      const horizontal_count_after = after_boxes.filter((bb) =>
-        bb.width > bb.height
-      ).length
+      const horizontal_count_after = after_boxes.filter((bb) => bb.width > bb.height).length
       expect(horizontal_count_after).toBeGreaterThan(2)
     }).toPass({ timeout: 2000 })
   })
@@ -207,7 +201,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // Check each has a fill color
     const colors = await system_rects.evaluateAll((rects) =>
-      rects.map((rect) => rect.getAttribute(`fill`)).filter(Boolean)
+      rects.map((rect) => rect.getAttribute(`fill`)).filter(Boolean),
     )
 
     // Should have multiple distinct colors
@@ -216,7 +210,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // All should have some opacity for background effect
     const opacities = await system_rects.evaluateAll((rects) =>
-      rects.map((rect) => parseFloat(rect.getAttribute(`opacity`) || `1`))
+      rects.map((rect) => parseFloat(rect.getAttribute(`opacity`) || `1`)),
     )
 
     // Background rectangles should have low opacity
@@ -230,7 +224,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     // Get x-axis tick values
     const x_ticks = await plot.locator(`g.x-axis .tick text`).allTextContents()
     const tick_values = x_ticks
-      .map((text) => parseInt(text.replace(/[^\d]/g, ``), 10))
+      .map((text) => parseInt(text.replaceAll(/[^\d]/g, ``), 10))
       .filter((num) => !isNaN(num) && num > 0)
 
     if (tick_values.length > 0) {
@@ -253,9 +247,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     // Get positions and widths of first several bars
     const bar_elements = await bars.all()
     const bar_boxes = (
-      await Promise.all(
-        bar_elements.slice(0, 15).map(async (bar) => await bar.boundingBox()),
-      )
+      await Promise.all(bar_elements.slice(0, 15).map(async (bar) => await bar.boundingBox()))
     ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
 
     // Check bars have reasonable width (not zero or negative)

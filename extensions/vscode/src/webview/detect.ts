@@ -58,8 +58,8 @@ export const TYPE_COLORS: Record<RenderableType, string> = {
 
 // Narrows unknown to a non-array object record; used by every type guard below
 function as_record(obj: unknown): Record<string, unknown> | null {
-  return (obj && typeof obj === `object` && !Array.isArray(obj))
-    ? obj as Record<string, unknown>
+  return obj && typeof obj === `object` && !Array.isArray(obj)
+    ? (obj as Record<string, unknown>)
     : null
 }
 
@@ -85,24 +85,27 @@ function is_structure(obj: unknown): boolean {
 function is_fermi_surface(obj: unknown): boolean {
   const data = as_record(obj)
   if (!data) return false
-  return has_array(data, `isosurfaces`) &&
+  return (
+    has_array(data, `isosurfaces`) &&
     has_array(data, `k_lattice`, 3) &&
     typeof data.fermi_energy === `number` &&
-    (data.reciprocal_cell === `wigner_seitz` ||
-      data.reciprocal_cell === `parallelepiped`) &&
+    (data.reciprocal_cell === `wigner_seitz` || data.reciprocal_cell === `parallelepiped`) &&
     !!as_record(data.metadata)
+  )
 }
 
 // BandGridData: raw band energies on a k-grid (needs marching cubes extraction)
 function is_band_grid(obj: unknown): boolean {
   const data = as_record(obj)
   if (!data) return false
-  return has_array(data, `energies`) &&
+  return (
+    has_array(data, `energies`) &&
     has_array(data, `k_grid`, 3) &&
     has_array(data, `k_lattice`, 3) &&
     typeof data.fermi_energy === `number` &&
     typeof data.n_bands === `number` &&
     typeof data.n_spins === `number`
+  )
 }
 
 // ConvexHull entries: array of objects with `composition` (object) + energy field
@@ -112,10 +115,12 @@ function is_convex_hull_entries(obj: unknown): boolean {
   // Check first few entries to avoid false positives on random arrays
   return obj.slice(0, 3).every((item) => {
     const entry = as_record(item)
-    return entry && as_record(entry.composition) && (
-      typeof entry.energy === `number` ||
-      typeof entry.e_form_per_atom === `number` ||
-      typeof entry.energy_per_atom === `number`
+    return (
+      entry &&
+      as_record(entry.composition) &&
+      (typeof entry.energy === `number` ||
+        typeof entry.e_form_per_atom === `number` ||
+        typeof entry.energy_per_atom === `number`)
     )
   })
 }
@@ -128,14 +133,15 @@ function is_volumetric(obj: unknown): boolean {
   const grid = data.grid as unknown[]
   if (grid.length === 0) return false
   const first_slice = grid[0]
-  if (
-    !Array.isArray(first_slice) || !first_slice.length || !Array.isArray(first_slice[0])
-  ) return false
-  return has_array(data, `grid_dims`, 3) &&
+  if (!Array.isArray(first_slice) || !first_slice.length || !Array.isArray(first_slice[0]))
+    return false
+  return (
+    has_array(data, `grid_dims`, 3) &&
     has_array(data, `lattice`, 3) &&
     has_array(data, `origin`, 3) &&
     !!as_record(data.data_range) &&
     typeof data.periodic === `boolean`
+  )
 }
 
 // PhaseDiagramData: binary phase diagram with components, regions, boundaries
@@ -145,9 +151,11 @@ function is_phase_diagram(obj: unknown): boolean {
   if (!has_array(data, `components`, 2)) return false
   const [comp_a, comp_b] = data.components as unknown[]
   if (typeof comp_a !== `string` || typeof comp_b !== `string`) return false
-  return has_array(data, `regions`) &&
+  return (
+    has_array(data, `regions`) &&
     has_array(data, `boundaries`) &&
     has_array(data, `temperature_range`, 2)
+  )
 }
 
 // BandStructure: normalized format (qpoints, branches, bands, nb_bands)
@@ -161,9 +169,11 @@ function is_band_structure(obj: unknown): boolean {
   if (!as_record(data.labels_dict)) return false
   // Normalized format
   if (
-    has_array(data, `qpoints`) && has_array(data, `bands`) &&
+    has_array(data, `qpoints`) &&
+    has_array(data, `bands`) &&
     typeof data.nb_bands === `number`
-  ) return true
+  )
+    return true
   // Pymatgen format: kpoints + bands object (not array) + efermi
   if (has_array(data, `kpoints`) && as_record(data.bands)) {
     return typeof data.efermi === `number`
@@ -180,14 +190,19 @@ function is_dos(obj: unknown): boolean {
   const has_spectra = has_array(data, `energies`) || has_array(data, `frequencies`)
   // pymatgen CompleteDos format
   if (
-    typeof data[`@class`] === `string` && (data[`@class`] as string).includes(`Dos`) &&
-    has_spectra && data.densities !== undefined
-  ) return true
+    typeof data[`@class`] === `string` &&
+    (data[`@class`] as string).includes(`Dos`) &&
+    has_spectra &&
+    data.densities !== undefined
+  )
+    return true
   // Normalized DosData format
   if (
     (data.type === `phonon` || data.type === `electronic`) &&
-    has_spectra && has_array(data, `densities`)
-  ) return true
+    has_spectra &&
+    has_array(data, `densities`)
+  )
+    return true
   return false
 }
 
@@ -196,12 +211,9 @@ function is_dos(obj: unknown): boolean {
 function is_bands_and_dos(obj: unknown): boolean {
   const data = as_record(obj)
   if (!data) return false
-  const keys = Object.keys(data).filter((key) =>
-    !key.startsWith(`@`) && !key.startsWith(`_`)
-  )
+  const keys = Object.keys(data).filter((key) => !key.startsWith(`@`) && !key.startsWith(`_`))
   // Wrapper format: { band_structure: {...}, dos: {...} } with few extra keys
-  const has_bands = as_record(data.band_structure) &&
-    is_band_structure(data.band_structure)
+  const has_bands = as_record(data.band_structure) && is_band_structure(data.band_structure)
   const has_dos_key = as_record(data.dos) && is_dos(data.dos)
   if (has_bands && has_dos_key && keys.length <= 5) return true
   // Combined-fields format: single object with both band structure and DOS fields mixed in
@@ -220,16 +232,20 @@ function is_brillouin_zone(obj: unknown): boolean {
   const data = as_record(obj)
   if (!data) return false
   // Must have reciprocal lattice vectors (3x3 matrix)
-  const has_k_lattice = has_array(data, `k_lattice`, 3) ||
-    has_array(data, `reciprocal_lattice`, 3)
+  const has_k_lattice =
+    has_array(data, `k_lattice`, 3) || has_array(data, `reciprocal_lattice`, 3)
   if (!has_k_lattice) return false
   // Must have k-path or explicit BZ data to distinguish from Fermi surface data
   // (Fermi surface also has k_lattice but additionally has isosurfaces)
   if (has_array(data, `isosurfaces`)) return false // that's a Fermi surface, not a plain BZ
   // Accept if it has k_path labels/points, or a structure with lattice
-  return has_array(data, `k_path`) || has_array(data, `k_points`) ||
-    !!as_record(data.k_labels) || !!as_record(data.labels_dict) ||
+  return (
+    has_array(data, `k_path`) ||
+    has_array(data, `k_points`) ||
+    !!as_record(data.k_labels) ||
+    !!as_record(data.labels_dict) ||
     data.bz_order !== undefined
+  )
 }
 
 // XRD pattern: x + y arrays of equal length (2-theta angles vs intensities)
@@ -245,9 +261,12 @@ function is_xrd_pattern(obj: unknown): boolean {
   if (typeof x_arr[0] !== `number` || typeof y_arr[0] !== `number`) return false
   // Distinguish from generic scatter data: XRD patterns typically have hkls or d_hkls,
   // or have @class containing "Xrd"
-  return has_array(data, `hkls`) || has_array(data, `d_hkls`) ||
+  return (
+    has_array(data, `hkls`) ||
+    has_array(data, `d_hkls`) ||
     (typeof data[`@class`] === `string` && (data[`@class`] as string).includes(`Xrd`)) ||
     typeof data.wavelength === `number`
+  )
 }
 
 // Tabular data: array of objects with consistent keys (row-based table format)
@@ -288,26 +307,22 @@ function is_tabular_data(obj: unknown): boolean {
 export function is_plottable_data(obj: unknown): boolean {
   if (!is_tabular_data(obj)) return false
   if (Array.isArray(obj)) {
-    const sample = obj.slice(0, 10).map(as_record).filter(Boolean) as Record<
-      string,
-      unknown
-    >[]
+    const sample = obj.slice(0, 10).map(as_record).filter(Boolean) as Record<string, unknown>[]
     if (sample.length === 0) return false
     const all_keys = new Set(sample.flatMap(Object.keys))
     const num_cols = [...all_keys].filter((key) =>
-      sample.some((row) => typeof row[key] === `number`)
+      sample.some((row) => typeof row[key] === `number`),
     ).length
     return num_cols >= 2
   }
   const data = as_record(obj)
   if (!data) return false
-  const array_entries = Object.entries(data).filter(([, val]) =>
-    Array.isArray(val) && (val as unknown[]).length > 0
+  const array_entries = Object.entries(data).filter(
+    ([, val]) => Array.isArray(val) && (val as unknown[]).length > 0,
   )
-  const num_cols =
-    array_entries.filter(([, val]) =>
-      (val as unknown[]).some((elem) => typeof elem === `number`)
-    ).length
+  const num_cols = array_entries.filter(([, val]) =>
+    (val as unknown[]).some((elem) => typeof elem === `number`),
+  ).length
   return num_cols >= 2
 }
 
@@ -317,7 +332,7 @@ export function is_plottable_data(obj: unknown): boolean {
 // Returns the type if the value matches a known format, or null if not renderable.
 // Checks are ordered from most specific to least specific to minimize false positives.
 export function detect_view_type(value: unknown): RenderableType | null {
-  if (value === null || value === undefined) return null
+  if (value == null) return null
 
   // OPTIMADE format (special structure variant) -- check before generic structure
   if (as_record(value) && is_optimade_raw(value)) return `structure`
@@ -382,7 +397,7 @@ export function scan_renderable_paths(
 
   function walk(value: unknown, path: string, depth: number): void {
     if (depth > max_depth) return
-    if (value === null || value === undefined) return
+    if (value == null) return
     if (typeof value !== `object`) return
 
     // Circular reference protection
@@ -416,7 +431,9 @@ export function scan_renderable_paths(
         // Use bracket notation for keys containing dots to avoid ambiguity in resolve_path
         const segment = key.includes(`.`) ? `["${key}"]` : key
         const child_path = path
-          ? (key.includes(`.`) ? `${path}${segment}` : `${path}.${segment}`)
+          ? key.includes(`.`)
+            ? `${path}${segment}`
+            : `${path}.${segment}`
           : segment
         walk(child_value, child_path, depth + 1)
       }

@@ -11,11 +11,12 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     vite_plugin_json_gz(),
     mode === `test`
-      ? { // just ignore svelte files in test mode
-        name: `svelte-mock`,
-        resolveId: (id: string) => id.endsWith(`.svelte`) ? id : null,
-        load: (id: string) => id.endsWith(`.svelte`) ? `export default {}` : null,
-      }
+      ? {
+          // just ignore svelte files in test mode
+          name: `svelte-mock`,
+          resolveId: (id: string) => (id.endsWith(`.svelte`) ? id : null),
+          load: (id: string) => (id.endsWith(`.svelte`) ? `export default {}` : null),
+        }
       : svelte(),
     mode === `test` ? mock_vscode() : null,
   ],

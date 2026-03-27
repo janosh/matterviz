@@ -3,23 +3,13 @@ import type { LatticeParams, Pbc } from '$lib/structure/index'
 export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]
 export type Vec4 = [number, number, number, number]
-export type Vec9 = [
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-]
+export type Vec9 = [number, number, number, number, number, number, number, number, number]
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 export type NdVector = number[]
 
 // Column-major 4x4 matrix as flat 16-element tuple (for Three.js/WebGL)
-// deno-fmt-ignore
+// oxfmt-ignore
 export type Matrix4Tuple = [
   number, number, number, number,
   number, number, number, number,
@@ -47,9 +37,7 @@ export const to_degrees = (radians: number): number => radians * RAD_TO_DEG
 export const to_radians = (degrees: number): number => degrees * DEG_TO_RAD
 
 // Calculate all lattice parameters in a single efficient pass
-export function calc_lattice_params(
-  matrix: Matrix3x3,
-): LatticeParams & { volume: number } {
+export function calc_lattice_params(matrix: Matrix3x3): LatticeParams & { volume: number } {
   const [a_vec, b_vec, c_vec] = matrix
 
   // Calculate vector lengths (lattice parameters a, b, c)
@@ -103,7 +91,7 @@ export function pbc_dist(
 
   // Apply minimum image convention only for periodic axes
   const wrapped_frac_diff = [fx1 - fx2, fy1 - fy2, fz1 - fz2].map((diff, idx) =>
-    pbc[idx] ? diff - Math.round(diff) : diff
+    pbc[idx] ? diff - Math.round(diff) : diff,
   ) as Vec3
 
   // Convert back to Cartesian coordinates
@@ -166,7 +154,7 @@ export function add<T extends NdVector>(...vecs: T[]): T {
     }
   }
 
-  const result = new Array(length).fill(0)
+  const result = Array.from<number>({ length }).fill(0)
   for (const vec of vecs) {
     for (let idx = 0; idx < length; idx++) {
       result[idx] += vec[idx]
@@ -190,9 +178,7 @@ function validate_matrix(mat: number[][], name: string): number {
   }
 
   if (!mat.every((row) => Array.isArray(row))) {
-    throw new Error(
-      `${name} must contain only array rows (no undefined/non-array elements)`,
-    )
+    throw new Error(`${name} must contain only array rows (no undefined/non-array elements)`)
   }
 
   const cols = mat[0]?.length
@@ -250,11 +236,9 @@ export function dot(
       throw new Error(`First matrix columns must equal second matrix rows`)
     }
     return mat1.map((_, ii) =>
-      Array.from(
-        { length: mat2_cols },
-        (_, jj) =>
-          mat1[ii].reduce((sum, _val, kk) => sum + mat1[ii][kk] * mat2[kk][jj], 0),
-      )
+      Array.from({ length: mat2_cols }, (_, jj) =>
+        mat1[ii].reduce((sum, _val, kk) => sum + mat1[ii][kk] * mat2[kk][jj], 0),
+      ),
     )
   }
 
@@ -267,9 +251,7 @@ export function dot(
 // Voigt notation maps: (1,1)->1, (2,2)->2, (3,3)->3, (2,3)->4, (1,3)->5, (1,2)->6
 export function to_voigt(tensor: number[][]): number[] {
   if (tensor.length !== 3 || !tensor.every((row) => row.length === 3)) {
-    throw new Error(
-      `Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`,
-    )
+    throw new Error(`Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`)
   }
   const [t11, t12, t13, _t21, t22, t23, _t31, _t32, t33] = tensor.flat()
   return [t11, t22, t33, t23, t13, t12]
@@ -282,7 +264,11 @@ export function from_voigt(voigt: number[]): number[][] {
   }
   const [v1, v2, v3, v4, v5, v6] = voigt
 
-  return [[v1, v6, v5], [v6, v2, v4], [v5, v4, v3]]
+  return [
+    [v1, v6, v5],
+    [v6, v2, v4],
+    [v5, v4, v3],
+  ]
 }
 
 // Convert flat 9-element array to 3x3 tensor (row-major order)
@@ -291,15 +277,17 @@ export function vec9_to_mat3x3(flat_array: number[]): number[][] {
     throw new Error(`Expected 9-element array, got ${flat_array.length} elements`)
   }
   const [a1, a2, a3, a4, a5, a6, a7, a8, a9] = flat_array
-  return [[a1, a2, a3], [a4, a5, a6], [a7, a8, a9]]
+  return [
+    [a1, a2, a3],
+    [a4, a5, a6],
+    [a7, a8, a9],
+  ]
 }
 
 // Convert 3x3 tensor to flat 9-element array (row-major order)
 export function tensor_to_flat_array(tensor: number[][]): number[] {
   if (tensor.length !== 3 || !tensor.every((row) => row.length === 3)) {
-    throw new Error(
-      `Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`,
-    )
+    throw new Error(`Expected 3x3 tensor, got ${tensor.length}x${tensor[0]?.length ?? `n/a`}`)
   }
 
   const [t11, t12, t13, t21, t22, t23, t31, t32, t33] = tensor.flat()
@@ -346,11 +334,7 @@ export function cell_to_lattice_matrix(
 
   // Calculate volume factor for triclinic system
   const vol_factor = Math.sqrt(
-    1 -
-      cos_alpha ** 2 -
-      cos_beta ** 2 -
-      cos_gamma ** 2 +
-      2 * cos_alpha * cos_beta * cos_gamma,
+    1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma,
   )
 
   // Standard crystallographic lattice vectors
@@ -368,17 +352,18 @@ export function det_3x3(matrix: Matrix3x3): number {
   // |A| = a(ei − fh) − b(di − fg) + c(dh − eg)
   // where matrix = [[a, b, c], [d, e, f], [g, h, i]]
   const [[m00, m01, m02], [m10, m11, m12], [m20, m21, m22]] = matrix
-  return (m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) +
-    m02 * (m10 * m21 - m11 * m20))
+  return (
+    m00 * (m11 * m22 - m12 * m21) -
+    m01 * (m10 * m22 - m12 * m20) +
+    m02 * (m10 * m21 - m11 * m20)
+  )
 }
 
 export function get_coefficient_of_variation(values: number[]): number {
   if (values.length <= 1) return 0
   const mean = values.reduce((sum, val) => sum + val, 0) / values.length
   const variance = values.reduce((sum, val) => sum + (val - mean) ** 2, 0) / values.length
-  return Math.abs(mean) > 1e-10
-    ? Math.sqrt(variance) / Math.abs(mean)
-    : Math.sqrt(variance)
+  return Math.abs(mean) > 1e-10 ? Math.sqrt(variance) / Math.abs(mean) : Math.sqrt(variance)
 }
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)
@@ -388,13 +373,12 @@ export function det_4x4(matrix: Matrix4x4): number {
   const [b0, b1, b2, b3] = b_row
   const [c0, c1, c2, c3] = c_row
   const [d0, d1, d2, d3] = d_row
-  return (a0 *
-      (b1 * (c2 * d3 - c3 * d2) - b2 * (c1 * d3 - c3 * d1) + b3 * (c1 * d2 - c2 * d1)) -
-    a1 *
-      (b0 * (c2 * d3 - c3 * d2) - b2 * (c0 * d3 - c3 * d0) + b3 * (c0 * d2 - c2 * d0)) +
-    a2 *
-      (b0 * (c1 * d3 - c3 * d1) - b1 * (c0 * d3 - c3 * d0) + b3 * (c0 * d1 - c1 * d0)) -
-    a3 * (b0 * (c1 * d2 - c2 * d1) - b1 * (c0 * d2 - c2 * d0) + b2 * (c0 * d1 - c1 * d0)))
+  return (
+    a0 * (b1 * (c2 * d3 - c3 * d2) - b2 * (c1 * d3 - c3 * d1) + b3 * (c1 * d2 - c2 * d1)) -
+    a1 * (b0 * (c2 * d3 - c3 * d2) - b2 * (c0 * d3 - c3 * d0) + b3 * (c0 * d2 - c2 * d0)) +
+    a2 * (b0 * (c1 * d3 - c3 * d1) - b1 * (c0 * d3 - c3 * d0) + b3 * (c0 * d1 - c1 * d0)) -
+    a3 * (b0 * (c1 * d2 - c2 * d1) - b1 * (c0 * d2 - c2 * d0) + b2 * (c0 * d1 - c1 * d0))
+  )
 }
 
 // Compute NxN determinant using LU decomposition with partial pivoting
@@ -458,10 +442,7 @@ export function det_nxn(matrix: number[][]): number {
 }
 
 // 3D cross product
-export const cross_3d = (
-  vec1: Vec3,
-  vec2: Vec3,
-): Vec3 => [
+export const cross_3d = (vec1: Vec3, vec2: Vec3): Vec3 => [
   vec1[1] * vec2[2] - vec1[2] * vec2[1],
   vec1[2] * vec2[0] - vec1[0] * vec2[2],
   vec1[0] * vec2[1] - vec1[1] * vec2[0],
@@ -472,11 +453,7 @@ export const lerp = (start: number, end: number, t: number): number =>
   start + t * (end - start)
 
 // Vec3 linear interpolation
-export const lerp_vec3 = (
-  start: Vec3,
-  end: Vec3,
-  t: number,
-): Vec3 => [
+export const lerp_vec3 = (start: Vec3, end: Vec3, t: number): Vec3 => [
   start[0] + t * (end[0] - start[0]),
   start[1] + t * (end[1] - start[1]),
   start[2] + t * (end[2] - start[2]),
@@ -495,8 +472,12 @@ export const centered_frac = (val: number): number => {
 // Element-wise equality check for two optional Vec3s.
 // Returns true if both are the same reference, or both are defined with equal components.
 export const vecs_equal = (vec_a?: Vec3, vec_b?: Vec3): boolean =>
-  vec_a === vec_b || (!!vec_a && !!vec_b &&
-    vec_a[0] === vec_b[0] && vec_a[1] === vec_b[1] && vec_a[2] === vec_b[2])
+  vec_a === vec_b ||
+  (!!vec_a &&
+    !!vec_b &&
+    vec_a[0] === vec_b[0] &&
+    vec_a[1] === vec_b[1] &&
+    vec_a[2] === vec_b[2])
 
 // Normalize a Vec3 to unit length, returns zero vector if input is zero
 export function normalize_vec3(vec: Vec3, fallback?: Vec3): Vec3 {
@@ -602,11 +583,12 @@ export function merge_coplanar_triangles(
     // Normalize and canonicalize: first non-zero component must be positive
     let normal: Vec3 = [raw_normal[0] / len, raw_normal[1] / len, raw_normal[2] / len]
     const CANON_EPS = 1e-12
-    const first_nonzero = Math.abs(normal[0]) > CANON_EPS
-      ? normal[0]
-      : Math.abs(normal[1]) > CANON_EPS
-      ? normal[1]
-      : normal[2]
+    const first_nonzero =
+      Math.abs(normal[0]) > CANON_EPS
+        ? normal[0]
+        : Math.abs(normal[1]) > CANON_EPS
+          ? normal[1]
+          : normal[2]
     if (first_nonzero < 0) normal = [-normal[0], -normal[1], -normal[2]]
     const plane_d = dot(normal, va)
     tri_planes.push({ verts: [va, vb, vc], normal, plane_d, degenerate: false })
@@ -615,9 +597,9 @@ export function merge_coplanar_triangles(
   // === Step 2: Build adjacency via edge hash map ===
   // Quantize vertex to integer grid for hashing (only used for equality, not coords)
   const vert_key = (v: Vec3): string =>
-    `${Math.round(v[0] / tolerance)},${Math.round(v[1] / tolerance)},${
-      Math.round(v[2] / tolerance)
-    }`
+    `${Math.round(v[0] / tolerance)},${Math.round(v[1] / tolerance)},${Math.round(
+      v[2] / tolerance,
+    )}`
   const edge_key = (va: Vec3, vb: Vec3): string => {
     const ka = vert_key(va)
     const kb = vert_key(vb)
@@ -652,7 +634,8 @@ export function merge_coplanar_triangles(
     return x
   }
   const union = (a: number, b: number): void => {
-    const ra = find(a), rb = find(b)
+    const ra = find(a),
+      rb = find(b)
     if (ra === rb) return
     if (rank[ra] < rank[rb]) parent[ra] = rb
     else if (rank[ra] > rank[rb]) parent[rb] = ra
@@ -668,8 +651,8 @@ export function merge_coplanar_triangles(
     const pb = tri_planes[idx_b]
     if (pa.degenerate || pb.degenerate) continue
     // Check coplanarity: same canonical normal direction AND same plane distance
-    const normal_dot = pa.normal[0] * pb.normal[0] + pa.normal[1] * pb.normal[1] +
-      pa.normal[2] * pb.normal[2]
+    const normal_dot =
+      pa.normal[0] * pb.normal[0] + pa.normal[1] * pb.normal[1] + pa.normal[2] * pb.normal[2]
     if (Math.abs(normal_dot) < 1 - tolerance) continue
     if (Math.abs(pa.plane_d - pb.plane_d) > tolerance) continue
     union(idx_a, idx_b)
@@ -719,9 +702,7 @@ export function merge_coplanar_triangles(
 
     // Project to 2D using in-plane basis
     const [u_vec, v_vec] = compute_in_plane_basis(normal)
-    const pts_2d = unique_verts.map((
-      vertex,
-    ): Vec2 => [dot(u_vec, vertex), dot(v_vec, vertex)])
+    const pts_2d = unique_verts.map((vertex): Vec2 => [dot(u_vec, vertex), dot(v_vec, vertex)])
 
     const hull = convex_hull_2d(pts_2d)
     if (hull.length < 3) {
@@ -786,11 +767,7 @@ export function is_square_matrix(matrix: unknown, dim: number): boolean {
 
 // Point-in-polygon test using ray casting algorithm
 // Returns true if point (x, y) is inside the polygon defined by vertices
-export function point_in_polygon(
-  point_x: number,
-  point_y: number,
-  vertices: Vec2[],
-): boolean {
+export function point_in_polygon(point_x: number, point_y: number, vertices: Vec2[]): boolean {
   if (vertices.length < 3) return false
   let [inside, prev_idx] = [false, vertices.length - 1]
 
@@ -799,7 +776,7 @@ export function point_in_polygon(
     const [x_j, y_j] = vertices[prev_idx]
 
     // Check if horizontal ray from point crosses this edge
-    if (y_i !== y_j && (y_i > point_y) !== (y_j > point_y)) {
+    if (y_i !== y_j && y_i > point_y !== y_j > point_y) {
       const x_intersect = ((x_j - x_i) * (point_y - y_i)) / (y_j - y_i) + x_i
       if (point_x < x_intersect) inside = !inside
     }
@@ -883,10 +860,7 @@ export function solve_linear_system(
   if (n === 2) {
     const det = A[0][0] * A[1][1] - A[0][1] * A[1][0]
     if (Math.abs(det) < EPS) return null
-    return [
-      (b[0] * A[1][1] - b[1] * A[0][1]) / det,
-      (A[0][0] * b[1] - A[1][0] * b[0]) / det,
-    ]
+    return [(b[0] * A[1][1] - b[1] * A[0][1]) / det, (A[0][0] * b[1] - A[1][0] * b[0]) / det]
   }
 
   // 3x3 fast path via matrix inverse
@@ -939,7 +913,7 @@ export function solve_linear_system(
   }
 
   // Back substitution (Ux = y)
-  const x = new Array(n).fill(0)
+  const x = Array.from<number>({ length: n }).fill(0)
   for (let row = n - 1; row >= 0; row--) {
     let sum = pb[row]
     for (let col = row + 1; col < n; col++) {
@@ -956,9 +930,7 @@ export function solve_linear_system(
 export function convex_hull_2d(points: Vec2[]): Vec2[] {
   if (points.length < 3) return [...points]
 
-  const sorted = [...points].sort(
-    (a, b) => (a[0] - b[0]) || (a[1] - b[1]),
-  )
+  const sorted = points.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
 
   const cross = (o: Vec2, a: Vec2, b: Vec2): number =>
     (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])

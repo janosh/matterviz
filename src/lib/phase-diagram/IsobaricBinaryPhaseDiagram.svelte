@@ -31,6 +31,7 @@
     calculate_lever_rule,
     calculate_vertical_lever_rule,
     compute_label_properties,
+    compute_x_domain,
     convert_temp,
     find_phase_at_point,
     format_composition,
@@ -129,8 +130,8 @@
     if (!diagram_input) return null
     try {
       return build_diagram(diagram_input)
-    } catch (err) {
-      console.warn(`Failed to rebuild diagram from input:`, err)
+    } catch (error) {
+      console.warn(`Failed to rebuild diagram from input:`, error)
       return null
     }
   })
@@ -154,13 +155,13 @@
       return
     }
     const reader = new FileReader()
-    reader.onload = () => {
+    reader.addEventListener(`load`, () => {
       try {
         diagram_input = parse_phase_diagram_svg(reader.result as string)
-      } catch (err) {
-        console.error(`Failed to parse dropped SVG:`, err)
+      } catch (error) {
+        console.error(`Failed to parse dropped SVG:`, error)
       }
-    }
+    })
     reader.readAsText(file)
   }
 
@@ -184,66 +185,7 @@
 
   // Compute x domain from data extent, x_axis.range override, or default [0, 1]
   // Auto-extends to 0/1 when edge regions contain a pure component
-  const x_domain = $derived.by((): Vec2 => {
-    const lo = x_axis.range?.[0]
-    const hi = x_axis.range?.[1]
-    if (lo != null && hi != null) return [lo, hi]
-
-    if (effective_data) {
-      // Loop-based min/max to avoid stack overflow with large datasets
-      let data_min = Infinity
-      let data_max = -Infinity
-      const update = (val: number) => {
-        if (val < data_min) data_min = val
-        if (val > data_max) data_max = val
-      }
-      for (const region of effective_data.regions) {
-        for (const vertex of region.vertices) update(vertex[0])
-      }
-      for (const boundary of effective_data.boundaries) {
-        for (const point of boundary.points) update(point[0])
-      }
-      for (const special_point of effective_data.special_points ?? []) {
-        update(special_point.position[0])
-      }
-
-      if (data_min <= data_max) {
-        let x_min = lo ?? data_min
-        let x_max = hi ?? data_max
-
-        // Auto-extend to 0/1 when edge regions contain a pure component AND the
-        // data already nearly reaches the boundary. This prevents extending a
-        // section diagram (e.g. 0.3–0.7) to the full [0, 1] range.
-        // Word boundary regex avoids matching substrings (e.g. "Fe" won't match "Fe3C")
-        const comp_at_edge = (comp: string, x_val: number) => {
-          const re = new RegExp(
-            `\\b${comp.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`,
-          )
-          return effective_data.regions.some((region) =>
-            re.test(region.name) &&
-            region.vertices.some((vertex) => Math.abs(vertex[0] - x_val) < 1e-6)
-          )
-        }
-        if (
-          lo == null && x_min < 0.05 &&
-          effective_data.components[0] &&
-          comp_at_edge(effective_data.components[0], x_min)
-        ) {
-          x_min = 0
-        }
-        if (
-          hi == null && x_max > 0.95 &&
-          effective_data.components[1] &&
-          comp_at_edge(effective_data.components[1], x_max)
-        ) {
-          x_max = 1
-        }
-
-        return [x_min, x_max]
-      }
-    }
-    return [lo ?? 0, hi ?? 1]
-  })
+  const x_domain = $derived(compute_x_domain(x_axis.range, effective_data))
 
   // Scales
   const x_scale = $derived(scaleLinear().domain(x_domain).range([left, right]))
@@ -383,8 +325,8 @@
         copy_feedback_visible = false
         copy_feedback_timeout = undefined
       }, 1500)
-    } catch (err) {
-      console.error(`Failed to copy phase data:`, err)
+    } catch (error) {
+      console.error(`Failed to copy phase data:`, error)
     }
   }
 
