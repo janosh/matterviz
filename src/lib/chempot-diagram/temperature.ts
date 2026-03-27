@@ -29,21 +29,19 @@ export function get_projection_source_entries(
   return temp_filtered_entries.length > 0 ? temp_filtered_entries : entries
 }
 
-function resolve_temp_filter_options(
+const resolve_temp_filter_options = (
   config: ChemPotDiagramConfig,
   props: TempFilterProps,
-): ResolvedTempFilterOptions {
-  return {
-    interpolate:
-      config.interpolate_temperature ??
-      props.interpolate_temperature ??
-      CHEMPOT_DEFAULTS.interpolate_temperature,
-    max_interpolation_gap:
-      config.max_interpolation_gap ??
-      props.max_interpolation_gap ??
-      CHEMPOT_DEFAULTS.max_interpolation_gap,
-  }
-}
+): ResolvedTempFilterOptions => ({
+  interpolate:
+    config.interpolate_temperature ??
+    props.interpolate_temperature ??
+    CHEMPOT_DEFAULTS.interpolate_temperature,
+  max_interpolation_gap:
+    config.max_interpolation_gap ??
+    props.max_interpolation_gap ??
+    CHEMPOT_DEFAULTS.max_interpolation_gap,
+})
 
 export function get_temp_filter_payload(
   entries: PhaseData[],

@@ -11,9 +11,7 @@ import type {
   SurfaceDimensionality,
 } from './types'
 
-function parse_number_tokens(line: string): string[] {
-  return line.split(/\s+/).filter(Boolean)
-}
+const parse_number_tokens = (line: string): string[] => line.split(/\s+/).filter(Boolean)
 
 // Parse whitespace-separated floats from a line (optimized with unary +)
 function parse_floats(line: string): number[] {

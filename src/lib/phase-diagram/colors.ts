@@ -1,9 +1,8 @@
 // Phase diagram color palette
 // Keys can be referenced in diagram JSON files
 
-function rgba(r: number, g: number, b: number, a: number = 0.6): string {
-  return `rgba(${r}, ${g}, ${b}, ${a})`
-}
+const rgba = (r: number, g: number, b: number, a: number = 0.6): string =>
+  `rgba(${r}, ${g}, ${b}, ${a})`
 
 // Color palette for diagram JSON files - keyed colors that can be referenced by name
 export const DIAGRAM_COLORS = {

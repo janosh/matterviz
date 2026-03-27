@@ -49,11 +49,9 @@
     config.tooltip_detail_level ?? CHEMPOT_DEFAULTS.tooltip_detail_level,
   )
 
-  function is_hover_info_3d(
+  const is_hover_info_3d = (
     value: ChemPotHoverInfo | null,
-  ): value is ChemPotHoverInfo3D {
-    return value?.view === `3d`
-  }
+  ): value is ChemPotHoverInfo3D => value?.view === `3d`
 </script>
 
 <div class="chempot-diagram-wrapper">

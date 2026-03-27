@@ -49,11 +49,10 @@
   let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
   let active_volume = $derived(volumetric_data?.[active_volume_idx])
 
-  function decode_content(content: string | ArrayBuffer): string {
-    return content instanceof ArrayBuffer
+  const decode_content = (content: string | ArrayBuffer): string =>
+    content instanceof ArrayBuffer
       ? new TextDecoder().decode(content)
       : content
-  }
 
   function reset_loaded_content() {
     structure = undefined

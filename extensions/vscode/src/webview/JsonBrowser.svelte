@@ -292,9 +292,7 @@
 
   // === Panel management ===
 
-  function make_panel_id(): string {
-    return `panel_${crypto.randomUUID()}`
-  }
+  const make_panel_id = (): string => `panel_${crypto.randomUUID()}`
 
   // Click replaces the single/first panel; drag adds a split
   function replace_or_add_panel(data_path: string, detected_type: RenderableType, val: unknown): void {
@@ -635,10 +633,7 @@
   // The first split direction determines the flex layout direction
   let layout_direction = $derived(split_directions.length > 0 ? split_directions[0] : `vertical`)
 
-  // Helper to get type color without inline `as` casts that break Deno's Svelte parser
-  function type_color(key: string): string {
-    return TYPE_COLORS[key as RenderableType] ?? `#888`
-  }
+  const type_color = (key: string) => TYPE_COLORS[key as RenderableType] ?? `#888`
 </script>
 
 {#snippet type_list(header: string, extra_style?: string)}

@@ -458,11 +458,10 @@
     return colors
   })
 
-  function to_contrast_colors(bg_values: Array<string | null>): Array<string | null> {
-    return bg_values.map((bg_color) =>
+  const to_contrast_colors = (bg_values: Array<string | null>): Array<string | null> =>
+    bg_values.map((bg_color) =>
       bg_color ? pick_contrast_color({ bg_color }) : null
     )
-  }
 
   // Compute text colors when cells render content that needs contrast (cell snippet or show_values)
   let text_flat = $derived.by(() => {
@@ -473,14 +472,11 @@
   // Keep selected outlines visible against each cell's background.
   let selected_outline_flat = $derived.by(() => to_contrast_colors(bg_flat))
 
-  function get_flat_idx(x_idx: number, y_idx: number): number {
-    return y_idx * n_x + x_idx
-  }
+  const get_flat_idx = (x_idx: number, y_idx: number): number => y_idx * n_x + x_idx
 
   // Look up bg color by indices
-  function get_bg(x_idx: number, y_idx: number): string | null {
-    return bg_flat[get_flat_idx(x_idx, y_idx)]
-  }
+  const get_bg = (x_idx: number, y_idx: number): string | null =>
+    bg_flat[get_flat_idx(x_idx, y_idx)]
 
   // === Cell context builder (only called for clicks, not per-hover) ===
   function build_cell_context(x_idx: number, y_idx: number): CellContext {
@@ -542,9 +538,7 @@
   let grid_col_count = $derived(visible_col_count + (show_right_summary_col ? 1 : 0))
   let grid_row_count = $derived(visible_row_count + (show_bottom_summary_row ? 1 : 0))
 
-  function cell_pos_key(x_idx: number, y_idx: number): string {
-    return `${x_idx}:${y_idx}`
-  }
+  const cell_pos_key = (x_idx: number, y_idx: number): string => `${x_idx}:${y_idx}`
 
   let selected_cell_key_set = $derived(
     new SvelteSet(

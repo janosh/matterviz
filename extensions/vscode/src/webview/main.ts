@@ -455,14 +455,13 @@ const parse_file_content = async (
 }
 
 // Escape HTML special chars to prevent XSS when inserting into innerHTML
-function escape_html(text: string): string {
-  return text
+const escape_html = (text: string): string =>
+  text
     .replace(/&/g, `&amp;`)
     .replace(/</g, `&lt;`)
     .replace(/>/g, `&gt;`)
     .replace(/"/g, `&quot;`)
     .replace(/'/g, `&#39;`)
-}
 
 // Create error display in container
 const create_error_display = (

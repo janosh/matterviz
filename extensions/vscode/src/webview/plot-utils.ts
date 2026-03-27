@@ -137,19 +137,16 @@ export function suggest_mapping(columns: Map<string, ColumnInfo>): {
 }
 
 // Convert to numbers, preserving array length (non-finite values become NaN)
-function to_numbers(values: unknown[]): number[] {
-  return values.map((val) => (typeof val === `number` && isFinite(val) ? val : NaN))
-}
+const to_numbers = (values: unknown[]): number[] =>
+  values.map((val) => (typeof val === `number` && isFinite(val) ? val : NaN))
 
 // Look up a column by its mapping key, returning undefined if unmapped or missing
-function get_col(columns: Map<string, ColumnInfo>, key?: string): ColumnInfo | undefined {
-  return key ? columns.get(key) : undefined
-}
+const get_col = (columns: Map<string, ColumnInfo>, key?: string): ColumnInfo | undefined =>
+  key ? columns.get(key) : undefined
 
 // Optional numeric conversion for color/size channels
-function optional_numbers(col?: ColumnInfo): number[] | undefined {
-  return col ? to_numbers(col.values) : undefined
-}
+const optional_numbers = (col?: ColumnInfo): number[] | undefined =>
+  col ? to_numbers(col.values) : undefined
 
 // Filter N axis arrays to only include indices where all axes are finite,
 // keeping optional color/size arrays aligned

@@ -3,16 +3,10 @@ name: Tests
 on:
   pull_request:
     branches: [main]
-    paths: &paths
-      - src/**
-      - tests/**
-      - '*.config.*' # vite, svelte, playwright
-      - tsconfig*.json
-      - package.json
-      - .github/workflows/test.yml
+    paths-ignore: [extensions/dash/**]
   push:
     branches: [main]
-    paths: *paths
+    paths-ignore: [extensions/dash/**]
   workflow_dispatch:
   release:
     types: [published]
