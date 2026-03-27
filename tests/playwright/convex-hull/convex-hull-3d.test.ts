@@ -10,7 +10,9 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await expect(page.locator(`.ternary-grid`).first()).toBeVisible({ timeout: 15_000 })
   })
 
-  test(`control buttons have hover visibility and initial data attributes`, async ({ page }) => {
+  test(`control buttons have hover visibility and initial data attributes`, async ({
+    page,
+  }) => {
     const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
@@ -24,14 +26,15 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await expect(control_buttons).toHaveClass(/hover-visible/)
 
     // Before hover, opacity should be 0
-    expect(Number(await control_buttons.evaluate((el) => getComputedStyle(el).opacity)))
-      .toBe(0)
+    expect(Number(await control_buttons.evaluate((el) => getComputedStyle(el).opacity))).toBe(
+      0,
+    )
 
     // After hover on the diagram, buttons should become visible
     await diagram.hover()
     await expect
       .poll(async () =>
-        Number(await control_buttons.evaluate((el) => getComputedStyle(el).opacity))
+        Number(await control_buttons.evaluate((el) => getComputedStyle(el).opacity)),
       )
       .toBe(1)
   })
@@ -41,10 +44,10 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     // so shorter timeouts are appropriate for 100 entries
     test.setTimeout(30000)
 
-    await page.goto(
-      `/test/convex-hull-performance?dim=3d&count=100&click_selection=false`,
-      { waitUntil: `networkidle`, timeout: 15000 },
-    )
+    await page.goto(`/test/convex-hull-performance?dim=3d&count=100&click_selection=false`, {
+      waitUntil: `networkidle`,
+      timeout: 15000,
+    })
     const diagram = page.locator(`.convex-hull-3d`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     const canvas = diagram.locator(`canvas`).first()
@@ -52,7 +55,6 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     if (box) {
       // Click multiple positions to ensure we hit an entry
       for (const off of [0, 0.3, -0.3]) {
-        // deno-lint-ignore no-await-in-loop
         await canvas.click({
           position: { x: box.width * (0.5 + off), y: box.height * (0.5 + off) },
         })
@@ -95,8 +97,9 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
       test.skip(true, `Info pane not available — phase_stats not yet computed`)
       return
     }
-    await expect(info.getByText(`Convex Hull Stats`, { exact: false }))
-      .toBeVisible({ timeout: 5000 })
+    await expect(info.getByText(`Convex Hull Stats`, { exact: false })).toBeVisible({
+      timeout: 5000,
+    })
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
     await expect(info.getByText(`Stability`)).toBeVisible()
 
@@ -112,9 +115,15 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await expect(diagram).toBeVisible()
     const controls = await open_controls_pane(page, diagram)
     await expect(controls).toBeVisible({ timeout: 10_000 })
-    const elev = controls.getByText(`Elev`).locator(`..`).locator(`input[type="number"]`)
+    const elev = controls
+      .getByText(`Elev`)
+      .locator(`..`)
+      .locator(`input[type="number"]`)
       .first()
-    const azim = controls.getByText(`Azim`).locator(`..`).locator(`input[type="number"]`)
+    const azim = controls
+      .getByText(`Azim`)
+      .locator(`..`)
+      .locator(`input[type="number"]`)
       .first()
     await elev.fill(`45`)
     await azim.fill(`120`)
@@ -137,11 +146,8 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     outer: for (let x_frac = 0.3; x_frac <= 0.7; x_frac += 0.04) {
       for (let y_frac = 0.3; y_frac <= 0.7; y_frac += 0.04) {
         const [test_x, test_y] = [box.x + box.width * x_frac, box.y + box.height * y_frac]
-        // deno-lint-ignore no-await-in-loop
         await page.mouse.click(test_x, test_y)
-        // deno-lint-ignore no-await-in-loop
         await page.waitForTimeout(30)
-        // deno-lint-ignore no-await-in-loop
         if ((await diagram.getAttribute(`data-has-selection`)) === `true`) {
           entry_pos = { x: test_x, y: test_y }
           break outer
@@ -200,7 +206,6 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     const mode_buttons = controls.locator(`.face-color-mode-buttons`)
     await expect(mode_buttons).toBeVisible()
     for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
-      // deno-lint-ignore no-await-in-loop
       await expect(mode_buttons.getByText(label)).toBeVisible()
     }
     await expect(mode_buttons.getByText(`Uniform`)).toHaveClass(/active/)
@@ -227,9 +232,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     // After hovering the diagram, gizmo should become visible
     await diagram.hover()
     await expect
-      .poll(async () =>
-        Number(await gizmo.evaluate((el) => getComputedStyle(el).opacity))
-      )
+      .poll(async () => Number(await gizmo.evaluate((el) => getComputedStyle(el).opacity)))
       .toBe(1)
   })
 
@@ -276,14 +279,8 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     let popup_opened = false
     for (let x_frac = 0.3; x_frac <= 0.7 && !popup_opened; x_frac += 0.05) {
       for (let y_frac = 0.3; y_frac <= 0.7 && !popup_opened; y_frac += 0.05) {
-        // deno-lint-ignore no-await-in-loop
-        await page.mouse.dblclick(
-          box.x + box.width * x_frac,
-          box.y + box.height * y_frac,
-        )
-        // deno-lint-ignore no-await-in-loop
+        await page.mouse.dblclick(box.x + box.width * x_frac, box.y + box.height * y_frac)
         await page.waitForTimeout(100)
-        // deno-lint-ignore no-await-in-loop
         popup_opened = await diagram.locator(`.structure-popup`).isVisible()
       }
     }
@@ -298,7 +295,9 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     await expect(diagram.locator(`.structure-popup`)).toBeHidden()
   })
 
-  test(`controls pane: no scroll overflow, pointer-events, drag isolation`, async ({ page }) => {
+  test(`controls pane: no scroll overflow, pointer-events, drag isolation`, async ({
+    page,
+  }) => {
     const diagram = page.locator(`.ternary-grid .convex-hull-3d`).first()
     await expect(diagram).toBeVisible()
 
@@ -349,9 +348,7 @@ test.describe(`ConvexHull3D (Ternary)`, () => {
     // Color scale label should be clickable, multiselect should be rendered
     const color_label = controls.getByText(`Color scale`, { exact: true })
     await expect(color_label).toBeVisible()
-    expect(await color_label.evaluate((el) => getComputedStyle(el).cursor)).toBe(
-      `pointer`,
-    )
+    expect(await color_label.evaluate((el) => getComputedStyle(el).cursor)).toBe(`pointer`)
     await expect(controls.locator(`.multiselect`)).toBeVisible()
   })
 })

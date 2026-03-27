@@ -13,9 +13,12 @@ describe(`helpers: energy color scale + point color`, () => {
   })
 
   test(`get_energy_color_scale maps distances to colors and get_point_color_for_entry uses it`, () => {
-    const entries: { e_above_hull?: number }[] = [{ e_above_hull: 0 }, {
-      e_above_hull: 0.5,
-    }]
+    const entries: { e_above_hull?: number }[] = [
+      { e_above_hull: 0 },
+      {
+        e_above_hull: 0.5,
+      },
+    ]
     const color_scale: D3InterpolateName = `interpolateViridis`
     const scale = helpers.get_energy_color_scale(`energy`, color_scale, entries)
     expect(scale).not.toBeNull()
@@ -131,19 +134,18 @@ describe(`helpers: thresholds and tooltips`, () => {
   )
 
   test(`build_entry_tooltip_text contains key fields`, () => {
-    const t1 = helpers.build_entry_tooltip_text(
-      { composition: { Li: 1 }, energy: -1 } as PhaseData,
-    )
+    const t1 = helpers.build_entry_tooltip_text({
+      composition: { Li: 1 },
+      energy: -1,
+    } as PhaseData)
     expect(t1).toMatch(/Li/)
-    const t2 = helpers.build_entry_tooltip_text(
-      {
-        composition: { Li: 1, O: 1 },
-        energy: -6,
-        e_form_per_atom: -3,
-        e_above_hull: 0,
-        entry_id: `mp-1`,
-      } as PhaseData,
-    )
+    const t2 = helpers.build_entry_tooltip_text({
+      composition: { Li: 1, O: 1 },
+      energy: -6,
+      e_form_per_atom: -3,
+      e_above_hull: 0,
+      entry_id: `mp-1`,
+    } as PhaseData)
     expect(t2).toMatch(/E<sub>above hull<\/sub>/)
     expect(t2).toMatch(/E<sub>form<\/sub>/)
     expect(t2).toMatch(/ID/)
@@ -268,12 +270,14 @@ describe(`helpers: mouse hit testing`, () => {
       clientWidth: 600,
       clientHeight: 600,
     } as unknown as HTMLCanvasElement
-    const plot_entries: { x: number; y: number; z: number; visible: boolean }[] = [{
-      x: 100,
-      y: 100,
-      z: 0,
-      visible: true,
-    }]
+    const plot_entries: { x: number; y: number; z: number; visible: boolean }[] = [
+      {
+        x: 100,
+        y: 100,
+        z: 0,
+        visible: true,
+      },
+    ]
     const project = (x: number, y: number) => ({ x, y })
     const hit = helpers.find_hull_entry_at_mouse(
       canvas,
@@ -505,19 +509,22 @@ describe(`helpers: batch polymorph stats computation`, () => {
   })
 
   test(`groups polymorphs by fractional composition and ranks by energy`, () => {
-    const lio = (
-      id: string,
-      e_hull: number,
-    ) => ({
-      composition: { Li: 1, O: 1 },
-      e_above_hull: e_hull,
-      entry_id: id,
-    } as PhaseData)
-    const entries = [lio(`mp-1`, 0), lio(`mp-2`, 0.5), lio(`mp-3`, 1), {
-      composition: { Li: 2 },
-      e_above_hull: 0,
-      entry_id: `mp-4`,
-    } as PhaseData]
+    const lio = (id: string, e_hull: number) =>
+      ({
+        composition: { Li: 1, O: 1 },
+        e_above_hull: e_hull,
+        entry_id: id,
+      }) as PhaseData
+    const entries = [
+      lio(`mp-1`, 0),
+      lio(`mp-2`, 0.5),
+      lio(`mp-3`, 1),
+      {
+        composition: { Li: 2 },
+        e_above_hull: 0,
+        entry_id: `mp-4`,
+      } as PhaseData,
+    ]
 
     const stats_map = helpers.compute_all_polymorph_stats(entries)
     expect(stats_map.size).toBe(4)
@@ -718,13 +725,7 @@ describe(`helpers: temperature interpolation`, () => {
       [`T above data range`, standard_entry, 1000, 500, false],
       [`gap exceeds max_gap`, sparse_entry, 600, 500, false],
       [`gap equals max_gap`, sparse_entry, 600, 600, true],
-      [
-        `no temp data`,
-        { composition: { Fe: 1 }, energy: -1 } as PhaseData,
-        450,
-        500,
-        false,
-      ],
+      [`no temp data`, { composition: { Fe: 1 }, energy: -1 } as PhaseData, 450, 500, false],
     ])(`%s → %s`, (_, entry, T, max_gap, expected) => {
       expect(helpers.can_interpolate_at_temperature(entry, T, max_gap)).toBe(expected)
     })
@@ -736,9 +737,7 @@ describe(`helpers: temperature interpolation`, () => {
       // At T=450 (midpoint), energy should be -1.5
       expect(helpers.interpolate_energy_at_temperature(entry, 450, 500)).toBeCloseTo(-1.5)
       // At T=375 (1/4 of the way), energy should be -1.25
-      expect(helpers.interpolate_energy_at_temperature(entry, 375, 500)).toBeCloseTo(
-        -1.25,
-      )
+      expect(helpers.interpolate_energy_at_temperature(entry, 375, 500)).toBeCloseTo(-1.25)
     })
 
     test(`returns null when T is outside range`, () => {
@@ -830,68 +829,69 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`get_entry_label`, () => {
-    test.each(
-      [
-        {
-          desc: `uses reduced_formula when available`,
-          entry: { reduced_formula: `LiFeO2`, composition: { Li: 1, Fe: 1, O: 2 } },
-          expected: `LiFeO2`,
+    test.each([
+      {
+        desc: `uses reduced_formula when available`,
+        entry: { reduced_formula: `LiFeO2`, composition: { Li: 1, Fe: 1, O: 2 } },
+        expected: `LiFeO2`,
+      },
+      {
+        desc: `uses name as fallback`,
+        entry: { name: `lithium iron oxide`, composition: { Li: 1, Fe: 1, O: 2 } },
+        expected: `lithium iron oxide`,
+      },
+      {
+        desc: `prefers reduced_formula over name`,
+        entry: {
+          reduced_formula: `LiFeO2`,
+          name: `lithium iron oxide`,
+          composition: { Li: 1, Fe: 1, O: 2 },
         },
-        {
-          desc: `uses name as fallback`,
-          entry: { name: `lithium iron oxide`, composition: { Li: 1, Fe: 1, O: 2 } },
-          expected: `lithium iron oxide`,
-        },
-        {
-          desc: `prefers reduced_formula over name`,
-          entry: {
-            reduced_formula: `LiFeO2`,
-            name: `lithium iron oxide`,
-            composition: { Li: 1, Fe: 1, O: 2 },
-          },
-          expected: `LiFeO2`,
-        },
-        {
-          desc: `builds formula from composition when both missing`,
-          entry: { composition: { Li: 1, Fe: 1, O: 2 } },
-          expected: `LiFeO2`,
-        },
-        {
-          desc: `omits subscript 1 for single atoms`,
-          entry: { composition: { Na: 1, Cl: 1 } },
-          expected: `NaCl`,
-        },
-        {
-          desc: `formats fractional amounts`,
-          entry: { composition: { Fe: 2, O: 3 } },
-          expected: `Fe2O3`,
-        },
-        {
-          desc: `filters zero-count elements`,
-          entry: { composition: { Li: 1, Fe: 0, O: 2 } },
-          expected: `LiO2`,
-        },
-        {
-          desc: `handles single element`,
-          entry: { composition: { Fe: 1 } },
-          expected: `Fe`,
-        },
-        {
-          desc: `handles large integer compositions (unreduced cell)`,
-          entry: { composition: { La: 12, Ni: 6, O: 25 } },
-          expected: `La12Ni6O25`,
-        },
-        {
-          desc: `handles multi-atom unary composition`,
-          entry: { composition: { La: 4 } },
-          expected: `La4`,
-        },
-      ] as { desc: string; entry: Record<string, unknown>; expected: string }[],
-    )(`$desc`, ({ entry, expected }) => {
-      expect(
-        helpers.get_entry_label(entry as { composition: Record<string, number> }),
-      ).toBe(expected)
-    })
+        expected: `LiFeO2`,
+      },
+      {
+        desc: `builds formula from composition when both missing`,
+        entry: { composition: { Li: 1, Fe: 1, O: 2 } },
+        expected: `LiFeO2`,
+      },
+      {
+        desc: `omits subscript 1 for single atoms`,
+        entry: { composition: { Na: 1, Cl: 1 } },
+        expected: `NaCl`,
+      },
+      {
+        desc: `formats fractional amounts`,
+        entry: { composition: { Fe: 2, O: 3 } },
+        expected: `Fe2O3`,
+      },
+      {
+        desc: `filters zero-count elements`,
+        entry: { composition: { Li: 1, Fe: 0, O: 2 } },
+        expected: `LiO2`,
+      },
+      {
+        desc: `handles single element`,
+        entry: { composition: { Fe: 1 } },
+        expected: `Fe`,
+      },
+      {
+        desc: `handles large integer compositions (unreduced cell)`,
+        entry: { composition: { La: 12, Ni: 6, O: 25 } },
+        expected: `La12Ni6O25`,
+      },
+      {
+        desc: `handles multi-atom unary composition`,
+        entry: { composition: { La: 4 } },
+        expected: `La4`,
+      },
+    ] as { desc: string; entry: Record<string, unknown>; expected: string }[])(
+      `$desc`,
+      ({ entry, expected }) => {
+        expect(helpers.get_entry_label(entry as { composition: Record<string, number> })).toBe(
+          expected,
+        )
+      },
+    )
 
     test(`sorts by elements order when provided`, () => {
       const entry = { composition: { O: 3, Fe: 1, Li: 2 } }

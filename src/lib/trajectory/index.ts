@@ -88,7 +88,8 @@ export interface FrameLoader {
   ) => Promise<TrajectoryMetadata[]>
 }
 
-export function validate_trajectory(trajectory: TrajectoryType): string[] { // with detailed error reporting
+export function validate_trajectory(trajectory: TrajectoryType): string[] {
+  // with detailed error reporting
   const errors: string[] = []
   const { frames, total_frames, indexed_frames, plot_metadata, is_indexed } = trajectory
 
@@ -110,9 +111,7 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] { // w
     } else if (indexed_frames?.length) {
       const last_indexed_frame = indexed_frames.at(-1)
       if (last_indexed_frame && last_indexed_frame.frame_number >= total_frames) {
-        errors.push(
-          `indexed_frames contains frame_number >= total_frames (${total_frames})`,
-        )
+        errors.push(`indexed_frames contains frame_number >= total_frames (${total_frames})`)
       }
     }
   }
@@ -132,10 +131,7 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] { // w
           errors.push(
             `indexed_frames[${idx}] frame_number (${frame_idx.frame_number}) must be non-negative`,
           )
-        } else if (
-          idx > 0 &&
-          frame_idx.frame_number <= indexed_frames[idx - 1].frame_number
-        ) {
+        } else if (idx > 0 && frame_idx.frame_number <= indexed_frames[idx - 1].frame_number) {
           errors.push(
             `indexed_frames[${idx}] frame_number (${frame_idx.frame_number}) must be strictly increasing`,
           )
@@ -171,9 +167,7 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] { // w
   return errors
 }
 
-export function get_trajectory_stats(
-  trajectory: TrajectoryType,
-): Record<string, unknown> {
+export function get_trajectory_stats(trajectory: TrajectoryType): Record<string, unknown> {
   const { frames, total_frames, indexed_frames, plot_metadata } = trajectory
   const frame_count = total_frames || frames.length
   const stats: Record<string, unknown> = {
@@ -185,15 +179,18 @@ export function get_trajectory_stats(
     const [first_frame, last_frame] = [frames[0], frames.at(-1) ?? frames[0]]
     const max_sample = 100
 
-    const sampled = frames.length <= max_sample ? frames : (() => {
-      const interval = Math.floor(frames.length / max_sample)
-      const result = [first_frame]
-      for (let idx = interval; idx < frames.length - 1; idx += interval) {
-        result.push(frames[idx])
-      }
-      if (result.at(-1) !== last_frame) result.push(last_frame)
-      return result
-    })()
+    const sampled =
+      frames.length <= max_sample
+        ? frames
+        : (() => {
+            const interval = Math.floor(frames.length / max_sample)
+            const result = [first_frame]
+            for (let idx = interval; idx < frames.length - 1; idx += interval) {
+              result.push(frames[idx])
+            }
+            if (result.at(-1) !== last_frame) result.push(last_frame)
+            return result
+          })()
 
     const counts = sampled.map((frame) => frame.structure.sites.length)
     const constant = counts.every((c) => c === counts[0])

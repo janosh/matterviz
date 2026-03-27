@@ -62,9 +62,7 @@ test.describe(`BarPlot Component Tests`, () => {
     }
     const get_tick_values = async (axis: `x` | `y`) => {
       const tick_texts = await plot.locator(`g.${axis}-axis .tick text`).allTextContents()
-      return tick_texts
-        .map((tick) => parseFloat(tick))
-        .filter((tick) => Number.isFinite(tick))
+      return tick_texts.map((tick) => parseFloat(tick)).filter((tick) => Number.isFinite(tick))
     }
 
     const initial_x = await get_range(`x`)
@@ -152,9 +150,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const first_bar = bars.first()
 
     // Check cursor is pointer (click handler is defined)
-    const cursor = await first_bar.evaluate((el) =>
-      globalThis.getComputedStyle(el).cursor
-    )
+    const cursor = await first_bar.evaluate((el) => globalThis.getComputedStyle(el).cursor)
     expect(cursor).toBe(`pointer`)
 
     const info = section.locator(`.handler-info`)
@@ -196,8 +192,7 @@ test.describe(`BarPlot Component Tests`, () => {
     const x_grid_checkbox = grid_group.getByLabel(`X`)
     await expect(x_grid_checkbox).toBeVisible()
     await x_grid_checkbox.scrollIntoViewIfNeeded()
-    const initial_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`)
-      .count()
+    const initial_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`).count()
     await x_grid_checkbox.evaluate((el) => {
       const input = el as HTMLInputElement
       input.checked = false
@@ -212,8 +207,7 @@ test.describe(`BarPlot Component Tests`, () => {
       input.dispatchEvent(new Event(`input`, { bubbles: true }))
       input.dispatchEvent(new Event(`change`, { bubbles: true }))
     })
-    const restored_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`)
-      .count()
+    const restored_grid_lines = await plot.locator(`g.x-axis .tick line:not([y1='0'])`).count()
     expect(restored_grid_lines).toBeGreaterThanOrEqual(initial_grid_lines)
 
     // Change x tick format
@@ -229,12 +223,11 @@ test.describe(`BarPlot Component Tests`, () => {
     const bars = plot.locator(`svg path[aria-label^="bar "]`)
     await expect(bars.first()).toBeVisible()
     const before_boxes = (await bars.all()).slice(0, 12)
-    const before_dims =
-      (await Promise.all(before_boxes.map(async (h) => await h.boundingBox())))
-        .filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    const before_dims = (
+      await Promise.all(before_boxes.map(async (h) => await h.boundingBox()))
+    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
     const vertical_count_before = before_dims.filter((bb) => bb.height > bb.width).length
-    const horizontal_count_before =
-      before_dims.filter((bb) => bb.width > bb.height).length
+    const horizontal_count_before = before_dims.filter((bb) => bb.width > bb.height).length
     expect(vertical_count_before).toBeGreaterThan(horizontal_count_before)
 
     // Open controls and switch orientation to Horizontal
@@ -249,15 +242,17 @@ test.describe(`BarPlot Component Tests`, () => {
     await select.selectOption(`horizontal`)
     // After change, majority of bars should be horizontal
     const after_boxes = (await bars.all()).slice(0, 12)
-    const after_dims =
-      (await Promise.all(after_boxes.map(async (h) => await h.boundingBox())))
-        .filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    const after_dims = (
+      await Promise.all(after_boxes.map(async (h) => await h.boundingBox()))
+    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
     const horizontal_count_after = after_dims.filter((bb) => bb.width > bb.height).length
     const vertical_count_after = after_dims.filter((bb) => bb.height > bb.width).length
     expect(horizontal_count_after).toBeGreaterThan(vertical_count_after)
   })
 
-  test(`stacked mode handles positive and negative stacking separately and respects visibility`, async ({ page }) => {
+  test(`stacked mode handles positive and negative stacking separately and respects visibility`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#stacked-mixed`)
     await expect(plot).toBeVisible()
 
@@ -287,7 +282,9 @@ test.describe(`BarPlot Component Tests`, () => {
       .not.toBe(initial_first_rect_box?.y ?? -1)
   })
 
-  test(`zero-value bars render with minimal height/width and tooltips still appear`, async ({ page }) => {
+  test(`zero-value bars render with minimal height/width and tooltips still appear`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#zero-values`)
     await expect(plot).toBeVisible()
     const rects = plot.locator(`svg path[aria-label^="bar "]`)
@@ -317,7 +314,9 @@ test.describe(`BarPlot Component Tests`, () => {
     expect(distinct.size).toBeGreaterThan(1)
   })
 
-  test(`horizontal stacked mixed also separates positive/negative properly`, async ({ page }) => {
+  test(`horizontal stacked mixed also separates positive/negative properly`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#stacked-mixed-horizontal`)
     await expect(plot).toBeVisible()
     const rects = plot.locator(`svg path[aria-label^="bar "]`)
@@ -431,21 +430,15 @@ test.describe(`BarPlot Component Tests`, () => {
     await page.mouse.up()
 
     // After zoom ticks differ - use polling for more reliable checks
-    await expect
-      .poll(async () => await get_range(`y`), { timeout: 2000 })
-      .not.toBe(initial_y1)
+    await expect.poll(async () => await get_range(`y`), { timeout: 2000 }).not.toBe(initial_y1)
     await expect
       .poll(async () => await get_range(`y2`), { timeout: 2000 })
       .not.toBe(initial_y2)
 
     // Reset
     await svg.dblclick()
-    await expect
-      .poll(async () => await get_range(`y`), { timeout: 2000 })
-      .toBe(initial_y1)
-    await expect
-      .poll(async () => await get_range(`y2`), { timeout: 2000 })
-      .toBe(initial_y2)
+    await expect.poll(async () => await get_range(`y`), { timeout: 2000 }).toBe(initial_y1)
+    await expect.poll(async () => await get_range(`y2`), { timeout: 2000 }).toBe(initial_y2)
   })
 
   test(`line series can use y2 axis`, async ({ page }) => {
@@ -484,7 +477,9 @@ test.describe(`BarPlot Component Tests`, () => {
     expect(x_ticks).not.toContain(`5`)
   })
 
-  test(`categorical stacked has correct tick count and y-range from zero-padding`, async ({ page }) => {
+  test(`categorical stacked has correct tick count and y-range from zero-padding`, async ({
+    page,
+  }) => {
     const plot = page.locator(`#categorical-stacked .bar-plot`)
     await plot.scrollIntoViewIfNeeded()
     await expect(plot).toBeVisible()
@@ -496,7 +491,8 @@ test.describe(`BarPlot Component Tests`, () => {
 
     // Padding uses y=0 for missing categories — y-range should stay reasonable
     const y_values = (await plot.locator(`g.y-axis .tick text`).allTextContents())
-      .map(Number).filter(Number.isFinite)
+      .map(Number)
+      .filter(Number.isFinite)
     const y_max = Math.max(...y_values)
     expect(y_max).toBeLessThan(20)
     expect(y_max).toBeGreaterThan(0)

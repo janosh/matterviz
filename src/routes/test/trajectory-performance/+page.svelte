@@ -7,7 +7,7 @@
   function handle_trajectory_complete(data: TrajHandlerData) {
     const detail = { data, timestamp: Date.now() }
     const event = new CustomEvent(`trajectory-complete`, { detail })
-    window.dispatchEvent(event)
+    globalThis.dispatchEvent(event)
   }
 </script>
 

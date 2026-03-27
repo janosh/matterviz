@@ -26,7 +26,7 @@ A simple table with sortable columns and automatic heatmap coloring based on cel
     'E<sub>form</sub>': v4,
   }))
 
-  // deno-fmt-ignore
+  // oxfmt-ignore
   const columns = [
     { label: `Formula` },
     { label: `E<sub>above hull</sub>`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.2f` },
@@ -102,7 +102,7 @@ All 118 chemical elements with physical and chemical properties. Features column
     }
   })
 
-  // deno-fmt-ignore
+  // oxfmt-ignore
   const columns = [
     // Identity
     { label: `Symbol`, sticky: true, style: `min-width: 75px; font-weight: 600;` },
@@ -215,7 +215,7 @@ Columns can be reordered by dragging within the same group. Useful for comparing
     'Max Error': v5,
   }))
 
-  // deno-fmt-ignore
+  // oxfmt-ignore
   const columns = [
     { label: `Structure` },
     { label: `MAE`, better: `lower`, color_scale: `interpolateRdYlGn`, format: `.3f` },
@@ -337,7 +337,7 @@ The table correctly handles numeric strings with uncertainty notation for both s
     'κ (W/m·K)': thermal,
   }))
 
-  // deno-fmt-ignore
+  // oxfmt-ignore
   const columns = [
     { label: `ID` },
     { label: `Formula` },

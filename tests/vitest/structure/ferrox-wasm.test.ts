@@ -442,11 +442,7 @@ describe(`Supercell result types`, () => {
 
   it(`3x3 matrix supercell is valid`, () => {
     // Full transformation matrix
-    const matrix: [
-      Vec3,
-      Vec3,
-      Vec3,
-    ] = [
+    const matrix: [Vec3, Vec3, Vec3] = [
       [2, 0, 0],
       [0, 2, 0],
       [0, 0, 2],

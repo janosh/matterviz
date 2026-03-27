@@ -47,7 +47,7 @@ export function get_point_color_for_entry(
 ): string {
   const is_stable = Boolean(entry.is_stable) || entry.e_above_hull === 0
   if (color_mode === `stability`) {
-    return is_stable ? (colors?.stable || `#0072B2`) : (colors?.unstable || `#E69F00`)
+    return is_stable ? colors?.stable || `#0072B2` : colors?.unstable || `#E69F00`
   }
   return energy_scale && typeof entry.e_above_hull === `number`
     ? energy_scale(entry.e_above_hull)
@@ -73,15 +73,12 @@ export async function parse_hull_entries_from_drop(
 }
 
 // Compute a consistent max energy threshold for controls (shared)
-export function calc_max_hull_dist_in_data(
-  processed_entries: PhaseData[],
-): number {
+export function calc_max_hull_dist_in_data(processed_entries: PhaseData[]): number {
   if (processed_entries.length === 0) return 0.5
   const hull_distances = processed_entries
     .map((e) => e.e_above_hull)
     .filter((v): v is number => typeof v === `number` && Number.isFinite(v))
-  const max_val = (hull_distances.length ? Math.max(...hull_distances) : 0) +
-    0.001
+  const max_val = (hull_distances.length ? Math.max(...hull_distances) : 0) + 0.001
   return Math.max(0.1, max_val)
 }
 
@@ -104,19 +101,14 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
   const is_element = is_unary_entry(entry)
   const elem_symbol = is_element ? Object.keys(entry.composition)[0] : ``
 
-  const elem_name = is_element
-    ? ELEM_SYMBOL_TO_NAME[elem_symbol as ElementSymbol] ?? ``
-    : ``
+  const elem_name = is_element ? (ELEM_SYMBOL_TO_NAME[elem_symbol as ElementSymbol] ?? ``) : ``
 
   let text = is_element
     ? `${elem_symbol}${elem_name ? ` (${elem_name})` : ``}\n`
     : `${entry.name || entry.reduced_formula || ``}\n`
 
   if (!is_element) {
-    const total = Object.values(entry.composition).reduce(
-      (sum, amt) => sum + amt,
-      0,
-    )
+    const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
     if (total > 0) {
       const fractions = Object.entries(entry.composition)
         .filter(([, amt]) => amt > 0)
@@ -132,9 +124,8 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
     text += `E<sub>above hull</sub>: ${e_hull_str} eV/atom\n`
   }
   // Fallback to energy_per_atom if e_form_per_atom is absent
-  const e_form_display = entry.e_form_per_atom !== undefined
-    ? entry.e_form_per_atom
-    : entry.energy_per_atom
+  const e_form_display =
+    entry.e_form_per_atom !== undefined ? entry.e_form_per_atom : entry.energy_per_atom
   if (e_form_display !== undefined) {
     const e_form_str = format_num(e_form_display, `.3~`)
     text += `E<sub>form</sub>: ${e_form_str} eV/atom`
@@ -164,23 +155,19 @@ export function find_hull_entry_at_mouse<
   const rect = canvas.getBoundingClientRect()
   const mouse_x = event.clientX - rect.left
   const mouse_y = event.clientY - rect.top
-  const container_scale =
-    Math.min(canvas.clientWidth || 600, canvas.clientHeight || 600) / 600
+  const container_scale = Math.min(canvas.clientWidth || 600, canvas.clientHeight || 600) / 600
   for (const entry of plot_entries) {
     if (!entry.visible) continue
     const projected = project_point(entry.x, entry.y, entry.z)
     const distance = Math.hypot(mouse_x - projected.x, mouse_y - projected.y)
-    const base = entry.size ??
-      ((entry.is_stable || entry.e_above_hull === 0) ? 6 : 4)
+    const base = entry.size ?? (entry.is_stable || entry.e_above_hull === 0 ? 6 : 4)
     if (distance < base * container_scale + 5) return entry
   }
   return null
 }
 
 // Calculate which side of the viewport has more space for modal placement
-export function calculate_modal_side(
-  wrapper: HTMLDivElement | undefined,
-): boolean {
+export function calculate_modal_side(wrapper: HTMLDivElement | undefined): boolean {
   if (!wrapper) return true
   const rect = wrapper.getBoundingClientRect()
   const viewport_width = globalThis.innerWidth
@@ -193,15 +180,13 @@ export function calculate_modal_side(
 // This determines whether we can use precomputed energies or need to compute on-the-fly.
 export function compute_energy_mode_info(
   entries: PhaseData[], // Array of phase entries to analyze
-  find_lowest_energy_unary_refs_fn: (
-    entries: PhaseData[],
-  ) => Record<string, PhaseData>, // Function to find unary references
+  find_lowest_energy_unary_refs_fn: (entries: PhaseData[]) => Record<string, PhaseData>, // Function to find unary references
   energy_source_mode: `precomputed` | `on-the-fly`, // User-specified energy source mode preference
 ): EnergyModeInfo {
-  const has_precomputed_e_form = entries.length > 0 &&
-    entries.every((e) => typeof e.e_form_per_atom === `number`)
-  const has_precomputed_hull = entries.length > 0 &&
-    entries.every((e) => typeof e.e_above_hull === `number`)
+  const has_precomputed_e_form =
+    entries.length > 0 && entries.every((e) => typeof e.e_form_per_atom === `number`)
+  const has_precomputed_hull =
+    entries.length > 0 && entries.every((e) => typeof e.e_above_hull === `number`)
 
   const unary_refs = find_lowest_energy_unary_refs_fn(entries)
 
@@ -215,11 +200,12 @@ export function compute_energy_mode_info(
   // - If full precomputed available, honor user toggle
   // - Else if we can compute both, use on-the-fly automatically
   // - Else fall back to precomputed (best-effort)
-  const energy_mode = has_precomputed_e_form && has_precomputed_hull
-    ? energy_source_mode
-    : can_compute_e_form && can_compute_hull
-    ? `on-the-fly`
-    : `precomputed`
+  const energy_mode =
+    has_precomputed_e_form && has_precomputed_hull
+      ? energy_source_mode
+      : can_compute_e_form && can_compute_hull
+        ? `on-the-fly`
+        : `precomputed`
 
   return {
     has_precomputed_e_form,
@@ -279,9 +265,10 @@ export const merge_highlight_style = (
 })
 
 // Check if entry matches any item in highlighted_list (by structure_id or entry_id)
-export function is_entry_highlighted<
-  T extends { entry_id?: string; structure_id?: string },
->(entry: T, highlighted_list: (string | T)[]): boolean {
+export function is_entry_highlighted<T extends { entry_id?: string; structure_id?: string }>(
+  entry: T,
+  highlighted_list: (string | T)[],
+): boolean {
   if (!highlighted_list.length) return false
   const { entry_id, structure_id } = entry
   if (!entry_id && !structure_id) return false
@@ -319,11 +306,7 @@ export interface PolymorphStats {
 }
 
 // Energy metric types for consistent polymorph comparison
-type EnergyMetric =
-  | `e_form_per_atom`
-  | `energy_per_atom`
-  | `e_above_hull`
-  | null
+type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | null
 
 // Check if value is a finite number
 const is_finite = (val: unknown): val is number =>
@@ -332,20 +315,14 @@ const is_finite = (val: unknown): val is number =>
 // Compute energy_per_atom from total energy and composition
 function compute_energy_per_atom(entry: PhaseData): number | null {
   if (!is_finite(entry.energy)) return null
-  const total_atoms = Object.values(entry.composition).reduce(
-    (sum, amt) => sum + amt,
-    0,
-  )
+  const total_atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
   return total_atoms > 0 ? entry.energy / total_atoms : null
 }
 
 // Get energy value for an entry using a specific metric
 // NOTE: We prioritize absolute energies (e_form_per_atom, energy_per_atom) over e_above_hull
 // because polymorphs of the same composition on the hull all have e_above_hull=0
-function get_entry_energy_by_metric(
-  entry: PhaseData,
-  metric: EnergyMetric,
-): number | null {
+function get_entry_energy_by_metric(entry: PhaseData, metric: EnergyMetric): number | null {
   if (metric === `e_form_per_atom` && is_finite(entry.e_form_per_atom)) {
     return entry.e_form_per_atom
   }
@@ -370,11 +347,10 @@ function select_group_energy_metric(polymorphs: PhaseData[]): EnergyMetric {
   // Try energy_per_atom (either direct field or computed from total energy)
   if (
     polymorphs.every(
-      (entry) =>
-        is_finite(entry.energy_per_atom) ||
-        compute_energy_per_atom(entry) !== null,
+      (entry) => is_finite(entry.energy_per_atom) || compute_energy_per_atom(entry) !== null,
     )
-  ) return `energy_per_atom`
+  )
+    return `energy_per_atom`
   // Last resort: e_above_hull (will fail to differentiate stable polymorphs with e_above_hull=0)
   if (polymorphs.every((entry) => is_finite(entry.e_above_hull))) {
     return `e_above_hull`
@@ -451,7 +427,8 @@ function apply_alpha_to_color(color: string, alpha: number): string {
   // Handle existing rgba format
   if (color.includes(`rgba`)) return color.replace(/[\d.]+\)$/, `${alpha})`)
 
-  if (color.includes(`rgb(`)) { // Convert rgb to rgba
+  if (color.includes(`rgb(`)) {
+    // Convert rgb to rgba
     return color.replace(/rgb\(/, `rgba(`).replace(/\)$/, `, ${alpha})`)
   }
 
@@ -459,7 +436,11 @@ function apply_alpha_to_color(color: string, alpha: number): string {
   if (hex_match) {
     let hex = hex_match[1]
     // Expand short form (e.g. "03F") to full form (e.g. "0033FF")
-    if (hex.length === 3) hex = [...hex].map((char) => char + char).join(``)
+    if (hex.length === 3)
+      hex = hex
+        .split(``)
+        .map((char) => char + char)
+        .join(``)
 
     const red = parseInt(hex.slice(0, 2), 16)
     const green = parseInt(hex.slice(2, 4), 16)
@@ -534,14 +515,8 @@ export function draw_selection_highlight(
   pulse_opacity: number,
 ): void {
   const highlight_size = base_size * (1.8 + 0.3 * Math.sin(pulse_time * 4))
-  ctx.fillStyle = apply_alpha_to_color(
-    `rgba(102, 240, 255, 1)`,
-    pulse_opacity * 0.6,
-  )
-  ctx.strokeStyle = apply_alpha_to_color(
-    `rgba(102, 240, 255, 1)`,
-    pulse_opacity,
-  )
+  ctx.fillStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity * 0.6)
+  ctx.strokeStyle = apply_alpha_to_color(`rgba(102, 240, 255, 1)`, pulse_opacity)
   ctx.lineWidth = 2 * container_scale
   ctx.beginPath()
   ctx.arc(projected.x, projected.y, highlight_size, 0, 2 * Math.PI)
@@ -558,16 +533,14 @@ export function get_canvas_text_color(
   const fallback = dark_mode ? `#ffffff` : `#212121`
   if (typeof document === `undefined`) return fallback
   const css_value = getComputedStyle(element ?? document.documentElement)
-    .getPropertyValue(`--text-color`)?.trim()
+    .getPropertyValue(`--text-color`)
+    ?.trim()
   // Check for unsupported CSS functions that canvas can't render
   return css_value && !/light-dark|var\(/i.test(css_value) ? css_value : fallback
 }
 
 // Create a Path2D for a marker symbol. Uses d3-shape for consistent rendering with ScatterPlot.
-export function create_marker_path(
-  size: number,
-  marker: MarkerSymbol = `circle`,
-): Path2D {
+export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
   // Capitalize first letter to get D3 symbol name (e.g. 'circle' -> 'Circle')
   const d3_name = marker.charAt(0).toUpperCase() + marker.slice(1)
   const symbol_type = symbol_map[d3_name as keyof typeof symbol_map]
@@ -600,9 +573,7 @@ export interface TemperatureAnalysis {
 
 // Analyze entries for temperature-dependent free energy data.
 // Returns available temperatures (union of all T values across entries) if any entries have temp data.
-export function analyze_temperature_data(
-  entries: PhaseData[],
-): TemperatureAnalysis {
+export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnalysis {
   const valid_temps = entries
     .filter(entry_has_temp_data)
     .flatMap((entry) => entry.temperatures ?? [])
@@ -618,15 +589,14 @@ function entry_has_temp_data(entry: PhaseData): boolean {
   const { temperatures, free_energies } = entry
   return Boolean(
     temperatures?.length &&
-      free_energies?.length &&
-      temperatures.length === free_energies.length,
+    free_energies?.length &&
+    temperatures.length === free_energies.length,
   )
 }
 
 // Check if entry has data at exact temperature T
 export function entry_has_temperature(entry: PhaseData, T: number): boolean {
-  return entry_has_temp_data(entry) &&
-    (entry.temperatures?.includes(T) ?? false)
+  return entry_has_temp_data(entry) && (entry.temperatures?.includes(T) ?? false)
 }
 
 // Get energy at temperature T (throws if T not found - validate with entry_has_temperature first)
@@ -743,11 +713,7 @@ export function filter_entries_at_temperature(
 
     // Try interpolation if enabled
     if (interpolate) {
-      const energy = interpolate_energy_at_temperature(
-        entry,
-        T,
-        max_interpolation_gap,
-      )
+      const energy = interpolate_energy_at_temperature(entry, T, max_interpolation_gap)
       if (energy !== null) {
         // interpolated energy is also per-atom (interpolated from per-atom free_energies)
         return [{ ...entry, energy, energy_per_atom: energy }]
@@ -842,11 +808,12 @@ export function get_entry_label(
   if (entry.name) return entry.name
   let pairs = Object.entries(entry.composition).filter(([, amt]) => amt > 0)
   if (elements) {
-    pairs = pairs.sort(([el1], [el2]) =>
-      elements.indexOf(el1 as ElementSymbol) - elements.indexOf(el2 as ElementSymbol)
+    pairs = pairs.sort(
+      ([el1], [el2]) =>
+        elements.indexOf(el1 as ElementSymbol) - elements.indexOf(el2 as ElementSymbol),
     )
   }
   return pairs
-    .map(([el, amt]) => Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`)
+    .map(([el, amt]) => (Math.abs(amt - 1) < 1e-6 ? el : `${el}${format_num(amt, `.2~`)}`))
     .join(``)
 }

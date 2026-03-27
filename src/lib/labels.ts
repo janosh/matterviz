@@ -7,10 +7,7 @@ import { timeFormat } from 'd3-time-format'
 
 // Symbol types and formatting utilities from d3-shape
 export type D3Symbol = keyof typeof d3_symbols & `symbol${Capitalize<string>}`
-export type D3SymbolName = Exclude<
-  D3Symbol extends `symbol${infer Name}` ? Name : never,
-  ``
->
+export type D3SymbolName = Exclude<D3Symbol extends `symbol${infer Name}` ? Name : never, ``>
 
 function name_for_symbol(sym: unknown): D3SymbolName | null {
   for (const key in d3_symbols) {
@@ -18,17 +15,20 @@ function name_for_symbol(sym: unknown): D3SymbolName | null {
       Object.prototype.hasOwnProperty.call(d3_symbols, key) &&
       (d3_symbols as Record<string, unknown>)[key] === sym &&
       /^symbol[A-Z]/.test(key)
-    ) return key.substring(6) as D3SymbolName
+    )
+      return key.substring(6) as D3SymbolName
   }
   return null
 }
 
-export const symbol_names = (
-  [...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke])]
-    .map(name_for_symbol).filter((n): n is D3SymbolName => n !== null)
-) as D3SymbolName[]
+export const symbol_names = [
+  ...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke]),
+]
+  .map(name_for_symbol)
+  .filter((n): n is D3SymbolName => n !== null)
 
-export const symbol_map = Object.fromEntries( // Symbol lookup from d3-shape
+export const symbol_map = Object.fromEntries(
+  // Symbol lookup from d3-shape
   symbol_names.map((name) => [name, d3_symbols[`symbol${name}`]]),
 ) as Record<D3SymbolName, SymbolType>
 
@@ -97,8 +97,8 @@ export const ELEM_HEATMAP_KEYS: (keyof ChemicalElement)[] = [
   `first_ionization`,
 ]
 
-export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>> = Object
-  .fromEntries(
+export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>> =
+  Object.fromEntries(
     ELEM_HEATMAP_KEYS.map((key) => {
       const [label, unit] = ELEM_PROPERTY_LABELS[key] ?? []
       if (!label) throw `Unexpected missing label ${label}`
@@ -141,13 +141,11 @@ export const format_num = (num: number, fmt?: string | number) => {
 }
 
 // Format a 3D vector as "(x, y, z)" with configurable precision
-export const format_vec3 = (
-  vec: Readonly<Vec3>,
-  fmt_spec = `.4~`,
-): string =>
-  `(${format_num(vec[0], fmt_spec)}, ${format_num(vec[1], fmt_spec)}, ${
-    format_num(vec[2], fmt_spec)
-  })`
+export const format_vec3 = (vec: Readonly<Vec3>, fmt_spec = `.4~`): string =>
+  `(${format_num(vec[0], fmt_spec)}, ${format_num(vec[1], fmt_spec)}, ${format_num(
+    vec[2],
+    fmt_spec,
+  )})`
 
 const BYTE_UNITS = [`B`, `KiB`, `MiB`, `GiB`, `TiB`, `PiB`] as const
 
@@ -169,11 +167,12 @@ export function format_fractional(value: number): string {
   const x = ((value % 1) + 1) % 1 // wrap into [0,1)
   const eps = 1e-3
   for (const [target, glyph] of FRACTION_GLYPHS) {
-    if (target === 0) { if (Math.abs(x - target) <= eps) return glyph }
-    else if (Math.abs(x - target) < eps) return glyph
+    if (target === 0) {
+      if (Math.abs(x - target) <= eps) return glyph
+    } else if (Math.abs(x - target) < eps) return glyph
   }
   for (const [target, glyph] of FRACTION_GLYPHS) {
-    if (target !== 0 && Math.abs((1 - x) - target) < eps) return glyph
+    if (target !== 0 && Math.abs(1 - x - target) < eps) return glyph
   }
   return format_num(value, `.4~`)
 }
@@ -234,7 +233,7 @@ export const ELEMENT_CATEGORIES = [
   `transition metal`,
 ] as const
 
-// deno-fmt-ignore-next-line
+// oxfmt-ignore
 export const ELEM_SYMBOLS = [`H`,`He`,`Li`,`Be`,`B`,`C`,`N`,`O`,`F`,`Ne`,`Na`,`Mg`,`Al`,`Si`,`P`,`S`,`Cl`,`Ar`,`K`,`Ca`,`Sc`,`Ti`,`V`,`Cr`,`Mn`,`Fe`,`Co`,`Ni`,`Cu`,`Zn`,`Ga`,`Ge`,`As`,`Se`,`Br`,`Kr`,`Rb`,`Sr`,`Y`,`Zr`,`Nb`,`Mo`,`Tc`,`Ru`,`Rh`,`Pd`,`Ag`,`Cd`,`In`,`Sn`,`Sb`,`Te`,`I`,`Xe`,`Cs`,`Ba`,`La`,`Ce`,`Pr`,`Nd`,`Pm`,`Sm`,`Eu`,`Gd`,`Tb`,`Dy`,`Ho`,`Er`,`Tm`,`Yb`,`Lu`,`Hf`,`Ta`,`W`,`Re`,`Os`,`Ir`,`Pt`,`Au`,`Hg`,`Tl`,`Pb`,`Bi`,`Po`,`At`,`Rn`,`Fr`,`Ra`,`Ac`,`Th`,`Pa`,`U`,`Np`,`Pu`,`Am`,`Cm`,`Bk`,`Cf`,`Es`,`Fm`,`Md`,`No`,`Lr`,`Rf`,`Db`,`Sg`,`Bh`,`Hs`,`Mt`,`Ds`,`Rg`,`Cn`,`Nh`,`Fl`,`Mc`,`Lv`,`Ts`,`Og`] as const
 
 export const SUPERSCRIPT_MAP = {
@@ -272,49 +271,48 @@ export const superscript_digits = (input: string): string =>
   )
 
 // Trajectory property configuration: clean labels and units as structured data
-export const trajectory_property_config: Record<string, { label: string; unit: string }> =
-  {
-    // Energy properties
-    energy: { label: `Energy`, unit: `eV` },
-    Energy: { label: `Energy`, unit: `eV` },
-    energy_per_atom: { label: `Energy per atom`, unit: `eV/atom` },
-    potential_energy: { label: `Potential energy`, unit: `eV` },
-    kinetic_energy: { label: `Kinetic energy`, unit: `eV` },
-    total_energy: { label: `Total energy`, unit: `eV` },
+export const trajectory_property_config: Record<string, { label: string; unit: string }> = {
+  // Energy properties
+  energy: { label: `Energy`, unit: `eV` },
+  Energy: { label: `Energy`, unit: `eV` },
+  energy_per_atom: { label: `Energy per atom`, unit: `eV/atom` },
+  potential_energy: { label: `Potential energy`, unit: `eV` },
+  kinetic_energy: { label: `Kinetic energy`, unit: `eV` },
+  total_energy: { label: `Total energy`, unit: `eV` },
 
-    // Force properties (common variations)
-    force_max: { label: `F<sub>max</sub>`, unit: `eV/Å` },
-    Fmax: { label: `F<sub>max</sub>`, unit: `eV/Å` },
-    fmax: { label: `F<sub>max</sub>`, unit: `eV/Å` },
-    'Force Max': { label: `Force Max`, unit: `eV/Å` },
-    force_norm: { label: `F<sub>norm</sub>`, unit: `eV/Å` },
-    'Force RMS': { label: `Force RMS`, unit: `eV/Å` },
+  // Force properties (common variations)
+  force_max: { label: `F<sub>max</sub>`, unit: `eV/Å` },
+  Fmax: { label: `F<sub>max</sub>`, unit: `eV/Å` },
+  fmax: { label: `F<sub>max</sub>`, unit: `eV/Å` },
+  'Force Max': { label: `Force Max`, unit: `eV/Å` },
+  force_norm: { label: `F<sub>norm</sub>`, unit: `eV/Å` },
+  'Force RMS': { label: `Force RMS`, unit: `eV/Å` },
 
-    // Structural properties
-    volume: { label: `Volume`, unit: `Å³` },
-    Volume: { label: `Volume`, unit: `Å³` },
-    density: { label: `Density`, unit: `g/cm³` },
-    Density: { label: `Density`, unit: `g/cm³` },
+  // Structural properties
+  volume: { label: `Volume`, unit: `Å³` },
+  Volume: { label: `Volume`, unit: `Å³` },
+  density: { label: `Density`, unit: `g/cm³` },
+  Density: { label: `Density`, unit: `g/cm³` },
 
-    // Lattice parameters (common variations)
-    a: { label: `A`, unit: `Å` },
-    A: { label: `A`, unit: `Å` },
-    b: { label: `B`, unit: `Å` },
-    B: { label: `B`, unit: `Å` },
-    c: { label: `C`, unit: `Å` },
-    C: { label: `C`, unit: `Å` },
-    alpha: { label: `α`, unit: `°` },
-    Alpha: { label: `α`, unit: `°` },
-    beta: { label: `β`, unit: `°` },
-    Beta: { label: `β`, unit: `°` },
-    gamma: { label: `γ`, unit: `°` },
-    Gamma: { label: `γ`, unit: `°` },
+  // Lattice parameters (common variations)
+  a: { label: `A`, unit: `Å` },
+  A: { label: `A`, unit: `Å` },
+  b: { label: `B`, unit: `Å` },
+  B: { label: `B`, unit: `Å` },
+  c: { label: `C`, unit: `Å` },
+  C: { label: `C`, unit: `Å` },
+  alpha: { label: `α`, unit: `°` },
+  Alpha: { label: `α`, unit: `°` },
+  beta: { label: `β`, unit: `°` },
+  Beta: { label: `β`, unit: `°` },
+  gamma: { label: `γ`, unit: `°` },
+  Gamma: { label: `γ`, unit: `°` },
 
-    // Thermodynamic properties
-    temperature: { label: `Temperature`, unit: `K` },
-    Temperature: { label: `Temperature`, unit: `K` },
-    pressure: { label: `Pressure`, unit: `GPa` },
-    Pressure: { label: `Pressure`, unit: `GPa` },
-    stress_max: { label: `σ<sub>max</sub>`, unit: `GPa` },
-    stress_frobenius: { label: `σ<sub>F</sub>`, unit: `GPa` },
-  }
+  // Thermodynamic properties
+  temperature: { label: `Temperature`, unit: `K` },
+  Temperature: { label: `Temperature`, unit: `K` },
+  pressure: { label: `Pressure`, unit: `GPa` },
+  Pressure: { label: `Pressure`, unit: `GPa` },
+  stress_max: { label: `σ<sub>max</sub>`, unit: `GPa` },
+  stress_frobenius: { label: `σ<sub>F</sub>`, unit: `GPa` },
+}

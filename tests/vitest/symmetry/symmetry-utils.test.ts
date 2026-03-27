@@ -59,10 +59,7 @@ describe(`simplicity_score`, () => {
   test(`wraps coordinates correctly to [0, 1)`, () => {
     // Wrapping: 1.5 -> 0.5, -0.25 -> 0.75
     expect(simplicity_score([1.5, 0, 0])).toBeCloseTo(simplicity_score([0.5, 0, 0]), 10)
-    expect(simplicity_score([-0.25, 0, 0])).toBeCloseTo(
-      simplicity_score([0.75, 0, 0]),
-      10,
-    )
+    expect(simplicity_score([-0.25, 0, 0])).toBeCloseTo(simplicity_score([0.75, 0, 0]), 10)
     expect(simplicity_score([2.25, -0.5, 3.75])).toBeCloseTo(
       simplicity_score([0.25, 0.5, 0.75]),
       10,
@@ -107,10 +104,7 @@ describe(`simplicity_score`, () => {
     expect(simplicity_score([1e-10, 0, 0])).toBeCloseTo(simplicity_score([0, 0, 0]), 5)
 
     // Values very close to 1.0 wrap to near-zero
-    expect(simplicity_score([0.9999999, 0, 0])).toBeCloseTo(
-      simplicity_score([0, 0, 0]),
-      3,
-    )
+    expect(simplicity_score([0.9999999, 0, 0])).toBeCloseTo(simplicity_score([0, 0, 0]), 3)
 
     // Verify formula: Score = sum of near_zero + 0.5 * sum of near_half
     // For [0.25, 0, 0]: near_zero=0.25, near_half=1.25 -> 0.25 + 0.5*1.25 = 0.875
@@ -326,9 +320,7 @@ describe(`apply_symmetry_operations`, () => {
 
   test(`translation wraps coordinates to [0, 1)`, () => {
     const pos: Vec3 = [0.1, 0.2, 0.3]
-    const result = apply_symmetry_operations(pos, [
-      make_operation(identity, [1.5, 2.5, 3.5]),
-    ])
+    const result = apply_symmetry_operations(pos, [make_operation(identity, [1.5, 2.5, 3.5])])
 
     expect(result).toHaveLength(1)
     expect(result[0][0]).toBeCloseTo(0.6, 10) // 0.1 + 1.5 = 1.6 -> 0.6
@@ -471,9 +463,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
   })
 
   test(`preserves and maps original indices correctly`, () => {
-    const single = wyckoff_positions_from_moyo(
-      make_sym_data([[0, 0, 0]], [6], [`1a`], [42]),
-    )
+    const single = wyckoff_positions_from_moyo(make_sym_data([[0, 0, 0]], [6], [`1a`], [42]))
     expect(single[0].site_indices).toEqual([42])
 
     const multiple = wyckoff_positions_from_moyo(

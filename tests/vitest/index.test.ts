@@ -45,8 +45,7 @@ test(`is_binary function detects binary content`, () => {
   expect(lib.is_binary(`\0\0\0\0`)).toBe(true)
 
   // Content with many control characters should be binary
-  const control_chars =
-    `\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F`
+  const control_chars = `\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F`
   expect(lib.is_binary(control_chars + `some text`)).toBe(true)
 
   // Content with mostly non-printable characters should be binary
@@ -54,17 +53,14 @@ test(`is_binary function detects binary content`, () => {
   expect(lib.is_binary(mostly_non_printable)).toBe(true)
 
   // Content with mostly printable characters should not be binary
-  const mostly_printable = `abcdefghijklmnopqrstuvwxyz` + `\x80\x81\x82` +
-    `abcdefghijklmnopqrstuvwxyz`.repeat(10)
+  const mostly_printable =
+    `abcdefghijklmnopqrstuvwxyz\x80\x81\x82` + `abcdefghijklmnopqrstuvwxyz`.repeat(10)
   expect(lib.is_binary(mostly_printable)).toBe(false)
 })
 
 describe(`Utility Functions`, () => {
   test.each([
-    [
-      `<script>alert('xss')</script>`,
-      `&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;`,
-    ],
+    [`<script>alert('xss')</script>`, `&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;`],
     [`&<>"'`, `&amp;&lt;&gt;&quot;&#39;`],
     [`Hello World`, `Hello World`],
     [``, ``],

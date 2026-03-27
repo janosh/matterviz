@@ -1,17 +1,15 @@
 <script lang="ts">
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { ComponentProps, Snippet } from 'svelte'
-  import type {
-    DomainMode,
-    HeatmapExportFormat,
-    LegendPosition,
-    NormalizeMode,
-    SymmetricMode,
-  } from './index'
   import {
     ELEMENT_ORDERINGS,
     type ElementAxisOrderingKey,
     ORDERING_LABELS,
+    type DomainMode,
+    type HeatmapExportFormat,
+    type LegendPosition,
+    type NormalizeMode,
+    type SymmetricMode,
   } from './index'
 
   let {

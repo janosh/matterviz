@@ -1,9 +1,6 @@
 import type { Locator, Page } from '@playwright/test'
 
-export async function ensure_pane_visible(
-  pane: Locator,
-  opener_btn: Locator,
-): Promise<void> {
+export async function ensure_pane_visible(pane: Locator, opener_btn: Locator): Promise<void> {
   // Try to make pane visible by clicking its opener button if needed
   try {
     if (!(await pane.isVisible())) await opener_btn.click()
@@ -26,7 +23,6 @@ async function open_pane(
 
   for (let attempt = 0; attempt < 5; attempt++) {
     // Force-open via DOM: set display and add class, matching DraggablePane's show=true state
-    // deno-lint-ignore no-await-in-loop
     await diagram.evaluate(
       (el, { sel, toggle_sel }) => {
         const pane_el = el.querySelector(`.${sel}`) as HTMLElement
@@ -41,9 +37,7 @@ async function open_pane(
       },
       { sel: pane_selector, toggle_sel: toggle_selector ?? null },
     )
-    // deno-lint-ignore no-await-in-loop
     await page.waitForTimeout(200)
-    // deno-lint-ignore no-await-in-loop
     if (await pane.isVisible()) return pane
   }
   return pane

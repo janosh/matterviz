@@ -13,9 +13,7 @@ export function is_valid_element_symbol(symbol: string): symbol is ElementSymbol
   return element_symbol_set.has(symbol)
 }
 
-export function coerce_element_symbol(
-  symbol: string,
-): ElementSymbol | undefined {
+export function coerce_element_symbol(symbol: string): ElementSymbol | undefined {
   return is_valid_element_symbol(symbol) ? symbol : undefined
 }
 
@@ -24,9 +22,7 @@ export function coerce_element_symbol(
 export function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
   if (!Array.isArray(data) || data.length !== 3) {
     throw new Error(
-      `Expected 3x3 matrix, got array of length ${
-        Array.isArray(data) ? data.length : `non-array`
-      }`,
+      `Expected 3x3 matrix, got array of length ${Array.isArray(data) ? data.length : `non-array`}`,
     )
   }
   const is_valid_row = (row: unknown): boolean => {
@@ -88,9 +84,7 @@ export const create_structure = (
     }
 
     const xyz = pos
-    const abc = inv_matrix
-      ? math.mat3x3_vec3_multiply(inv_matrix, xyz)
-      : [0, 0, 0] as Vec3
+    const abc = inv_matrix ? math.mat3x3_vec3_multiply(inv_matrix, xyz) : ([0, 0, 0] as Vec3)
 
     const force = force_data?.[idx]
     const properties = is_valid_vec3(force) ? { force } : {}
@@ -106,13 +100,13 @@ export const create_structure = (
 
   return lattice_matrix
     ? {
-      sites,
-      lattice: {
-        matrix: lattice_matrix,
-        ...math.calc_lattice_params(lattice_matrix),
-        pbc: pbc || [true, true, true] satisfies Pbc,
-      },
-    }
+        sites,
+        lattice: {
+          matrix: lattice_matrix,
+          ...math.calc_lattice_params(lattice_matrix),
+          pbc: pbc || ([true, true, true] satisfies Pbc),
+        },
+      }
     : { sites }
 }
 
@@ -178,16 +172,12 @@ export const read_ndarray_from_view = (
   if (!reader_config) throw new Error(`Unsupported dtype: ${dtype}`)
 
   if (!Number.isInteger(array_offset) || array_offset < 0) {
-    throw new Error(
-      `Invalid array_offset: expected non-negative integer, got ${array_offset}`,
-    )
+    throw new Error(`Invalid array_offset: expected non-negative integer, got ${array_offset}`)
   }
 
   const bytes_needed = total * reader_config.bytes_per_element
   if (array_offset + bytes_needed > view.byteLength) {
-    throw new Error(
-      `Out-of-bounds read: array_offset + bytesNeeded exceeds view.byteLength`,
-    )
+    throw new Error(`Out-of-bounds read: array_offset + bytesNeeded exceeds view.byteLength`)
   }
 
   for (let idx = 0; idx < total; idx++) data.push(reader_config.read())
@@ -195,11 +185,12 @@ export const read_ndarray_from_view = (
   return shape.length === 1
     ? [data]
     : shape.length === 2
-    ? Array.from({ length: shape[0] }, (_, idx) =>
-      data.slice(idx * shape[1], (idx + 1) * shape[1]))
-    : (() => {
-      throw new Error(`Unsupported shape`)
-    })()
+      ? Array.from({ length: shape[0] }, (_, idx) =>
+          data.slice(idx * shape[1], (idx + 1) * shape[1]),
+        )
+      : (() => {
+          throw new Error(`Unsupported shape`)
+        })()
 }
 
 // Unified frame counting for XYZ

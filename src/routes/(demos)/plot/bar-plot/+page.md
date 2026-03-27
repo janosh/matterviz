@@ -606,9 +606,9 @@ Interactive zoom and pan for exploring large datasets. Click and drag to zoom, d
 <script lang="ts">
   import { BarPlot } from 'matterviz'
 
-  // deno-fmt-ignore
+  // oxfmt-ignore
   const absorption_data = [0.05, 0.12, 0.28, 0.65, 1.45, 2.8, 4.2, 3.5, 2.1, 0.95, 0.38, 0.15, 0.06]
-  // deno-fmt-ignore
+  // oxfmt-ignore
   const theoretical_data = [0.02, 0.08, 0.22, 0.58, 1.35, 2.65, 4.0, 3.3, 1.95, 0.85, 0.32, 0.12, 0.05]
 
   const spectroscopy = [

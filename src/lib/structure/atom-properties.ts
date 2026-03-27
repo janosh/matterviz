@@ -41,8 +41,7 @@ const get_interpolator = (scale: string) => {
   return interp_fn as (t: number) => string
 }
 
-const to_hex = (interp_fn: (t: number) => string, t: number) =>
-  rgb(interp_fn(t)).formatHex()
+const to_hex = (interp_fn: (t: number) => string, t: number) => rgb(interp_fn(t)).formatHex()
 const build_image_site = (
   site: Site,
   lattice_T: math.Matrix3x3,
@@ -66,9 +65,7 @@ const get_all_offsets = (
   pbc: readonly [boolean, boolean, boolean],
 ): readonly (readonly [number, number, number])[] =>
   [-1, 0, 1]
-    .flatMap((dx) =>
-      [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dz) => [dx, dy, dz] as const))
-    )
+    .flatMap((dx) => [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dz) => [dx, dy, dz] as const)))
     .filter(
       ([dx, dy, dz]) =>
         !(dx === 0 && dy === 0 && dz === 0) &&
@@ -85,7 +82,7 @@ const make_categorical = <T>(
   const interp_fn = get_interpolator(scale)
   const uniq = sort_fn ? [...new Set(vals)].sort(sort_fn) : [...new Set(vals)].sort()
   const colors = uniq.map((_, idx) =>
-    to_hex(interp_fn, uniq.length === 1 ? 0.5 : idx / (uniq.length - 1))
+    to_hex(interp_fn, uniq.length === 1 ? 0.5 : idx / (uniq.length - 1)),
   )
   const map = new Map(uniq.map((val, idx) => [val, colors[idx]]))
   return {
@@ -126,7 +123,7 @@ export function apply_color_scale(
   }
   return {
     colors: vals.map((val) =>
-      to_hex(interp_fn, max === min ? 0.5 : (val - min) / (max - min))
+      to_hex(interp_fn, max === min ? 0.5 : (val - min) / (max - min)),
     ),
   }
 }
@@ -139,15 +136,12 @@ export const apply_categorical_color_scale = (
 
 // Get original site index for property color lookup.
 // Supercell atoms use orig_unit_cell_idx, image atoms use orig_site_idx, otherwise use site_idx.
-export const get_orig_site_idx = (
-  site: Site | undefined,
-  site_idx: number,
-): number =>
+export const get_orig_site_idx = (site: Site | undefined, site_idx: number): number =>
   typeof site?.properties?.orig_unit_cell_idx === `number`
     ? site.properties.orig_unit_cell_idx
     : typeof site?.properties?.orig_site_idx === `number`
-    ? site.properties.orig_site_idx
-    : site_idx
+      ? site.properties.orig_site_idx
+      : site_idx
 
 // Expand structure with PBC images - use minimal expansion based on atom positions
 function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
@@ -163,7 +157,7 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
   // Small structures: expand all atoms
   if (sites.length < 20 || !pbc.some((periodic) => periodic)) {
     const image_sites = sites.flatMap((site, orig_idx) =>
-      all_offsets.map((offset) => build_image_site(site, lattice_T, offset, orig_idx))
+      all_offsets.map((offset) => build_image_site(site, lattice_T, offset, orig_idx)),
     )
     return { ...structure, sites: [...sites, ...image_sites] }
   }
@@ -198,8 +192,7 @@ export function get_coordination_colors(
   // Check if structure has periodic boundary conditions
   const has_lattice = `lattice` in structure && structure.lattice !== undefined
   const pbc = has_lattice ? structure.lattice.pbc : undefined
-  const has_pbc = has_lattice &&
-    (pbc === undefined || pbc.some((is_periodic) => is_periodic))
+  const has_pbc = has_lattice && (pbc === undefined || pbc.some((is_periodic) => is_periodic))
 
   // For PBC structures, expand with images from neighboring cells for accurate coordination
   const coord_structure = has_pbc ? expand_structure_for_pbc(structure) : structure
@@ -293,8 +286,7 @@ export function get_atom_colors(
   bonding_strategy: BondingStrategy = `electroneg_ratio`,
   sym_data: MoyoDataset | null = null,
 ): AtomPropertyColors {
-  const { mode = `element`, scale = DEFAULT_COLOR_SCALE, scale_type = `continuous` } =
-    config
+  const { mode = `element`, scale = DEFAULT_COLOR_SCALE, scale_type = `continuous` } = config
 
   if (mode === `coordination`) {
     return get_coordination_colors(structure, bonding_strategy, scale, scale_type)

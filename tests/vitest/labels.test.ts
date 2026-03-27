@@ -249,13 +249,13 @@ describe(`format_value`, () => {
   test.each([
     // Basic decimal formatting
     { value: 123.456, formatter: `.2f`, expected: `123.46` },
-    { value: 123.400, formatter: `.2f`, expected: `123.4` },
-    { value: 123.000, formatter: `.2f`, expected: `123` },
+    { value: 123.4, formatter: `.2f`, expected: `123.4` },
+    { value: 123.0, formatter: `.2f`, expected: `123` },
     { value: 0.001, formatter: `.3f`, expected: `0.001` },
-    { value: 0.100, formatter: `.3f`, expected: `0.1` },
-    { value: 0.0000, formatter: `.4f`, expected: `0` },
-    { value: 123.4000, formatter: `.4f`, expected: `123.4` },
-    { value: 0.1000, formatter: `.4f`, expected: `0.1` },
+    { value: 0.1, formatter: `.3f`, expected: `0.1` },
+    { value: 0.0, formatter: `.4f`, expected: `0` },
+    { value: 123.4, formatter: `.4f`, expected: `123.4` },
+    { value: 0.1, formatter: `.4f`, expected: `0.1` },
 
     // Scientific notation
     { value: 1000000, formatter: `.2e`, expected: `1.00e+6` },
@@ -277,7 +277,7 @@ describe(`format_value`, () => {
 
     // Percentage formatting
     { value: 0.123, formatter: `.1%`, expected: `12.3%` },
-    { value: 0.100, formatter: `.1%`, expected: `10%` },
+    { value: 0.1, formatter: `.1%`, expected: `10%` },
     { value: 1.0, formatter: `.0%`, expected: `100%` },
     { value: 0.0, formatter: `.1%`, expected: `0%` },
     { value: 2.5, formatter: `.0%`, expected: `250%` },

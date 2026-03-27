@@ -21,7 +21,9 @@ export const extract_series_color = (series_data: DataSeries): string =>
   `#4A9EFF`
 
 // Prepare legend data from series array
-export const prepare_legend_data = (series: DataSeries[]): {
+export const prepare_legend_data = (
+  series: DataSeries[],
+): {
   series_idx: number
   label: string
   visible: boolean
@@ -31,7 +33,8 @@ export const prepare_legend_data = (series: DataSeries[]): {
     series_idx,
     label: series_data.label ?? `Series ${series_idx + 1}`,
     visible: series_data.visible ?? true,
-    display_style: { // Prefer the series’ symbol when present, falling back to settings
+    display_style: {
+      // Prefer the series’ symbol when present, falling back to settings
       symbol_type: !Array.isArray(series_data.point_style)
         ? (series_data.point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type)
         : DEFAULTS.scatter.symbol_type,
@@ -60,10 +63,7 @@ export const create_data_points = (
 // If prop is an array, returns the element at the given index.
 // If prop is a scalar, returns the scalar (applied to all indices).
 // Returns undefined if prop is null/undefined.
-export function process_prop<T>(
-  prop: T[] | T | undefined | null,
-  idx: number,
-): T | undefined {
-  if (prop === null || prop === undefined) return undefined
+export function process_prop<T>(prop: T[] | T | undefined | null, idx: number): T | undefined {
+  if (prop == null) return undefined
   return Array.isArray(prop) ? prop[idx] : prop
 }

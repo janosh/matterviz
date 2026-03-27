@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import { expect, type Page, test } from '@playwright/test'
 import {
   expect_canvas_changed,
@@ -27,10 +26,7 @@ const SITE_PROPS = {
       magmom: [0, 0, -2.5],
     },
   ],
-  single: [
-    { force: [0.3, -0.1, 0.2] },
-    { force: [0.6, -0.2, 0.4] },
-  ],
+  single: [{ force: [0.3, -0.1, 0.2] }, { force: [0.6, -0.2, 0.4] }],
 } as const
 
 // Inject a test structure with vector site properties via custom event
@@ -38,34 +34,39 @@ async function inject_vectors(page: Page, mode: `multi` | `single`) {
   const props = mode === `multi` ? SITE_PROPS.multi : SITE_PROPS.single
   // Let the component auto-populate vector_configs from the structure's vector data
   // instead of bypassing auto-population with pre-computed configs
-  await page.evaluate((site_props) => {
-    const structure = {
-      '@module': `pymatgen.core.structure`,
-      '@class': `Structure`,
-      charge: 0,
-      lattice: {
-        matrix: [[3.128, 0, 0], [0, 3.128, 0], [0, 0, 3.128]],
-        pbc: [true, true, true],
-        a: 3.128,
-        b: 3.128,
-        c: 3.128,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: 30.62,
-      },
-      sites: site_props.map((props, idx) => ({
-        species: [{ element: `Cs`, occu: 1 }],
-        abc: [idx * 0.5, idx * 0.5, idx * 0.5],
-        xyz: [idx * 1.564, idx * 1.564, idx * 1.564],
-        label: `Cs`,
-        properties: props,
-      })),
-    }
-    globalThis.dispatchEvent(
-      new CustomEvent(`set-structure`, { detail: { structure } }),
-    )
-  }, [...props])
+  await page.evaluate(
+    (site_props) => {
+      const structure = {
+        '@module': `pymatgen.core.structure`,
+        '@class': `Structure`,
+        charge: 0,
+        lattice: {
+          matrix: [
+            [3.128, 0, 0],
+            [0, 3.128, 0],
+            [0, 0, 3.128],
+          ],
+          pbc: [true, true, true],
+          a: 3.128,
+          b: 3.128,
+          c: 3.128,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 30.62,
+        },
+        sites: site_props.map((props, idx) => ({
+          species: [{ element: `Cs`, occu: 1 }],
+          abc: [idx * 0.5, idx * 0.5, idx * 0.5],
+          xyz: [idx * 1.564, idx * 1.564, idx * 1.564],
+          label: `Cs`,
+          properties: props,
+        })),
+      }
+      globalThis.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+    },
+    [...props],
+  )
   // Derive expected keys from ALL sites (union) to catch union-of-all-sites regressions
   const all_keys = new Set<string>()
   for (const site of props) {
@@ -125,8 +126,7 @@ test.describe(`Multi-Vector Site Vectors`, () => {
     const canvas = page.locator(`#test-structure canvas`)
     const initial = await canvas.screenshot()
 
-    const force_dft_toggle = pane_div.locator(`label`).filter({ hasText: `force_DFT` })
-      .first()
+    const force_dft_toggle = pane_div.locator(`label`).filter({ hasText: `force_DFT` }).first()
     await force_dft_toggle.locator(`input[type="checkbox"]`).click()
 
     await expect_canvas_changed(canvas, initial)
@@ -136,17 +136,11 @@ test.describe(`Multi-Vector Site Vectors`, () => {
     const { pane_div } = await goto_vectors_and_open_controls(page, `multi`)
 
     await expect(pane_div.locator(`text=Site Vectors`)).toBeVisible()
-    await expect(
-      pane_div.locator(`label`).filter({ hasText: `Global Scale` }),
-    ).toBeVisible()
-    await expect(
-      pane_div.locator(`label`).filter({ hasText: `Origin Gap` }),
-    ).toBeVisible()
+    await expect(pane_div.locator(`label`).filter({ hasText: `Global Scale` })).toBeVisible()
+    await expect(pane_div.locator(`label`).filter({ hasText: `Origin Gap` })).toBeVisible()
 
     for (const key of [`force_DFT`, `force_MLFF`, `magmom`]) {
-      await expect(
-        pane_div.locator(`label`).filter({ hasText: `${key} scale` }),
-      ).toBeVisible()
+      await expect(pane_div.locator(`label`).filter({ hasText: `${key} scale` })).toBeVisible()
     }
   })
 
@@ -198,7 +192,7 @@ test.describe(`Multi-Vector Site Vectors`, () => {
 
     const status = page.locator(`[data-testid="vector-configs-status"]`)
     await expect(status).toContainText(`#00ff00`)
-    const configs = JSON.parse(await status.getAttribute(`data-configs`) ?? `{}`)
+    const configs = JSON.parse((await status.getAttribute(`data-configs`)) ?? `{}`)
     expect(configs.force_DFT.color).toBe(`#00ff00`)
     expect(configs.force_MLFF.color).toBeNull()
     expect(configs.magmom.color).toBeNull()
@@ -213,16 +207,10 @@ test.describe(`Multi-Vector Site Vectors`, () => {
     // Multi-vector should show per-key scale sliders but NOT a standalone "Color" label
     // in the Site Vectors section (single-key Color only appears for 1-key structures).
     // The global scale and origin gap should be present, but no "Color" label.
-    await expect(
-      pane_div.locator(`label`).filter({ hasText: `Global Scale` }),
-    ).toBeVisible()
-    await expect(
-      pane_div.locator(`label`).filter({ hasText: `Origin Gap` }),
-    ).toBeVisible()
+    await expect(pane_div.locator(`label`).filter({ hasText: `Global Scale` })).toBeVisible()
+    await expect(pane_div.locator(`label`).filter({ hasText: `Origin Gap` })).toBeVisible()
     // No standalone "Color" label in multi-vector mode
-    const site_vectors_section = site_vectors_heading.locator(
-      `xpath=following-sibling::*[1]`,
-    )
+    const site_vectors_section = site_vectors_heading.locator(`xpath=following-sibling::*[1]`)
     await expect(
       site_vectors_section.locator(`label`).filter({ hasText: /^Color$/ }),
     ).toHaveCount(0)
@@ -249,14 +237,10 @@ test.describe(`Single-Vector Site Vectors`, () => {
     await expect(pane_div.locator(`text=Site Vectors`)).toBeVisible()
 
     // No Origin Gap for single vector
-    await expect(
-      pane_div.locator(`label`).filter({ hasText: `Origin Gap` }),
-    ).toHaveCount(0)
+    await expect(pane_div.locator(`label`).filter({ hasText: `Origin Gap` })).toHaveCount(0)
 
     // No per-key scale sliders
-    await expect(
-      pane_div.locator(`label`).filter({ hasText: `force scale` }),
-    ).toHaveCount(0)
+    await expect(pane_div.locator(`label`).filter({ hasText: `force scale` })).toHaveCount(0)
   })
 
   test(`canvas renders with single-vector arrows`, async ({ page }) => {
@@ -268,7 +252,9 @@ test.describe(`Single-Vector Site Vectors`, () => {
     await expect_canvas_changed(canvas, before)
   })
 
-  test(`per-key color override persists in vector_configs for single-vector`, async ({ page }) => {
+  test(`per-key color override persists in vector_configs for single-vector`, async ({
+    page,
+  }) => {
     await goto_with_vectors(page, `single`)
 
     await page.evaluate(() => {
@@ -283,7 +269,7 @@ test.describe(`Single-Vector Site Vectors`, () => {
 
     const status = page.locator(`[data-testid="vector-configs-status"]`)
     await expect(status).toContainText(`#ff00ff`)
-    const configs = JSON.parse(await status.getAttribute(`data-configs`) ?? `{}`)
+    const configs = JSON.parse((await status.getAttribute(`data-configs`)) ?? `{}`)
     expect(configs.force.color).toBe(`#ff00ff`)
     expect(configs.force.visible).toBe(true)
   })

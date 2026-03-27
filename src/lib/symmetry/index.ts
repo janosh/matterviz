@@ -60,18 +60,15 @@ export async function ensure_moyo_wasm_ready(wasm_url?: string) {
   initialized = true
 }
 
-function get_site_atomic_number(
-  site: Crystal[`sites`][number],
-  site_idx: number,
-): number {
+function get_site_atomic_number(site: Crystal[`sites`][number], site_idx: number): number {
   const occupancy_by_element = new Map<keyof typeof SYMBOL_TO_ATOMIC_NUMBER, number>()
   for (const { element, occu } of site.species) {
     if (occu <= OCCUPANCY_EPS) continue
     occupancy_by_element.set(element, (occupancy_by_element.get(element) ?? 0) + occu)
   }
 
-  let selected_element: (typeof site.species)[number][`element`] | undefined = site
-    .species[0]?.element
+  let selected_element: (typeof site.species)[number][`element`] | undefined =
+    site.species[0]?.element
   let best_occupancy = -Infinity
   occupancy_by_element.forEach((occupancy, element) => {
     if (
@@ -93,28 +90,22 @@ function get_site_atomic_number(
   return atomic_number
 }
 
-function build_moyo_input_cell(
-  structure: Crystal,
-): Pick<MoyoCell, `positions` | `numbers`> & {
+function build_moyo_input_cell(structure: Crystal): Pick<MoyoCell, `positions` | `numbers`> & {
   orig_site_indices_by_input_idx: number[][]
 } {
   const merged_render_sites = merge_split_partial_sites(structure.sites)
   return {
     positions: merged_render_sites.map(({ site }) => site.abc),
     numbers: merged_render_sites.map(({ site, site_idx }) =>
-      get_site_atomic_number(site, site_idx)
+      get_site_atomic_number(site, site_idx),
     ),
-    orig_site_indices_by_input_idx: merged_render_sites.map(({ source_site_indices }) =>
-      source_site_indices
+    orig_site_indices_by_input_idx: merged_render_sites.map(
+      ({ source_site_indices }) => source_site_indices,
     ),
   }
 }
 
-function build_moyo_cell(
-  structure: Crystal,
-  positions: Vec3[],
-  numbers: number[],
-): MoyoCell {
+function build_moyo_cell(structure: Crystal, positions: Vec3[], numbers: number[]): MoyoCell {
   // nalgebra Matrix3 deserializes as a flat list in COLUMN-MAJOR of the internal basis B
   // Internal B = transpose(row-basis RB). column-major(B) == row-major(RB).
   // So supply row-major of the pymatgen lattice.matrix (RB).
@@ -198,27 +189,30 @@ export function simplicity_score(vec: number[]): number {
   const near_half = (v: number) => Math.abs(v - 0.5)
   const [ax, ay, az] = vec?.map(to_unit) ?? []
   return (
-    near_zero(ax) + near_zero(ay) + near_zero(az) +
+    near_zero(ax) +
+    near_zero(ay) +
+    near_zero(az) +
     0.5 * (near_half(ax) + near_half(ay) + near_half(az))
   )
 }
 
 // Generate Wyckoff table rows from symmetry data
-export function wyckoff_positions_from_moyo(
-  sym_data: SymmetryDataset | null,
-): WyckoffPos[] {
+export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): WyckoffPos[] {
   if (!sym_data) return []
 
   const { positions, numbers } = sym_data.std_cell
   const { wyckoffs, orig_indices, orig_site_indices_by_std_idx } = sym_data
 
   // Group sites by letter-element combination and track all indices
-  const groups = new Map<string, {
-    letter: string
-    elem: string
-    indices: number[]
-    positions: Vec3[]
-  }>()
+  const groups = new Map<
+    string,
+    {
+      letter: string
+      elem: string
+      indices: number[]
+      positions: Vec3[]
+    }
+  >()
 
   // Process all atoms in the standardized cell
   // Note: wyckoffs array may be shorter than std_cell when moyo combines symmetry-equivalent sites
@@ -239,17 +233,20 @@ export function wyckoff_positions_from_moyo(
 
   const rows = Array.from(groups.values()).map(({ letter, elem, indices, positions }) => {
     // Find the position with the best simplicity score to display
-    const best_pos = positions.reduce((best, pos) => {
-      const score = simplicity_score(pos)
-      return score < best.score ? { pos, score } : best
-    }, { pos: positions[0], score: simplicity_score(positions[0]) }).pos
+    const best_pos = positions.reduce(
+      (best, pos) => {
+        const score = simplicity_score(pos)
+        return score < best.score ? { pos, score } : best
+      },
+      { pos: positions[0], score: simplicity_score(positions[0]) },
+    ).pos
 
     // Map standardized cell indices back to original structure indices
     const orig_site_indices = orig_site_indices_by_std_idx
       ? indices.flatMap((std_idx) => orig_site_indices_by_std_idx[std_idx] ?? [])
       : orig_indices
-      ? indices.map((std_idx) => orig_indices[std_idx]).filter((idx) => idx !== undefined)
-      : indices
+        ? indices.map((std_idx) => orig_indices[std_idx]).filter((idx) => idx !== undefined)
+        : indices
 
     const wyckoff = letter ? `${indices.length}${letter}` : `1`
     return {
@@ -282,11 +279,12 @@ export function apply_symmetry_operations(
   return operations
     .map(({ rotation, translation }) => {
       // Apply 3x3 rotation matrix and translation: new_pos = R * position + t
-      const new_pos: Vec3 = [0, 1, 2].map((dim) =>
-        rotation[dim * 3] * position[0] +
-        rotation[dim * 3 + 1] * position[1] +
-        rotation[dim * 3 + 2] * position[2] +
-        translation[dim]
+      const new_pos: Vec3 = [0, 1, 2].map(
+        (dim) =>
+          rotation[dim * 3] * position[0] +
+          rotation[dim * 3 + 1] * position[1] +
+          rotation[dim * 3 + 2] * position[2] +
+          translation[dim],
       ) as Vec3
       return new_pos.map(wrap) as Vec3
     })
@@ -315,7 +313,7 @@ export function map_wyckoff_to_all_atoms(
       pos1.reduce((sum, coord, idx) => {
         // Wrap delta into [-0.5, 0.5) using safe modulo
         const delta = coord - pos2[idx]
-        const wrapped = (((delta + 0.5) % 1) + 1) % 1 - 0.5
+        const wrapped = ((((delta + 0.5) % 1) + 1) % 1) - 0.5
         const d = Math.abs(wrapped)
         return sum + d * d
       }, 0),
@@ -337,9 +335,9 @@ export function map_wyckoff_to_all_atoms(
           .map((site, display_idx) => ({ site, display_idx }))
           .filter(({ site }) => site.species[0]?.element === element)
           .filter(({ site }) =>
-            equivalent_positions.some((equiv_pos) =>
-              periodic_distance(equiv_pos, site.abc) < tolerance
-            )
+            equivalent_positions.some(
+              (equiv_pos) => periodic_distance(equiv_pos, site.abc) < tolerance,
+            ),
           )
           .map(({ display_idx }) => display_idx)
       })

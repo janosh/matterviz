@@ -49,11 +49,10 @@
   let data_range = $derived(volumetric_data?.[active_volume_idx]?.data_range)
   let active_volume = $derived(volumetric_data?.[active_volume_idx])
 
-  function decode_content(content: string | ArrayBuffer): string {
-    return content instanceof ArrayBuffer
+  const decode_content = (content: string | ArrayBuffer): string =>
+    content instanceof ArrayBuffer
       ? new TextDecoder().decode(content)
       : content
-  }
 
   function reset_loaded_content() {
     structure = undefined
@@ -96,7 +95,7 @@
     }
     // Use window.location instead of page.url to avoid creating a reactive
     // dependency that would cause an infinite loop with the $effect
-    goto(`${window.location.pathname}?${params.toString()}`, {
+    goto(`${globalThis.location.pathname}?${params.toString()}`, {
       replaceState: true,
       keepFocus: true,
       noScroll: true,
@@ -116,8 +115,8 @@
         parse_and_apply(decode_content(content), filename)
       })
       parse_time_ms = Math.round(performance.now() - parse_start)
-    } catch (err) {
-      error_msg = err instanceof Error ? err.message : String(err)
+    } catch (error) {
+      error_msg = error instanceof Error ? error.message : String(error)
     } finally {
       loading = false
     }

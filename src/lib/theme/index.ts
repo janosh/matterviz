@@ -56,7 +56,7 @@ export const get_theme_preference = (): ThemeMode => {
   if (!is_browser) return AUTO_THEME
   try {
     const saved = localStorage[storage_key]
-    return is_valid_theme_mode(saved || ``) ? saved as ThemeMode : AUTO_THEME
+    return is_valid_theme_mode(saved || ``) ? (saved as ThemeMode) : AUTO_THEME
   } catch {
     return AUTO_THEME
   }
@@ -104,5 +104,4 @@ export const light_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.ligh
 export const dark_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.dark] || {}
 export const white_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.white] || {}
 export const black_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.black] || {}
-export const get_theme_by_name = (name: ThemeName) =>
-  globalThis.MATTERVIZ_THEMES?.[name] || {}
+export const get_theme_by_name = (name: ThemeName) => globalThis.MATTERVIZ_THEMES?.[name] || {}

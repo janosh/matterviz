@@ -27,9 +27,8 @@ import { parse_lammps_trajectory } from './lammps'
 import { parse_vasp_xdatcar } from './vasp'
 import { parse_xyz_trajectory } from './xyz'
 
-const log_parse_debug = (message: string, error: unknown): void => {
-  console.debug(message, error)
-}
+// Silently swallow expected parse fallbacks — the caller throws if ALL formats fail
+const log_parse_debug = (_message: string, _error: unknown): void => {}
 
 // Re-export constants and types for consumers
 export {
@@ -89,7 +88,7 @@ export async function parse_trajectory_data(
       data = JSON.parse(content)
     } catch (error) {
       log_parse_debug(`JSON parse failed for ${filename ?? `unknown file`}:`, error)
-      throw new Error(`Unsupported text format`)
+      throw new Error(`Unsupported text format`, { cause: error })
     }
   }
 
@@ -117,7 +116,7 @@ export async function parse_trajectory_data(
     const frame_elements = species.map((specie) => specie.element)
     const coords = obj.coords as number[][][]
     const matrix = validate_3x3_matrix(obj.lattice)
-    const frame_properties = obj.frame_properties as Record<string, unknown>[] || []
+    const frame_properties = (obj.frame_properties as Record<string, unknown>[]) || []
     const frac_to_cart = math.create_frac_to_cart(matrix)
 
     const frames = coords.map((frame_coords, idx) => {
@@ -129,7 +128,8 @@ export async function parse_trajectory_data(
 
       Object.entries(raw_properties).forEach(([key, value]) => {
         if (
-          value && typeof value === `object` &&
+          value &&
+          typeof value === `object` &&
           (value as Record<string, unknown>)[`@class`] === `array`
         ) {
           // Extract numpy array data
@@ -142,12 +142,11 @@ export async function parse_trajectory_data(
             const force_magnitudes = forces.map((force) => Math.hypot(...force))
             if (force_magnitudes.length > 0) {
               processed_properties.force_max = force_magnitudes.reduce(
-                (max_val, magnitude) => magnitude > max_val ? magnitude : max_val,
+                (max_val, magnitude) => (magnitude > max_val ? magnitude : max_val),
                 force_magnitudes[0],
               )
               processed_properties.force_norm = Math.sqrt(
-                force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
-                  force_magnitudes.length,
+                force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) / force_magnitudes.length,
               )
             }
           }
@@ -274,9 +273,8 @@ export async function parse_trajectory_async(
   try {
     update_progress(0, `Detecting format...`)
 
-    const data_size = data instanceof ArrayBuffer
-      ? data.byteLength
-      : new TextEncoder().encode(data).byteLength
+    const data_size =
+      data instanceof ArrayBuffer ? data.byteLength : new TextEncoder().encode(data).byteLength
     const is_large_file = data_size > LARGE_FILE_THRESHOLD
     const should_use_indexing = use_indexing ?? is_large_file
 
@@ -287,10 +285,15 @@ export async function parse_trajectory_async(
     // Use indexed loading for supported large files (including compressed names).
     const base_filename = strip_compression_extensions(filename)
     if (should_use_indexing && /\.(xyz|extxyz|traj)$/.test(base_filename)) {
-      return await parse_with_unified_loader(data, filename, {
-        index_sample_rate,
-        extract_plot_metadata,
-      }, on_progress)
+      return await parse_with_unified_loader(
+        data,
+        filename,
+        {
+          index_sample_rate,
+          extract_plot_metadata,
+        },
+        on_progress,
+      )
     }
 
     // Fallback to direct parsing
@@ -320,24 +323,19 @@ async function parse_with_unified_loader(
   const total_frames = await loader.get_total_frames(data)
 
   on_progress?.({ current: 20, total: 100, stage: `Building frame index...` })
-  const frame_index = await loader.build_frame_index(
-    data,
-    index_sample_rate,
-    (progress) => {
-      const adjusted = 20 + (progress.current / 100) * 30
-      on_progress?.({
-        current: adjusted,
-        total: 100,
-        stage: `Building index: ${progress.stage}`,
-      })
-    },
-  )
+  const frame_index = await loader.build_frame_index(data, index_sample_rate, (progress) => {
+    const adjusted = 20 + (progress.current / 100) * 30
+    on_progress?.({
+      current: adjusted,
+      total: 100,
+      stage: `Building index: ${progress.stage}`,
+    })
+  })
 
   on_progress?.({ current: 50, total: 100, stage: `Loading initial frames...` })
   const initial_frame_count = Math.min(10, total_frames)
-  const frame_promises = Array.from(
-    { length: initial_frame_count },
-    (_, idx) => loader.load_frame(data, idx),
+  const frame_promises = Array.from({ length: initial_frame_count }, (_, idx) =>
+    loader.load_frame(data, idx),
   )
   const loaded_frames = await Promise.all(frame_promises)
   const frames = loaded_frames.filter((frame): frame is TrajectoryFrame => frame !== null)

@@ -1,7 +1,6 @@
 <script lang="ts">
   import { replaceState } from '$app/navigation'
-  import type { ElementSymbol, Vec3 } from '$lib'
-  import type { Crystal } from '$lib'
+  import type { ElementSymbol, Vec3, Crystal } from '$lib'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Structure from '$lib/structure/Structure.svelte'
   import { SETTINGS_CONFIG, SHOW_BONDS_OPTIONS } from '$lib/settings'
@@ -51,7 +50,7 @@
       volume: lattice_size ** 3,
     }
 
-    const sites: Crystal[`sites`] = new Array(count)
+    const sites: Crystal[`sites`] = Array.from({ length: count })
     const sites_per_edge = Math.ceil(Math.cbrt(count))
     const spacing = 1 / (sites_per_edge + 1)
     const random_offset = 0.1 / lattice_size
@@ -108,7 +107,7 @@
 
   $effect(() => {
     if (typeof window === `undefined`) return
-    const params = new URLSearchParams(window.location.search)
+    const params = new URLSearchParams(globalThis.location.search)
 
     const parse_int = (key: string, min: number, max: number, fallback: number) => {
       const val = params.get(key)

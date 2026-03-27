@@ -19,9 +19,11 @@ export function has_color_property(mat: Material): mat is Material & { color: Co
   const red_channel = color_obj.r
   const green_channel = color_obj.g
   const blue_channel = color_obj.b
-  return typeof red_channel === `number` &&
+  return (
+    typeof red_channel === `number` &&
     typeof green_channel === `number` &&
     typeof blue_channel === `number`
+  )
 }
 
 // Extract color from a ShaderMaterial by checking common color uniform patterns
@@ -104,7 +106,8 @@ export function clean_geometry_for_export(geometry: BufferGeometry): void {
     if (
       lower_name.includes(`instance`) ||
       (lower_name.includes(`color`) && !standard_attrs.has(lower_name))
-    ) attrs_to_remove.push(attr_name)
+    )
+      attrs_to_remove.push(attr_name)
   }
 
   for (const attr_name of attrs_to_remove) {
@@ -135,9 +138,9 @@ export function generate_mtl_content(scene: Scene): string {
         lines.push(`Kd ${color.r.toFixed(6)} ${color.g.toFixed(6)} ${color.b.toFixed(6)}`)
         // Ambient is typically a fraction of diffuse
         lines.push(
-          `Ka ${(color.r * 0.2).toFixed(6)} ${(color.g * 0.2).toFixed(6)} ${
-            (color.b * 0.2).toFixed(6)
-          }`,
+          `Ka ${(color.r * 0.2).toFixed(6)} ${(color.g * 0.2).toFixed(6)} ${(
+            color.b * 0.2
+          ).toFixed(6)}`,
         )
       } else {
         // Default white if no color
@@ -150,9 +153,7 @@ export function generate_mtl_content(scene: Scene): string {
       lines.push(`Ns 96.078431`) // Specular exponent
 
       // Transparency (d = 1.0 is fully opaque)
-      const opacity = `opacity` in mat && typeof mat.opacity === `number`
-        ? mat.opacity
-        : 1.0
+      const opacity = `opacity` in mat && typeof mat.opacity === `number` ? mat.opacity : 1.0
       lines.push(`d ${opacity.toFixed(6)}`)
 
       // Illumination model (2 = highlight on)
@@ -165,9 +166,7 @@ export function generate_mtl_content(scene: Scene): string {
 }
 
 // Extract color from material, returning RGB values or null if not found
-function extract_material_color(
-  mat: Material,
-): { r: number; g: number; b: number } | null {
+function extract_material_color(mat: Material): { r: number; g: number; b: number } | null {
   if (has_color_property(mat)) {
     return { r: mat.color.r, g: mat.color.g, b: mat.color.b }
   }
@@ -179,7 +178,7 @@ function extract_material_color(
 // Note: Threlte's InstancedMesh sets isInstancedMesh=true but type remains "Mesh"
 // Type guard for InstancedMesh (Three.js uses isInstancedMesh property, not exposed in Object3D type)
 const is_instanced_mesh = (obj: Object3D): obj is InstancedMesh =>
-  (obj as InstancedMesh).isInstancedMesh === true || obj.type === `InstancedMesh`
+  (obj as InstancedMesh).isInstancedMesh || obj.type === `InstancedMesh`
 
 function convert_instanced_meshes_to_regular(scene: Scene): Scene {
   // STEP 1: Collect material colors from ORIGINAL scene BEFORE cloning
@@ -331,7 +330,7 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
       } else if (Array.isArray(object.material)) {
         has_shader_material = object.material.some((mat) => mat instanceof ShaderMaterial)
         object.material = object.material.map((mat) =>
-          mat instanceof ShaderMaterial ? convert_shader_to_standard(mat) : mat
+          mat instanceof ShaderMaterial ? convert_shader_to_standard(mat) : mat,
         )
       }
       // Clean up custom attributes from geometries that had shader materials
@@ -422,7 +421,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   if (formula && formula !== `Unknown`) comment_parts.push(formula)
 
   // Include extended XYZ lattice information when available so round-trips preserve lattice
-  if ((`lattice` in structure) && structure.lattice?.matrix?.length === 3) {
+  if (`lattice` in structure && structure.lattice?.matrix?.length === 3) {
     const lattice_values = structure.lattice.matrix
       .flat()
       .map((value: number) => (Number.isFinite(value) ? value : 0).toFixed(8))
@@ -430,30 +429,25 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
     comment_parts.push(`Lattice="${lattice_values}"`)
   }
 
-  const comment = comment_parts.length > 0
-    ? comment_parts.join(` `)
-    : `Generated from structure`
+  const comment =
+    comment_parts.length > 0 ? comment_parts.join(` `) : `Generated from structure`
   lines.push(comment)
 
   // Cache converter for fractional→Cartesian (if lattice available)
-  const frac_to_cart = `lattice` in structure && structure.lattice?.matrix?.length === 3
-    ? math.create_frac_to_cart(structure.lattice.matrix)
-    : null
+  const frac_to_cart =
+    `lattice` in structure && structure.lattice?.matrix?.length === 3
+      ? math.create_frac_to_cart(structure.lattice.matrix)
+      : null
 
   // Atom lines: element symbol followed by x, y, z coordinates
   for (const site of structure.sites) {
     // Extract element symbol from species
     let element_symbol = `X` // default fallback
-    if (
-      site.species &&
-      Array.isArray(site.species) &&
-      site.species.length > 0
-    ) {
+    if (site.species && Array.isArray(site.species) && site.species.length > 0) {
       // species is an array of Species objects with element property
       const first_species = site.species[0]
-      if (
-        first_species && `element` in first_species && first_species.element
-      ) element_symbol = first_species.element
+      if (first_species && `element` in first_species && first_species.element)
+        element_symbol = first_species.element
     }
 
     // Get coordinates - prefer xyz; fallback to abc (converted to cartesian if lattice available)
@@ -543,7 +537,8 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
 
   // Space group information
   if (
-    `symmetry` in structure && structure.symmetry &&
+    `symmetry` in structure &&
+    structure.symmetry &&
     typeof structure.symmetry === `object`
   ) {
     const symmetry = structure.symmetry as Record<string, unknown>
@@ -567,9 +562,8 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   lines.push(`_atom_site_occupancy`)
 
   // Cache inverse transpose for Cartesian→fractional conversion (avoids recomputing per site)
-  const cart_to_frac = lattice.matrix?.length === 3
-    ? math.create_cart_to_frac(lattice.matrix)
-    : null
+  const cart_to_frac =
+    lattice.matrix?.length === 3 ? math.create_cart_to_frac(lattice.matrix) : null
 
   // Atom sites
   for (let idx = 0; idx < structure.sites.length; idx++) {
@@ -579,15 +573,9 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     // Extract element symbol from species
     let element_symbol = `X` // default fallback
     let occupancy = 1
-    if (
-      site.species &&
-      Array.isArray(site.species) &&
-      site.species.length > 0
-    ) {
+    if (site.species && Array.isArray(site.species) && site.species.length > 0) {
       const first_species = site.species[0]
-      if (
-        first_species && `element` in first_species && first_species.element
-      ) {
+      if (first_species && `element` in first_species && first_species.element) {
         element_symbol = first_species.element
         occupancy = first_species?.occu ?? 1
       }
@@ -604,9 +592,9 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     // Format: label element_symbol x y z
     const label = site.label || `${element_symbol}${idx + 1}`
     lines.push(
-      `${label} ${element_symbol} ${frac_coords[0].toFixed(8)} ${
-        frac_coords[1].toFixed(8)
-      } ${frac_coords[2].toFixed(8)} ${occupancy.toFixed(8)}`,
+      `${label} ${element_symbol} ${frac_coords[0].toFixed(8)} ${frac_coords[1].toFixed(
+        8,
+      )} ${frac_coords[2].toFixed(8)} ${occupancy.toFixed(8)}`,
     )
   }
 
@@ -623,7 +611,8 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
 
   // Use plain text formula for POSCAR title to avoid HTML tags
   const formula = get_electro_neg_formula(structure, true)
-  const title = structure.id ||
+  const title =
+    structure.id ||
     (formula && formula !== `Unknown` ? formula : null) ||
     `Generated from structure`
   lines.push(title)
@@ -652,15 +641,9 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
 
   for (const site of structure.sites) {
     let element_symbol = `X` // default fallback
-    if (
-      site.species &&
-      Array.isArray(site.species) &&
-      site.species.length > 0
-    ) {
+    if (site.species && Array.isArray(site.species) && site.species.length > 0) {
       const first_species = site.species[0]
-      if (
-        first_species && `element` in first_species && first_species.element
-      ) {
+      if (first_species && `element` in first_species && first_species.element) {
         element_symbol = first_species.element
       }
     }
@@ -690,23 +673,16 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   lines.push(`Direct`)
 
   // Cache inverse transpose for Cartesian→fractional conversion (avoids recomputing per site)
-  const cart_to_frac = lattice.matrix?.length === 3
-    ? math.create_cart_to_frac(lattice.matrix)
-    : null
+  const cart_to_frac =
+    lattice.matrix?.length === 3 ? math.create_cart_to_frac(lattice.matrix) : null
 
   // Atom coordinates grouped by element
   for (const element_symbol of element_symbols) {
     for (const site of structure.sites) {
       let site_element = `X`
-      if (
-        site.species &&
-        Array.isArray(site.species) &&
-        site.species.length > 0
-      ) {
+      if (site.species && Array.isArray(site.species) && site.species.length > 0) {
         const first_species = site.species[0]
-        if (
-          first_species && `element` in first_species && first_species.element
-        ) {
+        if (first_species && `element` in first_species && first_species.element) {
           site_element = first_species.element
         }
       }
@@ -735,9 +711,9 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
         }
 
         lines.push(
-          `${frac_coords[0].toFixed(8)} ${frac_coords[1].toFixed(8)} ${
-            frac_coords[2].toFixed(8)
-          }${selective_dynamics_str}`,
+          `${frac_coords[0].toFixed(8)} ${frac_coords[1].toFixed(8)} ${frac_coords[2].toFixed(
+            8,
+          )}${selective_dynamics_str}`,
         )
       }
     }

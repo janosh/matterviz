@@ -75,10 +75,11 @@ describe(`ternary: composition and plotting`, () => {
 
   test(`composition to barycentric throws on invalid inputs`, () => {
     expect(() =>
-      composition_to_barycentric_3d({ Li: 1 }, [`Li`, `O`] as unknown as ElementSymbol[])
+      composition_to_barycentric_3d({ Li: 1 }, [`Li`, `O`] as unknown as ElementSymbol[]),
     ).toThrow()
-    expect(() => composition_to_barycentric_3d({ Li: 0, O: 0, Na: 0 }, [`Li`, `O`, `Na`]))
-      .toThrow()
+    expect(() =>
+      composition_to_barycentric_3d({ Li: 0, O: 0, Na: 0 }, [`Li`, `O`, `Na`]),
+    ).toThrow()
   })
 
   test(`get_ternary_3d_coordinates filters entries and projects coords`, () => {
@@ -124,20 +125,28 @@ describe(`ternary: composition and plotting`, () => {
 
 describe(`ternary: geometry helpers`, () => {
   test(`face normal points upward for counter-clockwise triangle`, () => {
-    const n = calculate_face_normal({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, {
-      x: 0,
-      y: 1,
-      z: 0,
-    })
+    const n = calculate_face_normal(
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      {
+        x: 0,
+        y: 1,
+        z: 0,
+      },
+    )
     expect(n.z).toBeCloseTo(1, 6)
   })
 
   test(`face centroid is arithmetic mean`, () => {
-    const c = calculate_face_centroid({ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 2 }, {
-      x: 0,
-      y: 2,
-      z: 4,
-    })
+    const c = calculate_face_centroid(
+      { x: 0, y: 0, z: 0 },
+      { x: 2, y: 0, z: 2 },
+      {
+        x: 0,
+        y: 2,
+        z: 4,
+      },
+    )
     expect(c).toEqual({ x: 2 / 3, y: 2 / 3, z: 2 })
   })
 })
@@ -160,8 +169,9 @@ describe(`quaternary: barycentric and projection`, () => {
     const elems = [`A`, `B`, `C`, `D`] as unknown as ElementSymbol[]
     const bc = composition_to_barycentric_4d({ A: 2, B: 2, C: 4, D: 2 }, elems)
     expect(bc.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9)
-    expect(() => composition_to_barycentric_4d({ A: 0, B: 0, C: 0, D: 0 }, elems))
-      .toThrow(`Composition has no elements from the quaternary system: A-B-C-D`)
+    expect(() => composition_to_barycentric_4d({ A: 0, B: 0, C: 0, D: 0 }, elems)).toThrow(
+      `Composition has no elements from the quaternary system: A-B-C-D`,
+    )
   })
 
   test(`barycentric_to_tetrahedral maps basis to vertices`, () => {
@@ -215,8 +225,9 @@ describe(`composition_to_barycentric_nd`, () => {
   const elems = [`Li`, `Na`] as ElementSymbol[]
 
   test(`throws for <2 elements`, () => {
-    expect(() => composition_to_barycentric_nd({ Li: 1 }, [`Li`] as ElementSymbol[]))
-      .toThrow(/at least 2 elements/)
+    expect(() => composition_to_barycentric_nd({ Li: 1 }, [`Li`] as ElementSymbol[])).toThrow(
+      /at least 2 elements/,
+    )
   })
 
   test(`throws for no matching elements`, () => {
@@ -224,9 +235,7 @@ describe(`composition_to_barycentric_nd`, () => {
   })
 
   test(`throws for negative amounts`, () => {
-    expect(() => composition_to_barycentric_nd({ Li: -1, Na: 2 }, elems)).toThrow(
-      /negative/,
-    )
+    expect(() => composition_to_barycentric_nd({ Li: -1, Na: 2 }, elems)).toThrow(/negative/)
   })
 
   test(`handles NaN as zero via || 0 fallback`, () => {

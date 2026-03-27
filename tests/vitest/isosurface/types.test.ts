@@ -14,7 +14,16 @@ import { describe, expect, test } from 'vitest'
 describe(`grid_data_range`, () => {
   test.each([
     {
-      grid: [[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+      grid: [
+        [
+          [1, 2],
+          [3, 4],
+        ],
+        [
+          [5, 6],
+          [7, 8],
+        ],
+      ],
       min: 1,
       max: 8,
       abs_max: 8,
@@ -22,7 +31,16 @@ describe(`grid_data_range`, () => {
       label: `all-positive`,
     },
     {
-      grid: [[[-5, 2], [3, -1]], [[0, 6], [-7, 4]]],
+      grid: [
+        [
+          [-5, 2],
+          [3, -1],
+        ],
+        [
+          [0, 6],
+          [-7, 4],
+        ],
+      ],
       min: -7,
       max: 6,
       abs_max: 7,
@@ -38,7 +56,12 @@ describe(`grid_data_range`, () => {
       label: `abs_max driven by min`,
     },
     {
-      grid: [[[0, 0], [0, 0]]],
+      grid: [
+        [
+          [0, 0],
+          [0, 0],
+        ],
+      ],
       min: 0,
       max: 0,
       abs_max: 0,
@@ -192,23 +215,17 @@ function make_grid(
   nz: number,
   fill: number | ((ix: number, iy: number, iz: number) => number) = 1,
 ): number[][][] {
-  return Array.from(
-    { length: nx },
-    (_, ix) =>
-      Array.from(
-        { length: ny },
-        (_, iy) =>
-          Array.from({ length: nz }, (_, iz) =>
-            typeof fill === `function` ? fill(ix, iy, iz) : fill),
+  return Array.from({ length: nx }, (_, ix) =>
+    Array.from({ length: ny }, (_, iy) =>
+      Array.from({ length: nz }, (_, iz) =>
+        typeof fill === `function` ? fill(ix, iy, iz) : fill,
       ),
+    ),
   )
 }
 
 // Assert every cell in a 3D grid satisfies a predicate
-function assert_all_cells(
-  grid: number[][][],
-  check: (val: number) => void,
-) {
+function assert_all_cells(grid: number[][][], check: (val: number) => void) {
   for (const plane of grid) {
     for (const row of plane) {
       for (const val of row) check(val)
@@ -256,11 +273,11 @@ describe(`downsample_grid`, () => {
     // Weighted reconstruction: sum(block_mean * block_size) must equal source total
     let reconstructed = 0
     for (let ix = 0; ix < dims[0]; ix++) {
-      const bx = Math.round((ix + 1) * nx / dims[0]) - Math.round(ix * nx / dims[0])
+      const bx = Math.round(((ix + 1) * nx) / dims[0]) - Math.round((ix * nx) / dims[0])
       for (let iy = 0; iy < dims[1]; iy++) {
-        const by = Math.round((iy + 1) * ny / dims[1]) - Math.round(iy * ny / dims[1])
+        const by = Math.round(((iy + 1) * ny) / dims[1]) - Math.round((iy * ny) / dims[1])
         for (let iz = 0; iz < dims[2]; iz++) {
-          const bz = Math.round((iz + 1) * nz / dims[2]) - Math.round(iz * nz / dims[2])
+          const bz = Math.round(((iz + 1) * nz) / dims[2]) - Math.round((iz * nz) / dims[2])
           reconstructed += out[ix][iy][iz] * bx * by * bz
         }
       }

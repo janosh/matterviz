@@ -18,11 +18,7 @@ async function get_gltf_exporter() {
 }
 
 // Helper to trigger file download
-function download_file(
-  content: string | ArrayBuffer,
-  filename: string,
-  mime_type: string,
-) {
+function download_file(content: string | ArrayBuffer, filename: string, mime_type: string) {
   const blob = new Blob([content], { type: mime_type })
   const url = URL.createObjectURL(blob)
   const link = document.createElement(`a`)

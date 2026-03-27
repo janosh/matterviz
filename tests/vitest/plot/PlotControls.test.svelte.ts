@@ -140,32 +140,27 @@ describe(`PlotControls`, () => {
       { x_range: [1, 10], y_range: [-5, 5], expected: 1 },
       { x_range: [-10, 10], y_range: [1, 5], expected: 1 },
       { x_range: [1, 10], y_range: [1, 5], expected: 0 },
-    ])(
-      `shows $expected zero line controls for ranges`,
-      ({ x_range, y_range, expected }) => {
-        mount_controls({ x_range, y_range, auto_x_range: x_range, auto_y_range: y_range })
-        const zero_lines = get_checkboxes_in_group(`zero line`)
-        expect(zero_lines.length).toBe(expected)
-      },
-    )
+    ])(`shows $expected zero line controls for ranges`, ({ x_range, y_range, expected }) => {
+      mount_controls({ x_range, y_range, auto_x_range: x_range, auto_y_range: y_range })
+      const zero_lines = get_checkboxes_in_group(`zero line`)
+      expect(zero_lines.length).toBe(expected)
+    })
   })
 
   test(`tick controls visibility`, () => {
     mount_controls({ show_ticks: false })
     expect(
-      Array.from(document.querySelectorAll(`section`))
-        .find((section) => section.textContent?.includes(`Ticks`)),
+      Array.from(document.querySelectorAll(`section`)).find((section) =>
+        section.textContent?.includes(`Ticks`),
+      ),
     ).toBeUndefined()
 
     mount_controls({ show_ticks: true })
     const tick_inputs = Array.from(
       document.querySelectorAll<HTMLInputElement>(`input[type="number"]`),
-    )
-      .filter((input) => input.parentElement?.textContent?.toLowerCase().includes(`axis`))
+    ).filter((input) => input.parentElement?.textContent?.toLowerCase().includes(`axis`))
 
-    const x_tick = tick_inputs.find((i) =>
-      i.parentElement?.textContent?.includes(`X-axis`)
-    )
+    const x_tick = tick_inputs.find((i) => i.parentElement?.textContent?.includes(`X-axis`))
     if (x_tick) {
       x_tick.value = `10`
       x_tick.dispatchEvent(new Event(`input`, { bubbles: true }))

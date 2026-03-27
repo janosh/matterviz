@@ -160,9 +160,7 @@ test(`oxi_composition_to_elements converts correctly`, () => {
     O: { amount: 3, oxidation_state: -2 },
   }
 
-  const result = oxi_composition_to_elements(
-    composition as OxiComposition,
-  )
+  const result = oxi_composition_to_elements(composition as OxiComposition)
   expect(result).toHaveLength(2)
 
   const iron = result.find((elem) => elem.element === `Fe`)
@@ -210,23 +208,18 @@ test.each([
   { scheme: `Vesta` as const, expected_color_present: true },
   { scheme: `Jmol` as const, expected_color_present: true },
   { scheme: `Alloy` as const, expected_color_present: true },
-])(
-  `Formula applies $scheme color scheme correctly`,
-  ({ scheme, expected_color_present }) => {
-    mount(Formula, {
-      target: document.body,
-      props: { formula: `H2O`, color_scheme: scheme },
-    })
-    const symbols = document.querySelectorAll(`.element-symbol`)
-    expect(symbols.length).toBe(2)
+])(`Formula applies $scheme color scheme correctly`, ({ scheme, expected_color_present }) => {
+  mount(Formula, {
+    target: document.body,
+    props: { formula: `H2O`, color_scheme: scheme },
+  })
+  const symbols = document.querySelectorAll(`.element-symbol`)
+  expect(symbols.length).toBe(2)
 
-    // Check that elements have color styles applied
-    const has_color = Array.from(symbols).some((symbol) =>
-      (symbol as HTMLElement).style.color
-    )
-    expect(has_color).toBe(expected_color_present)
-  },
-)
+  // Check that elements have color styles applied
+  const has_color = Array.from(symbols).some((symbol) => (symbol as HTMLElement).style.color)
+  expect(has_color).toBe(expected_color_present)
+})
 
 test(`Formula component ordering: original`, () => {
   // Mounting to document.body
@@ -292,8 +285,8 @@ test(`Formula component renders superscripts for oxidation states`, () => {
   const superscripts = document.querySelectorAll(`sup`)
   expect(superscripts.length).toBe(2)
 
-  const oxidation_values = Array.from(superscripts as NodeListOf<Element>).map((sup) =>
-    sup.textContent
+  const oxidation_values = Array.from(superscripts as NodeListOf<Element>).map(
+    (sup) => sup.textContent,
   )
   expect(oxidation_values).toContain(`+2`)
   expect(oxidation_values).toContain(`-2`)

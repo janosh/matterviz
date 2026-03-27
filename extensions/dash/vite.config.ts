@@ -9,15 +9,13 @@ const __dirname = import.meta.dirname as string
 const is_dev = process.env.NODE_ENV !== `production`
 
 // Plugin to strip Node.js imports from the UMD bundle
-function strip_node_imports_plugin(): Plugin {
-  return {
-    name: `strip-node-imports`,
-    renderChunk(code: string) {
-      // Remove the process import that Vite sometimes injects
-      return code.replace(/^import process from "node:process";\n?/m, ``)
-    },
-  }
-}
+const strip_node_imports_plugin = (): Plugin => ({
+  name: `strip-node-imports`,
+  renderChunk(code: string) {
+    // Remove the process import that Vite sometimes injects
+    return code.replace(/^import process from "node:process";\n?/m, ``)
+  },
+})
 
 // Plugin to deduplicate large inline WASM base64 strings
 // moyo-wasm uses wasm-bindgen which inlines WASM as data URLs
@@ -47,8 +45,7 @@ function deduplicate_wasm_plugin(): Plugin {
         if (occurrences.length > 1) {
           const var_name = `__wasm_data_${var_idx++}__`
           // Add variable declaration at the start of the chunk
-          result = `var ${var_name}=${wasm_str};\n` +
-            result.replaceAll(wasm_str, var_name)
+          result = `var ${var_name}=${wasm_str};\n` + result.replaceAll(wasm_str, var_name)
         }
       }
 

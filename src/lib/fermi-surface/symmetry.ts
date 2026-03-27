@@ -2,13 +2,8 @@
 import type { Matrix4Tuple } from '$lib/math'
 
 // Identity 4x4 matrix (column-major for Three.js)
-// deno-fmt-ignore
-export const IDENTITY_4x4: Matrix4Tuple = [
-  1, 0, 0, 0,
-  0, 1, 0, 0,
-  0, 0, 1, 0,
-  0, 0, 0, 1,
-]
+// oxfmt-ignore
+export const IDENTITY_4x4: Matrix4Tuple = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 
 // All permutations of (0, 1, 2) for axis swaps
 const AXIS_PERMUTATIONS = [

@@ -28,8 +28,8 @@ This avoids having to re-create every MatterViz component as a separate Dash com
 
 ```bash
 cd extensions/dash
-pnpm install
-pnpm run build
+npm install
+npm run build
 ```
 
 This emits the JS bundle and CSS into `matterviz_dash_components/`.
@@ -51,7 +51,7 @@ Then open <http://127.0.0.1:8050> to see a `Structure` and `PeriodicTable` demo.
 - The compiled bundle **must** be present in `matterviz_dash_components/` for `pip` installs to work (Dash serves JS/CSS from the installed package).
 - **Do not commit** build artifacts to git. They are generated at release time.
 - The release workflow builds JS assets, then creates a Python wheel/sdist with assets included.
-- For local development, run `pnpm run build` before `pip install -e .`.
+- For local development, run `npm run build` before `pip install -e .`.
 
 ### 2) Python install
 
@@ -162,7 +162,7 @@ Wrappers are generated from a curated manifest file:
 
 To regenerate wrappers after bumping the `matterviz` npm dependency:
 
-1. `pnpm install`
+1. `npm install`
 2. Regenerate typed wrappers:
 
    ```bash
@@ -242,6 +242,6 @@ pytest tests/playwright/ --headed
 
 - To update MatterViz:
   1. bump the `matterviz` version in `package.json`
-  2. run `pnpm install`
-  3. run `pnpm run build`
+  2. run `npm install`
+  3. run `npm run build`
   4. bump Python package version and publish

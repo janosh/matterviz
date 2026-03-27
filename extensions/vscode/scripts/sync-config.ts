@@ -1,19 +1,13 @@
-/// <reference lib="deno.ns" />
-
+import { readFileSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { SETTINGS_CONFIG, type SettingType } from '$lib/settings'
-
-const readFileSync = (path: string) => Deno.readTextFileSync(path)
-const writeFileSync = (path: string, data: string) => Deno.writeTextFileSync(path, data)
-const join = (...paths: string[]) => {
-  const separator = Deno.build.os === `windows` ? `\\` : `/`
-  return paths.join(separator).replace(/[\/\\]+/g, separator)
-}
 
 // VSCode configuration generator that derives from your central settings schema
 function sync_package_config() {
-  const script_dir = new URL(`.`, import.meta.url).pathname
-  const package_path = join(script_dir, `..`, `package.json`)
-  const package_content = JSON.parse(readFileSync(package_path))
+  const script_dir = dirname(fileURLToPath(import.meta.url))
+  const package_path = resolve(script_dir, `..`, `package.json`)
+  const package_content = JSON.parse(readFileSync(package_path, `utf-8`))
 
   // Auto-generate VSCode settings from SETTINGS_CONFIG
   const vscode_config: Record<string, unknown> = {}
@@ -26,13 +20,14 @@ function sync_package_config() {
 
       // This is a SettingSchema - cast to any to access dynamic properties
       const config: Record<string, unknown> = {
-        type: typeof schema.value === `boolean`
-          ? `boolean`
-          : typeof schema.value === `number`
-          ? `number`
-          : Array.isArray(schema.value)
-          ? `array`
-          : `string`,
+        type:
+          typeof schema.value === `boolean`
+            ? `boolean`
+            : typeof schema.value === `number`
+              ? `number`
+              : Array.isArray(schema.value)
+                ? `array`
+                : `string`,
         default: schema.value,
         description: schema.description,
       }
@@ -48,11 +43,12 @@ function sync_package_config() {
       if (Array.isArray(schema.value)) {
         const first_item = schema.value[0]
         config.items = {
-          type: typeof first_item === `boolean`
-            ? `boolean`
-            : typeof first_item === `string`
-            ? `string`
-            : `number`,
+          type:
+            typeof first_item === `boolean`
+              ? `boolean`
+              : typeof first_item === `string`
+                ? `string`
+                : `number`,
         }
       }
 
@@ -79,9 +75,10 @@ function sync_package_config() {
   for (const [key, value] of Object.entries(existing_props)) {
     // Preserve settings that aren't auto-generated from SETTINGS_CONFIG
     // Exclude both old .defaults.* settings and new schema-generated settings
-    const is_schema_setting = Object.keys(SETTINGS_CONFIG).some((config_key) =>
-      key.startsWith(`matterviz.${config_key}`) ||
-      key.startsWith(`matterviz.defaults.${config_key}`)
+    const is_schema_setting = Object.keys(SETTINGS_CONFIG).some(
+      (config_key) =>
+        key.startsWith(`matterviz.${config_key}`) ||
+        key.startsWith(`matterviz.defaults.${config_key}`),
     )
     if (!is_schema_setting) preserved_props[key] = value
   }
@@ -94,11 +91,9 @@ function sync_package_config() {
     ...vscode_config,
   }
 
-  writeFileSync(package_path, JSON.stringify(package_content, null, 2) + `\n`)
+  writeFileSync(package_path, JSON.stringify(package_content, null, 2) + `\n`, `utf-8`)
   console.log(
-    `✅ Synced ${
-      Object.keys(vscode_config).length
-    } settings from SETTINGS_CONFIG to package.json`,
+    `✅ Synced ${Object.keys(vscode_config).length} settings from SETTINGS_CONFIG to package.json`,
   )
 }
 

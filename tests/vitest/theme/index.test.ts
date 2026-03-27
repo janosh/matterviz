@@ -55,44 +55,38 @@ describe(`Theme System`, () => {
       expect(type_keys).toHaveLength(theme_names.length)
     })
 
-    test.each(
-      [
-        ...Object.keys(COLOR_THEMES).map((theme) => [theme, true] as const),
-        [`auto`, true],
-        [`invalid`, false],
-        [``, false],
-        [null, false],
-        [undefined, false],
-      ] as const,
-    )(`is_valid_theme_mode("%s") returns %s`, (input, expected) => {
+    test.each([
+      ...Object.keys(COLOR_THEMES).map((theme) => [theme, true] as const),
+      [`auto`, true],
+      [`invalid`, false],
+      [``, false],
+      [null, false],
+      [undefined, false],
+    ] as const)(`is_valid_theme_mode("%s") returns %s`, (input, expected) => {
       expect(is_valid_theme_mode(input as string)).toBe(expected)
     })
 
-    test.each(
-      [
-        ...Object.keys(COLOR_THEMES).map((theme) => [theme, true] as const),
-        [`auto`, false],
-        [`invalid`, false],
-        [``, false],
-        [null, false],
-        [undefined, false],
-      ] as const,
-    )(`is_valid_theme_name("%s") returns %s`, (input, expected) => {
+    test.each([
+      ...Object.keys(COLOR_THEMES).map((theme) => [theme, true] as const),
+      [`auto`, false],
+      [`invalid`, false],
+      [``, false],
+      [null, false],
+      [undefined, false],
+    ] as const)(`is_valid_theme_name("%s") returns %s`, (input, expected) => {
       expect(is_valid_theme_name(input as string)).toBe(expected)
     })
   })
 
   describe(`Theme resolution`, () => {
-    test.each(
-      [
-        [`auto`, `light`, `light`],
-        [`auto`, `dark`, `dark`],
-        [`light`, `dark`, `light`],
-        [`dark`, `light`, `dark`],
-        [`white`, `dark`, `white`],
-        [`black`, `light`, `black`],
-      ] as const,
-    )(
+    test.each([
+      [`auto`, `light`, `light`],
+      [`auto`, `dark`, `dark`],
+      [`light`, `dark`, `light`],
+      [`dark`, `light`, `dark`],
+      [`white`, `dark`, `white`],
+      [`black`, `light`, `black`],
+    ] as const)(
       `resolve_theme_mode("%s", "%s") returns "%s"`,
       (theme_mode, system_mode, expected) => {
         expect(resolve_theme_mode(theme_mode, system_mode)).toBe(expected)
@@ -168,7 +162,10 @@ describe(`Theme System`, () => {
       },
     )
 
-    test.each([[true, `dark`], [false, `light`]])(
+    test.each([
+      [true, `dark`],
+      [false, `light`],
+    ])(
       `apply_theme_to_dom("auto") with system preference %s resolves to "%s"`,
       (dark_preference, expected_theme) => {
         Object.defineProperty(window, `matchMedia`, {
@@ -238,34 +235,29 @@ describe(`Theme System`, () => {
       }
       expect(root.style.getPropertyValue(`--surface-bg`)).toBe(expected.surface_bg)
       expect(root.style.getPropertyValue(`--text-color`)).toBe(expected.text_color)
-      expect(root.style.getPropertyValue(`color-scheme`)).toBe(
-        THEME_TYPE[theme as ThemeName],
-      )
+      expect(root.style.getPropertyValue(`color-scheme`)).toBe(THEME_TYPE[theme as ThemeName])
     })
 
     test.each([
       [true, `dark`],
       [false, `light`],
-    ])(
-      `auto mode workflow with system preference %s`,
-      (dark_preference, expected_theme) => {
-        Object.defineProperty(window, `matchMedia`, {
-          writable: true,
-          value: vi.fn().mockImplementation(() => ({
-            matches: dark_preference,
-            addEventListener: vi.fn(),
-          })),
-        })
+    ])(`auto mode workflow with system preference %s`, (dark_preference, expected_theme) => {
+      Object.defineProperty(window, `matchMedia`, {
+        writable: true,
+        value: vi.fn().mockImplementation(() => ({
+          matches: dark_preference,
+          addEventListener: vi.fn(),
+        })),
+      })
 
-        save_theme_preference(`auto`)
-        apply_theme_to_dom(`auto`)
+      save_theme_preference(`auto`)
+      apply_theme_to_dom(`auto`)
 
-        expect(document.documentElement.getAttribute(`data-theme`)).toBe(expected_theme)
-        expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
-          THEME_TYPE[expected_theme as ThemeName],
-        )
-      },
-    )
+      expect(document.documentElement.getAttribute(`data-theme`)).toBe(expected_theme)
+      expect(document.documentElement.style.getPropertyValue(`color-scheme`)).toBe(
+        THEME_TYPE[expected_theme as ThemeName],
+      )
+    })
   })
 
   describe(`Theme data integrity`, () => {

@@ -83,7 +83,10 @@ describe(`normalize_y2_sync`, () => {
     [`synced`, { mode: `synced` }],
     [`align`, { mode: `align` }],
     [{ mode: `synced` }, { mode: `synced` }],
-    [{ mode: `align`, align_value: 100 }, { mode: `align`, align_value: 100 }],
+    [
+      { mode: `align`, align_value: 100 },
+      { mode: `align`, align_value: 100 },
+    ],
   ])(`normalize_y2_sync(%j) = %j`, (input, expected) => {
     expect(normalize_y2_sync(input)).toEqual(expected)
   })
@@ -96,37 +99,51 @@ describe(`sync_y2_range`, () => {
 
   // [y1, y2_base, expected]
   it.each<[Vec2, Vec2, Vec2]>([
-    [[0, 100], [0, 50], [0, 100]],
-    [[25, 75], [0, 50], [25, 75]],
-    [[-50, 50], [100, 200], [-50, 50]],
-    [[0, 1000], [0, 1], [0, 1000]],
+    [
+      [0, 100],
+      [0, 50],
+      [0, 100],
+    ],
+    [
+      [25, 75],
+      [0, 50],
+      [25, 75],
+    ],
+    [
+      [-50, 50],
+      [100, 200],
+      [-50, 50],
+    ],
+    [
+      [0, 1000],
+      [0, 1],
+      [0, 1000],
+    ],
   ])(`synced: sync_y2_range(%j, %j) = %j`, (y1, y2_base, expected) => {
     expect(sync_y2_range(y1, y2_base, { mode: `synced` })).toEqual(expected)
   })
 
   // [y1, y2_base, expected, align_value, desc]
-  it.each(
-    [
-      { y1: [0, 100], y2_base: [0, 50], expected: [0, 50], desc: `0 at bottom` },
-      { y1: [-50, 50], y2_base: [0, 100], expected: [-100, 100], desc: `0 at middle` },
-      { y1: [-100, 0], y2_base: [0, 50], expected: [-50, 50], desc: `0 at top` },
-      { y1: [0, 40], y2_base: [60, 140], expected: [0, 140], desc: `y2 above 0` },
-      {
-        y1: [-20, 20],
-        y2_base: [60, 140],
-        expected: [-140, 140],
-        desc: `symmetric expand`,
-      },
-      { y1: [0, 0], y2_base: [0, 50], expected: [0, 50], desc: `zero span fallback` },
-      {
-        y1: [0, 200],
-        y2_base: [80, 120],
-        expected: [80, 120],
-        align_value: 100,
-        desc: `custom align 50%`,
-      },
-    ] as const,
-  )(`align: $desc`, ({ y1, y2_base, expected, align_value }) => {
+  it.each([
+    { y1: [0, 100], y2_base: [0, 50], expected: [0, 50], desc: `0 at bottom` },
+    { y1: [-50, 50], y2_base: [0, 100], expected: [-100, 100], desc: `0 at middle` },
+    { y1: [-100, 0], y2_base: [0, 50], expected: [-50, 50], desc: `0 at top` },
+    { y1: [0, 40], y2_base: [60, 140], expected: [0, 140], desc: `y2 above 0` },
+    {
+      y1: [-20, 20],
+      y2_base: [60, 140],
+      expected: [-140, 140],
+      desc: `symmetric expand`,
+    },
+    { y1: [0, 0], y2_base: [0, 50], expected: [0, 50], desc: `zero span fallback` },
+    {
+      y1: [0, 200],
+      y2_base: [80, 120],
+      expected: [80, 120],
+      align_value: 100,
+      desc: `custom align 50%`,
+    },
+  ] as const)(`align: $desc`, ({ y1, y2_base, expected, align_value }) => {
     expect(sync_y2_range([...y1], [...y2_base], { mode: `align`, align_value })).toEqual([
       ...expected,
     ])
@@ -138,25 +155,37 @@ describe(`sync_y2_range`, () => {
     { y1: [10, 20], y2_base: [60, 140], align_value: 30 },
     { y1: [0, 100], y2_base: [200, 300], align_value: -50 },
     { y1: [0, 100], y2_base: [-50, 50], align_value: 150 },
-  ])(
-    `align edge: align_value=$align_value with y1=$y1`,
-    ({ y1, y2_base, align_value }) => {
-      const result = sync_y2_range(y1, y2_base, {
-        mode: `align`,
-        align_value,
-      })
-      expect(result[0]).toBeLessThanOrEqual(Math.min(y2_base[0], align_value))
-      expect(result[1]).toBeGreaterThanOrEqual(Math.max(y2_base[1], align_value))
-    },
-  )
+  ])(`align edge: align_value=$align_value with y1=$y1`, ({ y1, y2_base, align_value }) => {
+    const result = sync_y2_range(y1, y2_base, {
+      mode: `align`,
+      align_value,
+    })
+    expect(result[0]).toBeLessThanOrEqual(Math.min(y2_base[0], align_value))
+    expect(result[1]).toBeGreaterThanOrEqual(Math.max(y2_base[1], align_value))
+  })
 
   // Non-finite inputs fall back to y2_base_range
   it.each<[Vec2, Vec2]>([
-    [[0, Infinity], [0, 50]],
-    [[-Infinity, 100], [0, 50]],
-    [[0, 100], [0, Infinity]],
-    [[NaN, 100], [0, 50]],
-    [[0, 100], [NaN, 50]],
+    [
+      [0, Infinity],
+      [0, 50],
+    ],
+    [
+      [-Infinity, 100],
+      [0, 50],
+    ],
+    [
+      [0, 100],
+      [0, Infinity],
+    ],
+    [
+      [NaN, 100],
+      [0, 50],
+    ],
+    [
+      [0, 100],
+      [NaN, 50],
+    ],
   ])(`non-finite sync_y2_range(%j, %j) returns y2_base`, (y1, y2_base) => {
     expect(sync_y2_range(y1, y2_base, { mode: `synced` })).toEqual(y2_base)
   })
@@ -164,40 +193,40 @@ describe(`sync_y2_range`, () => {
 
 describe(`expand_range_if_needed`, () => {
   // [current, new_range, expected_range, expected_changed, desc]
-  it.each(
-    [
-      // Sentinel transitions
-      [[0, 1], [5, 15], [5, 15], true, `adopts new from default`],
-      [[0, 1], [0, 50], [0, 50], true, `adopts [0,50] from default`],
-      [[0, 1], [0, 0.5], [0, 0.5], true, `adopts [0,0.5] from default`],
-      [[5, 15], [0, 1], [5, 15], false, `keeps current when new is default`],
-      [[0, 1], [0, 1], [0, 1], false, `both default`],
-      // Adopt new range (expand and shrink)
-      [[5, 15], [3, 15], [3, 15], true, `expands min`],
-      [[5, 15], [5, 20], [5, 20], true, `expands max`],
-      [[5, 15], [3, 20], [3, 20], true, `expands both`],
-      [[5, 15], [7, 12], [7, 12], true, `shrinks`],
-      [[5, 15], [8, 20], [8, 20], true, `shrinks min + expands max`],
-      [[5, 15], [5, 15], [5, 15], false, `identical`],
-      [[0, 6000], [0, 3], [0, 3], true, `large→small (property switch)`],
-      // Negative / edge cases
-      [[-10, -5], [-15, -3], [-15, -3], true, `negative ranges`],
-      [[-5, 5], [-10, 10], [-10, 10], true, `crossing zero`],
-      [[-10, 10], [-5, 5], [-5, 5], true, `shrinks negative`],
-      [[0, 1e6], [-1e6, 2e6], [-1e6, 2e6], true, `large ranges`],
-      // Non-finite
-      [[0, 100], [NaN, 50], [0, 100], false, `NaN in new → keeps current`],
-      [[0, 100], [0, Infinity], [0, 100], false, `Infinity in new → keeps current`],
-      [[NaN, 100], [0, 50], [0, 50], true, `NaN in current → adopts valid`],
-      [[NaN, Infinity], [NaN, 50], [0, 1], true, `both invalid → sentinel`],
-      // Inverted ranges (e.g. x2 axis with range [3.5, 1.4])
-      [[0, 1], [3.5, 1.4], [3.5, 1.4], true, `inverted range adopted from default`],
-      [[3.5, 1.4], [3.5, 1.4], [3.5, 1.4], false, `identical inverted`],
-      [[3.5, 1.4], [4, 1], [4, 1], true, `inverted range updated`],
-    ] as const,
-  )(`%s`, (current, new_r, expected, changed, _desc) => {
-    expect(expand_range_if_needed([...current], [...new_r]))
-      .toEqual({ range: [...expected], changed })
+  it.each([
+    // Sentinel transitions
+    [[0, 1], [5, 15], [5, 15], true, `adopts new from default`],
+    [[0, 1], [0, 50], [0, 50], true, `adopts [0,50] from default`],
+    [[0, 1], [0, 0.5], [0, 0.5], true, `adopts [0,0.5] from default`],
+    [[5, 15], [0, 1], [5, 15], false, `keeps current when new is default`],
+    [[0, 1], [0, 1], [0, 1], false, `both default`],
+    // Adopt new range (expand and shrink)
+    [[5, 15], [3, 15], [3, 15], true, `expands min`],
+    [[5, 15], [5, 20], [5, 20], true, `expands max`],
+    [[5, 15], [3, 20], [3, 20], true, `expands both`],
+    [[5, 15], [7, 12], [7, 12], true, `shrinks`],
+    [[5, 15], [8, 20], [8, 20], true, `shrinks min + expands max`],
+    [[5, 15], [5, 15], [5, 15], false, `identical`],
+    [[0, 6000], [0, 3], [0, 3], true, `large→small (property switch)`],
+    // Negative / edge cases
+    [[-10, -5], [-15, -3], [-15, -3], true, `negative ranges`],
+    [[-5, 5], [-10, 10], [-10, 10], true, `crossing zero`],
+    [[-10, 10], [-5, 5], [-5, 5], true, `shrinks negative`],
+    [[0, 1e6], [-1e6, 2e6], [-1e6, 2e6], true, `large ranges`],
+    // Non-finite
+    [[0, 100], [NaN, 50], [0, 100], false, `NaN in new → keeps current`],
+    [[0, 100], [0, Infinity], [0, 100], false, `Infinity in new → keeps current`],
+    [[NaN, 100], [0, 50], [0, 50], true, `NaN in current → adopts valid`],
+    [[NaN, Infinity], [NaN, 50], [0, 1], true, `both invalid → sentinel`],
+    // Inverted ranges (e.g. x2 axis with range [3.5, 1.4])
+    [[0, 1], [3.5, 1.4], [3.5, 1.4], true, `inverted range adopted from default`],
+    [[3.5, 1.4], [3.5, 1.4], [3.5, 1.4], false, `identical inverted`],
+    [[3.5, 1.4], [4, 1], [4, 1], true, `inverted range updated`],
+  ] as const)(`%s`, (current, new_r, expected, changed, _desc) => {
+    expect(expand_range_if_needed([...current], [...new_r])).toEqual({
+      range: [...expected],
+      changed,
+    })
   })
 
   it(`handles decimal precision`, () => {

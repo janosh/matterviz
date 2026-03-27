@@ -16,24 +16,13 @@ import type {
 } from './types'
 
 // Convert temperature between units (K, °C, °F)
-export function convert_temp(
-  value: number,
-  from: TempUnit,
-  to: TempUnit,
-): number {
+export function convert_temp(value: number, from: TempUnit, to: TempUnit): number {
   if (from === to) return value
   // Convert to Kelvin first
-  const kelvin = from === `°C`
-    ? value + 273.15
-    : from === `°F`
-    ? (value - 32) * (5 / 9) + 273.15
-    : value
+  const kelvin =
+    from === `°C` ? value + 273.15 : from === `°F` ? (value - 32) * (5 / 9) + 273.15 : value
   // Convert from Kelvin to target
-  return to === `K`
-    ? kelvin
-    : to === `°C`
-    ? kelvin - 273.15
-    : (kelvin - 273.15) * (9 / 5) + 32
+  return to === `K` ? kelvin : to === `°C` ? kelvin - 273.15 : (kelvin - 273.15) * (9 / 5) + 32
 }
 
 // Centralized defaults for phase diagram configuration (single source of truth)
@@ -72,14 +61,12 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
 })
 
 // Merge partial config with defaults - single helper for consistent merging
-export function merge_phase_diagram_config(
-  config: Partial<PhaseDiagramConfig>,
-) {
+export function merge_phase_diagram_config(config: Partial<PhaseDiagramConfig>) {
   return {
     margin: { ...PHASE_DIAGRAM_DEFAULTS.margin, ...config.margin },
     font_size: config.font_size ?? PHASE_DIAGRAM_DEFAULTS.font_size,
-    special_point_radius: config.special_point_radius ??
-      PHASE_DIAGRAM_DEFAULTS.special_point_radius,
+    special_point_radius:
+      config.special_point_radius ?? PHASE_DIAGRAM_DEFAULTS.special_point_radius,
     tie_line: { ...PHASE_DIAGRAM_DEFAULTS.tie_line, ...config.tie_line },
     colors: { ...PHASE_DIAGRAM_DEFAULTS.colors, ...config.colors },
   }
@@ -125,10 +112,7 @@ export const PHASE_COLORS = Object.freeze(
   Object.fromEntries(
     Object.entries(PHASE_COLOR_HEX).map(([key, hex]) => [
       key,
-      add_alpha(
-        hex,
-        key in PHASE_ALPHA ? PHASE_ALPHA[key as keyof typeof PHASE_ALPHA] : 0.6,
-      ),
+      add_alpha(hex, key in PHASE_ALPHA ? PHASE_ALPHA[key as keyof typeof PHASE_ALPHA] : 0.6),
     ]),
   ),
 ) as Record<PhaseColorKey, string>
@@ -162,10 +146,7 @@ export function get_phase_color_key(name: string): PhaseColorKey {
 }
 
 // Get phase color - returns rgba() by default, or RGB string if format='rgb'
-export function get_phase_color(
-  name: string,
-  format: `rgba` | `rgb` = `rgba`,
-): string {
+export function get_phase_color(name: string, format: `rgba` | `rgb` = `rgba`): string {
   const lower = name.toLowerCase().trim()
   const key: PhaseColorKey = lower.includes(`+`) ? `two_phase` : get_phase_color_key(name)
   return format === `rgb` ? PHASE_COLOR_RGB[key] : PHASE_COLORS[key]
@@ -181,7 +162,10 @@ export interface GradientStop {
 // Returns array of evenly-spaced gradient stops, or null for single-phase regions
 export function get_multi_phase_gradient(name: string): GradientStop[] | null {
   if (!name.includes(`+`)) return null
-  const phases = name.split(`+`).map((s) => s.trim()).filter(Boolean)
+  const phases = name
+    .split(`+`)
+    .map((s) => s.trim())
+    .filter(Boolean)
   if (phases.length < 2) return null
 
   // Create evenly spaced gradient stops (phases.length >= 2 guaranteed by early return)
@@ -208,7 +192,9 @@ export function find_phase_at_point(
 }
 
 // SVG path generator using d3-shape
-const path_line = line<Vec2>().x((d) => d[0]).y((d) => d[1])
+const path_line = line<Vec2>()
+  .x((d) => d[0])
+  .y((d) => d[1])
 
 // Generate closed SVG path for polygon regions (min 3 points)
 export const generate_region_path = (vertices: Vec2[]): string =>
@@ -216,7 +202,7 @@ export const generate_region_path = (vertices: Vec2[]): string =>
 
 // Generate open SVG path for boundary curves (min 2 points)
 export const generate_boundary_path = (points: Vec2[]): string =>
-  points.length < 2 ? `` : path_line(points) ?? ``
+  points.length < 2 ? `` : (path_line(points) ?? ``)
 
 // Compute label properties (rotation, wrapping, scale) to fit within region bounds
 export function compute_label_properties(
@@ -265,10 +251,7 @@ export function compute_label_properties(
   }
 
   // Scale down as last resort (min 70%)
-  const scale = Math.max(
-    0.7,
-    Math.min(avail_w / label_width, avail_h / line_height, 1),
-  )
+  const scale = Math.max(0.7, Math.min(avail_w / label_width, avail_h / line_height, 1))
   const rotation = is_tall ? -90 : 0
   return { rotation, lines: [label], scale }
 }
@@ -316,10 +299,7 @@ export function format_composition(
 }
 
 // Format temperature value for display
-export function format_temperature(
-  value: number,
-  unit: TempUnit = `K`,
-): string {
+export function format_temperature(value: number, unit: TempUnit = `K`): string {
   return `${format_num(value, `.0f`)} ${unit}`
 }
 
@@ -327,7 +307,10 @@ export function format_temperature(
 // Returns null if the region is not exactly a two-phase region
 function parse_two_phases(name: string): [string, string] | null {
   if (!name.includes(`+`)) return null
-  const parts = name.trim().split(/\s*\+\s*/).filter(Boolean)
+  const parts = name
+    .trim()
+    .split(/\s*\+\s*/)
+    .filter(Boolean)
   return parts.length === 2 ? [parts[0], parts[1]] : null
 }
 
@@ -349,12 +332,11 @@ function find_polygon_intersections(
       (v2[axis] <= fixed_val && v1[axis] > fixed_val)
     ) {
       intersections.push(
-        v1[other] +
-          ((fixed_val - v1[axis]) / (v2[axis] - v1[axis])) * (v2[other] - v1[other]),
+        v1[other] + ((fixed_val - v1[axis]) / (v2[axis] - v1[axis])) * (v2[other] - v1[other]),
       )
     }
   }
-  return intersections.sort((a, b) => a - b)
+  return intersections.toSorted((a, b) => a - b)
 }
 
 function pick_bracketing_intersection_pair(
@@ -478,9 +460,10 @@ export function format_hover_info_text(
   const lines: string[] = [
     `Phase: ${info.region.name}`,
     `Temperature: ${format_temperature(to_display(info.temperature), temp_unit)}`,
-    `Composition: ${format_composition(info.composition, comp_unit)} ${component_b} (${
-      format_composition(1 - info.composition, comp_unit)
-    } ${component_a})`,
+    `Composition: ${format_composition(info.composition, comp_unit)} ${component_b} (${format_composition(
+      1 - info.composition,
+      comp_unit,
+    )} ${component_a})`,
   ]
 
   if (lever_rule_mode === `horizontal` && info.lever_rule) {
@@ -488,12 +471,14 @@ export function format_hover_info_text(
     lines.push(
       ``,
       `Lever Rule:`,
-      `  ${lr.left_phase}: ${format_num(lr.fraction_left * 100, `.1f`)}% (at ${
-        format_composition(lr.left_composition, comp_unit)
-      })`,
-      `  ${lr.right_phase}: ${format_num(lr.fraction_right * 100, `.1f`)}% (at ${
-        format_composition(lr.right_composition, comp_unit)
-      })`,
+      `  ${lr.left_phase}: ${format_num(lr.fraction_left * 100, `.1f`)}% (at ${format_composition(
+        lr.left_composition,
+        comp_unit,
+      )})`,
+      `  ${lr.right_phase}: ${format_num(lr.fraction_right * 100, `.1f`)}% (at ${format_composition(
+        lr.right_composition,
+        comp_unit,
+      )})`,
     )
   }
 
@@ -502,12 +487,14 @@ export function format_hover_info_text(
     lines.push(
       ``,
       `Vertical Lever Rule:`,
-      `  ${vlr.bottom_phase}: ${format_num(vlr.fraction_bottom * 100, `.1f`)}% (at ${
-        format_temperature(to_display(vlr.bottom_temperature), temp_unit)
-      })`,
-      `  ${vlr.top_phase}: ${format_num(vlr.fraction_top * 100, `.1f`)}% (at ${
-        format_temperature(to_display(vlr.top_temperature), temp_unit)
-      })`,
+      `  ${vlr.bottom_phase}: ${format_num(vlr.fraction_bottom * 100, `.1f`)}% (at ${format_temperature(
+        to_display(vlr.bottom_temperature),
+        temp_unit,
+      )})`,
+      `  ${vlr.top_phase}: ${format_num(vlr.fraction_top * 100, `.1f`)}% (at ${format_temperature(
+        to_display(vlr.top_temperature),
+        temp_unit,
+      )})`,
     )
   }
 
@@ -548,13 +535,10 @@ export function summarize_models(
 ): string {
   const counts = new Map<number, number>()
   for (const phase of phases) {
-    counts.set(
-      phase.sublattice_count,
-      (counts.get(phase.sublattice_count) ?? 0) + 1,
-    )
+    counts.set(phase.sublattice_count, (counts.get(phase.sublattice_count) ?? 0) + 1)
   }
   return [...counts.entries()]
-    .sort(([sl_a], [sl_b]) => sl_a - sl_b)
+    .toSorted(([sl_a], [sl_b]) => sl_a - sl_b)
     .map(([sublattices, count]) => `${count}×${sublattices}-SL`)
     .join(`, `)
 }
@@ -648,7 +632,7 @@ export function tokenize_formula(formula: string): FormulaToken[] {
     // Any other character (lowercase, hyphen, etc.) - collect as text
     let text = char
     idx++
-    while (idx < formula.length && !/[A-Z\d\-]/.test(formula[idx])) {
+    while (idx < formula.length && !/[A-Z\d-]/.test(formula[idx])) {
       text += formula[idx]
       idx++
     }
@@ -668,10 +652,7 @@ const DY = { sub: 0.25, sup: -0.4 } as const
 
 // Format chemical formula as SVG tspan elements with subscripts
 // Tracks cumulative baseline offset and adds trailing reset so concatenated text aligns
-export function format_formula_svg(
-  formula: string,
-  use_subscripts = true,
-): string {
+export function format_formula_svg(formula: string, use_subscripts = true): string {
   if (!use_subscripts || !is_compound(formula)) return formula
 
   let result = ``
@@ -701,10 +682,13 @@ function format_label_parts(
   formatter: (formula: string, use_sub: boolean) => string,
 ): string {
   if (!use_subscripts) return label
-  return label.split(/(\s*\+\s*)/).map((part) => {
-    if (part.trim() === `+`) return part
-    return formatter(part.trim(), use_subscripts)
-  }).join(``)
+  return label
+    .split(/(\s*\+\s*)/)
+    .map((part) => {
+      if (part.trim() === `+`) return part
+      return formatter(part.trim(), use_subscripts)
+    })
+    .join(``)
 }
 
 // Format a phase region label (e.g. "La2NiO4 + NiO") as SVG with subscripts
@@ -716,16 +700,78 @@ export const format_label_html = (label: string, use_subscripts = true): string 
   format_label_parts(label, use_subscripts, format_formula_html)
 
 // Format chemical formula as HTML with <sub> and <sup> tags
-export function format_formula_html(
-  formula: string,
-  use_subscripts = true,
-): string {
+export function format_formula_html(formula: string, use_subscripts = true): string {
   if (!use_subscripts || !is_compound(formula)) return formula
 
   return tokenize_formula(formula)
-    .map((token) =>
-      token.text ??
-        (token.sub ? `<sub>${token.sub}</sub>` : `<sup>${token.sup}</sup>`)
+    .map(
+      (token) =>
+        token.text ?? (token.sub ? `<sub>${token.sub}</sub>` : `<sup>${token.sup}</sup>`),
     )
     .join(``)
+}
+
+// Compute the x-axis domain for a binary phase diagram.
+// Uses explicit range if fully specified, otherwise derives from data extent
+// and auto-extends to 0/1 when edge regions contain pure components.
+export function compute_x_domain(
+  x_range: [number | null, number | null] | undefined,
+  data: PhaseDiagramData | null,
+): Vec2 {
+  const lo = x_range?.[0]
+  const hi = x_range?.[1]
+  if (lo != null && hi != null) return [lo, hi]
+
+  if (data) {
+    let data_min = Infinity
+    let data_max = -Infinity
+    const update = (val: number) => {
+      if (val < data_min) data_min = val
+      if (val > data_max) data_max = val
+    }
+    for (const region of data.regions) {
+      for (const vertex of region.vertices) update(vertex[0])
+    }
+    for (const boundary of data.boundaries) {
+      for (const point of boundary.points) update(point[0])
+    }
+    for (const special_point of data.special_points ?? []) {
+      update(special_point.position[0])
+    }
+
+    if (data_min <= data_max) {
+      let x_min = lo ?? data_min
+      let x_max = hi ?? data_max
+
+      // Auto-extend to 0/1 when edge regions contain a pure component AND the
+      // data already nearly reaches the boundary
+      const comp_at_edge = (comp: string, x_val: number) => {
+        const re = new RegExp(`\\b${comp.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`)
+        return data.regions.some(
+          (region) =>
+            re.test(region.name) &&
+            region.vertices.some((vertex) => Math.abs(vertex[0] - x_val) < 1e-6),
+        )
+      }
+      if (
+        lo == null &&
+        x_min < 0.05 &&
+        data.components[0] &&
+        comp_at_edge(data.components[0], x_min)
+      ) {
+        x_min = 0
+      }
+      if (
+        hi == null &&
+        x_max > 0.95 &&
+        data.components[1] &&
+        comp_at_edge(data.components[1], x_max)
+      ) {
+        x_max = 1
+      }
+
+      return [x_min, x_max]
+    }
+  }
+  return [lo ?? 0, hi ?? 1]
 }

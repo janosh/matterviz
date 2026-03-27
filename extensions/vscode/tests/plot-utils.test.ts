@@ -60,13 +60,7 @@ describe(`extract_columns`, () => {
   })
 
   test(`classifies mixed-type columns when below 80% threshold`, () => {
-    const data = [
-      { val: 1 },
-      { val: `two` },
-      { val: 3 },
-      { val: `four` },
-      { val: 5 },
-    ]
+    const data = [{ val: 1 }, { val: `two` }, { val: 3 }, { val: `four` }, { val: 5 }]
     const cols = extract_columns(data)
     expect(cols.get(`val`)?.type).toBe(`mixed`)
   })
@@ -112,24 +106,37 @@ describe(`suggest_mapping`, () => {
     expect(mapping.y).toBe(`energy`)
   })
 
-  test.each(
+  test.each([
     [
-      [`bar (string + 2 numeric)`, `bar`, `material`, {
+      `bar (string + 2 numeric)`,
+      `bar`,
+      `material`,
+      {
         material: [`Si`, `Ge`, `C`],
         energy: [-5.4, -4.6, -7.4],
         volume: [20.5, 22.7, 11.2],
-      }],
-      [`bar (string + 1 numeric)`, `bar`, `name`, {
+      },
+    ],
+    [
+      `bar (string + 1 numeric)`,
+      `bar`,
+      `name`,
+      {
         name: [`Si`, `Ge`, `C`],
         energy: [-5.4, -4.6, -7.4],
-      }],
-      [`scatter3d (x/y/z columns)`, `scatter3d`, `x`, {
+      },
+    ],
+    [
+      `scatter3d (x/y/z columns)`,
+      `scatter3d`,
+      `x`,
+      {
         x: [1, 2],
         y: [3, 4],
         z: [5, 6],
-      }],
-    ] as const,
-  )(`suggests %s`, (_, expected_type, expected_x, data) => {
+      },
+    ],
+  ] as const)(`suggests %s`, (_, expected_type, expected_x, data) => {
     const { plot_type, mapping } = suggest_mapping(extract_columns(data))
     expect(plot_type).toBe(expected_type)
     expect(mapping.x).toBe(expected_x)
@@ -142,11 +149,16 @@ describe(`suggest_mapping`, () => {
   })
 
   test(`single numeric column falls back to histogram`, () => {
-    const cols = new Map([[`a`, {
-      values: [1, 2, 3],
-      type: `numeric` as const,
-      n_valid: 3,
-    }]])
+    const cols = new Map([
+      [
+        `a`,
+        {
+          values: [1, 2, 3],
+          type: `numeric` as const,
+          n_valid: 3,
+        },
+      ],
+    ])
     const { plot_type, mapping } = suggest_mapping(cols)
     expect(plot_type).toBe(`histogram`)
     expect(mapping.x).toBe(`a`)
@@ -168,12 +180,10 @@ describe(`build_scatter_series`, () => {
     expect(series.y).toEqual([4, 5, 6])
   })
 
-  test.each(
-    [
-      [`color`, { x: `x`, y: `y`, color: `extra` }, `color_values`],
-      [`size`, { x: `x`, y: `y`, size: `extra` }, `size_values`],
-    ] as const,
-  )(`includes %s_values when mapped`, (_, axis_mapping, prop) => {
+  test.each([
+    [`color`, { x: `x`, y: `y`, color: `extra` }, `color_values`],
+    [`size`, { x: `x`, y: `y`, size: `extra` }, `size_values`],
+  ] as const)(`includes %s_values when mapped`, (_, axis_mapping, prop) => {
     const cols = extract_columns({ x: [1, 2], y: [3, 4], extra: [5, 6] })
     const series = build_scatter_series(cols, axis_mapping)
     expect(series[prop]).toEqual([5, 6])

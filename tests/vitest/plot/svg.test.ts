@@ -16,17 +16,13 @@ describe(`bar_path`, () => {
   it(`returns vertical bar path with rounded top corners`, () => {
     const path = bar_path(10, 20, 40, 60, 5, true)
     // Path should: start bottom-left, go up, arc top-left, horizontal across, arc top-right, go down, close
-    expect(path).toBe(
-      `M10,80V25A5,5 0 0 1 15,20H45A5,5 0 0 1 50,25V80Z`,
-    )
+    expect(path).toBe(`M10,80V25A5,5 0 0 1 15,20H45A5,5 0 0 1 50,25V80Z`)
   })
 
   it(`returns horizontal bar path with rounded right corners`, () => {
     const path = bar_path(10, 20, 40, 60, 5, false)
     // Path should: start top-left, go right, arc top-right, go down, arc bottom-right, go left, close
-    expect(path).toBe(
-      `M10,20H45A5,5 0 0 1 50,25V75A5,5 0 0 1 45,80H10Z`,
-    )
+    expect(path).toBe(`M10,20H45A5,5 0 0 1 50,25V75A5,5 0 0 1 45,80H10Z`)
   })
 
   it(`defaults to vertical orientation when not specified`, () => {

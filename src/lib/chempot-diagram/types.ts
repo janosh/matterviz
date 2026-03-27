@@ -5,12 +5,7 @@ import type { PhaseData } from '$lib/convex-hull/types'
 // Default is [-50, 0] matching pymatgen
 export type ChemPotLimits = Partial<Record<string, [number, number]>>
 
-export type ChemPotColorMode =
-  | `none`
-  | `energy`
-  | `formation_energy`
-  | `arity`
-  | `entries`
+export type ChemPotColorMode = `none` | `energy` | `formation_energy` | `arity` | `entries`
 
 // Visual and behavioral configuration for the diagram
 export interface ChemPotDiagramConfig {

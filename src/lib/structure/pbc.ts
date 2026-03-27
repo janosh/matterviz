@@ -22,7 +22,7 @@ export function find_image_atoms(
 
   // Skip trajectory data (>10% atoms outside cell)
   const atoms_outside_cell = structure.sites.filter(({ abc }) =>
-    abc.some((coord) => coord < -0.1 || coord > 1.1)
+    abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
   // Skip image generation for trajectory data (>10% atoms outside cell)
   if (atoms_outside_cell.length > structure.sites.length * 0.1) {
@@ -67,7 +67,7 @@ export function find_image_atoms(
     }
 
     // Generate all translation combinations
-    for (let mask = 1; mask < (1 << edge_dims.length); mask++) {
+    for (let mask = 1; mask < 1 << edge_dims.length; mask++) {
       // Track selected translation per dimension. If both +1 and -1 are selected for a dim,
       // the net shift is zero and we skip because it yields no image.
       const selected_shift: Vec3 = [0, 0, 0]
@@ -92,9 +92,11 @@ export function find_image_atoms(
 
       // If no dimension actually shifted, continue
       if (
-        img_abc[0] === site.abc[0] && img_abc[1] === site.abc[1] &&
+        img_abc[0] === site.abc[0] &&
+        img_abc[1] === site.abc[1] &&
         img_abc[2] === site.abc[2]
-      ) continue
+      )
+        continue
 
       // Compute xyz from img_abc to ensure consistency
       const img_xyz = math.add(
@@ -127,7 +129,7 @@ export function get_pbc_image_sites(
 
   // Check for trajectory data
   const atoms_outside_cell = structure.sites.filter((site) =>
-    site.abc.some((coord) => coord < -0.1 || coord > 1.1)
+    site.abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
 
   // Return trajectory data unchanged

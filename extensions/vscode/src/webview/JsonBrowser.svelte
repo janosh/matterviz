@@ -117,14 +117,14 @@
       if (cleaned_up) return
       cleaned_up = true
       on_done()
-      window.removeEventListener(`mousemove`, on_move)
-      window.removeEventListener(`mouseup`, cleanup)
-      window.removeEventListener(`blur`, cleanup)
+      globalThis.removeEventListener(`mousemove`, on_move)
+      globalThis.removeEventListener(`mouseup`, cleanup)
+      globalThis.removeEventListener(`blur`, cleanup)
       document.documentElement.removeEventListener(`mouseleave`, cleanup)
     }
-    window.addEventListener(`mousemove`, on_move)
-    window.addEventListener(`mouseup`, cleanup)
-    window.addEventListener(`blur`, cleanup)
+    globalThis.addEventListener(`mousemove`, on_move)
+    globalThis.addEventListener(`mouseup`, cleanup)
+    globalThis.addEventListener(`blur`, cleanup)
     document.documentElement.addEventListener(`mouseleave`, cleanup)
   }
 
@@ -205,7 +205,7 @@
       event.dataTransfer.effectAllowed = `copy`
     }
     sidebar_element.addEventListener(`dragstart`, on_dragstart)
-    return () => sidebar_element!.removeEventListener(`dragstart`, on_dragstart)
+    return () => sidebar_element?.removeEventListener(`dragstart`, on_dragstart)
   })
 
   // === Badge injection ===
@@ -248,7 +248,7 @@
       if (val !== undefined) replace_or_add_panel(data_path, detected_type as RenderableType, val)
     }
     sidebar_element.addEventListener(`click`, on_badge_click, true)
-    return () => sidebar_element!.removeEventListener(`click`, on_badge_click, true)
+    return () => sidebar_element?.removeEventListener(`click`, on_badge_click, true)
   })
 
   // Escape key closes all panels, returning to the overview
@@ -260,8 +260,8 @@
       if (tag === `INPUT` || tag === `SELECT` || tag === `TEXTAREA`) return
       close_all_panels()
     }
-    window.addEventListener(`keydown`, on_keydown)
-    return () => window.removeEventListener(`keydown`, on_keydown)
+    globalThis.addEventListener(`keydown`, on_keydown)
+    return () => globalThis.removeEventListener(`keydown`, on_keydown)
   })
 
   // Re-apply badges + draggable attributes when tree DOM changes.
@@ -292,9 +292,7 @@
 
   // === Panel management ===
 
-  function make_panel_id(): string {
-    return `panel_${crypto.randomUUID()}`
-  }
+  const make_panel_id = (): string => `panel_${crypto.randomUUID()}`
 
   // Click replaces the single/first panel; drag adds a split
   function replace_or_add_panel(data_path: string, detected_type: RenderableType, val: unknown): void {
@@ -375,7 +373,7 @@
   function unmount_panel(idx: number): void {
     const panel = panels[idx]
     if (panel?.component) {
-      try { unmount(panel.component) } catch (err) { console.error(`JsonBrowser: unmount failed:`, err) }
+      try { unmount(panel.component) } catch (error) { console.error(`JsonBrowser: unmount failed:`, error) }
       panel.component = null
     }
     if (panel?.element) panel.element.innerHTML = ``
@@ -472,8 +470,8 @@
       } else if (detected_type === `plot`) {
         return mount(PlotPanel, { target, props: { data: val, onclose, ...common_props } })
       }
-    } catch (err) {
-      console.error(`JsonBrowser: mount failed for ${detected_type}:`, err)
+    } catch (error) {
+      console.error(`JsonBrowser: mount failed for ${detected_type}:`, error)
     }
     return null
   }
@@ -559,7 +557,7 @@
       } else {
         add_panel_with_split(data_path, detected_type, val, target_idx, zone)
       }
-    } catch (err) { console.error(`JsonBrowser: drop failed:`, err) }
+    } catch (error) { console.error(`JsonBrowser: drop failed:`, error) }
   }
 
   // === Panel split divider dragging ===
@@ -635,10 +633,7 @@
   // The first split direction determines the flex layout direction
   let layout_direction = $derived(split_directions.length > 0 ? split_directions[0] : `vertical`)
 
-  // Helper to get type color without inline `as` casts that break Deno's Svelte parser
-  function type_color(key: string): string {
-    return TYPE_COLORS[key as RenderableType] ?? `#888`
-  }
+  const type_color = (key: string) => TYPE_COLORS[key as RenderableType] ?? `#888`
 </script>
 
 {#snippet type_list(header: string, extra_style?: string)}

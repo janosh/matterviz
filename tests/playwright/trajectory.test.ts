@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import type { Locator } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { IS_CI } from './helpers'
@@ -11,9 +10,7 @@ const describe_local_only = IS_CI ? test.describe.skip : test.describe
 
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
-  const display_button = trajectory.locator(
-    `.view-mode-dropdown-wrapper .view-mode-button`,
-  )
+  const display_button = trajectory.locator(`.view-mode-dropdown-wrapper .view-mode-button`)
   await expect(display_button).toBeVisible()
   await display_button.click()
 
@@ -60,12 +57,8 @@ test.describe(`Trajectory Component`, () => {
   test(`empty state displays correctly`, async ({ page }) => {
     const empty_trajectory = page.locator(`#empty-state`)
 
-    await expect(empty_trajectory.locator(`.empty-state h3`)).toHaveText(
-      `Load Trajectory`,
-    )
-    await expect(empty_trajectory.locator(`ul`)).toContainText(
-      `Multi-frame XYZ`,
-    )
+    await expect(empty_trajectory.locator(`.empty-state h3`)).toHaveText(`Load Trajectory`)
+    await expect(empty_trajectory.locator(`ul`)).toContainText(`Multi-frame XYZ`)
     await expect(empty_trajectory).toHaveAttribute(
       `aria-label`,
       `Drop trajectory file here to load`,
@@ -82,10 +75,7 @@ test.describe(`Trajectory Component`, () => {
       const filename_button = filename_section.locator(`button`)
       await expect(filename_button).toBeVisible()
       await expect(filename_button).toBeEnabled()
-      await expect(filename_button).toHaveAttribute(
-        `title`,
-        `Click to copy filename`,
-      )
+      await expect(filename_button).toHaveAttribute(`title`, `Click to copy filename`)
       await filename_button.click() // no visual feedback expected
     }
 
@@ -104,9 +94,7 @@ test.describe(`Trajectory Component`, () => {
     const step_input = controls.locator(`.step-input`)
 
     await expect(step_input).toHaveValue(`0`)
-    await expect(
-      controls.locator(`span`).filter({ hasText: `/ 3` }),
-    ).toBeVisible()
+    await expect(controls.locator(`span`).filter({ hasText: `/ 3` })).toBeVisible()
 
     // Test navigation
     // Test navigation using step input directly
@@ -154,26 +142,18 @@ test.describe(`Trajectory Component`, () => {
     await expect(info_pane).toBeVisible()
 
     // Check info pane has the main header
-    await expect(info_pane.locator(`h4`).filter({ hasText: `Trajectory Info` }))
-      .toBeVisible()
+    await expect(info_pane.locator(`h4`).filter({ hasText: `Trajectory Info` })).toBeVisible()
 
     // Check that the pane contains some trajectory information
     const pane_content = await info_pane.textContent()
-    expect(pane_content).toMatch(
-      /Atoms|Total Frames|frames|Frame|Volume|volume|Trajectory/i,
-    )
+    expect(pane_content).toMatch(/Atoms|Total Frames|frames|Frame|Volume|volume|Trajectory/i)
 
     // Test component-specific timestamp formatting
-    if (
-      await info_pane.locator(`[title="File system last modified time"]`)
-        .isVisible()
-    ) {
-      const timestamp_text = await info_pane.locator(
-        `[title="File system last modified time"]`,
-      ).textContent()
-      expect(timestamp_text).toMatch(
-        /\d{1,2}\/\d{1,2}\/\d{4}.*\d{1,2}:\d{2}/,
-      )
+    if (await info_pane.locator(`[title="File system last modified time"]`).isVisible()) {
+      const timestamp_text = await info_pane
+        .locator(`[title="File system last modified time"]`)
+        .textContent()
+      expect(timestamp_text).toMatch(/\d{1,2}\/\d{1,2}\/\d{4}.*\d{1,2}:\d{2}/)
     }
 
     // Verify button is still functional
@@ -205,14 +185,8 @@ test.describe(`Trajectory Component`, () => {
     // Check FPS controls exist in DOM (might be conditionally displayed)
     const fps_section = controls.locator(`.fps-section`)
     if (await fps_section.isVisible()) {
-      await expect(fps_section.locator(`input[type="range"]`)).toHaveAttribute(
-        `min`,
-        `0.2`,
-      )
-      await expect(fps_section.locator(`input[type="number"]`)).toHaveAttribute(
-        `max`,
-        `60`,
-      )
+      await expect(fps_section.locator(`input[type="range"]`)).toHaveAttribute(`min`, `0.2`)
+      await expect(fps_section.locator(`input[type="number"]`)).toHaveAttribute(`max`, `60`)
       await expect(fps_section).toContainText(`FPS`)
     }
   })
@@ -226,18 +200,19 @@ test.describe(`Trajectory Component`, () => {
       await expect(auto_trajectory).toHaveClass(/horizontal/)
 
       // Explicit vertical layout should override auto detection
-      const vertical_trajectory = page.locator(
-        `#vertical-layout`,
-      )
+      const vertical_trajectory = page.locator(`#vertical-layout`)
       await expect(vertical_trajectory).toHaveClass(/vertical/)
 
       // Test auto layout with tall container - make the container tall and narrow
-      await page.locator(`#auto-layout div`).first().evaluate((el) => {
-        el.style.height = `900px`
-        el.style.width = `300px`
-        el.style.minHeight = `900px` // Ensure the height is actually applied
-        el.style.minWidth = `300px` // Ensure the width is actually applied
-      })
+      await page
+        .locator(`#auto-layout div`)
+        .first()
+        .evaluate((el) => {
+          el.style.height = `900px`
+          el.style.width = `300px`
+          el.style.minHeight = `900px` // Ensure the height is actually applied
+          el.style.minWidth = `300px` // Ensure the width is actually applied
+        })
 
       // Check if layout changed to vertical, but don't fail if it didn't
       // since viewport detection might not work in test environment
@@ -251,32 +226,24 @@ test.describe(`Trajectory Component`, () => {
 
     test(`step labels work correctly`, async ({ page }) => {
       // Test evenly spaced labels
-      const loaded_trajectory = page.locator(
-        `#loaded-trajectory`,
-      )
+      const loaded_trajectory = page.locator(`#loaded-trajectory`)
       const step_labels = loaded_trajectory.locator(`.step-labels .step-label`)
       await expect(step_labels).toHaveCount(3)
       await expect(step_labels.nth(0)).toHaveText(`0`)
       await expect(step_labels.nth(2)).toHaveText(`2`)
 
       // Test other step label configurations exist
-      const negative_labels = page.locator(
-        `#negative-step-labels .step-label`,
-      )
+      const negative_labels = page.locator(`#negative-step-labels .step-label`)
       const negative_count = await negative_labels.count()
       expect(negative_count).toBeGreaterThan(0)
 
-      const array_labels = page.locator(
-        `#array-step-labels .step-label`,
-      )
+      const array_labels = page.locator(`#array-step-labels .step-label`)
       const array_count = await array_labels.count()
       expect(array_count).toBeGreaterThan(0)
     })
 
     test(`controls can be hidden`, async ({ page }) => {
-      await expect(
-        page.locator(`#no-controls .trajectory-controls`),
-      ).toBeHidden()
+      await expect(page.locator(`#no-controls .trajectory-controls`)).toBeHidden()
     })
   })
 
@@ -363,9 +330,7 @@ test.describe(`Trajectory Component`, () => {
     })
 
     test(`plot hides when values are constant`, async ({ page }) => {
-      const constant_trajectory = page.locator(
-        `#constant-values`,
-      )
+      const constant_trajectory = page.locator(`#constant-values`)
       if (await constant_trajectory.isVisible()) {
         const content_area = constant_trajectory.locator(`.content-area`)
         await expect(content_area).toHaveClass(/hide-plot/)
@@ -378,9 +343,9 @@ test.describe(`Trajectory Component`, () => {
       const single_frame_viewer = page.locator(`#single-frame`)
 
       if (await single_frame_viewer.isVisible()) {
-        const step_info = single_frame_viewer.locator(`.trajectory-controls span`).filter(
-          { hasText: `/ 1` },
-        )
+        const step_info = single_frame_viewer
+          .locator(`.trajectory-controls span`)
+          .filter({ hasText: `/ 1` })
         await expect(step_info).toBeVisible()
 
         const content_area = single_frame_viewer.locator(`.content-area`)
@@ -404,9 +369,7 @@ test.describe(`Trajectory Component`, () => {
     })
 
     test(`custom properties display correctly`, async ({ page }) => {
-      const custom_props = page.locator(
-        `#custom-properties`,
-      )
+      const custom_props = page.locator(`#custom-properties`)
       const legend = custom_props.locator(`.legend`)
 
       // Legend may not be present if there's only one series or if legend is disabled
@@ -427,9 +390,7 @@ test.describe(`Trajectory Component`, () => {
     test(`custom controls snippet works`, async ({ page }) => {
       const custom_controls = page.locator(`#custom-controls`)
       if (await custom_controls.isVisible()) {
-        await expect(
-          custom_controls.locator(`.trajectory-controls .nav-section`),
-        ).toBeHidden()
+        await expect(custom_controls.locator(`.trajectory-controls .nav-section`)).toBeHidden()
         await expect(
           custom_controls.locator(`.trajectory-controls button`).first(),
         ).toBeVisible()
@@ -445,10 +406,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(trajectory).toHaveAttribute(`tabindex`, `0`)
 
       // Button titles
-      await expect(controls.locator(`.play-button`)).toHaveAttribute(
-        `title`,
-        /Play|Pause/,
-      )
+      await expect(controls.locator(`.play-button`)).toHaveAttribute(`title`, /Play|Pause/)
       await expect(controls.locator(`button[title="Previous step"]`)).toHaveAttribute(
         `title`,
         `Previous step`,
@@ -564,22 +522,30 @@ test.describe(`Trajectory Component`, () => {
   })
 
   test.describe(`responsive design and viewport-based layout`, () => {
-    test(`auto layout detects viewport aspect ratio and applies correct layout`, async ({ page }) => {
+    test(`auto layout detects viewport aspect ratio and applies correct layout`, async ({
+      page,
+    }) => {
       const trajectory = page.locator(`#auto-layout`)
 
       // Test wide container (should trigger horizontal layout)
-      await page.locator(`#auto-layout div`).first().evaluate((el) => {
-        el.style.width = `800px`
-        el.style.height = `400px`
-      })
+      await page
+        .locator(`#auto-layout div`)
+        .first()
+        .evaluate((el) => {
+          el.style.width = `800px`
+          el.style.height = `400px`
+        })
       await expect(trajectory).toHaveClass(/horizontal/)
       await expect(trajectory).not.toHaveClass(/vertical/)
 
       // Test tall container (should trigger vertical layout)
-      await page.locator(`#auto-layout div`).first().evaluate((el) => {
-        el.style.width = `400px`
-        el.style.height = `800px`
-      })
+      await page
+        .locator(`#auto-layout div`)
+        .first()
+        .evaluate((el) => {
+          el.style.width = `400px`
+          el.style.height = `800px`
+        })
 
       // Check if layout changed to vertical, but be lenient since viewport detection
       // might not work perfectly in test environment
@@ -591,29 +557,32 @@ test.describe(`Trajectory Component`, () => {
       expect(has_vertical || has_horizontal).toBe(true)
 
       // Test square container (implementation may default to horizontal for equal dimensions)
-      await page.locator(`#auto-layout div`).first().evaluate((el) => {
-        el.style.width = `600px`
-        el.style.height = `600px`
-      })
+      await page
+        .locator(`#auto-layout div`)
+        .first()
+        .evaluate((el) => {
+          el.style.width = `600px`
+          el.style.height = `600px`
+        })
       // For equal dimensions, the component can choose either layout - just verify it has one
-      const has_layout_class = await trajectory.evaluate((el) =>
-        el.classList.contains(`horizontal`) ||
-        el.classList.contains(`vertical`)
+      const has_layout_class = await trajectory.evaluate(
+        (el) => el.classList.contains(`horizontal`) || el.classList.contains(`vertical`),
       )
       expect(has_layout_class).toBe(true)
     })
 
     test(`layout prop overrides automatic detection`, async ({ page }) => {
       // Test that explicit layout props still work
-      const vertical_trajectory = page.locator(
-        `#vertical-layout`,
-      )
+      const vertical_trajectory = page.locator(`#vertical-layout`)
 
       // Set wide container that would normally trigger horizontal
-      await page.locator(`#vertical-layout div`).first().evaluate((el) => {
-        el.style.width = `800px`
-        el.style.height = `400px`
-      })
+      await page
+        .locator(`#vertical-layout div`)
+        .first()
+        .evaluate((el) => {
+          el.style.width = `800px`
+          el.style.height = `400px`
+        })
 
       // Should still be vertical due to explicit layout="vertical" prop
       await expect(vertical_trajectory).toHaveClass(/vertical/)
@@ -653,8 +622,8 @@ test.describe(`Trajectory Component`, () => {
 
       // Check that layout is still valid (horizontal or vertical)
       const final_class = await trajectory.getAttribute(`class`)
-      const has_layout = final_class?.includes(`vertical`) ||
-        final_class?.includes(`horizontal`)
+      const has_layout =
+        final_class?.includes(`vertical`) || final_class?.includes(`horizontal`)
       expect(has_layout).toBe(true)
 
       // Wait for display mode button to be available (only shows when plot series exist)
@@ -670,7 +639,9 @@ test.describe(`Trajectory Component`, () => {
       await expect(content_area).toHaveClass(/show-structure-only/)
     })
 
-    test(`mobile viewport forces vertical content layout for small screens`, async ({ page }) => {
+    test(`mobile viewport forces vertical content layout for small screens`, async ({
+      page,
+    }) => {
       // Set narrow viewport to trigger mobile layout
       await page.setViewportSize({ width: 700, height: 800 })
       const trajectory = page.locator(`#auto-layout`)
@@ -700,18 +671,21 @@ test.describe(`Trajectory Component`, () => {
       const controls = trajectory.locator(`.trajectory-controls`)
 
       // Test mobile container with tall aspect ratio
-      await page.locator(`#auto-layout div`).first().evaluate((el) => {
-        el.style.width = `300px`
-        el.style.height = `600px`
-      })
+      await page
+        .locator(`#auto-layout div`)
+        .first()
+        .evaluate((el) => {
+          el.style.width = `300px`
+          el.style.height = `600px`
+        })
       await expect(trajectory).toBeVisible()
       await expect(controls.locator(`.play-button`)).toBeVisible()
       await expect(controls.locator(`.trajectory-info-toggle`)).toBeVisible()
 
       // Should use vertical layout for tall container, but be lenient in test environment
       const mobile_class = await trajectory.getAttribute(`class`)
-      const has_mobile_layout = mobile_class?.includes(`vertical`) ||
-        mobile_class?.includes(`horizontal`)
+      const has_mobile_layout =
+        mobile_class?.includes(`vertical`) || mobile_class?.includes(`horizontal`)
       expect(has_mobile_layout).toBe(true)
 
       // Info pane should exist and be properly sized
@@ -770,26 +744,35 @@ test.describe(`Trajectory Component`, () => {
       const trajectory = page.locator(`#auto-layout`)
 
       // Test tablet landscape container (should be horizontal)
-      await page.locator(`#auto-layout div`).first().evaluate((el) => {
-        el.style.width = `750px`
-        el.style.height = `550px`
-      })
+      await page
+        .locator(`#auto-layout div`)
+        .first()
+        .evaluate((el) => {
+          el.style.width = `750px`
+          el.style.height = `550px`
+        })
       await expect(trajectory).toHaveClass(/horizontal/)
 
       // Test tablet portrait container (should be vertical)
-      await page.locator(`#auto-layout div`).first().evaluate((el) => {
-        el.style.width = `550px`
-        el.style.height = `750px`
-      })
+      await page
+        .locator(`#auto-layout div`)
+        .first()
+        .evaluate((el) => {
+          el.style.width = `550px`
+          el.style.height = `750px`
+        })
       // Check if layout is valid, but be lenient since viewport detection
       // might not work perfectly in test environment
       const portrait_layout_class = await trajectory.getAttribute(`class`)
-      const has_portrait_layout = portrait_layout_class?.includes(`vertical`) ||
+      const has_portrait_layout =
+        portrait_layout_class?.includes(`vertical`) ||
         portrait_layout_class?.includes(`horizontal`)
       expect(has_portrait_layout).toBe(true)
     })
 
-    test(`plot and structure have equal dimensions in both horizontal and vertical layouts`, async ({ page }) => {
+    test(`plot and structure have equal dimensions in both horizontal and vertical layouts`, async ({
+      page,
+    }) => {
       // Helper function to get component dimensions
       const get_dimensions = async (content_area: Locator) =>
         await content_area.evaluate((el: Element) => {
@@ -816,9 +799,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(horizontal_viewer).toBeVisible()
       await expect(horizontal_viewer).toHaveClass(/horizontal/)
 
-      const horizontal_dims = await get_dimensions(
-        horizontal_viewer.locator(`.content-area`),
-      )
+      const horizontal_dims = await get_dimensions(horizontal_viewer.locator(`.content-area`))
       check_ratios(horizontal_dims, `width`)
       check_ratios(horizontal_dims, `height`)
 

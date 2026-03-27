@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import {
   CATEGORY_COUNTS,
   ELEM_HEATMAP_KEYS,
@@ -29,9 +28,7 @@ test.describe(`Periodic Table`, () => {
     for (const category of ELEMENT_CATEGORIES) {
       let count = CATEGORY_COUNTS[category] as number
       // Scope selector to the first periodic table
-      const category_tiles_selector = periodic_table.locator(
-        `[data-category="${category}"]`,
-      )
+      const category_tiles_selector = periodic_table.locator(`[data-category="${category}"]`)
       // add 1 to expected count since lanthanides and actinides have placeholder
       // tiles showing where in the periodic table their rows insert
       if ([`lanthanide`, `actinide`].includes(category)) count += 1
@@ -62,10 +59,8 @@ test.describe(`Periodic Table`, () => {
 
     const logs: string[] = []
     page.on(`console`, (msg) => {
-      if (
-        msg.type() === `error` &&
-        !msg.text().startsWith(`Failed to load resource:`)
-      ) logs.push(msg.text())
+      if (msg.type() === `error` && !msg.text().startsWith(`Failed to load resource:`))
+        logs.push(msg.text())
     })
     await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
@@ -108,7 +103,9 @@ test.describe(`Periodic Table`, () => {
       await expect(tooltip).toHaveCount(0, { timeout: 5000 })
     }
 
-    test(`shows default tooltip on element hover when no heatmap is selected`, async ({ page }) => {
+    test(`shows default tooltip on element hover when no heatmap is selected`, async ({
+      page,
+    }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       // Wait for element tiles to render before hovering
@@ -119,8 +116,7 @@ test.describe(`Periodic Table`, () => {
       await expect(periodic_table).toBeVisible({ timeout: 10000 })
 
       // Hover on the H tile within the first periodic table
-      const h_tile = periodic_table.locator(`.element-tile`).filter({ hasText: `H` })
-        .first()
+      const h_tile = periodic_table.locator(`.element-tile`).filter({ hasText: `H` }).first()
       await expect(h_tile).toBeVisible({ timeout: 5000 })
       // force: true needed - element tiles have stacked text content that intercepts hover
       await h_tile.hover({ force: true })
@@ -134,7 +130,9 @@ test.describe(`Periodic Table`, () => {
       await expect(tooltip).toContainText(`H • 1`)
     })
 
-    test(`shows custom tooltip with heatmap data when heatmap is selected`, async ({ page }) => {
+    test(`shows custom tooltip with heatmap data when heatmap is selected`, async ({
+      page,
+    }) => {
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
       const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
       await expect(multiselect).toBeVisible()
@@ -232,9 +230,7 @@ test.describe(`Periodic Table`, () => {
           await expect(tooltip).toBeVisible()
           await expect(tooltip).toContainText(element.name)
         }).toPass({ timeout: 5000 })
-        await expect(tooltip).toContainText(
-          `${element.symbol} • ${element.number}`,
-        )
+        await expect(tooltip).toContainText(`${element.symbol} • ${element.number}`)
       })
     }
 

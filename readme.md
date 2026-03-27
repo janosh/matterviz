@@ -55,7 +55,7 @@ Rich element pages with physical properties, electron configurations, Bohr atom 
 ## 🔨 &thinsp; Installation
 
 ```sh
-pnpm add -D matterviz
+npm add -D matterviz
 ```
 
 ## 📙 &thinsp; Usage

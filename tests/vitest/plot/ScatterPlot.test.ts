@@ -35,11 +35,14 @@ describe(`ScatterPlot`, () => {
     { series: [], markers: `points` },
     { series: [basic], legend: null },
     {
-      series: [basic, {
-        x: [1, 2, 3],
-        y: [2, 5, 3],
-        point_style: { fill: `orangered`, radius: 4 },
-      }],
+      series: [
+        basic,
+        {
+          x: [1, 2, 3],
+          y: [2, 5, 3],
+          point_style: { fill: `orangered`, radius: 4 },
+        },
+      ],
       markers: `line+points`,
     },
   ])(`renders with series/limits/markers`, (props) => {
@@ -61,9 +64,7 @@ describe(`ScatterPlot`, () => {
     await tick()
     expect(document.querySelector(`.scatter`)).toBeTruthy()
     expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
-    expect(document.querySelector(`.x2-label`)?.textContent).toBe(
-      `Temperature (K)`,
-    )
+    expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
   test.each([
@@ -73,26 +74,22 @@ describe(`ScatterPlot`, () => {
       y_axis: { ticks: -5, format: `.0r` },
     },
     {
-      x: Array.from(
-        { length: 12 },
-        (_, idx) => new Date().setMonth(new Date().getMonth() - (12 - idx)),
+      x: Array.from({ length: 12 }, (_, idx) =>
+        new Date().setMonth(new Date().getMonth() - (12 - idx)),
       ),
       x_axis: { ticks: `month`, format: `%b %Y` },
     },
-  ])(
-    `tick formatting`,
-    ({ x, x_axis, y_axis }) => {
-      const y = Array.from({ length: 6 }, () => Math.random() * 100)
-      mount(ScatterPlot, {
-        target: document.body,
-        props: {
-          series: [{ x, y, point_style: { fill: `steelblue`, radius: 5 } }],
-          x_axis,
-          y_axis,
-        },
-      })
-    },
-  )
+  ])(`tick formatting`, ({ x, x_axis, y_axis }) => {
+    const y = Array.from({ length: 6 }, () => Math.random() * 100)
+    mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x, y, point_style: { fill: `steelblue`, radius: 5 } }],
+        x_axis,
+        y_axis,
+      },
+    })
+  })
 
   describe(`default tooltip content`, () => {
     const tooltip_text = async (props: Record<string, unknown>): Promise<string> => {
@@ -212,8 +209,7 @@ describe(`ScatterPlot`, () => {
         children: createRawSnippet(() => {
           called = true
           return {
-            render: () =>
-              `<div class="custom-scatter-child">Custom overlay content</div>`,
+            render: () => `<div class="custom-scatter-child">Custom overlay content</div>`,
           }
         }),
       },
@@ -353,8 +349,8 @@ describe(`ScatterPlot`, () => {
         y: [idx + 1, idx + 2, idx + 3],
         ...(markers
           ? {
-            markers: markers[idx % markers.length] as `line` | `points` | `line+points`,
-          }
+              markers: markers[idx % markers.length] as `line` | `points` | `line+points`,
+            }
           : {}),
       }))
       mount(ScatterPlot, { target: document.body, props: { series } })

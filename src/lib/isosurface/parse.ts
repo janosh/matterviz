@@ -45,9 +45,7 @@ function parse_float_block(
         if (peek < len) {
           const next_char = text.charCodeAt(peek)
           // Letter a-z or A-Z signals a non-numeric line (e.g. "augmentation")
-          if (
-            (next_char >= 65 && next_char <= 90) || (next_char >= 97 && next_char <= 122)
-          ) {
+          if ((next_char >= 65 && next_char <= 90) || (next_char >= 97 && next_char <= 122)) {
             return { count: idx - data_offset, end_pos: pos }
           }
         }
@@ -84,9 +82,7 @@ function find_line_offset(text: string, target_line: number): number {
 // Read a single line from text at the given offset, returning the line and next offset
 function read_line(text: string, pos: number): { line: string; next: number } {
   let end = pos
-  while (
-    end < text.length && text.charCodeAt(end) !== 10 && text.charCodeAt(end) !== 13
-  ) end++
+  while (end < text.length && text.charCodeAt(end) !== 10 && text.charCodeAt(end) !== 13) end++
   const line = text.substring(pos, end)
   let next = end
   if (next < text.length && text.charCodeAt(next) === 13) next++ // skip \r
@@ -119,9 +115,14 @@ type BuildGridOptions = {
   data_order?: `x_fastest` | `z_fastest`
 }
 
-function build_grid(
-  { data, nx, ny, nz, divisor = 1, data_order = `z_fastest` }: BuildGridOptions,
-): { grid: number[][][]; data_range: DataRange } {
+function build_grid({
+  data,
+  nx,
+  ny,
+  nz,
+  divisor = 1,
+  data_order = `z_fastest`,
+}: BuildGridOptions): { grid: number[][][]; data_range: DataRange } {
   const grid: number[][][] = new Array(nx)
   let [min_val, max_val, sum] = [Infinity, -Infinity, 0]
   const total = nx * ny * nz
@@ -253,8 +254,8 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   } else {
     atom_counts = cur.line.trim().split(/\s+/).map(Number)
     const fallback_elements = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`]
-    element_symbols = atom_counts.map((_count, idx) =>
-      fallback_elements[idx % fallback_elements.length]
+    element_symbols = atom_counts.map(
+      (_count, idx) => fallback_elements[idx % fallback_elements.length],
     )
     pos = cur.next
   }
@@ -288,8 +289,9 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
   for (let elem_idx = 0; elem_idx < element_symbols.length; elem_idx++) {
     const symbol = element_symbols[elem_idx].split(/[_/]/)[0]
-    const element =
-      (ELEM_SYMBOLS.includes(symbol as ElementSymbol) ? symbol : `H`) as ElementSymbol
+    const element = (
+      ELEM_SYMBOLS.includes(symbol as ElementSymbol) ? symbol : `H`
+    ) as ElementSymbol
     const count = atom_counts[elem_idx]
 
     for (let count_idx = 0; count_idx < count; count_idx++) {
@@ -470,8 +472,8 @@ export function parse_cube(
   const unit_scale = is_bohr ? BOHR_TO_ANGSTROM : 1.0
 
   // Voxel vectors (convert to Angstrom if needed)
-  const [voxel_a, voxel_b, voxel_c] = voxel_lines.map(
-    (line) => math.scale(line.slice(1, 4) as Vec3, unit_scale),
+  const [voxel_a, voxel_b, voxel_c] = voxel_lines.map((line) =>
+    math.scale(line.slice(1, 4) as Vec3, unit_scale),
   )
 
   // Lattice vectors = grid_dim * voxel_vector
@@ -498,7 +500,11 @@ export function parse_cube(
     lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
   } catch {
     // Non-periodic system (molecule), use identity
-    lattice_inv = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    lattice_inv = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]
   }
 
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
@@ -508,20 +514,17 @@ export function parse_cube(
 
     // Validate: need atomic_number, charge, x, y, z (5 tokens, indices 2-4 finite)
     if (
-      atom_line.length < 5 || !isFinite(atom_line[2]) || !isFinite(atom_line[3]) ||
+      atom_line.length < 5 ||
+      !isFinite(atom_line[2]) ||
+      !isFinite(atom_line[3]) ||
       !isFinite(atom_line[4])
     ) {
-      console.warn(
-        `.cube atom ${atom_idx}: malformed line "${cur.line.trim()}", skipping`,
-      )
+      console.warn(`.cube atom ${atom_idx}: malformed line "${cur.line.trim()}", skipping`)
       continue
     }
 
     // atom_line[1] is the charge (often 0)
-    const raw_xyz = math.scale(
-      [atom_line[2], atom_line[3], atom_line[4]] as Vec3,
-      unit_scale,
-    )
+    const raw_xyz = math.scale([atom_line[2], atom_line[3], atom_line[4]] as Vec3, unit_scale)
 
     // Convert Cartesian to fractional, accounting for origin offset.
     // Store lattice-frame xyz (shifted) so abc and xyz stay consistent.
@@ -561,9 +564,7 @@ export function parse_cube(
   const { count: parsed_count } = parse_float_block(content, pos, total_points, data)
 
   if (parsed_count < total_points) {
-    console.warn(
-      `.cube: expected ${total_points} data values, got ${parsed_count}`,
-    )
+    console.warn(`.cube: expected ${total_points} data values, got ${parsed_count}`)
     if (parsed_count === 0) {
       console.error(`No volumetric data found in .cube file`)
       return null
@@ -578,16 +579,18 @@ export function parse_cube(
     data_order: `z_fastest`,
   })
 
-  const volumes: VolumetricData[] = [{
-    grid,
-    grid_dims: n_grid,
-    lattice,
-    origin,
-    data_range,
-    data_order: `z_fastest`,
-    periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
-    label: `volumetric data`,
-  }]
+  const volumes: VolumetricData[] = [
+    {
+      grid,
+      grid_dims: n_grid,
+      lattice,
+      origin,
+      data_range,
+      data_order: `z_fastest`,
+      periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
+      label: `volumetric data`,
+    },
+  ]
 
   return { structure, volumes }
 }
@@ -596,9 +599,7 @@ export function parse_cube(
 function atomic_number_to_symbol(atomic_number: number): ElementSymbol {
   // ELEM_SYMBOLS is 0-indexed (H at index 0), atomic numbers are 1-indexed
   const idx = atomic_number - 1
-  return (idx >= 0 && idx < ELEM_SYMBOLS.length
-    ? ELEM_SYMBOLS[idx]
-    : `H`) as ElementSymbol
+  return (idx >= 0 && idx < ELEM_SYMBOLS.length ? ELEM_SYMBOLS[idx] : `H`) as ElementSymbol
 }
 
 // Auto-detect and parse volumetric file format based on filename and content

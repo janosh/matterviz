@@ -533,6 +533,14 @@
   // Get x-axis tick positions with custom labels for symmetry points
   let x_axis_ticks = $derived.by(() => {
     const tick_map = new SvelteMap<number, string[]>()
+    const add_label = (pos: number, label: string) => {
+      let labels = tick_map.get(pos)
+      if (!labels) {
+        labels = []
+        tick_map.set(pos, labels)
+      }
+      if (!labels.includes(label)) labels.push(label)
+    }
 
     Object.entries(x_positions ?? {})
       .sort(([, [a]], [, [b]]) => a - b)
@@ -548,22 +556,12 @@
 
         if (is_discontinuity && pretty_start && pretty_end) {
           // Combine labels at discontinuity points
-          if (!tick_map.has(x_start)) tick_map.set(x_start, [])
-          const labels = tick_map.get(x_start)!
-          if (!labels.includes(pretty_start)) labels.push(pretty_start)
-          if (!labels.includes(pretty_end)) labels.push(pretty_end)
+          add_label(x_start, pretty_start)
+          add_label(x_start, pretty_end)
         } else {
           // Normal segment with distinct start/end
-          if (pretty_start) {
-            if (!tick_map.has(x_start)) tick_map.set(x_start, [])
-            const labels = tick_map.get(x_start)!
-            if (!labels.includes(pretty_start)) labels.push(pretty_start)
-          }
-          if (pretty_end) {
-            if (!tick_map.has(x_end)) tick_map.set(x_end, [])
-            const labels = tick_map.get(x_end)!
-            if (!labels.includes(pretty_end)) labels.push(pretty_end)
-          }
+          if (pretty_start) add_label(x_start, pretty_start)
+          if (pretty_end) add_label(x_end, pretty_end)
         }
       })
 
@@ -954,7 +952,7 @@
       {/if}
 
       <!-- Reference frequency horizontal line -->
-      {@const ref_freq = reference_frequency !== null && reference_frequency !== undefined
+      {@const ref_freq = reference_frequency != null
       ? convert_band_values([reference_frequency])[0]
       : NaN}
       {@const ref_y = Number.isFinite(ref_freq) ? y_scale_fn(ref_freq) : NaN}

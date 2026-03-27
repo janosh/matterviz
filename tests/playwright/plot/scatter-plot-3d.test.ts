@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-window
 import { expect, test } from '@playwright/test'
 import {
   expect_canvas_changed,
@@ -49,26 +48,24 @@ test.describe(`ScatterPlot3D`, () => {
   })
 
   // Parameterized CSS property tests for gizmo clickability
-  for (
-    const { selector, prop, expected, compare } of [
-      { selector: `.scatter3d-gizmo`, prop: `zIndex`, expected: 1000, compare: `gte` },
-      {
-        selector: `.scatter3d-gizmo`,
-        prop: `pointerEvents`,
-        expected: `auto`,
-        compare: `eq`,
-      },
-      { selector: `.axis-label`, prop: `pointerEvents`, expected: `none`, compare: `eq` },
-      { selector: `.tick-label`, prop: `pointerEvents`, expected: `none`, compare: `eq` },
-    ] as const
-  ) {
+  for (const { selector, prop, expected, compare } of [
+    { selector: `.scatter3d-gizmo`, prop: `zIndex`, expected: 1000, compare: `gte` },
+    {
+      selector: `.scatter3d-gizmo`,
+      prop: `pointerEvents`,
+      expected: `auto`,
+      compare: `eq`,
+    },
+    { selector: `.axis-label`, prop: `pointerEvents`, expected: `none`, compare: `eq` },
+    { selector: `.tick-label`, prop: `pointerEvents`, expected: `none`, compare: `eq` },
+  ] as const) {
     test(`${selector} has ${prop} ${compare} ${expected}`, async ({ page }) => {
       await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
       const el = page.locator(`${CONTAINER_SELECTOR} ${selector}`).first()
       await expect(el).toBeVisible({ timeout: get_canvas_timeout() })
 
       const value = await el.evaluate(
-        (node, p) => window.getComputedStyle(node)[p as keyof CSSStyleDeclaration],
+        (node, p) => globalThis.getComputedStyle(node)[p as keyof CSSStyleDeclaration],
         prop,
       )
       if (compare === `gte`) {
@@ -140,10 +137,8 @@ test.describe(`ScatterPlot3D Projections`, () => {
   }
 
   // Helper to get projection checkbox
-  const get_projection_checkbox = (
-    pane: import('@playwright/test').Locator,
-    plane: string,
-  ) => pane.locator(`label`).filter({ hasText: plane }).locator(`input[type="checkbox"]`)
+  const get_projection_checkbox = (pane: import('@playwright/test').Locator, plane: string) =>
+    pane.locator(`label`).filter({ hasText: plane }).locator(`input[type="checkbox"]`)
 
   // Helper to get slider row by label text
   const get_slider_row = (pane: import('@playwright/test').Locator, label: string) =>
@@ -178,21 +173,19 @@ test.describe(`ScatterPlot3D Projections`, () => {
 
     for (const plane of [`XY`, `XZ`, `YZ`]) {
       const checkbox = get_projection_checkbox(pane, plane)
-      // deno-lint-ignore no-await-in-loop -- sequential clicks required
       await checkbox.click()
-      // deno-lint-ignore no-await-in-loop -- sequential verification required
       await expect(checkbox).toBeChecked()
     }
   })
 
   // Parameterized slider default and range tests
-  for (
-    const { name, label, default_val, min, max } of [
-      { name: `opacity`, label: `Opacity`, default_val: `0.3`, min: `0`, max: `1` },
-      { name: `size`, label: `Size`, default_val: `0.5`, min: `0.1`, max: `1` },
-    ] as const
-  ) {
-    test(`${name} slider has correct defaults (${default_val}, ${min}-${max})`, async ({ page }) => {
+  for (const { name, label, default_val, min, max } of [
+    { name: `opacity`, label: `Opacity`, default_val: `0.3`, min: `0`, max: `1` },
+    { name: `size`, label: `Size`, default_val: `0.5`, min: `0.1`, max: `1` },
+  ] as const) {
+    test(`${name} slider has correct defaults (${default_val}, ${min}-${max})`, async ({
+      page,
+    }) => {
       await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
       const pane = await open_controls_pane(page)
 
@@ -208,12 +201,10 @@ test.describe(`ScatterPlot3D Projections`, () => {
   }
 
   // Parameterized slider visual effect tests
-  for (
-    const { name, label } of [
-      { name: `opacity`, label: `Opacity` },
-      { name: `size`, label: `Size` },
-    ] as const
-  ) {
+  for (const { name, label } of [
+    { name: `opacity`, label: `Opacity` },
+    { name: `size`, label: `Size` },
+  ] as const) {
     test(`${name} slider changes projection appearance`, async ({ page }) => {
       const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
       await wait_for_canvas_rendered(canvas)
@@ -233,12 +224,10 @@ test.describe(`ScatterPlot3D Projections`, () => {
   }
 
   // Parameterized number input sync tests
-  for (
-    const { name, label, test_val } of [
-      { name: `opacity`, label: `Opacity`, test_val: `0.7` },
-      { name: `size`, label: `Size`, test_val: `0.8` },
-    ] as const
-  ) {
+  for (const { name, label, test_val } of [
+    { name: `opacity`, label: `Opacity`, test_val: `0.7` },
+    { name: `size`, label: `Size`, test_val: `0.8` },
+  ] as const) {
     test(`${name} number input syncs with slider`, async ({ page }) => {
       await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
       const pane = await open_controls_pane(page)
@@ -258,7 +247,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
 
     // Enable all projections and change sliders
     for (const plane of [`XY`, `XZ`, `YZ`]) {
-      // deno-lint-ignore no-await-in-loop -- sequential clicks required
       await get_projection_checkbox(pane, plane).click()
     }
     const opacity_row = get_slider_row(pane, `Opacity`)
@@ -271,7 +259,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
 
     // Verify reset to defaults
     for (const plane of [`XY`, `XZ`, `YZ`]) {
-      // deno-lint-ignore no-await-in-loop -- sequential verification required
       await expect(get_projection_checkbox(pane, plane)).not.toBeChecked()
     }
     await expect(opacity_row.locator(`input[type="range"]`)).toHaveValue(`0.3`)
@@ -302,7 +289,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
 
     // Enable all projections
     for (const plane of [`XY`, `XZ`, `YZ`]) {
-      // deno-lint-ignore no-await-in-loop -- sequential clicks required
       await get_projection_checkbox(pane, plane).click()
     }
     await page.waitForTimeout(200)

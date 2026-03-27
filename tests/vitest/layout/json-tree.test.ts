@@ -10,8 +10,7 @@ describe(`JsonTree`, () => {
   const get_content = (): HTMLDivElement => doc_query(`.json-tree-content`)
   const get_search_input = (): HTMLInputElement | null =>
     document.querySelector(`.search-input`)
-  const get_nodes = (): NodeListOf<HTMLDivElement> =>
-    document.querySelectorAll(`.json-node`)
+  const get_nodes = (): NodeListOf<HTMLDivElement> => document.querySelectorAll(`.json-node`)
   const get_values = (): NodeListOf<HTMLSpanElement> =>
     document.querySelectorAll(`.json-value`)
   const get_collapse_toggles = (): NodeListOf<HTMLButtonElement> =>
@@ -131,11 +130,7 @@ describe(`JsonTree`, () => {
     })
 
     it.each([`Infinity`, `-Infinity`, `NaN`])(`renders special number %s`, (expected) => {
-      const value = expected === `NaN`
-        ? NaN
-        : expected === `Infinity`
-        ? Infinity
-        : -Infinity
+      const value = expected === `NaN` ? NaN : expected === `Infinity` ? Infinity : -Infinity
       mount(JsonTree, {
         target: document.body,
         props: { value: { num: value }, show_header: false },
@@ -169,22 +164,19 @@ describe(`JsonTree`, () => {
     it.each([
       { show_array_indices: true, expected_count: 2 },
       { show_array_indices: false, expected_count: 0 },
-    ])(
-      `show_array_indices=$show_array_indices`,
-      ({ show_array_indices, expected_count }) => {
-        mount(JsonTree, {
-          target: document.body,
-          props: {
-            value: [`a`, `b`],
-            show_header: false,
-            show_array_indices,
-            default_fold_level: 5,
-          },
-        })
-        const indices = document.querySelectorAll(`.array-index .index`)
-        expect(indices.length).toBe(expected_count)
-      },
-    )
+    ])(`show_array_indices=$show_array_indices`, ({ show_array_indices, expected_count }) => {
+      mount(JsonTree, {
+        target: document.body,
+        props: {
+          value: [`a`, `b`],
+          show_header: false,
+          show_array_indices,
+          default_fold_level: 5,
+        },
+      })
+      const indices = document.querySelectorAll(`.array-index .index`)
+      expect(indices.length).toBe(expected_count)
+    })
 
     it(`sorts object keys when sort_keys=true`, () => {
       mount(JsonTree, {
@@ -196,8 +188,9 @@ describe(`JsonTree`, () => {
           default_fold_level: 5,
         },
       })
-      const keys = Array.from(document.querySelectorAll(`.node-key`))
-        .map((el) => el.textContent?.replace(/"/g, ``).trim())
+      const keys = Array.from(document.querySelectorAll(`.node-key`)).map((el) =>
+        el.textContent?.replace(/"/g, ``).trim(),
+      )
       expect(keys).toEqual([`apple`, `mango`, `zebra`])
     })
 
@@ -262,9 +255,7 @@ describe(`JsonTree`, () => {
       },
       {
         desc: `objects`,
-        value: Object.fromEntries(
-          Array.from({ length: 25 }, (_, idx) => [`key${idx}`, idx]),
-        ),
+        value: Object.fromEntries(Array.from({ length: 25 }, (_, idx) => [`key${idx}`, idx])),
         props: { auto_fold_objects: 20 },
         expected: `{25 keys}`,
       },
@@ -817,7 +808,13 @@ describe(`JsonTree`, () => {
     })
 
     it.each([
-      { collection: new Map([[`a`, 1], [`b`, 2]]), expected: `Map(2)` },
+      {
+        collection: new Map([
+          [`a`, 1],
+          [`b`, 2],
+        ]),
+        expected: `Map(2)`,
+      },
       { collection: new Set([1, 2, 3, 4]), expected: `Set(4)` },
     ])(`shows $expected in preview`, ({ collection, expected }) => {
       mount(JsonTree, {
@@ -927,8 +924,7 @@ describe(`search navigation`, () => {
   const get_nav_btns = (): NodeListOf<HTMLButtonElement> =>
     document.querySelectorAll(`.nav-btn`)
   const get_match_count = (): HTMLElement | null => document.querySelector(`.match-count`)
-  const get_current_match = (): HTMLElement | null =>
-    document.querySelector(`.current-match`)
+  const get_current_match = (): HTMLElement | null => document.querySelector(`.current-match`)
 
   async function type_search(query: string): Promise<void> {
     const input = get_search_input()
@@ -1087,12 +1083,8 @@ describe(`search navigation`, () => {
       const count = get_match_count()
       expect(count?.textContent).toContain(from)
 
-      const el = target === `tree`
-        ? document.querySelector(`.json-tree`)
-        : get_search_input()
-      el?.dispatchEvent(
-        new KeyboardEvent(`keydown`, { key, shiftKey: shift, bubbles: true }),
-      )
+      const el = target === `tree` ? document.querySelector(`.json-tree`) : get_search_input()
+      el?.dispatchEvent(new KeyboardEvent(`keydown`, { key, shiftKey: shift, bubbles: true }))
       flushSync()
       await tick()
 
@@ -1235,20 +1227,16 @@ describe(`double-click recursive expand/collapse`, () => {
     })
 
     before.contains.forEach((text) => expect(document.body.textContent).toContain(text))
-    before.notContains.forEach((text) =>
-      expect(document.body.textContent).not.toContain(text)
-    )
+    before.notContains.forEach((text) => expect(document.body.textContent).not.toContain(text))
 
-    document.querySelectorAll(`.json-node`)[1].dispatchEvent(
-      new MouseEvent(`dblclick`, { bubbles: true }),
-    )
+    document
+      .querySelectorAll(`.json-node`)[1]
+      .dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     flushSync()
     await tick()
 
     after.contains.forEach((text) => expect(document.body.textContent).toContain(text))
-    after.notContains.forEach((text) =>
-      expect(document.body.textContent).not.toContain(text)
-    )
+    after.notContains.forEach((text) => expect(document.body.textContent).not.toContain(text))
   })
 
   // Test for root node double-click when root_label is undefined (empty path)
@@ -1260,37 +1248,30 @@ describe(`double-click recursive expand/collapse`, () => {
       before: { contains: [`"b"`, `"c"`], notContains: [] },
       after: { contains: [], notContains: [`"b"`, `"c"`] },
     },
-  ])(
-    `double-click root (empty path) $desc`,
-    async ({ fold_level, before, after }) => {
-      mount(JsonTree, {
-        target: document.body,
-        props: {
-          value: { a: { b: { c: 1 }, d: 2 } },
-          show_header: false,
-          default_fold_level: fold_level,
-          // No root_label means root path is empty string
-        },
-      })
+  ])(`double-click root (empty path) $desc`, async ({ fold_level, before, after }) => {
+    mount(JsonTree, {
+      target: document.body,
+      props: {
+        value: { a: { b: { c: 1 }, d: 2 } },
+        show_header: false,
+        default_fold_level: fold_level,
+        // No root_label means root path is empty string
+      },
+    })
 
-      before.contains.forEach((text) => expect(document.body.textContent).toContain(text))
-      before.notContains.forEach((text) =>
-        expect(document.body.textContent).not.toContain(text)
-      )
+    before.contains.forEach((text) => expect(document.body.textContent).toContain(text))
+    before.notContains.forEach((text) => expect(document.body.textContent).not.toContain(text))
 
-      // Double-click on root node (index 0) - has empty path when no root_label
-      const root_node = document.querySelectorAll(`.json-node`)[0]
-      expect(root_node.getAttribute(`data-path`)).toBe(``)
-      root_node.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
-      flushSync()
-      await tick()
+    // Double-click on root node (index 0) - has empty path when no root_label
+    const root_node = document.querySelectorAll(`.json-node`)[0]
+    expect(root_node.getAttribute(`data-path`)).toBe(``)
+    root_node.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
+    flushSync()
+    await tick()
 
-      after.contains.forEach((text) => expect(document.body.textContent).toContain(text))
-      after.notContains.forEach((text) =>
-        expect(document.body.textContent).not.toContain(text)
-      )
-    },
-  )
+    after.contains.forEach((text) => expect(document.body.textContent).toContain(text))
+    after.notContains.forEach((text) => expect(document.body.textContent).not.toContain(text))
+  })
 
   it(`double-click root (empty path) expands after collapse all`, async () => {
     // Start with everything expanded, collapse all, then double-click root to expand
@@ -1331,8 +1312,9 @@ describe(`double-click recursive expand/collapse`, () => {
       target: document.body,
       props: { value: { foo: { bar: 1 } }, show_header: false, default_fold_level: 5 },
     })
-    const paths = Array.from(document.querySelectorAll(`.json-node[data-path]`))
-      .map((n) => n.getAttribute(`data-path`))
+    const paths = Array.from(document.querySelectorAll(`.json-node[data-path]`)).map((n) =>
+      n.getAttribute(`data-path`),
+    )
     expect(paths).toContain(`foo`)
     expect(paths).toContain(`foo.bar`)
   })
@@ -1501,8 +1483,9 @@ describe(`pinned paths panel`, () => {
     await tick()
 
     // Click "Pin this path"
-    const pin_btn = Array.from(document.querySelectorAll(`.context-menu button`))
-      .find((btn) => btn.textContent?.includes(`Pin`)) as HTMLButtonElement
+    const pin_btn = Array.from(document.querySelectorAll(`.context-menu button`)).find((btn) =>
+      btn.textContent?.includes(`Pin`),
+    ) as HTMLButtonElement
     expect(pin_btn).toBeTruthy()
     pin_btn.click()
     flushSync()
@@ -1524,8 +1507,9 @@ describe(`pinned paths panel`, () => {
     node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
     flushSync()
     await tick()
-    const pin_btn = Array.from(document.querySelectorAll(`.context-menu button`))
-      .find((btn) => btn.textContent?.includes(`Pin`)) as HTMLButtonElement
+    const pin_btn = Array.from(document.querySelectorAll(`.context-menu button`)).find((btn) =>
+      btn.textContent?.includes(`Pin`),
+    ) as HTMLButtonElement
     pin_btn.click()
     flushSync()
     await tick()
@@ -1548,9 +1532,7 @@ describe(`selection`, () => {
     })
     const nodes = document.querySelectorAll(`.json-node`)
     // Ctrl+click on the "a" node (index 1, since index 0 is root)
-    nodes[1].dispatchEvent(
-      new MouseEvent(`click`, { bubbles: true, ctrlKey: true }),
-    )
+    nodes[1].dispatchEvent(new MouseEvent(`click`, { bubbles: true, ctrlKey: true }))
     flushSync()
     await tick()
     expect(nodes[1].classList.contains(`selected`)).toBe(true)
@@ -1738,24 +1720,22 @@ describe(`URL auto-linking`, () => {
 })
 
 describe(`color swatch`, () => {
-  it.each([
-    `#ff0000`,
-    `#fff`,
-    `rgb(255, 0, 0)`,
-    `hsl(120, 100%, 50%)`,
-  ])(`renders swatch for CSS color %p`, (color) => {
-    mount(JsonTree, {
-      target: document.body,
-      props: {
-        value: { color },
-        show_header: false,
-        default_fold_level: 5,
-      },
-    })
-    const swatch = document.querySelector(`.color-swatch`) as HTMLSpanElement
-    expect(swatch).toBeTruthy()
-    expect(swatch.style.background).toBeTruthy()
-  })
+  it.each([`#ff0000`, `#fff`, `rgb(255, 0, 0)`, `hsl(120, 100%, 50%)`])(
+    `renders swatch for CSS color %p`,
+    (color) => {
+      mount(JsonTree, {
+        target: document.body,
+        props: {
+          value: { color },
+          show_header: false,
+          default_fold_level: 5,
+        },
+      })
+      const swatch = document.querySelector(`.color-swatch`) as HTMLSpanElement
+      expect(swatch).toBeTruthy()
+      expect(swatch.style.background).toBeTruthy()
+    },
+  )
 
   it(`does not render swatch for non-color strings`, () => {
     mount(JsonTree, {
@@ -1919,9 +1899,7 @@ describe(`clipboard interactions`, () => {
 
     const leaf_node = document.querySelectorAll(`.json-node`)[1] as HTMLDivElement
     expect(leaf_node.classList.contains(`focused`)).toBe(true)
-    leaf_node.dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }),
-    )
+    leaf_node.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
     flushSync()
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(write_text).toHaveBeenCalledWith(`42`)

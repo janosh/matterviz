@@ -6,9 +6,17 @@ import { describe, expect, test } from 'vitest'
 const pattern: XrdPattern = {
   x: [10, 20, 30, 40, 50],
   y: [100, 200, 150, 300, 120],
-  hkls: [[{ hkl: [1, 0, 0] }], [{ hkl: [1, 1, 0] }], [{ hkl: [1, 1, 1] }], [{
-    hkl: [2, 0, 0],
-  }], [{ hkl: [2, 1, 0] }]],
+  hkls: [
+    [{ hkl: [1, 0, 0] }],
+    [{ hkl: [1, 1, 0] }],
+    [{ hkl: [1, 1, 1] }],
+    [
+      {
+        hkl: [2, 0, 0],
+      },
+    ],
+    [{ hkl: [2, 1, 0] }],
+  ],
   d_hkls: [8.9, 6.3, 5.1, 4.5, 4.0],
 }
 
@@ -44,8 +52,8 @@ describe(`XrdPlot`, () => {
     [
       {
         patterns: {
-          'Empty': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
-          'Valid': { pattern, color: `blue` },
+          Empty: { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+          Valid: { pattern, color: `blue` },
         },
       },
       `mixed empty and valid patterns`,
@@ -53,8 +61,8 @@ describe(`XrdPlot`, () => {
     [
       {
         patterns: {
-          'A': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
-          'B': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+          A: { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+          B: { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
         },
       },
       `all empty patterns`,
@@ -73,8 +81,8 @@ describe(`XrdPlot`, () => {
       target,
       props: {
         patterns: {
-          'A': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
-          'B': { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+          A: { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
+          B: { pattern: { x: [], y: [], hkls: [], d_hkls: [] } },
         },
       },
     })
@@ -82,8 +90,10 @@ describe(`XrdPlot`, () => {
     // With correct [0, 90] fallback, x-axis should have tick elements.
     // With the bug (angle_range = [Infinity, 0]), isFinite guard skips all ticks.
     const x_axis_ticks = target.querySelectorAll(`.x-axis .tick`)
-    expect(x_axis_ticks.length, `x-axis should have ticks from [0, 90] fallback`)
-      .toBeGreaterThan(0)
+    expect(
+      x_axis_ticks.length,
+      `x-axis should have ticks from [0, 90] fallback`,
+    ).toBeGreaterThan(0)
   })
 
   test.each([[`compact`], [`full`], [`vertical`], [`horizontal`]] as const)(
@@ -116,9 +126,7 @@ describe(`XrdPlot`, () => {
       },
     })
     expect(called).toBe(true)
-    expect(document.querySelector(`.custom-xrd-child`)?.textContent).toBe(
-      `Custom XRD overlay`,
-    )
+    expect(document.querySelector(`.custom-xrd-child`)?.textContent).toBe(`Custom XRD overlay`)
   })
 
   test(`overbar notation on multi-digit negative indices`, async () => {
@@ -254,7 +262,7 @@ describe(`XrdPlot`, () => {
   test(`peak label overlap filtering keeps only highest intensity`, async () => {
     // Pattern with multiple peaks very close together - only highest should be labeled
     const overlapping_pattern: XrdPattern = {
-      x: [10, 45.80, 45.81, 45.82, 45.83, 45.84, 60],
+      x: [10, 45.8, 45.81, 45.82, 45.83, 45.84, 60],
       y: [10, 80, 85, 100, 90, 75, 20], // 45.82 has highest intensity
       hkls: [],
       d_hkls: [],

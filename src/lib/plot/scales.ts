@@ -2,11 +2,7 @@ import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
 import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Point, ScaleType, TimeInterval } from '$lib/plot'
-import {
-  get_arcsinh_threshold,
-  get_scale_type_name,
-  is_time_scale,
-} from '$lib/plot/types'
+import { get_arcsinh_threshold, get_scale_type_name, is_time_scale } from '$lib/plot/types'
 import { extent, range } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import {
@@ -52,9 +48,7 @@ export type PlotScaleFn =
 // Create an arcsinh scale with configurable threshold
 export function scale_arcsinh(threshold = 1): ArcsinhScale {
   if (!Number.isFinite(threshold) || threshold <= 0) {
-    throw new Error(
-      `arcsinh threshold must be a positive finite number, got ${threshold}`,
-    )
+    throw new Error(`arcsinh threshold must be a positive finite number, got ${threshold}`)
   }
 
   let _domain: [number, number] = [0, 1]
@@ -165,7 +159,7 @@ export function generate_arcsinh_ticks(
     // Negative range: mirror the positive logic
     return generate_positive_arcsinh_ticks(-hi, -lo, safe_threshold, count)
       .map((t) => -t)
-      .reverse()
+      .toReversed()
   }
 
   // Mixed range: symmetric ticks around zero (includes_zero is always true here)
@@ -268,7 +262,9 @@ export function create_scale(
   const type_name = get_scale_type_name(scale_type)
 
   if (type_name === `log`) {
-    return scaleLog().domain([Math.max(min_val, math.LOG_EPS), max_val]).range(range)
+    return scaleLog()
+      .domain([Math.max(min_val, math.LOG_EPS), max_val])
+      .range(range)
   }
   if (type_name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
@@ -279,10 +275,7 @@ export function create_scale(
 }
 
 // Create a time scale for time-based data
-export function create_time_scale(
-  domain: [number, number],
-  range: [number, number],
-) {
+export function create_time_scale(domain: [number, number], range: [number, number]) {
   return scaleTime()
     .domain([new Date(domain[0]), new Date(domain[1])])
     .range(range)
@@ -321,9 +314,10 @@ export function generate_ticks(
 
     let count = 10 // default
     if (typeof ticks_option === `number`) {
-      count = ticks_option < 0
-        ? Math.ceil((max_val - min_val) / Math.abs(ticks_option) / 86_400_000) // milliseconds per day
-        : ticks_option
+      count =
+        ticks_option < 0
+          ? Math.ceil((max_val - min_val) / Math.abs(ticks_option) / 86_400_000) // milliseconds per day
+          : ticks_option
     } else if (typeof ticks_option === `string`) {
       count = ticks_option === `day` ? 30 : ticks_option === `month` ? 12 : 10
     }
@@ -351,9 +345,8 @@ export function generate_ticks(
   // Arcsinh scale ticks
   if (type_name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
-    const tick_count = typeof ticks_option === `number` && ticks_option > 0
-      ? ticks_option
-      : default_count
+    const tick_count =
+      typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : default_count
     return generate_arcsinh_ticks(min_val, max_val, threshold, tick_count)
   }
 
@@ -365,9 +358,8 @@ export function generate_ticks(
   }
 
   // Default ticks using scale function
-  const tick_count = typeof ticks_option === `number` && ticks_option > 0
-    ? ticks_option
-    : default_count
+  const tick_count =
+    typeof ticks_option === `number` && ticks_option > 0 ? ticks_option : default_count
 
   const ticks = scale_fn.ticks(tick_count)
   return ticks.map(Number)
@@ -384,9 +376,7 @@ export function calculate_domain(
   const type_name = get_scale_type_name(scale_type)
   // Only log scale needs domain clamping to positive values
   // Arcsinh and linear can handle any values
-  return type_name === `log`
-    ? [Math.max(min_val, math.LOG_EPS), max_val]
-    : [min_val, max_val]
+  return type_name === `log` ? [Math.max(min_val, math.LOG_EPS), max_val] : [min_val, max_val]
 }
 
 // Advanced domain calculation with padding and nice boundaries (from ScatterPlot)
@@ -469,12 +459,13 @@ export function get_nice_data_range(
   }
 
   // Create the scale with the *padded* data domain
-  const scale = type_name === `log`
-    ? scaleLog().domain([
-      Math.max(data_min, math.LOG_EPS),
-      Math.max(data_max, data_min * 1.1),
-    ]) // Ensure log domain > 0
-    : scaleLinear().domain([data_min, data_max])
+  const scale =
+    type_name === `log`
+      ? scaleLog().domain([
+          Math.max(data_min, math.LOG_EPS),
+          Math.max(data_max, data_min * 1.1),
+        ]) // Ensure log domain > 0
+      : scaleLinear().domain([data_min, data_max])
 
   scale.nice()
   return scale.domain() as Vec2
@@ -497,21 +488,16 @@ export function generate_log_ticks(
 
   // For very wide ranges, extend the range to include more ticks
   const range_size = max_power - min_power
-  const extended_min_power = range_size <= 2
-    ? min_power - 1
-    : min_power - Math.max(1, Math.floor(range_size / 4))
+  const extended_min_power =
+    range_size <= 2 ? min_power - 1 : min_power - Math.max(1, Math.floor(range_size / 4))
   const extended_max_power = range_size <= 2 ? max_power + 1 : max_power
 
   const powers = range(extended_min_power, extended_max_power + 1).map((p: number) =>
-    Math.pow(10, p)
+    Math.pow(10, p),
   )
 
   // For narrow ranges, include intermediate values
-  if (
-    max_power - min_power < 3 &&
-    typeof ticks_option === `number` &&
-    ticks_option > 5
-  ) {
+  if (max_power - min_power < 3 && typeof ticks_option === `number` && ticks_option > 5) {
     const detailed_ticks: number[] = []
     powers.forEach((power: number) => {
       detailed_ticks.push(power)
@@ -539,27 +525,25 @@ export function get_tick_label(
 export function create_color_scale(
   color_scale_config:
     | {
-      type?: ScaleType
-      scheme?: D3ColorSchemeName | D3InterpolateName
-      value_range?: [number, number]
-    }
+        type?: ScaleType
+        scheme?: D3ColorSchemeName | D3InterpolateName
+        value_range?: [number, number]
+      }
     | string,
   auto_color_range: [number, number],
 ) {
-  const scheme = typeof color_scale_config === `string`
-    ? color_scale_config
-    : color_scale_config.scheme
-  const interpolator =
-    (typeof d3_sc[scheme as keyof typeof d3_sc] === `function`
+  const scheme =
+    typeof color_scale_config === `string` ? color_scale_config : color_scale_config.scheme
+  const interpolator = (
+    typeof d3_sc[scheme as keyof typeof d3_sc] === `function`
       ? d3_sc[scheme as keyof typeof d3_sc]
-      : d3_sc.interpolateViridis) as (t: number) => string
+      : d3_sc.interpolateViridis
+  ) as (t: number) => string
   const [min_val, max_val] =
-    (typeof color_scale_config === `string`
-      ? undefined
-      : color_scale_config.value_range) ?? auto_color_range
-  const scale_type = typeof color_scale_config === `string`
-    ? undefined
-    : color_scale_config.type
+    (typeof color_scale_config === `string` ? undefined : color_scale_config.value_range) ??
+    auto_color_range
+  const scale_type =
+    typeof color_scale_config === `string` ? undefined : color_scale_config.type
 
   const type_name = get_scale_type_name(scale_type)
 
@@ -630,9 +614,10 @@ export function create_size_scale(
   all_size_values: (number | null)[],
 ) {
   const [min_radius, max_radius] = config.radius_range ?? [2, 10]
-  const auto_range = all_size_values.length > 0
-    ? extent(all_size_values.filter((v): v is number => v !== null))
-    : [0, 1]
+  const auto_range =
+    all_size_values.length > 0
+      ? extent(all_size_values.filter((v): v is number => v !== null))
+      : [0, 1]
   const [min_val, max_val] = config.value_range ?? (auto_range as Vec2)
   const safe_min = min_val ?? 0
   const safe_max = max_val ?? (safe_min > 0 ? safe_min * 1.1 : 1)
@@ -668,7 +653,5 @@ export function create_size_scale(
     return clamped_scale
   }
 
-  return scaleLinear().domain([safe_min, safe_max]).range([min_radius, max_radius]).clamp(
-    true,
-  )
+  return scaleLinear().domain([safe_min, safe_max]).range([min_radius, max_radius]).clamp(true)
 }

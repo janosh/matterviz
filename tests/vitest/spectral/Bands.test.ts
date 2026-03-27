@@ -5,7 +5,13 @@ import { mount, tick } from 'svelte'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const base_band_structure: BaseBandStructure = {
-  recip_lattice: { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] },
+  recip_lattice: {
+    matrix: [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+  },
   qpoints: [
     { label: `GAMMA`, frac_coords: [0, 0, 0] },
     { label: null, frac_coords: [0.25, 0, 0] },
@@ -60,9 +66,7 @@ const spin_polarized_electronic = {
   efermi: 0,
 } as BaseBandStructure & { efermi: number; spin_down_bands: number[][] }
 
-const mount_bands = async (
-  props: ComponentProps<typeof Bands>,
-): Promise<void> => {
+const mount_bands = async (props: ComponentProps<typeof Bands>): Promise<void> => {
   document.body.innerHTML = ``
   mount(Bands, { target: document.body, props })
   await tick()
@@ -140,9 +144,7 @@ describe(`Bands component`, () => {
       band_structs: base_band_structure,
       highlight_regions: [{ y_min: 0.5, y_max: 1.5, label: `Window` }],
     })
-    const fill_region_paths = document.querySelectorAll(
-      `g.fill-region path[fill-opacity]`,
-    )
+    const fill_region_paths = document.querySelectorAll(`g.fill-region path[fill-opacity]`)
     expect(fill_region_paths.length).toBe(1)
   })
 

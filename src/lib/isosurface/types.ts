@@ -169,8 +169,8 @@ export function downsample_grid(
   // produces more output cells than ceil(n/factor) would — no empty blocks.
   const partition = (n_out: number, n_src: number): [number, number][] =>
     Array.from({ length: n_out }, (_, idx) => [
-      Math.round(idx * n_src / n_out),
-      Math.round((idx + 1) * n_src / n_out),
+      Math.round((idx * n_src) / n_out),
+      Math.round(((idx + 1) * n_src) / n_out),
     ])
 
   const x_ranges = partition(new_nx, nx)
@@ -220,16 +220,13 @@ export const DEFAULT_ISOSURFACE_SETTINGS: IsosurfaceSettings = {
 // Compute reasonable isosurface settings from a volume's data range.
 // Sets isovalue to 20% of abs_max and enables negative lobe when data has
 // significant negative values (>1% of max).
-export function auto_isosurface_settings(
-  data_range: DataRange,
-): IsosurfaceSettings {
+export function auto_isosurface_settings(data_range: DataRange): IsosurfaceSettings {
   const has_negatives = data_range.min < -data_range.abs_max * 0.01
   return {
     ...DEFAULT_ISOSURFACE_SETTINGS,
     // Fall back to default isovalue for all-zero grids to keep controls usable
-    isovalue: data_range.abs_max > 0
-      ? data_range.abs_max * 0.2
-      : DEFAULT_ISOSURFACE_SETTINGS.isovalue,
+    isovalue:
+      data_range.abs_max > 0 ? data_range.abs_max * 0.2 : DEFAULT_ISOSURFACE_SETTINGS.isovalue,
     show_negative: has_negatives,
   }
 }
@@ -237,10 +234,7 @@ export function auto_isosurface_settings(
 // Generate N evenly-spaced isosurface layers across a data range.
 // Layers are spaced from 10% to 80% of abs_max with decreasing opacity
 // for outer (lower-isovalue) shells so inner shells remain visible.
-export function generate_layers(
-  data_range: DataRange,
-  n_layers: number,
-): IsosurfaceLayer[] {
+export function generate_layers(data_range: DataRange, n_layers: number): IsosurfaceLayer[] {
   if (n_layers <= 0 || data_range.abs_max <= 0) return []
   const has_negatives = data_range.min < -data_range.abs_max * 0.01
   // Space isovalues from high (inner) to low (outer)

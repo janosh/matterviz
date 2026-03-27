@@ -26,7 +26,8 @@ export function caglioti_fwhm(
   U: number, // Caglioti parameter U
   V: number, // Caglioti parameter V
   W: number, // Caglioti parameter W
-): number { // FWHM in degrees (2θ)
+): number {
+  // FWHM in degrees (2θ)
   const theta_rad = (two_theta / 2) * (Math.PI / 180)
   const tan_theta = Math.tan(theta_rad)
   const fwhm_sq = U * tan_theta ** 2 + V * tan_theta + W
@@ -35,7 +36,8 @@ export function caglioti_fwhm(
 }
 
 // Normalized Gaussian profile. x: position, x0: peak center, fwhm: Full Width at Half Maximum
-function gaussian(x: number, x0: number, fwhm: number): number { // Intensity at x
+function gaussian(x: number, x0: number, fwhm: number): number {
+  // Intensity at x
   const safe_fwhm = Math.max(fwhm, 1e-9)
   const sigma = safe_fwhm / (2 * Math.sqrt(2 * LOG_2))
   const prefactor = 1 / (sigma * Math.sqrt(2 * Math.PI))
@@ -44,7 +46,8 @@ function gaussian(x: number, x0: number, fwhm: number): number { // Intensity at
 }
 
 // Normalized Lorentzian profile. x: position, x0: peak center, fwhm: Full Width at Half Maximum
-function lorentzian(x: number, x0: number, fwhm: number): number { // Intensity at x
+function lorentzian(x: number, x0: number, fwhm: number): number {
+  // Intensity at x
   const safe_fwhm = Math.max(fwhm, 1e-9)
   const gamma = safe_fwhm / 2
   const prefactor = 1 / (Math.PI * gamma)
@@ -58,12 +61,11 @@ export function pseudo_voigt(
   x0: number, // Peak center
   fwhm: number, // Full Width at Half Maximum
   eta: number, // Mixing parameter (0 = Gaussian, 1 = Lorentzian)
-): number { // Intensity at x
+): number {
+  // Intensity at x
   // Clamp eta to [0, 1]
   const safe_eta = Math.max(0, Math.min(1, eta))
-  return (
-    safe_eta * lorentzian(x, x0, fwhm) + (1 - safe_eta) * gaussian(x, x0, fwhm)
-  )
+  return safe_eta * lorentzian(x, x0, fwhm) + (1 - safe_eta) * gaussian(x, x0, fwhm)
 }
 
 // Computes a broadened XRD pattern from discrete peaks.
@@ -72,15 +74,14 @@ export function compute_broadened_pattern(
   params: BroadeningParams, // Broadening parameters (U, V, W, shape_factor)
   range: [number, number], // Angular range [min, max] in degrees
   step_size: number = 0.02, // Step size in degrees (default 0.02)
-): XrdPattern { // Continuous broadened pattern
+): XrdPattern {
+  // Continuous broadened pattern
   if (!Number.isFinite(step_size) || step_size <= 0) {
     throw new Error(`step_size must be > 0 and finite`)
   }
 
   const [min_angle, max_angle] = range
-  if (
-    !Number.isFinite(min_angle) || !Number.isFinite(max_angle) || max_angle <= min_angle
-  ) {
+  if (!Number.isFinite(min_angle) || !Number.isFinite(max_angle) || max_angle <= min_angle) {
     throw new Error(`range must be finite and max > min`)
   }
 
@@ -113,14 +114,8 @@ export function compute_broadened_pattern(
     // Lorentzian tails are long, so we need a decent window.
     // 20 * FWHM is usually sufficient for visual purposes.
     const window = 20 * fwhm
-    const start_idx = Math.max(
-      0,
-      Math.floor((x0 - window - min_angle) / step_size),
-    )
-    const end_idx = Math.min(
-      n_steps - 1,
-      Math.ceil((x0 + window - min_angle) / step_size),
-    )
+    const start_idx = Math.max(0, Math.floor((x0 - window - min_angle) / step_size))
+    const end_idx = Math.min(n_steps - 1, Math.ceil((x0 + window - min_angle) / step_size))
 
     for (let i = start_idx; i <= end_idx; i++) {
       const x = xs[i]

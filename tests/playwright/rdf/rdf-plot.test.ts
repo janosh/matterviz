@@ -50,9 +50,7 @@ test.describe(`RdfPlot Component Tests`, () => {
 
     // Wait for line count to restore (1 → 2)
     await expect(async () => {
-      expect(await plot.locator(`svg path[fill="none"]:visible`).count()).toBe(
-        initial_lines,
-      )
+      expect(await plot.locator(`svg path[fill="none"]:visible`).count()).toBe(initial_lines)
     }).toPass({ timeout: 5000 })
   })
 
@@ -94,9 +92,8 @@ test.describe(`RdfPlot Component Tests`, () => {
     // Hidden when disabled
     const no_ref = page.locator(`#no-reference-line`)
     await expect(no_ref).toBeVisible()
-    const no_ref_line_count = await no_ref.locator(
-      `svg line[stroke="gray"][stroke-dasharray="4"]`,
-    )
+    const no_ref_line_count = await no_ref
+      .locator(`svg line[stroke="gray"][stroke-dasharray="4"]`)
       .count()
     expect(no_ref_line_count).toBe(0)
   })

@@ -72,9 +72,7 @@ describe(`is_expandable_type`, () => {
     [`regexp`, false],
     [`function`, false],
   ])(`returns %p for type %s`, (type, expected) => {
-    expect(is_expandable_type(type as Parameters<typeof is_expandable_type>[0])).toBe(
-      expected,
-    )
+    expect(is_expandable_type(type as Parameters<typeof is_expandable_type>[0])).toBe(expected)
   })
 })
 
@@ -102,7 +100,13 @@ describe(`get_child_count`, () => {
     [[1, 2, 3], 3],
     [{}, 0],
     [{ a: 1, b: 2 }, 2],
-    [new Map([[`a`, 1], [`b`, 2]]), 2],
+    [
+      new Map([
+        [`a`, 1],
+        [`b`, 2],
+      ]),
+      2,
+    ],
     [new Set([1, 2, 3, 4]), 4],
     [`string`, 0],
     [42, 0],
@@ -232,9 +236,24 @@ describe(`serialize_for_copy`, () => {
   })
 
   it.each([
-    [[1, 2, 3], [1, 2, 3]],
-    [{ a: 1, b: 2 }, { a: 1, b: 2 }],
-    [new Map([[`a`, 1], [`b`, 2]]), [[`a`, 1], [`b`, 2]]],
+    [
+      [1, 2, 3],
+      [1, 2, 3],
+    ],
+    [
+      { a: 1, b: 2 },
+      { a: 1, b: 2 },
+    ],
+    [
+      new Map([
+        [`a`, 1],
+        [`b`, 2],
+      ]),
+      [
+        [`a`, 1],
+        [`b`, 2],
+      ],
+    ],
     [new Set([1, 2, 3]), [1, 2, 3]],
   ])(`serializes %p to JSON`, (value, expected) => {
     expect(JSON.parse(serialize_for_copy(value))).toEqual(expected)
@@ -259,7 +278,13 @@ describe(`format_preview`, () => {
     [{ a: 1 }, `{1 key}`],
     [{ a: 1, b: 2 }, `{2 keys}`],
     [{}, `{0 keys}`],
-    [new Map([[`a`, 1], [`b`, 2]]), `Map(2)`],
+    [
+      new Map([
+        [`a`, 1],
+        [`b`, 2],
+      ]),
+      `Map(2)`,
+    ],
     [new Set([1, 2, 3]), `Set(3)`],
     [`hello`, `"hello"`],
     [new Date(`2024-01-15T10:30:00.000Z`), `2024-01-15T10:30:00.000Z`],
@@ -289,48 +314,42 @@ describe(`format_preview`, () => {
     expect(format_preview(value)).toBe(expected)
   })
 
-  it.each([
-    `日本語テキスト`,
-    `🚀 🎨 🔧`,
-    `∑∏∫∂∇`,
-    `First\nSecond\tThird`,
-    ``,
-    `   `,
-  ])(`preserves unicode/special string: %p`, (str) => {
-    expect(format_preview(str)).toBe(`"${str}"`)
-  })
+  it.each([`日本語テキスト`, `🚀 🎨 🔧`, `∑∏∫∂∇`, `First\nSecond\tThird`, ``, `   `])(
+    `preserves unicode/special string: %p`,
+    (str) => {
+      expect(format_preview(str)).toBe(`"${str}"`)
+    },
+  )
 })
 
 describe(`matches_search`, () => {
-  it.each(
-    [
-      // empty query
-      [`path`, `key`, `value`, ``, false],
-      // path matches (case-insensitive)
-      [`users.name`, `name`, `John`, `user`, true],
-      [`USERS.name`, `name`, `John`, `user`, true],
-      // key matches (case-insensitive)
-      [`path`, `firstName`, `John`, `name`, true],
-      [`path`, `FIRSTNAME`, `John`, `name`, true],
-      // numeric key
-      [`arr`, 123, `value`, `12`, true],
-      // string value (case-insensitive)
-      [`path`, `key`, `Hello World`, `world`, true],
-      [`path`, `key`, `HELLO`, `hello`, true],
-      // number value
-      [`path`, `key`, 42, `42`, true],
-      [`path`, `key`, 3.14, `3.14`, true],
-      // boolean value
-      [`path`, `key`, true, `true`, true],
-      [`path`, `key`, false, `fal`, true],
-      // object/array don't match directly
-      [`path`, `key`, { nested: true }, `nested`, false],
-      [`path`, `key`, [1, 2, 3], `1`, false],
-      // null key
-      [`root`, null, `value`, `root`, true],
-      [`root`, null, `value`, `key`, false],
-    ] as const,
-  )(`matches_search(%p, %p, %p, %p) = %p`, (path, key, value, query, expected) => {
+  it.each([
+    // empty query
+    [`path`, `key`, `value`, ``, false],
+    // path matches (case-insensitive)
+    [`users.name`, `name`, `John`, `user`, true],
+    [`USERS.name`, `name`, `John`, `user`, true],
+    // key matches (case-insensitive)
+    [`path`, `firstName`, `John`, `name`, true],
+    [`path`, `FIRSTNAME`, `John`, `name`, true],
+    // numeric key
+    [`arr`, 123, `value`, `12`, true],
+    // string value (case-insensitive)
+    [`path`, `key`, `Hello World`, `world`, true],
+    [`path`, `key`, `HELLO`, `hello`, true],
+    // number value
+    [`path`, `key`, 42, `42`, true],
+    [`path`, `key`, 3.14, `3.14`, true],
+    // boolean value
+    [`path`, `key`, true, `true`, true],
+    [`path`, `key`, false, `fal`, true],
+    // object/array don't match directly
+    [`path`, `key`, { nested: true }, `nested`, false],
+    [`path`, `key`, [1, 2, 3], `1`, false],
+    // null key
+    [`root`, null, `value`, `root`, true],
+    [`root`, null, `value`, `key`, false],
+  ] as const)(`matches_search(%p, %p, %p, %p) = %p`, (path, key, value, query, expected) => {
     expect(matches_search(path, key, value, query)).toBe(expected)
   })
 })
@@ -395,10 +414,7 @@ describe(`find_matching_paths`, () => {
 
   it(`finds matching paths in nested object`, () => {
     const obj = {
-      users: [
-        { name: `Alice` },
-        { name: `Bob` },
-      ],
+      users: [{ name: `Alice` }, { name: `Bob` }],
     }
     const result = find_matching_paths(obj, `Alice`)
     expect(result.has(`users[0].name`)).toBe(true)
@@ -740,8 +756,7 @@ describe(`compute_diff`, () => {
     expect(compute_diff(new Date(`2024-01-15`), new Date(`2024-01-15`)).size).toBe(0)
     expect(
       compute_diff(new Date(`2024-01-15`), new Date(`2024-01-16`), `d`).get(`d`)?.status,
-    )
-      .toBe(`changed`)
+    ).toBe(`changed`)
   })
 
   it(`uses empty string as default root path`, () => {
@@ -755,8 +770,14 @@ describe(`compute_diff`, () => {
   })
 
   it(`detects changes in Map values`, () => {
-    const old_map = new Map([[`a`, 1], [`b`, 2]])
-    const new_map = new Map([[`a`, 1], [`b`, 99]])
+    const old_map = new Map([
+      [`a`, 1],
+      [`b`, 2],
+    ])
+    const new_map = new Map([
+      [`a`, 1],
+      [`b`, 99],
+    ])
     const diff = compute_diff(old_map, new_map, `m`)
     // Map entries are wrapped as { key, value } to match rendering
     expect(diff.size).toBe(1)
@@ -775,7 +796,10 @@ describe(`compute_diff`, () => {
 
   it(`detects added/removed Map entries`, () => {
     const old_map = new Map([[`a`, 1]])
-    const new_map = new Map([[`a`, 1], [`b`, 2]])
+    const new_map = new Map([
+      [`a`, 1],
+      [`b`, 2],
+    ])
     const diff = compute_diff(old_map, new_map, `m`)
     expect(diff.size).toBe(1)
     expect(diff.get(`m[1]`)?.status).toBe(`added`)

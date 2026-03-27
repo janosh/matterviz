@@ -6,17 +6,8 @@ import type { Crystal } from '$lib/structure/index'
 import { parse_any_structure } from '$lib/structure/parse'
 import { is_crystal } from '$lib/structure/validation'
 // Single source of truth for atomic scattering params
-import ATOMIC_SCATTERING_PARAMS from './atomic_scattering_params.json' with {
-  type: 'json',
-}
-import type {
-  Hkl,
-  HklObj,
-  PatternEntry,
-  RecipPoint,
-  XrdOptions,
-  XrdPattern,
-} from './index'
+import ATOMIC_SCATTERING_PARAMS from './atomic_scattering_params.json' with { type: 'json' }
+import type { Hkl, HklObj, PatternEntry, RecipPoint, XrdOptions, XrdPattern } from './index'
 import { is_xrd_data_file, parse_xrd_file } from './parse'
 
 // JSON import yields Record<string, number[][]>; type for element-keyed scattering params
@@ -82,7 +73,8 @@ function get_unique_families(hkls: Hkl[]): Map<string, number> {
   for (const group of key_map.values()) {
     let representative: Hkl = group[0]
     for (const candidate of group) {
-      const better = candidate[0] > representative[0] ||
+      const better =
+        candidate[0] > representative[0] ||
         (candidate[0] === representative[0] &&
           (candidate[1] > representative[1] ||
             (candidate[1] === representative[1] && candidate[2] > representative[2])))
@@ -112,15 +104,13 @@ function enumerate_reciprocal_points(
   const n1 = Math.max(Math.hypot(...recip_b1), 1e-12)
   const n2 = Math.max(Math.hypot(...recip_b2), 1e-12)
   const n3 = Math.max(Math.hypot(...recip_b3), 1e-12)
-  const h_max = Math.ceil((max_radius / n1) + 2)
-  const k_max = Math.ceil((max_radius / n2) + 2)
-  const l_max = Math.ceil((max_radius / n3) + 2)
+  const h_max = Math.ceil(max_radius / n1 + 2)
+  const k_max = Math.ceil(max_radius / n2 + 2)
+  const l_max = Math.ceil(max_radius / n3 + 2)
   // Safety cap to avoid pathological enumeration volume
   const CAP = 512
   if (Math.max(h_max, k_max, l_max) > CAP) {
-    throw new Error(
-      `enumerate_reciprocal_points: max(h,k,l) exceeds cap ${CAP}`,
-    )
+    throw new Error(`enumerate_reciprocal_points: max(h,k,l) exceeds cap ${CAP}`)
   }
 
   const points: RecipPoint[] = []
@@ -143,25 +133,20 @@ function enumerate_reciprocal_points(
     p1.g_norm !== p2.g_norm
       ? p1.g_norm - p2.g_norm
       : p2.hkl[0] !== p1.hkl[0]
-      ? p2.hkl[0] - p1.hkl[0]
-      : p2.hkl[1] !== p1.hkl[1]
-      ? p2.hkl[1] - p1.hkl[1]
-      : p2.hkl[2] - p1.hkl[2]
+        ? p2.hkl[0] - p1.hkl[0]
+        : p2.hkl[1] !== p1.hkl[1]
+          ? p2.hkl[1] - p1.hkl[1]
+          : p2.hkl[2] - p1.hkl[2],
   )
   return points
 }
 
-export function compute_xrd_pattern(
-  structure: Crystal,
-  options: XrdOptions = {},
-): XrdPattern {
+export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}): XrdPattern {
   const wl_input = options.wavelength ?? `CuKa`
   let wavelength: number
   if (typeof wl_input === `number`) {
     if (!Number.isFinite(wl_input) || wl_input <= 0) {
-      throw new Error(
-        `Invalid wavelength: ${wl_input}. Must be a finite positive number.`,
-      )
+      throw new Error(`Invalid wavelength: ${wl_input}. Must be a finite positive number.`)
     }
     wavelength = wl_input
   } else {
@@ -178,16 +163,16 @@ export function compute_xrd_pattern(
   const recip_rows = compute_reciprocal_lattice_rows(structure)
 
   // Bragg condition bounds: reciprocal vector length r = 2 sin(theta) / lambda
-  const two_theta_range = options.two_theta_range === null
-    ? null
-    : options.two_theta_range ?? [0, 180]
-  const [min_radius, max_radius] = two_theta_range === null
-    ? [0, 2 / wavelength]
-    : (([t_min, t_max]: [number, number]) => {
-      const r_min = (2 * Math.sin((t_min / 2) * (Math.PI / 180))) / wavelength
-      const r_max = (2 * Math.sin((t_max / 2) * (Math.PI / 180))) / wavelength
-      return [r_min, r_max]
-    })(two_theta_range)
+  const two_theta_range =
+    options.two_theta_range === null ? null : (options.two_theta_range ?? [0, 180])
+  const [min_radius, max_radius] =
+    two_theta_range === null
+      ? [0, 2 / wavelength]
+      : (([t_min, t_max]: [number, number]) => {
+          const r_min = (2 * Math.sin((t_min / 2) * (Math.PI / 180))) / wavelength
+          const r_max = (2 * Math.sin((t_max / 2) * (Math.PI / 180))) / wavelength
+          return [r_min, r_max]
+        })(two_theta_range)
 
   const recip_points = enumerate_reciprocal_points(recip_rows, max_radius, min_radius)
 
@@ -206,8 +191,7 @@ export function compute_xrd_pattern(
       if (ELEMENT_Z[element_symbol] === undefined) {
         throw new Error(`Unknown atomic number for element ${element_symbol}`)
       }
-      const raw_coeff =
-        (ATOMIC_SCATTERING_PARAMS as ScatteringParamsRecord)[element_symbol]
+      const raw_coeff = (ATOMIC_SCATTERING_PARAMS as ScatteringParamsRecord)[element_symbol]
       if (!raw_coeff) {
         throw new Error(
           `No atomic scattering coefficients for ${element_symbol}. Extend ATOMIC_SCATTERING_PARAMS.`,
@@ -264,7 +248,7 @@ export function compute_xrd_pattern(
     })
 
     const dw_corr: number[] = dw_factors.map((dw_b) =>
-      Math.exp(-dw_b * sin_theta_over_lambda_sq)
+      Math.exp(-dw_b * sin_theta_over_lambda_sq),
     )
 
     // Structure factor sum: sum(fs * occu * exp(2πi g·r) * DW)
@@ -281,7 +265,7 @@ export function compute_xrd_pattern(
 
     const sin_theta = Math.sin(theta)
     const cos_theta = Math.cos(theta)
-    const denom_raw = (sin_theta * sin_theta) * Math.abs(cos_theta)
+    const denom_raw = sin_theta * sin_theta * Math.abs(cos_theta)
     // Clamp denominator away from zero to avoid Inf/NaN when 2θ → 180° (cosθ → 0)
     const denom = Math.max(denom_raw, 1e-12)
     const lorentz = (1 + Math.cos(2 * theta) ** 2) / denom
@@ -360,7 +344,8 @@ export async function add_xrd_pattern(
   content: string | ArrayBufferLike, // File content as string or ArrayBuffer
   filename: string, // Name of the file (used to detect format)
   wavelength: number | null, // X-ray wavelength for structure-based XRD calculation
-): Promise<{ pattern?: PatternEntry; error?: string }> { // Object with pattern entry or error message
+): Promise<{ pattern?: PatternEntry; error?: string }> {
+  // Object with pattern entry or error message
   try {
     // Check if file is a direct XRD data file (.xy, .brml)
     if (is_xrd_data_file(filename)) {
@@ -380,8 +365,7 @@ export async function add_xrd_pattern(
       const ext = base_name.split(`.`).pop()?.toUpperCase() || `XRD`
       const format_hints: Record<string, string> = {
         XY: `Expected 2-column format: "2theta intensity" (space/tab/comma separated)`,
-        XYE:
-          `Expected 3-column format: "2theta intensity error" (space/tab/comma separated)`,
+        XYE: `Expected 3-column format: "2theta intensity error" (space/tab/comma separated)`,
         BRML: `Expected Bruker RAW/BRML ZIP archive with RawData XML`,
         XRDML: `Expected PANalytical XRDML format with dataPoints section`,
       }
@@ -390,9 +374,8 @@ export async function add_xrd_pattern(
     }
 
     // Otherwise, try to parse as a structure file and compute XRD pattern
-    const text_content = typeof content === `string`
-      ? content
-      : new TextDecoder().decode(content as BufferSource)
+    const text_content =
+      typeof content === `string` ? content : new TextDecoder().decode(content as BufferSource)
     const parsed_structure = parse_any_structure(text_content, filename)
     if (is_crystal(parsed_structure)) {
       const pattern = compute_xrd_pattern(parsed_structure, {
@@ -401,14 +384,13 @@ export async function add_xrd_pattern(
       return { pattern: { label: filename || `Dropped structure`, pattern } }
     }
     return {
-      error: `Cannot compute XRD: structure must have a lattice and atomic sites. ` +
+      error:
+        `Cannot compute XRD: structure must have a lattice and atomic sites. ` +
         `Supported formats: CIF, POSCAR, JSON, XYZ`,
     }
   } catch (exc) {
     return {
-      error: `Failed to compute XRD pattern: ${
-        exc instanceof Error ? exc.message : String(exc)
-      }`,
+      error: `Failed to compute XRD pattern: ${exc instanceof Error ? exc.message : String(exc)}`,
     }
   }
 }

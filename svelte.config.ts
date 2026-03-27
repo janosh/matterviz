@@ -4,11 +4,7 @@ import { mdsvex } from 'mdsvex'
 import katex from 'rehype-katex'
 import math from 'remark-math' // remark-math@3.0.0 pinned due to mdsvex https://github.com/kwshi/rehype-katex-svelte#usage
 import { heading_ids } from 'svelte-multiselect/heading-anchors'
-import {
-  mdsvex_transform,
-  starry_night_highlighter,
-  sveltePreprocess,
-} from 'svelte-multiselect/live-examples'
+import { mdsvex_transform, starry_night_highlighter } from 'svelte-multiselect/live-examples'
 import type { PreprocessorGroup } from 'svelte/compiler'
 
 const { default: pkg } = await import(`./package.json`, {
@@ -25,7 +21,6 @@ export default {
   extensions: [`.svelte`, `.svx`, `.md`],
 
   preprocess: [
-    sveltePreprocess(), // wrapped version that skips markdown files
     mdsvex({
       remarkPlugins: [[mdsvex_transform, { defaults }], math],
       rehypePlugins: [katex],
@@ -40,7 +35,7 @@ export default {
       strict: false, // don't fail on symlinks
     }),
 
-    alias: { $site: `src/site`, $root: `.`, 'matterviz': `src/lib` },
+    alias: { $site: `src/site`, $root: `.`, matterviz: `src/lib` },
 
     prerender: {
       handleHttpError: ({ path, message }) => {

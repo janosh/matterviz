@@ -66,11 +66,7 @@ export function calculate_face_normal(p1: Point3D, p2: Point3D, p3: Point3D): Po
   return { x: nx / magnitude, y: ny / magnitude, z: nz / magnitude }
 }
 
-export const calculate_face_centroid = (
-  p1: Point3D,
-  p2: Point3D,
-  p3: Point3D,
-): Point3D => ({
+export const calculate_face_centroid = (p1: Point3D, p2: Point3D, p3: Point3D): Point3D => ({
   x: (p1.x + p2.x + p3.x) / 3,
   y: (p1.y + p2.y + p3.y) / 3,
   z: (p1.z + p2.z + p3.z) / 3,
@@ -82,26 +78,23 @@ export function get_ternary_3d_coordinates(
   el_refs?: Record<string, PhaseData>, // Optional: pass precomputed refs to avoid recomputing
 ): ConvexHullEntry[] {
   if (elements.length !== 3) {
-    throw new Error(
-      `Ternary convex hull requires exactly 3 elements, got ${elements.length}`,
-    )
+    throw new Error(`Ternary convex hull requires exactly 3 elements, got ${elements.length}`)
   }
 
   // Filter to entries within the ternary system first (use Set for O(1) lookups)
   const element_set = new Set(elements)
   const within_system = entries.filter((entry) =>
-    Object.keys(entry.composition).every((el) => element_set.has(el as ElementSymbol))
+    Object.keys(entry.composition).every((el) => element_set.has(el as ElementSymbol)),
   )
 
   if (within_system.length === 0) {
-    throw new Error(
-      `No entries found within the ternary system: ${elements.join(`-`)}`,
-    )
+    throw new Error(`No entries found within the ternary system: ${elements.join(`-`)}`)
   }
 
   // Check if we have formation energies - provide detailed diagnostics if missing
-  const entries_with_e_form = within_system.filter((entry) =>
-    typeof entry.e_form_per_atom === `number` && Number.isFinite(entry.e_form_per_atom)
+  const entries_with_e_form = within_system.filter(
+    (entry) =>
+      typeof entry.e_form_per_atom === `number` && Number.isFinite(entry.e_form_per_atom),
   )
 
   // If none have e_form_per_atom, try to derive them using refs; only error if we can't
@@ -111,12 +104,12 @@ export function get_ternary_3d_coordinates(
     if (missing_refs.length > 0) {
       throw new Error(
         [
-          `Ternary convex hull requires formation energies (e_form_per_atom) for z-axis positioning, but none of the ${within_system.length} entries in the ${
-            elements.join(`-`)
-          } system have this field.`,
-          `\nCannot compute formation energies because elemental references are missing for: ${
-            missing_refs.join(`, `)
-          }.`,
+          `Ternary convex hull requires formation energies (e_form_per_atom) for z-axis positioning, but none of the ${within_system.length} entries in the ${elements.join(
+            `-`,
+          )} system have this field.`,
+          `\nCannot compute formation energies because elemental references are missing for: ${missing_refs.join(
+            `, `,
+          )}.`,
           `To fix: Ensure your dataset includes stable unary (single-element) entries for each element.`,
         ].join(`\n`),
       )
@@ -127,10 +120,10 @@ export function get_ternary_3d_coordinates(
   // Map entries to ternary plot coordinates
   const result = within_system.map((entry) => {
     const barycentric = composition_to_barycentric_3d(entry.composition, elements)
-    const e_form_per_atom = typeof entry.e_form_per_atom === `number` &&
-        Number.isFinite(entry.e_form_per_atom)
-      ? entry.e_form_per_atom
-      : compute_e_form_per_atom(entry, refs) ?? NaN
+    const e_form_per_atom =
+      typeof entry.e_form_per_atom === `number` && Number.isFinite(entry.e_form_per_atom)
+        ? entry.e_form_per_atom
+        : (compute_e_form_per_atom(entry, refs) ?? NaN)
     const xyz = barycentric_to_ternary_xyz(barycentric, e_form_per_atom)
     const is_element = is_unary_entry(entry)
     return { ...entry, ...xyz, is_element, visible: true }
@@ -140,7 +133,11 @@ export function get_ternary_3d_coordinates(
 
 export function get_triangle_edges(): [Point3D, Point3D][] {
   const [v0, v1, v2] = TRIANGLE_VERTICES.map(([x, y]) => ({ x, y, z: 0 }))
-  return [[v0, v1], [v1, v2], [v2, v0]]
+  return [
+    [v0, v1],
+    [v1, v2],
+    [v2, v0],
+  ]
 }
 
 export function get_triangle_vertical_edges(
@@ -148,7 +145,10 @@ export function get_triangle_vertical_edges(
   max_z: number,
 ): [Point3D, Point3D][] {
   const vertices = TRIANGLE_VERTICES.map(([x, y]) => ({ x, y, z: 0 }))
-  return vertices.map((vertex) => [{ ...vertex, z: min_z }, { ...vertex, z: max_z }])
+  return vertices.map((vertex) => [
+    { ...vertex, z: min_z },
+    { ...vertex, z: max_z },
+  ])
 }
 
 // --- N-dimensional barycentric coordinates (for 5+ element systems) ---
@@ -167,7 +167,7 @@ export function composition_to_barycentric_nd(
   // NaN and undefined/missing elements are treated as 0
   const amounts = elements.map((el) => {
     const val = composition[el]
-    return (val === null || val === undefined || Number.isNaN(val)) ? 0 : val
+    return val == null || Number.isNaN(val) ? 0 : val
   })
   let total = 0
   const negative: string[] = []
@@ -179,9 +179,7 @@ export function composition_to_barycentric_nd(
     throw new Error(`Composition contains negative amounts for: ${negative.join(`, `)}`)
   }
   if (total === 0) {
-    throw new Error(
-      `Composition has no elements from the system: ${elements.join(`-`)}`,
-    )
+    throw new Error(`Composition has no elements from the system: ${elements.join(`-`)}`)
   }
   return amounts.map((amount) => amount / total)
 }
@@ -237,13 +235,10 @@ export function compute_4d_coords(
   // Use Set for O(1) lookups instead of O(n) includes
   const element_set = new Set(elements)
   const within_system = entries.filter((entry) =>
-    Object.keys(entry.composition).every((el) => element_set.has(el as ElementSymbol))
+    Object.keys(entry.composition).every((el) => element_set.has(el as ElementSymbol)),
   )
   return within_system.map((entry) => {
-    const barycentric_4d = composition_to_barycentric_4d(
-      entry.composition,
-      elements,
-    )
+    const barycentric_4d = composition_to_barycentric_4d(entry.composition, elements)
     const tetrahedral = barycentric_to_tetrahedral(barycentric_4d)
     const is_element = is_unary_entry(entry)
     return { ...entry, ...tetrahedral, is_element, visible: true }

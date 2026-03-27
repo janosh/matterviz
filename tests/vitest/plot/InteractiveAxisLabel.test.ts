@@ -24,7 +24,8 @@ function get_trigger() {
 
 describe(`InteractiveAxisLabel`, () => {
   afterEach(() => {
-    document.body.querySelectorAll(`.portal-select-dropdown, .interactive-axis-label`)
+    document.body
+      .querySelectorAll(`.portal-select-dropdown, .interactive-axis-label`)
       .forEach((el) => el.remove())
   })
 

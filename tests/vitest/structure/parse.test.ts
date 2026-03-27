@@ -29,11 +29,11 @@ import scientific_notation_poscar from '$site/structures/scientific-notation.pos
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
-import { readFileSync } from 'fs'
+import { readFileSync } from 'node:fs'
 import process from 'node:process'
-import { join } from 'path'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
-import { gunzipSync } from 'zlib'
+import { gunzipSync } from 'node:zlib'
 import { get_dummy_structure } from '../setup'
 
 // Suppress console.error for the entire test file since parse functions
@@ -120,26 +120,22 @@ describe(`POSCAR Parser`, () => {
   it.each([
     {
       name: `negative scale factor`,
-      content:
-        `Test\n-27.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`,
+      content: `Test\n-27.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`,
       expected: { volume: 27.0 },
     },
     {
       name: `malformed coordinates`,
-      content:
-        `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.1-0.2-0.3`,
+      content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.1-0.2-0.3`,
       expected: { abc: [0.1, 0.8, 0.7] }, // Negative coordinates are wrapped: -0.2 -> 0.8, -0.3 -> 0.7
     },
     {
       name: `element symbol cleaning`,
-      content:
-        `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH_pv O/12345abc\n1 1\nDirect\n0.0 0.0 0.0\n0.5 0.5 0.5`,
+      content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH_pv O/12345abc\n1 1\nDirect\n0.0 0.0 0.0\n0.5 0.5 0.5`,
       expected: { elements: [`H`, `O`] },
     },
     {
       name: `scientific notation in malformed coordinates`,
-      content:
-        `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n1e-3-2e-3-3e-3`,
+      content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n1e-3-2e-3-3e-3`,
       expected: { abc: [0.001, 0.998, 0.997] }, // Scientific notation preserved: 1e-3 -2e-3 -3e-3, negative coordinates wrapped
     },
   ])(`should handle $name`, ({ content, expected }) => {
@@ -189,11 +185,13 @@ describe(`POSCAR Parser`, () => {
         )
 
         // Verify coordinate consistency and bounds
-        expect(reconstructed_xyz).toEqual(expect.arrayContaining([
-          expect.closeTo(site.xyz[0], 10),
-          expect.closeTo(site.xyz[1], 10),
-          expect.closeTo(site.xyz[2], 10),
-        ]))
+        expect(reconstructed_xyz).toEqual(
+          expect.arrayContaining([
+            expect.closeTo(site.xyz[0], 10),
+            expect.closeTo(site.xyz[1], 10),
+            expect.closeTo(site.xyz[2], 10),
+          ]),
+        )
         expect(site.xyz[0]).toBeGreaterThanOrEqual(-0.1)
         expect(site.xyz[0]).toBeLessThan(result.lattice.a + 0.1)
         expect(site.xyz[1]).toBeGreaterThanOrEqual(-0.1)
@@ -212,21 +210,17 @@ describe(`POSCAR Parser`, () => {
     },
     {
       name: `too many coordinates`,
-      content:
-        `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0 5.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`,
+      content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0 5.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`,
       expected_error: `Invalid lattice vector on line 4: expected 3 coordinates, got 4`,
     },
-  ])(
-    `should reject lattice vectors with $name`,
-    ({ content, expected_error }) => {
-      const result = parse_poscar(content)
-      expect(result).toBeNull()
-      expect(console_error_spy).toHaveBeenCalledWith(
-        `Error parsing POSCAR file:`,
-        expect.objectContaining({ message: expected_error }),
-      )
-    },
-  )
+  ])(`should reject lattice vectors with $name`, ({ content, expected_error }) => {
+    const result = parse_poscar(content)
+    expect(result).toBeNull()
+    expect(console_error_spy).toHaveBeenCalledWith(
+      `Error parsing POSCAR file:`,
+      expect.objectContaining({ message: expected_error }),
+    )
+  })
 })
 
 describe(`XYZ Parser`, () => {
@@ -302,24 +296,51 @@ describe(`XYZ Parser`, () => {
   })
 
   it.each([
-    [`orthorhombic`, [[5, 0, 0], [0, 6, 0], [0, 0, 7]]],
-    [`hexagonal`, [[4.5, 0, 0], [4.5 / 2, (4.5 * Math.sqrt(3)) / 2, 0], [0, 0, 5.2]]],
-    [`monoclinic`, [[5, 0, 0], [0.8, 4.7, 0], [0, 0.7, 6.2]]],
-    [`triclinic`, [[5.0, 0.0, 0.0], [2.5, 4.33, 0.0], [1.0, 1.0, 4.0]]],
+    [
+      `orthorhombic`,
+      [
+        [5, 0, 0],
+        [0, 6, 0],
+        [0, 0, 7],
+      ],
+    ],
+    [
+      `hexagonal`,
+      [
+        [4.5, 0, 0],
+        [4.5 / 2, (4.5 * Math.sqrt(3)) / 2, 0],
+        [0, 0, 5.2],
+      ],
+    ],
+    [
+      `monoclinic`,
+      [
+        [5, 0, 0],
+        [0.8, 4.7, 0],
+        [0, 0.7, 6.2],
+      ],
+    ],
+    [
+      `triclinic`,
+      [
+        [5.0, 0.0, 0.0],
+        [2.5, 4.33, 0.0],
+        [1.0, 1.0, 4.0],
+      ],
+    ],
   ])(
     `handles non-orthogonal lattices (%s) with wrapping and reconstruction`,
     (_name, latt) => {
       // generate some fractional points including negatives and >1 to test wrapping
-      const abcs = [[-0.1, 0.2, 0.3], [0.4, 1.2, 0.6], [0.7, 0.8, -0.9]]
+      const abcs = [
+        [-0.1, 0.2, 0.3],
+        [0.4, 1.2, 0.6],
+        [0.7, 0.8, -0.9],
+      ]
       const lattice = latt as Matrix3x3
       for (const abc of abcs) {
-        const xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(lattice),
-          abc as Vec3,
-        )
-        const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${
-          xyz[1]
-        } ${xyz[2]}\n`
+        const xyz = mat3x3_vec3_multiply(transpose_3x3_matrix(lattice), abc as Vec3)
+        const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${xyz[2]}\n`
         const result = parse_xyz(content)
         if (!result) throw `Failed to parse parametric lattice`
         if (!result.lattice) throw `Missing lattice`
@@ -396,9 +417,7 @@ describe(`XYZ Parser`, () => {
       transpose_3x3_matrix(lattice as Matrix3x3),
       abc_target as Vec3,
     )
-    const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${
-      xyz[2]
-    }\n`
+    const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${xyz[2]}\n`
     const result = parse_xyz(content)
     if (!result) throw `Failed to parse singular lattice`
     // Should not crash and abc should be wrapped into [0,1) and finite
@@ -441,10 +460,8 @@ describe(`Auto-detection & Error Handling`, () => {
 
   it(`should handle non-orthogonal lattices with matrix inversion`, () => {
     // Test triclinic lattice (non-orthogonal) - this would fail with simple division method
-    const triclinic_poscar =
-      `Triclinic test\n1.0\n5.0 0.0 0.0\n2.5 4.33 0.0\n1.0 1.0 4.0\nC N\n1 1\nCartesian\n1.0 1.0 1.0\n3.5 2.5 2.0`
-    const triclinic_xyz =
-      `2\nLattice="5.0 0.0 0.0 2.5 4.33 0.0 1.0 1.0 4.0"\nC 1.0 1.0 1.0\nN 3.5 2.5 2.0`
+    const triclinic_poscar = `Triclinic test\n1.0\n5.0 0.0 0.0\n2.5 4.33 0.0\n1.0 1.0 4.0\nC N\n1 1\nCartesian\n1.0 1.0 1.0\n3.5 2.5 2.0`
+    const triclinic_xyz = `2\nLattice="5.0 0.0 0.0 2.5 4.33 0.0 1.0 1.0 4.0"\nC 1.0 1.0 1.0\nN 3.5 2.5 2.0`
 
     const poscar_result = parse_poscar(triclinic_poscar)
     const xyz_result = parse_xyz(triclinic_xyz)
@@ -472,14 +489,14 @@ describe(`Auto-detection & Error Handling`, () => {
       if (!lattice) throw `Failed to get lattice matrix`
       const reconstructed = [
         poscar_site.abc[0] * lattice[0][0] +
-        poscar_site.abc[1] * lattice[1][0] +
-        poscar_site.abc[2] * lattice[2][0],
+          poscar_site.abc[1] * lattice[1][0] +
+          poscar_site.abc[2] * lattice[2][0],
         poscar_site.abc[0] * lattice[0][1] +
-        poscar_site.abc[1] * lattice[1][1] +
-        poscar_site.abc[2] * lattice[2][1],
+          poscar_site.abc[1] * lattice[1][1] +
+          poscar_site.abc[2] * lattice[2][1],
         poscar_site.abc[0] * lattice[0][2] +
-        poscar_site.abc[1] * lattice[1][2] +
-        poscar_site.abc[2] * lattice[2][2],
+          poscar_site.abc[1] * lattice[1][2] +
+          poscar_site.abc[2] * lattice[2][2],
       ]
 
       expect(reconstructed[0]).toBeCloseTo(poscar_site.xyz[0], 12)
@@ -494,21 +511,18 @@ describe(`Auto-detection & Error Handling`, () => {
     { parser: parse_xyz, content: `` },
     {
       parser: parse_poscar,
-      content:
-        `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nSelective dynamics`,
+      content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nSelective dynamics`,
     },
     {
       parser: parse_poscar,
-      content:
-        `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n2\nDirect\n0.0 0.0 0.0`,
+      content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n2\nDirect\n0.0 0.0 0.0`,
     },
     { parser: parse_xyz, content: `3\nTest\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0` },
     { parser: parse_xyz, content: `2\nTest\nC 0.0 0.0\nH 1.0 0.0 0.0` },
     { parser: parse_xyz, content: `invalid\nTest\nC 0.0 0.0 0.0` },
     {
       parser: parse_poscar,
-      content:
-        `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nDirect\ninvalid 0.0 0.0`,
+      content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nDirect\ninvalid 0.0 0.0`,
     },
     { parser: parse_xyz, content: `1\nTest\nC invalid 0.0 0.0` },
     {
@@ -539,8 +553,7 @@ describe(`CIF Parser`, () => {
   it.each([
     {
       name: `quartz (hexagonal)`,
-      cif:
-        `data_quartz_alpha\n_chemical_name_mineral                 'Quartz'\n_chemical_formula_sum                  'Si O2'\n_cell_length_a                         4.916\n_cell_length_b                         4.916\n_cell_length_c                         5.405\n_cell_angle_alpha                      90\n_cell_angle_beta                       90\n_cell_angle_gamma                      120\n_space_group_name_H-M_alt              'P 31 2 1'\n_space_group_IT_number                 152\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nSi1  Si  0.470  0.000  0.000  1.000\nO1   O   0.410  0.270  0.120  1.000\nO2   O   0.410  0.140  0.880  1.000`,
+      cif: `data_quartz_alpha\n_chemical_name_mineral                 'Quartz'\n_chemical_formula_sum                  'Si O2'\n_cell_length_a                         4.916\n_cell_length_b                         4.916\n_cell_length_c                         5.405\n_cell_angle_alpha                      90\n_cell_angle_beta                       90\n_cell_angle_gamma                      120\n_space_group_name_H-M_alt              'P 31 2 1'\n_space_group_IT_number                 152\n\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nSi1  Si  0.470  0.000  0.000  1.000\nO1   O   0.410  0.270  0.120  1.000\nO2   O   0.410  0.140  0.880  1.000`,
       expected_sites: 3,
       expected_lattice: { a: 4.916, b: 4.916, c: 5.405, alpha: 90, beta: 90, gamma: 120 },
       expected_abc: [
@@ -552,8 +565,7 @@ describe(`CIF Parser`, () => {
     },
     {
       name: `monoclinic (β ≠ 90°)`,
-      cif:
-        `data_monoclinic_test\n_cell_length_a                         10.000\n_cell_length_b                         5.000\n_cell_length_c                         8.000\n_cell_angle_alpha                      90\n_cell_angle_beta                       95\n_cell_angle_gamma                      90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nRu1  Ru  0.000  0.000  0.000  1.000\nP1   P   0.250  0.250  0.250  1.000\nS1   S   0.500  0.500  0.500  1.000`,
+      cif: `data_monoclinic_test\n_cell_length_a                         10.000\n_cell_length_b                         5.000\n_cell_length_c                         8.000\n_cell_angle_alpha                      90\n_cell_angle_beta                       95\n_cell_angle_gamma                      90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\nRu1  Ru  0.000  0.000  0.000  1.000\nP1   P   0.250  0.250  0.250  1.000\nS1   S   0.500  0.500  0.500  1.000`,
       expected_sites: 3,
       expected_lattice: { beta: 95 },
       expected_abc: [
@@ -571,40 +583,22 @@ describe(`CIF Parser`, () => {
       expect(result.sites).toHaveLength(expected_sites)
       if (expected_lattice) {
         if (expected_lattice.a) {
-          expect(result.lattice?.a).toBeCloseTo(
-            expected_lattice.a,
-            3,
-          )
+          expect(result.lattice?.a).toBeCloseTo(expected_lattice.a, 3)
         }
         if (expected_lattice.b) {
-          expect(result.lattice?.b).toBeCloseTo(
-            expected_lattice.b,
-            3,
-          )
+          expect(result.lattice?.b).toBeCloseTo(expected_lattice.b, 3)
         }
         if (expected_lattice.c) {
-          expect(result.lattice?.c).toBeCloseTo(
-            expected_lattice.c,
-            3,
-          )
+          expect(result.lattice?.c).toBeCloseTo(expected_lattice.c, 3)
         }
         if (expected_lattice.alpha) {
-          expect(result.lattice?.alpha).toBeCloseTo(
-            expected_lattice.alpha,
-            6,
-          )
+          expect(result.lattice?.alpha).toBeCloseTo(expected_lattice.alpha, 6)
         }
         if (expected_lattice.beta) {
-          expect(result.lattice?.beta).toBeCloseTo(
-            expected_lattice.beta,
-            6,
-          )
+          expect(result.lattice?.beta).toBeCloseTo(expected_lattice.beta, 6)
         }
         if (expected_lattice.gamma) {
-          expect(result.lattice?.gamma).toBeCloseTo(
-            expected_lattice.gamma,
-            6,
-          )
+          expect(result.lattice?.gamma).toBeCloseTo(expected_lattice.gamma, 6)
         }
       }
       expected_abc.forEach((expected, idx) => {
@@ -622,12 +616,15 @@ describe(`CIF Parser`, () => {
         if (!lattice) throw `Failed to get lattice matrix`
         for (const site of result.sites) {
           const reconstructed = [
-            site.abc[0] * lattice[0][0] + site.abc[1] * lattice[1][0] +
-            site.abc[2] * lattice[2][0],
-            site.abc[0] * lattice[0][1] + site.abc[1] * lattice[1][1] +
-            site.abc[2] * lattice[2][1],
-            site.abc[0] * lattice[0][2] + site.abc[1] * lattice[1][2] +
-            site.abc[2] * lattice[2][2],
+            site.abc[0] * lattice[0][0] +
+              site.abc[1] * lattice[1][0] +
+              site.abc[2] * lattice[2][0],
+            site.abc[0] * lattice[0][1] +
+              site.abc[1] * lattice[1][1] +
+              site.abc[2] * lattice[2][1],
+            site.abc[0] * lattice[0][2] +
+              site.abc[1] * lattice[1][2] +
+              site.abc[2] * lattice[2][2],
           ]
           expect(reconstructed[0]).toBeCloseTo(site.xyz[0], 12)
           expect(reconstructed[1]).toBeCloseTo(site.xyz[1], 12)
@@ -691,9 +688,7 @@ O2   O   0.410  0.140  0.880  1.000`
   })
 
   it(`should detect CIF format by content`, () => {
-    const result = parse_structure_file(
-      QUARTZ_CIF_FOR_DETECTION,
-    )
+    const result = parse_structure_file(QUARTZ_CIF_FOR_DETECTION)
     if (!result) throw `Failed to parse CIF`
     expect(result.sites).toHaveLength(3)
   })
@@ -793,7 +788,8 @@ H1   H   2.100  0.900  0.500  1.000`
 
       for (const site of result.sites) expect_xyz_matches_abc(site, lattice)
 
-      if (wrap_frac) { // check coordinate wrapping
+      if (wrap_frac) {
+        // check coordinate wrapping
         // all fractional coordinates must be within [0, 1) after wrapping
         for (const site of result.sites) {
           site.abc.forEach((coord) => {
@@ -801,7 +797,8 @@ H1   H   2.100  0.900  0.500  1.000`
             expect(coord).toBeLessThan(1)
           })
         }
-      } else { // original coordinates must be preserved
+      } else {
+        // original coordinates must be preserved
         const c_site = result.sites.find((site) => site.species[0].element === `C`)
         const o_site = result.sites.find((site) => site.species[0].element === `O`)
         const h_site = result.sites.find((site) => site.species[0].element === `H`)
@@ -841,21 +838,16 @@ H1   H   2.100  0.900  0.500  1.000`
         `data_test\n_cell_length_a  5.000\n_cell_length_b  5.000\n_cell_length_c  5.000\n_cell_angle_alpha  90\n_cell_angle_beta  90\n_cell_angle_gamma  90\nloop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1  Xx  0.000  0.000  0.000`,
         null,
       ],
-    ])(
-      `should handle $name`,
-      (_test_name, content, expected_error) => {
-        const result = parse_cif(content)
-        if (expected_error) {
-          expect(result).toBeNull()
-          expect(console_error_spy).toHaveBeenCalledWith(
-            expect.stringContaining(expected_error),
-          )
-        } else if (result) {
-          expect(result).toHaveProperty(`sites`)
-          expect(result).toHaveProperty(`lattice`)
-        }
-      },
-    )
+    ])(`should handle $name`, (_test_name, content, expected_error) => {
+      const result = parse_cif(content)
+      if (expected_error) {
+        expect(result).toBeNull()
+        expect(console_error_spy).toHaveBeenCalledWith(expect.stringContaining(expected_error))
+      } else if (result) {
+        expect(result).toHaveProperty(`sites`)
+        expect(result).toHaveProperty(`lattice`)
+      }
+    })
 
     it(`should handle malformed loops and missing occupancy`, () => {
       const malformed_cif = `data_test
@@ -944,9 +936,7 @@ H1   H   0.500  0.500  0.500`
 
         // Element symbols and labels validation
         expect(result.sites.map((site) => site.label)).toEqual(expected_labels)
-        expect(result.sites.map((site) => site.species[0].element)).toEqual(
-          expected_elements,
-        )
+        expect(result.sites.map((site) => site.species[0].element)).toEqual(expected_elements)
 
         // Fractional coordinates validation
         result.sites.forEach((site, idx) => {
@@ -1162,7 +1152,7 @@ loop_
 
     // Check that symmetry operations with translations are applied
     const translated_sites = result?.sites.filter((site) =>
-      site.abc.some((coord) => coord === 0.5)
+      site.abc.some((coord) => coord === 0.5),
     )
     expect(translated_sites?.length).toBe(3) // 3 sites with 0.5 coordinates from translations
   })
@@ -1234,10 +1224,11 @@ Se6 Se2- 2 a 0.0050(4) 0.4480(6) 0.9025(6) 0.9102(6) 1. 0`
       [0.4898, 0.7511, 0.8491],
     ]
 
-    const has_translated_sites = result?.sites.some((site) =>
-      !orig_coords.some((orig) =>
-        orig.every((coord, idx) => Math.abs(coord - site.abc[idx]) < 0.001)
-      )
+    const has_translated_sites = result?.sites.some(
+      (site) =>
+        !orig_coords.some((orig) =>
+          orig.every((coord, idx) => Math.abs(coord - site.abc[idx]) < 0.001),
+        ),
     )
     expect(has_translated_sites).toBe(true)
   })
@@ -1363,14 +1354,14 @@ Na Na 0.000 0.000 0.000`
     expect(result?.sites.length).toBeGreaterThan(0)
 
     // Check that the original site is preserved
-    const orig_site = result?.sites.find((site) =>
-      site.abc[0] === 0 && site.abc[1] === 0 && site.abc[2] === 0
+    const orig_site = result?.sites.find(
+      (site) => site.abc[0] === 0 && site.abc[1] === 0 && site.abc[2] === 0,
     )
     expect(orig_site).toBeTruthy()
 
     // Check that at least one translated site is generated (the valid one)
     const translated_sites = result?.sites.filter((site) =>
-      site.abc.some((coord) => coord === 0.5)
+      site.abc.some((coord) => coord === 0.5),
     )
     expect(translated_sites?.length).toBeGreaterThan(0)
 
@@ -1383,10 +1374,8 @@ Na Na 0.000 0.000 0.000`
     if (!result) throw new Error(`Failed to parse PF-sd-1601634 CIF`)
 
     // Count oxygen atoms (including OH and OH2)
-    const oxygen_sites = result.sites.filter((site) =>
-      site.species[0].element === `O` ||
-      site.label === `OH` ||
-      site.label === `OH2`
+    const oxygen_sites = result.sites.filter(
+      (site) => site.species[0].element === `O` || site.label === `OH` || site.label === `OH2`,
     )
 
     // Should have 5 unique oxygen sites (without symmetry expansion since no symmetry ops are defined)
@@ -1518,25 +1507,26 @@ unit_cell:
       content: simple_phonopy_yaml,
       expected_result: `structure`,
       expected_sites: 2,
-      expected_lattice_a: 4.556340561269590,
+      expected_lattice_a: 4.55634056126959,
       site_checks: [
         {
           idx: 0,
           element: `Ag`,
-          abc: [0.333333333333333, 0.666666666666667, 0.001734192635380],
-          mass: 107.868200,
+          abc: [0.333333333333333, 0.666666666666667, 0.00173419263538],
+          mass: 107.8682,
         },
         {
           idx: 1,
           element: `I`,
           abc: [0.333333333333333, 0.666666666666667, 0.376708787364615],
-          mass: 126.904470,
+          mass: 126.90447,
         },
       ],
     },
     {
       name: `phonopy YAML with phonon_displacements`,
-      content: simple_phonopy_yaml +
+      content:
+        simple_phonopy_yaml +
         `\nphonon_displacements:\n- # This should be ignored for performance\n  - 0.1\n  - 0.2\n  - 0.3`,
       expected_result: `structure`,
       expected_sites: 2,
@@ -1601,23 +1591,20 @@ unit_cell:
       expected_sites: 2,
       space_group: `P6_3mc`,
     },
-  ])(
-    `should parse and detect $name`,
-    ({ content, filename, expected_sites }) => {
-      // Test direct parsing
-      const direct_result = parse_phonopy_yaml(content)
-      expect(direct_result?.sites.length).toBe(expected_sites)
-      expect(direct_result?.lattice?.volume).toBeGreaterThan(120)
+  ])(`should parse and detect $name`, ({ content, filename, expected_sites }) => {
+    // Test direct parsing
+    const direct_result = parse_phonopy_yaml(content)
+    expect(direct_result?.sites.length).toBe(expected_sites)
+    expect(direct_result?.lattice?.volume).toBeGreaterThan(120)
 
-      // Test auto-detection by extension
-      const by_extension = parse_structure_file(content, filename)
-      expect(by_extension?.sites.length).toBe(expected_sites)
+    // Test auto-detection by extension
+    const by_extension = parse_structure_file(content, filename)
+    expect(by_extension?.sites.length).toBe(expected_sites)
 
-      // Test auto-detection by content
-      const by_content = parse_structure_file(content)
-      expect(by_content?.sites.length).toBe(expected_sites)
-    },
-  )
+    // Test auto-detection by content
+    const by_content = parse_structure_file(content)
+    expect(by_content?.sites.length).toBe(expected_sites)
+  })
 
   it.each([
     {
@@ -1695,7 +1682,11 @@ describe(`parse_structure_file`, () => {
     const simple_structure = {
       sites: [site],
       lattice: {
-        matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        matrix: [
+          [1, 0, 0],
+          [0, 1, 0],
+          [0, 0, 1],
+        ],
         a: 1,
         b: 1,
         c: 1,
@@ -1730,7 +1721,11 @@ describe(`parse_structure_file`, () => {
                 },
               ],
               lattice: {
-                matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+                matrix: [
+                  [2, 0, 0],
+                  [0, 2, 0],
+                  [0, 0, 2],
+                ],
                 a: 2,
                 b: 2,
                 c: 2,
@@ -1782,7 +1777,11 @@ describe(`parse_structure_file`, () => {
             },
           ],
           lattice: {
-            matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+            matrix: [
+              [2, 0, 0],
+              [0, 2, 0],
+              [0, 0, 2],
+            ],
             a: 2,
             b: 2,
             c: 2,
@@ -1832,14 +1831,23 @@ describe(`parse_structure_file`, () => {
       [`simple object wrapper`, { data: get_dummy_structure(`Fe`, 1, true) }],
       [`nested object`, { results: { structure: get_dummy_structure(`Fe`, 1, true) } }],
       [`array wrapper`, [{ structure: get_dummy_structure(`Fe`, 1, true) }]],
-      [`mixed nesting`, {
-        data: [{ item: { structure: get_dummy_structure(`Fe`, 1, true) } }],
-      }],
+      [
+        `mixed nesting`,
+        {
+          data: [{ item: { structure: get_dummy_structure(`Fe`, 1, true) } }],
+        },
+      ],
       [`deep nesting`, { a: { b: { c: { d: get_dummy_structure(`Fe`, 1, true) } } } }],
       [`structure array`, { structures: [get_dummy_structure(`Fe`, 1, true)] }],
-      [`multiple items with structure`, [{ id: 1 }, {
-        structure: get_dummy_structure(`Fe`, 1, true),
-      }]],
+      [
+        `multiple items with structure`,
+        [
+          { id: 1 },
+          {
+            structure: get_dummy_structure(`Fe`, 1, true),
+          },
+        ],
+      ],
     ])(`finds structure in %s`, (_description, wrapper) => {
       const content = JSON.stringify(wrapper)
       const result = parse_structure_file(content, `test.json`)
@@ -1919,16 +1927,27 @@ describe(`parse_structure_file`, () => {
 
   describe(`data passing and transformation logic`, () => {
     test.each([
-      [`simple direct structure`, {
-        sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }],
-        charge: 0, // Include charge to match expected behavior
-      }],
-      [`nested in object`, {
-        structure: { sites: [{ species: [{ element: `He` }], abc: [0, 0, 0] }] },
-      }],
-      [`nested in array`, [{
-        structure: { sites: [{ species: [{ element: `Li` }], abc: [0, 0, 0] }] },
-      }]],
+      [
+        `simple direct structure`,
+        {
+          sites: [{ species: [{ element: `H` }], abc: [0, 0, 0] }],
+          charge: 0, // Include charge to match expected behavior
+        },
+      ],
+      [
+        `nested in object`,
+        {
+          structure: { sites: [{ species: [{ element: `He` }], abc: [0, 0, 0] }] },
+        },
+      ],
+      [
+        `nested in array`,
+        [
+          {
+            structure: { sites: [{ species: [{ element: `Li` }], abc: [0, 0, 0] }] },
+          },
+        ],
+      ],
     ])(`parse_any_structure handles %s correctly`, (description, input) => {
       const content = JSON.stringify(input)
       const result = parse_any_structure(content, `test.json`)
@@ -1948,7 +1967,14 @@ describe(`parse_structure_file`, () => {
         data: {
           structure: {
             sites: [{ species: [{ element: `C` }], abc: [0, 0, 0] }],
-            lattice: { matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]], volume: 8 },
+            lattice: {
+              matrix: [
+                [2, 0, 0],
+                [0, 2, 0],
+                [0, 0, 2],
+              ],
+              volume: 8,
+            },
           },
         },
       }
@@ -1960,7 +1986,11 @@ describe(`parse_structure_file`, () => {
 
       expect(result.lattice.pbc).toEqual([true, true, true])
       expect(result.lattice.volume).toBe(8)
-      expect(result.lattice.matrix).toEqual([[2, 0, 0], [0, 2, 0], [0, 0, 2]])
+      expect(result.lattice.matrix).toEqual([
+        [2, 0, 0],
+        [0, 2, 0],
+        [0, 0, 2],
+      ])
     })
 
     test.each([
@@ -1987,7 +2017,11 @@ describe(`parse_structure_file`, () => {
               },
             ],
             lattice: {
-              matrix: [[3, 0, 0], [0, 3, 0], [0, 0, 3]],
+              matrix: [
+                [3, 0, 0],
+                [0, 3, 0],
+                [0, 0, 3],
+              ],
               a: 3,
               b: 3,
               c: 3,
@@ -2067,19 +2101,28 @@ describe(`OPTIMADE JSON parser`, () => {
         type: `structures`,
         attributes: {
           elements: [`Si`, `O`],
-          lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575], [
-            2.455,
-            0.0,
-            2.715,
-          ], [0.0, 2.455, 4.0725]],
+          lattice_vectors: [
+            [4.91, 0.0, 0.0],
+            [0.0, 4.91, 0.0],
+            [0.0, 0.0, 5.43],
+          ],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [2.455, 2.455, 1.3575],
+            [2.455, 0.0, 2.715],
+            [0.0, 2.455, 4.0725],
+          ],
           species_at_sites: [`Si`, `O`, `O`, `O`],
         },
       },
       expected: {
         sites: 4,
         has_lattice: true,
-        lattice_matrix: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+        lattice_matrix: [
+          [4.91, 0.0, 0.0],
+          [0.0, 4.91, 0.0],
+          [0.0, 0.0, 5.43],
+        ],
         first_element: `Si`,
       },
     },
@@ -2090,11 +2133,11 @@ describe(`OPTIMADE JSON parser`, () => {
         type: `structures`,
         attributes: {
           elements: [`H`, `O`],
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [0.957, 0.0, 0.0], [
-            0.24,
-            0.927,
-            0.0,
-          ]],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [0.957, 0.0, 0.0],
+            [0.24, 0.927, 0.0],
+          ],
           species_at_sites: [`O`, `H`, `H`],
         },
       },
@@ -2106,7 +2149,10 @@ describe(`OPTIMADE JSON parser`, () => {
         id: `test-minimal`,
         type: `structures`,
         attributes: {
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+          ],
           species_at_sites: [`Fe`, `Fe`],
         },
       },
@@ -2135,8 +2181,15 @@ describe(`OPTIMADE JSON parser`, () => {
           id: `wrapped-single`,
           type: `structures`,
           attributes: {
-            lattice_vectors: [[4.0, 0, 0], [0, 4.0, 0], [0, 0, 4.0]],
-            cartesian_site_positions: [[0, 0, 0], [2, 2, 2]],
+            lattice_vectors: [
+              [4.0, 0, 0],
+              [0, 4.0, 0],
+              [0, 0, 4.0],
+            ],
+            cartesian_site_positions: [
+              [0, 0, 0],
+              [2, 2, 2],
+            ],
             species_at_sites: [`Si`, `Si`],
           },
         },
@@ -2145,7 +2198,11 @@ describe(`OPTIMADE JSON parser`, () => {
         sites: 2,
         has_lattice: true,
         first_element: `Si`,
-        lattice_matrix: [[4, 0, 0], [0, 4, 0], [0, 0, 4]],
+        lattice_matrix: [
+          [4, 0, 0],
+          [0, 4, 0],
+          [0, 0, 4],
+        ],
       },
     },
     {
@@ -2203,7 +2260,10 @@ describe(`OPTIMADE JSON parser`, () => {
         id: `test-mismatched`,
         type: `structures`,
         attributes: {
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+          ],
           species_at_sites: [`Fe`], // Only one species for two positions
         },
       },
@@ -2247,21 +2307,45 @@ describe(`OPTIMADE JSON parser`, () => {
   it.each([
     {
       name: `fractional coordinates calculation`,
-      lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
-      positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575]],
-      expected_abc: [[0.0, 0.0, 0.0], [0.5, 0.5, 0.25]],
+      lattice_vectors: [
+        [4.91, 0.0, 0.0],
+        [0.0, 4.91, 0.0],
+        [0.0, 0.0, 5.43],
+      ],
+      positions: [
+        [0.0, 0.0, 0.0],
+        [2.455, 2.455, 1.3575],
+      ],
+      expected_abc: [
+        [0.0, 0.0, 0.0],
+        [0.5, 0.5, 0.25],
+      ],
     },
     {
       name: `singular lattice matrix`,
-      lattice_vectors: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+      lattice_vectors: [
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+      ],
       positions: [[0.0, 0.0, 0.0]],
       expected_abc: [[0.0, 0.0, 0.0]],
     },
     {
       name: `non-orthogonal lattice matrix`,
-      lattice_vectors: [[5.0, 0.0, 0.0], [2.5, 4.33, 0.0], [1.0, 1.0, 4.0]],
-      positions: [[0.0, 0.0, 0.0], [2.5, 2.165, 2.0]],
-      expected_abc: [[0.0, 0.0, 0.0], [0.2077367205542725, 0.38452655889145493, 0.5]],
+      lattice_vectors: [
+        [5.0, 0.0, 0.0],
+        [2.5, 4.33, 0.0],
+        [1.0, 1.0, 4.0],
+      ],
+      positions: [
+        [0.0, 0.0, 0.0],
+        [2.5, 2.165, 2.0],
+      ],
+      expected_abc: [
+        [0.0, 0.0, 0.0],
+        [0.2077367205542725, 0.38452655889145493, 0.5],
+      ],
     },
   ])(`should handle $name`, ({ lattice_vectors, positions, expected_abc }) => {
     const data = {
@@ -2281,9 +2365,12 @@ describe(`OPTIMADE JSON parser`, () => {
 
     // For non-orthogonal lattices, verify matrix and coordinate transformation
     if (
-      lattice_vectors[0][1] !== 0 || lattice_vectors[0][2] !== 0 ||
-      lattice_vectors[1][0] !== 0 || lattice_vectors[1][2] !== 0 ||
-      lattice_vectors[2][0] !== 0 || lattice_vectors[2][1] !== 0
+      lattice_vectors[0][1] !== 0 ||
+      lattice_vectors[0][2] !== 0 ||
+      lattice_vectors[1][0] !== 0 ||
+      lattice_vectors[1][2] !== 0 ||
+      lattice_vectors[2][0] !== 0 ||
+      lattice_vectors[2][1] !== 0
     ) {
       expect(result.lattice?.matrix).toEqual(lattice_vectors)
       result.sites.forEach((site) => {
@@ -2317,14 +2404,16 @@ describe(`OPTIMADE JSON Detection`, () => {
     },
     {
       name: `OPTIMADE structure array`,
-      content: JSON.stringify([{
-        id: `test`,
-        type: `structures`,
-        attributes: {
-          cartesian_site_positions: [[0.0, 0.0, 0.0]],
-          species_at_sites: [`Fe`],
+      content: JSON.stringify([
+        {
+          id: `test`,
+          type: `structures`,
+          attributes: {
+            cartesian_site_positions: [[0.0, 0.0, 0.0]],
+            species_at_sites: [`Fe`],
+          },
         },
-      }]),
+      ]),
       expected: true,
     },
     {
@@ -2408,15 +2497,26 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         type: `structures` as const,
         attributes: {
           elements: [`Si`, `O`],
-          lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575]],
+          lattice_vectors: [
+            [4.91, 0.0, 0.0],
+            [0.0, 4.91, 0.0],
+            [0.0, 0.0, 5.43],
+          ],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [2.455, 2.455, 1.3575],
+          ],
           species_at_sites: [`Si`, `O`],
         },
       },
       expected: {
         sites: 2,
         has_lattice: true,
-        lattice_matrix: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+        lattice_matrix: [
+          [4.91, 0.0, 0.0],
+          [0.0, 4.91, 0.0],
+          [0.0, 0.0, 5.43],
+        ],
         first_element: `Si`,
         id: `test-crystalline`,
       },
@@ -2428,15 +2528,26 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         type: `structures` as const,
         attributes: {
           elements: [`H`, `O`],
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [0.957, 0.0, 0.0]],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [0.957, 0.0, 0.0],
+          ],
           species_at_sites: [`O`, `H`],
-          lattice_vectors: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
+          lattice_vectors: [
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 10.0],
+          ],
         },
       },
       expected: {
         sites: 2,
         has_lattice: true,
-        lattice_matrix: [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
+        lattice_matrix: [
+          [10.0, 0.0, 0.0],
+          [0.0, 10.0, 0.0],
+          [0.0, 0.0, 10.0],
+        ],
         first_element: `O`,
         id: `test-molecule`,
       },
@@ -2447,15 +2558,26 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         id: `test-minimal`,
         type: `structures` as const,
         attributes: {
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+          ],
           species_at_sites: [`Fe`, `Fe`],
-          lattice_vectors: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
+          lattice_vectors: [
+            [5.0, 0.0, 0.0],
+            [0.0, 5.0, 0.0],
+            [0.0, 0.0, 5.0],
+          ],
         },
       },
       expected: {
         sites: 2,
         has_lattice: true,
-        lattice_matrix: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
+        lattice_matrix: [
+          [5.0, 0.0, 0.0],
+          [0.0, 5.0, 0.0],
+          [0.0, 0.0, 5.0],
+        ],
         first_element: `Fe`,
         id: `test-minimal`,
       },
@@ -2495,7 +2617,11 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         id: `test`,
         type: `structures` as const,
         attributes: {
-          lattice_vectors: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+          lattice_vectors: [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+          ],
           species_at_sites: [`Fe`],
         },
       },
@@ -2507,7 +2633,11 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         id: `test`,
         type: `structures` as const,
         attributes: {
-          lattice_vectors: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+          lattice_vectors: [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+          ],
           cartesian_site_positions: [[0.0, 0.0, 0.0]],
         },
       },
@@ -2519,8 +2649,15 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         id: `test`,
         type: `structures` as const,
         attributes: {
-          lattice_vectors: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+          lattice_vectors: [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+          ],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+          ],
           species_at_sites: [`Fe`], // Only one species for two positions
         },
       },
@@ -2543,12 +2680,22 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         id: `test`,
         type: `structures` as const,
         attributes: {
-          lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [2.455, 2.455, 1.3575]],
+          lattice_vectors: [
+            [4.91, 0.0, 0.0],
+            [0.0, 4.91, 0.0],
+            [0.0, 0.0, 5.43],
+          ],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [2.455, 2.455, 1.3575],
+          ],
           species_at_sites: [`Si`, `O`],
         },
       },
-      expected_abc: [[0.0, 0.0, 0.0], [0.5, 0.5, 0.25]],
+      expected_abc: [
+        [0.0, 0.0, 0.0],
+        [0.5, 0.5, 0.25],
+      ],
     },
     {
       name: `singular lattice matrix`,
@@ -2556,7 +2703,11 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         id: `test`,
         type: `structures` as const,
         attributes: {
-          lattice_vectors: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+          lattice_vectors: [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+          ],
           cartesian_site_positions: [[0.0, 0.0, 0.0]],
           species_at_sites: [`Fe`],
         },
@@ -2569,12 +2720,22 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         id: `test`,
         type: `structures` as const,
         attributes: {
-          lattice_vectors: [[5.0, 0.0, 0.0], [2.5, 4.33, 0.0], [1.0, 1.0, 4.0]],
-          cartesian_site_positions: [[0.0, 0.0, 0.0], [2.5, 2.165, 2.0]],
+          lattice_vectors: [
+            [5.0, 0.0, 0.0],
+            [2.5, 4.33, 0.0],
+            [1.0, 1.0, 4.0],
+          ],
+          cartesian_site_positions: [
+            [0.0, 0.0, 0.0],
+            [2.5, 2.165, 2.0],
+          ],
           species_at_sites: [`Fe`, `Fe`],
         },
       },
-      expected_abc: [[0.0, 0.0, 0.0], [0.2077367205542725, 0.38452655889145493, 0.5]],
+      expected_abc: [
+        [0.0, 0.0, 0.0],
+        [0.2077367205542725, 0.38452655889145493, 0.5],
+      ],
     },
   ])(`should handle $name`, ({ optimade_structure, expected_abc }) => {
     const result = optimade_to_crystal(optimade_structure)
@@ -2608,7 +2769,11 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
       id: `mp-7000`,
       type: `structures` as const,
       attributes: {
-        lattice_vectors: [[4.91, 0.0, 0.0], [0.0, 4.91, 0.0], [0.0, 0.0, 5.43]],
+        lattice_vectors: [
+          [4.91, 0.0, 0.0],
+          [0.0, 4.91, 0.0],
+          [0.0, 0.0, 5.43],
+        ],
         cartesian_site_positions: [[0.0, 0.0, 0.0]],
         species_at_sites: [`Si`],
         species: [{ name: `Si`, mass: [28.085], concentration: [1.0] }],
@@ -2638,8 +2803,15 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
       id: `test`,
       type: `structures` as const,
       attributes: {
-        lattice_vectors: [[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, 5.0]],
-        cartesian_site_positions: [[0.0, 0.0, 0.0], [2.5, 2.5, 2.5]],
+        lattice_vectors: [
+          [5.0, 0.0, 0.0],
+          [0.0, 5.0, 0.0],
+          [0.0, 0.0, 5.0],
+        ],
+        cartesian_site_positions: [
+          [0.0, 0.0, 0.0],
+          [2.5, 2.5, 2.5],
+        ],
         species_at_sites: [`Fe`, `O`],
         species: [
           { name: `Fe`, mass: [55.845], concentration: [1.0] },
@@ -2797,9 +2969,7 @@ C1 C 0 0 0`
   it(`should return null in non-strict mode`, () => {
     const result = parse_cif(cif_invalid_length, true, false)
     expect(result).toBeNull()
-    expect(console_error_spy).toHaveBeenCalledWith(
-      `Insufficient cell parameters in CIF file`,
-    )
+    expect(console_error_spy).toHaveBeenCalledWith(`Insufficient cell parameters in CIF file`)
   })
 })
 
@@ -2827,21 +2997,9 @@ describe(`detect_structure_type`, () => {
       `{"data": {"attributes": {"lattice_vectors": [[1,0,0],[0,1,0],[0,0,1]]}}}`,
       `crystal`,
     ],
-    [
-      `optimade.json`,
-      `{"data": {"attributes": {"dimension_types": [0,0,0]}}}`,
-      `molecule`,
-    ],
-    [
-      `optimade.json`,
-      `{"data": {"attributes": {"dimension_types": [1,1,1]}}}`,
-      `crystal`,
-    ],
-    [
-      `optimade.json`,
-      `{"data": {"attributes": {"nperiodic_dimensions": 0}}}`,
-      `molecule`,
-    ],
+    [`optimade.json`, `{"data": {"attributes": {"dimension_types": [0,0,0]}}}`, `molecule`],
+    [`optimade.json`, `{"data": {"attributes": {"dimension_types": [1,1,1]}}}`, `crystal`],
+    [`optimade.json`, `{"data": {"attributes": {"nperiodic_dimensions": 0}}}`, `molecule`],
     [`optimade.json`, `{"data": {"attributes": {"nperiodic_dimensions": 3}}}`, `crystal`],
     [`molecule.json`, `{"data": {"attributes": {"species": []}}}`, `molecule`],
   ])(`%s -> %s`, (filename, content, expected) => {
@@ -2854,15 +3012,21 @@ describe(`Coordinate Normalization`, () => {
   // xyz is set to placeholder [0,0,0] since it will be recomputed from wrapped abc
   const make_raw_structure = (
     abc: number[],
-    lattice_matrix: number[][] = [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
+    lattice_matrix: number[][] = [
+      [5, 0, 0],
+      [0, 5, 0],
+      [0, 0, 5],
+    ],
   ) => ({
-    sites: [{
-      species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-      abc,
-      xyz: [0, 0, 0],
-      label: `H1`,
-      properties: {},
-    }],
+    sites: [
+      {
+        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+        abc,
+        xyz: [0, 0, 0],
+        label: `H1`,
+        properties: {},
+      },
+    ],
     lattice: {
       matrix: lattice_matrix,
       a: 5,
@@ -2886,10 +3050,7 @@ describe(`Coordinate Normalization`, () => {
     { abc: [1.0, 0.0, 0.5], expected: [0.0, 0.0, 0.5], name: `exactly 1.0 → 0` },
     { abc: [-1.0, 0.5, 0.25], expected: [0.0, 0.5, 0.25], name: `exactly -1.0 → 0` },
   ])(`wraps $name: $abc → $expected`, ({ abc, expected }) => {
-    const result = parse_any_structure(
-      JSON.stringify(make_raw_structure(abc)),
-      `test.json`,
-    )
+    const result = parse_any_structure(JSON.stringify(make_raw_structure(abc)), `test.json`)
     expect(result).not.toBeNull()
     expected.forEach((val, idx) => expect(result?.sites[0].abc[idx]).toBeCloseTo(val, 10))
     expect_abc_in_unit_cell(result?.sites[0] as { abc: number[] })
@@ -2918,53 +3079,58 @@ describe(`Coordinate Normalization`, () => {
       expected_xyz: [2.5, 3.5, 4],
       parser: parse_structure_file,
     },
-  ])(
-    `normalizes nested $name`,
-    ({ wrapper, abc, expected_abc, expected_xyz, parser }) => {
-      const inner = {
-        '@module': `pymatgen.core.structure`,
-        '@class': `Structure`,
-        charge: 0,
-        lattice: {
-          matrix: [[5, 0, 0], [0, 5, 0], [0, 0, 5]],
-          a: 5,
-          b: 5,
-          c: 5,
-          alpha: 90,
-          beta: 90,
-          gamma: 90,
-          volume: 125,
-        },
-        sites: [{
+  ])(`normalizes nested $name`, ({ wrapper, abc, expected_abc, expected_xyz, parser }) => {
+    const inner = {
+      '@module': `pymatgen.core.structure`,
+      '@class': `Structure`,
+      charge: 0,
+      lattice: {
+        matrix: [
+          [5, 0, 0],
+          [0, 5, 0],
+          [0, 0, 5],
+        ],
+        a: 5,
+        b: 5,
+        c: 5,
+        alpha: 90,
+        beta: 90,
+        gamma: 90,
+        volume: 125,
+      },
+      sites: [
+        {
           species: [{ element: `Li`, occu: 1 }],
           abc,
           xyz: [0, 0, 0],
           label: `Li`,
           properties: {},
-        }],
-      }
-      const result = parser(JSON.stringify(wrapper(inner)), `test.json`)
-      expect(result).not.toBeNull()
-      expected_abc.forEach((val, idx) =>
-        expect(result?.sites[0].abc[idx]).toBeCloseTo(val, 10)
-      )
-      expected_xyz.forEach((val, idx) =>
-        expect(result?.sites[0].xyz[idx]).toBeCloseTo(val, 10)
-      )
-    },
-  )
+        },
+      ],
+    }
+    const result = parser(JSON.stringify(wrapper(inner)), `test.json`)
+    expect(result).not.toBeNull()
+    expected_abc.forEach((val, idx) => expect(result?.sites[0].abc[idx]).toBeCloseTo(val, 10))
+    expected_xyz.forEach((val, idx) => expect(result?.sites[0].xyz[idx]).toBeCloseTo(val, 10))
+  })
 
   test(`normalizes hexagonal lattice with negative coords and recomputes xyz`, () => {
     const hexagonal = {
-      sites: [{
-        species: [{ element: `C`, occu: 1 }],
-        abc: [-0.333333, -0.666667, 0.5],
-        xyz: [0, 0, 0],
-        label: `C`,
-        properties: {},
-      }],
+      sites: [
+        {
+          species: [{ element: `C`, occu: 1 }],
+          abc: [-0.333333, -0.666667, 0.5],
+          xyz: [0, 0, 0],
+          label: `C`,
+          properties: {},
+        },
+      ],
       lattice: {
-        matrix: [[2.46, 0, 0], [-1.23, 2.13, 0], [0, 0, 6.7]],
+        matrix: [
+          [2.46, 0, 0],
+          [-1.23, 2.13, 0],
+          [0, 0, 6.7],
+        ],
         a: 2.46,
         b: 2.46,
         c: 6.7,
@@ -2988,7 +3154,11 @@ describe(`Coordinate Normalization`, () => {
         structure: {
           '@module': `pymatgen.core.structure`,
           lattice: {
-            matrix: [[6.22, 0, 0], [-3.11, 5.39, 0], [0, 0, 6.7]],
+            matrix: [
+              [6.22, 0, 0],
+              [-3.11, 5.39, 0],
+              [0, 0, 6.7],
+            ],
             a: 6.22,
             b: 6.22,
             c: 6.7,

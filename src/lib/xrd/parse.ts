@@ -26,14 +26,15 @@ function create_pattern(
 
 // Parse whitespace-separated numbers from text. Used by multiple formats.
 const parse_number_list = (text: string): number[] =>
-  text.trim().split(/\s+/).map(parseFloat).filter((val) => !isNaN(val))
+  text
+    .trim()
+    .split(/\s+/)
+    .map(parseFloat)
+    .filter((val) => !isNaN(val))
 
 // Extract numeric value from header line matching "KEY=VALUE" or "KEY VALUE" pattern.
 // Returns null if not found or not a valid number.
-function extract_header_value(
-  lines: string[],
-  key_pattern: RegExp,
-): number | null {
+function extract_header_value(lines: string[], key_pattern: RegExp): number | null {
   for (const line of lines) {
     const match = line.match(key_pattern)
     if (match?.[1]) {
@@ -114,9 +115,7 @@ function subsample_preserve_peaks(
   }
 
   // Merge and sort all selected indices
-  const selected = [...new Set([...uniform_indices, ...top_peaks])].sort(
-    (a, b) => a - b,
-  )
+  const selected = [...new Set([...uniform_indices, ...top_peaks])].sort((a, b) => a - b)
 
   return {
     x: selected.map((idx) => x_values[idx]),
@@ -173,9 +172,10 @@ export function parse_ras_file(content: string): XrdPattern | null {
   // Extract header values (used as fallback for single-column data)
   const header_start =
     extract_header_value(lines, /\*MEAS_SCAN_START\s*=\s*([\d.+-]+)/i) ??
-      extract_header_value(lines, /\*SCAN_START\s*=\s*([\d.+-]+)/i) ??
-      0
-  const header_step = extract_header_value(lines, /\*MEAS_SCAN_STEP\s*=\s*([\d.+-]+)/i) ??
+    extract_header_value(lines, /\*SCAN_START\s*=\s*([\d.+-]+)/i) ??
+    0
+  const header_step =
+    extract_header_value(lines, /\*MEAS_SCAN_STEP\s*=\s*([\d.+-]+)/i) ??
     extract_header_value(lines, /\*SCAN_STEP\s*=\s*([\d.+-]+)/i) ??
     DEFAULT_STEP_SIZE
 
@@ -216,8 +216,8 @@ export function parse_ras_file(content: string): XrdPattern | null {
   // Detect by: 2-3 values per line, multiple rows, first column monotonically increasing
   // (angles increase during a scan, intensities do not follow this pattern)
   const first_values = parse_number_list(data_lines[0])
-  const has_column_structure = first_values.length >= 2 && first_values.length <= 3 &&
-    data_lines.length > 1
+  const has_column_structure =
+    first_values.length >= 2 && first_values.length <= 3 && data_lines.length > 1
 
   if (has_column_structure) {
     // Check if first column values are monotonically increasing (characteristic of angle data)
@@ -248,10 +248,12 @@ export function parse_uxd_file(content: string): XrdPattern | null {
   const lines = content.split(/\r?\n/)
 
   // Extract header values (underscore-prefixed keys)
-  const start = extract_header_value(lines, /_2THETA_?START\s*=?\s*([\d.+-]+)/i) ??
+  const start =
+    extract_header_value(lines, /_2THETA_?START\s*=?\s*([\d.+-]+)/i) ??
     extract_header_value(lines, /_START\s*=?\s*([\d.+-]+)/i) ??
     0
-  const step = extract_header_value(lines, /_STEP_?SIZE\s*=?\s*([\d.+-]+)/i) ??
+  const step =
+    extract_header_value(lines, /_STEP_?SIZE\s*=?\s*([\d.+-]+)/i) ??
     extract_header_value(lines, /_STEPWIDTH\s*=?\s*([\d.+-]+)/i) ??
     DEFAULT_STEP_SIZE
 
@@ -466,16 +468,12 @@ function parse_rigaku_raw_file(data: ArrayBuffer): XrdPattern | null {
     const bytes = new Uint8Array(data)
 
     // Try to find ASCII header section with scan parameters
-    const header_text = String.fromCharCode(
-      ...bytes.slice(0, Math.min(2048, bytes.length)),
-    )
+    const header_text = String.fromCharCode(...bytes.slice(0, Math.min(2048, bytes.length)))
 
     const start_match = header_text.match(
       /(?:START|2THETA_START|SCAN_START)\s*[:=]?\s*([\d.+-]+)/i,
     )
-    const step_match = header_text.match(
-      /(?:STEP|STEP_SIZE|SCAN_STEP)\s*[:=]?\s*([\d.+-]+)/i,
-    )
+    const step_match = header_text.match(/(?:STEP|STEP_SIZE|SCAN_STEP)\s*[:=]?\s*([\d.+-]+)/i)
     const count_match = header_text.match(/(?:COUNT|POINTS|NPTS|STEPS)\s*[:=]?\s*(\d+)/i)
 
     if (!start_match && !step_match && !count_match) return null // Not a recognizable Rigaku format
@@ -506,11 +504,7 @@ function parse_rigaku_raw_file(data: ArrayBuffer): XrdPattern | null {
 // Read array of 32-bit floats from DataView starting at offset.
 // Note: Negative values are allowed since background-subtracted XRD data can
 // legitimately have negative intensities.
-function read_float32_array(
-  view: DataView,
-  offset: number,
-  count?: number,
-): number[] {
+function read_float32_array(view: DataView, offset: number, count?: number): number[] {
   const values: number[] = []
   const max_offset = view.byteLength - 4
   const max_count = count ?? Math.floor((view.byteLength - offset) / 4)
@@ -542,7 +536,7 @@ function read_float32_array(
 // Extracts 2θ and intensity data from the RawData XML within the archive.
 export async function parse_brml_file(data: ArrayBuffer): Promise<XrdPattern | null> {
   try {
-    // Lazy import fflate to avoid bundling in SSR (Deno compatibility)
+    // Lazy import fflate to avoid bundling in SSR
     const { unzipSync } = await import(`fflate`)
     const files = unzipSync(new Uint8Array(data))
 
@@ -562,9 +556,7 @@ export async function parse_brml_file(data: ArrayBuffer): Promise<XrdPattern | n
           const file_content = new TextDecoder().decode(file_data)
           // Check for various data formats used by different Bruker versions
           if (
-            [`<Intensities>`, `<Counts>`, `<Datum>`].some((tag) =>
-              file_content.includes(tag)
-            )
+            [`<Intensities>`, `<Counts>`, `<Datum>`].some((tag) => file_content.includes(tag))
           ) {
             raw_data_xml = file_content
             break
@@ -667,10 +659,11 @@ function extract_scan_parameters_xml(
       // If we have extracted 2θ values directly, return early with them
       if (two_theta_values.length > 0 && intensities.length > 0) {
         // Calculate step size from actual data (fallback 0.002° typical for HRXRD)
-        const step_size = two_theta_values.length > 1
-          ? (two_theta_values[two_theta_values.length - 1] - two_theta_values[0]) /
-            (two_theta_values.length - 1)
-          : DEFAULT_STEP_SIZE
+        const step_size =
+          two_theta_values.length > 1
+            ? (two_theta_values[two_theta_values.length - 1] - two_theta_values[0]) /
+              (two_theta_values.length - 1)
+            : DEFAULT_STEP_SIZE
         return { start_angle: two_theta_values[0], step_size, intensities }
       }
     }
@@ -772,9 +765,10 @@ export function parse_xrdml_file(content: string): XrdPattern | null {
     if (!intensities_el?.textContent) return null
 
     const intensities = parse_number_list(intensities_el.textContent)
-    const step = intensities.length > 1
-      ? (end_angle - start_angle) / (intensities.length - 1)
-      : DEFAULT_STEP_SIZE
+    const step =
+      intensities.length > 1
+        ? (end_angle - start_angle) / (intensities.length - 1)
+        : DEFAULT_STEP_SIZE
     return create_pattern(start_angle, step, intensities)
   } catch (error) {
     console.error(`Failed to parse XRDML file:`, error)
@@ -803,7 +797,7 @@ export const XRD_FILE_EXTENSIONS = [
   ...BINARY_EXTENSIONS,
 ] as const
 
-export type XrdFileExtension = typeof XRD_FILE_EXTENSIONS[number]
+export type XrdFileExtension = (typeof XRD_FILE_EXTENSIONS)[number]
 
 // Main entry point for parsing XRD data files.
 // Detects file type by extension and delegates to appropriate parser.
@@ -820,9 +814,7 @@ export async function parse_xrd_file(
 
   // Helper to get text content
   const get_text = (): string =>
-    typeof content === `string`
-      ? content
-      : new TextDecoder().decode(content as BufferSource)
+    typeof content === `string` ? content : new TextDecoder().decode(content as BufferSource)
 
   // Helper to get binary content
   const get_buffer = (): ArrayBuffer => {

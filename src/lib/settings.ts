@@ -129,7 +129,8 @@ export interface SettingsConfig {
     algo: SettingType<`Moyo` | `Spglib`>
   }
 
-  structure: { // Structure viewer settings
+  structure: {
+    // Structure viewer settings
     // Atoms & Bonds
     atom_radius: SettingType<number>
     same_size_atoms: SettingType<boolean>
@@ -194,17 +195,14 @@ export interface SettingsConfig {
     fullscreen_toggle: SettingType<boolean>
   }
 
-  trajectory: { // Trajectory viewer settings
+  trajectory: {
+    // Trajectory viewer settings
     // Core trajectory settings
     auto_play: SettingType<boolean>
     fps: SettingType<number>
     fps_range: SettingType<[number, number]>
     display_mode: SettingType<
-      | `structure+scatter`
-      | `structure`
-      | `scatter`
-      | `histogram`
-      | `structure+histogram`
+      `structure+scatter` | `structure` | `scatter` | `histogram` | `structure+histogram`
     >
     show_controls: SettingType<boolean>
     fullscreen_toggle: SettingType<boolean>
@@ -244,7 +242,8 @@ export interface SettingsConfig {
     cache_parsed_data: SettingType<boolean>
   }
 
-  plot: { // General plot settings
+  plot: {
+    // General plot settings
     animation_duration: SettingType<number>
     enable_zoom: SettingType<boolean>
     zoom_factor: SettingType<number>
@@ -267,7 +266,8 @@ export interface SettingsConfig {
     y_ticks: SettingType<number>
   }
 
-  scatter: { // Scatter plot settings
+  scatter: {
+    // Scatter plot settings
     show_legend: SettingType<boolean>
     show_points: SettingType<boolean>
     show_lines: SettingType<boolean>
@@ -277,7 +277,8 @@ export interface SettingsConfig {
     line: LineStyleType
   }
 
-  histogram: { // Histogram settings
+  histogram: {
+    // Histogram settings
     mode: SettingType<`overlay` | `single`>
     show_legend: SettingType<boolean>
     bin_count: SettingType<number>
@@ -285,18 +286,21 @@ export interface SettingsConfig {
     display: DisplayConfigType
   }
 
-  bar: { // Bar plot settings
+  bar: {
+    // Bar plot settings
     display: DisplayConfigType
     bar: SimpleBarStyleType
     line: SimpleLineStyleType
   }
 
-  composition: { // Composition specific settings
+  composition: {
+    // Composition specific settings
     display_mode: SettingType<`pie` | `bubble` | `bar`>
     color_scheme: SettingType<string>
   }
 
-  convex_hull: { // Convex hull defaults (binary/ternary/quaternary)
+  convex_hull: {
+    // Convex hull defaults (binary/ternary/quaternary)
     binary: ConvexHullCommonType
     ternary: ConvexHullWith3DType & {
       camera_elevation: SettingType<number>
@@ -392,8 +396,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     show_image_atoms: {
       value: true,
-      description:
-        `Show atoms on the edge of the cell that are not part of the primitive basis`,
+      description: `Show atoms on the edge of the cell that are not part of the primitive basis`,
     },
     sphere_segments: {
       value: 20,
@@ -437,8 +440,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     atom_color_scale: {
       value: `interpolateViridis`,
-      description:
-        `D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)`,
+      description: `D3 color scale for property-based coloring (e.g. interpolateViridis, interpolatePlasma)`,
     },
     atom_color_scale_type: {
       value: `continuous`,
@@ -470,8 +472,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     initial_zoom: {
       value: 35,
-      description:
-        `Initial zoom level for orthographic projection (ignored for perspective)`,
+      description: `Initial zoom level for orthographic projection (ignored for perspective)`,
       minimum: 0.1,
       maximum: 200,
     },
@@ -507,18 +508,15 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     zoom_to_cursor: {
       value: false,
-      description:
-        `Zoom toward cursor position instead of scene center (double click canvas to reset camera)`,
+      description: `Zoom toward cursor position instead of scene center (double click canvas to reset camera)`,
     },
     max_zoom: {
       value: 500,
-      description:
-        `Maximum zoom level (orthographic: larger = more zoomed out, perspective: larger = further away)`,
+      description: `Maximum zoom level (orthographic: larger = more zoomed out, perspective: larger = further away)`,
     },
     min_zoom: {
       value: 10,
-      description:
-        `Minimum zoom level (orthographic: smaller = more zoomed in, perspective: smaller = closer)`,
+      description: `Minimum zoom level (orthographic: smaller = more zoomed in, perspective: smaller = closer)`,
     },
     auto_rotate: {
       value: 0.2,
@@ -528,8 +526,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     rotation: {
       value: [0, 0, 0] as const,
-      description:
-        `Manual rotation around X, Y, Z axes, displayed in degrees [0, 360] but normalized as radians to [-π, π] for each of [x, y, z]. Combines additively with auto-rotation when both are active.`,
+      description: `Manual rotation around X, Y, Z axes, displayed in degrees [0, 360] but normalized as radians to [-π, π] for each of [x, y, z]. Combines additively with auto-rotation when both are active.`,
       minItems: 3,
       maxItems: 3,
     },
@@ -577,8 +574,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     directional_light: {
       value: 2.2,
-      description:
-        `Directional light intensity (0 = no shadows, higher = stronger shadows)`,
+      description: `Directional light intensity (0 = no shadows, higher = stronger shadows)`,
       minimum: 0,
       maximum: 4,
     },
@@ -586,8 +582,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     // Site Vectors (force, magmom, spin) & Lattice
     vector_configs: {
       value: {} as Record<string, VectorLayerConfig>,
-      description:
-        `Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads.`,
+      description: `Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads.`,
     },
     vector_scale: {
       value: 1.0,
@@ -601,8 +596,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     vector_color_mode: {
       value: `auto` as VectorColorMode,
-      description:
-        `How to color arrows. auto = element for force, spin-direction for magmom/spin. element = majority species color. spin_direction = red/blue by z-component. magnitude = continuous color scale by vector length. uniform = single color (vector_color).`,
+      description: `How to color arrows. auto = element for force, spin-direction for magmom/spin. element = majority species color. spin_direction = red/blue by z-component. magnitude = continuous color scale by vector length. uniform = single color (vector_color).`,
     },
     vector_color_scale: {
       value: `interpolateViridis` as D3InterpolateName,
@@ -610,39 +604,33 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     vector_normalize: {
       value: false,
-      description:
-        `Show all arrows at the same length (direction only). Useful for spin/magmom visualization where orientation matters but magnitude does not.`,
+      description: `Show all arrows at the same length (direction only). Useful for spin/magmom visualization where orientation matters but magnitude does not.`,
     },
     vector_uniform_thickness: {
       value: false,
-      description:
-        `Use the same shaft and head size for all arrows regardless of length. When off (default), thickness scales with arrow length.`,
+      description: `Use the same shaft and head size for all arrows regardless of length. When off (default), thickness scales with arrow length.`,
     },
     vector_origin_gap: {
       value: 0,
-      description:
-        `Fraction of visual atom radius to offset each arrow origin when multiple vectors are shown per site. 0 = all from atom center, 0.5 = halfway to surface.`,
+      description: `Fraction of visual atom radius to offset each arrow origin when multiple vectors are shown per site. 0 = all from atom center, 0.5 = halfway to surface.`,
       minimum: 0,
       maximum: 0.5,
     },
     vector_shaft_radius: {
       value: -0.03,
-      description:
-        `Radius of vector shaft (negative = relative to length, positive = absolute)`,
+      description: `Radius of vector shaft (negative = relative to length, positive = absolute)`,
       minimum: -0.1,
       maximum: 0.1,
     },
     vector_arrow_head_radius: {
       value: -0.06,
-      description:
-        `Radius of vector arrow head (negative = relative to length, positive = absolute)`,
+      description: `Radius of vector arrow head (negative = relative to length, positive = absolute)`,
       minimum: -0.2,
       maximum: 0.2,
     },
     vector_arrow_head_length: {
       value: -0.15,
-      description:
-        `Length of vector arrow head (negative = relative to length, positive = absolute)`,
+      description: `Length of vector arrow head (negative = relative to length, positive = absolute)`,
       minimum: -0.5,
       maximum: 0.5,
     },
@@ -682,8 +670,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     fullscreen_toggle: {
       value: true,
-      description:
-        `Show fullscreen toggle button (web-only, always false in other contexts)`,
+      description: `Show fullscreen toggle button (web-only, always false in other contexts)`,
       context: `web`,
     },
   },
@@ -724,8 +711,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     fullscreen_toggle: {
       value: true,
-      description:
-        `Show fullscreen toggle button (web-only, always false in other contexts)`,
+      description: `Show fullscreen toggle button (web-only, always false in other contexts)`,
       context: `web`,
     },
     step_labels: {
@@ -859,8 +845,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
   histogram: {
     mode: {
       value: `overlay` as const,
-      description:
-        `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
+      description: `Histogram display mode. 'overlay' shows multiple histograms in the same plot, 'single' shows a single histogram`,
       enum: {
         overlay: `Overlay`,
         single: `Single`,
@@ -1147,7 +1132,8 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
   },
 
-  convex_hull: { // Convex hull defaults (binary/ternary/quaternary)
+  convex_hull: {
+    // Convex hull defaults (binary/ternary/quaternary)
     binary: {
       camera_zoom: {
         value: 1.0,
@@ -1193,15 +1179,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       max_hull_dist_show_phases: {
         value: 0.1,
-        description:
-          `Max eV/atom above hull for showing unstable entries in 2D convex hull`,
+        description: `Max eV/atom above hull for showing unstable entries in 2D convex hull`,
         minimum: 0,
         maximum: 2,
       },
       max_hull_dist_show_labels: {
         value: 0.1,
-        description:
-          `Max eV/atom above hull for labeling unstable entries in 2D convex hull`,
+        description: `Max eV/atom above hull for labeling unstable entries in 2D convex hull`,
         minimum: 0,
         maximum: 2,
       },
@@ -1275,15 +1259,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       max_hull_dist_show_phases: {
         value: 0.5,
-        description:
-          `Max eV/atom above hull for showing unstable entries in 3D convex hull`,
+        description: `Max eV/atom above hull for showing unstable entries in 3D convex hull`,
         minimum: 0,
         maximum: 2,
       },
       max_hull_dist_show_labels: {
         value: 0.1,
-        description:
-          `Max eV/atom above hull for labeling unstable entries in 3D convex hull`,
+        description: `Max eV/atom above hull for labeling unstable entries in 3D convex hull`,
         minimum: 0,
         maximum: 2,
       },
@@ -1303,8 +1285,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       hull_face_color_mode: {
         value: `uniform`,
-        description:
-          `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
+        description: `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
         enum: {
           uniform: `Uniform`,
           formation_energy: `Formation energy`,
@@ -1396,8 +1377,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       hull_face_color_mode: {
         value: `dominant_element`,
-        description:
-          `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
+        description: `Coloring mode for hull faces: uniform (single color), formation_energy (by E_form), dominant_element (by element), or facet_index (categorical)`,
         enum: {
           uniform: `Uniform`,
           formation_energy: `Formation energy`,
@@ -1407,15 +1387,13 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       },
       max_hull_dist_show_phases: {
         value: 0.1,
-        description:
-          `Max eV/atom above hull for showing unstable entries in 4D convex hull`,
+        description: `Max eV/atom above hull for showing unstable entries in 4D convex hull`,
         minimum: 0,
         maximum: 2,
       },
       max_hull_dist_show_labels: {
         value: 0.1,
-        description:
-          `Max eV/atom above hull for labeling unstable entries in 4D convex hull`,
+        description: `Max eV/atom above hull for labeling unstable entries in 4D convex hull`,
         minimum: 0,
         maximum: 2,
       },
@@ -1437,18 +1415,23 @@ export const SETTINGS_CONFIG: SettingsConfig = {
 
 // Extract the value types for runtime use (up to 3 nested levels)
 export type DefaultSettings = {
-  [K in keyof SettingsConfig]: SettingsConfig[K] extends SettingType<infer T> ? T
-    : SettingsConfig[K] extends Record<string, unknown> ? {
-        [NK in keyof SettingsConfig[K]]: SettingsConfig[K][NK] extends
-          SettingType<infer T> ? T
-          : SettingsConfig[K][NK] extends Record<string, unknown> ? {
-              [NNK in keyof SettingsConfig[K][NK]]: SettingsConfig[K][NK][NNK] extends
-                SettingType<infer T> ? T
-                : never
-            }
-          : never
-      }
-    : never
+  [K in keyof SettingsConfig]: SettingsConfig[K] extends SettingType<infer T>
+    ? T
+    : SettingsConfig[K] extends Record<string, unknown>
+      ? {
+          [NK in keyof SettingsConfig[K]]: SettingsConfig[K][NK] extends SettingType<infer T>
+            ? T
+            : SettingsConfig[K][NK] extends Record<string, unknown>
+              ? {
+                  [NNK in keyof SettingsConfig[K][NK]]: SettingsConfig[K][NK][NNK] extends SettingType<
+                    infer T
+                  >
+                    ? T
+                    : never
+                }
+              : never
+        }
+      : never
 }
 
 // Extract values from settings config for runtime use
@@ -1470,15 +1453,16 @@ const extract_values = (
 export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 
 // Helper to merge with defaults - handles nested structure
-export const merge = (user?: Partial<DefaultSettings>): DefaultSettings => ({
-  ...DEFAULTS,
-  ...(user || {}),
-  structure: merge_nested(DEFAULTS.structure, user?.structure),
-  trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
-  composition: merge_nested(DEFAULTS.composition, user?.composition),
-  plot: merge_nested(DEFAULTS.plot, user?.plot),
-  scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
-  histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
-  bar: merge_nested(DEFAULTS.bar, user?.bar),
-  convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
-} as DefaultSettings)
+export const merge = (user?: Partial<DefaultSettings>): DefaultSettings =>
+  ({
+    ...DEFAULTS,
+    ...(user || {}),
+    structure: merge_nested(DEFAULTS.structure, user?.structure),
+    trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
+    composition: merge_nested(DEFAULTS.composition, user?.composition),
+    plot: merge_nested(DEFAULTS.plot, user?.plot),
+    scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
+    histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
+    bar: merge_nested(DEFAULTS.bar, user?.bar),
+    convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
+  }) as DefaultSettings

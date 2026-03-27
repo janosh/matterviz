@@ -1,9 +1,9 @@
 {
   "name": "matterviz-dash-components",
   "version": "0.3.2",
+  "private": true,
   "description": "Plotly Dash wrapper for MatterViz (Svelte) components",
   "license": "MIT",
-  "private": true,
   "type": "module",
   "main": "matterviz_dash_components/matterviz_dash_components.min.js",
   "scripts": {
@@ -11,11 +11,7 @@
     "build:dev": "vite build --mode development",
     "dev": "vite build --watch",
     "clean": "rm -f matterviz_dash_components/matterviz_dash_components*.js matterviz_dash_components/matterviz_dash_components*.css matterviz_dash_components/*.map",
-    "prepublishOnly": "pnpm run build"
-  },
-  "peerDependencies": {
-    "react": ">=16.14.0",
-    "react-dom": ">=16.14.0"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "matterviz": "^0.3.2",
@@ -26,5 +22,9 @@
     "svelte": "^5.1.0",
     "typescript": "^5.6.3",
     "vite": "^6.0.0"
+  },
+  "peerDependencies": {
+    "react": ">=16.14.0",
+    "react-dom": ">=16.14.0"
   }
 }

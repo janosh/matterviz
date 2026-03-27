@@ -39,13 +39,15 @@ function create_trajectory(property_frames: Record<string, number>[]): Trajector
   return {
     frames: property_frames.map((props, step) => ({
       structure: {
-        sites: [{
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H1`,
-          properties: {},
-        }],
+        sites: [
+          {
+            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [0, 0, 0],
+            label: `H1`,
+            properties: {},
+          },
+        ],
         charge: 0,
       },
       step,
@@ -150,7 +152,7 @@ describe(`generate_plot_series`, () => {
     const trajectory = create_trajectory([
       { energy: -789.391026308538 },
       { energy: -789.391026308539 },
-      { energy: -789.391026308540 },
+      { energy: -789.39102630854 },
     ])
 
     const series = generate_plot_series(trajectory, test_extractor)
@@ -519,11 +521,11 @@ describe(`integration and regression tests`, () => {
 
       const found_series = find_series_by_label(series, label_search)
       expect(found_series).toBeDefined()
-      expect(found_series?.metadata).toBeInstanceOf(Array)
-      expect(found_series?.metadata).toHaveLength(3) // 3 frames in COMMON_TRAJECTORIES.multi_property
+      const meta_arr = found_series?.metadata as Record<string, unknown>[] | undefined
+      expect(meta_arr).toBeInstanceOf(Array)
+      expect(meta_arr).toHaveLength(3) // 3 frames in COMMON_TRAJECTORIES.multi_property
 
-      const metadata = (found_series?.metadata as Record<string, unknown>[])[0]
-      expect(metadata.property_key).toBe(expected_key)
+      expect(meta_arr?.[0]?.property_key).toBe(expected_key)
     },
   )
 })

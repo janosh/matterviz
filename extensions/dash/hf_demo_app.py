@@ -9,8 +9,9 @@ import json
 import os
 
 import dash
-import matterviz_dash_components as mvc
 from dash import Input, Output, html
+
+import matterviz_dash_components as mvc
 
 # Simple demo structure (Silicon)
 DEMO_STRUCTURE = {
@@ -38,7 +39,7 @@ DEMO_TRAJECTORY = {
             "structure": {
                 **DEMO_STRUCTURE,
                 "sites": [
-                    {**s, "abc": [s["abc"][0] + 0.02, s["abc"][1], s["abc"][2]]}  # type: ignore[arg-type,call-overload]
+                    {**s, "abc": [s["abc"][0] + 0.02, s["abc"][1], s["abc"][2]]}  # ty: ignore[unsupported-operator]
                     for s in DEMO_STRUCTURE["sites"]
                 ],
             },

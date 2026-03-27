@@ -27,14 +27,14 @@ describe(`PhaseDiagramExportPane`, () => {
     mock_svg.setAttribute(`width`, `800`)
     mock_svg.setAttribute(`height`, `600`)
     mock_svg.classList.add(`binary-phase-diagram`) // Required class for component query
-    wrapper_div.appendChild(mock_svg)
-    document.body.appendChild(wrapper_div)
+    wrapper_div.append(mock_svg)
+    document.body.append(wrapper_div)
     vi.clearAllMocks()
   })
 
   const get_button = (title_part: string): HTMLButtonElement => {
     const matches = Array.from(document.querySelectorAll(`button`)).filter((btn) =>
-      btn.title?.includes(title_part)
+      btn.title?.includes(title_part),
     )
     if (matches.length === 0) {
       throw new Error(`No button found with title containing "${title_part}"`)
@@ -79,10 +79,7 @@ describe(`PhaseDiagramExportPane`, () => {
     download_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     await vi.waitFor(() => {
-      expect(export_svg_as_svg).toHaveBeenCalledWith(
-        mock_svg,
-        `phase-diagram-AL-CU.svg`,
-      )
+      expect(export_svg_as_svg).toHaveBeenCalledWith(mock_svg, `phase-diagram-AL-CU.svg`)
     })
   })
 
@@ -117,28 +114,28 @@ describe(`PhaseDiagramExportPane`, () => {
       copy_title: `Copy JSON`,
       expected_clipboard: JSON.stringify(mock_phase_data, null, 2),
     },
-  ])(`$copy_title button copies content and remains stable after timeout`, async ({
-    copy_title,
-    expected_clipboard,
-  }) => {
-    vi.useFakeTimers()
-    mount(PhaseDiagramExportPane, {
-      target: document.body,
-      props: { data: mock_phase_data, wrapper: wrapper_div },
-    })
+  ])(
+    `$copy_title button copies content and remains stable after timeout`,
+    async ({ copy_title, expected_clipboard }) => {
+      vi.useFakeTimers()
+      mount(PhaseDiagramExportPane, {
+        target: document.body,
+        props: { data: mock_phase_data, wrapper: wrapper_div },
+      })
 
-    const copy_btn = get_button(copy_title)
-    expect(copy_btn).toBeTruthy()
-    copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
+      const copy_btn = get_button(copy_title)
+      expect(copy_btn).toBeTruthy()
+      copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
-    await vi.waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_clipboard)
-    })
+      await vi.waitFor(() => {
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_clipboard)
+      })
 
-    vi.advanceTimersByTime(1500)
-    expect(copy_btn).toBeTruthy()
-    vi.useRealTimers()
-  })
+      vi.advanceTimersByTime(1500)
+      expect(copy_btn).toBeTruthy()
+      vi.useRealTimers()
+    },
+  )
 
   test(`JSON buttons disabled when data is undefined`, () => {
     mount(PhaseDiagramExportPane, {
@@ -199,10 +196,7 @@ describe(`PhaseDiagramExportPane`, () => {
     svg_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     await vi.waitFor(() => {
-      expect(export_svg_as_svg).toHaveBeenCalledWith(
-        expect.anything(),
-        `phase-diagram.svg`,
-      )
+      expect(export_svg_as_svg).toHaveBeenCalledWith(expect.anything(), `phase-diagram.svg`)
     })
   })
 
@@ -247,7 +241,7 @@ describe(`PhaseDiagramExportPane`, () => {
 
   test(`does not export SVG when wrapper has no SVG element`, async () => {
     const empty_wrapper = document.createElement(`div`)
-    document.body.appendChild(empty_wrapper)
+    document.body.append(empty_wrapper)
 
     mount(PhaseDiagramExportPane, {
       target: document.body,
@@ -264,7 +258,7 @@ describe(`PhaseDiagramExportPane`, () => {
 
   test(`does not copy SVG when wrapper has no SVG element`, async () => {
     const empty_wrapper = document.createElement(`div`)
-    document.body.appendChild(empty_wrapper)
+    document.body.append(empty_wrapper)
 
     mount(PhaseDiagramExportPane, {
       target: document.body,

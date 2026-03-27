@@ -102,10 +102,7 @@ describe(`parse_xy_file`, () => {
     [1001, 1000, `MAX_POINTS+1 - triggers subsampling`],
     [2000, 1000, `2x MAX_POINTS - heavy subsampling`],
   ])(`with %i points outputs ≤%i points (%s)`, (input_count, max_output) => {
-    const lines = Array.from(
-      { length: input_count },
-      (_, idx) => `${10 + idx * 0.1} ${idx}`,
-    )
+    const lines = Array.from({ length: input_count }, (_, idx) => `${10 + idx * 0.1} ${idx}`)
     const result = parse_xy_file(lines.join(`\n`))
     expect(result?.x.length).toBeLessThanOrEqual(max_output)
     if (input_count <= 1000) expect(result?.x.length).toBe(input_count) // exact preservation
@@ -126,10 +123,9 @@ describe(`parse_xy_file`, () => {
     const result = parse_xy_file(lines)
     if (!result) return expect(result).not.toBeNull()
     // Count preserved peaks (within 0.005 tolerance)
-    const peaks_found =
-      peak_indices.filter((pos) =>
-        result.x.some((x_val) => Math.abs(x_val - (10 + pos * 0.01)) < 0.005)
-      ).length
+    const peaks_found = peak_indices.filter((pos) =>
+      result.x.some((x_val) => Math.abs(x_val - (10 + pos * 0.01)) < 0.005),
+    ).length
     expect(peaks_found).toBeGreaterThanOrEqual(25)
   })
 })
@@ -424,13 +420,7 @@ describe(`parse_bruker_raw_file`, () => {
 
   test.each([
     [`v2`, create_mock_raw_v2([100, 200, 300, 200, 100], 20, 1), [20, 21, 22, 23, 24]],
-    [`v4`, create_mock_raw_v4([50, 100, 150, 100, 50], 15, 0.5), [
-      15,
-      15.5,
-      16,
-      16.5,
-      17,
-    ]],
+    [`v4`, create_mock_raw_v4([50, 100, 150, 100, 50], 15, 0.5), [15, 15.5, 16, 16.5, 17]],
   ])(`parses Bruker RAW %s format`, (_version, buffer, expected_x) => {
     const result = parse_bruker_raw_file(buffer)
     expect(result).not.toBeNull()
@@ -533,8 +523,7 @@ describe(`parse_xrdml_file`, () => {
   })
 
   test(`filters non-numeric intensity values`, () => {
-    const content =
-      `<?xml version="1.0"?><xrdMeasurements><xrdMeasurement><scan><dataPoints>
+    const content = `<?xml version="1.0"?><xrdMeasurements><xrdMeasurement><scan><dataPoints>
       <positions axis="2Theta"><startPosition>10</startPosition><endPosition>30</endPosition></positions>
       <intensities>100 NaN 300</intensities>
     </dataPoints></scan></xrdMeasurement></xrdMeasurements>`
@@ -592,14 +581,14 @@ describe(`parse_brml_file`, () => {
   })
 
   test.each([
+    [`invalid ZIP data`, () => new TextEncoder().encode(`not a zip`).buffer as ArrayBuffer],
     [
-      `invalid ZIP data`,
-      () => new TextEncoder().encode(`not a zip`).buffer as ArrayBuffer,
+      `ZIP without XRD data`,
+      () => {
+        const files = { 'readme.txt': new TextEncoder().encode(`not XRD`) }
+        return zipSync(files).buffer as ArrayBuffer
+      },
     ],
-    [`ZIP without XRD data`, () => {
-      const files = { 'readme.txt': new TextEncoder().encode(`not XRD`) }
-      return zipSync(files).buffer as ArrayBuffer
-    }],
   ])(`returns null for %s`, async (_desc, make_buffer) => {
     expect(await parse_brml_file(make_buffer())).toBeNull()
   })
@@ -819,19 +808,27 @@ describe(`real example files`, () => {
 
   // Get all XRD files in static/xrd/ (including gzipped variants)
   // Include all supported extensions: original + new formats
-  // deno-fmt-ignore
   const xrd_extensions = [
-    `.xy`, `.xye`, `.xrdml`, `.brml`, // Original
-    `.csv`, `.dat`, `.asc`, `.txt`, // Two-column aliases
-    `.ras`, `.uxd`, `.gsas`, `.gsa`, `.gda`, `.fxye`, // Header-based
+    `.xy`,
+    `.xye`,
+    `.xrdml`,
+    `.brml`, // Original
+    `.csv`,
+    `.dat`,
+    `.asc`,
+    `.txt`, // Two-column aliases
+    `.ras`,
+    `.uxd`,
+    `.gsas`,
+    `.gsa`,
+    `.gda`,
+    `.fxye`, // Header-based
     `.raw`, // Binary
   ]
   const xrd_files: string[] = fs.readdirSync(static_xrd_dir).filter((file: string) => {
     const lower = file.toLowerCase()
     // Match .xy, .xy.gz, .xye, .xye.gz, etc.
-    return xrd_extensions.some(
-      (ext) => lower.endsWith(ext) || lower.endsWith(`${ext}.gz`),
-    )
+    return xrd_extensions.some((ext) => lower.endsWith(ext) || lower.endsWith(`${ext}.gz`))
   })
 
   for (const filename of xrd_files) {

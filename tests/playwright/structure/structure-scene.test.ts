@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import type { XyObj } from '$lib'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
@@ -36,12 +35,9 @@ async function safe_canvas_hover(
   // Try normal hover first
   try {
     await canvas.hover({ position, timeout: 2000 })
-  } catch (err) {
+  } catch (error) {
     // If normal hover fails (e.g. tooltip overlay), retry with force
-    console.warn(
-      `Hover at (${position.x}, ${position.y}) failed, retrying with force:`,
-      err,
-    )
+    console.warn(`Hover at (${position.x}, ${position.y}) failed, retrying with force:`, error)
     await canvas.hover({ position, force: true, timeout: 2000 })
   }
 }
@@ -178,8 +174,8 @@ test.describe(`StructureScene Component Tests`, () => {
     const abc_text = await abc_coords.textContent()
     const xyz_text = await xyz_coords.textContent()
 
-    expect(abc_text).toMatch(/abc:\s*\([\d\.-]+,\s*[\d\.-]+,\s*[\d\.-]+\)/)
-    expect(xyz_text).toMatch(/xyz:\s*\([\d\.-]+,\s*[\d\.-]+,\s*[\d\.-]+\)\s*Å/)
+    expect(abc_text).toMatch(/abc:\s*\([\d.-]+,\s*[\d.-]+,\s*[\d.-]+\)/)
+    expect(xyz_text).toMatch(/xyz:\s*\([\d.-]+,\s*[\d.-]+,\s*[\d.-]+\)\s*Å/)
 
     // Test tooltip disappears when moving away
     await canvas.hover({ position: { x: 50, y: 50 } })
@@ -203,7 +199,7 @@ test.describe(`StructureScene Component Tests`, () => {
       { x: 200, y: 150 },
       { x: 400, y: 200 },
       { x: 350, y: 300 },
-    ].filter((pos) => !first_atom || (pos.x !== first_atom.x || pos.y !== first_atom.y))
+    ].filter((pos) => !first_atom || pos.x !== first_atom.x || pos.y !== first_atom.y)
 
     for (const position of positions) {
       await canvas.hover({ position })
@@ -272,10 +268,7 @@ test.describe(`StructureScene Component Tests`, () => {
     // Test pan
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down({ button: `right` })
-    await page.mouse.move(
-      box.x + box.width / 2 + 50,
-      box.y + box.height / 2 + 30,
-    )
+    await page.mouse.move(box.x + box.width / 2 + 50, box.y + box.height / 2 + 30)
     await page.mouse.up({ button: `right` })
     await expect_canvas_changed(canvas, after_zoom)
   })
@@ -341,7 +334,9 @@ test.describe(`StructureScene Component Tests`, () => {
   // Test disordered site tooltip formatting
   // TODO: Investigate Three.js context destruction during test execution
   // Tracking: This test fails intermittently due to WebGL context issues in headless mode
-  test.fixme(`formats disordered site tooltips without trailing zeros and proper separators`, async ({ page }) => {
+  test.fixme(`formats disordered site tooltips without trailing zeros and proper separators`, async ({
+    page,
+  }) => {
     const canvas = page.locator(`#test-structure canvas`)
     const console_errors = setup_console_monitoring(page)
 
@@ -374,9 +369,7 @@ test.describe(`StructureScene Component Tests`, () => {
 
           // Test species separation: thin space, not plus signs
           if (occupancy_count > 1) {
-            const elements_text = await tooltip
-              .locator(`.elements`)
-              .textContent()
+            const elements_text = await tooltip.locator(`.elements`).textContent()
             expect(elements_text).not.toMatch(/\s\+\s/) // No plus separators
             expect(elements_text).toMatch(/\u2009/) // Thin space separator
           }
@@ -535,15 +528,15 @@ test.describe(`StructureScene Component Tests`, () => {
   })
 
   // Test lattice cell property customization with EdgesGeometry
-  test(`lattice cell properties (color, opacity, line width) work correctly with EdgesGeometry`, async ({ page }) => {
+  test(`lattice cell properties (color, opacity, line width) work correctly with EdgesGeometry`, async ({
+    page,
+  }) => {
     const console_errors = setup_console_monitoring(page)
 
     // Use page.evaluate to set lattice properties directly on the Structure component
     await page.evaluate(() => {
       // Access the Structure component's lattice_props to set custom values
-      const structureElement = document.querySelector(
-        `[data-testid="structure-component"]`,
-      )
+      const structureElement = document.querySelector(`[data-testid="structure-component"]`)
       if (!structureElement) {
         // If no test ID exists, we'll set the properties through controls
         const event = new CustomEvent(`set-lattice-props`, {
@@ -609,7 +602,9 @@ test.describe(`StructureScene Component Tests`, () => {
   })
 
   // Test dual opacity controls allow flexible edge/surface combinations
-  test(`dual opacity controls allow flexible edge and surface combinations`, async ({ page }) => {
+  test(`dual opacity controls allow flexible edge and surface combinations`, async ({
+    page,
+  }) => {
     const console_errors = setup_console_monitoring(page)
     const canvas = page.locator(`#test-structure canvas`)
 
@@ -674,12 +669,8 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(edges_only_screenshot.equals(both_visible_screenshot)).toBe(false)
     expect(edges_only_screenshot.equals(neither_visible_screenshot)).toBe(false)
     expect(surfaces_only_screenshot.equals(both_visible_screenshot)).toBe(false)
-    expect(surfaces_only_screenshot.equals(neither_visible_screenshot)).toBe(
-      false,
-    )
-    expect(both_visible_screenshot.equals(neither_visible_screenshot)).toBe(
-      false,
-    )
+    expect(surfaces_only_screenshot.equals(neither_visible_screenshot)).toBe(false)
+    expect(both_visible_screenshot.equals(neither_visible_screenshot)).toBe(false)
 
     expect(console_errors).toHaveLength(0)
   })
@@ -784,7 +775,9 @@ test.describe(`StructureScene Component Tests`, () => {
   })
 
   // Test that opacity values can be set independently and produce expected results
-  test(`independent opacity controls work correctly across different values`, async ({ page }) => {
+  test(`independent opacity controls work correctly across different values`, async ({
+    page,
+  }) => {
     const console_errors = setup_console_monitoring(page)
     const canvas = page.locator(`#test-structure canvas`)
 
@@ -847,9 +840,7 @@ test.describe(`StructureScene Component Tests`, () => {
     const set_props_and_screenshot = async (props: Record<string, unknown>) => {
       await page.evaluate((scene_props) => {
         // Try to access the Structure component directly if possible
-        const structure_element = document.querySelector(
-          `[data-testid="structure-component"]`,
-        )
+        const structure_element = document.querySelector(`[data-testid="structure-component"]`)
         if (structure_element) {
           // If structure component has a direct method to update scene props
           const event = new CustomEvent(`updateSceneProps`, {
@@ -864,9 +855,7 @@ test.describe(`StructureScene Component Tests`, () => {
           if (controls_btn) controls_btn.click()
 
           // Set checkbox state for same_size_atoms
-          const checkbox = document.querySelector(
-            `input[type="checkbox"]`,
-          ) as HTMLInputElement
+          const checkbox = document.querySelector(`input[type="checkbox"]`) as HTMLInputElement
           if (checkbox && scene_props.same_size_atoms !== undefined) {
             checkbox.checked = Boolean(scene_props.same_size_atoms)
             checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
@@ -905,7 +894,9 @@ test.describe(`StructureScene Component Tests`, () => {
   })
 
   // Test rotation target prevents structure from moving off-canvas
-  test(`rotation target uses lattice center for crystalline structures and center of mass for molecular systems`, async ({ page }) => {
+  test(`rotation target uses lattice center for crystalline structures and center of mass for molecular systems`, async ({
+    page,
+  }) => {
     const console_errors = setup_console_monitoring(page)
     const canvas = page.locator(`#test-structure canvas`)
 
@@ -1023,9 +1014,7 @@ test.describe(`Edit Atoms Scene`, () => {
     await expect_canvas_changed(canvas, prev)
 
     // Keyboard shortcuts should not cause errors
-    const is_mac = await page.evaluate(() =>
-      navigator.platform.toUpperCase().indexOf(`MAC`) >= 0
-    )
+    const is_mac = await page.evaluate(() => navigator.platform.toUpperCase().includes(`MAC`))
     await page.keyboard.press(`Delete`)
     await page.keyboard.press(is_mac ? `Meta+z` : `Control+z`)
     await page.keyboard.press(is_mac ? `Meta+y` : `Control+y`)

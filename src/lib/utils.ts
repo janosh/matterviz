@@ -31,3 +31,16 @@ export const normalize_unicode_minus = (value: string): string => value.replace(
 // Normalize scientific notation variants (d/D exponent, Mathematica *^).
 export const normalize_scientific_notation = (value: string): string =>
   normalize_unicode_minus(value).toLowerCase().replace(/d/g, `e`).replace(/\*\^/g, `e`)
+
+// Decode a URL-safe base64 string (RFC 4648 §5) to its original text.
+// Converts `-` → `+`, `_` → `/`, restores padding, then decodes.
+// Returns undefined if decoding fails.
+export function decode_url_safe_base64(encoded: string): string | undefined {
+  const std_b64 = encoded.replace(/-/g, `+`).replace(/_/g, `/`)
+  const padded = std_b64 + `=`.repeat((4 - (std_b64.length % 4)) % 4)
+  try {
+    return atob(padded)
+  } catch {
+    return undefined
+  }
+}

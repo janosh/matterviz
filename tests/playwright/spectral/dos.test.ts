@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import { expect, test } from '@playwright/test'
 import { get_chart_svg, IS_CI } from '../helpers'
 
@@ -43,8 +42,9 @@ test.describe(`DOS Component Tests`, () => {
   test(`applies normalization correctly`, async ({ page }) => {
     // Max normalization should have y-values <= 1
     const max_plot = page.locator(`[data-testid="dos-max-norm"] .scatter`)
-    await expect(max_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
-      .toBeVisible()
+    await expect(
+      max_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first(),
+    ).toBeVisible()
     const y_ticks = await max_plot.locator(`g.y-axis text`).allTextContents()
     const nums = y_ticks
       .map((tick) => Number.parseFloat(tick.replace(/[^\d.\-+eE]/g, ``)))
@@ -54,8 +54,9 @@ test.describe(`DOS Component Tests`, () => {
 
     // Sum normalization should render correctly
     const sum_plot = page.locator(`[data-testid="dos-sum-norm"] .scatter`)
-    await expect(sum_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
-      .toBeVisible()
+    await expect(
+      sum_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first(),
+    ).toBeVisible()
   })
 
   test(`renders stacked DOS and applies Gaussian smearing`, async ({ page }) => {
@@ -77,8 +78,7 @@ test.describe(`DOS Component Tests`, () => {
 
     // Check Gaussian smearing produces smooth curves
     const smeared_plot = page.locator(`[data-testid="dos-smeared"] .scatter`)
-    const path = smeared_plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
-      .first()
+    const path = smeared_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first()
     await expect(path).toBeVisible()
     const path_d = await path.getAttribute(`d`)
     // Verify path has data and is sufficiently complex (indicates smoothing/interpolation)
@@ -91,8 +91,9 @@ test.describe(`DOS Component Tests`, () => {
 
   test(`renders with horizontal orientation`, async ({ page }) => {
     const plot = page.locator(`[data-testid="dos-horizontal"] .scatter`)
-    await expect(plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first())
-      .toBeVisible()
+    await expect(
+      plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first(),
+    ).toBeVisible()
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
     await expect(plot.locator(`g.y-axis`)).toBeVisible()
 
@@ -158,7 +159,9 @@ test.describe(`DOS Component Tests`, () => {
         for (const y_frac of [0.2, 0.35, 0.5, 0.65, 0.8]) {
           await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
           // Wait for tooltip with assertion-based wait (avoids CI timing issues)
-          await expect(tooltip).toBeVisible({ timeout: 250 }).catch(() => {})
+          await expect(tooltip)
+            .toBeVisible({ timeout: 250 })
+            .catch(() => {})
           if (await tooltip.isVisible()) {
             tooltip_found = true
             break
@@ -192,17 +195,15 @@ test.describe(`DOS Component Tests`, () => {
     let tooltip_found = false
 
     // Try more positions since multiple DOS might be harder to hit
-    for (
-      const [x_frac, y_frac] of [
-        [0.2, 0.3],
-        [0.3, 0.5],
-        [0.4, 0.6],
-        [0.5, 0.5],
-        [0.6, 0.4],
-        [0.7, 0.5],
-        [0.8, 0.6],
-      ]
-    ) {
+    for (const [x_frac, y_frac] of [
+      [0.2, 0.3],
+      [0.3, 0.5],
+      [0.4, 0.6],
+      [0.5, 0.5],
+      [0.6, 0.4],
+      [0.7, 0.5],
+      [0.8, 0.6],
+    ]) {
       await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
 
       if (await tooltip.isVisible()) {
@@ -216,15 +217,11 @@ test.describe(`DOS Component Tests`, () => {
 
         // Verify label appears before density/frequency (series label should be first line)
         const value_idx = Math.min(
-          tooltip_text.indexOf(`Density`) !== -1
-            ? tooltip_text.indexOf(`Density`)
-            : Infinity,
+          tooltip_text.indexOf(`Density`) !== -1 ? tooltip_text.indexOf(`Density`) : Infinity,
           tooltip_text.indexOf(`Frequency`) !== -1
             ? tooltip_text.indexOf(`Frequency`)
             : Infinity,
-          tooltip_text.indexOf(`Energy`) !== -1
-            ? tooltip_text.indexOf(`Energy`)
-            : Infinity,
+          tooltip_text.indexOf(`Energy`) !== -1 ? tooltip_text.indexOf(`Energy`) : Infinity,
         )
         const label_idx = tooltip_text.search(/DOS[12]/) ?? -1
         expect(label_idx).toBeGreaterThan(-1)
@@ -237,7 +234,7 @@ test.describe(`DOS Component Tests`, () => {
 
     // This test is less critical, so we'll just verify the plot renders even if tooltip is elusive
     if (!tooltip_found) {
-      console.log(`Tooltip not found for multiple DOS, but plot rendered successfully`)
+      console.warn(`Tooltip not found for multiple DOS, but plot rendered successfully`)
       await expect(
         plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
       ).toBeVisible()
@@ -259,17 +256,15 @@ test.describe(`DOS Component Tests`, () => {
     let tooltip_found = false
 
     // Try more positions
-    for (
-      const [x_frac, y_frac] of [
-        [0.2, 0.3],
-        [0.3, 0.5],
-        [0.4, 0.6],
-        [0.5, 0.5],
-        [0.6, 0.4],
-        [0.7, 0.5],
-        [0.8, 0.6],
-      ]
-    ) {
+    for (const [x_frac, y_frac] of [
+      [0.2, 0.3],
+      [0.3, 0.5],
+      [0.4, 0.6],
+      [0.5, 0.5],
+      [0.6, 0.4],
+      [0.7, 0.5],
+      [0.8, 0.6],
+    ]) {
       await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
 
       if (await tooltip.isVisible()) {
@@ -302,7 +297,7 @@ test.describe(`DOS Component Tests`, () => {
 
     // Fallback: verify plot renders if tooltip is hard to hit
     if (!tooltip_found) {
-      console.log(`Tooltip not found for horizontal DOS, but plot rendered successfully`)
+      console.warn(`Tooltip not found for horizontal DOS, but plot rendered successfully`)
       await expect(
         plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
       ).toBeVisible()
@@ -324,16 +319,14 @@ test.describe(`DOS Component Tests`, () => {
     let tooltip_found = false
 
     // Try various positions
-    for (
-      const [x_frac, y_frac] of [
-        [0.2, 0.3],
-        [0.3, 0.5],
-        [0.4, 0.6],
-        [0.5, 0.5],
-        [0.6, 0.4],
-        [0.7, 0.5],
-      ]
-    ) {
+    for (const [x_frac, y_frac] of [
+      [0.2, 0.3],
+      [0.3, 0.5],
+      [0.4, 0.6],
+      [0.5, 0.5],
+      [0.6, 0.4],
+      [0.7, 0.5],
+    ]) {
       await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
 
       if (await tooltip.isVisible()) {
@@ -364,7 +357,7 @@ test.describe(`DOS Component Tests`, () => {
 
     // Fallback: verify plot renders if tooltip is hard to hit
     if (!tooltip_found) {
-      console.log(`Tooltip not found for vertical DOS, but plot rendered successfully`)
+      console.warn(`Tooltip not found for vertical DOS, but plot rendered successfully`)
       await expect(
         plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
       ).toBeVisible()
@@ -384,16 +377,14 @@ test.describe(`DOS Component Tests`, () => {
 
     // Hover to show tooltip
     let tooltip_shown = false
-    for (
-      const [x_frac, y_frac] of [
-        [0.2, 0.3],
-        [0.3, 0.5],
-        [0.4, 0.6],
-        [0.5, 0.5],
-        [0.6, 0.4],
-        [0.7, 0.5],
-      ]
-    ) {
+    for (const [x_frac, y_frac] of [
+      [0.2, 0.3],
+      [0.3, 0.5],
+      [0.4, 0.6],
+      [0.5, 0.5],
+      [0.6, 0.4],
+      [0.7, 0.5],
+    ]) {
       await page.mouse.move(box.x + box.width * x_frac, box.y + box.height * y_frac)
       if (await tooltip.isVisible()) {
         tooltip_shown = true
@@ -409,7 +400,7 @@ test.describe(`DOS Component Tests`, () => {
       await expect(tooltip).toBeHidden()
     } else {
       // If tooltip didn't show, just verify plot rendered
-      console.log(`Tooltip not found, but plot rendered successfully`)
+      console.warn(`Tooltip not found, but plot rendered successfully`)
       await expect(
         plot.locator(`svg path.line, svg path[stroke]:not([stroke="none"])`).first(),
       ).toBeVisible()

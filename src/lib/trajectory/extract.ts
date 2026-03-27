@@ -22,10 +22,7 @@ export const energy_data_extractor: TrajectoryDataExtractor = (
     ]
 
     for (const field of energy_fields) {
-      if (
-        field in frame.metadata &&
-        typeof frame.metadata[field] === `number`
-      ) {
+      if (field in frame.metadata && typeof frame.metadata[field] === `number`) {
         data[field] = frame.metadata[field] as number
       }
     }
@@ -52,44 +49,26 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
         data.force_max = Math.max(...force_magnitudes)
         // Calculate RMS (root mean square) of force magnitudes
         data.force_norm = Math.sqrt(
-          force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) /
-            force_magnitudes.length,
+          force_magnitudes.reduce((sum, f) => sum + f ** 2, 0) / force_magnitudes.length,
         )
       }
     } else {
       // Fallback to metadata values if forces array not available
-      if (
-        frame.metadata.force_max &&
-        typeof frame.metadata.force_max === `number`
-      ) {
+      if (frame.metadata.force_max && typeof frame.metadata.force_max === `number`) {
         data.force_max = frame.metadata.force_max
       }
       // Prefer force_norm if available, fall back to force_rms
-      if (
-        frame.metadata.force_norm &&
-        typeof frame.metadata.force_norm === `number`
-      ) {
+      if (frame.metadata.force_norm && typeof frame.metadata.force_norm === `number`) {
         data.force_norm = frame.metadata.force_norm
-      } else if (
-        frame.metadata.force_rms &&
-        typeof frame.metadata.force_rms === `number`
-      ) {
+      } else if (frame.metadata.force_rms && typeof frame.metadata.force_rms === `number`) {
         data.force_norm = frame.metadata.force_rms // Use force_rms as fallback
       }
     }
 
     // Extract other stress and pressure properties (no duplicates expected)
-    const other_stress_fields = [
-      `stress_max`,
-      `stress_frobenius`,
-      `stress_trace`,
-      `pressure`,
-    ]
+    const other_stress_fields = [`stress_max`, `stress_frobenius`, `stress_trace`, `pressure`]
     for (const field of other_stress_fields) {
-      if (
-        field in frame.metadata &&
-        typeof frame.metadata[field] === `number`
-      ) {
+      if (field in frame.metadata && typeof frame.metadata[field] === `number`) {
         data[field] = frame.metadata[field] as number
       }
     }
@@ -124,10 +103,8 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
     const structural_fields = [`temperature`]
 
     for (const field of structural_fields) {
-      if (
-        field in frame.metadata &&
-        typeof frame.metadata[field] === `number`
-      ) data[field] = frame.metadata[field] as number
+      if (field in frame.metadata && typeof frame.metadata[field] === `number`)
+        data[field] = frame.metadata[field] as number
     }
 
     // Handle density separately - prefer metadata, but calculate if not available
@@ -142,11 +119,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
     }
 
     // Only use metadata volume if lattice volume is not available
-    if (
-      !data.volume &&
-      frame.metadata.volume &&
-      typeof frame.metadata.volume === `number`
-    ) {
+    if (!data.volume && frame.metadata.volume && typeof frame.metadata.volume === `number`) {
       data.volume = frame.metadata.volume
     }
 
@@ -177,16 +150,11 @@ function property_varies(
     let value: number | undefined
 
     if (`lattice` in frame.structure) {
-      const lattice_value =
-        (frame.structure.lattice as Record<string, unknown>)[property_key]
+      const lattice_value = (frame.structure.lattice as Record<string, unknown>)[property_key]
       if (typeof lattice_value === `number`) value = lattice_value
     }
 
-    if (
-      value === undefined &&
-      frame.metadata &&
-      property_key in frame.metadata
-    ) {
+    if (value === undefined && frame.metadata && property_key in frame.metadata) {
       const metadata_value = frame.metadata[property_key]
       if (typeof metadata_value === `number`) {
         value = metadata_value

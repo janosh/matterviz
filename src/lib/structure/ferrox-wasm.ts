@@ -41,10 +41,7 @@ interface WasmStructureMatcherInstance {
   // Suitable for consistent ranking of structures by similarity
   get_structure_distance(struct1: unknown, struct2: unknown): WasmResult<number>
   deduplicate(structures: unknown[]): WasmResult<number[]>
-  find_matches(
-    new_structures: unknown[],
-    existing: unknown[],
-  ): WasmResult<(number | null)[]>
+  find_matches(new_structures: unknown[], existing: unknown[]): WasmResult<(number | null)[]>
 }
 
 // WASM module exports (post-initialization API)
@@ -151,7 +148,8 @@ export function ensure_ferrox_wasm_ready(): Promise<FerroxWasmModule> {
         // Clear the promise on failure so retry is possible
         init_promise = null
         throw new Error(
-          `Failed to load matterviz-wasm. Install with: pnpm add matterviz-wasm. Original error: ${err}`,
+          `Failed to load matterviz-wasm. Install with: npm add matterviz-wasm. Original error: ${err}`,
+          { cause: err },
         )
       }
     })()
@@ -326,9 +324,7 @@ export async function get_spacegroup(
 }
 
 // Serialize structure to pymatgen-compatible JSON string
-export async function serialize_structure(
-  structure: Crystal,
-): Promise<WasmResult<string>> {
+export async function serialize_structure(structure: Crystal): Promise<WasmResult<string>> {
   const mod = await ensure_ferrox_wasm_ready()
   return mod.structure_to_json(structure)
 }
@@ -425,9 +421,7 @@ export async function copy_structure(
 }
 
 // Wrap all fractional coordinates to [0, 1)
-export async function wrap_to_unit_cell(
-  structure: Crystal,
-): Promise<WasmResult<Crystal>> {
+export async function wrap_to_unit_cell(structure: Crystal): Promise<WasmResult<Crystal>> {
   const mod = await ensure_ferrox_wasm_ready()
   return mod.wrap_to_unit_cell(structure)
 }
@@ -459,12 +453,7 @@ export async function perturb_structure(
   options?: { min_distance?: number; seed?: number },
 ): Promise<WasmResult<Crystal>> {
   const mod = await ensure_ferrox_wasm_ready()
-  return mod.perturb_structure(
-    structure,
-    distance,
-    options?.min_distance,
-    options?.seed,
-  )
+  return mod.perturb_structure(structure, distance, options?.min_distance, options?.seed)
 }
 
 // Element Information
@@ -474,9 +463,7 @@ export async function get_atomic_mass(symbol: string): Promise<WasmResult<number
 }
 
 // Get electronegativity of an element by symbol
-export async function get_electronegativity(
-  symbol: string,
-): Promise<WasmResult<number>> {
+export async function get_electronegativity(symbol: string): Promise<WasmResult<number>> {
   const mod = await ensure_ferrox_wasm_ready()
   return mod.get_electronegativity(symbol)
 }

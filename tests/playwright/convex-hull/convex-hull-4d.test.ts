@@ -15,10 +15,9 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
   })
 
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    await page.goto(
-      `/test/convex-hull-performance?dim=4d&count=100&click_selection=false`,
-      { waitUntil: `networkidle` },
-    )
+    await page.goto(`/test/convex-hull-performance?dim=4d&count=100&click_selection=false`, {
+      waitUntil: `networkidle`,
+    })
     const diagram = page.locator(`.convex-hull-4d`)
     await expect(diagram).toBeVisible({ timeout: 15000 })
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
@@ -30,7 +29,6 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
       // Click grid of positions to ensure we hit an entry
       for (const x_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
         for (const y_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
-          // deno-lint-ignore no-await-in-loop
           await canvas.click({
             position: { x: box.width * (0.5 + x_off), y: box.height * (0.5 + y_off) },
           })
@@ -40,7 +38,9 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     }
   })
 
-  test(`renders quaternary diagram canvas, opens panes, initial data attributes`, async ({ page }) => {
+  test(`renders quaternary diagram canvas, opens panes, initial data attributes`, async ({
+    page,
+  }) => {
     await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
     const quaternary_grid = page.locator(`.quaternary-grid`)
     await expect(quaternary_grid).toBeVisible()
@@ -77,10 +77,8 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls).toBeVisible()
 
-    const phi = controls.getByText(`φ`).locator(`..`).locator(`input[type="number"]`)
-      .first()
-    const theta = controls.getByText(`θ`).locator(`..`).locator(`input[type="number"]`)
-      .first()
+    const phi = controls.getByText(`φ`).locator(`..`).locator(`input[type="number"]`).first()
+    const theta = controls.getByText(`θ`).locator(`..`).locator(`input[type="number"]`).first()
     await phi.fill(`0.2`)
     await theta.fill(`0.4`)
     await expect(diagram.locator(`canvas`)).toBeVisible()
@@ -99,10 +97,8 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     await number_input.fill(`0.5`)
     // Ensure info pane is in front and visible before asserting
     await ensure_pane_visible(info, diagram.locator(`.info-btn`))
-    await expect(info.getByText(`Convex Hull Stats`, { exact: false }))
-      .toBeVisible()
-    await expect(info.getByText(`Total entries in`, { exact: false }))
-      .toBeVisible()
+    await expect(info.getByText(`Convex Hull Stats`, { exact: false })).toBeVisible()
+    await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
   })
 
   test(`computes hull distances on-the-fly when data is incomplete`, async ({ page }) => {
@@ -151,7 +147,9 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     await expect(color_bar_title).toBeVisible()
   })
 
-  test(`drag state resets on mouseup outside and suppresses immediate clicks`, async ({ page }) => {
+  test(`drag state resets on mouseup outside and suppresses immediate clicks`, async ({
+    page,
+  }) => {
     const diagram = page.locator(`.quaternary-grid .convex-hull-4d`).first()
     const box = await diagram.locator(`canvas`).boundingBox()
     if (!box) return
@@ -189,22 +187,23 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
         if (!ctx) return 0
         const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
         let count = 0
-        for (
-          let idx = 3;
-          idx < data.length;
-          idx += 4
-        ) if (data[idx] > 0 && data[idx] < 255) count++
+        for (let idx = 3; idx < data.length; idx += 4)
+          if (data[idx] > 0 && data[idx] < 255) count++
         return count
       })
     const initial = await count_semi_transparent()
     expect(initial).toBeGreaterThan(100)
 
     await diagram.locator(`.legend-controls-btn`).click()
-    await diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
-      .getByText(`Hull Faces`).locator(`..`).locator(`input[type="checkbox"]`).click()
+    await diagram
+      .locator(`.draggable-pane.convex-hull-controls-pane`)
+      .getByText(`Hull Faces`)
+      .locator(`..`)
+      .locator(`input[type="checkbox"]`)
+      .click()
     // Longer timeout for CI - canvas updates can be slow
     await expect(async () =>
-      expect(await count_semi_transparent()).toBeLessThan(initial / 2)
+      expect(await count_semi_transparent()).toBeLessThan(initial / 2),
     ).toPass({ timeout: 5000 })
   })
 
@@ -215,7 +214,11 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
       if (!ctx) return { centered: false, within_bounds: false, pixel_count: 0 }
       const { width, height } = el as HTMLCanvasElement
       const { data } = ctx.getImageData(0, 0, width, height)
-      let min_x = width, max_x = 0, min_y = height, max_y = 0, count = 0
+      let min_x = width,
+        max_x = 0,
+        min_y = height,
+        max_y = 0,
+        count = 0
       for (let y_idx = 0; y_idx < height; y_idx++) {
         for (let x_idx = 0; x_idx < width; x_idx++) {
           if (data[(y_idx * width + x_idx) * 4 + 3] > 10) {
@@ -227,12 +230,12 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
           }
         }
       }
-      const cx = (min_x + max_x) / 2, cy = (min_y + max_y) / 2
+      const cx = (min_x + max_x) / 2,
+        cy = (min_y + max_y) / 2
       return {
-        centered: Math.abs(cx - width / 2) / width < 0.3 &&
-          Math.abs(cy - height / 2) / height < 0.3,
-        within_bounds: min_x >= 5 && max_x <= width - 5 && min_y >= 5 &&
-          max_y <= height - 5,
+        centered:
+          Math.abs(cx - width / 2) / width < 0.3 && Math.abs(cy - height / 2) / height < 0.3,
+        within_bounds: min_x >= 5 && max_x <= width - 5 && min_y >= 5 && max_y <= height - 5,
         pixel_count: count,
       }
     })
@@ -249,7 +252,8 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
         const ctx = (el as HTMLCanvasElement).getContext(`2d`)
         if (!ctx) return 0
         const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
-        let total = 0, count = 0
+        let total = 0,
+          count = 0
         for (let idx = 3; idx < data.length; idx += 4) {
           if (data[idx] > 0 && data[idx] < 255) {
             total += data[idx]
@@ -260,12 +264,15 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
       })
     const initial = await get_avg_alpha()
     await diagram.locator(`.legend-controls-btn`).click()
-    await diagram.locator(
-      `.draggable-pane.convex-hull-controls-pane input[type="range"][aria-label*="opacity"]`,
-    ).fill(`0.2`)
+    await diagram
+      .locator(
+        `.draggable-pane.convex-hull-controls-pane input[type="range"][aria-label*="opacity"]`,
+      )
+      .fill(`0.2`)
     // Longer timeout for CI - canvas updates can be slow
-    await expect(async () => expect(await get_avg_alpha()).toBeGreaterThan(initial))
-      .toPass({ timeout: 5000 })
+    await expect(async () => expect(await get_avg_alpha()).toBeGreaterThan(initial)).toPass({
+      timeout: 5000,
+    })
   })
 
   test(`face color mode switch changes canvas rendering`, async ({ page }) => {
@@ -281,8 +288,11 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     await controls.locator(`.face-color-mode-buttons`).getByText(`Index`).click()
 
     // Verify canvas has changed
-    await expect(async () => expect(await get_canvas_hash(canvas)).not.toBe(initial_hash))
-      .toPass({ timeout: 5000 })
+    await expect(async () =>
+      expect(await get_canvas_hash(canvas)).not.toBe(initial_hash),
+    ).toPass({
+      timeout: 5000,
+    })
   })
 
   test(`face color mode buttons toggle color picker visibility`, async ({ page }) => {
@@ -297,7 +307,6 @@ test.describe(`ConvexHull4D (Quaternary)`, () => {
     const mode_buttons = controls.locator(`.face-color-mode-buttons`)
     await expect(mode_buttons).toBeVisible()
     for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
-      // deno-lint-ignore no-await-in-loop
       await expect(mode_buttons.getByText(label)).toBeVisible()
     }
     await expect(mode_buttons.getByText(`Element`)).toHaveClass(/active/)

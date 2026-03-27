@@ -45,29 +45,24 @@ describe(`ScatterPoint`, () => {
     expect(path.getAttribute(`stroke-opacity`)).toBe(String(style.stroke_opacity))
   })
 
-  test.each(symbol_names)(
-    `renders $symbol_type marker correctly`,
-    (symbol_type) => {
-      const style: PointStyle = {
-        fill: `purple`,
-        stroke: `green`,
-        stroke_width: 1.5,
-        radius: 6,
-        symbol_type,
-        symbol_size: 100,
-      }
-      const target = doc_query(`div`)
-      mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
+  test.each(symbol_names)(`renders $symbol_type marker correctly`, (symbol_type) => {
+    const style: PointStyle = {
+      fill: `purple`,
+      stroke: `green`,
+      stroke_width: 1.5,
+      radius: 6,
+      symbol_type,
+      symbol_size: 100,
+    }
+    const target = doc_query(`div`)
+    mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
 
-      const element = doc_query(`path`)
-      expect(element).toBeTruthy()
-      expect(element.getAttribute(`stroke`)).toBe(style.stroke)
-      expect(element.getAttribute(`stroke-width`)).toBe(
-        String(style.stroke_width),
-      )
-      expect(element.getAttribute(`d`)).toBeTruthy() // Verify path data exists
-    },
-  )
+    const element = doc_query(`path`)
+    expect(element).toBeTruthy()
+    expect(element.getAttribute(`stroke`)).toBe(style.stroke)
+    expect(element.getAttribute(`stroke-width`)).toBe(String(style.stroke_width))
+    expect(element.getAttribute(`d`)).toBeTruthy() // Verify path data exists
+  })
 
   test(`derives marker size from radius when symbol_size is null`, () => {
     const style: PointStyle = { radius: 8, symbol_size: null }
@@ -97,19 +92,16 @@ describe(`ScatterPoint`, () => {
     { color: `crimson`, opacity: 0.7 },
     { color: `#00ff00`, opacity: 0.5 },
     { color: `rgba(128,0,128,0.5)`, opacity: 0.3 },
-  ])(
-    `applies fill color='$color' opacity=$opacity`,
-    ({ color, opacity }) => {
-      const target = doc_query(`div`)
-      mount(ScatterPoint, {
-        target,
-        props: { x: 100, y: 100, style: { fill: color, fill_opacity: opacity } },
-      })
-      const path = doc_query(`path`)
-      expect(path).toBeTruthy()
-      expect(path.getAttribute(`fill-opacity`)).toBe(String(opacity))
-    },
-  )
+  ])(`applies fill color='$color' opacity=$opacity`, ({ color, opacity }) => {
+    const target = doc_query(`div`)
+    mount(ScatterPoint, {
+      target,
+      props: { x: 100, y: 100, style: { fill: color, fill_opacity: opacity } },
+    })
+    const path = doc_query(`path`)
+    expect(path).toBeTruthy()
+    expect(path.getAttribute(`fill-opacity`)).toBe(String(opacity))
+  })
 
   test.each([
     { stroke: `black`, width: 1, opacity: 1.0 },
@@ -144,9 +136,7 @@ describe(`ScatterPoint`, () => {
     expect(path.classList.contains(`is-hovered`)).toBe(true)
     expect(g.style.getPropertyValue(`--hover-scale`)).toBe(String(hover.scale))
     expect(g.style.getPropertyValue(`--hover-stroke`)).toBe(hover.stroke)
-    expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(
-      `${hover.stroke_width}px`,
-    )
+    expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(`${hover.stroke_width}px`)
   })
 
   test(`renders point label`, () => {
@@ -252,14 +242,12 @@ describe(`ScatterPoint`, () => {
     expect(g.getAttribute(`transform`)).toBe(`translate(0 0)`) // Initial transform
   })
 
-  test.each(
-    [
-      { position: `above`, offset: { x: 0, y: -15 } },
-      { position: `right`, offset: { x: 15, y: 0 } },
-      { position: `below`, offset: { x: 0, y: 15 } },
-      { position: `left`, offset: { x: -15, y: 0 } },
-    ] as const,
-  )(`renders with different text annotation positions`, (pos) => {
+  test.each([
+    { position: `above`, offset: { x: 0, y: -15 } },
+    { position: `right`, offset: { x: 15, y: 0 } },
+    { position: `below`, offset: { x: 0, y: 15 } },
+    { position: `left`, offset: { x: -15, y: 0 } },
+  ] as const)(`renders with different text annotation positions`, (pos) => {
     const label = {
       text: `Point ${pos.position}`,
       offset: pos.offset,
@@ -272,54 +260,47 @@ describe(`ScatterPoint`, () => {
     expect(text.getAttribute(`y`)).toBe(String(pos.offset.y))
   })
 
-  test.each(
-    [
-      { name: `large serif`, size: `18px`, family: `serif` },
-      { name: `small mono`, size: `10px`, family: `monospace` },
-    ] as const,
-  )(
-    `applies custom font styling to text annotations`,
-    (font) => {
-      const label = {
-        text: `${font.name} text`,
-        font_size: font.size,
-        font_family: font.family,
-      }
-      const target = doc_query(`div`)
-      mount(ScatterPoint, { target, props: { x: 100, y: 100, label } })
-      const text = doc_query(`text`)
-      expect(text.textContent).toBe(label.text)
-      expect(text.style.fontSize).toBe(font.size)
-      expect(text.style.fontFamily).toBe(font.family)
-      // Note: happy-dom doesn't reliably support font-weight via style property
-    },
-  )
+  test.each([
+    { name: `large serif`, size: `18px`, family: `serif` },
+    { name: `small mono`, size: `10px`, family: `monospace` },
+  ] as const)(`applies custom font styling to text annotations`, (font) => {
+    const label = {
+      text: `${font.name} text`,
+      font_size: font.size,
+      font_family: font.family,
+    }
+    const target = doc_query(`div`)
+    mount(ScatterPoint, { target, props: { x: 100, y: 100, label } })
+    const text = doc_query(`text`)
+    expect(text.textContent).toBe(label.text)
+    expect(text.style.fontSize).toBe(font.size)
+    expect(text.style.fontFamily).toBe(font.family)
+    // Note: happy-dom doesn't reliably support font-weight via style property
+  })
 
   describe(`Tween Behavior`, () => {
-    test.each(
-      [
-        {
-          name: `starts at default origin`,
-          props: { x: 100, y: 150, offset: { x: 10, y: -10 } },
-          expected_origin: { x: 0, y: 0 },
+    test.each([
+      {
+        name: `starts at default origin`,
+        props: { x: 100, y: 150, offset: { x: 10, y: -10 } },
+        expected_origin: { x: 0, y: 0 },
+      },
+      {
+        name: `starts at explicit origin`,
+        props: { x: 100, y: 150, origin: { x: 50, y: 75 }, offset: { x: 10, y: -10 } },
+        expected_origin: { x: 50, y: 75 },
+      },
+      {
+        name: `starts at explicit negative origin`,
+        props: {
+          x: -100,
+          y: -150,
+          origin: { x: -50, y: -75 },
+          offset: { x: -10, y: 10 },
         },
-        {
-          name: `starts at explicit origin`,
-          props: { x: 100, y: 150, origin: { x: 50, y: 75 }, offset: { x: 10, y: -10 } },
-          expected_origin: { x: 50, y: 75 },
-        },
-        {
-          name: `starts at explicit negative origin`,
-          props: {
-            x: -100,
-            y: -150,
-            origin: { x: -50, y: -75 },
-            offset: { x: -10, y: 10 },
-          },
-          expected_origin: { x: -50, y: -75 },
-        },
-      ] as const,
-    )(`$name`, ({ props, expected_origin }) => {
+        expected_origin: { x: -50, y: -75 },
+      },
+    ] as const)(`$name`, ({ props, expected_origin }) => {
       const target = doc_query(`div`)
       mount(ScatterPoint, { target, props })
       expect(doc_query(`g`).getAttribute(`transform`)).toBe(

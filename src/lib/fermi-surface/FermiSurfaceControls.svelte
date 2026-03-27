@@ -88,7 +88,7 @@
   // Get unique band indices from Fermi surface data
   let available_bands = $derived(
     fermi_data
-      ? [...new Set(fermi_data.isosurfaces.map((iso) => iso.band_index))].sort(
+      ? [...new Set(fermi_data.isosurfaces.map((iso) => iso.band_index))].toSorted(
         (a, b) => a - b,
       )
       : [],
@@ -117,7 +117,7 @@
     if (idx >= 0) {
       selected_bands = selected_bands.filter((b) => b !== band_idx)
     } else {
-      selected_bands = [...selected_bands, band_idx].sort((a, b) => a - b)
+      selected_bands = [...selected_bands, band_idx].toSorted((a, b) => a - b)
     }
   }
 

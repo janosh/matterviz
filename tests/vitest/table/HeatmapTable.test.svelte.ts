@@ -23,10 +23,7 @@ describe(`HeatmapTable`, () => {
   }
 
   it(`renders table with correct structure and handles hidden columns`, () => {
-    const columns = [
-      ...sample_columns,
-      { label: `Hidden`, visible: false, description: `` },
-    ]
+    const columns = [...sample_columns, { label: `Hidden`, visible: false, description: `` }]
     mount(HeatmapTable, {
       target: document.body,
       props: { data: sample_data, columns },
@@ -34,9 +31,9 @@ describe(`HeatmapTable`, () => {
 
     const headers = document.querySelectorAll(`th`)
     expect(headers).toHaveLength(3)
-    expect(
-      Array.from(headers).map((h) => h.textContent?.replace(/\s+/g, ` `).trim()),
-    ).toEqual([`Model`, `Score`, `Value`])
+    expect(Array.from(headers).map((h) => h.textContent?.replace(/\s+/g, ` `).trim())).toEqual(
+      [`Model`, `Score`, `Value`],
+    )
 
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
     expect(document.querySelectorAll(`td[data-col="Hidden"]`)).toHaveLength(0)
@@ -75,17 +72,17 @@ describe(`HeatmapTable`, () => {
       value_header.click()
       await tick()
 
-      const values = Array.from(
-        document.querySelectorAll(`td[data-col="Value"]`),
-      ).map((cell) => cell.textContent?.trim())
+      const values = Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map(
+        (cell) => cell.textContent?.trim(),
+      )
       expect(values).toEqual([`100`, `300`, `n/a`])
 
       // Test sort direction toggle
       value_header.click()
       await tick()
-      const reversed = Array.from(
-        document.querySelectorAll(`td[data-col="Value"]`),
-      ).map((cell) => cell.textContent?.trim())
+      const reversed = Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map(
+        (cell) => cell.textContent?.trim(),
+      )
       expect(reversed).toEqual([`300`, `100`, `n/a`])
     })
 
@@ -103,9 +100,9 @@ describe(`HeatmapTable`, () => {
       data = [{ Model: `D`, Score: 0.65, Value: 400 }, ...sample_data]
       await tick()
 
-      const scores = Array.from(
-        document.querySelectorAll(`td[data-col="Score"]`),
-      ).map((cell) => cell.textContent?.trim())
+      const scores = Array.from(document.querySelectorAll(`td[data-col="Score"]`)).map(
+        (cell) => cell.textContent?.trim(),
+      )
       expect(scores).toEqual([`0.95`, `0.85`, `0.75`])
     })
 
@@ -125,7 +122,7 @@ describe(`HeatmapTable`, () => {
 
       // Initial data should already be in order
       const initial_dates = Array.from(document.querySelectorAll(`td`)).map((cell) =>
-        cell.textContent?.trim()
+        cell.textContent?.trim(),
       )
 
       expect(initial_dates).toEqual([`2021-05-14`, `2023-05-25`, `2024-05-07`])
@@ -149,8 +146,8 @@ describe(`HeatmapTable`, () => {
       document.querySelector(`th`)?.click()
       await tick()
 
-      const sorted = Array.from(document.querySelectorAll(`td`)).map(
-        (cell) => cell.textContent?.trim(),
+      const sorted = Array.from(document.querySelectorAll(`td`)).map((cell) =>
+        cell.textContent?.trim(),
       )
       // Default sort is descending (no `better` set), so largest first
       expect(sorted).toEqual([`10,000`, `1,000`, `50`])
@@ -171,8 +168,9 @@ describe(`HeatmapTable`, () => {
       mount(HeatmapTable, { target: document.body, props: { data, columns } })
 
       const get_values = () =>
-        Array.from(document.querySelectorAll(`td[data-col="Value"]`))
-          .map((cell) => cell.textContent?.trim())
+        Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map((cell) =>
+          cell.textContent?.trim(),
+        )
       const headers = document.querySelectorAll(`th`)
 
       // Clicking unsortable column has no effect
@@ -186,27 +184,26 @@ describe(`HeatmapTable`, () => {
       expect(get_values()).not.toEqual([`100`, `200`, `300`])
     })
 
-    it.each(
-      [
-        {
-          initial_sort: { column: `Score`, direction: `desc` },
-          expected: [`0.95`, `0.85`, `0.75`],
-          desc: `object desc`,
-        },
-        {
-          initial_sort: `Score`,
-          expected: [`0.75`, `0.85`, `0.95`],
-          desc: `string shorthand defaults to asc`,
-        },
-      ] as const,
-    )(`initial_sort $desc`, ({ initial_sort, expected }) => {
+    it.each([
+      {
+        initial_sort: { column: `Score`, direction: `desc` },
+        expected: [`0.95`, `0.85`, `0.75`],
+        desc: `object desc`,
+      },
+      {
+        initial_sort: `Score`,
+        expected: [`0.75`, `0.85`, `0.95`],
+        desc: `string shorthand defaults to asc`,
+      },
+    ] as const)(`initial_sort $desc`, ({ initial_sort, expected }) => {
       mount(HeatmapTable, {
         target: document.body,
         props: { data: sample_data, columns: sample_columns, initial_sort },
       })
 
-      const scores = Array.from(document.querySelectorAll(`td[data-col="Score"]`))
-        .map((cell) => cell.textContent?.trim())
+      const scores = Array.from(document.querySelectorAll(`td[data-col="Score"]`)).map(
+        (cell) => cell.textContent?.trim(),
+      )
       expect(scores).toEqual(expected)
     })
 
@@ -258,8 +255,9 @@ describe(`HeatmapTable`, () => {
       document.querySelectorAll(`th`)[1].click()
       await tick()
 
-      const values = Array.from(document.querySelectorAll(`td[data-col="Value"]`))
-        .map((cell) => cell.textContent?.trim())
+      const values = Array.from(document.querySelectorAll(`td[data-col="Value"]`)).map(
+        (cell) => cell.textContent?.trim(),
+      )
       expect(values).toEqual(expected)
     })
 
@@ -284,9 +282,7 @@ describe(`HeatmapTable`, () => {
       })
 
       const cells = document.querySelectorAll(`td[data-col="Value"]`)
-      const style_attrs = Array.from(cells).map(
-        (cell) => cell.getAttribute(`style`) ?? ``,
-      )
+      const style_attrs = Array.from(cells).map((cell) => cell.getAttribute(`style`) ?? ``)
 
       // All cells should have --cell-bg custom property set (match with colon to avoid partial matches)
       expect(style_attrs.every((s) => s.includes(`--cell-bg:`))).toBe(true)
@@ -307,9 +303,7 @@ describe(`HeatmapTable`, () => {
       })
 
       const cells = document.querySelectorAll(`td[data-col="Value"]`)
-      const style_attrs = Array.from(cells).map(
-        (cell) => cell.getAttribute(`style`) ?? ``,
-      )
+      const style_attrs = Array.from(cells).map((cell) => cell.getAttribute(`style`) ?? ``)
 
       // No --cell-bg should be set for non-numeric strings
       expect(style_attrs.every((s) => !s.includes(`--cell-bg:`))).toBe(true)
@@ -367,7 +361,7 @@ describe(`HeatmapTable`, () => {
     // Check that val cells have --cell-bg set
     const val_cells = document.querySelectorAll(`td[data-col="Val"]`)
     const has_color = Array.from(val_cells).some((cell) =>
-      (cell.getAttribute(`style`) ?? ``).includes(`--cell-bg:`)
+      (cell.getAttribute(`style`) ?? ``).includes(`--cell-bg:`),
     )
     expect(has_color).toBe(true)
   })
@@ -399,9 +393,7 @@ describe(`HeatmapTable`, () => {
     const linear_styles = Array.from(linear_cells).map(
       (cell) => cell.getAttribute(`style`) ?? ``,
     )
-    const log_styles = Array.from(log_cells).map(
-      (cell) => cell.getAttribute(`style`) ?? ``,
-    )
+    const log_styles = Array.from(log_cells).map((cell) => cell.getAttribute(`style`) ?? ``)
 
     // Both types should have --cell-bg set
     expect(linear_styles.every((s) => s.includes(`--cell-bg:`))).toBe(true)
@@ -460,8 +452,9 @@ describe(`HeatmapTable`, () => {
       props: { data, columns: sample_columns },
     })
 
-    const all_text = Array.from(document.querySelectorAll(`td`))
-      .map((cell) => cell.textContent?.trim())
+    const all_text = Array.from(document.querySelectorAll(`td`)).map((cell) =>
+      cell.textContent?.trim(),
+    )
 
     // NaN displayed as 'n/a', never as literal 'NaN'
     expect(all_text.filter((text) => text === `n/a`)).toHaveLength(2)
@@ -477,8 +470,7 @@ describe(`HeatmapTable`, () => {
       {
         Name: `Test Model`,
         HTML: `<span data-sort-value="100" title="This is a tooltip">100 units</span>`,
-        Complex:
-          `<span data-sort-value="3373529" title="Complex tooltip with multiple lines&#013;• Line item 1&#013;• Line item 2">3.37M <small>(details)</small> (<a href="https://example.com">Link</a>)</span>`,
+        Complex: `<span data-sort-value="3373529" title="Complex tooltip with multiple lines&#013;• Line item 1&#013;• Line item 2">3.37M <small>(details)</small> (<a href="https://example.com">Link</a>)</span>`,
       },
     ]
 
@@ -627,13 +619,13 @@ describe(`HeatmapTable`, () => {
 
       // Check the group headers have correct colspan
       const values_header = Array.from(group_headers).find((th) =>
-        th.textContent?.includes(`Values`)
+        th.textContent?.includes(`Values`),
       )
       const metrics_header = Array.from(group_headers).find((th) =>
-        th.textContent?.includes(`Metrics`)
+        th.textContent?.includes(`Metrics`),
       )
       const second_values_header = Array.from(group_headers).find((th) =>
-        th.textContent?.includes(`Second Values`)
+        th.textContent?.includes(`Second Values`),
       )
 
       expect(values_header?.getAttribute(`colspan`)).toBe(`2`) // Values spans 2 columns
@@ -646,9 +638,7 @@ describe(`HeatmapTable`, () => {
 
       // Column headers should have duplicate label names (Value 1, Value 2) rendered for each group
       expect(
-        Array.from(col_headers).map((h) =>
-          h.textContent?.trim().replace(/\s+|[↑↓]/g, ``)
-        ),
+        Array.from(col_headers).map((h) => h.textContent?.trim().replace(/\s+|[↑↓]/g, ``)),
       ).toEqual([`Name`, `Value1`, `Value2`, `Metric1`, `Metric2`, `Value1`, `Value2`])
     })
 
@@ -661,9 +651,7 @@ describe(`HeatmapTable`, () => {
         { label: `Another`, description: `` },
       ]
 
-      const mixed_data = [
-        { Name: `Test`, Regular: 1, 'Group 1': 2, 'Group 2': 3, Another: 4 },
-      ]
+      const mixed_data = [{ Name: `Test`, Regular: 1, 'Group 1': 2, 'Group 2': 3, Another: 4 }]
 
       mount(HeatmapTable, {
         target: document.body,
@@ -682,7 +670,7 @@ describe(`HeatmapTable`, () => {
 
       // The Grouped cell should have colspan=2
       const grouped_header = Array.from(group_cells).find((c) =>
-        c.textContent?.includes(`Grouped`)
+        c.textContent?.includes(`Grouped`),
       )
       expect(grouped_header?.getAttribute(`colspan`)).toBe(`2`)
     })
@@ -788,9 +776,7 @@ describe(`HeatmapTable`, () => {
       search_btn.click()
       await tick()
 
-      const search_input = document.querySelector(
-        `input[type="search"]`,
-      ) as HTMLInputElement
+      const search_input = document.querySelector(`input[type="search"]`) as HTMLInputElement
       expect(search_input?.placeholder).toBe(`Search materials...`)
     })
 
@@ -909,9 +895,7 @@ describe(`HeatmapTable`, () => {
       await tick()
 
       // Uncheck first column
-      const checkboxes = document.querySelectorAll(
-        `.dropdown-pane input[type="checkbox"]`,
-      )
+      const checkboxes = document.querySelectorAll(`.dropdown-pane input[type="checkbox"]`)
       ;(checkboxes[0] as HTMLInputElement).click()
       await tick()
 
@@ -1064,8 +1048,9 @@ describe(`HeatmapTable`, () => {
     }
 
     const get_col_values = (col_name: string) =>
-      Array.from(document.querySelectorAll(`td[data-col="${col_name}"]`))
-        .map((cell) => cell.textContent?.trim())
+      Array.from(document.querySelectorAll(`td[data-col="${col_name}"]`)).map((cell) =>
+        cell.textContent?.trim(),
+      )
 
     it(`does not render arrows for unsorted columns by default`, () => {
       const headers = render_table()
@@ -1404,9 +1389,9 @@ describe(`HeatmapTable`, () => {
 
       // Should sort by Group B values (100, 50, 75)
       // data-col="Value" is used for both groups, so check Name column order instead
-      const sorted_names = Array.from(
-        document.querySelectorAll(`td[data-col="Name"]`),
-      ).map((cell) => cell.textContent?.trim())
+      const sorted_names = Array.from(document.querySelectorAll(`td[data-col="Name"]`)).map(
+        (cell) => cell.textContent?.trim(),
+      )
       // Group B values: Item 1=100, Item 2=50, Item 3=75
       // Default sort is descending: Item 1 (100), Item 3 (75), Item 2 (50)
       expect(sorted_names).toEqual([`Item 1`, `Item 3`, `Item 2`])
@@ -1477,17 +1462,11 @@ describe(`HeatmapTable`, () => {
 
         // First click = desc (better: higher), second = asc, third = desc
         score_header.click()
-        await vi.waitFor(() =>
-          expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`)
-        )
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`))
         score_header.click()
-        await vi.waitFor(() =>
-          expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `asc`)
-        )
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `asc`))
         score_header.click()
-        await vi.waitFor(() =>
-          expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`)
-        )
+        await vi.waitFor(() => expect(onsort_mock).toHaveBeenLastCalledWith(`Score`, `desc`))
         expect(onsort_mock).toHaveBeenCalledTimes(3)
       })
 
@@ -1510,8 +1489,9 @@ describe(`HeatmapTable`, () => {
         await tick()
 
         await vi.waitFor(() => {
-          const models = Array.from(tbody?.querySelectorAll(`td[data-col="Model"]`) ?? [])
-            .map((cell) => cell.textContent?.trim())
+          const models = Array.from(tbody?.querySelectorAll(`td[data-col="Model"]`) ?? []).map(
+            (cell) => cell.textContent?.trim(),
+          )
           expect(models).toEqual([`Server A`, `Server B`, `Server C`])
         })
       })
@@ -1535,9 +1515,7 @@ describe(`HeatmapTable`, () => {
         expect(onsort_mock).not.toHaveBeenCalled()
 
         // Shift+click for multi-sort
-        headers[1].dispatchEvent(
-          new MouseEvent(`click`, { shiftKey: true, bubbles: true }),
-        )
+        headers[1].dispatchEvent(new MouseEvent(`click`, { shiftKey: true, bubbles: true }))
         await tick()
         expect(onsort_mock).not.toHaveBeenCalled()
       })
@@ -1567,7 +1545,7 @@ describe(`HeatmapTable`, () => {
         await tick()
 
         await vi.waitFor(() =>
-          expect(onsort_mock).toHaveBeenCalledWith(`Value (Group B)`, expect.any(String))
+          expect(onsort_mock).toHaveBeenCalledWith(`Value (Group B)`, expect.any(String)),
         )
       })
     })
@@ -1613,9 +1591,7 @@ describe(`HeatmapTable`, () => {
 
         resolve_sort(initial_data)
         await tick()
-        await vi.waitFor(() =>
-          expect(container.querySelector(`.loading-overlay`)).toBeNull()
-        )
+        await vi.waitFor(() => expect(container.querySelector(`.loading-overlay`)).toBeNull())
       })
     })
 
@@ -1629,9 +1605,9 @@ describe(`HeatmapTable`, () => {
         { sort_data: true, expected_order: [`Z`, `Y`, `X`], desc: `sorts client-side` },
       ])(`sort_data=$sort_data $desc`, async ({ sort_data, expected_order }) => {
         const unsorted = [
-          { Model: `X`, Score: 0.10, Value: 100 },
-          { Model: `Y`, Score: 0.50, Value: 200 },
-          { Model: `Z`, Score: 0.90, Value: 300 },
+          { Model: `X`, Score: 0.1, Value: 100 },
+          { Model: `Y`, Score: 0.5, Value: 200 },
+          { Model: `Z`, Score: 0.9, Value: 300 },
         ]
         mount(HeatmapTable, {
           target: document.body,
@@ -1642,8 +1618,9 @@ describe(`HeatmapTable`, () => {
         table.querySelectorAll(`th`)[1].click()
         await tick()
 
-        const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`))
-          .map((cell) => cell.textContent?.trim())
+        const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`)).map((cell) =>
+          cell.textContent?.trim(),
+        )
         expect(models).toEqual(expected_order)
       })
 
@@ -1667,8 +1644,9 @@ describe(`HeatmapTable`, () => {
         await tick()
 
         await vi.waitFor(() => {
-          const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`))
-            .map((cell) => cell.textContent?.trim())
+          const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`)).map(
+            (cell) => cell.textContent?.trim(),
+          )
           // Server order preserved (A, B, C), NOT client-side sorted (C, B, A)
           expect(models).toEqual([`A`, `B`, `C`])
         })
@@ -1772,15 +1750,17 @@ describe(`HeatmapTable`, () => {
 
         // Data should show second_data, not first_data (stale response ignored)
         await vi.waitFor(() => {
-          const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`))
-            .map((cell) => cell.textContent?.trim())
+          const models = Array.from(table.querySelectorAll(`td[data-col="Model"]`)).map(
+            (cell) => cell.textContent?.trim(),
+          )
           expect(models).toEqual([`Second`])
         })
       })
 
       it(`reverts sort state on onsort callback failure`, async () => {
         // First call succeeds, second call fails
-        const onsort_mock = vi.fn()
+        const onsort_mock = vi
+          .fn()
           .mockResolvedValueOnce(initial_data) // First sort succeeds
           .mockRejectedValueOnce(new Error(`Network error`)) // Second sort fails
 
@@ -1902,7 +1882,7 @@ describe(`HeatmapTable`, () => {
       })
 
       const headers = Array.from(document.querySelectorAll(`th`)).map((th) =>
-        th.textContent?.trim()
+        th.textContent?.trim(),
       )
       expect(headers).toContain(`#`)
 
@@ -1931,18 +1911,14 @@ describe(`HeatmapTable`, () => {
         props: { data: sample_data, columns: sample_columns, show_row_select: true },
       })
 
-      for (
-        const cb of Array.from(
-          document.querySelectorAll(`td.select-col input[type="checkbox"]`),
-        )
-      ) {
+      for (const cb of Array.from(
+        document.querySelectorAll(`td.select-col input[type="checkbox"]`),
+      )) {
         ;(cb as HTMLInputElement).click()
       }
       await tick()
 
-      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(
-        `3`,
-      )
+      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(`3`)
     })
 
     it(`header checkbox unchecked on partial selection`, async () => {
@@ -1950,18 +1926,15 @@ describe(`HeatmapTable`, () => {
         target: document.body,
         props: { data: sample_data, columns: sample_columns, show_row_select: true },
       })
-      ;(document.querySelector(
-        `td.select-col input[type="checkbox"]`,
-      ) as HTMLInputElement).click()
+      ;(
+        document.querySelector(`td.select-col input[type="checkbox"]`) as HTMLInputElement
+      ).click()
       await tick()
 
-      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(
-        `1`,
-      )
+      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toContain(`1`)
       expect(
-        (document.querySelector(
-          `th.select-col input[type="checkbox"]`,
-        ) as HTMLInputElement).checked,
+        (document.querySelector(`th.select-col input[type="checkbox"]`) as HTMLInputElement)
+          .checked,
       ).toBe(false)
     })
   })
@@ -1985,30 +1958,28 @@ describe(`HeatmapTable`, () => {
       }
     })
 
-    it.each([
-      { key: `Enter` },
-      { key: ` ` },
-    ])(`triggers onrowclick on $key key`, async ({ key }) => {
-      const clicked: unknown[] = []
-      mount(HeatmapTable, {
-        target: document.body,
-        props: {
-          data: sample_data,
-          columns: sample_columns,
-          onrowclick: (
-            _event: KeyboardEvent | MouseEvent,
-            row: Record<string, unknown>,
-          ) => clicked.push(row),
-        },
-      })
+    it.each([{ key: `Enter` }, { key: ` ` }])(
+      `triggers onrowclick on $key key`,
+      async ({ key }) => {
+        const clicked: unknown[] = []
+        mount(HeatmapTable, {
+          target: document.body,
+          props: {
+            data: sample_data,
+            columns: sample_columns,
+            onrowclick: (_event: KeyboardEvent | MouseEvent, row: Record<string, unknown>) =>
+              clicked.push(row),
+          },
+        })
 
-      const first_row = document.querySelector(`tbody tr`) as HTMLElement
-      first_row.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
-      await tick()
+        const first_row = document.querySelector(`tbody tr`) as HTMLElement
+        first_row.dispatchEvent(new KeyboardEvent(`keydown`, { key, bubbles: true }))
+        await tick()
 
-      expect(clicked).toHaveLength(1)
-      expect(clicked[0]).toHaveProperty(`Model`, `Model A`)
-    })
+        expect(clicked).toHaveLength(1)
+        expect(clicked[0]).toHaveProperty(`Model`, `Model A`)
+      },
+    )
   })
 
   describe(`Export Enhancements`, () => {
@@ -2019,7 +1990,8 @@ describe(`HeatmapTable`, () => {
     ): Promise<string> {
       const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:test`)
       const revoke_url = vi.spyOn(URL, `revokeObjectURL`).mockImplementation(() => {})
-      const anchor_click = vi.spyOn(HTMLAnchorElement.prototype, `click`)
+      const anchor_click = vi
+        .spyOn(HTMLAnchorElement.prototype, `click`)
         .mockImplementation(() => {})
       const append_spy = vi.spyOn(document.body, `append`)
 
@@ -2029,8 +2001,7 @@ describe(`HeatmapTable`, () => {
           props: { export_data: true, ...props } as ComponentProps<typeof HeatmapTable>,
         })
         if (before_export) await before_export()
-        ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement)
-          .click()
+        ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement).click()
         await tick()
         const csv_btn = Array.from(
           document.querySelectorAll(`.dropdown-pane .dropdown-option`),
@@ -2038,7 +2009,7 @@ describe(`HeatmapTable`, () => {
         csv_btn.click()
         await tick()
 
-        return await (create_url.mock.calls[0]?.[0] as Blob).text()
+        return await (create_url.mock.calls[0][0] as Blob).text()
       } finally {
         create_url.mockRestore()
         revoke_url.mockRestore()
@@ -2052,8 +2023,7 @@ describe(`HeatmapTable`, () => {
         target: document.body,
         props: { data: sample_data, columns: sample_columns, export_data: true },
       })
-      ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement)
-        .click()
+      ;(document.querySelector(`.dropdown-wrapper .icon-btn`) as HTMLButtonElement).click()
       await tick()
 
       const copy_btn = Array.from(
@@ -2072,10 +2042,13 @@ describe(`HeatmapTable`, () => {
     it(`strips HTML from column headers`, async () => {
       const text = await export_csv_text({
         data: [{ 'E<sub>form</sub>': -1.5, Name: `Fe` }],
-        columns: [{ label: `E<sub>form</sub>`, description: `` }, {
-          label: `Name`,
-          description: ``,
-        }],
+        columns: [
+          { label: `E<sub>form</sub>`, description: `` },
+          {
+            label: `Name`,
+            description: ``,
+          },
+        ],
       })
       expect(text).toContain(`Eform`)
       expect(text).not.toContain(`<sub>`)
@@ -2085,9 +2058,9 @@ describe(`HeatmapTable`, () => {
       const text = await export_csv_text(
         { data: sample_data, columns: sample_columns, show_row_select: true },
         async () => {
-          ;(document.querySelector(
-            `td.select-col input[type="checkbox"]`,
-          ) as HTMLInputElement).click()
+          ;(
+            document.querySelector(`td.select-col input[type="checkbox"]`) as HTMLInputElement
+          ).click()
           await tick()
         },
       )
@@ -2130,8 +2103,7 @@ describe(`HeatmapTable`, () => {
         },
       })
 
-      const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ??
-        ``
+      const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ?? ``
       expect(style).toContain(`margin: 0`)
       expect(style).toContain(`max-width: 500px`)
     })
@@ -2147,8 +2119,7 @@ describe(`HeatmapTable`, () => {
         },
       })
 
-      const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ??
-        ``
+      const style = document.querySelector(`.table-container`)?.getAttribute(`style`) ?? ``
       expect(style).toContain(`color: red`)
       // happy-dom normalizes `flex: 1` to longhand properties
       expect(style).toMatch(/flex-grow:\s*1|flex:\s*1/)
@@ -2156,12 +2127,10 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Controls Pane`, () => {
-    it.each(
-      [
-        [false, null],
-        [true, `.pane-toggle`],
-      ] as const,
-    )(`show_controls=%s -> gear icon %s`, (show_controls, expected_selector) => {
+    it.each([
+      [false, null],
+      [true, `.pane-toggle`],
+    ] as const)(`show_controls=%s -> gear icon %s`, (show_controls, expected_selector) => {
       mount(HeatmapTable, {
         target: document.body,
         props: { data: sample_data, columns: sample_columns, show_controls },

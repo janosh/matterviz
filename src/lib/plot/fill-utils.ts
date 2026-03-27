@@ -211,13 +211,14 @@ export function resolve_boundary(
       return x_values.map((curr_x) => boundary.fn(curr_x))
 
     case `data`:
+      if (boundary.values.length === 0) return Array(x_values.length).fill(NaN)
       // If lengths match, use directly; otherwise interpolate
       if (boundary.values.length === x_values.length) {
         return [...boundary.values]
       }
       // Lengths don't match: truncate if values is longer, or extend last value if shorter
-      return x_values.map((_, idx) =>
-        boundary.values[idx] ?? boundary.values[boundary.values.length - 1]
+      return x_values.map(
+        (_, idx) => boundary.values[idx] ?? boundary.values[boundary.values.length - 1],
       )
 
     default:
@@ -235,8 +236,7 @@ export function apply_range_constraints(
   const [y_min, y_max] = region.y_range ?? [null, null]
 
   // Helper to clamp value within optional bounds
-  const clamp = (val: number) =>
-    Math.min(y_max ?? Infinity, Math.max(y_min ?? -Infinity, val))
+  const clamp = (val: number) => Math.min(y_max ?? Infinity, Math.max(y_min ?? -Infinity, val))
 
   const result = {
     x: [] as number[],
@@ -473,10 +473,7 @@ export function generate_fill_path(
 }
 
 // Helper to expand error definition to array
-function expand_error(
-  err: number | readonly number[],
-  length: number,
-): readonly number[] {
+function expand_error(err: number | readonly number[], length: number): readonly number[] {
   return typeof err === `number` ? Array(length).fill(err) : err
 }
 
@@ -493,9 +490,10 @@ export function convert_error_band_to_fill_region(
   const { error } = error_band
 
   // Determine upper/lower error arrays
-  const [upper_err, lower_err] = typeof error === `object` && `upper` in error
-    ? [expand_error(error.upper, y.length), expand_error(error.lower, y.length)]
-    : [expand_error(error, y.length), expand_error(error, y.length)]
+  const [upper_err, lower_err] =
+    typeof error === `object` && `upper` in error
+      ? [expand_error(error.upper, y.length), expand_error(error.lower, y.length)]
+      : [expand_error(error, y.length), expand_error(error, y.length)]
 
   return {
     id: error_band.id,

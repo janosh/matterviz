@@ -14,9 +14,7 @@ const DIMS = {
 // Navigate to test page with HTML title
 async function goto_with_title(page: Page, dim: keyof typeof DIMS, title: string) {
   await page.goto(
-    `/test/convex-hull-performance?dim=${dim}&count=50&title=${
-      encodeURIComponent(title)
-    }`,
+    `/test/convex-hull-performance?dim=${dim}&count=50&title=${encodeURIComponent(title)}`,
     { waitUntil: `networkidle`, timeout: 20000 },
   )
   const diagram = page.locator(DIMS[dim])

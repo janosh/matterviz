@@ -9,12 +9,18 @@ on:
     paths:
       - 'extensions/dash/**'
       - 'src/lib/**' # Core Svelte components that Dash wraps
+      - 'package.json'
+      - 'svelte.config.ts'
+      - 'scripts/package-dist-assets.mjs'
       - '.github/workflows/test-dash.yml'
   push:
     branches: [main]
     paths:
       - 'extensions/dash/**'
       - 'src/lib/**'
+      - 'package.json'
+      - 'svelte.config.ts'
+      - 'scripts/package-dist-assets.mjs'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
@@ -25,7 +31,7 @@ jobs:
         working-directory: extensions/dash
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.head_ref || github.ref_name }}
@@ -35,23 +41,23 @@ jobs:
         with:
           version: 9
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       # Build root matterviz package (generates dist/*.d.ts files)
       - name: Build matterviz package
-        run: pnpm install && npx svelte-kit sync && pnpm package
+        run: npm install && npx svelte-kit sync && npx svelte-package && node scripts/package-dist-assets.mjs
         working-directory: .
 
       # Install dash extension deps
       - name: Install Dash extension dependencies
         run: |
-          pnpm install
+          npm install
           pip install -e ".[dev]"
 
       # Sync typed wrappers using local matterviz dist (not npm version)
@@ -75,7 +81,7 @@ jobs:
 
       # Build the JS bundle (required for component tests)
       - name: Build Dash components
-        run: pnpm build
+        run: npm run build
 
       # Run Python unit tests (fast, no browser)
       - name: Run unit tests

@@ -171,16 +171,13 @@ describe(`PropertyFilter`, () => {
     }
   })
 
-  test.each([{ log: true }, { log: false }])(
-    `log=$log shows/hides log label`,
-    ({ log }) => {
-      mount(PropertyFilter, {
-        target: document.body,
-        props: { label: `Test`, histogram_data: [1, 2, 3], log },
-      })
-      expect(!!document.querySelector(`.log-label`)).toBe(log)
-    },
-  )
+  test.each([{ log: true }, { log: false }])(`log=$log shows/hides log label`, ({ log }) => {
+    mount(PropertyFilter, {
+      target: document.body,
+      props: { label: `Test`, histogram_data: [1, 2, 3], log },
+    })
+    expect(!!document.querySelector(`.log-label`)).toBe(log)
+  })
 
   test(`clear button accessibility and onchange on blur`, () => {
     const onchange = vi.fn()

@@ -80,10 +80,10 @@ export function matrix_to_rows(
   const get_value = Array.isArray(values)
     ? (x_idx: number, y_idx: number) => values[y_idx]?.[x_idx] ?? null
     : (x_idx: number, y_idx: number) => {
-      const y_key = y_items[y_idx].key ?? y_items[y_idx].label
-      const x_key = x_items[x_idx].key ?? x_items[x_idx].label
-      return values[y_key]?.[x_key] ?? null
-    }
+        const y_key = y_items[y_idx].key ?? y_items[y_idx].label
+        const x_key = x_items[x_idx].key ?? x_items[x_idx].label
+        return values[y_key]?.[x_key] ?? null
+      }
   return y_items.map((y_item, y_idx) => {
     const row: Record<string, number | string | null> = {
       y_key: y_item.key ?? y_item.label,
@@ -105,9 +105,7 @@ export function rows_to_csv(rows: Record<string, number | string | null>[]): str
   const headers = Object.keys(rows[0])
   const lines = [
     headers.map((header) => escape_csv_field(header)).join(`,`),
-    ...rows.map((row) =>
-      headers.map((header) => escape_csv_field(row[header])).join(`,`)
-    ),
+    ...rows.map((row) => headers.map((header) => escape_csv_field(row[header])).join(`,`)),
   ]
   return lines.join(`\n`)
 }

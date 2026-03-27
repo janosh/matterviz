@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-await-in-loop
 import { THEME_OPTIONS } from '$lib/theme'
 import { expect, type Page, test } from '@playwright/test'
 import { IS_CI } from './helpers'
@@ -52,10 +51,14 @@ test.describe(`ThemeControl`, () => {
 
       // Use expect.poll for evaluated values
       const expected_scheme = theme === `white` || theme === `light` ? `light` : `dark`
-      await expect.poll(
-        () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme),
-        { timeout: 5000 },
-      ).toBe(expected_scheme)
+      await expect
+        .poll(
+          () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme),
+          {
+            timeout: 5000,
+          },
+        )
+        .toBe(expected_scheme)
     }
   })
 
@@ -91,10 +94,11 @@ test.describe(`ThemeControl`, () => {
     await theme_control.selectOption(`dark`)
 
     // Use expect.poll for evaluated values
-    await expect.poll(
-      () => page.evaluate(() => localStorage.getItem(`matterviz-theme`)),
-      { timeout: 5000 },
-    ).toBe(`dark`)
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem(`matterviz-theme`)), {
+        timeout: 5000,
+      })
+      .toBe(`dark`)
 
     // Test persistence across reload (no addInitScript to interfere)
     await page.reload({ waitUntil: `networkidle` })
