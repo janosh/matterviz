@@ -295,10 +295,13 @@ describe(`PlotLegend`, () => {
       mount(PlotLegend, { target: document.body, props: { series_data: data } })
 
       const svg = doc_query(`.legend-marker > svg`)
+      const svg_ctors: Record<string, typeof Element> = {
+        circle: SVGCircleElement,
+        rect: SVGRectElement,
+        polygon: SVGPolygonElement,
+      }
       const element = svg.querySelector(element_tag)
-      expect(element, `${symbol_type} should render as <${element_tag}>`).toBeInstanceOf(
-        Element,
-      )
+      expect(element).toBeInstanceOf(svg_ctors[element_tag] ?? SVGElement)
       expect(element?.getAttribute(`fill`)).toBe(`#123456`)
 
       // Verify specific attributes for each symbol type

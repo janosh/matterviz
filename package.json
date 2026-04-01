@@ -237,6 +237,5 @@
   },
   "engines": {
     "node": ">=24"
-  },
-  "packageManager": "pnpm@10.33.0"
+  }
 }

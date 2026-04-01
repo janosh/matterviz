@@ -39,6 +39,7 @@ describe(`ScatterPoint`, () => {
     mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
 
     const path = doc_query(`path`)
+    expect(path).toBeInstanceOf(SVGPathElement)
     expect(path.getAttribute(`stroke`)).toBe(style.stroke)
     expect(path.getAttribute(`stroke-width`)).toBe(String(style.stroke_width))
     expect(path.getAttribute(`fill-opacity`)).toBe(String(style.fill_opacity))
