@@ -29,6 +29,7 @@ function assert_no_xss(result: string): void {
   expect(result).not.toContain(`<script`)
   expect(result).not.toMatch(/on\w+\s*=/)
   expect(result).not.toContain(`javascript:`)
+  expect(result).not.toMatch(/\bdata:[^,]*,/)
   expect(result).not.toContain(`<iframe`)
   expect(result).not.toContain(`<object`)
   expect(result).not.toContain(`<embed`)
@@ -72,7 +73,7 @@ describe(`sanitize_html`, () => {
 
   test(`merges noopener into existing rel without overwriting`, () => {
     const result = sanitize_html(`<a href="/x" rel="noreferrer">x</a>`)
-    const rel_tokens = result.match(/rel="([^"]+)"/)?.[1]?.split(/\s+/) ?? []
+    const rel_tokens = /rel="([^"]+)"/.exec(result)?.[1]?.split(/\s+/) ?? []
     expect(rel_tokens).toContain(`noreferrer`)
     expect(rel_tokens).toContain(`noopener`)
   })
@@ -146,6 +147,10 @@ describe(`sanitize_formula`, () => {
     expect(sanitize_formula(`Fe2O3`, false)).toBe(`Fe2O3`)
   })
 
+  test(`handles empty formula`, () => {
+    expect(sanitize_formula(``)).toBe(``)
+  })
+
   test(`strips XSS injected via formula string`, () => {
     assert_no_xss(sanitize_formula(`<script>alert(1)</script>`))
     assert_no_xss(sanitize_formula(`Fe<img src=x onerror=alert(1)>2O3`))
@@ -217,6 +222,12 @@ describe(`sanitize_icon_svg`, () => {
   test(`strips href attributes to prevent SVG-based XSS`, () => {
     const result = sanitize_icon_svg(`<use href="javascript:alert(1)"></use>`)
     expect(result).not.toContain(`href`)
+    expect(result).not.toContain(`javascript:`)
+  })
+
+  test(`strips xlink:href attributes (legacy namespace)`, () => {
+    const result = sanitize_icon_svg(`<use xlink:href="javascript:alert(1)"></use>`)
+    expect(result).not.toContain(`xlink:href`)
     expect(result).not.toContain(`javascript:`)
   })
 })

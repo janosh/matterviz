@@ -25,26 +25,31 @@ const DANGEROUS_TAGS = [
   `noscript`,
 ]
 
-let purify: ReturnType<typeof DOMPurify> | undefined
+// undefined = not yet checked, null = no DOM available (SSR), instance = ready
+let purify: ReturnType<typeof DOMPurify> | null | undefined
 
-function get_purify(): ReturnType<typeof DOMPurify> {
-  if (!purify) {
-    purify = DOMPurify()
-    purify.addHook(`uponSanitizeAttribute`, (node, data) => {
-      if (data.attrName === `style`) {
-        const rules = data.attrValue.split(`;`).filter((rule) => SAFE_STYLE_RE.test(rule))
-        if (rules.length === 0) data.keepAttr = false
-        else data.attrValue = rules.join(`;`)
-      }
-      // force rel="noopener" on links to prevent window.opener attacks
-      if (data.attrName === `href`) {
-        const rel = new Set((node.getAttribute(`rel`) ?? ``).split(/\s+/).filter(Boolean))
-        rel.add(`noopener`)
-        node.setAttribute(`rel`, [...rel].join(` `))
-      }
-    })
+function get_purify(): ReturnType<typeof DOMPurify> | null {
+  if (purify !== undefined) return purify
+  const instance = DOMPurify()
+  if (typeof instance.sanitize !== `function`) {
+    purify = null
+    return null
   }
-  return purify
+  purify = instance
+  instance.addHook(`uponSanitizeAttribute`, (node, data) => {
+    if (data.attrName === `style`) {
+      const rules = data.attrValue.split(`;`).filter((rule) => SAFE_STYLE_RE.test(rule))
+      if (rules.length === 0) data.keepAttr = false
+      else data.attrValue = rules.join(`;`)
+    }
+    // force rel="noopener" on links to prevent window.opener attacks
+    if (data.attrName === `href`) {
+      const rel = new Set((node.getAttribute(`rel`) ?? ``).split(/\s+/).filter(Boolean))
+      rel.add(`noopener`)
+      node.setAttribute(`rel`, [...rel].join(` `))
+    }
+  })
+  return instance
 }
 
 // Wrap in <svg>, sanitize with allowlist, then unwrap. Required because DOMPurify
@@ -54,7 +59,9 @@ function sanitize_svg_content(
   allowed_tags: string[],
   allowed_attrs: string[],
 ): string {
-  const wrapped = get_purify().sanitize(`<svg>${html}</svg>`, {
+  const dp = get_purify()
+  if (!dp) return html
+  const wrapped = dp.sanitize(`<svg>${html}</svg>`, {
     ALLOWED_TAGS: [...allowed_tags, `svg`],
     ALLOWED_ATTR: allowed_attrs,
   })
@@ -69,8 +76,9 @@ function sanitize_svg_content(
 // This works around a happy-dom quirk where removing a non-allowed parent can
 // promote dangerous children that would have been caught in a real browser.
 export function sanitize_html(html: unknown): string {
-  const dp = get_purify()
   const str = html == null ? `` : String(html)
+  const dp = get_purify()
+  if (!dp) return str
   const safe = dp.sanitize(str, { FORBID_TAGS: DANGEROUS_TAGS, ADD_ATTR: [`target`] })
   return dp.sanitize(safe, { ALLOWED_TAGS: SAFE_TAGS, ALLOWED_ATTR: SAFE_ATTRS })
 }
