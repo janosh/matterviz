@@ -71,7 +71,7 @@ describe(`PlotLegend`, () => {
     })
 
     const wrapper = doc_query(`.legend`)
-    expect(wrapper).not.toBeNull()
+    expect(wrapper).toBeInstanceOf(HTMLElement)
     // Default layout is vertical, 1 column
     expect(wrapper.style.gridTemplateColumns).toBe(`auto`)
     expect(wrapper.style.gridTemplateRows).toBe(`repeat(1, auto)`)
@@ -116,7 +116,7 @@ describe(`PlotLegend`, () => {
     expect(third_item.getAttribute(`aria-pressed`)).toBe(`true`)
     const third_marker_svgs = third_item.querySelectorAll(`.legend-marker > svg`)
     expect(third_marker_svgs.length).toBe(1) // Only marker shape svg
-    expect(third_marker_svgs[0].querySelector(`polygon`)).not.toBeNull() // triangle
+    expect(third_marker_svgs[0].querySelector(`polygon`)).toBeInstanceOf(Element) // triangle
     expect(third_marker_svgs[0].querySelector(`polygon`)?.getAttribute(`fill`)).toBe(`green`)
 
     // Check item with only line
@@ -124,7 +124,7 @@ describe(`PlotLegend`, () => {
     expect(fourth_item.getAttribute(`aria-pressed`)).toBe(`true`)
     const fourth_marker_svgs = fourth_item.querySelectorAll(`.legend-marker > svg`)
     expect(fourth_marker_svgs.length).toBe(1) // Only line svg
-    expect(fourth_marker_svgs[0].querySelector(`line`)).not.toBeNull() // line
+    expect(fourth_marker_svgs[0].querySelector(`line`)).toBeInstanceOf(Element) // line
     expect(fourth_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`)).toBe(`purple`)
     expect(fourth_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
       `Dotted`,
@@ -226,7 +226,7 @@ describe(`PlotLegend`, () => {
     expect(item1_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
       `solid`,
     )
-    expect(item1_marker_svgs[1].querySelector(`circle`)).not.toBeNull()
+    expect(item1_marker_svgs[1].querySelector(`circle`)).toBeInstanceOf(Element)
     expect(item1_marker_svgs[1].querySelector(`circle`)?.getAttribute(`fill`)).toBe(
       `currentColor`,
     ) // Default color
@@ -237,7 +237,7 @@ describe(`PlotLegend`, () => {
     expect(item2_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
       `dashed`,
     )
-    expect(item2_marker_svgs[1].querySelector(`rect`)).not.toBeNull()
+    expect(item2_marker_svgs[1].querySelector(`rect`)).toBeInstanceOf(Element)
     expect(item2_marker_svgs[1].querySelector(`rect`)?.getAttribute(`fill`)).toBe(
       `currentColor`,
     )
@@ -248,7 +248,7 @@ describe(`PlotLegend`, () => {
     expect(item3_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
       `dotted`,
     )
-    expect(item3_marker_svgs[1].querySelector(`polygon`)).not.toBeNull() // triangle
+    expect(item3_marker_svgs[1].querySelector(`polygon`)).toBeInstanceOf(Element) // triangle
     expect(item3_marker_svgs[1].querySelector(`polygon`)?.getAttribute(`fill`)).toBe(
       `currentColor`,
     )
@@ -257,14 +257,14 @@ describe(`PlotLegend`, () => {
     const item4_marker_svgs = items[3].querySelectorAll(`.legend-marker > svg`)
     expect(item4_marker_svgs.length).toBe(1)
     const cross_polygon = item4_marker_svgs[0].querySelector(`polygon`)
-    expect(cross_polygon).not.toBeNull() // cross as filled polygon (plus shape)
+    expect(cross_polygon).toBeInstanceOf(Element) // cross as filled polygon (plus shape)
     expect(cross_polygon?.getAttribute(`fill`)).toBe(`orange`)
 
     // Star (only marker)
     const item5_marker_svgs = items[4].querySelectorAll(`.legend-marker > svg`)
     expect(item5_marker_svgs.length).toBe(1)
     const star_polygon = item5_marker_svgs[0].querySelector(`polygon`)
-    expect(star_polygon).not.toBeNull() // star polygon
+    expect(star_polygon).toBeInstanceOf(Element) // star polygon
     expect(star_polygon?.getAttribute(`fill`)).toBe(`magenta`)
   })
 
@@ -296,7 +296,9 @@ describe(`PlotLegend`, () => {
 
       const svg = doc_query(`.legend-marker > svg`)
       const element = svg.querySelector(element_tag)
-      expect(element, `${symbol_type} should render as <${element_tag}>`).not.toBeNull()
+      expect(element, `${symbol_type} should render as <${element_tag}>`).toBeInstanceOf(
+        Element,
+      )
       expect(element?.getAttribute(`fill`)).toBe(`#123456`)
 
       // Verify specific attributes for each symbol type
@@ -418,7 +420,7 @@ describe(`PlotLegend`, () => {
   test(`renders correctly with empty series_data`, () => {
     mount(PlotLegend, { target: document.body, props: { series_data: [] } })
     const wrapper = doc_query(`.legend`)
-    expect(wrapper).not.toBeNull()
+    expect(wrapper).toBeInstanceOf(HTMLElement)
     expect(wrapper.innerHTML.trim()).toBe(``) // Should be empty
   })
 
@@ -429,7 +431,7 @@ describe(`PlotLegend`, () => {
       props: { series_data: single_series },
     })
     const wrapper = doc_query(`.legend`)
-    expect(wrapper).not.toBeNull()
+    expect(wrapper).toBeInstanceOf(HTMLElement)
     const items = document.querySelectorAll(`.legend-item`)
     expect(items.length).toBe(1)
     expect(items[0].querySelector(`.legend-label`)?.textContent).toBe(`Series 1`)

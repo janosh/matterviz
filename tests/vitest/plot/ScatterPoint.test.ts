@@ -17,7 +17,7 @@ describe(`ScatterPoint`, () => {
     mount(ScatterPoint, { target, props: { x: 100, y: 100 } })
 
     const path = doc_query(`path`)
-    expect(path).not.toBeNull()
+    expect(path).toBeInstanceOf(Element)
     expect(path.getAttribute(`fill`)).toBe(`var(--point-fill-color, black)`) // Default fill with fallback
     expect(path.getAttribute(`fill-opacity`)).toBe(`1`) // Default opacity with fallback
     expect(path.getAttribute(`stroke`)).toBe(`transparent`)
@@ -58,7 +58,7 @@ describe(`ScatterPoint`, () => {
     mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
 
     const element = doc_query(`path`)
-    expect(element).not.toBeNull()
+    expect(element).toBeInstanceOf(Element)
     expect(element.getAttribute(`stroke`)).toBe(style.stroke)
     expect(element.getAttribute(`stroke-width`)).toBe(String(style.stroke_width))
     expect(element.getAttribute(`d`)).not.toBeNull() // Verify path data exists
@@ -70,7 +70,7 @@ describe(`ScatterPoint`, () => {
     mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
 
     const path = doc_query(`path`)
-    expect(path).not.toBeNull()
+    expect(path).toBeInstanceOf(Element)
     expect(path.getAttribute(`d`)).not.toBeNull() // Check path data exists
   })
 
@@ -81,7 +81,7 @@ describe(`ScatterPoint`, () => {
       mount(ScatterPoint, { target, props: { x: 100, y: 100, style: { radius } } })
 
       const path = doc_query(`path`)
-      expect(path).not.toBeNull()
+      expect(path).toBeInstanceOf(Element)
       expect(path.getAttribute(`d`)).not.toBeNull() // Check path data exists
       // Cannot reliably check marker size derived from radius in happy-dom
     },
@@ -99,7 +99,7 @@ describe(`ScatterPoint`, () => {
       props: { x: 100, y: 100, style: { fill: color, fill_opacity: opacity } },
     })
     const path = doc_query(`path`)
-    expect(path).not.toBeNull()
+    expect(path).toBeInstanceOf(Element)
     expect(path.getAttribute(`fill-opacity`)).toBe(String(opacity))
   })
 
@@ -120,7 +120,7 @@ describe(`ScatterPoint`, () => {
         },
       })
       const path = doc_query(`path`)
-      expect(path).not.toBeNull()
+      expect(path).toBeInstanceOf(Element)
       expect(path.getAttribute(`stroke`)).toBe(stroke)
       expect(path.getAttribute(`stroke-width`)).toBe(String(width))
       expect(path.getAttribute(`stroke-opacity`)).toBe(String(opacity))
@@ -227,7 +227,7 @@ describe(`ScatterPoint`, () => {
     const marker = doc_query(`path.marker`)
     const group = doc_query(`g`)
 
-    expect(ring).not.toBeNull()
+    expect(ring).toBeInstanceOf(Element)
     expect(ring.getAttribute(`r`)).toBe(expected_r)
     // Ring must come before marker in DOM so it renders behind
     const children = Array.from(group.children)

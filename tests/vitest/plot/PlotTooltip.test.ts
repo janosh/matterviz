@@ -17,7 +17,7 @@ describe(`PlotTooltip`, () => {
     })
 
     const tooltip = doc_query(`.plot-tooltip`)
-    expect(tooltip).not.toBeNull()
+    expect(tooltip).toBeInstanceOf(HTMLElement)
     expect(tooltip.style.left).toBe(`106px`) // 100 + default offset 6
     expect(tooltip.style.top).toBe(`200px`)
     expect(tooltip.style.position).toBe(`absolute`)
@@ -118,7 +118,7 @@ describe(`PlotTooltip`, () => {
     })
 
     const content = doc_query(`.plot-tooltip`).querySelector(`.tooltip-content`)
-    expect(content).not.toBeNull()
+    expect(content).toBeInstanceOf(HTMLElement)
     expect(content?.querySelector(`strong`)?.textContent).toBe(`Label:`)
   })
 

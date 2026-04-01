@@ -363,15 +363,13 @@ async function parse_with_unified_loader(
 
   const stage = `Ready: ${total_frames} frames indexed`
   on_progress?.({ current: 100, total: 100, stage })
+  const source_format = filename.toLowerCase().endsWith(`.traj`)
+    ? `ase_trajectory`
+    : `xyz_trajectory`
 
   return {
     frames,
-    metadata: {
-      source_format: filename.toLowerCase().endsWith(`.traj`)
-        ? `ase_trajectory`
-        : `xyz_trajectory`,
-      frame_count: total_frames,
-    },
+    metadata: { source_format, frame_count: total_frames },
     total_frames,
     indexed_frames: frame_index,
     plot_metadata,
