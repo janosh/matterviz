@@ -181,7 +181,7 @@ test(`oxi_composition_to_elements converts correctly`, () => {
 test(`Formula component renders with string formula`, () => {
   mount(Formula, { target: document.body, props: { formula: `H2O` } })
   const element = document.querySelector(`.formula`)
-  expect(element).toBeTruthy()
+  expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.textContent).toContain(`H`)
   expect(element?.textContent).toContain(`O`)
 })
@@ -189,7 +189,7 @@ test(`Formula component renders with string formula`, () => {
 test(`Formula component renders with oxidation states (caret syntax)`, () => {
   mount(Formula, { target: document.body, props: { formula: `Fe^2+O3` } })
   const element = document.querySelector(`.formula`)
-  expect(element).toBeTruthy()
+  expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.textContent).toContain(`Fe`)
   expect(element?.textContent).toContain(`+2`)
   expect(element?.textContent).toContain(`O`)
@@ -198,7 +198,7 @@ test(`Formula component renders with oxidation states (caret syntax)`, () => {
 test(`Formula component renders with oxidation states (bracket syntax)`, () => {
   mount(Formula, { target: document.body, props: { formula: `Fe[2+]O3` } })
   const element = document.querySelector(`.formula`)
-  expect(element).toBeTruthy()
+  expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.textContent).toContain(`Fe`)
   expect(element?.textContent).toContain(`+2`)
   expect(element?.textContent).toContain(`O`)
@@ -311,7 +311,7 @@ test(`Formula component accepts OxiComposition input`, () => {
   // Mounting to document.body
   mount(Formula, { target: document.body, props: { formula: composition } })
   const element = document.querySelector(`.formula`)
-  expect(element).toBeTruthy()
+  expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.textContent).toContain(`Fe`)
   expect(element?.textContent).toContain(`O`)
   expect(element?.textContent).toContain(`+3`)
@@ -330,7 +330,7 @@ test.each([
   // Mounting to document.body
   mount(Formula, { target: document.body, props: { formula: `H2O`, as: as_value } })
   const element = document.querySelector(as_value)
-  expect(element).toBeTruthy()
+  expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.classList.contains(`formula`)).toBe(true)
   expect(element?.textContent).toContain(`H`)
   expect(element?.textContent).toContain(`O`)
@@ -350,7 +350,7 @@ test.each([
     props: { formula: `H2O`, color_scheme: scheme },
   })
   const element = document.querySelector(`.formula`)
-  expect(element).toBeTruthy()
+  expect(element).toBeInstanceOf(HTMLElement)
   expect(element?.querySelectorAll(`.element-symbol`).length).toBe(2)
 })
 
@@ -376,7 +376,7 @@ test.each([
     // Mounting to document.body
     mount(Formula, { target: document.body, props: { formula } })
     const element = document.querySelector(`.formula`)
-    expect(element).toBeTruthy()
+    expect(element).toBeInstanceOf(HTMLElement)
 
     // Check that all expected elements are present
     for (const elem of expected_elements) {
@@ -392,7 +392,7 @@ test.each([
 // Normalize any color format to lowercase hex
 function normalize_to_hex(color: string): string {
   if (color.startsWith(`#`)) return color.toLowerCase()
-  const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/)
+  const match = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(color)
   if (!match) return color
   const [, r, g, b] = match
   const to_hex = (n: string) => parseInt(n).toString(16).padStart(2, `0`)
@@ -408,7 +408,7 @@ test.each([`Vesta`, `Jmol`] as const)(
     })
 
     const element_group = document.querySelector(`.element-group`) as HTMLElement
-    expect(element_group).toBeTruthy()
+    expect(element_group).toBeInstanceOf(HTMLElement)
 
     // Trigger mouseenter to show tooltip
     element_group.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
@@ -417,11 +417,11 @@ test.each([`Vesta`, `Jmol`] as const)(
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     const tooltip = document.querySelector(`.tooltip`)
-    expect(tooltip).toBeTruthy()
+    expect(tooltip).toBeInstanceOf(HTMLElement)
 
     // Get the ElementTile inside the tooltip
     const tile = tooltip?.querySelector(`.element-tile`) as HTMLElement
-    expect(tile).toBeTruthy()
+    expect(tile).toBeInstanceOf(HTMLElement)
 
     // The tile background should match the color scheme for Fe
     const expected_hex = ELEMENT_COLOR_SCHEMES[color_scheme]?.[`Fe`]

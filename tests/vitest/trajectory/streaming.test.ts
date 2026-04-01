@@ -253,7 +253,7 @@ describe(`Trajectory Streaming`, () => {
       const result = await parse_trajectory_async(data, `small_trajectory.xyz`)
 
       // Should not have streaming metadata
-      expect(result.is_indexed).toBeFalsy()
+      expect(result.is_indexed).toBeUndefined()
       expect(result.indexed_frames).toBeUndefined()
       expect(result.frames).toHaveLength(5) // All frames loaded
     })
@@ -369,9 +369,9 @@ describe(`Trajectory Streaming`, () => {
       const frame_5 = await loader.load_frame(data, 5) // Try to load the corrupted frame
       const frame_6 = await loader.load_frame(data, 6) // Skip the corrupted frame
 
-      expect(frame_4).toBeTruthy()
+      expect(frame_4).not.toBeNull()
       expect(frame_5).toBeNull() // Corrupted frame should return null
-      expect(frame_6).toBeTruthy()
+      expect(frame_6).not.toBeNull()
     })
 
     it(`should handle empty or invalid trajectory data`, async () => {

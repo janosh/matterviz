@@ -12,12 +12,12 @@ function open_context_menu() {
 describe(`Composition component`, () => {
   test(`renders with basic props`, () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
-    expect(doc_query(`.composition`)).toBeTruthy()
+    expect(doc_query(`.composition`)).toBeInstanceOf(SVGSVGElement)
   })
 
   test.each([`pie`, `bubble`, `bar`] as const)(`renders %s mode correctly`, (mode) => {
     mount(Composition, { target: document.body, props: { composition: `H2O`, mode } })
-    expect(doc_query(`.${mode}-chart`)).toBeTruthy()
+    expect(doc_query(`.${mode}-chart`)).toBeInstanceOf(SVGSVGElement)
   })
 
   test(`forwards props to child components`, () => {
@@ -47,7 +47,7 @@ describe(`Composition component`, () => {
 
   test(`handles invalid input gracefully`, () => {
     mount(Composition, { target: document.body, props: { composition: `invalid` } })
-    expect(doc_query(`.composition`)).toBeTruthy()
+    expect(doc_query(`.composition`)).toBeInstanceOf(SVGSVGElement)
   })
 
   test(`applies custom styling`, () => {
@@ -69,7 +69,7 @@ describe(`Composition component`, () => {
       target: document.body,
       props: { composition: { 1: 2, 8: 1 } as CompositionType },
     })
-    expect(doc_query(`.composition`)).toBeTruthy()
+    expect(doc_query(`.composition`)).toBeInstanceOf(SVGSVGElement)
   })
 
   test(`renders bar mode with custom dimensions`, () => {
@@ -84,7 +84,7 @@ describe(`Composition component`, () => {
     mount(Composition, { target: document.body, props: { composition: `H2O` } })
     open_context_menu()
     await new Promise((r) => setTimeout(r, 0))
-    expect(doc_query(`.context-menu`)).toBeTruthy()
+    expect(doc_query(`.context-menu`)).toBeInstanceOf(HTMLElement)
     expect(doc_query(`.header`).textContent).toBe(`Display Mode`)
   })
 
@@ -119,7 +119,7 @@ describe(`Composition component`, () => {
 
     open_context_menu()
     await tick()
-    expect(doc_query(`.bubble-chart`)).toBeTruthy()
+    expect(doc_query(`.bubble-chart`)).toBeInstanceOf(SVGSVGElement)
   })
 
   test(`export options are available in context menu`, async () => {

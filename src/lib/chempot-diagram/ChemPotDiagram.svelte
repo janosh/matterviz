@@ -2,6 +2,7 @@
   import { get_hill_formula } from '$lib/composition/format'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
   import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
   import type {
@@ -99,7 +100,7 @@
       style:left="{hover_info.pointer?.x ?? 4}px"
       style:top="{hover_info.pointer?.y ?? 4}px"
     >
-      <h4>{@html get_hill_formula(hover_info.formula, false, ``)}</h4>
+      <h4>{@html sanitize_html(get_hill_formula(hover_info.formula, false, ``))}</h4>
       {#if hover_info.view === `2d`}
         <p>2D domain · Points: {hover_info.n_points}</p>
         {#if tooltip_detail_level === `detailed`}

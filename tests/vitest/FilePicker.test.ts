@@ -51,7 +51,7 @@ describe(`FilePicker`, () => {
         mount(FilePicker, { target: document.body, props })
 
         const carousel = doc_query(`.file-picker`)
-        expect(carousel).toBeTruthy()
+        expect(carousel).toBeInstanceOf(HTMLElement)
 
         if (is_active_test) {
           const active_elements = document.querySelectorAll(`.file-item.active`)
@@ -92,7 +92,7 @@ describe(`FilePicker`, () => {
       // Check that the file item has the correct background color style
       const file_item = doc_query(`.file-item`)
       const background_color = file_item.style.backgroundColor
-      expect(background_color).toBeTruthy()
+      expect(background_color).not.toBe(``)
       expect(background_color).toContain(`rgba`)
     })
   })
@@ -146,7 +146,7 @@ describe(`FilePicker`, () => {
       const traj_filter = Array.from(document.querySelectorAll(`.legend-item`)).find((el) =>
         el.textContent?.includes(`TRAJ`),
       )
-      expect(traj_filter).toBeTruthy()
+      expect(traj_filter).toBeDefined()
       expect(document.querySelectorAll(`.file-item`)).toHaveLength(3)
     })
 
@@ -318,7 +318,7 @@ describe(`FilePicker`, () => {
       })
 
       const file_item = doc_query(`.file-item`)
-      expect(file_item).toBeTruthy()
+      expect(file_item).toBeInstanceOf(HTMLElement)
       expect(file_item.textContent).toContain(filename)
     })
 
@@ -329,7 +329,7 @@ describe(`FilePicker`, () => {
       })
 
       const carousel = doc_query(`.file-picker`)
-      expect(carousel).toBeTruthy()
+      expect(carousel).toBeInstanceOf(HTMLElement)
       expect(carousel.children.length).toBe(1) // Only legend
     })
 

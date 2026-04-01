@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { LegendItem, Orientation } from '$lib/plot'
+  import { sanitize_html } from '$lib/sanitize'
+  import { strip_html } from '$lib/table'
   import { onDestroy } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -205,7 +207,7 @@
     role="button"
     tabindex="0"
     aria-pressed={series.visible}
-    aria-label="Toggle visibility for {series.label}"
+    aria-label="Toggle visibility for {strip_html(series.label)}"
   >
     <span class="legend-marker">
       <!-- Fill region swatch -->
@@ -294,7 +296,7 @@
         {/if}
       {/if}
     </span>
-    <span class="legend-label">{@html series.label}</span>
+    <span class="legend-label">{@html sanitize_html(series.label)}</span>
   </div>
 {/snippet}
 
@@ -337,7 +339,7 @@
         role="button"
         tabindex="0"
         aria-expanded={!is_collapsed}
-        aria-label="Toggle group {group_name}"
+        aria-label="Toggle group {strip_html(group_name)}"
       >
         <span
           class="group-chevron"
@@ -356,11 +358,11 @@
           }}
           role="button"
           tabindex="0"
-          aria-label="{is_collapsed ? `Expand` : `Collapse`} group {group_name}"
+          aria-label="{is_collapsed ? `Expand` : `Collapse`} group {strip_html(group_name)}"
         >
           ▶
         </span>
-        <span class="group-label">{@html group_name}</span>
+        <span class="group-label">{@html sanitize_html(group_name)}</span>
       </div>
       <!-- Group items (collapsible) -->
       {#if !is_collapsed}

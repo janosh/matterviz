@@ -4,6 +4,7 @@
     GasSpecies,
     GasThermodynamicsConfig,
   } from '$lib/convex-hull/types'
+  import { sanitize_html } from '$lib/sanitize'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
@@ -131,7 +132,7 @@
             }}
             aria-label="{gas} pressure (bar)"
           />
-          <span class="gas-name">{@html format_gas_name(gas)}</span>
+          <span class="gas-name">{@html sanitize_html(format_gas_name(gas))}</span>
         </label>
         <div class="slider-wrapper">
           <span class="pressure-range">

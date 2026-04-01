@@ -4,6 +4,7 @@
 >
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { format_value } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type {
     AxisLoadError,
@@ -2127,13 +2128,13 @@
             <div><strong>{series_label}</strong></div>
           {/if}
           <div>
-            {@html hover_info.x_axis.label || `x`}: {
+            {@html sanitize_html(hover_info.x_axis.label || `x`)}: {
               (cat_axis === `x` ? hover_info.category_label : undefined) ??
               format_value(hover_info.orient_x, hover_info.x_axis.format || `.3~s`)
             }
           </div>
           <div>
-            {@html hover_info.y_axis.label || `y`}: {
+            {@html sanitize_html(hover_info.y_axis.label || `y`)}: {
               (cat_axis === `y` ? hover_info.category_label : undefined) ??
               format_value(hover_info.orient_y, hover_info.y_axis.format || `.3~s`)
             }

@@ -20,7 +20,7 @@ describe(`ThemeControl`, () => {
     mount(ThemeControl, { target: document.body, props: {} })
 
     const select = doc_query(`select.theme-control`)
-    expect(select).toBeTruthy()
+    expect(select).toBeInstanceOf(HTMLSelectElement)
     expect(select.tagName).toBe(`SELECT`)
 
     const options = select.querySelectorAll(`option`)
@@ -40,7 +40,7 @@ describe(`ThemeControl`, () => {
     })
 
     const select = doc_query(`select.theme-control.custom-theme-control`)
-    expect(select).toBeTruthy()
+    expect(select).toBeInstanceOf(HTMLSelectElement)
   })
 
   test(`forwards additional props to select element`, () => {

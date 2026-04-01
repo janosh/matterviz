@@ -6,6 +6,7 @@
   } from '$lib/composition'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import Histogram from '$lib/plot/Histogram.svelte'
   import type { Label, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
@@ -480,7 +481,7 @@
     {#if sec_idx > 0}<hr />{/if}
     <section>
       {#if section.title}
-        <h5>{@html section.title}</h5>
+        <h5>{@html sanitize_html(section.title)}</h5>
       {/if}
       {#each section.items as item (item.key ?? item.label)}
         {@const { key, label, value } = item}
@@ -499,8 +500,8 @@
             key ?? item.label,
           )}
         >
-          <span>{@html label}:</span>
-          <span>{@html value}</span>
+          <span>{@html sanitize_html(label)}:</span>
+          <span>{@html sanitize_html(value)}</span>
           {#if key && copied_items.has(key)}
             <Icon
               icon="Check"

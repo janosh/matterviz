@@ -14,7 +14,7 @@ test.describe(`Periodic Table`, () => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
     // Get the first periodic table on the page (homepage has multiple periodic tables)
-    const periodic_table = page.locator(`.periodic-table`).first()
+    const periodic_table = page.locator(`.ptable-grid`).first()
     await expect(periodic_table).toBeVisible({ timeout: 20000 })
 
     // Wait for periodic table to load by waiting for at least one element tile
@@ -112,7 +112,7 @@ test.describe(`Periodic Table`, () => {
       await page.waitForSelector(`.element-tile`, { timeout: 10000 })
 
       // Get the first periodic table container (PeriodicTableDemo) which has tooltip enabled
-      const periodic_table = page.locator(`.periodic-table`).first()
+      const periodic_table = page.locator(`.ptable-grid`).first()
       await expect(periodic_table).toBeVisible({ timeout: 10000 })
 
       // Hover on the H tile within the first periodic table

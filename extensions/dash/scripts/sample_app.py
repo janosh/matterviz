@@ -905,7 +905,7 @@ def create_app() -> dash.Dash:
         """
         function(n_clicks) {
             const out = document.getElementById('callback-output');
-            const grid = document.querySelector('#callback-periodic-table .periodic-table');
+            const grid = document.querySelector('#callback-periodic-table .ptable-grid');
             if (out && grid && out.parentNode !== grid) {
                 Object.assign(out.style, {
                     gridRow: '1 / span 3',

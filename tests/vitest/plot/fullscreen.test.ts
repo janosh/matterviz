@@ -34,11 +34,11 @@ describe(`Plot Fullscreen Toggle`, () => {
     await tick()
 
     const plot_div = document.querySelector(`.bar-plot`)
-    expect(plot_div).toBeTruthy()
+    expect(plot_div).toBeInstanceOf(HTMLElement)
     expect(plot_div?.classList.contains(`fullscreen`)).toBe(false)
 
     const toggle_btn = document.querySelector(`button.fullscreen-toggle`) as HTMLButtonElement
-    expect(toggle_btn).toBeTruthy()
+    expect(toggle_btn).toBeInstanceOf(HTMLElement)
     expect(toggle_btn.getAttribute(`aria-label`)).toBe(`Enter fullscreen`)
 
     // Click to enter fullscreen

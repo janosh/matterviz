@@ -113,8 +113,8 @@ function generate_k_space_grid(k_lattice: Matrix3x3, order: number): Vec3[] {
 
 // O(1) duplicate vertex detection using spatial hashing
 class VertexDeduplicator {
-  private grid = new Map<string, Vec3[]>()
-  private cell_size: number
+  private readonly grid = new Map<string, Vec3[]>()
+  private readonly cell_size: number
   constructor(cell_size: number) {
     this.cell_size = cell_size
   }

@@ -17,13 +17,13 @@ describe(`ScatterPoint`, () => {
     mount(ScatterPoint, { target, props: { x: 100, y: 100 } })
 
     const path = doc_query(`path`)
-    expect(path).toBeTruthy()
+    expect(path).toBeInstanceOf(SVGPathElement)
     expect(path.getAttribute(`fill`)).toBe(`var(--point-fill-color, black)`) // Default fill with fallback
     expect(path.getAttribute(`fill-opacity`)).toBe(`1`) // Default opacity with fallback
     expect(path.getAttribute(`stroke`)).toBe(`transparent`)
     expect(path.getAttribute(`stroke-width`)).toBe(`1`)
     expect(path.getAttribute(`stroke-opacity`)).toBe(`1`) // Default opacity with fallback
-    expect(path.getAttribute(`d`)).toBeTruthy()
+    expect(path.getAttribute(`d`)).not.toBeNull()
   })
 
   test(`applies custom point styles`, () => {
@@ -39,6 +39,7 @@ describe(`ScatterPoint`, () => {
     mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
 
     const path = doc_query(`path`)
+    expect(path).toBeInstanceOf(SVGPathElement)
     expect(path.getAttribute(`stroke`)).toBe(style.stroke)
     expect(path.getAttribute(`stroke-width`)).toBe(String(style.stroke_width))
     expect(path.getAttribute(`fill-opacity`)).toBe(String(style.fill_opacity))
@@ -58,10 +59,10 @@ describe(`ScatterPoint`, () => {
     mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
 
     const element = doc_query(`path`)
-    expect(element).toBeTruthy()
+    expect(element).toBeInstanceOf(SVGPathElement)
     expect(element.getAttribute(`stroke`)).toBe(style.stroke)
     expect(element.getAttribute(`stroke-width`)).toBe(String(style.stroke_width))
-    expect(element.getAttribute(`d`)).toBeTruthy() // Verify path data exists
+    expect(element.getAttribute(`d`)).not.toBeNull() // Verify path data exists
   })
 
   test(`derives marker size from radius when symbol_size is null`, () => {
@@ -70,8 +71,8 @@ describe(`ScatterPoint`, () => {
     mount(ScatterPoint, { target, props: { x: 100, y: 100, style } })
 
     const path = doc_query(`path`)
-    expect(path).toBeTruthy()
-    expect(path.getAttribute(`d`)).toBeTruthy() // Check path data exists
+    expect(path).toBeInstanceOf(SVGPathElement)
+    expect(path.getAttribute(`d`)).not.toBeNull() // Check path data exists
   })
 
   test.each([3, 8, 12])(
@@ -81,8 +82,8 @@ describe(`ScatterPoint`, () => {
       mount(ScatterPoint, { target, props: { x: 100, y: 100, style: { radius } } })
 
       const path = doc_query(`path`)
-      expect(path).toBeTruthy()
-      expect(path.getAttribute(`d`)).toBeTruthy() // Check path data exists
+      expect(path).toBeInstanceOf(SVGPathElement)
+      expect(path.getAttribute(`d`)).not.toBeNull() // Check path data exists
       // Cannot reliably check marker size derived from radius in happy-dom
     },
   )
@@ -99,7 +100,7 @@ describe(`ScatterPoint`, () => {
       props: { x: 100, y: 100, style: { fill: color, fill_opacity: opacity } },
     })
     const path = doc_query(`path`)
-    expect(path).toBeTruthy()
+    expect(path).toBeInstanceOf(SVGPathElement)
     expect(path.getAttribute(`fill-opacity`)).toBe(String(opacity))
   })
 
@@ -120,7 +121,7 @@ describe(`ScatterPoint`, () => {
         },
       })
       const path = doc_query(`path`)
-      expect(path).toBeTruthy()
+      expect(path).toBeInstanceOf(SVGPathElement)
       expect(path.getAttribute(`stroke`)).toBe(stroke)
       expect(path.getAttribute(`stroke-width`)).toBe(String(width))
       expect(path.getAttribute(`stroke-opacity`)).toBe(String(opacity))
@@ -186,7 +187,7 @@ describe(`ScatterPoint`, () => {
     mount(ScatterPoint, { target, props: { x: 100, y: 100, label: {} } }) // Empty label object
 
     // Should not render text element
-    expect(document.querySelector(`text`)).toBeFalsy()
+    expect(document.querySelector(`text`)).toBeNull()
   })
 
   test.each([
@@ -210,7 +211,7 @@ describe(`ScatterPoint`, () => {
   ])(`no effect ring when $desc`, ({ is_selected }) => {
     const target = doc_query(`div`)
     mount(ScatterPoint, { target, props: { x: 100, y: 100, is_selected } })
-    expect(document.querySelector(`circle.effect-ring`)).toBeFalsy()
+    expect(document.querySelector(`circle.effect-ring`)).toBeNull()
   })
 
   test.each([
@@ -227,7 +228,7 @@ describe(`ScatterPoint`, () => {
     const marker = doc_query(`path.marker`)
     const group = doc_query(`g`)
 
-    expect(ring).toBeTruthy()
+    expect(ring).toBeInstanceOf(SVGCircleElement)
     expect(ring.getAttribute(`r`)).toBe(expected_r)
     // Ring must come before marker in DOM so it renders behind
     const children = Array.from(group.children)

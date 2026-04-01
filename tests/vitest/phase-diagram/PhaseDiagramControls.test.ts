@@ -94,7 +94,7 @@ describe(`PhaseDiagramControls`, () => {
 
     // Find the visibility grid and check for Special Pts checkbox
     const visibility_grid = target.querySelector(`.visibility-grid`)
-    expect(visibility_grid).toBeTruthy()
+    expect(visibility_grid).toBeInstanceOf(HTMLElement)
     expect(visibility_grid?.innerHTML).toContain(`Special Pts`)
   })
 
@@ -108,7 +108,7 @@ describe(`PhaseDiagramControls`, () => {
 
     // The visibility grid should NOT contain Special Pts (but colors grid still will)
     const visibility_grid = target.querySelector(`.visibility-grid`)
-    expect(visibility_grid).toBeTruthy()
+    expect(visibility_grid).toBeInstanceOf(HTMLElement)
     expect(visibility_grid?.innerHTML).not.toContain(`Special Pts`)
   })
 
@@ -263,7 +263,7 @@ describe(`PhaseDiagramControls`, () => {
 
     // The pane should be hidden (display: none)
     const pane = target.querySelector(`.draggable-pane`) as HTMLElement
-    expect(pane).toBeTruthy()
+    expect(pane).toBeInstanceOf(HTMLElement)
     expect(pane?.style.display).toBe(`none`)
   })
 })

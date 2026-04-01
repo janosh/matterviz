@@ -25,7 +25,7 @@ describe(`elements_to_axis`, () => {
     // every item has required fields
     for (const item of axis) {
       expect(item.key).toBe(item.label)
-      expect(item.category).toBeTruthy()
+      expect(item.category).toBeDefined()
       expect(item.data).toBeDefined()
     }
     // data is typed ChemicalElement

@@ -32,8 +32,8 @@ const mount_tooltip = (props: Partial<TooltipProps> = {}) =>
 describe(`ConvexHullTooltip`, () => {
   test(`renders container with expected structure`, () => {
     mount_tooltip()
-    expect(doc_query(`.tooltip-content`)).toBeTruthy()
-    expect(doc_query(`.tooltip-title`)).toBeTruthy()
+    expect(doc_query(`.tooltip-content`)).not.toBeNull()
+    expect(doc_query(`.tooltip-title`)).not.toBeNull()
   })
 
   test.each([
@@ -184,8 +184,8 @@ describe(`ConvexHullTooltip`, () => {
       expect(text).toContain(`↑2`)
       expect(text).toContain(`↓1`)
       expect(text).toContain(`=2`)
-      expect(document.querySelector(`[title="2 higher in energy"]`)).toBeTruthy()
-      expect(document.querySelector(`[title="1 lower in energy"]`)).toBeTruthy()
+      expect(document.querySelector(`[title="2 higher in energy"]`)).not.toBeNull()
+      expect(document.querySelector(`[title="1 lower in energy"]`)).not.toBeNull()
     })
 
     test(`hides equal count when zero`, () => {
@@ -238,7 +238,7 @@ describe(`ConvexHullTooltip`, () => {
     ])(`renders $key as static HTML`, ({ key, html, class_name }) => {
       mount_tooltip({ tooltip: { [key]: html } })
       expect(document.body.innerHTML).toContain(html)
-      expect(doc_query(class_name)).toBeTruthy()
+      expect(doc_query(class_name)).not.toBeNull()
     })
 
     test.each([

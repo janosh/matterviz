@@ -324,7 +324,7 @@ describe(`data completeness`, () => {
   test(`all elements have valid structure`, () => {
     for (const [idx, el] of element_data.entries()) {
       expect(el.symbol, `element ${idx}`).toMatch(/^[A-Z][a-z]?$/)
-      expect(el.name, el.symbol).toBeTruthy()
+      expect(el.name, el.symbol).not.toBe(``)
       expect(el.number, el.symbol).toBe(idx + 1)
       expect(el.period, el.symbol).toBeGreaterThanOrEqual(1)
       expect(el.period, el.symbol).toBeLessThanOrEqual(7)

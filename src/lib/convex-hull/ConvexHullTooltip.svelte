@@ -3,6 +3,7 @@
   import { ELEM_SYMBOL_TO_NAME, get_electro_neg_formula } from '$lib/composition'
   import type { ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import { TooltipContent } from '$lib/tooltip'
   import type { PolymorphStats } from './helpers'
   import type { ConvexHullTooltipProp, TooltipSnippetProps } from './index'
@@ -55,7 +56,7 @@
       {/if}
       {#if !is_element || !entry.entry_id}
         <strong style="display: block">
-          {@html get_electro_neg_formula(entry.composition)}
+          {@html sanitize_html(get_electro_neg_formula(entry.composition))}
         </strong>
       {/if}
     </div>
@@ -79,7 +80,7 @@
         .filter(([, amt]) => amt > 0)
         .map(([el, amt]) => `${el}<sub>${format_num(amt / total, `.2~`)}</sub>`)}
         {#if fractions.length > 1}
-          <div>Fractional: {@html fractions.join(` `)}</div>
+          <div>Fractional: {@html sanitize_html(fractions.join(` `))}</div>
         {/if}
       {/if}
     {/if}

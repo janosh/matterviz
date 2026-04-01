@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sanitize_html } from '$lib/sanitize'
   import type { ElementSymbol } from '$lib'
   import type {
     ConvexHullEntry,
@@ -19,27 +20,18 @@
     make_demo_phase,
     process_hull_for_stats,
   } from '$lib/convex-hull'
-  import { decompress_data } from '$lib/io/decompress'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
 
-  const quaternary_files = (import.meta as unknown as {
-    glob: (
-      pattern: string,
-      options: { eager: false; query: string },
-    ) => Record<string, () => Promise<{ default: string }>>
-  }).glob(
+  // vite-plugin-json-gz decompresses at build time, lazy chunks are code-split.
+  // Do NOT use query:'?url': Rolldown doesn't emit .json.gz as assets for globs.
+  const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
     `$site/convex-hull/quaternaries/*.json.gz`,
-    { eager: false, query: `?url` },
+    { eager: false },
   )
-  const quinary_files = (import.meta as unknown as {
-    glob: (
-      pattern: string,
-      options: { eager: false; query: string },
-    ) => Record<string, () => Promise<{ default: string }>>
-  }).glob(
+  const quinary_files = import.meta.glob<{ default: PhaseData[] }>(
     `$site/convex-hull/quinaries/*.json.gz`,
-    { eager: false, query: `?url` },
+    { eager: false },
   )
 
   let entries_map = $state(new SvelteMap())
@@ -61,14 +53,7 @@
   onMount(async () => {
     const results = await Promise.allSettled(
       [...Object.entries(quaternary_files), ...Object.entries(quinary_files)].map(
-        async ([path, loader]) => {
-          const response = await fetch((await loader()).default)
-          const enc = response.headers.get(`content-encoding`)?.toLowerCase() ?? ``
-          const data = enc.includes(`gzip`)
-            ? await response.json()
-            : JSON.parse(await decompress_data(await response.arrayBuffer(), `gzip`))
-          return [path, data] as const
-        },
+        async ([path, loader]) => [path, (await loader()).default] as const,
       ),
     )
     loaded_data = new SvelteMap(
@@ -389,7 +374,7 @@
   {#snippet feature_list(feature_items: string[])}
     <ul class="feature-list">
       {#each feature_items as feature_item (feature_item)}
-        <li>{@html feature_item}</li>
+        <li>{@html sanitize_html(feature_item)}</li>
       {/each}
     </ul>
   {/snippet}
@@ -531,7 +516,7 @@
       <div>
         <div class="marker-legend">
           {#each marker_legend_primary as legend_item (legend_item)}
-            <span>{@html legend_item}</span>
+            <span>{@html sanitize_html(legend_item)}</span>
           {/each}
         </div>
         <ConvexHull3D
@@ -543,7 +528,7 @@
       <div>
         <div class="marker-legend">
           {#each marker_legend_binary as legend_item (legend_item)}
-            <span>{@html legend_item}</span>
+            <span>{@html sanitize_html(legend_item)}</span>
           {/each}
         </div>
         <ConvexHull2D

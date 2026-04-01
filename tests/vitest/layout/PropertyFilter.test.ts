@@ -12,7 +12,7 @@ describe(`PropertyFilter`, () => {
 
   test(`renders with label (supports HTML) and two number inputs`, () => {
     mount(PropertyFilter, { target: document.body, props: { label: `E<sub>hull</sub>` } })
-    expect(get_container()).toBeTruthy()
+    expect(get_container()).toBeInstanceOf(HTMLDivElement)
     expect(doc_query(`.filter-label sub`).textContent).toBe(`hull`)
     expect(get_inputs().length).toBe(2)
     expect(get_min_input().type).toBe(`number`)

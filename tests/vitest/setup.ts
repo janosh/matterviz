@@ -263,7 +263,7 @@ export function make_crystal(
 
 // ResizeObserver mock - triggers callback with dimensions on observe
 globalThis.ResizeObserver = class ResizeObserver {
-  constructor(private callback: ResizeObserverCallback) {}
+  constructor(private readonly callback: ResizeObserverCallback) {}
   observe(el: Element) {
     queueMicrotask(() =>
       this.callback(

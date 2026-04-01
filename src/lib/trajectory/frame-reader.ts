@@ -20,7 +20,7 @@ import {
 import { strip_compression_extensions } from './format-detect'
 
 export class TrajFrameReader implements FrameLoader {
-  private format: `xyz` | `ase`
+  private readonly format: `xyz` | `ase`
   private global_numbers?: number[]
 
   constructor(filename: string) {
@@ -400,7 +400,7 @@ export class TrajFrameReader implements FrameLoader {
       if (match) properties[key] = parseFloat(match[1])
     })
 
-    const step_match = comment.match(/(?:step|frame)\s*[=:]?\s*(\d+)/i)
+    const step_match = /(?:step|frame)\s*[=:]?\s*(\d+)/i.exec(comment)
     const step = step_match ? parseInt(step_match[1]) : frame_number
 
     return { frame_number, step, properties }

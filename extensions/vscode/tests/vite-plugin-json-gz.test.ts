@@ -16,10 +16,13 @@ function make_plugin(command: `build` | `serve` = `serve`) {
 }
 
 describe(`vite_plugin_json_gz`, () => {
-  test.each([`foo.json`, `bar.ts`, `data.gz`])(`ignores non-.json.gz file: %s`, (id) => {
-    const load = make_plugin()
-    expect(load.call({ error: () => {} }, id)).toBeNull()
-  })
+  test.each([`foo.json`, `bar.ts`, `data.gz`, `${fixture_path}?url`, `${fixture_path}?raw`])(
+    `returns null for non-matching id: %s`,
+    (id) => {
+      const load = make_plugin()
+      expect(load.call({ error: () => {} }, id)).toBeNull()
+    },
+  )
 
   test(`dev/serve mode returns JS module matching decompressed content`, () => {
     const load = make_plugin(`serve`)
@@ -54,5 +57,58 @@ describe(`vite_plugin_json_gz`, () => {
     load.call({ error: (msg: string) => errors.push(msg) }, path)
     expect(errors).toHaveLength(1)
     expect(errors[0]).toContain(`Failed to load`)
+  })
+})
+
+// The inline plugins in vite.config.ts strip query params before checking extensions,
+// so they need explicit ?url skip guards — the bug that broke /convex-hull/chempot-diagram.
+const strip_query = (path: string): string => path.replace(/\?.*$/, ``)
+
+describe(`inline vite-plugin-json-gz query handling`, () => {
+  const should_handle = (source: string): boolean => {
+    const clean = strip_query(source)
+    if (!clean.endsWith(`.json.gz`)) return false
+    if (source.includes(`raw`) || source.includes(`url`)) return false
+    return true
+  }
+
+  test.each([
+    [`bare .json.gz import`, `data.json.gz`, true],
+    [`?url import`, `data.json.gz?url`, false],
+    [`?raw import`, `data.json.gz?raw`, false],
+    [`non .json.gz`, `data.json`, false],
+    [`glob ?url import`, `/src/site/chempot-diagram/entries.json.gz?url`, false],
+    [`glob eager import`, `/src/site/phonons/data.json.gz`, true],
+  ])(`%s → handled: %s`, (_label, source, expected) => {
+    expect(should_handle(source)).toBe(expected)
+  })
+})
+
+describe(`inline vite-plugin-raw-text query handling`, () => {
+  const TEXT_EXT_RE = /\.(xyz|extxyz|cif|poscar|lammpstrj|yaml\.gz)$/
+
+  const should_handle = (source: string): boolean => {
+    if (source.includes(`url`)) return false
+    const clean = strip_query(source)
+    const is_raw_gz = clean.endsWith(`.json.gz`) && source.includes(`raw`)
+    return TEXT_EXT_RE.test(clean) || is_raw_gz
+  }
+
+  test.each([
+    [`bare .xyz`, `trajectory.xyz`, true],
+    [`?raw .xyz`, `trajectory.xyz?raw`, true],
+    [`?url .xyz`, `trajectory.xyz?url`, false],
+    [`bare .extxyz`, `atoms.extxyz`, true],
+    [`?url .extxyz`, `atoms.extxyz?url`, false],
+    [`bare .cif`, `structure.cif`, true],
+    [`?url .cif`, `structure.cif?url`, false],
+    [`bare .lammpstrj`, `dump.lammpstrj`, true],
+    [`?url .lammpstrj`, `dump.lammpstrj?url`, false],
+    [`?raw .json.gz`, `data.json.gz?raw`, true],
+    [`?url .json.gz`, `data.json.gz?url`, false],
+    [`non-text file`, `image.png`, false],
+    [`.json (no gz)`, `data.json`, false],
+  ])(`%s → handled: %s`, (_label, source, expected) => {
+    expect(should_handle(source)).toBe(expected)
   })
 })

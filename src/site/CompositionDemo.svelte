@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sanitize_html } from '$lib/sanitize'
   import type { CompositionType } from 'matterviz'
   import {
     Composition,
@@ -56,7 +57,7 @@
       {#each compositions as [name, formula] (formula)}
         <div class="composition-card">
           <h3>{name}</h3>
-          <div class="card-formula">{@html get_formula_display(formula)}</div>
+          <div class="card-formula">{@html sanitize_html(get_formula_display(formula))}</div>
           <Composition composition={formula} {mode} />
         </div>
       {/each}

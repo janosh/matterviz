@@ -44,7 +44,7 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     })
 
     // Extract lattice matrix
-    const lattice_match = comment.match(/Lattice\s*=\s*"([^"]+)"/i)
+    const lattice_match = /Lattice\s*=\s*"([^"]+)"/i.exec(comment)
     let lattice_matrix: math.Matrix3x3 | undefined
     if (lattice_match) {
       const values = lattice_match[1].split(/\s+/).map(Number)

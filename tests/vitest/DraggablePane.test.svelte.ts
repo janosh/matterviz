@@ -17,13 +17,13 @@ describe(`DraggablePane`, () => {
       target: document.body,
       props: { ...default_props, show_pane: false },
     })
-    expect(document.querySelector(`.pane-toggle`)).toBeFalsy()
+    expect(document.querySelector(`.pane-toggle`)).toBeNull()
   })
 
   test(`pane hidden when !show`, () => {
     mount(DraggablePane, { target: document.body, props: default_props })
     const pane: Element | null = document.querySelector(`.draggable-pane`)
-    expect(pane).toBeTruthy()
+    expect(pane).toBeInstanceOf(HTMLElement)
     expect(pane?.getAttribute(`style`)).toContain(`display: none`)
   })
 
@@ -72,8 +72,8 @@ describe(`DraggablePane`, () => {
     const pane = document.querySelector(`.draggable-pane`) as HTMLElement
     const button = document.querySelector(`button`) as HTMLElement
 
-    expect(pane).toBeTruthy()
-    expect(button).toBeTruthy()
+    expect(pane).toBeInstanceOf(HTMLElement)
+    expect(button).toBeInstanceOf(HTMLElement)
 
     expect(onclose).not.toHaveBeenCalled()
 
@@ -183,6 +183,6 @@ describe(`DraggablePane`, () => {
     const control_tab = document.querySelector(`.control-tab`)
     expect(control_tab).toBeInstanceOf(HTMLDivElement)
     // Drag handle is always visible for dragging the pane
-    expect(control_tab?.querySelector(`.drag-handle`)).toBeTruthy()
+    expect(control_tab?.querySelector(`.drag-handle`)).toBeInstanceOf(SVGSVGElement)
   })
 })

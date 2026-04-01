@@ -80,12 +80,12 @@ describe(`Structure`, () => {
 
     // Check that the controls toggle button exists and is clickable
     const controls_toggle = doc_query(`button.structure-controls-toggle`)
-    expect(controls_toggle).toBeTruthy()
+    expect(controls_toggle).toBeInstanceOf(HTMLElement)
 
     controls_toggle.click()
 
     // Check that the control pane is now visible by looking for control elements
-    expect(document.querySelector(`.controls-pane`)).toBeTruthy()
+    expect(document.querySelector(`.controls-pane`)).toBeInstanceOf(HTMLElement)
   })
 
   const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
@@ -110,14 +110,14 @@ describe(`Structure`, () => {
     const structure_controls_toggle = doc_query<HTMLButtonElement>(
       `button.structure-controls-toggle`,
     )
-    expect(structure_controls_toggle).toBeTruthy()
+    expect(structure_controls_toggle).toBeInstanceOf(HTMLElement)
     structure_controls_toggle.click()
 
     if (action === `Download`) {
       globalThis.URL.createObjectURL = vi.fn()
       const spy = vi.spyOn(document.body, `appendChild`)
       const download_btn = doc_query<HTMLButtonElement>(`button[title="Download ${format}"]`)
-      expect(download_btn, `download button for ${format}`).toBeTruthy()
+      expect(download_btn, `download button for ${format}`).toBeInstanceOf(HTMLElement)
 
       download_btn.click()
 
@@ -136,7 +136,7 @@ describe(`Structure`, () => {
       const copy_btn = doc_query<HTMLButtonElement>(
         `button[title="Copy ${format} to clipboard"]`,
       )
-      expect(copy_btn, `copy button for ${format}`).toBeTruthy()
+      expect(copy_btn, `copy button for ${format}`).toBeInstanceOf(HTMLElement)
 
       copy_btn.click()
       await tick()
@@ -163,7 +163,7 @@ describe(`Structure`, () => {
 
     // Find the wrapper element that was created by the component
     const wrapper = document.querySelector(`.structure`) as HTMLElement
-    expect(wrapper).toBeTruthy()
+    expect(wrapper).toBeInstanceOf(HTMLElement)
 
     // Mock wrapper element
     wrapper.requestFullscreen = requestFullscreenMock
@@ -172,7 +172,7 @@ describe(`Structure`, () => {
 
     // Click the fullscreen button
     const fullscreen_button = document.querySelector(`.fullscreen-toggle`) as HTMLButtonElement
-    expect(fullscreen_button).toBeTruthy()
+    expect(fullscreen_button).toBeInstanceOf(HTMLElement)
 
     fullscreen_button.click()
 
@@ -212,7 +212,7 @@ describe(`Structure`, () => {
     })
 
     const wrapper = document.querySelector(`.structure`) as HTMLElement
-    expect(wrapper).toBeTruthy()
+    expect(wrapper).toBeInstanceOf(HTMLElement)
 
     const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
     const drag_event = create_drop_event([file])
@@ -246,7 +246,7 @@ describe(`Structure`, () => {
     })
 
     const wrapper = document.querySelector(`.structure`) as HTMLElement
-    expect(wrapper).toBeTruthy()
+    expect(wrapper).toBeInstanceOf(HTMLElement)
 
     const file = new File([`test content`], `test.txt`, { type: `text/plain` })
     const drag_event = create_drop_event([file])
@@ -268,7 +268,7 @@ describe(`Structure`, () => {
     })
 
     const wrapper = document.querySelector(`.structure`) as HTMLElement
-    expect(wrapper).toBeTruthy()
+    expect(wrapper).toBeInstanceOf(HTMLElement)
 
     const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
     const drag_event = create_drop_event([file])
@@ -453,7 +453,7 @@ test.each([
     const projection_label = Array.from(document.querySelectorAll(`label`)).find((label) =>
       label.textContent?.includes(`Projection`),
     )
-    expect(projection_label).toBeTruthy()
+    expect(projection_label).toBeDefined()
 
     const projection_select = projection_label?.querySelector(`select`) as HTMLSelectElement
     expect(projection_select?.value).toBe(initial_projection)
@@ -466,7 +466,7 @@ test.each([
 
     // Test 2: Component renders correctly without errors
     const structure_component = document.querySelector(`.structure`)
-    expect(structure_component).toBeTruthy()
+    expect(structure_component).toBeInstanceOf(HTMLElement)
     expect(document.body.textContent).not.toContain(`No structure provided`)
 
     // Test 3: Toggle projection and verify change
@@ -857,7 +857,7 @@ describe(`Structure string parsing`, () => {
     await tick()
 
     const status_msg = document.querySelector(`.status-message.error`) as HTMLElement
-    expect(status_msg).toBeTruthy()
+    expect(status_msg).toBeInstanceOf(HTMLElement)
     expect(status_msg.getAttribute(`role`)).toBe(`alert`)
     expect(status_msg.textContent).toContain(`Failed to load structure`)
   })

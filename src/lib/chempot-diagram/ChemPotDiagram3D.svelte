@@ -6,6 +6,7 @@
   import type { PhaseData } from '$lib/convex-hull/types'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
   import {
     convex_hull_2d,
@@ -2742,7 +2743,7 @@
             >
               <span
                 class="domain-label"
-              >{@html get_hill_formula(domain.formula, false, ``)}</span>
+              >{@html sanitize_html(get_hill_formula(domain.formula, false, ``))}</span>
             </extras.HTML>
           {/each}
         {/if}
@@ -2782,7 +2783,7 @@
       style:left="{hover_info.pointer?.x ?? 4}px"
       style:top="{hover_info.pointer?.y ?? 4}px"
     >
-      <h4>{@html get_hill_formula(hover_info.formula, false, ``)}</h4>
+      <h4>{@html sanitize_html(get_hill_formula(hover_info.formula, false, ``))}</h4>
       {#if locked_hover_formula === hover_info.formula}
         <p>Pinned · Press Esc to unlock</p>
       {/if}

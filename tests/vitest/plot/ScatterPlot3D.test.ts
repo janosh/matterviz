@@ -76,7 +76,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       props: { series: [basic_series] },
     })
 
-    expect(container.querySelector(`.scatter-3d`)).toBeTruthy()
+    expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`mounts with empty series without throwing`, () => {
@@ -87,7 +87,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       })
     }).not.toThrow()
 
-    expect(container.querySelector(`.scatter-3d`)).toBeTruthy()
+    expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`mounts with all surface types`, () => {
@@ -99,7 +99,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       },
     })
 
-    expect(container.querySelector(`.scatter-3d`)).toBeTruthy()
+    expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`mounts with comprehensive configuration options`, () => {
@@ -128,7 +128,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       },
     })
 
-    expect(container.querySelector(`.scatter-3d`)).toBeTruthy()
+    expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`handles surface-only plot without series`, () => {
@@ -140,7 +140,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       },
     })
 
-    expect(container.querySelector(`.scatter-3d`)).toBeTruthy()
+    expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`handles mismatched array lengths in series gracefully`, () => {
@@ -157,7 +157,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
       })
     }).not.toThrow()
 
-    expect(container.querySelector(`.scatter-3d`)).toBeTruthy()
+    expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
   })
 })
 

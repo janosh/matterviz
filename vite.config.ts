@@ -35,7 +35,7 @@ export default defineConfig({
     ],
   },
   lint: {
-    plugins: [`oxc`, `typescript`, `unicorn`, `import`],
+    plugins: [`oxc`, `typescript`, `unicorn`, `import`, `vitest`],
     options: { typeAware: true, typeCheck: true },
     categories: { correctness: `error`, suspicious: `error`, perf: `error` },
     ignorePatterns: [
@@ -64,8 +64,18 @@ export default defineConfig({
       'eslint-plugin-unicorn/prefer-date-now': `error`,
       'eslint-plugin-unicorn/require-number-to-fixed-digits-argument': `error`,
       'eslint-plugin-unicorn/no-useless-promise-resolve-reject': `error`,
+      'eslint-plugin-unicorn/custom-error-definition': `error`,
       'eslint-plugin-import/no-duplicates': `error`,
       '@typescript-eslint/no-non-null-assertion': `error`,
+      '@typescript-eslint/prefer-string-starts-ends-with': `error`,
+      '@typescript-eslint/prefer-readonly': `error`,
+      '@typescript-eslint/prefer-regexp-exec': `error`,
+      '@typescript-eslint/prefer-find': `error`,
+      'no-useless-computed-key': `error`,
+      'eslint-plugin-vitest/prefer-strict-boolean-matchers': `error`,
+      'eslint-plugin-vitest/prefer-called-exactly-once-with': `error`,
+      'eslint-plugin-vitest/require-awaited-expect-poll': `error`,
+      'eslint-plugin-vitest/require-mock-type-parameters': `off`, // 242 violations, needs manual type annotations
 
       // Svelte framework patterns — NOT bugs
       'no-self-assign': `off`, // reactive `x = x`
@@ -96,25 +106,34 @@ export default defineConfig({
       'eslint-plugin-unicorn/require-module-specifiers': `off`,
       'oxc/no-map-spread': `off`,
       'oxc/approx-constant': `off`,
+      // Vitest default rules — too noisy for this codebase
+      'eslint-plugin-jest/no-conditional-expect': `off`, // conditional expects are pervasive
+      'eslint-plugin-jest/valid-expect': `off`, // false positives on custom matchers
+      'eslint-plugin-jest/expect-expect': `off`, // helper-based assertion patterns
+      'eslint-plugin-jest/require-to-throw-message': `off`,
+      'eslint-plugin-jest/no-standalone-expect': `off`, // expect in shared helpers
+      'eslint-plugin-jest/valid-describe-callback': `off`,
     },
   },
   plugins: [
     {
       // Handle .json.gz files by decompressing them on-the-fly during SSR/build.
-      // Skip ?raw imports — those are handled by vite-plugin-raw-text below.
+      // Skip ?raw (handled by vite-plugin-raw-text) and ?url (Vite built-in asset).
       name: `vite-plugin-json-gz`,
       enforce: `pre`,
       configResolved(config) {
         is_build = config.command === `build`
       },
       resolveId(source, importer) {
+        if (source.includes(`raw`) || source.includes(`url`)) return null
         const clean = strip_query(source)
-        if (!clean.endsWith(`.json.gz`) || source.includes(`raw`)) return null
+        if (!clean.endsWith(`.json.gz`)) return null
         return resolve_from_importer(clean, importer)
       },
       load(id) {
+        if (id.includes(`raw`) || id.includes(`url`)) return null
         const clean_id = strip_query(id)
-        if (!clean_id.endsWith(`.json.gz`) || id.includes(`raw`)) return null
+        if (!clean_id.endsWith(`.json.gz`)) return null
         try {
           const json_str = gunzipSync(readFileSync(clean_id)).toString(`utf-8`)
           JSON.parse(json_str) // validate before passing to bundler
@@ -134,6 +153,7 @@ export default defineConfig({
       name: `vite-plugin-raw-text`,
       enforce: `pre`,
       resolveId(source, importer) {
+        if (source.includes(`url`)) return null
         const clean = strip_query(source)
         const is_raw_gz = clean.endsWith(`.json.gz`) && source.includes(`raw`)
         if (!TEXT_EXT_RE.test(clean) && !is_raw_gz) return null
@@ -141,6 +161,7 @@ export default defineConfig({
         return abs + (source.includes(`?`) ? source.slice(source.indexOf(`?`)) : ``)
       },
       load(id) {
+        if (id.includes(`url`)) return null
         const clean_id = strip_query(id)
         const is_raw_gz = clean_id.endsWith(`.json.gz`) && id.includes(`raw`)
         if (!TEXT_EXT_RE.test(clean_id) && !is_raw_gz) return null

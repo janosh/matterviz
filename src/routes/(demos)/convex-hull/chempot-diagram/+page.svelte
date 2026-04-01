@@ -3,24 +3,21 @@
   import type { PhaseData } from '$lib/convex-hull'
   import { create_temp_ternary_entries_li_fe_o } from '$lib/convex-hull/demo-temperature'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import { decompress_data } from '$lib/io/decompress'
-  import li_fe_o_entries_url from '$site/chempot-diagram/li-fe-o-entries.json.gz?url'
-  import ytos_entries_url from '$site/chempot-diagram/ytos_entries.json.gz?url'
+  import li_fe_o_entries_data from '$site/chempot-diagram/li-fe-o-entries.json.gz'
+  import ytos_entries_data from '$site/chempot-diagram/ytos_entries.json.gz'
   import { onMount } from 'svelte'
 
-  const quaternary_files = (import.meta as unknown as {
-    glob: (
-      pattern: string,
-      options: { eager: false; query: string },
-    ) => Record<string, () => Promise<{ default: string }>>
-  }).glob(
+  // vite-plugin-json-gz decompresses each .json.gz at build time.
+  // Lazy chunks are code-split and loaded on demand.
+  // Do NOT use query:'?url' here: Rolldown doesn't emit .json.gz as assets for globs.
+  const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
     `$site/convex-hull/quaternaries/*.json.gz`,
-    { eager: false, query: `?url` },
+    { eager: false },
   )
 
   let all_entries = $state<PhaseData[]>([])
-  let li_fe_o_entries = $state<PhaseData[]>([])
-  let ytos_entries = $state<PhaseData[]>([])
+  const li_fe_o_entries = li_fe_o_entries_data as PhaseData[]
+  const ytos_entries = ytos_entries_data as PhaseData[]
   let temp_demo_temperature = $state<number | undefined>(700)
   let loading = $state(true)
   let error_msg = $state<string | null>(null)
@@ -42,28 +39,8 @@
 
   const temp_ternary_entries = create_temp_ternary_entries_li_fe_o()
 
-  async function load_phase_entries(url: string): Promise<PhaseData[]> {
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(
-        `Failed to load ${url}: ${response.status} ${response.statusText}`,
-      )
-    }
-    const content_encoding =
-      response.headers.get(`content-encoding`)?.toLowerCase() ?? ``
-    const parsed_data = content_encoding.includes(`gzip`)
-      ? await response.json()
-      : JSON.parse(await decompress_data(await response.arrayBuffer(), `gzip`))
-    return parsed_data as PhaseData[]
-  }
-
   onMount(async () => {
     try {
-      ;[li_fe_o_entries, ytos_entries] = await Promise.all([
-        load_phase_entries(li_fe_o_entries_url),
-        load_phase_entries(ytos_entries_url),
-      ])
-
       const li_co_ni_o_path = Object.keys(quaternary_files).find((path) =>
         path.includes(`Li-Co-Ni-O`)
       )
@@ -73,8 +50,7 @@
         return
       }
 
-      const loader = quaternary_files[li_co_ni_o_path]
-      all_entries = await load_phase_entries((await loader()).default)
+      all_entries = (await quaternary_files[li_co_ni_o_path]()).default
     } catch (error) {
       error_msg = `Failed to load data: ${
         error instanceof Error ? error.message : String(error)

@@ -2,6 +2,7 @@
   import { type D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
+  import { sanitize_html } from '$lib/sanitize'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
@@ -694,7 +695,7 @@
         style:left="{hover_info.pointer?.x ?? 4}px"
         style:top="{hover_info.pointer?.y ?? 4}px"
       >
-        <strong>{@html get_hill_formula(hover_info.formula, false, ``)}</strong>
+        <strong>{@html sanitize_html(get_hill_formula(hover_info.formula, false, ``))}</strong>
         {#if locked_hover_formula === hover_info.formula}
           <div>Pinned · Press Esc to unlock</div>
         {/if}
