@@ -10,7 +10,7 @@ describe(`BubbleChart component`, () => {
     })
 
     const svg = document.querySelector(`svg`)
-    expect(svg).toBeInstanceOf(Element)
+    expect(svg).toBeInstanceOf(SVGSVGElement)
     expect(svg?.getAttribute(`viewBox`)).toBe(`0 0 200 200`)
   })
 

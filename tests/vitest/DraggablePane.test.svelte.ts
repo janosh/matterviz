@@ -183,6 +183,6 @@ describe(`DraggablePane`, () => {
     const control_tab = document.querySelector(`.control-tab`)
     expect(control_tab).toBeInstanceOf(HTMLDivElement)
     // Drag handle is always visible for dragging the pane
-    expect(control_tab?.querySelector(`.drag-handle`)).toBeInstanceOf(Element)
+    expect(control_tab?.querySelector(`.drag-handle`)).toBeInstanceOf(SVGSVGElement)
   })
 })

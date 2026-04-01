@@ -127,7 +127,7 @@ describe(`Histogram`, () => {
     })
     await tick()
     expect(document.querySelector(`.histogram`)).toBeInstanceOf(HTMLElement)
-    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(Element)
+    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Mass (lbs)`)
   })
 

@@ -11,7 +11,7 @@ describe(`BarChart component`, () => {
     })
 
     const container = document.querySelector(`.bar-chart`)
-    expect(container).toBeInstanceOf(Element)
+    expect(container).toBeInstanceOf(SVGSVGElement)
     expect(container?.getAttribute(`viewBox`)).toContain(`0 0 300`)
   })
 
@@ -52,7 +52,7 @@ describe(`BarChart component`, () => {
 
     // Check that clip path exists for border radius
     const clip_path = document.querySelector(`clipPath`)
-    expect(clip_path).toBeInstanceOf(Element)
+    expect(clip_path).toBeInstanceOf(SVGClipPathElement)
 
     // Check that the clip path rect has the correct border radius
     const clip_rect = clip_path?.querySelector(`rect`) as SVGElement
@@ -77,7 +77,7 @@ describe(`BarChart component`, () => {
       target: document.body,
       props: { composition: { H: 2, O: 1 } },
     })
-    expect(doc_query(`.bar-chart`)).toBeInstanceOf(Element)
+    expect(doc_query(`.bar-chart`)).toBeInstanceOf(SVGSVGElement)
   })
 
   test(`renders bar segments correctly`, () => {
@@ -167,10 +167,10 @@ describe(`BarChart component`, () => {
     })
 
     // Should find element symbols
-    expect(document.querySelector(`.element-symbol`)).toBeInstanceOf(Element)
+    expect(document.querySelector(`.element-symbol`)).toBeInstanceOf(SVGTSpanElement)
 
     // Should find combined amount+percentage elements
-    expect(document.querySelector(`.amount`)).toBeInstanceOf(Element)
+    expect(document.querySelector(`.amount`)).toBeInstanceOf(SVGTSpanElement)
   })
 
   test(`handles custom bar dimensions`, () => {
@@ -185,7 +185,7 @@ describe(`BarChart component`, () => {
     })
 
     const container = document.querySelector(`.bar-chart`)
-    expect(container).toBeInstanceOf(Element)
+    expect(container).toBeInstanceOf(SVGSVGElement)
 
     // Check that CSS variables are set
     const style = container?.getAttribute(`style`)

@@ -90,7 +90,7 @@ describe(`BarPlot`, () => {
     })
     await tick()
     expect(document.querySelector(`.bar-plot`)).toBeInstanceOf(HTMLElement)
-    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(Element)
+    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
@@ -226,7 +226,7 @@ describe(`BarPlot`, () => {
     })
     await tick()
     const bar = document.querySelector(`path[role="button"]`)
-    expect(bar).toBeInstanceOf(Element)
+    expect(bar).toBeInstanceOf(SVGPathElement)
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
     const text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
@@ -330,7 +330,7 @@ describe(`BarPlot`, () => {
         await tick()
         const plot = document.querySelector(`.bar-plot`)
         expect(plot).toBeInstanceOf(HTMLElement)
-        expect(plot?.querySelector(`svg`)).toBeInstanceOf(Element)
+        expect(plot?.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
       },
     )
 

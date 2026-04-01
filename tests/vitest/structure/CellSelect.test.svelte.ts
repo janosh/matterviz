@@ -310,7 +310,11 @@ describe(`CellSelect`, () => {
         await tick()
 
         expect(scaling).toBe(expected_scaling)
-        expect(!!document.querySelector(`.dropdown`)).toBe(menu_stays_open)
+        if (menu_stays_open) {
+          expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
+        } else {
+          expect(document.querySelector(`.dropdown`)).toBeNull()
+        }
       },
     )
   })

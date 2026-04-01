@@ -63,7 +63,7 @@ describe(`ScatterPlot`, () => {
     })
     await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(Element)
+    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 

@@ -401,8 +401,8 @@ describe(`JsonTree`, () => {
       const btns = last_group.querySelectorAll(`button`)
       expect(btns.length).toBe(2)
       // Both should have SVG icons
-      expect(btns[0].querySelector(`svg`)).toBeInstanceOf(Element)
-      expect(btns[1].querySelector(`svg`)).toBeInstanceOf(Element)
+      expect(btns[0].querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
+      expect(btns[1].querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
       expect(btns[0].getAttribute(`title`)).toBe(`Copy JSON to clipboard`)
       expect(btns[1].getAttribute(`title`)).toBe(`Download as JSON file`)
     })

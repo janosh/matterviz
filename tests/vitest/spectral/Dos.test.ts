@@ -200,7 +200,7 @@ describe(`Dos component`, () => {
     // With 2 DOS entries: spin-up uses colors 0,1 and spin-down uses colors 1,3
     expect(unique_colors.size).toBeGreaterThanOrEqual(2)
     // Verify all paths have valid fill colors (not null/empty)
-    fill_colors.forEach((color) => expect(color).not.toBeNull())
+    fill_colors.forEach((color) => expect(color).toBe(true))
   })
 })
 
