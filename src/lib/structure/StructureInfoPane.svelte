@@ -11,6 +11,7 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { sanitize_html } from '$lib/sanitize'
   import { SvelteSet } from 'svelte/reactivity'
 
   let {
@@ -341,8 +342,8 @@
         {@const { key, label, value, tooltip } = item}
         {#if section.title === `Usage Tips`}
           <div class="tips-item">
-            <span>{@html label}</span>
-            <span>{@html value}</span>
+            <span>{@html sanitize_html(label)}</span>
+            <span>{@html sanitize_html(value)}</span>
           </div>
         {:else}
           <div
@@ -360,8 +361,8 @@
               }
             }}
           >
-            <span>{@html label}</span>
-            <span title={tooltip}>{@html value}</span>
+            <span>{@html sanitize_html(label)}</span>
+            <span title={tooltip}>{@html sanitize_html(value)}</span>
             {#if key !== `sites-toggle` && key && copied_items.has(key)}
               <Icon
                 icon="Check"

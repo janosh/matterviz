@@ -116,7 +116,7 @@ describe(`values and colors`, () => {
     const cells = get_data_cells()
     // All cells should have a background color
     for (const cell of cells) {
-      expect(cell.style.backgroundColor).toBeTruthy()
+      expect(cell.style.backgroundColor).not.toBe(``)
     }
     // Same values (0) should produce same color, different values should differ
     expect(cells[0].style.backgroundColor).toBe(cells[5].style.backgroundColor) // both value 0
@@ -195,7 +195,7 @@ describe(`values and colors`, () => {
       },
     })
     const cell = doc_query(`.cell:not(.empty)`) as HTMLElement
-    expect(cell.style.backgroundColor).toBeTruthy()
+    expect(cell.style.backgroundColor).not.toBe(``)
     expect(cell.style.backgroundColor).not.toBe(`transparent`)
   })
 

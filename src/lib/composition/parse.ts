@@ -236,7 +236,7 @@ const parse_oxidation_state = (oxidation_str: string): number => {
     return oxidation_str === `+` ? 1 : -1
   }
   // Handle formats like "2+", "+2", "2-", "-2"
-  const ox_match = oxidation_str.match(/([+-]?)(\d+)([+-]?)/)
+  const ox_match = /([+-]?)(\d+)([+-]?)/.exec(oxidation_str)
   if (!ox_match) return 0
 
   const [, sign_before, number, sign_after] = ox_match

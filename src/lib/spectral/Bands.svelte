@@ -2,6 +2,7 @@
   import { PLOT_COLORS } from '$lib/colors'
   import EmptyState from '$lib/EmptyState.svelte'
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
@@ -751,7 +752,7 @@
     } = (metadata ?? {}) as Partial<helpers.BandPointMeta>}
       {@const num_structs = Object.keys(band_structs_dict).length}
       {#if num_structs > 1 && label}<strong>{label}</strong><br />{/if}
-      {@html y_label || `Value`}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
+      {@html sanitize_html(y_label || `Value`)}: {y_formatted}{y_unit ? ` ${y_unit}` : ``}<br />
       {#if path}Path: {path}<br />{/if}
       {#if typeof band_idx === `number`}
         Band: {band_idx + 1}{#if typeof nb_bands === `number`}&thinsp;/&thinsp;{

@@ -175,7 +175,7 @@
     tooltip_element = element
     const target = event.currentTarget as HTMLElement
     const rect = target.getBoundingClientRect()
-    const container_rect = target.closest(`.periodic-table`)?.getBoundingClientRect()
+    const container_rect = target.closest(`.ptable-grid`)?.getBoundingClientRect()
     if (container_rect) {
       tooltip_pos = {
         x: rect.left - container_rect.left + rect.width / 2,
@@ -248,7 +248,7 @@
     (
       value: number | number[] | string | string[] | false,
       element?: ChemicalElement,
-    ): (string | null)[] => {
+    ) => {
       if (!Array.isArray(value)) return []
 
       return value.map((v) => {
@@ -293,8 +293,8 @@
 
 <svelte:window bind:innerWidth={window_width} onkeydown={handle_key} />
 
-<div {...rest} class="periodic-table-container {rest.class ?? ``}">
-  <div class="periodic-table" style:gap>
+<div {...rest} class="periodic-table {rest.class ?? ``}">
+  <div class="ptable-grid" style:gap>
     {#if should_show_color_bar}
       <TableInset class="auto-colorbar-inset">
         <ColorBar
@@ -407,11 +407,12 @@
 </div>
 
 <style>
-  .periodic-table-container {
+  .periodic-table {
     /* needed for gap: 0.3cqw; to work */
     container-type: inline-size;
+    width: 100%; /* prevent collapse in shrink-to-fit contexts (inline-size containment) */
   }
-  div.periodic-table {
+  .ptable-grid {
     display: grid;
     grid-template-columns: repeat(18, 1fr);
     position: relative;
@@ -419,13 +420,13 @@
     gap: var(--ptable-gap, 0.3cqw);
   }
   /* Auto-generated color bar inset with fluid responsive sizing using container query units */
-  div.periodic-table :global(.auto-colorbar-inset) {
+  .ptable-grid :global(.auto-colorbar-inset) {
     place-items: center;
     padding: clamp(0.3em, 1.5cqw, 1em) clamp(0.4em, 3cqw, 2em);
     --cbar-font-size: clamp(7pt, 1.8cqw, 9pt);
     --cbar-thickness: clamp(8px, 2.5cqw, 14px);
   }
-  div.periodic-table :global(.auto-colorbar-inset .colorbar) {
+  .ptable-grid :global(.auto-colorbar-inset .colorbar) {
     width: 90%;
   }
   div.spacer {

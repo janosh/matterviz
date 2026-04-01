@@ -46,13 +46,13 @@ describe(`SymmetryStats`, () => {
       const container = doc_query(`.symmetry-stats`)
       const no_data_div = container.querySelector(`.no-data`)
 
-      expect(no_data_div).toBeTruthy()
+      expect(no_data_div).toBeInstanceOf(HTMLElement)
       expect(no_data_div?.textContent).toContain(`No symmetry data available`)
 
       // Controls should still be visible so users can adjust settings
-      expect(container.querySelector(`.controls`)).toBeTruthy()
+      expect(container.querySelector(`.controls`)).toBeInstanceOf(HTMLElement)
       // Stats-grid should not be rendered without data
-      expect(container.querySelector(`.stats-grid`)).toBeFalsy()
+      expect(container.querySelector(`.stats-grid`)).toBeNull()
     },
   )
 

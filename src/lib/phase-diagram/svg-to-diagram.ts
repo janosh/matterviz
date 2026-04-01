@@ -825,7 +825,7 @@ function infer_mpds_components(doc: Document): [string, string] {
 
 // Parse stroke-width from style attribute or direct attribute (returns 0 if not found)
 function parse_stroke_width(el: Element): number {
-  const style_match = (el.getAttribute(`style`) ?? ``).match(/stroke-width:\s*([\d.]+)/)
+  const style_match = /stroke-width:\s*([\d.]+)/.exec(el.getAttribute(`style`) ?? ``)
   if (style_match) return parseFloat(style_match[1])
   const attr = el.getAttribute(`stroke-width`)
   return attr ? parseFloat(attr) || 0 : 0
@@ -980,8 +980,8 @@ function parse_ml_path(d: string): { x1: number; y1: number; x2: number; y2: num
 // Parse translate(x, y) or translate(x) from a transform attribute
 // Single-arg translate uses implicit y=0 per SVG spec
 function parse_translate(el: Element | null): [number, number] | null {
-  const match = (el?.getAttribute(`transform`) ?? ``).match(
-    /translate\(\s*([\d.eE+-]+)(?:\s*[,\s]\s*([\d.eE+-]+))?\s*\)/,
+  const match = /translate\(\s*([\d.eE+-]+)(?:\s*[,\s]\s*([\d.eE+-]+))?\s*\)/.exec(
+    el?.getAttribute(`transform`) ?? ``,
   )
   if (!match) return null
   return [parseFloat(match[1]), match[2] ? parseFloat(match[2]) : 0]

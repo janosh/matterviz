@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
+  import { sanitize_html } from '$lib/sanitize'
   import type { Label } from '$lib/table'
   import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import { slide } from 'svelte/transition'
@@ -147,7 +148,7 @@
       disabled={col.disabled}
       onchange={(event) => toggle_column_visibility(col, event)}
     />
-    {@html col.label}
+    {@html sanitize_html(col.label)}
   </label>
 {/snippet}
 

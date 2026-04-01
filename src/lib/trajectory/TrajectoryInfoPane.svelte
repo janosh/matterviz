@@ -2,6 +2,7 @@
   import type { InfoItem } from '$lib/layout'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
@@ -335,8 +336,8 @@
             }
           }}
         >
-          <span>{@html label}</span>
-          <span title={tooltip} {@attach create_tooltip()}>{@html value}</span>
+          <span>{@html sanitize_html(label)}</span>
+          <span title={tooltip} {@attach create_tooltip()}>{@html sanitize_html(value)}</span>
           {#if copied_items.has(key ?? label)}
             <Icon
               icon="Check"

@@ -74,7 +74,7 @@ describe(`PhaseDiagramExportPane`, () => {
     })
 
     const download_btn = get_button(`Download SVG`)
-    expect(download_btn).toBeTruthy()
+    expect(download_btn).toBeInstanceOf(HTMLButtonElement)
 
     download_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
@@ -92,7 +92,7 @@ describe(`PhaseDiagramExportPane`, () => {
     })
 
     const download_btn = get_button(`PNG`)
-    expect(download_btn).toBeTruthy()
+    expect(download_btn).toBeInstanceOf(HTMLButtonElement)
 
     download_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
@@ -124,7 +124,7 @@ describe(`PhaseDiagramExportPane`, () => {
       })
 
       const copy_btn = get_button(copy_title)
-      expect(copy_btn).toBeTruthy()
+      expect(copy_btn).toBeInstanceOf(HTMLButtonElement)
       copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
       await vi.waitFor(() => {
@@ -132,7 +132,7 @@ describe(`PhaseDiagramExportPane`, () => {
       })
 
       vi.advanceTimersByTime(1500)
-      expect(copy_btn).toBeTruthy()
+      expect(copy_btn).toBeInstanceOf(HTMLButtonElement)
       vi.useRealTimers()
     },
   )

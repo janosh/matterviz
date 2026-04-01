@@ -1827,17 +1827,8 @@ test.describe(`Structure Event Handler Tests`, () => {
   })
 
   test(`should handle camera projection toggle correctly`, async ({ page }) => {
-    // Open the structure controls pane to access camera controls
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await test_page_controls_checkbox.check()
+    const { pane_div } = await open_structure_control_pane(page)
 
-    // Wait for controls pane to open
-    const pane_div = page.locator(`#test-structure .controls-pane`)
-    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
-
-    // Find the camera projection select dropdown
     const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
     await expect(camera_projection_select).toBeVisible()
 
@@ -1979,15 +1970,11 @@ test.describe(`Camera Projection Toggle Tests`, () => {
 
   // Helper for camera projection toggle tests
   async function test_camera_projection_toggle(page: Page, initial: string, target: string) {
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await test_page_controls_checkbox.check()
-
-    const pane_div = page.locator(`#test-structure .controls-pane`)
-    await expect(pane_div).toBeVisible({ timeout: 2000 })
+    const { pane_div } = await open_structure_control_pane(page)
 
     const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
+    await expect(camera_projection_select).toBeVisible()
+    await camera_projection_select.scrollIntoViewIfNeeded()
 
     if (initial !== DEFAULTS.structure.camera_projection) {
       // Set initial state if not default
@@ -2015,21 +2002,17 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection behavior and visual differences`, async ({ page }) => {
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await test_page_controls_checkbox.check()
-
-    const pane_div = page.locator(`#test-structure .controls-pane`)
-    await expect(pane_div).toBeVisible({ timeout: 2000 })
-
-    const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
     const canvas = page.locator(`#test-structure canvas`)
 
     // Test both projections produce different visuals and respond to zoom
     const screenshots: Record<string, Buffer> = {}
 
     for (const projection of [`perspective`, `orthographic`]) {
+      // Re-open the controls pane each iteration (canvas.click closes it via click-outside)
+      const { pane_div } = await open_structure_control_pane(page)
+      const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
+      await expect(camera_projection_select).toBeVisible()
+      await camera_projection_select.scrollIntoViewIfNeeded()
       await camera_projection_select.selectOption(projection)
       await expect(camera_projection_select).toHaveValue(projection)
       // Let camera/projection updates settle before visual assertions.
@@ -2057,13 +2040,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection settings integration and persistence`, async ({ page }) => {
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await test_page_controls_checkbox.check()
-
-    const pane_div = page.locator(`#test-structure .controls-pane`)
-    await expect(pane_div).toBeVisible({ timeout: 2000 })
+    const { pane_div } = await open_structure_control_pane(page)
 
     const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
     const atom_radius_input = pane_div.locator(`label:has-text("Radius") input[type="number"]`)
@@ -2081,6 +2058,9 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await expect(camera_projection_select).toHaveValue(`orthographic`)
 
     // Test 2: State persistence across pane close/open
+    const test_page_controls_checkbox = page.locator(
+      `label:has-text("Controls Open") input[type="checkbox"]`,
+    )
     await test_page_controls_checkbox.uncheck()
     await expect(pane_div).not.toHaveClass(/pane-open/)
     // Note: camera-projection-status doesn't update because scene_props binding is one-directional
@@ -2093,13 +2073,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection UI accessibility and interactions`, async ({ page }) => {
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await test_page_controls_checkbox.check()
-
-    const pane_div = page.locator(`#test-structure .controls-pane`)
-    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
+    const { pane_div } = await open_structure_control_pane(page)
 
     // Test 1: UI controls accessibility and options
     const projection_select = pane_div.locator(`label:has-text("Projection") select`)
@@ -2113,12 +2087,8 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     const canvas_box = await canvas.boundingBox()
 
     for (const projection of [`perspective`, `orthographic`]) {
-      // Re-open pane if it was closed by canvas interactions
-      const has_pane_open = await pane_div.evaluate((el) => el.classList.contains(`pane-open`))
-      if (!has_pane_open) {
-        await test_page_controls_checkbox.check()
-        await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
-      }
+      // Re-open pane each iteration (canvas.click closes it via click-outside)
+      await open_structure_control_pane(page)
       await expect(projection_select).toBeVisible({ timeout: 2000 })
       await projection_select.selectOption(projection)
 
@@ -2142,13 +2112,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
   })
 
   test(`camera projection controls integration and functionality`, async ({ page }) => {
-    const test_page_controls_checkbox = page.locator(
-      `label:has-text("Controls Open") input[type="checkbox"]`,
-    )
-    await test_page_controls_checkbox.check()
-
-    const pane_div = page.locator(`#test-structure .controls-pane`)
-    await expect(pane_div).toHaveClass(/pane-open/, { timeout: 2000 })
+    const { pane_div } = await open_structure_control_pane(page)
 
     const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
     const auto_rotate_input = pane_div.locator(

@@ -6,7 +6,7 @@ import { doc_query } from './setup'
 describe(`StatusMessage`, () => {
   test.each([``, undefined])(`renders nothing when message is $message`, (message) => {
     mount(StatusMessage, { target: document.body, props: { message } })
-    expect(document.querySelector(`.status-message`)).toBeFalsy()
+    expect(document.querySelector(`.status-message`)).toBeNull()
   })
 
   test.each([
@@ -34,7 +34,7 @@ describe(`StatusMessage`, () => {
       target: document.body,
       props: { message: `Test message`, dismissible: false },
     })
-    expect(document.querySelector(`.status-message button`)).toBeFalsy()
+    expect(document.querySelector(`.status-message button`)).toBeNull()
 
     document.body.innerHTML = ``
     mount(StatusMessage, {
@@ -48,7 +48,7 @@ describe(`StatusMessage`, () => {
 
     button.click()
     flushSync()
-    expect(document.querySelector(`.status-message`)).toBeFalsy()
+    expect(document.querySelector(`.status-message`)).toBeNull()
   })
 
   test(`passes through custom HTML attributes and styles`, () => {

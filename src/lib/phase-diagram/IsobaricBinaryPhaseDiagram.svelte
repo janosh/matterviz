@@ -5,6 +5,7 @@
     set_fullscreen_bg,
     setup_fullscreen_effect,
   } from '$lib/layout'
+  import { sanitize_svg } from '$lib/sanitize'
   import { compute_bounding_box_2d, polygon_centroid, type Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
   import { constrain_tooltip_position } from '$lib/plot/layout'
@@ -704,7 +705,7 @@
                   font-weight="500"
                   class="region-label"
                 >
-                  {@html format_label_svg(line, use_subscripts)}
+                  {@html sanitize_svg(format_label_svg(line, use_subscripts))}
                 </text>
               {/each}
             </g>
@@ -822,11 +823,11 @@
           font-size={merged_config.font_size + 2}
         >
           {#if x_axis.label}
-            {@html x_axis.label}
+            {@html sanitize_svg(x_axis.label)}
           {:else if effective_data?.x_axis_label}
-            {@html effective_data.x_axis_label}
+            {@html sanitize_svg(effective_data.x_axis_label)}
           {:else}
-            {@html default_x_axis_label}
+            {@html sanitize_svg(default_x_axis_label)}
           {/if}
         </text>
       </g>
@@ -865,9 +866,9 @@
           font-size={merged_config.font_size + 2}
         >
           {#if y_axis.label}
-            {@html y_axis.label}
+            {@html sanitize_svg(y_axis.label)}
           {:else if effective_data?.y_axis_label}
-            {@html effective_data.y_axis_label}
+            {@html sanitize_svg(effective_data.y_axis_label)}
           {:else}
             Temperature ({temp_unit})
           {/if}
@@ -884,7 +885,7 @@
           font-size={merged_config.font_size + 2}
           font-weight="bold"
         >
-          {@html component_a_svg}
+          {@html sanitize_svg(component_a_svg)}
         </text>
         <text
           x={right}
@@ -894,7 +895,7 @@
           font-size={merged_config.font_size + 2}
           font-weight="bold"
         >
-          {@html component_b_svg}
+          {@html sanitize_svg(component_b_svg)}
         </text>
       {/if}
     </svg>

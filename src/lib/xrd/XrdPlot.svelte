@@ -9,6 +9,7 @@
     handle_url_drop,
   } from '$lib/io'
   import { format_value } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import type { Vec2 } from '$lib/math'
   import type {
@@ -452,7 +453,7 @@
       {#snippet tooltip(info: ScatterHandlerProps)}
         {@const angle_text = `${format_value(info.x, `.2f`)}°`}
         {@const intensity_text = `${format_value(info.y, `.1f`)}`}
-        {@html info.label ?? ``}<br />
+        {@html sanitize_html(info.label ?? ``)}<br />
         2θ: {angle_text}<br />
         Intensity: {intensity_text}
       {/snippet}
@@ -499,7 +500,7 @@
       ? hkls.map((hkl: Hkl) => format_hkl(hkl, hkl_format)).join(`, `)
       : ``}
         {@const d_text = d != null ? `${format_value(d, `.3f`)} Å` : ``}
-        {@html info.metadata?.label ?? ``}<br />
+        {@html sanitize_html(info.metadata?.label ?? ``)}<br />
         2θ: {angle_text}<br />
         Intensity: {intensity_text}
         {#if hkl_text}<br />hkl: {hkl_text}{/if}

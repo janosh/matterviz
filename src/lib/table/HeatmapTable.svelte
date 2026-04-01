@@ -20,6 +20,7 @@
     SpecialCells,
   } from '$lib/table'
   import { calc_cell_color, strip_html } from '$lib/table'
+  import { sanitize_html } from '$lib/sanitize'
   import { normalize_unicode_minus } from '$lib/utils'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -950,7 +951,7 @@
                   checked={!hidden_columns.includes(col_id)}
                   onchange={() => toggle_column(col_id)}
                 />
-                {@html col.label}
+                {@html sanitize_html(col.label)}
               </label>
             {/each}
           </div>
@@ -1087,7 +1088,7 @@
           {#each colored_columns as col (get_col_id(col))}
             {@const col_id = get_col_id(col)}
             <div class="col-color-row">
-              <span class="col-color-label">{@html col.label}</span>
+              <span class="col-color-label">{@html sanitize_html(col.label)}</span>
               <select
                 value={color_scale_overrides.get(col_id) ?? col.color_scale ??
                 `interpolateViridis`}
@@ -1159,7 +1160,7 @@
                 c.group === col.group && c.label === col.label
               )}
                   <th title={col.description} colspan={group_cols.length}>
-                    {@html col.group}
+                    {@html sanitize_html(col.group)}
                   </th>
                 {/if}
               {/if}
@@ -1255,9 +1256,9 @@
               {#if header_cell}
                 {@render header_cell({ col })}
               {:else}
-                {@html col.label}
+                {@html sanitize_html(col.label)}
               {/if}
-              {@html sort_indicator(col, sort_state)}
+              {@html sanitize_html(sort_indicator(col, sort_state))}
               <!-- Column resize handle -->
               <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
               <span
@@ -1342,7 +1343,7 @@
                     n/a
                   </span>
                 {:else}
-                  {@html val}
+                  {@html sanitize_html(val)}
                 {/if}
               </td>
             {/each}

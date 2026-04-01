@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -17,7 +18,7 @@
     {@render error_snippet({ error_msg, on_dismiss })}
   {:else if error_msg.startsWith(`<`)}
     <!-- Render HTML content for unsupported format messages -->
-    {@html error_msg}
+    {@html sanitize_html(error_msg)}
     <button onclick={on_dismiss}>Dismiss</button>
   {:else}
     <h3>Error</h3>

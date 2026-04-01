@@ -255,7 +255,7 @@ describe(`ConvexHullStats`, () => {
     mount_stats({
       stable_entries: [mock_entry({ e_form_per_atom: undefined, energy_per_atom: undefined })],
     })
-    expect(doc_query(`.convex-hull-stats`)).toBeTruthy()
+    expect(doc_query(`.convex-hull-stats`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`stat items have accessibility attributes and copy hint`, () => {
@@ -316,7 +316,7 @@ describe(`ConvexHullStats`, () => {
     test(`view toggle switches between stats and table, round-trips correctly`, () => {
       mount_stats({ stable_entries: stable, unstable_entries: unstable })
       // Stats is default
-      expect(document.querySelector(`.stat-item`)).not.toBeNull()
+      expect(document.querySelector(`.stat-item`)).toBeInstanceOf(HTMLElement)
       expect(document.querySelector(`.table-container`)).toBeNull()
       const [stats_btn, table_btn] = Array.from(
         document.querySelectorAll(`.view-toggle button`),
@@ -327,14 +327,14 @@ describe(`ConvexHullStats`, () => {
       table_btn.click()
       flushSync()
       expect(document.querySelector(`.stat-item`)).toBeNull()
-      expect(document.querySelector(`.table-container`)).not.toBeNull()
+      expect(document.querySelector(`.table-container`)).toBeInstanceOf(HTMLElement)
       expect(table_btn.classList.contains(`active`)).toBe(true)
       expect(stats_btn.classList.contains(`active`)).toBe(false)
 
       // Switch back to stats
       stats_btn.click()
       flushSync()
-      expect(document.querySelector(`.stat-item`)).not.toBeNull()
+      expect(document.querySelector(`.stat-item`)).toBeInstanceOf(HTMLElement)
       expect(document.querySelector(`.table-container`)).toBeNull()
     })
 
@@ -559,7 +559,7 @@ describe(`ConvexHullStats`, () => {
       switch_to_table()
 
       const first_row = document.querySelector(`tbody tr`) as HTMLElement
-      expect(first_row).not.toBeNull()
+      expect(first_row).toBeInstanceOf(HTMLElement)
       first_row.click()
       flushSync()
       expect(clicked).toHaveLength(1)
@@ -569,7 +569,7 @@ describe(`ConvexHullStats`, () => {
     test(`shows entry count in filter bar`, () => {
       mount_stats_table({ stable_entries: stable, unstable_entries: unstable })
       const count_el = document.querySelector(`.filter-count`)
-      expect(count_el).not.toBeNull()
+      expect(count_el).toBeInstanceOf(HTMLElement)
       expect(count_el?.textContent?.trim()).toBe(`4 entries`)
     })
   })
@@ -582,9 +582,9 @@ describe(`ConvexHullStats`, () => {
         layout: `side-by-side`,
       })
       // Both should be visible at once (no toggle)
-      expect(document.querySelector(`.stat-item`)).not.toBeNull()
-      expect(document.querySelector(`.table-container`)).not.toBeNull()
-      expect(document.querySelector(`.side-by-side`)).not.toBeNull()
+      expect(document.querySelector(`.stat-item`)).toBeInstanceOf(HTMLElement)
+      expect(document.querySelector(`.table-container`)).toBeInstanceOf(HTMLElement)
+      expect(document.querySelector(`.side-by-side`)).toBeInstanceOf(HTMLElement)
       // No toggle buttons in side-by-side
       expect(document.querySelector(`.view-toggle`)).toBeNull()
     })
@@ -617,7 +617,7 @@ describe(`ConvexHullStats`, () => {
 
       mount_stats({ stable_entries: [ternary, binary] })
       switch_to_table()
-      expect(get_table_filter_select(`Min N`)).not.toBeNull()
+      expect(get_table_filter_select(`Min N`)).toBeInstanceOf(HTMLElement)
 
       document.body.innerHTML = ``
       mount_stats({ stable_entries: [binary] })
@@ -625,7 +625,7 @@ describe(`ConvexHullStats`, () => {
       // With only binary entries, max_n_el ≤ 2 so no min N_el filter shown
       expect(get_table_filter_select(`Min N`)).toBeNull()
       // Export controls should still be available without filters
-      expect(document.querySelector(`.export-actions .icon-btn`)).not.toBeNull()
+      expect(document.querySelector(`.export-actions .icon-btn`)).toBeInstanceOf(HTMLElement)
     })
   })
 
@@ -837,7 +837,7 @@ describe(`ConvexHullStats`, () => {
       expect(received_entries[0].entry_id).toBe(`mp-123`)
 
       const link = document.querySelector(`td a[href]`) as HTMLAnchorElement
-      expect(link).not.toBeNull()
+      expect(link).toBeInstanceOf(HTMLElement)
       expect(link.getAttribute(`href`)).toBe(`/materials/mp-123`)
       expect(link.textContent).toBe(`mp-123`)
       expect(link.getAttribute(`target`)).toBe(`_blank`)
@@ -869,7 +869,7 @@ describe(`ConvexHullStats`, () => {
       expect(document.querySelector(`td img`)).toBeNull()
       // The link should still be rendered (escaping doesn't break the <a> tag)
       const link = document.querySelector(`td a[href]`) as HTMLAnchorElement
-      expect(link).not.toBeNull()
+      expect(link).toBeInstanceOf(HTMLElement)
       expect(link.getAttribute(`href`)).toBe(`/materials/test`)
     })
 
@@ -923,7 +923,7 @@ describe(`ConvexHullStats`, () => {
         ],
       })
       switch_to_table()
-      expect(document.querySelector(`.table-filters`)).not.toBeNull()
+      expect(document.querySelector(`.table-filters`)).toBeInstanceOf(HTMLElement)
       expect(document.body.textContent).not.toContain(`Polymorphs`)
     })
 
@@ -931,7 +931,7 @@ describe(`ConvexHullStats`, () => {
       mount_stats_table({ stable_entries: polymorph_entries })
 
       const poly_select = get_polymorph_select()
-      expect(poly_select).not.toBeNull()
+      expect(poly_select).toBeInstanceOf(HTMLElement)
       if (!poly_select) return
 
       const options = Array.from(poly_select.options).map((opt) => opt.textContent?.trim())
@@ -946,7 +946,7 @@ describe(`ConvexHullStats`, () => {
       mount_stats_table({ stable_entries: polymorph_entries })
 
       const poly_select = get_polymorph_select()
-      expect(poly_select).not.toBeNull()
+      expect(poly_select).toBeInstanceOf(HTMLElement)
       if (!poly_select) return
 
       const first_polymorph_option = Array.from(poly_select.options).find(

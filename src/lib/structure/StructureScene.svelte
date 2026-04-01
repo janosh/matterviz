@@ -16,6 +16,7 @@
     VectorLayerConfig,
   } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
+  import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure, BondPair, MeasureMode, Site } from '$lib/structure'
   import {
@@ -959,11 +960,11 @@
           {#if site.species.length === 1}
             {site.species[0].element}{#if show_site_indices}-{site_idx + 1}{/if}
           {:else}
-            {@html site.species.map((spec) =>
+            {@html sanitize_html(site.species.map((spec) =>
         `${spec.element}<sub>${
           format_num(spec.occu, `.3~`).replace(`0.`, `.`)
         }</sub>`
-      ).join(``)}{#if show_site_indices}-{
+      ).join(``))}{#if show_site_indices}-{
                 site_idx + 1
               }{/if}
           {/if}
@@ -1325,7 +1326,7 @@
               {#if occu !== 1}<span class="occupancy">{
                   format_num(occu, `.3~f`)
                 }</span>{/if}
-              <strong>{element}{@html oxi_str}</strong>
+              <strong>{element}{@html sanitize_html(oxi_str)}</strong>
               {#if element_name}<span class="elem-name">{element_name}</span>{/if}
             {/each}
           </div>

@@ -42,7 +42,7 @@ describe(`SettingsSection`, () => {
     })
 
     const reset_button = document.querySelector(`.reset-button`)
-    expect(reset_button).toBeFalsy()
+    expect(reset_button).toBeNull()
   })
 
   test(`handles array comparison correctly`, () => {
@@ -57,7 +57,7 @@ describe(`SettingsSection`, () => {
     })
 
     const reset_button = document.querySelector(`.reset-button`)
-    expect(reset_button).toBeFalsy() // No changes initially
+    expect(reset_button).toBeNull() // No changes initially
   })
 
   test(`handles nested object arrays correctly`, () => {
@@ -72,7 +72,7 @@ describe(`SettingsSection`, () => {
     })
 
     const reset_button = document.querySelector(`.reset-button`)
-    expect(reset_button).toBeFalsy() // No changes initially
+    expect(reset_button).toBeNull() // No changes initially
   })
 
   test(`handles undefined/null comparisons correctly`, () => {
@@ -87,7 +87,7 @@ describe(`SettingsSection`, () => {
     })
 
     const reset_button = document.querySelector(`.reset-button`)
-    expect(reset_button).toBeFalsy() // No changes detected
+    expect(reset_button).toBeNull() // No changes detected
   })
 
   test(`handles empty arrays correctly`, () => {
@@ -102,6 +102,6 @@ describe(`SettingsSection`, () => {
     })
 
     const reset_button = document.querySelector(`.reset-button`)
-    expect(reset_button).toBeFalsy() // No changes initially
+    expect(reset_button).toBeNull() // No changes initially
   })
 })

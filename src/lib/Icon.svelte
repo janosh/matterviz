@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SVGAttributes } from 'svelte/elements'
   import { ICON_DATA, type IconName } from './icons'
+  import { sanitize_icon_svg } from './sanitize'
 
   type IconData = { path: string; viewBox: string; stroke?: string }
   let { icon, path, viewBox = `0 0 24 24`, stroke, ...rest }:
@@ -24,7 +25,7 @@
   {...rest}
 >
   {#if data.path.trim().startsWith(`<`)}
-    {@html data.path}
+    {@html sanitize_icon_svg(data.path)}
   {:else}
     <path d={data.path} />
   {/if}

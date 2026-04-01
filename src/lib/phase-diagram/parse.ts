@@ -214,7 +214,7 @@ const LINE_PARSERS: LineParser[] = [
     prefix: `PARAMETER `,
     pattern: /PARAMETER\s+(\w+)\(([^)]+)\)\s+(.+?)!/i,
     handler: (match, data) => {
-      const spec_match = match[2].match(/([^,]+),([^;]+);(\d+)/)
+      const spec_match = /([^,]+),([^;]+);(\d+)/.exec(match[2])
       if (spec_match) {
         data.parameters.push({
           type: match[1],
@@ -234,7 +234,7 @@ function parse_temperature_ranges(body: string): { min: number; max: number; exp
   for (const segment of body.split(/;\s*/)) {
     const trimmed = segment.trim()
     if (!trimmed) continue
-    const temp_match = trimmed.match(/^([\d.E+-]+)\s+(.+)/i)
+    const temp_match = /^([\d.E+-]+)\s+(.+)/i.exec(trimmed)
     if (temp_match) {
       const next_temp = parseFloat(temp_match[1])
       const expr = temp_match[2].replace(/\s+[YN]\s*$/, ``).trim()
@@ -255,7 +255,7 @@ function parse_tdb_line(line: string, data: TdbData): void {
       if (match) parser.handler(match, data)
       else if (parser.prefix === `ELEMENT `) {
         // Fallback for simpler ELEMENT format: ELEMENT AL FCC_A1!
-        const simple_match = line.match(/ELEMENT\s+(\S+)\s+(\S+)/i)
+        const simple_match = /ELEMENT\s+(\S+)\s+(\S+)/i.exec(line)
         if (simple_match) {
           data.elements.push({
             symbol: simple_match[1].toUpperCase(),

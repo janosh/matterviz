@@ -103,7 +103,7 @@ describe(`AtomLegend Component`, () => {
       expect(labels[0].textContent?.trim()).toBe(expected_text)
       // Test accessibility - label contains input
       const input = labels[0].querySelector(`input[type="color"]`)
-      expect(input).not.toBeNull()
+      expect(input).toBeInstanceOf(HTMLElement)
       expect(labels[0].contains(input)).toBe(true)
     }
   })
@@ -207,7 +207,7 @@ describe(`AtomLegend Component`, () => {
       })
 
       const mode_toggle = doc_query(`button.mode-toggle`)
-      expect(mode_toggle).toBeTruthy()
+      expect(mode_toggle).toBeInstanceOf(HTMLElement)
       expect(mode_toggle.getAttribute(`aria-expanded`)).toBe(`false`)
     })
 
@@ -224,7 +224,7 @@ describe(`AtomLegend Component`, () => {
       mode_toggle.click()
       await tick()
 
-      expect(document.querySelector(`.mode-dropdown`)).toBeTruthy()
+      expect(document.querySelector(`.mode-dropdown`)).toBeInstanceOf(HTMLElement)
       expect(mode_toggle.getAttribute(`aria-expanded`)).toBe(`true`)
 
       // Close dropdown
@@ -282,7 +282,7 @@ describe(`AtomLegend Component`, () => {
         opt.textContent?.includes(`Coordination`),
       ) as HTMLButtonElement
 
-      expect(coord_option).toBeTruthy()
+      expect(coord_option).toBeDefined()
       coord_option.click()
       await tick()
 
@@ -304,7 +304,7 @@ describe(`AtomLegend Component`, () => {
         (opt) => opt.textContent?.includes(`Wyckoff`),
       ) as HTMLButtonElement
 
-      expect(wyckoff_option).toBeTruthy()
+      expect(wyckoff_option).toBeDefined()
       expect(wyckoff_option.classList.contains(`disabled`)).toBe(true)
       expect(wyckoff_option.disabled).toBe(true)
     })
@@ -328,10 +328,10 @@ describe(`AtomLegend Component`, () => {
       })
 
       const legend = doc_query(`.property-legend`)
-      expect(legend).toBeTruthy()
+      expect(legend).toBeInstanceOf(HTMLElement)
 
       const gradient_bar = doc_query(`.colorbar .bar`)
-      expect(gradient_bar).toBeTruthy()
+      expect(gradient_bar).toBeInstanceOf(HTMLElement)
 
       const gradient_labels = document.querySelectorAll(`.colorbar .tick-label`)
       expect(gradient_labels).toHaveLength(2)
@@ -363,7 +363,7 @@ describe(`AtomLegend Component`, () => {
       })
 
       const legend = document.body.querySelector(`.atom-legend`)
-      expect(legend).not.toBeNull()
+      expect(legend).toBeInstanceOf(HTMLElement)
       expect(legend?.getAttribute(`data-testid`)).toBe(`test-legend`)
       expect(legend?.getAttribute(`style`)).toContain(`z-index`)
     })
@@ -423,7 +423,7 @@ describe(`AtomLegend Component`, () => {
       })
 
       const gradient_bar = doc_query(`.colorbar .bar`)
-      expect(gradient_bar).toBeTruthy()
+      expect(gradient_bar).toBeInstanceOf(HTMLElement)
 
       const gradient_labels = document.querySelectorAll(`.colorbar .tick-label`)
       expect(gradient_labels[0].textContent).toBe(`5`)
@@ -454,7 +454,7 @@ describe(`AtomLegend Component`, () => {
       }).not.toThrow()
 
       const gradient_bar = document.querySelector(`.colorbar .bar`)
-      expect(gradient_bar).not.toBeNull()
+      expect(gradient_bar).toBeInstanceOf(HTMLElement)
 
       // Should not contain NaN or undefined anywhere
       const legend = document.querySelector(`.property-legend`)
@@ -481,7 +481,7 @@ describe(`AtomLegend Component`, () => {
       })
 
       const gradient_bar = document.querySelector(`.colorbar .bar`)
-      expect(gradient_bar).not.toBeNull()
+      expect(gradient_bar).toBeInstanceOf(HTMLElement)
 
       // Should not contain NaN or undefined anywhere in the legend
       const legend = document.querySelector(`.property-legend`)
@@ -542,7 +542,7 @@ describe(`AtomLegend Component`, () => {
       })
 
       const categorical = doc_query(`.categorical-legend`)
-      expect(categorical).toBeTruthy()
+      expect(categorical).toBeInstanceOf(HTMLElement)
 
       const items = document.querySelectorAll(`.categorical-legend .legend-item`)
       expect(items).toHaveLength(3) // Unique values only
@@ -649,7 +649,7 @@ describe(`AtomLegend Component`, () => {
       // Initially, categorical legend should show items
       const labels = document.querySelectorAll(`.category-label`)
       expect(labels).toHaveLength(2)
-      expect(document.querySelector(`.property-legend`)).toBeTruthy()
+      expect(document.querySelector(`.property-legend`)).toBeInstanceOf(HTMLElement)
 
       // Clear and remount with element mode to simulate mode switch
       document.body.innerHTML = ``
@@ -664,7 +664,7 @@ describe(`AtomLegend Component`, () => {
       await tick()
 
       // After mode switch, the element legend should be shown
-      expect(document.querySelector(`.element-legend`)).toBeTruthy()
+      expect(document.querySelector(`.element-legend`)).toBeInstanceOf(HTMLElement)
       expect(document.querySelector(`.property-legend`)).toBeNull()
     })
 
@@ -677,7 +677,7 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      expect(document.querySelector(`.element-legend`)).toBeTruthy()
+      expect(document.querySelector(`.element-legend`)).toBeInstanceOf(HTMLElement)
       expect(document.querySelector(`.property-legend`)).toBeNull()
     })
 
@@ -697,7 +697,7 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      expect(document.querySelector(`.property-legend`)).toBeTruthy()
+      expect(document.querySelector(`.property-legend`)).toBeInstanceOf(HTMLElement)
       expect(document.querySelector(`.element-legend`)).toBeNull()
     })
 
@@ -774,8 +774,8 @@ describe(`AtomLegend Component`, () => {
       label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
       await tick()
 
-      expect(document.querySelector(`.remap-dropdown`)).toBeTruthy()
-      expect(document.querySelector(`.remap-search`)).toBeTruthy()
+      expect(document.querySelector(`.remap-dropdown`)).toBeInstanceOf(HTMLElement)
+      expect(document.querySelector(`.remap-search`)).toBeInstanceOf(HTMLElement)
     })
 
     test(`remap dropdown has search input and element options`, async () => {
@@ -820,7 +820,7 @@ describe(`AtomLegend Component`, () => {
         (opt) => opt.querySelector(`b`)?.textContent === `Na`,
       ) as HTMLButtonElement
 
-      expect(na_option).toBeTruthy()
+      expect(na_option).toBeDefined()
       na_option.click()
       await tick()
 
@@ -861,7 +861,7 @@ describe(`AtomLegend Component`, () => {
       label.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
       await tick()
 
-      expect(document.querySelector(`.remap-dropdown`)).toBeTruthy()
+      expect(document.querySelector(`.remap-dropdown`)).toBeInstanceOf(HTMLElement)
 
       const search_input = doc_query<HTMLInputElement>(`.remap-search`)
       search_input.dispatchEvent(
@@ -893,7 +893,7 @@ describe(`AtomLegend Component`, () => {
 
       // Should have reset option since H is remapped
       const reset_option = doc_query<HTMLButtonElement>(`.remap-option.reset`)
-      expect(reset_option).toBeTruthy()
+      expect(reset_option).toBeInstanceOf(HTMLElement)
       expect(reset_option.textContent).toContain(`Reset to H`)
 
       reset_option.click()

@@ -92,7 +92,7 @@ describe(`ChemPot temperature config wiring`, () => {
     })
     mounted_components.push(mounted_component)
     await tick()
-    expect(document.querySelector(`.temperature-slider`)).toBeFalsy()
+    expect(document.querySelector(`.temperature-slider`)).toBeNull()
   })
 
   test.each([
@@ -107,8 +107,8 @@ describe(`ChemPot temperature config wiring`, () => {
   ])(`$label`, async ({ config }) => {
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
     await mount_2d_with_config(config)
-    expect(document.querySelector(`.error-state`)).toBeTruthy()
-    expect(document.querySelector(`.temperature-slider`)).toBeFalsy()
+    expect(document.querySelector(`.error-state`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`.temperature-slider`)).toBeNull()
   })
 
   test(`2D computes successfully with permissive interpolation config`, async () => {
@@ -116,8 +116,8 @@ describe(`ChemPot temperature config wiring`, () => {
       interpolate_temperature: true,
       max_interpolation_gap: 700,
     })
-    expect(document.querySelector(`.error-state`)).toBeFalsy()
-    expect(document.querySelector(`.temperature-slider`)).toBeTruthy()
+    expect(document.querySelector(`.error-state`)).toBeNull()
+    expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`3D honors interpolate_temperature override`, async () => {
@@ -136,7 +136,7 @@ describe(`ChemPot temperature config wiring`, () => {
     })
     mounted_components.push(mounted_component)
     await tick()
-    expect(document.querySelector(`.error-state`)).toBeTruthy()
-    expect(document.querySelector(`.temperature-slider`)).toBeTruthy()
+    expect(document.querySelector(`.error-state`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`.temperature-slider`)).toBeInstanceOf(HTMLElement)
   })
 })

@@ -2,6 +2,7 @@
   import type { InfoItem } from '$lib/layout'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import type { Crystal } from '$lib/structure'
   import { analyze_structure_symmetry } from '$lib/symmetry'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
@@ -118,7 +119,7 @@
         {#each section.items as item (item.key ?? item.label)}
           <div class="info-item">
             <span>{item.label}</span>
-            <span>{@html item.value}</span>
+            <span>{@html sanitize_html(item.value)}</span>
           </div>
         {/each}
       </section>

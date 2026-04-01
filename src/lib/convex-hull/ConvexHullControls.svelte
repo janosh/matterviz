@@ -2,6 +2,7 @@
   import type { D3InterpolateName } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { sanitize_html } from '$lib/sanitize'
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
@@ -132,7 +133,7 @@
   {...rest}
 >
   <h4>
-    {@html merged_controls.title || `Convex Hull Controls`}
+    {@html sanitize_html(merged_controls.title || `Convex Hull Controls`)}
   </h4>
 
   <!-- Energy source selection (only if both options are available) -->

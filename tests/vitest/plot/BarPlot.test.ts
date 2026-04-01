@@ -89,8 +89,8 @@ describe(`BarPlot`, () => {
       },
     })
     await tick()
-    expect(document.querySelector(`.bar-plot`)).toBeTruthy()
-    expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
+    expect(document.querySelector(`.bar-plot`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
@@ -164,7 +164,7 @@ describe(`BarPlot`, () => {
       },
     })
     const plot = document.querySelector(`.bar-plot`)
-    expect(plot).toBeTruthy()
+    expect(plot).toBeInstanceOf(HTMLElement)
   })
 
   test(`mixed bar and line series`, () => {
@@ -226,7 +226,7 @@ describe(`BarPlot`, () => {
     })
     await tick()
     const bar = document.querySelector(`path[role="button"]`)
-    expect(bar).toBeTruthy()
+    expect(bar).toBeInstanceOf(SVGPathElement)
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
     const text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
@@ -329,8 +329,8 @@ describe(`BarPlot`, () => {
         })
         await tick()
         const plot = document.querySelector(`.bar-plot`)
-        expect(plot).toBeTruthy()
-        expect(plot?.querySelector(`svg`)).toBeTruthy()
+        expect(plot).toBeInstanceOf(HTMLElement)
+        expect(plot?.querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
       },
     )
 
@@ -434,7 +434,7 @@ describe(`BarPlot`, () => {
       })
 
       // Component should render the bar plot wrapper
-      expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+      expect(document.querySelector(`.bar-plot`)).toBeInstanceOf(HTMLElement)
     })
 
     test(`series visibility can be toggled via legend_group`, () => {
@@ -449,7 +449,7 @@ describe(`BarPlot`, () => {
       })
 
       // Component should render
-      expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+      expect(document.querySelector(`.bar-plot`)).toBeInstanceOf(HTMLElement)
     })
 
     test(`legend_group property is preserved on series data`, () => {
@@ -472,7 +472,7 @@ describe(`BarPlot`, () => {
       })
 
       // Component should render without errors
-      expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+      expect(document.querySelector(`.bar-plot`)).toBeInstanceOf(HTMLElement)
     })
   })
 })

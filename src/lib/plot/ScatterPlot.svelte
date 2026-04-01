@@ -5,6 +5,7 @@
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import type { D3SymbolName } from '$lib/labels'
   import { format_value, symbol_names } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
   import type {
@@ -2564,11 +2565,11 @@
         {:else}
           {@const hp = handler_props}
           {#if has_multiple_series && hp.label}<strong>{hp.label}</strong><br />{/if}
-          {@html point_label?.text ? `${point_label.text}<br />` : ``}
-          {@html hp.x_axis.label || `x`}: {hp.x_formatted}<br />
-          {@html hp.y_axis.label || `y`}: {hp.y_formatted}
+          {@html sanitize_html(point_label?.text ? `${point_label.text}<br />` : ``)}
+          {@html sanitize_html(hp.x_axis.label || `x`)}: {hp.x_formatted}<br />
+          {@html sanitize_html(hp.y_axis.label || `y`)}: {hp.y_formatted}
           {#if hp.colorbar?.value != null}
-            <br />{@html hp.colorbar.title || `Color`}: {
+            <br />{@html sanitize_html(hp.colorbar.title || `Color`)}: {
               format_value(hp.colorbar.value, hp.colorbar.tick_format || `.3~g`)
             }
           {/if}

@@ -21,7 +21,7 @@ describe(`EmptyState`, () => {
       mount(EmptyState, { target: document.body, props })
       const container = doc_query(`.empty-state`)
       expect(container.textContent?.trim()).toBe(``)
-      expect(container.querySelector(`span.message`)).toBeFalsy()
+      expect(container.querySelector(`span.message`)).toBeNull()
     },
   )
 

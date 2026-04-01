@@ -17,7 +17,7 @@ describe(`ColorScaleSelect`, () => {
     })
 
     const select_wrapper = doc_query(`div`)
-    expect(select_wrapper).toBeTruthy()
+    expect(select_wrapper).toBeInstanceOf(HTMLElement)
   })
 
   test(`binds value and selected correctly (initial state)`, () => {
@@ -63,7 +63,7 @@ describe(`ColorScaleSelect`, () => {
     }
 
     const color_bar_wrapper = doc_query(`.colorbar`)
-    expect(color_bar_wrapper).toBeTruthy()
+    expect(color_bar_wrapper).toBeInstanceOf(HTMLElement)
     // Check wrapper style
     expect(color_bar_wrapper.getAttribute(`style`)).toContain(
       custom_colorbar_props.wrapper_style,
@@ -74,6 +74,6 @@ describe(`ColorScaleSelect`, () => {
 
     // Check for the existence of the inner bar div, but not its specific background style
     const color_bar_div = doc_query(`.colorbar > div.bar`)
-    expect(color_bar_div).toBeTruthy()
+    expect(color_bar_div).toBeInstanceOf(HTMLElement)
   })
 })

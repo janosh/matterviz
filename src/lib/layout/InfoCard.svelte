@@ -1,5 +1,6 @@
 <script lang="ts">
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -38,7 +39,7 @@
   {#if title || title_snippet}
     <h2>
       {#if title_snippet}{@render title_snippet()}{:else}
-        {@html title}
+        {@html sanitize_html(title)}
       {/if}
     </h2>
   {/if}
@@ -51,10 +52,10 @@
   }
     <div>
       <span class="title" {title}>
-        {@html title}
+        {@html sanitize_html(title)}
       </span>
       <strong title={tooltip ?? null}>
-        {@html typeof value == `number` ? format_num(value, fmt) : value}
+        {@html sanitize_html(typeof value == `number` ? format_num(value, fmt) : value)}
         {#if unit}
           <small>{unit}</small>
         {/if}

@@ -188,7 +188,7 @@ describe(`edit-atoms: undo/redo stack`, () => {
     ops.push_undo(struct_v1)
     const restored = ops.undo(struct_v2)
 
-    expect(restored).toBeTruthy()
+    expect(restored).not.toBeNull()
     expect(restored?.sites).toHaveLength(2)
     expect(ops.undo_count).toBe(0)
     expect(ops.redo_count).toBe(1)
@@ -203,7 +203,7 @@ describe(`edit-atoms: undo/redo stack`, () => {
     ops.undo(struct_v2)
     const restored = ops.redo(struct_v1)
 
-    expect(restored).toBeTruthy()
+    expect(restored).not.toBeNull()
     expect(restored?.sites).toHaveLength(3)
     expect(ops.undo_count).toBe(1)
     expect(ops.redo_count).toBe(0)

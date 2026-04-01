@@ -125,11 +125,13 @@ describe(`Bands component`, () => {
       role: `status`,
       'aria-label': `Bands unavailable`,
     })
-    expect(document.querySelector(`[data-testid="strict-mismatch-plot"]`)).toBeTruthy()
+    expect(document.querySelector(`[data-testid="strict-mismatch-plot"]`)).toBeInstanceOf(
+      HTMLElement,
+    )
     expect(
       document.querySelector(`[role="status"][aria-label="Bands unavailable"]`),
-    ).toBeTruthy()
-    expect(document.querySelector(`.empty-state`)).toBeTruthy()
+    ).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
     expect(document.body.textContent).toContain(`different q-point paths`)
     expect(line_count()).toBe(0)
   })

@@ -20,7 +20,7 @@ describe(`Spinner`, () => {
 
   test(`renders text conditionally`, () => {
     mount(Spinner, { target: document.body })
-    expect(document.querySelector(`.spinner > span`)).toBeFalsy()
+    expect(document.querySelector(`.spinner > span`)).toBeNull()
 
     document.body.innerHTML = ``
     mount(Spinner, { target: document.body, props: { text: `Processing...` } })

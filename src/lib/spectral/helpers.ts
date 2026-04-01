@@ -1190,7 +1190,7 @@ export function compute_frequency_range(
 
 // Parse axis label: "Frequency (THz)" → { name: "Frequency", unit: "THz" }
 function parse_axis_label(label: string): { name: string; unit?: string } {
-  const match = label.match(/^(.+?)\s*\(([^)]+)\)$/)
+  const match = /^(.+?)\s*\(([^)]+)\)$/.exec(label)
   return match ? { name: match[1], unit: match[2] } : { name: label }
 }
 

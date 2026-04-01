@@ -824,7 +824,7 @@ describe(`Export functionality`, () => {
       if (has_sd) {
         expect(lines).toContain(`Selective dynamics`)
         const coord_lines = lines.filter((line) =>
-          line.match(/^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/),
+          /^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/.exec(line),
         )
         expect(coord_lines).toHaveLength(2)
         expected_coords.forEach((expected, idx) => {
@@ -832,7 +832,7 @@ describe(`Export functionality`, () => {
         })
       } else {
         expect(lines).not.toContain(`Selective dynamics`)
-        const coord_lines = lines.filter((line) => line.match(/^0\.\d+ 0\.\d+ 0\.\d+$/))
+        const coord_lines = lines.filter((line) => /^0\.\d+ 0\.\d+ 0\.\d+$/.exec(line))
         expect(coord_lines).toHaveLength(1)
         expect(coord_lines[0]).toBe(expected_coords[0])
       }
@@ -990,7 +990,7 @@ describe(`Export functionality`, () => {
           expect(coord_line).toContain(expected)
         } else {
           // poscar
-          const coord_line = lines.find((line) => line.match(/^0\.\d+ 0\.\d+ 0\.\d+$/))
+          const coord_line = lines.find((line) => /^0\.\d+ 0\.\d+ 0\.\d+$/.exec(line))
           expect(coord_line).toBeDefined()
           expect(coord_line).toContain(expected)
         }

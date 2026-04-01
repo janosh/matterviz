@@ -33,7 +33,7 @@ export function parse_curve_ref(ref: string): CurveRef {
   }
 
   // Check for slice suffix [start:end]
-  const slice_match = name.match(/^(.+)\[(-?\d*):(-?\d*)\]$/)
+  const slice_match = /^(.+)\[(-?\d*):(-?\d*)\]$/.exec(name)
   if (slice_match) {
     name = slice_match[1]
     start = slice_match[2] ? parseInt(slice_match[2]) : null

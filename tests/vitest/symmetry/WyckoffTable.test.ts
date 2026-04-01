@@ -27,7 +27,7 @@ describe(`WyckoffTable`, () => {
     `renders nothing when wyckoff_positions is %s`,
     (_, wyckoff_positions) => {
       mount_table(wyckoff_positions)
-      expect(document.querySelector(`table`)).toBeFalsy()
+      expect(document.querySelector(`table`)).toBeNull()
     },
   )
 

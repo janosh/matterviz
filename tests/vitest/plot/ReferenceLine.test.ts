@@ -45,7 +45,7 @@ describe(`ReferenceLine`, () => {
     })
 
     const group = doc_query(`.reference-line`)
-    expect(group).toBeTruthy()
+    expect(group).toBeInstanceOf(SVGGElement)
 
     const lines = query_all(`line`)
     expect(lines.length).toBe(2) // Hit area + visible line
@@ -54,7 +54,7 @@ describe(`ReferenceLine`, () => {
     const visible_line = Array.from(lines).find(
       (line) => line.getAttribute(`stroke`) !== `transparent`,
     )
-    expect(visible_line).toBeTruthy()
+    expect(visible_line).toBeInstanceOf(SVGLineElement)
     const y_pos = parseFloat(visible_line?.getAttribute(`y1`) ?? `0`)
     expect(y_pos).toBeCloseTo(y_scale(50), 0) // y=50 mapped through y_scale
   })
@@ -82,7 +82,7 @@ describe(`ReferenceLine`, () => {
     const visible_line = Array.from(lines).find(
       (line) => line.getAttribute(`stroke`) !== `transparent`,
     )
-    expect(visible_line).toBeTruthy()
+    expect(visible_line).toBeInstanceOf(SVGLineElement)
 
     // Verify the visible line is at correct x position
     const x_pos = parseFloat(visible_line?.getAttribute(`x1`) ?? `0`)
@@ -141,7 +141,7 @@ describe(`ReferenceLine`, () => {
     })
 
     const text = doc_query(`text`)
-    expect(text).toBeTruthy()
+    expect(text).toBeInstanceOf(SVGTextElement)
     expect(text.textContent).toContain(`Test Label`)
   })
 

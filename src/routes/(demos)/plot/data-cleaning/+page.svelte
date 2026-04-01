@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sanitize_html } from '$lib/sanitize'
   import { ScatterPlot } from '$lib'
   import {
     clean_multi_series,
@@ -673,7 +674,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
   </ScatterPlot>
 
   <div class="code-block">
-    <pre><code>{@html live_code_html}</code></pre>
+    <pre><code>{@html sanitize_html(live_code_html)}</code></pre>
   </div>
 </section>
 

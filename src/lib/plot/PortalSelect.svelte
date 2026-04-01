@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+  import { sanitize_html } from '$lib/sanitize'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
   type Option = { key: string; label: string; unit?: string }
@@ -97,7 +98,7 @@
       btn.type = `button`
       btn.style.cssText = portal_styles.btn
       btn.setAttribute(`role`, `option`)
-      btn.innerHTML = format_option(opt)
+      btn.innerHTML = sanitize_html(format_option(opt))
       style_sub_sup(btn)
       btn.onclick = () => select(opt.key)
       btn.onmouseenter = () => {
@@ -207,7 +208,7 @@
     {...rest}
     class="portal-select-trigger {rest.class ?? ``}"
   >
-    {@html format_option(selected_option)}
+    {@html sanitize_html(format_option(selected_option))}
     <span class="arrow">▾</span>
   </button>
 {/if}

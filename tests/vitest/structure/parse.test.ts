@@ -113,7 +113,7 @@ describe(`POSCAR Parser`, () => {
     if (!result) throw `Failed to parse POSCAR`
     expect(result.sites).toHaveLength(sites)
     expect(result.sites[0].species[0].element).toBe(element)
-    expect(result.lattice).toBeTruthy()
+    expect(result.lattice).toBeDefined()
     if (lattice_a) expect(result.lattice?.a).toBeCloseTo(lattice_a, 5)
   })
 
@@ -255,7 +255,7 @@ describe(`XYZ Parser`, () => {
       expect(result.sites).toHaveLength(sites)
       expect(result.sites[0].species[0].element).toBe(element)
       if (has_lattice) {
-        expect(result.lattice).toBeTruthy()
+        expect(result.lattice).toBeDefined()
         if (lattice_a) expect(result.lattice?.a).toBeCloseTo(lattice_a)
 
         // For the extended-XYZ quartz case, ensure xyz is reconstructed from wrapped abc
@@ -1357,7 +1357,7 @@ Na Na 0.000 0.000 0.000`
     const orig_site = result?.sites.find(
       (site) => site.abc[0] === 0 && site.abc[1] === 0 && site.abc[2] === 0,
     )
-    expect(orig_site).toBeTruthy()
+    expect(orig_site).toBeDefined()
 
     // Check that at least one translated site is generated (the valid one)
     const translated_sites = result?.sites.filter((site) =>

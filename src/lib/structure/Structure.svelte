@@ -19,6 +19,7 @@
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
+  import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
   import type { AnyStructure, Crystal, MeasureMode } from '$lib/structure'
   import {
@@ -1311,7 +1312,7 @@
                     onclick={() => [measure_mode, measure_menu_open] = [mode, false]}
                   >
                     <Icon {icon} style="transform: scale({scale})" />
-                    <span>{@html label}</span>
+                    <span>{@html sanitize_html(label)}</span>
                   </button>
                 {/each}
               </div>

@@ -3,6 +3,7 @@
   // - If tooltip is a snippet function, render it exclusively (replaces default content)
   // - If tooltip is a config object, render prefix/suffix around the default content
   // - Otherwise, render just the default content
+  import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
   import type { TooltipConfig } from './types'
 
@@ -34,11 +35,11 @@
   {@render (tooltip as Snippet<[SnippetArg]>)(snippet_arg)}
 {:else}
   {#if prefix}
-    <div class="tooltip-prefix">{@html prefix}</div>
+    <div class="tooltip-prefix">{@html sanitize_html(prefix)}</div>
   {/if}
   {@render children()}
   {#if suffix}
-    <div class="tooltip-suffix">{@html suffix}</div>
+    <div class="tooltip-suffix">{@html sanitize_html(suffix)}</div>
   {/if}
 {/if}
 

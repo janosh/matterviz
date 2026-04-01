@@ -1,5 +1,6 @@
 <script lang="ts">
   import Spinner from '$lib/feedback/Spinner.svelte'
+  import { sanitize_html } from '$lib/sanitize'
   import PortalSelect from './PortalSelect.svelte'
   import type { AxisOption } from './types'
 
@@ -58,7 +59,7 @@
       />
     {/if}
   {:else}
-    <span class="static-label">{@html label}</span>
+    <span class="static-label">{@html sanitize_html(label)}</span>
   {/if}
 </div>
 

@@ -868,7 +868,7 @@ test.each([
       return Math.abs(int_shift_x) === 1 && xyz_ok
     })
 
-    expect(candidate).toBeTruthy()
+    expect(candidate).toBeDefined()
     if (!candidate) return
 
     const [, img_xyz, img_abc] = candidate

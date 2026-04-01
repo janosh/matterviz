@@ -164,8 +164,8 @@ describe(`IsosurfaceControls`, () => {
     const layer_rows = document.querySelectorAll(`.layer-row`)
     expect(layer_rows.length).toBe(2)
     for (const row of Array.from(layer_rows)) {
-      expect(row.querySelector(`input[type="checkbox"]`)).toBeTruthy()
-      expect(row.querySelector(`input[type="color"]`)).toBeTruthy()
+      expect(row.querySelector(`input[type="checkbox"]`)).toBeInstanceOf(HTMLElement)
+      expect(row.querySelector(`input[type="color"]`)).toBeInstanceOf(HTMLElement)
       expect(row.querySelectorAll(`input[type="range"]`).length).toBe(2)
     }
 

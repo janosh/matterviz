@@ -84,7 +84,7 @@ describe(`InfoTag`, () => {
     await Promise.resolve()
     await Promise.resolve()
     flushSync()
-    expect(document.querySelector(`.copy-checkmark`)).toBeTruthy()
+    expect(document.querySelector(`.copy-checkmark`)).toBeInstanceOf(SVGSVGElement)
     vi.advanceTimersByTime(1000)
     flushSync()
     expect(document.querySelector(`.copy-checkmark`)).toBeNull()

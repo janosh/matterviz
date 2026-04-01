@@ -62,8 +62,8 @@ describe(`ScatterPlot`, () => {
       },
     })
     await tick()
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
-    expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
@@ -232,7 +232,7 @@ describe(`ScatterPlot`, () => {
       props: { series: [basic], selected_point },
     })
     // Component should render without throwing
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   test.each([
@@ -316,7 +316,7 @@ describe(`ScatterPlot`, () => {
     // NOTE: Legend deduplication counts are tested in Playwright since JSDOM lacks proper dimensions
   ])(`legend grouping: renders $desc`, ({ series, props }) => {
     mount(ScatterPlot, { target: document.body, props: { series, ...props } })
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   // NOTE: Cursor behavior tests for ScatterPlot SVG and points are in Playwright
@@ -354,7 +354,7 @@ describe(`ScatterPlot`, () => {
           : {}),
       }))
       mount(ScatterPlot, { target: document.body, props: { series } })
-      expect(document.querySelector(`.scatter`)).toBeTruthy()
+      expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     })
 
     test.each([
@@ -373,7 +373,7 @@ describe(`ScatterPlot`, () => {
         { x: [1, 2, 3], y: [3, 2, 1], ...props } as DataSeries,
       ]
       mount(ScatterPlot, { target: document.body, props: { series } })
-      expect(document.querySelector(`.scatter`)).toBeTruthy()
+      expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     })
 
     test(`cycling logic: modulo wrapping and unique combinations`, () => {

@@ -126,8 +126,8 @@ describe(`Histogram`, () => {
       mode: `overlay`,
     })
     await tick()
-    expect(document.querySelector(`.histogram`)).toBeTruthy()
-    expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
+    expect(document.querySelector(`.histogram`)).toBeInstanceOf(HTMLElement)
+    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
     expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Mass (lbs)`)
   })
 
@@ -143,6 +143,6 @@ describe(`Histogram`, () => {
     })
     await tick()
     // Verify component mounted without crashing
-    expect(document.querySelector(`.histogram`)).toBeTruthy()
+    expect(document.querySelector(`.histogram`)).toBeInstanceOf(HTMLElement)
   })
 })

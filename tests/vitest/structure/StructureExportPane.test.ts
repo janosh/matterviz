@@ -84,7 +84,7 @@ describe(`StructureExportPane`, () => {
     expect(export_fn).not.toHaveBeenCalled()
 
     const download_btn = get_button(`Download ${label}`)
-    expect(download_btn).toBeTruthy()
+    expect(download_btn).toBeDefined()
 
     download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
     await vi.waitFor(() => expect(export_fn).toHaveBeenCalledWith(simple_structure))
@@ -121,7 +121,7 @@ describe(`StructureExportPane`, () => {
 
       const str_fn = export_funcs[str_fn_name as keyof typeof export_funcs]
       const copy_btn = get_button(`Copy ${label}`)
-      expect(copy_btn).toBeTruthy()
+      expect(copy_btn).toBeDefined()
 
       copy_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
 
@@ -238,7 +238,7 @@ describe(`StructureExportPane`, () => {
     const export_fn = export_funcs[fn_name as keyof typeof export_funcs]
 
     const download_btn = get_button(`Download ${label}`)
-    expect(download_btn).toBeTruthy()
+    expect(download_btn).toBeDefined()
     expect(download_btn?.disabled).toBe(false)
 
     download_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))
@@ -390,7 +390,7 @@ describe(`StructureExportPane`, () => {
     })
 
     const png_btn = get_button(`PNG`)
-    expect(png_btn).toBeTruthy()
+    expect(png_btn).toBeDefined()
     await vi.waitFor(() => expect(png_btn?.disabled).toBe(false))
 
     png_btn?.dispatchEvent(new Event(`click`, { bubbles: true }))

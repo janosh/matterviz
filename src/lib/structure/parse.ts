@@ -384,7 +384,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
     let lattice: ParsedStructure[`lattice`] | undefined
 
     // Check for extended XYZ lattice information in comment line
-    const lattice_match = comment_line.match(/Lattice="([^"]+)"/)
+    const lattice_match = /Lattice="([^"]+)"/.exec(comment_line)
     if (lattice_match) {
       const lattice_values = lattice_match[1].split(/\s+/).map(parse_coordinate)
       if (lattice_values.length === 9) {
@@ -502,7 +502,7 @@ const parse_symmetry_expression = (
 
   for (const token of tokens) {
     // Check if this token is a variable term (x, y, or z with optional sign)
-    const var_match = token.match(/^([+-]?)([xyz])$/)
+    const var_match = /^([+-]?)([xyz])$/.exec(token)
     if (var_match) {
       const sign = var_match[1] === `-` ? -1 : 1
       const var_char = var_match[2]
@@ -571,7 +571,7 @@ const apply_symmetry_ops = (
   equivalent_atoms.push({ ...atom, coords: base_coords })
 
   for (const operation of symmetry_ops) {
-    const operation_match = operation.match(/['"]([^'"]+)['"]/)
+    const operation_match = /['"]([^'"]+)['"]/.exec(operation)
     const expr_str = operation_match ? operation_match[1] : operation.trim()
     const parts = expr_str.split(`,`).map((part) => part.trim())
     if (parts.length !== 3) continue
@@ -687,7 +687,7 @@ const parse_cif_atom_data = (
       : 1.0
 
   const element_symbol =
-    (symbol >= 0 && raw_data[symbol]?.match(/^([A-Z][a-z]*)/)?.[1]) ||
+    (symbol >= 0 && /^([A-Z][a-z]*)/.exec(raw_data[symbol])?.[1]) ||
     raw_data[label]?.match(/([A-Z][a-z]*)/g)?.[0] ||
     (() => {
       throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
@@ -886,7 +886,7 @@ export function parse_cif(
 
     // Normalize symmetry operations (trim/strip quotes) but preserve duplicates; we deduplicate positions later
     const normalized_ops = symmetry_ops
-      .map((op) => op.match(/['"]([^'"]+)['"]/)?.[1] || op.trim())
+      .map((op) => /['"]([^'"]+)['"]/.exec(op)?.[1] || op.trim())
       .map((op) => op.replace(/\s+/g, ``))
 
     // Rely on symmetry operations list for all centering/translations to avoid double-counting
@@ -923,7 +923,7 @@ export function parse_cif(
             )
             if (toks.length > Math.max(sym_idx, num_idx)) {
               // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
-              const match = toks[sym_idx]?.match(/^([A-Z][a-z]*)/)
+              const match = /^([A-Z][a-z]*)/.exec(toks[sym_idx])
               const sym = match ? match[1] : toks[sym_idx]
               const num = parseInt(toks[num_idx])
               if (sym && !Number.isNaN(num)) map[sym] = num
@@ -1070,7 +1070,7 @@ export function parse_phonopy_yaml(
 
       // Check if we're still in the phonon_displacements section
       if (skip_displacements) {
-        if (line.match(/^[a-zA-Z_]/)) {
+        if (/^[a-zA-Z_]/.exec(line)) {
           // New top-level key, stop skipping
           skip_displacements = false
         } else continue // Still in phonon_displacements, skip this line
