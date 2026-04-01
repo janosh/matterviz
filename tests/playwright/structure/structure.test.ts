@@ -1988,6 +1988,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     await expect(pane_div).toBeVisible({ timeout: 2000 })
 
     const camera_projection_select = pane_div.locator(`label:has-text("Projection") select`)
+    await camera_projection_select.scrollIntoViewIfNeeded()
 
     if (initial !== DEFAULTS.structure.camera_projection) {
       // Set initial state if not default
@@ -2030,6 +2031,7 @@ test.describe(`Camera Projection Toggle Tests`, () => {
     const screenshots: Record<string, Buffer> = {}
 
     for (const projection of [`perspective`, `orthographic`]) {
+      await camera_projection_select.scrollIntoViewIfNeeded()
       await camera_projection_select.selectOption(projection)
       await expect(camera_projection_select).toHaveValue(projection)
       // Let camera/projection updates settle before visual assertions.

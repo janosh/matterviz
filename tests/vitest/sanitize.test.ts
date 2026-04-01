@@ -27,9 +27,9 @@ const XSS_PAYLOADS = [
 
 function assert_no_xss(result: string): void {
   expect(result).not.toContain(`<script`)
-  expect(result).not.toMatch(/on\w+\s*=/)
-  expect(result).not.toContain(`javascript:`)
-  expect(result).not.toMatch(/\bdata:[^,]*,/)
+  expect(result).not.toMatch(/on\w+\s*=/i)
+  expect(result).not.toMatch(/javascript:/i)
+  expect(result).not.toMatch(/\bdata:[^,]*,/i)
   expect(result).not.toContain(`<iframe`)
   expect(result).not.toContain(`<object`)
   expect(result).not.toContain(`<embed`)

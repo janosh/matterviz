@@ -225,7 +225,7 @@
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
     "svelte-check-rs": "0.9.6",
-    "typescript": "6.0.2",
+    "typescript": "5.9.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.15",
     "vite-plus": "latest",
     "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.15"
