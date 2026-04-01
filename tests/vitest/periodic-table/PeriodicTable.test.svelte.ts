@@ -306,7 +306,7 @@ describe(`PeriodicTable`, () => {
       expect(tooltip_el?.textContent).toContain(`Hydrogen`)
       hydrogen_tile.dispatchEvent(mouseleave)
       await tick()
-      expect(document.querySelector(`.tooltip`)).toBeFalsy()
+      expect(document.querySelector(`.tooltip`)).toBeNull()
     }
   })
 
@@ -351,7 +351,7 @@ describe(`PeriodicTable`, () => {
 
         // Verify all expected segments are present
         segments.forEach((segment) => {
-          expect(document.querySelector(`.segment.${segment}`)).toBeTruthy()
+          expect(document.querySelector(`.segment.${segment}`)).toBeInstanceOf(HTMLElement)
         })
 
         // Verify segments have valid colors
@@ -361,7 +361,7 @@ describe(`PeriodicTable`, () => {
         expect(colored_segments.length).toBeGreaterThan(0)
         colored_segments.forEach((segment) => {
           const bg_color = (segment as HTMLElement).style.backgroundColor
-          expect(bg_color).toBeTruthy()
+          expect(bg_color).not.toBe(``)
           expect(bg_color).not.toBe(`transparent`)
         })
       },
@@ -379,8 +379,8 @@ describe(`PeriodicTable`, () => {
       })
 
       // Should render different segment types for different value counts
-      expect(document.querySelector(`.segment.diagonal-top`)).toBeTruthy()
-      expect(document.querySelector(`.segment.horizontal-top`)).toBeTruthy()
+      expect(document.querySelector(`.segment.diagonal-top`)).toBeInstanceOf(HTMLElement)
+      expect(document.querySelector(`.segment.horizontal-top`)).toBeInstanceOf(HTMLElement)
 
       // Tooltip should display array values
       const multi_value_tile = document.querySelectorAll<HTMLElement>(`.element-tile`)[1]
@@ -392,7 +392,7 @@ describe(`PeriodicTable`, () => {
 
       multi_value_tile.dispatchEvent(mouseleave)
       await tick()
-      expect(document.querySelector(`.tooltip`)).toBeFalsy()
+      expect(document.querySelector(`.tooltip`)).toBeNull()
     })
   })
 
@@ -458,7 +458,9 @@ describe(`PeriodicTable`, () => {
         },
       })
 
-      segments.forEach((cls) => expect(document.querySelector(`.segment.${cls}`)).toBeTruthy())
+      segments.forEach((cls) =>
+        expect(document.querySelector(`.segment.${cls}`)).toBeInstanceOf(HTMLElement),
+      )
 
       const multi_tiles = document.querySelectorAll<HTMLElement>(`.element-tile`)
       expect(multi_tiles[0].style.backgroundColor).toBe(`transparent`)
@@ -554,7 +556,7 @@ describe(`PeriodicTable`, () => {
 
       // Structure: TableInset > ColorBar > bar with gradient
       expect(document.querySelector(`.periodic-table`)?.firstElementChild).toBe(table_inset)
-      expect(colorbar).toBeTruthy()
+      expect(colorbar).toBeInstanceOf(HTMLElement)
       expect((bar as HTMLElement)?.style.background).toContain(`linear-gradient`)
 
       // Defaults: 3 ticks on primary side (d3's snap_ticks produces nice values)
@@ -632,8 +634,8 @@ describe(`PeriodicTable`, () => {
         el.textContent?.trim(),
       )
 
-      expect(tick_text.some((t) => t === `1`)).toBeTruthy()
-      expect(tick_text.some((t) => t && t.includes(`1`) && t.length > 1)).toBeTruthy()
+      expect(tick_text.some((t) => t === `1`)).toBe(true)
+      expect(tick_text.some((t) => t && t.includes(`1`) && t.length > 1)).toBe(true)
     })
 
     test(`customizes via color_bar_props`, () => {

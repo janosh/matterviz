@@ -159,7 +159,7 @@ export const phonon_bands: Record<string, PhononBandStructure> = {}
 export const phonon_dos: Record<string, PhononDos> = {}
 
 for (const [path, data] of Object.entries(raw_imports)) {
-  const id = path.match(/\/([^/]+)\.json(?:\.gz)?$/)?.[1] ?? path
+  const id = /\/([^/]+)\.json(?:\.gz)?$/.exec(path)?.[1] ?? path
   phonon_data[id] = data
   if (data?.phonon_bandstructure) {
     phonon_bands[id] = transform_band_structure(data.phonon_bandstructure)

@@ -251,7 +251,7 @@ describe(`ElementTile`, () => {
       })
 
       const node = doc_query(`.element-tile`)
-      expect(node).toBeTruthy()
+      expect(node).toBeInstanceOf(HTMLElement)
     })
 
     test(`has proper accessibility attributes`, () => {
@@ -308,7 +308,7 @@ describe(`ElementTile`, () => {
       })
 
       const node = doc_query(`.element-tile`)
-      expect(node).toBeTruthy()
+      expect(node).toBeInstanceOf(HTMLElement)
     })
 
     test(`explicit text_color overrides automatic calculation`, () => {
@@ -342,7 +342,7 @@ describe(`ElementTile`, () => {
       expect(node.style.backgroundColor).toBe(`#000000`)
 
       // Component should render without errors despite background/text color interactions
-      expect(node).toBeTruthy()
+      expect(node).toBeInstanceOf(HTMLElement)
       expect(node.classList.contains(`element-tile`)).toBe(true)
     })
   })
@@ -425,10 +425,10 @@ describe(`ElementTile`, () => {
         })
 
         segments.forEach((cls) =>
-          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy(),
+          expect(document.querySelector(`.segment.${cls}`)).toBeInstanceOf(HTMLElement),
         )
         positions.forEach((cls) =>
-          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy(),
+          expect(document.querySelector(`.multi-value.${cls}`)).toBeInstanceOf(HTMLElement),
         )
         expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
         expect(document.querySelector(`.number`)).toBeNull() // Auto-hide atomic number
@@ -467,10 +467,10 @@ describe(`ElementTile`, () => {
         })
 
         segments.forEach((cls) =>
-          expect(document.querySelector(`.segment.${cls}`)).toBeTruthy(),
+          expect(document.querySelector(`.segment.${cls}`)).toBeInstanceOf(HTMLElement),
         )
         positions.forEach((cls) =>
-          expect(document.querySelector(`.multi-value.${cls}`)).toBeTruthy(),
+          expect(document.querySelector(`.multi-value.${cls}`)).toBeInstanceOf(HTMLElement),
         )
         expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
         expect(document.querySelector(`.number`)).toBeNull()
@@ -522,7 +522,7 @@ describe(`ElementTile`, () => {
         },
       })
 
-      expect(document.querySelector(`.element-tile`)).toBeTruthy()
+      expect(document.querySelector(`.element-tile`)).toBeInstanceOf(HTMLElement)
       if (expected_count !== undefined) {
         expect(document.querySelectorAll(`.multi-value`).length).toBe(expected_count)
       }
@@ -680,10 +680,10 @@ describe(`ElementTile`, () => {
         expect(fallback_value?.textContent).toBe(expected_text)
       } else {
         // Check for quadrant segments when auto-layout is used
-        expect(document.querySelector(`.segment.quadrant-tl`)).toBeTruthy()
-        expect(document.querySelector(`.segment.quadrant-tr`)).toBeTruthy()
-        expect(document.querySelector(`.segment.quadrant-bl`)).toBeTruthy()
-        expect(document.querySelector(`.segment.quadrant-br`)).toBeTruthy()
+        expect(document.querySelector(`.segment.quadrant-tl`)).toBeInstanceOf(HTMLElement)
+        expect(document.querySelector(`.segment.quadrant-tr`)).toBeInstanceOf(HTMLElement)
+        expect(document.querySelector(`.segment.quadrant-bl`)).toBeInstanceOf(HTMLElement)
+        expect(document.querySelector(`.segment.quadrant-br`)).toBeInstanceOf(HTMLElement)
       }
     })
   })

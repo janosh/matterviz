@@ -18,7 +18,7 @@ const is_label_node = (node: SimulationNode): node is LabelNode => `label_width`
 
 function parse_font_size(size_str?: string): number {
   if (!size_str) return 12
-  const match = size_str.match(/^(\d+(?:\.\d+)?)(px|em|rem)?$/)
+  const match = /^(\d+(?:\.\d+)?)(px|em|rem)?$/.exec(size_str)
   if (!match) return 12
   const value = parseFloat(match[1])
   return match[2] === `em` || match[2] === `rem` ? value * 16 : value

@@ -25,8 +25,8 @@ const mount_tooltip = (
 describe(`FermiSurfaceTooltip`, () => {
   test(`renders container with expected structure`, () => {
     mount_tooltip()
-    expect(doc_query(`.tooltip-content`)).toBeTruthy()
-    expect(doc_query(`.tooltip-title`)).toBeTruthy()
+    expect(doc_query(`.tooltip-content`)).toBeInstanceOf(HTMLElement)
+    expect(doc_query(`.tooltip-title`)).toBeInstanceOf(HTMLElement)
   })
 
   describe(`band index display`, () => {
@@ -43,7 +43,7 @@ describe(`FermiSurfaceTooltip`, () => {
   describe(`spin display`, () => {
     test.each([`up`, `down`] as const)(`shows spin %s badge`, (spin) => {
       mount_tooltip({ hover_data: mock_hover_data({ spin }) })
-      expect(doc_query(`.spin-badge.spin-${spin}`)).toBeTruthy()
+      expect(doc_query(`.spin-badge.spin-${spin}`)).toBeInstanceOf(HTMLElement)
       expect(document.body.textContent).toContain(spin)
     })
 
@@ -141,7 +141,7 @@ describe(`FermiSurfaceTooltip`, () => {
     ])(`renders $key as static HTML`, ({ key, html, class_name }) => {
       mount_tooltip({ tooltip: { [key]: html } })
       expect(document.body.innerHTML).toContain(html)
-      expect(doc_query(class_name)).toBeTruthy()
+      expect(doc_query(class_name)).toBeInstanceOf(HTMLElement)
     })
 
     test.each([

@@ -11,7 +11,7 @@ describe(`BarChart component`, () => {
     })
 
     const container = document.querySelector(`.bar-chart`)
-    expect(container).toBeTruthy()
+    expect(container).toBeInstanceOf(Element)
     expect(container?.getAttribute(`viewBox`)).toContain(`0 0 300`)
   })
 
@@ -52,7 +52,7 @@ describe(`BarChart component`, () => {
 
     // Check that clip path exists for border radius
     const clip_path = document.querySelector(`clipPath`)
-    expect(clip_path).toBeTruthy()
+    expect(clip_path).toBeInstanceOf(Element)
 
     // Check that the clip path rect has the correct border radius
     const clip_rect = clip_path?.querySelector(`rect`) as SVGElement
@@ -77,7 +77,7 @@ describe(`BarChart component`, () => {
       target: document.body,
       props: { composition: { H: 2, O: 1 } },
     })
-    expect(doc_query(`.bar-chart`)).toBeTruthy()
+    expect(doc_query(`.bar-chart`)).toBeInstanceOf(Element)
   })
 
   test(`renders bar segments correctly`, () => {
@@ -167,10 +167,10 @@ describe(`BarChart component`, () => {
     })
 
     // Should find element symbols
-    expect(document.querySelector(`.element-symbol`)).toBeTruthy()
+    expect(document.querySelector(`.element-symbol`)).toBeInstanceOf(Element)
 
     // Should find combined amount+percentage elements
-    expect(document.querySelector(`.amount`)).toBeTruthy()
+    expect(document.querySelector(`.amount`)).toBeInstanceOf(Element)
   })
 
   test(`handles custom bar dimensions`, () => {
@@ -185,7 +185,7 @@ describe(`BarChart component`, () => {
     })
 
     const container = document.querySelector(`.bar-chart`)
-    expect(container).toBeTruthy()
+    expect(container).toBeInstanceOf(Element)
 
     // Check that CSS variables are set
     const style = container?.getAttribute(`style`)
@@ -225,7 +225,7 @@ describe(`BarChart component`, () => {
       },
     })
 
-    expect(document.querySelector(`.custom-child`)).toBeTruthy()
+    expect(document.querySelector(`.custom-child`)).toBeInstanceOf(HTMLElement)
   })
 })
 

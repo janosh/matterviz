@@ -45,7 +45,7 @@ const get_label_positions = async (plot_locator: Locator): Promise<Record<string
     if (label_text_content) {
       const transform = await parent_group.getAttribute(`transform`)
       if (transform) {
-        const match = transform.match(/translate\(([^\s,]+)\s*,?\s*([^)]+)\)/)
+        const match = /translate\(([^\s,]+)\s*,?\s*([^)]+)\)/.exec(transform)
         if (match) {
           return {
             label: label_text_content,

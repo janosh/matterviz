@@ -10,7 +10,7 @@ describe(`PieChart component`, () => {
     })
 
     const svg = document.querySelector(`svg`)
-    expect(svg).toBeTruthy()
+    expect(svg).not.toBeNull()
     expect(svg?.getAttribute(`viewBox`)).toBe(`0 0 200 200`)
   })
 
@@ -43,7 +43,7 @@ describe(`PieChart component`, () => {
       },
     })
 
-    expect(document.querySelector(`.custom-child`)).toBeTruthy()
+    expect(document.querySelector(`.custom-child`)).not.toBeNull()
   })
 })
 

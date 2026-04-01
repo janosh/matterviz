@@ -19,14 +19,14 @@ describe(`JsonTree`, () => {
   describe(`rendering`, () => {
     it(`renders with required value prop`, () => {
       mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
-      expect(get_tree()).toBeTruthy()
-      expect(get_content()).toBeTruthy()
+      expect(get_tree()).toBeInstanceOf(HTMLDivElement)
+      expect(get_content()).toBeInstanceOf(HTMLDivElement)
     })
 
     it(`renders header by default`, () => {
       mount(JsonTree, { target: document.body, props: { value: { a: 1 } } })
-      expect(get_header()).toBeTruthy()
-      expect(get_search_input()).toBeTruthy()
+      expect(get_header()).toBeInstanceOf(HTMLElement)
+      expect(get_search_input()).toBeInstanceOf(HTMLElement)
     })
 
     it(`hides header when show_header=false`, () => {
@@ -52,7 +52,7 @@ describe(`JsonTree`, () => {
       })
       // Should not have a key for the root
       const first_node = get_nodes()[0]
-      expect(first_node.querySelector(`.node-key`)).toBeTruthy()
+      expect(first_node.querySelector(`.node-key`)).toBeInstanceOf(HTMLElement)
     })
 
     it(`has correct ARIA attributes`, () => {
@@ -401,8 +401,8 @@ describe(`JsonTree`, () => {
       const btns = last_group.querySelectorAll(`button`)
       expect(btns.length).toBe(2)
       // Both should have SVG icons
-      expect(btns[0].querySelector(`svg`)).toBeTruthy()
-      expect(btns[1].querySelector(`svg`)).toBeTruthy()
+      expect(btns[0].querySelector(`svg`)).toBeInstanceOf(Element)
+      expect(btns[1].querySelector(`svg`)).toBeInstanceOf(Element)
       expect(btns[0].getAttribute(`title`)).toBe(`Copy JSON to clipboard`)
       expect(btns[1].getAttribute(`title`)).toBe(`Download as JSON file`)
     })
@@ -470,7 +470,7 @@ describe(`JsonTree`, () => {
       await tick()
 
       const feedback = document.querySelector(`.copy-feedback`)
-      expect(feedback).toBeTruthy()
+      expect(feedback).toBeInstanceOf(HTMLElement)
       expect(feedback?.textContent).toBe(`Copied!`)
     })
 
@@ -484,7 +484,7 @@ describe(`JsonTree`, () => {
       await tick()
 
       const feedback = document.querySelector(`.copy-feedback.error`)
-      expect(feedback).toBeTruthy()
+      expect(feedback).toBeInstanceOf(HTMLElement)
       expect(feedback?.textContent).toBe(`Copy failed`)
     })
 
@@ -603,7 +603,7 @@ describe(`JsonTree`, () => {
       })
       const toggles = get_collapse_toggles()
       expect(toggles.length).toBeGreaterThan(0)
-      expect(toggles[0].getAttribute(`aria-label`)).toBeTruthy()
+      expect(toggles[0].getAttribute(`aria-label`)).not.toBeNull()
     })
   })
 
@@ -791,7 +791,7 @@ describe(`JsonTree`, () => {
       const value_el = get_values()[0]
       expect(value_el.textContent?.length).toBeLessThan(100)
       expect(value_el.textContent).toContain(`...`)
-      expect(document.querySelector(`.expand-btn`)).toBeTruthy()
+      expect(document.querySelector(`.expand-btn`)).toBeInstanceOf(HTMLElement)
     })
   })
 
@@ -909,7 +909,7 @@ describe(`accessibility`, () => {
     })
     // Tree structure
     expect(document.querySelectorAll(`[role="treeitem"]`).length).toBeGreaterThan(0)
-    expect(document.querySelector(`[aria-expanded]`)).toBeTruthy()
+    expect(document.querySelector(`[aria-expanded]`)).toBeInstanceOf(HTMLElement)
     // Clickable values
     const value_el = document.querySelector(`.json-value`)
     expect(value_el?.getAttribute(`role`)).toBe(`button`)
@@ -946,7 +946,7 @@ describe(`search navigation`, () => {
 
     await type_search(`ba`)
 
-    expect(get_match_nav()).toBeTruthy()
+    expect(get_match_nav()).toBeInstanceOf(HTMLElement)
     expect(get_nav_btns().length).toBe(2) // prev and next
   })
 
@@ -959,7 +959,7 @@ describe(`search navigation`, () => {
     await type_search(`ba`)
 
     const count = get_match_count()
-    expect(count).toBeTruthy()
+    expect(count).toBeInstanceOf(HTMLElement)
     expect(count?.textContent).toMatch(/1 of 2/)
   })
 
@@ -1039,7 +1039,7 @@ describe(`search navigation`, () => {
     await type_search(`ba`)
 
     const current = get_current_match()
-    expect(current).toBeTruthy()
+    expect(current).toBeInstanceOf(HTMLElement)
     expect(current?.classList.contains(`current-match`)).toBe(true)
   })
 
@@ -1102,7 +1102,7 @@ describe(`search navigation`, () => {
 
     const input = get_search_input()
     expect(input.value).toBe(`foo`)
-    expect(get_match_nav()).toBeTruthy()
+    expect(get_match_nav()).toBeInstanceOf(HTMLElement)
 
     input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
     flushSync()
@@ -1147,7 +1147,7 @@ describe(`path breadcrumb`, () => {
     })
 
     const target_node = document.querySelector(`[data-path="${path}"]`) as HTMLElement
-    expect(target_node).toBeTruthy()
+    expect(target_node).toBeInstanceOf(HTMLElement)
     target_node.click()
     flushSync()
     await tick()
@@ -1176,7 +1176,7 @@ describe(`copy path functionality`, () => {
     // Find the "inner" key button
     const keys = document.querySelectorAll(`.node-key`)
     const inner_key = Array.from(keys).find((el) => el.textContent?.includes(`inner`))
-    expect(inner_key).toBeTruthy()
+    expect(inner_key).toBeDefined()
     ;(inner_key as HTMLButtonElement).click()
     flushSync()
     await tick()
@@ -1411,7 +1411,7 @@ describe(`context menu`, () => {
     await tick()
 
     const menu = document.querySelector(`.context-menu`)
-    expect(menu).toBeTruthy()
+    expect(menu).toBeInstanceOf(HTMLElement)
     expect(menu?.textContent).toContain(`Copy value`)
     expect(menu?.textContent).toContain(`Copy path`)
     expect(menu?.textContent).toContain(`Pin`)
@@ -1426,13 +1426,13 @@ describe(`context menu`, () => {
     node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
     flushSync()
     await tick()
-    expect(document.querySelector(`.context-menu`)).toBeTruthy()
+    expect(document.querySelector(`.context-menu`)).toBeInstanceOf(HTMLElement)
 
     const backdrop = document.querySelector(`.context-menu-backdrop`) as HTMLDivElement
     backdrop.click()
     flushSync()
     await tick()
-    expect(document.querySelector(`.context-menu`)).toBeFalsy()
+    expect(document.querySelector(`.context-menu`)).toBeNull()
   })
 
   it(`closes on Escape key`, async () => {
@@ -1444,13 +1444,13 @@ describe(`context menu`, () => {
     node.dispatchEvent(new MouseEvent(`contextmenu`, { bubbles: true }))
     flushSync()
     await tick()
-    expect(document.querySelector(`.context-menu`)).toBeTruthy()
+    expect(document.querySelector(`.context-menu`)).toBeInstanceOf(HTMLElement)
 
     const tree = document.querySelector(`.json-tree`) as HTMLDivElement
     tree.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
     flushSync()
     await tick()
-    expect(document.querySelector(`.context-menu`)).toBeFalsy()
+    expect(document.querySelector(`.context-menu`)).toBeNull()
   })
 
   it(`shows expand/collapse options for expandable nodes`, async () => {
@@ -1486,14 +1486,14 @@ describe(`pinned paths panel`, () => {
     const pin_btn = Array.from(document.querySelectorAll(`.context-menu button`)).find((btn) =>
       btn.textContent?.includes(`Pin`),
     ) as HTMLButtonElement
-    expect(pin_btn).toBeTruthy()
+    expect(pin_btn).toBeDefined()
     pin_btn.click()
     flushSync()
     await tick()
 
     // Pinned panel should appear
     const panel = document.querySelector(`.pinned-panel`)
-    expect(panel).toBeTruthy()
+    expect(panel).toBeInstanceOf(HTMLElement)
     expect(panel?.textContent).toContain(`Pinned (1)`)
   })
 
@@ -1513,14 +1513,14 @@ describe(`pinned paths panel`, () => {
     pin_btn.click()
     flushSync()
     await tick()
-    expect(document.querySelector(`.pinned-panel`)).toBeTruthy()
+    expect(document.querySelector(`.pinned-panel`)).toBeInstanceOf(HTMLElement)
 
     // Click Clear
     const clear_btn = document.querySelector(`.pinned-clear-btn`) as HTMLButtonElement
     clear_btn.click()
     flushSync()
     await tick()
-    expect(document.querySelector(`.pinned-panel`)).toBeFalsy()
+    expect(document.querySelector(`.pinned-panel`)).toBeNull()
   })
 })
 
@@ -1627,7 +1627,7 @@ describe(`node visual hints`, () => {
       },
     })
     const size_hint = document.querySelector(`.size-hint`)
-    expect(size_hint).toBeTruthy()
+    expect(size_hint).toBeInstanceOf(HTMLElement)
     expect(size_hint?.textContent?.trim()).toMatch(/\d+ B/)
   })
 
@@ -1647,7 +1647,7 @@ describe(`node visual hints`, () => {
       props: { value: { key: 42 }, show_header: false, default_fold_level: 5 },
     })
     // Expanded/leaf key shows copy icon (SVG renders as empty text)
-    expect(document.querySelector(`.action-hint`)).toBeTruthy()
+    expect(document.querySelector(`.action-hint`)).toBeInstanceOf(HTMLElement)
   })
 })
 
@@ -1662,7 +1662,7 @@ describe(`collapse-to-level button`, () => {
       },
     })
     const btn = document.querySelector(`.collapse-level-btn`)
-    expect(btn).toBeTruthy()
+    expect(btn).toBeInstanceOf(HTMLElement)
     expect(btn?.textContent?.trim()).toBe(`⊟`)
   })
 
@@ -1700,7 +1700,7 @@ describe(`URL auto-linking`, () => {
       },
     })
     const link = document.querySelector(`.url-link`) as HTMLAnchorElement
-    expect(link).toBeTruthy()
+    expect(link).toBeInstanceOf(HTMLElement)
     expect(link.href).toBe(`https://example.com/`)
     expect(link.target).toBe(`_blank`)
     expect(link.rel).toBe(`noopener noreferrer`)
@@ -1715,7 +1715,7 @@ describe(`URL auto-linking`, () => {
         default_fold_level: 5,
       },
     })
-    expect(document.querySelector(`.url-link`)).toBeFalsy()
+    expect(document.querySelector(`.url-link`)).toBeNull()
   })
 })
 
@@ -1732,8 +1732,8 @@ describe(`color swatch`, () => {
         },
       })
       const swatch = document.querySelector(`.color-swatch`) as HTMLSpanElement
-      expect(swatch).toBeTruthy()
-      expect(swatch.style.background).toBeTruthy()
+      expect(swatch).toBeInstanceOf(HTMLElement)
+      expect(swatch.style.background).not.toBe(``)
     },
   )
 
@@ -1746,7 +1746,7 @@ describe(`color swatch`, () => {
         default_fold_level: 5,
       },
     })
-    expect(document.querySelector(`.color-swatch`)).toBeFalsy()
+    expect(document.querySelector(`.color-swatch`)).toBeNull()
   })
 })
 
@@ -1791,7 +1791,7 @@ describe(`diff mode`, () => {
     })
     await tick()
     const ghost = document.querySelector(`.ghost`)
-    expect(ghost).toBeTruthy()
+    expect(ghost).toBeInstanceOf(HTMLElement)
     expect(ghost?.textContent).toContain(`removed_key`)
   })
 
@@ -1853,7 +1853,7 @@ describe(`clipboard interactions`, () => {
     await tick()
 
     const menu = document.querySelector(`.context-menu`)
-    expect(menu).toBeTruthy()
+    expect(menu).toBeInstanceOf(HTMLElement)
     expect(menu?.textContent).toContain(`Copy value`)
     expect(menu?.textContent).toContain(`Copy path`)
   })
@@ -1875,7 +1875,7 @@ describe(`clipboard interactions`, () => {
     flushSync()
 
     const feedback = document.querySelector(`.copy-feedback`)
-    expect(feedback).toBeTruthy()
+    expect(feedback).toBeInstanceOf(HTMLElement)
     expect(feedback?.textContent?.trim()).toBe(`Copied!`)
   })
 

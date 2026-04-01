@@ -44,6 +44,6 @@ describe(`ElementScatter`, () => {
       target: document.body,
       props: { y: y_values },
     })
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).not.toBeNull()
   })
 })

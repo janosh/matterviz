@@ -397,7 +397,7 @@ describe(`XrdPlot`, () => {
 
     // Verify dragover class toggles
     const bar_plot = target.querySelector(`.bar-plot`)
-    expect(bar_plot).toBeTruthy()
+    expect(bar_plot).toBeInstanceOf(HTMLElement)
     expect(bar_plot?.classList.contains(`dragover`)).toBe(false)
 
     // Simulate dragover

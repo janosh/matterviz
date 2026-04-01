@@ -9,7 +9,7 @@ describe(`FormulaFilter`, () => {
 
   test(`renders with default props and initial value`, () => {
     mount(FormulaFilter, { target: document.body, props: { value: `` } })
-    expect(get_input()).toBeTruthy()
+    expect(get_input()).toBeInstanceOf(HTMLElement)
     expect(get_input().getAttribute(`aria-label`)).toBe(`Formula filter`)
 
     document.body.innerHTML = ``
@@ -59,7 +59,7 @@ describe(`FormulaFilter`, () => {
 
     const get_mode_btn = () =>
       document.querySelector<HTMLButtonElement>(`.mode-hint.clickable`)
-    expect(get_mode_btn()).toBeTruthy()
+    expect(get_mode_btn()).toBeInstanceOf(HTMLElement)
     expect(get_mode_btn()?.textContent).toContain(`exact formula`)
 
     // Click to cycle: exact → elements (reformats to comma-separated)
@@ -393,7 +393,7 @@ describe(`FormulaFilter`, () => {
 
       help_btn.click()
       flushSync()
-      expect(document.querySelector(`.examples-dropdown`)).toBeTruthy()
+      expect(document.querySelector(`.examples-dropdown`)).toBeInstanceOf(HTMLElement)
       expect(help_btn.getAttribute(`aria-expanded`)).toBe(`true`)
       expect(document.querySelectorAll(`.example-category`).length).toBe(3)
       expect(document.querySelectorAll(`.example-tag`).length).toBe(9)
@@ -413,7 +413,7 @@ describe(`FormulaFilter`, () => {
       mount(FormulaFilter, { target: document.body, props: { value: `Fe`, onclear } })
       doc_query<HTMLButtonElement>(`.help-btn`).click()
       flushSync()
-      expect(document.querySelector(`.examples-dropdown`)).toBeTruthy()
+      expect(document.querySelector(`.examples-dropdown`)).toBeInstanceOf(HTMLElement)
 
       // First Escape closes dropdown
       get_input().dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
@@ -829,7 +829,7 @@ describe(`FormulaFilter`, () => {
 
     test(`removing last entry closes dropdown`, () => {
       seed_mount_focus([`Fe,O`])
-      expect(history_dropdown()).toBeTruthy()
+      expect(history_dropdown()).toBeInstanceOf(HTMLElement)
       remove_btns()[0].dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
       flushSync()
       expect(history_dropdown()).toBeNull()
@@ -872,7 +872,7 @@ describe(`FormulaFilter`, () => {
     test(`Escape closes history dropdown before clearing value`, () => {
       const onclear = vi.fn()
       seed_mount_focus([`Fe,O`], { value: `Li`, onclear })
-      expect(history_dropdown()).toBeTruthy()
+      expect(history_dropdown()).toBeInstanceOf(HTMLElement)
       // First Escape closes history
       keydown(`Escape`)
       flushSync()
@@ -887,12 +887,12 @@ describe(`FormulaFilter`, () => {
 
     test(`examples and history are mutually exclusive`, () => {
       seed_mount_focus([`Fe,O`], { show_examples: true })
-      expect(history_dropdown()).toBeTruthy()
+      expect(history_dropdown()).toBeInstanceOf(HTMLElement)
       // Opening examples closes history
       doc_query<HTMLButtonElement>(`.help-btn`).click()
       flushSync()
       expect(history_dropdown()).toBeNull()
-      expect(document.querySelector(`.examples-dropdown`)).toBeTruthy()
+      expect(document.querySelector(`.examples-dropdown`)).toBeInstanceOf(HTMLElement)
       // Focusing input while examples open does NOT open history
       focus_input()
       flushSync()
@@ -1056,7 +1056,7 @@ describe(`FormulaFilter`, () => {
             },
         )
         .find((validation) => validation.state === `invalid`)
-      expect(invalid_validation).toBeTruthy()
+      expect(invalid_validation).toBeDefined()
       expect(invalid_validation?.message).toContain(`Invalid token`)
       const last_validation = on_validation.mock.calls[
         on_validation.mock.calls.length - 1
@@ -1174,7 +1174,7 @@ describe(`FormulaFilter`, () => {
       const example_btn = Array.from(
         document.querySelectorAll<HTMLButtonElement>(`.example-tag`),
       ).find((btn) => btn.textContent === `Co,Ni`)
-      expect(example_btn).toBeTruthy()
+      expect(example_btn).toBeDefined()
       example_btn?.click()
       flushSync()
       expect(onchange).toHaveBeenLastCalledWith(`Co,Ni`, `elements`)

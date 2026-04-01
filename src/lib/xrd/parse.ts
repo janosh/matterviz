@@ -299,9 +299,7 @@ export function parse_gsas_file(content: string): XrdPattern | null {
   let found_bank = false
 
   for (const line of lines) {
-    const bank_match = line.match(
-      /BANK\s+\d+\s+(\d+)\s+\d+\s+(\w+)\s+([\d.+-]+)\s+([\d.+-]+)/i,
-    )
+    const bank_match = /BANK\s+\d+\s+(\d+)\s+\d+\s+(\w+)\s+([\d.+-]+)\s+([\d.+-]+)/i.exec(line)
     if (bank_match) {
       bin_type = bank_match[2].toUpperCase()
       // For CONST type: BCOEF1 is start*100 (centidegrees), BCOEF2 is step*100
@@ -399,9 +397,9 @@ function parse_bruker_raw_v1(view: DataView, bytes: Uint8Array): XrdPattern | nu
     const header_text = String.fromCharCode(...bytes.slice(0, 512))
 
     // Try to find scan parameters in ASCII header
-    const start_match = header_text.match(/START\s*=\s*([\d.+-]+)/i)
-    const step_match = header_text.match(/STEP\s*=\s*([\d.+-]+)/i)
-    const count_match = header_text.match(/(?:COUNT|POINTS|NPTS)\s*=\s*(\d+)/i)
+    const start_match = /START\s*=\s*([\d.+-]+)/i.exec(header_text)
+    const step_match = /STEP\s*=\s*([\d.+-]+)/i.exec(header_text)
+    const count_match = /(?:COUNT|POINTS|NPTS)\s*=\s*(\d+)/i.exec(header_text)
 
     const start = start_match ? parseFloat(start_match[1]) : 0
     const step = step_match ? parseFloat(step_match[1]) : DEFAULT_STEP_SIZE
@@ -470,11 +468,11 @@ function parse_rigaku_raw_file(data: ArrayBuffer): XrdPattern | null {
     // Try to find ASCII header section with scan parameters
     const header_text = String.fromCharCode(...bytes.slice(0, Math.min(2048, bytes.length)))
 
-    const start_match = header_text.match(
-      /(?:START|2THETA_START|SCAN_START)\s*[:=]?\s*([\d.+-]+)/i,
+    const start_match = /(?:START|2THETA_START|SCAN_START)\s*[:=]?\s*([\d.+-]+)/i.exec(
+      header_text,
     )
-    const step_match = header_text.match(/(?:STEP|STEP_SIZE|SCAN_STEP)\s*[:=]?\s*([\d.+-]+)/i)
-    const count_match = header_text.match(/(?:COUNT|POINTS|NPTS|STEPS)\s*[:=]?\s*(\d+)/i)
+    const step_match = /(?:STEP|STEP_SIZE|SCAN_STEP)\s*[:=]?\s*([\d.+-]+)/i.exec(header_text)
+    const count_match = /(?:COUNT|POINTS|NPTS|STEPS)\s*[:=]?\s*(\d+)/i.exec(header_text)
 
     if (!start_match && !step_match && !count_match) return null // Not a recognizable Rigaku format
 

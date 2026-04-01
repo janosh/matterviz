@@ -35,7 +35,7 @@ export default defineConfig({
     ],
   },
   lint: {
-    plugins: [`oxc`, `typescript`, `unicorn`, `import`],
+    plugins: [`oxc`, `typescript`, `unicorn`, `import`, `vitest`],
     options: { typeAware: true, typeCheck: true },
     categories: { correctness: `error`, suspicious: `error`, perf: `error` },
     ignorePatterns: [
@@ -64,8 +64,18 @@ export default defineConfig({
       'eslint-plugin-unicorn/prefer-date-now': `error`,
       'eslint-plugin-unicorn/require-number-to-fixed-digits-argument': `error`,
       'eslint-plugin-unicorn/no-useless-promise-resolve-reject': `error`,
+      'eslint-plugin-unicorn/custom-error-definition': `error`,
       'eslint-plugin-import/no-duplicates': `error`,
       '@typescript-eslint/no-non-null-assertion': `error`,
+      '@typescript-eslint/prefer-string-starts-ends-with': `error`,
+      '@typescript-eslint/prefer-readonly': `error`,
+      '@typescript-eslint/prefer-regexp-exec': `error`,
+      '@typescript-eslint/prefer-find': `error`,
+      'no-useless-computed-key': `error`,
+      'eslint-plugin-vitest/prefer-strict-boolean-matchers': `error`,
+      'eslint-plugin-vitest/prefer-called-exactly-once-with': `error`,
+      'eslint-plugin-vitest/require-awaited-expect-poll': `error`,
+      'eslint-plugin-vitest/require-mock-type-parameters': `off`, // 242 violations, needs manual type annotations
 
       // Svelte framework patterns — NOT bugs
       'no-self-assign': `off`, // reactive `x = x`
@@ -96,6 +106,13 @@ export default defineConfig({
       'eslint-plugin-unicorn/require-module-specifiers': `off`,
       'oxc/no-map-spread': `off`,
       'oxc/approx-constant': `off`,
+      // Vitest default rules — too noisy for this codebase
+      'eslint-plugin-jest/no-conditional-expect': `off`, // conditional expects are pervasive
+      'eslint-plugin-jest/valid-expect': `off`, // false positives on custom matchers
+      'eslint-plugin-jest/expect-expect': `off`, // helper-based assertion patterns
+      'eslint-plugin-jest/require-to-throw-message': `off`,
+      'eslint-plugin-jest/no-standalone-expect': `off`, // expect in shared helpers
+      'eslint-plugin-jest/valid-describe-callback': `off`,
     },
   },
   plugins: [

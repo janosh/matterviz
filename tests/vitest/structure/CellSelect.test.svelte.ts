@@ -70,22 +70,22 @@ describe(`CellSelect`, () => {
       })
 
       // Initially hidden
-      expect(document.querySelector(`.dropdown`)).toBeFalsy()
+      expect(document.querySelector(`.dropdown`)).toBeNull()
 
       // Opens on click
       doc_query<HTMLButtonElement>(`.toggle-btn`).click()
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeTruthy()
+      expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
 
       // Close by mouseleave
       doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeFalsy()
+      expect(document.querySelector(`.dropdown`)).toBeNull()
 
       // Opens on mouseenter
       doc_query(`.cell-select`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
       await tick()
-      expect(document.querySelector(`.dropdown`)).toBeTruthy()
+      expect(document.querySelector(`.dropdown`)).toBeInstanceOf(HTMLElement)
     })
 
     test.each([
@@ -227,12 +227,12 @@ describe(`CellSelect`, () => {
       const btn = Array.from(document.querySelectorAll<HTMLButtonElement>(`.preset-btn`)).find(
         (button_elem) => normalize_supercell_label(button_elem.textContent) === `2x2x2`,
       )
-      expect(btn).toBeTruthy()
+      expect(btn).toBeDefined()
       btn?.click()
       await tick()
 
       expect(scaling).toBe(`2x2x2`)
-      expect(document.querySelector(`.dropdown`)).toBeFalsy()
+      expect(document.querySelector(`.dropdown`)).toBeNull()
     })
   })
 

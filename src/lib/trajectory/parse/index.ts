@@ -382,7 +382,7 @@ async function parse_with_unified_loader(
 
 // Factory function for frame loader (simplified)
 export function create_frame_loader(filename: string): FrameLoader {
-  if (!filename.toLowerCase().match(/\.(xyz|extxyz|traj)$/)) {
+  if (!/\.(xyz|extxyz|traj)$/.exec(filename.toLowerCase())) {
     throw new Error(`Unsupported format for frame loading: ${filename}`)
   }
   return new TrajFrameReader(filename)

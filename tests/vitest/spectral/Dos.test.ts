@@ -111,13 +111,13 @@ describe(`Dos component`, () => {
     ],
   ])(`renders %s`, (_desc, props) => {
     mount(Dos, { target: document.body, props })
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   // Unit conversion tests
   it.each([`THz`, `eV`, `meV`, `cm-1`, `Ha`] as const)(`converts to unit=%s`, (units) => {
     mount(Dos, { target: document.body, props: { doses: phonon_dos, units } })
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   // Normalization tests
@@ -125,7 +125,7 @@ describe(`Dos component`, () => {
     `normalizes with mode=%s`,
     (normalize) => {
       mount(Dos, { target: document.body, props: { doses: phonon_dos, normalize } })
-      expect(document.querySelector(`.scatter`)).toBeTruthy()
+      expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     },
   )
 
@@ -137,7 +137,7 @@ describe(`Dos component`, () => {
         target: document.body,
         props: { doses: spin_polarized_dos, spin_mode: spin_mode as SpinMode },
       })
-      expect(document.querySelector(`.scatter`)).toBeTruthy()
+      expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     },
   )
 
@@ -148,7 +148,7 @@ describe(`Dos component`, () => {
     [`invalid data`, { invalid: true }],
   ])(`shows EmptyState for %s`, (_desc, doses) => {
     mount(Dos, { target: document.body, props: { doses: doses as unknown as DosData } })
-    expect(document.querySelector(`.empty-state`)).toBeTruthy()
+    expect(document.querySelector(`.empty-state`)).toBeInstanceOf(HTMLElement)
   })
 
   it(`shows sigma control when enabled`, () => {
@@ -157,7 +157,7 @@ describe(`Dos component`, () => {
       props: { doses: phonon_dos, show_sigma_control: true, show_controls: true },
     })
     // Controls are now part of ScatterPlot's control pane, not a separate overlay
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   it(`clears smearing cache without error`, async () => {
@@ -167,7 +167,7 @@ describe(`Dos component`, () => {
     document.body.innerHTML = ``
     mount(Dos, { target: document.body, props: { doses: phonon_dos, sigma: 0.5 } })
     await tick()
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   it(`stacks spin-up and spin-down independently in overlay mode`, async () => {
@@ -200,7 +200,7 @@ describe(`Dos component`, () => {
     // With 2 DOS entries: spin-up uses colors 0,1 and spin-down uses colors 1,3
     expect(unique_colors.size).toBeGreaterThanOrEqual(2)
     // Verify all paths have valid fill colors (not null/empty)
-    fill_colors.forEach((color) => expect(color).toBeTruthy())
+    fill_colors.forEach((color) => expect(color).not.toBeNull())
   })
 })
 
@@ -212,7 +212,7 @@ describe(`DOS controls integration`, () => {
       target: document.body,
       props: { doses: phonon_dos, show_controls: true },
     })
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   it(`renders with show_controls disabled`, () => {
@@ -220,7 +220,7 @@ describe(`DOS controls integration`, () => {
       target: document.body,
       props: { doses: phonon_dos, show_controls: false },
     })
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     // Controls pane toggle should not be visible when disabled
   })
 
@@ -232,7 +232,7 @@ describe(`DOS controls integration`, () => {
         target: document.body,
         props: { doses: spin_polarized_dos, spin_mode: mode },
       })
-      expect(document.querySelector(`.scatter`)).toBeTruthy()
+      expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     }
   })
 
@@ -241,7 +241,7 @@ describe(`DOS controls integration`, () => {
       target: document.body,
       props: { doses: phonon_dos, sigma: 0.5, sigma_range: [0, 2] },
     })
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   it(`passes normalize_control prop correctly`, () => {
@@ -249,7 +249,7 @@ describe(`DOS controls integration`, () => {
       target: document.body,
       props: { doses: phonon_dos, show_normalize_control: true },
     })
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 
   it(`passes units_control prop correctly for phonon DOS`, () => {
@@ -257,7 +257,7 @@ describe(`DOS controls integration`, () => {
       target: document.body,
       props: { doses: phonon_dos, show_units_control: true },
     })
-    expect(document.querySelector(`.scatter`)).toBeTruthy()
+    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
   })
 })
 
@@ -337,7 +337,7 @@ describe(`extract_pdos`, () => {
     [`orbital`, [`s`, `p`, `d`]],
   ] as const)(`extracts %s DOS with expected keys`, (pdos_type, expected_keys) => {
     const result = extract_pdos(pymatgen_complete_dos, pdos_type)
-    expect(result).toBeTruthy()
+    expect(result).not.toBeNull()
     expected_keys.forEach((key) => expect(Object.keys(result ?? {})).toContain(key))
   })
 

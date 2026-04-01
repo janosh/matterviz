@@ -1484,7 +1484,7 @@ describe(`Trajectory Files with Exact Reference Data`, () => {
   it.each(TRAJECTORY_REFERENCE_DATA)(
     `$file: $frames frames, $atoms atoms`,
     async ({ file, frames, atoms, elements, periodic, format }) => {
-      const is_binary = file.match(/\.(h5|hdf5|traj)$/)
+      const is_binary = /\.(h5|hdf5|traj)$/.exec(file)
       const content = is_binary ? read_binary_test_file(file) : read_test_file(file)
 
       const trajectory = await parse_trajectory_data(content, file)
@@ -1539,7 +1539,7 @@ describe(`Comprehensive File Coverage`, () => {
   it.each(all_trajectory_files)(
     `should successfully parse sample file: %s`,
     async (filename) => {
-      const is_binary = filename.match(/\.(h5|hdf5|traj)$/)
+      const is_binary = /\.(h5|hdf5|traj)$/.exec(filename)
       const content = is_binary ? read_binary_test_file(filename) : read_test_file(filename)
 
       // Should not throw an error

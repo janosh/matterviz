@@ -112,7 +112,7 @@ describe(`FermiSlice`, () => {
     },
   ])(`mounts without error: $desc`, ({ props }) => {
     expect(() => mount(FermiSlice, { target: document.body, props })).not.toThrow()
-    expect(doc_query(`.fermi-slice`)).toBeTruthy()
+    expect(doc_query(`.fermi-slice`)).toBeInstanceOf(HTMLElement)
   })
 
   test(`on_error callback when compute_fermi_slice throws`, async () => {
@@ -167,7 +167,7 @@ describe(`FermiSlice`, () => {
 
     expect(snippet_called).toBe(true)
     expect(typeof export_svg_fn).toBe(`function`)
-    expect(document.querySelector(`.children-rendered`)).toBeTruthy()
+    expect(document.querySelector(`.children-rendered`)).not.toBeNull()
     expect(received_slice_data).toBeNull() // null when no fermi_data
 
     // Verify export_svg returns string or null (consistent return type)

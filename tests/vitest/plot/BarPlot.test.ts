@@ -89,8 +89,8 @@ describe(`BarPlot`, () => {
       },
     })
     await tick()
-    expect(document.querySelector(`.bar-plot`)).toBeTruthy()
-    expect(document.querySelector(`g.x2-axis`)).toBeTruthy()
+    expect(document.querySelector(`.bar-plot`)).not.toBeNull()
+    expect(document.querySelector(`g.x2-axis`)).not.toBeNull()
     expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
@@ -164,7 +164,7 @@ describe(`BarPlot`, () => {
       },
     })
     const plot = document.querySelector(`.bar-plot`)
-    expect(plot).toBeTruthy()
+    expect(plot).not.toBeNull()
   })
 
   test(`mixed bar and line series`, () => {
@@ -226,7 +226,7 @@ describe(`BarPlot`, () => {
     })
     await tick()
     const bar = document.querySelector(`path[role="button"]`)
-    expect(bar).toBeTruthy()
+    expect(bar).not.toBeNull()
     bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
     await tick()
     const text = document.querySelector(`.plot-tooltip`)?.textContent ?? ``
@@ -329,8 +329,8 @@ describe(`BarPlot`, () => {
         })
         await tick()
         const plot = document.querySelector(`.bar-plot`)
-        expect(plot).toBeTruthy()
-        expect(plot?.querySelector(`svg`)).toBeTruthy()
+        expect(plot).not.toBeNull()
+        expect(plot?.querySelector(`svg`)).not.toBeNull()
       },
     )
 
@@ -434,7 +434,7 @@ describe(`BarPlot`, () => {
       })
 
       // Component should render the bar plot wrapper
-      expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+      expect(document.querySelector(`.bar-plot`)).not.toBeNull()
     })
 
     test(`series visibility can be toggled via legend_group`, () => {
@@ -449,7 +449,7 @@ describe(`BarPlot`, () => {
       })
 
       // Component should render
-      expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+      expect(document.querySelector(`.bar-plot`)).not.toBeNull()
     })
 
     test(`legend_group property is preserved on series data`, () => {
@@ -472,7 +472,7 @@ describe(`BarPlot`, () => {
       })
 
       // Component should render without errors
-      expect(document.querySelector(`.bar-plot`)).toBeTruthy()
+      expect(document.querySelector(`.bar-plot`)).not.toBeNull()
     })
   })
 })
