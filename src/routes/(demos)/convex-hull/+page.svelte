@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sanitize_html } from '$lib/sanitize'
   import type { ElementSymbol } from '$lib'
   import type {
     ConvexHullEntry,
@@ -389,7 +390,7 @@
   {#snippet feature_list(feature_items: string[])}
     <ul class="feature-list">
       {#each feature_items as feature_item (feature_item)}
-        <li>{@html feature_item}</li>
+        <li>{@html sanitize_html(feature_item)}</li>
       {/each}
     </ul>
   {/snippet}
@@ -531,7 +532,7 @@
       <div>
         <div class="marker-legend">
           {#each marker_legend_primary as legend_item (legend_item)}
-            <span>{@html legend_item}</span>
+            <span>{@html sanitize_html(legend_item)}</span>
           {/each}
         </div>
         <ConvexHull3D
@@ -543,7 +544,7 @@
       <div>
         <div class="marker-legend">
           {#each marker_legend_binary as legend_item (legend_item)}
-            <span>{@html legend_item}</span>
+            <span>{@html sanitize_html(legend_item)}</span>
           {/each}
         </div>
         <ConvexHull2D

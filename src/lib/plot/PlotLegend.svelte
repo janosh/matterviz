@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { LegendItem, Orientation } from '$lib/plot'
+  import { sanitize_html } from '$lib/sanitize'
   import { onDestroy } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -294,7 +295,7 @@
         {/if}
       {/if}
     </span>
-    <span class="legend-label">{@html series.label}</span>
+    <span class="legend-label">{@html sanitize_html(series.label)}</span>
   </div>
 {/snippet}
 
@@ -360,7 +361,7 @@
         >
           ▶
         </span>
-        <span class="group-label">{@html group_name}</span>
+        <span class="group-label">{@html sanitize_html(group_name)}</span>
       </div>
       <!-- Group items (collapsible) -->
       {#if !is_collapsed}

@@ -15,6 +15,7 @@
   } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { ELEM_PROPERTY_LABELS, format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import { selected } from '$lib/state.svelte'
   import pkg from '$root/package.json'
   import { error } from '@sveltejs/kit'
@@ -137,7 +138,7 @@
   />
 </section>
 
-<p class="summary">{@html element.summary}</p>
+<p class="summary">{@html sanitize_html(element.summary)}</p>
 
 <section class="flex-wrap">
   <PeriodicTable
@@ -197,7 +198,7 @@
       <div>
         <strong>
           <Icon {icon} />
-          {@html value}
+          {@html sanitize_html(value)}
         </strong>
         <small>{label}</small>
       </div>
@@ -210,13 +211,13 @@
   current={page.url.pathname.slice(1)}
 >
   {#snippet children({ item, kind })}
-    {@const element = item[1] as ChemicalElement}
+    {@const element = item[1]}
     <a
       href={element.name.toLowerCase()}
       style="display: flex; flex-direction: column; position: relative"
     >
       <h3>
-        {@html kind == `next` ? `Next &rarr;` : `&larr; Previous`}
+        {kind == `next` ? `Next →` : `← Previous`}
       </h3>
       <ElementPhoto {element} style="width: 200px; border-radius: 4pt" />
       <ElementTile

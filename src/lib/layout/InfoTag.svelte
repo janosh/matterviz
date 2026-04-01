@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
+  import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -72,8 +73,8 @@
   aria-disabled={disabled}
   {...rest}
 >
-  {@html label}
-  <em>{@html value}</em>
+  {@html sanitize_html(label)}
+  <em>{@html sanitize_html(value)}</em>
   {#if just_copied}
     <Icon
       icon="Check"

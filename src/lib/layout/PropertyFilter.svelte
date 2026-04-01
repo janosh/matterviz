@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
+  import { sanitize_html } from '$lib/sanitize'
   import type { AxisConfig, DataSeries } from '$lib/plot'
   import { Histogram } from '$lib/plot'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -120,7 +121,7 @@
     {@render histogram_snippet()}
   {/if}
   <div class="filter-row">
-    <span {title} class="filter-label">{@html label}</span>
+    <span {title} class="filter-label">{@html sanitize_html(label)}</span>
     <div class="filter-inputs">
       <input
         bind:value={min_value}

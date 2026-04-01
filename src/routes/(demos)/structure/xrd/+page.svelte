@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sanitize_html } from '$lib/sanitize'
   import type { Crystal, FileInfo } from '$lib'
   import FilePicker from '$lib/FilePicker.svelte'
   import { PLOT_COLORS } from '$lib/colors'
@@ -166,7 +167,7 @@
         title={struct_id}
       >
         <span class="id">{struct_id}</span>
-        <span class="formula">{@html formula_for(struct_id)}</span>
+        <span class="formula">{@html sanitize_html(formula_for(struct_id))}</span>
       </button>
     {/each}
   </nav>
@@ -207,7 +208,7 @@
         style:background-color={btn_bg}
       >
         <span class="id">{struct_id}</span>
-        <span class="formula">{@html formula_for(struct_id)}</span>
+        <span class="formula">{@html sanitize_html(formula_for(struct_id))}</span>
       </button>
     {/each}
   </nav>

@@ -2,6 +2,7 @@
   import { ATOMIC_WEIGHTS } from '$lib/composition/parse'
   import type { ElementSymbol } from '$lib/element'
   import { format_num } from '$lib/labels'
+  import { sanitize_formula, sanitize_html } from '$lib/sanitize'
   import { TooltipContent } from '$lib/tooltip'
   import type {
     CompUnit,
@@ -14,7 +15,6 @@
   import {
     convert_temp,
     format_composition,
-    format_formula_html,
     format_label_html,
     format_temperature,
     get_phase_stability_range,
@@ -47,6 +47,8 @@
 
   // The unit that hover_info.temperature is actually in
   const data_unit = $derived(data_temperature_unit ?? temperature_unit)
+
+  const safe_formula = (comp: string) => sanitize_formula(comp, use_subscripts)
 
   // Convert a temperature from data unit to display unit
   function to_display(temp: number): number {
@@ -163,9 +165,8 @@
 
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
   <div class="phase-diagram-tooltip">
-    <!-- Note: {@html} is safe here because region/phase names come from trusted JSON data files -->
     <header>
-      <strong>{@html format_label_html(hover_info.region.name, use_subscripts)}</strong>
+      <strong>{@html sanitize_html(format_label_html(hover_info.region.name, use_subscripts))}</strong>
       {#if special_point_info}<span class="special-point-badge">{
           special_point_info.badge
         }</span>{/if}
@@ -196,17 +197,17 @@
       <dt>Composition</dt>
       <dd>
         {format_composition(hover_info.composition, composition_unit)}
-        {@html format_formula_html(component_b, use_subscripts)}
+        {@html safe_formula(component_b)}
         <small>({format_composition(1 - hover_info.composition, composition_unit)}
-          {@html format_formula_html(component_a, use_subscripts)})</small>
+          {@html safe_formula(component_a)})</small>
       </dd>
       {#if wt_fraction_b !== null}
         <dt>Weight</dt>
         <dd>
           {format_num(wt_fraction_b * 100, `.1f`)}%
-          {@html format_formula_html(component_b, use_subscripts)}
+          {@html safe_formula(component_b)}
           <small>({format_num((1 - wt_fraction_b) * 100, `.1f`)}%
-            {@html format_formula_html(component_a, use_subscripts)})</small>
+            {@html safe_formula(component_a)})</small>
         </dd>
       {/if}
       {#if stability}
@@ -249,10 +250,10 @@
           <i style:left="{ld.fraction_a * 100}%"></i>
         </div>
         <div class="phase-info">
-          <span>{@html format_formula_html(ld.phase_a, use_subscripts)}: {
+          <span>{@html safe_formula(ld.phase_a)}: {
               format_num(ld.fraction_a * 100, `.0f`)
             }% <small>at {ld.detail_a}</small></span>
-          <span>{@html format_formula_html(ld.phase_b, use_subscripts)}: {
+          <span>{@html safe_formula(ld.phase_b)}: {
               format_num(ld.fraction_b * 100, `.0f`)
             }% <small>at {ld.detail_b}</small></span>
         </div>

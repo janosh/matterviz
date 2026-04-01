@@ -7,6 +7,7 @@
   import Icon from '$lib/Icon.svelte'
   import { handle_url_drop, load_from_url } from '$lib/io'
   import { format_num, trajectory_property_config } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import { toggle_fullscreen } from '$lib/layout'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
   import { Histogram, ScatterPlot } from '$lib/plot'
@@ -1179,7 +1180,7 @@
             {#snippet tooltip({ x, y, metadata, label })}
               {@const formatted_y = typeof y === `number` ? format_num(y) : y}
               Step: {Math.round(x)}<br />
-              {@html metadata?.series_label || label || `Value`}: {formatted_y}
+              {@html sanitize_html(metadata?.series_label || label || `Value`)}: {formatted_y}
             {/snippet}
           </ScatterPlot>
         {:else if display_mode === `histogram` || display_mode === `structure+histogram`}

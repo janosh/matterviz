@@ -2,6 +2,7 @@
   import { luminance } from '$lib/colors'
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { format_num } from '$lib/labels'
+  import { sanitize_html } from '$lib/sanitize'
   import type { Vec2 } from '$lib/math'
   import * as math from '$lib/math'
   import { format } from 'd3-format'
@@ -570,7 +571,7 @@
         {/if}
       {:else if title}
         <!-- Only show static title if no property select -->
-        <span class="label">{@html title}</span>
+        <span class="label">{@html sanitize_html(title)}</span>
       {/if}
       {#if has_color_scale_select && color_scale_options}
         <PortalSelect

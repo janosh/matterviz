@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sanitize_html } from '$lib/sanitize'
   import { page } from '$app/state'
   import Icon from '$lib/Icon.svelte'
   import {
@@ -204,7 +205,7 @@
             <button onclick={() => navigate_to_structure(struct.id)}>
               <span style="font-family: monospace">{struct.id}</span>
               {#if formula}
-                <span style="font-weight: lighter">{@html formula}</span>
+                <span style="font-weight: lighter">{@html sanitize_html(formula)}</span>
               {/if}
               {#if struct.attributes.chemical_formula_descriptive}
                 <Composition
@@ -233,7 +234,7 @@
 
     {#if structure}
       <h2 style="margin: 0 2pt 10pt">
-        {@html get_electro_neg_formula(structure)}
+        {@html sanitize_html(get_electro_neg_formula(structure))}
         {#if structure_id}
           <span>({structure_id})</span>
         {/if}
