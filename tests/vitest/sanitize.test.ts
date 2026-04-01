@@ -91,6 +91,13 @@ describe(`sanitize_html`, () => {
     expect(sanitize_html(input)).toBe(expected)
   })
 
+  test.each([`img`, `div`, `p`, `h1`, `table`, `video`, `audio`])(
+    `strips non-allowed <%s> tag`,
+    (tag) => {
+      expect(sanitize_html(`<${tag}>content</${tag}>`)).not.toContain(`<${tag}`)
+    },
+  )
+
   test(`handles mixed safe and unsafe content`, () => {
     expect(sanitize_html(`<b>bold</b><script>alert(1)</script><sub>2</sub>`)).toBe(
       `<b>bold</b><sub>2</sub>`,
@@ -135,20 +142,14 @@ describe(`sanitize_html`, () => {
 
 describe(`sanitize_formula`, () => {
   test.each([
-    [`Fe2O3`, `Fe<sub>2</sub>O<sub>3</sub>`],
-    [`Li2O`, `Li<sub>2</sub>O`],
-    [`CaTiO3`, `CaTiO<sub>3</sub>`],
-    [`Fe`, `Fe`],
-  ])(`formats %s`, (formula, expected) => {
-    expect(sanitize_formula(formula)).toBe(expected)
-  })
-
-  test(`returns raw formula when use_subscripts=false`, () => {
-    expect(sanitize_formula(`Fe2O3`, false)).toBe(`Fe2O3`)
-  })
-
-  test(`handles empty formula`, () => {
-    expect(sanitize_formula(``)).toBe(``)
+    [`Fe2O3`, true, `Fe<sub>2</sub>O<sub>3</sub>`],
+    [`Li2O`, true, `Li<sub>2</sub>O`],
+    [`CaTiO3`, true, `CaTiO<sub>3</sub>`],
+    [`Fe`, true, `Fe`],
+    [``, true, ``],
+    [`Fe2O3`, false, `Fe2O3`],
+  ])(`formats "%s" (subscripts=%s)`, (formula, use_subscripts, expected) => {
+    expect(sanitize_formula(formula, use_subscripts)).toBe(expected)
   })
 
   test(`strips XSS injected via formula string`, () => {
@@ -203,6 +204,18 @@ describe(`sanitize_icon_svg`, () => {
       `stroke attrs`,
       `<path d="M0 0" stroke="red" stroke-width="2" stroke-linecap="round"></path>`,
     ],
+    [`line`, `<line x1="0" y1="0" x2="10" y2="10" stroke="black"></line>`],
+    [`ellipse`, `<ellipse cx="12" cy="8" rx="10" ry="6" fill="blue"></ellipse>`],
+    [`title`, `<title>icon label</title>`],
+    [`mask + use`, `<mask id="m1"><rect x="0" y="0" width="24" height="24"></rect></mask>`],
+    [
+      `defs + clipPath`,
+      `<defs><clipPath id="c1"><rect x="0" y="0" width="10" height="10"></rect></clipPath></defs>`,
+    ],
+    [
+      `opacity + clip-path`,
+      `<path d="M0 0" opacity="0.5" clip-path="url(#c1)" fill-rule="evenodd"></path>`,
+    ],
   ])(`preserves %s`, (_name, input) => {
     expect(sanitize_icon_svg(input)).toBe(input)
   })
@@ -219,15 +232,9 @@ describe(`sanitize_icon_svg`, () => {
     expect(result).toContain(`<path d="M0 0"></path>`)
   })
 
-  test(`strips href attributes to prevent SVG-based XSS`, () => {
-    const result = sanitize_icon_svg(`<use href="javascript:alert(1)"></use>`)
-    expect(result).not.toContain(`href`)
-    expect(result).not.toContain(`javascript:`)
-  })
-
-  test(`strips xlink:href attributes (legacy namespace)`, () => {
-    const result = sanitize_icon_svg(`<use xlink:href="javascript:alert(1)"></use>`)
-    expect(result).not.toContain(`xlink:href`)
+  test.each([`href`, `xlink:href`])(`strips %s to prevent SVG-based XSS`, (attr) => {
+    const result = sanitize_icon_svg(`<use ${attr}="javascript:alert(1)"></use>`)
+    expect(result).not.toContain(attr)
     expect(result).not.toContain(`javascript:`)
   })
 })
