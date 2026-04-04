@@ -3,14 +3,9 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import {
     ELEMENT_ORDERINGS,
-    type ElementAxisOrderingKey,
     ORDERING_LABELS,
-    type DomainMode,
-    type HeatmapExportFormat,
-    type LegendPosition,
-    type NormalizeMode,
-    type SymmetricMode,
   } from './index'
+  import type { ElementAxisOrderingKey, DomainMode, HeatmapExportFormat, LegendPosition, NormalizeMode, SymmetricMode } from './index'
 
   let {
     ordering = $bindable(`atomic_number`),

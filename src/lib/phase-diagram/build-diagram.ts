@@ -46,14 +46,14 @@ export function parse_curve_ref(ref: string): CurveRef {
 // Apply slicing to array (Python-style negative indices supported)
 export function apply_slice<T>(arr: T[], start: number | null, end: number | null): T[] {
   const len = arr.length
-  let s = start ?? 0
-  let e = end ?? len
+  let start_idx = start ?? 0
+  let end_idx = end ?? len
 
   // Handle negative indices
-  if (s < 0) s = Math.max(0, len + s)
-  if (e < 0) e = Math.max(0, len + e)
+  if (start_idx < 0) start_idx = Math.max(0, len + start_idx)
+  if (end_idx < 0) end_idx = Math.max(0, len + end_idx)
 
-  return arr.slice(s, e)
+  return arr.slice(start_idx, end_idx)
 }
 
 // Expand bounds to vertex list

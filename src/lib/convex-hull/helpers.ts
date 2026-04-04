@@ -29,7 +29,7 @@ export function get_energy_color_scale(
   if (color_mode !== `energy` || plot_entries.length === 0) return null
   const hull_distances = plot_entries
     .map((entry) => entry.e_above_hull)
-    .filter((v): v is number => typeof v === `number`)
+    .filter((val): val is number => typeof val === `number`)
   if (hull_distances.length === 0) return null
   const lo = Math.min(...hull_distances)
   const hi_raw = Math.max(...hull_distances, 0.1)
@@ -76,8 +76,8 @@ export async function parse_hull_entries_from_drop(
 export function calc_max_hull_dist_in_data(processed_entries: PhaseData[]): number {
   if (processed_entries.length === 0) return 0.5
   const hull_distances = processed_entries
-    .map((e) => e.e_above_hull)
-    .filter((v): v is number => typeof v === `number` && Number.isFinite(v))
+    .map((entry) => entry.e_above_hull)
+    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
   const max_val = (hull_distances.length ? Math.max(...hull_distances) : 0) + 0.001
   return Math.max(0.1, max_val)
 }
@@ -184,14 +184,14 @@ export function compute_energy_mode_info(
   energy_source_mode: `precomputed` | `on-the-fly`, // User-specified energy source mode preference
 ): EnergyModeInfo {
   const has_precomputed_e_form =
-    entries.length > 0 && entries.every((e) => typeof e.e_form_per_atom === `number`)
+    entries.length > 0 && entries.every((entry) => typeof entry.e_form_per_atom === `number`)
   const has_precomputed_hull =
-    entries.length > 0 && entries.every((e) => typeof e.e_above_hull === `number`)
+    entries.length > 0 && entries.every((entry) => typeof entry.e_above_hull === `number`)
 
   const unary_refs = find_lowest_energy_unary_refs_fn(entries)
 
   const elements_in_entries = Array.from(
-    new Set(entries.flatMap((e) => Object.keys(e.composition))),
+    new Set(entries.flatMap((entry) => Object.keys(entry.composition))),
   )
   const can_compute_e_form = elements_in_entries.every((el) => Boolean(unary_refs[el]))
   const can_compute_hull = can_compute_e_form

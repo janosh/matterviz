@@ -3,10 +3,10 @@
 import type { FileInfo } from '$lib'
 
 // Auto-discover fermi surface data files using Vite's import.meta.glob
-const fermi_file_modules = import.meta.glob(
+const fermi_file_modules = import.meta.glob<string>(
   [`./*.bxsf`, `./*.bxsf.gz`, `./*.frmsf`, `./*.frmsf.gz`, `./*.json`, `./*.json.gz`],
   { query: `?url`, eager: true, import: `default` },
-) as Record<string, string>
+)
 
 // FRMSF files with color data (Fermi velocity, orbital character) instead of eigenvalues
 // These contain per-k-point property data for coloring Fermi surfaces

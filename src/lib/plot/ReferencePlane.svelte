@@ -103,7 +103,7 @@
   function create_quad_geometry(corners: THREE.Vector3[]): THREE.BufferGeometry {
     const geo = new THREE.BufferGeometry()
     const [c0, c1, c2, c3] = corners
-    const verts = [c0, c1, c2, c0, c2, c3].flatMap((c) => [c.x, c.y, c.z])
+    const verts = [c0, c1, c2, c0, c2, c3].flatMap((corner) => [corner.x, corner.y, corner.z])
     geo.setAttribute(
       `position`,
       new THREE.BufferAttribute(new Float32Array(verts), 3),

@@ -7,10 +7,10 @@ import {
 
 export const structures = Object.entries(
   // JSON structure files (OPTIMADE/pymatgen format) as JS objects
-  import.meta.glob(`./*.json`, {
+  import.meta.glob<unknown>(`./*.json`, {
     eager: true,
     import: `default`,
-  }) as Record<string, unknown>,
+  }),
 )
   .map(([path, data]) => {
     const id = path.split(`/`).at(-1)?.split(`.`)[0] as string
@@ -38,15 +38,13 @@ export const structures = Object.entries(
 
 export const structure_map = new Map(structures.map((struct) => [struct.id, struct]))
 
-export const structure_files: FileInfo[] = (
-  Object.entries(
-    // all structure files as raw text
-    import.meta.glob(`$site/structures/*`, {
-      eager: true,
-      query: `?raw`,
-      import: `default`,
-    }),
-  ) as [string, string][]
+export const structure_files: FileInfo[] = Object.entries(
+  // all structure files as raw text
+  import.meta.glob<string>(`$site/structures/*`, {
+    eager: true,
+    query: `?raw`,
+    import: `default`,
+  }),
 )
   .filter(([, content]) => typeof content === `string`)
   .map(([path, content]) => {

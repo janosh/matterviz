@@ -2,9 +2,9 @@
 
 // Box-Muller transform for generating normal random numbers
 export function box_muller(mean = 0, std_dev = 1): number {
-  const u1 = Math.max(Math.random(), Number.EPSILON)
-  const u2 = Math.random()
-  const z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+  const rand_1 = Math.max(Math.random(), Number.EPSILON)
+  const rand_2 = Math.random()
+  const z0 = Math.sqrt(-2 * Math.log(rand_1)) * Math.cos(2 * Math.PI * rand_2)
   return mean + z0 * std_dev
 }
 
@@ -20,8 +20,8 @@ export function generate_exponential(count: number, lambda: number): number[] {
   if (lambda <= 0) throw new Error(`Lambda must be positive`)
 
   return Array.from({ length: count }, () => {
-    const u = Math.max(Math.random(), Number.EPSILON)
-    return -Math.log(1 - u) / lambda
+    const rand_val = Math.max(Math.random(), Number.EPSILON)
+    return -Math.log(1 - rand_val) / lambda
   })
 }
 
@@ -40,15 +40,15 @@ export const generate_log_normal = (count: number, mu: number, sigma: number) =>
 // Generate power law distribution data
 export const generate_power_law = (count: number, alpha: number, x_min = 1) =>
   Array.from({ length: count }, () => {
-    const u = Math.random()
-    return x_min * Math.pow(1 - u, -1 / (alpha - 1))
+    const rand_val = Math.random()
+    return x_min * Math.pow(1 - rand_val, -1 / (alpha - 1))
   })
 
 // Generate Pareto distribution data
 export const generate_pareto = (count: number, x_min: number, alpha: number) =>
   Array.from({ length: count }, () => {
-    const u = Math.random()
-    return x_min * Math.pow(u, -1 / alpha)
+    const rand_val = Math.random()
+    return x_min * Math.pow(rand_val, -1 / alpha)
   })
 
 // Generate gamma distribution data (approximation)
@@ -66,7 +66,7 @@ export function generate_gamma(count: number, alpha: number, beta: number): numb
 
     let sum = 0
     // Integer part: sum of exponentials
-    for (let k = 0; k < floor_alpha; k++) {
+    for (let idx = 0; idx < floor_alpha; idx++) {
       sum += -Math.log(Math.max(Math.random(), Number.EPSILON)) / beta
     }
 
@@ -149,7 +149,7 @@ export const generate_skewed = (count: number) =>
   Array.from({ length: count }, () => {
     // Sum of exponentials approximates gamma
     let sum = 0
-    for (let k = 0; k < 3; k++) {
+    for (let idx = 0; idx < 3; idx++) {
       sum += -Math.log(Math.max(Math.random(), Number.EPSILON)) * 5
     }
     return sum

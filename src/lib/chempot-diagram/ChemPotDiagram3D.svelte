@@ -13,9 +13,8 @@
     cross_3d,
     merge_coplanar_triangles,
     normalize_vec3,
-    type Vec2,
-    type Vec3,
   } from '$lib/math'
+  import type { Vec2, Vec3 } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
   import type {

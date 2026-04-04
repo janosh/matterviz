@@ -13,10 +13,10 @@
   // Auto-discover XRD data files from static/xrd/ using Vite's import.meta.glob
   // Files are picked up at build time; restart dev server to see new files
   // Supports both uncompressed and gzipped (.gz) versions of XRD formats
-  const xrd_file_modules = import.meta.glob(
+  const xrd_file_modules = import.meta.glob<string>(
     `/static/xrd/*.{xy,xye,xrdml,brml,ras,uxd,UXD,gsas,gsa,gda,raw,dat,csv,asc,txt,fxye,xy.gz,xye.gz,xrdml.gz,brml.gz,ras.gz,uxd.gz,UXD.gz,gsas.gz,gsa.gz,gda.gz,raw.gz,dat.gz,csv.gz,asc.gz,txt.gz,fxye.gz}`,
     { query: `?url`, eager: true, import: `default` },
-  ) as Record<string, string>
+  )
 
   // Extension to [category, icon] lookup - default is Powder XRD 📊
   const ext_categories: Record<string, [string, string]> = {

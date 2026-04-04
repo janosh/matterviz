@@ -5,17 +5,17 @@ import type { DiagramInput } from '$lib/phase-diagram/diagram-input'
 import { normalize_system_name } from '$lib/phase-diagram/parse'
 
 // Import all diagram JSON files eagerly
-const diagram_modules = import.meta.glob(`./binary/data/*.json`, {
+const diagram_modules = import.meta.glob<DiagramInput>(`./binary/data/*.json`, {
   eager: true,
   import: `default`,
-}) as Record<string, DiagramInput>
+})
 
 // Auto-discover TDB files
-const tdb_modules = import.meta.glob(`./tdb/*.tdb`, {
+const tdb_modules = import.meta.glob<string>(`./tdb/*.tdb`, {
   query: `?url`,
   eager: true,
   import: `default`,
-}) as Record<string, string>
+})
 
 // Build all diagrams from JSON data
 const built_diagrams = new Map<string, PhaseDiagramData>()

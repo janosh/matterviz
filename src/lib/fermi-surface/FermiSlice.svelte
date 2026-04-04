@@ -116,11 +116,11 @@
     const all_bands = [
       ...new Set(slice_data?.isolines.map((iso) => iso.band_index) ?? []),
     ]
-    const is_solo = all_bands.every((b) => b === band || hidden_bands.has(b))
+    const is_solo = all_bands.every((bid) => bid === band || hidden_bands.has(bid))
     hidden_bands.clear()
     if (!is_solo) {
-      for (const b of all_bands) {
-        if (b !== band) hidden_bands.add(b)
+      for (const bid of all_bands) {
+        if (bid !== band) hidden_bands.add(bid)
       }
     }
   }

@@ -2,18 +2,19 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "ESNext",
-    "outDir": "./dist",
+    "noEmit": true,
+    "rootDir": "../..",
     "strict": true,
     "esModuleInterop": true,
     "moduleResolution": "bundler",
+    "types": ["node"],
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "allowJs": true,
-    "baseUrl": ".",
     "paths": {
       "$lib": ["../../src/lib"],
       "$lib/*": ["../../src/lib/*"]
     }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "tests/**/*"]
 }

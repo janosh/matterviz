@@ -137,13 +137,13 @@ export function compute_label_positions(
       const dy = y - node.anchor_y
       const dist = Math.hypot(dx, dy)
       if (max_dist && dist > max_dist) {
-        const s = max_dist / dist
-        x = node.anchor_x + dx * s
-        y = node.anchor_y + dy * s
+        const scale = max_dist / dist
+        x = node.anchor_x + dx * scale
+        y = node.anchor_y + dy * scale
       } else if (min_dist && dist > 0 && dist < min_dist) {
-        const s = min_dist / dist
-        x = node.anchor_x + dx * s
-        y = node.anchor_y + dy * s
+        const scale = min_dist / dist
+        x = node.anchor_x + dx * scale
+        y = node.anchor_y + dy * scale
       }
     }
     result[node.id] = { x, y }

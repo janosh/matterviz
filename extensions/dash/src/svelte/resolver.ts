@@ -19,7 +19,7 @@ const keys_by_base_name = new Map<string, string[]>()
 
 for (const [raw_path, mod] of Object.entries(modules)) {
   // raw_path is like "/node_modules/matterviz/dist/structure/Structure.svelte"
-  const match = raw_path.match(/\/node_modules\/matterviz\/dist\/(.+)\.svelte$/)
+  const match = /\/node_modules\/matterviz\/dist\/(.+)\.svelte$/.exec(raw_path)
   if (!match) continue
 
   const key = match[1] // e.g. "structure/Structure"
@@ -47,7 +47,7 @@ interface ResolveResult {
 }
 
 export function list_component_keys(): string[] {
-  return Array.from(components_by_key.keys()).toSorted()
+  return [...components_by_key.keys()].sort()
 }
 
 // Resolve a MatterViz component from an identifier.

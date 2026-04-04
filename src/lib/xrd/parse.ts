@@ -101,7 +101,7 @@ function subsample_preserve_peaks(
     .map((idx) => ({ idx, y: y_values[idx] }))
     .sort((a, b) => b.y - a.y)
     .slice(0, peak_slots)
-    .map((p) => p.idx)
+    .map((peak) => peak.idx)
 
   // Uniform sampling (guard against division by zero)
   const uniform_indices = new Set<number>()

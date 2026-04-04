@@ -785,7 +785,7 @@ def create_app() -> dash.Dash:
                 --mv-surface: #f8f9fa;
                 --mv-nav-bg: #d6dde6;
                 --mv-nav-link: #1a56db;
-                /* MatterViz component CSS variables (must match themes.js) */
+                /* MatterViz component CSS variables (must match themes.mjs) */
                 --text-color: #374151;
                 --border-color: #d1d5db;
                 --page-bg: #f1f3f5;
@@ -805,7 +805,7 @@ def create_app() -> dash.Dash:
                 --mv-surface: #252540;
                 --mv-nav-bg: #2d2d44;
                 --mv-nav-link: #6ea8fe;
-                /* MatterViz component CSS variables (must match themes.js) */
+                /* MatterViz component CSS variables (must match themes.mjs) */
                 --text-color: #eee;
                 --border-color: #404040;
                 --page-bg: #18171c;

@@ -103,7 +103,7 @@ function get_wasm_filename(ext_path: string): string | null {
 
   const wasm_file = fs
     .readdirSync(assets_dir)
-    .find((file) => file.startsWith(`moyo_wasm_bg-`) && file.endsWith(`.wasm`))
+    .find((file: string) => file.startsWith(`moyo_wasm_bg-`) && file.endsWith(`.wasm`))
   if (!wasm_file) {
     console.warn(`moyo-wasm not found in ${assets_dir}`)
     return null
@@ -169,6 +169,7 @@ export const read_file = async (file_path: string): Promise<FileData> => {
       `Failed to access file ${filename}: ${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     )
   }
 
@@ -192,6 +193,7 @@ export const read_file = async (file_path: string): Promise<FileData> => {
   } catch (error) {
     throw new Error(
       `Failed to read file ${filename}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     )
   }
 }
@@ -213,7 +215,7 @@ export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
     active_tab.input !== null &&
     `uri` in active_tab.input
   )
-    return await read_file(active_tab.input.uri.fsPath)
+    return await read_file((active_tab.input as { uri: vscode.Uri }).uri.fsPath)
 
   throw new Error(`No file selected. MatterViz needs an active editor to know what to render.`)
 }
@@ -260,7 +262,7 @@ export const get_defaults = (): DefaultSettings => {
       defaults_section: Record<string, unknown>,
     ) => {
       const settings: Record<string, unknown> = {}
-      const section_config = config.get(section_key, {})
+      const section_config = config.get<Record<string, unknown>>(section_key, {})
       for (const key of Object.keys(defaults_section)) {
         const value = section_config?.[key]
         if (value !== undefined) settings[key] = value
@@ -314,7 +316,7 @@ export const create_html = (
 ): string => {
   const nonce = Math.random().toString(36).slice(2, 34)
   const webview_uri = webview.asWebviewUri(
-    vscode.Uri.joinPath(context.extensionUri, `dist`, `webview.js`),
+    vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `webview.js`),
   )
   const js_uri = typeof webview_uri === `string` ? webview_uri : webview_uri.toString()
 
@@ -324,7 +326,7 @@ export const create_html = (
   let moyo_wasm_url: string | undefined
   if (wasm_filename) {
     const wasm_uri = webview.asWebviewUri(
-      vscode.Uri.joinPath(context.extensionUri, `dist`, `assets`, wasm_filename),
+      vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `assets`, wasm_filename),
     )
     moyo_wasm_url = typeof wasm_uri === `string` ? wasm_uri : wasm_uri.toString()
   }
@@ -652,7 +654,7 @@ export const render = async (
     const file = await get_file(uri)
     const file_path = uri?.fsPath || vscode.window.activeTextEditor?.document.fileName
 
-    await create_webview_panel(context, file, file_path)
+    create_webview_panel(context, file, file_path)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     vscode.window.showErrorMessage(`Failed: ${message}`)
@@ -661,7 +663,7 @@ export const render = async (
 
 // Custom editor provider for MatterViz files
 class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocument> {
-  constructor(private context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext) {}
 
   openCustomDocument(
     uri: vscode.Uri,
@@ -742,7 +744,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
 
 // Activate extension
 export const activate = (context: vscode.ExtensionContext) => {
-  console.log(`MatterViz extension activated (v${pkg_json.version})`)
+  console.info(`MatterViz extension activated (v${pkg_json.version})`)
 
   // Set initial context for currently active editor
   update_supported_resource_context(vscode.window.activeTextEditor?.document.uri)
@@ -779,7 +781,7 @@ export const activate = (context: vscode.ExtensionContext) => {
           try {
             if (!vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true))
               return
-            const panel = await create_webview_panel(
+            const panel = create_webview_panel(
               context,
               await read_file(file_path),
               file_path,

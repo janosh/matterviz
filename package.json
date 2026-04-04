@@ -133,7 +133,7 @@
     },
     "./theme/themes": {
       "types": "./dist/theme/themes.d.ts",
-      "default": "./dist/theme/themes.js"
+      "default": "./dist/theme/themes.mjs"
     },
     "./tooltip": {
       "types": "./dist/tooltip/index.d.ts",

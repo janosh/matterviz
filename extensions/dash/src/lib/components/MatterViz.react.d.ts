@@ -1,4 +1,4 @@
-import { ComponentType } from 'react'
+import type { ComponentType, CSSProperties } from 'react'
 
 export interface MatterVizProps {
   // Dash component id
@@ -22,7 +22,7 @@ export interface MatterVizProps {
   // CSS class
   className?: string
   // Inline styles
-  style?: React.CSSProperties
+  style?: CSSProperties
   // Dash internal: callback to report prop changes
   setProps?: (props: Partial<MatterVizProps>) => void
 }

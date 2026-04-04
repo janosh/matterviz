@@ -4,13 +4,8 @@
 
 import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition'
 import type { PhaseData } from '$lib/convex-hull/types'
-import {
-  convex_hull_2d,
-  EPS,
-  polygon_centroid,
-  solve_linear_system,
-  type Vec2,
-} from '$lib/math'
+import { convex_hull_2d, EPS, polygon_centroid, solve_linear_system } from '$lib/math'
+import type { Vec2 } from '$lib/math'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
 
 // === Entry Helpers ===
