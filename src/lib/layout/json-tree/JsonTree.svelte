@@ -243,9 +243,9 @@
   function get_descendants(target_path: string): string[] {
     const all_paths = collect_all_paths(value, root_path)
     const descendants = target_path === `` ? all_paths : all_paths.filter(
-      (p) =>
-        p === target_path || p.startsWith(target_path + `.`) ||
-        p.startsWith(target_path + `[`),
+      (entry) =>
+        entry === target_path || entry.startsWith(target_path + `.`) ||
+        entry.startsWith(target_path + `[`),
     )
     return descendants.includes(target_path)
       ? descendants
@@ -315,7 +315,7 @@
   function unregister_path(path: string): void {
     if (registered_paths_set.has(path)) {
       registered_paths_set.delete(path)
-      registered_paths_list = registered_paths_list.filter((p) => p !== path)
+      registered_paths_list = registered_paths_list.filter((entry) => entry !== path)
     }
   }
 

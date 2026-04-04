@@ -17,8 +17,34 @@ import type {
   MarkerSymbol,
   PhaseData,
 } from './types'
-import { DEFAULT_GAS_TEMP, is_unary_entry } from './types'
+import { DEFAULT_GAS_TEMP } from './types'
 export { DEFAULT_GAS_TEMP }
+
+// Tolerance for classifying a phase as on the convex hull (eV/atom)
+export const HULL_STABILITY_TOL = 1e-6
+
+// Clamp raw hull distance and compute stability for a single entry.
+// Excluded entries keep their raw (possibly negative) distance and are never stable.
+export function compute_hull_stability(
+  raw_distance: number,
+  exclude_from_hull?: boolean,
+  tol: number = HULL_STABILITY_TOL,
+): { e_above_hull: number; is_stable: boolean } {
+  if (exclude_from_hull) return { e_above_hull: raw_distance, is_stable: false }
+  const e_above_hull = Math.abs(raw_distance) < tol ? 0 : Math.max(0, raw_distance)
+  return { e_above_hull, is_stable: e_above_hull <= tol }
+}
+
+// Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
+export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>
+  !entry.exclude_from_hull &&
+  (entry.is_stable === true ||
+    (typeof entry.e_above_hull === `number` && entry.e_above_hull < tol))
+
+export const get_arity = (entry: PhaseData): number =>
+  Object.values(entry.composition).filter((count) => count > 0).length
+
+export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
 
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
@@ -29,7 +55,7 @@ export function get_energy_color_scale(
   if (color_mode !== `energy` || plot_entries.length === 0) return null
   const hull_distances = plot_entries
     .map((entry) => entry.e_above_hull)
-    .filter((v): v is number => typeof v === `number`)
+    .filter((val): val is number => typeof val === `number`)
   if (hull_distances.length === 0) return null
   const lo = Math.min(...hull_distances)
   const hi_raw = Math.max(...hull_distances, 0.1)
@@ -76,8 +102,8 @@ export async function parse_hull_entries_from_drop(
 export function calc_max_hull_dist_in_data(processed_entries: PhaseData[]): number {
   if (processed_entries.length === 0) return 0.5
   const hull_distances = processed_entries
-    .map((e) => e.e_above_hull)
-    .filter((v): v is number => typeof v === `number` && Number.isFinite(v))
+    .map((entry) => entry.e_above_hull)
+    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
   const max_val = (hull_distances.length ? Math.max(...hull_distances) : 0) + 0.001
   return Math.max(0.1, max_val)
 }
@@ -184,14 +210,14 @@ export function compute_energy_mode_info(
   energy_source_mode: `precomputed` | `on-the-fly`, // User-specified energy source mode preference
 ): EnergyModeInfo {
   const has_precomputed_e_form =
-    entries.length > 0 && entries.every((e) => typeof e.e_form_per_atom === `number`)
+    entries.length > 0 && entries.every((entry) => typeof entry.e_form_per_atom === `number`)
   const has_precomputed_hull =
-    entries.length > 0 && entries.every((e) => typeof e.e_above_hull === `number`)
+    entries.length > 0 && entries.every((entry) => typeof entry.e_above_hull === `number`)
 
   const unary_refs = find_lowest_energy_unary_refs_fn(entries)
 
   const elements_in_entries = Array.from(
-    new Set(entries.flatMap((e) => Object.keys(e.composition))),
+    new Set(entries.flatMap((entry) => Object.keys(entry.composition))),
   )
   const can_compute_e_form = elements_in_entries.every((el) => Boolean(unary_refs[el]))
   const can_compute_hull = can_compute_e_form

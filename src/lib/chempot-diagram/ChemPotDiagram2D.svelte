@@ -2,22 +2,24 @@
   import { type D3InterpolateName } from '$lib/colors'
   import { get_hill_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
-  import { sanitize_html } from '$lib/sanitize'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import { export_svg_as_png, export_svg_as_svg } from '$lib/io/export'
   import { download } from '$lib/io/fetch'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot } from '$lib/plot'
+  import { constrain_tooltip_position } from '$lib/plot/layout'
   import type { DataSeries, UserContentProps } from '$lib/plot/types'
+  import { sanitize_html } from '$lib/sanitize'
   import { onDestroy } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+  import { compute_chempot_async } from './async-compute.svelte'
   import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
   import {
     apply_element_padding,
     best_form_energy_for_formula,
     build_axis_ranges,
-    compute_chempot_diagram,
     formula_key_from_composition,
     get_energy_per_atom,
     get_min_entries_and_el_refs,
@@ -26,7 +28,7 @@
   } from './compute'
   import { with_hover_pointer } from './pointer'
   import { get_temp_filter_payload, get_valid_temperature } from './temperature'
-  import type { ChemPotDiagramConfig, ChemPotHoverInfo } from './types'
+  import type { ChemPotDiagramConfig, ChemPotDiagramData, ChemPotHoverInfo } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   let {
@@ -133,15 +135,30 @@
     reverse_color_scale_override = null
   }
 
-  // === Diagram computation ===
-  const diagram_data = $derived.by(() => {
-    if (temp_filtered_entries.length < 2) return null
-    try {
-      return compute_chempot_diagram(temp_filtered_entries, effective_config)
-    } catch (err) {
-      console.error(`ChemPotDiagram2D:`, err)
-      return null
+  // === Diagram computation (off main thread via Web Worker) ===
+  let diagram_data = $state<ChemPotDiagramData | null>(null)
+  let diagram_computing = $state(false)
+  $effect(() => {
+    if (temp_filtered_entries.length < 2) {
+      diagram_data = null
+      diagram_computing = false
+      return
     }
+    let cancelled = false
+    diagram_computing = true
+    compute_chempot_async(temp_filtered_entries, effective_config)
+      .then((data) => {
+        if (cancelled) return
+        diagram_data = data
+        diagram_computing = false
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error(`ChemPotDiagram2D:`, err)
+        diagram_data = null
+        diagram_computing = false
+      })
+    return () => { cancelled = true }
   })
 
   const plot_elements = $derived(
@@ -305,11 +322,11 @@
 
   // Axis label text
   function axis_label(element: string): string {
-    if (formal_chempots) return `\u0394\u03BC(${element}) (eV)`
-    return `\u03BC(${element}) (eV)`
+    const prefix = formal_chempots ? `\u0394` : ``
+    return `${prefix}\u03BC<sub>${element}</sub> <span style="font-weight:300;opacity:0.7">(eV)</span>`
   }
 
-  let x_axis = $state({ label: `` })
+  let x_axis = $state({ label: ``, label_shift: { y: -45 } })
   let y_axis = $state({ label: `` })
 
   $effect(() => {
@@ -396,6 +413,19 @@
     locked_hover_formula = formula
     set_hover_info(formula, pts, data.event)
   }
+
+  let tooltip_el = $state<HTMLElement>()
+  const tooltip_pos = $derived.by(() => {
+    const pointer = hover_info?.pointer
+    if (!pointer) return { x: 4, y: 4 }
+    return constrain_tooltip_position(
+      pointer.x, pointer.y,
+      tooltip_el?.offsetWidth ?? 150,
+      tooltip_el?.offsetHeight ?? 40,
+      render_width, render_height,
+      { offset: 0 },
+    )
+  })
 
   // === Export ===
   let scatter_wrapper = $state<HTMLDivElement>()
@@ -623,7 +653,11 @@
   <button type="button" onclick={reset_controls}>Reset defaults</button>
 {/snippet}
 
-{#if !diagram_data}
+{#if diagram_computing}
+  <div class="computing-state">
+    <Spinner text="Computing chemical potential domains..." style="--spinner-size: 1.2em" />
+  </div>
+{:else if !diagram_data}
   <div class="error-state" role="alert" aria-live="polite">
     <p>Cannot compute chemical potential diagram.</p>
     <p>Need at least 2 elements with elemental reference entries.</p>
@@ -691,9 +725,10 @@
     {/if}
     {#if render_local_tooltip && show_tooltip && hover_info?.view === `2d`}
       <aside
+        bind:this={tooltip_el}
         class="tooltip"
-        style:left="{hover_info.pointer?.x ?? 4}px"
-        style:top="{hover_info.pointer?.y ?? 4}px"
+        style:left="{tooltip_pos.x}px"
+        style:top="{tooltip_pos.y}px"
       >
         <strong>{@html sanitize_html(get_hill_formula(hover_info.formula, false, ``))}</strong>
         {#if locked_hover_formula === hover_info.formula}
@@ -751,6 +786,12 @@
     align-items: center;
     gap: 4pt;
     margin-left: 4pt;
+  }
+  .computing-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
   }
   .error-state {
     display: flex;

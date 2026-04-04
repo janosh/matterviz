@@ -1,5 +1,6 @@
 export { default as ChemPotDiagram } from './ChemPotDiagram.svelte'
 export { default as ChemPotDiagram2D } from './ChemPotDiagram2D.svelte'
 export { default as ChemPotDiagram3D } from './ChemPotDiagram3D.svelte'
-export { compute_chempot_diagram } from './compute'
+export { compute_chempot_async } from './async-compute.svelte'
+export { compute_chempot_diagram, get_ternary_combinations } from './compute'
 export * from './types'

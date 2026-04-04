@@ -279,6 +279,82 @@ describe(`ScatterPoint`, () => {
     // Note: happy-dom doesn't reliably support font-weight via style property
   })
 
+  describe(`auto-placed labels`, () => {
+    test.each([
+      { desc: `auto_placement=true`, auto_placement: true, expected: `middle` },
+      { desc: `auto_placement=false`, auto_placement: false, expected: null },
+      { desc: `auto_placement absent`, auto_placement: undefined, expected: null },
+    ])(`text-anchor is $expected when $desc`, ({ auto_placement, expected }) => {
+      const label = { text: `Label`, auto_placement, offset: { x: 10, y: 0 } }
+      mount(ScatterPoint, { target: doc_query(`div`), props: { x: 100, y: 100, label } })
+      expect(doc_query(`text`).getAttribute(`text-anchor`)).toBe(expected)
+    })
+  })
+
+  describe(`leader lines`, () => {
+    test.each([
+      {
+        desc: `displacement exceeds threshold`,
+        offset: { x: 40, y: 30 },
+        threshold: 15,
+        visible: true,
+      },
+      {
+        desc: `displacement below threshold`,
+        offset: { x: 5, y: 3 },
+        threshold: 15,
+        visible: false,
+      },
+      {
+        desc: `threshold very high`,
+        offset: { x: 20, y: 10 },
+        threshold: 100,
+        visible: false,
+      },
+      {
+        desc: `rendered line too short after edge subtraction`,
+        offset: { x: 16, y: 0 },
+        threshold: 10,
+        visible: false,
+      },
+    ])(`$desc → visible=$visible`, ({ offset, threshold, visible }) => {
+      // "Pt" at 10px → half_w≈4, edge_dist≈4, marker_radius=3 → start≈5, end≈11, len≈6 → suppressed
+      const label = { text: `Pt`, offset }
+      mount(ScatterPoint, {
+        target: doc_query(`div`),
+        props: { x: 100, y: 100, label, leader_line_threshold: threshold },
+      })
+      const line = document.querySelector(`line.leader-line`)
+      if (visible) expect(line).toBeInstanceOf(SVGLineElement)
+      else expect(line).toBeNull()
+    })
+
+    test(`leader line endpoint stops outside text bounding box`, () => {
+      const label = { text: `LongLabel`, offset: { x: 60, y: 0 } }
+      mount(ScatterPoint, {
+        target: doc_query(`div`),
+        props: { x: 100, y: 100, label, leader_line_threshold: 10, style: { radius: 3 } },
+      })
+      const line = doc_query(`line.leader-line`)
+      const x2 = parseFloat(line.getAttribute(`x2`) ?? `0`)
+      // Text center is at offset_x=60, half_w ≈ 9*10*0.2=18
+      // x2 should be well before the text center (< 60) but past the midpoint
+      expect(x2).toBeLessThan(50)
+      expect(x2).toBeGreaterThan(20)
+    })
+
+    test(`leader line has correct CSS custom property defaults`, () => {
+      const label = { text: `Styled`, offset: { x: 40, y: 0 } }
+      mount(ScatterPoint, {
+        target: doc_query(`div`),
+        props: { x: 100, y: 100, label, leader_line_threshold: 10 },
+      })
+      const line = doc_query(`line.leader-line`)
+      expect(line.getAttribute(`stroke-dasharray`)).toContain(`2 2`)
+      expect(line.getAttribute(`stroke-opacity`)).toContain(`0.6`)
+    })
+  })
+
   describe(`Tween Behavior`, () => {
     test.each([
       {

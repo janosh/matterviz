@@ -786,8 +786,13 @@
 
   function update_tooltip_position(client_x: number, client_y: number): void {
     if (!tooltip_div) return
-    tooltip_div.style.left = `${client_x + 10}px`
-    tooltip_div.style.top = `${client_y + 12}px`
+    const tw = tooltip_div.offsetWidth
+    const th = tooltip_div.offsetHeight
+    // Flip to opposite side of cursor when near viewport edges
+    const left = client_x + 10 + tw > globalThis.innerWidth ? client_x - 10 - tw : client_x + 10
+    const top = client_y + 12 + th > globalThis.innerHeight ? client_y - 12 - th : client_y + 12
+    tooltip_div.style.left = `${Math.max(0, left)}px`
+    tooltip_div.style.top = `${Math.max(0, top)}px`
   }
 
   function set_pinned_cell(next_cell: CellPos | null): void {

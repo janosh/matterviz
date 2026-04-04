@@ -13,7 +13,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { ConvexHullEntry, PhaseArityField, PhaseStats } from './types'
-  import { get_arity, is_on_hull } from './types'
+  import { get_arity, is_on_hull } from './helpers'
 
   let {
     phase_stats,

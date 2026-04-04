@@ -16,6 +16,7 @@
   const uid = crypto.randomUUID().slice(0, 8)
 
   let {
+    show = $bindable(false),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
     z_axis = $bindable({}),
@@ -28,6 +29,7 @@
     pane_props,
     children,
   }: {
+    show?: boolean
     x_axis?: AxisConfig3D
     y_axis?: AxisConfig3D
     z_axis?: AxisConfig3D
@@ -120,11 +122,12 @@
 </script>
 
 <DraggablePane
+  bind:show
   {toggle_props}
   pane_props={{
     title: `3D Plot Settings`,
     ...pane_props,
-    style: `max-height: 80cqh; overflow-y: auto; ${pane_props?.style ?? ``}`,
+    style: `--pane-max-height: 80cqh; ${pane_props?.style ?? ``}`,
   }}
 >
   <!-- Camera Controls -->

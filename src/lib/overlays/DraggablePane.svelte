@@ -144,6 +144,8 @@
 
     const toggle_rect = toggle_pane_btn.getBoundingClientRect()
     const pane_width = pane_div?.getBoundingClientRect().width || 450
+    const ox = offset.x ?? 5
+    const oy = offset.y ?? 5
     const positioned_ancestor = toggle_pane_btn.offsetParent
     const ancestor_rect = positioned_ancestor?.getBoundingClientRect()
 
@@ -151,16 +153,15 @@
       const scroll_x = window.scrollX || document.documentElement.scrollLeft
       const scroll_y = window.scrollY || document.documentElement.scrollTop
       return {
-        left: `${toggle_rect.right - pane_width + (offset.x ?? 5) + scroll_x}px`,
-        top: `${toggle_rect.bottom + (offset.y ?? 5) + scroll_y}px`,
+        left: `${toggle_rect.right - pane_width + ox + scroll_x}px`,
+        top: `${toggle_rect.bottom + oy + scroll_y}px`,
       }
     }
 
-    const left = `${
-      toggle_rect.right - ancestor_rect.left - pane_width + (offset.x ?? 5)
-    }px`
-    const top = `${toggle_rect.bottom - ancestor_rect.top + (offset.y ?? 5)}px`
-    return { left, top } // Position relative to positioned ancestor
+    return {
+      left: `${toggle_rect.right - ancestor_rect.left - pane_width + ox}px`,
+      top: `${toggle_rect.bottom - ancestor_rect.top + oy}px`,
+    }
   }
 
   // Click outside handler (skipped when persistent)

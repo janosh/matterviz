@@ -23,7 +23,7 @@ import type {
   Point3D,
   ProcessedPhaseData,
 } from './types'
-import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './types'
+import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './helpers'
 
 // Track warned keys to avoid log spam on large datasets with repeated invalid keys
 const warned_keys = new Set<string>()
@@ -182,10 +182,10 @@ export function calculate_e_above_hull(
 
   // 3. Compute formation energies
   const refs = find_lowest_energy_unary_refs(reference_entries)
-  const compute_e_form = (e: PhaseData) =>
-    typeof e.e_form_per_atom === `number`
-      ? e.e_form_per_atom
-      : compute_e_form_per_atom(e, refs)
+  const compute_e_form = (entry: PhaseData) =>
+    typeof entry.e_form_per_atom === `number`
+      ? entry.e_form_per_atom
+      : compute_e_form_per_atom(entry, refs)
 
   const interest_data = entries_of_interest.map((entry) => ({
     entry,
@@ -254,8 +254,8 @@ export function calculate_e_above_hull(
       if (typeof e_form !== `number`) continue
       try {
         const bary = composition_to_barycentric_3d(ref.composition, elements)
-        const p = barycentric_to_ternary_xyz(bary, e_form)
-        ref_points.push(p)
+        const point = barycentric_to_ternary_xyz(bary, e_form)
+        ref_points.push(point)
       } catch {
         // Ignore invalid compositions
       }
@@ -268,7 +268,8 @@ export function calculate_e_above_hull(
       )
       if (
         !ref_points.some(
-          (p) => Math.hypot(p.x - corner.x, p.y - corner.y, p.z - corner.z) < 1e-9,
+          (point) =>
+            Math.hypot(point.x - corner.x, point.y - corner.y, point.z - corner.z) < 1e-9,
         )
       ) {
         ref_points.push(corner)
@@ -286,9 +287,9 @@ export function calculate_e_above_hull(
       }
       try {
         const bary = composition_to_barycentric_3d(entry.composition, elements)
-        const p = barycentric_to_ternary_xyz(bary, e_form)
-        const z_hull = e_hull_at_xy(hull_models, p.x, p.y)
-        results[id] = z_hull === null ? NaN : Math.max(0, p.z - z_hull)
+        const point = barycentric_to_ternary_xyz(bary, e_form)
+        const z_hull = e_hull_at_xy(hull_models, point.x, point.y)
+        results[id] = z_hull === null ? NaN : Math.max(0, point.z - z_hull)
       } catch {
         results[id] = NaN
       }
@@ -314,9 +315,9 @@ export function calculate_e_above_hull(
         composition_to_barycentric_4d({ [el]: 1 }, elements),
       )
       const corner = { ...tet, w: 0 }
-      const dist = (p: Point4D) =>
-        Math.hypot(p.x - corner.x, p.y - corner.y, p.z - corner.z, p.w)
-      if (!ref_points.some((p) => dist(p) < 1e-9)) ref_points.push(corner)
+      const dist = (point: Point4D) =>
+        Math.hypot(point.x - corner.x, point.y - corner.y, point.z - corner.z, point.w)
+      if (!ref_points.some((point) => dist(point) < 1e-9)) ref_points.push(corner)
     }
 
     const hull_tetrahedra = compute_lower_hull_4d(ref_points)
@@ -603,13 +604,13 @@ export function compute_lower_hull_2d(points: Point2D[]): Point2D[] {
   const cross = (o: Point2D, a: Point2D, b: Point2D) =>
     (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
 
-  for (const p of sorted) {
+  for (const point of sorted) {
     while (
       lower.length >= 2 &&
-      cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0
+      cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0
     )
       lower.pop()
-    lower.push(p)
+    lower.push(point)
   }
   return lower
 }
@@ -965,22 +966,26 @@ function point_in_triangle_xy(model: HullFaceModel, x: number, y: number): boole
 
 export function e_hull_at_xy(models: HullFaceModel[], x: number, y: number) {
   let z: number | null = null
-  for (const m of models) {
-    if (x < m.min_x - 1e-9 || x > m.max_x + 1e-9 || y < m.min_y - 1e-9 || y > m.max_y + 1e-9)
+  for (const model of models) {
+    if (
+      x < model.min_x - 1e-9 ||
+      x > model.max_x + 1e-9 ||
+      y < model.min_y - 1e-9 ||
+      y > model.max_y + 1e-9
+    )
       continue
-    if (!point_in_triangle_xy(m, x, y)) continue
-    const z_face = m.a * x + m.b * y + m.c
+    if (!point_in_triangle_xy(model, x, y)) continue
+    const z_face = model.a * x + model.b * y + model.c
     z = z === null ? z_face : Math.min(z, z_face)
   }
   return z
 }
 
 export const compute_e_above_hull_for_points = (points: Point3D[], models: HullFaceModel[]) =>
-  points.map((p) => {
-    const z_hull = e_hull_at_xy(models, p.x, p.y)
+  points.map((point) => {
+    const z_hull = e_hull_at_xy(models, point.x, point.y)
     if (z_hull === null) return 0
-    const e_above_hull = p.z - z_hull
-    return e_above_hull > EPS ? e_above_hull : 0
+    return point.z - z_hull
   })
 
 // --- 4D Convex Hull (Quaternary Phase Diagrams) ---
@@ -1542,7 +1547,8 @@ function point_in_tetrahedron_3d(
   // Check if inside: all barycentric coords must be >= 0 and sum to 1
   const eps_bary = -1e-9
   const inside =
-    bary.every((l) => l >= eps_bary) && Math.abs(bary.reduce((s, l) => s + l, 0) - 1) < 1e-6
+    bary.every((coord) => coord >= eps_bary) &&
+    Math.abs(bary.reduce((sum, coord) => sum + coord, 0) - 1) < 1e-6
 
   return { inside, bary }
 }
@@ -1630,8 +1636,7 @@ export const compute_e_above_hull_4d = (
     // If no tetrahedron contains this point's spatial projection, it's outside the valid
     // composition domain. Return NaN to indicate invalid input.
     if (hull_w === null) return NaN
-    const distance = w - hull_w
-    return distance > EPS ? distance : 0
+    return w - hull_w
   })
 }
 
@@ -2183,7 +2188,6 @@ export function compute_e_above_hull_nd(
     // composition domain. Return NaN to indicate invalid input rather than 0 (which
     // would falsely imply the point is stable/on-hull).
     if (hull_energy === null) return NaN
-    const distance = energy - hull_energy
-    return distance > EPS ? distance : 0
+    return energy - hull_energy
   })
 }

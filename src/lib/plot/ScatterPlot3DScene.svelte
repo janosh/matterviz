@@ -231,20 +231,20 @@
   let surface_samples = $derived(surfaces.flatMap(sample_surface))
   let x_range = $derived(
     compute_range([
-      ...all_points.map((p) => p.x),
-      ...surface_samples.map((p) => p.x),
+      ...all_points.map((point) => point.x),
+      ...surface_samples.map((point) => point.x),
     ], x_axis.range),
   )
   let y_range = $derived(
     compute_range([
-      ...all_points.map((p) => p.y),
-      ...surface_samples.map((p) => p.y),
+      ...all_points.map((point) => point.y),
+      ...surface_samples.map((point) => point.y),
     ], y_axis.range),
   )
   let z_range = $derived(
     compute_range([
-      ...all_points.map((p) => p.z),
-      ...surface_samples.map((p) => p.z),
+      ...all_points.map((point) => point.z),
+      ...surface_samples.map((point) => point.z),
     ], z_axis.range),
   )
 
@@ -254,7 +254,7 @@
 
   // Color/size scales
   let all_color_values = $derived(
-    all_points.map((pt) => pt.color_value).filter((v): v is number => v != null),
+    all_points.map((pt) => pt.color_value).filter((val): val is number => val != null),
   )
   let auto_color_range: [number, number] = $derived.by(() => {
     if (!all_color_values.length) return [0, 1]
@@ -425,10 +425,10 @@
       geometry.dispose()
       material.dispose()
     }
-    Object.values(axis_geometries).forEach((g) => g.dispose())
+    Object.values(axis_geometries).forEach((geom) => geom.dispose())
     for (const data of Object.values(axis_geom_data)) {
-      data.tick_geoms.forEach((g) => g.dispose())
-      data.grid_geoms.flat().forEach((g) => g.dispose())
+      data.tick_geoms.forEach((geom) => geom.dispose())
+      data.grid_geoms.flat().forEach((geom) => geom.dispose())
     }
   })
 
@@ -646,11 +646,11 @@
     })
     for (const { key, ticks, get_tick_pos, get_tick_end, get_grid_lines } of config) {
       axis_geom_data[key] = {
-        tick_geoms: ticks.map((v) =>
-          create_line_geometry(get_tick_pos(v), get_tick_end(v))
+        tick_geoms: ticks.map((val) =>
+          create_line_geometry(get_tick_pos(val), get_tick_end(val))
         ),
-        grid_geoms: ticks.map((v) =>
-          get_grid_lines(v).map(([s, e]) => create_line_geometry(s, e))
+        grid_geoms: ticks.map((val) =>
+          get_grid_lines(val).map(([start, end]) => create_line_geometry(start, end))
         ),
       }
     }

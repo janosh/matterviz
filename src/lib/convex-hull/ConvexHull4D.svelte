@@ -41,6 +41,7 @@
     HoverData3D,
     HullFaceColorMode,
   } from './types'
+  import { compute_hull_stability } from './helpers'
 
   let {
     entries = [],
@@ -202,8 +203,9 @@
     if (elements.length !== 4) return []
 
     try {
-      // Get coords with formation energies
+      // Get coords with formation energies, excluding entries that don't participate in hull
       const coords = compute_4d_coords(pd_data.entries, elements)
+        .filter((ent) => !ent.exclude_from_hull)
 
       // Convert to 4D points for hull computation using barycentric coordinates (composition fractions)
       const points_4d: Point4D[] = coords
@@ -219,7 +221,7 @@
           const [x, y, z] = amounts.map((amt) => amt / total)
           return { x, y, z, w: ent.e_form_per_atom ?? NaN }
         })
-        .filter((p) => [p.x, p.y, p.z, p.w].every(Number.isFinite))
+        .filter((point) => [point.x, point.y, point.z, point.w].every(Number.isFinite))
 
       if (points_4d.length < 5) return [] // Need at least 5 points for 4D hull
 
@@ -244,19 +246,20 @@
           ![entry.x, entry.y, entry.z].every(Number.isFinite)
         ) return []
         const amounts = elements.map((el) => entry.composition[el] || 0)
-        const total = amounts.reduce((s, a) => s + a, 0)
+          const total = amounts.reduce((sum, amt) => sum + amt, 0)
         if (!(total > 0)) return []
-        const [x, y, z] = amounts.map((a) => a / total)
+          const [x, y, z] = amounts.map((amt) => amt / total)
         return [x, y, z].every(Number.isFinite)
           ? [{ idx, pt: { x, y, z, w: entry.e_form_per_atom ?? NaN } }]
           : []
       })
-      const e_hulls = thermo.compute_e_above_hull_4d(valid.map((v) => v.pt), hull_4d)
-      const hull_map = new Map(valid.map((v, hi) => [v.idx, e_hulls[hi]]))
-      return coords.map((entry, idx) => ({
-        ...entry,
-        e_above_hull: hull_map.get(idx),
-      }))
+      const raw_dists = thermo.compute_e_above_hull_4d(valid.map((item) => item.pt), hull_4d)
+      const hull_map = new Map(valid.map((item, hull_idx) => [item.idx, raw_dists[hull_idx]]))
+      return coords.map((entry, idx) => {
+        const raw = hull_map.get(idx)
+        if (raw === undefined) return { ...entry, e_above_hull: raw, is_stable: false }
+        return { ...entry, ...compute_hull_stability(raw, entry.exclude_from_hull) }
+      })
     } catch (err) {
       console.error(`Error computing quaternary coordinates:`, err)
       return []
@@ -585,9 +588,9 @@
 
     // Draw edges
     ctx.beginPath()
-    for (const [i, j] of edges) {
-      const v1 = vertices[i]
-      const v2 = vertices[j]
+    for (const [start, end] of edges) {
+      const v1 = vertices[start]
+      const v2 = vertices[end]
 
       const proj1 = project_3d_point(v1.x, v1.y, v1.z)
       const proj2 = project_3d_point(v2.x, v2.y, v2.z)
@@ -637,8 +640,8 @@
     if (!ctx || !show_hull_faces || hull_4d.length === 0) return
 
     // Get stable points to determine which hull facets to draw
-    const stable_points = plot_entries.filter((e) =>
-      e.is_stable || e.e_above_hull === 0
+    const stable_points = plot_entries.filter((entry) =>
+      entry.is_stable || entry.e_above_hull === 0
     )
     if (stable_points.length === 0) return
 
@@ -731,8 +734,8 @@
     if (hull_face_color_mode === `uniform`) {
       const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
       const min_fe = Math.min(0, ...formation_energies)
-      norm_alpha = (w: number) => {
-        const t = Math.max(0, Math.min(1, (0 - w) / Math.max(1e-6, 0 - min_fe)))
+      norm_alpha = (energy: number) => {
+        const t = Math.max(0, Math.min(1, (0 - energy) / Math.max(1e-6, 0 - min_fe)))
         return t * hull_face_opacity
       }
     }
@@ -746,7 +749,7 @@
       energy_face_scale = helpers.get_energy_color_scale(
         `energy`,
         color_scale,
-        all_avg_w.map((w) => ({ e_above_hull: w - min_w })), // Normalize to 0-based
+        all_avg_w.map((energy) => ({ e_above_hull: energy - min_w })), // Normalize to 0-based
       )
     }
 
@@ -956,8 +959,8 @@
       event,
       plot_entries,
       (x: number, y: number, z: number) => {
-        const p = project_3d_point(x, y, z)
-        return { x: p.x, y: p.y }
+        const projected = project_3d_point(x, y, z)
+        return { x: projected.x, y: projected.y }
       },
     )
 
@@ -1016,11 +1019,11 @@
     const dpr = globalThis.devicePixelRatio || 1
     const container = canvas.parentElement
     const rect = container?.getBoundingClientRect()
-    const [w, h] = rect ? [rect.width, rect.height] : [400, 400]
+    const [width, height] = rect ? [rect.width, rect.height] : [400, 400]
 
-    canvas.width = Math.max(0, Math.round(w * dpr))
-    canvas.height = Math.max(0, Math.round(h * dpr))
-    canvas_dims = { width: w, height: h, scale: Math.min(w, h) / 600 }
+    canvas.width = Math.max(0, Math.round(width * dpr))
+    canvas.height = Math.max(0, Math.round(height * dpr))
+    canvas_dims = { width, height, scale: Math.min(width, height) / 600 }
 
     ctx = canvas.getContext(`2d`)
     if (ctx) {
@@ -1150,8 +1153,8 @@
   <!-- Energy above hull Color Bar -->
   {#if color_mode === `energy` && plot_entries.length > 0}
     {@const hull_distances = plot_entries
-      .map((e) => e.e_above_hull)
-      .filter((v): v is number => typeof v === `number`)}
+      .map((entry) => entry.e_above_hull)
+      .filter((val): val is number => typeof val === `number`)}
     {@const min_energy = hull_distances.length > 0 ? Math.min(...hull_distances) : 0}
     {@const max_energy = hull_distances.length > 0 ? Math.max(...hull_distances, 0.1) : 0.1}
     <ColorBar

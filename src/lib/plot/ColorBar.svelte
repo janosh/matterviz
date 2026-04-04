@@ -402,10 +402,10 @@
   // CSS variables for bar width/height based on orientation
   let final_bar_style = $derived(
     `--cbar-width: ${
-      orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 14px)`
+      orientation === `horizontal` ? `100%` : `var(--cbar-thickness, 10px)`
     };
     --cbar-height: ${
-      orientation === `vertical` ? `100%` : `var(--cbar-thickness, 14px)`
+      orientation === `vertical` ? `100%` : `var(--cbar-thickness, 10px)`
     };
     background: linear-gradient(${grad_dir}, ${ramped.join(`, `)}); ${
       bar_style ?? ``

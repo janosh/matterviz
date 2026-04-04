@@ -5,18 +5,17 @@
   import type { Label, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
   import {
-    type AxisMapping,
     build_bar_series,
     build_histogram_series,
     build_scatter3d_series,
     build_scatter_series,
     col_keys,
     extract_columns,
-    type PlotType,
     suggest_mapping,
   } from './plot-utils'
+  import type { PlotType, AxisMapping } from './plot-utils'
 
-  let { data, initial_type, onclose }: {
+  let { data, initial_type, onclose, }: {
     data: unknown
     initial_type?: PlotType
     onclose?: () => void
@@ -38,9 +37,7 @@
   let numeric_keys = $derived(col_keys(columns, `numeric`))
   let string_keys = $derived(col_keys(columns, `string`))
   // X options: numeric for scatter/histogram, numeric + string for bar
-  let x_keys = $derived(
-    plot_type === `bar` ? [...string_keys, ...numeric_keys] : numeric_keys,
-  )
+  let x_keys = $derived(plot_type === `bar` ? [...string_keys, ...numeric_keys] : numeric_keys)
 
   // Build the appropriate series from current mapping
   let scatter_series = $derived(
@@ -49,9 +46,7 @@
   let scatter3d_series = $derived(
     plot_type === `scatter3d` ? [build_scatter3d_series(columns, mapping)] : [],
   )
-  let bar_series = $derived(
-    plot_type === `bar` ? [build_bar_series(columns, mapping)] : [],
-  )
+  let bar_series = $derived(plot_type === `bar` ? [build_bar_series(columns, mapping)] : [])
   let histogram_series = $derived(
     plot_type === `histogram` ? [build_histogram_series(columns, mapping)] : [],
   )
@@ -66,9 +61,7 @@
     return Array.from(
       { length: (rec[keys[0]] as unknown[]).length },
       (_, idx) =>
-        Object.fromEntries(
-          keys.map((key) => [key, (rec[key] as unknown[])[idx]]),
-        ) as RowData,
+        Object.fromEntries(keys.map((key) => [key, (rec[key] as unknown[])[idx]])) as RowData,
     )
   })
 

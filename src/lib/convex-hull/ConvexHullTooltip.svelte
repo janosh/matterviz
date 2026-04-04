@@ -8,7 +8,7 @@
   import type { PolymorphStats } from './helpers'
   import type { ConvexHullTooltipProp, TooltipSnippetProps } from './index'
   import type { HighlightStyle, PhaseData } from './types'
-  import { is_unary_entry } from './types'
+  import { is_unary_entry } from './helpers'
 
   let {
     entry,

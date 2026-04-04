@@ -278,16 +278,20 @@
       return
     }
 
-    // Case 2: Already in sync - skip to avoid infinite effect loop
-    const arrays_equal = column_order.length === col_ids.length &&
-      column_order.every((id, idx) => id === col_ids[idx])
-    if (arrays_equal) return
-
-    // Case 3: Sync needed - keep valid IDs in their order, append any new ones
+    // Case 2: Sync needed - keep valid IDs in their order, append any new ones
     const valid_ids = new Set(col_ids)
     const kept = column_order.filter((id) => valid_ids.has(id))
     const new_ids = col_ids.filter((id) => !kept.includes(id))
-    column_order = [...kept, ...new_ids]
+    const new_order = [...kept, ...new_ids]
+
+    // Skip assignment if content is unchanged to prevent infinite effect loop.
+    // After drag reorder, column_order differs from col_ids (default order) but the
+    // computed new_order equals the current column_order — assigning a new array
+    // reference would re-trigger this effect endlessly.
+    if (new_order.length === column_order.length &&
+      new_order.every((id, idx) => id === column_order[idx])) return
+
+    column_order = new_order
   })
 
   // Reorder columns based on column_order

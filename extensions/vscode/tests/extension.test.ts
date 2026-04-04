@@ -3,7 +3,7 @@ import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { ExtensionContext, Tab, TextEditor } from 'vscode'
+import type { ExtensionContext, Tab, TextEditor, Uri } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import {
   activate,
@@ -50,6 +50,7 @@ const mock_vscode = vi.hoisted(() => ({
   window: {
     showInformationMessage: vi.fn(),
     showErrorMessage: vi.fn(),
+    showTextDocument: vi.fn(),
     showSaveDialog: vi.fn(),
     createWebviewPanel: vi.fn(),
     activeTextEditor: null as TextEditor | null,
@@ -64,6 +65,7 @@ const mock_vscode = vi.hoisted(() => ({
       get: vi.fn((_key: string, default_val: string) => default_val),
     })),
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+    openTextDocument: vi.fn(),
     onDidOpenTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
     onDidCreateFiles: vi.fn(() => ({ dispose: vi.fn() })),
     onDidRenameFiles: vi.fn(() => ({ dispose: vi.fn() })),
@@ -147,10 +149,12 @@ describe(`MatterViz Extension`, () => {
     // Tests auto-synced with library constants to prevent regressions
     test.each<[string, string]>([
       // All trajectory extensions from library
-      ...TRAJ_EXTENSIONS.map((ext) => [`test${ext}`, `TRAJ_EXT ${ext}`] as [string, string]),
+      ...TRAJ_EXTENSIONS.map(
+        (ext: string) => [`test${ext}`, `TRAJ_EXT ${ext}`] as [string, string],
+      ),
       // All structure extensions from library (uncompressed, .gz, .bz2)
       ...STRUCTURE_EXTENSIONS.flatMap(
-        (ext) =>
+        (ext: string) =>
           [
             [`test${ext}`, `STRUCT_EXT ${ext}`],
             [`test${ext}.gz`, `${ext}.gz`],
@@ -158,7 +162,9 @@ describe(`MatterViz Extension`, () => {
           ] as [string, string][],
       ),
       // All trajectory keywords in filenames
-      ...TRAJ_KEYWORDS.map((kw) => [`${kw}_output.dat`, `TRAJ_KW ${kw}`] as [string, string]),
+      ...TRAJ_KEYWORDS.map(
+        (kw: string) => [`${kw}_output.dat`, `TRAJ_KW ${kw}`] as [string, string],
+      ),
       // VASP special filenames + additional VS Code-only formats
       [`POSCAR`, `VASP`],
       [`CONTCAR`, `VASP`],
@@ -219,7 +225,10 @@ describe(`MatterViz Extension`, () => {
     postMessage: vi.fn(),
     html: ``,
   }
-  const mock_context = { extensionUri: { fsPath: `/test` }, subscriptions: [] }
+  const mock_context = {
+    extensionUri: { fsPath: `/test` },
+    subscriptions: [],
+  } as unknown as ExtensionContext
 
   test.each([
     [`test.gz`, true],
@@ -327,17 +336,13 @@ describe(`MatterViz Extension`, () => {
 
     // Step 4: HTML generation should work with this data
     const webview_data_with_theme = { ...webview_data, theme: `light` as const }
-    const html = create_html(
-      mock_webview as Webview,
-      mock_context as ExtensionContext,
-      webview_data_with_theme,
-    )
+    const html = create_html(mock_webview, mock_context, webview_data_with_theme)
 
     expect(html).toContain(`<!DOCTYPE html>`)
     expect(html).toContain(JSON.stringify(webview_data_with_theme))
 
     // Step 5: Verify the exact data structure that would be sent to webview
-    const parsed_data = JSON.parse(html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ?? `{}`)
+    const parsed_data = JSON.parse(/matterviz_data=(\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`)
     expect(parsed_data.type).toBe(`trajectory`)
     expect(parsed_data.data.filename).toBe(ase_filename)
     expect(parsed_data.data.is_base64).toBe(true)
@@ -346,8 +351,8 @@ describe(`MatterViz Extension`, () => {
   })
 
   test.each([
-    [{ fsPath: `/test/file.cif` }, `file.cif`],
-    [{ fsPath: `/test/structure.xyz` }, `structure.xyz`],
+    [{ fsPath: `/test/file.cif` } as unknown as Uri, `file.cif`],
+    [{ fsPath: `/test/structure.xyz` } as unknown as Uri, `structure.xyz`],
   ])(`get_file with URI`, async (uri, expected_filename) => {
     const result = await get_file(uri)
     expect(result.filename).toBe(expected_filename)
@@ -441,7 +446,7 @@ describe(`MatterViz Extension`, () => {
       true,
       `Saved: save.cif`,
     ],
-  ])(`saveAs success: %s`, async (message, should_succeed, expected_info) => {
+  ] as const)(`saveAs success: %s`, async (message, should_succeed, expected_info) => {
     mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/save.cif` })
     await handle_msg(message)
     if (should_succeed) {
@@ -542,7 +547,9 @@ describe(`MatterViz Extension`, () => {
   test.each([[{ command: `info` }], [{ command: `saveAs` }], [{ command: `unknown` }]])(
     `malformed message handling: %s`,
     async (msg) => {
-      await expect(handle_msg({ ...msg, ...msg_args })).resolves.toBeUndefined()
+      await expect(
+        handle_msg({ ...msg, ...msg_args } as unknown as MessageData),
+      ).resolves.toBeUndefined()
     },
   )
 
@@ -574,8 +581,8 @@ describe(`MatterViz Extension`, () => {
     )
   })
 
-  test(`extension activation`, async () => {
-    await activate(mock_context)
+  test(`extension activation`, () => {
+    activate(mock_context)
     expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
       `matterviz.open`,
       expect.any(Function),
@@ -621,7 +628,7 @@ describe(`MatterViz Extension`, () => {
         },
         openExternal: vi.fn(() => Promise.resolve(true)),
       }
-      mock_vscode.env = mock_env
+      mock_vscode.env = mock_env as unknown as typeof mock_vscode.env
 
       // Capture the report_bug command during activation
       const command_registry = new Map<string, () => Promise<void>>()
@@ -653,7 +660,7 @@ describe(`MatterViz Extension`, () => {
       mock_vscode.window.showInformationMessage = vi.fn(() => Promise.resolve(undefined))
 
       // Activate extension to register commands
-      await activate(mock_context)
+      activate(mock_context)
 
       // Get the report_bug command
       report_bug_command = command_registry.get(`matterviz.report_bug`) ?? null
@@ -973,7 +980,7 @@ describe(`MatterViz Extension`, () => {
     // Trajectory detection performance
     const filenames = Array.from({ length: 10000 }, (_, idx) => `test_${idx}.xyz`)
     const start = performance.now()
-    filenames.forEach(is_trajectory_file)
+    filenames.forEach((name) => is_trajectory_file(name))
     expect(performance.now() - start).toBeLessThan(100)
 
     // HTML generation performance
@@ -997,7 +1004,7 @@ describe(`MatterViz Extension`, () => {
 
     for (let idx = 0; idx < 1000; idx++) {
       const html = create_html(mock_webview, mock_context, data)
-      const nonce_match = html.match(/nonce="([a-zA-Z0-9]+)"/)
+      const nonce_match = /nonce="([a-zA-Z0-9]+)"/.exec(html)
       if (nonce_match) nonces.add(nonce_match[1])
     }
 
@@ -1025,7 +1032,7 @@ describe(`MatterViz Extension`, () => {
 
       expect(html).toContain(escaped_json)
       // Ensure no raw </script> inside the JSON data breaks out of the script tag
-      const data_script = html.match(/window\.matterviz_data=(.*?);/s)
+      const data_script = /window\.matterviz_data=(.*?);/s.exec(html)
       if (data_script) {
         expect(data_script[1]).not.toContain(`</script>`)
       }
@@ -1090,7 +1097,7 @@ describe(`MatterViz Extension`, () => {
 
       const html = create_html(mock_webview, mock_context, data)
 
-      const parsed_data = JSON.parse(html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] || `{}`)
+      const parsed_data = JSON.parse(/matterviz_data=(\{[\s\S]*?\});/.exec(html)?.[1] || `{}`)
       expect(parsed_data.theme).toBe(`dark`)
     })
 
@@ -1195,17 +1202,18 @@ describe(`MatterViz Extension`, () => {
       // Store initial HTML after render (render always sets HTML initially)
       const initial_html = mock_panel.webview.html
 
-      const theme_callback = mock_vscode.window.onDidChangeActiveColorTheme.mock
-        .calls[0]?.[0] as (() => void) | undefined
+      const theme_calls = mock_vscode.window.onDidChangeActiveColorTheme.mock
+        .calls as unknown as unknown[][]
+      const theme_callback = theme_calls[0]?.[0] as (() => Promise<void>) | undefined
       expect(theme_callback).toBeDefined()
 
       // Should not update when invisible
-      await theme_callback!()
+      await theme_callback?.()
       expect(mock_panel.webview.html).toBe(initial_html)
 
       // Should update when visible
       mock_panel.visible = true
-      await theme_callback!()
+      await theme_callback?.()
       expect(mock_panel.webview.html).not.toBe(initial_html)
     })
 
@@ -1246,7 +1254,7 @@ describe(`MatterViz Extension`, () => {
     describe(`message handling`, () => {
       test(`should handle startWatching message`, async () => {
         const message = {
-          command: `startWatching`,
+          command: `startWatching` as const,
           ...msg_args,
           file_path: `/test/file.cif`,
         }
@@ -1265,7 +1273,7 @@ describe(`MatterViz Extension`, () => {
       test(`should handle stopWatching message`, async () => {
         // First start watching
         const start_message = {
-          command: `startWatching`,
+          command: `startWatching` as const,
           ...msg_args,
           file_path: `/test/file.cif`,
         }
@@ -1273,7 +1281,7 @@ describe(`MatterViz Extension`, () => {
 
         // Then test stopping
         const stop_message = {
-          command: `stopWatching`,
+          command: `stopWatching` as const,
           ...msg_args,
           file_path: `/test/file.cif`,
         }
@@ -1284,7 +1292,7 @@ describe(`MatterViz Extension`, () => {
 
       test(`should handle startWatching without webview gracefully`, async () => {
         const message = {
-          command: `startWatching`,
+          command: `startWatching` as const,
           ...msg_args,
           file_path: `/test/file.cif`,
         }
@@ -1295,7 +1303,7 @@ describe(`MatterViz Extension`, () => {
 
       test(`should handle startWatching without file_path gracefully`, async () => {
         const message = {
-          command: `startWatching`,
+          command: `startWatching` as const,
           ...msg_args,
         }
 
@@ -1309,7 +1317,7 @@ describe(`MatterViz Extension`, () => {
         })
 
         const message = {
-          command: `startWatching`,
+          command: `startWatching` as const,
           ...msg_args,
           file_path: `/test/large-file.cif`,
         }
@@ -1385,7 +1393,7 @@ describe(`MatterViz Extension`, () => {
         const mock_context = {
           extensionUri: { fsPath: `/test/extension` },
           subscriptions: [],
-        }
+        } as unknown as ExtensionContext
 
         expect(() => activate(mock_context)).not.toThrow()
 
@@ -1595,11 +1603,11 @@ describe(`MatterViz Extension`, () => {
       expect(should_auto_render(filename)).toBe(expected)
     })
 
-    test(`should register auto-render functionality`, async () => {
+    test(`should register auto-render functionality`, () => {
       const mock_context = {
         subscriptions: { push: vi.fn() },
       } as unknown as ExtensionContext
-      await activate(mock_context)
+      activate(mock_context)
       expect(mock_vscode.workspace.onDidOpenTextDocument).toHaveBeenCalledWith(
         expect.any(Function),
       )
@@ -1612,18 +1620,19 @@ describe(`MatterViz Extension`, () => {
       expect(performance.now() - start).toBeLessThan(10)
     })
 
-    test(`should not trigger on non-file URIs`, async () => {
+    test(`should not trigger on non-file URIs`, () => {
       const mock_context = {
         subscriptions: { push: vi.fn() },
       } as unknown as ExtensionContext
 
-      await activate(mock_context)
+      activate(mock_context)
 
       // Get the registered callback
-      const on_did_open_text_document_callback =
-        mock_vscode.workspace.onDidOpenTextDocument
-          // @ts-expect-error: Mock calls array typing is complex but runtime behavior is correct
-          .mock.calls[0]?.[0]
+      const open_doc_calls = mock_vscode.workspace.onDidOpenTextDocument.mock
+        .calls as unknown as unknown[][]
+      const on_did_open_text_document_callback = open_doc_calls[0]?.[0] as
+        | ((doc: unknown) => void)
+        | undefined
       expect(on_did_open_text_document_callback).toBeDefined()
 
       // Mock document with non-file URI
@@ -1634,7 +1643,7 @@ describe(`MatterViz Extension`, () => {
       expect(() => on_did_open_text_document_callback?.(mock_document)).not.toThrow()
     })
 
-    test(`should respect auto_render configuration setting`, async () => {
+    test(`should respect auto_render configuration setting`, () => {
       const mock_context = {
         subscriptions: { push: vi.fn() },
       } as unknown as ExtensionContext
@@ -1647,11 +1656,13 @@ describe(`MatterViz Extension`, () => {
         }),
       })
 
-      await activate(mock_context)
+      activate(mock_context)
 
-      // Get the registered callback
-      const on_did_open_text_document_callback =
-        mock_vscode.workspace.onDidOpenTextDocument.mock.calls[0]?.[0]
+      const open_doc_calls = mock_vscode.workspace.onDidOpenTextDocument.mock
+        .calls as unknown as unknown[][]
+      const on_did_open_text_document_callback = open_doc_calls[0]?.[0] as
+        | ((doc: unknown) => void)
+        | undefined
       expect(on_did_open_text_document_callback).toBeDefined()
 
       // Mock document with supported file
@@ -1672,14 +1683,18 @@ describe(`MatterViz Extension`, () => {
 
       // Enable auto_render in config
       mock_vscode.workspace.getConfiguration.mockReturnValue({
-        get: vi.fn((key: string) => (key === `auto_render` ? true : undefined)),
+        get: vi.fn((_key: string, default_val: string) =>
+          _key === `auto_render` ? `true` : default_val,
+        ),
       })
 
       activate(mock_context)
 
-      // Get the registered callback
-      const on_did_open_text_document_callback =
-        mock_vscode.workspace.onDidOpenTextDocument.mock.calls[0]?.[0]
+      const open_doc_calls = mock_vscode.workspace.onDidOpenTextDocument.mock
+        .calls as unknown as unknown[][]
+      const on_did_open_text_document_callback = open_doc_calls[0]?.[0] as
+        | ((doc: unknown) => void)
+        | undefined
       expect(on_did_open_text_document_callback).toBeDefined()
 
       // Mock document with supported file
@@ -1768,7 +1783,7 @@ H 0.0 1.0 0.0`
       })
 
       const multi_frame_parsed_data = JSON.parse(
-        multi_frame_html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ?? `{}`,
+        /matterviz_data=(\{[\s\S]*?\});/.exec(multi_frame_html)?.[1] ?? `{}`,
       )
 
       expect(multi_frame_parsed_data.type).toBe(`trajectory`)
@@ -1785,7 +1800,7 @@ H 0.0 1.0 0.0`
       })
 
       const single_frame_parsed_data = JSON.parse(
-        single_frame_html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ?? `{}`,
+        /matterviz_data=(\{[\s\S]*?\});/.exec(single_frame_html)?.[1] ?? `{}`,
       )
 
       expect(single_frame_parsed_data.type).toBe(`structure`)
@@ -1798,7 +1813,7 @@ H 0.0 1.0 0.0`
       })
 
       const compressed_parsed_data = JSON.parse(
-        compressed_html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ?? `{}`,
+        /matterviz_data=(\{[\s\S]*?\});/.exec(compressed_html)?.[1] ?? `{}`,
       )
 
       expect(compressed_parsed_data.type).toBe(`trajectory`) // Should be trajectory since filename contains trajectory keyword
@@ -1823,7 +1838,7 @@ H 0.0 1.0 0.0`
         theme: `light`,
       })
 
-      const parsed_data = JSON.parse(html.match(/matterviz_data=(\{[\s\S]*?\});/)?.[1] ?? `{}`)
+      const parsed_data = JSON.parse(/matterviz_data=(\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`)
 
       // Should be 'trajectory' since filename contains trajectory keyword
       expect(parsed_data.type).toBe(`trajectory`)

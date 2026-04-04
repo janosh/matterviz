@@ -190,14 +190,14 @@ function extract_mpds_scales(doc: Document): {
   const y_major_ticks: number[] = []
 
   for (const path of Array.from(doc.querySelectorAll(`path`))) {
-    const d = path.getAttribute(`d`) ?? ``
+    const path_data = path.getAttribute(`d`) ?? ``
     const stroke_width = parse_stroke_width(path)
 
     // Tick mark paths have stroke-width ~0.5
     if (stroke_width < 0.3 || stroke_width > 1.0) continue
 
     // Parse path into absolute line segments (handles both absolute & relative commands)
-    const segments = parse_path_segments(d)
+    const segments = parse_path_segments(path_data)
     if (segments.length < 3) continue
 
     for (const [sx1, sy1, sx2, sy2] of segments) {
@@ -349,7 +349,7 @@ function extract_mpds_boundaries(
   const { left, right, top, bottom } = plot_rect
 
   for (const path of Array.from(doc.querySelectorAll(`path`))) {
-    const d = path.getAttribute(`d`) ?? ``
+    const path_data = path.getAttribute(`d`) ?? ``
     const style = path.getAttribute(`style`) ?? ``
 
     // Skip tick mark paths (stroke-width > 0.3)
@@ -369,7 +369,7 @@ function extract_mpds_boundaries(
     if (style.includes(`#e30016`) || style.includes(`#E30016`)) continue
 
     // Parse as simple M...L line
-    const coords = parse_ml_path(d)
+    const coords = parse_ml_path(path_data)
     if (!coords) continue
 
     // Must be inside the plot area
@@ -404,13 +404,13 @@ function find_mpds_plot_rect(
   doc: Document,
 ): { left: number; right: number; top: number; bottom: number } | null {
   for (const path of Array.from(doc.querySelectorAll(`path`))) {
-    const d = path.getAttribute(`d`) ?? ``
+    const path_data = path.getAttribute(`d`) ?? ``
     const style = path.getAttribute(`style`) ?? ``
     if (!style.includes(`fill: none`) && !style.includes(`fill:none`)) continue
-    if (!d.includes(`Z`) && !d.includes(`z`)) continue
+    if (!path_data.includes(`Z`) && !path_data.includes(`z`)) continue
 
     // Parse path into absolute segments and extract corner points
-    const segments = parse_path_segments(d)
+    const segments = parse_path_segments(path_data)
     if (segments.length < 3) continue // rectangle needs at least 3 segments (4th is Z)
 
     // Collect all x and y coordinates from segment endpoints
@@ -888,7 +888,7 @@ function clean_latex(text: string): string {
 // Handles all SVG path commands (M/L/H/V/C/S/Q/T/A/Z, both absolute and relative)
 // Curves (C/S/Q/T/A) are approximated as straight lines from start to endpoint
 // After M/m, implicit coordinates are treated as L/l per SVG spec
-function parse_path_segments(d: string): [number, number, number, number][] {
+function parse_path_segments(path_str: string): [number, number, number, number][] {
   const segments: [number, number, number, number][] = []
   let [cursor_x, cursor_y] = [0, 0]
   let [start_x, start_y] = [0, 0]
@@ -896,7 +896,7 @@ function parse_path_segments(d: string): [number, number, number, number][] {
 
   // Numbers to skip before the endpoint x,y for each curve command
   const curve_skip: Record<string, number> = { C: 4, S: 2, Q: 2, T: 0, A: 5 }
-  const tokens = d.match(/[MmLlHhVvCcSsQqTtAaZz]|[-+]?[\d]*\.?[\d]+(?:[eE][-+]?\d+)?/g)
+  const tokens = path_str.match(/[MmLlHhVvCcSsQqTtAaZz]|[-+]?[\d]*\.?[\d]+(?:[eE][-+]?\d+)?/g)
   if (!tokens) return segments
 
   let idx = 0
@@ -970,8 +970,10 @@ function parse_path_segments(d: string): [number, number, number, number][] {
 
 // Parse a simple 2-point line path (M...L only). Returns null for multi-segment paths
 // to enforce the single-line contract expected by boundary extraction.
-function parse_ml_path(d: string): { x1: number; y1: number; x2: number; y2: number } | null {
-  const segments = parse_path_segments(d)
+function parse_ml_path(
+  path_str: string,
+): { x1: number; y1: number; x2: number; y2: number } | null {
+  const segments = parse_path_segments(path_str)
   if (segments.length !== 1) return null
   const [x1, y1, x2, y2] = segments[0]
   return { x1, y1, x2, y2 }

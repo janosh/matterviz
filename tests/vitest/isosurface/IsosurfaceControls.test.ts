@@ -1,10 +1,7 @@
 // Tests for IsosurfaceControls component rendering and interactions
 import IsosurfaceControls from '$lib/isosurface/IsosurfaceControls.svelte'
-import {
-  DEFAULT_ISOSURFACE_SETTINGS,
-  type IsosurfaceSettings,
-  type VolumetricData,
-} from '$lib/isosurface/types'
+import { DEFAULT_ISOSURFACE_SETTINGS } from '$lib/isosurface/types'
+import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query } from '../setup'

@@ -7,6 +7,10 @@ export type ChemPotLimits = Partial<Record<string, [number, number]>>
 
 export type ChemPotColorMode = `none` | `energy` | `formation_energy` | `arity` | `entries`
 
+// For quaternary+ systems: "single" shows one 3D diagram with projection switcher,
+// "grid" shows all C(n,3) ternary projections simultaneously
+export type ChemPotProjectionMode = `single` | `grid`
+
 // Visual and behavioral configuration for the diagram
 export interface ChemPotDiagramConfig {
   // Plot formal (reference) chemical potentials mu_X - mu_X^0, or absolute DFT energies mu_X
@@ -38,6 +42,9 @@ export interface ChemPotDiagramConfig {
   interpolate_temperature?: boolean
   // Maximum temperature gap (Kelvin) allowed for interpolation (default: 500)
   max_interpolation_gap?: number
+  // For quaternary+ systems: show one diagram with projection switcher ("single")
+  // or all C(n,3) ternary projections in a grid ("grid"). Default: "single"
+  projection_mode?: ChemPotProjectionMode
 }
 
 // Computed chemical potential diagram data
@@ -114,6 +121,7 @@ export const CHEMPOT_DEFAULTS = {
   reverse_color_scale: true,
   interpolate_temperature: true,
   max_interpolation_gap: 500,
+  projection_mode: `single` as ChemPotProjectionMode,
   // Dark2 qualitative palette (same as pymatgen/plotly default)
   formula_colors: [
     `#1b9e77`,

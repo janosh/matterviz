@@ -35,9 +35,9 @@
     .y((point) => point[1])
     .curve(curveMonotoneX)
 
-  let [x_min, x_max] = $derived(extent(points.map((p) => p[0])))
+  let [x_min, x_max] = $derived(extent(points.map((point) => point[0])))
   let line_path = $derived(lineGenerator(points) ?? ``)
-  let ymin = $derived(origin[1] ?? min(points.map((p) => p[1])))
+  let ymin = $derived(origin[1] ?? min(points.map((point) => point[1])))
   // Guard against NaN/Infinity in area_path coords (can happen during scale transitions)
   let area_path = $derived(
     line_path && isFinite(x_min ?? NaN) && isFinite(x_max ?? NaN) &&
