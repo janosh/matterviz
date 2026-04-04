@@ -32,7 +32,7 @@ export const stream_file_to_buffer = async (
     const stats = await vscode.workspace.fs.stat(uri)
     total_size = stats.size
   } catch (error) {
-    throw new Error(`Failed to get file stats: ${error}`)
+    throw new Error(`Failed to get file stats: ${error}`, { cause: error })
   }
 
   if (total_size > MAX_STREAMING_FILE_SIZE) {
@@ -55,5 +55,5 @@ export const stream_file_to_buffer = async (
 
   on_progress?.({ bytes_read: uint8array.length, total_size, progress: 1.0 }) // Report completion
 
-  return uint8array.buffer
+  return uint8array.buffer as ArrayBuffer
 }

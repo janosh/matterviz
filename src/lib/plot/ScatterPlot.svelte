@@ -1671,14 +1671,9 @@
 
   // Merge user config with defaults before the effect that uses it
   let actual_label_config = $derived({
-    collision_strength: 1.5, // Increased from 1.1 for stronger overlap prevention
-    link_strength: 0.8,
-    link_distance: 10,
-    placement_ticks: 200, // Increased from 120 for better settling
-    link_distance_range: [5, 20] as Vec2, // Default min and max distance (replacing max_link_distance)
-    max_labels: 300, // Maximum labels before falling back to simple offsets
-    charge_strength: 50, // Repulsion strength for markers
-    charge_distance_max: 30, // Limit range of repulsion
+    sa_iterations: 2000,
+    max_labels: 300,
+    leader_line_threshold: 15,
     ...label_placement_config,
   })
 
@@ -2448,6 +2443,7 @@
                   tooltip_point?.point_idx === point.point_idx}
                   is_selected={selected_point?.series_idx === point.series_idx &&
                   selected_point?.point_idx === point.point_idx}
+                  leader_line_threshold={actual_label_config.leader_line_threshold}
                   style={{
                     symbol_type: pt?.symbol_type ?? series_default_symbol,
                     ...pt,

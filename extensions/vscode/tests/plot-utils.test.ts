@@ -273,7 +273,7 @@ describe(`build functions return empty on missing columns`, () => {
     const series = build()
     expect(series.x).toEqual([])
     expect(series.y).toEqual([])
-    if (name === `scatter3d`) expect((series as { z: number[] }).z).toEqual([])
+    if (name === `scatter3d`) expect((series as unknown as { z: number[] }).z).toEqual([])
   })
 })
 

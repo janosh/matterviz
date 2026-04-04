@@ -1011,10 +1011,8 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Test configurable tick counts
     const tick_config_histogram = await wait_for_histogram(`#tick-configuration`)
-    const [x_axis, y_axis] = await Promise.all([
-      tick_config_histogram.locator(`g.x-axis`),
-      tick_config_histogram.locator(`g.y-axis`),
-    ])
+    const x_axis = tick_config_histogram.locator(`g.x-axis`)
+    const y_axis = tick_config_histogram.locator(`g.y-axis`)
 
     // Adjust tick counts and verify changes using scoped selectors
     await set_range_value_in_section(page, `tick-configuration-section`, `X-axis Ticks`, 15)
@@ -1064,10 +1062,8 @@ test.describe(`Histogram Component Tests`, () => {
         `input[name="y-scale"][value="${y_scale}"]`,
       )
 
-      const [x_axis, y_axis] = await Promise.all([
-        histogram.locator(`g.x-axis`),
-        histogram.locator(`g.y-axis`),
-      ])
+      const x_axis = histogram.locator(`g.x-axis`)
+      const y_axis = histogram.locator(`g.y-axis`)
 
       await Promise.all([
         expect(x_axis.locator(`.tick text`).first()).toBeVisible({ timeout: 3000 }),
@@ -1125,15 +1121,11 @@ test.describe(`Histogram Component Tests`, () => {
       timeout: 5000,
     })
 
-    const [config_x_axis, config_y_axis] = await Promise.all([
-      tick_config_histogram.locator(`g.x-axis`),
-      tick_config_histogram.locator(`g.y-axis`),
-    ])
+    const config_x_axis = tick_config_histogram.locator(`g.x-axis`)
+    const config_y_axis = tick_config_histogram.locator(`g.y-axis`)
 
-    const [x_tick_texts, y_tick_texts] = await Promise.all([
-      config_x_axis.locator(`.tick text`),
-      config_y_axis.locator(`.tick text`),
-    ])
+    const x_tick_texts = config_x_axis.locator(`.tick text`)
+    const y_tick_texts = config_y_axis.locator(`.tick text`)
 
     const [x_count, y_count] = await Promise.all([x_tick_texts.count(), y_tick_texts.count()])
 

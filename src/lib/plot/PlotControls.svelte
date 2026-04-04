@@ -258,16 +258,16 @@
             bind:this={range_els[`${axis}-min`]}
             placeholder="auto"
             class="range-input"
-            oninput={(e) => update_range(axis, 0, e.currentTarget.value)}
-            onkeydown={(e) => e.key === `Enter` && e.currentTarget?.blur()}
+            oninput={(evt) => update_range(axis, 0, evt.currentTarget.value)}
+            onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget?.blur()}
           /> to <input
             type="number"
             value={range_inputs[axis][1] ?? ``}
             bind:this={range_els[`${axis}-max`]}
             placeholder="auto"
             class="range-input"
-            oninput={(e) => update_range(axis, 1, e.currentTarget.value)}
-            onkeydown={(e) => e.key === `Enter` && e.currentTarget?.blur()}
+            oninput={(evt) => update_range(axis, 1, evt.currentTarget.value)}
+            onkeydown={(evt) => evt.key === `Enter` && evt.currentTarget?.blur()}
           />
         </label>
       {/each}
@@ -292,12 +292,12 @@
             max={max_ticks}
             step="1"
             value={typeof x_axis.ticks === `number` ? x_axis.ticks : 8}
-            oninput={(e) => {
-              const v = parseInt(e.currentTarget.value, 10)
-              if (isNaN(v)) return
+            oninput={(evt) => {
+              const parsed = parseInt(evt.currentTarget.value, 10)
+              if (isNaN(parsed)) return
               x_axis = {
                 ...x_axis,
-                ticks: Math.max(min_ticks, Math.min(max_ticks, v)),
+                ticks: Math.max(min_ticks, Math.min(max_ticks, parsed)),
               }
             }}
           />
@@ -309,12 +309,12 @@
             max={max_ticks}
             step="1"
             value={typeof y_axis.ticks === `number` ? y_axis.ticks : 6}
-            oninput={(e) => {
-              const v = parseInt(e.currentTarget.value, 10)
-              if (isNaN(v)) return
+            oninput={(evt) => {
+              const parsed = parseInt(evt.currentTarget.value, 10)
+              if (isNaN(parsed)) return
               y_axis = {
                 ...y_axis,
-                ticks: Math.max(min_ticks, Math.min(max_ticks, v)),
+                ticks: Math.max(min_ticks, Math.min(max_ticks, parsed)),
               }
             }}
           />
@@ -342,8 +342,8 @@
       <label>X:
         <select
           value={get_scale_type_name(x_axis.scale_type)}
-          onchange={(e) => {
-            const val = e.currentTarget.value
+          onchange={(evt) => {
+            const val = evt.currentTarget.value
             x_axis = {
               ...x_axis,
               scale_type: is_scale_type_name(val) ? val : `linear`,
@@ -359,8 +359,8 @@
         <label>X2:
           <select
             value={get_scale_type_name(x2_axis.scale_type)}
-            onchange={(e) => {
-              const val = e.currentTarget.value
+            onchange={(evt) => {
+              const val = evt.currentTarget.value
               x2_axis = {
                 ...x2_axis,
                 scale_type: is_scale_type_name(val) ? val : `linear`,
@@ -376,8 +376,8 @@
       <label>Y:
         <select
           value={get_scale_type_name(y_axis.scale_type)}
-          onchange={(e) => {
-            const val = e.currentTarget.value
+          onchange={(evt) => {
+            const val = evt.currentTarget.value
             y_axis = {
               ...y_axis,
               scale_type: is_scale_type_name(val) ? val : `linear`,
@@ -393,8 +393,8 @@
         <label>Y2:
           <select
             value={get_scale_type_name(y2_axis.scale_type)}
-            onchange={(e) => {
-              const val = e.currentTarget.value
+            onchange={(evt) => {
+              const val = evt.currentTarget.value
               y2_axis = {
                 ...y2_axis,
                 scale_type: is_scale_type_name(val) ? val : `linear`,
@@ -428,8 +428,8 @@
           <select
             value={current_sync.mode}
             aria-label="Y2 axis synchronization mode"
-            onchange={(e) => {
-              const val = e.currentTarget.value
+            onchange={(evt) => {
+              const val = evt.currentTarget.value
               const mode = is_y2_sync_mode(val) ? val : `none`
               if (mode === `none`) {
                 y2_axis = { ...y2_axis, sync: undefined }
@@ -455,8 +455,8 @@
               value={current_sync.align_value ?? 0}
               aria-label="Value to align on both axes"
               style="width: 5em"
-              onchange={(e) => {
-                const val = parseFloat(e.currentTarget.value)
+              onchange={(evt) => {
+                const val = parseFloat(evt.currentTarget.value)
                 y2_axis = {
                   ...y2_axis,
                   sync: {

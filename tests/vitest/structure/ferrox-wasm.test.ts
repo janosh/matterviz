@@ -1,14 +1,8 @@
 import type { Crystal } from '$lib/structure'
 import type { Vec3 } from '$lib/math'
 // Import types and utilities from the pure types module (no WASM side effects)
-import {
-  is_error,
-  is_ok,
-  type NeighborListResult,
-  unwrap,
-  unwrap_or,
-  type WasmResult,
-} from '$lib/structure/ferrox-wasm-types'
+import { is_error, is_ok, unwrap, unwrap_or } from '$lib/structure/ferrox-wasm-types'
+import type { NeighborListResult, WasmResult } from '$lib/structure/ferrox-wasm-types'
 import { describe, expect, it } from 'vitest'
 
 describe(`WasmResult utilities`, () => {

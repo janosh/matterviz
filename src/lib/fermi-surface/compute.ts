@@ -462,7 +462,7 @@ export function compute_fermi_slice(
     k_lattice_2d: [in_plane_u, in_plane_v],
     metadata: {
       n_lines: isolines.length,
-      has_properties: isolines.some((l) => l.properties !== undefined),
+      has_properties: isolines.some((line) => line.properties !== undefined),
     },
   }
 }
@@ -677,8 +677,11 @@ function slice_surface_with_plane(
     // Project to 2D (inlined dot product for speed)
     const points_2d: [number, number][] = new Array(contour_points.length)
     for (let idx = 0; idx < contour_points.length; idx++) {
-      const p = contour_points[idx]
-      points_2d[idx] = [p[0] * ux + p[1] * uy + p[2] * uz, p[0] * vx + p[1] * vy + p[2] * vz]
+      const point = contour_points[idx]
+      points_2d[idx] = [
+        point[0] * ux + point[1] * uy + point[2] * uz,
+        point[0] * vx + point[1] * vy + point[2] * vz,
+      ]
     }
 
     isolines.push({

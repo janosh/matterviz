@@ -590,9 +590,9 @@ const apply_symmetry_ops = (
 
     // Wrap and deduplicate transformed coordinates
     const wrapped = wrap(new_coords)
-    const k = key(wrapped)
-    if (seen.has(k)) continue
-    seen.add(k)
+    const cache_key = key(wrapped)
+    if (seen.has(cache_key)) continue
+    seen.add(cache_key)
 
     equivalent_atoms.push({
       ...atom,

@@ -49,7 +49,7 @@ export default defineConfig({
     ],
     rules: {
       // Extra rules not in the enabled categories
-      'no-console': [`error`, { allow: [`warn`, `error`] }],
+      'no-console': [`error`, { allow: [`info`, `warn`, `error`] }],
       'no-template-curly-in-string': `error`,
       'no-constructor-return': `error`,
       'default-param-last': `error`,
@@ -104,6 +104,8 @@ export default defineConfig({
       '@typescript-eslint/no-redundant-type-constituents': `warn`,
       'eslint-plugin-unicorn/prefer-set-has': `off`,
       'eslint-plugin-unicorn/require-module-specifiers': `off`,
+      // VS Code's Webview.postMessage() API doesn't take targetOrigin (not browser postMessage)
+      'eslint-plugin-unicorn/require-post-message-target-origin': `off`,
       'oxc/no-map-spread': `off`,
       'oxc/approx-constant': `off`,
       // Vitest default rules — too noisy for this codebase

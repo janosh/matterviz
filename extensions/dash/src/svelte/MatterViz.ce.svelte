@@ -29,18 +29,6 @@
   }
 </script>
 
-<style>
-  :host {
-    display: block;
-  }
-  .mv-error {
-    font-family: monospace;
-    font-size: 12px;
-    white-space: pre-wrap;
-    padding: 0.5rem;
-  }
-</style>
-
 {#if resolved.component}
   {@const Component = resolved.component}
   <Component {...safe_props} />
@@ -55,3 +43,15 @@
     {/if}
   </div>
 {/if}
+
+<style>
+  :host {
+    display: block;
+  }
+  .mv-error {
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    padding: 0.5rem;
+  }
+</style>

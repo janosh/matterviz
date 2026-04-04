@@ -92,7 +92,7 @@ function sync_package_config() {
   }
 
   writeFileSync(package_path, JSON.stringify(package_content, null, 2) + `\n`, `utf-8`)
-  console.log(
+  console.info(
     `✅ Synced ${Object.keys(vscode_config).length} settings from SETTINGS_CONFIG to package.json`,
   )
 }

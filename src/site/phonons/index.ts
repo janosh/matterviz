@@ -148,10 +148,10 @@ type PhononData = {
 }
 
 // Import all phonon data files (uncompressed for dev, gzipped in git)
-const raw_imports = import.meta.glob([`./*.json`, `./*.json.gz`], {
+const raw_imports = import.meta.glob<PhononData>([`./*.json`, `./*.json.gz`], {
   eager: true,
   import: `default`,
-}) as Record<string, PhononData>
+})
 
 // Extract filename without extension as the key
 export const phonon_data: Record<string, PhononData> = {}

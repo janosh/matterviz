@@ -185,11 +185,11 @@
             .map((y_val, idx) => ({ y_val, idx }))
             .filter(({ y_val }) => y_val > thresh)
         } else {
-          const k = Math.min(intens.length, Math.floor(annotate_peaks))
+          const max_peaks = Math.min(intens.length, Math.floor(annotate_peaks))
           candidates = intens
             .map((y_val, idx) => ({ y_val, idx }))
             .sort((a, b) => b.y_val - a.y_val)
-            .slice(0, k)
+            .slice(0, max_peaks)
         }
 
         // Filter out overlapping labels: keep higher intensity peaks when x values are close
@@ -213,8 +213,8 @@
       for (let idx = 0; idx < xs.length; idx++) {
         const hkls_objs = entry.pattern.hkls?.[idx] ?? []
         const hkls: Hkl[] = hkls_objs
-          .map((h) => (Array.isArray(h?.hkl) ? h.hkl : null))
-          .filter((h): h is Hkl => Array.isArray(h) && h.length === 3)
+          .map((hkl_obj) => (Array.isArray(hkl_obj?.hkl) ? hkl_obj.hkl : null))
+          .filter((hkl_val): hkl_val is Hkl => Array.isArray(hkl_val) && hkl_val.length === 3)
         const d_hkl = entry.pattern.d_hkls?.[idx]
         metadata.push({ hkls, d: d_hkl, label: entry.label })
 
@@ -223,7 +223,7 @@
             ? `${format_value(xs[idx], `.2f`)}°`
             : ``
           const hkl_text = hkls && hkl_format
-            ? hkls.map((h) => format_hkl(h, hkl_format)).join(`, `)
+            ? hkls.map((hkl_val) => format_hkl(hkl_val, hkl_format)).join(`, `)
             : ``
           // Use @ separator between hkl and angle for better clarity
           const separator = hkl_text && angle_text ? ` @ ` : ``
@@ -276,7 +276,7 @@
       })
       .map(({ broadened, entry, entry_idx }, _, all_processed) => {
         // Find global max of all broadened patterns to normalize
-        const all_ys = all_processed.flatMap((p) => p.broadened.y)
+        const all_ys = all_processed.flatMap((processed) => processed.broadened.y)
         const max_y = Math.max(...all_ys, 1) // Avoid div by zero
 
         const scale = (y: number) => (y / max_y) * 100

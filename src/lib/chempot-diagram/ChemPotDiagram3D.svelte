@@ -4,26 +4,27 @@
   import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
+  import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
   import { set_fullscreen_bg, SettingsSection, toggle_fullscreen } from '$lib/layout'
+  import type { Vec2, Vec3 } from '$lib/math'
   import {
     convex_hull_2d,
     cross_3d,
     merge_coplanar_triangles,
     normalize_vec3,
-    type Vec2,
-    type Vec3,
   } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
+  import { constrain_tooltip_position } from '$lib/plot/layout'
   import type {
     AxisConfig3D,
     CameraProjection3D,
     DataSeries3D,
     DisplayConfig3D,
   } from '$lib/plot/types'
+  import { sanitize_html } from '$lib/sanitize'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -33,19 +34,22 @@
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
   import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js'
+  import { compute_chempot_async } from './async-compute.svelte'
   import ChemPotScene3D from './ChemPotScene3D.svelte'
   import { get_chempot_color_bar_config, make_chempot_color_scale } from './color'
   import {
     apply_element_padding,
+    bbox_diagonal,
     best_form_energy_for_formula,
     build_axis_ranges,
-    compute_chempot_diagram,
     dedup_points,
     formula_key_from_composition,
     get_3d_domain_simplexes_and_ann_loc,
     get_energy_per_atom,
     get_min_entries_and_el_refs,
+    get_ternary_combinations,
     pad_domain_points,
+    scale_to_font_range,
   } from './compute'
   import { with_hover_pointer } from './pointer'
   import {
@@ -56,6 +60,7 @@
   import type {
     ChemPotColorMode,
     ChemPotDiagramConfig,
+    ChemPotDiagramData,
     ChemPotHoverInfo,
     ChemPotHoverInfo3D,
   } from './types'
@@ -155,6 +160,15 @@
   let fullscreen = $state(false)
   let export_pane_open = $state(false)
   let formula_picker_open = $state(false)
+  let controls_open = $state(false)
+
+  // Mutual exclusion: only one pane open at a time.
+  // Separate effects so each reacts to its own pane opening independently —
+  // a single $derived ternary would create priority ordering where opening
+  // a "lower" pane while a "higher" one is open fails silently.
+  $effect(() => { if (export_pane_open) { formula_picker_open = false; controls_open = false } })
+  $effect(() => { if (formula_picker_open) { export_pane_open = false; controls_open = false } })
+  $effect(() => { if (controls_open) { export_pane_open = false; formula_picker_open = false } })
   let copy_status = $state(false)
   let copy_timeout_id: ReturnType<typeof setTimeout> | null = null
   let container_width = $state(0)
@@ -169,9 +183,6 @@
 
   let mounted = $state(false)
   onMount(() => mounted = true)
-  let fixed_container_element = $state<HTMLElement | null>(null)
-  let fixed_container_rect = $state<DOMRect | null>(null)
-  let fixed_container_frame_id: number | null = null
   let orbit_controls_ref = $state<OrbitControls | undefined>(undefined)
   // Backside tracking: axes/ticks/labels render on the far side from the camera
   // back[i] = backside data coordinate value for data axis i
@@ -273,15 +284,29 @@
     draw_formula_meshes,
     draw_formula_lines,
   })
-  const diagram_data = $derived.by(() => {
-    if (temp_filtered_entries.length < 3) return null
-    try {
-      const data = compute_chempot_diagram(temp_filtered_entries, effective_config)
-      return data.elements.length >= 3 ? data : null
-    } catch (err) {
-      console.error(`ChemPotDiagram3D:`, err)
-      return null
+  let diagram_data = $state<ChemPotDiagramData | null>(null)
+  let diagram_computing = $state(false)
+  $effect(() => {
+    if (temp_filtered_entries.length < 3) {
+      diagram_data = null
+      diagram_computing = false
+      return
     }
+    let cancelled = false
+    diagram_computing = true
+    compute_chempot_async(temp_filtered_entries, effective_config)
+      .then((data) => {
+        if (cancelled) return
+        diagram_data = data.elements.length >= 3 ? data : null
+        diagram_computing = false
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error(`ChemPotDiagram3D:`, err)
+        diagram_data = null
+        diagram_computing = false
+      })
+    return () => { cancelled = true }
   })
 
   const plot_elements = $derived(diagram_data?.elements ?? projection_elements)
@@ -292,30 +317,19 @@
   )
   const projection_presets = $derived.by(() => {
     const presets: string[][] = []
-    const seen_triplets = new SvelteSet<string>()
+    const seen = new Set<string>()
     const add_triplet = (candidate: string[] | null): void => {
       if (!candidate) return
       const key = candidate.join(`|`)
-      if (seen_triplets.has(key)) return
-      seen_triplets.add(key)
+      if (seen.has(key)) return
+      seen.add(key)
       presets.push(candidate)
     }
     add_triplet(config_projection_elements)
     add_triplet(plot_elements.length === 3 ? plot_elements : null)
-    if (all_entry_elements.length >= 3) {
-      const n_elements = all_entry_elements.length
-      for (let first_idx = 0; first_idx < n_elements; first_idx++) {
-        for (let second_idx = first_idx + 1; second_idx < n_elements; second_idx++) {
-          for (let third_idx = second_idx + 1; third_idx < n_elements; third_idx++) {
-            add_triplet([
-              all_entry_elements[first_idx],
-              all_entry_elements[second_idx],
-              all_entry_elements[third_idx],
-            ])
-            if (presets.length >= 12) return presets
-          }
-        }
-      }
+    for (const combo of get_ternary_combinations(all_entry_elements)) {
+      add_triplet(combo)
+      if (presets.length >= 12) break
     }
     return presets
   })
@@ -337,8 +351,8 @@
     formula: string
     points_3d: number[][]
     ann_loc: number[]
-    label_loc: number[]
     is_draw_formula: boolean
+    label_font_size: number
   }
 
   interface HoverMeshData {
@@ -381,28 +395,22 @@
         : pts
       if (padded.length < 2) continue
       const is_draw = formulas_to_draw.includes(formula)
-      const label_loc = padded[0].map((_, col_idx) =>
+      const centroid = padded[0].map((_, col_idx) =>
         padded.reduce((sum, point) => sum + point[col_idx], 0) / padded.length
       )
-      if (padded.length >= 3) {
-        const { ann_loc } = get_3d_domain_simplexes_and_ann_loc(padded)
-        result.push({
-          formula,
-          points_3d: padded,
-          ann_loc,
-          label_loc,
-          is_draw_formula: is_draw,
-        })
-      } else {
-        result.push({
-          formula,
-          points_3d: padded,
-          ann_loc: label_loc,
-          label_loc,
-          is_draw_formula: is_draw,
-        })
-      }
+      const ann_loc = padded.length >= 3
+        ? get_3d_domain_simplexes_and_ann_loc(padded).ann_loc
+        : centroid
+      result.push({
+        formula,
+        points_3d: padded,
+        ann_loc,
+        is_draw_formula: is_draw,
+        label_font_size: bbox_diagonal(padded),
+      })
     }
+    const fonts = scale_to_font_range(result.map((d) => d.label_font_size), 9, 15)
+    for (let idx = 0; idx < result.length; idx++) result[idx].label_font_size = fonts[idx]
     return result
   })
 
@@ -629,6 +637,11 @@
   )
   const orthographic_zoom = $derived(
     orthographic_zoom_override ?? default_orthographic_zoom,
+  )
+  // Label scale factor: zoom relative to default, so labels grow/shrink with zoom
+  // Labels scale sub-linearly with zoom so they grow but don't dominate when zoomed in
+  const zoom_scale = $derived(
+    default_orthographic_zoom > 0 ? Math.sqrt(orthographic_zoom / default_orthographic_zoom) : 1,
   )
   let last_data_center: Vec3 | null = null
   let last_data_extent: number | null = null
@@ -1040,8 +1053,7 @@
     if (geom && geom !== hull_base_geometry) return () => dispose_geometry(geom)
   })
 
-  // Domains on the outer surface: annotation point NOT strictly inside the hull.
-  // Interior domains are hidden behind the surface and shouldn't show labels.
+  // Domains on the outer surface (used by the "Surface" formula overlay quick-select).
   const surface_formulas = $derived.by((): SvelteSet<string> => {
     const on_surface = new SvelteSet<string>()
     if (!occlusion_hull_geometry) {
@@ -1421,15 +1433,15 @@
 
   const axis_colors = [`#e74c3c`, `#2ecc71`, `#3498db`] as const
   function chem_axis_label(data_axis: number): string {
-    return formal_chempots
-      ? `\u0394\u03BC(${plot_elements[data_axis]}) (eV)`
-      : `\u03BC(${plot_elements[data_axis]}) (eV)`
+    const el = plot_elements[data_axis]
+    const prefix = formal_chempots ? `\u0394` : ``
+    return `${prefix}\u03BC<sub>${el}</sub> <span class="axis-unit">(eV)</span>`
   }
 
   // Proportional offsets for tick marks and labels, scaled to data extent
   const tick_size = $derived(data_extent * 0.015)
   const tick_label_dist = $derived(data_extent * 0.04)
-  const axis_label_dist = $derived(data_extent * 0.08)
+  const axis_label_dist = $derived(data_extent * 0.02)
 
   // Place axis label just past the outer end of the axis (the end closer to 0).
   // In isometric 3D, the end near 0 projects outward at the front edge of the
@@ -2066,72 +2078,28 @@
 
   onDestroy(() => {
     if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
-    if (fixed_container_frame_id !== null) {
-      cancelAnimationFrame(fixed_container_frame_id)
-      fixed_container_frame_id = null
-    }
-  })
-
-  function find_fixed_container_element(): HTMLElement | null {
-    if (!wrapper) return null
-    let ancestor_element: HTMLElement | null = wrapper.parentElement
-    while (ancestor_element && ancestor_element !== document.documentElement) {
-      const computed_style = getComputedStyle(ancestor_element)
-      const contain_value = computed_style.contain
-      const container_type_value = computed_style.getPropertyValue(`container-type`)
-        .trim()
-      const creates_fixed_containing_block = computed_style.transform !== `none` ||
-        computed_style.perspective !== `none` ||
-        computed_style.filter !== `none` ||
-        computed_style.backdropFilter !== `none` ||
-        contain_value.includes(`layout`) ||
-        contain_value.includes(`paint`) ||
-        contain_value.includes(`strict`) ||
-        contain_value.includes(`content`) ||
-        (container_type_value && container_type_value !== `normal`)
-      if (creates_fixed_containing_block) return ancestor_element
-      ancestor_element = ancestor_element.parentElement
-    }
-    return null
-  }
-
-  function refresh_fixed_container_rect(
-    container_element: HTMLElement | null = fixed_container_element,
-  ): void {
-    fixed_container_rect = container_element?.getBoundingClientRect() ?? null
-  }
-
-  function queue_fixed_container_rect_refresh(): void {
-    if (fixed_container_frame_id !== null) return
-    fixed_container_frame_id = requestAnimationFrame(() => {
-      fixed_container_frame_id = null
-      refresh_fixed_container_rect()
-    })
-  }
-
-  $effect(() => {
-    const next_fixed_container_element = find_fixed_container_element()
-    fixed_container_element = next_fixed_container_element
-    refresh_fixed_container_rect(next_fixed_container_element)
-  })
-
-  onMount(() => {
-    const handle_layout_change = (): void => queue_fixed_container_rect_refresh()
-    window.addEventListener(`resize`, handle_layout_change)
-    window.addEventListener(`scroll`, handle_layout_change, true)
-    return () => {
-      window.removeEventListener(`resize`, handle_layout_change)
-      window.removeEventListener(`scroll`, handle_layout_change, true)
-    }
   })
 
   let locked_hover_formula = $state<string | null>(null)
+  let tooltip_el = $state<HTMLElement>()
+
+  const tooltip_pos = $derived.by(() => {
+    const pointer = hover_info?.pointer
+    if (!pointer) return { x: 4, y: 4 }
+    return constrain_tooltip_position(
+      pointer.x, pointer.y,
+      tooltip_el?.offsetWidth ?? 200,
+      tooltip_el?.offsetHeight ?? 100,
+      container_width, container_height,
+      { offset: 0 },
+    )
+  })
 
   function set_hover_info(domain_data: HoverMeshData, raw_event: unknown): void {
     hover_info = with_hover_pointer<ChemPotHoverInfo>(
       domain_data.info,
       raw_event,
-      fixed_container_rect,
+      wrapper?.getBoundingClientRect() ?? null,
     )
   }
 
@@ -2325,6 +2293,7 @@
     </DraggablePane>
 
     <ScatterPlot3DControls
+      bind:show={controls_open}
       bind:x_axis
       bind:y_axis
       bind:z_axis
@@ -2533,7 +2502,12 @@
       bind:temperature
     />
   {/if}
-  {#if !diagram_data}
+  <div class="canvas-clip">
+  {#if diagram_computing}
+    <div class="computing-state">
+      <Spinner text="Computing chemical potential domains..." style="--spinner-size: 1.2em" />
+    </div>
+  {:else if !diagram_data}
     <div class="error-state" role="alert" aria-live="polite">
       <p>Cannot compute chemical potential diagram.</p>
       <p>Need at least 2 elements with elemental reference entries.</p>
@@ -2724,25 +2698,23 @@
               portal={wrapper}
               zIndexRange={[1, 0]}
             >
-              <span class="axis-label" style:color={gc.color}>{gc.label}</span>
+              <span class="axis-label" style:color={gc.color}>{@html gc.label}</span>
             </extras.HTML>
           {/if}
         {/each}
 
-        <!-- Domain labels (only for surface domains, not interior ones) -->
+        <!-- Domain labels -->
         {#if label_stable}
-          {#each render_domains.filter((d) => surface_formulas.has(d.formula)) as
-            domain
-            (domain.formula)
-          }
+          {#each render_domains as domain (domain.formula)}
             <extras.HTML
-              position={swiz(domain.label_loc[0], domain.label_loc[1], domain.label_loc[2])}
+              position={swiz(domain.ann_loc[0], domain.ann_loc[1], domain.ann_loc[2])}
               center
               portal={wrapper}
-              zIndexRange={[1, 0]}
+              zIndexRange={[5, 5]}
             >
               <span
                 class="domain-label"
+                style:font-size="{(domain.label_font_size * zoom_scale).toFixed(1)}px"
               >{@html sanitize_html(get_hill_formula(domain.formula, false, ``))}</span>
             </extras.HTML>
           {/each}
@@ -2779,9 +2751,10 @@
   {/if}
   {#if render_local_tooltip && show_tooltip && hover_info?.view === `3d`}
     <aside
+      bind:this={tooltip_el}
       class="phase-tooltip"
-      style:left="{hover_info.pointer?.x ?? 4}px"
-      style:top="{hover_info.pointer?.y ?? 4}px"
+      style:left="{tooltip_pos.x}px"
+      style:top="{tooltip_pos.y}px"
     >
       <h4>{@html sanitize_html(get_hill_formula(hover_info.formula, false, ``))}</h4>
       {#if locked_hover_formula === hover_info.formula}
@@ -2821,19 +2794,24 @@
       {/if}
     </aside>
   {/if}
+  </div>
 </div>
 
 <style>
   .chempot-diagram-3d {
     position: relative;
+  }
+  .canvas-clip {
+    position: relative;
     overflow: clip;
+    width: 100%;
+    height: 100%;
   }
   .chempot-diagram-3d:fullscreen {
     background: var(--chempot-3d-bg-fullscreen, var(--bg-color, #fff));
   }
-  /* Threlte <extras.HTML portal={wrapper}> appends absolutely-positioned divs
-     directly to the wrapper. Without pointer-events: none, they intercept mouse
-     events and prevent the Three.js raycaster from detecting hover meshes. */
+  /* Threlte <extras.HTML portal={wrapper}> appends absolutely-positioned overlay divs
+     for 3D labels. pointer-events: none prevents them from blocking raycasting. */
   .chempot-diagram-3d > :global(div[style*='position: absolute'][style*='top: 0']) {
     pointer-events: none !important;
   }
@@ -2844,6 +2822,21 @@
     display: flex;
     gap: 8px;
     z-index: 20;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    pointer-events: none;
+  }
+  .chempot-diagram-3d:hover > section,
+  .chempot-diagram-3d:focus-within > section,
+  .chempot-diagram-3d > section:has(:global(.pane-open)) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  @media (hover: none) {
+    .chempot-diagram-3d > section {
+      opacity: 1;
+      pointer-events: auto;
+    }
   }
   .chempot-diagram-3d > section > :global(button),
   .chempot-diagram-3d > section > :global(.pane-toggle) {
@@ -2880,6 +2873,14 @@
   }
   .chempot-diagram-3d :global(.export-row > label) {
     margin: 0;
+  }
+  .chempot-diagram-3d :global(.export-row button) {
+    width: 1.4em;
+    height: 1.4em;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .chempot-diagram-3d :global(.chempot-checks) {
     display: flex;
@@ -2922,16 +2923,17 @@
   }
   .chempot-diagram-3d :global(.overlay-actions) {
     display: flex;
-    gap: 4pt;
+    gap: 3pt;
     margin: 0 0 4pt;
   }
   .chempot-diagram-3d :global(.overlay-actions button) {
-    border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    border: none;
     border-radius: 3px;
     padding: 2px 6px;
-    background: transparent;
+    background: color-mix(in srgb, currentColor 10%, transparent);
     cursor: pointer;
     color: var(--text-color, currentColor);
+    font-size: 0.85em;
   }
   .chempot-diagram-3d :global(.overlay-search) {
     display: flex;
@@ -2944,21 +2946,40 @@
     min-width: 10em;
   }
   .chempot-diagram-3d :global(.formula-list) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3pt;
     max-height: min(42vh, 18rem);
     overflow: auto;
-    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
-    border-radius: 4px;
-    padding: 4pt;
+    padding: 2pt 0;
   }
   .chempot-diagram-3d :global(.formula-list label) {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 5pt;
-    margin: 2pt 0;
+    gap: 3pt;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.88em;
+    cursor: pointer;
+    background: color-mix(in srgb, currentColor 6%, transparent);
+  }
+  .chempot-diagram-3d :global(.formula-list label:has(input:checked)) {
+    background: color-mix(in srgb, currentColor 16%, transparent);
+  }
+  .chempot-diagram-3d :global(.formula-list input[type='checkbox']) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .chempot-diagram-3d :global(.formula-list label:has(input:focus-visible)) {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
   }
   .chempot-diagram-3d :global(.formula-color-dot) {
-    width: 0.65em;
-    height: 0.65em;
+    width: 0.55em;
+    height: 0.55em;
     border-radius: 50%;
     flex-shrink: 0;
   }
@@ -2973,6 +2994,12 @@
     flex: 1;
     min-width: 0;
     padding: 2px 4px;
+  }
+  .computing-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
   }
   .error-state {
     display: flex;
@@ -2990,19 +3017,23 @@
   .axis-label {
     font: bold 13px sans-serif;
   }
+  .axis-label :global(.axis-unit) {
+    font-weight: 300;
+    opacity: 0.7;
+  }
   .tick-label {
     font-size: 10px;
     color: var(--text-color, #333);
   }
   .domain-label {
-    font: 11px sans-serif;
+    font-family: sans-serif;
     color: var(--text-color, #333);
     opacity: 0.7;
     white-space: nowrap;
     pointer-events: none;
   }
   .phase-tooltip {
-    position: fixed;
+    position: absolute;
     max-width: min(32rem, 92vw);
     background: var(
       --tooltip-bg,

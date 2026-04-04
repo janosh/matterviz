@@ -284,6 +284,40 @@
     })),
   )
 
+  // === Leader Line Test Data ===
+  // Tight cluster where SA must displace labels, triggering leader lines
+  const leader_line_cluster = generate_cluster(50, 50, 6, 3, `LL`)
+  const leader_line_series: DataSeries[] = [
+    {
+      x: leader_line_cluster.x,
+      y: leader_line_cluster.y,
+      point_style: leader_line_cluster.point_style as PointStyle[],
+      point_label: (leader_line_cluster.point_label as LabelStyle[]).map((lbl) => ({
+        ...lbl,
+        auto_placement: true,
+      })),
+    },
+  ]
+
+  // === SA Tuning Test Data ===
+  // Grid of evenly spaced points for testing different SA iteration counts
+  let sa_test_iterations = $state(2000)
+  const grid_points = {
+    x: [20, 50, 80, 20, 50, 80, 20, 50, 80],
+    y: [20, 20, 20, 50, 50, 50, 80, 80, 80],
+  }
+  const sa_tuning_series: DataSeries[] = [
+    {
+      ...grid_points,
+      point_style: { fill: `teal`, radius: 5 },
+      point_label: grid_points.x.map((_, idx) => ({
+        text: `Grid-${idx + 1}`,
+        auto_placement: true,
+        font_size: `10px`,
+      })),
+    },
+  ]
+
   // === Automatic Color Bar Placement Data ===
   let auto_placement_density = $state({
     top_left: 10,
@@ -727,6 +761,44 @@
       x_axis={{ label: `X`, range: [0, 100] }}
       y_axis={{ label: `Y`, range: [0, 100] }}
       style="height: 450px; width: 100%"
+    />
+  {/key}
+</section>
+
+<section
+  id="leader-line-test"
+  style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px"
+>
+  <h2>Leader Line Test</h2>
+  <p>
+    Dense cluster where SA displaces labels far enough to trigger dotted leader lines.
+    Verify that lines connect each displaced label back to its marker.
+  </p>
+  <ScatterPlot
+    series={leader_line_series.map((srs) => ({ ...srs, markers: `points` }))}
+    x_axis={{ label: `X`, range: [30, 70] }}
+    y_axis={{ label: `Y`, range: [30, 70] }}
+    label_placement_config={{ sa_iterations: 3000, leader_line_threshold: 10 }}
+    style="height: 420px; width: 100%"
+  />
+</section>
+
+<section
+  id="sa-tuning-test"
+  style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px"
+>
+  <h2>SA Tuning Test</h2>
+  <label>
+    SA iterations: {sa_test_iterations}
+    <input type="range" min="100" max="5000" step="100" bind:value={sa_test_iterations} />
+  </label>
+  {#key sa_test_iterations}
+    <ScatterPlot
+      series={sa_tuning_series.map((srs) => ({ ...srs, markers: `points` }))}
+      x_axis={{ label: `X`, range: [0, 100] }}
+      y_axis={{ label: `Y`, range: [0, 100] }}
+      label_placement_config={{ sa_iterations: sa_test_iterations }}
+      style="height: 420px; width: 100%"
     />
   {/key}
 </section>

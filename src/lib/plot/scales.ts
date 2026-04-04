@@ -158,7 +158,7 @@ export function generate_arcsinh_ticks(
   if (hi <= 0) {
     // Negative range: mirror the positive logic
     return generate_positive_arcsinh_ticks(-hi, -lo, safe_threshold, count)
-      .map((t) => -t)
+      .map((tick) => -tick)
       .toReversed()
   }
 
@@ -173,7 +173,7 @@ export function generate_arcsinh_ticks(
 
   // Add negative ticks (mirror of positive)
   const neg_ticks = generate_positive_arcsinh_ticks(0, -lo, safe_threshold, half_count)
-  ticks.push(...neg_ticks.filter((t) => t > 0).map((t) => -t))
+  ticks.push(...neg_ticks.filter((tick) => tick > 0).map((tick) => -tick))
 
   // For small counts where half_count is 0 or 1, ensure at least some boundary coverage
   if (half_count <= 1 && count >= 2) {
@@ -492,8 +492,8 @@ export function generate_log_ticks(
     range_size <= 2 ? min_power - 1 : min_power - Math.max(1, Math.floor(range_size / 4))
   const extended_max_power = range_size <= 2 ? max_power + 1 : max_power
 
-  const powers = range(extended_min_power, extended_max_power + 1).map((p: number) =>
-    Math.pow(10, p),
+  const powers = range(extended_min_power, extended_max_power + 1).map((power: number) =>
+    Math.pow(10, power),
   )
 
   // For narrow ranges, include intermediate values
@@ -504,10 +504,10 @@ export function generate_log_ticks(
       if (power * 2 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 2)
       if (power * 5 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 5)
     })
-    return detailed_ticks.filter((t) => t >= min && t <= max)
+    return detailed_ticks.filter((tick) => tick >= min && tick <= max)
   }
 
-  return powers.filter((p) => p >= min && p <= max)
+  return powers.filter((power) => power >= min && power <= max)
 }
 
 // Get custom label for a tick value if provided, otherwise return null
@@ -616,7 +616,7 @@ export function create_size_scale(
   const [min_radius, max_radius] = config.radius_range ?? [2, 10]
   const auto_range =
     all_size_values.length > 0
-      ? extent(all_size_values.filter((v): v is number => v !== null))
+      ? extent(all_size_values.filter((val): val is number => val !== null))
       : [0, 1]
   const [min_val, max_val] = config.value_range ?? (auto_range as Vec2)
   const safe_min = min_val ?? 0

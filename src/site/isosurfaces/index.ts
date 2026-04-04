@@ -1,11 +1,11 @@
 // Isosurface example data files
 import type { FileInfo } from '$lib/io'
 
-const volumetric_file_modules = import.meta.glob(`./*.gz`, {
+const volumetric_file_modules = import.meta.glob<string>(`./*.gz`, {
   query: `?url`,
   eager: true,
   import: `default`,
-}) as Record<string, string>
+})
 
 export interface VolumetricFileInfo extends FileInfo {
   description: string

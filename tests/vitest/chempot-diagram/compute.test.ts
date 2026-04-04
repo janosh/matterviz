@@ -8,6 +8,7 @@
 
 import {
   apply_element_padding,
+  bbox_diagonal,
   build_axis_ranges,
   build_border_hyperplanes,
   build_hyperplanes,
@@ -18,11 +19,15 @@ import {
   get_3d_domain_simplexes_and_ann_loc,
   get_energy_per_atom,
   get_min_entries_and_el_refs,
+  get_ternary_combinations,
+  make_nd_cache_key,
   orthonormal_2d,
   pad_domain_points,
   renormalize_entries,
+  scale_to_font_range,
   simple_pca,
 } from '$lib/chempot-diagram/compute'
+import { get_hill_formula } from '$lib/composition/format'
 import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
@@ -148,11 +153,12 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
       [0, 0, -1, -25],
       [0, 0, 1, 0],
     ]
-    const border = build_border_hyperplanes([
+    const lims: [number, number][] = [
       [-25, 0],
       [-25, 0],
       [-25, 0],
-    ])
+    ]
+    const border = build_border_hyperplanes(lims)
     for (let idx = 0; idx < desired.length; idx++) {
       for (let jdx = 0; jdx < desired[idx].length; jdx++) {
         expect(border[idx][jdx]).toBeCloseTo(desired[idx][jdx], 5)
@@ -161,11 +167,12 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
   })
 
   test(`lims`, () => {
-    expect(cpd_ternary.lims).toEqual([
+    const desired = [
       [-25, 0],
       [-25, 0],
       [-25, 0],
-    ])
+    ]
+    expect(cpd_ternary.lims).toEqual(desired)
   })
 
   test.each([
@@ -1327,8 +1334,28 @@ describe(`formula_key_from_composition`, () => {
     { comp: { O: 3, Li: 2, Fe: 1 }, expected: `FeLi2O3`, label: `alphabetical sorting` },
     { comp: { Fe: 2, O: 4 }, expected: `FeO2`, label: `reduces to lowest terms` },
     { comp: { Fe: 1, O: 0 }, expected: `Fe`, label: `ignores zero amounts` },
+    { comp: { Fe: 0.5, Li: 0.5 }, expected: `FeLi`, label: `fractional halves` },
+    { comp: { Fe: 0.67, Li: 0.33 }, expected: `Fe2Li`, label: `fractional 2:1 ratio` },
+    {
+      comp: { Li: 0.33, Fe: 0.33, O: 0.34 },
+      expected: `FeLiO`,
+      label: `fractional ternary ~1:1:1`,
+    },
+    { comp: { Fe: 0.25, Li: 0.5, O: 0.25 }, expected: `FeLi2O`, label: `fractional quarters` },
+    {
+      comp: { Fe: 0.005, O: 0.995 },
+      expected: `Fe0.005O0.995`,
+      label: `tiny fraction falls through`,
+    },
   ])(`$label → $expected`, ({ comp, expected }) => {
-    expect(formula_key_from_composition(comp as Record<string, number>)).toBe(expected)
+    const key = formula_key_from_composition(comp as Record<string, number>)
+    expect(key).toBe(expected)
+    // Regression: integer formula keys must round-trip through get_hill_formula
+    if (!expected.includes(`.`)) {
+      expect(get_hill_formula(key, true).length, `key "${key}" → empty label`).toBeGreaterThan(
+        0,
+      )
+    }
   })
 })
 
@@ -1834,5 +1861,191 @@ describe(`temperature filtering integration behavior`, () => {
     })
     expect(result.elements.length).toBe(2)
     expect(Object.keys(result.domains)).toEqual(expect.arrayContaining([`Li`, `O`]))
+  })
+})
+
+// === get_ternary_combinations ===
+
+describe(`get_ternary_combinations`, () => {
+  test.each([
+    { elements: [], expected_count: 0, label: `empty` },
+    { elements: [`Li`], expected_count: 0, label: `unary` },
+    { elements: [`Li`, `O`], expected_count: 0, label: `binary` },
+    { elements: [`Li`, `Fe`, `O`], expected_count: 1, label: `ternary` },
+    { elements: [`Co`, `Li`, `Ni`, `O`], expected_count: 4, label: `quaternary` },
+    { elements: [`Co`, `Li`, `Ni`, `O`, `S`], expected_count: 10, label: `quinary` },
+  ])(`$label system ($elements) → $expected_count combos`, ({ elements, expected_count }) => {
+    expect(get_ternary_combinations(elements)).toHaveLength(expected_count)
+  })
+
+  test(`ternary system returns the single correct triplet`, () => {
+    const combos = get_ternary_combinations([`O`, `Fe`, `Li`])
+    expect(combos).toEqual([[`Fe`, `Li`, `O`]])
+  })
+
+  test(`quaternary system returns all 4 sorted triplets`, () => {
+    const combos = get_ternary_combinations([`O`, `Ni`, `Co`, `Li`])
+    expect(combos).toEqual([
+      [`Co`, `Li`, `Ni`],
+      [`Co`, `Li`, `O`],
+      [`Co`, `Ni`, `O`],
+      [`Li`, `Ni`, `O`],
+    ])
+  })
+})
+
+// === make_nd_cache_key ===
+
+describe(`make_nd_cache_key`, () => {
+  const li: PhaseData = { composition: { Li: 1 }, energy: -3 }
+  const o: PhaseData = { composition: { O: 1 }, energy: -5 }
+  const base_key = () => make_nd_cache_key([li, o], true, -50, undefined)
+
+  test(`same entries in different order produce same key`, () => {
+    expect(make_nd_cache_key([o, li], true, -50, undefined)).toBe(base_key())
+  })
+
+  test.each([
+    {
+      label: `different compositions`,
+      key: () =>
+        make_nd_cache_key(
+          [
+            { composition: { Fe: 1 }, energy: -3 },
+            { composition: { Co: 1 }, energy: -5 },
+          ],
+          true,
+          -50,
+          undefined,
+        ),
+    },
+    {
+      label: `different energies`,
+      key: () =>
+        make_nd_cache_key(
+          [
+            { composition: { Li: 1 }, energy: -4 },
+            { composition: { O: 1 }, energy: -4 },
+          ],
+          true,
+          -50,
+          undefined,
+        ),
+    },
+    {
+      label: `different formal_chempots`,
+      key: () => make_nd_cache_key([li, o], false, -50, undefined),
+    },
+    {
+      label: `different limits`,
+      key: () => make_nd_cache_key([li, o], true, -50, { Li: [-10, 0] }),
+    },
+  ])(`$label → different key`, ({ key }) => {
+    expect(key()).not.toBe(base_key())
+  })
+})
+
+// === N-D cache integration ===
+
+describe(`N-D projection cache consistency`, () => {
+  const config_base = { default_min_limit: -25, formal_chempots: true }
+
+  test(`two projections of the same quaternary data share the same formula set`, () => {
+    const proj_a = compute_chempot_diagram(ytos_entries, {
+      ...config_base,
+      elements: [`O`, `Ti`, `Y`],
+    })
+    const proj_b = compute_chempot_diagram(ytos_entries, {
+      ...config_base,
+      elements: [`S`, `Ti`, `Y`],
+    })
+    // Both projections see the same N-D domains; the full formula set must match
+    // (individual vertex counts differ because of projection, but keys are identical)
+    expect(Object.keys(proj_a.domains).sort()).toEqual(Object.keys(proj_b.domains).sort())
+  })
+
+  test(`projection lims match selected display elements`, () => {
+    const result = compute_chempot_diagram(ytos_entries, {
+      ...config_base,
+      elements: [`S`, `Y`],
+    })
+    expect(result.elements).toEqual([`S`, `Y`])
+    expect(result.lims).toHaveLength(2)
+    for (const [min_val, max_val] of result.lims) {
+      expect(min_val).toBeLessThan(max_val)
+    }
+  })
+
+  test(`changing config invalidates cache (different domains)`, () => {
+    const formal = compute_chempot_diagram(ytos_entries, {
+      ...config_base,
+      elements: [`O`, `Ti`, `Y`],
+    })
+    const absolute = compute_chempot_diagram(ytos_entries, {
+      ...config_base,
+      formal_chempots: false,
+      elements: [`O`, `Ti`, `Y`],
+    })
+    // Formal chempots shifts coordinates by elemental refs → values differ
+    expect(formal.domains[`O2Ti`][0][0]).not.toBeCloseTo(absolute.domains[`O2Ti`][0][0], 1)
+  })
+})
+
+// === bbox_diagonal ===
+
+describe(`bbox_diagonal`, () => {
+  test.each([
+    { points: [], expected: 0, label: `empty` },
+    { points: [[1, 2, 3]], expected: 0, label: `single point` },
+    {
+      points: [
+        [5, 5],
+        [5, 5],
+        [5, 5],
+      ],
+      expected: 0,
+      label: `coincident points`,
+    },
+    {
+      points: [
+        [0, 0, 0],
+        [1, 1, 1],
+        [0, 1, 0],
+      ],
+      expected: Math.sqrt(3),
+      label: `unit cube`,
+    },
+    {
+      points: [
+        [0, 0],
+        [3, 0],
+        [3, 4],
+        [0, 4],
+      ],
+      expected: 5,
+      label: `3×4 rectangle`,
+    },
+  ])(`$label → $expected`, ({ points, expected }) => {
+    expect(bbox_diagonal(points)).toBeCloseTo(expected, 10)
+  })
+})
+
+// === scale_to_font_range ===
+
+describe(`scale_to_font_range`, () => {
+  test.each([
+    { sizes: [1, 5, 3], min: 8, max: 16, expected: [8, 16, 12], label: `min/max/mid` },
+    { sizes: [3, 3, 3], min: 10, max: 20, expected: [15, 15, 15], label: `equal → midpoint` },
+    { sizes: [42], min: 10, max: 20, expected: [15], label: `single → midpoint` },
+  ])(`$label`, ({ sizes, min, max, expected }) => {
+    expect(scale_to_font_range(sizes, min, max)).toEqual(expected)
+  })
+
+  test(`preserves relative ordering`, () => {
+    const fonts = scale_to_font_range([10, 2, 7, 1, 9], 6, 18)
+    expect(fonts[3]).toBeLessThan(fonts[1]) // 1 < 2
+    expect(fonts[1]).toBeLessThan(fonts[2]) // 2 < 7
+    expect(fonts[2]).toBeLessThan(fonts[4]) // 7 < 9
+    expect(fonts[4]).toBeLessThan(fonts[0]) // 9 < 10
   })
 })

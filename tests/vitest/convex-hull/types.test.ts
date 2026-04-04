@@ -6,11 +6,13 @@ import type {
   PhaseData,
 } from '$lib/convex-hull/types'
 import {
+  compute_hull_stability,
   get_arity,
-  HULL_FACE_COLOR_MODES,
+  HULL_STABILITY_TOL,
   is_on_hull,
   is_unary_entry,
-} from '$lib/convex-hull/types'
+} from '$lib/convex-hull/helpers'
+import { HULL_FACE_COLOR_MODES } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 describe(`arity helpers`, () => {
@@ -52,6 +54,18 @@ describe(`is_on_hull`, () => {
     [{}, false, `neither is_stable nor e_above_hull set`],
     [{ is_stable: false }, false, `is_stable false, no e_above_hull`],
     [{ e_above_hull: undefined }, false, `e_above_hull undefined`],
+    [{ exclude_from_hull: true, is_stable: true }, false, `excluded overrides is_stable`],
+    [
+      { exclude_from_hull: true, e_above_hull: 0 },
+      false,
+      `excluded overrides zero e_above_hull`,
+    ],
+    [
+      { exclude_from_hull: true, is_stable: true, e_above_hull: 0 },
+      false,
+      `excluded with both`,
+    ],
+    [{ exclude_from_hull: false, is_stable: true }, true, `not excluded, stable`],
   ] as [Partial<PhaseData>, boolean, string][])(`%o → %s (%s)`, (overrides, expected) => {
     expect(is_on_hull(make(overrides))).toBe(expected)
   })
@@ -61,6 +75,32 @@ describe(`is_on_hull`, () => {
     expect(is_on_hull(entry)).toBe(false)
     expect(is_on_hull(entry, 0.1)).toBe(true)
   })
+})
+
+describe(`compute_hull_stability`, () => {
+  test.each([
+    [`above hull`, 0.05, false, 0.05, false],
+    [`above hull, excluded`, 0.05, true, 0.05, false],
+    [`exactly on hull`, 0, false, 0, true],
+    [`on hull but excluded`, 0, true, 0, false],
+    [`within tol, clamped to 0`, 1e-7, false, 0, true],
+    [`within tol, excluded → raw preserved`, 1e-7, true, 1e-7, false],
+    [`negative noise clamped to 0`, -1e-7, false, 0, true],
+    [`negative noise, excluded → raw preserved`, -1e-7, true, -1e-7, false],
+    [`large negative clamped to 0`, -0.05, false, 0, true],
+    [`large negative, excluded → raw preserved`, -0.05, true, -0.05, false],
+    [`custom tol=0.1 clamps 0.05 to 0`, 0.05, false, 0, true, 0.1],
+    // exactly at tol: not clamped (< is strict) but still stable (<= is inclusive)
+    [`exactly at tol boundary`, HULL_STABILITY_TOL, false, HULL_STABILITY_TOL, true],
+    [`above tol boundary`, HULL_STABILITY_TOL * 10, false, HULL_STABILITY_TOL * 10, false],
+  ] as [string, number, boolean, number, boolean, number?][])(
+    `%s`,
+    (_label, raw, excluded, expected_e, expected_stable, tol) => {
+      const result = compute_hull_stability(raw, excluded, tol)
+      expect(result.e_above_hull).toBe(expected_e)
+      expect(result.is_stable).toBe(expected_stable)
+    },
+  )
 })
 
 describe(`ConvexHullControlsType.show`, () => {

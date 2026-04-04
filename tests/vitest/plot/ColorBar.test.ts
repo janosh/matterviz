@@ -83,8 +83,8 @@ describe(`ColorBar Vertical`, () => {
 
     const cbar_div = doc_query(`.colorbar > div.bar`)
     const computed_style = globalThis.getComputedStyle(cbar_div)
-    expect(computed_style.width).toBe(`14px`) // Check computed value of --cbar-thickness
-    expect(computed_style.height).not.toBe(`14px`)
+    expect(computed_style.width).toBe(`10px`) // Check computed value of --cbar-thickness
+    expect(computed_style.height).not.toBe(`10px`)
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(6)

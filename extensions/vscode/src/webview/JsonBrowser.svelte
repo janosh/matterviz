@@ -4,38 +4,38 @@
   // Right canvas renders one or more visualization panels in a split layout.
   // Users can click tree nodes to render in the main panel, or drag nodes
   // to specific edges to create horizontal/vertical splits.
-  import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte';
-  import ConvexHull from '$lib/convex-hull/ConvexHull.svelte';
-  import type { PhaseData } from '$lib/convex-hull/types';
-  import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte';
-  import { is_fermi_surface_data } from '$lib/fermi-surface/types';
-  import type { VolumetricData } from '$lib/isosurface/types';
-  import JsonTree from '$lib/layout/json-tree/JsonTree.svelte';
-  import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte';
-  import type { PhaseDiagramData } from '$lib/phase-diagram/types';
-  import { merge, type DefaultSettings } from '$lib/settings';
-  import Bands from '$lib/spectral/Bands.svelte';
-  import BandsAndDos from '$lib/spectral/BandsAndDos.svelte';
-  import Dos from '$lib/spectral/Dos.svelte';
-  import type { BaseBandStructure, DosInput } from '$lib/spectral/types';
-  import type { AnyStructure, LatticeType } from '$lib/structure';
+  import BrillouinZone from '$lib/brillouin/BrillouinZone.svelte'
+  import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
+  import type { PhaseData } from '$lib/convex-hull/types'
+  import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
+  import { is_fermi_surface_data } from '$lib/fermi-surface/types'
+  import type { VolumetricData } from '$lib/isosurface/types'
+  import JsonTree from '$lib/layout/json-tree/JsonTree.svelte'
+  import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
+  import type { PhaseDiagramData } from '$lib/phase-diagram/types'
+  import { merge, type DefaultSettings } from '$lib/settings'
+  import Bands from '$lib/spectral/Bands.svelte'
+  import BandsAndDos from '$lib/spectral/BandsAndDos.svelte'
+  import Dos from '$lib/spectral/Dos.svelte'
+  import type { BaseBandStructure, DosInput } from '$lib/spectral/types'
+  import type { AnyStructure, LatticeType } from '$lib/structure'
   import {
-      is_optimade_raw,
-      normalize_fractional_coords,
-      parse_optimade_from_raw,
-  } from '$lib/structure/parse';
-  import Structure from '$lib/structure/Structure.svelte';
-  import type { XrdPattern } from '$lib/xrd';
-  import XrdPlot from '$lib/xrd/XrdPlot.svelte';
-  import { mount, unmount } from 'svelte';
+    is_optimade_raw,
+    normalize_fractional_coords,
+    parse_optimade_from_raw,
+  } from '$lib/structure/parse'
+  import Structure from '$lib/structure/Structure.svelte'
+  import type { XrdPattern } from '$lib/xrd'
+  import XrdPlot from '$lib/xrd/XrdPlot.svelte'
+  import { mount, unmount } from 'svelte'
   import {
-      detect_view_type,
-      scan_renderable_paths,
-      TYPE_COLORS,
-      TYPE_LABELS,
-      type RenderableType
-  } from './detect';
-  import PlotPanel from './PlotPanel.svelte';
+    detect_view_type,
+    scan_renderable_paths,
+    TYPE_COLORS,
+    TYPE_LABELS,
+  } from './detect'
+  import type { RenderableType } from './detect'
+  import PlotPanel from './PlotPanel.svelte'
 
   let {
     value,
@@ -108,10 +108,7 @@
   // Generic drag cleanup helper -- in a webview iframe the cursor can leave the
   // document entirely, so we listen for mouseup, blur, and pointerleave to ensure
   // the drag always terminates.
-  function start_drag(
-    on_move: (event: MouseEvent) => void,
-    on_done: () => void,
-  ): void {
+  function start_drag(on_move: (event: MouseEvent) => void, on_done: () => void): void {
     let cleaned_up = false
     function cleanup(): void {
       if (cleaned_up) return
@@ -138,7 +135,9 @@
         const delta = move_event.clientX - start_x
         sidebar_width = Math.max(150, Math.min(start_width + delta, window.innerWidth * 0.6))
       },
-      () => { is_sidebar_dragging = false },
+      () => {
+        is_sidebar_dragging = false
+      },
     )
   }
 
@@ -163,13 +162,13 @@
 
   // Build a map of tree paths that are renderable (for fast draggable lookup).
   // Skip synthetic suffix paths (\x00...) since those have their own badge drag handlers.
-  let renderable_tree_paths = $derived(new Map(
-    [...renderable_paths]
-      .filter(([data_path]) => !data_path.includes(`\x00`))
-      .map(([data_path, info]) =>
-        [data_to_tree_path(data_path), { data_path, ...info }]
-      )
-  ))
+  let renderable_tree_paths = $derived(
+    new Map(
+      [...renderable_paths]
+        .filter(([data_path]) => !data_path.includes(`\x00`))
+        .map(([data_path, info]) => [data_to_tree_path(data_path), { data_path, ...info }]),
+    ),
+  )
 
   // Mark renderable tree nodes as draggable via attribute (no per-node listeners)
   function mark_draggable_nodes(): void {
@@ -185,9 +184,14 @@
   $effect(() => {
     if (!sidebar_element) return
     function on_dragstart(event: DragEvent): void {
-      if (!event.dataTransfer) { event.preventDefault(); return }
+      if (!event.dataTransfer) {
+        event.preventDefault()
+        return
+      }
       // If dragging a badge directly, use its own data attributes
-      const badge = (event.target as HTMLElement).closest(`.renderable-badge`) as HTMLElement | null
+      const badge = (event.target as HTMLElement).closest(
+        `.renderable-badge`,
+      ) as HTMLElement | null
       if (badge) {
         const data_path = badge.dataset.renderable_path ?? ``
         const detected_type = badge.dataset.renderable_type ?? ``
@@ -200,8 +204,14 @@
       if (!target) return
       const tree_path = target.getAttribute(`data-path`) ?? ``
       const info = renderable_tree_paths.get(tree_path)
-      if (!info) { event.preventDefault(); return }
-      event.dataTransfer.setData(`text/plain`, JSON.stringify({ data_path: info.data_path, detected_type: info.type }))
+      if (!info) {
+        event.preventDefault()
+        return
+      }
+      event.dataTransfer.setData(
+        `text/plain`,
+        JSON.stringify({ data_path: info.data_path, detected_type: info.type }),
+      )
       event.dataTransfer.effectAllowed = `copy`
     }
     sidebar_element.addEventListener(`dragstart`, on_dragstart)
@@ -215,7 +225,9 @@
       existing.remove()
     }
     for (const [data_path, info] of renderable_paths) {
-      const node = sidebar_element.querySelector(`[data-path="${CSS.escape(data_to_tree_path(data_path))}"]`)
+      const node = sidebar_element.querySelector(
+        `[data-path="${CSS.escape(data_to_tree_path(data_path))}"]`,
+      )
       if (!node) continue
       const colon_el = node.querySelector(`.colon`)
       const insert_after = colon_el ?? node.querySelector(`.node-key`) ?? node
@@ -236,7 +248,9 @@
   $effect(() => {
     if (!sidebar_element) return
     function on_badge_click(event: MouseEvent): void {
-      const badge = (event.target as HTMLElement).closest(`.renderable-badge`) as HTMLElement | null
+      const badge = (event.target as HTMLElement).closest(
+        `.renderable-badge`,
+      ) as HTMLElement | null
       if (!badge) return
       event.stopPropagation()
       event.preventDefault()
@@ -245,7 +259,8 @@
       const detected_type = badge.dataset.renderable_type
       if (!detected_type || !(detected_type in TYPE_LABELS)) return
       const val = resolve_path(value, data_path)
-      if (val !== undefined) replace_or_add_panel(data_path, detected_type as RenderableType, val)
+      if (val !== undefined)
+        replace_or_add_panel(data_path, detected_type as RenderableType, val)
     }
     sidebar_element.addEventListener(`click`, on_badge_click, true)
     return () => sidebar_element?.removeEventListener(`click`, on_badge_click, true)
@@ -277,8 +292,12 @@
         pending_raf = null
         if (applying_badges) return
         applying_badges = true
-        try { apply_badges(); mark_draggable_nodes() }
-        finally { applying_badges = false }
+        try {
+          apply_badges()
+          mark_draggable_nodes()
+        } finally {
+          applying_badges = false
+        }
       })
     }
     schedule_refresh()
@@ -295,13 +314,26 @@
   const make_panel_id = (): string => `panel_${crypto.randomUUID()}`
 
   // Click replaces the single/first panel; drag adds a split
-  function replace_or_add_panel(data_path: string, detected_type: RenderableType, val: unknown): void {
+  function replace_or_add_panel(
+    data_path: string,
+    detected_type: RenderableType,
+    val: unknown,
+  ): void {
     if (panels.length === 0) {
-      panels = [{ id: make_panel_id(), data_path, detected_type, val, component: null, element: null }]
+      panels = [
+        { id: make_panel_id(), data_path, detected_type, val, component: null, element: null },
+      ]
       panel_sizes = [1]
     } else {
       unmount_panel(0)
-      panels[0] = { id: make_panel_id(), data_path, detected_type, val, component: null, element: null }
+      panels[0] = {
+        id: make_panel_id(),
+        data_path,
+        detected_type,
+        val,
+        component: null,
+        element: null,
+      }
       panels = [...panels] // trigger reactivity
     }
     requestAnimationFrame(() => mount_all_panels())
@@ -315,9 +347,15 @@
     zone: `top` | `bottom` | `left` | `right`,
   ): void {
     const new_panel: PanelInfo = {
-      id: make_panel_id(), data_path, detected_type, val, component: null, element: null,
+      id: make_panel_id(),
+      data_path,
+      detected_type,
+      val,
+      component: null,
+      element: null,
     }
-    const direction: SplitDirection = (zone === `top` || zone === `bottom`) ? `vertical` : `horizontal`
+    const direction: SplitDirection =
+      zone === `top` || zone === `bottom` ? `vertical` : `horizontal`
     const insert_before = zone === `top` || zone === `left`
 
     if (panels.length === 0) {
@@ -373,7 +411,11 @@
   function unmount_panel(idx: number): void {
     const panel = panels[idx]
     if (panel?.component) {
-      try { unmount(panel.component) } catch (error) { console.error(`JsonBrowser: unmount failed:`, error) }
+      try {
+        unmount(panel.component)
+      } catch (error) {
+        console.error(`JsonBrowser: unmount failed:`, error)
+      }
       panel.component = null
     }
     if (panel?.element) panel.element.innerHTML = ``
@@ -388,7 +430,9 @@
     }
     const record = val as Record<string, unknown>
     if (Array.isArray(record.sites) && record.lattice) {
-      return normalize_fractional_coords(val as Parameters<typeof normalize_fractional_coords>[0])
+      return normalize_fractional_coords(
+        val as Parameters<typeof normalize_fractional_coords>[0],
+      )
     }
     return val
   }
@@ -416,46 +460,90 @@
   const merged_defaults = $derived(merge(defaults))
   const common_props = { fullscreen_toggle: false, style: `height:100%` }
 
-  function mount_into(target: HTMLElement, val: unknown, detected_type: RenderableType, panel_id?: string): ReturnType<typeof mount> | null {
-    const onclose = panel_id !== undefined
-      ? () => {
-        const idx = panels.findIndex((p) => p.id === panel_id)
-        if (idx < 0) return
-        if (panels.length > 1) close_panel(idx)
-        else close_all_panels()
-      }
-      : undefined
+  function mount_into(
+    target: HTMLElement,
+    val: unknown,
+    detected_type: RenderableType,
+    panel_id?: string,
+  ): ReturnType<typeof mount> | null {
+    const onclose =
+      panel_id !== undefined
+        ? () => {
+            const idx = panels.findIndex((p) => p.id === panel_id)
+            if (idx < 0) return
+            if (panels.length > 1) close_panel(idx)
+            else close_all_panels()
+          }
+        : undefined
     target.innerHTML = ``
     // Force layout so Three.js gets real dimensions
     void target.offsetHeight
 
-    const struct_common = { allow_file_drop: false, enable_tips: false, ...struct_props(merged_defaults), ...common_props }
+    const struct_common = {
+      allow_file_drop: false,
+      enable_tips: false,
+      ...struct_props(merged_defaults),
+      ...common_props,
+    }
 
     try {
       if (detected_type === `structure`) {
-        return mount(Structure, { target, props: { structure: prepare_structure(val) as AnyStructure, ...struct_common } })
+        return mount(Structure, {
+          target,
+          props: { structure: prepare_structure(val) as AnyStructure, ...struct_common },
+        })
       } else if (detected_type === `fermi_surface` || detected_type === `band_grid`) {
-        const fermi_props: Record<string, unknown> = { allow_file_drop: false, ...common_props }
-        if (is_fermi_surface_data(val as Parameters<typeof is_fermi_surface_data>[0])) fermi_props.fermi_data = val
+        const fermi_props: Record<string, unknown> = {
+          allow_file_drop: false,
+          ...common_props,
+        }
+        if (is_fermi_surface_data(val as Parameters<typeof is_fermi_surface_data>[0]))
+          fermi_props.fermi_data = val
         else fermi_props.band_data = val
         return mount(FermiSurface, { target, props: fermi_props })
       } else if (detected_type === `convex_hull`) {
-        return mount(ConvexHull, { target, props: { entries: val as PhaseData[], ...common_props } })
+        return mount(ConvexHull, {
+          target,
+          props: { entries: val as PhaseData[], ...common_props },
+        })
       } else if (detected_type === `phase_diagram`) {
-        return mount(IsobaricBinaryPhaseDiagram, { target, props: { data: val as PhaseDiagramData, ...common_props } })
+        return mount(IsobaricBinaryPhaseDiagram, {
+          target,
+          props: { data: val as PhaseDiagramData, ...common_props },
+        })
       } else if (detected_type === `volumetric`) {
         const vol_data = val as { lattice: LatticeType }
-        return mount(Structure, { target, props: { structure: { sites: [], lattice: vol_data.lattice } as AnyStructure, volumetric_data: [val as VolumetricData], ...struct_common } })
+        return mount(Structure, {
+          target,
+          props: {
+            structure: { sites: [], lattice: vol_data.lattice } as AnyStructure,
+            volumetric_data: [val as VolumetricData],
+            ...struct_common,
+          },
+        })
       } else if (detected_type === `bands_and_dos`) {
         const data = val as Record<string, unknown>
         // Support both { band_structure, dos } wrapper and combined-fields format
         const band_data = (data.band_structure ?? val) as BaseBandStructure
         const dos_data = (data.dos ?? val) as DosInput
-        return mount(BandsAndDos, { target, props: { band_structs: band_data, doses: dos_data, ...common_props } })
+        return mount(BandsAndDos, {
+          target,
+          props: { band_structs: band_data, doses: dos_data, ...common_props },
+        })
       } else if (detected_type === `band_structure`) {
-        return mount(Bands, { target, props: { band_structs: val as BaseBandStructure, ...common_props, padding: { b: 60 } } })
+        return mount(Bands, {
+          target,
+          props: {
+            band_structs: val as BaseBandStructure,
+            ...common_props,
+            padding: { b: 60 },
+          },
+        })
       } else if (detected_type === `dos`) {
-        return mount(Dos, { target, props: { doses: val as DosInput, ...common_props, padding: { b: 60 } } })
+        return mount(Dos, {
+          target,
+          props: { doses: val as DosInput, ...common_props, padding: { b: 60 } },
+        })
       } else if (detected_type === `brillouin_zone`) {
         const bz_val = val as Record<string, unknown>
         const bz_props: Record<string, unknown> = { allow_file_drop: false, ...common_props }
@@ -464,9 +552,15 @@
         if (bz_val.vertices && bz_val.faces) bz_props.bz_data = bz_val
         return mount(BrillouinZone, { target, props: bz_props })
       } else if (detected_type === `xrd`) {
-        return mount(XrdPlot, { target, props: { patterns: val as XrdPattern, allow_file_drop: false, ...common_props } })
+        return mount(XrdPlot, {
+          target,
+          props: { patterns: val as XrdPattern, allow_file_drop: false, ...common_props },
+        })
       } else if (detected_type === `table`) {
-        return mount(PlotPanel, { target, props: { data: val, initial_type: `table`, onclose, ...common_props } })
+        return mount(PlotPanel, {
+          target,
+          props: { data: val, initial_type: `table`, onclose, ...common_props },
+        })
       } else if (detected_type === `plot`) {
         return mount(PlotPanel, { target, props: { data: val, onclose, ...common_props } })
       }
@@ -489,7 +583,10 @@
 
   // === Drop zone detection ===
 
-  function get_drop_zone(event: DragEvent, rect: DOMRect): `top` | `bottom` | `left` | `right` | `center` {
+  function get_drop_zone(
+    event: DragEvent,
+    rect: DOMRect,
+  ): `top` | `bottom` | `left` | `right` | `center` {
     const rel_x = (event.clientX - rect.left) / rect.width
     const rel_y = (event.clientY - rect.top) / rect.height
     const edge_threshold = 0.25
@@ -510,8 +607,12 @@
     const panel_els = canvas_element.querySelectorAll(`.viz-panel`)
     for (let idx = 0; idx < panel_els.length; idx++) {
       const rect = panel_els[idx].getBoundingClientRect()
-      if (event.clientX >= rect.left && event.clientX <= rect.right &&
-          event.clientY >= rect.top && event.clientY <= rect.bottom) {
+      if (
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      ) {
         drop_zone = get_drop_zone(event, rect)
         drop_target_panel_idx = idx
         break
@@ -557,7 +658,9 @@
       } else {
         add_panel_with_split(data_path, detected_type, val, target_idx, zone)
       }
-    } catch (error) { console.error(`JsonBrowser: drop failed:`, error) }
+    } catch (error) {
+      console.error(`JsonBrowser: drop failed:`, error)
+    }
   }
 
   // === Panel split divider dragging ===
@@ -568,7 +671,9 @@
     split_dragging_idx = split_idx
     const direction = split_directions[split_idx]
     if (!direction) return
-    const panel_container = canvas_element?.querySelector(`.panel-container`) as HTMLElement | null
+    const panel_container = canvas_element?.querySelector(
+      `.panel-container`,
+    ) as HTMLElement | null
     if (!panel_container) return
     const container_rect = panel_container.getBoundingClientRect()
 
@@ -586,11 +691,16 @@
         const current_pos = is_vertical ? move_event.clientY : move_event.clientX
         const delta_fraction = (current_pos - start_pos) / container_size
         const delta_flex = delta_fraction * total_flex
-        const new_left = Math.max(total_flex * 0.1, Math.min(total_flex * 0.9, start_left_size + delta_flex))
+        const new_left = Math.max(
+          total_flex * 0.1,
+          Math.min(total_flex * 0.9, start_left_size + delta_flex),
+        )
         panel_sizes[left_idx] = new_left
         panel_sizes[right_idx] = total_flex - new_left
       },
-      () => { split_dragging_idx = -1 },
+      () => {
+        split_dragging_idx = -1
+      },
     )
   }
 
@@ -617,21 +727,24 @@
     // Parse path segments: handles dotted keys like ["foo.bar"], array indices like [0],
     // and regular dotted paths like a.b.c
     const segments: string[] = []
-    const segment_re = /\["([^"]+)"\]|\[(\d+)\]|([^.\[\]]+)/g
+    const segment_re = /\["([^"]+)"\]|\[(\d+)\]|([^.[\]]+)/g
     let match: RegExpExecArray | null
     while ((match = segment_re.exec(path)) !== null) {
       segments.push(match[1] ?? match[2] ?? match[3])
     }
     let current: unknown = root
     for (const segment of segments) {
-      if (current === null || current === undefined || typeof current !== `object`) return undefined
+      if (current === null || current === undefined || typeof current !== `object`)
+        return undefined
       current = (current as Record<string, unknown>)[segment]
     }
     return current
   }
 
   // The first split direction determines the flex layout direction
-  let layout_direction = $derived(split_directions.length > 0 ? split_directions[0] : `vertical`)
+  let layout_direction = $derived(
+    split_directions.length > 0 ? split_directions[0] : `vertical`,
+  )
 
   const type_color = (key: string) => TYPE_COLORS[key as RenderableType] ?? `#888`
 </script>
@@ -683,15 +796,20 @@
         {:else}
           <p class="placeholder-title">Click or drag a data node to visualize it</p>
           <p class="placeholder-sub">
-            Found {renderable_paths.size} renderable item{renderable_paths.size === 1 ? `` : `s`}.
-            Click to render, or drag to an edge to create a split view.
+            Found {renderable_paths.size} renderable item{renderable_paths.size === 1
+              ? ``
+              : `s`}. Click to render, or drag to an edge to create a split view.
           </p>
-          <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;">
+          <div
+            style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;"
+          >
             {#each [...renderable_paths] as [data_path, info] (data_path)}
               <button
                 type="button"
                 class="renderable-chip"
-                style="background: {type_color(info.type)}22; border: 1px solid {type_color(info.type)}66;"
+                style="background: {type_color(info.type)}22; border: 1px solid {type_color(
+                  info.type,
+                )}66;"
                 onclick={() => {
                   const clean_path = strip_type_suffix(data_path)
                   const val = resolve_path(value, clean_path)
@@ -710,7 +828,11 @@
       </div>
     {:else}
       <!-- Panel layout -->
-      <div class="panel-container" class:vertical={layout_direction === `vertical`} class:horizontal={layout_direction === `horizontal`}>
+      <div
+        class="panel-container"
+        class:vertical={layout_direction === `vertical`}
+        class:horizontal={layout_direction === `horizontal`}
+      >
         {#each panels as panel, idx (panel.id)}
           {#if idx > 0 && split_directions[idx - 1]}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -766,7 +888,8 @@
     cursor: col-resize;
     transition: background 0.15s;
   }
-  .divider:hover, .json-browser.dragging .sidebar-divider {
+  .divider:hover,
+  .json-browser.dragging .sidebar-divider {
     background: var(--vscode-focusBorder, #007fd4);
   }
   .canvas {
@@ -829,7 +952,8 @@
     width: 5px;
     cursor: col-resize;
   }
-  .split-divider:hover, .split-divider.active {
+  .split-divider:hover,
+  .split-divider.active {
     background: var(--vscode-focusBorder, #007fd4);
   }
   /* === Drop zone indicators === */

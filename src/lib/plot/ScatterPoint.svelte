@@ -20,6 +20,7 @@
     origin = $bindable({ x: 0, y: 0 }),
     is_hovered = false,
     is_selected = false,
+    leader_line_threshold = 15,
     ...rest
   }: Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin` | `transform`> & {
     x: number
@@ -32,6 +33,7 @@
     origin?: XyObj
     is_hovered?: boolean
     is_selected?: boolean
+    leader_line_threshold?: number
   } = $props()
 
   // get the SVG path data as 'd' attribute
@@ -93,11 +95,46 @@
     style:cursor={style.cursor}
   />
   {#if label.text}
+    {@const offset_x = label.offset?.x ?? 10}
+    {@const offset_y = label.offset?.y ?? 0}
+    {@const displacement = Math.hypot(offset_x, offset_y)}
+    {#if displacement > leader_line_threshold}
+      {@const marker_radius = style.radius ?? 3}
+      {@const angle = Math.atan2(offset_y, offset_x)}
+      {@const cos_a = Math.cos(angle)}
+      {@const sin_a = Math.sin(angle)}
+      {@const start_x = cos_a * (marker_radius + 2)}
+      {@const start_y = sin_a * (marker_radius + 2)}
+      {@const font_px = parseFloat(label.font_size ?? `10`) || 10}
+      {@const half_w = (label.text?.length ?? 1) * font_px * 0.2}
+      {@const half_h = font_px * 0.5}
+      {@const edge_dist = Math.min(
+        Math.abs(cos_a) > 0.01 ? half_w / Math.abs(cos_a) : Infinity,
+        Math.abs(sin_a) > 0.01 ? half_h / Math.abs(sin_a) : Infinity,
+      )}
+      {@const end_x = offset_x - cos_a * (edge_dist + 1)}
+      {@const end_y = offset_y - sin_a * (edge_dist + 1)}
+      {@const line_len = Math.hypot(end_x - start_x, end_y - start_y)}
+      {#if line_len > 6}
+      <line
+        x1={start_x}
+        y1={start_y}
+        x2={end_x}
+        y2={end_y}
+        class="leader-line"
+        stroke="var(--scatter-leader-line-color, #888)"
+        stroke-width="var(--scatter-leader-line-width, 0.8)"
+        stroke-dasharray="var(--scatter-leader-line-dash, 2 2)"
+        stroke-opacity="var(--scatter-leader-line-opacity, 0.6)"
+      />
+      {/if}
+    {/if}
     <text
-      x={label?.offset?.x ?? 10}
-      y={label?.offset?.y ?? 0}
-      style:font-size={label?.font_size ?? `10px`}
-      style:font-family={label?.font_family ?? `sans-serif`}
+      x={offset_x}
+      y={offset_y}
+      text-anchor={label.auto_placement ? `middle` : undefined}
+      style:font-size={label.font_size ?? `10px`}
+      style:font-family={label.font_family ?? `sans-serif`}
       fill="var(--scatter-point-label-fill, currentColor)"
       dominant-baseline="middle"
       class="label-text"
@@ -141,5 +178,8 @@
   }
   .label-text {
     pointer-events: var(--scatter-point-label-pointer-events, none);
+  }
+  .leader-line {
+    pointer-events: none;
   }
 </style>

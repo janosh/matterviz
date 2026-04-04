@@ -116,13 +116,13 @@ function interpolate_ts(data: TabulatedTSData, T: number): number {
   }
 
   // Find bracketing indices
-  let i = 0
-  while (i < temperatures.length - 1 && temperatures[i + 1] < T) i++
+  let idx = 0
+  while (idx < temperatures.length - 1 && temperatures[idx + 1] < T) idx++
 
-  const T_low = temperatures[i]
-  const T_high = temperatures[i + 1]
-  const v_low = values[i]
-  const v_high = values[i + 1]
+  const T_low = temperatures[idx]
+  const T_high = temperatures[idx + 1]
+  const v_low = values[idx]
+  const v_high = values[idx + 1]
 
   // Linear interpolation
   const fraction = (T - T_low) / (T_high - T_low)

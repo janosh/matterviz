@@ -1404,18 +1404,19 @@ This example demonstrates how the color bar automatically positions itself in on
 </ScatterPlot>
 ```
 
-## Automatic Label Placement (Repel Mode)
+## Automatic Label Placement
 
-When points are clustered closely together, manually positioning labels can become tedious and result in overlaps. The `ScatterPlot` component offers an automatic label placement feature using a force simulation (`d3-force`). This feature intelligently positions labels to minimize overlaps while keeping them close to their corresponding data points.
+When points are clustered closely together, manually positioning labels can become tedious and result in overlaps. The `ScatterPlot` component offers an automatic label placement algorithm based on simulated annealing (SA). It optimizes label positions to minimize overlaps while keeping labels close to their data points, avoiding markers, and respecting plot boundaries.
 
 To enable this feature, set `auto_placement: true` within the `point_label` object for the desired points. The system automatically:
 
-- **Prevents label overlaps** using improved rectangular collision detection
-- **Avoids marker overlap** with a repulsion force that keeps labels clear of their markers
+- **Prevents label overlaps** using rectangular collision detection
+- **Avoids marker overlap** by penalizing labels that cover data point markers
+- **Draws leader lines** — dotted lines connecting displaced labels to their anchor points
 - **Respects font sizes** by accurately calculating label dimensions
 - **Stays within bounds** by constraining labels to the plot area
 
-This example demonstrates automatic placement with both clustered points (showing collision avoidance) and isolated markers (showing how labels position below markers without overlap):
+This example demonstrates automatic placement with both clustered points (showing collision avoidance) and isolated markers (showing how labels position near their markers):
 
 ```svelte example
 <script lang="ts">
@@ -1533,12 +1534,109 @@ This example demonstrates automatic placement with both clustered points (showin
 </div>
 ```
 
-**Key improvements in action:**
+**Key behaviors:**
 
-- **Dense clusters** (purple): Labels intelligently spread out using improved collision detection
-- **Isolated markers** (orange): Labels position below markers with proper spacing
-- **Different font sizes**: System accurately accounts for label dimensions (11px, 13px, 16px)
+- **Dense clusters** (purple): Labels spread out via simulated annealing to avoid overlap
+- **Isolated markers** (orange): Labels position near markers with proper spacing
+- **Leader lines**: Displaced labels show dotted leader lines back to their data point
+- **Different font sizes**: The system accurately accounts for label dimensions (11px, 13px, 16px)
 - **Boundary awareness**: Labels near plot edges stay within the visible area
+
+## Tuning Label Placement
+
+The label placement algorithm exposes configuration via `label_placement_config` on `ScatterPlot`. You can tune the number of simulated annealing iterations (`sa_iterations`), the maximum label count before falling back to simple offsets (`max_labels`), the minimum displacement before a leader line is drawn (`leader_line_threshold`), and the energy function weights that control the tradeoff between overlap avoidance, anchor proximity, and boundary respect.
+
+This example lets you interactively adjust the SA iterations and leader line threshold to see how they affect placement quality:
+
+```svelte example
+<script lang="ts">
+  import { ScatterPlot } from 'matterviz'
+
+  // Periodic table-inspired data: elements placed in a 2D grid with some clustering
+  const elements = [
+    { x: 15, y: 85, text: 'H' },
+    { x: 85, y: 85, text: 'He' },
+    { x: 15, y: 70, text: 'Li' },
+    { x: 25, y: 70, text: 'Be' },
+    { x: 55, y: 70, text: 'B' },
+    { x: 65, y: 70, text: 'C' },
+    { x: 75, y: 70, text: 'N' },
+    { x: 85, y: 70, text: 'O' },
+    { x: 15, y: 55, text: 'Na' },
+    { x: 25, y: 55, text: 'Mg' },
+    { x: 55, y: 55, text: 'Al' },
+    { x: 65, y: 55, text: 'Si' },
+    { x: 75, y: 55, text: 'P' },
+    { x: 85, y: 55, text: 'S' },
+    // Dense cluster of transition metals
+    { x: 35, y: 40, text: 'Sc' },
+    { x: 40, y: 40, text: 'Ti' },
+    { x: 45, y: 40, text: 'V' },
+    { x: 50, y: 40, text: 'Cr' },
+    { x: 55, y: 40, text: 'Mn' },
+    { x: 60, y: 40, text: 'Fe' },
+    { x: 65, y: 40, text: 'Co' },
+    { x: 70, y: 40, text: 'Ni' },
+    // Lanthanides packed tightly
+    { x: 30, y: 18, text: 'La' },
+    { x: 35, y: 18, text: 'Ce' },
+    { x: 40, y: 18, text: 'Pr' },
+    { x: 45, y: 18, text: 'Nd' },
+    { x: 50, y: 18, text: 'Pm' },
+    { x: 55, y: 18, text: 'Sm' },
+    { x: 60, y: 18, text: 'Eu' },
+    { x: 65, y: 18, text: 'Gd' },
+  ]
+
+  let sa_iterations = $state(2000)
+  let leader_threshold = $state(15)
+
+  const series = $derived([
+    {
+      x: elements.map((el) => el.x),
+      y: elements.map((el) => el.y),
+      point_style: elements.map((el) => ({
+        fill: el.y > 60 ? '#3b82f6' : el.y > 30 ? '#f59e0b' : '#ef4444',
+        radius: 5,
+        stroke: 'white',
+        stroke_width: 1,
+      })),
+      point_label: elements.map((el) => ({
+        text: el.text,
+        auto_placement: true,
+        font_size: '11px',
+      })),
+    },
+  ])
+</script>
+
+<div style="display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap">
+  <label>
+    SA iterations: <strong>{sa_iterations}</strong>
+    <input type="range" min="100" max="5000" step="100" bind:value={sa_iterations} />
+  </label>
+  <label>
+    Leader line threshold: <strong>{leader_threshold}px</strong>
+    <input type="range" min="0" max="50" step="1" bind:value={leader_threshold} />
+  </label>
+</div>
+
+{#key `${sa_iterations}-${leader_threshold}`}
+  <ScatterPlot
+    series={series.map((srs) => ({ ...srs, markers: 'points' }))}
+    x_axis={{ label: 'Group', range: [5, 95] }}
+    y_axis={{ label: 'Period', range: [5, 95] }}
+    label_placement_config={{ sa_iterations, leader_line_threshold: leader_threshold }}
+    style="height: 500px"
+  />
+{/key}
+```
+
+**What to observe:**
+
+- **Low iterations** (100–500): Labels may still overlap, especially in the dense transition metal and lanthanide rows
+- **High iterations** (2000+): Labels find non-overlapping positions with leader lines connecting them to their markers
+- **Leader line threshold**: Controls when the dotted connecting line appears — set to 0 to always show them, or increase to only show for labels displaced far from their anchor
 
 ## External Vertical Color Bar with Dynamic Controls
 

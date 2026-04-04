@@ -34,8 +34,8 @@
     { eager: false },
   )
 
-  let entries_map = $state(new SvelteMap())
-  let loaded_data = $state(new SvelteMap())
+  let entries_map = $state(new SvelteMap<string, PhaseData[]>())
+  let loaded_data = $state(new SvelteMap<string, PhaseData[]>())
 
   // State for the 3D example with stats display
   let phase_stats = $state<PhaseStats | null>(null)
@@ -80,21 +80,18 @@
 
   // Create ternary subsets from quaternary data
   const na_fe_o_entries = $derived(filter_by_elements(
-    (loaded_data.get(`/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`) ??
-      []) as PhaseData[],
+    loaded_data.get(`/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`) ?? [],
     [`Na`, `Fe`, `O`],
   ))
 
   const li_co_ni_o_data = $derived(filter_by_elements(
-    (loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ??
-      []) as PhaseData[],
+    loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ?? [],
     [`Li`, `Co`, `O`],
   ))
 
   // Full quaternary data for Li-Co-Ni-O
   const li_co_ni_o_quaternary = $derived(
-    (loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ??
-      []) as PhaseData[],
+    loaded_data.get(`/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`) ?? [],
   )
 
   // Helper to pick entries for highlighting demos
@@ -150,10 +147,10 @@
   const binary_examples = $derived.by(() => {
     const na_fe_p_o = loaded_data.get(
       `/src/site/convex-hull/quaternaries/Na-Fe-P-O.json.gz`,
-    ) as PhaseData[] | undefined
+    )
     const li_co_ni_o = loaded_data.get(
       `/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz`,
-    ) as PhaseData[] | undefined
+    )
     if (!na_fe_p_o || !li_co_ni_o) return []
 
     return [
@@ -252,7 +249,7 @@
   )
   const selected_quinary_entries = $derived(
     selected_quinary_path
-      ? (loaded_data.get(selected_quinary_path) as PhaseData[] | undefined) ?? []
+      ? loaded_data.get(selected_quinary_path) ?? []
       : [],
   )
   const quinary_stats_result = $derived(
@@ -396,20 +393,19 @@
     {@render feature_list(quaternary_features)}
     <div class="quaternary-grid">
       {#each [...loaded_data.entries()].filter(([p]) =>
-          (p as string).includes(`quaternaries`)
+          p.includes(`quaternaries`)
         ) as
         [path, data]
         (path)
       }
-        {@const title = (path as string).split(`/`).pop()?.split(`.`).shift()?.replace(
+        {@const title = path.split(`/`).pop()?.split(`.`).shift()?.replace(
           `.json`,
           ``,
         )}
         <ConvexHull4D
-          entries={(entries_map.get(path as string) as PhaseData[] | undefined) ||
-          (data as PhaseData[])}
+          entries={entries_map.get(path) || data}
           controls={{ title }}
-          on_file_drop={handle_file_drop(path as string)}
+          on_file_drop={handle_file_drop(path)}
         />
       {/each}
     </div>

@@ -2,16 +2,45 @@
 // Ports pymatgen's ChemicalPotentialDiagram algorithm to TypeScript.
 // Reference: pymatgen/analysis/chempot_diagram.py
 
-import { count_atoms_in_composition, get_reduced_formula } from '$lib/composition'
 import type { PhaseData } from '$lib/convex-hull/types'
-import {
-  convex_hull_2d,
-  EPS,
-  polygon_centroid,
-  solve_linear_system,
-  type Vec2,
-} from '$lib/math'
+import { convex_hull_2d, EPS, polygon_centroid, solve_linear_system } from '$lib/math'
+import type { Vec2 } from '$lib/math'
 import { CHEMPOT_DEFAULTS, type ChemPotDiagramConfig, type ChemPotDiagramData } from './types'
+
+// Inlined from $lib/composition/parse to keep this module worker-safe
+// ($lib/composition barrel transitively imports binary .json.gz data
+// that the worker bundler can't handle).
+const count_atoms_in_composition = (composition: Record<string, number>): number =>
+  Object.values(composition).reduce((sum, count) => sum + (count ?? 0), 0)
+
+const gcd = (num_a: number, num_b: number): number =>
+  num_b === 0 ? num_a : gcd(num_b, num_a % num_b)
+
+const get_reduced_formula = (composition: Record<string, number>): Record<string, number> => {
+  const amounts = Object.values(composition).filter((amt) => amt > 0)
+  if (amounts.length === 0) return {}
+  // For fractional amounts, find smallest multiplier (1–100) that yields near-integer ratios
+  let scale = 1
+  if (!amounts.every((amt) => Number.isInteger(amt))) {
+    scale = 0
+    for (let mult = 1; mult <= 100; mult++) {
+      if (amounts.every((amt) => Math.abs(amt * mult - Math.round(amt * mult)) < 0.03)) {
+        scale = mult
+        break
+      }
+    }
+    if (scale === 0) return composition
+  }
+  const int_amounts = amounts.map((amt) => Math.round(amt * scale))
+  const divisor = int_amounts.reduce((acc, amt) => gcd(acc, amt))
+  if (scale === 1 && divisor <= 1) return composition
+  const factor = scale / divisor
+  return Object.fromEntries(
+    Object.entries(composition)
+      .filter(([, amt]) => amt > 0)
+      .map(([elem, amt]) => [elem, Math.round(amt * factor)]),
+  )
+}
 
 // === Entry Helpers ===
 
@@ -654,6 +683,95 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   return { simplex_indices, ann_loc }
 }
 
+// === Label Sizing ===
+
+// Bounding box diagonal of a set of N-D points (Euclidean distance between
+// the min and max corners). Returns 0 for fewer than 2 points.
+export function bbox_diagonal(points: number[][]): number {
+  if (points.length < 2) return 0
+  let sq_sum = 0
+  for (let col = 0; col < points[0].length; col++) {
+    let lo = Infinity,
+      hi = -Infinity
+    for (const pt of points) {
+      lo = Math.min(lo, pt[col])
+      hi = Math.max(hi, pt[col])
+    }
+    sq_sum += (hi - lo) ** 2
+  }
+  return Math.sqrt(sq_sum)
+}
+
+// Map an array of raw size values to font sizes via linear interpolation.
+// Returns a new array of font sizes in [min_font, max_font].
+// If all sizes are equal, returns the midpoint for all.
+export function scale_to_font_range(
+  sizes: number[],
+  min_font: number,
+  max_font: number,
+): number[] {
+  const min_size = Math.min(...sizes)
+  const max_size = Math.max(...sizes)
+  const range = max_size - min_size
+  const mid = (min_font + max_font) / 2
+  return sizes.map((size) =>
+    range > 0 ? min_font + ((max_font - min_font) * (size - min_size)) / range : mid,
+  )
+}
+
+// === Ternary Combinations ===
+
+// Generate all C(n,3) ternary element combinations from a sorted element list.
+// Each triplet is sorted alphabetically. Returns empty array for fewer than 3 elements.
+export function get_ternary_combinations(elements: string[]): string[][] {
+  const sorted = [...elements].sort()
+  const n_elems = sorted.length
+  if (n_elems < 3) return []
+  const combos: string[][] = []
+  for (let first = 0; first < n_elems - 2; first++) {
+    for (let second = first + 1; second < n_elems - 1; second++) {
+      for (let third = second + 1; third < n_elems; third++) {
+        combos.push([sorted[first], sorted[second], sorted[third]])
+      }
+    }
+  }
+  return combos
+}
+
+// === Full N-D Computation Cache ===
+// In projection mode, the expensive vertex enumeration (compute_domains) depends only
+// on the entries, formal_chempots, default_min_limit, and limits -- NOT on which 3
+// elements are projected onto. When showing all C(n,3) ternary projections of the same
+// quaternary system, this cache avoids repeating the ~42s computation per projection.
+
+interface FullNDResult {
+  domains: Record<string, number[][]>
+  el_refs: Record<string, PhaseData>
+  min_entries: PhaseData[]
+  hyperplanes: number[][]
+  hyperplane_entries: PhaseData[]
+  compute_lims: [number, number][]
+}
+
+let _nd_cache: {
+  key: string
+  result: FullNDResult
+} | null = null
+
+// Content-based fingerprint for N-D result caching. Uses sorted formula keys
+// so deserialized Web Worker copies match and different compositions never collide.
+export function make_nd_cache_key(
+  entries: PhaseData[],
+  formal_chempots: boolean,
+  default_min_limit: number,
+  limits: ChemPotDiagramConfig[`limits`],
+): string {
+  const keyed = entries
+    .map((entry) => `${formula_key_from_composition(entry.composition)}:${entry.energy}`)
+    .sort()
+  return `${keyed.join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
+}
+
 // === Main Pipeline ===
 
 // Compute the full chemical potential diagram from entries and config.
@@ -696,72 +814,93 @@ export function compute_chempot_diagram(
   // Computation elements: full element set for projection, display set for subsystem
   const compute_elements = is_projection ? all_data_elements : display_elements
 
-  // In subsystem mode, filter entries to only those within the element set
-  let working_entries = entries
-  if (!is_projection && config.elements?.length) {
-    const target_set = new Set(config.elements)
-    working_entries = entries.filter((entry) => {
-      for (const [element, amount] of Object.entries(entry.composition)) {
-        if (amount > 0 && !target_set.has(element)) return false
-      }
-      return true
+  // Try cache for projection mode (same entries + config = same N-D domains)
+  const cache_key = is_projection
+    ? make_nd_cache_key(entries, formal_chempots, default_min_limit, limits)
+    : ``
+  let nd_result: FullNDResult | null =
+    is_projection && _nd_cache?.key === cache_key ? _nd_cache.result : null
+
+  if (!nd_result) {
+    // In subsystem mode, filter entries to only those within the element set
+    let working_entries = entries
+    if (!is_projection && config.elements?.length) {
+      const target_set = new Set(config.elements)
+      working_entries = entries.filter((entry) => {
+        for (const [element, amount] of Object.entries(entry.composition)) {
+          if (amount > 0 && !target_set.has(element)) return false
+        }
+        return true
+      })
+    }
+
+    // Sort entries by composition (Schwartzian transform to avoid recomputing keys)
+    const sorted_entries = working_entries
+      .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map(({ entry }) => entry)
+
+    // Get min entries and elemental references
+    let { min_entries, el_refs } = get_min_entries_and_el_refs(sorted_entries)
+
+    const dim = compute_elements.length
+    if (dim < 2) {
+      throw new Error(`ChemicalPotentialDiagram requires 2+ elements, got ${dim}`)
+    }
+
+    // Check all elemental refs exist for the computation elements
+    const missing_refs = compute_elements.filter((el) => !el_refs[el])
+    if (missing_refs.length > 0) {
+      throw new Error(`Missing elemental reference entries for: ${missing_refs.join(`, `)}`)
+    }
+
+    // Renormalize if using formal chemical potentials
+    if (formal_chempots) {
+      min_entries = renormalize_entries(min_entries, el_refs, compute_elements)
+      const renorm_result = get_min_entries_and_el_refs(min_entries)
+      el_refs = renorm_result.el_refs
+    }
+
+    // Build limits array for computation elements
+    const compute_lims: [number, number][] = compute_elements.map((el) => {
+      if (limits?.[el]) return limits[el]
+      return [default_min_limit, 0]
     })
+
+    // Build hyperplanes and compute domains in full dimensionality
+    const { hyperplanes, hyperplane_entries } = build_hyperplanes(
+      min_entries,
+      el_refs,
+      compute_elements,
+    )
+
+    const border_hyperplanes = build_border_hyperplanes(compute_lims)
+
+    const domains = compute_domains(hyperplanes, border_hyperplanes, hyperplane_entries, dim)
+
+    nd_result = {
+      domains,
+      el_refs,
+      min_entries,
+      hyperplanes,
+      hyperplane_entries,
+      compute_lims,
+    }
+
+    // Cache for projection mode reuse
+    if (is_projection) {
+      _nd_cache = { key: cache_key, result: nd_result }
+    }
   }
 
-  // Sort entries by composition (Schwartzian transform to avoid recomputing keys)
-  const sorted_entries = working_entries
-    .map((entry) => ({ entry, key: formula_key_from_composition(entry.composition) }))
-    .sort((a, b) => a.key.localeCompare(b.key))
-    .map(({ entry }) => entry)
-
-  // Get min entries and elemental references
-  let { min_entries, el_refs } = get_min_entries_and_el_refs(sorted_entries)
-
-  const dim = compute_elements.length
-  if (dim < 2) {
-    throw new Error(`ChemicalPotentialDiagram requires 2+ elements, got ${dim}`)
-  }
-
-  // Check all elemental refs exist for the computation elements
-  const missing_refs = compute_elements.filter((el) => !el_refs[el])
-  if (missing_refs.length > 0) {
-    throw new Error(`Missing elemental reference entries for: ${missing_refs.join(`, `)}`)
-  }
-
-  // Renormalize if using formal chemical potentials
-  if (formal_chempots) {
-    min_entries = renormalize_entries(min_entries, el_refs, compute_elements)
-    const renorm_result = get_min_entries_and_el_refs(min_entries)
-    el_refs = renorm_result.el_refs
-  }
-
-  // Build limits array for computation elements
-  const compute_lims: [number, number][] = compute_elements.map((el) => {
-    if (limits?.[el]) return limits[el]
-    return [default_min_limit, 0]
-  })
-
-  // Build hyperplanes and compute domains in full dimensionality
-  const { hyperplanes, hyperplane_entries } = build_hyperplanes(
-    min_entries,
-    el_refs,
-    compute_elements,
-  )
-
-  const border_hyperplanes = build_border_hyperplanes(compute_lims)
-
-  let domains = compute_domains(hyperplanes, border_hyperplanes, hyperplane_entries, dim)
+  let domains = nd_result.domains
+  let output_lims = nd_result.compute_lims
 
   // Project domain vertices from N-D to display axes (column extraction)
-  let output_lims = compute_lims
   if (is_projection) {
-    const compute_index_by_element = new Map<string, number>()
-    for (let idx = 0; idx < compute_elements.length; idx++) {
-      compute_index_by_element.set(compute_elements[idx], idx)
-    }
     const col_indices = display_elements.map((element) => {
-      const idx = compute_index_by_element.get(element)
-      if (idx === undefined) {
+      const idx = compute_elements.indexOf(element)
+      if (idx < 0) {
         throw new Error(`Display element ${element} not present in compute element set`)
       }
       return idx
@@ -771,16 +910,16 @@ export function compute_chempot_diagram(
       projected[formula] = pts.map((pt) => col_indices.map((idx) => pt[idx]))
     }
     domains = projected
-    output_lims = col_indices.map((idx) => compute_lims[idx])
+    output_lims = col_indices.map((col_idx) => nd_result.compute_lims[col_idx])
   }
 
   return {
     domains,
     elements: display_elements,
-    el_refs,
-    min_entries,
-    hyperplanes,
-    hyperplane_entries,
+    el_refs: nd_result.el_refs,
+    min_entries: nd_result.min_entries,
+    hyperplanes: nd_result.hyperplanes,
+    hyperplane_entries: nd_result.hyperplane_entries,
     lims: output_lims,
   }
 }

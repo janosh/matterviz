@@ -62,7 +62,7 @@ function get_unique_families(hkls: Hkl[]): Map<string, number> {
   // Port of pymatgen's get_unique_families: group Miller indices by absolute-value permutations
   const key_map = new Map<string, Hkl[]>()
   for (const hkl of hkls) {
-    const abs_sorted = [...hkl.map((v) => Math.abs(v))].sort((x, y) => x - y)
+    const abs_sorted = [...hkl.map((val) => Math.abs(val))].sort((x, y) => x - y)
     const key = abs_sorted.join(`,`)
     const list = key_map.get(key)
     if (list) list.push(hkl)
@@ -302,7 +302,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
   if (peaks.size === 0) return { x: [], y: [] }
 
   // Scale intensities so that the max intensity is 100, and filter by scaled tol
-  const max_intensity = Math.max(...Array.from(peaks.values()).map((p) => p.intensity))
+  const max_intensity = Math.max(...Array.from(peaks.values()).map((peak) => peak.intensity))
 
   const xs: number[] = []
   const ys: number[] = []
@@ -320,7 +320,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
       const fam = get_unique_families(item.hkls)
       const fam_array: HklObj[] = []
       for (const [repr_key, multiplicity] of fam.entries()) {
-        const repr = repr_key.split(`,`).map((n) => parseInt(n, 10)) as Hkl
+        const repr = repr_key.split(`,`).map((num_str) => parseInt(num_str, 10)) as Hkl
         fam_array.push({ hkl: repr, multiplicity })
       }
       hkls_out.push(fam_array)

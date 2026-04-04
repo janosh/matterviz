@@ -1,10 +1,8 @@
 import type { D3SymbolName } from '$lib/labels'
 import type { Vec2, Vec3 } from '$lib/math'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
-import type { SimulationNodeDatum } from 'd3-force'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
-import type ColorBar from './ColorBar.svelte'
 import type PlotLegend from './PlotLegend.svelte'
 import type { TicksOption } from './scales'
 
@@ -268,39 +266,25 @@ export type QuadrantCounts = {
   bottom_right: number
 }
 
-// Type for nodes used in the d3-force simulation for label placement
-export interface LabelNode<Metadata = Record<string, unknown>> extends SimulationNodeDatum {
-  id: string // unique identifier, e.g. series_idx-point_idx
-  anchor_x: number // Original x coordinate of the point (scaled)
-  anchor_y: number // Original y coordinate of the point (scaled)
-  point_node: InternalPoint<Metadata> // Reference to the original data point
-  label_width: number // Estimated width for collision
-  label_height: number // Estimated height for collision
-  // x, y, vx, vy are added by d3-force
+// Energy weights for the simulated annealing label placement
+export interface LabelPlacementWeights {
+  overlap?: number // Label-label overlap penalty (default: 30)
+  marker?: number // Label-marker overlap penalty (default: 100)
+  leader_cross?: number // Leader line crossing penalty (default: 10)
+  leader_text?: number // Leader line crossing label text penalty (default: 8)
+  distance?: number // Anchor distance penalty (default: 0.5)
+  bounds?: number // Out-of-bounds penalty (default: 100)
 }
 
-// Configuration for the label auto-placement simulation
+// Configuration for the label auto-placement algorithm (simulated annealing)
 export interface LabelPlacementConfig {
-  collision_strength: number // Strength of the collision force (prevents overlap)
-  link_strength: number // Strength of the link force (pulls label to point)
-  link_distance: number // Target distance for the link force
-  placement_ticks: number // Number of simulation ticks to run
-  link_distance_range?: [number | null, number | null] // Optional [min, max] range for distance between label and anchor
+  sa_iterations?: number // SA iterations per label (default: 2000)
+  weights?: LabelPlacementWeights // Energy function weights
+  leader_line_threshold?: number // Min displacement (px) to show dotted leader line (default: 15)
+  max_labels?: number // Skip SA when label count exceeds this (default: 300)
 }
 export type HoverConfig = {
   threshold_px: number // Max screen distance (pixels) to trigger hover
-}
-
-// Type for anchor nodes used in simulation, now including point radius
-export interface AnchorNode extends SimulationNodeDatum {
-  id: string
-  fx: number
-  fy: number
-  point_radius: number // Radius of the corresponding scatter point
-  show_color_bar?: boolean // Whether to show the color bar when color scaling is active
-  color_bar?: ComponentProps<typeof ColorBar> | null
-  // Label auto-placement simulation parameters
-  label_placement_config?: Partial<LabelPlacementConfig>
 }
 
 // Type for PlotLegend props forwarded from ScatterPlot props

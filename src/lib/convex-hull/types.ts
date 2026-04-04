@@ -14,6 +14,7 @@ export interface PhaseData {
   // Common computed fields
   e_above_hull?: number
   is_stable?: boolean
+  exclude_from_hull?: boolean // If true, entry is shown but not used in hull construction
   energy_per_atom?: number
   e_form_per_atom?: number // Formation energy per atom from fetch-mp-pd-data.py
   reduced_formula?: string
@@ -167,20 +168,6 @@ export type PhaseArityField = Extract<
   keyof PhaseStats,
   `unary` | `binary` | `ternary` | `quaternary` | `quinary_plus`
 >
-
-// Tolerance for classifying a phase as on the convex hull (eV/atom)
-export const HULL_STABILITY_TOL = 1e-6
-
-// Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
-export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>
-  entry.is_stable === true ||
-  (typeof entry.e_above_hull === `number` && entry.e_above_hull < tol)
-
-// Arity helpers (inlined from former arity.ts)
-export const get_arity = (entry: PhaseData): number =>
-  Object.values(entry.composition).filter((count) => count > 0).length
-
-export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
 
 // Highlight styles for convex hull entries
 export interface HighlightStyle {

@@ -53,6 +53,7 @@
     HullFaceColorMode,
     Point3D,
   } from './types'
+  import { compute_hull_stability } from './helpers'
 
   let {
     entries = [],
@@ -231,7 +232,10 @@
   }
   const hull_faces = $derived.by((): HullTriangle[] => {
     if (coords_entries.length === 0) return []
-    const points = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    // Excluded entries don't participate in hull construction
+    const hull_entries = coords_entries.filter((e) => !e.exclude_from_hull)
+    if (hull_entries.length === 0) return []
+    const points = hull_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
     try {
       return thermo.compute_lower_hull_triangles(points)
     } catch (error) {
@@ -248,8 +252,10 @@
     if (coords_entries.length === 0) return []
     if (energy_mode !== `on-the-fly`) return coords_entries
     const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
-    const e_hulls = thermo.compute_e_above_hull_for_points(pts, hull_model)
-    return coords_entries.map((e, idx) => ({ ...e, e_above_hull: e_hulls[idx] }))
+    const raw_dists = thermo.compute_e_above_hull_for_points(pts, hull_model)
+    return coords_entries.map((entry, idx) => ({
+      ...entry, ...compute_hull_stability(raw_dists[idx], entry.exclude_from_hull),
+    }))
   })
 
   // Auto threshold: show all for few entries, use default for many, interpolate between

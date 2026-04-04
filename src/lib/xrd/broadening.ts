@@ -92,16 +92,16 @@ export function compute_broadened_pattern(
   const xs = new Float32Array(n_steps)
   const ys = new Float32Array(n_steps)
 
-  for (let i = 0; i < n_steps; i++) {
-    xs[i] = min_angle + i * step_size
+  for (let idx = 0; idx < n_steps; idx++) {
+    xs[idx] = min_angle + idx * step_size
   }
 
   const { x: peak_pos, y: peak_int } = pattern
 
   // Optimization: Process each peak and add to grid
-  for (let p = 0; p < peak_pos.length; p++) {
-    const x0 = peak_pos[p]
-    const intensity = peak_int[p]
+  for (let peak_idx = 0; peak_idx < peak_pos.length; peak_idx++) {
+    const x0 = peak_pos[peak_idx]
+    const intensity = peak_int[peak_idx]
 
     // Skip negligible peaks
     if (intensity < 1e-5) continue
@@ -117,9 +117,9 @@ export function compute_broadened_pattern(
     const start_idx = Math.max(0, Math.floor((x0 - window - min_angle) / step_size))
     const end_idx = Math.min(n_steps - 1, Math.ceil((x0 + window - min_angle) / step_size))
 
-    for (let i = start_idx; i <= end_idx; i++) {
-      const x = xs[i]
-      ys[i] += intensity * pseudo_voigt(x, x0, fwhm, shape_factor)
+    for (let idx = start_idx; idx <= end_idx; idx++) {
+      const x = xs[idx]
+      ys[idx] += intensity * pseudo_voigt(x, x0, fwhm, shape_factor)
     }
   }
 

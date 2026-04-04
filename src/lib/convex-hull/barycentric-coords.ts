@@ -2,7 +2,7 @@ import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import { compute_e_form_per_atom, find_lowest_energy_unary_refs } from './thermodynamics'
 import type { ConvexHullEntry, PhaseData, Point3D } from './types'
-import { is_unary_entry } from './types'
+import { is_unary_entry } from './helpers'
 
 // --- Ternary coordinates ---
 

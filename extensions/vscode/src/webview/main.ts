@@ -14,7 +14,7 @@ import { parse_structure_file } from '$lib/structure/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
-import '$lib/theme/themes'
+import '$lib/theme/themes.mjs'
 import type {
   FrameIndex,
   FrameLoader,
@@ -81,8 +81,8 @@ export interface FileChangeMessage {
 // VS Code Frame Loader - streams frames via extension communication
 class VSCodeFrameLoader implements FrameLoader {
   constructor(
-    private file_path: string,
-    private vscode_api: VSCodeAPI,
+    private readonly file_path: string,
+    private readonly vscode_api: VSCodeAPI,
   ) {}
 
   // Only implement the method we actually use
@@ -259,7 +259,7 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
   for (let idx = 0; idx < binary.length; idx++) {
     bytes[idx] = binary.charCodeAt(idx)
   }
-  return bytes.buffer
+  return bytes.buffer as ArrayBuffer
 }
 
 // Type for parsed trajectory response from large file requests
@@ -287,7 +287,7 @@ function request_large_file_content(
       const { is_parsed, stage, progress } = event.data
       if (command === `large_file_progress` && id === request_id) {
         // TODO maybe forward file load progress to UI
-        console.log(`Progress: ${stage} - ${progress}%`)
+        console.info(`Progress: ${stage} - ${progress}%`)
         return
       }
       if (command === `large_file_response` && id === request_id) {
@@ -334,7 +334,7 @@ const parse_file_content = async (
     const [, file_path, file_size_str] = content.split(`:`)
     const file_size = parseInt(file_size_str, 10)
 
-    console.log(`Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`)
+    console.info(`Handling large file: ${filename} (${Math.round(file_size / 1024 / 1024)}MB)`)
 
     const parsed_trajectory = await request_large_file_content(
       file_path,
