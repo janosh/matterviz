@@ -14,6 +14,7 @@ export interface PhaseData {
   // Common computed fields
   e_above_hull?: number
   is_stable?: boolean
+  exclude_from_hull?: boolean // If true, entry is shown but not used in hull construction
   energy_per_atom?: number
   e_form_per_atom?: number // Formation energy per atom from fetch-mp-pd-data.py
   reduced_formula?: string
@@ -173,8 +174,9 @@ export const HULL_STABILITY_TOL = 1e-6
 
 // Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
 export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>
-  entry.is_stable === true ||
-  (typeof entry.e_above_hull === `number` && entry.e_above_hull < tol)
+  !entry.exclude_from_hull &&
+  (entry.is_stable === true ||
+    (typeof entry.e_above_hull === `number` && entry.e_above_hull < tol))
 
 // Arity helpers (inlined from former arity.ts)
 export const get_arity = (entry: PhaseData): number =>

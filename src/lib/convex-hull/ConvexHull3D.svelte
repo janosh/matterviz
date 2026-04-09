@@ -48,11 +48,11 @@
   import * as thermo from './thermodynamics'
   import type {
     ConvexHullEntry,
-    HighlightStyle,
     HoverData3D,
     HullFaceColorMode,
     Point3D,
   } from './types'
+  import { HULL_STABILITY_TOL } from './types'
 
   let {
     entries = [],
@@ -108,9 +108,7 @@
     children,
     tooltip,
     ...rest
-  }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps & {
-    highlight_style?: HighlightStyle
-  } = $props()
+  }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(merged_controls.show))
@@ -231,7 +229,10 @@
   }
   const hull_faces = $derived.by((): HullTriangle[] => {
     if (coords_entries.length === 0) return []
-    const points = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    // Excluded entries don't participate in hull construction
+    const hull_entries = coords_entries.filter((e) => !e.exclude_from_hull)
+    if (hull_entries.length === 0) return []
+    const points = hull_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
     try {
       return thermo.compute_lower_hull_triangles(points)
     } catch (error) {
@@ -248,8 +249,14 @@
     if (coords_entries.length === 0) return []
     if (energy_mode !== `on-the-fly`) return coords_entries
     const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
-    const e_hulls = thermo.compute_e_above_hull_for_points(pts, hull_model)
-    return coords_entries.map((e, idx) => ({ ...e, e_above_hull: e_hulls[idx] }))
+    const raw_dists = thermo.compute_e_above_hull_for_points(pts, hull_model)
+    return coords_entries.map((e, idx) => {
+      const raw = raw_dists[idx]
+      const e_above_hull = e.exclude_from_hull
+        ? raw
+        : (Math.abs(raw) < HULL_STABILITY_TOL ? 0 : Math.max(0, raw))
+      return { ...e, e_above_hull }
+    })
   })
 
   // Auto threshold: show all for few entries, use default for many, interpolate between

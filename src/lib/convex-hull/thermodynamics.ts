@@ -985,8 +985,7 @@ export const compute_e_above_hull_for_points = (points: Point3D[], models: HullF
   points.map((point) => {
     const z_hull = e_hull_at_xy(models, point.x, point.y)
     if (z_hull === null) return 0
-    const e_above_hull = point.z - z_hull
-    return e_above_hull > EPS ? e_above_hull : 0
+    return point.z - z_hull
   })
 
 // --- 4D Convex Hull (Quaternary Phase Diagrams) ---
@@ -1637,8 +1636,7 @@ export const compute_e_above_hull_4d = (
     // If no tetrahedron contains this point's spatial projection, it's outside the valid
     // composition domain. Return NaN to indicate invalid input.
     if (hull_w === null) return NaN
-    const distance = w - hull_w
-    return distance > EPS ? distance : 0
+    return w - hull_w
   })
 }
 

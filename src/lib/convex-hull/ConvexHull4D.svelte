@@ -37,10 +37,10 @@
   import * as thermo from './thermodynamics'
   import type {
     ConvexHullEntry,
-    HighlightStyle,
     HoverData3D,
     HullFaceColorMode,
   } from './types'
+  import { HULL_STABILITY_TOL } from './types'
 
   let {
     entries = [],
@@ -97,9 +97,7 @@
     children,
     tooltip,
     ...rest
-  }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps & {
-    highlight_style?: HighlightStyle
-  } = $props()
+  }: BaseConvexHullProps<ConvexHullEntry> & Hull3DProps = $props()
 
   const merged_controls = $derived({ ...default_controls, ...controls })
   const controls_config = $derived(normalize_show_controls(merged_controls.show))
@@ -202,8 +200,9 @@
     if (elements.length !== 4) return []
 
     try {
-      // Get coords with formation energies
+      // Get coords with formation energies, excluding entries that don't participate in hull
       const coords = compute_4d_coords(pd_data.entries, elements)
+        .filter((ent) => !ent.exclude_from_hull)
 
       // Convert to 4D points for hull computation using barycentric coordinates (composition fractions)
       const points_4d: Point4D[] = coords
@@ -251,12 +250,16 @@
           ? [{ idx, pt: { x, y, z, w: entry.e_form_per_atom ?? NaN } }]
           : []
       })
-      const e_hulls = thermo.compute_e_above_hull_4d(valid.map((item) => item.pt), hull_4d)
-      const hull_map = new Map(valid.map((item, hull_idx) => [item.idx, e_hulls[hull_idx]]))
-      return coords.map((entry, idx) => ({
-        ...entry,
-        e_above_hull: hull_map.get(idx),
-      }))
+      const raw_dists = thermo.compute_e_above_hull_4d(valid.map((item) => item.pt), hull_4d)
+      const hull_map = new Map(valid.map((item, hull_idx) => [item.idx, raw_dists[hull_idx]]))
+      return coords.map((entry, idx) => {
+        const raw = hull_map.get(idx)
+        if (raw === undefined) return { ...entry, e_above_hull: raw }
+        const e_above_hull = entry.exclude_from_hull
+          ? raw
+          : (Math.abs(raw) < HULL_STABILITY_TOL ? 0 : Math.max(0, raw))
+        return { ...entry, e_above_hull }
+      })
     } catch (err) {
       console.error(`Error computing quaternary coordinates:`, err)
       return []

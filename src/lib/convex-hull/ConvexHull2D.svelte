@@ -31,7 +31,6 @@
   import * as thermo from './thermodynamics'
   import type {
     ConvexHullEntry,
-    HighlightStyle,
     HoverData3D,
     PhaseData,
   } from './types'
@@ -88,7 +87,6 @@
     tooltip: custom_tooltip,
     ...rest
   }: BaseConvexHullProps<ConvexHullEntry> & {
-    highlight_style?: HighlightStyle
     x_axis?: AxisConfig
     y_axis?: AxisConfig
   } = $props()
@@ -260,8 +258,10 @@
     }
 
     // Build lower hull input: one minimum-energy point per composition x.
+    // Excluded entries don't participate in hull construction.
     const min_y_by_x = new SvelteMap<number, number>()
     for (const entry of coords_entries) {
+      if (entry.exclude_from_hull) continue
       const current_min_y = min_y_by_x.get(entry.x)
       if (current_min_y === undefined || entry.y < current_min_y) {
         min_y_by_x.set(entry.x, entry.y)
@@ -276,11 +276,14 @@
 
     const all_enriched_entries = coords_entries.map((entry) => {
       const y_hull = thermo.interpolate_hull_2d(hull_points, entry.x)
-      const e_above_hull = y_hull == null ? 0 : Math.max(0, entry.y - y_hull)
+      const raw_dist = y_hull == null ? 0 : entry.y - y_hull
+      const e_above_hull = entry.exclude_from_hull
+        ? raw_dist
+        : (Math.abs(raw_dist) < HULL_STABILITY_TOL ? 0 : Math.max(0, raw_dist))
       return {
         ...entry,
         e_above_hull,
-        is_stable: e_above_hull <= HULL_STABILITY_TOL,
+        is_stable: entry.exclude_from_hull ? false : e_above_hull <= HULL_STABILITY_TOL,
         visible: true,
       }
     })
