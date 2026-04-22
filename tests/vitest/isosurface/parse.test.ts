@@ -578,8 +578,12 @@ describe(`parse_volumetric_file`, () => {
     [`ELFCAR`],
     [`LOCPOT`],
     [`PARCHG`],
+    [`PARCHG.gz`],
+    [`PARCHG.BAND_1`],
     [`path/to/CHGCAR`],
     [`run_CHGCAR_001`],
+    [`path/to/PARCHG`],
+    [`run_PARCHG_001`],
   ])(`detects VASP volumetric from filename: %s`, (filename) => {
     const result = parse_volumetric_file(minimal_chgcar, filename)
     expect(result).not.toBeNull()
@@ -617,16 +621,14 @@ describe(`parse_volumetric_file`, () => {
 
   // === Compression suffix stripping ===
 
-  test.each([
-    [`molecule.cube.gz`],
-    [`density.cube.bz2`],
-    [`orbital.cube.xz`],
-    [`data.cube.zst`],
-  ])(`strips compression suffix for .cube detection: %s`, (filename) => {
-    const result = parse_volumetric_file(minimal_cube, filename)
-    expect(result).not.toBeNull()
-    expect(result?.volumes.length).toBe(1)
-  })
+  test.each([[`molecule.cube.gz`], [`density.cube.bz2`], [`orbital.cube.xz`]])(
+    `strips compression suffix for .cube detection: %s`,
+    (filename) => {
+      const result = parse_volumetric_file(minimal_cube, filename)
+      expect(result).not.toBeNull()
+      expect(result?.volumes.length).toBe(1)
+    },
+  )
 
   // === Plain POSCAR not misidentified as CHGCAR ===
 

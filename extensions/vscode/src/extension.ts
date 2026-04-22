@@ -1,4 +1,5 @@
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
+import { detect_compression_format } from '$lib/io/decompress'
 import { format_bytes } from '$lib/labels'
 import { DEFAULTS, type DefaultSettings, merge } from '$lib/settings'
 import { is_structure_file } from '$lib/structure/parse'
@@ -115,12 +116,21 @@ function get_wasm_filename(ext_path: string): string | null {
 // File size thresholds for reading files via VSCode API (1GB for both text and binary)
 const MAX_VSCODE_FILE_SIZE = 1024 * 1024 * 1024 // 1GB
 
+const normalize_browser_supported_filename = (filename: string): string | null => {
+  const format = detect_compression_format(filename)
+  if (!format) return filename
+  if ([`zip`, `xz`, `bz2`].includes(format)) return null
+  return filename.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+}
+
 // Helper: determine view type using content when available
 const infer_view_type = (file: FileData): ViewType => {
-  // Strip compression extensions before matching (filename may still have .gz/.bz2)
-  const name = file.filename.toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-  if (FERMI_FILE_RE.test(name)) return `fermi_surface`
-  if (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name)) return `isosurface`
+  // Strip only browser-supported compression extensions before matching.
+  const name = normalize_browser_supported_filename(file.filename.toLowerCase())
+  if (name && FERMI_FILE_RE.test(name)) return `fermi_surface`
+  if (name && (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name))) {
+    return `isosurface`
+  }
   // Only pass content for text files; for binary (compressed) fall back to filename
   const content = file.is_base64 ? undefined : file.content
   if (is_trajectory_file(file.filename, content)) return `trajectory`
@@ -130,8 +140,10 @@ const infer_view_type = (file: FileData): ViewType => {
 // Check if a file should be auto-rendered
 export const should_auto_render = (filename: string): boolean => {
   if (!filename || typeof filename !== `string`) return false
-  // Strip compression extensions so .bxsf.gz / .cube.bz2 etc. are recognized
-  const name = path.basename(filename).replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+  // Strip only browser-supported compression extensions so unsupported
+  // compressed files are not advertised as auto-renderable.
+  const name = normalize_browser_supported_filename(path.basename(filename))
+  if (name === null) return false
   if (FERMI_FILE_RE.test(name)) return true
   if (VOLUMETRIC_EXT_RE.test(name) || VOLUMETRIC_VASP_RE.test(name)) return true
   // Structure and trajectory files (existing behavior)
