@@ -178,7 +178,7 @@
     "@spglib/moyo-wasm": "^0.7.9",
     "@sveltejs/kit": "2.57.1",
     "@threlte/core": "^8.5.9",
-    "@threlte/extras": "^9.14.5",
+    "@threlte/extras": "^9.14.8",
     "@types/d3-hierarchy": "^3.1.7",
     "@types/js-yaml": "^4.0.9",
     "d3": "^7.9.0",
@@ -190,12 +190,12 @@
     "d3-scale": "^4.0.2",
     "d3-scale-chromatic": "^3.1.0",
     "d3-shape": "^3.2.0",
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.4.1",
     "fflate": "^0.8.2",
     "h5wasm": "^0.10.1",
     "js-yaml": "^4.1.1",
     "svelte-multiselect": "^11.7.0",
-    "three": "^0.183.2"
+    "three": "^0.184.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
@@ -211,29 +211,29 @@
     "@types/d3-scale-chromatic": "^3.1.0",
     "@types/d3-shape": "^3.1.8",
     "@types/d3-time-format": "^4.0.3",
-    "@types/three": "^0.183.1",
-    "@typescript/native-preview": "7.0.0-dev.20260410.1",
-    "@vitest/coverage-v8": "^4.1.4",
+    "@types/three": "^0.184.0",
+    "@typescript/native-preview": "7.0.0-dev.20260422.1",
+    "@vitest/coverage-v8": "^4.1.5",
     "@wooorm/starry-night": "^3.9.0",
     "d3-time-format": "^4.1.0",
-    "happy-dom": "^20.8.9",
+    "happy-dom": "^20.9.0",
     "matterviz-wasm": "^0.0.10",
     "mdsvex": "^0.12.7",
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
-    "svelte": "5.55.2",
+    "svelte": "5.55.4",
     "svelte-check-rs": "0.9.7",
-    "typescript": "6.0.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.16",
+    "typescript": "6.0.3",
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.19",
     "vite-plus": "latest",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.16"
+    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.19"
   },
   "peerDependencies": {
     "svelte": "^5.0.0"
   },
   "overrides": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.16",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.16"
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.19",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.19"
   },
   "engines": {
     "node": ">=24"

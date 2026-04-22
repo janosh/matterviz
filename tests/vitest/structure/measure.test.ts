@@ -198,80 +198,124 @@ describe(`measure: angles`, () => {
     expect(angle_between_vectors([1, 0, 0], [-1, eps, 0])).toBeCloseTo(180, 6)
   })
 
-  test(`PBC distance regression: opposing corners of cubic cell`, () => {
-    // Test the new bug: opposing corners should have PBC distance 0
-    const cubic_lattice: Matrix3x3 = [
-      [5, 0, 0],
-      [0, 5, 0],
-      [0, 0, 5],
+  // Non-orthogonal lattices where L ≠ L^T — catches missing transpose bugs.
+  // Includes a cubic lattice to verify basic opposing-corners-are-equivalent behavior.
+  const non_ortho_lattices = [
+    {
+      name: `cubic`,
+      lattice: [
+        [5, 0, 0],
+        [0, 5, 0],
+        [0, 0, 5],
+      ] as Matrix3x3,
+    },
+    {
+      name: `monoclinic`,
+      lattice: [
+        [2, 1, 0],
+        [0, 2, 0],
+        [0, 0, 2],
+      ] as Matrix3x3,
+    },
+    {
+      name: `hexagonal`,
+      lattice: [
+        [4, 0, 0],
+        [2, 3.464, 0],
+        [0, 0, 8],
+      ] as Matrix3x3,
+    },
+    {
+      name: `triclinic`,
+      lattice: [
+        [5, 0, 0],
+        [2.5, 4.33, 0],
+        [1, 1, 4],
+      ] as Matrix3x3,
+    },
+    {
+      name: `fully skewed`,
+      lattice: [
+        [3, 0.5, 0.3],
+        [0.7, 4, 0.2],
+        [0.4, 0.6, 5],
+      ] as Matrix3x3,
+    },
+  ]
+
+  test.each(non_ortho_lattices)(
+    `lattice vector equivalence ($name): dist to any lattice translate is 0`,
+    ({ lattice }) => {
+      const origin: Vec3 = [0, 0, 0]
+      // Each row is a lattice vector — displacement by any single vector is the same site
+      for (const vec of lattice) {
+        expect(distance_pbc(origin, vec as Vec3, lattice)).toBeCloseTo(0, 10)
+      }
+      // Sum of all three lattice vectors is also an equivalent site
+      const all_sum: Vec3 = [
+        lattice[0][0] + lattice[1][0] + lattice[2][0],
+        lattice[0][1] + lattice[1][1] + lattice[2][1],
+        lattice[0][2] + lattice[1][2] + lattice[2][2],
+      ]
+      expect(distance_pbc(origin, all_sum, lattice)).toBeCloseTo(0, 10)
+
+      // Half a lattice vector is NOT an equivalent site — guard against always-zero bugs
+      const half_a: Vec3 = [lattice[0][0] / 2, lattice[0][1] / 2, lattice[0][2] / 2]
+      const half_dist = distance_pbc(origin, half_a, lattice)
+      expect(half_dist).toBeGreaterThan(0.1)
+      expect(Math.hypot(...displacement_pbc(origin, half_a, lattice))).toBeCloseTo(
+        half_dist,
+        10,
+      )
+    },
+  )
+
+  test.each(non_ortho_lattices)(
+    `displacement antisymmetry ($name): disp(a,b) = -disp(b,a)`,
+    ({ lattice }) => {
+      const pos1: Vec3 = [0.3, 0.7, 1.2]
+      const pos2: Vec3 = [2.1, 1.5, 0.8]
+      const d_ab = displacement_pbc(pos1, pos2, lattice)
+      const d_ba = displacement_pbc(pos2, pos1, lattice)
+      for (let idx = 0; idx < 3; idx++) {
+        expect(d_ab[idx]).toBeCloseTo(-d_ba[idx], 10)
+      }
+    },
+  )
+
+  test.each(non_ortho_lattices)(`PBC ≤ direct distance ($name)`, ({ lattice }) => {
+    const pairs: [Vec3, Vec3][] = [
+      [
+        [0, 0, 0],
+        [1.5, 1.5, 1.5],
+      ],
+      [
+        [0.1, 0.2, 0.3],
+        [3.7, 2.9, 3.1],
+      ],
     ]
-
-    // Atoms at opposing corners of the unit cell
-    const corner1: Vec3 = [0, 0, 0]
-    const corner2: Vec3 = [5, 5, 5] // This is the same as [0,0,0] under PBC
-
-    const pbc_dist = distance_pbc(corner1, corner2, cubic_lattice)
-    const direct_dist = Math.hypot(5, 5, 5)
-
-    // PBC distance should be 0 (same site), direct should be non-zero
-    expect(pbc_dist).toBeCloseTo(0, 10)
-    expect(direct_dist).toBeGreaterThan(8)
-
-    // Additional test cases
-    expect(distance_pbc([0, 0, 0], [5, 0, 0], cubic_lattice)).toBeCloseTo(0, 10)
-    expect(distance_pbc([0, 0, 0], [0, 5, 0], cubic_lattice)).toBeCloseTo(0, 10)
-    expect(distance_pbc([0, 0, 0], [0, 0, 5], cubic_lattice)).toBeCloseTo(0, 10)
-  })
-
-  test(`PBC distance with non-orthogonal lattice: distance to equivalent site is zero`, () => {
-    // Lattice with off-diagonal element — transpose ≠ original, so this test
-    // fails with the old code (missing transpose) and passes with the fix.
-    const lattice: Matrix3x3 = [
-      [2, 1, 0],
-      [0, 2, 0],
-      [0, 0, 2],
-    ]
-    const origin: Vec3 = [0, 0, 0]
-    // [2, 1, 0] is exactly the first lattice vector → same site under PBC
-    const same_site: Vec3 = [2, 1, 0]
-
-    // Old code returns 1.0 (wrong); fixed code returns 0.0
-    expect(distance_pbc(origin, same_site, lattice)).toBeCloseTo(0, 10)
-    const disp = displacement_pbc(origin, same_site, lattice)
-    expect(Math.hypot(...disp)).toBeCloseTo(0, 10)
-  })
-
-  test(`PBC distance invariant: PBC ≤ direct distance`, () => {
-    // Test various lattice types to ensure PBC never violates minimum image
-    const test_cases = [
-      {
-        name: `cubic`,
-        lattice: [
-          [3, 0, 0],
-          [0, 3, 0],
-          [0, 0, 3],
-        ] satisfies Matrix3x3,
-        pos1: [0, 0, 0] as Vec3,
-        pos2: [1.5, 1.5, 1.5] as Vec3,
-      },
-      {
-        name: `triclinic (original bug case)`,
-        lattice: [
-          [6.038698, 0, 0],
-          [0, 6.038698, 0],
-          [3.019349, 3.019349, 4.167943],
-        ] satisfies Matrix3x3,
-        pos1: [0, 0, 0] as Vec3,
-        pos2: [3.019349, 3.019349, 0] as Vec3,
-      },
-    ]
-
-    for (const { lattice, pos1, pos2 } of test_cases) {
-      const direct_dist = Math.hypot(pos2[0] - pos1[0], pos2[1] - pos1[1], pos2[2] - pos1[2])
-      const pbc_dist = distance_pbc(pos1, pos2, lattice)
-
-      // The fundamental PBC invariant: PBC distance ≤ direct distance
-      expect(pbc_dist).toBeLessThanOrEqual(direct_dist + 1e-10)
+    for (const [pos1, pos2] of pairs) {
+      const direct = Math.hypot(pos2[0] - pos1[0], pos2[1] - pos1[1], pos2[2] - pos1[2])
+      expect(distance_pbc(pos1, pos2, lattice)).toBeLessThanOrEqual(direct + 1e-10)
     }
+  })
+
+  test(`skewed triclinic regression: displacement finds non-local minimum image`, () => {
+    const lattice: Matrix3x3 = [
+      [1.9705932249259481, -3.955757771584847, 1.6595752827868262],
+      [-2.0392732691684845, 3.498999611184008, -1.7465434512400368],
+      [3.716215074235551, 3.996782696347811, 1.0904649182023587],
+    ]
+    const pos1: Vec3 = [3.395535765213964, 4.297261971797731, 0.837260400991752]
+    const pos2: Vec3 = [1.6425399077772327, -1.0582437501479167, 0.9390064337754569]
+    const expected_disp: Vec3 = [-0.3507742293398103, 0.31324394398281463, -0.9022051740668167]
+
+    const disp = displacement_pbc(pos1, pos2, lattice)
+    disp.forEach((val, idx) => expect(val).toBeCloseTo(expected_disp[idx], 12))
+    expect(distance_pbc(pos1, pos2, lattice)).toBeCloseTo(Math.hypot(...expected_disp), 12)
+    expect(distance_pbc(pos1, pos2, lattice)).toBeCloseTo(
+      distance_pbc(pos2, pos1, lattice),
+      12,
+    )
   })
 })

@@ -46,19 +46,6 @@ export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
     return symbol
   })
 
-// Cache inverse matrices by original matrix reference for performance
-// IMPORTANT: This cache assumes lattice matrices are immutable. Mutating a cached
-// matrix in place yields incorrect inverses. Always create new matrix instances
-// if modifications are needed.
-const matrix_cache = new WeakMap<math.Matrix3x3, math.Matrix3x3>()
-export const get_inverse_matrix = (matrix: math.Matrix3x3): math.Matrix3x3 => {
-  const cached = matrix_cache.get(matrix)
-  if (cached) return cached
-  const inverse = math.matrix_inverse_3x3(matrix)
-  matrix_cache.set(matrix, inverse)
-  return inverse
-}
-
 export const create_structure = (
   positions: number[][],
   elements: ElementSymbol[],

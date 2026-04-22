@@ -113,6 +113,22 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   return fallback as ElementSymbol
 }
 
+const try_create_cart_to_frac = (
+  lattice_matrix: math.Matrix3x3,
+): ((v: Vec3) => Vec3) | null => {
+  try {
+    return math.create_cart_to_frac(lattice_matrix)
+  } catch {
+    return null
+  }
+}
+
+const approximate_cart_to_frac = (xyz: Vec3, axis_lengths: Vec3): Vec3 => [
+  Math.abs(axis_lengths[0]) > math.EPS ? xyz[0] / axis_lengths[0] : 0,
+  Math.abs(axis_lengths[1]) > math.EPS ? xyz[1] / axis_lengths[1] : 0,
+  Math.abs(axis_lengths[2]) > math.EPS ? xyz[2] / axis_lengths[2] : 0,
+]
+
 // Parse VASP POSCAR file format
 export function parse_poscar(content: string): ParsedStructure | null {
   try {
@@ -245,6 +261,14 @@ export function parse_poscar(content: string): ParsedStructure | null {
       }
 
       // Parse atomic positions
+      const poscar_axis_lengths = scaled_lattice.map((lattice_vec) =>
+        Math.hypot(...lattice_vec),
+      ) as Vec3
+      const poscar_frac_to_cart = math.create_frac_to_cart(scaled_lattice)
+      const poscar_cart_to_frac = try_create_cart_to_frac(scaled_lattice)
+      if (!is_direct && !poscar_cart_to_frac) {
+        console.warn(`POSCAR: singular lattice, using axis-length fallback for cart→frac`)
+      }
       const sites: Site[] = []
       let atom_index = 0
 
@@ -275,35 +299,16 @@ export function parse_poscar(content: string): ParsedStructure | null {
 
           if (is_direct) {
             // Store fractional coordinates, wrapping to [0, 1) range
-            abc = [x - Math.floor(x), y - Math.floor(y), z - Math.floor(z)]
-            // Convert fractional to Cartesian coordinates
-            const lattice_transposed = math.transpose_3x3_matrix(scaled_lattice)
-            xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
+            abc = wrap_to_unit_cell([x, y, z])
+            xyz = poscar_frac_to_cart(abc)
           } else {
             // Already Cartesian, scale if needed
             xyz = math.scale([x, y, z], scale_factor)
-            // Calculate fractional coordinates using proper matrix inversion
-            // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
-            // we need column vectors, so we transpose before inversion
-            let raw_abc: Vec3
-            try {
-              const lattice_transposed = math.transpose_3x3_matrix(scaled_lattice)
-              const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-              raw_abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
-            } catch {
-              // Fallback to simplified method if matrix is singular
-              raw_abc = [
-                xyz[0] / scaled_lattice[0][0],
-                xyz[1] / scaled_lattice[1][1],
-                xyz[2] / scaled_lattice[2][2],
-              ]
-            }
+            const raw_abc = poscar_cart_to_frac
+              ? poscar_cart_to_frac(xyz)
+              : approximate_cart_to_frac(xyz, poscar_axis_lengths)
             // Wrap fractional coordinates to [0, 1) range
-            abc = [
-              raw_abc[0] - Math.floor(raw_abc[0]),
-              raw_abc[1] - Math.floor(raw_abc[1]),
-              raw_abc[2] - Math.floor(raw_abc[2]),
-            ]
+            abc = wrap_to_unit_cell(raw_abc)
           }
 
           const site: Site = {
@@ -400,6 +405,13 @@ export function parse_xyz(content: string): ParsedStructure | null {
     }
 
     // Parse atomic coordinates (starting from line 3)
+    const xyz_axis_lengths = lattice ? ([lattice.a, lattice.b, lattice.c] as Vec3) : null
+    let xyz_frac_to_cart: ((v: Vec3) => Vec3) | null = null
+    let xyz_cart_to_frac: ((v: Vec3) => Vec3) | null = null
+    if (lattice) {
+      xyz_frac_to_cart = math.create_frac_to_cart(lattice.matrix)
+      xyz_cart_to_frac = try_create_cart_to_frac(lattice.matrix)
+    }
     const sites: Site[] = []
 
     for (let atom_idx = 0; atom_idx < num_atoms; atom_idx++) {
@@ -427,30 +439,16 @@ export function parse_xyz(content: string): ParsedStructure | null {
 
       // Calculate fractional coordinates if lattice is available
       let abc: Vec3 = [0, 0, 0]
-      if (lattice) {
-        // Calculate fractional coordinates using proper matrix inversion
-        // Note: Our lattice matrix is stored as row vectors, but for coordinate conversion
-        // we need column vectors, so we transpose before inversion
-        try {
-          const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
-          const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-          abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
-        } catch {
-          // Fallback to simplified method if matrix is singular
-          abc = [xyz[0] / lattice.a, xyz[1] / lattice.b, xyz[2] / lattice.c]
-        }
+      if (lattice && xyz_frac_to_cart && xyz_axis_lengths) {
+        abc = xyz_cart_to_frac
+          ? xyz_cart_to_frac(xyz)
+          : approximate_cart_to_frac(xyz, xyz_axis_lengths)
 
         // Ensure fractional coordinates are wrapped into [0, 1) for consistency
-        abc = [
-          abc[0] - Math.floor(abc[0]),
-          abc[1] - Math.floor(abc[1]),
-          abc[2] - Math.floor(abc[2]),
-        ]
+        abc = wrap_to_unit_cell(abc)
 
         // Keep rendered atoms inside primary unit cell by recomputing xyz
-        // from the wrapped fractional coordinates using transpose(lattice)
-        const lattice_transposed = math.transpose_3x3_matrix(lattice.matrix)
-        const wrapped_xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
+        const wrapped_xyz = xyz_frac_to_cart(abc)
         xyz[0] = wrapped_xyz[0]
         xyz[1] = wrapped_xyz[1]
         xyz[2] = wrapped_xyz[2]
@@ -559,7 +557,7 @@ const apply_symmetry_ops = (
   const equivalent_atoms: CifAtom[] = []
   const seen = new Set<string>()
   const wrap = (coords: Vec3): Vec3 =>
-    wrap_fractional_coords ? (coords.map((val) => val - Math.floor(val)) as Vec3) : coords
+    wrap_fractional_coords ? wrap_to_unit_cell(coords) : coords
   // Use 6 decimal places for deduplication to handle floating point imprecision
   // from compound symmetry operations like x-y, -x+y which can produce small errors
   const key = (coords: Vec3): string =>
@@ -869,17 +867,11 @@ export function parse_cif(
     const [alpha, beta, gamma] = angles
     const lattice_matrix = math.cell_to_lattice_matrix(a, b, c, alpha, beta, gamma)
     const lattice_params = math.calc_lattice_params(lattice_matrix)
-    const lattice_transposed = math.transpose_3x3_matrix(lattice_matrix)
-    let lattice_inv_transposed: math.Matrix3x3 | null = null
-    try {
-      lattice_inv_transposed = math.matrix_inverse_3x3(lattice_transposed)
-    } catch {
-      lattice_inv_transposed = null
-    }
+    const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
+    const cart_to_frac = try_create_cart_to_frac(lattice_matrix)
 
     // Create sites with coordinate conversion and symmetry operations
-    const wrap_vec3 = (v: Vec3): Vec3 =>
-      wrap_fractional_coords ? (v.map((coord) => coord - Math.floor(coord)) as Vec3) : v
+    const wrap_vec3 = (v: Vec3): Vec3 => (wrap_fractional_coords ? wrap_to_unit_cell(v) : v)
 
     // Apply symmetry operations to generate all equivalent positions
     const all_sites: Site[] = []
@@ -967,11 +959,11 @@ export function parse_cif(
         }
       } else {
         const xyz_base: Vec3 = [atom.coords[0], atom.coords[1], atom.coords[2]]
-        let atom_abc: Vec3
-        if (lattice_inv_transposed) {
-          const raw = math.mat3x3_vec3_multiply(lattice_inv_transposed, xyz_base)
-          atom_abc = wrap_vec3(raw as Vec3)
-        } else atom_abc = wrap_vec3([xyz_base[0] / a, xyz_base[1] / b, xyz_base[2] / c])
+        const atom_abc = wrap_vec3(
+          cart_to_frac
+            ? cart_to_frac(xyz_base)
+            : approximate_cart_to_frac(xyz_base, [a, b, c]),
+        )
         fractional_atom = { ...atom, coords: atom_abc, coords_type: `fract` }
       }
 
@@ -993,7 +985,7 @@ export function parse_cif(
           const key = site_key(element, abc, equiv_atom.id)
           if (seen_site_keys.has(key)) continue
           seen_site_keys.add(key)
-          const xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
+          const xyz = frac_to_cart(abc)
           all_sites.push({
             species: [{ element, occu: equiv_atom.occupancy, oxidation_state: 0 }],
             abc,
@@ -1020,12 +1012,12 @@ function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   const lattice_matrix = cell.lattice as math.Matrix3x3
 
   // Process each atomic site
+  const phonopy_frac_to_cart = math.create_frac_to_cart(lattice_matrix)
   for (const point of cell.points) {
     const element = validate_element_symbol(point.symbol, sites.length)
     const abc: Vec3 = [point.coordinates[0], point.coordinates[1], point.coordinates[2]]
 
-    // Convert fractional to Cartesian coordinates
-    const xyz = math.mat3x3_vec3_multiply(math.transpose_3x3_matrix(lattice_matrix), abc)
+    const xyz = phonopy_frac_to_cart(abc)
 
     const properties = {
       mass: point.mass,
@@ -1413,6 +1405,12 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
     const lattice_matrix = attrs.lattice_vectors as math.Matrix3x3 | undefined
 
     // Parse atomic sites
+    const optimade_cart_to_frac = lattice_matrix
+      ? try_create_cart_to_frac(lattice_matrix)
+      : null
+    if (lattice_matrix && !optimade_cart_to_frac) {
+      console.warn(`Failed to create coordinate converter for OPTIMADE structure`)
+    }
     const sites: Site[] = []
     for (let idx = 0; idx < positions.length; idx++) {
       const pos = positions[idx]
@@ -1427,17 +1425,7 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
       const xyz: Vec3 = [pos[0], pos[1], pos[2]]
 
       // Calculate fractional coordinates if lattice is available
-      let abc: Vec3 = [0, 0, 0]
-      if (lattice_matrix) {
-        try {
-          const lattice_transposed = math.transpose_3x3_matrix(lattice_matrix)
-          const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
-          abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
-        } catch {
-          // Fallback if matrix inversion fails
-          console.warn(`Failed to calculate fractional coordinates for OPTIMADE structure`)
-        }
-      }
+      const abc: Vec3 = optimade_cart_to_frac ? optimade_cart_to_frac(xyz) : [0, 0, 0]
 
       const site: Site = {
         species: [{ element, occu: 1, oxidation_state: 0 }],
@@ -1540,6 +1528,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
 
     // Build species lookup for site properties (mass, concentration, etc.)
     const species_map = new Map(species?.map((spec) => [spec.name, spec]))
+    const crystal_cart_to_frac = try_create_cart_to_frac(lattice_matrix)
 
     const sites = cartesian_site_positions.map((pos, idx) => {
       const element_symbol = species_at_sites[idx]
@@ -1547,14 +1536,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
       const element = validate_element_symbol(element_symbol, idx)
 
       const xyz: Vec3 = [pos[0], pos[1], pos[2]]
-      let abc: Vec3
-      try {
-        const lattice_transposed = math.transpose_3x3_matrix(lattice_matrix)
-        const inv_matrix = math.matrix_inverse_3x3(lattice_transposed)
-        abc = math.mat3x3_vec3_multiply(inv_matrix, xyz)
-      } catch {
-        abc = [0, 0, 0]
-      }
+      const abc: Vec3 = crystal_cart_to_frac ? crystal_cart_to_frac(xyz) : [0, 0, 0]
 
       // Extract mass/concentration from species data
       const spec = species_map.get(element_symbol)

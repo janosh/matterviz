@@ -140,8 +140,9 @@ export function create_test_structure(
   // Mode 1: Fractional coordinates (original behavior)
   if (frac_coords) {
     const elements = elements_or_sites as ElementSymbol[]
+    const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
     sites = frac_coords.map((frac_coord, idx) => ({
-      xyz: math.mat3x3_vec3_multiply(lattice_matrix, frac_coord),
+      xyz: frac_to_cart(frac_coord),
       abc: frac_coord,
       species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
       label: elements[idx],
@@ -153,17 +154,14 @@ export function create_test_structure(
       species: { element: string; occu: number; oxidation_state: number }[]
       xyz: number[]
     }[]
+    const cart_to_frac = math.create_cart_to_frac(lattice_matrix)
     sites = sites_data.map((site, idx) => ({
       species: site.species.map((sp) => ({
         ...sp,
         element: sp.element as ElementSymbol,
       })),
       xyz: site.xyz as Vec3,
-      // Calculate fractional coordinates: abc = inverse(lattice_matrix) · xyz
-      abc: math.mat3x3_vec3_multiply(
-        math.matrix_inverse_3x3(lattice_matrix),
-        site.xyz as Vec3,
-      ),
+      abc: cart_to_frac(site.xyz as Vec3),
       label: `${site.species[0].element}${idx}`,
       properties: {},
     }))

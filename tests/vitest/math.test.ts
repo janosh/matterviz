@@ -490,76 +490,13 @@ test.each([
 })
 
 describe(`pbc_dist`, () => {
-  test(`basic functionality with comprehensive scenarios`, () => {
-    const cubic_lattice: math.Matrix3x3 = [
-      [10, 0, 0],
-      [0, 10, 0],
-      [0, 0, 10],
-    ]
-
-    // Opposite corners via PBC
-    expect(math.pbc_dist([1, 1, 1], [9, 9, 9], cubic_lattice)).toBeCloseTo(Math.sqrt(12), 3)
-    expect(math.euclidean_dist([1, 1, 1], [9, 9, 9])).toBeCloseTo(13.856, 3)
-
-    // Extreme PBC case
-    expect(math.pbc_dist([0.5, 0.5, 0.5], [9.7, 9.7, 9.7], cubic_lattice)).toBeCloseTo(
-      1.386,
-      3,
-    )
-
-    // Close points
-    const close_direct = math.euclidean_dist([2, 2, 2], [3, 3, 3])
-    const close_pbc = math.pbc_dist([2, 2, 2], [3, 3, 3], cubic_lattice)
-    expect(close_pbc).toBeCloseTo(close_direct, 5)
-    expect(close_pbc).toBeCloseTo(1.732, 3)
-
-    // 1D PBC
-    expect(math.pbc_dist([0.5, 5, 5], [9.7, 5, 5], cubic_lattice)).toBeCloseTo(0.8, 5)
-
-    // Hexagonal lattice
+  test(`hexagonal lattice PBC wrapping`, () => {
     const hex_lattice: math.Matrix3x3 = [
       [4, 0, 0],
       [2, 3.464, 0],
       [0, 0, 8],
     ]
-    expect(math.euclidean_dist([0.2, 0.2, 1], [3.8, 3.264, 7])).toBeCloseTo(7.639, 3)
-    expect(math.pbc_dist([0.2, 0.2, 1], [3.8, 3.264, 7], hex_lattice)).toBeCloseTo(2.3, 3)
-
-    // Additional comprehensive scenarios
-    const cubic_lattice_2: math.Matrix3x3 = [
-      [6.256930122878799, 0.0, 0.0],
-      [0.0, 6.256930122878799, 0.0],
-      [0.0, 0.0, 6.256930122878799],
-    ]
-
-    // Atoms at optimal separation - PBC should match direct distance
-    const center1: Vec3 = [0.0, 0.0, 0.0]
-    const center2: Vec3 = [3.1284650614394, 3.1284650614393996, 3.1284650614394]
-    const center_direct = math.euclidean_dist(center1, center2)
-    const center_pbc = math.pbc_dist(center1, center2, cubic_lattice_2)
-    expect(center_pbc).toBeCloseTo(center_direct, 3)
-    expect(center_pbc).toBeCloseTo(5.419, 3)
-
-    // Corner atoms - PBC improvement
-    const corner1: Vec3 = [0.1, 0.1, 0.1]
-    const corner2: Vec3 = [6.156930122878799, 6.156930122878799, 6.156930122878799]
-    const corner_direct = math.euclidean_dist(corner1, corner2)
-    const corner_pbc = math.pbc_dist(corner1, corner2, cubic_lattice_2)
-    expect(corner_pbc).toBeCloseTo(0.346, 3)
-    expect(corner_direct).toBeCloseTo(10.491, 3)
-
-    // Long cell scenario - extreme aspect ratio
-    const long_cell: math.Matrix3x3 = [
-      [20.0, 0.0, 0.0],
-      [0.0, 5.0, 0.0],
-      [0.0, 0.0, 5.0],
-    ]
-    const long1: Vec3 = [1.0, 2.5, 2.5]
-    const long2: Vec3 = [19.0, 2.5, 2.5]
-    const long_pbc = math.pbc_dist(long1, long2, long_cell)
-    const long_direct = math.euclidean_dist(long1, long2)
-    expect(long_pbc).toBeCloseTo(2.0, 3)
-    expect(long_direct).toBeCloseTo(18.0, 3)
+    expect(math.pbc_dist([0.2, 0.2, 1], [3.8, 3.264, 7], hex_lattice)).toBeCloseTo(2.592, 3)
   })
 
   test.each([
@@ -639,7 +576,7 @@ describe(`pbc_dist`, () => {
       ] as math.Matrix3x3,
       pos1: [0.2, 0.2, 0.2] as Vec3,
       pos2: [7.3, 4.9, 3.9] as Vec3,
-      expected_pbc: 3.308,
+      expected_pbc: 1.564,
       expected_direct: 9.284,
     },
     {
@@ -701,207 +638,100 @@ describe(`pbc_dist`, () => {
     },
   )
 
-  test(`symmetry equivalence`, () => {
-    const sym_lattice: math.Matrix3x3 = [
-      [6.0, 0.0, 0.0],
-      [0.0, 6.0, 0.0],
-      [0.0, 0.0, 6.0],
-    ]
-    const equiv_cases = [
-      { pos1: [0.1, 3.0, 3.0], pos2: [5.9, 3.0, 3.0] },
-      { pos1: [3.0, 0.1, 3.0], pos2: [3.0, 5.9, 3.0] },
-      { pos1: [3.0, 3.0, 0.1], pos2: [3.0, 3.0, 5.9] },
-    ]
-
-    const equiv_distances = equiv_cases.map(({ pos1, pos2 }) =>
-      math.pbc_dist(pos1 as Vec3, pos2 as Vec3, sym_lattice),
-    )
-
-    // All should be equal (0.2 Å)
-    for (let idx = 1; idx < equiv_distances.length; idx++) {
-      expect(equiv_distances[idx]).toBeCloseTo(equiv_distances[0], 5)
-    }
-    expect(equiv_distances[0]).toBeCloseTo(0.2, 3)
-  })
-
-  test.each([
-    { pos1: [0.5, 0.5, 0.5], pos2: [7.7, 11.7, 5.7], desc: `corner to corner` },
-    { pos1: [1.0, 2.0, 3.0], pos2: [6.0, 10.0, 4.0], desc: `mid-cell positions` },
-    { pos1: [0.1, 0.1, 0.1], pos2: [7.9, 11.9, 5.9], desc: `near boundaries` },
-    { pos1: [4.0, 6.0, 3.0], pos2: [4.1, 6.1, 3.1], desc: `close positions` },
-  ])(`optimized path consistency: $desc`, ({ pos1, pos2 }) => {
-    const lattice: math.Matrix3x3 = [
-      [8.0, 0.0, 0.0],
-      [0.0, 12.0, 0.0],
-      [0.0, 0.0, 6.0],
-    ]
-
-    const lattice_inv: math.Matrix3x3 = [
-      [1 / 8.0, 0.0, 0.0],
-      [0.0, 1 / 12.0, 0.0],
-      [0.0, 0.0, 1 / 6.0],
-    ]
-
-    const standard = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, lattice)
-    const optimized = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, lattice, lattice_inv)
-
-    expect(optimized).toBeCloseTo(standard, 10)
-    expect(optimized).toBeGreaterThanOrEqual(0)
-    expect(isFinite(optimized)).toBe(true)
-  })
-
+  // Pre-built converters must match standard pbc_dist across lattice types and positions
   test.each([
     {
-      pos1: [0.0, 0.0, 0.0],
-      pos2: [0.5, 0.5, 0.5],
-      desc: `exactly 0.5 fractional`,
-    },
-    { pos1: [0.0, 0.0, 0.0], pos2: [1.0, 0.0, 0.0], desc: `exactly at boundary` },
-    {
-      pos1: [0.1, 0.1, 0.1],
-      pos2: [0.9, 0.9, 0.9],
-      desc: `close to 0.5 fractional`,
-    },
-    { pos1: [0.0, 0.0, 0.0], pos2: [0.0, 0.0, 0.0], desc: `identical positions` },
-    {
-      pos1: [0.0000001, 0.0, 0.0],
-      pos2: [0.0000002, 0.0, 0.0],
-      desc: `tiny distance`,
+      lattice: [
+        [8, 0, 0],
+        [0, 12, 0],
+        [0, 0, 6],
+      ] as math.Matrix3x3,
+      pos1: [0.5, 0.5, 0.5] as Vec3,
+      pos2: [7.7, 11.7, 5.7] as Vec3,
+      desc: `orthorhombic corner-to-corner`,
     },
     {
-      pos1: [0.9999999, 0.0, 0.0],
-      pos2: [0.0000001, 0.0, 0.0],
-      desc: `across boundary`,
+      lattice: [
+        [8, 0, 0],
+        [0, 12, 0],
+        [0, 0, 6],
+      ] as math.Matrix3x3,
+      pos1: [0.1, 0.1, 0.1] as Vec3,
+      pos2: [7.9, 11.9, 5.9] as Vec3,
+      desc: `orthorhombic near boundaries`,
     },
-  ])(`optimization boundary conditions: $desc`, ({ pos1, pos2 }) => {
-    const unit_lattice: math.Matrix3x3 = [
-      [1.0, 0.0, 0.0],
-      [0.0, 1.0, 0.0],
-      [0.0, 0.0, 1.0],
-    ]
+    {
+      lattice: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ] as math.Matrix3x3,
+      pos1: [0, 0, 0] as Vec3,
+      pos2: [1, 0, 0] as Vec3,
+      desc: `unit lattice at boundary`,
+    },
+    {
+      lattice: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ] as math.Matrix3x3,
+      pos1: [0.9999999, 0, 0] as Vec3,
+      pos2: [0.0000001, 0, 0] as Vec3,
+      desc: `unit lattice across boundary`,
+    },
+    {
+      lattice: [
+        [100, 0, 0],
+        [0, 200, 0],
+        [0, 0, 50],
+      ] as math.Matrix3x3,
+      pos1: [1, 1, 1] as Vec3,
+      pos2: [99, 199, 49] as Vec3,
+      desc: `large lattice wrap-around`,
+    },
+    {
+      lattice: [
+        [5, 0, 0],
+        [2.5, 4.33, 0],
+        [1, 1, 4],
+      ] as math.Matrix3x3,
+      pos1: [0.2, 0.2, 0.2] as Vec3,
+      pos2: [4.8, 4.1, 3.8] as Vec3,
+      desc: `triclinic`,
+    },
+  ])(`pre-built converters match standard: $desc`, ({ lattice, pos1, pos2 }) => {
+    const converters = math.create_lattice_converters(lattice)
+    const standard = math.pbc_dist(pos1, pos2, lattice)
+    const with_converters = math.pbc_dist(pos1, pos2, lattice, converters)
 
-    const unit_lattice_inv: math.Matrix3x3 = [
-      [1.0, 0.0, 0.0],
-      [0.0, 1.0, 0.0],
-      [0.0, 0.0, 1.0],
-    ]
-
-    const standard = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, unit_lattice)
-    const optimized = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, unit_lattice, unit_lattice_inv)
-
-    const precision = pos1[0] < 0.001 ? 8 : 12
-    expect(optimized).toBeCloseTo(standard, precision)
-    expect(optimized).toBeGreaterThanOrEqual(0)
-    expect(isFinite(optimized)).toBe(true)
+    expect(with_converters).toBeCloseTo(standard, 10)
+    expect(with_converters).toBeGreaterThanOrEqual(0)
+    expect(isFinite(with_converters)).toBe(true)
   })
 
-  test(`optimization advanced scenarios`, () => {
-    // Test with triclinic lattice determinism
-    const triclinic_lattice: math.Matrix3x3 = [
-      [5.0, 0.0, 0.0],
-      [2.5, 4.33, 0.0],
-      [1.0, 1.0, 4.0],
+  // Math.round wrapping at 0.5 fractional boundary — unit lattice
+  test.each([
+    { pos2: [0.5, 0.5, 0.5], expected: Math.sqrt(0.75), desc: `exactly 0.5` },
+    {
+      pos2: [0.499999, 0.499999, 0.499999],
+      expected: Math.sqrt(0.75),
+      desc: `just below 0.5`,
+    },
+    {
+      pos2: [0.500001, 0.500001, 0.500001],
+      expected: Math.sqrt(0.75),
+      desc: `just above 0.5`,
+    },
+    { pos2: [0.999999, 0.999999, 0.999999], expected: 0.000001732, desc: `near boundary` },
+    { pos2: [0.000001, 0.000001, 0.000001], expected: 0.000001732, desc: `near origin` },
+  ])(`minimal-image wrapping: $desc`, ({ pos2, expected }) => {
+    const unit: math.Matrix3x3 = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
     ]
-
-    const tri_pos1: Vec3 = [0.2, 0.2, 0.2]
-    const tri_pos2: Vec3 = [4.8, 4.1, 3.8]
-
-    const tri_standard = math.pbc_dist(tri_pos1, tri_pos2, triclinic_lattice)
-    const tri_standard_repeat = math.pbc_dist(tri_pos1, tri_pos2, triclinic_lattice)
-    expect(tri_standard_repeat).toBeCloseTo(tri_standard, 10)
-
-    // Test large lattice wrap-around behavior
-    const large_lattice: math.Matrix3x3 = [
-      [100.0, 0.0, 0.0],
-      [0.0, 200.0, 0.0],
-      [0.0, 0.0, 50.0],
-    ]
-
-    const large_lattice_inv: math.Matrix3x3 = [
-      [0.01, 0.0, 0.0],
-      [0.0, 0.005, 0.0],
-      [0.0, 0.0, 0.02],
-    ]
-
-    const wrap_around_case = { pos1: [1.0, 1.0, 1.0], pos2: [99.0, 199.0, 49.0] }
-    const center_case = { pos1: [50.0, 100.0, 25.0], pos2: [51.0, 101.0, 26.0] }
-
-    for (const { pos1, pos2 } of [wrap_around_case, center_case]) {
-      const standard = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, large_lattice)
-      const optimized = math.pbc_dist(
-        pos1 as Vec3,
-        pos2 as Vec3,
-        large_lattice,
-        large_lattice_inv,
-      )
-
-      expect(optimized).toBeCloseTo(standard, 10)
-
-      // Verify the distances are reasonable and finite
-      expect(standard).toBeGreaterThanOrEqual(0)
-      expect(optimized).toBeGreaterThanOrEqual(0)
-      expect(isFinite(standard)).toBe(true)
-      expect(isFinite(optimized)).toBe(true)
-
-      // For wrap-around case, PBC should be shorter than direct distance
-      if (pos1[0] === 1.0 && pos2[0] === 99.0) {
-        const direct = math.euclidean_dist(pos1 as Vec3, pos2 as Vec3)
-        expect(standard).toBeLessThan(direct)
-        expect(optimized).toBeLessThan(direct)
-      }
-    }
-  })
-
-  test(`simplified minimal-image wrapping edge cases`, () => {
-    // Test the new Math.round-based wrapping logic
-    const unit_lattice: math.Matrix3x3 = [
-      [1.0, 0.0, 0.0],
-      [0.0, 1.0, 0.0],
-      [0.0, 0.0, 1.0],
-    ]
-
-    // Test exactly at 0.5 fractional coordinates (edge case for Math.round)
-    const edge_cases = [
-      { pos1: [0.0, 0.0, 0.0], pos2: [0.5, 0.5, 0.5], expected: Math.sqrt(0.75) },
-      {
-        pos1: [0.0, 0.0, 0.0],
-        pos2: [0.499999, 0.499999, 0.499999],
-        expected: Math.sqrt(0.75),
-        desc: `just below 0.5`,
-      },
-      {
-        pos1: [0.0, 0.0, 0.0],
-        pos2: [0.500001, 0.500001, 0.500001],
-        expected: Math.sqrt(0.75),
-        desc: `just above 0.5`,
-      },
-    ]
-
-    for (const { pos1, pos2, expected } of edge_cases) {
-      const result = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, unit_lattice)
-      expect(result).toBeCloseTo(expected, 5)
-    }
-
-    // Test boundary conditions where Math.round behavior is critical
-    const boundary_cases = [
-      {
-        pos1: [0.0, 0.0, 0.0],
-        pos2: [0.999999, 0.999999, 0.999999],
-        expected: 0.000001732, // sqrt(3 * 0.000001^2) ≈ 0.000001732
-        desc: `near unit cell boundary`,
-      },
-      {
-        pos1: [0.0, 0.0, 0.0],
-        pos2: [0.000001, 0.000001, 0.000001],
-        expected: 0.000001732, // sqrt(3 * 0.000001^2) ≈ 0.000001732
-        desc: `near origin`,
-      },
-    ]
-
-    for (const { pos1, pos2, expected } of boundary_cases) {
-      const result = math.pbc_dist(pos1 as Vec3, pos2 as Vec3, unit_lattice)
-      expect(result).toBeCloseTo(expected, 4)
-    }
+    expect(math.pbc_dist([0, 0, 0] as Vec3, pos2 as Vec3, unit)).toBeCloseTo(expected, 4)
   })
 
   test(`axis-specific PBC flags (mixed boundary conditions)`, () => {
@@ -996,6 +826,9 @@ describe(`pbc_dist`, () => {
     // These should be equal (x-wrapping shouldn't affect z-separation)
     expect(dist_z_sep_x_pbc).toBeCloseTo(dist_z_sep_no_pbc, 5)
   })
+
+  // Non-orthogonal lattice tests live in measure.test.ts where they exercise
+  // displacement_pbc with additional invariants (antisymmetry, half-lattice guard, etc.)
 })
 
 describe(`tensor conversion utilities`, () => {

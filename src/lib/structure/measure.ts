@@ -1,7 +1,7 @@
 // functions for measuring distances and angles between structure sites
 
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import { mat3x3_vec3_multiply, matrix_inverse_3x3, subtract, transpose_3x3_matrix } from '$lib/math'
+import type { LatticeConverters, Matrix3x3, Vec3 } from '$lib/math'
+import { min_image_displacement, subtract } from '$lib/math'
 
 export type AngleMode = `degrees` | `radians`
 
@@ -13,62 +13,14 @@ export function displacement_pbc(
   from: Vec3,
   to: Vec3,
   lattice_matrix: Matrix3x3 | null | undefined,
-  lattice_inv?: Matrix3x3,
+  converters?: LatticeConverters,
 ): Vec3 {
-  // For non-periodic structures, return direct displacement
   if (!lattice_matrix) return subtract(to, from)
-
-  const lattice_T = transpose_3x3_matrix(lattice_matrix)
-  const inv_mat = lattice_inv ?? matrix_inverse_3x3(lattice_T)
-  const frac_from = mat3x3_vec3_multiply(inv_mat, from)
-  const frac_to = mat3x3_vec3_multiply(inv_mat, to)
-
-  // Wrap fractional coordinates to [0,1) for easier boundary checking
-  const frac_from_wrapped: Vec3 = [
-    frac_from[0] - Math.floor(frac_from[0]),
-    frac_from[1] - Math.floor(frac_from[1]),
-    frac_from[2] - Math.floor(frac_from[2]),
-  ]
-  const frac_to_wrapped: Vec3 = [
-    frac_to[0] - Math.floor(frac_to[0]),
-    frac_to[1] - Math.floor(frac_to[1]),
-    frac_to[2] - Math.floor(frac_to[2]),
-  ]
-
-  // Find minimum image by testing all nearby lattice translations
-  let min_dist_sq = Infinity
-  let best_displacement: Vec3 = [0, 0, 0]
-
-  // Test lattice images in a 3x3x3 neighborhood (sufficient for minimum image)
-  for (let ii = -1; ii <= 1; ii++) {
-    for (let jj = -1; jj <= 1; jj++) {
-      for (let kk = -1; kk <= 1; kk++) {
-        // Fractional displacement with lattice translation
-        const frac_diff: Vec3 = [
-          frac_to_wrapped[0] - frac_from_wrapped[0] + ii,
-          frac_to_wrapped[1] - frac_from_wrapped[1] + jj,
-          frac_to_wrapped[2] - frac_from_wrapped[2] + kk,
-        ]
-
-        // Convert to cartesian
-        const cart_diff = mat3x3_vec3_multiply(lattice_T, frac_diff)
-        const dist_sq = cart_diff[0] ** 2 + cart_diff[1] ** 2 + cart_diff[2] ** 2
-
-        // Keep the shortest displacement
-        if (dist_sq < min_dist_sq) {
-          min_dist_sq = dist_sq
-          best_displacement = cart_diff
-        }
-      }
-    }
-  }
-
-  return best_displacement
+  return min_image_displacement(from, to, lattice_matrix, converters)
 }
 
 export function distance_pbc(a: Vec3, b: Vec3, lattice_matrix: Matrix3x3): number {
-  const inv_mat = matrix_inverse_3x3(transpose_3x3_matrix(lattice_matrix))
-  const [dx, dy, dz] = displacement_pbc(a, b, lattice_matrix, inv_mat)
+  const [dx, dy, dz] = displacement_pbc(a, b, lattice_matrix)
   return Math.hypot(dx, dy, dz)
 }
 
