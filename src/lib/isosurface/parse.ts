@@ -5,14 +5,12 @@ import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Site } from '$lib/structure'
+import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { ParsedStructure } from '$lib/structure/parse'
 import type { DataRange, VolumetricData, VolumetricFileData } from './types'
 
 // Bohr radius in Angstroms (for Gaussian .cube unit conversion)
 const BOHR_TO_ANGSTROM = 0.529177249
-
-// Wrap a value to [0, 1) range for fractional coordinates
-const wrap_frac = (val: number): number => val - Math.floor(val)
 
 // === Fast number parsing utilities ===
 
@@ -282,8 +280,14 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
   pos = cur.next
 
   // Parse atomic positions
-  const lattice_transposed = math.transpose_3x3_matrix(lattice)
-  const lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+  let cart_to_frac: (v: Vec3) => Vec3
+  let frac_to_cart: (v: Vec3) => Vec3
+  try {
+    ;({ cart_to_frac, frac_to_cart } = math.create_lattice_converters(lattice))
+  } catch {
+    console.error(`CHGCAR: lattice matrix is singular; cannot convert coordinates`)
+    return null
+  }
   const sites: Site[] = []
   let atom_idx = 0
 
@@ -307,12 +311,12 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
       let xyz: Vec3
 
       if (is_direct) {
-        abc = [wrap_frac(coords[0]), wrap_frac(coords[1]), wrap_frac(coords[2])]
-        xyz = math.mat3x3_vec3_multiply(lattice_transposed, abc)
+        abc = wrap_to_unit_cell(coords)
+        xyz = frac_to_cart(abc)
       } else {
         xyz = math.scale(coords, scale_factor)
-        const raw = math.mat3x3_vec3_multiply(lattice_inv, xyz)
-        abc = [wrap_frac(raw[0]), wrap_frac(raw[1]), wrap_frac(raw[2])]
+        const raw = cart_to_frac(xyz)
+        abc = wrap_to_unit_cell(raw)
       }
 
       sites.push({
@@ -493,18 +497,12 @@ export function parse_cube(
 
   // Parse atomic positions
   const sites: Site[] = []
-  const lattice_transposed = math.transpose_3x3_matrix(lattice)
-
-  let lattice_inv: Matrix3x3
+  let cube_cart_to_frac: (v: Vec3) => Vec3
   try {
-    lattice_inv = math.matrix_inverse_3x3(lattice_transposed)
+    cube_cart_to_frac = math.create_cart_to_frac(lattice)
   } catch {
     // Non-periodic system (molecule), use identity
-    lattice_inv = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ]
+    cube_cart_to_frac = (v: Vec3): Vec3 => [v[0], v[1], v[2]]
   }
 
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
@@ -529,7 +527,7 @@ export function parse_cube(
     // Convert Cartesian to fractional, accounting for origin offset.
     // Store lattice-frame xyz (shifted) so abc and xyz stay consistent.
     const xyz = math.subtract(raw_xyz, origin)
-    const abc = math.mat3x3_vec3_multiply(lattice_inv, xyz)
+    const abc = cube_cart_to_frac(xyz)
 
     const element = atomic_number_to_symbol(atom_line[0])
     sites.push({

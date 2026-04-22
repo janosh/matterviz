@@ -2,12 +2,7 @@
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Crystal, Site } from './index'
-
-// Wrap fractional coordinates to [0, 1) range, clamping near-1 values to 0
-const wrap_frac = (coord: number): number => {
-  const wrapped = ((coord % 1) + 1) % 1
-  return wrapped >= 1 - 1e-10 ? 0 : wrapped
-}
+import { wrap_frac_coord } from './pbc'
 
 type SupercellType = Crystal & {
   supercell_scaling?: Vec3
@@ -149,9 +144,9 @@ export function make_supercell(
           let new_c = (site.abc[2] + kk) / sz
 
           if (to_unit_cell) {
-            new_a = wrap_frac(new_a)
-            new_b = wrap_frac(new_b)
-            new_c = wrap_frac(new_c)
+            new_a = wrap_frac_coord(new_a)
+            new_b = wrap_frac_coord(new_b)
+            new_c = wrap_frac_coord(new_c)
           }
 
           new_sites[write_idx++] = {

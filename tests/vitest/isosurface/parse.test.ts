@@ -212,6 +212,16 @@ describe(`parse_chgcar`, () => {
     expect(parse_chgcar(content as string)).toBeNull()
   })
 
+  test(`returns null for singular CHGCAR lattice instead of throwing`, () => {
+    const content = make_chgcar({
+      lattice: [`5.0  0.0  0.0`, `0.0  0.0  0.0`, `0.0  0.0  5.0`],
+      coord_mode: `Cartesian`,
+      positions: [`0.0  0.0  0.0`, `1.0  0.0  1.0`],
+    })
+
+    expect(parse_chgcar(content)).toBeNull()
+  })
+
   test(`computes data_range with correct min, max, abs_max, and mean`, () => {
     const result = parse_chgcar(make_chgcar())
     const range = result?.volumes[0].data_range

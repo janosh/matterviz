@@ -145,7 +145,7 @@ export default defineConfig({
           if (is_build) return { code: json_str, moduleType: `json` }
           return `export default ${json_str}`
         } catch (error) {
-          this.error(`Failed to decompress ${id}: ${error}`)
+          return this.error(`Failed to decompress ${id}: ${error}`)
         }
       },
     },
@@ -206,6 +206,11 @@ export default defineConfig({
 
   preview: {
     port: 3000,
+  },
+
+  build: {
+    // Default cssTarget is chrome111 which doesn't support light-dark(),
+    cssTarget: `esnext`, // causing LightningCSS to polyfill it with broken space toggles
   },
 
   resolve: {

@@ -81,11 +81,11 @@ function get_site_atomic_number(site: Crystal[`sites`][number], site_idx: number
   })
 
   if (selected_element === undefined) {
-    throw new Error(`Unknown element at site ${site_idx}: ${String(selected_element)}`)
+    throw new Error(`Unknown element at site ${site_idx}: ${selected_element}`)
   }
   const atomic_number = SYMBOL_TO_ATOMIC_NUMBER[selected_element]
   if (atomic_number === undefined) {
-    throw new Error(`Unknown element at site ${site_idx}: ${String(selected_element)}`)
+    throw new Error(`Unknown element at site ${site_idx}: ${selected_element}`)
   }
   return atomic_number
 }
@@ -219,7 +219,7 @@ export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): W
   for (let idx = 0; idx < numbers.length; idx++) {
     // Use wyckoff letter if available, otherwise mark as non-symmetric
     const full = idx < wyckoffs.length ? wyckoffs[idx] : null
-    const letter = (full?.match(/[a-z]+$/)?.[0] ?? full ?? ``).toString()
+    const letter = full?.match(/[a-z]+$/)?.[0] ?? full ?? ``
     const atomic_num = numbers[idx]
     const elem = ATOMIC_NUMBER_TO_SYMBOL[atomic_num] ?? `?`
     const position = positions[idx]

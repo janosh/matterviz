@@ -46,19 +46,6 @@ export const convert_atomic_numbers = (numbers: number[]): ElementSymbol[] =>
     return symbol
   })
 
-// Cache inverse matrices by original matrix reference for performance
-// IMPORTANT: This cache assumes lattice matrices are immutable. Mutating a cached
-// matrix in place yields incorrect inverses. Always create new matrix instances
-// if modifications are needed.
-const matrix_cache = new WeakMap<math.Matrix3x3, math.Matrix3x3>()
-export const get_inverse_matrix = (matrix: math.Matrix3x3): math.Matrix3x3 => {
-  const cached = matrix_cache.get(matrix)
-  if (cached) return cached
-  const inverse = math.matrix_inverse_3x3(matrix)
-  matrix_cache.set(matrix, inverse)
-  return inverse
-}
-
 export const create_structure = (
   positions: number[][],
   elements: ElementSymbol[],
@@ -71,7 +58,7 @@ export const create_structure = (
       `create_structure requires matching positions and elements lengths, got positions=${positions.length}, elements=${elements.length}`,
     )
   }
-  const inv_matrix = lattice_matrix ? get_inverse_matrix(lattice_matrix) : null
+  const cart_to_frac = lattice_matrix ? math.create_cart_to_frac(lattice_matrix) : null
 
   const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
     Array.isArray(coords) &&
@@ -84,7 +71,7 @@ export const create_structure = (
     }
 
     const xyz = pos
-    const abc = inv_matrix ? math.mat3x3_vec3_multiply(inv_matrix, xyz) : ([0, 0, 0] as Vec3)
+    const abc = cart_to_frac ? cart_to_frac(xyz as Vec3) : ([0, 0, 0] as Vec3)
 
     const force = force_data?.[idx]
     const properties = is_valid_vec3(force) ? { force } : {}

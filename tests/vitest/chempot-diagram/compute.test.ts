@@ -40,14 +40,14 @@ import { describe, expect, test } from 'vitest'
 
 const test_dir = dirname(fileURLToPath(import.meta.url))
 
-function load_gzip_json<T>(filename: string): T {
+function load_gzip_json(filename: string): PhaseData[] {
   const compressed_bytes = readFileSync(`${test_dir}/${filename}`)
   const decompressed_text = gunzipSync(compressed_bytes).toString(`utf8`)
-  return JSON.parse(decompressed_text) as T
+  return JSON.parse(decompressed_text) as PhaseData[]
 }
 
-const entries = load_gzip_json<PhaseData[]>(`pd_entries_test.json.gz`)
-const ytos_entries = load_gzip_json<PhaseData[]>(`ytos_entries.json.gz`)
+const entries = load_gzip_json(`pd_entries_test.json.gz`)
+const ytos_entries = load_gzip_json(`ytos_entries.json.gz`)
 
 // Filter to Fe-O binary subsystem
 const fe_o_elements = new Set([`Fe`, `O`])

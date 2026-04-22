@@ -58,15 +58,29 @@ beforeEach(() => {
   })
 })
 
-export function doc_query<T extends HTMLElement>(selector: string): T {
-  const node = document.querySelector(selector) satisfies T | null
+type Element_ctor<T extends Element> = abstract new (...args: never[]) => T
+
+function query_required<T extends Element>(
+  selector: string,
+  element_ctor?: Element_ctor<T>,
+): T {
+  const node = document.querySelector(selector)
   if (!node) throw new Error(`No element found for selector: ${selector}`)
-  return node
+  if (element_ctor && !(node instanceof element_ctor)) {
+    throw new Error(`Element found for selector ${selector} has the wrong type`)
+  }
+  return node as T
 }
-export function svg_query<T extends SVGElement>(selector: string): T {
-  const node = document.querySelector(selector) satisfies T | null
-  if (!node) throw new Error(`No element found for selector: ${selector}`)
-  return node
+
+export function doc_query<T extends HTMLElement>(
+  selector: string,
+  element_ctor?: Element_ctor<T>,
+): T {
+  return query_required(selector, element_ctor)
+}
+
+export function svg_query(selector: string): SVGElement {
+  return query_required(selector)
 }
 
 // Test data factory for creating mock structures
@@ -140,8 +154,9 @@ export function create_test_structure(
   // Mode 1: Fractional coordinates (original behavior)
   if (frac_coords) {
     const elements = elements_or_sites as ElementSymbol[]
+    const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
     sites = frac_coords.map((frac_coord, idx) => ({
-      xyz: math.mat3x3_vec3_multiply(lattice_matrix, frac_coord),
+      xyz: frac_to_cart(frac_coord),
       abc: frac_coord,
       species: [{ element: elements[idx], occu: 1, oxidation_state: 0 }],
       label: elements[idx],
@@ -153,17 +168,14 @@ export function create_test_structure(
       species: { element: string; occu: number; oxidation_state: number }[]
       xyz: number[]
     }[]
+    const cart_to_frac = math.create_cart_to_frac(lattice_matrix)
     sites = sites_data.map((site, idx) => ({
       species: site.species.map((sp) => ({
         ...sp,
         element: sp.element as ElementSymbol,
       })),
       xyz: site.xyz as Vec3,
-      // Calculate fractional coordinates: abc = inverse(lattice_matrix) · xyz
-      abc: math.mat3x3_vec3_multiply(
-        math.matrix_inverse_3x3(lattice_matrix),
-        site.xyz as Vec3,
-      ),
+      abc: cart_to_frac(site.xyz as Vec3),
       label: `${site.species[0].element}${idx}`,
       properties: {},
     }))

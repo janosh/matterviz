@@ -4,6 +4,7 @@ import {
   read_ndarray_from_view,
 } from '$lib/trajectory/helpers'
 import type { ElementSymbol } from '$lib/element'
+import type { Matrix3x3 } from '$lib/math'
 import { describe, expect, it } from 'vitest'
 
 describe(`trajectory helpers`, () => {
@@ -41,6 +42,18 @@ describe(`trajectory helpers`, () => {
     expect(structure.sites[1]?.xyz).toEqual([1, 1, 1])
     expect(structure.sites[0]?.species[0]?.element).toBe(`H`)
     expect(structure.sites[1]?.species[0]?.element).toBe(`He`)
+  })
+
+  it(`computes fractional coordinates correctly for non-orthogonal lattices`, () => {
+    const lattice: Matrix3x3 = [
+      [2, 1, 0],
+      [0, 2, 0],
+      [0, 0, 2],
+    ]
+    const structure = create_structure([[2, 1, 0]], [`H`], lattice)
+
+    expect(`lattice` in structure).toBe(true)
+    expect(structure.sites[0]?.abc).toEqual([1, 0, 0])
   })
 
   it.each([
