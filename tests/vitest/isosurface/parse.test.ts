@@ -568,8 +568,12 @@ describe(`parse_volumetric_file`, () => {
     [`ELFCAR`],
     [`LOCPOT`],
     [`PARCHG`],
+    [`PARCHG.gz`],
+    [`PARCHG.BAND_1`],
     [`path/to/CHGCAR`],
     [`run_CHGCAR_001`],
+    [`path/to/PARCHG`],
+    [`run_PARCHG_001`],
   ])(`detects VASP volumetric from filename: %s`, (filename) => {
     const result = parse_volumetric_file(minimal_chgcar, filename)
     expect(result).not.toBeNull()

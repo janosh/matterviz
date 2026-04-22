@@ -397,7 +397,7 @@ const parse_file_content = async (
     throw new Error(`Failed to parse Fermi surface file: ${filename}`)
   }
 
-  // Volumetric data files (.cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT)
+  // Volumetric data files (.cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT, PARCHG)
   if (VOLUMETRIC_EXT_RE.test(basename) || VOLUMETRIC_VASP_RE.test(basename)) {
     const data = parse_volumetric_file(content, filename)
     if (data) return { type: `isosurface`, data, filename }

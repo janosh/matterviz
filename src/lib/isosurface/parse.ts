@@ -193,8 +193,8 @@ function build_grid({
 
 // === CHGCAR Parser ===
 
-// Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT file format.
-// CHGCAR consists of a POSCAR header followed by volumetric data on a 3D grid.
+// Parse VASP CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG file format.
+// CHGCAR/PARCHG consists of a POSCAR header followed by volumetric data on a 3D grid.
 // Spin-polarized files contain two data blocks (total charge + magnetization).
 export function parse_chgcar(content: string): VolumetricFileData | null {
   // Strip leading whitespace

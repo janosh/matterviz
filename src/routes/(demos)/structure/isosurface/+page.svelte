@@ -262,9 +262,9 @@
 
 <p>
   Render isosurfaces from volumetric data overlaid on atomic structures. Supports VASP
-  <code>CHGCAR</code>/<code>AECCAR</code>/<code>ELFCAR</code>/<code>LOCPOT</code>
-  and Gaussian <code>.cube</code> file formats. Drag and drop your own files onto the
-  viewer.
+  <code>CHGCAR</code>/<code>AECCAR</code>/<code>ELFCAR</code>/<code>LOCPOT</code>/
+  <code>PARCHG</code> and Gaussian <code>.cube</code> file formats. Drag and drop your
+  own files onto the viewer.
 </p>
 
 <FilePicker
@@ -294,7 +294,10 @@
   }}
   ondrop={() => (dragover_hint = false)}
 >
-  <DragOverlay visible={dragover_hint} message="Drop CHGCAR, ELFCAR, LOCPOT, or .cube" />
+  <DragOverlay
+    visible={dragover_hint}
+    message="Drop CHGCAR, ELFCAR, LOCPOT, PARCHG, or .cube"
+  />
   <div class="viewer-pane">
     <Structure
       bind:structure
@@ -406,8 +409,8 @@
   <h2>Features</h2>
   <ul>
     <li>
-      <strong>CHGCAR</strong> &ndash; VASP charge density, spin density, ELF, and local
-      potential
+      <strong>CHGCAR/AECCAR/ELFCAR/LOCPOT/PARCHG</strong> &ndash; VASP charge density,
+      partial charge density, ELF, and local potential
     </li>
     <li>
       <strong>.cube</strong> &ndash; Gaussian/CP2K molecular orbitals, electron density,

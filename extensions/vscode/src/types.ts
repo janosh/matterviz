@@ -13,4 +13,5 @@ export type ViewType =
 // Filename patterns for specialized file types (shared between extension host and webview)
 export const FERMI_FILE_RE = /\.(bxsf|frmsf)$/i
 export const VOLUMETRIC_EXT_RE = /\.cube$/i
-export const VOLUMETRIC_VASP_RE = /^(chgcar|aeccar[012]?|elfcar|locpot)/i
+export const VOLUMETRIC_VASP_RE =
+  /(?:^|[\\/_.-])(chgcar|aeccar[012]?|elfcar|locpot|parchg)(?:[\\/_.-]|$)/i

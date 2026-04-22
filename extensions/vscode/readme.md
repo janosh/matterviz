@@ -64,7 +64,7 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 #### Volumetric Data Files
 
 - **CUBE** - Gaussian cube files
-- **CHGCAR/ELFCAR/LOCPOT/AECCAR** - VASP volumetric output
+- **CHGCAR/ELFCAR/LOCPOT/AECCAR/PARCHG** - VASP volumetric output
 
 #### Compressed Files
 

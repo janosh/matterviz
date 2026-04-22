@@ -92,10 +92,7 @@
             "filenamePattern": "*.cube.{gz,bz2}"
           },
           {
-            "filenamePattern": "{CHGCAR,ELFCAR,LOCPOT}*"
-          },
-          {
-            "filenamePattern": "AECCAR*"
+            "filenamePattern": "*{AECCAR,CHGCAR,ELFCAR,LOCPOT,PARCHG}*"
           }
         ],
         "priority": "option"

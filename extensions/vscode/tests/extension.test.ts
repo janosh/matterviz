@@ -1487,6 +1487,10 @@ describe(`MatterViz Extension`, () => {
       [`AECCAR0`, true],
       [`AECCAR1`, true],
       [`AECCAR2`, true],
+      [`PARCHG`, true],
+      [`PARCHG.gz`, true],
+      [`PARCHG.BAND_1`, true],
+      [`run_PARCHG_001`, true],
       // Files that look like structure files but are supported
       [`structure_copy.cif`, true],
       [`trajectory_backup.xyz`, true],
