@@ -176,6 +176,15 @@ describe(`MatterViz Extension`, () => {
       [`run.trr`, `TRR`],
       [`molecule.xyz`, `XYZ`],
       [`atoms.extxyz`, `extXYZ`],
+      // Volumetric data files
+      [`CHGCAR`, `VASP volumetric`],
+      [`AECCAR0`, `VASP volumetric`],
+      [`ELFCAR`, `VASP volumetric`],
+      [`LOCPOT`, `VASP volumetric`],
+      [`PARCHG`, `VASP volumetric`],
+      [`PARCHG.gz`, `VASP volumetric`],
+      [`density.cube`, `Gaussian cube`],
+      [`density.cube.gz`, `Gaussian cube`],
     ])(`pattern matches "%s" (%s)`, (filename) => {
       expect(matches_any_pattern(filename)).toBe(true)
     })

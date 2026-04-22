@@ -296,7 +296,7 @@
 >
   <DragOverlay
     visible={dragover_hint}
-    message="Drop CHGCAR, ELFCAR, LOCPOT, PARCHG, or .cube"
+    message="Drop CHGCAR, AECCAR, ELFCAR, LOCPOT, PARCHG, or .cube"
   />
   <div class="viewer-pane">
     <Structure
