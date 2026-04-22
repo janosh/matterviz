@@ -1,9 +1,10 @@
+import * as math from '$lib/math'
 import type { Matrix3x3 } from '$lib/math'
 import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
 import type { Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
 import { describe, expect, test } from 'vitest'
-import { create_test_structure } from '../setup'
+import { create_test_structure, make_crystal } from '../setup'
 
 // Use actual structure files from the project
 const lu_al_structure = structure_map.get(`mp-1234`) // Lu-Al structure (binary compound)
@@ -234,6 +235,38 @@ describe(`calculate_rdf`, () => {
     const result2 = calculate_rdf(lu_al_structure, { cutoff: 5, n_bins: 50 })
     expect(result1.r).toEqual(result2.r)
     expect(result1.g_r).toEqual(result2.g_r)
+  })
+
+  test(`RDF regression: skewed triclinic nearest image lands in correct bin`, () => {
+    const lattice: Matrix3x3 = [
+      [1.9705932249259481, -3.955757771584847, 1.6595752827868262],
+      [-2.0392732691684845, 3.498999611184008, -1.7465434512400368],
+      [3.716215074235551, 3.996782696347811, 1.0904649182023587],
+    ]
+    const structure = make_crystal(
+      lattice,
+      [
+        { element: `Si`, xyz: [3.395535765213964, 4.297261971797731, 0.837260400991752] },
+        { element: `Si`, xyz: [1.6425399077772327, -1.0582437501479167, 0.9390064337754569] },
+      ],
+      { pbc: [true, true, true] },
+    )
+    const cutoff = 2
+    const n_bins = 20
+    const result = calculate_rdf(structure, { cutoff, n_bins, auto_expand: false })
+    const expected_dist = math.pbc_dist(
+      structure.sites[0].xyz as math.Vec3,
+      structure.sites[1].xyz as math.Vec3,
+      lattice,
+    )
+    const bin_width = cutoff / n_bins
+    const expected_bin = Math.floor(expected_dist / bin_width)
+    const nonzero_bins = result.g_r
+      .map((value, idx) => ({ value, idx }))
+      .filter(({ value }) => value > 0)
+
+    expect(nonzero_bins).toHaveLength(1)
+    expect(nonzero_bins[0]?.idx).toBe(expected_bin)
   })
 
   test.each([

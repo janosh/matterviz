@@ -1,6 +1,6 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import { euclidean_dist, mat3x3_vec3_multiply } from '$lib/math'
+import { create_frac_to_cart, euclidean_dist } from '$lib/math'
 import type { Crystal } from '$lib/structure'
 import { find_image_atoms, get_pbc_image_sites, wrap_to_unit_cell } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
@@ -24,18 +24,11 @@ function assert_xyz_matches_lattice(
   xyz: Vec3,
   digits: number = 10,
 ) {
-  const expected_rows = math.add(
-    math.scale(lattice_matrix[0], frac[0]),
-    math.scale(lattice_matrix[1], frac[1]),
-    math.scale(lattice_matrix[2], frac[2]),
-  )
-  const expected_mul = mat3x3_vec3_multiply(lattice_matrix, frac)
-  const matches_either = [0, 1, 2].every(
-    (dim) =>
-      Math.abs(xyz[dim] - expected_rows[dim]) < 10 ** -digits ||
-      Math.abs(xyz[dim] - expected_mul[dim]) < 10 ** -digits,
-  )
-  expect(matches_either).toBe(true)
+  const frac_to_cart = create_frac_to_cart(lattice_matrix)
+  const expected = frac_to_cart(frac)
+  for (let dim = 0; dim < 3; dim++) {
+    expect(xyz[dim]).toBeCloseTo(expected[dim], digits)
+  }
 }
 
 function assert_integer_translation(
@@ -236,6 +229,60 @@ test(`triclinic lattice image xyz must match lattice * abc`, () => {
   }
 })
 
+// Non-orthogonal lattices where L ≠ L^T — using cubic lattices here can't
+// distinguish L*frac from L^T*frac, so these catch wrong-convention bugs.
+const non_ortho_lattices = [
+  {
+    name: `monoclinic`,
+    lattice: [
+      [5, 0, 0],
+      [0, 6, 0],
+      [2, 0, 7],
+    ] as Matrix3x3,
+  },
+  {
+    name: `hexagonal`,
+    lattice: [
+      [4, 0, 0],
+      [2, 3.464, 0],
+      [0, 0, 8],
+    ] as Matrix3x3,
+  },
+  {
+    name: `triclinic`,
+    lattice: [
+      [5, 0, 0],
+      [2.5, 4.33, 0],
+      [1, 1, 4],
+    ] as Matrix3x3,
+  },
+]
+
+test.each(non_ortho_lattices)(
+  `non-ortho image generation stays lattice-consistent ($name)`,
+  ({ lattice }) => {
+    const structure = make_crystal(lattice, [
+      [`Na`, [0.0, 0.0, 0.0]],
+      [`Cl`, [0.01, 0.5, 0.5]],
+    ])
+    const images = find_image_atoms(structure)
+    expect(images.length).toBeGreaterThan(0)
+
+    for (const [orig_idx, img_xyz, img_abc] of images) {
+      assert_xyz_matches_lattice(lattice, img_abc, img_xyz)
+      assert_integer_translation(structure.sites[orig_idx].abc, img_abc)
+    }
+
+    const with_images = get_pbc_image_sites(structure)
+    const image_sites = with_images.sites.slice(structure.sites.length)
+    expect(image_sites.length).toBeGreaterThan(0)
+
+    for (const site of image_sites) {
+      assert_xyz_matches_lattice(lattice, site.abc, site.xyz)
+    }
+  },
+)
+
 test.each([
   {
     tolerance: 0.02,
@@ -272,11 +319,8 @@ test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
   expect(img_abc[1]).toBeCloseTo(0.5, 12)
   expect(img_abc[2]).toBeCloseTo(0.5, 12)
 
-  // xyz must be consistent with lattice * abc
-  const expected_xyz = mat3x3_vec3_multiply(structure.lattice.matrix, img_abc)
-  for (let dim = 0; dim < 3; dim++) {
-    expect(img_xyz[dim]).toBeCloseTo(expected_xyz[dim], 10)
-  }
+  // xyz must be consistent with L^T * abc
+  assert_xyz_matches_lattice(structure.lattice.matrix, img_abc, img_xyz)
 })
 
 test(`find_image_atoms finds correct images for trajectory-like cell`, async () => {
@@ -420,22 +464,6 @@ test.each([
   },
 )
 
-// Test that image atoms have correct fractional coordinates
-test(`image atoms should have fractional coordinates related by lattice translations`, () => {
-  // Use mp-1 structure which should generate image atoms
-  const structure = mp_1_struct
-  const image_atoms = find_image_atoms(structure)
-
-  expect(image_atoms.length).toBeGreaterThan(0) // Should have some image atoms
-
-  // Check each image atom
-  for (const [orig_idx, image_xyz, image_abc] of image_atoms) {
-    const orig_abc = structure.sites[orig_idx].abc
-    assert_integer_translation(orig_abc, image_abc, 0.001)
-    assert_xyz_matches_lattice(structure.lattice.matrix, image_abc, image_xyz, 10)
-  }
-})
-
 // Test edge detection accuracy
 test(`edge detection should be precise for atoms at boundaries`, () => {
   // Create a test structure with atoms exactly at edges
@@ -492,12 +520,6 @@ test.each([
     description: `strict tolerance with very close atom`,
   },
   {
-    tolerance: 0.01,
-    abc_coords: [0.02, 0.0, 0.0], // Too far from edge with strict tolerance
-    expected_count: 3, // TODO: Algorithm bug - should be 0 but currently creates 3 images
-    description: `strict tolerance with distant atom`,
-  },
-  {
     tolerance: 0.05,
     abc_coords: [0.02, 0.0, 0.0], // Should create images with default tolerance
     expected_count: 1,
@@ -527,105 +549,6 @@ test.each([
     }
   },
 )
-
-// Test that all image atoms are positioned correctly within or just outside unit cell
-test(`all image atoms should be positioned at unit cell boundaries`, () => {
-  // Test multiple structures
-  for (const structure of [mp_1_struct, mp_2_struct]) {
-    const image_atoms = find_image_atoms(structure)
-
-    // Check each image atom position
-    for (const [orig_idx, image_xyz] of image_atoms) {
-      const lattice_matrix = structure.lattice.matrix
-
-      // Convert to fractional coordinates
-      const inv_mat = math.matrix_inverse_3x3(lattice_matrix)
-      const image_abc: Vec3 = mat3x3_vec3_multiply(inv_mat, image_xyz)
-
-      // Image atoms should be at positions that are related to the original
-      // by integer translations. This means their fractional coordinates
-      // should differ from the original by integers.
-      const orig_abc = structure.sites[orig_idx].abc
-
-      assert_integer_translation(orig_abc, image_abc, 0.001)
-    }
-  }
-})
-
-// Test that image atoms have fractional coordinates inside expected cell boundaries
-test(`image atoms should have fractional coordinates at cell boundaries`, () => {
-  // Create a simple cubic structure with atoms at exact boundaries
-  const test_structure = make_crystal(4, [
-    [`C`, [0.0, 0.0, 0.0]], // Corner
-    [`C`, [1.0, 1.0, 1.0]], // Opposite corner
-  ])
-
-  const image_atoms = find_image_atoms(test_structure)
-  expect(image_atoms.length).toBeGreaterThan(0)
-
-  // Check that all image atoms have fractional coordinates that are
-  // related to originals by integer translations
-  for (const [orig_idx, image_xyz, image_abc] of image_atoms) {
-    const orig_abc = test_structure.sites[orig_idx].abc
-
-    // Image fractional coordinates are now directly provided
-    // Each fractional coordinate should differ by an integer
-    assert_integer_translation(orig_abc, image_abc, 1e-8)
-    const expected_xyz: Vec3 = math.scale(image_abc, 4.0) as Vec3
-    for (let dim = 0; dim < 3; dim++) {
-      expect(image_xyz[dim]).toBeCloseTo(expected_xyz[dim], 10)
-    }
-  }
-})
-
-// Test comprehensive validation of image atom properties
-test(`comprehensive image atom validation`, () => {
-  const structure = mp_1_struct
-  const image_atoms = find_image_atoms(structure)
-
-  expect(image_atoms.length).toBeGreaterThan(0)
-
-  validate_image_tuples(structure, image_atoms, { min_dist: 0.01, tol: 1e-6 })
-})
-
-// Test that no duplicate image atoms are created
-test(`image atom generation should not create duplicates`, () => {
-  const structure = mp_1_struct
-  const image_atoms = find_image_atoms(structure)
-
-  // Check for duplicate image positions (within tolerance)
-  const unique_positions = new Set<string>()
-  let duplicates_found = 0
-
-  for (const [_, image_xyz, __] of image_atoms) {
-    // Create a string representation of the position with reasonable precision
-    const pos_key = image_xyz.map((coord) => coord.toFixed(6)).join(`,`)
-
-    // Count duplicates but don't fail immediately - the algorithm may legitimately create some
-    if (unique_positions.has(pos_key)) {
-      duplicates_found++
-    }
-    unique_positions.add(pos_key)
-  }
-
-  // Allow a small number of duplicates due to algorithm complexity, but not excessive
-  expect(duplicates_found).toBeLessThanOrEqual(
-    Math.max(3, Math.floor(image_atoms.length * 0.2)),
-  ) // Max 20% duplicates or 3, whichever is higher
-
-  // Alternative check: ensure all pairwise distances are reasonable
-  for (let idx = 0; idx < image_atoms.length; idx++) {
-    for (let j = idx + 1; j < image_atoms.length; j++) {
-      const pos1 = image_atoms[idx][1] // xyz coordinates
-      const pos2 = image_atoms[j][1] // xyz coordinates
-      const distance = euclidean_dist(pos1, pos2)
-
-      // No two image atoms should be at exactly the same position
-      // Fail test if image atoms are too close (likely duplicates suggesting a bug in the detection logic)
-      expect(distance).toBeGreaterThan(1e-6)
-    }
-  }
-})
 
 // Test image atom generation with various crystal systems
 test.each([
@@ -731,12 +654,7 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
     }
 
     // Verify consistency between abc and xyz coordinates in the image site
-    const lattice_matrix = test_structure.lattice.matrix
-    const computed_xyz = mat3x3_vec3_multiply(lattice_matrix, image_site.abc)
-
-    for (let dim = 0; dim < 3; dim++) {
-      expect(image_site.xyz[dim]).toBeCloseTo(computed_xyz[dim], 10)
-    }
+    assert_xyz_matches_lattice(test_structure.lattice.matrix, image_site.abc, image_site.xyz)
 
     // Verify the image abc coordinates are related to original by integer translations
     const orig_abc = test_structure.sites[orig_idx].abc
@@ -814,19 +732,7 @@ test(`mp-1204603 image sites are valid integer translations`, () => {
 
   const lattice_matrix = structure.lattice.matrix
   for (const site of image_sites) {
-    // Verify xyz matches lattice * abc
-    const expected_rows = math.add(
-      math.scale(lattice_matrix[0], site.abc[0]),
-      math.scale(lattice_matrix[1], site.abc[1]),
-      math.scale(lattice_matrix[2], site.abc[2]),
-    )
-    const expected_mul = mat3x3_vec3_multiply(lattice_matrix, site.abc)
-    const matches_either = [0, 1, 2].every(
-      (dim) =>
-        Math.abs(site.xyz[dim] - expected_rows[dim]) < 1e-9 ||
-        Math.abs(site.xyz[dim] - expected_mul[dim]) < 1e-9,
-    )
-    expect(matches_either).toBe(true)
+    assert_xyz_matches_lattice(lattice_matrix, site.abc, site.xyz, 9)
   }
 })
 

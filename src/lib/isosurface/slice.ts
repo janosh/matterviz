@@ -107,9 +107,7 @@ export function sample_hkl_slice(
   // In-plane basis vectors
   const [u_vec, v_vec] = math.compute_in_plane_basis(unit_normal)
 
-  // Compute lattice inverse for Cartesian → fractional conversion.
-  // lattice rows are vectors [a, b, c], so cart = lattice^T * frac → frac = inv(lattice^T) * cart
-  const lattice_inv = math.matrix_inverse_3x3(math.transpose_3x3_matrix(lattice))
+  const cart_to_frac = math.create_cart_to_frac(lattice)
 
   // Project all 8 unit cell corners onto the (u, v) plane to find sampling bounds.
   // Corners are at fractional coords (0 or 1) for each axis.
@@ -165,11 +163,7 @@ export function sample_hkl_slice(
       const py = d_cartesian * unit_normal[1] + u_val * u_vec[1] + v_val * v_vec[1]
       const pz = d_cartesian * unit_normal[2] + u_val * u_vec[2] + v_val * v_vec[2]
 
-      // Convert to fractional coordinates: frac = lattice_inv * p
-      const fx = lattice_inv[0][0] * px + lattice_inv[0][1] * py + lattice_inv[0][2] * pz
-      const fy = lattice_inv[1][0] * px + lattice_inv[1][1] * py + lattice_inv[1][2] * pz
-      const fz = lattice_inv[2][0] * px + lattice_inv[2][1] * py + lattice_inv[2][2] * pz
-
+      const [fx, fy, fz] = cart_to_frac([px, py, pz])
       const val = trilinear_interpolate(grid, fx, fy, fz, periodic)
       data[row * width + col] = val
       if (val < data_min) data_min = val

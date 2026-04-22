@@ -146,7 +146,9 @@ def write_chgcar(
     lines.append("")
 
     nx, ny, nz = grid_dims
-    all_blocks = [(density_fn, None)]
+    all_blocks: list[
+        tuple[Callable[[float, float, float, float, float, float], float], str | None]
+    ] = [(density_fn, None)]
     if extra_blocks:
         all_blocks.extend(extra_blocks)
 

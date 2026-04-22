@@ -6,6 +6,7 @@ import * as math from '$lib/math'
 import type { AtomColorMode } from '$lib/settings'
 import type { AnyStructure, Site } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
+import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
@@ -44,7 +45,7 @@ const get_interpolator = (scale: string) => {
 const to_hex = (interp_fn: (t: number) => string, t: number) => rgb(interp_fn(t)).formatHex()
 const build_image_site = (
   site: Site,
-  lattice_T: math.Matrix3x3,
+  frac_to_cart: (v: math.Vec3) => math.Vec3,
   offset: readonly [number, number, number],
   orig_idx: number,
 ): Site => {
@@ -56,7 +57,7 @@ const build_image_site = (
   return {
     ...site,
     abc: img_abc,
-    xyz: math.mat3x3_vec3_multiply(lattice_T, img_abc),
+    xyz: frac_to_cart(img_abc),
     properties: { ...site.properties, orig_site_idx: orig_idx },
   }
 }
@@ -150,14 +151,14 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
   }
 
   const { sites, lattice } = structure
-  const lattice_T = math.transpose_3x3_matrix(lattice.matrix)
+  const frac_to_cart = math.create_frac_to_cart(lattice.matrix)
   const pbc = lattice.pbc ?? [true, true, true]
   const all_offsets = get_all_offsets(pbc)
 
   // Small structures: expand all atoms
   if (sites.length < 20 || !pbc.some((periodic) => periodic)) {
     const image_sites = sites.flatMap((site, orig_idx) =>
-      all_offsets.map((offset) => build_image_site(site, lattice_T, offset, orig_idx)),
+      all_offsets.map((offset) => build_image_site(site, frac_to_cart, offset, orig_idx)),
     )
     return { ...structure, sites: [...sites, ...image_sites] }
   }
@@ -166,7 +167,7 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
   const cutoff: math.Vec3 = [5.0 / lattice.a, 5.0 / lattice.b, 5.0 / lattice.c]
 
   const image_sites = sites.flatMap((site, orig_idx) => {
-    const norm = site.abc.map((coord) => coord - Math.floor(coord)) as math.Vec3
+    const norm = wrap_to_unit_cell(site.abc)
 
     return all_offsets
       .filter(
@@ -175,7 +176,7 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
           (dy === 0 || (dy === -1 ? norm[1] <= cutoff[1] : norm[1] >= 1 - cutoff[1])) &&
           (dz === 0 || (dz === -1 ? norm[2] <= cutoff[2] : norm[2] >= 1 - cutoff[2])),
       )
-      .map((offset) => build_image_site(site, lattice_T, offset, orig_idx))
+      .map((offset) => build_image_site(site, frac_to_cart, offset, orig_idx))
   })
 
   return { ...structure, sites: [...sites, ...image_sites] }

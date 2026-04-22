@@ -30,7 +30,7 @@ export function moyo_cell_to_structure(
 
   // Calculate lattice parameters from matrix
   const lattice_params = math.calc_lattice_params(lattice_matrix)
-  const lattice_T = math.transpose_3x3_matrix(lattice_matrix)
+  const frac_to_cart = math.create_frac_to_cart(lattice_matrix)
 
   // Build sites from positions and atomic numbers
   const sites: Site[] = cell.positions.map((abc, idx) => {
@@ -43,8 +43,7 @@ export function moyo_cell_to_structure(
     // Wrap fractional coordinates to [0, 1) range (moyo-wasm may return outside)
     const wrapped_abc = wrap_to_unit_cell(abc as Vec3)
 
-    // Convert fractional to Cartesian: xyz = lattice_T · abc
-    const xyz = math.mat3x3_vec3_multiply(lattice_T, wrapped_abc)
+    const xyz = frac_to_cart(wrapped_abc)
 
     // Oxidation state is set to 0 (unknown) because moyo-wasm only provides atomic numbers.
     // transformed cell may have different/reordered sites, making it non-trivial to

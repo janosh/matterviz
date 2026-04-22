@@ -32,6 +32,7 @@ export const LOG_EPS = 1e-9
 export const EPS = 1e-10
 export const RAD_TO_DEG = 180 / Math.PI
 export const DEG_TO_RAD = Math.PI / 180
+const MAX_MIN_IMAGE_CANDIDATES = 100_000
 
 export const to_degrees = (radians: number): number => radians * RAD_TO_DEG
 export const to_radians = (degrees: number): number => degrees * DEG_TO_RAD
@@ -75,29 +76,89 @@ export const euclidean_dist = (vec1: NdVector, vec2: NdVector): number => {
   return Math.hypot(...vec1.map((x, idx) => x - vec2[idx]))
 }
 
+const vec3_norm_sq = (vec: Vec3): number => vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
+
+// Exact minimum-image displacement for row-vector lattices.
+// Rounded fractional wrapping is only approximate for highly skewed cells, so
+// we use it as a starting guess and then search the small set of shifts that
+// can still beat that Cartesian radius.
+export function min_image_displacement(
+  from: Vec3,
+  to: Vec3,
+  lattice_matrix: Matrix3x3,
+  converters?: LatticeConverters,
+  pbc: Pbc = [true, true, true],
+): Vec3 {
+  const { cart_to_frac, frac_to_cart, reciprocal_axis_norms } =
+    converters ?? create_lattice_converters(lattice_matrix)
+  const frac_from = cart_to_frac(from)
+  const frac_to = cart_to_frac(to)
+  const frac_diff: Vec3 = [
+    frac_to[0] - frac_from[0],
+    frac_to[1] - frac_from[1],
+    frac_to[2] - frac_from[2],
+  ]
+  const wrapped_frac_diff: Vec3 = [
+    pbc[0] ? frac_diff[0] - Math.round(frac_diff[0]) : frac_diff[0],
+    pbc[1] ? frac_diff[1] - Math.round(frac_diff[1]) : frac_diff[1],
+    pbc[2] ? frac_diff[2] - Math.round(frac_diff[2]) : frac_diff[2],
+  ]
+
+  let best_displacement = frac_to_cart(wrapped_frac_diff)
+  let best_dist_sq = vec3_norm_sq(best_displacement)
+  const search_radius = Math.sqrt(best_dist_sq) + EPS
+  const candidate_shift_ranges = ([0, 1, 2] as const).map((axis_idx) => {
+    if (!pbc[axis_idx]) return [0, 0] as const
+    const axis_bound = reciprocal_axis_norms[axis_idx] * search_radius
+    return [
+      Math.ceil(-frac_diff[axis_idx] - axis_bound),
+      Math.floor(-frac_diff[axis_idx] + axis_bound),
+    ] as const
+  })
+  let candidate_count = 1
+  for (const [shift_min, shift_max] of candidate_shift_ranges) {
+    candidate_count *= shift_max - shift_min + 1
+    if (candidate_count > MAX_MIN_IMAGE_CANDIDATES) {
+      throw new Error(
+        `Minimum-image search would test >${MAX_MIN_IMAGE_CANDIDATES} candidates ` +
+          `for lattice ${JSON.stringify(lattice_matrix)}; reciprocal norms=` +
+          `${JSON.stringify(reciprocal_axis_norms)} ranges=${JSON.stringify(candidate_shift_ranges)}`,
+      )
+    }
+  }
+  const [[i_min, i_max], [j_min, j_max], [k_min, k_max]] = candidate_shift_ranges
+
+  // Only test integer shifts that reciprocal-space bounds say could still win.
+  for (let ii = i_min; ii <= i_max; ii++) {
+    for (let jj = j_min; jj <= j_max; jj++) {
+      for (let kk = k_min; kk <= k_max; kk++) {
+        const candidate_frac_diff: Vec3 = [
+          frac_diff[0] + ii,
+          frac_diff[1] + jj,
+          frac_diff[2] + kk,
+        ]
+        const candidate_displacement = frac_to_cart(candidate_frac_diff)
+        const candidate_dist_sq = vec3_norm_sq(candidate_displacement)
+        if (candidate_dist_sq < best_dist_sq) {
+          best_dist_sq = candidate_dist_sq
+          best_displacement = candidate_displacement
+        }
+      }
+    }
+  }
+
+  return best_displacement
+}
+
 // Calculate the minimum distance between two points considering periodic boundary conditions.
 export function pbc_dist(
-  pos1: Vec3, // First position vector (Cartesian coordinates)
-  pos2: Vec3, // Second position vector (Cartesian coordinates)
-  lattice_matrix: Matrix3x3, // 3x3 lattice matrix where each row is a lattice vector
-  lattice_inv?: Matrix3x3, // Optional pre-computed inverse matrix for optimization (since lattice is usually constant and repeatedly inverting matrix is expensive)
+  pos1: Vec3,
+  pos2: Vec3,
+  lattice_matrix: Matrix3x3,
+  converters?: LatticeConverters,
   pbc: Pbc = [true, true, true],
 ): number {
-  const inv_matrix = lattice_inv ?? matrix_inverse_3x3(lattice_matrix)
-
-  // Convert Cartesian coordinates to fractional coordinates
-  const [fx1, fy1, fz1] = mat3x3_vec3_multiply(inv_matrix, pos1)
-  const [fx2, fy2, fz2] = mat3x3_vec3_multiply(inv_matrix, pos2)
-
-  // Apply minimum image convention only for periodic axes
-  const wrapped_frac_diff = [fx1 - fx2, fy1 - fy2, fz1 - fz2].map((diff, idx) =>
-    pbc[idx] ? diff - Math.round(diff) : diff,
-  ) as Vec3
-
-  // Convert back to Cartesian coordinates
-  const cart_diff = mat3x3_vec3_multiply(lattice_matrix, wrapped_frac_diff)
-
-  return Math.hypot(...cart_diff)
+  return Math.hypot(...min_image_displacement(pos1, pos2, lattice_matrix, converters, pbc))
 }
 
 export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
@@ -301,16 +362,36 @@ export const transpose_3x3_matrix = (matrix: Matrix3x3): Matrix3x3 => [
   [matrix[0][2], matrix[1][2], matrix[2][2]],
 ]
 
+const create_cart_to_frac_matrix = (lattice: Matrix3x3): Matrix3x3 =>
+  matrix_inverse_3x3(transpose_3x3_matrix(lattice))
+
 // Curried fractional→Cartesian converter (caches transposed matrix)
 export const create_frac_to_cart = (lattice: Matrix3x3) => {
   const transposed = transpose_3x3_matrix(lattice)
-  return (frac: Vec3) => mat3x3_vec3_multiply(transposed, frac)
+  return (frac: Vec3): Vec3 => mat3x3_vec3_multiply(transposed, frac)
 }
 
 // Curried Cartesian→fractional converter (caches inverse transpose)
 export const create_cart_to_frac = (lattice: Matrix3x3) => {
-  const inv_transposed = matrix_inverse_3x3(transpose_3x3_matrix(lattice))
-  return (cart: Vec3) => mat3x3_vec3_multiply(inv_transposed, cart)
+  const cart_to_frac_mat = create_cart_to_frac_matrix(lattice)
+  return (cart: Vec3): Vec3 => mat3x3_vec3_multiply(cart_to_frac_mat, cart)
+}
+
+// Paired converters for a lattice — the safe way to do cart↔frac conversion.
+// Encapsulates the transpose convention so callers never touch raw matrices.
+export type LatticeConverters = {
+  cart_to_frac: (v: Vec3) => Vec3
+  frac_to_cart: (v: Vec3) => Vec3
+  reciprocal_axis_norms: Vec3
+}
+
+export const create_lattice_converters = (lattice: Matrix3x3): LatticeConverters => {
+  const cart_to_frac_mat = create_cart_to_frac_matrix(lattice)
+  return {
+    cart_to_frac: (cart: Vec3): Vec3 => mat3x3_vec3_multiply(cart_to_frac_mat, cart),
+    frac_to_cart: create_frac_to_cart(lattice),
+    reciprocal_axis_norms: cart_to_frac_mat.map((row) => Math.hypot(...row)) as Vec3,
+  }
 }
 
 // Convert unit cell parameters to lattice matrix (crystallographic convention)

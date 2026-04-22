@@ -202,12 +202,12 @@ describe(`load_from_url`, () => {
   })
 
   test.each([
-    [`GZIP magic bytes`, [0x1f, 0x8b], `ArrayBuffer`],
-    [`HDF5 magic bytes`, [0x89, 0x48, 0x44, 0x46], `ArrayBuffer`],
+    [`GZIP magic bytes`, [0x1f, 0x8b], `ArrayBuffer`, undefined],
+    [`HDF5 magic bytes`, [0x89, 0x48, 0x44, 0x46], `ArrayBuffer`, undefined],
     [`unknown format`, [0x12, 0x34, 0x56, 0x78], `string`, `unknown format content`],
-  ])(
+  ] as const)(
     `magic bytes detection: %s`,
-    async (_, magic_bytes, expected_type, expected_content = undefined) => {
+    async (_, magic_bytes, expected_type, expected_content) => {
       const header = new Uint8Array([
         ...magic_bytes,
         ...new Array(16 - magic_bytes.length).fill(0),
