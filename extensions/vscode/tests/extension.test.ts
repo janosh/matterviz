@@ -114,6 +114,18 @@ describe(`MatterViz Extension`, () => {
     onDidDelete: ReturnType<typeof vi.fn>
     dispose: ReturnType<typeof vi.fn>
   }
+  const supported_volumetric_filenames: [string, string][] = [
+    [`CHGCAR`, `VASP volumetric`],
+    [`AECCAR0`, `VASP volumetric`],
+    [`ELFCAR`, `VASP volumetric`],
+    [`LOCPOT`, `VASP volumetric`],
+    [`PARCHG`, `VASP volumetric`],
+    [`PARCHG.gz`, `VASP volumetric`],
+    [`density.cube`, `Gaussian cube`],
+    [`density.cube.gz`, `Gaussian cube`],
+  ]
+  const volumetric_auto_render_filenames: [string, boolean][] =
+    supported_volumetric_filenames.map(([filename]) => [filename, true] as [string, boolean])
 
   test(`extensionKind should be configured as ["workspace"] to work locally and in remote SSH sessions`, () => {
     // https://github.com/janosh/matterviz/issues/129#issuecomment-3193473225
@@ -176,15 +188,7 @@ describe(`MatterViz Extension`, () => {
       [`run.trr`, `TRR`],
       [`molecule.xyz`, `XYZ`],
       [`atoms.extxyz`, `extXYZ`],
-      // Volumetric data files
-      [`CHGCAR`, `VASP volumetric`],
-      [`AECCAR0`, `VASP volumetric`],
-      [`ELFCAR`, `VASP volumetric`],
-      [`LOCPOT`, `VASP volumetric`],
-      [`PARCHG`, `VASP volumetric`],
-      [`PARCHG.gz`, `VASP volumetric`],
-      [`density.cube`, `Gaussian cube`],
-      [`density.cube.gz`, `Gaussian cube`],
+      ...supported_volumetric_filenames,
     ])(`pattern matches "%s" (%s)`, (filename) => {
       expect(matches_any_pattern(filename)).toBe(true)
     })
@@ -1485,19 +1489,12 @@ describe(`MatterViz Extension`, () => {
       [`band.bxsf.gz`, true],
       [`fermi.frmsf.gz`, true],
       // Volumetric data files
-      [`density.cube`, true],
+      ...volumetric_auto_render_filenames,
       [`DENSITY.CUBE`, true],
-      [`density.cube.gz`, true],
       [`density.cube.bz2`, true],
-      [`CHGCAR`, true],
       [`CHGCAR.lobster`, true],
-      [`ELFCAR`, true],
-      [`LOCPOT`, true],
-      [`AECCAR0`, true],
       [`AECCAR1`, true],
       [`AECCAR2`, true],
-      [`PARCHG`, true],
-      [`PARCHG.gz`, true],
       [`PARCHG.BAND_1`, true],
       [`run_PARCHG_001`, true],
       // Files that look like structure files but are supported

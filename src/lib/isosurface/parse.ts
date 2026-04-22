@@ -1,5 +1,5 @@
 // Parsers for volumetric data file formats (VASP CHGCAR, Gaussian .cube)
-import { VASP_VOLUMETRIC_REGEX } from '$lib/constants'
+import { COMPRESSION_EXTENSIONS_REGEX, VASP_VOLUMETRIC_REGEX } from '$lib/constants'
 import type { ElementSymbol } from '$lib/element'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Matrix3x3, Vec3 } from '$lib/math'
@@ -606,7 +606,7 @@ export function parse_volumetric_file(
   filename?: string,
 ): VolumetricFileData | null {
   // Strip compression suffixes so "CHGCAR.gz" and "molecule.cube.bz2" match correctly
-  const lower_name = (filename ?? ``).toLowerCase().replace(/\.(gz|bz2|xz|zst)$/, ``)
+  const lower_name = (filename ?? ``).toLowerCase().replace(COMPRESSION_EXTENSIONS_REGEX, ``)
 
   // Extension-based detection
   if (lower_name.endsWith(`.cube`)) return parse_cube(content)
