@@ -229,6 +229,7 @@ export default defineConfig({
     `**/*.xyz.gz`,
     `**/*.lammpstrj.gz`,
     `**/*CHGCAR*.gz`,
+    `**/*PARCHG*.gz`,
     `**/*LOCPOT*.gz`,
     `**/*ELFCAR*.gz`,
     `**/*.traj`,
