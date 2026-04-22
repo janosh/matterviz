@@ -71,7 +71,7 @@ export const create_structure = (
       `create_structure requires matching positions and elements lengths, got positions=${positions.length}, elements=${elements.length}`,
     )
   }
-  const inv_matrix = lattice_matrix ? get_inverse_matrix(lattice_matrix) : null
+  const cart_to_frac = lattice_matrix ? math.create_cart_to_frac(lattice_matrix) : null
 
   const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
     Array.isArray(coords) &&
@@ -84,7 +84,7 @@ export const create_structure = (
     }
 
     const xyz = pos
-    const abc = inv_matrix ? math.mat3x3_vec3_multiply(inv_matrix, xyz) : ([0, 0, 0] as Vec3)
+    const abc = cart_to_frac ? cart_to_frac(xyz as Vec3) : ([0, 0, 0] as Vec3)
 
     const force = force_data?.[idx]
     const properties = is_valid_vec3(force) ? { force } : {}

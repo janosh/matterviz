@@ -223,6 +223,24 @@ describe(`measure: angles`, () => {
     expect(distance_pbc([0, 0, 0], [0, 0, 5], cubic_lattice)).toBeCloseTo(0, 10)
   })
 
+  test(`PBC distance with non-orthogonal lattice: distance to equivalent site is zero`, () => {
+    // Lattice with off-diagonal element — transpose ≠ original, so this test
+    // fails with the old code (missing transpose) and passes with the fix.
+    const lattice: Matrix3x3 = [
+      [2, 1, 0],
+      [0, 2, 0],
+      [0, 0, 2],
+    ]
+    const origin: Vec3 = [0, 0, 0]
+    // [2, 1, 0] is exactly the first lattice vector → same site under PBC
+    const same_site: Vec3 = [2, 1, 0]
+
+    // Old code returns 1.0 (wrong); fixed code returns 0.0
+    expect(distance_pbc(origin, same_site, lattice)).toBeCloseTo(0, 10)
+    const disp = displacement_pbc(origin, same_site, lattice)
+    expect(Math.hypot(...disp)).toBeCloseTo(0, 10)
+  })
+
   test(`PBC distance invariant: PBC ≤ direct distance`, () => {
     // Test various lattice types to ensure PBC never violates minimum image
     const test_cases = [

@@ -1,7 +1,7 @@
 // functions for measuring distances and angles between structure sites
 
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import { mat3x3_vec3_multiply, matrix_inverse_3x3, subtract } from '$lib/math'
+import { mat3x3_vec3_multiply, matrix_inverse_3x3, subtract, transpose_3x3_matrix } from '$lib/math'
 
 export type AngleMode = `degrees` | `radians`
 
@@ -18,7 +18,8 @@ export function displacement_pbc(
   // For non-periodic structures, return direct displacement
   if (!lattice_matrix) return subtract(to, from)
 
-  const inv_mat = lattice_inv ?? matrix_inverse_3x3(lattice_matrix)
+  const lattice_T = transpose_3x3_matrix(lattice_matrix)
+  const inv_mat = lattice_inv ?? matrix_inverse_3x3(lattice_T)
   const frac_from = mat3x3_vec3_multiply(inv_mat, from)
   const frac_to = mat3x3_vec3_multiply(inv_mat, to)
 
@@ -50,7 +51,7 @@ export function displacement_pbc(
         ]
 
         // Convert to cartesian
-        const cart_diff = mat3x3_vec3_multiply(lattice_matrix, frac_diff)
+        const cart_diff = mat3x3_vec3_multiply(lattice_T, frac_diff)
         const dist_sq = cart_diff[0] ** 2 + cart_diff[1] ** 2 + cart_diff[2] ** 2
 
         // Keep the shortest displacement
@@ -66,7 +67,7 @@ export function displacement_pbc(
 }
 
 export function distance_pbc(a: Vec3, b: Vec3, lattice_matrix: Matrix3x3): number {
-  const inv_mat = matrix_inverse_3x3(lattice_matrix)
+  const inv_mat = matrix_inverse_3x3(transpose_3x3_matrix(lattice_matrix))
   const [dx, dy, dz] = displacement_pbc(a, b, lattice_matrix, inv_mat)
   return Math.hypot(dx, dy, dz)
 }
