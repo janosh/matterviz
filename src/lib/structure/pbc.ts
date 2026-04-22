@@ -5,12 +5,20 @@ import type { ParsedStructure } from './parse'
 
 export type Pbc = readonly [boolean, boolean, boolean]
 
+// Wrap a single fractional coordinate to [0, 1), clamping near-1 values to 0
+// and rounding to 15 digits to suppress floating-point noise.
+export const wrap_frac_coord = (coord: number): number => {
+  const wrapped = coord - Math.floor(coord)
+  if (wrapped >= 1 - 1e-10) return 0
+  return Number(wrapped.toFixed(15))
+}
+
 // Wrap fractional coordinates to [0, 1) range for periodicity.
-export const wrap_to_unit_cell = (frac: Vec3): Vec3 =>
-  frac.map((coord) => {
-    const wrapped = ((coord % 1) + 1) % 1
-    return wrapped >= 1 - 1e-10 ? 0 : wrapped // clamp near-1 to 0 for float precision
-  }) as Vec3
+export const wrap_to_unit_cell = (frac: Vec3): Vec3 => [
+  wrap_frac_coord(frac[0]),
+  wrap_frac_coord(frac[1]),
+  wrap_frac_coord(frac[2]),
+]
 
 export function find_image_atoms(
   structure: ParsedStructure,

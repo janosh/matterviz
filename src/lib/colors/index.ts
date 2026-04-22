@@ -84,7 +84,7 @@ export const is_color = (val: unknown): val is string => {
   // Check for hex colors, rgb/rgba, hsl/hsla, color(), var(), and named colors
   // Exclude incomplete function prefixes like 'rgb', 'hsl', 'var', 'color'
   return /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|color\([^)]+\)|var\([^)]+\)|(?!rgb$|hsl$|var$|color$)[a-z]+)$/i.test(
-    val.toString().trim(),
+    val.trim(),
   )
 }
 

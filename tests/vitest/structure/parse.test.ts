@@ -151,6 +151,23 @@ describe(`POSCAR Parser`, () => {
     }
   })
 
+  it(`keeps singular Cartesian POSCAR fractional coordinates finite`, () => {
+    const result = parse_poscar(
+      `Test
+1.0
+5.0 0.0 0.0
+0.0 0.0 0.0
+0.0 0.0 5.0
+H
+1
+Cartesian
+1.0 1.0 1.0`,
+    )
+    if (!result) throw `Failed to parse singular Cartesian POSCAR`
+    expect_abc_in_unit_cell(result.sites[0])
+    expect(result.sites[0].abc.every(Number.isFinite)).toBe(true)
+  })
+
   it(`should keep all fractional coordinates within unit cell for aviary-CuF3K-triolith.poscar`, () => {
     const result = parse_poscar(aviary_CuF3K_triolith)
     if (!result) throw `Failed to parse aviary-CuF3K-triolith.poscar`
@@ -425,6 +442,15 @@ describe(`XYZ Parser`, () => {
     expect(Number.isFinite(result.sites[0].abc[0])).toBe(true)
     expect(Number.isFinite(result.sites[0].abc[1])).toBe(true)
     expect(Number.isFinite(result.sites[0].abc[2])).toBe(true)
+  })
+
+  it(`keeps singular Cartesian XYZ fractional coordinates finite`, () => {
+    const result = parse_xyz(`1
+Lattice="5 0 0 0 0 0 0 0 5"
+H 1 1 1`)
+    if (!result) throw `Failed to parse singular Cartesian XYZ`
+    expect_abc_in_unit_cell(result.sites[0])
+    expect(result.sites[0].abc.every(Number.isFinite)).toBe(true)
   })
 
   it(`parses quickly for small XYZ`, () => {
@@ -2332,6 +2358,16 @@ describe(`OPTIMADE JSON parser`, () => {
       expected_abc: [[0.0, 0.0, 0.0]],
     },
     {
+      name: `dependent lattice vectors fall back to axis lengths`,
+      lattice_vectors: [
+        [5.0, 0.0, 0.0],
+        [5.0, 0.0, 0.0],
+        [0.0, 0.0, 7.0],
+      ],
+      positions: [[2.5, 0.0, 3.5]],
+      expected_abc: [[0.5, 0.0, 0.5]],
+    },
+    {
       name: `non-orthogonal lattice matrix`,
       lattice_vectors: [
         [5.0, 0.0, 0.0],
@@ -2713,6 +2749,23 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         },
       },
       expected_abc: [[0.0, 0.0, 0.0]],
+    },
+    {
+      name: `dependent lattice vectors fall back to axis lengths`,
+      optimade_structure: {
+        id: `test`,
+        type: `structures` as const,
+        attributes: {
+          lattice_vectors: [
+            [5.0, 0.0, 0.0],
+            [5.0, 0.0, 0.0],
+            [0.0, 0.0, 7.0],
+          ],
+          cartesian_site_positions: [[2.5, 0.0, 3.5]],
+          species_at_sites: [`Fe`],
+        },
+      },
+      expected_abc: [[0.5, 0.0, 0.5]],
     },
     {
       name: `non-orthogonal lattice matrix`,

@@ -1,5 +1,10 @@
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import { calc_lattice_params, euclidean_dist, matrix_inverse_3x3, pbc_dist } from '$lib/math'
+import {
+  calc_lattice_params,
+  create_lattice_converters,
+  euclidean_dist,
+  pbc_dist,
+} from '$lib/math'
 import type { Crystal, Pbc } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
 import type { RdfOptions, RdfPattern } from './index'
@@ -71,14 +76,14 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
 
   // Calculate distances and bin them with occupancy weighting
   const use_pbc = pbc.some((flag) => flag)
-  const lattice_inv = use_pbc ? matrix_inverse_3x3(lattice) : undefined
+  const converters = use_pbc ? create_lattice_converters(lattice) : undefined
 
   for (const center of centers) {
     for (const neighbor of neighbors) {
       if (center === neighbor) continue
 
       const dist = use_pbc
-        ? pbc_dist(center.xyz as Vec3, neighbor.xyz as Vec3, lattice, lattice_inv, pbc)
+        ? pbc_dist(center.xyz as Vec3, neighbor.xyz as Vec3, lattice, converters, pbc)
         : euclidean_dist(center.xyz, neighbor.xyz)
 
       if (dist > 0 && dist < cutoff) {
