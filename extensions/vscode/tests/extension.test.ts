@@ -1,4 +1,9 @@
-import { STRUCTURE_EXTENSIONS, TRAJ_EXTENSIONS, TRAJ_KEYWORDS } from '$lib/constants'
+import {
+  STRUCTURE_EXTENSIONS,
+  TRAJ_EXTENSIONS,
+  TRAJ_KEYWORDS,
+  VASP_VOLUMETRIC_REGEX,
+} from '$lib/constants'
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
@@ -17,6 +22,7 @@ import {
   render,
   should_auto_render,
 } from '../src/extension'
+import { VOLUMETRIC_VASP_RE } from '../src/types'
 import type { FileData } from '../src/webview/main'
 
 // Mock modules
@@ -117,10 +123,14 @@ describe(`MatterViz Extension`, () => {
   const supported_volumetric_filenames: [string, string][] = [
     [`CHGCAR`, `VASP volumetric`],
     [`AECCAR0`, `VASP volumetric`],
+    [`AECCAR1`, `VASP volumetric`],
+    [`AECCAR2`, `VASP volumetric`],
     [`ELFCAR`, `VASP volumetric`],
     [`LOCPOT`, `VASP volumetric`],
     [`PARCHG`, `VASP volumetric`],
     [`PARCHG.gz`, `VASP volumetric`],
+    [`PARCHG.BAND_1`, `VASP volumetric`],
+    [`run_PARCHG_001`, `VASP volumetric`],
     [`density.cube`, `Gaussian cube`],
     [`density.cube.gz`, `Gaussian cube`],
   ]
@@ -130,6 +140,11 @@ describe(`MatterViz Extension`, () => {
   test(`extensionKind should be configured as ["workspace"] to work locally and in remote SSH sessions`, () => {
     // https://github.com/janosh/matterviz/issues/129#issuecomment-3193473225
     expect(pkg_json.extensionKind).toEqual([`workspace`])
+  })
+
+  test(`extension volumetric regex stays in sync with app detection`, () => {
+    expect(VOLUMETRIC_VASP_RE.source).toBe(VASP_VOLUMETRIC_REGEX.source)
+    expect(VOLUMETRIC_VASP_RE.flags).toBe(VASP_VOLUMETRIC_REGEX.flags)
   })
 
   describe(`Custom Editor File Patterns`, () => {
@@ -170,7 +185,6 @@ describe(`MatterViz Extension`, () => {
           [
             [`test${ext}`, `STRUCT_EXT ${ext}`],
             [`test${ext}.gz`, `${ext}.gz`],
-            [`test${ext}.bz2`, `${ext}.bz2`],
           ] as [string, string][],
       ),
       // All trajectory keywords in filenames
@@ -191,6 +205,17 @@ describe(`MatterViz Extension`, () => {
       ...supported_volumetric_filenames,
     ])(`pattern matches "%s" (%s)`, (filename) => {
       expect(matches_any_pattern(filename)).toBe(true)
+    })
+
+    test.each([
+      [`myCHGCARfile`],
+      [`prefixPARCHGsuffix`],
+      [`notes_ELFCARbackup`],
+      [`report-AECCARnotes`],
+      [`density.cube.bz2`],
+      [`structure.cif.bz2`],
+    ])(`pattern does not match unsupported near miss "%s"`, (filename) => {
+      expect(matches_any_pattern(filename)).toBe(false)
     })
   })
 
@@ -1491,12 +1516,7 @@ describe(`MatterViz Extension`, () => {
       // Volumetric data files
       ...volumetric_auto_render_filenames,
       [`DENSITY.CUBE`, true],
-      [`density.cube.bz2`, true],
       [`CHGCAR.lobster`, true],
-      [`AECCAR1`, true],
-      [`AECCAR2`, true],
-      [`PARCHG.BAND_1`, true],
-      [`run_PARCHG_001`, true],
       // Files that look like structure files but are supported
       [`structure_copy.cif`, true],
       [`trajectory_backup.xyz`, true],
@@ -1557,6 +1577,11 @@ describe(`MatterViz Extension`, () => {
       [`data.csv.gz`, false],
       [`image.png.gz`, false],
       [`archive.zip.gz`, false],
+      [`structure.cif.bz2`, false],
+      [`density.cube.bz2`, false],
+      [`PARCHG.bz2`, false],
+      [`myCHGCARfile`, false],
+      [`prefixPARCHGsuffix`, false],
       [`structure.cif.bak`, false],
       [`crystal.poscar.old`, true],
       [`molecule.xyz~`, false],

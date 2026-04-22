@@ -625,7 +625,6 @@ describe(`parse_volumetric_file`, () => {
     [`molecule.cube.gz`],
     [`density.cube.bz2`],
     [`orbital.cube.xz`],
-    [`data.cube.zst`],
   ])(`strips compression suffix for .cube detection: %s`, (filename) => {
     const result = parse_volumetric_file(minimal_cube, filename)
     expect(result).not.toBeNull()

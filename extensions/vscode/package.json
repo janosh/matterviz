@@ -71,7 +71,7 @@
             "filenamePattern": "*.{cif,mcif,mmcif,xyz,extxyz,poscar,vasp,cube,pdb,mol,mol2,sdf,lmp,data,dump}"
           },
           {
-            "filenamePattern": "*.{cif,mcif,mmcif,xyz,extxyz,poscar,vasp,cube,pdb,mol,mol2,sdf,lmp,data,dump}.{gz,bz2}"
+            "filenamePattern": "*.{cif,mcif,mmcif,xyz,extxyz,poscar,vasp,cube,pdb,mol,mol2,sdf,lmp,data,dump}.gz"
           },
           {
             "filenamePattern": "*{structure,material,crystal,lattice,geometry}.{json,yaml,yml}.gz"
@@ -89,10 +89,31 @@
             "filenamePattern": "*.{bxsf,frmsf}.gz"
           },
           {
-            "filenamePattern": "*.cube.{gz,bz2}"
+            "filenamePattern": "*.cube.gz"
           },
           {
-            "filenamePattern": "*{AECCAR,CHGCAR,ELFCAR,LOCPOT,PARCHG}*"
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}"
+          },
+          {
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}.gz"
+          },
+          {
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
+          },
+          {
+            "filenamePattern": "{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*.gz"
+          },
+          {
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}"
+          },
+          {
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}.gz"
+          },
+          {
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*"
+          },
+          {
+            "filenamePattern": "*[._-]{AECCAR,AECCAR0,AECCAR1,AECCAR2,CHGCAR,ELFCAR,LOCPOT,PARCHG}[._-]*.gz"
           }
         ],
         "priority": "option"

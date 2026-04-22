@@ -68,7 +68,7 @@ Search for "MatterViz" in the VS Code Extensions marketplace.
 
 #### Compressed Files
 
-All formats above are also supported with `.gz` or `.bz2` compression.
+All formats above are also supported with `.gz` compression.
 
 #### JSON Files with Multiple Data Types
 
