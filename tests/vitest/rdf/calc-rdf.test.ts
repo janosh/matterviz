@@ -1,3 +1,4 @@
+import * as math from '$lib/math'
 import type { Matrix3x3 } from '$lib/math'
 import { calculate_all_pair_rdfs, calculate_rdf } from '$lib/rdf'
 import type { Pbc } from '$lib/structure'
@@ -253,12 +254,19 @@ describe(`calculate_rdf`, () => {
     const cutoff = 2
     const n_bins = 20
     const result = calculate_rdf(structure, { cutoff, n_bins, auto_expand: false })
+    const expected_dist = math.pbc_dist(
+      structure.sites[0].xyz as math.Vec3,
+      structure.sites[1].xyz as math.Vec3,
+      lattice,
+    )
+    const bin_width = cutoff / n_bins
+    const expected_bin = Math.floor(expected_dist / bin_width)
     const nonzero_bins = result.g_r
       .map((value, idx) => ({ value, idx }))
       .filter(({ value }) => value > 0)
 
     expect(nonzero_bins).toHaveLength(1)
-    expect(nonzero_bins[0]?.idx).toBe(10)
+    expect(nonzero_bins[0]?.idx).toBe(expected_bin)
   })
 
   test.each([

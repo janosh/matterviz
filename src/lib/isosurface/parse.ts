@@ -502,7 +502,7 @@ export function parse_cube(
     cube_cart_to_frac = math.create_cart_to_frac(lattice)
   } catch {
     // Non-periodic system (molecule), use identity
-    cube_cart_to_frac = (v: Vec3): Vec3 => [...v]
+    cube_cart_to_frac = (v: Vec3): Vec3 => [v[0], v[1], v[2]]
   }
 
   for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {

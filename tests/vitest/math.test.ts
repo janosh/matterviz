@@ -712,6 +712,7 @@ describe(`pbc_dist`, () => {
 
   // Math.round wrapping at 0.5 fractional boundary — unit lattice
   test.each([
+    // sqrt(0.75) is the same for the +0.5 and -0.5 tie-break because the cubic norm is symmetric.
     { pos2: [0.5, 0.5, 0.5], expected: Math.sqrt(0.75), desc: `exactly 0.5` },
     {
       pos2: [0.499999, 0.499999, 0.499999],
@@ -732,6 +733,18 @@ describe(`pbc_dist`, () => {
       [0, 0, 1],
     ]
     expect(math.pbc_dist([0, 0, 0] as Vec3, pos2 as Vec3, unit)).toBeCloseTo(expected, 4)
+  })
+
+  test(`guards against explosive minimum-image enumeration for ill-conditioned lattices`, () => {
+    const ill_conditioned_lattice: math.Matrix3x3 = [
+      [1, 0, 0],
+      [0.999999, 0.000001, 0],
+      [0, 0, 1],
+    ]
+
+    expect(() =>
+      math.pbc_dist([0, 0, 0] as Vec3, [0.49, 0.49, 0.49] as Vec3, ill_conditioned_lattice),
+    ).toThrow(/Minimum-image search would test/)
   })
 
   test(`axis-specific PBC flags (mixed boundary conditions)`, () => {

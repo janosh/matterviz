@@ -32,6 +32,7 @@ export const LOG_EPS = 1e-9
 export const EPS = 1e-10
 export const RAD_TO_DEG = 180 / Math.PI
 export const DEG_TO_RAD = Math.PI / 180
+const MAX_MIN_IMAGE_CANDIDATES = 100_000
 
 export const to_degrees = (radians: number): number => radians * RAD_TO_DEG
 export const to_radians = (degrees: number): number => degrees * DEG_TO_RAD
@@ -114,6 +115,17 @@ export function min_image_displacement(
       Math.floor(-frac_diff[axis_idx] + axis_bound),
     ] as const
   })
+  let candidate_count = 1
+  for (const [shift_min, shift_max] of candidate_shift_ranges) {
+    candidate_count *= shift_max - shift_min + 1
+    if (candidate_count > MAX_MIN_IMAGE_CANDIDATES) {
+      throw new Error(
+        `Minimum-image search would test >${MAX_MIN_IMAGE_CANDIDATES} candidates ` +
+          `for lattice ${JSON.stringify(lattice_matrix)}; reciprocal norms=` +
+          `${JSON.stringify(reciprocal_axis_norms)} ranges=${JSON.stringify(candidate_shift_ranges)}`,
+      )
+    }
+  }
   const [[i_min, i_max], [j_min, j_max], [k_min, k_max]] = candidate_shift_ranges
 
   // Only test integer shifts that reciprocal-space bounds say could still win.

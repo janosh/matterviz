@@ -2358,6 +2358,16 @@ describe(`OPTIMADE JSON parser`, () => {
       expected_abc: [[0.0, 0.0, 0.0]],
     },
     {
+      name: `dependent lattice vectors fall back to axis lengths`,
+      lattice_vectors: [
+        [5.0, 0.0, 0.0],
+        [5.0, 0.0, 0.0],
+        [0.0, 0.0, 7.0],
+      ],
+      positions: [[2.5, 0.0, 3.5]],
+      expected_abc: [[0.5, 0.0, 0.5]],
+    },
+    {
       name: `non-orthogonal lattice matrix`,
       lattice_vectors: [
         [5.0, 0.0, 0.0],
@@ -2739,6 +2749,23 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         },
       },
       expected_abc: [[0.0, 0.0, 0.0]],
+    },
+    {
+      name: `dependent lattice vectors fall back to axis lengths`,
+      optimade_structure: {
+        id: `test`,
+        type: `structures` as const,
+        attributes: {
+          lattice_vectors: [
+            [5.0, 0.0, 0.0],
+            [5.0, 0.0, 0.0],
+            [0.0, 0.0, 7.0],
+          ],
+          cartesian_site_positions: [[2.5, 0.0, 3.5]],
+          species_at_sites: [`Fe`],
+        },
+      },
+      expected_abc: [[0.5, 0.0, 0.5]],
     },
     {
       name: `non-orthogonal lattice matrix`,

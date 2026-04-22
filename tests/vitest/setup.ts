@@ -58,15 +58,29 @@ beforeEach(() => {
   })
 })
 
-export function doc_query<T extends HTMLElement>(selector: string): T {
-  const node = document.querySelector(selector) satisfies T | null
+type Element_ctor<T extends Element> = abstract new (...args: never[]) => T
+
+function query_required<T extends Element>(
+  selector: string,
+  element_ctor?: Element_ctor<T>,
+): T {
+  const node = document.querySelector(selector)
   if (!node) throw new Error(`No element found for selector: ${selector}`)
-  return node
+  if (element_ctor && !(node instanceof element_ctor)) {
+    throw new Error(`Element found for selector ${selector} has the wrong type`)
+  }
+  return node as T
 }
-export function svg_query<T extends SVGElement>(selector: string): T {
-  const node = document.querySelector(selector) satisfies T | null
-  if (!node) throw new Error(`No element found for selector: ${selector}`)
-  return node
+
+export function doc_query<T extends HTMLElement>(
+  selector: string,
+  element_ctor?: Element_ctor<T>,
+): T {
+  return query_required(selector, element_ctor)
+}
+
+export function svg_query(selector: string): SVGElement {
+  return query_required(selector)
 }
 
 // Test data factory for creating mock structures

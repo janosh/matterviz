@@ -1403,13 +1403,26 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
 
     // Optimade stores lattice vectors as rows, so use as is
     const lattice_matrix = attrs.lattice_vectors as math.Matrix3x3 | undefined
+    const optimade_lattice_params = lattice_matrix
+      ? math.calc_lattice_params(lattice_matrix)
+      : null
 
     // Parse atomic sites
-    const optimade_cart_to_frac = lattice_matrix
+    const optimade_exact_cart_to_frac = lattice_matrix
       ? try_create_cart_to_frac(lattice_matrix)
       : null
-    if (lattice_matrix && !optimade_cart_to_frac) {
-      console.warn(`Failed to create coordinate converter for OPTIMADE structure`)
+    const optimade_cart_to_frac =
+      lattice_matrix && optimade_lattice_params
+        ? (optimade_exact_cart_to_frac ??
+          ((xyz: Vec3): Vec3 =>
+            approximate_cart_to_frac(xyz, [
+              optimade_lattice_params.a,
+              optimade_lattice_params.b,
+              optimade_lattice_params.c,
+            ])))
+        : null
+    if (lattice_matrix && !optimade_exact_cart_to_frac) {
+      console.warn(`Failed to create exact coordinate converter for OPTIMADE structure`)
     }
     const sites: Site[] = []
     for (let idx = 0; idx < positions.length; idx++) {
@@ -1445,9 +1458,8 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
 
     // Create structure object
     let lattice: ParsedStructure[`lattice`] | undefined
-    if (lattice_matrix) {
-      const lattice_params = math.calc_lattice_params(lattice_matrix)
-      lattice = { matrix: lattice_matrix, ...lattice_params }
+    if (lattice_matrix && optimade_lattice_params) {
+      lattice = { matrix: lattice_matrix, ...optimade_lattice_params }
     }
 
     const structure_result: ParsedStructure = {
@@ -1528,7 +1540,10 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
 
     // Build species lookup for site properties (mass, concentration, etc.)
     const species_map = new Map(species?.map((spec) => [spec.name, spec]))
-    const crystal_cart_to_frac = try_create_cart_to_frac(lattice_matrix)
+    const crystal_cart_to_frac =
+      try_create_cart_to_frac(lattice_matrix) ??
+      ((xyz: Vec3): Vec3 =>
+        approximate_cart_to_frac(xyz, [lattice_params.a, lattice_params.b, lattice_params.c]))
 
     const sites = cartesian_site_positions.map((pos, idx) => {
       const element_symbol = species_at_sites[idx]

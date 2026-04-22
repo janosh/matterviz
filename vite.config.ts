@@ -145,7 +145,7 @@ export default defineConfig({
           if (is_build) return { code: json_str, moduleType: `json` }
           return `export default ${json_str}`
         } catch (error) {
-          this.error(`Failed to decompress ${id}: ${error}`)
+          return this.error(`Failed to decompress ${id}: ${error}`)
         }
       },
     },

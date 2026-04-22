@@ -7,8 +7,8 @@ export const LABEL_GAP_DEFAULT = 30
 
 // Filter undefined values from padding to prevent overriding defaults when spreading
 // Guards against undefined/null padding inputs (common for optional props)
-export const filter_padding = <T extends Partial<Sides>>(
-  padding: T | undefined | null,
+export const filter_padding = (
+  padding: Partial<Sides> | undefined | null,
   defaults: Required<Sides>,
 ): Required<Sides> =>
   ({
