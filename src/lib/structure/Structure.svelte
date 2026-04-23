@@ -579,10 +579,12 @@
     !!supercell_scaling && ![``, `1x1x1`, `1`].includes(supercell_scaling),
   )
 
-  // Tile volumetric data to match supercell when active
+  // Tile volumetric data to match supercell when active.
+  // Gate on !supercell_loading so the tiled volume and supercell structure update
+  // in the same frame (large supercells defer structure via setTimeout).
   let supercell_volume = $derived.by(() => {
     const vol = volumetric_data?.[active_volume_idx]
-    if (!vol || !has_supercell) return vol
+    if (!vol || !has_supercell || supercell_loading) return vol
     try {
       return tile_volumetric_data(vol, parse_supercell_scaling(supercell_scaling))
     } catch {

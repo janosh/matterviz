@@ -1,6 +1,7 @@
 // Supercell generation utilities for Crystal
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
+import { scale_lattice_matrix } from '$lib/math'
 import type { Crystal, Site } from './index'
 import { wrap_frac_coord } from './pbc'
 
@@ -64,22 +65,8 @@ export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   return points
 }
 
-// Scale a lattice matrix by supercell factors
-// Takes original 3x3 lattice matrix and [scale_x, scale_y, scale_z] scaling factors
-// Returns new scaled lattice matrix
-export function scale_lattice_matrix(
-  orig_matrix: math.Matrix3x3,
-  scaling_factors: Vec3,
-): math.Matrix3x3 {
-  const [nx, ny, nz] = scaling_factors
-  const [a, b, c] = orig_matrix
-  // Scale each lattice vector by its corresponding factor
-  return [
-    [a[0] * nx, a[1] * nx, a[2] * nx],
-    [b[0] * ny, b[1] * ny, b[2] * ny],
-    [c[0] * nz, c[1] * nz, c[2] * nz],
-  ]
-}
+// Re-export from $lib/math for backward compatibility
+export { scale_lattice_matrix }
 
 // Create a supercell from a Crystal
 // Takes original structure, scaling factors, and whether to fold coordinates back to unit cell (default: true)

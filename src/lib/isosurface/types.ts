@@ -1,6 +1,6 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
 import type { Matrix3x3, Vec3 } from '$lib/math'
-import { scale_lattice_matrix } from '$lib/structure/supercell'
+import { scale_lattice_matrix } from '$lib/math'
 import type { ParsedStructure } from '$lib/structure/parse'
 
 // Precomputed statistics for a volumetric grid (min, max, abs_max, mean)
