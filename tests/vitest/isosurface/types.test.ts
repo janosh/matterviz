@@ -224,6 +224,13 @@ function make_grid(
   )
 }
 
+// Assert a 3D grid's shape matches the given dims
+function assert_grid_shape(grid: number[][][], dims: Vec3) {
+  expect(grid.length).toBe(dims[0])
+  expect(grid[0].length).toBe(dims[1])
+  expect(grid[0][0].length).toBe(dims[2])
+}
+
 // Assert every cell in a 3D grid satisfies a predicate
 function assert_all_cells(grid: number[][][], check: (val: number) => void) {
   for (const plane of grid) {
@@ -307,11 +314,8 @@ describe(`downsample_grid`, () => {
   ])(`$label: stays within budget with correct shape`, ({ dims }) => {
     const grid = make_grid(dims[0], dims[1], dims[2], 1)
     const result = downsample_grid(grid, dims)
-    const [rnx, rny, rnz] = result.dims
-    expect(rnx * rny * rnz).toBeLessThanOrEqual(500_000)
-    expect(result.grid.length).toBe(rnx)
-    expect(result.grid[0].length).toBe(rny)
-    expect(result.grid[0][0].length).toBe(rnz)
+    expect(result.dims[0] * result.dims[1] * result.dims[2]).toBeLessThanOrEqual(500_000)
+    assert_grid_shape(result.grid, result.dims)
   })
 })
 
@@ -321,9 +325,7 @@ describe(`pad_periodic_grid`, () => {
     const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
     // pad = ceil(10 * 0.3) = 3 per axis → dims 10+6=16
     expect(result.dims).toEqual([16, 16, 16])
-    expect(result.grid.length).toBe(16)
-    expect(result.grid[0].length).toBe(16)
-    expect(result.grid[0][0].length).toBe(16)
+    assert_grid_shape(result.grid, result.dims)
     // offset = -3/10 = -0.3
     expect(result.offset[0]).toBeCloseTo(-0.3)
     expect(result.offset[1]).toBeCloseTo(-0.3)
