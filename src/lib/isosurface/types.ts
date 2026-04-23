@@ -1,5 +1,6 @@
-// Type definitions for isosurface visualization (charge density, molecular orbitals, etc.)
+// Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
 import type { Matrix3x3, Vec3 } from '$lib/math'
+import { scale_lattice_matrix } from '$lib/structure/supercell'
 import type { ParsedStructure } from '$lib/structure/parse'
 
 // Precomputed statistics for a volumetric grid (min, max, abs_max, mean)
@@ -136,16 +137,19 @@ export function pad_periodic_grid(
 // 500K balances visual quality with interactive performance (<200ms marching cubes).
 const MAX_GRID_POINTS = 500_000
 
-// Downsample a 3D volumetric grid to keep total point count under MAX_GRID_POINTS.
+// Downsample a 3D volumetric grid to keep total point count under a budget.
 // Uses block averaging to preserve data fidelity while reducing grid dimensions.
 // Returns original grid/dims if already within budget.
 export function downsample_grid(
   grid: number[][][],
   dims: Vec3,
+  max_points: number = MAX_GRID_POINTS,
 ): { grid: number[][][]; dims: Vec3; factor: number } {
   const [nx, ny, nz] = dims
   const total = nx * ny * nz
-  if (total <= MAX_GRID_POINTS) return { grid, dims, factor: 1 }
+  if (total <= max_points) return { grid, dims, factor: 1 }
+  // Floor at 1 to avoid Infinity in cbrt(total/0)
+  max_points = Math.max(1, max_points)
 
   // Increase factor until the clamped output fits within budget.
   // A single cbrt step can overshoot for anisotropic grids where max(2,...)
@@ -153,15 +157,18 @@ export function downsample_grid(
   // clamp_dim: returns 1 for single-cell axes, otherwise clamps to [2, src]
   const clamp_dim = (src: number, fac: number) =>
     Math.min(src, Math.max(2, Math.ceil(src / fac)))
-  let factor = Math.ceil(Math.cbrt(total / MAX_GRID_POINTS))
+  let factor = Math.ceil(Math.cbrt(total / max_points))
   let new_nx = clamp_dim(nx, factor)
   let new_ny = clamp_dim(ny, factor)
   let new_nz = clamp_dim(nz, factor)
-  while (new_nx * new_ny * new_nz > MAX_GRID_POINTS) {
+  while (new_nx * new_ny * new_nz > max_points) {
     factor++
+    const prev_total = new_nx * new_ny * new_nz
     new_nx = clamp_dim(nx, factor)
     new_ny = clamp_dim(ny, factor)
     new_nz = clamp_dim(nz, factor)
+    // dims hit their floor (2 per axis or 1 for single-cell) — stop to avoid infinite loop
+    if (new_nx * new_ny * new_nz === prev_total) break
   }
 
   // Proportional partitioning: evenly divides [0, n) into new_n non-empty blocks.
@@ -250,4 +257,53 @@ export function generate_layers(data_range: DataRange, n_layers: number): Isosur
       negative_color: LAYER_COLORS[(idx + 1) % LAYER_COLORS.length],
     }
   })
+}
+
+// Tile (repeat) volumetric data to fill a supercell.
+// Pre-downsamples the source grid when the tiled result would exceed MAX_GRID_POINTS
+// to avoid large temporary allocations. Returns the original volume unchanged for
+// [1,1,1] scaling.
+export function tile_volumetric_data(volume: VolumetricData, scaling: Vec3): VolumetricData {
+  const [sx, sy, sz] = scaling
+  if (sx === 1 && sy === 1 && sz === 1) return volume
+
+  const total_cells = sx * sy * sz
+  let src_grid = volume.grid
+  let [nx, ny, nz] = volume.grid_dims
+
+  // Pre-downsample source grid so the tiled result stays within budget.
+  // Clamp budget to 8 (minimum downsample output = 2^3) to prevent infinite
+  // loops in downsample_grid when total_cells is very large.
+  if (nx * ny * nz * total_cells > MAX_GRID_POINTS) {
+    const budget = Math.max(8, Math.floor(MAX_GRID_POINTS / total_cells))
+    const ds = downsample_grid(src_grid, [nx, ny, nz], budget)
+    src_grid = ds.grid
+    ;[nx, ny, nz] = ds.dims
+  }
+
+  const new_nx = nx * sx
+  const new_ny = ny * sy
+  const new_nz = nz * sz
+  const new_grid: number[][][] = new Array(new_nx)
+  for (let ix = 0; ix < new_nx; ix++) {
+    const plane: number[][] = new Array(new_ny)
+    const src_x = ix % nx
+    for (let iy = 0; iy < new_ny; iy++) {
+      const row = new Array<number>(new_nz)
+      const src_y = iy % ny
+      const src_row = src_grid[src_x][src_y]
+      for (let iz = 0; iz < new_nz; iz++) {
+        row[iz] = src_row[iz % nz]
+      }
+      plane[iy] = row
+    }
+    new_grid[ix] = plane
+  }
+
+  return {
+    ...volume,
+    grid: new_grid,
+    grid_dims: [new_nx, new_ny, new_nz],
+    lattice: scale_lattice_matrix(volume.lattice, scaling),
+  }
 }

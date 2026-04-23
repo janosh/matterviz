@@ -916,7 +916,5 @@ describe(`Rotation target computation`, () => {
   })
 })
 
-// Camera reset on structure reload is tested via Playwright E2E
-// (tests/playwright/structure/structure.test.ts → "rotation center resets to new
-// lattice center after file drop") because it requires WebGL + OrbitControls to
-// verify the actual orbit target.
+// Camera target reset on supercell change and structure reload requires WebGL +
+// OrbitControls — tested via Playwright E2E (tests/playwright/structure/).
