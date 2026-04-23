@@ -337,8 +337,7 @@ describe(`downsample_grid`, () => {
     (max_points) => {
       const grid = make_grid(4, 4, 4)
       const result = downsample_grid(grid, [4, 4, 4], max_points)
-      // Minimum output is 2x2x2 = 8 (clamp_dim floors at 2)
-      expect(result.dims.every((dim) => dim >= 1)).toBe(true)
+      expect(result.dims.every((dim) => dim >= 2)).toBe(true)
       expect(result.factor).toBeGreaterThan(1)
       expect(Number.isFinite(result.factor)).toBe(true)
     },
