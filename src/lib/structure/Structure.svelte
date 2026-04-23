@@ -592,8 +592,10 @@
     }
   })
 
+  let supercell_timeout: ReturnType<typeof setTimeout> | undefined
   $effect(() => {
     const base_structure = cell_transformed_structure
+    clearTimeout(supercell_timeout)
     if (!base_structure || !(`lattice` in base_structure) || !has_supercell) {
       supercell_structure = base_structure
       supercell_loading = false
@@ -614,7 +616,7 @@
       if (show_loading) {
         supercell_loading = true
         // Use setTimeout to allow UI to update before heavy computation
-        setTimeout(() => {
+        supercell_timeout = setTimeout(() => {
           try {
             if (base_structure && `lattice` in base_structure) {
               supercell_structure = make_supercell(
