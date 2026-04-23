@@ -362,6 +362,21 @@ export const transpose_3x3_matrix = (matrix: Matrix3x3): Matrix3x3 => [
   [matrix[0][2], matrix[1][2], matrix[2][2]],
 ]
 
+// Scale each row of a 3x3 matrix by the corresponding element of a Vec3.
+// Used to scale lattice vectors by supercell factors.
+export function scale_lattice_matrix(
+  orig_matrix: Matrix3x3,
+  scaling_factors: Vec3,
+): Matrix3x3 {
+  const [nx, ny, nz] = scaling_factors
+  const [a, b, c] = orig_matrix
+  return [
+    [a[0] * nx, a[1] * nx, a[2] * nx],
+    [b[0] * ny, b[1] * ny, b[2] * ny],
+    [c[0] * nz, c[1] * nz, c[2] * nz],
+  ]
+}
+
 const create_cart_to_frac_matrix = (lattice: Matrix3x3): Matrix3x3 =>
   matrix_inverse_3x3(transpose_3x3_matrix(lattice))
 

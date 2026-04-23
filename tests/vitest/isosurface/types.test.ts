@@ -7,6 +7,8 @@ import {
   grid_data_range,
   LAYER_COLORS,
   pad_periodic_grid,
+  tile_volumetric_data,
+  type VolumetricData,
 } from '$lib/isosurface/types'
 import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
@@ -313,6 +315,33 @@ describe(`downsample_grid`, () => {
     expect(result.grid[0].length).toBe(rny)
     expect(result.grid[0][0].length).toBe(rnz)
   })
+
+  test(`respects custom max_points budget`, () => {
+    const grid = make_grid(50, 50, 50)
+    const result = downsample_grid(grid, [50, 50, 50], 10_000)
+    const [rnx, rny, rnz] = result.dims
+    expect(rnx * rny * rnz).toBeLessThanOrEqual(10_000)
+    expect(result.factor).toBeGreaterThan(1)
+  })
+
+  test(`returns original when total is under custom budget`, () => {
+    const dims: Vec3 = [10, 10, 10]
+    const grid = make_grid(10, 10, 10)
+    const result = downsample_grid(grid, dims, 2000)
+    expect(result.grid).toBe(grid)
+    expect(result.factor).toBe(1)
+  })
+
+  test.each([0, 1, 7])(
+    `max_points=%d below minimum output terminates without hanging`,
+    (max_points) => {
+      const grid = make_grid(4, 4, 4)
+      const result = downsample_grid(grid, [4, 4, 4], max_points)
+      expect(result.dims.every((dim) => dim >= 2)).toBe(true)
+      expect(result.factor).toBeGreaterThan(1)
+      expect(Number.isFinite(result.factor)).toBe(true)
+    },
+  )
 })
 
 describe(`pad_periodic_grid`, () => {
@@ -390,5 +419,159 @@ describe(`pad_periodic_grid`, () => {
     expect(result.offset[1]).toBeCloseTo(-2 / 4)
     expect(result.offset[2]).toBeCloseTo(-3 / 10)
     assert_all_cells(result.grid, (val) => expect(val).toBe(2))
+  })
+})
+
+// Helper to build a minimal VolumetricData from a grid for tile tests
+function make_volume(
+  nx: number,
+  ny: number,
+  nz: number,
+  fill: number | ((ix: number, iy: number, iz: number) => number) = 1,
+  periodic: boolean = true,
+): VolumetricData {
+  const grid = make_grid(nx, ny, nz, fill)
+  return {
+    grid,
+    grid_dims: [nx, ny, nz],
+    lattice: [
+      [3, 0, 0],
+      [0, 4, 0],
+      [0, 0, 5],
+    ],
+    origin: [0, 0, 0],
+    data_range: { min: 0, max: 1, abs_max: 1, mean: 0.5 },
+    periodic,
+    label: `test`,
+  }
+}
+
+describe(`tile_volumetric_data`, () => {
+  test(`[1,1,1] returns the same object reference`, () => {
+    const vol = make_volume(4, 4, 4)
+    expect(tile_volumetric_data(vol, [1, 1, 1])).toBe(vol)
+  })
+
+  test(`non-periodic volume is tiled, not skipped`, () => {
+    const vol = make_volume(4, 4, 4, 1, false)
+    const tiled = tile_volumetric_data(vol, [2, 2, 2])
+    expect(tiled).not.toBe(vol)
+    expect(tiled.grid_dims).toEqual([8, 8, 8])
+  })
+
+  test.each([
+    { scaling: [2, 1, 1] as Vec3, label: `2x1x1` },
+    { scaling: [1, 3, 1] as Vec3, label: `1x3x1` },
+    { scaling: [1, 1, 4] as Vec3, label: `1x1x4` },
+    { scaling: [2, 2, 2] as Vec3, label: `2x2x2` },
+    { scaling: [3, 1, 2] as Vec3, label: `3x1x2` },
+  ])(`$label: produces correct dims`, ({ scaling }) => {
+    const vol = make_volume(4, 5, 6)
+    const tiled = tile_volumetric_data(vol, scaling)
+    expect(tiled.grid_dims).toEqual([4 * scaling[0], 5 * scaling[1], 6 * scaling[2]])
+    expect(tiled.grid.length).toBe(tiled.grid_dims[0])
+    expect(tiled.grid[0].length).toBe(tiled.grid_dims[1])
+    expect(tiled.grid[0][0].length).toBe(tiled.grid_dims[2])
+  })
+
+  test(`grid values repeat via modulo at boundary wrap points`, () => {
+    const vol = make_volume(3, 4, 5, (ix, iy, iz) => ix * 100 + iy * 10 + iz)
+    const tiled = tile_volumetric_data(vol, [2, 2, 2])
+    const [nx, ny, nz] = vol.grid_dims
+    for (let ix = 0; ix < tiled.grid_dims[0]; ix++) {
+      for (let iy = 0; iy < tiled.grid_dims[1]; iy++) {
+        for (let iz = 0; iz < tiled.grid_dims[2]; iz++) {
+          expect(tiled.grid[ix][iy][iz]).toBe(vol.grid[ix % nx][iy % ny][iz % nz])
+        }
+      }
+    }
+  })
+
+  test.each([
+    {
+      scaling: [2, 3, 4] as Vec3,
+      lattice: [
+        [3, 0, 0],
+        [0, 4, 0],
+        [0, 0, 5],
+      ] as VolumetricData[`lattice`],
+      expected: [
+        [6, 0, 0],
+        [0, 12, 0],
+        [0, 0, 20],
+      ],
+      label: `orthogonal`,
+    },
+    {
+      scaling: [2, 3, 1] as Vec3,
+      lattice: [
+        [3, 1, 0],
+        [0, 4, 2],
+        [1, 0, 5],
+      ] as VolumetricData[`lattice`],
+      expected: [
+        [6, 2, 0],
+        [0, 12, 6],
+        [1, 0, 5],
+      ],
+      label: `non-orthogonal`,
+    },
+  ])(
+    `$label: lattice vectors scaled by supercell factors`,
+    ({ scaling, lattice, expected }) => {
+      const vol = make_volume(4, 4, 4)
+      vol.lattice = lattice
+      const tiled = tile_volumetric_data(vol, scaling)
+      expect(tiled.lattice).toEqual(expected)
+    },
+  )
+
+  test(`data_range, origin, periodic, label, and data_order are preserved`, () => {
+    const vol = make_volume(4, 4, 4)
+    vol.data_order = `x_fastest`
+    const tiled = tile_volumetric_data(vol, [2, 2, 2])
+    expect(tiled.data_range).toBe(vol.data_range)
+    expect(tiled.origin).toBe(vol.origin)
+    expect(tiled.periodic).toBe(vol.periodic)
+    expect(tiled.label).toBe(vol.label)
+    expect(tiled.data_order).toBe(`x_fastest`)
+  })
+
+  test(`returns a new object that does not alias source arrays`, () => {
+    const vol = make_volume(3, 3, 3, 5)
+    const tiled = tile_volumetric_data(vol, [2, 2, 2])
+    expect(tiled).not.toBe(vol)
+    expect(tiled.grid).not.toBe(vol.grid)
+    expect(tiled.lattice).not.toBe(vol.lattice)
+    // Mutating tiled grid must not affect source
+    tiled.grid[0][0][0] = -999
+    expect(vol.grid[0][0][0]).toBe(5)
+  })
+
+  test.each([
+    {
+      dims: [100, 100, 100] as Vec3,
+      scaling: [2, 2, 2] as Vec3,
+      fill: 7,
+      label: `large grid`,
+    },
+    {
+      dims: [4, 4, 4] as Vec3,
+      scaling: [80, 80, 80] as Vec3,
+      fill: 3,
+      label: `extreme supercell (budget clamp)`,
+    },
+  ])(`$label: pre-downsamples and scales lattice correctly`, ({ dims, scaling, fill }) => {
+    const vol = make_volume(dims[0], dims[1], dims[2], fill)
+    const tiled = tile_volumetric_data(vol, scaling)
+    const [tnx, tny, tnz] = tiled.grid_dims
+    // Grid shape matches dims
+    expect(tiled.grid.length).toBe(tnx)
+    expect(tiled.grid[0].length).toBe(tny)
+    expect(tiled.grid[0][0].length).toBe(tnz)
+    // Lattice diagonal scaled by supercell factors
+    for (let idx = 0; idx < 3; idx++) {
+      expect(tiled.lattice[idx][idx]).toBe(vol.lattice[idx][idx] * scaling[idx])
+    }
   })
 })
