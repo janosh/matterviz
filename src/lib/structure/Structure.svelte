@@ -13,6 +13,7 @@
   import {
     auto_isosurface_settings,
     DEFAULT_ISOSURFACE_SETTINGS,
+    tile_volumetric_data,
   } from '$lib/isosurface/types'
   import { ELEM_SYMBOLS } from '$lib/labels'
   import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
@@ -29,7 +30,11 @@
     get_structure_vector_keys,
   } from '$lib/structure'
   import { wrap_to_unit_cell } from '$lib/structure/pbc'
-  import { is_valid_supercell_input, make_supercell } from '$lib/structure/supercell'
+  import {
+    is_valid_supercell_input,
+    make_supercell,
+    parse_supercell_scaling,
+  } from '$lib/structure/supercell'
   import type { CellType, SymmetrySettings } from '$lib/symmetry'
   import * as symmetry from '$lib/symmetry'
   import { transform_cell } from '$lib/symmetry'
@@ -574,8 +579,23 @@
     !!supercell_scaling && ![``, `1x1x1`, `1`].includes(supercell_scaling),
   )
 
+  // Tile volumetric data to match supercell when active.
+  // Gate on !supercell_loading so the tiled volume and supercell structure update
+  // in the same frame (large supercells defer structure via setTimeout).
+  let supercell_volume = $derived.by(() => {
+    const vol = volumetric_data?.[active_volume_idx]
+    if (!vol || !has_supercell || supercell_loading) return vol
+    try {
+      return tile_volumetric_data(vol, parse_supercell_scaling(supercell_scaling))
+    } catch {
+      return vol
+    }
+  })
+
+  let supercell_timeout: ReturnType<typeof setTimeout> | undefined
   $effect(() => {
     const base_structure = cell_transformed_structure
+    clearTimeout(supercell_timeout)
     if (!base_structure || !(`lattice` in base_structure) || !has_supercell) {
       supercell_structure = base_structure
       supercell_loading = false
@@ -596,7 +616,7 @@
       if (show_loading) {
         supercell_loading = true
         // Use setTimeout to allow UI to update before heavy computation
-        setTimeout(() => {
+        supercell_timeout = setTimeout(() => {
           try {
             if (base_structure && `lattice` in base_structure) {
               supercell_structure = make_supercell(
@@ -623,8 +643,8 @@
     }
   })
 
-  // Clear selections and site overrides when transformations change site indices
-  // (skip first run to preserve parent-provided selections)
+  // Clear selections, site overrides, and stale camera target when transformations
+  // change site indices (skip first run to preserve parent-provided selections)
   let first_run = true
   $effect(() => {
     void [supercell_scaling, show_image_atoms, structure, cell_type] // track reactively
@@ -639,6 +659,8 @@
       if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
       // Clear site radius overrides since site indices are no longer valid
       if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
+      // Clear stale camera target so orbit controls re-center on the new cell
+      scene_props.camera_target = undefined
     })
   })
 
@@ -1480,7 +1502,7 @@
             base_structure={cell_transformed_structure}
             {...scene_props}
             {lattice_props}
-            volumetric_data={volumetric_data?.[active_volume_idx]}
+            volumetric_data={supercell_volume}
             {isosurface_settings}
             bind:camera_is_moving
             bind:selected_sites

@@ -29,6 +29,7 @@ export {
   parse_cube,
   parse_volumetric_file,
   sample_hkl_slice,
+  tile_volumetric_data,
   trilinear_interpolate,
 } from './isosurface'
 export type {
