@@ -460,6 +460,20 @@ H 1 1 1`)
     if (!result) throw `Failed to parse cyclohexane`
     expect(duration).toBeLessThan(100)
   })
+
+  // Regression test for https://github.com/janosh/matterviz/discussions/332
+  // Structures with >1000 atoms of a single element must parse all atoms
+  it(`parses large structure with >1000 atoms of one element`, () => {
+    const n_atoms = 1300
+    const lines = [`${n_atoms}`, `large In cluster`]
+    for (let idx = 0; idx < n_atoms; idx++) {
+      lines.push(`In ${(idx % 10) * 0.5} ${(idx % 12) * 0.4} ${(idx % 8) * 0.6}`)
+    }
+    const result = parse_xyz(lines.join(`\n`))
+    if (!result) throw `Failed to parse large XYZ`
+    expect(result.sites).toHaveLength(n_atoms)
+    expect(result.sites.every((site) => site.species[0].element === `In`)).toBe(true)
+  })
 })
 
 describe(`Auto-detection & Error Handling`, () => {

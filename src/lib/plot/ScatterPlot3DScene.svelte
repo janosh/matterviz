@@ -793,7 +793,7 @@
 
 <!-- Instanced scatter points with per-instance colors and event handling -->
 {#each radius_groups as group (group.radius)}
-  <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
+  <extras.InstancedMesh limit={group.points.length} range={group.points.length} frustumCulled={false}>
     <T.SphereGeometry args={[1, sphere_segments, sphere_segments]} />
     <T.MeshStandardMaterial vertexColors={false} />
     {#each group.points as point, idx (`${point.series_idx}-${point.point_idx}`)}
@@ -815,7 +815,7 @@
 <!-- Plane Projections - render point shadows on enabled background planes -->
 {#each projection_configs as { key, get_pos } (key)}
   {#each radius_groups as group (group.radius)}
-    <extras.InstancedMesh range={group.points.length} frustumCulled={false}>
+    <extras.InstancedMesh limit={group.points.length} range={group.points.length} frustumCulled={false}>
       <T.SphereGeometry args={[1, 8, 8]} />
       <T.MeshBasicMaterial transparent opacity={proj_opacity} depthWrite={false} />
       {#each group.points as point, idx (`${key}-${point.series_idx}-${point.point_idx}`)}
