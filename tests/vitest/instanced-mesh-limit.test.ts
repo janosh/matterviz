@@ -8,6 +8,12 @@ function get_instanced_mesh_tags(file_path: string): string[] {
   return [...source.matchAll(instanced_mesh_tag_re)].map((match) => match[0])
 }
 
+function get_prop_expr(tag: string, prop: `limit` | `range`): string {
+  const match = new RegExp(`\\b${prop}=\\{([^}]+)\\}`).exec(tag)
+  if (!match) throw new Error(`InstancedMesh tag is missing ${prop}: ${tag}`)
+  return match[1].replace(/\s+/g, ``)
+}
+
 describe(`InstancedMesh limits`, () => {
   it.each([
     { file_path: `src/lib/structure/StructureScene.svelte`, expected_tags: 1 },
@@ -17,9 +23,7 @@ describe(`InstancedMesh limits`, () => {
     expect(tags).toHaveLength(expected_tags)
 
     for (const tag of tags) {
-      const range_match = /\brange=\{([^}]+)\}/.exec(tag)
-      if (!range_match) throw new Error(`InstancedMesh tag is missing range: ${tag}`)
-      expect(tag).toContain(`limit={${range_match[1]}}`)
+      expect(get_prop_expr(tag, `limit`)).toBe(get_prop_expr(tag, `range`))
     }
   })
 })
