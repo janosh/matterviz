@@ -33,9 +33,12 @@ function track_pending(
   request_key: string,
   promise: Promise<ChemPotDiagramData>,
 ): Promise<ChemPotDiagramData> {
-  const tracked = promise.finally(() => pending_by_key.delete(request_key))
-  pending_by_key.set(request_key, tracked)
-  return tracked
+  pending_by_key.set(request_key, promise)
+  promise.then(
+    () => pending_by_key.delete(request_key),
+    () => pending_by_key.delete(request_key),
+  )
+  return promise
 }
 
 function get_worker(): Worker | null {
