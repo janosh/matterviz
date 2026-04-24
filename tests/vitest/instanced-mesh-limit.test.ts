@@ -9,9 +9,9 @@ function get_instanced_mesh_tags(file_path: string): string[] {
 }
 
 function get_prop_expr(tag: string, prop: `limit` | `range`): string {
-  const match = new RegExp(`\\b${prop}=\\{([^}]+)\\}`).exec(tag)
+  const match = new RegExp(`\\b${prop}\\s*=\\s*\\{\\s*([^}]+?)\\s*\\}`).exec(tag)
   if (!match) throw new Error(`InstancedMesh tag is missing ${prop}: ${tag}`)
-  return match[1].replace(/\s+/g, ``)
+  return match[1].trim().replace(/\s+/g, ``)
 }
 
 describe(`InstancedMesh limits`, () => {
