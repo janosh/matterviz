@@ -1,6 +1,10 @@
 <script lang="ts">
   import { type D3InterpolateName } from '$lib/colors'
-  import { get_hill_formula } from '$lib/composition/format'
+  import {
+    get_electro_neg_formula,
+    get_formula_label_segments,
+    type FormulaLabelSegment,
+  } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
@@ -17,14 +21,17 @@
   } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
-  import { constrain_tooltip_position } from '$lib/plot/layout'
+  import {
+    constrain_tooltip_position,
+    pad_rect,
+    rects_overlap,
+  } from '$lib/plot/layout'
   import type {
     AxisConfig3D,
     CameraProjection3D,
     DataSeries3D,
     DisplayConfig3D,
   } from '$lib/plot/types'
-  import { sanitize_html } from '$lib/sanitize'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'
@@ -48,6 +55,7 @@
     get_energy_per_atom,
     get_min_entries_and_el_refs,
     get_ternary_combinations,
+    get_visible_domain_labels,
     pad_domain_points,
     scale_to_font_range,
   } from './compute'
@@ -144,6 +152,10 @@
       ? config.formula_colors
       : CHEMPOT_DEFAULTS.formula_colors,
   )
+
+  function formula_label_segments(formula: string): FormulaLabelSegment[] {
+    return get_formula_label_segments(get_electro_neg_formula(formula, true, ``, `.3~s`))
+  }
 
   function normalize_projection_triplet(
     maybe_triplet: string[] | undefined,
@@ -1042,6 +1054,34 @@
     return geom
   })
 
+  const visible_domain_labels = $derived.by(() => {
+    if (!hull_base_geometry || face_domain_map.length === 0) {
+      return render_domains.map((domain) => ({
+        formula: domain.formula,
+        position: swiz(domain.ann_loc[0], domain.ann_loc[1], domain.ann_loc[2]),
+        label_font_size: domain.label_font_size,
+      }))
+    }
+
+    const pos = hull_base_geometry.getAttribute(`position`)
+    const pinned_labels = render_domains
+      .filter((domain) => domain.is_draw_formula)
+      .map((domain) => ({
+        formula: domain.formula,
+        position: swiz(domain.ann_loc[0], domain.ann_loc[1], domain.ann_loc[2]),
+        label_font_size: domain.label_font_size,
+      }))
+    const font_size_by_formula = new SvelteMap(
+      render_domains.map((domain) => [domain.formula, domain.label_font_size]),
+    )
+    return get_visible_domain_labels(
+      pos.array,
+      face_domain_map,
+      font_size_by_formula,
+      pinned_labels,
+    )
+  })
+
   $effect(() => {
     const geom = hull_base_geometry
     return () => dispose_geometry(geom)
@@ -1562,18 +1602,62 @@
         }
       }
 
-      return {
-        axis,
-        color,
-        label,
-        line_geom,
-        tick_geoms,
-        grid_geoms,
-        tick_labels,
-        label_pos,
-      }
+      return { axis, color, label, line_geom, tick_geoms, grid_geoms, tick_labels, label_pos }
     })
   })
+
+  let label_occlusion_frame: number | null = null
+  let tick_labels_occluded = false
+  const has_occluding_domain_labels = $derived(
+    label_stable && visible_domain_labels.length > 0,
+  )
+  const can_update_label_occlusion = $derived(
+    mounted &&
+      display.show_axis_labels &&
+      grid_config.length > 0 &&
+      Number.isFinite(zoom_scale) &&
+      container_width > 0 &&
+      container_height > 0,
+  )
+
+  function update_label_occlusion(): void {
+    if (!wrapper) return
+    const tick_labels = Array.from(
+      wrapper.querySelectorAll<HTMLElement>(`.axis-tick-label`),
+    )
+    tick_labels_occluded = false
+    for (const tick_label of tick_labels) {
+      tick_label.style.visibility = ``
+    }
+    const domain_rects = Array.from(
+      wrapper.querySelectorAll<HTMLElement>(`.domain-label`),
+    )
+      .filter((domain_label) => {
+        const style = getComputedStyle(domain_label)
+        return style.display !== `none` && style.visibility !== `hidden`
+      })
+      .map((domain_label) => pad_rect(domain_label.getBoundingClientRect(), 1))
+    if (domain_rects.length === 0) return
+
+    for (const tick_label of tick_labels) {
+      const style = getComputedStyle(tick_label)
+      if (style.display === `none` || style.visibility === `hidden`) continue
+      const tick_rect = tick_label.getBoundingClientRect()
+      if (domain_rects.some((domain_rect) => rects_overlap(tick_rect, domain_rect))) {
+        tick_label.style.visibility = `hidden`
+        tick_labels_occluded = true
+      }
+    }
+  }
+
+  function schedule_label_occlusion_update(): void {
+    if (typeof requestAnimationFrame === `undefined`) return
+    if (label_occlusion_frame !== null) cancelAnimationFrame(label_occlusion_frame)
+    label_occlusion_frame = requestAnimationFrame(() => {
+      label_occlusion_frame = null
+      update_label_occlusion()
+    })
+  }
 
   // Update backside positions when camera crosses axis planes.
   // Only updates when sign changes to avoid triggering geometry recreation every frame.
@@ -1662,11 +1746,18 @@
     const on_controls_change = (): void => {
       update_backside()
       store_camera_view_state()
+      if (has_occluding_domain_labels) schedule_label_occlusion_update()
     }
     controls.addEventListener(`change`, on_controls_change)
     untrack(() => update_backside())
     controls.update()
     return () => controls.removeEventListener(`change`, on_controls_change)
+  })
+
+  $effect(() => {
+    if (!can_update_label_occlusion) return
+    if (!has_occluding_domain_labels && !tick_labels_occluded) return
+    schedule_label_occlusion_update()
   })
 
   $effect(() => {
@@ -2078,6 +2169,7 @@
 
   onDestroy(() => {
     if (copy_timeout_id !== null) clearTimeout(copy_timeout_id)
+    if (label_occlusion_frame !== null) cancelAnimationFrame(label_occlusion_frame)
   })
 
   let locked_hover_formula = $state<string | null>(null)
@@ -2285,7 +2377,7 @@
                   formula_colors.length
                 ]}
               ></span>
-              {get_hill_formula(formula, true, ``)}
+              {get_electro_neg_formula(formula, true, ``, `.3~s`)}
             </label>
           {/each}
         {/if}
@@ -2688,7 +2780,7 @@
                 portal={wrapper}
                 zIndexRange={[1, 0]}
               >
-                <span class="tick-label">{tick.text}</span>
+                <span class="tick-label axis-tick-label">{tick.text}</span>
               </extras.HTML>
             {/each}
             <!-- Axis label -->
@@ -2705,9 +2797,9 @@
 
         <!-- Domain labels -->
         {#if label_stable}
-          {#each render_domains as domain (domain.formula)}
+          {#each visible_domain_labels as domain (domain.formula)}
             <extras.HTML
-              position={swiz(domain.ann_loc[0], domain.ann_loc[1], domain.ann_loc[2])}
+              position={domain.position}
               center
               portal={wrapper}
               zIndexRange={[5, 5]}
@@ -2715,7 +2807,11 @@
               <span
                 class="domain-label"
                 style:font-size="{(domain.label_font_size * zoom_scale).toFixed(1)}px"
-              >{@html sanitize_html(get_hill_formula(domain.formula, false, ``))}</span>
+              >
+                {#each formula_label_segments(domain.formula) as segment}
+                  <span class:formula-subscript={segment.subscript}>{segment.text}</span>
+                {/each}
+              </span>
             </extras.HTML>
           {/each}
         {/if}
@@ -2756,7 +2852,11 @@
       style:left="{tooltip_pos.x}px"
       style:top="{tooltip_pos.y}px"
     >
-      <h4>{@html sanitize_html(get_hill_formula(hover_info.formula, false, ``))}</h4>
+      <h4>
+        {#each formula_label_segments(hover_info.formula) as segment}
+          <span class:formula-subscript={segment.subscript}>{segment.text}</span>
+        {/each}
+      </h4>
       {#if locked_hover_formula === hover_info.formula}
         <p>Pinned · Press Esc to unlock</p>
       {/if}
@@ -2800,6 +2900,7 @@
 <style>
   .chempot-diagram-3d {
     position: relative;
+    overflow: clip;
   }
   .canvas-clip {
     position: relative;
@@ -3032,6 +3133,10 @@
     white-space: nowrap;
     pointer-events: none;
   }
+  .formula-subscript {
+    font-size: calc(11em / 12);
+    vertical-align: -0.28em;
+  }
   .phase-tooltip {
     position: absolute;
     max-width: min(32rem, 92vw);
@@ -3043,14 +3148,14 @@
     border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
     border-radius: 6px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
-    padding: 8px 10px;
+    padding: 4px 6px;
     font-size: 12px;
-    line-height: 1.35;
+    line-height: 1.25;
     pointer-events: none;
     z-index: 100;
   }
   .phase-tooltip h4 {
-    margin: 0 0 4px;
+    margin: 0 0 2px;
     font-size: 13px;
   }
   .phase-tooltip p {
@@ -3060,7 +3165,7 @@
     text-overflow: ellipsis;
   }
   .phase-tooltip h5 {
-    margin-top: 6px;
+    margin-top: 4px;
     margin-bottom: 0;
     font-size: 12px;
     font-weight: 600;

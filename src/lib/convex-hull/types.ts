@@ -3,6 +3,7 @@ import type { ShowControlsProp } from '$lib/controls'
 import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import type { Sides } from '$lib/plot'
+import type { Rect } from '$lib/plot/layout'
 
 // Unified convex hull entry interface supporting both pymatgen and Materials Project formats
 export interface PhaseData {
@@ -135,6 +136,12 @@ export interface ConvexHullTriangle {
   vertices: [Point3D, Point3D, Point3D]
   normal: Point3D
   centroid: Point3D
+}
+
+export interface LabelPlacement {
+  x: number
+  y: number
+  rect: Rect
 }
 
 // Hover data for tooltips

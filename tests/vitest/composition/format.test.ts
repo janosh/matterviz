@@ -3,6 +3,7 @@ import {
   format_oxi_state,
   get_alphabetical_formula,
   get_electro_neg_formula,
+  get_formula_label_segments,
   get_hill_formula,
 } from '$lib/composition'
 import { describe, expect, test } from 'vitest'
@@ -61,6 +62,7 @@ describe(`get_electro_neg_formula`, () => {
   test.each([
     // Basic string inputs (default params: plain_text=false, delim=' ')
     [`Fe2O3`, undefined, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
+    [`O2Ti`, undefined, undefined, undefined, `Ti O<sub>2</sub>`],
     [`H2O`, undefined, undefined, undefined, `H<sub>2</sub> O`],
     [`NaCl`, undefined, undefined, undefined, `Na Cl`],
     // Composition objects (default params)
@@ -72,6 +74,7 @@ describe(`get_electro_neg_formula`, () => {
     [{ Fe: 2, O: 3 }, true, undefined, undefined, `Fe2 O3`],
     [`Fe2O3`, false, undefined, undefined, `Fe<sub>2</sub> O<sub>3</sub>`],
     [`Fe2O3`, true, undefined, undefined, `Fe2 O3`],
+    [`O2Ti`, true, ``, undefined, `TiO2`],
     [{ H: 1, O: 1 }, false, undefined, undefined, `H O`],
     [{ H: 1, O: 1 }, true, undefined, undefined, `H O`],
     [`H2O`, false, undefined, undefined, `H<sub>2</sub> O`],
@@ -105,6 +108,47 @@ describe(`get_electro_neg_formula`, () => {
       expect(get_electro_neg_formula(input, plain_text, delim, amount_format)).toBe(expected)
     },
   )
+})
+
+describe(`get_formula_label_segments`, () => {
+  const plain = (text: string) => ({ text, subscript: false })
+  const subscript = (text: string) => ({ text, subscript: true })
+
+  test.each([
+    {
+      formula: `O2`,
+      expected: [plain(`O`), subscript(`2`)],
+    },
+    {
+      formula: `Fe2O3`,
+      expected: [plain(`Fe`), subscript(`2`), plain(`O`), subscript(`3`)],
+    },
+    {
+      formula: `C12H22O11`,
+      expected: [
+        plain(`C`),
+        subscript(`12`),
+        plain(`H`),
+        subscript(`22`),
+        plain(`O`),
+        subscript(`11`),
+      ],
+    },
+    {
+      formula: `Li0.5FeO2`,
+      expected: [plain(`Li`), subscript(`0.5`), plain(`FeO`), subscript(`2`)],
+    },
+    {
+      formula: `(OH)2`,
+      expected: [plain(`(OH)2`)],
+    },
+    {
+      formula: `mp-123`,
+      expected: [plain(`mp-123`)],
+    },
+  ])(`$formula`, ({ formula, expected }) => {
+    expect(get_formula_label_segments(formula)).toEqual(expected)
+  })
 })
 
 describe(`formula functions handle structure objects`, () => {

@@ -9,6 +9,10 @@
     vesta_hex,
     watch_dark_mode,
   } from '$lib/colors'
+  import {
+    get_formula_label_segments,
+    type FormulaLabelSegment,
+  } from '$lib/composition/format'
   import { normalize_show_controls } from '$lib/controls'
   import { sanitize_html } from '$lib/sanitize'
   import { ClickFeedback, DragOverlay, Spinner } from '$lib/feedback'
@@ -21,12 +25,18 @@
   } from '$lib/layout'
   import { to_radians, type Vec3 } from '$lib/math'
   import { ColorBar, PlotTooltip } from '$lib/plot'
+  import {
+    centered_rect,
+    pad_rect,
+    rects_overlap,
+    rect_within_rect,
+    type Rect,
+  } from '$lib/plot/layout'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { ticks } from 'd3-array'
-  import { SvelteMap } from 'svelte/reactivity'
   import { PerspectiveCamera, WebGLRenderer } from 'three'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import {
@@ -48,9 +58,11 @@
   import * as thermo from './thermodynamics'
   import type {
     ConvexHullEntry,
+    ConvexHullTriangle,
     HighlightStyle,
     HoverData3D,
     HullFaceColorMode,
+    LabelPlacement,
     Point3D,
   } from './types'
   import { compute_hull_stability } from './helpers'
@@ -225,12 +237,7 @@
 
   // Compute lower convex hull faces (triangles) for 3D rendering (low energy hull only)
   // Must be defined before all_enriched_entries which uses hull_model
-  type HullTriangle = {
-    vertices: [Point3D, Point3D, Point3D]
-    normal: Point3D
-    centroid: Point3D
-  }
-  const hull_faces = $derived.by((): HullTriangle[] => {
+  const hull_faces = $derived.by((): ConvexHullTriangle[] => {
     if (coords_entries.length === 0) return []
     // Excluded entries don't participate in hull construction
     const hull_entries = coords_entries.filter((e) => !e.exclude_from_hull)
@@ -1021,40 +1028,147 @@
     }
   }
 
+  const hull_label_font_size = 12
+  const hull_label_subscript_font_size = 11
+  const hull_label_font = `${hull_label_font_size}px Arial`
+  const hull_label_subscript_font = `${hull_label_subscript_font_size}px Arial`
+
+  function label_priority_energy(entry: ConvexHullEntry): number {
+    for (const value of [
+      entry.e_form_per_atom,
+      entry.z,
+      entry.energy_per_atom,
+      entry.energy,
+      entry.e_above_hull,
+    ]) {
+      if (typeof value === `number` && Number.isFinite(value)) return value
+    }
+    return Number.POSITIVE_INFINITY
+  }
+
+  function get_label_placements(
+    projected: { x: number; y: number },
+    point_size: number,
+    text_width: number,
+    text_height: number,
+  ): LabelPlacement[] {
+    const padding = Math.max(1, 2 * canvas_dims.scale)
+    const gap = point_size + 4 * canvas_dims.scale
+    const side_gap = point_size + 5 * canvas_dims.scale
+    const placements = [
+      { x: projected.x, y: projected.y + gap },
+      { x: projected.x, y: projected.y - gap - text_height },
+      { x: projected.x + side_gap + text_width / 2, y: projected.y - text_height / 2 },
+      { x: projected.x - side_gap - text_width / 2, y: projected.y - text_height / 2 },
+      { x: projected.x + side_gap + text_width / 2, y: projected.y + gap },
+      { x: projected.x - side_gap - text_width / 2, y: projected.y + gap },
+      { x: projected.x + side_gap + text_width / 2, y: projected.y - gap - text_height },
+      { x: projected.x - side_gap - text_width / 2, y: projected.y - gap - text_height },
+    ]
+
+    return placements.map((placement) => ({
+      ...placement,
+      rect: pad_rect(
+        centered_rect(placement.x, placement.y, text_width, text_height),
+        padding,
+      ),
+    }))
+  }
+
+  function measure_formula_segments(
+    context: CanvasRenderingContext2D,
+    segments: FormulaLabelSegment[],
+  ): number {
+    context.save()
+    const width = segments.reduce((sum, segment) => {
+      context.font = segment.subscript ? hull_label_subscript_font : hull_label_font
+      return sum + context.measureText(segment.text).width
+    }, 0)
+    context.restore()
+    return width
+  }
+
+  function draw_formula_segments(
+    context: CanvasRenderingContext2D,
+    segments: FormulaLabelSegment[],
+    center_x: number,
+    top_y: number,
+    text_width: number,
+  ): void {
+    const subscript_offset = hull_label_font_size * 0.28
+    let text_x = center_x - text_width / 2
+
+    context.save()
+    context.textAlign = `left`
+    context.textBaseline = `top`
+    for (const segment of segments) {
+      context.font = segment.subscript ? hull_label_subscript_font : hull_label_font
+      context.fillText(
+        segment.text,
+        text_x,
+        top_y + (segment.subscript ? subscript_offset : 0),
+      )
+      text_x += context.measureText(segment.text).width
+    }
+    context.restore()
+  }
+
   function draw_hull_labels(): void {
     if (!ctx || !merged_config.show_labels) return
 
-    const composition_map = new SvelteMap<string, ConvexHullEntry>()
-    for (const entry of plot_entries) {
-      if (!entry.visible || entry.is_element) continue
-      const comp_key = Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([el, amt]) => `${el}${amt.toFixed(3)}`)
-        .join(``)
-      const existing = composition_map.get(comp_key)
-      if (
-        !existing || (entry.e_form_per_atom ?? 0) < (existing.e_form_per_atom ?? 0)
-      ) {
-        composition_map.set(comp_key, entry)
-      }
-    }
-
     ctx.fillStyle = text_color
-    ctx.font = `12px Arial`
+    ctx.font = hull_label_font
     ctx.textAlign = `center`
     ctx.textBaseline = `top`
+    const label_height = hull_label_font_size + 2
 
-    for (const entry of composition_map.values()) {
-      const is_stable_point = entry.is_stable || (entry.e_above_hull ?? 0) <= 1e-6
-      const can_label = (is_stable_point && show_stable_labels) ||
-        (!is_stable_point && show_unstable_labels &&
-          (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
-      if (!can_label) continue
+    const label_entries = helpers.get_composition_label_entries(
+      plot_entries.filter((entry) => {
+        if (!entry.visible || entry.is_element) return false
+        const is_stable_point = entry.is_stable || (entry.e_above_hull ?? 0) <= 1e-6
+        return (is_stable_point && show_stable_labels) ||
+          (!is_stable_point && show_unstable_labels &&
+            (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
+      }),
+    )
+      .sort((entry_1, entry_2) => {
+        const energy_diff = label_priority_energy(entry_1) -
+          label_priority_energy(entry_2)
+        if (energy_diff !== 0) return energy_diff
+        return (entry_1.e_above_hull ?? 0) - (entry_2.e_above_hull ?? 0)
+      })
 
+    const occupied_rects: Rect[] = []
+    const canvas_rect: Rect = {
+      x: 0,
+      y: 0,
+      width: canvas_dims.width,
+      height: canvas_dims.height,
+    }
+    for (const entry of label_entries) {
       const projected = project_3d_point(entry.x, entry.y, entry.z)
-      const formula = helpers.get_entry_label(entry, elements)
-      ctx.fillText(formula, projected.x, projected.y + 16 * canvas_dims.scale)
+      const formula_segments = get_formula_label_segments(
+        helpers.get_entry_label(entry, elements),
+      )
+      const is_stable_point = entry.is_stable || entry.e_above_hull === 0
+      const point_size = (entry.size || (is_stable_point ? 6 : 4)) * canvas_dims.scale
+      const text_width = measure_formula_segments(ctx, formula_segments)
+      const placements = get_label_placements(
+        projected,
+        point_size,
+        text_width,
+        label_height,
+      )
+      const placement = placements.find((candidate) =>
+        rect_within_rect(candidate.rect, canvas_rect) &&
+        !occupied_rects.some((occupied_rect) =>
+          rects_overlap(candidate.rect, occupied_rect)
+        )
+      )
+      if (!placement) continue
+
+      occupied_rects.push(placement.rect)
+      draw_formula_segments(ctx, formula_segments, placement.x, placement.y, text_width)
     }
   }
 

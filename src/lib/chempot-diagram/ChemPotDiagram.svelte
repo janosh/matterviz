@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { get_hill_formula } from '$lib/composition/format';
+  import { get_electro_neg_formula } from '$lib/composition/format';
   import type { PhaseData } from '$lib/convex-hull/types';
   import Spinner from '$lib/feedback/Spinner.svelte';
   import { format_num } from '$lib/labels';
@@ -183,7 +183,7 @@ const is_hover_info_3d = (value: ChemPotHoverInfo | null): value is ChemPotHover
       style:left="{tooltip_pos.x}px"
       style:top="{tooltip_pos.y}px"
     >
-      <h4>{@html sanitize_html(get_hill_formula(hover_info.formula, false, ``))}</h4>
+      <h4>{@html sanitize_html(get_electro_neg_formula(hover_info.formula, false, ``, `.3~s`))}</h4>
       {#if hover_info.view === `2d`}
         <p>2D domain · Points: {hover_info.n_points}</p>
         {#if tooltip_detail_level === `detailed`}
@@ -233,7 +233,7 @@ const is_hover_info_3d = (value: ChemPotHoverInfo | null): value is ChemPotHover
             <h5>Neighbors ({hover_info.neighbors.length})</h5>
             <p>
               {
-                hover_info.neighbors.map((f) => get_hill_formula(f, true, ``)).join(
+                hover_info.neighbors.map((f) => get_electro_neg_formula(f, true, ``, `.3~s`)).join(
                   `, `,
                 )
               }
@@ -261,7 +261,7 @@ const is_hover_info_3d = (value: ChemPotHoverInfo | null): value is ChemPotHover
   .projection-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1em;
+    gap: 0.4em;
   }
   .projection-cell {
     min-width: 0;

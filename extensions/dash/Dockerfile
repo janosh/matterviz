@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir dash>=3.0 && \
     pip install --no-cache-dir -e .
 
 # Copy the HF demo app from build context (overrides any version from git clone)
-COPY hf_demo_app.py /app/matterviz/extensions/dash/hf_demo_app.py
+COPY hugging_face_demo_app.py /app/matterviz/extensions/dash/hugging_face_demo_app.py
 
 # Expose the port (HF Spaces uses 7860 by default)
 EXPOSE 7860
@@ -41,4 +41,4 @@ ENV DASH_HOST=0.0.0.0
 ENV MATTERVIZ_ROOT=/app/matterviz
 
 # Run the HF demo app (uses embedded data, no file loading)
-CMD ["python", "hf_demo_app.py"]
+CMD ["python", "hugging_face_demo_app.py"]

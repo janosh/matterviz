@@ -20,6 +20,7 @@ import {
   get_energy_per_atom,
   get_min_entries_and_el_refs,
   get_ternary_combinations,
+  get_visible_domain_labels,
   make_nd_cache_key,
   orthonormal_2d,
   pad_domain_points,
@@ -561,6 +562,49 @@ describe(`build_hyperplanes`, () => {
       expect(row.length).toBe(3) // [x_A, x_B, -E]
       expect(row[0] + row[1]).toBeCloseTo(1.0, 8)
     }
+  })
+
+  test(`precomputed hull stability excludes known above-hull phases`, () => {
+    const refs: Record<string, PhaseData> = {
+      A: { ...make_entry({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
+      B: { ...make_entry({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
+    }
+    const stable_ab: PhaseData = {
+      ...make_entry({ A: 1, B: 1 }, -6),
+      is_stable: true,
+      e_above_hull: 0,
+    }
+    const above_hull_a2b: PhaseData = {
+      ...make_entry({ A: 2, B: 1 }, -5),
+      is_stable: false,
+      e_above_hull: 0.2,
+    }
+    const result = build_hyperplanes([refs.A, refs.B, stable_ab, above_hull_a2b], refs, [
+      `A`,
+      `B`,
+    ])
+    expect(
+      result.hyperplane_entries.map((entry) =>
+        formula_key_from_composition(entry.composition),
+      ),
+    ).toEqual([`A`, `B`, `AB`])
+  })
+
+  test(`falls back to negative formation energy when hull stability is absent`, () => {
+    const refs: Record<string, PhaseData> = {
+      A: make_entry({ A: 1 }, -2),
+      B: make_entry({ B: 1 }, -3),
+    }
+    const above_hull_without_metadata = make_entry({ A: 2, B: 1 }, -5)
+    const result = build_hyperplanes([refs.A, refs.B, above_hull_without_metadata], refs, [
+      `A`,
+      `B`,
+    ])
+    expect(
+      result.hyperplane_entries.map((entry) =>
+        formula_key_from_composition(entry.composition),
+      ),
+    ).toEqual([`A`, `B`, `A2B`])
   })
 })
 
@@ -1933,6 +1977,19 @@ describe(`make_nd_cache_key`, () => {
         ),
     },
     {
+      label: `different hull stability`,
+      key: () =>
+        make_nd_cache_key(
+          [
+            { composition: { Li: 1 }, energy: -3, is_stable: true, e_above_hull: 0 },
+            { composition: { O: 1 }, energy: -5, is_stable: false, e_above_hull: 0.1 },
+          ],
+          true,
+          -50,
+          undefined,
+        ),
+    },
+    {
       label: `different formal_chempots`,
       key: () => make_nd_cache_key([li, o], false, -50, undefined),
     },
@@ -2047,5 +2104,86 @@ describe(`scale_to_font_range`, () => {
     expect(fonts[1]).toBeLessThan(fonts[2]) // 2 < 7
     expect(fonts[2]).toBeLessThan(fonts[4]) // 7 < 9
     expect(fonts[4]).toBeLessThan(fonts[0]) // 9 < 10
+  })
+})
+
+describe(`get_visible_domain_labels`, () => {
+  test(`returns one area-weighted label per visible formula`, () => {
+    const face_positions = [
+      // Two triangles for one square facet owned by AB
+      0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 0, 0, 2, 2, 0, 0, 2, 0,
+      // One separate facet owned by AC
+      10, 0, 0, 11, 0, 0, 10, 1, 0,
+    ]
+    const labels = get_visible_domain_labels(
+      face_positions,
+      [`AB`, `AB`, `AC`],
+      new Map([
+        [`AB`, 14],
+        [`AC`, 10],
+        [`AD`, 8],
+      ]),
+    )
+
+    expect(labels.map((label) => label.formula)).toEqual([`AB`, `AC`])
+    expect(labels[0].position).toEqual([1, 1, 0])
+    expect(labels[0].label_font_size).toBe(14)
+    expect(labels[1].position).toEqual([10 + 1 / 3, 1 / 3, 0])
+  })
+
+  test(`ignores zero-area faces and formulas without visible facets`, () => {
+    const labels = get_visible_domain_labels(
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+      [`AB`, `AC`],
+      new Map([[`AB`, 12]]),
+    )
+
+    expect(labels).toEqual([])
+  })
+
+  test(`combines separated visible facets of the same domain`, () => {
+    const labels = get_visible_domain_labels(
+      [
+        // Two equal-area facets owned by AB, separated in space
+        0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0, 0, 4, 0, 0, 3, 1, 0,
+      ],
+      [`AB`, `AB`],
+      new Map([[`AB`, 12]]),
+    )
+
+    expect(labels).toHaveLength(1)
+    expect(labels[0].formula).toBe(`AB`)
+    expect(labels[0].label_font_size).toBe(12)
+    expect(labels[0].position).toEqual([expect.closeTo(11 / 6), expect.closeTo(1 / 3), 0])
+  })
+
+  test(`ignores trailing face-domain entries without triangles`, () => {
+    const labels = get_visible_domain_labels(
+      [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      [`AB`, `AC`],
+      new Map([
+        [`AB`, 12],
+        [`AC`, 10],
+      ]),
+    )
+
+    expect(labels.map((label) => label.formula)).toEqual([`AB`])
+  })
+
+  test(`preserves pinned labels for overlay domains without visible facets`, () => {
+    const labels = get_visible_domain_labels(
+      [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      [`AB`],
+      new Map([[`AB`, 12]]),
+      [
+        { formula: `AC`, position: [2, 2, 2], label_font_size: 10 },
+        { formula: `AB`, position: [9, 9, 9], label_font_size: 99 },
+      ],
+    )
+
+    expect(labels.map((label) => label.formula)).toEqual([`AB`, `AC`])
+    expect(labels[0].position).toEqual([1 / 3, 1 / 3, 0])
+    expect(labels[0].label_font_size).toBe(12)
+    expect(labels[1]).toEqual({ formula: `AC`, position: [2, 2, 2], label_font_size: 10 })
   })
 })

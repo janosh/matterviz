@@ -158,6 +158,31 @@ export interface Rect {
   height: number
 }
 
+export const pad_rect = (rect: Rect, padding: number): Rect => ({
+  x: rect.x - padding,
+  y: rect.y - padding,
+  width: rect.width + 2 * padding,
+  height: rect.height + 2 * padding,
+})
+
+export const centered_rect = (
+  center_x: number,
+  top_y: number,
+  width: number,
+  height: number,
+): Rect => ({
+  x: center_x - width / 2,
+  y: top_y,
+  width,
+  height,
+})
+
+export const rect_within_rect = (rect: Rect, bounds: Rect): boolean =>
+  rect.x >= bounds.x &&
+  rect.x + rect.width <= bounds.x + bounds.width &&
+  rect.y >= bounds.y &&
+  rect.y + rect.height <= bounds.y + bounds.height
+
 export interface ElementPlacementConfig {
   // Bounds of the plot area (in SVG coordinates)
   plot_bounds: Rect

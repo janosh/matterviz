@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - extensions/dash/Dockerfile
-      - extensions/dash/hf_demo_app.py
+      - extensions/dash/hugging_face_demo_app.py
       - extensions/dash/hf_space_readme.md
       - .github/workflows/deploy-dash-demo.yml
   workflow_dispatch: # Allow manual deploys
@@ -26,7 +26,7 @@ jobs:
 
           # Copy deployment files
           cp $GITHUB_WORKSPACE/extensions/dash/Dockerfile .
-          cp $GITHUB_WORKSPACE/extensions/dash/hf_demo_app.py .
+          cp $GITHUB_WORKSPACE/extensions/dash/hugging_face_demo_app.py .
           cp $GITHUB_WORKSPACE/extensions/dash/hf_space_readme.md README.md
 
           git config user.name "GitHub Actions"
