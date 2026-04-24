@@ -42,6 +42,16 @@ function create_test_structure(num_sites: number): Crystal {
 const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
 
 describe(`supercell performance profiling`, () => {
+  function time_fastest_run(callback: () => void, runs = 3): number {
+    let fastest = Infinity
+    for (let idx = 0; idx < runs; idx++) {
+      const start = performance.now()
+      callback()
+      fastest = Math.min(fastest, performance.now() - start)
+    }
+    return fastest
+  }
+
   test(`profile matrix operations`, () => {
     const matrix: Matrix3x3 = [
       [10, 1, 0.5],
@@ -226,9 +236,8 @@ describe(`supercell performance profiling`, () => {
     console.warn(`\nFull supercell generation (3x3x3):`)
     for (const size of sizes) {
       const structure = create_test_structure(size)
-      const start = performance.now()
-      make_supercell(structure, `3x3x3`)
-      const time = performance.now() - start
+      make_supercell(structure, `3x3x3`) // Warm up JIT and one-time allocations
+      const time = time_fastest_run(() => make_supercell(structure, `3x3x3`))
       results.push({ sites: size, time })
       console.warn(`  ${size} → ${size * 27} sites: ${time.toFixed(2)}ms`)
     }

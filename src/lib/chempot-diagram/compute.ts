@@ -176,6 +176,9 @@ export function build_hyperplanes(
   })
   const always_include = new Set<PhaseData>(Object.values(el_refs))
   const tol = 1e-6 // PhaseDiagram.formation_energy_tol
+  const use_precomputed_hull = min_entries.every(
+    (entry) => typeof entry.is_stable === `boolean` || typeof entry.e_above_hull === `number`,
+  )
   const hyperplanes: number[][] = []
   const hyperplane_entries: PhaseData[] = []
 
@@ -192,7 +195,15 @@ export function build_hyperplanes(
       ref_energy += fraction * element_ref_energies[elem_idx]
     }
     const form_energy = energy_per_atom - ref_energy
-    if (form_energy < -tol || always_include.has(entry)) {
+    const on_precomputed_hull =
+      use_precomputed_hull &&
+      !entry.exclude_from_hull &&
+      (entry.is_stable === true ||
+        (typeof entry.e_above_hull === `number` && entry.e_above_hull <= tol))
+    const include_entry = use_precomputed_hull
+      ? on_precomputed_hull || always_include.has(entry)
+      : form_energy < -tol || always_include.has(entry)
+    if (include_entry) {
       row[n_elems] = -energy_per_atom
       hyperplanes.push(row)
       hyperplane_entries.push(entry)
@@ -719,6 +730,82 @@ export function scale_to_font_range(
   )
 }
 
+export interface VisibleDomainLabel {
+  formula: string
+  position: [number, number, number]
+  label_font_size: number
+}
+
+export function get_visible_domain_labels(
+  face_positions: ArrayLike<number>,
+  face_domain_map: string[],
+  label_font_size_by_formula: ReadonlyMap<string, number>,
+  pinned_labels: VisibleDomainLabel[] = [],
+): VisibleDomainLabel[] {
+  const n_faces = Math.min(Math.floor(face_positions.length / 9), face_domain_map.length)
+  const accum = new Map<string, { area: number; x: number; y: number; z: number }>()
+
+  for (let face_idx = 0; face_idx < n_faces; face_idx++) {
+    const formula = face_domain_map[face_idx]
+    if (!formula || !label_font_size_by_formula.has(formula)) continue
+
+    const base = face_idx * 9
+    const ax = face_positions[base]
+    const ay = face_positions[base + 1]
+    const az = face_positions[base + 2]
+    const bx = face_positions[base + 3]
+    const by = face_positions[base + 4]
+    const bz = face_positions[base + 5]
+    const cx = face_positions[base + 6]
+    const cy = face_positions[base + 7]
+    const cz = face_positions[base + 8]
+
+    const abx = bx - ax
+    const aby = by - ay
+    const abz = bz - az
+    const acx = cx - ax
+    const acy = cy - ay
+    const acz = cz - az
+    const cross_x = aby * acz - abz * acy
+    const cross_y = abz * acx - abx * acz
+    const cross_z = abx * acy - aby * acx
+    const area = Math.hypot(cross_x, cross_y, cross_z) / 2
+    if (area <= EPS) continue
+
+    const centroid_x = (ax + bx + cx) / 3
+    const centroid_y = (ay + by + cy) / 3
+    const centroid_z = (az + bz + cz) / 3
+    const entry = accum.get(formula) ?? { area: 0, x: 0, y: 0, z: 0 }
+    entry.area += area
+    entry.x += centroid_x * area
+    entry.y += centroid_y * area
+    entry.z += centroid_z * area
+    accum.set(formula, entry)
+  }
+
+  const visible_labels = [...accum.entries()]
+    .filter(([, entry]) => entry.area > EPS)
+    .map(([formula, entry]) => ({
+      formula,
+      position: [entry.x / entry.area, entry.y / entry.area, entry.z / entry.area] as [
+        number,
+        number,
+        number,
+      ],
+      label_font_size: label_font_size_by_formula.get(formula) ?? 12,
+    }))
+
+  for (const label of pinned_labels) {
+    if (!visible_labels.some((visible_label) => visible_label.formula === label.formula)) {
+      visible_labels.push(label)
+    }
+  }
+
+  return visible_labels.sort((label_a, label_b) =>
+    label_a.formula.localeCompare(label_b.formula),
+  )
+}
+
 // === Ternary Combinations ===
 
 // Generate all C(n,3) ternary element combinations from a sorted element list.
@@ -767,7 +854,15 @@ export function make_nd_cache_key(
   limits: ChemPotDiagramConfig[`limits`],
 ): string {
   const keyed = entries
-    .map((entry) => `${formula_key_from_composition(entry.composition)}:${entry.energy}`)
+    .map((entry) =>
+      [
+        formula_key_from_composition(entry.composition),
+        entry.energy,
+        entry.is_stable ?? ``,
+        entry.e_above_hull ?? ``,
+        entry.exclude_from_hull ?? ``,
+      ].join(`:`),
+    )
     .sort()
   return `${keyed.join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
 }

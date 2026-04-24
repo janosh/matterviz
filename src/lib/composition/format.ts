@@ -110,6 +110,33 @@ export const get_electro_neg_formula = (
 ): string =>
   format_formula_generic(input, sort_by_electronegativity, plain_text, delim, amount_format)
 
+export interface FormulaLabelSegment {
+  text: string
+  subscript: boolean
+}
+
+export function get_formula_label_segments(formula: string): FormulaLabelSegment[] {
+  const segments: FormulaLabelSegment[] = []
+  let cursor = 0
+
+  for (const match of formula.matchAll(/([A-Za-z])(\d+(?:\.\d+)?)/g)) {
+    const match_idx = match.index ?? 0
+    const prefix = match[1]
+    const amount = match[2]
+    const amount_idx = match_idx + prefix.length
+    if (amount_idx > cursor) {
+      segments.push({ text: formula.slice(cursor, amount_idx), subscript: false })
+    }
+    segments.push({ text: amount, subscript: true })
+    cursor = amount_idx + amount.length
+  }
+
+  if (cursor < formula.length) {
+    segments.push({ text: formula.slice(cursor), subscript: false })
+  }
+  return segments.length > 0 ? segments : [{ text: formula, subscript: false }]
+}
+
 // Create Hill notation formula (C first, H second, then alphabetical)
 export const get_hill_formula = (
   input: string | CompositionType | AnyStructure,

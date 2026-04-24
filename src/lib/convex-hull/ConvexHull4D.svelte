@@ -854,22 +854,33 @@
       ctx.fill(marker_path)
       ctx.stroke(marker_path)
       ctx.restore()
+    }
 
-      // Labels
-      const should_label = merged_config.show_labels && (
-        (is_stable && show_stable_labels) ||
-        (!is_stable && show_unstable_labels &&
-          (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
-      )
-      if (should_label) {
-        ctx.fillStyle = text_color
-        const label = helpers.get_entry_label(entry, elements)
-        const font_size = Math.round(12 * canvas_dims.scale)
-        ctx.font = `${font_size}px Arial`
-        ctx.textAlign = `center`
-        ctx.textBaseline = `middle`
-        ctx.fillText(label, projected.x, projected.y + size + 6 * canvas_dims.scale)
-      }
+    if (!merged_config.show_labels) return
+
+    const label_entries = helpers.get_composition_label_entries(
+      sorted_points_cache
+        .map(({ entry }) => entry)
+        .filter((entry) => {
+          if (entry.is_element) return false
+          const is_stable = entry.is_stable || entry.e_above_hull === 0
+          return (is_stable && show_stable_labels) ||
+            (!is_stable && show_unstable_labels &&
+              (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
+        }),
+    )
+
+    ctx.fillStyle = text_color
+    ctx.font = `${Math.round(12 * canvas_dims.scale)}px Arial`
+    ctx.textAlign = `center`
+    ctx.textBaseline = `middle`
+
+    for (const entry of label_entries) {
+      const is_stable = entry.is_stable || entry.e_above_hull === 0
+      const size = (entry.size || (is_stable ? 6 : 4)) * canvas_dims.scale
+      const projected = project_3d_point(entry.x, entry.y, entry.z)
+      const label = helpers.get_entry_label(entry, elements)
+      ctx.fillText(label, projected.x, projected.y + size + 6 * canvas_dims.scale)
     }
   }
 

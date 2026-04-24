@@ -1,17 +1,49 @@
 import {
   AXIS_LABEL_HEIGHT,
   calc_auto_padding,
+  centered_rect,
   compute_element_placement,
   constrain_tooltip_position,
   filter_padding,
   LABEL_GAP_DEFAULT,
   measure_max_tick_width,
   measure_text_width,
+  pad_rect,
+  rect_within_rect,
   TICK_LABEL_HEIGHT,
 } from '$lib/plot/layout'
 import { describe, expect, it, test } from 'vitest'
 
 describe(`layout utility functions`, () => {
+  describe(`rectangle helpers`, () => {
+    test.each([
+      {
+        name: `pad_rect expands equally around all sides`,
+        call: () => pad_rect({ x: 10, y: 20, width: 30, height: 40 }, 2),
+        expected: { x: 8, y: 18, width: 34, height: 44 },
+      },
+      {
+        name: `centered_rect treats y as the top edge`,
+        call: () => centered_rect(50, 20, 30, 10),
+        expected: { x: 35, y: 20, width: 30, height: 10 },
+      },
+    ])(`$name`, ({ call, expected }) => {
+      expect(call()).toEqual(expected)
+    })
+
+    const bounds = { x: 0, y: 0, width: 10, height: 10 }
+    test.each([
+      { name: `inside`, rect: { x: 1, y: 1, width: 8, height: 8 }, expected: true },
+      { name: `touching edge`, rect: { x: 0, y: 0, width: 10, height: 10 }, expected: true },
+      { name: `over left edge`, rect: { x: -1, y: 1, width: 8, height: 8 }, expected: false },
+      { name: `over top edge`, rect: { x: 1, y: -1, width: 8, height: 8 }, expected: false },
+      { name: `over right edge`, rect: { x: 8, y: 1, width: 4, height: 8 }, expected: false },
+      { name: `over bottom edge`, rect: { x: 1, y: 8, width: 8, height: 4 }, expected: false },
+    ])(`rect_within_rect: $name`, ({ rect, expected }) => {
+      expect(rect_within_rect(rect, bounds)).toBe(expected)
+    })
+  })
+
   describe(`filter_padding`, () => {
     const defaults = { t: 20, b: 60, l: 60, r: 20 }
 

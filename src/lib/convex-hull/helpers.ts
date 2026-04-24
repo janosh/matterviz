@@ -363,6 +363,44 @@ function get_entry_energy_by_metric(entry: PhaseData, metric: EnergyMetric): num
   return null
 }
 
+function get_label_representative_energy(entry: PhaseData): number {
+  if (is_finite(entry.e_form_per_atom)) return entry.e_form_per_atom
+  if (is_finite(entry.energy_per_atom)) return entry.energy_per_atom
+  const energy_per_atom = compute_energy_per_atom(entry)
+  if (energy_per_atom !== null) return energy_per_atom
+  if (is_finite(entry.energy)) return entry.energy
+  if (is_finite(entry.e_above_hull)) return entry.e_above_hull
+  return Number.POSITIVE_INFINITY
+}
+
+function get_fractional_composition_key(composition: Record<string, number>): string {
+  return Object.entries(get_fractional_composition(composition))
+    .sort(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
+    .map(([elem, frac]) => `${elem}:${frac.toFixed(6)}`)
+    .join(`|`)
+}
+
+// Pick one label target per normalized composition. Multiple polymorphs, supercell
+// formulas, or same-composition entries often project to the same screen position.
+export function get_composition_label_entries<T extends PhaseData>(entries: Iterable<T>): T[] {
+  const label_entry_by_composition = new Map<string, T>()
+
+  for (const entry of entries) {
+    const comp_key = get_fractional_composition_key(entry.composition)
+    if (!comp_key) continue
+
+    const existing = label_entry_by_composition.get(comp_key)
+    if (
+      !existing ||
+      get_label_representative_energy(entry) < get_label_representative_energy(existing)
+    ) {
+      label_entry_by_composition.set(comp_key, entry)
+    }
+  }
+
+  return Array.from(label_entry_by_composition.values())
+}
+
 // Determine which energy metric to use for a composition group
 // Returns the first metric that ALL entries in the group can provide
 function select_group_energy_metric(polymorphs: PhaseData[]): EnergyMetric {
@@ -396,11 +434,7 @@ export function compute_all_polymorph_stats(
   // Group entries by fractional composition (normalized stoichiometry)
   const composition_groups = new Map<string, PhaseData[]>()
   for (const entry of all_entries) {
-    const fractional = get_fractional_composition(entry.composition)
-    const comp_key = Object.entries(fractional)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([elem, frac]) => `${elem}:${frac.toFixed(6)}`)
-      .join(`|`)
+    const comp_key = get_fractional_composition_key(entry.composition)
     const group = composition_groups.get(comp_key) ?? []
     if (group.length === 0) composition_groups.set(comp_key, group)
     group.push(entry)

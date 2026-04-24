@@ -1018,6 +1018,7 @@
           {@const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom}
           <extras.InstancedMesh
             key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom ? `img` : `base`}-{edit_mode_image}"
+            limit={atoms.length}
             range={atoms.length}
             frustumCulled={false}
           >

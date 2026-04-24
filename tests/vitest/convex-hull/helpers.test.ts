@@ -316,6 +316,59 @@ describe(`helpers: fractional composition`, () => {
   })
 })
 
+describe(`helpers: composition label entries`, () => {
+  const phase = (
+    entry_id: string,
+    composition: Record<string, number>,
+    fields: Partial<PhaseData> = {},
+  ): PhaseData => ({ entry_id, composition, energy: 0, ...fields })
+
+  test(`keeps one lowest-energy label entry per normalized composition`, () => {
+    const entries = [
+      phase(`higher-fe-o`, { Fe: 2, O: 3 }, { energy: -1, e_form_per_atom: -0.2 }),
+      phase(`lower-fe-o`, { Fe: 4, O: 6 }, { energy: -2, e_form_per_atom: -0.4 }),
+      phase(`li-o`, { Li: 1, O: 1 }, { energy: -3, e_form_per_atom: -0.1 }),
+    ]
+
+    const label_entries = helpers.get_composition_label_entries(entries)
+
+    expect(label_entries.map((entry) => entry.entry_id)).toEqual([`lower-fe-o`, `li-o`])
+  })
+
+  test(`does not merge distinct stoichiometries with the same elements`, () => {
+    const label_entries = helpers.get_composition_label_entries([
+      phase(`fe-o`, { Fe: 1, O: 1 }, { e_form_per_atom: -1 }),
+      phase(`fe2-o3`, { Fe: 2, O: 3 }, { e_form_per_atom: -2 }),
+    ])
+
+    expect(label_entries.map((entry) => entry.entry_id)).toEqual([`fe-o`, `fe2-o3`])
+  })
+
+  test(`falls back to per-atom energy computed from total energy`, () => {
+    const label_entries = helpers.get_composition_label_entries([
+      phase(`higher-total`, { A: 2, B: 2 }, { energy: -4 }),
+      phase(`lower-total`, { A: 1, B: 1 }, { energy: -3 }),
+    ])
+
+    expect(label_entries.map((entry) => entry.entry_id)).toEqual([`lower-total`])
+  })
+
+  test(`keeps explicit energy_per_atom ahead of computed total energy`, () => {
+    const label_entries = helpers.get_composition_label_entries([
+      phase(`explicit-per-atom`, { A: 1, B: 1 }, { energy: 0, energy_per_atom: -4 }),
+      phase(`computed-per-atom`, { A: 2, B: 2 }, { energy: -12 }),
+    ])
+
+    expect(label_entries.map((entry) => entry.entry_id)).toEqual([`explicit-per-atom`])
+  })
+
+  test(`skips entries with empty compositions`, () => {
+    const label_entries = helpers.get_composition_label_entries([phase(`empty`, { Fe: 0 })])
+
+    expect(label_entries).toEqual([])
+  })
+})
+
 describe(`helpers: polymorph statistics`, () => {
   const make_entry = (
     id: string,

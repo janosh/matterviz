@@ -1,6 +1,6 @@
 <script lang="ts">
   import { type D3InterpolateName } from '$lib/colors'
-  import { get_hill_formula } from '$lib/composition/format'
+  import { get_electro_neg_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
@@ -485,7 +485,7 @@
       text-anchor="middle"
       class="domain-label"
     >
-      {get_hill_formula(formula, true, ``)}
+      {get_electro_neg_formula(formula, true, ``, `.3~s`)}
     </text>
   {/each}
 {/snippet}
@@ -730,7 +730,9 @@
         style:left="{tooltip_pos.x}px"
         style:top="{tooltip_pos.y}px"
       >
-        <strong>{@html sanitize_html(get_hill_formula(hover_info.formula, false, ``))}</strong>
+        <strong>
+          {@html sanitize_html(get_electro_neg_formula(hover_info.formula, false, ``, `.3~s`))}
+        </strong>
         {#if locked_hover_formula === hover_info.formula}
           <div>Pinned · Press Esc to unlock</div>
         {/if}
