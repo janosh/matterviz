@@ -562,6 +562,49 @@ describe(`build_hyperplanes`, () => {
       expect(row[0] + row[1]).toBeCloseTo(1.0, 8)
     }
   })
+
+  test(`precomputed hull stability excludes known above-hull phases`, () => {
+    const refs: Record<string, PhaseData> = {
+      A: { ...make_entry({ A: 1 }, -2), is_stable: true, e_above_hull: 0 },
+      B: { ...make_entry({ B: 1 }, -3), is_stable: true, e_above_hull: 0 },
+    }
+    const stable_ab: PhaseData = {
+      ...make_entry({ A: 1, B: 1 }, -6),
+      is_stable: true,
+      e_above_hull: 0,
+    }
+    const above_hull_a2b: PhaseData = {
+      ...make_entry({ A: 2, B: 1 }, -5),
+      is_stable: false,
+      e_above_hull: 0.2,
+    }
+    const result = build_hyperplanes([refs.A, refs.B, stable_ab, above_hull_a2b], refs, [
+      `A`,
+      `B`,
+    ])
+    expect(
+      result.hyperplane_entries.map((entry) =>
+        formula_key_from_composition(entry.composition),
+      ),
+    ).toEqual([`A`, `B`, `AB`])
+  })
+
+  test(`falls back to negative formation energy when hull stability is absent`, () => {
+    const refs: Record<string, PhaseData> = {
+      A: make_entry({ A: 1 }, -2),
+      B: make_entry({ B: 1 }, -3),
+    }
+    const above_hull_without_metadata = make_entry({ A: 2, B: 1 }, -5)
+    const result = build_hyperplanes([refs.A, refs.B, above_hull_without_metadata], refs, [
+      `A`,
+      `B`,
+    ])
+    expect(
+      result.hyperplane_entries.map((entry) =>
+        formula_key_from_composition(entry.composition),
+      ),
+    ).toEqual([`A`, `B`, `A2B`])
+  })
 })
 
 // === apply_element_padding / pad_domain_points ===
@@ -1926,6 +1969,19 @@ describe(`make_nd_cache_key`, () => {
           [
             { composition: { Li: 1 }, energy: -4 },
             { composition: { O: 1 }, energy: -4 },
+          ],
+          true,
+          -50,
+          undefined,
+        ),
+    },
+    {
+      label: `different hull stability`,
+      key: () =>
+        make_nd_cache_key(
+          [
+            { composition: { Li: 1 }, energy: -3, is_stable: true, e_above_hull: 0 },
+            { composition: { O: 1 }, energy: -5, is_stable: false, e_above_hull: 0.1 },
           ],
           true,
           -50,

@@ -176,6 +176,9 @@ export function build_hyperplanes(
   })
   const always_include = new Set<PhaseData>(Object.values(el_refs))
   const tol = 1e-6 // PhaseDiagram.formation_energy_tol
+  const use_precomputed_hull = min_entries.every(
+    (entry) => typeof entry.is_stable === `boolean` || typeof entry.e_above_hull === `number`,
+  )
   const hyperplanes: number[][] = []
   const hyperplane_entries: PhaseData[] = []
 
@@ -192,7 +195,15 @@ export function build_hyperplanes(
       ref_energy += fraction * element_ref_energies[elem_idx]
     }
     const form_energy = energy_per_atom - ref_energy
-    if (form_energy < -tol || always_include.has(entry)) {
+    const on_precomputed_hull =
+      use_precomputed_hull &&
+      !entry.exclude_from_hull &&
+      (entry.is_stable === true ||
+        (typeof entry.e_above_hull === `number` && entry.e_above_hull <= tol))
+    const include_entry = use_precomputed_hull
+      ? on_precomputed_hull || always_include.has(entry)
+      : form_energy < -tol || always_include.has(entry)
+    if (include_entry) {
       row[n_elems] = -energy_per_atom
       hyperplanes.push(row)
       hyperplane_entries.push(entry)
@@ -767,7 +778,15 @@ export function make_nd_cache_key(
   limits: ChemPotDiagramConfig[`limits`],
 ): string {
   const keyed = entries
-    .map((entry) => `${formula_key_from_composition(entry.composition)}:${entry.energy}`)
+    .map((entry) =>
+      [
+        formula_key_from_composition(entry.composition),
+        entry.energy,
+        entry.is_stable ?? ``,
+        entry.e_above_hull ?? ``,
+        entry.exclude_from_hull ?? ``,
+      ].join(`:`),
+    )
     .sort()
   return `${keyed.join(`,`)}|${formal_chempots}|${default_min_limit}|${JSON.stringify(limits ?? {})}`
 }
