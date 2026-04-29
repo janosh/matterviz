@@ -1,6 +1,6 @@
 {
   "name": "matterviz",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Interactive visualizations for materials science: periodic tables, 3D structures, MD trajectories, heatmaps, scatter plots.",
   "keywords": [
     "chemistry",
@@ -176,9 +176,9 @@
   },
   "dependencies": {
     "@spglib/moyo-wasm": "^0.7.9",
-    "@sveltejs/kit": "2.57.1",
-    "@threlte/core": "^8.5.9",
-    "@threlte/extras": "^9.14.8",
+    "@sveltejs/kit": "2.58.0",
+    "@threlte/core": "^8.5.10",
+    "@threlte/extras": "^9.15.0",
     "@types/d3-hierarchy": "^3.1.7",
     "@types/js-yaml": "^4.0.9",
     "d3": "^7.9.0",
@@ -213,8 +213,8 @@
     "@types/d3-time-format": "^4.0.3",
     "@types/node": "^25.6.0",
     "@types/three": "^0.184.0",
-    "@typescript/native-preview": "7.0.0-dev.20260422.1",
-    "@vitest/coverage-v8": "4.1.4",
+    "@typescript/native-preview": "7.0.0-dev.20260429.1",
+    "@vitest/coverage-v8": "4.1.5",
     "@wooorm/starry-night": "^3.9.0",
     "d3-time-format": "^4.1.0",
     "happy-dom": "^20.9.0",
@@ -222,19 +222,19 @@
     "mdsvex": "^0.12.7",
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
-    "svelte": "5.55.4",
+    "svelte": "5.55.5",
     "svelte-check-rs": "0.9.7",
     "typescript": "6.0.3",
-    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.19",
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.20",
     "vite-plus": "latest",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.19"
+    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.20"
   },
   "peerDependencies": {
     "svelte": "^5.0.0"
   },
   "overrides": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.19",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.19"
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.20",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.20"
   },
   "engines": {
     "node": ">=24"
