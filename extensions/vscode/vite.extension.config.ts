@@ -11,7 +11,7 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, `src/extension.ts`),
       formats: [`es`],
-      fileName: () => `extension.mjs`,
+      fileName: () => `extension.js`,
     },
     rollupOptions: {
       external: [
