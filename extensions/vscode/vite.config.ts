@@ -1,11 +1,8 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
-import { mock_vscode } from './tests/vscode-mock'
-import { vite_plugin_json_gz } from './vite-plugin-json-gz'
-
-// always defined when running under Node/Vite
-const __dirname = import.meta.dirname as string
+import { mock_vscode } from './tests/vscode-mock.ts'
+import { vite_plugin_json_gz } from './vite-plugin-json-gz.ts'
 
 export default defineConfig(({ mode }) => ({
   plugins: [
@@ -23,15 +20,15 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: `dist`,
     rollupOptions: {
-      input: resolve(__dirname, `src/webview/main.ts`),
-      output: { entryFileNames: `webview.js`, format: `iife` },
+      input: resolve(import.meta.dirname, `src/webview/main.ts`),
+      output: { entryFileNames: `webview.js`, format: `es` },
     },
     emptyOutDir: false,
     chunkSizeWarningLimit: 6000,
   },
   resolve: {
     alias: {
-      $lib: resolve(__dirname, `../../src/lib`),
+      $lib: resolve(import.meta.dirname, `../../src/lib`),
     },
   },
 }))

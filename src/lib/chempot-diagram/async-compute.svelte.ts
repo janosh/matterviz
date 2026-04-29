@@ -44,7 +44,7 @@ function track_pending(
 function get_worker(): Worker | null {
   if (typeof Worker === `undefined`) return null
   if (!worker) {
-    worker = new Worker(new URL(`./chempot-worker.ts`, import.meta.url), { type: `module` })
+    worker = new Worker(new URL(`./chempot-worker.js`, import.meta.url), { type: `module` })
     worker.onmessage = ({ data: { id, result, error } }) => {
       const req = pending.get(id)
       if (!req) return

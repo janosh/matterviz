@@ -5,7 +5,7 @@ import { format_formula_html } from './phase-diagram/utils'
 let ssr_window: unknown
 if (typeof globalThis.window === `undefined`) {
   try {
-    const { Window } = await import(`happy-dom`)
+    const { Window } = await import(/* @vite-ignore */ `happy-dom`)
     ssr_window = new Window()
   } catch {
     // happy-dom not available at runtime — get_purify() will fall back to pass-through

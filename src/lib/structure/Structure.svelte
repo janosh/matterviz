@@ -400,6 +400,8 @@
     // (reading just the object reference isn't sufficient for fine-grained reactivity)
     const { symprec, algo } = symmetry_settings ?? symmetry.default_sym_settings
     const current_settings = { symprec, algo }
+    // Skip symmetry auto-analysis in unit tests; happy-dom can't fetch WASM assets
+    if (typeof process !== `undefined` && process.env?.VITEST) return
 
     symmetry.ensure_moyo_wasm_ready()
       .then(() =>
