@@ -4,10 +4,6 @@ import process from 'node:process'
 import type { Plugin } from 'vite'
 import { defineConfig } from 'vite'
 
-// always defined when running under Node/Vite
-const __dirname = import.meta.dirname as string
-const is_dev = process.env.NODE_ENV !== `production`
-
 // Plugin to strip Node.js imports from the UMD bundle
 const strip_node_imports_plugin = (): Plugin => ({
   name: `strip-node-imports`,
@@ -81,7 +77,7 @@ export default defineConfig({
 
   build: {
     lib: {
-      entry: resolve(__dirname, `src/lib/index.ts`),
+      entry: resolve(import.meta.dirname, `src/lib/index.ts`),
       name: `matterviz_dash_components`,
       formats: [`umd`],
       fileName: () => `matterviz_dash_components.min.js`,
@@ -106,9 +102,9 @@ export default defineConfig({
       },
     },
     // Generate sourcemaps in dev
-    sourcemap: is_dev,
+    sourcemap: process.env.NODE_ENV !== `production`,
     // Minify in production
-    minify: is_dev ? false : `esbuild`,
+    minify: process.env.NODE_ENV === `production` ? `esbuild` : false,
   },
 
   optimizeDeps: {

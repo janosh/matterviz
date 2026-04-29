@@ -331,6 +331,19 @@ export const create_html = (
     vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `webview.js`),
   )
   const js_uri = typeof webview_uri === `string` ? webview_uri : webview_uri.toString()
+  const assets_dir = path.join(context.extensionUri.fsPath, `dist`, `assets`)
+  const css_file = fs.existsSync(assets_dir)
+    ? fs
+        .readdirSync(assets_dir)
+        .find((file) => file.startsWith(`main-`) && file.endsWith(`.css`))
+    : undefined
+  const css_href = css_file
+    ? webview
+        .asWebviewUri(
+          vscode.Uri.joinPath(context.extensionUri as vscode.Uri, `dist`, `assets`, css_file),
+        )
+        .toString()
+    : undefined
 
   // Resolve WASM URI for webview (enables symmetry analysis)
   // Include in data object instead of global scope for cleaner functional approach
@@ -350,14 +363,15 @@ export const create_html = (
   <head>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}' 'unsafe-eval' 'wasm-unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; img-src ${webview.cspSource} data:; connect-src ${webview.cspSource}; worker-src blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    ${css_href ? `<link rel="stylesheet" href="${css_href}">` : ``}
     <script nonce="${nonce}">
       window.matterviz_data=${JSON.stringify(webview_data).replace(/<\//g, `<\\/`)};
     </script>
   </head>
   <body>
     <div id="matterviz-app"></div>
-    <script nonce="${nonce}" src="${js_uri}"></script>
-    <script nonce="${nonce}">
+    <script nonce="${nonce}" type="module">
+      await import(${JSON.stringify(js_uri)});
       window.initializeMatterViz?.();
     </script>
   </body>
