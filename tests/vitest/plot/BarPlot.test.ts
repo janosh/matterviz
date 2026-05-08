@@ -395,6 +395,33 @@ describe(`BarPlot`, () => {
     })
   })
 
+  const multi_series = [basic, { ...basic, color: `orangered`, label: `S2` }]
+
+  test.each([
+    {
+      props: { series: multi_series, show_legend: false },
+      visible: false,
+      label: `hidden when show_legend=false`,
+    },
+    {
+      props: { series: multi_series, show_legend: true },
+      visible: true,
+      label: `visible when show_legend=true`,
+    },
+    {
+      props: { series: multi_series },
+      visible: true,
+      label: `auto-shows for multiple series`,
+    },
+    { props: { series: [basic] }, visible: false, label: `auto-hides for single series` },
+  ])(`legend $label`, async ({ props, visible }) => {
+    mount(BarPlot, { target: document.body, props })
+    await tick()
+    const legend = document.querySelector(`.legend`)
+    if (visible) expect(legend).toBeInstanceOf(HTMLElement)
+    else expect(legend).toBeNull()
+  })
+
   describe(`legend grouping`, () => {
     const grouped_series: BarSeries[] = [
       {

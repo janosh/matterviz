@@ -21,6 +21,7 @@
   let {
     data,
     show_counts = true,
+    show_legend = false,
     orientation = `vertical`,
     x_axis = {},
     y_axis = {},
@@ -285,7 +286,7 @@
   mode="overlay"
   x_axis={x_axis_config}
   y_axis={y_axis_config}
-  show_legend={false}
+  {show_legend}
   show_controls={false}
   {tooltip}
   {user_content}
