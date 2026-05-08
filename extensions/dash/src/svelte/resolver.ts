@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 // Build-time component discovery using Vite's import.meta.glob.
 // This pulls in ALL .svelte files shipped by matterviz under dist/.
 //
@@ -8,11 +10,11 @@
 import type { Component } from 'svelte'
 
 // Eagerly import all Svelte components from matterviz dist.
-// The import.meta.glob uses a direct node_modules path (leading slash is
-// project-root relative) rather than a Vite alias.
-const modules = import.meta.glob(`/node_modules/matterviz/dist/**/*.svelte`, {
-  eager: true,
-}) as Record<string, { default?: Component }>
+// The Dash package.json points matterviz at the root package during local/CI builds.
+const modules = import.meta.glob<{ default?: Component }>(
+  `/node_modules/matterviz/dist/**/*.svelte`,
+  { eager: true },
+)
 
 const components_by_key = new Map<string, Component>()
 const keys_by_base_name = new Map<string, string[]>()

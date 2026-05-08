@@ -11,7 +11,7 @@ on:
       - 'src/lib/**' # Core Svelte components that Dash wraps
       - 'package.json'
       - 'svelte.config.ts'
-      - 'scripts/package-dist-assets.mjs'
+      - 'scripts/package-dist-assets.ts'
       - '.github/workflows/test-dash.yml'
   push:
     branches: [main]
@@ -20,7 +20,7 @@ on:
       - 'src/lib/**'
       - 'package.json'
       - 'svelte.config.ts'
-      - 'scripts/package-dist-assets.mjs'
+      - 'scripts/package-dist-assets.ts'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
@@ -47,7 +47,7 @@ jobs:
 
       # Build root matterviz package (generates dist/*.d.ts files)
       - name: Build matterviz package
-        run: npm install && npx svelte-kit sync && npx svelte-package && node scripts/package-dist-assets.mjs
+        run: npm install && npm run package:dist
         working-directory: .
 
       # Install dash extension deps

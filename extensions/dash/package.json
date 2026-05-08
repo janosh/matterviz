@@ -14,7 +14,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "matterviz": "^0.3.2",
+    "matterviz": "file:../..",
     "prop-types": "^15.8.1"
   },
   "devDependencies": {

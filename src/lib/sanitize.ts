@@ -1,17 +1,6 @@
 import DOMPurify from 'dompurify'
 import { format_formula_html } from './phase-diagram/utils'
 
-// SSR: provide a DOM for DOMPurify when no browser window exists (e.g. during vite build)
-let ssr_window: unknown
-if (typeof globalThis.window === `undefined`) {
-  try {
-    const { Window } = await import(/* @vite-ignore */ `happy-dom`)
-    ssr_window = new Window()
-  } catch {
-    // happy-dom not available at runtime — get_purify() will fall back to pass-through
-  }
-}
-
 const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `code`, `small`]
 const SAFE_ATTRS = [`style`, `class`, `title`, `href`, `target`, `rel`]
 // only allow safe CSS properties for text formatting
@@ -30,9 +19,8 @@ let purify: ReturnType<typeof DOMPurify> | null | undefined
 
 function get_purify(): ReturnType<typeof DOMPurify> | null {
   if (purify !== undefined) return purify
-  const instance = ssr_window
-    ? DOMPurify(ssr_window as Parameters<typeof DOMPurify>[0])
-    : DOMPurify()
+  if (typeof globalThis.window === `undefined`) return (purify = null)
+  const instance = DOMPurify()
   if (typeof instance.sanitize !== `function`) {
     purify = null
     return null

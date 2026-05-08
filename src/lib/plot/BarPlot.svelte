@@ -2079,7 +2079,7 @@
     </svg>
 
     <!-- Legend -->
-    {#if legend && series.length > 1}
+    {#if legend && (show_legend !== undefined ? show_legend : series.length > 1)}
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
