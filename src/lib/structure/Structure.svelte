@@ -806,17 +806,17 @@
   }
 
   const emit_file_load_event = (
-    structure: AnyStructure,
+    loaded_structure: AnyStructure,
     filename: string,
     content: string | ArrayBuffer,
   ) =>
     on_file_load?.({
-      structure: structure,
+      structure: loaded_structure,
       filename,
       file_size: typeof content === `string`
         ? new Blob([content]).size
         : content.byteLength,
-      total_atoms: structure.sites?.length || 0,
+      total_atoms: loaded_structure.sites?.length || 0,
     })
 
   // Try to parse content as a volumetric file, setting both structure and volumetric data.

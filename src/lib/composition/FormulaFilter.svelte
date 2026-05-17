@@ -398,11 +398,11 @@
     const operator = token.startsWith(`-`) || token.startsWith(`!`)
       ? `exclude`
       : `include`
-    const value =
+    const stripped_value =
       token.startsWith(`+`) || token.startsWith(`-`) || token.startsWith(`!`)
         ? token.slice(1)
         : token
-    return { operator, value }
+    return { operator, value: stripped_value }
   }
 
   function serialize_token(

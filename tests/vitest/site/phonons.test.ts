@@ -260,11 +260,11 @@ describe(`Phonon Module Tests`, () => {
         const end_label = band_struct.qpoints[branch.end_index]?.label
 
         if (start_label && end_label) {
-          expect(branch.name, `${id}`).toBe(`${start_label}-${end_label}`)
+          expect(branch.name, id).toBe(`${start_label}-${end_label}`)
         } else if (start_label) {
-          expect(branch.name, `${id}`).toContain(start_label)
+          expect(branch.name, id).toContain(start_label)
         } else if (end_label) {
-          expect(branch.name, `${id}`).toContain(end_label)
+          expect(branch.name, id).toContain(end_label)
         }
       }
     },

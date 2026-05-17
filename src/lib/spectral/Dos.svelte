@@ -370,8 +370,8 @@
     }
     // Range became invalid - clear parent's range to propagate reset
     if (`range` in y_axis) {
-      const { range: _omit, ...rest } = y_axis
-      y_axis = rest
+      const { range: _omit, ...axis_without_range } = y_axis
+      y_axis = axis_without_range
     }
   })
 

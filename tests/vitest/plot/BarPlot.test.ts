@@ -2,6 +2,7 @@ import { BarPlot } from '$lib'
 import type { BarHandlerProps, BarMode, BarSeries, Orientation } from '$lib/plot'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
+import { resize_element } from '../setup'
 
 const basic: BarSeries = {
   x: [1, 2, 3, 4, 5],
@@ -19,10 +20,7 @@ async function mount_sized_bar_plot(
   })
   const plot = document.querySelector<HTMLElement>(`.bar-plot`)
   if (!plot) throw new Error(`BarPlot root element not found`)
-  Object.defineProperty(plot, `clientWidth`, { value: 400, configurable: true })
-  Object.defineProperty(plot, `clientHeight`, { value: 300, configurable: true })
-  plot.dispatchEvent(new Event(`resize`))
-  await tick()
+  await resize_element(plot, 400, 300)
   return plot
 }
 

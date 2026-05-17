@@ -2959,11 +2959,11 @@ test.describe(`Fullscreen Background Color Detection`, () => {
         const el = document.querySelector(`#test-structure`) as HTMLElement
         if (!el) return
         const get_bg = () => {
-          const html_bg = getComputedStyle(document.documentElement).backgroundColor
-          const body_bg = getComputedStyle(document.body).backgroundColor
+          const computed_html_bg = getComputedStyle(document.documentElement).backgroundColor
+          const computed_body_bg = getComputedStyle(document.body).backgroundColor
           const valid = (bg: string) => bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
-          if (valid(html_bg)) return html_bg
-          if (valid(body_bg)) return body_bg
+          if (valid(computed_html_bg)) return computed_html_bg
+          if (valid(computed_body_bg)) return computed_body_bg
           return globalThis.matchMedia(`(prefers-color-scheme: dark)`).matches
             ? `#1a1a1a`
             : `#ffffff`

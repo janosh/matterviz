@@ -275,16 +275,16 @@
       x: x_coord,
       y: min_y,
     }))
-    const hull_points = thermo.compute_lower_hull_2d(hull_input)
+    const computed_hull_points = thermo.compute_lower_hull_2d(hull_input)
 
-    const all_enriched_entries = coords_entries.map((entry) => {
-      const y_hull = thermo.interpolate_hull_2d(hull_points, entry.x)
+    const enriched_entries = coords_entries.map((entry) => {
+      const y_hull = thermo.interpolate_hull_2d(computed_hull_points, entry.x)
       const raw_dist = y_hull == null ? 0 : entry.y - y_hull
       return {
         ...entry, ...compute_hull_stability(raw_dist, entry.exclude_from_hull), visible: true,
       }
     })
-    return { all_enriched_entries, hull_points }
+    return { all_enriched_entries: enriched_entries, hull_points: computed_hull_points }
   })
 
   // Auto threshold: show all for few entries, use default for many, interpolate between

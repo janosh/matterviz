@@ -2,9 +2,9 @@ import { RdfPlot } from '$lib'
 import type { RdfPattern } from '$lib/rdf'
 import type { Pbc } from '$lib/structure'
 import { structure_map } from '$site/structures'
-import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal, resize_element } from '../setup'
 
 const nacl_structure = structure_map.get(`mp-1234`)
 const pd_structure = structure_map.get(`mp-2`)
@@ -40,10 +40,7 @@ async function mount_sized_rdf_plot(
   const plot = document.querySelector<HTMLElement>(`.scatter, .empty-drop`)
   if (!plot) throw new Error(`RdfPlot root element not found`)
   if (plot.classList.contains(`scatter`)) {
-    Object.defineProperty(plot, `clientWidth`, { value: 400, configurable: true })
-    Object.defineProperty(plot, `clientHeight`, { value: 300, configurable: true })
-    plot.dispatchEvent(new Event(`resize`))
-    await tick()
+    await resize_element(plot, 400, 300)
   }
   return plot
 }

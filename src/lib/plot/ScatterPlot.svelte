@@ -393,13 +393,13 @@
 
     for (const srs of series_with_ids) {
       if (!srs) continue
-      const { x: xs, y: ys, visible = true, y_axis = `y1`, x_axis: x_ax = `x1` } =
+      const { x: xs, y: ys, visible = true, y_axis: series_y_axis = `y1`, x_axis: x_ax = `x1` } =
         srs as DataSeries
       for (let idx = 0; idx < xs.length; idx++) {
         const point = { x: xs[idx], y: ys[idx] }
         all.push(point)
         if (visible) {
-          if (y_axis === `y2`) y2.push(point)
+          if (series_y_axis === `y2`) y2.push(point)
           else y1.push(point)
           if (x_ax === `x2`) x2.push(point)
         }
@@ -665,7 +665,7 @@
           }
         }
 
-        const { x: xs, y: ys, color_values, size_values, ...rest } = data_series
+        const { x: xs, y: ys, color_values, size_values, ...series_rest } = data_series
 
         // Process points internally, adding properties beyond the base Point type
         const processed_points: InternalPoint<Metadata>[] = xs.map(
@@ -673,11 +673,11 @@
             x: x_val,
             y: ys[point_idx],
             color_value: color_values?.[point_idx],
-            metadata: process_prop(rest.metadata, point_idx) as Metadata | undefined,
-            point_style: process_prop(rest.point_style, point_idx),
-            point_hover: process_prop(rest.point_hover, point_idx),
-            point_label: process_prop(rest.point_label, point_idx),
-            point_offset: process_prop(rest.point_offset, point_idx),
+            metadata: process_prop(series_rest.metadata, point_idx) as Metadata | undefined,
+            point_style: process_prop(series_rest.point_style, point_idx),
+            point_hover: process_prop(series_rest.point_hover, point_idx),
+            point_label: process_prop(series_rest.point_label, point_idx),
+            point_offset: process_prop(series_rest.point_offset, point_idx),
             series_idx,
             point_idx,
             size_value: size_values?.[point_idx],
@@ -1726,9 +1726,9 @@
     legend_manual_position = { x: constrained_x, y: constrained_y }
   }
 
-  function get_screen_coords(point: Point, series?: DataSeries): [number, number] {
+  function get_screen_coords(point: Point, data_series?: DataSeries): [number, number] {
     // convert data coordinates to potentially non-finite screen coordinates
-    const use_x2 = series?.x_axis === `x2`
+    const use_x2 = data_series?.x_axis === `x2`
     const active_x_scale = use_x2 ? x2_scale_fn : x_scale_fn
     const active_is_time_x = use_x2 ? is_time_x2 : is_time_x
     const screen_x = active_is_time_x
@@ -1737,7 +1737,7 @@
 
     const y_val = point.y
     // Determine which y-scale to use based on series y_axis property
-    const use_y2 = series?.y_axis === `y2`
+    const use_y2 = data_series?.y_axis === `y2`
     const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
     const y_scale_type = use_y2
       ? get_scale_type_name(final_y2_axis.scale_type)

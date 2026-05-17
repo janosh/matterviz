@@ -91,9 +91,9 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   } as ArcsinhScale[`domain`]
 
   // Range getter/setter
-  scale.range = function (range?: [number, number]): [number, number] | ArcsinhScale {
-    if (range === undefined) return current_range
-    current_range = range
+  scale.range = function (output_range?: [number, number]): [number, number] | ArcsinhScale {
+    if (output_range === undefined) return current_range
+    current_range = output_range
     return scale
   } as ArcsinhScale[`range`]
 
@@ -256,7 +256,7 @@ function generate_positive_arcsinh_ticks(
 export function create_scale(
   scale_type: ScaleType,
   domain: [number, number],
-  range: [number, number],
+  output_range: [number, number],
 ): ScaleContinuousNumeric<number, number> | ArcsinhScale {
   const [min_val, max_val] = domain
   const type_name = get_scale_type_name(scale_type)
@@ -264,21 +264,21 @@ export function create_scale(
   if (type_name === `log`) {
     return scaleLog()
       .domain([Math.max(min_val, math.LOG_EPS), max_val])
-      .range(range)
+      .range(output_range)
   }
   if (type_name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
-    return scale_arcsinh(threshold).domain(domain).range(range)
+    return scale_arcsinh(threshold).domain(domain).range(output_range)
   }
   // For 'time' or 'linear', return linear scale (time scales need create_time_scale())
-  return scaleLinear().domain(domain).range(range)
+  return scaleLinear().domain(domain).range(output_range)
 }
 
 // Create a time scale for time-based data
-export function create_time_scale(domain: [number, number], range: [number, number]) {
+export function create_time_scale(domain: [number, number], output_range: [number, number]) {
   return scaleTime()
     .domain([new Date(domain[0]), new Date(domain[1])])
-    .range(range)
+    .range(output_range)
 }
 
 // Unified tick generation function
@@ -383,12 +383,12 @@ export function calculate_domain(
 export function get_nice_data_range(
   points: Point[],
   get_value: (p: Point) => number,
-  range: [number | null, number | null],
+  limits: [number | null, number | null],
   scale_type: ScaleType,
   padding_factor: number,
   is_time = false,
 ): [number, number] {
-  const [min, max] = range
+  const [min, max] = limits
   const [min_ext, max_ext] = extent(points, get_value)
   let data_min = min ?? min_ext ?? 0
   let data_max = max ?? max_ext ?? 1

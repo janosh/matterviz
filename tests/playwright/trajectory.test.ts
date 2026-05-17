@@ -402,19 +402,21 @@ test.describe(`Trajectory Component`, () => {
 
     test(`accessibility attributes are present`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
-      const controls = trajectory.locator(`.trajectory-controls`)
+      const trajectory_controls = trajectory.locator(`.trajectory-controls`)
 
       // Basic accessibility
       await expect(trajectory).toHaveAttribute(`role`, `button`)
       await expect(trajectory).toHaveAttribute(`tabindex`, `0`)
 
       // Button titles
-      await expect(controls.locator(`.play-button`)).toHaveAttribute(`title`, /Play|Pause/)
-      await expect(controls.locator(`button[title="Previous step"]`)).toHaveAttribute(
+      await expect(trajectory_controls.locator(`.play-button`)).toHaveAttribute(
         `title`,
-        `Previous step`,
+        /Play|Pause/,
       )
-      await expect(controls.locator(`.trajectory-info-toggle`)).toHaveAttribute(
+      await expect(
+        trajectory_controls.locator(`button[title="Previous step"]`),
+      ).toHaveAttribute(`title`, `Previous step`)
+      await expect(trajectory_controls.locator(`.trajectory-info-toggle`)).toHaveAttribute(
         `title`,
         /info/,
       )
@@ -671,7 +673,7 @@ test.describe(`Trajectory Component`, () => {
 
     test(`mobile layout adapts correctly`, async ({ page }) => {
       const trajectory = page.locator(`#auto-layout`)
-      const controls = trajectory.locator(`.trajectory-controls`)
+      const trajectory_controls = trajectory.locator(`.trajectory-controls`)
 
       // Test mobile container with tall aspect ratio
       await page
@@ -682,8 +684,8 @@ test.describe(`Trajectory Component`, () => {
           el.style.height = `600px`
         })
       await expect(trajectory).toBeVisible()
-      await expect(controls.locator(`.play-button`)).toBeVisible()
-      await expect(controls.locator(`.trajectory-info-toggle`)).toBeVisible()
+      await expect(trajectory_controls.locator(`.play-button`)).toBeVisible()
+      await expect(trajectory_controls.locator(`.trajectory-info-toggle`)).toBeVisible()
 
       // Should use vertical layout for tall container, but be lenient in test environment
       const mobile_class = await trajectory.getAttribute(`class`)

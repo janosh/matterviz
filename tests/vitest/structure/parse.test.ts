@@ -797,10 +797,10 @@ H1   H   2.100  0.900  0.500  1.000`
 
       // Check fractional coordinates
       for (const [element, expected] of Object.entries(expected_coords)) {
-        const site = result.sites.find((site) => site.species[0].element === element)
-        expect(site?.abc[0]).toBeCloseTo(expected[0], 12)
-        expect(site?.abc[1]).toBeCloseTo(expected[1], 12)
-        expect(site?.abc[2]).toBeCloseTo(expected[2], 12)
+        const matching_site = result.sites.find((site) => site.species[0].element === element)
+        expect(matching_site?.abc[0]).toBeCloseTo(expected[0], 12)
+        expect(matching_site?.abc[1]).toBeCloseTo(expected[1], 12)
+        expect(matching_site?.abc[2]).toBeCloseTo(expected[2], 12)
       }
 
       // Verify coordinate bounds based on wrapping

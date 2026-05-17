@@ -15,15 +15,15 @@
   let { position, rotation, height } = $derived(calc_bond(from_vec, to_vec))
 
   function calc_bond(
-    from_vec: Vector3,
-    to_vec: Vector3,
+    start_vec: Vector3,
+    end_vec: Vector3,
   ): { position: Vec3; rotation: Vec3; height: number } {
     // find the axis of the cylinder
-    const delta_vec = to_vec.clone().sub(from_vec)
+    const delta_vec = end_vec.clone().sub(start_vec)
     // length of the cylinder
-    const height = delta_vec.length()
+    const bond_height = delta_vec.length()
     // calculate position (midpoint between from and to)
-    const position = from_vec
+    const bond_position = start_vec
       .clone()
       .add(delta_vec.multiplyScalar(0.5))
       .toArray() as Vec3
@@ -33,9 +33,9 @@
       delta_vec.normalize(),
     )
     const euler = new Euler().setFromQuaternion(quaternion)
-    const rotation: Vec3 = [euler.x, euler.y, euler.z]
+    const bond_rotation: Vec3 = [euler.x, euler.y, euler.z]
     // return results
-    return { height, position, rotation }
+    return { height: bond_height, position: bond_position, rotation: bond_rotation }
   }
 </script>
 

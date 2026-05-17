@@ -1855,13 +1855,13 @@ describe(`det_nxn`, () => {
 
   // Test higher-dimensional matrices (5x5 and 6x6 for N-element convex hulls)
   const make_identity = (n: number) =>
-    Array.from({ length: n }, (_, idx) =>
-      Array.from({ length: n }, (_, jdx) => (idx === jdx ? 1 : 0)),
+    Array.from({ length: n }, (_row, idx) =>
+      Array.from({ length: n }, (_col, jdx) => (idx === jdx ? 1 : 0)),
     )
 
   const make_diagonal = (n: number) =>
-    Array.from({ length: n }, (_, idx) =>
-      Array.from({ length: n }, (_, jdx) => (idx === jdx ? idx + 1 : 0)),
+    Array.from({ length: n }, (_row, idx) =>
+      Array.from({ length: n }, (_col, jdx) => (idx === jdx ? idx + 1 : 0)),
     )
 
   const factorial = (n: number): number => (n <= 1 ? 1 : n * factorial(n - 1))
@@ -1875,8 +1875,8 @@ describe(`det_nxn`, () => {
   })
 
   test(`5x5 singular matrix → det=0`, () => {
-    const singular = Array.from({ length: 5 }, (_, idx) =>
-      Array.from({ length: 5 }, (_, jdx) => idx + jdx + 1),
+    const singular = Array.from({ length: 5 }, (_row, idx) =>
+      Array.from({ length: 5 }, (_col, jdx) => idx + jdx + 1),
     )
     expect(math.det_nxn(singular)).toBeCloseTo(0, 5)
   })
@@ -2391,8 +2391,8 @@ describe(`solve_linear_system`, () => {
   })
 
   test(`5x5 identity`, () => {
-    const identity = Array.from({ length: 5 }, (_, row) =>
-      Array.from({ length: 5 }, (_, col) => (row === col ? 1 : 0)),
+    const identity = Array.from({ length: 5 }, (_row, row) =>
+      Array.from({ length: 5 }, (_col, col) => (row === col ? 1 : 0)),
     )
     const rhs = [2, 4, 6, 8, 10]
     const result = math.solve_linear_system(identity, rhs)

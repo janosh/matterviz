@@ -112,9 +112,9 @@
     // Convert to BarSeries array, maintaining order of crystal systems
     const result: BarSeries[] = []
     for (const system of symmetry.CRYSTAL_SYSTEMS) {
-      const data = series_by_system.get(system)
-      if (data) {
-        const { x, y } = data
+      const system_data = series_by_system.get(system)
+      if (system_data) {
+        const { x, y } = system_data
         const color = symmetry.CRYSTAL_SYSTEM_COLORS[system]
         result.push({ x, y, color, label: system, bar_width: 0.9, visible: true })
       }

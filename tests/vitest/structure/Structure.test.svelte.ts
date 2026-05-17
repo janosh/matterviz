@@ -376,10 +376,10 @@ describe(`Structure component nested JSON handling`, () => {
         charge: 0,
       },
     ],
-  ])(`renders successfully with %s`, (_description, structure) => {
+  ])(`renders successfully with %s`, (_description, test_structure) => {
     mount(Structure, {
       target: document.body,
-      props: { structure: structure as AnyStructure },
+      props: { structure: test_structure as AnyStructure },
     })
 
     expect(document.body.textContent).not.toContain(`No sites found in structure`)
@@ -394,13 +394,13 @@ describe(`Structure component nested JSON handling`, () => {
     [`structure with null sites`, { sites: null } as unknown],
     [`structure with empty sites array`, { sites: [] }],
     [`structure with undefined sites`, { sites: undefined } as unknown],
-  ])(`shows appropriate error for %s`, (_description, structure) => {
+  ])(`shows appropriate error for %s`, (_description, test_structure) => {
     mount(Structure, {
       target: document.body,
-      props: { structure: structure as AnyStructure },
+      props: { structure: test_structure as AnyStructure },
     })
 
-    if (!structure) {
+    if (!test_structure) {
       expect(document.body.textContent).toContain(`No structure provided`)
     } else {
       expect(document.body.textContent).toContain(`No sites found in structure`)

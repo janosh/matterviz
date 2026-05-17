@@ -188,10 +188,10 @@ const LINE_PARSERS: LineParser[] = [
           .map((name) => name.trim())
           .filter((name) => name.length > 0),
       )
-      const phase = data.phases.find(
-        (phase) => phase.name.toUpperCase() === phase_name.toUpperCase(),
+      const matched_phase = data.phases.find(
+        (candidate_phase) => candidate_phase.name.toUpperCase() === phase_name.toUpperCase(),
       )
-      if (phase) phase.constituents = constituents
+      if (matched_phase) matched_phase.constituents = constituents
     },
   },
   {

@@ -5,6 +5,7 @@ import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
+import { resize_element } from '../setup'
 
 const basic = {
   x: [1, 2, 3, 4, 5],
@@ -21,10 +22,7 @@ async function mount_sized_scatter_plot(
   })
   const plot = document.querySelector<HTMLElement>(`.scatter`)
   if (!plot) throw new Error(`ScatterPlot root element not found`)
-  Object.defineProperty(plot, `clientWidth`, { value: 400, configurable: true })
-  Object.defineProperty(plot, `clientHeight`, { value: 300, configurable: true })
-  plot.dispatchEvent(new Event(`resize`))
-  await tick()
+  await resize_element(plot, 400, 300)
   return plot
 }
 

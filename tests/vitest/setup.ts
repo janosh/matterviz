@@ -5,6 +5,7 @@ import init from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tick } from 'svelte'
 import { beforeEach, vi } from 'vitest'
 
 // Node 22+ has a built-in localStorage Proxy that lacks the standard Storage
@@ -83,18 +84,56 @@ export function svg_query(selector: string): SVGElement {
   return query_required(selector)
 }
 
+export function set_element_size(element: HTMLElement, width: number, height: number): void {
+  Object.defineProperty(element, `clientWidth`, { value: width, configurable: true })
+  Object.defineProperty(element, `clientHeight`, { value: height, configurable: true })
+}
+
+export async function resize_element(
+  element: HTMLElement,
+  width: number,
+  height: number,
+): Promise<void> {
+  set_element_size(element, width, height)
+  element.dispatchEvent(new Event(`resize`))
+  await tick()
+}
+
+export const make_grid = (
+  nx: number,
+  ny: number,
+  nz: number,
+  fill: number | ((ix: number, iy: number, iz: number) => number) = 1,
+): number[][][] =>
+  Array.from({ length: nx }, (_x_row, ix) =>
+    Array.from({ length: ny }, (_y_row, iy) =>
+      Array.from({ length: nz }, (_z_row, iz) =>
+        typeof fill === `function` ? fill(ix, iy, iz) : fill,
+      ),
+    ),
+  )
+
+export function read_binary_test_file(
+  filename: string,
+  directory = `src/site/trajectories`,
+): ArrayBuffer {
+  const file_path = resolve(process.cwd(), directory, filename)
+  const buffer = readFileSync(file_path)
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+}
+
 // Test data factory for creating mock structures
 export const get_dummy_structure = (
   element: ElementSymbol = `H`,
   atoms = 3,
   with_lattice = false,
 ): Crystal => {
-  const matrix: math.Matrix3x3 = [
+  const default_matrix: math.Matrix3x3 = [
     [5, 0, 0],
     [0, 5, 0],
     [0, 0, 5],
   ]
-  const pbc: Pbc = [false, false, false]
+  const default_pbc: Pbc = [false, false, false]
   const structure = {
     sites: Array.from({ length: atoms }, (_, idx) => ({
       species: [{ element, occu: 1, oxidation_state: 0 }],
@@ -103,7 +142,17 @@ export const get_dummy_structure = (
       label: `${element}${idx + 1}`,
       properties: {},
     })),
-    lattice: { matrix, pbc, volume: 0, a: 0, b: 0, c: 0, alpha: 0, beta: 0, gamma: 0 },
+    lattice: {
+      matrix: default_matrix,
+      pbc: default_pbc,
+      volume: 0,
+      a: 0,
+      b: 0,
+      c: 0,
+      alpha: 0,
+      beta: 0,
+      gamma: 0,
+    },
     charge: 0,
   }
 

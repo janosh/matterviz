@@ -365,7 +365,7 @@
 
       if (!points.length) return [0, 1]
 
-      let y_range = get_nice_data_range(
+      let computed_y_range = get_nice_data_range(
         points,
         (pt) => pt.y,
         y_limit,
@@ -383,12 +383,12 @@
 
         // Only adjust if no explicit y_range is set
         if (y_limit?.[0] == null && y_limit?.[1] == null) {
-          if (has_positive && !has_negative) y_range = [0, y_range[1]]
-          else if (has_negative && !has_positive) y_range = [y_range[0], 0]
+          if (has_positive && !has_negative) computed_y_range = [0, computed_y_range[1]]
+          else if (has_negative && !has_positive) computed_y_range = [computed_y_range[0], 0]
         }
       }
 
-      return y_range
+      return computed_y_range
     }
 
     // Get x values split by axis for range calculation

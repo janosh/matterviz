@@ -81,9 +81,7 @@ export default defineConfig({
       // Pervasive intentional patterns
       '@typescript-eslint/no-unsafe-type-assertion': `off`,
       '@typescript-eslint/restrict-template-expressions': `off`,
-      '@typescript-eslint/no-unnecessary-template-expression': `off`, // backtick convention
       'no-await-in-loop': `off`,
-      'no-shadow': `off`,
       'eslint-plugin-unicorn/no-array-sort': `off`, // [...arr].sort() is idiomatic
       '@typescript-eslint/no-redundant-type-constituents': `error`,
       'eslint-plugin-unicorn/require-module-specifiers': `off`,

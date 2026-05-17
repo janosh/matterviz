@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it, test } from 'vitest'
-import { get_dummy_structure } from '../setup'
+import { get_dummy_structure, read_binary_test_file } from '../setup'
 
 const TRAJECTORY_DIR = `src/site/trajectories`
 
@@ -20,13 +20,6 @@ const read_test_file = (filename: string): string => {
     return gunzipSync(readFileSync(file_path)).toString(`utf-8`)
   }
   return readFileSync(file_path, `utf-8`)
-}
-
-// Helper to read binary trajectory files (e.g., .traj, .h5)
-const read_binary_test_file = (filename: string): ArrayBuffer => {
-  const file_path = join(process.cwd(), TRAJECTORY_DIR, filename)
-  const buffer = readFileSync(file_path)
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 }
 
 describe(`Trajectory File Detection`, () => {

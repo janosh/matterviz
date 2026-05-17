@@ -55,10 +55,10 @@
   // Lightweight element extraction - count unique elements, stripping oxidation states
   // (e.g. "V4+" -> "V") to avoid counting the same element multiple times
   function extract_unique_elements(
-    entries: { composition: Record<string, number> }[],
+    hull_entries: { composition: Record<string, number> }[],
   ): string[] {
     const elements = new SvelteSet<string>()
-    for (const entry of entries) {
+    for (const entry of hull_entries) {
       for (const key of Object.keys(entry.composition)) {
         // Extract valid element symbols, stripping oxidation states
         for (const elem of extract_formula_elements(key, { unique: false })) {

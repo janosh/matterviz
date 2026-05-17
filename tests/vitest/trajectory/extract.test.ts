@@ -7,10 +7,8 @@ import {
   structural_data_extractor,
 } from '$lib/trajectory/extract'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
-import { readFileSync } from 'node:fs'
-import process from 'node:process'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { read_binary_test_file } from '../setup'
 
 const constant_lattice_keys = [
   `constant_a`,
@@ -20,13 +18,6 @@ const constant_lattice_keys = [
   `constant_beta`,
   `constant_gamma`,
 ] as const
-
-// Helper to read binary test files (for HDF5)
-function read_binary_test_file(filename: string): ArrayBuffer {
-  const file_path = join(process.cwd(), `src/site/trajectories`, filename)
-  const buffer = readFileSync(file_path)
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
-}
 
 // Helper to create a basic frame structure
 const create_basic_frame = (

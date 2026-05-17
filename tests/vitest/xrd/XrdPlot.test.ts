@@ -2,6 +2,7 @@ import { XrdPlot } from '$lib'
 import type { XrdPattern } from '$lib/xrd'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
+import { resize_element } from '../setup'
 
 const pattern: XrdPattern = {
   x: [10, 20, 30, 40, 50],
@@ -28,12 +29,8 @@ function create_sized_container(): HTMLDivElement {
 // Helper to mock clientWidth/clientHeight and wait for render.
 async function wait_for_plot_render(target: HTMLElement): Promise<void> {
   const bar_plot = target.querySelector<HTMLElement>(`.bar-plot`)
-  if (bar_plot) {
-    Object.defineProperty(bar_plot, `clientWidth`, { value: 800, configurable: true })
-    Object.defineProperty(bar_plot, `clientHeight`, { value: 600, configurable: true })
-    bar_plot.dispatchEvent(new Event(`resize`))
-  }
-  await tick()
+  if (bar_plot) await resize_element(bar_plot, 800, 600)
+  else await tick()
 }
 
 describe(`XrdPlot`, () => {
@@ -269,9 +266,9 @@ describe(`XrdPlot`, () => {
       expects: [`44`, `48`], // should start at floor(44)=44, end at ceil(48)=48
       not_expects: [`0`, `10`, `20`, `30`], // should NOT show low values
     },
-  ])(`axis ranges: $desc`, async ({ pattern, axis, expects, not_expects }) => {
+  ])(`axis ranges: $desc`, async ({ pattern: test_pattern, axis, expects, not_expects }) => {
     const target = create_sized_container()
-    mount(XrdPlot, { target, props: { patterns: pattern } })
+    mount(XrdPlot, { target, props: { patterns: test_pattern } })
     await wait_for_plot_render(target)
 
     const axis_el = target.querySelector(axis)

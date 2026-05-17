@@ -85,8 +85,8 @@
     { label: `7+`, key: `bin_7`, category: `extreme` },
   ]
   // Count element pairs falling into each EN-diff x density-ratio bin
-  const bin_values: number[][] = property_bins.map((_, y_idx) =>
-    property_bins.map((_, x_idx) => {
+  const bin_values: number[][] = property_bins.map((_y_bin, y_idx) =>
+    property_bins.map((_x_bin, x_idx) => {
       // Generate a synthetic heatmap: Gaussian-ish distribution centered near (3,3)
       const dist = Math.sqrt((x_idx - 3) ** 2 + (y_idx - 3) ** 2)
       return Math.round(100 * Math.exp(-dist * 0.4))

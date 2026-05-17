@@ -1010,11 +1010,11 @@
     grid_offset_top = first_rendered_cell.offsetTop - vis_row * tile_stride_px
   }
 
-  function compute_summary(values: number[]): number | null {
-    if (!values.length) return null
-    if (summary_fn) return summary_fn(values)
-    const total = values.reduce((sum, value) => sum + value, 0)
-    return total / values.length
+  function compute_summary(summary_values: number[]): number | null {
+    if (!summary_values.length) return null
+    if (summary_fn) return summary_fn(summary_values)
+    const total = summary_values.reduce((sum, value) => sum + value, 0)
+    return total / summary_values.length
   }
 
   function summarize_axis_values(

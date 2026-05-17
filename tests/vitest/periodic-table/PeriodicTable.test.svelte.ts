@@ -534,7 +534,7 @@ describe(`PeriodicTable`, () => {
     // Helper to get numeric tick values from colorbar
     const get_tick_values = (colorbar: Element | null) =>
       Array.from(colorbar?.querySelectorAll(`.tick-label`) || [])
-        .map((tick) => parseFloat((tick as HTMLElement).textContent?.trim() || ``))
+        .map((tick_label) => parseFloat((tick_label as HTMLElement).textContent?.trim() || ``))
         .filter((val) => !isNaN(val))
 
     test(`shows ColorBar with correct structure and defaults`, () => {

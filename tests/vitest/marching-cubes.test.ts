@@ -2,6 +2,7 @@
 import { compute_vertex_normals, marching_cubes } from '$lib/marching-cubes'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
+import { make_grid } from './setup'
 
 const IDENTITY: Matrix3x3 = [
   [1, 0, 0],
@@ -10,21 +11,8 @@ const IDENTITY: Matrix3x3 = [
 ]
 const NON_PERIODIC = { periodic: false, centered: false }
 
-// Helper: create a 3D grid filled with a function f(ix, iy, iz)
-const make_grid = (
-  nx: number,
-  ny: number,
-  nz: number,
-  fill_fn: (ix: number, iy: number, iz: number) => number,
-): number[][][] =>
-  Array.from({ length: nx }, (_, ix) =>
-    Array.from({ length: ny }, (_, iy) =>
-      Array.from({ length: nz }, (_, iz) => fill_fn(ix, iy, iz)),
-    ),
-  )
-
 const uniform_grid = (nx: number, ny: number, nz: number, value: number): number[][][] =>
-  make_grid(nx, ny, nz, () => value)
+  make_grid(nx, ny, nz, value)
 
 // Gaussian blob centered in grid, values ~0 at edges to ~1 at center
 const gaussian_grid = (size: number): number[][][] => {

@@ -336,7 +336,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const section = page.locator(`section#marker-types`)
       await expect(section).toBeVisible()
 
-      const plot = section.locator(`${id}`)
+      const plot = section.locator(id)
       await expect(plot).toBeVisible()
 
       // Check markers count
@@ -1615,7 +1615,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   ]
 
   tick_axis_test_cases.forEach(({ selector, description }) => {
-    test(`${description}`, async ({ page }) => {
+    test(description, async ({ page }) => {
       const section = page.locator(`#basic-example`)
       const scatter_plot = section.locator(`.scatter`)
 

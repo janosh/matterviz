@@ -354,15 +354,19 @@ export function parse_xyz(content: string): ParsedStructure | null {
     // Split into frames by reading the atom count and slicing lines
     const all_lines = normalized_content.split(/\r?\n/)
     const frames: string[] = []
-    let line_idx = 0
+    let frame_line_idx = 0
 
-    while (line_idx < all_lines.length) {
-      const numAtoms = parseInt(all_lines[line_idx].trim(), 10)
-      if (!isNaN(numAtoms) && numAtoms > 0 && line_idx + numAtoms + 1 < all_lines.length) {
-        const frameLines = all_lines.slice(line_idx, line_idx + numAtoms + 2)
+    while (frame_line_idx < all_lines.length) {
+      const numAtoms = parseInt(all_lines[frame_line_idx].trim(), 10)
+      if (
+        !isNaN(numAtoms) &&
+        numAtoms > 0 &&
+        frame_line_idx + numAtoms + 1 < all_lines.length
+      ) {
+        const frameLines = all_lines.slice(frame_line_idx, frame_line_idx + numAtoms + 2)
         frames.push(frameLines.join(`\n`))
-        line_idx += numAtoms + 2
-      } else line_idx++
+        frame_line_idx += numAtoms + 2
+      } else frame_line_idx++
     }
 
     // If no frames found, try simple parsing
@@ -929,8 +933,8 @@ export function parse_cif(
     })()
 
     const observed_counts: Record<string, number> = {}
-    for (const a of atoms) {
-      observed_counts[a.element] = (observed_counts[a.element] || 0) + 1
+    for (const atom of atoms) {
+      observed_counts[atom.element] = (observed_counts[atom.element] || 0) + 1
     }
 
     const has_expected_counts = Object.keys(atom_type_counts).length > 0
