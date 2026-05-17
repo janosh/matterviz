@@ -1,6 +1,4 @@
-import type { ElementSymbol } from '$lib'
-import type { Matrix3x3, Vec3 } from '$lib/math'
-import type { Crystal } from '$lib/structure'
+import type { Vec3 } from '$lib/math'
 import {
   get_conventional_cell,
   get_primitive_cell,
@@ -9,7 +7,7 @@ import {
 } from '$lib/symmetry'
 import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_crystal, make_symmetry_structure as make_structure } from '../setup'
 
 // Helper to create a MoyoCell
 const make_moyo_cell = (
@@ -21,31 +19,6 @@ const make_moyo_cell = (
   positions,
   numbers,
 })
-
-// Wrapper for backward compatibility with existing tests
-const make_structure = (
-  lattice_matrix: Matrix3x3,
-  sites: { elem: ElementSymbol; abc: Vec3; xyz: Vec3 }[],
-  lattice_params?: {
-    a: number
-    b: number
-    c: number
-    alpha: number
-    beta: number
-    gamma: number
-    volume: number
-  },
-): Crystal => {
-  const crystal = make_crystal(
-    lattice_matrix,
-    sites.map(({ elem, abc, xyz }) => ({ element: elem, abc, xyz })),
-  )
-  // Override lattice params if provided (for tests with non-cubic lattices)
-  if (lattice_params) {
-    return { ...crystal, lattice: { ...crystal.lattice, ...lattice_params } }
-  }
-  return crystal
-}
 
 // Helper to create a mock MoyoDataset
 const make_mock_sym_data = (std_cell: MoyoCell, prim_std_cell: MoyoCell): MoyoDataset =>

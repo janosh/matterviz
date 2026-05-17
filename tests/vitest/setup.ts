@@ -1,6 +1,6 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import * as math from '$lib/math'
-import type { Crystal, Pbc, Site } from '$lib/structure'
+import type { Crystal, LatticeParams, Pbc, Site } from '$lib/structure'
 import init from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -320,6 +320,20 @@ export function make_crystal(
     sites,
     ...(options.charge !== undefined && { charge: options.charge }),
   }
+}
+
+export function make_symmetry_structure(
+  lattice_matrix: math.Matrix3x3,
+  sites: { elem: string; abc: Vec3; xyz: Vec3 }[],
+  lattice_params?: LatticeParams & { volume: number },
+): Crystal {
+  const crystal = make_crystal(
+    lattice_matrix,
+    sites.map(({ elem, abc, xyz }) => ({ element: elem, abc, xyz })),
+  )
+  return lattice_params
+    ? { ...crystal, lattice: { ...crystal.lattice, ...lattice_params } }
+    : crystal
 }
 
 // ResizeObserver mock - triggers callback with dimensions on observe

@@ -1,5 +1,4 @@
-import type { Matrix3x3, Vec3, Vec9 } from '$lib/math'
-import type { Crystal } from '$lib/structure'
+import type { Vec3, Vec9 } from '$lib/math'
 import {
   apply_symmetry_operations,
   simplicity_score,
@@ -8,37 +7,12 @@ import {
 } from '$lib/symmetry'
 import type { MoyoDataset, MoyoOperation } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../setup'
+import { make_symmetry_structure as make_structure } from '../setup'
 
 const make_operation = (rot: Vec9, trans: Vec3): MoyoOperation => ({
   rotation: rot,
   translation: trans,
 })
-
-// Wrapper for backward compatibility with existing tests
-const make_structure = (
-  lattice_matrix: Matrix3x3,
-  sites: { elem: string; abc: Vec3; xyz: Vec3 }[],
-  lattice_params?: {
-    a: number
-    b: number
-    c: number
-    alpha: number
-    beta: number
-    gamma: number
-    volume: number
-  },
-): Crystal => {
-  const crystal = make_crystal(
-    lattice_matrix,
-    sites.map(({ elem, abc, xyz }) => ({ element: elem, abc, xyz })),
-  )
-  // Override lattice params if provided (for tests with non-cubic lattices)
-  if (lattice_params) {
-    return { ...crystal, lattice: { ...crystal.lattice, ...lattice_params } }
-  }
-  return crystal
-}
 
 describe(`simplicity_score`, () => {
   test.each([
