@@ -75,19 +75,16 @@ export default defineConfig({
       'eslint-plugin-vitest/prefer-strict-boolean-matchers': `error`,
       'eslint-plugin-vitest/prefer-called-exactly-once-with': `error`,
       'eslint-plugin-vitest/require-awaited-expect-poll': `error`,
-      'eslint-plugin-vitest/require-mock-type-parameters': `off`, // 242 violations, needs manual type annotations
 
+      'eslint-plugin-vitest/require-mock-type-parameters': `off`, // 242 violations, needs manual type annotations
       'eslint-plugin-unicorn/consistent-function-scoping': `off`, // Svelte reactive closures
       // Pervasive intentional patterns
       '@typescript-eslint/no-unsafe-type-assertion': `off`,
       '@typescript-eslint/restrict-template-expressions': `off`,
       'no-await-in-loop': `off`,
       'eslint-plugin-unicorn/no-array-sort': `off`, // [...arr].sort() is idiomatic
-      '@typescript-eslint/no-redundant-type-constituents': `error`,
-      'eslint-plugin-unicorn/require-module-specifiers': `off`,
       'oxc/no-map-spread': `off`,
-      // Vitest default rules — too noisy for this codebase
-      'eslint-plugin-vitest/no-conditional-expect': `off`,
+      'eslint-plugin-vitest/no-conditional-expect': `off`, // Vitest default rules — too noisy for this codebase
       'eslint-plugin-vitest/valid-expect': [`error`, { maxArgs: 2 }], // Vitest supports expect(actual, message)
     },
   },
