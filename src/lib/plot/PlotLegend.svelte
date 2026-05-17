@@ -140,7 +140,10 @@
       document.body.style.userSelect = `auto`
     }
   }
-  onDestroy(cleanup_drag_listeners)
+  onDestroy(() => {
+    cleanup_drag_listeners()
+    on_item_hover?.(null)
+  })
 
   function handle_legend_mouse_down(event: MouseEvent) {
     if (!draggable) return

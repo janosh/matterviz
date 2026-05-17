@@ -279,12 +279,14 @@
         }
       }
     }
-
     return sections
   })
 
   let info_cards = $derived(
     info_pane_data.map(({ title, items }) => ({ title, rows: items })),
+  )
+  let n_info_items = $derived(
+    info_pane_data.reduce((count, { items }) => count + items.length, 0),
   )
 </script>
 
@@ -306,6 +308,6 @@
     cards={info_cards}
     filter_placeholder="Filter trajectory info"
     empty_label="trajectory info"
-    show_filter={info_pane_data.length > 1 || info_pane_data.some(({ items }) => items.length > 4)}
+    show_filter={n_info_items > 5}
   />
 </DraggablePane>

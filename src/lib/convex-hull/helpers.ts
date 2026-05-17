@@ -22,7 +22,6 @@ export { DEFAULT_GAS_TEMP }
 
 // Tolerance for classifying a phase as on the convex hull (eV/atom)
 export const HULL_STABILITY_TOL = 1e-6
-const marker_path_cache = new Map<string, Path2D>()
 
 // Clamp raw hull distance and compute stability for a single entry.
 // Excluded entries keep their raw (possibly negative) distance and are never stable.
@@ -618,9 +617,6 @@ export function get_canvas_text_color(
 export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
   const safe_size = Number.isFinite(size) ? size : 0
   const rounded_size = Math.max(0, Number(safe_size.toFixed(3)))
-  const cache_key = `${marker}:${rounded_size}`
-  const cached = marker_path_cache.get(cache_key)
-  if (cached) return cached
 
   // Capitalize first letter to get D3 symbol name (e.g. 'circle' -> 'Circle')
   const d3_name = marker.charAt(0).toUpperCase() + marker.slice(1)
@@ -633,7 +629,6 @@ export function create_marker_path(size: number, marker: MarkerSymbol = `circle`
     path.arc(0, 0, rounded_size, 0, 2 * Math.PI)
   }
 
-  marker_path_cache.set(cache_key, path)
   return path
 }
 

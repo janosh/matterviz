@@ -3,17 +3,8 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import CopyButton from './CopyButton.svelte'
+  import type { InfoPaneCard, InfoPaneRow } from './index'
 
-  export type InfoPaneRow = {
-    label: string
-    value: string | number
-    key?: string
-    tooltip?: string
-  }
-  export type InfoPaneCard = {
-    title: string
-    rows: InfoPaneRow[]
-  }
   let {
     cards,
     filter_placeholder,
@@ -49,10 +40,11 @@
   })
 
   async function copy_row(row: InfoPaneRow) {
+    const key = row_key(row)
     try {
       await navigator.clipboard.writeText(`${row.label}: ${row.value}`)
-      copied_items.add(row_key(row))
-      setTimeout(() => copied_items.delete(row_key(row)), 1000)
+      copied_items.add(key)
+      setTimeout(() => copied_items.delete(key), 1000)
     } catch (error) {
       console.error(`Failed to copy to clipboard:`, error)
     }
