@@ -272,13 +272,15 @@ describe(`svg_to_png_blob`, () => {
   })
 
   test(`revokes object URL after image load`, async () => {
-    // Mock Image so setting src synchronously triggers onload
+    // Mock Image so setting src synchronously triggers the load listener
     const orig_image = globalThis.Image
     globalThis.Image = class MockImage {
-      onload: (() => void) | null = null
-      onerror: (() => void) | null = null
+      load_listener: EventListener | null = null
+      addEventListener(type: string, listener: EventListener): void {
+        if (type === `load`) this.load_listener = listener
+      }
       set src(_url: string) {
-        queueMicrotask(() => this.onload?.())
+        queueMicrotask(() => this.load_listener?.(new Event(`load`)))
       }
     } as unknown as typeof Image
     try {

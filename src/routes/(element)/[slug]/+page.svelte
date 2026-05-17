@@ -21,6 +21,14 @@
   import { error } from '@sveltejs/kit'
   import { PrevNext } from 'svelte-multiselect'
 
+  const assert_chemical_element = (value: unknown): ChemicalElement => {
+    const elem = value as Partial<ChemicalElement> | null
+    if (elem && typeof elem.number === `number` && typeof elem.symbol === `string` && typeof elem.name === `string`) {
+      return elem as ChemicalElement
+    }
+    throw new Error(`Invalid element data: expected numeric number, string symbol, and string name`)
+  }
+
   let element = $derived.by(() => {
     const data = element_data.find((elem) =>
       elem.name.toLowerCase() === page.params.slug
@@ -211,7 +219,7 @@
   current={page.url.pathname.slice(1)}
 >
   {#snippet children({ item, kind })}
-    {@const element = item[1] as ChemicalElement}
+    {@const element = assert_chemical_element(item[1])}
     <a
       href={element.name.toLowerCase()}
       style="display: flex; flex-direction: column; position: relative"

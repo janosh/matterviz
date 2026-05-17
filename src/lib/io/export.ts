@@ -185,7 +185,7 @@ export function svg_to_png_blob(svg_element: SVGElement, png_dpi = 150): Promise
 
   return new Promise((resolve, reject) => {
     const img = new Image()
-    img.onload = () => {
+    img.addEventListener(`load`, () => {
       try {
         ctx.clearRect(0, 0, pixel_width, pixel_height)
         ctx.drawImage(img, 0, 0, pixel_width, pixel_height)
@@ -202,11 +202,11 @@ export function svg_to_png_blob(svg_element: SVGElement, png_dpi = 150): Promise
       } finally {
         URL.revokeObjectURL(svg_data_url)
       }
-    }
-    img.onerror = () => {
+    })
+    img.addEventListener(`error`, () => {
       URL.revokeObjectURL(svg_data_url)
       reject(new Error(`Failed to load SVG for PNG export`))
-    }
+    })
     img.src = svg_data_url
   })
 }
@@ -290,9 +290,9 @@ export async function export_trajectory_video(
     videoBitsPerSecond: bitrate,
   })
 
-  recorder.ondataavailable = (event) => {
+  recorder.addEventListener(`dataavailable`, (event) => {
     if (event.data.size > 0) chunks.push(event.data)
-  }
+  })
 
   const track = stream.getVideoTracks()[0] as MediaStreamTrack & {
     requestFrame?: () => void
@@ -340,7 +340,7 @@ export async function export_trajectory_video(
   return new Promise((resolve, reject) => {
     let is_resolved = false
 
-    recorder.onstop = () => {
+    recorder.addEventListener(`stop`, () => {
       if (is_resolved) return
       is_resolved = true
 
@@ -353,14 +353,17 @@ export async function export_trajectory_video(
       } catch (error) {
         reject(error)
       }
-    }
+    })
 
-    recorder.onerror = (event) => {
+    recorder.addEventListener(`error`, (event) => {
       if (is_resolved) return
       is_resolved = true
-      // Extract error details from MediaRecorderErrorEvent or ErrorEvent
-      reject(new Error(`MediaRecorder error: ${event.error}`))
-    }
+      const error_msg =
+        event instanceof ErrorEvent && event.error instanceof Error
+          ? event.error.message
+          : event.type
+      reject(new Error(`MediaRecorder error: ${error_msg}`))
+    })
 
     // Stop recording with safety timeout
     try {

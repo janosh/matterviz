@@ -80,7 +80,6 @@ export default defineConfig({
       '@typescript-eslint/unbound-method': `off`,
       'typescript/unbound-method': `off`,
       'eslint-plugin-unicorn/consistent-function-scoping': `off`, // Svelte reactive closures
-      'eslint-plugin-unicorn/prefer-add-event-listener': `off`,
       // Pervasive intentional patterns
       '@typescript-eslint/no-unsafe-type-assertion': `off`,
       '@typescript-eslint/no-unnecessary-type-assertion': `off`,

@@ -45,20 +45,20 @@ function get_worker(): Worker | null {
   if (typeof Worker === `undefined`) return null
   if (!worker) {
     worker = new Worker(new URL(`./chempot-worker.js`, import.meta.url), { type: `module` })
-    worker.onmessage = ({ data: { id, result, error } }) => {
+    worker.addEventListener(`message`, ({ data: { id, result, error } }) => {
       const req = pending.get(id)
       if (!req) return
       pending.delete(id)
       if (error || !result) req.reject(new Error(error ?? `Worker returned null`))
       else req.resolve(result)
-    }
-    worker.onerror = (event) => {
+    })
+    worker.addEventListener(`error`, (event) => {
       event.preventDefault()
       const err = new Error(event.message || `Worker initialization error`)
       for (const req of pending.values()) req.reject(err)
       pending.clear()
       worker = null
-    }
+    })
   }
   return worker
 }

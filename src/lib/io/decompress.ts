@@ -62,9 +62,9 @@ export function decompress_file(file: File): Promise<{ content: string; filename
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
-    reader.onload = async (event) => {
+    const handle_load = async (): Promise<void> => {
       try {
-        const result = event.target?.result
+        const result = reader.result
         if (!result) throw new Error(`Failed to read file`)
 
         if (is_supported && format) {
@@ -79,7 +79,10 @@ export function decompress_file(file: File): Promise<{ content: string; filename
       }
     }
 
-    reader.onerror = () => reject(new Error(`Failed to read file ${file.name}`))
+    reader.addEventListener(`load`, () => void handle_load())
+    reader.addEventListener(`error`, () =>
+      reject(new Error(`Failed to read file ${file.name}`)),
+    )
 
     if (is_supported) reader.readAsArrayBuffer(file)
     else reader.readAsText(file)
