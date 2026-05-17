@@ -603,7 +603,13 @@ describe(`Export functionality`, () => {
             // @ts-ignore - test invalid matrix
             [3, 4],
           ],
-          ...{ a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90, volume: 1 },
+          a: 1,
+          b: 1,
+          c: 1,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 1,
         },
       }
       expect(() => structure_to_poscar_str(structure_invalid_lattice)).toThrow(
@@ -629,7 +635,13 @@ describe(`Export functionality`, () => {
             [0, 0, 1],
           ],
           pbc: [true, true, true],
-          ...{ a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90, volume: 1 },
+          a: 1,
+          b: 1,
+          c: 1,
+          alpha: 90,
+          beta: 90,
+          gamma: 90,
+          volume: 1,
         },
       }
       const xyz_content = structure_to_xyz_str(structure_nan_lattice)

@@ -359,8 +359,8 @@ export class TrajFrameReader implements FrameLoader {
       const cell = frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined
       const metadata: Record<string, unknown> = {
         step: frame_number,
-        ...(frame_data.calculator || {}),
-        ...(frame_data.info || {}),
+        ...frame_data.calculator,
+        ...frame_data.info,
       }
 
       if (cell) {

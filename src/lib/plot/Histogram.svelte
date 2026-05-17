@@ -596,7 +596,7 @@
   // untrack() explicitly captures initial tween config (intentional - config set once at mount)
   const tweened_legend_coords = new Tween(
     { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
+    untrack(() => ({ duration: 400, ...legend?.tween })),
   )
 
   // Update legend position with stability checks

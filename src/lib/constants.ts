@@ -11,9 +11,9 @@ export const COMPRESSION_FORMATS = {
 } as const satisfies Record<string, readonly string[]>
 
 // All detectable compression extensions
-export const COMPRESSION_EXTENSIONS = Object.freeze([
-  ...Object.values(COMPRESSION_FORMATS).flat(),
-]) as readonly string[]
+export const COMPRESSION_EXTENSIONS = Object.freeze(
+  Object.values(COMPRESSION_FORMATS).flat(),
+) as readonly string[]
 
 // Keywords that indicate a file is likely a trajectory file
 export const TRAJ_KEYWORDS = Object.freeze([

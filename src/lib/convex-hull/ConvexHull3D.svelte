@@ -130,8 +130,8 @@
   const merged_config = $derived({
     ...default_hull_config,
     ...config,
-    colors: { ...default_hull_config.colors, ...(config.colors || {}) },
-    margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
+    colors: { ...default_hull_config.colors, ...config.colors },
+    margin: { t: 40, r: 40, b: 60, l: 60, ...config.margin },
   })
 
   // Temperature-dependent free energy support

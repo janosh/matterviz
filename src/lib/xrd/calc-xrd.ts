@@ -62,7 +62,7 @@ function get_unique_families(hkls: Hkl[]): Map<string, number> {
   // Port of pymatgen's get_unique_families: group Miller indices by absolute-value permutations
   const key_map = new Map<string, Hkl[]>()
   for (const hkl of hkls) {
-    const abs_sorted = [...hkl.map((val) => Math.abs(val))].sort((x, y) => x - y)
+    const abs_sorted = hkl.map((val) => Math.abs(val)).sort((x, y) => x - y)
     const key = abs_sorted.join(`,`)
     const list = key_map.get(key)
     if (list) list.push(hkl)

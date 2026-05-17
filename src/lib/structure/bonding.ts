@@ -86,10 +86,22 @@ export function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
 
   return new Float32Array([
     // Return flattened column-major 4x4 matrix for Three.js
-    ...[m00, m10, m20, 0],
-    ...[m01 * height, m11 * height, m21 * height, 0],
-    ...[m02, m12, m22, 0],
-    ...[px, py, pz, 1],
+    m00,
+    m10,
+    m20,
+    0,
+    m01 * height,
+    m11 * height,
+    m21 * height,
+    0,
+    m02,
+    m12,
+    m22,
+    0,
+    px,
+    py,
+    pz,
+    1,
   ])
 }
 

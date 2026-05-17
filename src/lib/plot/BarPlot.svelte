@@ -1102,7 +1102,7 @@
   // untrack() explicitly captures initial tween config (intentional - config set once at mount)
   const tweened_legend_coords = new Tween(
     { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
+    untrack(() => ({ duration: 400, ...legend?.tween })),
   )
 
   // Update legend position with stability checks
@@ -1450,7 +1450,7 @@
                   y1={-(height - pad.b - pad.t)}
                   y2="0"
                   {...DEFAULT_GRID_STYLE}
-                  {...(x_axis.grid_style ?? {})}
+                  {...x_axis.grid_style}
                 />
               {/if}
               <line
@@ -1525,7 +1525,7 @@
                     y1="0"
                     y2={height - pad.b - pad.t}
                     {...DEFAULT_GRID_STYLE}
-                    {...(x2_axis.grid_style ?? {})}
+                    {...x2_axis.grid_style}
                   />
                 {/if}
                 <line
@@ -1595,7 +1595,7 @@
                   x1="0"
                   x2={width - pad.l - pad.r}
                   {...DEFAULT_GRID_STYLE}
-                  {...(y_axis.grid_style ?? {})}
+                  {...y_axis.grid_style}
                 />
               {/if}
               <line
@@ -1674,7 +1674,7 @@
                     x1={-(width - pad.l - pad.r)}
                     x2="0"
                     {...DEFAULT_GRID_STYLE}
-                    {...(y2_axis.grid_style ?? {})}
+                    {...y2_axis.grid_style}
                   />
                 {/if}
                 <line

@@ -70,11 +70,7 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
       }
 
       const elements = convert_atomic_numbers(numbers)
-      const metadata = {
-        step: idx,
-        ...(frame_data.calculator || {}),
-        ...(frame_data.info || {}),
-      }
+      const metadata = { step: idx, ...frame_data.calculator, ...frame_data.info }
 
       frames.push(
         create_trajectory_frame(

@@ -3,6 +3,8 @@
   import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory'
   import { Trajectory } from '$lib/trajectory'
 
+  const lattice_params = { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 }
+
   // Test data - simple trajectory for testing
   const test_trajectory: TrajectoryType = {
     frames: [
@@ -28,7 +30,7 @@
           charge: 0,
           lattice: {
             matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
-            ...{ a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
+            ...lattice_params,
             pbc: [true, true, true],
           },
         } as AnyStructure,
@@ -56,7 +58,7 @@
           charge: 0,
           lattice: {
             matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
-            ...{ a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
+            ...lattice_params,
             pbc: [true, true, true],
           },
         } as AnyStructure,
@@ -84,7 +86,7 @@
           charge: 0,
           lattice: {
             matrix: [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
-            ...{ a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 },
+            ...lattice_params,
             pbc: [true, true, true],
           },
         } as AnyStructure,

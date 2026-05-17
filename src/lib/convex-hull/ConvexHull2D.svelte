@@ -100,8 +100,8 @@
     ...default_hull_config,
     point_size: 6, // Binary diagrams use slightly smaller points
     ...config,
-    colors: { ...default_hull_config.colors, ...(config.colors || {}) },
-    margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
+    colors: { ...default_hull_config.colors, ...config.colors },
+    margin: { t: 40, r: 40, b: 60, l: 60, ...config.margin },
   })
 
   // Merge highlight style with defaults (consistent with 3D/4D)
@@ -380,8 +380,7 @@
     // Single pass: extract x, y, color_values, and point_style simultaneously
     const x_vals: number[] = Array(count)
     const y_vals: number[] = Array(count)
-    const color_values: number[] = []
-    if (is_energy_mode) color_values.length = count
+    const color_values: number[] = Array(count)
     const point_style: PointStyle[] = Array(count)
 
     for (let idx = 0; idx < count; idx++) {

@@ -88,8 +88,6 @@ export default defineConfig({
       'no-await-in-loop': `off`,
       'no-shadow': `off`,
       'eslint-plugin-unicorn/no-array-sort': `off`, // [...arr].sort() is idiomatic
-      'eslint-plugin-unicorn/no-useless-fallback-in-spread': `off`,
-      'eslint-plugin-unicorn/no-useless-spread': `off`,
       'eslint-plugin-import/no-unassigned-import': `off`, // CSS side-effect imports
       'eslint-plugin-import/no-self-import': `off`, // recursive Svelte components
       '@typescript-eslint/no-redundant-type-constituents': `error`,

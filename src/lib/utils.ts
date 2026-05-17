@@ -7,7 +7,7 @@ export function merge_nested<T extends Record<string, unknown>>(
   obj1: T,
   obj2?: Partial<T>,
 ): T {
-  const result = { ...obj1, ...(obj2 || {}) } as T
+  const result = { ...obj1, ...obj2 } as T
   for (const key in obj1) {
     if (is_plain_object(obj1[key]) && is_plain_object(obj2?.[key])) {
       result[key] = { ...obj1[key], ...obj2[key] }

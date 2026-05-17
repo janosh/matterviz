@@ -245,15 +245,15 @@
   const final_x_axis = $derived({
     ...AXIS_DEFAULTS,
     label_shift: { x: 0, y: -40 }, // x-axis needs different label position
-    ...(x_axis ?? {}),
+    ...x_axis,
   })
-  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...(y_axis ?? {}) })
+  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...y_axis })
   const final_x2_axis = $derived({
     ...AXIS_DEFAULTS,
     label_shift: { x: 0, y: 40 }, // x2-axis label above top edge
-    ...(x2_axis ?? {}),
+    ...x2_axis,
   })
-  const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...(y2_axis ?? {}) })
+  const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...y2_axis })
   // Cache time-axis check — used in ~10 places for scale/tick/tooltip logic
   let is_time_x = $derived(
     is_time_scale(final_x_axis.scale_type, final_x_axis.format),
@@ -261,16 +261,16 @@
   let is_time_x2 = $derived(
     is_time_scale(final_x2_axis.scale_type, final_x2_axis.format),
   )
-  const final_display = $derived({ ...DEFAULTS.scatter.display, ...(display ?? {}) })
+  const final_display = $derived({ ...DEFAULTS.scatter.display, ...display })
   // Local state for styles (initialized from prop, owned by this component for controls)
   // Using $state because styles has bindings in ScatterPlotControls
   // untrack() explicitly captures initial prop value (intentional - props provide initial config)
   let styles = $state(untrack(() => ({
     show_points: DEFAULTS.scatter.show_points,
     show_lines: DEFAULTS.scatter.show_lines,
-    point: { ...DEFAULTS.scatter.point, ...(styles_init?.point ?? {}) },
-    line: { ...DEFAULTS.scatter.line, ...(styles_init?.line ?? {}) },
-    ...(styles_init ?? {}),
+    point: { ...DEFAULTS.scatter.point, ...styles_init?.point },
+    line: { ...DEFAULTS.scatter.line, ...styles_init?.line },
+    ...styles_init,
   })))
   let controls = $derived({ show: true, open: false, ...controls_init })
 
@@ -1141,12 +1141,12 @@
   // untrack() explicitly captures initial tween config (intentional - config set once at mount)
   const tweened_colorbar_coords = new Tween(
     { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...(color_bar?.tween ?? {}) })),
+    untrack(() => ({ duration: 400, ...color_bar?.tween })),
   )
   // Initialize tweened values for legend position - create once, update target via effect
   const tweened_legend_coords = new Tween(
     { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
+    untrack(() => ({ duration: 400, ...legend?.tween })),
   )
 
   // Update placement positions (with animation and stability checks)
@@ -2035,7 +2035,7 @@
                       y1={-(height - pad.b - pad.t)}
                       y2="0"
                       {...DEFAULT_GRID_STYLE}
-                      {...(final_x_axis.grid_style ?? {})}
+                      {...final_x_axis.grid_style}
                     />
                   {/if}
                   <line y1="0" y2={inside ? -5 : 5} stroke="var(--border-color, gray)" />
@@ -2116,7 +2116,7 @@
                       x1="0"
                       x2={width - pad.l - pad.r}
                       {...DEFAULT_GRID_STYLE}
-                      {...(final_y_axis.grid_style ?? {})}
+                      {...final_y_axis.grid_style}
                     />
                   {/if}
                   <line
@@ -2186,7 +2186,7 @@
                         x1={-(width - pad.l - pad.r)}
                         x2="0"
                         {...DEFAULT_GRID_STYLE}
-                        {...(final_y2_axis.grid_style ?? {})}
+                        {...final_y2_axis.grid_style}
                       />
                     {/if}
                     <line
@@ -2256,7 +2256,7 @@
                         y1="0"
                         y2={height - pad.b - pad.t}
                         {...DEFAULT_GRID_STYLE}
-                        {...(final_x2_axis.grid_style ?? {})}
+                        {...final_x2_axis.grid_style}
                       />
                     {/if}
                     <line
