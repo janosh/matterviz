@@ -167,6 +167,49 @@ describe(`PlotLegend`, () => {
     expect(wrapper.style.gridTemplateRows).toBe(`repeat(2, auto)`) // 2 rows defined
   })
 
+  test(`reports hovered item and marks active series`, () => {
+    const on_item_hover = vi.fn()
+    mount(PlotLegend, {
+      target: document.body,
+      props: {
+        series_data: default_series_data,
+        active_series_idx: 1,
+        on_item_hover,
+      },
+    })
+
+    const items = document.querySelectorAll(`.legend-item`)
+    expect(items[1].classList.contains(`active`)).toBe(true)
+
+    items[2].dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    expect(on_item_hover).toHaveBeenLastCalledWith(2)
+
+    items[2].dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(on_item_hover).toHaveBeenLastCalledWith(null)
+  })
+
+  test(`filters large legends`, async () => {
+    const series_data = Array.from(
+      { length: 13 },
+      (_, idx): LegendItem => ({
+        label: idx === 10 ? `Target series` : `Series ${idx}`,
+        visible: true,
+        series_idx: idx,
+        display_style: {},
+      }),
+    )
+    mount(PlotLegend, { target: document.body, props: { series_data } })
+
+    const filter = doc_query(`.legend-filter`, HTMLInputElement)
+    filter.value = `target`
+    filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+
+    const items = document.querySelectorAll(`.legend-item`)
+    expect(items).toHaveLength(1)
+    expect(items[0].textContent).toContain(`Target series`)
+  })
+
   test(`renders different marker shapes and line types`, () => {
     const test_data: LegendItem[] = [
       {
@@ -424,7 +467,8 @@ describe(`PlotLegend`, () => {
     mount(PlotLegend, { target: document.body, props: { series_data: [] } })
     const wrapper = doc_query(`.legend`)
     expect(wrapper).toBeInstanceOf(HTMLElement)
-    expect(wrapper.innerHTML.trim()).toBe(``) // Should be empty
+    expect(wrapper.querySelector(`.legend-item`)).toBeNull()
+    expect(wrapper.querySelector(`.legend-filter`)).toBeNull()
   })
 
   test(`renders correctly with only one series`, () => {
@@ -535,6 +579,7 @@ describe(`PlotLegend`, () => {
 
     test.each([
       {
+        desc: `on_group_toggle called on click`,
         event_type: `click`,
         handler: `on_group_toggle`,
         group_idx: 0,
@@ -542,6 +587,17 @@ describe(`PlotLegend`, () => {
         expected_indices: [0, 1, 2],
       },
       {
+        desc: `filtered on_group_toggle keeps full group indices`,
+        event_type: `click`,
+        handler: `on_group_toggle`,
+        group_idx: 0,
+        filter_value: `Li-O`,
+        expected_group: `Li₂O`,
+        expected_indices: [0, 1, 2],
+        expected_item_count: 1,
+      },
+      {
+        desc: `on_group_double_click called on dblclick`,
         event_type: `dblclick`,
         handler: `on_group_double_click`,
         group_idx: 1,
@@ -549,13 +605,33 @@ describe(`PlotLegend`, () => {
         expected_indices: [3, 4],
       },
     ])(
-      `$handler called on $event_type`,
-      ({ event_type, handler, group_idx, expected_group, expected_indices }) => {
+      `$desc`,
+      async ({
+        event_type,
+        handler,
+        group_idx,
+        filter_value,
+        expected_group,
+        expected_indices,
+        expected_item_count,
+      }) => {
         const mock_handler = vi.fn()
         mount(PlotLegend, {
           target: document.body,
-          props: { series_data: make_grouped_data(), [handler]: mock_handler },
+          props: {
+            series_data: make_grouped_data(),
+            filter_threshold: filter_value ? 1 : undefined,
+            [handler]: mock_handler,
+          },
         })
+
+        if (filter_value) {
+          const filter = doc_query(`.legend-filter`, HTMLInputElement)
+          filter.value = filter_value
+          filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+          await tick()
+          expect(document.querySelectorAll(`.legend-item`)).toHaveLength(expected_item_count)
+        }
 
         const headers = document.querySelectorAll<HTMLElement>(`.legend-group-header`)
         headers[group_idx].dispatchEvent(new MouseEvent(event_type, { bubbles: true }))

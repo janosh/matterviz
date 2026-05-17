@@ -218,6 +218,7 @@
 
   // Legend placement stability state
   let legend_element = $state<HTMLDivElement | undefined>()
+  let hovered_legend_series_idx = $state<number | null>(null)
   const legend_hover = create_hover_lock()
   const dim_tracker = create_dimension_tracker()
   let has_initial_legend_placement = $state(false)
@@ -226,12 +227,17 @@
   $effect(() => () => legend_hover.cleanup())
 
   // Derived data
+  type IndexedSeries = { series_data: DataSeries; series_idx: number }
+  let selected_series_entries = $derived<IndexedSeries[]>(
+    series
+      .map((series_data: DataSeries, series_idx: number) => ({ series_data, series_idx }))
+      .filter(({ series_data }) =>
+        (series_data.visible ?? true) &&
+        (mode !== `single` || !selected_property || series_data.label === selected_property)
+      ),
+  )
   let selected_series = $derived(
-    mode === `single` && selected_property
-      ? series.filter((srs: DataSeries) =>
-        (srs.visible ?? true) && srs.label === selected_property
-      )
-      : series.filter((srs: DataSeries) => srs.visible ?? true),
+    selected_series_entries.map(({ series_data }) => series_data),
   )
 
   // Separate series by y-axis
@@ -472,7 +478,7 @@
     const x2_hist_generator = x2_series.length > 0
       ? bin().domain([ranges.current.x2[0], ranges.current.x2[1]]).thresholds(bins)
       : null
-    return selected_series.map((series_data, series_idx) => {
+    return selected_series_entries.map(({ series_data, series_idx }) => {
       const use_x2 = series_data.x_axis === `x2`
       const active_hist = use_x2 && x2_hist_generator
         ? x2_hist_generator
@@ -1431,11 +1437,18 @@
 
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
     {#each histogram_data as
-      { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis },
-      series_idx
-      (id ?? series_idx)
+      { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis, series_idx },
+      idx
+      (id ?? idx)
     }
-      <g class="histogram-series" data-series-idx={series_idx}>
+      <g
+        class="histogram-series"
+        data-series-idx={series_idx}
+        opacity={hovered_legend_series_idx !== null &&
+            hovered_legend_series_idx !== series_idx
+          ? 0.25
+          : 1}
+      >
         {#each bins as bin, bin_idx (bin_idx)}
           {@const bar_x = x_scale(bin.x0!)}
           {@const bar_width = Math.max(1, Math.abs(x_scale(bin.x1!) - bar_x))}
@@ -1561,6 +1574,11 @@
       series_data={legend_data}
       on_toggle={legend?.on_toggle || toggle_series_visibility}
       on_hover_change={legend_hover.set_locked}
+      on_item_hover={(series_idx) =>
+        (hovered_legend_series_idx = series_idx != null && series_idx >= 0
+          ? series_idx
+          : null)}
+      active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
       style={`
         position: absolute;
         left: ${legend_placement ? tweened_legend_coords.current.x : pad.l + 10}px;

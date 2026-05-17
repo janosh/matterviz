@@ -48,7 +48,36 @@
     transform_vertices,
   } from './utils'
 
-  type Props = HTMLAttributes<HTMLDivElement> & {
+  let {
+    data,
+    config = $bindable({}),
+    on_phase_hover,
+    fullscreen = $bindable(false),
+    wrapper = $bindable(),
+    hovered_region = $bindable(null),
+    show_boundaries = $bindable(true),
+    show_labels = $bindable(true),
+    show_special_points = $bindable(true),
+    show_grid = $bindable(true),
+    show_component_labels = $bindable(true),
+    fullscreen_toggle = true,
+    enable_export = true,
+    show_controls = true,
+    display_temp_unit = $bindable(),
+    controls_open = $bindable(false),
+    controls_props = {},
+    export_pane_open = $bindable(false),
+    png_dpi = $bindable(150),
+    export_filename = `phase-diagram`,
+    lever_rule_mode = $bindable(`horizontal`),
+    diagram_input = $bindable<DiagramInput | null>(null),
+    editor_open = $bindable(false),
+    x_axis = $bindable({}),
+    y_axis = $bindable({}),
+    tooltip,
+    children,
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
     data: PhaseDiagramData
     config?: Partial<PhaseDiagramConfig>
     // Hover callback
@@ -89,38 +118,7 @@
     children?: Snippet<
       [{ width: number; height: number; fullscreen: boolean }]
     >
-  }
-
-  let {
-    data,
-    config = $bindable({}),
-    on_phase_hover,
-    fullscreen = $bindable(false),
-    wrapper = $bindable(),
-    hovered_region = $bindable(null),
-    show_boundaries = $bindable(true),
-    show_labels = $bindable(true),
-    show_special_points = $bindable(true),
-    show_grid = $bindable(true),
-    show_component_labels = $bindable(true),
-    fullscreen_toggle = true,
-    enable_export = true,
-    show_controls = true,
-    display_temp_unit = $bindable(),
-    controls_open = $bindable(false),
-    controls_props = {},
-    export_pane_open = $bindable(false),
-    png_dpi = $bindable(150),
-    export_filename = `phase-diagram`,
-    lever_rule_mode = $bindable(`horizontal`),
-    diagram_input = $bindable<DiagramInput | null>(null),
-    editor_open = $bindable(false),
-    x_axis = $bindable({}),
-    y_axis = $bindable({}),
-    tooltip,
-    children,
-    ...rest
-  }: Props = $props()
+  } = $props()
 
   // Shared icon/toggle styling for controls and export panes
   const pane_icon_style = `width: 14px; height: 14px`

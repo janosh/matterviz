@@ -49,18 +49,54 @@
   let side_unstable = $state<ConvexHullEntry[]>([])
   let clicked_entry_id = $state<string | undefined>(undefined)
   let selected_quinary_path = $state<string>(``)
+  const deferred_sections = [`stats`, `highlight`, `markers`, `temperature`, `gas`, `quinary`] as const
+  type DemoSection = typeof deferred_sections[number]
+  let mounted_demo_count = $state(0)
+  const section_mounted = (section: DemoSection): boolean =>
+    deferred_sections.indexOf(section) < mounted_demo_count
+
+  async function load_data_file(
+    path: string,
+    loader: () => Promise<{ default: PhaseData[] }>,
+  ): Promise<void> {
+    if (loaded_data.has(path)) return
+    const data = (await loader()).default
+    loaded_data.set(path, data)
+    loaded_data = new SvelteMap(loaded_data)
+  }
+
+  function log_load_error(path: string, error: unknown): void {
+    console.error(`Failed to load convex hull data ${path}`, error)
+  }
 
   onMount(async () => {
+    const quaternary_entries = Object.entries(quaternary_files)
     const results = await Promise.allSettled(
-      [...Object.entries(quaternary_files), ...Object.entries(quinary_files)].map(
-        async ([path, loader]) => [path, (await loader()).default] as const,
-      ),
+      quaternary_entries.map(([path, loader]) => load_data_file(path, loader)),
     )
-    loaded_data = new SvelteMap(
-      results.filter((res) => res.status === `fulfilled`).map((res) => res.value),
-    )
+    for (const [result_idx, result] of results.entries()) {
+      if (result.status === `rejected`) {
+        log_load_error(quaternary_entries[result_idx]?.[0] ?? `unknown`, result.reason)
+      }
+    }
     const quinary_paths = Object.keys(quinary_files).sort()
     if (quinary_paths.length > 0) selected_quinary_path = quinary_paths[0]
+
+    const mount_next_section = () => {
+      if (mounted_demo_count >= deferred_sections.length) return
+      mounted_demo_count += 1
+      setTimeout(mount_next_section, 80)
+    }
+    setTimeout(mount_next_section, 0)
+  })
+
+  $effect(() => {
+    const loader = quinary_files[selected_quinary_path]
+    if (loader && section_mounted(`quinary`)) {
+      void load_data_file(selected_quinary_path, loader).catch((error) =>
+        log_load_error(selected_quinary_path, error)
+      )
+    }
   })
 
   const handle_file_drop = (path: string) => (entries: PhaseData[]) => {
@@ -371,7 +407,10 @@
   {#snippet feature_list(feature_items: string[])}
     <ul class="feature-list">
       {#each feature_items as feature_item (feature_item)}
-        <li>{@html sanitize_html(feature_item)}</li>
+        <li>
+          <!-- svelte-ignore hydration_html_changed -->
+          {@html sanitize_html(feature_item)}
+        </li>
       {/each}
     </ul>
   {/snippet}
@@ -421,56 +460,59 @@
     </div>
   </section>
 
-  <section class="demo-section">
-    <h2>Statistics Panel</h2>
-    {@render feature_list(stats_features)}
-    <div class="stats-example-grid">
-      <ConvexHull3D
-        entries={na_fe_o_entries}
-        controls={{ title: `Na-Fe-O with Stats` }}
-        bind:phase_stats
-        bind:stable_entries
-        bind:unstable_entries
-        bind:max_hull_dist_show_phases
-        style="height: 100%"
-      />
-      {#if phase_stats}
-        <ConvexHullStats
-          {phase_stats}
-          {stable_entries}
-          {unstable_entries}
-          highlighted_entry_id={clicked_entry_id}
-          on_entry_click={(entry) => clicked_entry_id = entry.entry_id}
-          entry_href={get_entry_href}
-          style="--hull-stats-max-height: var(--hull-height, 500px)"
+  {#if section_mounted(`stats`)}
+    <section class="demo-section">
+      <h2>Statistics Panel</h2>
+      {@render feature_list(stats_features)}
+      <div class="stats-example-grid">
+        <ConvexHull3D
+          entries={na_fe_o_entries}
+          controls={{ title: `Na-Fe-O with Stats` }}
+          bind:phase_stats
+          bind:stable_entries
+          bind:unstable_entries
+          bind:max_hull_dist_show_phases
+          style="height: 100%"
         />
-      {/if}
-    </div>
+        {#if phase_stats}
+          <ConvexHullStats
+            {phase_stats}
+            {stable_entries}
+            {unstable_entries}
+            highlighted_entry_id={clicked_entry_id}
+            on_entry_click={(entry) => clicked_entry_id = entry.entry_id}
+            entry_href={get_entry_href}
+            style="--hull-stats-max-height: var(--hull-height, 500px)"
+          />
+        {/if}
+      </div>
 
-    <h3>Side-by-Side Layout</h3>
-    {@render feature_list(side_by_side_features)}
-    <div class="side-by-side-example">
-      <ConvexHull3D
-        entries={li_co_ni_o_data}
-        controls={{ title: `Li-Co-O` }}
-        bind:phase_stats={side_phase_stats}
-        bind:stable_entries={side_stable}
-        bind:unstable_entries={side_unstable}
-      />
-      {#if side_phase_stats}
-        <ConvexHullStats
-          phase_stats={side_phase_stats}
-          stable_entries={side_stable}
-          unstable_entries={side_unstable}
-          layout="side-by-side"
-          entry_href={get_entry_href}
-          style="--hull-stats-padding: 0"
+      <h3>Side-by-Side Layout</h3>
+      {@render feature_list(side_by_side_features)}
+      <div class="side-by-side-example">
+        <ConvexHull3D
+          entries={li_co_ni_o_data}
+          controls={{ title: `Li-Co-O` }}
+          bind:phase_stats={side_phase_stats}
+          bind:stable_entries={side_stable}
+          bind:unstable_entries={side_unstable}
         />
-      {/if}
-    </div>
-  </section>
+        {#if side_phase_stats}
+          <ConvexHullStats
+            phase_stats={side_phase_stats}
+            stable_entries={side_stable}
+            unstable_entries={side_unstable}
+            layout="side-by-side"
+            entry_href={get_entry_href}
+            style="--hull-stats-padding: 0"
+          />
+        {/if}
+      </div>
+    </section>
+  {/if}
 
-  <section class="demo-section">
+  {#if section_mounted(`highlight`)}
+    <section class="demo-section">
     <h2>Highlighted Entries</h2>
     {@render feature_list(highlighted_features)}
     <div class="highlight-grid">
@@ -503,9 +545,11 @@
         highlight_style={{ effect: `glow`, color: `#ff8800`, size_multiplier: 2 }}
       />
     </div>
-  </section>
+    </section>
+  {/if}
 
-  <section class="demo-section">
+  {#if section_mounted(`markers`)}
+    <section class="demo-section">
     <h2>Marker Symbols</h2>
     {@render feature_list(marker_features)}
     <div class="ternary-grid">
@@ -540,9 +584,11 @@
       <strong>Note:</strong> Missing pure element references are automatically added with
       E<sub>form</sub> = 0 eV/atom.
     </p>
-  </section>
+    </section>
+  {/if}
 
-  <section class="demo-section">
+  {#if section_mounted(`temperature`)}
+    <section class="demo-section">
     <h2>Temperature-Dependent Free Energies</h2>
     {@render feature_list(temp_features)}
     <div class="temp-grid">
@@ -560,9 +606,11 @@
         controls={{ title: `Li-Fe-Ni-O with G(T)` }}
       />
     </div>
-  </section>
+    </section>
+  {/if}
 
-  <section class="demo-section">
+  {#if section_mounted(`gas`)}
+    <section class="demo-section">
     <h2>Gas Atmosphere Control</h2>
     {@render feature_list(gas_features)}
     <div class="gas-selector">
@@ -592,9 +640,11 @@
       <strong>Tip:</strong> Try very low pressure (10⁻⁶ bar) for reducing or high (1 bar)
       for oxidizing conditions.
     </p>
-  </section>
+    </section>
+  {/if}
 
-  <section class="demo-section">
+  {#if section_mounted(`quinary`)}
+    <section class="demo-section">
     <h2>Standalone Stats for Quinary Systems</h2>
     {@render feature_list(quinary_stats_features)}
     <div class="quinary-stats-controls">
@@ -616,7 +666,8 @@
         />
       </div>
     {/if}
-  </section>
+    </section>
+  {/if}
 </main>
 
 <style>

@@ -732,10 +732,11 @@
     // Lazy computation for uniform mode: normalize alpha by formation energy
     let norm_alpha: ((w: number) => number) | null = null
     if (hull_face_color_mode === `uniform`) {
-      const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
-      const min_fe = Math.min(0, ...formation_energies)
       norm_alpha = (energy: number) => {
-        const t = Math.max(0, Math.min(1, (0 - energy) / Math.max(1e-6, 0 - min_fe)))
+        const t = Math.max(
+          0,
+          Math.min(1, (0 - energy) / Math.max(1e-6, 0 - formation_energy_min)),
+        )
         return t * hull_face_opacity
       }
     }
@@ -1032,15 +1033,19 @@
     const rect = container?.getBoundingClientRect()
     const [width, height] = rect ? [rect.width, rect.height] : [400, 400]
 
-    canvas.width = Math.max(0, Math.round(width * dpr))
-    canvas.height = Math.max(0, Math.round(height * dpr))
+    const new_width = Math.max(0, Math.round(width * dpr))
+    const new_height = Math.max(0, Math.round(height * dpr))
     canvas_dims = { width, height, scale: Math.min(width, height) / 600 }
 
-    ctx = canvas.getContext(`2d`)
-    if (ctx) {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = `high`
+    if (!ctx || canvas.width !== new_width || canvas.height !== new_height) {
+      canvas.width = new_width
+      canvas.height = new_height
+      ctx = canvas.getContext(`2d`)
+      if (ctx) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = `high`
+      }
     }
     render_once()
   }
@@ -1078,6 +1083,13 @@
 
   // Performance: Cache canvas dimensions and pre-compute sorted point projections
   let canvas_dims = $state({ width: 600, height: 600, scale: 1 })
+  const formation_energy_min = $derived.by(() => {
+    let min_energy = 0
+    for (const entry of plot_entries) {
+      min_energy = Math.min(min_energy, entry.e_form_per_atom ?? 0)
+    }
+    return min_energy
+  })
   const sorted_points_cache = $derived.by(() => {
     if (!canvas || plot_entries.length === 0) return []
     return plot_entries

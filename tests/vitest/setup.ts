@@ -89,6 +89,25 @@ export function set_element_size(element: HTMLElement, width: number, height: nu
   Object.defineProperty(element, `clientHeight`, { value: height, configurable: true })
 }
 
+export function bind_props<P extends object, S extends Record<string, unknown>>(
+  props: P,
+  state: S,
+): P & S {
+  return Object.defineProperties(
+    props,
+    Object.fromEntries(
+      Object.keys(state).map((key) => [
+        key,
+        {
+          get: () => state[key],
+          set: (value: unknown) => ((state as Record<string, unknown>)[key] = value),
+          enumerable: true,
+        },
+      ]),
+    ),
+  ) as P & S
+}
+
 export async function resize_element(
   element: HTMLElement,
   width: number,

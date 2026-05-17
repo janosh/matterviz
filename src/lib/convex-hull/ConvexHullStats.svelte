@@ -49,6 +49,16 @@
   // Formula filter: when set, table shows only entries with this reduced formula
   let formula_filter = $state(``)
   let show_export_dropdown = $state(false)
+  const table_scroll_height =
+    `var(--hull-stats-table-height, calc(var(--hull-stats-table-row-height, 2.35rem) * 10 + var(--hull-stats-table-header-height, 3.5rem)))`
+  const table_scroll_style = $derived(layout === `side-by-side`
+    ? `flex: 1 1 0; height: ${table_scroll_height}; min-height: ${table_scroll_height}; max-width: 100%; overflow: auto`
+    : `height: ${table_scroll_height}; min-height: ${table_scroll_height}; max-height: var(--hull-stats-max-height, 70vh); max-width: 100%; overflow: auto`
+  )
+  const table_root_style = $derived(layout === `side-by-side`
+    ? `flex: 1 1 0; min-height: ${table_scroll_height}; margin-inline: 0`
+    : `min-width: 0; margin-inline: 0`
+  )
 
   async function copy_to_clipboard(label: string, value: string, key: string) {
     try {
@@ -638,13 +648,9 @@
     data={table_data}
     columns={table_columns}
     initial_sort={{ column: `E<sub>hull</sub>`, direction: `asc` }}
-    scroll_style={layout === `side-by-side`
-    ? `flex: 1 1 0; max-width: 100%; overflow: auto`
-    : `max-height: var(--hull-stats-max-height, 500px)`}
+    scroll_style={table_scroll_style}
     style="width: 100%"
-    root_style={layout === `side-by-side`
-    ? `flex: 1 1 0; min-height: 0; margin-inline: 0`
-    : undefined}
+    root_style={table_root_style}
     onrowclick={on_entry_click ? handle_row_click : undefined}
     export_data={false}
   />
@@ -681,6 +687,9 @@
   .convex-hull-stats {
     background: var(--hull-stats-bg, var(--hull-bg));
     border-radius: var(--hull-border-radius, var(--border-radius, 3pt));
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow: hidden;
     padding: var(--hull-stats-padding, 1em);
   }
   .convex-hull-stats.side-by-side {
@@ -700,6 +709,7 @@
   .table-pane {
     flex: 1 1 0;
     max-width: 100%;
+    min-height: var(--hull-stats-table-height, calc(var(--hull-stats-table-row-height, 2.35rem) * 10 + var(--hull-stats-table-header-height, 3.5rem)));
     min-width: 0;
     overflow: auto;
     display: flex;
@@ -747,9 +757,15 @@
   .view-toggle {
     display: flex;
     margin-bottom: 8pt;
+    max-width: 100%;
+    min-width: 0;
   }
   .view-toggle button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex: 1;
+    min-width: 0;
     padding: 2pt 8pt;
     border: 1px solid
       var(--hull-stats-border-color, color-mix(in srgb, currentColor 20%, transparent));
@@ -757,6 +773,7 @@
     color: inherit;
     cursor: pointer;
     font-size: 0.85em;
+    text-align: center;
   }
   .view-toggle button:first-child {
     border-radius: 4pt 0 0 4pt;

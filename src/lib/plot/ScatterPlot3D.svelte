@@ -394,6 +394,7 @@
       <PlotLegend
         series_data={legend_data}
         on_toggle={toggle_series_visibility}
+        active_series_idx={tooltip_point?.series_idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
         style={`position: absolute; top: 2.5em; right: 1em; ${legend?.style ?? ``}`}

@@ -65,6 +65,7 @@
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
   let scene_props = $state(
     structuredClone(DEFAULTS.structure) as typeof DEFAULTS.structure & {
+      active_sites?: number[]
       camera_target?: Vec3
     },
   )
@@ -117,6 +118,8 @@
     performance_mode = $bindable(`quality`),
     // expose selected site indices for external control/highlighting
     selected_sites = $bindable([]),
+    highlighted_sites = $bindable([]),
+    hovered_site_idx = $bindable(null),
     // expose measured site indices for overlays/labels
     measured_sites = $bindable([]),
     // expose the displayed structure (with image atoms and supercell) for external use
@@ -199,6 +202,8 @@
       performance_mode?: `quality` | `speed`
       // allow parent components to control highlighted/selected site indices
       selected_sites?: number[]
+      highlighted_sites?: number[]
+      hovered_site_idx?: number | null
       // explicit measured sites for distance/angle overlays
       measured_sites?: number[]
       // expose the displayed structure (with image atoms and/or supercell) for external use
@@ -545,6 +550,9 @@
   })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
+  let active_scene_sites = $derived([
+    ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),
+  ])
 
   // Normalize structure coordinates: wrap fractional coords to [0,1) and recompute Cartesian
   // This ensures atoms are rendered inside the unit cell regardless of data source
@@ -1427,7 +1435,9 @@
           <StructureInfoPane
             structure={normalized_structure}
             bind:pane_open={info_pane_open}
-            {selected_sites}
+            bind:highlighted_sites
+            bind:hovered_site_idx
+            bind:selected_sites
             {sym_data}
             {@attach tooltip({ content: `Structure info pane` })}
           />
@@ -1508,6 +1518,8 @@
             {isosurface_settings}
             bind:camera_is_moving
             bind:selected_sites
+            active_sites={active_scene_sites}
+            bind:hovered_idx={hovered_site_idx}
             bind:measured_sites
             bind:scene
             bind:camera
