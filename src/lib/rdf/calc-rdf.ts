@@ -54,7 +54,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
 
   const bin_size = cutoff / n_bins
   const r = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_size)
-  const g_r = new Array(n_bins).fill(0)
+  const g_r = Array(n_bins).fill(0)
 
   if (sites.length === 0) return { r, g_r }
 

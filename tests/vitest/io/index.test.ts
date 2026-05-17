@@ -200,7 +200,7 @@ describe(`load_from_url`, () => {
     async (_, magic_bytes, expected_type, expected_content) => {
       const header = new Uint8Array([
         ...magic_bytes,
-        ...new Array(16 - magic_bytes.length).fill(0),
+        ...Array(16 - magic_bytes.length).fill(0),
       ])
       const mock_head_response = create_mock_response(header.buffer, {
         'content-type': `application/octet-stream`,

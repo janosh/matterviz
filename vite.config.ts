@@ -88,9 +88,7 @@ export default defineConfig({
       '@typescript-eslint/no-unnecessary-template-expression': `off`, // backtick convention
       'no-await-in-loop': `off`,
       'no-shadow': `off`,
-      'no-control-regex': `off`,
       'eslint-plugin-unicorn/no-array-sort': `off`, // [...arr].sort() is idiomatic
-      'eslint-plugin-unicorn/no-new-array': `off`, // new Array(n).fill() for numeric perf
       'eslint-plugin-unicorn/no-useless-fallback-in-spread': `off`,
       'eslint-plugin-unicorn/no-useless-spread': `off`,
       'eslint-plugin-import/no-unassigned-import': `off`, // CSS side-effect imports

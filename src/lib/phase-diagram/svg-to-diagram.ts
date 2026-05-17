@@ -595,15 +595,11 @@ function infer_regions(
   // Build cell grid: cells[col][row]
   const n_cols = x_coords.length - 1
   const n_rows = y_coords.length - 1
-  const cell_ids = Array.from({ length: n_cols }, () => new Array<number>(n_rows).fill(-1))
+  const cell_ids = Array.from({ length: n_cols }, () => Array(n_rows).fill(-1))
 
   // Check which cell edges have boundaries
-  const h_walls = Array.from({ length: n_cols }, () =>
-    new Array<boolean>(n_rows + 1).fill(false),
-  )
-  const v_walls = Array.from({ length: n_cols + 1 }, () =>
-    new Array<boolean>(n_rows).fill(false),
-  )
+  const h_walls = Array.from({ length: n_cols }, () => Array(n_rows + 1).fill(false))
+  const v_walls = Array.from({ length: n_cols + 1 }, () => Array(n_rows).fill(false))
 
   // Mark horizontal walls (bottom/top of cells)
   for (const hb of horizontals) {

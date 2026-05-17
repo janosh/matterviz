@@ -276,7 +276,7 @@ describe(`remove_local_outliers`, () => {
   })
 
   it(`handles constant data (zero MAD) gracefully`, () => {
-    const y = new Array(30).fill(5)
+    const y = Array(30).fill(5)
     const result = remove_local_outliers(y)
     // All points identical, zero MAD, nothing should be removed
     expect(result.kept_indices.length).toBe(30)

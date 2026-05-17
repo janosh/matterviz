@@ -186,7 +186,7 @@ export function build_hyperplanes(
     const atom_count = count_atoms_in_composition(entry.composition)
     const composition = entry.composition as Record<string, number>
     const energy_per_atom = get_energy_per_atom(entry)
-    const row = new Array(n_elems + 1).fill(0)
+    const row = Array(n_elems + 1).fill(0)
     let ref_energy = 0
     for (let elem_idx = 0; elem_idx < n_elems; elem_idx++) {
       const element = elements[elem_idx]
@@ -220,13 +220,13 @@ export function build_border_hyperplanes(lims: [number, number][]): number[][] {
   const borders: number[][] = []
   for (let idx = 0; idx < dim; idx++) {
     // Lower bound: -mu_i + lo <= 0 → [-1, 0, ..., lo]
-    const lower = new Array(dim + 1).fill(0)
+    const lower = Array(dim + 1).fill(0)
     lower[idx] = -1
     lower[dim] = lims[idx][0]
     borders.push(lower)
 
     // Upper bound: mu_i - hi <= 0 → [1, 0, ..., -hi]
-    const upper = new Array(dim + 1).fill(0)
+    const upper = Array(dim + 1).fill(0)
     upper[idx] = 1
     upper[dim] = -lims[idx][1]
     borders.push(upper)
@@ -312,14 +312,14 @@ export function compute_domains(
   }
 
   // Pre-allocate reusable buffers to avoid GC pressure in the combo loop
-  const mu = new Array(dim).fill(0)
-  const offsets = new Array(dim).fill(0)
+  const mu = Array(dim).fill(0)
+  const offsets = Array(dim).fill(0)
   // For dim <= 3, use inline solvers; for larger dims, build A on the fly
   const A_rows: number[][] =
-    dim > 3 ? Array.from({ length: dim }, () => new Array(dim).fill(0)) : []
+    dim > 3 ? Array.from({ length: dim }, () => Array(dim).fill(0)) : []
 
   // Generate all combinations of dim indices from n_total halfspaces
-  const combo = new Array(dim).fill(0)
+  const combo = Array(dim).fill(0)
   for (let idx = 0; idx < dim; idx++) combo[idx] = idx
 
   function advance_combo(): boolean {
@@ -517,7 +517,7 @@ export function simple_pca(
   }
 
   // Center the data
-  const means = new Array(n_cols).fill(0)
+  const means = Array(n_cols).fill(0)
   for (const row of data) {
     for (let col = 0; col < n_cols; col++) means[col] += row[col]
   }
@@ -526,7 +526,7 @@ export function simple_pca(
   const centered = data.map((row) => row.map((val, col) => val - means[col]))
 
   // Covariance matrix
-  const cov: number[][] = Array.from({ length: n_cols }, () => new Array(n_cols).fill(0))
+  const cov: number[][] = Array.from({ length: n_cols }, () => Array(n_cols).fill(0))
   for (const row of centered) {
     for (let idx = 0; idx < n_cols; idx++) {
       for (let jdx = idx; jdx < n_cols; jdx++) {
@@ -547,12 +547,12 @@ export function simple_pca(
   const work_cov = cov.map((row) => [...row])
 
   for (let comp = 0; comp < k; comp++) {
-    let vec = new Array(n_cols).fill(0)
+    let vec = Array(n_cols).fill(0)
     vec[comp % n_cols] = 1 // initial guess
 
     for (let iter = 0; iter < 100; iter++) {
       // Matrix-vector multiply
-      const new_vec = new Array(n_cols).fill(0)
+      const new_vec = Array(n_cols).fill(0)
       for (let idx = 0; idx < n_cols; idx++) {
         for (let jdx = 0; jdx < n_cols; jdx++) {
           new_vec[idx] += work_cov[idx][jdx] * vec[jdx]
@@ -659,8 +659,8 @@ export function get_3d_domain_simplexes_and_ann_loc(points_3d: number[][]): {
   )
   const centroid_x = centroid[0] ?? 0
   const centroid_y = centroid[1] ?? 0
-  const first_eigenvector = eigenvectors[0] ?? new Array(n_dims).fill(0)
-  const second_eigenvector = eigenvectors[1] ?? new Array(n_dims).fill(0)
+  const first_eigenvector = eigenvectors[0] ?? Array(n_dims).fill(0)
+  const second_eigenvector = eigenvectors[1] ?? Array(n_dims).fill(0)
   const ann_loc = mean_3d.map(
     (m, dim) => m + centroid_x * first_eigenvector[dim] + centroid_y * second_eigenvector[dim],
   )

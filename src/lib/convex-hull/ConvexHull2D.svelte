@@ -11,6 +11,7 @@
   import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import type {
     AxisConfig,
+    PointStyle,
     ScatterHandlerEvent,
     ScatterHandlerProps,
     UserContentProps,
@@ -377,10 +378,11 @@
     const count = visible_entries.length
 
     // Single pass: extract x, y, color_values, and point_style simultaneously
-    const x_vals: number[] = new Array(count)
-    const y_vals: number[] = new Array(count)
-    const color_values: number[] = is_energy_mode ? new Array(count) : []
-    const point_style = new Array(count)
+    const x_vals: number[] = Array(count)
+    const y_vals: number[] = Array(count)
+    const color_values: number[] = []
+    if (is_energy_mode) color_values.length = count
+    const point_style: PointStyle[] = Array(count)
 
     for (let idx = 0; idx < count; idx++) {
       const entry = visible_entries[idx]

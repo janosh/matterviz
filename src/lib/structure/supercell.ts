@@ -50,7 +50,7 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
 export function generate_lattice_points(scaling_factors: Vec3): Vec3[] {
   const [scale_x, scale_y, scale_z] = scaling_factors
   const count = scale_x * scale_y * scale_z
-  const points: Vec3[] = new Array(count)
+  const points: Vec3[] = Array(count)
 
   let write_idx = 0
   // Generate in x, y, z order to match expected test results
@@ -102,7 +102,7 @@ export function make_supercell(
 
   // Pre-allocate sites array
   const n_sites = structure.sites.length
-  const new_sites: Site[] = new Array(n_sites * total_cells)
+  const new_sites: Site[] = Array(n_sites * total_cells)
 
   // Destructure lattice vectors for fast inline arithmetic (avoid function calls in hot loop)
   const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = orig_matrix

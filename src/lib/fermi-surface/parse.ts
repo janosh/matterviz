@@ -126,10 +126,10 @@ function parse_bxsf(content: string): BandGridData {
     }
 
     // Reshape into 3D grid [kx][ky][kz] (preallocated for speed)
-    const band_grid: number[][][] = new Array(nx)
+    const band_grid: number[][][] = Array(nx)
     let val_idx = 0
     for (let ix = 0; ix < nx; ix++) {
-      const iy_arr: number[][] = new Array(ny)
+      const iy_arr: number[][] = Array(ny)
       for (let iy = 0; iy < ny; iy++) {
         const iz_arr = energy_values.slice(val_idx, val_idx + nz)
         val_idx += nz

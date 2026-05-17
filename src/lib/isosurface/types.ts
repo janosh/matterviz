@@ -113,12 +113,12 @@ export function pad_periodic_grid(
   const out_nz = nz + 2 * pz
   const wrap = (val: number, size: number) => ((val % size) + size) % size
 
-  const out: number[][][] = new Array(out_nx)
+  const out: number[][][] = Array(out_nx)
   for (let ix = 0; ix < out_nx; ix++) {
-    const plane: number[][] = new Array(out_ny)
+    const plane: number[][] = Array(out_ny)
     const src_x = wrap(ix - px, nx)
     for (let iy = 0; iy < out_ny; iy++) {
-      const row = new Array<number>(out_nz)
+      const row: number[] = Array(out_nz)
       const src_y = wrap(iy - py, ny)
       for (let iz = 0; iz < out_nz; iz++) {
         row[iz] = grid[src_x][src_y][wrap(iz - pz, nz)]
@@ -184,12 +184,12 @@ export function downsample_grid(
   const y_ranges = partition(new_ny, ny)
   const z_ranges = partition(new_nz, nz)
 
-  const out: number[][][] = new Array(new_nx)
+  const out: number[][][] = Array(new_nx)
   for (let ix = 0; ix < new_nx; ix++) {
-    const plane: number[][] = new Array(new_ny)
+    const plane: number[][] = Array(new_ny)
     const [sx_start, sx_end] = x_ranges[ix]
     for (let iy = 0; iy < new_ny; iy++) {
-      const row = new Array<number>(new_nz)
+      const row: number[] = Array(new_nz)
       const [sy_start, sy_end] = y_ranges[iy]
       for (let iz = 0; iz < new_nz; iz++) {
         let sum = 0
@@ -284,12 +284,12 @@ export function tile_volumetric_data(volume: VolumetricData, scaling: Vec3): Vol
   const new_nx = nx * sx
   const new_ny = ny * sy
   const new_nz = nz * sz
-  const new_grid: number[][][] = new Array(new_nx)
+  const new_grid: number[][][] = Array(new_nx)
   for (let ix = 0; ix < new_nx; ix++) {
-    const plane: number[][] = new Array(new_ny)
+    const plane: number[][] = Array(new_ny)
     const src_x = ix % nx
     for (let iy = 0; iy < new_ny; iy++) {
-      const row = new Array<number>(new_nz)
+      const row: number[] = Array(new_nz)
       const src_y = iy % ny
       const src_row = src_grid[src_x][src_y]
       for (let iz = 0; iz < new_nz; iz++) {

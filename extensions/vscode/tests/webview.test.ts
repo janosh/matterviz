@@ -82,7 +82,7 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
       0x79,
       0x00,
       0x00, // "ASE-Trajectory"
-      ...new Array(176).fill(0), // Mock trajectory data
+      ...Array(176).fill(0), // Mock trajectory data
     ])
     const result = base64_to_array_buffer(btoa(String.fromCharCode(...ase_data)))
     const result_array = new Uint8Array(result)

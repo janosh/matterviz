@@ -382,7 +382,7 @@ export function calculate_e_above_hull(
 
     // Ensure corner points (pure elements default to e_form = 0)
     for (let el_idx = 0; el_idx < arity; el_idx++) {
-      const corner = new Array(arity + 1).fill(0)
+      const corner = Array(arity + 1).fill(0)
       corner[el_idx] = 1 // ith barycentric coord = 1
       if (!ref_points.some((pt) => norm_nd(subtract_nd(pt, corner)) < EPS)) {
         ref_points.push(corner)
@@ -1884,7 +1884,7 @@ function solve_linear_system(matrix_a: number[][], vec_b: number[]): number[] | 
   }
 
   // Back substitution
-  const result = new Array(n).fill(0)
+  const result = Array(n).fill(0)
   for (let row = n - 1; row >= 0; row--) {
     let sum = aug[row][n]
     for (let col = row + 1; col < n; col++) {

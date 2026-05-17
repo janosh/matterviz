@@ -286,8 +286,8 @@
       }
     }
 
-    const col_has_data = new Array(x_items.length).fill(false)
-    const row_has_data = new Array(y_items.length).fill(false)
+    const col_has_data = Array(x_items.length).fill(false)
+    const row_has_data = Array(y_items.length).fill(false)
     for (let y_idx = 0; y_idx < y_items.length; y_idx++) {
       for (let x_idx = 0; x_idx < x_items.length; x_idx++) {
         if (get_value(x_idx, y_idx) !== null) {
@@ -437,7 +437,7 @@
   let n_x = $derived(x_items.length)
   let bg_flat = $derived.by(() => {
     const n_y = y_items.length
-    const colors = new Array<string | null>(n_x * n_y)
+    const colors: (string | null)[] = Array(n_x * n_y)
     for (let y_idx = 0; y_idx < n_y; y_idx++) {
       const row_offset = y_idx * n_x
       for (let x_idx = 0; x_idx < n_x; x_idx++) {
