@@ -564,7 +564,7 @@ const apply_symmetry_ops = (
     `${coords[0].toFixed(6)},${coords[1].toFixed(6)},${coords[2].toFixed(6)}`
 
   // Always include base atom (optionally wrapped)
-  const base_coords = wrap(atom.coords as Vec3)
+  const base_coords = wrap(atom.coords)
   seen.add(key(base_coords))
   equivalent_atoms.push({ ...atom, coords: base_coords })
 
@@ -954,7 +954,7 @@ export function parse_cif(
       if (atom.coords_type === `fract`) {
         fractional_atom = {
           ...atom,
-          coords: wrap_vec3(atom.coords as Vec3),
+          coords: wrap_vec3(atom.coords),
           coords_type: `fract`,
         }
       } else {
@@ -1398,8 +1398,8 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
       console.error(`OPTIMADE JSON position/species count mismatch`)
       return null
     }
-    const positions = positions_raw as number[][]
-    const species = species_raw as string[]
+    const positions = positions_raw
+    const species = species_raw
 
     // Optimade stores lattice vectors as rows, so use as is
     const lattice_matrix = attrs.lattice_vectors as math.Matrix3x3 | undefined

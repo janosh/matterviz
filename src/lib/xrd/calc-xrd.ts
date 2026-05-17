@@ -55,7 +55,7 @@ const TWO_THETA_TOL = 1e-5
 const SCALED_INTENSITY_TOL = 1e-3
 
 const ELEMENT_Z = Object.fromEntries(
-  element_data.map((entry) => [entry.symbol as ElementSymbol, entry.number]),
+  element_data.map((entry) => [entry.symbol, entry.number]),
 ) as CompositionType
 
 function get_unique_families(hkls: Hkl[]): Map<string, number> {
@@ -187,7 +187,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
   for (const site of structure.sites) {
     for (const species of site.species) {
-      const element_symbol = species.element as ElementSymbol
+      const element_symbol = species.element
       if (ELEMENT_Z[element_symbol] === undefined) {
         throw new Error(`Unknown atomic number for element ${element_symbol}`)
       }

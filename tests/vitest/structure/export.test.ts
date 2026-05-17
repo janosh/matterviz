@@ -39,7 +39,7 @@ const mock_download = vi.mocked(download)
 
 // Mock the get_electro_neg_formula function
 vi.mock(`$lib/composition`, async (import_original) => {
-  const actual = (await import_original()) as Record<string, unknown>
+  const actual = await import_original<Record<string, unknown>>()
   return { ...actual, get_electro_neg_formula: vi.fn() }
 })
 const { get_electro_neg_formula } = await import(`$lib/composition`)

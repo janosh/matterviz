@@ -87,7 +87,7 @@ export const apply_theme_to_dom = (mode: ThemeMode): void => {
 
   const root = document.documentElement
   Object.entries(theme).forEach(([key, value]) => {
-    const css_var = css_vars[key as keyof typeof css_vars]
+    const css_var = css_vars[key]
     if (css_var && value && typeof value === `string`) {
       root.style.setProperty(css_var, value)
     }

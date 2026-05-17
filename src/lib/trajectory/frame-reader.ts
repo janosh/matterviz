@@ -419,7 +419,7 @@ export class TrajFrameReader implements FrameLoader {
 
       for (const prop of calc_properties) {
         if (prop in calculator && typeof calculator[prop] === `number`) {
-          properties[prop] = calculator[prop] as number
+          properties[prop] = calculator[prop]
         }
       }
     }
@@ -437,7 +437,7 @@ export class TrajFrameReader implements FrameLoader {
 
       for (const prop of info_properties) {
         if (prop in info && typeof info[prop] === `number`) {
-          properties[prop] = info[prop] as number
+          properties[prop] = info[prop]
         }
       }
     }

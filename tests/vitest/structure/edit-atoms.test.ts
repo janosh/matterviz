@@ -595,7 +595,7 @@ describe(`edit-atoms: duplicate atoms`, () => {
     const struct = get_dummy_structure(`C`, 1)
     struct.sites[0].properties = { force: [1, 0, 0] }
     const { structure: result } = duplicate_atoms(struct, new Set([0]))
-    ;(result.sites[1].properties as Record<string, unknown>).force = [0, 0, 0]
+    result.sites[1].properties.force = [0, 0, 0]
     expect(struct.sites[0].properties.force).toEqual([1, 0, 0])
   })
 

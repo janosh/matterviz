@@ -258,7 +258,7 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
     const actual_pts = cpd_ternary.domains[our_key]
     expect(actual_pts, `Domain missing for ${our_key}`).toBeDefined()
     const sorted_actual = sort_rows(dedup_vertices(actual_pts))
-    const sorted_expected = sort_rows(reorder_cols(pmg_vertices as number[][]))
+    const sorted_expected = sort_rows(reorder_cols(pmg_vertices))
     expect(sorted_actual.length).toBe(sorted_expected.length)
     for (let idx = 0; idx < sorted_expected.length; idx++) {
       for (let jdx = 0; jdx < sorted_expected[idx].length; jdx++) {

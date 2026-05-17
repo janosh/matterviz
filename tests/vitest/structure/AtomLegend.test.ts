@@ -504,8 +504,8 @@ describe(`AtomLegend Component`, () => {
         ? {
             colors: legend_colors,
             values: [...unique_values, ...unique_values], // Add duplicates
-            min_value: Math.min(...(unique_values as number[])),
-            max_value: Math.max(...(unique_values as number[])),
+            min_value: Math.min(...unique_values),
+            max_value: Math.max(...unique_values),
             unique_values,
           }
         : null
@@ -617,7 +617,7 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      const labels = Array.from(document.querySelectorAll(`.category-label`)) as HTMLElement[]
+      const labels = Array.from(document.querySelectorAll<HTMLElement>(`.category-label`))
       const color_map = new Map(
         labels.map((l) => [l.textContent?.trim(), l.style.backgroundColor]),
       )

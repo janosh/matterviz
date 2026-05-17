@@ -49,7 +49,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     return name
   })
   const elements: ElementSymbol[] = validated_element_names.flatMap((name, idx) =>
-    Array(element_counts[idx]).fill(name as ElementSymbol),
+    Array(element_counts[idx]).fill(name),
   )
 
   const frames: TrajectoryFrame[] = []

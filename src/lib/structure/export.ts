@@ -190,7 +190,7 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
     const is_instanced = is_instanced_mesh(object)
     if (!is_instanced) return
 
-    const instanced_mesh = object as InstancedMesh
+    const instanced_mesh = object
     const mesh_id = instanced_mesh.uuid
 
     // Check if this is a shader material (bonds)
@@ -455,7 +455,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
     if (site.xyz && Array.isArray(site.xyz) && site.xyz.length >= 3) {
       coords = site.xyz.slice(0, 3)
     } else if (site.abc?.length >= 3 && frac_to_cart) {
-      coords = frac_to_cart(site.abc as math.Vec3)
+      coords = frac_to_cart(site.abc)
     } else coords = [0, 0, 0] // fallback
 
     // Format coordinates to reasonable precision
@@ -590,7 +590,7 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     if (site.abc && Array.isArray(site.abc) && site.abc.length >= 3) {
       frac_coords = site.abc.slice(0, 3)
     } else if (site.xyz?.length >= 3 && cart_to_frac) {
-      frac_coords = cart_to_frac(site.xyz as math.Vec3)
+      frac_coords = cart_to_frac(site.xyz)
     } else throw new Error(`No valid coordinates found for site ${idx}`)
 
     // Format: label element_symbol x y z

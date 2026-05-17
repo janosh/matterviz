@@ -424,7 +424,7 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
 
     for (const ifermi_iso of iso_list) {
       const vertices = ifermi_iso.vertices as Vec3[]
-      const faces = ifermi_iso.faces as number[][]
+      const faces = ifermi_iso.faces
 
       // Compute vertex normals from faces
       const normals = compute_vertex_normals(vertices, faces)

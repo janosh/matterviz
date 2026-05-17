@@ -459,10 +459,7 @@ test.each([
     expect(projection_select?.value).toBe(initial_projection)
 
     const options = Array.from(projection_select?.querySelectorAll(`option`) || [])
-    expect(options.map((option) => (option as HTMLOptionElement).value)).toEqual([
-      `perspective`,
-      `orthographic`,
-    ])
+    expect(options.map((option) => option.value)).toEqual([`perspective`, `orthographic`])
 
     // Test 2: Component renders correctly without errors
     const structure_component = document.querySelector(`.structure`)
@@ -911,7 +908,7 @@ describe(`Rotation target computation`, () => {
       expected: [4.5, 3, 2],
     },
   ])(`unit cell center for $desc lattice`, ({ matrix, expected }) => {
-    const center = scale(add(...matrix), 0.5) as Vec3
+    const center = scale(add(...matrix), 0.5)
     expected.forEach((val, idx) => expect(center[idx]).toBeCloseTo(val, 10))
   })
 })

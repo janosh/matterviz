@@ -252,8 +252,8 @@ describe(`calculate_rdf`, () => {
     const n_bins = 20
     const result = calculate_rdf(structure, { cutoff, n_bins, auto_expand: false })
     const expected_dist = math.pbc_dist(
-      structure.sites[0].xyz as math.Vec3,
-      structure.sites[1].xyz as math.Vec3,
+      structure.sites[0].xyz,
+      structure.sites[1].xyz,
       lattice,
     )
     const bin_width = cutoff / n_bins

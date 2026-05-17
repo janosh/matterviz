@@ -597,7 +597,7 @@ export function parse_cube(
 function atomic_number_to_symbol(atomic_number: number): ElementSymbol {
   // ELEM_SYMBOLS is 0-indexed (H at index 0), atomic numbers are 1-indexed
   const idx = atomic_number - 1
-  return (idx >= 0 && idx < ELEM_SYMBOLS.length ? ELEM_SYMBOLS[idx] : `H`) as ElementSymbol
+  return idx >= 0 && idx < ELEM_SYMBOLS.length ? ELEM_SYMBOLS[idx] : `H`
 }
 
 // Auto-detect and parse volumetric file format based on filename and content

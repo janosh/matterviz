@@ -751,7 +751,7 @@ export function clean_series<T extends DataSeries>(
   }
 
   // Build result series
-  const result_series = (in_place ? series : { ...series }) as T
+  const result_series = in_place ? series : { ...series }
   ;(result_series as DataSeries).x = x_arr
   ;(result_series as DataSeries).y = y_arr
   if (metadata !== undefined) (result_series as DataSeries).metadata = metadata

@@ -20,8 +20,8 @@ const mount_matrix = (props: Partial<ComponentProps<typeof HeatmapMatrix>> = {})
   })
 }
 
-const query_all = (sel: string) =>
-  Array.from(document.querySelectorAll(sel) as NodeListOf<HTMLElement>)
+const query_all = (sel: string): HTMLElement[] =>
+  Array.from(document.querySelectorAll<HTMLElement>(sel))
 const get_data_cells = () => query_all(`.cell:not(.empty)`)
 const get_empty_cells = () => query_all(`.cell.empty`)
 const get_x_labels = () => query_all(`.x-label`)
@@ -163,9 +163,7 @@ describe(`values and colors`, () => {
       values: [[0.5]],
       color_scale: () => `rgb(255, 0, 0)`,
     })
-    expect((doc_query(`.cell:not(.empty)`) as HTMLElement).style.backgroundColor).toBe(
-      `rgb(255, 0, 0)`,
-    )
+    expect(doc_query(`.cell:not(.empty)`).style.backgroundColor).toBe(`rgb(255, 0, 0)`)
   })
 
   test(`color_overrides takes precedence over computed color`, () => {
@@ -180,7 +178,7 @@ describe(`values and colors`, () => {
         },
       },
     })
-    const cells = document.querySelectorAll(`.cell:not(.empty)`) as NodeListOf<HTMLElement>
+    const cells = document.querySelectorAll<HTMLElement>(`.cell:not(.empty)`)
     expect(cells[1].style.backgroundColor).toBe(`rgb(1, 2, 3)`)
     expect(cells[0].style.backgroundColor).not.toBe(`rgb(1, 2, 3)`)
   })
@@ -196,7 +194,7 @@ describe(`values and colors`, () => {
         color_scale_range: [-10, 10],
       },
     })
-    const cell = doc_query(`.cell:not(.empty)`) as HTMLElement
+    const cell = doc_query(`.cell:not(.empty)`)
     expect(cell.style.backgroundColor).not.toBe(``)
     expect(cell.style.backgroundColor).not.toBe(`transparent`)
   })
@@ -235,7 +233,7 @@ describe(`click and dblclick handlers`, () => {
   test(`ondblclick receives correct CellContext`, () => {
     const handler = vi.fn()
     mount_matrix({ values: [[10, 20, 30]], ondblclick: handler })
-    const cell = doc_query(`.cell:not(.empty)`) as HTMLElement
+    const cell = doc_query(`.cell:not(.empty)`)
     cell.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
     expect(handler).toHaveBeenCalledOnce()
     expect(handler.mock.calls[0][0]).toMatchObject({ x_idx: 0, y_idx: 0, value: 10 })
@@ -251,7 +249,7 @@ describe(`click and dblclick handlers`, () => {
         onclick: click_handler,
         ondblclick: dblclick_handler,
       })
-      const cell = doc_query(`.cell:not(.empty)`) as HTMLElement
+      const cell = doc_query(`.cell:not(.empty)`)
       cell.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       cell.dispatchEvent(new MouseEvent(`dblclick`, { bubbles: true }))
       vi.runAllTimers()
@@ -267,7 +265,7 @@ describe(`click and dblclick handlers`, () => {
     (key_name) => {
       const click_handler = vi.fn()
       mount_matrix({ values: [[1]], onclick: click_handler })
-      const cell = doc_query(`.cell:not(.empty)`) as HTMLElement
+      const cell = doc_query(`.cell:not(.empty)`)
       expect(cell.tagName).toBe(`BUTTON`)
       // Approximate native button activation: keydown then synthesized click.
       cell.dispatchEvent(new KeyboardEvent(`keydown`, { key: key_name, bubbles: true }))
@@ -279,18 +277,18 @@ describe(`click and dblclick handlers`, () => {
   test(`disabled prevents clicks, non-cell clicks are no-ops`, () => {
     const handler = vi.fn()
     mount_matrix({ onclick: handler, disabled: true })
-    ;(doc_query(`.cell:not(.empty)`) as HTMLElement).click()
+    doc_query(`.cell:not(.empty)`).click()
     expect(handler).not.toHaveBeenCalled()
     // Re-mount without disabled, clicking a label shouldn't fire handler
     document.body.innerHTML = ``
     mount_matrix({ onclick: handler })
-    ;(doc_query(`.x-label`) as HTMLElement).click()
+    doc_query(`.x-label`).click()
     expect(handler).not.toHaveBeenCalled()
 
     // Hovering a cell should not make subsequent label clicks trigger onclick
-    const first_cell = doc_query(`.cell:not(.empty)`) as HTMLElement
+    const first_cell = doc_query(`.cell:not(.empty)`)
     first_cell.dispatchEvent(new MouseEvent(`mouseover`, { bubbles: true }))
-    ;(doc_query(`.x-label`) as HTMLElement).click()
+    doc_query(`.x-label`).click()
     expect(handler).not.toHaveBeenCalled()
   })
 })
@@ -451,8 +449,8 @@ describe(`axis label placement`, () => {
     expect(x_labels[1].style.gridRow).toBe(`7`)
     expect(y_labels[1].style.gridColumn).toBe(`7`)
     // Summary tracks still occupy the immediate next track.
-    expect((doc_query(`.summary-col`) as HTMLElement).style.gridRow).toBe(`6`)
-    expect((doc_query(`.summary-row`) as HTMLElement).style.gridColumn).toBe(`6`)
+    expect(doc_query(`.summary-col`).style.gridRow).toBe(`6`)
+    expect(doc_query(`.summary-row`).style.gridColumn).toBe(`6`)
   })
 })
 
@@ -559,7 +557,7 @@ describe(`milestone feature props`, () => {
     })
     await Promise.resolve()
     const first_cell = get_data_cells()[0]
-    const tooltip_el = doc_query(`.tooltip`) as HTMLElement
+    const tooltip_el = doc_query(`.tooltip`)
     first_cell.dispatchEvent(
       new MouseEvent(`mouseover`, { bubbles: true, clientX: 10, clientY: 10 }),
     )
@@ -580,7 +578,7 @@ describe(`milestone feature props`, () => {
       symmetric: true,
       show_row_summaries: true,
     })
-    const summary_cells = document.querySelectorAll(`.summary-row`) as NodeListOf<HTMLElement>
+    const summary_cells = document.querySelectorAll<HTMLElement>(`.summary-row`)
     expect(summary_cells[0].textContent?.trim()).toBe(`1`)
     expect(summary_cells[1].textContent?.trim()).toBe(`3.5`)
   })

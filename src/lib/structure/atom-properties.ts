@@ -273,7 +273,7 @@ export function get_custom_colors(
   const is_num = vals.every((val) => typeof val === `number`)
 
   if (is_num) {
-    const nums = vals as number[]
+    const nums = vals
     const { colors, unique_values } = apply_color_scale(nums, scale, type)
     return build_prop_colors(nums, colors, unique_values)
   }

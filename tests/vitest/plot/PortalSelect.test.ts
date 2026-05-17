@@ -10,7 +10,7 @@ const options: Option[] = [
   { key: `pressure`, label: `Pressure` },
 ]
 const get_trigger = () =>
-  document.body.querySelector(`.portal-select-trigger`) as HTMLButtonElement | null
+  document.body.querySelector<HTMLButtonElement>(`.portal-select-trigger`)
 
 describe(`PortalSelect`, () => {
   afterEach(() => {

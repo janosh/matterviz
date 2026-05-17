@@ -83,7 +83,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
       if (center === neighbor) continue
 
       const dist = use_pbc
-        ? pbc_dist(center.xyz as Vec3, neighbor.xyz as Vec3, lattice, converters, pbc)
+        ? pbc_dist(center.xyz, neighbor.xyz, lattice, converters, pbc)
         : euclidean_dist(center.xyz, neighbor.xyz)
 
       if (dist > 0 && dist < cutoff) {

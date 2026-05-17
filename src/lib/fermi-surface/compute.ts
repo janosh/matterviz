@@ -426,7 +426,7 @@ export function compute_fermi_slice(
       math.scale(fermi_data.k_lattice[1], miller_indices[1]),
     ),
     math.scale(fermi_data.k_lattice[2], miller_indices[2]),
-  ) as Vec3
+  )
 
   const normal_len = Math.hypot(...plane_normal)
   if (normal_len < EPS) {

@@ -197,8 +197,8 @@ Cartesian
       for (const site of result.sites) {
         // Reconstruct Cartesian coordinates from fractional coordinates
         const reconstructed_xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(result.lattice.matrix as Matrix3x3),
-          site.abc as Vec3,
+          transpose_3x3_matrix(result.lattice.matrix),
+          site.abc,
         )
 
         // Verify coordinate consistency and bounds
@@ -290,8 +290,8 @@ describe(`XYZ Parser`, () => {
 
             // Strict reconstruction: xyz = transpose(lattice) * abc
             const reconstructed_xyz = mat3x3_vec3_multiply(
-              transpose_3x3_matrix(lattice as Matrix3x3),
-              site.abc as Vec3,
+              transpose_3x3_matrix(lattice),
+              site.abc,
             )
             expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
             expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
@@ -2236,7 +2236,7 @@ describe(`OPTIMADE JSON parser`, () => {
     },
   ])(`should parse $name`, ({ data, content, expected }) => {
     const test_content = content || JSON.stringify(data)
-    const result = parse_optimade_json(test_content as string)
+    const result = parse_optimade_json(test_content)
     if (!result) throw `Failed to parse OPTIMADE JSON`
 
     expect(result.sites).toHaveLength(expected.sites)
@@ -2249,8 +2249,8 @@ describe(`OPTIMADE JSON parser`, () => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`
         const reconstructed_xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(latt_mat as Matrix3x3),
-          site.abc as Vec3,
+          transpose_3x3_matrix(latt_mat),
+          site.abc,
         )
         expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
         expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
@@ -2400,8 +2400,8 @@ describe(`OPTIMADE JSON parser`, () => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`
         const reconstructed_xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(latt_mat as Matrix3x3),
-          site.abc as Vec3,
+          transpose_3x3_matrix(latt_mat),
+          site.abc,
         )
         expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
         expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
@@ -2794,8 +2794,8 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`
         const reconstructed_xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(latt_mat as Matrix3x3),
-          site.abc as Vec3,
+          transpose_3x3_matrix(latt_mat),
+          site.abc,
         )
         expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
         expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)

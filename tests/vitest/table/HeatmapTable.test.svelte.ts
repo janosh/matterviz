@@ -1067,7 +1067,7 @@ describe(`HeatmapTable`, () => {
       `renders $expected_arrow for Value header after $click_count click(s)`,
       async ({ click_count, expected_arrow }) => {
         const headers = render_table()
-        const value_header = headers[2] as HTMLTableCellElement
+        const value_header = headers[2]
 
         if (click_count >= 1) {
           value_header.click()
@@ -1108,7 +1108,7 @@ describe(`HeatmapTable`, () => {
         { Model: `C`, Value: 200 },
       ]
       const headers = render_table(columns, data)
-      const value_header = headers[1] as HTMLTableCellElement
+      const value_header = headers[1]
       value_header.click()
       await tick()
 

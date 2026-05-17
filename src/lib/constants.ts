@@ -27,7 +27,7 @@ export const TRAJ_KEYWORDS = Object.freeze([
   `md`,
   `dynamics`,
   `simulation`,
-]) as readonly string[]
+])
 
 // Keywords that indicate a file is likely a structure file
 export const STRUCT_KEYWORDS = Object.freeze([
@@ -45,7 +45,7 @@ export const STRUCT_KEYWORDS = Object.freeze([
   `data`,
   `phono3py`,
   `phonopy`,
-]) as readonly string[]
+])
 
 // More restrictive keywords for JSON/YAML files (excludes generic terms like "data")
 export const STRUCT_KEYWORDS_STRICT = Object.freeze([
@@ -62,7 +62,7 @@ export const STRUCT_KEYWORDS_STRICT = Object.freeze([
   `sites`,
   `phono3py`,
   `phonopy`,
-]) as readonly string[]
+])
 
 // Regex patterns for keyword matching
 export const TRAJ_KEYWORDS_REGEX = new RegExp(
@@ -80,11 +80,7 @@ export const STRUCT_KEYWORDS_STRICT_REGEX = new RegExp(
 export const TRAJ_KEYWORDS_SIMPLE_REGEX = new RegExp(`(${TRAJ_KEYWORDS.join(`|`)})`, `i`)
 
 // File extensions for different file types
-export const TRAJ_EXTENSIONS = Object.freeze([
-  `.traj`,
-  `.xtc`,
-  `.lammpstrj`,
-]) as readonly string[]
+export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.xtc`, `.lammpstrj`])
 export const TRAJ_EXTENSIONS_REGEX = new RegExp(
   `\\.(${TRAJ_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
   `i`,
@@ -103,7 +99,7 @@ export const STRUCTURE_EXTENSIONS = Object.freeze([
   `.mol2`,
   `.sdf`,
   `.mmcif`,
-]) as readonly string[]
+])
 export const STRUCTURE_EXTENSIONS_REGEX = new RegExp(
   `\\.(${STRUCTURE_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
   `i`,
@@ -114,7 +110,7 @@ export const TRAJ_FALLBACK_EXTENSIONS = Object.freeze([
   `.log`,
   `.out`,
   `.json`,
-]) as readonly string[]
+])
 export const TRAJ_FALLBACK_EXTENSIONS_REGEX = new RegExp(
   `\\.(${TRAJ_FALLBACK_EXTENSIONS.map((ext) => ext.slice(1)).join(`|`)})$`,
   `i`,

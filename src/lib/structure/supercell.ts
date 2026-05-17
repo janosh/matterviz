@@ -22,7 +22,7 @@ export function parse_supercell_scaling(scaling: string | number | Vec3): Vec3 {
     if (scaling.some((val) => !Number.isInteger(val) || val <= 0)) {
       throw new Error(`All supercell scaling factors must be positive integers: ${scaling}`)
     }
-    return scaling as Vec3
+    return scaling
   }
   if (typeof scaling === `string`) {
     // Parse "2x2x2" format

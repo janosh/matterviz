@@ -23,8 +23,8 @@ describe(`ColorBar Horizontal (Default)`, () => {
       },
     })
 
-    const title_row = doc_query(`.colorbar .title-row`) as HTMLElement
-    const title_span = doc_query(`.colorbar .label`) as HTMLElement
+    const title_row = doc_query(`.colorbar .title-row`)
+    const title_span = doc_query(`.colorbar .label`)
     expect(title_span.textContent).toBe(`Test Horizontal`)
     // title_style is now applied to title-row
     expect(title_row.getAttribute(`style`)).toContain(`font-weight: bold;`)
@@ -117,7 +117,7 @@ describe(`ColorBar Vertical`, () => {
     expect(wrapper_vert_exp.style.flexDirection).toBe(`column`)
     expect(wrapper_vert_exp.style.height).toBe(`300px`)
 
-    const title_span_vert_exp = doc_query(`.colorbar .label`) as HTMLElement
+    const title_span_vert_exp = doc_query(`.colorbar .label`)
     expect(title_span_vert_exp.textContent).toBe(`Test Vertical Explicit`)
 
     const cbar_div = doc_query(`.colorbar > div.bar`)
@@ -251,7 +251,7 @@ describe(`ColorBar title_side Default Logic`, () => {
       expect(wrapper.style.flexDirection).toBe(expected_flex_dir)
 
       // Title should exist (in title-row)
-      const title_span = doc_query(`.colorbar .label`) as HTMLElement
+      const title_span = doc_query(`.colorbar .label`)
       expect(title_span).not.toBeNull()
       expect(title_span.textContent).toBe(`Test Default Title`)
     },
@@ -451,7 +451,7 @@ describe(`Vertical Layout Specifics`, () => {
     })
 
     // Check the inner bar div's style for 100% height, implying wrapper has height
-    const bar_div = doc_query(`.colorbar > div.bar`) as HTMLElement
+    const bar_div = doc_query(`.colorbar > div.bar`)
     const bar_style_attr = bar_div.getAttribute(`style`) ?? ``
     expect(bar_style_attr).toContain(`--cbar-height: 100%`)
 

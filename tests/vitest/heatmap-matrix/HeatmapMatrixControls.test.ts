@@ -128,8 +128,8 @@ describe(`HeatmapMatrixControls`, () => {
     const export_handler = vi.fn()
     mount_controls({ onexport: export_handler, export_formats: [`csv`, `json`] })
     const buttons = Array.from(
-      document.querySelectorAll(`.pane-row button`),
-    ) as HTMLButtonElement[]
+      document.querySelectorAll<HTMLButtonElement>(`.pane-row button`),
+    )
     expect(buttons).toHaveLength(2)
     expect(buttons[0].textContent?.trim()).toBe(`Export CSV`)
     expect(buttons[1].textContent?.trim()).toBe(`Export JSON`)

@@ -48,7 +48,7 @@ export async function decompress_data_binary(
           })
         : data
     if (!stream) throw new Error(`Invalid data stream`)
-    const unzip = new DecompressionStream(format as `gzip` | `deflate` | `deflate-raw`)
+    const unzip = new DecompressionStream(format)
     return await new Response(stream.pipeThrough(unzip)).arrayBuffer()
   } catch (error) {
     throw new Error(`Failed to decompress ${format} file: ${error}`, { cause: error })

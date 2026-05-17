@@ -135,7 +135,7 @@ describe(`fractional_composition`, () => {
       expect(result).toEqual(expected_fractions)
     } else {
       Object.entries(expected_fractions).forEach(([element, expected_frac]) => {
-        expect(result[element as keyof typeof result]).toBeCloseTo(expected_frac as number, 3)
+        expect(result[element as keyof typeof result]).toBeCloseTo(expected_frac, 3)
       })
     }
   })

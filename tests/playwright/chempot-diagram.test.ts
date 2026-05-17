@@ -88,11 +88,7 @@ const get_projection_values = (
   y_select: Locator,
   z_select: Locator,
 ): Promise<[string, string, string]> =>
-  Promise.all([
-    x_select.inputValue(),
-    y_select.inputValue(),
-    z_select.inputValue(),
-  ]) as Promise<[string, string, string]>
+  Promise.all([x_select.inputValue(), y_select.inputValue(), z_select.inputValue()])
 
 test.describe(`ChemPot Diagram interactions`, () => {
   test.beforeEach(async ({ page }) => {

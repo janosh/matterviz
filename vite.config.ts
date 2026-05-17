@@ -82,7 +82,6 @@ export default defineConfig({
       'eslint-plugin-unicorn/consistent-function-scoping': `off`, // Svelte reactive closures
       // Pervasive intentional patterns
       '@typescript-eslint/no-unsafe-type-assertion': `off`,
-      '@typescript-eslint/no-unnecessary-type-assertion': `off`,
       '@typescript-eslint/restrict-template-expressions': `off`,
       '@typescript-eslint/no-unnecessary-template-expression': `off`, // backtick convention
       'no-await-in-loop': `off`,

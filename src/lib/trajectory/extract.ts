@@ -1,5 +1,5 @@
 // Data extraction functions for trajectory analysis and plotting
-import { type Crystal, get_density } from '$lib/structure'
+import { get_density } from '$lib/structure'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryType } from './index'
 
 // Common data extractor that extracts energy and structural properties
@@ -22,7 +22,7 @@ export const energy_data_extractor: TrajectoryDataExtractor = (
 
     for (const field of energy_fields) {
       if (field in frame.metadata && typeof frame.metadata[field] === `number`) {
-        data[field] = frame.metadata[field] as number
+        data[field] = frame.metadata[field]
       }
     }
   }
@@ -67,7 +67,7 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
     const other_stress_fields = [`stress_max`, `stress_frobenius`, `stress_trace`, `pressure`]
     for (const field of other_stress_fields) {
       if (field in frame.metadata && typeof frame.metadata[field] === `number`) {
-        data[field] = frame.metadata[field] as number
+        data[field] = frame.metadata[field]
       }
     }
   }
@@ -101,7 +101,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
 
     for (const field of structural_fields) {
       if (field in frame.metadata && typeof frame.metadata[field] === `number`)
-        data[field] = frame.metadata[field] as number
+        data[field] = frame.metadata[field]
     }
 
     // Handle density separately - prefer metadata, but calculate if not available
@@ -109,7 +109,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
       data.density = frame.metadata.density
     } else if (`lattice` in frame.structure) {
       try {
-        data.density = get_density(frame.structure as Crystal)
+        data.density = get_density(frame.structure)
       } catch (error) {
         console.warn(`Failed to calculate density for frame ${frame.step}:`, error)
       }
@@ -124,7 +124,7 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
   } else if (`lattice` in frame.structure) {
     // Calculate density even when no metadata is available
     try {
-      data.density = get_density(frame.structure as Crystal)
+      data.density = get_density(frame.structure)
     } catch (error) {
       console.warn(`Failed to calculate density for frame ${frame.step}:`, error)
     }

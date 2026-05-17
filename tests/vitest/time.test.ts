@@ -34,7 +34,7 @@ describe(`format_utc_time`, () => {
       description: `returns N/A for invalid date string`,
     },
   ])(`$description`, ({ input, expected }) => {
-    expect(format_utc_time(input as Date | string | undefined)).toBe(expected)
+    expect(format_utc_time(input)).toBe(expected)
   })
 
   test(`removes milliseconds from output`, () => {
@@ -171,7 +171,7 @@ describe(`format_relative_time`, () => {
         description: `invalid date string`,
       },
     ])(`returns N/A for $description`, ({ input, expected }) => {
-      expect(format_relative_time(input as string | undefined, reference)).toBe(expected)
+      expect(format_relative_time(input, reference)).toBe(expected)
     })
 
     test(`returns N/A for invalid reference_date`, () => {

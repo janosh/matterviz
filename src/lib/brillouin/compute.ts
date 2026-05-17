@@ -103,7 +103,7 @@ function generate_k_space_grid(k_lattice: Matrix3x3, order: number): Vec3[] {
           math.scale(k_lattice[0], idx_i),
           math.scale(k_lattice[1], idx_j),
           math.scale(k_lattice[2], idx_k),
-        ) as Vec3
+        )
         points.push(point)
       }
     }
@@ -400,7 +400,7 @@ export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): Clipp
 
 // Flip a clipping plane to the opposite half-space
 const flip_plane = (p: ClippingPlane): ClippingPlane => ({
-  normal: math.scale(p.normal, -1) as Vec3,
+  normal: math.scale(p.normal, -1),
   dist: -p.dist,
 })
 

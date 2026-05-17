@@ -29,7 +29,7 @@ describe(`combinations`, () => {
       ],
     ],
   ])(`C(%j, %i) -> %j`, (arr, k, expected) => {
-    expect(math.combinations(arr as unknown[], k as number)).toEqual(expected)
+    expect(math.combinations(arr as unknown[], k)).toEqual(expected)
   })
 
   test(`C(5,3) returns 10 unique 3-element combos`, () => {
@@ -929,7 +929,7 @@ describe(`tensor conversion utilities`, () => {
         ],
       ],
     ])(`throws for %s matrix`, (_, invalid_tensor) => {
-      expect(() => math.to_voigt(invalid_tensor as number[][])).toThrow(`Expected 3x3 tensor`)
+      expect(() => math.to_voigt(invalid_tensor)).toThrow(`Expected 3x3 tensor`)
     })
 
     it(`preserves floating point precision`, () => {
@@ -1128,9 +1128,7 @@ describe(`tensor conversion utilities`, () => {
         ],
       ],
     ])(`throws for %s matrix`, (_, invalid_tensor) => {
-      expect(() => math.tensor_to_flat_array(invalid_tensor as number[][])).toThrow(
-        `Expected 3x3 tensor`,
-      )
+      expect(() => math.tensor_to_flat_array(invalid_tensor)).toThrow(`Expected 3x3 tensor`)
     })
   })
 
@@ -1405,7 +1403,7 @@ describe(`tensor conversion utilities`, () => {
           if (!Array.isArray(result) || !Array.isArray(result[0])) {
             throw new TypeError(`Expected matrix result from dot product`)
           }
-          const I = result as number[][]
+          const I = result
 
           // Verify A * A^-1 ≈ I and det(A^-1) = 1/det(A)
           for (let row_idx = 0; row_idx < 3; row_idx++) {

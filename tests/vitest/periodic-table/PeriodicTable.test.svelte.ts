@@ -122,14 +122,9 @@ describe(`PeriodicTable`, () => {
       mount(PeriodicTable, { target: document.body, props })
 
       if (typeof value === `string`) {
-        expect(
-          (getComputedStyle(doc_query(`.ptable-grid`) as Element) as CSSStyleDeclaration).gap,
-        ).toBe(value)
+        expect(getComputedStyle(doc_query(`.ptable-grid`) as Element).gap).toBe(value)
       } else if (value > 0) {
-        expect(
-          (getComputedStyle(doc_query(`div.spacer`) as Element) as CSSStyleDeclaration)
-            .gridRow,
-        ).toBe(`8`)
+        expect(getComputedStyle(doc_query(`div.spacer`) as Element).gridRow).toBe(`8`)
       } else {
         expect(document.querySelector(`div.spacer`)).toBeNull()
       }

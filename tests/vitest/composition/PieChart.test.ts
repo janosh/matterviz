@@ -61,10 +61,7 @@ describe(`PieChart data processing`, () => {
       expect(Object.keys(fractions)).toHaveLength(0)
     } else {
       Object.entries(expected_fractions).forEach(([element, expected_frac]) => {
-        expect(fractions[element as keyof typeof fractions]).toBeCloseTo(
-          expected_frac as number,
-          3,
-        )
+        expect(fractions[element as keyof typeof fractions]).toBeCloseTo(expected_frac, 3)
       })
     }
   })

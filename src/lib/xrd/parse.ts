@@ -823,7 +823,7 @@ export async function parse_xrd_file(
       new Uint8Array(buffer).set(encoded)
       return buffer
     }
-    return content as ArrayBuffer
+    return content
   }
 
   // Two-column ASCII formats

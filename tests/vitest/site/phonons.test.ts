@@ -1,4 +1,3 @@
-import type { PhononBandStructure } from '$lib/spectral'
 import { phonon_bands, phonon_data, phonon_dos } from '$site/phonons'
 import { describe, expect, it } from 'vitest'
 
@@ -17,7 +16,7 @@ describe(`Phonon Module Tests`, () => {
     expect(keys.length).toBeGreaterThan(0)
 
     // Test all band structures, not just the first one
-    for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
+    for (const band_struct of Object.values(phonon_bands)) {
       // Check structure and types
       expect(band_struct.recip_lattice).toBeDefined()
       expect(band_struct.recip_lattice.matrix).toBeDefined()
@@ -63,7 +62,7 @@ describe(`Phonon Module Tests`, () => {
 
   it(`assigns labels to qpoints and matches labels_dict`, () => {
     // Test all band structures
-    for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
+    for (const band_struct of Object.values(phonon_bands)) {
       const labeled_points = band_struct.qpoints.filter((qpt) => qpt.label !== null)
       expect(labeled_points.length).toBeGreaterThan(0)
 
@@ -97,7 +96,7 @@ describe(`Phonon Module Tests`, () => {
 
   it(`preserves valid fractional coordinates in qpoints`, () => {
     // Test all band structures
-    for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
+    for (const band_struct of Object.values(phonon_bands)) {
       band_struct.qpoints.forEach((q_point) => {
         expect(q_point.frac_coords).toBeDefined()
         expect(Array.isArray(q_point.frac_coords)).toBe(true)
@@ -119,7 +118,7 @@ describe(`Phonon Module Tests`, () => {
 
   it(`calculates cumulative distances correctly and monotonically`, () => {
     // Test all band structures
-    for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
+    for (const band_struct of Object.values(phonon_bands)) {
       expect(band_struct.qpoints[0].distance).toBe(0)
       expect(band_struct.distance[0]).toBe(0)
 
@@ -148,7 +147,7 @@ describe(`Phonon Module Tests`, () => {
 
   it(`creates branches that properly cover and connect labeled points`, () => {
     // Test all band structures
-    for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
+    for (const band_struct of Object.values(phonon_bands)) {
       expect(band_struct.branches.length).toBeGreaterThan(0)
 
       // Validate each branch
@@ -219,7 +218,7 @@ describe(`Phonon Module Tests`, () => {
 
   it(`validates cumulative distance consistency and reciprocal lattice presence`, () => {
     // Verify reciprocal lattice exists and validate distance consistency
-    for (const band_struct of Object.values(phonon_bands) as PhononBandStructure[]) {
+    for (const band_struct of Object.values(phonon_bands)) {
       // Verify lattice exists (used in distance calculations)
       expect(band_struct.recip_lattice.matrix).toBeDefined()
       expect(Array.isArray(band_struct.recip_lattice.matrix)).toBe(true)

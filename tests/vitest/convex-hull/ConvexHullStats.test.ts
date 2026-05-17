@@ -319,8 +319,8 @@ describe(`ConvexHullStats`, () => {
       expect(document.querySelector(`.stat-item`)).toBeInstanceOf(HTMLElement)
       expect(document.querySelector(`.table-container`)).toBeNull()
       const [stats_btn, table_btn] = Array.from(
-        document.querySelectorAll(`.view-toggle button`),
-      ) as HTMLElement[]
+        document.querySelectorAll<HTMLButtonElement>(`.view-toggle button`),
+      )
       expect(stats_btn.classList.contains(`active`)).toBe(true)
 
       // Switch to table
@@ -447,9 +447,7 @@ describe(`ConvexHullStats`, () => {
       })
       const headers = get_headers()
       const formula_idx = headers.indexOf(`Formula`)
-      const formula_cell = document.querySelector(
-        `tbody tr td:nth-child(${formula_idx + 1})`,
-      ) as HTMLElement | null
+      const formula_cell = document.querySelector(`tbody tr td:nth-child(${formula_idx + 1})`)
       const formula_text = normalize_formula_text(formula_cell?.textContent ?? ``)
       expect(formula_text).toMatch(/Fe.*2.*O.*3|O.*3.*Fe.*2/)
     })
@@ -468,9 +466,7 @@ describe(`ConvexHullStats`, () => {
       })
       const headers = get_headers()
       const formula_idx = headers.indexOf(`Formula`)
-      const formula_cell = document.querySelector(
-        `tbody tr td:nth-child(${formula_idx + 1})`,
-      ) as HTMLElement | null
+      const formula_cell = document.querySelector(`tbody tr td:nth-child(${formula_idx + 1})`)
       expect(formula_cell?.innerHTML).not.toContain(`&lt;sub&gt;`)
       expect(normalize_formula_text(formula_cell?.textContent ?? ``)).toContain(`Xx2O`)
     })
@@ -489,9 +485,7 @@ describe(`ConvexHullStats`, () => {
       })
       const headers = get_headers()
       const formula_idx = headers.indexOf(`Formula`)
-      const formula_cell = document.querySelector(
-        `tbody tr td:nth-child(${formula_idx + 1})`,
-      ) as HTMLElement | null
+      const formula_cell = document.querySelector(`tbody tr td:nth-child(${formula_idx + 1})`)
       expect(formula_cell?.innerHTML).not.toContain(`&amp;lt;sub&amp;gt;`)
       expect(normalize_formula_text(formula_cell?.textContent ?? ``)).toContain(`Xx2O`)
     })
@@ -510,9 +504,7 @@ describe(`ConvexHullStats`, () => {
       })
       const headers = get_headers()
       const formula_idx = headers.indexOf(`Formula`)
-      const formula_cell = document.querySelector(
-        `tbody tr td:nth-child(${formula_idx + 1})`,
-      ) as HTMLElement | null
+      const formula_cell = document.querySelector(`tbody tr td:nth-child(${formula_idx + 1})`)
       expect(formula_cell?.innerHTML).not.toContain(`&amp;amp;lt;sub&amp;amp;gt;`)
       expect(formula_cell?.innerHTML).not.toContain(`&amp;lt;sub&amp;gt;`)
       expect(normalize_formula_text(formula_cell?.textContent ?? ``)).toContain(`Xx2O`)
@@ -660,8 +652,8 @@ describe(`ConvexHullStats`, () => {
         flushSync()
 
         const options = Array.from(
-          document.querySelectorAll(`.export-dropdown .dropdown-option`),
-        ) as HTMLButtonElement[]
+          document.querySelectorAll<HTMLButtonElement>(`.export-dropdown .dropdown-option`),
+        )
         options.find((el) => el.textContent?.includes(format))?.click()
         flushSync()
 
