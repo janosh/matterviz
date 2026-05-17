@@ -62,24 +62,29 @@ export function decompress_file(file: File): Promise<{ content: string; filename
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
-    const handle_load = async (): Promise<void> => {
-      try {
-        const result = reader.result
-        if (!result) throw new Error(`Failed to read file`)
+    reader.addEventListener(
+      `load`,
+      () => {
+        try {
+          const result = reader.result
+          if (!result) throw new Error(`Failed to read file`)
 
-        if (is_supported && format) {
-          const content = await decompress_data(result as ArrayBuffer, format)
-          const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-          resolve({ content, filename })
-        } else {
-          resolve({ content: result as string, filename: file.name })
+          if (is_supported && format) {
+            if (!(result instanceof ArrayBuffer)) throw new Error(`Expected binary file data`)
+            decompress_data(result, format).then((content) => {
+              const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+              resolve({ content, filename })
+            }, reject)
+          } else {
+            if (typeof result !== `string`) throw new Error(`Expected text file data`)
+            resolve({ content: result, filename: file.name })
+          }
+        } catch (error) {
+          reject(error)
         }
-      } catch (error) {
-        reject(error)
-      }
-    }
-
-    reader.addEventListener(`load`, () => void handle_load())
+      },
+      { once: true },
+    )
     reader.addEventListener(`error`, () =>
       reject(new Error(`Failed to read file ${file.name}`)),
     )
