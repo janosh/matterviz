@@ -227,12 +227,17 @@
   $effect(() => () => legend_hover.cleanup())
 
   // Derived data
+  type IndexedSeries = { series_data: DataSeries; series_idx: number }
+  let selected_series_entries = $derived<IndexedSeries[]>(
+    series
+      .map((series_data: DataSeries, series_idx: number) => ({ series_data, series_idx }))
+      .filter(({ series_data }) =>
+        (series_data.visible ?? true) &&
+        (mode !== `single` || !selected_property || series_data.label === selected_property)
+      ),
+  )
   let selected_series = $derived(
-    mode === `single` && selected_property
-      ? series.filter((srs: DataSeries) =>
-        (srs.visible ?? true) && srs.label === selected_property
-      )
-      : series.filter((srs: DataSeries) => srs.visible ?? true),
+    selected_series_entries.map(({ series_data }) => series_data),
   )
 
   // Separate series by y-axis
@@ -473,9 +478,7 @@
     const x2_hist_generator = x2_series.length > 0
       ? bin().domain([ranges.current.x2[0], ranges.current.x2[1]]).thresholds(bins)
       : null
-    return selected_series.map((series_data, idx) => {
-      const original_series_idx = series.findIndex((srs) => srs === series_data)
-      const series_idx = original_series_idx >= 0 ? original_series_idx : idx
+    return selected_series_entries.map(({ series_data, series_idx }) => {
       const use_x2 = series_data.x_axis === `x2`
       const active_hist = use_x2 && x2_hist_generator
         ? x2_hist_generator

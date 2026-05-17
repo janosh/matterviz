@@ -146,6 +146,17 @@ describe(`StructureInfoPane`, () => {
     expect(document.querySelector(`.site-window-controls`)?.textContent).toContain(
       `1-100 of 120`,
     )
+
+    const next_button = Array.from(
+      document.querySelectorAll(`.site-window-controls button`),
+    ).find((button) => button.textContent?.trim() === `Next`) as HTMLButtonElement
+    next_button.click()
+    await tick()
+
+    expect(document.querySelectorAll(`.site-card`)).toHaveLength(100)
+    expect(document.querySelector(`.site-window-controls`)?.textContent).toContain(
+      `21-120 of 120`,
+    )
   })
 
   test(`renders symmetry section only when sym_data exists`, () => {

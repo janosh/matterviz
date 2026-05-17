@@ -72,7 +72,11 @@
   let legend_filter = $state(``)
 
   // Group series by legend_group, preserving order
-  type GroupedData = { group_name: string | null; items: LegendItem[] }
+  type GroupedData = {
+    group_name: string | null
+    items: LegendItem[]
+    all_items?: LegendItem[]
+  }
   let grouped_series = $derived.by<GroupedData[]>(() => {
     const groups: GroupedData[] = []
     const group_map = new SvelteMap<string | null, LegendItem[]>()
@@ -105,6 +109,7 @@
     return grouped_series
       .map(({ group_name, items }) => ({
         group_name,
+        all_items: items,
         items: items.filter((item) =>
           `${group_name ?? ``} ${strip_html(item.label)}`.toLowerCase().includes(filter)
         ),
@@ -355,28 +360,29 @@
   {#if show_filter && legend_filter && filtered_grouped_series.length === 0}
     <span class="legend-empty">No legend items</span>
   {/if}
-  {#each filtered_grouped_series as { group_name, items } (group_name ?? `__ungrouped__`)}
+  {#each filtered_grouped_series as { group_name, items, all_items } (group_name ?? `__ungrouped__`)}
     {#if group_name !== null && has_groups}
       <!-- Group header -->
+      {@const group_items = all_items ?? items}
       {@const is_collapsed = collapsed_groups.has(group_name)}
-      {@const group_visible = items.some((item) => item.visible)}
+      {@const group_visible = group_items.some((item) => item.visible)}
       <div
         class="legend-group-header"
         class:hidden={!group_visible}
         onclick={(event: MouseEvent) => {
           event.preventDefault()
           event.stopPropagation()
-          handle_group_click(group_name, items)
+          handle_group_click(group_name, group_items)
         }}
         ondblclick={(event: MouseEvent) => {
           event.preventDefault()
           event.stopPropagation()
-          on_group_double_click?.(group_name, items.map((item) => item.series_idx))
+          on_group_double_click?.(group_name, group_items.map((item) => item.series_idx))
         }}
         onkeydown={(event) => {
           if ([`Enter`, ` `].includes(event.key)) {
             event.preventDefault()
-            handle_group_click(group_name, items)
+            handle_group_click(group_name, group_items)
           }
         }}
         role="button"

@@ -8,7 +8,6 @@
   import { create_file_drop_handler, load_from_url } from '$lib/io'
   import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
   import type { Vec3 } from '$lib/math'
-  import PinnedInspector from '$lib/overlays/PinnedInspector.svelte'
   import { PlotTooltip } from '$lib/plot'
   import { type CameraProjection, DEFAULTS } from '$lib/settings'
   import type { Crystal } from '$lib/structure'
@@ -161,7 +160,6 @@
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
   let hover_data = $state<BZHoverData | null>(null)
-  let pinned_hover_data = $state<BZHoverData | null>(null)
 
   // Call on_hover callback when hover_data changes
   $effect(() => {
@@ -298,22 +296,12 @@
     const target = event.target as HTMLElement
     if (target.tagName === `INPUT` || target.tagName === `TEXTAREA`) return
 
-    if (event.key === `Escape` && pinned_hover_data) {
-      pinned_hover_data = null
-      return
-    }
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     else if (event.key === `i`) info_pane_open = !info_pane_open
     else if (event.key === `Escape`) {
       if (info_pane_open) info_pane_open = false
       else controls_open = false
     }
-  }
-
-  function pin_hover_data(event: MouseEvent) {
-    const target = event.target as HTMLElement
-    if (target.closest(`.control-buttons`) || target.closest(`.pinned-inspector`)) return
-    if (hover_data) pinned_hover_data = hover_data
   }
 
   $effect(() => { // fullscreen and background
@@ -354,7 +342,6 @@
     dragover = false
   }}
   {onkeydown}
-  onclick={pin_hover_data}
   {...rest}
   class="brillouin-zone {rest.class ?? ``}"
 >
@@ -461,15 +448,6 @@
           >
             <BrillouinZoneTooltip {hover_data} tooltip={tooltip_config} />
           </PlotTooltip>
-        {/if}
-        {#if pinned_hover_data}
-          <PinnedInspector
-            title="Pinned zone face"
-            on_close={() => (pinned_hover_data = null)}
-            style="--pinned-inspector-z-index: calc(var(--bz-buttons-z-index, 100000000) + 1); --pinned-inspector-bg: var(--surface-bg, Canvas)"
-          >
-            <BrillouinZoneTooltip hover_data={pinned_hover_data} tooltip={tooltip_config} />
-          </PinnedInspector>
         {/if}
       </div>
     {/if}

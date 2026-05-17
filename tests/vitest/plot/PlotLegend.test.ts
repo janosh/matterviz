@@ -608,6 +608,30 @@ describe(`PlotLegend`, () => {
       },
     )
 
+    test(`filtered group header toggles the full group`, async () => {
+      const mock_toggle = vi.fn()
+      mount(PlotLegend, {
+        target: document.body,
+        props: {
+          series_data: make_grouped_data(),
+          filter_threshold: 1,
+          on_group_toggle: mock_toggle,
+        },
+      })
+
+      const filter = doc_query(`.legend-filter`, HTMLInputElement)
+      filter.value = `Li-O`
+      filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+
+      doc_query(`.legend-group-header`).dispatchEvent(
+        new MouseEvent(`click`, { bubbles: true }),
+      )
+
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(1)
+      expect(mock_toggle).toHaveBeenCalledWith(`Li₂O`, [0, 1, 2])
+    })
+
     test(`chevron toggles group collapse on click and keyboard`, async () => {
       mount(PlotLegend, {
         target: document.body,

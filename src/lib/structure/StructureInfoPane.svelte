@@ -498,7 +498,7 @@
                 disabled={site_window_end >= visible_site_cards.length}
                 onclick={() =>
                   site_window_start = Math.min(
-                    visible_site_cards.length - 1,
+                    Math.max(0, visible_site_cards.length - SITE_WINDOW_SIZE),
                     site_window_start + SITE_WINDOW_SIZE,
                   )}
               >

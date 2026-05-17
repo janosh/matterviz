@@ -75,6 +75,17 @@ describe(`Histogram`, () => {
     )
   })
 
+  test(`rendered series keep distinct indices for repeated series objects`, async () => {
+    const shared_series = { x: [], y: [0, 1, 2], label: `Repeated` }
+    mount_histogram({ series: [shared_series, shared_series], show_legend: true })
+    await tick()
+
+    const series_indices = Array.from(document.querySelectorAll(`g.histogram-series`)).map(
+      (element) => element.getAttribute(`data-series-idx`),
+    )
+    expect(series_indices).toEqual([`0`, `1`])
+  })
+
   test(`bins sensitivity: fewer bins increase per-bin counts`, async () => {
     const series = [{ x: [], y: [1, 2, 3, 4, 5, 6, 7, 8, 9], label: `A` }]
 

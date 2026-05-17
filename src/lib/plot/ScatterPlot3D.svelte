@@ -5,7 +5,6 @@
   import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
   import { FullscreenToggle } from '$lib/layout'
   import type { Vec2, Vec3 } from '$lib/math'
-  import PinnedInspector from '$lib/overlays/PinnedInspector.svelte'
   import { ColorBar, PlotLegend } from '$lib/plot'
   import { get_series_color } from '$lib/plot/data-transform'
   import type {
@@ -269,20 +268,11 @@
     on_series_visibility_change?.(idx, visible)
   }
 
-  let hovered_legend_series_idx = $state<number | null>(null)
-  let pinned_point = $state<InternalPoint3D<Metadata> | null>(null)
-
   // Handle point hover
   function handle_point_hover(data: Scatter3DHandlerEvent<Metadata> | null) {
     hovered = data !== null
     tooltip_point = data?.point ?? null
     on_point_hover?.(data)
-  }
-
-  function pin_current_point(event: MouseEvent) {
-    const target = event.target as HTMLElement
-    if (target.closest(`.pinned-inspector`) || target.closest(`.header-controls`)) return
-    if (tooltip_point) pinned_point = tooltip_point
   }
 </script>
 
@@ -302,7 +292,6 @@
   {...rest}
   class="scatter-3d {rest.class ?? ``}"
   class:fullscreen
-  onclick={pin_current_point}
 >
   {#if width && height}
     <div class="header-controls">
@@ -405,27 +394,11 @@
       <PlotLegend
         series_data={legend_data}
         on_toggle={toggle_series_visibility}
-        on_item_hover={(series_idx) => (hovered_legend_series_idx = series_idx)}
-        active_series_idx={tooltip_point?.series_idx ?? hovered_legend_series_idx}
+        active_series_idx={tooltip_point?.series_idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
         style={`position: absolute; top: 2.5em; right: 1em; ${legend?.style ?? ``}`}
       />
-    {/if}
-
-    {#if pinned_point}
-      <PinnedInspector
-        title="Pinned point"
-        on_close={() => (pinned_point = null)}
-        style="--pinned-inspector-bg: var(--plot-bg, Canvas); --pinned-inspector-font-size: 0.85em"
-      >
-        <div>x: {pinned_point.x}</div>
-        <div>y: {pinned_point.y}</div>
-        <div>z: {pinned_point.z}</div>
-        {#if pinned_point.color_value != null}
-          <div>value: {pinned_point.color_value}</div>
-        {/if}
-      </PinnedInspector>
     {/if}
 
     <!-- User-provided children -->
