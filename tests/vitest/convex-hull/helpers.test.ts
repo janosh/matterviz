@@ -5,6 +5,32 @@ import { get_convex_hull_stats } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
 import { describe, expect, test, vi } from 'vitest'
 
+class MockPath2D {
+  arc(
+    _x_pos: number,
+    _y_pos: number,
+    _radius: number,
+    _start_angle: number,
+    _end_angle: number,
+  ): void {}
+}
+
+function with_mock_path2d(run_test: () => void): void {
+  const original_path2d = globalThis.Path2D
+  Object.defineProperty(globalThis, `Path2D`, {
+    configurable: true,
+    value: MockPath2D,
+  })
+  try {
+    run_test()
+  } finally {
+    Object.defineProperty(globalThis, `Path2D`, {
+      configurable: true,
+      value: original_path2d,
+    })
+  }
+}
+
 describe(`helpers: energy color scale + point color`, () => {
   test(`get_energy_color_scale returns null when not energy mode or empty`, () => {
     const color_scale: D3InterpolateName = `interpolateViridis`
@@ -65,6 +91,17 @@ describe(`helpers: energy color scale + point color`, () => {
     expect(stable).toBe(`#0072B2`)
     expect(unstable).toBe(`#E69F00`)
   })
+})
+
+describe(`helpers: marker paths`, () => {
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    `create_marker_path handles non-finite size %s`,
+    (size) => {
+      with_mock_path2d(() => {
+        expect(() => helpers.create_marker_path(size)).not.toThrow()
+      })
+    },
+  )
 })
 
 describe(`helpers: thresholds and tooltips`, () => {

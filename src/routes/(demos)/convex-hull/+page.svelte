@@ -65,12 +65,19 @@
     loaded_data = new SvelteMap(loaded_data)
   }
 
+  function log_load_error(path: string, error: unknown): void {
+    console.error(`Failed to load convex hull data ${path}`, error)
+  }
+
   onMount(async () => {
+    const quaternary_entries = Object.entries(quaternary_files)
     const results = await Promise.allSettled(
-      Object.entries(quaternary_files).map(([path, loader]) => load_data_file(path, loader)),
+      quaternary_entries.map(([path, loader]) => load_data_file(path, loader)),
     )
-    for (const result of results) {
-      if (result.status === `rejected`) console.error(`Failed to load convex hull data`, result.reason)
+    for (const [result_idx, result] of results.entries()) {
+      if (result.status === `rejected`) {
+        log_load_error(quaternary_entries[result_idx]?.[0] ?? `unknown`, result.reason)
+      }
     }
     const quinary_paths = Object.keys(quinary_files).sort()
     if (quinary_paths.length > 0) selected_quinary_path = quinary_paths[0]
@@ -86,7 +93,9 @@
   $effect(() => {
     const loader = quinary_files[selected_quinary_path]
     if (loader && section_mounted(`quinary`)) {
-      void load_data_file(selected_quinary_path, loader)
+      void load_data_file(selected_quinary_path, loader).catch((error) =>
+        log_load_error(selected_quinary_path, error)
+      )
     }
   })
 

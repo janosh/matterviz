@@ -616,7 +616,8 @@ export function get_canvas_text_color(
 
 // Create a Path2D for a marker symbol. Uses d3-shape for consistent rendering with ScatterPlot.
 export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
-  const rounded_size = Math.max(0, Number(size.toFixed(3)))
+  const safe_size = Number.isFinite(size) ? size : 0
+  const rounded_size = Math.max(0, Number(safe_size.toFixed(3)))
   const cache_key = `${marker}:${rounded_size}`
   const cached = marker_path_cache.get(cache_key)
   if (cached) return cached

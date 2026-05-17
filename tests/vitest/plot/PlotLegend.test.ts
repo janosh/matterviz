@@ -579,6 +579,7 @@ describe(`PlotLegend`, () => {
 
     test.each([
       {
+        desc: `on_group_toggle called on click`,
         event_type: `click`,
         handler: `on_group_toggle`,
         group_idx: 0,
@@ -586,6 +587,17 @@ describe(`PlotLegend`, () => {
         expected_indices: [0, 1, 2],
       },
       {
+        desc: `filtered on_group_toggle keeps full group indices`,
+        event_type: `click`,
+        handler: `on_group_toggle`,
+        group_idx: 0,
+        filter_value: `Li-O`,
+        expected_group: `Li₂O`,
+        expected_indices: [0, 1, 2],
+        expected_item_count: 1,
+      },
+      {
+        desc: `on_group_double_click called on dblclick`,
         event_type: `dblclick`,
         handler: `on_group_double_click`,
         group_idx: 1,
@@ -593,13 +605,33 @@ describe(`PlotLegend`, () => {
         expected_indices: [3, 4],
       },
     ])(
-      `$handler called on $event_type`,
-      ({ event_type, handler, group_idx, expected_group, expected_indices }) => {
+      `$desc`,
+      async ({
+        event_type,
+        handler,
+        group_idx,
+        filter_value,
+        expected_group,
+        expected_indices,
+        expected_item_count,
+      }) => {
         const mock_handler = vi.fn()
         mount(PlotLegend, {
           target: document.body,
-          props: { series_data: make_grouped_data(), [handler]: mock_handler },
+          props: {
+            series_data: make_grouped_data(),
+            filter_threshold: filter_value ? 1 : undefined,
+            [handler]: mock_handler,
+          },
         })
+
+        if (filter_value) {
+          const filter = doc_query(`.legend-filter`, HTMLInputElement)
+          filter.value = filter_value
+          filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+          await tick()
+          expect(document.querySelectorAll(`.legend-item`)).toHaveLength(expected_item_count)
+        }
 
         const headers = document.querySelectorAll<HTMLElement>(`.legend-group-header`)
         headers[group_idx].dispatchEvent(new MouseEvent(event_type, { bubbles: true }))
@@ -607,30 +639,6 @@ describe(`PlotLegend`, () => {
         expect(mock_handler).toHaveBeenCalledWith(expected_group, expected_indices)
       },
     )
-
-    test(`filtered group header toggles the full group`, async () => {
-      const mock_toggle = vi.fn()
-      mount(PlotLegend, {
-        target: document.body,
-        props: {
-          series_data: make_grouped_data(),
-          filter_threshold: 1,
-          on_group_toggle: mock_toggle,
-        },
-      })
-
-      const filter = doc_query(`.legend-filter`, HTMLInputElement)
-      filter.value = `Li-O`
-      filter.dispatchEvent(new Event(`input`, { bubbles: true }))
-      await tick()
-
-      doc_query(`.legend-group-header`).dispatchEvent(
-        new MouseEvent(`click`, { bubbles: true }),
-      )
-
-      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(1)
-      expect(mock_toggle).toHaveBeenCalledWith(`Li₂O`, [0, 1, 2])
-    })
 
     test(`chevron toggles group collapse on click and keyboard`, async () => {
       mount(PlotLegend, {

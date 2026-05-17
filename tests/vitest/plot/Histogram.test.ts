@@ -60,30 +60,30 @@ describe(`Histogram`, () => {
     expect(max_tick).toBeGreaterThanOrEqual(5)
   })
 
-  test(`rendered series keep original indices when earlier series are hidden`, async () => {
-    mount_histogram({
+  const repeated_histogram_series = { x: [], y: [0, 1, 2], label: `Repeated` }
+
+  test.each([
+    {
+      name: `when earlier series are hidden`,
       series: [
         { x: [], y: [0, 1, 2], label: `Hidden`, visible: false },
         { x: [], y: [1, 1, 2], label: `Visible` },
       ],
-      show_legend: true,
-    })
-    await tick()
-
-    expect(document.querySelector(`g.histogram-series`)?.getAttribute(`data-series-idx`)).toBe(
-      `1`,
-    )
-  })
-
-  test(`rendered series keep distinct indices for repeated series objects`, async () => {
-    const shared_series = { x: [], y: [0, 1, 2], label: `Repeated` }
-    mount_histogram({ series: [shared_series, shared_series], show_legend: true })
+      expected_indices: [`1`],
+    },
+    {
+      name: `for repeated series objects`,
+      series: [repeated_histogram_series, repeated_histogram_series],
+      expected_indices: [`0`, `1`],
+    },
+  ])(`rendered series keep original indices $name`, async ({ series, expected_indices }) => {
+    mount_histogram({ series, show_legend: true })
     await tick()
 
     const series_indices = Array.from(document.querySelectorAll(`g.histogram-series`)).map(
       (element) => element.getAttribute(`data-series-idx`),
     )
-    expect(series_indices).toEqual([`0`, `1`])
+    expect(series_indices).toEqual(expected_indices)
   })
 
   test(`bins sensitivity: fewer bins increase per-bin counts`, async () => {
