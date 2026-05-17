@@ -7,9 +7,8 @@
 // To regenerate data.json with latest pymatgen data:
 //   python scripts/extract_pymatgen_data.py
 
-import type { ChemicalElement } from '$lib/element/types'
 // Source of truth is data.json.gz. During npm packaging, scripts/package-dist-assets.ts
 // rewrites dist/element/data.js to inline decompressed JSON for sync consumers.
 import data from './data.json.gz'
 
-export default data as ChemicalElement[]
+export default data

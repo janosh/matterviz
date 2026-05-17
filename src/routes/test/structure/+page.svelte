@@ -281,7 +281,7 @@
   on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
   on_camera_move={(data) => {
     if (typeof globalThis !== `undefined`) {
-      ;(globalThis as Record<string, unknown>).__camera_target = data.camera_target
+      ;(globalThis as Record<string, unknown>).camera_target = data.camera_target
     }
   }}
   on_camera_reset={create_event_handler(`on_camera_reset`)}

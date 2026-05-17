@@ -164,11 +164,11 @@ describe(`PhaseDiagramTooltip`, () => {
       })
       mount(PhaseDiagramTooltip, { target: document.body, props: { hover_info } })
 
-      const bars = document.querySelectorAll(`.bar > div`) as NodeListOf<HTMLElement>
+      const bars = document.querySelectorAll<HTMLElement>(`.bar > div`)
       expect(bars[0]?.style.width).toBe(`75%`)
       expect(bars[1]?.style.width).toBe(`25%`)
 
-      const marker = document.querySelector(`.bar > i`) as HTMLElement
+      const marker = document.querySelector<HTMLElement>(`.bar > i`)
       expect(marker?.style.left).toBe(`75%`)
     })
 
@@ -227,10 +227,10 @@ describe(`PhaseDiagramTooltip`, () => {
         props: { hover_info, lever_rule_mode: `vertical` },
       })
 
-      const bars = document.querySelectorAll(`.bar > div`) as NodeListOf<HTMLElement>
+      const bars = document.querySelectorAll<HTMLElement>(`.bar > div`)
       expect(bars[0]?.style.width).toBe(`60%`)
       expect(bars[1]?.style.width).toBe(`40%`)
-      expect((document.querySelector(`.bar > i`) as HTMLElement)?.style.left).toBe(`60%`)
+      expect(document.querySelector<HTMLElement>(`.bar > i`)?.style.left).toBe(`60%`)
     })
 
     test(`not displayed when lever_rule_mode is horizontal`, () => {

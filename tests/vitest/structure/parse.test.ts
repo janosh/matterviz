@@ -197,8 +197,8 @@ Cartesian
       for (const site of result.sites) {
         // Reconstruct Cartesian coordinates from fractional coordinates
         const reconstructed_xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(result.lattice.matrix as Matrix3x3),
-          site.abc as Vec3,
+          transpose_3x3_matrix(result.lattice.matrix),
+          site.abc,
         )
 
         // Verify coordinate consistency and bounds
@@ -290,8 +290,8 @@ describe(`XYZ Parser`, () => {
 
             // Strict reconstruction: xyz = transpose(lattice) * abc
             const reconstructed_xyz = mat3x3_vec3_multiply(
-              transpose_3x3_matrix(lattice as Matrix3x3),
-              site.abc as Vec3,
+              transpose_3x3_matrix(lattice),
+              site.abc,
             )
             expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
             expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
@@ -797,10 +797,10 @@ H1   H   2.100  0.900  0.500  1.000`
 
       // Check fractional coordinates
       for (const [element, expected] of Object.entries(expected_coords)) {
-        const site = result.sites.find((site) => site.species[0].element === element)
-        expect(site?.abc[0]).toBeCloseTo(expected[0], 12)
-        expect(site?.abc[1]).toBeCloseTo(expected[1], 12)
-        expect(site?.abc[2]).toBeCloseTo(expected[2], 12)
+        const matching_site = result.sites.find((site) => site.species[0].element === element)
+        expect(matching_site?.abc[0]).toBeCloseTo(expected[0], 12)
+        expect(matching_site?.abc[1]).toBeCloseTo(expected[1], 12)
+        expect(matching_site?.abc[2]).toBeCloseTo(expected[2], 12)
       }
 
       // Verify coordinate bounds based on wrapping
@@ -1859,20 +1859,13 @@ describe(`parse_structure_file`, () => {
       [`array wrapper`, [{ structure: get_dummy_structure(`Fe`, 1, true) }]],
       [
         `mixed nesting`,
-        {
-          data: [{ item: { structure: get_dummy_structure(`Fe`, 1, true) } }],
-        },
+        { data: [{ item: { structure: get_dummy_structure(`Fe`, 1, true) } }] },
       ],
       [`deep nesting`, { a: { b: { c: { d: get_dummy_structure(`Fe`, 1, true) } } } }],
       [`structure array`, { structures: [get_dummy_structure(`Fe`, 1, true)] }],
       [
         `multiple items with structure`,
-        [
-          { id: 1 },
-          {
-            structure: get_dummy_structure(`Fe`, 1, true),
-          },
-        ],
+        [{ id: 1 }, { structure: get_dummy_structure(`Fe`, 1, true) }],
       ],
     ])(`finds structure in %s`, (_description, wrapper) => {
       const content = JSON.stringify(wrapper)
@@ -1962,17 +1955,11 @@ describe(`parse_structure_file`, () => {
       ],
       [
         `nested in object`,
-        {
-          structure: { sites: [{ species: [{ element: `He` }], abc: [0, 0, 0] }] },
-        },
+        { structure: { sites: [{ species: [{ element: `He` }], abc: [0, 0, 0] }] } },
       ],
       [
         `nested in array`,
-        [
-          {
-            structure: { sites: [{ species: [{ element: `Li` }], abc: [0, 0, 0] }] },
-          },
-        ],
+        [{ structure: { sites: [{ species: [{ element: `Li` }], abc: [0, 0, 0] }] } }],
       ],
     ])(`parse_any_structure handles %s correctly`, (description, input) => {
       const content = JSON.stringify(input)
@@ -2249,7 +2236,7 @@ describe(`OPTIMADE JSON parser`, () => {
     },
   ])(`should parse $name`, ({ data, content, expected }) => {
     const test_content = content || JSON.stringify(data)
-    const result = parse_optimade_json(test_content as string)
+    const result = parse_optimade_json(test_content)
     if (!result) throw `Failed to parse OPTIMADE JSON`
 
     expect(result.sites).toHaveLength(expected.sites)
@@ -2262,8 +2249,8 @@ describe(`OPTIMADE JSON parser`, () => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`
         const reconstructed_xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(latt_mat as Matrix3x3),
-          site.abc as Vec3,
+          transpose_3x3_matrix(latt_mat),
+          site.abc,
         )
         expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
         expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
@@ -2413,8 +2400,8 @@ describe(`OPTIMADE JSON parser`, () => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`
         const reconstructed_xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(latt_mat as Matrix3x3),
-          site.abc as Vec3,
+          transpose_3x3_matrix(latt_mat),
+          site.abc,
         )
         expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
         expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
@@ -2807,8 +2794,8 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
         const latt_mat = result.lattice?.matrix
         if (!latt_mat) throw `Lattice matrix is undefined`
         const reconstructed_xyz = mat3x3_vec3_multiply(
-          transpose_3x3_matrix(latt_mat as Matrix3x3),
-          site.abc as Vec3,
+          transpose_3x3_matrix(latt_mat),
+          site.abc,
         )
         expect(reconstructed_xyz[0]).toBeCloseTo(site.xyz[0], 12)
         expect(reconstructed_xyz[1]).toBeCloseTo(site.xyz[1], 12)
@@ -2844,7 +2831,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     expect(result.properties?.chemical_formula_descriptive).toBe(`SiO2`)
     expect(result.properties?.nelements).toBe(2)
     expect(result.properties?.last_modified).toBe(`2023-03-11`)
-    expect(result.properties?._mp_stability).toEqual({ energy_above_hull: 0.0 })
+    expect(result.properties?.[`_mp_stability`]).toEqual({ energy_above_hull: 0.0 })
     // Verify structural fields are NOT in properties
     expect(result.properties?.lattice_vectors).toBeUndefined()
     expect(result.properties?.cartesian_site_positions).toBeUndefined()

@@ -48,7 +48,7 @@ export async function decompress_data_binary(
           })
         : data
     if (!stream) throw new Error(`Invalid data stream`)
-    const unzip = new DecompressionStream(format as `gzip` | `deflate` | `deflate-raw`)
+    const unzip = new DecompressionStream(format)
     return await new Response(stream.pipeThrough(unzip)).arrayBuffer()
   } catch (error) {
     throw new Error(`Failed to decompress ${format} file: ${error}`, { cause: error })
@@ -62,24 +62,32 @@ export function decompress_file(file: File): Promise<{ content: string; filename
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
-    reader.onload = async (event) => {
-      try {
-        const result = event.target?.result
-        if (!result) throw new Error(`Failed to read file`)
+    reader.addEventListener(
+      `load`,
+      () => {
+        try {
+          const result = reader.result
+          if (!result) throw new Error(`Failed to read file`)
 
-        if (is_supported && format) {
-          const content = await decompress_data(result as ArrayBuffer, format)
-          const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
-          resolve({ content, filename })
-        } else {
-          resolve({ content: result as string, filename: file.name })
+          if (is_supported && format) {
+            if (!(result instanceof ArrayBuffer)) throw new Error(`Expected binary file data`)
+            decompress_data(result, format).then((content) => {
+              const filename = file.name.replace(COMPRESSION_EXTENSIONS_REGEX, ``)
+              resolve({ content, filename })
+            }, reject)
+          } else {
+            if (typeof result !== `string`) throw new Error(`Expected text file data`)
+            resolve({ content: result, filename: file.name })
+          }
+        } catch (error) {
+          reject(error)
         }
-      } catch (error) {
-        reject(error)
-      }
-    }
-
-    reader.onerror = () => reject(new Error(`Failed to read file ${file.name}`))
+      },
+      { once: true },
+    )
+    reader.addEventListener(`error`, () =>
+      reject(new Error(`Failed to read file ${file.name}`)),
+    )
 
     if (is_supported) reader.readAsArrayBuffer(file)
     else reader.readAsText(file)

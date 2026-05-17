@@ -25,7 +25,6 @@
     RefLine,
     RefLineEvent,
     ScaleType,
-    TweenedOptions,
     UserContentProps,
     XyObj,
   } from '$lib/plot'
@@ -70,7 +69,7 @@
   import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { Tween } from 'svelte/motion'
+  import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteMap } from 'svelte/reactivity'
   import type { Vec2 } from '../math'
   import {
@@ -193,7 +192,7 @@
       radius_range?: [number, number]
       value_range?: [number, number]
     }
-    point_tween?: TweenedOptions<XyObj>
+    point_tween?: TweenOptions<XyObj>
     on_point_click?: (
       data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
     ) => void
@@ -366,7 +365,7 @@
 
       if (!points.length) return [0, 1]
 
-      let y_range = get_nice_data_range(
+      let computed_y_range = get_nice_data_range(
         points,
         (pt) => pt.y,
         y_limit,
@@ -384,12 +383,12 @@
 
         // Only adjust if no explicit y_range is set
         if (y_limit?.[0] == null && y_limit?.[1] == null) {
-          if (has_positive && !has_negative) y_range = [0, y_range[1]]
-          else if (has_negative && !has_positive) y_range = [y_range[0], 0]
+          if (has_positive && !has_negative) computed_y_range = [0, computed_y_range[1]]
+          else if (has_negative && !has_positive) computed_y_range = [computed_y_range[0], 0]
         }
       }
 
-      return y_range
+      return computed_y_range
     }
 
     // Get x values split by axis for range calculation
@@ -1102,7 +1101,7 @@
   // untrack() explicitly captures initial tween config (intentional - config set once at mount)
   const tweened_legend_coords = new Tween(
     { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
+    untrack(() => ({ duration: 400, ...legend?.tween })),
   )
 
   // Update legend position with stability checks
@@ -1450,7 +1449,7 @@
                   y1={-(height - pad.b - pad.t)}
                   y2="0"
                   {...DEFAULT_GRID_STYLE}
-                  {...(x_axis.grid_style ?? {})}
+                  {...x_axis.grid_style}
                 />
               {/if}
               <line
@@ -1525,7 +1524,7 @@
                     y1="0"
                     y2={height - pad.b - pad.t}
                     {...DEFAULT_GRID_STYLE}
-                    {...(x2_axis.grid_style ?? {})}
+                    {...x2_axis.grid_style}
                   />
                 {/if}
                 <line
@@ -1595,7 +1594,7 @@
                   x1="0"
                   x2={width - pad.l - pad.r}
                   {...DEFAULT_GRID_STYLE}
-                  {...(y_axis.grid_style ?? {})}
+                  {...y_axis.grid_style}
                 />
               {/if}
               <line
@@ -1674,7 +1673,7 @@
                     x1={-(width - pad.l - pad.r)}
                     x2="0"
                     {...DEFAULT_GRID_STYLE}
-                    {...(y2_axis.grid_style ?? {})}
+                    {...y2_axis.grid_style}
                   />
                 {/if}
                 <line

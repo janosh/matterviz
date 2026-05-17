@@ -97,9 +97,9 @@ test.describe(`Trajectory Performance Tests`, () => {
     // Use generous timeout since headless 3D rendering is slow
     await page.waitForFunction(
       (target) => {
-        const step_input = document.querySelector(`.step-input`) as HTMLInputElement
-        if (!step_input) return false
-        const current_step = parseInt(step_input.value)
+        const step_input_el = document.querySelector(`.step-input`) as HTMLInputElement
+        if (!step_input_el) return false
+        const current_step = parseInt(step_input_el.value)
         return current_step >= target
       },
       target_step,
@@ -242,8 +242,8 @@ test.describe(`Trajectory Performance Tests`, () => {
     // Use generous timeout since headless 3D rendering is slow
     await page.waitForFunction(
       (start_step_value) => {
-        const step_input = document.querySelector(`.step-input`) as HTMLInputElement
-        return step_input && parseInt(step_input.value) > start_step_value
+        const step_input_el = document.querySelector(`.step-input`) as HTMLInputElement
+        return step_input_el && parseInt(step_input_el.value) > start_step_value
       },
       start_step,
       { timeout: 30000 },

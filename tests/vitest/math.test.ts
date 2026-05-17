@@ -29,7 +29,7 @@ describe(`combinations`, () => {
       ],
     ],
   ])(`C(%j, %i) -> %j`, (arr, k, expected) => {
-    expect(math.combinations(arr as unknown[], k as number)).toEqual(expected)
+    expect(math.combinations(arr as unknown[], k)).toEqual(expected)
   })
 
   test(`C(5,3) returns 10 unique 3-element combos`, () => {
@@ -929,7 +929,7 @@ describe(`tensor conversion utilities`, () => {
         ],
       ],
     ])(`throws for %s matrix`, (_, invalid_tensor) => {
-      expect(() => math.to_voigt(invalid_tensor as number[][])).toThrow(`Expected 3x3 tensor`)
+      expect(() => math.to_voigt(invalid_tensor)).toThrow(`Expected 3x3 tensor`)
     })
 
     it(`preserves floating point precision`, () => {
@@ -1128,9 +1128,7 @@ describe(`tensor conversion utilities`, () => {
         ],
       ],
     ])(`throws for %s matrix`, (_, invalid_tensor) => {
-      expect(() => math.tensor_to_flat_array(invalid_tensor as number[][])).toThrow(
-        `Expected 3x3 tensor`,
-      )
+      expect(() => math.tensor_to_flat_array(invalid_tensor)).toThrow(`Expected 3x3 tensor`)
     })
   })
 
@@ -1405,7 +1403,7 @@ describe(`tensor conversion utilities`, () => {
           if (!Array.isArray(result) || !Array.isArray(result[0])) {
             throw new TypeError(`Expected matrix result from dot product`)
           }
-          const I = result as number[][]
+          const I = result
 
           // Verify A * A^-1 ≈ I and det(A^-1) = 1/det(A)
           for (let row_idx = 0; row_idx < 3; row_idx++) {
@@ -1857,13 +1855,13 @@ describe(`det_nxn`, () => {
 
   // Test higher-dimensional matrices (5x5 and 6x6 for N-element convex hulls)
   const make_identity = (n: number) =>
-    Array.from({ length: n }, (_, idx) =>
-      Array.from({ length: n }, (_, jdx) => (idx === jdx ? 1 : 0)),
+    Array.from({ length: n }, (_row, idx) =>
+      Array.from({ length: n }, (_col, jdx) => (idx === jdx ? 1 : 0)),
     )
 
   const make_diagonal = (n: number) =>
-    Array.from({ length: n }, (_, idx) =>
-      Array.from({ length: n }, (_, jdx) => (idx === jdx ? idx + 1 : 0)),
+    Array.from({ length: n }, (_row, idx) =>
+      Array.from({ length: n }, (_col, jdx) => (idx === jdx ? idx + 1 : 0)),
     )
 
   const factorial = (n: number): number => (n <= 1 ? 1 : n * factorial(n - 1))
@@ -1877,8 +1875,8 @@ describe(`det_nxn`, () => {
   })
 
   test(`5x5 singular matrix → det=0`, () => {
-    const singular = Array.from({ length: 5 }, (_, idx) =>
-      Array.from({ length: 5 }, (_, jdx) => idx + jdx + 1),
+    const singular = Array.from({ length: 5 }, (_row, idx) =>
+      Array.from({ length: 5 }, (_col, jdx) => idx + jdx + 1),
     )
     expect(math.det_nxn(singular)).toBeCloseTo(0, 5)
   })
@@ -2393,8 +2391,8 @@ describe(`solve_linear_system`, () => {
   })
 
   test(`5x5 identity`, () => {
-    const identity = Array.from({ length: 5 }, (_, row) =>
-      Array.from({ length: 5 }, (_, col) => (row === col ? 1 : 0)),
+    const identity = Array.from({ length: 5 }, (_row, row) =>
+      Array.from({ length: 5 }, (_col, col) => (row === col ? 1 : 0)),
     )
     const rhs = [2, 4, 6, 8, 10]
     const result = math.solve_linear_system(identity, rhs)

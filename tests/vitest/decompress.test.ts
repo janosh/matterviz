@@ -173,7 +173,15 @@ describe(`decompress utility functions`, () => {
       expect(result.filename).toBe(`test.json.zip`) // Extension not removed
     })
 
-    // The main functionality (reading regular and compressed files) is tested above
-    // Error handling is better tested in integration tests
+    test(`should reject when compressed file decompression fails`, async () => {
+      if (!globalThis.DecompressionStream) return
+
+      const invalid_data = new Uint8Array(10).fill(255)
+      const file = new File([invalid_data], `test.json.gz`, {
+        type: `application/octet-stream`,
+      })
+
+      await expect(decompress_file(file)).rejects.toThrow(`Failed to decompress gzip file`)
+    })
   })
 })

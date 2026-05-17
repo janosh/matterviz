@@ -11,6 +11,7 @@
   import { set_fullscreen_bg, setup_fullscreen_effect } from '$lib/layout'
   import type {
     AxisConfig,
+    PointStyle,
     ScatterHandlerEvent,
     ScatterHandlerProps,
     UserContentProps,
@@ -99,8 +100,8 @@
     ...default_hull_config,
     point_size: 6, // Binary diagrams use slightly smaller points
     ...config,
-    colors: { ...default_hull_config.colors, ...(config.colors || {}) },
-    margin: { t: 40, r: 40, b: 60, l: 60, ...(config.margin || {}) },
+    colors: { ...default_hull_config.colors, ...config.colors },
+    margin: { t: 40, r: 40, b: 60, l: 60, ...config.margin },
   })
 
   // Merge highlight style with defaults (consistent with 3D/4D)
@@ -274,16 +275,16 @@
       x: x_coord,
       y: min_y,
     }))
-    const hull_points = thermo.compute_lower_hull_2d(hull_input)
+    const computed_hull_points = thermo.compute_lower_hull_2d(hull_input)
 
-    const all_enriched_entries = coords_entries.map((entry) => {
-      const y_hull = thermo.interpolate_hull_2d(hull_points, entry.x)
+    const enriched_entries = coords_entries.map((entry) => {
+      const y_hull = thermo.interpolate_hull_2d(computed_hull_points, entry.x)
       const raw_dist = y_hull == null ? 0 : entry.y - y_hull
       return {
         ...entry, ...compute_hull_stability(raw_dist, entry.exclude_from_hull), visible: true,
       }
     })
-    return { all_enriched_entries, hull_points }
+    return { all_enriched_entries: enriched_entries, hull_points: computed_hull_points }
   })
 
   // Auto threshold: show all for few entries, use default for many, interpolate between
@@ -377,10 +378,10 @@
     const count = visible_entries.length
 
     // Single pass: extract x, y, color_values, and point_style simultaneously
-    const x_vals: number[] = new Array(count)
-    const y_vals: number[] = new Array(count)
-    const color_values: number[] = is_energy_mode ? new Array(count) : []
-    const point_style = new Array(count)
+    const x_vals: number[] = Array(count)
+    const y_vals: number[] = Array(count)
+    const color_values: number[] = Array(count)
+    const point_style: PointStyle[] = Array(count)
 
     for (let idx = 0; idx < count; idx++) {
       const entry = visible_entries[idx]

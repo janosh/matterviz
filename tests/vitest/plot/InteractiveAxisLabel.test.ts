@@ -37,7 +37,7 @@ describe(`InteractiveAxisLabel`, () => {
     expect(get_wrapper()?.classList.contains(`interactive`)).toBe(false)
     expect(get_wrapper()?.textContent).toContain(props.label)
     expect(get_trigger()).toBeNull()
-    unmount(component)
+    void unmount(component)
   })
 
   test(`renders interactive trigger with ARIA attributes`, () => {
@@ -45,7 +45,7 @@ describe(`InteractiveAxisLabel`, () => {
     expect(get_wrapper()?.classList.contains(`interactive`)).toBe(true)
     expect(get_trigger()?.textContent).toContain(`Energy (eV)`)
     expect(get_trigger()?.getAttribute(`aria-haspopup`)).toBe(`listbox`)
-    unmount(component)
+    void unmount(component)
   })
 
   test.each([
@@ -54,7 +54,7 @@ describe(`InteractiveAxisLabel`, () => {
   ])(`$desc`, ({ key, expected }) => {
     const component = mount_label({ options, selected_key: key })
     expect(get_trigger()?.textContent).toContain(expected)
-    unmount(component)
+    void unmount(component)
   })
 
   test(`loading state shows spinner and disables trigger`, () => {
@@ -62,7 +62,7 @@ describe(`InteractiveAxisLabel`, () => {
     expect(document.body.querySelector(`.spinner`)).not.toBeNull()
     expect((get_trigger() as HTMLButtonElement)?.disabled).toBe(true)
     expect(get_wrapper()?.classList.contains(`loading`)).toBe(true)
-    unmount(component)
+    void unmount(component)
   })
 
   test.each([`x`, `y`, `y2`] as const)(`applies axis_type=%s class`, (axis_type) => {
@@ -76,7 +76,7 @@ describe(`InteractiveAxisLabel`, () => {
     expect(wrapper.classList.contains(axis_type)).toBe(true)
     expect(wrapper.classList.contains(`custom`)).toBe(true)
     expect(wrapper.style.color).toBe(`red`)
-    unmount(component)
+    void unmount(component)
   })
 
   // Note: Dropdown interaction tests require Playwright e2e tests.

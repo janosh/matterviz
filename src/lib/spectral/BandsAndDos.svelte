@@ -69,10 +69,10 @@
     // Only include range if it's valid (don't override child's auto-range with undefined)
     bands_y_axis = shared_y_axis
       ? {
-        ...(bands_props.y_axis ?? {}),
+        ...bands_props.y_axis,
         ...(is_valid_range(base_range) && { range: base_range }),
       }
-      : { ...(bands_props.y_axis ?? {}) }
+      : { ...bands_props.y_axis }
   })
 
   // Propagate synced range to DOS y-axis (untrack current to avoid overwriting child zoom)
@@ -88,10 +88,10 @@
     dos_y_axis = shared_y_axis
       ? {
         label: ``,
-        ...(dos_props.y_axis ?? {}),
+        ...dos_props.y_axis,
         ...(is_valid_range(base_range) && { range: base_range }),
       }
-      : { label: ``, ...(dos_props.y_axis ?? {}) }
+      : { label: ``, ...dos_props.y_axis }
   })
 
   let hovered_frequency = $state<number | null>(null)

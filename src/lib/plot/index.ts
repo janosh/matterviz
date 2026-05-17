@@ -1,11 +1,3 @@
-// TODO restore: import { type TweenedOptions } from 'svelte/motion'
-// pending https://github.com/sveltejs/svelte/issues/16151
-export interface TweenedOptions<T> {
-  delay?: number
-  duration?: number | ((from: T, to: T) => number)
-  easing?: (t: number) => number
-  interpolate?: (a: T, b: T) => (t: number) => T
-}
 export { default as AxisLabel } from './AxisLabel.svelte'
 export { default as BarPlot } from './BarPlot.svelte'
 export { default as BarPlotControls } from './BarPlotControls.svelte'

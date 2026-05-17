@@ -51,8 +51,8 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
     throw new Error(`arcsinh threshold must be a positive finite number, got ${threshold}`)
   }
 
-  let _domain: [number, number] = [0, 1]
-  let _range: [number, number] = [0, 1]
+  let current_domain: [number, number] = [0, 1]
+  let current_range: [number, number] = [0, 1]
 
   // Forward transform: data value → arcsinh-space
   const arcsinh_transform = (x: number): number => Math.asinh(x / threshold)
@@ -64,8 +64,8 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   // Accepts Date for compatibility with D3 time scales
   const scale = ((value: number | Date): number => {
     const num_value = value instanceof Date ? value.getTime() : value
-    const [d_min, d_max] = _domain
-    const [r_min, r_max] = _range
+    const [d_min, d_max] = current_domain
+    const [r_min, r_max] = current_range
 
     // Handle identical domain endpoints (degenerate case)
     if (d_max === d_min) return (r_min + r_max) / 2
@@ -85,22 +85,22 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
 
   // Domain getter/setter
   scale.domain = function (domain?: [number, number]): [number, number] | ArcsinhScale {
-    if (domain === undefined) return _domain
-    _domain = domain
+    if (domain === undefined) return current_domain
+    current_domain = domain
     return scale
   } as ArcsinhScale[`domain`]
 
   // Range getter/setter
-  scale.range = function (range?: [number, number]): [number, number] | ArcsinhScale {
-    if (range === undefined) return _range
-    _range = range
+  scale.range = function (output_range?: [number, number]): [number, number] | ArcsinhScale {
+    if (output_range === undefined) return current_range
+    current_range = output_range
     return scale
   } as ArcsinhScale[`range`]
 
   // Invert: screen position → data value
   scale.invert = (value: number): number => {
-    const [d_min, d_max] = _domain
-    const [r_min, r_max] = _range
+    const [d_min, d_max] = current_domain
+    const [r_min, r_max] = current_range
 
     // Handle identical domain endpoints (degenerate case)
     if (d_max === d_min) return (d_min + d_max) / 2
@@ -121,14 +121,14 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
   // Copy the scale
   scale.copy = (): ArcsinhScale => {
     const copy = scale_arcsinh(threshold)
-    copy.domain(_domain)
-    copy.range(_range)
+    copy.domain(current_domain)
+    copy.range(current_range)
     return copy
   }
 
   // Generate nice ticks for arcsinh scale
   scale.ticks = (count = 10): number[] => {
-    return generate_arcsinh_ticks(_domain[0], _domain[1], threshold, count)
+    return generate_arcsinh_ticks(current_domain[0], current_domain[1], threshold, count)
   }
 
   scale.threshold = threshold
@@ -256,7 +256,7 @@ function generate_positive_arcsinh_ticks(
 export function create_scale(
   scale_type: ScaleType,
   domain: [number, number],
-  range: [number, number],
+  output_range: [number, number],
 ): ScaleContinuousNumeric<number, number> | ArcsinhScale {
   const [min_val, max_val] = domain
   const type_name = get_scale_type_name(scale_type)
@@ -264,21 +264,21 @@ export function create_scale(
   if (type_name === `log`) {
     return scaleLog()
       .domain([Math.max(min_val, math.LOG_EPS), max_val])
-      .range(range)
+      .range(output_range)
   }
   if (type_name === `arcsinh`) {
     const threshold = get_arcsinh_threshold(scale_type)
-    return scale_arcsinh(threshold).domain(domain).range(range)
+    return scale_arcsinh(threshold).domain(domain).range(output_range)
   }
   // For 'time' or 'linear', return linear scale (time scales need create_time_scale())
-  return scaleLinear().domain(domain).range(range)
+  return scaleLinear().domain(domain).range(output_range)
 }
 
 // Create a time scale for time-based data
-export function create_time_scale(domain: [number, number], range: [number, number]) {
+export function create_time_scale(domain: [number, number], output_range: [number, number]) {
   return scaleTime()
     .domain([new Date(domain[0]), new Date(domain[1])])
-    .range(range)
+    .range(output_range)
 }
 
 // Unified tick generation function
@@ -383,12 +383,12 @@ export function calculate_domain(
 export function get_nice_data_range(
   points: Point[],
   get_value: (p: Point) => number,
-  range: [number | null, number | null],
+  limits: [number | null, number | null],
   scale_type: ScaleType,
   padding_factor: number,
   is_time = false,
 ): [number, number] {
-  const [min, max] = range
+  const [min, max] = limits
   const [min_ext, max_ext] = extent(points, get_value)
   let data_min = min ?? min_ext ?? 0
   let data_max = max ?? max_ext ?? 1
@@ -563,7 +563,7 @@ export function create_color_scale(
 
 // Create an arcsinh-based color scale (custom sequential scale)
 // Returns a D3-compatible scale with both getter and setter for domain
-// Scale function reads from _domain closure on each call for stable identity
+// Scale function reads from closure state on each call for stable identity
 function create_arcsinh_color_scale(
   interpolator: (t: number) => string,
   initial_domain: [number, number],
@@ -571,7 +571,7 @@ function create_arcsinh_color_scale(
 ) {
   // Guard against extremely small thresholds that could cause precision issues
   const safe_threshold = Math.max(threshold, Number.EPSILON)
-  let _domain = initial_domain
+  let current_domain = initial_domain
 
   type ArcsinhColorScale = ((value: number) => string) & {
     domain: {
@@ -580,9 +580,9 @@ function create_arcsinh_color_scale(
     }
   }
 
-  // Single scale function that reads current _domain on each call
+  // Single scale function that reads current domain on each call
   const scale = ((value: number): string => {
-    const [d_min, d_max] = _domain
+    const [d_min, d_max] = current_domain
     // Handle identical domain endpoints - return middle of color range
     if (d_max === d_min) return interpolator(0.5)
 
@@ -596,8 +596,8 @@ function create_arcsinh_color_scale(
 
   // Domain getter/setter for D3 compatibility - returns same scale instance
   scale.domain = function (new_domain?: [number, number]) {
-    if (new_domain === undefined) return _domain
-    _domain = new_domain
+    if (new_domain === undefined) return current_domain
+    current_domain = new_domain
     return scale
   } as ArcsinhColorScale[`domain`]
 

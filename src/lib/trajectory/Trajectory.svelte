@@ -466,8 +466,8 @@
   async function read_file_content(file: File): Promise<string | ArrayBuffer> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string | ArrayBuffer)
-      reader.onerror = () => reject(new Error(`Failed to read file`))
+      reader.addEventListener(`load`, () => resolve(reader.result as string | ArrayBuffer))
+      reader.addEventListener(`error`, () => reject(new Error(`Failed to read file`)))
 
       // Read as text for text-based formats, binary for others
       if (file.name.toLowerCase().match(/\.(xyz|json|extxyz|lammpstrj)$/)) {

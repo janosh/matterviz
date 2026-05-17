@@ -131,7 +131,7 @@
     ) return
     // Only include range if it's valid (don't override child's auto-range with undefined)
     bands_y_axis = {
-      ...(bands_props.y_axis ?? {}),
+      ...bands_props.y_axis,
       ...(helpers.is_valid_range(base_range) && { range: base_range }),
     }
   })
@@ -150,10 +150,10 @@
     dos_y_axis = is_desktop
       ? {
         label: ``,
-        ...(dos_props.y_axis ?? {}),
+        ...dos_props.y_axis,
         ...(helpers.is_valid_range(base_range) && { range: base_range }),
       }
-      : { ...(dos_props.y_axis ?? {}) }
+      : { ...dos_props.y_axis }
   })
 
   let hovered_frequency = $state<number | null>(null)

@@ -3,12 +3,11 @@
   // Supports gradients, hover/click interactions, and animated path transitions
   import { interpolatePath } from 'd3-interpolate-path'
   import { untrack } from 'svelte'
-  import { Tween } from 'svelte/motion'
+  import { Tween, type TweenOptions } from 'svelte/motion'
   import type {
     FillGradient,
     FillHandlerEvent,
     FillRegion,
-    TweenedOptions,
   } from './types'
 
   let {
@@ -32,7 +31,7 @@
     hovered_region?: number | null
     on_click?: (event: FillHandlerEvent) => void
     on_hover?: (event: FillHandlerEvent | null) => void
-    tween_options?: TweenedOptions<string>
+    tween_options?: TweenOptions<string>
   } = $props()
 
   // Stable instance ID for gradient uniqueness (generated once per component instance)

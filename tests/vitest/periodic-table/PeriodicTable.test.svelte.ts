@@ -122,14 +122,9 @@ describe(`PeriodicTable`, () => {
       mount(PeriodicTable, { target: document.body, props })
 
       if (typeof value === `string`) {
-        expect(
-          (getComputedStyle(doc_query(`.ptable-grid`) as Element) as CSSStyleDeclaration).gap,
-        ).toBe(value)
+        expect(getComputedStyle(doc_query(`.ptable-grid`) as Element).gap).toBe(value)
       } else if (value > 0) {
-        expect(
-          (getComputedStyle(doc_query(`div.spacer`) as Element) as CSSStyleDeclaration)
-            .gridRow,
-        ).toBe(`8`)
+        expect(getComputedStyle(doc_query(`div.spacer`) as Element).gridRow).toBe(`8`)
       } else {
         expect(document.querySelector(`div.spacer`)).toBeNull()
       }
@@ -539,7 +534,7 @@ describe(`PeriodicTable`, () => {
     // Helper to get numeric tick values from colorbar
     const get_tick_values = (colorbar: Element | null) =>
       Array.from(colorbar?.querySelectorAll(`.tick-label`) || [])
-        .map((tick) => parseFloat((tick as HTMLElement).textContent?.trim() || ``))
+        .map((tick_label) => parseFloat((tick_label as HTMLElement).textContent?.trim() || ``))
         .filter((val) => !isNaN(val))
 
     test(`shows ColorBar with correct structure and defaults`, () => {

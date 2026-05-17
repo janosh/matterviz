@@ -595,15 +595,11 @@ function infer_regions(
   // Build cell grid: cells[col][row]
   const n_cols = x_coords.length - 1
   const n_rows = y_coords.length - 1
-  const cell_ids = Array.from({ length: n_cols }, () => new Array<number>(n_rows).fill(-1))
+  const cell_ids = Array.from({ length: n_cols }, () => Array(n_rows).fill(-1))
 
   // Check which cell edges have boundaries
-  const h_walls = Array.from({ length: n_cols }, () =>
-    new Array<boolean>(n_rows + 1).fill(false),
-  )
-  const v_walls = Array.from({ length: n_cols + 1 }, () =>
-    new Array<boolean>(n_rows).fill(false),
-  )
+  const h_walls = Array.from({ length: n_cols }, () => Array(n_rows + 1).fill(false))
+  const v_walls = Array.from({ length: n_cols + 1 }, () => Array(n_rows).fill(false))
 
   // Mark horizontal walls (bottom/top of cells)
   for (const hb of horizontals) {
@@ -875,14 +871,13 @@ function find_comment_text(group: Element): string | null {
 }
 
 // Clean LaTeX subscript notation: "La$_2$NiO$_4$" -> "La2NiO4"
-function clean_latex(text: string): string {
-  return text
+const clean_latex = (text: string): string =>
+  text
     .replaceAll(/\$_\{([^}]*)\}\$/g, `$1`) // $_{10}$ -> 10
     .replaceAll(/\$_(\d)\$/g, `$1`) // $_2$ -> 2
     .replaceAll(`$`, ``) // remove any remaining $
     .replaceAll(/\s+/g, ` `)
     .trim()
-}
 
 // Parse SVG path data into absolute line segments [x1,y1,x2,y2]
 // Handles all SVG path commands (M/L/H/V/C/S/Q/T/A/Z, both absolute and relative)
@@ -952,7 +947,7 @@ function parse_path_segments(path_str: string): [number, number, number, number]
       const upper = cmd.toUpperCase()
       const skip = curve_skip[upper]
       if (skip !== undefined) {
-        for (let _skip = 0; _skip < skip; _skip++) next_num()
+        for (let skip_idx = 0; skip_idx < skip; skip_idx++) next_num()
         const end_x = next_num()
         const end_y = next_num()
         const x2 = cmd === upper ? end_x : cursor_x + end_x

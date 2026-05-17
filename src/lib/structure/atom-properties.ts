@@ -81,7 +81,9 @@ const make_categorical = <T>(
   sort_fn?: (a: T, b: T) => number,
 ): { colors: string[]; unique_values: T[] } => {
   const interp_fn = get_interpolator(scale)
-  const uniq = sort_fn ? [...new Set(vals)].sort(sort_fn) : [...new Set(vals)].sort()
+  const uniq = sort_fn
+    ? [...new Set(vals)].sort(sort_fn)
+    : [...new Set(vals)].sort((val_a, val_b) => String(val_a).localeCompare(String(val_b)))
   const colors = uniq.map((_, idx) =>
     to_hex(interp_fn, uniq.length === 1 ? 0.5 : idx / (uniq.length - 1)),
   )
@@ -271,7 +273,7 @@ export function get_custom_colors(
   const is_num = vals.every((val) => typeof val === `number`)
 
   if (is_num) {
-    const nums = vals as number[]
+    const nums = vals
     const { colors, unique_values } = apply_color_scale(nums, scale, type)
     return build_prop_colors(nums, colors, unique_values)
   }

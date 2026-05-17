@@ -7,17 +7,17 @@ import {
   structural_data_extractor,
 } from '$lib/trajectory/extract'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
-import { readFileSync } from 'node:fs'
-import process from 'node:process'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { read_binary_test_file } from '../setup'
 
-// Helper to read binary test files (for HDF5)
-function read_binary_test_file(filename: string): ArrayBuffer {
-  const file_path = join(process.cwd(), `src/site/trajectories`, filename)
-  const buffer = readFileSync(file_path)
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
-}
+const constant_lattice_keys = [
+  `constant_a`,
+  `constant_b`,
+  `constant_c`,
+  `constant_alpha`,
+  `constant_beta`,
+  `constant_gamma`,
+] as const
 
 // Helper to create a basic frame structure
 const create_basic_frame = (
@@ -235,7 +235,7 @@ describe(`Full Data Extractor`, () => {
       frames: [
         create_frame_with_lattice(
           0,
-          { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 },
+          { a: 1.0, b: 1.0, c: 1.0, alpha: 90, beta: 90, gamma: 90, volume: 1.0 },
           {
             energy: -10.0,
             force_max: 2.0,
@@ -244,7 +244,7 @@ describe(`Full Data Extractor`, () => {
         ),
         create_frame_with_lattice(
           1,
-          { a: 1.1, b: 1.1, c: 1.1, volume: 1.331 },
+          { a: 1.1, b: 1.1, c: 1.1, alpha: 91, beta: 92, gamma: 93, volume: 1.331 },
           {
             energy: -10.5,
             force_max: 1.5,
@@ -280,8 +280,10 @@ describe(`Full Data Extractor`, () => {
     expect(frame2_data.a).toBe(1.1)
 
     // Should NOT have constant lattice markers (lattice varies)
-    expect(frame1_data._constant_a).toBeUndefined()
-    expect(frame2_data._constant_a).toBeUndefined()
+    for (const key of constant_lattice_keys) {
+      expect(frame1_data[key]).toBeUndefined()
+      expect(frame2_data[key]).toBeUndefined()
+    }
   })
 
   it(`should detect constant lattice parameters`, () => {
@@ -308,18 +310,10 @@ describe(`Full Data Extractor`, () => {
     const frame2_data = full_data_extractor(constant_trajectory.frames[1], constant_trajectory)
 
     // Should have constant lattice markers for all parameters
-    expect(frame1_data._constant_a).toBe(1)
-    expect(frame2_data._constant_a).toBe(1)
-    expect(frame1_data._constant_b).toBe(1)
-    expect(frame2_data._constant_b).toBe(1)
-    expect(frame1_data._constant_c).toBe(1)
-    expect(frame2_data._constant_c).toBe(1)
-    expect(frame1_data._constant_alpha).toBe(1)
-    expect(frame2_data._constant_alpha).toBe(1)
-    expect(frame1_data._constant_beta).toBe(1)
-    expect(frame2_data._constant_beta).toBe(1)
-    expect(frame1_data._constant_gamma).toBe(1)
-    expect(frame2_data._constant_gamma).toBe(1)
+    for (const key of constant_lattice_keys) {
+      expect(frame1_data[key]).toBe(1)
+      expect(frame2_data[key]).toBe(1)
+    }
 
     // All lattice properties should be the same
     expect(frame1_data.a).toBe(frame2_data.a)
@@ -426,20 +420,10 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
     all_frame_data.forEach((data: Record<string, unknown>) => {
       if (is_constant) {
         // Check that all lattice parameters are marked as constant
-        expect(data._constant_a).toBe(1)
-        expect(data._constant_b).toBe(1)
-        expect(data._constant_c).toBe(1)
-        expect(data._constant_alpha).toBe(1)
-        expect(data._constant_beta).toBe(1)
-        expect(data._constant_gamma).toBe(1)
+        for (const key of constant_lattice_keys) expect(data[key]).toBe(1)
       } else {
         // Check that lattice parameters are not marked as constant
-        expect(data._constant_a).toBeUndefined()
-        expect(data._constant_b).toBeUndefined()
-        expect(data._constant_c).toBeUndefined()
-        expect(data._constant_alpha).toBeUndefined()
-        expect(data._constant_beta).toBeUndefined()
-        expect(data._constant_gamma).toBeUndefined()
+        for (const key of constant_lattice_keys) expect(data[key]).toBeUndefined()
       }
     })
   })

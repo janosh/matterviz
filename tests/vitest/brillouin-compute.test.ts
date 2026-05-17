@@ -317,7 +317,9 @@ describe(`error handling`, () => {
       [0, 1e-15, 0],
       [0, 0, 1e-15],
     ]
-    expect(() => compute_brillouin_zone(reciprocal_lattice(degenerate), 1)).toThrow()
+    expect(() => compute_brillouin_zone(reciprocal_lattice(degenerate), 1)).toThrow(
+      /singular|Insufficient vertices/,
+    )
   })
 
   test(`handles custom max_planes_by_order`, () => {

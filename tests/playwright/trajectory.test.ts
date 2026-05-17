@@ -6,7 +6,10 @@ import { IS_CI } from './helpers'
 const LOAD_TIMEOUT = 15_000
 
 // Helper to conditionally skip entire describe blocks on CI
-const describe_local_only = IS_CI ? test.describe.skip : test.describe
+const describe_local_only = (title: string, callback: () => void): void => {
+  if (IS_CI) test.describe.skip(title, callback)
+  else test.describe(title, callback)
+}
 
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
@@ -399,19 +402,21 @@ test.describe(`Trajectory Component`, () => {
 
     test(`accessibility attributes are present`, async ({ page }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
-      const controls = trajectory.locator(`.trajectory-controls`)
+      const trajectory_controls = trajectory.locator(`.trajectory-controls`)
 
       // Basic accessibility
       await expect(trajectory).toHaveAttribute(`role`, `button`)
       await expect(trajectory).toHaveAttribute(`tabindex`, `0`)
 
       // Button titles
-      await expect(controls.locator(`.play-button`)).toHaveAttribute(`title`, /Play|Pause/)
-      await expect(controls.locator(`button[title="Previous step"]`)).toHaveAttribute(
+      await expect(trajectory_controls.locator(`.play-button`)).toHaveAttribute(
         `title`,
-        `Previous step`,
+        /Play|Pause/,
       )
-      await expect(controls.locator(`.trajectory-info-toggle`)).toHaveAttribute(
+      await expect(
+        trajectory_controls.locator(`button[title="Previous step"]`),
+      ).toHaveAttribute(`title`, `Previous step`)
+      await expect(trajectory_controls.locator(`.trajectory-info-toggle`)).toHaveAttribute(
         `title`,
         /info/,
       )
@@ -668,7 +673,7 @@ test.describe(`Trajectory Component`, () => {
 
     test(`mobile layout adapts correctly`, async ({ page }) => {
       const trajectory = page.locator(`#auto-layout`)
-      const controls = trajectory.locator(`.trajectory-controls`)
+      const trajectory_controls = trajectory.locator(`.trajectory-controls`)
 
       // Test mobile container with tall aspect ratio
       await page
@@ -679,8 +684,8 @@ test.describe(`Trajectory Component`, () => {
           el.style.height = `600px`
         })
       await expect(trajectory).toBeVisible()
-      await expect(controls.locator(`.play-button`)).toBeVisible()
-      await expect(controls.locator(`.trajectory-info-toggle`)).toBeVisible()
+      await expect(trajectory_controls.locator(`.play-button`)).toBeVisible()
+      await expect(trajectory_controls.locator(`.trajectory-info-toggle`)).toBeVisible()
 
       // Should use vertical layout for tall container, but be lenient in test environment
       const mobile_class = await trajectory.getAttribute(`class`)

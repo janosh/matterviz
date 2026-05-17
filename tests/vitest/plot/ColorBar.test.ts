@@ -23,8 +23,8 @@ describe(`ColorBar Horizontal (Default)`, () => {
       },
     })
 
-    const title_row = doc_query(`.colorbar .title-row`) as HTMLElement
-    const title_span = doc_query(`.colorbar .label`) as HTMLElement
+    const title_row = doc_query(`.colorbar .title-row`)
+    const title_span = doc_query(`.colorbar .label`)
     expect(title_span.textContent).toBe(`Test Horizontal`)
     // title_style is now applied to title-row
     expect(title_row.getAttribute(`style`)).toContain(`font-weight: bold;`)
@@ -117,7 +117,7 @@ describe(`ColorBar Vertical`, () => {
     expect(wrapper_vert_exp.style.flexDirection).toBe(`column`)
     expect(wrapper_vert_exp.style.height).toBe(`300px`)
 
-    const title_span_vert_exp = doc_query(`.colorbar .label`) as HTMLElement
+    const title_span_vert_exp = doc_query(`.colorbar .label`)
     expect(title_span_vert_exp.textContent).toBe(`Test Vertical Explicit`)
 
     const cbar_div = doc_query(`.colorbar > div.bar`)
@@ -251,7 +251,7 @@ describe(`ColorBar title_side Default Logic`, () => {
       expect(wrapper.style.flexDirection).toBe(expected_flex_dir)
 
       // Title should exist (in title-row)
-      const title_span = doc_query(`.colorbar .label`) as HTMLElement
+      const title_span = doc_query(`.colorbar .label`)
       expect(title_span).not.toBeNull()
       expect(title_span.textContent).toBe(`Test Default Title`)
     },
@@ -451,7 +451,7 @@ describe(`Vertical Layout Specifics`, () => {
     })
 
     // Check the inner bar div's style for 100% height, implying wrapper has height
-    const bar_div = doc_query(`.colorbar > div.bar`) as HTMLElement
+    const bar_div = doc_query(`.colorbar > div.bar`)
     const bar_style_attr = bar_div.getAttribute(`style`) ?? ``
     expect(bar_style_attr).toContain(`--cbar-height: 100%`)
 
@@ -534,7 +534,7 @@ describe(`ColorBar Interactive Selects`, () => {
     const trigger = document.body.querySelector(selector)
     expect(trigger).not.toBeNull()
     expect(trigger?.textContent).toContain(expected)
-    unmount(component)
+    void unmount(component)
   })
 
   test.each([
@@ -546,7 +546,7 @@ describe(`ColorBar Interactive Selects`, () => {
       props: { range: [0, 10] },
     })
     expect(document.body.querySelector(selector)).toBeNull()
-    unmount(component)
+    void unmount(component)
   })
 
   test(`shows static title when no property_options, hides when provided`, () => {
@@ -556,7 +556,7 @@ describe(`ColorBar Interactive Selects`, () => {
       props: { title: `Static`, range: [0, 10] },
     })
     expect(document.body.querySelector(`.colorbar .label`)?.textContent).toBe(`Static`)
-    unmount(comp1)
+    void unmount(comp1)
 
     // With property_options: hides static title
     const comp2 = mount(ColorBar, {
@@ -565,7 +565,7 @@ describe(`ColorBar Interactive Selects`, () => {
     })
     expect(document.body.querySelector(`.title-row > .label`)).toBeNull()
     expect(document.body.querySelector(`button.property-select`)).not.toBeNull()
-    unmount(comp2)
+    void unmount(comp2)
   })
 
   test(`color scale shows only label (no interpolate prefix)`, () => {
@@ -576,7 +576,7 @@ describe(`ColorBar Interactive Selects`, () => {
     const trigger = document.body.querySelector(`button.color-scale-select`)
     expect(trigger?.textContent).toContain(`Plasma`)
     expect(trigger?.textContent).not.toContain(`interpolate`)
-    unmount(component)
+    void unmount(component)
   })
 
   test(`renders both property and color scale selects together`, () => {
@@ -590,7 +590,7 @@ describe(`ColorBar Interactive Selects`, () => {
     })
     expect(document.body.querySelector(`button.property-select`)).not.toBeNull()
     expect(document.body.querySelector(`button.color-scale-select`)).not.toBeNull()
-    unmount(component)
+    void unmount(component)
   })
 
   // Note: data_loader interaction tests (spinner, rollback) need Playwright e2e.

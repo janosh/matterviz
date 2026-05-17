@@ -121,7 +121,7 @@ function build_grid({
   divisor = 1,
   data_order = `z_fastest`,
 }: BuildGridOptions): { grid: number[][][]; data_range: DataRange } {
-  const grid: number[][][] = new Array(nx)
+  const grid: number[][][] = Array(nx)
   let [min_val, max_val, sum] = [Infinity, -Infinity, 0]
   const total = nx * ny * nz
   const data_len = Math.min(data.length, total)
@@ -129,8 +129,8 @@ function build_grid({
   if (data_len === 0) {
     // Empty data: return zeroed grid with neutral data_range
     for (let ix = 0; ix < nx; ix++) {
-      const plane: number[][] = new Array(ny)
-      for (let iy = 0; iy < ny; iy++) plane[iy] = new Array(nz).fill(0)
+      const plane: number[][] = Array(ny)
+      for (let iy = 0; iy < ny; iy++) plane[iy] = Array(nz).fill(0)
       grid[ix] = plane
     }
     return { grid, data_range: { min: 0, max: 0, abs_max: 0, mean: 0 } }
@@ -140,9 +140,9 @@ function build_grid({
     // .cube convention: z varies fastest, then y, then x.
     const ny_nz = ny * nz
     for (let ix = 0; ix < nx; ix++) {
-      const plane: number[][] = new Array(ny)
+      const plane: number[][] = Array(ny)
       for (let iy = 0; iy < ny; iy++) {
-        const row = new Array<number>(nz).fill(0)
+        const row = Array(nz).fill(0)
         const base = ix * ny_nz + iy * nz
         const row_end = Math.min(base + nz, data_len)
         for (let flat_idx = base; flat_idx < row_end; flat_idx++) {
@@ -159,8 +159,8 @@ function build_grid({
   } else {
     // VASP CHGCAR/ELFCAR/LOCPOT convention: x varies fastest, then y, then z.
     for (let ix = 0; ix < nx; ix++) {
-      const plane: number[][] = new Array(ny)
-      for (let iy = 0; iy < ny; iy++) plane[iy] = new Array(nz).fill(0)
+      const plane: number[][] = Array(ny)
+      for (let iy = 0; iy < ny; iy++) plane[iy] = Array(nz).fill(0)
       grid[ix] = plane
     }
     let [flat_idx, data_exhausted] = [0, false]
@@ -597,7 +597,7 @@ export function parse_cube(
 function atomic_number_to_symbol(atomic_number: number): ElementSymbol {
   // ELEM_SYMBOLS is 0-indexed (H at index 0), atomic numbers are 1-indexed
   const idx = atomic_number - 1
-  return (idx >= 0 && idx < ELEM_SYMBOLS.length ? ELEM_SYMBOLS[idx] : `H`) as ElementSymbol
+  return idx >= 0 && idx < ELEM_SYMBOLS.length ? ELEM_SYMBOLS[idx] : `H`
 }
 
 // Auto-detect and parse volumetric file format based on filename and content

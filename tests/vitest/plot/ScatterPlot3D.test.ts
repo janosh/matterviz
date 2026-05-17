@@ -63,7 +63,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
   afterEach(() => {
     if (mounted_component) {
-      unmount(mounted_component)
+      void unmount(mounted_component)
       mounted_component = null
     }
     container.remove()

@@ -197,7 +197,7 @@ export function composition_to_barycentric_4d(
   elements: ElementSymbol[],
 ): number[] {
   if (elements.length !== 4) {
-    throw new Error(`Quaternary barycentric coordinates require exactly ${4} elements`)
+    throw new Error(`Quaternary barycentric coordinates require exactly 4 elements`)
   }
   const amounts = elements.map((el) => composition[el] || 0)
   const total = amounts.reduce((sum, amount) => sum + amount, 0)
@@ -230,7 +230,7 @@ export function compute_4d_coords(
   elements: ElementSymbol[],
 ): ConvexHullEntry[] {
   if (elements.length !== 4) {
-    throw new Error(`Quaternary convex hull requires exactly ${4} elements`)
+    throw new Error(`Quaternary convex hull requires exactly 4 elements`)
   }
   // Use Set for O(1) lookups instead of O(n) includes
   const element_set = new Set(elements)

@@ -83,7 +83,7 @@ function extract_property_statistics(
     const data = data_extractor(frame, trajectory)
 
     Object.entries(data).forEach(([key, value]) => {
-      if (typeof value !== `number` || key === `Step` || key.startsWith(`_constant_`)) {
+      if (typeof value !== `number` || key === `Step` || key.startsWith(`constant_`)) {
         return
       }
 

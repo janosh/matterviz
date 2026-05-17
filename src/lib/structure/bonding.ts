@@ -86,10 +86,22 @@ export function compute_bond_transform(pos_1: Vec3, pos_2: Vec3): Float32Array {
 
   return new Float32Array([
     // Return flattened column-major 4x4 matrix for Three.js
-    ...[m00, m10, m20, 0],
-    ...[m01 * height, m11 * height, m21 * height, 0],
-    ...[m02, m12, m22, 0],
-    ...[px, py, pz, 1],
+    m00,
+    m10,
+    m20,
+    0,
+    m01 * height,
+    m11 * height,
+    m21 * height,
+    0,
+    m02,
+    m12,
+    m22,
+    0,
+    px,
+    py,
+    pz,
+    1,
   ])
 }
 
@@ -225,7 +237,7 @@ export function electroneg_ratio(
       if (dist > expected * max_distance_ratio) continue
 
       const electroneg_diff = Math.abs(props_a.electroneg - props_b.electroneg)
-      const electroneg_ratio = electroneg_diff / (props_a.electroneg + props_b.electroneg)
+      const electroneg_balance = electroneg_diff / (props_a.electroneg + props_b.electroneg)
 
       let bond_strength = 1.0
       if (props_a.is_metal && props_b.is_metal) {
@@ -241,7 +253,7 @@ export function electroneg_ratio(
       }
 
       const dist_weight = Math.exp(-((dist / expected - 1) ** 2) / 0.18)
-      const electroneg_weight = 1.0 - 0.3 * electroneg_ratio
+      const electroneg_weight = 1.0 - 0.3 * electroneg_balance
       let strength = bond_strength * dist_weight * electroneg_weight
 
       if (props_a.element === props_b.element) strength *= same_species_penalty
@@ -363,12 +375,12 @@ export function solid_angle(
 
       const avg_radius = (radius_a + radius_b) / 2.0
       const face_area = Math.PI * avg_radius * avg_radius
-      const solid_angle = face_area / dist_sq
+      const bond_solid_angle = face_area / dist_sq
 
-      if (solid_angle < min_solid_angle || face_area < min_face_area) continue
+      if (bond_solid_angle < min_solid_angle || face_area < min_face_area) continue
 
       const dist_penalty = Math.exp(-((dist / (radius_a + radius_b) - 1) ** 2) / 0.4)
-      const angle_strength = Math.min(solid_angle / (4.0 * Math.PI), 1.0)
+      const angle_strength = Math.min(bond_solid_angle / (4.0 * Math.PI), 1.0)
       const strength = angle_strength * dist_penalty
 
       if (strength > strength_threshold) {

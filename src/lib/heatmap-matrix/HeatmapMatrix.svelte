@@ -286,8 +286,8 @@
       }
     }
 
-    const col_has_data = new Array(x_items.length).fill(false)
-    const row_has_data = new Array(y_items.length).fill(false)
+    const col_has_data = Array(x_items.length).fill(false)
+    const row_has_data = Array(y_items.length).fill(false)
     for (let y_idx = 0; y_idx < y_items.length; y_idx++) {
       for (let x_idx = 0; x_idx < x_items.length; x_idx++) {
         if (get_value(x_idx, y_idx) !== null) {
@@ -437,7 +437,7 @@
   let n_x = $derived(x_items.length)
   let bg_flat = $derived.by(() => {
     const n_y = y_items.length
-    const colors = new Array<string | null>(n_x * n_y)
+    const colors: (string | null)[] = Array(n_x * n_y)
     for (let y_idx = 0; y_idx < n_y; y_idx++) {
       const row_offset = y_idx * n_x
       for (let x_idx = 0; x_idx < n_x; x_idx++) {
@@ -1010,11 +1010,11 @@
     grid_offset_top = first_rendered_cell.offsetTop - vis_row * tile_stride_px
   }
 
-  function compute_summary(values: number[]): number | null {
-    if (!values.length) return null
-    if (summary_fn) return summary_fn(values)
-    const total = values.reduce((sum, value) => sum + value, 0)
-    return total / values.length
+  function compute_summary(summary_values: number[]): number | null {
+    if (!summary_values.length) return null
+    if (summary_fn) return summary_fn(summary_values)
+    const total = summary_values.reduce((sum, value) => sum + value, 0)
+    return total / summary_values.length
   }
 
   function summarize_axis_values(

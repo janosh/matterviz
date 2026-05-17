@@ -2,6 +2,7 @@ import { XrdPlot } from '$lib'
 import type { XrdPattern } from '$lib/xrd'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
+import { resize_element } from '../setup'
 
 const pattern: XrdPattern = {
   x: [10, 20, 30, 40, 50],
@@ -10,11 +11,7 @@ const pattern: XrdPattern = {
     [{ hkl: [1, 0, 0] }],
     [{ hkl: [1, 1, 0] }],
     [{ hkl: [1, 1, 1] }],
-    [
-      {
-        hkl: [2, 0, 0],
-      },
-    ],
+    [{ hkl: [2, 0, 0] }],
     [{ hkl: [2, 1, 0] }],
   ],
   d_hkls: [8.9, 6.3, 5.1, 4.5, 4.0],
@@ -32,12 +29,8 @@ function create_sized_container(): HTMLDivElement {
 // Helper to mock clientWidth/clientHeight and wait for render.
 async function wait_for_plot_render(target: HTMLElement): Promise<void> {
   const bar_plot = target.querySelector<HTMLElement>(`.bar-plot`)
-  if (bar_plot) {
-    Object.defineProperty(bar_plot, `clientWidth`, { value: 800, configurable: true })
-    Object.defineProperty(bar_plot, `clientHeight`, { value: 600, configurable: true })
-    bar_plot.dispatchEvent(new Event(`resize`))
-  }
-  await tick()
+  if (bar_plot) await resize_element(bar_plot, 800, 600)
+  else await tick()
 }
 
 describe(`XrdPlot`, () => {
@@ -96,18 +89,53 @@ describe(`XrdPlot`, () => {
     ).toBeGreaterThan(0)
   })
 
-  test.each([[`compact`], [`full`], [`vertical`], [`horizontal`]] as const)(
-    `format/orientation=%s`,
-    (param) => {
-      mount(XrdPlot, {
-        target: document.body,
-        props: {
-          patterns: pattern,
-          ...(param === `compact` || param === `full`
-            ? { hkl_format: param, annotate_peaks: 3 }
-            : { orientation: param }),
-        },
-      })
+  test.each([
+    {
+      param: `compact`,
+      props: { hkl_format: `compact`, annotate_peaks: 3 },
+      expected_labels: [`110 @ 20°`, `111 @ 30°`, `200 @ 40°`],
+      expected_x_axis: `2θ (degrees)`,
+      expected_y_axis: `Intensity (a.u.)`,
+    },
+    {
+      param: `full`,
+      props: { hkl_format: `full`, annotate_peaks: 3 },
+      expected_labels: [`(1, 1, 0) @ 20°`, `(1, 1, 1) @ 30°`, `(2, 0, 0) @ 40°`],
+      expected_x_axis: `2θ (degrees)`,
+      expected_y_axis: `Intensity (a.u.)`,
+    },
+    {
+      param: `vertical`,
+      props: { orientation: `vertical` },
+      expected_labels: [`100 @ 10°`, `110 @ 20°`, `111 @ 30°`, `200 @ 40°`, `210 @ 50°`],
+      expected_x_axis: `2θ (degrees)`,
+      expected_y_axis: `Intensity (a.u.)`,
+    },
+    {
+      param: `horizontal`,
+      props: { orientation: `horizontal` },
+      expected_labels: [`100 @ 10°`, `110 @ 20°`, `111 @ 30°`, `200 @ 40°`, `210 @ 50°`],
+      expected_x_axis: `Intensity (a.u.)`,
+      expected_y_axis: `2θ (degrees)`,
+    },
+  ] as const)(
+    `format/orientation=$param`,
+    async ({ props, expected_labels, expected_x_axis, expected_y_axis }) => {
+      const target = create_sized_container()
+      mount(XrdPlot, { target, props: { patterns: pattern, ...props } })
+      await wait_for_plot_render(target)
+
+      const bar_label_text = Array.from(target.querySelectorAll(`.bar-label`)).map(
+        (el) => el.textContent?.trim() ?? ``,
+      )
+      expect(bar_label_text).toEqual(expected_labels)
+      expect(target.querySelector(`.x-axis .axis-label`)?.textContent).toContain(
+        expected_x_axis,
+      )
+      expect(target.querySelector(`.y-axis .axis-label`)?.textContent).toContain(
+        expected_y_axis,
+      )
+      expect(target.querySelectorAll(`.bar-series`)).toHaveLength(1)
     },
   )
 
@@ -238,9 +266,9 @@ describe(`XrdPlot`, () => {
       expects: [`44`, `48`], // should start at floor(44)=44, end at ceil(48)=48
       not_expects: [`0`, `10`, `20`, `30`], // should NOT show low values
     },
-  ])(`axis ranges: $desc`, async ({ pattern, axis, expects, not_expects }) => {
+  ])(`axis ranges: $desc`, async ({ pattern: test_pattern, axis, expects, not_expects }) => {
     const target = create_sized_container()
-    mount(XrdPlot, { target, props: { patterns: pattern } })
+    mount(XrdPlot, { target, props: { patterns: test_pattern } })
     await wait_for_plot_render(target)
 
     const axis_el = target.querySelector(axis)

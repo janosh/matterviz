@@ -75,46 +75,17 @@ export default defineConfig({
       'eslint-plugin-vitest/prefer-strict-boolean-matchers': `error`,
       'eslint-plugin-vitest/prefer-called-exactly-once-with': `error`,
       'eslint-plugin-vitest/require-awaited-expect-poll': `error`,
-      'eslint-plugin-vitest/require-mock-type-parameters': `off`, // 242 violations, needs manual type annotations
 
-      // Svelte framework patterns — NOT bugs
-      'no-self-assign': `off`, // reactive `x = x`
-      'no-unassigned-vars': `off`, // `bind:` variables
-      '@typescript-eslint/no-floating-promises': `off`,
-      '@typescript-eslint/unbound-method': `off`,
+      'eslint-plugin-vitest/require-mock-type-parameters': `off`, // 242 violations, needs manual type annotations
       'eslint-plugin-unicorn/consistent-function-scoping': `off`, // Svelte reactive closures
-      'eslint-plugin-unicorn/prefer-add-event-listener': `off`,
       // Pervasive intentional patterns
       '@typescript-eslint/no-unsafe-type-assertion': `off`,
-      '@typescript-eslint/no-unnecessary-type-assertion': `off`,
       '@typescript-eslint/restrict-template-expressions': `off`,
-      '@typescript-eslint/no-unnecessary-template-expression': `off`, // backtick convention
       'no-await-in-loop': `off`,
-      'no-shadow': `off`,
-      'no-control-regex': `off`,
       'eslint-plugin-unicorn/no-array-sort': `off`, // [...arr].sort() is idiomatic
-      'eslint-plugin-unicorn/no-new-array': `off`, // new Array(n).fill() for numeric perf
-      'eslint-plugin-unicorn/no-useless-fallback-in-spread': `off`,
-      'eslint-plugin-unicorn/no-useless-spread': `off`,
-      'eslint-plugin-import/no-unassigned-import': `off`, // CSS side-effect imports
-      '@typescript-eslint/require-array-sort-compare': `off`,
-      '@typescript-eslint/no-base-to-string': `off`,
-      'eslint-plugin-import/no-self-import': `off`, // recursive Svelte components
-      '@typescript-eslint/no-unnecessary-type-arguments': `off`,
-      '@typescript-eslint/no-redundant-type-constituents': `warn`,
-      'eslint-plugin-unicorn/prefer-set-has': `off`,
-      'eslint-plugin-unicorn/require-module-specifiers': `off`,
-      // VS Code's Webview.postMessage() API doesn't take targetOrigin (not browser postMessage)
-      'eslint-plugin-unicorn/require-post-message-target-origin': `off`,
       'oxc/no-map-spread': `off`,
-      'oxc/approx-constant': `off`,
-      // Vitest default rules — too noisy for this codebase
-      'eslint-plugin-jest/no-conditional-expect': `off`, // conditional expects are pervasive
-      'eslint-plugin-jest/valid-expect': `off`, // false positives on custom matchers
-      'eslint-plugin-jest/expect-expect': `off`, // helper-based assertion patterns
-      'eslint-plugin-jest/require-to-throw-message': `off`,
-      'eslint-plugin-jest/no-standalone-expect': `off`, // expect in shared helpers
-      'eslint-plugin-jest/valid-describe-callback': `off`,
+      'eslint-plugin-vitest/no-conditional-expect': `off`, // Vitest default rules — too noisy for this codebase
+      'eslint-plugin-vitest/valid-expect': [`error`, { maxArgs: 2 }], // Vitest supports expect(actual, message)
     },
   },
   plugins: [
@@ -242,12 +213,4 @@ export default defineConfig({
     `**/*.UXD`,
     `**/vasp-XDATCAR*.gz`,
   ],
-
-  // matterviz-wasm is browser-only and optional for consumers
-  optimizeDeps: {
-    exclude: [`matterviz-wasm`],
-  },
-  ssr: {
-    external: [`matterviz-wasm`],
-  },
 })

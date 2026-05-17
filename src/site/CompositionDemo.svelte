@@ -38,13 +38,13 @@
   ]
 
   // Function to get formula display text
-  function get_formula_display(formula: string): string {
+  function get_formula_display(composition_formula: string): string {
     let parsed
     try {
-      parsed = formula.startsWith(`{`) ? JSON.parse(formula) : formula
+      parsed = composition_formula.startsWith(`{`) ? JSON.parse(composition_formula) : composition_formula
     } catch (err) {
       console.error(`Invalid JSON formula:`, err)
-      parsed = formula
+      parsed = composition_formula
     }
     return get_electro_neg_formula(parsed)
   }

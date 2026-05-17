@@ -501,7 +501,7 @@ export function marching_cubes(
   const max_z = periodic ? nz : nz - 1
 
   // Preallocate cube_values array (reuse across iterations)
-  const cube_values = new Array<number>(8)
+  const cube_values: number[] = Array(8)
 
   for (let ix = 0; ix < max_x; ix++) {
     const ix_row = grid[ix]

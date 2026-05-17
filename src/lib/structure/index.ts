@@ -4,9 +4,10 @@ import type { ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Lattice, StructureScene } from '$lib/structure'
 import type { ComponentProps } from 'svelte'
+import LatticeComponent from './Lattice.svelte'
 import type { Pbc } from './pbc'
+import StructureSceneComponent from './StructureScene.svelte'
 
 export { default as Arrow } from './Arrow.svelte'
 export * from './atom-properties'
@@ -250,8 +251,8 @@ export interface StructureHandlerData {
   camera_has_moved?: boolean
   color_scheme?: string
   performance_mode?: `quality` | `speed`
-  scene_props?: ComponentProps<typeof StructureScene>
-  lattice_props?: ComponentProps<typeof Lattice>
+  scene_props?: ComponentProps<typeof StructureSceneComponent>
+  lattice_props?: ComponentProps<typeof LatticeComponent>
 }
 
 export interface BondInstance {

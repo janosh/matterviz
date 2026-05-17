@@ -54,7 +54,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
 
   const bin_size = cutoff / n_bins
   const r = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_size)
-  const g_r = new Array(n_bins).fill(0)
+  const g_r = Array(n_bins).fill(0)
 
   if (sites.length === 0) return { r, g_r }
 
@@ -83,7 +83,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
       if (center === neighbor) continue
 
       const dist = use_pbc
-        ? pbc_dist(center.xyz as Vec3, neighbor.xyz as Vec3, lattice, converters, pbc)
+        ? pbc_dist(center.xyz, neighbor.xyz, lattice, converters, pbc)
         : euclidean_dist(center.xyz, neighbor.xyz)
 
       if (dist > 0 && dist < cutoff) {

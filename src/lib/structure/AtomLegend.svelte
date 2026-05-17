@@ -176,8 +176,8 @@
   function remap_element(from: ElementSymbol, to: ElementSymbol) {
     if (from === to && element_mapping?.[from]) {
       // Remove mapping if mapping back to original element
-      const { [from]: _, ...rest } = element_mapping
-      element_mapping = Object.keys(rest).length > 0 ? rest : undefined
+      const { [from]: _removed_mapping, ...mapping } = element_mapping
+      element_mapping = Object.keys(mapping).length > 0 ? mapping : undefined
     } else if (from !== to) {
       element_mapping = { ...element_mapping, [from]: to }
     }
@@ -202,8 +202,8 @@
   }
 
   function clear_element_radius(elem: ElementSymbol) {
-    const { [elem]: _, ...rest } = element_radius_overrides ?? {}
-    element_radius_overrides = rest
+    const { [elem]: _removed_radius, ...radii } = element_radius_overrides ?? {}
+    element_radius_overrides = radii
   }
 
   const get_element_radius = (elem: ElementSymbol): number =>

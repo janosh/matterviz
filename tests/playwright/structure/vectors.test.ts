@@ -31,7 +31,7 @@ const SITE_PROPS = {
 
 // Inject a test structure with vector site properties via custom event
 async function inject_vectors(page: Page, mode: `multi` | `single`) {
-  const props = mode === `multi` ? SITE_PROPS.multi : SITE_PROPS.single
+  const selected_props = mode === `multi` ? SITE_PROPS.multi : SITE_PROPS.single
   // Let the component auto-populate vector_configs from the structure's vector data
   // instead of bypassing auto-population with pre-computed configs
   await page.evaluate(
@@ -65,11 +65,11 @@ async function inject_vectors(page: Page, mode: `multi` | `single`) {
       }
       globalThis.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
     },
-    [...props],
+    [...selected_props],
   )
   // Derive expected keys from ALL sites (union) to catch union-of-all-sites regressions
   const all_keys = new Set<string>()
-  for (const site of props) {
+  for (const site of selected_props) {
     for (const key of Object.keys(site)) {
       if (is_vector_key(key)) all_keys.add(key)
     }

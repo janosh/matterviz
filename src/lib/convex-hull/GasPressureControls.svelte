@@ -5,7 +5,7 @@
     GasThermodynamicsConfig,
   } from '$lib/convex-hull/types'
   import { sanitize_html } from '$lib/sanitize'
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
     compute_gas_chemical_potential,
@@ -94,8 +94,8 @@
     const P = slider_to_pressure(+(event.currentTarget as HTMLInputElement).value)
     pressures = { ...pressures, [gas]: P }
     // Clear only this gas's preview (don't reset other sliders being dragged simultaneously)
-    const { [gas]: _, ...rest } = preview_pressures
-    preview_pressures = rest
+    const { [gas]: _removed_preview, ...remaining_previews } = preview_pressures
+    preview_pressures = remaining_previews
   }
 
   function set_pressure_direct(gas: GasSpecies, value: number): void {

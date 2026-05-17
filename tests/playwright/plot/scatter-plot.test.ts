@@ -336,7 +336,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const section = page.locator(`section#marker-types`)
       await expect(section).toBeVisible()
 
-      const plot = section.locator(`${id}`)
+      const plot = section.locator(id)
       await expect(plot).toBeVisible()
 
       // Check markers count
@@ -1615,7 +1615,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
   ]
 
   tick_axis_test_cases.forEach(({ selector, description }) => {
-    test(`${description}`, async ({ page }) => {
+    test(description, async ({ page }) => {
       const section = page.locator(`#basic-example`)
       const scatter_plot = section.locator(`.scatter`)
 
@@ -1781,9 +1781,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Test equal density (should pick a consistent position)
     await set_density(section, { tl: 50, tr: 50, bl: 50, br: 50 })
     // Poll until colorbar is in a valid quadrant
-    const valid_quadrants = [`top-left`, `top-right`, `bottom-left`, `bottom-right`]
+    const valid_quadrants = new Set([`top-left`, `top-right`, `bottom-left`, `bottom-right`])
     await expect
-      .poll(async () => valid_quadrants.includes(await get_colorbar_quadrant(section)), {
+      .poll(async () => valid_quadrants.has(await get_colorbar_quadrant(section)), {
         timeout: 3000,
       })
       .toBe(true)
@@ -2267,9 +2267,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
       () => {
         const labels = Array.from(document.querySelectorAll(`.scatter g[data-series-id] text`))
         const snap = labels.map((el) => el.getBoundingClientRect())
-        const win = window as Window & { __lblSnap__?: DOMRect[] }
-        const prev = win.__lblSnap__
-        win.__lblSnap__ = snap
+        const win = window as Window & { label_snapshots?: DOMRect[] }
+        const prev = win.label_snapshots
+        win.label_snapshots = snap
         if (!prev || prev.length !== snap.length) return false
         const moved = snap.some((rect, idx) => {
           const prev_rect = prev[idx]

@@ -551,15 +551,15 @@
 
     const points: { x: number; y: number }[] = []
 
-    for (const { bins, x_scale, y_scale } of histogram_data) {
-      for (const bin of bins) {
-        if (bin.length > 0) {
-          const bar_x = x_scale(((bin.x0 ?? 0) + (bin.x1 ?? 0)) / 2)
-          const bar_y = y_scale(bin.length)
+    for (const { bins: series_bins, x_scale, y_scale } of histogram_data) {
+      for (const series_bin of series_bins) {
+        if (series_bin.length > 0) {
+          const bar_x = x_scale(((series_bin.x0 ?? 0) + (series_bin.x1 ?? 0)) / 2)
+          const bar_y = y_scale(series_bin.length)
           if (isFinite(bar_x) && isFinite(bar_y)) {
             // Add multiple points for taller bars to increase their weight
             // Cap to prevent O(N·count/10) blow-ups for large counts
-            const weight = Math.min(20, Math.ceil(bin.length / 10))
+            const weight = Math.min(20, Math.ceil(series_bin.length / 10))
             for (let idx = 0; idx < weight; idx++) points.push({ x: bar_x, y: bar_y })
           }
         }
@@ -596,7 +596,7 @@
   // untrack() explicitly captures initial tween config (intentional - config set once at mount)
   const tweened_legend_coords = new Tween(
     { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
+    untrack(() => ({ duration: 400, ...legend?.tween })),
   )
 
   // Update legend position with stability checks

@@ -1456,7 +1456,7 @@ export const DEFAULTS = extract_values(SETTINGS_CONFIG)
 export const merge = (user?: Partial<DefaultSettings>): DefaultSettings =>
   ({
     ...DEFAULTS,
-    ...(user || {}),
+    ...user,
     structure: merge_nested(DEFAULTS.structure, user?.structure),
     trajectory: merge_nested(DEFAULTS.trajectory, user?.trajectory),
     composition: merge_nested(DEFAULTS.composition, user?.composition),

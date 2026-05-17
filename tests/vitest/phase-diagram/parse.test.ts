@@ -277,7 +277,9 @@ ELEMENT MG   HCP_A3 0.02431 4998 32.67!
     const content = `PHASE CU2MG %  2 2 1 !
 CONSTITUENT CU2MG :CU,MG : CU,MG : !`
     const result = parse_tdb(content)
-    const phase = result.data?.phases.find((phase) => phase.name === `CU2MG`)
+    const phase = result.data?.phases.find(
+      (candidate_phase) => candidate_phase.name === `CU2MG`,
+    )
     expect(phase).toBeDefined()
     // Constituents may or may not be parsed depending on line continuation behavior
     if (phase?.constituents) {

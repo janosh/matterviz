@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { TweenedOptions } from '$lib/plot'
   import { DEFAULTS } from '$lib/settings'
   import { extent, min } from 'd3-array'
   import { interpolatePath } from 'd3-interpolate-path'
@@ -7,7 +6,7 @@
   import { untrack } from 'svelte'
   import { linear } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
-  import { Tween } from 'svelte/motion'
+  import { Tween, type TweenOptions } from 'svelte/motion'
 
   let {
     points,
@@ -26,7 +25,7 @@
     line_width?: number
     area_color?: string
     area_stroke?: string | null
-    line_tween?: TweenedOptions<string>
+    line_tween?: TweenOptions<string>
     line_dash?: string
   } = $props()
 

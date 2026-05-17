@@ -96,10 +96,7 @@ describe(`Coordination`, () => {
   test(`bonded atoms CN > 0`, () => {
     const structure = make_struct([
       { xyz: [0, 0, 0], element: `C` },
-      {
-        xyz: [1.5, 0, 0],
-        element: `O`,
-      },
+      { xyz: [1.5, 0, 0], element: `O` },
     ])
     const { values } = ap.get_coordination_colors(structure)
     expect(values.every((val) => typeof val === `number` && val > 0)).toBe(true)
@@ -114,10 +111,7 @@ describe(`Coordination`, () => {
   test(`linear chain middle > end`, () => {
     const structure = make_struct([
       { xyz: [0, 0, 0], element: `C` },
-      {
-        xyz: [1.5, 0, 0],
-        element: `C`,
-      },
+      { xyz: [1.5, 0, 0], element: `C` },
       { xyz: [3, 0, 0], element: `C` },
     ])
     const { values } = ap.get_coordination_colors(structure)
@@ -127,10 +121,7 @@ describe(`Coordination`, () => {
   test.each([`electroneg_ratio`, `solid_angle`] as const)(`%s strategy`, (strategy) => {
     const structure = make_struct([
       { xyz: [0, 0, 0], element: `C` },
-      {
-        xyz: [1.5, 0, 0],
-        element: `O`,
-      },
+      { xyz: [1.5, 0, 0], element: `O` },
     ])
     const { values } = ap.get_coordination_colors(structure, strategy)
     expect(values.some((val) => typeof val === `number` && val > 0)).toBe(true)
@@ -233,10 +224,7 @@ describe(`Coordination`, () => {
         const structure = make_cubic_structure(
           [
             { abc: [0, 0, 0] as Vec3, element: `C` },
-            {
-              abc: [0.5, 0.5, 0.5] as Vec3,
-              element: `C`,
-            },
+            { abc: [0.5, 0.5, 0.5] as Vec3, element: `C` },
           ],
           3,
         )
@@ -410,9 +398,7 @@ describe(`Wyckoff`, () => {
     const structure = make_struct([
       { xyz: [0, 0, 0] },
       { xyz: [1, 1, 1] },
-      {
-        xyz: [2, 2, 2],
-      },
+      { xyz: [2, 2, 2] },
       { xyz: [3, 3, 3] },
     ])
     const { colors } = ap.get_wyckoff_colors(structure, {
@@ -447,13 +433,7 @@ describe(`Wyckoff`, () => {
 
 describe(`Custom`, () => {
   test(`numeric`, () => {
-    const structure = make_struct([
-      { xyz: [0, 0, 0] },
-      { xyz: [1, 1, 1] },
-      {
-        xyz: [2, 2, 2],
-      },
-    ])
+    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }, { xyz: [2, 2, 2] }])
     const { values } = ap.get_custom_colors(structure, (site) => site.xyz[2])
     expect(values).toEqual([0, 1, 2])
   })
@@ -461,10 +441,7 @@ describe(`Custom`, () => {
   test(`string`, () => {
     const structure = make_struct([
       { xyz: [0, 0, 0], element: `C` },
-      {
-        xyz: [1, 1, 1],
-        element: `O`,
-      },
+      { xyz: [1, 1, 1], element: `O` },
       { xyz: [2, 2, 2], element: `C` },
     ])
     const { values, colors } = ap.get_custom_colors(
@@ -475,25 +452,13 @@ describe(`Custom`, () => {
   })
 
   test(`site index`, () => {
-    const structure = make_struct([
-      { xyz: [0, 0, 0] },
-      { xyz: [1, 1, 1] },
-      {
-        xyz: [2, 2, 2],
-      },
-    ])
+    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 1, 1] }, { xyz: [2, 2, 2] }])
     const { colors } = ap.get_custom_colors(structure, (_, idx) => idx)
     expect(new Set(colors).size).toBe(3)
   })
 
   test(`properties`, () => {
-    const structure = make_struct([
-      { xyz: [0, 0, 0] },
-      { xyz: [1, 0, 0] },
-      {
-        xyz: [0, 1, 0],
-      },
-    ])
+    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [1, 0, 0] }, { xyz: [0, 1, 0] }])
     structure.sites[0].properties = { magmom: 2.5 }
     structure.sites[1].properties = { magmom: -1.0 }
     structure.sites[2].properties = { magmom: 0.5 }
@@ -504,13 +469,7 @@ describe(`Custom`, () => {
   })
 
   test(`distance`, () => {
-    const structure = make_struct([
-      { xyz: [0, 0, 0] },
-      { xyz: [3, 4, 0] },
-      {
-        xyz: [6, 8, 0],
-      },
-    ])
+    const structure = make_struct([{ xyz: [0, 0, 0] }, { xyz: [3, 4, 0] }, { xyz: [6, 8, 0] }])
     const { values } = ap.get_custom_colors(structure, (site) =>
       Math.hypot(site.xyz[0], site.xyz[1]),
     )
@@ -582,9 +541,7 @@ describe(`Config`, () => {
     const struct_3 = make_struct([
       { xyz: [0, 0, 0] },
       { xyz: [5, 5, 5] },
-      {
-        xyz: [10, 10, 10],
-      },
+      { xyz: [10, 10, 10] },
     ])
     const { values } = ap.get_atom_colors(struct_3, {
       mode: `custom`,
@@ -603,13 +560,11 @@ describe(`Edge Cases`, () => {
   test(`uniform same color`, () => {
     const structure = make_struct([
       { xyz: [0, 0, 0], element: `C` },
-      {
-        xyz: [1.5, 0, 0],
-        element: `C`,
-      },
+      { xyz: [1.5, 0, 0], element: `C` },
     ])
     const { colors, values } = ap.get_coordination_colors(structure)
-    if (values[0] === values[1]) expect(colors[0]).toBe(colors[1])
+    expect(values[0]).toBe(values[1])
+    expect(colors[0]).toBe(colors[1])
   })
 })
 

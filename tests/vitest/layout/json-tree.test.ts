@@ -1,5 +1,6 @@
 // Component tests for JsonTree, JsonNode, and JsonValue
 import { JsonTree } from '$lib/layout'
+import { serialize_for_copy } from '$lib/layout/json-tree/utils'
 import { flushSync, mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -77,7 +78,7 @@ describe(`JsonTree`, () => {
     it.each([
       { value: `hello`, expected_class: `string`, expected_text: `"hello"` },
       { value: 42, expected_class: `number`, expected_text: `42` },
-      { value: 3.14159, expected_class: `number`, expected_text: `3.14159` },
+      { value: 3.125, expected_class: `number`, expected_text: `3.125` },
       { value: true, expected_class: `boolean`, expected_text: `true` },
       { value: false, expected_class: `boolean`, expected_text: `false` },
       { value: null, expected_class: `null`, expected_text: `null` },
@@ -304,8 +305,8 @@ describe(`JsonTree`, () => {
       const control_groups = document.querySelectorAll(`.controls`)
       const expand_collapse_group = control_groups[1]
       const btns = expand_collapse_group.querySelectorAll(`button`)
-      const expand_btn = btns[0] as HTMLButtonElement
-      const collapse_btn = btns[1] as HTMLButtonElement
+      const expand_btn = btns[0]
+      const collapse_btn = btns[1]
 
       // Manually collapse via collapse all first
       collapse_btn.click()
@@ -340,9 +341,7 @@ describe(`JsonTree`, () => {
       // Second controls group has expand/collapse buttons
       const control_groups = document.querySelectorAll(`.controls`)
       const expand_collapse_group = control_groups[1]
-      const collapse_btn = expand_collapse_group.querySelectorAll(
-        `button`,
-      )[1] as HTMLButtonElement
+      const collapse_btn = expand_collapse_group.querySelectorAll(`button`)[1]
       collapse_btn.click()
       flushSync()
       await tick()
@@ -364,9 +363,7 @@ describe(`JsonTree`, () => {
       // Second controls group has expand/collapse buttons
       const control_groups = document.querySelectorAll(`.controls`)
       const expand_collapse_group = control_groups[1]
-      const level_1_btn = expand_collapse_group.querySelectorAll(
-        `button`,
-      )[2] as HTMLButtonElement
+      const level_1_btn = expand_collapse_group.querySelectorAll(`button`)[2]
       level_1_btn.click()
       flushSync()
       await tick()
@@ -431,7 +428,7 @@ describe(`JsonTree`, () => {
   describe(`copy all button`, () => {
     const get_copy_btn = (): HTMLButtonElement => {
       const groups = document.querySelectorAll(`.controls`)
-      return groups[groups.length - 1].querySelectorAll(`button`)[0] as HTMLButtonElement
+      return groups[groups.length - 1].querySelectorAll(`button`)[0]
     }
 
     const write_text_mock = vi.fn()
@@ -522,7 +519,7 @@ describe(`JsonTree`, () => {
 
     const get_download_btn = (): HTMLButtonElement => {
       const groups = document.querySelectorAll(`.controls`)
-      return groups[groups.length - 1].querySelectorAll(`button`)[1] as HTMLButtonElement
+      return groups[groups.length - 1].querySelectorAll(`button`)[1]
     }
 
     beforeEach(() => {
@@ -577,7 +574,7 @@ describe(`JsonTree`, () => {
 
       const [data] = mock_download.mock.calls[0]
       if (is_json) expect(JSON.parse(data)).toEqual(value)
-      else expect(data).toBe(String(value))
+      else expect(data).toBe(serialize_for_copy(value))
     })
 
     it(`uses custom download_filename when provided`, async () => {
