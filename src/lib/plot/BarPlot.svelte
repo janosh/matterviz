@@ -25,7 +25,6 @@
     RefLine,
     RefLineEvent,
     ScaleType,
-    TweenedOptions,
     UserContentProps,
     XyObj,
   } from '$lib/plot'
@@ -70,7 +69,7 @@
   import type { Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { Tween } from 'svelte/motion'
+  import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteMap } from 'svelte/reactivity'
   import type { Vec2 } from '../math'
   import {
@@ -193,7 +192,7 @@
       radius_range?: [number, number]
       value_range?: [number, number]
     }
-    point_tween?: TweenedOptions<XyObj>
+    point_tween?: TweenOptions<XyObj>
     on_point_click?: (
       data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
     ) => void

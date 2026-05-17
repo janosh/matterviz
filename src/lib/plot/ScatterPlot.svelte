@@ -32,7 +32,6 @@
     ScatterHandlerProps,
     Sides,
     StyleOverrides,
-    TweenedOptions,
     UserContentProps,
     XyObj,
   } from '$lib/plot'
@@ -81,7 +80,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { Tween } from 'svelte/motion'
+  import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
   import type { FillPathPoint } from './fill-utils'
   import {
@@ -206,15 +205,15 @@
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
         margin?: number | Sides
-        tween?: TweenedOptions<XyObj>
+        tween?: TweenOptions<XyObj>
         responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
       })
       | null
     label_placement_config?: Partial<LabelPlacementConfig>
     hover_config?: Partial<HoverConfig>
     legend?: LegendConfig | null
-    point_tween?: TweenedOptions<XyObj>
-    line_tween?: TweenedOptions<string>
+    point_tween?: TweenOptions<XyObj>
+    line_tween?: TweenOptions<string>
     point_events?: Record<
       string,
       (payload: { point: InternalPoint<Metadata>; event: Event }) => void
