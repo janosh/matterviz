@@ -311,7 +311,7 @@
     )
   })
 
-  let canvas: HTMLCanvasElement
+  let canvas: HTMLCanvasElement | undefined = undefined
   let ctx: CanvasRenderingContext2D | null = null
   let frame_id = 0 // Performance optimization
 
@@ -554,7 +554,7 @@
   }
 
   function draw_structure_outline(): void {
-    if (!ctx) return
+    if (!ctx || !canvas) return
 
     const styles = getComputedStyle(canvas)
     // Match gray dashed structure lines used in 3D

@@ -77,11 +77,8 @@ export default defineConfig({
       'eslint-plugin-vitest/require-awaited-expect-poll': `error`,
       'eslint-plugin-vitest/require-mock-type-parameters': `off`, // 242 violations, needs manual type annotations
 
-      // Svelte framework patterns — NOT bugs
-      'no-self-assign': `off`, // reactive `x = x`
-      'no-unassigned-vars': `off`, // `bind:` variables
-      '@typescript-eslint/no-floating-promises': `off`,
       '@typescript-eslint/unbound-method': `off`,
+      'typescript/unbound-method': `off`,
       'eslint-plugin-unicorn/consistent-function-scoping': `off`, // Svelte reactive closures
       'eslint-plugin-unicorn/prefer-add-event-listener': `off`,
       // Pervasive intentional patterns

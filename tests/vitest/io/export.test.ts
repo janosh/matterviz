@@ -238,7 +238,7 @@ describe(`svg_to_png_blob`, () => {
   test(`parses comma-separated viewBox`, () => {
     const svg = make_svg(`0,0,100,100`)
     // canvas dimensions are set synchronously before the Image load promise
-    svg_to_png_blob(svg, 72)
+    void svg_to_png_blob(svg, 72)
     expect(mock_canvas_element.width).toBe(100)
     expect(mock_canvas_element.height).toBe(100)
   })
@@ -258,14 +258,14 @@ describe(`svg_to_png_blob`, () => {
     [1440, 1000, `capped at 10x`],
   ])(`DPI %d → canvas size %dpx (%s)`, (dpi: number, expected_size: number) => {
     const svg = make_svg(`0 0 100 100`)
-    svg_to_png_blob(svg, dpi)
+    void svg_to_png_blob(svg, dpi)
     expect(mock_canvas_element.width).toBe(expected_size)
     expect(mock_canvas_element.height).toBe(expected_size)
   })
 
   test(`serializes cloned SVG as blob for image loading`, () => {
     const svg = make_svg(`0 0 100 100`)
-    svg_to_png_blob(svg, 72)
+    void svg_to_png_blob(svg, 72)
     expect(URL.createObjectURL).toHaveBeenCalledWith(
       expect.objectContaining({ type: `image/svg+xml;charset=utf-8` }),
     )

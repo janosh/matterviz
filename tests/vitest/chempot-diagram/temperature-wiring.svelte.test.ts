@@ -57,7 +57,7 @@ const mounted_components: ReturnType<typeof mount>[] = []
 
 afterEach(() => {
   for (const mounted_component of mounted_components.splice(0)) {
-    unmount(mounted_component)
+    void unmount(mounted_component)
   }
   vi.restoreAllMocks()
 })

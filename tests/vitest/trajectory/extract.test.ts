@@ -244,7 +244,7 @@ describe(`Full Data Extractor`, () => {
       frames: [
         create_frame_with_lattice(
           0,
-          { a: 1.0, b: 1.0, c: 1.0, volume: 1.0 },
+          { a: 1.0, b: 1.0, c: 1.0, alpha: 90, beta: 90, gamma: 90, volume: 1.0 },
           {
             energy: -10.0,
             force_max: 2.0,
@@ -253,7 +253,7 @@ describe(`Full Data Extractor`, () => {
         ),
         create_frame_with_lattice(
           1,
-          { a: 1.1, b: 1.1, c: 1.1, volume: 1.331 },
+          { a: 1.1, b: 1.1, c: 1.1, alpha: 91, beta: 92, gamma: 93, volume: 1.331 },
           {
             energy: -10.5,
             force_max: 1.5,
@@ -289,8 +289,10 @@ describe(`Full Data Extractor`, () => {
     expect(frame2_data.a).toBe(1.1)
 
     // Should NOT have constant lattice markers (lattice varies)
-    expect(frame1_data.constant_a).toBeUndefined()
-    expect(frame2_data.constant_a).toBeUndefined()
+    for (const key of constant_lattice_keys) {
+      expect(frame1_data[key]).toBeUndefined()
+      expect(frame2_data[key]).toBeUndefined()
+    }
   })
 
   it(`should detect constant lattice parameters`, () => {

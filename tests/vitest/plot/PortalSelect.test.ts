@@ -25,7 +25,7 @@ describe(`PortalSelect`, () => {
     expect(trigger?.type).toBe(`button`)
     expect(trigger?.getAttribute(`aria-haspopup`)).toBe(`listbox`)
     expect(trigger?.getAttribute(`aria-expanded`)).toBe(`false`)
-    unmount(comp)
+    void unmount(comp)
   })
 
   test.each([
@@ -40,13 +40,13 @@ describe(`PortalSelect`, () => {
     const text = get_trigger()?.textContent
     expect(text).toContain(expected)
     if (notExpected) expect(text).not.toContain(notExpected)
-    unmount(comp)
+    void unmount(comp)
   })
 
   test(`does not render when options is empty`, () => {
     const comp = mount(PortalSelect, { target: document.body, props: { options: [] } })
     expect(get_trigger()).toBeNull()
-    unmount(comp)
+    void unmount(comp)
   })
 
   test(`disabled prop sets button disabled attribute`, () => {
@@ -55,7 +55,7 @@ describe(`PortalSelect`, () => {
       props: { options, disabled: true },
     })
     expect(get_trigger()?.disabled).toBe(true)
-    unmount(comp)
+    void unmount(comp)
   })
 
   test(`uses custom format_option function`, () => {
@@ -65,7 +65,7 @@ describe(`PortalSelect`, () => {
       props: { options, format_option },
     })
     expect(get_trigger()?.textContent).toContain(`[energy] Energy`)
-    unmount(comp)
+    void unmount(comp)
   })
 
   test(`renders HTML content (sub/sup) in trigger`, () => {
@@ -75,7 +75,7 @@ describe(`PortalSelect`, () => {
       props: { options: html_options },
     })
     expect(get_trigger()?.querySelector(`sub`)?.textContent).toBe(`gap`)
-    unmount(comp)
+    void unmount(comp)
   })
 
   // Note: Dropdown interaction tests (open/close, selection, keyboard nav)
