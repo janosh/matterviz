@@ -4,6 +4,7 @@
   import Icon from '$lib/Icon.svelte'
   import { format_num } from '$lib/labels'
   import type { InfoItem } from '$lib/layout'
+  import CopyButton from '$lib/overlays/CopyButton.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
@@ -148,7 +149,7 @@
       copy_to_clipboard(card.title, site_summary(card), `site-${card.idx}-summary`)
       return
     }
-    if (![ `ArrowDown`, `ArrowUp` ].includes(event.key)) return
+    if (![`ArrowDown`, `ArrowUp`].includes(event.key)) return
     event.preventDefault()
     const current_card = event.currentTarget as HTMLDivElement | null
     const sibling_cards = Array.from(
@@ -174,7 +175,12 @@
 
   function format_site_property(prop_key: string, prop_value: unknown): SiteDetail | null {
     if (prop_value == null) return null
-    let formatted_value: string
+    const format_numeric_value = (value: unknown, format = `.3~f`): string | null => {
+      const numeric_value = Number(value)
+      return Number.isNaN(numeric_value) ? null : format_num(numeric_value, format)
+    }
+    const format_value_list = (values: unknown[]): string =>
+      `(${values.map((value) => format_numeric_value(value) ?? String(value)).join(`, `)})`
     let tooltip: string | undefined
 
     if (
@@ -182,36 +188,23 @@
       prop_value.length === 3 && prop_value.every((value) => typeof value === `number`)
     ) {
       const force_values = prop_value as [number, number, number]
-      const force_magnitude = Math.hypot(...force_values)
-      formatted_value = `${format_num(force_magnitude, `.3~f`)} eV/Å`
+      const value = `${format_num(Math.hypot(...force_values), `.3~f`)} eV/Å`
       tooltip = `Force vector: ${
         force_values.map((force) => format_num(force, `.3~f`)).join(`, `)
       } eV/Å`
-    } else if (prop_key === `magmom` || prop_key.includes(`magnet`)) {
-      const num_val = Number(prop_value)
-      if (isNaN(num_val)) return null
-      formatted_value = `${format_num(num_val, `.3~f`)} μB`
+      return { label: prop_key, value, key: prop_key, tooltip }
+    }
+    if (prop_key === `magmom` || prop_key.includes(`magnet`)) {
+      const formatted_value = format_numeric_value(prop_value)
+      if (!formatted_value) return null
       tooltip = `Magnetic moment in Bohr magnetons`
-    } else if (Array.isArray(prop_value)) {
-      formatted_value = `(${
-        prop_value.map((value) => {
-          const num_val = Number(value)
-          return isNaN(num_val) ? String(value) : format_num(num_val, `.3~f`)
-        }).join(`, `)
-      })`
-    } else {
-      const num_val = Number(prop_value)
-      formatted_value = isNaN(num_val)
-        ? String(prop_value)
-        : format_num(num_val, `.3~f`)
+      return { label: prop_key, value: `${formatted_value} μB`, key: prop_key, tooltip }
     }
 
-    return {
-      label: prop_key,
-      value: formatted_value,
-      key: prop_key,
-      tooltip,
-    }
+    const value = Array.isArray(prop_value)
+      ? format_value_list(prop_value)
+      : format_numeric_value(prop_value) ?? String(prop_value)
+    return { label: prop_key, value, key: prop_key }
   }
 
   let pane_data = $derived.by(() => {
@@ -222,9 +215,7 @@
     const structure_items: InfoItem[] = [
       {
         label: `Formula`,
-        value: `${
-          get_electro_neg_formula(structure)
-        } (${structure.sites.length} sites)`,
+        value: `${get_electro_neg_formula(structure)} (${structure.sites.length} sites)`,
         key: `structure-formula`,
       },
       {
@@ -239,10 +230,7 @@
         // Only display scalar values (skip arrays and objects)
         if (value == null || typeof value === `object`) continue
         structure_items.push({
-          label: key.replace(/_/g, ` `).replace(
-            /\b\w/g,
-            (char) => char.toUpperCase(),
-          ),
+          label: key.replace(/_/g, ` `).replace(/\b\w/g, (char) => char.toUpperCase()),
           value: String(value),
           key: `structure-prop-${key}`,
         })
@@ -258,23 +246,17 @@
         items: [
           {
             label: `Volume, Density`,
-            value: `${format_num(volume, `.3~s`)} Å³, ${
-              format_num(get_density(structure), `.3~f`)
-            } g/cm³`,
+            value: `${format_num(volume, `.3~s`)} Å³, ${format_num(get_density(structure), `.3~f`)} g/cm³`,
             key: `cell-volume-density`,
           },
           {
             label: `a, b, c`,
-            value: `${format_num(a, `.4~f`)}, ${format_num(b, `.4~f`)}, ${
-              format_num(c, `.4~f`)
-            } Å`,
+            value: `${format_num(a, `.4~f`)}, ${format_num(b, `.4~f`)}, ${format_num(c, `.4~f`)} Å`,
             key: `cell-abc`,
           },
           {
             label: `α, β, γ`,
-            value: `${format_num(alpha, `.2~f`)}°, ${format_num(beta, `.2~f`)}°, ${
-              format_num(gamma, `.2~f`)
-            }°`,
+            value: `${format_num(alpha, `.2~f`)}°, ${format_num(beta, `.2~f`)}°, ${format_num(gamma, `.2~f`)}°`,
             key: `cell-angles`,
           },
         ],
@@ -308,25 +290,12 @@
       sections.push({
         title: `Symmetry`,
         items: [
-          {
-            label: `Space Group`,
-            value: space_group_value,
-            key: `symmetry-space-group`,
-          },
-          {
-            label: `Hall Number`,
-            value: String(sym_data.hall_number),
-            key: `symmetry-hall-number`,
-          },
-          {
-            label: `Pearson Symbol`,
-            value: sym_data.pearson_symbol,
-            key: `symmetry-pearson-symbol`,
-          },
+          { label: `Space Group`, value: space_group_value, key: `symmetry-space-group` },
+          { label: `Hall Number`, value: String(sym_data.hall_number), key: `symmetry-hall-number` },
+          { label: `Pearson Symbol`, value: sym_data.pearson_symbol, key: `symmetry-pearson-symbol` },
           {
             label: `Symmetry Ops`,
-            value:
-              `${operations.length} (${translations} trans, ${rotations} rot, ${roto_translations} roto-trans)`,
+            value: `${operations.length} (${translations} trans, ${rotations} rot, ${roto_translations} roto-trans)`,
             key: `symmetry-operations-total`,
           },
         ],
@@ -351,18 +320,15 @@
       const element = site.species?.[0]?.element || `Unknown`
       const element_name = get_element_name(element)
       const details: SiteDetail[] = []
-      if (site.abc) {
+      for (const [label, key, coords, unit] of [
+        [`Fractional`, `fractional`, site.abc, ``],
+        [`Cartesian`, `cartesian`, site.xyz, ` Å`],
+      ] as const) {
+        if (!coords) continue
         details.push({
-          label: `Fractional`,
-          value: `(${site.abc.map((coord) => format_num(coord, `.4~f`)).join(`, `)})`,
-          key: `fractional`,
-        })
-      }
-      if (site.xyz) {
-        details.push({
-          label: `Cartesian`,
-          value: `(${site.xyz.map((coord) => format_num(coord, `.4~f`)).join(`, `)}) Å`,
-          key: `cartesian`,
+          label,
+          key,
+          value: `(${coords.map((coord) => format_num(coord, `.4~f`)).join(`, `)})${unit}`,
         })
       }
       if (site.properties) {
@@ -567,31 +533,23 @@
                     <strong>{card.title}</strong>
                     <span>{card.element_name}</span>
                   </span>
-                  <button
-                    type="button"
-                    class="copy-button"
-                    aria-label="Copy {card.title}"
+                  <CopyButton
+                    label="Copy {card.title}"
                     title="Copy {card.title}"
+                    copied={copied_items.has(`site-${card.idx}-summary`)}
                     onclick={(event) =>
                       copy_event(event, card.title, site_summary(card), `site-${card.idx}-summary`)}
-                  >
-                    {#if copied_items.has(`site-${card.idx}-summary`)}
-                      <Icon icon="Check" />
-                    {:else}
-                      <Icon icon="Copy" />
-                    {/if}
-                  </button>
+                  />
                 </div>
                 <div class="site-card-details">
                   {#each card.details as detail (`site-${card.idx}-${detail.key}`)}
                     <div class="site-detail">
                       <span>{@html sanitize_html(detail.label)}</span>
                       <span title={detail.tooltip}>{@html sanitize_html(detail.value)}</span>
-                      <button
-                        type="button"
-                        class="copy-button"
-                        aria-label="Copy {card.title} {detail.label}"
+                      <CopyButton
+                        label="Copy {card.title} {detail.label}"
                         title="Copy {detail.label}"
+                        copied={copied_items.has(`site-${card.idx}-${detail.key}`)}
                         onclick={(event) =>
                           copy_event(
                             event,
@@ -599,13 +557,7 @@
                             detail.value,
                             `site-${card.idx}-${detail.key}`,
                           )}
-                      >
-                        {#if copied_items.has(`site-${card.idx}-${detail.key}`)}
-                          <Icon icon="Check" />
-                        {:else}
-                          <Icon icon="Copy" />
-                        {/if}
-                      </button>
+                      />
                     </div>
                   {/each}
                 </div>
@@ -640,23 +592,22 @@
   }
   .info-row.clickable {
     cursor: pointer;
-    position: relative; /* Add relative positioning for checkmark overlay */
-  }
-  .info-row.clickable:hover {
-    background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
+    position: relative;
+    &:hover {
+      background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
+    }
   }
   .sites-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 6pt;
-  }
-  .sites-header h4 {
-    margin: 0.5em 0;
+    h4 {
+      margin: 0.5em 0;
+    }
   }
   .sites-toggle,
-  .site-window-controls button,
-  .copy-button {
+  .site-window-controls button {
     border: 0;
     border-radius: var(--border-radius, 3pt);
     background: color-mix(in srgb, currentColor 8%, transparent);
@@ -689,13 +640,13 @@
     gap: 5pt;
     margin-bottom: 5pt;
     font-size: 0.8em;
-  }
-  .site-window-controls button {
-    padding: 2pt 5pt;
-  }
-  .site-window-controls button:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
+    button {
+      padding: 2pt 5pt;
+      &:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+    }
   }
   .site-cards {
     display: grid;
@@ -708,15 +659,13 @@
     padding: 5pt;
     cursor: pointer;
     outline: none;
-  }
-  .site-card:hover,
-  .site-card:focus-visible,
-  .site-card.highlighted {
-    background: color-mix(in srgb, var(--site-color, currentColor) 18%, transparent);
-  }
-  .site-card.selected {
-    box-shadow: inset 0 0 0 1px var(--site-color, currentColor);
-    background: color-mix(in srgb, var(--site-color, currentColor) 25%, transparent);
+    &:is(:hover, :focus-visible, .highlighted) {
+      background: color-mix(in srgb, var(--site-color, currentColor) 18%, transparent);
+    }
+    &.selected {
+      box-shadow: inset 0 0 0 1px var(--site-color, currentColor);
+      background: color-mix(in srgb, var(--site-color, currentColor) 25%, transparent);
+    }
   }
   .site-card-header,
   .site-title,
@@ -730,9 +679,9 @@
   }
   .site-title {
     min-width: 0;
-  }
-  .site-title span:last-child {
-    opacity: 0.75;
+    span:last-child {
+      opacity: 0.75;
+    }
   }
   .site-color {
     width: 0.75em;
@@ -749,32 +698,14 @@
   }
   .site-detail {
     justify-content: space-between;
-  }
-  .site-detail span:first-child {
-    opacity: 0.75;
-  }
-  .site-detail span:nth-child(2) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .copy-button {
-    display: inline-grid;
-    place-items: center;
-    flex: 0 0 auto;
-    width: 1.6em;
-    height: 1.6em;
-    padding: 0;
-    opacity: 0.7;
-  }
-  .copy-button:hover,
-  .copy-button:focus-visible {
-    opacity: 1;
-    background: color-mix(in srgb, currentColor 14%, transparent);
-  }
-  .copy-button :global(svg) {
-    width: 0.9em;
-    height: 0.9em;
+    span:first-child {
+      opacity: 0.75;
+    }
+    span:nth-child(2) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
   section :global(.copy-checkmark) {
     position: absolute;
@@ -797,8 +728,8 @@
   .tips-item {
     flex-direction: column;
     gap: 2pt;
-  }
-  .tips-item span:last-child {
-    opacity: 0.8;
+    span:last-child {
+      opacity: 0.8;
+    }
   }
 </style>

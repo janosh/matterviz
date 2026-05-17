@@ -1,14 +1,12 @@
 <script lang="ts">
   import type { InfoItem } from '$lib/layout'
-  import Icon from '$lib/Icon.svelte'
+  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { type AnyStructure } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
-  import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryType } from './index'
 
   let {
@@ -33,31 +31,6 @@
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   } = $props()
-
-  let copied_items = new SvelteSet<string>()
-  let info_filter = $state(``)
-
-  async function copy_item(label: string, value: string | number, key: string) {
-    try {
-      await navigator.clipboard.writeText(`${label}: ${value}`)
-      copied_items.add(key)
-      setTimeout(() => {
-        copied_items.delete(key)
-      }, 1000)
-    } catch (error) {
-      console.error(`Failed to copy to clipboard:`, error)
-    }
-  }
-
-  function copy_item_event(
-    event: MouseEvent,
-    label: string,
-    value: string | number,
-    key: string,
-  ) {
-    event.stopPropagation()
-    copy_item(label, value, key)
-  }
 
   // Helper functions
   const format_size = (bytes: number) =>
@@ -310,18 +283,9 @@
     return sections
   })
 
-  let filtered_info_pane_data = $derived.by(() => {
-    const filter = info_filter.trim().toLowerCase()
-    if (!filter) return info_pane_data
-    return info_pane_data
-      .map((section) => ({
-        ...section,
-        items: section.items.filter(({ label, value }) =>
-          `${section.title} ${label} ${value}`.toLowerCase().includes(filter)
-        ),
-      }))
-      .filter(({ items }) => items.length > 0)
-  })
+  let info_cards = $derived(
+    info_pane_data.map(({ title, items }) => ({ title, rows: items })),
+  )
 </script>
 
 <DraggablePane
@@ -338,110 +302,10 @@
   {...rest}
 >
   <h4 style="margin-top: 0">Trajectory Info</h4>
-  {#if info_pane_data.length > 1 || info_pane_data.some(({ items }) => items.length > 4)}
-    <input
-      class="info-filter"
-      type="search"
-      bind:value={info_filter}
-      placeholder="Filter trajectory info"
-      aria-label="Filter trajectory info"
-    />
-  {/if}
-  {#if filtered_info_pane_data.length === 0}
-    <p class="empty-filter">No trajectory info matches "{info_filter}".</p>
-  {:else}
-    <div class="info-cards">
-      {#each filtered_info_pane_data as section (section.title)}
-        <section class="info-card">
-          <h4>{section.title}</h4>
-          {#each section.items as item (item.key ?? item.label)}
-            {@const { key, label, value, tooltip } = item}
-            {@const copy_key = key ?? label}
-            <div class="info-row">
-              <span>{@html sanitize_html(label)}</span>
-              <span title={tooltip}>{@html sanitize_html(value)}</span>
-              <button
-                type="button"
-                class="copy-button"
-                aria-label="Copy {label}: {value}"
-                title="Copy {label}"
-                onclick={(event) => copy_item_event(event, label, value, copy_key)}
-              >
-                {#if copied_items.has(copy_key)}
-                  <Icon icon="Check" />
-                {:else}
-                  <Icon icon="Copy" />
-                {/if}
-              </button>
-            </div>
-          {/each}
-        </section>
-      {/each}
-    </div>
-  {/if}
+  <InfoPaneCards
+    cards={info_cards}
+    filter_placeholder="Filter trajectory info"
+    empty_label="trajectory info"
+    show_filter={info_pane_data.length > 1 || info_pane_data.some(({ items }) => items.length > 4)}
+  />
 </DraggablePane>
-
-<style>
-  .info-filter {
-    box-sizing: border-box;
-    width: 100%;
-    margin-bottom: 5pt;
-    padding: 4pt 6pt;
-    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-    border-radius: var(--border-radius, 3pt);
-    background: color-mix(in srgb, var(--pane-bg, Canvas) 88%, currentColor);
-    color: inherit;
-  }
-  .empty-filter {
-    margin: 0.25em 0;
-    opacity: 0.75;
-  }
-  .info-cards {
-    display: grid;
-    gap: 5pt;
-  }
-  .info-card {
-    border-left: 3px solid var(--accent-color, currentColor);
-    border-radius: var(--border-radius, 3pt);
-    background: color-mix(in srgb, currentColor 4%, transparent);
-    padding: 5pt;
-  }
-  .info-card h4 {
-    margin: 0 0 3pt;
-  }
-  .info-row {
-    display: grid;
-    grid-template-columns: minmax(5em, 0.8fr) minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 5pt;
-    padding: 1pt 0;
-    line-height: 1.5;
-  }
-  .info-row span:nth-child(2) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .copy-button {
-    display: inline-grid;
-    place-items: center;
-    width: 1.6em;
-    height: 1.6em;
-    padding: 0;
-    border: 0;
-    border-radius: var(--border-radius, 3pt);
-    background: color-mix(in srgb, currentColor 8%, transparent);
-    color: inherit;
-    cursor: pointer;
-    opacity: 0.75;
-  }
-  .copy-button:hover,
-  .copy-button:focus-visible {
-    opacity: 1;
-    background: color-mix(in srgb, currentColor 14%, transparent);
-  }
-  .copy-button :global(svg) {
-    width: 0.9em;
-    height: 0.9em;
-  }
-</style>

@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { gunzipSync } from 'node:zlib'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 const structure = structures[0]
 
@@ -279,35 +279,22 @@ describe(`Structure`, () => {
   })
 
   test(`info pane site hover updates highlighted sites`, async () => {
-    let highlighted_sites: number[] = []
-    let hovered_site_idx: number | null = null
-    let selected_sites: number[] = []
+    const state = {
+      highlighted_sites: [] as number[],
+      hovered_site_idx: null as number | null,
+      selected_sites: [] as number[],
+    }
 
     mount(Structure, {
       target: document.body,
-      props: {
-        structure,
-        info_pane_open: true,
-        show_controls: true,
-        get highlighted_sites() {
-          return highlighted_sites
+      props: bind_props(
+        {
+          structure,
+          info_pane_open: true,
+          show_controls: true,
         },
-        set highlighted_sites(value) {
-          highlighted_sites = value
-        },
-        get hovered_site_idx() {
-          return hovered_site_idx
-        },
-        set hovered_site_idx(value) {
-          hovered_site_idx = value
-        },
-        get selected_sites() {
-          return selected_sites
-        },
-        set selected_sites(value) {
-          selected_sites = value
-        },
-      },
+        state,
+      ),
     })
     await tick()
 
@@ -317,15 +304,15 @@ describe(`Structure`, () => {
     expect(first_site_row).toBeInstanceOf(HTMLDivElement)
 
     first_site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-    expect(highlighted_sites).toEqual([0])
-    expect(hovered_site_idx).toBe(0)
+    expect(state.highlighted_sites).toEqual([0])
+    expect(state.hovered_site_idx).toBe(0)
 
     first_site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-    expect(highlighted_sites).toEqual([])
-    expect(hovered_site_idx).toBe(null)
+    expect(state.highlighted_sites).toEqual([])
+    expect(state.hovered_site_idx).toBe(null)
 
     first_site_row.click()
-    expect(selected_sites).toEqual([0])
+    expect(state.selected_sites).toEqual([0])
   })
 })
 

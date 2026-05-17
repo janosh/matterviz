@@ -49,15 +49,8 @@
   let side_unstable = $state<ConvexHullEntry[]>([])
   let clicked_entry_id = $state<string | undefined>(undefined)
   let selected_quinary_path = $state<string>(``)
-  type DemoSection = `stats` | `highlight` | `markers` | `temperature` | `gas` | `quinary`
-  const deferred_sections: DemoSection[] = [
-    `stats`,
-    `highlight`,
-    `markers`,
-    `temperature`,
-    `gas`,
-    `quinary`,
-  ]
+  const deferred_sections = [`stats`, `highlight`, `markers`, `temperature`, `gas`, `quinary`] as const
+  type DemoSection = typeof deferred_sections[number]
   let mounted_demo_count = $state(0)
   const section_mounted = (section: DemoSection): boolean =>
     deferred_sections.indexOf(section) < mounted_demo_count
@@ -74,10 +67,7 @@
 
   onMount(async () => {
     const results = await Promise.allSettled(
-      Object.entries(quaternary_files).map(async ([path, loader]) => {
-        await load_data_file(path, loader)
-        return path
-      }),
+      Object.entries(quaternary_files).map(([path, loader]) => load_data_file(path, loader)),
     )
     for (const result of results) {
       if (result.status === `rejected`) console.error(`Failed to load convex hull data`, result.reason)
