@@ -94,9 +94,11 @@ describe(`symmetric mode`, () => {
     expect(data_cells).toHaveLength(6)
     expect(empty_cells).toHaveLength(3)
     for (const cell of data_cells) {
-      expect(Number(cell.dataset.x), `(${cell.dataset.x},${cell.dataset.y})`)[check](
-        Number(cell.dataset.y),
-      )
+      const x_idx = Number(cell.dataset.x)
+      const y_idx = Number(cell.dataset.y)
+      const message = `(${cell.dataset.x},${cell.dataset.y})`
+      if (check === `toBeLessThanOrEqual`) expect(x_idx, message).toBeLessThanOrEqual(y_idx)
+      else expect(x_idx, message).toBeGreaterThanOrEqual(y_idx)
     }
     for (const cell of empty_cells) {
       expect(cell.dataset.x).toBeUndefined()

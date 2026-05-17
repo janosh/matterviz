@@ -8,7 +8,8 @@
   import { molecule_files } from '$site/molecules'
   import { structure_files } from '$site/structures'
   import { get_trajectory_type, trajectory_files } from '$site/trajectories'
-  import { CopyButton, tooltip } from 'svelte-multiselect'
+  import { CopyButton } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
 
   // Track the currently loaded trajectory file
   let active_trajectory_file = $state(`Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`)

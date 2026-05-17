@@ -42,7 +42,7 @@
   import { Canvas } from '@threlte/core'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
-  import { click_outside, tooltip } from 'svelte-multiselect'
+  import { click_outside, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, OrthographicCamera, Scene } from 'three'

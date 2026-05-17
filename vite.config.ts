@@ -100,8 +100,7 @@ export default defineConfig({
       '@typescript-eslint/require-array-sort-compare': `off`,
       '@typescript-eslint/no-base-to-string': `off`,
       'eslint-plugin-import/no-self-import': `off`, // recursive Svelte components
-      '@typescript-eslint/no-unnecessary-type-arguments': `off`,
-      '@typescript-eslint/no-redundant-type-constituents': `warn`,
+      '@typescript-eslint/no-redundant-type-constituents': `error`,
       'eslint-plugin-unicorn/prefer-set-has': `off`,
       'eslint-plugin-unicorn/require-module-specifiers': `off`,
       // VS Code's Webview.postMessage() API doesn't take targetOrigin (not browser postMessage)
@@ -109,9 +108,10 @@ export default defineConfig({
       'oxc/no-map-spread': `off`,
       'oxc/approx-constant': `off`,
       // Vitest default rules — too noisy for this codebase
+      'eslint-plugin-vitest/no-conditional-expect': `off`,
+      'eslint-plugin-vitest/valid-expect': [`error`, { maxArgs: 2 }], // Vitest supports expect(actual, message)
       'eslint-plugin-jest/no-conditional-expect': `off`, // conditional expects are pervasive
       'eslint-plugin-jest/valid-expect': `off`, // false positives on custom matchers
-      'eslint-plugin-jest/expect-expect': `off`, // helper-based assertion patterns
       'eslint-plugin-jest/require-to-throw-message': `off`,
       'eslint-plugin-jest/no-standalone-expect': `off`, // expect in shared helpers
       'eslint-plugin-jest/valid-describe-callback': `off`,
@@ -242,12 +242,4 @@ export default defineConfig({
     `**/*.UXD`,
     `**/vasp-XDATCAR*.gz`,
   ],
-
-  // matterviz-wasm is browser-only and optional for consumers
-  optimizeDeps: {
-    exclude: [`matterviz-wasm`],
-  },
-  ssr: {
-    external: [`matterviz-wasm`],
-  },
 })

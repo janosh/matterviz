@@ -116,8 +116,8 @@ describe(`Utility Functions`, () => {
 
       await lib.toggle_fullscreen(mock_wrapper)
 
-      if (should_enter) expect(mock_wrapper.requestFullscreen).toHaveBeenCalledOnce()
-      if (should_exit) expect(document.exitFullscreen).toHaveBeenCalledOnce()
+      expect(mock_wrapper.requestFullscreen).toHaveBeenCalledTimes(should_enter ? 1 : 0)
+      expect(document.exitFullscreen).toHaveBeenCalledTimes(should_exit ? 1 : 0)
     })
 
     test(`switches when different element is fullscreen`, async () => {

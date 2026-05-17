@@ -12,6 +12,15 @@ import process from 'node:process'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+const constant_lattice_keys = [
+  `constant_a`,
+  `constant_b`,
+  `constant_c`,
+  `constant_alpha`,
+  `constant_beta`,
+  `constant_gamma`,
+] as const
+
 // Helper to read binary test files (for HDF5)
 function read_binary_test_file(filename: string): ArrayBuffer {
   const file_path = join(process.cwd(), `src/site/trajectories`, filename)
@@ -280,8 +289,8 @@ describe(`Full Data Extractor`, () => {
     expect(frame2_data.a).toBe(1.1)
 
     // Should NOT have constant lattice markers (lattice varies)
-    expect(frame1_data._constant_a).toBeUndefined()
-    expect(frame2_data._constant_a).toBeUndefined()
+    expect(frame1_data.constant_a).toBeUndefined()
+    expect(frame2_data.constant_a).toBeUndefined()
   })
 
   it(`should detect constant lattice parameters`, () => {
@@ -308,18 +317,10 @@ describe(`Full Data Extractor`, () => {
     const frame2_data = full_data_extractor(constant_trajectory.frames[1], constant_trajectory)
 
     // Should have constant lattice markers for all parameters
-    expect(frame1_data._constant_a).toBe(1)
-    expect(frame2_data._constant_a).toBe(1)
-    expect(frame1_data._constant_b).toBe(1)
-    expect(frame2_data._constant_b).toBe(1)
-    expect(frame1_data._constant_c).toBe(1)
-    expect(frame2_data._constant_c).toBe(1)
-    expect(frame1_data._constant_alpha).toBe(1)
-    expect(frame2_data._constant_alpha).toBe(1)
-    expect(frame1_data._constant_beta).toBe(1)
-    expect(frame2_data._constant_beta).toBe(1)
-    expect(frame1_data._constant_gamma).toBe(1)
-    expect(frame2_data._constant_gamma).toBe(1)
+    for (const key of constant_lattice_keys) {
+      expect(frame1_data[key]).toBe(1)
+      expect(frame2_data[key]).toBe(1)
+    }
 
     // All lattice properties should be the same
     expect(frame1_data.a).toBe(frame2_data.a)
@@ -426,20 +427,10 @@ describe(`HDF5 Trajectory Data Extraction`, () => {
     all_frame_data.forEach((data: Record<string, unknown>) => {
       if (is_constant) {
         // Check that all lattice parameters are marked as constant
-        expect(data._constant_a).toBe(1)
-        expect(data._constant_b).toBe(1)
-        expect(data._constant_c).toBe(1)
-        expect(data._constant_alpha).toBe(1)
-        expect(data._constant_beta).toBe(1)
-        expect(data._constant_gamma).toBe(1)
+        for (const key of constant_lattice_keys) expect(data[key]).toBe(1)
       } else {
         // Check that lattice parameters are not marked as constant
-        expect(data._constant_a).toBeUndefined()
-        expect(data._constant_b).toBeUndefined()
-        expect(data._constant_c).toBeUndefined()
-        expect(data._constant_alpha).toBeUndefined()
-        expect(data._constant_beta).toBeUndefined()
-        expect(data._constant_gamma).toBeUndefined()
+        for (const key of constant_lattice_keys) expect(data[key]).toBeUndefined()
       }
     })
   })

@@ -17,7 +17,7 @@
   import { optimade_to_crystal } from '$lib/structure/parse'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
 
   let { structure_id: init_structure_id, selected_provider: init_provider, ...rest }:
     & { structure_id?: string; selected_provider?: string }

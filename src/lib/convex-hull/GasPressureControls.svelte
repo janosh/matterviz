@@ -5,7 +5,7 @@
     GasThermodynamicsConfig,
   } from '$lib/convex-hull/types'
   import { sanitize_html } from '$lib/sanitize'
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import {
     compute_gas_chemical_potential,

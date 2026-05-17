@@ -3,13 +3,41 @@ import type { Vec2 } from '$lib/math'
 import type { DataSeries } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
-import { createRawSnippet, mount, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 const basic = {
   x: [1, 2, 3, 4, 5],
   y: [5, 3, 8, 2, 7],
   point_style: { fill: `steelblue`, radius: 5 },
+}
+
+async function mount_sized_scatter_plot(
+  props: Partial<ComponentProps<typeof ScatterPlot>>,
+): Promise<HTMLElement> {
+  mount(ScatterPlot, {
+    target: document.body,
+    props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
+  })
+  const plot = document.querySelector<HTMLElement>(`.scatter`)
+  if (!plot) throw new Error(`ScatterPlot root element not found`)
+  Object.defineProperty(plot, `clientWidth`, { value: 400, configurable: true })
+  Object.defineProperty(plot, `clientHeight`, { value: 300, configurable: true })
+  plot.dispatchEvent(new Event(`resize`))
+  await tick()
+  return plot
+}
+
+const visible_marker_count = (series: DataSeries[]): number =>
+  series.reduce((sum, srs) => {
+    const markers = srs.markers ?? `line+points`
+    return markers.includes(`points`) ? sum + srs.y.length : sum
+  }, 0)
+
+type LegendGroupingCase = {
+  desc: string
+  series: DataSeries[]
+  props: Partial<ComponentProps<typeof ScatterPlot>>
 }
 
 describe(`ScatterPlot`, () => {
@@ -19,21 +47,24 @@ describe(`ScatterPlot`, () => {
       x_axis: { range: [null, null] as [null, null] },
       y_axis: { range: [null, null] as [null, null] },
       markers: `points`,
+      expected_markers: 5,
     },
     {
       series: [{ ...basic, y: [5, 3, 20, 2, 7] }],
       x_axis: { range: [null, null] as [null, null] },
       y_axis: { range: [0, 10] as [number, number] },
       markers: `line`,
+      expected_markers: 4,
     },
     {
       series: [{ ...basic, x: [0, 1, 2, 3, 10] }],
       x_axis: { range: [0, 5] as [number, number] },
       y_axis: { range: [null, null] as [null, null] },
       markers: `line+points`,
+      expected_markers: 4,
     },
-    { series: [], markers: `points` },
-    { series: [basic], legend: null },
+    { series: [], markers: `points`, expected_markers: 0 },
+    { series: [basic], legend: null, expected_markers: 5 },
     {
       series: [
         basic,
@@ -44,27 +75,24 @@ describe(`ScatterPlot`, () => {
         },
       ],
       markers: `line+points`,
+      expected_markers: 8,
     },
-  ])(`renders with series/limits/markers`, (props) => {
-    mount(ScatterPlot, { target: document.body, props })
+  ])(`renders with series/limits/markers`, async ({ expected_markers, ...props }) => {
+    const plot = await mount_sized_scatter_plot(props)
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(expected_markers)
+    if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
   })
 
   test(`mounts with x2-axis series and renders x2 axis`, async () => {
-    mount(ScatterPlot, {
-      target: document.body,
-      props: {
-        series: [
-          { x: [1, 2, 3], y: [10, 20, 30], label: `Primary` },
-          { x: [100, 200, 300], y: [5, 15, 25], x_axis: `x2`, label: `Secondary` },
-        ],
-        x2_axis: { label: `Temperature (K)` },
-        style: `width: 400px; height: 300px`,
-      },
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { x: [1, 2, 3], y: [10, 20, 30], label: `Primary` },
+        { x: [100, 200, 300], y: [5, 15, 25], x_axis: `x2`, label: `Secondary` },
+      ],
+      x2_axis: { label: `Temperature (K)` },
     })
-    await tick()
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
-    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
-    expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
+    expect(plot.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
+    expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
   test.each([
@@ -79,16 +107,16 @@ describe(`ScatterPlot`, () => {
       ),
       x_axis: { ticks: `month`, format: `%b %Y` },
     },
-  ])(`tick formatting`, ({ x, x_axis, y_axis }) => {
-    const y = Array.from({ length: 6 }, () => Math.random() * 100)
-    mount(ScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x, y, point_style: { fill: `steelblue`, radius: 5 } }],
-        x_axis,
-        y_axis,
-      },
+  ])(`tick formatting`, async ({ x, x_axis, y_axis }) => {
+    const y = [12, 24, 36, 48, 60, 72]
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x, y, point_style: { fill: `steelblue`, radius: 5 } }],
+      x_axis,
+      y_axis,
     })
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(6)
+    expect(plot.querySelectorAll(`.x-axis .tick text`).length).toBeGreaterThan(1)
+    expect(plot.querySelectorAll(`.y-axis .tick text`).length).toBeGreaterThan(1)
   })
 
   describe(`default tooltip content`, () => {
@@ -146,7 +174,7 @@ describe(`ScatterPlot`, () => {
     })
   })
 
-  test(`invalid data`, () => {
+  test(`invalid data`, async () => {
     const invalid = [
       {
         x: [1, 2, null, 4, 5] as (number | null)[],
@@ -157,28 +185,27 @@ describe(`ScatterPlot`, () => {
       { x: [10, 20, 30, 40, 50], y: [10, 20, 30] },
       { x: [100, 200, 300], y: [10, 20, 30] },
     ] as DataSeries[]
-    mount(ScatterPlot, {
-      target: document.body,
-      props: { series: invalid },
+    const invalid_plot = await mount_sized_scatter_plot({ series: invalid })
+    expect(invalid_plot.querySelectorAll(`.marker`)).toHaveLength(10)
+    document.body.replaceChildren()
+
+    const out_of_range_plot = await mount_sized_scatter_plot({
+      series: [{ x: [1, 2, 3], y: [4, 5, 6] }],
+      x_axis: { range: [100, 200] },
+      y_axis: { range: [100, 200] },
     })
-    mount(ScatterPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [1, 2, 3], y: [4, 5, 6] }],
-        x_axis: { range: [100, 200] },
-        y_axis: { range: [100, 200] },
-      },
-    })
+    expect(out_of_range_plot.querySelectorAll(`.marker`)).toHaveLength(0)
   })
 
   test.each([
     { y: [-10, -5, 0, 5, 10], y_range: [-15, 15] as Vec2 },
     { y: [5, 10, 15, 20, 25], y_range: [0, 30] as Vec2 },
-  ])(`zero lines`, ({ y, y_range }) => {
-    mount(ScatterPlot, {
-      target: document.body,
-      props: { series: [{ x: [1, 2, 3, 4, 5], y }], y_axis: { range: y_range } },
+  ])(`zero lines`, async ({ y, y_range }) => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [1, 2, 3, 4, 5], y }],
+      y_axis: { range: y_range },
     })
+    expect(plot.querySelectorAll(`.zero-line`)).toHaveLength(1)
   })
 
   test.each([
@@ -193,11 +220,13 @@ describe(`ScatterPlot`, () => {
       y_axis: { format: `.2r` },
     },
     { tooltip_point: { x: 2, y: 20, series_idx: 0, point_idx: 1 } },
-  ])(`tooltip format`, (props) => {
-    mount(ScatterPlot, {
-      target: document.body,
-      props: { series: [{ x: [1, 2, 3], y: [10, 20, 30] }], hovered: true, ...props },
+  ])(`tooltip format`, async (props) => {
+    const plot = await mount_sized_scatter_plot({
+      series: [{ x: [1, 2, 3], y: [10, 20, 30] }],
+      hovered: true,
+      ...props,
     })
+    expect(plot.querySelector(`.plot-tooltip`)?.textContent).toMatch(/x|Jun|20|123/)
   })
 
   test(`children prop`, () => {
@@ -225,17 +254,12 @@ describe(`ScatterPlot`, () => {
     { selected_point: { series_idx: 0, point_idx: 0 }, desc: `first point` },
     { selected_point: { series_idx: 0, point_idx: 4 }, desc: `last point` },
     { selected_point: null, desc: `null (no selection)` },
-  ])(`selected_point accepts $desc`, ({ selected_point }) => {
-    // Tests that ScatterPlot accepts selected_point prop without errors
-    mount(ScatterPlot, {
-      target: document.body,
-      props: { series: [basic], selected_point },
-    })
-    // Component should render without throwing
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+  ])(`selected_point accepts $desc`, async ({ selected_point }) => {
+    const plot = await mount_sized_scatter_plot({ series: [basic], selected_point })
+    expect(plot.querySelectorAll(`.effect-ring.selected`)).toHaveLength(selected_point ? 1 : 0)
   })
 
-  test.each([
+  test.each<LegendGroupingCase>([
     {
       desc: `with legend_group and legend config`,
       series: [
@@ -314,9 +338,13 @@ describe(`ScatterPlot`, () => {
       props: { legend: { draggable: false } },
     },
     // NOTE: Legend deduplication counts are tested in Playwright since JSDOM lacks proper dimensions
-  ])(`legend grouping: renders $desc`, ({ series, props }) => {
-    mount(ScatterPlot, { target: document.body, props: { series, ...props } })
-    expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+  ])(`legend grouping: renders $desc`, async ({ series, props }) => {
+    const plot = await mount_sized_scatter_plot({ series, ...props })
+    expect(plot.querySelectorAll(`.marker`)).toHaveLength(
+      series
+        .filter((srs) => srs.visible !== false)
+        .reduce((sum, srs) => sum + srs.y.length, 0),
+    )
   })
 
   // NOTE: Cursor behavior tests for ScatterPlot SVG and points are in Playwright
@@ -343,7 +371,7 @@ describe(`ScatterPlot`, () => {
       { desc: `multiple series (3)`, count: 3 },
       { desc: `cycling past colors (15)`, count: 15 },
       { desc: `mixed markers`, count: 3, markers: [`line+points`, `points`, `line`] },
-    ])(`renders $desc without explicit styles`, ({ count, markers }) => {
+    ])(`renders $desc without explicit styles`, async ({ count, markers }) => {
       const series: DataSeries[] = Array.from({ length: count }, (_, idx) => ({
         x: [1, 2, 3],
         y: [idx + 1, idx + 2, idx + 3],
@@ -353,8 +381,8 @@ describe(`ScatterPlot`, () => {
             }
           : {}),
       }))
-      mount(ScatterPlot, { target: document.body, props: { series } })
-      expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+      const plot = await mount_sized_scatter_plot({ series })
+      expect(plot.querySelectorAll(`.marker`)).toHaveLength(visible_marker_count(series))
     })
 
     test.each([
@@ -367,13 +395,13 @@ describe(`ScatterPlot`, () => {
         desc: `explicit line stroke`,
         props: { markers: `line` as const, line_style: { stroke: `red` } },
       },
-    ])(`$desc overrides auto styling`, ({ props }) => {
+    ])(`$desc overrides auto styling`, async ({ props }) => {
       const series: DataSeries[] = [
         { x: [1, 2, 3], y: [1, 2, 3] },
         { x: [1, 2, 3], y: [3, 2, 1], ...props } as DataSeries,
       ]
-      mount(ScatterPlot, { target: document.body, props: { series } })
-      expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
+      const plot = await mount_sized_scatter_plot({ series })
+      expect(plot.querySelectorAll(`.marker`)).toHaveLength(visible_marker_count(series))
     })
 
     test(`cycling logic: modulo wrapping and unique combinations`, () => {
@@ -412,18 +440,18 @@ describe(`ScatterPlot`, () => {
   describe(`aria-label on SVG`, () => {
     // SVG only renders when container has width/height. We test by mounting
     // with the same setup used by other passing render tests.
-    test(`derives from axis labels`, () => {
-      mount(ScatterPlot, {
-        target: document.body,
-        props: {
-          series: [basic],
-          x_axis: { label: `Temperature` },
-          y_axis: { label: `Pressure` },
-        },
+    test(`derives from axis labels`, async () => {
+      const plot = await mount_sized_scatter_plot({
+        series: [basic],
+        x_axis: { label: `Temperature` },
+        y_axis: { label: `Pressure` },
       })
-      const svg = document.querySelector(`svg[role="application"]`)
-      // If SVG renders, check label. If not (jsdom limitation), just verify mount doesn't throw.
-      if (svg) expect(svg.getAttribute(`aria-label`)).toBe(`Temperature vs Pressure`)
+      const svg = plot.querySelector(`svg[role="application"]`)
+      if (!(svg instanceof SVGSVGElement)) throw new Error(`ScatterPlot SVG not rendered`)
+
+      expect(svg.getAttribute(`aria-label`)).toBe(`Temperature vs Pressure`)
+      expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Temperature`)
+      expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Pressure`)
     })
   })
 })

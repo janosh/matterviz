@@ -1479,9 +1479,9 @@ H    1.261    0.728   -0.890`
     )
 
     // Clear stale camera target from first rotation, then rotate the NEW structure.
-    // on_camera_move writes the orbit target to globalThis.__camera_target.
+    // on_camera_move writes the orbit target to globalThis.camera_target.
     await page.evaluate(() => {
-      ;(globalThis as Record<string, unknown>).__camera_target = undefined
+      ;(globalThis as Record<string, unknown>).camera_target = undefined
     })
     const post_load = await canvas.screenshot()
     await canvas.dragTo(canvas, {
@@ -1492,7 +1492,7 @@ H    1.261    0.728   -0.890`
 
     // Orbit target should be near BaTiO3 center [2,2,2], not stale CsCl center [~3.13,~3.13,~3.13]
     const read_target = () =>
-      page.evaluate(() => (globalThis as Record<string, unknown>).__camera_target as number[])
+      page.evaluate(() => (globalThis as Record<string, unknown>).camera_target as number[])
     await expect(read_target).toPass({ timeout: get_canvas_timeout() })
     const camera_target = await read_target()
     expect(camera_target).toEqual(camera_target.map(() => expect.closeTo(2, 0)))

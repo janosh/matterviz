@@ -10,6 +10,30 @@ const basic: BarSeries = {
   color: `steelblue`,
 }
 
+async function mount_sized_bar_plot(
+  props: Partial<ComponentProps<typeof BarPlot>>,
+): Promise<HTMLElement> {
+  mount(BarPlot, {
+    target: document.body,
+    props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
+  })
+  const plot = document.querySelector<HTMLElement>(`.bar-plot`)
+  if (!plot) throw new Error(`BarPlot root element not found`)
+  Object.defineProperty(plot, `clientWidth`, { value: 400, configurable: true })
+  Object.defineProperty(plot, `clientHeight`, { value: 300, configurable: true })
+  plot.dispatchEvent(new Event(`resize`))
+  await tick()
+  return plot
+}
+
+const visible_bar_count = (series: BarSeries[] = []): number =>
+  series
+    .filter((srs) => srs.visible !== false && srs.render_mode !== `line`)
+    .reduce((sum, srs) => sum + srs.y.filter((y_val) => y_val !== 0).length, 0)
+
+const visible_bar_series_count = (series: BarSeries[] = []): number =>
+  series.filter((srs) => srs.visible !== false && srs.render_mode !== `line`).length
+
 describe(`BarPlot`, () => {
   test.each([
     { series: [basic], x_axis: { label: `Category` }, y_axis: { label: `Value` } },
@@ -66,32 +90,32 @@ describe(`BarPlot`, () => {
       series: [basic, { ...basic, color: `orangered`, label: `S2` }],
       legend: { title: `Test` },
     },
-  ] as Partial<ComponentProps<typeof BarPlot>>[])(`renders various configs`, (props) => {
-    mount(BarPlot, { target: document.body, props })
+  ] as Partial<ComponentProps<typeof BarPlot>>[])(`renders various configs`, async (props) => {
+    const series = (props.series ?? []) as BarSeries[]
+    const plot = await mount_sized_bar_plot(props)
+    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(visible_bar_series_count(series))
+    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(
+      visible_bar_count(series),
+    )
+    if (props.legend === null) expect(plot.querySelector(`.legend`)).toBeNull()
   })
 
   test(`mounts with x2-axis series and renders x2 axis`, async () => {
-    mount(BarPlot, {
-      target: document.body,
-      props: {
-        series: [
-          basic,
-          {
-            x: [100, 200, 300],
-            y: [5, 15, 25],
-            x_axis: `x2`,
-            label: `X2 Series`,
-            color: `orangered`,
-          },
-        ],
-        x2_axis: { label: `Temperature (K)` },
-        style: `width: 400px; height: 300px`,
-      },
+    const plot = await mount_sized_bar_plot({
+      series: [
+        basic,
+        {
+          x: [100, 200, 300],
+          y: [5, 15, 25],
+          x_axis: `x2`,
+          label: `X2 Series`,
+          color: `orangered`,
+        },
+      ],
+      x2_axis: { label: `Temperature (K)` },
     })
-    await tick()
-    expect(document.querySelector(`.bar-plot`)).toBeInstanceOf(HTMLElement)
-    expect(document.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
-    expect(document.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
+    expect(plot.querySelector(`g.x2-axis`)).toBeInstanceOf(SVGGElement)
+    expect(plot.querySelector(`.x2-label`)?.textContent).toBe(`Temperature (K)`)
   })
 
   test.each<[Orientation, BarMode]>([
@@ -101,15 +125,11 @@ describe(`BarPlot`, () => {
     [`vertical`, `grouped`],
     [`horizontal`, `grouped`],
     [`horizontal`, `stacked`],
-  ])(`orientation=%s mode=%s`, (orientation, mode) => {
-    mount(BarPlot, {
-      target: document.body,
-      props: {
-        series: [basic, { ...basic, color: `orangered` }],
-        orientation,
-        mode,
-      },
-    })
+  ])(`orientation=%s mode=%s`, async (orientation, mode) => {
+    const series = [basic, { ...basic, color: `orangered` }]
+    const plot = await mount_sized_bar_plot({ series, orientation, mode })
+    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(2)
+    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(10)
   })
 
   test.each<[BarMode, BarSeries[]]>([
@@ -141,8 +161,12 @@ describe(`BarPlot`, () => {
         { ...basic, color: `green`, label: `S3` },
       ],
     ],
-  ])(`%s mode with negative/multiple series`, (mode, series) => {
-    mount(BarPlot, { target: document.body, props: { series, mode } })
+  ])(`%s mode with negative/multiple series`, async (mode, series) => {
+    const plot = await mount_sized_bar_plot({ series, mode })
+    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(series.length)
+    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(
+      visible_bar_count(series),
+    )
   })
 
   test.each([
@@ -156,48 +180,48 @@ describe(`BarPlot`, () => {
       color_values: [0, 0.25, 0.5, 0.75, 1],
       size_values: [0, 5, 10, 15, 20],
     },
-  ])(`line series %#`, (series_props) => {
-    mount(BarPlot, {
-      target: document.body,
-      props: {
-        series: [{ x: [1, 2, 3, 4, 5], y: [10, 20, 15, 25, 18], ...series_props }],
-      },
+  ])(`line series %#`, async (series_props) => {
+    const plot = await mount_sized_bar_plot({
+      series: [{ x: [1, 2, 3, 4, 5], y: [10, 20, 15, 25, 18], ...series_props }],
     })
-    const plot = document.querySelector(`.bar-plot`)
-    expect(plot).toBeInstanceOf(HTMLElement)
+    expect(plot.querySelectorAll(`.line-series`)).toHaveLength(1)
+    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(0)
   })
 
-  test(`mixed bar and line series`, () => {
-    mount(BarPlot, {
-      target: document.body,
-      props: {
-        series: [
-          basic,
-          {
-            x: [1, 2, 3, 4, 5],
-            y: [12, 18, 20, 22, 16],
-            render_mode: `line` as const,
-            line_style: { stroke_width: 3, line_dash: `5,5` },
-          },
-        ],
-        mode: `stacked`,
-      },
+  test(`mixed bar and line series`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [
+        basic,
+        {
+          x: [1, 2, 3, 4, 5],
+          y: [12, 18, 20, 22, 16],
+          render_mode: `line` as const,
+          line_style: { stroke_width: 3, line_dash: `5,5` },
+        },
+      ],
+      mode: `stacked`,
     })
+    expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
+    expect(plot.querySelectorAll(`.line-series`)).toHaveLength(1)
+    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(5)
   })
 
-  test(`stacked mode with interleaved hidden series`, () => {
+  test(`stacked mode with interleaved hidden series`, async () => {
     // Regression test: stacked_offsets lookup should use original series index
-    mount(BarPlot, {
-      target: document.body,
-      props: {
-        series: [
-          { x: [1, 2, 3], y: [10, 20, 15], color: `red`, visible: true },
-          { x: [1, 2, 3], y: [5, 10, 8], color: `blue`, visible: false }, // hidden
-          { x: [1, 2, 3], y: [8, 12, 10], color: `green`, visible: true },
-        ],
-        mode: `stacked`,
-      },
+    const plot = await mount_sized_bar_plot({
+      series: [
+        { x: [1, 2, 3], y: [10, 20, 15], color: `red`, visible: true },
+        { x: [1, 2, 3], y: [5, 10, 8], color: `blue`, visible: false }, // hidden
+        { x: [1, 2, 3], y: [8, 12, 10], color: `green`, visible: true },
+      ],
+      mode: `stacked`,
     })
+    expect(
+      Array.from(plot.querySelectorAll(`.bar-series`), (el) =>
+        el.getAttribute(`data-series-idx`),
+      ),
+    ).toEqual([`0`, `2`])
+    expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(6)
   })
 
   test(`event callbacks`, () => {
@@ -211,6 +235,9 @@ describe(`BarPlot`, () => {
         on_bar_click: click_fn,
       },
     })
+    expect(change_fn).not.toHaveBeenCalled()
+    expect(hover_fn).not.toHaveBeenCalled()
+    expect(click_fn).not.toHaveBeenCalled()
   })
 
   test(`default tooltip shows series label for multi-series on hover`, async () => {
@@ -234,17 +261,18 @@ describe(`BarPlot`, () => {
     expect(text).toContain(`Count`)
   })
 
-  test(`custom tooltip snippet`, () => {
-    mount(BarPlot, {
-      target: document.body,
-      props: {
-        series: [basic],
-        tooltip: createRawSnippet<[BarHandlerProps]>((data) => ({
-          render: () => `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
-        })),
-        hovered: true,
-      },
+  test(`custom tooltip snippet`, async () => {
+    const plot = await mount_sized_bar_plot({
+      series: [basic],
+      tooltip: createRawSnippet<[BarHandlerProps]>((data) => ({
+        render: () => `<div class="custom-tooltip">x: ${data().x}, y: ${data().y}</div>`,
+      })),
     })
+    const first_bar = plot.querySelector(`path[role="button"]`)
+    expect(first_bar).toBeInstanceOf(SVGPathElement)
+    first_bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
+    await tick()
+    expect(plot.querySelector(`.custom-tooltip`)?.textContent).toBe(`x: 1, y: 10`)
   })
 
   test(`children prop`, () => {
@@ -280,24 +308,10 @@ describe(`BarPlot`, () => {
       [`horizontal`, { series: cat_series, orientation: `horizontal` as Orientation }],
       [
         `explicit category order`,
-        {
-          series: cat_series,
-          x_axis: { categories: [`D`, `C`, `B`, `A`] },
-        },
+        { series: cat_series, x_axis: { categories: [`D`, `C`, `B`, `A`] } },
       ],
-      [
-        `category subset filter`,
-        {
-          series: cat_series,
-          x_axis: { categories: [`A`, `C`] },
-        },
-      ],
-      [
-        `empty categorical series`,
-        {
-          series: [{ x: [] as string[], y: [], color: `blue` }],
-        },
-      ],
+      [`category subset filter`, { series: cat_series, x_axis: { categories: [`A`, `C`] } }],
+      [`empty categorical series`, { series: [{ x: [] as string[], y: [], color: `blue` }] }],
       [`single category`, { series: [{ x: [`Only`], y: [42], color: `blue` }] }],
       [
         `mixed bar+line`,
@@ -316,9 +330,7 @@ describe(`BarPlot`, () => {
       ],
       [
         `numeric x (not categorical)`,
-        {
-          series: [{ x: [1, 2, 3], y: [10, 20, 30], color: `blue` }],
-        },
+        { series: [{ x: [1, 2, 3], y: [10, 20, 30], color: `blue` }] },
       ],
     ] as [string, Partial<ComponentProps<typeof BarPlot>>][])(
       `renders %s`,
@@ -453,30 +465,28 @@ describe(`BarPlot`, () => {
       },
     ]
 
-    test(`accepts series with legend_group property without errors`, () => {
-      // BarPlot should render without errors when series have legend_group
-      mount(BarPlot, {
-        target: document.body,
-        props: { series: grouped_series, mode: `grouped` },
-      })
-
-      // Component should render the bar plot wrapper
-      expect(document.querySelector(`.bar-plot`)).toBeInstanceOf(HTMLElement)
+    test(`accepts series with legend_group property without errors`, async () => {
+      const plot = await mount_sized_bar_plot({ series: grouped_series, mode: `grouped` })
+      expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
+      expect(plot.textContent).toContain(`DFT`)
+      expect(plot.textContent).toContain(`ML`)
     })
 
-    test(`series visibility can be toggled via legend_group`, () => {
+    test(`series visibility can be toggled via legend_group`, async () => {
       // Test that series with legend_group can have their visibility toggled
       const series_with_hidden_group: BarSeries[] = grouped_series.map((srs) =>
         srs.legend_group === `DFT` ? { ...srs, visible: false } : srs,
       )
 
-      mount(BarPlot, {
-        target: document.body,
-        props: { series: series_with_hidden_group, mode: `grouped` },
+      const plot = await mount_sized_bar_plot({
+        series: series_with_hidden_group,
+        mode: `grouped`,
       })
-
-      // Component should render
-      expect(document.querySelector(`.bar-plot`)).toBeInstanceOf(HTMLElement)
+      expect(
+        Array.from(plot.querySelectorAll(`.bar-series`), (el) =>
+          el.getAttribute(`data-series-idx`),
+        ),
+      ).toEqual([`2`, `3`])
     })
 
     test(`legend_group property is preserved on series data`, () => {
@@ -492,14 +502,10 @@ describe(`BarPlot`, () => {
       expect(series_with_group.legend_group).toBe(`TestGroup`)
     })
 
-    test(`renders with mixed grouped and ungrouped series`, () => {
-      mount(BarPlot, {
-        target: document.body,
-        props: { series: grouped_series, mode: `overlay` },
-      })
-
-      // Component should render without errors
-      expect(document.querySelector(`.bar-plot`)).toBeInstanceOf(HTMLElement)
+    test(`renders with mixed grouped and ungrouped series`, async () => {
+      const plot = await mount_sized_bar_plot({ series: grouped_series, mode: `overlay` })
+      expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(4)
+      expect(plot.textContent).toContain(`Experiment`)
     })
   })
 })

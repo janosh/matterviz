@@ -93,7 +93,7 @@
 
   export const snapshot = {
     capture: () => ({ color_scale }),
-    restore: (values) => ({ color_scale } = values),
+    restore: (values: { color_scale: D3InterpolateName }) => ({ color_scale } = values),
   }
 </script>
 
@@ -211,7 +211,7 @@
   current={page.url.pathname.slice(1)}
 >
   {#snippet children({ item, kind })}
-    {@const element = item[1]}
+    {@const element = item[1] as ChemicalElement}
     <a
       href={element.name.toLowerCase()}
       style="display: flex; flex-direction: column; position: relative"

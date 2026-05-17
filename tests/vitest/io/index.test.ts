@@ -68,13 +68,10 @@ describe(`load_from_url`, () => {
     return response
   }
 
-  const test_url_loading = async (
+  const load_test_url = async (
     url: string,
     content: string | ArrayBuffer,
     headers: Record<string, string>,
-    expected_content_type: `string` | `ArrayBuffer`,
-    expected_filename?: string,
-    expected_content: string | null = null,
   ) => {
     const mock_response = create_mock_response(content, headers)
     globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
@@ -87,24 +84,17 @@ describe(`load_from_url`, () => {
       received_filename = filename
     })
 
-    if (expected_content_type === `string` && typeof expected_content === `string`) {
-      expect(typeof received_content).toBe(`string`)
-      expect(received_content).toBe(expected_content)
-    } else if (expected_content_type === `ArrayBuffer`) {
-      expect(received_content).toBeInstanceOf(ArrayBuffer)
-    }
-    if (expected_filename) expect(received_filename).toBe(expected_filename)
+    return { received_content, received_filename }
   }
 
   test(`text content`, async () => {
-    await test_url_loading(
+    const { received_content, received_filename } = await load_test_url(
       `https://example.com/test.json`,
       `data`,
       { 'content-type': `text/plain` },
-      `string`,
-      `test.json`,
-      `data`,
     )
+    expect(received_content).toBe(`data`)
+    expect(received_filename).toBe(`test.json`)
     expect(fetch).toHaveBeenCalledWith(`https://example.com/test.json`)
   })
 
@@ -119,13 +109,13 @@ describe(`load_from_url`, () => {
     [`https://example.com/data.pkl`, `data.pkl`],
     [`https://example.com/output.dat`, `output.dat`],
   ])(`binary extensions %s`, async (url, expected_filename) => {
-    await test_url_loading(
+    const { received_content, received_filename } = await load_test_url(
       url,
       new ArrayBuffer(8),
       { 'content-type': `application/octet-stream` },
-      `ArrayBuffer`,
-      expected_filename,
     )
+    expect(received_content).toBeInstanceOf(ArrayBuffer)
+    expect(received_filename).toBe(expected_filename)
   })
 
   test.each([
@@ -281,14 +271,11 @@ describe(`load_from_url`, () => {
     [`https://example.com/path/to/structure.xyz`, `structure.xyz`],
     [`structure.xyz`, `structure.xyz`],
   ])(`filename extraction: %s`, async (url, expected_filename) => {
-    await test_url_loading(
-      url,
-      `content`,
-      { 'content-type': `text/plain` },
-      `string`,
-      expected_filename,
-      undefined,
-    )
+    const { received_content, received_filename } = await load_test_url(url, `content`, {
+      'content-type': `text/plain`,
+    })
+    expect(received_content).toBe(`content`)
+    expect(received_filename).toBe(expected_filename)
   })
 
   test(`fetch error with status`, async () => {

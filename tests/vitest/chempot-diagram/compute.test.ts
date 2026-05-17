@@ -95,12 +95,10 @@ function make_entry(composition: Record<string, number>, energy_per_atom: number
 }
 
 // Reorder pymatgen [Li, Fe, O] columns to our [Fe, Li, O]
-function reorder_cols(pts: number[][]): number[][] {
-  return pts.map(([li, fe, o]) => [fe, li, o])
-}
+const reorder_cols = (pts: number[][]): number[][] => pts.map(([li, fe, o]) => [fe, li, o])
 
-function sort_rows(pts: number[][]): number[][] {
-  return [...pts]
+const sort_rows = (pts: number[][]): number[][] =>
+  [...pts]
     .map((row) => row.map((val) => Math.round(val * 1e6) / 1e6))
     .sort((a, b) => {
       for (let idx = 0; idx < a.length; idx++) {
@@ -108,7 +106,6 @@ function sort_rows(pts: number[][]): number[][] {
       }
       return 0
     })
-}
 
 function dedup_vertices(pts: number[][], tol: number = 1e-4): number[][] {
   const result: number[][] = []
@@ -465,7 +462,7 @@ describe(`error handling`, () => {
   })
 
   test(`empty entries array throws`, () => {
-    expect(() => compute_chempot_diagram([])).toThrow()
+    expect(() => compute_chempot_diagram([])).toThrow(`requires 2+ elements`)
   })
 })
 

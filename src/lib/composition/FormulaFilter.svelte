@@ -2,7 +2,7 @@
   import Icon from '$lib/Icon.svelte'
   import { get_alphabetical_formula } from '$lib/composition/format'
   import { ELEM_SYMBOLS } from '$lib/labels'
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { FormulaSearchMode } from './index'
   import {

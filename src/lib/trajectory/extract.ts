@@ -5,7 +5,6 @@ import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryType } from '.
 // Common data extractor that extracts energy and structural properties
 export const energy_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-  _trajectory: TrajectoryType,
 ): Record<string, number> => {
   const data: Record<string, number> = {
     Step: frame.step,
@@ -34,7 +33,6 @@ export const energy_data_extractor: TrajectoryDataExtractor = (
 // Data extractor for forces and stresses
 export const force_stress_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-  _trajectory: TrajectoryType,
 ): Record<string, number> => {
   const data: Record<string, number> = {
     Step: frame.step,
@@ -80,7 +78,6 @@ export const force_stress_data_extractor: TrajectoryDataExtractor = (
 // Data extractor for structural properties
 export const structural_data_extractor: TrajectoryDataExtractor = (
   frame: TrajectoryFrame,
-  _trajectory: TrajectoryType,
 ): Record<string, number> => {
   const data: Record<string, number> = {
     Step: frame.step,
@@ -191,7 +188,7 @@ export const full_data_extractor: TrajectoryDataExtractor = (
   for (const param of lattice_params) {
     if (!property_varies(trajectory, param)) {
       // Mark individual lattice parameters as constant
-      result[`_constant_${param}`] = 1
+      result[`constant_${param}`] = 1
     }
   }
 

@@ -15,6 +15,11 @@ function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
   )
 }
 
+function get_canvas_renderer(canvas: HTMLCanvasElement): WebGLRenderer | undefined {
+  const renderer_val = (canvas as unknown as Record<string, unknown>)[`__renderer`]
+  return is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
+}
+
 // Capture a WebGL canvas as a PNG Blob at the given DPI.
 // Temporarily adjusts renderer pixel ratio for high-res capture, then restores.
 // Returns data directly (no browser download), suitable for programmatic capture
@@ -27,8 +32,7 @@ export function canvas_to_png_blob(
   camera: Camera | null = null,
 ): Promise<Blob> {
   const resolution_multiplier = Math.min(png_dpi / 72, 10)
-  const renderer_val = (canvas as { __renderer?: unknown }).__renderer
-  const renderer = is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
+  const renderer = get_canvas_renderer(canvas)
 
   if (resolution_multiplier <= 1.1 || !renderer) {
     if (renderer && scene && camera) renderer.render(scene, camera)
@@ -256,8 +260,7 @@ export async function export_trajectory_video(
   )
     throw new Error(`WebM video recording not supported in this browser`)
 
-  const renderer_val = (canvas as { __renderer?: unknown }).__renderer
-  const renderer = is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
+  const renderer = get_canvas_renderer(canvas)
 
   // Store original renderer settings if changing resolution
   let orig_pixel_ratio: number | undefined

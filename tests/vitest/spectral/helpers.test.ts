@@ -175,24 +175,12 @@ describe(`normalize_densities`, () => {
   const energies = [0, 1, 2, 3, 4]
 
   it.each([
-    {
-      mode: `max` as const,
-      check: (result: number[]) => expect(Math.max(...result)).toBe(1.0),
-    },
-    {
-      mode: `sum` as const,
-      check: (result: number[]) => {
-        const sum = result.reduce((acc, val) => acc + val, 0)
-        expect(sum).toBeCloseTo(1.0)
-      },
-    },
-    {
-      mode: null,
-      check: (result: number[]) => expect(result).toEqual(densities),
-    },
-  ])(`normalizes densities by $mode`, ({ mode, check }) => {
+    { mode: `max` as const, expected: densities.map((density) => density / 3) },
+    { mode: `sum` as const, expected: densities.map((density) => density / 9) },
+    { mode: null, expected: densities },
+  ])(`normalizes densities by $mode`, ({ mode, expected }) => {
     const result = normalize_densities(densities, energies, mode)
-    check(result)
+    expect(result).toEqual(expected)
   })
 
   it(`normalizes by integral preserves area ≈ 1`, () => {
@@ -615,10 +603,7 @@ describe(`normalize_band_structure`, () => {
       const result = normalize_band_structure({
         qpoints: [
           { label: `GAMMA`, frac_coords: [0, 0, 0] },
-          {
-            label: `X`,
-            frac_coords: [0.5, 0, 0],
-          },
+          { label: `X`, frac_coords: [0.5, 0, 0] },
         ],
         branches: [{ start_index: 0, end_index: 1, name: `GAMMA-X` }],
         bands: [
@@ -1274,6 +1259,7 @@ describe(`normalize_dos`, () => {
     it(`cm⁻¹→THz uses factor 33.356`, () => {
       const info_spy = spy_info()
       const result = normalize_dos({ frequencies: [0, 333.5641], densities: [0, 1] })
+      expect(result?.type).toBe(`phonon`)
       if (result?.type === `phonon`) expect(result.frequencies[1]).toBeCloseTo(10.0, 4)
       info_spy.mockRestore()
     })
@@ -1321,6 +1307,7 @@ describe(`normalize_dos`, () => {
         densities: [0.5, 1, 0.5],
         spin_polarized: true,
       })
+      expect(result?.type).toBe(`electronic`)
       if (result?.type === `electronic`) expect(result.spin_polarized).toBe(true)
     })
   })

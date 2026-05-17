@@ -16,7 +16,7 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
   if (signature !== `- of Ulm`) throw new Error(`Invalid ASE trajectory`)
   offset += 24
 
-  const _version = Number(view.getBigInt64(offset, true))
+  // Skip ASE/Ulm version field; current parsing logic is version-independent.
   offset += 8
   const n_items = Number(view.getBigInt64(offset, true))
   offset += 8

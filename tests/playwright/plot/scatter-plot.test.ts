@@ -2267,9 +2267,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
       () => {
         const labels = Array.from(document.querySelectorAll(`.scatter g[data-series-id] text`))
         const snap = labels.map((el) => el.getBoundingClientRect())
-        const win = window as Window & { __lblSnap__?: DOMRect[] }
-        const prev = win.__lblSnap__
-        win.__lblSnap__ = snap
+        const win = window as Window & { label_snapshots?: DOMRect[] }
+        const prev = win.label_snapshots
+        win.label_snapshots = snap
         if (!prev || prev.length !== snap.length) return false
         const moved = snap.some((rect, idx) => {
           const prev_rect = prev[idx]

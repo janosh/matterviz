@@ -840,7 +840,7 @@ interface FullNDResult {
   compute_lims: [number, number][]
 }
 
-let _nd_cache: {
+let nd_cache: {
   key: string
   result: FullNDResult
 } | null = null
@@ -914,7 +914,7 @@ export function compute_chempot_diagram(
     ? make_nd_cache_key(entries, formal_chempots, default_min_limit, limits)
     : ``
   let nd_result: FullNDResult | null =
-    is_projection && _nd_cache?.key === cache_key ? _nd_cache.result : null
+    is_projection && nd_cache?.key === cache_key ? nd_cache.result : null
 
   if (!nd_result) {
     // In subsystem mode, filter entries to only those within the element set
@@ -984,7 +984,7 @@ export function compute_chempot_diagram(
 
     // Cache for projection mode reuse
     if (is_projection) {
-      _nd_cache = { key: cache_key, result: nd_result }
+      nd_cache = { key: cache_key, result: nd_result }
     }
   }
 

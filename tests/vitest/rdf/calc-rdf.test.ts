@@ -196,13 +196,10 @@ describe(`calculate_rdf`, () => {
     },
   ])(`PBC effects: $name`, ({ pbc, sites }) => {
     const structure = create_test_structure(10, sites)
-    const result = calculate_rdf(structure, {
-      cutoff: 8,
-      n_bins: 100,
-      pbc,
-      auto_expand: false,
-    })
+    const options = { cutoff: 8, n_bins: 100, pbc, auto_expand: false }
+    const result = calculate_rdf(structure, options)
     check_basic_rdf_properties(result.r, result.g_r, 100)
+    expect(result.r).toHaveLength(100)
   })
 
   test(`different PBC settings should give different neighbor counts`, () => {

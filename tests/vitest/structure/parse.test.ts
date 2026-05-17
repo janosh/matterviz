@@ -1859,20 +1859,13 @@ describe(`parse_structure_file`, () => {
       [`array wrapper`, [{ structure: get_dummy_structure(`Fe`, 1, true) }]],
       [
         `mixed nesting`,
-        {
-          data: [{ item: { structure: get_dummy_structure(`Fe`, 1, true) } }],
-        },
+        { data: [{ item: { structure: get_dummy_structure(`Fe`, 1, true) } }] },
       ],
       [`deep nesting`, { a: { b: { c: { d: get_dummy_structure(`Fe`, 1, true) } } } }],
       [`structure array`, { structures: [get_dummy_structure(`Fe`, 1, true)] }],
       [
         `multiple items with structure`,
-        [
-          { id: 1 },
-          {
-            structure: get_dummy_structure(`Fe`, 1, true),
-          },
-        ],
+        [{ id: 1 }, { structure: get_dummy_structure(`Fe`, 1, true) }],
       ],
     ])(`finds structure in %s`, (_description, wrapper) => {
       const content = JSON.stringify(wrapper)
@@ -1962,17 +1955,11 @@ describe(`parse_structure_file`, () => {
       ],
       [
         `nested in object`,
-        {
-          structure: { sites: [{ species: [{ element: `He` }], abc: [0, 0, 0] }] },
-        },
+        { structure: { sites: [{ species: [{ element: `He` }], abc: [0, 0, 0] }] } },
       ],
       [
         `nested in array`,
-        [
-          {
-            structure: { sites: [{ species: [{ element: `Li` }], abc: [0, 0, 0] }] },
-          },
-        ],
+        [{ structure: { sites: [{ species: [{ element: `Li` }], abc: [0, 0, 0] }] } }],
       ],
     ])(`parse_any_structure handles %s correctly`, (description, input) => {
       const content = JSON.stringify(input)
@@ -2844,7 +2831,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     expect(result.properties?.chemical_formula_descriptive).toBe(`SiO2`)
     expect(result.properties?.nelements).toBe(2)
     expect(result.properties?.last_modified).toBe(`2023-03-11`)
-    expect(result.properties?._mp_stability).toEqual({ energy_above_hull: 0.0 })
+    expect(result.properties?.[`_mp_stability`]).toEqual({ energy_above_hull: 0.0 })
     // Verify structural fields are NOT in properties
     expect(result.properties?.lattice_vectors).toBeUndefined()
     expect(result.properties?.cartesian_site_positions).toBeUndefined()

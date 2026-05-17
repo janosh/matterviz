@@ -1,7 +1,12 @@
 <script lang="ts">
   import { BohrAtom, element_data } from 'matterviz/element'
-  // @ts-expect-error - relative markdown import resolution
-  import Description from './bohr-atoms.md'
+  import type { Component } from 'svelte'
+
+  const md_modules = import.meta.glob<Component>(`./bohr-atoms.md`, {
+    eager: true,
+    import: `default`,
+  })
+  const Description = md_modules[`./bohr-atoms.md`]
 
   let orbital_period = $state(2)
 </script>

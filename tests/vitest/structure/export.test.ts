@@ -19,6 +19,18 @@ import { parse_cif, parse_poscar, parse_structure_file, parse_xyz } from '$lib/s
 import ba_ti_o3_tetragonal from '$site/structures/BaTiO3-tetragonal.poscar?raw'
 import extended_xyz_quartz from '$site/structures/quartz.extxyz?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
+import {
+  BufferGeometry,
+  Color,
+  Float32BufferAttribute,
+  InstancedBufferAttribute,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Scene,
+  ShaderMaterial,
+  SphereGeometry,
+} from 'three'
 import { beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { complex_structure, simple_structure } from '../setup'
 
@@ -521,10 +533,7 @@ describe(`Export functionality`, () => {
 
     it.each([
       { func: structure_to_cif_str, error_msg: `No lattice information for CIF export` },
-      {
-        func: structure_to_poscar_str,
-        error_msg: `No lattice information for POSCAR export`,
-      },
+      { func: structure_to_poscar_str, error_msg: `No lattice information for POSCAR export` },
     ])(`throws error for structure without lattice`, ({ func, error_msg }) => {
       const structure_no_lattice: AnyStructure = {
         sites: [
@@ -1300,19 +1309,7 @@ describe(`Round-trip CIF and POSCAR exports`, () => {
 })
 
 // Tests for 3D export color preservation (Issue #203)
-describe(`3D Export Color Preservation`, async () => {
-  const {
-    BufferGeometry,
-    Float32BufferAttribute,
-    InstancedBufferAttribute,
-    MeshStandardMaterial,
-    MeshBasicMaterial,
-    ShaderMaterial,
-    Color,
-    Scene,
-    Mesh,
-    SphereGeometry,
-  } = await import(`three`)
+describe(`3D Export Color Preservation`, () => {
   describe(`extract_bond_color_for_instance`, () => {
     const gradient_cases = [
       { start: [1, 0, 0], end: [0, 0, 1], expected: [0.5, 0, 0.5] }, // red→blue

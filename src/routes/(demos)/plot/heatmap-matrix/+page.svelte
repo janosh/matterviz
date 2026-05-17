@@ -17,7 +17,7 @@
   let ordering = $state<ElementAxisOrderingKey>(`atomic_number`)
   let hide_mode = $state<false | `compact` | `gaps`>(`compact`)
   let axis_items = $derived(elements_to_axis(undefined, ordering))
-  let clicked_cell: CellContext | null = $state(null)
+  let clicked_cell = $state<CellContext | null>(null)
   let dblclick_info: string | null = $state(null)
   let show_primary_controls_toggle = $state(false)
   let show_secondary_controls_toggle = $state(false)

@@ -192,7 +192,7 @@ export function find_phase_at_point(
 }
 
 // SVG path generator using d3-shape
-const path_line = line<Vec2>()
+const path_line = line()
   .x((d) => d[0])
   .y((d) => d[1])
 
