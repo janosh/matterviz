@@ -363,6 +363,7 @@
   let legend_is_dragging = $state(false)
   let legend_drag_offset = $state<{ x: number; y: number }>({ x: 0, y: 0 })
   let legend_manual_position = $state<{ x: number; y: number } | null>(null)
+  let hovered_legend_series_idx = $state<number | null>(null)
 
   // State for legend/colorbar placement stability
   let legend_element = $state<HTMLDivElement | undefined>()
@@ -2352,7 +2353,14 @@
         {#each filtered_series ?? [] as series_data (series_data._id)}
           {@const series_markers = series_data.markers ?? DEFAULT_MARKERS}
           {@const series_default_color = get_series_color(series_data.orig_series_idx ?? 0)}
-          <g data-series-id={series_data._id} clip-path="url(#{clip_path_id})">
+          <g
+            data-series-id={series_data._id}
+            clip-path="url(#{clip_path_id})"
+            opacity={hovered_legend_series_idx !== null &&
+                hovered_legend_series_idx !== series_data.orig_series_idx
+              ? 0.25
+              : 1}
+          >
             {#if series_markers?.includes(`line`)}
               {@const all_line_points = series_data.x.map((x, idx) => ({
           x,
@@ -2438,6 +2446,8 @@
                 <ScatterPoint
                   x={screen_x}
                   y={screen_y}
+                  is_dimmed={hovered_legend_series_idx !== null &&
+                    hovered_legend_series_idx !== point.series_idx}
                   is_hovered={tooltip_point?.series_idx === point.series_idx &&
                   tooltip_point?.point_idx === point.point_idx}
                   is_selected={selected_point?.series_idx === point.series_idx &&
@@ -2661,6 +2671,11 @@
         on_drag={handle_legend_drag}
         on_drag_end={() => (legend_is_dragging = false)}
         on_hover_change={legend_hover.set_locked}
+        on_item_hover={(series_idx) =>
+          (hovered_legend_series_idx = series_idx != null && series_idx >= 0
+            ? series_idx
+            : null)}
+        active_series_idx={tooltip_point?.series_idx ?? hovered_legend_series_idx}
         draggable={legend?.draggable ?? true}
         {...legend}
         on_toggle={legend?.on_toggle ??

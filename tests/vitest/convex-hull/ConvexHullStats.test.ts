@@ -590,7 +590,7 @@ describe(`ConvexHullStats`, () => {
       const table_container = doc_query(`.table-container`)
       const style = table_container.getAttribute(`style`) ?? ``
       expect(style).toContain(`margin-inline: 0`)
-      expect(style).toContain(`min-height: 0`)
+      expect(style).toContain(`min-height: var(--hull-stats-table-height`)
       // flex: 1 1 0 gets normalized by browser to flex-grow/shrink/basis
       expect(style).toMatch(/flex-grow:\s*1|flex:\s*1\s+1\s+0/)
     })

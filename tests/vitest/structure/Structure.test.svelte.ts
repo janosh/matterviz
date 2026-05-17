@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { gunzipSync } from 'node:zlib'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 const structure = structures[0]
 
@@ -276,6 +276,43 @@ describe(`Structure`, () => {
     wrapper.dispatchEvent(drag_event)
     await wait_for_dom_text(`Ba Ti O3`)
     expect(document.body.textContent).toContain(`Ba Ti O3`)
+  })
+
+  test(`info pane site hover updates highlighted sites`, async () => {
+    const state = {
+      highlighted_sites: [] as number[],
+      hovered_site_idx: null as number | null,
+      selected_sites: [] as number[],
+    }
+
+    mount(Structure, {
+      target: document.body,
+      props: bind_props(
+        {
+          structure,
+          info_pane_open: true,
+          show_controls: true,
+        },
+        state,
+      ),
+    })
+    await tick()
+
+    const first_site_row = document.querySelector(
+      `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
+    ) as HTMLDivElement
+    expect(first_site_row).toBeInstanceOf(HTMLDivElement)
+
+    first_site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    expect(state.highlighted_sites).toEqual([0])
+    expect(state.hovered_site_idx).toBe(0)
+
+    first_site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(state.highlighted_sites).toEqual([])
+    expect(state.hovered_site_idx).toBe(null)
+
+    first_site_row.click()
+    expect(state.selected_sites).toEqual([0])
   })
 })
 

@@ -140,6 +140,13 @@ describe(`ScatterPoint`, () => {
     expect(g.style.getPropertyValue(`--hover-stroke-width`)).toBe(`${hover.stroke_width}px`)
   })
 
+  test(`applies dimmed marker state`, () => {
+    const target = doc_query(`div`)
+    mount(ScatterPoint, { target, props: { x: 100, y: 100, is_dimmed: true } })
+
+    expect(doc_query(`path.marker`).classList.contains(`is-dimmed`)).toBe(true)
+  })
+
   test(`renders point label`, () => {
     const label = {
       text: `Test Point`,

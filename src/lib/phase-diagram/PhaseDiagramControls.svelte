@@ -10,34 +10,6 @@
   import type { LeverRuleMode, PhaseDiagramConfig, PhaseDiagramData } from './types'
   import { merge_phase_diagram_config, PHASE_DIAGRAM_DEFAULTS } from './utils'
 
-  type Props = Omit<ComponentProps<typeof DraggablePane>, `children`> & {
-    controls_open?: boolean
-    // Visibility toggles
-    show_boundaries?: boolean
-    show_labels?: boolean
-    show_special_points?: boolean
-    show_grid?: boolean
-    show_component_labels?: boolean
-    // Configuration
-    config?: Partial<PhaseDiagramConfig>
-    // Lever rule mode
-    lever_rule_mode?: LeverRuleMode
-    // Axis configuration
-    x_axis?: AxisConfig
-    y_axis?: AxisConfig
-    // Data for context (components, units, etc.)
-    data?: PhaseDiagramData
-    // Export settings
-    enable_export?: boolean
-    png_dpi?: number
-    // Pane customization
-    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
-    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
-    // Custom content snippets
-    children?: Snippet<[{ controls_open: boolean }]>
-    post_children?: Snippet<[{ controls_open: boolean }]>
-  }
-
   let {
     controls_open = $bindable(false),
     // Visibility toggles
@@ -65,7 +37,33 @@
     children,
     post_children,
     ...rest
-  }: Props = $props()
+  }: Omit<ComponentProps<typeof DraggablePane>, `children`> & {
+    controls_open?: boolean
+    // Visibility toggles
+    show_boundaries?: boolean
+    show_labels?: boolean
+    show_special_points?: boolean
+    show_grid?: boolean
+    show_component_labels?: boolean
+    // Configuration
+    config?: Partial<PhaseDiagramConfig>
+    // Lever rule mode
+    lever_rule_mode?: LeverRuleMode
+    // Axis configuration
+    x_axis?: AxisConfig
+    y_axis?: AxisConfig
+    // Data for context (components, units, etc.)
+    data?: PhaseDiagramData
+    // Export settings
+    enable_export?: boolean
+    png_dpi?: number
+    // Pane customization
+    pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
+    toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
+    // Custom content snippets
+    children?: Snippet<[{ controls_open: boolean }]>
+    post_children?: Snippet<[{ controls_open: boolean }]>
+  } = $props()
 
   // Merged config using shared helper
   const merged_config = $derived(merge_phase_diagram_config(config))

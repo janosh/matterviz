@@ -1,9 +1,23 @@
 <script lang="ts">
+  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import { format_num } from '$lib/labels'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import ConvexHullStats from './ConvexHullStats.svelte'
   import type { ConvexHullEntry, PhaseStats } from './types'
+
+  const usage_tips = [
+    { label: `Single click`, value: `Select point`, key: `tip-click` },
+    { label: `Double click`, value: `Copy info`, key: `tip-double-click` },
+    { label: `Drag`, value: `Rotate view`, key: `tip-drag` },
+    { label: `Scroll`, value: `Zoom in/out`, key: `tip-scroll` },
+    { label: `Key r`, value: `Reset camera`, key: `tip-reset` },
+    { label: `Key b`, value: `Toggle color mode`, key: `tip-color-mode` },
+    { label: `Key s`, value: `Toggle stable points`, key: `tip-stable` },
+    { label: `Key u`, value: `Toggle unstable points`, key: `tip-unstable` },
+    { label: `Key l`, value: `Toggle labels`, key: `tip-labels` },
+  ]
 
   let {
     phase_stats,
@@ -27,6 +41,51 @@
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   } = $props()
+
+  const count_visible = (entries: ConvexHullEntry[]): number =>
+    entries.reduce((count, entry) => count + Number(entry.visible), 0)
+
+  let settings_rows = $derived([
+    {
+      label: `Visible stable`,
+      value: `${count_visible(stable_entries)} / ${stable_entries.length}`,
+      key: `hull-visible-stable`,
+    },
+    {
+      label: `Visible unstable`,
+      value: `${count_visible(unstable_entries)} / ${unstable_entries.length}`,
+      key: `hull-visible-unstable`,
+    },
+    {
+      label: `Points threshold`,
+      value: `${format_num(max_hull_dist_show_phases, `.3~f`)} eV/atom`,
+      key: `hull-show-threshold`,
+    },
+    {
+      label: `Label threshold`,
+      value: `${format_num(max_hull_dist_show_labels, `.3~f`)} eV/atom`,
+      key: `hull-label-threshold`,
+    },
+    {
+      label: `Entry limit for labels`,
+      value: `${label_threshold} entries`,
+      key: `hull-entry-limit-labels`,
+    },
+  ])
+
+  let info_cards = $derived([
+    { title: `Visualization Settings`, rows: settings_rows },
+    { title: `Usage Tips`, rows: usage_tips },
+  ])
+
+  const info_card_style = [
+    `--info-card-padding: 3pt`,
+    `--info-card-bg: var(--pane-bg, white)`,
+    `--info-card-heading-gap: 6px`,
+    `--info-row-padding: 1pt`,
+    `--row-label-max: 1fr`,
+    `--info-row-label-color: var(--text-color-muted, #666)`,
+  ].join(`; `)
 </script>
 
 <DraggablePane
@@ -49,67 +108,15 @@
     {phase_stats}
     {stable_entries}
     {unstable_entries}
-    style="padding: 3pt; background: var(--pane-bg)"
+    style="padding: 3pt; background: var(--pane-bg); --hull-stats-table-height: 30rem"
   />
 
-  <section class="vis-settings">
-    <h5>Visualization Settings</h5>
-    <div class="setting-item" data-testid="hull-visible-stable">
-      <span>Visible stable:</span>
-      <span>{stable_entries.filter((entry) => entry.visible).length} / {
-          stable_entries.length
-        }</span>
-    </div>
-    <div class="setting-item" data-testid="hull-visible-unstable">
-      <span>Visible unstable:</span>
-      <span>{unstable_entries.filter((entry) => entry.visible).length} / {
-          unstable_entries.length
-        }</span>
-    </div>
-    <div class="setting-item" data-testid="hull-show-threshold">
-      <span>Points threshold:</span>
-      <span>{max_hull_dist_show_phases.toFixed(3)} eV/atom</span>
-    </div>
-    <div class="setting-item" data-testid="hull-label-threshold">
-      <span>Label threshold:</span>
-      <span>{max_hull_dist_show_labels.toFixed(3)} eV/atom</span>
-    </div>
-    <div class="setting-item" data-testid="hull-entry-limit-labels">
-      <span>Entry limit for labels:</span>
-      <span>{label_threshold} entries</span>
-    </div>
-  </section>
-
-  <section class="usage-tips">
-    <h5>Usage Tips</h5>
-    <div class="tips-item"><span>Single click:</span><span>Select point</span></div>
-    <div class="tips-item"><span>Double click:</span><span>Copy info</span></div>
-    <div class="tips-item"><span>Drag:</span><span>Rotate view</span></div>
-    <div class="tips-item"><span>Scroll:</span><span>Zoom in/out</span></div>
-    <div class="tips-item"><span>Key 'r':</span><span>Reset camera</span></div>
-    <div class="tips-item"><span>Key 'b':</span><span>Toggle color mode</span></div>
-    <div class="tips-item"><span>Key 's':</span><span>Toggle stable points</span></div>
-    <div class="tips-item"><span>Key 'u':</span><span>Toggle unstable points</span></div>
-    <div class="tips-item"><span>Key 'l':</span><span>Toggle labels</span></div>
-  </section>
+  <InfoPaneCards
+    cards={info_cards}
+    filter_placeholder="Filter hull info"
+    empty_label="hull info"
+    heading_level={5}
+    row_label_min="7em"
+    style={info_card_style}
+  />
 </DraggablePane>
-
-<style>
-  .vis-settings, .usage-tips {
-    padding: 3pt;
-    background: var(--pane-bg, white);
-  }
-  .vis-settings h5, .usage-tips h5 {
-    margin: 0 0 6px 0;
-  }
-  .setting-item, .tips-item {
-    display: flex;
-    justify-content: space-between;
-    gap: 6pt;
-    padding: 1pt;
-    line-height: 1.5;
-  }
-  .setting-item span:first-child, .tips-item span:first-child {
-    color: var(--text-color-muted, #666);
-  }
-</style>

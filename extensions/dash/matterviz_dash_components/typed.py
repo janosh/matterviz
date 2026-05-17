@@ -38,7 +38,9 @@ class Structure(MatterViz):
         height: float | None = None,
         hidden_elements: list | None = None,
         hidden_prop_vals: list | None = None,
+        highlighted_sites: list[int] | None = None,
         hovered: bool | None = None,
+        hovered_site_idx: int | None = None,
         info_pane_open: bool | None = None,
         isosurface_settings: list | None = None,
         loading: bool | None = None,
@@ -105,8 +107,12 @@ class Structure(MatterViz):
             mv_props["hidden_elements"] = hidden_elements
         if hidden_prop_vals is not None:
             mv_props["hidden_prop_vals"] = hidden_prop_vals
+        if highlighted_sites is not None:
+            mv_props["highlighted_sites"] = highlighted_sites
         if hovered is not None:
             mv_props["hovered"] = hovered
+        if hovered_site_idx is not None:
+            mv_props["hovered_site_idx"] = hovered_site_idx
         if info_pane_open is not None:
             mv_props["info_pane_open"] = info_pane_open
         if isosurface_settings is not None:

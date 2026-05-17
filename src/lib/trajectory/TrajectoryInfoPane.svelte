@@ -1,15 +1,12 @@
 <script lang="ts">
   import type { InfoItem } from '$lib/layout'
-  import Icon from '$lib/Icon.svelte'
+  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import { format_num } from '$lib/labels'
-  import { sanitize_html } from '$lib/sanitize'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { type AnyStructure } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
-  import { tooltip as create_tooltip } from 'svelte-multiselect/attachments'
-  import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryType } from './index'
 
   let {
@@ -34,20 +31,6 @@
     toggle_props?: ComponentProps<typeof DraggablePane>[`toggle_props`]
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   } = $props()
-
-  let copied_items = new SvelteSet<string>()
-
-  async function copy_item(label: string, value: string | number, key: string) {
-    try {
-      await navigator.clipboard.writeText(`${label}: ${value}`)
-      copied_items.add(key)
-      setTimeout(() => {
-        copied_items.delete(key)
-      }, 1000)
-    } catch (error) {
-      console.error(`Failed to copy to clipboard:`, error)
-    }
-  }
 
   // Helper functions
   const format_size = (bytes: number) =>
@@ -296,9 +279,15 @@
         }
       }
     }
-
     return sections
   })
+
+  let info_cards = $derived(
+    info_pane_data.map(({ title, items }) => ({ title, rows: items })),
+  )
+  let n_info_items = $derived(
+    info_pane_data.reduce((count, { items }) => count + items.length, 0),
+  )
 </script>
 
 <DraggablePane
@@ -315,73 +304,10 @@
   {...rest}
 >
   <h4 style="margin-top: 0">Trajectory Info</h4>
-  {#each info_pane_data as section, sec_idx (section.title)}
-    {#if sec_idx > 0}<hr />{/if}
-    <section>
-      {#if section.title && section.title !== `File`}
-        <h4>{section.title}</h4>
-      {/if}
-      {#each section.items as item (item.key ?? item.label)}
-        {@const { key, label, value, tooltip } = item}
-        <div
-          class="clickable"
-          aria-label="Click to copy: {label}: {value}"
-          onclick={() => copy_item(label, value, key ?? label)}
-          role="button"
-          tabindex="0"
-          onkeydown={(event) => {
-            if ([`Enter`, ` `].includes(event.key)) {
-              event.preventDefault()
-              copy_item(label, value, key ?? label)
-            }
-          }}
-        >
-          <span>{@html sanitize_html(label)}</span>
-          <span title={tooltip} {@attach create_tooltip()}>{@html sanitize_html(value)}</span>
-          {#if copied_items.has(key ?? label)}
-            <Icon
-              icon="Check"
-              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-              class="copy-checkmark"
-            />
-          {/if}
-        </div>
-      {/each}
-    </section>
-  {/each}
+  <InfoPaneCards
+    cards={info_cards}
+    filter_placeholder="Filter trajectory info"
+    empty_label="trajectory info"
+    show_filter={n_info_items > 5}
+  />
 </DraggablePane>
-
-<style>
-  section div {
-    display: flex;
-    justify-content: space-between;
-    gap: 6pt;
-    padding: 1pt;
-    line-height: 1.5;
-  }
-  section div.clickable {
-    cursor: pointer;
-    position: relative;
-  }
-  section div:hover {
-    background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
-  }
-  section :global(.copy-checkmark) {
-    position: absolute;
-    top: 50%;
-    right: 3pt;
-    transform: translateY(-50%);
-    background: var(--pane-bg);
-    border-radius: 50%;
-    padding: 3pt;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: fade-in 0.1s ease-out;
-  }
-  @keyframes fade-in {
-    0% {
-      opacity: 0;
-    }
-  }
-</style>
