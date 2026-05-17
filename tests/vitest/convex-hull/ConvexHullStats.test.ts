@@ -170,7 +170,7 @@ describe(`ConvexHullStats`, () => {
     mount_stats()
     trigger(doc_query(`[data-testid="pd-total-entries"]`))
     flushSync()
-    expect(navigator.clipboard.writeText).toHaveBeenCalled()
+    expect(navigator.clipboard[`writeText`]).toHaveBeenCalled()
   })
 
   test(`renders both histograms when entries have energy and hull data`, () => {

@@ -183,8 +183,8 @@ describe(`svg_to_png_blob`, () => {
   let orig_revokeObjectURL: typeof URL.revokeObjectURL
 
   beforeEach(() => {
-    orig_createObjectURL = globalThis.URL.createObjectURL
-    orig_revokeObjectURL = globalThis.URL.revokeObjectURL
+    orig_createObjectURL = globalThis.URL[`createObjectURL`]
+    orig_revokeObjectURL = globalThis.URL[`revokeObjectURL`]
 
     mock_canvas_element = {
       getContext: vi.fn().mockReturnValue({ clearRect: vi.fn(), drawImage: vi.fn() }),
@@ -266,7 +266,7 @@ describe(`svg_to_png_blob`, () => {
   test(`serializes cloned SVG as blob for image loading`, () => {
     const svg = make_svg(`0 0 100 100`)
     void svg_to_png_blob(svg, 72)
-    expect(URL.createObjectURL).toHaveBeenCalledWith(
+    expect(URL[`createObjectURL`]).toHaveBeenCalledWith(
       expect.objectContaining({ type: `image/svg+xml;charset=utf-8` }),
     )
   })
@@ -286,7 +286,7 @@ describe(`svg_to_png_blob`, () => {
     try {
       const svg = make_svg(`0 0 100 100`)
       await svg_to_png_blob(svg, 72)
-      expect(URL.revokeObjectURL).toHaveBeenCalled()
+      expect(URL[`revokeObjectURL`]).toHaveBeenCalled()
     } finally {
       globalThis.Image = orig_image
     }

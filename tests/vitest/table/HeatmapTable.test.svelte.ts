@@ -2032,8 +2032,8 @@ describe(`HeatmapTable`, () => {
       copy_btn.click()
       await tick()
 
-      expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1)
-      const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock
+      expect(navigator.clipboard[`writeText`]).toHaveBeenCalledTimes(1)
+      const written = (navigator.clipboard[`writeText`] as ReturnType<typeof vi.fn>).mock
         .calls[0][0] as string
       expect(written).toContain(`Model\tScore\tValue`)
       expect(written).toContain(`Model A`)

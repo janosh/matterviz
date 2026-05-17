@@ -77,8 +77,6 @@ export default defineConfig({
       'eslint-plugin-vitest/require-awaited-expect-poll': `error`,
       'eslint-plugin-vitest/require-mock-type-parameters': `off`, // 242 violations, needs manual type annotations
 
-      '@typescript-eslint/unbound-method': `off`,
-      'typescript/unbound-method': `off`,
       'eslint-plugin-unicorn/consistent-function-scoping': `off`, // Svelte reactive closures
       // Pervasive intentional patterns
       '@typescript-eslint/no-unsafe-type-assertion': `off`,
@@ -87,8 +85,6 @@ export default defineConfig({
       'no-await-in-loop': `off`,
       'no-shadow': `off`,
       'eslint-plugin-unicorn/no-array-sort': `off`, // [...arr].sort() is idiomatic
-      'eslint-plugin-import/no-unassigned-import': `off`, // CSS side-effect imports
-      'eslint-plugin-import/no-self-import': `off`, // recursive Svelte components
       '@typescript-eslint/no-redundant-type-constituents': `error`,
       'eslint-plugin-unicorn/require-module-specifiers': `off`,
       'oxc/no-map-spread': `off`,

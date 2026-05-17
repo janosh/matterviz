@@ -6,7 +6,10 @@ import { IS_CI } from './helpers'
 const LOAD_TIMEOUT = 15_000
 
 // Helper to conditionally skip entire describe blocks on CI
-const describe_local_only = IS_CI ? test.describe.skip : test.describe
+const describe_local_only = (title: string, callback: () => void): void => {
+  if (IS_CI) test.describe.skip(title, callback)
+  else test.describe(title, callback)
+}
 
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
