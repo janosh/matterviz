@@ -546,12 +546,12 @@ async function handle_file_change(
   event_type: `change` | `delete`,
   file_path: string,
   webview: WebviewLike,
-  meta?: WatcherMeta,
+  meta: WatcherMeta = {},
 ): Promise<void> {
   if (event_type === `delete`) {
     try {
       // File was deleted - send notification
-      webview.postMessage({ command: `fileDeleted`, file_path, ...(meta || {}) })
+      webview.postMessage({ command: `fileDeleted`, file_path, ...meta })
     } catch (error) {
       console.error(`[MatterViz] Failed to send fileDeleted message:`, error)
     }
@@ -569,7 +569,7 @@ async function handle_file_change(
         data: updated_file,
         type: infer_view_type(updated_file),
         theme: get_theme(),
-        ...(meta || {}),
+        ...meta,
       })
     } catch (error) {
       console.error(`[MatterViz] Failed to read updated file ${file_path}:`, error)

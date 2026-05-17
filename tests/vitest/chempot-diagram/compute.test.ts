@@ -95,12 +95,10 @@ function make_entry(composition: Record<string, number>, energy_per_atom: number
 }
 
 // Reorder pymatgen [Li, Fe, O] columns to our [Fe, Li, O]
-function reorder_cols(pts: number[][]): number[][] {
-  return pts.map(([li, fe, o]) => [fe, li, o])
-}
+const reorder_cols = (pts: number[][]): number[][] => pts.map(([li, fe, o]) => [fe, li, o])
 
-function sort_rows(pts: number[][]): number[][] {
-  return [...pts]
+const sort_rows = (pts: number[][]): number[][] =>
+  [...pts]
     .map((row) => row.map((val) => Math.round(val * 1e6) / 1e6))
     .sort((a, b) => {
       for (let idx = 0; idx < a.length; idx++) {
@@ -108,7 +106,6 @@ function sort_rows(pts: number[][]): number[][] {
       }
       return 0
     })
-}
 
 function dedup_vertices(pts: number[][], tol: number = 1e-4): number[][] {
   const result: number[][] = []
@@ -261,7 +258,7 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
     const actual_pts = cpd_ternary.domains[our_key]
     expect(actual_pts, `Domain missing for ${our_key}`).toBeDefined()
     const sorted_actual = sort_rows(dedup_vertices(actual_pts))
-    const sorted_expected = sort_rows(reorder_cols(pmg_vertices as number[][]))
+    const sorted_expected = sort_rows(reorder_cols(pmg_vertices))
     expect(sorted_actual.length).toBe(sorted_expected.length)
     for (let idx = 0; idx < sorted_expected.length; idx++) {
       for (let jdx = 0; jdx < sorted_expected[idx].length; jdx++) {
@@ -465,7 +462,7 @@ describe(`error handling`, () => {
   })
 
   test(`empty entries array throws`, () => {
-    expect(() => compute_chempot_diagram([])).toThrow()
+    expect(() => compute_chempot_diagram([])).toThrow(`requires 2+ elements`)
   })
 })
 
@@ -929,7 +926,7 @@ describe(`orthonormal_2d`, () => {
         [1, 1],
         [2, 2],
       ],
-      expected: [-0.70710678, 0.70710678],
+      expected: [-Math.SQRT1_2, Math.SQRT1_2],
       label: `45°`,
     },
     {
@@ -1621,15 +1618,17 @@ describe(`compute_chempot_diagram edge cases`, () => {
     })
     expect(reordered.elements).toEqual([`O`, `Fe`, `Li`])
     // Same domains as default order, just reordered columns
-    expect(Object.keys(reordered.domains).sort()).toEqual(
-      Object.keys(cpd_ternary.domains).sort(),
+    expect(
+      Object.keys(reordered.domains).sort((str_a, str_b) => str_a.localeCompare(str_b)),
+    ).toEqual(
+      Object.keys(cpd_ternary.domains).sort((str_a, str_b) => str_a.localeCompare(str_b)),
     )
     // Verify axes actually swapped: Fe domain's O-axis range (col 0 in reordered)
     // should match its col 2 range in default [Fe,Li,O] order
     const fe_reordered = dedup_vertices(reordered.domains[`Fe`])
     const fe_default = dedup_vertices(cpd_ternary.domains[`Fe`])
-    const re_o_vals = fe_reordered.map((pt) => pt[0]).sort()
-    const def_o_vals = fe_default.map((pt) => pt[2]).sort() // O is axis 2 in default
+    const re_o_vals = fe_reordered.map((pt) => pt[0]).sort((val_a, val_b) => val_a - val_b)
+    const def_o_vals = fe_default.map((pt) => pt[2]).sort((val_a, val_b) => val_a - val_b) // O is axis 2 in default
     expect(re_o_vals.length).toBe(def_o_vals.length)
     for (let idx = 0; idx < re_o_vals.length; idx++) {
       expect(re_o_vals[idx]).toBeCloseTo(def_o_vals[idx], 4)

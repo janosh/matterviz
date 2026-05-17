@@ -34,7 +34,7 @@ describe(`format_utc_time`, () => {
       description: `returns N/A for invalid date string`,
     },
   ])(`$description`, ({ input, expected }) => {
-    expect(format_utc_time(input as Date | string | undefined)).toBe(expected)
+    expect(format_utc_time(input)).toBe(expected)
   })
 
   test(`removes milliseconds from output`, () => {
@@ -171,7 +171,7 @@ describe(`format_relative_time`, () => {
         description: `invalid date string`,
       },
     ])(`returns N/A for $description`, ({ input, expected }) => {
-      expect(format_relative_time(input as string | undefined, reference)).toBe(expected)
+      expect(format_relative_time(input, reference)).toBe(expected)
     })
 
     test(`returns N/A for invalid reference_date`, () => {
@@ -225,7 +225,7 @@ describe(`format_relative_time`, () => {
 })
 
 describe(`format_duration`, () => {
-  const start = new Date(`2024-01-15T10:00:00.000Z`)
+  const reference_start = new Date(`2024-01-15T10:00:00.000Z`)
 
   describe(`duration formats`, () => {
     test.each([
@@ -285,7 +285,7 @@ describe(`format_duration`, () => {
         description: `exactly 5 days`,
       },
     ])(`$description`, ({ end, expected }) => {
-      expect(format_duration(start, end)).toBe(expected)
+      expect(format_duration(reference_start, end)).toBe(expected)
     })
   })
 
@@ -297,7 +297,7 @@ describe(`format_duration`, () => {
     })
 
     test(`handles mixed Date and string`, () => {
-      expect(format_duration(start, `2024-01-15T11:00:00.000Z`)).toBe(`1h`)
+      expect(format_duration(reference_start, `2024-01-15T11:00:00.000Z`)).toBe(`1h`)
     })
   })
 
@@ -359,24 +359,24 @@ describe(`format_duration`, () => {
     })
 
     test(`handles same start and end time`, () => {
-      expect(format_duration(start, start)).toBe(`<1m`)
+      expect(format_duration(reference_start, reference_start)).toBe(`<1m`)
     })
   })
 
   describe(`precision handling`, () => {
     test(`minutes component only shows when non-zero`, () => {
       const end = new Date(`2024-01-15T12:00:00.000Z`)
-      expect(format_duration(start, end)).toBe(`2h`)
+      expect(format_duration(reference_start, end)).toBe(`2h`)
     })
 
     test(`hours component only shows when non-zero`, () => {
       const end = new Date(`2024-01-16T10:00:00.000Z`)
-      expect(format_duration(start, end)).toBe(`1d`)
+      expect(format_duration(reference_start, end)).toBe(`1d`)
     })
 
     test(`drops minutes when showing days`, () => {
       const end = new Date(`2024-01-16T11:45:00.000Z`)
-      expect(format_duration(start, end)).toBe(`1d 1h`)
+      expect(format_duration(reference_start, end)).toBe(`1d 1h`)
     })
   })
 })

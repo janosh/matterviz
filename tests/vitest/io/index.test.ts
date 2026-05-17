@@ -68,13 +68,10 @@ describe(`load_from_url`, () => {
     return response
   }
 
-  const test_url_loading = async (
+  const load_test_url = async (
     url: string,
     content: string | ArrayBuffer,
     headers: Record<string, string>,
-    expected_content_type: `string` | `ArrayBuffer`,
-    expected_filename?: string,
-    expected_content: string | null = null,
   ) => {
     const mock_response = create_mock_response(content, headers)
     globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
@@ -82,29 +79,22 @@ describe(`load_from_url`, () => {
     let received_content: string | ArrayBuffer | null = null
     let received_filename: string | null = null
 
-    await load_from_url(url, (content, filename) => {
-      received_content = content
+    await load_from_url(url, (loaded_content, filename) => {
+      received_content = loaded_content
       received_filename = filename
     })
 
-    if (expected_content_type === `string` && typeof expected_content === `string`) {
-      expect(typeof received_content).toBe(`string`)
-      expect(received_content).toBe(expected_content)
-    } else if (expected_content_type === `ArrayBuffer`) {
-      expect(received_content).toBeInstanceOf(ArrayBuffer)
-    }
-    if (expected_filename) expect(received_filename).toBe(expected_filename)
+    return { received_content, received_filename }
   }
 
   test(`text content`, async () => {
-    await test_url_loading(
+    const { received_content, received_filename } = await load_test_url(
       `https://example.com/test.json`,
       `data`,
       { 'content-type': `text/plain` },
-      `string`,
-      `test.json`,
-      `data`,
     )
+    expect(received_content).toBe(`data`)
+    expect(received_filename).toBe(`test.json`)
     expect(fetch).toHaveBeenCalledWith(`https://example.com/test.json`)
   })
 
@@ -119,13 +109,13 @@ describe(`load_from_url`, () => {
     [`https://example.com/data.pkl`, `data.pkl`],
     [`https://example.com/output.dat`, `output.dat`],
   ])(`binary extensions %s`, async (url, expected_filename) => {
-    await test_url_loading(
+    const { received_content, received_filename } = await load_test_url(
       url,
       new ArrayBuffer(8),
       { 'content-type': `application/octet-stream` },
-      `ArrayBuffer`,
-      expected_filename,
     )
+    expect(received_content).toBeInstanceOf(ArrayBuffer)
+    expect(received_filename).toBe(expected_filename)
   })
 
   test.each([
@@ -210,7 +200,7 @@ describe(`load_from_url`, () => {
     async (_, magic_bytes, expected_type, expected_content) => {
       const header = new Uint8Array([
         ...magic_bytes,
-        ...new Array(16 - magic_bytes.length).fill(0),
+        ...Array(16 - magic_bytes.length).fill(0),
       ])
       const mock_head_response = create_mock_response(header.buffer, {
         'content-type': `application/octet-stream`,
@@ -281,14 +271,11 @@ describe(`load_from_url`, () => {
     [`https://example.com/path/to/structure.xyz`, `structure.xyz`],
     [`structure.xyz`, `structure.xyz`],
   ])(`filename extraction: %s`, async (url, expected_filename) => {
-    await test_url_loading(
-      url,
-      `content`,
-      { 'content-type': `text/plain` },
-      `string`,
-      expected_filename,
-      undefined,
-    )
+    const { received_content, received_filename } = await load_test_url(url, `content`, {
+      'content-type': `text/plain`,
+    })
+    expect(received_content).toBe(`content`)
+    expect(received_filename).toBe(expected_filename)
   })
 
   test(`fetch error with status`, async () => {
@@ -317,10 +304,6 @@ describe(`load_from_url`, () => {
   })
 
   describe(`Content-Disposition edge cases`, () => {
-    const create_mock_response = (content: string, headers: Record<string, string>) => {
-      return new Response(content, { headers })
-    }
-
     test.each([
       // filename* with UTF-8 encoding
       [
@@ -349,9 +332,11 @@ describe(`load_from_url`, () => {
         `invalid percent-encoding returns raw value`,
       ],
     ])(`%s -> %s (%s)`, async (disposition, expected, _desc) => {
-      const mock_response = create_mock_response(`content`, {
-        'content-type': `text/plain`,
-        'content-disposition': `attachment; ${disposition}`,
+      const mock_response = new Response(`content`, {
+        headers: {
+          'content-type': `text/plain`,
+          'content-disposition': `attachment; ${disposition}`,
+        },
       })
       globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
@@ -364,9 +349,11 @@ describe(`load_from_url`, () => {
     })
 
     test(`falls back to URL basename when Content-Disposition has no filename`, async () => {
-      const mock_response = create_mock_response(`content`, {
-        'content-type': `text/plain`,
-        'content-disposition': `attachment`,
+      const mock_response = new Response(`content`, {
+        headers: {
+          'content-type': `text/plain`,
+          'content-disposition': `attachment`,
+        },
       })
       globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
@@ -380,10 +367,6 @@ describe(`load_from_url`, () => {
   })
 
   describe(`VASP file detection`, () => {
-    const create_mock_response = (content: string) => {
-      return new Response(content, { headers: { 'content-type': `text/plain` } })
-    }
-
     test.each([
       [`POSCAR`, `POSCAR`],
       [`poscar`, `poscar`],
@@ -392,7 +375,9 @@ describe(`load_from_url`, () => {
       [`CONTCAR`, `CONTCAR`],
       [`contcar`, `contcar`],
     ])(`recognizes VASP file %s as text`, async (basename, expected_filename) => {
-      const mock_response = create_mock_response(`Si\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43`)
+      const mock_response = new Response(`Si\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43`, {
+        headers: { 'content-type': `text/plain` },
+      })
       globalThis.fetch = vi.fn().mockResolvedValueOnce(mock_response)
 
       let received_content: string | ArrayBuffer | null = null
@@ -410,12 +395,10 @@ describe(`load_from_url`, () => {
   })
 
   describe(`async callback support`, () => {
-    const create_mock_response = (content: string) => {
-      return new Response(content, { headers: { 'content-type': `text/plain` } })
-    }
-
     test(`awaits async callback`, async () => {
-      const mock_response = create_mock_response(`content`)
+      const mock_response = new Response(`content`, {
+        headers: { 'content-type': `text/plain` },
+      })
       globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
       const processed_files: string[] = []

@@ -76,10 +76,10 @@ describe(`ternary: composition and plotting`, () => {
   test(`composition to barycentric throws on invalid inputs`, () => {
     expect(() =>
       composition_to_barycentric_3d({ Li: 1 }, [`Li`, `O`] as unknown as ElementSymbol[]),
-    ).toThrow()
+    ).toThrow(`Ternary system requires exactly 3 elements`)
     expect(() =>
       composition_to_barycentric_3d({ Li: 0, O: 0, Na: 0 }, [`Li`, `O`, `Na`]),
-    ).toThrow()
+    ).toThrow(`Composition has no elements from the ternary system`)
   })
 
   test(`get_ternary_3d_coordinates filters entries and projects coords`, () => {

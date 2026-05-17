@@ -2,7 +2,7 @@
   import Icon from '$lib/Icon.svelte'
   import { get_alphabetical_formula } from '$lib/composition/format'
   import { ELEM_SYMBOLS } from '$lib/labels'
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { FormulaSearchMode } from './index'
   import {
@@ -398,11 +398,11 @@
     const operator = token.startsWith(`-`) || token.startsWith(`!`)
       ? `exclude`
       : `include`
-    const value =
+    const stripped_value =
       token.startsWith(`+`) || token.startsWith(`-`) || token.startsWith(`!`)
         ? token.slice(1)
         : token
-    return { operator, value }
+    return { operator, value: stripped_value }
   }
 
   function serialize_token(

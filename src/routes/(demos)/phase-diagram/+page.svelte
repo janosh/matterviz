@@ -219,9 +219,9 @@
   // Handle direct file drop (local files)
   function handle_direct_file_drop(file: File): void {
     const reader = new FileReader()
-    reader.onload = async (load_event) => {
+    const handle_load = async (): Promise<void> => {
       try {
-        const content = load_event.target?.result
+        const content = reader.result
         if (content) {
           await parse_file_content(content, file.name)
         }
@@ -229,6 +229,7 @@
         error_message = format_error(`Failed to parse file`, exc)
       }
     }
+    reader.addEventListener(`load`, () => void handle_load())
 
     if (is_gzipped(file.name)) reader.readAsArrayBuffer(file)
     else reader.readAsText(file)

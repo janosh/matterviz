@@ -71,7 +71,7 @@ export const create_structure = (
     }
 
     const xyz = pos
-    const abc = cart_to_frac ? cart_to_frac(xyz as Vec3) : ([0, 0, 0] as Vec3)
+    const abc = cart_to_frac ? cart_to_frac(xyz) : ([0, 0, 0] as Vec3)
 
     const force = force_data?.[idx]
     const properties = is_valid_vec3(force) ? { force } : {}

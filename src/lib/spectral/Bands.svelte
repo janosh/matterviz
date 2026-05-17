@@ -234,17 +234,17 @@
 
   // Collect all path segments across structures once (shared by strict checks and plotting)
   let all_segments = $derived.by(() => {
-    const all_segments: Record<string, [string, BaseBandStructure][]> = {}
+    const collected_segments: Record<string, [string, BaseBandStructure][]> = {}
     for (const [label, bs] of Object.entries(band_structs_dict)) {
       for (const branch of bs.branches) {
         const start_label = bs.qpoints[branch.start_index]?.label ?? undefined
         const end_label = bs.qpoints[branch.end_index]?.label ?? undefined
         const segment_key = helpers.get_segment_key(start_label, end_label)
-        all_segments[segment_key] ??= []
-        all_segments[segment_key].push([label, bs])
+        collected_segments[segment_key] ??= []
+        collected_segments[segment_key].push([label, bs])
       }
     }
-    return all_segments
+    return collected_segments
   })
 
   let num_structures = $derived(Object.keys(band_structs_dict).length)
@@ -626,8 +626,8 @@
     }
     // Range became invalid - clear parent's range to propagate reset
     if (`range` in y_axis) {
-      const { range: _omit, ...rest } = y_axis
-      y_axis = rest
+      const { range: _omit, ...axis_without_range } = y_axis
+      y_axis = axis_without_range
     }
   })
 

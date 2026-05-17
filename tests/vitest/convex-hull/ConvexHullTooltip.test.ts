@@ -20,7 +20,7 @@ type TooltipProps = {
   polymorph_stats_map?: Map<string, PolymorphStats>
   highlight_style?: { color?: string }
   show_fractional?: boolean
-  tooltip?: ConvexHullTooltipProp<PhaseData>
+  tooltip?: ConvexHullTooltipProp
 }
 
 const mount_tooltip = (props: Partial<TooltipProps> = {}) =>

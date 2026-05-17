@@ -46,18 +46,18 @@
   // Bohr atom electron orbital period is given by
   // T = (n^3 h^3) / (4pi^2 m K e^4 Z^2) = 1.52 * 10^-16 * n^3 / Z^2 s
   // with n the shell number, Z the atomic number, m the mass of the electron
-  let _nucleus_props = $derived({
+  let nucleus_svg_props = $derived({
     r: 20,
     fill: base_fill,
     'fill-opacity': `0.3`,
     ...nucleus_props,
   })
-  let _shell_props = $derived({
+  let shell_svg_props = $derived({
     stroke: base_fill,
     fill: `none`,
     ...shell_props,
   })
-  let _electron_props = $derived({
+  let electron_svg_props = $derived({
     r: 3,
     stroke: base_fill,
     fill: `blue`,
@@ -75,7 +75,7 @@
   {...rest}
 >
   <!-- nucleus -->
-  <circle class="nucleus" {..._nucleus_props}>
+  <circle class="nucleus" {...nucleus_svg_props}>
     {#if name}
       <title>{name}</title>
     {/if}
@@ -87,12 +87,12 @@
   <!-- electron orbitals -->
   {#each shells as electrons, shell_idx (`${shell_idx}-${electrons}`)}
     {@const n = shell_idx + 1}
-    {@const shell_radius = _nucleus_props.r + n * shell_width}
+    {@const shell_radius = nucleus_svg_props.r + n * shell_width}
     {@const active = n === highlight_shell}
     <g class="shell" style:animation-duration="{orbital_period * n ** 1.5}s">
       <circle
         r={shell_radius}
-        {..._shell_props}
+        {...shell_svg_props}
         style:stroke-width={active ? 2 : 1}
         style:stroke={active ? `yellow` : base_fill}
       />
@@ -101,7 +101,7 @@
       {#each Array(electrons) as _, elec_idx (elec_idx)}
         {@const elec_x = Math.cos((2 * Math.PI * elec_idx) / electrons) * shell_radius}
         {@const elec_y = Math.sin((2 * Math.PI * elec_idx) / electrons) * shell_radius}
-        <circle class="electron" cx={elec_x} cy={elec_y} {..._electron_props}>
+        <circle class="electron" cx={elec_x} cy={elec_y} {...electron_svg_props}>
           <title>Electron {elec_idx + 1}</title>
         </circle>
         {#if number_electrons}

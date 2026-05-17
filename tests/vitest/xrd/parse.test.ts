@@ -560,7 +560,7 @@ describe(`parse_brml_file`, () => {
       'RawData0.xml': new TextEncoder().encode(xml_content),
     }
     const zipped = zipSync(files)
-    return zipped.buffer as ArrayBuffer
+    return zipped.buffer
   }
 
   test(`parses mock BRML file with intensities`, async () => {
@@ -581,12 +581,12 @@ describe(`parse_brml_file`, () => {
   })
 
   test.each([
-    [`invalid ZIP data`, () => new TextEncoder().encode(`not a zip`).buffer as ArrayBuffer],
+    [`invalid ZIP data`, () => new TextEncoder().encode(`not a zip`).buffer],
     [
       `ZIP without XRD data`,
       () => {
         const files = { 'readme.txt': new TextEncoder().encode(`not XRD`) }
-        return zipSync(files).buffer as ArrayBuffer
+        return zipSync(files).buffer
       },
     ],
   ])(`returns null for %s`, async (_desc, make_buffer) => {
@@ -603,7 +603,7 @@ describe(`parse_brml_file`, () => {
     const files = { 'data.xml': new TextEncoder().encode(xml_content) }
     const zipped = zipSync(files)
 
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
+    const result = await parse_brml_file(zipped.buffer)
     expect(result).not.toBeNull()
     expect(result?.x[0]).toBeCloseTo(15, 5) // Start angle
     expect(result?.x[4]).toBeCloseTo(15.04, 5) // 15 + 4*0.01
@@ -662,7 +662,7 @@ describe(`parse_brml_file`, () => {
     const encoded_files = Object.fromEntries(
       Object.entries(files).map(([k, v]) => [k, new TextEncoder().encode(v)]),
     )
-    const result = await parse_brml_file(zipSync(encoded_files).buffer as ArrayBuffer)
+    const result = await parse_brml_file(zipSync(encoded_files).buffer)
     expect(result).not.toBeNull()
     expected_x.forEach((x, idx) => expect(result?.x[idx]).toBeCloseTo(x, 2))
     expected_y.forEach((y, idx) => expect(result?.y[idx]).toBeCloseTo(y, 1))
@@ -681,7 +681,7 @@ describe(`parse_brml_file`, () => {
     const files = { 'RawData0.xml': new TextEncoder().encode(xml_content) }
     const zipped = zipSync(files)
 
-    const result = await parse_brml_file(zipped.buffer as ArrayBuffer)
+    const result = await parse_brml_file(zipped.buffer)
     expect(result).not.toBeNull()
     expect(result?.x).toEqual([45.5])
     expect(result?.y).toEqual([100]) // Single element normalized to 100
@@ -711,7 +711,7 @@ describe(`parse_xrd_file`, () => {
       `scan.xrdml`,
     ],
   ])(`routes %s files correctly`, async (_desc, content, filename) => {
-    const result = await parse_xrd_file(content as string | ArrayBuffer, filename)
+    const result = await parse_xrd_file(content, filename)
     expect(result).not.toBeNull()
     expect(result?.x).toEqual([10, 20])
     expect(result?.y[1]).toBeCloseTo(100, 1) // max normalized to 100
@@ -719,7 +719,7 @@ describe(`parse_xrd_file`, () => {
 
   test(`routes .brml files correctly`, async () => {
     const files = { 'RawData0.xml': new TextEncoder().encode(brml_xml) }
-    const result = await parse_xrd_file(zipSync(files).buffer as ArrayBuffer, `scan.brml`)
+    const result = await parse_xrd_file(zipSync(files).buffer, `scan.brml`)
     expect(result).not.toBeNull()
     expect(result?.x).toEqual([10, 11]) // Start=10, Step=1
     expect(result?.y[0]).toBeCloseTo(50, 1) // 100/200*100

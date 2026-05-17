@@ -106,11 +106,11 @@ function upsample_grid(grid: number[][][], factor: number): number[][][] {
   for (let iz = 0; iz < new_nz; iz++) fz_arr[iz] = (iz / new_nz) * nz
 
   // Preallocate output grid
-  const new_grid: number[][][] = new Array(new_nx)
+  const new_grid: number[][][] = Array(new_nx)
 
   for (let ix = 0; ix < new_nx; ix++) {
     const fx = fx_arr[ix]
-    const iy_arr: number[][] = new Array(new_ny)
+    const iy_arr: number[][] = Array(new_ny)
     for (let iy = 0; iy < new_ny; iy++) {
       const fy = fy_arr[iy]
       const iz_arr = new Float64Array(new_nz)
@@ -426,7 +426,7 @@ export function compute_fermi_slice(
       math.scale(fermi_data.k_lattice[1], miller_indices[1]),
     ),
     math.scale(fermi_data.k_lattice[2], miller_indices[2]),
-  ) as Vec3
+  )
 
   const normal_len = Math.hypot(...plane_normal)
   if (normal_len < EPS) {
@@ -675,7 +675,7 @@ function slice_surface_with_plane(
     const is_closed = math.euclidean_dist(first, last) < CLOSED_CONTOUR_TOLERANCE
 
     // Project to 2D (inlined dot product for speed)
-    const points_2d: [number, number][] = new Array(contour_points.length)
+    const points_2d: [number, number][] = Array(contour_points.length)
     for (let idx = 0; idx < contour_points.length; idx++) {
       const point = contour_points[idx]
       points_2d[idx] = [

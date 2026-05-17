@@ -5,7 +5,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { ColorScaleSelect } from '$lib/plot'
   import type { ComponentProps } from 'svelte'
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type {
     ConvexHullControlsType,

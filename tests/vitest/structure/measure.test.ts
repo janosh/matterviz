@@ -249,7 +249,7 @@ describe(`measure: angles`, () => {
       const origin: Vec3 = [0, 0, 0]
       // Each row is a lattice vector — displacement by any single vector is the same site
       for (const vec of lattice) {
-        expect(distance_pbc(origin, vec as Vec3, lattice)).toBeCloseTo(0, 10)
+        expect(distance_pbc(origin, vec, lattice)).toBeCloseTo(0, 10)
       }
       // Sum of all three lattice vectors is also an equivalent site
       const all_sum: Vec3 = [

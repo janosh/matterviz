@@ -82,7 +82,7 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
       0x79,
       0x00,
       0x00, // "ASE-Trajectory"
-      ...new Array(176).fill(0), // Mock trajectory data
+      ...Array(176).fill(0), // Mock trajectory data
     ])
     const result = base64_to_array_buffer(btoa(String.fromCharCode(...ase_data)))
     const result_array = new Uint8Array(result)
@@ -120,7 +120,7 @@ describe(`VSCode Download Integration`, () => {
   test(`handles binary data (PNG) correctly`, async () => {
     vi.useFakeTimers()
     vi.resetModules()
-    let onload: (() => void) | undefined
+    let load_listener: (() => void) | undefined
     let result: string | null = null
 
     globalThis.FileReader = vi.fn(function (this: FileReader) {
@@ -132,10 +132,12 @@ describe(`VSCode Download Integration`, () => {
           const binary_string = String.fromCharCode(...uint8_array)
           const base64_string = btoa(binary_string)
           result = `data:${blob.type};base64,${base64_string}`
-          onload?.()
+          load_listener?.()
         }, 0)
       })
-      Object.defineProperty(this, `onload`, { set: (fn) => (onload = fn) })
+      this.addEventListener = vi.fn((type: string, listener: EventListener) => {
+        if (type === `load`) load_listener = listener as () => void
+      })
       Object.defineProperty(this, `result`, { get: () => result })
     }) as unknown as typeof FileReader
 
@@ -179,11 +181,13 @@ describe(`VSCode Download Integration`, () => {
   test(`handles FileReader errors for binary data`, async () => {
     vi.useFakeTimers()
     vi.resetModules()
-    let onerror: (() => void) | undefined
+    let error_listener: (() => void) | undefined
 
     globalThis.FileReader = vi.fn(function (this: FileReader) {
-      this.readAsDataURL = vi.fn(() => setTimeout(() => onerror?.(), 0))
-      Object.defineProperty(this, `onerror`, { set: (fn) => (onerror = fn) })
+      this.readAsDataURL = vi.fn(() => setTimeout(() => error_listener?.(), 0))
+      this.addEventListener = vi.fn((type: string, listener: EventListener) => {
+        if (type === `error`) error_listener = listener as () => void
+      })
     }) as unknown as typeof FileReader
 
     const mock_post_message = vi.fn()

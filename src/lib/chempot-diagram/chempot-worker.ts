@@ -1,6 +1,6 @@
 import { compute_chempot_diagram } from './compute'
 
-self.onmessage = (event: MessageEvent) => {
+self.addEventListener(`message`, (event: MessageEvent) => {
   const { id, entries, config } = event.data
   try {
     const result = compute_chempot_diagram(entries, config)
@@ -8,4 +8,4 @@ self.onmessage = (event: MessageEvent) => {
   } catch (err) {
     postMessage({ id, result: null, error: err instanceof Error ? err.message : String(err) })
   }
-}
+})

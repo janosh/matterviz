@@ -111,7 +111,7 @@ describe(`built-in orderings`, () => {
       if (null_count > 0) {
         const last_n = axis.slice(-null_count)
         for (const item of last_n) {
-          expect(item.data?.[ordering], `${item.label}`).toBeNull()
+          expect(item.data?.[ordering], item.label).toBeNull()
         }
         expect(axis[0].data?.[ordering]).not.toBeNull()
       }

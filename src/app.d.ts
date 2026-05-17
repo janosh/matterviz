@@ -1,12 +1,15 @@
 /// <reference types="@sveltejs/kit" />
 
+import type { ElementColorScheme } from '$lib/colors'
+import type { Crystal } from '$lib/structure'
+
 declare module 'mp-*.json' {
-  const content: import('$lib/structure').Crystal
+  const content: Crystal
   export default content
 }
 
 declare module '*-colors.yml' {
-  const content: import('$lib/colors').ElementColorScheme
+  const content: ElementColorScheme
   export default content
 }
 
@@ -21,4 +24,3 @@ declare global {
 
   var MATTERVIZ_CSS_MAP: Record<string, string> | undefined
 }
-export {}

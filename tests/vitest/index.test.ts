@@ -116,8 +116,8 @@ describe(`Utility Functions`, () => {
 
       await lib.toggle_fullscreen(mock_wrapper)
 
-      if (should_enter) expect(mock_wrapper.requestFullscreen).toHaveBeenCalledOnce()
-      if (should_exit) expect(document.exitFullscreen).toHaveBeenCalledOnce()
+      expect(mock_wrapper[`requestFullscreen`]).toHaveBeenCalledTimes(should_enter ? 1 : 0)
+      expect(document[`exitFullscreen`]).toHaveBeenCalledTimes(should_exit ? 1 : 0)
     })
 
     test(`switches when different element is fullscreen`, async () => {
@@ -126,9 +126,9 @@ describe(`Utility Functions`, () => {
 
       await lib.toggle_fullscreen(mock_wrapper)
 
-      expect(document.exitFullscreen).toHaveBeenCalledOnce()
+      expect(document[`exitFullscreen`]).toHaveBeenCalledOnce()
       await new Promise((r) => setTimeout(r, 0))
-      expect(mock_wrapper.requestFullscreen).toHaveBeenCalledOnce()
+      expect(mock_wrapper[`requestFullscreen`]).toHaveBeenCalledOnce()
     })
 
     test.each([
@@ -149,15 +149,16 @@ describe(`Utility Functions`, () => {
 
     test(`returns early when no wrapper provided`, async () => {
       await lib.toggle_fullscreen(undefined)
-      expect(mock_wrapper.requestFullscreen).not.toHaveBeenCalled()
-      expect(document.exitFullscreen).not.toHaveBeenCalled()
+      expect(mock_wrapper[`requestFullscreen`]).not.toHaveBeenCalled()
+      expect(document[`exitFullscreen`]).not.toHaveBeenCalled()
     })
 
     test(`returns early when wrapper not connected to DOM`, async () => {
       const disconnected = document.createElement(`div`)
-      disconnected.requestFullscreen = vi.fn()
+      const disconnected_request_fullscreen = vi.fn()
+      disconnected.requestFullscreen = disconnected_request_fullscreen
       await lib.toggle_fullscreen(disconnected)
-      expect(disconnected.requestFullscreen).not.toHaveBeenCalled()
+      expect(disconnected_request_fullscreen).not.toHaveBeenCalled()
     })
   })
 })

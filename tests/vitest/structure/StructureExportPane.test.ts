@@ -127,7 +127,7 @@ describe(`StructureExportPane`, () => {
 
       await vi.waitFor(() => {
         expect(str_fn).toHaveBeenCalledWith(simple_structure)
-        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_content)
+        expect(navigator.clipboard[`writeText`]).toHaveBeenCalledWith(expected_content)
       })
     },
   )

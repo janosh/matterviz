@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it, test } from 'vitest'
-import { get_dummy_structure } from '../setup'
+import { get_dummy_structure, read_binary_test_file } from '../setup'
 
 const TRAJECTORY_DIR = `src/site/trajectories`
 
@@ -20,13 +20,6 @@ const read_test_file = (filename: string): string => {
     return gunzipSync(readFileSync(file_path)).toString(`utf-8`)
   }
   return readFileSync(file_path, `utf-8`)
-}
-
-// Helper to read binary trajectory files (e.g., .traj, .h5)
-const read_binary_test_file = (filename: string): ArrayBuffer => {
-  const file_path = join(process.cwd(), TRAJECTORY_DIR, filename)
-  const buffer = readFileSync(file_path)
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 }
 
 describe(`Trajectory File Detection`, () => {
@@ -245,7 +238,7 @@ describe(`Trajectory File Detection`, () => {
     `should throw for %s`,
     (filename) => {
       // @ts-expect-error - filename is not a string
-      expect(() => is_trajectory_file(filename)).toThrow()
+      expect(() => is_trajectory_file(filename)).toThrow(/toLowerCase|Cannot read|symbol/i)
     },
   )
 })
@@ -431,13 +424,19 @@ describe(`VASP XDATCAR Parser`, () => {
   })
 
   it(`should reject invalid content`, async () => {
-    await expect(parse_trajectory_data(`too short`, `XDATCAR`)).rejects.toThrow()
-    await expect(parse_trajectory_data(`invalid\nscale\nfactor`, `XDATCAR`)).rejects.toThrow()
+    await expect(parse_trajectory_data(`too short`, `XDATCAR`)).rejects.toThrow(
+      `XDATCAR file too short`,
+    )
+    await expect(parse_trajectory_data(`invalid\nscale\nfactor`, `XDATCAR`)).rejects.toThrow(
+      `XDATCAR file too short`,
+    )
   })
 
   it(`should handle missing configuration lines`, async () => {
     const invalid_content = `title\n1.0\n1 0 0\n0 1 0\n0 0 1\nH\n1\n`
-    await expect(parse_trajectory_data(invalid_content, `XDATCAR`)).rejects.toThrow()
+    await expect(parse_trajectory_data(invalid_content, `XDATCAR`)).rejects.toThrow(
+      `XDATCAR file too short`,
+    )
   })
 })
 
@@ -568,7 +567,9 @@ ITEM: ATOMS id type x y z
 
   it(`should reject invalid LAMMPS content`, async () => {
     const invalid_content = `This is not a LAMMPS file`
-    await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects.toThrow()
+    await expect(parse_trajectory_data(invalid_content, `test.lammpstrj`)).rejects.toThrow(
+      `Unsupported text format`,
+    )
   })
 
   it(`should use id column as type fallback when no type column exists`, async () => {
@@ -1109,7 +1110,9 @@ describe(`HDF5 Format`, () => {
     // This would require a custom HDF5 file without positions - skip for now
     // but keep the test structure for when we have such a file
     const content = read_binary_test_file(`flame-water-cluster-bad-file.h5`)
-    await expect(parse_trajectory_data(content, `bad-positions.h5`)).rejects.toThrow()
+    await expect(parse_trajectory_data(content, `bad-positions.h5`)).rejects.toThrow(
+      /Missing required.*dataset/i,
+    )
   })
 
   it(`should provide detailed error for missing atomic numbers`, async () => {
@@ -1163,7 +1166,9 @@ describe(`ASE Trajectory Format`, () => {
     const view = new Uint8Array(invalid_buffer)
     view.set([0x12, 0x34, 0x56, 0x78]) // Invalid signature
 
-    await expect(parse_trajectory_data(invalid_buffer, `test.traj`)).rejects.toThrow()
+    await expect(parse_trajectory_data(invalid_buffer, `test.traj`)).rejects.toThrow(
+      `Unsupported binary format`,
+    )
   })
 
   it(`should reject truncated ASE trajectory`, async () => {
@@ -1173,7 +1178,9 @@ describe(`ASE Trajectory Format`, () => {
     const view = new Uint8Array(truncated)
     view.set([0x89, 0x48, 0x44, 0x46]) // HDF5 magic bytes, not ASE ULM format
 
-    await expect(parse_trajectory_data(truncated, `truncated.traj`)).rejects.toThrow()
+    await expect(parse_trajectory_data(truncated, `truncated.traj`)).rejects.toThrow(
+      `Unsupported binary format`,
+    )
   })
 })
 
@@ -1233,7 +1240,9 @@ describe(`JSON Formats`, () => {
 
   it(`should handle malformed JSON gracefully`, async () => {
     const malformed_json = `{ "frames": [{ "structure": { "sites": [ invalid`
-    await expect(parse_trajectory_data(malformed_json, `test.json`)).rejects.toThrow()
+    await expect(parse_trajectory_data(malformed_json, `test.json`)).rejects.toThrow(
+      `Unsupported text format`,
+    )
   })
 })
 
@@ -1311,7 +1320,9 @@ describe(`Error Handling`, () => {
     [undefined, `undefined.txt`],
     [{}, `empty-object.json`],
   ])(`should reject invalid input: %s`, async (content, filename) => {
-    await expect(parse_trajectory_data(content, filename)).rejects.toThrow()
+    await expect(parse_trajectory_data(content, filename)).rejects.toThrow(
+      /Unsupported|Invalid|Unrecognized/,
+    )
   })
 
   it(`should provide helpful error messages`, async () => {
@@ -1321,7 +1332,9 @@ describe(`Error Handling`, () => {
     )
 
     const invalid_xdatcar = `title\ninvalid_scale\n`
-    await expect(parse_trajectory_data(invalid_xdatcar, `XDATCAR`)).rejects.toThrow()
+    await expect(parse_trajectory_data(invalid_xdatcar, `XDATCAR`)).rejects.toThrow(
+      `XDATCAR file too short`,
+    )
   })
 
   it(`should handle edge cases in XYZ parsing`, async () => {

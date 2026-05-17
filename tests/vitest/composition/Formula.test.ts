@@ -227,7 +227,7 @@ test(`Formula component ordering: original`, () => {
     target: document.body,
     props: { formula: `OHFe`, ordering: `original` },
   })
-  const symbols = Array.from(document.querySelectorAll(`.element-symbol`)) as Element[]
+  const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
   const text = symbols.map((elem) => elem.textContent).join(``)
   expect(text).toBe(`OHFe`)
 })
@@ -238,7 +238,7 @@ test(`Formula component ordering: alphabetical`, () => {
     target: document.body,
     props: { formula: `OHFe`, ordering: `alphabetical` },
   })
-  const symbols = Array.from(document.querySelectorAll(`.element-symbol`)) as Element[]
+  const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
   const text = symbols.map((elem) => elem.textContent).join(``)
   expect(text).toBe(`FeHO`)
 })
@@ -249,7 +249,7 @@ test(`Formula component ordering: electronegativity`, () => {
     target: document.body,
     props: { formula: `ONa`, ordering: `electronegativity` },
   })
-  const symbols = Array.from(document.querySelectorAll(`.element-symbol`)) as Element[]
+  const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
   const text = symbols.map((elem) => elem.textContent).join(``)
   // Na has lower electronegativity than O, so it should come first
   expect(text).toBe(`NaO`)
@@ -258,7 +258,7 @@ test(`Formula component ordering: electronegativity`, () => {
 test(`Formula component ordering: hill`, () => {
   // Mounting to document.body
   mount(Formula, { target: document.body, props: { formula: `C2H6O`, ordering: `hill` } })
-  const symbols = Array.from(document.querySelectorAll(`.element-symbol`)) as Element[]
+  const symbols = Array.from(document.querySelectorAll(`.element-symbol`))
   const text = symbols.map((elem) => elem.textContent).join(``)
   // Hill notation: C first, H second (if C present), then alphabetical
   expect(text).toBe(`CHO`)

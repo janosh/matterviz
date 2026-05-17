@@ -100,15 +100,15 @@
       btn.setAttribute(`role`, `option`)
       btn.innerHTML = sanitize_html(format_option(opt))
       style_sub_sup(btn)
-      btn.onclick = () => select(opt.key)
-      btn.onmouseenter = () => {
+      btn.addEventListener(`click`, () => select(opt.key))
+      btn.addEventListener(`mouseenter`, () => {
         if (!btn.classList.contains(`selected`)) {
           btn.style.background = `rgba(128, 128, 128, 0.15)`
         }
-      }
-      btn.onmouseleave = () => {
+      })
+      btn.addEventListener(`mouseleave`, () => {
         if (!btn.classList.contains(`selected`)) btn.style.background = `transparent`
-      }
+      })
       if (opt.key === selected_key) {
         btn.classList.add(`selected`)
         btn.style.cssText = portal_styles.btn + portal_styles.btn_selected

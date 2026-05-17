@@ -30,7 +30,7 @@ export function compute_local_variance(values: number[], window_size: number): n
   if (len === 1) return [0]
 
   const half_window = Math.floor(window_size / 2)
-  const result = new Array<number>(len)
+  const result: number[] = Array(len)
 
   // Single pass for each index, no slice allocation (avoids O(n × window) allocations)
   for (let idx = 0; idx < len; idx++) {
@@ -58,7 +58,7 @@ export function compute_local_variance(values: number[], window_size: number): n
 // Compute first-order finite differences (discrete derivative)
 function compute_derivatives(values: number[]): number[] {
   if (values.length < 2) return []
-  const derivs = new Array<number>(values.length - 1)
+  const derivs: number[] = Array(values.length - 1)
   for (let idx = 0; idx < values.length - 1; idx++) {
     derivs[idx] = values[idx + 1] - values[idx]
   }
@@ -285,7 +285,7 @@ export function detect_instability(
 export function smooth_moving_average(values: number[], window: number): number[] {
   if (values.length === 0 || window <= 1) return [...values]
 
-  const result = new Array<number>(values.length)
+  const result: number[] = Array(values.length)
   const half_window = Math.floor(window / 2)
 
   for (let idx = 0; idx < values.length; idx++) {
@@ -329,7 +329,7 @@ function compute_savgol_coefficients(window: number, order: number): number[] {
   const vtv_inv = invert_matrix(vtv)
   if (!vtv_inv) {
     // Fallback to uniform weights
-    return new Array(size).fill(1 / size)
+    return Array(size).fill(1 / size)
   }
 
   const vt = transpose(vandermonde)
@@ -356,7 +356,7 @@ export function smooth_savitzky_golay(
 
   const coeffs = compute_savgol_coefficients(actual_window, polynomial_order)
   const half = Math.floor(actual_window / 2)
-  const result = new Array<number>(values.length)
+  const result: number[] = Array(values.length)
   // Cache coefficient sum to avoid O(n × window) redundant reductions in loop
   const coeffs_sum = coeffs.reduce((a, b) => a + b, 0)
 
@@ -472,7 +472,7 @@ export function remove_local_outliers(
     }
   }
 
-  let kept_mask = new Array<boolean>(len).fill(true)
+  let kept_mask = Array(len).fill(true)
   let iterations_used = 0
 
   for (let iter = 0; iter < max_iterations; iter++) {
@@ -751,7 +751,7 @@ export function clean_series<T extends DataSeries>(
   }
 
   // Build result series
-  const result_series = (in_place ? series : { ...series }) as T
+  const result_series = in_place ? series : { ...series }
   ;(result_series as DataSeries).x = x_arr
   ;(result_series as DataSeries).y = y_arr
   if (metadata !== undefined) (result_series as DataSeries).metadata = metadata
@@ -995,7 +995,7 @@ function transpose(matrix: number[][]): number[][] {
   if (matrix.length === 0) return []
   const rows = matrix.length
   const cols = matrix[0].length
-  const result: number[][] = Array.from({ length: cols }, () => new Array(rows))
+  const result: number[][] = Array.from({ length: cols }, () => Array(rows).fill(0))
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       result[col][row] = matrix[row][col]
@@ -1009,7 +1009,7 @@ function multiply_matrices(a: number[][], b: number[][]): number[][] {
   const cols_a = a[0]?.length ?? 0
   const cols_b = b[0]?.length ?? 0
 
-  const result: number[][] = Array.from({ length: rows_a }, () => new Array(cols_b).fill(0))
+  const result: number[][] = Array.from({ length: rows_a }, () => Array(cols_b).fill(0))
 
   for (let row = 0; row < rows_a; row++) {
     for (let col = 0; col < cols_b; col++) {

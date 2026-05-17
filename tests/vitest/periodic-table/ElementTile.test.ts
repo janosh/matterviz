@@ -69,10 +69,10 @@ describe(`ElementTile`, () => {
       [true, true, true, `${rand_element.number} ${rand_element.symbol} ${rand_element.name}`],
       [false, false, false, ``],
       [true, false, true, `${rand_element.number} ${rand_element.symbol}`],
-      [false, true, false, `${rand_element.name}`],
+      [false, true, false, rand_element.name],
       [true, true, false, `${rand_element.number} ${rand_element.name}`],
-      [false, false, true, `${rand_element.symbol}`],
-      [true, false, false, `${rand_element.number}`],
+      [false, false, true, rand_element.symbol],
+      [true, false, false, String(rand_element.number)],
       [false, true, true, `${rand_element.symbol} ${rand_element.name}`],
     ])(
       `show_number=%s, show_name=%s, show_symbol=%s renders expected content`,

@@ -1,13 +1,13 @@
 <script lang="ts">
   import { type D3SymbolName, symbol_map } from '$lib/labels'
   import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
-  import type { PointStyle, TweenedOptions, XyObj } from '$lib/plot/types'
+  import type { PointStyle, XyObj } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
-  import { Tween } from 'svelte/motion'
+  import { Tween, type TweenOptions } from 'svelte/motion'
 
   let {
     x,
@@ -29,7 +29,7 @@
     hover?: HoverStyle
     label?: LabelStyle
     offset?: Point[`offset`]
-    point_tween?: TweenedOptions<XyObj>
+    point_tween?: TweenOptions<XyObj>
     origin?: XyObj
     is_hovered?: boolean
     is_selected?: boolean
@@ -46,7 +46,7 @@
 
   let marker_path = $derived.by(get_symbol_path)
 
-  const default_tween_props: TweenedOptions<XyObj> = {
+  const default_tween_props: TweenOptions<XyObj> = {
     duration: 600,
     easing: cubicOut,
   }

@@ -103,7 +103,7 @@ function generate_k_space_grid(k_lattice: Matrix3x3, order: number): Vec3[] {
           math.scale(k_lattice[0], idx_i),
           math.scale(k_lattice[1], idx_j),
           math.scale(k_lattice[2], idx_k),
-        ) as Vec3
+        )
         points.push(point)
       }
     }
@@ -259,7 +259,7 @@ export function compute_convex_hull(
 
   const geometry = new ConvexGeometry(vertices.map((cert) => new Vector3(...cert)))
   const pos = geometry.getAttribute(`position`)
-  const idx = geometry.index
+  const geometry_index = geometry.index
 
   // Deduplicate vertices from Three.js geometry
   const unique_verts: Vec3[] = []
@@ -278,11 +278,15 @@ export function compute_convex_hull(
 
   // Build faces with deduplicated vertex indices
   const faces: number[][] = []
-  const n_faces = idx ? idx.count / 3 : pos.count / 3
+  const n_faces = geometry_index ? geometry_index.count / 3 : pos.count / 3
 
   for (let idx_face = 0; idx_face < n_faces; idx_face++) {
-    const tri = idx
-      ? [idx.getX(idx_face * 3), idx.getX(idx_face * 3 + 1), idx.getX(idx_face * 3 + 2)]
+    const tri = geometry_index
+      ? [
+          geometry_index.getX(idx_face * 3),
+          geometry_index.getX(idx_face * 3 + 1),
+          geometry_index.getX(idx_face * 3 + 2),
+        ]
       : [idx_face * 3, idx_face * 3 + 1, idx_face * 3 + 2]
     faces.push(
       tri.map((j) => {
@@ -400,7 +404,7 @@ export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): Clipp
 
 // Flip a clipping plane to the opposite half-space
 const flip_plane = (p: ClippingPlane): ClippingPlane => ({
-  normal: math.scale(p.normal, -1) as Vec3,
+  normal: math.scale(p.normal, -1),
   dist: -p.dist,
 })
 

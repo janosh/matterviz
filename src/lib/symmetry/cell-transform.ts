@@ -1,5 +1,4 @@
 // Cell transformation utilities for converting between original, conventional, and primitive cells
-import type { ElementSymbol } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
 import * as math from '$lib/math'
@@ -35,7 +34,7 @@ export function moyo_cell_to_structure(
   // Build sites from positions and atomic numbers
   const sites: Site[] = cell.positions.map((abc, idx) => {
     const atomic_number = cell.numbers[idx]
-    const element = ATOMIC_NUMBER_TO_SYMBOL[atomic_number] as ElementSymbol
+    const element = ATOMIC_NUMBER_TO_SYMBOL[atomic_number]
     if (!element) {
       throw new Error(`Unknown atomic number: ${atomic_number}`)
     }

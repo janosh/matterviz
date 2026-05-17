@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { FileInfo } from '$lib/io'
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
   // Delay for distinguishing click from double-click (ms)

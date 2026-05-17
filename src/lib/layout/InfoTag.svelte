@@ -2,7 +2,7 @@
   import Icon from '$lib/Icon.svelte'
   import { sanitize_html } from '$lib/sanitize'
   import type { Snippet } from 'svelte'
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { InfoTagSize, InfoTagVariant } from './index'
 

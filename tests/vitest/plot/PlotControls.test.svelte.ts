@@ -174,8 +174,8 @@ describe(`PlotControls`, () => {
 
     const expected_sections = [`Display`, `Axis Range`, `Tick Format`]
     expected_sections.forEach((name) => {
-      const section = sections.find((section) => section.textContent?.includes(name))
-      const reset = section?.querySelector<HTMLButtonElement>(`button`)
+      const matching_section = sections.find((section) => section.textContent?.includes(name))
+      const reset = matching_section?.querySelector<HTMLButtonElement>(`button`)
       expect(reset).not.toBeNull()
     })
   })

@@ -12,6 +12,7 @@ import {
 } from '$lib/isosurface/types'
 import type { Vec3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
+import { make_grid } from '../setup'
 
 describe(`grid_data_range`, () => {
   test.each([
@@ -209,22 +210,6 @@ describe(`LAYER_COLORS`, () => {
     expect(new Set(LAYER_COLORS).size).toBe(LAYER_COLORS.length)
   })
 })
-
-// Helper to build a 3D grid filled with a constant or computed value
-function make_grid(
-  nx: number,
-  ny: number,
-  nz: number,
-  fill: number | ((ix: number, iy: number, iz: number) => number) = 1,
-): number[][][] {
-  return Array.from({ length: nx }, (_, ix) =>
-    Array.from({ length: ny }, (_, iy) =>
-      Array.from({ length: nz }, (_, iz) =>
-        typeof fill === `function` ? fill(ix, iy, iz) : fill,
-      ),
-    ),
-  )
-}
 
 // Assert every cell in a 3D grid satisfies a predicate
 function assert_all_cells(grid: number[][][], check: (val: number) => void) {

@@ -1,18 +1,10 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import type { ChemicalElement } from '$lib'
-  import {
-    BohrAtom,
-    ColorScaleSelect,
-    element_data,
-    ElementHeading,
-    ElementPhoto,
-    ElementScatter,
-    ElementTile,
-    Icon,
-    PeriodicTable,
-    PropertySelect,
-  } from '$lib'
+  import { BohrAtom, element_data, ElementHeading, ElementPhoto, ElementTile } from '$lib/element'
+  import type { ChemicalElement } from '$lib/element'
+  import Icon from '$lib/Icon.svelte'
+  import { ColorScaleSelect, ElementScatter } from '$lib/plot'
+  import { PeriodicTable, PropertySelect } from '$lib/periodic-table'
   import type { D3InterpolateName } from '$lib/colors'
   import { ELEM_PROPERTY_LABELS, format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
@@ -20,6 +12,14 @@
   import pkg from '$root/package.json'
   import { error } from '@sveltejs/kit'
   import { PrevNext } from 'svelte-multiselect'
+
+  const assert_chemical_element = (value: unknown): ChemicalElement => {
+    const elem = value as Partial<ChemicalElement> | null
+    if (elem && typeof elem.number === `number` && typeof elem.symbol === `string` && typeof elem.name === `string`) {
+      return elem as ChemicalElement
+    }
+    throw new Error(`Invalid element data: expected numeric number, string symbol, and string name`)
+  }
 
   let element = $derived.by(() => {
     const data = element_data.find((elem) =>
@@ -93,7 +93,7 @@
 
   export const snapshot = {
     capture: () => ({ color_scale }),
-    restore: (values) => ({ color_scale } = values),
+    restore: (values: { color_scale: D3InterpolateName }) => ({ color_scale } = values),
   }
 </script>
 
@@ -211,7 +211,7 @@
   current={page.url.pathname.slice(1)}
 >
   {#snippet children({ item, kind })}
-    {@const element = item[1]}
+    {@const element = assert_chemical_element(item[1])}
     <a
       href={element.name.toLowerCase()}
       style="display: flex; flex-direction: column; position: relative"

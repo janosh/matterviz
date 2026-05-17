@@ -2,6 +2,7 @@
 import { marching_cubes } from '$lib/fermi-surface/marching-cubes'
 import type { Matrix3x3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
+import { make_grid } from '../setup'
 
 // Helper: create uniform grid with constant value
 const create_uniform_grid = (
@@ -9,10 +10,7 @@ const create_uniform_grid = (
   ny: number,
   nz: number,
   value: number,
-): number[][][] =>
-  Array.from({ length: nx }, () =>
-    Array.from({ length: ny }, () => Array.from({ length: nz }, () => value)),
-  )
+): number[][][] => make_grid(nx, ny, nz, value)
 
 // Helper: create gradient grid along specified axis
 const create_gradient_grid = (
@@ -24,30 +22,22 @@ const create_gradient_grid = (
   max_val: number,
 ): number[][][] => {
   const n_axis = axis === `x` ? nx : axis === `y` ? ny : nz
-  return Array.from({ length: nx }, (_, x_idx) =>
-    Array.from({ length: ny }, (_, y_idx) =>
-      Array.from({ length: nz }, (_, z_idx) => {
-        const t_val = axis === `x` ? x_idx : axis === `y` ? y_idx : z_idx
-        const denom = n_axis > 1 ? n_axis - 1 : 1
-        return min_val + (t_val / denom) * (max_val - min_val)
-      }),
-    ),
-  )
+  return make_grid(nx, ny, nz, (x_idx, y_idx, z_idx) => {
+    const t_val = axis === `x` ? x_idx : axis === `y` ? y_idx : z_idx
+    const denom = n_axis > 1 ? n_axis - 1 : 1
+    return min_val + (t_val / denom) * (max_val - min_val)
+  })
 }
 
 // Helper: create spherical grid (distance² from center)
 const create_spherical_grid = (size: number): number[][][] => {
   const center = (size - 1) / 2
-  return Array.from({ length: size }, (_, x_idx) =>
-    Array.from({ length: size }, (_, y_idx) =>
-      Array.from({ length: size }, (_, z_idx) => {
-        const dx = x_idx - center
-        const dy = y_idx - center
-        const dz = z_idx - center
-        return dx * dx + dy * dy + dz * dz
-      }),
-    ),
-  )
+  return make_grid(size, size, size, (x_idx, y_idx, z_idx) => {
+    const dx = x_idx - center
+    const dy = y_idx - center
+    const dz = z_idx - center
+    return dx * dx + dy * dy + dz * dz
+  })
 }
 
 // Note: compute_vertex_normals tests are in tests/vitest/marching-cubes.test.ts

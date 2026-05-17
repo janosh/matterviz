@@ -104,7 +104,7 @@ describe(`export_scene`, () => {
       expect(captured_blobs[0].type).toBe(mime)
       expect(mock_link.download).toBe(filename)
       expect(call_order).toEqual([`appendChild`, `click`, `removeChild`])
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith(`blob:mock`)
+      expect(URL[`revokeObjectURL`]).toHaveBeenCalledWith(`blob:mock`)
     },
   )
 })

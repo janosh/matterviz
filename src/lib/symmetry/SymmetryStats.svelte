@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Snippet } from 'svelte'
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SETTINGS_CONFIG } from '../settings'
   import type { SymmetrySettings } from './index'

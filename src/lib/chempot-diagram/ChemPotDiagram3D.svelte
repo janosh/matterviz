@@ -1931,8 +1931,8 @@
   const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)
 
   function get_view_settings(): Record<string, unknown> {
-    const camera_position = orbit_controls_ref?.object?.position
-    const camera_target = orbit_controls_ref?.target
+    const view_camera_position = orbit_controls_ref?.object?.position
+    const view_camera_target = orbit_controls_ref?.target
     return {
       elements: plot_elements,
       camera_projection,
@@ -1940,11 +1940,11 @@
       color_mode,
       color_scale,
       reverse_color_scale,
-      camera_position: camera_position
-        ? [camera_position.x, camera_position.y, camera_position.z]
+      camera_position: view_camera_position
+        ? [view_camera_position.x, view_camera_position.y, view_camera_position.z]
         : null,
-      camera_target: camera_target
-        ? [camera_target.x, camera_target.y, camera_target.z]
+      camera_target: view_camera_target
+        ? [view_camera_target.x, view_camera_target.y, view_camera_target.z]
         : null,
     }
   }

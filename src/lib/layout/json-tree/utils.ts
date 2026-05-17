@@ -293,7 +293,10 @@ export function find_matching_paths(
   for_each_child(value, type, (child_value, key, map_key) => {
     const child_path = build_path(current_path, key)
     // Also check if Map key matches
-    if (map_key !== undefined && String(map_key).toLowerCase().includes(lower_query)) {
+    if (
+      map_key !== undefined &&
+      serialize_for_copy(map_key).toLowerCase().includes(lower_query)
+    ) {
       matches.add(child_path)
     }
     for (const match of find_matching_paths(child_value, query, child_path, key, seen)) {

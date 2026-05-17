@@ -3,22 +3,30 @@
   import type { PhaseData } from '$lib/convex-hull'
   import { create_temp_ternary_entries_li_fe_o } from '$lib/convex-hull/demo-temperature'
   import Spinner from '$lib/feedback/Spinner.svelte'
-  import li_fe_o_entries_data from '$site/chempot-diagram/li-fe-o-entries.json.gz'
-  import ytos_entries_data from '$site/chempot-diagram/ytos_entries.json.gz'
   import { onMount } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
 
   // vite-plugin-json-gz decompresses each .json.gz at build time.
   // Lazy chunks are code-split and loaded on demand.
   // Do NOT use query:'?url' here: Rolldown doesn't emit .json.gz as assets for globs.
+  const chempot_files = import.meta.glob<PhaseData[]>(
+    `/src/site/chempot-diagram/*.json.gz`,
+    { eager: true, import: `default` },
+  )
   const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
     `$site/convex-hull/quaternaries/*.json.gz`,
     { eager: false },
   )
 
+  function get_chempot_data(filename: string): PhaseData[] {
+    const data = Object.entries(chempot_files).find(([path]) => path.endsWith(filename))?.[1]
+    if (!data) throw new Error(`Missing chempot demo data: ${filename}`)
+    return data
+  }
+
   let all_entries = $state<PhaseData[]>([])
-  const li_fe_o_entries = li_fe_o_entries_data as PhaseData[]
-  const ytos_entries = ytos_entries_data as PhaseData[]
+  const li_fe_o_entries = get_chempot_data(`li-fe-o-entries.json.gz`)
+  const ytos_entries = get_chempot_data(`ytos_entries.json.gz`)
   let temp_demo_temperature = $state<number | undefined>(700)
   let quaternary_loading = $state(true)
   let quaternary_error = $state<string | null>(null)

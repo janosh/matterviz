@@ -359,8 +359,8 @@ export class TrajFrameReader implements FrameLoader {
       const cell = frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined
       const metadata: Record<string, unknown> = {
         step: frame_number,
-        ...(frame_data.calculator || {}),
-        ...(frame_data.info || {}),
+        ...frame_data.calculator,
+        ...frame_data.info,
       }
 
       if (cell) {
@@ -419,7 +419,7 @@ export class TrajFrameReader implements FrameLoader {
 
       for (const prop of calc_properties) {
         if (prop in calculator && typeof calculator[prop] === `number`) {
-          properties[prop] = calculator[prop] as number
+          properties[prop] = calculator[prop]
         }
       }
     }
@@ -437,7 +437,7 @@ export class TrajFrameReader implements FrameLoader {
 
       for (const prop of info_properties) {
         if (prop in info && typeof info[prop] === `number`) {
-          properties[prop] = info[prop] as number
+          properties[prop] = info[prop]
         }
       }
     }

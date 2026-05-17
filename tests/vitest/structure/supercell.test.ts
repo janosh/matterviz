@@ -67,7 +67,9 @@ describe(`parse_supercell_scaling`, () => {
     [-1, 2, 3],
     [1.5, 2, 3],
   ])(`throws error for invalid input %s`, (input) => {
-    expect(() => parse_supercell_scaling(input as string | number | Vec3)).toThrow()
+    expect(() => parse_supercell_scaling(input as string | number | Vec3)).toThrow(
+      /supercell scaling/i,
+    )
   })
 })
 
@@ -223,7 +225,9 @@ describe(`make_supercell`, () => {
 
     // Structure without lattice
     const molecule = { sites: sample_structure.sites, charge: 0 }
-    expect(() => make_supercell(molecule as Crystal, [2, 2, 2])).toThrow()
+    expect(() => make_supercell(molecule as Crystal, [2, 2, 2])).toThrow(
+      `structure has no lattice`,
+    )
   })
 
   test(`does not modify original structure`, () => {

@@ -749,7 +749,6 @@ test.describe(`Histogram Component Tests`, () => {
       await y_scale_select.selectOption(`log`)
 
       // Verify histogram renders with log scales
-      const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
       await expect(histogram.locator(`g.x-axis .tick`).first()).toBeVisible({
         timeout: 3000,
       })
@@ -774,7 +773,6 @@ test.describe(`Histogram Component Tests`, () => {
       await y_tick_input.fill(`8`)
 
       // Verify histogram still renders
-      const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
       const bar_count = await get_bar_count(histogram)
       expect(bar_count).toBeGreaterThan(0)
     }
@@ -914,7 +912,6 @@ test.describe(`Histogram Component Tests`, () => {
         await bins_slider.fill(`25`)
 
         // Verify histogram still renders
-        const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
         const bar_count = await get_bar_count(histogram)
         expect(bar_count).toBeGreaterThan(0)
       }

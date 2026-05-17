@@ -66,7 +66,7 @@ function expand_bounds(
   for (const bound of bounds) {
     if (Array.isArray(bound)) {
       // Inline point
-      vertices.push(bound as DiagramPoint)
+      vertices.push(bound)
     } else {
       // Curve reference
       const ref = parse_curve_ref(bound)

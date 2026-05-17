@@ -231,31 +231,33 @@ export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): W
     groups.set(key, group)
   }
 
-  const rows = Array.from(groups.values()).map(({ letter, elem, indices, positions }) => {
-    // Find the position with the best simplicity score to display
-    const best_pos = positions.reduce(
-      (best, pos) => {
-        const score = simplicity_score(pos)
-        return score < best.score ? { pos, score } : best
-      },
-      { pos: positions[0], score: simplicity_score(positions[0]) },
-    ).pos
+  const rows = Array.from(groups.values()).map(
+    ({ letter, elem, indices, positions: group_positions }) => {
+      // Find the position with the best simplicity score to display
+      const best_pos = group_positions.reduce(
+        (best, pos) => {
+          const score = simplicity_score(pos)
+          return score < best.score ? { pos, score } : best
+        },
+        { pos: group_positions[0], score: simplicity_score(group_positions[0]) },
+      ).pos
 
-    // Map standardized cell indices back to original structure indices
-    const orig_site_indices = orig_site_indices_by_std_idx
-      ? indices.flatMap((std_idx) => orig_site_indices_by_std_idx[std_idx] ?? [])
-      : orig_indices
-        ? indices.map((std_idx) => orig_indices[std_idx]).filter((idx) => idx !== undefined)
-        : indices
+      // Map standardized cell indices back to original structure indices
+      const orig_site_indices = orig_site_indices_by_std_idx
+        ? indices.flatMap((std_idx) => orig_site_indices_by_std_idx[std_idx] ?? [])
+        : orig_indices
+          ? indices.map((std_idx) => orig_indices[std_idx]).filter((idx) => idx !== undefined)
+          : indices
 
-    const wyckoff = letter ? `${indices.length}${letter}` : `1`
-    return {
-      wyckoff,
-      elem,
-      abc: best_pos,
-      site_indices: [...new Set(orig_site_indices)].sort((idx_a, idx_b) => idx_a - idx_b),
-    }
-  })
+      const wyckoff = letter ? `${indices.length}${letter}` : `1`
+      return {
+        wyckoff,
+        elem,
+        abc: best_pos,
+        site_indices: [...new Set(orig_site_indices)].sort((idx_a, idx_b) => idx_a - idx_b),
+      }
+    },
+  )
 
   rows.sort((w1, w2) => {
     const [w1_mult, w2_mult] = [parseInt(w1.wyckoff), parseInt(w2.wyckoff)]

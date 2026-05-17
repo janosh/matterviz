@@ -247,7 +247,7 @@ describe(`3D Convex Hull`, () => {
           { x: 1, y: 0, z: 0 },
           { x: 0.5, y: 1, z: -1 },
         ],
-        normal: { x: 0, y: 0.707, z: -0.707 },
+        normal: { x: 0, y: Math.SQRT1_2, z: -Math.SQRT1_2 },
         centroid: { x: 0.5, y: 1 / 3, z: -1 / 3 },
       },
     ]

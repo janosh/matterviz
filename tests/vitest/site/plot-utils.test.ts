@@ -68,8 +68,8 @@ describe(`plot-utils random generators`, () => {
   })
 
   test(`weighted_choice validates weights`, () => {
-    expect(() => utils.weighted_choice([])).toThrow()
-    expect(() => utils.weighted_choice([-1, 1])).toThrow()
-    expect(() => utils.weighted_choice([0, 0, 0])).toThrow()
+    expect(() => utils.weighted_choice([])).toThrow(/weight/i)
+    expect(() => utils.weighted_choice([-1, 1])).toThrow(/weight/i)
+    expect(() => utils.weighted_choice([0, 0, 0])).toThrow(/weight/i)
   })
 })

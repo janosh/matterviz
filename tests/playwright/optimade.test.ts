@@ -24,12 +24,13 @@ test.describe(`OPTIMADE route`, () => {
     })
     await page.addInitScript((serialized: string) => {
       const { providers, structures, suggestions } = JSON.parse(serialized)
-      const _fetch = globalThis.fetch
+      const original_fetch = globalThis.fetch
       globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
         const url =
           typeof input === `string` ? input : input instanceof URL ? input.href : input.url
         // Let local requests through unchanged
-        if (url.startsWith(location.origin)) return _fetch.call(globalThis, input, init)
+        if (url.startsWith(location.origin))
+          return original_fetch.call(globalThis, input, init)
         // Decode CORS proxy wrappers to get the actual target URL
         const decoded = decodeURIComponent(url)
         const json = (body: unknown, status = 200) =>
@@ -54,7 +55,7 @@ test.describe(`OPTIMADE route`, () => {
         }
         if (decoded.includes(`/links`)) return json({ data: [] })
         // Non-OPTIMADE external requests: let through (will fail naturally)
-        return _fetch.call(globalThis, input, init)
+        return original_fetch.call(globalThis, input, init)
       }
     }, mocks)
   })

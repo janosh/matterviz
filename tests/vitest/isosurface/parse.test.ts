@@ -209,7 +209,7 @@ describe(`parse_chgcar`, () => {
     [`empty content`, ``],
     [`invalid scale factor`, make_chgcar({ scale: `not_a_number` })],
   ])(`returns null for %s`, (_label, content) => {
-    expect(parse_chgcar(content as string)).toBeNull()
+    expect(parse_chgcar(content)).toBeNull()
   })
 
   test(`returns null for singular CHGCAR lattice instead of throwing`, () => {

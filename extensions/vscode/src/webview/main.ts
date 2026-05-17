@@ -189,14 +189,14 @@ export const setup_vscode_download = (): void => {
         send_message(data, false)
       } else {
         const reader = new FileReader()
-        reader.onload = () => send_message(reader.result as string, true)
-        reader.onerror = () => {
+        reader.addEventListener(`load`, () => send_message(reader.result as string, true))
+        reader.addEventListener(`error`, () => {
           console.error(`Failed to read binary data for download`)
           vscode_api?.postMessage({
             command: `error`,
             text: `Failed to read binary data for download`,
           })
-        }
+        })
         reader.readAsDataURL(data)
       }
     } catch (error) {

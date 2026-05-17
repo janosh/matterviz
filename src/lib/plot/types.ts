@@ -3,17 +3,10 @@ import type { Vec2, Vec3 } from '$lib/math'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
+import type { TweenOptions } from 'svelte/motion'
+export type { TweenOptions } from 'svelte/motion'
 import type PlotLegend from './PlotLegend.svelte'
 import type { TicksOption } from './scales'
-
-// TODO restore: import { type TweenedOptions } from 'svelte/motion'
-// pending https://github.com/sveltejs/svelte/issues/16151
-export interface TweenedOptions<T> {
-  delay?: number
-  duration?: number | ((from: T, to: T) => number)
-  easing?: (t: number) => number
-  interpolate?: (a: T, b: T) => (t: number) => T
-}
 
 export type XyObj = { x: number; y: number }
 export type XyShift = { x?: number; y?: number } // For optional shift/offset values
@@ -93,7 +86,7 @@ export interface PlotPoint<Metadata = Record<string, unknown>> extends Point<Met
   point_hover?: HoverStyle
   point_label?: LabelStyle
   point_offset?: XyObj // Individual point offset (distinct from label offset)
-  point_tween?: TweenedOptions<XyObj>
+  point_tween?: TweenOptions<XyObj>
 }
 
 export type Markers = `line` | `points` | `line+points` | `none`
@@ -116,7 +109,7 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
   point_label?: LabelStyle[] | LabelStyle // Can be array or single object
   point_offset?: XyObj[] | XyObj // Can be array or single object
-  point_tween?: TweenedOptions<XyObj>
+  point_tween?: TweenOptions<XyObj>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
   // Group name for organizing legend items. Series with the same legend_group
@@ -293,7 +286,7 @@ export type LegendConfig = Omit<
   `series_data` | `on_drag_start` | `on_drag` | `on_drag_end`
 > & {
   margin?: number | Sides
-  tween?: TweenedOptions<XyObj>
+  tween?: TweenOptions<XyObj>
   responsive?: boolean // Allow legend to move if density changes (default: false)
   draggable?: boolean // Allow legend to be dragged (default: true)
   // Minimum distance from plot edges to avoid axis label overlap (default: 40)

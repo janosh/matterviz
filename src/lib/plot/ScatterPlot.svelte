@@ -32,7 +32,6 @@
     ScatterHandlerProps,
     Sides,
     StyleOverrides,
-    TweenedOptions,
     UserContentProps,
     XyObj,
   } from '$lib/plot'
@@ -81,7 +80,7 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { Tween } from 'svelte/motion'
+  import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
   import type { FillPathPoint } from './fill-utils'
   import {
@@ -206,15 +205,15 @@
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
         margin?: number | Sides
-        tween?: TweenedOptions<XyObj>
+        tween?: TweenOptions<XyObj>
         responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
       })
       | null
     label_placement_config?: Partial<LabelPlacementConfig>
     hover_config?: Partial<HoverConfig>
     legend?: LegendConfig | null
-    point_tween?: TweenedOptions<XyObj>
-    line_tween?: TweenedOptions<string>
+    point_tween?: TweenOptions<XyObj>
+    line_tween?: TweenOptions<string>
     point_events?: Record<
       string,
       (payload: { point: InternalPoint<Metadata>; event: Event }) => void
@@ -245,15 +244,15 @@
   const final_x_axis = $derived({
     ...AXIS_DEFAULTS,
     label_shift: { x: 0, y: -40 }, // x-axis needs different label position
-    ...(x_axis ?? {}),
+    ...x_axis,
   })
-  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...(y_axis ?? {}) })
+  const final_y_axis = $derived({ ...AXIS_DEFAULTS, ...y_axis })
   const final_x2_axis = $derived({
     ...AXIS_DEFAULTS,
     label_shift: { x: 0, y: 40 }, // x2-axis label above top edge
-    ...(x2_axis ?? {}),
+    ...x2_axis,
   })
-  const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...(y2_axis ?? {}) })
+  const final_y2_axis = $derived({ ...AXIS_DEFAULTS, ...y2_axis })
   // Cache time-axis check — used in ~10 places for scale/tick/tooltip logic
   let is_time_x = $derived(
     is_time_scale(final_x_axis.scale_type, final_x_axis.format),
@@ -261,16 +260,16 @@
   let is_time_x2 = $derived(
     is_time_scale(final_x2_axis.scale_type, final_x2_axis.format),
   )
-  const final_display = $derived({ ...DEFAULTS.scatter.display, ...(display ?? {}) })
+  const final_display = $derived({ ...DEFAULTS.scatter.display, ...display })
   // Local state for styles (initialized from prop, owned by this component for controls)
   // Using $state because styles has bindings in ScatterPlotControls
   // untrack() explicitly captures initial prop value (intentional - props provide initial config)
   let styles = $state(untrack(() => ({
     show_points: DEFAULTS.scatter.show_points,
     show_lines: DEFAULTS.scatter.show_lines,
-    point: { ...DEFAULTS.scatter.point, ...(styles_init?.point ?? {}) },
-    line: { ...DEFAULTS.scatter.line, ...(styles_init?.line ?? {}) },
-    ...(styles_init ?? {}),
+    point: { ...DEFAULTS.scatter.point, ...styles_init?.point },
+    line: { ...DEFAULTS.scatter.line, ...styles_init?.line },
+    ...styles_init,
   })))
   let controls = $derived({ show: true, open: false, ...controls_init })
 
@@ -394,13 +393,13 @@
 
     for (const srs of series_with_ids) {
       if (!srs) continue
-      const { x: xs, y: ys, visible = true, y_axis = `y1`, x_axis: x_ax = `x1` } =
+      const { x: xs, y: ys, visible = true, y_axis: series_y_axis = `y1`, x_axis: x_ax = `x1` } =
         srs as DataSeries
       for (let idx = 0; idx < xs.length; idx++) {
         const point = { x: xs[idx], y: ys[idx] }
         all.push(point)
         if (visible) {
-          if (y_axis === `y2`) y2.push(point)
+          if (series_y_axis === `y2`) y2.push(point)
           else y1.push(point)
           if (x_ax === `x2`) x2.push(point)
         }
@@ -666,7 +665,7 @@
           }
         }
 
-        const { x: xs, y: ys, color_values, size_values, ...rest } = data_series
+        const { x: xs, y: ys, color_values, size_values, ...series_rest } = data_series
 
         // Process points internally, adding properties beyond the base Point type
         const processed_points: InternalPoint<Metadata>[] = xs.map(
@@ -674,11 +673,11 @@
             x: x_val,
             y: ys[point_idx],
             color_value: color_values?.[point_idx],
-            metadata: process_prop(rest.metadata, point_idx) as Metadata | undefined,
-            point_style: process_prop(rest.point_style, point_idx),
-            point_hover: process_prop(rest.point_hover, point_idx),
-            point_label: process_prop(rest.point_label, point_idx),
-            point_offset: process_prop(rest.point_offset, point_idx),
+            metadata: process_prop(series_rest.metadata, point_idx) as Metadata | undefined,
+            point_style: process_prop(series_rest.point_style, point_idx),
+            point_hover: process_prop(series_rest.point_hover, point_idx),
+            point_label: process_prop(series_rest.point_label, point_idx),
+            point_offset: process_prop(series_rest.point_offset, point_idx),
             series_idx,
             point_idx,
             size_value: size_values?.[point_idx],
@@ -1141,12 +1140,12 @@
   // untrack() explicitly captures initial tween config (intentional - config set once at mount)
   const tweened_colorbar_coords = new Tween(
     { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...(color_bar?.tween ?? {}) })),
+    untrack(() => ({ duration: 400, ...color_bar?.tween })),
   )
   // Initialize tweened values for legend position - create once, update target via effect
   const tweened_legend_coords = new Tween(
     { x: 0, y: 0 },
-    untrack(() => ({ duration: 400, ...(legend?.tween ?? {}) })),
+    untrack(() => ({ duration: 400, ...legend?.tween })),
   )
 
   // Update placement positions (with animation and stability checks)
@@ -1727,9 +1726,9 @@
     legend_manual_position = { x: constrained_x, y: constrained_y }
   }
 
-  function get_screen_coords(point: Point, series?: DataSeries): [number, number] {
+  function get_screen_coords(point: Point, data_series?: DataSeries): [number, number] {
     // convert data coordinates to potentially non-finite screen coordinates
-    const use_x2 = series?.x_axis === `x2`
+    const use_x2 = data_series?.x_axis === `x2`
     const active_x_scale = use_x2 ? x2_scale_fn : x_scale_fn
     const active_is_time_x = use_x2 ? is_time_x2 : is_time_x
     const screen_x = active_is_time_x
@@ -1738,7 +1737,7 @@
 
     const y_val = point.y
     // Determine which y-scale to use based on series y_axis property
-    const use_y2 = series?.y_axis === `y2`
+    const use_y2 = data_series?.y_axis === `y2`
     const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
     const y_scale_type = use_y2
       ? get_scale_type_name(final_y2_axis.scale_type)
@@ -2035,7 +2034,7 @@
                       y1={-(height - pad.b - pad.t)}
                       y2="0"
                       {...DEFAULT_GRID_STYLE}
-                      {...(final_x_axis.grid_style ?? {})}
+                      {...final_x_axis.grid_style}
                     />
                   {/if}
                   <line y1="0" y2={inside ? -5 : 5} stroke="var(--border-color, gray)" />
@@ -2116,7 +2115,7 @@
                       x1="0"
                       x2={width - pad.l - pad.r}
                       {...DEFAULT_GRID_STYLE}
-                      {...(final_y_axis.grid_style ?? {})}
+                      {...final_y_axis.grid_style}
                     />
                   {/if}
                   <line
@@ -2186,7 +2185,7 @@
                         x1={-(width - pad.l - pad.r)}
                         x2="0"
                         {...DEFAULT_GRID_STYLE}
-                        {...(final_y2_axis.grid_style ?? {})}
+                        {...final_y2_axis.grid_style}
                       />
                     {/if}
                     <line
@@ -2256,7 +2255,7 @@
                         y1="0"
                         y2={height - pad.b - pad.t}
                         {...DEFAULT_GRID_STYLE}
-                        {...(final_x2_axis.grid_style ?? {})}
+                        {...final_x2_axis.grid_style}
                       />
                     {/if}
                     <line

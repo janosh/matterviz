@@ -36,6 +36,6 @@ describe(`type guards`, () => {
     { fn: is_band_grid_data, data: mock_fermi_surface, expected: false },
     { fn: is_band_grid_data, data: null, expected: false },
   ])(`$fn.name($data) = $expected`, ({ fn, data, expected }) => {
-    expect(fn(data as FermiSurfaceData | BandGridData | null)).toBe(expected)
+    expect(fn(data)).toBe(expected)
   })
 })

@@ -308,7 +308,7 @@ function apply_gaussian_smearing_core(
   const orig_sum = densities.reduce((acc, d) => acc + d, 0)
   if (sigma <= 0 || orig_sum === 0) return densities
 
-  const smeared = new Array(densities.length).fill(0)
+  const smeared = Array(densities.length).fill(0)
   const truncation_width = 4 // Truncate Gaussian at ±4σ (contribution < 0.01%)
 
   for (let idx = 0; idx < freqs_or_energies.length; idx++) {

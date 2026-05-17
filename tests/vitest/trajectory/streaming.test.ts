@@ -428,7 +428,9 @@ describe(`Trajectory Streaming`, () => {
       expect(ase_loader).toBeInstanceOf(TrajFrameReader)
 
       // Should throw for unsupported formats
-      expect(() => create_frame_loader(`trajectory.pdb`)).toThrow()
+      expect(() => create_frame_loader(`trajectory.pdb`)).toThrow(
+        `Unsupported format for frame loading`,
+      )
     })
   })
 

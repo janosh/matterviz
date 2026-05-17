@@ -36,7 +36,7 @@ function generate_oh_symmetry_matrices(): Matrix4Tuple[] {
   for (const perm of AXIS_PERMUTATIONS) {
     for (const sign of SIGN_COMBINATIONS) {
       // Column-major 4x4 matrix: element at (row, col) is at index col*4 + row
-      const mat: number[] = new Array(16).fill(0)
+      const mat: number[] = Array(16).fill(0)
       mat[15] = 1 // w component
 
       // Build 3x3 rotation part: M[row][col] = sign[row] if perm[row] === col

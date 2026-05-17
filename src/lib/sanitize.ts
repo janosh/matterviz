@@ -62,12 +62,25 @@ function sanitize_svg_content(
   return wrapped.slice(open_end + 1, close_start)
 }
 
+const stringify_html_input = (html: unknown): string => {
+  if (html == null) return ``
+  if (typeof html === `string`) return html
+  if (typeof html === `number`) return Number.isNaN(html) ? `NaN` : `${html}`
+  if (typeof html === `boolean` || typeof html === `bigint`) return `${html}`
+  if (typeof html !== `object`) return ``
+  try {
+    return JSON.stringify(html) ?? ``
+  } catch {
+    return ``
+  }
+}
+
 // Sanitize HTML string, allowing only safe formatting tags and links.
 // Two-pass: happy-dom promotes dangerous children when a non-allowed parent is
 // stripped (e.g. <div><script>…</script></div> → <script>…</script>). The first
 // pass explicitly removes dangerous tags so they can't survive promotion.
 export function sanitize_html(html: unknown): string {
-  const str = html == null ? `` : String(html)
+  const str = stringify_html_input(html)
   const dp = get_purify()
   if (!dp) return str
   // oxfmt-ignore

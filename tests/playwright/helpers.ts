@@ -27,9 +27,7 @@ export async function wait_for_3d_canvas(
   // Wait for WebGL context to be ready (canvas has non-zero dimensions)
   await page.waitForFunction(
     (selector) => {
-      const canvas_el = document.querySelector(
-        `${selector} canvas`,
-      ) as HTMLCanvasElement | null
+      const canvas_el = document.querySelector<HTMLCanvasElement>(`${selector} canvas`)
       if (!canvas_el) return false
       const rect = canvas_el.getBoundingClientRect()
       return rect.width > 0 && rect.height > 0

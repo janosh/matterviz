@@ -41,7 +41,7 @@ describe(`create_file_drop_handler`, () => {
 
   test(`blocks drop when allow returns false`, async () => {
     const event = await run({ allow: () => false })
-    expect(event.preventDefault).toHaveBeenCalled()
+    expect(event[`preventDefault`]).toHaveBeenCalled()
     expect(on_drop).not.toHaveBeenCalled()
     expect(handle_url_drop).not.toHaveBeenCalled()
     expect(set_loading).not.toHaveBeenCalled()
@@ -49,7 +49,7 @@ describe(`create_file_drop_handler`, () => {
 
   test(`calls preventDefault and sets loading true then false`, async () => {
     const event = await run()
-    expect(event.preventDefault).toHaveBeenCalled()
+    expect(event[`preventDefault`]).toHaveBeenCalled()
     expect(set_loading).toHaveBeenCalledWith(true)
     expect(set_loading).toHaveBeenLastCalledWith(false)
   })

@@ -112,7 +112,7 @@
   )
 
   // Reposition dropdown: left-aligned by default, switch to right if it overflows viewport
-  let details_el: HTMLElement | undefined
+  let details_el: HTMLElement | undefined = undefined
   $effect(() => {
     if (!column_panel_open || !details_el) return
     // Re-run when section state changes while open

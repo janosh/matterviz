@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip } from 'svelte-multiselect'
+  import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {

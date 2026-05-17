@@ -229,10 +229,10 @@
   const transformed_regions = $derived(
     (effective_data?.regions ?? []).map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
-      const { width, height } = compute_bounding_box_2d(svg_vertices)
+      const { width: box_width, height: box_height } = compute_bounding_box_2d(svg_vertices)
       const label_props = compute_label_properties(
         region.name,
-        { width, height },
+        { width: box_width, height: box_height },
         merged_config.font_size,
       )
       // Get gradient stops for multi-phase regions (2+, supports 3+ phases)

@@ -111,10 +111,10 @@ export function find_image_atoms(
         math.scale(lattice_vecs[0], img_abc[0]),
         math.scale(lattice_vecs[1], img_abc[1]),
         math.scale(lattice_vecs[2], img_abc[2]),
-      ) as Vec3
+      )
 
       // Skip zero-displacement images (should not happen, guards against FP edge cases)
-      const displacement = math.subtract(img_xyz, site.xyz) as Vec3
+      const displacement = math.subtract(img_xyz, site.xyz)
       const displacement_len_sq = displacement.reduce((sum, val) => sum + val * val, 0)
       if (displacement_len_sq < displacement_eps_sq) continue
 

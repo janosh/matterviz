@@ -2,9 +2,26 @@ import type { CompositionType, ElementSymbol, Species } from '$lib'
 import { default_element_colors, ELEMENT_COLOR_SCHEMES } from '$lib/colors'
 import { colors } from '$lib/state.svelte'
 import AtomLegend from '$lib/structure/AtomLegend.svelte'
-import { mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import type { ComponentProps } from 'svelte'
+import { mount as svelte_mount, tick, unmount } from 'svelte'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
+
+let mounted_components: ReturnType<typeof svelte_mount>[] = []
+
+const mount = (
+  _component: typeof AtomLegend,
+  options: { target: HTMLElement; props?: ComponentProps<typeof AtomLegend> },
+): ReturnType<typeof svelte_mount> => {
+  const mounted = svelte_mount(AtomLegend, options)
+  mounted_components.push(mounted)
+  return mounted
+}
+
+afterEach(async () => {
+  await Promise.all(mounted_components.map((component) => unmount(component)))
+  mounted_components = []
+})
 
 describe(`AtomLegend Component`, () => {
   const mock_elements = { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }
@@ -504,8 +521,8 @@ describe(`AtomLegend Component`, () => {
         ? {
             colors: legend_colors,
             values: [...unique_values, ...unique_values], // Add duplicates
-            min_value: Math.min(...(unique_values as number[])),
-            max_value: Math.max(...(unique_values as number[])),
+            min_value: Math.min(...unique_values),
+            max_value: Math.max(...unique_values),
             unique_values,
           }
         : null
@@ -617,7 +634,7 @@ describe(`AtomLegend Component`, () => {
         },
       })
 
-      const labels = Array.from(document.querySelectorAll(`.category-label`)) as HTMLElement[]
+      const labels = Array.from(document.querySelectorAll<HTMLElement>(`.category-label`))
       const color_map = new Map(
         labels.map((l) => [l.textContent?.trim(), l.style.backgroundColor]),
       )

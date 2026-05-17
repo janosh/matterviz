@@ -696,7 +696,7 @@
     ),
   )
 
-  const sort_indicator = (col: Label, sort_state: SortState) => {
+  const sort_indicator = (col: Label, current_sort_state: SortState) => {
     const hide_sort_indicator = col.show_sort_indicator === false ||
       col.style?.includes(`--hide-sort-indicator`)
     if (hide_sort_indicator) return ``
@@ -711,10 +711,10 @@
       return `<span style="font-size: 0.8em;">${arrow}${badge}</span>`
     }
 
-    const is_sorted = sort_state.column === col_id
+    const is_sorted = current_sort_state.column === col_id
     if (!is_sorted) return ``
     // Show indicator only for actively sorted columns.
-    const arrow = sort_state.ascending ? `↓` : `↑`
+    const arrow = current_sort_state.ascending ? `↓` : `↑`
 
     return arrow ? `<span style="font-size: 0.8em;">${arrow}</span>` : ``
   }

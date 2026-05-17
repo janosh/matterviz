@@ -296,8 +296,8 @@ export function dot(
     if (mat1_cols !== mat2.length) {
       throw new Error(`First matrix columns must equal second matrix rows`)
     }
-    return mat1.map((_, ii) =>
-      Array.from({ length: mat2_cols }, (_, jj) =>
+    return mat1.map((_row, ii) =>
+      Array.from({ length: mat2_cols }, (_col, jj) =>
         mat1[ii].reduce((sum, _val, kk) => sum + mat1[ii][kk] * mat2[kk][jj], 0),
       ),
     )

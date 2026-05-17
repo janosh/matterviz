@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
   import { getContext, onMount } from 'svelte'
+  // oxlint-disable-next-line import/no-self-import -- recursive Svelte component
   import JsonNode from './JsonNode.svelte'
   import JsonValue from './JsonValue.svelte'
   import type { JsonTreeContext } from './types'

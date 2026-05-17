@@ -58,7 +58,7 @@ const format_formula_generic = (
     if (typeof input === `string`) composition = parse_composition(input)
     else if (`sites` in input || `lattice` in input) {
       composition = structure_to_composition(input as AnyStructure)
-    } else composition = input as CompositionType
+    } else composition = input
 
     return format_composition_formula(composition, sort_fn, plain_text, delim, amount_format)
   } catch {

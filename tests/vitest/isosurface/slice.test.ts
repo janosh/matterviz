@@ -3,19 +3,7 @@ import { sample_hkl_slice, trilinear_interpolate } from '$lib/isosurface/slice'
 import type { VolumetricData } from '$lib/isosurface/types'
 import type { Matrix3x3 } from '$lib/math'
 import { describe, expect, test } from 'vitest'
-
-// Helper: create a 3D grid filled with a function f(ix, iy, iz)
-const make_grid = (
-  nx: number,
-  ny: number,
-  nz: number,
-  fill_fn: (ix: number, iy: number, iz: number) => number,
-): number[][][] =>
-  Array.from({ length: nx }, (_, ix) =>
-    Array.from({ length: ny }, (_, iy) =>
-      Array.from({ length: nz }, (_, iz) => fill_fn(ix, iy, iz)),
-    ),
-  )
+import { make_grid } from '../setup'
 
 // Helper: create a minimal VolumetricData for testing
 function make_volume(

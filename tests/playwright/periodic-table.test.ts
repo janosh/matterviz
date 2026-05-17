@@ -26,7 +26,7 @@ test.describe(`Periodic Table`, () => {
     expect(tile_count).toBe(element_data.length + n_lanthanide_actinide_placeholders)
 
     for (const category of ELEMENT_CATEGORIES) {
-      let count = CATEGORY_COUNTS[category] as number
+      let count = CATEGORY_COUNTS[category]
       // Scope selector to the first periodic table
       const category_tiles_selector = periodic_table.locator(`[data-category="${category}"]`)
       // add 1 to expected count since lanthanides and actinides have placeholder

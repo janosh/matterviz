@@ -95,14 +95,12 @@ export async function parse_torch_sim_hdf5(
       positions_data.every(
         (entry) => Array.isArray(entry) && entry.every((coord) => Array.isArray(coord)),
       )
-    const positions = positions_are_frames
-      ? (positions_data as number[][][])
-      : [positions_data as number[][]]
+    const positions = positions_are_frames ? positions_data : [positions_data as number[][]]
     const atomic_numbers_are_frames =
       atomic_numbers_data.length > 0 &&
       atomic_numbers_data.every((entry) => Array.isArray(entry))
     const atomic_numbers = atomic_numbers_are_frames
-      ? (atomic_numbers_data as number[][])
+      ? atomic_numbers_data
       : [atomic_numbers_data as number[]]
     const frames = positions.map((frame_pos, idx) => {
       const frame_atomic_numbers = atomic_numbers[idx] || atomic_numbers[0]

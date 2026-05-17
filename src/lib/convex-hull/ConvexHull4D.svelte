@@ -107,8 +107,8 @@
   const merged_config = $derived({
     ...default_hull_config,
     ...config,
-    colors: { ...default_hull_config.colors, ...(config.colors || {}) },
-    margin: { t: 60, r: 60, b: 60, l: 60, ...(config.margin || {}) },
+    colors: { ...default_hull_config.colors, ...config.colors },
+    margin: { t: 60, r: 60, b: 60, l: 60, ...config.margin },
   })
 
   // Reactive dark mode detection for canvas text color
@@ -311,7 +311,7 @@
     )
   })
 
-  let canvas: HTMLCanvasElement
+  let canvas: HTMLCanvasElement | undefined = undefined
   let ctx: CanvasRenderingContext2D | null = null
   let frame_id = 0 // Performance optimization
 
@@ -554,7 +554,7 @@
   }
 
   function draw_structure_outline(): void {
-    if (!ctx) return
+    if (!ctx || !canvas) return
 
     const styles = getComputedStyle(canvas)
     // Match gray dashed structure lines used in 3D
