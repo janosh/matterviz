@@ -2671,7 +2671,10 @@
         on_drag={handle_legend_drag}
         on_drag_end={() => (legend_is_dragging = false)}
         on_hover_change={legend_hover.set_locked}
-        on_item_hover={(series_idx) => (hovered_legend_series_idx = series_idx)}
+        on_item_hover={(series_idx) =>
+          (hovered_legend_series_idx = series_idx != null && series_idx >= 0
+            ? series_idx
+            : null)}
         active_series_idx={tooltip_point?.series_idx ?? hovered_legend_series_idx}
         draggable={legend?.draggable ?? true}
         {...legend}

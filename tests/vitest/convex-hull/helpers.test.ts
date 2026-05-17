@@ -39,6 +39,16 @@ describe(`helpers: energy color scale + point color`, () => {
     expect(c0).not.toBe(c1)
   })
 
+  test(`get_energy_color_scale ignores non-finite distances`, () => {
+    const scale = helpers.get_energy_color_scale(`energy`, `interpolateViridis`, [
+      { e_above_hull: Number.NaN },
+      { e_above_hull: Number.POSITIVE_INFINITY },
+      { e_above_hull: 0.2 },
+    ])
+    expect(scale).not.toBeNull()
+    expect(typeof scale?.(0.2)).toBe(`string`)
+  })
+
   test(`get_point_color_for_entry stability mode`, () => {
     const stable = helpers.get_point_color_for_entry(
       { is_stable: true },

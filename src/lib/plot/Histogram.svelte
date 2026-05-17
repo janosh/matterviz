@@ -473,7 +473,9 @@
     const x2_hist_generator = x2_series.length > 0
       ? bin().domain([ranges.current.x2[0], ranges.current.x2[1]]).thresholds(bins)
       : null
-    return selected_series.map((series_data, series_idx) => {
+    return selected_series.map((series_data, idx) => {
+      const original_series_idx = series.findIndex((srs) => srs === series_data)
+      const series_idx = original_series_idx >= 0 ? original_series_idx : idx
       const use_x2 = series_data.x_axis === `x2`
       const active_hist = use_x2 && x2_hist_generator
         ? x2_hist_generator
@@ -1432,9 +1434,9 @@
 
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
     {#each histogram_data as
-      { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis },
-      series_idx
-      (id ?? series_idx)
+      { id, bins, color, label, x_scale, y_scale, x_axis: srs_x_axis, y_axis, series_idx },
+      idx
+      (id ?? idx)
     }
       <g
         class="histogram-series"
@@ -1569,7 +1571,10 @@
       series_data={legend_data}
       on_toggle={legend?.on_toggle || toggle_series_visibility}
       on_hover_change={legend_hover.set_locked}
-      on_item_hover={(series_idx) => (hovered_legend_series_idx = series_idx)}
+      on_item_hover={(series_idx) =>
+        (hovered_legend_series_idx = series_idx != null && series_idx >= 0
+          ? series_idx
+          : null)}
       active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
       style={`
         position: absolute;

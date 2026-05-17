@@ -4,6 +4,7 @@ import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 function mount_histogram(props: Record<string, unknown>) {
+  document.body.innerHTML = ``
   mount(Histogram, {
     target: document.body,
     props: {
@@ -57,6 +58,21 @@ describe(`Histogram`, () => {
     const ticks = get_y_tick_numbers()
     const max_tick = Math.max(...ticks)
     expect(max_tick).toBeGreaterThanOrEqual(5)
+  })
+
+  test(`rendered series keep original indices when earlier series are hidden`, async () => {
+    mount_histogram({
+      series: [
+        { x: [], y: [0, 1, 2], label: `Hidden`, visible: false },
+        { x: [], y: [1, 1, 2], label: `Visible` },
+      ],
+      show_legend: true,
+    })
+    await tick()
+
+    expect(document.querySelector(`g.histogram-series`)?.getAttribute(`data-series-idx`)).toBe(
+      `1`,
+    )
   })
 
   test(`bins sensitivity: fewer bins increase per-bin counts`, async () => {

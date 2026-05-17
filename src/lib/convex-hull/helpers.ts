@@ -58,7 +58,7 @@ export function get_energy_color_scale(
   let hi_raw = 0.1
   for (const entry of plot_entries) {
     const val = entry.e_above_hull
-    if (typeof val !== `number`) continue
+    if (typeof val !== `number` || !Number.isFinite(val)) continue
     lo = Math.min(lo, val)
     hi_raw = Math.max(hi_raw, val)
   }

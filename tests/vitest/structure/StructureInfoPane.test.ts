@@ -79,56 +79,58 @@ describe(`StructureInfoPane`, () => {
     }
     const clipboard_spy = vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
 
-    mount_info_pane(
-      bind_props(
-        {
-          structure,
-          pane_open: true,
-        },
-        state,
-      ),
-    )
-    const site_cards = () =>
-      Array.from(document.querySelectorAll<HTMLDivElement>(`.site-card`))
-    expect(site_cards()).toHaveLength(3)
+    try {
+      mount_info_pane(
+        bind_props(
+          {
+            structure,
+            pane_open: true,
+          },
+          state,
+        ),
+      )
+      const site_cards = () =>
+        Array.from(document.querySelectorAll<HTMLDivElement>(`.site-card`))
+      expect(site_cards()).toHaveLength(3)
 
-    const site_row = site_cards()[1]
-    expect(site_row).toBeInstanceOf(HTMLDivElement)
-    site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-    expect(state.highlighted_sites).toEqual([1])
-    expect(state.hovered_site_idx).toBe(1)
-    site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-    expect(state.highlighted_sites).toEqual([])
-    expect(state.hovered_site_idx).toBe(null)
+      const site_row = site_cards()[1]
+      expect(site_row).toBeInstanceOf(HTMLDivElement)
+      site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+      expect(state.highlighted_sites).toEqual([1])
+      expect(state.hovered_site_idx).toBe(1)
+      site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+      expect(state.highlighted_sites).toEqual([])
+      expect(state.hovered_site_idx).toBe(null)
 
-    const filter_input = document.querySelector(`input.site-filter`) as HTMLInputElement
-    filter_input.value = `H2`
-    filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
+      const filter_input = document.querySelector(`input.site-filter`) as HTMLInputElement
+      filter_input.value = `H2`
+      filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
 
-    expect(site_cards()).toHaveLength(1)
-    expect(site_cards()[0].textContent).toContain(`H2`)
+      expect(site_cards()).toHaveLength(1)
+      expect(site_cards()[0].textContent).toContain(`H2`)
 
-    site_cards()[0].click()
-    expect(state.selected_sites).toEqual([1])
+      site_cards()[0].click()
+      expect(state.selected_sites).toEqual([1])
 
-    const copy_button = site_cards()[0].querySelector(
-      `button.copy-button`,
-    ) as HTMLButtonElement
-    copy_button.click()
-    expect(clipboard_spy).toHaveBeenCalledWith(expect.stringContaining(`Hydrogen`))
+      const copy_button = site_cards()[0].querySelector(
+        `button.copy-button`,
+      ) as HTMLButtonElement
+      copy_button.click()
+      expect(clipboard_spy).toHaveBeenCalledWith(expect.stringContaining(`Hydrogen`))
 
-    filter_input.value = ``
-    filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
-    await tick()
+      filter_input.value = ``
+      filter_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
 
-    site_cards()[0].focus()
-    site_cards()[0].dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
-    )
-    expect(document.activeElement).toBe(site_cards()[1])
-
-    clipboard_spy.mockRestore()
+      site_cards()[0].focus()
+      site_cards()[0].dispatchEvent(
+        new KeyboardEvent(`keydown`, { key: `ArrowDown`, bubbles: true }),
+      )
+      expect(document.activeElement).toBe(site_cards()[1])
+    } finally {
+      clipboard_spy.mockRestore()
+    }
   })
 
   test(`windows large expanded site lists`, async () => {
