@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { InfoPaneCards, type InfoPaneRow } from '$lib/overlays'
+  import InfoPaneCards from '$lib/overlays/InfoPaneCards.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { format_num } from '$lib/labels'
   import type { ComponentProps } from 'svelte'
@@ -7,7 +7,7 @@
   import ConvexHullStats from './ConvexHullStats.svelte'
   import type { ConvexHullEntry, PhaseStats } from './types'
 
-  const usage_tips: InfoPaneRow[] = [
+  const usage_tips = [
     { label: `Single click`, value: `Select point`, key: `tip-click` },
     { label: `Double click`, value: `Copy info`, key: `tip-double-click` },
     { label: `Drag`, value: `Rotate view`, key: `tip-drag` },
@@ -45,7 +45,7 @@
   const count_visible = (entries: ConvexHullEntry[]): number =>
     entries.reduce((count, entry) => count + Number(entry.visible), 0)
 
-  let settings_rows = $derived<InfoPaneRow[]>([
+  let settings_rows = $derived([
     {
       label: `Visible stable`,
       value: `${count_visible(stable_entries)} / ${stable_entries.length}`,

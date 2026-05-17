@@ -3,7 +3,17 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
   import CopyButton from './CopyButton.svelte'
-  import type { InfoPaneCard, InfoPaneRow } from './index'
+
+  type InfoPaneRow = {
+    label: string
+    value: string | number
+    key?: string
+    tooltip?: string
+  }
+  type InfoPaneCard = {
+    title: string
+    rows: InfoPaneRow[]
+  }
 
   let {
     cards,
@@ -23,8 +33,9 @@
   } = $props()
 
   let info_filter = $state(``)
-  let copied_items = new SvelteSet<string>()
-  const row_key = ({ key, label }: InfoPaneRow) => key ?? label
+  const copied_items = new SvelteSet<string>()
+  const row_key = (card_title: string, row: InfoPaneRow, row_idx: number): string =>
+    row.key ?? `${card_title}:${row.label}:${row.value}:${row_idx}`
 
   let filtered_cards = $derived.by(() => {
     const filter = info_filter.trim().toLowerCase()
@@ -39,8 +50,12 @@
       .filter(({ rows }) => rows.length > 0)
   })
 
-  async function copy_row(row: InfoPaneRow) {
-    const key = row_key(row)
+  async function copy_row(
+    card_title: string,
+    row: InfoPaneRow,
+    row_idx: number,
+  ): Promise<void> {
+    const key = row_key(card_title, row, row_idx)
     try {
       await navigator.clipboard.writeText(`${row.label}: ${row.value}`)
       copied_items.add(key)
@@ -67,15 +82,15 @@
     {#each filtered_cards as card (card.title)}
       <section class="info-card">
         <svelte:element this={`h${heading_level}`}>{card.title}</svelte:element>
-        {#each card.rows as row (row_key(row))}
+        {#each card.rows as row, row_idx (row_key(card.title, row, row_idx))}
           <div class="info-row" data-testid={row.key}>
             <span>{@html sanitize_html(row.label)}</span>
             <span title={row.tooltip}>{@html sanitize_html(row.value)}</span>
             <CopyButton
               label="Copy {row.label}: {row.value}"
               title="Copy {row.label}"
-              copied={copied_items.has(row_key(row))}
-              onclick={() => copy_row(row)}
+              copied={copied_items.has(row_key(card.title, row, row_idx))}
+              onclick={() => copy_row(card.title, row, row_idx)}
             />
           </div>
         {/each}
