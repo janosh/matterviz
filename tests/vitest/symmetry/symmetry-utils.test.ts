@@ -293,8 +293,8 @@ describe(`apply_symmetry_operations`, () => {
 
     expect(result).toHaveLength(4)
     // Check that we get all 4 positions
-    const x_coords = result.map((p) => p[0]).sort()
-    const y_coords = result.map((p) => p[1]).sort()
+    const x_coords = result.map((pos) => pos[0]).sort((val_a, val_b) => val_a - val_b)
+    const y_coords = result.map((pos) => pos[1]).sort((val_a, val_b) => val_a - val_b)
 
     expect(x_coords).toContainEqual(expect.closeTo(0, 8))
     expect(x_coords).toContainEqual(expect.closeTo(0.25, 8))

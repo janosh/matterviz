@@ -1,5 +1,6 @@
 // Component tests for JsonTree, JsonNode, and JsonValue
 import { JsonTree } from '$lib/layout'
+import { serialize_for_copy } from '$lib/layout/json-tree/utils'
 import { flushSync, mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { doc_query } from '../setup'
@@ -577,7 +578,7 @@ describe(`JsonTree`, () => {
 
       const [data] = mock_download.mock.calls[0]
       if (is_json) expect(JSON.parse(data)).toEqual(value)
-      else expect(data).toBe(String(value))
+      else expect(data).toBe(serialize_for_copy(value))
     })
 
     it(`uses custom download_filename when provided`, async () => {

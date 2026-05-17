@@ -542,11 +542,15 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     typeof structure.symmetry === `object`
   ) {
     const symmetry = structure.symmetry as Record<string, unknown>
-    if (`space_group_symbol` in symmetry && symmetry.space_group_symbol) {
-      lines.push(`_space_group_name_H-M_alt ${symmetry.space_group_symbol}`)
+    const { space_group_number, space_group_symbol } = symmetry
+    if (typeof space_group_symbol === `string` && space_group_symbol) {
+      lines.push(`_space_group_name_H-M_alt ${space_group_symbol}`)
     }
-    if (`space_group_number` in symmetry && symmetry.space_group_number) {
-      lines.push(`_space_group_IT_number ${symmetry.space_group_number}`)
+    if (
+      (typeof space_group_number === `number` || typeof space_group_number === `string`) &&
+      space_group_number
+    ) {
+      lines.push(`_space_group_IT_number ${space_group_number}`)
     }
   }
 

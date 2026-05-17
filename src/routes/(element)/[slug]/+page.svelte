@@ -1,18 +1,10 @@
 <script lang="ts">
   import { page } from '$app/state'
-  import type { ChemicalElement } from '$lib'
-  import {
-    BohrAtom,
-    ColorScaleSelect,
-    element_data,
-    ElementHeading,
-    ElementPhoto,
-    ElementScatter,
-    ElementTile,
-    Icon,
-    PeriodicTable,
-    PropertySelect,
-  } from '$lib'
+  import { BohrAtom, element_data, ElementHeading, ElementPhoto, ElementTile } from '$lib/element'
+  import type { ChemicalElement } from '$lib/element'
+  import Icon from '$lib/Icon.svelte'
+  import { ColorScaleSelect, ElementScatter } from '$lib/plot'
+  import { PeriodicTable, PropertySelect } from '$lib/periodic-table'
   import type { D3InterpolateName } from '$lib/colors'
   import { ELEM_PROPERTY_LABELS, format_num } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'

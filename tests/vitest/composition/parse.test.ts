@@ -406,7 +406,9 @@ describe(`generate_chem_sys_subspaces`, () => {
     const result = generate_chem_sys_subspaces(
       input as string | ElementSymbol[] | CompositionType,
     )
-    expect(result.sort()).toEqual(expected.sort())
+    expect(result.sort((str_a, str_b) => str_a.localeCompare(str_b))).toEqual(
+      expected.sort((str_a, str_b) => str_a.localeCompare(str_b)),
+    )
   })
 
   test.each([

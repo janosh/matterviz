@@ -1618,15 +1618,17 @@ describe(`compute_chempot_diagram edge cases`, () => {
     })
     expect(reordered.elements).toEqual([`O`, `Fe`, `Li`])
     // Same domains as default order, just reordered columns
-    expect(Object.keys(reordered.domains).sort()).toEqual(
-      Object.keys(cpd_ternary.domains).sort(),
+    expect(
+      Object.keys(reordered.domains).sort((str_a, str_b) => str_a.localeCompare(str_b)),
+    ).toEqual(
+      Object.keys(cpd_ternary.domains).sort((str_a, str_b) => str_a.localeCompare(str_b)),
     )
     // Verify axes actually swapped: Fe domain's O-axis range (col 0 in reordered)
     // should match its col 2 range in default [Fe,Li,O] order
     const fe_reordered = dedup_vertices(reordered.domains[`Fe`])
     const fe_default = dedup_vertices(cpd_ternary.domains[`Fe`])
-    const re_o_vals = fe_reordered.map((pt) => pt[0]).sort()
-    const def_o_vals = fe_default.map((pt) => pt[2]).sort() // O is axis 2 in default
+    const re_o_vals = fe_reordered.map((pt) => pt[0]).sort((val_a, val_b) => val_a - val_b)
+    const def_o_vals = fe_default.map((pt) => pt[2]).sort((val_a, val_b) => val_a - val_b) // O is axis 2 in default
     expect(re_o_vals.length).toBe(def_o_vals.length)
     for (let idx = 0; idx < re_o_vals.length; idx++) {
       expect(re_o_vals[idx]).toBeCloseTo(def_o_vals[idx], 4)

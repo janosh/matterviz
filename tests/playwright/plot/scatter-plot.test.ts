@@ -1781,9 +1781,9 @@ test.describe(`ScatterPlot Component Tests`, () => {
     // Test equal density (should pick a consistent position)
     await set_density(section, { tl: 50, tr: 50, bl: 50, br: 50 })
     // Poll until colorbar is in a valid quadrant
-    const valid_quadrants = [`top-left`, `top-right`, `bottom-left`, `bottom-right`]
+    const valid_quadrants = new Set([`top-left`, `top-right`, `bottom-left`, `bottom-right`])
     await expect
-      .poll(async () => valid_quadrants.includes(await get_colorbar_quadrant(section)), {
+      .poll(async () => valid_quadrants.has(await get_colorbar_quadrant(section)), {
         timeout: 3000,
       })
       .toBe(true)
