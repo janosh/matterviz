@@ -201,7 +201,7 @@
     "@types/node": "^25.8.0",
     "@types/three": "^0.184.1",
     "@typescript/native-preview": "7.0.0-dev.20260517.1",
-    "@vitest/coverage-v8": "4.1.6",
+    "@vitest/coverage-v8": "4.1.5",
     "@wooorm/starry-night": "^3.9.0",
     "happy-dom": "^20.9.0",
     "mdsvex": "^0.12.7",
