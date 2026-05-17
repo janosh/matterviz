@@ -1275,7 +1275,8 @@
       {/if}
 
       <!-- hovered site tooltip -->
-      {#if hovered_site && !camera_is_moving && active_tooltip === `atom`}
+      {#if hovered_site && !camera_is_moving &&
+        (active_tooltip === `atom` || active_sites.includes(hovered_idx ?? -1))}
         {@const abc = hovered_site.abc.map((val) => format_num(val, float_fmt)).join(
           `, `,
         )}

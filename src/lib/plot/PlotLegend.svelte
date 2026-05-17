@@ -26,6 +26,10 @@
     on_drag = () => {},
     on_drag_end = () => {},
     on_hover_change,
+    on_item_hover,
+    active_series_idx = null,
+    filterable = true,
+    filter_threshold = 12,
     draggable = true,
     root_element = $bindable<HTMLDivElement | undefined>(undefined),
     ...rest
@@ -54,6 +58,10 @@
     on_drag_end?: (event: MouseEvent) => void
     // Callback when hover state changes (for placement stability)
     on_hover_change?: (is_hovered: boolean) => void
+    on_item_hover?: (series_idx: number | null) => void
+    active_series_idx?: number | null
+    filterable?: boolean
+    filter_threshold?: number
     draggable?: boolean
     // Bindable reference to the root DOM element for size measurements
     root_element?: HTMLDivElement
@@ -61,6 +69,7 @@
 
   let is_dragging = $state(false)
   let drag_start_coords = $state<{ x: number; y: number } | null>(null)
+  let legend_filter = $state(``)
 
   // Group series by legend_group, preserving order
   type GroupedData = { group_name: string | null; items: LegendItem[] }
@@ -87,6 +96,21 @@
       group.group_name !== null && group.items.length > 0
     ),
   )
+
+  let show_filter = $derived(filterable && series_data.length >= filter_threshold)
+
+  let filtered_grouped_series = $derived.by<GroupedData[]>(() => {
+    const filter = show_filter ? legend_filter.trim().toLowerCase() : ``
+    if (!filter) return grouped_series
+    return grouped_series
+      .map(({ group_name, items }) => ({
+        group_name,
+        items: items.filter((item) =>
+          `${group_name ?? ``} ${strip_html(item.label)}`.toLowerCase().includes(filter)
+        ),
+      }))
+      .filter(({ items }) => items.length > 0)
+  })
 
   function toggle_group_collapse(group_name: string) {
     // Normalize to SvelteSet if a plain Set was passed (ensures reactivity)
@@ -185,6 +209,7 @@
   <div
     class="legend-item"
     class:hidden={!series.visible}
+    class:active={active_series_idx === series.series_idx}
     class:indented={indent}
     class:fill-item={is_fill_item}
     style={item_style}
@@ -204,6 +229,10 @@
         toggle_item(series)
       }
     }}
+    onmouseenter={() => on_item_hover?.(series.series_idx)}
+    onmouseleave={() => on_item_hover?.(null)}
+    onfocus={() => on_item_hover?.(series.series_idx)}
+    onblur={() => on_item_hover?.(null)}
     role="button"
     tabindex="0"
     aria-pressed={series.visible}
@@ -312,7 +341,21 @@
   class:is-dragging={is_dragging}
   class:grouped={has_groups}
 >
-  {#each grouped_series as { group_name, items } (group_name ?? `__ungrouped__`)}
+  {#if show_filter}
+    <input
+      class="legend-filter"
+      type="search"
+      bind:value={legend_filter}
+      placeholder="Filter legend"
+      aria-label="Filter legend items"
+      onclick={(event) => event.stopPropagation()}
+      onmousedown={(event) => event.stopPropagation()}
+    />
+  {/if}
+  {#if show_filter && legend_filter && filtered_grouped_series.length === 0}
+    <span class="legend-empty">No legend items</span>
+  {/if}
+  {#each filtered_grouped_series as { group_name, items } (group_name ?? `__ungrouped__`)}
     {#if group_name !== null && has_groups}
       <!-- Group header -->
       {@const is_collapsed = collapsed_groups.has(group_name)}
@@ -425,6 +468,22 @@
     transition: var(--plot-legend-item-transition, opacity 0.3s ease);
     color: var(--plot-legend-item-color);
   }
+  .legend-filter {
+    box-sizing: border-box;
+    width: calc(100% - 6px);
+    min-width: 10em;
+    margin: 3px;
+    padding: 2px 5px;
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-radius: var(--border-radius, 3pt);
+    background: color-mix(in srgb, var(--plot-legend-bg-color, Canvas) 88%, currentColor);
+    color: inherit;
+    font: inherit;
+  }
+  .legend-empty {
+    padding: var(--plot-legend-item-padding, 1px 8px 1px 3px);
+    opacity: 0.7;
+  }
   .legend-item.indented {
     padding: var(--plot-legend-item-padding, 0 8px 1px 3px);
     padding-left: var(--plot-legend-group-indent, 16px);
@@ -432,8 +491,11 @@
   .legend-item.hidden {
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
   }
-  .legend-item:hover, .legend-item:focus {
+  .legend-item:hover, .legend-item:focus, .legend-item.active {
     background-color: var(--plot-legend-item-hover-bg-color);
+  }
+  .legend-item.active {
+    box-shadow: inset 2px 0 0 var(--accent-color, currentColor);
   }
   .legend-marker {
     display: inline-flex; /* Use flex to align items */

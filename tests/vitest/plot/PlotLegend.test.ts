@@ -167,6 +167,49 @@ describe(`PlotLegend`, () => {
     expect(wrapper.style.gridTemplateRows).toBe(`repeat(2, auto)`) // 2 rows defined
   })
 
+  test(`reports hovered item and marks active series`, () => {
+    const on_item_hover = vi.fn()
+    mount(PlotLegend, {
+      target: document.body,
+      props: {
+        series_data: default_series_data,
+        active_series_idx: 1,
+        on_item_hover,
+      },
+    })
+
+    const items = document.querySelectorAll(`.legend-item`)
+    expect(items[1].classList.contains(`active`)).toBe(true)
+
+    items[2].dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    expect(on_item_hover).toHaveBeenLastCalledWith(2)
+
+    items[2].dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(on_item_hover).toHaveBeenLastCalledWith(null)
+  })
+
+  test(`filters large legends`, async () => {
+    const series_data = Array.from(
+      { length: 13 },
+      (_, idx): LegendItem => ({
+        label: idx === 10 ? `Target series` : `Series ${idx}`,
+        visible: true,
+        series_idx: idx,
+        display_style: {},
+      }),
+    )
+    mount(PlotLegend, { target: document.body, props: { series_data } })
+
+    const filter = doc_query(`.legend-filter`, HTMLInputElement)
+    filter.value = `target`
+    filter.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await tick()
+
+    const items = document.querySelectorAll(`.legend-item`)
+    expect(items).toHaveLength(1)
+    expect(items[0].textContent).toContain(`Target series`)
+  })
+
   test(`renders different marker shapes and line types`, () => {
     const test_data: LegendItem[] = [
       {
@@ -424,7 +467,8 @@ describe(`PlotLegend`, () => {
     mount(PlotLegend, { target: document.body, props: { series_data: [] } })
     const wrapper = doc_query(`.legend`)
     expect(wrapper).toBeInstanceOf(HTMLElement)
-    expect(wrapper.innerHTML.trim()).toBe(``) // Should be empty
+    expect(wrapper.querySelector(`.legend-item`)).toBeNull()
+    expect(wrapper.querySelector(`.legend-filter`)).toBeNull()
   })
 
   test(`renders correctly with only one series`, () => {

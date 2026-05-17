@@ -277,6 +277,56 @@ describe(`Structure`, () => {
     await wait_for_dom_text(`Ba Ti O3`)
     expect(document.body.textContent).toContain(`Ba Ti O3`)
   })
+
+  test(`info pane site hover updates highlighted sites`, async () => {
+    let highlighted_sites: number[] = []
+    let hovered_site_idx: number | null = null
+    let selected_sites: number[] = []
+
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        info_pane_open: true,
+        show_controls: true,
+        get highlighted_sites() {
+          return highlighted_sites
+        },
+        set highlighted_sites(value) {
+          highlighted_sites = value
+        },
+        get hovered_site_idx() {
+          return hovered_site_idx
+        },
+        set hovered_site_idx(value) {
+          hovered_site_idx = value
+        },
+        get selected_sites() {
+          return selected_sites
+        },
+        set selected_sites(value) {
+          selected_sites = value
+        },
+      },
+    })
+    await tick()
+
+    const first_site_row = document.querySelector(
+      `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
+    ) as HTMLDivElement
+    expect(first_site_row).toBeInstanceOf(HTMLDivElement)
+
+    first_site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    expect(highlighted_sites).toEqual([0])
+    expect(hovered_site_idx).toBe(0)
+
+    first_site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
+    expect(highlighted_sites).toEqual([])
+    expect(hovered_site_idx).toBe(null)
+
+    first_site_row.click()
+    expect(selected_sites).toEqual([0])
+  })
 })
 
 test(`pbc_dist with realistic structure scenarios`, () => {

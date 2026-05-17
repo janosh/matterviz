@@ -1069,6 +1069,7 @@
 
   // Legend placement stability state
   let legend_element = $state<HTMLDivElement | undefined>()
+  let hovered_legend_series_idx = $state<number | null>(null)
   const legend_hover = create_hover_lock()
   const dim_tracker = create_dimension_tracker()
   let has_initial_legend_placement = $state(false)
@@ -1765,6 +1766,10 @@
             <g
               class={is_line ? `line-series` : `bar-series`}
               data-series-idx={series_idx}
+              opacity={hovered_legend_series_idx !== null &&
+                  hovered_legend_series_idx !== series_idx
+                ? 0.25
+                : 1}
             >
               {#if is_line}
                 <!-- Render as line -->
@@ -2086,6 +2091,8 @@
         on_toggle={legend?.on_toggle || toggle_series_visibility}
         on_group_toggle={legend?.on_group_toggle || toggle_group_visibility}
         on_hover_change={legend_hover.set_locked}
+        on_item_hover={(series_idx) => (hovered_legend_series_idx = series_idx)}
+        active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
         style={`
           position: absolute;
           left: ${legend_placement ? tweened_legend_coords.current.x : pad.l + 10}px;

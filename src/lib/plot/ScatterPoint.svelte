@@ -20,6 +20,7 @@
     origin = $bindable({ x: 0, y: 0 }),
     is_hovered = false,
     is_selected = false,
+    is_dimmed = false,
     leader_line_threshold = 15,
     ...rest
   }: Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `origin` | `transform`> & {
@@ -33,6 +34,7 @@
     origin?: XyObj
     is_hovered?: boolean
     is_selected?: boolean
+    is_dimmed?: boolean
     leader_line_threshold?: number
   } = $props()
 
@@ -92,6 +94,7 @@
     fill="var(--point-fill-color, {style.fill ?? `black`})"
     class="marker"
     class:is-hovered={is_hovered && (hover.enabled ?? true)}
+    class:is-dimmed={is_dimmed}
     style:cursor={style.cursor}
   />
   {#if label.text}
@@ -153,6 +156,9 @@
     stroke: var(--hover-stroke);
     stroke-width: var(--hover-stroke-width);
     filter: brightness(var(--hover-brightness));
+  }
+  .marker.is-dimmed {
+    opacity: var(--scatter-point-dimmed-opacity, 0.25);
   }
   .effect-ring {
     pointer-events: none;

@@ -8,7 +8,6 @@
   import { SETTINGS_CONFIG } from '$lib/settings'
   import { type AnyStructure } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
-  import { tooltip as create_tooltip } from 'svelte-multiselect/attachments'
   import { SvelteSet } from 'svelte/reactivity'
   import type { TrajectoryType } from './index'
 
@@ -36,6 +35,7 @@
   } = $props()
 
   let copied_items = new SvelteSet<string>()
+  let info_filter = $state(``)
 
   async function copy_item(label: string, value: string | number, key: string) {
     try {
@@ -47,6 +47,16 @@
     } catch (error) {
       console.error(`Failed to copy to clipboard:`, error)
     }
+  }
+
+  function copy_item_event(
+    event: MouseEvent,
+    label: string,
+    value: string | number,
+    key: string,
+  ) {
+    event.stopPropagation()
+    copy_item(label, value, key)
   }
 
   // Helper functions
@@ -299,6 +309,19 @@
 
     return sections
   })
+
+  let filtered_info_pane_data = $derived.by(() => {
+    const filter = info_filter.trim().toLowerCase()
+    if (!filter) return info_pane_data
+    return info_pane_data
+      .map((section) => ({
+        ...section,
+        items: section.items.filter(({ label, value }) =>
+          `${section.title} ${label} ${value}`.toLowerCase().includes(filter)
+        ),
+      }))
+      .filter(({ items }) => items.length > 0)
+  })
 </script>
 
 <DraggablePane
@@ -315,73 +338,110 @@
   {...rest}
 >
   <h4 style="margin-top: 0">Trajectory Info</h4>
-  {#each info_pane_data as section, sec_idx (section.title)}
-    {#if sec_idx > 0}<hr />{/if}
-    <section>
-      {#if section.title && section.title !== `File`}
-        <h4>{section.title}</h4>
-      {/if}
-      {#each section.items as item (item.key ?? item.label)}
-        {@const { key, label, value, tooltip } = item}
-        <div
-          class="clickable"
-          aria-label="Click to copy: {label}: {value}"
-          onclick={() => copy_item(label, value, key ?? label)}
-          role="button"
-          tabindex="0"
-          onkeydown={(event) => {
-            if ([`Enter`, ` `].includes(event.key)) {
-              event.preventDefault()
-              copy_item(label, value, key ?? label)
-            }
-          }}
-        >
-          <span>{@html sanitize_html(label)}</span>
-          <span title={tooltip} {@attach create_tooltip()}>{@html sanitize_html(value)}</span>
-          {#if copied_items.has(key ?? label)}
-            <Icon
-              icon="Check"
-              style="color: var(--success-color, #10b981); width: 12px; height: 12px"
-              class="copy-checkmark"
-            />
-          {/if}
-        </div>
+  {#if info_pane_data.length > 1 || info_pane_data.some(({ items }) => items.length > 4)}
+    <input
+      class="info-filter"
+      type="search"
+      bind:value={info_filter}
+      placeholder="Filter trajectory info"
+      aria-label="Filter trajectory info"
+    />
+  {/if}
+  {#if filtered_info_pane_data.length === 0}
+    <p class="empty-filter">No trajectory info matches "{info_filter}".</p>
+  {:else}
+    <div class="info-cards">
+      {#each filtered_info_pane_data as section (section.title)}
+        <section class="info-card">
+          <h4>{section.title}</h4>
+          {#each section.items as item (item.key ?? item.label)}
+            {@const { key, label, value, tooltip } = item}
+            {@const copy_key = key ?? label}
+            <div class="info-row">
+              <span>{@html sanitize_html(label)}</span>
+              <span title={tooltip}>{@html sanitize_html(value)}</span>
+              <button
+                type="button"
+                class="copy-button"
+                aria-label="Copy {label}: {value}"
+                title="Copy {label}"
+                onclick={(event) => copy_item_event(event, label, value, copy_key)}
+              >
+                {#if copied_items.has(copy_key)}
+                  <Icon icon="Check" />
+                {:else}
+                  <Icon icon="Copy" />
+                {/if}
+              </button>
+            </div>
+          {/each}
+        </section>
       {/each}
-    </section>
-  {/each}
+    </div>
+  {/if}
 </DraggablePane>
 
 <style>
-  section div {
-    display: flex;
-    justify-content: space-between;
-    gap: 6pt;
-    padding: 1pt;
+  .info-filter {
+    box-sizing: border-box;
+    width: 100%;
+    margin-bottom: 5pt;
+    padding: 4pt 6pt;
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-radius: var(--border-radius, 3pt);
+    background: color-mix(in srgb, var(--pane-bg, Canvas) 88%, currentColor);
+    color: inherit;
+  }
+  .empty-filter {
+    margin: 0.25em 0;
+    opacity: 0.75;
+  }
+  .info-cards {
+    display: grid;
+    gap: 5pt;
+  }
+  .info-card {
+    border-left: 3px solid var(--accent-color, currentColor);
+    border-radius: var(--border-radius, 3pt);
+    background: color-mix(in srgb, currentColor 4%, transparent);
+    padding: 5pt;
+  }
+  .info-card h4 {
+    margin: 0 0 3pt;
+  }
+  .info-row {
+    display: grid;
+    grid-template-columns: minmax(5em, 0.8fr) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 5pt;
+    padding: 1pt 0;
     line-height: 1.5;
   }
-  section div.clickable {
+  .info-row span:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .copy-button {
+    display: inline-grid;
+    place-items: center;
+    width: 1.6em;
+    height: 1.6em;
+    padding: 0;
+    border: 0;
+    border-radius: var(--border-radius, 3pt);
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    color: inherit;
     cursor: pointer;
-    position: relative;
+    opacity: 0.75;
   }
-  section div:hover {
-    background: var(--pane-btn-bg-hover, rgba(255, 255, 255, 0.03));
+  .copy-button:hover,
+  .copy-button:focus-visible {
+    opacity: 1;
+    background: color-mix(in srgb, currentColor 14%, transparent);
   }
-  section :global(.copy-checkmark) {
-    position: absolute;
-    top: 50%;
-    right: 3pt;
-    transform: translateY(-50%);
-    background: var(--pane-bg);
-    border-radius: 50%;
-    padding: 3pt;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: fade-in 0.1s ease-out;
-  }
-  @keyframes fade-in {
-    0% {
-      opacity: 0;
-    }
+  .copy-button :global(svg) {
+    width: 0.9em;
+    height: 0.9em;
   }
 </style>

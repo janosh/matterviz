@@ -9,6 +9,7 @@
   import Icon from '$lib/Icon.svelte'
   import { create_file_drop_handler, load_from_url } from '$lib/io'
   import { set_fullscreen_bg, toggle_fullscreen } from '$lib/layout'
+  import PinnedInspector from '$lib/overlays/PinnedInspector.svelte'
   import { PlotTooltip } from '$lib/plot'
   import type { CameraProjection } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
@@ -155,6 +156,7 @@
   let current_filename = $state<string | undefined>(undefined)
   let recompute_job_id = 0 // monotonic counter to track latest recompute call
   let hover_data = $state<FermiHoverData | null>(null)
+  let pinned_hover_data = $state<FermiHoverData | null>(null)
 
   // Call on_hover callback when hover_data changes
   $effect(() => {
@@ -344,8 +346,18 @@
     // Only handle shortcuts when component is focused/hovered or contains focus
     if (!wrapper?.contains(document.activeElement) && !hovered) return
 
+    if (event.key === `Escape` && pinned_hover_data) {
+      pinned_hover_data = null
+      return
+    }
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     else if (event.key === `Escape`) controls_open = false
+  }
+
+  function pin_hover_data(event: MouseEvent) {
+    const target = event.target as HTMLElement
+    if (target.closest(`.control-buttons`) || target.closest(`.pinned-inspector`)) return
+    if (hover_data) pinned_hover_data = hover_data
   }
 
   $effect(() => {
@@ -380,6 +392,7 @@
   bind:clientHeight={height}
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
+  onclick={pin_hover_data}
   ondrop={handle_file_drop}
   ondragover={(event) => {
     event.preventDefault()
@@ -496,6 +509,15 @@
         >
           <FermiSurfaceTooltip {hover_data} tooltip={tooltip_config} />
         </PlotTooltip>
+      {/if}
+      {#if pinned_hover_data}
+        <PinnedInspector
+          title="Pinned surface"
+          on_close={() => (pinned_hover_data = null)}
+          style="--pinned-inspector-z-index: 100000001; --pinned-inspector-bg: var(--surface-bg, Canvas)"
+        >
+          <FermiSurfaceTooltip hover_data={pinned_hover_data} tooltip={tooltip_config} />
+        </PinnedInspector>
       {/if}
     {/if}
   {:else}
