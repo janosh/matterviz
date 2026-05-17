@@ -92,18 +92,10 @@ export default defineConfig({
       'eslint-plugin-import/no-self-import': `off`, // recursive Svelte components
       '@typescript-eslint/no-redundant-type-constituents': `error`,
       'eslint-plugin-unicorn/require-module-specifiers': `off`,
-      // VS Code's Webview.postMessage() API doesn't take targetOrigin (not browser postMessage)
-      'eslint-plugin-unicorn/require-post-message-target-origin': `off`,
       'oxc/no-map-spread': `off`,
-      'oxc/approx-constant': `off`,
       // Vitest default rules — too noisy for this codebase
       'eslint-plugin-vitest/no-conditional-expect': `off`,
       'eslint-plugin-vitest/valid-expect': [`error`, { maxArgs: 2 }], // Vitest supports expect(actual, message)
-      'eslint-plugin-jest/no-conditional-expect': `off`, // conditional expects are pervasive
-      'eslint-plugin-jest/valid-expect': `off`, // false positives on custom matchers
-      'eslint-plugin-jest/require-to-throw-message': `off`,
-      'eslint-plugin-jest/no-standalone-expect': `off`, // expect in shared helpers
-      'eslint-plugin-jest/valid-describe-callback': `off`,
     },
   },
   plugins: [

@@ -7,7 +7,7 @@ describe(`InfoCard`, () => {
   test(`renders numeric values through format_num`, () => {
     mount(InfoCard, {
       target: document.body,
-      props: { data: [{ title: `Energy`, value: 3.14159, fmt: `.2f` }] },
+      props: { data: [{ title: `Energy`, value: Math.PI, fmt: `.2f` }] },
     })
     expect(doc_query(`strong`).textContent?.trim()).toBe(`3.14`)
   })

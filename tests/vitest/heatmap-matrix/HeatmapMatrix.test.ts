@@ -604,10 +604,10 @@ describe(`show_values`, () => {
     mount_matrix({
       x_items: make_items([`A`]),
       y_items: make_items([`X`]),
-      values: [[3.14159]],
+      values: [[Math.PI]],
       show_values: `.1f`,
     })
-    expect(doc_query(`.cell-value`).textContent).toBe(format_num(3.14159, `.1f`))
+    expect(doc_query(`.cell-value`).textContent).toBe(format_num(Math.PI, `.1f`))
   })
 
   test(`ignored when custom cell snippet is provided`, () => {

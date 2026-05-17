@@ -926,7 +926,7 @@ describe(`orthonormal_2d`, () => {
         [1, 1],
         [2, 2],
       ],
-      expected: [-0.70710678, 0.70710678],
+      expected: [-Math.SQRT1_2, Math.SQRT1_2],
       label: `45°`,
     },
     {

@@ -546,7 +546,7 @@ async function handle_file_change(
   event_type: `change` | `delete`,
   file_path: string,
   webview: WebviewLike,
-  meta?: WatcherMeta,
+  meta: WatcherMeta = {},
 ): Promise<void> {
   if (event_type === `delete`) {
     try {

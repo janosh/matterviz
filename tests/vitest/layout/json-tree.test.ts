@@ -78,7 +78,7 @@ describe(`JsonTree`, () => {
     it.each([
       { value: `hello`, expected_class: `string`, expected_text: `"hello"` },
       { value: 42, expected_class: `number`, expected_text: `42` },
-      { value: 3.14159, expected_class: `number`, expected_text: `3.14159` },
+      { value: 3.125, expected_class: `number`, expected_text: `3.125` },
       { value: true, expected_class: `boolean`, expected_text: `true` },
       { value: false, expected_class: `boolean`, expected_text: `false` },
       { value: null, expected_class: `null`, expected_text: `null` },
