@@ -647,9 +647,8 @@
     if (!ctx || !canvas) return
 
     // Get formation energy range for vertical edges
-    const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
-    const e_form_min = Math.min(0, ...formation_energies) // Include 0 for elemental references
-    const e_form_max = Math.max(0, ...formation_energies) // Include 0 for elemental references
+    const e_form_min = energy_range.min // Includes 0 for elemental references
+    const e_form_max = energy_range.max // Includes 0 for elemental references
 
     // Draw base triangle edges (top triangle at formation energy = 0)
     const triangle_edges = get_triangle_edges()
@@ -799,8 +798,7 @@
     // Lazy computation for uniform mode: normalize alpha by formation energy
     let norm_alpha: ((z: number) => number) | null = null
     if (hull_face_color_mode === `uniform`) {
-      const formation_energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
-      const min_fe = Math.min(0, ...formation_energies)
+      const min_fe = energy_range.min
       norm_alpha = (z: number) => {
         const t = Math.max(0, Math.min(1, (0 - z) / Math.max(1e-6, 0 - min_fe)))
         return t * hull_face_opacity
@@ -955,8 +953,7 @@
 
   // Formation energy color bar helpers
   const e_form_range = $derived.by((): [number, number] => {
-    const energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
-    const min_fe = energies.length ? Math.min(0, ...energies) : -1
+    const min_fe = plot_entries.length ? energy_range.min : -1
     return [min_fe, 0]
   })
 
@@ -1387,8 +1384,13 @@
   // Performance: Cache canvas dimensions and formation energy range
   let canvas_dims = $state({ width: 600, height: 600, scale: 1 })
   const energy_range = $derived.by(() => {
-    const energies = plot_entries.map((e) => e.e_form_per_atom ?? 0)
-    const [min, max] = [Math.min(0, ...energies), Math.max(0, ...energies)]
+    let min = 0
+    let max = 0
+    for (const entry of plot_entries) {
+      const energy = entry.e_form_per_atom ?? 0
+      min = Math.min(min, energy)
+      max = Math.max(max, energy)
+    }
     const z_scale = 0.75 / Math.max(max - min, 0.001)
     return { min, max, center: (min + max) / 2, z_scale }
   })

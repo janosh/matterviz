@@ -22,6 +22,7 @@ export { DEFAULT_GAS_TEMP }
 
 // Tolerance for classifying a phase as on the convex hull (eV/atom)
 export const HULL_STABILITY_TOL = 1e-6
+const marker_path_cache = new Map<string, Path2D>()
 
 // Clamp raw hull distance and compute stability for a single entry.
 // Excluded entries keep their raw (possibly negative) distance and are never stable.
@@ -53,12 +54,15 @@ export function get_energy_color_scale(
   plot_entries: { e_above_hull?: number }[],
 ): ((value: number) => string) | null {
   if (color_mode !== `energy` || plot_entries.length === 0) return null
-  const hull_distances = plot_entries
-    .map((entry) => entry.e_above_hull)
-    .filter((val): val is number => typeof val === `number`)
-  if (hull_distances.length === 0) return null
-  const lo = Math.min(...hull_distances)
-  const hi_raw = Math.max(...hull_distances, 0.1)
+  let lo = Number.POSITIVE_INFINITY
+  let hi_raw = 0.1
+  for (const entry of plot_entries) {
+    const val = entry.e_above_hull
+    if (typeof val !== `number`) continue
+    lo = Math.min(lo, val)
+    hi_raw = Math.max(hi_raw, val)
+  }
+  if (!Number.isFinite(lo)) return null
   const hi = Math.max(hi_raw, lo + 1e-6)
   const interpolator = get_d3_interpolator(color_scale)
   return scaleSequential(interpolator).domain([lo, hi])
@@ -101,10 +105,14 @@ export async function parse_hull_entries_from_drop(
 // Compute a consistent max energy threshold for controls (shared)
 export function calc_max_hull_dist_in_data(processed_entries: PhaseData[]): number {
   if (processed_entries.length === 0) return 0.5
-  const hull_distances = processed_entries
-    .map((entry) => entry.e_above_hull)
-    .filter((val): val is number => typeof val === `number` && Number.isFinite(val))
-  const max_val = (hull_distances.length ? Math.max(...hull_distances) : 0) + 0.001
+  let max_hull_dist = 0
+  for (const entry of processed_entries) {
+    const val = entry.e_above_hull
+    if (typeof val === `number` && Number.isFinite(val)) {
+      max_hull_dist = Math.max(max_hull_dist, val)
+    }
+  }
+  const max_val = max_hull_dist + 0.001
   return Math.max(0.1, max_val)
 }
 
@@ -216,10 +224,17 @@ export function compute_energy_mode_info(
 
   const unary_refs = find_lowest_energy_unary_refs_fn(entries)
 
-  const elements_in_entries = Array.from(
-    new Set(entries.flatMap((entry) => Object.keys(entry.composition))),
-  )
-  const can_compute_e_form = elements_in_entries.every((el) => Boolean(unary_refs[el]))
+  const elements_in_entries = new Set<string>()
+  for (const entry of entries) {
+    for (const el of Object.keys(entry.composition)) elements_in_entries.add(el)
+  }
+  let can_compute_e_form = true
+  for (const el of elements_in_entries) {
+    if (!unary_refs[el]) {
+      can_compute_e_form = false
+      break
+    }
+  }
   const can_compute_hull = can_compute_e_form
 
   // Resolve mode to avoid inconsistent states:
@@ -601,26 +616,24 @@ export function get_canvas_text_color(
 
 // Create a Path2D for a marker symbol. Uses d3-shape for consistent rendering with ScatterPlot.
 export function create_marker_path(size: number, marker: MarkerSymbol = `circle`): Path2D {
+  const rounded_size = Math.max(0, Number(size.toFixed(3)))
+  const cache_key = `${marker}:${rounded_size}`
+  const cached = marker_path_cache.get(cache_key)
+  if (cached) return cached
+
   // Capitalize first letter to get D3 symbol name (e.g. 'circle' -> 'Circle')
   const d3_name = marker.charAt(0).toUpperCase() + marker.slice(1)
   const symbol_type = symbol_map[d3_name as keyof typeof symbol_map]
-
-  if (!symbol_type) {
-    const path = new Path2D()
-    path.arc(0, 0, size, 0, 2 * Math.PI)
-    return path
-  }
-
-  const symbol_area = Math.PI * size * size
-  const path_data = symbol().type(symbol_type).size(symbol_area)()
+  const symbol_area = Math.PI * rounded_size * rounded_size
+  const path_data = symbol_type ? symbol().type(symbol_type).size(symbol_area)() : null
+  const path = new Path2D(path_data ?? undefined)
 
   if (!path_data) {
-    const path = new Path2D()
-    path.arc(0, 0, size, 0, 2 * Math.PI)
-    return path
+    path.arc(0, 0, rounded_size, 0, 2 * Math.PI)
   }
 
-  return new Path2D(path_data)
+  marker_path_cache.set(cache_key, path)
+  return path
 }
 
 // Temperature-dependent free energy helpers (use integer K values for exact matching)
@@ -634,10 +647,12 @@ export interface TemperatureAnalysis {
 // Analyze entries for temperature-dependent free energy data.
 // Returns available temperatures (union of all T values across entries) if any entries have temp data.
 export function analyze_temperature_data(entries: PhaseData[]): TemperatureAnalysis {
-  const valid_temps = entries
-    .filter(entry_has_temp_data)
-    .flatMap((entry) => entry.temperatures ?? [])
-  const available_temperatures = [...new Set(valid_temps)].sort((a, b) => a - b)
+  const unique_temperatures = new Set<number>()
+  for (const entry of entries) {
+    if (!entry_has_temp_data(entry)) continue
+    for (const temperature of entry.temperatures ?? []) unique_temperatures.add(temperature)
+  }
+  const available_temperatures = [...unique_temperatures].sort((a, b) => a - b)
   return {
     has_temp_data: available_temperatures.length > 0,
     available_temperatures,

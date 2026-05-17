@@ -6,6 +6,21 @@ const SAFE_ATTRS = [`style`, `class`, `title`, `href`, `target`, `rel`]
 // only allow safe CSS properties for text formatting
 const SAFE_STYLE_RE =
   /^\s*(color|font-weight|font-style|font-size|text-decoration|vertical-align)\s*:/
+const html_cache = new Map<string, string>()
+const svg_cache = new Map<string, string>()
+const icon_svg_cache = new Map<string, string>()
+
+function get_cached_sanitize(
+  cache: Map<string, string>,
+  key: string,
+  sanitize: () => string,
+): string {
+  const cached = cache.get(key)
+  if (cached !== undefined) return cached
+  const sanitized = sanitize()
+  cache.set(key, sanitized)
+  return sanitized
+}
 
 // Add a token to a space-separated string if not already present
 const ensure_token = (value: string, token: string): string => {
@@ -83,12 +98,14 @@ export function sanitize_html(html: unknown): string {
   const str = stringify_html_input(html)
   const dp = get_purify()
   if (!dp) return str
-  // oxfmt-ignore
-  const safe = dp.sanitize(str, { ADD_ATTR: [`target`], FORBID_TAGS: [
-    `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `textarea`,
-    `select`, `button`, `meta`, `link`, `base`, `template`, `noscript`,
-  ] })
-  return dp.sanitize(safe, { ALLOWED_TAGS: SAFE_TAGS, ALLOWED_ATTR: SAFE_ATTRS })
+  return get_cached_sanitize(html_cache, str, () => {
+    // oxfmt-ignore
+    const safe = dp.sanitize(str, { ADD_ATTR: [`target`], FORBID_TAGS: [
+      `script`, `style`, `iframe`, `object`, `embed`, `form`, `input`, `textarea`,
+      `select`, `button`, `meta`, `link`, `base`, `template`, `noscript`,
+    ] })
+    return dp.sanitize(safe, { ALLOWED_TAGS: SAFE_TAGS, ALLOWED_ATTR: SAFE_ATTRS })
+  })
 }
 
 // Sanitize a chemical formula with optional subscript formatting
@@ -100,8 +117,11 @@ const SVG_TEXT_TAGS = [`tspan`, `title`]
 const SVG_TEXT_ATTRS = [`dx`, `dy`, `x`, `y`, `fill`, `font-size`, `font-weight`, `baseline-shift`]
 
 // Sanitize HTML intended for SVG text contexts (tspan, title)
-export const sanitize_svg = (html: string): string =>
-  sanitize_svg_content(html, SVG_TEXT_TAGS, SVG_TEXT_ATTRS)
+export function sanitize_svg(html: string): string {
+  return get_cached_sanitize(svg_cache, html, () =>
+    sanitize_svg_content(html, SVG_TEXT_TAGS, SVG_TEXT_ATTRS),
+  )
+}
 
 // oxfmt-ignore
 const SVG_ICON_TAGS = [
@@ -117,5 +137,8 @@ const SVG_ICON_ATTRS = [
 ]
 
 // Sanitize inline SVG markup (path, circle, rect, etc.) for icon rendering
-export const sanitize_icon_svg = (html: string): string =>
-  sanitize_svg_content(html, SVG_ICON_TAGS, SVG_ICON_ATTRS)
+export function sanitize_icon_svg(html: string): string {
+  return get_cached_sanitize(icon_svg_cache, html, () =>
+    sanitize_svg_content(html, SVG_ICON_TAGS, SVG_ICON_ATTRS),
+  )
+}

@@ -380,7 +380,7 @@
     // Single pass: extract x, y, color_values, and point_style simultaneously
     const x_vals: number[] = Array(count)
     const y_vals: number[] = Array(count)
-    const color_values: number[] = Array(count)
+    const color_values: number[] = is_energy_mode ? Array(count) : []
     const point_style: PointStyle[] = Array(count)
 
     for (let idx = 0; idx < count; idx++) {
