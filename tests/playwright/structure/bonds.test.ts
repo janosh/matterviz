@@ -102,4 +102,174 @@ test.describe(`Bond component`, () => {
     // Assert 7: No console errors
     expect(console_errors).toHaveLength(0)
   })
+
+  test(`edit-bonds context menu sets explicit bond order`, async ({ page }) => {
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await page.evaluate(() => {
+      const structure = {
+        sites: [
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [-0.7, 0, 0],
+            label: `C1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [0.7, 0, 0],
+            label: `O1`,
+            properties: {},
+          },
+        ],
+        properties: {
+          bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+        },
+      }
+      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+    })
+
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    const box = await canvas.boundingBox()
+    expect(box).toBeTruthy()
+    if (!box) return
+
+    await canvas.click({
+      button: `right`,
+      position: { x: box.width / 2, y: box.height / 2 },
+    })
+    const menu = page.locator(`#test-structure .bond-context-menu`)
+    await expect(menu).toBeVisible()
+    await expect(menu).toContainText(`Bond Order`)
+    await menu.getByRole(`button`, { name: `Double` }).click()
+
+    await expect(menu).toBeHidden()
+    await canvas.click({
+      button: `right`,
+      position: { x: box.width / 2, y: box.height / 2 },
+    })
+    await expect(menu).toBeVisible()
+    await expect(menu).toContainText(`Bond Order (2)`)
+    await expect.poll(() =>
+      page.evaluate(() => (globalThis as Record<string, unknown>).structure_bonds)
+    ).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`site labels avoid adjacent bond directions`, async ({ page }) => {
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await page.evaluate(() => {
+      const structure = {
+        sites: [
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            abc: [-2.4, 0, 0],
+            xyz: [-2.4, 0, 0],
+            label: `C1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            abc: [-1.2, 0, 0],
+            xyz: [-1.2, 0, 0],
+            label: `C2`,
+            properties: {},
+          },
+          {
+            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            abc: [0, 0, 0],
+            xyz: [0, 0, 0],
+            label: `O1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `N`, occu: 1, oxidation_state: 0 }],
+            abc: [1.2, 0, 0],
+            xyz: [1.2, 0, 0],
+            label: `N1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            abc: [-1.2, 1.25, 0],
+            xyz: [-1.2, 1.25, 0],
+            label: `C3`,
+            properties: {},
+          },
+        ],
+        properties: {
+          bonds: [
+            { site_idx_1: 0, site_idx_2: 1, order: 1 },
+            { site_idx_1: 1, site_idx_2: 2, order: 2 },
+            { site_idx_1: 2, site_idx_2: 3, order: 3 },
+            { site_idx_1: 1, site_idx_2: 4, order: `aromatic` },
+          ],
+        },
+      }
+      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, {
+          detail: {
+            camera_position: [0, 0, 12],
+            show_site_labels: true,
+            show_site_indices: true,
+            bonding_options: { strength_threshold: 10 },
+          },
+        }),
+      )
+    })
+
+    await wait_for_3d_canvas(page, `#test-structure`)
+    const label = (text: string) =>
+      page.locator(`#test-structure .atom-label`).filter({ hasText: text })
+    const label_center = async (text: string) => {
+      const box = await label(text).boundingBox()
+      expect(box).toBeTruthy()
+      if (!box) throw new Error(`Missing ${text} label`)
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
+    await expect(label(`C-1`)).toBeVisible()
+    await expect(label(`C-2`)).toBeVisible()
+
+    const before_c1 = await label_center(`C-1`)
+    const before_c2 = await label_center(`C-2`)
+    const before_o3 = await label_center(`O-3`)
+    const before_midline_y = (before_c1.y + before_o3.y) / 2
+    const before_vertical_gap = before_c2.y - before_midline_y
+    const before_horizontal_span = before_o3.x - before_c1.x
+
+    expect(before_vertical_gap).toBeGreaterThan(10)
+
+    const canvas = page.locator(`#test-structure canvas`)
+    const canvas_box = await canvas.boundingBox()
+    expect(canvas_box).toBeTruthy()
+    if (!canvas_box) return
+
+    await canvas.hover({
+      position: { x: canvas_box.width / 2, y: canvas_box.height / 2 },
+    })
+    for (let wheel_idx = 0; wheel_idx < 8; wheel_idx++) {
+      await page.mouse.wheel(0, -700)
+    }
+    await page.waitForTimeout(500)
+
+    const after_c1 = await label_center(`C-1`)
+    const after_c2 = await label_center(`C-2`)
+    const after_o3 = await label_center(`O-3`)
+    const after_midline_y = (after_c1.y + after_o3.y) / 2
+    const after_vertical_gap = after_c2.y - after_midline_y
+    const after_horizontal_span = after_o3.x - after_c1.x
+    const horizontal_scale = after_horizontal_span / before_horizontal_span
+    const vertical_gap_scale = after_vertical_gap / before_vertical_gap
+
+    expect(after_horizontal_span).toBeGreaterThan(before_horizontal_span * 2)
+    expect(vertical_gap_scale).toBeLessThan(horizontal_scale)
+  })
 })

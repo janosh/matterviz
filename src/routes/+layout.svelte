@@ -74,7 +74,9 @@
   bind:open={cmd_palette_open}
   {actions}
   placeholder="Go to..."
-  dialog_style="z-index: 10000000001"
+  dialog_style="left: 50%; margin: 0; transform: translateX(-50%); z-index: 10000000001"
+  portal={{ active: true }}
+  ulOptionsStyle="z-index: 10000000002"
 />
 <GitHubCorner
   href={pkg.repository}
@@ -107,7 +109,10 @@
 >
   <!-- Nav dropdown must be above Structure.svelte's --struct-buttons-z-index (100000000) -->
   <button
-    onclick={() => cmd_palette_open = true}
+    onclick={(event: MouseEvent) => {
+      event.stopPropagation()
+      cmd_palette_open = true
+    }}
     aria-label="Open search"
     style="background: transparent"
     {@attach tooltip({ content: `Search (⌘K)` })}

@@ -13,7 +13,7 @@ import type { ElementSymbol } from '$lib/element'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure, Crystal, Site } from '$lib/structure'
+import type { AnyStructure, Crystal, Site, StructureProperties } from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { normalize_scientific_notation } from '$lib/utils'
@@ -21,6 +21,7 @@ import { load as yaml_load } from 'js-yaml'
 
 export interface ParsedStructure {
   sites: Site[]
+  properties?: StructureProperties
   lattice?: {
     matrix: math.Matrix3x3
     a: number

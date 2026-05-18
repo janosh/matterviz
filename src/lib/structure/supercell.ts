@@ -2,11 +2,55 @@
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
 import { scale_lattice_matrix } from '$lib/math'
-import type { Crystal, Site } from './index'
+import type { Crystal, Site, StructureBond } from './index'
 import { wrap_frac_coord } from './pbc'
+import { normalize_structure_bond } from './bonding'
 
 type SupercellType = Crystal & {
   supercell_scaling?: Vec3
+}
+
+const cell_index = ([cell_x, cell_y, cell_z]: Vec3, [scale_x, scale_y]: Vec3): number =>
+  cell_z * scale_x * scale_y + cell_y * scale_x + cell_x
+
+const mod = (value: number, divisor: number): number =>
+  ((value % divisor) + divisor) % divisor
+
+const replicate_bonds_for_supercell = (
+  bonds: StructureBond[],
+  n_sites: number,
+  scaling_factors: Vec3,
+): StructureBond[] => {
+  const [scale_x, scale_y, scale_z] = scaling_factors
+  const replicated: StructureBond[] = []
+  for (const source_cell of generate_lattice_points(scaling_factors)) {
+    const source_offset = cell_index(source_cell, scaling_factors) * n_sites
+    for (const { site_idx_1, site_idx_2, order, cell_shift = [0, 0, 0] } of bonds) {
+      const target_raw: Vec3 = [
+        source_cell[0] + cell_shift[0],
+        source_cell[1] + cell_shift[1],
+        source_cell[2] + cell_shift[2],
+      ]
+      const target_cell: Vec3 = [
+        mod(target_raw[0], scale_x),
+        mod(target_raw[1], scale_y),
+        mod(target_raw[2], scale_z),
+      ]
+      const supercell_shift = target_raw.map((val, idx) =>
+        Math.floor(val / scaling_factors[idx])
+      ) as Vec3
+      const target_offset = cell_index(target_cell, scaling_factors) * n_sites
+      replicated.push(
+        normalize_structure_bond(
+          site_idx_1 + source_offset,
+          site_idx_2 + target_offset,
+          order,
+          supercell_shift,
+        ),
+      )
+    }
+  }
+  return replicated
 }
 
 // Parse supercell scaling input from various formats. Can be "2x2x2", "2", [2,2,2], or a single number.
@@ -148,10 +192,22 @@ export function make_supercell(
     }
   }
 
+  const properties = structure.properties?.bonds === undefined
+    ? structure.properties
+    : {
+      ...structure.properties,
+      bonds: replicate_bonds_for_supercell(
+        structure.properties.bonds,
+        n_sites,
+        supercell_scaling,
+      ),
+    }
+
   return {
     ...structure,
     lattice: new_lattice,
     sites: new_sites,
+    properties,
     charge: structure.charge ? structure.charge * total_cells : structure.charge,
     supercell_scaling,
   } as SupercellType

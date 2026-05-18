@@ -22,7 +22,12 @@
   import { DEFAULTS } from '$lib/settings'
   import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
-  import type { AnyStructure, Crystal, MeasureMode } from '$lib/structure'
+  import type {
+    AnyStructure,
+    Crystal,
+    MeasureMode,
+    StructureBond,
+  } from '$lib/structure'
   import {
     default_vector_configs,
     get_element_counts,
@@ -50,6 +55,7 @@
   import { get_property_colors } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
+  import { get_bond_key } from './bonding'
   import type { StructureHandlerData } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import { normalize_fractional_coords, parse_any_structure } from './parse'
@@ -80,6 +86,7 @@
 
   let {
     structure = $bindable(),
+    bonds = $bindable(),
     scene_props: scene_props_in = $bindable(),
     lattice_props: lattice_props_in = $bindable(),
     controls_open = $bindable(false),
@@ -156,10 +163,12 @@
     on_fullscreen_change,
     on_camera_move,
     on_camera_reset,
+    on_bonds_change,
     ...rest
   }:
     & {
       structure?: AnyStructure
+      bonds?: StructureBond[]
       scene_props?: ComponentProps<typeof StructureScene>
       /**
        * Controls visibility configuration.
@@ -241,6 +250,7 @@
       on_fullscreen_change?: EventHandler
       on_camera_move?: EventHandler
       on_camera_reset?: EventHandler
+      on_bonds_change?: (bonds: StructureBond[]) => void
     }
     & Omit<ComponentProps<typeof StructureControls>, `children` | `onclose`>
     & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
@@ -432,8 +442,44 @@
   let export_pane_open = $state(false)
 
   // Bond customization state
-  let added_bonds = $state<[number, number][]>([])
-  let removed_bonds = $state<[number, number][]>([])
+  let added_bonds = $state<StructureBond[]>([])
+  let removed_bonds = $state<StructureBond[]>([])
+  let bond_order_overrides = $state<StructureBond[]>([])
+  let last_emitted_bond_signature = $state<string>()
+
+  const canonical_bond_key = (bond: StructureBond): string =>
+    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+
+  const merge_bond_edits = (
+    base_bonds: StructureBond[],
+    added: StructureBond[],
+    removed: StructureBond[],
+    overrides: StructureBond[],
+  ): StructureBond[] => {
+    const merged = new Map(base_bonds.map((bond) => [canonical_bond_key(bond), bond]))
+    for (const bond of removed) merged.delete(canonical_bond_key(bond))
+    for (const bond of overrides) merged.set(canonical_bond_key(bond), bond)
+    for (const bond of added) merged.set(canonical_bond_key(bond), bond)
+    return [...merged.values()]
+  }
+
+  $effect(() => {
+    if (
+      added_bonds.length === 0 && removed_bonds.length === 0 &&
+      bond_order_overrides.length === 0
+    ) return
+    const edited_bonds = merge_bond_edits(
+      displayed_structure?.properties?.bonds ?? [],
+      added_bonds,
+      removed_bonds,
+      bond_order_overrides,
+    )
+    const signature = JSON.stringify(edited_bonds)
+    if (signature === last_emitted_bond_signature) return
+    last_emitted_bond_signature = signature
+    bonds = edited_bonds
+    on_bonds_change?.(edited_bonds)
+  })
 
   // === Edit-atoms mode state ===
   let dragging_atoms = $state(false)
@@ -535,9 +581,13 @@
     if (measure_mode !== `edit-atoms`) return
     untrack(() => {
       // Clear bond edits from edit-bonds mode to avoid stale state
-      if (added_bonds.length > 0 || removed_bonds.length > 0) {
+      if (
+        added_bonds.length > 0 || removed_bonds.length > 0 ||
+        bond_order_overrides.length > 0
+      ) {
         added_bonds = []
         removed_bonds = []
+        bond_order_overrides = []
       }
       if (cell_type !== `original` && cell_transformed_structure && structure) {
         // Bake the transformed cell: push original to undo, replace structure
@@ -561,24 +611,32 @@
     return normalize_fractional_coords(structure) as AnyStructure
   })
 
+  let structure_with_bonds = $derived.by(() => {
+    if (!normalized_structure || bonds === undefined) return normalized_structure
+    return {
+      ...normalized_structure,
+      properties: { ...normalized_structure.properties, bonds },
+    } as AnyStructure
+  })
+
   // Apply cell type transformation (original, conventional, or primitive)
   // This must happen BEFORE supercell transformation
   let cell_transformed_structure = $derived.by(() => {
     if (
-      !normalized_structure || !(`lattice` in normalized_structure) ||
+      !structure_with_bonds || !(`lattice` in structure_with_bonds) ||
       cell_type === `original`
     ) {
-      return normalized_structure
+      return structure_with_bonds
     }
     // Cell type transformation requires symmetry data
     if (!sym_data) {
-      return normalized_structure
+      return structure_with_bonds
     }
     try {
-      return transform_cell(normalized_structure as Crystal, cell_type, sym_data)
+      return transform_cell(structure_with_bonds as Crystal, cell_type, sym_data)
     } catch (error) {
       console.error(`Failed to transform cell to ${cell_type}:`, error)
-      return normalized_structure
+      return structure_with_bonds
     }
   })
 
@@ -940,6 +998,7 @@
           if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
           added_bonds = []
           removed_bonds = []
+          bond_order_overrides = []
           show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
         }
         return
@@ -1304,7 +1363,7 @@
               />
             </button>
             {#if (measured_sites?.length ?? 0) > 0 || added_bonds.length > 0 ||
-          removed_bonds.length > 0}
+          removed_bonds.length > 0 || bond_order_overrides.length > 0}
               <button
                 type="button"
                 aria-label="Reset selection and bond edits"
@@ -1312,6 +1371,7 @@
                   clear_selection()
                   added_bonds = []
                   removed_bonds = []
+                  bond_order_overrides = []
                 }}
               >
                 <Icon icon="Reset" style="margin-left: -4px" />
@@ -1532,6 +1592,7 @@
             bind:site_radius_overrides
             bind:added_bonds
             bind:removed_bonds
+            bind:bond_order_overrides
             {measure_mode}
             {width}
             {height}
@@ -1558,13 +1619,17 @@
     {/if}
 
     {#if measure_mode === `edit-bonds` &&
-      (added_bonds.length > 0 || removed_bonds.length > 0)}
+      (added_bonds.length > 0 || removed_bonds.length > 0 ||
+        bond_order_overrides.length > 0)}
       <div class="bond-edit-status">
         {#if added_bonds.length > 0}
           <span class="added">+{added_bonds.length} added</span>
         {/if}
         {#if removed_bonds.length > 0}
           <span class="removed">-{removed_bonds.length} removed</span>
+        {/if}
+        {#if bond_order_overrides.length > 0}
+          <span class="changed">{bond_order_overrides.length} ordered</span>
         {/if}
       </div>
     {/if}
@@ -1802,6 +1867,10 @@
   }
   .bond-edit-status .removed {
     color: #f44336;
+    font-weight: bold;
+  }
+  .bond-edit-status .changed {
+    color: var(--accent-color, #007acc);
     font-weight: bold;
   }
   /* CellSelect: position at left of legend, show on hover */

@@ -112,12 +112,23 @@
     }
   })
 
+  const as_hex_color = (color: string | undefined, fallback: string): string =>
+    color?.match(/^#[0-9a-f]{3}([0-9a-f]{3})?$/i)?.[0] ?? fallback
+  const default_site_label_color = as_hex_color(
+    DEFAULTS.structure.site_label_color,
+    `#111111`,
+  )
+  const default_site_label_bg_color = as_hex_color(
+    DEFAULTS.structure.site_label_bg_color,
+    `#000000`,
+  )
+
   // Atom label color management
   let site_label_hex_color = $state(
-    scene_props.site_label_color || DEFAULTS.structure.site_label_color,
+    as_hex_color(scene_props.site_label_color, default_site_label_color),
   )
   let site_label_bg_hex_color = $state(
-    scene_props.site_label_bg_color || DEFAULTS.structure.site_label_bg_color,
+    as_hex_color(scene_props.site_label_bg_color, default_site_label_bg_color),
   )
   let site_label_background_opacity = $state(0)
 
@@ -638,8 +649,8 @@
         scene_props.site_label_size = DEFAULTS.structure.site_label_size
         scene_props.site_label_padding = DEFAULTS.structure.site_label_padding
         scene_props.site_label_offset = [...DEFAULTS.structure.site_label_offset]
-        site_label_hex_color = DEFAULTS.structure.site_label_color
-        site_label_bg_hex_color = DEFAULTS.structure.site_label_bg_color
+        site_label_hex_color = default_site_label_color
+        site_label_bg_hex_color = default_site_label_bg_color
         site_label_background_opacity = 0
       }}
     >

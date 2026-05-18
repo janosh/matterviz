@@ -18,7 +18,14 @@
   import { DEFAULTS } from '$lib/settings'
   import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
-  import type { AnyStructure, BondPair, MeasureMode, Site } from '$lib/structure'
+  import type {
+    AnyStructure,
+    BondOrder,
+    BondPair,
+    MeasureMode,
+    Site,
+    StructureBond,
+  } from '$lib/structure'
   import {
     Arrow,
     atomic_radii,
@@ -48,8 +55,19 @@
   import { type Camera, Color, type Mesh, type Scene } from 'three'
   import Bond from './Bond.svelte'
   import type { BondingStrategy } from './bonding'
-  import { BONDING_STRATEGIES, compute_bond_transform } from './bonding'
+  import {
+    BONDING_STRATEGIES,
+    compute_bond_transform,
+    get_bond_key,
+    get_bond_render_matrices,
+    normalize_structure_bond,
+  } from './bonding'
   import { CanvasTooltip } from './index'
+  import {
+    choose_site_label_offset,
+    LABEL_OFFSET_EPS,
+    make_label_position_calculator,
+  } from './label-placement'
 
   type InstancedAtomGroup = {
     element: string
@@ -57,6 +75,13 @@
     color: string
     is_image_atom: boolean
     atoms: (typeof atom_data)[number][]
+  }
+
+  type BondContextMenu = {
+    site_idx_1: number
+    site_idx_2: number
+    cell_shift?: Vec3
+    position: Vec3
   }
 
   let pulse_time = $state(0)
@@ -96,9 +121,9 @@
     show_site_indices = DEFAULTS.structure.show_site_indices,
     site_label_size = DEFAULTS.structure.site_label_size,
     site_label_offset = $bindable(DEFAULTS.structure.site_label_offset),
-    site_label_bg_color = `color-mix(in srgb, #000000 0%, transparent)`,
-    site_label_color = `#ffffff`,
-    site_label_padding = 3,
+    site_label_bg_color = DEFAULTS.structure.site_label_bg_color,
+    site_label_color = DEFAULTS.structure.site_label_color,
+    site_label_padding = DEFAULTS.structure.site_label_padding,
     vector_configs = $bindable<Record<string, VectorLayerConfig>>({}),
     vector_scale = DEFAULTS.structure.vector_scale,
     vector_color = DEFAULTS.structure.vector_color,
@@ -134,6 +159,7 @@
     measured_sites = $bindable([]),
     added_bonds = $bindable([]),
     removed_bonds = $bindable([]),
+    bond_order_overrides = $bindable([]),
     selection_highlight_color = `#6cf0ff`,
     // Active highlight group with different color
     active_sites = $bindable([]),
@@ -224,8 +250,9 @@
     measure_mode?: MeasureMode
     selected_sites?: number[]
     measured_sites?: number[]
-    added_bonds?: [number, number][]
-    removed_bonds?: [number, number][]
+    added_bonds?: StructureBond[]
+    removed_bonds?: StructureBond[]
+    bond_order_overrides?: StructureBond[]
     selection_highlight_color?: string
     // Support for active highlight group with different color
     active_sites?: number[]
@@ -312,36 +339,153 @@
   // snaps to the new wrapped centroid.
   let frozen_centroid = $state<Vec3 | null>(null)
 
-  const get_bond_key = (idx1: number, idx2: number): string =>
-    idx1 < idx2 ? `${idx1}-${idx2}` : `${idx2}-${idx1}`
+  const BOND_ORDER_OPTIONS: { order: BondOrder; label: string }[] = [
+    { order: 1, label: `Single` },
+    { order: 2, label: `Double` },
+    { order: 3, label: `Triple` },
+    { order: `aromatic`, label: `Aromatic` },
+  ]
+  let bond_context_menu = $state<BondContextMenu | null>(null)
+  // Threlte/HTML pointer events can close the visible menu before a button
+  // handler runs, so keep the target bond separately for menu actions.
+  let bond_context_target: BondContextMenu | null = null
+
+  function close_bond_context_menu() {
+    bond_context_menu = null
+    bond_context_target = null
+  }
+
+  const make_bond_record = (
+    site_idx_1: number,
+    site_idx_2: number,
+    order: BondOrder,
+    cell_shift?: Vec3,
+  ): StructureBond => normalize_structure_bond(site_idx_1, site_idx_2, order, cell_shift)
+
+  const matches_bond_key = (
+    bond: Pick<BondPair, `site_idx_1` | `site_idx_2` | `cell_shift`>,
+    bond_key: string,
+  ): boolean =>
+    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift) === bond_key
+
+  const format_bond_order = (order: BondOrder | undefined): string =>
+    order === undefined ? `1` : `${order}`
+
+  function get_current_bond_order(
+    site_idx_1: number,
+    site_idx_2: number,
+    cell_shift?: Vec3,
+  ): BondOrder | undefined {
+    const bond_key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
+    const override = bond_order_overrides.find((bond) =>
+      matches_bond_key(bond, bond_key)
+    )
+    if (override) return override.order
+    const added = added_bonds.find((bond) =>
+      matches_bond_key(bond, bond_key)
+    )
+    if (added) return added.order
+    return filtered_bond_pairs.find((bond) =>
+      matches_bond_key(bond, bond_key)
+    )?.bond_order
+  }
+
+  const midpoint = (pos_1: Vec3, pos_2: Vec3): Vec3 => [
+    (pos_1[0] + pos_2[0]) / 2,
+    (pos_1[1] + pos_2[1]) / 2,
+    (pos_1[2] + pos_2[2]) / 2,
+  ]
+
+  let label_screen_margin = $derived(site_label_size * 10 + site_label_padding)
+
+  function open_bond_context_menu(bond: BondPair) {
+    bond_context_target = {
+      site_idx_1: bond.site_idx_1,
+      site_idx_2: bond.site_idx_2,
+      cell_shift: bond.cell_shift,
+      position: midpoint(bond.pos_1, bond.pos_2),
+    }
+    bond_context_menu = bond_context_target
+  }
 
   // Toggle a bond between two atoms: cycles through add → remove → restore states
   function toggle_bond(site_1: number, site_2: number) {
-    const idx_i = Math.min(site_1, site_2)
-    const idx_j = Math.max(site_1, site_2)
-    // added/removed pairs are stored sorted, so direct comparison works
-    const match = ([a, b]: [number, number]) => a === idx_i && b === idx_j
+    const removed_record = normalize_structure_bond(
+      site_1,
+      site_2,
+      1,
+    )
+    const { site_idx_1: idx_i, site_idx_2: idx_j } = removed_record
 
-    const added_idx = added_bonds.findIndex(match)
+    const key = get_bond_key(idx_i, idx_j)
+    const added_idx = added_bonds.findIndex((bond) => matches_bond_key(bond, key))
     if (added_idx >= 0) {
       added_bonds = added_bonds.toSpliced(added_idx, 1)
       return
     }
 
-    const removed_idx = removed_bonds.findIndex(match)
+    const removed_idx = removed_bonds.findIndex((bond) => matches_bond_key(bond, key))
     if (removed_idx >= 0) {
       removed_bonds = removed_bonds.toSpliced(removed_idx, 1)
       return
     }
 
     // bond_pairs may not be sorted, so use get_bond_key for comparison
-    const key = `${idx_i}-${idx_j}`
-    if (
-      bond_pairs.some((bond) =>
-        get_bond_key(bond.site_idx_1, bond.site_idx_2) === key
-      )
-    ) removed_bonds = [...removed_bonds, [idx_i, idx_j]]
-    else added_bonds = [...added_bonds, [idx_i, idx_j]]
+    if (bond_pairs.some((bond) => matches_bond_key(bond, key))) {
+      removed_bonds = [...removed_bonds, removed_record]
+    }
+    else added_bonds = [...added_bonds, make_bond_record(idx_i, idx_j, 1)]
+  }
+
+  function set_bond_order(
+    site_idx_1: number,
+    site_idx_2: number,
+    order: BondOrder,
+    cell_shift?: Vec3,
+  ) {
+    const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
+    const new_record = make_bond_record(site_idx_1, site_idx_2, order, cell_shift)
+    added_bonds = added_bonds.filter((bond) => !matches_bond_key(bond, key))
+    const has_calculated_bond = bond_pairs.some((bond) => matches_bond_key(bond, key))
+    if (has_calculated_bond) {
+      bond_order_overrides = [
+        ...bond_order_overrides.filter((bond) => !matches_bond_key(bond, key)),
+        new_record,
+      ]
+      removed_bonds = removed_bonds.filter((bond) => !matches_bond_key(bond, key))
+    } else {
+      added_bonds = [...added_bonds, new_record]
+    }
+    close_bond_context_menu()
+  }
+
+  function set_context_bond_order(order: BondOrder) {
+    const menu = bond_context_target ?? bond_context_menu
+    if (!menu) return
+    set_bond_order(menu.site_idx_1, menu.site_idx_2, order, menu.cell_shift)
+  }
+
+  function remove_bond(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
+    const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
+    added_bonds = added_bonds.filter((bond) => !matches_bond_key(bond, key))
+    bond_order_overrides = bond_order_overrides.filter((bond) =>
+      !matches_bond_key(bond, key)
+    )
+    if (bond_pairs.some((bond) => matches_bond_key(bond, key))) {
+      if (!removed_bonds.some((bond) => matches_bond_key(bond, key))) {
+        removed_bonds = [
+          ...removed_bonds,
+          make_bond_record(site_idx_1, site_idx_2, 1, cell_shift),
+        ]
+      }
+    }
+    close_bond_context_menu()
+  }
+
+  function remove_context_bond() {
+    const menu = bond_context_target ?? bond_context_menu
+    if (!menu) return
+    remove_bond(menu.site_idx_1, menu.site_idx_2, menu.cell_shift)
   }
 
   // Deduplicate clicks: when a highlight sphere and the underlying atom both
@@ -417,6 +561,16 @@
       ? selected_sites.filter((idx) => idx !== site_index)
       : [...selected_sites, site_index]
   }
+
+  $effect(() => {
+    void structure
+    void measure_mode
+    untrack(() => {
+      close_bond_context_menu()
+      hovered_bond_key = null
+    })
+  })
+
   $effect(() => {
     const count = structure?.sites?.length ?? 0
     if (count <= 0) {
@@ -609,40 +763,85 @@
 
     // Build set of removed bond keys for efficient lookup
     const removed_keys = new Set(
-      removed_bonds.map(([idx_i, idx_j]) => get_bond_key(idx_i, idx_j)),
+      removed_bonds.map((bond) =>
+        get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+      ),
+    )
+    const order_overrides = new Map(
+      bond_order_overrides.map((bond) => [
+        get_bond_key(bond.site_idx_1, bond.site_idx_2),
+        bond.order,
+      ]),
     )
 
     // Filter calculated bonds: exclude removed and hidden
-    const calculated = bond_pairs.filter(({ site_idx_1, site_idx_2 }) => {
-      if (removed_keys.has(get_bond_key(site_idx_1, site_idx_2))) return false
-      return is_site_visible(site_idx_1) && is_site_visible(site_idx_2)
-    })
+    const calculated = bond_pairs
+      .filter(({ site_idx_1, site_idx_2 }) => {
+        if (removed_keys.has(get_bond_key(site_idx_1, site_idx_2))) return false
+        return is_site_visible(site_idx_1) && is_site_visible(site_idx_2)
+      })
+      .map((bond) => {
+        const override = order_overrides.get(get_bond_key(bond.site_idx_1, bond.site_idx_2))
+        return override === undefined ? bond : { ...bond, bond_order: override }
+      })
 
     // Create BondPair objects for manually added bonds
-    const added: BondPair[] = added_bonds
-      .map(([idx_i, idx_j]) => {
-        if (!is_site_visible(idx_i) || !is_site_visible(idx_j)) return null
-        const site1 = structure.sites[idx_i]
-        const site2 = structure.sites[idx_j]
-        if (!site1 || !site2) return null
+    const added: BondPair[] = []
+    for (const { site_idx_1: idx_i, site_idx_2: idx_j, order } of added_bonds) {
+      if (!is_site_visible(idx_i) || !is_site_visible(idx_j)) continue
+      const site1 = structure.sites[idx_i]
+      const site2 = structure.sites[idx_j]
+      if (!site1 || !site2) continue
 
-        const pos_1 = site1.xyz
-        const pos_2 = site2.xyz
-        const dist = math.euclidean_dist(pos_1, pos_2)
+      const pos_1 = site1.xyz
+      const pos_2 = site2.xyz
+      const dist = math.euclidean_dist(pos_1, pos_2)
 
-        return {
-          pos_1,
-          pos_2,
-          site_idx_1: idx_i,
-          site_idx_2: idx_j,
-          bond_length: dist,
-          strength: 1.0,
-          transform_matrix: compute_bond_transform(pos_1, pos_2),
-        }
+      added.push({
+        pos_1,
+        pos_2,
+        site_idx_1: idx_i,
+        site_idx_2: idx_j,
+        bond_length: dist,
+        strength: 1.0,
+        bond_order: order,
+        transform_matrix: compute_bond_transform(pos_1, pos_2),
       })
-      .filter((bond): bond is BondPair => bond !== null)
+    }
 
     return [...calculated, ...added]
+  })
+
+  let smart_site_label_offsets = $derived.by(() => {
+    const offsets = new SvelteMap<number, Vec3>()
+    const sites = structure?.sites
+    if (!sites || filtered_bond_pairs.length === 0) return offsets
+
+    const bond_directions_by_site = new SvelteMap<number, Vec3[]>()
+    const add_bond_direction = (site_idx: number, neighbor_idx: number) => {
+      const site = sites[site_idx]
+      const neighbor = sites[neighbor_idx]
+      if (!site || !neighbor) return
+
+      const direction = math.normalize_vec3(
+        math.subtract(neighbor.xyz, site.xyz),
+        [0, 0, 0],
+      )
+      if (Math.hypot(...direction) < LABEL_OFFSET_EPS) return
+      bond_directions_by_site.set(site_idx, [
+        ...(bond_directions_by_site.get(site_idx) ?? []),
+        direction,
+      ])
+    }
+
+    for (const { site_idx_1, site_idx_2 } of filtered_bond_pairs) {
+      add_bond_direction(site_idx_1, site_idx_2)
+      add_bond_direction(site_idx_2, site_idx_1)
+    }
+    for (const [site_idx, bond_directions] of bond_directions_by_site) {
+      offsets.set(site_idx, choose_site_label_offset(bond_directions, site_label_offset))
+    }
+    return offsets
   })
 
   let instanced_bond_groups = $derived.by(() => {
@@ -673,8 +872,9 @@
 
       const color_start = get_majority_color(site_a)
       const color_end = get_majority_color(site_b)
-      const instance = { matrix: bond_data.transform_matrix, color_start, color_end }
-      group.instances.push(instance)
+      for (const matrix of get_bond_render_matrices(bond_data, bond_thickness)) {
+        group.instances.push({ matrix, color_start, color_end })
+      }
     }
 
     return group.instances.length > 0 ? [group] : []
@@ -920,6 +1120,7 @@
     onstart: () => {
       camera_is_moving = true
       hovered_idx = null
+      bond_context_menu = null
     },
     onend: () => {
       camera_is_moving = false
@@ -944,8 +1145,18 @@
 
 {#snippet site_label_snippet(position: Vec3, site_idx: number)}
   {@const site = structure!.sites[site_idx]}
-  {@const pos = math.add(position, site_label_offset)}
-  <extras.HTML center position={pos}>
+  {@const label_offset = smart_site_label_offsets.get(site_idx) ?? site_label_offset}
+  {@const visual_radius = (radius_by_site_idx.get(site_idx) ?? 1) * 0.5}
+  <extras.HTML
+    center
+    position={position}
+    calculatePosition={make_label_position_calculator(
+      position,
+      label_offset,
+      visual_radius,
+      label_screen_margin,
+    )}
+  >
     {#if atom_label}
       {@render atom_label({ site, site_idx })}
     {:else}
@@ -1181,12 +1392,18 @@
               ref.matrix.fromArray(bond.transform_matrix)
               ref.matrixWorldNeedsUpdate = true
             }}
-            onclick={(event: MouseEvent) => {
+            onclick={(event: MouseEvent & { nativeEvent?: MouseEvent }) => {
+              if (event.nativeEvent?.button === 2) return
               event.stopPropagation()
               toggle_bond(bond.site_idx_1, bond.site_idx_2)
               measured_sites = []
               selected_sites = []
               hovered_bond_key = null
+            }}
+            oncontextmenu={(event: MouseEvent & { nativeEvent?: MouseEvent }) => {
+              event.nativeEvent?.preventDefault()
+              event.stopPropagation?.()
+              open_bond_context_menu(bond)
             }}
             onpointerenter={() => (hovered_bond_key = bond_key)}
             onpointerleave={() => (hovered_bond_key = null)}
@@ -1200,6 +1417,70 @@
             />
           </T.Mesh>
         {/each}
+      {/if}
+
+      {#if measure_mode === `edit-bonds` && bond_context_menu}
+        {@const current_order = get_current_bond_order(
+          bond_context_menu.site_idx_1,
+          bond_context_menu.site_idx_2,
+          bond_context_menu.cell_shift,
+        )}
+        <extras.HTML center position={bond_context_menu.position}>
+          <div class="bond-context-menu">
+            <strong>Bond Order ({format_bond_order(current_order)})</strong>
+            {#each BOND_ORDER_OPTIONS as { order, label } (label)}
+              <button
+                type="button"
+                onpointerdown={(event: PointerEvent) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  set_context_bond_order(order)
+                }}
+                onkeydown={(event: KeyboardEvent) => {
+                  if (event.key !== `Enter` && event.key !== ` `) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  set_context_bond_order(order)
+                }}
+              >
+                {label}
+              </button>
+            {/each}
+            <button
+              type="button"
+              class="remove"
+              onpointerdown={(event: PointerEvent) => {
+                event.preventDefault()
+                event.stopPropagation()
+                remove_context_bond()
+              }}
+              onkeydown={(event: KeyboardEvent) => {
+                if (event.key !== `Enter` && event.key !== ` `) return
+                event.preventDefault()
+                event.stopPropagation()
+                remove_context_bond()
+              }}
+            >
+              Remove
+            </button>
+            <button
+              type="button"
+              onpointerdown={(event: PointerEvent) => {
+                event.preventDefault()
+                event.stopPropagation()
+                close_bond_context_menu()
+              }}
+              onkeydown={(event: KeyboardEvent) => {
+                if (event.key !== `Enter` && event.key !== ` `) return
+                event.preventDefault()
+                event.stopPropagation()
+                close_bond_context_menu()
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </extras.HTML>
       {/if}
 
       <!-- highlight hovered, active and selected sites -->
@@ -1557,6 +1838,37 @@
     line-height: 1.2;
     font-size: var(--canvas-tooltip-font-size, clamp(8pt, 2cqmin, 18pt));
     box-shadow: var(--measure-label-shadow, 0 1px 6px rgba(0, 0, 0, 0.2));
+  }
+  .bond-context-menu {
+    display: grid;
+    min-width: 8rem;
+    gap: 2pt;
+    padding: 5pt;
+    border-radius: var(--border-radius, 3pt);
+    background: var(--surface-bg, Canvas);
+    color: var(--text-color, currentColor);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    pointer-events: auto;
+    strong {
+      font-size: 0.85em;
+      padding: 0 2pt 2pt;
+      white-space: nowrap;
+    }
+    button {
+      border: none;
+      border-radius: var(--border-radius, 3pt);
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      padding: 2pt 5pt;
+      text-align: left;
+    }
+    button:hover {
+      background: color-mix(in srgb, currentColor 10%, transparent);
+    }
+    button.remove {
+      color: var(--error-color, #f44336);
+    }
   }
   .selection-label {
     display: inline-flex;

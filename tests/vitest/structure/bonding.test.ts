@@ -1,11 +1,11 @@
-import type { BondPair, Vec3 } from '$lib'
-import type { Crystal } from '$lib/structure'
+import type { BondOrder, BondPair, Vec3 } from '$lib'
+import type { Crystal, StructureBond } from '$lib/structure'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import * as bonding from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { test_molecules } from '$site/molecules'
 import process from 'node:process'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { create_test_structure, make_crystal } from '../setup'
 
 const measure_performance = (func: () => void): number => {
@@ -132,6 +132,154 @@ describe(`Bonding Algorithms`, () => {
     )
     const bonds = func(structure)
     bonds.forEach((bond) => expect(bond.bond_length).toBeGreaterThan(5))
+  })
+})
+
+describe(`Explicit Bond Metadata`, () => {
+  test.each(Object.values(bonding.BONDING_STRATEGIES))(
+    `maps structure.properties.bonds onto computed and missing bonds`,
+    (strategy) => {
+      const structure = get_test_structure([
+        { xyz: [0, 0, 0], element: `C` },
+        { xyz: [1.4, 0, 0], element: `C` },
+        { xyz: [5, 0, 0], element: `O` },
+      ])
+      structure.properties = {
+        bonds: [
+          { site_idx_1: 0, site_idx_2: 1, order: 2 },
+          { site_idx_1: 2, site_idx_2: 0, order: 3 },
+        ],
+      }
+
+      expect(bonding.get_explicit_bond_metadata(structure)).toEqual([
+        { site_idx_1: 0, site_idx_2: 1, order: 2 },
+        { site_idx_1: 0, site_idx_2: 2, order: 3 },
+      ])
+
+      const bonds = strategy(structure)
+      const computed_bond = bonds.find((bond) =>
+        bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2) === `0-1`
+      )
+      const explicit_only_bond = bonds.find((bond) =>
+        bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2) === `0-2`
+      )
+
+      expect(computed_bond?.bond_order).toBe(2)
+      expect(explicit_only_bond?.bond_order).toBe(3)
+      expect(explicit_only_bond?.site_idx_1).toBe(0)
+      expect(explicit_only_bond?.site_idx_2).toBe(2)
+      expect(explicit_only_bond?.bond_length).toBeCloseTo(5)
+    },
+  )
+
+  test(`ignores invalid explicit bond metadata with warnings`, () => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
+    const structure = get_test_structure([
+      { xyz: [0, 0, 0], element: `C` },
+      { xyz: [1.4, 0, 0], element: `C` },
+    ])
+    const raw_bonds = [
+      { site_idx_1: 0, site_idx_2: 1, order: `aromatic` },
+      { site_idx_1: 0.5, site_idx_2: 1, order: 2 },
+      { site_idx_1: 0, site_idx_2: 8, order: 2 },
+      { site_idx_1: 1, site_idx_2: 1, order: 1 },
+      { site_idx_1: 0, site_idx_2: 1, order: 4 },
+      { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0.5, 0] },
+      null,
+    ]
+    structure.properties = { bonds: raw_bonds as unknown as StructureBond[] }
+
+    try {
+      expect(bonding.get_explicit_bond_metadata(structure)).toEqual([
+        { site_idx_1: 0, site_idx_2: 1, order: `aromatic` },
+      ])
+      expect(warn_spy).toHaveBeenCalledTimes(6)
+    } finally {
+      warn_spy.mockRestore()
+    }
+  })
+
+  test(`warns before duplicate explicit bonds overwrite earlier entries`, () => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => undefined)
+    const structure = get_test_structure([
+      { xyz: [0, 0, 0], element: `C` },
+      { xyz: [1.4, 0, 0], element: `C` },
+    ])
+    structure.properties = {
+      bonds: [
+        { site_idx_1: 0, site_idx_2: 1, order: 1 },
+        { site_idx_1: 1, site_idx_2: 0, order: 2 },
+      ],
+    }
+
+    try {
+      expect(bonding.get_explicit_bond_metadata(structure)).toEqual([
+        { site_idx_1: 0, site_idx_2: 1, order: 2 },
+      ])
+      expect(warn_spy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `Duplicate explicit bond definition at index 1 for site indices 1, 0 ` +
+            `with order 2; will overwrite the previous entry`,
+        ),
+      )
+    } finally {
+      warn_spy.mockRestore()
+    }
+  })
+
+  test(`renders explicit crystal bonds with cell shifts`, () => {
+    const structure = make_crystal(10, [
+      [`C`, [0.95, 0.5, 0.5]],
+      [`O`, [0.05, 0.5, 0.5]],
+    ])
+    structure.properties = {
+      bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
+    }
+
+    const explicit_bonds = bonding.get_explicit_bond_metadata(structure)
+    expect(explicit_bonds).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
+    ])
+    expect(bonding.get_bond_key(0, 1, [1, 0, 0])).toBe(`0-1@1,0,0`)
+
+    const bonds = bonding.apply_explicit_bond_metadata(structure, [])
+    expect(bonds).toHaveLength(1)
+    expect(bonds[0].pos_1).toEqual([9.5, 5, 5])
+    expect(bonds[0].pos_2).toEqual([10.5, 5, 5])
+    expect(bonds[0].bond_length).toBeCloseTo(1)
+  })
+
+  test.each([
+    { order: undefined, expected_count: 1 },
+    { order: 1 as const, expected_count: 1 },
+    { order: 2 as const, expected_count: 2 },
+    { order: 3 as const, expected_count: 3 },
+    { order: 1.5 as const, expected_count: 2 },
+    { order: `aromatic` as const, expected_count: 2 },
+  ])(`renders $order bond order as $expected_count cylinder matrices`, ({
+    order,
+    expected_count,
+  }: {
+    order?: BondOrder
+    expected_count: number
+  }) => {
+    const bond: BondPair = {
+      pos_1: [0, 0, 0],
+      pos_2: [1, 0, 0],
+      site_idx_1: 0,
+      site_idx_2: 1,
+      bond_length: 1,
+      strength: 1,
+      ...(order === undefined ? {} : { bond_order: order }),
+      transform_matrix: bonding.compute_bond_transform([0, 0, 0], [1, 0, 0]),
+    }
+
+    const matrices = bonding.get_bond_render_matrices(bond, 0.1)
+    expect(matrices).toHaveLength(expected_count)
+    if (expected_count > 1) {
+      const offsets = matrices.map((matrix) => `${matrix[12]},${matrix[13]},${matrix[14]}`)
+      expect(new Set(offsets).size).toBeGreaterThan(1)
+    }
   })
 })
 
