@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { perceive_bond_orders } from '$lib/structure/bond-order-perception'
+import { perceive_bond_orders, split_fragments, is_main_group } from '$lib/structure/bond-order-perception'
 import type { BondPair } from '$lib/structure'
 
 function make_input(
@@ -36,6 +36,22 @@ describe(`perceive_bond_orders scaffold`, () => {
     expect(result).toHaveLength(1)
     expect(result[0].bond_order).toBe(1)
     expect(result[0].perceived).toBe(true)
+  })
+})
+
+describe(`element gating`, () => {
+  test(`main-group elements recognized`, () => {
+    expect(is_main_group(`C`)).toBe(true)
+    expect(is_main_group(`O`)).toBe(true)
+    expect(is_main_group(`Fe`)).toBe(false)
+    expect(is_main_group(`Pt`)).toBe(false)
+  })
+
+  test(`splits disconnected graph into fragments`, () => {
+    const frags = split_fragments(4, [[0, 1], [2, 3]])
+    expect(frags).toHaveLength(2)
+    expect(new Set(frags[0])).toEqual(new Set([0, 1]))
+    expect(new Set(frags[1])).toEqual(new Set([2, 3]))
   })
 })
 
