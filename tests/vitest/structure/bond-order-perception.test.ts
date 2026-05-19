@@ -239,6 +239,47 @@ describe(`aromaticity`, () => {
     )!
     expect(shared.kekule_order).toBe(1)
   })
+
+  test(`cyclobutadiene C4: antiaromatic, NOT flagged aromatic`, () => {
+    // 4-membered all-C ring. Each C (valence [4], 2 ring bonds) solves to
+    // all-double. π = 4 (one per sp2 ring carbon) → (4-2)%4 = 2 ≠ 0 → fails
+    // Hückel 4n+2 → must NOT be relabeled aromatic. Guards the antiaromatic
+    // discriminator `(pi-2)%4===0` against an off-by-one regression.
+    const s = 1.45
+    const coords: [number, number, number][] = [
+      [0, 0, 0], [s, 0, 0], [s, s, 0], [0, s, 0],
+    ]
+    const { sites, bonds } = make_input(
+      [`C`, `C`, `C`, `C`],
+      coords,
+      [[0, 1], [1, 2], [2, 3], [3, 0]],
+    )
+    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(r.every((b) => b.bond_order !== `aromatic`)).toBe(true)
+    expect(r.every((b) => b.aromatic_ring === undefined)).toBe(true)
+  })
+
+  test(`cyclooctatetraene C8: 8 π electrons, NOT aromatic`, () => {
+    // Planar 8-membered all-C ring (idealized planar for the test). π = 8 →
+    // (8-2)%4 = 2 ≠ 0 → not aromatic. Second negative case at a different
+    // ring size so a modulus regression cannot pass both this and benzene.
+    const coords: [number, number, number][] = Array.from(
+      { length: 8 },
+      (_, k): [number, number, number] => [
+        Math.cos((k * Math.PI) / 4) * 1.8,
+        Math.sin((k * Math.PI) / 4) * 1.8,
+        0,
+      ],
+    )
+    const { sites, bonds } = make_input(
+      Array.from({ length: 8 }, () => `C`),
+      coords,
+      [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 0]],
+    )
+    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(r.every((b) => b.bond_order !== `aromatic`)).toBe(true)
+    expect(r.every((b) => b.aromatic_ring === undefined)).toBe(true)
+  })
 })
 
 describe(`T2 graceful fallback`, () => {

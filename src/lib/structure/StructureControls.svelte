@@ -1120,6 +1120,7 @@
         </select>
       </label>
       <label
+        style="gap: 6pt"
         {@attach tooltip({
           content: SETTINGS_CONFIG.structure.auto_bond_order.description,
         })}
@@ -1128,7 +1129,11 @@
         Auto bond order (perceive double/triple/aromatic)
       </label>
       {#if scene_props.auto_bond_order}
-        <label>
+        <label
+          {@attach tooltip({
+            content: SETTINGS_CONFIG.structure.aromatic_display.description,
+          })}
+        >
           Aromatic display <select bind:value={scene_props.aromatic_display}>
             {#each Object.entries(
               SETTINGS_CONFIG.structure.aromatic_display.enum ?? {},

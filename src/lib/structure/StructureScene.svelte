@@ -762,6 +762,9 @@
     return has_visible_element && prop_visible
   }
 
+  // Perception layer: bond_pairs with optional bond-order perception applied.
+  // Off by default (pass-through). Manual overrides are applied downstream in
+  // filtered_bond_pairs, so they still win over perceived orders.
   let perceived_bond_pairs: BondPair[] = $derived.by(() => {
     if (!auto_bond_order || !structure?.sites || bond_pairs.length === 0) {
       return bond_pairs
