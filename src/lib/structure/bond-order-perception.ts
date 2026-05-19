@@ -18,11 +18,32 @@ function primary_element(site: Site): string {
   )?.element ?? ``
 }
 
-// Neutral common valences (xyz2mol atomic_valence, trimmed to main-group).
+// xyz2mol atomic_valence (charged-inclusive: lists hold every bond
+// valence an atom may carry; deviation from the neutral value is
+// explained by formal_charge below). Order is the xyz2mol search
+// order but valence_combinations re-sorts by total valence-sum, so the
+// least-saturated / lowest-|charge| solution is still tried first.
 const ATOMIC_VALENCE: Record<string, number[]> = {
-  H: [1], B: [3], C: [4], N: [3], O: [2], F: [1],
-  Si: [4], P: [3, 5], S: [2, 4, 6], Cl: [1],
-  Se: [2, 4, 6], Br: [1], Te: [2, 4, 6], I: [1],
+  H: [1], B: [3, 4], C: [4], N: [3, 4], O: [2, 1, 3], F: [1],
+  Si: [4], P: [5, 3], S: [6, 3, 2], Cl: [1],
+  Se: [6, 3, 2], Br: [1], Te: [6, 3, 2], I: [1],
+}
+
+// xyz2mol atomic_valence_electrons (group valence-electron count).
+const VALENCE_ELECTRONS: Record<string, number> = {
+  H: 1, B: 3, C: 4, N: 5, O: 6, F: 7, Si: 4, P: 5, S: 6,
+  Cl: 7, Se: 6, Br: 7, Te: 6, I: 7,
+}
+
+// xyz2mol get_atomic_charge: formal charge from the atom's actual bond
+// valence. H/B use (group-1-like) special forms; hypervalent P(V) and
+// S(VI) are treated as neutral; everything else is group - 8 + valence.
+function formal_charge(symbol: string, bond_valence: number): number {
+  if (symbol === `H`) return 1 - bond_valence
+  if (symbol === `B`) return 3 - bond_valence
+  if (symbol === `P` && bond_valence === 5) return 0
+  if (symbol === `S` && bond_valence === 6) return 0
+  return VALENCE_ELECTRONS[symbol] - 8 + bond_valence
 }
 
 export function is_main_group(symbol: string): boolean {
@@ -178,10 +199,28 @@ export function perceive_bond_orders(
     // the default single / not-perceived (T2 fallback), spec §7.
     const combo_count = valence_lists.reduce((p, l) => p * l.length, 1)
     if (combo_count > MAX_VALENCE_COMBOS) continue
+    // xyz2mol BO_is_OK: among all valence targets (lowest valence-sum
+    // first) accept the FIRST whose summed formal charge over the
+    // fragment equals the requested total charge (default neutral).
+    // Deviations from the neutral valence are absorbed as formal
+    // charge, which is what lets anions/cations (e.g. CO3^2-) solve.
     let solved: Map<number, number> | null = null
+    const want_charge = opts.total_charge ?? 0
     for (const target of valence_combinations(valence_lists)) {
-      solved = assign_bond_orders(frag.length, local_edges, target)
-      if (solved) break
+      const candidate = assign_bond_orders(frag.length, local_edges, target)
+      if (!candidate) continue
+      let sum_fc = 0
+      for (let k = 0; k < frag.length; k++) {
+        const bv = local_edges.reduce(
+          (s, e, ei) => s + (e.i === k || e.j === k ? candidate.get(ei)! : 0),
+          0,
+        )
+        sum_fc += formal_charge(symbols[k], bv)
+      }
+      if (sum_fc === want_charge) {
+        solved = candidate
+        break
+      }
     }
     if (!solved) continue
     local_edges.forEach((e, ei) => {

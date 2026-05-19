@@ -124,4 +124,17 @@ describe(`combination-count bound`, () => {
   })
 })
 
+describe(`charge support`, () => {
+  test(`carbonate CO3^2-: one C=O double, two C-O single`, () => {
+    const { sites, bonds } = make_input(
+      [`C`, `O`, `O`, `O`],
+      [[0, 0, 0], [1.28, 0, 0], [-0.64, 1.11, 0], [-0.64, -1.11, 0]],
+      [[0, 1], [0, 2], [0, 3]],
+    )
+    const r = perceive_bond_orders(sites, bonds, { total_charge: -2 })
+    expect(r.map((b) => b.bond_order).sort()).toEqual([1, 1, 2])
+    expect(r.every((b) => b.perceived)).toBe(true)
+  })
+})
+
 export { make_input }
