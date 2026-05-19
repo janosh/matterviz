@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { perceive_bond_orders, split_fragments, is_main_group, find_rings } from '$lib/structure/bond-order-perception'
-import type { BondPair } from '$lib/structure'
+import { compose_perceived_bonds, find_rings, is_main_group, perceive_bond_orders, split_fragments } from '$lib/structure/bond-order-perception'
+import type { BondPair, StructureBond } from '$lib/structure'
+import type { PerceivedBond } from '$lib/structure/bond-order-perception'
 
 function make_input(
   elements: string[],
@@ -309,6 +310,76 @@ describe(`T2 graceful fallback`, () => {
     )
     const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
     expect(r.every((b) => b.bond_order === 1 && b.perceived)).toBe(true)
+  })
+})
+
+describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () => {
+  const pb = (
+    i: number,
+    j: number,
+    order: PerceivedBond[`bond_order`],
+    kekule?: PerceivedBond[`kekule_order`],
+  ): PerceivedBond => ({
+    pos_1: [0, 0, 0],
+    pos_2: [1, 0, 0],
+    site_idx_1: i,
+    site_idx_2: j,
+    bond_length: 1,
+    strength: 1,
+    transform_matrix: new Float32Array(16),
+    bond_order: order,
+    perceived: true,
+    ...(kekule === undefined ? {} : { kekule_order: kekule }),
+  })
+  const expl = (i: number, j: number, order: StructureBond[`order`]): StructureBond => ({
+    site_idx_1: i,
+    site_idx_2: j,
+    order,
+  })
+
+  test(`explicit order wins over perceived`, () => {
+    const out = compose_perceived_bonds([pb(0, 1, 1)], [expl(0, 1, 2)], `aromatic`)
+    expect(out[0].bond_order).toBe(2)
+  })
+
+  test(`explicit aromatic preserved over perceived single`, () => {
+    const out = compose_perceived_bonds([pb(0, 1, 1)], [expl(0, 1, `aromatic`)], `aromatic`)
+    expect(out[0].bond_order).toBe(`aromatic`)
+  })
+
+  test(`explicit key is order-insensitive`, () => {
+    // perceived bond is (0,1); explicit metadata lists it as (1,0).
+    const out = compose_perceived_bonds([pb(0, 1, 1)], [expl(1, 0, 3)], `aromatic`)
+    expect(out[0].bond_order).toBe(3)
+  })
+
+  test(`non-explicit aromatic stays aromatic in aromatic mode`, () => {
+    const out = compose_perceived_bonds([pb(0, 1, `aromatic`, 2)], [], `aromatic`)
+    expect(out[0].bond_order).toBe(`aromatic`)
+  })
+
+  test(`non-explicit aromatic remapped to kekule_order in kekule mode`, () => {
+    const out = compose_perceived_bonds([pb(0, 1, `aromatic`, 2)], [], `kekule`)
+    expect(out[0].bond_order).toBe(2)
+  })
+
+  test(`explicit aromatic NOT remapped even in kekule mode (explicit wins first)`, () => {
+    const out = compose_perceived_bonds(
+      [pb(0, 1, `aromatic`, 1)],
+      [expl(0, 1, `aromatic`)],
+      `kekule`,
+    )
+    expect(out[0].bond_order).toBe(`aromatic`)
+  })
+
+  test(`non-explicit non-aromatic perceived order passes through unchanged`, () => {
+    const out = compose_perceived_bonds([pb(0, 1, 3)], [expl(2, 3, 2)], `kekule`)
+    expect(out[0].bond_order).toBe(3)
+  })
+
+  test(`aromatic with no kekule_order falls back to aromatic in kekule mode`, () => {
+    const out = compose_perceived_bonds([pb(0, 1, `aromatic`)], [], `kekule`)
+    expect(out[0].bond_order).toBe(`aromatic`)
   })
 })
 

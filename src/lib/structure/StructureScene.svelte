@@ -60,9 +60,14 @@
     compute_bond_transform,
     get_bond_key,
     get_bond_render_matrices,
+    get_explicit_bond_metadata,
     normalize_structure_bond,
   } from './bonding'
-  import { CanvasTooltip, perceive_bond_orders } from './index'
+  import {
+    CanvasTooltip,
+    compose_perceived_bonds,
+    perceive_bond_orders,
+  } from './index'
   import {
     choose_site_label_offset,
     LABEL_OFFSET_EPS,
@@ -773,14 +778,14 @@
     const perceived = perceive_bond_orders(structure.sites, bond_pairs, {
       total_charge,
     })
-    if (aromatic_display === `kekule`) {
-      return perceived.map((bond) =>
-        bond.bond_order === `aromatic` && bond.kekule_order !== undefined
-          ? { ...bond, bond_order: bond.kekule_order }
-          : bond
-      )
-    }
-    return perceived
+    // Explicit structure.properties.bonds are user-authoritative and must
+    // never be clobbered by perception. Composition + precedence is a pure,
+    // unit-tested helper (see compose_perceived_bonds).
+    return compose_perceived_bonds(
+      perceived,
+      get_explicit_bond_metadata(structure),
+      aromatic_display,
+    )
   })
 
   let filtered_bond_pairs = $derived.by(() => {

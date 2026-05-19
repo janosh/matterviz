@@ -88,7 +88,10 @@ export type {
   PerceivedBond,
   PerceptionOptions,
 } from '$lib/structure/bond-order-perception'
-export { perceive_bond_orders } from '$lib/structure/bond-order-perception'
+export {
+  compose_perceived_bonds,
+  perceive_bond_orders,
+} from '$lib/structure/bond-order-perception'
 
 export function get_element_counts(structure: AnyStructure) {
   const elements: CompositionType = {}

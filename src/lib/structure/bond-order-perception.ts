@@ -1,6 +1,6 @@
 // Bond-order perception adapted from jensengroup/xyz2mol (MIT,
 // Kim & Kim, Bull. Korean Chem. Soc. 2015, 36, 1769). Clean-room TS port.
-import type { BondOrder, BondPair, Site } from '$lib/structure'
+import type { BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
 
 export type PerceptionOptions = { total_charge?: number; max_atoms?: number }
 
@@ -399,4 +399,40 @@ export function perceive_bond_orders(
     }
   }
   return bonds.map((b) => result.get(b)!)
+}
+
+// Order-insensitive site-pair key (cell_shift ignored: explicit bond metadata
+// is matched by site indices, mirroring how the scene resolves explicit bonds).
+const pair_key = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`)
+
+// Compose the final rendered bond list from perceived bonds.
+//
+// Precedence (highest first):
+//  1. Explicit `structure.properties.bonds` — user-authoritative, must never
+//     be clobbered by perception (same class as manual overrides).
+//  2. Kekulé display: when `aromatic_display === 'kekule'`, a perceived
+//     aromatic bond is shown using its retained `kekule_order`.
+//  3. Otherwise the perceived order is used as-is.
+//
+// Pure + Svelte-free so the precedence invariant is unit-testable in isolation.
+export function compose_perceived_bonds(
+  perceived: PerceivedBond[],
+  explicit_bonds: StructureBond[],
+  aromatic_display: `aromatic` | `kekule`,
+): PerceivedBond[] {
+  const explicit_orders = new Map(
+    explicit_bonds.map((b) => [pair_key(b.site_idx_1, b.site_idx_2), b.order]),
+  )
+  return perceived.map((bond) => {
+    const explicit = explicit_orders.get(
+      pair_key(bond.site_idx_1, bond.site_idx_2),
+    )
+    if (explicit !== undefined) return { ...bond, bond_order: explicit }
+    if (
+      aromatic_display === `kekule` &&
+      bond.bond_order === `aromatic` &&
+      bond.kekule_order !== undefined
+    ) return { ...bond, bond_order: bond.kekule_order }
+    return bond
+  })
 }
