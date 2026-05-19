@@ -13,7 +13,13 @@ import type { ElementSymbol } from '$lib/element'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure, Crystal, Site, StructureProperties } from '$lib/structure'
+import type {
+  AnyStructure,
+  Crystal,
+  Site,
+  StructureBond,
+  StructureProperties,
+} from '$lib/structure'
 import type { Pbc } from '$lib/structure/pbc'
 import { wrap_to_unit_cell } from '$lib/structure/pbc'
 import { normalize_scientific_notation } from '$lib/utils'
@@ -1331,11 +1337,38 @@ export function parse_structure_file(
 
 // Universal parser that handles JSON and structure files
 export function parse_any_structure(content: string, filename: string): AnyStructure | null {
-  const finalize_structure = (structure: AnyStructure): AnyStructure => ({
+  const clone_structure_property = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(clone_structure_property)
+    if (value && typeof value === `object`) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, nested_value]) => [
+          key,
+          clone_structure_property(nested_value),
+        ]),
+      )
+    }
+    return value
+  }
+
+  const clone_structure_bond = (bond: StructureBond): StructureBond => ({
+    ...bond,
+    ...(bond.cell_shift && { cell_shift: [...bond.cell_shift] as Vec3 }),
+  })
+
+  const clone_structure_properties = (
+    properties: StructureProperties,
+  ): StructureProperties => ({
+    ...(clone_structure_property(properties) as StructureProperties),
+    ...(properties.bonds && { bonds: properties.bonds.map(clone_structure_bond) }),
+  })
+
+  const finalize_structure = (structure: ParsedStructure): AnyStructure => ({
     sites: structure.sites,
     charge: 0,
-    ...(structure.properties && { properties: { ...structure.properties } }),
-    ...(`lattice` in structure && {
+    ...(structure.properties && {
+      properties: clone_structure_properties(structure.properties),
+    }),
+    ...(structure.lattice && {
       lattice: { ...structure.lattice, pbc: [true, true, true] },
     }),
   })
@@ -1346,12 +1379,8 @@ export function parse_any_structure(content: string, filename: string): AnyStruc
 
     // Check if it's already a valid structure using proper type guard
     if (is_parsed_structure(parsed)) {
-      // Ensure PBC is set for structures with lattice
-      if (parsed.lattice && !parsed.lattice.pbc) {
-        parsed.lattice.pbc = [true, true, true]
-      }
       // Normalize coordinates (wrap fractional to [0,1) and recompute Cartesian)
-      return normalize_fractional_coords(parsed) as AnyStructure
+      return finalize_structure(normalize_fractional_coords(parsed))
     }
     // If not, use parse_structure_file to find nested structures
     const structure = parse_structure_file(content, filename)

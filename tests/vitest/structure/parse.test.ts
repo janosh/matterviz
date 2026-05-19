@@ -2006,6 +2006,38 @@ describe(`parse_structure_file`, () => {
       ])
     })
 
+    test(`finalizes direct JSON bonds without sharing mutable arrays`, () => {
+      const direct_structure = parse_poscar(na_cl_cubic)
+      if (direct_structure === null) throw new Error(`invalid fixture structure`)
+      direct_structure.properties = {
+        ...direct_structure.properties,
+        bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
+      }
+      const parse_spy = vi.spyOn(JSON, `parse`).mockReturnValueOnce(direct_structure)
+
+      try {
+        const source_bonds = direct_structure.properties?.bonds
+        const result_bonds = parse_any_structure(`{}`, `direct.json`)?.properties?.bonds
+        if (source_bonds === undefined || result_bonds === undefined) {
+          throw new Error(`missing explicit bonds`)
+        }
+        const source_cell_shift = source_bonds[0].cell_shift
+        const result_cell_shift = result_bonds[0].cell_shift
+        if (source_cell_shift === undefined || result_cell_shift === undefined) {
+          throw new Error(`missing cell shift`)
+        }
+
+        expect(result_bonds).toEqual(source_bonds)
+        expect(result_bonds).not.toBe(source_bonds)
+        expect(result_cell_shift).not.toBe(source_cell_shift)
+
+        result_cell_shift[0] = 2
+        expect(source_cell_shift).toEqual([1, 0, 0])
+      } finally {
+        parse_spy.mockRestore()
+      }
+    })
+
     test.each([
       [`malformed JSON`, `{invalid json`],
       [`completely invalid structure`, `{ "no_structure": true }`],

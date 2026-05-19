@@ -107,7 +107,7 @@
   {page}
   --nav-dropdown-z-index="var(--z-index-overlay-nav)"
 >
-  <!-- Nav dropdown must be above Structure.svelte's --struct-buttons-z-index. -->
+  <!-- Nav dropdown uses --z-index-overlay-nav to sit above overlay controls. -->
   <button
     onclick={(event: MouseEvent) => {
       event.stopPropagation()
