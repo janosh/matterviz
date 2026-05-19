@@ -155,6 +155,9 @@ function assign_bond_orders(
 // per connected component; each back-edge (non-tree edge to an already-
 // visited node) induces one fundamental cycle. Deduplicates by sorted
 // vertex set so fused rings produce one entry per ring, not per back-edge.
+// NOTE: a fundamental cycle basis can include non-minimal (large) rings for
+// bridged polycyclics; acceptable here because aromaticity perception only
+// needs the simple 5-/6-membered rings, which the basis always recovers.
 export function find_rings(
   n: number,
   edges: [number, number][],
@@ -183,9 +186,8 @@ export function find_rings(
         } else if (parent.get(u) !== v) {
           const path_u: number[] = []
           const path_v: number[] = []
-          const anc_u = new Map<number, number>()
-          let d = 0
-          for (let x = u; x !== -1; x = parent.get(x)!) anc_u.set(x, d++)
+          const anc_u = new Set<number>()
+          for (let x = u; x !== -1; x = parent.get(x)!) anc_u.add(x)
           for (let x = v; x !== -1; x = parent.get(x)!) {
             if (anc_u.has(x)) {
               for (let y = u; y !== x; y = parent.get(y)!) path_u.push(y)
@@ -210,6 +212,31 @@ export function find_rings(
 function order_to_bond_order(o: number): BondOrder {
   return o >= 3 ? 3 : o === 2 ? 2 : 1
 }
+
+// Planarity test: build a plane normal from the first 3 ring atoms and
+// require every ring atom's signed distance to that plane to stay within
+// 0.3 Å. Aromatic rings are planar by definition (sp2 framework); a
+// puckered ring (e.g. cyclohexane chair) fails and is not flagged.
+function ring_is_planar(ring: number[], sites: Site[]): boolean {
+  if (ring.length < 3) return false
+  const p = ring.map((a) => sites[a].xyz)
+  const v1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]]
+  const v2 = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]]
+  const nx = v1[1] * v2[2] - v1[2] * v2[1]
+  const ny = v1[2] * v2[0] - v1[0] * v2[2]
+  const nz = v1[0] * v2[1] - v1[1] * v2[0]
+  const len = Math.hypot(nx, ny, nz) || 1
+  return p.every((q) => {
+    const dev = Math.abs(
+      (q[0] - p[0][0]) * nx + (q[1] - p[0][1]) * ny + (q[2] - p[0][2]) * nz,
+    ) / len
+    return dev < 0.3
+  })
+}
+
+// Elements that can sit in an aromatic ring contributing a p-orbital to
+// the conjugated π system (C, N, O, S). Other ring members disqualify.
+const SP2_OK = new Set([`C`, `N`, `O`, `S`])
 
 // xyz2mol AC->BO core (neutral, main-group). Processes each connected
 // fragment independently; fragments containing a non-main-group atom or
@@ -283,6 +310,75 @@ export function perceive_bond_orders(
       const ord = order_to_bond_order(solved!.get(ei)!)
       result.set(e.ref, { ...e.ref, bond_order: ord, perceived: true })
     })
+
+    // Aromatic post-pass (runs only on solved fragments). The Kekulé
+    // integer orders are now known; detect Hückel-aromatic rings and
+    // relabel their bonds to 'aromatic' while retaining the solved
+    // 1/2 in `kekule_order` for a future Kekulé display toggle.
+    //
+    // π-electron rule (per ring atom, summed over the ring):
+    //   - an sp2-eligible atom that bears a ring-internal double bond
+    //     contributes 1 π electron (one p-orbital electron, the textbook
+    //     "one π e- per conjugated ring atom" count);
+    //   - an sp2-eligible HETEROatom (N/O/S) with NO ring double bond
+    //     contributes 2 (its lone pair joins the π system: pyrrole-/
+    //     furan-/thiophene-type);
+    //   - a carbon with no ring double bond contributes 1 (keeps a
+    //     bare degenerate all-C ring, e.g. the no-H benzene test where
+    //     the solver yields all-double, counting π = #C).
+    // Aromatic iff π satisfies Hückel 4n+2 (π>=2 && (π-2)%4===0).
+    // This count is independent of the (often arbitrary) Kekulé double-
+    // bond placement, which is the robustness we need. Sanity:
+    //   benzene  6 C            → π=6  (6-2)%4=0  → aromatic ✓
+    //   pyridine 5 C + 1 N(=)   → π=6              → aromatic ✓
+    //   pyrrole  4 C(=) + N-H   → 4 + 2 = 6        → aromatic ✓
+    //   furan    4 C(=) + O     → 4 + 2 = 6        → aromatic ✓
+    //   cyclobutadiene 4 C      → π=4  (4-2)%4=2   → NOT aromatic ✓
+    //   cyclooctatetraene 8 C   → π=8  (8-2)%4=2   → NOT aromatic ✓
+    const local_edge_pairs: [number, number][] = local_edges.map(
+      (e) => [e.i, e.j],
+    )
+    const rings = find_rings(frag.length, local_edge_pairs)
+    let ring_id = 0
+    for (const ring of rings) {
+      const global_ring = ring.map((k) => frag[k])
+      if (
+        !global_ring.every((g) => SP2_OK.has(primary_element(sites[g])))
+      ) continue
+      if (!ring_is_planar(global_ring, sites)) continue
+      const ring_set = new Set(ring)
+      // Per-ring-atom: does it carry a ring-internal double bond?
+      const has_ring_double = new Map<number, boolean>()
+      for (const k of ring) has_ring_double.set(k, false)
+      local_edges.forEach((e, ei) => {
+        if (ring_set.has(e.i) && ring_set.has(e.j) && solved!.get(ei) === 2) {
+          has_ring_double.set(e.i, true)
+          has_ring_double.set(e.j, true)
+        }
+      })
+      let pi = 0
+      for (const k of ring) {
+        const el = primary_element(sites[frag[k]])
+        if (has_ring_double.get(k)) pi += 1
+        else if (el === `N` || el === `O` || el === `S`) pi += 2
+        else pi += 1
+      }
+      if (pi >= 2 && (pi - 2) % 4 === 0) {
+        const this_ring = ring_id++
+        local_edges.forEach((e) => {
+          if (ring_set.has(e.i) && ring_set.has(e.j)) {
+            const prev = result.get(e.ref)!
+            result.set(e.ref, {
+              ...prev,
+              bond_order: `aromatic`,
+              aromatic_ring: this_ring,
+              kekule_order: prev.bond_order === 1 ? 1 : 2,
+              perceived: true,
+            })
+          }
+        })
+      }
+    }
   }
   return bonds.map((b) => result.get(b)!)
 }

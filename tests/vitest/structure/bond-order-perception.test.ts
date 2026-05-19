@@ -150,6 +150,42 @@ describe(`ring perception`, () => {
   test(`acyclic chain → no rings`, () => {
     expect(find_rings(3, [[0, 1], [1, 2]])).toHaveLength(0)
   })
+
+  test(`single triangle → one 3-membered ring`, () => {
+    const rings = find_rings(3, [[0, 1], [1, 2], [2, 0]])
+    expect(rings).toHaveLength(1)
+    expect(rings[0]).toHaveLength(3)
+  })
+
+  test(`naphthalene-like fused bicyclic → 2 rings`, () => {
+    // Two fused 6-rings sharing the 0-1 edge (10 atoms total).
+    const edges: [number, number][] = [
+      [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0], // ring A
+      [0, 6], [6, 7], [7, 8], [8, 9], [9, 1], // ring B (shares edge 0-1)
+    ]
+    const rings = find_rings(10, edges)
+    expect(rings).toHaveLength(2)
+    expect(rings.every((r) => r.length === 6)).toBe(true)
+  })
+})
+
+describe(`aromaticity`, () => {
+  test(`benzene: all 6 ring bonds flagged aromatic`, () => {
+    const a = (k: number): [number, number, number] => [
+      Math.cos((k * Math.PI) / 3) * 1.39,
+      Math.sin((k * Math.PI) / 3) * 1.39,
+      0,
+    ]
+    const coords = [a(0), a(1), a(2), a(3), a(4), a(5)]
+    const { sites, bonds } = make_input(
+      [`C`, `C`, `C`, `C`, `C`, `C`],
+      coords,
+      [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0]],
+    )
+    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(r.every((b) => b.aromatic_ring !== undefined)).toBe(true)
+    expect(r.every((b) => b.bond_order === `aromatic`)).toBe(true)
+  })
 })
 
 export { make_input }
