@@ -163,6 +163,197 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
+  // CO2 (O=C=O) molecule with NO explicit bonds: the electroneg_ratio
+  // bonding strategy auto-detects two C-O connectivity bonds. With
+  // auto_bond_order OFF they render single (1 cylinder each); ON, perception
+  // relabels both as double (2 cylinders each) -> more rendered geometry.
+  // Shifted so the C-O1 bond midpoint is at the world origin (canvas center),
+  // matching the existing edit-bonds test's center-click convention.
+  const dispatch_co2 = (page: import('@playwright/test').Page) =>
+    page.evaluate(() => {
+      const structure = {
+        sites: [
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            abc: [-0.58, 0, 0],
+            xyz: [-0.58, 0, 0],
+            label: `C1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            abc: [0.58, 0, 0],
+            xyz: [0.58, 0, 0],
+            label: `O1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            abc: [-1.74, 0, 0],
+            xyz: [-1.74, 0, 0],
+            label: `O2`,
+            properties: {},
+          },
+        ],
+        properties: {},
+      }
+      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, {
+          detail: { camera_position: [0, 0, 8], show_bonds: `always` },
+        }),
+      )
+    })
+
+  test(`auto bond-order toggle changes rendered bond geometry`, async ({ page }) => {
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await dispatch_co2(page)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+
+    // auto_bond_order OFF (default): C-O bonds render as single cylinders.
+    const single = await canvas.screenshot()
+    const single_pixels = count_non_white_pixels(single)
+    expect(single_pixels).toBeGreaterThan(100)
+
+    // Enable perception via the same scene-props mechanism the test page uses.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, { detail: { auto_bond_order: true } }),
+      )
+    })
+
+    // Perception turns both C=O into double bonds: each single cylinder
+    // becomes two offset cylinders. The bond geometry is regenerated, so the
+    // rendered scene must visibly change (same canvas-diff heuristic the
+    // existing "gradients" test uses), while still rendering bond content.
+    await expect_canvas_changed(canvas, single)
+    const doubled = await canvas.screenshot()
+    expect(count_non_white_pixels(doubled)).toBeGreaterThan(100)
+
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`aromatic display toggle switches benzene representation`, async ({ page }) => {
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    // Planar benzene ring (6 C in a hexagon, 1.39 Å radius), no explicit
+    // bonds -> connectivity ring detected, perception flags it aromatic.
+    await page.evaluate(() => {
+      const ring = Array.from({ length: 6 }, (_, k) => {
+        const angle = (k * Math.PI) / 3
+        return {
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [Math.cos(angle) * 1.39, Math.sin(angle) * 1.39, 0],
+          label: `C${k + 1}`,
+          properties: {},
+        }
+      })
+      const structure = { sites: ring, properties: {} }
+      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, {
+          detail: {
+            camera_position: [0, 0, 8],
+            show_bonds: `always`,
+            auto_bond_order: true,
+            aromatic_display: `aromatic`,
+          },
+        }),
+      )
+    })
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+
+    // aromatic mode: all 6 ring bonds rendered with the 1.5 representation
+    // (asymmetric-radius double cylinders).
+    const aromatic = await canvas.screenshot()
+    expect(count_non_white_pixels(aromatic)).toBeGreaterThan(100)
+
+    // Switch to Kekulé: ring bonds become alternating single (1 cylinder)
+    // and double (2 equal cylinders) -> the rendered bond pattern differs.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, { detail: { aromatic_display: `kekule` } }),
+      )
+    })
+    await expect_canvas_changed(canvas, aromatic)
+    const kekule = await canvas.screenshot()
+    expect(count_non_white_pixels(kekule)).toBeGreaterThan(100)
+
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`manual override wins over perceived bond order`, async ({ page }) => {
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
+    })
+
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await dispatch_co2(page)
+    // Enable perception: both C=O connectivity bonds are perceived as double.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, { detail: { auto_bond_order: true } }),
+      )
+    })
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+
+    // Drive the SAME edit-bonds context menu the existing explicit-order test
+    // uses, targeting the C-O1 bond midpoint (world origin -> canvas center).
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    // The default test-page canvas (800x500) extends below the 720px viewport,
+    // so its center is off-screen. Scroll it into view and right-click at
+    // absolute coords via page.mouse (the same mouse-driven approach the
+    // "site labels" test in this file uses) - this avoids Locator.click's
+    // stale-box re-scroll, which otherwise loops on pointer interception.
+    const right_click_bond_center = async () => {
+      await canvas.scrollIntoViewIfNeeded()
+      const box = await canvas.boundingBox()
+      expect(box).toBeTruthy()
+      if (!box) throw new Error(`canvas has no bounding box`)
+      const cx = box.x + box.width / 2
+      const cy = box.y + box.height / 2
+      await page.mouse.move(cx, cy)
+      await page.mouse.click(cx, cy, { button: `right` })
+    }
+
+    await right_click_bond_center()
+    const menu = page.locator(`#test-structure .bond-context-menu`)
+    await expect(menu).toBeVisible()
+    // Pre-override: the menu reports the PERCEIVED order. Perception relabels
+    // this C-O connectivity bond as a double (2) - non-vacuous proof that
+    // perception is actually driving the order before any manual override.
+    await expect(menu).toContainText(`Bond Order (2)`)
+    // Manually override to Triple - must win over the perceived double.
+    await menu.getByRole(`button`, { name: `Triple` }).click()
+    await expect(menu).toBeHidden()
+
+    // Re-open the menu on the same bond: it must now report order 3, proving
+    // the manual bond_order_overrides path takes precedence over perception.
+    await right_click_bond_center()
+    await expect(menu).toBeVisible()
+    await expect(menu).toContainText(`Bond Order (3)`)
+    // The override is recorded in the bound bonds list (globalThis hook),
+    // not the perceived order - concrete proof of precedence.
+    await expect.poll(() =>
+      page.evaluate(() =>
+        (globalThis as Record<string, unknown>).structure_bonds as unknown
+      )
+    ).toContainEqual(expect.objectContaining({ order: 3 }))
+    expect(console_errors).toHaveLength(0)
+  })
+
   test(`site labels avoid adjacent bond directions`, async ({ page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
     await page.evaluate(() => {
