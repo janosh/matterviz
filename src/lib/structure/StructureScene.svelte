@@ -57,11 +57,11 @@
   import type { BondingStrategy } from './bonding'
   import {
     BONDING_STRATEGIES,
-    compute_bond_transform,
     get_bond_key,
     get_bond_render_matrices,
     get_explicit_bond_metadata,
     normalize_structure_bond,
+    structure_bond_to_bond_pair,
   } from './bonding'
   import {
     CanvasTooltip,
@@ -88,6 +88,7 @@
     cell_shift?: Vec3
     position: Vec3
   }
+  type BondKeyTarget = Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`>
 
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.15 + 0.25 * Math.sin(pulse_time * 5))
@@ -167,6 +168,7 @@
     added_bonds = $bindable([]),
     removed_bonds = $bindable([]),
     bond_order_overrides = $bindable([]),
+    bond_edits_enabled = true,
     selection_highlight_color = `#6cf0ff`,
     // Active highlight group with different color
     active_sites = $bindable([]),
@@ -262,6 +264,7 @@
     added_bonds?: StructureBond[]
     removed_bonds?: StructureBond[]
     bond_order_overrides?: StructureBond[]
+    bond_edits_enabled?: boolean
     selection_highlight_color?: string
     // Support for active highlight group with different color
     active_sites?: number[]
@@ -322,6 +325,11 @@
   let canvas_cursor = $derived.by(() => {
     if (measure_mode === `edit-atoms` && add_atom_mode) return `crosshair`
     if (hovered_idx != null) {
+      if (measure_mode === `edit-bonds`) {
+        return bond_edits_enabled && is_editable_bond_site(hovered_idx)
+          ? `pointer`
+          : `not-allowed`
+      }
       if (measure_mode === `edit-atoms`) {
         const site = structure?.sites?.[hovered_idx]
         if (site?.properties?.orig_site_idx != null) return `not-allowed`
@@ -371,11 +379,20 @@
     cell_shift?: Vec3,
   ): StructureBond => normalize_structure_bond(site_idx_1, site_idx_2, order, cell_shift)
 
-  const matches_bond_key = (
-    bond: Pick<BondPair, `site_idx_1` | `site_idx_2` | `cell_shift`>,
-    bond_key: string,
-  ): boolean =>
-    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift) === bond_key
+  const bond_key_for = (bond: BondKeyTarget): string =>
+    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+
+  const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
+    bond_key_for(bond) === key
+
+  function is_editable_bond_site(site_idx: number): boolean {
+    return structure?.sites?.[site_idx]?.properties?.orig_site_idx == null
+  }
+
+  const can_edit_bond = (bond: BondKeyTarget): boolean =>
+    bond_edits_enabled &&
+    is_editable_bond_site(bond.site_idx_1) &&
+    is_editable_bond_site(bond.site_idx_2)
 
   const format_bond_order = (order: BondOrder | undefined): string =>
     order === undefined ? `1` : `${order}`
@@ -385,18 +402,10 @@
     site_idx_2: number,
     cell_shift?: Vec3,
   ): BondOrder | undefined {
-    const bond_key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
-    const override = bond_order_overrides.find((bond) =>
-      matches_bond_key(bond, bond_key)
-    )
-    if (override) return override.order
-    const added = added_bonds.find((bond) =>
-      matches_bond_key(bond, bond_key)
-    )
-    if (added) return added.order
-    return filtered_bond_pairs.find((bond) =>
-      matches_bond_key(bond, bond_key)
-    )?.bond_order
+    const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
+    return bond_order_overrides.find((bond) => matches_bond_key(bond, key))?.order ??
+      added_bonds.find((bond) => matches_bond_key(bond, key))?.order ??
+      filtered_bond_pairs.find((bond) => matches_bond_key(bond, key))?.bond_order
   }
 
   const midpoint = (pos_1: Vec3, pos_2: Vec3): Vec3 => [
@@ -408,6 +417,7 @@
   let label_screen_margin = $derived(site_label_size * 10 + site_label_padding)
 
   function open_bond_context_menu(bond: BondPair) {
+    if (!can_edit_bond(bond)) return
     bond_context_target = {
       site_idx_1: bond.site_idx_1,
       site_idx_2: bond.site_idx_2,
@@ -418,32 +428,28 @@
   }
 
   // Toggle a bond between two atoms: cycles through add → remove → restore states
-  function toggle_bond(site_1: number, site_2: number) {
-    const removed_record = normalize_structure_bond(
-      site_1,
-      site_2,
-      1,
-    )
-    const { site_idx_1: idx_i, site_idx_2: idx_j } = removed_record
-
-    const key = get_bond_key(idx_i, idx_j)
-    const added_idx = added_bonds.findIndex((bond) => matches_bond_key(bond, key))
-    if (added_idx >= 0) {
-      added_bonds = added_bonds.toSpliced(added_idx, 1)
+  function toggle_bond(site_1: number, site_2: number, cell_shift?: Vec3) {
+    if (!can_edit_bond({ site_idx_1: site_1, site_idx_2: site_2, cell_shift })) return
+    const record = make_bond_record(site_1, site_2, 1, cell_shift)
+    const key = bond_key_for(record)
+    if (added_bonds.some((bond) => matches_bond_key(bond, key))) {
+      added_bonds = added_bonds.filter((bond) => !matches_bond_key(bond, key))
       return
     }
-
-    const removed_idx = removed_bonds.findIndex((bond) => matches_bond_key(bond, key))
-    if (removed_idx >= 0) {
-      removed_bonds = removed_bonds.toSpliced(removed_idx, 1)
+    if (removed_bonds.some((bond) => matches_bond_key(bond, key))) {
+      removed_bonds = removed_bonds.filter((bond) => !matches_bond_key(bond, key))
       return
     }
-
-    // bond_pairs may not be sorted, so use get_bond_key for comparison
-    if (bond_pairs.some((bond) => matches_bond_key(bond, key))) {
-      removed_bonds = [...removed_bonds, removed_record]
+    const has_calculated_bond = bond_pairs.some((bond) => matches_bond_key(bond, key))
+    if (bond_order_overrides.some((bond) => matches_bond_key(bond, key))) {
+      bond_order_overrides = bond_order_overrides.filter((bond) =>
+        !matches_bond_key(bond, key)
+      )
+      if (has_calculated_bond) removed_bonds = [...removed_bonds, record]
+      return
     }
-    else added_bonds = [...added_bonds, make_bond_record(idx_i, idx_j, 1)]
+    if (has_calculated_bond) removed_bonds = [...removed_bonds, record]
+    else added_bonds = [...added_bonds, record]
   }
 
   function set_bond_order(
@@ -452,6 +458,7 @@
     order: BondOrder,
     cell_shift?: Vec3,
   ) {
+    if (!can_edit_bond({ site_idx_1, site_idx_2, cell_shift })) return
     const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
     const new_record = make_bond_record(site_idx_1, site_idx_2, order, cell_shift)
     added_bonds = added_bonds.filter((bond) => !matches_bond_key(bond, key))
@@ -475,18 +482,20 @@
   }
 
   function remove_bond(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
+    if (!can_edit_bond({ site_idx_1, site_idx_2, cell_shift })) return
     const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
     added_bonds = added_bonds.filter((bond) => !matches_bond_key(bond, key))
     bond_order_overrides = bond_order_overrides.filter((bond) =>
       !matches_bond_key(bond, key)
     )
-    if (bond_pairs.some((bond) => matches_bond_key(bond, key))) {
-      if (!removed_bonds.some((bond) => matches_bond_key(bond, key))) {
-        removed_bonds = [
-          ...removed_bonds,
-          make_bond_record(site_idx_1, site_idx_2, 1, cell_shift),
-        ]
-      }
+    if (
+      bond_pairs.some((bond) => matches_bond_key(bond, key)) &&
+      !removed_bonds.some((bond) => matches_bond_key(bond, key))
+    ) {
+      removed_bonds = [
+        ...removed_bonds,
+        make_bond_record(site_idx_1, site_idx_2, 1, cell_shift),
+      ]
     }
     close_bond_context_menu()
   }
@@ -512,6 +521,7 @@
     }
 
     if (measure_mode === `edit-bonds`) {
+      if (!bond_edits_enabled || !is_editable_bond_site(site_index)) return
       // In edit-bonds mode, select atoms to add/remove bonds between them
       const new_sites = measured_sites.includes(site_index)
         ? measured_sites.filter((idx) => idx !== site_index)
@@ -574,6 +584,7 @@
   $effect(() => {
     void structure
     void measure_mode
+    void bond_edits_enabled
     untrack(() => {
       close_bond_context_menu()
       hovered_bond_key = null
@@ -793,54 +804,37 @@
 
     // Build set of removed bond keys for efficient lookup
     const removed_keys = new Set(
-      removed_bonds.map((bond) =>
-        get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
-      ),
+      removed_bonds.map(bond_key_for),
     )
     const order_overrides = new Map(
-      bond_order_overrides.map((bond) => [
-        get_bond_key(bond.site_idx_1, bond.site_idx_2),
-        bond.order,
-      ]),
+      bond_order_overrides.map((bond) => [bond_key_for(bond), bond.order]),
     )
 
     // Filter calculated bonds: exclude removed and hidden
     const calculated = perceived_bond_pairs
-      .filter(({ site_idx_1, site_idx_2 }) => {
-        if (removed_keys.has(get_bond_key(site_idx_1, site_idx_2))) return false
-        return is_site_visible(site_idx_1) && is_site_visible(site_idx_2)
+      .filter((bond) => {
+        if (removed_keys.has(bond_key_for(bond))) return false
+        return is_site_visible(bond.site_idx_1) && is_site_visible(bond.site_idx_2)
       })
       .map((bond) => {
-        const override = order_overrides.get(get_bond_key(bond.site_idx_1, bond.site_idx_2))
+        const override = order_overrides.get(bond_key_for(bond))
         return override === undefined ? bond : { ...bond, bond_order: override }
       })
 
     // Create BondPair objects for manually added bonds
     const added: BondPair[] = []
-    for (const { site_idx_1: idx_i, site_idx_2: idx_j, order } of added_bonds) {
+    for (const added_bond of added_bonds) {
+      const { site_idx_1: idx_i, site_idx_2: idx_j } = added_bond
       if (!is_site_visible(idx_i) || !is_site_visible(idx_j)) continue
-      const site1 = structure.sites[idx_i]
-      const site2 = structure.sites[idx_j]
-      if (!site1 || !site2) continue
-
-      const pos_1 = site1.xyz
-      const pos_2 = site2.xyz
-      const dist = math.euclidean_dist(pos_1, pos_2)
-
-      added.push({
-        pos_1,
-        pos_2,
-        site_idx_1: idx_i,
-        site_idx_2: idx_j,
-        bond_length: dist,
-        strength: 1.0,
-        bond_order: order,
-        transform_matrix: compute_bond_transform(pos_1, pos_2),
-      })
+      added.push(structure_bond_to_bond_pair(structure, added_bond))
     }
 
     return [...calculated, ...added]
   })
+
+  let editable_bond_pairs = $derived(
+    bond_edits_enabled ? filtered_bond_pairs.filter(can_edit_bond) : [],
+  )
 
   let smart_site_label_offsets = $derived.by(() => {
     const offsets = new SvelteMap<number, Vec3>()
@@ -1175,14 +1169,13 @@
 
 {#snippet site_label_snippet(position: Vec3, site_idx: number)}
   {@const site = structure!.sites[site_idx]}
-  {@const label_offset = smart_site_label_offsets.get(site_idx) ?? site_label_offset}
   {@const visual_radius = (radius_by_site_idx.get(site_idx) ?? 1) * 0.5}
   <extras.HTML
     center
     position={position}
     calculatePosition={make_label_position_calculator(
       position,
-      label_offset,
+      () => smart_site_label_offsets.get(site_idx) ?? site_label_offset,
       visual_radius,
       label_screen_margin,
     )}
@@ -1409,12 +1402,12 @@
       {/if}
 
       <!-- Clickable bond hit-test cylinders in edit-bonds mode -->
-      {#if measure_mode === `edit-bonds` && filtered_bond_pairs.length > 0}
-        {#each filtered_bond_pairs as
+      {#if measure_mode === `edit-bonds` && editable_bond_pairs.length > 0}
+        {#each editable_bond_pairs as
           bond
-          (`bond-hit-${bond.site_idx_1}-${bond.site_idx_2}`)
+          (`bond-hit-${bond_key_for(bond)}`)
         }
-          {@const bond_key = get_bond_key(bond.site_idx_1, bond.site_idx_2)}
+          {@const bond_key = bond_key_for(bond)}
           {@const is_hovered = hovered_bond_key === bond_key}
           <T.Mesh
             matrixAutoUpdate={false}
@@ -1422,10 +1415,10 @@
               ref.matrix.fromArray(bond.transform_matrix)
               ref.matrixWorldNeedsUpdate = true
             }}
-            onclick={(event: MouseEvent & { nativeEvent?: MouseEvent }) => {
+            onpointerdown={(event: PointerEvent & { nativeEvent?: PointerEvent }) => {
               if (event.nativeEvent?.button === 2) return
               event.stopPropagation()
-              toggle_bond(bond.site_idx_1, bond.site_idx_2)
+              toggle_bond(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
               measured_sites = []
               selected_sites = []
               hovered_bond_key = null

@@ -13,8 +13,7 @@ type SupercellType = Crystal & {
 const cell_index = ([cell_x, cell_y, cell_z]: Vec3, [scale_x, scale_y]: Vec3): number =>
   cell_z * scale_x * scale_y + cell_y * scale_x + cell_x
 
-const mod = (value: number, divisor: number): number =>
-  ((value % divisor) + divisor) % divisor
+const mod = (value: number, divisor: number): number => ((value % divisor) + divisor) % divisor
 
 const replicate_bonds_for_supercell = (
   bonds: StructureBond[],
@@ -37,7 +36,7 @@ const replicate_bonds_for_supercell = (
         mod(target_raw[2], scale_z),
       ]
       const supercell_shift = target_raw.map((val, idx) =>
-        Math.floor(val / scaling_factors[idx])
+        Math.floor(val / scaling_factors[idx]),
       ) as Vec3
       const target_offset = cell_index(target_cell, scaling_factors) * n_sites
       replicated.push(
@@ -192,16 +191,17 @@ export function make_supercell(
     }
   }
 
-  const properties = structure.properties?.bonds === undefined
-    ? structure.properties
-    : {
-      ...structure.properties,
-      bonds: replicate_bonds_for_supercell(
-        structure.properties.bonds,
-        n_sites,
-        supercell_scaling,
-      ),
-    }
+  const properties =
+    structure.properties?.bonds === undefined
+      ? structure.properties
+      : {
+          ...structure.properties,
+          bonds: replicate_bonds_for_supercell(
+            structure.properties.bonds,
+            n_sites,
+            supercell_scaling,
+          ),
+        }
 
   return {
     ...structure,

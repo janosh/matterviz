@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { expect_canvas_changed, IS_CI, wait_for_3d_canvas } from '../helpers'
 
 // Get non-white pixel count to detect if content is rendered.
@@ -12,6 +12,82 @@ function count_non_white_pixels(buffer: Uint8Array): number {
   }
   return non_white
 }
+
+// CO2 (O=C=O) molecule with NO explicit bonds: the electroneg_ratio
+// bonding strategy auto-detects two C-O connectivity bonds. With
+// auto_bond_order OFF they render single (1 cylinder each); ON, perception
+// relabels both as double (2 cylinders each) -> more rendered geometry.
+// Shifted so the C-O1 bond midpoint is at the world origin (canvas center),
+// matching the existing edit-bonds test's center-click convention.
+const get_structure_bonds = (page: Page) =>
+  page.evaluate(() => (globalThis as Record<string, unknown>).structure_bonds)
+
+const dispatch_co2 = (page: Page) =>
+  page.evaluate(() => {
+    const structure = {
+      sites: [
+        {
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+          abc: [-0.58, 0, 0],
+          xyz: [-0.58, 0, 0],
+          label: `C1`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          abc: [0.58, 0, 0],
+          xyz: [0.58, 0, 0],
+          label: `O1`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          abc: [-1.74, 0, 0],
+          xyz: [-1.74, 0, 0],
+          label: `O2`,
+          properties: {},
+        },
+      ],
+      properties: {},
+    }
+    window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+    window.dispatchEvent(
+      new CustomEvent(`set-scene-props`, {
+        detail: { camera_position: [0, 0, 8], show_bonds: `always` },
+      }),
+    )
+  })
+
+const dispatch_two_atom_bond_structure = (page: Page, order: 1 | 2 | 3) =>
+  page.evaluate((bond_order) => {
+    const structure = {
+      sites: [
+        {
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [-0.7, 0, 0],
+          label: `C1`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0.7, 0, 0],
+          label: `O1`,
+          properties: {},
+        },
+      ],
+      properties: {
+        bonds: [{ site_idx_1: 0, site_idx_2: 1, order: bond_order }],
+      },
+    }
+    window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+    window.dispatchEvent(
+      new CustomEvent(`set-scene-props`, {
+        detail: { camera_position: [0, 0, 8], show_bonds: `always` },
+      }),
+    )
+  }, order)
 
 test.describe(`Bond component`, () => {
   test.beforeEach(() => {
@@ -110,31 +186,7 @@ test.describe(`Bond component`, () => {
     })
 
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    await page.evaluate(() => {
-      const structure = {
-        sites: [
-          {
-            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-            abc: [0, 0, 0],
-            xyz: [-0.7, 0, 0],
-            label: `C1`,
-            properties: {},
-          },
-          {
-            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
-            abc: [0, 0, 0],
-            xyz: [0.7, 0, 0],
-            label: `O1`,
-            properties: {},
-          },
-        ],
-        properties: {
-          bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
-        },
-      }
-      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
-    })
-
+    await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
     const box = await canvas.boundingBox()
@@ -157,53 +209,48 @@ test.describe(`Bond component`, () => {
     })
     await expect(menu).toBeVisible()
     await expect(menu).toContainText(`Bond Order (2)`)
-    await expect.poll(() =>
-      page.evaluate(() => (globalThis as Record<string, unknown>).structure_bonds)
-    ).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+    await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
     expect(console_errors).toHaveLength(0)
   })
 
-  // CO2 (O=C=O) molecule with NO explicit bonds: the electroneg_ratio
-  // bonding strategy auto-detects two C-O connectivity bonds. With
-  // auto_bond_order OFF they render single (1 cylinder each); ON, perception
-  // relabels both as double (2 cylinders each) -> more rendered geometry.
-  // Shifted so the C-O1 bond midpoint is at the world origin (canvas center),
-  // matching the existing edit-bonds test's center-click convention.
-  const dispatch_co2 = (page: import('@playwright/test').Page) =>
-    page.evaluate(() => {
-      const structure = {
-        sites: [
-          {
-            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-            abc: [-0.58, 0, 0],
-            xyz: [-0.58, 0, 0],
-            label: `C1`,
-            properties: {},
-          },
-          {
-            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
-            abc: [0.58, 0, 0],
-            xyz: [0.58, 0, 0],
-            label: `O1`,
-            properties: {},
-          },
-          {
-            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
-            abc: [-1.74, 0, 0],
-            xyz: [-1.74, 0, 0],
-            label: `O2`,
-            properties: {},
-          },
-        ],
-        properties: {},
-      }
-      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
-      window.dispatchEvent(
-        new CustomEvent(`set-scene-props`, {
-          detail: { camera_position: [0, 0, 8], show_bonds: `always` },
-        }),
-      )
+  test(`structure change during bond edit emits new structure bonds`, async ({ page }) => {
+    const console_errors: string[] = []
+    page.on(`console`, (msg) => {
+      if (msg.type() === `error`) console_errors.push(msg.text())
     })
+
+    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    await dispatch_two_atom_bond_structure(page, 1)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    const box = await canvas.boundingBox()
+    expect(box).toBeTruthy()
+    if (!box) return
+
+    await canvas.click({
+      button: `right`,
+      position: { x: box.width / 2, y: box.height / 2 },
+    })
+    const menu = page.locator(`#test-structure .bond-context-menu`)
+    await expect(menu).toBeVisible()
+    await menu.getByRole(`button`, { name: `Double` }).click()
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+
+    await dispatch_two_atom_bond_structure(page, 3)
+
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+    expect(console_errors).toHaveLength(0)
+  })
 
   test(`auto bond-order toggle changes rendered bond geometry`, async ({ page }) => {
     const console_errors: string[] = []
@@ -317,7 +364,7 @@ test.describe(`Bond component`, () => {
     // absolute coords via page.mouse (the same mouse-driven approach the
     // "site labels" test in this file uses) - this avoids Locator.click's
     // stale-box re-scroll, which otherwise loops on pointer interception.
-    const right_click_bond_center = async () => {
+    const click_bond_center = async (button: `left` | `right` = `left`) => {
       await canvas.scrollIntoViewIfNeeded()
       const box = await canvas.boundingBox()
       expect(box).toBeTruthy()
@@ -325,10 +372,10 @@ test.describe(`Bond component`, () => {
       const cx = box.x + box.width / 2
       const cy = box.y + box.height / 2
       await page.mouse.move(cx, cy)
-      await page.mouse.click(cx, cy, { button: `right` })
+      await page.mouse.click(cx, cy, { button })
     }
 
-    await right_click_bond_center()
+    await click_bond_center(`right`)
     const menu = page.locator(`#test-structure .bond-context-menu`)
     await expect(menu).toBeVisible()
     // Pre-override: the menu reports the PERCEIVED order. Perception relabels
@@ -341,16 +388,20 @@ test.describe(`Bond component`, () => {
 
     // Re-open the menu on the same bond: it must now report order 3, proving
     // the manual bond_order_overrides path takes precedence over perception.
-    await right_click_bond_center()
+    await click_bond_center(`right`)
     await expect(menu).toBeVisible()
     await expect(menu).toContainText(`Bond Order (3)`)
     // The override is recorded in the bound bonds list (globalThis hook),
     // not the perceived order - concrete proof of precedence.
-    await expect.poll(() =>
-      page.evaluate(() =>
-        (globalThis as Record<string, unknown>).structure_bonds as unknown
-      )
-    ).toContainEqual(expect.objectContaining({ order: 3 }))
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toContainEqual(expect.objectContaining({ order: 3 }))
+    await menu.getByRole(`button`, { name: `Close` }).focus()
+    await page.keyboard.press(`Enter`)
+    await expect(menu).toBeHidden()
+
+    await click_bond_center()
+    await expect.poll(() => get_structure_bonds(page)).toEqual([])
     expect(console_errors).toHaveLength(0)
   })
 
@@ -446,6 +497,8 @@ test.describe(`Bond component`, () => {
     await canvas.hover({
       position: { x: canvas_box.width / 2, y: canvas_box.height / 2 },
     })
+    // Zoom in strongly enough that world-space label offsets would balloon;
+    // this keeps the regression sensitive to screen-space placement.
     for (let wheel_idx = 0; wheel_idx < 8; wheel_idx++) {
       await page.mouse.wheel(0, -700)
     }

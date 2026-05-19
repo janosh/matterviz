@@ -4,6 +4,7 @@ import type { Camera, Object3D } from 'three'
 import { Vector3 } from 'three'
 
 export const LABEL_OFFSET_EPS = 1e-9
+type LabelOffsetSource = Vec3 | (() => Vec3)
 
 const LABEL_OFFSET_DIRECTIONS: Vec3[] = [
   [0, -1, 0],
@@ -40,10 +41,7 @@ const label_direction_score = (
   return -max_bond_alignment + preferred_bonus + screen_plane_bonus
 }
 
-export const choose_site_label_offset = (
-  bond_directions: Vec3[],
-  base_offset: Vec3,
-): Vec3 => {
+export const choose_site_label_offset = (bond_directions: Vec3[], base_offset: Vec3): Vec3 => {
   const offset_length = Math.hypot(...base_offset)
   if (offset_length < LABEL_OFFSET_EPS || bond_directions.length === 0) {
     return base_offset
@@ -81,8 +79,8 @@ const project_to_screen = (
 ): [number, number] => {
   const projected = new Vector3(...position).project(label_camera)
   return [
-    projected.x * size.width / 2 + size.width / 2,
-    -projected.y * size.height / 2 + size.height / 2,
+    (projected.x * size.width) / 2 + size.width / 2,
+    (-projected.y * size.height) / 2 + size.height / 2,
   ]
 }
 
@@ -104,14 +102,10 @@ export const label_screen_position = (
   const offset_y = offset_screen[1] - atom_screen[1]
   const offset_length = Math.hypot(offset_x, offset_y)
   const direction_x = offset_length > LABEL_OFFSET_EPS ? offset_x / offset_length : 0
-  const direction_y = offset_length > LABEL_OFFSET_EPS
-    ? offset_y / offset_length
-    : label_offset[1] >= 0 ? -1 : 1
+  const direction_y =
+    offset_length > LABEL_OFFSET_EPS ? offset_y / offset_length : label_offset[1] >= 0 ? -1 : 1
   const radius_direction = math.normalize_vec3(label_offset, [0, 1, 0])
-  const radius_edge = math.add(
-    atom_position,
-    scale_vec3(radius_direction, visual_radius),
-  )
+  const radius_edge = math.add(atom_position, scale_vec3(radius_direction, visual_radius))
   const radius_screen = project_to_screen(radius_edge, label_camera, size)
   const atom_screen_radius = Math.hypot(
     radius_screen[0] - atom_screen[0],
@@ -119,23 +113,20 @@ export const label_screen_position = (
   )
   const screen_gap = atom_screen_radius + label_screen_margin
 
-  return [
-    atom_screen[0] + direction_x * screen_gap,
-    atom_screen[1] + direction_y * screen_gap,
-  ]
+  return [atom_screen[0] + direction_x * screen_gap, atom_screen[1] + direction_y * screen_gap]
 }
 
 export const make_label_position_calculator =
   (
     atom_position: Vec3,
-    label_offset: Vec3,
+    label_offset: LabelOffsetSource,
     visual_radius: number,
     label_screen_margin: number,
   ) =>
   (_object: Object3D, label_camera: Camera, size: { width: number; height: number }) =>
     label_screen_position(
       atom_position,
-      label_offset,
+      typeof label_offset === `function` ? label_offset() : label_offset,
       visual_radius,
       label_screen_margin,
       label_camera,

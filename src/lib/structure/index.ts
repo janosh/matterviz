@@ -84,10 +84,7 @@ export type BondPair = {
   transform_matrix: Float32Array
 }
 
-export type {
-  PerceivedBond,
-  PerceptionOptions,
-} from '$lib/structure/bond-order-perception'
+export type { PerceivedBond, PerceptionOptions } from '$lib/structure/bond-order-perception'
 export {
   compose_perceived_bonds,
   perceive_bond_orders,

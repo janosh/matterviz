@@ -1,6 +1,7 @@
 // Bond-order perception adapted from jensengroup/xyz2mol (MIT,
 // Kim & Kim, Bull. Korean Chem. Soc. 2015, 36, 1769). Clean-room TS port.
 import type { BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
+import { get_bond_key } from './bonding'
 
 export type PerceptionOptions = { total_charge?: number; max_atoms?: number }
 
@@ -12,10 +13,9 @@ export type PerceivedBond = BondPair & {
 }
 
 function primary_element(site: Site): string {
-  return site.species?.reduce(
-    (a, b) => (b.occu > a.occu ? b : a),
-    site.species[0],
-  )?.element ?? ``
+  return (
+    site.species?.reduce((a, b) => (b.occu > a.occu ? b : a), site.species[0])?.element ?? ``
+  )
 }
 
 // xyz2mol atomic_valence (charged-inclusive: lists hold every bond
@@ -24,15 +24,38 @@ function primary_element(site: Site): string {
 // order but valence_combinations re-sorts by total valence-sum, so the
 // least-saturated / lowest-|charge| solution is still tried first.
 const ATOMIC_VALENCE: Record<string, number[]> = {
-  H: [1], B: [3, 4], C: [4], N: [3, 4], O: [2, 1, 3], F: [1],
-  Si: [4], P: [5, 3], S: [6, 3, 2], Cl: [1],
-  Se: [6, 3, 2], Br: [1], Te: [6, 3, 2], I: [1],
+  H: [1],
+  B: [3, 4],
+  C: [4],
+  N: [3, 4],
+  O: [2, 1, 3],
+  F: [1],
+  Si: [4],
+  P: [5, 3],
+  S: [6, 3, 2],
+  Cl: [1],
+  Se: [6, 3, 2],
+  Br: [1],
+  Te: [6, 3, 2],
+  I: [1],
 }
 
 // xyz2mol atomic_valence_electrons (group valence-electron count).
 const VALENCE_ELECTRONS: Record<string, number> = {
-  H: 1, B: 3, C: 4, N: 5, O: 6, F: 7, Si: 4, P: 5, S: 6,
-  Cl: 7, Se: 6, Br: 7, Te: 6, I: 7,
+  H: 1,
+  B: 3,
+  C: 4,
+  N: 5,
+  O: 6,
+  F: 7,
+  Si: 4,
+  P: 5,
+  S: 6,
+  Cl: 7,
+  Se: 6,
+  Br: 7,
+  Te: 6,
+  I: 7,
 }
 
 // xyz2mol get_atomic_charge: formal charge from the atom's actual bond
@@ -50,6 +73,24 @@ export function is_main_group(symbol: string): boolean {
   return symbol in ATOMIC_VALENCE
 }
 
+const map_value = <Key, Value>(map: Map<Key, Value>, key: Key): Value => {
+  const value = map.get(key)
+  if (value === undefined) throw new Error(`Missing map value for ${String(key)}`)
+  return value
+}
+
+const pop_value = <Value>(values: Value[]): Value => {
+  const value = values.pop()
+  if (value === undefined) throw new Error(`Cannot pop from an empty array`)
+  return value
+}
+
+const shift_value = <Value>(values: Value[]): Value => {
+  const value = values.shift()
+  if (value === undefined) throw new Error(`Cannot shift from an empty array`)
+  return value
+}
+
 // Per-fragment cap on the product of per-atom valence-list lengths. The
 // valence-enumeration search is the real blow-up dimension (3^k for a
 // catenated S/Se/Te/P chain), NOT the sites.length-based max_atoms guard.
@@ -58,15 +99,12 @@ export function is_main_group(symbol: string): boolean {
 // pathological, so degrading it to single bonds is the spec §7 behavior.
 const MAX_VALENCE_COMBOS = 4096
 
-export function split_fragments(
-  n_atoms: number,
-  edges: [number, number][],
-): number[][] {
+export function split_fragments(n_atoms: number, edges: [number, number][]): number[][] {
   const adj = new Map<number, number[]>()
   for (let i = 0; i < n_atoms; i++) adj.set(i, [])
   for (const [a, b] of edges) {
-    adj.get(a)!.push(b)
-    adj.get(b)!.push(a)
+    map_value(adj, a).push(b)
+    map_value(adj, b).push(a)
   }
   const seen = new Set<number>()
   const fragments: number[][] = []
@@ -76,9 +114,9 @@ export function split_fragments(
     const frag: number[] = []
     seen.add(start)
     while (stack.length) {
-      const node = stack.pop()!
+      const node = pop_value(stack)
       frag.push(node)
-      for (const nb of adj.get(node)!) {
+      for (const nb of map_value(adj, node)) {
         if (!seen.has(nb)) {
           seen.add(nb)
           stack.push(nb)
@@ -92,11 +130,28 @@ export function split_fragments(
 
 type Edge = { i: number; j: number; ref: BondPair }
 
+type PiElectronContext = {
+  sites: Site[]
+  frag: number[]
+  has_ring_multiple: Set<number>
+  has_any_multiple_bond: (atom_idx: number) => boolean
+  has_non_ring_neighbor: (atom_idx: number) => boolean
+}
+
+function get_pi_electrons(atom_idx: number, context: PiElectronContext): number {
+  const element = primary_element(context.sites[context.frag[atom_idx]])
+  if (context.has_ring_multiple.has(atom_idx)) return 1
+  if (element === `N` || element === `O` || element === `S`) return 2
+  if (element === `C`)
+    return Number(
+      context.has_any_multiple_bond(atom_idx) || !context.has_non_ring_neighbor(atom_idx),
+    )
+  return 0
+}
+
 // Enumerate one target valence per atom, all combinations, lowest total
 // valence-sum first (xyz2mol prefers the least-saturated solution).
-function* valence_combinations(
-  valence_lists: number[][],
-): Generator<number[]> {
+function* valence_combinations(valence_lists: number[][]): Generator<number[]> {
   const combos: { sum: number; pick: number[] }[] = []
   const rec = (pos: number, acc: number[]) => {
     if (pos === valence_lists.length) {
@@ -125,7 +180,7 @@ function assign_bond_orders(
   // deferred (review Minor — no behavioral change needed).
   const used = (atom: number) =>
     edges.reduce(
-      (s, e, ei) => s + (e.i === atom || e.j === atom ? order.get(ei)! : 0),
+      (s, e, ei) => s + (e.i === atom || e.j === atom ? map_value(order, ei) : 0),
       0,
     )
   let progressed = true
@@ -137,13 +192,13 @@ function assign_bond_orders(
       const da = target_valence[e.i] - used(e.i)
       const db = target_valence[e.j] - used(e.j)
       const d = Math.min(da, db)
-      if (d > best_deficit && order.get(ei)! < 3) {
+      if (d > best_deficit && map_value(order, ei) < 3) {
         best_deficit = d
         best = ei
       }
     })
     if (best >= 0) {
-      order.set(best, order.get(best)! + 1)
+      order.set(best, map_value(order, best) + 1)
       progressed = true
     }
   }
@@ -158,15 +213,12 @@ function assign_bond_orders(
 // NOTE: a fundamental cycle basis can include non-minimal (large) rings for
 // bridged polycyclics; acceptable here because aromaticity perception only
 // needs the simple 5-/6-membered rings, which the basis always recovers.
-export function find_rings(
-  n: number,
-  edges: [number, number][],
-): number[][] {
+export function find_rings(n: number, edges: [number, number][]): number[][] {
   const adj = new Map<number, Set<number>>()
   for (let i = 0; i < n; i++) adj.set(i, new Set())
   for (const [a, b] of edges) {
-    adj.get(a)!.add(b)
-    adj.get(b)!.add(a)
+    map_value(adj, a).add(b)
+    map_value(adj, b).add(a)
   }
   const parent = new Map<number, number>()
   const seen = new Set<number>()
@@ -177,8 +229,8 @@ export function find_rings(
     seen.add(s)
     parent.set(s, -1)
     while (queue.length) {
-      const u = queue.shift()!
-      for (const v of adj.get(u)!) {
+      const u = shift_value(queue)
+      for (const v of map_value(adj, u)) {
         if (!seen.has(v)) {
           seen.add(v)
           parent.set(v, u)
@@ -187,12 +239,12 @@ export function find_rings(
           const path_u: number[] = []
           const path_v: number[] = []
           const anc_u = new Set<number>()
-          for (let x = u; x !== -1; x = parent.get(x)!) anc_u.add(x)
-          for (let x = v; x !== -1; x = parent.get(x)!) {
+          for (let x = u; x !== -1; x = map_value(parent, x)) anc_u.add(x)
+          for (let x = v; x !== -1; x = map_value(parent, x)) {
             if (anc_u.has(x)) {
-              for (let y = u; y !== x; y = parent.get(y)!) path_u.push(y)
-              for (let y = v; y !== x; y = parent.get(y)!) path_v.push(y)
-              const ring = [x, ...path_u, ...path_v.reverse()]
+              for (let y = u; y !== x; y = map_value(parent, y)) path_u.push(y)
+              for (let y = v; y !== x; y = map_value(parent, y)) path_v.push(y)
+              const ring = [x, ...path_u, ...path_v.toReversed()]
               if (ring.length >= 3) rings.push(ring)
               break
             }
@@ -235,9 +287,8 @@ function ring_is_planar(ring: number[], sites: Site[]): boolean {
   // Degenerate normal: first 3 ring atoms collinear, cannot determine a plane.
   if (len < 1e-6) return false
   return p.every((q) => {
-    const dev = Math.abs(
-      (q[0] - p[0][0]) * nx + (q[1] - p[0][1]) * ny + (q[2] - p[0][2]) * nz,
-    ) / len
+    const dev =
+      Math.abs((q[0] - p[0][0]) * nx + (q[1] - p[0][1]) * ny + (q[2] - p[0][2]) * nz) / len
     return dev < 0.3
   })
 }
@@ -258,13 +309,23 @@ export function perceive_bond_orders(
   if (sites.length > max_atoms) {
     return bonds.map((b) => ({ ...b, bond_order: 1, perceived: false }))
   }
-  const edges: Edge[] = bonds.map((b) => ({
-    i: b.site_idx_1,
-    j: b.site_idx_2,
-    ref: b,
-  }))
+  const edges: Edge[] = []
   const result = new Map<BondPair, PerceivedBond>()
-  for (const b of bonds) result.set(b, { ...b, bond_order: 1, perceived: false })
+  for (const bond of bonds) {
+    result.set(bond, { ...bond, bond_order: 1, perceived: false })
+    if (
+      bond.site_idx_1 < 0 ||
+      bond.site_idx_2 < 0 ||
+      bond.site_idx_1 >= sites.length ||
+      bond.site_idx_2 >= sites.length
+    )
+      continue
+    edges.push({
+      i: bond.site_idx_1,
+      j: bond.site_idx_2,
+      ref: bond,
+    })
+  }
 
   const frags = split_fragments(
     sites.length,
@@ -284,8 +345,8 @@ export function perceive_bond_orders(
     if (!symbols.every(is_main_group)) continue
     const idx_of = new Map(frag.map((a, k) => [a, k]))
     const local_edges: Edge[] = frag_edges.map((e) => ({
-      i: idx_of.get(e.i)!,
-      j: idx_of.get(e.j)!,
+      i: map_value(idx_of, e.i),
+      j: map_value(idx_of, e.j),
       ref: e.ref,
     }))
     const valence_lists = symbols.map((s) => ATOMIC_VALENCE[s])
@@ -308,7 +369,7 @@ export function perceive_bond_orders(
       let sum_fc = 0
       for (let k = 0; k < frag.length; k++) {
         const bv = local_edges.reduce(
-          (s, e, ei) => s + (e.i === k || e.j === k ? candidate.get(ei)! : 0),
+          (s, e, ei) => s + (e.i === k || e.j === k ? map_value(candidate, ei) : 0),
           0,
         )
         sum_fc += formal_charge(symbols[k], bv)
@@ -320,7 +381,7 @@ export function perceive_bond_orders(
     }
     if (!solved) continue
     local_edges.forEach((e, ei) => {
-      const ord = order_to_bond_order(solved!.get(ei)!)
+      const ord = order_to_bond_order(map_value(solved, ei))
       result.set(e.ref, { ...e.ref, bond_order: ord, perceived: true })
     })
 
@@ -330,15 +391,15 @@ export function perceive_bond_orders(
     // 1/2 in `kekule_order` for a future Kekulé display toggle.
     //
     // π-electron rule (per ring atom, summed over the ring):
-    //   - an sp2-eligible atom that bears a ring-internal double bond
+    //   - an sp2-eligible atom that bears a ring-internal multiple bond
     //     contributes 1 π electron (one p-orbital electron, the textbook
     //     "one π e- per conjugated ring atom" count);
-    //   - an sp2-eligible HETEROatom (N/O/S) with NO ring double bond
-    //     contributes 2 (its lone pair joins the π system: pyrrole-/
-    //     furan-/thiophene-type);
-    //   - a carbon with no ring double bond contributes 1 (keeps a
-    //     bare degenerate all-C ring, e.g. the no-H benzene test where
-    //     the solver yields all-double, counting π = #C).
+    //   - an sp2-eligible HETEROatom (N/O/S) with NO ring multiple bond
+    //     contributes 2 only when adjacent to a ring multiple bond (its lone
+    //     pair joins a conjugated π system: pyrrole-/furan-/thiophene-type);
+    //   - a carbon with no ring multiple bond contributes 0 if it has explicit
+    //     non-ring substituents (saturated sp3 carbon breaks conjugation),
+    //     otherwise 1 for bare-carbon skeletons where hydrogens are omitted.
     // Aromatic iff π satisfies Hückel 4n+2 (π>=2 && (π-2)%4===0).
     // This count is independent of the (often arbitrary) Kekulé double-
     // bond placement, which is the robustness we need. Sanity:
@@ -347,39 +408,52 @@ export function perceive_bond_orders(
     //   pyrrole  4 C(=) + N-H   → 4 + 2 = 6        → aromatic ✓
     //   furan    4 C(=) + O     → 4 + 2 = 6        → aromatic ✓
     //   cyclobutadiene 4 C      → π=4  (4-2)%4=2   → NOT aromatic ✓
+    //   cyclohexane C6H12       → π=0               → NOT aromatic ✓
     //   cyclooctatetraene 8 C   → π=8  (8-2)%4=2   → NOT aromatic ✓
-    const local_edge_pairs: [number, number][] = local_edges.map(
-      (e) => [e.i, e.j],
-    )
+    const local_edge_pairs: [number, number][] = local_edges.map((e) => [e.i, e.j])
     const rings = find_rings(frag.length, local_edge_pairs)
     for (const ring of rings) {
       const global_ring = ring.map((k) => frag[k])
-      if (
-        !global_ring.every((g) => SP2_OK.has(primary_element(sites[g])))
-      ) continue
+      if (!global_ring.every((g) => SP2_OK.has(primary_element(sites[g])))) continue
       if (!ring_is_planar(global_ring, sites)) continue
       const ring_set = new Set(ring)
-      // Per-ring-atom: does it carry a ring-internal double bond?
-      const has_ring_double = new Map<number, boolean>()
-      for (const k of ring) has_ring_double.set(k, false)
+      // Per-ring-atom: does it carry a ring-internal multiple bond?
+      const has_ring_multiple = new Set<number>()
       local_edges.forEach((e, ei) => {
-        if (ring_set.has(e.i) && ring_set.has(e.j) && solved!.get(ei) === 2) {
-          has_ring_double.set(e.i, true)
-          has_ring_double.set(e.j, true)
+        if (ring_set.has(e.i) && ring_set.has(e.j) && map_value(solved, ei) > 1) {
+          has_ring_multiple.add(e.i)
+          has_ring_multiple.add(e.j)
         }
       })
-      let pi = 0
+      const has_any_multiple_bond = (atom_idx: number): boolean =>
+        local_edges.some((edge, edge_idx) => {
+          if (edge.i !== atom_idx && edge.j !== atom_idx) return false
+          return map_value(solved, edge_idx) > 1
+        })
+      const has_non_ring_neighbor = (atom_idx: number): boolean =>
+        local_edges.some((edge) => {
+          if (edge.i !== atom_idx && edge.j !== atom_idx) return false
+          const neighbor_idx = edge.i === atom_idx ? edge.j : edge.i
+          return !ring_set.has(neighbor_idx)
+        })
+      const pi_by_atom: number[] = []
       for (const k of ring) {
-        const el = primary_element(sites[frag[k]])
-        if (has_ring_double.get(k)) pi += 1
-        else if (el === `N` || el === `O` || el === `S`) pi += 2
-        else pi += 1
+        pi_by_atom.push(
+          get_pi_electrons(k, {
+            sites,
+            frag,
+            has_ring_multiple,
+            has_any_multiple_bond,
+            has_non_ring_neighbor,
+          }),
+        )
       }
-      if (pi >= 2 && (pi - 2) % 4 === 0) {
+      const pi = pi_by_atom.reduce((sum, val) => sum + val, 0)
+      if (pi_by_atom.every((val) => val > 0) && pi >= 2 && (pi - 2) % 4 === 0) {
         const this_ring = ring_id++
         local_edges.forEach((e) => {
           if (ring_set.has(e.i) && ring_set.has(e.j)) {
-            const prev = result.get(e.ref)!
+            const prev = map_value(result, e.ref)
             // Preserve an already-set kekule_order: a bond shared by two
             // fused aromatic rings is relabeled by the first ring (prev
             // .bond_order becomes 'aromatic'); when the second ring
@@ -398,12 +472,8 @@ export function perceive_bond_orders(
       }
     }
   }
-  return bonds.map((b) => result.get(b)!)
+  return bonds.map((b) => map_value(result, b))
 }
-
-// Order-insensitive site-pair key (cell_shift ignored: explicit bond metadata
-// is matched by site indices, mirroring how the scene resolves explicit bonds).
-const pair_key = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`)
 
 // Compose the final rendered bond list from perceived bonds.
 //
@@ -421,18 +491,22 @@ export function compose_perceived_bonds(
   aromatic_display: `aromatic` | `kekule`,
 ): PerceivedBond[] {
   const explicit_orders = new Map(
-    explicit_bonds.map((b) => [pair_key(b.site_idx_1, b.site_idx_2), b.order]),
+    explicit_bonds.map((bond) => [
+      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
+      bond.order,
+    ]),
   )
   return perceived.map((bond) => {
     const explicit = explicit_orders.get(
-      pair_key(bond.site_idx_1, bond.site_idx_2),
+      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
     )
     if (explicit !== undefined) return { ...bond, bond_order: explicit }
     if (
       aromatic_display === `kekule` &&
       bond.bond_order === `aromatic` &&
       bond.kekule_order !== undefined
-    ) return { ...bond, bond_order: bond.kekule_order }
+    )
+      return { ...bond, bond_order: bond.kekule_order }
     return bond
   })
 }

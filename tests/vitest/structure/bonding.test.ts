@@ -157,11 +157,11 @@ describe(`Explicit Bond Metadata`, () => {
       ])
 
       const bonds = strategy(structure)
-      const computed_bond = bonds.find((bond) =>
-        bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2) === `0-1`
+      const computed_bond = bonds.find(
+        (bond) => bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2) === `0-1`,
       )
-      const explicit_only_bond = bonds.find((bond) =>
-        bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2) === `0-2`
+      const explicit_only_bond = bonds.find(
+        (bond) => bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2) === `0-2`,
       )
 
       expect(computed_bond?.bond_order).toBe(2)
@@ -227,6 +227,16 @@ describe(`Explicit Bond Metadata`, () => {
     }
   })
 
+  test(`bond order overrides take precedence over added bonds`, () => {
+    const calculated_bond = { site_idx_1: 0, site_idx_2: 1 }
+    const override_bond: StructureBond = { ...calculated_bond, order: 3 }
+    const added_bond: StructureBond = { ...calculated_bond, order: 1 }
+
+    expect(bonding.merge_bond_edits([], [added_bond], [], [override_bond])).toEqual([
+      override_bond,
+    ])
+  })
+
   test(`renders explicit crystal bonds with cell shifts`, () => {
     const structure = make_crystal(10, [
       [`C`, [0.95, 0.5, 0.5]],
@@ -249,6 +259,51 @@ describe(`Explicit Bond Metadata`, () => {
     expect(bonds[0].bond_length).toBeCloseTo(1)
   })
 
+  test(`creates manually added bond pairs with cell shift translations`, () => {
+    const structure = make_crystal(10, [
+      [`C`, [0.95, 0.5, 0.5]],
+      [`O`, [0.05, 0.5, 0.5]],
+    ])
+
+    const bond = bonding.structure_bond_to_bond_pair(structure, {
+      site_idx_1: 0,
+      site_idx_2: 1,
+      order: 3,
+      cell_shift: [1, 0, 0],
+    })
+
+    expect(bond.pos_1).toEqual([9.5, 5, 5])
+    expect(bond.pos_2).toEqual([10.5, 5, 5])
+    expect(bond.bond_length).toBeCloseTo(1)
+    expect(bond.bond_order).toBe(3)
+    expect(bond.cell_shift).toEqual([1, 0, 0])
+  })
+
+  test(`keeps explicit periodic bonds with matching site indices distinct`, () => {
+    const structure = make_crystal(10, [
+      [`C`, [0.95, 0.5, 0.5]],
+      [`O`, [0.05, 0.5, 0.5]],
+    ])
+    structure.properties = {
+      bonds: [
+        { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
+        { site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [-1, 0, 0] },
+      ],
+    }
+
+    const bonds = bonding.apply_explicit_bond_metadata(structure, [])
+    const bonds_by_key = new Map(
+      bonds.map((bond) => [
+        bonding.get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
+        bond,
+      ]),
+    )
+
+    expect([...bonds_by_key.keys()].sort()).toEqual([`0-1@-1,0,0`, `0-1@1,0,0`])
+    expect(bonds_by_key.get(`0-1@1,0,0`)?.bond_order).toBe(2)
+    expect(bonds_by_key.get(`0-1@-1,0,0`)?.bond_order).toBe(3)
+  })
+
   test.each([
     { order: undefined, expected_count: 1 },
     { order: 1 as const, expected_count: 1 },
@@ -256,31 +311,28 @@ describe(`Explicit Bond Metadata`, () => {
     { order: 3 as const, expected_count: 3 },
     { order: 1.5 as const, expected_count: 2 },
     { order: `aromatic` as const, expected_count: 2 },
-  ])(`renders $order bond order as $expected_count cylinder matrices`, ({
-    order,
-    expected_count,
-  }: {
-    order?: BondOrder
-    expected_count: number
-  }) => {
-    const bond: BondPair = {
-      pos_1: [0, 0, 0],
-      pos_2: [1, 0, 0],
-      site_idx_1: 0,
-      site_idx_2: 1,
-      bond_length: 1,
-      strength: 1,
-      ...(order === undefined ? {} : { bond_order: order }),
-      transform_matrix: bonding.compute_bond_transform([0, 0, 0], [1, 0, 0]),
-    }
+  ])(
+    `renders $order bond order as $expected_count cylinder matrices`,
+    ({ order, expected_count }: { order?: BondOrder; expected_count: number }) => {
+      const bond: BondPair = {
+        pos_1: [0, 0, 0],
+        pos_2: [1, 0, 0],
+        site_idx_1: 0,
+        site_idx_2: 1,
+        bond_length: 1,
+        strength: 1,
+        ...(order === undefined ? {} : { bond_order: order }),
+        transform_matrix: bonding.compute_bond_transform([0, 0, 0], [1, 0, 0]),
+      }
 
-    const matrices = bonding.get_bond_render_matrices(bond, 0.1)
-    expect(matrices).toHaveLength(expected_count)
-    if (expected_count > 1) {
-      const offsets = matrices.map((matrix) => `${matrix[12]},${matrix[13]},${matrix[14]}`)
-      expect(new Set(offsets).size).toBeGreaterThan(1)
-    }
-  })
+      const matrices = bonding.get_bond_render_matrices(bond, 0.1)
+      expect(matrices).toHaveLength(expected_count)
+      if (expected_count > 1) {
+        const offsets = matrices.map((matrix) => `${matrix[12]},${matrix[13]},${matrix[14]}`)
+        expect(new Set(offsets).size).toBeGreaterThan(1)
+      }
+    },
+  )
 })
 
 describe(`Molecular Bonding Analysis`, () => {

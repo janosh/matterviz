@@ -3,13 +3,7 @@
 import { element_data } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type {
-  AnyStructure,
-  BondOrder,
-  BondPair,
-  Site,
-  StructureBond,
-} from '$lib/structure'
+import type { AnyStructure, BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
 
 type SpatialGrid = Map<string, number[]>
 
@@ -20,10 +14,8 @@ const covalent_radii: Map<string, number> = new Map(
     .map((el) => [el.symbol, el.covalent_radius as number]),
 )
 
-export const normalize_bond_indices = (
-  idx_1: number,
-  idx_2: number,
-): [number, number] => idx_1 < idx_2 ? [idx_1, idx_2] : [idx_2, idx_1]
+export const normalize_bond_indices = (idx_1: number, idx_2: number): [number, number] =>
+  idx_1 < idx_2 ? [idx_1, idx_2] : [idx_2, idx_1]
 
 const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
   cell_shift === undefined || cell_shift.every((val) => val === 0)
@@ -34,10 +26,7 @@ const format_cell_shift = (cell_shift: Vec3 | undefined): string => {
 }
 
 const negate_cell_shift = (cell_shift: Vec3): Vec3 =>
-  cell_shift.map((val) => val === 0 ? 0 : -val) as Vec3
-
-const with_cell_shift = (cell_shift: Vec3 | undefined) =>
-  cell_shift === undefined ? {} : { cell_shift }
+  cell_shift.map((val) => (val === 0 ? 0 : -val)) as Vec3
 
 export const normalize_structure_bond = (
   site_idx_1: number,
@@ -45,34 +34,39 @@ export const normalize_structure_bond = (
   order: BondOrder,
   cell_shift?: Vec3,
 ): StructureBond => {
-  const normalized_shift = is_zero_cell_shift(cell_shift)
-    ? undefined
-    : cell_shift
-  if (site_idx_1 < site_idx_2) return {
-    site_idx_1,
-    site_idx_2,
-    order,
-    ...with_cell_shift(normalized_shift),
-  }
+  const bond =
+    site_idx_1 < site_idx_2
+      ? { site_idx_1, site_idx_2, order }
+      : { site_idx_1: site_idx_2, site_idx_2: site_idx_1, order }
+  if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return bond
   return {
-    site_idx_1: site_idx_2,
-    site_idx_2: site_idx_1,
-    order,
-    ...with_cell_shift(
-      normalized_shift === undefined ? undefined : negate_cell_shift(normalized_shift),
-    ),
+    ...bond,
+    cell_shift: site_idx_1 < site_idx_2 ? cell_shift : negate_cell_shift(cell_shift),
   }
 }
 
-export const get_bond_key = (
-  idx_1: number,
-  idx_2: number,
-  cell_shift?: Vec3,
-): string => {
+export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): string => {
   const normalized = normalize_structure_bond(idx_1, idx_2, 1, cell_shift)
-  return `${normalized.site_idx_1}-${normalized.site_idx_2}${
-    format_cell_shift(normalized.cell_shift)
-  }`
+  return `${normalized.site_idx_1}-${normalized.site_idx_2}${format_cell_shift(
+    normalized.cell_shift,
+  )}`
+}
+
+export const merge_bond_edits = (
+  base_bonds: StructureBond[],
+  added: StructureBond[],
+  removed: StructureBond[],
+  overrides: StructureBond[],
+): StructureBond[] => {
+  const key_for = (bond: StructureBond): string =>
+    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+  const merged = new Map(base_bonds.map((bond) => [key_for(bond), bond]))
+  for (const bond of removed) merged.delete(key_for(bond))
+  // Apply additions before overrides so user-set bond orders win even if
+  // callers accidentally pass overlapping edit lists.
+  for (const bond of added) merged.set(key_for(bond), bond)
+  for (const bond of overrides) merged.set(key_for(bond), bond)
+  return [...merged.values()]
 }
 
 const is_record = (value: unknown): value is Record<string, unknown> =>
@@ -87,10 +81,9 @@ export function normalize_bond_order(order: unknown): BondOrder | null {
 function normalize_cell_shift(cell_shift: unknown): Vec3 | undefined | null {
   if (cell_shift === undefined) return undefined
   if (!Array.isArray(cell_shift) || cell_shift.length !== 3) return null
-  if (cell_shift.some((val) => typeof val !== `number` || !Number.isInteger(val))) {
-    return null
-  }
-  return cell_shift as Vec3
+  return cell_shift.some((val) => typeof val !== `number` || !Number.isInteger(val))
+    ? null
+    : (cell_shift as Vec3)
 }
 
 function lattice_translation(structure: AnyStructure, cell_shift: Vec3 | undefined): Vec3 {
@@ -107,9 +100,34 @@ function lattice_translation(structure: AnyStructure, cell_shift: Vec3 | undefin
   )
 }
 
-export function get_explicit_bond_metadata(
+export function structure_bond_to_bond_pair(
   structure: AnyStructure,
-): StructureBond[] {
+  bond: StructureBond,
+): BondPair {
+  const { site_idx_1, site_idx_2, order, cell_shift } = bond
+  const site_1 = structure.sites[site_idx_1]
+  const site_2 = structure.sites[site_idx_2]
+  if (!site_1 || !site_2) {
+    throw new Error(
+      `Cannot create bond pair for invalid site indices ${site_idx_1}, ${site_idx_2}`,
+    )
+  }
+  const pos_1 = site_1.xyz
+  const pos_2 = math.add(site_2.xyz, lattice_translation(structure, cell_shift))
+  return {
+    pos_1,
+    pos_2,
+    site_idx_1,
+    site_idx_2,
+    bond_length: math.euclidean_dist(pos_1, pos_2),
+    strength: 1,
+    bond_order: order,
+    cell_shift,
+    transform_matrix: compute_bond_transform(pos_1, pos_2),
+  }
+}
+
+export function get_explicit_bond_metadata(structure: AnyStructure): StructureBond[] {
   const raw_bonds = structure.properties?.bonds
   if (raw_bonds === undefined) return []
   if (!Array.isArray(raw_bonds)) {
@@ -157,9 +175,9 @@ export function get_explicit_bond_metadata(
     const bond_order = normalize_bond_order(order)
     if (bond_order === null) {
       console.warn(
-        `Ignoring invalid explicit bond at index ${entry_idx}: unsupported order ${
-          String(order)
-        }`,
+        `Ignoring invalid explicit bond at index ${entry_idx}: unsupported order ${String(
+          order,
+        )}`,
       )
       continue
     }
@@ -206,35 +224,20 @@ export function apply_explicit_bond_metadata(
 
   const explicit_by_key = new Map(
     explicit_bonds.map((bond) => [
-      get_bond_key(bond.site_idx_1, bond.site_idx_2),
+      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
       bond,
     ]),
   )
   const merged = bonds.map((bond) => {
-    const key = get_bond_key(bond.site_idx_1, bond.site_idx_2)
+    const key = get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
     const explicit = explicit_by_key.get(key)
     if (!explicit) return bond
     explicit_by_key.delete(key)
     return { ...bond, bond_order: explicit.order }
   })
 
-  for (const { site_idx_1, site_idx_2, order, cell_shift } of explicit_by_key.values()) {
-    const pos_1 = structure.sites[site_idx_1].xyz
-    const pos_2 = math.add(
-      structure.sites[site_idx_2].xyz,
-      lattice_translation(structure, cell_shift),
-    )
-    merged.push({
-      pos_1,
-      pos_2,
-      site_idx_1,
-      site_idx_2,
-      bond_length: math.euclidean_dist(pos_1, pos_2),
-      strength: 1,
-      bond_order: order,
-      cell_shift,
-      transform_matrix: compute_bond_transform(pos_1, pos_2),
-    })
+  for (const explicit_bond of explicit_by_key.values()) {
+    merged.push(structure_bond_to_bond_pair(structure, explicit_bond))
   }
 
   return merged
@@ -272,17 +275,27 @@ export function get_bond_render_matrices(
   const gap = bond_thickness * 1.8
   const offsets_and_scales: [number, number][] =
     order === 2
-      ? [[-gap / 2, 0.65], [gap / 2, 0.65]]
+      ? [
+          [-gap / 2, 0.65],
+          [gap / 2, 0.65],
+        ]
       : order === 3
-      ? [[-gap, 0.55], [0, 0.55], [gap, 0.55]]
-      : order === 1.5 || order === `aromatic`
-      ? [[-gap / 2, 0.75], [gap / 2, 0.4]]
-      : []
+        ? [
+            [-gap, 0.55],
+            [0, 0.55],
+            [gap, 0.55],
+          ]
+        : order === 1.5 || order === `aromatic`
+          ? [
+              [-gap / 2, 0.75],
+              [gap / 2, 0.4],
+            ]
+          : []
   return offsets_and_scales.length === 0
     ? [bond.transform_matrix]
     : offsets_and_scales.map(([offset, radius_scale]) =>
-      scale_and_offset_bond_matrix(bond.transform_matrix, offset, radius_scale)
-    )
+        scale_and_offset_bond_matrix(bond.transform_matrix, offset, radius_scale),
+      )
 }
 
 // Get the species with highest occupancy from a site.

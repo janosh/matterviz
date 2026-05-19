@@ -309,9 +309,8 @@ function get_bond_key(idx_1: number, idx_2: number): string {
 }
 
 function make_bond_record(site_idx_1: number, site_idx_2: number): StructureBond {
-  const [idx_1, idx_2] = site_idx_1 < site_idx_2
-    ? [site_idx_1, site_idx_2]
-    : [site_idx_2, site_idx_1]
+  const [idx_1, idx_2] =
+    site_idx_1 < site_idx_2 ? [site_idx_1, site_idx_2] : [site_idx_2, site_idx_1]
   return { site_idx_1: idx_1, site_idx_2: idx_2, order: 1 }
 }
 
@@ -325,10 +324,9 @@ function create_bond_state(calculated: BondPair[] = []) {
     const match = ([a, b]: [number, number]) => a === idx_i && b === idx_j
 
     const key = `${idx_i}-${idx_j}`
-    const added_idx = added.findIndex((bond) => get_bond_key(
-      bond.site_idx_1,
-      bond.site_idx_2,
-    ) === key)
+    const added_idx = added.findIndex(
+      (bond) => get_bond_key(bond.site_idx_1, bond.site_idx_2) === key,
+    )
     if (added_idx >= 0) {
       added = added.toSpliced(added_idx, 1)
       return

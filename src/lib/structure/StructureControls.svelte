@@ -112,32 +112,91 @@
     }
   })
 
+  const hex_color_pattern = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i
+  const color_mix_pattern =
+    /^color-mix\(in srgb,\s*(#[0-9a-f]{3}(?:[0-9a-f]{3})?)\s+(\d+(?:\.\d+)?)%,\s*transparent\)$/i
+
   const as_hex_color = (color: string | undefined, fallback: string): string =>
-    color?.match(/^#[0-9a-f]{3}([0-9a-f]{3})?$/i)?.[0] ?? fallback
+    color?.match(hex_color_pattern)?.[0] ?? fallback
+
+  const parse_label_bg_color = (
+    color: string | undefined,
+    fallback_hex_color: string,
+    fallback_opacity: number,
+  ): { hex_color: string; opacity: number } => {
+    if (color === `transparent`) {
+      return { hex_color: fallback_hex_color, opacity: 0 }
+    }
+    const color_mix = color?.match(color_mix_pattern)
+    if (color_mix) {
+      const percentage = Math.max(0, Math.min(100, Number(color_mix[2])))
+      return {
+        hex_color: color_mix[1],
+        opacity: percentage / 100,
+      }
+    }
+    const hex_color = color?.match(hex_color_pattern)?.[0]
+    return hex_color === undefined
+      ? { hex_color: fallback_hex_color, opacity: fallback_opacity }
+      : { hex_color, opacity: 1 }
+  }
+
   const default_site_label_color = as_hex_color(
     DEFAULTS.structure.site_label_color,
     `#111111`,
   )
-  const default_site_label_bg_color = as_hex_color(
+  const default_site_label_bg = parse_label_bg_color(
     DEFAULTS.structure.site_label_bg_color,
     `#000000`,
+    0,
+  )
+  const initial_site_label_bg = parse_label_bg_color(
+    scene_props.site_label_bg_color,
+    default_site_label_bg.hex_color,
+    default_site_label_bg.opacity,
   )
 
   // Atom label color management
   let site_label_hex_color = $state(
     as_hex_color(scene_props.site_label_color, default_site_label_color),
   )
-  let site_label_bg_hex_color = $state(
-    as_hex_color(scene_props.site_label_bg_color, default_site_label_bg_color),
-  )
-  let site_label_background_opacity = $state(0)
+  let site_label_bg_hex_color = $state(initial_site_label_bg.hex_color)
+  let site_label_background_opacity = $state(initial_site_label_bg.opacity)
+  let last_synced_site_label_color = scene_props.site_label_color
+  let last_synced_site_label_bg_color = scene_props.site_label_bg_color
 
   $effect(() => {
-    scene_props.site_label_color = site_label_hex_color
-    scene_props.site_label_bg_color =
-      `color-mix(in srgb, ${site_label_bg_hex_color} ${
-        format_num(site_label_background_opacity, `.1~%`)
-      }, transparent)`
+    const external_color_changed =
+      scene_props.site_label_color !== last_synced_site_label_color
+    const external_bg_changed =
+      scene_props.site_label_bg_color !== last_synced_site_label_bg_color
+
+    if (external_color_changed) {
+      site_label_hex_color = as_hex_color(
+        scene_props.site_label_color,
+        default_site_label_color,
+      )
+    }
+    if (external_bg_changed) {
+      const next_bg = parse_label_bg_color(
+        scene_props.site_label_bg_color,
+        default_site_label_bg.hex_color,
+        default_site_label_bg.opacity,
+      )
+      site_label_bg_hex_color = next_bg.hex_color
+      site_label_background_opacity = next_bg.opacity
+    }
+
+    if (!external_color_changed) scene_props.site_label_color = site_label_hex_color
+    if (!external_bg_changed) {
+      scene_props.site_label_bg_color =
+        `color-mix(in srgb, ${site_label_bg_hex_color} ${
+          format_num(site_label_background_opacity, `.1~%`)
+        }, transparent)`
+    }
+
+    last_synced_site_label_color = scene_props.site_label_color
+    last_synced_site_label_bg_color = scene_props.site_label_bg_color
   })
 
   // Ensure site_label_offset is always available
@@ -650,14 +709,18 @@
         scene_props.site_label_padding = DEFAULTS.structure.site_label_padding
         scene_props.site_label_offset = [...DEFAULTS.structure.site_label_offset]
         site_label_hex_color = default_site_label_color
-        site_label_bg_hex_color = default_site_label_bg_color
-        site_label_background_opacity = 0
+        site_label_bg_hex_color = default_site_label_bg.hex_color
+        site_label_background_opacity = default_site_label_bg.opacity
       }}
     >
       <div class="pane-row">
         <label>
           Color
-          <input type="color" bind:value={site_label_hex_color} />
+          <input
+            type="color"
+            aria-label="Site label color"
+            bind:value={site_label_hex_color}
+          />
         </label>
         <label>
           Size
@@ -673,7 +736,11 @@
       <div class="pane-row">
         <label>
           Background
-          <input type="color" bind:value={site_label_bg_hex_color} />
+          <input
+            type="color"
+            aria-label="Site label background color"
+            bind:value={site_label_bg_hex_color}
+          />
         </label>
         <label>
           Opacity
@@ -682,6 +749,7 @@
             min="0"
             max="1"
             step="0.01"
+            aria-label="Site label background opacity"
             bind:value={site_label_background_opacity}
           />
           <input
@@ -689,6 +757,7 @@
             min="0"
             max="1"
             step="0.01"
+            aria-label="Site label background opacity slider"
             bind:value={site_label_background_opacity}
           />
         </label>

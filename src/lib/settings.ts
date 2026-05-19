@@ -414,8 +414,7 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
     auto_bond_order: {
       value: false,
-      description:
-        `Automatically perceive double/triple/aromatic bonds from geometry (main-group/organic; metals fall back to single)`,
+      description: `Automatically perceive double/triple/aromatic bonds from geometry (main-group/organic; metals fall back to single)`,
     },
     aromatic_display: {
       value: `aromatic`,

@@ -1,6 +1,6 @@
 import type { AnyStructure } from '$lib'
 import { StructureControls } from '$lib/structure'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, simple_structure } from '../setup'
 
@@ -120,4 +120,53 @@ describe(`StructureControls`, () => {
     })
     expect(cmp).toBeDefined()
   })
+
+  test.each([
+    {
+      site_label_bg_color: `color-mix(in srgb, #ff0000 60%, transparent)`,
+      expected_hex_color: `#ff0000`,
+      expected_opacity: 0.6,
+    },
+    {
+      site_label_bg_color: `color-mix(in srgb, #00ff00 150%, transparent)`,
+      expected_hex_color: `#00ff00`,
+      expected_opacity: 1,
+    },
+  ])(
+    `parses and resets site label background from $site_label_bg_color`,
+    async ({ site_label_bg_color, expected_hex_color, expected_opacity }) => {
+      mount(StructureControls, {
+        target: document.body,
+        props: {
+          structure: simple_structure,
+          controls_open: true,
+          scene_props: {
+            show_site_labels: true,
+            site_label_bg_color,
+          },
+        },
+      })
+
+      const bg_color_input = doc_query<HTMLInputElement>(
+        `input[aria-label="Site label background color"]`,
+      )
+      const opacity_input = doc_query<HTMLInputElement>(
+        `input[aria-label="Site label background opacity"]`,
+      )
+      expect(bg_color_input.value).toBe(expected_hex_color)
+      expect(opacity_input.valueAsNumber).toBe(expected_opacity)
+
+      bg_color_input.value = `#123456`
+      bg_color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      opacity_input.value = `0.5`
+      opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset labels to defaults"]`).click()
+      await tick()
+
+      expect(bg_color_input.value).toBe(`#000000`)
+      expect(opacity_input.valueAsNumber).toBe(0)
+    },
+  )
 })
