@@ -186,6 +186,59 @@ describe(`aromaticity`, () => {
     expect(r.every((b) => b.aromatic_ring !== undefined)).toBe(true)
     expect(r.every((b) => b.bond_order === `aromatic`)).toBe(true)
   })
+
+  test(`naphthalene: fused bicyclic, both rings aromatic, shared-bond kekule preserved, global ring ids`, () => {
+    // Bare-C10 naphthalene skeleton: two fused 6-rings sharing the 0-1
+    // edge, all planar (z=0). The two interior fused carbons (0,1) each
+    // have 3 ring bonds, the 8 outer carbons each have 2. With C valence
+    // [4] only this bare carbon graph still solves (deficits absorbed as
+    // formal charge summing to neutral). Locks Fix 2 (shared 0-1 bond's
+    // kekule_order survives reprocessing by the second ring) and Fix 3
+    // (the two rings get distinct global aromatic_ring ids).
+    const coords: [number, number, number][] = [
+      [0.000, 0.700, 0], [0.000, -0.700, 0],
+      [1.210, 1.400, 0], [2.420, 0.700, 0], [2.420, -0.700, 0],
+      [1.210, -1.400, 0],
+      [-1.210, 1.400, 0], [-2.420, 0.700, 0], [-2.420, -0.700, 0],
+      [-1.210, -1.400, 0],
+    ]
+    const edges: [number, number][] = [
+      [0, 2], [2, 3], [3, 4], [4, 5], [5, 1], [1, 0], // ring 1
+      [0, 6], [6, 7], [7, 8], [8, 9], [9, 1], // ring 2 (shares edge 0-1)
+    ]
+    const { sites, bonds } = make_input(
+      Array.from({ length: 10 }, () => `C`),
+      coords,
+      edges,
+    )
+    // Sanity: exactly two 6-membered rings in this graph.
+    const found = find_rings(10, edges)
+    expect(found).toHaveLength(2)
+    expect(found.every((ring) => ring.length === 6)).toBe(true)
+
+    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    // Both 6-rings are aromatic (π = 6 per ring) → every bond aromatic.
+    expect(r.every((b) => b.bond_order === `aromatic`)).toBe(true)
+    expect(r.every((b) => b.aromatic_ring !== undefined)).toBe(true)
+    // Fix 3: distinct fragment-global ids for the two distinct rings.
+    expect(new Set(r.map((b) => b.aromatic_ring)).size).toBeGreaterThanOrEqual(2)
+    // Fix 2: kekule_order defined (1 or 2) on every bond. Do not assert a
+    // specific Kekulé pattern across all bonds — multiple valid resonance
+    // forms exist.
+    expect(r.every((b) => b.kekule_order === 1 || b.kekule_order === 2))
+      .toBe(true)
+    // Fix 2 (sharp): the 0-1 bond is shared by BOTH rings. Its kekule_order
+    // is fixed by the first ring's relabel from the pre-aromatic solved
+    // order; when the second ring reprocesses the same bond it must NOT
+    // clobber that value. Pin it to the solved order this fragment yields
+    // for the 0-1 edge (single → kekule_order 1). Pre-fix the second ring
+    // reads prev.bond_order === 'aromatic' and forces 2, so this fails.
+    const shared = r.find((b) =>
+      (b.site_idx_1 === 1 && b.site_idx_2 === 0) ||
+      (b.site_idx_1 === 0 && b.site_idx_2 === 1)
+    )!
+    expect(shared.kekule_order).toBe(1)
+  })
 })
 
 export { make_input }

@@ -217,6 +217,12 @@ function order_to_bond_order(o: number): BondOrder {
 // require every ring atom's signed distance to that plane to stay within
 // 0.3 Å. Aromatic rings are planar by definition (sp2 framework); a
 // puckered ring (e.g. cyclohexane chair) fails and is not flagged.
+// Degeneracy guard: if the first 3 ring atoms are (near-)collinear the
+// cross product is ~zero and `len` collapses to ~0. A zero normal makes
+// every atom's deviation evaluate to 0, which would WRONGLY mark ANY
+// ring geometry as planar (silent false-positive). When the normal is
+// degenerate we cannot determine a plane, so we conservatively return
+// false (treat as non-planar → ring is not flagged aromatic).
 function ring_is_planar(ring: number[], sites: Site[]): boolean {
   if (ring.length < 3) return false
   const p = ring.map((a) => sites[a].xyz)
@@ -225,7 +231,9 @@ function ring_is_planar(ring: number[], sites: Site[]): boolean {
   const nx = v1[1] * v2[2] - v1[2] * v2[1]
   const ny = v1[2] * v2[0] - v1[0] * v2[2]
   const nz = v1[0] * v2[1] - v1[1] * v2[0]
-  const len = Math.hypot(nx, ny, nz) || 1
+  const len = Math.hypot(nx, ny, nz)
+  // Degenerate normal: first 3 ring atoms collinear, cannot determine a plane.
+  if (len < 1e-6) return false
   return p.every((q) => {
     const dev = Math.abs(
       (q[0] - p[0][0]) * nx + (q[1] - p[0][1]) * ny + (q[2] - p[0][2]) * nz,
@@ -262,6 +270,11 @@ export function perceive_bond_orders(
     sites.length,
     edges.map((e) => [e.i, e.j] as [number, number]),
   )
+  // Globally-monotonic aromatic-ring id counter. Declared ONCE outside the
+  // fragment loop so rings in different disconnected fragments get distinct
+  // ids — a consumer grouping bonds by `aromatic_ring` across the whole
+  // result must not merge unrelated rings from separate fragments.
+  let ring_id = 0
   for (const frag of frags) {
     const atom_set = new Set(frag)
     // Both endpoints of an edge are in the same connected fragment, so
@@ -339,7 +352,6 @@ export function perceive_bond_orders(
       (e) => [e.i, e.j],
     )
     const rings = find_rings(frag.length, local_edge_pairs)
-    let ring_id = 0
     for (const ring of rings) {
       const global_ring = ring.map((k) => frag[k])
       if (
@@ -368,11 +380,17 @@ export function perceive_bond_orders(
         local_edges.forEach((e) => {
           if (ring_set.has(e.i) && ring_set.has(e.j)) {
             const prev = result.get(e.ref)!
+            // Preserve an already-set kekule_order: a bond shared by two
+            // fused aromatic rings is relabeled by the first ring (prev
+            // .bond_order becomes 'aromatic'); when the second ring
+            // reprocesses it, falling back to `prev.bond_order === 1 ? 1
+            // : 2` would clobber the first ring's correct Kekulé order
+            // (which may have been 1). `?? ` keeps the pre-relabel value.
             result.set(e.ref, {
               ...prev,
               bond_order: `aromatic`,
               aromatic_ring: this_ring,
-              kekule_order: prev.bond_order === 1 ? 1 : 2,
+              kekule_order: prev.kekule_order ?? (prev.bond_order === 1 ? 1 : 2),
               perceived: true,
             })
           }
