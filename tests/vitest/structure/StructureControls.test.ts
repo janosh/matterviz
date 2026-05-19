@@ -1,6 +1,6 @@
 import type { AnyStructure } from '$lib'
 import { StructureControls } from '$lib/structure'
-import { mount } from 'svelte'
+import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, simple_structure } from '../setup'
 
@@ -9,47 +9,27 @@ vi.mock(`$lib/io/export`, () => ({
 }))
 
 describe(`StructureControls`, () => {
-  test(`supercell input accessibility attributes (valid)`, () => {
-    mount(StructureControls, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        controls_open: true,
-        supercell_scaling: `2x2x2`,
-      },
-    })
-    const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
-    expect(input.getAttribute(`inputmode`)).toBe(`text`)
-    expect(input.getAttribute(`autocomplete`)).toBe(`off`)
-    expect(input.getAttribute(`spellcheck`)).toBe(`false`)
-    expect(input.getAttribute(`pattern`)).toBe(`^(\\d+|\\d+x\\d+x\\d+)$`)
-    expect(input.getAttribute(`aria-invalid`)).toBe(`false`)
-  })
-
   test.each([
-    { scaling: `2x2x2`, aria: `false` },
-    { scaling: `1`, aria: `false` },
-    { scaling: `invalid`, aria: `true` },
-    { scaling: `2x2`, aria: `true` },
-  ])(`supercell aria-invalid: $scaling -> $aria`, ({ scaling, aria }) => {
-    mount(StructureControls, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        controls_open: true,
-        supercell_scaling: scaling,
-      },
-    })
-    const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
-    expect(input.getAttribute(`aria-invalid`)).toBe(aria)
-  })
-
-  test.each([
-    { scaling: `invalid`, has_error: true },
-    { scaling: `2x2x2`, has_error: false },
+    {
+      scaling: `2x2x2`,
+      aria: `false`,
+      has_error: false,
+      border_includes: ``,
+      title_includes: `Valid supercell scaling: 2x2x2`,
+      check_attrs: true,
+    },
+    { scaling: `1`, aria: `false`, has_error: false, border_includes: `` },
+    {
+      scaling: `invalid`,
+      aria: `true`,
+      has_error: true,
+      border_includes: `dashed red`,
+      title_includes: `Invalid format. Use "2x2x2", "3x1x2", or "2"`,
+    },
+    { scaling: `2x2`, aria: `true`, has_error: true, border_includes: `dashed red` },
   ])(
-    `supercell error message visibility: $scaling -> $has_error`,
-    ({ scaling, has_error }) => {
+    `supercell input state: $scaling`,
+    ({ scaling, aria, has_error, border_includes, title_includes, check_attrs }) => {
       mount(StructureControls, {
         target: document.body,
         props: {
@@ -58,45 +38,21 @@ describe(`StructureControls`, () => {
           supercell_scaling: scaling,
         },
       })
-      const errors = document.querySelectorAll(`div[style*="color: red"]`)
-      expect(errors.length > 0).toBe(has_error)
+      const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
+      if (check_attrs) {
+        expect(input.getAttribute(`inputmode`)).toBe(`text`)
+        expect(input.getAttribute(`autocomplete`)).toBe(`off`)
+        expect(input.getAttribute(`spellcheck`)).toBe(`false`)
+        expect(input.getAttribute(`pattern`)).toBe(`^(\\d+|\\d+x\\d+x\\d+)$`)
+      }
+      expect(input.getAttribute(`aria-invalid`)).toBe(aria)
+      const error_message = document.querySelector(`[data-testid="supercell-input-error"]`)
+      expect(error_message !== null).toBe(has_error)
+      if (border_includes) expect(input.style.border).toContain(border_includes)
+      else expect(input.style.border).toBe(``)
+      if (title_includes) expect(input.title).toContain(title_includes)
     },
   )
-
-  // Covered by the parameterized error message test
-
-  test.each([
-    { scaling: `invalid`, border_includes: `dashed red` },
-    { scaling: `2x2x2`, border_includes: `` },
-  ])(`supercell border styling: $scaling`, ({ scaling, border_includes }) => {
-    mount(StructureControls, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        controls_open: true,
-        supercell_scaling: scaling,
-      },
-    })
-    const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
-    if (border_includes) expect(input.style.border).toContain(border_includes)
-    else expect(input.style.border).toBe(``)
-  })
-
-  test.each([
-    { scaling: `2x2x2`, includes: `Valid supercell scaling: 2x2x2` },
-    { scaling: `invalid`, includes: `Invalid format. Use "2x2x2", "3x1x2", or "2"` },
-  ])(`supercell title message: $scaling`, ({ scaling, includes }) => {
-    mount(StructureControls, {
-      target: document.body,
-      props: {
-        structure: simple_structure,
-        controls_open: true,
-        supercell_scaling: scaling,
-      },
-    })
-    const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
-    expect(input.title).toContain(includes)
-  })
 
   test(`handles structure without lattice`, () => {
     const structure_without_lattice: AnyStructure = {
@@ -120,4 +76,53 @@ describe(`StructureControls`, () => {
     })
     expect(cmp).toBeDefined()
   })
+
+  test.each([
+    {
+      site_label_bg_color: `color-mix(in srgb, #ff0000 60%, transparent)`,
+      expected_hex_color: `#ff0000`,
+      expected_opacity: 0.6,
+    },
+    {
+      site_label_bg_color: `color-mix(in srgb, #00ff00 150%, transparent)`,
+      expected_hex_color: `#00ff00`,
+      expected_opacity: 1,
+    },
+  ])(
+    `parses and resets site label background from $site_label_bg_color`,
+    async ({ site_label_bg_color, expected_hex_color, expected_opacity }) => {
+      mount(StructureControls, {
+        target: document.body,
+        props: {
+          structure: simple_structure,
+          controls_open: true,
+          scene_props: {
+            show_site_labels: true,
+            site_label_bg_color,
+          },
+        },
+      })
+
+      const bg_color_input = doc_query<HTMLInputElement>(
+        `input[aria-label="Site label background color"]`,
+      )
+      const opacity_input = doc_query<HTMLInputElement>(
+        `input[aria-label="Site label background opacity"]`,
+      )
+      expect(bg_color_input.value).toBe(expected_hex_color)
+      expect(opacity_input.valueAsNumber).toBe(expected_opacity)
+
+      bg_color_input.value = `#123456`
+      bg_color_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      opacity_input.value = `0.5`
+      opacity_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+      await tick()
+
+      doc_query<HTMLButtonElement>(`button[aria-label="Reset labels to defaults"]`).click()
+      await tick()
+
+      expect(bg_color_input.value).toBe(`#000000`)
+      expect(opacity_input.valueAsNumber).toBe(0)
+    },
+  )
 })

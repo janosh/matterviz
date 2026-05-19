@@ -1,4 +1,4 @@
-import { type AnyStructure, Structure } from '$lib'
+import { type AnyStructure, type MeasureMode, Structure } from '$lib'
 import type { Matrix3x3, Vec3 } from '$lib/math'
 import { add, euclidean_dist, pbc_dist, scale } from '$lib/math'
 import { DEFAULTS } from '$lib/settings'
@@ -86,6 +86,39 @@ describe(`Structure`, () => {
 
     // Check that the control pane is now visible by looking for control elements
     expect(document.querySelector(`.controls-pane`)).toBeInstanceOf(HTMLElement)
+  })
+
+  test.each([
+    { props: { supercell_scaling: `2x1x1` }, reason: `supercell` },
+    { props: { cell_type: `conventional` }, reason: `transformed cell` },
+  ] as const)(`disables edit-bonds mode for $reason views`, async ({ props }) => {
+    let measure_mode: MeasureMode = `distance`
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        show_controls: true,
+        get measure_mode() {
+          return measure_mode
+        },
+        set measure_mode(value) {
+          measure_mode = value
+        },
+        ...props,
+      },
+    })
+
+    doc_query<HTMLButtonElement>(`button[title="Measure / Edit"]`).click()
+    await tick()
+    const edit_bonds_button = [
+      ...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
+    ].find((button) => button.textContent?.includes(`Edit Bonds`))
+
+    expect(edit_bonds_button).toBeDefined()
+    expect(edit_bonds_button?.disabled).toBe(true)
+    edit_bonds_button?.click()
+    await tick()
+    expect(measure_mode).toBe(`distance`)
   })
 
   const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const

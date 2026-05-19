@@ -355,8 +355,10 @@
         }}
         pane_props={{
           ...controls.pane_props,
-          // z-index must exceed fullscreen z-index (100000001) to remain clickable in fullscreen mode
-          style: `--pane-z-index: 100000002; ${controls.pane_props?.style ?? ``}`,
+          // z-index must exceed fullscreen z-index to remain clickable in fullscreen mode
+          style: `--pane-z-index: var(--z-index-overlay-dialog, 100000002); ${
+            controls.pane_props?.style ?? ``
+          }`,
         }}
         bind:x_axis
         bind:y_axis
@@ -428,7 +430,7 @@
     left: 0;
     width: 100vw !important;
     height: 100vh !important;
-    z-index: var(--scatter3d-fullscreen-z-index, 100000001);
+    z-index: var(--scatter3d-fullscreen-z-index, var(--z-index-overlay-nav, 100000001));
     margin: 0;
     border-radius: 0;
     max-height: none !important;

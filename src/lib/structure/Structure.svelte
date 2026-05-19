@@ -22,7 +22,12 @@
   import { DEFAULTS } from '$lib/settings'
   import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
-  import type { AnyStructure, Crystal, MeasureMode } from '$lib/structure'
+  import type {
+    AnyStructure,
+    Crystal,
+    MeasureMode,
+    StructureBond,
+  } from '$lib/structure'
   import {
     default_vector_configs,
     get_element_counts,
@@ -50,6 +55,7 @@
   import { get_property_colors } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
+  import { merge_bond_edits } from './bonding'
   import type { StructureHandlerData } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import { normalize_fractional_coords, parse_any_structure } from './parse'
@@ -60,6 +66,16 @@
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
+  type BondEditContext = {
+    structure?: AnyStructure
+    cell_type: CellType
+    supercell_scaling: string
+    show_image_atoms: boolean
+  }
+  type BondEditSnapshot = {
+    bonds: StructureBond[] | undefined
+    context: BondEditContext
+  }
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
@@ -80,6 +96,7 @@
 
   let {
     structure = $bindable(),
+    bonds = $bindable(),
     scene_props: scene_props_in = $bindable(),
     lattice_props: lattice_props_in = $bindable(),
     controls_open = $bindable(false),
@@ -156,10 +173,12 @@
     on_fullscreen_change,
     on_camera_move,
     on_camera_reset,
+    on_bonds_change,
     ...rest
   }:
     & {
       structure?: AnyStructure
+      bonds?: StructureBond[]
       scene_props?: ComponentProps<typeof StructureScene>
       /**
        * Controls visibility configuration.
@@ -241,6 +260,7 @@
       on_fullscreen_change?: EventHandler
       on_camera_move?: EventHandler
       on_camera_reset?: EventHandler
+      on_bonds_change?: (bonds: StructureBond[] | undefined) => void
     }
     & Omit<ComponentProps<typeof StructureControls>, `children` | `onclose`>
     & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
@@ -432,8 +452,85 @@
   let export_pane_open = $state(false)
 
   // Bond customization state
-  let added_bonds = $state<[number, number][]>([])
-  let removed_bonds = $state<[number, number][]>([])
+  let added_bonds = $state<StructureBond[]>([])
+  let removed_bonds = $state<StructureBond[]>([])
+  let bond_order_overrides = $state<StructureBond[]>([])
+  let last_emitted_bond_signature = $state<string>()
+  let bond_edit_snapshot = $state<BondEditSnapshot>()
+  let has_bond_edits = $derived(
+    added_bonds.length > 0 || removed_bonds.length > 0 ||
+      bond_order_overrides.length > 0,
+  )
+
+  function clear_bond_edits() {
+    added_bonds = []
+    removed_bonds = []
+    bond_order_overrides = []
+  }
+
+  function emit_bonds(next_bonds: StructureBond[] | undefined) {
+    const signature = next_bonds === undefined ? `undefined` : JSON.stringify(next_bonds)
+    if (signature === last_emitted_bond_signature) return
+    last_emitted_bond_signature = signature
+    bonds = next_bonds
+    on_bonds_change?.(next_bonds)
+  }
+
+  const current_source_bonds = (): StructureBond[] | undefined =>
+    bonds ?? structure?.properties?.bonds
+
+  const current_bond_edit_context = (): BondEditContext => ({
+    structure,
+    cell_type,
+    supercell_scaling,
+    show_image_atoms,
+  })
+
+  const bond_edit_context_changed = (
+    previous: BondEditContext,
+    current: BondEditContext,
+  ): boolean =>
+    previous.structure !== current.structure ||
+    previous.cell_type !== current.cell_type ||
+    previous.supercell_scaling !== current.supercell_scaling ||
+    previous.show_image_atoms !== current.show_image_atoms
+
+  const resolve_bond_edit_reset_bonds = (
+    snapshot: BondEditSnapshot,
+  ): StructureBond[] | undefined =>
+    snapshot.context.structure === structure ? snapshot.bonds : structure?.properties?.bonds
+
+  $effect(() => {
+    const snapshot = bond_edit_snapshot
+    if (snapshot === undefined) return
+    const context = current_bond_edit_context()
+    if (!bond_edit_context_changed(snapshot.context, context)) return
+    untrack(() => {
+      emit_bonds(resolve_bond_edit_reset_bonds(snapshot))
+      clear_bond_edits()
+      bond_edit_snapshot = undefined
+    })
+  })
+
+  $effect(() => {
+    if (!has_bond_edits) {
+      if (bond_edit_snapshot === undefined) return
+      emit_bonds(resolve_bond_edit_reset_bonds(bond_edit_snapshot))
+      bond_edit_snapshot = undefined
+      return
+    }
+    bond_edit_snapshot ??= {
+      bonds: current_source_bonds(),
+      context: current_bond_edit_context(),
+    }
+    const edited_bonds = merge_bond_edits(
+      bond_edit_snapshot.bonds ?? [],
+      added_bonds,
+      removed_bonds,
+      bond_order_overrides,
+    )
+    emit_bonds(edited_bonds)
+  })
 
   // === Edit-atoms mode state ===
   let dragging_atoms = $state(false)
@@ -535,10 +632,7 @@
     if (measure_mode !== `edit-atoms`) return
     untrack(() => {
       // Clear bond edits from edit-bonds mode to avoid stale state
-      if (added_bonds.length > 0 || removed_bonds.length > 0) {
-        added_bonds = []
-        removed_bonds = []
-      }
+      if (has_bond_edits) clear_bond_edits()
       if (cell_type !== `original` && cell_transformed_structure && structure) {
         // Bake the transformed cell: push original to undo, replace structure
         is_internal_edit = true
@@ -561,24 +655,32 @@
     return normalize_fractional_coords(structure) as AnyStructure
   })
 
+  let structure_with_bonds = $derived.by(() => {
+    if (!normalized_structure || bonds === undefined) return normalized_structure
+    return {
+      ...normalized_structure,
+      properties: { ...normalized_structure.properties, bonds },
+    } as AnyStructure
+  })
+
   // Apply cell type transformation (original, conventional, or primitive)
   // This must happen BEFORE supercell transformation
   let cell_transformed_structure = $derived.by(() => {
     if (
-      !normalized_structure || !(`lattice` in normalized_structure) ||
+      !structure_with_bonds || !(`lattice` in structure_with_bonds) ||
       cell_type === `original`
     ) {
-      return normalized_structure
+      return structure_with_bonds
     }
     // Cell type transformation requires symmetry data
     if (!sym_data) {
-      return normalized_structure
+      return structure_with_bonds
     }
     try {
-      return transform_cell(normalized_structure as Crystal, cell_type, sym_data)
+      return transform_cell(structure_with_bonds as Crystal, cell_type, sym_data)
     } catch (error) {
       console.error(`Failed to transform cell to ${cell_type}:`, error)
-      return normalized_structure
+      return structure_with_bonds
     }
   })
 
@@ -588,6 +690,19 @@
   let has_supercell = $derived(
     !!supercell_scaling && ![``, `1x1x1`, `1`].includes(supercell_scaling),
   )
+  let bond_edits_enabled = $derived(
+    cell_type === `original` && !has_supercell && !supercell_loading,
+  )
+
+  $effect(() => {
+    if (measure_mode !== `edit-bonds` || bond_edits_enabled) return
+    untrack(() => {
+      clear_selection()
+      clear_bond_edits()
+      measure_mode = `distance`
+      show_toast(`Bond editing is only available for the original 1x1x1 cell`)
+    })
+  })
 
   // Tile volumetric data to match supercell when active.
   // Gate on !supercell_loading so the tiled volume and supercell structure update
@@ -938,8 +1053,7 @@
           }
           // Clear per-site overrides since indices shifted after deletion
           if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
-          added_bonds = []
-          removed_bonds = []
+          clear_bond_edits()
           show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
         }
         return
@@ -1303,15 +1417,13 @@
                 style="margin-left: -2px"
               />
             </button>
-            {#if (measured_sites?.length ?? 0) > 0 || added_bonds.length > 0 ||
-          removed_bonds.length > 0}
+            {#if (measured_sites?.length ?? 0) > 0 || has_bond_edits}
               <button
                 type="button"
                 aria-label="Reset selection and bond edits"
                 onclick={() => {
                   clear_selection()
-                  added_bonds = []
-                  removed_bonds = []
+                  clear_bond_edits()
                 }}
               >
                 <Icon icon="Reset" style="margin-left: -4px" />
@@ -1341,7 +1453,14 @@
                   <button
                     class="view-mode-option"
                     class:selected={measure_mode === mode}
-                    onclick={() => [measure_mode, measure_menu_open] = [mode, false]}
+                    disabled={mode === `edit-bonds` && !bond_edits_enabled}
+                    title={mode === `edit-bonds` && !bond_edits_enabled
+                      ? `Bond editing is only available for the original 1x1x1 cell`
+                      : label}
+                    onclick={() => {
+                      if (mode === `edit-bonds` && !bond_edits_enabled) return
+                      ;[measure_mode, measure_menu_open] = [mode, false]
+                    }}
                   >
                     <Icon {icon} style="transform: scale({scale})" />
                     <span>{@html sanitize_html(label)}</span>
@@ -1532,6 +1651,8 @@
             bind:site_radius_overrides
             bind:added_bonds
             bind:removed_bonds
+            bind:bond_order_overrides
+            {bond_edits_enabled}
             {measure_mode}
             {width}
             {height}
@@ -1557,14 +1678,16 @@
       <div class="edit-toast">{toast_msg}</div>
     {/if}
 
-    {#if measure_mode === `edit-bonds` &&
-      (added_bonds.length > 0 || removed_bonds.length > 0)}
+    {#if measure_mode === `edit-bonds` && has_bond_edits}
       <div class="bond-edit-status">
         {#if added_bonds.length > 0}
           <span class="added">+{added_bonds.length} added</span>
         {/if}
         {#if removed_bonds.length > 0}
           <span class="removed">-{removed_bonds.length} removed</span>
+        {/if}
+        {#if bond_order_overrides.length > 0}
+          <span class="changed">{bond_order_overrides.length} ordered</span>
         {/if}
       </div>
     {/if}
@@ -1638,7 +1761,10 @@
     gap: 4pt;
     /* buttons need higher z-index than AtomLegend to make info/controls panes occlude legend */
     /* we also need crazy high z-index to make info/control pane occlude threlte/extras' <HTML> elements for site labels */
-    z-index: var(--struct-buttons-z-index, 100000000);
+    z-index: var(
+      --struct-buttons-z-index,
+      var(--z-index-overlay-controls, 100000000)
+    );
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
@@ -1802,6 +1928,10 @@
   }
   .bond-edit-status .removed {
     color: #f44336;
+    font-weight: bold;
+  }
+  .bond-edit-status .changed {
+    color: var(--accent-color, #007acc);
     font-weight: bold;
   }
   /* CellSelect: position at left of legend, show on hover */
