@@ -838,17 +838,12 @@
 
   let smart_site_label_offsets = $derived.by(() => {
     const offsets = new SvelteMap<number, Vec3>()
-    const sites = structure?.sites
-    if (!sites || filtered_bond_pairs.length === 0) return offsets
+    if (filtered_bond_pairs.length === 0) return offsets
 
     const bond_directions_by_site = new SvelteMap<number, Vec3[]>()
-    const add_bond_direction = (site_idx: number, neighbor_idx: number) => {
-      const site = sites[site_idx]
-      const neighbor = sites[neighbor_idx]
-      if (!site || !neighbor) return
-
+    const add_bond_direction = (site_idx: number, pos_1: Vec3, pos_2: Vec3) => {
       const direction = math.normalize_vec3(
-        math.subtract(neighbor.xyz, site.xyz),
+        math.subtract(pos_2, pos_1),
         [0, 0, 0],
       )
       if (Math.hypot(...direction) < LABEL_OFFSET_EPS) return
@@ -858,9 +853,9 @@
       ])
     }
 
-    for (const { site_idx_1, site_idx_2 } of filtered_bond_pairs) {
-      add_bond_direction(site_idx_1, site_idx_2)
-      add_bond_direction(site_idx_2, site_idx_1)
+    for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of filtered_bond_pairs) {
+      add_bond_direction(site_idx_1, pos_1, pos_2)
+      add_bond_direction(site_idx_2, pos_2, pos_1)
     }
     for (const [site_idx, bond_directions] of bond_directions_by_site) {
       offsets.set(site_idx, choose_site_label_offset(bond_directions, site_label_offset))

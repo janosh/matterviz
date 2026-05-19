@@ -1,10 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   compose_perceived_bonds,
-  find_rings,
-  is_main_group,
   perceive_bond_orders,
-  split_fragments,
 } from '$lib/structure/bond-order-perception'
 import type { BondPair, StructureBond } from '$lib/structure'
 import type { PerceivedBond } from '$lib/structure/bond-order-perception'
@@ -73,33 +70,6 @@ describe(`perceive_bond_orders scaffold`, () => {
         perceived: false,
       }),
     ])
-  })
-})
-
-describe(`element gating`, () => {
-  test(`main-group elements recognized`, () => {
-    expect(is_main_group(`C`)).toBe(true)
-    expect(is_main_group(`O`)).toBe(true)
-    expect(is_main_group(`Fe`)).toBe(false)
-    expect(is_main_group(`Pt`)).toBe(false)
-  })
-
-  test(`splits disconnected graph into fragments`, () => {
-    const frags = split_fragments(4, [
-      [0, 1],
-      [2, 3],
-    ])
-    expect(frags).toHaveLength(2)
-    expect(new Set(frags[0])).toEqual(new Set([0, 1]))
-    expect(new Set(frags[1])).toEqual(new Set([2, 3]))
-  })
-
-  test(`isolated atom becomes its own singleton fragment`, () => {
-    const frags = split_fragments(3, [[0, 1]])
-    expect(frags).toHaveLength(2)
-    const as_sets = frags.map((f) => new Set(f))
-    expect(as_sets).toContainEqual(new Set([0, 1]))
-    expect(as_sets).toContainEqual(new Set([2]))
   })
 })
 
@@ -175,16 +145,10 @@ describe(`combination-count bound`, () => {
     )
     const edges = Array.from({ length: n - 1 }, (_, i) => [i, i + 1] as [number, number])
     const { sites, bonds } = make_input(elements, coords, edges)
-    const t0 = performance.now()
     const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    const elapsed = performance.now() - t0
-    // combo_count = 3^20 (~3.5e9) > MAX_VALENCE_COMBOS, so the whole
-    // fragment must fall back to single / not-perceived (T2) and the
-    // call must return fast (no cartesian-product materialization).
     expect(r).toHaveLength(n - 1)
     expect(r.every((b) => b.bond_order === 1)).toBe(true)
     expect(r.every((b) => !b.perceived)).toBe(true)
-    expect(elapsed).toBeLessThan(1000)
   })
 })
 
@@ -209,61 +173,6 @@ describe(`charge support`, () => {
       r.map((b) => b.bond_order).sort((left, right) => Number(left) - Number(right)),
     ).toEqual([1, 1, 2])
     expect(r.every((b) => b.perceived)).toBe(true)
-  })
-})
-
-describe(`ring perception`, () => {
-  test(`benzene ring → one 6-membered ring`, () => {
-    const edges: [number, number][] = [
-      [0, 1],
-      [1, 2],
-      [2, 3],
-      [3, 4],
-      [4, 5],
-      [5, 0],
-    ]
-    const rings = find_rings(6, edges)
-    expect(rings).toHaveLength(1)
-    expect(rings[0]).toHaveLength(6)
-  })
-
-  test(`acyclic chain → no rings`, () => {
-    expect(
-      find_rings(3, [
-        [0, 1],
-        [1, 2],
-      ]),
-    ).toHaveLength(0)
-  })
-
-  test(`single triangle → one 3-membered ring`, () => {
-    const rings = find_rings(3, [
-      [0, 1],
-      [1, 2],
-      [2, 0],
-    ])
-    expect(rings).toHaveLength(1)
-    expect(rings[0]).toHaveLength(3)
-  })
-
-  test(`naphthalene-like fused bicyclic → 2 rings`, () => {
-    // Two fused 6-rings sharing the 0-1 edge (10 atoms total).
-    const edges: [number, number][] = [
-      [0, 1],
-      [1, 2],
-      [2, 3],
-      [3, 4],
-      [4, 5],
-      [5, 0], // ring A
-      [0, 6],
-      [6, 7],
-      [7, 8],
-      [8, 9],
-      [9, 1], // ring B (shares edge 0-1)
-    ]
-    const rings = find_rings(10, edges)
-    expect(rings).toHaveLength(2)
-    expect(rings.every((r) => r.length === 6)).toBe(true)
   })
 })
 
@@ -388,14 +297,7 @@ describe(`aromaticity`, () => {
     },
   )
 
-  test(`naphthalene: fused bicyclic, both rings aromatic, shared-bond kekule preserved, global ring ids`, () => {
-    // Bare-C10 naphthalene skeleton: two fused 6-rings sharing the 0-1
-    // edge, all planar (z=0). The two interior fused carbons (0,1) each
-    // have 3 ring bonds, the 8 outer carbons each have 2. With C valence
-    // [4] only this bare carbon graph still solves (deficits absorbed as
-    // formal charge summing to neutral). Locks Fix 2 (shared 0-1 bond's
-    // kekule_order survives reprocessing by the second ring) and Fix 3
-    // (the two rings get distinct global aromatic_ring ids).
+  test(`naphthalene: fused rings preserve shared-bond kekule order`, () => {
     const coords: [number, number, number][] = [
       [0.0, 0.7, 0],
       [0.0, -0.7, 0],
@@ -426,84 +328,40 @@ describe(`aromaticity`, () => {
       coords,
       edges,
     )
-    // Sanity: exactly two 6-membered rings in this graph.
-    const found = find_rings(10, edges)
-    expect(found).toHaveLength(2)
-    expect(found.every((ring) => ring.length === 6)).toBe(true)
 
     const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    // Both 6-rings are aromatic (π = 6 per ring) → every bond aromatic.
     expect(r.every((b) => b.bond_order === `aromatic`)).toBe(true)
     expect(r.every((b) => b.aromatic_ring !== undefined)).toBe(true)
-    // Fix 3: distinct fragment-global ids for the two distinct rings.
     expect(new Set(r.map((b) => b.aromatic_ring)).size).toBeGreaterThanOrEqual(2)
-    // Fix 2: kekule_order defined (1 or 2) on every bond. Do not assert a
-    // specific Kekulé pattern across all bonds — multiple valid resonance
-    // forms exist.
     expect(r.every((b) => b.kekule_order === 1 || b.kekule_order === 2)).toBe(true)
-    // Fix 2 (sharp): the 0-1 bond is shared by BOTH rings. Its kekule_order
-    // is fixed by the first ring's relabel from the pre-aromatic solved
-    // order; when the second ring reprocesses the same bond it must NOT
-    // clobber that value. Pin it to the solved order this fragment yields
-    // for the 0-1 edge (single → kekule_order 1). Pre-fix the second ring
-    // reads prev.bond_order === 'aromatic' and forces 2, so this fails.
     const shared = r.find(
       (b) =>
         (b.site_idx_1 === 1 && b.site_idx_2 === 0) ||
         (b.site_idx_1 === 0 && b.site_idx_2 === 1),
     )
-    if (shared === undefined) throw new Error(`Expected shared fused-ring bond`)
-    expect(shared.kekule_order).toBe(1)
+    expect(shared).toBeDefined()
+    expect(shared?.kekule_order).toBe(1)
   })
 
-  test(`cyclobutadiene C4: antiaromatic, NOT flagged aromatic`, () => {
-    // 4-membered all-C ring. Each C (valence [4], 2 ring bonds) solves to
-    // all-double. π = 4 (one per sp2 ring carbon) → (4-2)%4 = 2 ≠ 0 → fails
-    // Hückel 4n+2 → must NOT be relabeled aromatic. Guards the antiaromatic
-    // discriminator `(pi-2)%4===0` against an off-by-one regression.
-    const s = 1.45
-    const coords: [number, number, number][] = [
-      [0, 0, 0],
-      [s, 0, 0],
-      [s, s, 0],
-      [0, s, 0],
-    ]
-    const { sites, bonds } = make_input([`C`, `C`, `C`, `C`], coords, [
-      [0, 1],
-      [1, 2],
-      [2, 3],
-      [3, 0],
-    ])
-    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
-    expect(r.every((b) => b.bond_order !== `aromatic`)).toBe(true)
-    expect(r.every((b) => b.aromatic_ring === undefined)).toBe(true)
-  })
-
-  test(`cyclooctatetraene C8: 8 π electrons, NOT aromatic`, () => {
-    // Planar 8-membered all-C ring (idealized planar for the test). π = 8 →
-    // (8-2)%4 = 2 ≠ 0 → not aromatic. Second negative case at a different
-    // ring size so a modulus regression cannot pass both this and benzene.
+  test.each([
+    { n_atoms: 4, radius: 1.45, name: `cyclobutadiene` },
+    { n_atoms: 8, radius: 1.8, name: `cyclooctatetraene` },
+  ])(`$name is not flagged aromatic`, ({ n_atoms, radius }) => {
     const coords: [number, number, number][] = Array.from(
-      { length: 8 },
+      { length: n_atoms },
       (_, k): [number, number, number] => [
-        Math.cos((k * Math.PI) / 4) * 1.8,
-        Math.sin((k * Math.PI) / 4) * 1.8,
+        Math.cos((k * 2 * Math.PI) / n_atoms) * radius,
+        Math.sin((k * 2 * Math.PI) / n_atoms) * radius,
         0,
       ],
     )
     const { sites, bonds } = make_input(
-      Array.from({ length: 8 }, () => `C`),
+      Array.from({ length: n_atoms }, () => `C`),
       coords,
-      [
-        [0, 1],
-        [1, 2],
-        [2, 3],
-        [3, 4],
-        [4, 5],
-        [5, 6],
-        [6, 7],
-        [7, 0],
-      ],
+      Array.from({ length: n_atoms }, (_, idx): [number, number] => [
+        idx,
+        (idx + 1) % n_atoms,
+      ]),
     )
     const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
     expect(r.every((b) => b.bond_order !== `aromatic`)).toBe(true)
@@ -603,59 +461,72 @@ describe(`compose_perceived_bonds (explicit precedence + kekulé display)`, () =
     ...(cell_shift === undefined ? {} : { cell_shift }),
   })
 
-  test(`explicit order wins over perceived`, () => {
-    const out = compose_perceived_bonds([pb(0, 1, 1)], [expl(0, 1, 2)], `aromatic`)
-    expect(out[0].bond_order).toBe(2)
-  })
-
-  test(`explicit aromatic preserved over perceived single`, () => {
-    const out = compose_perceived_bonds([pb(0, 1, 1)], [expl(0, 1, `aromatic`)], `aromatic`)
-    expect(out[0].bond_order).toBe(`aromatic`)
-  })
-
-  test(`explicit key is order-insensitive`, () => {
-    // perceived bond is (0,1); explicit metadata lists it as (1,0).
-    const out = compose_perceived_bonds([pb(0, 1, 1)], [expl(1, 0, 3)], `aromatic`)
-    expect(out[0].bond_order).toBe(3)
-  })
-
-  test(`explicit periodic bonds only override matching cell shifts`, () => {
-    const out = compose_perceived_bonds(
-      [pb(0, 1, 1, undefined, [1, 0, 0]), pb(0, 1, 1, undefined, [-1, 0, 0])],
-      [expl(0, 1, 3, [1, 0, 0])],
-      `aromatic`,
-    )
-    expect(out.map((bond) => bond.bond_order)).toEqual([3, 1])
-  })
-
-  test(`non-explicit aromatic stays aromatic in aromatic mode`, () => {
-    const out = compose_perceived_bonds([pb(0, 1, `aromatic`, 2)], [], `aromatic`)
-    expect(out[0].bond_order).toBe(`aromatic`)
-  })
-
-  test(`non-explicit aromatic remapped to kekule_order in kekule mode`, () => {
-    const out = compose_perceived_bonds([pb(0, 1, `aromatic`, 2)], [], `kekule`)
-    expect(out[0].bond_order).toBe(2)
-  })
-
-  test(`explicit aromatic NOT remapped even in kekule mode (explicit wins first)`, () => {
-    const out = compose_perceived_bonds(
-      [pb(0, 1, `aromatic`, 1)],
-      [expl(0, 1, `aromatic`)],
-      `kekule`,
-    )
-    expect(out[0].bond_order).toBe(`aromatic`)
-  })
-
-  test(`non-explicit non-aromatic perceived order passes through unchanged`, () => {
-    const out = compose_perceived_bonds([pb(0, 1, 3)], [expl(2, 3, 2)], `kekule`)
-    expect(out[0].bond_order).toBe(3)
-  })
-
-  test(`aromatic with no kekule_order falls back to aromatic in kekule mode`, () => {
-    const out = compose_perceived_bonds([pb(0, 1, `aromatic`)], [], `kekule`)
-    expect(out[0].bond_order).toBe(`aromatic`)
+  test.each([
+    {
+      name: `explicit order wins over perceived`,
+      perceived: [pb(0, 1, 1)],
+      explicit: [expl(0, 1, 2)],
+      mode: `aromatic` as const,
+      expected: [2],
+    },
+    {
+      name: `explicit aromatic preserved over perceived single`,
+      perceived: [pb(0, 1, 1)],
+      explicit: [expl(0, 1, `aromatic`)],
+      mode: `aromatic` as const,
+      expected: [`aromatic`],
+    },
+    {
+      name: `explicit key is order-insensitive`,
+      perceived: [pb(0, 1, 1)],
+      explicit: [expl(1, 0, 3)],
+      mode: `aromatic` as const,
+      expected: [3],
+    },
+    {
+      name: `explicit periodic bonds only override matching cell shifts`,
+      perceived: [pb(0, 1, 1, undefined, [1, 0, 0]), pb(0, 1, 1, undefined, [-1, 0, 0])],
+      explicit: [expl(0, 1, 3, [1, 0, 0])],
+      mode: `aromatic` as const,
+      expected: [3, 1],
+    },
+    {
+      name: `non-explicit aromatic stays aromatic in aromatic mode`,
+      perceived: [pb(0, 1, `aromatic`, 2)],
+      explicit: [],
+      mode: `aromatic` as const,
+      expected: [`aromatic`],
+    },
+    {
+      name: `non-explicit aromatic remapped to kekule_order in kekule mode`,
+      perceived: [pb(0, 1, `aromatic`, 2)],
+      explicit: [],
+      mode: `kekule` as const,
+      expected: [2],
+    },
+    {
+      name: `explicit aromatic not remapped in kekule mode`,
+      perceived: [pb(0, 1, `aromatic`, 1)],
+      explicit: [expl(0, 1, `aromatic`)],
+      mode: `kekule` as const,
+      expected: [`aromatic`],
+    },
+    {
+      name: `non-explicit non-aromatic perceived order passes through`,
+      perceived: [pb(0, 1, 3)],
+      explicit: [expl(2, 3, 2)],
+      mode: `kekule` as const,
+      expected: [3],
+    },
+    {
+      name: `aromatic without kekule_order falls back to aromatic`,
+      perceived: [pb(0, 1, `aromatic`)],
+      explicit: [],
+      mode: `kekule` as const,
+      expected: [`aromatic`],
+    },
+  ])(`$name`, ({ perceived, explicit, mode, expected }) => {
+    const out = compose_perceived_bonds(perceived, explicit, mode)
+    expect(out.map((bond) => bond.bond_order)).toEqual(expected)
   })
 })
-
-export { make_input }

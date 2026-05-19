@@ -14,9 +14,6 @@ const covalent_radii: Map<string, number> = new Map(
     .map((el) => [el.symbol, el.covalent_radius as number]),
 )
 
-export const normalize_bond_indices = (idx_1: number, idx_2: number): [number, number] =>
-  idx_1 < idx_2 ? [idx_1, idx_2] : [idx_2, idx_1]
-
 const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
   cell_shift === undefined || cell_shift.every((val) => val === 0)
 
@@ -28,25 +25,34 @@ const format_cell_shift = (cell_shift: Vec3 | undefined): string => {
 const negate_cell_shift = (cell_shift: Vec3): Vec3 =>
   cell_shift.map((val) => (val === 0 ? 0 : -val)) as Vec3
 
+const normalize_bond_endpoints = (
+  site_idx_1: number,
+  site_idx_2: number,
+  cell_shift?: Vec3,
+): Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`> => {
+  const ordered =
+    site_idx_1 < site_idx_2
+      ? { site_idx_1, site_idx_2 }
+      : { site_idx_1: site_idx_2, site_idx_2: site_idx_1 }
+  if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return ordered
+  return {
+    ...ordered,
+    cell_shift: site_idx_1 < site_idx_2 ? cell_shift : negate_cell_shift(cell_shift),
+  }
+}
+
 export const normalize_structure_bond = (
   site_idx_1: number,
   site_idx_2: number,
   order: BondOrder,
   cell_shift?: Vec3,
 ): StructureBond => {
-  const bond =
-    site_idx_1 < site_idx_2
-      ? { site_idx_1, site_idx_2, order }
-      : { site_idx_1: site_idx_2, site_idx_2: site_idx_1, order }
-  if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return bond
-  return {
-    ...bond,
-    cell_shift: site_idx_1 < site_idx_2 ? cell_shift : negate_cell_shift(cell_shift),
-  }
+  const bond = normalize_bond_endpoints(site_idx_1, site_idx_2, cell_shift)
+  return { ...bond, order }
 }
 
 export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): string => {
-  const normalized = normalize_structure_bond(idx_1, idx_2, 1, cell_shift)
+  const normalized = normalize_bond_endpoints(idx_1, idx_2, cell_shift)
   return `${normalized.site_idx_1}-${normalized.site_idx_2}${format_cell_shift(
     normalized.cell_shift,
   )}`

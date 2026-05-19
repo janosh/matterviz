@@ -4,6 +4,7 @@ import { ELEM_SYMBOLS } from '$lib/labels'
 import { create_cart_to_frac } from '$lib/math'
 import type { AnyStructure, Site, StructureBond } from '$lib/structure'
 import { get_pbc_image_sites } from '$lib/structure'
+import { get_bond_key, normalize_structure_bond } from '$lib/structure/bonding'
 import { describe, expect, test } from 'vitest'
 import { get_dummy_structure, make_crystal } from '../setup'
 
@@ -302,46 +303,34 @@ describe(`edit-atoms: image atom detection`, () => {
 type BondPair = {
   site_idx_1: number
   site_idx_2: number
-}
-
-function get_bond_key(idx_1: number, idx_2: number): string {
-  return idx_1 < idx_2 ? `${idx_1}-${idx_2}` : `${idx_2}-${idx_1}`
-}
-
-function make_bond_record(site_idx_1: number, site_idx_2: number): StructureBond {
-  const [idx_1, idx_2] =
-    site_idx_1 < site_idx_2 ? [site_idx_1, site_idx_2] : [site_idx_2, site_idx_1]
-  return { site_idx_1: idx_1, site_idx_2: idx_2, order: 1 }
+  cell_shift?: Vec3
 }
 
 function create_bond_state(calculated: BondPair[] = []) {
   let added: StructureBond[] = []
-  let removed: [number, number][] = []
+  let removed: StructureBond[] = []
+  const key_for = (bond: BondPair | StructureBond): string =>
+    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
 
-  function toggle_bond(site_1: number, site_2: number) {
-    const idx_i = Math.min(site_1, site_2)
-    const idx_j = Math.max(site_1, site_2)
-    const match = ([a, b]: [number, number]) => a === idx_i && b === idx_j
-
-    const key = `${idx_i}-${idx_j}`
-    const added_idx = added.findIndex(
-      (bond) => get_bond_key(bond.site_idx_1, bond.site_idx_2) === key,
-    )
+  function toggle_bond(site_1: number, site_2: number, cell_shift?: Vec3) {
+    const record = normalize_structure_bond(site_1, site_2, 1, cell_shift)
+    const key = key_for(record)
+    const added_idx = added.findIndex((bond) => key_for(bond) === key)
     if (added_idx >= 0) {
       added = added.toSpliced(added_idx, 1)
       return
     }
 
-    const removed_idx = removed.findIndex(match)
+    const removed_idx = removed.findIndex((bond) => key_for(bond) === key)
     if (removed_idx >= 0) {
       removed = removed.toSpliced(removed_idx, 1)
       return
     }
 
-    if (calculated.some((bond) => get_bond_key(bond.site_idx_1, bond.site_idx_2) === key)) {
-      removed = [...removed, [idx_i, idx_j]]
+    if (calculated.some((bond) => key_for(bond) === key)) {
+      removed = [...removed, record]
     } else {
-      added = [...added, make_bond_record(idx_i, idx_j)]
+      added = [...added, record]
     }
   }
 
@@ -376,7 +365,7 @@ describe(`edit-bonds: toggle_bond`, () => {
     // bond_pairs may have site_idx_1 > site_idx_2
     const state = create_bond_state([{ site_idx_1: 5, site_idx_2: 2 }])
     state.toggle_bond(2, 5)
-    expect(state.removed_bonds).toEqual([[2, 5]])
+    expect(state.removed_bonds).toEqual([{ site_idx_1: 2, site_idx_2: 5, order: 1 }])
     expect(state.added_bonds).toEqual([])
   })
 
@@ -398,12 +387,33 @@ describe(`edit-bonds: toggle_bond`, () => {
     expect(state.added_bonds).toEqual([{ site_idx_1: 1, site_idx_2: 4, order: 1 }])
   })
 
+  test(`distinguishes periodic cell shifts for calculated bonds`, () => {
+    const state = create_bond_state([
+      { site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0] },
+      { site_idx_1: 0, site_idx_2: 1, cell_shift: [0, 1, 0] },
+    ])
+
+    state.toggle_bond(1, 0, [-1, 0, 0])
+
+    expect(state.removed_bonds).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [1, 0, 0] },
+    ])
+    expect(state.added_bonds).toEqual([])
+
+    state.toggle_bond(0, 1, [0, 1, 0])
+
+    expect(state.removed_bonds).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [1, 0, 0] },
+      { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [0, 1, 0] },
+    ])
+  })
+
   test(`manages multiple bonds independently`, () => {
     const state = create_bond_state([{ site_idx_1: 0, site_idx_2: 1 }])
     state.toggle_bond(0, 1) // remove calculated
     state.toggle_bond(2, 3) // add new
     state.toggle_bond(4, 5) // add new
-    expect(state.removed_bonds).toEqual([[0, 1]])
+    expect(state.removed_bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
     expect(state.added_bonds).toEqual([
       { site_idx_1: 2, site_idx_2: 3, order: 1 },
       { site_idx_1: 4, site_idx_2: 5, order: 1 },

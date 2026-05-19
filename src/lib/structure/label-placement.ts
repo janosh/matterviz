@@ -18,12 +18,6 @@ const LABEL_OFFSET_DIRECTIONS: Vec3[] = [
   [0, 0, -1],
 ]
 
-const scale_vec3 = (direction: Vec3, length: number): Vec3 => [
-  direction[0] * length,
-  direction[1] * length,
-  direction[2] * length,
-]
-
 const label_direction_score = (
   direction: Vec3,
   bond_directions: Vec3[],
@@ -69,7 +63,7 @@ export const choose_site_label_offset = (bond_directions: Vec3[], base_offset: V
     best_score = score
     best_direction = direction
   }
-  return scale_vec3(best_direction, offset_length)
+  return math.scale(best_direction, offset_length)
 }
 
 const project_to_screen = (
@@ -105,7 +99,7 @@ export const label_screen_position = (
   const direction_y =
     offset_length > LABEL_OFFSET_EPS ? offset_y / offset_length : label_offset[1] >= 0 ? -1 : 1
   const radius_direction = math.normalize_vec3(label_offset, [0, 1, 0])
-  const radius_edge = math.add(atom_position, scale_vec3(radius_direction, visual_radius))
+  const radius_edge = math.add(atom_position, math.scale(radius_direction, visual_radius))
   const radius_screen = project_to_screen(radius_edge, label_camera, size)
   const atom_screen_radius = Math.hypot(
     radius_screen[0] - atom_screen[0],
@@ -118,17 +112,19 @@ export const label_screen_position = (
 
 export const make_label_position_calculator =
   (
-    atom_position: Vec3,
+    _atom_position: Vec3,
     label_offset: LabelOffsetSource,
     visual_radius: number,
     label_screen_margin: number,
   ) =>
-  (_object: Object3D, label_camera: Camera, size: { width: number; height: number }) =>
-    label_screen_position(
-      atom_position,
+  (object: Object3D, label_camera: Camera, size: { width: number; height: number }) => {
+    const world_position = object.getWorldPosition(new Vector3())
+    return label_screen_position(
+      [world_position.x, world_position.y, world_position.z],
       typeof label_offset === `function` ? label_offset() : label_offset,
       visual_radius,
       label_screen_margin,
       label_camera,
       size,
     )
+  }

@@ -72,6 +72,10 @@
     supercell_scaling: string
     show_image_atoms: boolean
   }
+  type BondEditSnapshot = {
+    bonds: StructureBond[] | undefined
+    context: BondEditContext
+  }
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
@@ -256,7 +260,7 @@
       on_fullscreen_change?: EventHandler
       on_camera_move?: EventHandler
       on_camera_reset?: EventHandler
-      on_bonds_change?: (bonds: StructureBond[]) => void
+      on_bonds_change?: (bonds: StructureBond[] | undefined) => void
     }
     & Omit<ComponentProps<typeof StructureControls>, `children` | `onclose`>
     & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
@@ -452,8 +456,7 @@
   let removed_bonds = $state<StructureBond[]>([])
   let bond_order_overrides = $state<StructureBond[]>([])
   let last_emitted_bond_signature = $state<string>()
-  let bond_edit_base_bonds = $state<StructureBond[]>()
-  let bond_edit_context: BondEditContext | undefined
+  let bond_edit_snapshot = $state<BondEditSnapshot>()
   let has_bond_edits = $derived(
     added_bonds.length > 0 || removed_bonds.length > 0 ||
       bond_order_overrides.length > 0,
@@ -465,16 +468,16 @@
     bond_order_overrides = []
   }
 
-  function emit_bonds(next_bonds: StructureBond[]) {
-    const signature = JSON.stringify(next_bonds)
+  function emit_bonds(next_bonds: StructureBond[] | undefined) {
+    const signature = next_bonds === undefined ? `undefined` : JSON.stringify(next_bonds)
     if (signature === last_emitted_bond_signature) return
     last_emitted_bond_signature = signature
     bonds = next_bonds
     on_bonds_change?.(next_bonds)
   }
 
-  const current_source_bonds = (): StructureBond[] =>
-    bonds ?? structure?.properties?.bonds ?? []
+  const current_source_bonds = (): StructureBond[] | undefined =>
+    bonds ?? structure?.properties?.bonds
 
   const current_bond_edit_context = (): BondEditContext => ({
     structure,
@@ -483,46 +486,45 @@
     show_image_atoms,
   })
 
-  const bond_edit_context_changed = (context: BondEditContext): boolean =>
-    bond_edit_context === undefined ||
-    bond_edit_context.structure !== context.structure ||
-    bond_edit_context.cell_type !== context.cell_type ||
-    bond_edit_context.supercell_scaling !== context.supercell_scaling ||
-    bond_edit_context.show_image_atoms !== context.show_image_atoms
+  const bond_edit_context_changed = (
+    previous: BondEditContext,
+    current: BondEditContext,
+  ): boolean =>
+    previous.structure !== current.structure ||
+    previous.cell_type !== current.cell_type ||
+    previous.supercell_scaling !== current.supercell_scaling ||
+    previous.show_image_atoms !== current.show_image_atoms
 
-  const resolve_bond_edit_reset_bonds = (): StructureBond[] | undefined => {
-    if (bond_edit_base_bonds === undefined) return undefined
-    return bond_edit_context?.structure === structure
-      ? bond_edit_base_bonds
-      : structure?.properties?.bonds ?? []
-  }
+  const resolve_bond_edit_reset_bonds = (
+    snapshot: BondEditSnapshot,
+  ): StructureBond[] | undefined =>
+    snapshot.context.structure === structure ? snapshot.bonds : structure?.properties?.bonds
 
   $effect(() => {
+    const snapshot = bond_edit_snapshot
+    if (snapshot === undefined) return
     const context = current_bond_edit_context()
-    if (!bond_edit_context_changed(context)) return
+    if (!bond_edit_context_changed(snapshot.context, context)) return
     untrack(() => {
-      if (bond_edit_base_bonds !== undefined) {
-        const reset_bonds = resolve_bond_edit_reset_bonds()
-        if (reset_bonds !== undefined) emit_bonds(reset_bonds)
-      }
+      emit_bonds(resolve_bond_edit_reset_bonds(snapshot))
       clear_bond_edits()
-      bond_edit_base_bonds = undefined
-      bond_edit_context = context
+      bond_edit_snapshot = undefined
     })
   })
 
   $effect(() => {
     if (!has_bond_edits) {
-      const reset_bonds = resolve_bond_edit_reset_bonds()
-      if (reset_bonds === undefined) return
-      emit_bonds(reset_bonds)
-      bond_edit_base_bonds = undefined
+      if (bond_edit_snapshot === undefined) return
+      emit_bonds(resolve_bond_edit_reset_bonds(bond_edit_snapshot))
+      bond_edit_snapshot = undefined
       return
     }
-    bond_edit_context = current_bond_edit_context()
-    bond_edit_base_bonds ??= current_source_bonds()
+    bond_edit_snapshot ??= {
+      bonds: current_source_bonds(),
+      context: current_bond_edit_context(),
+    }
     const edited_bonds = merge_bond_edits(
-      bond_edit_base_bonds,
+      bond_edit_snapshot.bonds ?? [],
       added_bonds,
       removed_bonds,
       bond_order_overrides,

@@ -237,7 +237,7 @@ describe(`Explicit Bond Metadata`, () => {
     ])
   })
 
-  test(`renders explicit crystal bonds with cell shifts`, () => {
+  test(`parses and renders explicit crystal bonds with cell shifts`, () => {
     const structure = make_crystal(10, [
       [`C`, [0.95, 0.5, 0.5]],
       [`O`, [0.05, 0.5, 0.5]],
@@ -252,31 +252,14 @@ describe(`Explicit Bond Metadata`, () => {
     ])
     expect(bonding.get_bond_key(0, 1, [1, 0, 0])).toBe(`0-1@1,0,0`)
 
-    const bonds = bonding.apply_explicit_bond_metadata(structure, [])
-    expect(bonds).toHaveLength(1)
-    expect(bonds[0].pos_1).toEqual([9.5, 5, 5])
-    expect(bonds[0].pos_2).toEqual([10.5, 5, 5])
-    expect(bonds[0].bond_length).toBeCloseTo(1)
-  })
-
-  test(`creates manually added bond pairs with cell shift translations`, () => {
-    const structure = make_crystal(10, [
-      [`C`, [0.95, 0.5, 0.5]],
-      [`O`, [0.05, 0.5, 0.5]],
-    ])
-
-    const bond = bonding.structure_bond_to_bond_pair(structure, {
-      site_idx_1: 0,
-      site_idx_2: 1,
-      order: 3,
-      cell_shift: [1, 0, 0],
-    })
+    const bond = bonding.structure_bond_to_bond_pair(structure, explicit_bonds[0])
 
     expect(bond.pos_1).toEqual([9.5, 5, 5])
     expect(bond.pos_2).toEqual([10.5, 5, 5])
     expect(bond.bond_length).toBeCloseTo(1)
-    expect(bond.bond_order).toBe(3)
+    expect(bond.bond_order).toBe(2)
     expect(bond.cell_shift).toEqual([1, 0, 0])
+    expect(bonding.apply_explicit_bond_metadata(structure, [])).toHaveLength(1)
   })
 
   test(`keeps explicit periodic bonds with matching site indices distinct`, () => {

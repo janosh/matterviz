@@ -22,6 +22,38 @@ function count_non_white_pixels(buffer: Uint8Array): number {
 const get_structure_bonds = (page: Page) =>
   page.evaluate(() => (globalThis as Record<string, unknown>).structure_bonds)
 
+const collect_console_errors = (page: Page): string[] => {
+  const console_errors: string[] = []
+  page.on(`console`, (msg) => {
+    if (msg.type() === `error`) console_errors.push(msg.text())
+  })
+  return console_errors
+}
+
+const goto_structure_page = async (page: Page): Promise<string[]> => {
+  const console_errors = collect_console_errors(page)
+  await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+  return console_errors
+}
+
+type StructureCanvas = Awaited<ReturnType<typeof wait_for_3d_canvas>>
+
+const click_canvas_center = async (
+  page: Page,
+  canvas: StructureCanvas,
+  button: `left` | `right` = `left`,
+): Promise<void> => {
+  await canvas.scrollIntoViewIfNeeded()
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error(`canvas has no bounding box`)
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button })
+}
+
+const set_scene_props = (page: Page, detail: Record<string, unknown>) =>
+  page.evaluate((props) => {
+    window.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
+  }, detail)
+
 const dispatch_co2 = (page: Page) =>
   page.evaluate(() => {
     const structure = {
@@ -95,12 +127,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`renders bonds and handles rotation/zoom without errors`, async ({ page }) => {
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
-
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    const console_errors = await goto_structure_page(page)
     // wait_for_3d_canvas ensures canvas is visible with non-zero dimensions
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
     const initial = await canvas.screenshot()
@@ -137,12 +164,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`bonds visible from multiple angles with proper gradients`, async ({ page }) => {
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
-
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    const console_errors = await goto_structure_page(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
 
     const box = await canvas.boundingBox()
@@ -180,33 +202,19 @@ test.describe(`Bond component`, () => {
   })
 
   test(`edit-bonds context menu sets explicit bond order`, async ({ page }) => {
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
-
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-    const box = await canvas.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) return
 
-    await canvas.click({
-      button: `right`,
-      position: { x: box.width / 2, y: box.height / 2 },
-    })
+    await click_canvas_center(page, canvas, `right`)
     const menu = page.locator(`#test-structure .bond-context-menu`)
     await expect(menu).toBeVisible()
     await expect(menu).toContainText(`Bond Order`)
     await menu.getByRole(`button`, { name: `Double` }).click()
 
     await expect(menu).toBeHidden()
-    await canvas.click({
-      button: `right`,
-      position: { x: box.width / 2, y: box.height / 2 },
-    })
+    await click_canvas_center(page, canvas, `right`)
     await expect(menu).toBeVisible()
     await expect(menu).toContainText(`Bond Order (2)`)
     await expect
@@ -220,23 +228,12 @@ test.describe(`Bond component`, () => {
   })
 
   test(`structure change during bond edit emits new structure bonds`, async ({ page }) => {
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
-
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-    const box = await canvas.boundingBox()
-    expect(box).toBeTruthy()
-    if (!box) return
 
-    await canvas.click({
-      button: `right`,
-      position: { x: box.width / 2, y: box.height / 2 },
-    })
+    await click_canvas_center(page, canvas, `right`)
     const menu = page.locator(`#test-structure .bond-context-menu`)
     await expect(menu).toBeVisible()
     await menu.getByRole(`button`, { name: `Double` }).click()
@@ -253,12 +250,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`auto bond-order toggle changes rendered bond geometry`, async ({ page }) => {
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
-
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    const console_errors = await goto_structure_page(page)
     await dispatch_co2(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
 
@@ -267,12 +259,7 @@ test.describe(`Bond component`, () => {
     const single_pixels = count_non_white_pixels(single)
     expect(single_pixels).toBeGreaterThan(100)
 
-    // Enable perception via the same scene-props mechanism the test page uses.
-    await page.evaluate(() => {
-      window.dispatchEvent(
-        new CustomEvent(`set-scene-props`, { detail: { auto_bond_order: true } }),
-      )
-    })
+    await set_scene_props(page, { auto_bond_order: true })
 
     // Perception turns both C=O into double bonds: each single cylinder
     // becomes two offset cylinders. The bond geometry is regenerated, so the
@@ -286,12 +273,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`aromatic display toggle switches benzene representation`, async ({ page }) => {
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
-
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    const console_errors = await goto_structure_page(page)
     // Planar benzene ring (6 C in a hexagon, 1.39 Å radius), no explicit
     // bonds -> connectivity ring detected, perception flags it aromatic.
     await page.evaluate(() => {
@@ -327,11 +309,7 @@ test.describe(`Bond component`, () => {
 
     // Switch to Kekulé: ring bonds become alternating single (1 cylinder)
     // and double (2 equal cylinders) -> the rendered bond pattern differs.
-    await page.evaluate(() => {
-      window.dispatchEvent(
-        new CustomEvent(`set-scene-props`, { detail: { aromatic_display: `kekule` } }),
-      )
-    })
+    await set_scene_props(page, { aromatic_display: `kekule` })
     await expect_canvas_changed(canvas, aromatic)
     const kekule = await canvas.screenshot()
     expect(count_non_white_pixels(kekule)).toBeGreaterThan(100)
@@ -340,42 +318,17 @@ test.describe(`Bond component`, () => {
   })
 
   test(`manual override wins over perceived bond order`, async ({ page }) => {
-    const console_errors: string[] = []
-    page.on(`console`, (msg) => {
-      if (msg.type() === `error`) console_errors.push(msg.text())
-    })
-
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    const console_errors = await goto_structure_page(page)
     await dispatch_co2(page)
-    // Enable perception: both C=O connectivity bonds are perceived as double.
-    await page.evaluate(() => {
-      window.dispatchEvent(
-        new CustomEvent(`set-scene-props`, { detail: { auto_bond_order: true } }),
-      )
-    })
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+    await set_scene_props(page, { auto_bond_order: true })
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
 
     // Drive the SAME edit-bonds context menu the existing explicit-order test
     // uses, targeting the C-O1 bond midpoint (world origin -> canvas center).
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
 
-    // The default test-page canvas (800x500) extends below the 720px viewport,
-    // so its center is off-screen. Scroll it into view and right-click at
-    // absolute coords via page.mouse (the same mouse-driven approach the
-    // "site labels" test in this file uses) - this avoids Locator.click's
-    // stale-box re-scroll, which otherwise loops on pointer interception.
-    const click_bond_center = async (button: `left` | `right` = `left`) => {
-      await canvas.scrollIntoViewIfNeeded()
-      const box = await canvas.boundingBox()
-      expect(box).toBeTruthy()
-      if (!box) throw new Error(`canvas has no bounding box`)
-      const cx = box.x + box.width / 2
-      const cy = box.y + box.height / 2
-      await page.mouse.move(cx, cy)
-      await page.mouse.click(cx, cy, { button })
-    }
-
-    await click_bond_center(`right`)
+    await click_canvas_center(page, canvas, `right`)
     const menu = page.locator(`#test-structure .bond-context-menu`)
     await expect(menu).toBeVisible()
     // Pre-override: the menu reports the PERCEIVED order. Perception relabels
@@ -388,7 +341,7 @@ test.describe(`Bond component`, () => {
 
     // Re-open the menu on the same bond: it must now report order 3, proving
     // the manual bond_order_overrides path takes precedence over perception.
-    await click_bond_center(`right`)
+    await click_canvas_center(page, canvas, `right`)
     await expect(menu).toBeVisible()
     await expect(menu).toContainText(`Bond Order (3)`)
     // The override is recorded in the bound bonds list (globalThis hook),
@@ -400,8 +353,10 @@ test.describe(`Bond component`, () => {
     await page.keyboard.press(`Enter`)
     await expect(menu).toBeHidden()
 
-    await click_bond_center()
+    await click_canvas_center(page, canvas)
     await expect.poll(() => get_structure_bonds(page)).toEqual([])
+    await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
     expect(console_errors).toHaveLength(0)
   })
 

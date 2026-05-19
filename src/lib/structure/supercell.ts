@@ -10,9 +10,6 @@ type SupercellType = Crystal & {
   supercell_scaling?: Vec3
 }
 
-const cell_index = ([cell_x, cell_y, cell_z]: Vec3, [scale_x, scale_y]: Vec3): number =>
-  cell_z * scale_x * scale_y + cell_y * scale_x + cell_x
-
 const mod = (value: number, divisor: number): number => ((value % divisor) + divisor) % divisor
 
 const replicate_bonds_for_supercell = (
@@ -22,8 +19,12 @@ const replicate_bonds_for_supercell = (
 ): StructureBond[] => {
   const [scale_x, scale_y, scale_z] = scaling_factors
   const replicated: StructureBond[] = []
-  for (const source_cell of generate_lattice_points(scaling_factors)) {
-    const source_offset = cell_index(source_cell, scaling_factors) * n_sites
+  const site_offset = ([cell_x, cell_y, cell_z]: Vec3): number =>
+    (cell_z * scale_x * scale_y + cell_y * scale_x + cell_x) * n_sites
+  for (const [source_cell_idx, source_cell] of generate_lattice_points(
+    scaling_factors,
+  ).entries()) {
+    const source_offset = source_cell_idx * n_sites
     for (const { site_idx_1, site_idx_2, order, cell_shift = [0, 0, 0] } of bonds) {
       const target_raw: Vec3 = [
         source_cell[0] + cell_shift[0],
@@ -38,7 +39,7 @@ const replicate_bonds_for_supercell = (
       const supercell_shift = target_raw.map((val, idx) =>
         Math.floor(val / scaling_factors[idx]),
       ) as Vec3
-      const target_offset = cell_index(target_cell, scaling_factors) * n_sites
+      const target_offset = site_offset(target_cell)
       replicated.push(
         normalize_structure_bond(
           site_idx_1 + source_offset,
