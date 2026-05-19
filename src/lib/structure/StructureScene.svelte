@@ -62,7 +62,7 @@
     get_bond_render_matrices,
     normalize_structure_bond,
   } from './bonding'
-  import { CanvasTooltip } from './index'
+  import { CanvasTooltip, perceive_bond_orders } from './index'
   import {
     choose_site_label_offset,
     LABEL_OFFSET_EPS,
@@ -143,6 +143,8 @@
     bond_thickness = DEFAULTS.structure.bond_thickness,
     bond_color = DEFAULTS.structure.bond_color,
     bonding_strategy = DEFAULTS.structure.bonding_strategy,
+    auto_bond_order = DEFAULTS.structure.auto_bond_order,
+    aromatic_display = DEFAULTS.structure.aromatic_display,
     bonding_options = {},
     fov = DEFAULTS.structure.fov,
     initial_zoom = DEFAULTS.structure.initial_zoom,
@@ -231,6 +233,8 @@
     bond_thickness?: number
     bond_color?: string
     bonding_strategy?: BondingStrategy
+    auto_bond_order?: boolean
+    aromatic_display?: `aromatic` | `kekule`
     bonding_options?: Record<string, unknown>
     fov?: number
     ambient_light?: number
@@ -758,8 +762,26 @@
     return has_visible_element && prop_visible
   }
 
+  let perceived_bond_pairs: BondPair[] = $derived.by(() => {
+    if (!auto_bond_order || !structure?.sites || bond_pairs.length === 0) {
+      return bond_pairs
+    }
+    const total_charge = (`charge` in structure ? structure.charge : 0) ?? 0
+    const perceived = perceive_bond_orders(structure.sites, bond_pairs, {
+      total_charge,
+    })
+    if (aromatic_display === `kekule`) {
+      return perceived.map((bond) =>
+        bond.bond_order === `aromatic` && bond.kekule_order !== undefined
+          ? { ...bond, bond_order: bond.kekule_order }
+          : bond
+      )
+    }
+    return perceived
+  })
+
   let filtered_bond_pairs = $derived.by(() => {
-    if (!structure?.sites) return bond_pairs
+    if (!structure?.sites) return perceived_bond_pairs
 
     // Build set of removed bond keys for efficient lookup
     const removed_keys = new Set(
@@ -775,7 +797,7 @@
     )
 
     // Filter calculated bonds: exclude removed and hidden
-    const calculated = bond_pairs
+    const calculated = perceived_bond_pairs
       .filter(({ site_idx_1, site_idx_2 }) => {
         if (removed_keys.has(get_bond_key(site_idx_1, site_idx_2))) return false
         return is_site_visible(site_idx_1) && is_site_visible(site_idx_2)

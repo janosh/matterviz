@@ -1094,11 +1094,15 @@
       title="Bonds"
       current_values={{
         bonding_strategy: scene_props.bonding_strategy,
+        auto_bond_order: scene_props.auto_bond_order,
+        aromatic_display: scene_props.aromatic_display,
         bond_color: scene_props.bond_color,
         bond_thickness: scene_props.bond_thickness,
       }}
       on_reset={() => {
         scene_props.bonding_strategy = DEFAULTS.structure.bonding_strategy
+        scene_props.auto_bond_order = DEFAULTS.structure.auto_bond_order
+        scene_props.aromatic_display = DEFAULTS.structure.aromatic_display
         scene_props.bond_color = DEFAULTS.structure.bond_color
         scene_props.bond_thickness = DEFAULTS.structure.bond_thickness
       }}
@@ -1115,6 +1119,28 @@
           {/each}
         </select>
       </label>
+      <label
+        {@attach tooltip({
+          content: SETTINGS_CONFIG.structure.auto_bond_order.description,
+        })}
+      >
+        <input type="checkbox" bind:checked={scene_props.auto_bond_order} />
+        Auto bond order (perceive double/triple/aromatic)
+      </label>
+      {#if scene_props.auto_bond_order}
+        <label>
+          Aromatic display <select bind:value={scene_props.aromatic_display}>
+            {#each Object.entries(
+              SETTINGS_CONFIG.structure.aromatic_display.enum ?? {},
+            ) as
+              [value, label]
+              (value)
+            }
+              <option {value}>{label}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <label>
         Color <input type="color" bind:value={scene_props.bond_color} />
       </label>

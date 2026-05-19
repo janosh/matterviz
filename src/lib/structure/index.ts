@@ -84,6 +84,12 @@ export type BondPair = {
   transform_matrix: Float32Array
 }
 
+export type {
+  PerceivedBond,
+  PerceptionOptions,
+} from '$lib/structure/bond-order-perception'
+export { perceive_bond_orders } from '$lib/structure/bond-order-perception'
+
 export function get_element_counts(structure: AnyStructure) {
   const elements: CompositionType = {}
   for (const site of structure.sites) {
