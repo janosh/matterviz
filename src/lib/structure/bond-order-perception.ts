@@ -151,6 +151,62 @@ function assign_bond_orders(
   return order
 }
 
+// SSSR ring perception via spanning-tree cycle basis. Builds a BFS tree
+// per connected component; each back-edge (non-tree edge to an already-
+// visited node) induces one fundamental cycle. Deduplicates by sorted
+// vertex set so fused rings produce one entry per ring, not per back-edge.
+export function find_rings(
+  n: number,
+  edges: [number, number][],
+): number[][] {
+  const adj = new Map<number, Set<number>>()
+  for (let i = 0; i < n; i++) adj.set(i, new Set())
+  for (const [a, b] of edges) {
+    adj.get(a)!.add(b)
+    adj.get(b)!.add(a)
+  }
+  const parent = new Map<number, number>()
+  const seen = new Set<number>()
+  const rings: number[][] = []
+  for (let s = 0; s < n; s++) {
+    if (seen.has(s)) continue
+    const queue = [s]
+    seen.add(s)
+    parent.set(s, -1)
+    while (queue.length) {
+      const u = queue.shift()!
+      for (const v of adj.get(u)!) {
+        if (!seen.has(v)) {
+          seen.add(v)
+          parent.set(v, u)
+          queue.push(v)
+        } else if (parent.get(u) !== v) {
+          const path_u: number[] = []
+          const path_v: number[] = []
+          const anc_u = new Map<number, number>()
+          let d = 0
+          for (let x = u; x !== -1; x = parent.get(x)!) anc_u.set(x, d++)
+          for (let x = v; x !== -1; x = parent.get(x)!) {
+            if (anc_u.has(x)) {
+              for (let y = u; y !== x; y = parent.get(y)!) path_u.push(y)
+              for (let y = v; y !== x; y = parent.get(y)!) path_v.push(y)
+              const ring = [x, ...path_u, ...path_v.reverse()]
+              if (ring.length >= 3) rings.push(ring)
+              break
+            }
+          }
+        }
+      }
+    }
+  }
+  const uniq = new Map<string, number[]>()
+  for (const r of rings) {
+    const key = [...r].sort((x, y) => x - y).join(`,`)
+    if (!uniq.has(key)) uniq.set(key, r)
+  }
+  return [...uniq.values()]
+}
+
 function order_to_bond_order(o: number): BondOrder {
   return o >= 3 ? 3 : o === 2 ? 2 : 1
 }

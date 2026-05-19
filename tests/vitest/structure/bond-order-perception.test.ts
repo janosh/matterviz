@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { perceive_bond_orders, split_fragments, is_main_group } from '$lib/structure/bond-order-perception'
+import { perceive_bond_orders, split_fragments, is_main_group, find_rings } from '$lib/structure/bond-order-perception'
 import type { BondPair } from '$lib/structure'
 
 function make_input(
@@ -134,6 +134,21 @@ describe(`charge support`, () => {
     const r = perceive_bond_orders(sites, bonds, { total_charge: -2 })
     expect(r.map((b) => b.bond_order).sort()).toEqual([1, 1, 2])
     expect(r.every((b) => b.perceived)).toBe(true)
+  })
+})
+
+describe(`ring perception`, () => {
+  test(`benzene ring → one 6-membered ring`, () => {
+    const edges: [number, number][] = [
+      [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0],
+    ]
+    const rings = find_rings(6, edges)
+    expect(rings).toHaveLength(1)
+    expect(rings[0]).toHaveLength(6)
+  })
+
+  test(`acyclic chain → no rings`, () => {
+    expect(find_rings(3, [[0, 1], [1, 2]])).toHaveLength(0)
   })
 })
 
