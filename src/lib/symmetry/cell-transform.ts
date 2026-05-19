@@ -8,6 +8,13 @@ import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
 
 export type CellType = `original` | `conventional` | `primitive`
 
+const transferable_properties = (properties: Crystal[`properties`]): Crystal[`properties`] => {
+  if (properties === undefined) return undefined
+  const rest = { ...properties }
+  delete rest.bonds
+  return Object.keys(rest).length > 0 ? rest : undefined
+}
+
 // Convert a MoyoCell (from moyo-wasm symmetry analysis) to Crystal format.
 // MoyoCell has a flat 9-element basis array and atomic numbers; this converts to
 // the full Crystal with lattice parameters and element symbols.
@@ -56,7 +63,14 @@ export function moyo_cell_to_structure(
     pbc: original_structure.lattice.pbc,
     ...lattice_params,
   }
-  return { lattice, sites, charge: original_structure.charge, id: original_structure.id }
+  const properties = transferable_properties(original_structure.properties)
+  return {
+    lattice,
+    sites,
+    charge: original_structure.charge,
+    id: original_structure.id,
+    ...(properties === undefined ? {} : { properties }),
+  }
 }
 
 // Get the conventional (standardized) cell from symmetry analysis data.

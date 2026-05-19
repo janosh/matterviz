@@ -53,12 +53,25 @@ export type Molecule = {
   sites: Site[]
   charge?: number
   id?: string
-  properties?: Record<string, unknown>
+  properties?: StructureProperties
 }
 export type Crystal = Molecule & { lattice: LatticeType }
 export type AnyStructure = Crystal | Molecule
 
-// Bond pair with position vectors, site indices, bond length, strength score, and transformation matrix
+export type BondOrder = 1 | 1.5 | 2 | 3 | `aromatic`
+
+export type StructureBond = {
+  site_idx_1: number
+  site_idx_2: number
+  order: BondOrder
+  // Integer lattice-vector offset applied to site_idx_2 relative to site_idx_1.
+  cell_shift?: Vec3
+}
+
+export type StructureProperties = Record<string, unknown> & { bonds?: StructureBond[] }
+
+// Bond pair with position vectors, site indices, bond length, strength score,
+// optional explicit bond order, and transformation matrix.
 export type BondPair = {
   pos_1: Vec3
   pos_2: Vec3
@@ -66,8 +79,16 @@ export type BondPair = {
   site_idx_2: number
   bond_length: number
   strength: number
+  bond_order?: BondOrder
+  cell_shift?: Vec3
   transform_matrix: Float32Array
 }
+
+export type { PerceivedBond, PerceptionOptions } from '$lib/structure/bond-order-perception'
+export {
+  compose_perceived_bonds,
+  perceive_bond_orders,
+} from '$lib/structure/bond-order-perception'
 
 export function get_element_counts(structure: AnyStructure) {
   const elements: CompositionType = {}

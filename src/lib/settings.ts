@@ -138,6 +138,8 @@ export interface SettingsConfig {
     show_image_atoms: SettingType<boolean>
     sphere_segments: SettingType<number>
     bond_thickness: SettingType<number>
+    auto_bond_order: SettingType<boolean>
+    aromatic_display: SettingType<`aromatic` | `kekule`>
     show_bonds: SettingType<ShowBonds>
     bond_color: SettingType<string>
     bonding_strategy: SettingType<BondingStrategy>
@@ -410,6 +412,15 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       minimum: 0.01,
       maximum: 1.0,
     },
+    auto_bond_order: {
+      value: false,
+      description: `Automatically perceive double/triple/aromatic bonds from geometry (main-group/organic; metals fall back to single)`,
+    },
+    aromatic_display: {
+      value: `aromatic`,
+      description: `How to render perceived aromatic rings`,
+      enum: { aromatic: `Aromatic (1.5)`, kekule: `Kekulé (alternating)` },
+    },
     show_bonds: {
       value: `always`,
       description: `When to display bonds between atoms`,
@@ -547,11 +558,11 @@ export const SETTINGS_CONFIG: SettingsConfig = {
       maximum: 5,
     },
     site_label_color: {
-      value: `#ffffff`,
+      value: `#111111`,
       description: `Text color for atom labels`,
     },
     site_label_bg_color: {
-      value: `#000000`,
+      value: `color-mix(in srgb, #000000 0%, transparent)`,
       description: `Background color for atom labels`,
     },
     site_label_padding: {

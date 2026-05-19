@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Crystal } from '$lib'
   import { DEFAULTS } from '$lib/settings'
-  import type { MeasureMode } from '$lib/structure'
+  import type { MeasureMode, StructureBond } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
   import StructureScene from '$lib/structure/StructureScene.svelte'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
@@ -23,6 +23,7 @@
   let supercell_scaling = $state(`1x1x1`)
   let show_image_atoms = $state(true)
   let fullscreen = $state(false)
+  let bonds = $state<StructureBond[] | undefined>()
 
   // capture event data for testing
   let event_calls = $state<{ event: string; data: unknown }[]>([])
@@ -171,6 +172,11 @@
     if (typeof window === `undefined`) return
     ;(globalThis as Record<string, unknown>).event_calls = event_calls
   })
+
+  $effect(() => {
+    if (typeof window === `undefined`) return
+    ;(globalThis as Record<string, unknown>).structure_bonds = bonds
+  })
 </script>
 
 <h1>Structure Component Test Page</h1>
@@ -249,6 +255,7 @@
         [`set-measured`, () => measured_sites = [0, 1, 2]],
         [`clear-measured`, () => measured_sites = []],
         [`set-edit-atoms`, () => measure_mode = `edit-atoms`],
+        [`set-edit-bonds`, () => measure_mode = `edit-bonds`],
         [`set-distance-mode`, () => measure_mode = `distance`],
       ] as const as
       [btn_type, onclick]
@@ -292,6 +299,7 @@
   bind:supercell_scaling
   bind:show_image_atoms
   bind:fullscreen
+  bind:bonds
 />
 
 <div data-testid="pane-open-status" style="margin-top: 10px">

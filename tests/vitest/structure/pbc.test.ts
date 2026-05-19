@@ -323,6 +323,23 @@ test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
   assert_xyz_matches_lattice(structure.lattice.matrix, img_abc, img_xyz)
 })
 
+test(`get_pbc_image_sites preserves explicit periodic bond metadata`, () => {
+  const structure = make_crystal(10, [
+    [`C`, [0.95, 0.5, 0.5]],
+    [`O`, [0.05, 0.5, 0.5]],
+  ])
+  structure.properties = {
+    bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
+  }
+
+  const with_images = get_pbc_image_sites(structure, { tolerance: 0.1 })
+
+  expect(with_images.sites).toHaveLength(4)
+  expect(with_images.properties?.bonds).toEqual([
+    { site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] },
+  ])
+})
+
 test(`find_image_atoms finds correct images for trajectory-like cell`, async () => {
   const trajectory_like_extxyz = `8
 Lattice="15.0 0.0 0.0 0.0 15.0 0.0 0.0 0.0 15.0" Properties=species:S:1:pos:R:3 pbc="T T T"

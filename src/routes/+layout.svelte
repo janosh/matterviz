@@ -69,12 +69,14 @@
   })
 </script>
 
-<!-- z-index: 10000000001 needed to render above Structure control toggles -->
+<!-- z-index: above nav dropdown and Structure control toggles -->
 <CmdPalette
   bind:open={cmd_palette_open}
   {actions}
   placeholder="Go to..."
-  dialog_style="z-index: 10000000001"
+  dialog_style="left: 50%; margin: 0; transform: translateX(-50%); z-index: var(--z-index-overlay-dialog)"
+  portal={{ active: true }}
+  ulOptionsStyle="z-index: var(--z-index-overlay-options)"
 />
 <GitHubCorner
   href={pkg.repository}
@@ -103,11 +105,14 @@
   }}
   aria-label="Main navigation"
   {page}
-  --nav-dropdown-z-index="100000001"
+  --nav-dropdown-z-index="var(--z-index-overlay-nav)"
 >
-  <!-- Nav dropdown must be above Structure.svelte's --struct-buttons-z-index (100000000) -->
+  <!-- Nav dropdown uses --z-index-overlay-nav to sit above overlay controls. -->
   <button
-    onclick={() => cmd_palette_open = true}
+    onclick={(event: MouseEvent) => {
+      event.stopPropagation()
+      cmd_palette_open = true
+    }}
     aria-label="Open search"
     style="background: transparent"
     {@attach tooltip({ content: `Search (⌘K)` })}

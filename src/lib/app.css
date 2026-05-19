@@ -20,6 +20,13 @@
   --sms-li-active-bg: light-dark(rgba(100, 149, 237, 0.25), cornflowerblue);
   --sms-selected-bg: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.15));
   --border-radius: 3pt;
+
+  /* App-wide overlay stack: controls < fullscreen/nav < dialogs < floating options.
+     These must exceed Threlte HTML overlays, which use very high z-index values. */
+  --z-index-overlay-controls: 100000000;
+  --z-index-overlay-nav: 100000001;
+  --z-index-overlay-dialog: 100000002;
+  --z-index-overlay-options: 100000003;
 }
 
 /* App-shell styles: page layout, typography, headings, navigation.

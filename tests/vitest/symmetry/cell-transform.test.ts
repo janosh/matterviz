@@ -304,4 +304,21 @@ describe(`transform_cell`, () => {
     // Must have different lattice parameter (3 vs original's 4)
     expect(result.lattice.a).toBeCloseTo(3, 5)
   })
+
+  test.each([`conventional`, `primitive`] as const)(
+    `preserves non-bond structure properties for %s cell transforms`,
+    (cell_type) => {
+      const structure = {
+        ...original,
+        properties: {
+          bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 as const }],
+          custom_metadata: `kept`,
+        },
+      }
+
+      const result = transform_cell(structure, cell_type, sym_data)
+
+      expect(result.properties).toEqual({ custom_metadata: `kept` })
+    },
+  )
 })

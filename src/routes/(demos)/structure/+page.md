@@ -68,6 +68,82 @@
 />
 ```
 
+## Explicit Bond Orders
+
+MatterViz accepts explicit bond metadata on `structure.properties.bonds`. The
+viewer still computes normal proximity bonds, but any matching explicit entries
+set the rendered order, and explicit-only entries are added to the scene.
+
+Right-click a bond while in **Edit Bonds** mode to change its order interactively.
+
+```svelte example
+<script lang="ts">
+  import { Structure } from 'matterviz'
+  import type { Molecule } from 'matterviz'
+
+  const bond_order_playground: Molecule = {
+    id: `explicit-bond-order-playground`,
+    sites: [
+      {
+        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+        abc: [-2.4, 0, 0],
+        xyz: [-2.4, 0, 0],
+        label: `C1`,
+        properties: {},
+      },
+      {
+        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+        abc: [-1.2, 0, 0],
+        xyz: [-1.2, 0, 0],
+        label: `C2`,
+        properties: {},
+      },
+      {
+        species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+        abc: [0, 0, 0],
+        xyz: [0, 0, 0],
+        label: `O1`,
+        properties: {},
+      },
+      {
+        species: [{ element: `N`, occu: 1, oxidation_state: 0 }],
+        abc: [1.2, 0, 0],
+        xyz: [1.2, 0, 0],
+        label: `N1`,
+        properties: {},
+      },
+      {
+        species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+        abc: [-1.2, 1.25, 0],
+        xyz: [-1.2, 1.25, 0],
+        label: `C3`,
+        properties: {},
+      },
+    ],
+    properties: {
+      bonds: [
+        { site_idx_1: 0, site_idx_2: 1, order: 1 },
+        { site_idx_1: 1, site_idx_2: 2, order: 2 },
+        { site_idx_1: 2, site_idx_2: 3, order: 3 },
+        { site_idx_1: 1, site_idx_2: 4, order: `aromatic` },
+      ],
+    },
+  }
+</script>
+
+<Structure
+  structure={bond_order_playground}
+  show_controls="always"
+  scene_props={{
+    camera_position: [0, 0, 12],
+    show_site_labels: true,
+    show_site_indices: true,
+    bonding_options: { strength_threshold: 10 },
+  }}
+  style="height: 520px"
+/>
+```
+
 ## Different Crystal Systems
 
 Showcasing structures with different crystal systems.

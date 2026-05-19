@@ -492,7 +492,7 @@
           offset={{ x: 12, y: -12 }}
           bg_color={hover_data.surface_color}
           fixed
-          style="z-index: 100000001; backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+          style="z-index: var(--z-index-overlay-nav, 100000001); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
         >
           <FermiSurfaceTooltip {hover_data} tooltip={tooltip_config} />
         </PlotTooltip>
@@ -555,7 +555,10 @@
     top: var(--fermi-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--fermi-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: clamp(6pt, 1cqmin, 9pt);
-    z-index: var(--fermi-buttons-z-index, 100000000);
+    z-index: var(
+      --fermi-buttons-z-index,
+      var(--z-index-overlay-controls, 100000000)
+    );
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;

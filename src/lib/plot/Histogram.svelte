@@ -1613,8 +1613,8 @@
     left: 0;
     width: 100vw !important;
     height: 100vh !important;
-    /* Must be higher than Structure.svelte's --struct-buttons-z-index (100000000) */
-    z-index: var(--histogram-fullscreen-z-index, 100000001);
+    /* Must be higher than Structure.svelte's --struct-buttons-z-index. */
+    z-index: var(--histogram-fullscreen-z-index, var(--z-index-overlay-nav, 100000001));
     margin: 0;
     border-radius: 0;
     background: var(--histogram-fullscreen-bg, var(--histogram-bg, var(--plot-bg)));

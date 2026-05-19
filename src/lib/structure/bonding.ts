@@ -3,7 +3,7 @@
 import { element_data } from '$lib/element'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure, BondPair, Site } from '$lib/structure'
+import type { AnyStructure, BondOrder, BondPair, Site, StructureBond } from '$lib/structure'
 
 type SpatialGrid = Map<string, number[]>
 
@@ -13,6 +13,296 @@ const covalent_radii: Map<string, number> = new Map(
     .filter((el) => el.covalent_radius !== null)
     .map((el) => [el.symbol, el.covalent_radius as number]),
 )
+
+const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
+  cell_shift === undefined || cell_shift.every((val) => val === 0)
+
+const format_cell_shift = (cell_shift: Vec3 | undefined): string => {
+  if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return ``
+  return `@${cell_shift.join(`,`)}`
+}
+
+const negate_cell_shift = (cell_shift: Vec3): Vec3 =>
+  cell_shift.map((val) => (val === 0 ? 0 : -val)) as Vec3
+
+const normalize_bond_endpoints = (
+  site_idx_1: number,
+  site_idx_2: number,
+  cell_shift?: Vec3,
+): Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`> => {
+  const ordered =
+    site_idx_1 < site_idx_2
+      ? { site_idx_1, site_idx_2 }
+      : { site_idx_1: site_idx_2, site_idx_2: site_idx_1 }
+  if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return ordered
+  return {
+    ...ordered,
+    cell_shift: site_idx_1 < site_idx_2 ? cell_shift : negate_cell_shift(cell_shift),
+  }
+}
+
+export const normalize_structure_bond = (
+  site_idx_1: number,
+  site_idx_2: number,
+  order: BondOrder,
+  cell_shift?: Vec3,
+): StructureBond => {
+  const bond = normalize_bond_endpoints(site_idx_1, site_idx_2, cell_shift)
+  return { ...bond, order }
+}
+
+export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): string => {
+  const normalized = normalize_bond_endpoints(idx_1, idx_2, cell_shift)
+  return `${normalized.site_idx_1}-${normalized.site_idx_2}${format_cell_shift(
+    normalized.cell_shift,
+  )}`
+}
+
+export const merge_bond_edits = (
+  base_bonds: StructureBond[],
+  added: StructureBond[],
+  removed: StructureBond[],
+  overrides: StructureBond[],
+): StructureBond[] => {
+  const key_for = (bond: StructureBond): string =>
+    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+  const merged = new Map(base_bonds.map((bond) => [key_for(bond), bond]))
+  for (const bond of removed) merged.delete(key_for(bond))
+  // Apply additions before overrides so user-set bond orders win even if
+  // callers accidentally pass overlapping edit lists.
+  for (const bond of added) merged.set(key_for(bond), bond)
+  for (const bond of overrides) merged.set(key_for(bond), bond)
+  return [...merged.values()]
+}
+
+const is_record = (value: unknown): value is Record<string, unknown> =>
+  typeof value === `object` && value !== null
+
+export function normalize_bond_order(order: unknown): BondOrder | null {
+  if (order === `aromatic`) return order
+  if (order === 1 || order === 1.5 || order === 2 || order === 3) return order
+  return null
+}
+
+function normalize_cell_shift(cell_shift: unknown): Vec3 | undefined | null {
+  if (cell_shift === undefined) return undefined
+  if (!Array.isArray(cell_shift) || cell_shift.length !== 3) return null
+  return cell_shift.some((val) => typeof val !== `number` || !Number.isInteger(val))
+    ? null
+    : (cell_shift as Vec3)
+}
+
+function lattice_translation(structure: AnyStructure, cell_shift: Vec3 | undefined): Vec3 {
+  if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return [0, 0, 0]
+  if (!(`lattice` in structure)) {
+    throw new Error(`Explicit bond cell_shift requires a crystal lattice`)
+  }
+  const [shift_a, shift_b, shift_c] = cell_shift
+  const [vec_a, vec_b, vec_c] = structure.lattice.matrix
+  return math.add(
+    math.scale(vec_a, shift_a),
+    math.scale(vec_b, shift_b),
+    math.scale(vec_c, shift_c),
+  )
+}
+
+export function structure_bond_to_bond_pair(
+  structure: AnyStructure,
+  bond: StructureBond,
+): BondPair {
+  const { site_idx_1, site_idx_2, order, cell_shift } = bond
+  const site_1 = structure.sites[site_idx_1]
+  const site_2 = structure.sites[site_idx_2]
+  if (!site_1 || !site_2) {
+    throw new Error(
+      `Cannot create bond pair for invalid site indices ${site_idx_1}, ${site_idx_2}`,
+    )
+  }
+  const pos_1 = site_1.xyz
+  const pos_2 = math.add(site_2.xyz, lattice_translation(structure, cell_shift))
+  return {
+    pos_1,
+    pos_2,
+    site_idx_1,
+    site_idx_2,
+    bond_length: math.euclidean_dist(pos_1, pos_2),
+    strength: 1,
+    bond_order: order,
+    cell_shift,
+    transform_matrix: compute_bond_transform(pos_1, pos_2),
+  }
+}
+
+export function get_explicit_bond_metadata(structure: AnyStructure): StructureBond[] {
+  const raw_bonds = structure.properties?.bonds
+  if (raw_bonds === undefined) return []
+  if (!Array.isArray(raw_bonds)) {
+    console.warn(`Ignoring structure.properties.bonds because it is not an array`)
+    return []
+  }
+
+  const explicit_bonds = new Map<string, StructureBond>()
+  for (const [entry_idx, raw_bond] of raw_bonds.entries()) {
+    if (!is_record(raw_bond)) {
+      console.warn(`Ignoring invalid explicit bond at index ${entry_idx}: expected object`)
+      continue
+    }
+    const { order } = raw_bond
+    const site_idx_1 = raw_bond.site_idx_1
+    const site_idx_2 = raw_bond.site_idx_2
+    if (
+      typeof site_idx_1 !== `number` ||
+      typeof site_idx_2 !== `number` ||
+      !Number.isInteger(site_idx_1) ||
+      !Number.isInteger(site_idx_2)
+    ) {
+      console.warn(
+        `Ignoring invalid explicit bond at index ${entry_idx}: site indices must be integers`,
+      )
+      continue
+    }
+    if (
+      site_idx_1 < 0 ||
+      site_idx_2 < 0 ||
+      site_idx_1 >= structure.sites.length ||
+      site_idx_2 >= structure.sites.length
+    ) {
+      console.warn(
+        `Ignoring invalid explicit bond at index ${entry_idx}: site indices ${
+          site_idx_1
+        }, ${site_idx_2} are out of range for ${structure.sites.length} sites`,
+      )
+      continue
+    }
+    if (site_idx_1 === site_idx_2) {
+      console.warn(`Ignoring invalid explicit bond at index ${entry_idx}: endpoints match`)
+      continue
+    }
+    const bond_order = normalize_bond_order(order)
+    if (bond_order === null) {
+      console.warn(
+        `Ignoring invalid explicit bond at index ${entry_idx}: unsupported order ${String(
+          order,
+        )}`,
+      )
+      continue
+    }
+    const cell_shift = normalize_cell_shift(raw_bond.cell_shift)
+    if (cell_shift === null) {
+      console.warn(
+        `Ignoring invalid explicit bond at index ${entry_idx}: cell_shift must be three integers`,
+      )
+      continue
+    }
+    if (
+      cell_shift !== undefined &&
+      !is_zero_cell_shift(cell_shift) &&
+      !(`lattice` in structure)
+    ) {
+      console.warn(
+        `Ignoring invalid explicit bond at index ${entry_idx}: cell_shift requires a crystal lattice`,
+      )
+      continue
+    }
+
+    const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
+    if (explicit_bonds.has(key)) {
+      console.warn(
+        `Duplicate explicit bond definition at index ${entry_idx} for site indices ${
+          site_idx_1
+        }, ${site_idx_2} with order ${bond_order}; will overwrite the previous entry`,
+      )
+    }
+    explicit_bonds.set(
+      key,
+      normalize_structure_bond(site_idx_1, site_idx_2, bond_order, cell_shift),
+    )
+  }
+  return [...explicit_bonds.values()]
+}
+
+export function apply_explicit_bond_metadata(
+  structure: AnyStructure,
+  bonds: BondPair[],
+): BondPair[] {
+  const explicit_bonds = get_explicit_bond_metadata(structure)
+  if (explicit_bonds.length === 0) return bonds
+
+  const explicit_by_key = new Map(
+    explicit_bonds.map((bond) => [
+      get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift),
+      bond,
+    ]),
+  )
+  const merged = bonds.map((bond) => {
+    const key = get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+    const explicit = explicit_by_key.get(key)
+    if (!explicit) return bond
+    explicit_by_key.delete(key)
+    return { ...bond, bond_order: explicit.order }
+  })
+
+  for (const explicit_bond of explicit_by_key.values()) {
+    merged.push(structure_bond_to_bond_pair(structure, explicit_bond))
+  }
+
+  return merged
+}
+
+export function scale_and_offset_bond_matrix(
+  transform_matrix: Float32Array,
+  offset: number,
+  radius_scale: number,
+): Float32Array {
+  const matrix = new Float32Array(transform_matrix)
+  // Column-major 4x4 layout: 0-2 are the right vector, 8-10 are the forward
+  // vector. Scale orientation columns for cylinder radius, not translation.
+  for (const matrix_idx of [0, 1, 2, 8, 9, 10]) {
+    matrix[matrix_idx] *= radius_scale
+  }
+
+  const right_len = Math.hypot(matrix[0], matrix[1], matrix[2]) || 1
+  const offset_dir: Vec3 = [
+    matrix[0] / right_len,
+    matrix[1] / right_len,
+    matrix[2] / right_len,
+  ]
+  matrix[12] += offset_dir[0] * offset
+  matrix[13] += offset_dir[1] * offset
+  matrix[14] += offset_dir[2] * offset
+  return matrix
+}
+
+export function get_bond_render_matrices(
+  bond: BondPair,
+  bond_thickness: number,
+): Float32Array[] {
+  const order = bond.bond_order ?? 1
+  const gap = bond_thickness * 1.8
+  const offsets_and_scales: [number, number][] =
+    order === 2
+      ? [
+          [-gap / 2, 0.65],
+          [gap / 2, 0.65],
+        ]
+      : order === 3
+        ? [
+            [-gap, 0.55],
+            [0, 0.55],
+            [gap, 0.55],
+          ]
+        : order === 1.5 || order === `aromatic`
+          ? [
+              [-gap / 2, 0.75],
+              [gap / 2, 0.4],
+            ]
+          : []
+  return offsets_and_scales.length === 0
+    ? [bond.transform_matrix]
+    : offsets_and_scales.map(([offset, radius_scale]) =>
+        scale_and_offset_bond_matrix(bond.transform_matrix, offset, radius_scale),
+      )
+}
 
 // Get the species with highest occupancy from a site.
 const get_majority_species = (site: Site) =>
@@ -327,7 +617,7 @@ export function electroneg_ratio(
     }
   }
 
-  return bonds
+  return apply_explicit_bond_metadata(structure, bonds)
 }
 
 // Solid angle-based bonding using geometric proximity heuristics.
@@ -396,5 +686,5 @@ export function solid_angle(
       }
     }
   }
-  return bonds
+  return apply_explicit_bond_metadata(structure, bonds)
 }

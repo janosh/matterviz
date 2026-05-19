@@ -201,6 +201,38 @@ describe(`make_supercell`, () => {
     expect(supercell.sites.map((site) => site.label)).toContain(`Ti1_100`)
   })
 
+  test(`replicates explicit bond metadata for each generated cell`, () => {
+    const structure: Crystal = {
+      ...sample_structure,
+      properties: {
+        bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
+      },
+    }
+
+    const supercell = make_supercell(structure, [2, 1, 1])
+
+    expect(supercell.properties?.bonds).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 2 },
+      { site_idx_1: 2, site_idx_2: 3, order: 2 },
+    ])
+  })
+
+  test(`replicates explicit periodic bond metadata across supercell boundaries`, () => {
+    const structure: Crystal = {
+      ...sample_structure,
+      properties: {
+        bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
+      },
+    }
+
+    const supercell = make_supercell(structure, [2, 1, 1])
+
+    expect(supercell.properties?.bonds).toEqual([
+      { site_idx_1: 0, site_idx_2: 3, order: 2 },
+      { site_idx_1: 1, site_idx_2: 2, order: 2, cell_shift: [-1, 0, 0] },
+    ])
+  })
+
   test(`folds coordinates to unit cell by default`, () => {
     const supercell = make_supercell(sample_structure, [2, 2, 2])
 
