@@ -103,8 +103,8 @@ export default defineConfig({
     },
     // Generate sourcemaps in dev
     sourcemap: process.env.NODE_ENV !== `production`,
-    // Minify in production
-    minify: process.env.NODE_ENV === `production` ? `esbuild` : false,
+    // Use Vite 8's bundled Oxc minifier instead of requiring esbuild separately.
+    minify: process.env.NODE_ENV === `production` ? `oxc` : false,
   },
 
   optimizeDeps: {

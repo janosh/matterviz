@@ -2006,19 +2006,34 @@ describe(`parse_structure_file`, () => {
       ])
     })
 
-    test(`finalizes direct JSON bonds without sharing mutable arrays`, () => {
+    test(`finalizes direct JSON properties without sharing mutable data`, () => {
       const direct_structure = parse_poscar(na_cl_cubic)
       if (direct_structure === null) throw new Error(`invalid fixture structure`)
       direct_structure.properties = {
         ...direct_structure.properties,
         bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
+        forces: [1, 2, 3],
+        stability: { energy_above_hull: 0 },
       }
       const parse_spy = vi.spyOn(JSON, `parse`).mockReturnValueOnce(direct_structure)
 
       try {
-        const source_bonds = direct_structure.properties?.bonds
-        const result_bonds = parse_any_structure(`{}`, `direct.json`)?.properties?.bonds
-        if (source_bonds === undefined || result_bonds === undefined) {
+        type MutableStructureProperties = NonNullable<ParsedStructure[`properties`]> & {
+          forces: number[]
+          stability: { energy_above_hull: number }
+        }
+
+        const source_properties = direct_structure.properties as MutableStructureProperties
+        const result_properties = parse_any_structure(`{}`, `direct.json`)?.properties as
+          | MutableStructureProperties
+          | undefined
+        const source_bonds = source_properties?.bonds
+        const result_bonds = result_properties?.bonds
+        if (
+          result_properties === undefined ||
+          source_bonds === undefined ||
+          result_bonds === undefined
+        ) {
           throw new Error(`missing explicit bonds`)
         }
         const source_cell_shift = source_bonds[0].cell_shift
@@ -2030,9 +2045,15 @@ describe(`parse_structure_file`, () => {
         expect(result_bonds).toEqual(source_bonds)
         expect(result_bonds).not.toBe(source_bonds)
         expect(result_cell_shift).not.toBe(source_cell_shift)
+        expect(result_properties.forces).not.toBe(source_properties.forces)
+        expect(result_properties.stability).not.toBe(source_properties.stability)
 
         result_cell_shift[0] = 2
+        result_properties.forces[0] = 9
+        result_properties.stability.energy_above_hull = 1
         expect(source_cell_shift).toEqual([1, 0, 0])
+        expect(source_properties.forces).toEqual([1, 2, 3])
+        expect(source_properties.stability.energy_above_hull).toBe(0)
       } finally {
         parse_spy.mockRestore()
       }

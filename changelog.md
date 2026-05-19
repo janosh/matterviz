@@ -1,5 +1,44 @@
 # Changelog
 
+## [v0.3.5](https://github.com/janosh/matterviz/compare/v0.3.4...v0.3.5)
+
+> 19 May 2026
+
+### 🚀 New Features
+
+- Add bond-order perception, rendering, and editing controls https://github.com/janosh/matterviz/pull/339
+- Add searchable info pane cards, row copying, legend filtering, and richer hover/selection feedback https://github.com/janosh/matterviz/pull/338
+
+### 🛠 Enhancements
+
+- Improve convex-hull performance and demo loading with caching, lazy mounting, and reduced repeated work https://github.com/janosh/matterviz/pull/338
+- Preserve explicit `structure.properties.bonds` metadata through parsing, perception, supercells, and cell transforms https://github.com/janosh/matterviz/pull/339
+- Improve default site labels, label placement, and overlay z-index layering for structure viewers https://github.com/janosh/matterviz/pull/339
+
+### 🐛 Bug Fixes
+
+- Fix `BarPlot` honoring `show_legend={false}` in render gating [c85befeb](https://github.com/janosh/matterviz/commit/c85befeb)
+- Fix visualization inspector UX rough edges across structure, trajectory, plot, and convex-hull views https://github.com/janosh/matterviz/pull/338
+
+### 💡 Refactoring
+
+- Remove obsolete FerroX WASM integration and matching demo now that FerroX lives in its own repository https://github.com/janosh/matterviz/pull/337
+
+## [v0.3.4](https://github.com/janosh/matterviz/compare/v0.3.3...v0.3.4)
+
+> 29 April 2026
+
+### 🛠 Enhancements
+
+- Package decompressed element data from a TypeScript asset script for synchronous npm consumers [fadef983](https://github.com/janosh/matterviz/commit/fadef983)
+- Load generated CSS assets in the VS Code webview and switch the webview bundle to native ES module loading [fadef983](https://github.com/janosh/matterviz/commit/fadef983)
+- Simplify Dash and VS Code Vite configs around `import.meta.dirname`, production minification, and TypeScript imports [fadef983](https://github.com/janosh/matterviz/commit/fadef983)
+
+### 🐛 Bug Fixes
+
+- Fix packaged chemical-potential worker resolution by loading the emitted `.js` worker URL [fadef983](https://github.com/janosh/matterviz/commit/fadef983)
+- Prevent Vite from transforming the optional `happy-dom` SSR fallback import in sanitization code [fadef983](https://github.com/janosh/matterviz/commit/fadef983)
+
 ## [v0.3.3](https://github.com/janosh/matterviz/compare/v0.3.2...v0.3.3)
 
 > 28 April 2026

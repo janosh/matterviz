@@ -21,7 +21,15 @@ where = ["."]
 include = ["matterviz_dash_components"]
 
 [tool.setuptools.package-data]
-matterviz_dash_components = ["*.css", "*.js", "*.json", "*.map", "*.txt", "py.typed"]
+matterviz_dash_components = [
+  "*.css",
+  "*.js",
+  "*.json",
+  "*.map",
+  "*.txt",
+  "assets/*.js",
+  "py.typed",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
