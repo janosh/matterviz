@@ -29,6 +29,14 @@ export function is_main_group(symbol: string): boolean {
   return symbol in ATOMIC_VALENCE
 }
 
+// Per-fragment cap on the product of per-atom valence-list lengths. The
+// valence-enumeration search is the real blow-up dimension (3^k for a
+// catenated S/Se/Te/P chain), NOT the sites.length-based max_atoms guard.
+// 4096 bounded combos sort/search in microseconds and comfortably cover
+// any real organic/main-group molecule; a fragment exceeding this is
+// pathological, so degrading it to single bonds is the spec §7 behavior.
+const MAX_VALENCE_COMBOS = 4096
+
 export function split_fragments(
   n_atoms: number,
   edges: [number, number][],
@@ -90,6 +98,10 @@ function assign_bond_orders(
 ): Map<number, number> | null {
   const order = new Map<number, number>()
   edges.forEach((_, e) => order.set(e, 1))
+  // used() is O(E) and recomputed in the greedy loop; the resulting
+  // O(E^2) is acceptable for the bounded fragment sizes admitted past the
+  // MAX_VALENCE_COMBOS / max_atoms guards. Memoization is intentionally
+  // deferred (review Minor — no behavioral change needed).
   const used = (atom: number) =>
     edges.reduce(
       (s, e, ei) => s + (e.i === atom || e.j === atom ? order.get(ei)! : 0),
@@ -160,6 +172,12 @@ export function perceive_bond_orders(
       ref: e.ref,
     }))
     const valence_lists = symbols.map((s) => ATOMIC_VALENCE[s])
+    // Bound the valence-enumeration search BEFORE materializing any
+    // cartesian product. A fragment whose per-atom option-list product
+    // exceeds the cap (e.g. a catenated S/Se/Te/P chain, 3^k) stays at
+    // the default single / not-perceived (T2 fallback), spec §7.
+    const combo_count = valence_lists.reduce((p, l) => p * l.length, 1)
+    if (combo_count > MAX_VALENCE_COMBOS) continue
     let solved: Map<number, number> | null = null
     for (const target of valence_combinations(valence_lists)) {
       solved = assign_bond_orders(frag.length, local_edges, target)

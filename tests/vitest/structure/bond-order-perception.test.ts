@@ -98,4 +98,30 @@ describe(`valence-maximization core (neutral)`, () => {
   })
 })
 
+describe(`combination-count bound`, () => {
+  test(`catenated S20 chain degrades to single bonds without enumerating 3^20`, () => {
+    const n = 20
+    const elements = Array.from({ length: n }, () => `S`)
+    const coords = Array.from(
+      { length: n },
+      (_, i) => [i * 2, 0, 0] as [number, number, number],
+    )
+    const edges = Array.from(
+      { length: n - 1 },
+      (_, i) => [i, i + 1] as [number, number],
+    )
+    const { sites, bonds } = make_input(elements, coords, edges)
+    const t0 = performance.now()
+    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    const elapsed = performance.now() - t0
+    // combo_count = 3^20 (~3.5e9) > MAX_VALENCE_COMBOS, so the whole
+    // fragment must fall back to single / not-perceived (T2) and the
+    // call must return fast (no cartesian-product materialization).
+    expect(r).toHaveLength(n - 1)
+    expect(r.every((b) => b.bond_order === 1)).toBe(true)
+    expect(r.every((b) => b.perceived === false)).toBe(true)
+    expect(elapsed).toBeLessThan(1000)
+  })
+})
+
 export { make_input }
