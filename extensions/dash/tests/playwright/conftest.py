@@ -30,6 +30,10 @@ def dash_server() -> Generator[str, None, None]:
     env = os.environ.copy()
     env["DASH_DEBUG"] = "0"
     env["DASH_PORT"] = str(port)
+    pkg_dir = os.path.abspath(f"{os.path.dirname(__file__)}/../..")
+    env["PYTHONPATH"] = (
+        f"{pkg_dir}:{env['PYTHONPATH']}" if env.get("PYTHONPATH") else pkg_dir
+    )
 
     process = subprocess.Popen(
         [sys.executable, sample_app_path],
