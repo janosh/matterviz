@@ -361,7 +361,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`site labels avoid adjacent bond directions`, async ({ page }) => {
-    await page.goto(`/test/structure`, { waitUntil: `networkidle` })
+    const console_errors = await goto_structure_page(page)
     await page.evaluate(() => {
       const structure = {
         sites: [
@@ -470,5 +470,6 @@ test.describe(`Bond component`, () => {
 
     expect(after_horizontal_span).toBeGreaterThan(before_horizontal_span * 2)
     expect(vertical_gap_scale).toBeLessThan(horizontal_scale)
+    expect(console_errors).toHaveLength(0)
   })
 })

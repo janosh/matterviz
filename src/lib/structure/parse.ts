@@ -1331,6 +1331,15 @@ export function parse_structure_file(
 
 // Universal parser that handles JSON and structure files
 export function parse_any_structure(content: string, filename: string): AnyStructure | null {
+  const finalize_structure = (structure: AnyStructure): AnyStructure => ({
+    sites: structure.sites,
+    charge: 0,
+    ...(structure.properties && { properties: { ...structure.properties } }),
+    ...(`lattice` in structure && {
+      lattice: { ...structure.lattice, pbc: [true, true, true] },
+    }),
+  })
+
   // Try JSON first, but handle nested structures properly
   try {
     const parsed = JSON.parse(content)
@@ -1347,27 +1356,11 @@ export function parse_any_structure(content: string, filename: string): AnyStruc
     // If not, use parse_structure_file to find nested structures
     const structure = parse_structure_file(content, filename)
 
-    if (structure) {
-      return {
-        sites: structure.sites,
-        charge: 0,
-        ...(structure.lattice && {
-          lattice: { ...structure.lattice, pbc: [true, true, true] },
-        }),
-      }
-    } else return null
+    return structure ? finalize_structure(structure) : null
   } catch {
     // Try structure file formats
     const parsed = parse_structure_file(content, filename)
-    if (parsed) {
-      return {
-        sites: parsed.sites,
-        charge: 0,
-        ...(parsed.lattice && {
-          lattice: { ...parsed.lattice, pbc: [true, true, true] },
-        }),
-      }
-    } else return null
+    return parsed ? finalize_structure(parsed) : null
   }
 }
 

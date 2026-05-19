@@ -2067,8 +2067,8 @@ describe(`parse_structure_file`, () => {
       // Check charge is overridden
       expect(result?.charge).toBe(0) // Overridden
 
-      // Structure-level properties may not be preserved in transformation
-      // The transformation focuses on sites and lattice
+      // Check structure-level properties are preserved
+      expect(result.properties).toEqual({ formula: `Au`, energy: -5.2 })
       expect(result?.sites.length).toBe(1)
       if (!result || !(`lattice` in result)) throw new Error(`invalid parse result`)
       expect(result.lattice.volume).toBe(27)

@@ -1018,7 +1018,10 @@
       {/if}
 
       {#if !supercell_input_valid}
-        <div style="color: red; font-size: 0.8em; margin-top: 4pt">
+        <div
+          data-testid="supercell-input-error"
+          style="color: red; font-size: 0.8em; margin-top: 4pt"
+        >
           Invalid format. Use patterns like "2x2x2", "3x1x2", or "2".
         </div>
       {/if}

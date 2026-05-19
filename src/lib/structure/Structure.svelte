@@ -1761,7 +1761,10 @@
     gap: 4pt;
     /* buttons need higher z-index than AtomLegend to make info/controls panes occlude legend */
     /* we also need crazy high z-index to make info/control pane occlude threlte/extras' <HTML> elements for site labels */
-    z-index: var(--struct-buttons-z-index, 100000000);
+    z-index: var(
+      --struct-buttons-z-index,
+      var(--z-index-overlay-controls, 100000000)
+    );
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;

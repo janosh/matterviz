@@ -444,7 +444,7 @@
             y={hover_data.screen_position.y}
             bg_color={hover_data.is_ibz ? ibz_color : surface_color}
             fixed
-            style="z-index: calc(var(--bz-buttons-z-index, 100000000) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
+            style="z-index: calc(var(--bz-buttons-z-index, var(--z-index-overlay-controls, 100000000)) + 1); backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)"
           >
             <BrillouinZoneTooltip {hover_data} tooltip={tooltip_config} />
           </PlotTooltip>
@@ -497,7 +497,10 @@
     top: var(--bz-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--bz-buttons-right, var(--ctrl-btn-right, 1ex));
     gap: clamp(6pt, 1cqmin, 9pt);
-    z-index: var(--bz-buttons-z-index, 100000000);
+    z-index: var(
+      --bz-buttons-z-index,
+      var(--z-index-overlay-controls, 100000000)
+    );
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;

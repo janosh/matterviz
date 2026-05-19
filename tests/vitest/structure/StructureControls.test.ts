@@ -46,7 +46,8 @@ describe(`StructureControls`, () => {
         expect(input.getAttribute(`pattern`)).toBe(`^(\\d+|\\d+x\\d+x\\d+)$`)
       }
       expect(input.getAttribute(`aria-invalid`)).toBe(aria)
-      expect(document.querySelectorAll(`div[style*="color: red"]`).length > 0).toBe(has_error)
+      const error_message = document.querySelector(`[data-testid="supercell-input-error"]`)
+      expect(error_message !== null).toBe(has_error)
       if (border_includes) expect(input.style.border).toContain(border_includes)
       else expect(input.style.border).toBe(``)
       if (title_includes) expect(input.title).toContain(title_includes)
