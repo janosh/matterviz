@@ -241,4 +241,34 @@ describe(`aromaticity`, () => {
   })
 })
 
+describe(`T2 graceful fallback`, () => {
+  test(`ferrocene-ish (contains Fe): all single, perceived false`, () => {
+    const { sites, bonds } = make_input(
+      [`Fe`, `C`, `C`, `C`, `C`, `C`],
+      [[0, 0, 0], [1, 0, 1], [0.3, 0.95, 1], [-0.8, 0.6, 1],
+       [-0.8, -0.6, 1], [0.3, -0.95, 1]],
+      [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5],
+       [1, 2], [2, 3], [3, 4], [4, 5], [5, 1]],
+    )
+    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(r.every((b) => b.bond_order === 1)).toBe(true)
+    expect(r.every((b) => b.perceived === false)).toBe(true)
+  })
+
+  test(`NaCl pair (no bonds list) → empty result`, () => {
+    const { sites, bonds } = make_input([`Na`, `Cl`], [[0, 0, 0], [2.8, 0, 0]], [])
+    expect(perceive_bond_orders(sites, bonds, {})).toHaveLength(0)
+  })
+
+  test(`water: all single`, () => {
+    const { sites, bonds } = make_input(
+      [`O`, `H`, `H`],
+      [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]],
+      [[0, 1], [0, 2]],
+    )
+    const r = perceive_bond_orders(sites, bonds, { total_charge: 0 })
+    expect(r.every((b) => b.bond_order === 1 && b.perceived)).toBe(true)
+  })
+})
+
 export { make_input }
