@@ -55,5 +55,5 @@ export const stream_file_to_buffer = async (
 
   on_progress?.({ bytes_read: uint8array.length, total_size, progress: 1.0 }) // Report completion
 
-  return uint8array.buffer as ArrayBuffer
+  return uint8array.slice().buffer
 }
