@@ -20,6 +20,7 @@
   import { colors } from '$lib/state.svelte'
   import type {
     AnyStructure,
+    BondEditMode,
     BondOrder,
     BondPair,
     MeasureMode,
@@ -54,13 +55,16 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { type Camera, Color, type Mesh, type Scene } from 'three'
   import Bond from './Bond.svelte'
-  import type { BondingStrategy } from './bonding'
+  import type { BondEditResult, BondingStrategy } from './bonding'
   import {
+    add_or_restore_bond,
     BONDING_STRATEGIES,
+    BOND_ORDER_OPTIONS,
+    delete_bond as apply_delete_bond,
     get_bond_key,
     get_bond_render_matrices,
     get_explicit_bond_metadata,
-    normalize_structure_bond,
+    set_bond_order as apply_set_bond_order,
     structure_bond_to_bond_pair,
   } from './bonding'
   import {
@@ -169,6 +173,8 @@
     removed_bonds = $bindable([]),
     bond_order_overrides = $bindable([]),
     bond_edits_enabled = true,
+    bond_edit_mode = $bindable<BondEditMode>(`add`),
+    bond_edit_order = 1,
     selection_highlight_color = `#6cf0ff`,
     // Active highlight group with different color
     active_sites = $bindable([]),
@@ -192,6 +198,7 @@
     // Edit-atoms mode callbacks
     on_sites_moved,
     on_operation_start,
+    on_bond_edit_start,
     on_add_atom,
     add_atom_mode = $bindable(false),
     add_element = $bindable(`C`),
@@ -265,6 +272,8 @@
     removed_bonds?: StructureBond[]
     bond_order_overrides?: StructureBond[]
     bond_edits_enabled?: boolean
+    bond_edit_mode?: BondEditMode
+    bond_edit_order?: BondOrder
     selection_highlight_color?: string
     // Support for active highlight group with different color
     active_sites?: number[]
@@ -285,6 +294,7 @@
     // Edit-atoms mode callbacks and state
     on_sites_moved?: (scene_indices: number[], delta: Vec3) => void
     on_operation_start?: () => void
+    on_bond_edit_start?: () => void
     on_add_atom?: (xyz: Vec3, element: ElementSymbol) => void
     add_atom_mode?: boolean // whether user is in click-to-place add-atom sub-mode
     add_element?: ElementSymbol // element to add when clicking in add-atom mode
@@ -324,9 +334,13 @@
   // Cursor style for the canvas, derived from mode and hover state
   let canvas_cursor = $derived.by(() => {
     if (measure_mode === `edit-atoms` && add_atom_mode) return `crosshair`
+    if (measure_mode === `edit-bonds` && hovered_bond_key != null) {
+      return bond_edits_enabled ? `pointer` : `not-allowed`
+    }
     if (hovered_idx != null) {
       if (measure_mode === `edit-bonds`) {
-        return bond_edits_enabled && is_editable_bond_site(hovered_idx)
+        return bond_edit_mode === `add` && bond_edits_enabled &&
+            is_editable_bond_site(hovered_idx)
           ? `pointer`
           : `not-allowed`
       }
@@ -356,12 +370,6 @@
   // snaps to the new wrapped centroid.
   let frozen_centroid = $state<Vec3 | null>(null)
 
-  const BOND_ORDER_OPTIONS: { order: BondOrder; label: string }[] = [
-    { order: 1, label: `Single` },
-    { order: 2, label: `Double` },
-    { order: 3, label: `Triple` },
-    { order: `aromatic`, label: `Aromatic` },
-  ]
   let bond_context_menu = $state<BondContextMenu | null>(null)
   // Threlte/HTML pointer events can close the visible menu before a button
   // handler runs, so keep the target bond separately for menu actions.
@@ -371,13 +379,6 @@
     bond_context_menu = null
     bond_context_target = null
   }
-
-  const make_bond_record = (
-    site_idx_1: number,
-    site_idx_2: number,
-    order: BondOrder,
-    cell_shift?: Vec3,
-  ): StructureBond => normalize_structure_bond(site_idx_1, site_idx_2, order, cell_shift)
 
   const bond_key_for = (bond: BondKeyTarget): string =>
     get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
@@ -427,29 +428,49 @@
     bond_context_menu = bond_context_target
   }
 
-  // Toggle a bond between two atoms: cycles through add → remove → restore states
-  function toggle_bond(site_1: number, site_2: number, cell_shift?: Vec3) {
-    if (!can_edit_bond({ site_idx_1: site_1, site_idx_2: site_2, cell_shift })) return
-    const record = make_bond_record(site_1, site_2, 1, cell_shift)
-    const key = bond_key_for(record)
-    if (added_bonds.some((bond) => matches_bond_key(bond, key))) {
-      added_bonds = added_bonds.filter((bond) => !matches_bond_key(bond, key))
+  const current_bond_edit_state = () => ({
+    added_bonds,
+    removed_bonds,
+    bond_order_overrides,
+  })
+
+  function apply_bond_edit_result(result: BondEditResult, close_menu = true) {
+    if (!result.changed) return
+    on_bond_edit_start?.()
+    added_bonds = result.state.added_bonds
+    removed_bonds = result.state.removed_bonds
+    bond_order_overrides = result.state.bond_order_overrides
+    if (close_menu) close_bond_context_menu()
+  }
+
+  const find_visible_bond = (
+    site_idx_1: number,
+    site_idx_2: number,
+    cell_shift?: Vec3,
+  ): BondPair | undefined => {
+    const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
+    return filtered_bond_pairs.find((bond) => matches_bond_key(bond, key))
+  }
+
+  function open_bond_order_menu_for_pair(site_idx_1: number, site_idx_2: number) {
+    const bond = find_visible_bond(site_idx_1, site_idx_2)
+    if (bond) open_bond_context_menu(bond)
+  }
+
+  function add_or_restore_pair(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
+    if (!can_edit_bond({ site_idx_1, site_idx_2, cell_shift })) return
+    const target = { site_idx_1, site_idx_2, cell_shift }
+    const result = add_or_restore_bond(
+      current_bond_edit_state(),
+      target,
+      perceived_bond_pairs,
+      bond_edit_order,
+    )
+    if (result.action === `already-visible`) {
+      open_bond_order_menu_for_pair(site_idx_1, site_idx_2)
       return
     }
-    if (removed_bonds.some((bond) => matches_bond_key(bond, key))) {
-      removed_bonds = removed_bonds.filter((bond) => !matches_bond_key(bond, key))
-      return
-    }
-    const has_calculated_bond = bond_pairs.some((bond) => matches_bond_key(bond, key))
-    if (bond_order_overrides.some((bond) => matches_bond_key(bond, key))) {
-      bond_order_overrides = bond_order_overrides.filter((bond) =>
-        !matches_bond_key(bond, key)
-      )
-      if (has_calculated_bond) removed_bonds = [...removed_bonds, record]
-      return
-    }
-    if (has_calculated_bond) removed_bonds = [...removed_bonds, record]
-    else added_bonds = [...added_bonds, record]
+    apply_bond_edit_result(result, false)
   }
 
   function set_bond_order(
@@ -459,20 +480,14 @@
     cell_shift?: Vec3,
   ) {
     if (!can_edit_bond({ site_idx_1, site_idx_2, cell_shift })) return
-    const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
-    const new_record = make_bond_record(site_idx_1, site_idx_2, order, cell_shift)
-    added_bonds = added_bonds.filter((bond) => !matches_bond_key(bond, key))
-    const has_calculated_bond = bond_pairs.some((bond) => matches_bond_key(bond, key))
-    if (has_calculated_bond) {
-      bond_order_overrides = [
-        ...bond_order_overrides.filter((bond) => !matches_bond_key(bond, key)),
-        new_record,
-      ]
-      removed_bonds = removed_bonds.filter((bond) => !matches_bond_key(bond, key))
-    } else {
-      added_bonds = [...added_bonds, new_record]
-    }
-    close_bond_context_menu()
+    apply_bond_edit_result(
+      apply_set_bond_order(
+        current_bond_edit_state(),
+        { site_idx_1, site_idx_2, cell_shift },
+        perceived_bond_pairs,
+        order,
+      ),
+    )
   }
 
   function set_context_bond_order(order: BondOrder) {
@@ -483,21 +498,13 @@
 
   function remove_bond(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
     if (!can_edit_bond({ site_idx_1, site_idx_2, cell_shift })) return
-    const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
-    added_bonds = added_bonds.filter((bond) => !matches_bond_key(bond, key))
-    bond_order_overrides = bond_order_overrides.filter((bond) =>
-      !matches_bond_key(bond, key)
+    apply_bond_edit_result(
+      apply_delete_bond(
+        current_bond_edit_state(),
+        { site_idx_1, site_idx_2, cell_shift },
+        perceived_bond_pairs,
+      ),
     )
-    if (
-      bond_pairs.some((bond) => matches_bond_key(bond, key)) &&
-      !removed_bonds.some((bond) => matches_bond_key(bond, key))
-    ) {
-      removed_bonds = [
-        ...removed_bonds,
-        make_bond_record(site_idx_1, site_idx_2, 1, cell_shift),
-      ]
-    }
-    close_bond_context_menu()
   }
 
   function remove_context_bond() {
@@ -521,8 +528,13 @@
     }
 
     if (measure_mode === `edit-bonds`) {
+      if (bond_edit_mode === `delete`) {
+        measured_sites = []
+        selected_sites = []
+        return
+      }
       if (!bond_edits_enabled || !is_editable_bond_site(site_index)) return
-      // In edit-bonds mode, select atoms to add/remove bonds between them
+      // In Add mode, select atom pairs without making existing bonds destructive.
       const new_sites = measured_sites.includes(site_index)
         ? measured_sites.filter((idx) => idx !== site_index)
         : [...measured_sites, site_index]
@@ -530,9 +542,9 @@
       measured_sites = new_sites
       selected_sites = new_sites
 
-      // When two atoms are selected, toggle the bond between them
+      // When two atoms are selected, add/restore or open order editing.
       if (measured_sites.length === 2) {
-        toggle_bond(measured_sites[0], measured_sites[1])
+        add_or_restore_pair(measured_sites[0], measured_sites[1])
         measured_sites = []
         selected_sites = []
       }
@@ -584,6 +596,7 @@
   $effect(() => {
     void structure
     void measure_mode
+    void bond_edit_mode
     void bond_edits_enabled
     untrack(() => {
       close_bond_context_menu()
@@ -626,9 +639,16 @@
       : [0, 0, 0] as Vec3,
   )
 
-  let structure_size = $derived(
-    lattice ? (lattice.a + lattice.b + lattice.c) / 2 : 10,
-  )
+  let structure_size = $derived.by(() => {
+    if (lattice) return (lattice.a + lattice.b + lattice.c) / 2
+    if (!structure?.sites?.length) return 10
+
+    const ranges = [0, 1, 2].map((axis_idx) => {
+      const coords = structure.sites.map((site) => site.xyz[axis_idx])
+      return Math.max(...coords) - Math.min(...coords)
+    })
+    return Math.max(1, ...ranges)
+  })
 
   // Characteristic inter-atomic spacing: cube root of volume per atom.
   // Excludes PBC image atoms (orig_site_idx) so toggling image atoms doesn't affect arrow sizing.
@@ -806,14 +826,18 @@
     const removed_keys = new Set(
       removed_bonds.map(bond_key_for),
     )
+    const added_keys = new Set(
+      added_bonds.map(bond_key_for),
+    )
     const order_overrides = new Map(
       bond_order_overrides.map((bond) => [bond_key_for(bond), bond.order]),
     )
 
-    // Filter calculated bonds: exclude removed and hidden
+    // Filter calculated bonds: exclude removed, replaced by manual additions, and hidden.
     const calculated = perceived_bond_pairs
       .filter((bond) => {
-        if (removed_keys.has(bond_key_for(bond))) return false
+        const key = bond_key_for(bond)
+        if (removed_keys.has(key) || added_keys.has(key)) return false
         return is_site_visible(bond.site_idx_1) && is_site_visible(bond.site_idx_2)
       })
       .map((bond) => {
@@ -1178,12 +1202,22 @@
     {#if atom_label}
       {@render atom_label({ site, site_idx })}
     {:else}
-      <span
+      <button
+        type="button"
         class="atom-label"
         style:font-size="{site_label_size * 0.85}em"
         style:background={site_label_bg_color}
         style:padding="{site_label_padding}px"
         style:color={site_label_color}
+        onpointerdown={(event) => {
+          event.preventDefault()
+          toggle_selection(site_idx, event)
+        }}
+        onkeydown={(event) => {
+          if (event.key !== `Enter` && event.key !== ` `) return
+          event.preventDefault()
+          toggle_selection(site_idx, event)
+        }}
       >
         {#if show_site_labels}
           {#if site.species.length === 1}
@@ -1200,7 +1234,7 @@
         {:else if show_site_indices}
           {site_idx + 1}
         {/if}
-      </span>
+      </button>
     {/if}
   </extras.HTML>
 {/snippet}
@@ -1413,10 +1447,14 @@
             onpointerdown={(event: PointerEvent & { nativeEvent?: PointerEvent }) => {
               if (event.nativeEvent?.button === 2) return
               event.stopPropagation()
-              toggle_bond(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
-              measured_sites = []
-              selected_sites = []
-              hovered_bond_key = null
+              if (bond_edit_mode === `delete`) {
+                remove_bond(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+                measured_sites = []
+                selected_sites = []
+                hovered_bond_key = null
+              } else {
+                setTimeout(() => open_bond_context_menu(bond))
+              }
             }}
             oncontextmenu={(event: MouseEvent & { nativeEvent?: MouseEvent }) => {
               event.nativeEvent?.preventDefault()
@@ -1426,11 +1464,18 @@
             onpointerenter={() => (hovered_bond_key = bond_key)}
             onpointerleave={() => (hovered_bond_key = null)}
           >
-            <T.CylinderGeometry args={[bond_thickness * 3, bond_thickness * 3, 1, 6]} />
+            <T.CylinderGeometry
+              args={[
+                bond_thickness * (bond_edit_mode === `delete` ? 3 : 1.25),
+                bond_thickness * (bond_edit_mode === `delete` ? 3 : 1.25),
+                1,
+                6,
+              ]}
+            />
             <T.MeshBasicMaterial
               transparent
               opacity={is_hovered ? 0.25 : 0}
-              color={is_hovered ? `#ff4444` : `white`}
+              color={is_hovered && bond_edit_mode === `delete` ? `#ff4444` : `#6cf0ff`}
               depthWrite={false}
             />
           </T.Mesh>
@@ -1822,7 +1867,11 @@
   }
   .atom-label {
     background: var(--struct-atom-label-bg, rgba(0, 0, 0, 0.1));
+    border: 0;
     border-radius: var(--struct-atom-label-border-radius, var(--border-radius, 3pt));
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
     padding: var(--struct-atom-label-padding, 0 3px);
     white-space: nowrap;
   }

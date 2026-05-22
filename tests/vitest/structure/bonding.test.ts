@@ -1,6 +1,6 @@
 import type { BondOrder, BondPair, Vec3 } from '$lib'
 import type { Crystal, StructureBond } from '$lib/structure'
-import type { BondingStrategy } from '$lib/structure/bonding'
+import type { BondEditState, BondingAlgo, BondingStrategy } from '$lib/structure/bonding'
 import * as bonding from '$lib/structure/bonding'
 import { get_pbc_image_sites } from '$lib/structure/pbc'
 import { test_molecules } from '$site/molecules'
@@ -33,7 +33,7 @@ const make_random_structure = (n_atoms: number): Crystal => {
 }
 
 describe(`Bonding Algorithms`, () => {
-  const algorithms: [bonding.BondingAlgo, BondingStrategy, [number, number][]][] = [
+  const algorithms: [BondingAlgo, BondingStrategy, [number, number][]][] = [
     [
       bonding.electroneg_ratio,
       `electroneg_ratio`,
@@ -235,6 +235,161 @@ describe(`Explicit Bond Metadata`, () => {
     expect(bonding.merge_bond_edits([], [added_bond], [], [override_bond])).toEqual([
       override_bond,
     ])
+  })
+
+  const empty_bond_edit_state = (): BondEditState => ({
+    added_bonds: [],
+    removed_bonds: [],
+    bond_order_overrides: [],
+  })
+
+  test(`adds, reports, and restores bonds without toggling visible bonds`, () => {
+    const calculated_bonds = [{ site_idx_1: 0, site_idx_2: 1 }]
+    const add_result = bonding.add_or_restore_bond(
+      empty_bond_edit_state(),
+      { site_idx_1: 2, site_idx_2: 0 },
+      calculated_bonds,
+      2,
+    )
+    expect(add_result).toMatchObject({ action: `added`, changed: true })
+    expect(add_result.state.added_bonds).toEqual([
+      { site_idx_1: 0, site_idx_2: 2, order: 2 },
+    ])
+
+    const visible_result = bonding.add_or_restore_bond(
+      add_result.state,
+      { site_idx_1: 0, site_idx_2: 1 },
+      calculated_bonds,
+      3,
+    )
+    expect(visible_result).toMatchObject({ action: `already-visible`, changed: false })
+    expect(visible_result.state.removed_bonds).toEqual([])
+
+    const removed_state: BondEditState = {
+      ...empty_bond_edit_state(),
+      removed_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+    }
+    const restore_result = bonding.add_or_restore_bond(
+      removed_state,
+      { site_idx_1: 1, site_idx_2: 0 },
+      calculated_bonds,
+      1,
+    )
+    expect(restore_result).toMatchObject({ action: `restored`, changed: true })
+    expect(restore_result.state.removed_bonds).toEqual([])
+    expect(restore_result.state.bond_order_overrides).toEqual([])
+
+    const restore_with_order_result = bonding.add_or_restore_bond(
+      removed_state,
+      { site_idx_1: 1, site_idx_2: 0 },
+      calculated_bonds,
+      2,
+    )
+    expect(restore_with_order_result).toMatchObject({ action: `restored`, changed: true })
+    expect(restore_with_order_result.state.removed_bonds).toEqual([])
+    expect(restore_with_order_result.state.bond_order_overrides).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 2 },
+    ])
+  })
+
+  test(`deletes calculated and manually added bonds explicitly`, () => {
+    const calculated_bonds = [{ site_idx_1: 0, site_idx_2: 1 }]
+    const calculated_result = bonding.delete_bond(
+      empty_bond_edit_state(),
+      { site_idx_1: 1, site_idx_2: 0 },
+      calculated_bonds,
+    )
+    expect(calculated_result).toMatchObject({
+      action: `deleted-calculated`,
+      changed: true,
+    })
+    expect(calculated_result.state.removed_bonds).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 1 },
+    ])
+
+    const added_state: BondEditState = {
+      ...empty_bond_edit_state(),
+      added_bonds: [{ site_idx_1: 2, site_idx_2: 3, order: 3 }],
+    }
+    const added_result = bonding.delete_bond(
+      added_state,
+      { site_idx_1: 3, site_idx_2: 2 },
+      calculated_bonds,
+    )
+    expect(added_result).toMatchObject({ action: `deleted-added`, changed: true })
+    expect(added_result.state.added_bonds).toEqual([])
+
+    const missing_result = bonding.delete_bond(
+      empty_bond_edit_state(),
+      { site_idx_1: 4, site_idx_2: 5 },
+      calculated_bonds,
+    )
+    expect(missing_result).toMatchObject({ action: `not-visible`, changed: false })
+  })
+
+  test(`sets bond order for calculated, added, and removed bonds`, () => {
+    const calculated_bonds = [{ site_idx_1: 0, site_idx_2: 1 }]
+    const calculated_result = bonding.set_bond_order(
+      empty_bond_edit_state(),
+      { site_idx_1: 1, site_idx_2: 0 },
+      calculated_bonds,
+      3,
+    )
+    expect(calculated_result).toMatchObject({
+      action: `ordered-calculated`,
+      changed: true,
+    })
+    expect(calculated_result.state.bond_order_overrides).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 3 },
+    ])
+
+    const removed_state: BondEditState = {
+      ...empty_bond_edit_state(),
+      removed_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+    }
+    const restored_order_result = bonding.set_bond_order(
+      removed_state,
+      { site_idx_1: 0, site_idx_2: 1 },
+      calculated_bonds,
+      2,
+    )
+    expect(restored_order_result.state.removed_bonds).toEqual([])
+    expect(restored_order_result.state.bond_order_overrides).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 2 },
+    ])
+
+    const added_result = bonding.set_bond_order(
+      empty_bond_edit_state(),
+      { site_idx_1: 2, site_idx_2: 3 },
+      calculated_bonds,
+      `aromatic`,
+    )
+    expect(added_result).toMatchObject({ action: `ordered-added`, changed: true })
+    expect(added_result.state.added_bonds).toEqual([
+      { site_idx_1: 2, site_idx_2: 3, order: `aromatic` },
+    ])
+  })
+
+  test(`bond edit helpers preserve periodic cell-shift keys`, () => {
+    const calculated_bonds = [
+      { site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0] as Vec3 },
+      { site_idx_1: 0, site_idx_2: 1, cell_shift: [0, 1, 0] as Vec3 },
+    ]
+    const result = bonding.delete_bond(
+      empty_bond_edit_state(),
+      { site_idx_1: 1, site_idx_2: 0, cell_shift: [-1, 0, 0] },
+      calculated_bonds,
+    )
+    expect(result.state.removed_bonds).toEqual([
+      { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [1, 0, 0] },
+    ])
+    expect(
+      bonding.has_visible_bond(
+        result.state,
+        { site_idx_1: 0, site_idx_2: 1, cell_shift: [0, 1, 0] },
+        calculated_bonds,
+      ),
+    ).toBe(true)
   })
 
   test(`parses and renders explicit crystal bonds with cell shifts`, () => {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Crystal } from '$lib'
   import { DEFAULTS } from '$lib/settings'
-  import type { MeasureMode, StructureBond } from '$lib/structure'
+  import type { BondEditMode, BondOrder, MeasureMode, StructureBond } from '$lib/structure'
   import Structure from '$lib/structure/Structure.svelte'
   import StructureScene from '$lib/structure/StructureScene.svelte'
   import mp1_struct from '$site/structures/mp-1.json' with { type: 'json' }
@@ -20,6 +20,8 @@
   let measured_sites = $state<number[]>([])
   let enable_measure_mode = $state(true)
   let measure_mode = $state<MeasureMode>(`distance`)
+  let bond_edit_mode = $state<BondEditMode>(`add`)
+  let bond_edit_order = $state<BondOrder>(1)
   let supercell_scaling = $state(`1x1x1`)
   let show_image_atoms = $state(true)
   let fullscreen = $state(false)
@@ -154,16 +156,23 @@
       scene_props.vector_configs = detail.vector_configs ?? {}
     }
 
+    const handle_set_bonds = (event: Event) => {
+      const { detail } = event as CustomEvent
+      bonds = detail.bonds as StructureBond[] | undefined
+    }
+
     window.addEventListener(`set-lattice-props`, handle_lattice_props)
     window.addEventListener(`set-show-buttons`, handle_show_controls)
     window.addEventListener(`set-scene-props`, handle_scene_props)
     window.addEventListener(`set-structure`, handle_set_structure)
+    window.addEventListener(`set-bonds`, handle_set_bonds)
 
     return () => {
       window.removeEventListener(`set-lattice-props`, handle_lattice_props)
       window.removeEventListener(`set-show-buttons`, handle_show_controls)
       window.removeEventListener(`set-scene-props`, handle_scene_props)
       window.removeEventListener(`set-structure`, handle_set_structure)
+      window.removeEventListener(`set-bonds`, handle_set_bonds)
     }
   })
 
@@ -176,6 +185,11 @@
   $effect(() => {
     if (typeof window === `undefined`) return
     ;(globalThis as Record<string, unknown>).structure_bonds = bonds
+  })
+
+  $effect(() => {
+    if (typeof window === `undefined`) return
+    ;(globalThis as Record<string, unknown>).bond_edit_mode = bond_edit_mode
   })
 </script>
 
@@ -256,6 +270,8 @@
         [`clear-measured`, () => measured_sites = []],
         [`set-edit-atoms`, () => measure_mode = `edit-atoms`],
         [`set-edit-bonds`, () => measure_mode = `edit-bonds`],
+        [`set-bond-add`, () => bond_edit_mode = `add`],
+        [`set-bond-delete`, () => bond_edit_mode = `delete`],
         [`set-distance-mode`, () => measure_mode = `distance`],
       ] as const as
       [btn_type, onclick]
@@ -296,6 +312,8 @@
   bind:measured_sites
   {enable_measure_mode}
   bind:measure_mode
+  bind:bond_edit_mode
+  bind:bond_edit_order
   bind:supercell_scaling
   bind:show_image_atoms
   bind:fullscreen
@@ -313,6 +331,7 @@
 <div data-testid="gizmo-status">Gizmo Status: {scene_props.show_gizmo}</div>
 <div data-testid="show-buttons-status">Show Buttons Status: {show_controls}</div>
 <div data-testid="measure-mode-status">Measure Mode: {measure_mode}</div>
+<div data-testid="bond-edit-mode-status">Bond Edit Mode: {bond_edit_mode}</div>
 <div data-testid="fullscreen-status">Fullscreen Status: {fullscreen}</div>
 <div data-testid="performance-mode-status">
   Performance Mode Status: {performance_mode}

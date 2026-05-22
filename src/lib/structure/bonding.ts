@@ -58,6 +58,177 @@ export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): s
   )}`
 }
 
+export type BondEditState = {
+  added_bonds: StructureBond[]
+  removed_bonds: StructureBond[]
+  bond_order_overrides: StructureBond[]
+}
+
+export type BondEditAction =
+  | `added`
+  | `already-visible`
+  | `deleted-added`
+  | `deleted-calculated`
+  | `not-visible`
+  | `ordered-added`
+  | `ordered-calculated`
+  | `restored`
+
+export type BondEditResult = {
+  action: BondEditAction
+  changed: boolean
+  state: BondEditState
+}
+
+type BondKeyTarget = Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`>
+
+export const BOND_ORDER_OPTIONS: { order: BondOrder; label: string }[] = [
+  { order: 1, label: `Single` },
+  { order: 1.5, label: `1.5` },
+  { order: 2, label: `Double` },
+  { order: 3, label: `Triple` },
+  { order: `aromatic`, label: `Aromatic` },
+]
+
+const bond_key_for = (bond: BondKeyTarget): string =>
+  get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
+
+const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
+  bond_key_for(bond) === key
+
+const replace_bond = (bonds: StructureBond[], next_bond: StructureBond): StructureBond[] => {
+  const key = bond_key_for(next_bond)
+  return [...bonds.filter((bond) => !matches_bond_key(bond, key)), next_bond]
+}
+
+const remove_bond_key = (bonds: StructureBond[], key: string): StructureBond[] =>
+  bonds.filter((bond) => !matches_bond_key(bond, key))
+
+const includes_bond_key = (bonds: BondKeyTarget[], key: string): boolean =>
+  bonds.some((bond) => matches_bond_key(bond, key))
+
+const has_calculated_bond = (
+  calculated_bonds: BondKeyTarget[],
+  key: string,
+): boolean => includes_bond_key(calculated_bonds, key)
+
+const make_bond_record = (bond: BondKeyTarget, order: BondOrder): StructureBond =>
+  normalize_structure_bond(bond.site_idx_1, bond.site_idx_2, order, bond.cell_shift)
+
+export function has_visible_bond(
+  edit_state: BondEditState,
+  bond: BondKeyTarget,
+  calculated_bonds: BondKeyTarget[],
+): boolean {
+  const key = bond_key_for(bond)
+  if (includes_bond_key(edit_state.added_bonds, key)) return true
+  if (includes_bond_key(edit_state.removed_bonds, key)) {
+    return false
+  }
+  return has_calculated_bond(calculated_bonds, key)
+}
+
+export function add_or_restore_bond(
+  edit_state: BondEditState,
+  bond: BondKeyTarget,
+  calculated_bonds: BondKeyTarget[],
+  order: BondOrder,
+): BondEditResult {
+  const record = make_bond_record(bond, order)
+  const key = bond_key_for(record)
+  const removed_bond = edit_state.removed_bonds.find((edit_bond) =>
+    matches_bond_key(edit_bond, key)
+  )
+  if (removed_bond) {
+    return {
+      action: `restored`,
+      changed: true,
+      state: {
+        ...edit_state,
+        removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
+        bond_order_overrides: removed_bond.order === order
+          ? edit_state.bond_order_overrides
+          : replace_bond(edit_state.bond_order_overrides, record),
+      },
+    }
+  }
+  if (has_visible_bond(edit_state, record, calculated_bonds)) {
+    return { action: `already-visible`, changed: false, state: edit_state }
+  }
+  return {
+    action: `added`,
+    changed: true,
+    state: {
+      ...edit_state,
+      added_bonds: replace_bond(edit_state.added_bonds, record),
+      bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
+    },
+  }
+}
+
+export function delete_bond(
+  edit_state: BondEditState,
+  bond: BondKeyTarget,
+  calculated_bonds: BondKeyTarget[],
+): BondEditResult {
+  const record = make_bond_record(bond, 1)
+  const key = bond_key_for(record)
+  const has_added_bond = includes_bond_key(edit_state.added_bonds, key)
+  if (has_added_bond) {
+    return {
+      action: `deleted-added`,
+      changed: true,
+      state: {
+        ...edit_state,
+        added_bonds: remove_bond_key(edit_state.added_bonds, key),
+        bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
+      },
+    }
+  }
+  const calculated = has_calculated_bond(calculated_bonds, key)
+  const already_removed = includes_bond_key(edit_state.removed_bonds, key)
+  if (!calculated || already_removed) {
+    return { action: `not-visible`, changed: false, state: edit_state }
+  }
+  return {
+    action: `deleted-calculated`,
+    changed: true,
+    state: {
+      ...edit_state,
+      removed_bonds: [...edit_state.removed_bonds, record],
+      bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
+    },
+  }
+}
+
+export function set_bond_order(
+  edit_state: BondEditState,
+  bond: BondKeyTarget,
+  calculated_bonds: BondKeyTarget[],
+  order: BondOrder,
+): BondEditResult {
+  const record = make_bond_record(bond, order)
+  const key = bond_key_for(record)
+  const calculated = has_calculated_bond(calculated_bonds, key)
+  if (calculated) {
+    const next_state = {
+      added_bonds: remove_bond_key(edit_state.added_bonds, key),
+      removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
+      bond_order_overrides: replace_bond(edit_state.bond_order_overrides, record),
+    }
+    return { action: `ordered-calculated`, changed: true, state: next_state }
+  }
+  return {
+    action: `ordered-added`,
+    changed: true,
+    state: {
+      ...edit_state,
+      added_bonds: replace_bond(edit_state.added_bonds, record),
+      bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
+    },
+  }
+}
+
 export const merge_bond_edits = (
   base_bonds: StructureBond[],
   added: StructureBond[],

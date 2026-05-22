@@ -121,6 +121,26 @@ describe(`Structure`, () => {
     expect(measure_mode).toBe(`distance`)
   })
 
+  test(`shows safe bond editing controls by default`, async () => {
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        measure_mode: `edit-bonds`,
+        show_controls: true,
+      },
+    })
+    await tick()
+
+    expect(doc_query(`.bond-edit-toolbar`)).toBeInstanceOf(HTMLElement)
+    expect(doc_query<HTMLButtonElement>(`button[aria-pressed="true"]`).textContent).toContain(
+      `Add`,
+    )
+    expect(doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`).value).toBe(`1`)
+    expect(doc_query<HTMLButtonElement>(`button[aria-label="Undo bond edit (Ctrl+Z)"]`).disabled)
+      .toBe(true)
+  })
+
   const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
 
   test.each(
@@ -810,7 +830,7 @@ describe(`Structure string parsing`, () => {
   test.each(test_data)(
     `parses %s format correctly`,
     async (_format, content, atoms, elements, has_lattice) => {
-      let parsed = $state<AnyStructure | undefined>(undefined)
+      let parse_state = $state<{ parsed?: AnyStructure }>({})
       let loaded = false
 
       mount(Structure, {
@@ -818,10 +838,10 @@ describe(`Structure string parsing`, () => {
         props: {
           structure_string: content,
           get structure() {
-            return parsed
+            return parse_state.parsed
           },
           set structure(val) {
-            parsed = val
+            parse_state.parsed = val
           },
           on_file_load: (data: StructureHandlerData) => {
             loaded = true
@@ -832,13 +852,15 @@ describe(`Structure string parsing`, () => {
       })
 
       await tick()
-      expect(parsed).toBeDefined()
-      if (parsed) {
-        expect(parsed.sites).toHaveLength(atoms)
+      expect(parse_state.parsed).toBeDefined()
+      if (parse_state.parsed) {
+        expect(parse_state.parsed.sites).toHaveLength(atoms)
         elements.forEach((el) =>
-          expect(parsed?.sites.map((site) => site.species[0].element)).toContain(el),
+          expect(parse_state.parsed?.sites.map((site) => site.species[0].element)).toContain(el),
         )
-        expect(!!(`lattice` in parsed && parsed.lattice)).toBe(has_lattice)
+        expect(!!(`lattice` in parse_state.parsed && parse_state.parsed.lattice)).toBe(
+          has_lattice,
+        )
       }
       expect(loaded).toBe(true)
     },
@@ -858,21 +880,21 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`loading state works correctly`, async () => {
-    let loading = $state(false)
+    let loading_state = $state({ loading: false })
     mount(Structure, {
       target: document.body,
       props: {
         structure_string: SAMPLE_POSCAR_CONTENT,
         get loading() {
-          return loading
+          return loading_state.loading
         },
         set loading(val) {
-          loading = val
+          loading_state.loading = val
         },
       },
     })
     await tick()
-    expect(loading).toBe(false)
+    expect(loading_state.loading).toBe(false)
   })
 
   test(`file size emission works correctly`, async () => {
