@@ -138,7 +138,8 @@ describe(`Structure`, () => {
     )
     expect(doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`).value).toBe(`1`)
     expect(
-      doc_query<HTMLButtonElement>(`button[aria-label="Undo bond edit (Ctrl+Z)"]`).disabled,
+      doc_query<HTMLButtonElement>(`button[aria-label="Undo bond edit (Cmd/Ctrl+Z)"]`)
+        .disabled,
     ).toBe(true)
   })
 

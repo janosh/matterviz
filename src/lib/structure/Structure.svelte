@@ -20,7 +20,6 @@
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
-  import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
   import type {
     AnyStructure,
@@ -69,7 +68,7 @@
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
   type BondEditContext = {
-    structure_signature: string
+    structure_identity: AnyStructure | undefined
     source_bond_signature: string
     cell_type: CellType
     supercell_scaling: string
@@ -472,7 +471,7 @@
   let bond_undo_stack = $state<BondEditHistorySnapshot[]>([])
   let bond_redo_stack = $state<BondEditHistorySnapshot[]>([])
   let bond_history_context = $state<BondEditContext>()
-  let last_bond_structure_signature = $state(get_structure_signature(structure))
+  let last_bond_structure_identity = $state(structure)
   let last_emitted_bond_signature = $state<string>()
   let bond_edit_snapshot = $state<BondEditSnapshot>()
   let has_bond_edits = $derived(
@@ -552,10 +551,6 @@
   const bond_signature = (edit_bonds: StructureBond[] | undefined): string =>
     edit_bonds === undefined ? `undefined` : JSON.stringify(edit_bonds)
 
-  function get_structure_signature(next_structure: AnyStructure | undefined): string {
-    return next_structure === undefined ? `undefined` : JSON.stringify(next_structure)
-  }
-
   const current_source_bonds = (): StructureBond[] | undefined =>
     bonds ?? structure?.properties?.bonds
 
@@ -567,7 +562,7 @@
   }
 
   const current_bond_edit_context = (): BondEditContext => ({
-    structure_signature: get_structure_signature(structure),
+    structure_identity: structure,
     source_bond_signature: current_source_bond_signature(),
     cell_type,
     supercell_scaling,
@@ -578,7 +573,7 @@
     previous: BondEditContext,
     current: BondEditContext,
   ): boolean =>
-    previous.structure_signature !== current.structure_signature ||
+    previous.structure_identity !== current.structure_identity ||
     previous.source_bond_signature !== current.source_bond_signature ||
     previous.cell_type !== current.cell_type ||
     previous.supercell_scaling !== current.supercell_scaling ||
@@ -587,20 +582,20 @@
   const resolve_bond_edit_reset_bonds = (
     snapshot: BondEditSnapshot,
   ): StructureBond[] | undefined =>
-    snapshot.context.structure_signature === get_structure_signature(structure)
+    snapshot.context.structure_identity === structure
       ? snapshot.bonds
       : structure?.properties?.bonds
 
   $effect(() => {
-    const next_structure_signature = get_structure_signature(structure)
+    const next_structure_identity = structure
     untrack(() => {
       if (
-        last_bond_structure_signature !== next_structure_signature &&
+        last_bond_structure_identity !== next_structure_identity &&
         bond_signature(bonds) === last_emitted_bond_signature
       ) {
         emit_bonds(structure?.properties?.bonds)
       }
-      last_bond_structure_signature = next_structure_signature
+      last_bond_structure_identity = next_structure_identity
     })
   })
 
@@ -1622,7 +1617,7 @@
                     }}
                   >
                     <Icon {icon} style="transform: scale({scale})" />
-                    <span>{@html sanitize_html(label)}</span>
+                    <span>{label}</span>
                   </button>
                 {/each}
               </div>
@@ -1634,10 +1629,10 @@
             <div class="undo-redo-container">
               <button
                 type="button"
-                aria-label="Undo (Ctrl+Z)"
+                aria-label="Undo (Cmd/Ctrl+Z)"
                 disabled={undo_stack.length === 0}
                 onclick={undo}
-                title="Undo (Ctrl+Z)"
+                title="Undo (Cmd/Ctrl+Z)"
                 class="undo-redo-btn"
               >
                 <Icon icon="Undo" />
@@ -1647,10 +1642,10 @@
               </button>
               <button
                 type="button"
-                aria-label="Redo (Ctrl+Y)"
+                aria-label="Redo (Cmd/Ctrl+Y)"
                 disabled={redo_stack.length === 0}
                 onclick={redo}
-                title="Redo (Ctrl+Y)"
+                title="Redo (Cmd/Ctrl+Y)"
                 class="undo-redo-btn"
               >
                 <Icon icon="Redo" />
@@ -1691,10 +1686,10 @@
             <div class="undo-redo-container">
               <button
                 type="button"
-                aria-label="Undo bond edit (Ctrl+Z)"
+                aria-label="Undo bond edit (Cmd/Ctrl+Z)"
                 disabled={bond_undo_stack.length === 0}
                 onclick={undo_bond_edit}
-                title="Undo bond edit (Ctrl+Z)"
+                title="Undo bond edit (Cmd/Ctrl+Z)"
                 class="undo-redo-btn"
               >
                 <Icon icon="Undo" />
@@ -1704,10 +1699,10 @@
               </button>
               <button
                 type="button"
-                aria-label="Redo bond edit (Ctrl+Y)"
+                aria-label="Redo bond edit (Cmd/Ctrl+Y)"
                 disabled={bond_redo_stack.length === 0}
                 onclick={redo_bond_edit}
-                title="Redo bond edit (Ctrl+Y)"
+                title="Redo bond edit (Cmd/Ctrl+Y)"
                 class="undo-redo-btn"
               >
                 <Icon icon="Redo" />

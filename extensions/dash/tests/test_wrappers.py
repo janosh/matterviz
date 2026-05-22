@@ -5,6 +5,7 @@ from __future__ import annotations
 import matterviz_dash_components as mvc
 import pytest
 from matterviz_dash_components import MatterViz
+from scripts.sync_typed_wrappers import _detect_prop_kind
 
 # Note: We don't import typed wrappers (Structure, PeriodicTable, Trajectory) directly
 # in tests because they have @_explicitize_args decorator conflicts. Instead, we test
@@ -48,6 +49,12 @@ class TestMatterVizBase:
             event_props=["on_file_load", "on_error"],
         )
         assert comp.event_props == ["on_file_load", "on_error"]
+        assert (
+            _detect_prop_kind(
+                "EventHandler", {"EventHandler": "(data: StructureHandlerData) => void"}
+            )
+            == "callback"
+        )
 
 
 class TestComponentInstantiation:

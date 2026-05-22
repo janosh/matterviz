@@ -427,13 +427,14 @@ def parse_external_type(
     return {}
 
 
-def _detect_prop_kind(ts_type: str) -> str:
+def _detect_prop_kind(ts_type: str, aliases: dict[str, str] | None = None) -> str:
     """Determine prop kind based on TypeScript type signature."""
-    if "=>" in ts_type:
+    resolved = aliases.get(ts_type, ts_type) if aliases else ts_type
+    if "=>" in resolved:
         return "callback"
-    if "Snippet" in ts_type:
+    if "Snippet" in resolved:
         return "snippet"
-    if "HTMLElement" in ts_type or "HTMLDivElement" in ts_type:
+    if "HTMLElement" in resolved or "HTMLDivElement" in resolved:
         return "dom"
     return "value"
 
@@ -461,7 +462,7 @@ def parse_svelte_dts(
     dom_props: list[str] = []
 
     for js_name, (ts_type, required) in sorted(js_props.items()):
-        kind = _detect_prop_kind(ts_type)
+        kind = _detect_prop_kind(ts_type, aliases)
         if kind == "callback":
             callback_props.append(js_name)
         elif kind == "snippet":

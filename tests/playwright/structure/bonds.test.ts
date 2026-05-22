@@ -49,23 +49,6 @@ const click_canvas_center = async (
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button })
 }
 
-const click_canvas_offset = async (
-  page: Page,
-  canvas: StructureCanvas,
-  offset_x: number,
-  offset_y = 0,
-  button: `left` | `right` = `left`,
-): Promise<void> => {
-  await canvas.scrollIntoViewIfNeeded()
-  const box = await canvas.boundingBox()
-  if (!box) throw new Error(`canvas has no bounding box`)
-  await page.mouse.click(box.x + box.width / 2 + offset_x, box.y + box.height / 2 + offset_y, {
-    button,
-  })
-}
-
-const BOND_CLICK_OFFSETS = [0, 45, -45, 70, -70, 30, -30, 90, -90]
-
 const click_atom_label = async (page: Page, label_text: string): Promise<void> => {
   const label = page
     .locator(`#test-structure .atom-label`)
@@ -83,48 +66,6 @@ const set_structure_bonds = (page: Page, bonds: unknown) =>
   page.evaluate((next_bonds) => {
     window.dispatchEvent(new CustomEvent(`set-bonds`, { detail: { bonds: next_bonds } }))
   }, bonds)
-
-const open_bond_menu_near_center = async (
-  page: Page,
-  canvas: StructureCanvas,
-): Promise<number> => {
-  const menu = page.locator(`#test-structure .bond-context-menu`)
-  for (const offset_x of BOND_CLICK_OFFSETS) {
-    await click_canvas_offset(page, canvas, offset_x, 0, `right`)
-    try {
-      await expect(menu).toBeVisible({ timeout: 500 })
-      return offset_x
-    } catch {
-      // Try the next likely bond midpoint in screen space.
-    }
-  }
-  try {
-    await expect(menu).toBeVisible({ timeout: 500 })
-    return 0
-  } catch (error) {
-    throw new Error(
-      `open_bond_menu_near_center failed to open #test-structure .bond-context-menu ` +
-        `after trying BOND_CLICK_OFFSETS with click_canvas_offset: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      { cause: error },
-    )
-  }
-}
-
-const delete_bond_near_center = async (page: Page, canvas: StructureCanvas): Promise<void> => {
-  for (const offset_x of BOND_CLICK_OFFSETS) {
-    await click_canvas_offset(page, canvas, offset_x)
-    const bonds = await get_structure_bonds(page)
-    if (Array.isArray(bonds) && bonds.length === 0) return
-  }
-  const final_bonds = await get_structure_bonds(page)
-  expect(
-    final_bonds,
-    `delete_bond_near_center failed to delete bond near center after trying ` +
-      `BOND_CLICK_OFFSETS with click_canvas_offset and get_structure_bonds`,
-  ).toEqual([])
-}
 
 const dispatch_co2 = (page: Page) =>
   page.evaluate(() => {
@@ -157,7 +98,12 @@ const dispatch_co2 = (page: Page) =>
     window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
     window.dispatchEvent(
       new CustomEvent(`set-scene-props`, {
-        detail: { camera_position: [0, 0, 8], show_bonds: `always` },
+        detail: {
+          bond_thickness: 0.25,
+          camera_position: [0, 0, 8],
+          camera_target: [0, 0, 0],
+          show_bonds: `always`,
+        },
       }),
     )
   })
@@ -231,11 +177,8 @@ const dispatch_two_atom_unbonded_structure = (page: Page) =>
   })
 
 test.describe(`Bond component`, () => {
-  test.beforeEach(() => {
-    test.skip(IS_CI, `Bonds tests timeout in CI`)
-  })
-
   test(`renders bonds and handles rotation/zoom without errors`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     // wait_for_3d_canvas ensures canvas is visible with non-zero dimensions
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -273,6 +216,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`bonds visible from multiple angles with proper gradients`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
 
@@ -430,13 +374,15 @@ test.describe(`Bond component`, () => {
 
     await click_canvas_center(page, canvas)
     await expect.poll(() => get_structure_bonds(page)).toEqual([])
-    await page.getByRole(`button`, { name: `Undo bond edit (Ctrl+Z)` }).click()
+    await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
 
     await dispatch_two_atom_bond_structure(page, 3)
-    await expect(page.getByRole(`button`, { name: `Redo bond edit (Ctrl+Y)` })).toBeDisabled()
+    await expect(
+      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y)` }),
+    ).toBeDisabled()
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
@@ -444,12 +390,14 @@ test.describe(`Bond component`, () => {
     await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
     await click_canvas_center(page, canvas)
     await expect.poll(() => get_structure_bonds(page)).toEqual([])
-    await page.getByRole(`button`, { name: `Undo bond edit (Ctrl+Z)` }).click()
+    await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
     await set_structure_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
-    await expect(page.getByRole(`button`, { name: `Redo bond edit (Ctrl+Y)` })).toBeDisabled()
+    await expect(
+      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y)` }),
+    ).toBeDisabled()
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
@@ -457,13 +405,15 @@ test.describe(`Bond component`, () => {
     await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
     await click_canvas_center(page, canvas)
     await expect.poll(() => get_structure_bonds(page)).toEqual([])
-    await page.getByRole(`button`, { name: `Undo bond edit (Ctrl+Z)` }).click()
+    await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
     await page.locator(`[data-testid="btn-set-edit-atoms"]`).click()
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-    await expect(page.getByRole(`button`, { name: `Redo bond edit (Ctrl+Y)` })).toBeDisabled()
+    await expect(
+      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y)` }),
+    ).toBeDisabled()
     expect(console_errors).toHaveLength(0)
   })
 
@@ -490,6 +440,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`auto bond-order toggle changes rendered bond geometry`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     await dispatch_co2(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -513,6 +464,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`aromatic display toggle switches benzene representation`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     // Planar benzene ring (6 C in a hexagon, 1.39 Å radius), no explicit
     // bonds -> connectivity ring detected, perception flags it aromatic.
@@ -558,6 +510,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`manual override wins over perceived bond order`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     await dispatch_co2(page)
     await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
@@ -568,7 +521,7 @@ test.describe(`Bond component`, () => {
     // carbon, so the midpoint is slightly right of the canvas center.
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
 
-    const target_offset_x = await open_bond_menu_near_center(page, canvas)
+    await click_canvas_center(page, canvas, `right`)
     const menu = page.locator(`#test-structure .bond-context-menu`)
     await expect(menu).toBeVisible()
     // Pre-override: the menu reports the PERCEIVED order. Perception relabels
@@ -584,16 +537,16 @@ test.describe(`Bond component`, () => {
       .poll(() => get_structure_bonds(page))
       .toContainEqual(expect.objectContaining({ order: 3 }))
 
-    // Re-open the edited bond with the same target offset to ensure the
-    // context menu still supports follow-up actions after the override.
-    await click_canvas_offset(page, canvas, target_offset_x, 0, `right`)
+    // Re-open the edited bond to ensure the context menu still supports
+    // follow-up actions after the override.
+    await click_canvas_center(page, canvas, `right`)
     await expect(menu).toBeVisible()
     await menu.getByRole(`button`, { name: `Close` }).focus()
     await page.keyboard.press(`Enter`)
     await expect(menu).toBeHidden()
 
     await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
-    await delete_bond_near_center(page, canvas)
+    await click_canvas_center(page, canvas)
     await expect.poll(() => get_structure_bonds(page)).toEqual([])
     await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
     await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
@@ -601,6 +554,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`site labels avoid adjacent bond directions`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     await page.evaluate(() => {
       const structure = {

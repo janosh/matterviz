@@ -14,7 +14,7 @@ class Structure(MatterViz):
 
     Component key: ``structure/Structure``
 
-    Events: on_file_drop
+    Events: on_bonds_change, on_camera_move, on_camera_reset, on_error, on_file_drop, on_file_load, on_fullscreen_change
 
     Unsupported snippets: top_right_controls
     """
@@ -25,8 +25,7 @@ class Structure(MatterViz):
         active_volume_idx: int | None = None,
         allow_file_drop: bool | None = None,
         atom_color_config: dict | None = None,
-        bond_edit_mode: Any | None = None,
-        bond_edit_order: Any | None = None,
+        bonds: list | None = None,
         cell_type: Any | None = None,
         data_url: str | None = None,
         displayed_structure: Any | None = None,
@@ -48,11 +47,6 @@ class Structure(MatterViz):
         loading: bool | None = None,
         measure_mode: Any | None = None,
         measured_sites: list[int] | None = None,
-        on_camera_move: Any | None = None,
-        on_camera_reset: Any | None = None,
-        on_error: Any | None = None,
-        on_file_load: Any | None = None,
-        on_fullscreen_change: Any | None = None,
         performance_mode: Any | None = None,
         png_dpi: float | None = None,
         reset_text: str | None = None,
@@ -66,6 +60,8 @@ class Structure(MatterViz):
         symmetry_settings: dict | None = None,
         volumetric_data: list | None = None,
         width: float | None = None,
+        bond_edit_mode: Any | None = None,
+        bond_edit_order: Any | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -83,10 +79,8 @@ class Structure(MatterViz):
             mv_props["allow_file_drop"] = allow_file_drop
         if atom_color_config is not None:
             mv_props["atom_color_config"] = atom_color_config
-        if bond_edit_mode is not None:
-            mv_props["bond_edit_mode"] = bond_edit_mode
-        if bond_edit_order is not None:
-            mv_props["bond_edit_order"] = bond_edit_order
+        if bonds is not None:
+            mv_props["bonds"] = bonds
         if cell_type is not None:
             mv_props["cell_type"] = cell_type
         if data_url is not None:
@@ -129,16 +123,6 @@ class Structure(MatterViz):
             mv_props["measure_mode"] = measure_mode
         if measured_sites is not None:
             mv_props["measured_sites"] = measured_sites
-        if on_camera_move is not None:
-            mv_props["on_camera_move"] = on_camera_move
-        if on_camera_reset is not None:
-            mv_props["on_camera_reset"] = on_camera_reset
-        if on_error is not None:
-            mv_props["on_error"] = on_error
-        if on_file_load is not None:
-            mv_props["on_file_load"] = on_file_load
-        if on_fullscreen_change is not None:
-            mv_props["on_fullscreen_change"] = on_fullscreen_change
         if performance_mode is not None:
             mv_props["performance_mode"] = performance_mode
         if png_dpi is not None:
@@ -165,6 +149,10 @@ class Structure(MatterViz):
             mv_props["volumetric_data"] = volumetric_data
         if width is not None:
             mv_props["width"] = width
+        if bond_edit_mode is not None:
+            mv_props["bond_edit_mode"] = bond_edit_mode
+        if bond_edit_order is not None:
+            mv_props["bond_edit_order"] = bond_edit_order
         if set_props is None:
             set_props = ["hidden_elements", "hidden_prop_vals"]
 

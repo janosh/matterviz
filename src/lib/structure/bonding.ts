@@ -25,11 +25,23 @@ const format_cell_shift = (cell_shift: Vec3 | undefined): string => {
 const negate_cell_shift = (cell_shift: Vec3): Vec3 =>
   cell_shift.map((val) => (val === 0 ? 0 : -val)) as Vec3
 
+const canonical_self_bond_shift = (cell_shift: Vec3): Vec3 => {
+  const first_non_zero = cell_shift.find((val) => val !== 0)
+  return first_non_zero !== undefined && first_non_zero < 0
+    ? negate_cell_shift(cell_shift)
+    : cell_shift
+}
+
 const normalize_bond_endpoints = (
   site_idx_1: number,
   site_idx_2: number,
   cell_shift?: Vec3,
 ): Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`> => {
+  if (site_idx_1 === site_idx_2) {
+    const ordered = { site_idx_1, site_idx_2 }
+    if (cell_shift === undefined || is_zero_cell_shift(cell_shift)) return ordered
+    return { ...ordered, cell_shift: canonical_self_bond_shift(cell_shift) }
+  }
   const ordered =
     site_idx_1 < site_idx_2
       ? { site_idx_1, site_idx_2 }
@@ -81,6 +93,10 @@ export type BondEditResult = {
 }
 
 type BondKeyTarget = Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`>
+type BondOrderTarget = BondKeyTarget & {
+  bond_order?: BondOrder
+  order?: BondOrder
+}
 
 export const BOND_ORDER_OPTIONS: { order: BondOrder; label: string }[] = [
   { order: 1, label: `Single` },
@@ -107,8 +123,13 @@ const remove_bond_key = (bonds: StructureBond[], key: string): StructureBond[] =
 const includes_bond_key = (bonds: BondKeyTarget[], key: string): boolean =>
   bonds.some((bond) => matches_bond_key(bond, key))
 
-const has_calculated_bond = (calculated_bonds: BondKeyTarget[], key: string): boolean =>
-  includes_bond_key(calculated_bonds, key)
+const get_bond_order = (bond: BondOrderTarget | undefined): BondOrder =>
+  bond?.bond_order ?? bond?.order ?? 1
+
+const find_bond_by_key = <BondType extends BondKeyTarget>(
+  bonds: BondType[],
+  key: string,
+): BondType | undefined => bonds.find((bond) => matches_bond_key(bond, key))
 
 const make_bond_record = (bond: BondKeyTarget, order: BondOrder): StructureBond =>
   normalize_structure_bond(bond.site_idx_1, bond.site_idx_2, order, bond.cell_shift)
@@ -116,37 +137,36 @@ const make_bond_record = (bond: BondKeyTarget, order: BondOrder): StructureBond 
 export function has_visible_bond(
   edit_state: BondEditState,
   bond: BondKeyTarget,
-  calculated_bonds: BondKeyTarget[],
+  calculated_bonds: BondOrderTarget[],
 ): boolean {
   const key = bond_key_for(bond)
-  if (includes_bond_key(edit_state.added_bonds, key)) return true
   if (includes_bond_key(edit_state.removed_bonds, key)) {
     return false
   }
-  return has_calculated_bond(calculated_bonds, key)
+  if (includes_bond_key(edit_state.added_bonds, key)) return true
+  return includes_bond_key(calculated_bonds, key)
 }
 
 export function add_or_restore_bond(
   edit_state: BondEditState,
   bond: BondKeyTarget,
-  calculated_bonds: BondKeyTarget[],
+  calculated_bonds: BondOrderTarget[],
   order: BondOrder,
 ): BondEditResult {
   const record = make_bond_record(bond, order)
   const key = bond_key_for(record)
-  const removed_bond = edit_state.removed_bonds.find((edit_bond) =>
-    matches_bond_key(edit_bond, key),
-  )
+  const removed_bond = find_bond_by_key(edit_state.removed_bonds, key)
   if (removed_bond) {
     return {
       action: `restored`,
       changed: true,
       state: {
         ...edit_state,
+        added_bonds: remove_bond_key(edit_state.added_bonds, key),
         removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
         bond_order_overrides:
           removed_bond.order === order
-            ? edit_state.bond_order_overrides
+            ? remove_bond_key(edit_state.bond_order_overrides, key)
             : replace_bond(edit_state.bond_order_overrides, record),
       },
     }
@@ -168,12 +188,11 @@ export function add_or_restore_bond(
 export function delete_bond(
   edit_state: BondEditState,
   bond: BondKeyTarget,
-  calculated_bonds: BondKeyTarget[],
+  calculated_bonds: BondOrderTarget[],
 ): BondEditResult {
   const record = make_bond_record(bond, 1)
   const key = bond_key_for(record)
-  const has_added_bond = includes_bond_key(edit_state.added_bonds, key)
-  if (has_added_bond) {
+  if (includes_bond_key(edit_state.added_bonds, key)) {
     return {
       action: `deleted-added`,
       changed: true,
@@ -184,9 +203,8 @@ export function delete_bond(
       },
     }
   }
-  const calculated = has_calculated_bond(calculated_bonds, key)
-  const already_removed = includes_bond_key(edit_state.removed_bonds, key)
-  if (!calculated || already_removed) {
+  const calculated = find_bond_by_key(calculated_bonds, key)
+  if (!calculated || includes_bond_key(edit_state.removed_bonds, key)) {
     return { action: `not-visible`, changed: false, state: edit_state }
   }
   return {
@@ -194,7 +212,10 @@ export function delete_bond(
     changed: true,
     state: {
       ...edit_state,
-      removed_bonds: [...edit_state.removed_bonds, record],
+      removed_bonds: replace_bond(edit_state.removed_bonds, {
+        ...record,
+        order: get_bond_order(calculated),
+      }),
       bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
     },
   }
@@ -203,19 +224,32 @@ export function delete_bond(
 export function set_bond_order(
   edit_state: BondEditState,
   bond: BondKeyTarget,
-  calculated_bonds: BondKeyTarget[],
+  calculated_bonds: BondOrderTarget[],
   order: BondOrder,
 ): BondEditResult {
   const record = make_bond_record(bond, order)
   const key = bond_key_for(record)
-  const calculated = has_calculated_bond(calculated_bonds, key)
+  const calculated = find_bond_by_key(calculated_bonds, key)
   if (calculated) {
+    const visible_order = get_bond_order(calculated)
+    const has_existing_edit =
+      includes_bond_key(edit_state.added_bonds, key) ||
+      includes_bond_key(edit_state.removed_bonds, key) ||
+      includes_bond_key(edit_state.bond_order_overrides, key)
+    const next_overrides =
+      order === visible_order
+        ? remove_bond_key(edit_state.bond_order_overrides, key)
+        : replace_bond(edit_state.bond_order_overrides, record)
     const next_state = {
       added_bonds: remove_bond_key(edit_state.added_bonds, key),
       removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-      bond_order_overrides: replace_bond(edit_state.bond_order_overrides, record),
+      bond_order_overrides: next_overrides,
     }
-    return { action: `ordered-calculated`, changed: true, state: next_state }
+    return {
+      action: `ordered-calculated`,
+      changed: has_existing_edit || order !== visible_order,
+      state: next_state,
+    }
   }
   return {
     action: `ordered-added`,
@@ -236,12 +270,22 @@ export const merge_bond_edits = (
 ): StructureBond[] => {
   const key_for = (bond: StructureBond): string =>
     get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
-  const merged = new Map(base_bonds.map((bond) => [key_for(bond), bond]))
-  for (const bond of removed) merged.delete(key_for(bond))
+  const normalize_record = (bond: StructureBond): StructureBond =>
+    normalize_structure_bond(bond.site_idx_1, bond.site_idx_2, bond.order, bond.cell_shift)
+  const removed_keys = new Set(removed.map(key_for))
+  const merged = new Map(
+    base_bonds
+      .filter((bond) => !removed_keys.has(key_for(bond)))
+      .map((bond) => [key_for(bond), normalize_record(bond)]),
+  )
   // Apply additions before overrides so user-set bond orders win even if
   // callers accidentally pass overlapping edit lists.
-  for (const bond of added) merged.set(key_for(bond), bond)
-  for (const bond of overrides) merged.set(key_for(bond), bond)
+  for (const bond of added) {
+    if (!removed_keys.has(key_for(bond))) merged.set(key_for(bond), normalize_record(bond))
+  }
+  for (const bond of overrides) {
+    if (!removed_keys.has(key_for(bond))) merged.set(key_for(bond), normalize_record(bond))
+  }
   return [...merged.values()]
 }
 
@@ -344,10 +388,6 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
       )
       continue
     }
-    if (site_idx_1 === site_idx_2) {
-      console.warn(`Ignoring invalid explicit bond at index ${entry_idx}: endpoints match`)
-      continue
-    }
     const bond_order = normalize_bond_order(order)
     if (bond_order === null) {
       console.warn(
@@ -362,6 +402,10 @@ export function get_explicit_bond_metadata(structure: AnyStructure): StructureBo
       console.warn(
         `Ignoring invalid explicit bond at index ${entry_idx}: cell_shift must be three integers`,
       )
+      continue
+    }
+    if (site_idx_1 === site_idx_2 && is_zero_cell_shift(cell_shift)) {
+      console.warn(`Ignoring invalid explicit bond at index ${entry_idx}: endpoints match`)
       continue
     }
     if (

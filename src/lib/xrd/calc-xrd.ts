@@ -354,7 +354,8 @@ export async function add_xrd_pattern(
       if (typeof content === `string`) {
         buffer_content = content
       } else {
-        buffer_content = new Uint8Array(content).slice().buffer
+        buffer_content =
+          content instanceof ArrayBuffer ? content : new Uint8Array(content).slice().buffer
       }
       const pattern = await parse_xrd_file(buffer_content, filename)
       if (pattern && pattern.x.length > 0) {

@@ -626,17 +626,47 @@ describe(`canvas cursor`, () => {
   })
 
   test.each([
-    { bond_edit_mode: `add` as const, expected: `pointer` },
-    { bond_edit_mode: `delete` as const, expected: `not-allowed` },
+    {
+      desc: `atom hover in add mode`,
+      bond_edit_mode: `add` as const,
+      expected: `pointer`,
+    },
+    {
+      desc: `atom hover in delete mode`,
+      bond_edit_mode: `delete` as const,
+      expected: `not-allowed`,
+    },
+    {
+      desc: `disabled atom hover`,
+      bond_edit_mode: `add` as const,
+      bond_edits_enabled: false,
+      expected: `not-allowed`,
+    },
+    {
+      desc: `disabled bond hover`,
+      bond_edit_mode: `add` as const,
+      bond_edits_enabled: false,
+      hovered_idx: null,
+      hovered_bond_key: `0-1`,
+      expected: `not-allowed`,
+    },
   ])(
-    `returns $expected for atom hover in edit-bonds $bond_edit_mode mode`,
-    ({ bond_edit_mode, expected }) => {
+    `returns $expected for edit-bonds $desc`,
+    ({
+      bond_edit_mode,
+      bond_edits_enabled = true,
+      hovered_idx = 0,
+      hovered_bond_key = null,
+      expected,
+    }) => {
       expect(
         get_canvas_cursor({
           measure_mode: `edit-bonds`,
           add_atom_mode: false,
           bond_edit_mode,
-          hovered_idx: 0,
+          bond_edits_enabled,
+          hovered_idx,
+          hovered_bond_key,
           site_is_image: no_image,
         }),
       ).toBe(expected)
