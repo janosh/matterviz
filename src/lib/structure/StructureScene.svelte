@@ -52,7 +52,7 @@
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { type Camera, Color, type Mesh, type Scene } from 'three'
+  import { type Camera, Color, type Mesh, type Object3D, type Scene, Vector3 } from 'three'
   import Bond from './Bond.svelte'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
@@ -97,6 +97,18 @@
     site_idx_2: number
     cell_shift?: Vec3
     position: Vec3
+  }
+
+  type BondPointerEvent = PointerEvent & {
+    nativeEvent?: PointerEvent
+    object?: Object3D
+    point?: Vector3
+  }
+
+  type BondContextMenuEvent = MouseEvent & {
+    nativeEvent?: MouseEvent
+    object?: Object3D
+    point?: Vector3
   }
 
   let pulse_time = $state(0)
@@ -344,8 +356,7 @@
     }
     if (hovered_idx != null) {
       if (measure_mode === `edit-bonds`) {
-        return bond_edit_mode === `add` && bond_edits_enabled &&
-            is_editable_bond_site(hovered_idx)
+        return bond_edit_mode === `add` && can_select_bond_site(hovered_idx)
           ? `pointer`
           : `not-allowed`
       }
@@ -402,6 +413,9 @@
     return structure?.sites?.[site_idx]?.properties?.orig_site_idx == null
   }
 
+  const can_select_bond_site = (site_idx: number): boolean =>
+    bond_edits_enabled && structure?.sites?.[site_idx] != null
+
   const can_edit_bond = (bond: BondKeyTarget): boolean => {
     const target = canonical_bond_target(bond)
     return bond_edits_enabled &&
@@ -429,7 +443,8 @@
     (pos_1[2] + pos_2[2]) / 2,
   ]
 
-  const ADD_MODE_BOND_HIT_LENGTH_SCALE = 0.6
+  const BOND_ENDPOINT_HIT_FRACTION = 0.3
+  const BOND_ENDPOINT_SITE_MATCH_TOLERANCE = 1e-6
   const EDITABLE_ATOM_HIT_RADIUS_SCALE = 1.15
 
   function apply_bond_transform(mesh: Mesh, bond: BondPair): void {
@@ -437,32 +452,77 @@
     mesh.matrixWorldNeedsUpdate = true
   }
 
-  function apply_editable_bond_hit_transform(mesh: Mesh, bond: BondPair): void {
+  function apply_non_raycastable_bond_hit_transform(mesh: Mesh, bond: BondPair): void {
     apply_bond_transform(mesh, bond)
-    if (bond_edit_mode !== `add`) return
-
-    const { elements } = mesh.matrix
-    for (const matrix_idx of [4, 5, 6]) {
-      elements[matrix_idx] *= ADD_MODE_BOND_HIT_LENGTH_SCALE
-    }
-    mesh.matrixWorldNeedsUpdate = true
+    mesh.raycast = () => undefined
   }
 
-  function apply_non_raycastable_bond_hit_transform(mesh: Mesh, bond: BondPair): void {
-    apply_editable_bond_hit_transform(mesh, bond)
-    mesh.raycast = () => undefined
+  function get_bond_endpoint_site_idx(site_idx: number, position: Vec3): number {
+    if (!structure?.sites) return site_idx
+    const site = structure.sites[site_idx]
+    if (!site) return site_idx
+    if (math.euclidean_dist(site.xyz, position) <= BOND_ENDPOINT_SITE_MATCH_TOLERANCE) {
+      return site_idx
+    }
+
+    const image_site_idx = structure.sites.findIndex((candidate_site) =>
+      candidate_site.properties?.orig_site_idx === site_idx &&
+      math.euclidean_dist(candidate_site.xyz, position) <=
+        BOND_ENDPOINT_SITE_MATCH_TOLERANCE
+    )
+    return image_site_idx === -1 ? site_idx : image_site_idx
+  }
+
+  function get_bond_endpoint_hit_site_idx(
+    bond: BondPair,
+    event: BondPointerEvent,
+  ): number | null {
+    if (!event.point) return null
+    const parent = event.object?.parent
+    if (!parent) return null
+
+    const pos_1 = new Vector3(...bond.pos_1)
+    const pos_2 = new Vector3(...bond.pos_2)
+    parent.localToWorld(pos_1)
+    parent.localToWorld(pos_2)
+
+    const bond_vec = pos_2.sub(pos_1)
+    const length_sq = bond_vec.lengthSq()
+    if (length_sq <= math.EPS) return null
+
+    const hit_vec = event.point.clone().sub(pos_1)
+    const t = hit_vec.dot(bond_vec) / length_sq
+    if (t <= BOND_ENDPOINT_HIT_FRACTION) {
+      return get_bond_endpoint_site_idx(bond.site_idx_1, bond.pos_1)
+    }
+    if (t >= 1 - BOND_ENDPOINT_HIT_FRACTION) {
+      return get_bond_endpoint_site_idx(bond.site_idx_2, bond.pos_2)
+    }
+    return null
   }
 
   let label_screen_margin = $derived(site_label_size * 10 + site_label_padding)
 
-  function open_bond_context_menu(bond: BondPair) {
+  function get_bond_context_menu_position(
+    bond: BondPair,
+    event?: BondContextMenuEvent,
+  ): Vec3 {
+    const parent = event?.object?.parent
+    if (!event?.point || !parent) return midpoint(bond.pos_1, bond.pos_2)
+
+    const local_point = event.point.clone()
+    parent.worldToLocal(local_point)
+    return [local_point.x, local_point.y, local_point.z]
+  }
+
+  function open_bond_context_menu(bond: BondPair, event?: BondContextMenuEvent) {
     if (!can_edit_bond(bond)) return
     const target = canonical_bond_target(bond)
     bond_context_target = {
       site_idx_1: target.site_idx_1,
       site_idx_2: target.site_idx_2,
       cell_shift: target.cell_shift,
-      position: midpoint(bond.pos_1, bond.pos_2),
+      position: get_bond_context_menu_position(bond, event),
     }
     bond_context_menu = bond_context_target
   }
@@ -606,7 +666,7 @@
         selected_sites = []
         return
       }
-      if (!bond_edits_enabled || !is_editable_bond_site(site_index)) return
+      if (!can_select_bond_site(site_index)) return
       // In Add mode, select atom pairs without making existing bonds destructive.
       const new_sites = measured_sites.includes(site_index)
         ? measured_sites.filter((idx) => idx !== site_index)
@@ -1019,7 +1079,7 @@
 
     const targets = new SvelteMap<number, EditableAtomHitTarget>()
     for (const atom of atom_data) {
-      if (atom.is_image_atom || !is_editable_bond_site(atom.site_idx)) continue
+      if (!can_select_bond_site(atom.site_idx)) continue
       if (targets.has(atom.site_idx)) continue
       targets.set(atom.site_idx, {
         site_idx: atom.site_idx,
@@ -1576,12 +1636,12 @@
           {@const is_delete_mode = bond_edit_mode === `delete`}
           {@const bond_hit_radius =
             bond_thickness * (is_delete_mode ? 5 : 1.25)}
+          {@const bond_hover_radius = bond_thickness * 1.1}
           <T.Mesh
             matrixAutoUpdate={false}
-            oncreate={(ref) => apply_editable_bond_hit_transform(ref, bond)}
-            onpointerdown={(event: PointerEvent & { nativeEvent?: PointerEvent }) => {
+            oncreate={(ref) => apply_bond_transform(ref, bond)}
+            onpointerdown={(event: BondPointerEvent) => {
               if (event.nativeEvent?.button === 2) return
-              if (!is_delete_mode && hovered_idx != null) return
               event.stopPropagation()
               if (is_delete_mode) {
                 remove_bond(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
@@ -1589,13 +1649,17 @@
                 selected_sites = []
                 hovered_bond_key = null
               } else {
-                setTimeout(() => open_bond_context_menu(bond))
+                const endpoint_site_idx = get_bond_endpoint_hit_site_idx(bond, event)
+                if (endpoint_site_idx != null) {
+                  toggle_selection(endpoint_site_idx, event)
+                  remember_edit_bonds_pointerdown_site(endpoint_site_idx)
+                }
               }
             }}
-            oncontextmenu={(event: MouseEvent & { nativeEvent?: MouseEvent }) => {
+            oncontextmenu={(event: BondContextMenuEvent) => {
               event.nativeEvent?.preventDefault()
               event.stopPropagation?.()
-              open_bond_context_menu(bond)
+              open_bond_context_menu(bond, event)
             }}
             onpointerenter={() => (hovered_bond_key = bond_key)}
             onpointermove={() => (hovered_bond_key = bond_key)}
@@ -1620,7 +1684,7 @@
               matrixAutoUpdate={false}
               oncreate={(ref) => apply_non_raycastable_bond_hit_transform(ref, bond)}
             >
-              <T.CylinderGeometry args={[bond_hit_radius, bond_hit_radius, 1, 6]} />
+              <T.CylinderGeometry args={[bond_hover_radius, bond_hover_radius, 1, 6]} />
               <T.MeshBasicMaterial
                 transparent
                 opacity={0.25}
@@ -1665,7 +1729,7 @@
           bond_context_menu.site_idx_2,
           bond_context_menu.cell_shift,
         )}
-        <extras.HTML center position={bond_context_menu.position}>
+        <extras.HTML autoRender={false} position={bond_context_menu.position}>
           <div class="bond-context-menu">
             <strong>Bond Order ({format_bond_order(current_order)})</strong>
             {#each BOND_ORDER_OPTIONS as { order, label } (label)}
@@ -2086,7 +2150,7 @@
     display: grid;
     min-width: 8rem;
     gap: 2pt;
-    padding: 5pt;
+    padding: 3pt 5pt;
     border-radius: var(--border-radius, 3pt);
     background: var(--surface-bg, Canvas);
     color: var(--text-color, currentColor);

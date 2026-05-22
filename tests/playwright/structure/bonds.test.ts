@@ -358,8 +358,7 @@ test.describe(`Bond component`, () => {
 
     await click_canvas_center(page, canvas)
     const menu = page.locator(`#test-structure .bond-context-menu`)
-    await expect(menu).toBeVisible()
-    await menu.getByRole(`button`, { name: `Close` }).click()
+    await expect(menu).toBeHidden()
     await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
 
     await click_atom_label(page, `C`)

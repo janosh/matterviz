@@ -2136,7 +2136,7 @@
     gap: 0.4em;
     background: color-mix(in srgb, var(--page-bg, Canvas) 85%, currentColor);
     border-radius: var(--border-radius, 3pt);
-    padding: 0.15em 0.25em;
+    padding: 0.15em 0.35em 0.15em 0.5em;
     font-size: 0.8em;
   }
   .bond-edit-mode-toggle {

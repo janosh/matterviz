@@ -542,9 +542,7 @@ function get_canvas_cursor(ctx: CursorContext): string {
   }
   if (ctx.hovered_idx !== null) {
     if (ctx.measure_mode === `edit-bonds`) {
-      return ctx.bond_edit_mode !== `delete` &&
-        (ctx.bond_edits_enabled ?? true) &&
-        !ctx.site_is_image(ctx.hovered_idx)
+      return ctx.bond_edit_mode !== `delete` && (ctx.bond_edits_enabled ?? true)
         ? `pointer`
         : `not-allowed`
     }
@@ -632,6 +630,12 @@ describe(`canvas cursor`, () => {
       expected: `pointer`,
     },
     {
+      desc: `image atom hover in add mode`,
+      bond_edit_mode: `add` as const,
+      image: true,
+      expected: `pointer`,
+    },
+    {
       desc: `atom hover in delete mode`,
       bond_edit_mode: `delete` as const,
       expected: `not-allowed`,
@@ -657,6 +661,7 @@ describe(`canvas cursor`, () => {
       bond_edits_enabled = true,
       hovered_idx = 0,
       hovered_bond_key = null,
+      image = false,
       expected,
     }) => {
       expect(
@@ -667,7 +672,7 @@ describe(`canvas cursor`, () => {
           bond_edits_enabled,
           hovered_idx,
           hovered_bond_key,
-          site_is_image: no_image,
+          site_is_image: image ? all_image : no_image,
         }),
       ).toBe(expected)
     },
