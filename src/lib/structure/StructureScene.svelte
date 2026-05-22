@@ -347,6 +347,38 @@
   let bond_pairs: BondPair[] = $state([])
   let active_tooltip = $state<`atom` | `bond` | null>(null)
   let hovered_bond_key = $state<string | null>(null)
+  const ATOM_HOVER_CLEAR_DELAY_MS = 200
+  let clear_atom_hover_timeout: ReturnType<typeof setTimeout> | null = null
+
+  function cancel_atom_hover_clear(): void {
+    if (clear_atom_hover_timeout == null) return
+    clearTimeout(clear_atom_hover_timeout)
+    clear_atom_hover_timeout = null
+  }
+
+  function set_atom_hover(site_idx: number): void {
+    cancel_atom_hover_clear()
+    if (hovered_idx !== site_idx) hovered_idx = site_idx
+    if (active_tooltip !== `atom`) active_tooltip = `atom`
+  }
+
+  function schedule_atom_hover_clear(site_idx: number): void {
+    cancel_atom_hover_clear()
+    clear_atom_hover_timeout = setTimeout(() => {
+      clear_atom_hover_timeout = null
+      if (hovered_idx !== site_idx) return
+      hovered_idx = null
+      if (active_tooltip === `atom`) active_tooltip = null
+    }, ATOM_HOVER_CLEAR_DELAY_MS)
+  }
+
+  function set_nullable_atom_hover(site_idx: number | null): void {
+    if (site_idx != null) set_atom_hover(site_idx)
+  }
+
+  function schedule_nullable_atom_hover_clear(site_idx: number | null): void {
+    if (site_idx != null) schedule_atom_hover_clear(site_idx)
+  }
 
   // Cursor style for the canvas, derived from mode and hover state
   let canvas_cursor = $derived.by(() => {
@@ -409,8 +441,8 @@
   const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
     bond_key_for(bond) === key
 
-  function is_editable_bond_site(site_idx: number): boolean {
-    return structure?.sites?.[site_idx]?.properties?.orig_site_idx == null
+  function is_image_bond_site(site_idx: number): boolean {
+    return structure?.sites?.[site_idx]?.properties?.orig_site_idx != null
   }
 
   const can_select_bond_site = (site_idx: number): boolean =>
@@ -419,8 +451,8 @@
   const can_edit_bond = (bond: BondKeyTarget): boolean => {
     const target = canonical_bond_target(bond)
     return bond_edits_enabled &&
-      is_editable_bond_site(target.site_idx_1) &&
-      is_editable_bond_site(target.site_idx_2)
+      !is_image_bond_site(target.site_idx_1) &&
+      !is_image_bond_site(target.site_idx_2)
   }
 
   const format_bond_order = (order: BondOrder | undefined): string =>
@@ -561,6 +593,8 @@
   }
 
   function add_or_restore_pair(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
+    if (is_image_bond_site(site_idx_1) && is_image_bond_site(site_idx_2)) return
+
     const target = canonical_bond_target({ site_idx_1, site_idx_2, cell_shift })
     if (!can_edit_bond(target)) return
     const result = add_or_restore_bond(
@@ -653,8 +687,8 @@
 
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
-    const native_event = (evt as Event & { nativeEvent?: unknown } | undefined)
-      ?.nativeEvent
+    const event_with_native = evt as Event & { nativeEvent?: unknown } | undefined
+    const native_event = event_with_native?.nativeEvent ?? evt
     if (native_event instanceof Event) {
       if (native_event === last_native_event) return
       last_native_event = native_event
@@ -1321,6 +1355,7 @@
     dampingFactor: rotation_damping,
     onstart: () => {
       camera_is_moving = true
+      cancel_atom_hover_clear()
       hovered_idx = null
       bond_context_menu = null
     },
@@ -1370,11 +1405,17 @@
         style:color={site_label_color}
         onpointerdown={(event) => {
           event.preventDefault()
+          event.stopImmediatePropagation()
           toggle_selection(site_idx, event)
+        }}
+        onclick={(event) => {
+          event.preventDefault()
+          event.stopImmediatePropagation()
         }}
         onkeydown={(event) => {
           if (event.key !== `Enter` && event.key !== ` `) return
           event.preventDefault()
+          event.stopPropagation()
           toggle_selection(site_idx, event)
         }}
       >
@@ -1456,13 +1497,15 @@
                 scale={atom.radius}
                 onpointerenter={() => {
                   if (edit_mode_image) return
-                  hovered_idx = atom.site_idx
-                  active_tooltip = `atom`
+                  set_atom_hover(atom.site_idx)
+                }}
+                onpointermove={() => {
+                  if (edit_mode_image) return
+                  set_atom_hover(atom.site_idx)
                 }}
                 onpointerleave={() => {
                   if (edit_mode_image) return
-                  hovered_idx = null
-                  active_tooltip = null
+                  schedule_atom_hover_clear(atom.site_idx)
                 }}
                 onpointerdown={(event: PointerEvent) => {
                   if (
@@ -1503,13 +1546,15 @@
             scale={atom.radius}
             onpointerenter={() => {
               if (partial_edit_image) return
-              hovered_idx = atom.site_idx
-              active_tooltip = `atom`
+              set_atom_hover(atom.site_idx)
+            }}
+            onpointermove={() => {
+              if (partial_edit_image) return
+              set_atom_hover(atom.site_idx)
             }}
             onpointerleave={() => {
               if (partial_edit_image) return
-              hovered_idx = null
-              active_tooltip = null
+              schedule_atom_hover_clear(atom.site_idx)
             }}
             onpointerdown={(event: PointerEvent) => {
               if (
@@ -1702,12 +1747,13 @@
             position={atom_hit.position}
             scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
             onpointerenter={() => {
-              hovered_idx = atom_hit.site_idx
-              active_tooltip = `atom`
+              set_atom_hover(atom_hit.site_idx)
+            }}
+            onpointermove={() => {
+              set_atom_hover(atom_hit.site_idx)
             }}
             onpointerleave={() => {
-              if (hovered_idx === atom_hit.site_idx) hovered_idx = null
-              if (active_tooltip === `atom`) active_tooltip = null
+              schedule_atom_hover_clear(atom_hit.site_idx)
             }}
             onpointerdown={(event: PointerEvent) => {
               toggle_selection(atom_hit.site_idx, event)
@@ -1823,8 +1869,17 @@
           <T.Mesh
             position={xyz}
             scale={1.2 * highlight_radius}
+            onpointerenter={() => {
+              set_nullable_atom_hover(site_idx)
+            }}
+            onpointermove={() => {
+              set_nullable_atom_hover(site_idx)
+            }}
+            onpointerleave={() => {
+              schedule_nullable_atom_hover_clear(site_idx)
+            }}
             onclick={(event: MouseEvent) => {
-              if (site_idx !== null && Number.isInteger(site_idx)) {
+              if (site_idx != null) {
                 toggle_selection(site_idx, event)
               }
             }}
@@ -1843,9 +1898,9 @@
         {/if}
       {/each}
 
-      <!-- selection order labels (1, 2, 3, ...) for measured sites (hidden in edit-atoms mode) -->
+      <!-- selection order labels (1, 2, 3, ...) for distance/angle measurements -->
       {#if structure?.sites && (measured_sites?.length ?? 0) > 0 &&
-          measure_mode !== `edit-atoms`}
+        (measure_mode === `distance` || measure_mode === `angle`)}
         {#each measured_sites as site_index, loop_idx (site_index)}
           {@const site = structure.sites[site_index]}
           {#if site}

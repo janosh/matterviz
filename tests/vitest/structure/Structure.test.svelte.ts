@@ -151,6 +151,29 @@ describe(`Structure`, () => {
     ).toBe(true)
   })
 
+  test.each([
+    { mode: `distance`, shows_limit: true },
+    { mode: `angle`, shows_limit: true },
+    { mode: `edit-bonds`, shows_limit: false },
+    { mode: `edit-atoms`, shows_limit: false },
+  ] as const)(
+    `selection limit badge visibility in $mode mode`,
+    async ({ mode, shows_limit }) => {
+      mount(Structure, {
+        target: document.body,
+        props: {
+          structure,
+          measured_sites: [0, 1, 2, 3, 4, 5, 6, 7],
+          measure_mode: mode,
+          show_controls: true,
+        },
+      })
+      await tick()
+
+      expect(document.querySelector(`.selection-limit-text`) != null).toBe(shows_limit)
+    },
+  )
+
   const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
 
   test.each(

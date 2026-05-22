@@ -651,6 +651,10 @@
   let add_atom_mode = $state(false)
   let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
   let canvas_cursor = $state(`default`)
+  let show_measure_selection_limit = $derived(
+    (measure_mode === `distance` || measure_mode === `angle`) &&
+      (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES,
+  )
   let change_element_mode = $state(false)
   let change_element_value = $state(``)
   // Ephemeral toast message for edit operations
@@ -1554,7 +1558,7 @@
               aria-expanded={measure_menu_open}
               style="transform: scale(1.2)"
             >
-              {#if (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES}
+              {#if show_measure_selection_limit}
                 <span class="selection-limit-text">
                   {measured_sites.length}/{MAX_SELECTED_SITES}
                 </span>

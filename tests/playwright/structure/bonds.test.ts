@@ -72,13 +72,17 @@ const hover_canvas_center = async (
   await page.waitForTimeout(100)
 }
 
-const click_atom_label = async (page: Page, label_text: string): Promise<void> => {
+const click_atom_label = async (
+  page: Page,
+  label_text: string,
+  options: { force?: boolean } = {},
+): Promise<void> => {
   const label = page
     .locator(`#test-structure .atom-label`)
     .filter({ hasText: label_text })
     .last()
   await expect(label).toBeVisible()
-  await label.click()
+  await label.click(options)
 }
 const set_scene_props = (page: Page, detail: Record<string, unknown>) =>
   page.evaluate((props) => {
@@ -242,6 +246,51 @@ const dispatch_periodic_image_bond_structure = (page: Page) =>
     )
   })
 
+const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
+  page.evaluate(() => {
+    const structure = {
+      lattice: {
+        matrix: [
+          [10, 0, 0],
+          [0, 10, 0],
+          [0, 0, 10],
+        ],
+        pbc: [true, true, true],
+      },
+      sites: [
+        {
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+          abc: [0.04, 0.5, 0.5],
+          xyz: [0.4, 5, 5],
+          label: `C1`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          abc: [0.045, 0.5, 0.5],
+          xyz: [0.45, 5, 5],
+          label: `O1`,
+          properties: {},
+        },
+      ],
+      properties: {},
+    }
+    window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+    window.dispatchEvent(
+      new CustomEvent(`set-scene-props`, {
+        detail: {
+          atom_radius: 2.5,
+          bonding_options: { strength_threshold: 10 },
+          camera_position: [10.5, 5, 17],
+          camera_target: [10.5, 5, 5],
+          show_bonds: `always`,
+          show_site_labels: true,
+          site_label_offset: [0, 0, 0],
+        },
+      }),
+    )
+  })
+
 test.describe(`Bond component`, () => {
   test(`renders bonds and handles rotation/zoom without errors`, async ({ page }) => {
     test.skip(IS_CI, `Visual bonds test times out in CI`)
@@ -363,6 +412,7 @@ test.describe(`Bond component`, () => {
 
     await click_atom_label(page, `C`)
     await expect(menu).toBeHidden()
+    await expect(page.locator(`#test-structure .selection-label`)).toBeHidden()
     await click_atom_label(page, `O`)
     await expect(menu).toBeVisible()
     await menu.getByRole(`button`, { name: `Close` }).click()
@@ -385,6 +435,24 @@ test.describe(`Bond component`, () => {
     await expect
       .poll(() => get_structure_bonds(page))
       .toContainEqual(expect.objectContaining({ site_idx_1: 0, site_idx_2: 1, order: 2 }))
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds add mode does not add original-cell bond from two image atoms`, async ({
+    page,
+  }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_two_image_atom_unbonded_structure(page)
+    await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    const menu = page.locator(`#test-structure .bond-context-menu`)
+    await click_atom_label(page, `C`, { force: true })
+    await expect(menu).toBeHidden()
+    await click_atom_label(page, `O`, { force: true })
+
+    await expect(menu).toBeHidden()
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
     expect(console_errors).toHaveLength(0)
   })
 
