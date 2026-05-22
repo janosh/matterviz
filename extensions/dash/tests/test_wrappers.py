@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import matterviz_dash_components as mvc
 import pytest
 from matterviz_dash_components import MatterViz
-from scripts.sync_typed_wrappers import _detect_prop_kind
+from scripts.sync_typed_wrappers import (
+    _detect_prop_kind,
+    parse_svelte_dts_with_includes,
+)
 
 # Note: We don't import typed wrappers (Structure, PeriodicTable, Trajectory) directly
 # in tests because they have @_explicitize_args decorator conflicts. Instead, we test
@@ -55,6 +60,35 @@ class TestMatterVizBase:
             )
             == "callback"
         )
+
+    def test_include_aliases_detect_event_props(self, tmp_path: Path) -> None:
+        """External include aliases classify callback props."""
+        dist_dir = tmp_path / "dist"
+        dist_dir.mkdir()
+        component_dts = dist_dir / "Component.svelte.d.ts"
+        component_dts.write_text(
+            "type $$ComponentProps = {}; declare const Component: "
+            'import("svelte").Component<$$ComponentProps>;',
+            encoding="utf-8",
+        )
+        include_dts = dist_dir / "included.d.ts"
+        include_dts.write_text(
+            "type EventHandler = (data: StructureHandlerData) => void;\n"
+            "interface IncludedProps { onReady?: EventHandler; value?: string; }\n",
+            encoding="utf-8",
+        )
+
+        props, callback_props, snippet_props, dom_props = (
+            parse_svelte_dts_with_includes(
+                str(component_dts), str(dist_dir), ["included.d.ts:IncludedProps"]
+            )
+        )
+
+        prop_kinds = {prop.js_name: prop.kind for prop in props}
+        assert prop_kinds == {"onReady": "callback", "value": "value"}
+        assert callback_props == ["onReady"]
+        assert snippet_props == []
+        assert dom_props == []
 
 
 class TestComponentInstantiation:
