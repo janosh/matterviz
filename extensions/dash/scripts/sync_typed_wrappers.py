@@ -436,7 +436,11 @@ def parse_external_type(
 
 def _detect_prop_kind(ts_type: str, aliases: dict[str, str] | None = None) -> str:
     """Determine prop kind based on TypeScript type signature."""
-    resolved = aliases.get(ts_type, ts_type) if aliases else ts_type
+    resolved = ts_type
+    seen_aliases: set[str] = set()
+    while aliases and resolved in aliases and resolved not in seen_aliases:
+        seen_aliases.add(resolved)
+        resolved = aliases[resolved]
     if "=>" in resolved:
         return "callback"
     if "Snippet" in resolved:

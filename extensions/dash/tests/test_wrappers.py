@@ -56,7 +56,11 @@ class TestMatterVizBase:
         assert comp.event_props == ["on_file_load", "on_error"]
         assert (
             _detect_prop_kind(
-                "EventHandler", {"EventHandler": "(data: StructureHandlerData) => void"}
+                "OnReady",
+                {
+                    "OnReady": "EventHandler",
+                    "EventHandler": "(data: StructureHandlerData) => void",
+                },
             )
             == "callback"
         )
@@ -74,7 +78,8 @@ class TestMatterVizBase:
         include_dts = dist_dir / "included.d.ts"
         include_dts.write_text(
             "type EventHandler = (data: StructureHandlerData) => void;\n"
-            "interface IncludedProps { onReady?: EventHandler; value?: string; }\n",
+            "type OnReady = EventHandler;\n"
+            "interface IncludedProps { onReady?: OnReady; value?: string; }\n",
             encoding="utf-8",
         )
 
