@@ -507,6 +507,31 @@ describe(`Explicit Bond Metadata`, () => {
     ).toBe(true)
   })
 
+  test(`canonicalizes image-atom bond edit targets to original sites with cell shifts`, () => {
+    const structure = make_crystal(10, [
+      [`C`, [0.95, 0.5, 0.5]],
+      [`O`, [0.04, 0.5, 0.5]],
+    ])
+    const structure_with_images = get_pbc_image_sites(structure)
+    const image_site_idx = structure_with_images.sites.findIndex(
+      (site) => site.properties?.orig_site_idx === 1 && site.abc[0] > 1,
+    )
+
+    expect(image_site_idx).toBeGreaterThan(1)
+    expect(
+      bonding.canonicalize_bond_target(
+        { site_idx_1: 0, site_idx_2: image_site_idx },
+        structure_with_images.sites,
+      ),
+    ).toEqual({ site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0] })
+    expect(
+      bonding.canonicalize_bond_target(
+        { site_idx_1: image_site_idx, site_idx_2: 0 },
+        structure_with_images.sites,
+      ),
+    ).toEqual({ site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0] })
+  })
+
   test(`parses and renders explicit crystal bonds with cell shifts`, () => {
     const structure = make_crystal(10, [
       [`C`, [0.95, 0.5, 0.5]],

@@ -381,7 +381,7 @@ test.describe(`Bond component`, () => {
 
     await dispatch_two_atom_bond_structure(page, 3)
     await expect(
-      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y)` }),
+      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)` }),
     ).toBeDisabled()
     await expect
       .poll(() => get_structure_bonds(page))
@@ -396,7 +396,7 @@ test.describe(`Bond component`, () => {
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
     await set_structure_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
     await expect(
-      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y)` }),
+      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)` }),
     ).toBeDisabled()
     await expect
       .poll(() => get_structure_bonds(page))
@@ -412,7 +412,7 @@ test.describe(`Bond component`, () => {
     await page.locator(`[data-testid="btn-set-edit-atoms"]`).click()
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
     await expect(
-      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y)` }),
+      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)` }),
     ).toBeDisabled()
     expect(console_errors).toHaveLength(0)
   })

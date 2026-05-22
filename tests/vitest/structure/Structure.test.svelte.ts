@@ -133,10 +133,18 @@ describe(`Structure`, () => {
     await tick()
 
     expect(doc_query(`.bond-edit-toolbar`)).toBeInstanceOf(HTMLElement)
-    expect(doc_query<HTMLButtonElement>(`button[aria-pressed="true"]`).textContent).toContain(
-      `Add`,
+    const selector = `.bond-edit-mode-toggle button[aria-pressed="true"]`
+    const active_button = doc_query<HTMLButtonElement>(selector)
+    const order_select = doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`)
+    expect(active_button.textContent).toContain(`Add`)
+    expect(order_select.value).toBe(`1`)
+    expect(order_select.compareDocumentPosition(active_button)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
     )
-    expect(doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`).value).toBe(`1`)
+    doc_query<HTMLButtonElement>(`.bond-edit-mode-toggle button[title^="Delete"]`).click()
+    await tick()
+    expect(doc_query<HTMLButtonElement>(selector).textContent).toContain(`Delete`)
+    expect(document.querySelector(`.bond-edit-toolbar select`)).toBeNull()
     expect(
       doc_query<HTMLButtonElement>(`button[aria-label="Undo bond edit (Cmd/Ctrl+Z)"]`)
         .disabled,

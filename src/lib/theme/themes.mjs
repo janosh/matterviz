@@ -148,6 +148,18 @@ const themes = {
 
   // Tooltips
   'tooltip-bg': tooltip_bg(`243, 244, 246`, `0, 40, 60`),
+  'canvas-tooltip-bg': {
+    light: `rgba(226, 232, 240, 0.96)`,
+    dark: `rgba(15, 23, 42, 0.96)`,
+    white: `rgba(241, 245, 249, 0.98)`,
+    black: `rgba(20, 20, 20, 0.98)`,
+  },
+  'canvas-tooltip-text-color': {
+    light: `#0f172a`,
+    dark: `#f8fafc`,
+    white: `#0f172a`,
+    black: `#f8fafc`,
+  },
   'tooltip-border': {
     light: `1px solid rgba(0, 0, 0, 0.15)`,
     dark: `1px solid rgba(255, 255, 255, 0.15)`,

@@ -92,7 +92,7 @@ export type BondEditResult = {
   state: BondEditState
 }
 
-type BondKeyTarget = Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`>
+export type BondKeyTarget = Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`>
 type BondOrderTarget = BondKeyTarget & {
   bond_order?: BondOrder
   order?: BondOrder
@@ -105,6 +105,39 @@ export const BOND_ORDER_OPTIONS: { order: BondOrder; label: string }[] = [
   { order: 3, label: `Triple` },
   { order: `aromatic`, label: `Aromatic` },
 ]
+
+const site_image_shift = (sites: Site[] | undefined, site_idx: number): Vec3 => {
+  const site = sites?.[site_idx]
+  const orig_site_idx = site?.properties?.orig_site_idx
+  if (typeof orig_site_idx !== `number`) return [0, 0, 0]
+  const orig_site = sites?.[orig_site_idx]
+  if (!site?.abc || !orig_site?.abc) return [0, 0, 0]
+  return site.abc.map((coord, coord_idx) =>
+    Math.round(coord - orig_site.abc[coord_idx]),
+  ) as Vec3
+}
+
+const original_site_idx = (sites: Site[] | undefined, site_idx: number): number => {
+  const orig_site_idx = sites?.[site_idx]?.properties?.orig_site_idx
+  return typeof orig_site_idx === `number` ? orig_site_idx : site_idx
+}
+
+export const canonicalize_bond_target = (
+  bond: BondKeyTarget,
+  sites: Site[] | undefined,
+): BondKeyTarget => {
+  const shift_1 = site_image_shift(sites, bond.site_idx_1)
+  const shift_2 = site_image_shift(sites, bond.site_idx_2)
+  const base_shift = bond.cell_shift ?? [0, 0, 0]
+  const cell_shift = base_shift.map(
+    (shift_val, shift_idx) => shift_val + shift_2[shift_idx] - shift_1[shift_idx],
+  ) as Vec3
+  return normalize_bond_endpoints(
+    original_site_idx(sites, bond.site_idx_1),
+    original_site_idx(sites, bond.site_idx_2),
+    cell_shift,
+  )
+}
 
 const bond_key_for = (bond: BondKeyTarget): string =>
   get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)

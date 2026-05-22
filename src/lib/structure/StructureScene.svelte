@@ -54,11 +54,12 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { type Camera, Color, type Mesh, type Scene } from 'three'
   import Bond from './Bond.svelte'
-  import type { BondEditResult, BondingStrategy } from './bonding'
+  import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
     add_or_restore_bond,
     BONDING_STRATEGIES,
     BOND_ORDER_OPTIONS,
+    canonicalize_bond_target,
     delete_bond as apply_delete_bond,
     get_bond_key,
     get_bond_render_matrices,
@@ -91,7 +92,6 @@
     cell_shift?: Vec3
     position: Vec3
   }
-  type BondKeyTarget = Pick<StructureBond, `site_idx_1` | `site_idx_2` | `cell_shift`>
 
   let pulse_time = $state(0)
   let pulse_opacity = $derived(0.15 + 0.25 * Math.sin(pulse_time * 5))
@@ -379,7 +379,14 @@
     bond_context_target = null
   }
 
-  const bond_key_for = (bond: BondKeyTarget): string =>
+  const canonical_bond_target = (bond: BondKeyTarget): BondKeyTarget =>
+    canonicalize_bond_target(bond, structure?.sites)
+
+  const bond_key_for = (bond: BondKeyTarget): string => {
+    const target = canonical_bond_target(bond)
+    return get_bond_key(target.site_idx_1, target.site_idx_2, target.cell_shift)
+  }
+  const rendered_bond_key_for = (bond: BondKeyTarget): string =>
     get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
 
   const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
@@ -389,10 +396,12 @@
     return structure?.sites?.[site_idx]?.properties?.orig_site_idx == null
   }
 
-  const can_edit_bond = (bond: BondKeyTarget): boolean =>
-    bond_edits_enabled &&
-    is_editable_bond_site(bond.site_idx_1) &&
-    is_editable_bond_site(bond.site_idx_2)
+  const can_edit_bond = (bond: BondKeyTarget): boolean => {
+    const target = canonical_bond_target(bond)
+    return bond_edits_enabled &&
+      is_editable_bond_site(target.site_idx_1) &&
+      is_editable_bond_site(target.site_idx_2)
+  }
 
   const format_bond_order = (order: BondOrder | undefined): string =>
     order === undefined ? `1` : `${order}`
@@ -414,14 +423,20 @@
     (pos_1[2] + pos_2[2]) / 2,
   ]
 
+  function apply_bond_transform(mesh: Mesh, bond: BondPair) {
+    mesh.matrix.fromArray(bond.transform_matrix)
+    mesh.matrixWorldNeedsUpdate = true
+  }
+
   let label_screen_margin = $derived(site_label_size * 10 + site_label_padding)
 
   function open_bond_context_menu(bond: BondPair) {
     if (!can_edit_bond(bond)) return
+    const target = canonical_bond_target(bond)
     bond_context_target = {
-      site_idx_1: bond.site_idx_1,
-      site_idx_2: bond.site_idx_2,
-      cell_shift: bond.cell_shift,
+      site_idx_1: target.site_idx_1,
+      site_idx_2: target.site_idx_2,
+      cell_shift: target.cell_shift,
       position: midpoint(bond.pos_1, bond.pos_2),
     }
     bond_context_menu = bond_context_target
@@ -451,22 +466,26 @@
     return filtered_bond_pairs.find((bond) => matches_bond_key(bond, key))
   }
 
-  function open_bond_order_menu_for_pair(site_idx_1: number, site_idx_2: number) {
-    const bond = find_visible_bond(site_idx_1, site_idx_2)
+  function open_bond_order_menu_for_pair(
+    site_idx_1: number,
+    site_idx_2: number,
+    cell_shift?: Vec3,
+  ) {
+    const bond = find_visible_bond(site_idx_1, site_idx_2, cell_shift)
     if (bond) open_bond_context_menu(bond)
   }
 
   function add_or_restore_pair(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
-    if (!can_edit_bond({ site_idx_1, site_idx_2, cell_shift })) return
-    const target = { site_idx_1, site_idx_2, cell_shift }
+    const target = canonical_bond_target({ site_idx_1, site_idx_2, cell_shift })
+    if (!can_edit_bond(target)) return
     const result = add_or_restore_bond(
       current_bond_edit_state(),
       target,
-      perceived_bond_pairs,
+      editable_perceived_bond_pairs,
       bond_edit_order,
     )
     if (result.action === `already-visible`) {
-      open_bond_order_menu_for_pair(site_idx_1, site_idx_2)
+      open_bond_order_menu_for_pair(target.site_idx_1, target.site_idx_2, target.cell_shift)
       return
     }
     apply_bond_edit_result(result, false)
@@ -478,12 +497,13 @@
     order: BondOrder,
     cell_shift?: Vec3,
   ) {
-    if (!can_edit_bond({ site_idx_1, site_idx_2, cell_shift })) return
+    const target = canonical_bond_target({ site_idx_1, site_idx_2, cell_shift })
+    if (!can_edit_bond(target)) return
     apply_bond_edit_result(
       apply_set_bond_order(
         current_bond_edit_state(),
-        { site_idx_1, site_idx_2, cell_shift },
-        perceived_bond_pairs,
+        target,
+        editable_perceived_bond_pairs,
         order,
       ),
     )
@@ -496,12 +516,13 @@
   }
 
   function remove_bond(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
-    if (!can_edit_bond({ site_idx_1, site_idx_2, cell_shift })) return
+    const target = canonical_bond_target({ site_idx_1, site_idx_2, cell_shift })
+    if (!can_edit_bond(target)) return
     apply_bond_edit_result(
       apply_delete_bond(
         current_bond_edit_state(),
-        { site_idx_1, site_idx_2, cell_shift },
-        perceived_bond_pairs,
+        target,
+        editable_perceived_bond_pairs,
       ),
     )
   }
@@ -817,6 +838,10 @@
       aromatic_display,
     )
   })
+
+  let editable_perceived_bond_pairs = $derived(
+    perceived_bond_pairs.map((bond) => ({ ...bond, ...canonical_bond_target(bond) })),
+  )
 
   let filtered_bond_pairs = $derived.by(() => {
     if (!structure?.sites) return perceived_bond_pairs
@@ -1433,20 +1458,22 @@
       {#if measure_mode === `edit-bonds` && editable_bond_pairs.length > 0}
         {#each editable_bond_pairs as
           bond
-          (`bond-hit-${bond_key_for(bond)}`)
+          (`bond-hit-${rendered_bond_key_for(bond)}`)
         }
-          {@const bond_key = bond_key_for(bond)}
+          {@const bond_key = rendered_bond_key_for(bond)}
           {@const is_hovered = hovered_bond_key === bond_key}
+          {@const is_delete_mode = bond_edit_mode === `delete`}
+          {@const bond_hit_radius =
+            bond_thickness * (is_delete_mode ? 5 : 1.25)}
+          {@const bond_hover_radius =
+            bond_thickness * (is_delete_mode ? 3 : 1.25)}
           <T.Mesh
             matrixAutoUpdate={false}
-            oncreate={(ref) => {
-              ref.matrix.fromArray(bond.transform_matrix)
-              ref.matrixWorldNeedsUpdate = true
-            }}
+            oncreate={(ref) => apply_bond_transform(ref, bond)}
             onpointerdown={(event: PointerEvent & { nativeEvent?: PointerEvent }) => {
               if (event.nativeEvent?.button === 2) return
               event.stopPropagation()
-              if (bond_edit_mode === `delete`) {
+              if (is_delete_mode) {
                 remove_bond(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
                 measured_sites = []
                 selected_sites = []
@@ -1465,19 +1492,39 @@
           >
             <T.CylinderGeometry
               args={[
-                bond_thickness * (bond_edit_mode === `delete` ? 3 : 1.25),
-                bond_thickness * (bond_edit_mode === `delete` ? 3 : 1.25),
+                bond_hit_radius,
+                bond_hit_radius,
                 1,
                 6,
               ]}
             />
             <T.MeshBasicMaterial
               transparent
-              opacity={is_hovered ? 0.25 : 0}
-              color={is_hovered && bond_edit_mode === `delete` ? `#ff4444` : `#6cf0ff`}
+              opacity={0}
               depthWrite={false}
             />
           </T.Mesh>
+          {#if is_hovered}
+            <T.Mesh
+              matrixAutoUpdate={false}
+              oncreate={(ref) => apply_bond_transform(ref, bond)}
+            >
+              <T.CylinderGeometry
+                args={[
+                  bond_hover_radius,
+                  bond_hover_radius,
+                  1,
+                  6,
+                ]}
+              />
+              <T.MeshBasicMaterial
+                transparent
+                opacity={0.25}
+                color={is_delete_mode ? `#ff4444` : `#6cf0ff`}
+                depthWrite={false}
+              />
+            </T.Mesh>
+          {/if}
         {/each}
       {/if}
 

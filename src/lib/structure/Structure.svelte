@@ -1146,11 +1146,13 @@
       const plain = !event.ctrlKey && !event.metaKey && !event.altKey
       if (event.ctrlKey || event.metaKey) {
         if (key === `z` && !event.shiftKey) {
+          if (bond_undo_stack.length === 0) return
           event.preventDefault()
           undo_bond_edit()
           show_toast(`Undo bond edit (${bond_undo_stack.length} left)`)
           return
         } else if (key === `y` || (key === `z` && event.shiftKey)) {
+          if (bond_redo_stack.length === 0) return
           event.preventDefault()
           redo_bond_edit()
           show_toast(`Redo bond edit (${bond_redo_stack.length} left)`)
@@ -1642,10 +1644,10 @@
               </button>
               <button
                 type="button"
-                aria-label="Redo (Cmd/Ctrl+Y)"
+                aria-label="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
                 disabled={redo_stack.length === 0}
                 onclick={redo}
-                title="Redo (Cmd/Ctrl+Y)"
+                title="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
                 class="undo-redo-btn"
               >
                 <Icon icon="Redo" />
@@ -1658,6 +1660,16 @@
 
           {#if measure_mode === `edit-bonds`}
             <div class="bond-edit-toolbar" aria-label="Bond editing controls">
+              {#if bond_edit_mode === `add`}
+                <label>
+                  <span>Order</span>
+                  <select bind:value={bond_edit_order}>
+                    {#each BOND_ORDER_OPTIONS as { order, label } (label)}
+                      <option value={order}>{label}</option>
+                    {/each}
+                  </select>
+                </label>
+              {/if}
               <div class="bond-edit-mode-toggle">
                 {#each [
                   { mode: `add`, label: `Add`, title: `Add: click two atoms` },
@@ -1674,14 +1686,6 @@
                   </button>
                 {/each}
               </div>
-              <label class:disabled={bond_edit_mode === `delete`}>
-                <span>Order</span>
-                <select bind:value={bond_edit_order} disabled={bond_edit_mode === `delete`}>
-                  {#each BOND_ORDER_OPTIONS as { order, label } (label)}
-                    <option value={order}>{label}</option>
-                  {/each}
-                </select>
-              </label>
             </div>
             <div class="undo-redo-container">
               <button
@@ -1699,10 +1703,10 @@
               </button>
               <button
                 type="button"
-                aria-label="Redo bond edit (Cmd/Ctrl+Y)"
+                aria-label="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
                 disabled={bond_redo_stack.length === 0}
                 onclick={redo_bond_edit}
-                title="Redo bond edit (Cmd/Ctrl+Y)"
+                title="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
                 class="undo-redo-btn"
               >
                 <Icon icon="Redo" />
@@ -2137,6 +2141,7 @@
   }
   .bond-edit-mode-toggle {
     display: flex;
+    gap: 0.35em;
   }
   .bond-edit-mode-toggle button {
     min-width: 3.5em;
@@ -2145,13 +2150,13 @@
     background: var(--accent-color, #007acc);
     color: white;
   }
+  .bond-edit-mode-toggle button.selected:hover {
+    background-color: color-mix(in srgb, var(--accent-color, #007acc) 70%, black);
+  }
   .bond-edit-toolbar label {
     display: flex;
     align-items: center;
     gap: 0.25em;
-  }
-  .bond-edit-toolbar label.disabled {
-    opacity: 0.55;
   }
   .bond-edit-toolbar select {
     font: inherit;
