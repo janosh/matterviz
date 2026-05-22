@@ -59,17 +59,18 @@ const click_canvas_offset = async (
   await canvas.scrollIntoViewIfNeeded()
   const box = await canvas.boundingBox()
   if (!box) throw new Error(`canvas has no bounding box`)
-  await page.mouse.click(
-    box.x + box.width / 2 + offset_x,
-    box.y + box.height / 2 + offset_y,
-    { button },
-  )
+  await page.mouse.click(box.x + box.width / 2 + offset_x, box.y + box.height / 2 + offset_y, {
+    button,
+  })
 }
 
 const BOND_CLICK_OFFSETS = [0, 45, -45, 70, -70, 30, -30, 90, -90]
 
 const click_atom_label = async (page: Page, label_text: string): Promise<void> => {
-  const label = page.locator(`#test-structure .atom-label`).filter({ hasText: label_text }).last()
+  const label = page
+    .locator(`#test-structure .atom-label`)
+    .filter({ hasText: label_text })
+    .last()
   await expect(label).toBeVisible()
   await label.click()
 }
@@ -106,14 +107,12 @@ const open_bond_menu_near_center = async (
         `after trying BOND_CLICK_OFFSETS with click_canvas_offset: ${
           error instanceof Error ? error.message : String(error)
         }`,
+      { cause: error },
     )
   }
 }
 
-const delete_bond_near_center = async (
-  page: Page,
-  canvas: StructureCanvas,
-): Promise<void> => {
+const delete_bond_near_center = async (page: Page, canvas: StructureCanvas): Promise<void> => {
   for (const offset_x of BOND_CLICK_OFFSETS) {
     await click_canvas_offset(page, canvas, offset_x)
     const bonds = await get_structure_bonds(page)
@@ -353,7 +352,9 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  test(`edit-bonds add mode creates selected-order bond between unbonded atoms`, async ({ page }) => {
+  test(`edit-bonds add mode creates selected-order bond between unbonded atoms`, async ({
+    page,
+  }) => {
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_unbonded_structure(page)
     await wait_for_3d_canvas(page, `#test-structure`)
@@ -364,9 +365,9 @@ test.describe(`Bond component`, () => {
 
     await click_atom_label(page, `C`)
     await click_atom_label(page, `O`)
-    await expect.poll(() => get_structure_bonds(page)).toContainEqual(
-      expect.objectContaining({ site_idx_1: 0, site_idx_2: 1, order: 2 }),
-    )
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toContainEqual(expect.objectContaining({ site_idx_1: 0, site_idx_2: 1, order: 2 }))
     expect(console_errors).toHaveLength(0)
   })
 
@@ -418,7 +419,9 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  test(`bond redo history is cleared after source changes and edit-atoms`, async ({ page }) => {
+  test(`bond redo history is cleared after source changes and edit-atoms`, async ({
+    page,
+  }) => {
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)

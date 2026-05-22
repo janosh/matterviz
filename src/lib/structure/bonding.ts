@@ -107,10 +107,8 @@ const remove_bond_key = (bonds: StructureBond[], key: string): StructureBond[] =
 const includes_bond_key = (bonds: BondKeyTarget[], key: string): boolean =>
   bonds.some((bond) => matches_bond_key(bond, key))
 
-const has_calculated_bond = (
-  calculated_bonds: BondKeyTarget[],
-  key: string,
-): boolean => includes_bond_key(calculated_bonds, key)
+const has_calculated_bond = (calculated_bonds: BondKeyTarget[], key: string): boolean =>
+  includes_bond_key(calculated_bonds, key)
 
 const make_bond_record = (bond: BondKeyTarget, order: BondOrder): StructureBond =>
   normalize_structure_bond(bond.site_idx_1, bond.site_idx_2, order, bond.cell_shift)
@@ -137,7 +135,7 @@ export function add_or_restore_bond(
   const record = make_bond_record(bond, order)
   const key = bond_key_for(record)
   const removed_bond = edit_state.removed_bonds.find((edit_bond) =>
-    matches_bond_key(edit_bond, key)
+    matches_bond_key(edit_bond, key),
   )
   if (removed_bond) {
     return {
@@ -146,9 +144,10 @@ export function add_or_restore_bond(
       state: {
         ...edit_state,
         removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
-        bond_order_overrides: removed_bond.order === order
-          ? edit_state.bond_order_overrides
-          : replace_bond(edit_state.bond_order_overrides, record),
+        bond_order_overrides:
+          removed_bond.order === order
+            ? edit_state.bond_order_overrides
+            : replace_bond(edit_state.bond_order_overrides, record),
       },
     }
   }

@@ -252,9 +252,7 @@ describe(`Explicit Bond Metadata`, () => {
       2,
     )
     expect(add_result).toMatchObject({ action: `added`, changed: true })
-    expect(add_result.state.added_bonds).toEqual([
-      { site_idx_1: 0, site_idx_2: 2, order: 2 },
-    ])
+    expect(add_result.state.added_bonds).toEqual([{ site_idx_1: 0, site_idx_2: 2, order: 2 }])
 
     const visible_result = bonding.add_or_restore_bond(
       add_result.state,

@@ -538,12 +538,13 @@ type CursorContext = {
 function get_canvas_cursor(ctx: CursorContext): string {
   if (ctx.measure_mode === `edit-atoms` && ctx.add_atom_mode) return `crosshair`
   if (ctx.measure_mode === `edit-bonds` && ctx.hovered_bond_key != null) {
-    return ctx.bond_edits_enabled ?? true ? `pointer` : `not-allowed`
+    return (ctx.bond_edits_enabled ?? true) ? `pointer` : `not-allowed`
   }
   if (ctx.hovered_idx !== null) {
     if (ctx.measure_mode === `edit-bonds`) {
-      return ctx.bond_edit_mode !== `delete` && (ctx.bond_edits_enabled ?? true) &&
-          !ctx.site_is_image(ctx.hovered_idx)
+      return ctx.bond_edit_mode !== `delete` &&
+        (ctx.bond_edits_enabled ?? true) &&
+        !ctx.site_is_image(ctx.hovered_idx)
         ? `pointer`
         : `not-allowed`
     }
@@ -613,37 +614,34 @@ describe(`canvas cursor`, () => {
     ).toBe(expected)
   })
 
-  test.each([`distance`, `angle`])(
-    `shows pointer in %s mode when hovering`,
-    (mode) => {
-      expect(
-        get_canvas_cursor({
-          measure_mode: mode,
-          add_atom_mode: false,
-          hovered_idx: 0,
-          site_is_image: no_image,
-        }),
-      ).toBe(`pointer`)
-    },
-  )
+  test.each([`distance`, `angle`])(`shows pointer in %s mode when hovering`, (mode) => {
+    expect(
+      get_canvas_cursor({
+        measure_mode: mode,
+        add_atom_mode: false,
+        hovered_idx: 0,
+        site_is_image: no_image,
+      }),
+    ).toBe(`pointer`)
+  })
 
   test.each([
     { bond_edit_mode: `add` as const, expected: `pointer` },
     { bond_edit_mode: `delete` as const, expected: `not-allowed` },
-  ])(`returns $expected for atom hover in edit-bonds $bond_edit_mode mode`, ({
-    bond_edit_mode,
-    expected,
-  }) => {
-    expect(
-      get_canvas_cursor({
-        measure_mode: `edit-bonds`,
-        add_atom_mode: false,
-        bond_edit_mode,
-        hovered_idx: 0,
-        site_is_image: no_image,
-      }),
-    ).toBe(expected)
-  })
+  ])(
+    `returns $expected for atom hover in edit-bonds $bond_edit_mode mode`,
+    ({ bond_edit_mode, expected }) => {
+      expect(
+        get_canvas_cursor({
+          measure_mode: `edit-bonds`,
+          add_atom_mode: false,
+          bond_edit_mode,
+          hovered_idx: 0,
+          site_is_image: no_image,
+        }),
+      ).toBe(expected)
+    },
+  )
 })
 
 // === Edit-atoms Selection Logic ===

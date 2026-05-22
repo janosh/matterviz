@@ -137,8 +137,9 @@ describe(`Structure`, () => {
       `Add`,
     )
     expect(doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`).value).toBe(`1`)
-    expect(doc_query<HTMLButtonElement>(`button[aria-label="Undo bond edit (Ctrl+Z)"]`).disabled)
-      .toBe(true)
+    expect(
+      doc_query<HTMLButtonElement>(`button[aria-label="Undo bond edit (Ctrl+Z)"]`).disabled,
+    ).toBe(true)
   })
 
   const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
@@ -856,7 +857,9 @@ describe(`Structure string parsing`, () => {
       if (parse_state.parsed) {
         expect(parse_state.parsed.sites).toHaveLength(atoms)
         elements.forEach((el) =>
-          expect(parse_state.parsed?.sites.map((site) => site.species[0].element)).toContain(el),
+          expect(parse_state.parsed?.sites.map((site) => site.species[0].element)).toContain(
+            el,
+          ),
         )
         expect(!!(`lattice` in parse_state.parsed && parse_state.parsed.lattice)).toBe(
           has_lattice,
