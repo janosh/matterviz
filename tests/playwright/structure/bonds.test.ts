@@ -38,15 +38,28 @@ const goto_structure_page = async (page: Page): Promise<string[]> => {
 
 type StructureCanvas = Awaited<ReturnType<typeof wait_for_3d_canvas>>
 
+const get_canvas_center = async (
+  canvas: StructureCanvas,
+): Promise<{ x: number; y: number }> => {
+  await canvas.scrollIntoViewIfNeeded()
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error(`canvas has no bounding box`)
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+}
+
 const click_canvas_center = async (
   page: Page,
   canvas: StructureCanvas,
   button: `left` | `right` = `left`,
 ): Promise<void> => {
-  await canvas.scrollIntoViewIfNeeded()
-  const box = await canvas.boundingBox()
-  if (!box) throw new Error(`canvas has no bounding box`)
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button })
+  const center = await get_canvas_center(canvas)
+  await page.mouse.click(center.x, center.y, { button })
+}
+
+const hover_canvas_center = async (page: Page, canvas: StructureCanvas): Promise<void> => {
+  const center = await get_canvas_center(canvas)
+  await page.mouse.move(center.x, center.y)
+  await page.waitForTimeout(100)
 }
 
 const click_atom_label = async (page: Page, label_text: string): Promise<void> => {
@@ -171,6 +184,49 @@ const dispatch_two_atom_unbonded_structure = (page: Page) =>
           show_bonds: `always`,
           show_site_labels: true,
           site_label_offset: [0, 0, 0],
+        },
+      }),
+    )
+  })
+
+const dispatch_periodic_image_bond_structure = (page: Page) =>
+  page.evaluate(() => {
+    const structure = {
+      lattice: {
+        matrix: [
+          [10, 0, 0],
+          [0, 10, 0],
+          [0, 0, 10],
+        ],
+        pbc: [true, true, true],
+      },
+      sites: [
+        {
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+          abc: [0.95, 0.5, 0.5],
+          xyz: [9.5, 5, 5],
+          label: `C1`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          abc: [0.04, 0.5, 0.5],
+          xyz: [0.4, 5, 5],
+          label: `O1`,
+          properties: {},
+        },
+      ],
+      properties: {},
+    }
+    window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+    window.dispatchEvent(
+      new CustomEvent(`set-scene-props`, {
+        detail: {
+          bond_thickness: 0.25,
+          bonding_options: { strategy: `electroneg_ratio` },
+          camera_position: [9.95, 5, 17],
+          camera_target: [9.95, 5, 5],
+          show_bonds: `always`,
         },
       }),
     )
@@ -360,6 +416,20 @@ test.describe(`Bond component`, () => {
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds delete mode removes bonds to image atoms`, async ({ page }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_periodic_image_bond_structure(page)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+
+    await hover_canvas_center(page, canvas)
+    await click_canvas_center(page, canvas)
+
+    await expect.poll(() => get_structure_bonds(page)).toEqual([])
     expect(console_errors).toHaveLength(0)
   })
 

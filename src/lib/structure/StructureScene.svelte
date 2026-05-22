@@ -423,9 +423,14 @@
     (pos_1[2] + pos_2[2]) / 2,
   ]
 
-  function apply_bond_transform(mesh: Mesh, bond: BondPair) {
+  function apply_bond_transform(mesh: Mesh, bond: BondPair): void {
     mesh.matrix.fromArray(bond.transform_matrix)
     mesh.matrixWorldNeedsUpdate = true
+  }
+
+  function apply_non_raycastable_bond_transform(mesh: Mesh, bond: BondPair): void {
+    apply_bond_transform(mesh, bond)
+    mesh.raycast = () => undefined
   }
 
   let label_screen_margin = $derived(site_label_size * 10 + site_label_padding)
@@ -1507,7 +1512,7 @@
           {#if is_hovered}
             <T.Mesh
               matrixAutoUpdate={false}
-              oncreate={(ref) => apply_bond_transform(ref, bond)}
+              oncreate={(ref) => apply_non_raycastable_bond_transform(ref, bond)}
             >
               <T.CylinderGeometry
                 args={[
