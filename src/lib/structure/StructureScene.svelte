@@ -86,6 +86,12 @@
     atoms: (typeof atom_data)[number][]
   }
 
+  type EditableAtomHitTarget = {
+    site_idx: number
+    position: Vec3
+    radius: number
+  }
+
   type BondContextMenu = {
     site_idx_1: number
     site_idx_2: number
@@ -423,13 +429,27 @@
     (pos_1[2] + pos_2[2]) / 2,
   ]
 
+  const ADD_MODE_BOND_HIT_LENGTH_SCALE = 0.6
+  const EDITABLE_ATOM_HIT_RADIUS_SCALE = 1.15
+
   function apply_bond_transform(mesh: Mesh, bond: BondPair): void {
     mesh.matrix.fromArray(bond.transform_matrix)
     mesh.matrixWorldNeedsUpdate = true
   }
 
-  function apply_non_raycastable_bond_transform(mesh: Mesh, bond: BondPair): void {
+  function apply_editable_bond_hit_transform(mesh: Mesh, bond: BondPair): void {
     apply_bond_transform(mesh, bond)
+    if (bond_edit_mode !== `add`) return
+
+    const { elements } = mesh.matrix
+    for (const matrix_idx of [4, 5, 6]) {
+      elements[matrix_idx] *= ADD_MODE_BOND_HIT_LENGTH_SCALE
+    }
+    mesh.matrixWorldNeedsUpdate = true
+  }
+
+  function apply_non_raycastable_bond_hit_transform(mesh: Mesh, bond: BondPair): void {
+    apply_editable_bond_hit_transform(mesh, bond)
     mesh.raycast = () => undefined
   }
 
@@ -542,6 +562,34 @@
   // intercept the same native click, only the first intersection should fire.
   // All threlte intersection events from one click share the same nativeEvent ref.
   let last_native_event: Event | null = null
+  // extras.Instance does not always emit pointerdown, so edit-bonds also falls
+  // back to click. When pointerdown did fire, skip the matching click once.
+  let last_edit_bonds_pointerdown_site_idx: number | null = null
+  let clear_edit_bonds_pointerdown_site_timeout:
+    | ReturnType<typeof setTimeout>
+    | null = null
+
+  function remember_edit_bonds_pointerdown_site(site_idx: number) {
+    last_edit_bonds_pointerdown_site_idx = site_idx
+    if (clear_edit_bonds_pointerdown_site_timeout != null) {
+      clearTimeout(clear_edit_bonds_pointerdown_site_timeout)
+    }
+    clear_edit_bonds_pointerdown_site_timeout = setTimeout(() => {
+      last_edit_bonds_pointerdown_site_idx = null
+      clear_edit_bonds_pointerdown_site_timeout = null
+    }, 250)
+  }
+
+  function skip_duplicate_edit_bonds_click(site_idx: number) {
+    if (last_edit_bonds_pointerdown_site_idx !== site_idx) return false
+
+    last_edit_bonds_pointerdown_site_idx = null
+    if (clear_edit_bonds_pointerdown_site_timeout != null) {
+      clearTimeout(clear_edit_bonds_pointerdown_site_timeout)
+      clear_edit_bonds_pointerdown_site_timeout = null
+    }
+    return true
+  }
 
   function toggle_selection(site_index: number, evt?: Event) {
     evt?.stopPropagation?.()
@@ -568,8 +616,8 @@
       selected_sites = new_sites
 
       // When two atoms are selected, add/restore or open order editing.
-      if (measured_sites.length === 2) {
-        add_or_restore_pair(measured_sites[0], measured_sites[1])
+      if (new_sites.length === 2) {
+        add_or_restore_pair(new_sites[0], new_sites[1])
         measured_sites = []
         selected_sites = []
       }
@@ -960,6 +1008,28 @@
     return map
   })
 
+  let editable_atom_hit_targets = $derived.by(() => {
+    if (
+      measure_mode !== `edit-bonds` ||
+      bond_edit_mode !== `add` ||
+      !bond_edits_enabled
+    ) {
+      return []
+    }
+
+    const targets = new SvelteMap<number, EditableAtomHitTarget>()
+    for (const atom of atom_data) {
+      if (atom.is_image_atom || !is_editable_bond_site(atom.site_idx)) continue
+      if (targets.has(atom.site_idx)) continue
+      targets.set(atom.site_idx, {
+        site_idx: atom.site_idx,
+        position: atom.position,
+        radius: atom.radius,
+      })
+    }
+    return [...targets.values()]
+  })
+
   // Get radius for a site (for highlight fallback when site is hidden/filtered)
   // Checks site_radius_overrides first for consistency with visible atoms
   const get_site_radius = (site: Site, site_idx: number | null): number => {
@@ -1334,8 +1404,26 @@
                   hovered_idx = null
                   active_tooltip = null
                 }}
+                onpointerdown={(event: PointerEvent) => {
+                  if (
+                    edit_mode_image ||
+                    measure_mode !== `edit-bonds` ||
+                    bond_edit_mode !== `add`
+                  ) {
+                    return
+                  }
+                  toggle_selection(atom.site_idx, event)
+                  remember_edit_bonds_pointerdown_site(atom.site_idx)
+                }}
                 onclick={(event: MouseEvent) => {
                   if (edit_mode_image) return
+                  if (measure_mode === `edit-bonds`) {
+                    if (bond_edit_mode !== `add`) return
+                    if (skip_duplicate_edit_bonds_click(atom.site_idx)) {
+                      event.stopPropagation()
+                      return
+                    }
+                  }
                   toggle_selection(atom.site_idx, event)
                 }}
               />
@@ -1363,8 +1451,26 @@
               hovered_idx = null
               active_tooltip = null
             }}
+            onpointerdown={(event: PointerEvent) => {
+              if (
+                partial_edit_image ||
+                measure_mode !== `edit-bonds` ||
+                bond_edit_mode !== `add`
+              ) {
+                return
+              }
+              toggle_selection(atom.site_idx, event)
+              remember_edit_bonds_pointerdown_site(atom.site_idx)
+            }}
             onclick={(event: MouseEvent) => {
               if (partial_edit_image) return
+              if (measure_mode === `edit-bonds`) {
+                if (bond_edit_mode !== `add`) return
+                if (skip_duplicate_edit_bonds_click(atom.site_idx)) {
+                  event.stopPropagation()
+                  return
+                }
+              }
               toggle_selection(atom.site_idx, event)
             }}
           >
@@ -1463,20 +1569,19 @@
       {#if measure_mode === `edit-bonds` && editable_bond_pairs.length > 0}
         {#each editable_bond_pairs as
           bond
-          (`bond-hit-${rendered_bond_key_for(bond)}`)
+          (`bond-hit-${bond_edit_mode}-${rendered_bond_key_for(bond)}`)
         }
           {@const bond_key = rendered_bond_key_for(bond)}
           {@const is_hovered = hovered_bond_key === bond_key}
           {@const is_delete_mode = bond_edit_mode === `delete`}
           {@const bond_hit_radius =
             bond_thickness * (is_delete_mode ? 5 : 1.25)}
-          {@const bond_hover_radius =
-            bond_thickness * (is_delete_mode ? 3 : 1.25)}
           <T.Mesh
             matrixAutoUpdate={false}
-            oncreate={(ref) => apply_bond_transform(ref, bond)}
+            oncreate={(ref) => apply_editable_bond_hit_transform(ref, bond)}
             onpointerdown={(event: PointerEvent & { nativeEvent?: PointerEvent }) => {
               if (event.nativeEvent?.button === 2) return
+              if (!is_delete_mode && hovered_idx != null) return
               event.stopPropagation()
               if (is_delete_mode) {
                 remove_bond(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
@@ -1493,6 +1598,7 @@
               open_bond_context_menu(bond)
             }}
             onpointerenter={() => (hovered_bond_key = bond_key)}
+            onpointermove={() => (hovered_bond_key = bond_key)}
             onpointerleave={() => (hovered_bond_key = null)}
           >
             <T.CylinderGeometry
@@ -1512,16 +1618,9 @@
           {#if is_hovered}
             <T.Mesh
               matrixAutoUpdate={false}
-              oncreate={(ref) => apply_non_raycastable_bond_transform(ref, bond)}
+              oncreate={(ref) => apply_non_raycastable_bond_hit_transform(ref, bond)}
             >
-              <T.CylinderGeometry
-                args={[
-                  bond_hover_radius,
-                  bond_hover_radius,
-                  1,
-                  6,
-                ]}
-              />
+              <T.CylinderGeometry args={[bond_hit_radius, bond_hit_radius, 1, 6]} />
               <T.MeshBasicMaterial
                 transparent
                 opacity={0.25}
@@ -1530,6 +1629,33 @@
               />
             </T.Mesh>
           {/if}
+        {/each}
+      {/if}
+
+      {#if editable_atom_hit_targets.length > 0}
+        {#each editable_atom_hit_targets as atom_hit (atom_hit.site_idx)}
+          <T.Mesh
+            position={atom_hit.position}
+            scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
+            onpointerenter={() => {
+              hovered_idx = atom_hit.site_idx
+              active_tooltip = `atom`
+            }}
+            onpointerleave={() => {
+              if (hovered_idx === atom_hit.site_idx) hovered_idx = null
+              if (active_tooltip === `atom`) active_tooltip = null
+            }}
+            onpointerdown={(event: PointerEvent) => {
+              toggle_selection(atom_hit.site_idx, event)
+            }}
+          >
+            <T.SphereGeometry args={[0.5, 12, 12]} />
+            <T.MeshBasicMaterial
+              transparent
+              opacity={0}
+              depthWrite={false}
+            />
+          </T.Mesh>
         {/each}
       {/if}
 

@@ -37,27 +37,37 @@ const goto_structure_page = async (page: Page): Promise<string[]> => {
 }
 
 type StructureCanvas = Awaited<ReturnType<typeof wait_for_3d_canvas>>
+type CanvasOffset = { x?: number; y?: number }
 
 const get_canvas_center = async (
   canvas: StructureCanvas,
+  offset: CanvasOffset = {},
 ): Promise<{ x: number; y: number }> => {
   await canvas.scrollIntoViewIfNeeded()
   const box = await canvas.boundingBox()
   if (!box) throw new Error(`canvas has no bounding box`)
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  return {
+    x: box.x + box.width / 2 + (offset.x ?? 0),
+    y: box.y + box.height / 2 + (offset.y ?? 0),
+  }
 }
 
 const click_canvas_center = async (
   page: Page,
   canvas: StructureCanvas,
   button: `left` | `right` = `left`,
+  offset?: CanvasOffset,
 ): Promise<void> => {
-  const center = await get_canvas_center(canvas)
+  const center = await get_canvas_center(canvas, offset)
   await page.mouse.click(center.x, center.y, { button })
 }
 
-const hover_canvas_center = async (page: Page, canvas: StructureCanvas): Promise<void> => {
-  const center = await get_canvas_center(canvas)
+const hover_canvas_center = async (
+  page: Page,
+  canvas: StructureCanvas,
+  offset?: CanvasOffset,
+): Promise<void> => {
+  const center = await get_canvas_center(canvas, offset)
   await page.mouse.move(center.x, center.y)
   await page.waitForTimeout(100)
 }
@@ -336,18 +346,26 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  test(`edit-bonds add mode opens order editing without deleting`, async ({ page }) => {
+  test(`edit-bonds add mode opens order editing after clicking two atoms`, async ({
+    page,
+  }) => {
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await set_scene_props(page, { show_site_labels: true, site_label_offset: [0, 0, 0] })
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
     await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`add`)
 
     await click_canvas_center(page, canvas)
     const menu = page.locator(`#test-structure .bond-context-menu`)
     await expect(menu).toBeVisible()
-    // This test's click_canvas_center/get_structure_bonds check verifies no set-bonds emission occurred yet.
+    await menu.getByRole(`button`, { name: `Close` }).click()
     await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+
+    await click_atom_label(page, `C`)
+    await expect(menu).toBeHidden()
+    await click_atom_label(page, `O`)
+    await expect(menu).toBeVisible()
     await menu.getByRole(`button`, { name: `Close` }).click()
     expect(console_errors).toHaveLength(0)
   })
@@ -426,7 +444,10 @@ test.describe(`Bond component`, () => {
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
     await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
 
-    await hover_canvas_center(page, canvas)
+    const unhovered = await canvas.screenshot()
+    const outer_delete_area = { y: 24 }
+    await hover_canvas_center(page, canvas, outer_delete_area)
+    await expect_canvas_changed(canvas, unhovered)
     await click_canvas_center(page, canvas)
 
     await expect.poll(() => get_structure_bonds(page)).toEqual([])
