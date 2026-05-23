@@ -82,7 +82,7 @@ function setup_console_monitoring(page: Page): string[] {
   return console_errors
 }
 
-async function dispatch_centered_atom_structure(page: Page): Promise<void> {
+async function load_single_centered_atom_scene(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const structure = {
       sites: [
@@ -214,7 +214,7 @@ test.describe(`StructureScene Component Tests`, () => {
   })
 
   test(`atom tooltip stays visible while cursor remains over atom`, async ({ page }) => {
-    await dispatch_centered_atom_structure(page)
+    await load_single_centered_atom_scene(page)
     const canvas = page.locator(`#test-structure canvas`)
     const box = await canvas.boundingBox()
     if (!box) throw new Error(`canvas has no bounding box`)
@@ -226,15 +226,14 @@ test.describe(`StructureScene Component Tests`, () => {
     const tooltip = page.locator(`[role="tooltip"]:has(.coordinates)`)
     await expect(tooltip).toBeVisible({ timeout: get_canvas_timeout() })
     await expect(tooltip.locator(`.elements`)).toContainText(`C`)
-
-    const stayed_visible = await page.evaluate(async () => {
-      for (let frame_idx = 0; frame_idx < 20; frame_idx++) {
-        await new Promise(requestAnimationFrame)
-        if (!document.querySelector(`[role="tooltip"] .coordinates`)) return false
-      }
-      return true
-    })
-    expect(stayed_visible).toBe(true)
+    // The hover highlight can become the raycast target after it mounts.
+    // Check visibility immediately after each frame so a short disappearance fails.
+    for (let frame_idx = 0; frame_idx < 20; frame_idx++) {
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      )
+      expect(await tooltip.isVisible()).toBe(true)
+    }
   })
 
   // Combined interaction tests

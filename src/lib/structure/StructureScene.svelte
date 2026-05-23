@@ -345,7 +345,7 @@
   })
 
   let bond_pairs: BondPair[] = $state([])
-  let active_tooltip = $state<`atom` | `bond` | null>(null)
+  let atom_tooltip_active = $state(false)
   let hovered_bond_key = $state<string | null>(null)
   const ATOM_HOVER_CLEAR_DELAY_MS = 200
   let clear_atom_hover_timeout: ReturnType<typeof setTimeout> | null = null
@@ -359,7 +359,7 @@
   function set_atom_hover(site_idx: number): void {
     cancel_atom_hover_clear()
     if (hovered_idx !== site_idx) hovered_idx = site_idx
-    if (active_tooltip !== `atom`) active_tooltip = `atom`
+    if (!atom_tooltip_active) atom_tooltip_active = true
   }
 
   function schedule_atom_hover_clear(site_idx: number): void {
@@ -368,17 +368,21 @@
       clear_atom_hover_timeout = null
       if (hovered_idx !== site_idx) return
       hovered_idx = null
-      if (active_tooltip === `atom`) active_tooltip = null
+      atom_tooltip_active = false
     }, ATOM_HOVER_CLEAR_DELAY_MS)
   }
 
-  function set_nullable_atom_hover(site_idx: number | null): void {
-    if (site_idx != null) set_atom_hover(site_idx)
-  }
-
-  function schedule_nullable_atom_hover_clear(site_idx: number | null): void {
-    if (site_idx != null) schedule_atom_hover_clear(site_idx)
-  }
+  const atom_hover_props = (site_idx: number | null, disabled = false) => ({
+    onpointerenter: () => {
+      if (!disabled && site_idx != null) set_atom_hover(site_idx)
+    },
+    onpointermove: () => {
+      if (!disabled && site_idx != null) set_atom_hover(site_idx)
+    },
+    onpointerleave: () => {
+      if (!disabled && site_idx != null) schedule_atom_hover_clear(site_idx)
+    },
+  })
 
   // Cursor style for the canvas, derived from mode and hover state
   let canvas_cursor = $derived.by(() => {
@@ -1495,18 +1499,7 @@
               <extras.Instance
                 position={atom.position}
                 scale={atom.radius}
-                onpointerenter={() => {
-                  if (edit_mode_image) return
-                  set_atom_hover(atom.site_idx)
-                }}
-                onpointermove={() => {
-                  if (edit_mode_image) return
-                  set_atom_hover(atom.site_idx)
-                }}
-                onpointerleave={() => {
-                  if (edit_mode_image) return
-                  schedule_atom_hover_clear(atom.site_idx)
-                }}
+                {...atom_hover_props(atom.site_idx, edit_mode_image)}
                 onpointerdown={(event: PointerEvent) => {
                   if (
                     edit_mode_image ||
@@ -1544,18 +1537,7 @@
           <T.Group
             position={atom.position}
             scale={atom.radius}
-            onpointerenter={() => {
-              if (partial_edit_image) return
-              set_atom_hover(atom.site_idx)
-            }}
-            onpointermove={() => {
-              if (partial_edit_image) return
-              set_atom_hover(atom.site_idx)
-            }}
-            onpointerleave={() => {
-              if (partial_edit_image) return
-              schedule_atom_hover_clear(atom.site_idx)
-            }}
+            {...atom_hover_props(atom.site_idx, partial_edit_image)}
             onpointerdown={(event: PointerEvent) => {
               if (
                 partial_edit_image ||
@@ -1746,15 +1728,7 @@
           <T.Mesh
             position={atom_hit.position}
             scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
-            onpointerenter={() => {
-              set_atom_hover(atom_hit.site_idx)
-            }}
-            onpointermove={() => {
-              set_atom_hover(atom_hit.site_idx)
-            }}
-            onpointerleave={() => {
-              schedule_atom_hover_clear(atom_hit.site_idx)
-            }}
+            {...atom_hover_props(atom_hit.site_idx)}
             onpointerdown={(event: PointerEvent) => {
               toggle_selection(atom_hit.site_idx, event)
             }}
@@ -1869,15 +1843,7 @@
           <T.Mesh
             position={xyz}
             scale={1.2 * highlight_radius}
-            onpointerenter={() => {
-              set_nullable_atom_hover(site_idx)
-            }}
-            onpointermove={() => {
-              set_nullable_atom_hover(site_idx)
-            }}
-            onpointerleave={() => {
-              schedule_nullable_atom_hover_clear(site_idx)
-            }}
+            {...atom_hover_props(site_idx)}
             onclick={(event: MouseEvent) => {
               if (site_idx != null) {
                 toggle_selection(site_idx, event)
@@ -1916,7 +1882,7 @@
 
       <!-- hovered site tooltip -->
       {#if hovered_site && !camera_is_moving &&
-        (active_tooltip === `atom` || active_sites.includes(hovered_idx ?? -1))}
+        (atom_tooltip_active || active_sites.includes(hovered_idx ?? -1))}
         {@const abc = hovered_site.abc.map((val) => format_num(val, float_fmt)).join(
           `, `,
         )}

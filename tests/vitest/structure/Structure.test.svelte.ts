@@ -174,6 +174,54 @@ describe(`Structure`, () => {
     },
   )
 
+  const selection_control_cases: {
+    mode: MeasureMode
+    measured_sites: number[]
+    selected_sites: number[]
+    shows_reset: boolean
+  }[] = [
+    {
+      mode: `distance`,
+      measured_sites: [0],
+      selected_sites: [],
+      shows_reset: true,
+    },
+    {
+      mode: `angle`,
+      measured_sites: [0],
+      selected_sites: [],
+      shows_reset: true,
+    },
+    {
+      mode: `edit-bonds`,
+      measured_sites: [0],
+      selected_sites: [0],
+      shows_reset: false,
+    },
+  ]
+
+  test.each(selection_control_cases)(
+    `selection controls visibility in $mode mode`,
+    async ({ mode, measured_sites, selected_sites, shows_reset }) => {
+      mount(Structure, {
+        target: document.body,
+        props: {
+          structure,
+          measured_sites,
+          selected_sites,
+          measure_mode: mode,
+          show_controls: true,
+        },
+      })
+      await tick()
+
+      expect(
+        document.querySelector(`button[aria-label="Reset selection and bond edits"]`) != null,
+      ).toBe(shows_reset)
+      expect(document.querySelector(`.site-radius-control`)).toBeNull()
+    },
+  )
+
   const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
 
   test.each(

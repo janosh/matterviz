@@ -651,9 +651,19 @@
   let add_atom_mode = $state(false)
   let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
   let canvas_cursor = $state(`default`)
+  let is_measure_selection_mode = $derived(
+    measure_mode === `distance` || measure_mode === `angle`,
+  )
   let show_measure_selection_limit = $derived(
-    (measure_mode === `distance` || measure_mode === `angle`) &&
-      (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES,
+    is_measure_selection_mode && measured_sites.length >= MAX_SELECTED_SITES,
+  )
+  let show_selection_reset = $derived(
+    has_bond_edits ||
+      (is_measure_selection_mode && measured_sites.length > 0) ||
+      (measure_mode === `edit-atoms` && selected_sites.length > 0),
+  )
+  let atom_legend_selected_sites = $derived(
+    measure_mode === `edit-atoms` ? selected_sites : [],
   )
   let change_element_mode = $state(false)
   let change_element_value = $state(``)
@@ -1577,7 +1587,7 @@
                 style="margin-left: -2px"
               />
             </button>
-            {#if (measured_sites?.length ?? 0) > 0 || has_bond_edits}
+            {#if show_selection_reset}
               <button
                 type="button"
                 aria-label="Reset selection and bond edits"
@@ -1827,7 +1837,7 @@
       bind:element_mapping
       bind:element_radius_overrides
       bind:site_radius_overrides
-      {selected_sites}
+      selected_sites={atom_legend_selected_sites}
       structure={displayed_structure}
       {sym_data}
     >
