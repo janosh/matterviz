@@ -487,7 +487,7 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  test(`edit-bonds add mode bonds the exact clicked image atom`, async ({ page }) => {
+  test(`edit-bonds add mode handles image atom bonds`, async ({ page }) => {
     const console_errors = await goto_structure_page(page)
     await dispatch_two_image_atom_unbonded_structure(page)
     await wait_for_3d_canvas(page, `#test-structure`)
@@ -511,21 +511,14 @@ test.describe(`Bond component`, () => {
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
-    expect(console_errors).toHaveLength(0)
-  })
 
-  test(`edit-bonds add mode opens order editing for existing image bonds`, async ({
-    page,
-  }) => {
-    const console_errors = await goto_structure_page(page)
     await dispatch_periodic_image_structure(page, {
       bonding_options: { strategy: `electroneg_ratio` },
       show_site_labels: true,
     })
     await wait_for_3d_canvas(page, `#test-structure`)
-    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
 
-    const menu = page.locator(`#test-structure .bond-context-menu`)
     await select_atom_label_with_keyboard(page, `C`, `first`)
     await expect(menu).toBeHidden()
     await select_atom_label_with_keyboard(page, `O`)
