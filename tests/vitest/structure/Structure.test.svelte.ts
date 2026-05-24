@@ -121,6 +121,107 @@ describe(`Structure`, () => {
     expect(measure_mode).toBe(`distance`)
   })
 
+  test(`shows safe bond editing controls by default`, async () => {
+    mount(Structure, {
+      target: document.body,
+      props: {
+        structure,
+        measure_mode: `edit-bonds`,
+        show_controls: true,
+      },
+    })
+    await tick()
+
+    expect(doc_query(`.bond-edit-toolbar`)).toBeInstanceOf(HTMLElement)
+    const selector = `.bond-edit-mode-toggle button[aria-pressed="true"]`
+    const active_button = doc_query<HTMLButtonElement>(selector)
+    const order_select = doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`)
+    expect(active_button.textContent).toContain(`Add`)
+    expect(order_select.value).toBe(`1`)
+    expect(order_select.compareDocumentPosition(active_button)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    doc_query<HTMLButtonElement>(`.bond-edit-mode-toggle button[title^="Delete"]`).click()
+    await tick()
+    expect(doc_query<HTMLButtonElement>(selector).textContent).toContain(`Delete`)
+    expect(document.querySelector(`.bond-edit-toolbar select`)).toBeNull()
+    expect(
+      doc_query<HTMLButtonElement>(`button[aria-label="Undo bond edit (Cmd/Ctrl+Z)"]`)
+        .disabled,
+    ).toBe(true)
+  })
+
+  test.each([
+    { mode: `distance`, shows_limit: true },
+    { mode: `angle`, shows_limit: true },
+    { mode: `edit-bonds`, shows_limit: false },
+    { mode: `edit-atoms`, shows_limit: false },
+  ] as const)(
+    `selection limit badge visibility in $mode mode`,
+    async ({ mode, shows_limit }) => {
+      mount(Structure, {
+        target: document.body,
+        props: {
+          structure,
+          measured_sites: [0, 1, 2, 3, 4, 5, 6, 7],
+          measure_mode: mode,
+          show_controls: true,
+        },
+      })
+      await tick()
+
+      expect(document.querySelector(`.selection-limit-text`) != null).toBe(shows_limit)
+    },
+  )
+
+  const selection_control_cases: {
+    mode: MeasureMode
+    measured_sites: number[]
+    selected_sites: number[]
+    shows_reset: boolean
+  }[] = [
+    {
+      mode: `distance`,
+      measured_sites: [0],
+      selected_sites: [],
+      shows_reset: true,
+    },
+    {
+      mode: `angle`,
+      measured_sites: [0],
+      selected_sites: [],
+      shows_reset: true,
+    },
+    {
+      mode: `edit-bonds`,
+      measured_sites: [0],
+      selected_sites: [0],
+      shows_reset: false,
+    },
+  ]
+
+  test.each(selection_control_cases)(
+    `selection controls visibility in $mode mode`,
+    async ({ mode, measured_sites, selected_sites, shows_reset }) => {
+      mount(Structure, {
+        target: document.body,
+        props: {
+          structure,
+          measured_sites,
+          selected_sites,
+          measure_mode: mode,
+          show_controls: true,
+        },
+      })
+      await tick()
+
+      expect(
+        document.querySelector(`button[aria-label="Reset selection and bond edits"]`) != null,
+      ).toBe(shows_reset)
+      expect(document.querySelector(`.site-radius-control`)).toBeNull()
+    },
+  )
+
   const formats = [`JSON`, `XYZ`, `CIF`, `POSCAR`] as const
 
   test.each(
@@ -810,7 +911,7 @@ describe(`Structure string parsing`, () => {
   test.each(test_data)(
     `parses %s format correctly`,
     async (_format, content, atoms, elements, has_lattice) => {
-      let parsed = $state<AnyStructure | undefined>(undefined)
+      let parse_state = $state<{ parsed?: AnyStructure }>({})
       let loaded = false
 
       mount(Structure, {
@@ -818,10 +919,10 @@ describe(`Structure string parsing`, () => {
         props: {
           structure_string: content,
           get structure() {
-            return parsed
+            return parse_state.parsed
           },
           set structure(val) {
-            parsed = val
+            parse_state.parsed = val
           },
           on_file_load: (data: StructureHandlerData) => {
             loaded = true
@@ -832,13 +933,17 @@ describe(`Structure string parsing`, () => {
       })
 
       await tick()
-      expect(parsed).toBeDefined()
-      if (parsed) {
-        expect(parsed.sites).toHaveLength(atoms)
+      expect(parse_state.parsed).toBeDefined()
+      if (parse_state.parsed) {
+        expect(parse_state.parsed.sites).toHaveLength(atoms)
         elements.forEach((el) =>
-          expect(parsed?.sites.map((site) => site.species[0].element)).toContain(el),
+          expect(parse_state.parsed?.sites.map((site) => site.species[0].element)).toContain(
+            el,
+          ),
         )
-        expect(!!(`lattice` in parsed && parsed.lattice)).toBe(has_lattice)
+        expect(!!(`lattice` in parse_state.parsed && parse_state.parsed.lattice)).toBe(
+          has_lattice,
+        )
       }
       expect(loaded).toBe(true)
     },
@@ -858,21 +963,21 @@ describe(`Structure string parsing`, () => {
   })
 
   test(`loading state works correctly`, async () => {
-    let loading = $state(false)
+    let loading_state = $state({ loading: false })
     mount(Structure, {
       target: document.body,
       props: {
         structure_string: SAMPLE_POSCAR_CONTENT,
         get loading() {
-          return loading
+          return loading_state.loading
         },
         set loading(val) {
-          loading = val
+          loading_state.loading = val
         },
       },
     })
     await tick()
-    expect(loading).toBe(false)
+    expect(loading_state.loading).toBe(false)
   })
 
   test(`file size emission works correctly`, async () => {

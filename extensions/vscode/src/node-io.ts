@@ -55,5 +55,11 @@ export const stream_file_to_buffer = async (
 
   on_progress?.({ bytes_read: uint8array.length, total_size, progress: 1.0 }) // Report completion
 
-  return uint8array.buffer as ArrayBuffer
+  // Keep the return type a true ArrayBuffer. This intentionally excludes
+  // SharedArrayBuffer-backed views, which fall back to slice().buffer.
+  return uint8array.buffer instanceof ArrayBuffer &&
+    uint8array.byteOffset === 0 &&
+    uint8array.byteLength === uint8array.buffer.byteLength
+    ? uint8array.buffer
+    : uint8array.slice().buffer
 }

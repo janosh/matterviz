@@ -24,24 +24,31 @@
   const col_id = (col: Label) => col.key ?? col.label
 
   // Snapshot default visibility when column set changes (new dataset).
-  // Compare by column keys to avoid re-snapshotting on internal columns = [...columns] reactivity.
-  // Intentionally non-reactive: mutated only inside snapshot_defaults() and compared manually.
-  let prev_col_keys = ``
-  let default_visibility: Record<string, boolean> = {}
+  // Compare by keys and visibility defaults. Internal updates opt out below.
+  // Signature state is non-reactive; default visibility is state so reset UI updates after snapshots.
+  let prev_default_signature = ``
+  let internal_default_signature: string | undefined
+  let default_visibility = $state<Record<string, boolean>>({})
+  const default_signature = () =>
+    columns.map((col) => `${col_id(col)}:${col.visible !== false}`).join(`\0`)
+
   function snapshot_defaults() {
     default_visibility = {}
     for (const col of columns) {
       default_visibility[col_id(col)] = col.visible !== false
     }
-    prev_col_keys = columns.map(col_id).join(`\0`)
+    prev_default_signature = default_signature()
   }
   snapshot_defaults()
 
   $effect(() => {
-    const current_keys = columns.map(col_id).join(`\0`)
-    if (current_keys !== prev_col_keys) {
-      snapshot_defaults()
+    const current_signature = default_signature()
+    if (current_signature === internal_default_signature) {
+      internal_default_signature = undefined
+      return
     }
+    if (current_signature === prev_default_signature) return
+    snapshot_defaults()
   })
 
   // Check if a column's visibility differs from its default
@@ -55,6 +62,7 @@
     for (const col of items) {
       col.visible = default_visibility[col_id(col)] ?? true
     }
+    internal_default_signature = default_signature()
     columns = [...columns]
   }
 
@@ -101,6 +109,7 @@
   function toggle_column_visibility(col: Label, event: Event) {
     if (!(event.target instanceof HTMLInputElement)) return
     col.visible = event.target.checked
+    internal_default_signature = default_signature()
     columns = [...columns] // trigger reactivity on parent binding
   }
 

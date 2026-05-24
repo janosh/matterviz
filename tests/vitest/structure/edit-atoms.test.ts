@@ -2,9 +2,8 @@
 import type { ElementSymbol, Vec3 } from '$lib'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import { create_cart_to_frac } from '$lib/math'
-import type { AnyStructure, Site, StructureBond } from '$lib/structure'
+import type { AnyStructure, Site } from '$lib/structure'
 import { get_pbc_image_sites } from '$lib/structure'
-import { get_bond_key, normalize_structure_bond } from '$lib/structure/bonding'
 import { describe, expect, test } from 'vitest'
 import { get_dummy_structure, make_crystal } from '../setup'
 
@@ -297,132 +296,13 @@ describe(`edit-atoms: image atom detection`, () => {
   })
 })
 
-// === Bond Toggle Logic ===
-// Mirrors toggle_bond from StructureScene.svelte
+// === Bond Neighbor Summary ===
+// Mirrors the bond tooltip logic from StructureScene.svelte
 
 type BondPair = {
   site_idx_1: number
   site_idx_2: number
-  cell_shift?: Vec3
 }
-
-function create_bond_state(calculated: BondPair[] = []) {
-  let added: StructureBond[] = []
-  let removed: StructureBond[] = []
-  const key_for = (bond: BondPair | StructureBond): string =>
-    get_bond_key(bond.site_idx_1, bond.site_idx_2, bond.cell_shift)
-
-  function toggle_bond(site_1: number, site_2: number, cell_shift?: Vec3) {
-    const record = normalize_structure_bond(site_1, site_2, 1, cell_shift)
-    const key = key_for(record)
-    const added_idx = added.findIndex((bond) => key_for(bond) === key)
-    if (added_idx >= 0) {
-      added = added.toSpliced(added_idx, 1)
-      return
-    }
-
-    const removed_idx = removed.findIndex((bond) => key_for(bond) === key)
-    if (removed_idx >= 0) {
-      removed = removed.toSpliced(removed_idx, 1)
-      return
-    }
-
-    if (calculated.some((bond) => key_for(bond) === key)) {
-      removed = [...removed, record]
-    } else {
-      added = [...added, record]
-    }
-  }
-
-  return {
-    toggle_bond,
-    get added_bonds() {
-      return added
-    },
-    get removed_bonds() {
-      return removed
-    },
-  }
-}
-
-describe(`edit-bonds: toggle_bond`, () => {
-  test(`adds bond between unconnected atoms, sorted regardless of input order`, () => {
-    const state = create_bond_state()
-    state.toggle_bond(5, 2)
-    expect(state.added_bonds).toEqual([{ site_idx_1: 2, site_idx_2: 5, order: 1 }])
-    expect(state.removed_bonds).toEqual([])
-  })
-
-  test(`removes manually added bond on second toggle`, () => {
-    const state = create_bond_state()
-    state.toggle_bond(0, 3)
-    expect(state.added_bonds).toHaveLength(1)
-    state.toggle_bond(0, 3)
-    expect(state.added_bonds).toHaveLength(0)
-  })
-
-  test(`removes calculated bond (handles reversed indices in bond_pairs)`, () => {
-    // bond_pairs may have site_idx_1 > site_idx_2
-    const state = create_bond_state([{ site_idx_1: 5, site_idx_2: 2 }])
-    state.toggle_bond(2, 5)
-    expect(state.removed_bonds).toEqual([{ site_idx_1: 2, site_idx_2: 5, order: 1 }])
-    expect(state.added_bonds).toEqual([])
-  })
-
-  test(`restores removed calculated bond on second toggle`, () => {
-    const state = create_bond_state([{ site_idx_1: 0, site_idx_2: 1 }])
-    state.toggle_bond(0, 1) // remove
-    expect(state.removed_bonds).toHaveLength(1)
-    state.toggle_bond(0, 1) // restore
-    expect(state.removed_bonds).toHaveLength(0)
-  })
-
-  test(`full cycle: add → remove → re-add for non-calculated bond`, () => {
-    const state = create_bond_state()
-    state.toggle_bond(1, 4)
-    expect(state.added_bonds).toEqual([{ site_idx_1: 1, site_idx_2: 4, order: 1 }])
-    state.toggle_bond(1, 4)
-    expect(state.added_bonds).toEqual([])
-    state.toggle_bond(1, 4)
-    expect(state.added_bonds).toEqual([{ site_idx_1: 1, site_idx_2: 4, order: 1 }])
-  })
-
-  test(`distinguishes periodic cell shifts for calculated bonds`, () => {
-    const state = create_bond_state([
-      { site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0] },
-      { site_idx_1: 0, site_idx_2: 1, cell_shift: [0, 1, 0] },
-    ])
-
-    state.toggle_bond(1, 0, [-1, 0, 0])
-
-    expect(state.removed_bonds).toEqual([
-      { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [1, 0, 0] },
-    ])
-    expect(state.added_bonds).toEqual([])
-
-    state.toggle_bond(0, 1, [0, 1, 0])
-
-    expect(state.removed_bonds).toEqual([
-      { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [1, 0, 0] },
-      { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [0, 1, 0] },
-    ])
-  })
-
-  test(`manages multiple bonds independently`, () => {
-    const state = create_bond_state([{ site_idx_1: 0, site_idx_2: 1 }])
-    state.toggle_bond(0, 1) // remove calculated
-    state.toggle_bond(2, 3) // add new
-    state.toggle_bond(4, 5) // add new
-    expect(state.removed_bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
-    expect(state.added_bonds).toEqual([
-      { site_idx_1: 2, site_idx_2: 3, order: 1 },
-      { site_idx_1: 4, site_idx_2: 5, order: 1 },
-    ])
-  })
-})
-
-// === Bond Neighbor Summary ===
-// Mirrors the bond tooltip logic from StructureScene.svelte
 
 function get_bond_neighbors(
   hovered_idx: number,
@@ -648,13 +528,24 @@ describe(`edit-atoms: duplicate atoms`, () => {
 type CursorContext = {
   measure_mode: string
   add_atom_mode: boolean
+  bond_edit_mode?: `add` | `delete`
+  bond_edits_enabled?: boolean
   hovered_idx: number | null
+  hovered_bond_key?: string | null
   site_is_image: (idx: number) => boolean
 }
 
 function get_canvas_cursor(ctx: CursorContext): string {
   if (ctx.measure_mode === `edit-atoms` && ctx.add_atom_mode) return `crosshair`
+  if (ctx.measure_mode === `edit-bonds` && ctx.hovered_bond_key != null) {
+    return (ctx.bond_edits_enabled ?? true) ? `pointer` : `not-allowed`
+  }
   if (ctx.hovered_idx !== null) {
+    if (ctx.measure_mode === `edit-bonds`) {
+      return ctx.bond_edit_mode !== `delete` && (ctx.bond_edits_enabled ?? true)
+        ? `pointer`
+        : `not-allowed`
+    }
     if (ctx.measure_mode === `edit-atoms`) {
       if (ctx.site_is_image(ctx.hovered_idx)) return `not-allowed`
       return `pointer`
@@ -714,23 +605,76 @@ describe(`canvas cursor`, () => {
       get_canvas_cursor({
         measure_mode: mode,
         add_atom_mode: add,
+        bond_edit_mode: `add`,
         hovered_idx: hover,
         site_is_image: image ? all_image : no_image,
       }),
     ).toBe(expected)
   })
 
-  test.each([`distance`, `angle`, `edit-bonds`])(
-    `shows pointer in %s mode when hovering`,
-    (mode) => {
+  test.each([`distance`, `angle`])(`shows pointer in %s mode when hovering`, (mode) => {
+    expect(
+      get_canvas_cursor({
+        measure_mode: mode,
+        add_atom_mode: false,
+        hovered_idx: 0,
+        site_is_image: no_image,
+      }),
+    ).toBe(`pointer`)
+  })
+
+  test.each([
+    {
+      desc: `atom hover in add mode`,
+      bond_edit_mode: `add` as const,
+      expected: `pointer`,
+    },
+    {
+      desc: `image atom hover in add mode`,
+      bond_edit_mode: `add` as const,
+      image: true,
+      expected: `pointer`,
+    },
+    {
+      desc: `atom hover in delete mode`,
+      bond_edit_mode: `delete` as const,
+      expected: `not-allowed`,
+    },
+    {
+      desc: `disabled atom hover`,
+      bond_edit_mode: `add` as const,
+      bond_edits_enabled: false,
+      expected: `not-allowed`,
+    },
+    {
+      desc: `disabled bond hover`,
+      bond_edit_mode: `add` as const,
+      bond_edits_enabled: false,
+      hovered_idx: null,
+      hovered_bond_key: `0-1`,
+      expected: `not-allowed`,
+    },
+  ])(
+    `returns $expected for edit-bonds $desc`,
+    ({
+      bond_edit_mode,
+      bond_edits_enabled = true,
+      hovered_idx = 0,
+      hovered_bond_key = null,
+      image = false,
+      expected,
+    }) => {
       expect(
         get_canvas_cursor({
-          measure_mode: mode,
+          measure_mode: `edit-bonds`,
           add_atom_mode: false,
-          hovered_idx: 0,
-          site_is_image: no_image,
+          bond_edit_mode,
+          bond_edits_enabled,
+          hovered_idx,
+          hovered_bond_key,
+          site_is_image: image ? all_image : no_image,
         }),
-      ).toBe(`pointer`)
+      ).toBe(expected)
     },
   )
 })

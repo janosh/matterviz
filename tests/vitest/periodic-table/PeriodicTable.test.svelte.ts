@@ -245,8 +245,9 @@ describe(`PeriodicTable`, () => {
         },
       },
     })
+    const active_symbol = () => active_element?.symbol ?? null
     ;(document.querySelector(`.element-tile`) as HTMLElement).dispatchEvent(mouseenter)
-    expect((active_element as ChemicalElement | null)?.symbol || null).toBe(expected)
+    expect(active_symbol()).toBe(expected)
   })
 
   test.each([

@@ -14,6 +14,10 @@ doc = "3D crystal structure / molecule viewer."
 # This wrapper defaults set_props/float32_props accordingly.
 set_props = ["hidden_elements", "hidden_prop_vals"]
 
+[components.Structure.extra_props]
+bond_edit_mode = "'add' | 'delete'"
+bond_edit_order = "1 | 1.5 | 2 | 3 | 'aromatic'"
+
 [components.PeriodicTable]
 key = "periodic-table/PeriodicTable"
 doc = "Interactive periodic table with heatmaps and tooltips."

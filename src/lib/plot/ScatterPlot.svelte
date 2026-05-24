@@ -71,6 +71,7 @@
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
   import {
     handle_legend_double_click,
+    type SeriesVisibilitySnapshot,
     toggle_group_visibility,
     toggle_series_visibility,
   } from '$lib/plot/utils/series-visibility'
@@ -307,7 +308,7 @@
   let zoom_x2_range = $state<[number, number]>([0, 1])
   let zoom_y_range = $state<[number, number]>([0, 1])
   let zoom_y2_range = $state<[number, number]>([0, 1])
-  let previous_series_visibility: boolean[] | null = $state(null)
+  let previous_series_visibility: SeriesVisibilitySnapshot | null = $state(null)
 
   // Y2 axis sync configuration
   let y2_sync_config = $derived(normalize_y2_sync(y2_axis?.sync))
@@ -1881,11 +1882,11 @@
         {x_scale_fn}
         {y_scale_fn}
         hovered_region={hovered_fill_idx}
-        on_click={(event) => {
+        on_click={(event: FillHandlerEvent) => {
           fill.on_click?.(event)
           on_fill_click?.(event)
         }}
-        on_hover={(event) => {
+        on_hover={(event: FillHandlerEvent | null) => {
           hovered_fill_idx = event?.region_idx ?? null
           fill.on_hover?.(event)
           on_fill_hover?.(event)
@@ -2096,7 +2097,7 @@
             loading={axis_loading === `x`}
             axis_type="x"
             {color}
-            on_select={(key) => handle_axis_change(`x`, key)}
+            on_select={(key: string) => handle_axis_change(`x`, key)}
           />
         {/if}
       </g>
@@ -2164,7 +2165,7 @@
             loading={axis_loading === `y`}
             axis_type="y"
             {color}
-            on_select={(key) => handle_axis_change(`y`, key)}
+            on_select={(key: string) => handle_axis_change(`y`, key)}
           />
         {/if}
       </g>
@@ -2232,7 +2233,7 @@
               loading={axis_loading === `y2`}
               axis_type="y2"
               {color}
-              on_select={(key) => handle_axis_change(`y2`, key)}
+              on_select={(key: string) => handle_axis_change(`y2`, key)}
             />
           {/if}
         </g>
@@ -2299,7 +2300,7 @@
               loading={axis_loading === `x2`}
               axis_type="x2"
               {color}
-              on_select={(key) => handle_axis_change(`x2`, key)}
+              on_select={(key: string) => handle_axis_change(`x2`, key)}
             />
           {/if}
         </g>
@@ -2608,7 +2609,7 @@
         has_x2_points={x2_points.length > 0}
         has_y2_points={y2_points.length > 0}
         children={controls_extra}
-        on_touch={(key) => touched.add(key)}
+        on_touch={(key: string) => touched.add(key)}
       />
     {/if}
 
@@ -2671,7 +2672,7 @@
         on_drag={handle_legend_drag}
         on_drag_end={() => (legend_is_dragging = false)}
         on_hover_change={legend_hover.set_locked}
-        on_item_hover={(series_idx) =>
+        on_item_hover={(series_idx: number | null) =>
           (hovered_legend_series_idx = series_idx != null && series_idx >= 0
             ? series_idx
             : null)}
@@ -2679,11 +2680,11 @@
         draggable={legend?.draggable ?? true}
         {...legend}
         on_toggle={legend?.on_toggle ??
-        ((series_idx) => {
+        ((series_idx: number) => {
           series = toggle_series_visibility(series, series_idx)
         })}
         on_double_click={legend?.on_double_click ??
-        ((double_clicked_idx) => {
+        ((double_clicked_idx: number) => {
           const result = handle_legend_double_click(
             series,
             double_clicked_idx,
@@ -2693,10 +2694,10 @@
           previous_series_visibility = result.previous_visibility
         })}
         on_group_toggle={legend?.on_group_toggle ??
-        ((_group_name, series_indices) => {
+        ((_group_name: string, series_indices: number[]) => {
           series = toggle_group_visibility(series, series_indices)
         })}
-        on_fill_toggle={(source_type, source_idx) => {
+        on_fill_toggle={(source_type: `fill_region` | `error_band`, source_idx: number) => {
           // Only fill_regions can be toggled (error_bands are not bindable)
           if (source_type === `fill_region`) {
             fill_regions = fill_regions.map((region, idx) =>
@@ -2706,7 +2707,10 @@
             )
           }
         }}
-        on_fill_double_click={(source_type, source_idx) => {
+        on_fill_double_click={(
+          source_type: `fill_region` | `error_band`,
+          source_idx: number,
+        ) => {
           // Only fill_regions can be toggled (error_bands are not bindable)
           if (source_type !== `fill_region`) return
           // Toggle: if only this fill is visible, show all; otherwise show only this one

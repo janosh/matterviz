@@ -1,13 +1,13 @@
 <script lang="ts">
+  import { HTML } from '@threlte/extras'
+  import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
   import type { Vec3 } from '$lib/math'
-    import { HTML } from '@threlte/extras'
-    import type { Snippet } from 'svelte'
-    import type { HTMLAttributes } from 'svelte/elements'
 
-    let { position, children, ...rest }: HTMLAttributes<HTMLDivElement> & {
-      position: Vec3
-      children: Snippet<[{ position: Vec3 }]>
-    } = $props()
+  let { position, children, ...rest }: HTMLAttributes<HTMLDivElement> & {
+    position: Vec3
+    children: Snippet<[{ position: Vec3 }]>
+  } = $props()
 </script>
 
 <HTML {position} pointerEvents="none">
@@ -22,9 +22,9 @@
     box-sizing: border-box;
     text-align: var(--canvas-tooltip-text-align, left);
     border-radius: var(--canvas-tooltip-border-radius, var(--border-radius, 3pt));
-    background: var(--canvas-tooltip-bg, var(--code-bg));
+    background: var(--canvas-tooltip-bg, light-dark(rgba(226, 232, 240, 0.96), rgba(15, 23, 42, 0.96)));
     padding: var(--canvas-tooltip-padding, 1pt 5pt);
-    color: var(--canvas-tooltip-text-color);
+    color: var(--canvas-tooltip-text-color, light-dark(#0f172a, #f8fafc));
     font-family: var(--canvas-tooltip-font-family);
     font-size: var(--canvas-tooltip-font-size, clamp(8pt, 3cqmin, 18pt));
     line-height: var(--canvas-tooltip-line-height);

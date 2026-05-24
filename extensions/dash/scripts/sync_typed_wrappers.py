@@ -397,43 +397,55 @@ def _parse_interface_props(
     return _parse_object_literal(src[brace_start:idx])
 
 
-def parse_external_type(
+def _parse_external_type_with_aliases(
     dist_dir: str, include_spec: str
-) -> dict[str, tuple[str, bool]]:
-    """Parse a type/interface from an external .d.ts file.
+) -> tuple[dict[str, tuple[str, bool]], dict[str, str]]:
+    """Parse an external type/interface and return same-file aliases.
 
     include_spec format: "path/to/file.d.ts:TypeName"
     """
     if ":" not in include_spec:
-        return {}
+        return {}, {}
 
     file_path, type_name = include_spec.rsplit(":", 1)
     dts_path = f"{dist_dir}/{file_path}"
     if not os.path.isfile(dts_path):
         print(f"Warning: External type file not found: {dts_path}")
-        return {}
+        return {}, {}
 
     with open(dts_path, encoding="utf-8") as fh:
         src = fh.read()
 
+    aliases = _extract_type_aliases(src)
     # Try interface first, then type alias
     if props := _parse_interface_props(src, type_name):
-        return props
+        return props, aliases
 
-    aliases = _extract_type_aliases(src)
     if type_name in aliases:
-        return _collect_props(aliases[type_name], aliases, dist_dir, src=src)
+        return _collect_props(aliases[type_name], aliases, dist_dir, src=src), aliases
 
-    return {}
+    return {}, aliases
 
 
-def _detect_prop_kind(ts_type: str) -> str:
+def parse_external_type(
+    dist_dir: str, include_spec: str
+) -> dict[str, tuple[str, bool]]:
+    """Parse a type/interface from an external .d.ts file."""
+    return _parse_external_type_with_aliases(dist_dir, include_spec)[0]
+
+
+def _detect_prop_kind(ts_type: str, aliases: dict[str, str] | None = None) -> str:
     """Determine prop kind based on TypeScript type signature."""
-    if "=>" in ts_type:
+    resolved = ts_type
+    seen_aliases: set[str] = set()
+    while aliases and resolved in aliases and resolved not in seen_aliases:
+        seen_aliases.add(resolved)
+        resolved = aliases[resolved]
+    if "=>" in resolved:
         return "callback"
-    if "Snippet" in ts_type:
+    if "Snippet" in resolved:
         return "snippet"
-    if "HTMLElement" in ts_type or "HTMLDivElement" in ts_type:
+    if "HTMLElement" in resolved or "HTMLDivElement" in resolved:
         return "dom"
     return "value"
 
@@ -461,7 +473,7 @@ def parse_svelte_dts(
     dom_props: list[str] = []
 
     for js_name, (ts_type, required) in sorted(js_props.items()):
-        kind = _detect_prop_kind(ts_type)
+        kind = _detect_prop_kind(ts_type, aliases)
         if kind == "callback":
             callback_props.append(js_name)
         elif kind == "snippet":
@@ -484,13 +496,14 @@ def parse_svelte_dts_with_includes(
     existing = {p.js_name for p in props}
 
     for include_spec in include_from:
-        for js_name, (ts_type, required) in parse_external_type(
+        include_props, aliases = _parse_external_type_with_aliases(
             dist_dir, include_spec
-        ).items():
+        )
+        for js_name, (ts_type, required) in include_props.items():
             if js_name in existing:
                 continue
 
-            kind = _detect_prop_kind(ts_type)
+            kind = _detect_prop_kind(ts_type, aliases)
             if kind == "callback":
                 callback_props.append(js_name)
             elif kind == "snippet":

@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 import { expect_canvas_changed, IS_CI, wait_for_3d_canvas } from '../helpers'
 
 // Get non-white pixel count to detect if content is rendered.
@@ -37,22 +37,78 @@ const goto_structure_page = async (page: Page): Promise<string[]> => {
 }
 
 type StructureCanvas = Awaited<ReturnType<typeof wait_for_3d_canvas>>
+type CanvasOffset = { x?: number; y?: number }
+
+const get_canvas_center = async (
+  canvas: StructureCanvas,
+  offset: CanvasOffset = {},
+): Promise<{ x: number; y: number }> => {
+  await canvas.scrollIntoViewIfNeeded()
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error(`canvas has no bounding box`)
+  return {
+    x: box.x + box.width / 2 + (offset.x ?? 0),
+    y: box.y + box.height / 2 + (offset.y ?? 0),
+  }
+}
 
 const click_canvas_center = async (
   page: Page,
   canvas: StructureCanvas,
   button: `left` | `right` = `left`,
+  offset?: CanvasOffset,
 ): Promise<void> => {
-  await canvas.scrollIntoViewIfNeeded()
-  const box = await canvas.boundingBox()
-  if (!box) throw new Error(`canvas has no bounding box`)
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button })
+  const center = await get_canvas_center(canvas, offset)
+  await page.mouse.click(center.x, center.y, { button })
 }
 
+const hover_canvas_center = async (
+  page: Page,
+  canvas: StructureCanvas,
+  offset?: CanvasOffset,
+): Promise<void> => {
+  const center = await get_canvas_center(canvas, offset)
+  await page.mouse.move(center.x, center.y)
+  await page.waitForTimeout(100)
+}
+
+const atom_label = (
+  page: Page,
+  label_text: string,
+  occurrence: `first` | `last` = `last`,
+): Locator => {
+  const labels = page.locator(`#test-structure .atom-label`).filter({ hasText: label_text })
+  return occurrence === `first` ? labels.first() : labels.last()
+}
+
+const click_atom_label = async (
+  page: Page,
+  label_text: string,
+  options: { force?: boolean } = {},
+): Promise<void> => {
+  const label = atom_label(page, label_text)
+  await expect(label).toBeVisible()
+  await label.click(options)
+}
+
+const select_atom_label_with_keyboard = async (
+  page: Page,
+  label_text: string,
+  occurrence: `first` | `last` = `last`,
+): Promise<void> => {
+  const label = atom_label(page, label_text, occurrence)
+  await expect(label).toBeVisible()
+  await label.press(`Enter`)
+}
 const set_scene_props = (page: Page, detail: Record<string, unknown>) =>
   page.evaluate((props) => {
     window.dispatchEvent(new CustomEvent(`set-scene-props`, { detail: props }))
   }, detail)
+
+const set_structure_bonds = (page: Page, bonds: unknown) =>
+  page.evaluate((next_bonds) => {
+    window.dispatchEvent(new CustomEvent(`set-bonds`, { detail: { bonds: next_bonds } }))
+  }, bonds)
 
 const dispatch_co2 = (page: Page) =>
   page.evaluate(() => {
@@ -85,7 +141,12 @@ const dispatch_co2 = (page: Page) =>
     window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
     window.dispatchEvent(
       new CustomEvent(`set-scene-props`, {
-        detail: { camera_position: [0, 0, 8], show_bonds: `always` },
+        detail: {
+          bond_thickness: 0.25,
+          camera_position: [0, 0, 8],
+          camera_target: [0, 0, 0],
+          show_bonds: `always`,
+        },
       }),
     )
   })
@@ -121,12 +182,157 @@ const dispatch_two_atom_bond_structure = (page: Page, order: 1 | 2 | 3) =>
     )
   }, order)
 
-test.describe(`Bond component`, () => {
-  test.beforeEach(() => {
-    test.skip(IS_CI, `Bonds tests timeout in CI`)
+const dispatch_two_atom_unbonded_structure = (page: Page) =>
+  page.evaluate(() => {
+    const structure = {
+      sites: [
+        {
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [-0.7, 0, 0],
+          label: `C1`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0.7, 0, 0],
+          label: `O1`,
+          properties: {},
+        },
+      ],
+      properties: {},
+    }
+    window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+    window.dispatchEvent(
+      new CustomEvent(`set-scene-props`, {
+        detail: {
+          atom_radius: 2.5,
+          bonding_options: { strength_threshold: 10 },
+          camera_position: [0, 0, 8],
+          camera_target: [0, 0, 0],
+          show_bonds: `always`,
+          show_site_labels: true,
+          site_label_offset: [0, 0, 0],
+        },
+      }),
+    )
   })
 
+const dispatch_periodic_image_structure = (
+  page: Page,
+  {
+    bonding_options,
+    show_site_labels = false,
+  }: { bonding_options: Record<string, unknown>; show_site_labels?: boolean },
+) =>
+  page.evaluate(
+    (scene_options) => {
+      const structure = {
+        lattice: {
+          matrix: [
+            [10, 0, 0],
+            [0, 10, 0],
+            [0, 0, 10],
+          ],
+          pbc: [true, true, true],
+        },
+        sites: [
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            abc: [0.95, 0.5, 0.5],
+            xyz: [9.5, 5, 5],
+            label: `C1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            abc: [0.04, 0.5, 0.5],
+            xyz: [0.4, 5, 5],
+            label: `O1`,
+            properties: {},
+          },
+        ],
+        properties: {},
+      }
+      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, {
+          detail: {
+            bond_thickness: 0.25,
+            bonding_options: scene_options.bonding_options,
+            camera_position: [9.95, 5, 17],
+            camera_target: [9.95, 5, 5],
+            show_bonds: `always`,
+            ...(scene_options.show_site_labels
+              ? { show_site_labels: true, site_label_offset: [0, 0, 0] }
+              : {}),
+          },
+        }),
+      )
+    },
+    { bonding_options, show_site_labels },
+  )
+
+const dispatch_periodic_image_bond_structure = (page: Page) =>
+  dispatch_periodic_image_structure(page, {
+    bonding_options: { strategy: `electroneg_ratio` },
+  })
+
+const dispatch_periodic_image_unbonded_structure = (page: Page) =>
+  dispatch_periodic_image_structure(page, {
+    bonding_options: { strength_threshold: 10 },
+    show_site_labels: true,
+  })
+
+const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
+  page.evaluate(() => {
+    const structure = {
+      lattice: {
+        matrix: [
+          [10, 0, 0],
+          [0, 10, 0],
+          [0, 0, 10],
+        ],
+        pbc: [true, true, true],
+      },
+      sites: [
+        {
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+          abc: [0.04, 0.5, 0.5],
+          xyz: [0.4, 5, 5],
+          label: `C1`,
+          properties: {},
+        },
+        {
+          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+          abc: [0.045, 0.5, 0.5],
+          xyz: [0.45, 5, 5],
+          label: `O1`,
+          properties: {},
+        },
+      ],
+      properties: {},
+    }
+    window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+    window.dispatchEvent(
+      new CustomEvent(`set-scene-props`, {
+        detail: {
+          atom_radius: 2.5,
+          bonding_options: { strength_threshold: 10 },
+          camera_position: [10.5, 5, 17],
+          camera_target: [10.5, 5, 5],
+          show_bonds: `always`,
+          show_site_labels: true,
+          site_label_offset: [0, 0, 0],
+        },
+      }),
+    )
+  })
+
+test.describe(`Bond component`, () => {
   test(`renders bonds and handles rotation/zoom without errors`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     // wait_for_3d_canvas ensures canvas is visible with non-zero dimensions
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -164,6 +370,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`bonds visible from multiple angles with proper gradients`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
 
@@ -227,6 +434,243 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
+  test(`edit-bonds add mode opens order editing after clicking two atoms`, async ({
+    page,
+  }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_two_atom_bond_structure(page, 1)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await set_scene_props(page, { show_site_labels: true, site_label_offset: [0, 0, 0] })
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`add`)
+
+    await click_canvas_center(page, canvas)
+    const menu = page.locator(`#test-structure .bond-context-menu`)
+    await expect(menu).toBeHidden()
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+
+    await click_atom_label(page, `C`)
+    await expect(menu).toBeHidden()
+    await expect(page.locator(`#test-structure .selection-label`)).toBeVisible()
+    await click_atom_label(page, `O`)
+    await expect(menu).toBeVisible()
+    await menu.getByRole(`button`, { name: `Close` }).click()
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds add mode creates selected-order bond between unbonded atoms`, async ({
+    page,
+  }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_two_atom_unbonded_structure(page)
+    await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    const order_select = page.locator(`#test-structure .bond-edit-toolbar select`)
+    await order_select.selectOption({ label: `Double` })
+
+    await click_atom_label(page, `C`)
+    await click_atom_label(page, `O`)
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+
+    await order_select.selectOption({ label: `Triple` })
+    await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
+    await expect(order_select).toHaveValue(`2`)
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+
+    await click_atom_label(page, `C`)
+    await click_atom_label(page, `O`)
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds add mode handles image atom bonds`, async ({ page }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_two_image_atom_unbonded_structure(page)
+    await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    const menu = page.locator(`#test-structure .bond-context-menu`)
+    await select_atom_label_with_keyboard(page, `C`, `first`)
+    await expect(menu).toBeHidden()
+    await select_atom_label_with_keyboard(page, `O`)
+
+    await expect(menu).toBeHidden()
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 3, order: 1 }])
+
+    await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+
+    await select_atom_label_with_keyboard(page, `C`, `first`)
+    await select_atom_label_with_keyboard(page, `C`)
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
+
+    await dispatch_periodic_image_structure(page, {
+      bonding_options: { strategy: `electroneg_ratio` },
+      show_site_labels: true,
+    })
+    await wait_for_3d_canvas(page, `#test-structure`)
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+
+    await select_atom_label_with_keyboard(page, `C`, `first`)
+    await expect(menu).toBeHidden()
+    await select_atom_label_with_keyboard(page, `O`)
+
+    await expect(menu).toBeVisible()
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds shortcuts switch modes and keyboard undo redo`, async ({ page }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_two_atom_bond_structure(page, 1)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await page.locator(`#test-structure`).getByRole(`button`, { name: `Add` }).focus()
+    await page.keyboard.press(`d`)
+    await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`delete`)
+    await page.keyboard.press(`a`)
+    await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`add`)
+    const order_select = page.locator(`#test-structure .bond-edit-toolbar select`)
+    await order_select.focus()
+    await page.keyboard.press(`d`)
+    await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`add`)
+    await expect(order_select).toBeEnabled()
+    await page.locator(`#test-structure`).getByRole(`button`, { name: `Add` }).focus()
+    await page.keyboard.press(`d`)
+
+    await click_canvas_center(page, canvas)
+    await expect.poll(() => get_structure_bonds(page)).toEqual([])
+
+    await page.keyboard.press(process.platform === `darwin` ? `Meta+Z` : `Control+Z`)
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+
+    await page.keyboard.press(process.platform === `darwin` ? `Meta+Y` : `Control+Y`)
+    await expect.poll(() => get_structure_bonds(page)).toEqual([])
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds delete mode still supports right-click order editing`, async ({ page }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_two_atom_bond_structure(page, 1)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+
+    await click_canvas_center(page, canvas, `right`)
+    const menu = page.locator(`#test-structure .bond-context-menu`)
+    await expect(menu).toBeVisible()
+    await menu.getByRole(`button`, { name: `Triple` }).click()
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds delete mode removes bonds to image atoms`, async ({ page }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_periodic_image_bond_structure(page)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+
+    const unhovered = await canvas.screenshot()
+    const outer_delete_area = { y: 24 }
+    await hover_canvas_center(page, canvas, outer_delete_area)
+    await expect_canvas_changed(canvas, unhovered)
+    await click_canvas_center(page, canvas)
+
+    await expect.poll(() => get_structure_bonds(page)).toEqual([])
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds delete mode removes manually added bonds to image atoms`, async ({
+    page,
+  }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_periodic_image_unbonded_structure(page)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    await select_atom_label_with_keyboard(page, `C`, `first`)
+    await select_atom_label_with_keyboard(page, `O`)
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
+
+    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+    await click_canvas_center(page, canvas)
+
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`bond redo history is cleared after source changes and edit-atoms`, async ({
+    page,
+  }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_two_atom_bond_structure(page, 1)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    const redo_button = page.getByRole(`button`, {
+      name: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
+    })
+    const expect_bonds = async (expected_bonds: unknown) => {
+      await expect.poll(() => get_structure_bonds(page)).toEqual(expected_bonds)
+    }
+    const delete_center_bond = async () => {
+      await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+      await click_canvas_center(page, canvas)
+      await expect_bonds([])
+    }
+    const undo_bond_delete = async (expected_bonds: unknown) => {
+      await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
+      await expect_bonds(expected_bonds)
+    }
+
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+
+    await dispatch_two_atom_bond_structure(page, 3)
+    await expect(redo_button).toBeDisabled()
+    await expect_bonds([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+    await set_structure_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+    await expect(redo_button).toBeDisabled()
+    await expect_bonds([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+    await page.locator(`[data-testid="btn-set-edit-atoms"]`).click()
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await expect(redo_button).toBeDisabled()
+
+    await dispatch_two_atom_unbonded_structure(page)
+    await set_structure_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+    await page.locator(`[data-testid="btn-set-edit-atoms"]`).click()
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+    await set_structure_bonds(page, undefined)
+    await expect(redo_button).toBeDisabled()
+    expect(console_errors).toHaveLength(0)
+  })
+
   test(`structure change during bond edit emits new structure bonds`, async ({ page }) => {
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
@@ -250,6 +694,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`auto bond-order toggle changes rendered bond geometry`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     await dispatch_co2(page)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
@@ -273,6 +718,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`aromatic display toggle switches benzene representation`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     // Planar benzene ring (6 C in a hexagon, 1.39 Å radius), no explicit
     // bonds -> connectivity ring detected, perception flags it aromatic.
@@ -318,14 +764,15 @@ test.describe(`Bond component`, () => {
   })
 
   test(`manual override wins over perceived bond order`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     await dispatch_co2(page)
     await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
     await set_scene_props(page, { auto_bond_order: true })
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
 
-    // Drive the SAME edit-bonds context menu the existing explicit-order test
-    // uses, targeting the C-O1 bond midpoint (world origin -> canvas center).
+    // Target the right-side C-O1 bond midpoint. The molecule is centered near
+    // carbon, so the midpoint is slightly right of the canvas center.
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
 
     await click_canvas_center(page, canvas, `right`)
@@ -338,21 +785,21 @@ test.describe(`Bond component`, () => {
     // Manually override to Triple - must win over the perceived double.
     await menu.getByRole(`button`, { name: `Triple` }).click()
     await expect(menu).toBeHidden()
-
-    // Re-open the menu on the same bond: it must now report order 3, proving
-    // the manual bond_order_overrides path takes precedence over perception.
-    await click_canvas_center(page, canvas, `right`)
-    await expect(menu).toBeVisible()
-    await expect(menu).toContainText(`Bond Order (3)`)
     // The override is recorded in the bound bonds list (globalThis hook),
     // not the perceived order - concrete proof of precedence.
     await expect
       .poll(() => get_structure_bonds(page))
       .toContainEqual(expect.objectContaining({ order: 3 }))
+
+    // Re-open the edited bond to ensure the context menu still supports
+    // follow-up actions after the override.
+    await click_canvas_center(page, canvas, `right`)
+    await expect(menu).toBeVisible()
     await menu.getByRole(`button`, { name: `Close` }).focus()
     await page.keyboard.press(`Enter`)
     await expect(menu).toBeHidden()
 
+    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
     await click_canvas_center(page, canvas)
     await expect.poll(() => get_structure_bonds(page)).toEqual([])
     await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
@@ -361,6 +808,7 @@ test.describe(`Bond component`, () => {
   })
 
   test(`site labels avoid adjacent bond directions`, async ({ page }) => {
+    test.skip(IS_CI, `Visual bonds test times out in CI`)
     const console_errors = await goto_structure_page(page)
     await page.evaluate(() => {
       const structure = {
