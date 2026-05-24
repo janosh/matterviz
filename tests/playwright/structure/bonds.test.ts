@@ -620,51 +620,54 @@ test.describe(`Bond component`, () => {
     const console_errors = await goto_structure_page(page)
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
-    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+    const redo_button = page.getByRole(`button`, {
+      name: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)`,
+    })
+    const expect_bonds = async (expected_bonds: unknown) => {
+      await expect.poll(() => get_structure_bonds(page)).toEqual(expected_bonds)
+    }
+    const delete_center_bond = async () => {
+      await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+      await click_canvas_center(page, canvas)
+      await expect_bonds([])
+    }
+    const undo_bond_delete = async (expected_bonds: unknown) => {
+      await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
+      await expect_bonds(expected_bonds)
+    }
 
-    await click_canvas_center(page, canvas)
-    await expect.poll(() => get_structure_bonds(page)).toEqual([])
-    await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
-    await expect
-      .poll(() => get_structure_bonds(page))
-      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
 
     await dispatch_two_atom_bond_structure(page, 3)
-    await expect(
-      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)` }),
-    ).toBeDisabled()
-    await expect
-      .poll(() => get_structure_bonds(page))
-      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+    await expect(redo_button).toBeDisabled()
+    await expect_bonds([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
 
-    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
-    await click_canvas_center(page, canvas)
-    await expect.poll(() => get_structure_bonds(page)).toEqual([])
-    await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
-    await expect
-      .poll(() => get_structure_bonds(page))
-      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
     await set_structure_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
-    await expect(
-      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)` }),
-    ).toBeDisabled()
-    await expect
-      .poll(() => get_structure_bonds(page))
-      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+    await expect(redo_button).toBeDisabled()
+    await expect_bonds([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
 
-    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
-    await click_canvas_center(page, canvas)
-    await expect.poll(() => get_structure_bonds(page)).toEqual([])
-    await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
-    await expect
-      .poll(() => get_structure_bonds(page))
-      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
     await page.locator(`[data-testid="btn-set-edit-atoms"]`).click()
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-    await expect(
-      page.getByRole(`button`, { name: `Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)` }),
-    ).toBeDisabled()
+    await expect(redo_button).toBeDisabled()
+
+    await dispatch_two_atom_unbonded_structure(page)
+    await set_structure_bonds(page, [{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+    await page.locator(`[data-testid="btn-set-edit-atoms"]`).click()
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+    await delete_center_bond()
+    await undo_bond_delete([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+    await set_structure_bonds(page, undefined)
+    await expect(redo_button).toBeDisabled()
     expect(console_errors).toHaveLength(0)
   })
 

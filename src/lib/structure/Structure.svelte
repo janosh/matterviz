@@ -558,7 +558,9 @@
     const raw_signature = bond_signature(current_source_bonds())
     if (raw_signature !== last_emitted_bond_signature) return raw_signature
     return bond_history_context?.source_bond_signature ??
-      bond_signature(bond_edit_snapshot?.bonds)
+      (bond_edit_snapshot
+        ? bond_signature(bond_edit_snapshot.bonds)
+        : raw_signature)
   }
 
   const current_bond_edit_context = (): BondEditContext => ({
