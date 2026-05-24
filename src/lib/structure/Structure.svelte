@@ -20,10 +20,11 @@
   import type { Vec3 } from '$lib/math'
   import { create_cart_to_frac, create_frac_to_cart } from '$lib/math'
   import { DEFAULTS } from '$lib/settings'
-  import { sanitize_html } from '$lib/sanitize'
   import { colors } from '$lib/state.svelte'
   import type {
     AnyStructure,
+    BondEditMode,
+    BondOrder,
     Crystal,
     MeasureMode,
     StructureBond,
@@ -55,7 +56,7 @@
   import { get_property_colors } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
-  import { merge_bond_edits } from './bonding'
+  import { BOND_ORDER_OPTIONS, merge_bond_edits } from './bonding'
   import type { StructureHandlerData } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import { normalize_fractional_coords, parse_any_structure } from './parse'
@@ -67,7 +68,8 @@
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
   type BondEditContext = {
-    structure?: AnyStructure
+    structure_identity: AnyStructure | undefined
+    source_bond_signature: string
     cell_type: CellType
     supercell_scaling: string
     show_image_atoms: boolean
@@ -75,6 +77,13 @@
   type BondEditSnapshot = {
     bonds: StructureBond[] | undefined
     context: BondEditContext
+  }
+  type BondEditHistorySnapshot = {
+    added_bonds: StructureBond[]
+    removed_bonds: StructureBond[]
+    bond_order_overrides: StructureBond[]
+    bond_edit_mode: BondEditMode
+    bond_edit_order: BondOrder
   }
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
@@ -103,6 +112,8 @@
     info_pane_open = $bindable(false),
     enable_measure_mode = $bindable(true),
     measure_mode = $bindable<MeasureMode>(`distance`),
+    bond_edit_mode = $bindable<BondEditMode>(`add`),
+    bond_edit_order = $bindable<BondOrder>(1),
     background_color = $bindable(),
     background_opacity = $bindable(0.1),
     show_controls,
@@ -206,6 +217,8 @@
       enable_info_pane?: boolean
       enable_measure_mode?: boolean
       measure_mode?: MeasureMode
+      bond_edit_mode?: BondEditMode
+      bond_edit_order?: BondOrder
       info_pane_open?: boolean
       fullscreen_toggle?: Snippet<[{ fullscreen: boolean }]> | boolean
       bottom_left?: Snippet<[{ structure?: AnyStructure }]>
@@ -455,6 +468,10 @@
   let added_bonds = $state<StructureBond[]>([])
   let removed_bonds = $state<StructureBond[]>([])
   let bond_order_overrides = $state<StructureBond[]>([])
+  let bond_undo_stack = $state<BondEditHistorySnapshot[]>([])
+  let bond_redo_stack = $state<BondEditHistorySnapshot[]>([])
+  let bond_history_context = $state<BondEditContext>()
+  let last_bond_structure_identity = $state(structure)
   let last_emitted_bond_signature = $state<string>()
   let bond_edit_snapshot = $state<BondEditSnapshot>()
   let has_bond_edits = $derived(
@@ -462,25 +479,93 @@
       bond_order_overrides.length > 0,
   )
 
+  const clone_bonds = (edit_bonds: StructureBond[]): StructureBond[] =>
+    edit_bonds.map((bond) => ({
+      ...bond,
+      cell_shift: bond.cell_shift && ([...bond.cell_shift] as Vec3),
+    }))
+
+  const snapshot_bond_edits = (): BondEditHistorySnapshot => ({
+    added_bonds: clone_bonds(added_bonds),
+    removed_bonds: clone_bonds(removed_bonds),
+    bond_order_overrides: clone_bonds(bond_order_overrides),
+    bond_edit_mode,
+    bond_edit_order,
+  })
+
+  function restore_bond_edit_snapshot(snapshot: BondEditHistorySnapshot) {
+    added_bonds = clone_bonds(snapshot.added_bonds)
+    removed_bonds = clone_bonds(snapshot.removed_bonds)
+    bond_order_overrides = clone_bonds(snapshot.bond_order_overrides)
+    bond_edit_mode = snapshot.bond_edit_mode
+    bond_edit_order = snapshot.bond_edit_order
+    clear_selection()
+  }
+
+  function clear_bond_history() {
+    bond_undo_stack = []
+    bond_redo_stack = []
+    bond_history_context = undefined
+  }
+
+  function push_bond_undo() {
+    if (bond_undo_stack.length >= MAX_HISTORY) {
+      bond_undo_stack.splice(0, bond_undo_stack.length - MAX_HISTORY + 1)
+    }
+    bond_history_context ??= current_bond_edit_context()
+    bond_undo_stack.push(snapshot_bond_edits())
+    bond_redo_stack = []
+  }
+
+  function undo_bond_edit() {
+    if (bond_undo_stack.length === 0) return
+    const restored = bond_undo_stack.pop()
+    if (!restored) return
+    bond_redo_stack.push(snapshot_bond_edits())
+    restore_bond_edit_snapshot(restored)
+  }
+
+  function redo_bond_edit() {
+    if (bond_redo_stack.length === 0) return
+    const restored = bond_redo_stack.pop()
+    if (!restored) return
+    bond_undo_stack.push(snapshot_bond_edits())
+    restore_bond_edit_snapshot(restored)
+  }
+
   function clear_bond_edits() {
     added_bonds = []
     removed_bonds = []
     bond_order_overrides = []
+    clear_bond_history()
   }
 
   function emit_bonds(next_bonds: StructureBond[] | undefined) {
-    const signature = next_bonds === undefined ? `undefined` : JSON.stringify(next_bonds)
+    const signature = bond_signature(next_bonds)
     if (signature === last_emitted_bond_signature) return
     last_emitted_bond_signature = signature
     bonds = next_bonds
     on_bonds_change?.(next_bonds)
   }
 
+  const bond_signature = (edit_bonds: StructureBond[] | undefined): string =>
+    edit_bonds === undefined ? `undefined` : JSON.stringify(edit_bonds)
+
   const current_source_bonds = (): StructureBond[] | undefined =>
     bonds ?? structure?.properties?.bonds
 
+  const current_source_bond_signature = (): string => {
+    const raw_signature = bond_signature(current_source_bonds())
+    if (raw_signature !== last_emitted_bond_signature) return raw_signature
+    return bond_history_context?.source_bond_signature ??
+      (bond_edit_snapshot
+        ? bond_signature(bond_edit_snapshot.bonds)
+        : raw_signature)
+  }
+
   const current_bond_edit_context = (): BondEditContext => ({
-    structure,
+    structure_identity: structure,
+    source_bond_signature: current_source_bond_signature(),
     cell_type,
     supercell_scaling,
     show_image_atoms,
@@ -490,7 +575,8 @@
     previous: BondEditContext,
     current: BondEditContext,
   ): boolean =>
-    previous.structure !== current.structure ||
+    previous.structure_identity !== current.structure_identity ||
+    previous.source_bond_signature !== current.source_bond_signature ||
     previous.cell_type !== current.cell_type ||
     previous.supercell_scaling !== current.supercell_scaling ||
     previous.show_image_atoms !== current.show_image_atoms
@@ -498,7 +584,30 @@
   const resolve_bond_edit_reset_bonds = (
     snapshot: BondEditSnapshot,
   ): StructureBond[] | undefined =>
-    snapshot.context.structure === structure ? snapshot.bonds : structure?.properties?.bonds
+    snapshot.context.structure_identity === structure
+      ? snapshot.bonds
+      : structure?.properties?.bonds
+
+  $effect(() => {
+    const next_structure_identity = structure
+    untrack(() => {
+      if (
+        last_bond_structure_identity !== next_structure_identity &&
+        bond_signature(bonds) === last_emitted_bond_signature
+      ) {
+        emit_bonds(structure?.properties?.bonds)
+      }
+      last_bond_structure_identity = next_structure_identity
+    })
+  })
+
+  $effect(() => {
+    const history_context = bond_history_context
+    if (history_context === undefined) return
+    if (bond_edit_context_changed(history_context, current_bond_edit_context())) {
+      untrack(clear_bond_history)
+    }
+  })
 
   $effect(() => {
     const snapshot = bond_edit_snapshot
@@ -544,6 +653,20 @@
   let add_atom_mode = $state(false)
   let add_element = $state<ElementSymbol>(`C` as ElementSymbol)
   let canvas_cursor = $state(`default`)
+  let is_measure_selection_mode = $derived(
+    measure_mode === `distance` || measure_mode === `angle`,
+  )
+  let show_measure_selection_limit = $derived(
+    is_measure_selection_mode && measured_sites.length >= MAX_SELECTED_SITES,
+  )
+  let show_selection_reset = $derived(
+    has_bond_edits ||
+      (is_measure_selection_mode && measured_sites.length > 0) ||
+      (measure_mode === `edit-atoms` && selected_sites.length > 0),
+  )
+  let atom_legend_selected_sites = $derived(
+    measure_mode === `edit-atoms` ? selected_sites : [],
+  )
   let change_element_mode = $state(false)
   let change_element_value = $state(``)
   // Ephemeral toast message for edit operations
@@ -624,6 +747,16 @@
     }
     untrack(() => {
       if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
+      if (measure_mode === `edit-bonds`) bond_edit_mode = `add`
+    })
+  })
+
+  $effect(() => {
+    void bond_edit_mode
+    untrack(() => {
+      if (measure_mode === `edit-bonds` && (selected_sites.length > 0 || measured_sites.length > 0)) {
+        clear_selection()
+      }
     })
   })
 
@@ -633,6 +766,7 @@
     untrack(() => {
       // Clear bond edits from edit-bonds mode to avoid stale state
       if (has_bond_edits) clear_bond_edits()
+      else clear_bond_history()
       if (cell_type !== `original` && cell_transformed_structure && structure) {
         // Bake the transformed cell: push original to undo, replace structure
         is_internal_edit = true
@@ -1008,8 +1142,11 @@
   function handle_keydown(event: KeyboardEvent) {
     // Don't handle shortcuts if user is typing in an input field
     const target = event.target as HTMLElement
-    const is_input_focused = target.tagName === `INPUT` ||
-      target.tagName === `TEXTAREA`
+    const is_input_focused =
+      target.tagName === `INPUT` ||
+      target.tagName === `TEXTAREA` ||
+      target.tagName === `SELECT` ||
+      target.isContentEditable
 
     // Allow Escape to cancel add-atom mode even when the element input is focused
     if (event.key === `Escape` && measure_mode === `edit-atoms` && add_atom_mode) {
@@ -1019,6 +1156,41 @@
     }
 
     if (is_input_focused) return
+
+    if (measure_mode === `edit-bonds`) {
+      const key = event.key.toLowerCase()
+      const plain = !event.ctrlKey && !event.metaKey && !event.altKey
+      if (event.ctrlKey || event.metaKey) {
+        if (key === `z` && !event.shiftKey) {
+          if (bond_undo_stack.length === 0) return
+          event.preventDefault()
+          undo_bond_edit()
+          show_toast(`Undo bond edit (${bond_undo_stack.length} left)`)
+          return
+        } else if (key === `y` || (key === `z` && event.shiftKey)) {
+          if (bond_redo_stack.length === 0) return
+          event.preventDefault()
+          redo_bond_edit()
+          show_toast(`Redo bond edit (${bond_redo_stack.length} left)`)
+          return
+        }
+      }
+      if (key === `a` && plain) {
+        event.preventDefault()
+        bond_edit_mode = `add`
+        return
+      }
+      if (key === `d` && plain) {
+        event.preventDefault()
+        bond_edit_mode = `delete`
+        return
+      }
+      if (event.key === `Escape` && selected_sites.length > 0) {
+        event.preventDefault()
+        clear_selection()
+        return
+      }
+    }
 
     // Edit-atoms mode shortcuts (including undo/redo)
     if (measure_mode === `edit-atoms`) {
@@ -1398,7 +1570,7 @@
               aria-expanded={measure_menu_open}
               style="transform: scale(1.2)"
             >
-              {#if (measured_sites?.length ?? 0) >= MAX_SELECTED_SITES}
+              {#if show_measure_selection_limit}
                 <span class="selection-limit-text">
                   {measured_sites.length}/{MAX_SELECTED_SITES}
                 </span>
@@ -1417,7 +1589,7 @@
                 style="margin-left: -2px"
               />
             </button>
-            {#if (measured_sites?.length ?? 0) > 0 || has_bond_edits}
+            {#if show_selection_reset}
               <button
                 type="button"
                 aria-label="Reset selection and bond edits"
@@ -1463,7 +1635,7 @@
                     }}
                   >
                     <Icon {icon} style="transform: scale({scale})" />
-                    <span>{@html sanitize_html(label)}</span>
+                    <span>{label}</span>
                   </button>
                 {/each}
               </div>
@@ -1475,10 +1647,10 @@
             <div class="undo-redo-container">
               <button
                 type="button"
-                aria-label="Undo (Ctrl+Z)"
+                aria-label="Undo (Cmd/Ctrl+Z)"
                 disabled={undo_stack.length === 0}
                 onclick={undo}
-                title="Undo (Ctrl+Z)"
+                title="Undo (Cmd/Ctrl+Z)"
                 class="undo-redo-btn"
               >
                 <Icon icon="Undo" />
@@ -1488,15 +1660,74 @@
               </button>
               <button
                 type="button"
-                aria-label="Redo (Ctrl+Y)"
+                aria-label="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
                 disabled={redo_stack.length === 0}
                 onclick={redo}
-                title="Redo (Ctrl+Y)"
+                title="Redo (Cmd/Ctrl+Y or Cmd+Shift+Z)"
                 class="undo-redo-btn"
               >
                 <Icon icon="Redo" />
                 {#if redo_stack.length > 0}
                   <span class="history-count">{redo_stack.length}</span>
+                {/if}
+              </button>
+            </div>
+          {/if}
+
+          {#if measure_mode === `edit-bonds`}
+            <div class="bond-edit-toolbar" aria-label="Bond editing controls">
+              {#if bond_edit_mode === `add`}
+                <label>
+                  <span>Bond order</span>
+                  <select bind:value={bond_edit_order}>
+                    {#each BOND_ORDER_OPTIONS as { order, label } (label)}
+                      <option value={order}>{label}</option>
+                    {/each}
+                  </select>
+                </label>
+              {/if}
+              <div class="bond-edit-mode-toggle">
+                {#each [
+                  { mode: `add`, label: `Add`, title: `Add: click two atoms` },
+                  { mode: `delete`, label: `Delete`, title: `Delete: click a bond` },
+                ] as const as { mode, label, title } (mode)}
+                  <button
+                    type="button"
+                    class:selected={bond_edit_mode === mode}
+                    aria-pressed={bond_edit_mode === mode}
+                    title="{title} ({label[0]})"
+                    onclick={() => (bond_edit_mode = mode)}
+                  >
+                    {label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+            <div class="undo-redo-container">
+              <button
+                type="button"
+                aria-label="Undo bond edit (Cmd/Ctrl+Z)"
+                disabled={bond_undo_stack.length === 0}
+                onclick={undo_bond_edit}
+                title="Undo bond edit (Cmd/Ctrl+Z)"
+                class="undo-redo-btn"
+              >
+                <Icon icon="Undo" />
+                {#if bond_undo_stack.length > 0}
+                  <span class="history-count">{bond_undo_stack.length}</span>
+                {/if}
+              </button>
+              <button
+                type="button"
+                aria-label="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
+                disabled={bond_redo_stack.length === 0}
+                onclick={redo_bond_edit}
+                title="Redo bond edit (Cmd/Ctrl+Y or Cmd+Shift+Z)"
+                class="undo-redo-btn"
+              >
+                <Icon icon="Redo" />
+                {#if bond_redo_stack.length > 0}
+                  <span class="history-count">{bond_redo_stack.length}</span>
                 {/if}
               </button>
             </div>
@@ -1608,7 +1839,7 @@
       bind:element_mapping
       bind:element_radius_overrides
       bind:site_radius_overrides
-      {selected_sites}
+      selected_sites={atom_legend_selected_sites}
       structure={displayed_structure}
       {sym_data}
     >
@@ -1653,6 +1884,8 @@
             bind:removed_bonds
             bind:bond_order_overrides
             {bond_edits_enabled}
+            bind:bond_edit_mode
+            {bond_edit_order}
             {measure_mode}
             {width}
             {height}
@@ -1660,6 +1893,7 @@
             {sym_data}
             on_sites_moved={handle_sites_moved}
             on_operation_start={push_undo}
+            on_bond_edit_start={push_bond_undo}
             on_add_atom={handle_add_atom}
             bind:add_atom_mode
             bind:add_element
@@ -1676,20 +1910,6 @@
 
     {#if toast_msg}
       <div class="edit-toast">{toast_msg}</div>
-    {/if}
-
-    {#if measure_mode === `edit-bonds` && has_bond_edits}
-      <div class="bond-edit-status">
-        {#if added_bonds.length > 0}
-          <span class="added">+{added_bonds.length} added</span>
-        {/if}
-        {#if removed_bonds.length > 0}
-          <span class="removed">-{removed_bonds.length} removed</span>
-        {/if}
-        {#if bond_order_overrides.length > 0}
-          <span class="changed">{bond_order_overrides.length} ordered</span>
-        {/if}
-      </div>
     {/if}
 
     {#if symmetry_error}
@@ -1906,34 +2126,6 @@
       opacity: 0;
     }
   }
-  .bond-edit-status {
-    position: absolute;
-    bottom: 1rem;
-    left: 50%;
-    transform: translateX(-50%);
-    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, currentColor);
-    color: var(--text-color, currentColor);
-    padding: 0.5rem 1rem;
-    border-radius: var(--border-radius, 3pt);
-    font-size: 0.85rem;
-    display: flex;
-    gap: 0.75rem;
-    z-index: 100;
-    pointer-events: none;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-  }
-  .bond-edit-status .added {
-    color: #4caf50;
-    font-weight: bold;
-  }
-  .bond-edit-status .removed {
-    color: #f44336;
-    font-weight: bold;
-  }
-  .bond-edit-status .changed {
-    color: var(--accent-color, #007acc);
-    font-weight: bold;
-  }
   /* CellSelect: position at left of legend, show on hover */
   .structure :global(.cell-select) {
     order: -1; /* Move to left side of AtomLegend flex container */
@@ -1953,6 +2145,45 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+  .bond-edit-toolbar {
+    --bond-edit-control-height: 1.8em;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-size: 0.8em;
+  }
+  .bond-edit-mode-toggle,
+  .bond-edit-toolbar label {
+    display: flex;
+    align-items: center;
+  }
+  .bond-edit-mode-toggle {
+    gap: 0.35em;
+  }
+  .bond-edit-mode-toggle button,
+  .bond-edit-toolbar label,
+  .bond-edit-toolbar select {
+    height: var(--bond-edit-control-height);
+    line-height: 1;
+  }
+  .bond-edit-mode-toggle button {
+    min-width: 3.5em;
+    font: inherit;
+  }
+  .bond-edit-mode-toggle button.selected {
+    background: var(--accent-color, #007acc);
+    color: white;
+  }
+  .bond-edit-mode-toggle button.selected:hover {
+    background-color: color-mix(in srgb, var(--accent-color, #007acc) 70%, black);
+  }
+  .bond-edit-toolbar label {
+    gap: 0.25em;
+  }
+  .bond-edit-toolbar select {
+    max-width: 8em;
+    font: inherit;
   }
   .history-count {
     position: absolute;

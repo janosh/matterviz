@@ -2,14 +2,17 @@
 import '$lib/app.css'
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
+import type { PhaseData } from '$lib/convex-hull/types'
 import FermiSurface from '$lib/fermi-surface/FermiSurface.svelte'
 import { parse_fermi_file } from '$lib/fermi-surface/parse'
 import { is_fermi_surface_data } from '$lib/fermi-surface/types'
 import { decompress_data, detect_compression_format } from '$lib/io/decompress'
 import { parse_volumetric_file } from '$lib/isosurface/parse'
+import type { VolumetricData } from '$lib/isosurface/types'
 import IsobaricBinaryPhaseDiagram from '$lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
+import type { PhaseDiagramData } from '$lib/phase-diagram/types'
 import { type DefaultSettings, merge } from '$lib/settings'
-import type { Crystal } from '$lib/structure'
+import type { AnyStructure } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry'
@@ -259,7 +262,7 @@ export function base64_to_array_buffer(base64: string): ArrayBuffer {
   for (let idx = 0; idx < binary.length; idx++) {
     bytes[idx] = binary.charCodeAt(idx)
   }
-  return bytes.buffer as ArrayBuffer
+  return bytes.buffer
 }
 
 // Type for parsed trajectory response from large file requests
@@ -558,7 +561,7 @@ const create_display = (
     log_message = `Fermi surface rendered: ${filename}`
   } else if (result.type === `isosurface`) {
     // VolumetricFileData has structure + volumes; render via Structure with volumetric_data
-    const vol_file = result.data as { structure: unknown; volumes: unknown[] }
+    const vol_file = result.data as { structure: AnyStructure; volumes: VolumetricData[] }
     app = mount(Structure, {
       target: container,
       props: {
@@ -570,15 +573,16 @@ const create_display = (
     })
     log_message = `Volumetric data rendered: ${filename}`
   } else if (result.type === `convex_hull`) {
+    const entries = result.data as PhaseData[]
     app = mount(ConvexHull, {
       target: container,
-      props: { entries: result.data as unknown[], ...common_props },
+      props: { entries, ...common_props },
     })
-    log_message = `Convex hull rendered: ${filename} (${(result.data as unknown[]).length} entries)`
+    log_message = `Convex hull rendered: ${filename} (${entries.length} entries)`
   } else if (result.type === `phase_diagram`) {
     app = mount(IsobaricBinaryPhaseDiagram, {
       target: container,
-      props: { data: result.data, ...common_props },
+      props: { data: result.data as PhaseDiagramData, ...common_props },
     })
     log_message = `Phase diagram rendered: ${filename}`
   } else if (result.type === `json_browser`) {
@@ -589,17 +593,16 @@ const create_display = (
     log_message = `JSON browser opened: ${filename}`
   } else {
     // Default: structure
+    const structure = result.data as AnyStructure
     app = mount(Structure, {
       target: container,
       props: {
-        structure: result.data,
+        structure,
         ...structure_props(defaults),
         ...common_props,
       },
     })
-    log_message = `Structure rendered: ${filename} (${
-      (result.data as Crystal).sites?.length ?? 0
-    } sites)`
+    log_message = `Structure rendered: ${filename} (${structure.sites?.length ?? 0} sites)`
   }
 
   vscode_api?.postMessage({ command: `info`, text: log_message })

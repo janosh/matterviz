@@ -74,7 +74,10 @@ MatterViz accepts explicit bond metadata on `structure.properties.bonds`. The
 viewer still computes normal proximity bonds, but any matching explicit entries
 set the rendered order, and explicit-only entries are added to the scene.
 
-Right-click a bond while in **Edit Bonds** mode to change its order interactively.
+In **Edit Bonds** mode, **Add** is the safe default: click two atoms to add or
+restore a bond without risking accidental deletion. Switch to **Delete** to remove
+existing bonds by clicking them. Use the order selector for new bonds, or open a
+bond's context menu to update an existing bond order interactively.
 
 ```svelte example
 <script lang="ts">

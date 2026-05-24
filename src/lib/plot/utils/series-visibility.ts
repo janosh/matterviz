@@ -2,6 +2,30 @@ import type { DataSeries } from '$lib/plot/types'
 
 export type StrRecord = Record<string, unknown>
 
+type SeriesSource = [string, string, string, unknown, unknown]
+
+export type SeriesVisibilitySnapshot = {
+  visibility: boolean[]
+  source: SeriesSource[]
+}
+
+const series_source = <Metadata extends StrRecord = StrRecord>(
+  series: DataSeries<Metadata>[],
+  length = series.length,
+): SeriesSource[] =>
+  series
+    .slice(0, length)
+    .map((srs) => [srs.label ?? ``, srs.unit ?? ``, srs.y_axis ?? ``, srs.x, srs.y])
+
+const same_series_source = (
+  series: SeriesSource[],
+  snapshot_series: SeriesSource[],
+): boolean =>
+  series.length === snapshot_series.length &&
+  series.every((source, idx) =>
+    source.every((part, part_idx) => Object.is(part, snapshot_series[idx][part_idx])),
+  )
+
 export function have_compatible_units<Metadata extends StrRecord = StrRecord>(
   series1: DataSeries<Metadata>,
   series2: DataSeries<Metadata>,
@@ -60,14 +84,24 @@ export function toggle_group_visibility<Metadata extends StrRecord = StrRecord>(
 export function handle_legend_double_click<Metadata extends StrRecord = StrRecord>(
   series: DataSeries<Metadata>[],
   idx: number,
-  prev_visibility: boolean[] | null,
-): { series: DataSeries<Metadata>[]; previous_visibility: boolean[] | null } {
+  prev_snapshot: SeriesVisibilitySnapshot | null,
+): {
+  series: DataSeries<Metadata>[]
+  previous_visibility: SeriesVisibilitySnapshot | null
+} {
   if (idx < 0 || idx >= series.length) {
-    return { series, previous_visibility: prev_visibility }
+    return { series, previous_visibility: prev_snapshot }
   }
 
   const { label } = series[idx]
   const current = series.map((srs) => srs.visible ?? true)
+  const current_source = prev_snapshot
+    ? series_source(series, prev_snapshot.visibility.length)
+    : []
+  const prev_visibility =
+    prev_snapshot && same_series_source(current_source, prev_snapshot.source)
+      ? prev_snapshot.visibility
+      : null
   // Only check original series (ignore new ones added after isolation)
   const check_series = prev_visibility ? series.slice(0, prev_visibility.length) : series
   const is_isolated = check_series.every((srs, srs_idx) => {
@@ -88,8 +122,14 @@ export function handle_legend_double_click<Metadata extends StrRecord = StrRecor
   }
 
   // Isolate series
-  const new_prev =
-    prev_visibility ?? (current.filter(Boolean).length > 1 ? [...current] : null)
+  const new_prev = prev_visibility
+    ? prev_snapshot
+    : current.filter(Boolean).length > 1
+      ? {
+          visibility: [...current],
+          source: series_source(series),
+        }
+      : null
   return {
     series: series.map((srs, srs_idx) => {
       const in_group = label ? srs.label === label : srs_idx === idx

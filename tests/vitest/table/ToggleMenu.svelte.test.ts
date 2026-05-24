@@ -2,6 +2,7 @@ import type { Label } from '$lib/table'
 import ToggleMenu from '$lib/table/ToggleMenu.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import ToggleMenuHarness from './ToggleMenuHarness.svelte'
 
 afterEach(() => {
   document.body.innerHTML = ``
@@ -284,6 +285,39 @@ describe(`ToggleMenu`, () => {
       expect(checkboxes()[1].checked).toBe(false)
       expect(checkboxes()[2].checked).toBe(true)
       expect(document.querySelector(`summary .reset-btn`)).toBeNull() // no more changes
+    })
+
+    it(`resnapshots defaults when same keys receive new source visibility`, async () => {
+      mount(ToggleMenuHarness, { target: document.body })
+      const checkboxes = () =>
+        document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
+      const checked = () => Array.from(checkboxes(), (checkbox) => checkbox.checked)
+
+      expect(checked()).toEqual([true, false])
+      expect(document.querySelector(`summary .reset-btn`)).toBeNull()
+
+      document.querySelector<HTMLButtonElement>(`[data-testid="replace-columns"]`)?.click()
+      await tick()
+      await tick()
+      expect(checked()).toEqual([false, true])
+      expect(document.querySelector(`summary .reset-btn`)).toBeNull()
+
+      document
+        .querySelectorAll(`.toggle-label`)[0]
+        .dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      await tick()
+      expect(checkboxes()[0].checked).toBe(true)
+      ;(document.querySelector(`summary .reset-btn`) as HTMLElement).click()
+      await tick()
+      expect(checked()).toEqual([false, true])
+
+      document
+        .querySelector<HTMLButtonElement>(`[data-testid="replace-columns-again"]`)
+        ?.click()
+      await tick()
+      await tick()
+      expect(checked()).toEqual([true, true])
+      expect(document.querySelector(`summary .reset-btn`)).toBeNull()
     })
 
     it(`calls on_reset callback when reset all clicked`, async () => {

@@ -82,6 +82,39 @@ function setup_console_monitoring(page: Page): string[] {
   return console_errors
 }
 
+async function load_single_centered_atom_scene(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const structure = {
+      sites: [
+        {
+          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `C1`,
+          properties: {},
+        },
+      ],
+      properties: {},
+    }
+    window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+    window.dispatchEvent(
+      new CustomEvent(`set-scene-props`, {
+        detail: {
+          atom_radius: 2.5,
+          camera_position: [0, 0, 8],
+          camera_target: [0, 0, 0],
+          show_bonds: `never`,
+          show_site_indices: false,
+          show_site_labels: false,
+        },
+      }),
+    )
+    for (let frame_idx = 0; frame_idx < 3; frame_idx++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    }
+  })
+}
+
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     // Skip in CI - 3D canvas and camera control tests are unreliable
@@ -180,6 +213,30 @@ test.describe(`StructureScene Component Tests`, () => {
     // Test tooltip disappears when moving away
     await canvas.hover({ position: { x: 50, y: 50 } })
     await expect(tooltip).toBeHidden({ timeout: get_canvas_timeout() })
+  })
+
+  test(`atom tooltip stays visible while cursor remains over atom`, async ({ page }) => {
+    await load_single_centered_atom_scene(page)
+    const canvas = page.locator(`#test-structure canvas`)
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error(`canvas has no bounding box`)
+
+    await canvas.hover({
+      position: { x: box.width / 2, y: box.height / 2 },
+      force: true,
+    })
+    const tooltip = page.locator(`[role="tooltip"]:has(.coordinates)`)
+    await expect(tooltip).toBeVisible({ timeout: get_canvas_timeout() })
+    await expect(tooltip.locator(`.elements`)).toContainText(`C`)
+    // The hover highlight can become the raycast target after it mounts.
+    // Check visibility immediately after each frame so a short disappearance fails.
+    // 20 frames covers roughly 1/3 s at 60fps, enough to catch transient hover loss.
+    for (let frame_idx = 0; frame_idx < 20; frame_idx++) {
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      )
+      expect(await tooltip.isVisible()).toBe(true)
+    }
   })
 
   // Combined interaction tests
