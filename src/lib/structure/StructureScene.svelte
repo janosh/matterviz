@@ -482,6 +482,7 @@
   const BOND_ENDPOINT_HIT_FRACTION = 0.3
   const BOND_ENDPOINT_SITE_MATCH_TOLERANCE = 1e-6
   const EDITABLE_ATOM_HIT_RADIUS_SCALE = 1.15
+  const skip_raycast = (): void => undefined
 
   function apply_bond_transform(mesh: Mesh, bond: BondPair): void {
     mesh.matrix.fromArray(bond.transform_matrix)
@@ -490,7 +491,11 @@
 
   function apply_non_raycastable_bond_hit_transform(mesh: Mesh, bond: BondPair): void {
     apply_bond_transform(mesh, bond)
-    mesh.raycast = () => undefined
+    disable_raycast(mesh)
+  }
+
+  function disable_raycast(mesh: Mesh): void {
+    mesh.raycast = skip_raycast
   }
 
   function get_bond_endpoint_site_idx(site_idx: number, position: Vec3): number {
@@ -596,10 +601,8 @@
     if (bond) open_bond_context_menu(bond)
   }
 
-  function add_or_restore_pair(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
-    if (is_image_bond_site(site_idx_1) && is_image_bond_site(site_idx_2)) return
-
-    const target = canonical_bond_target({ site_idx_1, site_idx_2, cell_shift })
+  function add_or_restore_pair(site_idx_1: number, site_idx_2: number) {
+    const target: BondKeyTarget = { site_idx_1, site_idx_2 }
     if (!can_edit_bond(target)) return
     const result = add_or_restore_bond(
       current_bond_edit_state(),
@@ -676,6 +679,11 @@
       last_edit_bonds_pointerdown_site_idx = null
       clear_edit_bonds_pointerdown_site_timeout = null
     }, 250)
+  }
+
+  function select_edit_bonds_site(site_idx: number, event: Event): void {
+    toggle_selection(site_idx, event)
+    remember_edit_bonds_pointerdown_site(site_idx)
   }
 
   function skip_duplicate_edit_bonds_click(site_idx: number) {
@@ -1508,8 +1516,7 @@
                   ) {
                     return
                   }
-                  toggle_selection(atom.site_idx, event)
-                  remember_edit_bonds_pointerdown_site(atom.site_idx)
+                  select_edit_bonds_site(atom.site_idx, event)
                 }}
                 onclick={(event: MouseEvent) => {
                   if (edit_mode_image) return
@@ -1546,8 +1553,7 @@
               ) {
                 return
               }
-              toggle_selection(atom.site_idx, event)
-              remember_edit_bonds_pointerdown_site(atom.site_idx)
+              select_edit_bonds_site(atom.site_idx, event)
             }}
             onclick={(event: MouseEvent) => {
               if (partial_edit_image) return
@@ -1678,8 +1684,7 @@
               } else {
                 const endpoint_site_idx = get_bond_endpoint_hit_site_idx(bond, event)
                 if (endpoint_site_idx != null) {
-                  toggle_selection(endpoint_site_idx, event)
-                  remember_edit_bonds_pointerdown_site(endpoint_site_idx)
+                  select_edit_bonds_site(endpoint_site_idx, event)
                 }
               }
             }}
@@ -1730,7 +1735,7 @@
             scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
             {...atom_hover_props(atom_hit.site_idx)}
             onpointerdown={(event: PointerEvent) => {
-              toggle_selection(atom_hit.site_idx, event)
+              select_edit_bonds_site(atom_hit.site_idx, event)
             }}
           >
             <T.SphereGeometry args={[0.5, 12, 12]} />
@@ -1843,12 +1848,7 @@
           <T.Mesh
             position={xyz}
             scale={1.2 * highlight_radius}
-            {...atom_hover_props(site_idx)}
-            onclick={(event: MouseEvent) => {
-              if (site_idx != null) {
-                toggle_selection(site_idx, event)
-              }
-            }}
+            oncreate={disable_raycast}
           >
             <T.SphereGeometry args={[0.5, 22, 22]} />
             <T.MeshStandardMaterial
@@ -1864,9 +1864,10 @@
         {/if}
       {/each}
 
-      <!-- selection order labels (1, 2, 3, ...) for distance/angle measurements -->
+      <!-- selection order labels (1, 2, 3, ...) for measurements and bond editing -->
       {#if structure?.sites && (measured_sites?.length ?? 0) > 0 &&
-        (measure_mode === `distance` || measure_mode === `angle`)}
+        (measure_mode === `distance` || measure_mode === `angle` ||
+          measure_mode === `edit-bonds`)}
         {#each measured_sites as site_index, loop_idx (site_index)}
           {@const site = structure.sites[site_index]}
           {#if site}

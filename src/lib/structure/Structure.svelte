@@ -1676,7 +1676,7 @@
             <div class="bond-edit-toolbar" aria-label="Bond editing controls">
               {#if bond_edit_mode === `add`}
                 <label>
-                  <span>Order</span>
+                  <span>Bond order</span>
                   <select bind:value={bond_edit_order}>
                     {#each BOND_ORDER_OPTIONS as { order, label } (label)}
                       <option value={order}>{label}</option>
@@ -2145,20 +2145,26 @@
     justify-content: center;
   }
   .bond-edit-toolbar {
+    --bond-edit-control-height: 1.8em;
     display: flex;
     align-items: center;
     gap: 0.4em;
-    background: color-mix(in srgb, var(--page-bg, Canvas) 85%, currentColor);
-    border-radius: var(--border-radius, 3pt);
-    padding: 0.15em 0.35em 0.15em 0.5em;
     font-size: 0.8em;
   }
   .bond-edit-mode-toggle {
     display: flex;
+    align-items: center;
     gap: 0.35em;
+  }
+  .bond-edit-mode-toggle button,
+  .bond-edit-toolbar label,
+  .bond-edit-toolbar select {
+    height: var(--bond-edit-control-height);
+    line-height: 1;
   }
   .bond-edit-mode-toggle button {
     min-width: 3.5em;
+    font: inherit;
   }
   .bond-edit-mode-toggle button.selected {
     background: var(--accent-color, #007acc);
@@ -2173,8 +2179,8 @@
     gap: 0.25em;
   }
   .bond-edit-toolbar select {
-    font: inherit;
     max-width: 8em;
+    font: inherit;
   }
   .history-count {
     position: absolute;

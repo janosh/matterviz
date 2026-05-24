@@ -162,10 +162,10 @@
     "prepublishOnly": "npm run package:dist"
   },
   "dependencies": {
-    "@spglib/moyo-wasm": "^0.9.0",
-    "@sveltejs/kit": "2.60.1",
-    "@threlte/core": "^8.5.14",
-    "@threlte/extras": "^9.19.0",
+    "@spglib/moyo-wasm": "^0.10.0",
+    "@sveltejs/kit": "2.61.1",
+    "@threlte/core": "^8.5.15",
+    "@threlte/extras": "^9.20.0",
     "d3-array": "^3.2.4",
     "d3-color": "^3.1.0",
     "d3-format": "^3.1.2",
@@ -198,28 +198,28 @@
     "@types/d3-shape": "^3.1.8",
     "@types/d3-time-format": "^4.0.3",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.9.0",
+    "@types/node": "^25.9.1",
     "@types/three": "^0.184.1",
-    "@typescript/native-preview": "7.0.0-dev.20260519.1",
-    "@vitest/coverage-v8": "4.1.6",
+    "@typescript/native-preview": "7.0.0-dev.20260524.1",
+    "@vitest/coverage-v8": "4.1.7",
     "@wooorm/starry-night": "^3.9.0",
     "happy-dom": "^20.9.0",
     "mdsvex": "^0.12.7",
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
-    "svelte": "5.55.8",
-    "svelte-check-rs": "0.9.13",
+    "svelte": "5.55.9",
+    "svelte-check-rs": "0.9.14",
     "typescript": "6.0.3",
-    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.21",
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.22",
     "vite-plus": "latest",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.21"
+    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.22"
   },
   "peerDependencies": {
     "svelte": "^5.0.0"
   },
   "overrides": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.21",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.21"
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.22",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.22"
   },
   "engines": {
     "node": ">=24"

@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 import { expect_canvas_changed, IS_CI, wait_for_3d_canvas } from '../helpers'
 
 // Get non-white pixel count to detect if content is rendered.
@@ -72,17 +72,33 @@ const hover_canvas_center = async (
   await page.waitForTimeout(100)
 }
 
+const atom_label = (
+  page: Page,
+  label_text: string,
+  occurrence: `first` | `last` = `last`,
+): Locator => {
+  const labels = page.locator(`#test-structure .atom-label`).filter({ hasText: label_text })
+  return occurrence === `first` ? labels.first() : labels.last()
+}
+
 const click_atom_label = async (
   page: Page,
   label_text: string,
   options: { force?: boolean } = {},
 ): Promise<void> => {
-  const label = page
-    .locator(`#test-structure .atom-label`)
-    .filter({ hasText: label_text })
-    .last()
+  const label = atom_label(page, label_text)
   await expect(label).toBeVisible()
   await label.click(options)
+}
+
+const select_atom_label_with_keyboard = async (
+  page: Page,
+  label_text: string,
+  occurrence: `first` | `last` = `last`,
+): Promise<void> => {
+  const label = atom_label(page, label_text, occurrence)
+  await expect(label).toBeVisible()
+  await label.press(`Enter`)
 }
 const set_scene_props = (page: Page, detail: Record<string, unknown>) =>
   page.evaluate((props) => {
@@ -438,21 +454,30 @@ test.describe(`Bond component`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  test(`edit-bonds add mode does not add original-cell bond from two image atoms`, async ({
-    page,
-  }) => {
+  test(`edit-bonds add mode bonds the exact clicked image atom`, async ({ page }) => {
     const console_errors = await goto_structure_page(page)
     await dispatch_two_image_atom_unbonded_structure(page)
     await wait_for_3d_canvas(page, `#test-structure`)
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
 
     const menu = page.locator(`#test-structure .bond-context-menu`)
-    await click_atom_label(page, `C`, { force: true })
+    await select_atom_label_with_keyboard(page, `C`, `first`)
     await expect(menu).toBeHidden()
-    await click_atom_label(page, `O`, { force: true })
+    await select_atom_label_with_keyboard(page, `O`)
 
     await expect(menu).toBeHidden()
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 3, order: 1 }])
+
+    await page.getByRole(`button`, { name: `Reset selection and bond edits` }).click()
     await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+
+    await select_atom_label_with_keyboard(page, `C`, `first`)
+    await select_atom_label_with_keyboard(page, `C`)
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
     expect(console_errors).toHaveLength(0)
   })
 
