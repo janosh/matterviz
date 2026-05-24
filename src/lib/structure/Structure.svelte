@@ -2151,9 +2151,12 @@
     gap: 0.4em;
     font-size: 0.8em;
   }
-  .bond-edit-mode-toggle {
+  .bond-edit-mode-toggle,
+  .bond-edit-toolbar label {
     display: flex;
     align-items: center;
+  }
+  .bond-edit-mode-toggle {
     gap: 0.35em;
   }
   .bond-edit-mode-toggle button,
@@ -2174,8 +2177,6 @@
     background-color: color-mix(in srgb, var(--accent-color, #007acc) 70%, black);
   }
   .bond-edit-toolbar label {
-    display: flex;
-    align-items: center;
     gap: 0.25em;
   }
   .bond-edit-toolbar select {

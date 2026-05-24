@@ -219,47 +219,70 @@ const dispatch_two_atom_unbonded_structure = (page: Page) =>
     )
   })
 
-const dispatch_periodic_image_bond_structure = (page: Page) =>
-  page.evaluate(() => {
-    const structure = {
-      lattice: {
-        matrix: [
-          [10, 0, 0],
-          [0, 10, 0],
-          [0, 0, 10],
+const dispatch_periodic_image_structure = (
+  page: Page,
+  {
+    bonding_options,
+    show_site_labels = false,
+  }: { bonding_options: Record<string, unknown>; show_site_labels?: boolean },
+) =>
+  page.evaluate(
+    (scene_options) => {
+      const structure = {
+        lattice: {
+          matrix: [
+            [10, 0, 0],
+            [0, 10, 0],
+            [0, 0, 10],
+          ],
+          pbc: [true, true, true],
+        },
+        sites: [
+          {
+            species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
+            abc: [0.95, 0.5, 0.5],
+            xyz: [9.5, 5, 5],
+            label: `C1`,
+            properties: {},
+          },
+          {
+            species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
+            abc: [0.04, 0.5, 0.5],
+            xyz: [0.4, 5, 5],
+            label: `O1`,
+            properties: {},
+          },
         ],
-        pbc: [true, true, true],
-      },
-      sites: [
-        {
-          species: [{ element: `C`, occu: 1, oxidation_state: 0 }],
-          abc: [0.95, 0.5, 0.5],
-          xyz: [9.5, 5, 5],
-          label: `C1`,
-          properties: {},
-        },
-        {
-          species: [{ element: `O`, occu: 1, oxidation_state: 0 }],
-          abc: [0.04, 0.5, 0.5],
-          xyz: [0.4, 5, 5],
-          label: `O1`,
-          properties: {},
-        },
-      ],
-      properties: {},
-    }
-    window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
-    window.dispatchEvent(
-      new CustomEvent(`set-scene-props`, {
-        detail: {
-          bond_thickness: 0.25,
-          bonding_options: { strategy: `electroneg_ratio` },
-          camera_position: [9.95, 5, 17],
-          camera_target: [9.95, 5, 5],
-          show_bonds: `always`,
-        },
-      }),
-    )
+        properties: {},
+      }
+      window.dispatchEvent(new CustomEvent(`set-structure`, { detail: { structure } }))
+      window.dispatchEvent(
+        new CustomEvent(`set-scene-props`, {
+          detail: {
+            bond_thickness: 0.25,
+            bonding_options: scene_options.bonding_options,
+            camera_position: [9.95, 5, 17],
+            camera_target: [9.95, 5, 5],
+            show_bonds: `always`,
+            ...(scene_options.show_site_labels
+              ? { show_site_labels: true, site_label_offset: [0, 0, 0] }
+              : {}),
+          },
+        }),
+      )
+    },
+    { bonding_options, show_site_labels },
+  )
+
+const dispatch_periodic_image_bond_structure = (page: Page) =>
+  dispatch_periodic_image_structure(page, {
+    bonding_options: { strategy: `electroneg_ratio` },
+  })
+
+const dispatch_periodic_image_unbonded_structure = (page: Page) =>
+  dispatch_periodic_image_structure(page, {
+    bonding_options: { strength_threshold: 10 },
+    show_site_labels: true,
   })
 
 const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
@@ -428,7 +451,7 @@ test.describe(`Bond component`, () => {
 
     await click_atom_label(page, `C`)
     await expect(menu).toBeHidden()
-    await expect(page.locator(`#test-structure .selection-label`)).toBeHidden()
+    await expect(page.locator(`#test-structure .selection-label`)).toBeVisible()
     await click_atom_label(page, `O`)
     await expect(menu).toBeVisible()
     await menu.getByRole(`button`, { name: `Close` }).click()
@@ -442,15 +465,25 @@ test.describe(`Bond component`, () => {
     await dispatch_two_atom_unbonded_structure(page)
     await wait_for_3d_canvas(page, `#test-structure`)
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-    await page.locator(`#test-structure .bond-edit-toolbar select`).selectOption({
-      label: `Double`,
-    })
+    const order_select = page.locator(`#test-structure .bond-edit-toolbar select`)
+    await order_select.selectOption({ label: `Double` })
 
     await click_atom_label(page, `C`)
     await click_atom_label(page, `O`)
     await expect
       .poll(() => get_structure_bonds(page))
-      .toContainEqual(expect.objectContaining({ site_idx_1: 0, site_idx_2: 1, order: 2 }))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+
+    await order_select.selectOption({ label: `Triple` })
+    await page.getByRole(`button`, { name: `Undo bond edit (Cmd/Ctrl+Z)` }).click()
+    await expect(order_select).toHaveValue(`2`)
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
+
+    await click_atom_label(page, `C`)
+    await click_atom_label(page, `O`)
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
     expect(console_errors).toHaveLength(0)
   })
 
@@ -478,6 +511,27 @@ test.describe(`Bond component`, () => {
     await expect
       .poll(() => get_structure_bonds(page))
       .toEqual([{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds add mode opens order editing for existing image bonds`, async ({
+    page,
+  }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_periodic_image_structure(page, {
+      bonding_options: { strategy: `electroneg_ratio` },
+      show_site_labels: true,
+    })
+    await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    const menu = page.locator(`#test-structure .bond-context-menu`)
+    await select_atom_label_with_keyboard(page, `C`, `first`)
+    await expect(menu).toBeHidden()
+    await select_atom_label_with_keyboard(page, `O`)
+
+    await expect(menu).toBeVisible()
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
     expect(console_errors).toHaveLength(0)
   })
 
@@ -543,6 +597,27 @@ test.describe(`Bond component`, () => {
     await click_canvas_center(page, canvas)
 
     await expect.poll(() => get_structure_bonds(page)).toEqual([])
+    expect(console_errors).toHaveLength(0)
+  })
+
+  test(`edit-bonds delete mode removes manually added bonds to image atoms`, async ({
+    page,
+  }) => {
+    const console_errors = await goto_structure_page(page)
+    await dispatch_periodic_image_unbonded_structure(page)
+    const canvas = await wait_for_3d_canvas(page, `#test-structure`)
+    await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
+
+    await select_atom_label_with_keyboard(page, `C`, `first`)
+    await select_atom_label_with_keyboard(page, `O`)
+    await expect
+      .poll(() => get_structure_bonds(page))
+      .toEqual([{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
+
+    await page.locator(`[data-testid="btn-set-bond-delete"]`).click()
+    await click_canvas_center(page, canvas)
+
+    await expect.poll(() => get_structure_bonds(page)).toBeUndefined()
     expect(console_errors).toHaveLength(0)
   })
 

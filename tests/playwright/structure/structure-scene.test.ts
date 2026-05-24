@@ -109,7 +109,9 @@ async function load_single_centered_atom_scene(page: Page): Promise<void> {
         },
       }),
     )
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    for (let frame_idx = 0; frame_idx < 3; frame_idx++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    }
   })
 }
 
@@ -228,6 +230,7 @@ test.describe(`StructureScene Component Tests`, () => {
     await expect(tooltip.locator(`.elements`)).toContainText(`C`)
     // The hover highlight can become the raycast target after it mounts.
     // Check visibility immediately after each frame so a short disappearance fails.
+    // 20 frames covers roughly 1/3 s at 60fps, enough to catch transient hover loss.
     for (let frame_idx = 0; frame_idx < 20; frame_idx++) {
       await page.evaluate(
         () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),

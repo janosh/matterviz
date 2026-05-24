@@ -445,6 +445,20 @@
   const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
     bond_key_for(bond) === key
 
+  const find_added_bond_by_rendered_key = (key: string): StructureBond | undefined =>
+    added_bonds.find((bond) => rendered_bond_key_for(bond) === key)
+
+  function resolve_bond_edit_target(
+    site_idx_1: number,
+    site_idx_2: number,
+    cell_shift?: Vec3,
+  ): BondKeyTarget {
+    const rendered_target = { site_idx_1, site_idx_2, cell_shift }
+    const rendered_key = rendered_bond_key_for(rendered_target)
+    return find_added_bond_by_rendered_key(rendered_key) ??
+      canonical_bond_target(rendered_target)
+  }
+
   function is_image_bond_site(site_idx: number): boolean {
     return structure?.sites?.[site_idx]?.properties?.orig_site_idx != null
   }
@@ -468,7 +482,8 @@
     cell_shift?: Vec3,
   ): BondOrder | undefined {
     const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
-    return bond_order_overrides.find((bond) => matches_bond_key(bond, key))?.order ??
+    return find_added_bond_by_rendered_key(key)?.order ??
+      bond_order_overrides.find((bond) => matches_bond_key(bond, key))?.order ??
       added_bonds.find((bond) => matches_bond_key(bond, key))?.order ??
       filtered_bond_pairs.find((bond) => matches_bond_key(bond, key))?.bond_order
   }
@@ -498,18 +513,31 @@
     mesh.raycast = skip_raycast
   }
 
-  function get_bond_endpoint_site_idx(site_idx: number, position: Vec3): number {
+  function site_world_position(parent: Object3D, site: Site): Vector3 {
+    const position = new Vector3(...site.xyz)
+    return parent.localToWorld(position)
+  }
+
+  function get_bond_endpoint_site_idx(
+    site_idx: number,
+    world_position: Vector3,
+    parent: Object3D,
+  ): number {
     if (!structure?.sites) return site_idx
     const site = structure.sites[site_idx]
     if (!site) return site_idx
-    if (math.euclidean_dist(site.xyz, position) <= BOND_ENDPOINT_SITE_MATCH_TOLERANCE) {
+
+    const matches_world_position = (candidate_site: Site): boolean =>
+      site_world_position(parent, candidate_site).distanceTo(world_position) <=
+      BOND_ENDPOINT_SITE_MATCH_TOLERANCE
+
+    if (matches_world_position(site)) {
       return site_idx
     }
 
     const image_site_idx = structure.sites.findIndex((candidate_site) =>
       candidate_site.properties?.orig_site_idx === site_idx &&
-      math.euclidean_dist(candidate_site.xyz, position) <=
-        BOND_ENDPOINT_SITE_MATCH_TOLERANCE
+      matches_world_position(candidate_site)
     )
     return image_site_idx === -1 ? site_idx : image_site_idx
   }
@@ -522,22 +550,22 @@
     const parent = event.object?.parent
     if (!parent) return null
 
-    const pos_1 = new Vector3(...bond.pos_1)
-    const pos_2 = new Vector3(...bond.pos_2)
-    parent.localToWorld(pos_1)
-    parent.localToWorld(pos_2)
+    const world_pos_1 = new Vector3(...bond.pos_1)
+    const world_pos_2 = new Vector3(...bond.pos_2)
+    parent.localToWorld(world_pos_1)
+    parent.localToWorld(world_pos_2)
 
-    const bond_vec = pos_2.sub(pos_1)
+    const bond_vec = world_pos_2.clone().sub(world_pos_1)
     const length_sq = bond_vec.lengthSq()
     if (length_sq <= math.EPS) return null
 
-    const hit_vec = event.point.clone().sub(pos_1)
+    const hit_vec = event.point.clone().sub(world_pos_1)
     const t = hit_vec.dot(bond_vec) / length_sq
     if (t <= BOND_ENDPOINT_HIT_FRACTION) {
-      return get_bond_endpoint_site_idx(bond.site_idx_1, bond.pos_1)
+      return get_bond_endpoint_site_idx(bond.site_idx_1, world_pos_1, parent)
     }
     if (t >= 1 - BOND_ENDPOINT_HIT_FRACTION) {
-      return get_bond_endpoint_site_idx(bond.site_idx_2, bond.pos_2)
+      return get_bond_endpoint_site_idx(bond.site_idx_2, world_pos_2, parent)
     }
     return null
   }
@@ -558,11 +586,10 @@
 
   function open_bond_context_menu(bond: BondPair, event?: BondContextMenuEvent) {
     if (!can_edit_bond(bond)) return
-    const target = canonical_bond_target(bond)
     bond_context_target = {
-      site_idx_1: target.site_idx_1,
-      site_idx_2: target.site_idx_2,
-      cell_shift: target.cell_shift,
+      site_idx_1: bond.site_idx_1,
+      site_idx_2: bond.site_idx_2,
+      cell_shift: bond.cell_shift,
       position: get_bond_context_menu_position(bond, event),
     }
     bond_context_menu = bond_context_target
@@ -584,34 +611,48 @@
   }
 
   const find_visible_bond = (
-    site_idx_1: number,
-    site_idx_2: number,
-    cell_shift?: Vec3,
+    target: BondKeyTarget,
+    canonical_target: BondKeyTarget = target,
   ): BondPair | undefined => {
-    const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
-    return filtered_bond_pairs.find((bond) => matches_bond_key(bond, key))
+    const rendered_key = rendered_bond_key_for(target)
+    const canonical_key = bond_key_for(canonical_target)
+    return filtered_bond_pairs.find((bond) => rendered_bond_key_for(bond) === rendered_key) ??
+      filtered_bond_pairs.find((bond) => bond_key_for(bond) === canonical_key)
   }
 
-  function open_bond_order_menu_for_pair(
-    site_idx_1: number,
-    site_idx_2: number,
-    cell_shift?: Vec3,
+  function open_bond_order_menu_for_target(
+    target: BondKeyTarget,
+    canonical_target: BondKeyTarget = target,
   ) {
-    const bond = find_visible_bond(site_idx_1, site_idx_2, cell_shift)
+    const bond = find_visible_bond(target, canonical_target)
     if (bond) open_bond_context_menu(bond)
   }
 
   function add_or_restore_pair(site_idx_1: number, site_idx_2: number) {
-    const target: BondKeyTarget = { site_idx_1, site_idx_2 }
-    if (!can_edit_bond(target)) return
-    const result = add_or_restore_bond(
-      current_bond_edit_state(),
-      target,
+    const rendered_target = { site_idx_1, site_idx_2 }
+    if (!can_edit_bond(rendered_target)) return
+    const edit_state = current_bond_edit_state()
+    const canonical_target = canonical_bond_target(rendered_target)
+    const canonical_result = add_or_restore_bond(
+      edit_state,
+      canonical_target,
       editable_perceived_bond_pairs,
       bond_edit_order,
     )
+    const use_rendered_target =
+      canonical_result.action === `added` &&
+      rendered_bond_key_for(canonical_target) !== rendered_bond_key_for(rendered_target)
+    const target = use_rendered_target ? rendered_target : canonical_target
+    const result = use_rendered_target
+      ? add_or_restore_bond(
+          edit_state,
+          rendered_target,
+          editable_perceived_bond_pairs,
+          bond_edit_order,
+        )
+      : canonical_result
     if (result.action === `already-visible`) {
-      open_bond_order_menu_for_pair(target.site_idx_1, target.site_idx_2, target.cell_shift)
+      open_bond_order_menu_for_target(rendered_target, target)
       return
     }
     apply_bond_edit_result(result, false)
@@ -623,7 +664,7 @@
     order: BondOrder,
     cell_shift?: Vec3,
   ) {
-    const target = canonical_bond_target({ site_idx_1, site_idx_2, cell_shift })
+    const target = resolve_bond_edit_target(site_idx_1, site_idx_2, cell_shift)
     if (!can_edit_bond(target)) return
     apply_bond_edit_result(
       apply_set_bond_order(
@@ -642,7 +683,7 @@
   }
 
   function remove_bond(site_idx_1: number, site_idx_2: number, cell_shift?: Vec3) {
-    const target = canonical_bond_target({ site_idx_1, site_idx_2, cell_shift })
+    const target = resolve_bond_edit_target(site_idx_1, site_idx_2, cell_shift)
     if (!can_edit_bond(target)) return
     apply_bond_edit_result(
       apply_delete_bond(
