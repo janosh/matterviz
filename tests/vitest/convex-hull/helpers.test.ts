@@ -3,7 +3,7 @@ import type { D3InterpolateName } from '$lib/colors'
 import * as helpers from '$lib/convex-hull/helpers'
 import { get_convex_hull_stats } from '$lib/convex-hull/thermodynamics'
 import type { PhaseData } from '$lib/convex-hull/types'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 class MockPath2D {
   arc(
@@ -13,15 +13,6 @@ class MockPath2D {
     _start_angle: number,
     _end_angle: number,
   ): void {}
-}
-
-function with_mock_path2d(run_test: () => void): void {
-  vi.stubGlobal(`Path2D`, MockPath2D)
-  try {
-    run_test()
-  } finally {
-    vi.unstubAllGlobals()
-  }
 }
 
 describe(`helpers: energy color scale + point color`, () => {
@@ -98,12 +89,13 @@ describe(`helpers: energy color scale + point color`, () => {
 })
 
 describe(`helpers: marker paths`, () => {
+  afterEach(() => vi.unstubAllGlobals())
+
   test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
     `create_marker_path handles non-finite size %s`,
     (size) => {
-      with_mock_path2d(() => {
-        expect(() => helpers.create_marker_path(size)).not.toThrow()
-      })
+      vi.stubGlobal(`Path2D`, MockPath2D)
+      expect(() => helpers.create_marker_path(size)).not.toThrow()
     },
   )
 })

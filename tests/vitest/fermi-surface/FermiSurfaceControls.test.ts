@@ -1,6 +1,6 @@
 import FermiSurfaceControls from '$lib/fermi-surface/FermiSurfaceControls.svelte'
 import type { ColorProperty, FermiSurfaceData } from '$lib/fermi-surface/types'
-import { mount, tick } from 'svelte'
+import { mount, tick, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props } from '../setup'
 
@@ -57,14 +57,18 @@ describe(`FermiSurfaceControls`, () => {
         selected_bands: initial_selected_bands,
         color_property: initial_color_property,
       }
-      mount(FermiSurfaceControls, {
+      const component = mount(FermiSurfaceControls, {
         target: document.body,
         props: bind_props({ fermi_data: make_fermi_data() }, state),
       })
-      await tick()
 
-      expect(state.selected_bands).toEqual(expected_selected_bands)
-      expect(state.color_property).toBe(expected_color_property)
+      try {
+        await tick()
+        expect(state.selected_bands).toEqual(expected_selected_bands)
+        expect(state.color_property).toBe(expected_color_property)
+      } finally {
+        await unmount(component)
+      }
     },
   )
 })
