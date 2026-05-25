@@ -86,6 +86,17 @@ describe(`Histogram`, () => {
     expect(series_indices).toEqual(expected_indices)
   })
 
+  test(`single mode falls back when selected_property is stale`, async () => {
+    mount_histogram({
+      series: [{ x: [], y: [1, 2, 3], label: `Band Gap` }],
+      mode: `single`,
+      selected_property: `Energy`,
+    })
+    await tick()
+
+    expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(1)
+  })
+
   test(`bins sensitivity: fewer bins increase per-bin counts`, async () => {
     const series = [{ x: [], y: [1, 2, 3, 4, 5, 6, 7, 8, 9], label: `A` }]
 

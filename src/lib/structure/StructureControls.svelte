@@ -206,9 +206,8 @@
   let available_vector_keys = $derived(
     structure ? get_structure_vector_keys(structure) : [],
   )
-  function is_key_visible(key: string): boolean {
-    return scene_props.vector_configs?.[key]?.visible !== false
-  }
+  const is_key_visible = (key: string): boolean =>
+    scene_props.vector_configs?.[key]?.visible !== false
 
   let any_vectors_visible = $derived(available_vector_keys.some(is_key_visible))
 
@@ -365,7 +364,7 @@
             VECTOR_PALETTE[idx % VECTOR_PALETTE.length]}
             onchange={(evt) =>
             update_vector_config(key, {
-              color: (evt.target as HTMLInputElement).value,
+              color: evt.currentTarget.value,
             })}
             style="width: 22px; height: 22px; padding: 0; border: none; cursor: pointer"
           />
@@ -911,8 +910,10 @@
         </label>
         {#each available_vector_keys as key (key)}
           {#if is_key_visible(key)}
-            {@const on_scale = (evt: Event) => {
-        const parsed = parseFloat((evt.target as HTMLInputElement).value)
+            {@const on_scale = (
+        evt: Event & { currentTarget: HTMLInputElement },
+      ) => {
+        const parsed = parseFloat(evt.currentTarget.value)
         update_vector_config(key, { scale: Number.isNaN(parsed) ? 1.0 : parsed })
       }}
             <label
@@ -1092,7 +1093,7 @@
           type="color"
           value={background_color}
           oninput={(event) => {
-            background_color = (event.target as HTMLInputElement).value
+            background_color = event.currentTarget.value
           }}
         />
       </label>

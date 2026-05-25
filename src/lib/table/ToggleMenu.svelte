@@ -102,7 +102,7 @@
 
   function toggle_section(name: string) {
     collapsed_sections = collapsed_sections.includes(name)
-      ? collapsed_sections.filter((s) => s !== name)
+      ? collapsed_sections.filter((section) => section !== name)
       : [...collapsed_sections, name]
   }
 

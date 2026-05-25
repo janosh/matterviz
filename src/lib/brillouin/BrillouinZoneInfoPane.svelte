@@ -94,7 +94,7 @@
     // Reciprocal Lattice section
     const k_lattice_items: InfoItem[] = bz_data.k_lattice.map((vec, idx) => ({
       label: [`b₁`, `b₂`, `b₃`][idx],
-      value: `(${vec.map((x) => format_num(x, `.3~f`)).join(`, `)})`,
+      value: `(${vec.map((coord) => format_num(coord, `.3~f`)).join(`, `)})`,
       key: `reciprocal-${[`b1`, `b2`, `b3`][idx]}`,
     }))
 

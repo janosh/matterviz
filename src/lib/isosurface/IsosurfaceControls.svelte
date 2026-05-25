@@ -89,7 +89,7 @@
       <select
         value={n_layers}
         onchange={(event) =>
-        set_layer_count(Number((event.target as HTMLSelectElement).value))}
+        set_layer_count(Number(event.currentTarget.value))}
       >
         {#each [1, 2, 3, 4, 5] as count (count)}
           <option value={count}>{count}</option>
@@ -111,7 +111,7 @@
         ? settings.layers?.some((layer) => layer.show_negative) ?? false
         : settings.show_negative}
         onchange={(event) => {
-          const checked = (event.target as HTMLInputElement).checked
+          const checked = event.currentTarget.checked
           settings.show_negative = checked
           if (settings.layers) {
             settings.layers = settings.layers.map((layer) => ({
@@ -143,7 +143,7 @@
           type="color"
           value={layer.color}
           onchange={(event) =>
-          update_layer(idx, { color: (event.target as HTMLInputElement).value })}
+          update_layer(idx, { color: event.currentTarget.value })}
         />
         <input
           type="range"
@@ -153,7 +153,7 @@
           value={layer.isovalue}
           oninput={(event) =>
           update_layer(idx, {
-            isovalue: Number((event.target as HTMLInputElement).value),
+            isovalue: Number(event.currentTarget.value),
           })}
           style="flex: 1; min-width: 60px"
         />
@@ -166,7 +166,7 @@
           value={layer.opacity}
           oninput={(event) =>
           update_layer(idx, {
-            opacity: Number((event.target as HTMLInputElement).value),
+            opacity: Number(event.currentTarget.value),
           })}
           style="width: 50px"
           title="Opacity: {format_num(layer.opacity, `.2f`)}"

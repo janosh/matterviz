@@ -473,9 +473,8 @@ export function generate_fill_path(
 }
 
 // Helper to expand error definition to array
-function expand_error(err: number | readonly number[], length: number): readonly number[] {
-  return typeof err === `number` ? Array(length).fill(err) : err
-}
+const expand_error = (err: number | readonly number[], length: number): readonly number[] =>
+  typeof err === `number` ? Array(length).fill(err) : err
 
 // Convert an ErrorBand convenience type to a full FillRegion
 export function convert_error_band_to_fill_region(
@@ -509,8 +508,7 @@ export function convert_error_band_to_fill_region(
 }
 
 // Type guard to check if fill is a gradient
-export function is_fill_gradient(
+export const is_fill_gradient = (
   fill: string | FillGradient | undefined,
-): fill is FillGradient {
-  return typeof fill === `object` && fill !== null && `type` in fill && `stops` in fill
-}
+): fill is FillGradient =>
+  typeof fill === `object` && fill !== null && `type` in fill && `stops` in fill

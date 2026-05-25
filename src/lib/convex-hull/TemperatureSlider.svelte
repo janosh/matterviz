@@ -22,8 +22,10 @@
   const display_index = $derived(preview_index ?? temp_index)
   const display_temp = $derived(available_temperatures[display_index] ?? temperature)
 
-  function handle_slider_input(event: Event): void {
-    const new_index = +(event.currentTarget as HTMLInputElement).value
+  function handle_slider_input(
+    event: Event & { currentTarget: HTMLInputElement },
+  ): void {
+    const new_index = +event.currentTarget.value
     preview_index = new_index
     // Throttle parent updates during drag to prevent scene flashing
     const now = Date.now()
@@ -33,9 +35,10 @@
     }
   }
 
-  function handle_slider_end(event: Event): void {
-    const new_temp =
-      available_temperatures[+(event.currentTarget as HTMLInputElement).value]
+  function handle_slider_end(
+    event: Event & { currentTarget: HTMLInputElement },
+  ): void {
+    const new_temp = available_temperatures[+event.currentTarget.value]
     if (new_temp !== undefined) temperature = new_temp
     preview_index = null
   }

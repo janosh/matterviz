@@ -59,7 +59,9 @@ describe(`Pymatgen cross-validation for quinary (5-element) system`, () => {
   // Elemental references should always have e_above_hull = 0
   test.each(reference.elements)(`elemental %s has e_above_hull = 0`, (element) => {
     const entry = reference.entries.find(
-      (e) => Object.keys(e.composition).length === 1 && element in e.composition,
+      (reference_entry) =>
+        Object.keys(reference_entry.composition).length === 1 &&
+        element in reference_entry.composition,
     )
     if (!entry) throw new Error(`${element} not found`)
     expect(calculate_e_above_hull(to_phase_data(entry), all_entries)).toBeCloseTo(0, 10)
@@ -106,7 +108,7 @@ describe(`Pymatgen cross-validation for quinary (5-element) system`, () => {
     for (const entries_same_comp of by_composition.values()) {
       if (entries_same_comp.length < 2) continue
       const sorted = entries_same_comp.toSorted(
-        (a, b) => a.e_form_per_atom - b.e_form_per_atom,
+        (left_entry, right_entry) => left_entry.e_form_per_atom - right_entry.e_form_per_atom,
       )
       for (let idx = 1; idx < sorted.length; idx++) {
         const lower_energy = sorted[idx - 1]

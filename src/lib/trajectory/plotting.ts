@@ -114,8 +114,8 @@ function extract_property_statistics(
   >()
 
   for (const [key, stat] of property_stats) {
-    const n = stat.values.length
-    if (n <= 1) continue
+    const n_values = stat.values.length
+    if (n_values <= 1) continue
 
     const coefficient_of_variation = get_coefficient_of_variation(stat.values)
 
@@ -154,19 +154,19 @@ function create_series_from_stats(
 
   for (const [key, stat] of property_stats) {
     if (!stat) continue
-    const n = stat.values.length
+    const n_values = stat.values.length
     const { clean_label, unit } = extract_label_and_unit(key, property_config)
     const color = colors[color_idx % colors.length]
 
     all_series.push({
-      x: Array.from({ length: n }, (_, idx) => idx),
+      x: Array.from({ length: n_values }, (_, idx) => idx),
       y: stat.values,
       label: clean_label,
       unit,
       y_axis: `y1`, // Will be reassigned
       visible: false, // Will be assigned
-      markers: n < 30 ? `line+points` : `line`,
-      metadata: Array(n).fill({
+      markers: n_values < 30 ? `line+points` : `line`,
+      metadata: Array(n_values).fill({
         series_label: unit ? `${clean_label} (${unit})` : clean_label,
         property_key: key, // Store original property key for robust lookups
       }),
@@ -208,7 +208,7 @@ function group_and_assign_series(
     .sort((a, b) => a.priority - b.priority)
 
   // Apply 2-group visibility limit
-  const visible_groups = groups.filter((g) => g.is_visible)
+  const visible_groups = groups.filter((group) => group.is_visible)
   if (visible_groups.length > 2) {
     // Keep only first 2 (highest priority)
     groups.forEach((group) => {
@@ -223,7 +223,7 @@ function group_and_assign_series(
 
 // Apply group assignments to individual series
 function apply_group_assignments(series: DataSeries[], unit_groups: UnitGroup[]): void {
-  const visible_groups = unit_groups.filter((g) => g.is_visible)
+  const visible_groups = unit_groups.filter((group) => group.is_visible)
   const axis_map = new Map<UnitGroup, `y1` | `y2`>()
 
   // Assign axes
@@ -236,7 +236,7 @@ function apply_group_assignments(series: DataSeries[], unit_groups: UnitGroup[])
 
   // Apply to series
   for (const srs of series) {
-    const group = unit_groups.find((g) => g.series.includes(srs))
+    const group = unit_groups.find((unit_group) => unit_group.series.includes(srs))
     if (group) {
       srs.visible = group.is_visible
       srs.y_axis = axis_map.get(group) || `y1`
@@ -313,7 +313,7 @@ export function toggle_series_visibility(
 
   // Create unit groups from current state
   const unit_groups = create_unit_groups_from_series(series)
-  const target_group = unit_groups.find((g) => g.series.includes(target_series))
+  const target_group = unit_groups.find((group) => group.series.includes(target_series))
   if (!target_group) return series
 
   // Start with updating the target series visibility
@@ -383,8 +383,8 @@ function update_group_visibility_and_axes(
   }
 
   // Apply 2-group limit
-  if (unit_groups.filter((g) => g.is_visible).length > 2) {
-    for (const group of unit_groups.filter((g) => g.is_visible).slice(2)) {
+  if (unit_groups.filter((unit_group) => unit_group.is_visible).length > 2) {
+    for (const group of unit_groups.filter((unit_group) => unit_group.is_visible).slice(2)) {
       group.is_visible = false
       for (const srs1 of group.series) {
         const idx = series.findIndex(
@@ -406,8 +406,10 @@ function update_group_visibility_and_axes(
 
   // Apply to series
   for (const [idx, srs] of series.entries()) {
-    const group = unit_groups.find((g) =>
-      g.series.some((gs) => gs.label === srs.label && gs.unit === srs.unit),
+    const group = unit_groups.find((unit_group) =>
+      unit_group.series.some(
+        (member) => member.label === srs.label && member.unit === srs.unit,
+      ),
     )
     if (group && axis_map.has(group)) {
       series[idx] = { ...srs, y_axis: axis_map.get(group) }
@@ -519,7 +521,7 @@ export function generate_streaming_plot_series(
     if (data_points.length < 2) continue
 
     const is_energy = property_key.toLowerCase() === `energy`
-    if (!is_energy && !has_significant_variation(data_points.map((p) => p.y))) continue
+    if (!is_energy && !has_significant_variation(data_points.map((point) => point.y))) continue
 
     const { clean_label, unit } = extract_label_and_unit(property_key, property_config)
     const is_visible =
@@ -529,8 +531,8 @@ export function generate_streaming_plot_series(
     if (is_visible) visible_props.push({ property: property_key, unit })
 
     all_series.push({
-      x: data_points.map((p) => p.x),
-      y: data_points.map((p) => p.y),
+      x: data_points.map((point) => point.x),
+      y: data_points.map((point) => point.y),
       label: clean_label,
       unit,
       y_axis: determine_axis_from_groups(property_key, unit, visible_props),

@@ -15,11 +15,8 @@ const normalize = (vec: Vec3): Vec3 => {
 }
 
 // Check if rotation matrix is identity
-function is_identity_rotation(rot: Matrix3x3): boolean {
-  return rot.every((row, idx) =>
-    row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL),
-  )
-}
+const is_identity_rotation = (rot: Matrix3x3): boolean =>
+  rot.every((row, idx) => row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL))
 
 // Extract unique point group rotation matrices from space group operations.
 // Returns fractional-coordinate rotations (W matrices from spglib convention).
@@ -189,13 +186,13 @@ export function generate_bz_vertices(
       const dist_sq = pt[0] ** 2 + pt[1] ** 2 + pt[2] ** 2
       return { normal: normalize(pt), dist: Math.sqrt(dist_sq) / 2, dist_sq }
     })
-    .filter((p): p is NonNullable<typeof p> => p !== null)
+    .filter((plane): plane is NonNullable<typeof plane> => plane !== null)
     .sort((a, b) => a.dist_sq - b.dist_sq)
     .slice(0, max_planes)
 
   // Pre-compute plane data for fast access
-  const normals = planes.map((p) => p.normal)
-  const distances = planes.map((p) => p.dist)
+  const normals = planes.map((plane) => plane.normal)
+  const distances = planes.map((plane) => plane.dist)
 
   const dedup = new VertexDeduplicator(TOL * 10)
   const vertices: Vec3[] = []
@@ -257,7 +254,7 @@ export function compute_convex_hull(
     throw new Error(`Need ≥4 vertices for convex hull, got ${vertices.length}`)
   }
 
-  const geometry = new ConvexGeometry(vertices.map((cert) => new Vector3(...cert)))
+  const geometry = new ConvexGeometry(vertices.map((vertex) => new Vector3(...vertex)))
   const pos = geometry.getAttribute(`position`)
   const geometry_index = geometry.index
 
@@ -268,10 +265,10 @@ export function compute_convex_hull(
   for (let idx_vertex = 0; idx_vertex < pos.count; idx_vertex++) {
     const vert: Vec3 = [pos.getX(idx_vertex), pos.getY(idx_vertex), pos.getZ(idx_vertex)]
     const existing_idx = unique_verts.findIndex(
-      (u) =>
-        Math.abs(u[0] - vert[0]) < TOL &&
-        Math.abs(u[1] - vert[1]) < TOL &&
-        Math.abs(u[2] - vert[2]) < TOL,
+      (unique_vert) =>
+        Math.abs(unique_vert[0] - vert[0]) < TOL &&
+        Math.abs(unique_vert[1] - vert[1]) < TOL &&
+        Math.abs(unique_vert[2] - vert[2]) < TOL,
     )
     vert_map.set(idx_vertex, existing_idx === -1 ? unique_verts.push(vert) - 1 : existing_idx)
   }
@@ -289,9 +286,9 @@ export function compute_convex_hull(
         ]
       : [idx_face * 3, idx_face * 3 + 1, idx_face * 3 + 2]
     faces.push(
-      tri.map((j) => {
-        const mapped = vert_map.get(j)
-        if (mapped === undefined) throw new Error(`Vertex ${j} not mapped`)
+      tri.map((vertex_idx) => {
+        const mapped = vert_map.get(vertex_idx)
+        if (mapped === undefined) throw new Error(`Vertex ${vertex_idx} not mapped`)
         return mapped
       }),
     )
@@ -299,15 +296,18 @@ export function compute_convex_hull(
 
   // Compute face normals and build edge-to-face adjacency
   const face_normals = faces.map((face) => {
-    const [v0, v1, v2] = face.slice(0, 3).map((vi) => unique_verts[vi])
+    const [v0, v1, v2] = face.slice(0, 3).map((vertex_idx) => unique_verts[vertex_idx])
     return normalize(math.cross_3d(math.subtract(v1, v0), math.subtract(v2, v0)))
   })
 
   const edge_to_faces = new Map<string, number[]>()
   faces.forEach((face, face_idx) => {
-    face.forEach((v1, idx) => {
-      const v2 = face[(idx + 1) % face.length]
-      const key = v1 < v2 ? `${v1},${v2}` : `${v2},${v1}`
+    face.forEach((from_vertex_idx, idx) => {
+      const to_vertex_idx = face[(idx + 1) % face.length]
+      const key =
+        from_vertex_idx < to_vertex_idx
+          ? `${from_vertex_idx},${to_vertex_idx}`
+          : `${to_vertex_idx},${from_vertex_idx}`
       const adj = edge_to_faces.get(key)
       if (adj) adj.push(face_idx)
       else edge_to_faces.set(key, [face_idx])
@@ -403,9 +403,9 @@ export function compute_ibz_clipping_planes(point_group_ops: Matrix3x3[]): Clipp
 }
 
 // Flip a clipping plane to the opposite half-space
-const flip_plane = (p: ClippingPlane): ClippingPlane => ({
-  normal: math.scale(p.normal, -1),
-  dist: -p.dist,
+const flip_plane = (plane: ClippingPlane): ClippingPlane => ({
+  normal: math.scale(plane.normal, -1),
+  dist: -plane.dist,
 })
 
 // Clip polyhedron vertices by a half-space, adding intersection points where edges cross
@@ -415,7 +415,7 @@ function clip_polyhedron_by_plane(
   plane: ClippingPlane,
 ): Vec3[] {
   const { normal, dist } = plane
-  const signed_dists = vertices.map((v) => math.dot(v, normal) - dist)
+  const signed_dists = vertices.map((vertex) => math.dot(vertex, normal) - dist)
 
   // Keep vertices inside the half-space
   const result = vertices.filter((_, idx) => signed_dists[idx] <= TOL)

@@ -49,10 +49,12 @@
     else void copy_to_clipboard()
   }
 
-  function handle_keydown(event: KeyboardEvent): void {
+  function handle_keydown(
+    event: KeyboardEvent & { currentTarget: HTMLElement },
+  ): void {
     if (disabled || (event.key !== `Enter` && event.key !== ` `)) return
     event.preventDefault()
-    ;(event.currentTarget as HTMLElement)?.click()
+    event.currentTarget.click()
   }
 
   function handle_remove(event: MouseEvent): void {

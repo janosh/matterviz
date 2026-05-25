@@ -137,7 +137,10 @@
     site_window_start = 0
   }
 
-  function handle_site_keydown(event: KeyboardEvent, card: SiteCard) {
+  function handle_site_keydown(
+    event: KeyboardEvent & { currentTarget: HTMLDivElement },
+    card: SiteCard,
+  ) {
     const plain_key = !event.altKey && !event.ctrlKey && !event.metaKey
     if ([`Enter`, ` `].includes(event.key)) {
       event.preventDefault()
@@ -151,20 +154,19 @@
     }
     if (![`ArrowDown`, `ArrowUp`].includes(event.key)) return
     event.preventDefault()
-    const current_card = event.currentTarget as HTMLDivElement | null
+    const current_card = event.currentTarget
     const sibling_cards = Array.from(
-      current_card?.parentElement?.querySelectorAll<HTMLDivElement>(`.site-card`) ?? [],
+      current_card.parentElement?.querySelectorAll<HTMLDivElement>(`.site-card`) ?? [],
     )
-    const current_idx = sibling_cards.indexOf(current_card as HTMLDivElement)
+    const current_idx = sibling_cards.indexOf(current_card)
     const next_idx = event.key === `ArrowDown`
       ? Math.min(current_idx + 1, sibling_cards.length - 1)
       : Math.max(current_idx - 1, 0)
     sibling_cards[next_idx]?.focus()
   }
 
-  function get_element_name(element: string): string {
-    return element_data?.find((el) => el.symbol === element)?.name || element
-  }
+  const get_element_name = (element: string): string =>
+    element_data?.find((element_record) => element_record.symbol === element)?.name || element
 
   function site_summary(card: SiteCard): string {
     return [
@@ -268,7 +270,7 @@
       const { operations } = sym_data
       let translations = 0, rotations = 0, roto_translations = 0
       for (const op of operations) {
-        const has_translation = op.translation.some((t) => t !== 0)
+        const has_translation = op.translation.some((offset) => offset !== 0)
         const is_identity = String(op.rotation) === `1,0,0,0,1,0,0,0,1`
         if (is_identity && has_translation) translations++
         else if (!has_translation) rotations++

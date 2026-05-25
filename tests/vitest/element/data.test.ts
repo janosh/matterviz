@@ -337,15 +337,15 @@ describe(`data completeness`, () => {
     const NOBLE_GASES = new Set([`He`, `Ne`, `Ar`, `Kr`, `Xe`, `Rn`])
     const NULL_RADIUS_OK = new Set([...NOBLE_GASES, `At`, `Fr`])
 
-    for (const el of element_data.filter((e) => e.number <= 86)) {
+    for (const element of element_data.filter((entry) => entry.number <= 86)) {
       // All main elements need first_ionization
-      expect(el.first_ionization, `${el.symbol} first_ionization`).not.toBeNull()
+      expect(element.first_ionization, `${element.symbol} first_ionization`).not.toBeNull()
 
       // Non-noble gases need electronegativity and atomic_radius
-      if (!NOBLE_GASES.has(el.symbol)) {
-        expect(el.electronegativity, `${el.symbol} electronegativity`).not.toBeNull()
-        if (!NULL_RADIUS_OK.has(el.symbol)) {
-          expect(el.atomic_radius, `${el.symbol} atomic_radius`).not.toBeNull()
+      if (!NOBLE_GASES.has(element.symbol)) {
+        expect(element.electronegativity, `${element.symbol} electronegativity`).not.toBeNull()
+        if (!NULL_RADIUS_OK.has(element.symbol)) {
+          expect(element.atomic_radius, `${element.symbol} atomic_radius`).not.toBeNull()
         }
       }
     }

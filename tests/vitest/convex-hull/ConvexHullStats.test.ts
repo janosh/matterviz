@@ -31,7 +31,6 @@ const mock_entry = (overrides: Partial<ConvexHullEntry> = {}): ConvexHullEntry =
   x: 0.25,
   y: 0.25,
   z: 0.25,
-  visible: true,
   ...overrides,
 })
 
@@ -39,6 +38,8 @@ type Props = {
   phase_stats: PhaseStats | null
   stable_entries: ConvexHullEntry[]
   unstable_entries: ConvexHullEntry[]
+  show_stable?: boolean
+  show_unstable?: boolean
   layout?: `toggle` | `side-by-side`
   on_entry_click?: (entry: ConvexHullEntry) => void
   highlighted_entry_id?: string
@@ -373,13 +374,16 @@ describe(`ConvexHullStats`, () => {
       expect(headers.length).toBeGreaterThanOrEqual(6)
     })
 
-    test(`table excludes non-visible entries`, () => {
-      const hidden = mock_entry({
+    test(`table excludes hidden entry groups`, () => {
+      const hidden_group_entry = mock_entry({
         composition: { Zr: 1 },
-        visible: false,
         reduced_formula: `Zr`,
       })
-      mount_stats_table({ stable_entries: stable, unstable_entries: [hidden] })
+      mount_stats_table({
+        stable_entries: stable,
+        unstable_entries: [hidden_group_entry],
+        show_unstable: false,
+      })
 
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
       const cells = Array.from(document.querySelectorAll(`td`)).map((td) =>

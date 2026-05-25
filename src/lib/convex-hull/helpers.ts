@@ -35,16 +35,37 @@ export function compute_hull_stability(
   return { e_above_hull, is_stable: e_above_hull <= tol }
 }
 
+type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
+
+export const entry_is_stable = (
+  entry: StabilityEntry,
+  tol: number = HULL_STABILITY_TOL,
+): boolean =>
+  entry.is_stable === true ||
+  (entry.is_stable !== false && Math.abs(entry.e_above_hull ?? Infinity) <= tol)
+
 // Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
 export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>
-  !entry.exclude_from_hull &&
-  (entry.is_stable === true ||
-    (typeof entry.e_above_hull === `number` && entry.e_above_hull < tol))
+  !entry.exclude_from_hull && entry_is_stable(entry, tol)
 
 export const get_arity = (entry: PhaseData): number =>
   Object.values(entry.composition).filter((count) => count > 0).length
 
 export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
+
+export const entry_is_unstable = (entry: StabilityEntry): boolean => !entry_is_stable(entry)
+
+export const entry_is_visible = (
+  entry: StabilityEntry,
+  show_stable: boolean,
+  show_unstable: boolean,
+): boolean => (entry_is_stable(entry) ? show_stable : show_unstable)
+
+export const visible_entries = <Entry extends StabilityEntry>(
+  entries: readonly Entry[],
+  show_stable: boolean,
+  show_unstable: boolean,
+): Entry[] => entries.filter((entry) => entry_is_visible(entry, show_stable, show_unstable))
 
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
@@ -74,7 +95,7 @@ export function get_point_color_for_entry(
   colors: ConvexHullConfig[`colors`] | undefined,
   energy_scale: ((value: number) => string) | null,
 ): string {
-  const is_stable = Boolean(entry.is_stable) || entry.e_above_hull === 0
+  const is_stable = entry_is_stable(entry)
   if (color_mode === `stability`) {
     return is_stable ? colors?.stable || `#0072B2` : colors?.unstable || `#E69F00`
   }
@@ -129,6 +150,31 @@ export function compute_auto_hull_dist_threshold(
   return max_hull_dist_in_data * (1 - t) + static_default * t
 }
 
+export function auto_threshold_reset(default_threshold: number) {
+  let source: unknown
+  let auto_threshold = default_threshold
+  let initialized = false
+  return (next_source: unknown, current_threshold: number, next_auto_threshold: number) => {
+    if (initialized && next_source === source) return undefined
+    const user_changed = initialized && Math.abs(current_threshold - auto_threshold) > 0.001
+    source = next_source
+    auto_threshold = next_auto_threshold
+    initialized = true
+    return user_changed ? undefined : next_auto_threshold
+  }
+}
+
+export function current_entry<Entry extends { entry_id?: string }>(
+  entry: Entry | null | undefined,
+  entries: readonly Entry[],
+): Entry | null {
+  if (!entry) return null
+  if (entry.entry_id) {
+    return entries.find((candidate) => candidate.entry_id === entry.entry_id) ?? null
+  }
+  return entries.includes(entry) ? entry : null
+}
+
 // Build a tooltip text for any phase entry (shared)
 export function build_entry_tooltip_text(entry: PhaseData): string {
   const is_element = is_unary_entry(entry)
@@ -173,7 +219,6 @@ export function find_hull_entry_at_mouse<
     x: number
     y: number
     z: number
-    visible?: boolean
     size?: number
     is_stable?: boolean
     e_above_hull?: number
@@ -190,10 +235,9 @@ export function find_hull_entry_at_mouse<
   const mouse_y = event.clientY - rect.top
   const container_scale = Math.min(canvas.clientWidth || 600, canvas.clientHeight || 600) / 600
   for (const entry of plot_entries) {
-    if (!entry.visible) continue
     const projected = project_point(entry.x, entry.y, entry.z)
     const distance = Math.hypot(mouse_x - projected.x, mouse_y - projected.y)
-    const base = entry.size ?? (entry.is_stable || entry.e_above_hull === 0 ? 6 : 4)
+    const base = entry.size ?? (entry_is_stable(entry) ? 6 : 4)
     if (distance < base * container_scale + 5) return entry
   }
   return null
@@ -666,9 +710,8 @@ function entry_has_temp_data(entry: PhaseData): boolean {
 }
 
 // Check if entry has data at exact temperature T
-export function entry_has_temperature(entry: PhaseData, T: number): boolean {
-  return entry_has_temp_data(entry) && (entry.temperatures?.includes(T) ?? false)
-}
+export const entry_has_temperature = (entry: PhaseData, T: number): boolean =>
+  entry_has_temp_data(entry) && (entry.temperatures?.includes(T) ?? false)
 
 // Get energy at temperature T (throws if T not found - validate with entry_has_temperature first)
 export function get_energy_at_temperature(entry: PhaseData, T: number): number {

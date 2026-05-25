@@ -167,7 +167,7 @@ describe(`FillArea`, () => {
     }
     mount(FillArea, {
       target: document.body,
-      props: make_props({ region, hovered_region: 0 }),
+      props: make_props({ region, is_hovered: true }),
     })
 
     const path = doc_query(`.fill-region path`)
@@ -208,10 +208,10 @@ describe(`FillArea`, () => {
     expect(doc_query(`.fill-region`).getAttribute(`tabindex`)).toBe(expected)
   })
 
-  test(`hovered class applied when region matches hovered_region`, () => {
+  test(`hovered class applied when is_hovered is true`, () => {
     mount(FillArea, {
       target: document.body,
-      props: make_props({ region_idx: 1, hovered_region: 1 }),
+      props: make_props({ is_hovered: true }),
     })
     expect(doc_query(`.fill-region`).classList.contains(`hovered`)).toBe(true)
   })

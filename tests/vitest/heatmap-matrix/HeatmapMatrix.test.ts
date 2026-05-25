@@ -1,11 +1,13 @@
 // Tests for HeatmapMatrix Svelte component rendering, interaction, and color computation.
 
-import { type AxisItem, HeatmapMatrix, make_color_override_key } from '$lib/heatmap-matrix'
+import { HeatmapMatrix, make_color_override_key } from '$lib/heatmap-matrix'
+import type { AxisItem } from '$lib/heatmap-matrix'
 import { format_num } from '$lib/labels'
 import type { ComponentProps } from 'svelte'
-import { mount, tick } from 'svelte'
+import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
+import HeatmapMatrixReplacementHarness from './HeatmapMatrixReplacementHarness.svelte'
 
 const make_items = (labels: string[]): AxisItem[] =>
   labels.map((label, idx) => ({ label, key: label, sort_value: idx }))
@@ -74,6 +76,23 @@ describe(`HeatmapMatrix rendering`, () => {
     const container = doc_query(`.grid`)
     expect(container.classList.contains(`my-matrix`)).toBe(true)
     expect(container.style.gap).toBe(`2px`)
+  })
+})
+
+describe(`axis replacement`, () => {
+  test(`clears index-based interaction state when axis keys change`, async () => {
+    mount(HeatmapMatrixReplacementHarness, { target: document.body })
+    await tick()
+
+    expect(document.querySelector(`[data-testid="selected-count"]`)?.textContent).toBe(`1`)
+
+    document.querySelector<HTMLButtonElement>(`[data-testid="replace-axis"]`)?.click()
+    flushSync()
+    await tick()
+
+    expect(document.querySelector(`[data-testid="selected-count"]`)?.textContent).toBe(`0`)
+    expect(document.querySelector(`[data-testid="active-cell"]`)?.textContent).toBe(`none`)
+    expect(document.querySelector(`[data-testid="pinned-cell"]`)?.textContent).toBe(`none`)
   })
 })
 

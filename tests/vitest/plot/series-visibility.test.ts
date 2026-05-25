@@ -154,7 +154,7 @@ describe(`handle_legend_double_click`, () => {
     ]
     const result = handle_legend_double_click(series, 1, null)
     expect(result.series.map((srs) => srs.visible)).toEqual([false, true, false])
-    expect(result.previous_visibility?.visibility).toEqual([true, true, true])
+    expect(result.prev_visibility?.visibility).toEqual([true, true, true])
   })
 
   test(`restores visibility when already isolated`, () => {
@@ -164,9 +164,9 @@ describe(`handle_legend_double_click`, () => {
       { x: [5], y: [6], label: `C`, visible: true },
     ]
     const isolated = handle_legend_double_click(original, 1, null)
-    const result = handle_legend_double_click(isolated.series, 1, isolated.previous_visibility)
+    const result = handle_legend_double_click(isolated.series, 1, isolated.prev_visibility)
     expect(result.series.map((srs) => srs.visible)).toEqual([true, true, true])
-    expect(result.previous_visibility).toBe(null)
+    expect(result.prev_visibility).toBe(null)
   })
 
   test.each([
@@ -182,10 +182,10 @@ describe(`handle_legend_double_click`, () => {
     const result = handle_legend_double_click(
       [...isolated.series, { x: [7], y: [8], label: `D`, visible: new_vis }],
       1,
-      isolated.previous_visibility,
+      isolated.prev_visibility,
     )
     expect(result.series.map((srs) => srs.visible)).toEqual([true, true, true, new_vis])
-    expect(result.previous_visibility).toBe(null)
+    expect(result.prev_visibility).toBe(null)
   })
 
   test(`does not restore stale visibility when series source changes`, () => {
@@ -201,10 +201,10 @@ describe(`handle_legend_double_click`, () => {
       { x: [50], y: [60], label: `C`, visible: false },
     ]
 
-    const result = handle_legend_double_click(replacement, 1, isolated.previous_visibility)
+    const result = handle_legend_double_click(replacement, 1, isolated.prev_visibility)
 
     expect(result.series.map((srs) => srs.visible)).toEqual([false, true, false])
-    expect(result.previous_visibility).toBe(null)
+    expect(result.prev_visibility).toBe(null)
   })
 
   test(`isolates series by label`, () => {
@@ -222,7 +222,7 @@ describe(`handle_legend_double_click`, () => {
       { x: [1], y: [2], label: `A`, visible: true },
       { x: [3], y: [4], label: `B`, visible: false },
     ]
-    expect(handle_legend_double_click(series, 0, null).previous_visibility).toBe(null)
+    expect(handle_legend_double_click(series, 0, null).prev_visibility).toBe(null)
   })
 
   test(`isolates series without label by index`, () => {
@@ -246,6 +246,6 @@ describe(`handle_legend_double_click`, () => {
     const result = handle_legend_double_click(series, idx, null)
     // All series should remain visible (no isolation occurs)
     expect(result.series.map((srs) => srs.visible)).toEqual([true, true])
-    expect(result.previous_visibility).toBe(null)
+    expect(result.prev_visibility).toBe(null)
   })
 })

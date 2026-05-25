@@ -273,18 +273,16 @@ function parse_tdb_line(line: string, data: TdbData): void {
 }
 
 // Get a normalized system name from elements (e.g., "AL-ZN" always alphabetically sorted)
-export function get_system_name(elements: string[]): string {
-  return elements
+export const get_system_name = (elements: string[]): string =>
+  elements
     .filter(is_real_element)
     .map((el) => el.toUpperCase())
     .sort()
     .join(`-`)
-}
 
 // Check if a TDB file represents a binary system
-export function is_binary_system(tdb_data: TdbData): boolean {
-  return tdb_data.elements.map((el) => el.symbol).filter(is_real_element).length === 2
-}
+export const is_binary_system = (tdb_data: TdbData): boolean =>
+  tdb_data.elements.map((el) => el.symbol).filter(is_real_element).length === 2
 
 // Predicate to filter out non-real elements (VA = vacancy, /- = electron)
 const is_real_element = (sym: string) => sym !== `VA` && sym !== `/-`

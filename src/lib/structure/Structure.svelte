@@ -730,6 +730,7 @@
         undo_stack = []
         redo_stack = []
       }
+      if (highlighted_sites.length > 0) highlighted_sites = []
       if (measure_mode === `edit-atoms`) {
         if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
         if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
@@ -1141,12 +1142,13 @@
 
   function handle_keydown(event: KeyboardEvent) {
     // Don't handle shortcuts if user is typing in an input field
-    const target = event.target as HTMLElement
+    const target = event.target
     const is_input_focused =
-      target.tagName === `INPUT` ||
-      target.tagName === `TEXTAREA` ||
-      target.tagName === `SELECT` ||
-      target.isContentEditable
+      target instanceof HTMLElement &&
+      (target.tagName === `INPUT` ||
+        target.tagName === `TEXTAREA` ||
+        target.tagName === `SELECT` ||
+        target.isContentEditable)
 
     // Allow Escape to cancel add-atom mode even when the element input is focused
     if (event.key === `Escape` && measure_mode === `edit-atoms` && add_atom_mode) {
@@ -1198,11 +1200,13 @@
       if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase()
         if (key === `z` && !event.shiftKey) {
+          if (undo_stack.length === 0) return
           event.preventDefault()
           undo()
           show_toast(`Undo (${undo_stack.length} left)`)
           return
         } else if (key === `y` || (key === `z` && event.shiftKey)) {
+          if (redo_stack.length === 0) return
           event.preventDefault()
           redo()
           show_toast(`Redo (${redo_stack.length} left)`)
@@ -1435,7 +1439,7 @@
         properties: {},
       }],
     }
-    show_toast(`Added ${elem} at (${xyz.map((c) => c.toFixed(2)).join(`, `)})`)
+    show_toast(`Added ${elem} at (${xyz.map((coord) => coord.toFixed(2)).join(`, `)})`)
   }
 
   // Only set background override when background_color is explicitly provided
@@ -1488,7 +1492,8 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondblclick={(event) => {
-    const target = event.target as HTMLElement
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
     // Don't reset if double-click was on UI controls/panes/legend
     if (
       target.closest(`.control-buttons`) ||

@@ -474,7 +474,7 @@
 
     return [...filtered_data].sort((row1, row2) => {
       for (const { column, ascending } of sort_criteria) {
-        const matched_col = ordered_columns.find((c) => get_col_id(c) === column)
+        const matched_col = ordered_columns.find((col) => get_col_id(col) === column)
         if (!matched_col) continue
 
         const col_id = get_col_id(matched_col)
@@ -548,7 +548,7 @@
   ) {
     // Find the column using both label and group if provided
     const col = ordered_columns.find(
-      (c) => c.label === column && c.group === group,
+      (candidate_col) => candidate_col.label === column && candidate_col.group === group,
     )
 
     if (!col) return // Skip if column not found
@@ -558,7 +558,7 @@
 
     // Shift+click for multi-column sort
     if (event.shiftKey) {
-      const existing_idx = multi_sort.findIndex((s) => s.column === col_id)
+      const existing_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
       if (existing_idx >= 0) {
         // Toggle direction or remove if clicked again
         const existing = multi_sort[existing_idx]
@@ -567,8 +567,8 @@
           multi_sort = multi_sort.filter((_, idx) => idx !== existing_idx)
         } else {
           // Toggle direction
-          multi_sort = multi_sort.map((s, idx) =>
-            idx === existing_idx ? { ...s, ascending: !s.ascending } : s
+          multi_sort = multi_sort.map((sort_entry, idx) =>
+            idx === existing_idx ? { ...sort_entry, ascending: !sort_entry.ascending } : sort_entry
           )
         }
       } else {
@@ -704,7 +704,7 @@
     const col_id = get_col_id(col)
 
     // Check multi-sort first
-    const multi_idx = multi_sort.findIndex((s) => s.column === col_id)
+    const multi_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
     if (multi_idx >= 0) {
       const arrow = multi_sort[multi_idx].ascending ? `↓` : `↑`
       const badge = multi_sort.length > 1 ? `<sup>${multi_idx + 1}</sup>` : ``
@@ -736,7 +736,7 @@
   // Row selection using WeakMap-based ID lookup instead of O(n) JSON.stringify comparison
   function toggle_row_select(row: RowData) {
     const row_id = get_row_id(row)
-    const idx = selected_rows.findIndex((r) => get_row_id(r) === row_id)
+    const idx = selected_rows.findIndex((selected_row) => get_row_id(selected_row) === row_id)
     if (idx >= 0) {
       selected_rows = selected_rows.filter((_, i) => i !== idx)
     } else {
@@ -746,7 +746,7 @@
 
   function is_row_selected(row: RowData): boolean {
     const row_id = get_row_id(row)
-    return selected_rows.some((r) => get_row_id(r) === row_id)
+    return selected_rows.some((selected_row) => get_row_id(selected_row) === row_id)
   }
 
   // Select-all: checks if every row on the current page is selected
@@ -788,7 +788,7 @@
         return quote(strip_html(String(val)))
       })
     )
-    return [headers.join(delimiter), ...rows.map((r) => r.join(delimiter))].join(`\n`)
+    return [headers.join(delimiter), ...rows.map((row) => row.join(delimiter))].join(`\n`)
   }
 
   function export_csv(filename = `table-export`) {
@@ -1155,13 +1155,13 @@
               {#if !col.group}
                 <th class:sticky-col={col.sticky}></th>
               {:else}
-                {@const group_cols = visible_columns.filter((c) =>
-              c.group === col.group
+                {@const group_cols = visible_columns.filter((column) =>
+              column.group === col.group
             )}
                 <!-- Only render the group header once for each group by checking if this is the first column of this group -->
-                {#if visible_columns.findIndex((c) => c.group === col.group) ===
-              visible_columns.findIndex((c) =>
-                c.group === col.group && c.label === col.label
+                {#if visible_columns.findIndex((column) => column.group === col.group) ===
+              visible_columns.findIndex((column) =>
+                column.group === col.group && column.label === col.label
               )}
                   <th title={col.description} colspan={group_cols.length}>
                     {@html sanitize_html(col.group)}

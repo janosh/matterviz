@@ -89,11 +89,11 @@
   let mode_menu_open = $state(false)
 
   // Clear hidden property values when switching modes (since they may not be valid)
-  let previous_mode = $state(atom_color_config.mode)
+  let prev_mode = $state(atom_color_config.mode)
   $effect(() => {
-    if (atom_color_config.mode !== previous_mode) {
+    if (atom_color_config.mode !== prev_mode) {
       hidden_prop_vals.clear()
-      previous_mode = atom_color_config.mode
+      prev_mode = atom_color_config.mode
     }
   })
 
@@ -111,7 +111,9 @@
     if (typeof val === `string` && val.includes(`|`)) { // Format Wyckoff orbit IDs
       const [wyckoff, element] = val.split(`|`, 2)
       // Count how many sites have this wyckoff+element combination
-      const count = property_colors?.values.filter((v) => v === val).length ?? 0
+      const count = property_colors?.values.filter((property_value) =>
+        property_value === val
+      ).length ?? 0
       return `${element}:${count}${wyckoff}`
     }
     return String(val)

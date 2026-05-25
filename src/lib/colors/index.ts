@@ -231,10 +231,10 @@ export function add_alpha(color: string, alpha: number): string {
 
     // Extract RGB, ignoring any existing alpha channel
     const is_short = hex.length === 3 || hex.length === 4
-    const r = parseInt(is_short ? hex[0] + hex[0] : hex.slice(0, 2), 16)
-    const g = parseInt(is_short ? hex[1] + hex[1] : hex.slice(2, 4), 16)
-    const b = parseInt(is_short ? hex[2] + hex[2] : hex.slice(4, 6), 16)
-    return `rgba(${r}, ${g}, ${b}, ${clamped_alpha})`
+    const red = parseInt(is_short ? hex[0] + hex[0] : hex.slice(0, 2), 16)
+    const green = parseInt(is_short ? hex[1] + hex[1] : hex.slice(2, 4), 16)
+    const blue = parseInt(is_short ? hex[2] + hex[2] : hex.slice(4, 6), 16)
+    return `rgba(${red}, ${green}, ${blue}, ${clamped_alpha})`
   }
   // Handle rgb() colors
   if (color.startsWith(`rgb(`)) {

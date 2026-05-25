@@ -10,17 +10,12 @@ const options: AxisOption[] = [
   { key: `volume`, label: `Volume`, unit: `Å³` },
 ]
 
-function mount_label(props: ComponentProps<typeof InteractiveAxisLabel>) {
-  return mount(InteractiveAxisLabel, { target: document.body, props })
-}
+const mount_label = (props: ComponentProps<typeof InteractiveAxisLabel>) =>
+  mount(InteractiveAxisLabel, { target: document.body, props })
 
-function get_wrapper() {
-  return document.body.querySelector(`.interactive-axis-label`)
-}
+const get_wrapper = () => document.body.querySelector(`.interactive-axis-label`)
 
-function get_trigger() {
-  return document.body.querySelector(`button.axis-trigger`)
-}
+const get_trigger = () => document.body.querySelector(`button.axis-trigger`)
 
 describe(`InteractiveAxisLabel`, () => {
   afterEach(() => {

@@ -25,6 +25,8 @@ class Structure(MatterViz):
         active_volume_idx: int | None = None,
         allow_file_drop: bool | None = None,
         atom_color_config: dict | None = None,
+        bond_edit_mode: Any | None = None,
+        bond_edit_order: Any | None = None,
         bonds: list | None = None,
         cell_type: Any | None = None,
         data_url: str | None = None,
@@ -60,8 +62,6 @@ class Structure(MatterViz):
         symmetry_settings: dict | None = None,
         volumetric_data: list | None = None,
         width: float | None = None,
-        bond_edit_mode: Any | None = None,
-        bond_edit_order: Any | None = None,
         mv_props: dict | None = None,
         set_props: list[str] | None = None,
         float32_props: list[str] | None = None,
@@ -79,6 +79,10 @@ class Structure(MatterViz):
             mv_props["allow_file_drop"] = allow_file_drop
         if atom_color_config is not None:
             mv_props["atom_color_config"] = atom_color_config
+        if bond_edit_mode is not None:
+            mv_props["bond_edit_mode"] = bond_edit_mode
+        if bond_edit_order is not None:
+            mv_props["bond_edit_order"] = bond_edit_order
         if bonds is not None:
             mv_props["bonds"] = bonds
         if cell_type is not None:
@@ -149,10 +153,6 @@ class Structure(MatterViz):
             mv_props["volumetric_data"] = volumetric_data
         if width is not None:
             mv_props["width"] = width
-        if bond_edit_mode is not None:
-            mv_props["bond_edit_mode"] = bond_edit_mode
-        if bond_edit_order is not None:
-            mv_props["bond_edit_order"] = bond_edit_order
         if set_props is None:
             set_props = ["hidden_elements", "hidden_prop_vals"]
 

@@ -2,9 +2,9 @@ import { ColorBar } from '$lib'
 import { luminance } from '$lib/colors'
 import type { AxisOption, ColorScaleOption } from '$lib/plot/types'
 import * as d3_sc from 'd3-scale-chromatic'
-import { mount, unmount } from 'svelte'
+import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query } from '../setup'
+import { bind_props, doc_query } from '../setup'
 
 describe(`ColorBar Horizontal (Default)`, () => {
   test(`renders text, color scale, tick labels, and styles`, () => {
@@ -387,8 +387,8 @@ describe(`ColorBar Other Features`, () => {
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
     expect(tick_label_spans.length).toBe(explicit_ticks.length)
-    explicit_ticks.forEach((tick, idx) => {
-      expect(tick_label_spans[idx].textContent).toBe(tick.toString())
+    explicit_ticks.forEach((tick_value, idx) => {
+      expect(tick_label_spans[idx].textContent).toBe(tick_value.toString())
     })
   })
 
@@ -590,6 +590,31 @@ describe(`ColorBar Interactive Selects`, () => {
     })
     expect(document.body.querySelector(`button.property-select`)).not.toBeNull()
     expect(document.body.querySelector(`button.color-scale-select`)).not.toBeNull()
+    void unmount(component)
+  })
+
+  test(`resets stale selected keys to valid options`, async () => {
+    const state = {
+      selected_property_key: `energy`,
+      selected_color_scale_key: `viridis`,
+    }
+    const component = mount(ColorBar, {
+      target: document.body,
+      props: bind_props(
+        {
+          property_options: [{ key: `band_gap`, label: `Band Gap`, unit: `eV` }],
+          color_scale_options: [{ key: `magma`, label: `Magma`, scale: `interpolateMagma` }],
+        },
+        state,
+      ),
+    })
+
+    await tick()
+    expect(state.selected_property_key).toBe(`band_gap`)
+    expect(state.selected_color_scale_key).toBe(`magma`)
+    expect(document.body.querySelector(`.bar`)?.getAttribute(`style`)).toContain(
+      d3_sc.interpolateMagma(0),
+    )
     void unmount(component)
   })
 

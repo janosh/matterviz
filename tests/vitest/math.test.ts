@@ -2856,13 +2856,10 @@ function extract_triangle_verts(positions: Float32Array): Vec3[] {
 }
 
 // Check if two Vec3 are close within tolerance
-function vec3_close(va: Vec3, vb: Vec3, tol = 1e-4): boolean {
-  return (
-    Math.abs(va[0] - vb[0]) < tol &&
-    Math.abs(va[1] - vb[1]) < tol &&
-    Math.abs(va[2] - vb[2]) < tol
-  )
-}
+const vec3_close = (va: Vec3, vb: Vec3, tol = 1e-4): boolean =>
+  Math.abs(va[0] - vb[0]) < tol &&
+  Math.abs(va[1] - vb[1]) < tol &&
+  Math.abs(va[2] - vb[2]) < tol
 
 // Check if two vertex sets contain the same vertices (unordered, within tolerance)
 function same_vertex_set(set_a: Vec3[], set_b: Vec3[]): boolean {

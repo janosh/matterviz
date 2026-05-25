@@ -48,7 +48,8 @@
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue
-          reveal_demo(entry.target as HTMLElement)
+          if (!(entry.target instanceof HTMLElement)) continue
+          reveal_demo(entry.target)
           observer.unobserve(entry.target)
         }
       },

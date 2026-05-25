@@ -60,7 +60,8 @@
   })
 
   const touch = ({ target }: Event) => {
-    const key = (target as Element)?.closest(`[data-key]`)?.getAttribute(`data-key`)
+    if (!(target instanceof Element)) return
+    const key = target.closest(`[data-key]`)?.getAttribute(`data-key`)
     if (key) on_touch?.(key)
   }
 </script>

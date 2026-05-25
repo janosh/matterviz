@@ -188,10 +188,10 @@
         event.preventDefault()
         return
       }
+      const origin = event.target
+      if (!(origin instanceof HTMLElement)) return
       // If dragging a badge directly, use its own data attributes
-      const badge = (event.target as HTMLElement).closest(
-        `.renderable-badge`,
-      ) as HTMLElement | null
+      const badge = origin.closest(`.renderable-badge`) as HTMLElement | null
       if (badge) {
         const data_path = badge.dataset.renderable_path ?? ``
         const detected_type = badge.dataset.renderable_type ?? ``
@@ -200,7 +200,7 @@
         return
       }
       // Otherwise dragging a tree node -- look up from tree path
-      const target = (event.target as HTMLElement).closest(`[data-path]`) as HTMLElement | null
+      const target = origin.closest(`[data-path]`) as HTMLElement | null
       if (!target) return
       const tree_path = target.getAttribute(`data-path`) ?? ``
       const info = renderable_tree_paths.get(tree_path)
@@ -248,9 +248,9 @@
   $effect(() => {
     if (!sidebar_element) return
     function on_badge_click(event: MouseEvent): void {
-      const badge = (event.target as HTMLElement).closest(
-        `.renderable-badge`,
-      ) as HTMLElement | null
+      const origin = event.target
+      if (!(origin instanceof HTMLElement)) return
+      const badge = origin.closest(`.renderable-badge`) as HTMLElement | null
       if (!badge) return
       event.stopPropagation()
       event.preventDefault()
@@ -271,8 +271,11 @@
     if (panels.length === 0) return
     function on_keydown(event: KeyboardEvent): void {
       if (event.key !== `Escape`) return
-      const tag = (event.target as HTMLElement)?.tagName
-      if (tag === `INPUT` || tag === `SELECT` || tag === `TEXTAREA`) return
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        [`INPUT`, `SELECT`, `TEXTAREA`].includes(target.tagName)
+      ) return
       close_all_panels()
     }
     globalThis.addEventListener(`keydown`, on_keydown)

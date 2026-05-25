@@ -111,7 +111,7 @@
   let selected_ids = $state<string[]>(compute_ids.slice(0, 4))
   function toggle_select(struct_id: string) {
     selected_ids = selected_ids.includes(struct_id)
-      ? selected_ids.filter((x) => x !== struct_id)
+      ? selected_ids.filter((selected_id) => selected_id !== struct_id)
       : [...selected_ids, struct_id]
   }
   // Fill cache for all selected structures (side-effect done outside of $derived)

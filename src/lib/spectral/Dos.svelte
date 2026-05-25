@@ -239,7 +239,7 @@
 
           // For mirror mode, negate the densities
           if (effective_spin_mode === `mirror`) {
-            densities_down = densities_down.map((d) => -d)
+            densities_down = densities_down.map((density) => -density)
           }
 
           // For stacked plots with overlay mode, use separate spin-down cumulative

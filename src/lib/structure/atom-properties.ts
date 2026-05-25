@@ -217,11 +217,11 @@ export function get_wyckoff_colors(
   sym_data: SymmetryDataWithOrigMap | null,
   scale = DEFAULT_COLOR_SCALE,
 ): AtomPropertyColors {
-  const n = structure.sites.length
+  const n_sites = structure.sites.length
   if (!sym_data?.wyckoffs || sym_data.wyckoffs.length === 0) {
     return {
-      colors: Array(n).fill(GRAY),
-      values: Array(n).fill(`unknown`),
+      colors: Array(n_sites).fill(GRAY),
+      values: Array(n_sites).fill(`unknown`),
       unique_values: [`unknown`],
     }
   }
@@ -249,7 +249,7 @@ export function get_wyckoff_colors(
     if (sym_idx >= sym_data.wyckoffs.length) {
       console.error(
         `[get_wyckoff_colors] Site ${idx} (maps to ${sym_idx}) has no Wyckoff data. ` +
-          `Structure has ${n} sites but symmetry data only has ${sym_data.wyckoffs.length}.`,
+          `Structure has ${n_sites} sites but symmetry data only has ${sym_data.wyckoffs.length}.`,
       )
       return `unknown`
     }

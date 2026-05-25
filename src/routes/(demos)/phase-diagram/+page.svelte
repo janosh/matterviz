@@ -58,7 +58,7 @@
     if (!browser) return
     const file_param = page.url.searchParams.get(`file`)
     if (file_param && file_param !== current_file) {
-      const file_info = all_phase_diagram_files.find((f) => f.name === file_param)
+      const file_info = all_phase_diagram_files.find((file) => file.name === file_param)
       if (file_info?.url) load_file(file_info.url, file_param, false)
     }
   })
@@ -284,8 +284,8 @@
   const example_file_name = `A-B.json`
   $effect(() => {
     if (browser && !current_data && !loading) {
-      const example_file = all_phase_diagram_files.find((f) =>
-        f.name === example_file_name
+      const example_file = all_phase_diagram_files.find((file) =>
+        file.name === example_file_name
       )
       if (example_file?.url) load_file(example_file.url, example_file_name, false)
     }

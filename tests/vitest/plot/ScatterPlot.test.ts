@@ -1,11 +1,11 @@
 import { ScatterPlot } from '$lib'
 import type { Vec2 } from '$lib/math'
-import type { DataSeries } from '$lib/plot'
+import type { DataSeries, FillRegion } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
-import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { resize_element } from '../setup'
+import { bind_props, resize_element } from '../setup'
 
 const basic = {
   x: [1, 2, 3, 4, 5],
@@ -451,5 +451,39 @@ describe(`ScatterPlot`, () => {
       expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Temperature`)
       expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Pressure`)
     })
+  })
+
+  test(`keeps fallback-index and explicit-id fill hovers distinct`, async () => {
+    const make_fills = (): FillRegion[] => [
+      { id: `lead`, lower: 0, upper: 0.1, fill: `transparent` },
+      { lower: 0.2, upper: 0.4, fill: `steelblue` },
+      { id: `1`, lower: 0.5, upper: 0.7, fill: `slategray` },
+    ]
+    const state = { fill_regions: make_fills() }
+    await mount_sized_scatter_plot(
+      bind_props(
+        {
+          series: [{ x: [0, 1], y: [0, 1] }],
+          x_axis: { range: [0, 1] as Vec2 },
+          y_axis: { range: [0, 1] as Vec2 },
+          legend: null,
+        },
+        state,
+      ),
+    )
+
+    const fallback_fill = () =>
+      document.querySelector<SVGGElement>(`[aria-label="Fill region 1"]`)
+    const explicit_id_fill = () =>
+      document.querySelector<SVGGElement>(`[aria-label="Fill region 2"]`)
+    fallback_fill()?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    await tick()
+    expect(fallback_fill()?.classList.contains(`hovered`)).toBe(true)
+    expect(explicit_id_fill()?.classList.contains(`hovered`)).toBe(false)
+
+    state.fill_regions = make_fills()
+    flushSync()
+    await tick()
+    expect(fallback_fill()?.classList.contains(`hovered`)).toBe(true)
   })
 })

@@ -3058,21 +3058,17 @@ All changes trigger lazy data loading with simulated network delays.
   }
 
   // Called after ColorBar successfully loads new property data
-  function handle_color_property_change(property_key) {
+  function on_property_change(property_key) {
     color_switches++
     color_key = property_key
     // series is $derived from color_key, so it auto-updates
   }
 
   // Handle color scale change (no data loading needed, just update scheme)
-  function handle_color_scale_change(key) {
+  function on_color_scale_change(key) {
     color_scale_key = key
   }
 
-  // Format tooltip value
-  function fmt(val) {
-    return typeof val === `number` ? val.toFixed(2) : val
-  }
 </script>
 
 <p style="font-size: 0.9em; opacity: 0.85; margin-bottom: 0.5em">
@@ -3109,10 +3105,10 @@ All changes trigger lazy data loading with simulated network delays.
     property_options: color_property_options,
     selected_property_key: color_key,
     data_loader: colorbar_data_loader,
-    on_property_change: handle_color_property_change,
+    on_property_change,
     color_scale_options,
     selected_color_scale_key: color_scale_key,
-    on_color_scale_change: handle_color_scale_change,
+    on_color_scale_change,
   }}
   style="height: 450px"
   legend={null}

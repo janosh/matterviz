@@ -59,6 +59,27 @@ export const set_input_value = async (input: Locator, value: string): Promise<vo
   }, value)
 }
 
+type CancelableKeydownInit = {
+  key: string
+  altKey?: boolean
+  ctrlKey?: boolean
+  metaKey?: boolean
+  shiftKey?: boolean
+}
+
+export const dispatch_cancelable_keydown = (
+  locator: Locator,
+  init: CancelableKeydownInit,
+): Promise<boolean> =>
+  locator.evaluate<boolean, CancelableKeydownInit>((element, event_init) => {
+    const event = new KeyboardEvent(`keydown`, {
+      ...event_init,
+      bubbles: true,
+      cancelable: true,
+    })
+    return element.dispatchEvent(event)
+  }, init)
+
 // Open a draggable pane via checkbox or toggle button
 export async function open_draggable_pane(
   page: Page,

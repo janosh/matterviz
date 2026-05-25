@@ -10,10 +10,8 @@ import {
 import { structures } from '$site/structures'
 import { describe, expect, test } from 'vitest'
 
-type StructureId = string
-
 const ref_data: Record<
-  StructureId,
+  string,
   {
     amounts: Record<string, number>
     density: number

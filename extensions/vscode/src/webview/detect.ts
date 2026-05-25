@@ -57,14 +57,13 @@ export const TYPE_COLORS: Record<RenderableType, string> = {
 // === Type Guards ===
 
 // Narrows unknown to a non-array object record; used by every type guard below
-function as_record(obj: unknown): Record<string, unknown> | null {
-  return obj && typeof obj === `object` && !Array.isArray(obj)
+const as_record = (obj: unknown): Record<string, unknown> | null =>
+  obj && typeof obj === `object` && !Array.isArray(obj)
     ? (obj as Record<string, unknown>)
     : null
-}
 
 // Check that `key` on `data` is an Array with exactly `len` elements (or any length if omitted)
-function has_array(data: Record<string, unknown>, key: string, len?: number): boolean {
+const has_array = (data: Record<string, unknown>, key: string, len?: number): boolean => {
   const val = data[key]
   return Array.isArray(val) && (len === undefined || val.length === len)
 }

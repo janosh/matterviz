@@ -164,15 +164,15 @@ export const format_bytes = (bytes?: number): string => {
 // Replace common fractional values with unicode glyphs (e.g. 1/2 → ½)
 export function format_fractional(value: number): string {
   if (!Number.isFinite(value)) return String(value)
-  const x = ((value % 1) + 1) % 1 // wrap into [0,1)
+  const wrapped_value = ((value % 1) + 1) % 1 // wrap into [0,1)
   const eps = 1e-3
   for (const [target, glyph] of FRACTION_GLYPHS) {
     if (target === 0) {
-      if (Math.abs(x - target) <= eps) return glyph
-    } else if (Math.abs(x - target) < eps) return glyph
+      if (Math.abs(wrapped_value - target) <= eps) return glyph
+    } else if (Math.abs(wrapped_value - target) < eps) return glyph
   }
   for (const [target, glyph] of FRACTION_GLYPHS) {
-    if (target !== 0 && Math.abs(1 - x - target) < eps) return glyph
+    if (target !== 0 && Math.abs(1 - wrapped_value - target) < eps) return glyph
   }
   return format_num(value, `.4~`)
 }

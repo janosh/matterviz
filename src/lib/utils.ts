@@ -32,6 +32,16 @@ export const normalize_unicode_minus = (value: string): string => value.replace(
 export const normalize_scientific_notation = (value: string): string =>
   normalize_unicode_minus(value).toLowerCase().replace(/d/g, `e`).replace(/\*\^/g, `e`)
 
+export function make_change_detector(): (value: unknown) => boolean {
+  const unset = Symbol()
+  let prev: unknown = unset
+  return (value: unknown) => {
+    const changed = prev !== unset && value !== prev
+    prev = value
+    return changed
+  }
+}
+
 // Decode a URL-safe base64 string (RFC 4648 §5) to its original text.
 // Converts `-` → `+`, `_` → `/`, restores padding, then decodes.
 // Returns undefined if decoding fails.

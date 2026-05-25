@@ -292,30 +292,33 @@ describe(`ToggleMenu`, () => {
       const checkboxes = () =>
         document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
       const checked = () => Array.from(checkboxes(), (checkbox) => checkbox.checked)
+      const wait_for_default_snapshot = async () => {
+        // Column replacement updates the bound prop first, then ToggleMenu snapshots defaults.
+        await tick()
+        await tick()
+      }
 
       expect(checked()).toEqual([true, false])
       expect(document.querySelector(`summary .reset-btn`)).toBeNull()
 
       document.querySelector<HTMLButtonElement>(`[data-testid="replace-columns"]`)?.click()
-      await tick()
-      await tick()
+      await wait_for_default_snapshot()
       expect(checked()).toEqual([false, true])
       expect(document.querySelector(`summary .reset-btn`)).toBeNull()
 
-      document
-        .querySelectorAll(`.toggle-label`)[0]
-        .dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+      ;(document.querySelectorAll(`.toggle-label`)[0] as HTMLElement).click()
       await tick()
       expect(checkboxes()[0].checked).toBe(true)
-      ;(document.querySelector(`summary .reset-btn`) as HTMLElement).click()
+      const reset_btn = document.querySelector(`summary .reset-btn`)
+      expect(reset_btn).toBeInstanceOf(HTMLElement)
+      ;(reset_btn as HTMLElement).click()
       await tick()
       expect(checked()).toEqual([false, true])
 
       document
         .querySelector<HTMLButtonElement>(`[data-testid="replace-columns-again"]`)
         ?.click()
-      await tick()
-      await tick()
+      await wait_for_default_snapshot()
       expect(checked()).toEqual([true, true])
       expect(document.querySelector(`summary .reset-btn`)).toBeNull()
     })

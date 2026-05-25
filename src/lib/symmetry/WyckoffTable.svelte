@@ -24,6 +24,13 @@
     `${wyckoff_pos.wyckoff}-${wyckoff_pos.elem}-${
       wyckoff_pos.site_indices?.join(`,`) ?? `none`
     }-${row_idx}`
+  $effect(() => {
+    if (!selected_key || wyckoff_positions?.some((pos, idx) => get_row_key(pos, idx) === selected_key)) {
+      return
+    }
+    selected_key = null
+    on_click?.(null)
+  })
 </script>
 
 {#if wyckoff_positions && wyckoff_positions.length > 0}

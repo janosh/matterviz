@@ -77,12 +77,11 @@ function classify_column(values: unknown[]): ColumnInfo {
 }
 
 // Extract column keys of a given type from a column map
-export function col_keys(
+export const col_keys = (
   columns: Map<string, ColumnInfo>,
   type: ColumnInfo[`type`],
-): string[] {
-  return [...columns.entries()].filter(([, col]) => col.type === type).map(([key]) => key)
-}
+): string[] =>
+  [...columns.entries()].filter(([, col]) => col.type === type).map(([key]) => key)
 
 // Well-known column name patterns for heuristic axis assignment
 const X_NAMES = new Set([`x`, `time`, `step`, `index`, `iteration`, `frame`, `epoch`])

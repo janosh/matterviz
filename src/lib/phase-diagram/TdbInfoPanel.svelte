@@ -63,9 +63,9 @@
         {/if}
       </p>
     {:else}
-      {@const elems = result.data.elements.map((e) => e.symbol).filter((s) =>
-      s !== `VA` && s !== `/-`
-    )}
+      {@const elems = result.data.elements
+        .map((element) => element.symbol)
+        .filter((symbol) => symbol !== `VA` && symbol !== `/-`)}
       {@const [el_a, el_b] = [elems[0] ?? `EL1`, elems[1] ?? `EL2`]}
       {@const tdb = system_name || `your_system`}
       <div class="notice warning">

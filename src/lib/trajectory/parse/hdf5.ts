@@ -43,7 +43,7 @@ export async function parse_torch_sim_hdf5(
           const item = parent.get(name)
           const full_path = path ? `${path}/${name}` : `/${name}`
           if (names.includes(name) && is_hdf5_dataset(item)) {
-            const found_name = names.find((n) => n === name)
+            const found_name = names.find((dataset_name) => dataset_name === name)
             if (found_name) found_paths[found_name] = full_path
             return item
           }

@@ -17,7 +17,7 @@
     clip_path_id,
     x_scale_fn,
     y_scale_fn,
-    hovered_region = null,
+    is_hovered = false,
     on_click,
     on_hover,
     tween_options,
@@ -28,7 +28,7 @@
     clip_path_id: string
     x_scale_fn: ((x: number) => number) & { invert?: (y: number) => number | Date }
     y_scale_fn: ((y: number) => number) & { invert?: (y: number) => number }
-    hovered_region?: number | null
+    is_hovered?: boolean
     on_click?: (event: FillHandlerEvent) => void
     on_hover?: (event: FillHandlerEvent | null) => void
     tween_options?: TweenOptions<string>
@@ -40,8 +40,6 @@
     `fill-gradient-${region.id ?? region_idx}-${instance_id}`,
   )
 
-  // Effective styling based on hover state
-  let is_hovered = $derived(hovered_region === region_idx)
   let effective_opacity = $derived(
     is_hovered && region.hover_style?.fill_opacity != null
       ? region.hover_style.fill_opacity

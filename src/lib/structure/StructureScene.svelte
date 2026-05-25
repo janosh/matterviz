@@ -459,9 +459,8 @@
       canonical_bond_target(rendered_target)
   }
 
-  function is_image_bond_site(site_idx: number): boolean {
-    return structure?.sites?.[site_idx]?.properties?.orig_site_idx != null
-  }
+  const is_image_bond_site = (site_idx: number): boolean =>
+    structure?.sites?.[site_idx]?.properties?.orig_site_idx != null
 
   const can_select_bond_site = (site_idx: number): boolean =>
     bond_edits_enabled && structure?.sites?.[site_idx] != null
@@ -560,11 +559,11 @@
     if (length_sq <= math.EPS) return null
 
     const hit_vec = event.point.clone().sub(world_pos_1)
-    const t = hit_vec.dot(bond_vec) / length_sq
-    if (t <= BOND_ENDPOINT_HIT_FRACTION) {
+    const bond_fraction = hit_vec.dot(bond_vec) / length_sq
+    if (bond_fraction <= BOND_ENDPOINT_HIT_FRACTION) {
       return get_bond_endpoint_site_idx(bond.site_idx_1, world_pos_1, parent)
     }
-    if (t >= 1 - BOND_ENDPOINT_HIT_FRACTION) {
+    if (bond_fraction >= 1 - BOND_ENDPOINT_HIT_FRACTION) {
       return get_bond_endpoint_site_idx(bond.site_idx_2, world_pos_2, parent)
     }
     return null
@@ -1934,13 +1933,13 @@
         {@const bond_neighbors = (() => {
           if (hovered_idx == null || !structure?.sites) return []
           return filtered_bond_pairs
-            .filter((b) =>
-              b.site_idx_1 === hovered_idx || b.site_idx_2 === hovered_idx
+            .filter((bond) =>
+              bond.site_idx_1 === hovered_idx || bond.site_idx_2 === hovered_idx
             )
-            .map((b) => {
-              const neighbor_idx = b.site_idx_1 === hovered_idx
-                ? b.site_idx_2
-                : b.site_idx_1
+            .map((bond) => {
+              const neighbor_idx = bond.site_idx_1 === hovered_idx
+                ? bond.site_idx_2
+                : bond.site_idx_1
               return structure.sites[neighbor_idx]?.species[0]?.element ?? `?`
             })
         })()}

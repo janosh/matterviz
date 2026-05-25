@@ -121,7 +121,7 @@ test.describe(`Histogram Component Tests`, () => {
     ]
 
     for (const { control, label, values } of controls) {
-      let previous_bar_count = await get_bar_count(histogram)
+      let prev_bar_count = await get_bar_count(histogram)
       for (const value of values) {
         await set_range_value_in_section(page, `basic-single-series-section`, label, value)
         const bar_count = await get_bar_count(histogram)
@@ -129,9 +129,9 @@ test.describe(`Histogram Component Tests`, () => {
 
         // For bin count changes, verify it affects the histogram
         if (control === `bin count` && value !== values[0]) {
-          expect(bar_count).not.toBe(previous_bar_count)
+          expect(bar_count).not.toBe(prev_bar_count)
         }
-        previous_bar_count = bar_count
+        prev_bar_count = bar_count
       }
     }
   })

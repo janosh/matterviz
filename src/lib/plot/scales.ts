@@ -169,7 +169,7 @@ export function generate_arcsinh_ticks(
 
   // Add positive ticks
   const pos_ticks = generate_positive_arcsinh_ticks(0, hi, safe_threshold, half_count)
-  ticks.push(...pos_ticks.filter((t) => t > 0))
+  ticks.push(...pos_ticks.filter((tick) => tick > 0))
 
   // Add negative ticks (mirror of positive)
   const neg_ticks = generate_positive_arcsinh_ticks(0, -lo, safe_threshold, half_count)
@@ -275,11 +275,10 @@ export function create_scale(
 }
 
 // Create a time scale for time-based data
-export function create_time_scale(domain: [number, number], output_range: [number, number]) {
-  return scaleTime()
+export const create_time_scale = (domain: [number, number], output_range: [number, number]) =>
+  scaleTime()
     .domain([new Date(domain[0]), new Date(domain[1])])
     .range(output_range)
-}
 
 // Unified tick generation function
 export function generate_ticks(

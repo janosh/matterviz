@@ -174,7 +174,7 @@
             step="25"
             value={Math.round(zoom_level * 100)}
             oninput={(event) => {
-              const pct = Number((event.target as HTMLInputElement).value)
+              const pct = Number(event.currentTarget.value)
               if (pct >= 25 && pct <= 500) zoom_level = pct / 100
             }}
           />%

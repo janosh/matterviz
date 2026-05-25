@@ -193,7 +193,7 @@ export function get_trajectory_stats(trajectory: TrajectoryType): Record<string,
           })()
 
     const counts = sampled.map((frame) => frame.structure.sites.length)
-    const constant = counts.every((c) => c === counts[0])
+    const constant = counts.every((count) => count === counts[0])
     const all_counts = constant
       ? [first_frame.structure.sites.length]
       : frames.map((frame) => frame.structure.sites.length)

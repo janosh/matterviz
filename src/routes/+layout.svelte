@@ -57,9 +57,8 @@
     .concat(element_data.map(({ name }) => `/${name.toLowerCase()}`))
     .map((name) => ({ label: name, action: () => goto(name) }))
 
-  function route_path(route_entry: RouteEntry): string {
-    return typeof route_entry === `string` ? route_entry : route_entry[0]
-  }
+  const route_path = (route_entry: RouteEntry): string =>
+    typeof route_entry === `string` ? route_entry : route_entry[0]
 
   const nav_routes = $derived.by(() => {
     return demo_routes.filter((route_entry) => {

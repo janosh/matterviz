@@ -46,9 +46,7 @@ export const WAVELENGTHS = {
 export type RadiationKey = keyof typeof WAVELENGTHS
 
 // Type guard to safely check if a string is a valid RadiationKey
-function is_radiation_key(key: string): key is RadiationKey {
-  return key in WAVELENGTHS
-}
+const is_radiation_key = (key: string): key is RadiationKey => key in WAVELENGTHS
 
 // Tolerances from pymatgen.analysis.diffraction.core
 const TWO_THETA_TOL = 1e-5

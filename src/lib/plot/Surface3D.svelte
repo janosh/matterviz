@@ -22,13 +22,11 @@
   } = $props()
 
   // Normalize value to scene coordinates (centered around 0)
-  function normalize(
+  const normalize = (
     value: number,
     [min_val, max_val]: [number, number],
     scene_size: number,
-  ): number {
-    return ((value - min_val) / (max_val - min_val || 1) - 0.5) * scene_size
-  }
+  ): number => ((value - min_val) / (max_val - min_val || 1) - 0.5) * scene_size
 
   // Parse color to THREE.Color with fallback
   function parse_color(color: string): THREE.Color {
@@ -98,11 +96,10 @@
   }
 
   // Parse resolution config into [res_a, res_b]
-  function get_resolution(): [number, number] {
-    return Array.isArray(config.resolution)
+  const get_resolution = (): [number, number] =>
+    Array.isArray(config.resolution)
       ? config.resolution
       : [config.resolution ?? 20, config.resolution ?? 20]
-  }
 
   function create_geometry(): THREE.BufferGeometry | null {
     const [res_a, res_b] = get_resolution()

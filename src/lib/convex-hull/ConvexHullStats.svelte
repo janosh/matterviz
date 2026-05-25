@@ -19,6 +19,8 @@
     phase_stats,
     stable_entries,
     unstable_entries,
+    show_stable = true,
+    show_unstable = true,
     layout = `toggle`,
     on_entry_click,
     highlighted_entry_id,
@@ -31,6 +33,8 @@
       phase_stats: PhaseStats | null
       stable_entries: ConvexHullEntry[]
       unstable_entries: ConvexHullEntry[]
+      show_stable?: boolean
+      show_unstable?: boolean
       // 'toggle' shows stats/table with toggle buttons (default)
       // 'side-by-side' shows both stats and table next to each other without toggle
       layout?: `toggle` | `side-by-side`
@@ -82,6 +86,10 @@
 
   // Shared concatenation of stable + unstable for histograms
   let all_entries = $derived([...stable_entries, ...unstable_entries])
+  let shown_entries = $derived([
+    ...(show_stable ? stable_entries : []),
+    ...(show_unstable ? unstable_entries : []),
+  ])
 
   // Static arity labels for phase breakdown display
   const arity_types: [string, PhaseArityField, number][] = [
@@ -222,8 +230,7 @@
 
   // Table view: visible entries filtered by min element count and formula
   let visible_entries = $derived(
-    all_entries.filter((entry) => {
-      if (!entry.visible) return false
+    shown_entries.filter((entry) => {
       if (min_n_elements > 1 && get_arity(entry) < min_n_elements) return false
       if (
         active_formula_filter &&
