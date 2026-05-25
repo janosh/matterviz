@@ -252,11 +252,11 @@
     ) => {
       if (!Array.isArray(value)) return []
 
-      return value.map((v) => {
+      return value.map((val) => {
         // If it's already a color string, return it directly
-        if (is_color(v)) return v as string
+        if (is_color(val)) return val as string
         // Otherwise, map it through the color scale
-        return bg_color(v as number, element)
+        return bg_color(val as number, element)
       })
     },
   )
@@ -267,9 +267,9 @@
 
     const num_vals = heat_values
       .flat()
-      .filter((v): v is number => typeof v === `number`)
+      .filter((val): val is number => typeof val === `number`)
 
-    const usable_values = log ? num_vals.filter((v) => v > 0) : num_vals
+    const usable_values = log ? num_vals.filter((val) => val > 0) : num_vals
 
     return usable_values.length > 0
   })
@@ -280,8 +280,8 @@
 
     const numeric_values = heat_values
       .flat()
-      .filter((v): v is number => typeof v === `number`)
-    const usable_values = log ? numeric_values.filter((v) => v > 0) : numeric_values
+      .filter((val): val is number => typeof val === `number`)
+    const usable_values = log ? numeric_values.filter((val) => val > 0) : numeric_values
 
     if (usable_values.length === 0) return [0, 1]
 

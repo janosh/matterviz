@@ -98,10 +98,10 @@ export type PhaseColorKey = keyof typeof PHASE_COLOR_HEX
 export const PHASE_COLOR_RGB = Object.freeze(
   Object.fromEntries(
     Object.entries(PHASE_COLOR_HEX).map(([key, hex]) => {
-      const r = parseInt(hex.slice(1, 3), 16)
-      const g = parseInt(hex.slice(3, 5), 16)
-      const b = parseInt(hex.slice(5, 7), 16)
-      return [key, `${r}, ${g}, ${b}`]
+      const red = parseInt(hex.slice(1, 3), 16)
+      const green = parseInt(hex.slice(3, 5), 16)
+      const blue = parseInt(hex.slice(5, 7), 16)
+      return [key, `${red}, ${green}, ${blue}`]
     }),
   ),
 ) as Record<PhaseColorKey, string>
@@ -139,7 +139,7 @@ export function get_phase_color_key(name: string): PhaseColorKey {
   const lower = name.toLowerCase().trim()
   if (lower === `l`) return `liquid` // exact match for shorthand "L"
   for (const [patterns, key, prefix] of PHASE_PATTERNS) {
-    if (patterns.some((p) => lower.includes(p))) return key
+    if (patterns.some((pattern) => lower.includes(pattern))) return key
     if (prefix && lower.startsWith(prefix)) return key
   }
   return `default`
@@ -164,7 +164,7 @@ export function get_multi_phase_gradient(name: string): GradientStop[] | null {
   if (!name.includes(`+`)) return null
   const phases = name
     .split(`+`)
-    .map((s) => s.trim())
+    .map((phase) => phase.trim())
     .filter(Boolean)
   if (phases.length < 2) return null
 
@@ -193,8 +193,8 @@ export function find_phase_at_point(
 
 // SVG path generator using d3-shape
 const path_line = line()
-  .x((d) => d[0])
-  .y((d) => d[1])
+  .x((point) => point[0])
+  .y((point) => point[1])
 
 // Generate closed SVG path for polygon regions (min 3 points)
 export const generate_region_path = (vertices: Vec2[]): string =>

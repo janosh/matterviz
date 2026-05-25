@@ -1439,7 +1439,7 @@
         properties: {},
       }],
     }
-    show_toast(`Added ${elem} at (${xyz.map((c) => c.toFixed(2)).join(`, `)})`)
+    show_toast(`Added ${elem} at (${xyz.map((coord) => coord.toFixed(2)).join(`, `)})`)
   }
 
   // Only set background override when background_color is explicitly provided

@@ -32,7 +32,9 @@ export function group_demo_routes(demos: string[]): RouteEntry[] {
       // Top-level route
       const parent = route
       // Check if this route has children
-      const has_children = demos.some((r) => r.startsWith(`${route}/`) && r !== route)
+      const has_children = demos.some(
+        (demo_route) => demo_route.startsWith(`${route}/`) && demo_route !== route,
+      )
       if (has_children) {
         // Include the parent route itself as the first child
         if (!grouped.has(parent)) {

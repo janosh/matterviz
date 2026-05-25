@@ -124,7 +124,7 @@
       <button
         class:active={selected.includes(key)}
         onclick={() => (selected = selected.includes(key)
-        ? selected.filter((k) => k !== key)
+        ? selected.filter((selected_key) => selected_key !== key)
         : [...selected, key])}
         style:background={selected.includes(key) ? `${PLOT_COLORS[idx]}20` : null}
       >

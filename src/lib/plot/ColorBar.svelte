@@ -168,7 +168,7 @@
   let ticks_array: number[] = $derived.by(() => {
     if (Array.isArray(tick_labels)) {
       // Use user-provided ticks directly
-      return tick_labels.map(Number).filter((n) => !isNaN(n))
+      return tick_labels.map(Number).filter((num) => !isNaN(num))
     }
 
     // Handle edge cases for number of ticks
@@ -230,8 +230,8 @@
         const log_min = Math.log10(scale_min)
         const log_max = Math.log10(scale_max)
         return [...Array(n_ticks).keys()].map((idx) => {
-          const t = idx / (n_ticks - 1)
-          const log_val = log_min + t * (log_max - log_min)
+          const fraction = idx / (n_ticks - 1)
+          const log_val = log_min + fraction * (log_max - log_min)
           return Math.pow(10, log_val)
         })
       }
@@ -241,8 +241,8 @@
       else {
         // Generate exactly n_ticks evenly spaced linear ticks
         return [...Array(n_ticks).keys()].map((idx) => {
-          const t = idx / (n_ticks - 1)
-          return scale_min + t * (scale_max - scale_min)
+          const fraction = idx / (n_ticks - 1)
+          return scale_min + fraction * (scale_max - scale_min)
         })
       }
     }
@@ -374,19 +374,19 @@
     }
 
     return [...Array(n_steps).keys()].map((_, idx) => {
-      const t = idx / (n_steps - 1) // Normalized position 0 to 1
+      const fraction = idx / (n_steps - 1) // Normalized position 0 to 1
       let data_value: number
 
       if (use_log_interp) {
         data_value = log_span === 0
           ? adjusted_min_ramp
-          : Math.pow(10, log_min + t * log_span)
+          : Math.pow(10, log_min + fraction * log_span)
       } else if (type_name === `arcsinh`) {
         data_value = asinh_span === 0
           ? min_ramp_domain
-          : Math.sinh(asinh_min + t * asinh_span) * asinh_threshold
+          : Math.sinh(asinh_min + fraction * asinh_span) * asinh_threshold
       } else {
-        data_value = min_ramp_domain + t * linear_span
+        data_value = min_ramp_domain + fraction * linear_span
       }
       return actual_color_scale_fn(data_value) ?? `transparent`
     })

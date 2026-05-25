@@ -561,7 +561,7 @@ export function parse_fermi_file(
   // FRMSF format detection (starts with grid dimensions)
   const first_line = trimmed.split(/\r?\n/)[0]
   const first_tokens = first_line.split(/\s+/).filter(Boolean)
-  if (first_tokens.length === 3 && first_tokens.every((t) => /^\d+$/.test(t))) {
+  if (first_tokens.length === 3 && first_tokens.every((token) => /^\d+$/.test(token))) {
     try {
       return parse_frmsf(content)
     } catch (error) {

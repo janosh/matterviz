@@ -304,8 +304,10 @@
       if (step_labels > 0) {
         return scaleLinear().domain([0, total_frames - 1]).nice()
           .ticks(Math.min(step_labels, total_frames))
-          .map((t) => Math.round(t))
-          .filter((t, i, arr) => t >= 0 && t < total_frames && arr.indexOf(t) === i)
+          .map((tick) => Math.round(tick))
+          .filter((tick, idx, ticks) =>
+            tick >= 0 && tick < total_frames && ticks.indexOf(tick) === idx
+          )
       }
       if (step_labels < 0) {
         const spacing = Math.abs(step_labels)

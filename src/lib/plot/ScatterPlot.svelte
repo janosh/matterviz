@@ -2725,7 +2725,7 @@
           // Only fill_regions can be toggled (error_bands are not bindable)
           if (source_type !== `fill_region`) return
           // Toggle: if only this fill is visible, show all; otherwise show only this one
-          const visible_count = fill_regions.filter((r) => r.visible !== false).length
+          const visible_count = fill_regions.filter((region) => region.visible !== false).length
           const this_visible = fill_regions[source_idx]?.visible !== false
           if (visible_count === 1 && this_visible) {
             // Show all fills

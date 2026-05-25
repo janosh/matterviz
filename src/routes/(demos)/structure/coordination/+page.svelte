@@ -44,7 +44,7 @@
 
   function toggle_select(id: string) {
     selected_ids = selected_ids.includes(id)
-      ? selected_ids.filter((x) => x !== id)
+      ? selected_ids.filter((selected_id) => selected_id !== id)
       : [...selected_ids, id]
   }
 

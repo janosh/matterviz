@@ -169,7 +169,7 @@ export function generate_arcsinh_ticks(
 
   // Add positive ticks
   const pos_ticks = generate_positive_arcsinh_ticks(0, hi, safe_threshold, half_count)
-  ticks.push(...pos_ticks.filter((t) => t > 0))
+  ticks.push(...pos_ticks.filter((tick) => tick > 0))
 
   // Add negative ticks (mirror of positive)
   const neg_ticks = generate_positive_arcsinh_ticks(0, -lo, safe_threshold, half_count)

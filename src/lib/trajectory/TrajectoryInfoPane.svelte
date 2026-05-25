@@ -260,7 +260,7 @@
           { structure },
         ) => (`lattice` in structure && structure.lattice?.volume))
           .filter(is_valid_number)
-          .filter((v) => v > 0)
+          .filter((volume) => volume > 0)
 
         if (volumes.length > 1) {
           const vol_change = (Math.max(...volumes) - Math.min(...volumes)) /

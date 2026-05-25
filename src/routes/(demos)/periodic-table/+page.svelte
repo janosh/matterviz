@@ -22,7 +22,9 @@
   }
 
   let atomic_radius_range = $derived([
-    Math.min(...element_data.map((el) => el.atomic_radius || 0).filter((r) => r > 0)),
+    Math.min(
+      ...element_data.map((el) => el.atomic_radius || 0).filter((radius) => radius > 0),
+    ),
     Math.max(...element_data.map((el) => el.atomic_radius || 0)),
   ] as Vec2)
   let electronegativity_range = $derived([
@@ -36,7 +38,7 @@
 
   let covalent_radius_range = $derived([
     Math.min(
-      ...element_data.map((el) => el.covalent_radius || 0).filter((r) => r > 0),
+      ...element_data.map((el) => el.covalent_radius || 0).filter((radius) => radius > 0),
     ),
     Math.max(...element_data.map((el) => el.covalent_radius || 0)),
   ] as Vec2)

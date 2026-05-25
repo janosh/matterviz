@@ -47,9 +47,9 @@
   function calc_auto_range(values: number[]): [number, number] {
     if (values.length === 0) return [0, 1]
     let [min_val, max_val] = [values[0], values[0]]
-    for (const v of values) {
-      if (v < min_val) min_val = v
-      else if (v > max_val) max_val = v
+    for (const val of values) {
+      if (val < min_val) min_val = val
+      else if (val > max_val) max_val = val
     }
     const padding = (max_val - min_val) * 0.05 || 0.5
     return [min_val - padding, max_val + padding]

@@ -22,7 +22,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
       line
         .trim()
         .split(/\s+/)
-        .map((x) => parseFloat(x) * scale),
+        .map((component) => parseFloat(component) * scale),
     ),
   )
 

@@ -420,7 +420,11 @@
         label_font_size: bbox_diagonal(padded),
       })
     }
-    const fonts = scale_to_font_range(result.map((d) => d.label_font_size), 9, 15)
+    const fonts = scale_to_font_range(
+      result.map((render_domain) => render_domain.label_font_size),
+      9,
+      15,
+    )
     for (let idx = 0; idx < result.length; idx++) result[idx].label_font_size = fonts[idx]
     return result
   })
@@ -791,8 +795,8 @@
       // Compute edges in swizzled (Three.js) coords since ConvexGeometry works there
       const swizzled = domain.points_3d.map((point) => to_render_xyz(point))
       for (const [pa, pb] of get_domain_edges(swizzled)) {
-        const ka = pa.map((v) => v.toFixed(4)).join(`,`)
-        const kb = pb.map((v) => v.toFixed(4)).join(`,`)
+        const ka = pa.map((coord) => coord.toFixed(4)).join(`,`)
+        const kb = pb.map((coord) => coord.toFixed(4)).join(`,`)
         const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -892,17 +896,17 @@
 
     // Domain vertex centroids in render coords (swizzled + axis stretch), matching hull_base_geometry.
     const centroids = render_domains
-      .filter((d) => !d.is_draw_formula && d.points_3d.length > 0)
-      .map((d) => {
+      .filter((domain) => !domain.is_draw_formula && domain.points_3d.length > 0)
+      .map((domain) => {
         let sx = 0, sy = 0, sz = 0
-        for (const pt of d.points_3d) {
+        for (const pt of domain.points_3d) {
           const [x_val, y_val, z_val] = to_render_xyz(pt)
           sx += x_val
           sy += y_val
           sz += z_val
         }
-        const n = d.points_3d.length
-        return { formula: d.formula, cx: sx / n, cy: sy / n, cz: sz / n }
+        const n_points = domain.points_3d.length
+        return { formula: domain.formula, cx: sx / n_points, cy: sy / n_points, cz: sz / n_points }
       })
 
     // Assign each face to the nearest domain centroid
@@ -1241,7 +1245,7 @@
     if (unique_points.length === 3) {
       const geom = new THREE.BufferGeometry()
       const vectors = unique_points.map((pt) => to_vec3(pt))
-      const verts = new Float32Array(vectors.flatMap((v) => [v.x, v.y, v.z]))
+      const verts = new Float32Array(vectors.flatMap((vec) => [vec.x, vec.y, vec.z]))
       geom.setAttribute(`position`, new THREE.Float32BufferAttribute(verts, 3))
       geom.setIndex([0, 1, 2, 2, 1, 0]) // both winding orders for double-sided pick
       geom.computeVertexNormals()
@@ -1385,7 +1389,7 @@
 
   // Bounding box of all data points in DATA coordinates (before swizzle)
   const raw_data_bbox = $derived.by(() => {
-    const pts = render_domains.flatMap((d) => d.points_3d)
+    const pts = render_domains.flatMap((domain) => domain.points_3d)
     if (pts.length === 0) return { mins: [0, 0, 0], maxs: [1, 1, 1] }
     const mins = [Infinity, Infinity, Infinity]
     const maxs = [-Infinity, -Infinity, -Infinity]

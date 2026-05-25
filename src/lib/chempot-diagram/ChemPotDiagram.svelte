@@ -233,9 +233,9 @@ const is_hover_info_3d = (value: ChemPotHoverInfo | null): value is ChemPotHover
             <h5>Neighbors ({hover_info.neighbors.length})</h5>
             <p>
               {
-                hover_info.neighbors.map((f) => get_electro_neg_formula(f, true, ``, `.3~s`)).join(
-                  `, `,
-                )
+                hover_info.neighbors.map((formula) =>
+                  get_electro_neg_formula(formula, true, ``, `.3~s`)
+                ).join(`, `)
               }
             </p>
           {/if}

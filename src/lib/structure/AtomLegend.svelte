@@ -111,7 +111,9 @@
     if (typeof val === `string` && val.includes(`|`)) { // Format Wyckoff orbit IDs
       const [wyckoff, element] = val.split(`|`, 2)
       // Count how many sites have this wyckoff+element combination
-      const count = property_colors?.values.filter((v) => v === val).length ?? 0
+      const count = property_colors?.values.filter((property_value) =>
+        property_value === val
+      ).length ?? 0
       return `${element}:${count}${wyckoff}`
     }
     return String(val)

@@ -7,7 +7,7 @@
 
   // Format: compact "001" for single-digit, spaced "10 0 1" for multi-digit
   let hkl_text = $derived(
-    value.every((v) => Math.abs(v) < 10) ? value.join(``) : value.join(` `),
+    value.every((component) => Math.abs(component) < 10) ? value.join(``) : value.join(` `),
   )
 
   // Parse hkl string: supports compact "001"/"-101" and spaced/comma "10, 0, 1"
@@ -16,7 +16,7 @@
     const spaced = input.trim().split(/[,\s]+/)
     if (spaced.length === 3) {
       const nums = spaced.map(Number)
-      if (nums.every((n) => !isNaN(n))) return nums as Vec3
+      if (nums.every((num) => !isNaN(num))) return nums as Vec3
     }
     // Fall back to compact single-digit format: "001", "-101"
     const compact = input.replace(/\s+/g, ``)

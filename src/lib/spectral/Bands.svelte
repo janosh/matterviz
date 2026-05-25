@@ -883,7 +883,7 @@
       {/each}
 
       <!-- Symmetry point vertical lines (filter NaN from scale) -->
-      {#each Object.keys(x_axis_ticks).map(Number).map((x) => x_scale_fn(x)).filter(
+      {#each Object.keys(x_axis_ticks).map(Number).map((tick) => x_scale_fn(tick)).filter(
       Number.isFinite,
     ) as
         scaled_x
