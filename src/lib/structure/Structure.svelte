@@ -1163,14 +1163,14 @@
       const plain = !event.ctrlKey && !event.metaKey && !event.altKey
       if (event.ctrlKey || event.metaKey) {
         if (key === `z` && !event.shiftKey) {
-          event.preventDefault()
           if (bond_undo_stack.length === 0) return
+          event.preventDefault()
           undo_bond_edit()
           show_toast(`Undo bond edit (${bond_undo_stack.length} left)`)
           return
         } else if (key === `y` || (key === `z` && event.shiftKey)) {
-          event.preventDefault()
           if (bond_redo_stack.length === 0) return
+          event.preventDefault()
           redo_bond_edit()
           show_toast(`Redo bond edit (${bond_redo_stack.length} left)`)
           return
@@ -1199,11 +1199,13 @@
       if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase()
         if (key === `z` && !event.shiftKey) {
+          if (undo_stack.length === 0) return
           event.preventDefault()
           undo()
           show_toast(`Undo (${undo_stack.length} left)`)
           return
         } else if (key === `y` || (key === `z` && event.shiftKey)) {
+          if (redo_stack.length === 0) return
           event.preventDefault()
           redo()
           show_toast(`Redo (${redo_stack.length} left)`)

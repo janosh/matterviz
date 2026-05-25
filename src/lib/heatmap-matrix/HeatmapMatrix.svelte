@@ -1098,7 +1098,10 @@
     last_selected_cell = null
     brush_start = null
     brush_end = null
+    last_hover_x = -1
+    last_hover_y = -1
     tooltip_cell = null
+    tooltip_div?.classList.remove(`visible`)
   })
 
   onMount(() => {

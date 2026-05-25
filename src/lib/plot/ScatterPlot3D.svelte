@@ -187,7 +187,7 @@
   })
   let series_visibility = $derived(
     series.map((srs, idx) =>
-      visibility_overrides.get(series_visibility_keys[idx]) ?? srs?.visible ?? true
+      visibility_overrides.get(series_visibility_keys[idx]) ?? srs.visible ?? true
     ),
   )
 

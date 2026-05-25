@@ -1,5 +1,10 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { expect_canvas_changed, IS_CI, wait_for_3d_canvas } from '../helpers'
+import {
+  dispatch_cancelable_keydown,
+  expect_canvas_changed,
+  IS_CI,
+  wait_for_3d_canvas,
+} from '../helpers'
 
 // Get non-white pixel count to detect if content is rendered.
 function count_non_white_pixels(buffer: Uint8Array): number {
@@ -533,9 +538,17 @@ test.describe(`Bond component`, () => {
     await dispatch_two_atom_bond_structure(page, 1)
     const canvas = await wait_for_3d_canvas(page, `#test-structure`)
     await page.locator(`[data-testid="btn-set-edit-bonds"]`).click()
-    await page.locator(`#test-structure`).getByRole(`button`, { name: `Add` }).focus()
+    const structure_div = page.locator(`#test-structure`)
+    await structure_div.getByRole(`button`, { name: `Add` }).focus()
     await page.keyboard.press(`d`)
     await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`delete`)
+    for (const init of [
+      { key: `z`, ctrlKey: true },
+      { key: `y`, ctrlKey: true },
+      { key: `z`, ctrlKey: true, shiftKey: true },
+    ]) {
+      await expect(dispatch_cancelable_keydown(structure_div, init)).resolves.toBe(true)
+    }
     await page.keyboard.press(`a`)
     await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`add`)
     const order_select = page.locator(`#test-structure .bond-edit-toolbar select`)
@@ -543,7 +556,7 @@ test.describe(`Bond component`, () => {
     await page.keyboard.press(`d`)
     await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`add`)
     await expect(order_select).toBeEnabled()
-    await page.locator(`#test-structure`).getByRole(`button`, { name: `Add` }).focus()
+    await structure_div.getByRole(`button`, { name: `Add` }).focus()
     await page.keyboard.press(`d`)
 
     await click_canvas_center(page, canvas)
