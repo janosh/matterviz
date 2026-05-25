@@ -910,7 +910,7 @@ describe(`JsonTree`, () => {
     await tick()
     expect(search_input.value).toBe(`findme`)
 
-    document.querySelector<HTMLButtonElement>(`[data-testid="replace-json"]`)?.click()
+    doc_query(`[data-testid="replace-json"]`).click()
     flushSync()
     await tick()
     expect(search_input.value).toBe(`findme`)
@@ -922,7 +922,7 @@ describe(`JsonTree`, () => {
     await tick()
     expect(document.querySelector(`[data-testid="collapsed-count"]`)?.textContent).toBe(`1`)
 
-    document.querySelector<HTMLButtonElement>(`[data-testid="replace-flat-json"]`)?.click()
+    doc_query(`[data-testid="replace-flat-json"]`).click()
     flushSync()
     await tick()
     expect(document.querySelector(`[data-testid="collapsed-count"]`)?.textContent).toBe(`0`)

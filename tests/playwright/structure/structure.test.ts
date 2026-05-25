@@ -3067,10 +3067,14 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
+    const is_mac = await page.evaluate(
+      () => navigator.platform.toUpperCase().indexOf(`MAC`) >= 0,
+    )
+    const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
     for (const init of [
-      { key: `z`, ctrlKey: true },
-      { key: `y`, ctrlKey: true },
-      { key: `z`, ctrlKey: true, shiftKey: true },
+      { key: `z`, [primary_modifier]: true },
+      { key: `y`, [primary_modifier]: true },
+      { key: `z`, [primary_modifier]: true, shiftKey: true },
     ]) {
       await expect(dispatch_cancelable_keydown(structure_div, init)).resolves.toBe(true)
     }

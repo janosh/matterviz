@@ -1103,7 +1103,7 @@
   let canvas_dims = $state({ width: 600, height: 600, scale: 1 })
   const formation_energy_min = $derived.by(() => {
     let min_energy = 0
-    for (const entry of plot_entries) {
+    for (const entry of all_enriched_entries) {
       min_energy = Math.min(min_energy, entry.e_form_per_atom ?? 0)
     }
     return min_energy

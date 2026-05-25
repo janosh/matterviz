@@ -164,28 +164,42 @@ describe(`ScatterPlot3D smoke tests`, () => {
   test.each([
     {
       name: `no-id replacement resets visibility`,
-      use_explicit_ids: false,
+      id_mode: `none` as const,
+      expected_after_click: [true, false],
       expected_after_replacement: [false, false],
     },
     {
       name: `stable-id replacement preserves visibility`,
-      use_explicit_ids: true,
+      id_mode: `unique` as const,
+      expected_after_click: [true, false],
       expected_after_replacement: [true, false],
     },
-  ])(`$name`, async ({ use_explicit_ids, expected_after_replacement }) => {
+    {
+      name: `duplicate-id visibility does not leak between series`,
+      id_mode: `duplicate` as const,
+      expected_after_click: [true, false],
+      expected_after_replacement: [true, false],
+    },
+    {
+      name: `duplicate-id key cannot collide with a real id`,
+      id_mode: `duplicate_collision` as const,
+      expected_after_click: [true, false, false],
+      expected_after_replacement: [true, false, false],
+    },
+  ])(`$name`, async ({ id_mode, expected_after_click, expected_after_replacement }) => {
     mounted_component = mount(ScatterPlot3DHarness, {
       target: container,
-      props: { use_explicit_ids },
+      props: { id_mode },
     })
     await tick()
     const legend_items = () => container.querySelectorAll<HTMLElement>(`.legend-item`)
     const hidden_states = () =>
       Array.from(legend_items(), (item) => item.classList.contains(`hidden`))
 
-    expect(legend_items()).toHaveLength(2)
+    expect(legend_items()).toHaveLength(expected_after_click.length)
     legend_items()[0].click()
     flushSync()
-    expect(hidden_states()).toEqual([true, false])
+    expect(hidden_states()).toEqual(expected_after_click)
 
     container.querySelector<HTMLButtonElement>(`[data-testid="replace-series"]`)?.click()
     flushSync()

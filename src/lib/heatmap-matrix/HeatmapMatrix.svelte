@@ -1092,6 +1092,8 @@
   $effect(() => {
     if (!axis_changed(interaction_axis_signature)) return
     cancel_raf(active_cell_raf)
+    // Cancel delayed clicks before old cell coordinates can fire on new axes.
+    clear_pending_click()
     active_cell = null
     pinned_cell = null
     selected_cells = []

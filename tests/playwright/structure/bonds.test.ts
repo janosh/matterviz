@@ -542,10 +542,11 @@ test.describe(`Bond component`, () => {
     await structure_div.getByRole(`button`, { name: `Add` }).focus()
     await page.keyboard.press(`d`)
     await expect(page.locator(`[data-testid="bond-edit-mode-status"]`)).toContainText(`delete`)
+    const primary_modifier = process.platform === `darwin` ? `metaKey` : `ctrlKey`
     for (const init of [
-      { key: `z`, ctrlKey: true },
-      { key: `y`, ctrlKey: true },
-      { key: `z`, ctrlKey: true, shiftKey: true },
+      { key: `z`, [primary_modifier]: true },
+      { key: `y`, [primary_modifier]: true },
+      { key: `z`, [primary_modifier]: true, shiftKey: true },
     ]) {
       await expect(dispatch_cancelable_keydown(structure_div, init)).resolves.toBe(true)
     }

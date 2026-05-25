@@ -170,15 +170,22 @@
 
   type SeriesVisibilityKey = string | number | DataSeries3D<Metadata>
 
-  const series_visibility_key = (
-    data_series: DataSeries3D<Metadata> | undefined,
-    series_idx: number,
-  ): SeriesVisibilityKey => data_series?.id ?? data_series ?? series_idx
+  const series_visibility_keys = $derived.by((): SeriesVisibilityKey[] => {
+    const id_counts = new Map<string | number, number>()
+    for (const srs of series) {
+      if (srs?.id !== undefined) id_counts.set(srs.id, (id_counts.get(srs.id) ?? 0) + 1)
+    }
+    return series.map((srs, idx) => {
+      if (srs?.id === undefined) return srs ?? idx
+      return id_counts.get(srs.id) === 1
+        ? JSON.stringify([`id`, srs.id])
+        : JSON.stringify([`duplicate-id`, idx, srs.id])
+    })
+  })
 
   // User overrides merged with series.visible defaults.
-  // Prefer explicit ids, then object identity, so source replacement doesn't leak by index.
+  // Prefer explicit ids, then object identity; duplicate ids get index-qualified keys.
   const visibility_overrides = new SvelteMap<SeriesVisibilityKey, boolean>()
-  let series_visibility_keys = $derived(series.map(series_visibility_key))
   let series_visibility_key_set = $derived(new SvelteSet(series_visibility_keys))
   $effect(() => {
     for (const key of visibility_overrides.keys()) {
@@ -187,7 +194,7 @@
   })
   let series_visibility = $derived(
     series.map((srs, idx) =>
-      visibility_overrides.get(series_visibility_keys[idx]) ?? srs.visible ?? true
+      visibility_overrides.get(series_visibility_keys[idx]) ?? srs?.visible ?? true
     ),
   )
 
