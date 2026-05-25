@@ -49,11 +49,10 @@ export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
 type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
 
 export const entry_is_stable = (entry: StabilityEntry): boolean =>
-  entry.is_stable === true || (entry.is_stable !== false && entry.e_above_hull === 0)
+  entry.is_stable === true ||
+  (entry.is_stable !== false && Math.abs(entry.e_above_hull ?? Infinity) <= HULL_STABILITY_TOL)
 
-export const entry_is_unstable = (entry: StabilityEntry): boolean =>
-  entry.is_stable === false ||
-  (typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 && !entry_is_stable(entry))
+export const entry_is_unstable = (entry: StabilityEntry): boolean => !entry_is_stable(entry)
 
 export const entry_is_visible = (
   entry: StabilityEntry,
@@ -237,7 +236,7 @@ export function find_hull_entry_at_mouse<
   for (const entry of plot_entries) {
     const projected = project_point(entry.x, entry.y, entry.z)
     const distance = Math.hypot(mouse_x - projected.x, mouse_y - projected.y)
-    const base = entry.size ?? (entry.is_stable || entry.e_above_hull === 0 ? 6 : 4)
+    const base = entry.size ?? (entry_is_stable(entry) ? 6 : 4)
     if (distance < base * container_scale + 5) return entry
   }
   return null

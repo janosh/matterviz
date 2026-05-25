@@ -349,8 +349,7 @@
   >(null)
 
   // Fill region hover state
-  type FillHoverKey = string | number
-  let hovered_fill_key = $state<FillHoverKey | null>(null)
+  let hovered_fill_key = $state<string | null>(null)
 
   // Reference line hover state
   let hovered_ref_line_idx = $state<number | null>(null)
@@ -762,14 +761,14 @@
     source_type: `fill_region` | `error_band`,
     source_idx: number,
     id?: string | number,
-  ): FillHoverKey => `${source_type}:${id ?? source_idx}`
+  ): string => `${source_type}:${id ?? source_idx}`
 
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type ComputedFill = FillRegion & {
     idx: number
     source_type: `fill_region` | `error_band`
     source_idx: number
-    hover_key: FillHoverKey
+    hover_key: string
     path_segments: string[]
   }
   let computed_fills = $derived.by((): ComputedFill[] => {
@@ -783,7 +782,7 @@
       region: FillRegion | null
       source_type: `fill_region` | `error_band`
       source_idx: number
-      hover_key: FillHoverKey
+      hover_key: string
     }[] = [
       ...(fill_regions ?? []).map((region, source_idx) => ({
         region,
@@ -820,7 +819,7 @@
         region: FillRegion
         source_type: `fill_region` | `error_band`
         source_idx: number
-        hover_key: FillHoverKey
+        hover_key: string
       } => entry.region !== null)
       .map(({ region, source_type, source_idx, hover_key }, idx) => {
         if (region.visible === false) return null
