@@ -22,12 +22,10 @@ export interface TempFilterPayload {
   temp_filtered_entries: PhaseData[]
 }
 
-export function get_projection_source_entries(
+export const get_projection_source_entries = (
   entries: PhaseData[],
   temp_filtered_entries: PhaseData[],
-): PhaseData[] {
-  return temp_filtered_entries.length > 0 ? temp_filtered_entries : entries
-}
+): PhaseData[] => (temp_filtered_entries.length > 0 ? temp_filtered_entries : entries)
 
 const resolve_temp_filter_options = (
   config: ChemPotDiagramConfig,

@@ -761,7 +761,7 @@
     source_type: `fill_region` | `error_band`,
     source_idx: number,
     id?: string | number,
-  ): string => `${source_type}:${id ?? source_idx}`
+  ): string => `${source_type}:${id == null ? `idx:${source_idx}` : `id:${id}`}`
 
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type ComputedFill = FillRegion & {

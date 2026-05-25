@@ -117,9 +117,8 @@
     }
   }
 
-  function handle_mu_change(event: Event) {
-    const target = event.target as HTMLInputElement
-    const trimmed = target.value.trim()
+  function handle_mu_change(event: Event & { currentTarget: HTMLInputElement }) {
+    const trimmed = event.currentTarget.value.trim()
     const parsed = parseFloat(trimmed)
     // Only update mu when input is valid; keep last valid value during transient
     // invalid states (e.g. empty string while user is typing a new value)
@@ -330,7 +329,7 @@
         <select
           value={interpolation_factor}
           onchange={(event) => {
-            const val = parseFloat((event.target as HTMLSelectElement).value)
+            const val = parseFloat(event.currentTarget.value)
             if (!Number.isFinite(val)) return
             interpolation_factor = val
             on_interpolation_change?.(val)

@@ -279,13 +279,11 @@ function wrap_text(text: string, max_chars: number): string[] {
 }
 
 // Transform data coordinates to SVG coordinates using scale functions
-export function transform_vertices(
+export const transform_vertices = (
   vertices: Vec2[],
   x_scale: (val: number) => number,
   y_scale: (val: number) => number,
-): Vec2[] {
-  return vertices.map(([comp, temp]) => [x_scale(comp), y_scale(temp)])
-}
+): Vec2[] => vertices.map(([comp, temp]) => [x_scale(comp), y_scale(temp)])
 
 // Format composition value for display
 export function format_composition(

@@ -366,8 +366,10 @@
   }
 
   // Pointer move handler (unified mouse/touch via Pointer Events API)
-  function handle_pointer_move(event: PointerEvent) {
-    const svg = event.currentTarget as SVGElement
+  function handle_pointer_move(
+    event: PointerEvent & { currentTarget: SVGElement },
+  ) {
+    const svg = event.currentTarget
     const rect = svg.getBoundingClientRect()
     const svg_x = event.clientX - rect.left
     const svg_y = event.clientY - rect.top

@@ -772,7 +772,8 @@
 
   // Handle click outside to close dropdowns
   function handle_click_outside(event: MouseEvent) {
-    const target = event.target as Element
+    const target = event.target
+    if (!(target instanceof Element)) return
     if (view_mode_dropdown_open) {
       const dropdown_wrapper = target.closest(`.view-mode-dropdown-wrapper`)
       // Don't close if clicking on dropdown wrapper (contains both button and menu)
@@ -785,10 +786,10 @@
     if (!trajectory) return
 
     // Don't handle shortcuts if user is typing in an input field (but allow if it's our step input and not focused)
-    const target = event.target as HTMLElement
-    const is_step_input = target.classList.contains(`step-input`)
-    const is_input_focused = target.tagName === `INPUT` ||
-      target.tagName === `TEXTAREA`
+    const target = event.target instanceof HTMLElement ? event.target : null
+    const is_step_input = target?.classList.contains(`step-input`) ?? false
+    const is_input_focused =
+      target?.tagName === `INPUT` || target?.tagName === `TEXTAREA`
 
     // Skip if typing in an input that's not our step input
     if (is_input_focused && !is_step_input) return
@@ -796,7 +797,7 @@
     // If typing in step input, only handle certain navigation keys
     if (is_step_input && is_input_focused) {
       // Allow normal typing, but handle special navigation keys
-      if ([`Escape`, `Enter`].includes(event.key)) target.blur() // Remove focus from input
+      if ([`Escape`, `Enter`].includes(event.key)) target?.blur() // Remove focus from input
       return
     }
 

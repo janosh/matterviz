@@ -1178,7 +1178,9 @@
     evt: MouseEvent,
     points: LineSeriesPoint[],
   ): LineSeriesPoint | null {
-    const svg_el = (evt.target as Element).closest(`svg`)
+    const target = evt.target
+    if (!(target instanceof Element)) return null
+    const svg_el = target.closest(`svg`)
     if (!svg_el) return null
     const rect = svg_el.getBoundingClientRect()
     const mx = evt.clientX - rect.left

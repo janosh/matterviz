@@ -433,9 +433,8 @@
   let copy_status = $state(false)
   let copy_timeout_id: ReturnType<typeof setTimeout> | null = null
 
-  function get_svg_element(): SVGSVGElement | null {
-    return scatter_wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
-  }
+  const get_svg_element = (): SVGSVGElement | null =>
+    scatter_wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
 
   function get_json_string(): string {
     return JSON.stringify(

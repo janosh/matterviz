@@ -14,14 +14,11 @@ import type {
 const parse_number_tokens = (line: string): string[] => line.split(/\s+/).filter(Boolean)
 
 // Parse whitespace-separated floats from a line (optimized with unary +)
-function parse_floats(line: string): number[] {
-  return parse_number_tokens(line).map((part) => +part)
-}
+const parse_floats = (line: string): number[] => parse_number_tokens(line).map((part) => +part)
 
 // Parse whitespace-separated integers from a line
-function parse_ints(line: string): number[] {
-  return parse_number_tokens(line).map((part) => parseInt(part, 10))
-}
+const parse_ints = (line: string): number[] =>
+  parse_number_tokens(line).map((part) => parseInt(part, 10))
 
 // Parse BXSF (Band-XSF) format used by XCrySDen, Quantum ESPRESSO, etc.
 // Format specification: http://www.xcrysden.org/doc/XSF.html

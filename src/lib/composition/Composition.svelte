@@ -135,7 +135,8 @@
   onkeydown={(event: KeyboardEvent) => {
     if ([`Enter`, ` `].includes(event.key)) {
       event.preventDefault()
-      const target = event.currentTarget as Element
+      const target = event.currentTarget
+      if (!(target instanceof Element)) return
       const rect = target.getBoundingClientRect()
       context_menu.x = window.scrollX + rect.left + rect.width / 2
       context_menu.y = window.scrollY + rect.top + rect.height / 2

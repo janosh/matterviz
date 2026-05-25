@@ -1282,9 +1282,8 @@ export function format_sigma(val: number): string {
 }
 
 // Validate sigma_range: ensures min < max, returns [0, 1] if invalid
-export function validate_sigma_range([min, max]: [number, number]): [number, number] {
-  return Number.isFinite(min) && Number.isFinite(max) && min < max ? [min, max] : [0, 1]
-}
+export const validate_sigma_range = ([min, max]: [number, number]): [number, number] =>
+  Number.isFinite(min) && Number.isFinite(max) && min < max ? [min, max] : [0, 1]
 
 // Calculate slider step: 1/100th of range, or 0.01 fallback
 export function calculate_sigma_step(range: [number, number]): number {

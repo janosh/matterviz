@@ -453,34 +453,37 @@ describe(`ScatterPlot`, () => {
     })
   })
 
-  test(`keeps id-less fill hover after equivalent fill array is recreated`, async () => {
-    const fill_region = (): FillRegion => ({
-      lower: 0,
-      upper: 1,
-      fill: `steelblue`,
-      hover_style: { fill: `red` },
-    })
-    const state = { fill_regions: [fill_region()] }
+  test(`keeps fallback-index and explicit-id fill hovers distinct`, async () => {
+    const make_fills = (): FillRegion[] => [
+      { id: `lead`, lower: 0, upper: 0.1, fill: `transparent` },
+      { lower: 0.2, upper: 0.4, fill: `steelblue` },
+      { id: `1`, lower: 0.5, upper: 0.7, fill: `slategray` },
+    ]
+    const state = { fill_regions: make_fills() }
     await mount_sized_scatter_plot(
       bind_props(
         {
           series: [{ x: [0, 1], y: [0, 1] }],
           x_axis: { range: [0, 1] as Vec2 },
-          y_axis: { range: [0, 2] as Vec2 },
+          y_axis: { range: [0, 1] as Vec2 },
           legend: null,
         },
         state,
       ),
     )
 
-    const fill_path = () => document.querySelector<SVGPathElement>(`.fill-region path`)
-    fill_path()?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    const fallback_fill = () =>
+      document.querySelector<SVGGElement>(`[aria-label="Fill region 1"]`)
+    const explicit_id_fill = () =>
+      document.querySelector<SVGGElement>(`[aria-label="Fill region 2"]`)
+    fallback_fill()?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     await tick()
-    expect(fill_path()?.getAttribute(`fill`)).toBe(`red`)
+    expect(fallback_fill()?.classList.contains(`hovered`)).toBe(true)
+    expect(explicit_id_fill()?.classList.contains(`hovered`)).toBe(false)
 
-    state.fill_regions = [fill_region()]
+    state.fill_regions = make_fills()
     flushSync()
     await tick()
-    expect(fill_path()?.getAttribute(`fill`)).toBe(`red`)
+    expect(fallback_fill()?.classList.contains(`hovered`)).toBe(true)
   })
 })

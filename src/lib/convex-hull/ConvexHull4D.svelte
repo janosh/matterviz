@@ -452,11 +452,15 @@
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
-    const target = event.target as HTMLElement
+    const target = event.target
     // Skip if focus is on an interactive element that handles Enter natively
     const interactive_selector =
       `input,textarea,select,button,a,[contenteditable="true"],[role="button"],[tabindex]:not([tabindex="-1"])`
-    if (target.matches(interactive_selector) && target !== canvas) return
+    if (
+      target instanceof HTMLElement &&
+      target.matches(interactive_selector) &&
+      target !== canvas
+    ) return
 
     // Prevent double handling from canvas + wrapper bubbling
     if (event.target !== event.currentTarget && event.currentTarget !== canvas) return

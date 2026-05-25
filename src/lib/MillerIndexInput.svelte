@@ -25,8 +25,8 @@
     return null
   }
 
-  function handle_input(event: Event) {
-    const parsed = parse_hkl((event.target as HTMLInputElement).value)
+  function oninput(event: Event & { currentTarget: HTMLInputElement }) {
+    const parsed = parse_hkl(event.currentTarget.value)
     if (parsed) value = parsed
   }
 </script>
@@ -36,7 +36,7 @@
   <input
     type="text"
     value={hkl_text}
-    oninput={handle_input}
+    {oninput}
     placeholder="001"
     maxlength="12"
     title="Miller indices (e.g. 001, -101, or 10 0 1)"

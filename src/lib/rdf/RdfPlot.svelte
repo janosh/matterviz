@@ -130,10 +130,10 @@
     for (const { struct, label } of struct_list) {
       if (mode === `element_pairs`) {
         const pairs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
-        result.push(...pairs.map((p) => ({
-          label: p.element_pair ? `${p.element_pair[0]}-${p.element_pair[1]}` : label,
+        result.push(...pairs.map((pair) => ({
+          label: pair.element_pair ? `${pair.element_pair[0]}-${pair.element_pair[1]}` : label,
           legend_group: label, // Group by structure name for multi-structure plots
-          pattern: p,
+          pattern: pair,
         })))
       } else {
         const pattern = calculate_rdf(struct, { cutoff, n_bins, pbc })
@@ -143,8 +143,8 @@
     return result
   })
 
-  const max_r = $derived(Math.max(...entries.flatMap((e) => e.pattern.r), 0))
-  const max_g = $derived(Math.max(1.2, ...entries.flatMap((e) => e.pattern.g_r)))
+  const max_r = $derived(Math.max(...entries.flatMap((entry) => entry.pattern.r), 0))
+  const max_g = $derived(Math.max(1.2, ...entries.flatMap((entry) => entry.pattern.g_r)))
 
   const series = $derived<DataSeries[]>(
     entries.map((ent, idx) => ({

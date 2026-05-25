@@ -206,34 +206,22 @@
       // Require formation energy per atom to place along y
       const e_form = entry.e_form_per_atom
       if (typeof e_form !== `number`) continue
-      const total = Object.values(entry.composition).reduce((s, v) => s + v, 0)
+      const total = Object.values(entry.composition).reduce((sum, amount) => sum + amount, 0)
       if (total <= 0) continue
       const frac_b = (entry.composition[el2] || 0) / total
       const is_element = is_unary_entry(entry)
       coords.push({ ...entry, x: frac_b, y: e_form, z: 0, is_element })
     }
     // Ensure elemental references at x=0 and x=1 with y=0 to close the hull
-    const el_a: ConvexHullEntry | undefined = coords.find((e) =>
-      e.is_element && e.x === 0
-    )
-    const el_b: ConvexHullEntry | undefined = coords.find((e) =>
-      e.is_element && e.x === 1
-    )
-    if (!el_a) {
+    for (const [element, x_coord] of [
+      [el1, 0],
+      [el2, 1],
+    ] as const) {
+      if (coords.some((entry) => entry.is_element && entry.x === x_coord)) continue
       coords.push({
-        composition: { [el1]: 1 } as CompositionType,
+        composition: { [element]: 1 } as CompositionType,
         energy: 0,
-        x: 0,
-        y: 0,
-        z: 0,
-        is_element: true,
-      })
-    }
-    if (!el_b) {
-      coords.push({
-        composition: { [el2]: 1 } as CompositionType,
-        energy: 0,
-        x: 1,
+        x: x_coord,
         y: 0,
         z: 0,
         is_element: true,
@@ -528,7 +516,8 @@
   })
 
   const handle_keydown = (event: KeyboardEvent) => {
-    if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
+    const target = event.target
+    if (target instanceof HTMLElement && target.tagName.match(/INPUT|TEXTAREA/)) return
     const actions: Record<string, () => void> = {
       b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
       s: () => show_stable = !show_stable,

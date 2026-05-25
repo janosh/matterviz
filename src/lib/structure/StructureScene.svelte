@@ -459,9 +459,8 @@
       canonical_bond_target(rendered_target)
   }
 
-  function is_image_bond_site(site_idx: number): boolean {
-    return structure?.sites?.[site_idx]?.properties?.orig_site_idx != null
-  }
+  const is_image_bond_site = (site_idx: number): boolean =>
+    structure?.sites?.[site_idx]?.properties?.orig_site_idx != null
 
   const can_select_bond_site = (site_idx: number): boolean =>
     bond_edits_enabled && structure?.sites?.[site_idx] != null

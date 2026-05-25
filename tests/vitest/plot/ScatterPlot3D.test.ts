@@ -223,11 +223,10 @@ describe(`ScatterPlot3D data processing`, () => {
   }
 
   // Filter to only valid points (no undefined coordinates)
-  function get_valid_points(series_list: DataSeries3D[]) {
-    return extract_points(series_list).filter(
+  const get_valid_points = (series_list: DataSeries3D[]) =>
+    extract_points(series_list).filter(
       (pt) => pt.x !== undefined && pt.y !== undefined && pt.z !== undefined,
     )
-  }
 
   test(`mismatched array lengths produces correct valid point count`, () => {
     const mismatched_series: DataSeries3D = {

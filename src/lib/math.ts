@@ -151,15 +151,13 @@ export function min_image_displacement(
 }
 
 // Calculate the minimum distance between two points considering periodic boundary conditions.
-export function pbc_dist(
+export const pbc_dist = (
   pos1: Vec3,
   pos2: Vec3,
   lattice_matrix: Matrix3x3,
   converters?: LatticeConverters,
   pbc: Pbc = [true, true, true],
-): number {
-  return Math.hypot(...min_image_displacement(pos1, pos2, lattice_matrix, converters, pbc))
-}
+): number => Math.hypot(...min_image_displacement(pos1, pos2, lattice_matrix, converters, pbc))
 
 export function matrix_inverse_3x3(matrix: Matrix3x3): Matrix3x3 {
   const [[m11, m12, m13], [m21, m22, m23], [m31, m32, m33]] = matrix

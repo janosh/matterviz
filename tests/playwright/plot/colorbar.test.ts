@@ -11,12 +11,11 @@ test.describe(`ColorBar Component Tests`, () => {
   })
 
   // Helper to check computed style
-  function get_style(locator: Locator, property: string): Promise<string> {
-    return locator.evaluate(
+  const get_style = (locator: Locator, property: string): Promise<string> =>
+    locator.evaluate(
       (el, prop) => globalThis.getComputedStyle(el).getPropertyValue(prop),
       property,
     )
-  }
 
   test(`Horizontal Primary Ticks`, async ({ page }) => {
     const colorbar = page.locator(`#horizontal-primary`)

@@ -709,9 +709,8 @@ function entry_has_temp_data(entry: PhaseData): boolean {
 }
 
 // Check if entry has data at exact temperature T
-export function entry_has_temperature(entry: PhaseData, T: number): boolean {
-  return entry_has_temp_data(entry) && (entry.temperatures?.includes(T) ?? false)
-}
+export const entry_has_temperature = (entry: PhaseData, T: number): boolean =>
+  entry_has_temp_data(entry) && (entry.temperatures?.includes(T) ?? false)
 
 // Get energy at temperature T (throws if T not found - validate with entry_has_temperature first)
 export function get_energy_at_temperature(entry: PhaseData, T: number): number {

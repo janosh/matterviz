@@ -153,9 +153,8 @@
       : CHEMPOT_DEFAULTS.formula_colors,
   )
 
-  function formula_label_segments(formula: string): FormulaLabelSegment[] {
-    return get_formula_label_segments(get_electro_neg_formula(formula, true, ``, `.3~s`))
-  }
+  const formula_label_segments = (formula: string): FormulaLabelSegment[] =>
+    get_formula_label_segments(get_electro_neg_formula(formula, true, ``, `.3~s`))
 
   function normalize_projection_triplet(
     maybe_triplet: string[] | undefined,
@@ -1132,9 +1131,8 @@
   })
 
   // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)
-  function dedup_3d(pts: number[][], tol: number = 1e-4): number[][] {
-    return dedup_points(pts, tol).unique
-  }
+  const dedup_3d = (pts: number[][], tol: number = 1e-4): number[][] =>
+    dedup_points(pts, tol).unique
 
   const controls_series = $derived<DataSeries3D[]>([
     {
@@ -1486,11 +1484,10 @@
   // Place axis label just past the outer end of the axis (the end closer to 0).
   // In isometric 3D, the end near 0 projects outward at the front edge of the
   // bounding box, while the negative end projects inward toward the center.
-  function outer_end(range: [number, number]): number {
-    return Math.abs(range[0]) <= Math.abs(range[1]) ? range[0] : range[1]
-  }
+  const outer_end = (range: [number, number]): number =>
+    Math.abs(range[0]) <= Math.abs(range[1]) ? range[0] : range[1]
   // Direction from range center toward outer end (to extend the label beyond the grid)
-  function outer_dir(range: [number, number]): number {
+  const outer_direction = (range: [number, number]): number => {
     const end = outer_end(range)
     const mid = (range[0] + range[1]) / 2
     return end >= mid ? 1 : -1
@@ -1524,7 +1521,7 @@
         line_geom = make_line_geom(ls, le)
         // Axis label past the outer end of the axis (near 0, projects outward)
         label_pos = swiz(
-          outer_end(r0) + outer_dir(r0) * axis_label_dist,
+          outer_end(r0) + outer_direction(r0) * axis_label_dist,
           back[1] + out_x * tick_label_dist * 0.5,
           back[2] + out_y * tick_label_dist,
         )
@@ -1555,7 +1552,7 @@
         line_geom = make_line_geom(ls, le)
         label_pos = swiz(
           back[0],
-          outer_end(r1) + outer_dir(r1) * axis_label_dist,
+          outer_end(r1) + outer_direction(r1) * axis_label_dist,
           back[2] + out_y * tick_label_dist,
         )
         for (const val of ticks) {
@@ -1582,7 +1579,7 @@
         label_pos = swiz(
           back[0],
           back[1] + out_x * tick_label_dist,
-          outer_end(r2) + outer_dir(r2) * axis_label_dist,
+          outer_end(r2) + outer_direction(r2) * axis_label_dist,
         )
         for (const val of ticks) {
           tick_geoms.push(make_line_geom(

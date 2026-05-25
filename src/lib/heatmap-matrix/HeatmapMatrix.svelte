@@ -579,9 +579,8 @@
     return vis_y.slice(start_pos, end_pos)
   })
 
-  function is_selected_cell(x_idx: number, y_idx: number): boolean {
-    return selected_cell_key_set.has(cell_pos_key(x_idx, y_idx))
-  }
+  const is_selected_cell = (x_idx: number, y_idx: number): boolean =>
+    selected_cell_key_set.has(cell_pos_key(x_idx, y_idx))
 
   let vis_x_pos_map = $derived.by(() => {
     const position_map = new SvelteMap<number, number>()

@@ -15,11 +15,8 @@ const normalize = (vec: Vec3): Vec3 => {
 }
 
 // Check if rotation matrix is identity
-function is_identity_rotation(rot: Matrix3x3): boolean {
-  return rot.every((row, idx) =>
-    row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL),
-  )
-}
+const is_identity_rotation = (rot: Matrix3x3): boolean =>
+  rot.every((row, idx) => row.every((val, jdx) => Math.abs(val - (idx === jdx ? 1 : 0)) < TOL))
 
 // Extract unique point group rotation matrices from space group operations.
 // Returns fractional-coordinate rotations (W matrices from spglib convention).

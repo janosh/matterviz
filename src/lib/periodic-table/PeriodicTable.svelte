@@ -173,7 +173,8 @@
   function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent) {
     if (tooltip === false || disabled) return
     tooltip_element = element
-    const target = event.currentTarget as HTMLElement
+    const target = event.currentTarget
+    if (!(target instanceof HTMLElement)) return
     const rect = target.getBoundingClientRect()
     const container_rect = target.closest(`.ptable-grid`)?.getBoundingClientRect()
     if (container_rect) {

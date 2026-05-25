@@ -113,9 +113,8 @@
   // Debounce search input
   let search_debounce_timeout: ReturnType<typeof setTimeout> | undefined
 
-  function handle_search_input(event: Event) {
-    const input = event.target as HTMLInputElement
-    search_input_value = input.value
+  function handle_search_input(event: Event & { currentTarget: HTMLInputElement }) {
+    search_input_value = event.currentTarget.value
 
     if (search_debounce_timeout) clearTimeout(search_debounce_timeout)
     search_debounce_timeout = setTimeout(() => {

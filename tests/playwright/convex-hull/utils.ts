@@ -43,18 +43,16 @@ async function open_pane(
   return pane
 }
 
-export function open_controls_pane(page: Page, diagram: Locator): Promise<Locator> {
-  return open_pane(
+export const open_controls_pane = (page: Page, diagram: Locator): Promise<Locator> =>
+  open_pane(
     page,
     diagram,
     `convex-hull-controls-pane`,
     `.legend-controls-btn, .convex-hull-controls-toggle`,
   )
-}
 
-export function open_info_pane(page: Page, diagram: Locator): Promise<Locator> {
-  return open_pane(page, diagram, `convex-hull-info-pane`)
-}
+export const open_info_pane = (page: Page, diagram: Locator): Promise<Locator> =>
+  open_pane(page, diagram, `convex-hull-info-pane`)
 
 export async function open_info_and_controls(
   diagram: Locator,

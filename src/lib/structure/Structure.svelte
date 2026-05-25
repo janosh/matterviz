@@ -1142,12 +1142,13 @@
 
   function handle_keydown(event: KeyboardEvent) {
     // Don't handle shortcuts if user is typing in an input field
-    const target = event.target as HTMLElement
+    const target = event.target
     const is_input_focused =
-      target.tagName === `INPUT` ||
-      target.tagName === `TEXTAREA` ||
-      target.tagName === `SELECT` ||
-      target.isContentEditable
+      target instanceof HTMLElement &&
+      (target.tagName === `INPUT` ||
+        target.tagName === `TEXTAREA` ||
+        target.tagName === `SELECT` ||
+        target.isContentEditable)
 
     // Allow Escape to cancel add-atom mode even when the element input is focused
     if (event.key === `Escape` && measure_mode === `edit-atoms` && add_atom_mode) {
@@ -1491,7 +1492,8 @@
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondblclick={(event) => {
-    const target = event.target as HTMLElement
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
     // Don't reset if double-click was on UI controls/panes/legend
     if (
       target.closest(`.control-buttons`) ||

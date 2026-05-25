@@ -240,9 +240,9 @@
   const hull_faces = $derived.by((): ConvexHullTriangle[] => {
     if (coords_entries.length === 0) return []
     // Excluded entries don't participate in hull construction
-    const hull_entries = coords_entries.filter((e) => !e.exclude_from_hull)
+    const hull_entries = coords_entries.filter((entry) => !entry.exclude_from_hull)
     if (hull_entries.length === 0) return []
-    const points = hull_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    const points = hull_entries.map(({ x, y, z }) => ({ x, y, z }))
     try {
       return thermo.compute_lower_hull_triangles(points)
     } catch (error) {
@@ -258,7 +258,7 @@
   const all_enriched_entries = $derived.by(() => {
     if (coords_entries.length === 0) return []
     if (energy_mode !== `on-the-fly`) return coords_entries
-    const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    const pts = coords_entries.map(({ x, y, z }) => ({ x, y, z }))
     const raw_dists = thermo.compute_e_above_hull_for_points(pts, hull_model)
     return coords_entries.map((entry, idx) => ({
       ...entry, ...compute_hull_stability(raw_dists[idx], entry.exclude_from_hull),
@@ -532,8 +532,8 @@
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
-    const target = event.target as HTMLElement
-    if (target.tagName.match(/INPUT|TEXTAREA/)) return
+    const target = event.target
+    if (target instanceof HTMLElement && target.tagName.match(/INPUT|TEXTAREA/)) return
 
     // Stop propagation if event came from canvas to prevent wrapper's handler
     // from running again (both have onkeydown, causing duplicate handling)
@@ -817,25 +817,32 @@
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
     // Lazy computation for uniform mode: normalize alpha by formation energy
-    let norm_alpha: ((z: number) => number) | null = null
+    let norm_alpha: ((e_form: number) => number) | null = null
     if (hull_face_color_mode === `uniform`) {
-      const min_fe = energy_range.min
-      norm_alpha = (z: number) => {
-        const t = Math.max(0, Math.min(1, (0 - z) / Math.max(1e-6, 0 - min_fe)))
-        return t * hull_face_opacity
+      const min_uniform_e_form = energy_range.min
+      norm_alpha = (e_form: number) => {
+        const alpha_fraction = Math.max(
+          0,
+          Math.min(1, (0 - e_form) / Math.max(1e-6, 0 - min_uniform_e_form)),
+        )
+        return alpha_fraction * hull_face_opacity
       }
     }
 
     // Lazy computation for formation_energy mode
     let energy_face_scale: ((val: number) => string) | null = null
-    let min_z = 0
+    let min_face_e_form = 0
     if (hull_face_color_mode === `formation_energy`) {
-      const all_z = hull_faces.flatMap((tri) => tri.vertices.map((v) => v.z))
-      min_z = Math.min(...all_z)
+      const all_e_form = hull_faces.flatMap((tri) =>
+        tri.vertices.map((vertex) => vertex.z)
+      )
+      min_face_e_form = Math.min(...all_e_form)
       energy_face_scale = helpers.get_energy_color_scale(
         `energy`,
         color_scale,
-        all_z.map((z) => ({ e_above_hull: z - min_z })), // Normalize to 0-based
+        all_e_form.map((e_form) => ({
+          e_above_hull: e_form - min_face_e_form,
+        })), // Normalize to 0-based
       )
     }
 
@@ -848,8 +855,8 @@
         return hull_face_color
       }
       if (hull_face_color_mode === `formation_energy`) {
-        const avg_z = (tri.vertices[0].z + tri.vertices[1].z + tri.vertices[2].z) / 3
-        return energy_face_scale?.(avg_z - min_z) ?? hull_face_color
+        const avg_e_form = (tri.vertices[0].z + tri.vertices[1].z + tri.vertices[2].z) / 3
+        return energy_face_scale?.(avg_e_form - min_face_e_form) ?? hull_face_color
       }
       if (hull_face_color_mode === `dominant_element`) {
         // Find element vertex closest to face centroid in 2D ternary space
@@ -876,7 +883,7 @@
       return { tri, tri_idx, depth: centroid_proj.depth }
     })
 
-    faces_with_depth.sort((a, b) => a.depth - b.depth) // Back to front
+    faces_with_depth.sort((left, right) => left.depth - right.depth) // Back to front
 
     // Draw each face (lower hull only)
     for (const { tri, tri_idx } of faces_with_depth) {
@@ -983,8 +990,8 @@
     const denom = Math.max(1e-6, max_fe - min_fe)
     return (value: number) => {
       // alpha 0 at 0 eV, goes to hull_face_opacity at most negative energy
-      const t = Math.max(0, Math.min(1, (value - min_fe) / denom))
-      const alpha = (1 - t) * hull_face_opacity
+      const energy_fraction = Math.max(0, Math.min(1, (value - min_fe) / denom))
+      const alpha = (1 - energy_fraction) * hull_face_opacity
       return add_alpha(hull_face_color, alpha)
     }
   })
@@ -1424,7 +1431,7 @@
         entry,
         projected: project_3d_point(entry.x, entry.y, entry.z),
       }))
-      .sort((a, b) => a.projected.depth - b.projected.depth)
+      .sort((left, right) => left.projected.depth - right.projected.depth)
   })
 
   let style = $derived(
@@ -1499,8 +1506,8 @@
   <!-- Formation Energy Color Bar (bottom-left corner) -->
   {#if color_mode === `energy` && plot_entries.length > 0}
     {@const hull_distances = plot_entries
-      .map((e) => e.e_above_hull)
-      .filter((v): v is number => typeof v === `number`)}
+      .map((entry) => entry.e_above_hull)
+      .filter((value): value is number => typeof value === `number`)}
     {@const min_energy = hull_distances.length > 0 ? Math.min(...hull_distances) : 0}
     {@const max_energy = hull_distances.length > 0 ? Math.max(...hull_distances, 0.1) : 0.1}
     <ColorBar

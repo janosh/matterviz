@@ -293,8 +293,11 @@
   })
 
   function onkeydown(event: KeyboardEvent) {
-    const target = event.target as HTMLElement
-    if (target.tagName === `INPUT` || target.tagName === `TEXTAREA`) return
+    const target = event.target
+    if (
+      target instanceof HTMLElement &&
+      (target.tagName === `INPUT` || target.tagName === `TEXTAREA`)
+    ) return
 
     if (event.key === `f` && fullscreen_toggle) toggle_fullscreen(wrapper)
     else if (event.key === `i`) info_pane_open = !info_pane_open

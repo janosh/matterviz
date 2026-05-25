@@ -598,8 +598,7 @@ describe(`scan_renderable_paths with plot`, () => {
 })
 
 // Helper to resolve dotted paths like "structures.Cu_FCC"
-function resolve(obj: Record<string, unknown>, path: string): unknown {
-  return path
+const resolve = (obj: Record<string, unknown>, path: string): unknown =>
+  path
     .split(`.`)
     .reduce<unknown>((current, key) => (current as Record<string, unknown>)?.[key], obj)
-}

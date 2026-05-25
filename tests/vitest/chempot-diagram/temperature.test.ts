@@ -42,17 +42,14 @@ const static_entries_fixture: PhaseData[] = [
   { composition: { O: 1 }, energy: -2, energy_per_atom: -2 },
 ]
 
-function has_formula(entries: PhaseData[], formula: string): boolean {
-  return entries.some((entry) => formula_key_from_composition(entry.composition) === formula)
-}
+const has_formula = (entries: PhaseData[], formula: string): boolean =>
+  entries.some((entry) => formula_key_from_composition(entry.composition) === formula)
 
-function get_formula_entry(entries: PhaseData[], formula: string): PhaseData | undefined {
-  return entries.find((entry) => formula_key_from_composition(entry.composition) === formula)
-}
+const get_formula_entry = (entries: PhaseData[], formula: string): PhaseData | undefined =>
+  entries.find((entry) => formula_key_from_composition(entry.composition) === formula)
 
-function get_formula_set(entries: PhaseData[]): Set<string> {
-  return new Set(entries.map((entry) => formula_key_from_composition(entry.composition)))
-}
+const get_formula_set = (entries: PhaseData[]): Set<string> =>
+  new Set(entries.map((entry) => formula_key_from_composition(entry.composition)))
 
 function get_payload_at_700(
   config: Parameters<typeof get_temp_filter_payload>[2] = {},

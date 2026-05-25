@@ -89,11 +89,11 @@
       .join(` `),
   )
 
-  function handle_copy(event: ClipboardEvent) {
+  function handle_copy(event: ClipboardEvent & { currentTarget: HTMLElement }) {
     const selection = window.getSelection()
     // Only intercept if user selected text fully within this formula
     if (!selection || selection.isCollapsed) return
-    const formula_el = event.currentTarget as HTMLElement
+    const formula_el = event.currentTarget
     if (
       !formula_el.contains(selection.anchorNode) ||
       !formula_el.contains(selection.focusNode)
@@ -102,8 +102,11 @@
     event.clipboardData?.setData(`text/plain`, plain_text_formula)
   }
 
-  function show_tooltip(element: ElementSymbol, event: MouseEvent) {
-    const { left, width, top, bottom, right, height } = (event.target as HTMLElement)
+  function show_tooltip(
+    element: ElementSymbol,
+    event: MouseEvent & { currentTarget: HTMLElement },
+  ) {
+    const { left, width, top, bottom, right, height } = event.currentTarget
       .getBoundingClientRect()
     hovered_element = element
 

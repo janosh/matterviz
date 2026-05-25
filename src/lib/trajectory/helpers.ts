@@ -9,13 +9,11 @@ import type { TrajectoryFrame } from './index'
 
 const element_symbol_set = new Set<string>(ELEM_SYMBOLS)
 
-export function is_valid_element_symbol(symbol: string): symbol is ElementSymbol {
-  return element_symbol_set.has(symbol)
-}
+export const is_valid_element_symbol = (symbol: string): symbol is ElementSymbol =>
+  element_symbol_set.has(symbol)
 
-export function coerce_element_symbol(symbol: string): ElementSymbol | undefined {
-  return is_valid_element_symbol(symbol) ? symbol : undefined
-}
+export const coerce_element_symbol = (symbol: string): ElementSymbol | undefined =>
+  is_valid_element_symbol(symbol) ? symbol : undefined
 
 // Validate that data is a proper 3x3 matrix
 // Accepts both regular arrays and typed arrays (Float32Array, Float64Array, etc.)

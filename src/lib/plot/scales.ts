@@ -275,11 +275,10 @@ export function create_scale(
 }
 
 // Create a time scale for time-based data
-export function create_time_scale(domain: [number, number], output_range: [number, number]) {
-  return scaleTime()
+export const create_time_scale = (domain: [number, number], output_range: [number, number]) =>
+  scaleTime()
     .domain([new Date(domain[0]), new Date(domain[1])])
     .range(output_range)
-}
 
 // Unified tick generation function
 export function generate_ticks(
