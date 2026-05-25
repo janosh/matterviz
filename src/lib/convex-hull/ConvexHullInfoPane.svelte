@@ -23,6 +23,8 @@
     phase_stats,
     stable_entries,
     unstable_entries,
+    show_stable = true,
+    show_unstable = true,
     max_hull_dist_show_phases,
     max_hull_dist_show_labels,
     label_threshold,
@@ -34,6 +36,8 @@
     phase_stats: PhaseStats | null
     stable_entries: ConvexHullEntry[]
     unstable_entries: ConvexHullEntry[]
+    show_stable?: boolean
+    show_unstable?: boolean
     max_hull_dist_show_phases: number
     max_hull_dist_show_labels: number
     label_threshold: number
@@ -42,18 +46,15 @@
     pane_props?: ComponentProps<typeof DraggablePane>[`pane_props`]
   } = $props()
 
-  const count_visible = (entries: ConvexHullEntry[]): number =>
-    entries.reduce((count, entry) => count + Number(entry.visible), 0)
-
   let settings_rows = $derived([
     {
       label: `Visible stable`,
-      value: `${count_visible(stable_entries)} / ${stable_entries.length}`,
+      value: `${show_stable ? stable_entries.length : 0} / ${stable_entries.length}`,
       key: `hull-visible-stable`,
     },
     {
       label: `Visible unstable`,
-      value: `${count_visible(unstable_entries)} / ${unstable_entries.length}`,
+      value: `${show_unstable ? unstable_entries.length : 0} / ${unstable_entries.length}`,
       key: `hull-visible-unstable`,
     },
     {
@@ -108,6 +109,8 @@
     {phase_stats}
     {stable_entries}
     {unstable_entries}
+    {show_stable}
+    {show_unstable}
     style="padding: 3pt; background: var(--pane-bg); --hull-stats-table-height: 30rem"
   />
 

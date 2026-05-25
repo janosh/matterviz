@@ -206,39 +206,26 @@
       // Require formation energy per atom to place along y
       const e_form = entry.e_form_per_atom
       if (typeof e_form !== `number`) continue
-      const total = Object.values(entry.composition).reduce((s, v) => s + v, 0)
+      const total = Object.values(entry.composition).reduce((sum, amount) => sum + amount, 0)
       if (total <= 0) continue
       const frac_b = (entry.composition[el2] || 0) / total
       const is_element = is_unary_entry(entry)
-      coords.push({ ...entry, x: frac_b, y: e_form, z: 0, is_element, visible: true })
+      coords.push({ ...entry, x: frac_b, y: e_form, z: 0, is_element })
     }
     // Ensure elemental references at x=0 and x=1 with y=0 to close the hull
-    const el_a: ConvexHullEntry | undefined = coords.find((e) =>
-      e.is_element && e.x === 0
-    )
-    const el_b: ConvexHullEntry | undefined = coords.find((e) =>
-      e.is_element && e.x === 1
-    )
-    if (!el_a) {
+    for (const [element, x_coord] of [
+      [el1, 0],
+      [el2, 1],
+    ] as const) {
+      if (coords.some((entry) => entry.is_element && entry.x === x_coord)) continue
       coords.push({
-        composition: { [el1]: 1 } as CompositionType,
+        composition: { [element]: 1 } as CompositionType,
         energy: 0,
-        x: 0,
+        entry_id: `synthetic-element:${element}`,
+        x: x_coord,
         y: 0,
         z: 0,
         is_element: true,
-        visible: true,
-      })
-    }
-    if (!el_b) {
-      coords.push({
-        composition: { [el2]: 1 } as CompositionType,
-        energy: 0,
-        x: 1,
-        y: 0,
-        z: 0,
-        is_element: true,
-        visible: true,
       })
     }
     return coords
@@ -280,9 +267,7 @@
     const enriched_entries = coords_entries.map((entry) => {
       const y_hull = thermo.interpolate_hull_2d(computed_hull_points, entry.x)
       const raw_dist = y_hull == null ? 0 : entry.y - y_hull
-      return {
-        ...entry, ...compute_hull_stability(raw_dist, entry.exclude_from_hull), visible: true,
-      }
+      return { ...entry, ...compute_hull_stability(raw_dist, entry.exclude_from_hull) }
     })
     return { all_enriched_entries: enriched_entries, hull_points: computed_hull_points }
   })
@@ -297,25 +282,23 @@
     DEFAULTS.convex_hull.binary.max_hull_dist_show_phases,
   ))
 
-  // Initialize threshold to auto value on first load
-  let initialized = $state(false)
+  const next_auto_threshold = helpers.auto_threshold_reset(
+    DEFAULTS.convex_hull.binary.max_hull_dist_show_phases,
+  )
   $effect(() => {
-    if (!initialized && all_enriched_entries.length > 0) {
-      initialized = true
-      max_hull_dist_show_phases = auto_default_threshold
-    }
+    max_hull_dist_show_phases = next_auto_threshold(
+      entries,
+      max_hull_dist_show_phases,
+      auto_default_threshold,
+    ) ?? max_hull_dist_show_phases
   })
 
-  // Filter by threshold and compute visibility
+  // Filter by threshold; visibility is a view predicate, not entry state.
   const plot_entries = $derived(
-    all_enriched_entries
-      .filter((e) =>
-        e.is_stable || (e.e_above_hull ?? 0) <= max_hull_dist_show_phases
-      )
-      .map((e) => ({
-        ...e,
-        visible: (e.is_stable && show_stable) || (!e.is_stable && show_unstable),
-      })),
+    all_enriched_entries.filter((entry) =>
+      helpers.entry_is_stable(entry) ||
+      (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
+    ),
   )
 
   // Update bindable entries arrays when plot_entries change (single pass)
@@ -323,7 +306,7 @@
     const stable: ConvexHullEntry[] = []
     const unstable: ConvexHullEntry[] = []
     for (const entry of plot_entries) {
-      if (entry.is_stable) stable.push(entry)
+      if (helpers.entry_is_stable(entry)) stable.push(entry)
       else unstable.push(entry)
     }
     stable_entries = stable
@@ -371,7 +354,11 @@
   }
 
   // Pre-compute visible entries to avoid redundant filtering
-  const visible_entries = $derived(plot_entries.filter((e) => e.visible))
+  const visible_entries = $derived(helpers.visible_entries(
+    plot_entries,
+    show_stable,
+    show_unstable,
+  ))
 
   const scatter_points_series = $derived.by(() => {
     const is_energy_mode = color_mode === `energy`
@@ -389,7 +376,7 @@
       y_vals[idx] = entry.y
       if (is_energy_mode) color_values[idx] = entry.e_above_hull ?? 0
 
-      const is_stable = entry.is_stable || entry.e_above_hull === 0
+      const is_stable = helpers.entry_is_stable(entry)
       const base_radius = entry.size || (is_stable ? 6 : 4)
       const hl = is_highlighted(entry) ? merged_highlight_style : null
 
@@ -444,10 +431,8 @@
 
   const scatter_series = $derived([scatter_points_series, ...hull_segments_series])
 
-  // Map selected_entry to ScatterPlot point index (series_idx: 0 = points series)
-  // Use object identity comparison (e === entry) instead of entry_id comparison
-  // because synthetic elemental entries lack entry_id, and undefined === undefined
-  // would incorrectly match the first entry with undefined entry_id
+  // Map selected_entry to ScatterPlot point index (series_idx: 0 = points series).
+  // current_entry() keeps selections pointing at the current plot entry object.
   const selected_scatter_point = $derived.by(() => {
     const entry = selected_entry
     if (!entry) return null
@@ -505,9 +490,33 @@
 
   // Custom hover tooltip state used with ScatterPlot events
   let hover_data = $state<HoverData3D<ConvexHullEntry> | null>(null)
+  $effect(() => {
+    const current_selection = helpers.current_entry(selected_entry, plot_entries)
+    if (selected_entry && !current_selection) selected_entry = null
+    else if (current_selection && current_selection !== selected_entry) {
+      selected_entry = current_selection
+    }
+    const current_hover = helpers.current_entry(hover_data?.entry, plot_entries)
+    if (hover_data?.entry && !current_hover) {
+      hover_data = null
+      on_point_hover?.(null)
+    } else if (hover_data && current_hover && current_hover !== hover_data.entry) {
+      hover_data = { ...hover_data, entry: current_hover }
+    }
+    const current_popup = helpers.current_entry(structure_popup.entry, plot_entries)
+    if (structure_popup.open) {
+      const structure = current_popup && extract_structure_from_entry(current_popup)
+      if (!structure) structure_popup = { open: false, structure: null, entry: null, place_right: true }
+      else if (
+        current_popup !== structure_popup.entry ||
+        structure !== structure_popup.structure
+      ) structure_popup = { ...structure_popup, entry: current_popup, structure }
+    }
+  })
 
   const handle_keydown = (event: KeyboardEvent) => {
-    if ((event.target as HTMLElement).tagName.match(/INPUT|TEXTAREA/)) return
+    const target = event.target
+    if (target instanceof HTMLElement && target.tagName.match(/INPUT|TEXTAREA/)) return
     const actions: Record<string, () => void> = {
       b: () => color_mode = color_mode === `stability` ? `energy` : `stability`,
       s: () => show_stable = !show_stable,
@@ -637,6 +646,8 @@
         {phase_stats}
         {stable_entries}
         {unstable_entries}
+        {show_stable}
+        {show_unstable}
         {max_hull_dist_show_phases}
         {max_hull_dist_show_labels}
         {label_threshold}
@@ -695,11 +706,11 @@
     tabindex={-1}
     onkeydown={handle_keydown}
     ondrop={handle_file_drop}
-    ondragover={(event) => {
+    ondragover={(event: DragEvent) => {
       event.preventDefault()
       drag_over = true
     }}
-    ondragleave={(event) => {
+    ondragleave={(event: DragEvent) => {
       event.preventDefault()
       drag_over = false
     }}

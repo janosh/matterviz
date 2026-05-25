@@ -2,6 +2,7 @@ import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import {
+  dispatch_cancelable_keydown,
   enter_edit_atoms_mode,
   expect_canvas_changed,
   get_canvas_timeout,
@@ -3060,6 +3061,23 @@ test.describe(`Edit Atoms Mode`, () => {
 
     await expect(undo_btn).toBeDisabled()
     await expect(redo_btn).toBeDisabled()
+  })
+
+  test(`empty edit-atoms undo redo shortcuts are not canceled`, async ({ page }) => {
+    await enter_edit_atoms_mode(page)
+
+    const structure_div = page.locator(`#test-structure`)
+    const is_mac = await page.evaluate(
+      () => navigator.platform.toUpperCase().indexOf(`MAC`) >= 0,
+    )
+    const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
+    for (const init of [
+      { key: `z`, [primary_modifier]: true },
+      { key: `y`, [primary_modifier]: true },
+      { key: `z`, [primary_modifier]: true, shiftKey: true },
+    ]) {
+      await expect(dispatch_cancelable_keydown(structure_div, init)).resolves.toBe(true)
+    }
   })
 
   test(`undo/redo buttons hidden in distance/angle modes`, async ({ page }) => {

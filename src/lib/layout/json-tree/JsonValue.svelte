@@ -39,7 +39,7 @@
   $effect(() => {
     if (!ctx?.settings.highlight_changes) return
 
-    const prev = ctx.previous_values.get(path)
+    const prev = ctx.prev_values.get(path)
     if (prev !== undefined && !values_equal(prev, value)) {
       just_changed = true
       if (change_timeout) clearTimeout(change_timeout)
@@ -47,7 +47,7 @@
         just_changed = false
       }, 1000)
     }
-    ctx.previous_values.set(path, value)
+    ctx.prev_values.set(path, value)
 
     return () => {
       if (change_timeout) clearTimeout(change_timeout)

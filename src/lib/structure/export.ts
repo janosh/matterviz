@@ -196,7 +196,7 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
     // Check if this is a shader material (bonds)
     const mat = instanced_mesh.material
     const is_shader = Array.isArray(mat)
-      ? mat.some((m) => m instanceof ShaderMaterial)
+      ? mat.some((material) => material instanceof ShaderMaterial)
       : mat instanceof ShaderMaterial
 
     if (is_shader) {

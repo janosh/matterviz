@@ -907,7 +907,7 @@ Reference lines support hover effects and click handlers for interactivity:
       hover_style: { color: `#c0392b`, width: 4 },
       x_span: [0.5, 3.5],
       annotation: { text: `Q1: 50`, position: `center`, side: `above` },
-      on_click: (e) => (selected_target = `Q1 Target: 50 units`),
+      on_click: () => (selected_target = `Q1 Target: 50 units`),
     },
     {
       type: `horizontal`,
@@ -918,7 +918,7 @@ Reference lines support hover effects and click handlers for interactivity:
       hover_style: { color: `#d68910`, width: 4 },
       x_span: [3.5, 6.5],
       annotation: { text: `Q2: 55`, position: `center`, side: `above` },
-      on_click: (e) => (selected_target = `Q2 Target: 55 units`),
+      on_click: () => (selected_target = `Q2 Target: 55 units`),
     },
     {
       type: `horizontal`,
@@ -929,7 +929,7 @@ Reference lines support hover effects and click handlers for interactivity:
       hover_style: { color: `#27ae60`, width: 4 },
       x_span: [6.5, 9.5],
       annotation: { text: `Q3: 65`, position: `center`, side: `above` },
-      on_click: (e) => (selected_target = `Q3 Target: 65 units`),
+      on_click: () => (selected_target = `Q3 Target: 65 units`),
     },
     {
       type: `horizontal`,
@@ -940,7 +940,7 @@ Reference lines support hover effects and click handlers for interactivity:
       hover_style: { color: `#7d3c98`, width: 4 },
       x_span: [9.5, 12.5],
       annotation: { text: `Q4: 75`, position: `center`, side: `above` },
-      on_click: (e) => (selected_target = `Q4 Target: 75 units`),
+      on_click: () => (selected_target = `Q4 Target: 75 units`),
     },
   ]
 </script>
@@ -1089,13 +1089,13 @@ This demo stress-tests interactive axis labels with:
   // Build series grouped by crystal system
   function build_series(prop_key) {
     return crystal_systems.map((system, sys_idx) => {
-      const system_materials = materials.filter((m) => m.system === system)
+      const system_materials = materials.filter((material) => material.system === system)
       return {
-        x: system_materials.map((m) => m.id),
-        y: system_materials.map((m) => m[prop_key]),
+        x: system_materials.map((material) => material.id),
+        y: system_materials.map((material) => material[prop_key]),
         label: system,
         color: system_colors[sys_idx],
-        labels: system_materials.map((m) => m.name),
+        labels: system_materials.map((material) => material.name),
       }
     })
   }
@@ -1109,7 +1109,7 @@ This demo stress-tests interactive axis labels with:
 
   async function data_loader(axis, property_key) {
     load_start = performance.now()
-    await new Promise((r) => setTimeout(r, 150 + Math.random() * 350))
+    await new Promise((resolve) => setTimeout(resolve, 150 + Math.random() * 350))
     const prop = properties[property_key]
     return {
       series: build_series(property_key),
@@ -1133,7 +1133,7 @@ This demo stress-tests interactive axis labels with:
   // Stats
   let avg_load_time = $derived(
     load_times.length > 0
-      ? Math.round(load_times.reduce((a, b) => a + b, 0) / load_times.length)
+      ? Math.round(load_times.reduce((sum, load_time) => sum + load_time, 0) / load_times.length)
       : 0,
   )
 </script>
@@ -1184,28 +1184,40 @@ Display multiple bar plots in a responsive 2×2 grid:
   const plots = [
     {
       title: `Reaction Rates`,
-      data: make_data((x) => 2 * x + Math.random() * 3, (x) => `R${x}`),
+      data: make_data(
+        (x_value) => 2 * x_value + Math.random() * 3,
+        (x_value) => `R${x_value}`,
+      ),
       x_label: `Reaction`,
       y_label: `Rate (mol/s)`,
       color: `#4c6ef5`,
     },
     {
       title: `Crystal Lattice`,
-      data: make_data((x) => 3 + Math.sqrt(x) * 2 + Math.random(), (x) => `L${x}`),
+      data: make_data(
+        (x_value) => 3 + Math.sqrt(x_value) * 2 + Math.random(),
+        (x_value) => `L${x_value}`,
+      ),
       x_label: `Structure`,
       y_label: `Lattice (Å)`,
       color: `#51cf66`,
     },
     {
       title: `Band Gaps`,
-      data: make_data((x) => 1 + x * 0.5 + Math.random() * 0.3, (x) => `M${x}`),
+      data: make_data(
+        (x_value) => 1 + x_value * 0.5 + Math.random() * 0.3,
+        (x_value) => `M${x_value}`,
+      ),
       x_label: `Material`,
       y_label: `Gap (eV)`,
       color: `#ff6b6b`,
     },
     {
       title: `Formation Energy`,
-      data: make_data((x) => -2 + x * 0.3 + Math.random() * 0.5, (x) => `C${x}`),
+      data: make_data(
+        (x_value) => -2 + x_value * 0.3 + Math.random() * 0.5,
+        (x_value) => `C${x_value}`,
+      ),
       x_label: `Compound`,
       y_label: `Energy (eV)`,
       color: `#ffd43b`,

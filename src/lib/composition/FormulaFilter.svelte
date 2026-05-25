@@ -243,9 +243,7 @@
     close_history()
   }
 
-  function is_pinned(entry: string): boolean {
-    return pinned_history.includes(entry)
-  }
+  const is_pinned = (entry: string): boolean => pinned_history.includes(entry)
 
   // Filtered history: exclude current value to avoid redundant suggestion
   let visible_history = $derived.by(() => {

@@ -51,9 +51,8 @@
   const safe_formula = (comp: string) => sanitize_formula(comp, use_subscripts)
 
   // Convert a temperature from data unit to display unit
-  function to_display(temp: number): number {
-    return convert_temp(temp, data_unit, temperature_unit)
-  }
+  const to_display = (temp: number): number =>
+    convert_temp(temp, data_unit, temperature_unit)
 
   // Convert atomic fraction to weight fraction: wt_B = (x_B * M_B) / (x_A * M_A + x_B * M_B)
   const wt_fraction_b = $derived.by(() => {

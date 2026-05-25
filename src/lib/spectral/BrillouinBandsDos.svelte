@@ -1,7 +1,7 @@
 <script lang="ts">
   import { BrillouinZone, reciprocal_lattice } from '$lib/brillouin'
   import type { Vec2, Vec3 } from '$lib/math'
-  import type { InternalPoint } from '$lib/plot'
+  import type { InternalPoint, ScatterHandlerEvent } from '$lib/plot'
   import type { AxisConfig } from '$lib/plot/types'
   import type { Crystal } from '$lib/structure'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -101,10 +101,23 @@
       : `phone`,
   )
 
-  // Synced zoom state (null = use auto-computed range)
+  const bands_default_axis = (range = shared_frequency_range): AxisConfig =>
+    helpers.axis_with_range(bands_props.y_axis, range)
+  const dos_default_axis = (range = shared_frequency_range): AxisConfig =>
+    is_desktop ? helpers.axis_with_range(dos_props.y_axis, range, ``) : { ...dos_props.y_axis }
+
   let synced_zoom_range = $state<Vec2 | null>(null)
-  let bands_y_axis = $state<AxisConfig>({})
-  let dos_y_axis = $state<AxisConfig>({})
+  let bands_y_axis = $state<AxisConfig>(bands_default_axis())
+  let dos_y_axis = $state<AxisConfig>(dos_default_axis())
+  let prev_sources: unknown[] | undefined
+  $effect(() => {
+    const sources = [band_structs, doses, is_desktop, bands_props.y_axis, dos_props.y_axis]
+    if (prev_sources?.every((source, idx) => source === sources[idx])) return
+    prev_sources = sources
+    synced_zoom_range = null
+    bands_y_axis = bands_default_axis()
+    dos_y_axis = dos_default_axis()
+  })
 
   // Detect zoom changes and sync between components (runs first to capture child updates)
   $effect(() => {
@@ -130,10 +143,7 @@
       !helpers.ranges_equal(current_range, base_range)
     ) return
     // Only include range if it's valid (don't override child's auto-range with undefined)
-    bands_y_axis = {
-      ...bands_props.y_axis,
-      ...(helpers.is_valid_range(base_range) && { range: base_range }),
-    }
+    bands_y_axis = bands_default_axis(base_range)
   })
 
   // Propagate synced range to DOS y-axis (untrack current to avoid overwriting child zoom)
@@ -147,13 +157,7 @@
       !helpers.ranges_equal(current_range, base_range)
     ) return
     // Only include range if it's valid (don't override child's auto-range with undefined)
-    dos_y_axis = is_desktop
-      ? {
-        label: ``,
-        ...dos_props.y_axis,
-        ...(helpers.is_valid_range(base_range) && { range: base_range }),
-      }
-      : { ...dos_props.y_axis }
+    dos_y_axis = dos_default_axis(base_range)
   })
 
   let hovered_frequency = $state<number | null>(null)
@@ -174,7 +178,7 @@
     bind:y_axis={bands_y_axis}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
-    on_point_hover={(event) => {
+    on_point_hover={(event: ScatterHandlerEvent | null) => {
       hovered_band_point = event?.point ?? null
       bands_props.on_point_hover?.(event)
     }}

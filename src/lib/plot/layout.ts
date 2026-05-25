@@ -212,24 +212,20 @@ const CORNER_WEIGHT = 5.0
 const MAX_SAMPLE_POINTS = 500
 
 // Check if a point is inside a rectangle
-function point_in_rect(point: { x: number; y: number }, rect: Rect): boolean {
-  return (
-    point.x >= rect.x &&
-    point.x <= rect.x + rect.width &&
-    point.y >= rect.y &&
-    point.y <= rect.y + rect.height
-  )
-}
+const point_in_rect = (point: { x: number; y: number }, rect: Rect): boolean =>
+  point.x >= rect.x &&
+  point.x <= rect.x + rect.width &&
+  point.y >= rect.y &&
+  point.y <= rect.y + rect.height
 
 // Check if two rectangles overlap
-export function rects_overlap(r1: Rect, r2: Rect): boolean {
-  return !(
+export const rects_overlap = (r1: Rect, r2: Rect): boolean =>
+  !(
     r1.x + r1.width <= r2.x ||
     r2.x + r2.width <= r1.x ||
     r1.y + r1.height <= r2.y ||
     r2.y + r2.height <= r1.y
   )
-}
 
 // Find the best placement position using continuous grid sampling
 // Scores each candidate position by:

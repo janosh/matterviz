@@ -1,6 +1,8 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import { centered_frac, euclidean_dist, type Matrix3x3, type Vec2, type Vec3 } from '$lib/math'
+import { centered_frac, euclidean_dist } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import type { AxisConfig } from '$lib/plot/types'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 
@@ -27,6 +29,16 @@ export const ranges_equal = (
     Math.abs(a[1] - b[1]) <= safe_tol
   )
 }
+
+export const axis_with_range = (
+  axis: AxisConfig | undefined,
+  range: Vec2 | undefined,
+  label?: string,
+): AxisConfig => ({
+  ...axis,
+  ...(label !== undefined && { label }),
+  ...(is_valid_range(range) && { range }),
+})
 
 // Detect which plot triggered a zoom change and return the new synced range.
 // Returns null to reset to shared range, undefined for no change, or Vec2 for new zoom.
@@ -115,10 +127,10 @@ export const get_ordered_segments = (
 ) => {
   if (!band_struct) return Array.from(segments)
 
-  const ordered = band_struct.branches.map((br) =>
+  const ordered = band_struct.branches.map((branch) =>
     get_segment_key(
-      band_struct.qpoints[br.start_index]?.label ?? undefined,
-      band_struct.qpoints[br.end_index]?.label ?? undefined,
+      band_struct.qpoints[branch.start_index]?.label ?? undefined,
+      band_struct.qpoints[branch.end_index]?.label ?? undefined,
     ),
   )
   const remaining = Array.from(segments).filter((seg) => !ordered.includes(seg))
@@ -195,7 +207,7 @@ export function get_band_xaxis_ticks(
     // Find which branch this point belongs to
     const branch_names = band_struct.branches
       .filter((branch) => branch.start_index <= idx && idx <= branch.end_index)
-      .map((b) => b.name)
+      .map((branch) => branch.name)
     const this_branch = branch_names[0] || null
 
     if (point.label !== prev_label && prev_branch !== this_branch) {
@@ -508,18 +520,20 @@ function convert_pymatgen_band_structure(
     return null
 
   const qpoints = raw_qpts
-    .map((q) => parse_qpoint(q, labels_dict))
-    .filter((q): q is types.QPoint => q !== null)
+    .map((qpoint) => parse_qpoint(qpoint, labels_dict))
+    .filter((qpoint): qpoint is types.QPoint => qpoint !== null)
   if (!qpoints.length) return null
 
   // Step distances and discontinuity detection (5x median threshold)
   const steps = qpoints
     .slice(1)
-    .map((q, idx) => euclidean_dist(qpoints[idx].frac_coords, q.frac_coords))
+    .map((qpoint, idx) => euclidean_dist(qpoints[idx].frac_coords, qpoint.frac_coords))
   const sorted = steps.slice().sort((a, b) => a - b)
   const threshold = (sorted[Math.floor(sorted.length / 2)] ?? 0) * 5
   const disc_set = new Set(
-    steps.map((s, idx) => (s > threshold ? idx + 1 : -1)).filter((i) => i >= 0),
+    steps
+      .map((step, idx) => (step > threshold ? idx + 1 : -1))
+      .filter((disc_idx) => disc_idx >= 0),
   )
 
   // Cumulative distance (skip discontinuities)
@@ -536,12 +550,12 @@ function convert_pymatgen_band_structure(
   if (Array.isArray(pmg_branches) && pmg_branches.length > 0) {
     // Validate and use pymatgen branches directly
     branches = pmg_branches.filter(
-      (br) =>
-        typeof br.start_index === `number` &&
-        typeof br.end_index === `number` &&
-        br.start_index >= 0 &&
-        br.end_index < qpoints.length &&
-        br.start_index <= br.end_index,
+      (branch) =>
+        typeof branch.start_index === `number` &&
+        typeof branch.end_index === `number` &&
+        branch.start_index >= 0 &&
+        branch.end_index < qpoints.length &&
+        branch.start_index <= branch.end_index,
     )
   }
 
@@ -568,7 +582,7 @@ function convert_pymatgen_band_structure(
           name: `${start_label}-${end_label}`,
         }
       })
-      .filter((br) => br.start_index <= br.end_index)
+      .filter((branch) => branch.start_index <= branch.end_index)
   }
 
   if (!branches.length) {
@@ -640,12 +654,12 @@ export function normalize_band_structure(bs: unknown): types.BaseBandStructure |
     distance.length !== n_qpts ||
     bands.some((band) => !Array.isArray(band) || band.length !== n_qpts) ||
     branches.some(
-      (br) =>
-        typeof br.start_index !== `number` ||
-        typeof br.end_index !== `number` ||
-        br.start_index < 0 ||
-        br.end_index >= n_qpts ||
-        br.start_index > br.end_index,
+      (branch) =>
+        typeof branch.start_index !== `number` ||
+        typeof branch.end_index !== `number` ||
+        branch.start_index < 0 ||
+        branch.end_index >= n_qpts ||
+        branch.start_index > branch.end_index,
     )
   )
     return null
@@ -695,7 +709,7 @@ export function normalize_dos(
 
     if (auto_convert_units && max_freq > 100) {
       // Likely in cm⁻¹, convert to THz
-      final_frequencies = (frequencies as number[]).map((f) => f * CM_TO_THZ)
+      final_frequencies = (frequencies as number[]).map((frequency) => frequency * CM_TO_THZ)
       console.warn(
         `Phonon DOS frequencies appear to be in cm⁻¹ (max: ${max_freq.toFixed(1)}). ` +
           `Converting to THz (max: ${(max_freq * CM_TO_THZ).toFixed(1)} THz).`,
@@ -1270,9 +1284,8 @@ export function format_sigma(val: number): string {
 }
 
 // Validate sigma_range: ensures min < max, returns [0, 1] if invalid
-export function validate_sigma_range([min, max]: [number, number]): [number, number] {
-  return Number.isFinite(min) && Number.isFinite(max) && min < max ? [min, max] : [0, 1]
-}
+export const validate_sigma_range = ([min, max]: [number, number]): [number, number] =>
+  Number.isFinite(min) && Number.isFinite(max) && min < max ? [min, max] : [0, 1]
 
 // Calculate slider step: 1/100th of range, or 0.01 fallback
 export function calculate_sigma_step(range: [number, number]): number {

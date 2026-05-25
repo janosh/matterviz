@@ -69,9 +69,9 @@
     is_time_scale,
   } from '$lib/plot/types'
   import { compute_label_positions } from '$lib/plot/utils/label-placement'
+  import type { SeriesVisibilitySnapshot } from '$lib/plot/utils/series-visibility'
   import {
     handle_legend_double_click,
-    type SeriesVisibilitySnapshot,
     toggle_group_visibility,
     toggle_series_visibility,
   } from '$lib/plot/utils/series-visibility'
@@ -308,7 +308,7 @@
   let zoom_x2_range = $state<[number, number]>([0, 1])
   let zoom_y_range = $state<[number, number]>([0, 1])
   let zoom_y2_range = $state<[number, number]>([0, 1])
-  let previous_series_visibility: SeriesVisibilitySnapshot | null = $state(null)
+  let prev_series_visibility: SeriesVisibilitySnapshot | null = $state(null)
 
   // Y2 axis sync configuration
   let y2_sync_config = $derived(normalize_y2_sync(y2_axis?.sync))
@@ -349,7 +349,7 @@
   >(null)
 
   // Fill region hover state
-  let hovered_fill_idx = $state<number | null>(null)
+  let hovered_fill_key = $state<string | null>(null)
 
   // Reference line hover state
   let hovered_ref_line_idx = $state<number | null>(null)
@@ -757,11 +757,18 @@
     line_dash?: string
   }
 
+  const fill_hover_key = (
+    source_type: `fill_region` | `error_band`,
+    source_idx: number,
+    id?: string | number,
+  ): string => `${source_type}:${id == null ? `idx:${source_idx}` : `id:${id}`}`
+
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type ComputedFill = FillRegion & {
     idx: number
     source_type: `fill_region` | `error_band`
     source_idx: number
+    hover_key: string
     path_segments: string[]
   }
   let computed_fills = $derived.by((): ComputedFill[] => {
@@ -775,16 +782,19 @@
       region: FillRegion | null
       source_type: `fill_region` | `error_band`
       source_idx: number
+      hover_key: string
     }[] = [
       ...(fill_regions ?? []).map((region, source_idx) => ({
         region,
         source_type: `fill_region` as const,
         source_idx,
+        hover_key: fill_hover_key(`fill_region`, source_idx, region.id),
       })),
       ...(error_bands ?? []).map((band, source_idx) => ({
         region: convert_error_band_to_fill_region(band, series_with_ids),
         source_type: `error_band` as const,
         source_idx,
+        hover_key: fill_hover_key(`error_band`, source_idx, band.id),
       })),
     ]
 
@@ -809,8 +819,9 @@
         region: FillRegion
         source_type: `fill_region` | `error_band`
         source_idx: number
+        hover_key: string
       } => entry.region !== null)
-      .map(({ region, source_type, source_idx }, idx) => {
+      .map(({ region, source_type, source_idx, hover_key }, idx) => {
         if (region.visible === false) return null
 
         // Domain context for boundary resolution
@@ -877,7 +888,7 @@
 
         if (path_segments.length === 0) return null
 
-        return { ...region, idx, source_type, source_idx, path_segments }
+        return { ...region, idx, source_type, source_idx, hover_key, path_segments }
       })
       .filter((fill): fill is ComputedFill => fill !== null)
   })
@@ -1881,13 +1892,13 @@
         {clip_path_id}
         {x_scale_fn}
         {y_scale_fn}
-        hovered_region={hovered_fill_idx}
+        is_hovered={hovered_fill_key === fill.hover_key}
         on_click={(event: FillHandlerEvent) => {
           fill.on_click?.(event)
           on_fill_click?.(event)
         }}
         on_hover={(event: FillHandlerEvent | null) => {
-          hovered_fill_idx = event?.region_idx ?? null
+          hovered_fill_key = event ? fill.hover_key : null
           fill.on_hover?.(event)
           on_fill_hover?.(event)
         }}
@@ -2688,10 +2699,10 @@
           const result = handle_legend_double_click(
             series,
             double_clicked_idx,
-            previous_series_visibility,
+            prev_series_visibility,
           )
           series = result.series
-          previous_series_visibility = result.previous_visibility
+          prev_series_visibility = result.prev_visibility
         })}
         on_group_toggle={legend?.on_group_toggle ??
         ((_group_name: string, series_indices: number[]) => {
@@ -2714,7 +2725,7 @@
           // Only fill_regions can be toggled (error_bands are not bindable)
           if (source_type !== `fill_region`) return
           // Toggle: if only this fill is visible, show all; otherwise show only this one
-          const visible_count = fill_regions.filter((r) => r.visible !== false).length
+          const visible_count = fill_regions.filter((region) => region.visible !== false).length
           const this_visible = fill_regions[source_idx]?.visible !== false
           if (visible_count === 1 && this_visible) {
             // Show all fills

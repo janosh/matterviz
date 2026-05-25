@@ -245,7 +245,7 @@
     const series: DataSeries[] = [
       {
         x: raw_data.x.filter((_, idx) => Number.isFinite(raw_data.y[idx])),
-        y: raw_data.y.filter((y) => Number.isFinite(y)),
+        y: raw_data.y.filter((y_val) => Number.isFinite(y_val)),
         label: `Raw Data (valid)`,
         point_style: { fill: `#e74c3c`, radius: 4, fill_opacity: 0.6 },
         line_style: { stroke: `#e74c3c`, stroke_width: 1.5 },
@@ -333,8 +333,12 @@
     const length = 50
     // Spiral trajectory: x and y are coordinates, t is the parameter (like time)
     const t_vals = Array.from({ length }, (_, idx) => idx)
-    const x_vals = t_vals.map((t) => 10 + 8 * Math.cos(t * 0.25) * (1 + t * 0.02))
-    const y_vals = t_vals.map((t) => 10 + 8 * Math.sin(t * 0.25) * (1 + t * 0.02))
+    const x_vals = t_vals.map((t) =>
+      10 + 8 * Math.cos(t * 0.25) * (1 + t * 0.02)
+    )
+    const y_vals = t_vals.map((t) =>
+      10 + 8 * Math.sin(t * 0.25) * (1 + t * 0.02)
+    )
     // Add NaN at different positions - these points will be removed from BOTH x and y
     x_vals[15] = NaN // NaN in x at t=15
     y_vals[35] = NaN // NaN in y at t=35
@@ -450,9 +454,9 @@
 
     config_lines.push(`  ${prop(`in_place`)}: ${kw(`false`)},`)
 
-    const x_preview = raw_data.x.slice(0, 5).map((v) => num(v)).join(`, `)
+    const x_preview = raw_data.x.slice(0, 5).map((val) => num(val)).join(`, `)
     const y_preview = raw_data.y.slice(0, 5)
-      .map((v) => Number.isFinite(v) ? num(v.toFixed(1)) : kw(`NaN`))
+      .map((val) => Number.isFinite(val) ? num(val.toFixed(1)) : kw(`NaN`))
       .join(`, `)
 
     return `${kw(`import`)} { ${fn(`clean_series`)} } ${kw(`from`)} ${
@@ -703,7 +707,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
             x: multi_series_data.x.filter((_, idx) =>
               Number.isFinite(multi_series_data.y_arrays[0][idx])
             ),
-            y: multi_series_data.y_arrays[0].filter((y) => Number.isFinite(y)),
+            y: multi_series_data.y_arrays[0].filter((y_val) => Number.isFinite(y_val)),
             label: `Temperature`,
             point_style: { fill: `#e74c3c`, radius: 4 },
             line_style: { stroke: `#e74c3c`, stroke_width: 1.5 },
@@ -713,7 +717,7 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
             x: multi_series_data.x.filter((_, idx) =>
               Number.isFinite(multi_series_data.y_arrays[1][idx])
             ),
-            y: multi_series_data.y_arrays[1].filter((y) => Number.isFinite(y)),
+            y: multi_series_data.y_arrays[1].filter((y_val) => Number.isFinite(y_val)),
             label: `Pressure`,
             point_style: { fill: `#3498db`, radius: 4 },
             line_style: { stroke: `#3498db`, stroke_width: 1.5 },
@@ -721,8 +725,8 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
           },
           ...(multi_series_nan_markers.temp_nan.length > 0
             ? [{
-              x: multi_series_nan_markers.temp_nan.map((p) => p.x),
-              y: multi_series_nan_markers.temp_nan.map((p) => p.y),
+              x: multi_series_nan_markers.temp_nan.map((point) => point.x),
+              y: multi_series_nan_markers.temp_nan.map((point) => point.y),
               label: `Temp NaN (${multi_series_nan_markers.temp_nan.length})`,
               point_style: {
                 fill: `#9b59b6`,
@@ -734,8 +738,8 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
             : []),
           ...(multi_series_nan_markers.pressure_nan.length > 0
             ? [{
-              x: multi_series_nan_markers.pressure_nan.map((p) => p.x),
-              y: multi_series_nan_markers.pressure_nan.map((p) => p.y),
+              x: multi_series_nan_markers.pressure_nan.map((point) => point.x),
+              y: multi_series_nan_markers.pressure_nan.map((point) => point.y),
               label:
                 `Pressure NaN (${multi_series_nan_markers.pressure_nan.length})`,
               point_style: {
@@ -815,8 +819,8 @@ ${cmt(`quality.oscillation_detected = ${cleaned_result.quality.oscillation_detec
           },
           ...(trajectory_nan_markers.length > 0
             ? [{
-              x: trajectory_nan_markers.map((p) => p.x),
-              y: trajectory_nan_markers.map((p) => p.y),
+              x: trajectory_nan_markers.map((point) => point.x),
+              y: trajectory_nan_markers.map((point) => point.y),
               label: `NaN points (${trajectory_nan_markers.length})`,
               point_style: {
                 fill: `#9b59b6`,

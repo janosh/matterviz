@@ -52,7 +52,7 @@
 
   let last_toggled_idx = $state<number | null>(null)
   let last_isolated_idx = $state<number | null>(null)
-  let previous_visibility: boolean[] | null = $state(null) // State to store visibility before isolation
+  let prev_visibility: boolean[] | null = $state(null) // State to store visibility before isolation
 
   function handle_toggle(toggled_idx: number) {
     last_toggled_idx = toggled_idx
@@ -73,18 +73,18 @@
     const is_currently_isolated = visible_count === 1 &&
       series_data[double_clicked_idx]?.visible
 
-    if (is_currently_isolated && previous_visibility) {
+    if (is_currently_isolated && prev_visibility) {
       // Restore previous visibility state
       series_data = series_data.map((item, idx) => ({
         ...item,
-        visible: previous_visibility?.[idx] ?? item.visible,
+        visible: prev_visibility?.[idx] ?? item.visible,
       }))
-      previous_visibility = null // Clear memory
+      prev_visibility = null // Clear memory
     } else {
       // Isolate the double-clicked series
       // Only store previous state if we are actually isolating (more than one series visible)
       if (visible_count > 1) {
-        previous_visibility = series_data.map((item) => item.visible) // Store current state
+        prev_visibility = series_data.map((item) => item.visible) // Store current state
       }
       series_data = series_data.map((item) => ({
         ...item,

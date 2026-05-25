@@ -240,9 +240,9 @@
   const hull_faces = $derived.by((): ConvexHullTriangle[] => {
     if (coords_entries.length === 0) return []
     // Excluded entries don't participate in hull construction
-    const hull_entries = coords_entries.filter((e) => !e.exclude_from_hull)
+    const hull_entries = coords_entries.filter((entry) => !entry.exclude_from_hull)
     if (hull_entries.length === 0) return []
-    const points = hull_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    const points = hull_entries.map(({ x, y, z }) => ({ x, y, z }))
     try {
       return thermo.compute_lower_hull_triangles(points)
     } catch (error) {
@@ -258,7 +258,7 @@
   const all_enriched_entries = $derived.by(() => {
     if (coords_entries.length === 0) return []
     if (energy_mode !== `on-the-fly`) return coords_entries
-    const pts = coords_entries.map((e) => ({ x: e.x, y: e.y, z: e.z }))
+    const pts = coords_entries.map(({ x, y, z }) => ({ x, y, z }))
     const raw_dists = thermo.compute_e_above_hull_for_points(pts, hull_model)
     return coords_entries.map((entry, idx) => ({
       ...entry, ...compute_hull_stability(raw_dists[idx], entry.exclude_from_hull),
@@ -275,34 +275,32 @@
     DEFAULTS.convex_hull.ternary.max_hull_dist_show_phases,
   ))
 
-  // Initialize threshold to auto value on first load
-  let initialized = $state(false)
+  const next_auto_threshold = helpers.auto_threshold_reset(
+    DEFAULTS.convex_hull.ternary.max_hull_dist_show_phases,
+  )
   $effect(() => {
-    if (!initialized && all_enriched_entries.length > 0) {
-      initialized = true
-      max_hull_dist_show_phases = auto_default_threshold
-    }
+    max_hull_dist_show_phases = next_auto_threshold(
+      entries,
+      max_hull_dist_show_phases,
+      auto_default_threshold,
+    ) ?? max_hull_dist_show_phases
   })
 
-  // Filter by threshold and compute visibility
+  // Filter by threshold; visibility is a view predicate, not entry state.
   const plot_entries = $derived(
-    all_enriched_entries
-      .filter((e) => (e.e_above_hull ?? 0) <= max_hull_dist_show_phases)
-      .map((e) => ({
-        ...e,
-        visible: ((e.is_stable || e.e_above_hull === 0) && show_stable) ||
-          (!(e.is_stable || e.e_above_hull === 0) && show_unstable),
-      })),
+    all_enriched_entries.filter((entry) =>
+      (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
+    ),
   )
+  const visible_entries = $derived(helpers.visible_entries(
+    plot_entries,
+    show_stable,
+    show_unstable,
+  ))
 
   $effect(() => {
-    stable_entries = plot_entries.filter((entry: ConvexHullEntry) =>
-      entry.is_stable || entry.e_above_hull === 0
-    )
-    unstable_entries = plot_entries.filter((entry: ConvexHullEntry) =>
-      typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 &&
-      !entry.is_stable
-    )
+    stable_entries = plot_entries.filter(helpers.entry_is_stable)
+    unstable_entries = plot_entries.filter(helpers.entry_is_unstable)
   })
 
   // Canvas rendering
@@ -442,6 +440,29 @@
   let modal_open = $state(false)
   let selected_structure = $state<AnyStructure | null>(null)
   let modal_place_right = $state(true)
+  $effect(() => {
+    const current_selection = helpers.current_entry(selected_entry, plot_entries)
+    const stale_selection = selected_entry && !current_selection
+    if (stale_selection) selected_entry = null
+    else if (current_selection && current_selection !== selected_entry) {
+      selected_entry = current_selection
+    }
+    const current_hover = helpers.current_entry(hover_data?.entry, plot_entries)
+    if (hover_data?.entry && !current_hover) {
+      hover_data = null
+      on_point_hover?.(null)
+    } else if (hover_data && current_hover && current_hover !== hover_data.entry) {
+      hover_data = { ...hover_data, entry: current_hover }
+    }
+    if (modal_open) {
+      const structure = current_selection && extract_structure_from_entry(current_selection)
+      if (structure) selected_structure = structure
+      else {
+        modal_open = false
+        selected_structure = null
+      }
+    }
+  })
 
   // Hull face color (customizable via controls)
   let hull_face_color = $state(`#4caf50`)
@@ -511,8 +532,8 @@
   }
 
   const handle_keydown = (event: KeyboardEvent) => {
-    const target = event.target as HTMLElement
-    if (target.tagName.match(/INPUT|TEXTAREA/)) return
+    const target = event.target
+    if (target instanceof HTMLElement && target.tagName.match(/INPUT|TEXTAREA/)) return
 
     // Stop propagation if event came from canvas to prevent wrapper's handler
     // from running again (both have onkeydown, causing duplicate handling)
@@ -796,25 +817,32 @@
     if (!ctx || !show_hull_faces || hull_faces.length === 0) return
 
     // Lazy computation for uniform mode: normalize alpha by formation energy
-    let norm_alpha: ((z: number) => number) | null = null
+    let norm_alpha: ((e_form: number) => number) | null = null
     if (hull_face_color_mode === `uniform`) {
-      const min_fe = energy_range.min
-      norm_alpha = (z: number) => {
-        const t = Math.max(0, Math.min(1, (0 - z) / Math.max(1e-6, 0 - min_fe)))
-        return t * hull_face_opacity
+      const min_uniform_e_form = energy_range.min
+      norm_alpha = (e_form: number) => {
+        const alpha_fraction = Math.max(
+          0,
+          Math.min(1, (0 - e_form) / Math.max(1e-6, 0 - min_uniform_e_form)),
+        )
+        return alpha_fraction * hull_face_opacity
       }
     }
 
     // Lazy computation for formation_energy mode
     let energy_face_scale: ((val: number) => string) | null = null
-    let min_z = 0
+    let min_face_e_form = 0
     if (hull_face_color_mode === `formation_energy`) {
-      const all_z = hull_faces.flatMap((tri) => tri.vertices.map((v) => v.z))
-      min_z = Math.min(...all_z)
+      const all_e_form = hull_faces.flatMap((tri) =>
+        tri.vertices.map((vertex) => vertex.z)
+      )
+      min_face_e_form = Math.min(...all_e_form)
       energy_face_scale = helpers.get_energy_color_scale(
         `energy`,
         color_scale,
-        all_z.map((z) => ({ e_above_hull: z - min_z })), // Normalize to 0-based
+        all_e_form.map((e_form) => ({
+          e_above_hull: e_form - min_face_e_form,
+        })), // Normalize to 0-based
       )
     }
 
@@ -827,8 +855,8 @@
         return hull_face_color
       }
       if (hull_face_color_mode === `formation_energy`) {
-        const avg_z = (tri.vertices[0].z + tri.vertices[1].z + tri.vertices[2].z) / 3
-        return energy_face_scale?.(avg_z - min_z) ?? hull_face_color
+        const avg_e_form = (tri.vertices[0].z + tri.vertices[1].z + tri.vertices[2].z) / 3
+        return energy_face_scale?.(avg_e_form - min_face_e_form) ?? hull_face_color
       }
       if (hull_face_color_mode === `dominant_element`) {
         // Find element vertex closest to face centroid in 2D ternary space
@@ -855,7 +883,7 @@
       return { tri, tri_idx, depth: centroid_proj.depth }
     })
 
-    faces_with_depth.sort((a, b) => a.depth - b.depth) // Back to front
+    faces_with_depth.sort((left, right) => left.depth - right.depth) // Back to front
 
     // Draw each face (lower hull only)
     for (const { tri, tri_idx } of faces_with_depth) {
@@ -962,8 +990,8 @@
     const denom = Math.max(1e-6, max_fe - min_fe)
     return (value: number) => {
       // alpha 0 at 0 eV, goes to hull_face_opacity at most negative energy
-      const t = Math.max(0, Math.min(1, (value - min_fe) / denom))
-      const alpha = (1 - t) * hull_face_opacity
+      const energy_fraction = Math.max(0, Math.min(1, (value - min_fe) / denom))
+      const alpha = (1 - energy_fraction) * hull_face_opacity
       return add_alpha(hull_face_color, alpha)
     }
   })
@@ -972,7 +1000,7 @@
     if (!ctx || sorted_points_cache.length === 0) return
 
     for (const { entry, projected } of sorted_points_cache) {
-      const is_stable = entry.is_stable || entry.e_above_hull === 0
+      const is_stable = helpers.entry_is_stable(entry)
       const is_entry_highlighted = is_highlighted(entry)
       const color = get_point_color(entry)
       const size = (entry.size || (is_stable ? 6 : 4)) * canvas_dims.scale
@@ -1120,9 +1148,9 @@
     const label_height = hull_label_font_size + 2
 
     const label_entries = helpers.get_composition_label_entries(
-      plot_entries.filter((entry) => {
-        if (!entry.visible || entry.is_element) return false
-        const is_stable_point = entry.is_stable || (entry.e_above_hull ?? 0) <= 1e-6
+      visible_entries.filter((entry) => {
+        if (entry.is_element) return false
+        const is_stable_point = helpers.entry_is_stable(entry)
         return (is_stable_point && show_stable_labels) ||
           (!is_stable_point && show_unstable_labels &&
             (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
@@ -1147,7 +1175,7 @@
       const formula_segments = get_formula_label_segments(
         helpers.get_entry_label(entry, elements),
       )
-      const is_stable_point = entry.is_stable || entry.e_above_hull === 0
+      const is_stable_point = helpers.entry_is_stable(entry)
       const point_size = (entry.size || (is_stable_point ? 6 : 4)) * canvas_dims.scale
       const text_width = measure_formula_segments(ctx, formula_segments)
       const placements = get_label_placements(
@@ -1257,7 +1285,7 @@
     helpers.find_hull_entry_at_mouse(
       canvas,
       event,
-      plot_entries,
+      visible_entries,
       (x: number, y: number, z: number) => {
         const pt = project_3d_point(x, y, z)
         return { x: pt.x, y: pt.y }
@@ -1386,7 +1414,7 @@
   const energy_range = $derived.by(() => {
     let min = 0
     let max = 0
-    for (const entry of plot_entries) {
+    for (const entry of all_enriched_entries) {
       const energy = entry.e_form_per_atom ?? 0
       min = Math.min(min, energy)
       max = Math.max(max, energy)
@@ -1397,14 +1425,13 @@
 
   // Performance: Pre-compute and cache all point projections + depth sorting
   const sorted_points_cache = $derived.by(() => {
-    if (!canvas || plot_entries.length === 0) return []
-    return plot_entries
-      .filter((entry) => entry.visible)
+    if (!canvas || visible_entries.length === 0) return []
+    return visible_entries
       .map((entry) => ({
         entry,
         projected: project_3d_point(entry.x, entry.y, entry.z),
       }))
-      .sort((a, b) => a.projected.depth - b.projected.depth)
+      .sort((left, right) => left.projected.depth - right.projected.depth)
   })
 
   let style = $derived(
@@ -1479,8 +1506,8 @@
   <!-- Formation Energy Color Bar (bottom-left corner) -->
   {#if color_mode === `energy` && plot_entries.length > 0}
     {@const hull_distances = plot_entries
-      .map((e) => e.e_above_hull)
-      .filter((v): v is number => typeof v === `number`)}
+      .map((entry) => entry.e_above_hull)
+      .filter((value): value is number => typeof value === `number`)}
     {@const min_energy = hull_distances.length > 0 ? Math.min(...hull_distances) : 0}
     {@const max_energy = hull_distances.length > 0 ? Math.max(...hull_distances, 0.1) : 0.1}
     <ColorBar
@@ -1529,6 +1556,8 @@
           {phase_stats}
           {stable_entries}
           {unstable_entries}
+          {show_stable}
+          {show_unstable}
           {max_hull_dist_show_phases}
           {max_hull_dist_show_labels}
           {label_threshold}
@@ -1566,13 +1595,14 @@
           {merged_controls}
           toggle_props={{ class: `legend-controls-btn` }}
           {show_hull_faces}
-          on_hull_faces_change={(value) => show_hull_faces = value}
+          on_hull_faces_change={(value: boolean) => show_hull_faces = value}
           {hull_face_color}
-          on_hull_face_color_change={(value) => hull_face_color = value}
+          on_hull_face_color_change={(value: string) => hull_face_color = value}
           {hull_face_opacity}
-          on_hull_face_opacity_change={(value) => hull_face_opacity = value}
+          on_hull_face_opacity_change={(value: number) => hull_face_opacity = value}
           {hull_face_color_mode}
-          on_hull_face_color_mode_change={(value) => hull_face_color_mode = value}
+          on_hull_face_color_mode_change={(value: HullFaceColorMode) =>
+            hull_face_color_mode = value}
           bind:energy_source_mode
           {has_precomputed_e_form}
           {can_compute_e_form}

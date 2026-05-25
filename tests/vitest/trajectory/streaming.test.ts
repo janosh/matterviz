@@ -9,7 +9,9 @@ import {
 } from '$lib/trajectory/parse'
 import { generate_streaming_plot_series } from '$lib/trajectory/plotting'
 import process from 'node:process'
+import { flushSync, mount, tick } from 'svelte'
 import { describe, expect, it } from 'vitest'
+import TrajectoryRaceHarness from './TrajectoryRaceHarness.svelte'
 
 // CI environments have higher timing variability
 const is_ci = [`true`, `1`].includes(process.env.CI ?? ``)
@@ -88,6 +90,28 @@ describe(`Trajectory Streaming`, () => {
 
     return buffer
   }
+
+  it(`ignores stale out-of-order frame loads`, async () => {
+    mount(TrajectoryRaceHarness, { target: document.body })
+    const settle_frame_load = async () => {
+      await Promise.resolve()
+      flushSync()
+      await tick()
+    }
+    await tick()
+
+    document.querySelector<HTMLButtonElement>(`[data-testid="step-1"]`)?.click()
+    flushSync()
+    await tick()
+
+    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-1"]`)?.click()
+    await settle_frame_load()
+    expect(document.body.textContent).toContain(`Cartesian (1, 0, 0)`)
+
+    document.querySelector<HTMLButtonElement>(`[data-testid="resolve-0"]`)?.click()
+    await settle_frame_load()
+    expect(document.body.textContent).toContain(`Cartesian (1, 0, 0)`)
+  })
 
   describe(`Frame Indexing`, () => {
     it(`should build frame index for XYZ trajectory`, async () => {

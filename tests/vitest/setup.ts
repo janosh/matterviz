@@ -59,41 +59,37 @@ beforeEach(() => {
   })
 })
 
-type Element_ctor<T extends Element> = abstract new (...args: never[]) => T
+type Element_constructor<T extends Element> = abstract new (...args: never[]) => T
 
 function query_required<T extends Element>(
   selector: string,
-  element_ctor?: Element_ctor<T>,
+  element_constructor?: Element_constructor<T>,
 ): T {
   const node = document.querySelector(selector)
   if (!node) throw new Error(`No element found for selector: ${selector}`)
-  if (element_ctor && !(node instanceof element_ctor)) {
+  if (element_constructor && !(node instanceof element_constructor)) {
     throw new Error(`Element found for selector ${selector} has the wrong type`)
   }
   return node as T
 }
 
-export function doc_query<T extends HTMLElement>(
+export const doc_query = <T extends HTMLElement>(
   selector: string,
-  element_ctor?: Element_ctor<T>,
-): T {
-  return query_required(selector, element_ctor)
-}
+  element_constructor?: Element_constructor<T>,
+): T => query_required(selector, element_constructor)
 
-export function svg_query(selector: string): SVGElement {
-  return query_required(selector)
-}
+export const svg_query = (selector: string): SVGElement => query_required(selector)
 
 export function set_element_size(element: HTMLElement, width: number, height: number): void {
   Object.defineProperty(element, `clientWidth`, { value: width, configurable: true })
   Object.defineProperty(element, `clientHeight`, { value: height, configurable: true })
 }
 
-export function bind_props<P extends object, S extends Record<string, unknown>>(
+export const bind_props = <P extends object, S extends Record<string, unknown>>(
   props: P,
   state: S,
-): P & S {
-  return Object.defineProperties(
+): P & S =>
+  Object.defineProperties(
     props,
     Object.fromEntries(
       Object.keys(state).map((key) => [
@@ -106,7 +102,6 @@ export function bind_props<P extends object, S extends Record<string, unknown>>(
       ]),
     ),
   ) as P & S
-}
 
 export async function resize_element(
   element: HTMLElement,

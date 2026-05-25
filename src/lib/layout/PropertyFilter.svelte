@@ -56,10 +56,12 @@
     return histogram_data.filter((val) => val >= min && val <= max)
   })
 
-  function onkeydown(event: KeyboardEvent): void {
+  function onkeydown(
+    event: KeyboardEvent & { currentTarget: HTMLInputElement },
+  ): void {
     if (event.key === `Enter`) {
       event.preventDefault()
-      ;(event.target as HTMLInputElement).blur()
+      event.currentTarget.blur()
     } else if (event.key === `Escape` && active) {
       event.preventDefault()
       clear_filter()

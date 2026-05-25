@@ -160,7 +160,7 @@ export const decode_structure_id = (encoded_id: string) => decodeURIComponent(en
 export function detect_provider_from_slug(slug: string, providers: OptimadeProvider[]) {
   const decoded_slug = decode_structure_id(slug)
   const prefix = decoded_slug.split(`-`)[0].toLowerCase()
-  return providers.find((p) => p.id === prefix)?.id ?? ``
+  return providers.find((provider) => provider.id === prefix)?.id ?? ``
 }
 
 export async function fetch_optimade_structure(
@@ -168,7 +168,7 @@ export async function fetch_optimade_structure(
   provider: string,
   providers: OptimadeProvider[],
 ): Promise<OptimadeStructure | null> {
-  const provider_config = providers.find((p) => p.id === provider)
+  const provider_config = providers.find((entry) => entry.id === provider)
   if (!provider_config) throw new Error(`Unknown provider: ${provider}`)
 
   const base_url = await resolve_provider_url(provider_config.attributes.base_url)
@@ -186,7 +186,7 @@ export async function fetch_suggested_structures(
   providers: OptimadeProvider[],
   limit: number = 12,
 ): Promise<OptimadeStructure[]> {
-  const provider_config = providers.find((p) => p.id === provider)
+  const provider_config = providers.find((entry) => entry.id === provider)
   if (!provider_config) throw new Error(`Unknown provider: ${provider}`)
 
   try {

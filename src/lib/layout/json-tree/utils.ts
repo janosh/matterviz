@@ -51,31 +51,24 @@ export function get_value_type(value: unknown): JsonValueType {
 }
 
 // Check if a value type is expandable (has children)
-export function is_expandable_type(value_type: JsonValueType): boolean {
-  return (
-    value_type === `object` ||
-    value_type === `array` ||
-    value_type === `map` ||
-    value_type === `set`
-  )
-}
+export const is_expandable_type = (value_type: JsonValueType): boolean =>
+  value_type === `object` ||
+  value_type === `array` ||
+  value_type === `map` ||
+  value_type === `set`
 
 // Check if a value type is a primitive (searchable as string)
-export function is_primitive_type(value_type: JsonValueType): boolean {
-  return (
-    value_type === `string` ||
-    value_type === `number` ||
-    value_type === `boolean` ||
-    value_type === `null` ||
-    value_type === `undefined` ||
-    value_type === `bigint`
-  )
-}
+export const is_primitive_type = (value_type: JsonValueType): boolean =>
+  value_type === `string` ||
+  value_type === `number` ||
+  value_type === `boolean` ||
+  value_type === `null` ||
+  value_type === `undefined` ||
+  value_type === `bigint`
 
 // Check if a value is expandable
-export function is_expandable(value: unknown): boolean {
-  return is_expandable_type(get_value_type(value))
-}
+export const is_expandable = (value: unknown): boolean =>
+  is_expandable_type(get_value_type(value))
 
 // Get the number of children for a value
 export function get_child_count(value: unknown): number {
@@ -459,9 +452,7 @@ const HEX_COLOR_RE = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
 const FUNC_COLOR_RE = /^(?:rgba?|hsla?|oklch|oklab|lch|lab|color)\([^)]*\)$/i
 
 // Check if a string is a URL
-export function is_url(str: string): boolean {
-  return URL_RE.test(str.trim())
-}
+export const is_url = (str: string): boolean => URL_RE.test(str.trim())
 
 // Check if a string looks like a CSS color value
 // Rejects strings with semicolons to prevent CSS injection

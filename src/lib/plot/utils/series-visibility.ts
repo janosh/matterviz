@@ -87,10 +87,10 @@ export function handle_legend_double_click<Metadata extends StrRecord = StrRecor
   prev_snapshot: SeriesVisibilitySnapshot | null,
 ): {
   series: DataSeries<Metadata>[]
-  previous_visibility: SeriesVisibilitySnapshot | null
+  prev_visibility: SeriesVisibilitySnapshot | null
 } {
   if (idx < 0 || idx >= series.length) {
-    return { series, previous_visibility: prev_snapshot }
+    return { series, prev_visibility: prev_snapshot }
   }
 
   const { label } = series[idx]
@@ -117,7 +117,7 @@ export function handle_legend_double_click<Metadata extends StrRecord = StrRecor
           ? { ...srs, visible: prev_visibility[srs_idx] }
           : srs,
       ),
-      previous_visibility: null,
+      prev_visibility: null,
     }
   }
 
@@ -135,6 +135,6 @@ export function handle_legend_double_click<Metadata extends StrRecord = StrRecor
       const in_group = label ? srs.label === label : srs_idx === idx
       return (srs.visible ?? true) !== in_group ? { ...srs, visible: in_group } : srs
     }),
-    previous_visibility: new_prev,
+    prev_visibility: new_prev,
   }
 }

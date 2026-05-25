@@ -165,8 +165,8 @@
 
   // Yield to browser so spinner can render before heavy computation
   const tick = () =>
-    new Promise<void>((r) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => r()))
+    new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     )
 
   // Parse and load Fermi surface from content (async for UI responsiveness)
@@ -339,8 +339,8 @@
   })
 
   function handle_keydown(event: KeyboardEvent) {
-    const target = event.target as HTMLElement
-    if ([`INPUT`, `TEXTAREA`].includes(target.tagName)) return
+    const target = event.target
+    if (target instanceof HTMLElement && [`INPUT`, `TEXTAREA`].includes(target.tagName)) return
     // Only handle shortcuts when component is focused/hovered or contains focus
     if (!wrapper?.contains(document.activeElement) && !hovered) return
 

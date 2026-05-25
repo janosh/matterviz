@@ -118,7 +118,7 @@
   })
 
   const computed_camera_position = $derived.by(() =>
-    camera_position || ([10, 3, 8].map((x) => x * Math.max(1, bz_size)) as Vec3)
+    camera_position || ([10, 3, 8].map((coord) => coord * Math.max(1, bz_size)) as Vec3)
   )
 
   const gizmo_props = $derived({
@@ -189,7 +189,7 @@
         const e2: Vec3 = math.subtract(v2, v0)
         const normal_vec = math.cross_3d(e1, e2)
         const len = Math.hypot(...normal_vec)
-        const norm = len > 1e-10 ? normal_vec.map((x) => x / len) : [0, 0, 0]
+        const norm = len > 1e-10 ? normal_vec.map((coord) => coord / len) : [0, 0, 0]
         normals.push(...norm, ...norm, ...norm)
       }
     }
@@ -388,8 +388,8 @@
     <!-- Reciprocal lattice vectors -->
     {#if show_vectors && bz_data.k_lattice}
       {#each bz_data.k_lattice as vec, idx (idx)}
-        {@const scaled_vec = vec.map((x) => x * vector_scale) as Vec3}
-        {@const label_position = scaled_vec.map((x) => x * 1.15) as Vec3}
+        {@const scaled_vec = vec.map((coord) => coord * vector_scale) as Vec3}
+        {@const label_position = scaled_vec.map((coord) => coord * 1.15) as Vec3}
         <Arrow
           position={[0, 0, 0]}
           vector={scaled_vec}
@@ -443,7 +443,7 @@
     {#if k_path_labels}
       {#each k_path_labels as { position, label }, idx (`${label}-${idx}`)}
         {#if label}
-          <extras.HTML center position={position.map((x) => x * 1.1) as Vec3}>
+          <extras.HTML center position={position.map((coord) => coord * 1.1) as Vec3}>
             <span
               style="background: rgba(0, 0, 0, 0.3); padding: 0 3px; border-radius: 2px; color: white"
             >

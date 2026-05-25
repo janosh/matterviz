@@ -172,10 +172,10 @@ function extract_mpds_scales(doc: Document): {
   // Note: value 100 appears in both filters (valid as 100 at% and 100°C).
   // This is intentional — only endpoints are used for scale mapping.
   const comp_vals = [
-    ...new Set(numbers.filter((v) => v >= 0 && v <= 100 && v % 10 === 0)),
+    ...new Set(numbers.filter((value) => value >= 0 && value <= 100 && value % 10 === 0)),
   ].toSorted((a, b) => a - b)
   const temp_vals = [
-    ...new Set(numbers.filter((v) => v >= 100 && v % 100 === 0 && v <= 3000)),
+    ...new Set(numbers.filter((value) => value >= 100 && value % 100 === 0 && value <= 3000)),
   ].toSorted((a, b) => a - b)
 
   if (comp_vals.length < 2 || temp_vals.length < 2) {
@@ -220,10 +220,10 @@ function extract_mpds_scales(doc: Document): {
 
   // Deduplicate and sort
   const x_ticks_sorted = [
-    ...new Set(x_major_ticks.map((v) => Math.round(v * 10) / 10)),
+    ...new Set(x_major_ticks.map((value) => Math.round(value * 10) / 10)),
   ].toSorted((a, b) => a - b)
   const y_ticks_sorted = [
-    ...new Set(y_major_ticks.map((v) => Math.round(v * 10) / 10)),
+    ...new Set(y_major_ticks.map((value) => Math.round(value * 10) / 10)),
   ].toSorted((a, b) => a - b)
 
   if (x_ticks_sorted.length < 2 || y_ticks_sorted.length < 2) {
@@ -554,14 +554,14 @@ function infer_components(labels: Label[]): [string, string] {
   let comp_a = `A`
   if (leftmost.length === 2) {
     const right_phases = new Set(sorted.slice(-3).flatMap(split))
-    comp_a = leftmost.find((p) => !right_phases.has(p)) ?? leftmost[1] ?? `A`
+    comp_a = leftmost.find((phase) => !right_phases.has(phase)) ?? leftmost[1] ?? `A`
   }
 
   // Component B: the unique phase in the rightmost region that doesn't appear on the left
   let comp_b = `B`
   if (rightmost.length === 2) {
     const left_phases = new Set(sorted.slice(0, 3).flatMap(split))
-    comp_b = rightmost.find((p) => !left_phases.has(p)) ?? rightmost[1] ?? `B`
+    comp_b = rightmost.find((phase) => !left_phases.has(phase)) ?? rightmost[1] ?? `B`
   }
 
   return [comp_a, comp_b]
@@ -576,20 +576,20 @@ function infer_regions(
   x_scale: LinearScale,
   y_scale: LinearScale,
 ): RegionInput[] {
-  const verticals = boundaries.filter((b) => b.orientation === `vertical`)
-  const horizontals = boundaries.filter((b) => b.orientation === `horizontal`)
+  const verticals = boundaries.filter((boundary) => boundary.orientation === `vertical`)
+  const horizontals = boundaries.filter((boundary) => boundary.orientation === `horizontal`)
 
   // Collect all unique x and y coordinates (boundaries + domain edges)
   const x_coords = collect_unique_sorted([
     x_scale.domain[0],
     x_scale.domain[1],
-    ...verticals.map((b) => b.x1), // x1 === x2 for vertical
+    ...verticals.map((boundary) => boundary.x1), // x1 === x2 for vertical
   ])
 
   const y_coords = collect_unique_sorted([
     y_scale.domain[0],
     y_scale.domain[1],
-    ...horizontals.map((b) => b.y1), // y1 === y2 for horizontal
+    ...horizontals.map((boundary) => boundary.y1), // y1 === y2 for horizontal
   ])
 
   // Build cell grid: cells[col][row]

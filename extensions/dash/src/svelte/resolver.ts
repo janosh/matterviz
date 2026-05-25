@@ -48,9 +48,7 @@ interface ResolveResult {
   matches: string[] | null
 }
 
-export function list_component_keys(): string[] {
-  return [...components_by_key.keys()].sort()
-}
+export const list_component_keys = (): string[] => [...components_by_key.keys()].sort()
 
 // Resolve a MatterViz component from an identifier.
 // id: e.g. "Structure" or "structure/Structure"

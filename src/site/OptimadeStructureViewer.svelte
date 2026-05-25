@@ -35,7 +35,7 @@
   let last_loaded_db = $state<string | null>(null)
   let structure_id = $derived(input_value.trim())
   let provider_config = $derived(
-    available_providers.find((p) => p.id === selected_db),
+    available_providers.find((provider) => provider.id === selected_db),
   )
 
   $effect(() => { // Initialize from URL slug (only if no props provided)

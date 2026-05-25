@@ -69,9 +69,10 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
 }
 
 // Shift a range by a delta amount (no bounds constraint for free panning)
-export function pan_range(current: Vec2, delta: number): Vec2 {
-  return [current[0] + delta, current[1] + delta]
-}
+export const pan_range = (current: Vec2, delta: number): Vec2 => [
+  current[0] + delta,
+  current[1] + delta,
+]
 
 // Convert pixel delta to data delta using current data range and pixel range
 export function pixels_to_data_delta(

@@ -147,13 +147,13 @@
   const highlighted_na_fe_o = $derived(
     pick_entries(
       na_fe_o_entries,
-      (e) => (e.e_above_hull ?? 0) > 0.05 && (e.e_above_hull ?? 1) < 0.5,
+      (entry) => (entry.e_above_hull ?? 0) > 0.05 && (entry.e_above_hull ?? 1) < 0.5,
     ),
   )
   const highlighted_li_co_ni_o = $derived(
     pick_entries(
       li_co_ni_o_quaternary,
-      (e) => e.is_stable || (e.e_above_hull ?? 1) < 0.01,
+      (entry) => entry.is_stable || (entry.e_above_hull ?? 1) < 0.01,
     ),
   )
 
@@ -173,9 +173,9 @@
   // Marker symbol demo state
   let selected_marker_entry = $state<ConvexHullEntry | null>(null)
   const marker_demo_entries = $derived(
-    na_fe_o_entries.map((e) => ({
-      ...e,
-      marker: get_marker(e, selected_marker_entry?.entry_id),
+    na_fe_o_entries.map((entry) => ({
+      ...entry,
+      marker: get_marker(entry, selected_marker_entry?.entry_id),
     })),
   )
 
@@ -201,7 +201,7 @@
   const highlighted_fe_o = $derived(
     pick_entries(
       binary_examples[1]?.entries ?? [],
-      (e) => e.is_stable || (e.e_above_hull ?? 1) < 0.02,
+      (entry) => entry.is_stable || (entry.e_above_hull ?? 1) < 0.02,
       8,
     ),
   )
@@ -209,9 +209,9 @@
   // Binary marker demo
   let selected_binary_entry = $state<ConvexHullEntry | null>(null)
   const binary_marker_entries = $derived(
-    (binary_examples[0]?.entries ?? []).map((e) => ({
-      ...e,
-      marker: get_marker(e, selected_binary_entry?.entry_id, `square`),
+    (binary_examples[0]?.entries ?? []).map((entry) => ({
+      ...entry,
+      marker: get_marker(entry, selected_binary_entry?.entry_id, `square`),
     })),
   )
   const ternary_examples = $derived([
@@ -304,9 +304,9 @@
   const temp_binary_entries: PhaseData[] = [
     make_phase({ Li: 1 }, 1),
     make_phase({ Fe: 1 }, 2),
-    ...[0.25, 0.33, 0.4, 0.5, 0.6, 0.67, 0.75].flatMap((x, idx) => [
-      make_phase({ Li: x, Fe: 1 - x }, 10 + idx), // ordered
-      make_phase({ Li: x, Fe: 1 - x }, 20 + idx, 2), // disordered (high entropy)
+    ...[0.25, 0.33, 0.4, 0.5, 0.6, 0.67, 0.75].flatMap((li_fraction, idx) => [
+      make_phase({ Li: li_fraction, Fe: 1 - li_fraction }, 10 + idx), // ordered
+      make_phase({ Li: li_fraction, Fe: 1 - li_fraction }, 20 + idx, 2), // disordered (high entropy)
     ]),
   ]
 

@@ -47,9 +47,9 @@
   function calc_auto_range(values: number[]): [number, number] {
     if (values.length === 0) return [0, 1]
     let [min_val, max_val] = [values[0], values[0]]
-    for (const v of values) {
-      if (v < min_val) min_val = v
-      else if (v > max_val) max_val = v
+    for (const val of values) {
+      if (val < min_val) min_val = val
+      else if (val > max_val) max_val = val
     }
     const padding = (max_val - min_val) * 0.05 || 0.5
     return [min_val - padding, max_val + padding]
@@ -64,11 +64,11 @@
   let auto_y_range = $derived(calc_auto_range(all_y_values))
   let auto_z_range = $derived(calc_auto_range(all_z_values))
 
-  // Helper to extract input value from event - DRYs up event handler casts
-  const get_input_value = (event: Event) => (event.target as HTMLInputElement).value
+  type InputControlEvent = Event & { currentTarget: HTMLInputElement }
+  const get_input_value = (event: InputControlEvent) => event.currentTarget.value
 
   // Helpers to update display properties - avoids verbose inline handlers
-  const update_display = (key: keyof DisplayConfig3D) => (event: Event) => {
+  const update_display = (key: keyof DisplayConfig3D) => (event: InputControlEvent) => {
     const parsed = parseFloat(get_input_value(event))
     // Guard against NaN when input is cleared - preserve existing value
     if (!Number.isNaN(parsed)) display = { ...display, [key]: parsed }
@@ -89,7 +89,7 @@
   // Helper for axis label updates
   const update_axis_label =
     <T extends { label?: string }>(axis: T, setter: (val: T) => void) =>
-    (event: Event) => {
+    (event: InputControlEvent) => {
       setter({ ...axis, label: get_input_value(event) })
     }
 
@@ -328,7 +328,7 @@
           step="any"
           value={round4(axis.range?.[0] ?? auto_range[0])}
           oninput={(event) => {
-            const val = parseFloat((event.target as HTMLInputElement).value)
+            const val = parseFloat(event.currentTarget.value)
             if (Number.isNaN(val)) return
             set({ ...axis, range: [val, axis.range?.[1] ?? auto_range[1]] })
           }}
@@ -341,7 +341,7 @@
           step="any"
           value={round4(axis.range?.[1] ?? auto_range[1])}
           oninput={(event) => {
-            const val = parseFloat((event.target as HTMLInputElement).value)
+            const val = parseFloat(event.currentTarget.value)
             if (Number.isNaN(val)) return
             set({ ...axis, range: [axis.range?.[0] ?? auto_range[0], val] })
           }}

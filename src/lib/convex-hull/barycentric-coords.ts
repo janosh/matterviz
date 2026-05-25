@@ -126,7 +126,7 @@ export function get_ternary_3d_coordinates(
         : (compute_e_form_per_atom(entry, refs) ?? NaN)
     const xyz = barycentric_to_ternary_xyz(barycentric, e_form_per_atom)
     const is_element = is_unary_entry(entry)
-    return { ...entry, ...xyz, is_element, visible: true }
+    return { ...entry, ...xyz, is_element }
   })
   return result
 }
@@ -241,6 +241,6 @@ export function compute_4d_coords(
     const barycentric_4d = composition_to_barycentric_4d(entry.composition, elements)
     const tetrahedral = barycentric_to_tetrahedral(barycentric_4d)
     const is_element = is_unary_entry(entry)
-    return { ...entry, ...tetrahedral, is_element, visible: true }
+    return { ...entry, ...tetrahedral, is_element }
   })
 }

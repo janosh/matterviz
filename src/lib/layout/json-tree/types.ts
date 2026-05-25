@@ -78,7 +78,7 @@ export interface JsonTreeContext {
   search_matches: Set<string>
   current_match_path: string | null
   focused_path: string | null
-  previous_values: Map<string, unknown>
+  prev_values: Map<string, unknown>
   toggle_collapse: (path: string, is_currently_collapsed: boolean) => void
   toggle_collapse_recursive: (path: string, collapse: boolean) => void
   expand_all: () => void

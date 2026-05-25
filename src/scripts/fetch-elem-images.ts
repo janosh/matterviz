@@ -74,7 +74,9 @@ for (const { name, number } of element_data) {
 // Process all downloads in parallel
 if (download_promises.length > 0) {
   const settled = await Promise.allSettled(download_promises)
-  const results = settled.flatMap((r) => (r.status === `fulfilled` ? [r.value] : []))
+  const results = settled.flatMap((result) =>
+    result.status === `fulfilled` ? [result.value] : [],
+  )
 
   // Update image source file with all results
   const img_src_out = `./src/lib/element-image-urls.json`

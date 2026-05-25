@@ -10,6 +10,7 @@
   import { sanitize_html } from '$lib/sanitize'
   import { toggle_fullscreen } from '$lib/layout'
   import type { ControlsConfig, DataSeries, Orientation, Point } from '$lib/plot'
+  import type { ScatterHandlerProps } from '$lib/plot/types'
   import { Histogram, ScatterPlot } from '$lib/plot'
   import { toggle_series_visibility } from '$lib/plot/utils/series-visibility'
   import { DEFAULTS } from '$lib/settings'
@@ -229,6 +230,7 @@
 
   // Current frame - load on demand for indexed trajectories
   let current_frame = $state<TrajectoryFrame | null>(null)
+  let frame_load_request_id = 0
 
   // Auto-play when trajectory changes (handles both props and file loading)
   $effect(() => {
@@ -254,15 +256,25 @@
 
   // Load frame on demand - works for both indexed files and external streaming
   async function load_frame_on_demand(frame_idx: number) {
-    if (!trajectory?.frame_loader) return
+    const load_trajectory = trajectory
+    const frame_loader = load_trajectory?.frame_loader
+    if (!load_trajectory || !frame_loader) return
+
+    const request_id = ++frame_load_request_id
+    const request_is_current = () =>
+      request_id === frame_load_request_id &&
+      trajectory === load_trajectory &&
+      current_step_idx === frame_idx
 
     try {
-      const frame = await trajectory.frame_loader.load_frame(
+      const frame = await frame_loader.load_frame(
         orig_data || ``, // Use original_data for indexed files, empty string for external streaming
         frame_idx,
       )
+      if (!request_is_current()) return
       current_frame = frame
     } catch (error) {
+      if (!request_is_current()) return
       console.error(`Failed to load frame ${frame_idx}:`, error)
       current_frame = null
       on_error?.({
@@ -292,8 +304,10 @@
       if (step_labels > 0) {
         return scaleLinear().domain([0, total_frames - 1]).nice()
           .ticks(Math.min(step_labels, total_frames))
-          .map((t) => Math.round(t))
-          .filter((t, i, arr) => t >= 0 && t < total_frames && arr.indexOf(t) === i)
+          .map((tick) => Math.round(tick))
+          .filter((tick, idx, ticks) =>
+            tick >= 0 && tick < total_frames && ticks.indexOf(tick) === idx
+          )
       }
       if (step_labels < 0) {
         const spacing = Math.abs(step_labels)
@@ -760,7 +774,8 @@
 
   // Handle click outside to close dropdowns
   function handle_click_outside(event: MouseEvent) {
-    const target = event.target as Element
+    const target = event.target
+    if (!(target instanceof Element)) return
     if (view_mode_dropdown_open) {
       const dropdown_wrapper = target.closest(`.view-mode-dropdown-wrapper`)
       // Don't close if clicking on dropdown wrapper (contains both button and menu)
@@ -773,10 +788,10 @@
     if (!trajectory) return
 
     // Don't handle shortcuts if user is typing in an input field (but allow if it's our step input and not focused)
-    const target = event.target as HTMLElement
-    const is_step_input = target.classList.contains(`step-input`)
-    const is_input_focused = target.tagName === `INPUT` ||
-      target.tagName === `TEXTAREA`
+    const target = event.target instanceof HTMLElement ? event.target : null
+    const is_step_input = target?.classList.contains(`step-input`) ?? false
+    const is_input_focused =
+      target?.tagName === `INPUT` || target?.tagName === `TEXTAREA`
 
     // Skip if typing in an input that's not our step input
     if (is_input_focused && !is_step_input) return
@@ -784,7 +799,7 @@
     // If typing in step input, only handle certain navigation keys
     if (is_step_input && is_input_focused) {
       // Allow normal typing, but handle special navigation keys
-      if ([`Escape`, `Enter`].includes(event.key)) target.blur() // Remove focus from input
+      if ([`Escape`, `Enter`].includes(event.key)) target?.blur() // Remove focus from input
       return
     }
 
@@ -1170,14 +1185,19 @@
             {...scatter_props}
             legend={{
               ...scatter_props.legend ?? {},
-              on_toggle: (series_idx) => {
+              on_toggle: (series_idx: number) => {
                 handle_legend_toggle(series_idx)
                 scatter_props.legend?.on_toggle?.(series_idx)
               },
             }}
             class="plot {scatter_props.class ?? ``}"
           >
-            {#snippet tooltip({ x, y, metadata, label })}
+            {#snippet tooltip({
+              x,
+              y,
+              metadata,
+              label,
+            }: ScatterHandlerProps)}
               {@const formatted_y = typeof y === `number` ? format_num(y) : y}
               Step: {Math.round(x)}<br />
               {@html sanitize_html(metadata?.series_label || label || `Value`)}: {formatted_y}
@@ -1195,7 +1215,7 @@
             mode={histogram_props.mode ?? `overlay`}
             show_legend={histogram_props.show_legend ?? plot_series.length > 1}
             legend={histogram_props.legend}
-            on_series_toggle={(series_idx) => {
+            on_series_toggle={(series_idx: number) => {
               handle_legend_toggle(series_idx)
               histogram_props.on_series_toggle?.(series_idx)
             }}
@@ -1203,7 +1223,15 @@
             class="plot {histogram_props.class ?? ``}"
             --ctrl-btn-top="6ex"
           >
-            {#snippet tooltip({ value, count, property })}
+            {#snippet tooltip({
+              value,
+              count,
+              property,
+            }: {
+              value: number
+              count: number
+              property?: string
+            })}
               {#if property}<div><strong>{property}</strong></div>{/if}
               <div>Value: {format_num(value)}</div>
               <div>Count: {count}</div>

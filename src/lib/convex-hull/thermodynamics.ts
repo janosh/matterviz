@@ -532,7 +532,6 @@ export interface HighDimHullResult {
 function to_hull_entry(entry: PhaseData): ConvexHullEntry {
   return {
     ...entry,
-    visible: true,
     is_element: get_arity(entry) === 1,
     x: 0,
     y: 0,
@@ -985,7 +984,7 @@ export const compute_e_above_hull_for_points = (points: Point3D[], models: HullF
   points.map((point) => {
     const z_hull = e_hull_at_xy(models, point.x, point.y)
     if (z_hull === null) return 0
-    return point.z - z_hull
+    return Math.max(0, point.z - z_hull)
   })
 
 // --- 4D Convex Hull (Quaternary Phase Diagrams) ---

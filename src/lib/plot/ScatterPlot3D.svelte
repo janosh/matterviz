@@ -25,8 +25,10 @@
   } from '$lib/plot/types'
   import { Canvas } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { type ComponentProps, onMount, type Snippet } from 'svelte'
+  import { onMount } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three'
   import { create_color_scale } from './scales'
   import ScatterPlot3DControls from './ScatterPlot3DControls.svelte'
@@ -166,10 +168,34 @@
   let mounted = $state(false)
   onMount(() => mounted = true)
 
-  // User overrides merged with series.visible defaults
-  let visibility_overrides: Record<number, boolean> = $state({})
+  const series_visibility_keys = $derived.by((): string[] => {
+    const id_counts = new Map<string | number, number>()
+    for (const srs of series) {
+      if (srs?.id !== undefined && srs.id !== ``) {
+        id_counts.set(srs.id, (id_counts.get(srs.id) ?? 0) + 1)
+      }
+    }
+    return series.map((srs, idx) => {
+      if (srs?.id === undefined || srs.id === ``) return JSON.stringify([`idx`, idx])
+      return id_counts.get(srs.id) === 1
+        ? JSON.stringify([`id`, srs.id])
+        : JSON.stringify([`duplicate-id`, idx, srs.id])
+    })
+  })
+
+  // User overrides merged with series.visible defaults.
+  // Prefer explicit ids; id-less and duplicate-id series get index-qualified keys.
+  const visibility_overrides = new SvelteMap<string, boolean>()
+  let series_visibility_key_set = $derived(new SvelteSet(series_visibility_keys))
+  $effect(() => {
+    for (const key of visibility_overrides.keys()) {
+      if (!series_visibility_key_set.has(key)) visibility_overrides.delete(key)
+    }
+  })
   let series_visibility = $derived(
-    series.map((srs, idx) => visibility_overrides[idx] ?? srs?.visible ?? true),
+    series.map((srs, idx) =>
+      visibility_overrides.get(series_visibility_keys[idx]) ?? srs?.visible ?? true
+    ),
   )
 
   // Local state for controls (initialized from props, owned by this component)
@@ -264,7 +290,8 @@
   })
 
   function toggle_series_visibility(idx: number) {
-    const visible = (visibility_overrides[idx] = !series_visibility[idx])
+    const visible = !series_visibility[idx]
+    visibility_overrides.set(series_visibility_keys[idx], visible)
     on_series_visibility_change?.(idx, visible)
   }
 

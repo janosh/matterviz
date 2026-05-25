@@ -57,9 +57,8 @@ const precomputed_map = new Map(
 )
 
 // Find precomputed phase diagram by system name (handles any format: "Al-Cu", "AlCu", "al_cu")
-export function find_precomputed_diagram(system: string): PhaseDiagramData | undefined {
-  return precomputed_map.get(normalize_system_name(system))?.data
-}
+export const find_precomputed_diagram = (system: string): PhaseDiagramData | undefined =>
+  precomputed_map.get(normalize_system_name(system))?.data
 
 // Backward compatibility: find precomputed URL by system name
 // Returns a builtin: URL that load_binary_phase_diagram can handle
@@ -69,9 +68,8 @@ export function find_precomputed_url(system: string): string | undefined {
 }
 
 // Get diagram by exact name
-export function get_diagram(name: string): PhaseDiagramData | undefined {
-  return built_diagrams.get(name)
-}
+export const get_diagram = (name: string): PhaseDiagramData | undefined =>
+  built_diagrams.get(name)
 
 // For backward compatibility - load binary phase diagram
 export async function load_binary_phase_diagram(

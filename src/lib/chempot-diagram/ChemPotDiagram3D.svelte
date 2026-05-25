@@ -153,9 +153,8 @@
       : CHEMPOT_DEFAULTS.formula_colors,
   )
 
-  function formula_label_segments(formula: string): FormulaLabelSegment[] {
-    return get_formula_label_segments(get_electro_neg_formula(formula, true, ``, `.3~s`))
-  }
+  const formula_label_segments = (formula: string): FormulaLabelSegment[] =>
+    get_formula_label_segments(get_electro_neg_formula(formula, true, ``, `.3~s`))
 
   function normalize_projection_triplet(
     maybe_triplet: string[] | undefined,
@@ -421,7 +420,11 @@
         label_font_size: bbox_diagonal(padded),
       })
     }
-    const fonts = scale_to_font_range(result.map((d) => d.label_font_size), 9, 15)
+    const fonts = scale_to_font_range(
+      result.map((render_domain) => render_domain.label_font_size),
+      9,
+      15,
+    )
     for (let idx = 0; idx < result.length; idx++) result[idx].label_font_size = fonts[idx]
     return result
   })
@@ -792,8 +795,8 @@
       // Compute edges in swizzled (Three.js) coords since ConvexGeometry works there
       const swizzled = domain.points_3d.map((point) => to_render_xyz(point))
       for (const [pa, pb] of get_domain_edges(swizzled)) {
-        const ka = pa.map((v) => v.toFixed(4)).join(`,`)
-        const kb = pb.map((v) => v.toFixed(4)).join(`,`)
+        const ka = pa.map((coord) => coord.toFixed(4)).join(`,`)
+        const kb = pb.map((coord) => coord.toFixed(4)).join(`,`)
         const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -893,17 +896,17 @@
 
     // Domain vertex centroids in render coords (swizzled + axis stretch), matching hull_base_geometry.
     const centroids = render_domains
-      .filter((d) => !d.is_draw_formula && d.points_3d.length > 0)
-      .map((d) => {
+      .filter((domain) => !domain.is_draw_formula && domain.points_3d.length > 0)
+      .map((domain) => {
         let sx = 0, sy = 0, sz = 0
-        for (const pt of d.points_3d) {
+        for (const pt of domain.points_3d) {
           const [x_val, y_val, z_val] = to_render_xyz(pt)
           sx += x_val
           sy += y_val
           sz += z_val
         }
-        const n = d.points_3d.length
-        return { formula: d.formula, cx: sx / n, cy: sy / n, cz: sz / n }
+        const n_points = domain.points_3d.length
+        return { formula: domain.formula, cx: sx / n_points, cy: sy / n_points, cz: sz / n_points }
       })
 
     // Assign each face to the nearest domain centroid
@@ -1132,9 +1135,8 @@
   })
 
   // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)
-  function dedup_3d(pts: number[][], tol: number = 1e-4): number[][] {
-    return dedup_points(pts, tol).unique
-  }
+  const dedup_3d = (pts: number[][], tol: number = 1e-4): number[][] =>
+    dedup_points(pts, tol).unique
 
   const controls_series = $derived<DataSeries3D[]>([
     {
@@ -1243,7 +1245,7 @@
     if (unique_points.length === 3) {
       const geom = new THREE.BufferGeometry()
       const vectors = unique_points.map((pt) => to_vec3(pt))
-      const verts = new Float32Array(vectors.flatMap((v) => [v.x, v.y, v.z]))
+      const verts = new Float32Array(vectors.flatMap((vec) => [vec.x, vec.y, vec.z]))
       geom.setAttribute(`position`, new THREE.Float32BufferAttribute(verts, 3))
       geom.setIndex([0, 1, 2, 2, 1, 0]) // both winding orders for double-sided pick
       geom.computeVertexNormals()
@@ -1387,7 +1389,7 @@
 
   // Bounding box of all data points in DATA coordinates (before swizzle)
   const raw_data_bbox = $derived.by(() => {
-    const pts = render_domains.flatMap((d) => d.points_3d)
+    const pts = render_domains.flatMap((domain) => domain.points_3d)
     if (pts.length === 0) return { mins: [0, 0, 0], maxs: [1, 1, 1] }
     const mins = [Infinity, Infinity, Infinity]
     const maxs = [-Infinity, -Infinity, -Infinity]
@@ -1486,11 +1488,10 @@
   // Place axis label just past the outer end of the axis (the end closer to 0).
   // In isometric 3D, the end near 0 projects outward at the front edge of the
   // bounding box, while the negative end projects inward toward the center.
-  function outer_end(range: [number, number]): number {
-    return Math.abs(range[0]) <= Math.abs(range[1]) ? range[0] : range[1]
-  }
+  const outer_end = (range: [number, number]): number =>
+    Math.abs(range[0]) <= Math.abs(range[1]) ? range[0] : range[1]
   // Direction from range center toward outer end (to extend the label beyond the grid)
-  function outer_dir(range: [number, number]): number {
+  const outer_direction = (range: [number, number]): number => {
     const end = outer_end(range)
     const mid = (range[0] + range[1]) / 2
     return end >= mid ? 1 : -1
@@ -1524,7 +1525,7 @@
         line_geom = make_line_geom(ls, le)
         // Axis label past the outer end of the axis (near 0, projects outward)
         label_pos = swiz(
-          outer_end(r0) + outer_dir(r0) * axis_label_dist,
+          outer_end(r0) + outer_direction(r0) * axis_label_dist,
           back[1] + out_x * tick_label_dist * 0.5,
           back[2] + out_y * tick_label_dist,
         )
@@ -1555,7 +1556,7 @@
         line_geom = make_line_geom(ls, le)
         label_pos = swiz(
           back[0],
-          outer_end(r1) + outer_dir(r1) * axis_label_dist,
+          outer_end(r1) + outer_direction(r1) * axis_label_dist,
           back[2] + out_y * tick_label_dist,
         )
         for (const val of ticks) {
@@ -1582,7 +1583,7 @@
         label_pos = swiz(
           back[0],
           back[1] + out_x * tick_label_dist,
-          outer_end(r2) + outer_dir(r2) * axis_label_dist,
+          outer_end(r2) + outer_direction(r2) * axis_label_dist,
         )
         for (const val of ticks) {
           tick_geoms.push(make_line_geom(

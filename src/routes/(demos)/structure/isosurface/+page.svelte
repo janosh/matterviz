@@ -283,12 +283,10 @@
     event.preventDefault()
     dragover_hint = true
   }}
-  ondragleave={(event: DragEvent) => {
+  ondragleave={(event: DragEvent & { currentTarget: HTMLElement }) => {
     // Only clear if leaving the container (not entering a child)
     const related = event.relatedTarget
-    if (
-      !(related instanceof Node) || !(event.currentTarget as Node).contains(related)
-    ) {
+    if (!(related instanceof Node) || !event.currentTarget.contains(related)) {
       dragover_hint = false
     }
   }}

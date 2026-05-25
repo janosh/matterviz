@@ -329,9 +329,8 @@ function place_and_expect_finite(
 
 // Mirrors source formula: text.length * font_size * 0.6 + 10
 // Keep in sync with label_w computation in compute_label_positions
-function estimate_label_width(text: string, font_size = 10): number {
-  return text.length * font_size * 0.6 + 10
-}
+const estimate_label_width = (text: string, font_size = 10): number =>
+  text.length * font_size * 0.6 + 10
 
 describe(`compute_label_positions`, () => {
   test(`returns empty for empty series or disabled auto_placement`, () => {

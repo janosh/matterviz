@@ -110,9 +110,10 @@
   } = $props()
 
   // Focus the multiselect input next to the "Color scale" label
-  function focus_multiselect(evt: Event): void {
-    ;(evt.currentTarget as HTMLElement).nextElementSibling
-      ?.querySelector<HTMLInputElement>(`input`)?.focus()
+  function focus_multiselect(
+    evt: Event & { currentTarget: HTMLElement },
+  ): void {
+    evt.currentTarget.nextElementSibling?.querySelector<HTMLInputElement>(`input`)?.focus()
   }
 </script>
 
@@ -239,9 +240,7 @@
           <div class="marker unstable"></div>
           <span>Above hull{
               merged_controls.show_counts
-              ? ` (${
-                unstable_entries.filter((e) => e.visible).length
-              }/${unstable_entries.length})`
+              ? ` (${show_unstable ? unstable_entries.length : 0}/${unstable_entries.length})`
               : ``
             }</span>
         </div>
@@ -277,9 +276,7 @@
           <input
             type="checkbox"
             checked={show_stable_labels}
-            oninput={(
-              evt,
-            ) => (show_stable_labels = (evt.target as HTMLInputElement).checked)}
+            oninput={(evt) => (show_stable_labels = evt.currentTarget.checked)}
           />
           <span>Stable</span>
         </label>
@@ -287,10 +284,7 @@
           <input
             type="checkbox"
             checked={show_unstable_labels}
-            oninput={(
-              evt,
-            ) => (show_unstable_labels =
-              (evt.target as HTMLInputElement).checked)}
+            oninput={(evt) => (show_unstable_labels = evt.currentTarget.checked)}
           />
           <span>Unstable</span>
         </label>
@@ -327,7 +321,7 @@
         <input
           type="checkbox"
           checked={show_hull_faces}
-          oninput={(e) => on_hull_faces_change?.((e.target as HTMLInputElement).checked)}
+          oninput={(event) => on_hull_faces_change?.(event.currentTarget.checked)}
         />
         <span>Show</span>
       </label>
@@ -336,7 +330,7 @@
           <input
             type="color"
             value={hull_face_color}
-            oninput={(e) => on_hull_face_color_change?.((e.target as HTMLInputElement).value)}
+            oninput={(event) => on_hull_face_color_change?.(event.currentTarget.value)}
             {@attach tooltip({ content: `Set hull face color` })}
             style="width: 40px; height: 20px"
           />
@@ -393,10 +387,9 @@
             type="number"
             value={camera.elevation.toFixed(0)}
             step="5"
-            oninput={(e) =>
-            camera.elevation = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
+            oninput={(event) => {
+              camera.elevation = parseFloat(event.currentTarget.value)
+            }}
             style="width: 3em"
           />
           <span>°</span>
@@ -410,10 +403,9 @@
             type="number"
             value={camera.azimuth.toFixed(0)}
             step="15"
-            oninput={(e) =>
-            camera.azimuth = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
+            oninput={(event) => {
+              camera.azimuth = parseFloat(event.currentTarget.value)
+            }}
             style="width: 3em"
           />
           <span>°</span>
@@ -431,10 +423,9 @@
             step="0.1"
             min={-Math.PI / 3}
             max={Math.PI / 3}
-            oninput={(e) =>
-            camera.rotation_x = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
+            oninput={(event) => {
+              camera.rotation_x = parseFloat(event.currentTarget.value)
+            }}
             style="width: 3em"
           />
         </label>
@@ -447,10 +438,9 @@
             type="number"
             value={(camera.rotation_y ?? 0).toFixed(2)}
             step="0.1"
-            oninput={(e) =>
-            camera.rotation_y = parseFloat(
-              (e.target as HTMLInputElement).value,
-            )}
+            oninput={(event) => {
+              camera.rotation_y = parseFloat(event.currentTarget.value)
+            }}
             style="width: 3em"
           />
         </label>

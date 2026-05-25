@@ -144,7 +144,7 @@
 
   // Derive visibility counts for display (reactive without effects)
   let basic_visible = $derived(
-    basic_columns.filter((c) => c.visible !== false).map((c) => c.label).join(`, `) ||
+    basic_columns.filter((col) => col.visible !== false).map((col) => col.label).join(`, `) ||
       `none`,
   )
 </script>
@@ -198,7 +198,7 @@
     <div class="state-display">
       <strong>Disabled:</strong>
       {
-        disabled_columns.filter((c) => c.disabled).map((c) => c.label).join(
+        disabled_columns.filter((col) => col.disabled).map((col) => col.label).join(
           `, `,
         ) || `none`
       }

@@ -881,7 +881,7 @@ export function clean_xyz(
     const bounds_kept: number[] = []
     for (let idx = 0; idx < filtered.x.length; idx++) {
       const primary_val = filtered[primary][idx]
-      // Use x-axis value for dynamic bounds computation (e.g., max: (x) => x * 2)
+      // Use x-axis value for dynamic bounds computation (e.g., max: (x_val) => x_val * 2)
       if (is_in_bounds(primary_val, filtered.x[idx], bounds)) {
         bounds_kept.push(idx)
       } else {
