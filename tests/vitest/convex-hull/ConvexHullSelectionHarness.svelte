@@ -9,14 +9,17 @@
   } as const
   const components = { '2d': ConvexHull2D, '3d': ConvexHull3D, '4d': ConvexHull4D }
 
-  let { dim }: { dim: keyof typeof elements_by_dim } = $props()
+  let { dim, include_element_refs = true }: {
+    dim: keyof typeof elements_by_dim
+    include_element_refs?: boolean
+  } = $props()
   let Hull = $derived(components[dim])
 
   const entries_for = (prefix: string): PhaseData[] => {
     const elements = elements_by_dim[dim]
     const composition = Object.fromEntries(elements.map((element) => [element, 1]))
     return [
-      ...elements.map((element) => ({
+      ...(include_element_refs ? elements : []).map((element) => ({
         composition: { [element]: 1 },
         energy: 0,
         entry_id: `${prefix}-${element.toLowerCase()}`,
@@ -50,7 +53,9 @@
 <button
   type="button"
   data-testid="select-entry"
-  onclick={() => (selected_entry = unstable_entries[0] ?? stable_entries[0] ?? null)}
+  onclick={() =>
+    (selected_entry = (include_element_refs ? unstable_entries[0] : stable_entries[0]) ??
+      stable_entries[0] ?? null)}
 >
   Select Entry
 </button>

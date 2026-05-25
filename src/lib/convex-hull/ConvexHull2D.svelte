@@ -221,6 +221,7 @@
       coords.push({
         composition: { [element]: 1 } as CompositionType,
         energy: 0,
+        entry_id: `synthetic-element:${element}`,
         x: x_coord,
         y: 0,
         z: 0,
@@ -430,10 +431,8 @@
 
   const scatter_series = $derived([scatter_points_series, ...hull_segments_series])
 
-  // Map selected_entry to ScatterPlot point index (series_idx: 0 = points series)
-  // Use object identity comparison (e === entry) instead of entry_id comparison
-  // because synthetic elemental entries lack entry_id, and undefined === undefined
-  // would incorrectly match the first entry with undefined entry_id
+  // Map selected_entry to ScatterPlot point index (series_idx: 0 = points series).
+  // current_entry() keeps selections pointing at the current plot entry object.
   const selected_scatter_point = $derived.by(() => {
     const entry = selected_entry
     if (!entry) return null

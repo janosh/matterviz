@@ -163,10 +163,10 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
   test.each([
     {
-      name: `no-id replacement resets visibility`,
+      name: `no-id replacement preserves visibility by index`,
       id_mode: `none` as const,
       expected_after_click: [true, false],
-      expected_after_replacement: [false, false],
+      expected_after_replacement: [true, false],
     },
     {
       name: `stable-id replacement preserves visibility`,

@@ -168,15 +168,15 @@
   let mounted = $state(false)
   onMount(() => mounted = true)
 
-  type SeriesVisibilityKey = string | number | DataSeries3D<Metadata>
-
-  const series_visibility_keys = $derived.by((): SeriesVisibilityKey[] => {
+  const series_visibility_keys = $derived.by((): string[] => {
     const id_counts = new Map<string | number, number>()
     for (const srs of series) {
-      if (srs?.id !== undefined) id_counts.set(srs.id, (id_counts.get(srs.id) ?? 0) + 1)
+      if (srs?.id !== undefined && srs.id !== ``) {
+        id_counts.set(srs.id, (id_counts.get(srs.id) ?? 0) + 1)
+      }
     }
     return series.map((srs, idx) => {
-      if (srs?.id === undefined) return srs ?? idx
+      if (srs?.id === undefined || srs.id === ``) return JSON.stringify([`idx`, idx])
       return id_counts.get(srs.id) === 1
         ? JSON.stringify([`id`, srs.id])
         : JSON.stringify([`duplicate-id`, idx, srs.id])
@@ -184,8 +184,8 @@
   })
 
   // User overrides merged with series.visible defaults.
-  // Prefer explicit ids, then object identity; duplicate ids get index-qualified keys.
-  const visibility_overrides = new SvelteMap<SeriesVisibilityKey, boolean>()
+  // Prefer explicit ids; id-less and duplicate-id series get index-qualified keys.
+  const visibility_overrides = new SvelteMap<string, boolean>()
   let series_visibility_key_set = $derived(new SvelteSet(series_visibility_keys))
   $effect(() => {
     for (const key of visibility_overrides.keys()) {

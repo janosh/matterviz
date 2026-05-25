@@ -32,17 +32,23 @@ describe(`convex hull replacement state`, () => {
     vi.spyOn(HTMLCanvasElement.prototype, `getContext`).mockReturnValue(canvas_context)
   })
 
-  test.each([`2d`, `3d`, `4d`] as const)(
-    `clears stale selected entries in %s hulls`,
-    async (dim) => {
-      mount(ConvexHullSelectionHarness, { target: document.body, props: { dim } })
+  test.each([
+    [{ dim: `2d` }, `none`],
+    [{ dim: `3d` }, `none`],
+    [{ dim: `4d` }, `none`],
+    [{ dim: `2d`, include_element_refs: false }, `synthetic-element:Li`],
+  ] as const)(
+    `keeps refreshed selected entries and handles replacements`,
+    async (props, replaced) => {
+      mount(ConvexHullSelectionHarness, { target: document.body, props })
       await tick()
 
       button(`select-entry`)?.click()
       flushSync()
       await tick()
 
-      expect(selected_text()).not.toBe(`none`)
+      if (replaced === `none`) expect(selected_text()).not.toBe(`none`)
+      else expect(selected_text()).toBe(replaced)
       const selected_before_refresh = selected_text()
 
       button(`refresh-convex-entries`)?.click()
@@ -55,7 +61,7 @@ describe(`convex hull replacement state`, () => {
       flushSync()
       await tick()
 
-      expect(selected_text()).toBe(`none`)
+      expect(selected_text()).toBe(replaced)
     },
   )
 })
