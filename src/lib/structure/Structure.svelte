@@ -730,6 +730,7 @@
         undo_stack = []
         redo_stack = []
       }
+      if (highlighted_sites.length > 0) highlighted_sites = []
       if (measure_mode === `edit-atoms`) {
         if (selected_sites.length > 0 || measured_sites.length > 0) clear_selection()
         if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
@@ -1162,14 +1163,14 @@
       const plain = !event.ctrlKey && !event.metaKey && !event.altKey
       if (event.ctrlKey || event.metaKey) {
         if (key === `z` && !event.shiftKey) {
-          if (bond_undo_stack.length === 0) return
           event.preventDefault()
+          if (bond_undo_stack.length === 0) return
           undo_bond_edit()
           show_toast(`Undo bond edit (${bond_undo_stack.length} left)`)
           return
         } else if (key === `y` || (key === `z` && event.shiftKey)) {
-          if (bond_redo_stack.length === 0) return
           event.preventDefault()
+          if (bond_redo_stack.length === 0) return
           redo_bond_edit()
           show_toast(`Redo bond edit (${bond_redo_stack.length} left)`)
           return

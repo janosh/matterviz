@@ -3,7 +3,7 @@ import { create_axis_change_handler, merge_series_state } from '$lib/plot/axis-u
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`merge_series_state`, () => {
-  test(`preserves visibility from old series by index when no id`, () => {
+  test(`preserves visibility by index when series have no id`, () => {
     const old_series: DataSeries[] = [
       { x: [1], y: [1], visible: false },
       { x: [2], y: [2], visible: true },
@@ -47,14 +47,18 @@ describe(`merge_series_state`, () => {
     expect(merged[1].visible).toBe(false)
   })
 
-  test(`handles new series without matching old (falls back to index)`, () => {
+  test(`keeps new series defaults when id has no old match but value is provided`, () => {
     const old_series: DataSeries[] = [{ id: `a`, x: [1], y: [1], visible: false }]
-    const new_series: DataSeries[] = [
-      { id: `c`, x: [30], y: [30] }, // no matching id, falls back to index 0
-    ]
+    const new_series: DataSeries[] = [{ id: `c`, x: [30], y: [30], visible: true }]
     const merged = merge_series_state(old_series, new_series)
-    // Falls back to index match: old_series[0].visible = false
-    expect(merged[0].visible).toBe(false)
+    expect(merged[0].visible).toBe(true)
+  })
+
+  test(`does not fall back to position when id has no old match`, () => {
+    const old_series: DataSeries[] = [{ id: `a`, x: [1], y: [1], visible: false }]
+    const new_series: DataSeries[] = [{ id: `c`, x: [30], y: [30] }]
+    const merged = merge_series_state(old_series, new_series)
+    expect(merged[0].visible).toBeUndefined()
   })
 })
 

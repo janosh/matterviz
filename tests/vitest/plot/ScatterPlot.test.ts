@@ -1,11 +1,11 @@
 import { ScatterPlot } from '$lib'
 import type { Vec2 } from '$lib/math'
-import type { DataSeries } from '$lib/plot'
+import type { DataSeries, FillRegion } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
-import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
+import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { resize_element } from '../setup'
+import { bind_props, resize_element } from '../setup'
 
 const basic = {
   x: [1, 2, 3, 4, 5],
@@ -451,5 +451,36 @@ describe(`ScatterPlot`, () => {
       expect(plot.querySelector(`.x-axis .axis-label`)?.textContent).toContain(`Temperature`)
       expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`Pressure`)
     })
+  })
+
+  test(`keeps id-less fill hover after equivalent fill array is recreated`, async () => {
+    const fill_region = (): FillRegion => ({
+      lower: 0,
+      upper: 1,
+      fill: `steelblue`,
+      hover_style: { fill: `red` },
+    })
+    const state = { fill_regions: [fill_region()] }
+    await mount_sized_scatter_plot(
+      bind_props(
+        {
+          series: [{ x: [0, 1], y: [0, 1] }],
+          x_axis: { range: [0, 1] as Vec2 },
+          y_axis: { range: [0, 2] as Vec2 },
+          legend: null,
+        },
+        state,
+      ),
+    )
+
+    const fill_path = () => document.querySelector<SVGPathElement>(`.fill-region path`)
+    fill_path()?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    await tick()
+    expect(fill_path()?.getAttribute(`fill`)).toBe(`red`)
+
+    state.fill_regions = [fill_region()]
+    flushSync()
+    await tick()
+    expect(fill_path()?.getAttribute(`fill`)).toBe(`red`)
   })
 })

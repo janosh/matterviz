@@ -11,8 +11,8 @@ import type {
 
 type AxisType = `x` | `x2` | `y` | `y2`
 
-// Merge new series with preserved UI state from old series
-// Matches by id first (string or number), then falls back to index
+// Merge new series with preserved UI state from old series.
+// Matches by stable id first, then by index only for ordered id-less series.
 export function merge_series_state<T extends DataSeries | BarSeries>(
   old_series: T[],
   new_series: T[],
@@ -24,10 +24,8 @@ export function merge_series_state<T extends DataSeries | BarSeries>(
   }
 
   return new_series.map((new_srs, idx) => {
-    // Match by id if available (string or number), otherwise fall back to index
     const old_srs =
-      (new_srs.id !== undefined && new_srs.id !== `` ? by_id.get(new_srs.id) : undefined) ??
-      old_series[idx]
+      new_srs.id !== undefined && new_srs.id !== `` ? by_id.get(new_srs.id) : old_series[idx]
     if (!old_srs) {
       return new_srs
     }

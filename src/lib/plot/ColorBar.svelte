@@ -470,17 +470,18 @@
   )
   let has_any_select = $derived(has_property_select || has_color_scale_select)
 
-  // Initialize selected keys to first option when options provided but key undefined
-  // This ensures state matches UI (which shows first option by default)
+  // Keep bindable selected keys valid so state matches the select's first-option fallback.
   $effect(() => {
-    if (has_property_select && selected_property_key === undefined) {
-      selected_property_key = property_options?.[0]?.key
-    }
+    if (!property_options?.length) return
+    if (property_options.some((option) => option.key === selected_property_key)) return
+    selected_property_key = property_options[0]?.key
   })
   $effect(() => {
-    if (has_color_scale_select && selected_color_scale_key === undefined) {
-      selected_color_scale_key = color_scale_options?.[0]?.key
-    }
+    if (!color_scale_options?.length) return
+    if (color_scale_options.some((option) => option.key === selected_color_scale_key)) return
+    const first_option = color_scale_options[0]
+    selected_color_scale_key = first_option.key
+    color_scale = first_option.scale
   })
 
   async function handle_property_change(new_key: string, prev_key?: string) {

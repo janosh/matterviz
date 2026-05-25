@@ -3,6 +3,7 @@ import type { PymatgenCompleteDos } from '$lib/spectral/helpers'
 import {
   ACOUSTIC_FREQ_THRESHOLD,
   apply_gaussian_smearing,
+  axis_with_range,
   build_point_metadata,
   classify_acoustic,
   compute_frequency_range,
@@ -78,6 +79,38 @@ describe(`ranges_equal`, () => {
   it(`respects custom tolerance`, () => {
     expect(ranges_equal([0, 10], [0.5, 10], 1)).toBe(true)
     expect(ranges_equal([0, 10], [2, 10], 1)).toBe(false)
+  })
+})
+
+describe(`axis_with_range`, () => {
+  it(`lets explicit label override axis label`, () => {
+    expect(axis_with_range({ label: `Density` }, [0, 1], ``)).toEqual({
+      label: ``,
+      range: [0, 1],
+    })
+  })
+
+  it.each([
+    {
+      name: `invalid range`,
+      axis: { label: `Y` },
+      range: [NaN, 10] as Vec2,
+      expected: { label: `Y` },
+    },
+    {
+      name: `undefined range`,
+      axis: { label: `Y` },
+      range: undefined,
+      expected: { label: `Y` },
+    },
+    {
+      name: `extra axis props`,
+      axis: { label: `X`, ticks: 5 },
+      range: [0, 10] as Vec2,
+      expected: { label: `X`, ticks: 5, range: [0, 10] },
+    },
+  ])(`preserves axis config with $name`, ({ axis, range, expected }) => {
+    expect(axis_with_range(axis, range)).toEqual(expected)
   })
 })
 

@@ -4,6 +4,7 @@
   import { format_num } from '$lib/labels'
   import type { AxisConfig } from '$lib/plot'
   import ColorBar from '$lib/plot/ColorBar.svelte'
+  import { make_change_detector } from '$lib/utils'
   import * as d3_sc from 'd3-scale-chromatic'
   import { type ComponentProps, onDestroy, onMount, type Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -212,6 +213,7 @@
   // === Value resolution ===
   let x_keys = $derived(x_items.map((item) => item.key ?? item.label))
   let y_keys = $derived(y_items.map((item) => item.key ?? item.label))
+  let interaction_axis_signature = $derived(JSON.stringify([x_keys, y_keys]))
   let highlight_x_key_set = $derived(new SvelteSet(highlight_x_keys))
   let highlight_y_key_set = $derived(new SvelteSet(highlight_y_keys))
   let search_query_norm = $derived(search_query.trim().toLowerCase())
@@ -1086,6 +1088,18 @@
 
   // Tooltip state: only used for custom tooltip snippets (function tooltips)
   let tooltip_cell: CellContext | null = $state(null)
+  const axis_changed = make_change_detector()
+  $effect(() => {
+    if (!axis_changed(interaction_axis_signature)) return
+    cancel_raf(active_cell_raf)
+    active_cell = null
+    pinned_cell = null
+    selected_cells = []
+    last_selected_cell = null
+    brush_start = null
+    brush_end = null
+    tooltip_cell = null
+  })
 
   onMount(() => {
     update_viewport_state()

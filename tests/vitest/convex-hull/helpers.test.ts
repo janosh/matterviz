@@ -16,18 +16,11 @@ class MockPath2D {
 }
 
 function with_mock_path2d(run_test: () => void): void {
-  const original_path2d = globalThis.Path2D
-  Object.defineProperty(globalThis, `Path2D`, {
-    configurable: true,
-    value: MockPath2D,
-  })
+  vi.stubGlobal(`Path2D`, MockPath2D)
   try {
     run_test()
   } finally {
-    Object.defineProperty(globalThis, `Path2D`, {
-      configurable: true,
-      value: original_path2d,
-    })
+    vi.unstubAllGlobals()
   }
 }
 
@@ -90,6 +83,17 @@ describe(`helpers: energy color scale + point color`, () => {
     )
     expect(stable).toBe(`#0072B2`)
     expect(unstable).toBe(`#E69F00`)
+  })
+
+  test(`explicit is_stable false overrides zero hull distance`, () => {
+    const entry = { is_stable: false, e_above_hull: 0 }
+    expect(helpers.entry_is_stable(entry)).toBe(false)
+    expect(helpers.entry_is_unstable(entry)).toBe(true)
+    expect(helpers.entry_is_visible(entry, true, false)).toBe(false)
+    expect(helpers.entry_is_visible(entry, false, true)).toBe(true)
+    expect(helpers.get_point_color_for_entry(entry, `stability`, undefined, null)).toBe(
+      `#E69F00`,
+    )
   })
 })
 
@@ -317,12 +321,11 @@ describe(`helpers: mouse hit testing`, () => {
       clientWidth: 600,
       clientHeight: 600,
     } as unknown as HTMLCanvasElement
-    const plot_entries: { x: number; y: number; z: number; visible: boolean }[] = [
+    const plot_entries: { x: number; y: number; z: number }[] = [
       {
         x: 100,
         y: 100,
         z: 0,
-        visible: true,
       },
     ]
     const project = (x: number, y: number) => ({ x, y })

@@ -2,6 +2,7 @@
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { CameraProjection } from '$lib/settings'
+  import { make_change_detector } from '$lib/utils'
   import { type Snippet } from 'svelte'
   import type {
     BandGridData,
@@ -80,9 +81,9 @@
     { value: `interpolateSpectral`, label: `Spectral` },
   ]
 
-  // Check if custom properties are available on any surface
-  let has_custom_properties = $derived(
-    fermi_data?.isosurfaces?.some((iso) => iso.properties?.length) ?? false,
+  let has_custom_color = $derived(
+    Boolean(custom_property_label) ||
+      (fermi_data?.isosurfaces?.some((iso) => iso.properties?.length) ?? false),
   )
 
   // Get unique band indices from Fermi surface data
@@ -93,18 +94,13 @@
       )
       : [],
   )
-  // Track previous available bands to detect when fermi_data changes
-  let prev_available_bands = $state<number[]>([])
+  let available_bands_key = $derived(available_bands.join(`,`))
+  const available_bands_changed = make_change_detector()
 
-  // Reset selected_bands when available_bands changes (new file loaded)
-  // This ensures band selection doesn't persist across different files
   $effect(() => {
-    const bands_changed = available_bands.length !== prev_available_bands.length ||
-      available_bands.some((band, idx) => band !== prev_available_bands[idx])
-    if (bands_changed) { // Always update tracking variable to avoid stale comparisons
-      prev_available_bands = [...available_bands]
-      // Only reset selected_bands when there are bands to select
-      if (available_bands.length > 0) selected_bands = [...available_bands]
+    if (color_property === `custom` && !has_custom_color) color_property = `band`
+    if (selected_bands === undefined || available_bands_changed(available_bands_key)) {
+      selected_bands = [...available_bands]
     }
   })
 
@@ -216,7 +212,7 @@
         <option value="band">Band</option>
         <option value="velocity">Velocity</option>
         <option value="spin">Spin</option>
-        {#if has_custom_properties || custom_property_label}
+        {#if has_custom_color}
           <option value="custom">{custom_property_label ?? `Custom`}</option>
         {/if}
       </select>

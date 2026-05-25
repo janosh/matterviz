@@ -276,39 +276,36 @@
     DEFAULTS.convex_hull.quaternary.max_hull_dist_show_phases,
   ))
 
-  // Initialize threshold to auto value on first load
-  let initialized = $state(false)
+  const next_auto_threshold = helpers.auto_threshold_reset(
+    DEFAULTS.convex_hull.quaternary.max_hull_dist_show_phases,
+  )
   $effect(() => {
-    if (!initialized && all_enriched_entries.length > 0) {
-      initialized = true
-      max_hull_dist_show_phases = auto_default_threshold
-    }
+    max_hull_dist_show_phases = next_auto_threshold(
+      entries,
+      max_hull_dist_show_phases,
+      auto_default_threshold,
+    ) ?? max_hull_dist_show_phases
   })
 
-  // Filter by threshold and compute visibility
+  // Filter by threshold; visibility is a view predicate, not entry state.
   const plot_entries = $derived(
     all_enriched_entries.filter((entry) => {
       // Always include stable entries and elemental reference points
-      if (entry.is_stable || (entry.e_above_hull ?? Infinity) <= 1e-6) return true
+      if (helpers.entry_is_stable(entry)) return true
       return typeof entry.e_above_hull === `number` &&
         entry.e_above_hull <= max_hull_dist_show_phases
-    }).map((entry) => {
-      const is_stable = entry.is_stable || entry.e_above_hull === 0
-      return {
-        ...entry,
-        visible: (is_stable && show_stable) || (!is_stable && show_unstable),
-      }
     }),
   )
+  const visible_entries = $derived(helpers.visible_entries(
+    plot_entries,
+    show_stable,
+    show_unstable,
+  ))
 
   // Stable and unstable entries exposed as bindable props
   $effect(() => {
-    stable_entries = plot_entries.filter((entry: ConvexHullEntry) =>
-      entry.is_stable || entry.e_above_hull === 0
-    )
-    unstable_entries = plot_entries.filter((entry: ConvexHullEntry) =>
-      (entry.e_above_hull ?? 0) > 0 && !entry.is_stable
-    )
+    stable_entries = plot_entries.filter(helpers.entry_is_stable)
+    unstable_entries = plot_entries.filter(helpers.entry_is_unstable)
   })
 
   let canvas: HTMLCanvasElement | undefined = undefined
@@ -338,6 +335,29 @@
   let modal_open = $state(false)
   let selected_structure = $state<AnyStructure | null>(null)
   let modal_place_right = $state(true)
+  $effect(() => {
+    const current_selection = helpers.current_entry(selected_entry, plot_entries)
+    const stale_selection = selected_entry && !current_selection
+    if (stale_selection) selected_entry = null
+    else if (current_selection && current_selection !== selected_entry) {
+      selected_entry = current_selection
+    }
+    const current_hover = helpers.current_entry(hover_data?.entry, plot_entries)
+    if (hover_data?.entry && !current_hover) {
+      hover_data = null
+      on_point_hover?.(null)
+    } else if (hover_data && current_hover && current_hover !== hover_data.entry) {
+      hover_data = { ...hover_data, entry: current_hover }
+    }
+    if (modal_open) {
+      const structure = current_selection && extract_structure_from_entry(current_selection)
+      if (structure) selected_structure = structure
+      else {
+        modal_open = false
+        selected_structure = null
+      }
+    }
+  })
 
   // Hull face color (customizable via controls)
   let hull_face_color = $state(`#4caf50`)
@@ -640,9 +660,7 @@
     if (!ctx || !show_hull_faces || hull_4d.length === 0) return
 
     // Get stable points to determine which hull facets to draw
-    const stable_points = plot_entries.filter((entry) =>
-      entry.is_stable || entry.e_above_hull === 0
-    )
+    const stable_points = plot_entries.filter(helpers.entry_is_stable)
     if (stable_points.length === 0) return
 
     // Each tetrahedral facet has 4 triangular faces - we need to draw these
@@ -805,7 +823,7 @@
     if (!ctx || sorted_points_cache.length === 0) return
 
     for (const { entry, projected } of sorted_points_cache) {
-      const is_stable = entry.is_stable || entry.e_above_hull === 0
+      const is_stable = helpers.entry_is_stable(entry)
       const is_entry_highlighted = is_highlighted(entry)
       const color = get_point_color(entry)
       const size = (entry.size || (is_stable ? 6 : 4)) * canvas_dims.scale
@@ -864,7 +882,7 @@
         .map(({ entry }) => entry)
         .filter((entry) => {
           if (entry.is_element) return false
-          const is_stable = entry.is_stable || entry.e_above_hull === 0
+          const is_stable = helpers.entry_is_stable(entry)
           return (is_stable && show_stable_labels) ||
             (!is_stable && show_unstable_labels &&
               (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
@@ -877,7 +895,7 @@
     ctx.textBaseline = `middle`
 
     for (const entry of label_entries) {
-      const is_stable = entry.is_stable || entry.e_above_hull === 0
+      const is_stable = helpers.entry_is_stable(entry)
       const size = (entry.size || (is_stable ? 6 : 4)) * canvas_dims.scale
       const projected = project_3d_point(entry.x, entry.y, entry.z)
       const label = helpers.get_entry_label(entry, elements)
@@ -969,7 +987,7 @@
     helpers.find_hull_entry_at_mouse(
       canvas,
       event,
-      plot_entries,
+      visible_entries,
       (x: number, y: number, z: number) => {
         const projected = project_3d_point(x, y, z)
         return { x: projected.x, y: projected.y }
@@ -1091,9 +1109,8 @@
     return min_energy
   })
   const sorted_points_cache = $derived.by(() => {
-    if (!canvas || plot_entries.length === 0) return []
-    return plot_entries
-      .filter((entry) => entry.visible)
+    if (!canvas || visible_entries.length === 0) return []
+    return visible_entries
       .map((entry) => ({
         entry,
         projected: project_3d_point(entry.x, entry.y, entry.z),
@@ -1210,6 +1227,8 @@
           {phase_stats}
           {stable_entries}
           {unstable_entries}
+          {show_stable}
+          {show_unstable}
           {max_hull_dist_show_phases}
           {max_hull_dist_show_labels}
           {label_threshold}
@@ -1247,13 +1266,14 @@
           {merged_controls}
           toggle_props={{ class: `legend-controls-btn` }}
           {show_hull_faces}
-          on_hull_faces_change={(value) => show_hull_faces = value}
+          on_hull_faces_change={(value: boolean) => show_hull_faces = value}
           {hull_face_color}
-          on_hull_face_color_change={(value) => hull_face_color = value}
+          on_hull_face_color_change={(value: string) => hull_face_color = value}
           {hull_face_opacity}
-          on_hull_face_opacity_change={(value) => hull_face_opacity = value}
+          on_hull_face_opacity_change={(value: number) => hull_face_opacity = value}
           {hull_face_color_mode}
-          on_hull_face_color_mode_change={(value) => hull_face_color_mode = value}
+          on_hull_face_color_mode_change={(value: HullFaceColorMode) =>
+            hull_face_color_mode = value}
           bind:energy_source_mode
           {has_precomputed_e_form}
           {can_compute_e_form}

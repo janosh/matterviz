@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
   import { download } from '$lib/io/fetch'
+  import { make_change_detector } from '$lib/utils'
   import { setContext, tick } from 'svelte'
   import { highlight_matches, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -89,16 +90,24 @@
   // Copy feedback positioning (null = use default corner position)
   let copy_feedback_pos = $state<{ x: number; y: number } | null>(null)
 
-  // Clear stale path-based state when value changes
-  let prev_value_ref: unknown
+  const value_changed = make_change_detector()
   $effect.pre(() => {
-    if (prev_value_ref !== undefined && value !== prev_value_ref) {
-      force_expanded.clear()
-      pinned_paths = new SvelteSet()
-      selected_paths = new SvelteSet()
-      last_selected_path = null
-    }
-    prev_value_ref = value
+    if (!value_changed(value)) return
+    focused_path = null
+    registered_paths_set = new Set()
+    registered_paths_list = []
+    copy_feedback_path = null
+    copy_feedback_error = false
+    context_menu_state = null
+    force_expanded = new SvelteSet()
+    const valid_paths = new SvelteSet(collect_all_paths(value, root_label ?? ``))
+    collapsed_paths = new SvelteSet([...collapsed_paths].filter((path) => valid_paths.has(path)))
+    pinned_paths = new SvelteSet()
+    selected_paths = new SvelteSet()
+    last_selected_path = null
+    current_match_index = -1
+    prev_values.clear()
+    if (search_query) queueMicrotask(() => expand_to_matches())
   })
 
   // Debounce search input
@@ -209,7 +218,7 @@
   }
 
   // Previous values map for change detection
-  const previous_values = new Map<string, unknown>()
+  const prev_values = new Map<string, unknown>()
 
   // Toggle collapse - tracks force_expanded to override auto-fold thresholds
   function toggle_collapse(path: string, is_currently_collapsed: boolean): void {
@@ -471,7 +480,7 @@
     get focused_path() {
       return focused_path
     },
-    previous_values,
+    prev_values,
     toggle_collapse,
     toggle_collapse_recursive,
     expand_all,

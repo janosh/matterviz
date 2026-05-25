@@ -25,8 +25,10 @@
   } from '$lib/plot/types'
   import { Canvas } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { type ComponentProps, onMount, type Snippet } from 'svelte'
+  import { onMount } from 'svelte'
+  import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Camera, Scene } from 'three'
   import { create_color_scale } from './scales'
   import ScatterPlot3DControls from './ScatterPlot3DControls.svelte'
@@ -166,10 +168,27 @@
   let mounted = $state(false)
   onMount(() => mounted = true)
 
-  // User overrides merged with series.visible defaults
-  let visibility_overrides: Record<number, boolean> = $state({})
+  type SeriesVisibilityKey = string | number | DataSeries3D<Metadata>
+
+  const series_visibility_key = (
+    data_series: DataSeries3D<Metadata> | undefined,
+    series_idx: number,
+  ): SeriesVisibilityKey => data_series?.id ?? data_series ?? series_idx
+
+  // User overrides merged with series.visible defaults.
+  // Prefer explicit ids, then object identity, so source replacement doesn't leak by index.
+  const visibility_overrides = new SvelteMap<SeriesVisibilityKey, boolean>()
+  let series_visibility_keys = $derived(series.map(series_visibility_key))
+  let series_visibility_key_set = $derived(new SvelteSet(series_visibility_keys))
+  $effect(() => {
+    for (const key of visibility_overrides.keys()) {
+      if (!series_visibility_key_set.has(key)) visibility_overrides.delete(key)
+    }
+  })
   let series_visibility = $derived(
-    series.map((srs, idx) => visibility_overrides[idx] ?? srs?.visible ?? true),
+    series.map((srs, idx) =>
+      visibility_overrides.get(series_visibility_keys[idx]) ?? srs?.visible ?? true
+    ),
   )
 
   // Local state for controls (initialized from props, owned by this component)
@@ -264,7 +283,8 @@
   })
 
   function toggle_series_visibility(idx: number) {
-    const visible = (visibility_overrides[idx] = !series_visibility[idx])
+    const visible = !series_visibility[idx]
+    visibility_overrides.set(series_visibility_keys[idx], visible)
     on_series_visibility_change?.(idx, visible)
   }
 

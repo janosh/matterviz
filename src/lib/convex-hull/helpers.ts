@@ -46,6 +46,27 @@ export const get_arity = (entry: PhaseData): number =>
 
 export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
 
+type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
+
+export const entry_is_stable = (entry: StabilityEntry): boolean =>
+  entry.is_stable === true || (entry.is_stable !== false && entry.e_above_hull === 0)
+
+export const entry_is_unstable = (entry: StabilityEntry): boolean =>
+  entry.is_stable === false ||
+  (typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 && !entry_is_stable(entry))
+
+export const entry_is_visible = (
+  entry: StabilityEntry,
+  show_stable: boolean,
+  show_unstable: boolean,
+): boolean => (entry_is_stable(entry) ? show_stable : show_unstable)
+
+export const visible_entries = <Entry extends StabilityEntry>(
+  entries: readonly Entry[],
+  show_stable: boolean,
+  show_unstable: boolean,
+): Entry[] => entries.filter((entry) => entry_is_visible(entry, show_stable, show_unstable))
+
 // Energy color scale factory (shared)
 export function get_energy_color_scale(
   color_mode: `stability` | `energy`,
@@ -74,7 +95,7 @@ export function get_point_color_for_entry(
   colors: ConvexHullConfig[`colors`] | undefined,
   energy_scale: ((value: number) => string) | null,
 ): string {
-  const is_stable = Boolean(entry.is_stable) || entry.e_above_hull === 0
+  const is_stable = entry_is_stable(entry)
   if (color_mode === `stability`) {
     return is_stable ? colors?.stable || `#0072B2` : colors?.unstable || `#E69F00`
   }
@@ -129,6 +150,31 @@ export function compute_auto_hull_dist_threshold(
   return max_hull_dist_in_data * (1 - t) + static_default * t
 }
 
+export function auto_threshold_reset(default_threshold: number) {
+  let source: unknown
+  let auto_threshold = default_threshold
+  let initialized = false
+  return (next_source: unknown, current_threshold: number, next_auto_threshold: number) => {
+    if (initialized && next_source === source) return undefined
+    const user_changed = initialized && Math.abs(current_threshold - auto_threshold) > 0.001
+    source = next_source
+    auto_threshold = next_auto_threshold
+    initialized = true
+    return user_changed ? undefined : next_auto_threshold
+  }
+}
+
+export function current_entry<Entry extends { entry_id?: string }>(
+  entry: Entry | null | undefined,
+  entries: readonly Entry[],
+): Entry | null {
+  if (!entry) return null
+  if (entry.entry_id) {
+    return entries.find((candidate) => candidate.entry_id === entry.entry_id) ?? null
+  }
+  return entries.includes(entry) ? entry : null
+}
+
 // Build a tooltip text for any phase entry (shared)
 export function build_entry_tooltip_text(entry: PhaseData): string {
   const is_element = is_unary_entry(entry)
@@ -173,7 +219,6 @@ export function find_hull_entry_at_mouse<
     x: number
     y: number
     z: number
-    visible?: boolean
     size?: number
     is_stable?: boolean
     e_above_hull?: number
@@ -190,7 +235,6 @@ export function find_hull_entry_at_mouse<
   const mouse_y = event.clientY - rect.top
   const container_scale = Math.min(canvas.clientWidth || 600, canvas.clientHeight || 600) / 600
   for (const entry of plot_entries) {
-    if (!entry.visible) continue
     const projected = project_point(entry.x, entry.y, entry.z)
     const distance = Math.hypot(mouse_x - projected.x, mouse_y - projected.y)
     const base = entry.size ?? (entry.is_stable || entry.e_above_hull === 0 ? 6 : 4)

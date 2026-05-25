@@ -239,9 +239,7 @@
           <div class="marker unstable"></div>
           <span>Above hull{
               merged_controls.show_counts
-              ? ` (${
-                unstable_entries.filter((e) => e.visible).length
-              }/${unstable_entries.length})`
+              ? ` (${show_unstable ? unstable_entries.length : 0}/${unstable_entries.length})`
               : ``
             }</span>
         </div>

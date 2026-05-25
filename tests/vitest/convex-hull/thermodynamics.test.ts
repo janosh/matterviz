@@ -259,6 +259,7 @@ describe(`3D Convex Hull`, () => {
   test.each([
     [{ x: 0.5, y: 0.3, z: 0 }, 0, `on hull`],
     [{ x: 0.5, y: 0.3, z: 0.5 }, 0.5, `above hull`],
+    [{ x: 0.5, y: 0.3, z: -0.5 }, 0, `below hull`],
   ])(`compute_e_above_hull_for_points: %s → %d`, (point, expected) => {
     const triangles: ConvexHullTriangle[] = [
       {
@@ -595,7 +596,7 @@ describe(`process_hull_for_stats`, () => {
     expect(result?.phase_stats?.binary).toBe(1)
   })
 
-  test(`sets visible and is_element on returned entries`, () => {
+  test(`sets is_element on returned entries`, () => {
     const entries: PhaseData[] = [
       make_phase({ Fe: 1 }, -4.0),
       make_phase({ Fe: 1, O: 1 }, -3.5),
@@ -603,9 +604,6 @@ describe(`process_hull_for_stats`, () => {
     const result = process_hull_for_stats(entries)
     if (!result) throw new Error(`expected result`)
     const all = [...result.stable_entries, ...result.unstable_entries]
-    for (const entry of all) {
-      expect(entry.visible).toBe(true)
-    }
     // Fe is unary → is_element
     const fe_entry = all.find((entry) => Object.keys(entry.composition).length === 1)
     expect(fe_entry?.is_element).toBe(true)

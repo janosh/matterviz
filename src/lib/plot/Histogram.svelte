@@ -228,6 +228,17 @@
 
   // Derived data
   type IndexedSeries = { series_data: DataSeries; series_idx: number }
+  let visible_series_labels = $derived(
+    series
+      .filter((series_data) => series_data.visible ?? true)
+      .map((series_data) => series_data.label)
+      .filter((label): label is string => typeof label === `string` && label.length > 0),
+  )
+  $effect(() => {
+    if (mode !== `single`) return
+    if (selected_property && visible_series_labels.includes(selected_property)) return
+    selected_property = visible_series_labels[0] ?? ``
+  })
   let selected_series_entries = $derived<IndexedSeries[]>(
     series
       .map((series_data: DataSeries, series_idx: number) => ({ series_data, series_idx }))
@@ -1224,7 +1235,7 @@
           loading={axis_loading === `x`}
           axis_type="x"
           {color}
-          on_select={(key) => handle_axis_change(`x`, key)}
+          on_select={(key: string) => handle_axis_change(`x`, key)}
         />
       {/if}
     </g>
@@ -1289,7 +1300,7 @@
             loading={axis_loading === `x2`}
             axis_type="x2"
             {color}
-            on_select={(key) => handle_axis_change(`x2`, key)}
+            on_select={(key: string) => handle_axis_change(`x2`, key)}
           />
         {/if}
       </g>
@@ -1360,7 +1371,7 @@
           loading={axis_loading === `y`}
           axis_type="y"
           {color}
-          on_select={(key) => handle_axis_change(`y`, key)}
+          on_select={(key: string) => handle_axis_change(`y`, key)}
         />
       {/if}
     </g>
@@ -1429,7 +1440,7 @@
             loading={axis_loading === `y2`}
             axis_type="y2"
             {color}
-            on_select={(key) => handle_axis_change(`y2`, key)}
+            on_select={(key: string) => handle_axis_change(`y2`, key)}
           />
         {/if}
       </g>
@@ -1574,7 +1585,7 @@
       series_data={legend_data}
       on_toggle={legend?.on_toggle || toggle_series_visibility}
       on_hover_change={legend_hover.set_locked}
-      on_item_hover={(series_idx) =>
+      on_item_hover={(series_idx: number | null) =>
         (hovered_legend_series_idx = series_idx != null && series_idx >= 0
           ? series_idx
           : null)}

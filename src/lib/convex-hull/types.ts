@@ -78,7 +78,6 @@ export const HULL_FACE_COLOR_MODES: readonly HullFaceColorMode[] = [
 export interface ConvexHullEntry extends PhaseData, Point3D {
   is_element: boolean
   size?: number
-  visible: boolean
   marker?: MarkerSymbol // Optional marker symbol override (default: circle)
 }
 

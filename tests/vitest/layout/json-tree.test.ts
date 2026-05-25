@@ -4,6 +4,7 @@ import { serialize_for_copy } from '$lib/layout/json-tree/utils'
 import { flushSync, mount, tick } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { doc_query } from '../setup'
+import JsonTreeReplacementHarness from './JsonTreeReplacementHarness.svelte'
 
 describe(`JsonTree`, () => {
   const get_tree = (): HTMLDivElement => doc_query(`.json-tree`)
@@ -895,6 +896,36 @@ describe(`JsonTree`, () => {
       expect(document.body.textContent).toContain(`{1 key}`)
       expect(document.body.textContent).toContain(`2`)
     })
+  })
+
+  it(`preserves search state and prunes invalid collapsed paths on value replacement`, async () => {
+    mount(JsonTreeReplacementHarness, { target: document.body })
+
+    const search_input = get_search_input()
+    if (!(search_input instanceof HTMLInputElement)) throw new Error(`Search input not found`)
+    search_input.value = `findme`
+    search_input.dispatchEvent(new Event(`input`, { bubbles: true }))
+    flushSync()
+    await new Promise((resolve) => setTimeout(resolve, 175))
+    await tick()
+    expect(search_input.value).toBe(`findme`)
+
+    document.querySelector<HTMLButtonElement>(`[data-testid="replace-json"]`)?.click()
+    flushSync()
+    await tick()
+    expect(search_input.value).toBe(`findme`)
+    expect(document.querySelector(`.json-value.changed`)).toBeNull()
+
+    const nested_toggle = (): HTMLButtonElement =>
+      document.querySelector(`[data-path="nested"] .collapse-toggle`) as HTMLButtonElement
+    nested_toggle().click()
+    await tick()
+    expect(document.querySelector(`[data-testid="collapsed-count"]`)?.textContent).toBe(`1`)
+
+    document.querySelector<HTMLButtonElement>(`[data-testid="replace-flat-json"]`)?.click()
+    flushSync()
+    await tick()
+    expect(document.querySelector(`[data-testid="collapsed-count"]`)?.textContent).toBe(`0`)
   })
 })
 

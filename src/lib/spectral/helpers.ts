@@ -1,6 +1,8 @@
 // Helper utilities for band structure and DOS data processing
 import { SUBSCRIPT_MAP } from '$lib/labels'
-import { centered_frac, euclidean_dist, type Matrix3x3, type Vec2, type Vec3 } from '$lib/math'
+import { centered_frac, euclidean_dist } from '$lib/math'
+import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import type { AxisConfig } from '$lib/plot/types'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 
@@ -27,6 +29,16 @@ export const ranges_equal = (
     Math.abs(a[1] - b[1]) <= safe_tol
   )
 }
+
+export const axis_with_range = (
+  axis: AxisConfig | undefined,
+  range: Vec2 | undefined,
+  label?: string,
+): AxisConfig => ({
+  ...axis,
+  ...(label !== undefined && { label }),
+  ...(is_valid_range(range) && { range }),
+})
 
 // Detect which plot triggered a zoom change and return the new synced range.
 // Returns null to reset to shared range, undefined for no change, or Vec2 for new zoom.

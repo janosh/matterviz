@@ -1,7 +1,8 @@
 import { ScatterPlot3D } from '$lib'
 import type { DataSeries3D, Surface3DConfig } from '$lib/plot/types'
-import { mount, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import ScatterPlot3DHarness from './ScatterPlot3DHarness.svelte'
 
 // Smoke tests to ensure component mounts without errors.
 // Meaningful 3D rendering tests require Playwright visual regression testing,
@@ -158,6 +159,37 @@ describe(`ScatterPlot3D smoke tests`, () => {
     }).not.toThrow()
 
     expect(container.querySelector(`.scatter-3d`)).toBeInstanceOf(HTMLElement)
+  })
+
+  test.each([
+    {
+      name: `no-id replacement resets visibility`,
+      use_explicit_ids: false,
+      expected_after_replacement: [false, false],
+    },
+    {
+      name: `stable-id replacement preserves visibility`,
+      use_explicit_ids: true,
+      expected_after_replacement: [true, false],
+    },
+  ])(`$name`, async ({ use_explicit_ids, expected_after_replacement }) => {
+    mounted_component = mount(ScatterPlot3DHarness, {
+      target: container,
+      props: { use_explicit_ids },
+    })
+    await tick()
+    const legend_items = () => container.querySelectorAll<HTMLElement>(`.legend-item`)
+    const hidden_states = () =>
+      Array.from(legend_items(), (item) => item.classList.contains(`hidden`))
+
+    expect(legend_items()).toHaveLength(2)
+    legend_items()[0].click()
+    flushSync()
+    expect(hidden_states()).toEqual([true, false])
+
+    container.querySelector<HTMLButtonElement>(`[data-testid="replace-series"]`)?.click()
+    flushSync()
+    expect(hidden_states()).toEqual(expected_after_replacement)
   })
 })
 

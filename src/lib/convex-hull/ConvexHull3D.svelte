@@ -275,34 +275,32 @@
     DEFAULTS.convex_hull.ternary.max_hull_dist_show_phases,
   ))
 
-  // Initialize threshold to auto value on first load
-  let initialized = $state(false)
+  const next_auto_threshold = helpers.auto_threshold_reset(
+    DEFAULTS.convex_hull.ternary.max_hull_dist_show_phases,
+  )
   $effect(() => {
-    if (!initialized && all_enriched_entries.length > 0) {
-      initialized = true
-      max_hull_dist_show_phases = auto_default_threshold
-    }
+    max_hull_dist_show_phases = next_auto_threshold(
+      entries,
+      max_hull_dist_show_phases,
+      auto_default_threshold,
+    ) ?? max_hull_dist_show_phases
   })
 
-  // Filter by threshold and compute visibility
+  // Filter by threshold; visibility is a view predicate, not entry state.
   const plot_entries = $derived(
-    all_enriched_entries
-      .filter((e) => (e.e_above_hull ?? 0) <= max_hull_dist_show_phases)
-      .map((e) => ({
-        ...e,
-        visible: ((e.is_stable || e.e_above_hull === 0) && show_stable) ||
-          (!(e.is_stable || e.e_above_hull === 0) && show_unstable),
-      })),
+    all_enriched_entries.filter((entry) =>
+      (entry.e_above_hull ?? 0) <= max_hull_dist_show_phases
+    ),
   )
+  const visible_entries = $derived(helpers.visible_entries(
+    plot_entries,
+    show_stable,
+    show_unstable,
+  ))
 
   $effect(() => {
-    stable_entries = plot_entries.filter((entry: ConvexHullEntry) =>
-      entry.is_stable || entry.e_above_hull === 0
-    )
-    unstable_entries = plot_entries.filter((entry: ConvexHullEntry) =>
-      typeof entry.e_above_hull === `number` && entry.e_above_hull > 0 &&
-      !entry.is_stable
-    )
+    stable_entries = plot_entries.filter(helpers.entry_is_stable)
+    unstable_entries = plot_entries.filter(helpers.entry_is_unstable)
   })
 
   // Canvas rendering
@@ -442,6 +440,29 @@
   let modal_open = $state(false)
   let selected_structure = $state<AnyStructure | null>(null)
   let modal_place_right = $state(true)
+  $effect(() => {
+    const current_selection = helpers.current_entry(selected_entry, plot_entries)
+    const stale_selection = selected_entry && !current_selection
+    if (stale_selection) selected_entry = null
+    else if (current_selection && current_selection !== selected_entry) {
+      selected_entry = current_selection
+    }
+    const current_hover = helpers.current_entry(hover_data?.entry, plot_entries)
+    if (hover_data?.entry && !current_hover) {
+      hover_data = null
+      on_point_hover?.(null)
+    } else if (hover_data && current_hover && current_hover !== hover_data.entry) {
+      hover_data = { ...hover_data, entry: current_hover }
+    }
+    if (modal_open) {
+      const structure = current_selection && extract_structure_from_entry(current_selection)
+      if (structure) selected_structure = structure
+      else {
+        modal_open = false
+        selected_structure = null
+      }
+    }
+  })
 
   // Hull face color (customizable via controls)
   let hull_face_color = $state(`#4caf50`)
@@ -972,7 +993,7 @@
     if (!ctx || sorted_points_cache.length === 0) return
 
     for (const { entry, projected } of sorted_points_cache) {
-      const is_stable = entry.is_stable || entry.e_above_hull === 0
+      const is_stable = helpers.entry_is_stable(entry)
       const is_entry_highlighted = is_highlighted(entry)
       const color = get_point_color(entry)
       const size = (entry.size || (is_stable ? 6 : 4)) * canvas_dims.scale
@@ -1120,9 +1141,9 @@
     const label_height = hull_label_font_size + 2
 
     const label_entries = helpers.get_composition_label_entries(
-      plot_entries.filter((entry) => {
-        if (!entry.visible || entry.is_element) return false
-        const is_stable_point = entry.is_stable || (entry.e_above_hull ?? 0) <= 1e-6
+      visible_entries.filter((entry) => {
+        if (entry.is_element) return false
+        const is_stable_point = helpers.entry_is_stable(entry)
         return (is_stable_point && show_stable_labels) ||
           (!is_stable_point && show_unstable_labels &&
             (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels)
@@ -1147,7 +1168,7 @@
       const formula_segments = get_formula_label_segments(
         helpers.get_entry_label(entry, elements),
       )
-      const is_stable_point = entry.is_stable || entry.e_above_hull === 0
+      const is_stable_point = helpers.entry_is_stable(entry)
       const point_size = (entry.size || (is_stable_point ? 6 : 4)) * canvas_dims.scale
       const text_width = measure_formula_segments(ctx, formula_segments)
       const placements = get_label_placements(
@@ -1257,7 +1278,7 @@
     helpers.find_hull_entry_at_mouse(
       canvas,
       event,
-      plot_entries,
+      visible_entries,
       (x: number, y: number, z: number) => {
         const pt = project_3d_point(x, y, z)
         return { x: pt.x, y: pt.y }
@@ -1386,7 +1407,7 @@
   const energy_range = $derived.by(() => {
     let min = 0
     let max = 0
-    for (const entry of plot_entries) {
+    for (const entry of all_enriched_entries) {
       const energy = entry.e_form_per_atom ?? 0
       min = Math.min(min, energy)
       max = Math.max(max, energy)
@@ -1397,9 +1418,8 @@
 
   // Performance: Pre-compute and cache all point projections + depth sorting
   const sorted_points_cache = $derived.by(() => {
-    if (!canvas || plot_entries.length === 0) return []
-    return plot_entries
-      .filter((entry) => entry.visible)
+    if (!canvas || visible_entries.length === 0) return []
+    return visible_entries
       .map((entry) => ({
         entry,
         projected: project_3d_point(entry.x, entry.y, entry.z),
@@ -1529,6 +1549,8 @@
           {phase_stats}
           {stable_entries}
           {unstable_entries}
+          {show_stable}
+          {show_unstable}
           {max_hull_dist_show_phases}
           {max_hull_dist_show_labels}
           {label_threshold}
@@ -1566,13 +1588,14 @@
           {merged_controls}
           toggle_props={{ class: `legend-controls-btn` }}
           {show_hull_faces}
-          on_hull_faces_change={(value) => show_hull_faces = value}
+          on_hull_faces_change={(value: boolean) => show_hull_faces = value}
           {hull_face_color}
-          on_hull_face_color_change={(value) => hull_face_color = value}
+          on_hull_face_color_change={(value: string) => hull_face_color = value}
           {hull_face_opacity}
-          on_hull_face_opacity_change={(value) => hull_face_opacity = value}
+          on_hull_face_opacity_change={(value: number) => hull_face_opacity = value}
           {hull_face_color_mode}
-          on_hull_face_color_mode_change={(value) => hull_face_color_mode = value}
+          on_hull_face_color_mode_change={(value: HullFaceColorMode) =>
+            hull_face_color_mode = value}
           bind:energy_source_mode
           {has_precomputed_e_form}
           {can_compute_e_form}
