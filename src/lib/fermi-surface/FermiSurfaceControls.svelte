@@ -99,7 +99,8 @@
 
   $effect(() => {
     if (color_property === `custom` && !has_custom_color) color_property = `band`
-    if (selected_bands === undefined || available_bands_changed(available_bands_key)) {
+    const bands_changed = available_bands_changed(available_bands_key)
+    if (available_bands.length > 0 && (selected_bands === undefined || bands_changed)) {
       selected_bands = [...available_bands]
     }
   })

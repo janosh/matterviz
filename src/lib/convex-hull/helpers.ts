@@ -35,22 +35,23 @@ export function compute_hull_stability(
   return { e_above_hull, is_stable: e_above_hull <= tol }
 }
 
+type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
+
+export const entry_is_stable = (
+  entry: StabilityEntry,
+  tol: number = HULL_STABILITY_TOL,
+): boolean =>
+  entry.is_stable === true ||
+  (entry.is_stable !== false && Math.abs(entry.e_above_hull ?? Infinity) <= tol)
+
 // Check if entry is on the convex hull (stable or e_above_hull ≈ 0)
 export const is_on_hull = (entry: PhaseData, tol: number = HULL_STABILITY_TOL): boolean =>
-  !entry.exclude_from_hull &&
-  (entry.is_stable === true ||
-    (typeof entry.e_above_hull === `number` && entry.e_above_hull < tol))
+  !entry.exclude_from_hull && entry_is_stable(entry, tol)
 
 export const get_arity = (entry: PhaseData): number =>
   Object.values(entry.composition).filter((count) => count > 0).length
 
 export const is_unary_entry = (entry: PhaseData) => get_arity(entry) === 1
-
-type StabilityEntry = { is_stable?: boolean; e_above_hull?: number }
-
-export const entry_is_stable = (entry: StabilityEntry): boolean =>
-  entry.is_stable === true ||
-  (entry.is_stable !== false && Math.abs(entry.e_above_hull ?? Infinity) <= HULL_STABILITY_TOL)
 
 export const entry_is_unstable = (entry: StabilityEntry): boolean => !entry_is_stable(entry)
 

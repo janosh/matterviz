@@ -44,9 +44,18 @@ describe(`FermiSurfaceControls`, () => {
       expected_selected_bands: [1],
       expected_color_property: `band` as ColorProperty,
     },
+    {
+      name: `does not select bands when none are available`,
+      band_indices: [],
+      initial_selected_bands: undefined,
+      initial_color_property: `band` as ColorProperty,
+      expected_selected_bands: undefined,
+      expected_color_property: `band` as ColorProperty,
+    },
   ])(
     `$name`,
     async ({
+      band_indices,
       initial_selected_bands,
       initial_color_property,
       expected_selected_bands,
@@ -59,7 +68,7 @@ describe(`FermiSurfaceControls`, () => {
       }
       const component = mount(FermiSurfaceControls, {
         target: document.body,
-        props: bind_props({ fermi_data: make_fermi_data() }, state),
+        props: bind_props({ fermi_data: make_fermi_data(band_indices) }, state),
       })
 
       try {
