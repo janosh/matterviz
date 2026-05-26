@@ -129,7 +129,7 @@ describe(`Histogram`, () => {
     const ticks_full = get_y_tick_numbers()
     const full_max = Math.max(...ticks_full)
     const full_hist = bin().thresholds(5)(series[0].y)
-    const full_expected = d3max(full_hist, (b) => b.length) || 0
+    const full_expected = d3max(full_hist, (b) => b.length) ?? 0
     expect(full_max).toBeGreaterThanOrEqual(full_expected)
 
     mount_histogram({ series, bins: 5, x_range: [0, 3] })
@@ -137,7 +137,7 @@ describe(`Histogram`, () => {
     const ticks_zoom = get_y_tick_numbers()
     const zoom_max = Math.max(...ticks_zoom)
     const zoom_hist = bin().domain([0, 3]).thresholds(5)(series[0].y)
-    const zoom_expected = d3max(zoom_hist, (b) => b.length) || 0
+    const zoom_expected = d3max(zoom_hist, (b) => b.length) ?? 0
     expect(zoom_max).toBeGreaterThanOrEqual(zoom_expected)
   })
 

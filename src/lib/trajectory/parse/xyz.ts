@@ -1,8 +1,8 @@
 // XYZ / extxyz trajectory parsing
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
-import type { TrajectoryFrame, TrajectoryType } from '../index'
-import { coerce_element_symbol, create_trajectory_frame } from '../helpers'
+import { coerce_element_symbol, create_trajectory_frame } from '$lib/trajectory/helpers'
+import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 export function parse_xyz_trajectory(content: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)

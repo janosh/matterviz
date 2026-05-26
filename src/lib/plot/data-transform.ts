@@ -48,7 +48,7 @@ export const create_data_points = (
   filter_fn?: (series: DataSeries) => boolean,
 ): Point[] =>
   series
-    .filter(filter_fn || ((srs) => srs.visible ?? true))
+    .filter(filter_fn ?? ((srs) => srs.visible ?? true))
     .flatMap(({ x: xs, y: ys }, series_idx) => {
       const length = Math.min(xs.length, ys.length)
       if (xs.length !== ys.length) {

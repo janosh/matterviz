@@ -6,6 +6,9 @@ import type { AxisConfig } from '$lib/plot/types'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 
+const is_subscript_key = (key: string): key is keyof typeof SUBSCRIPT_MAP =>
+  key in SUBSCRIPT_MAP
+
 // Check if range is a valid [min, max] tuple (strict 2-element array of finite numbers)
 export const is_valid_range = (range: unknown): range is Vec2 =>
   Array.isArray(range) &&
@@ -111,7 +114,7 @@ export function pretty_sym_point(symbol: string): string {
         letter +
         num
           .split(``)
-          .map((digit: string) => SUBSCRIPT_MAP[digit as keyof typeof SUBSCRIPT_MAP] ?? digit)
+          .map((digit: string) => (is_subscript_key(digit) ? SUBSCRIPT_MAP[digit] : digit))
           .join(``),
     )
 }
@@ -169,12 +172,13 @@ export function get_ribbon_config(
   label: string,
 ): RibbonConfig {
   const defaults: RibbonConfig = { opacity: 0.3, max_width: 6, scale: 1 }
+  const config_record = ribbon_config as Record<string, unknown>
 
   // Check for primitive config values (not objects) to distinguish single vs per-structure config
-  const cfg = ribbon_config as Record<string, unknown>
-  const has_primitive = [`opacity`, `max_width`, `scale`, `color`].some(
-    (key) => cfg[key] !== undefined && typeof cfg[key] !== `object`,
-  )
+  const has_primitive = [`opacity`, `max_width`, `scale`, `color`].some((key) => {
+    const value = config_record[key]
+    return value !== undefined && typeof value !== `object`
+  })
 
   if (has_primitive) {
     // Single global config with primitive values - apply to all structures
@@ -183,8 +187,11 @@ export function get_ribbon_config(
 
   // Otherwise, treat as Record<string, RibbonConfig> and look up by label
   // Empty label skips lookup and uses defaults only
-  const per_struct = ribbon_config as Record<string, RibbonConfig>
-  return { ...defaults, ...(label ? per_struct[label] : {}) }
+  const label_config = label ? config_record[label] : undefined
+  return {
+    ...defaults,
+    ...(label_config && typeof label_config === `object` ? label_config : {}),
+  }
 }
 
 // Extract tick positions and labels for a band structure plot.
@@ -395,10 +402,7 @@ interface PymatgenKpoint {
   label?: string | null
 }
 const is_kpoint = (val: unknown): val is PymatgenKpoint =>
-  !!val &&
-  typeof val === `object` &&
-  `frac_coords` in val &&
-  is_vec3((val as PymatgenKpoint).frac_coords)
+  !!val && typeof val === `object` && `frac_coords` in val && is_vec3(val.frac_coords)
 
 const is_pymatgen_format = (obj: Record<string, unknown>): boolean => {
   // Check for explicit pymatgen markers
@@ -1208,6 +1212,9 @@ function parse_axis_label(label: string): { name: string; unit?: string } {
   return match ? { name: match[1], unit: match[2] } : { name: label }
 }
 
+const format_tooltip_line = (name: string, value: string, unit?: string) =>
+  `${name}: ${value}${unit ? ` ${unit}` : ``}`
+
 // Format DOS tooltip content from axis labels and values
 export function format_dos_tooltip(
   x_formatted: string,
@@ -1227,21 +1234,18 @@ export function format_dos_tooltip(
     unit: is_phonon ? units : `eV`,
   }
 
-  const format_line = (name: string, value: string, unit?: string) =>
-    `${name}: ${value}${unit ? ` ${unit}` : ``}`
-
   const lines = is_horizontal
     ? [
-        format_line(
+        format_tooltip_line(
           y_parsed.name || freq_defaults.name,
           y_formatted,
           y_parsed.unit || freq_defaults.unit,
         ),
-        format_line(x_parsed.name || `Density`, x_formatted),
+        format_tooltip_line(x_parsed.name || `Density`, x_formatted),
       ]
     : [
-        format_line(y_parsed.name || `Density`, y_formatted),
-        format_line(
+        format_tooltip_line(y_parsed.name || `Density`, y_formatted),
+        format_tooltip_line(
           x_parsed.name || freq_defaults.name,
           x_formatted,
           x_parsed.unit || freq_defaults.unit,

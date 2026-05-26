@@ -352,12 +352,12 @@ function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
   }
 
   if (data.band_structure?.energies || data.bands?.energies) {
-    const bs = data.band_structure || data.bands
+    const bs = data.band_structure ?? data.bands
     return {
       energies: bs.energies,
-      k_grid: bs.k_grid || bs.kgrid,
-      k_lattice: bs.k_lattice || bs.reciprocal_lattice,
-      fermi_energy: bs.fermi_energy || bs.efermi || 0,
+      k_grid: bs.k_grid ?? bs.kgrid,
+      k_lattice: bs.k_lattice ?? bs.reciprocal_lattice,
+      fermi_energy: bs.fermi_energy ?? bs.efermi ?? 0,
       n_bands: bs.n_bands || bs.nbands || bs.energies[0]?.length || 0,
       n_spins: bs.n_spins || bs.nspins || bs.energies.length || 1,
     } as BandGridData
@@ -484,7 +484,7 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   }
 
   // Compute total surface area
-  const total_area = isosurfaces.reduce((sum, iso) => sum + (iso.area || 0), 0)
+  const total_area = isosurfaces.reduce((sum, iso) => sum + (iso.area ?? 0), 0)
 
   return {
     isosurfaces,

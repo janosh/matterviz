@@ -63,7 +63,7 @@
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween } from 'svelte/motion'
-  import type { Vec2 } from '../math'
+  import type { Vec2 } from '$lib/math'
   import PlotTooltip from './PlotTooltip.svelte'
   import { bar_path } from './svg'
 

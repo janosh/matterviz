@@ -8,7 +8,7 @@
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
   import { tooltip } from 'svelte-multiselect/attachments'
-  import type { Vec2 } from '../math'
+  import type { Vec2 } from '$lib/math'
   import type { AxisKey, PlotControlsProps } from './index'
   import { normalize_y2_sync } from './interactions'
   import { get_scale_type_name, is_scale_type_name, is_y2_sync_mode } from './types'

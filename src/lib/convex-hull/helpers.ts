@@ -203,8 +203,7 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
     text += `E<sub>above hull</sub>: ${e_hull_str} eV/atom\n`
   }
   // Fallback to energy_per_atom if e_form_per_atom is absent
-  const e_form_display =
-    entry.e_form_per_atom !== undefined ? entry.e_form_per_atom : entry.energy_per_atom
+  const e_form_display = entry.e_form_per_atom ?? entry.energy_per_atom
   if (e_form_display !== undefined) {
     const e_form_str = format_num(e_form_display, `.3~`)
     text += `E<sub>form</sub>: ${e_form_str} eV/atom`
@@ -847,7 +846,7 @@ export function safe_analyze_gas_data(
   entries: PhaseData[],
   config?: GasThermodynamicsConfig,
 ): GasAnalysis {
-  if (!config || !config.enabled_gases?.length) {
+  if (!config?.enabled_gases?.length) {
     return {
       has_gas_dependent_elements: false,
       gas_elements: [],
@@ -865,7 +864,7 @@ export function safe_apply_gas_corrections(
   config: GasThermodynamicsConfig | undefined,
   T: number,
 ): PhaseData[] {
-  if (!config || !config.enabled_gases?.length) return entries
+  if (!config?.enabled_gases?.length) return entries
   return _apply_gas_corrections(entries, config, T)
 }
 

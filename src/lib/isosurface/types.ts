@@ -92,6 +92,15 @@ export function grid_data_range(grid: number[][][]): DataRange {
   return { min: min_val, max: max_val, abs_max, mean: count > 0 ? sum / count : 0 }
 }
 
+const wrap_grid_idx = (val: number, size: number) => ((val % size) + size) % size
+const clamp_dim = (src: number, fac: number) =>
+  Math.min(src, Math.max(2, Math.ceil(src / fac)))
+const partition_ranges = (n_out: number, n_src: number): [number, number][] =>
+  Array.from({ length: n_out }, (_, idx) => [
+    Math.round((idx * n_src) / n_out),
+    Math.round(((idx + 1) * n_src) / n_out),
+  ])
+
 // Pad a periodic 3D grid with halo cells from the opposite face so isosurfaces
 // extend beyond the unit cell and close into complete enclosed shapes.
 // Returns a larger grid with dims [nx+2*pad, ny+2*pad, nz+2*pad] and the
@@ -111,17 +120,16 @@ export function pad_periodic_grid(
   const out_nx = nx + 2 * px
   const out_ny = ny + 2 * py
   const out_nz = nz + 2 * pz
-  const wrap = (val: number, size: number) => ((val % size) + size) % size
 
   const out: number[][][] = Array(out_nx)
   for (let ix = 0; ix < out_nx; ix++) {
     const plane: number[][] = Array(out_ny)
-    const src_x = wrap(ix - px, nx)
+    const src_x = wrap_grid_idx(ix - px, nx)
     for (let iy = 0; iy < out_ny; iy++) {
       const row: number[] = Array(out_nz)
-      const src_y = wrap(iy - py, ny)
+      const src_y = wrap_grid_idx(iy - py, ny)
       for (let iz = 0; iz < out_nz; iz++) {
-        row[iz] = grid[src_x][src_y][wrap(iz - pz, nz)]
+        row[iz] = grid[src_x][src_y][wrap_grid_idx(iz - pz, nz)]
       }
       plane[iy] = row
     }
@@ -155,8 +163,6 @@ export function downsample_grid(
   // A single cbrt step can overshoot for anisotropic grids where max(2,...)
   // clamping prevents a small axis from shrinking below 2.
   // clamp_dim: returns 1 for single-cell axes, otherwise clamps to [2, src]
-  const clamp_dim = (src: number, fac: number) =>
-    Math.min(src, Math.max(2, Math.ceil(src / fac)))
   let factor = Math.ceil(Math.cbrt(total / max_points))
   let new_nx = clamp_dim(nx, factor)
   let new_ny = clamp_dim(ny, factor)
@@ -174,15 +180,9 @@ export function downsample_grid(
   // Proportional partitioning: evenly divides [0, n) into new_n non-empty blocks.
   // Unlike fixed-stride (ix * factor), this is safe when max(2,...) clamping
   // produces more output cells than ceil(n/factor) would — no empty blocks.
-  const partition = (n_out: number, n_src: number): [number, number][] =>
-    Array.from({ length: n_out }, (_, idx) => [
-      Math.round((idx * n_src) / n_out),
-      Math.round(((idx + 1) * n_src) / n_out),
-    ])
-
-  const x_ranges = partition(new_nx, nx)
-  const y_ranges = partition(new_ny, ny)
-  const z_ranges = partition(new_nz, nz)
+  const x_ranges = partition_ranges(new_nx, nx)
+  const y_ranges = partition_ranges(new_ny, ny)
+  const z_ranges = partition_ranges(new_nz, nz)
 
   const out: number[][][] = Array(new_nx)
   for (let ix = 0; ix < new_nx; ix++) {

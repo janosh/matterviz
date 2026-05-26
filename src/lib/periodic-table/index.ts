@@ -1,4 +1,4 @@
-import type { D3InterpolateName } from '../colors'
+import type { D3InterpolateName } from '$lib/colors'
 
 export { default, default as PeriodicTable } from './PeriodicTable.svelte'
 export { default as PeriodicTableControls } from './PeriodicTableControls.svelte'

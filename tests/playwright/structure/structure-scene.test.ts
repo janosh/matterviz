@@ -1,4 +1,4 @@
-import type { XyObj } from '$lib'
+import type { Point2D } from '$lib/math'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   enter_edit_atoms_mode,
@@ -7,6 +7,8 @@ import {
   IS_CI,
   wait_for_3d_canvas,
 } from '../helpers'
+
+const is_mac = process.platform === `darwin`
 
 // Helper function to clear any existing tooltips and overlays
 async function clear_tooltips_and_overlays(page: Page): Promise<void> {
@@ -43,7 +45,7 @@ async function safe_canvas_hover(
 }
 
 // Helper function to try multiple positions to find a hoverable atom
-async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
+async function find_hoverable_atom(page: Page): Promise<Point2D | null> {
   const canvas = page.locator(`#test-structure canvas`)
 
   const positions = [
@@ -921,7 +923,7 @@ test.describe(`StructureScene Component Tests`, () => {
       }, props)
 
       await expect(canvas).toBeVisible()
-      return await canvas.screenshot()
+      return canvas.screenshot()
     }
 
     // Test both modes and verify they produce different outputs
@@ -1071,7 +1073,6 @@ test.describe(`Edit Atoms Scene`, () => {
     await expect_canvas_changed(canvas, prev)
 
     // Keyboard shortcuts should not cause errors
-    const is_mac = await page.evaluate(() => navigator.platform.toUpperCase().includes(`MAC`))
     await page.keyboard.press(`Delete`)
     await page.keyboard.press(is_mac ? `Meta+z` : `Control+z`)
     await page.keyboard.press(is_mac ? `Meta+y` : `Control+y`)

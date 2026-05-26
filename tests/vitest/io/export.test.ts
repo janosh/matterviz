@@ -162,7 +162,7 @@ describe(`svg_to_svg_string`, () => {
     svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
     const result = svg_to_svg_string(svg)
     // Should not have duplicate xmlns
-    const xmlns_count = (result.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g) || [])
+    const xmlns_count = (result.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g) ?? [])
       .length
     expect(xmlns_count).toBe(1)
   })

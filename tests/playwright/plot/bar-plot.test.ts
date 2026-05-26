@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { get_tick_range, IS_CI } from '../helpers'
+import { get_tick_range, IS_CI, is_present } from '../helpers'
 
 test.describe(`BarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -39,13 +39,13 @@ test.describe(`BarPlot Component Tests`, () => {
     // Toggle first series -> bar count should decrease
     await items.first().click()
     await expect
-      .poll(async () => await plot.locator(`svg path[aria-label^="bar "]`).count())
+      .poll(() => plot.locator(`svg path[aria-label^="bar "]`).count())
       .toBeLessThan(initial_bars)
 
     // Toggle back -> bar count should be restored to initial
     await items.first().click()
     await expect
-      .poll(async () => await plot.locator(`svg path[aria-label^="bar "]`).count())
+      .poll(() => plot.locator(`svg path[aria-label^="bar "]`).count())
       .toBe(initial_bars)
   })
 
@@ -224,8 +224,8 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(bars.first()).toBeVisible()
     const before_boxes = (await bars.all()).slice(0, 12)
     const before_dims = (
-      await Promise.all(before_boxes.map(async (h) => await h.boundingBox()))
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+      await Promise.all(before_boxes.map((handle) => handle.boundingBox()))
+    ).filter(is_present)
     const vertical_count_before = before_dims.filter((bb) => bb.height > bb.width).length
     const horizontal_count_before = before_dims.filter((bb) => bb.width > bb.height).length
     expect(vertical_count_before).toBeGreaterThan(horizontal_count_before)
@@ -243,8 +243,8 @@ test.describe(`BarPlot Component Tests`, () => {
     // After change, majority of bars should be horizontal
     const after_boxes = (await bars.all()).slice(0, 12)
     const after_dims = (
-      await Promise.all(after_boxes.map(async (h) => await h.boundingBox()))
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+      await Promise.all(after_boxes.map((handle) => handle.boundingBox()))
+    ).filter(is_present)
     const horizontal_count_after = after_dims.filter((bb) => bb.width > bb.height).length
     const vertical_count_after = after_dims.filter((bb) => bb.height > bb.width).length
     expect(horizontal_count_after).toBeGreaterThan(vertical_count_after)
@@ -262,9 +262,9 @@ test.describe(`BarPlot Component Tests`, () => {
 
     // Measure y positions to verify one bar is above baseline and one below when values have different signs
     const rect_boxes = (await rects.elementHandles()).slice(0, 4)
-    const boxes = (
-      await Promise.all(rect_boxes.map(async (h) => await h.boundingBox()))
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    const boxes = (await Promise.all(rect_boxes.map((handle) => handle.boundingBox()))).filter(
+      is_present,
+    )
     // There should be at least two bars with different vertical placement for mixed signs
     const ys = boxes.map((bb) => bb.y)
     const min_y = Math.min(...ys)
@@ -291,10 +291,8 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(rects.first()).toBeVisible()
     // zero bars should not have negative size
     const boxes = (
-      await Promise.all(
-        (await rects.all()).slice(0, 4).map(async (h) => await h.boundingBox()),
-      )
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+      await Promise.all((await rects.all()).slice(0, 4).map((handle) => handle.boundingBox()))
+    ).filter(is_present)
     expect(Math.min(...boxes.map((bb) => bb.width))).toBeGreaterThan(0)
     expect(Math.min(...boxes.map((bb) => bb.height))).toBeGreaterThan(0)
     await rects.first().hover({ force: true })
@@ -306,8 +304,8 @@ test.describe(`BarPlot Component Tests`, () => {
     await expect(plot).toBeVisible()
     const rects = await plot.locator(`svg path[aria-label^="bar "]`).all()
     const boxes = (
-      await Promise.all(rects.slice(0, 4).map(async (h) => await h.boundingBox()))
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+      await Promise.all(rects.slice(0, 4).map((handle) => handle.boundingBox()))
+    ).filter(is_present)
     const widths = boxes.map((bb) => bb.width)
     // Expect at least two distinct widths
     const distinct = new Set(widths.map((w) => Math.round(w)))
@@ -322,10 +320,8 @@ test.describe(`BarPlot Component Tests`, () => {
     const rects = plot.locator(`svg path[aria-label^="bar "]`)
     await expect(rects.first()).toBeVisible()
     const boxes = (
-      await Promise.all(
-        (await rects.all()).slice(0, 4).map(async (h) => await h.boundingBox()),
-      )
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+      await Promise.all((await rects.all()).slice(0, 4).map((handle) => handle.boundingBox()))
+    ).filter(is_present)
     const xs = boxes.map((bb) => bb.x)
     const min_x = Math.min(...xs)
     const max_x = Math.max(...xs)
@@ -381,9 +377,9 @@ test.describe(`BarPlot Component Tests`, () => {
 
     // Verify stacking by checking bar positions
     const first_bars = (await bars.all()).slice(0, 4)
-    const boxes = (
-      await Promise.all(first_bars.map(async (h) => await h.boundingBox()))
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+    const boxes = (await Promise.all(first_bars.map((handle) => handle.boundingBox()))).filter(
+      is_present,
+    )
 
     // Bars should be positioned at different y coordinates
     const ys = boxes.map((bb) => bb.y)
@@ -430,15 +426,13 @@ test.describe(`BarPlot Component Tests`, () => {
     await page.mouse.up()
 
     // After zoom ticks differ - use polling for more reliable checks
-    await expect.poll(async () => await get_range(`y`), { timeout: 2000 }).not.toBe(initial_y1)
-    await expect
-      .poll(async () => await get_range(`y2`), { timeout: 2000 })
-      .not.toBe(initial_y2)
+    await expect.poll(() => get_range(`y`), { timeout: 2000 }).not.toBe(initial_y1)
+    await expect.poll(() => get_range(`y2`), { timeout: 2000 }).not.toBe(initial_y2)
 
     // Reset
     await svg.dblclick()
-    await expect.poll(async () => await get_range(`y`), { timeout: 2000 }).toBe(initial_y1)
-    await expect.poll(async () => await get_range(`y2`), { timeout: 2000 }).toBe(initial_y2)
+    await expect.poll(() => get_range(`y`), { timeout: 2000 }).toBe(initial_y1)
+    await expect.poll(() => get_range(`y2`), { timeout: 2000 }).toBe(initial_y2)
   })
 
   test(`line series can use y2 axis`, async ({ page }) => {

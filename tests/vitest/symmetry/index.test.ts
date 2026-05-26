@@ -210,15 +210,13 @@ describe(`structure validation`, () => {
 
       if (!site.species?.length) issues.push(`Site ${site_idx} missing species`)
       if (
-        !site.abc ||
-        site.abc.length !== 3 ||
+        site.abc?.length !== 3 ||
         site.abc.some((c) => typeof c !== `number` || !isFinite(c))
       ) {
         issues.push(`Site ${site_idx} invalid fractional coordinates`)
       }
       if (
-        !site.xyz ||
-        site.xyz.length !== 3 ||
+        site.xyz?.length !== 3 ||
         site.xyz.some((c) => typeof c !== `number` || !isFinite(c))
       ) {
         issues.push(`Site ${site_idx} invalid Cartesian coordinates`)
@@ -228,7 +226,7 @@ describe(`structure validation`, () => {
       }
 
       let totalOccupancy = 0
-      for (const [idx, species] of (site.species || []).entries()) {
+      for (const [idx, species] of (site.species ?? []).entries()) {
         if (
           !species.element ||
           typeof species.element !== `string` ||
@@ -270,8 +268,7 @@ describe(`structure validation`, () => {
         if (`lattice` in structure && structure.lattice) {
           const { lattice } = structure
           if (
-            !lattice.matrix ||
-            lattice.matrix.length !== 3 ||
+            lattice.matrix?.length !== 3 ||
             lattice.matrix.some((row) => !Array.isArray(row) || row.length !== 3)
           ) {
             issues.push(`Invalid lattice matrix`)

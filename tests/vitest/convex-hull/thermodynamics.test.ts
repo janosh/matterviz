@@ -1,5 +1,6 @@
 import type { ElementSymbol } from '$lib'
 import type { Point4D } from '$lib/convex-hull/thermodynamics'
+import type { Point2D, Point3D } from '$lib/math'
 import {
   build_lower_hull_model,
   calculate_e_above_hull,
@@ -22,7 +23,7 @@ import {
   process_hull_entries,
   process_hull_for_stats,
 } from '$lib/convex-hull/thermodynamics'
-import type { ConvexHullTriangle, PhaseData, Point2D, Point3D } from '$lib/convex-hull/types'
+import type { ConvexHullTriangle, PhaseData } from '$lib/convex-hull/types'
 import { describe, expect, test } from 'vitest'
 
 // Test fixture factory - derives total energy from energy_per_atom and composition

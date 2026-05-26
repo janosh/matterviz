@@ -3,14 +3,13 @@
   import type { ChemicalElement, ElementCategory, ElementSymbol } from '$lib/element'
   import { element_data, ElementPhoto, ElementTile } from '$lib/element'
   import { ELEM_SYMBOLS } from '$lib/labels'
-  import type { Vec2 } from '$lib/math'
-  import type { XyObj } from '$lib/plot'
+  import type { Point2D, Vec2 } from '$lib/math'
   import { ColorBar } from '$lib/plot'
   import { colors } from '$lib/state.svelte'
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { D3InterpolateName } from '../colors'
+  import type { D3InterpolateName } from '$lib/colors'
   import type { ScaleContext } from './index'
   import { TableInset } from './index'
 
@@ -139,7 +138,7 @@
 
   let window_width: number = $state(0)
   let tooltip_element: ChemicalElement | null = $state(null)
-  let tooltip_pos: XyObj = $state({ x: 0, y: 0 })
+  let tooltip_pos: Point2D = $state({ x: 0, y: 0 })
   let tooltip_visible: boolean = $state(false)
 
   function handle_key(event: KeyboardEvent) {

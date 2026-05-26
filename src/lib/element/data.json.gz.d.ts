@@ -1,2 +1,4 @@
-declare const data: import('./types.ts').ChemicalElement[]
+import type { ChemicalElement } from './types'
+
+declare const data: ChemicalElement[]
 export default data

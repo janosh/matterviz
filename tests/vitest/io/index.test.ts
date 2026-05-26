@@ -192,12 +192,25 @@ describe(`load_from_url`, () => {
   })
 
   test.each([
-    [`GZIP magic bytes`, [0x1f, 0x8b], `ArrayBuffer`, undefined],
-    [`HDF5 magic bytes`, [0x89, 0x48, 0x44, 0x46], `ArrayBuffer`, undefined],
-    [`unknown format`, [0x12, 0x34, 0x56, 0x78], `string`, `unknown format content`],
+    [`GZIP magic bytes`, [0x1f, 0x8b], `ArrayBuffer`, undefined, undefined],
+    [
+      `GZIP magic bytes with callback rejection`,
+      [0x1f, 0x8b],
+      `ArrayBuffer`,
+      undefined,
+      `callback failed`,
+    ],
+    [`HDF5 magic bytes`, [0x89, 0x48, 0x44, 0x46], `ArrayBuffer`, undefined, undefined],
+    [
+      `unknown format`,
+      [0x12, 0x34, 0x56, 0x78],
+      `string`,
+      `unknown format content`,
+      undefined,
+    ],
   ] as const)(
     `magic bytes detection: %s`,
-    async (_, magic_bytes, expected_type, expected_content) => {
+    async (_, magic_bytes, expected_type, expected_content, callback_error) => {
       const header = new Uint8Array([
         ...magic_bytes,
         ...Array(16 - magic_bytes.length).fill(0),
@@ -206,7 +219,7 @@ describe(`load_from_url`, () => {
         'content-type': `application/octet-stream`,
       })
       const mock_full_response = create_mock_response(
-        expected_content || new ArrayBuffer(100),
+        expected_content ?? new ArrayBuffer(100),
         {
           'content-type': expected_content ? `text/plain` : `application/octet-stream`,
         },
@@ -220,10 +233,23 @@ describe(`load_from_url`, () => {
       let received_content: string | ArrayBuffer | null = null
       let received_filename: string | null = null
 
-      await load_from_url(`https://example.com/data.bin`, (content, filename) => {
+      const callback = async (content: string | ArrayBuffer, filename: string) => {
         received_content = content
         received_filename = filename
-      })
+        if (callback_error && content instanceof ArrayBuffer) {
+          throw new TypeError(callback_error)
+        }
+      }
+
+      if (callback_error) {
+        await expect(load_from_url(`https://example.com/data.bin`, callback)).rejects.toThrow(
+          callback_error,
+        )
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+        return
+      }
+
+      await load_from_url(`https://example.com/data.bin`, callback)
 
       if (expected_type === `string`) {
         expect(typeof received_content).toBe(`string`)

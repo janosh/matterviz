@@ -2,6 +2,9 @@
 // Based on the classic algorithm by Lorensen & Cline (1987)
 import type { Matrix3x3, Vec3 } from '$lib/math'
 
+const wrap_grid_idx = (val: number, dim: number) => ((val % dim) + dim) % dim
+const clamp_grid_idx = (val: number, max: number) => Math.max(0, Math.min(val, max))
+
 // Edge table: for each cube configuration (256 cases), which edges are intersected
 // Each bit indicates whether that edge has an intersection
 // oxfmt-ignore
@@ -332,20 +335,17 @@ function compute_gradient(
   periodic: boolean,
 ): Vec3 {
   // Wrap for periodic, clamp for non-periodic boundaries
-  const wrap = (val: number, dim: number) => ((val % dim) + dim) % dim
-  const clamp = (val: number, max: number) => Math.max(0, Math.min(val, max))
-
   const [ix_w, iy_w, iz_w] = periodic
-    ? [wrap(ix, nx), wrap(iy, ny), wrap(iz, nz)]
-    : [clamp(ix, nx - 1), clamp(iy, ny - 1), clamp(iz, nz - 1)]
+    ? [wrap_grid_idx(ix, nx), wrap_grid_idx(iy, ny), wrap_grid_idx(iz, nz)]
+    : [clamp_grid_idx(ix, nx - 1), clamp_grid_idx(iy, ny - 1), clamp_grid_idx(iz, nz - 1)]
   const [ix_m, ix_p] = periodic
-    ? [wrap(ix - 1, nx), wrap(ix + 1, nx)]
+    ? [wrap_grid_idx(ix - 1, nx), wrap_grid_idx(ix + 1, nx)]
     : [Math.max(0, ix - 1), Math.min(nx - 1, ix + 1)]
   const [iy_m, iy_p] = periodic
-    ? [wrap(iy - 1, ny), wrap(iy + 1, ny)]
+    ? [wrap_grid_idx(iy - 1, ny), wrap_grid_idx(iy + 1, ny)]
     : [Math.max(0, iy - 1), Math.min(ny - 1, iy + 1)]
   const [iz_m, iz_p] = periodic
-    ? [wrap(iz - 1, nz), wrap(iz + 1, nz)]
+    ? [wrap_grid_idx(iz - 1, nz), wrap_grid_idx(iz + 1, nz)]
     : [Math.max(0, iz - 1), Math.min(nz - 1, iz + 1)]
 
   const dx = (grid[ix_p][iy_w][iz_w] - grid[ix_m][iy_w][iz_w]) * 0.5
@@ -399,9 +399,6 @@ export function marching_cubes(
   }
   const vertex_cache = new Map<number, number>()
 
-  // Safe modulo wrapping helper (handles negative values correctly)
-  const wrap = (val: number, size: number): number => ((val % size) + size) % size
-
   // Precompute k_lattice values for faster coordinate transform
   const [kx0, kx1, kx2] = k_lattice[0]
   const [ky0, ky1, ky2] = k_lattice[1]
@@ -433,12 +430,12 @@ export function marching_cubes(
     const oz2 = CUBE_VERTS_Z[v2_idx]
 
     // Compute wrapped grid positions using safe modulo for periodic boundaries
-    const g1x = periodic ? wrap(ix + ox1, nx) : ix + ox1
-    const g1y = periodic ? wrap(iy + oy1, ny) : iy + oy1
-    const g1z = periodic ? wrap(iz + oz1, nz) : iz + oz1
-    const g2x = periodic ? wrap(ix + ox2, nx) : ix + ox2
-    const g2y = periodic ? wrap(iy + oy2, ny) : iy + oy2
-    const g2z = periodic ? wrap(iz + oz2, nz) : iz + oz2
+    const g1x = periodic ? wrap_grid_idx(ix + ox1, nx) : ix + ox1
+    const g1y = periodic ? wrap_grid_idx(iy + oy1, ny) : iy + oy1
+    const g1z = periodic ? wrap_grid_idx(iz + oz1, nz) : iz + oz1
+    const g2x = periodic ? wrap_grid_idx(ix + ox2, nx) : ix + ox2
+    const g2y = periodic ? wrap_grid_idx(iy + oy2, ny) : iy + oy2
+    const g2z = periodic ? wrap_grid_idx(iz + oz2, nz) : iz + oz2
 
     // Create numeric cache key (sorted for consistency)
     // Safe for grids up to ~300³ before exceeding Number.MAX_SAFE_INTEGER

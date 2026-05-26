@@ -157,9 +157,7 @@ let default_provider: GasThermodynamicsProvider | null = null
 
 // Get the default gas thermodynamics provider (lazy initialization)
 export function get_default_gas_provider(): GasThermodynamicsProvider {
-  if (!default_provider) {
-    default_provider = create_default_gas_provider()
-  }
+  default_provider ??= create_default_gas_provider()
   return default_provider
 }
 
@@ -359,7 +357,7 @@ export function apply_gas_corrections(
   config: GasThermodynamicsConfig | undefined,
   T: number,
 ): PhaseData[] {
-  if (!config || !config.enabled_gases?.length) return entries
+  if (!config?.enabled_gases?.length) return entries
 
   const analysis = analyze_gas_data(entries, config)
 

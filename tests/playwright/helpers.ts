@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test'
-import { Buffer } from 'node:buffer'
+import type { Buffer } from 'node:buffer'
 import process from 'node:process'
 
 // Timeout constants for different environments
@@ -9,6 +9,9 @@ const CI_CANVAS_TIMEOUT = 15_000
 
 // Centralized CI detection - use this instead of inline process.env.CI checks
 export const IS_CI = [`true`, `1`].includes(process.env.CI ?? ``)
+
+export const is_present = <Value>(value: Value | null | undefined): value is Value =>
+  value != null
 
 // Get appropriate canvas initialization timeout based on environment
 // Use this for WebGL/Three.js canvas waits where CI needs more time

@@ -1,4 +1,5 @@
 // JSON Tree component types
+import type { GhostEntry } from './utils'
 
 // Value type classification for rendering and styling
 export type JsonValueType =
@@ -102,7 +103,7 @@ export interface JsonTreeContext {
   toggle_select: (path: string, shift: boolean) => void
   copy_selected: () => void
   diff_map: Map<string, DiffEntry> | null
-  ghost_map: Map<string, import('./utils').GhostEntry[]>
+  ghost_map: Map<string, GhostEntry[]>
   collapse_children_only: (path: string) => void
   onchange?: (path: string, new_value: unknown, old_value: unknown) => void
 }

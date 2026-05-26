@@ -5,6 +5,7 @@ import {
 } from '$lib/composition'
 import type { ElementSymbol } from '$lib/element'
 import * as math from '$lib/math'
+import type { Point2D, Point3D } from '$lib/math'
 import {
   barycentric_to_ternary_xyz,
   barycentric_to_tetrahedral,
@@ -19,14 +20,15 @@ import type {
   PhaseData,
   PhaseStats,
   Plane,
-  Point2D,
-  Point3D,
   ProcessedPhaseData,
 } from './types'
 import { get_arity, HULL_STABILITY_TOL, is_on_hull, is_unary_entry } from './helpers'
 
 // Track warned keys to avoid log spam on large datasets with repeated invalid keys
 const warned_keys = new Set<string>()
+const cross_point_2d = (origin: Point2D, point_a: Point2D, point_b: Point2D) =>
+  (point_a.x - origin.x) * (point_b.y - origin.y) -
+  (point_a.y - origin.y) * (point_b.x - origin.x)
 
 // Normalize convex hull composition keys by stripping oxidation states (e.g. "V4+" -> "V")
 // and merging amounts for keys that map to the same element. Filters non-positive amounts.
@@ -47,7 +49,7 @@ export function normalize_hull_composition_keys(
       }
       continue
     }
-    normalized[elem] = (normalized[elem] || 0) + amount
+    normalized[elem] = (normalized[elem] ?? 0) + amount
   }
   return normalized
 }
@@ -217,7 +219,7 @@ export function calculate_e_above_hull(
       if (typeof e_form !== `number`) continue
       const total = count_atoms_in_composition(ref.composition)
       if (total <= 0) continue
-      const x = (ref.composition[el2] || 0) / total
+      const x = (ref.composition[el2] ?? 0) / total
       const current = hull_input_map.get(x)
       if (current === undefined || e_form < current) {
         hull_input_map.set(x, e_form)
@@ -242,7 +244,7 @@ export function calculate_e_above_hull(
         results[id] = NaN
         continue
       }
-      const x = (entry.composition[el2] || 0) / total
+      const x = (entry.composition[el2] ?? 0) / total
       const y_hull = interpolate_hull_2d(lower_hull, x)
       results[id] = y_hull === null ? NaN : Math.max(0, e_form - y_hull)
     }
@@ -600,13 +602,11 @@ export function compute_lower_hull_2d(points: Point2D[]): Point2D[] {
   // Sort by x then y
   const sorted = [...points].sort((p1, p2) => p1.x - p2.x || p1.y - p2.y)
   const lower: Point2D[] = []
-  const cross = (o: Point2D, a: Point2D, b: Point2D) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
 
   for (const point of sorted) {
     while (
       lower.length >= 2 &&
-      cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0
+      cross_point_2d(lower[lower.length - 2], lower[lower.length - 1], point) <= 0
     )
       lower.pop()
     lower.push(point)

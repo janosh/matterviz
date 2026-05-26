@@ -539,28 +539,29 @@ function extract_simple_labels(doc: Document, labels: Label[]): void {
 
 // === Component Inference ===
 
+const split_phase_label = (label: Label) => label.text.split(/\s*\+\s*/)
+
 // Infer binary components from region labels
 function infer_components(labels: Label[]): [string, string] {
   // Sort labels by x position, split each into phases
   const sorted = labels.toSorted((a, b) => a.px_x - b.px_x)
   if (sorted.length < 2) return [`A`, `B`]
 
-  const split = (label: Label) => label.text.split(/\s*\+\s*/)
-  const leftmost = split(sorted[0])
-  const rightmost = split(sorted[sorted.length - 1])
+  const leftmost = split_phase_label(sorted[0])
+  const rightmost = split_phase_label(sorted[sorted.length - 1])
 
   // Component A: the unique phase in the leftmost region that doesn't appear on the right
   // For "La2NiO4 + La2O3", La2O3 is the pure A endpoint
   let comp_a = `A`
   if (leftmost.length === 2) {
-    const right_phases = new Set(sorted.slice(-3).flatMap(split))
+    const right_phases = new Set(sorted.slice(-3).flatMap(split_phase_label))
     comp_a = leftmost.find((phase) => !right_phases.has(phase)) ?? leftmost[1] ?? `A`
   }
 
   // Component B: the unique phase in the rightmost region that doesn't appear on the left
   let comp_b = `B`
   if (rightmost.length === 2) {
-    const left_phases = new Set(sorted.slice(0, 3).flatMap(split))
+    const left_phases = new Set(sorted.slice(0, 3).flatMap(split_phase_label))
     comp_b = rightmost.find((phase) => !left_phases.has(phase)) ?? rightmost[1] ?? `B`
   }
 

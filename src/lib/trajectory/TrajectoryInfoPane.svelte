@@ -5,7 +5,7 @@
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { get_electro_neg_formula } from '$lib/composition'
   import { SETTINGS_CONFIG } from '$lib/settings'
-  import { type AnyStructure } from '$lib/structure'
+  import type { AnyStructure } from '$lib/structure'
   import type { ComponentProps } from 'svelte'
   import type { TrajectoryType } from './index'
 

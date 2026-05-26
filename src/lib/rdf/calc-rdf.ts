@@ -9,6 +9,13 @@ import type { Crystal, Pbc } from '$lib/structure'
 import { make_supercell } from '$lib/structure/supercell'
 import type { RdfOptions, RdfPattern } from './index'
 
+const get_occu = (site: Crystal[`sites`][number], elem: string | undefined) =>
+  elem ? (site.species.find((spec) => spec.element === elem)?.occu ?? 0) : 1
+const has_species = (site: Crystal[`sites`][number], elem: string | undefined) =>
+  !elem || site.species.some((spec) => spec.element === elem)
+const sum_occu = (sites: Crystal[`sites`], elem: string | undefined) =>
+  sites.reduce((sum, site) => sum + get_occu(site, elem), 0)
+
 // Calculate radial distribution function
 export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): RdfPattern {
   const {
@@ -59,10 +66,6 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
   if (sites.length === 0) return { r, g_r }
 
   // Get occupancy weight for a site-species pair (supports mixed occupancy)
-  const get_occu = (site: (typeof sites)[0], elem: string | undefined) =>
-    elem ? (site.species.find((spec) => spec.element === elem)?.occu ?? 0) : 1
-  const has_species = (site: (typeof sites)[0], elem: string | undefined) =>
-    !elem || site.species.some((spec) => spec.element === elem)
   const centers = sites.filter((site) => has_species(site, center_species))
   const neighbors = sites.filter((site) => has_species(site, neighbor_species))
 
@@ -95,8 +98,6 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
   }
 
   // Normalize using occupancy-weighted pair count (excludes self-interactions for same species)
-  const sum_occu = (arr: typeof sites, elem: string | undefined) =>
-    arr.reduce((sum, site) => sum + get_occu(site, elem), 0)
   const center_weight = sum_occu(centers, center_species)
   const neighbor_weight = sum_occu(neighbors, neighbor_species)
   const self_weight =

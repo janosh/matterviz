@@ -1,6 +1,8 @@
 import { format_value } from '$lib/labels'
 import { euclidean_dist } from '$lib/math'
-import type { AxisConfig, Sides } from '$lib/plot'
+import type { AxisConfig } from './types'
+
+export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 30
@@ -21,9 +23,7 @@ let measurement_canvas: HTMLCanvasElement | null = null
 
 export function measure_text_width(text: string, font: string = `12px sans-serif`) {
   if (typeof document === `undefined`) return 0
-  if (!measurement_canvas) {
-    measurement_canvas = document.createElement(`canvas`)
-  }
+  measurement_canvas ??= document.createElement(`canvas`)
   const ctx = measurement_canvas.getContext(`2d`)
   if (!ctx) return 0
   ctx.font = font

@@ -35,6 +35,8 @@ export interface FillPathPoint {
   y2: number
 }
 
+type FillPathArrays = Record<keyof FillPathPoint, number[]>
+
 // Result type for interpolated series
 export interface InterpolatedSeries {
   x: number[]
@@ -43,10 +45,7 @@ export interface InterpolatedSeries {
 }
 
 // Result type for range-filtered data
-export interface FilteredFillData {
-  x: number[]
-  y1: number[]
-  y2: number[]
+export interface FilteredFillData extends FillPathArrays {
   // Original indices before filtering (for mapping back)
   original_indices: number[]
 }
@@ -57,10 +56,7 @@ export interface ConditionedFillData {
 }
 
 // Result type for log-scale clamped data
-export interface ClampedFillData {
-  x: number[]
-  y1: number[]
-  y2: number[]
+export interface ClampedFillData extends FillPathArrays {
   // Track which points were clamped (for optional warnings)
   clamped_indices: number[]
 }
@@ -177,53 +173,37 @@ export function resolve_boundary(
     return x_values.map(() => boundary)
   }
 
-  switch (boundary.type) {
-    case `series`: {
-      const resolved = resolve_series_ref(boundary, series)
-      if (!resolved) return null
-      // Interpolate to match x_values
-      const interpolated = interpolate_series(
-        { x: x_values, y: x_values.map(() => 0) },
-        { x: resolved.x, y: resolved.y },
-        `linear`,
-      )
-      return interpolated.y_b
-    }
-
-    case `constant`:
-      return x_values.map(() => boundary.value)
-
-    case `axis`: {
-      // For axis boundaries, return the edge value of the appropriate axis domain
-      let value: number
-      if (boundary.value !== undefined) {
-        value = boundary.value
-      } else if (boundary.axis === `y2` && domains.y2_domain) {
-        value = domains.y2_domain[0]
-      } else {
-        // Default: use bottom of y-domain (works for x-axis and y-axis)
-        value = domains.y_domain[0]
-      }
-      return x_values.map(() => value)
-    }
-
-    case `function`:
-      return x_values.map((curr_x) => boundary.fn(curr_x))
-
-    case `data`:
-      if (boundary.values.length === 0) return Array(x_values.length).fill(NaN)
-      // If lengths match, use directly; otherwise interpolate
-      if (boundary.values.length === x_values.length) {
-        return [...boundary.values]
-      }
-      // Lengths don't match: truncate if values is longer, or extend last value if shorter
-      return x_values.map(
-        (_, idx) => boundary.values[idx] ?? boundary.values[boundary.values.length - 1],
-      )
-
-    default:
-      return null
+  if (boundary.type === `series`) {
+    const resolved = resolve_series_ref(boundary, series)
+    if (!resolved) return null
+    // Interpolate to match x_values
+    const interpolated = interpolate_series(
+      { x: x_values, y: x_values.map(() => 0) },
+      { x: resolved.x, y: resolved.y },
+      `linear`,
+    )
+    return interpolated.y_b
   }
+  if (boundary.type === `constant`) return x_values.map(() => boundary.value)
+  if (boundary.type === `axis`) {
+    // For axis boundaries, return the edge value of the appropriate axis domain
+    const value =
+      boundary.value ??
+      (boundary.axis === `y2` ? domains.y2_domain?.[0] : undefined) ??
+      domains.y_domain[0]
+    return x_values.map(() => value)
+  }
+  if (boundary.type === `function`) return x_values.map((curr_x) => boundary.fn(curr_x))
+  if (boundary.type === `data`) {
+    if (boundary.values.length === 0) return Array(x_values.length).fill(NaN)
+    // If lengths match, use directly; otherwise interpolate
+    if (boundary.values.length === x_values.length) return [...boundary.values]
+    // Lengths don't match: truncate if values is longer, or extend last value if shorter
+    return x_values.map(
+      (_, idx) => boundary.values[idx] ?? boundary.values[boundary.values.length - 1],
+    )
+  }
+  return null
 }
 
 export function apply_range_constraints(

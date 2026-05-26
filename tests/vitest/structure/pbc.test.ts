@@ -438,7 +438,7 @@ test.each([
     if (filename.endsWith(`.json`)) structure = content as Crystal
     else {
       const parsed = parse_structure_file(content as string, filename)
-      if (!parsed || !parsed.lattice) {
+      if (!parsed?.lattice) {
         throw new Error(`Failed to parse structure or no lattice found`)
       }
       structure = {

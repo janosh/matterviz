@@ -44,9 +44,8 @@ describe(`get_alphabetical_formula`, () => {
     [{ Fe: 2.5, O: 3.75 }, false, ` `, `.0f`, `Fe<sub>3</sub> O<sub>4</sub>`],
     [{ Fe: 1000, O: 1500 }, false, ` `, `.3~s`, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
     [{ Fe: 0.001, O: 0.002 }, false, ` `, `.3~g`, `Fe<sub>0.001</sub> O<sub>0.002</sub>`],
-    // Note: parse_formula doesn't handle decimal numbers in strings, so these will parse as integers
-    [`Fe2.5O3.75`, false, ` `, `.1f`, `Fe<sub>2.0</sub> O<sub>3.0</sub>`],
-    [`Fe2.5O3.75`, false, ` `, `.2f`, `Fe<sub>2.00</sub> O<sub>3.00</sub>`],
+    [`Fe2.5O3.75`, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
+    [`Fe2.5O3.75`, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
     // Invalid inputs return empty string
     [`invalid`, undefined, undefined, undefined, ``],
     [`123`, undefined, undefined, undefined, ``],
@@ -96,9 +95,8 @@ describe(`get_electro_neg_formula`, () => {
     [{ Fe: 2.5, O: 3.75 }, false, ` `, `.0f`, `Fe<sub>3</sub> O<sub>4</sub>`],
     [{ Fe: 1000, O: 1500 }, false, ` `, `.3~s`, `Fe<sub>1k</sub> O<sub>1.5k</sub>`],
     [{ Fe: 0.001, O: 0.002 }, false, ` `, `.3~g`, `Fe<sub>0.001</sub> O<sub>0.002</sub>`],
-    // Note: parse_formula doesn't handle decimal numbers in strings, so these will parse as integers
-    [`Fe2.5O3.75`, false, ` `, `.1f`, `Fe<sub>2.0</sub> O<sub>3.0</sub>`],
-    [`Fe2.5O3.75`, false, ` `, `.2f`, `Fe<sub>2.00</sub> O<sub>3.00</sub>`],
+    [`Fe2.5O3.75`, false, ` `, `.1f`, `Fe<sub>2.5</sub> O<sub>3.8</sub>`],
+    [`Fe2.5O3.75`, false, ` `, `.2f`, `Fe<sub>2.50</sub> O<sub>3.75</sub>`],
     // Invalid inputs return empty string
     [`invalid`, undefined, undefined, undefined, ``],
     [`123`, undefined, undefined, undefined, ``],

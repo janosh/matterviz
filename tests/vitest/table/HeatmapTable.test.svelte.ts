@@ -1,6 +1,6 @@
 import { HeatmapTable, type Label, type RowData } from '$lib'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, it, vi } from 'vitest'
+import { assert, describe, expect, it, vi } from 'vitest'
 
 describe(`HeatmapTable`, () => {
   const sample_data = [
@@ -355,7 +355,7 @@ describe(`HeatmapTable`, () => {
 
     // Check number formatting
     const num_cell = document.querySelector(`td[data-col="Num"]`)
-    if (!num_cell) throw `Num cell not found`
+    assert(num_cell, `Num cell not found`)
     expect(num_cell.textContent?.trim()).toBe(`12.3%`)
 
     // Check that val cells have --cell-bg set

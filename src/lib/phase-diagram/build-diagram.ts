@@ -130,19 +130,13 @@ function infer_boundary_type(curve_name: string): BoundaryType {
 
 // Get default boundary style based on type
 function get_boundary_style(btype: BoundaryType): PhaseBoundary[`style`] {
-  switch (btype) {
-    case `liquidus`:
-      return { color: `#1565c0`, width: 2.5 }
-    case `solidus`:
-      return { color: `#2e7d32`, width: 2, dash: `4,2` }
-    case `solvus`:
-      return { color: `#7b1fa2`, width: 1.5, dash: `2,2` }
-    case `eutectic`:
-    case `peritectic`:
-      return { color: `#d32f2f`, width: 2 }
-    default:
-      return { color: `#333`, width: 1.5 }
+  if (btype === `liquidus`) return { color: `#1565c0`, width: 2.5 }
+  if (btype === `solidus`) return { color: `#2e7d32`, width: 2, dash: `4,2` }
+  if (btype === `solvus`) return { color: `#7b1fa2`, width: 1.5, dash: `2,2` }
+  if (btype === `eutectic` || btype === `peritectic`) {
+    return { color: `#d32f2f`, width: 2 }
   }
+  return { color: `#333`, width: 1.5 }
 }
 
 // Build full PhaseDiagramData from compact DiagramInput JSON format
@@ -166,12 +160,8 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
   // Build boundaries from all curves
   const boundaries: PhaseBoundary[] = Object.entries(curves).map(([name, points]) => {
     const btype = infer_boundary_type(name)
-    return {
-      id: name,
-      type: btype,
-      points,
-      style: get_boundary_style(btype),
-    }
+    const style = get_boundary_style(btype)
+    return { id: name, type: btype, points, style }
   })
 
   // Build the full diagram data (spread optional fields conditionally)

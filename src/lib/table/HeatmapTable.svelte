@@ -28,6 +28,35 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
 
+  // Helper to check if value is invalid (null, undefined, NaN)
+  const is_invalid = (val: unknown) =>
+    val == null || (typeof val === `number` && Number.isNaN(val))
+
+  const NUMERIC_WITH_ERROR_RE =
+    /^([-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/
+
+  const parse_numeric_string = (val: string): number | null => {
+    const numeric_str = val.match(NUMERIC_WITH_ERROR_RE)?.[1] ?? val
+    if (numeric_str.trim() === ``) return null
+    const num = Number(normalize_unicode_minus(numeric_str))
+    return isNaN(num) ? null : num
+  }
+
+  // Get sort value from a cell (handles HTML data-sort-value and numbers with errors)
+  const get_sort_val = (val: CellVal): string | number => {
+    if (typeof val === `string`) {
+      // Check for HTML data-sort-value attribute first
+      const sort_attr_match = val.match(/data-sort-value="([^"]*)"/)
+      if (sort_attr_match) {
+        const num = Number(sort_attr_match[1])
+        return isNaN(num) ? sort_attr_match[1] : num
+      }
+      const num = parse_numeric_string(val)
+      if (num !== null) return num
+    }
+    return val as string | number
+  }
+
   let {
     data = $bindable([]),
     columns = [],
@@ -433,36 +462,6 @@
 
     if (!sort_state.column && multi_sort.length === 0) return filtered_data
 
-    // Helper to check if value is invalid (null, undefined, NaN)
-    const is_invalid = (val: unknown) =>
-      val == null || (typeof val === `number` && Number.isNaN(val))
-
-    // Get sort value from a cell (handles HTML data-sort-value and numbers with errors)
-    const get_sort_val = (val: CellVal): string | number => {
-      if (typeof val === `string`) {
-        // Check for HTML data-sort-value attribute first
-        const sort_attr_match = val.match(/data-sort-value="([^"]*)"/)
-        if (sort_attr_match) {
-          const num = Number(sort_attr_match[1])
-          return isNaN(num) ? sort_attr_match[1] : num
-        }
-        // Handle numbers with error notation: "1.23 ± 0.05" or "1.23 +- 0.05" or "1.23(5)"
-        // Extract the primary number before the ± or +- or (
-        // Supports: ± (U+00B1), ASCII +-, Unicode minus − (U+2212), with optional whitespace
-        const error_match = val.match(
-          /^([+-−]?\d+\.?\d*(?:[eE][+-−]?\d+)?)\s*(?:[±\u00B1]|[+][−-]|\()/,
-        )
-        if (error_match) {
-          const num = Number(error_match[1])
-          if (!isNaN(num)) return num
-        }
-        // Try parsing as a plain number (handles "1.23" strings)
-        const plain_num = Number(val)
-        if (!isNaN(plain_num) && val.trim() !== ``) return plain_num
-      }
-      return val as string | number
-    }
-
     // Build sort criteria: multi_sort takes precedence, fallback to single sort
     const sort_criteria = multi_sort.length > 0
       ? multi_sort
@@ -622,27 +621,7 @@
   // Extract numeric value from strings with uncertainty notation: "1.23 ± 0.05", "1.23 +- 0.05", "1.23(5)"
   function parse_numeric_val(val: CellVal): number | null {
     if (typeof val === `number`) return Number.isNaN(val) ? null : val
-    if (typeof val !== `string`) return null
-
-    // Handle numbers with error notation: "1.23 ± 0.05" or "1.23 +- 0.05" or "1.23(5)"
-    // Supports: ± (U+00B1), ASCII +-, Unicode minus − (U+2212), with optional whitespace
-    // Note: [-+−] has hyphen first to avoid regex range interpretation
-    // Pattern allows leading decimals like .5 or -.5 via (?:\d+\.?\d*|\d*\.\d+)
-    const error_match = val.match(
-      /^([-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/,
-    )
-    if (error_match) {
-      // Normalize unicode minus (U+2212) to ASCII hyphen for Number()
-      const normalized = normalize_unicode_minus(error_match[1])
-      const num = Number(normalized)
-      if (!isNaN(num)) return num
-    }
-    // Try parsing as a plain number (handles "1.23" strings)
-    // Also normalize unicode minus for plain numbers
-    const normalized_val = normalize_unicode_minus(val)
-    const plain_num = Number(normalized_val)
-    if (!isNaN(plain_num) && val.trim() !== ``) return plain_num
-    return null
+    return typeof val === `string` ? parse_numeric_string(val) : null
   }
 
   // Memoize parsed column values to avoid O(N²) re-parsing in calc_color

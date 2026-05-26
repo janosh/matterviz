@@ -142,7 +142,7 @@ describe(`BZ edge filtering`, () => {
           const v1 = bz.vertices[face[idx]]
           const v2 = bz.vertices[face[(idx + 1) % face.length]]
           const key = edge_key(v1, v2)
-          edge_to_faces.set(key, (edge_to_faces.get(key) || 0) + 1)
+          edge_to_faces.set(key, (edge_to_faces.get(key) ?? 0) + 1)
         }
       }
 

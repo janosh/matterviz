@@ -6,6 +6,7 @@
   import { format_value } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
+  import type { Point2D, Vec2 } from '$lib/math'
   import type {
     AxisLoadError,
     BarHandlerProps,
@@ -26,7 +27,6 @@
     RefLineEvent,
     ScaleType,
     UserContentProps,
-    XyObj,
   } from '$lib/plot'
   import {
     AxisLabel,
@@ -71,7 +71,6 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteMap } from 'svelte/reactivity'
-  import type { Vec2 } from '../math'
   import {
     calc_auto_padding,
     constrain_tooltip_position,
@@ -192,7 +191,7 @@
       radius_range?: [number, number]
       value_range?: [number, number]
     }
-    point_tween?: TweenOptions<XyObj>
+    point_tween?: TweenOptions<Point2D>
     on_point_click?: (
       data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
     ) => void

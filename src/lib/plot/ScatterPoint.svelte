@@ -1,7 +1,8 @@
 <script lang="ts">
   import { type D3SymbolName, symbol_map } from '$lib/labels'
   import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
-  import type { PointStyle, XyObj } from '$lib/plot/types'
+  import type { Point2D } from '$lib/math'
+  import type { PointStyle } from '$lib/plot/types'
   import { DEFAULTS } from '$lib/settings'
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
@@ -30,8 +31,8 @@
     hover?: HoverStyle
     label?: LabelStyle
     offset?: Point[`offset`]
-    point_tween?: TweenOptions<XyObj>
-    origin?: XyObj
+    point_tween?: TweenOptions<Point2D>
+    origin?: Point2D
     is_hovered?: boolean
     is_selected?: boolean
     is_dimmed?: boolean
@@ -48,7 +49,7 @@
 
   let marker_path = $derived.by(get_symbol_path)
 
-  const default_tween_props: TweenOptions<XyObj> = {
+  const default_tween_props: TweenOptions<Point2D> = {
     duration: 600,
     easing: cubicOut,
   }

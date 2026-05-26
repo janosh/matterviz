@@ -1,14 +1,14 @@
 // HDF5 trajectory parsing (torch-sim / generic format)
 import { calc_lattice_params, transpose_3x3_matrix } from '$lib/math'
-import type { Pbc } from '$lib/structure'
+import type { Pbc } from '$lib/structure/pbc'
 import type { Dataset, Entity, Group } from 'h5wasm'
 import * as h5wasm from 'h5wasm'
 import {
   convert_atomic_numbers,
   create_trajectory_frame,
   validate_3x3_matrix,
-} from '../helpers'
-import type { TrajectoryType } from '../index'
+} from '$lib/trajectory/helpers'
+import type { TrajectoryType } from '$lib/trajectory/index'
 
 const is_hdf5_dataset = (entity: Entity | null): entity is Dataset =>
   entity !== null && `to_array` in entity && entity instanceof h5wasm.Dataset

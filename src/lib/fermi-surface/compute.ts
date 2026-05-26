@@ -21,6 +21,8 @@ import type {
   SurfaceDimensionality,
 } from './types'
 
+const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
+
 // Precompute Catmull-Rom coefficients for a given t value
 // Returns [c0, c1, c2, c3] where result = c0*p0 + c1*p1 + c2*p2 + c3*p3
 function catmull_rom_coeffs(t: number): [number, number, number, number] {
@@ -325,7 +327,6 @@ function trilinear_interpolate_vec3(grid: Vec3[][][], x: number, y: number, z: n
   if (nx === 0 || ny === 0 || nz === 0) return [0, 0, 0]
 
   // Use safe modulo pattern to handle negative values from floating-point edge cases
-  const safe_mod = (val: number, n: number) => ((val % n) + n) % n
   const x0 = safe_mod(Math.floor(x), nx)
   const y0 = safe_mod(Math.floor(y), ny)
   const z0 = safe_mod(Math.floor(z), nz)
@@ -553,7 +554,7 @@ function slice_surface_with_plane(
         crossing_edges.push({ edge_key, intersection })
 
         // Register this face with the edge
-        const faces = edge_to_faces.get(edge_key) || []
+        const faces = edge_to_faces.get(edge_key) ?? []
         faces.push(face_idx)
         edge_to_faces.set(edge_key, faces)
       }

@@ -26,6 +26,18 @@ const Z_INDEX_KEY_MAP: Record<LayerZIndex, keyof RefLinesByZIndex> = {
   'above-all': `above_all`,
 }
 
+const apply_span = (
+  start_val: number,
+  end_val: number,
+  span?: [number | null, number | null],
+): [number, number] => {
+  if (!span) return [start_val, end_val]
+  return [
+    span[0] !== null ? Math.max(start_val, span[0]) : start_val,
+    span[1] !== null ? Math.min(end_val, span[1]) : end_val,
+  ]
+}
+
 // Group indexed ref_lines by z-index for ordered rendering
 export function group_ref_lines_by_z(lines: IndexedRefLine[]): RefLinesByZIndex {
   const groups: RefLinesByZIndex = {
@@ -142,17 +154,6 @@ export function resolve_line_endpoints(
   const is_y_visible = (y_val: number): boolean => y_val >= y_min && y_val <= y_max
 
   // Apply span constraints (works for both x and y)
-  const apply_span = (
-    v1: number,
-    v2: number,
-    span?: [number | null, number | null],
-  ): [number, number] => {
-    if (!span) return [v1, v2]
-    return [
-      span[0] !== null ? Math.max(v1, span[0]) : v1,
-      span[1] !== null ? Math.min(v2, span[1]) : v2,
-    ]
-  }
   const apply_x_span = (x1: number, x2: number) => apply_span(x1, x2, ref_line.x_span)
   const apply_y_span = (y1: number, y2: number) => apply_span(y1, y2, ref_line.y_span)
 

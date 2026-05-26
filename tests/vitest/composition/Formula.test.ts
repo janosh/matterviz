@@ -124,6 +124,13 @@ test(`parse_formula_with_oxidation handles parentheses`, () => {
   expect(result.find((el) => el.element === `H`)?.amount).toBe(2)
 })
 
+test(`parse_formula_with_oxidation handles decimal counts`, () => {
+  const result = parse_formula_with_oxidation(`Fe(OH)0.5`)
+  expect(result.find((el) => el.element === `Fe`)?.amount).toBe(1)
+  expect(result.find((el) => el.element === `O`)?.amount).toBe(0.5)
+  expect(result.find((el) => el.element === `H`)?.amount).toBe(0.5)
+})
+
 test(`parse_formula_with_oxidation preserves original order`, () => {
   const result = parse_formula_with_oxidation(`ZnO2Fe`)
   expect(result[0].element).toBe(`Zn`)

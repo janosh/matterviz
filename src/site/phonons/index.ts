@@ -24,7 +24,7 @@ function calc_recip_distance(q1: math.Vec3, q2: math.Vec3, lattice_T: math.Matri
 // Transform raw phonon band structure to expected format
 function transform_band_structure(raw: RawPhononBandStructure): PhononBandStructure {
   // Guard against invalid/incomplete data
-  if (!raw || !raw.recip_lattice?.matrix || !raw.qpoints || !raw.bands || !raw.labels_dict)
+  if (!raw?.recip_lattice?.matrix || !raw.qpoints || !raw.bands || !raw.labels_dict)
     throw new Error(`Invalid or incomplete phonon band structure data`)
 
   const {

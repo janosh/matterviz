@@ -396,10 +396,9 @@ export const SPACEGROUP_SYMBOL_TO_NUM: Record<string, number> = {
   'I4_1/a-32/d': 230,
 } as const
 
-export const SPACEGROUP_NUM_TO_SYMBOL = Object.entries(SPACEGROUP_SYMBOL_TO_NUM).reduce(
-  (acc, [symbol, num]) => {
-    if (!acc[num]) acc[num] = symbol
-    return acc
-  },
-  {} as Record<number, string>,
-)
+export const SPACEGROUP_NUM_TO_SYMBOL = Object.entries(SPACEGROUP_SYMBOL_TO_NUM).reduce<
+  Record<number, string>
+>((acc, [symbol, num]) => {
+  if (!acc[num]) acc[num] = symbol
+  return acc
+}, {})

@@ -1,5 +1,5 @@
 // Unified frame loader for XYZ and ASE trajectories (large file indexing)
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
 import type {
   FrameIndex,
@@ -151,7 +151,7 @@ export class TrajFrameReader implements FrameLoader {
     options?: { sample_rate?: number; properties?: string[] },
     on_progress?: (progress: ParseProgress) => void,
   ): Promise<TrajectoryMetadata[]> {
-    const { sample_rate = 1, properties } = options || {}
+    const { sample_rate = 1, properties } = options ?? {}
     const metadata_list: TrajectoryMetadata[] = []
     const total_frames = await this.get_total_frames(data)
 
@@ -343,12 +343,12 @@ export class TrajFrameReader implements FrameLoader {
         new TextDecoder().decode(new Uint8Array(data, frame_offset + 8, json_length)),
       )
 
-      const positions_ref = frame_data[`positions.`] || frame_data.positions
+      const positions_ref = frame_data[`positions.`] ?? frame_data.positions
       const positions = positions_ref?.ndarray
         ? read_ndarray_from_view(view, positions_ref)
         : (positions_ref as number[][])
 
-      const numbers_ref = frame_data[`numbers.`] || frame_data.numbers || this.global_numbers
+      const numbers_ref = frame_data[`numbers.`] ?? frame_data.numbers ?? this.global_numbers
       const numbers: number[] = numbers_ref?.ndarray
         ? read_ndarray_from_view(view, numbers_ref).flat()
         : (numbers_ref as number[])
@@ -375,7 +375,7 @@ export class TrajFrameReader implements FrameLoader {
         positions,
         convert_atomic_numbers(numbers),
         cell,
-        frame_data.pbc || [true, true, true],
+        frame_data.pbc ?? [true, true, true],
         frame_number,
         metadata,
       )

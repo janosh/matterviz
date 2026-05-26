@@ -1,7 +1,7 @@
 // Utility functions for working with trajectory data
-import type { AnyStructure } from '$lib/structure'
-import type Trajectory from './Trajectory.svelte'
 import type { ComponentProps } from 'svelte'
+import type { AnyStructure } from '$lib/structure/index'
+import type Trajectory from './Trajectory.svelte'
 
 export { default as Trajectory } from './Trajectory.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'
@@ -172,7 +172,7 @@ export function get_trajectory_stats(trajectory: TrajectoryType): Record<string,
   const frame_count = total_frames || frames.length
   const stats: Record<string, unknown> = {
     frame_count,
-    is_indexed: trajectory.is_indexed || false,
+    is_indexed: trajectory.is_indexed ?? false,
   }
 
   if (frames.length > 0) {

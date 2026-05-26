@@ -27,7 +27,7 @@ import {
   scale_segment_distances,
   shift_to_fermi,
 } from '$lib/spectral/helpers'
-import type { BaseBandStructure } from '$lib/spectral/types'
+import type { BaseBandStructure, RibbonConfig } from '$lib/spectral/types'
 import { describe, expect, it, vi } from 'vitest'
 
 describe(`is_valid_range`, () => {
@@ -1562,12 +1562,25 @@ describe(`get_ribbon_config`, () => {
     expect(get_ribbon_config(cfg, label)).toEqual(expected)
   })
 
-  it(`distinguishes structure named "opacity" from opacity config value`, () => {
-    // Bug case: { opacity: {...} } should be per-structure, not single config
-    const per_struct = { opacity: { color: `red` }, scale: { color: `blue` } }
-    expect(get_ribbon_config(per_struct, `opacity`).color).toBe(`red`)
-    expect(get_ribbon_config(per_struct, `scale`).color).toBe(`blue`)
-    // Single config has primitive value
+  it.each([
+    [`opacity`, { color: `red` }],
+    [`max_width`, { opacity: 0.4 }],
+    [`scale`, { color: `blue` }],
+    [`color`, { max_width: 4 }],
+  ] satisfies [string, RibbonConfig][])(
+    `distinguishes structure named "%s" from primitive config key`,
+    (primitive_key, label_config) => {
+      // Bug case: { opacity: {...} } should be per-structure, not single config.
+      expect(get_ribbon_config({ [primitive_key]: label_config }, primitive_key)).toEqual({
+        opacity: 0.3,
+        max_width: 6,
+        scale: 1,
+        ...label_config,
+      })
+    },
+  )
+
+  it(`treats primitive ribbon keys as global config`, () => {
     expect(get_ribbon_config({ opacity: 0.5 }, `any`).opacity).toBe(0.5)
   })
 })

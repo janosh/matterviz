@@ -7,6 +7,7 @@ import type {
   VerticalLeverRuleResult,
 } from '$lib/phase-diagram'
 import { PhaseDiagramTooltip } from '$lib/phase-diagram'
+import type { Snippet } from 'svelte'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { create_hover_info } from './fixtures/test-data'
@@ -333,7 +334,7 @@ describe(`PhaseDiagramTooltip`, () => {
   describe(`tooltip customization`, () => {
     test(`snippet function hides default tooltip`, () => {
       const hover_info = create_hover_info()
-      const mock_snippet = (() => {}) as unknown as import('svelte').Snippet<[PhaseHoverInfo]>
+      const mock_snippet = (() => {}) as unknown as Snippet<[PhaseHoverInfo]>
       mount(PhaseDiagramTooltip, {
         target: document.body,
         props: { hover_info, tooltip: mock_snippet },

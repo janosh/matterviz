@@ -107,7 +107,7 @@ export function export_canvas_as_png(
 // Helper to ensure font-family is set on SVG root
 function set_svg_font_family(svg: SVGElement) {
   const style = svg.getAttribute(`style`) || ``
-  if (!/font-family/.test(style)) {
+  if (!style.includes(`font-family`)) {
     svg.setAttribute(`style`, `${style}${style ? `;` : ``}font-family:sans-serif;`)
   }
   // Also set as attribute for extra robustness

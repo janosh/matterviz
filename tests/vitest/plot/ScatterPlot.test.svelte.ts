@@ -5,7 +5,7 @@ import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props, resize_element } from '../setup'
+import { bind_props, doc_query, resize_element, svg_query } from '../setup'
 
 const basic = {
   x: [1, 2, 3, 4, 5],
@@ -16,11 +16,13 @@ const basic = {
 async function mount_sized_scatter_plot(
   props: Partial<ComponentProps<typeof ScatterPlot>>,
 ): Promise<HTMLElement> {
+  const container = document.createElement(`div`)
+  document.body.append(container)
   mount(ScatterPlot, {
-    target: document.body,
+    target: container,
     props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
   })
-  const plot = document.querySelector<HTMLElement>(`.scatter`)
+  const plot = container.querySelector<HTMLElement>(`.scatter`)
   if (!plot) throw new Error(`ScatterPlot root element not found`)
   await resize_element(plot, 400, 300)
   return plot
@@ -31,6 +33,10 @@ const visible_marker_count = (series: DataSeries[]): number =>
     const markers = srs.markers ?? `line+points`
     return markers.includes(`points`) ? sum + srs.y.length : sum
   }, 0)
+const hover = async (element: Element): Promise<void> => {
+  element.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+  await tick()
+}
 
 type LegendGroupingCase = {
   desc: string
@@ -472,18 +478,68 @@ describe(`ScatterPlot`, () => {
       ),
     )
 
-    const fallback_fill = () =>
-      document.querySelector<SVGGElement>(`[aria-label="Fill region 1"]`)
-    const explicit_id_fill = () =>
-      document.querySelector<SVGGElement>(`[aria-label="Fill region 2"]`)
-    fallback_fill()?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-    await tick()
-    expect(fallback_fill()?.classList.contains(`hovered`)).toBe(true)
-    expect(explicit_id_fill()?.classList.contains(`hovered`)).toBe(false)
+    const fallback_fill = () => svg_query(`[aria-label="Fill region 1"]`)
+    const explicit_id_fill = () => svg_query(`[aria-label="Fill region 2"]`)
+    await hover(fallback_fill())
+    expect(fallback_fill().classList.contains(`hovered`)).toBe(true)
+    expect(explicit_id_fill().classList.contains(`hovered`)).toBe(false)
 
     state.fill_regions = make_fills()
     flushSync()
     await tick()
-    expect(fallback_fill()?.classList.contains(`hovered`)).toBe(true)
+    expect(fallback_fill().classList.contains(`hovered`)).toBe(true)
+  })
+
+  test(`keeps unique fill ID hover stable when source index changes`, async () => {
+    let fill_regions = $state<FillRegion[]>([
+      { id: `target`, lower: 0, upper: 0.2, fill: `steelblue` },
+    ])
+    mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x: [0, 1], y: [0, 1] }],
+        x_axis: { range: [0, 1] as Vec2 },
+        y_axis: { range: [0, 1] as Vec2 },
+        get fill_regions() {
+          return fill_regions
+        },
+        legend: null,
+        style: `width: 400px; height: 300px;`,
+      },
+    })
+    await resize_element(doc_query(`.scatter`), 400, 300)
+
+    await hover(svg_query(`[aria-label="Fill region 0"]`))
+    fill_regions = [
+      { id: `inserted`, lower: 0.3, upper: 0.4, fill: `transparent` },
+      { id: `target`, lower: 0, upper: 0.2, fill: `steelblue` },
+    ]
+    flushSync()
+    await tick()
+
+    const fills = document.querySelectorAll<SVGGElement>(`.fill-region`)
+    expect(fills).toHaveLength(2)
+    expect(fills[1].classList.contains(`hovered`)).toBe(true)
+  })
+
+  test(`keeps duplicate fill IDs keyed and hovered independently`, async () => {
+    const fill_regions: FillRegion[] = [
+      { id: `duplicate`, lower: 0, upper: 0.2, fill: `steelblue` },
+      { id: `duplicate`, lower: 0.4, upper: 0.6, fill: `slategray` },
+    ]
+    await mount_sized_scatter_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      x_axis: { range: [0, 1] as Vec2 },
+      y_axis: { range: [0, 1] as Vec2 },
+      fill_regions,
+      legend: null,
+    })
+
+    const fills = document.querySelectorAll<SVGGElement>(`.fill-region`)
+    expect(fills).toHaveLength(fill_regions.length)
+
+    await hover(fills[0])
+    expect(fills[0].classList.contains(`hovered`)).toBe(true)
+    expect(fills[1].classList.contains(`hovered`)).toBe(false)
   })
 })

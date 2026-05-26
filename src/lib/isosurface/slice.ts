@@ -14,6 +14,8 @@ export interface SliceResult {
   max: number // data maximum for colormap
 }
 
+const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
+
 // Trilinear interpolation of a scalar 3D grid at fractional coordinates.
 // Periodic grids wrap with modulo; non-periodic return 0 for out-of-bounds.
 export function trilinear_interpolate(
@@ -37,8 +39,6 @@ export function trilinear_interpolate(
     // Out-of-bounds check for non-periodic grids
     if (fx < 0 || fx > 1 || fy < 0 || fy > 1 || fz < 0 || fz > 1) return 0
   }
-
-  const safe_mod = (val: number, dim: number) => ((val % dim) + dim) % dim
 
   const x0 = periodic
     ? safe_mod(Math.floor(gx), nx)

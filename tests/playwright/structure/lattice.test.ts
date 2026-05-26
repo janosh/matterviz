@@ -1,9 +1,29 @@
-import { expect, test } from '@playwright/test'
-import {
-  expect_canvas_changed,
-  get_canvas_timeout,
-  wait_for_canvas_rendered,
-} from '../helpers'
+import { expect, type Page, test } from '@playwright/test'
+import { expect_canvas_changed, get_canvas_timeout, wait_for_3d_canvas } from '../helpers'
+
+const show_only_lattice_vectors = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    globalThis.dispatchEvent(
+      new CustomEvent(`set-scene-props`, {
+        detail: {
+          gizmo: false,
+          show_atoms: false,
+          show_bonds: `never`,
+          show_site_indices: false,
+          show_site_labels: false,
+        },
+      }),
+    )
+    globalThis.dispatchEvent(
+      new CustomEvent(`set-lattice-props`, {
+        detail: {
+          cell_edge_opacity: 0,
+          cell_surface_opacity: 0,
+          show_cell_vectors: true,
+        },
+      }),
+    )
+  })
 
 test.describe(`Lattice Component Tests`, () => {
   // Use retries instead of blanket skip for flaky CI runs
@@ -11,11 +31,7 @@ test.describe(`Lattice Component Tests`, () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/structure`, { waitUntil: `networkidle` })
-    const canvas = page.locator(`#test-structure canvas`)
-    await expect(canvas).toBeVisible({ timeout: get_canvas_timeout() })
-
-    // Wait for canvas to be ready before interacting with controls
-    await wait_for_canvas_rendered(canvas)
+    await wait_for_3d_canvas(page, `#test-structure`)
 
     // Use test page checkbox to open controls
     const checkbox = page.locator(`label:has-text("Controls Open") input[type="checkbox"]`)
@@ -32,9 +48,20 @@ test.describe(`Lattice Component Tests`, () => {
       `.draggable-pane label:has-text("lattice vectors") input[type="checkbox"]`,
     )
 
-    const before = await canvas.screenshot()
-    await checkbox.click()
-    await expect_canvas_changed(canvas, before)
+    const initial = await canvas.screenshot()
+    await show_only_lattice_vectors(page)
+    await expect_canvas_changed(canvas, initial)
+    const visible = await canvas.screenshot()
+
+    await expect(checkbox).toBeChecked()
+    await checkbox.uncheck()
+    await expect(checkbox).not.toBeChecked()
+    await expect_canvas_changed(canvas, visible)
+    const hidden = await canvas.screenshot()
+
+    await checkbox.check()
+    await expect(checkbox).toBeChecked()
+    await expect_canvas_changed(canvas, hidden)
   })
 
   test(`color controls work`, async ({ page }) => {

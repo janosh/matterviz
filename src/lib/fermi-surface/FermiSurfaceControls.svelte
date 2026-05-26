@@ -3,7 +3,7 @@
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import type { CameraProjection } from '$lib/settings'
   import { make_change_detector } from '$lib/utils'
-  import { type Snippet } from 'svelte'
+  import type { Snippet } from 'svelte'
   import type {
     BandGridData,
     ColorProperty,

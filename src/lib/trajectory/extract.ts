@@ -1,5 +1,5 @@
 // Data extraction functions for trajectory analysis and plotting
-import { get_density } from '$lib/structure'
+import { get_density } from '$lib/structure/index'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryType } from './index'
 
 // Common data extractor that extracts energy and structural properties

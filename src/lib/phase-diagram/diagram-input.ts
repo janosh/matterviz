@@ -1,11 +1,12 @@
 // Input types for compact phase diagram definitions
 // These are transformed by build-diagram.ts into full PhaseDiagramData
 
-import type { CompUnit, PseudoBinaryMetadata, SpecialPointType, TempUnit } from './types'
+import type { Vec2 } from '$lib/math'
+import type { CompUnit, PseudoBinaryMetadata, SpecialPoint, TempUnit } from './types'
 
 // A point is [composition, temperature] for phase diagram curves
-export type DiagramPoint = [number, number]
-export type TempRange = [number, number] // [min, max]
+export type DiagramPoint = Vec2
+export type TempRange = Vec2 // [min, max]
 
 // A bound can be a curve reference (string) or an inline point
 export type BoundElement = string | DiagramPoint
@@ -29,12 +30,7 @@ export interface RegionInput {
   label_position?: DiagramPoint
 }
 
-export interface SpecialPointInput {
-  id: string
-  type: SpecialPointType
-  position: DiagramPoint
-  label?: string
-}
+export type SpecialPointInput = SpecialPoint
 
 export interface DiagramInput {
   meta: DiagramInputMeta

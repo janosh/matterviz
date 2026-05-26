@@ -28,10 +28,24 @@ export const is_valid_element = (sym: string): sym is ElementSymbol =>
 // Check if object has atomic numbers as keys (1-118)
 const is_atomic_number_composition = (obj: Record<string | number, number>): boolean => {
   const keys = Object.keys(obj)
+  const atomic_nums = keys.map(Number)
   return (
     keys.length > 0 &&
-    keys.map(Number).every((num) => Number.isInteger(num) && num >= 1 && num <= 118)
+    atomic_nums.every(
+      (atomic_num) =>
+        Number.isInteger(atomic_num) && Object.hasOwn(ATOMIC_NUMBER_TO_SYMBOL, atomic_num),
+    )
   )
+}
+
+const format_state = (state: number) => (state > 0 ? `+` : ``) + state
+const parse_count = (count?: string): number => (count ? parseFloat(count) : 1)
+const format_count = (count: number): string => {
+  if (!Number.isFinite(count)) return `${count}`
+  return Number(count.toPrecision(12)).toLocaleString(`en-US`, {
+    maximumSignificantDigits: 12,
+    useGrouping: false,
+  })
 }
 
 // Convert atomic numbers to element symbols
@@ -42,7 +56,7 @@ export const atomic_num_to_symbols = (
   for (const [atomic_num_str, amount] of Object.entries(atomic_composition)) {
     const symbol = ATOMIC_NUMBER_TO_SYMBOL[Number(atomic_num_str)]
     if (!symbol) throw new Error(`Invalid atomic number: ${atomic_num_str}`)
-    if (amount > 0) composition[symbol] = (composition[symbol] || 0) + amount
+    if (amount > 0) composition[symbol] = (composition[symbol] ?? 0) + amount
   }
   return composition
 }
@@ -53,7 +67,8 @@ export const atomic_symbol_to_num = (
 ): Record<number, number> => {
   const atomic_composition: Record<number, number> = {}
   for (const [symbol, amount] of Object.entries(symbol_composition)) {
-    const atomic_num = SYMBOL_TO_ATOMIC_NUMBER[symbol as ElementSymbol]
+    if (!is_valid_element(symbol)) throw new Error(`Invalid element symbol: ${symbol}`)
+    const atomic_num = SYMBOL_TO_ATOMIC_NUMBER[symbol]
     if (!atomic_num) throw new Error(`Invalid element symbol: ${symbol}`)
     if (amount > 0) {
       atomic_composition[atomic_num] = (atomic_composition[atomic_num] || 0) + amount
@@ -65,16 +80,19 @@ export const atomic_symbol_to_num = (
 // Expand parentheses in chemical formulas
 const expand_parentheses = (formula: string): string => {
   while (formula.includes(`(`)) {
-    formula = formula.replace(/\(([^()]+)\)(\d*)/g, (_match, group, multiplier) => {
-      const mult = multiplier ? parseInt(multiplier, 10) : 1
-      return group.replace(
-        /([A-Z][a-z]?)(\d*)/g,
-        (_m: string, element: string, count: string) => {
-          const num = (count ? parseInt(count, 10) : 1) * mult
-          return element + (num > 1 ? num : ``)
-        },
-      )
-    })
+    formula = formula.replace(
+      /\(([^()]+)\)(\d+(?:\.\d+)?|\.\d+)?/g,
+      (_match, group, multiplier) => {
+        const mult = parse_count(multiplier)
+        return group.replace(
+          /([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g,
+          (_m: string, element: string, count: string) => {
+            const count_str = format_count(parse_count(count) * mult)
+            return element + (count_str === `1` ? `` : count_str)
+          },
+        )
+      },
+    )
   }
   return formula
 }
@@ -84,12 +102,12 @@ export const parse_formula = (formula: string): CompositionType => {
   const composition: CompositionType = {}
   const cleaned_formula = expand_parentheses(formula.replace(/\s/g, ``))
 
-  for (const match of cleaned_formula.matchAll(/([A-Z][a-z]?)(\d*)/g)) {
-    const element = match[1] as ElementSymbol
-    const count = match[2] ? parseInt(match[2], 10) : 1
+  for (const match of cleaned_formula.matchAll(/([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g)) {
+    const element = match[1]
+    const count = parse_count(match[2])
 
     if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
-    composition[element] = (composition[element] || 0) + count
+    composition[element] = (composition[element] ?? 0) + count
   }
   return composition
 }
@@ -104,8 +122,8 @@ export const normalize_composition = (
 
   const normalized: CompositionType = {}
   for (const [element, amount] of Object.entries(composition)) {
-    if (typeof amount === `number` && amount > 0) {
-      normalized[element as ElementSymbol] = amount
+    if (typeof amount === `number` && amount > 0 && is_valid_element(element)) {
+      normalized[element] = amount
     }
   }
   return normalized
@@ -124,10 +142,10 @@ export const sanitize_composition_keys = (
   for (const [key, amount] of Object.entries(composition)) {
     if (typeof amount !== `number` || amount <= 0) continue
     // Extract first valid element symbol from key (e.g. "B0." -> "B", "Fe2+" -> "Fe")
-    const elem = (key.match(/[A-Z][a-z]?/g) || []).find(is_valid_element)
+    const elem = (key.match(/[A-Z][a-z]?/g) ?? []).find(is_valid_element)
     if (elem) sanitized[elem] = (sanitized[elem] || 0) + amount
   }
-  const result = normalize_composition(sanitized as CompositionType)
+  const result = normalize_composition(sanitized)
   return Object.keys(result).length > 0 ? result : null
 }
 
@@ -147,7 +165,8 @@ export const fractional_composition = (
   if (by_weight) {
     const element_weights = Object.fromEntries(
       Object.entries(filtered).map(([element, amount]) => {
-        const atomic_mass = ATOMIC_WEIGHTS.get(element as ElementSymbol)
+        if (!is_valid_element(element)) throw new Error(`Unknown element: ${element}`)
+        const atomic_mass = ATOMIC_WEIGHTS.get(element)
         if (!atomic_mass) throw new Error(`Unknown element: ${element}`)
         return [element, amount * atomic_mass]
       }),
@@ -203,15 +222,17 @@ export const get_reduced_formula = (composition: CompositionType): CompositionTy
   if (!all_integers) return composition // Can't reduce non-integer compositions
   const divisor = amounts.reduce((acc, amt) => gcd(acc, amt))
   if (divisor <= 1) return composition
-  return Object.fromEntries(
-    Object.entries(composition).map(([elem, amt]) => [elem, amt / divisor]),
-  ) as CompositionType
+  const reduced: CompositionType = {}
+  for (const [elem, amt] of Object.entries(composition)) {
+    if (is_valid_element(elem)) reduced[elem] = amt / divisor
+  }
+  return reduced
 }
 
 // Calculate molecular weight (sum of atomic masses * amounts)
 export const get_molecular_weight = (composition: CompositionType): number =>
   Object.entries(composition).reduce((total, [elem, amount]) => {
-    const mass = ATOMIC_WEIGHTS.get(elem as ElementSymbol) ?? 0
+    const mass = is_valid_element(elem) ? (ATOMIC_WEIGHTS.get(elem) ?? 0) : 0
     return total + mass * amount
   }, 0)
 
@@ -259,24 +280,24 @@ export const parse_formula_with_oxidation = (
   // Regex to match: Element, optional oxidation state and/or count in either order
   // Pattern: ([A-Z][a-z]?)  - element symbol
   //          Followed by one of:
-  //          - oxidation then optional count: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])(\d*)
-  //          - count then optional oxidation: (\d+)(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?
+  //          - oxidation then optional count: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])(count?)
+  //          - count then optional oxidation: count(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?
   //          - just oxidation: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])
-  //          - just count: (\d+)
+  //          - just count: count
   //          - neither
   const regex =
-    /([A-Z][a-z]?)(?:(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])(\d*)|(\d+)(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?)?/g
+    /([A-Z][a-z]?)(?:(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])((?:\d+(?:\.\d+)?|\.\d+)?)|((?:\d+(?:\.\d+)?|\.\d+))(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?)?/g
 
   let match: RegExpExecArray | null
   let orig_idx = 0
 
   while ((match = regex.exec(cleaned_formula)) !== null) {
-    const element = match[1] as ElementSymbol
+    const element = match[1]
     // Oxidation can be in groups 2/3 (oxidation first) or 6/7 (count first)
     // Count can be in group 4 (after oxidation) or 5 (before oxidation)
     const oxidation_str = match[2] || match[3] || match[6] || match[7]
     const count_str = match[4] || match[5]
-    const count = count_str ? parseInt(count_str, 10) : 1
+    const count = parse_count(count_str)
 
     if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
 
@@ -295,7 +316,6 @@ export const parse_formula_with_oxidation = (
         existing.oxidation_state = oxidation_state
       } else if (strict && existing.oxidation_state !== oxidation_state) {
         // In strict mode, throw on conflicting oxidation states
-        const format_state = (state: number) => (state > 0 ? `+` : ``) + state
         throw new Error(
           `Conflicting oxidation states for ${element}: ${format_state(
             existing.oxidation_state,
@@ -315,12 +335,9 @@ export const parse_formula_with_oxidation = (
 export const oxi_composition_to_elements = (
   composition: OxiComposition,
 ): ElementWithOxidation[] =>
-  Object.entries(composition).map(([element, data], idx) => ({
-    element: element as ElementSymbol,
-    amount: data.amount,
-    oxidation_state: data.oxidation_state,
-    orig_idx: idx,
-  }))
+  Object.entries(composition).flatMap(([element, { amount, oxidation_state }], idx) =>
+    is_valid_element(element) ? [{ element, amount, oxidation_state, orig_idx: idx }] : [],
+  )
 
 // Extract element symbols from a chemical formula.
 // Default (unique=true, sorted=true): "NbZr2Nb" -> ["Nb", "Zr"]
@@ -335,10 +352,14 @@ export function extract_formula_elements(
 ): ElementSymbol[] {
   if (!unique) {
     // Fast path: regex token extraction without parentheses expansion
-    const matches = formula.match(/[A-Z][a-z]?/g) || []
-    return matches.filter(is_valid_element) as ElementSymbol[]
+    const matches = formula.match(/[A-Z][a-z]?/g) ?? []
+    const elements: ElementSymbol[] = []
+    for (const match of matches) {
+      if (is_valid_element(match)) elements.push(match)
+    }
+    return elements
   }
-  const symbols = Object.keys(parse_formula(formula)) as ElementSymbol[]
+  const symbols = Object.keys(parse_formula(formula)).filter(is_valid_element)
   return sorted ? symbols.sort() : symbols
 }
 
@@ -359,11 +380,11 @@ export function generate_chem_sys_subspaces(
     }
     elements = uniq
   } else {
-    const keys = Object.keys(input) as ElementSymbol[]
-    for (const elem of keys) {
+    elements = []
+    for (const elem of Object.keys(input)) {
       if (!is_valid_element(elem)) throw new Error(`Invalid element symbol: ${elem}`)
+      elements.push(elem)
     }
-    elements = keys
   }
 
   const sorted = [...elements].sort()
@@ -384,18 +405,20 @@ export function generate_chem_sys_subspaces(
 // Filters invalid symbols, removes duplicates, trims whitespace.
 // Example: "Zr, Nb, InvalidElement, H" -> ["H", "Nb", "Zr"]
 // Note: Matching is case-sensitive. Use all_symbols to filter against a subset.
-export const normalize_element_symbols = <T extends string>(
+export function normalize_element_symbols(csv: string): ElementSymbol[]
+export function normalize_element_symbols<T extends string>(csv: string, all_symbols: T[]): T[]
+export function normalize_element_symbols<T extends string>(
   csv: string,
   all_symbols?: T[],
-): T[] => {
+): Array<ElementSymbol | T> {
   const input_set = new Set(
     csv
       .split(`,`)
       .map((sym) => sym.trim())
       .filter(Boolean),
   )
-  // Cast needed: ELEM_SYMBOLS is readonly const tuple, T is generic string subtype
-  return (all_symbols ?? (ELEM_SYMBOLS as unknown as T[])).filter((sym) => input_set.has(sym))
+  const symbols = all_symbols ?? ELEM_SYMBOLS
+  return symbols.filter((sym) => input_set.has(sym))
 }
 
 // --- Wildcard formula parsing utilities ---
@@ -470,20 +493,20 @@ export function parse_formula_with_wildcards(formula: string): WildcardFormulaTo
   cleaned = cleaned.replace(ELEM_WILDCARD.from_placeholder, `*`)
 
   // Regex to match either:
-  // 1. Standard element symbol with optional count: ([A-Z][a-z]?)(\d*)
-  // 2. Wildcard with optional count: \*(\d*)
-  const regex = /([A-Z][a-z]?)(\d*)|(\*)(\d*)/g
+  // 1. Standard element symbol with optional decimal count
+  // 2. Wildcard with optional decimal count
+  const regex = /([A-Z][a-z]?)((?:\d+(?:\.\d+)?|\.\d+)?)|(\*)((?:\d+(?:\.\d+)?|\.\d+)?)/g
 
   let match: RegExpExecArray | null
   while ((match = regex.exec(cleaned)) !== null) {
     if (match[3] === `*`) {
       // Wildcard match
-      const count = match[4] ? parseInt(match[4], 10) : 1
+      const count = parse_count(match[4])
       tokens.push({ element: null, count })
     } else if (match[1]) {
       // Element symbol match
       const element = match[1]
-      const count = match[2] ? parseInt(match[2], 10) : 1
+      const count = parse_count(match[2])
 
       if (!is_valid_element(element)) {
         throw new Error(`Invalid element symbol: ${element}`)
@@ -513,7 +536,7 @@ export function matches_chemsys_wildcard(
     // Must contain all explicit elements
     const formula_set = new Set(formula_elements)
     for (const elem of explicit_elements) {
-      if (!formula_set.has(elem as ElementSymbol)) return false
+      if (!is_valid_element(elem) || !formula_set.has(elem)) return false
     }
 
     return true

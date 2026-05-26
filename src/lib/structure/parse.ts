@@ -35,6 +35,32 @@ export interface ParsedStructure {
   }
 }
 
+const cif_coords_key = (coords: Vec3): string =>
+  `${coords[0].toFixed(6)},${coords[1].toFixed(6)},${coords[2].toFixed(6)}`
+const cif_site_key = (element: string, abc: Vec3, label: string): string =>
+  `${element}|${label}|${cif_coords_key(abc)}`
+const clone_structure_properties = (properties: StructureProperties): StructureProperties =>
+  structuredClone(properties)
+const FALLBACK_ELEMENTS = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`] as const
+const is_known_element_symbol = (symbol: string): symbol is ElementSymbol =>
+  (ELEM_SYMBOLS as readonly string[]).includes(symbol)
+const vec3_from_values = (values: readonly unknown[] | undefined, context: string): Vec3 => {
+  if (values?.length !== 3) {
+    throw new Error(`Invalid ${context}: expected 3 coordinates, got ${values?.length ?? 0}`)
+  }
+  const coords = math.finite_vec3_from_values(values)
+  if (coords) return coords
+  for (let idx = 0; idx < 3; idx++) {
+    const value = values[idx]
+    if (typeof value !== `number` || !Number.isFinite(value)) {
+      throw new TypeError(
+        `Invalid ${context}: coordinate ${idx} must be finite, got ${String(value)}`,
+      )
+    }
+  }
+  throw new Error(`Invalid ${context}: expected 3 finite coordinates`)
+}
+
 export interface PhonopyCell {
   lattice: number[][]
   points: {
@@ -103,15 +129,12 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   // Clean symbol (remove suffixes like _pv, /hash)
   const clean_symbol = symbol.split(/[_/]/)[0]
 
-  if (ELEM_SYMBOLS && ELEM_SYMBOLS.includes(clean_symbol as ElementSymbol)) {
-    return clean_symbol as ElementSymbol
-  }
+  if (is_known_element_symbol(clean_symbol)) return clean_symbol
 
   // Fallback to default elements by atomic number
-  const fallback_elements = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`]
-  const fallback = fallback_elements[index % fallback_elements.length]
+  const fallback = FALLBACK_ELEMENTS[index % FALLBACK_ELEMENTS.length] ?? `H`
   console.warn(`Invalid element symbol '${symbol}', using fallback '${fallback}'`)
-  return fallback as ElementSymbol
+  return fallback
 }
 
 const try_create_cart_to_frac = (
@@ -150,12 +173,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
     // Parse lattice vectors (lines 3-5)
     const parse_vector = (line: string, line_num: number): Vec3 => {
       const coords = line.trim().split(/\s+/).map(parse_coordinate)
-      if (coords.length !== 3) {
-        throw new Error(
-          `Invalid lattice vector on line ${line_num}: expected 3 coordinates, got ${coords.length}`,
-        )
-      }
-      return coords as Vec3
+      return vec3_from_values(coords, `lattice vector on line ${line_num}`)
     }
 
     const lattice_vecs: math.Matrix3x3 = [
@@ -262,9 +280,11 @@ export function parse_poscar(content: string): ParsedStructure | null {
       }
 
       // Parse atomic positions
-      const poscar_axis_lengths = scaled_lattice.map((lattice_vec) =>
-        Math.hypot(...lattice_vec),
-      ) as Vec3
+      const poscar_axis_lengths: Vec3 = [
+        Math.hypot(...scaled_lattice[0]),
+        Math.hypot(...scaled_lattice[1]),
+        Math.hypot(...scaled_lattice[2]),
+      ]
       const poscar_frac_to_cart = math.create_frac_to_cart(scaled_lattice)
       const poscar_cart_to_frac = try_create_cart_to_frac(scaled_lattice)
       if (!is_direct && !poscar_cart_to_frac) {
@@ -284,7 +304,10 @@ export function parse_poscar(content: string): ParsedStructure | null {
             return null
           }
 
-          const coords = parse_coordinate_line(lines[coord_line_idx])
+          const coords = vec3_from_values(
+            parse_coordinate_line(lines[coord_line_idx]),
+            `POSCAR atom coordinates on line ${coord_line_idx + 1}`,
+          )
 
           // Parse selective dynamics if present
           let selective_dynamics: [boolean, boolean, boolean] | undefined
@@ -296,15 +319,14 @@ export function parse_poscar(content: string): ParsedStructure | null {
           }
           let xyz: Vec3
           let abc: Vec3
-          const [x, y, z] = coords
 
           if (is_direct) {
             // Store fractional coordinates, wrapping to [0, 1) range
-            abc = wrap_to_unit_cell([x, y, z])
+            abc = wrap_to_unit_cell(coords)
             xyz = poscar_frac_to_cart(abc)
           } else {
             // Already Cartesian, scale if needed
-            xyz = math.scale([x, y, z], scale_factor)
+            xyz = math.scale(coords, scale_factor)
             const raw_abc = poscar_cart_to_frac
               ? poscar_cart_to_frac(xyz)
               : approximate_cart_to_frac(xyz, poscar_axis_lengths)
@@ -399,9 +421,9 @@ export function parse_xyz(content: string): ParsedStructure | null {
       const lattice_values = lattice_match[1].split(/\s+/).map(parse_coordinate)
       if (lattice_values.length === 9) {
         const lattice_vectors: math.Matrix3x3 = [
-          [lattice_values[0], lattice_values[1], lattice_values[2]],
-          [lattice_values[3], lattice_values[4], lattice_values[5]],
-          [lattice_values[6], lattice_values[7], lattice_values[8]],
+          vec3_from_values(lattice_values.slice(0, 3), `XYZ lattice vector 1`),
+          vec3_from_values(lattice_values.slice(3, 6), `XYZ lattice vector 2`),
+          vec3_from_values(lattice_values.slice(6, 9), `XYZ lattice vector 3`),
         ]
 
         const lattice_params = math.calc_lattice_params(lattice_vectors)
@@ -433,14 +455,10 @@ export function parse_xyz(content: string): ParsedStructure | null {
       }
 
       const element = validate_element_symbol(parts[0], atom_idx)
-      const coords = [
-        parse_coordinate(parts[1]),
-        parse_coordinate(parts[2]),
-        parse_coordinate(parts[3]),
-      ]
-
-      // For XYZ files, coordinates are typically in Cartesian
-      const xyz: Vec3 = [coords[0], coords[1], coords[2]]
+      const xyz = vec3_from_values(
+        parts.slice(1, 4).map(parse_coordinate),
+        `XYZ atom position ${atom_idx + 1}`,
+      )
 
       // Calculate fractional coordinates if lattice is available
       let abc: Vec3 = [0, 0, 0]
@@ -565,12 +583,10 @@ const apply_symmetry_ops = (
     wrap_fractional_coords ? wrap_to_unit_cell(coords) : coords
   // Use 6 decimal places for deduplication to handle floating point imprecision
   // from compound symmetry operations like x-y, -x+y which can produce small errors
-  const key = (coords: Vec3): string =>
-    `${coords[0].toFixed(6)},${coords[1].toFixed(6)},${coords[2].toFixed(6)}`
 
   // Always include base atom (optionally wrapped)
   const base_coords = wrap(atom.coords)
-  seen.add(key(base_coords))
+  seen.add(cif_coords_key(base_coords))
   equivalent_atoms.push({ ...atom, coords: base_coords })
 
   for (const operation of symmetry_ops) {
@@ -593,7 +609,7 @@ const apply_symmetry_ops = (
 
     // Wrap and deduplicate transformed coordinates
     const wrapped = wrap(new_coords)
-    const cache_key = key(wrapped)
+    const cache_key = cif_coords_key(wrapped)
     if (seen.has(cache_key)) continue
     seen.add(cache_key)
 
@@ -675,14 +691,17 @@ const parse_cif_atom_data = (
     throw new Error(`Missing coordinate indices`)
   }
 
-  const coords_triplet = coord_indices.map((idx) => {
-    if (idx === undefined) throw new Error(`Invalid coordinate index`)
-    const coord_str = raw_data[idx]
-    if (!coord_str) throw new Error(`Missing coordinate at index ${idx}`)
-    const coord = parseFloat(coord_str.split(`(`)[0])
-    if (isNaN(coord)) throw new Error(`Invalid coordinate: ${coord_str}`)
-    return coord
-  }) as Vec3
+  const coords_triplet = vec3_from_values(
+    coord_indices.map((idx) => {
+      if (idx === undefined) throw new Error(`Invalid coordinate index`)
+      const coord_str = raw_data[idx]
+      if (!coord_str) throw new Error(`Missing coordinate at index ${idx}`)
+      const coord = parseFloat(coord_str.split(`(`)[0])
+      if (isNaN(coord)) throw new Error(`Invalid coordinate: ${coord_str}`)
+      return coord
+    }),
+    `CIF atom coordinates`,
+  )
 
   const occu =
     occupancy >= 0 && raw_data[occupancy]
@@ -948,8 +967,6 @@ export function parse_cif(
     // Global deduplication of final sites (per element + coordinates + label)
     // Use 6 decimal places to handle floating point imprecision from compound symmetry ops
     const seen_site_keys = new Set<string>()
-    const site_key = (element: string, abc: Vec3, label: string): string =>
-      `${element}|${label}|${abc[0].toFixed(6)},${abc[1].toFixed(6)},${abc[2].toFixed(6)}`
 
     for (const atom of atoms) {
       const element = validate_element_symbol(atom.element, all_sites.length)
@@ -987,7 +1004,7 @@ export function parse_cif(
             equiv_atom.coords[1] + cv[1],
             equiv_atom.coords[2] + cv[2],
           ] as Vec3)
-          const key = site_key(element, abc, equiv_atom.id)
+          const key = cif_site_key(element, abc, equiv_atom.id)
           if (seen_site_keys.has(key)) continue
           seen_site_keys.add(key)
           const xyz = frac_to_cart(abc)
@@ -1014,13 +1031,17 @@ export function parse_cif(
 function convert_phonopy_cell(cell: PhonopyCell): ParsedStructure {
   const sites: Site[] = []
   // Phonopy stores lattice vectors as rows, use them directly
-  const lattice_matrix = cell.lattice as math.Matrix3x3
+  const lattice_matrix: math.Matrix3x3 = [
+    vec3_from_values(cell.lattice[0], `phonopy lattice vector 1`),
+    vec3_from_values(cell.lattice[1], `phonopy lattice vector 2`),
+    vec3_from_values(cell.lattice[2], `phonopy lattice vector 3`),
+  ]
 
   // Process each atomic site
   const phonopy_frac_to_cart = math.create_frac_to_cart(lattice_matrix)
   for (const point of cell.points) {
     const element = validate_element_symbol(point.symbol, sites.length)
-    const abc: Vec3 = [point.coordinates[0], point.coordinates[1], point.coordinates[2]]
+    const abc = vec3_from_values(point.coordinates, `phonopy point coordinates`)
 
     const xyz = phonopy_frac_to_cart(abc)
 
@@ -1046,6 +1067,22 @@ export type CellType =
   | `phonon_primitive_cell`
   | `phonon_supercell`
   | `auto`
+
+const is_phonopy_cell = (value: unknown): value is PhonopyCell => {
+  if (!value || typeof value !== `object`) return false
+  const lattice = `lattice` in value ? value.lattice : undefined
+  const points = `points` in value ? value.points : undefined
+  return Array.isArray(lattice) && Array.isArray(points)
+}
+
+const get_phonopy_cell = (
+  data: unknown,
+  cell_type: Exclude<CellType, `auto`>,
+): PhonopyCell | undefined => {
+  if (!data || typeof data !== `object`) return undefined
+  const cell = Reflect.get(data, cell_type)
+  return is_phonopy_cell(cell) ? cell : undefined
+}
 
 // Parse phonopy YAML file and return the requested cell type (or preferred single structure)
 export function parse_phonopy_yaml(
@@ -1077,7 +1114,7 @@ export function parse_phonopy_yaml(
     }
 
     const filtered_content = filtered_lines.join(`\n`)
-    const data = yaml_load(filtered_content) as PhonopyData
+    const data = yaml_load(filtered_content)
 
     if (!data) {
       console.error(`Failed to parse phonopy YAML`)
@@ -1086,7 +1123,7 @@ export function parse_phonopy_yaml(
 
     // If specific cell type requested, parse only that one
     if (cell_type && cell_type !== `auto`) {
-      const cell = data[cell_type]
+      const cell = get_phonopy_cell(data, cell_type)
       if (cell) return convert_phonopy_cell(cell)
       else {
         console.error(`Requested cell type '${cell_type}' not found in phonopy YAML`)
@@ -1101,12 +1138,13 @@ export function parse_phonopy_yaml(
     // 4. phonon_primitive_cell
     // 5. primitive_cell
 
-    if (data.supercell) return convert_phonopy_cell(data.supercell)
-    else if (data.phonon_supercell) return convert_phonopy_cell(data.phonon_supercell)
-    else if (data.unit_cell) return convert_phonopy_cell(data.unit_cell)
-    else if (data.phonon_primitive_cell) {
-      return convert_phonopy_cell(data.phonon_primitive_cell)
-    } else if (data.primitive_cell) return convert_phonopy_cell(data.primitive_cell)
+    const auto_cell =
+      get_phonopy_cell(data, `supercell`) ??
+      get_phonopy_cell(data, `phonon_supercell`) ??
+      get_phonopy_cell(data, `unit_cell`) ??
+      get_phonopy_cell(data, `phonon_primitive_cell`) ??
+      get_phonopy_cell(data, `primitive_cell`)
+    if (auto_cell) return convert_phonopy_cell(auto_cell)
 
     console.error(`No valid cells found in phonopy YAML`)
     return null
@@ -1153,17 +1191,15 @@ function find_structure_in_json(
 // Type guard to validate structure-like objects
 function is_parsed_structure(obj: unknown): obj is ParsedStructure {
   if (!obj || typeof obj !== `object`) return false
-  const parsed_obj = obj as { sites?: unknown }
-  const sites = parsed_obj.sites
+  const sites = `sites` in obj ? obj.sites : undefined
   if (!Array.isArray(sites) || sites.length === 0) return false
 
   const first_site = sites[0]
   if (!first_site || typeof first_site !== `object`) return false
 
-  const first_site_obj = first_site as { species?: unknown; abc?: unknown; xyz?: unknown }
-  const species = first_site_obj.species
-  const abc = first_site_obj.abc
-  const xyz = first_site_obj.xyz
+  const species = `species` in first_site ? first_site.species : undefined
+  const abc = `abc` in first_site ? first_site.abc : undefined
+  const xyz = `xyz` in first_site ? first_site.xyz : undefined
   const has_species = Array.isArray(species) && species.length > 0
   const has_coords = Array.isArray(abc) || Array.isArray(xyz)
   return has_species && has_coords
@@ -1331,9 +1367,6 @@ export function parse_structure_file(
 
 // Universal parser that handles JSON and structure files
 export function parse_any_structure(content: string, filename: string): AnyStructure | null {
-  const clone_structure_properties = (properties: StructureProperties): StructureProperties =>
-    structuredClone(properties)
-
   const finalize_structure = (structure: ParsedStructure): AnyStructure => ({
     sites: structure.sites,
     charge: 0,
@@ -1401,7 +1434,13 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
     const species = species_raw
 
     // Optimade stores lattice vectors as rows, so use as is
-    const lattice_matrix = attrs.lattice_vectors as math.Matrix3x3 | undefined
+    const lattice_matrix = attrs.lattice_vectors
+      ? ([
+          vec3_from_values(attrs.lattice_vectors[0], `OPTIMADE lattice vector 1`),
+          vec3_from_values(attrs.lattice_vectors[1], `OPTIMADE lattice vector 2`),
+          vec3_from_values(attrs.lattice_vectors[2], `OPTIMADE lattice vector 3`),
+        ] satisfies math.Matrix3x3)
+      : undefined
     const optimade_lattice_params = lattice_matrix
       ? math.calc_lattice_params(lattice_matrix)
       : null
@@ -1428,13 +1467,15 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
       const pos = positions[idx]
       const element_symbol = species[idx]
 
-      if (!pos || pos.length < 3) {
-        console.warn(`Invalid position data at site ${idx}`)
+      let xyz: Vec3
+      try {
+        xyz = vec3_from_values(pos, `OPTIMADE site ${idx} position`)
+      } catch (error) {
+        console.warn(`Invalid position data at site ${idx}: ${error}`)
         continue
       }
 
       const element = validate_element_symbol(element_symbol, idx)
-      const xyz: Vec3 = [pos[0], pos[1], pos[2]]
 
       // Calculate fractional coordinates if lattice is available
       const abc: Vec3 = optimade_cart_to_frac ? optimade_cart_to_frac(xyz) : [0, 0, 0]
@@ -1531,9 +1572,9 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
 
   try {
     const lattice_matrix: math.Matrix3x3 = [
-      lattice_vectors[0] as Vec3,
-      lattice_vectors[1] as Vec3,
-      lattice_vectors[2] as Vec3,
+      vec3_from_values(lattice_vectors[0], `OPTIMADE lattice vector 1`),
+      vec3_from_values(lattice_vectors[1], `OPTIMADE lattice vector 2`),
+      vec3_from_values(lattice_vectors[2], `OPTIMADE lattice vector 3`),
     ]
     const lattice_params = math.calc_lattice_params(lattice_matrix)
 
@@ -1549,7 +1590,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
       if (!element_symbol) throw new Error(`Missing species for site ${idx}`)
       const element = validate_element_symbol(element_symbol, idx)
 
-      const xyz: Vec3 = [pos[0], pos[1], pos[2]]
+      const xyz = vec3_from_values(pos, `OPTIMADE atom position ${idx + 1}`)
       const abc: Vec3 = crystal_cart_to_frac ? crystal_cart_to_frac(xyz) : [0, 0, 0]
 
       // Extract mass/concentration from species data

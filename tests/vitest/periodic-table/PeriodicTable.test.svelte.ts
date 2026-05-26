@@ -190,8 +190,7 @@ describe(`PeriodicTable`, () => {
       props: { heatmap_values: heatmap_values as never },
     })
 
-    expect(console.error).toHaveBeenCalledOnce()
-    expect(console.error).toBeCalledWith(expect.stringContaining(error_msg))
+    expect(console.error).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(error_msg))
 
     console.error = orig_console_error
   })
@@ -629,8 +628,8 @@ describe(`PeriodicTable`, () => {
         el.textContent?.trim(),
       )
 
-      expect(tick_text.some((t) => t === `1`)).toBe(true)
-      expect(tick_text.some((t) => t && t.includes(`1`) && t.length > 1)).toBe(true)
+      expect(tick_text.some((text) => text === `1`)).toBe(true)
+      expect(tick_text.some((text) => text?.includes(`1`) && text.length > 1)).toBe(true)
     })
 
     test(`customizes via color_bar_props`, () => {

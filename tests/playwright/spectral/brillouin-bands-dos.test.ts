@@ -44,7 +44,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Check for high-symmetry labels in bands
     const x_labels = await bands_svg.locator(`g.x-axis text`).allTextContents()
-    expect(x_labels.join()).toMatch(/Γ|GAMMA/)
+    expect(x_labels.join(``)).toMatch(/Γ|GAMMA/)
   })
 
   test(`applies custom styling and column widths`, async ({ page }) => {
