@@ -7,6 +7,7 @@ import type {
   TrajectoryType,
 } from '$lib/trajectory'
 import { get_trajectory_stats, validate_trajectory } from '$lib/trajectory'
+import { validate_3x3_matrix } from '$lib/trajectory/helpers'
 import { describe, expect, test } from 'vitest'
 
 // Factory for trajectory frames
@@ -221,6 +222,22 @@ describe(`validate_trajectory`, () => {
     // Assert exact error count to catch regressions
     expect(errors).toHaveLength(4)
   })
+})
+
+describe(`validate_3x3_matrix`, () => {
+  test(`accepts finite arrays and typed array rows`, () => {
+    const matrix = [[1, 0, 0], new Float64Array([0, 1, 0]), [0, 0, 1]]
+    expect(validate_3x3_matrix(matrix)).toEqual(matrix)
+  })
+
+  test.each([[[1, 0, Number.NaN]], [[1, 0, Infinity]], [[1, 0, `0`]]])(
+    `rejects invalid row %j`,
+    (row) => {
+      expect(() => validate_3x3_matrix([[1, 0, 0], row, [0, 0, 1]])).toThrow(
+        `Invalid 3x3 matrix structure`,
+      )
+    },
+  )
 })
 
 describe(`get_trajectory_stats`, () => {

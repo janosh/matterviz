@@ -103,6 +103,7 @@ describe(`normalize_composition`, () => {
     [{ H: 0, O: 1, C: -5 }, { O: 1 }, `removes zero and negative mixed`],
     [{}, {}, `handles empty composition`],
     [{ H: `invalid` as unknown as number, O: 1 }, { O: 1 }, `handles non-numeric values`],
+    [{ Xx: 1, O: 1 } as unknown as CompositionType, { O: 1 }, `filters invalid symbols`],
   ])(`should normalize %s to %s (%s)`, (input, expected, _description) => {
     expect(normalize_composition(input)).toEqual(expected)
   })
@@ -309,9 +310,9 @@ describe(`parse_composition`, () => {
     [{ H: 2, O: 1 }, { H: 2, O: 1 }, `symbol composition`],
     [{ Fe: 2, O: 3, N: 0 }, { Fe: 2, O: 3 }, `removes zero values`],
     [{ 1: 2, 8: 1 }, { H: 2, O: 1 }, `atomic number composition`],
-    [{ 1: 2, O: 1 }, { '1': 2, O: 1 }, `mixed composition`],
+    [{ 1: 2, O: 1 }, { O: 1 }, `mixed composition filters invalid keys`],
     [{}, {}, `empty object`],
-    [{ 999: 1 }, { '999': 1 }, `invalid atomic number preserved`],
+    [{ 999: 1 }, {}, `invalid atomic number filtered`],
   ])(`normalizes object %j (%s)`, (input, expected, _desc) => {
     expect(parse_composition(input)).toEqual(expected)
   })
@@ -720,6 +721,14 @@ describe(`parse_formula_with_wildcards`, () => {
     [`*1`, [{ element: null, count: 1 }], `explicit count 1 same as bare *`],
     [`*0`, [{ element: null, count: 0 }], `explicit count 0 (zero atoms)`],
     [
+      `*0.5O.25`,
+      [
+        { element: null, count: 0.5 },
+        { element: `O`, count: 0.25 },
+      ],
+      `decimal counts`,
+    ],
+    [
       `Fe1O2`,
       [
         { element: `Fe`, count: 1 },
@@ -777,6 +786,15 @@ describe(`parse_formula_with_wildcards`, () => {
       `bare wildcard in parens`,
     ],
     [`(*)3`, [{ element: null, count: 3 }], `only wildcard in parens`],
+    [
+      `(OH)0.5*`,
+      [
+        { element: `O`, count: 0.5 },
+        { element: `H`, count: 0.5 },
+        { element: null, count: 1 },
+      ],
+      `decimal parens before wildcard`,
+    ],
     [
       `((*O)2)3`,
       [

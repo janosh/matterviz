@@ -28,13 +28,17 @@ export const is_valid_element = (sym: string): sym is ElementSymbol =>
 // Check if object has atomic numbers as keys (1-118)
 const is_atomic_number_composition = (obj: Record<string | number, number>): boolean => {
   const keys = Object.keys(obj)
+  const atomic_nums = keys.map(Number)
   return (
     keys.length > 0 &&
-    keys.map(Number).every((num) => Number.isInteger(num) && num >= 1 && num <= 118)
+    atomic_nums.every(
+      (atomic_num) => Number.isInteger(atomic_num) && atomic_num >= 1 && atomic_num <= 118,
+    )
   )
 }
 
 const format_state = (state: number) => (state > 0 ? `+` : ``) + state
+const parse_count = (count?: string): number => (count ? parseFloat(count) : 1)
 
 // Convert atomic numbers to element symbols
 export const atomic_num_to_symbols = (
@@ -71,11 +75,11 @@ const expand_parentheses = (formula: string): string => {
     formula = formula.replace(
       /\(([^()]+)\)(\d+(?:\.\d+)?|\.\d+)?/g,
       (_match, group, multiplier) => {
-        const mult = multiplier ? parseFloat(multiplier) : 1
+        const mult = parse_count(multiplier)
         return group.replace(
           /([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g,
           (_m: string, element: string, count: string) => {
-            const num = (count ? parseFloat(count) : 1) * mult
+            const num = parse_count(count) * mult
             return element + (num === 1 ? `` : num)
           },
         )
@@ -92,7 +96,7 @@ export const parse_formula = (formula: string): CompositionType => {
 
   for (const match of cleaned_formula.matchAll(/([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g)) {
     const element = match[1]
-    const count = match[2] ? parseFloat(match[2]) : 1
+    const count = parse_count(match[2])
 
     if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
     composition[element] = (composition[element] || 0) + count
@@ -108,9 +112,11 @@ export const normalize_composition = (
     return normalize_composition(atomic_num_to_symbols(composition as Record<number, number>))
   }
 
-  const normalized: Record<string, number> = {}
+  const normalized: CompositionType = {}
   for (const [element, amount] of Object.entries(composition)) {
-    if (typeof amount === `number` && amount > 0) normalized[element] = amount
+    if (typeof amount === `number` && amount > 0 && is_valid_element(element)) {
+      normalized[element] = amount
+    }
   }
   return normalized
 }
@@ -266,13 +272,13 @@ export const parse_formula_with_oxidation = (
   // Regex to match: Element, optional oxidation state and/or count in either order
   // Pattern: ([A-Z][a-z]?)  - element symbol
   //          Followed by one of:
-  //          - oxidation then optional count: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])(\d*)
-  //          - count then optional oxidation: (\d+)(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?
+  //          - oxidation then optional count: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])(count?)
+  //          - count then optional oxidation: count(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?
   //          - just oxidation: (?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])
-  //          - just count: (\d+)
+  //          - just count: count
   //          - neither
   const regex =
-    /([A-Z][a-z]?)(?:(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])(\d*)|(\d+)(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?)?/g
+    /([A-Z][a-z]?)(?:(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])((?:\d+(?:\.\d+)?|\.\d+)?)|((?:\d+(?:\.\d+)?|\.\d+))(?:\^([+-]?\d+[+-]?|[+-])|\[([+-]?\d+[+-]?|[+-])\])?)?/g
 
   let match: RegExpExecArray | null
   let orig_idx = 0
@@ -283,7 +289,7 @@ export const parse_formula_with_oxidation = (
     // Count can be in group 4 (after oxidation) or 5 (before oxidation)
     const oxidation_str = match[2] || match[3] || match[6] || match[7]
     const count_str = match[4] || match[5]
-    const count = count_str ? parseInt(count_str, 10) : 1
+    const count = parse_count(count_str)
 
     if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
 
@@ -479,20 +485,20 @@ export function parse_formula_with_wildcards(formula: string): WildcardFormulaTo
   cleaned = cleaned.replace(ELEM_WILDCARD.from_placeholder, `*`)
 
   // Regex to match either:
-  // 1. Standard element symbol with optional count: ([A-Z][a-z]?)(\d*)
-  // 2. Wildcard with optional count: \*(\d*)
-  const regex = /([A-Z][a-z]?)(\d*)|(\*)(\d*)/g
+  // 1. Standard element symbol with optional decimal count
+  // 2. Wildcard with optional decimal count
+  const regex = /([A-Z][a-z]?)((?:\d+(?:\.\d+)?|\.\d+)?)|(\*)((?:\d+(?:\.\d+)?|\.\d+)?)/g
 
   let match: RegExpExecArray | null
   while ((match = regex.exec(cleaned)) !== null) {
     if (match[3] === `*`) {
       // Wildcard match
-      const count = match[4] ? parseInt(match[4], 10) : 1
+      const count = parse_count(match[4])
       tokens.push({ element: null, count })
     } else if (match[1]) {
       // Element symbol match
       const element = match[1]
-      const count = match[2] ? parseInt(match[2], 10) : 1
+      const count = parse_count(match[2])
 
       if (!is_valid_element(element)) {
         throw new Error(`Invalid element symbol: ${element}`)

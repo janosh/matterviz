@@ -359,7 +359,7 @@ export function apply_gas_corrections(
   config: GasThermodynamicsConfig | undefined,
   T: number,
 ): PhaseData[] {
-  if (!config || !config.enabled_gases?.length) return entries
+  if (!config?.enabled_gases?.length) return entries
 
   const analysis = analyze_gas_data(entries, config)
 

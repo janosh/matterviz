@@ -847,7 +847,7 @@ export function safe_analyze_gas_data(
   entries: PhaseData[],
   config?: GasThermodynamicsConfig,
 ): GasAnalysis {
-  if (!config || !config.enabled_gases?.length) {
+  if (!config?.enabled_gases?.length) {
     return {
       has_gas_dependent_elements: false,
       gas_elements: [],
@@ -865,7 +865,7 @@ export function safe_apply_gas_corrections(
   config: GasThermodynamicsConfig | undefined,
   T: number,
 ): PhaseData[] {
-  if (!config || !config.enabled_gases?.length) return entries
+  if (!config?.enabled_gases?.length) return entries
   return _apply_gas_corrections(entries, config, T)
 }
 

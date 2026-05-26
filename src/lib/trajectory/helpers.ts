@@ -11,9 +11,13 @@ import type { TrajectoryFrame } from './index'
 const element_symbol_set = new Set<string>(ELEM_SYMBOLS)
 
 const is_valid_row = (row: unknown): boolean => {
-  if (Array.isArray(row)) return row.length === 3
-  if (!ArrayBuffer.isView(row)) return false
-  return `length` in row && typeof row.length === `number` && row.length === 3
+  if (!(Array.isArray(row) || (ArrayBuffer.isView(row) && `length` in row))) return false
+  const values = row as ArrayLike<unknown>
+  if (values.length !== 3) return false
+  for (let idx = 0; idx < 3; idx++) {
+    if (typeof values[idx] !== `number` || !Number.isFinite(values[idx])) return false
+  }
+  return true
 }
 
 const is_valid_vec3 = (coords: unknown): coords is Vec3 =>

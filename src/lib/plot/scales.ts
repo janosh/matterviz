@@ -534,10 +534,10 @@ export function create_color_scale(
   const scheme =
     typeof color_scale_config === `string` ? color_scale_config : color_scale_config.scheme
   const candidate_interpolator = Object.entries(d3_sc).find(([key]) => key === scheme)?.[1]
-  const interpolator = (value: number): string =>
+  const interpolator =
     typeof candidate_interpolator === `function`
-      ? candidate_interpolator(value)
-      : d3_sc.interpolateViridis(value)
+      ? candidate_interpolator
+      : d3_sc.interpolateViridis
   const [min_val, max_val] =
     (typeof color_scale_config === `string` ? undefined : color_scale_config.value_range) ??
     auto_color_range

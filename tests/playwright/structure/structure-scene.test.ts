@@ -8,6 +8,8 @@ import {
   wait_for_3d_canvas,
 } from '../helpers'
 
+const is_mac = process.platform === `darwin`
+
 // Helper function to clear any existing tooltips and overlays
 async function clear_tooltips_and_overlays(page: Page): Promise<void> {
   // Move mouse to a safe area to clear any tooltips
@@ -1071,7 +1073,6 @@ test.describe(`Edit Atoms Scene`, () => {
     await expect_canvas_changed(canvas, prev)
 
     // Keyboard shortcuts should not cause errors
-    const is_mac = await page.evaluate(() => navigator.platform.toUpperCase().includes(`MAC`))
     await page.keyboard.press(`Delete`)
     await page.keyboard.press(is_mac ? `Meta+z` : `Control+z`)
     await page.keyboard.press(is_mac ? `Meta+y` : `Control+y`)

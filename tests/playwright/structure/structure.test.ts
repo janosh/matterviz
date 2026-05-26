@@ -13,6 +13,8 @@ import {
   wait_for_3d_canvas,
 } from '../helpers'
 
+const is_mac = process.platform === `darwin`
+
 test.describe(`Structure Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     await goto_structure_test(page)
@@ -232,10 +234,6 @@ test.describe(`Structure Component Tests`, () => {
   test(`keyboard shortcuts require modifier keys`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     await structure_div.click()
-
-    const is_mac = await page.evaluate(
-      () => navigator.platform.toUpperCase().indexOf(`MAC`) >= 0,
-    )
 
     let page_errors = false
     page.once(`pageerror`, () => (page_errors = true))
@@ -3067,9 +3065,6 @@ test.describe(`Edit Atoms Mode`, () => {
     await enter_edit_atoms_mode(page)
 
     const structure_div = page.locator(`#test-structure`)
-    const is_mac = await page.evaluate(
-      () => navigator.platform.toUpperCase().indexOf(`MAC`) >= 0,
-    )
     const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
     for (const init of [
       { key: `z`, [primary_modifier]: true },
@@ -3154,9 +3149,6 @@ test.describe(`Edit Atoms Mode`, () => {
     const undo_btn = structure_div.locator(`button[aria-label*="Undo"]`)
     await expect(undo_btn).toBeEnabled({ timeout: 2000 })
 
-    const is_mac = await page.evaluate(
-      () => navigator.platform.toUpperCase().indexOf(`MAC`) >= 0,
-    )
     const undo_combo = is_mac ? `Meta+z` : `Control+z`
     const redo_combo = is_mac ? `Meta+y` : `Control+y`
 

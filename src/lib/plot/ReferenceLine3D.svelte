@@ -73,11 +73,17 @@
         ]
         // Keep only t values where the resulting point is inside bounds
         const eps = 1e-6
-        const valid_t = t_values.filter((t) => {
-          const [px, py, pz] = [p1x + t * dx, p1y + t * dy, p1z + t * dz]
-          return px >= x_min - eps && px <= x_max + eps &&
-            py >= y_min - eps && py <= y_max + eps && pz >= z_min - eps &&
-            pz <= z_max + eps
+        const valid_t = t_values.filter((t_value) => {
+          const [px, py, pz] = [
+            p1x + t_value * dx,
+            p1y + t_value * dy,
+            p1z + t_value * dz,
+          ]
+          return (
+            px >= x_min - eps && px <= x_max + eps &&
+            py >= y_min - eps && py <= y_max + eps &&
+            pz >= z_min - eps && pz <= z_max + eps
+          )
         })
         if (valid_t.length < 2) return null
         const t_min = Math.min(...valid_t)

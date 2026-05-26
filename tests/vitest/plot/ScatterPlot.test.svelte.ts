@@ -16,11 +16,13 @@ const basic = {
 async function mount_sized_scatter_plot(
   props: Partial<ComponentProps<typeof ScatterPlot>>,
 ): Promise<HTMLElement> {
+  const container = document.createElement(`div`)
+  document.body.append(container)
   mount(ScatterPlot, {
-    target: document.body,
+    target: container,
     props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
   })
-  const plot = document.querySelector<HTMLElement>(`.scatter`)
+  const plot = container.querySelector<HTMLElement>(`.scatter`)
   if (!plot) throw new Error(`ScatterPlot root element not found`)
   await resize_element(plot, 400, 300)
   return plot

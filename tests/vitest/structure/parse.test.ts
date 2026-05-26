@@ -168,6 +168,21 @@ Cartesian
     expect(result.sites[0].abc.every(Number.isFinite)).toBe(true)
   })
 
+  it(`rejects non-finite POSCAR coordinates`, () => {
+    const result = parse_poscar(
+      `Test
+1.0
+5.0 0.0 0.0
+0.0 Infinity 0.0
+0.0 0.0 5.0
+H
+1
+Direct
+0.0 0.0 0.0`,
+    )
+    expect(result).toBeNull()
+  })
+
   it(`should keep all fractional coordinates within unit cell for aviary-CuF3K-triolith.poscar`, () => {
     const result = parse_poscar(aviary_CuF3K_triolith)
     assert(result, `Failed to parse aviary-CuF3K-triolith.poscar`)
@@ -1575,7 +1590,7 @@ unit_cell:
       if (expected_result === `null`) {
         expect(structure).toBeNull()
       } else {
-        assert(expected_sites, `Expected sites to be number`)
+        assert(typeof expected_sites === `number`, `Expected sites to be number`)
         expect(structure?.sites).toHaveLength(expected_sites)
 
         if (expected_lattice_a) {
@@ -1668,7 +1683,7 @@ unit_cell:
       if (expected_result === `null`) {
         expect(result).toBeNull()
       } else {
-        assert(expected_sites, `Expected sites to be number`)
+        assert(typeof expected_sites === `number`, `Expected sites to be number`)
         expect(result?.sites).toHaveLength(expected_sites)
       }
     },

@@ -598,9 +598,9 @@ describe(`Export functionality`, () => {
         ],
         lattice: {
           matrix: [
-            // @ts-ignore - test invalid matrix (2x2 instead of 3x3)
+            // @ts-expect-error - test invalid matrix (2x2 instead of 3x3)
             [1, 2],
-            // @ts-ignore - test invalid matrix
+            // @ts-expect-error - test invalid matrix
             [3, 4],
           ],
           a: 1,

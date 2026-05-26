@@ -44,17 +44,21 @@ const clone_structure_properties = (properties: StructureProperties): StructureP
 const FALLBACK_ELEMENTS = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`] as const
 const is_known_element_symbol = (symbol: string): symbol is ElementSymbol =>
   (ELEM_SYMBOLS as readonly string[]).includes(symbol)
-const vec3_from_values = (values: readonly number[] | undefined, context: string): Vec3 => {
-  const [x_val, y_val, z_val, extra_val] = values ?? []
-  if (
-    x_val === undefined ||
-    y_val === undefined ||
-    z_val === undefined ||
-    extra_val !== undefined
-  ) {
+const vec3_from_values = (values: readonly unknown[] | undefined, context: string): Vec3 => {
+  if (values?.length !== 3) {
     throw new Error(`Invalid ${context}: expected 3 coordinates, got ${values?.length ?? 0}`)
   }
-  return [x_val, y_val, z_val]
+  const coords: Vec3 = [0, 0, 0]
+  for (let idx = 0; idx < 3; idx++) {
+    const value = values[idx]
+    if (typeof value !== `number` || !Number.isFinite(value)) {
+      throw new TypeError(
+        `Invalid ${context}: coordinate ${idx} must be finite, got ${String(value)}`,
+      )
+    }
+    coords[idx] = value
+  }
+  return coords
 }
 
 export interface PhonopyCell {
