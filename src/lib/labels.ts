@@ -102,7 +102,7 @@ export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>>
   Object.fromEntries(
     ELEM_HEATMAP_KEYS.map((key) => {
       const [label, unit] = ELEM_PROPERTY_LABELS[key] ?? []
-      if (!label) throw `Unexpected missing label ${label}`
+      if (!label) throw new Error(`Unexpected missing label ${label}`)
       return [label + (unit ? ` (${unit})` : ``), key]
     }),
   )

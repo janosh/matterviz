@@ -76,6 +76,7 @@ export default defineConfig({
       '@typescript-eslint/restrict-plus-operands': `error`,
       '@typescript-eslint/no-dynamic-delete': `error`,
       '@typescript-eslint/no-import-type-side-effects': `error`,
+      '@typescript-eslint/only-throw-error': `error`,
       'array-callback-return': `error`,
       'prefer-object-has-own': `error`,
       'eslint-plugin-unicorn/require-array-join-separator': `error`,

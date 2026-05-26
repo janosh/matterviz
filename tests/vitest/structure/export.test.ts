@@ -31,7 +31,7 @@ import {
   ShaderMaterial,
   SphereGeometry,
 } from 'three'
-import { beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { assert, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { complex_structure, simple_structure } from '../setup'
 
 vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
@@ -227,10 +227,10 @@ describe(`Export functionality`, () => {
       { name: `CIF TiO2`, parse: () => parse_cif(tio2_cif), out: structure_to_cif_str },
     ])(`round-trips %s`, ({ parse, out }) => {
       const parsed = parse()
-      if (!parsed || !parsed.lattice) throw `failed to parse fixture`
+      assert(parsed?.lattice, `failed to parse fixture`)
       const exported = out(to_any(parsed))
       const reparsed = parse_structure_file(exported)
-      if (!reparsed || !reparsed.lattice) throw `failed to reparse`
+      assert(reparsed?.lattice, `failed to reparse`)
       expect(reparsed.sites.length).toBe(parsed.sites.length)
       const L = reparsed.lattice.matrix
       reparsed.sites.forEach((site, idx) => {
@@ -1346,7 +1346,7 @@ describe(`3D Export Color Preservation`, () => {
 
         const result = extract_bond_color_for_instance(geometry, 0)
         expect(result).not.toBeNull()
-        if (!result) throw new Error(`Expected result`)
+        assert(result, `Expected result`)
         expect(result.r).toBeCloseTo(expected[0], 5)
         expect(result.g).toBeCloseTo(expected[1], 5)
         expect(result.b).toBeCloseTo(expected[2], 5)
@@ -1415,7 +1415,7 @@ describe(`3D Export Color Preservation`, () => {
 
     test(`type guard grants color access`, () => {
       const mat = new MeshStandardMaterial({ color: new Color(0.25, 0.5, 0.75) })
-      if (!has_color_property(mat)) throw new Error(`Expected true`)
+      assert(has_color_property(mat), `Expected true`)
       expect(mat.color.r).toBeCloseTo(0.25, 2)
       expect(mat.color.g).toBeCloseTo(0.5, 2)
       expect(mat.color.b).toBeCloseTo(0.75, 2)
