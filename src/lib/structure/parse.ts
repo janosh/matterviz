@@ -304,7 +304,10 @@ export function parse_poscar(content: string): ParsedStructure | null {
             return null
           }
 
-          const coords = parse_coordinate_line(lines[coord_line_idx])
+          const coords = vec3_from_values(
+            parse_coordinate_line(lines[coord_line_idx]),
+            `POSCAR atom coordinates on line ${coord_line_idx + 1}`,
+          )
 
           // Parse selective dynamics if present
           let selective_dynamics: [boolean, boolean, boolean] | undefined
@@ -316,15 +319,14 @@ export function parse_poscar(content: string): ParsedStructure | null {
           }
           let xyz: Vec3
           let abc: Vec3
-          const [x, y, z] = coords
 
           if (is_direct) {
             // Store fractional coordinates, wrapping to [0, 1) range
-            abc = wrap_to_unit_cell([x, y, z])
+            abc = wrap_to_unit_cell(coords)
             xyz = poscar_frac_to_cart(abc)
           } else {
             // Already Cartesian, scale if needed
-            xyz = math.scale([x, y, z], scale_factor)
+            xyz = math.scale(coords, scale_factor)
             const raw_abc = poscar_cart_to_frac
               ? poscar_cart_to_frac(xyz)
               : approximate_cart_to_frac(xyz, poscar_axis_lengths)

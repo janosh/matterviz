@@ -1,6 +1,6 @@
 import { DEFAULTS } from '$lib/settings'
 import { expect, type Page, test } from '@playwright/test'
-import { Buffer } from 'node:buffer'
+import type { Buffer } from 'node:buffer'
 import {
   dispatch_cancelable_keydown,
   enter_edit_atoms_mode,

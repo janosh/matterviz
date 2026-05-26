@@ -108,6 +108,7 @@ export async function load_from_url(
   // Skip Range requests for known text formats to avoid production server issues
   // Include VASP files that don't have extensions (POSCAR, XDATCAR, CONTCAR)
   const is_known_text = TEXT_EXTENSIONS.has(ext) || VASP_BASENAME_RE.test(url_basename)
+  let binary_callback_args: [content: ArrayBuffer, filename: string] | undefined
 
   if (!is_known_text) {
     try {
@@ -121,16 +122,18 @@ export async function load_from_url(
         if (is_gzip || is_hdf5) {
           const resp = await fetch(url)
           if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-          return callback(
+          binary_callback_args = [
             await resp.arrayBuffer(),
             extract_filename(resp.headers, url_basename),
-          )
+          ]
         }
       }
     } catch {
       // Fall through to text fetch if HEAD request fails
     }
   }
+
+  if (binary_callback_args) return callback(...binary_callback_args)
 
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)

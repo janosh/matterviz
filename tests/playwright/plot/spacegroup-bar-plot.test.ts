@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
+import { IS_CI, is_present } from '../helpers'
 
 test.describe(`SpacegroupBarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -136,8 +136,8 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     // Measure initial orientation (should be vertical)
     const before_bars = await bars.all()
     const before_boxes = (
-      await Promise.all(before_bars.slice(0, 5).map(async (h) => await h.boundingBox()))
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+      await Promise.all(before_bars.slice(0, 5).map((handle) => handle.boundingBox()))
+    ).filter(is_present)
 
     const vertical_count_before = before_boxes.filter((bb) => bb.height > bb.width).length
     expect(vertical_count_before).toBeGreaterThan(2)
@@ -149,8 +149,8 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     await expect(async () => {
       const after_bars = await bars.all()
       const after_boxes = (
-        await Promise.all(after_bars.slice(0, 5).map(async (h) => await h.boundingBox()))
-      ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+        await Promise.all(after_bars.slice(0, 5).map((handle) => handle.boundingBox()))
+      ).filter(is_present)
 
       const horizontal_count_after = after_boxes.filter((bb) => bb.width > bb.height).length
       expect(horizontal_count_after).toBeGreaterThan(2)
@@ -247,8 +247,8 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     // Get positions and widths of first several bars
     const bar_elements = await bars.all()
     const bar_boxes = (
-      await Promise.all(bar_elements.slice(0, 15).map(async (bar) => await bar.boundingBox()))
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+      await Promise.all(bar_elements.slice(0, 15).map((bar) => bar.boundingBox()))
+    ).filter(is_present)
 
     // Check bars have reasonable width (not zero or negative)
     const widths = bar_boxes.map((bb) => bb.width)

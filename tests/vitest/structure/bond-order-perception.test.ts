@@ -3,7 +3,7 @@ import {
   compose_perceived_bonds,
   perceive_bond_orders,
 } from '$lib/structure/bond-order-perception'
-import type { BondPair, StructureBond } from '$lib/structure'
+import type { BondPair, Site, StructureBond } from '$lib/structure'
 import type { PerceivedBond } from '$lib/structure/bond-order-perception'
 
 function make_input(
@@ -16,7 +16,7 @@ function make_input(
     xyz: coords[idx],
     abc: [0, 0, 0],
     label: `${el}${idx}`,
-  })) as unknown as import('$lib/structure').Site[]
+  })) as unknown as Site[]
   const bonds: BondPair[] = edges.map(([i, j]) => ({
     pos_1: coords[i],
     pos_2: coords[j],

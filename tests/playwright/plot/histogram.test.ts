@@ -3,6 +3,7 @@ import {
   get_axis_range_inputs,
   get_tick_range,
   IS_CI,
+  is_present,
   set_input_value,
   set_range_input,
 } from '../helpers'
@@ -1450,15 +1451,11 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Get bounding boxes
     const first_boxes = (
-      await Promise.all(
-        first_series_bars.slice(0, 3).map(async (bar) => await bar.boundingBox()),
-      )
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+      await Promise.all(first_series_bars.slice(0, 3).map((bar) => bar.boundingBox()))
+    ).filter(is_present)
     const second_boxes = (
-      await Promise.all(
-        second_series_bars.slice(0, 3).map(async (bar) => await bar.boundingBox()),
-      )
-    ).filter((bb): bb is Exclude<typeof bb, null> => Boolean(bb))
+      await Promise.all(second_series_bars.slice(0, 3).map((bar) => bar.boundingBox()))
+    ).filter(is_present)
 
     // Bars from different series should have different y positions due to different scales
     const first_ys = first_boxes.map((bb) => bb.y)
@@ -1505,11 +1502,11 @@ test.describe(`Histogram Component Tests`, () => {
 
     // Toggle first series -> visible series count should decrease
     await items.first().click()
-    await expect.poll(async () => await get_visible_series_count(), { timeout: 3000 }).toBe(1)
+    await expect.poll(() => get_visible_series_count(), { timeout: 3000 }).toBe(1)
 
     // Toggle back -> visible series count should be restored
     await items.first().click()
-    await expect.poll(async () => await get_visible_series_count(), { timeout: 3000 }).toBe(2)
+    await expect.poll(() => get_visible_series_count(), { timeout: 3000 }).toBe(2)
   })
 
   // PAN FUNCTIONALITY TESTS

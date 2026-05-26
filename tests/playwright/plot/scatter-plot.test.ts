@@ -73,7 +73,7 @@ const get_legend_position = async (
   const legend_wrapper = plot_locator.locator(`.legend`).locator(`..`)
   await legend_wrapper.waitFor({ state: `visible` })
 
-  return await legend_wrapper.evaluate((el) => {
+  return legend_wrapper.evaluate((el) => {
     const rect = el.getBoundingClientRect()
     const parent_rect = (el as HTMLElement).offsetParent?.getBoundingClientRect() || {
       x: 0,

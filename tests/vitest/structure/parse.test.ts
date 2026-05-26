@@ -168,9 +168,8 @@ Cartesian
     expect(result.sites[0].abc.every(Number.isFinite)).toBe(true)
   })
 
-  it(`rejects non-finite POSCAR coordinates`, () => {
-    const result = parse_poscar(
-      `Test
+  it.each([
+    `Test
 1.0
 5.0 0.0 0.0
 0.0 Infinity 0.0
@@ -179,7 +178,17 @@ H
 1
 Direct
 0.0 0.0 0.0`,
-    )
+    `Test
+1.0
+5.0 0.0 0.0
+0.0 5.0 0.0
+0.0 0.0 5.0
+H
+1
+Direct
+0.0 Infinity 0.0`,
+  ])(`rejects non-finite POSCAR coordinates`, (content) => {
+    const result = parse_poscar(content)
     expect(result).toBeNull()
   })
 

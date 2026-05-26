@@ -49,9 +49,7 @@ export async function parse_trajectory_data(
 ): Promise<TrajectoryType> {
   if (data instanceof ArrayBuffer) {
     if (FORMAT_PATTERNS.ase(data, filename)) return parse_ase_trajectory(data, filename)
-    if (FORMAT_PATTERNS.hdf5(data, filename)) {
-      return await parse_torch_sim_hdf5(data, filename)
-    }
+    if (FORMAT_PATTERNS.hdf5(data, filename)) return parse_torch_sim_hdf5(data, filename)
     throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
   }
 

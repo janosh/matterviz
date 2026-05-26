@@ -780,7 +780,7 @@ test.describe(`Trajectory Component`, () => {
     }) => {
       // Helper function to get component dimensions
       const get_dimensions = async (content_area: Locator) =>
-        await content_area.evaluate((el: Element) => {
+        content_area.evaluate((el: Element) => {
           const structure_node = el.querySelector(`.structure`) as HTMLElement
           const plot_node = el.querySelector(`.scatter`) as HTMLElement
           const structure = structure_node?.getBoundingClientRect()

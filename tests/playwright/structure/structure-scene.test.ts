@@ -923,7 +923,7 @@ test.describe(`StructureScene Component Tests`, () => {
       }, props)
 
       await expect(canvas).toBeVisible()
-      return await canvas.screenshot()
+      return canvas.screenshot()
     }
 
     // Test both modes and verify they produce different outputs

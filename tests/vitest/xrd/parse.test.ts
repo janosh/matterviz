@@ -11,7 +11,7 @@ import {
   parse_xye_file,
 } from '$lib/xrd/parse'
 import { zipSync } from 'fflate'
-import { Buffer } from 'node:buffer'
+import type { Buffer } from 'node:buffer'
 import fs from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
