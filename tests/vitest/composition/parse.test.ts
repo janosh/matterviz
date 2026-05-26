@@ -76,6 +76,9 @@ describe(`parse_formula`, () => {
     [`H2SO4`, { H: 2, S: 1, O: 4 }, `accumulates elements`],
     [`CH3CH2OH`, { C: 2, H: 6, O: 1 }, `multiple element repetitions`],
     [`C1000H2000`, { C: 1000, H: 2000 }, `very large numbers`],
+    [`Fe0.5Li0.5`, { Fe: 0.5, Li: 0.5 }, `decimal amounts`],
+    [`Fe2.5O3.75`, { Fe: 2.5, O: 3.75 }, `decimal amounts above 1`],
+    [`Ca(OH)0.5`, { Ca: 1, O: 0.5, H: 0.5 }, `decimal parentheses multiplier`],
     [``, {}, `empty formula`],
   ])(`%s -> %j (%s)`, (formula, expected, _description) => {
     expect(parse_formula(formula)).toEqual(expected)

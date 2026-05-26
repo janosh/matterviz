@@ -190,8 +190,7 @@ describe(`PeriodicTable`, () => {
       props: { heatmap_values: heatmap_values as never },
     })
 
-    expect(console.error).toHaveBeenCalledOnce()
-    expect(console.error).toBeCalledWith(expect.stringContaining(error_msg))
+    expect(console.error).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(error_msg))
 
     console.error = orig_console_error
   })

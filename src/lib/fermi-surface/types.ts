@@ -1,5 +1,5 @@
 // Type definitions for Fermi surface visualization
-import type { Matrix3x3, Vec3 } from '$lib/math'
+import type { Matrix3x3, Point2D, Vec3 } from '$lib/math'
 import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
 
 // Spin channel type
@@ -136,7 +136,7 @@ export interface FermiHoverData {
   spin: SpinChannel
   position_cartesian: Vec3 // k-space coordinates in Å⁻¹
   position_fractional: Vec3 | null // in reciprocal lattice units (null if conversion failed)
-  screen_position: { x: number; y: number }
+  screen_position: Point2D
   surface_color?: string
   property_value?: number // nearest vertex property value
   property_name?: string // "velocity" | "custom" | undefined

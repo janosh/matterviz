@@ -151,8 +151,8 @@ describe(`validate_trajectory`, () => {
       const traj = make_trajectory(3, { with_indexed_frames: true })
       const indexed = traj.indexed_frames
       if (!indexed) throw new Error(`indexed_frames should exist`)
-      // @ts-expect-error intentionally removing field
-      delete indexed[idx][field]
+      // @ts-expect-error intentionally invalidating field
+      indexed[idx][field] = undefined
       const errors = validate_trajectory(traj)
       expect(errors.some((err) => err.includes(expected_substr))).toBe(true)
       expect(errors).toHaveLength(expected_count)
@@ -191,8 +191,8 @@ describe(`validate_trajectory`, () => {
         // @ts-expect-error intentionally setting invalid type
         metadata[0].properties = `not an object`
       } else {
-        // @ts-expect-error intentionally removing field
-        delete metadata[0][field]
+        // @ts-expect-error intentionally invalidating field
+        metadata[0][field] = undefined
       }
       const errors = validate_trajectory(traj)
       expect(errors.some((err) => err.includes(expected_substr))).toBe(true)

@@ -32,7 +32,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
     // Bands should have symmetry point labels (Γ, X, etc), DOS has numeric ticks
     const bands_x_ticks = await plots.first().locator(`g.x-axis text`).allTextContents()
     const dos_x_ticks = await plots.nth(1).locator(`g.x-axis text`).allTextContents()
-    expect(bands_x_ticks.join()).toMatch(/[ΓXM]/)
+    expect(bands_x_ticks.join(``)).toMatch(/[ΓXM]/)
     expect(dos_x_ticks.some((t) => !isNaN(parseFloat(t)))).toBe(true)
   })
 

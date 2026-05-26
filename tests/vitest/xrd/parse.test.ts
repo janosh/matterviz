@@ -831,35 +831,33 @@ describe(`real example files`, () => {
     return xrd_extensions.some((ext) => lower.endsWith(ext) || lower.endsWith(`${ext}.gz`))
   })
 
-  for (const filename of xrd_files) {
-    test(`parses ${filename} successfully`, async () => {
-      const filepath = path.join(static_xrd_dir, filename)
-      let content: Buffer = fs.readFileSync(filepath)
+  test.each(xrd_files)(`parses %s successfully`, async (filename) => {
+    const filepath = path.join(static_xrd_dir, filename)
+    let content: Buffer = fs.readFileSync(filepath)
 
-      // Decompress gzipped files
-      const is_gzipped = filename.toLowerCase().endsWith(`.gz`)
-      if (is_gzipped) {
-        content = zlib.gunzipSync(content)
-      }
+    // Decompress gzipped files
+    const is_gzipped = filename.toLowerCase().endsWith(`.gz`)
+    if (is_gzipped) {
+      content = zlib.gunzipSync(content)
+    }
 
-      // Get base filename (without .gz) for format detection
-      const base_filename = is_gzipped ? filename.slice(0, -3) : filename
-      const base_ext = base_filename.split(`.`).pop()?.toLowerCase()
+    // Get base filename (without .gz) for format detection
+    const base_filename = is_gzipped ? filename.slice(0, -3) : filename
+    const base_ext = base_filename.split(`.`).pop()?.toLowerCase()
 
-      // Use ArrayBuffer for binary formats, string for text
-      const is_binary = [`brml`, `raw`].includes(base_ext ?? ``)
-      const input = is_binary ? content.buffer : content.toString()
-      const result = await parse_xrd_file(input as string | ArrayBuffer, base_filename)
+    // Use ArrayBuffer for binary formats, string for text
+    const is_binary = [`brml`, `raw`].includes(base_ext ?? ``)
+    const input = is_binary ? content.buffer : content.toString()
+    const result = await parse_xrd_file(input as string | ArrayBuffer, base_filename)
 
-      expect(result).not.toBeNull()
-      if (!result) return // Type guard for TypeScript
-      expect(result.x.length).toBeGreaterThan(0)
-      expect(result.y.length).toBeGreaterThan(0)
-      expect(result.x.length).toBe(result.y.length)
-      // Verify max is normalized to 100
-      expect(Math.max(...result.y)).toBeCloseTo(100, 0)
-      // Min can be negative for background-subtracted data, but should be finite
-      expect(Number.isFinite(Math.min(...result.y))).toBe(true)
-    })
-  }
+    expect(result).not.toBeNull()
+    if (!result) return // Type guard for TypeScript
+    expect(result.x.length).toBeGreaterThan(0)
+    expect(result.y.length).toBeGreaterThan(0)
+    expect(result.x.length).toBe(result.y.length)
+    // Verify max is normalized to 100
+    expect(Math.max(...result.y)).toBeCloseTo(100, 0)
+    // Min can be negative for background-subtracted data, but should be finite
+    expect(Number.isFinite(Math.min(...result.y))).toBe(true)
+  })
 })

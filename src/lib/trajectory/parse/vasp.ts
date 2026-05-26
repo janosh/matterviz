@@ -1,14 +1,14 @@
 // VASP XDATCAR trajectory parsing
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '$lib/element/types'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Pbc } from '$lib/structure'
-import type { TrajectoryFrame, TrajectoryType } from '../index'
+import type { Pbc } from '$lib/structure/pbc'
+import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 import {
   create_trajectory_frame,
   is_valid_element_symbol,
   validate_3x3_matrix,
-} from '../helpers'
+} from '$lib/trajectory/helpers'
 
 export function parse_vasp_xdatcar(content: string, filename?: string): TrajectoryType {
   const lines = content.trim().split(/\r?\n/)

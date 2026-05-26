@@ -19,7 +19,6 @@ const gcd = (num_a: number, num_b: number): number =>
 const get_reduced_formula = (composition: Record<string, number>): Record<string, number> => {
   const amounts = Object.values(composition).filter((amt) => amt > 0)
   if (amounts.length === 0) return {}
-  // For fractional amounts, find smallest multiplier (1–100) that yields near-integer ratios
   let scale = 1
   if (!amounts.every((amt) => Number.isInteger(amt))) {
     scale = 0
@@ -431,12 +430,7 @@ export function compute_domains(
     if (!advance_combo()) break
   }
 
-  // Remove empty domains
-  for (const key of Object.keys(domains)) {
-    if (domains[key].length === 0) delete domains[key]
-  }
-
-  return domains
+  return Object.fromEntries(Object.entries(domains).filter(([, domain]) => domain.length > 0))
 }
 
 // Apply element padding: replace coordinates close to default_min_limit with

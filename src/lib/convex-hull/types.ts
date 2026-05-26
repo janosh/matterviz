@@ -1,9 +1,8 @@
 import type { CompositionType } from '$lib/composition'
 import type { ShowControlsProp } from '$lib/controls'
 import type { ElementSymbol } from '$lib/element'
-import type { Vec3 } from '$lib/math'
-import type { Sides } from '$lib/plot'
-import type { Rect } from '$lib/plot/layout'
+import type { Point2D, Point3D, Vec3 } from '$lib/math'
+import type { Rect, Sides } from '$lib/plot/layout'
 
 // Unified convex hull entry interface supporting both pymatgen and Materials Project formats
 export interface PhaseData {
@@ -45,16 +44,6 @@ export interface ProcessedPhaseData {
   unstable_entries: PhaseData[]
   elements: ElementSymbol[]
   el_refs: Record<string, PhaseData>
-}
-
-export interface Point2D {
-  x: number
-  y: number
-}
-
-// 3D point for tetrahedral coordinates
-export interface Point3D extends Point2D {
-  z: number
 }
 
 export type MarkerSymbol = // Marker symbol types for convex hull entries
@@ -146,7 +135,7 @@ export interface LabelPlacement {
 // Hover data for tooltips
 export interface HoverData3D<T = ConvexHullEntry> {
   entry: T
-  position: { x: number; y: number }
+  position: Point2D
 }
 
 // Phase statistics

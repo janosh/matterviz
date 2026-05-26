@@ -1,4 +1,4 @@
-import type { XyObj } from '$lib'
+import type { Point2D } from '$lib/math'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   enter_edit_atoms_mode,
@@ -43,7 +43,7 @@ async function safe_canvas_hover(
 }
 
 // Helper function to try multiple positions to find a hoverable atom
-async function find_hoverable_atom(page: Page): Promise<XyObj | null> {
+async function find_hoverable_atom(page: Page): Promise<Point2D | null> {
   const canvas = page.locator(`#test-structure canvas`)
 
   const positions = [

@@ -1,12 +1,12 @@
 // ASE trajectory (.traj) parsing - binary format
-import { MAX_SAFE_STRING_LENGTH } from '../constants'
+import { MAX_SAFE_STRING_LENGTH } from '$lib/trajectory/constants'
 import {
   convert_atomic_numbers,
   create_trajectory_frame,
   read_ndarray_from_view,
   validate_3x3_matrix,
-} from '../helpers'
-import type { TrajectoryFrame, TrajectoryType } from '../index'
+} from '$lib/trajectory/helpers'
+import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): TrajectoryType {
   const view = new DataView(buffer)

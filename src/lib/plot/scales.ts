@@ -1,5 +1,4 @@
 import type { D3ColorSchemeName, D3InterpolateName } from '$lib/colors'
-import type { Vec2 } from '$lib/math'
 import * as math from '$lib/math'
 import type { Point, ScaleType, TimeInterval } from '$lib/plot'
 import { get_arcsinh_threshold, get_scale_type_name, is_time_scale } from '$lib/plot/types'
@@ -467,7 +466,8 @@ export function get_nice_data_range(
       : scaleLinear().domain([data_min, data_max])
 
   scale.nice()
-  return scale.domain() as Vec2
+  const [nice_min = data_min, nice_max = data_max] = scale.domain()
+  return [nice_min, nice_max]
 }
 
 // Generate logarithmic ticks (from ScatterPlot)
@@ -533,11 +533,11 @@ export function create_color_scale(
 ) {
   const scheme =
     typeof color_scale_config === `string` ? color_scale_config : color_scale_config.scheme
-  const interpolator = (
-    typeof d3_sc[scheme as keyof typeof d3_sc] === `function`
-      ? d3_sc[scheme as keyof typeof d3_sc]
-      : d3_sc.interpolateViridis
-  ) as (t: number) => string
+  const candidate_interpolator = Object.entries(d3_sc).find(([key]) => key === scheme)?.[1]
+  const interpolator = (value: number): string =>
+    typeof candidate_interpolator === `function`
+      ? candidate_interpolator(value)
+      : d3_sc.interpolateViridis(value)
   const [min_val, max_val] =
     (typeof color_scale_config === `string` ? undefined : color_scale_config.value_range) ??
     auto_color_range
@@ -617,7 +617,7 @@ export function create_size_scale(
     all_size_values.length > 0
       ? extent(all_size_values.filter((val): val is number => val !== null))
       : [0, 1]
-  const [min_val, max_val] = config.value_range ?? (auto_range as Vec2)
+  const [min_val, max_val] = config.value_range ?? auto_range
   const safe_min = min_val ?? 0
   const safe_max = max_val ?? (safe_min > 0 ? safe_min * 1.1 : 1)
 

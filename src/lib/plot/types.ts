@@ -1,16 +1,15 @@
 import type { D3SymbolName } from '$lib/labels'
-import type { Vec2, Vec3 } from '$lib/math'
+import type { Point2D, Point3D, Vec2, Vec3 } from '$lib/math'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { TweenOptions } from 'svelte/motion'
 export type { TweenOptions } from 'svelte/motion'
+import type { Sides } from './layout'
 import type PlotLegend from './PlotLegend.svelte'
 import type { TicksOption } from './scales'
 
-export type XyObj = { x: number; y: number }
 export type XyShift = { x?: number; y?: number } // For optional shift/offset values
-export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 // Snapshot of axis ranges at interaction start (shared by pan/zoom/touch handlers)
 export type InitialRanges = {
@@ -24,7 +23,7 @@ export type Point<Metadata = Record<string, unknown>> = {
   x: number
   y: number
   metadata?: Metadata
-  offset?: XyObj
+  offset?: Point2D
 }
 
 export interface PointStyle {
@@ -54,7 +53,7 @@ export interface HoverStyle {
 
 export interface LabelStyle {
   text?: string
-  offset?: XyObj
+  offset?: Point2D
   font_size?: string
   font_family?: string
   auto_placement?: boolean // Enable/disable auto-placement
@@ -85,8 +84,8 @@ export interface PlotPoint<Metadata = Record<string, unknown>> extends Point<Met
   point_style?: PointStyle
   point_hover?: HoverStyle
   point_label?: LabelStyle
-  point_offset?: XyObj // Individual point offset (distinct from label offset)
-  point_tween?: TweenOptions<XyObj>
+  point_offset?: Point2D // Individual point offset (distinct from label offset)
+  point_tween?: TweenOptions<Point2D>
 }
 
 export type Markers = `line` | `points` | `line+points` | `none`
@@ -108,8 +107,8 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
   point_style?: PointStyle[] | PointStyle // Can be array or single object
   point_hover?: HoverStyle[] | HoverStyle // Can be array or single object
   point_label?: LabelStyle[] | LabelStyle // Can be array or single object
-  point_offset?: XyObj[] | XyObj // Can be array or single object
-  point_tween?: TweenOptions<XyObj>
+  point_offset?: Point2D[] | Point2D // Can be array or single object
+  point_tween?: TweenOptions<Point2D>
   visible?: boolean // Optional visibility flag
   label?: string // Optional series label for legend
   // Group name for organizing legend items. Series with the same legend_group
@@ -216,9 +215,9 @@ export interface ArcsinhScaleConfig {
 export type ScaleType = `linear` | `log` | `arcsinh` | `time` | ArcsinhScaleConfig
 
 // Type guard for select value narrowing (avoids unsafe casts)
-const SCALE_TYPE_NAMES = new Set<ScaleTypeName>([`linear`, `log`, `arcsinh`, `time`])
+const SCALE_TYPE_NAMES = new Set<string>([`linear`, `log`, `arcsinh`, `time`])
 export const is_scale_type_name = (val: string): val is ScaleTypeName =>
-  SCALE_TYPE_NAMES.has(val as ScaleTypeName)
+  SCALE_TYPE_NAMES.has(val)
 
 // Helper to normalize ScaleType to base type name
 export function get_scale_type_name(scale_type: ScaleType | undefined): ScaleTypeName {
@@ -285,7 +284,7 @@ export type LegendConfig = Omit<
   `series_data` | `on_drag_start` | `on_drag` | `on_drag_end`
 > & {
   margin?: number | Sides
-  tween?: TweenOptions<XyObj>
+  tween?: TweenOptions<Point2D>
   responsive?: boolean // Allow legend to move if density changes (default: false)
   draggable?: boolean // Allow legend to be dragged (default: true)
   // Minimum distance from plot edges to avoid axis label overlap (default: 40)
@@ -367,7 +366,7 @@ export interface BarSeries<Metadata = Record<string, unknown>> {
   point_style?: PointStyle[] | PointStyle
   point_hover?: HoverStyle[] | HoverStyle
   point_label?: LabelStyle[] | LabelStyle
-  point_offset?: XyObj[] | XyObj
+  point_offset?: Point2D[] | Point2D
 }
 
 // Tick label configuration
@@ -396,9 +395,8 @@ export interface AxisOption {
 export type Y2SyncMode = `none` | `synced` | `align`
 
 // Type guard for select value narrowing (avoids unsafe casts)
-const Y2_SYNC_MODES = new Set<Y2SyncMode>([`none`, `synced`, `align`])
-export const is_y2_sync_mode = (val: string): val is Y2SyncMode =>
-  Y2_SYNC_MODES.has(val as Y2SyncMode)
+const Y2_SYNC_MODES = new Set<string>([`none`, `synced`, `align`])
+export const is_y2_sync_mode = (val: string): val is Y2SyncMode => Y2_SYNC_MODES.has(val)
 
 export interface Y2SyncConfig {
   mode: Y2SyncMode
@@ -640,8 +638,6 @@ export const DEFAULT_SERIES_SYMBOLS = [
   `Wye`,
 ] as const satisfies readonly D3SymbolName[]
 
-export type XyzObj = { x: number; y: number; z: number }
-
 // 3D point extending base Point with z coordinate (prefixed to avoid conflict with convex-hull)
 export interface ScatterPoint3D<Metadata = Record<string, unknown>> extends Point<Metadata> {
   z: number
@@ -651,10 +647,8 @@ export interface ScatterPoint3D<Metadata = Record<string, unknown>> extends Poin
 // Omit filtered_data since it uses 2D InternalPoint type, redeclare with 3D type
 export interface DataSeries3D<Metadata = Record<string, unknown>> extends Omit<
   DataSeries<Metadata>,
-  `x` | `y` | `y_axis` | `filtered_data`
+  `y_axis` | `filtered_data`
 > {
-  x: readonly number[]
-  y: readonly number[]
   z: readonly number[]
   filtered_data?: InternalPoint3D<Metadata>[]
 }
@@ -685,9 +679,9 @@ export interface Surface3DConfig {
   // For parametric surfaces: u,v parameterization
   u_range?: Vec2
   v_range?: Vec2
-  parametric_fn?: (u: number, v: number) => XyzObj
+  parametric_fn?: (u: number, v: number) => Point3D
   // For triangulated surfaces: explicit geometry (only x,y,z needed, not scatter-specific fields)
-  points?: XyzObj[]
+  points?: Point3D[]
   triangles?: Vec3[] // indices into points array
   // Appearance
   color?: string
@@ -728,13 +722,11 @@ export interface DisplayConfig3D extends DisplayConfig {
 }
 
 // 3D scatter handler props
-export interface Scatter3DHandlerProps<Metadata = Record<string, unknown>> {
-  x: number
-  y: number
+export interface Scatter3DHandlerProps<Metadata = Record<string, unknown>> extends Omit<
+  HandlerProps<Metadata>,
+  `x_axis` | `x2_axis` | `y_axis` | `y2_axis`
+> {
   z: number
-  metadata?: Metadata | null
-  label?: string | null
-  series_idx: number
   x_axis: AxisConfig3D
   y_axis: AxisConfig3D
   z_axis: AxisConfig3D
@@ -742,7 +734,6 @@ export interface Scatter3DHandlerProps<Metadata = Record<string, unknown>> {
   y_formatted: string
   z_formatted: string
   color_value?: number | null
-  fullscreen?: boolean
 }
 
 export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
@@ -997,25 +988,28 @@ export const REF_LINE_STYLE_DEFAULTS: Required<RefLineStyle> = {
   opacity: 1,
 } as const
 
+type Ref3DBase = Omit<
+  RefLineBase,
+  | `coord_mode`
+  | `x_axis`
+  | `y_axis`
+  | `style`
+  | `hover_style`
+  | `annotation`
+  | `on_click`
+  | `on_hover`
+> & {
+  z_span?: [number | null, number | null]
+}
+
 // Base properties shared by all 3D reference line types
 // Aligned with RefLineBase for future feature parity (interactions, annotations, etc.)
-export interface RefLine3DBase {
-  id?: string | number
-  x_span?: [number | null, number | null]
-  y_span?: [number | null, number | null]
-  z_span?: [number | null, number | null]
+export interface RefLine3DBase extends Ref3DBase {
   style?: RefLineStyle
-  visible?: boolean
-  label?: string
-  metadata?: Record<string, unknown>
-  // Future parity with RefLineBase (currently unused, reserved for future features)
   hover_style?: RefLineStyle
+  annotation?: RefLineAnnotation
   on_click?: (event: { line_idx: number; line_id?: string | number }) => void
   on_hover?: (event: { line_idx: number; line_id?: string | number } | null) => void
-  z_index?: LayerZIndex
-  show_in_legend?: boolean
-  legend_group?: string
-  annotation?: RefLineAnnotation
 }
 
 // 3D reference line - discriminated union
@@ -1038,16 +1032,8 @@ export interface RefPlaneStyle {
 }
 
 // Base properties shared by all 3D reference plane types
-export interface RefPlaneBase {
-  id?: string | number
-  x_span?: [number | null, number | null]
-  y_span?: [number | null, number | null]
-  z_span?: [number | null, number | null]
+export interface RefPlaneBase extends Ref3DBase {
   style?: RefPlaneStyle
-  visible?: boolean
-  label?: string
-  show_in_legend?: boolean
-  metadata?: Record<string, unknown>
 }
 
 // 3D reference plane - discriminated union

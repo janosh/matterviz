@@ -84,15 +84,15 @@ describe(`axis replacement`, () => {
     mount(HeatmapMatrixReplacementHarness, { target: document.body })
     await tick()
 
-    expect(document.querySelector(`[data-testid="selected-count"]`)?.textContent).toBe(`1`)
+    expect(doc_query(`[data-testid="selected-count"]`).textContent).toBe(`1`)
 
-    document.querySelector<HTMLButtonElement>(`[data-testid="replace-axis"]`)?.click()
+    doc_query<HTMLButtonElement>(`[data-testid="replace-axis"]`).click()
     flushSync()
     await tick()
 
-    expect(document.querySelector(`[data-testid="selected-count"]`)?.textContent).toBe(`0`)
-    expect(document.querySelector(`[data-testid="active-cell"]`)?.textContent).toBe(`none`)
-    expect(document.querySelector(`[data-testid="pinned-cell"]`)?.textContent).toBe(`none`)
+    expect(doc_query(`[data-testid="selected-count"]`).textContent).toBe(`0`)
+    expect(doc_query(`[data-testid="active-cell"]`).textContent).toBe(`none`)
+    expect(doc_query(`[data-testid="pinned-cell"]`).textContent).toBe(`none`)
   })
 })
 
@@ -504,8 +504,7 @@ describe(`milestone feature props`, () => {
 
   test(`show_legend renders legend with label`, () => {
     mount_matrix({ show_legend: true, legend_label: `Custom` })
-    expect(document.querySelector(`.legend`)).not.toBeNull()
-    expect(document.querySelector(`.legend .label`)?.textContent).toContain(`Custom`)
+    expect(doc_query(`.legend .label`).textContent).toContain(`Custom`)
   })
 
   test(`legend_format passes through to format_num`, () => {

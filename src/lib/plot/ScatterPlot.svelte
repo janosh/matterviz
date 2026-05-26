@@ -7,7 +7,7 @@
   import { format_value, symbol_names } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
-  import type { Vec2 } from '$lib/math'
+  import type { Point2D, Vec2 } from '$lib/math'
   import type {
     AxisLoadError,
     BasePlotProps,
@@ -30,10 +30,8 @@
     ScaleType,
     ScatterHandlerEvent,
     ScatterHandlerProps,
-    Sides,
     StyleOverrides,
     UserContentProps,
-    XyObj,
   } from '$lib/plot'
   import {
     AxisLabel,
@@ -102,7 +100,7 @@
     pixels_to_data_delta,
     sync_y2_range,
   } from './interactions'
-  import type { Rect } from './layout'
+  import type { Rect, Sides } from './layout'
   import {
     calc_auto_padding,
     constrain_tooltip_position,
@@ -119,6 +117,9 @@
     generate_ticks,
     get_nice_data_range,
   } from './scales'
+
+  const in_range = (val: number | null | undefined, lo: number, hi: number) =>
+    val != null && !isNaN(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
 
   let {
     series = $bindable([]),
@@ -206,14 +207,14 @@
     color_bar?:
       | (ComponentProps<typeof ColorBar> & {
         margin?: number | Sides
-        tween?: TweenOptions<XyObj>
+        tween?: TweenOptions<Point2D>
         responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
       })
       | null
     label_placement_config?: Partial<LabelPlacementConfig>
     hover_config?: Partial<HoverConfig>
     legend?: LegendConfig | null
-    point_tween?: TweenOptions<XyObj>
+    point_tween?: TweenOptions<Point2D>
     line_tween?: TweenOptions<string>
     point_events?: Record<
       string,
@@ -296,8 +297,8 @@
   )
 
   // State for rectangle zoom selection
-  let drag_start_coords = $state<XyObj | null>(null)
-  let drag_current_coords = $state<XyObj | null>(null)
+  let drag_start_coords = $state<Point2D | null>(null)
+  let drag_current_coords = $state<Point2D | null>(null)
 
   // Zoom/pan state - track both initial (data-driven) and current (after pan/zoom) ranges
   let initial_x_range = $state<[number, number]>([0, 1])
@@ -358,7 +359,7 @@
   let axis_loading = $state<`x` | `x2` | `y` | `y2` | null>(null)
 
   // State to hold the calculated label positions after simulation
-  let label_positions = $state<Record<string, XyObj>>({})
+  let label_positions = $state<Record<string, Point2D>>({})
 
   // State for legend dragging
   let legend_is_dragging = $state(false)
@@ -687,10 +688,6 @@
         )
 
         // Filter to points within the plot bounds (handles inverted ranges like [3.5, 1.4])
-        const in_range = (val: number | null | undefined, lo: number, hi: number) =>
-          val != null && !isNaN(val) && val >= Math.min(lo, hi) &&
-          val <= Math.max(lo, hi)
-
         // Determine which ranges to use based on series axis properties
         const [series_x_min, series_x_max] = (data_series.x_axis ?? `x1`) === `x2`
           ? [x2_min, x2_max]
@@ -761,7 +758,10 @@
     source_type: `fill_region` | `error_band`,
     source_idx: number,
     id?: string | number,
-  ): string => `${source_type}:${id == null ? `idx:${source_idx}` : `id:${id}`}`
+  ): string => {
+    if (id == null) return `${source_type}:idx:${source_idx}`
+    return `${source_type}:id:${id}:idx:${source_idx}`
+  }
 
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type ComputedFill = FillRegion & {
@@ -1879,7 +1879,7 @@
 </script>
 
 {#snippet fill_regions_layer(fills: typeof computed_fills)}
-  {#each fills as fill (fill.id ?? fill.idx)}
+  {#each fills as fill (fill.hover_key)}
     {#each fill.path_segments as
       path_d,
       segment_idx

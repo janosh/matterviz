@@ -22,7 +22,7 @@ test.describe(`Bands Component Tests`, () => {
     // Check axes and high-symmetry point labels
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
     await expect(plot.locator(`g.y-axis`)).toBeVisible()
-    const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join()
+    const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join(``)
     expect(x_labels).toContain(`Γ`)
     expect(x_labels).toContain(`X`)
 
@@ -96,7 +96,7 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot.locator(`svg path[fill="none"]`).first()).toBeVisible()
 
     // Check non-canonical segment label appears (K only in alt_path)
-    const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join()
+    const x_labels = (await plot.locator(`g.x-axis text`).allTextContents()).join(``)
     expect(x_labels).toContain(`K`)
   })
 

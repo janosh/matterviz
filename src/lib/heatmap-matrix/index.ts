@@ -95,13 +95,14 @@ export function matrix_to_rows(
   })
 }
 
+function escape_csv_field(value: number | string | null | undefined): string {
+  const field = String(value ?? ``)
+  if (!/[",\n\r]/.test(field)) return field
+  return `"${field.replaceAll(`"`, `""`)}"`
+}
+
 export function rows_to_csv(rows: Record<string, number | string | null>[]): string {
   if (!rows.length) return ``
-  const escape_csv_field = (value: number | string | null | undefined): string => {
-    const field = String(value ?? ``)
-    if (!/[",\n\r]/.test(field)) return field
-    return `"${field.replaceAll(`"`, `""`)}"`
-  }
   const headers = Object.keys(rows[0])
   const lines = [
     headers.map((header) => escape_csv_field(header)).join(`,`),

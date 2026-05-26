@@ -1,7 +1,7 @@
 // Utility functions for working with trajectory data
-import type { AnyStructure } from '$lib/structure'
-import type Trajectory from './Trajectory.svelte'
 import type { ComponentProps } from 'svelte'
+import type { AnyStructure } from '$lib/structure/index'
+import type Trajectory from './Trajectory.svelte'
 
 export { default as Trajectory } from './Trajectory.svelte'
 export { default as TrajectoryError } from './TrajectoryError.svelte'

@@ -45,49 +45,46 @@
   function compute_geometry(): THREE.BufferGeometry | null {
     if (ref_plane.visible === false) return null
 
-    switch (ref_plane.type) {
-      case `xy`: {
-        const zval = ref_plane.z
-        return quad([
-          [x_min, y_min, zval],
-          [x_max, y_min, zval],
-          [x_max, y_max, zval],
-          [x_min, y_max, zval],
-        ])
-      }
-      case `xz`: {
-        const yval = ref_plane.y
-        return quad([
-          [x_min, yval, z_min],
-          [x_max, yval, z_min],
-          [x_max, yval, z_max],
-          [x_min, yval, z_max],
-        ])
-      }
-      case `yz`: {
-        const xval = ref_plane.x
-        return quad([
-          [xval, y_min, z_min],
-          [xval, y_max, z_min],
-          [xval, y_max, z_max],
-          [xval, y_min, z_max],
-        ])
-      }
-      case `normal`: {
-        if (Math.hypot(...ref_plane.normal) < 1e-9) return null // degenerate normal
-        return create_plane_from_normal(ref_plane.normal, ref_plane.point)
-      }
-      case `points`: {
-        const { p1, p2, p3 } = ref_plane
-        const v1: Vec3 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
-        const v2: Vec3 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
-        const cross = cross_3d(v1, v2)
-        if (Math.hypot(...cross) < 1e-9) return null // collinear points
-        return create_plane_from_normal(normalize_vec3(cross), p1)
-      }
-      default:
-        return null
+    if (ref_plane.type === `xy`) {
+      const zval = ref_plane.z
+      return quad([
+        [x_min, y_min, zval],
+        [x_max, y_min, zval],
+        [x_max, y_max, zval],
+        [x_min, y_max, zval],
+      ])
     }
+    if (ref_plane.type === `xz`) {
+      const yval = ref_plane.y
+      return quad([
+        [x_min, yval, z_min],
+        [x_max, yval, z_min],
+        [x_max, yval, z_max],
+        [x_min, yval, z_max],
+      ])
+    }
+    if (ref_plane.type === `yz`) {
+      const xval = ref_plane.x
+      return quad([
+        [xval, y_min, z_min],
+        [xval, y_max, z_min],
+        [xval, y_max, z_max],
+        [xval, y_min, z_max],
+      ])
+    }
+    if (ref_plane.type === `normal`) {
+      if (Math.hypot(...ref_plane.normal) < 1e-9) return null // degenerate normal
+      return create_plane_from_normal(ref_plane.normal, ref_plane.point)
+    }
+    if (ref_plane.type === `points`) {
+      const { p1, p2, p3 } = ref_plane
+      const v1: Vec3 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
+      const v2: Vec3 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
+      const cross = cross_3d(v1, v2)
+      if (Math.hypot(...cross) < 1e-9) return null // collinear points
+      return create_plane_from_normal(normalize_vec3(cross), p1)
+    }
+    return null
   }
 
   // Create geometry with proper disposal on dependency change

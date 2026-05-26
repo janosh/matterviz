@@ -2,7 +2,7 @@ import type { ElementSymbol } from '$lib/element'
 import type { AnyStructure } from '$lib/structure'
 import type { CompositionType } from '$lib/composition'
 import { format_num } from '$lib/labels'
-import { ELEMENT_ELECTRONEGATIVITY_MAP, parse_composition } from './parse'
+import { ELEMENT_ELECTRONEGATIVITY_MAP, is_valid_element, parse_composition } from './parse'
 
 // Extract composition from structure object
 const structure_to_composition = (structure: AnyStructure): CompositionType => {
@@ -23,6 +23,9 @@ const structure_to_composition = (structure: AnyStructure): CompositionType => {
   return composition
 }
 
+const is_structure_like = (input: CompositionType | AnyStructure): input is AnyStructure =>
+  `sites` in input || `lattice` in input
+
 // Format composition into chemical formula string
 export const format_composition_formula = (
   composition: CompositionType,
@@ -31,7 +34,7 @@ export const format_composition_formula = (
   delim = ` `,
   amount_format = `.3~s`,
 ): string => {
-  const symbols = Object.keys(composition) as ElementSymbol[]
+  const symbols = Object.keys(composition).filter(is_valid_element)
 
   return sort_fn(symbols)
     .filter((el) => composition[el] && composition[el] > 0)
@@ -56,9 +59,8 @@ const format_formula_generic = (
     let composition: CompositionType
 
     if (typeof input === `string`) composition = parse_composition(input)
-    else if (`sites` in input || `lattice` in input) {
-      composition = structure_to_composition(input as AnyStructure)
-    } else composition = input
+    else if (is_structure_like(input)) composition = structure_to_composition(input)
+    else composition = input
 
     return format_composition_formula(composition, sort_fn, plain_text, delim, amount_format)
   } catch {

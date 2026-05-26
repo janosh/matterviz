@@ -1,13 +1,25 @@
 // Shared utilities for trajectory parsing
 import { ATOMIC_NUMBER_TO_SYMBOL } from '$lib/composition/parse'
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '$lib/element/types'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure, Pbc } from '$lib/structure'
+import type { AnyStructure } from '$lib/structure/index'
+import type { Pbc } from '$lib/structure/pbc'
 import type { TrajectoryFrame } from './index'
 
 const element_symbol_set = new Set<string>(ELEM_SYMBOLS)
+
+const is_valid_row = (row: unknown): boolean => {
+  if (Array.isArray(row)) return row.length === 3
+  if (!ArrayBuffer.isView(row)) return false
+  return `length` in row && typeof row.length === `number` && row.length === 3
+}
+
+const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
+  Array.isArray(coords) &&
+  coords.length === 3 &&
+  coords.every((value) => typeof value === `number` && Number.isFinite(value))
 
 export const is_valid_element_symbol = (symbol: string): symbol is ElementSymbol =>
   element_symbol_set.has(symbol)
@@ -22,11 +34,6 @@ export function validate_3x3_matrix(data: unknown): math.Matrix3x3 {
     throw new Error(
       `Expected 3x3 matrix, got array of length ${Array.isArray(data) ? data.length : `non-array`}`,
     )
-  }
-  const is_valid_row = (row: unknown): boolean => {
-    if (Array.isArray(row)) return row.length === 3
-    if (!ArrayBuffer.isView(row)) return false
-    return `length` in row && typeof row.length === `number` && row.length === 3
   }
 
   if (!data.every(is_valid_row)) {
@@ -57,11 +64,6 @@ export const create_structure = (
     )
   }
   const cart_to_frac = lattice_matrix ? math.create_cart_to_frac(lattice_matrix) : null
-
-  const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
-    Array.isArray(coords) &&
-    coords.length === 3 &&
-    coords.every((value) => typeof value === `number` && Number.isFinite(value))
 
   const sites = positions.map((pos, idx) => {
     if (!is_valid_vec3(pos)) {

@@ -1,6 +1,8 @@
 import { format_value } from '$lib/labels'
 import { euclidean_dist } from '$lib/math'
-import type { AxisConfig, Sides } from '$lib/plot'
+import type { AxisConfig } from './types'
+
+export type Sides = { t?: number; b?: number; l?: number; r?: number }
 
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 30

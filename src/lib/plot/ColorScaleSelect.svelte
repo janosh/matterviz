@@ -3,7 +3,7 @@
   import * as d3_sc from 'd3-scale-chromatic'
   import type { ComponentProps } from 'svelte'
   import Select from 'svelte-multiselect'
-  import type { D3InterpolateName } from '../colors'
+  import type { D3InterpolateName } from '$lib/colors'
 
   let {
     options = Object.keys(d3_sc).filter((key) =>

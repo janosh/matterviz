@@ -1,5 +1,5 @@
 // Unified frame loader for XYZ and ASE trajectories (large file indexing)
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '$lib/element/types'
 import * as math from '$lib/math'
 import type {
   FrameIndex,

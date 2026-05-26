@@ -486,4 +486,25 @@ describe(`ScatterPlot`, () => {
     await tick()
     expect(fallback_fill()?.classList.contains(`hovered`)).toBe(true)
   })
+
+  test(`keeps duplicate fill IDs keyed and hovered independently`, async () => {
+    await mount_sized_scatter_plot({
+      series: [{ x: [0, 1], y: [0, 1] }],
+      x_axis: { range: [0, 1] as Vec2 },
+      y_axis: { range: [0, 1] as Vec2 },
+      fill_regions: [
+        { id: `duplicate`, lower: 0, upper: 0.2, fill: `steelblue` },
+        { id: `duplicate`, lower: 0.4, upper: 0.6, fill: `slategray` },
+      ],
+      legend: null,
+    })
+
+    const fills = document.querySelectorAll<SVGGElement>(`.fill-region`)
+    expect(fills).toHaveLength(2)
+
+    fills[0].dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    await tick()
+    expect(fills[0].classList.contains(`hovered`)).toBe(true)
+    expect(fills[1].classList.contains(`hovered`)).toBe(false)
+  })
 })

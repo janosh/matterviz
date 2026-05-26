@@ -2000,6 +2000,20 @@ describe(`cross_3d`, () => {
   })
 })
 
+describe(`cross_2d`, () => {
+  test.each([
+    [`counter-clockwise unit triangle`, [0, 0], [1, 0], [0, 1], 1],
+    [`clockwise unit triangle`, [0, 0], [0, 1], [1, 0], -1],
+    [`translated origin`, [2, 3], [5, 3], [2, 7], 12],
+    [`collinear points`, [-1, -1], [1, 1], [3, 3], 0],
+  ] satisfies [string, Vec2, Vec2, Vec2, number][])(
+    `%s`,
+    (_case_name, origin, point_a, point_b, expected) => {
+      expect(math.cross_2d(origin, point_a, point_b)).toBe(expected)
+    },
+  )
+})
+
 describe(`is_square_matrix`, () => {
   test.each([
     // Valid square matrices

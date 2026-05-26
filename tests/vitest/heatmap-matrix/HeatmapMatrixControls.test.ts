@@ -3,6 +3,7 @@ import { HeatmapMatrixControls, ORDERING_LABELS } from '$lib/heatmap-matrix'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { doc_query } from '../setup'
 
 const mount_controls = (
   props: Partial<ComponentProps<typeof HeatmapMatrixControls>> = {},
@@ -38,11 +39,9 @@ describe(`HeatmapMatrixControls`, () => {
     expect(toggle.style.cssText).toContain(`opacity: 0`)
     expect(toggle.style.cssText).toContain(`pointer-events: none`)
     // Pane div has heatmap-controls class
-    expect(document.querySelector(`.draggable-pane.heatmap-controls`)).not.toBeNull()
+    expect(doc_query(`.draggable-pane.heatmap-controls`)).toBeInstanceOf(HTMLElement)
     // Ordering select has all ordering options
-    const ordering_select = document.querySelector(
-      `.heatmap-controls select`,
-    ) as HTMLSelectElement
+    const ordering_select = doc_query<HTMLSelectElement>(`.heatmap-controls select`)
     const option_values = Array.from(ordering_select.options).map((opt) => opt.value)
     expect(option_values).toHaveLength(Object.keys(ORDERING_LABELS).length)
     expect(option_values).toContain(`atomic_number`)
@@ -80,16 +79,16 @@ describe(`HeatmapMatrixControls`, () => {
 
   test(`pane_props class is merged with heatmap-controls`, () => {
     mount_controls({ pane_props: { class: `custom-pane` } })
-    const pane = document.querySelector(`.draggable-pane`) as HTMLElement
+    const pane = doc_query(`.draggable-pane`)
     expect(pane.classList.contains(`heatmap-controls`)).toBe(true)
     expect(pane.classList.contains(`custom-pane`)).toBe(true)
   })
 
   test(`search input reflects value and has no explicit type attr`, () => {
     mount_controls({ search_query: `Fe` })
-    const search_input = document.querySelector(
+    const search_input = doc_query<HTMLInputElement>(
       `.heatmap-controls input[placeholder="Filter labels/keys"]`,
-    ) as HTMLInputElement
+    )
     expect(search_input.value).toBe(`Fe`)
     // No explicit type attr — needed for CSS input:not([type]) selector
     expect(search_input.getAttribute(`type`)).toBeNull()
@@ -116,9 +115,9 @@ describe(`HeatmapMatrixControls`, () => {
     expect(find_position_select()).toBeUndefined()
 
     // Enable show_legend by clicking the checkbox
-    const legend_checkbox = document.querySelector(
+    const legend_checkbox = doc_query<HTMLInputElement>(
       `.heatmap-controls input[type="checkbox"]`,
-    ) as HTMLInputElement
+    )
     legend_checkbox.click()
     await tick()
     expect(find_position_select()).toBeDefined()

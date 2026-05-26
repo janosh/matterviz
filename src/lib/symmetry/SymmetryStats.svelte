@@ -3,7 +3,7 @@
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { SETTINGS_CONFIG } from '../settings'
+  import { SETTINGS_CONFIG } from '$lib/settings'
   import type { SymmetrySettings } from './index'
   import { default_sym_settings, wyckoff_positions_from_moyo } from './index'
   import * as spg from './spacegroups'

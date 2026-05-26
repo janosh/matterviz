@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Vec2 } from '$lib/math'
-  import { get_scale_type_name, type ScaleType, type Sides } from '$lib/plot'
+  import type { Sides } from '$lib/plot/layout'
+  import { get_scale_type_name, type ScaleType } from '$lib/plot'
 
   let {
     display,

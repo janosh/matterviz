@@ -10,7 +10,7 @@
   import * as d3_sc from 'd3-scale-chromatic'
   import { timeFormat } from 'd3-time-format'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { D3InterpolateName } from '../colors'
+  import type { D3InterpolateName } from '$lib/colors'
   import PortalSelect from './PortalSelect.svelte'
   import { generate_arcsinh_ticks, scale_arcsinh } from './scales'
   import type {

@@ -9,9 +9,9 @@ type SpatialGrid = Map<string, number[]>
 
 const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
 const covalent_radii: Map<string, number> = new Map(
-  element_data
-    .filter((el) => el.covalent_radius !== null)
-    .map((el) => [el.symbol, el.covalent_radius as number]),
+  element_data.flatMap((el) =>
+    el.covalent_radius === null ? [] : [[el.symbol, el.covalent_radius]],
+  ),
 )
 
 const is_zero_cell_shift = (cell_shift: Vec3 | undefined): boolean =>
@@ -22,8 +22,11 @@ const format_cell_shift = (cell_shift: Vec3 | undefined): string => {
   return `@${cell_shift.join(`,`)}`
 }
 
-const negate_cell_shift = (cell_shift: Vec3): Vec3 =>
-  cell_shift.map((val) => (val === 0 ? 0 : -val)) as Vec3
+const negate_cell_shift = (cell_shift: Vec3): Vec3 => [
+  cell_shift[0] === 0 ? 0 : -cell_shift[0],
+  cell_shift[1] === 0 ? 0 : -cell_shift[1],
+  cell_shift[2] === 0 ? 0 : -cell_shift[2],
+]
 
 const canonical_self_bond_shift = (cell_shift: Vec3): Vec3 => {
   const first_non_zero = cell_shift.find((val) => val !== 0)
@@ -112,9 +115,11 @@ const site_image_shift = (sites: Site[] | undefined, site_idx: number): Vec3 => 
   if (typeof orig_site_idx !== `number`) return [0, 0, 0]
   const orig_site = sites?.[orig_site_idx]
   if (!site?.abc || !orig_site?.abc) return [0, 0, 0]
-  return site.abc.map((coord, coord_idx) =>
-    Math.round(coord - orig_site.abc[coord_idx]),
-  ) as Vec3
+  return [
+    Math.round(site.abc[0] - orig_site.abc[0]),
+    Math.round(site.abc[1] - orig_site.abc[1]),
+    Math.round(site.abc[2] - orig_site.abc[2]),
+  ]
 }
 
 const original_site_idx = (sites: Site[] | undefined, site_idx: number): number => {
@@ -129,9 +134,11 @@ export const canonicalize_bond_target = (
   const shift_1 = site_image_shift(sites, bond.site_idx_1)
   const shift_2 = site_image_shift(sites, bond.site_idx_2)
   const base_shift = bond.cell_shift ?? [0, 0, 0]
-  const cell_shift = base_shift.map(
-    (shift_val, shift_idx) => shift_val + shift_2[shift_idx] - shift_1[shift_idx],
-  ) as Vec3
+  const cell_shift: Vec3 = [
+    base_shift[0] + shift_2[0] - shift_1[0],
+    base_shift[1] + shift_2[1] - shift_1[1],
+    base_shift[2] + shift_2[2] - shift_1[2],
+  ]
   return normalize_bond_endpoints(
     original_site_idx(sites, bond.site_idx_1),
     original_site_idx(sites, bond.site_idx_2),
@@ -336,7 +343,7 @@ function normalize_cell_shift(cell_shift: unknown): Vec3 | undefined | null {
   if (!Array.isArray(cell_shift) || cell_shift.length !== 3) return null
   return cell_shift.some((val) => typeof val !== `number` || !Number.isInteger(val))
     ? null
-    : (cell_shift as Vec3)
+    : [cell_shift[0], cell_shift[1], cell_shift[2]]
 }
 
 function lattice_translation(structure: AnyStructure, cell_shift: Vec3 | undefined): Vec3 {

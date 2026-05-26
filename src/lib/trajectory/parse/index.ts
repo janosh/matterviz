@@ -1,26 +1,26 @@
 // Parsing functions for trajectory data from various formats
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '$lib/element/types'
 import { is_binary } from '$lib/io/is-binary'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { AnyStructure } from '$lib/structure'
+import type { AnyStructure } from '$lib/structure/index'
 import { parse_xyz } from '$lib/structure/parse'
-import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '../constants'
+import { INDEX_SAMPLE_RATE, LARGE_FILE_THRESHOLD } from '$lib/trajectory/constants'
 import {
   FORMAT_PATTERNS,
   is_trajectory_file,
   strip_compression_extensions,
-} from '../format-detect'
-import { TrajFrameReader } from '../frame-reader'
-import { create_trajectory_frame, validate_3x3_matrix } from '../helpers'
+} from '$lib/trajectory/format-detect'
+import { TrajFrameReader } from '$lib/trajectory/frame-reader'
+import { create_trajectory_frame, validate_3x3_matrix } from '$lib/trajectory/helpers'
 import type {
   FrameLoader,
   ParseProgress,
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryType,
-} from '../index'
-import type { AtomTypeMapping, LoadingOptions } from '../types'
+} from '$lib/trajectory/index'
+import type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
 import { parse_ase_trajectory } from './ase'
 import { parse_torch_sim_hdf5 } from './hdf5'
 import { parse_lammps_trajectory } from './lammps'
@@ -38,8 +38,8 @@ export {
   MAX_METADATA_SIZE,
   MAX_SAFE_STRING_LENGTH,
   MAX_TEXT_FILE_SIZE,
-} from '../constants'
-export type { AtomTypeMapping, LoadingOptions } from '../types'
+} from '$lib/trajectory/constants'
+export type { AtomTypeMapping, LoadingOptions } from '$lib/trajectory/types'
 export { is_trajectory_file, TrajFrameReader }
 
 export async function parse_trajectory_data(
