@@ -1,5 +1,6 @@
 import type { D3InterpolateName } from '$lib/colors'
 import type { PhaseData } from '$lib/convex-hull/types'
+import type { Point2D } from '$lib/math'
 
 // Per-element chemical potential bounds [min, max] in eV
 // Default is [-50, 0] matching pymatgen
@@ -65,15 +66,12 @@ export interface ChemPotDiagramData {
   lims: [number, number][]
 }
 
-export interface ChemPotHoverPointer {
-  x: number
-  y: number
-}
-
 export interface ChemPotHoverInfoBase {
   formula: string
   view: `2d` | `3d`
-  pointer?: ChemPotHoverPointer
+  pointer?: Point2D
+  n_points: number
+  axis_ranges: AxisRangeData[]
 }
 
 export interface AxisRangeData {
@@ -84,17 +82,13 @@ export interface AxisRangeData {
 
 export interface ChemPotHoverInfo2D extends ChemPotHoverInfoBase {
   view: `2d`
-  n_points: number
-  axis_ranges: AxisRangeData[]
 }
 
 export interface ChemPotHoverInfo3D extends ChemPotHoverInfoBase {
   view: `3d`
   n_vertices: number
   n_edges: number
-  n_points: number
   ann_loc: number[]
-  axis_ranges: AxisRangeData[]
   touches_limits: string[]
   is_elemental: boolean
   is_draw_formula: boolean

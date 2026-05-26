@@ -217,11 +217,10 @@ test.describe(`DOS Component Tests`, () => {
 
         // Verify label appears before density/frequency (series label should be first line)
         const value_idx = Math.min(
-          tooltip_text.indexOf(`Density`) !== -1 ? tooltip_text.indexOf(`Density`) : Infinity,
-          tooltip_text.indexOf(`Frequency`) !== -1
-            ? tooltip_text.indexOf(`Frequency`)
-            : Infinity,
-          tooltip_text.indexOf(`Energy`) !== -1 ? tooltip_text.indexOf(`Energy`) : Infinity,
+          ...[`Density`, `Frequency`, `Energy`].map((label) => {
+            const idx = tooltip_text.indexOf(label)
+            return idx === -1 ? Infinity : idx
+          }),
         )
         const label_idx = tooltip_text.search(/DOS[12]/) ?? -1
         expect(label_idx).toBeGreaterThan(-1)

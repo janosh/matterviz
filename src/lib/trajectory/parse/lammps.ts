@@ -1,12 +1,14 @@
 // LAMMPS trajectory (.lammpstrj) parsing
-import type { ElementSymbol } from '$lib/element'
+import type { ElementSymbol } from '$lib/element/types'
 import { ELEM_SYMBOLS } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
 import * as math from '$lib/math'
-import type { Pbc } from '$lib/structure'
-import { coerce_element_symbol, create_trajectory_frame } from '../helpers'
-import type { TrajectoryFrame, TrajectoryType } from '../index'
-import type { AtomTypeMapping } from '../types'
+import type { Pbc } from '$lib/structure/pbc'
+import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
+import { coerce_element_symbol, create_trajectory_frame } from '$lib/trajectory/helpers'
+import type { AtomTypeMapping } from '$lib/trajectory/types'
+
+const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
 
 // Parse LAMMPS box bounds → lattice matrix. Handles orthogonal and triclinic boxes.
 // Triclinic: converts bounding box to actual dims per https://docs.lammps.org/Howto_triclinic.html
@@ -84,7 +86,6 @@ export function parse_lammps_trajectory(
     const box_header = read_line()
     const is_triclinic = /BOX BOUNDS\s+xy\s+xz\s+yz/i.test(box_header)
     const tokens = box_header.replace(`ITEM: BOX BOUNDS`, ``).trim().split(/\s+/).slice(-3)
-    const is_periodic = (tok: string): boolean => tok.toLowerCase().startsWith(`p`)
     const pbc: Pbc =
       tokens.length === 3
         ? [is_periodic(tokens[0]), is_periodic(tokens[1]), is_periodic(tokens[2])]

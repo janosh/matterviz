@@ -32,7 +32,7 @@ import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
 import { readFileSync } from 'node:fs'
 import process from 'node:process'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { assert, afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
 import { gunzipSync } from 'node:zlib'
 import { get_dummy_structure } from '../setup'
 
@@ -110,7 +110,7 @@ describe(`POSCAR Parser`, () => {
     { name: `VASP 4 format`, content: vasp4_format, sites: 3, element: `H` },
   ])(`should parse $name`, ({ content, sites, element, lattice_a }) => {
     const result = parse_poscar(content)
-    if (!result) throw `Failed to parse POSCAR`
+    assert(result, `Failed to parse POSCAR`)
     expect(result.sites).toHaveLength(sites)
     expect(result.sites[0].species[0].element).toBe(element)
     expect(result.lattice).toBeDefined()
@@ -140,7 +140,7 @@ describe(`POSCAR Parser`, () => {
     },
   ])(`should handle $name`, ({ content, expected }) => {
     const result = parse_poscar(content)
-    if (!result) throw `Failed to parse POSCAR`
+    assert(result, `Failed to parse POSCAR`)
     if (expected.volume) {
       expect(result.lattice?.volume).toBeCloseTo(expected.volume, 1)
     }
@@ -163,14 +163,38 @@ H
 Cartesian
 1.0 1.0 1.0`,
     )
-    if (!result) throw `Failed to parse singular Cartesian POSCAR`
+    assert(result, `Failed to parse singular Cartesian POSCAR`)
     expect_abc_in_unit_cell(result.sites[0])
     expect(result.sites[0].abc.every(Number.isFinite)).toBe(true)
   })
 
+  it.each([
+    `Test
+1.0
+5.0 0.0 0.0
+0.0 Infinity 0.0
+0.0 0.0 5.0
+H
+1
+Direct
+0.0 0.0 0.0`,
+    `Test
+1.0
+5.0 0.0 0.0
+0.0 5.0 0.0
+0.0 0.0 5.0
+H
+1
+Direct
+0.0 Infinity 0.0`,
+  ])(`rejects non-finite POSCAR coordinates`, (content) => {
+    const result = parse_poscar(content)
+    expect(result).toBeNull()
+  })
+
   it(`should keep all fractional coordinates within unit cell for aviary-CuF3K-triolith.poscar`, () => {
     const result = parse_poscar(aviary_CuF3K_triolith)
-    if (!result) throw `Failed to parse aviary-CuF3K-triolith.poscar`
+    assert(result, `Failed to parse aviary-CuF3K-triolith.poscar`)
 
     expect(result.sites).toHaveLength(10) // 2 Zr + 2 Zn + 6 N atoms
 
@@ -268,7 +292,7 @@ describe(`XYZ Parser`, () => {
     `should parse $name`,
     ({ name: test_name, content, sites, element, has_lattice, lattice_a }) => {
       const result = parse_xyz(content)
-      if (!result) throw `Failed to parse XYZ`
+      assert(result, `Failed to parse XYZ`)
       expect(result.sites).toHaveLength(sites)
       expect(result.sites[0].species[0].element).toBe(element)
       if (has_lattice) {
@@ -278,7 +302,7 @@ describe(`XYZ Parser`, () => {
         // For the extended-XYZ quartz case, ensure xyz is reconstructed from wrapped abc
         if (test_name === `extended with lattice`) {
           const lattice = result.lattice?.matrix
-          if (!lattice) throw `Missing lattice matrix`
+          assert(lattice, `Missing lattice matrix`)
           for (const site of result.sites) {
             // abc must be in [0,1)
             expect(site.abc[0]).toBeGreaterThanOrEqual(0)
@@ -306,7 +330,7 @@ describe(`XYZ Parser`, () => {
 
   it(`should handle scientific notation variants`, () => {
     const result = parse_xyz(c2ho_scientific_notation_xyz)
-    if (!result) throw `Failed to parse XYZ`
+    assert(result, `Failed to parse XYZ`)
     expect(result.sites[0].xyz[2]).toBeCloseTo(-7.22293142224e-6)
     expect(result.sites[2].xyz[2]).toBeCloseTo(0.00567890123456)
     expect(result.sites[3].xyz[0]).toBeCloseTo(-0.4440892098501)
@@ -359,8 +383,8 @@ describe(`XYZ Parser`, () => {
         const xyz = mat3x3_vec3_multiply(transpose_3x3_matrix(lattice), abc as Vec3)
         const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${xyz[2]}\n`
         const result = parse_xyz(content)
-        if (!result) throw `Failed to parse parametric lattice`
-        if (!result.lattice) throw `Missing lattice`
+        assert(result, `Failed to parse parametric lattice`)
+        assert(result.lattice, `Missing lattice`)
         expect_abc_in_unit_cell(result.sites[0])
         expect_xyz_matches_abc(result.sites[0], result.lattice.matrix)
       }
@@ -370,7 +394,7 @@ describe(`XYZ Parser`, () => {
   it(`should select last frame in multi-frame XYZ`, () => {
     const multi_frame = `2\nframe-1\nH 0 0 0\nH 0 0 1\n1\nframe-2\nHe 1 2 3\n`
     const result = parse_xyz(multi_frame)
-    if (!result) throw `Failed to parse multi-frame XYZ`
+    assert(result, `Failed to parse multi-frame XYZ`)
     expect(result.sites).toHaveLength(1)
     expect(result.sites[0].species[0].element).toBe(`He`)
     expect(result.sites[0].xyz).toEqual([1, 2, 3])
@@ -386,12 +410,12 @@ describe(`XYZ Parser`, () => {
       `H 1 1 1`,
     ].join(`\n`)
     const result = parse_xyz(content)
-    if (!result) throw `Failed to parse multi-frame with lattices`
+    assert(result, `Failed to parse multi-frame with lattices`)
     expect(result.lattice?.a).toBeCloseTo(2, 12)
     expect(result.lattice?.b).toBeCloseTo(2, 12)
     expect(result.lattice?.c).toBeCloseTo(2, 12)
     const lattice = result.lattice?.matrix
-    if (!lattice) throw `Missing lattice`
+    assert(lattice, `Missing lattice`)
     // abc should be 0.5 after wrapping from xyz [1,1,1] in a=2 cell
     expect_abc_in_unit_cell(result.sites[0])
     expect_xyz_matches_abc(result.sites[0], lattice)
@@ -400,7 +424,7 @@ describe(`XYZ Parser`, () => {
   it(`falls back to valid element symbol for invalid XYZ symbol`, () => {
     const content = `1\nTest\nXx 0 0 0\n`
     const result = parse_xyz(content)
-    if (!result) throw `Failed to parse invalid symbol XYZ`
+    assert(result, `Failed to parse invalid symbol XYZ`)
     expect(result.sites[0].species[0].element).toBe(`H`)
   })
 
@@ -413,10 +437,10 @@ describe(`XYZ Parser`, () => {
     for (const latt of latt_variants) {
       const content = `1\nLattice="${latt}"\nH 1 1 1\n`
       const result = parse_xyz(content)
-      if (!result) throw `Failed to parse scientific notation lattice`
+      assert(result, `Failed to parse scientific notation lattice`)
       expect(result.lattice?.a).toBeCloseTo(4, 12)
       const lattice = result.lattice?.matrix
-      if (!lattice) throw `Missing lattice`
+      assert(lattice, `Missing lattice`)
       expect_abc_in_unit_cell(result.sites[0])
       expect_xyz_matches_abc(result.sites[0], lattice)
     }
@@ -436,7 +460,7 @@ describe(`XYZ Parser`, () => {
     )
     const content = `1\nLattice="${lattice.flat().join(` `)}"\nH ${xyz[0]} ${xyz[1]} ${xyz[2]}\n`
     const result = parse_xyz(content)
-    if (!result) throw `Failed to parse singular lattice`
+    assert(result, `Failed to parse singular lattice`)
     // Should not crash and abc should be wrapped into [0,1) and finite
     expect_abc_in_unit_cell(result.sites[0])
     expect(Number.isFinite(result.sites[0].abc[0])).toBe(true)
@@ -448,7 +472,7 @@ describe(`XYZ Parser`, () => {
     const result = parse_xyz(`1
 Lattice="5 0 0 0 0 0 0 0 5"
 H 1 1 1`)
-    if (!result) throw `Failed to parse singular Cartesian XYZ`
+    assert(result, `Failed to parse singular Cartesian XYZ`)
     expect_abc_in_unit_cell(result.sites[0])
     expect(result.sites[0].abc.every(Number.isFinite)).toBe(true)
   })
@@ -457,7 +481,7 @@ H 1 1 1`)
     const start = performance.now()
     const result = parse_xyz(cyclohexane)
     const duration = performance.now() - start
-    if (!result) throw `Failed to parse cyclohexane`
+    assert(result, `Failed to parse cyclohexane`)
     expect(duration).toBeLessThan(100)
   })
 })
@@ -480,7 +504,7 @@ describe(`Auto-detection & Error Handling`, () => {
     { name: `POSCAR by content`, content: ba_ti_o3_tetragonal, sites: 5 },
   ])(`should detect $name`, ({ content, filename, sites }) => {
     const result = parse_structure_file(content, filename)
-    if (!result) throw `Failed to parse structure file`
+    assert(result, `Failed to parse structure file`)
     expect(result.sites).toHaveLength(sites)
   })
 
@@ -492,7 +516,7 @@ describe(`Auto-detection & Error Handling`, () => {
     const poscar_result = parse_poscar(triclinic_poscar)
     const xyz_result = parse_xyz(triclinic_xyz)
 
-    if (!poscar_result || !xyz_result) throw `Failed to parse POSCAR or XYZ`
+    assert(poscar_result && xyz_result, `Failed to parse POSCAR or XYZ`)
     expect(poscar_result.sites).toHaveLength(2)
     expect(xyz_result.sites).toHaveLength(2)
 
@@ -512,7 +536,7 @@ describe(`Auto-detection & Error Handling`, () => {
 
       // Verify perfect reconstruction: fractional → cartesian should match original
       const lattice = poscar_result.lattice?.matrix
-      if (!lattice) throw `Failed to get lattice matrix`
+      assert(lattice, `Failed to get lattice matrix`)
       const reconstructed = [
         poscar_site.abc[0] * lattice[0][0] +
           poscar_site.abc[1] * lattice[1][0] +
@@ -546,6 +570,11 @@ describe(`Auto-detection & Error Handling`, () => {
     { parser: parse_xyz, content: `3\nTest\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0` },
     { parser: parse_xyz, content: `2\nTest\nC 0.0 0.0\nH 1.0 0.0 0.0` },
     { parser: parse_xyz, content: `invalid\nTest\nC 0.0 0.0 0.0` },
+    { parser: parse_xyz, content: `1\nTest\nC Infinity 0.0 0.0` },
+    {
+      parser: parse_xyz,
+      content: `1\nLattice="Infinity 0 0 0 1 0 0 0 1"\nC 0.0 0.0 0.0`,
+    },
     {
       parser: parse_poscar,
       content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nDirect\ninvalid 0.0 0.0`,
@@ -605,7 +634,7 @@ describe(`CIF Parser`, () => {
     `should parse CIF format correctly: $name`,
     ({ cif, expected_sites, expected_lattice, expected_abc, check_beta }) => {
       const result = parse_cif(cif)
-      if (!result) throw `Failed to parse CIF: ${cif}`
+      assert(result, `Failed to parse CIF: ${cif}`)
       expect(result.sites).toHaveLength(expected_sites)
       if (expected_lattice) {
         if (expected_lattice.a) {
@@ -639,7 +668,7 @@ describe(`CIF Parser`, () => {
       // For non-orthogonal, check coordinate reconstruction
       if (check_beta) {
         const lattice = result.lattice?.matrix
-        if (!lattice) throw `Failed to get lattice matrix`
+        assert(lattice, `Failed to get lattice matrix`)
         for (const site of result.sites) {
           const reconstructed = [
             site.abc[0] * lattice[0][0] +
@@ -685,14 +714,14 @@ O2   O   0.410  0.140  0.880  1.000`
 
   it(`should detect CIF format by extension`, () => {
     const result = parse_structure_file(QUARTZ_CIF_FOR_DETECTION, `quartz.cif`)
-    if (!result) throw `Failed to parse CIF`
+    assert(result, `Failed to parse CIF`)
     expect(result.sites).toHaveLength(3)
     expect(result.lattice?.a).toBeCloseTo(4.916, 6)
   })
 
   test(`parses P24Ru4H252C296S24N16.cif (COD 7008984) with correct totals and composition`, () => {
     const result = parse_cif(ru_p_complex_cif)
-    if (!result) throw `Failed to parse P24Ru4H252C296S24N16.cif`
+    assert(result, `Failed to parse P24Ru4H252C296S24N16.cif`)
 
     // Expect exact total sites from CIF header (_atom_type_number_in_cell)
     // Ru: 4, S: 24, P: 24, N: 16, C: 296, H: 252 → total = 616
@@ -715,7 +744,7 @@ O2   O   0.410  0.140  0.880  1.000`
 
   it(`should detect CIF format by content`, () => {
     const result = parse_structure_file(QUARTZ_CIF_FOR_DETECTION)
-    if (!result) throw `Failed to parse CIF`
+    assert(result, `Failed to parse CIF`)
     expect(result.sites).toHaveLength(3)
   })
 
@@ -739,7 +768,7 @@ S(2)   0.500  0.500  0.500  1.000
 N(1)   0.750  0.750  0.750  1.000`
 
     const result = parse_cif(label_only_cif)
-    if (!result) throw `Failed to parse CIF with label-only format`
+    assert(result, `Failed to parse CIF with label-only format`)
 
     expect(result.sites).toHaveLength(4)
 
@@ -787,7 +816,7 @@ O1   O  -0.250  1.750  0.500  1.000
 H1   H   2.100  0.900  0.500  1.000`
 
       const result = parse_cif(cif_with_outside_coords, wrap_frac)
-      if (!result) throw `Failed to parse CIF with outside coordinates`
+      assert(result, `Failed to parse CIF with outside coordinates`)
 
       expect(result.sites).toHaveLength(3)
 
@@ -810,7 +839,7 @@ H1   H   2.100  0.900  0.500  1.000`
 
       // Test coordinate reconstruction works in both cases
       const lattice = result.lattice?.matrix
-      if (!lattice) throw `Failed to get lattice matrix`
+      assert(lattice, `Failed to get lattice matrix`)
 
       for (const site of result.sites) expect_xyz_matches_abc(site, lattice)
 
@@ -895,7 +924,7 @@ O1   O   0.250  0.250  0.250
 H1   H   0.500  0.500  0.500  1.000  1.000`
 
       const result = parse_cif(malformed_cif)
-      if (!result) throw new Error(`Failed to parse malformed CIF`)
+      assert(result, `Failed to parse malformed CIF`)
       expect(result.sites.length).toBe(3)
       expect(result.sites[0].species[0].occu).toBe(1.0)
     })
@@ -922,7 +951,7 @@ _unknown_tag  value
 H1   H   0.500  0.500  0.500`
 
       const result = parse_cif(cif_with_comments)
-      if (!result) throw `Failed to parse CIF with comments`
+      assert(result, `Failed to parse CIF with comments`)
       expect(result.sites).toHaveLength(3)
       // Check specific elements were parsed correctly
       expect(result.sites[0].species[0].element).toBe(`Si`)
@@ -1024,7 +1053,7 @@ O2 O2- 0.25 0.75 0.75
 O3 O2- 0.75 0.25 0.75`
 
       const result = parse_cif(cif_with_decorated_symbols)
-      if (!result) throw new Error(`Failed to parse CIF with decorated symbols`)
+      assert(result, `Failed to parse CIF with decorated symbols`)
       expect(result.sites).toHaveLength(6) // 2 Sn + 1 Fe + 3 O = 6 total sites
 
       // Verify that decorated symbols were normalized for counting
@@ -1295,7 +1324,7 @@ loop_
   F F6 2 0.33333333 0.66666667 0.94541 1.0`
 
     const result = parse_cif(cif)
-    if (!result) throw new Error(`Failed to parse CIF`)
+    assert(result, `Failed to parse CIF`)
 
     // Formula: Cs1 K1 B8 O12 F2 = 24 sites
     expect(result.sites.length).toBe(24)
@@ -1397,7 +1426,7 @@ Na Na 0.000 0.000 0.000`
 
   test(`parses PF-sd-1601634 CIF with correct oxygen count`, () => {
     const result = parse_cif(pf_sd_1601634_cif)
-    if (!result) throw new Error(`Failed to parse PF-sd-1601634 CIF`)
+    assert(result, `Failed to parse PF-sd-1601634 CIF`)
 
     // Count oxygen atoms (including OH and OH2)
     const oxygen_sites = result.sites.filter(
@@ -1575,7 +1604,7 @@ unit_cell:
       if (expected_result === `null`) {
         expect(structure).toBeNull()
       } else {
-        if (!expected_sites) throw `Expected sites to be number`
+        assert(typeof expected_sites === `number`, `Expected sites to be number`)
         expect(structure?.sites).toHaveLength(expected_sites)
 
         if (expected_lattice_a) {
@@ -1668,7 +1697,7 @@ unit_cell:
       if (expected_result === `null`) {
         expect(result).toBeNull()
       } else {
-        if (!expected_sites) throw `Expected sites to be number`
+        assert(typeof expected_sites === `number`, `Expected sites to be number`)
         expect(result?.sites).toHaveLength(expected_sites)
       }
     },
@@ -1995,7 +2024,7 @@ describe(`parse_structure_file`, () => {
       const content = JSON.stringify(nested_structure)
       const result = parse_any_structure(content, `test.json`)
 
-      if (!result || !(`lattice` in result)) throw new Error(`invalid parse result`)
+      assert(result && `lattice` in result, `invalid parse result`)
 
       expect(result.lattice.pbc).toEqual([true, true, true])
       expect(result.lattice.volume).toBe(8)
@@ -2113,7 +2142,7 @@ describe(`parse_structure_file`, () => {
       expect(site?.label).toBe(`Au1_site`)
 
       // Check lattice properties are preserved but PBC is overridden (for crystal structures)
-      if (!result || !(`lattice` in result)) throw new Error(`invalid parse result`)
+      assert(result && `lattice` in result, `invalid parse result`)
       expect(result.lattice.volume).toBe(27)
       expect(result.lattice.pbc).toEqual([true, true, true]) // Overridden
 
@@ -2123,7 +2152,7 @@ describe(`parse_structure_file`, () => {
       // Check structure-level properties are preserved
       expect(result.properties).toEqual({ formula: `Au`, energy: -5.2 })
       expect(result?.sites.length).toBe(1)
-      if (!result || !(`lattice` in result)) throw new Error(`invalid parse result`)
+      assert(result && `lattice` in result, `invalid parse result`)
       expect(result.lattice.volume).toBe(27)
     })
   })
@@ -2288,9 +2317,9 @@ describe(`OPTIMADE JSON parser`, () => {
       expected: { sites: 1, has_lattice: false, first_element: `C` },
     },
   ])(`should parse $name`, ({ data, content, expected }) => {
-    const test_content = content || JSON.stringify(data)
+    const test_content = content ?? JSON.stringify(data)
     const result = parse_optimade_json(test_content)
-    if (!result) throw `Failed to parse OPTIMADE JSON`
+    assert(result, `Failed to parse OPTIMADE JSON`)
 
     expect(result.sites).toHaveLength(expected.sites)
     expect(result.sites[0].species[0].element).toBe(expected.first_element)
@@ -2300,7 +2329,7 @@ describe(`OPTIMADE JSON parser`, () => {
       // Verify coordinate transformation works
       result.sites.forEach((site) => {
         const latt_mat = result.lattice?.matrix
-        if (!latt_mat) throw `Lattice matrix is undefined`
+        assert(latt_mat, `Lattice matrix is undefined`)
         const reconstructed_xyz = mat3x3_vec3_multiply(
           transpose_3x3_matrix(latt_mat),
           site.abc,
@@ -2341,8 +2370,12 @@ describe(`OPTIMADE JSON parser`, () => {
         id: `test-no-valid-sites`,
         type: `structures`,
         attributes: {
-          cartesian_site_positions: [[0.0, 0.0]],
-          species_at_sites: [`Fe`],
+          cartesian_site_positions: [
+            [0.0, 0.0],
+            [0.0, `bad`, 0.0],
+            [Infinity, 0, 0],
+          ],
+          species_at_sites: [`Fe`, `Fe`, `Fe`],
         },
       },
       expected_error: `No valid sites found in OPTIMADE JSON`,
@@ -2358,7 +2391,7 @@ describe(`OPTIMADE JSON parser`, () => {
       expected_error: `Error parsing OPTIMADE JSON:`,
     },
   ])(`should handle $name gracefully`, ({ data, content, expected_error }) => {
-    const test_content = content || JSON.stringify(data)
+    const test_content = content ?? JSON.stringify(data)
     const result = parse_optimade_json(test_content)
     expect(result).toBeNull()
 
@@ -2434,7 +2467,7 @@ describe(`OPTIMADE JSON parser`, () => {
       },
     }
     const result = parse_optimade_json(JSON.stringify(data))
-    if (!result) throw `Failed to parse OPTIMADE JSON`
+    assert(result, `Failed to parse OPTIMADE JSON`)
 
     expect(result.sites).toHaveLength(positions.length)
     result.sites.forEach((site, idx) => expect(site.abc).toEqual(expected_abc[idx]))
@@ -2451,7 +2484,7 @@ describe(`OPTIMADE JSON parser`, () => {
       expect(result.lattice?.matrix).toEqual(lattice_vectors)
       result.sites.forEach((site) => {
         const latt_mat = result.lattice?.matrix
-        if (!latt_mat) throw `Lattice matrix is undefined`
+        assert(latt_mat, `Lattice matrix is undefined`)
         const reconstructed_xyz = mat3x3_vec3_multiply(
           transpose_3x3_matrix(latt_mat),
           site.abc,
@@ -2660,7 +2693,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     },
   ])(`should convert $name`, ({ optimade_structure, expected }) => {
     const result = optimade_to_crystal(optimade_structure)
-    if (!result) throw `Failed to convert OPTIMADE structure`
+    assert(result, `Failed to convert OPTIMADE structure`)
 
     expect(result.sites).toHaveLength(expected.sites)
     expect(result.sites[0].species[0].element).toBe(expected.first_element)
@@ -2832,7 +2865,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     },
   ])(`should handle $name`, ({ optimade_structure, expected_abc }) => {
     const result = optimade_to_crystal(optimade_structure)
-    if (!result) throw `Failed to convert OPTIMADE structure`
+    assert(result, `Failed to convert OPTIMADE structure`)
 
     expect(result.sites).toHaveLength(expected_abc.length)
     result.sites.forEach((site, idx) => {
@@ -2845,7 +2878,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     if (result.lattice) {
       result.sites.forEach((site) => {
         const latt_mat = result.lattice?.matrix
-        if (!latt_mat) throw `Lattice matrix is undefined`
+        assert(latt_mat, `Lattice matrix is undefined`)
         const reconstructed_xyz = mat3x3_vec3_multiply(
           transpose_3x3_matrix(latt_mat),
           site.abc,
@@ -2878,7 +2911,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
       },
     }
     const result = optimade_to_crystal(optimade_structure)
-    if (!result) throw `Failed to convert OPTIMADE structure`
+    assert(result, `Failed to convert OPTIMADE structure`)
 
     expect(result.properties).toBeDefined()
     expect(result.properties?.chemical_formula_descriptive).toBe(`SiO2`)
@@ -2913,7 +2946,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
       },
     }
     const result = optimade_to_crystal(optimade_structure)
-    if (!result) throw `Failed to convert OPTIMADE structure`
+    assert(result, `Failed to convert OPTIMADE structure`)
 
     expect(result.sites[0].properties.mass).toBe(55.845)
     expect(result.sites[0].properties.concentration).toBeUndefined() // 1.0 is default, not stored

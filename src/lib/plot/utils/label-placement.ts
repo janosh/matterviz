@@ -1,4 +1,5 @@
-import type { AxisConfig, DataSeries, XyObj } from '$lib/plot'
+import type { Point2D } from '$lib/math'
+import type { AxisConfig, DataSeries } from '$lib/plot'
 import type { PlotScaleFn } from '$lib/plot/scales'
 import type { LabelPlacementConfig, LabelPlacementWeights } from '$lib/plot/types'
 import { is_time_scale } from '$lib/plot/types'
@@ -33,7 +34,7 @@ interface LabelInfo {
   anchor: AnchorInfo
   width: number
   height: number
-  candidates: XyObj[]
+  candidates: Point2D[]
 }
 
 const DEFAULT_WEIGHTS: Required<LabelPlacementWeights> = {
@@ -43,6 +44,14 @@ const DEFAULT_WEIGHTS: Required<LabelPlacementWeights> = {
   leader_text: 8,
   distance: 0.5,
   bounds: 100,
+}
+
+const copy_state = (target: LabelState, source: LabelState) => {
+  target.x = source.x
+  target.y = source.y
+  target.w = source.w
+  target.h = source.h
+  target.anchor_idx = source.anchor_idx
 }
 
 export function parse_font_size(size_str?: string): number {
@@ -138,7 +147,7 @@ export function generate_candidates(
   label_w: number,
   label_h: number,
   gap: number,
-): XyObj[] {
+): Point2D[] {
   const offset = point_radius + gap
   return [
     { x: ax + offset, y: ay - label_h + offset / 2 }, // R  (baseline just below center)
@@ -266,7 +275,7 @@ export function compute_label_positions(
     height: number
     pad: { t: number; b: number; l: number; r: number }
   },
-): Record<string, XyObj> {
+): Record<string, Point2D> {
   const { x_scale_fn, y_scale_fn, y2_scale_fn, x_axis } = scales
   const { width, height, pad } = bounds
 
@@ -374,13 +383,6 @@ export function compute_label_positions(
   // Reusable scratch objects to avoid allocations in the hot loop
   const old_scratch: LabelState = { x: 0, y: 0, w: 0, h: 0, anchor_idx: 0 }
   const new_scratch: LabelState = { x: 0, y: 0, w: 0, h: 0, anchor_idx: 0 }
-  const copy_state = (dst: LabelState, src: LabelState) => {
-    dst.x = src.x
-    dst.y = src.y
-    dst.w = src.w
-    dst.h = src.h
-    dst.anchor_idx = src.anchor_idx
-  }
 
   for (let step = 0; step < total_steps; step++) {
     const temperature = Math.max(0.001, 1.0 - step * cooling_rate)

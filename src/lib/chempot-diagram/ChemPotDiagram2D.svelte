@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { type D3InterpolateName } from '$lib/colors'
+  import type { D3InterpolateName } from '$lib/colors'
   import { get_electro_neg_formula } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'

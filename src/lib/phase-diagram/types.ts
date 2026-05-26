@@ -1,6 +1,7 @@
-import type { Sides } from '$lib/plot'
+import type { Point2D, Vec2 } from '$lib/math'
+import type { LineStyle } from '$lib/plot'
+import type { Sides } from '$lib/plot/layout'
 import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
-import type { Vec2 } from '../math.ts'
 
 export type TempUnit = `K` | `°C` | `°F`
 export type CompUnit = `at%` | `wt%` | `mol%` | `fraction`
@@ -30,11 +31,7 @@ export interface PhaseBoundary {
   id: string
   type: BoundaryType
   points: Vec2[] // [composition, temperature] pairs defining the curve
-  style?: {
-    color?: string
-    width?: number
-    dash?: string
-  }
+  style?: LineStyle
   label?: string
 }
 
@@ -135,7 +132,7 @@ export interface PhaseHoverInfo {
   region: PhaseRegion
   composition: number
   temperature: number
-  position: { x: number; y: number } // screen coordinates
+  position: Point2D // screen coordinates
   lever_rule?: LeverRuleResult // Only populated for two-phase regions
   vertical_lever_rule?: VerticalLeverRuleResult // Vertical lever rule for two-phase regions
   special_point?: SpecialPoint // Populated when hovering near a special point

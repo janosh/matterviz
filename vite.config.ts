@@ -1,4 +1,3 @@
-// @ts-nocheck - tsgo has "Excessive stack depth" bug with Vite Plugin types
 import yaml from '@rollup/plugin-yaml'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { readFileSync } from 'node:fs'
@@ -7,6 +6,7 @@ import { gunzipSync } from 'node:zlib'
 import { vite_plugin as live_examples } from 'svelte-multiselect/live-examples'
 import type { Plugin } from 'vite'
 import { defineConfig } from 'vite-plus'
+// @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 
 const TEXT_EXT_RE = /\.(xyz|extxyz|cif|poscar|lammpstrj|yaml\.gz)$/
@@ -71,8 +71,38 @@ export default defineConfig({
       '@typescript-eslint/prefer-readonly': `error`,
       '@typescript-eslint/prefer-regexp-exec': `error`,
       '@typescript-eslint/prefer-find': `error`,
+      '@typescript-eslint/no-deprecated': `error`,
+      '@typescript-eslint/no-misused-promises': `error`,
+      '@typescript-eslint/restrict-plus-operands': `error`,
+      '@typescript-eslint/no-dynamic-delete': `error`,
+      '@typescript-eslint/no-empty-object-type': `error`,
+      '@typescript-eslint/no-explicit-any': `error`,
+      '@typescript-eslint/no-import-type-side-effects': `error`,
+      '@typescript-eslint/no-invalid-void-type': `error`,
+      '@typescript-eslint/no-mixed-enums': `error`,
+      '@typescript-eslint/no-require-imports': `error`,
+      '@typescript-eslint/only-throw-error': `error`,
+      '@typescript-eslint/ban-ts-comment': `error`,
+      '@typescript-eslint/consistent-type-imports': `error`,
+      '@typescript-eslint/prefer-function-type': `error`,
+      '@typescript-eslint/prefer-includes': `error`,
+      '@typescript-eslint/prefer-optional-chain': `error`,
+      '@typescript-eslint/prefer-reduce-type-parameter': `error`,
+      '@typescript-eslint/prefer-ts-expect-error': `error`,
+      '@typescript-eslint/return-await': `error`,
+      '@typescript-eslint/switch-exhaustiveness-check': `error`,
+      '@typescript-eslint/unified-signatures': `error`,
+      'array-callback-return': `error`,
+      'prefer-object-has-own': `error`,
+      'eslint-plugin-promise/no-multiple-resolved': `error`,
+      'eslint-plugin-promise/no-return-in-finally': `error`,
+      'eslint-plugin-promise/param-names': `error`,
+      'eslint-plugin-promise/valid-params': `error`,
+      '@typescript-eslint/consistent-type-exports': `error`,
+      'eslint-plugin-unicorn/require-array-join-separator': `error`,
       'no-useless-computed-key': `error`,
       'eslint-plugin-vitest/prefer-strict-boolean-matchers': `error`,
+      'eslint-plugin-vitest/prefer-each': `error`,
       'eslint-plugin-vitest/prefer-called-exactly-once-with': `error`,
       'eslint-plugin-vitest/require-awaited-expect-poll': `error`,
 
@@ -119,7 +149,7 @@ export default defineConfig({
           return this.error(`Failed to decompress ${id}: ${error}`)
         }
       },
-    },
+    } satisfies Plugin,
     {
       // Rolldown doesn't honor ?raw for unknown file types in import.meta.glob.
       // Claims the file before rolldown's parser sees it, returns raw text as a string export.
@@ -149,7 +179,7 @@ export default defineConfig({
           return null
         }
       },
-    },
+    } satisfies Plugin,
     sveltekit(),
     live_examples(),
     yaml(),

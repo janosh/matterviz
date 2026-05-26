@@ -1,10 +1,7 @@
 <script lang="ts">
-  import { type D3InterpolateName } from '$lib/colors'
-  import {
-    get_electro_neg_formula,
-    get_formula_label_segments,
-    type FormulaLabelSegment,
-  } from '$lib/composition/format'
+  import type { D3InterpolateName } from '$lib/colors'
+  import { get_electro_neg_formula, get_formula_label_segments } from '$lib/composition/format'
+  import type { FormulaLabelSegment } from '$lib/composition/format'
   import { extract_formula_elements } from '$lib/composition/parse'
   import TemperatureSlider from '$lib/convex-hull/TemperatureSlider.svelte'
   import type { PhaseData } from '$lib/convex-hull/types'
@@ -73,6 +70,9 @@
     ChemPotHoverInfo3D,
   } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
+
+  const edge_key = (key_a: string, key_b: string): string =>
+    key_a < key_b ? `${key_a}|${key_b}` : `${key_b}|${key_a}`
 
   let {
     entries = [],
@@ -939,8 +939,6 @@
         `${round(pos.getX(vert_idx))},${round(pos.getY(vert_idx))},${
           round(pos.getZ(vert_idx))
         }`
-      const ekey = (ka: string, kb: string): string =>
-        ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`
       // Compute face normals
       const normals: Vec3[] = []
       for (let face_idx = 0; face_idx < n_faces; face_idx++) {
@@ -964,9 +962,9 @@
         const keys = [vkey(base), vkey(base + 1), vkey(base + 2)]
         for (
           const ek of [
-            ekey(keys[0], keys[1]),
-            ekey(keys[1], keys[2]),
-            ekey(keys[0], keys[2]),
+            edge_key(keys[0], keys[1]),
+            edge_key(keys[1], keys[2]),
+            edge_key(keys[0], keys[2]),
           ]
         ) {
           const list = edge_faces.get(ek)

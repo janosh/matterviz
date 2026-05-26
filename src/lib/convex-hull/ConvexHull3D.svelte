@@ -9,10 +9,8 @@
     vesta_hex,
     watch_dark_mode,
   } from '$lib/colors'
-  import {
-    get_formula_label_segments,
-    type FormulaLabelSegment,
-  } from '$lib/composition/format'
+  import { get_formula_label_segments } from '$lib/composition/format'
+  import type { FormulaLabelSegment } from '$lib/composition/format'
   import { normalize_show_controls } from '$lib/controls'
   import { sanitize_html } from '$lib/sanitize'
   import { ClickFeedback, DragOverlay, Spinner } from '$lib/feedback'
@@ -23,15 +21,10 @@
     setup_fullscreen_effect,
     toggle_fullscreen,
   } from '$lib/layout'
-  import { to_radians, type Vec3 } from '$lib/math'
+  import { to_radians, type Point3D, type Vec3 } from '$lib/math'
   import { ColorBar, PlotTooltip } from '$lib/plot'
-  import {
-    centered_rect,
-    pad_rect,
-    rects_overlap,
-    rect_within_rect,
-    type Rect,
-  } from '$lib/plot/layout'
+  import { centered_rect, pad_rect, rects_overlap, rect_within_rect } from '$lib/plot/layout'
+  import type { Rect } from '$lib/plot/layout'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import { Canvas, T } from '@threlte/core'
@@ -63,7 +56,6 @@
     HoverData3D,
     HullFaceColorMode,
     LabelPlacement,
-    Point3D,
   } from './types'
   import { compute_hull_stability } from './helpers'
 

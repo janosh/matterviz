@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { XyObj } from '$lib/plot'
+  import type { Point2D } from '$lib/math'
 
-  let { start, current }: { start: XyObj | null; current: XyObj | null } = $props()
+  let { start, current }: { start: Point2D | null; current: Point2D | null } = $props()
 </script>
 
 {#if start && current && isFinite(start.x) && isFinite(start.y) &&

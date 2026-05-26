@@ -1069,12 +1069,12 @@ test(`bonding logic treats original and image atoms consistently`, () => {
 
   const bond_counts = new Map<number, number>()
   for (const bond of bonds) {
-    bond_counts.set(bond.site_idx_1, (bond_counts.get(bond.site_idx_1) || 0) + 1)
-    bond_counts.set(bond.site_idx_2, (bond_counts.get(bond.site_idx_2) || 0) + 1)
+    bond_counts.set(bond.site_idx_1, (bond_counts.get(bond.site_idx_1) ?? 0) + 1)
+    bond_counts.set(bond.site_idx_2, (bond_counts.get(bond.site_idx_2) ?? 0) + 1)
   }
 
-  const c1_bonds = bond_counts.get(0) || 0
-  const c1_img_bonds = bond_counts.get(c1_img_idx) || 0
+  const c1_bonds = bond_counts.get(0) ?? 0
+  const c1_img_bonds = bond_counts.get(c1_img_idx) ?? 0
 
   expect(c1_img_bonds).toBe(c1_bonds)
 
@@ -1082,8 +1082,8 @@ test(`bonding logic treats original and image atoms consistently`, () => {
     (s, i) => i > 2 && Math.abs(s.xyz[0] - 10.0) < 0.1,
   )
   if (h_img_idx !== -1) {
-    const h_bonds = bond_counts.get(2) || 0
-    const h_img_bonds = bond_counts.get(h_img_idx) || 0
+    const h_bonds = bond_counts.get(2) ?? 0
+    const h_img_bonds = bond_counts.get(h_img_idx) ?? 0
     expect(h_img_bonds).toBe(h_bonds)
   }
 })

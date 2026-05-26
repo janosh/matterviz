@@ -51,7 +51,9 @@ async function download_elem_image(num_name: string) {
 
 const action = process.env.ACTION ?? ``
 if (![`report`, `download`, `re-download`].includes(action)) {
-  throw `Correct usage: ACTION=... npx tsx src/scripts/fetch-elem-images.ts, got ${action}\n`
+  throw new Error(
+    `Correct usage: ACTION=... npx tsx src/scripts/fetch-elem-images.ts, got ${action}\n`,
+  )
 }
 if (action.endsWith(`download`)) console.warn(`Downloading images...`)
 if (action === `report`) console.warn(`Missing images`)

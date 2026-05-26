@@ -1,8 +1,5 @@
-import {
-  COMPRESSION_EXTENSIONS,
-  COMPRESSION_EXTENSIONS_REGEX,
-  COMPRESSION_FORMATS,
-} from '$lib/constants'
+import type { COMPRESSION_EXTENSIONS } from '$lib/constants'
+import { COMPRESSION_EXTENSIONS_REGEX, COMPRESSION_FORMATS } from '$lib/constants'
 
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]

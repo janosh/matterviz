@@ -2,7 +2,7 @@
 import { PLOT_COLORS } from '$lib/colors'
 import { trajectory_property_config } from '$lib/labels'
 import { get_coefficient_of_variation } from '$lib/math'
-import type { DataSeries } from '$lib/plot'
+import type { DataSeries } from '$lib/plot/types'
 import type { TrajectoryDataExtractor, TrajectoryMetadata, TrajectoryType } from './index'
 
 // Configuration constants
@@ -239,7 +239,7 @@ function apply_group_assignments(series: DataSeries[], unit_groups: UnitGroup[])
     const group = unit_groups.find((unit_group) => unit_group.series.includes(srs))
     if (group) {
       srs.visible = group.is_visible
-      srs.y_axis = axis_map.get(group) || `y1`
+      srs.y_axis = axis_map.get(group) ?? `y1`
     }
   }
 }
@@ -445,32 +445,32 @@ export function should_hide_plot(
   })
 }
 
+function get_axis_label(axis_series: DataSeries[]): string {
+  const visible_series = axis_series.filter((srs) => srs.visible)
+  if (!visible_series.length) return `Value`
+
+  const unit_groups = new Map<string, string[]>()
+  visible_series.forEach((srs) => {
+    const unit = srs.unit || ``
+    const label = srs.label || `Value`
+    if (!unit_groups.has(unit)) unit_groups.set(unit, [])
+    const group = unit_groups.get(unit)
+    if (group) group.push(label)
+  })
+
+  const unit_entries = Array.from(unit_groups.entries())
+  if (!unit_entries.length) return `Value`
+
+  const [unit, labels] = unit_entries[0]
+  const unique_labels = [...new Set(labels)].sort().join(` / `)
+  return unit ? `${unique_labels} (${unit})` : unique_labels
+}
+
 export function generate_axis_labels(plot_series: DataSeries[]): {
   y1: string
   y2: string
 } {
   if (!plot_series.length) return { y1: `Value`, y2: `Value` }
-
-  const get_axis_label = (axis_series: DataSeries[]): string => {
-    const visible_series = axis_series.filter((srs) => srs.visible)
-    if (!visible_series.length) return `Value`
-
-    const unit_groups = new Map<string, string[]>()
-    visible_series.forEach((srs) => {
-      const unit = srs.unit || ``
-      const label = srs.label || `Value`
-      if (!unit_groups.has(unit)) unit_groups.set(unit, [])
-      const group = unit_groups.get(unit)
-      if (group) group.push(label)
-    })
-
-    const unit_entries = Array.from(unit_groups.entries())
-    if (!unit_entries.length) return `Value`
-
-    const [unit, labels] = unit_entries[0]
-    const unique_labels = [...new Set(labels)].sort().join(` / `)
-    return unit ? `${unique_labels} (${unit})` : unique_labels
-  }
 
   return {
     y1: get_axis_label(plot_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`)),

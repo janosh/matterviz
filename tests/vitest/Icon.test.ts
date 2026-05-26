@@ -1,4 +1,5 @@
 import { Icon, ICON_DATA } from '$lib'
+import type { IconName } from '$lib/icons'
 import { mount } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
 import { svg_query } from './setup'
@@ -56,8 +57,9 @@ describe(`Icon`, () => {
 
   it(`falls back to Alert for invalid icon`, () => {
     const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
-    // @ts-ignore testing invalid icon name
-    mount(Icon, { target: document.body, props: { icon: `InvalidIcon` } })
+    // @ts-expect-error intentionally testing invalid icon fallback
+    const props: { icon: IconName } = { icon: `InvalidIcon` }
+    mount(Icon, { target: document.body, props })
 
     expect(svg_query(`svg`).getAttribute(`viewBox`)).toBe(ICON_DATA.Alert.viewBox)
     expect(console_error).toHaveBeenCalledWith(`Icon 'InvalidIcon' not found`)

@@ -43,9 +43,9 @@ export const choose_site_label_offset = (bond_directions: Vec3[], base_offset: V
 
   const preferred_direction = math.normalize_vec3(base_offset, [0, 1, 0])
   const repulsion_direction = math.normalize_vec3(
-    bond_directions.reduce(
+    bond_directions.reduce<Vec3>(
       (offset_sum, bond_direction) => math.subtract(offset_sum, bond_direction),
-      [0, 0, 0] as Vec3,
+      [0, 0, 0],
     ),
     preferred_direction,
   )

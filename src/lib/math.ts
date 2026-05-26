@@ -4,9 +4,27 @@ export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]
 export type Vec4 = [number, number, number, number]
 export type Vec9 = [number, number, number, number, number, number, number, number, number]
+export type Point2D = { x: number; y: number }
+export type Point3D = Point2D & { z: number }
 export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 export type NdVector = number[]
+
+export const is_finite_vec3_like = (
+  values: ArrayLike<unknown> | undefined,
+): values is ArrayLike<number> => {
+  if (values?.length !== 3) return false
+  return [0, 1, 2].every(
+    (idx) => typeof values[idx] === `number` && Number.isFinite(values[idx]),
+  )
+}
+
+export const finite_vec3_from_values = (
+  values: ArrayLike<unknown> | undefined,
+): Vec3 | undefined => {
+  if (!is_finite_vec3_like(values)) return undefined
+  return [values[0], values[1], values[2]]
+}
 
 // Column-major 4x4 matrix as flat 16-element tuple (for Three.js/WebGL)
 // oxfmt-ignore
@@ -1019,6 +1037,10 @@ export function solve_linear_system(
   return x
 }
 
+export const cross_2d = (origin: Vec2, point_a: Vec2, point_b: Vec2): number =>
+  (point_a[0] - origin[0]) * (point_b[1] - origin[1]) -
+  (point_a[1] - origin[1]) * (point_b[0] - origin[0])
+
 // Full 2D convex hull via Andrew's monotone chain algorithm.
 // Returns vertices in counter-clockwise order.
 export function convex_hull_2d(points: Vec2[]): Vec2[] {
@@ -1026,15 +1048,12 @@ export function convex_hull_2d(points: Vec2[]): Vec2[] {
 
   const sorted = points.toSorted((a, b) => a[0] - b[0] || a[1] - b[1])
 
-  const cross = (o: Vec2, a: Vec2, b: Vec2): number =>
-    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
   // Lower hull
   const lower: Vec2[] = []
   for (const pt of sorted) {
     while (
       lower.length >= 2 &&
-      cross(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0
+      cross_2d(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0
     ) {
       lower.pop()
     }
@@ -1047,7 +1066,7 @@ export function convex_hull_2d(points: Vec2[]): Vec2[] {
     const pt = sorted[idx]
     while (
       upper.length >= 2 &&
-      cross(upper[upper.length - 2], upper[upper.length - 1], pt) <= 0
+      cross_2d(upper[upper.length - 2], upper[upper.length - 1], pt) <= 0
     ) {
       upper.pop()
     }

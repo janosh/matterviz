@@ -9,14 +9,15 @@ import { timeFormat } from 'd3-time-format'
 export type D3Symbol = keyof typeof d3_symbols & `symbol${Capitalize<string>}`
 export type D3SymbolName = Exclude<D3Symbol extends `symbol${infer Name}` ? Name : never, ``>
 
+const is_d3_symbol_name = (name: string): name is D3SymbolName =>
+  Object.hasOwn(d3_symbols, `symbol${name}`)
+
 function name_for_symbol(sym: unknown): D3SymbolName | null {
-  for (const key in d3_symbols) {
-    if (
-      Object.prototype.hasOwnProperty.call(d3_symbols, key) &&
-      (d3_symbols as Record<string, unknown>)[key] === sym &&
-      /^symbol[A-Z]/.test(key)
-    )
-      return key.substring(6) as D3SymbolName
+  for (const [key, symbol] of Object.entries(d3_symbols)) {
+    if (symbol === sym && /^symbol[A-Z]/.test(key)) {
+      const name = key.substring(6)
+      if (is_d3_symbol_name(name)) return name
+    }
   }
   return null
 }
@@ -27,10 +28,10 @@ export const symbol_names = [
   .map(name_for_symbol)
   .filter((n): n is D3SymbolName => n !== null)
 
-export const symbol_map = Object.fromEntries(
+export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.fromEntries(
   // Symbol lookup from d3-shape
   symbol_names.map((name) => [name, d3_symbols[`symbol${name}`]]),
-) as Record<D3SymbolName, SymbolType>
+)
 
 // Format a value for display with optional time formatting
 export function format_value(value: number, formatter?: string): string {
@@ -101,7 +102,7 @@ export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>>
   Object.fromEntries(
     ELEM_HEATMAP_KEYS.map((key) => {
       const [label, unit] = ELEM_PROPERTY_LABELS[key] ?? []
-      if (!label) throw `Unexpected missing label ${label}`
+      if (!label) throw new Error(`Unexpected missing label for element property ${key}`)
       return [label + (unit ? ` (${unit})` : ``), key]
     }),
   )
@@ -250,6 +251,8 @@ export const SUPERSCRIPT_MAP = {
   '+': `⁺`,
   '-': `⁻`,
 } as const
+const is_superscript_key = (key: string): key is keyof typeof SUPERSCRIPT_MAP =>
+  key in SUPERSCRIPT_MAP
 export const SUBSCRIPT_MAP = {
   '0': `₀`,
   '1': `₁`,
@@ -265,9 +268,8 @@ export const SUBSCRIPT_MAP = {
 
 // replaces all signs and digits with their unicode superscript equivalent
 export const superscript_digits = (input: string): string =>
-  input.replace(
-    /[\d+-]/g,
-    (match) => SUPERSCRIPT_MAP[match as keyof typeof SUPERSCRIPT_MAP] ?? match,
+  input.replace(/[\d+-]/g, (match) =>
+    is_superscript_key(match) ? SUPERSCRIPT_MAP[match] : match,
   )
 
 // Trajectory property configuration: clean labels and units as structured data

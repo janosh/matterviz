@@ -49,6 +49,21 @@ export type SymmetryDataset = MoyoDataset & {
 
 let initialized = false
 const OCCUPANCY_EPS = 1e-8
+const to_unit = (value: number) => value - Math.floor(value)
+const near_zero = (value: number) => Math.min(value, 1 - value)
+const near_half = (value: number) => Math.abs(value - 0.5)
+const symmetry_position_key = (pos: Vec3) =>
+  pos.map((coord) => to_unit(coord).toFixed(8)).join(`,`)
+const periodic_distance = (pos1: Vec3, pos2: Vec3) =>
+  Math.sqrt(
+    pos1.reduce((sum, coord, idx) => {
+      // Wrap delta into [-0.5, 0.5) using safe modulo
+      const delta = coord - pos2[idx]
+      const wrapped = ((((delta + 0.5) % 1) + 1) % 1) - 0.5
+      const distance = Math.abs(wrapped)
+      return sum + distance * distance
+    }, 0),
+  )
 
 export async function ensure_moyo_wasm_ready(wasm_url?: string) {
   if (initialized) return
@@ -184,9 +199,6 @@ export async function analyze_structure_symmetry(
 
 // Helper function to score coordinate simplicity for Wyckoff table
 export function simplicity_score(vec: number[]): number {
-  const to_unit = (v: number) => v - Math.floor(v)
-  const near_zero = (v: number) => Math.min(v, 1 - v)
-  const near_half = (v: number) => Math.abs(v - 0.5)
   const [ax, ay, az] = vec?.map(to_unit) ?? []
   return (
     near_zero(ax) +
@@ -275,8 +287,6 @@ export function apply_symmetry_operations(
   _tolerance = 1e-6,
 ): Vec3[] {
   const seen = new Set<string>()
-  const wrap = (coord: number) => coord - Math.floor(coord)
-  const key = (pos: Vec3) => pos.map((coord) => wrap(coord).toFixed(8)).join(`,`)
 
   return operations
     .map(({ rotation, translation }) => {
@@ -288,10 +298,10 @@ export function apply_symmetry_operations(
           rotation[dim * 3 + 2] * position[2] +
           translation[dim],
       ) as Vec3
-      return new_pos.map(wrap) as Vec3
+      return new_pos.map(to_unit) as Vec3
     })
     .filter((pos) => {
-      const pos_key = key(pos)
+      const pos_key = symmetry_position_key(pos)
       if (seen.has(pos_key)) return false
       seen.add(pos_key)
       return true
@@ -309,17 +319,6 @@ export function map_wyckoff_to_all_atoms(
   if (!sym_data?.operations || !displayed_structure.sites || !orig_structure.sites) {
     return wyckoff_positions
   }
-
-  const periodic_distance = (pos1: Vec3, pos2: Vec3) =>
-    Math.sqrt(
-      pos1.reduce((sum, coord, idx) => {
-        // Wrap delta into [-0.5, 0.5) using safe modulo
-        const delta = coord - pos2[idx]
-        const wrapped = ((((delta + 0.5) % 1) + 1) % 1) - 0.5
-        const d = Math.abs(wrapped)
-        return sum + d * d
-      }, 0),
-    )
 
   return wyckoff_positions.map((wyckoff_pos) => {
     const indices = (wyckoff_pos.site_indices || [])

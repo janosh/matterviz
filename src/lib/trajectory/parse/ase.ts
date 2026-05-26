@@ -1,12 +1,12 @@
 // ASE trajectory (.traj) parsing - binary format
-import { MAX_SAFE_STRING_LENGTH } from '../constants'
+import { MAX_SAFE_STRING_LENGTH } from '$lib/trajectory/constants'
 import {
   convert_atomic_numbers,
   create_trajectory_frame,
   read_ndarray_from_view,
   validate_3x3_matrix,
-} from '../helpers'
-import type { TrajectoryFrame, TrajectoryType } from '../index'
+} from '$lib/trajectory/helpers'
+import type { TrajectoryFrame, TrajectoryType } from '$lib/trajectory/index'
 
 export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): TrajectoryType {
   const view = new DataView(buffer)
@@ -51,12 +51,12 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
         new TextDecoder().decode(new Uint8Array(buffer, offset, json_length)),
       )
 
-      const positions_ref = frame_data[`positions.`] || frame_data.positions
+      const positions_ref = frame_data[`positions.`] ?? frame_data.positions
       const positions = positions_ref?.ndarray
         ? read_ndarray_from_view(view, positions_ref)
         : (positions_ref as number[][])
 
-      const numbers_ref = frame_data[`numbers.`] || frame_data.numbers || global_numbers
+      const numbers_ref = frame_data[`numbers.`] ?? frame_data.numbers ?? global_numbers
       const numbers: number[] = numbers_ref?.ndarray
         ? read_ndarray_from_view(view, numbers_ref).flat()
         : (numbers_ref as number[])
@@ -77,7 +77,7 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
           positions,
           elements,
           frame_data.cell ? validate_3x3_matrix(frame_data.cell) : undefined,
-          frame_data.pbc || [true, true, true],
+          frame_data.pbc ?? [true, true, true],
           idx,
           metadata,
         ),
@@ -102,7 +102,7 @@ export function parse_ase_trajectory(buffer: ArrayBuffer, filename?: string): Tr
     filename,
     source_format: `ase_trajectory`,
     frame_count: frames.length,
-    total_atoms: global_numbers?.length || 0,
+    total_atoms: global_numbers?.length ?? 0,
     periodic_boundary_conditions,
   }
   return { frames, metadata }

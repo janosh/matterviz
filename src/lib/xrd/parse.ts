@@ -842,7 +842,7 @@ export async function parse_xrd_file(
   if (ext === `xrdml`) return parse_xrdml_file(get_text())
 
   // Binary formats
-  if (ext === `brml`) return await parse_brml_file(get_buffer()) // async due to lazy fflate import
+  if (ext === `brml`) return parse_brml_file(get_buffer()) // async due to lazy fflate import
   if (ext === `raw`) return parse_bruker_raw_file(get_buffer())
 
   return null

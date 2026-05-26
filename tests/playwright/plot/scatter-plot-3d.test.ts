@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   expect_canvas_changed,
   get_canvas_timeout,
@@ -125,7 +125,7 @@ test.describe(`ScatterPlot3D`, () => {
 
 test.describe(`ScatterPlot3D Projections`, () => {
   // Helper to open controls pane
-  async function open_controls_pane(page: import('@playwright/test').Page) {
+  async function open_controls_pane(page: Page) {
     const container = page.locator(CONTAINER_SELECTOR)
     await container.hover()
     const toggle = container.locator(`button.pane-toggle`)
@@ -137,11 +137,11 @@ test.describe(`ScatterPlot3D Projections`, () => {
   }
 
   // Helper to get projection checkbox
-  const get_projection_checkbox = (pane: import('@playwright/test').Locator, plane: string) =>
+  const get_projection_checkbox = (pane: Locator, plane: string) =>
     pane.locator(`label`).filter({ hasText: plane }).locator(`input[type="checkbox"]`)
 
   // Helper to get slider row by label text
-  const get_slider_row = (pane: import('@playwright/test').Locator, label: string) =>
+  const get_slider_row = (pane: Locator, label: string) =>
     pane.locator(`.pane-row`).filter({ hasText: label })
 
   test.beforeEach(async ({ page }) => {

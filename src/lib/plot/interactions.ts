@@ -1,8 +1,8 @@
-import type { Vec2 } from '$lib/math'
-import type { XyObj, Y2SyncConfig, Y2SyncMode } from './types'
+import type { Point2D, Vec2 } from '$lib/math'
+import type { Y2SyncConfig, Y2SyncMode } from './types'
 
 // Get relative coordinates from a mouse event
-export function get_relative_coords(evt: MouseEvent): XyObj | null {
+export function get_relative_coords(evt: MouseEvent): Point2D | null {
   const current_target = evt.currentTarget
   if (!(current_target instanceof SVGElement)) return null
 

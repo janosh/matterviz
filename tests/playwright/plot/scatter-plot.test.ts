@@ -1,4 +1,4 @@
-import type { XyObj } from '$lib/plot'
+import type { Point2D } from '$lib/math'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { get_tick_range, IS_CI } from '../helpers'
 
@@ -29,12 +29,14 @@ const is_ascending = (arr: number[]): boolean =>
   arr.every((val, idx) => idx === 0 || val >= arr[idx - 1])
 
 // Get label positions based on parent group transform
-const get_label_positions = async (plot_locator: Locator): Promise<Record<string, XyObj>> => {
+const get_label_positions = async (
+  plot_locator: Locator,
+): Promise<Record<string, Point2D>> => {
   await plot_locator.waitFor({ state: `visible` })
   // Wait for markers to be rendered
   await expect(plot_locator.locator(`path.marker`).first()).toBeVisible()
 
-  const positions: Record<string, XyObj> = {}
+  const positions: Record<string, Point2D> = {}
   const markers = await plot_locator.locator(`path.marker`).all()
 
   const marker_promises = markers.map(async (marker) => {
@@ -71,7 +73,7 @@ const get_legend_position = async (
   const legend_wrapper = plot_locator.locator(`.legend`).locator(`..`)
   await legend_wrapper.waitFor({ state: `visible` })
 
-  return await legend_wrapper.evaluate((el) => {
+  return legend_wrapper.evaluate((el) => {
     const rect = el.getBoundingClientRect()
     const parent_rect = (el as HTMLElement).offsetParent?.getBoundingClientRect() || {
       x: 0,

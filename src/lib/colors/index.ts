@@ -1,7 +1,7 @@
 import { rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import type { Vec3 } from '$lib/math'
-import type { ELEM_SYMBOLS } from '../labels'
+import type { ELEM_SYMBOLS } from '$lib/labels'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
 import jmol_colors from './jmol-colors.json' with { type: 'json' }
@@ -143,6 +143,9 @@ export const contrast_color =
     node.style.color = pick_contrast_color({ ...options, bg_color: get_bg_color(node) })
   }
 
+const is_valid_bg = (bg: string): boolean =>
+  bg !== `` && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
+
 // Detect and return the page background color from html/body elements or user preferences
 export function get_page_background(
   fallback_dark = `#1a1a1a`,
@@ -155,8 +158,6 @@ export function get_page_background(
   const body_bg = getComputedStyle(document.body).backgroundColor
 
   // Check if background is not transparent/unset
-  const is_valid_bg = (bg: string) => bg && bg !== `rgba(0, 0, 0, 0)` && bg !== `transparent`
-
   // Prefer body background as it's more likely to be styled by the theme
   if (is_valid_bg(body_bg)) return body_bg
   if (is_valid_bg(html_bg)) return html_bg

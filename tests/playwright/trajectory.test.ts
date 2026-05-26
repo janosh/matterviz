@@ -11,6 +11,9 @@ const describe_local_only = (title: string, callback: () => void): void => {
   else test.describe(title, callback)
 }
 
+const has_orientation_layout_class = (class_name: string | null): boolean =>
+  class_name?.includes(`vertical`) === true || class_name?.includes(`horizontal`) === true
+
 // Helper function for display mode dropdown interactions
 async function select_display_mode(trajectory: Locator, mode_name: string) {
   const display_button = trajectory.locator(`.view-mode-dropdown-wrapper .view-mode-button`)
@@ -220,11 +223,9 @@ test.describe(`Trajectory Component`, () => {
       // Check if layout changed to vertical, but don't fail if it didn't
       // since viewport detection might not work in test environment
       const class_attr = await auto_trajectory.getAttribute(`class`)
-      const has_vertical = class_attr?.includes(`vertical`)
-      const has_horizontal = class_attr?.includes(`horizontal`)
 
       // At least one layout class should be present
-      expect(has_vertical || has_horizontal).toBe(true)
+      expect(has_orientation_layout_class(class_attr)).toBe(true)
     })
 
     test(`step labels work correctly`, async ({ page }) => {
@@ -555,11 +556,9 @@ test.describe(`Trajectory Component`, () => {
       // Check if layout changed to vertical, but be lenient since viewport detection
       // might not work perfectly in test environment
       const current_class = await trajectory.getAttribute(`class`)
-      const has_vertical = current_class?.includes(`vertical`)
-      const has_horizontal = current_class?.includes(`horizontal`)
 
       // At least one layout class should be present
-      expect(has_vertical || has_horizontal).toBe(true)
+      expect(has_orientation_layout_class(current_class)).toBe(true)
 
       // Test square container (implementation may default to horizontal for equal dimensions)
       await page
@@ -627,9 +626,7 @@ test.describe(`Trajectory Component`, () => {
 
       // Check that layout is still valid (horizontal or vertical)
       const final_class = await trajectory.getAttribute(`class`)
-      const has_layout =
-        final_class?.includes(`vertical`) || final_class?.includes(`horizontal`)
-      expect(has_layout).toBe(true)
+      expect(has_orientation_layout_class(final_class)).toBe(true)
 
       // Wait for display mode button to be available (only shows when plot series exist)
       await display_button.waitFor({ state: `visible`, timeout: 10000 })
@@ -689,9 +686,7 @@ test.describe(`Trajectory Component`, () => {
 
       // Should use vertical layout for tall container, but be lenient in test environment
       const mobile_class = await trajectory.getAttribute(`class`)
-      const has_mobile_layout =
-        mobile_class?.includes(`vertical`) || mobile_class?.includes(`horizontal`)
-      expect(has_mobile_layout).toBe(true)
+      expect(has_orientation_layout_class(mobile_class)).toBe(true)
 
       // Info pane should exist and be properly sized
       const info_pane = trajectory.locator(`.trajectory-info-pane`).first()
@@ -769,10 +764,7 @@ test.describe(`Trajectory Component`, () => {
       // Check if layout is valid, but be lenient since viewport detection
       // might not work perfectly in test environment
       const portrait_layout_class = await trajectory.getAttribute(`class`)
-      const has_portrait_layout =
-        portrait_layout_class?.includes(`vertical`) ||
-        portrait_layout_class?.includes(`horizontal`)
-      expect(has_portrait_layout).toBe(true)
+      expect(has_orientation_layout_class(portrait_layout_class)).toBe(true)
     })
 
     test(`plot and structure have equal dimensions in both horizontal and vertical layouts`, async ({
@@ -780,7 +772,7 @@ test.describe(`Trajectory Component`, () => {
     }) => {
       // Helper function to get component dimensions
       const get_dimensions = async (content_area: Locator) =>
-        await content_area.evaluate((el: Element) => {
+        content_area.evaluate((el: Element) => {
           const structure_node = el.querySelector(`.structure`) as HTMLElement
           const plot_node = el.querySelector(`.scatter`) as HTMLElement
           const structure = structure_node?.getBoundingClientRect()

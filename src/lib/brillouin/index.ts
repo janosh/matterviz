@@ -5,4 +5,4 @@ export { default as BrillouinZoneInfoPane } from './BrillouinZoneInfoPane.svelte
 export { default as BrillouinZoneScene } from './BrillouinZoneScene.svelte'
 export { default as BrillouinZoneTooltip } from './BrillouinZoneTooltip.svelte'
 export * from './compute'
-export * from './types'
+export type * from './types'

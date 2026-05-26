@@ -7,6 +7,7 @@
   import type { Vec2, Vec3 } from '$lib/math'
   import { ColorBar, PlotLegend } from '$lib/plot'
   import { get_series_color } from '$lib/plot/data-transform'
+  import type { Sides } from '$lib/plot/layout'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -19,7 +20,6 @@
     RefPlane,
     ScaleType,
     Scatter3DHandlerEvent,
-    Sides,
     StyleOverrides3D,
     Surface3DConfig,
   } from '$lib/plot/types'
