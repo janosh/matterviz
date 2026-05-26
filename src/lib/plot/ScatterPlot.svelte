@@ -758,10 +758,18 @@
     source_type: `fill_region` | `error_band`,
     source_idx: number,
     id?: string | number,
+    is_duplicate_id = false,
   ): string => {
     if (id == null) return `${source_type}:idx:${source_idx}`
-    return `${source_type}:id:${id}:idx:${source_idx}`
+    if (is_duplicate_id) return `${source_type}:id:${id}:idx:${source_idx}`
+    return `${source_type}:id:${id}`
   }
+  const has_duplicate_id = <T extends { id?: string | number }>(
+    items: readonly T[] | undefined,
+    source_idx: number,
+    id?: string | number,
+  ): boolean =>
+    id != null && (items?.some((item, idx) => idx !== source_idx && item.id === id) ?? false)
 
   // Computed fill regions: merge fill_regions and converted error_bands, resolve boundaries
   type ComputedFill = FillRegion & {
@@ -788,13 +796,23 @@
         region,
         source_type: `fill_region` as const,
         source_idx,
-        hover_key: fill_hover_key(`fill_region`, source_idx, region.id),
+        hover_key: fill_hover_key(
+          `fill_region`,
+          source_idx,
+          region.id,
+          has_duplicate_id(fill_regions, source_idx, region.id),
+        ),
       })),
       ...(error_bands ?? []).map((band, source_idx) => ({
         region: convert_error_band_to_fill_region(band, series_with_ids),
         source_type: `error_band` as const,
         source_idx,
-        hover_key: fill_hover_key(`error_band`, source_idx, band.id),
+        hover_key: fill_hover_key(
+          `error_band`,
+          source_idx,
+          band.id,
+          has_duplicate_id(error_bands, source_idx, band.id),
+        ),
       })),
     ]
 
