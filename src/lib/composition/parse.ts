@@ -32,7 +32,8 @@ const is_atomic_number_composition = (obj: Record<string | number, number>): boo
   return (
     keys.length > 0 &&
     atomic_nums.every(
-      (atomic_num) => Number.isInteger(atomic_num) && atomic_num >= 1 && atomic_num <= 118,
+      (atomic_num) =>
+        Number.isInteger(atomic_num) && Object.hasOwn(ATOMIC_NUMBER_TO_SYMBOL, atomic_num),
     )
   )
 }

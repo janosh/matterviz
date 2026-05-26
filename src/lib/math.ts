@@ -10,6 +10,22 @@ export type Matrix3x3 = [Vec3, Vec3, Vec3]
 export type Matrix4x4 = [Vec4, Vec4, Vec4, Vec4]
 export type NdVector = number[]
 
+export const is_finite_vec3_like = (
+  values: ArrayLike<unknown> | undefined,
+): values is ArrayLike<number> => {
+  if (values?.length !== 3) return false
+  return [0, 1, 2].every(
+    (idx) => typeof values[idx] === `number` && Number.isFinite(values[idx]),
+  )
+}
+
+export const finite_vec3_from_values = (
+  values: ArrayLike<unknown> | undefined,
+): Vec3 | undefined => {
+  if (!is_finite_vec3_like(values)) return undefined
+  return [values[0], values[1], values[2]]
+}
+
 // Column-major 4x4 matrix as flat 16-element tuple (for Three.js/WebGL)
 // oxfmt-ignore
 export type Matrix4Tuple = [

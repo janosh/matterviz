@@ -48,7 +48,8 @@ const vec3_from_values = (values: readonly unknown[] | undefined, context: strin
   if (values?.length !== 3) {
     throw new Error(`Invalid ${context}: expected 3 coordinates, got ${values?.length ?? 0}`)
   }
-  const coords: Vec3 = [0, 0, 0]
+  const coords = math.finite_vec3_from_values(values)
+  if (coords) return coords
   for (let idx = 0; idx < 3; idx++) {
     const value = values[idx]
     if (typeof value !== `number` || !Number.isFinite(value)) {
@@ -56,9 +57,8 @@ const vec3_from_values = (values: readonly unknown[] | undefined, context: strin
         `Invalid ${context}: coordinate ${idx} must be finite, got ${String(value)}`,
       )
     }
-    coords[idx] = value
   }
-  return coords
+  throw new Error(`Invalid ${context}: expected 3 finite coordinates`)
 }
 
 export interface PhonopyCell {

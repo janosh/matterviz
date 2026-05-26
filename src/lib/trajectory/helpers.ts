@@ -12,18 +12,11 @@ const element_symbol_set = new Set<string>(ELEM_SYMBOLS)
 
 const is_valid_row = (row: unknown): boolean => {
   if (!(Array.isArray(row) || (ArrayBuffer.isView(row) && `length` in row))) return false
-  const values = row as ArrayLike<unknown>
-  if (values.length !== 3) return false
-  for (let idx = 0; idx < 3; idx++) {
-    if (typeof values[idx] !== `number` || !Number.isFinite(values[idx])) return false
-  }
-  return true
+  return math.is_finite_vec3_like(row as ArrayLike<unknown>)
 }
 
 const is_valid_vec3 = (coords: unknown): coords is Vec3 =>
-  Array.isArray(coords) &&
-  coords.length === 3 &&
-  coords.every((value) => typeof value === `number` && Number.isFinite(value))
+  Array.isArray(coords) && math.is_finite_vec3_like(coords)
 
 export const is_valid_element_symbol = (symbol: string): symbol is ElementSymbol =>
   element_symbol_set.has(symbol)
