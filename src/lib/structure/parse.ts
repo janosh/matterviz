@@ -419,9 +419,9 @@ export function parse_xyz(content: string): ParsedStructure | null {
       const lattice_values = lattice_match[1].split(/\s+/).map(parse_coordinate)
       if (lattice_values.length === 9) {
         const lattice_vectors: math.Matrix3x3 = [
-          [lattice_values[0], lattice_values[1], lattice_values[2]],
-          [lattice_values[3], lattice_values[4], lattice_values[5]],
-          [lattice_values[6], lattice_values[7], lattice_values[8]],
+          vec3_from_values(lattice_values.slice(0, 3), `XYZ lattice vector 1`),
+          vec3_from_values(lattice_values.slice(3, 6), `XYZ lattice vector 2`),
+          vec3_from_values(lattice_values.slice(6, 9), `XYZ lattice vector 3`),
         ]
 
         const lattice_params = math.calc_lattice_params(lattice_vectors)
@@ -453,14 +453,10 @@ export function parse_xyz(content: string): ParsedStructure | null {
       }
 
       const element = validate_element_symbol(parts[0], atom_idx)
-      const coords = [
-        parse_coordinate(parts[1]),
-        parse_coordinate(parts[2]),
-        parse_coordinate(parts[3]),
-      ]
-
-      // For XYZ files, coordinates are typically in Cartesian
-      const xyz: Vec3 = [coords[0], coords[1], coords[2]]
+      const xyz = vec3_from_values(
+        parts.slice(1, 4).map(parse_coordinate),
+        `XYZ atom position ${atom_idx + 1}`,
+      )
 
       // Calculate fractional coordinates if lattice is available
       let abc: Vec3 = [0, 0, 0]
@@ -1469,13 +1465,15 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
       const pos = positions[idx]
       const element_symbol = species[idx]
 
-      if (!pos || pos.length < 3) {
-        console.warn(`Invalid position data at site ${idx}`)
+      let xyz: Vec3
+      try {
+        xyz = vec3_from_values(pos, `OPTIMADE site ${idx} position`)
+      } catch (error) {
+        console.warn(`Invalid position data at site ${idx}: ${error}`)
         continue
       }
 
       const element = validate_element_symbol(element_symbol, idx)
-      const xyz: Vec3 = [pos[0], pos[1], pos[2]]
 
       // Calculate fractional coordinates if lattice is available
       const abc: Vec3 = optimade_cart_to_frac ? optimade_cart_to_frac(xyz) : [0, 0, 0]
@@ -1590,7 +1588,7 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
       if (!element_symbol) throw new Error(`Missing species for site ${idx}`)
       const element = validate_element_symbol(element_symbol, idx)
 
-      const xyz: Vec3 = [pos[0], pos[1], pos[2]]
+      const xyz = vec3_from_values(pos, `OPTIMADE atom position ${idx + 1}`)
       const abc: Vec3 = crystal_cart_to_frac ? crystal_cart_to_frac(xyz) : [0, 0, 0]
 
       // Extract mass/concentration from species data

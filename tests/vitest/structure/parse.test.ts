@@ -561,6 +561,11 @@ describe(`Auto-detection & Error Handling`, () => {
     { parser: parse_xyz, content: `3\nTest\nC 0.0 0.0 0.0\nH 1.0 0.0 0.0` },
     { parser: parse_xyz, content: `2\nTest\nC 0.0 0.0\nH 1.0 0.0 0.0` },
     { parser: parse_xyz, content: `invalid\nTest\nC 0.0 0.0 0.0` },
+    { parser: parse_xyz, content: `1\nTest\nC Infinity 0.0 0.0` },
+    {
+      parser: parse_xyz,
+      content: `1\nLattice="Infinity 0 0 0 1 0 0 0 1"\nC 0.0 0.0 0.0`,
+    },
     {
       parser: parse_poscar,
       content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nDirect\ninvalid 0.0 0.0`,
@@ -2356,8 +2361,12 @@ describe(`OPTIMADE JSON parser`, () => {
         id: `test-no-valid-sites`,
         type: `structures`,
         attributes: {
-          cartesian_site_positions: [[0.0, 0.0]],
-          species_at_sites: [`Fe`],
+          cartesian_site_positions: [
+            [0.0, 0.0],
+            [0.0, `bad`, 0.0],
+            [Infinity, 0, 0],
+          ],
+          species_at_sites: [`Fe`, `Fe`, `Fe`],
         },
       },
       expected_error: `No valid sites found in OPTIMADE JSON`,

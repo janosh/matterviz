@@ -40,6 +40,7 @@ const is_atomic_number_composition = (obj: Record<string | number, number>): boo
 
 const format_state = (state: number) => (state > 0 ? `+` : ``) + state
 const parse_count = (count?: string): number => (count ? parseFloat(count) : 1)
+const normalize_count = (count: number): number => Number(count.toPrecision(12))
 
 // Convert atomic numbers to element symbols
 export const atomic_num_to_symbols = (
@@ -80,7 +81,7 @@ const expand_parentheses = (formula: string): string => {
         return group.replace(
           /([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g,
           (_m: string, element: string, count: string) => {
-            const num = parse_count(count) * mult
+            const num = normalize_count(parse_count(count) * mult)
             return element + (num === 1 ? `` : num)
           },
         )

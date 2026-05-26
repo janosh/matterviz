@@ -79,6 +79,7 @@ describe(`parse_formula`, () => {
     [`Fe0.5Li0.5`, { Fe: 0.5, Li: 0.5 }, `decimal amounts`],
     [`Fe2.5O3.75`, { Fe: 2.5, O: 3.75 }, `decimal amounts above 1`],
     [`Ca(OH)0.5`, { Ca: 1, O: 0.5, H: 0.5 }, `decimal parentheses multiplier`],
+    [`(H0.1)3`, { H: 0.3 }, `rounds expanded decimal products`],
     [``, {}, `empty formula`],
   ])(`%s -> %j (%s)`, (formula, expected, _description) => {
     expect(parse_formula(formula)).toEqual(expected)
