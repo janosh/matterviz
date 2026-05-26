@@ -88,7 +88,7 @@ export const create_structure = (
         lattice: {
           matrix: lattice_matrix,
           ...math.calc_lattice_params(lattice_matrix),
-          pbc: pbc || ([true, true, true] satisfies Pbc),
+          pbc: pbc ?? ([true, true, true] satisfies Pbc),
         },
       }
     : { sites }

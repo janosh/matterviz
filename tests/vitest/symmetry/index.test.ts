@@ -226,7 +226,7 @@ describe(`structure validation`, () => {
       }
 
       let totalOccupancy = 0
-      for (const [idx, species] of (site.species || []).entries()) {
+      for (const [idx, species] of (site.species ?? []).entries()) {
         if (
           !species.element ||
           typeof species.element !== `string` ||

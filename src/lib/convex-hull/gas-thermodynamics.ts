@@ -157,9 +157,7 @@ let default_provider: GasThermodynamicsProvider | null = null
 
 // Get the default gas thermodynamics provider (lazy initialization)
 export function get_default_gas_provider(): GasThermodynamicsProvider {
-  if (!default_provider) {
-    default_provider = create_default_gas_provider()
-  }
+  default_provider ??= create_default_gas_provider()
   return default_provider
 }
 

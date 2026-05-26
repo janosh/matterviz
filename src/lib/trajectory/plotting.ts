@@ -239,7 +239,7 @@ function apply_group_assignments(series: DataSeries[], unit_groups: UnitGroup[])
     const group = unit_groups.find((unit_group) => unit_group.series.includes(srs))
     if (group) {
       srs.visible = group.is_visible
-      srs.y_axis = axis_map.get(group) || `y1`
+      srs.y_axis = axis_map.get(group) ?? `y1`
     }
   }
 }

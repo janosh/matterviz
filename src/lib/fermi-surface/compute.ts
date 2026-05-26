@@ -554,7 +554,7 @@ function slice_surface_with_plane(
         crossing_edges.push({ edge_key, intersection })
 
         // Register this face with the edge
-        const faces = edge_to_faces.get(edge_key) || []
+        const faces = edge_to_faces.get(edge_key) ?? []
         faces.push(face_idx)
         edge_to_faces.set(edge_key, faces)
       }

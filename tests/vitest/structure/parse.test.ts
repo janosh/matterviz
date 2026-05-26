@@ -2317,7 +2317,7 @@ describe(`OPTIMADE JSON parser`, () => {
       expected: { sites: 1, has_lattice: false, first_element: `C` },
     },
   ])(`should parse $name`, ({ data, content, expected }) => {
-    const test_content = content || JSON.stringify(data)
+    const test_content = content ?? JSON.stringify(data)
     const result = parse_optimade_json(test_content)
     assert(result, `Failed to parse OPTIMADE JSON`)
 
@@ -2391,7 +2391,7 @@ describe(`OPTIMADE JSON parser`, () => {
       expected_error: `Error parsing OPTIMADE JSON:`,
     },
   ])(`should handle $name gracefully`, ({ data, content, expected_error }) => {
-    const test_content = content || JSON.stringify(data)
+    const test_content = content ?? JSON.stringify(data)
     const result = parse_optimade_json(test_content)
     expect(result).toBeNull()
 

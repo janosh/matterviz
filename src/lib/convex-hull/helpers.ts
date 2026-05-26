@@ -203,8 +203,7 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
     text += `E<sub>above hull</sub>: ${e_hull_str} eV/atom\n`
   }
   // Fallback to energy_per_atom if e_form_per_atom is absent
-  const e_form_display =
-    entry.e_form_per_atom !== undefined ? entry.e_form_per_atom : entry.energy_per_atom
+  const e_form_display = entry.e_form_per_atom ?? entry.energy_per_atom
   if (e_form_display !== undefined) {
     const e_form_str = format_num(e_form_display, `.3~`)
     text += `E<sub>form</sub>: ${e_form_str} eV/atom`

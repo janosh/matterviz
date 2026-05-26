@@ -49,7 +49,7 @@ export function normalize_hull_composition_keys(
       }
       continue
     }
-    normalized[elem] = (normalized[elem] || 0) + amount
+    normalized[elem] = (normalized[elem] ?? 0) + amount
   }
   return normalized
 }
@@ -219,7 +219,7 @@ export function calculate_e_above_hull(
       if (typeof e_form !== `number`) continue
       const total = count_atoms_in_composition(ref.composition)
       if (total <= 0) continue
-      const x = (ref.composition[el2] || 0) / total
+      const x = (ref.composition[el2] ?? 0) / total
       const current = hull_input_map.get(x)
       if (current === undefined || e_form < current) {
         hull_input_map.set(x, e_form)
@@ -244,7 +244,7 @@ export function calculate_e_above_hull(
         results[id] = NaN
         continue
       }
-      const x = (entry.composition[el2] || 0) / total
+      const x = (entry.composition[el2] ?? 0) / total
       const y_hull = interpolate_hull_2d(lower_hull, x)
       results[id] = y_hull === null ? NaN : Math.max(0, e_form - y_hull)
     }

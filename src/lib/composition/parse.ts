@@ -56,7 +56,7 @@ export const atomic_num_to_symbols = (
   for (const [atomic_num_str, amount] of Object.entries(atomic_composition)) {
     const symbol = ATOMIC_NUMBER_TO_SYMBOL[Number(atomic_num_str)]
     if (!symbol) throw new Error(`Invalid atomic number: ${atomic_num_str}`)
-    if (amount > 0) composition[symbol] = (composition[symbol] || 0) + amount
+    if (amount > 0) composition[symbol] = (composition[symbol] ?? 0) + amount
   }
   return composition
 }
@@ -107,7 +107,7 @@ export const parse_formula = (formula: string): CompositionType => {
     const count = parse_count(match[2])
 
     if (!is_valid_element(element)) throw new Error(`Invalid element symbol: ${element}`)
-    composition[element] = (composition[element] || 0) + count
+    composition[element] = (composition[element] ?? 0) + count
   }
   return composition
 }
@@ -142,7 +142,7 @@ export const sanitize_composition_keys = (
   for (const [key, amount] of Object.entries(composition)) {
     if (typeof amount !== `number` || amount <= 0) continue
     // Extract first valid element symbol from key (e.g. "B0." -> "B", "Fe2+" -> "Fe")
-    const elem = (key.match(/[A-Z][a-z]?/g) || []).find(is_valid_element)
+    const elem = (key.match(/[A-Z][a-z]?/g) ?? []).find(is_valid_element)
     if (elem) sanitized[elem] = (sanitized[elem] || 0) + amount
   }
   const result = normalize_composition(sanitized)
@@ -352,7 +352,7 @@ export function extract_formula_elements(
 ): ElementSymbol[] {
   if (!unique) {
     // Fast path: regex token extraction without parentheses expansion
-    const matches = formula.match(/[A-Z][a-z]?/g) || []
+    const matches = formula.match(/[A-Z][a-z]?/g) ?? []
     const elements: ElementSymbol[] = []
     for (const match of matches) {
       if (is_valid_element(match)) elements.push(match)

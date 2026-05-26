@@ -573,8 +573,8 @@ describe(`Export functionality`, () => {
           {
             // @ts-expect-error - test invalid species
             species,
-            xyz: xyz || [0.0, 0.0, 0.0],
-            abc: abc || [0.0, 0.0, 0.0],
+            xyz: xyz ?? [0.0, 0.0, 0.0],
+            abc: abc ?? [0.0, 0.0, 0.0],
             label: `H`,
             properties: {},
           },

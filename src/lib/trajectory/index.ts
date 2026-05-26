@@ -172,7 +172,7 @@ export function get_trajectory_stats(trajectory: TrajectoryType): Record<string,
   const frame_count = total_frames || frames.length
   const stats: Record<string, unknown> = {
     frame_count,
-    is_indexed: trajectory.is_indexed || false,
+    is_indexed: trajectory.is_indexed ?? false,
   }
 
   if (frames.length > 0) {

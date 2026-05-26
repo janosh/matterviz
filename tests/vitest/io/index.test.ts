@@ -219,7 +219,7 @@ describe(`load_from_url`, () => {
         'content-type': `application/octet-stream`,
       })
       const mock_full_response = create_mock_response(
-        expected_content || new ArrayBuffer(100),
+        expected_content ?? new ArrayBuffer(100),
         {
           'content-type': expected_content ? `text/plain` : `application/octet-stream`,
         },

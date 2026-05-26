@@ -17,16 +17,8 @@ import { make_grid } from '../setup'
 describe(`grid_data_range`, () => {
   test.each([
     {
-      grid: [
-        [
-          [1, 2],
-          [3, 4],
-        ],
-        [
-          [5, 6],
-          [7, 8],
-        ],
-      ],
+      // oxfmt-ignore
+      grid: [[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
       min: 1,
       max: 8,
       abs_max: 8,
@@ -34,16 +26,8 @@ describe(`grid_data_range`, () => {
       label: `all-positive`,
     },
     {
-      grid: [
-        [
-          [-5, 2],
-          [3, -1],
-        ],
-        [
-          [0, 6],
-          [-7, 4],
-        ],
-      ],
+      // oxfmt-ignore
+      grid: [[[-5, 2], [3, -1]], [[0, 6], [-7, 4]]],
       min: -7,
       max: 6,
       abs_max: 7,
@@ -59,12 +43,8 @@ describe(`grid_data_range`, () => {
       label: `abs_max driven by min`,
     },
     {
-      grid: [
-        [
-          [0, 0],
-          [0, 0],
-        ],
-      ],
+      // oxfmt-ignore
+      grid: [[[0, 0], [0, 0]]],
       min: 0,
       max: 0,
       abs_max: 0,
