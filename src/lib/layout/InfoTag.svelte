@@ -68,8 +68,8 @@
   tabindex={disabled ? -1 : 0}
   onclick={handle_click}
   onkeydown={handle_keydown}
-  {title}
-  {@attach tooltip()}
+  title={sanitize_html(title)}
+  {@attach tooltip({ allow_html: true })}
   class="info-tag {variant} {size}"
   class:disabled
   aria-disabled={disabled}

@@ -34,12 +34,12 @@
     UserContentProps,
   } from '$lib/plot'
   import {
-    AxisLabel,
     ColorBar,
     compute_element_placement,
     FillArea,
     get_tick_label,
     Line,
+    PlotAxis,
     PlotLegend,
     PlotTooltip,
     ReferenceLine,
@@ -48,6 +48,12 @@
     ZeroLines,
     ZoomRect,
   } from '$lib/plot'
+  import {
+    build_obstacles_norm,
+    has_explicit_position,
+    measured_footprint,
+    place_decorations,
+  } from '$lib/plot/auto-place'
   import type { AxisChangeState } from '$lib/plot/axis-utils'
   import { create_axis_change_handler } from '$lib/plot/axis-utils'
   import {
@@ -61,7 +67,6 @@
     create_hover_lock,
   } from '$lib/plot/hover-lock.svelte'
   import {
-    DEFAULT_GRID_STYLE,
     DEFAULT_MARKERS,
     get_scale_type_name,
     is_time_scale,
@@ -106,7 +111,9 @@
     constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    measure_full_footprint,
     measure_max_tick_width,
+    sample_series_obstacle_points,
   } from './layout'
   import type { IndexedRefLine } from './reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from './reference-line'
@@ -209,6 +216,7 @@
         margin?: number | Sides
         tween?: TweenOptions<Point2D>
         responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
+        axis_clearance?: number // Min distance kept from plot edges/axes (default: 15)
       })
       | null
     label_placement_config?: Partial<LabelPlacementConfig>
@@ -416,9 +424,9 @@
   let y2_points = $derived(points_by_axis.y2)
   let x2_points = $derived(points_by_axis.x2)
 
-  // Layout: dynamic padding based on tick label widths
+  // Layout: tick-label padding (decoration reservations are added in `pad` below)
   const default_padding = { t: 5, b: 50, l: 50, r: 20 }
-  let pad = $state(untrack(() => filter_padding(padding, default_padding)))
+  let base_pad = $state(untrack(() => filter_padding(padding, default_padding)))
 
   // Update padding when format or ticks change
   $effect(() => {
@@ -434,12 +442,83 @@
       : filter_padding(padding, default_padding)
 
     if (
-      pad.t !== new_pad.t ||
-      pad.b !== new_pad.b ||
-      pad.l !== new_pad.l ||
-      pad.r !== new_pad.r
-    ) pad = new_pad
+      base_pad.t !== new_pad.t ||
+      base_pad.b !== new_pad.b ||
+      base_pad.l !== new_pad.l ||
+      base_pad.r !== new_pad.r
+    ) base_pad = new_pad
   })
+
+  // === Auto-move legend/colorbar outside the plot when interior overlap is unavoidable ===
+  // (shared logic lives in auto-place.ts so every 2D plot reuses it)
+  // ColorBar's orientation prop defaults to horizontal, so treat unset as horizontal too
+  const colorbar_is_horizontal = $derived((color_bar?.orientation ?? `horizontal`) === `horizontal`)
+  const colorbar_footprint = $derived(
+    colorbar_element?.offsetWidth && colorbar_element?.offsetHeight
+      ? measure_full_footprint(colorbar_element)
+      : colorbar_is_horizontal
+      ? { width: 220, height: 56 }
+      : { width: 56, height: 100 },
+  )
+  const legend_footprint = $derived(measured_footprint(legend_element, { width: 120, height: 80 }))
+  const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
+
+  // Plot-specific obstacle field: series points/lines normalized to [0,1] (y=0 at top)
+  const obstacles_norm = $derived.by(() => {
+    if (!width || !height || !filtered_series) return []
+    const base_w = width - base_pad.l - base_pad.r
+    const base_h = height - base_pad.t - base_pad.b
+    if (base_w <= 0 || base_h <= 0) return []
+    const norm_x = is_time_x
+      ? scaleTime().domain([new Date(x_min), new Date(x_max)]).range([0, 1])
+      : create_scale(final_x_axis.scale_type ?? `linear`, [x_min, x_max], [0, 1])
+    const norm_y = create_scale(final_y_axis.scale_type ?? `linear`, [y_min, y_max], [0, 1])
+    return build_obstacles_norm(
+      filtered_series
+        .filter((srs) => srs?.filtered_data)
+        .map((srs) => ({
+          points: srs.filtered_data.map((pt) => ({
+            x: is_time_x ? norm_x(new Date(pt.x)) : norm_x(pt.x),
+            y: 1 - norm_y(pt.y), // norm_y is 0 at bottom; invert so 0 = top
+          })),
+          draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
+        })),
+      base_w,
+      base_h,
+    )
+  })
+
+  const decor = $derived.by(() =>
+    place_decorations({
+      base_pad,
+      width,
+      height,
+      obstacles_norm,
+      // gate on legend_element (the actual render signal) not legend_data, whose fill entries read
+      // computed_fills -> pad and would make this derived reference itself
+      legend: legend != null && legend_element != null &&
+          !legend_has_explicit_pos && !legend_is_dragging && !legend_manual_position
+        ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
+        : null,
+      // gate on a measured colorbar: its outside style stretches it to full width, so deciding from
+      // the (wide) pre-measure fallback would flip-flop placement between interior and outside
+      colorbar: Boolean(color_bar) && all_color_values.length > 0 && !color_bar?.wrapper_style &&
+          (colorbar_element?.offsetWidth ?? 0) > 0 && (colorbar_element?.offsetHeight ?? 0) > 0
+        ? {
+          footprint: colorbar_footprint,
+          horizontal: colorbar_is_horizontal,
+          clearance: color_bar?.axis_clearance,
+        }
+        : null,
+    })
+  )
+  const pad = $derived(decor.pad)
+  const legend_auto_outside = $derived(decor.legend_outside)
+  const legend_outside_x = $derived(decor.legend_pos.x)
+  const legend_outside_y = $derived(decor.legend_pos.y)
+  const effective_cbar_wrapper_style = $derived(
+    color_bar?.wrapper_style ?? (decor.colorbar_outside ? decor.colorbar_style : undefined),
+  )
 
   // Reactive clip area dimensions to ensure proper responsiveness
   let clip_area = $derived({
@@ -718,7 +797,10 @@
       ),
   )
 
-  // Collect all plot points for legend placement calculation
+  // Obstacle field for legend/colorbar auto-placement. Sampling only data points lets the
+  // legend land on top of a steep connecting line whose markers are sparse (e.g. y=x^2), so
+  // sample_series_obstacle_points also walks each drawn segment at a fixed pixel cadence.
+  const SEGMENT_SAMPLE_STEP = 12 // px between samples taken along a connecting line
   let plot_points_for_placement = $derived.by(() => {
     if (!width || !height || !filtered_series) return []
 
@@ -727,21 +809,17 @@
     for (const series_data of filtered_series) {
       if (!series_data?.filtered_data) continue
       const use_x2_scale = series_data.x_axis === `x2`
-      for (const point of series_data.filtered_data) {
-        const active_x_scale = use_x2_scale ? x2_scale_fn : x_scale_fn
-        const active_is_time_x = use_x2_scale ? is_time_x2 : is_time_x
-        const point_x_coord = active_is_time_x
-          ? active_x_scale(new Date(point.x))
-          : active_x_scale(point.x)
-        const point_y_coord =
-          (series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(
-            point.y,
-          )
+      const active_x_scale = use_x2_scale ? x2_scale_fn : x_scale_fn
+      const active_is_time_x = use_x2_scale ? is_time_x2 : is_time_x
+      const active_y_scale = series_data.y_axis === `y2` ? y2_scale_fn : y_scale_fn
+      const draws_line = styles.show_lines &&
+        (series_data.markers ?? DEFAULT_MARKERS).includes(`line`)
 
-        if (isFinite(point_x_coord) && isFinite(point_y_coord)) {
-          points.push({ x: point_x_coord, y: point_y_coord })
-        }
-      }
+      const pixel_points = series_data.filtered_data.map((point) => ({
+        x: active_is_time_x ? active_x_scale(new Date(point.x)) : active_x_scale(point.x),
+        y: active_y_scale(point.y),
+      }))
+      points.push(...sample_series_obstacle_points(pixel_points, draws_line, SEGMENT_SAMPLE_STEP))
     }
     return points
   })
@@ -1100,14 +1178,10 @@
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    // Use measured size if available, otherwise estimate
-    const legend_size = legend_element
-      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
-      : { width: 120, height: 80 }
-
     const placement_config = {
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
-      element_size: legend_size,
+      element: legend_element,
+      element_size: { width: 120, height: 80 }, // fallback before first render
       axis_clearance: legend?.axis_clearance,
       exclude_rects: [],
       points: plot_points_for_placement,
@@ -1123,13 +1197,12 @@
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    // Use measured size if available, otherwise estimate based on orientation
-    const is_horizontal = color_bar.orientation === `horizontal`
-    const colorbar_size = colorbar_element
-      ? { width: colorbar_element.offsetWidth, height: colorbar_element.offsetHeight }
-      : is_horizontal
-      ? { width: 220, height: 40 }
-      : { width: 40, height: 100 }
+    // Fallback estimate (with room for tick labels) used before the colorbar first
+    // renders; compute_element_placement measures the real footprint once it's laid out
+    const is_horizontal = (color_bar.orientation ?? `horizontal`) === `horizontal`
+    const colorbar_size = is_horizontal
+      ? { width: 220, height: 56 }
+      : { width: 56, height: 100 }
 
     // Build exclusion rects (avoid legend if it's placed)
     const exclude_rects: Rect[] = []
@@ -1144,9 +1217,11 @@
 
     return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
+      element: colorbar_element,
       element_size: colorbar_size,
-      // Colorbar needs slightly more clearance than legend to avoid axis labels
-      axis_clearance: 15,
+      // Small gap from the corner; the full-footprint measurement reserves the tick
+      // labels, so this alone keeps the colorbar off the axes
+      axis_clearance: color_bar?.axis_clearance ?? 15,
       exclude_rects,
       points: plot_points_for_placement,
     })
@@ -2050,289 +2125,115 @@
       <!-- Reference lines: below grid -->
       {@render ref_lines_layer(ref_lines_by_z.below_grid)}
 
-      <g class="x-axis">
-        {#if width > 0 && height > 0}
-          {#each x_tick_values as tick (tick)}
-            {@const tick_pos_raw = is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick)}
-            {#if isFinite(tick_pos_raw)}
-              // Check if tick position is finite
-              {@const tick_pos = tick_pos_raw}
-              {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
-                {@const inside = final_x_axis.tick?.label?.inside ?? false}
-                <g class="tick" transform="translate({tick_pos}, {height - pad.b})">
-                  {#if final_display.x_grid}
-                    <line
-                      y1={-(height - pad.b - pad.t)}
-                      y2="0"
-                      {...DEFAULT_GRID_STYLE}
-                      {...final_x_axis.grid_style}
-                    />
-                  {/if}
-                  <line y1="0" y2={inside ? -5 : 5} stroke="var(--border-color, gray)" />
+      <PlotAxis
+        side="x"
+        ticks={x_tick_values}
+        place={(tick) => (is_time_x ? x_scale_fn(new Date(tick)) : x_scale_fn(tick))}
+        axis={final_x_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={final_display.x_grid}
+        show_baseline={false}
+        domain={[x_min, x_max]}
+        tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
+        label_x={width / 2 + (final_x_axis.label_shift?.x ?? 0)}
+        label_y={height - pad.b - (final_x_axis.label_shift?.y ?? -40)}
+        axis_loading={axis_loading === `x`}
+        on_axis_change={(key) => handle_axis_change(`x`, key)}
+      />
 
-                  {#if tick >= Math.min(x_min, x_max) && tick <= Math.max(x_min, x_max)}
-                    {@const base_y = inside ? -8 : 20}
-                    {@const shift = final_x_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
-                    {@const x = shift.x ?? 0}
-                    {@const y = base_y + (shift.y ?? 0)}
-                    {@const custom_label = get_tick_label(tick, final_x_axis.ticks)}
-                    {@const dominant_baseline = inside ? `auto` : `hanging`}
-                    <text
-                      {x}
-                      {y}
-                      dominant-baseline={dominant_baseline}
-                      fill={final_x_axis.color}
-                    >
-                      {custom_label ?? format_value(tick, final_x_axis.format ?? ``)}
-                    </text>
-                  {/if}
-                </g>
-              {/if}
-            {/if}
-          {/each}
-        {/if}
-
-        <!-- Current frame indicator -->
-        {#if current_x_value != null}
-          {@const current_pos_raw = is_time_x
-          ? x_scale_fn(new Date(current_x_value))
-          : x_scale_fn(current_x_value)}
-          {#if isFinite(current_pos_raw)}
-            {@const current_pos = current_pos_raw}
-            {#if current_pos >= pad.l && current_pos <= width - pad.r}
-              {@const active_tick_height = 7}
-              <rect
-                x={current_pos - 1.5}
-                y={height - pad.b - active_tick_height / 2}
-                width="3"
-                height={active_tick_height}
-                fill="var(--scatter-current-frame-color, #ff6b35)"
-                stroke="white"
-                stroke-width="1"
-                class="current-frame-indicator"
-              />
-            {/if}
+      <!-- Current frame indicator -->
+      {#if current_x_value != null}
+        {@const current_pos_raw = is_time_x
+        ? x_scale_fn(new Date(current_x_value))
+        : x_scale_fn(current_x_value)}
+        {#if isFinite(current_pos_raw)}
+          {@const current_pos = current_pos_raw}
+          {#if current_pos >= pad.l && current_pos <= width - pad.r}
+            {@const active_tick_height = 7}
+            <rect
+              x={current_pos - 1.5}
+              y={height - pad.b - active_tick_height / 2}
+              width="3"
+              height={active_tick_height}
+              fill="var(--scatter-current-frame-color, #ff6b35)"
+              stroke="white"
+              stroke-width="1"
+              class="current-frame-indicator"
+            />
           {/if}
         {/if}
+      {/if}
 
-        {#if final_x_axis.label || final_x_axis.options?.length}
-          {@const { label_shift, label = ``, options, selected_key, color } = final_x_axis}
-          <AxisLabel
-            x={width / 2 + (label_shift?.x ?? 0)}
-            y={height - pad.b - (label_shift?.y ?? -40)}
-            {label}
-            {options}
-            {selected_key}
-            loading={axis_loading === `x`}
-            axis_type="x"
-            {color}
-            on_select={(key: string) => handle_axis_change(`x`, key)}
-          />
-        {/if}
-      </g>
-
-      <g class="y-axis">
-        {#if width > 0 && height > 0}
-          {#each y_tick_values as tick, idx (tick)}
-            {@const tick_pos_raw = y_scale_fn(tick)}
-            {#if isFinite(tick_pos_raw)}
-              // Check if tick position is finite
-              {@const tick_pos = tick_pos_raw}
-              {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
-                {@const inside = final_y_axis.tick?.label?.inside ?? false}
-                <g class="tick" transform="translate({pad.l}, {tick_pos})">
-                  {#if final_display.y_grid}
-                    <line
-                      x1="0"
-                      x2={width - pad.l - pad.r}
-                      {...DEFAULT_GRID_STYLE}
-                      {...final_y_axis.grid_style}
-                    />
-                  {/if}
-                  <line
-                    x1={inside ? 0 : -5}
-                    x2={inside ? 5 : 0}
-                    stroke="var(--border-color, gray)"
-                  />
-
-                  {#if tick >= Math.min(y_min, y_max) && tick <= Math.max(y_min, y_max)}
-                    {@const base_x = inside ? 8 : -8}
-                    {@const shift = final_y_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
-                    {@const x = base_x + (shift.x ?? 0)}
-                    {@const y = shift.y ?? 0}
-                    {@const custom_label = get_tick_label(tick, final_y_axis.ticks)}
-                    {@const text_anchor = inside ? `start` : `end`}
-                    <text {x} {y} text-anchor={text_anchor} fill={final_y_axis.color}>
-                      {custom_label ?? format_value(tick, final_y_axis.format ?? ``)}
-                      {#if final_y_axis.unit && idx === 0}
-                        &zwnj;&ensp;{final_y_axis.unit}
-                      {/if}
-                    </text>
-                  {/if}
-                </g>
-              {/if}
-            {/if}
-          {/each}
-        {/if}
-
-        {#if height > 0 && (final_y_axis.label || final_y_axis.options?.length)}
-          {@const { label_shift, label = ``, options, selected_key, color, tick } =
-          final_y_axis}
-          {@const y_inside = tick?.label?.inside ?? false}
-          {@const y_label_x = Math.max(
+      <PlotAxis
+        side="y"
+        ticks={y_tick_values}
+        place={y_scale_fn}
+        axis={final_y_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={final_display.y_grid}
+        show_baseline={false}
+        domain={[y_min, y_max]}
+        unit_on_first_tick
+        tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
+        label_x={Math.max(
           12,
-          pad.l - (y_inside ? 0 : tick_label_widths.y_max) - LABEL_GAP_DEFAULT,
-        ) +
-          (label_shift?.x ?? 0)}
-          <AxisLabel
-            x={y_label_x}
-            y={pad.t + (height - pad.t - pad.b) / 2 + (label_shift?.y ?? 0)}
-            rotate
-            {label}
-            {options}
-            {selected_key}
-            loading={axis_loading === `y`}
-            axis_type="y"
-            {color}
-            on_select={(key: string) => handle_axis_change(`y`, key)}
-          />
-        {/if}
-      </g>
+          pad.l - (final_y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
+            LABEL_GAP_DEFAULT,
+        ) + (final_y_axis.label_shift?.x ?? 0)}
+        label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `y`}
+        on_axis_change={(key) => handle_axis_change(`y`, key)}
+      />
 
       <!-- Y2-axis (Right) -->
       {#if y2_points.length > 0}
-        <g class="y2-axis">
-          {#if width > 0 && height > 0}
-            {#each y2_tick_values as tick, idx (tick)}
-              {@const tick_pos_raw = y2_scale_fn(tick)}
-              {#if isFinite(tick_pos_raw)}
-                // Check if tick position is finite
-                {@const tick_pos = tick_pos_raw}
-                {#if tick_pos >= pad.t && tick_pos <= height - pad.b}
-                  {@const inside = final_y2_axis.tick?.label?.inside ?? false}
-                  <g class="tick" transform="translate({width - pad.r}, {tick_pos})">
-                    {#if final_display.y2_grid}
-                      <line
-                        x1={-(width - pad.l - pad.r)}
-                        x2="0"
-                        {...DEFAULT_GRID_STYLE}
-                        {...final_y2_axis.grid_style}
-                      />
-                    {/if}
-                    <line
-                      x1={inside ? -5 : 0}
-                      x2={inside ? 0 : 5}
-                      stroke="var(--border-color, gray)"
-                    />
-
-                    {#if tick >= Math.min(y2_min, y2_max) && tick <= Math.max(y2_min, y2_max)}
-                      {@const base_x = inside ? -8 : 8}
-                      {@const shift = final_y2_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
-                      {@const x = base_x + (shift.x ?? 0)}
-                      {@const y = shift.y ?? 0}
-                      {@const custom_label = get_tick_label(tick, final_y2_axis.ticks)}
-                      {@const text_anchor = inside ? `end` : `start`}
-                      <text {x} {y} text-anchor={text_anchor} fill={final_y2_axis.color}>
-                        {custom_label ?? format_value(tick, final_y2_axis.format ?? ``)}
-                        {#if final_y2_axis.unit && idx === 0}
-                          &zwnj;&ensp;{final_y2_axis.unit}
-                        {/if}
-                      </text>
-                    {/if}
-                  </g>
-                {/if}
-              {/if}
-            {/each}
-          {/if}
-
-          {#if height > 0 && (final_y2_axis.label || final_y2_axis.options?.length)}
-            {@const { label_shift, label = ``, options, selected_key, color, tick } =
-          final_y2_axis}
-            {@const inside = tick?.label?.inside ?? false}
-            {@const tick_shift = inside ? 0 : (tick?.label?.shift?.x ?? 0) + 8}
-            {@const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max}
-            <AxisLabel
-              x={width - pad.r + tick_shift + tick_width_contribution +
-              LABEL_GAP_DEFAULT + (label_shift?.x ?? 0)}
-              y={pad.t + (height - pad.t - pad.b) / 2 + (label_shift?.y ?? 0)}
-              rotate
-              {label}
-              {options}
-              {selected_key}
-              loading={axis_loading === `y2`}
-              axis_type="y2"
-              {color}
-              on_select={(key: string) => handle_axis_change(`y2`, key)}
-            />
-          {/if}
-        </g>
+        {@const y2_inside = final_y2_axis.tick?.label?.inside ?? false}
+        {@const y2_tick_shift = y2_inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8}
+        {@const y2_tick_width = y2_inside ? 0 : tick_label_widths.y2_max}
+        <PlotAxis
+          side="y2"
+          ticks={y2_tick_values}
+          place={y2_scale_fn}
+          axis={final_y2_axis}
+          {pad}
+          {width}
+          {height}
+          show_grid={final_display.y2_grid}
+          show_baseline={false}
+          domain={[y2_min, y2_max]}
+          unit_on_first_tick
+          tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
+          label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
+          (final_y2_axis.label_shift?.x ?? 0)}
+          label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
+          axis_loading={axis_loading === `y2`}
+          on_axis_change={(key) => handle_axis_change(`y2`, key)}
+        />
       {/if}
 
       <!-- X2-axis (Top) -->
       {#if x2_points.length > 0}
-        <g class="x2-axis">
-          {#if width > 0 && height > 0}
-            {#each x2_tick_values as tick (tick)}
-              {@const tick_pos_raw = is_time_x2
-          ? x2_scale_fn(new Date(tick))
-          : x2_scale_fn(tick)}
-              {#if isFinite(tick_pos_raw)}
-                {@const tick_pos = tick_pos_raw}
-                {#if tick_pos >= pad.l && tick_pos <= width - pad.r}
-                  {@const inside = final_x2_axis.tick?.label?.inside ?? false}
-                  <g class="tick" transform="translate({tick_pos}, {pad.t})">
-                    {#if final_display.x2_grid}
-                      <line
-                        y1="0"
-                        y2={height - pad.b - pad.t}
-                        {...DEFAULT_GRID_STYLE}
-                        {...final_x2_axis.grid_style}
-                      />
-                    {/if}
-                    <line
-                      y1="0"
-                      y2={inside ? 5 : -5}
-                      stroke={final_x2_axis.color || `var(--border-color, gray)`}
-                    />
-
-                    {#if tick >= Math.min(x2_min, x2_max) && tick <= Math.max(x2_min, x2_max)}
-                      {@const base_y = inside ? 8 : -20}
-                      {@const shift = final_x2_axis.tick?.label?.shift ?? { x: 0, y: 0 }}
-                      {@const x = shift.x ?? 0}
-                      {@const y = base_y + (shift.y ?? 0)}
-                      {@const custom_label = get_tick_label(tick, final_x2_axis.ticks)}
-                      {@const dominant_baseline = inside ? `hanging` : `auto`}
-                      <text
-                        {x}
-                        {y}
-                        dominant-baseline={dominant_baseline}
-                        fill={final_x2_axis.color}
-                      >
-                        {custom_label ?? format_value(tick, final_x2_axis.format ?? ``)}
-                      </text>
-                    {/if}
-                  </g>
-                {/if}
-              {/if}
-            {/each}
-          {/if}
-
-          {#if final_x2_axis.label || final_x2_axis.options?.length}
-            {@const { label_shift, label = ``, options, selected_key, color } =
-          final_x2_axis}
-            <AxisLabel
-              x={width / 2 + (label_shift?.x ?? 0)}
-              y={Math.max(12, pad.t - (label_shift?.y ?? 40))}
-              {label}
-              {options}
-              {selected_key}
-              loading={axis_loading === `x2`}
-              axis_type="x2"
-              {color}
-              on_select={(key: string) => handle_axis_change(`x2`, key)}
-            />
-          {/if}
-        </g>
+        <PlotAxis
+          side="x2"
+          ticks={x2_tick_values}
+          place={(tick) => (is_time_x2 ? x2_scale_fn(new Date(tick)) : x2_scale_fn(tick))}
+          axis={final_x2_axis}
+          {pad}
+          {width}
+          {height}
+          show_grid={final_display.x2_grid}
+          show_baseline={false}
+          domain={[x2_min, x2_max]}
+          tick_label={(tick) => get_tick_label(tick, final_x2_axis.ticks)}
+          label_x={width / 2 + (final_x2_axis.label_shift?.x ?? 0)}
+          label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? 40))}
+          axis_loading={axis_loading === `x2`}
+          on_axis_change={(key) => handle_axis_change(`x2`, key)}
+        />
       {/if}
 
       <!-- Tooltip rendered inside overlay (moved outside SVG for stacking above colorbar) -->
@@ -2447,7 +2348,12 @@
               }
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
                 {@const calculated_label_pos = label_positions[label_id]}
-                {@const label_style = point.point_label ?? {}}
+                {@const point_label = point.point_label ?? {}}
+                {@const label_style = point_label.auto_placement &&
+          actual_label_config.max_neighbors &&
+          !calculated_label_pos
+          ? {}
+          : point_label}
                 {@const final_label = calculated_label_pos
           ? {
             ...label_style,
@@ -2657,12 +2563,10 @@
         class="colorbar-wrapper"
         role="img"
         aria-label="Color scale legend"
-        style={`
-          position: absolute;
-          left: ${tweened_colorbar_coords.current.x}px;
-          top: ${tweened_colorbar_coords.current.y}px;
-          pointer-events: auto;
-        `}
+        style={`${
+        // explicit wrapper_style or auto-outside places the colorbar; else auto-placement coords
+        effective_cbar_wrapper_style ??
+          `position: absolute; left: ${tweened_colorbar_coords.current.x}px; top: ${tweened_colorbar_coords.current.y}px`}; pointer-events: auto;`}
       >
         <ColorBar
           tick_labels={4}
@@ -2671,9 +2575,9 @@
           color_scale_domain={color_domain}
           scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
           range={color_domain?.every((val) => val != null) ? color_domain : undefined}
-          wrapper_style={color_bar?.wrapper_style ?? ``}
-          bar_style="width: 220px; height: 20px; {color_bar?.style ?? ``}"
+          bar_style="width: 220px; height: 16px; {color_bar?.style ?? ``}"
           {...color_bar}
+          wrapper_style={effective_cbar_wrapper_style ? `height: 100%; width: 100%;` : ``}
         />
       </div>
     {/if}
@@ -2686,11 +2590,15 @@
       {@const default_y = pad.t + 10}
       {@const current_x = legend_is_dragging && legend_manual_position
       ? legend_manual_position.x
+      : legend_auto_outside
+      ? legend_outside_x
       : legend_placement
       ? tweened_legend_coords.current.x
       : default_x}
       {@const current_y = legend_is_dragging && legend_manual_position
       ? legend_manual_position.y
+      : legend_auto_outside
+      ? legend_outside_y
       : legend_placement
       ? tweened_legend_coords.current.y
       : default_y}
@@ -2803,6 +2711,13 @@
     padding-top: var(--plot-fullscreen-padding-top, 2em);
     box-sizing: border-box;
   }
+  /* Center the colorbar within its wrapper when shorter than it (e.g. capped by --cbar-max-height
+     in fullscreen). Users can override via wrapper_style (inline wins). */
+  .colorbar-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   .header-controls {
     position: absolute;
     top: var(--ctrl-btn-top, 5pt);
@@ -2837,21 +2752,6 @@
     fill: var(--text-color);
     font-weight: var(--scatter-font-weight);
     font-size: var(--scatter-font-size);
-  }
-  line {
-    stroke: var(--scatter-grid-stroke, gray);
-    stroke-dasharray: var(--scatter-grid-dash, 4);
-    stroke-width: var(--scatter-grid-width, 0.4);
-  }
-  g:is(.x-axis, .x2-axis) text {
-    text-anchor: middle;
-    dominant-baseline: top;
-  }
-  g:is(.y-axis, .y2-axis) text {
-    dominant-baseline: central;
-  }
-  g:is(.x-axis, .x2-axis, .y-axis, .y2-axis) .tick text {
-    font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
   }
   .scatter :global(.axis-label) {
     text-align: center;

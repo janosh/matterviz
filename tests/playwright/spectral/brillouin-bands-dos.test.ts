@@ -1,6 +1,20 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import { IS_CI } from '../helpers'
+
+const line_path_selector = `path.line, path[stroke]:not([stroke="none"])`
+const default_bz_canvas_selector = `[data-testid="bz-bands-dos-default"] canvas`
+
+async function screenshot_default_bz_canvas(page: Page): Promise<Buffer> {
+  let screenshot: Buffer | undefined
+  await expect(async () => {
+    const canvas = page.locator(default_bz_canvas_selector).first()
+    await expect(canvas).toBeVisible({ timeout: 5000 })
+    screenshot = await canvas.screenshot()
+  }).toPass({ timeout: 10_000 })
+  if (!screenshot) throw new Error(`Could not capture BZ canvas screenshot`)
+  return screenshot
+}
 
 // Serialize tests to avoid race conditions when multiple workers load the same heavy 3D page
 test.describe.configure({ mode: `serial` })
@@ -18,9 +32,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     await expect(container).toBeVisible({ timeout: 20000 })
     // Wait for canvas (BZ) to be present - WebGL may take time to initialize
-    await page.waitForSelector(`[data-testid="bz-bands-dos-default"] canvas`, {
-      timeout: 20000,
-    })
+    await expect(container.locator(`canvas`).first()).toBeVisible({ timeout: 20000 })
   })
 
   test(`renders all three panels with content`, async ({ page }) => {
@@ -30,7 +42,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     await expect(container.locator(`canvas`).first()).toBeVisible()
     const bands_svg = container.locator(`svg:has(g.x-axis)`).first()
     await expect(bands_svg).toBeVisible({ timeout: 10_000 })
-    await expect(bands_svg.locator(`path[fill="none"]`).first()).toBeVisible({
+    await expect(bands_svg.locator(line_path_selector).first()).toBeVisible({
       timeout: 5000,
     })
 
@@ -38,7 +50,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const dos_svg = container.locator(`svg:has(g.y-axis)`).nth(1)
     await expect(dos_svg).toBeVisible({ timeout: 10_000 })
     await expect(dos_svg.locator(`g.y-axis`)).toBeVisible({ timeout: 5000 })
-    await expect(dos_svg.locator(`path[fill="none"]`).first()).toBeVisible({
+    await expect(dos_svg.locator(line_path_selector).first()).toBeVisible({
       timeout: 5000,
     })
 
@@ -50,9 +62,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
   test(`applies custom styling and column widths`, async ({ page }) => {
     // Custom widths
     const widths_container = page.locator(`[data-testid="bz-bands-dos-custom-widths"]`)
-    const grid_style = await widths_container
-      .locator(`.bands-dos-brillouin`)
-      .evaluate((el) => getComputedStyle(el).gridTemplateColumns)
+    const grid_style = await widths_container.evaluate(
+      (el) => getComputedStyle(el).gridTemplateColumns,
+    )
     expect(grid_style).toBeTruthy()
 
     // Custom bands styling (red, thick lines)
@@ -60,7 +72,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const first_path = styling_container
       .locator(`svg:has(g.x-axis)`)
       .first()
-      .locator(`path[fill="none"]`)
+      .locator(line_path_selector)
       .first()
     const stroke = await first_path.evaluate((el) => getComputedStyle(el).stroke)
     expect(stroke).toContain(`rgb(255, 0, 0)`)
@@ -113,9 +125,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     // Configure retries for 3D canvas mouse drag tests which can be timing-sensitive
     test.info().annotations.push({ type: `slow`, description: `3D canvas interaction` })
 
-    const bz_canvas = page.locator(`[data-testid="bz-bands-dos-default"] canvas`).first()
+    const bz_canvas = page.locator(default_bz_canvas_selector).first()
     await expect(bz_canvas).toBeVisible({ timeout: 10000 })
-    const initial = await bz_canvas.screenshot()
+    const initial = await screenshot_default_bz_canvas(page)
 
     const box = await bz_canvas.boundingBox()
     if (box) {
@@ -128,12 +140,12 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
       // Wait for canvas to repaint after drag with retry
       await expect(async () => {
-        const after = await bz_canvas.screenshot()
+        const after = await screenshot_default_bz_canvas(page)
         expect(initial.equals(after)).toBe(false)
       }).toPass({ timeout: 5000 })
     }
 
-    expect(Buffer.compare(initial, await bz_canvas.screenshot())).not.toBe(0)
+    expect(Buffer.compare(initial, await screenshot_default_bz_canvas(page))).not.toBe(0)
   })
 
   test(`shared y-axis synchronizes bands and DOS ticks`, async ({ page }) => {
@@ -157,9 +169,9 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     await expect(container.locator(`canvas`).first()).toBeVisible()
 
-    const grid_template = await container
-      .locator(`.bands-dos-brillouin`)
-      .evaluate((el) => getComputedStyle(el).gridTemplateAreas)
+    const grid_template = await container.evaluate(
+      (el) => getComputedStyle(el).gridTemplateAreas,
+    )
 
     // Desktop layout: bz bands dos
     expect(grid_template).toContain(`bz`)
@@ -177,7 +189,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     await expect(container.locator(`canvas`).first()).toBeVisible()
 
-    const grid_template = await container.locator(`.bands-dos-brillouin`).evaluate((el) => {
+    const grid_template = await container.evaluate((el) => {
       const style = getComputedStyle(el)
       return {
         areas: style.gridTemplateAreas,
@@ -200,20 +212,22 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const container = page.locator(`[data-testid="bz-bands-dos-default"]`)
     await expect(container.locator(`canvas`).first()).toBeVisible()
 
-    const grid_template = await container.locator(`.bands-dos-brillouin`).evaluate((el) => {
-      const style = getComputedStyle(el)
-      return {
-        areas: style.gridTemplateAreas,
-        columns: style.gridTemplateColumns,
-      }
-    })
+    await expect(async () => {
+      const grid_template = await container.evaluate((el) => {
+        const style = getComputedStyle(el)
+        return {
+          areas: style.gridTemplateAreas,
+          columns: style.gridTemplateColumns,
+        }
+      })
 
-    // Phone layout: vertical stack
-    const area_lines = grid_template.areas.split(`"`)
-    expect(area_lines.length).toBeGreaterThanOrEqual(3)
+      // Phone layout: vertical stack
+      const area_lines = grid_template.areas.split(`"`)
+      expect(area_lines.length).toBeGreaterThanOrEqual(3)
 
-    // Should have 1 column
-    expect(grid_template.columns).not.toContain(` `)
+      // Should have 1 column
+      expect(grid_template.columns).not.toContain(` `)
+    }).toPass({ timeout: 5000 })
 
     // All components still visible
     await expect(container.locator(`canvas`).first()).toBeVisible()
@@ -268,27 +282,21 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     // Test desktop
     await page.setViewportSize({ width: 1400, height: 700 })
     await expect(container.locator(`canvas`).first()).toBeVisible()
-    const gap_desktop = await container
-      .locator(`.bands-dos-brillouin`)
-      .evaluate((el) => getComputedStyle(el).gap)
+    const gap_desktop = await container.evaluate((el) => getComputedStyle(el).gap)
     expect(gap_desktop).toBeTruthy()
     expect(gap_desktop).not.toBe(`0px`)
 
     // Test tablet
     await page.setViewportSize({ width: 800, height: 700 })
     await expect(container.locator(`canvas`).first()).toBeVisible()
-    const gap_tablet = await container
-      .locator(`.bands-dos-brillouin`)
-      .evaluate((el) => getComputedStyle(el).gap)
+    const gap_tablet = await container.evaluate((el) => getComputedStyle(el).gap)
     expect(gap_tablet).toBeTruthy()
     expect(gap_tablet).not.toBe(`0px`)
 
     // Test phone
     await page.setViewportSize({ width: 500, height: 700 })
     await expect(container.locator(`canvas`).first()).toBeVisible()
-    const gap_phone = await container
-      .locator(`.bands-dos-brillouin`)
-      .evaluate((el) => getComputedStyle(el).gap)
+    const gap_phone = await container.evaluate((el) => getComputedStyle(el).gap)
     expect(gap_phone).toBeTruthy()
     expect(gap_phone).not.toBe(`0px`)
   })
@@ -320,7 +328,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
 
     // Bands should still be hoverable
     await bands_svg
-      .locator(`path[fill="none"]`)
+      .locator(line_path_selector)
       .first()
       .hover({
         position: { x: 50, y: 50 },
@@ -346,7 +354,7 @@ test.describe(`BrillouinBandsDos Component Tests`, () => {
     const initial_dashed_count = await bands_svg.locator(`line[stroke-dasharray]`).count()
 
     // Hover over DOS plot area (on a DOS path to trigger hover)
-    const dos_path = dos_svg.locator(`path[fill="none"]`).first()
+    const dos_path = dos_svg.locator(line_path_selector).first()
     await expect(dos_path).toBeVisible()
     await dos_path.hover({ force: true })
 

@@ -91,9 +91,14 @@ export function sanitize_html(html: unknown): string {
   return dp.sanitize(safe, { ALLOWED_TAGS: SAFE_TAGS, ALLOWED_ATTR: SAFE_ATTRS })
 }
 
+export const compact_formula = (formula: string): string => formula.replaceAll(/\s+/g, ``)
+
 // Sanitize a chemical formula with optional subscript formatting
 export const sanitize_formula = (formula: string, use_subscripts = true): string =>
   sanitize_html(format_formula_html(formula, use_subscripts))
+
+export const sanitize_compact_formula = (formula: string, use_subscripts = true): string =>
+  sanitize_formula(compact_formula(formula), use_subscripts)
 
 const SVG_TEXT_TAGS = [`tspan`, `title`]
 // oxfmt-ignore

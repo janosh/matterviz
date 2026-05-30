@@ -2,6 +2,7 @@
   import type { AnyStructure } from '$lib/structure'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { export_canvas_as_png } from '$lib/io/export'
+  import { sanitize_html } from '$lib/sanitize'
   import * as exports from '$lib/structure/export'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
@@ -163,7 +164,7 @@
   <div class="export-buttons">
     {#each text_export_formats as { label, format, hint } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
-        <span {@attach tooltip({ content: hint })}>{label}</span>
+        <span {@attach tooltip({ allow_html: true, content: sanitize_html(hint) })}>{label}</span>
         <button
           type="button"
           onclick={() => export_structure(format)}

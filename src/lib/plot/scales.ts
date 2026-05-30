@@ -179,11 +179,11 @@ export function generate_arcsinh_ticks(
     // Add boundaries if not already present and we have room
     const sorted = dedupe_sort(ticks)
     if (sorted.length < count) {
-      // Prefer the boundary with larger absolute value (more visually distinct)
-      const abs_lo = Math.abs(lo)
-      const abs_hi = Math.abs(hi)
-      if (abs_hi >= abs_lo && !sorted.includes(hi)) ticks.push(hi)
-      else if (!sorted.includes(lo)) ticks.push(lo)
+      // Snap the larger-magnitude boundary to a clean power of 10 (raw extremes would render
+      // as long unrounded labels); keeps some coverage for very small tick counts.
+      const boundary = Math.abs(hi) >= Math.abs(lo) ? hi : lo
+      const nice = Math.sign(boundary) * 10 ** Math.floor(Math.log10(Math.abs(boundary)))
+      if (Number.isFinite(nice) && nice !== 0 && !sorted.includes(nice)) ticks.push(nice)
     }
   }
 
@@ -214,12 +214,10 @@ function generate_positive_arcsinh_ticks(
       if (val >= min && val <= max) ticks.push(val)
     }
   } else {
-    // Large range: combine linear near zero with powers of 10
-
-    // Add domain boundaries to ensure endpoints are represented
-    // This prevents cases like min=50, max=500 only showing powers of 10 (100)
-    if (min > 0) ticks.push(min)
-    ticks.push(max)
+    // Large range: combine linear near zero with powers of 10.
+    // Domain endpoints are intentionally NOT added as ticks: raw extremes render as long
+    // unrounded labels (e.g. 1325.8239811994677). Powers of 10 plus 2x/5x multiples below
+    // already give clean round ticks; pass axis.ticks/axis.format for custom labels.
 
     // Add threshold as a tick if in range
     if (threshold >= min && threshold <= max) ticks.push(threshold)

@@ -183,4 +183,24 @@ describe(`Histogram`, () => {
     // Verify component mounted without crashing
     expect(document.querySelector(`.histogram`)).toBeInstanceOf(HTMLElement)
   })
+
+  test(`legend auto-moves to the bottom margin when bars fill the plot`, async () => {
+    // near-uniform distribution -> every bin is tall -> filled bars cover the plot so no interior
+    // spot avoids overlap and the legend must drop into the reserved bottom margin
+    const uniform = Array.from({ length: 800 }, (_, idx) => idx % 100)
+    mount_histogram({
+      series: [
+        { x: [], y: uniform, label: `A` },
+        { x: [], y: uniform.map((val) => val + 0.5), label: `B` },
+      ],
+      bins: 40,
+      show_legend: true,
+      legend: {},
+    })
+    await tick()
+    const legend = document.querySelector<HTMLElement>(`.legend`)
+    expect(legend).toBeInstanceOf(HTMLElement)
+    // interior default is top-left (~pad.t + 10); auto-outside drops it well into the lower half
+    expect(parseFloat(legend?.style.top ?? `0`)).toBeGreaterThan(150)
+  })
 })

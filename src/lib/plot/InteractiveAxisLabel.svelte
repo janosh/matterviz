@@ -75,7 +75,6 @@
   .static-label {
     display: inline-flex;
     align-items: baseline;
-    gap: 0.2em;
   }
   .loading :global(.axis-trigger) {
     opacity: 0.7;
@@ -84,11 +83,14 @@
   .interactive-axis-label :global(:is(sub, sup)) {
     font-size: 0.75em;
     line-height: 0;
+    /* vertical-align is ignored in the flex label wrapper. */
+    position: relative;
+    vertical-align: baseline;
   }
   .interactive-axis-label :global(sub) {
-    vertical-align: sub;
+    top: 0.35em;
   }
   .interactive-axis-label :global(sup) {
-    vertical-align: super;
+    top: -0.5em;
   }
 </style>

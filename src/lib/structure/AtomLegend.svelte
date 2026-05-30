@@ -44,6 +44,7 @@
     title = ``,
     sym_data = null,
     structure = undefined,
+    show_mode_toggle = true,
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
@@ -66,6 +67,7 @@
     title?: string
     sym_data?: MoyoDataset | null
     structure?: AnyStructure | null
+    show_mode_toggle?: boolean
     children?: Snippet<[{ mode_menu_open: boolean; structure?: AnyStructure | null }]>
   } = $props()
 
@@ -87,6 +89,7 @@
 
   // Dropdown state
   let mode_menu_open = $state(false)
+  let mode_toggle_visible = $derived(show_mode_toggle || mode_menu_open)
 
   // Clear hidden property values when switching modes (since they may not be valid)
   let prev_mode = $state(atom_color_config.mode)
@@ -239,9 +242,12 @@
   >
     <button
       class="mode-toggle"
+      class:visible={mode_toggle_visible}
       onclick={() => (mode_menu_open = !mode_menu_open)}
       title="Change atom coloring mode"
       aria-expanded={mode_menu_open}
+      aria-hidden={mode_toggle_visible ? undefined : true}
+      tabindex={mode_toggle_visible ? undefined : -1}
       {@attach tooltip()}
     >
       <Icon icon={mode_menu_open ? `Collapse` : `Expand`} />
@@ -717,6 +723,7 @@
     position: relative;
     display: flex;
     align-items: center;
+    margin-left: calc(-0.5 * var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt)));
   }
   .mode-toggle {
     background: transparent;
@@ -726,10 +733,18 @@
     display: flex;
     align-items: center;
     font-size: 0.9em;
-    opacity: 0.7;
+    opacity: 0;
+    pointer-events: none;
     transition: opacity 0.2s ease;
   }
-  .mode-toggle:hover {
+  .mode-toggle :global(svg) {
+    font-size: 1.15em;
+  }
+  .mode-toggle.visible {
+    opacity: 0.7;
+    pointer-events: auto;
+  }
+  .mode-toggle.visible:hover {
     opacity: 1;
   }
   .mode-dropdown {

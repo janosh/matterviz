@@ -177,9 +177,7 @@
         </label>
       {/if}
       <label
-        {@attach tooltip({
-          content: `Show component labels at axes`,
-        })}
+        {@attach tooltip({ content: `Show component labels at axes` })}
       >
         <input type="checkbox" bind:checked={show_component_labels} />
         Comp. Labels
@@ -354,10 +352,7 @@
       }}
     >
       <label
-        {@attach tooltip({
-          content:
-            `DPI (dots per inch) for PNG export. Higher values produce larger, higher-quality images.`,
-        })}
+        {@attach tooltip({ content: `DPI (dots per inch) for PNG export. Higher values produce larger, higher-quality images.` })}
       >
         PNG DPI
         <input

@@ -20,3 +20,18 @@ jobs:
       - run: npm install
 
       - uses: j178/prek-action@v2
+
+  knip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: npm install
+
+      - name: Check for unused dependencies
+        run: npm run knip

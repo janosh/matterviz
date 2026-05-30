@@ -8,7 +8,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
   })
 
   test(`renders both bands and DOS subplots with proper axes`, async ({ page }) => {
-    const container = page.locator(`#default + .bands-and-dos`)
+    const container = page.locator(`[data-testid="bands-and-dos-default"]`)
     await expect(container).toBeVisible()
 
     // Check both plots render
@@ -37,7 +37,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
   })
 
   test(`shares y-axis and uses grid layout`, async ({ page }) => {
-    const container = page.locator(`#default + .bands-and-dos`)
+    const container = page.locator(`[data-testid="bands-and-dos-default"]`)
     const plots = container.locator(`.scatter`)
 
     // Check grid layout
@@ -54,24 +54,28 @@ test.describe(`BandsAndDos Component Tests`, () => {
     }
 
     // Verify shared y-axis: tick values should overlap significantly
-    const bands_y_ticks = await plots.first().locator(`g.y-axis text`).allTextContents()
-    const dos_y_ticks = await plots.nth(1).locator(`g.y-axis text`).allTextContents()
-    const common_ticks = bands_y_ticks.filter((tick) => dos_y_ticks.includes(tick))
-    expect(common_ticks.length).toBeGreaterThan(bands_y_ticks.length / 2)
+    await expect(async () => {
+      const bands_y_ticks = await plots.first().locator(`g.y-axis text`).allTextContents()
+      const dos_y_ticks = await plots.nth(1).locator(`g.y-axis text`).allTextContents()
+      const common_ticks = bands_y_ticks.filter((tick) => dos_y_ticks.includes(tick))
+      expect(common_ticks.length).toBeGreaterThan(bands_y_ticks.length / 2)
 
-    // Both should have numeric y-axis ticks
-    expect(bands_y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
-    expect(dos_y_ticks.filter((t) => !isNaN(parseFloat(t))).length).toBeGreaterThan(2)
+      // Both should have numeric y-axis ticks
+      expect(bands_y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(
+        2,
+      )
+      expect(dos_y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(2)
+    }).toPass({ timeout: 5000 })
   })
 
   test(`applies custom widths and passes props to subcomponents`, async ({ page }) => {
     // Check custom widths
-    const custom_container = page.locator(`#custom-widths + .bands-and-dos`)
+    const custom_container = page.locator(`[data-testid="bands-and-dos-custom-widths"]`)
     await expect(custom_container).toBeVisible()
     expect(await custom_container.getAttribute(`style`)).toContain(`grid-template-columns`)
 
     // Check bands props passed
-    const bands_container = page.locator(`#bands-custom-styling + .bands-and-dos`)
+    const bands_container = page.locator(`[data-testid="bands-and-dos-bands-styling"]`)
     const bands_path = bands_container
       .locator(`.scatter`)
       .first()
@@ -80,12 +84,12 @@ test.describe(`BandsAndDos Component Tests`, () => {
     expect(await bands_path.evaluate((el) => getComputedStyle(el).stroke)).toBeTruthy()
 
     // Check DOS props passed (normalization)
-    const dos_container = page.locator(`#dos-normalization + .bands-and-dos`)
+    const dos_container = page.locator(`[data-testid="bands-and-dos-dos-norm"]`)
     await expect(dos_container.locator(`.scatter`).nth(1).locator(`g.y-axis`)).toBeVisible()
   })
 
   test(`handles independent y-axes with different ranges`, async ({ page }) => {
-    const container = page.locator(`#independent-axes + .bands-and-dos`)
+    const container = page.locator(`[data-testid="bands-and-dos-independent-axes"]`)
     await expect(container).toBeVisible()
 
     const plots = container.locator(`.scatter`)
@@ -107,7 +111,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
   })
 
   test(`maintains responsive layout`, async ({ page }) => {
-    const container = page.locator(`#default + .bands-and-dos`)
+    const container = page.locator(`[data-testid="bands-and-dos-default"]`)
     expect(await container.boundingBox()).toBeTruthy()
 
     await page.setViewportSize({ width: 800, height: 600 })
@@ -116,7 +120,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
   })
 
   test(`hovering over DOS shows reference lines in both plots`, async ({ page }) => {
-    const container = page.locator(`#default + .bands-and-dos`)
+    const container = page.locator(`[data-testid="bands-and-dos-default"]`)
     const plots = container.locator(`.scatter`)
     const bands_plot = plots.first()
     const dos_plot = plots.nth(1)
@@ -147,7 +151,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
     await page.locator(`#independent-axes`).scrollIntoViewIfNeeded()
 
     // Find the bands-and-dos container after the independent-axes heading
-    const container = page.locator(`#independent-axes + .bands-and-dos`)
+    const container = page.locator(`[data-testid="bands-and-dos-independent-axes"]`)
     await expect(container).toBeVisible()
 
     // Verify the custom overlay child element is rendered

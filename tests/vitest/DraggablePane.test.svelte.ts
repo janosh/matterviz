@@ -139,6 +139,7 @@ describe(`DraggablePane`, () => {
     const pane = doc_query(`[data-testid="custom-pane"]`)
 
     expect(pane.classList.contains(`custom-pane-class`)).toBe(true)
+    expect(pane.classList.contains(`toc-exclude`)).toBe(true)
   })
 
   test(`max_width applied`, () => {

@@ -869,7 +869,7 @@
 {/snippet}
 
 <div
-  {@attach tooltip()}
+  {@attach tooltip({ allow_html: true })}
   {...rest_props}
   bind:this={container_el}
   class="table-container {rest_props.class ?? ``}"

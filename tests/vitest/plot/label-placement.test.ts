@@ -4,7 +4,9 @@ import type { LabelPlacementConfig } from '$lib/plot/types'
 import {
   compute_delta_energy,
   compute_label_positions,
+  estimate_label_size,
   generate_candidates,
+  label_leader_segment,
   parse_font_size,
   rect_circle_overlap,
   rect_out_of_bounds_area,
@@ -137,6 +139,72 @@ describe(`parse_font_size`, () => {
     { input: ``, expected: 12 },
   ])(`parse_font_size($input) → $expected`, ({ input, expected }) => {
     expect(parse_font_size(input)).toBe(expected)
+  })
+})
+
+describe(`estimate_label_size`, () => {
+  test(`uses the longest line and measured line count`, () => {
+    expect(estimate_label_size(`Li2O\nwbm-123`, `10px`)).toEqual({
+      width: 52,
+      height: 24,
+    })
+  })
+})
+
+describe(`label_leader_segment`, () => {
+  test(`trims from point rim to label edge`, () => {
+    const segment = label_leader_segment({
+      point: { x: 0, y: 0 },
+      point_radius: 4,
+      label_center: { x: 40, y: 0 },
+      label_size: { width: 20, height: 10 },
+      min_length: 6,
+      label_padding: 0,
+    })
+
+    expect(segment).toEqual({ x1: 4, y1: 0, x2: 30, y2: 0 })
+  })
+
+  test(`hides segments shorter than the minimum visible length`, () => {
+    expect(
+      label_leader_segment({
+        point: { x: 0, y: 0 },
+        point_radius: 4,
+        label_center: { x: 12, y: 0 },
+        label_size: { width: 8, height: 8 },
+        min_length: 6,
+        label_padding: 0,
+      }),
+    ).toBeNull()
+  })
+
+  test(`hides segments when the label overlaps the point rim`, () => {
+    expect(
+      label_leader_segment({
+        point: { x: 0, y: 0 },
+        point_radius: 8,
+        label_center: { x: 12, y: 0 },
+        label_size: { width: 30, height: 10 },
+        min_length: 6,
+        label_padding: 0,
+      }),
+    ).toBeNull()
+  })
+
+  test(`trims diagonal leaders in the correct quadrant`, () => {
+    const segment = label_leader_segment({
+      point: { x: 10, y: 10 },
+      point_radius: 5,
+      label_center: { x: 50, y: 50 },
+      label_size: { width: 20, height: 20 },
+      min_length: 6,
+      label_padding: 0,
+    })
+
+    expect(segment?.x1).toBeCloseTo(13.54, 2)
+    expect(segment?.y1).toBeCloseTo(13.54, 2)
+    expect(segment?.x2).toBeCloseTo(40)
+    expect(segment?.y2).toBeCloseTo(40)
   })
 })
 
@@ -327,10 +395,8 @@ function place_and_expect_finite(
   return result
 }
 
-// Mirrors source formula: text.length * font_size * 0.6 + 10
-// Keep in sync with label_w computation in compute_label_positions
 const estimate_label_width = (text: string, font_size = 10): number =>
-  text.length * font_size * 0.6 + 10
+  estimate_label_size(text, `${font_size}px`).width
 
 describe(`compute_label_positions`, () => {
   test(`returns empty for empty series or disabled auto_placement`, () => {
@@ -442,6 +508,26 @@ describe(`compute_label_positions`, () => {
     expect(result[edge_key].x).toBe(390 - label_w)
   })
 
+  test(`candidate_gap controls candidate distance from marker radius`, () => {
+    const series = make_labeled_series([{ x: 100, y: 100, text: `A` }])
+    const no_gap = compute_label_positions(
+      series,
+      { ...default_config, sa_iterations: 0, candidate_gap: 0 },
+      default_scales,
+      default_bounds,
+    )[`0-0`]
+    const large_gap = compute_label_positions(
+      series,
+      { ...default_config, sa_iterations: 0, candidate_gap: 20 },
+      default_scales,
+      default_bounds,
+    )[`0-0`]
+
+    expect(Math.hypot(no_gap.x - 100, no_gap.y - 100)).toBeLessThan(
+      Math.hypot(large_gap.x - 100, large_gap.y - 100),
+    )
+  })
+
   test(`SA minimizes bounding-box overlap for dense cluster`, () => {
     const points = [
       { x: 100, y: 100, text: `Alpha` },
@@ -470,6 +556,41 @@ describe(`compute_label_positions`, () => {
     expect(total_overlap).toBeLessThan(50)
   })
 
+  const cluster_points = Array.from({ length: 6 }, (_, idx) => ({
+    x: 100 + idx,
+    y: 100 + idx,
+    text: `C${idx}`,
+  }))
+  const cull_points = [...cluster_points, { x: 350, y: 50, text: `Lonely` }]
+  const all_label_ids = cull_points.map((_point, idx) => `0-${idx}`)
+
+  test.each([
+    { label: `disabled culling keeps all`, max_neighbors: undefined, kept: all_label_ids },
+    {
+      label: `tight budget culls dense cluster, keeps isolated`,
+      max_neighbors: { count: 1, radius: 30 },
+      kept: [`0-6`],
+    },
+    {
+      label: `generous budget keeps all`,
+      max_neighbors: { count: 5, radius: 30 },
+      kept: all_label_ids,
+    },
+    {
+      label: `small radius keeps all`,
+      max_neighbors: { count: 1, radius: 1 },
+      kept: all_label_ids,
+    },
+  ])(`max_neighbors $label`, ({ max_neighbors, kept }) => {
+    const result = compute_label_positions(
+      make_labeled_series(cull_points),
+      { ...default_config, max_neighbors },
+      default_scales,
+      default_bounds,
+    )
+    expect(Object.keys(result).sort()).toEqual([...kept].sort())
+  })
+
   test(`high distance weight keeps labels closer to anchors than high overlap weight`, () => {
     const anchors = [
       { x: 50, y: 50, text: `A` },
@@ -490,14 +611,12 @@ describe(`compute_label_positions`, () => {
     )
 
     const avg_dist = (res: Record<string, { x: number; y: number }>) => {
-      const keys = Object.keys(res)
-      return (
-        keys.reduce(
-          (sum, key, idx) =>
-            sum + Math.hypot(res[key].x - anchors[idx].x, res[key].y - anchors[idx].y),
-          0,
-        ) / keys.length
+      const positions = Object.values(res)
+      const dist_sum = positions.reduce(
+        (sum, pos, idx) => sum + Math.hypot(pos.x - anchors[idx].x, pos.y - anchors[idx].y),
+        0,
       )
+      return dist_sum / positions.length
     }
 
     expect(avg_dist(result_dist)).toBeLessThan(avg_dist(result_overlap))

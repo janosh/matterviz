@@ -64,6 +64,47 @@ test.describe(`Structure Component Tests`, () => {
     await expect(supercell).toHaveCSS(`opacity`, `0`)
   })
 
+  test(`CellSelect typography stays legible in narrow legends`, async ({ page }) => {
+    await page.locator(`[data-testid="canvas-width-input"]`).fill(`260`)
+    await expect(page.locator(`[data-testid="canvas-width-status"]`)).toContainText(`260`)
+
+    const structure = page.locator(`#test-structure`)
+    await structure.hover()
+    const cell_select = structure.locator(`.cell-select`)
+    await cell_select.dispatchEvent(`mouseenter`)
+    await expect(cell_select.locator(`.dropdown`)).toBeVisible()
+
+    const get_font_size = (selector: string): Promise<number> =>
+      structure
+        .locator(selector)
+        .first()
+        .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+    const legend_label_size = await get_font_size(`.atom-legend .legend-item label`)
+    const toggle_size = await get_font_size(`.cell-select .toggle-btn`)
+    const preset_size = await get_font_size(`.cell-select .preset-btn`)
+    const preset_gap = await structure
+      .locator(`.cell-select .supercell-grid`)
+      .evaluate((element) => Number.parseFloat(getComputedStyle(element).gap))
+    const preset_padding = await structure
+      .locator(`.cell-select .preset-btn`)
+      .first()
+      .evaluate((element) => {
+        const style = getComputedStyle(element)
+        return {
+          line_height: Number.parseFloat(style.lineHeight),
+          top: Number.parseFloat(style.paddingTop),
+          right: Number.parseFloat(style.paddingRight),
+        }
+      })
+
+    expect(toggle_size).toBeCloseTo(legend_label_size, 1)
+    expect(preset_size).toBeGreaterThanOrEqual(legend_label_size)
+    expect(preset_gap).toBeGreaterThanOrEqual(3)
+    expect(preset_padding.line_height).toBeCloseTo(preset_size, 1)
+    expect(preset_padding.top).toBe(0)
+    expect(preset_padding.right).toBeLessThanOrEqual(1)
+  })
+
   test(`reacts to background_color prop change from test page`, async ({ page }) => {
     const structure_div = page.locator(`#test-structure`)
     const background_color_input = page.locator(
@@ -2758,6 +2799,26 @@ test.describe(`Element Visibility Toggle`, () => {
 
     // Tooltip consumes title attribute, stores in data-original-title
     await expect(first_toggle).toHaveAttribute(`data-original-title`, /Hide .+ atoms/)
+  })
+
+  test(`element badge tooltip uses light theme colors`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: `light` })
+    await page.locator(`#test-structure`).hover()
+    const label = page.locator(`#test-structure .atom-legend .legend-item label`).first()
+    await label.hover({ force: true })
+    const tooltip = page.locator(`.custom-tooltip`)
+    await expect(tooltip).toBeVisible()
+
+    const { background_color, text_color } = await tooltip.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return {
+        background_color: style.backgroundColor,
+        text_color: style.color,
+      }
+    })
+
+    expect(background_color).not.toMatch(/rgba?\(0,\s*0,\s*0/)
+    expect(text_color).not.toMatch(/rgb\(255,\s*255,\s*255\)/)
   })
 
   test(`toggling elements hides/shows atoms with visual feedback`, async ({ page }) => {

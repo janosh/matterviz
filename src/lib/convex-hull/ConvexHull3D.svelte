@@ -25,6 +25,7 @@
   import { ColorBar, PlotTooltip } from '$lib/plot'
   import { centered_rect, pad_rect, rects_overlap, rect_within_rect } from '$lib/plot/layout'
   import type { Rect } from '$lib/plot/layout'
+  import { create_pulse_animation } from '$lib/effects.svelte'
   import { DEFAULTS } from '$lib/settings'
   import type { AnyStructure } from '$lib/structure'
   import { Canvas, T } from '@threlte/core'
@@ -301,7 +302,6 @@
 
   // Performance optimization
   let frame_id = 0
-  let pulse_frame_id = 0
 
   const camera_default = {
     elevation: DEFAULTS.convex_hull.ternary.camera_elevation,
@@ -460,8 +460,11 @@
   let hull_face_color = $state(`#4caf50`)
 
   // Pulsating highlight for selected point
-  let pulse_time = $state(0)
-  let pulse_opacity = $derived(0.3 + 0.4 * Math.sin(pulse_time * 4))
+  const pulse = create_pulse_animation(
+    () => selected_entry !== null || highlighted_entries.length > 0,
+    { on_tick: render_once },
+  )
+  let pulse_opacity = $derived(0.3 + 0.4 * pulse.unit)
 
   // Merge highlight style with defaults
   const merged_highlight_style = $derived(
@@ -471,19 +474,6 @@
   // Helper to check if entry is highlighted
   const is_highlighted = (entry: ConvexHullEntry): boolean =>
     helpers.is_entry_highlighted(entry, highlighted_entries)
-
-  $effect(() => {
-    if (!selected_entry && !highlighted_entries.length) return
-    const animate = () => {
-      pulse_time += 0.02
-      render_once()
-      pulse_frame_id = requestAnimationFrame(animate)
-    }
-    pulse_frame_id = requestAnimationFrame(animate)
-    return () => {
-      if (pulse_frame_id) cancelAnimationFrame(pulse_frame_id)
-    }
-  })
 
   // Re-render when important state changes
   $effect(() => {
@@ -1014,7 +1004,7 @@
           projected,
           size,
           canvas_dims.scale,
-          pulse_time,
+          pulse.time,
           pulse_opacity,
         )
       }
@@ -1024,7 +1014,7 @@
           projected,
           size,
           canvas_dims.scale,
-          pulse_time,
+          pulse.time,
           merged_highlight_style,
         )
       }
@@ -1328,7 +1318,7 @@
     }
   }
 
-  const render_once = () => {
+  function render_once() {
     if (!frame_id) {
       frame_id = requestAnimationFrame(() => {
         render_frame()
@@ -1383,7 +1373,6 @@
 
     return () => { // Cleanup on unmount
       if (frame_id) cancelAnimationFrame(frame_id)
-      if (pulse_frame_id) cancelAnimationFrame(pulse_frame_id)
       resize_observer.disconnect()
     }
   })

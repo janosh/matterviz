@@ -920,7 +920,7 @@
             <button
               class="filename"
               title="Click to copy filename <code>{current_filename}</code>"
-              {@attach tooltip()}
+              {@attach tooltip({ allow_html: true })}
               onclick={() => {
                 if (current_filename) {
                   navigator.clipboard.writeText(current_filename)

@@ -476,6 +476,29 @@ describe(`scales`, () => {
       expect(ticks.some((t) => t === 1 || t === 10 || t === 100 || t === 1000)).toBe(true)
     })
 
+    test(`emits clean round ticks for non-round domain (no raw endpoints)`, () => {
+      // Regression: raw domain extremes used to be added as ticks, rendering as long
+      // unrounded labels like 1325.8239811994677. Only clean powers of 10 / 2x/5x should show.
+      const min = -1515.343730040983
+      const max = 1325.8239811994677
+      const ticks = generate_arcsinh_ticks(min, max, 10, 10)
+      expect(ticks).not.toContain(min)
+      expect(ticks).not.toContain(max)
+      // no tick renders as a long unrounded float
+      for (const tick of ticks) expect(`${tick}`.length).toBeLessThanOrEqual(6)
+      // still covers the range with powers of 10 on both sides of zero
+      expect(ticks.some((tick) => tick >= 1000)).toBe(true)
+      expect(ticks.some((tick) => tick <= -1000)).toBe(true)
+    })
+
+    test(`small tick count snaps boundary to a clean power of 10`, () => {
+      // count<=3 mixed range previously pushed the raw extreme (e.g. -1500) as a tick
+      const ticks = generate_arcsinh_ticks(-1500, 1300, 10, 2)
+      expect(ticks).not.toContain(-1500)
+      expect(ticks).toContain(0)
+      expect(ticks).toContain(-1000) // larger-magnitude boundary snapped to nearest power of 10
+    })
+
     test(`range starting at exactly zero uses positive path`, () => {
       // When min=0, should use positive tick generation (not mixed with half_count)
       const ticks_from_zero = generate_arcsinh_ticks(0, 1000, 1, 10)

@@ -37,6 +37,27 @@ interface LabelInfo {
   candidates: Point2D[]
 }
 
+export interface LabelSize {
+  width: number
+  height: number
+}
+
+export interface LeaderLineSegment {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+export interface LeaderLineOptions {
+  point: Point2D
+  point_radius: number
+  label_center: Point2D
+  label_size: LabelSize
+  min_length?: number
+  label_padding?: number
+}
+
 const DEFAULT_WEIGHTS: Required<LabelPlacementWeights> = {
   overlap: 30,
   marker: 100,
@@ -45,6 +66,7 @@ const DEFAULT_WEIGHTS: Required<LabelPlacementWeights> = {
   distance: 0.5,
   bounds: 100,
 }
+const NEIGHBOR_CELL_OFFSETS = [-1, 0, 1] as const
 
 const copy_state = (target: LabelState, source: LabelState) => {
   target.x = source.x
@@ -60,6 +82,16 @@ export function parse_font_size(size_str?: string): number {
   if (!match) return 12
   const value = parseFloat(match[1])
   return match[2] === `em` || match[2] === `rem` ? value * 16 : value
+}
+
+export function estimate_label_size(text: string, font_size_str?: string): LabelSize {
+  const font_size = parse_font_size(font_size_str)
+  const label_lines = text.split(/\r?\n/)
+  const max_line_length = Math.max(...label_lines.map((line) => line.length))
+  return {
+    width: max_line_length * font_size * 0.6 + 10,
+    height: label_lines.length * font_size * 1.2,
+  }
 }
 
 // === Geometry helpers ===
@@ -135,6 +167,37 @@ export function rect_out_of_bounds_area(rect: Rect, bounds: PlotBounds): number 
   if (rect.x + rect.w > bounds.max_x) penalty += (rect.x + rect.w - bounds.max_x) * rect.h
   if (rect.y + rect.h > bounds.max_y) penalty += (rect.y + rect.h - bounds.max_y) * rect.w
   return penalty
+}
+
+export function label_leader_segment({
+  point,
+  point_radius,
+  label_center,
+  label_size,
+  min_length = 6,
+  label_padding = 1,
+}: LeaderLineOptions): LeaderLineSegment | null {
+  const delta_x = label_center.x - point.x
+  const delta_y = label_center.y - point.y
+  const center_distance = Math.hypot(delta_x, delta_y)
+  if (center_distance <= 0) return null
+
+  const unit_x = delta_x / center_distance
+  const unit_y = delta_y / center_distance
+  const start_x = point.x + unit_x * point_radius
+  const start_y = point.y + unit_y * point_radius
+  const half_width = label_size.width / 2 + label_padding
+  const half_height = label_size.height / 2 + label_padding
+  const edge_distance = Math.min(
+    Math.abs(unit_x) > 0.001 ? half_width / Math.abs(unit_x) : Infinity,
+    Math.abs(unit_y) > 0.001 ? half_height / Math.abs(unit_y) : Infinity,
+  )
+  const visible_length = center_distance - point_radius - edge_distance
+  if (visible_length <= min_length) return null
+
+  const end_x = label_center.x - unit_x * edge_distance
+  const end_y = label_center.y - unit_y * edge_distance
+  return { x1: start_x, y1: start_y, x2: end_x, y2: end_y }
 }
 
 // 8 candidate positions around anchor: R, TR, T, TL, L, BL, B, BR
@@ -260,6 +323,42 @@ export function compute_delta_energy(
   return delta
 }
 
+function cull_dense_labels(
+  label_infos: LabelInfo[],
+  max_neighbors: number,
+  radius: number,
+): LabelInfo[] {
+  if (radius <= 0 || label_infos.length <= max_neighbors + 1) return label_infos
+  const radius_squared = radius * radius
+  const get_cell = (value: number) => Math.floor(value / radius)
+  const grid: Record<string, number[]> = {}
+  label_infos.forEach(({ anchor }, label_idx) => {
+    const key = `${get_cell(anchor.x)},${get_cell(anchor.y)}`
+    const bucket = grid[key] ?? (grid[key] = [])
+    bucket.push(label_idx)
+  })
+
+  return label_infos.filter(({ anchor }, label_idx) => {
+    const cell_x = get_cell(anchor.x)
+    const cell_y = get_cell(anchor.y)
+    let neighbors = 0
+    for (const cell_x_offset of NEIGHBOR_CELL_OFFSETS) {
+      for (const cell_y_offset of NEIGHBOR_CELL_OFFSETS) {
+        const bucket = grid[`${cell_x + cell_x_offset},${cell_y + cell_y_offset}`]
+        if (!bucket) continue
+        for (const neighbor_idx of bucket) {
+          if (neighbor_idx === label_idx) continue
+          const delta_x = anchor.x - label_infos[neighbor_idx].anchor.x
+          const delta_y = anchor.y - label_infos[neighbor_idx].anchor.y
+          if (delta_x * delta_x + delta_y * delta_y <= radius_squared) neighbors += 1
+          if (neighbors > max_neighbors) return false
+        }
+      }
+    }
+    return true
+  })
+}
+
 // === Main export ===
 export function compute_label_positions(
   filtered_series: DataSeries[],
@@ -287,7 +386,8 @@ export function compute_label_positions(
   }
 
   // Collect all label data in a single pass
-  const label_infos: LabelInfo[] = []
+  let label_infos: LabelInfo[] = []
+  const candidate_gap = config.candidate_gap ?? 4
 
   for (const series of filtered_series) {
     for (const pt of series.filtered_data ?? []) {
@@ -297,9 +397,11 @@ export function compute_label_positions(
         ? x_scale_fn(new Date(pt.x))
         : x_scale_fn(pt.x)
       const ay = (series.y_axis === `y2` ? y2_scale_fn : y_scale_fn)(pt.y)
-      const font_size = parse_font_size(pt.point_label.font_size)
-      const label_w = pt.point_label.text.length * font_size * 0.6 + 10
-      const label_h = font_size * 1.2
+      const label_size =
+        pt.point_label.size ??
+        estimate_label_size(pt.point_label.text, pt.point_label.font_size)
+      const label_w = label_size.width
+      const label_h = label_size.height
       const radius = pt.point_style?.radius ?? 3
 
       label_infos.push({
@@ -307,9 +409,17 @@ export function compute_label_positions(
         anchor: { x: ax, y: ay, radius },
         width: label_w,
         height: label_h,
-        candidates: generate_candidates(ax, ay, radius, label_w, label_h, 4),
+        candidates: generate_candidates(ax, ay, radius, label_w, label_h, candidate_gap),
       })
     }
+  }
+
+  if (config.max_neighbors) {
+    label_infos = cull_dense_labels(
+      label_infos,
+      config.max_neighbors.count,
+      config.max_neighbors.radius,
+    )
   }
 
   const num_labels = label_infos.length
