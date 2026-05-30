@@ -263,6 +263,25 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelectorAll(`.effect-ring.selected`)).toHaveLength(selected_point ? 1 : 0)
   })
 
+  test(`falls back for auto labels before placement is available`, async () => {
+    mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [
+          {
+            x: [1],
+            y: [1],
+            point_label: { text: `Fallback`, auto_placement: true },
+          },
+        ],
+        style: `width: 400px; height: 300px`,
+      },
+    })
+    await tick()
+
+    expect(document.querySelector(`.label-text`)?.textContent).toBe(`Fallback`)
+  })
+
   test(`hides auto labels culled by max_neighbors`, async () => {
     const coords = [...Array.from({ length: 6 }, (_val, idx) => 1 + idx * 0.001), 100]
     const plot = await mount_sized_scatter_plot({

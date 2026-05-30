@@ -15,9 +15,9 @@ function get_prop_expr(tag: string, prop: `limit` | `range`): string {
 }
 
 function get_key_attr(tag: string): string {
-  const match = /\bkey\s*=\s*"([^"]+)"/.exec(tag)
+  const match = /\bkey\s*=\s*(?:"([^"]+)"|\{\s*([^}]+?)\s*\})/.exec(tag)
   if (!match) throw new Error(`InstancedMesh tag is missing key: ${tag}`)
-  return match[1].replace(/\s+/g, ``)
+  return (match[1] ?? match[2]).replace(/\s+/g, ``)
 }
 
 describe(`InstancedMesh limits`, () => {
@@ -33,10 +33,16 @@ describe(`InstancedMesh limits`, () => {
     }
   })
 
-  it(`keys StructureScene atom mesh by its limit`, () => {
+  it(`keys StructureScene atom mesh with shared group identity`, () => {
+    const source = readFileSync(`src/lib/structure/StructureScene.svelte`, `utf8`)
     const [tag] = get_instanced_mesh_tags(`src/lib/structure/StructureScene.svelte`)
     if (!tag) throw new Error(`StructureScene InstancedMesh tag not found`)
 
-    expect(get_key_attr(tag)).toContain(`{${get_prop_expr(tag, `limit`)}}`)
+    expect(get_key_attr(tag)).toBe(`instanced_atom_group_key(atom_group,measure_mode)`)
+    expect(
+      source.match(/instanced_atom_group_key\(atom_group,\s*measure_mode\)/g),
+    ).toHaveLength(2)
+    expect(source).toMatch(/format_num\(radius, `\.3~`\)[^]*edit_mode_image[^]*atoms\.length/)
+    expect(source).toContain(`limit={atoms.length}`)
   })
 })

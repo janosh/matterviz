@@ -2448,7 +2448,9 @@
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
                 {@const calculated_label_pos = label_positions[label_id]}
                 {@const point_label = point.point_label ?? {}}
-                {@const label_style = point_label.auto_placement && !calculated_label_pos
+                {@const label_style = point_label.auto_placement &&
+          actual_label_config.max_neighbors &&
+          !calculated_label_pos
           ? {}
           : point_label}
                 {@const final_label = calculated_label_pos

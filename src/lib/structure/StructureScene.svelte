@@ -87,6 +87,16 @@
     atoms: (typeof atom_data)[number][]
   }
 
+  function instanced_atom_group_key(
+    { element, radius, color, is_image_atom, atoms }: InstancedAtomGroup,
+    measure_mode: MeasureMode,
+  ): string {
+    const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom
+    return `${element}-${format_num(radius, `.3~`)}-${color}-${
+      is_image_atom ? `img` : `base`
+    }-${edit_mode_image}-${atoms.length}`
+  }
+
   type EditableAtomHitTarget = {
     site_idx: number
     position: Vec3
@@ -1514,13 +1524,11 @@
     <T.Group position={math.scale(rotation_target, -1)}>
       {#if show_atoms}
         <!-- Instanced rendering for full occupancy atoms -->
-        {#each instanced_atom_groups as
-          { element, radius, color, is_image_atom, atoms }
-          (`${element}-${radius}-${color}-${is_image_atom ? `img` : `base`}-${atoms.length}`)
-        }
+        {#each instanced_atom_groups as atom_group (instanced_atom_group_key(atom_group, measure_mode))}
+          {@const { element, radius, color, is_image_atom, atoms } = atom_group}
           {@const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom}
           <extras.InstancedMesh
-            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom ? `img` : `base`}-{edit_mode_image}-{atoms.length}"
+            key={instanced_atom_group_key(atom_group, measure_mode)}
             limit={atoms.length}
             range={atoms.length}
             frustumCulled={false}

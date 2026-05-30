@@ -351,7 +351,6 @@
       {#each available_vector_keys as key, idx (key)}
         <label
           {@attach tooltip({
-            allow_html: true,
             content: `Toggle ${key} vectors`,
           })}
           style="gap: 4pt"

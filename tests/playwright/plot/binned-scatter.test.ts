@@ -84,7 +84,11 @@ test(`loads and interacts with one million density points within browser latency
     waitUntil: `domcontentloaded`,
   })
   const status = await wait_for_ready(page)
-  const mount_ms = Number(await status.getAttribute(`data-mount-ms`))
+  const mount_attr = await status.getAttribute(`data-mount-ms`)
+  expect(mount_attr).not.toBeNull()
+  const mount_ms = Number(mount_attr)
+  expect(Number.isFinite(mount_ms)).toBe(true)
+  expect(mount_ms).toBeGreaterThan(0)
 
   expect(await page.locator(`.colorbar .label`).textContent()).toBe(
     `Density (1,000,000 points)`,

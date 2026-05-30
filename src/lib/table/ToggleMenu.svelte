@@ -149,7 +149,7 @@
   <label
     class="toggle-label"
     class:disabled={col.disabled}
-    {@attach tooltip({ allow_html: true, content: col.description })}
+    {@attach tooltip({ allow_html: true, content: sanitize_html(col.description ?? ``) })}
   >
     <input
       type="checkbox"

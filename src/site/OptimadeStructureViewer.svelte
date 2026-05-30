@@ -156,7 +156,7 @@
           <div class:selected={id === selected_db}>
             <button
               class="db-select"
-              {@attach tooltip({ allow_html: true, content: attributes.name })}
+              {@attach tooltip({ allow_html: true, content: sanitize_html(attributes.name) })}
               onclick={() => {
                 selected_db = id
                 input_value = ``
