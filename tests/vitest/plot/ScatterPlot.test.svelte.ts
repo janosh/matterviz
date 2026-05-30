@@ -584,6 +584,45 @@ describe(`ScatterPlot`, () => {
     expect(fills[1].classList.contains(`hovered`)).toBe(false)
   })
 
+  test(`hidden fill keeps its legend item so it can be toggled back on`, async () => {
+    let fill_regions = $state<FillRegion[]>([
+      { id: `band`, label: `Band`, lower: 0, upper: 0.5, fill: `steelblue` },
+    ])
+    mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x: [0, 1], y: [0, 1] }],
+        x_axis: { range: [0, 1] as Vec2 },
+        y_axis: { range: [0, 1] as Vec2 },
+        get fill_regions() {
+          return fill_regions
+        },
+        legend: {},
+        style: `width: 400px; height: 300px;`,
+      },
+    })
+    await resize_element(doc_query(`.scatter`), 400, 300)
+    await tick()
+
+    const fill_item = () =>
+      [...document.querySelectorAll<HTMLElement>(`.legend-item.fill-item`)].find((el) =>
+        el.textContent?.includes(`Band`),
+      )
+
+    // fill renders and has a legend item
+    expect(document.querySelectorAll(`.fill-region`).length).toBe(1)
+    expect(fill_item()).toBeDefined()
+
+    // hide it (what clicking the legend fill item does via the fill_regions binding)
+    fill_regions = [{ ...fill_regions[0], visible: false }]
+    flushSync()
+    await tick()
+
+    // fill no longer drawn, but the legend item persists (greyed) so it can be toggled back
+    expect(document.querySelectorAll(`.fill-region`).length).toBe(0)
+    expect(fill_item()?.classList.contains(`hidden`)).toBe(true)
+  })
+
   // Dense grid covering the whole plot so no decoration can avoid overlapping data
   const dense_grid = (n: number): { x: number[]; y: number[] } => {
     const x: number[] = []

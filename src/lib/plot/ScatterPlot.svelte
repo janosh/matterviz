@@ -86,15 +86,13 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteSet } from 'svelte/reactivity'
-  import type { FillPathPoint } from './fill-utils'
+  import type { Pt } from './fill-utils'
   import {
-    apply_range_constraints,
-    apply_where_condition,
-    clamp_for_log_scale,
+    compute_fill_segments,
     convert_error_band_to_fill_region,
     generate_fill_path,
     is_fill_gradient,
-    resolve_boundary,
+    LOG_EPSILON,
   } from './fill-utils'
   import {
     expand_range_if_needed,
@@ -894,19 +892,21 @@
       })),
     ]
 
-    // Compute unique x-values once for all fills
-    // Optimization: deduplicate first (O(n)), then sort only unique values (O(k log k))
-    // This is faster for datasets with many duplicate x-values across series
-    const x_set = new SvelteSet<number>()
-    for (const data_series of series_with_ids) {
-      if (!data_series) continue
-      for (const val of data_series.x) {
-        if (typeof val === `number` && isFinite(val)) x_set.add(val)
-      }
-    }
-    const unique_x = [...x_set].sort((val_a, val_b) => val_a - val_b)
+    // Clamp data coords to a positive epsilon on log axes before scaling (avoids log(0) = -Inf)
+    const x_scale_type = final_x_axis.scale_type ?? `linear`
+    const y_scale_type = final_y_axis.scale_type ?? `linear`
+    const to_px = (pt: Pt): Pt => ({
+      x: x_scale_fn(x_scale_type === `log` && pt.x <= 0 ? LOG_EPSILON : pt.x),
+      y: y_scale_fn(y_scale_type === `log` && pt.y <= 0 ? LOG_EPSILON : pt.y),
+    })
 
-    if (unique_x.length === 0) return []
+    // Each boundary is traced through its own points with the same curve the series line uses,
+    // so fill edges coincide exactly with the lines they border (x_domain anchors flat boundaries).
+    const domains = {
+      x_domain: [x_min, x_max] as Vec2,
+      y_domain: [y_min, y_max] as Vec2,
+      y2_domain: [y2_min, y2_max] as Vec2,
+    }
 
     return all_regions
       .filter((
@@ -918,71 +918,24 @@
         hover_key: string
       } => entry.region !== null)
       .map(({ region, source_type, source_idx, hover_key }, idx) => {
-        if (region.visible === false) return null
+        // Hidden fills keep their entry (with empty path_segments -> nothing renders) so the
+        // legend item persists greyed-out and can be toggled back on.
+        const hidden = region.visible === false
+        const path_segments = hidden
+          ? []
+          : compute_fill_segments(region, series_with_ids, domains)
+            .map((seg) =>
+              generate_fill_path(
+                seg.upper.map(to_px),
+                seg.lower.map(to_px),
+                seg.upper_curve,
+                seg.lower_curve,
+              )
+            )
+            .filter((path) => path.length > 0)
 
-        // Domain context for boundary resolution
-        const domains = {
-          y_domain: [y_min, y_max] as Vec2,
-          y2_domain: [y2_min, y2_max] as Vec2,
-        }
-
-        // Resolve upper and lower boundaries
-        const upper_values = resolve_boundary(
-          region.upper,
-          series_with_ids,
-          unique_x,
-          domains,
-        )
-        const lower_values = resolve_boundary(
-          region.lower,
-          series_with_ids,
-          unique_x,
-          domains,
-        )
-
-        if (!upper_values || !lower_values) return null
-
-        // Apply range constraints
-        const range_filtered = apply_range_constraints(
-          unique_x,
-          lower_values,
-          upper_values,
-          region,
-        )
-
-        // Clamp for log scale if needed
-        const y_scale_type = final_y_axis.scale_type ?? `linear`
-        const x_scale_type = final_x_axis.scale_type ?? `linear`
-        const clamped = clamp_for_log_scale(
-          range_filtered.x,
-          range_filtered.y1,
-          range_filtered.y2,
-          y_scale_type,
-          x_scale_type,
-        )
-
-        // Apply where condition (splits into segments)
-        const conditioned = apply_where_condition(
-          clamped.x,
-          clamped.y1,
-          clamped.y2,
-          region,
-        )
-
-        // Generate paths for each segment (convert to pixel coordinates)
-        const path_segments = conditioned.segments
-          .filter((segment) => segment.length > 1)
-          .map((segment) => {
-            const pixel_data: FillPathPoint[] = segment.map((point) => ({
-              x: x_scale_fn(point.x),
-              y1: y_scale_fn(point.y1),
-              y2: y_scale_fn(point.y2),
-            }))
-            return generate_fill_path(pixel_data, region.curve ?? `monotoneX`)
-          })
-          .filter((path) => path.length > 0)
-
-        if (path_segments.length === 0) return null
+        // Drop only visible fills with no geometry; keep hidden ones for the legend
+        if (!hidden && path_segments.length === 0) return null
 
         return { ...region, idx, source_type, source_idx, hover_key, path_segments }
       })
@@ -2609,11 +2562,22 @@
         on_drag={handle_legend_drag}
         on_drag_end={() => (legend_is_dragging = false)}
         on_hover_change={legend_hover.set_locked}
-        on_item_hover={(series_idx: number | null) =>
-          (hovered_legend_series_idx = series_idx != null && series_idx >= 0
-            ? series_idx
-            : null)}
+        on_item_hover={(item) => {
+          if (item?.item_type === `fill`) {
+            // highlight the matching fill in the plot (same state plot fill-hover uses)
+            hovered_fill_key = computed_fills.find((fill) => fill.idx === item.fill_idx)
+              ?.hover_key ?? null
+            hovered_legend_series_idx = null
+          } else {
+            hovered_legend_series_idx = item != null && item.series_idx >= 0
+              ? item.series_idx
+              : null
+            hovered_fill_key = null
+          }
+        }}
         active_series_idx={tooltip_point?.series_idx ?? hovered_legend_series_idx}
+        active_fill_idx={computed_fills.find((fill) => fill.hover_key === hovered_fill_key)?.idx ??
+          null}
         draggable={legend?.draggable ?? true}
         {...legend}
         on_toggle={legend?.on_toggle ??
