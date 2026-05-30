@@ -25,12 +25,20 @@ describe(`InteractiveAxisLabel`, () => {
   })
 
   test.each([
-    { props: { label: `Energy (eV)` }, desc: `no options` },
-    { props: { options: [], label: `Fallback` }, desc: `empty options` },
-  ])(`renders static label when $desc`, ({ props }) => {
+    { props: { label: `Energy (eV)` }, text: `Energy (eV)`, tag_count: 0, desc: `no options` },
+    {
+      props: { options: [], label: `E<sub>hull</sub><sup>*</sup>` },
+      text: `Ehull*`,
+      tag_count: 2,
+      desc: `empty options with HTML`,
+    },
+  ])(`renders static label when $desc`, ({ props, text, tag_count }) => {
     const component = mount_label(props)
     expect(get_wrapper()?.classList.contains(`interactive`)).toBe(false)
-    expect(get_wrapper()?.textContent).toContain(props.label)
+    const static_label = document.body.querySelector(`.static-label`) as HTMLElement
+    expect(static_label.textContent).toContain(text)
+    expect(static_label.querySelectorAll(`sub, sup`)).toHaveLength(tag_count)
+    expect(getComputedStyle(static_label).display).toBe(`inline-flex`)
     expect(get_trigger()).toBeNull()
     void unmount(component)
   })

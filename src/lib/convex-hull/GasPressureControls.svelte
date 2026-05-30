@@ -115,13 +115,10 @@
     {#each enabled_gases as gas (gas)}
       {@const P = get_pressure(gas)}
       {@const mu = get_mu(gas)}
+      {@const tooltip_content = `${gas} partial pressure for μ(T,P)\nμ = ${format_chemical_potential(mu, 3)}`}
       <div
         class="pressure-slider"
-        {@attach tooltip({
-          content: `${gas} partial pressure for μ(T,P)\nμ = ${
-            format_chemical_potential(mu, 3)
-          }`,
-        })}
+        {@attach tooltip({ content: tooltip_content })}
       >
         <label class="pressure-label">
           <input

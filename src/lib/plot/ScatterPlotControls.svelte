@@ -103,9 +103,7 @@
       {/if}
       {#if has_any_lines}
         <label
-          {@attach tooltip({
-            content: `Toggle visibility of connecting lines between data points`,
-          })}
+          {@attach tooltip({ content: `Toggle visibility of connecting lines between data points` })}
         >
           <input type="checkbox" bind:checked={styles.show_lines} /> Show lines
         </label>

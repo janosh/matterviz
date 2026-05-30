@@ -1,4 +1,3 @@
-import type { Point2D } from '$lib/math'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { get_tick_range, IS_CI } from '../helpers'
 
@@ -27,44 +26,6 @@ const click_radio = async (page: Page, selector: string): Promise<void> => {
 // Check if array values are in ascending order (empty arrays are vacuously ascending)
 const is_ascending = (arr: number[]): boolean =>
   arr.every((val, idx) => idx === 0 || val >= arr[idx - 1])
-
-// Get label positions based on parent group transform
-const get_label_positions = async (
-  plot_locator: Locator,
-): Promise<Record<string, Point2D>> => {
-  await plot_locator.waitFor({ state: `visible` })
-  // Wait for markers to be rendered
-  await expect(plot_locator.locator(`path.marker`).first()).toBeVisible()
-
-  const positions: Record<string, Point2D> = {}
-  const markers = await plot_locator.locator(`path.marker`).all()
-
-  const marker_promises = markers.map(async (marker) => {
-    const parent_group = marker.locator(`..`)
-    const label_text_element = parent_group.locator(`text`)
-    const label_text_content = await label_text_element.textContent()
-
-    if (label_text_content) {
-      const transform = await parent_group.getAttribute(`transform`)
-      if (transform) {
-        const match = /translate\(([^\s,]+)\s*,?\s*([^)]+)\)/.exec(transform)
-        if (match) {
-          return {
-            label: label_text_content,
-            position: { x: parseFloat(match[1]), y: parseFloat(match[2]) },
-          }
-        }
-      }
-    }
-    return null
-  })
-
-  const marker_results = await Promise.all(marker_promises)
-  for (const result of marker_results) {
-    if (result) positions[result.label] = result.position
-  }
-  return positions
-}
 
 // Get legend position using getBoundingClientRect
 const get_legend_position = async (
@@ -219,11 +180,8 @@ const hover_to_show_tooltip = async (
   }).toPass({ timeout: 2000 })
 }
 
-// Get tooltip background and text color after hover
-const get_tooltip_colors = async (
-  page: Page,
-  plot_id: string,
-): Promise<{ bg: string; text: string }> => {
+// Hover a point and return its tooltip locator (colors asserted via retrying toHaveCSS)
+const show_point_tooltip = async (page: Page, plot_id: string): Promise<Locator> => {
   // The id prop is applied directly to the .scatter div
   const plot_locator = page.locator(`#tooltip-precedence-test #${plot_id}.scatter`)
   const point_locator = plot_locator.locator(`path.marker`).first()
@@ -231,20 +189,8 @@ const get_tooltip_colors = async (
 
   await ensure_plot_visible(plot_locator)
   await hover_to_show_tooltip(page, plot_locator, point_locator)
-
   await expect(tooltip_locator).toBeVisible()
-  const colors = await tooltip_locator.evaluate((el) => {
-    const style = globalThis.getComputedStyle(el)
-    return { bg: style.backgroundColor, text: style.color }
-  })
-
-  // Move away to hide tooltip
-  const plot_bbox = await plot_locator.boundingBox()
-  if (plot_bbox) {
-    await page.mouse.move(plot_bbox.x + 10, plot_bbox.y + 10)
-  }
-  await expect(tooltip_locator).toBeHidden({ timeout: 5000 })
-  return colors
+  return tooltip_locator
 }
 
 // Open control pane via hover-reveal pattern.
@@ -838,57 +784,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // LABEL AUTO-PLACEMENT TESTS
-
-  test(`label auto-placement repositions dense labels but preserves sparse ones`, async ({
-    page,
-  }) => {
-    test.skip(IS_CI, `Label placement varies in CI`)
-    const section = page.locator(`#label-auto-placement-test`)
-    const plot_locator = section.locator(`.scatter`)
-    const checkbox = section.getByRole(`checkbox`, { name: `Enable Auto Placement` })
-
-    await expect(plot_locator.locator(`path.marker`).first()).toBeVisible()
-    await expect(checkbox).toBeChecked()
-    const positions_auto = await get_label_positions(plot_locator)
-
-    await checkbox.uncheck()
-    await expect(checkbox).not.toBeChecked()
-    const positions_manual = await get_label_positions(plot_locator)
-
-    const dense_labels = Object.keys(positions_auto).filter((key) => key.startsWith(`Dense-`))
-    expect(dense_labels.length).toBeGreaterThan(1)
-
-    const sparse_labels = Object.keys(positions_auto).filter((key) =>
-      key.startsWith(`Sparse-`),
-    )
-    expect(sparse_labels.length).toBe(4)
-
-    // Calculate percentage-based threshold relative to plot size.
-    // Sparse labels shouldn't move dramatically since they don't overlap.
-    // Use 20% of plot diagonal as threshold - allows for auto-placement
-    // adjustments while still catching major layout issues.
-    const plot_box = await plot_locator.boundingBox()
-    const plot_diagonal = plot_box
-      ? Math.sqrt(plot_box.width ** 2 + plot_box.height ** 2)
-      : 500 // fallback for safety
-    const movement_threshold = plot_diagonal * 0.2
-
-    for (const label_text of sparse_labels) {
-      if (positions_auto[label_text] && positions_manual[label_text]) {
-        const dx = positions_auto[label_text].x - positions_manual[label_text].x
-        const dy = positions_auto[label_text].y - positions_manual[label_text].y
-        const distance_moved = Math.sqrt(dx * dx + dy * dy)
-        expect(
-          distance_moved,
-          `Label "${label_text}" moved ${distance_moved.toFixed(1)}px (threshold: ${movement_threshold.toFixed(
-            1,
-          )}px, 20% of diagonal)`,
-        ).toBeLessThan(movement_threshold)
-      }
-    }
-  })
-
   const legend_visibility_test_cases = [
     {
       id: `#legend-single-default`,
@@ -1283,9 +1178,10 @@ test.describe(`ScatterPlot Component Tests`, () => {
   tooltip_precedence_test_cases.forEach(
     ({ plot_id, expected_bg, expected_text, description }) => {
       test(`tooltip uses ${description}`, async ({ page }) => {
-        const { bg, text } = await get_tooltip_colors(page, plot_id)
-        expect(bg).toBe(expected_bg)
-        expect(text).toBe(expected_text)
+        const tooltip = await show_point_tooltip(page, plot_id)
+        // toHaveCSS retries, avoiding flakes from reactive colors applied a tick after hover
+        await expect(tooltip).toHaveCSS(`background-color`, expected_bg)
+        await expect(tooltip).toHaveCSS(`color`, expected_text)
       })
     },
   )

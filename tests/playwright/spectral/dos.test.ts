@@ -8,7 +8,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`renders single DOS with axes`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
+    const plot = page.locator(`[data-testid="dos-single"]`)
     await expect(plot).toBeVisible()
 
     // Check SVG and DOS curve (use stroke to identify line paths)
@@ -21,7 +21,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`renders multiple DOS with toggleable legend`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-multiple"] .scatter`)
+    const plot = page.locator(`[data-testid="dos-multiple"]`)
     const svg = plot.locator(`svg`)
 
     // Check legend with correct labels
@@ -41,7 +41,7 @@ test.describe(`DOS Component Tests`, () => {
 
   test(`applies normalization correctly`, async ({ page }) => {
     // Max normalization should have y-values <= 1
-    const max_plot = page.locator(`[data-testid="dos-max-norm"] .scatter`)
+    const max_plot = page.locator(`[data-testid="dos-max-norm"]`)
     await expect(
       max_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first(),
     ).toBeVisible()
@@ -53,7 +53,7 @@ test.describe(`DOS Component Tests`, () => {
     expect(max_val).toBeLessThanOrEqual(1.01) // Small margin for tick rounding
 
     // Sum normalization should render correctly
-    const sum_plot = page.locator(`[data-testid="dos-sum-norm"] .scatter`)
+    const sum_plot = page.locator(`[data-testid="dos-sum-norm"]`)
     await expect(
       sum_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first(),
     ).toBeVisible()
@@ -61,7 +61,7 @@ test.describe(`DOS Component Tests`, () => {
 
   test(`renders stacked DOS and applies Gaussian smearing`, async ({ page }) => {
     // Stacked DOS should have 2 curves, second higher than first
-    const stacked_plot = page.locator(`[data-testid="dos-stacked"] .scatter`)
+    const stacked_plot = page.locator(`[data-testid="dos-stacked"]`)
     // Use stroke presence to identify line paths (robust against fill="none" vs "transparent")
     const paths = stacked_plot.locator(`path.line, path[stroke]:not([stroke="none"])`)
     await expect(paths).toHaveCount(2)
@@ -77,7 +77,7 @@ test.describe(`DOS Component Tests`, () => {
     }
 
     // Check Gaussian smearing produces smooth curves
-    const smeared_plot = page.locator(`[data-testid="dos-smeared"] .scatter`)
+    const smeared_plot = page.locator(`[data-testid="dos-smeared"]`)
     const path = smeared_plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first()
     await expect(path).toBeVisible()
     const path_d = await path.getAttribute(`d`)
@@ -90,7 +90,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`renders with horizontal orientation`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-horizontal"] .scatter`)
+    const plot = page.locator(`[data-testid="dos-horizontal"]`)
     await expect(
       plot.locator(`path.line, path[stroke]:not([stroke="none"])`).first(),
     ).toBeVisible()
@@ -114,7 +114,7 @@ test.describe(`DOS Component Tests`, () => {
         [`eV`, `[data-testid="dos-ev"]`],
         [`meV`, `[data-testid="dos-mev"]`],
       ].map(async ([unit, selector]) => {
-        const plot = page.locator(`${selector} .scatter`)
+        const plot = page.locator(selector)
         await expect(plot).toBeVisible()
         const x_label = plot.locator(`.x-label`)
         if ((await x_label.count()) > 0) {
@@ -126,18 +126,18 @@ test.describe(`DOS Component Tests`, () => {
 
   test(`hides legend when configured and maintains responsive layout`, async ({ page }) => {
     // Check legend hidden
-    const no_legend_plot = page.locator(`[data-testid="dos-no-legend"] .scatter`)
+    const no_legend_plot = page.locator(`[data-testid="dos-no-legend"]`)
     await expect(no_legend_plot.locator(`.legend`)).toBeHidden()
 
     // Check responsive layout
-    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
+    const plot = page.locator(`[data-testid="dos-single"]`)
     expect(await plot.boundingBox()).toBeTruthy()
     await page.setViewportSize({ width: 800, height: 600 })
     await expect(plot).toBeVisible()
   })
 
   test(`shows tooltip with density and frequency on hover`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
+    const plot = page.locator(`[data-testid="dos-single"]`)
     await expect(plot).toBeVisible()
 
     const svg = get_chart_svg(plot)
@@ -183,7 +183,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`tooltip shows series label with multiple DOS`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-multiple"] .scatter`)
+    const plot = page.locator(`[data-testid="dos-multiple"]`)
     await expect(plot).toBeVisible()
 
     const svg = get_chart_svg(plot)
@@ -243,7 +243,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`tooltip shows correct labels for horizontal orientation`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-horizontal"] .scatter`)
+    const plot = page.locator(`[data-testid="dos-horizontal"]`)
     await expect(plot).toBeVisible()
 
     const svg = get_chart_svg(plot)
@@ -306,7 +306,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`tooltip shows correct labels for vertical orientation`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
+    const plot = page.locator(`[data-testid="dos-single"]`)
     await expect(plot).toBeVisible()
 
     const svg = get_chart_svg(plot)
@@ -366,7 +366,7 @@ test.describe(`DOS Component Tests`, () => {
   })
 
   test(`tooltip disappears when mouse leaves plot area`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-single"] .scatter`)
+    const plot = page.locator(`[data-testid="dos-single"]`)
     const svg = get_chart_svg(plot)
     const box = await svg.boundingBox()
     expect(box).toBeTruthy()

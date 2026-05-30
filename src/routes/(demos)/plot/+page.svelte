@@ -16,6 +16,13 @@
       icon: `ScatterPlot`,
     },
     {
+      href: `/plot/binned-scatter`,
+      title: `Binned Scatter Plot`,
+      description:
+        `Adaptive density rendering for crowded point clouds with point picking and structure popups.`,
+      icon: `ScatterPlot`,
+    },
+    {
       href: `/plot/scatter-plot-3d`,
       title: `3D Scatter Plot`,
       description:

@@ -16,6 +16,7 @@
     VectorLayerConfig,
   } from '$lib/settings'
   import { DEFAULTS } from '$lib/settings'
+  import { create_pulse_animation } from '$lib/effects.svelte'
   import { colors } from '$lib/state.svelte'
   import type {
     AnyStructure,
@@ -86,6 +87,16 @@
     atoms: (typeof atom_data)[number][]
   }
 
+  function instanced_atom_group_key(
+    { element, radius, color, is_image_atom, atoms }: InstancedAtomGroup,
+    measure_mode: MeasureMode,
+  ): string {
+    const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom
+    return `${element}-${format_num(radius, `.3~`)}-${color}-${
+      is_image_atom ? `img` : `base`
+    }-${edit_mode_image}-${atoms.length}`
+  }
+
   type EditableAtomHitTarget = {
     site_idx: number
     position: Vec3
@@ -110,22 +121,6 @@
     object?: Object3D
     point?: Vector3
   }
-
-  let pulse_time = $state(0)
-  let pulse_opacity = $derived(0.15 + 0.25 * Math.sin(pulse_time * 5))
-  $effect(() => {
-    if (!selected_sites?.length && !active_sites?.length) return
-    if (typeof globalThis === `undefined`) return
-    const reduce = globalThis.matchMedia?.(`(prefers-reduced-motion: reduce)`).matches
-    if (reduce) return
-    let frame_id = 0
-    const animate = () => {
-      pulse_time += 0.015
-      frame_id = requestAnimationFrame(animate)
-    }
-    frame_id = requestAnimationFrame(animate)
-    return () => cancelAnimationFrame(frame_id)
-  })
 
   let {
     structure = undefined,
@@ -320,6 +315,12 @@
     volumetric_data?: VolumetricData // Active volumetric data for isosurface rendering
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
   } = $props()
+
+  const pulse = create_pulse_animation(
+    () => selected_sites.length > 0 || active_sites.length > 0,
+    { step: 0.015, frequency: 5 },
+  )
+  let pulse_opacity = $derived(0.15 + 0.25 * pulse.unit)
 
   const threlte = useThrelte()
   $effect(() => {
@@ -1526,13 +1527,11 @@
     <T.Group position={math.scale(rotation_target, -1)}>
       {#if show_atoms}
         <!-- Instanced rendering for full occupancy atoms -->
-        {#each instanced_atom_groups as
-          { element, radius, color, is_image_atom, atoms }
-          (`${element}-${radius}-${color}-${is_image_atom ? `img` : `base`}`)
-        }
+        {#each instanced_atom_groups as atom_group (instanced_atom_group_key(atom_group, measure_mode))}
+          {@const { element, radius, color, is_image_atom, atoms } = atom_group}
           {@const edit_mode_image = measure_mode === `edit-atoms` && is_image_atom}
           <extras.InstancedMesh
-            key="{element}-{format_num(radius, `.3~`)}-{color}-{is_image_atom ? `img` : `base`}-{edit_mode_image}"
+            key={instanced_atom_group_key(atom_group, measure_mode)}
             limit={atoms.length}
             range={atoms.length}
             frustumCulled={false}

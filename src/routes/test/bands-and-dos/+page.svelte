@@ -43,13 +43,18 @@
 <h1>BandsAndDos Component Test Page</h1>
 
 <h2 id="default">Default (Shared Y-axis)</h2>
-<BandsAndDos band_structs={mock_band_structure} doses={mock_dos} />
+<BandsAndDos
+  band_structs={mock_band_structure}
+  doses={mock_dos}
+  data-testid="bands-and-dos-default"
+/>
 
 <h2 id="custom-widths">Custom Subplot Widths</h2>
 <BandsAndDos
   band_structs={mock_band_structure}
   doses={mock_dos}
   style="grid-template-columns: 60% 40%"
+  data-testid="bands-and-dos-custom-widths"
 />
 
 <h2 id="bands-custom-styling">Custom Bands Styling</h2>
@@ -57,6 +62,7 @@
   band_structs={mock_band_structure}
   doses={mock_dos}
   bands_props={{ line_kwargs: { stroke: `red` } }}
+  data-testid="bands-and-dos-bands-styling"
 />
 
 <h2 id="dos-normalization">DOS with Normalization</h2>
@@ -64,6 +70,7 @@
   band_structs={mock_band_structure}
   doses={mock_dos}
   dos_props={{ normalize: `max`, sigma: 0.2 }}
+  data-testid="bands-and-dos-dos-norm"
 />
 
 <h2 id="independent-axes">Independent Y-axes (Mismatched Ranges)</h2>
@@ -71,6 +78,7 @@
   band_structs={mock_band_structure}
   doses={high_freq_dos}
   shared_y_axis={false}
+  data-testid="bands-and-dos-independent-axes"
 >
   <div
     class="custom-overlay"
@@ -85,31 +93,29 @@
   Shows electronic band structure. The Fermi level (E<sub>F</sub>) is automatically
   detected and displayed as a dashed red line.
 </p>
-<div data-testid="bands-and-dos-electronic">
-  <BandsAndDos
-    band_structs={electronic_bands.cao_2605}
-    doses={electronic_dos}
-    bands_props={{ y_axis: { label: `Energy (eV)` } }}
-    dos_props={{ y_axis: { label: `` } }}
-  />
-</div>
+<BandsAndDos
+  band_structs={electronic_bands.cao_2605}
+  doses={electronic_dos}
+  bands_props={{ y_axis: { label: `Energy (eV)` } }}
+  dos_props={{ y_axis: { label: `` } }}
+  data-testid="bands-and-dos-electronic"
+/>
 
 <h2 id="electronic-spin-polarized">Electronic Bands (VBr₂ Spin-Polarized)</h2>
 <p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
   Spin-polarized electronic band structure showing both spin channels. Note the Fermi
   level marker.
 </p>
-<div data-testid="bands-and-dos-spin-polarized">
-  <BandsAndDos
-    band_structs={electronic_bands.vbr2_971787}
-    doses={electronic_dos}
-    bands_props={{
-      y_axis: { label: `Energy (eV)` },
-      line_kwargs: { stroke_width: 1.5 },
-    }}
-    dos_props={{ y_axis: { label: `` } }}
-  />
-</div>
+<BandsAndDos
+  band_structs={electronic_bands.vbr2_971787}
+  doses={electronic_dos}
+  bands_props={{
+    y_axis: { label: `Energy (eV)` },
+    line_kwargs: { stroke_width: 1.5 },
+  }}
+  dos_props={{ y_axis: { label: `` } }}
+  data-testid="bands-and-dos-spin-polarized"
+/>
 
 <h2 id="electronic-comparison">Electronic vs Phonon Comparison</h2>
 <p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1rem">
@@ -119,24 +125,22 @@
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem">
   <div>
     <h3 style="text-align: center">Electronic (CaO)</h3>
-    <div data-testid="bands-and-dos-electronic-comparison">
-      <BandsAndDos
-        band_structs={electronic_bands.cao_2605}
-        doses={electronic_dos}
-        bands_props={{ y_axis: { label: `Energy (eV)` } }}
-        dos_props={{ y_axis: { label: `` } }}
-      />
-    </div>
+    <BandsAndDos
+      band_structs={electronic_bands.cao_2605}
+      doses={electronic_dos}
+      bands_props={{ y_axis: { label: `Energy (eV)` } }}
+      dos_props={{ y_axis: { label: `` } }}
+      data-testid="bands-and-dos-electronic-comparison"
+    />
   </div>
   <div>
     <h3 style="text-align: center">Phonon (Mock)</h3>
-    <div data-testid="bands-and-dos-phonon-comparison">
-      <BandsAndDos
-        band_structs={mock_band_structure}
-        doses={mock_dos}
-        bands_props={{ y_axis: { label: `Frequency (THz)` } }}
-      />
-    </div>
+    <BandsAndDos
+      band_structs={mock_band_structure}
+      doses={mock_dos}
+      bands_props={{ y_axis: { label: `Frequency (THz)` } }}
+      data-testid="bands-and-dos-phonon-comparison"
+    />
   </div>
 </div>
 

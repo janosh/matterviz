@@ -68,9 +68,7 @@
   <div class="pane-row compact-row">
     {#if volumes.length > 1}
       <label
-        {@attach tooltip({
-          content: `Select which volume to display (e.g. charge vs magnetization)`,
-        })}
+        {@attach tooltip({ content: `Select which volume to display (e.g. charge vs magnetization)` })}
       >
         <span>Volume:</span>
         <select bind:value={active_volume_idx}>
@@ -81,9 +79,7 @@
       </label>
     {/if}
     <label
-      {@attach tooltip({
-        content: `Number of isosurface shells at different density thresholds`,
-      })}
+      {@attach tooltip({ content: `Number of isosurface shells at different density thresholds` })}
     >
       <span>Layers:</span>
       <select
@@ -99,10 +95,7 @@
     <!-- Sync both settings.show_negative (single-layer fallback) and all layer entries
     so the toggle works consistently regardless of which mode is active -->
     <label
-      {@attach tooltip({
-        content:
-          `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)`,
-      })}
+      {@attach tooltip({ content: `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)` })}
     >
       <span>Neg. lobe</span>
       <input
@@ -176,9 +169,7 @@
   {:else}
     <!-- Single-layer: isovalue slider full width -->
     <label
-      {@attach tooltip({
-        content: `Density threshold — surface is drawn where grid values equal this`,
-      })}
+      {@attach tooltip({ content: `Density threshold — surface is drawn where grid values equal this` })}
     >
       <span>Isovalue:</span>
       <input
@@ -194,9 +185,7 @@
     <!-- Opacity + colors on one row -->
     <div class="pane-row compact-row">
       <label
-        {@attach tooltip({
-          content: `Surface transparency — lower values reveal inner structure`,
-        })}
+        {@attach tooltip({ content: `Surface transparency — lower values reveal inner structure` })}
       >
         <span>Opacity:</span>
         <input
@@ -226,10 +215,7 @@
 
   {#if volumes?.[active_volume_idx]?.periodic}
     <label
-      {@attach tooltip({
-        content:
-          `Extend isosurface beyond cell boundaries to close partial spheres (fraction of cell)`,
-      })}
+      {@attach tooltip({ content: `Extend isosurface beyond cell boundaries to close partial spheres (fraction of cell)` })}
     >
       Halo: {format_num(settings.halo, `.2f`)}
       <input

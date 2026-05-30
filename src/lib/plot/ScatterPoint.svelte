@@ -3,6 +3,7 @@
   import type { HoverStyle, LabelStyle, Point } from '$lib/plot'
   import type { Point2D } from '$lib/math'
   import type { PointStyle } from '$lib/plot/types'
+  import { estimate_label_size, label_leader_segment } from '$lib/plot/utils/label-placement'
   import { DEFAULTS } from '$lib/settings'
   import * as d3_symbols from 'd3-shape'
   import { symbol } from 'd3-shape'
@@ -102,36 +103,25 @@
     {@const offset_x = label.offset?.x ?? 10}
     {@const offset_y = label.offset?.y ?? 0}
     {@const displacement = Math.hypot(offset_x, offset_y)}
-    {#if displacement > leader_line_threshold}
-      {@const marker_radius = style.radius ?? 3}
-      {@const angle = Math.atan2(offset_y, offset_x)}
-      {@const cos_a = Math.cos(angle)}
-      {@const sin_a = Math.sin(angle)}
-      {@const start_x = cos_a * (marker_radius + 2)}
-      {@const start_y = sin_a * (marker_radius + 2)}
-      {@const font_px = parseFloat(label.font_size ?? `10`) || 10}
-      {@const half_w = (label.text?.length ?? 1) * font_px * 0.2}
-      {@const half_h = font_px * 0.5}
-      {@const edge_dist = Math.min(
-        Math.abs(cos_a) > 0.01 ? half_w / Math.abs(cos_a) : Infinity,
-        Math.abs(sin_a) > 0.01 ? half_h / Math.abs(sin_a) : Infinity,
-      )}
-      {@const end_x = offset_x - cos_a * (edge_dist + 1)}
-      {@const end_y = offset_y - sin_a * (edge_dist + 1)}
-      {@const line_len = Math.hypot(end_x - start_x, end_y - start_y)}
-      {#if line_len > 6}
+    {@const leader_line = displacement > leader_line_threshold ? label_leader_segment({
+      point: { x: 0, y: 0 },
+      point_radius: style.radius ?? 3,
+      label_center: { x: offset_x, y: offset_y },
+      label_size: label.size ?? estimate_label_size(label.text, label.font_size),
+      min_length: 6,
+    }) : null}
+    {#if leader_line}
       <line
-        x1={start_x}
-        y1={start_y}
-        x2={end_x}
-        y2={end_y}
+        x1={leader_line.x1}
+        y1={leader_line.y1}
+        x2={leader_line.x2}
+        y2={leader_line.y2}
         class="leader-line"
         stroke="var(--scatter-leader-line-color, #888)"
         stroke-width="var(--scatter-leader-line-width, 0.8)"
         stroke-dasharray="var(--scatter-leader-line-dash, 2 2)"
         stroke-opacity="var(--scatter-leader-line-opacity, 0.6)"
       />
-      {/if}
     {/if}
     <text
       x={offset_x}

@@ -65,8 +65,9 @@ A simple scatter plot showing different display modes (points, lines, or both). 
   }
 
   function handle_point_hover(
-    { point }: { point: InternalPoint<PointMeta> | null },
+    payload: { point: InternalPoint<PointMeta> | null } | null,
   ): void {
+    const point = payload?.point ?? null
     if (point) {
       const { x, y, metadata, series_idx, point_idx } = point
       hovered_point_info = `Hovering: Point (${x}, ${y}), Series: '${
@@ -945,8 +946,10 @@ The configurable `threshold` parameter controls the transition point: smaller va
     color_values: color_vals,
     point_style: {
       radius: 6,
-      stroke: `white`,
-      stroke_width: 0.5,
+      // neutral gray outline (visible on both light/dark bg) so the diverging scheme's
+      // near-white midpoint markers don't vanish against the background
+      stroke: `gray`,
+      stroke_width: 1,
       fill_opacity: 0.85,
     },
     metadata,
@@ -1391,8 +1394,8 @@ This example demonstrates how the color bar automatically positions itself in on
 
 <ScatterPlot
   series={plot_series.map((srs) => ({ ...srs, markers: 'points+text' }))}
-  x_axis={{ label: 'X Position', range: [0, 100], format: '.2' }}
-  y_axis={{ label: 'Y Position', range: [0, 100], format: '.2' }}
+  x_axis={{ label: 'X Position', range: [0, 100], format: '~s' }}
+  y_axis={{ label: 'Y Position', range: [0, 100], format: '~s' }}
   color_scale={{ scheme: `turbo` }}
   color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
   style="height: 450px; margin-block: 1em"
@@ -1693,8 +1696,8 @@ and scale type.
 
 <ScatterPlot
   series={[{ ...vertical_color_data, markers: 'points' }]}
-  x_axis={{ label: 'X Position', range: [0, 100], format: '.2' }}
-  y_axis={{ label: 'Y Position', range: [0, 100], format: '.2' }}
+  x_axis={{ label: 'X Position', range: [0, 100], format: '~s' }}
+  y_axis={{ label: 'Y Position', range: [0, 100], format: '~s' }}
   {color_scale}
   padding={plot_padding}
   color_bar={{
@@ -1704,8 +1707,10 @@ and scale type.
     wrapper_style: `
       position: absolute;
       right: 10px;
-      top: ${plot_padding.t}px;
+      inset-block: 0;
+      margin-block: auto;
       height: calc(100% - ${plot_padding.t + plot_padding.b}px);
+      max-height: 100%;
     `,
     bar_style: `width: 15px; height: 100%;`,
   }}
@@ -1932,7 +1937,7 @@ Display multiple scatter plots in a responsive 2×2 grid:
   {#each plots as { title, data } (title)}
     <div class="cell">
       <h4>{title}</h4>
-      <ScatterPlot series={[data]} x_axis={{ label: 'x' }} y_axis={{ label: 'y' }} />
+      <ScatterPlot series={[data]} x_axis={{ label: 'x', range: [0, null] }} y_axis={{ label: 'y' }} />
     </div>
   {/each}
 </div>
@@ -2560,17 +2565,19 @@ Reference lines support interactive features including hover styling, click hand
 
 ## Reference Lines with Z-Index Layering
 
-Control where reference lines appear in the rendering stack using `z_index`. Options are `below-grid`, `below-lines`, `below-points` (default), and `above-all`:
+Control where reference lines appear in the rendering stack using `z_index`. Options are `below-grid`, `below-lines`, `below-points` (default), and `above-all`. Toggle the layer below and watch the reference band move up the stack, progressively covering the grid, then the connecting line, then the on-band points (which switch from crisp on top to dimmed underneath):
 
 ```svelte example
 <script lang="ts">
   import { ScatterPlot } from 'matterviz'
 
+  // Data zig-zags across y=5.5 so odd-x points sit ON the reference band while the connecting
+  // line repeatedly crosses it — maximizing overlap so the chosen layer is visually obvious
   const series = [{
-    x: [1, 2, 3, 4, 5, 6, 7, 8],
-    y: [2, 4, 3, 6, 5, 8, 7, 9],
-    point_style: { fill: `#3498db`, radius: 8 },
-    line_style: { stroke: `#3498db`, stroke_width: 2 },
+    x: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    y: [5.5, 8.5, 5.5, 2.5, 5.5, 8.5, 5.5, 2.5, 5.5],
+    point_style: { fill: `#3498db`, radius: 11 },
+    line_style: { stroke: `#3498db`, stroke_width: 4 },
     markers: `line+points`,
     label: `Data Series`,
   }]
@@ -2580,12 +2587,14 @@ Control where reference lines appear in the rendering stack using `z_index`. Opt
   const ref_line_config = $derived({
     type: `horizontal`,
     y: 5.5,
-    style: { color: `#e74c3c`, width: 3 },
+    // semi-transparent band: dims whatever sits below it, stays crisp above whatever it covers
+    style: { color: `rgba(231, 76, 60, 0.55)`, width: 20 },
     z_index,
     annotation: {
       text: `z_index: ${z_index}`,
       position: `end`,
       side: `above`,
+      gap: 18, // clear the 20px-thick band so the label stays readable above it
     },
   })
 </script>
@@ -2603,8 +2612,8 @@ Control where reference lines appear in the rendering stack using `z_index`. Opt
 <ScatterPlot
   {series}
   ref_lines={[ref_line_config]}
-  x_axis={{ label: `X`, range: [0, 10] }}
-  y_axis={{ label: `Y`, range: [0, 10] }}
+  x_axis={{ label: `X`, range: [0, 10], grid_style: { 'stroke-width': 2 } }}
+  y_axis={{ label: `Y`, range: [0, 10], grid_style: { 'stroke-width': 2 } }}
   style="height: 350px"
 />
 ```

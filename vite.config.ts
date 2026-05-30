@@ -1,4 +1,3 @@
-import yaml from '@rollup/plugin-yaml'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -11,10 +10,78 @@ import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 
 const TEXT_EXT_RE = /\.(xyz|extxyz|cif|poscar|lammpstrj|yaml\.gz)$/
 const strip_query = (path: string) => path.replace(/\?.*$/, ``)
+const split_query = (path: string): [clean: string, query: string] => {
+  const clean = strip_query(path)
+  return [clean, path.slice(clean.length)]
+}
 const resolve_from_importer = (clean: string, importer?: string) =>
   importer ? resolve(dirname(strip_query(importer)), clean) : clean
 
 let is_build = false
+
+// Handle .json.gz files by decompressing them on-the-fly during SSR/build.
+// Skip ?raw (handled by raw_text_plugin) and ?url (Vite built-in asset).
+const json_gz_plugin: Plugin = {
+  name: `vite-plugin-json-gz`,
+  enforce: `pre`,
+  configResolved(config) {
+    is_build = config.command === `build`
+  },
+  resolveId(source, importer) {
+    const [clean, query] = split_query(source)
+    if (query.includes(`raw`) || query.includes(`url`)) return null
+    if (!clean.endsWith(`.json.gz`)) return null
+    return resolve_from_importer(clean, importer)
+  },
+  load(id) {
+    const [clean_id, query] = split_query(id)
+    if (query.includes(`raw`) || query.includes(`url`)) return null
+    if (!clean_id.endsWith(`.json.gz`)) return null
+    try {
+      const json_str = gunzipSync(readFileSync(clean_id)).toString(`utf-8`)
+      JSON.parse(json_str) // validate before passing to bundler
+      // Rolldown (production) needs moduleType:'json' for import.meta.glob
+      // with import:'default' to properly unwrap the default export.
+      // Dev/test server doesn't support moduleType, needs JS module format.
+      if (is_build) return { code: json_str, moduleType: `json` }
+      return `export default ${json_str}`
+    } catch (error) {
+      return this.error(`Failed to decompress ${id}: ${error}`)
+    }
+  },
+}
+
+// Rolldown doesn't honor ?raw for unknown file types in import.meta.glob.
+// Claims the file before rolldown's parser sees it, returns raw text as a string export.
+const raw_text_plugin: Plugin = {
+  name: `vite-plugin-raw-text`,
+  enforce: `pre`,
+  resolveId(source, importer) {
+    const [clean, query] = split_query(source)
+    if (query.includes(`url`)) return null
+    const is_raw_gz = clean.endsWith(`.json.gz`) && query.includes(`raw`)
+    if (!TEXT_EXT_RE.test(clean) && !is_raw_gz) return null
+    const abs = resolve_from_importer(clean, importer)
+    return abs + query
+  },
+  load(id) {
+    const [clean_id, query] = split_query(id)
+    if (query.includes(`url`)) return null
+    const is_raw_gz = clean_id.endsWith(`.json.gz`) && query.includes(`raw`)
+    if (!TEXT_EXT_RE.test(clean_id) && !is_raw_gz) return null
+    try {
+      const buf = readFileSync(clean_id)
+      const text = clean_id.endsWith(`.gz`)
+        ? gunzipSync(buf).toString(`utf-8`)
+        : buf.toString(`utf-8`)
+      return { code: `export default ${JSON.stringify(text)}`, map: null }
+    } catch (error) {
+      // resolveId already claimed this file, so surface a clear error (like
+      // json_gz_plugin) instead of returning null and falling back to default loading
+      return this.error(`Failed to read ${clean_id}: ${error}`)
+    }
+  },
+}
 
 export default defineConfig({
   fmt: {
@@ -118,71 +185,13 @@ export default defineConfig({
       'eslint-plugin-vitest/valid-expect': [`error`, { maxArgs: 2 }], // Vitest supports expect(actual, message)
     },
   },
+  // @ts-expect-error vite@8's Plugin and vite-plus's bundled Plugin are two copies
+  // of the same type; comparing them exceeds TS's instantiation depth here
   plugins: [
-    {
-      // Handle .json.gz files by decompressing them on-the-fly during SSR/build.
-      // Skip ?raw (handled by vite-plugin-raw-text) and ?url (Vite built-in asset).
-      name: `vite-plugin-json-gz`,
-      enforce: `pre`,
-      configResolved(config) {
-        is_build = config.command === `build`
-      },
-      resolveId(source, importer) {
-        if (source.includes(`raw`) || source.includes(`url`)) return null
-        const clean = strip_query(source)
-        if (!clean.endsWith(`.json.gz`)) return null
-        return resolve_from_importer(clean, importer)
-      },
-      load(id) {
-        if (id.includes(`raw`) || id.includes(`url`)) return null
-        const clean_id = strip_query(id)
-        if (!clean_id.endsWith(`.json.gz`)) return null
-        try {
-          const json_str = gunzipSync(readFileSync(clean_id)).toString(`utf-8`)
-          JSON.parse(json_str) // validate before passing to bundler
-          // Rolldown (production) needs moduleType:'json' for import.meta.glob
-          // with import:'default' to properly unwrap the default export.
-          // Dev/test server doesn't support moduleType, needs JS module format.
-          if (is_build) return { code: json_str, moduleType: `json` }
-          return `export default ${json_str}`
-        } catch (error) {
-          return this.error(`Failed to decompress ${id}: ${error}`)
-        }
-      },
-    } satisfies Plugin,
-    {
-      // Rolldown doesn't honor ?raw for unknown file types in import.meta.glob.
-      // Claims the file before rolldown's parser sees it, returns raw text as a string export.
-      name: `vite-plugin-raw-text`,
-      enforce: `pre`,
-      resolveId(source, importer) {
-        if (source.includes(`url`)) return null
-        const clean = strip_query(source)
-        const is_raw_gz = clean.endsWith(`.json.gz`) && source.includes(`raw`)
-        if (!TEXT_EXT_RE.test(clean) && !is_raw_gz) return null
-        const abs = resolve_from_importer(clean, importer)
-        return abs + (source.includes(`?`) ? source.slice(source.indexOf(`?`)) : ``)
-      },
-      load(id) {
-        if (id.includes(`url`)) return null
-        const clean_id = strip_query(id)
-        const is_raw_gz = clean_id.endsWith(`.json.gz`) && id.includes(`raw`)
-        if (!TEXT_EXT_RE.test(clean_id) && !is_raw_gz) return null
-        try {
-          const buf = readFileSync(clean_id)
-          const text = clean_id.endsWith(`.gz`)
-            ? gunzipSync(buf).toString(`utf-8`)
-            : buf.toString(`utf-8`)
-          return { code: `export default ${JSON.stringify(text)}`, map: null }
-        } catch (error) {
-          console.warn(`vite-plugin-raw-text: failed to load ${clean_id}:`, error)
-          return null
-        }
-      },
-    } satisfies Plugin,
+    json_gz_plugin,
+    raw_text_plugin,
     sveltekit(),
     live_examples(),
-    yaml(),
     process.env.VITEST ? mock_vscode() : null,
   ].filter((plugin): plugin is Plugin => Boolean(plugin)),
 
