@@ -515,6 +515,26 @@ describe(`scales`, () => {
       expect(ticks.filter((t) => t < 0).length).toBeGreaterThan(0)
     })
 
+    test(`omits sub-threshold powers that would overlap the zero tick`, () => {
+      // Regression: threshold=10 over a wide mixed range used to emit ±1 (a decade below the
+      // threshold). In arcsinh space those sit almost on 0, so the −1/0/1 labels overlapped.
+      const ticks = generate_arcsinh_ticks(-1000, 1000, 10, 10)
+      expect(ticks).toContain(0)
+      expect(ticks).not.toContain(1)
+      expect(ticks).not.toContain(-1)
+      // smallest non-zero tick magnitude is at least the threshold
+      const min_nonzero = Math.min(...ticks.filter((t) => t !== 0).map(Math.abs))
+      expect(min_nonzero).toBeGreaterThanOrEqual(10)
+    })
+
+    test(`respects small count, keeping the spread-out outermost ticks`, () => {
+      // Regression: a low-count colorbar over a wide mixed range used to ignore count and emit
+      // every decade, crowding −1/0/1 near the center. Now it keeps the outermost decades on each
+      // side around zero (count=4 -> ~5 ticks), dropping the near-zero ones.
+      const ticks = generate_arcsinh_ticks(-100, 100, 1, 4)
+      expect(ticks).toEqual([-100, -10, 0, 10, 100])
+    })
+
     test.each([
       { min: 1000, max: -100, name: `mixed` }, // reversed mixed (tests equality with normal)
       { min: 100, max: 0, name: `positive` }, // reversed positive

@@ -1,4 +1,5 @@
 import { load_binary_traj } from '$lib/trajectory/parse'
+import { decompress_data } from './decompress'
 import type { FileInfo } from './types'
 
 const BINARY_EXTENSIONS = new Set(
@@ -67,7 +68,6 @@ export async function load_from_url(
         return callback(await resp.text(), filename)
       } else {
         // Need to decompress manually
-        const { decompress_data } = await import(`./decompress`)
         const buffer = await resp.arrayBuffer()
         const content = await decompress_data(buffer, `gzip`)
         // Remove .gz extension when manually decompressing

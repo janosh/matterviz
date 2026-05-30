@@ -1,6 +1,6 @@
 {
   "name": "matterviz",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Interactive visualizations for materials science: periodic tables, 3D structures, MD trajectories, heatmaps, scatter plots.",
   "keywords": [
     "chemistry",

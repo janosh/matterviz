@@ -136,9 +136,8 @@ export function scale_arcsinh(threshold = 1): ArcsinhScale {
 }
 
 // Generate nice tick values for arcsinh scale
-// Strategy: symmetric around zero when possible, with powers of 10 for large values
-// Note: For small count values (1 or 2) on mixed ranges, zero takes priority as the
-// most important tick. E.g., count=1 yields [0], count=2 yields [0] plus one boundary.
+// Strategy: symmetric around zero when possible, with powers of 10 for large values.
+// On mixed ranges, count=1 yields just [0]; count>=2 yields zero plus symmetric powers per side.
 export function generate_arcsinh_ticks(
   min: number,
   max: number,
@@ -161,9 +160,10 @@ export function generate_arcsinh_ticks(
       .toReversed()
   }
 
-  // Mixed range: symmetric ticks around zero (includes_zero is always true here)
-  // For very small counts, we prioritize zero as the most meaningful tick
-  const half_count = Math.floor((count - 1) / 2)
+  // Mixed range: symmetric ticks around zero (includes_zero is always here). Split the budget
+  // across both sides (zero is shared/free) so e.g. count=4 yields ~5 ticks (0, ±a, ±b) rather
+  // than collapsing to 3 — matching how linear/log colorbars render a similar count.
+  const half_count = Math.floor(count / 2)
   const ticks: number[] = [0]
 
   // Add positive ticks
@@ -173,19 +173,6 @@ export function generate_arcsinh_ticks(
   // Add negative ticks (mirror of positive)
   const neg_ticks = generate_positive_arcsinh_ticks(0, -lo, safe_threshold, half_count)
   ticks.push(...neg_ticks.filter((tick) => tick > 0).map((tick) => -tick))
-
-  // For small counts where half_count is 0 or 1, ensure at least some boundary coverage
-  if (half_count <= 1 && count >= 2) {
-    // Add boundaries if not already present and we have room
-    const sorted = dedupe_sort(ticks)
-    if (sorted.length < count) {
-      // Snap the larger-magnitude boundary to a clean power of 10 (raw extremes would render
-      // as long unrounded labels); keeps some coverage for very small tick counts.
-      const boundary = Math.abs(hi) >= Math.abs(lo) ? hi : lo
-      const nice = Math.sign(boundary) * 10 ** Math.floor(Math.log10(Math.abs(boundary)))
-      if (Number.isFinite(nice) && nice !== 0 && !sorted.includes(nice)) ticks.push(nice)
-    }
-  }
 
   return dedupe_sort(ticks)
 }
@@ -203,47 +190,51 @@ function generate_positive_arcsinh_ticks(
 
   const ticks: number[] = []
 
-  // For values near threshold, use linear-like spacing
-  // For values >> threshold, use log-like spacing (powers of 10)
-
+  // Small range near threshold: use linear-like spacing
   if (max <= threshold * 2) {
-    // Small range: use linear ticks
     const step = (max - min) / count
     for (let idx = 0; idx <= count; idx++) {
       const val = min + step * idx
       if (val >= min && val <= max) ticks.push(val)
     }
-  } else {
-    // Large range: combine linear near zero with powers of 10.
-    // Domain endpoints are intentionally NOT added as ticks: raw extremes render as long
-    // unrounded labels (e.g. 1325.8239811994677). Powers of 10 plus 2x/5x multiples below
-    // already give clean round ticks; pass axis.ticks/axis.format for custom labels.
+    return dedupe_sort(ticks)
+  }
 
-    // Add threshold as a tick if in range
-    if (threshold >= min && threshold <= max) ticks.push(threshold)
+  // Large range: log-like spacing via powers of 10.
+  // Domain endpoints are intentionally NOT added as ticks: raw extremes render as long
+  // unrounded labels (e.g. 1325.8239811994677). Powers of 10 plus 2x/5x multiples below
+  // already give clean round ticks; pass axis.ticks/axis.format for custom labels.
 
-    // Add powers of 10 that are in range
-    const min_power = Math.floor(Math.log10(Math.max(min, threshold / 10)))
-    const max_power = Math.ceil(Math.log10(max))
+  // Add threshold as a tick if in range
+  if (threshold >= min && threshold <= max) ticks.push(threshold)
 
-    for (let power = min_power; power <= max_power; power++) {
-      const val = Math.pow(10, power)
-      if (val >= min && val <= max) ticks.push(val)
-    }
+  // Add powers of 10 that are in range. Start at the threshold (not a decade below): values
+  // below it sit in arcsinh's near-linear region and map almost onto 0, so sub-threshold powers
+  // (e.g. ±1 when threshold=10) would pile up on the zero tick and overlap.
+  const min_power = Math.floor(Math.log10(Math.max(min, threshold)))
+  const max_power = Math.ceil(Math.log10(max))
 
-    // Add intermediate values (2x, 5x) for sparser regions
-    if (ticks.length < count) {
-      for (let power = min_power; power < max_power; power++) {
-        const base = Math.pow(10, power)
-        for (const mult of [2, 5]) {
-          const val = base * mult
-          if (val >= min && val <= max) ticks.push(val)
-        }
+  for (let power = min_power; power <= max_power; power++) {
+    const val = Math.pow(10, power)
+    if (val >= min && val <= max) ticks.push(val)
+  }
+
+  // Add intermediate values (2x, 5x) for sparser regions
+  if (ticks.length < count) {
+    for (let power = min_power; power < max_power; power++) {
+      const base = Math.pow(10, power)
+      for (const mult of [2, 5]) {
+        const val = base * mult
+        if (val >= min && val <= max) ticks.push(val)
       }
     }
   }
 
-  return dedupe_sort(ticks)
+  const result = dedupe_sort(ticks)
+  // Respect `count`: surplus small powers sit near zero in arcsinh space (their values map almost
+  // onto 0) and crowd the labels. Keep the largest-magnitude ticks — they anchor the range extent
+  // and are the most spread out — dropping near-zero ones first.
+  return result.length > count ? result.slice(-count) : result
 }
 
 // Create a scale function based on type, domain, and range
