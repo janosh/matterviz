@@ -10,6 +10,7 @@ import {
   measure_text_width,
   pad_rect,
   rect_within_rect,
+  sample_series_obstacle_points,
   TICK_LABEL_HEIGHT,
 } from '$lib/plot/layout'
 import { describe, expect, it, test } from 'vitest'
@@ -154,6 +155,23 @@ describe(`layout utility functions`, () => {
       expect(result.y).toBeGreaterThanOrEqual(base_config.plot_bounds.y + 60)
     })
 
+    it(`defaults axis_clearance to 12 so legends hug the corner`, () => {
+      const { axis_clearance: _omitted, ...config } = base_config
+      const result = compute_element_placement(config)
+      const { plot_bounds, element_size } = base_config
+      // margin to the nearest horizontal/vertical edge equals the default clearance
+      const x_margin = Math.min(
+        result.x - plot_bounds.x,
+        plot_bounds.x + plot_bounds.width - (result.x + element_size.width),
+      )
+      const y_margin = Math.min(
+        result.y - plot_bounds.y,
+        plot_bounds.y + plot_bounds.height - (result.y + element_size.height),
+      )
+      expect(x_margin).toBe(12)
+      expect(y_margin).toBe(12)
+    })
+
     it(`avoids dense point clusters`, () => {
       // Create a small dense cluster in the center of the element placement area
       // With proper overlap avoidance, the algorithm should place away from this cluster
@@ -272,6 +290,61 @@ describe(`layout utility functions`, () => {
         // Any corner is acceptable for center cluster
         expect(result.x).toBeDefined()
       }
+    })
+  })
+
+  describe(`sample_series_obstacle_points`, () => {
+    const sparse_line = [
+      { x: 0, y: 0 },
+      { x: 100, y: 100 },
+    ] // one long segment
+
+    // Cases that add no interior samples → output is exactly the input vertices
+    it.each([
+      { name: `points-only series`, points: sparse_line, draws_line: false, step: 12 },
+      {
+        name: `zero-length segment`,
+        points: [
+          { x: 5, y: 5 },
+          { x: 5, y: 5 },
+        ],
+        draws_line: true,
+        step: 12,
+      },
+      { name: `non-positive step`, points: sparse_line, draws_line: true, step: 0 },
+    ])(`adds no interior samples for $name`, ({ points, draws_line, step }) => {
+      expect(sample_series_obstacle_points(points, draws_line, step)).toEqual(points)
+    })
+
+    it(`samples interior points along the segment when the series draws a line`, () => {
+      const result = sample_series_obstacle_points(sparse_line, true, 12)
+      // length ~141px / 12 ≈ 11 sub-intervals → 10 interior samples + 2 vertices
+      expect(result.length).toBeGreaterThan(sparse_line.length)
+      // every interior sample lies on the segment (here x === y)
+      for (const point of result) expect(point.x).toBeCloseTo(point.y)
+      // interior samples fall strictly between the endpoints
+      const interior = result.filter((point) => point.x > 0 && point.x < 100)
+      expect(interior.length).toBeGreaterThan(5)
+    })
+
+    it(`closer sampling step yields more interior points`, () => {
+      const coarse = sample_series_obstacle_points(sparse_line, true, 40)
+      const fine = sample_series_obstacle_points(sparse_line, true, 8)
+      expect(fine.length).toBeGreaterThan(coarse.length)
+    })
+
+    it(`breaks the line at non-finite vertices (no sampling across gaps)`, () => {
+      const with_gap = [
+        { x: 0, y: 0 },
+        { x: NaN, y: NaN }, // gap: e.g. missing/clamped data
+        { x: 100, y: 100 },
+      ]
+      const result = sample_series_obstacle_points(with_gap, true, 12)
+      // only the two finite vertices survive; the gap prevents segment sampling
+      expect(result).toEqual([
+        { x: 0, y: 0 },
+        { x: 100, y: 100 },
+      ])
     })
   })
 

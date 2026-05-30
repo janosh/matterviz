@@ -11,9 +11,9 @@
     RefLineEvent,
   } from '$lib/plot'
   import {
-    AxisLabel,
     compute_element_placement,
     HistogramControls,
+    PlotAxis,
     PlotLegend,
     ReferenceLine,
   } from '$lib/plot'
@@ -1174,272 +1174,83 @@
     {@render ref_lines_layer(ref_lines_by_z.below_points)}
 
     <!-- X-axis -->
-    <g class="x-axis">
-      <line
-        x1={pad.l}
-        x2={width - pad.r}
-        y1={height - pad.b}
-        y2={height - pad.b}
-        stroke={final_x_axis.color || `var(--border-color, gray)`}
-        stroke-width="1"
-      />
-      {#each ticks.x as tick (tick)}
-        {@const tick_x = scales.x(tick as number)}
-        {@const custom_label = get_tick_label(tick as number, final_x_axis.ticks)}
-        {@const inside = final_x_axis.tick?.label?.inside ?? false}
-        {@const shift_x = final_x_axis.tick?.label?.shift?.x ?? 0}
-        {@const shift_y = final_x_axis.tick?.label?.shift?.y ?? 0}
-        {@const base_y = inside ? -8 : 8}
-        {@const text_y = base_y + shift_y}
-        {@const dominant_baseline = inside ? `auto` : `hanging`}
-        <g class="tick" transform="translate({tick_x}, {height - pad.b})">
-          {#if display.x_grid}
-            <line
-              y1={-(height - pad.b - pad.t)}
-              y2="0"
-              stroke="var(--border-color, gray)"
-              stroke-dasharray="4"
-              stroke-width="1"
-              {...final_x_axis.grid_style ?? {}}
-            />
-          {/if}
-          <line
-            y1="0"
-            y2={inside ? -5 : 5}
-            stroke={final_x_axis.color || `var(--border-color, gray)`}
-            stroke-width="1"
-          />
-          <text
-            x={shift_x}
-            y={text_y}
-            text-anchor="middle"
-            dominant-baseline={dominant_baseline}
-            fill={final_x_axis.color || `var(--text-color)`}
-          >
-            {custom_label ?? format_value(tick, final_x_axis.format)}
-          </text>
-        </g>
-      {/each}
-      {#if final_x_axis.label || x_axis.options?.length}
-        {@const { label_shift, label = ``, options, selected_key, color } = final_x_axis}
-        <AxisLabel
-          x={(pad.l + width - pad.r) / 2 + (label_shift?.x ?? 0)}
-          y={height - 10 + (label_shift?.y ?? 0)}
-          {label}
-          {options}
-          {selected_key}
-          loading={axis_loading === `x`}
-          axis_type="x"
-          {color}
-          on_select={(key: string) => handle_axis_change(`x`, key)}
-        />
-      {/if}
-    </g>
+    <PlotAxis
+      side="x"
+      ticks={ticks.x as number[]}
+      place={scales.x}
+      axis={final_x_axis}
+      {pad}
+      {width}
+      {height}
+      show_grid={display.x_grid}
+      tick_label={(tick) => get_tick_label(tick, final_x_axis.ticks)}
+      label_x={(pad.l + width - pad.r) / 2 + (final_x_axis.label_shift?.x ?? 0)}
+      label_y={height - 10 + (final_x_axis.label_shift?.y ?? 0)}
+      axis_loading={axis_loading === `x`}
+      on_axis_change={(key) => handle_axis_change(`x`, key)}
+    />
 
     <!-- X2-axis (Top) -->
     {#if x2_series.length > 0}
-      <g class="x2-axis">
-        <line
-          x1={pad.l}
-          x2={width - pad.r}
-          y1={pad.t}
-          y2={pad.t}
-          stroke={final_x2_axis.color || `var(--border-color, gray)`}
-          stroke-width="1"
-        />
-        {#each ticks.x2 as tick (tick)}
-          {@const tick_x = scales.x2(tick as number)}
-          {@const custom_label = get_tick_label(tick as number, final_x2_axis.ticks)}
-          {@const inside = final_x2_axis.tick?.label?.inside ?? false}
-          {@const shift_x = final_x2_axis.tick?.label?.shift?.x ?? 0}
-          {@const shift_y = final_x2_axis.tick?.label?.shift?.y ?? 0}
-          {@const base_y = inside ? 8 : -20}
-          {@const text_y = base_y + shift_y}
-          {@const dominant_baseline = inside ? `hanging` : `auto`}
-          <g class="tick" transform="translate({tick_x}, {pad.t})">
-            {#if display.x2_grid}
-              <line
-                y1="0"
-                y2={height - pad.b - pad.t}
-                stroke="var(--border-color, gray)"
-                stroke-dasharray="4"
-                stroke-width="1"
-                {...final_x2_axis.grid_style ?? {}}
-              />
-            {/if}
-            <line
-              y1={inside ? 0 : -5}
-              y2={inside ? 5 : 0}
-              stroke={final_x2_axis.color || `var(--border-color, gray)`}
-              stroke-width="1"
-            />
-            <text
-              x={shift_x}
-              y={text_y}
-              text-anchor="middle"
-              dominant-baseline={dominant_baseline}
-              fill={final_x2_axis.color || `var(--text-color)`}
-            >
-              {custom_label ?? format_value(tick, final_x2_axis.format)}
-            </text>
-          </g>
-        {/each}
-        {#if final_x2_axis.label || x2_axis.options?.length}
-          {@const { label_shift, label = ``, options, selected_key, color } =
-          final_x2_axis}
-          <AxisLabel
-            x={(pad.l + width - pad.r) / 2 + (label_shift?.x ?? 0)}
-            y={Math.max(12, pad.t - (label_shift?.y ?? 40))}
-            {label}
-            {options}
-            {selected_key}
-            loading={axis_loading === `x2`}
-            axis_type="x2"
-            {color}
-            on_select={(key: string) => handle_axis_change(`x2`, key)}
-          />
-        {/if}
-      </g>
+      <PlotAxis
+        side="x2"
+        ticks={ticks.x2 as number[]}
+        place={scales.x2}
+        axis={final_x2_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={display.x2_grid}
+        tick_label={(tick) => get_tick_label(tick, final_x2_axis.ticks)}
+        label_x={(pad.l + width - pad.r) / 2 + (final_x2_axis.label_shift?.x ?? 0)}
+        label_y={Math.max(12, pad.t - (final_x2_axis.label_shift?.y ?? 40))}
+        axis_loading={axis_loading === `x2`}
+        on_axis_change={(key) => handle_axis_change(`x2`, key)}
+      />
     {/if}
 
     <!-- Y-axis -->
-    <g class="y-axis">
-      <line
-        x1={pad.l}
-        x2={pad.l}
-        y1={pad.t}
-        y2={height - pad.b}
-        stroke={final_y_axis.color || `var(--border-color, gray)`}
-        stroke-width="1"
-      />
-      {#each ticks.y as tick (tick)}
-        {@const tick_y = scales.y(tick as number)}
-        {@const custom_label = get_tick_label(tick as number, final_y_axis.ticks)}
-        {@const inside = final_y_axis.tick?.label?.inside ?? false}
-        {@const shift_x = final_y_axis.tick?.label?.shift?.x ?? 0}
-        {@const shift_y = final_y_axis.tick?.label?.shift?.y ?? 0}
-        {@const base_x = inside ? 8 : -10}
-        {@const text_x = base_x + shift_x}
-        {@const text_anchor = inside ? `start` : `end`}
-        <g class="tick" transform="translate({pad.l}, {tick_y})">
-          {#if display.y_grid}
-            <line
-              x1="0"
-              x2={width - pad.l - pad.r}
-              stroke="var(--border-color, gray)"
-              stroke-dasharray="4"
-              stroke-width="1"
-              {...final_y_axis.grid_style ?? {}}
-            />
-          {/if}
-          <line
-            x1={inside ? 0 : -5}
-            x2={inside ? 5 : 0}
-            stroke={final_y_axis.color || `var(--border-color, gray)`}
-            stroke-width="1"
-          />
-          <text
-            x={text_x}
-            y={shift_y}
-            text-anchor={text_anchor}
-            dominant-baseline="central"
-            fill={final_y_axis.color || `var(--text-color)`}
-          >
-            {custom_label ?? format_value(tick, final_y_axis.format)}
-          </text>
-        </g>
-      {/each}
-      {#if final_y_axis.label || y_axis.options?.length}
-        {@const { label_shift, label = ``, options, selected_key, color, tick } =
-          final_y_axis}
-        {@const y_inside = tick?.label?.inside ?? false}
-        <AxisLabel
-          x={Math.max(
-            12,
-            pad.l - (y_inside ? 0 : tick_label_widths.y_max) - LABEL_GAP_DEFAULT,
-          ) +
-            (label_shift?.x ?? 0)}
-          y={pad.t + (height - pad.t - pad.b) / 2 + (label_shift?.y ?? 0)}
-          rotate
-          {label}
-          {options}
-          {selected_key}
-          loading={axis_loading === `y`}
-          axis_type="y"
-          {color}
-          on_select={(key: string) => handle_axis_change(`y`, key)}
-        />
-      {/if}
-    </g>
+    <PlotAxis
+      side="y"
+      ticks={ticks.y as number[]}
+      place={scales.y}
+      axis={final_y_axis}
+      {pad}
+      {width}
+      {height}
+      show_grid={display.y_grid}
+      tick_label={(tick) => get_tick_label(tick, final_y_axis.ticks)}
+      label_x={Math.max(
+        12,
+        pad.l - (final_y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) -
+          LABEL_GAP_DEFAULT,
+      ) + (final_y_axis.label_shift?.x ?? 0)}
+      label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y_axis.label_shift?.y ?? 0)}
+      axis_loading={axis_loading === `y`}
+      on_axis_change={(key) => handle_axis_change(`y`, key)}
+    />
 
     <!-- Y2-axis (Right) -->
     {#if y2_series.length > 0}
-      <g class="y2-axis">
-        <line
-          x1={width - pad.r}
-          x2={width - pad.r}
-          y1={pad.t}
-          y2={height - pad.b}
-          stroke={final_y2_axis.color || `var(--border-color, gray)`}
-          stroke-width="1"
-        />
-        {#each ticks.y2 as tick (tick)}
-          {@const tick_y = scales.y2(tick as number)}
-          {@const custom_label = get_tick_label(tick as number, final_y2_axis.ticks)}
-          {@const inside = final_y2_axis.tick?.label?.inside ?? false}
-          {@const base_x = inside ? -8 : 8}
-          {@const shift_x = (final_y2_axis.tick?.label?.shift?.x ?? 0) + base_x}
-          {@const shift_y = final_y2_axis.tick?.label?.shift?.y ?? 0}
-          {@const text_anchor = inside ? `end` : `start`}
-          <g class="tick" transform="translate({width - pad.r}, {tick_y})">
-            {#if display.y2_grid}
-              <line
-                x1={-(width - pad.l - pad.r)}
-                x2="0"
-                stroke="var(--border-color, gray)"
-                stroke-dasharray="4"
-                stroke-width="1"
-                {...final_y2_axis.grid_style ?? {}}
-              />
-            {/if}
-            <line
-              x1={inside ? -5 : 0}
-              x2={inside ? 0 : 5}
-              stroke={final_y2_axis.color || `var(--border-color, gray)`}
-              stroke-width="1"
-            />
-            <text
-              x={shift_x}
-              y={shift_y}
-              text-anchor={text_anchor}
-              dominant-baseline="central"
-              fill={final_y2_axis.color || `var(--text-color)`}
-            >
-              {custom_label ?? format_value(tick, final_y2_axis.format)}
-            </text>
-          </g>
-        {/each}
-        {#if final_y2_axis.label || y2_axis.options?.length}
-          {@const { label_shift, label = ``, options, selected_key, color, tick } =
-          final_y2_axis}
-          {@const inside = tick?.label?.inside ?? false}
-          {@const tick_shift = inside ? 0 : (tick?.label?.shift?.x ?? 0) + 8}
-          {@const tick_width_contribution = inside ? 0 : tick_label_widths.y2_max}
-          <AxisLabel
-            x={width - pad.r + tick_shift + tick_width_contribution +
-            LABEL_GAP_DEFAULT + (label_shift?.x ?? 0)}
-            y={pad.t + (height - pad.t - pad.b) / 2 + (label_shift?.y ?? 0)}
-            rotate
-            {label}
-            {options}
-            {selected_key}
-            loading={axis_loading === `y2`}
-            axis_type="y2"
-            {color}
-            on_select={(key: string) => handle_axis_change(`y2`, key)}
-          />
-        {/if}
-      </g>
+      {@const y2_inside = final_y2_axis.tick?.label?.inside ?? false}
+      {@const y2_tick_shift = y2_inside ? 0 : (final_y2_axis.tick?.label?.shift?.x ?? 0) + 8}
+      {@const y2_tick_width = y2_inside ? 0 : tick_label_widths.y2_max}
+      <PlotAxis
+        side="y2"
+        ticks={ticks.y2 as number[]}
+        place={scales.y2}
+        axis={final_y2_axis}
+        {pad}
+        {width}
+        {height}
+        show_grid={display.y2_grid}
+        tick_label={(tick) => get_tick_label(tick, final_y2_axis.ticks)}
+        label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
+        (final_y2_axis.label_shift?.x ?? 0)}
+        label_y={pad.t + (height - pad.t - pad.b) / 2 + (final_y2_axis.label_shift?.y ?? 0)}
+        axis_loading={axis_loading === `y2`}
+        on_axis_change={(key) => handle_axis_change(`y2`, key)}
+      />
     {/if}
 
     <!-- Histogram bars (rendered after axes so bars appear above grid lines) -->
@@ -1666,9 +1477,6 @@
     fill: var(--text-color);
     font-weight: var(--histogram-font-weight);
     font-size: var(--histogram-font-size);
-  }
-  g:is(.x-axis, .x2-axis, .y-axis, .y2-axis) .tick text {
-    font-size: var(--tick-font-size, 0.8em); /* shrink tick labels */
   }
   .histogram-series path {
     transition: opacity 0.2s ease;

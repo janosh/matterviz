@@ -12,8 +12,7 @@
   import type { Point2D, Vec2 } from '$lib/math'
   import { create_pulse_animation } from '$lib/effects.svelte'
   import ColorBar from '$lib/plot/ColorBar.svelte'
-  import PlotAxes from '$lib/plot/PlotAxes.svelte'
-  import PlotGrid from '$lib/plot/PlotGrid.svelte'
+  import PlotAxis from '$lib/plot/PlotAxis.svelte'
   import PlotTooltip from '$lib/plot/PlotTooltip.svelte'
   import ZoomRect from '$lib/plot/ZoomRect.svelte'
   import { compute_element_placement, filter_padding } from '$lib/plot/layout'
@@ -852,7 +851,6 @@
       </clipPath>
     </defs>
 
-    <PlotGrid {x_ticks} {y_ticks} x_scale={x_scale_fn} y_scale={y_scale_fn} {pad} {width} {height} />
     <g class="reference-lines" clip-path="url(#{clip_path_id})">
       {#each ref_lines as line}
         <line
@@ -866,16 +864,31 @@
         />
       {/each}
     </g>
-    <PlotAxes
-      {x_ticks}
-      {y_ticks}
-      x_scale={x_scale_fn}
-      y_scale={y_scale_fn}
+    <PlotAxis
+      side="x"
+      ticks={x_ticks}
+      place={(tick) => x_scale_fn(tick)}
+      axis={x_axis}
       {pad}
       {width}
       {height}
-      {x_axis}
-      {y_axis}
+      show_grid
+      tick_label={(tick) => format_value(tick, x_axis.format ?? `.2~g`)}
+      label_x={pad.l + plot_width / 2}
+      label_y={height - 12}
+    />
+    <PlotAxis
+      side="y"
+      ticks={y_ticks}
+      place={(tick) => y_scale_fn(tick)}
+      axis={y_axis}
+      {pad}
+      {width}
+      {height}
+      show_grid
+      tick_label={(tick) => format_value(tick, y_axis.format ?? `.2~g`)}
+      label_x={22}
+      label_y={pad.t + plot_height / 2}
     />
 
     <ZoomRect start={drag_start} current={drag_current} />
@@ -979,6 +992,16 @@
     color: var(--text-color, CanvasText);
     touch-action: none;
     user-select: none;
+  }
+  .binned-scatter :global(.axis-label) {
+    color: currentColor;
+    font-size: 13px;
+    font-weight: 600;
+    height: 100%;
+    line-height: 24px;
+    text-align: center;
+    white-space: nowrap;
+    width: 100%;
   }
   .binned-scatter.fullscreen {
     background: var(

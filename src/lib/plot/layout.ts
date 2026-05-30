@@ -209,7 +209,7 @@ export interface ElementPlacementConfig {
   // (including descendants that overflow the box, e.g. colorbar tick labels) is
   // measured and overrides element_size — keeping placement overlap-free everywhere.
   element?: HTMLElement | null
-  // Minimum distance from plot edges to avoid axis label overlap (default: 40)
+  // Minimum distance from plot edges to avoid axis label overlap (default: 12)
   axis_clearance?: number
   // Rectangles to avoid (e.g., already-placed legend when placing colorbar)
   exclude_rects?: Rect[]
@@ -248,6 +248,38 @@ export const rects_overlap = (r1: Rect, r2: Rect): boolean =>
     r2.y + r2.height <= r1.y
   )
 
+// Build placement obstacles for one series' pixel-space polyline. Always includes the finite
+// vertices; when the series draws a connecting line, also walks each segment between
+// consecutive finite vertices at ~step px so legend/colorbar auto-placement avoids the line,
+// not just sparse markers (e.g. a steep y=x^2 line has few markers but a long visible segment).
+export function sample_series_obstacle_points(
+  pixel_points: { x: number; y: number }[],
+  draws_line: boolean,
+  step: number,
+): { x: number; y: number }[] {
+  const obstacles: { x: number; y: number }[] = []
+  let prev: { x: number; y: number } | null = null
+  for (const point of pixel_points) {
+    if (!isFinite(point.x) || !isFinite(point.y)) {
+      prev = null // non-finite breaks the line; don't sample across the gap
+      continue
+    }
+    obstacles.push(point)
+    if (draws_line && prev && step > 0) {
+      const n_samples = Math.floor(Math.hypot(point.x - prev.x, point.y - prev.y) / step)
+      for (let idx = 1; idx < n_samples; idx++) {
+        const frac = idx / n_samples
+        obstacles.push({
+          x: prev.x + (point.x - prev.x) * frac,
+          y: prev.y + (point.y - prev.y) * frac,
+        })
+      }
+    }
+    prev = point
+  }
+  return obstacles
+}
+
 // Find the best placement position using continuous grid sampling
 // Scores each candidate position by:
 // 1. Number of data points overlapping the element bounds (fewer = better)
@@ -260,7 +292,7 @@ export function compute_element_placement(
     plot_bounds,
     element_size,
     element,
-    axis_clearance = 40,
+    axis_clearance = 12,
     exclude_rects = [],
     points,
     grid_resolution: raw_resolution = 10,
