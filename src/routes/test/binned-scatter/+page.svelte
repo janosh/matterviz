@@ -32,13 +32,9 @@
 
   function make_series(test_mode: TestMode, count: number): DensePointSeries[] {
     if (test_mode === `singleton`) {
-      return [
-        {
-          x: Float32Array.from([0.9, 0.1, 0.2]),
-          y: Float32Array.from([0.9, 0.1, 0.8]),
-          point_ids: [`singleton`, `low`, `left-high`],
-        },
-      ]
+      const x = Float32Array.from([0.9, 0.1, 0.2])
+      const y = Float32Array.from([0.9, 0.1, 0.8])
+      return [{ x, y, point_ids: [`singleton`, `low`, `left-high`] }]
     }
 
     const x = new Float32Array(count)
@@ -109,19 +105,18 @@
     {mode} {n_points.toLocaleString()} mount {mount_ms.toFixed(1)}ms
   </output>
 
-  <section data-testid="binned-scatter-host">
-    {#if series.length}
-      <BinnedScatterPlot
-        {series}
-        {x_axis}
-        {y_axis}
-        {density}
-        style="height: 600px; width: 900px;"
-        on_density_zoom={() => zoom_count += 1}
-        on_point_click={() => point_click_count += 1}
-      />
-    {/if}
-  </section>
+  {#if series.length}
+    <BinnedScatterPlot
+      {series}
+      {x_axis}
+      {y_axis}
+      {density}
+      data-testid="binned-scatter-host"
+      style="height: 600px; width: 900px;"
+      on_density_zoom={() => zoom_count += 1}
+      on_point_click={() => point_click_count += 1}
+    />
+  {/if}
 </main>
 
 <style>
@@ -132,9 +127,5 @@
   }
   output {
     font: 12px/1.4 monospace;
-  }
-  section {
-    height: 600px;
-    width: 900px;
   }
 </style>

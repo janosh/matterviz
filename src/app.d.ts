@@ -1,15 +1,9 @@
 /// <reference types="@sveltejs/kit" />
 
-import type { ElementColorScheme } from '$lib/colors'
 import type { Crystal } from '$lib/structure'
 
 declare module 'mp-*.json' {
   const content: Crystal
-  export default content
-}
-
-declare module '*-colors.yml' {
-  const content: ElementColorScheme
   export default content
 }
 

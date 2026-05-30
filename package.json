@@ -49,6 +49,10 @@
       "types": "./dist/colors/index.d.ts",
       "default": "./dist/colors/index.js"
     },
+    "./coordination": {
+      "types": "./dist/coordination/index.d.ts",
+      "default": "./dist/coordination/index.js"
+    },
     "./element": {
       "types": "./dist/element/index.d.ts",
       "default": "./dist/element/index.js"
@@ -61,9 +65,17 @@
       "types": "./dist/fermi-surface/index.d.ts",
       "default": "./dist/fermi-surface/index.js"
     },
+    "./heatmap-matrix": {
+      "types": "./dist/heatmap-matrix/index.d.ts",
+      "default": "./dist/heatmap-matrix/index.js"
+    },
     "./io": {
       "types": "./dist/io/index.d.ts",
       "default": "./dist/io/index.js"
+    },
+    "./isosurface": {
+      "types": "./dist/isosurface/index.d.ts",
+      "default": "./dist/isosurface/index.js"
     },
     "./labels": {
       "types": "./dist/labels.d.ts",
@@ -82,8 +94,8 @@
       "default": "./dist/overlays/index.js"
     },
     "./periodic-table": {
-      "types": "./dist/periodic-table.d.ts",
-      "default": "./dist/periodic-table.js"
+      "types": "./dist/periodic-table/index.d.ts",
+      "default": "./dist/periodic-table/index.js"
     },
     "./phase-diagram": {
       "types": "./dist/phase-diagram/index.d.ts",
@@ -156,6 +168,7 @@
   },
   "scripts": {
     "test": "vp test --run && playwright test",
+    "knip": "knip --include dependencies,devDependencies",
     "package-dist-assets": "NODE_OPTIONS=--experimental-strip-types node scripts/package-dist-assets.ts",
     "package:dist": "svelte-package && npm run package-dist-assets",
     "prepare": "NODE_OPTIONS=--experimental-strip-types svelte-kit sync && npm run package:dist",
@@ -184,7 +197,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "@rollup/plugin-yaml": "^5.0.0",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/package": "^2.5.7",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
@@ -204,6 +216,7 @@
     "@vitest/coverage-v8": "4.1.7",
     "@wooorm/starry-night": "^3.9.0",
     "happy-dom": "^20.9.0",
+    "knip": "^6.14.2",
     "mdsvex": "^0.12.7",
     "rehype-katex": "^7.0.1",
     "remark-math": "3.0.1",
@@ -220,5 +233,16 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@10.33.0"
+  "knip": {
+    "entry": [
+      "svelte.config.ts"
+    ],
+    "ignore": [
+      "extensions/**"
+    ],
+    "ignoreDependencies": [
+      "@typescript/native-preview",
+      "svelte-check-rs"
+    ]
+  }
 }

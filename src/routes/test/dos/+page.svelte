@@ -18,36 +18,34 @@
 <h1>DOS Component Test Page</h1>
 
 <h2 id="single-dos">Single DOS</h2>
-<div data-testid="dos-single"><Dos doses={mock_dos} /></div>
+<Dos doses={mock_dos} data-testid="dos-single" />
 
 <h2 id="multiple-dos">Multiple DOS</h2>
-<div data-testid="dos-multiple"><Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} /></div>
+<Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} data-testid="dos-multiple" />
 
 <h2 id="max-normalization">Max Normalization</h2>
-<div data-testid="dos-max-norm"><Dos doses={mock_dos} normalize="max" /></div>
+<Dos doses={mock_dos} normalize="max" data-testid="dos-max-norm" />
 
 <h2 id="sum-normalization">Sum Normalization</h2>
-<div data-testid="dos-sum-norm"><Dos doses={mock_dos} normalize="sum" /></div>
+<Dos doses={mock_dos} normalize="sum" data-testid="dos-sum-norm" />
 
 <h2 id="stacked-dos">Stacked DOS</h2>
-<div data-testid="dos-stacked"><Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} stack /></div>
+<Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} stack data-testid="dos-stacked" />
 
 <h2 id="gaussian-smearing">Gaussian Smearing (sigma=0.2)</h2>
-<div data-testid="dos-smeared"><Dos doses={mock_dos} sigma={0.2} /></div>
+<Dos doses={mock_dos} sigma={0.2} data-testid="dos-smeared" />
 
 <h2 id="horizontal-dos">Horizontal Orientation</h2>
-<div data-testid="dos-horizontal"><Dos doses={mock_dos} orientation="horizontal" /></div>
+<Dos doses={mock_dos} orientation="horizontal" data-testid="dos-horizontal" />
 
 <h2 id="ev-units">eV Units</h2>
-<div data-testid="dos-ev"><Dos doses={mock_dos} units="eV" /></div>
+<Dos doses={mock_dos} units="eV" data-testid="dos-ev" />
 
 <h2 id="mev-units">meV Units</h2>
-<div data-testid="dos-mev"><Dos doses={mock_dos} units="meV" /></div>
+<Dos doses={mock_dos} units="meV" data-testid="dos-mev" />
 
 <h2 id="no-legend">No Legend (Multiple DOS)</h2>
-<div data-testid="dos-no-legend">
-  <Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} show_legend={false} />
-</div>
+<Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} show_legend={false} data-testid="dos-no-legend" />
 
 <style>
   h1 {

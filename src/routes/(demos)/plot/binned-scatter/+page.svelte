@@ -53,7 +53,7 @@
     },
   ]
 
-  let plot_host = $state<HTMLElement>()
+  let plot_host = $state<HTMLDivElement>()
   let render_mode = $state<`density` | `points`>(`density`)
   let clicked_point = $state<MaterialPoint | null>(null)
   let popup_pos = $state<Point2D>({ x: 0, y: 0 })
@@ -72,8 +72,10 @@
     value_range: [4, 36] as [number, number],
     pick_radius: 14,
   }
+  const popup_width = 360 // shared with StructurePopup width prop below
+  const popup_margin = 40 // room for the control tab + gap when placed right
   const popup_place_right = $derived(
-    popup_pos.x < (plot_host?.clientWidth ?? 960) - 560,
+    popup_pos.x < (plot_host?.clientWidth ?? 960) - (popup_width + popup_margin),
   )
 
   function make_structure(elements: ElementSymbol[], lattice_a: number): Crystal {
@@ -240,20 +242,20 @@
     <button type="button" onclick={clear_selection}>Clear selection</button>
   </div>
 
-  <section class="plot-card" bind:this={plot_host}>
-    <BinnedScatterPlot
-      {series}
-      {x_axis}
-      {y_axis}
-      {density}
-      {size_scale}
-      point_data={({ point }) => point.metadata}
-      tooltip={point_tooltip}
-      bind:render_mode
-      {selected_point_id}
-      on_point_click={handle_point_click}
-    />
-
+  <BinnedScatterPlot
+    {series}
+    {x_axis}
+    {y_axis}
+    {density}
+    {size_scale}
+    point_data={({ point }) => point.metadata}
+    tooltip={point_tooltip}
+    bind:render_mode
+    bind:wrapper={plot_host}
+    {selected_point_id}
+    on_point_click={handle_point_click}
+    class="plot-card"
+  >
     {#if clicked_point}
       <StructurePopup
         structure={make_structure(clicked_point.elements, clicked_point.lattice_a)}
@@ -268,11 +270,11 @@
         style={popup_place_right
           ? `left: ${popup_pos.x}px; top: ${popup_pos.y}px`
           : `right: ${(plot_host?.clientWidth ?? 0) - popup_pos.x}px; top: ${popup_pos.y}px`}
-        width={360}
+        width={popup_width}
         height={360}
       />
     {/if}
-  </section>
+  </BinnedScatterPlot>
 
   <section class="notes">
     <h2>What to Try</h2>
@@ -294,7 +296,7 @@
     flex-wrap: wrap;
     margin: 1rem 0;
   }
-  .plot-card {
+  :global(.binned-scatter.plot-card) {
     position: relative;
     box-sizing: border-box;
     border: 1px solid var(--border-color);
@@ -303,10 +305,7 @@
     padding: 1rem;
     height: 640px;
   }
-  .plot-card :global(.binned-scatter) {
-    height: 100%;
-  }
-  .plot-card :global(.dense-tooltip) {
+  :global(.binned-scatter.plot-card .dense-tooltip) {
     display: grid;
     gap: 0.15rem;
   }
