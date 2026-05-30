@@ -172,14 +172,14 @@
     <button
       class="toggle-btn {color_mode === `stability` ? `active` : ``}"
       onclick={() => color_mode = `stability`}
-      {@attach tooltip({ allow_html: true, content: `Color points by stable/unstable` })}
+      {@attach tooltip({ content: `Color points by stable/unstable` })}
     >
       Stability
     </button>
     <button
       class="toggle-btn {color_mode === `energy` ? `active` : ``}"
       onclick={() => color_mode = `energy`}
-      {@attach tooltip({ allow_html: true, content: `Color points by energy above hull` })}
+      {@attach tooltip({ content: `Color points by energy above hull` })}
     >
       Energy
     </button>
@@ -188,7 +188,7 @@
   <!-- Energy threshold slider - shown in both color modes -->
   <div
     class="control-row"
-    {@attach tooltip({ allow_html: true, content: `Max eV/atom above hull to display unstable points` })}
+    {@attach tooltip({ content: `Max eV/atom above hull to display unstable points` })}
   >
     <span class="control-label">Points threshold</span>
     <label style="display: flex; align-items: center; gap: 4px; flex: 1">
@@ -223,7 +223,7 @@
           [`Enter`, ` `].includes(evt.key) && (show_stable = !show_stable)}
           role="button"
           tabindex="0"
-          {@attach tooltip({ allow_html: true, content: `Toggle visibility of stable points` })}
+          {@attach tooltip({ content: `Toggle visibility of stable points` })}
         >
           <div class="marker stable"></div>
           <span>Stable{
@@ -237,7 +237,7 @@
           [`Enter`, ` `].includes(evt.key) && (show_unstable = !show_unstable)}
           role="button"
           tabindex="0"
-          {@attach tooltip({ allow_html: true, content: `Toggle visibility of above-hull points` })}
+          {@attach tooltip({ content: `Toggle visibility of above-hull points` })}
         >
           <div class="marker unstable"></div>
           <span>Above hull{
@@ -252,7 +252,7 @@
     <!-- Color scale selector -->
     <div class="color-scale-row">
       <span
-        {@attach tooltip({ allow_html: true, content: `Choose energy colormap` })}
+        {@attach tooltip({ content: `Choose energy colormap` })}
         onclick={focus_multiselect}
         onkeydown={(evt) => {
           if (evt.key === `Enter` || evt.key === ` `) focus_multiselect(evt)
@@ -265,7 +265,7 @@
         bind:value={color_scale}
         selected={[color_scale]}
         placeholder="Select color scale"
-        {@attach tooltip({ allow_html: true, content: `Set interpolator for energy colors` })}
+        {@attach tooltip({ content: `Set interpolator for energy colors` })}
       />
     </div>
   {/if}
@@ -274,7 +274,7 @@
     <div class="control-row">
       <span class="control-label">Labels</span>
       <div style="display: flex; gap: 12px; flex: 1">
-        <label {@attach tooltip({ allow_html: true, content: `Show labels for stable points` })}>
+        <label {@attach tooltip({ content: `Show labels for stable points` })}>
           <input
             type="checkbox"
             checked={show_stable_labels}
@@ -282,7 +282,7 @@
           />
           <span>Stable</span>
         </label>
-        <label {@attach tooltip({ allow_html: true, content: `Show labels for unstable points` })}>
+        <label {@attach tooltip({ content: `Show labels for unstable points` })}>
           <input
             type="checkbox"
             checked={show_unstable_labels}
@@ -296,7 +296,7 @@
     {#if show_unstable_labels}
       <div
         class="control-row"
-        {@attach tooltip({ allow_html: true, content: `Max eV/atom for labeling unstable points` })}
+        {@attach tooltip({ content: `Max eV/atom for labeling unstable points` })}
       >
         <span class="control-label">Label threshold</span>
         <label style="display: flex; align-items: center; gap: 4px; flex: 1">
@@ -319,7 +319,7 @@
   {#if show_hull_faces !== undefined}
     <div class="control-row">
       <span class="control-label">Hull Faces</span>
-      <label {@attach tooltip({ allow_html: true, content: `Toggle convex hull faces` })}>
+      <label {@attach tooltip({ content: `Toggle convex hull faces` })}>
         <input
           type="checkbox"
           checked={show_hull_faces}
@@ -333,7 +333,7 @@
             type="color"
             value={hull_face_color}
             oninput={(event) => on_hull_face_color_change?.(event.currentTarget.value)}
-            {@attach tooltip({ allow_html: true, content: `Set hull face color` })}
+            {@attach tooltip({ content: `Set hull face color` })}
             style="width: 40px; height: 20px"
           />
         {/if}
@@ -345,7 +345,7 @@
           aria-label="Hull face opacity"
           bind:value={hull_face_opacity}
           oninput={() => on_hull_face_opacity_change?.(hull_face_opacity)}
-          {@attach tooltip({ allow_html: true, content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
+          {@attach tooltip({ content: `Hull face opacity (0 = transparent, 1 = opaque)` })}
           class="threshold-slider"
           style="flex: 1; min-width: 80px"
         />
@@ -363,7 +363,7 @@
           <button
             class="toggle-btn face-mode-btn {hull_face_color_mode === mode ? `active` : ``}"
             onclick={() => on_hull_face_color_mode_change?.(mode)}
-            {@attach tooltip({ allow_html: true, content: FACE_COLOR_MODES[mode].tip })}
+            {@attach tooltip({ content: FACE_COLOR_MODES[mode].tip })}
           >
             {FACE_COLOR_MODES[mode].label}
           </button>
@@ -379,11 +379,7 @@
         <!-- Ternary camera controls (elevation/azimuth) -->
         <label
           class="angle-input"
-          {@attach tooltip({
-            allow_html: true,
-            content:
-              `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)`,
-          })}
+          {@attach tooltip({ content: `Elevation angle (0° = look down z-axis, 90° = side view, 180° = look up z-axis)` })}
         >
           <span>Elev</span>
           <input
@@ -399,7 +395,7 @@
         </label>
         <label
           class="angle-input"
-          {@attach tooltip({ allow_html: true, content: `Azimuth rotation around z-axis` })}
+          {@attach tooltip({ content: `Azimuth rotation around z-axis` })}
         >
           <span>Azim</span>
           <input
@@ -417,7 +413,7 @@
         <!-- Quaternary camera controls (rotation_x/rotation_y) -->
         <label
           class="angle-input"
-          {@attach tooltip({ allow_html: true, content: `Vertical tilt (up/down rotation)` })}
+          {@attach tooltip({ content: `Vertical tilt (up/down rotation)` })}
         >
           <span>φ</span>
           <input
@@ -434,7 +430,7 @@
         </label>
         <label
           class="angle-input"
-          {@attach tooltip({ allow_html: true, content: `Horizontal rotation (left/right)` })}
+          {@attach tooltip({ content: `Horizontal rotation (left/right)` })}
         >
           <span>θ</span>
           <input

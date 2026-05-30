@@ -424,7 +424,7 @@
         }}
         style="display: flex; gap: 1ex; align-items: center; flex-wrap: wrap"
       >
-        <label {@attach tooltip({ allow_html: true, content: y2_sync_tip })}>Mode:
+        <label {@attach tooltip({ content: y2_sync_tip })}>Mode:
           <select
             value={current_sync.mode}
             aria-label="Y2 axis synchronization mode"

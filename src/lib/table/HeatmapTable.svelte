@@ -899,7 +899,7 @@
             search_query = ``
             search_expanded = false
           }}
-          {@attach tooltip({ allow_html: true, content: `Clear`, placement: `top` })}
+          {@attach tooltip({ content: `Clear`, placement: `top` })}
         >
           <Icon icon="Cross" style="width: 10px" />
         </button>
@@ -907,7 +907,7 @@
         <button
           class="icon-btn"
           onclick={() => search_expanded = true}
-          {@attach tooltip({ allow_html: true, content: `Search`, placement: `top` })}
+          {@attach tooltip({ content: `Search`, placement: `top` })}
         >
           <Icon icon="Search" style="width: 14px" />
         </button>
@@ -920,7 +920,7 @@
           class="icon-btn"
           class:active={show_column_dropdown}
           onclick={() => show_column_dropdown = !show_column_dropdown}
-          {@attach tooltip({ allow_html: true, content: `Columns`, placement: `top` })}
+          {@attach tooltip({ content: `Columns`, placement: `top` })}
         >
           <Icon icon="Columns" style="width: 14px" />
         </button>
@@ -948,7 +948,7 @@
           class="icon-btn"
           class:active={show_export_dropdown}
           onclick={() => show_export_dropdown = !show_export_dropdown}
-          {@attach tooltip({ allow_html: true, content: `Export`, placement: `top` })}
+          {@attach tooltip({ content: `Export`, placement: `top` })}
         >
           <Icon icon="Export" style="width: 14px" />
         </button>
@@ -1322,7 +1322,7 @@
                 {:else if typeof val === `number` && !Number.isNaN(val)}
                   {format_num(val, col.format ?? default_num_format)}
                 {:else if val === undefined || val === null || Number.isNaN(val)}
-                  <span {@attach tooltip({ allow_html: true, content: `Not available` })}>
+                  <span {@attach tooltip({ content: `Not available` })}>
                     n/a
                   </span>
                 {:else}

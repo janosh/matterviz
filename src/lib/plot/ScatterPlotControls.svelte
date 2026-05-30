@@ -96,17 +96,14 @@
     >
       {#if has_any_points}
         <label
-          {@attach tooltip({ allow_html: true, content: `Toggle visibility of data points in the scatter plot` })}
+          {@attach tooltip({ content: `Toggle visibility of data points in the scatter plot` })}
         >
           <input type="checkbox" bind:checked={styles.show_points} /> Show points
         </label>
       {/if}
       {#if has_any_lines}
         <label
-          {@attach tooltip({
-            allow_html: true,
-            content: `Toggle visibility of connecting lines between data points`,
-          })}
+          {@attach tooltip({ content: `Toggle visibility of connecting lines between data points` })}
         >
           <input type="checkbox" bind:checked={styles.show_lines} /> Show lines
         </label>

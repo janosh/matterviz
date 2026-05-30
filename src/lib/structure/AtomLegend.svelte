@@ -248,7 +248,7 @@
       aria-expanded={mode_menu_open}
       aria-hidden={mode_toggle_visible ? undefined : true}
       tabindex={mode_toggle_visible ? undefined : -1}
-      {@attach tooltip({ allow_html: true })}
+      {@attach tooltip()}
     >
       <Icon icon={mode_menu_open ? `Collapse` : `Expand`} />
     </button>
@@ -312,7 +312,7 @@
             class="reset-btn"
             onclick={() => clear_site_radius(site_idx)}
             title="Reset to element default"
-            {@attach tooltip({ allow_html: true, placement: `top` })}
+            {@attach tooltip({ placement: `top` })}
           >
             ↺
           </button>
@@ -416,7 +416,7 @@
                   class="reset-btn"
                   onclick={() => clear_element_radius(elem as ElementSymbol)}
                   title="Reset to default radius"
-                  {@attach tooltip({ allow_html: true, placement: `top` })}
+                  {@attach tooltip({ placement: `top` })}
                 >
                   ↺
                 </button>

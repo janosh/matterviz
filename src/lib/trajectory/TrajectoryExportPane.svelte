@@ -200,7 +200,6 @@
               class:active={resolution_multiplier === multiplier}
               onclick={() => (resolution_multiplier = multiplier)}
               {@attach tooltip({
-                allow_html: true,
                 content: canvas ? `${multiplier}x (${w}×${h})` : `${multiplier}x`,
               })}
             >
@@ -265,7 +264,7 @@
             type="button"
             onclick={() => handle_video_export(format)}
             disabled={is_exporting || !trajectory || !has_canvas}
-            {@attach tooltip({ allow_html: true, content: hint })}
+            {@attach tooltip({ content: hint })}
           >
             {#if is_exporting && export_format === format}
               {export_progress.toFixed(0)}%

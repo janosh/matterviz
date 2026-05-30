@@ -419,7 +419,7 @@
             title="{fullscreen ? `Exit` : `Enter`} fullscreen"
             aria-pressed={fullscreen}
             class="fullscreen-toggle"
-            {@attach tooltip({ allow_html: true })}
+            {@attach tooltip()}
           >
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle({ fullscreen })}

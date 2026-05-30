@@ -1558,7 +1558,7 @@
             aria-pressed={fullscreen}
             class="fullscreen-toggle"
             style="padding: 0 3px"
-            {@attach tooltip({ allow_html: true })}
+            {@attach tooltip()}
           >
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle({ fullscreen })}
@@ -1800,7 +1800,7 @@
             bind:hovered_site_idx
             bind:selected_sites
             {sym_data}
-            {@attach tooltip({ allow_html: true, content: `Structure info pane` })}
+            {@attach tooltip({ content: `Structure info pane` })}
           />
         {/if}
 

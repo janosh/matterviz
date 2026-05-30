@@ -220,7 +220,7 @@
   <div class="export-buttons">
     {#each model_3d_formats as { label, format, hint } (format)}
       <div style="display: flex; align-items: center; gap: 4pt">
-        <span {@attach tooltip({ allow_html: true, content: hint })}>{label}</span>
+        <span {@attach tooltip({ content: hint })}>{label}</span>
         <button
           type="button"
           onclick={() => handle_3d_export(format)}

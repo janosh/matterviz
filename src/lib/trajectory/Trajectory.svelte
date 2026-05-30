@@ -979,7 +979,7 @@
                 class="step-input"
                 title="Enter step number to jump to"
                 aria-label="Step input"
-                {@attach tooltip({ allow_html: true })}
+                {@attach tooltip()}
               />
               <span aria-label="total frames">/ {format_num(total_frames, `.3~s`)}</span>
               <div class="slider-container">

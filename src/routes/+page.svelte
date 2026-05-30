@@ -39,7 +39,7 @@
       <a
         href={ext_url}
         title="Install the {ext_name} extension to view structure/trajectory files directly in your IDE."
-        {@attach tooltip({ allow_html: true })}
+        {@attach tooltip()}
         target="_blank"
         rel="noopener noreferrer"
       >
@@ -53,7 +53,7 @@
 
   <span>
     <code
-      {@attach tooltip({ allow_html: true })}
+      {@attach tooltip()}
       title="For use in JavaScript/TypeScript/NodeJS."
       style="display: inline-flex; gap: 4pt; line-height: 1.3"
     >

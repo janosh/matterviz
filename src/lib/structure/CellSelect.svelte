@@ -98,7 +98,7 @@
     class="toggle-btn"
     class:active={menu_open}
     aria-expanded={menu_open}
-    {@attach tooltip({ allow_html: true, content: `Cell type & supercell` })}
+    {@attach tooltip({ content: `Cell type & supercell` })}
   >
     {#if loading}
       <Spinner
@@ -132,7 +132,7 @@
             {disabled}
             onclick={() => (cell_type = type)}
             title={tooltip_text}
-            {@attach tooltip({ allow_html: true, content: tooltip_text })}
+            {@attach tooltip({ content: tooltip_text })}
           >
             {label}
           </button>

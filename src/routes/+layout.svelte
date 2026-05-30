@@ -114,7 +114,7 @@
     }}
     aria-label="Open search"
     style="background: transparent"
-    {@attach tooltip({ allow_html: true, content: `Search (⌘K)` })}
+    {@attach tooltip({ content: `Search (⌘K)` })}
   >
     <Icon icon="Search" style="width: 1.4em; height: 1.4em" />
   </button>

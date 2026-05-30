@@ -103,7 +103,7 @@
     {/if}
 
     <label>
-      <span {@attach tooltip({ allow_html: true })} title={tooltips?.symprec}>Precision</span>
+      <span {@attach tooltip()} title={tooltips?.symprec}>Precision</span>
       <input
         type="number"
         step={symprec_step}
@@ -124,7 +124,7 @@
       />
     </label>
     <label>
-      <span {@attach tooltip({ allow_html: true })} title={tooltips?.algo}>Algorithm</span>
+      <span {@attach tooltip()} title={tooltips?.algo}>Algorithm</span>
 
       <select
         value={settings.algo}
@@ -146,26 +146,26 @@
     <div class="stats-grid">
       <div
         title="{tooltips?.space_group} at {settings.symprec} (using {settings.algo} algo). {tooltips?.hermann_mauguin}"
-        {@attach tooltip({ allow_html: true })}
+        {@attach tooltip()}
       >
         Space Group <strong>{sym_data.number} ({display_hm_symbol})</strong>
       </div>
-      <div title={tooltips?.crystal_system} {@attach tooltip({ allow_html: true })}>
+      <div title={tooltips?.crystal_system} {@attach tooltip()}>
         Crystal System <strong>{spg.spacegroup_to_crystal_sys(sym_data.number)}</strong>
       </div>
-      <div title={tooltips?.hall_number} {@attach tooltip({ allow_html: true })}>
+      <div title={tooltips?.hall_number} {@attach tooltip()}>
         Hall Number <strong>{sym_data.hall_number}</strong>
       </div>
-      <div title={tooltips?.pearson_symbol} {@attach tooltip({ allow_html: true })}>
+      <div title={tooltips?.pearson_symbol} {@attach tooltip()}>
         Pearson <strong>{sym_data.pearson_symbol}</strong>
       </div>
-      <div title={tooltips?.distinct_orbits} {@attach tooltip({ allow_html: true })}>
+      <div title={tooltips?.distinct_orbits} {@attach tooltip()}>
         Wyckoff Positions <strong>{wyckoff_count}</strong>
       </div>
       <div
         class="sym-ops-summary"
         title="{sym_ops_counts.translations} translations + {sym_ops_counts.rotations} rotations + {sym_ops_counts.roto_translations} roto-translations"
-        {@attach tooltip({ allow_html: true })}
+        {@attach tooltip()}
       >
         Total sym ops: <strong>{sym_data.operations.length}</strong>
         ({sym_ops_counts.translations}T + {sym_ops_counts.rotations}R + {

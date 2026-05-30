@@ -188,7 +188,7 @@
         }}
         type="button"
         aria-label="Reset all columns to defaults"
-        {@attach tooltip({ allow_html: true })}
+        {@attach tooltip()}
       >
         <Icon icon="Reset" width="12px" />
       </button>
@@ -218,7 +218,7 @@
                   onclick={() => reset_section(section.name)}
                   type="button"
                   aria-label="Reset {section.name} to defaults"
-                  {@attach tooltip({ allow_html: true })}
+                  {@attach tooltip()}
                 >
                   <Icon icon="Reset" width="12px" />
                 </button>

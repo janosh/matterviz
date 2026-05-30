@@ -102,10 +102,7 @@
   </label>
 
   <h4
-    {@attach tooltip({
-      allow_html: true,
-      content: `Includes vertices, faces, edges, and reciprocal lattice vectors`,
-    })}
+    {@attach tooltip({ content: `Includes vertices, faces, edges, and reciprocal lattice vectors` })}
   >
     Export as data
   </h4>
