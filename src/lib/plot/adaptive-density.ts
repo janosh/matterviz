@@ -192,6 +192,7 @@ export function density_bin_at_point(
   }
 
   const x_bin = value_bin(rel_x, 0, plot_rect.width || 1, density.x_bins)
+  // Screen coordinates grow downward, while density bins use bottom-up data Y.
   const y_bin = density.y_bins - 1 - value_bin(rel_y, 0, plot_rect.height || 1, density.y_bins)
   const count = density.counts[y_bin * density.x_bins + x_bin]
   if (!count) return null

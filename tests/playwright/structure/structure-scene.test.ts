@@ -117,7 +117,7 @@ async function load_single_centered_atom_scene(page: Page): Promise<void> {
   })
 }
 
-async function count_canvas_purple_pixels(canvas: Locator): Promise<number> {
+async function get_canvas_purple_pixel_ratio(canvas: Locator): Promise<number> {
   return canvas.evaluate(async (canvas_element) => {
     if (!(canvas_element instanceof HTMLCanvasElement)) {
       throw new Error(`Expected structure canvas, got ${canvas_element.tagName}`)
@@ -146,7 +146,7 @@ async function count_canvas_purple_pixels(canvas: Locator): Promise<number> {
         purple_pixels += 1
       }
     }
-    return purple_pixels
+    return purple_pixels / (offscreen_canvas.width * offscreen_canvas.height)
   })
 }
 
@@ -185,18 +185,18 @@ test.describe(`StructureScene Component Tests`, () => {
 
   test(`supercell transition keeps atom spheres visible`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)
-    const initial_purple_pixels = await count_canvas_purple_pixels(canvas)
-    expect(initial_purple_pixels).toBeGreaterThan(10_000)
+    const initial_purple_ratio = await get_canvas_purple_pixel_ratio(canvas)
+    expect(initial_purple_ratio).toBeGreaterThan(0.01)
 
     await page.locator(`[data-testid="supercell-input"]`).fill(`2x2x2`)
     await page.locator(`[data-testid="supercell-input"]`).press(`Enter`)
     await expect(page.locator(`#test-structure .atom-legend`)).toContainText(/Cs\s*16/)
 
     await expect
-      .poll(() => count_canvas_purple_pixels(canvas), {
+      .poll(() => get_canvas_purple_pixel_ratio(canvas), {
         timeout: get_canvas_timeout(),
       })
-      .toBeGreaterThan(initial_purple_pixels * 2)
+      .toBeGreaterThan(initial_purple_ratio * 2)
   })
 
   // Combined tooltip functionality tests

@@ -241,7 +241,7 @@
     style={toggle_props.style ?? ``}
     onclick={toggle_pane}
     class="pane-toggle {toggle_props.class ?? ``}"
-    {@attach tooltip({ allow_html: true, content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
+    {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
   >
     <Icon icon={show ? open_icon : closed_icon} style={icon_style} />
   </button>

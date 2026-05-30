@@ -94,6 +94,7 @@
       {height}
       top_right_controls={close_button}
       show_controls="hover"
+      style="--struct-width: {width}px; --struct-height: {height}px; --struct-min-width: 0"
     />
     {@render children?.(context)}
   </div>
@@ -104,10 +105,6 @@
     position: absolute;
     box-sizing: border-box;
     width: max-content;
-    background: var(--surface-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
     z-index: 10000;
     overflow: visible;
     top: 50%;
@@ -116,8 +113,11 @@
   .structure-popup-content {
     display: flex;
     gap: 8px;
+    background: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
     overflow: hidden;
-    border-radius: inherit;
   }
   .structure-popup.right {
     left: calc(100% + var(--structure-popup-gap, 1em));

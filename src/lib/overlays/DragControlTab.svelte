@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
+  import type { IconName } from '$lib/icons'
 
   let {
     show_controls = false,
@@ -10,41 +11,31 @@
     on_reset?: () => void
     on_close?: () => void
   } = $props()
-
-  function handle_control_click(event: MouseEvent, callback: () => void): void {
-    event.stopPropagation()
-    callback()
-  }
 </script>
 
+{#snippet control_button(callback: () => void, css_class: string, icon: IconName, label: string)}
+  <button
+    type="button"
+    class={css_class}
+    onclick={(event) => {
+      event.stopPropagation()
+      callback()
+    }}
+    title={label}
+    aria-label={label}
+  >
+    <Icon {icon} style="width: 1em; height: 1em" />
+  </button>
+{/snippet}
+
 <div class="control-tab">
-  <Icon
-    icon="DragIndicator"
-    class="drag-handle"
-    style="width: 1em; height: 1em"
-  />
+  <Icon icon="DragIndicator" class="drag-handle" style="width: 1em; height: 1em" />
   {#if show_controls}
     {#if on_reset}
-      <button
-        type="button"
-        class="reset-button"
-        onclick={(event) => handle_control_click(event, on_reset)}
-        title="Reset pane position"
-        aria-label="Reset pane position"
-      >
-        <Icon icon="Reset" style="width: 1em; height: 1em" />
-      </button>
+      {@render control_button(on_reset, `reset-button`, `Reset`, `Reset pane position`)}
     {/if}
     {#if on_close}
-      <button
-        type="button"
-        class="close-button"
-        onclick={(event) => handle_control_click(event, on_close)}
-        title="Close pane"
-        aria-label="Close pane"
-      >
-        <Icon icon="Cross" style="width: 1em; height: 1em" />
-      </button>
+      {@render control_button(on_close, `close-button`, `Cross`, `Close pane`)}
     {/if}
   {/if}
 </div>
@@ -98,6 +89,7 @@
     width: 1.1em;
     height: 1.1em;
     opacity: 0.5;
+    cursor: pointer;
   }
   :where(.reset-button:hover, .close-button:hover) {
     opacity: 0.8;

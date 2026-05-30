@@ -1,6 +1,7 @@
 <script lang="ts">
   import { BinnedScatterPlot, type DensePointSeries } from '$lib/plot'
   import { onMount } from 'svelte'
+  import { SvelteSet } from 'svelte/reactivity'
 
   type TestMode = `density` | `points` | `singleton`
 
@@ -15,22 +16,17 @@
 
   // Shared deterministic point cloud; spreads y values without RNG overhead.
   const PSEUDO_RANDOM_MULTIPLIER = 48_271
-  const max_points = $derived(mode === `points` ? Number.MAX_SAFE_INTEGER : 0)
-  const bin_px = $derived(mode === `singleton` ? 50 : 2.8)
+  // points mode lifts binning limits so every point renders individually
+  const unbounded = $derived(mode === `points` ? Number.MAX_SAFE_INTEGER : 0)
   const density = $derived({
-    bin_px,
+    bin_px: mode === `singleton` ? 50 : 2.8,
     color_scale: { type: `log`, scheme: `interpolateViridis` } as const,
-    auto_point_mode: {
-      max_points,
-      max_points_per_px: mode === `points` ? Number.MAX_SAFE_INTEGER : 0,
-    },
+    auto_point_mode: { max_points: unbounded, max_points_per_px: unbounded },
   })
-  const x_axis = $derived(
-    mode === `singleton` ? { range: [0, 1] as [number, number], label: `x` } : { label: `x` },
-  )
-  const y_axis = $derived(
-    mode === `singleton` ? { range: [0, 1] as [number, number], label: `y` } : { label: `y` },
-  )
+  const make_axis = (label: string) =>
+    mode === `singleton` ? { range: [0, 1] as [number, number], label } : { label }
+  const x_axis = $derived(make_axis(`x`))
+  const y_axis = $derived(make_axis(`y`))
 
   const next_frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 
@@ -69,12 +65,22 @@
     timed_out = true
   }
 
+  const valid_modes = new SvelteSet<TestMode>([`density`, `points`, `singleton`])
+  const MAX_POINTS = 1_000_000
+
   onMount(async () => {
     const params = new URLSearchParams(location.search)
-    mode = (params.get(`mode`) ?? `density`) as TestMode
-    n_points = mode === `singleton`
-      ? 3
-      : Number(params.get(`points`) ?? (mode === `points` ? 20_000 : 1_000_000))
+    const mode_param = params.get(`mode`) as TestMode
+    mode = valid_modes.has(mode_param) ? mode_param : `density`
+
+    if (mode === `singleton`) {
+      n_points = 3
+    } else {
+      const default_points = mode === `points` ? 20_000 : MAX_POINTS
+      const parsed = Math.floor(Number(params.get(`points`) ?? default_points))
+      // Clamp to avoid NaN/negative (RangeError) or oversized typed-array allocations
+      n_points = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), MAX_POINTS) : default_points
+    }
     const next_series = make_series(mode, n_points)
 
     const mount_start = performance.now()

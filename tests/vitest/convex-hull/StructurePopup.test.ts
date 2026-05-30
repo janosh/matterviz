@@ -41,13 +41,16 @@ describe(`StructurePopup`, () => {
   test(`requests hover-visible structure controls`, () => {
     mount(StructurePopup, {
       target: document.body,
-      props: { structure: mock_structure },
+      props: { structure: mock_structure, width: 360, height: 360 },
     })
     flushSync()
 
     const controls = doc_query(`.structure-popup .control-buttons`)
     expect(controls.classList.contains(`hover-visible`)).toBe(true)
     expect(controls.classList.contains(`always-visible`)).toBe(false)
+    const structure_style = doc_query(`.structure-popup .structure`).style
+    expect(structure_style.getPropertyValue(`--struct-width`)).toBe(`360px`)
+    expect(structure_style.getPropertyValue(`--struct-height`)).toBe(`360px`)
   })
 
   test(`preserves custom popup classes`, () => {
@@ -81,6 +84,19 @@ describe(`StructurePopup`, () => {
     expect(popup.style.top).toBe(`30px`)
     expect(popup.style.right).toBe(`auto`)
     expect(popup.style.transform).toBe(``)
+  })
+
+  test(`clips popup content while leaving drag handle visible`, () => {
+    mount(StructurePopup, {
+      target: document.body,
+      props: { structure: mock_structure },
+    })
+    flushSync()
+
+    expect(getComputedStyle(doc_query(`.structure-popup`)).overflow).toBe(`visible`)
+    const content_style = getComputedStyle(doc_query(`.structure-popup-content`))
+    expect(content_style.overflow).toBe(`hidden`)
+    expect(content_style.borderRadius).toBe(`8px`)
   })
 
   test.each([

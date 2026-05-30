@@ -435,11 +435,9 @@
         const point_id = srs.point_ids?.[point_idx]
         const is_selected = selected_point_id != null && point_id === selected_point_id
         const radius = point_radius_for_value(srs.size_values?.[point_idx])
-        ctx.globalAlpha = is_selected ||
-            hovered_point?.series_idx === series_idx &&
-            hovered_point?.point_idx === point_idx
-          ? 1
-          : 0.65
+        const is_hovered =
+          hovered_point?.series_idx === series_idx && hovered_point?.point_idx === point_idx
+        ctx.globalAlpha = is_selected || is_hovered ? 1 : 0.65
         ctx.beginPath()
         ctx.arc(cx, cy, radius * (is_selected ? 1.08 + 0.08 * pulse : 1), 0, 2 * Math.PI)
         ctx.fill()

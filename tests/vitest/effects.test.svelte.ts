@@ -1,5 +1,5 @@
 import PulseAnimationHarness from './fixtures/PulseAnimationHarness.svelte'
-import { flushSync, mount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 const requested_frames = new Map<number, FrameRequestCallback>()
@@ -38,7 +38,7 @@ describe(`create_pulse_animation`, () => {
     install_animation_frame_mock()
     const state = $state({ active: true })
 
-    mount(PulseAnimationHarness, {
+    const component = mount(PulseAnimationHarness, {
       target: document.body,
       props: {
         active: () => state.active,
@@ -53,5 +53,6 @@ describe(`create_pulse_animation`, () => {
     run_frame(1)
 
     expect(requested_frames.size).toBe(0)
+    void unmount(component)
   })
 })
