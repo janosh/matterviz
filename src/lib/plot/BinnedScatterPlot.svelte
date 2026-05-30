@@ -169,7 +169,10 @@
     set_fullscreen_bg(wrapper, fullscreen, `--binned-scatter-fullscreen-bg`)
   })
 
-  const selected_pulse = create_pulse_animation(() => selected_point_id != null && render_mode === `points`, { step: 0.035, reset_when_inactive: true })
+  const selected_pulse = create_pulse_animation(
+    () => selected_point_id != null && render_mode === `points`,
+    { step: 0.035 },
+  )
 
   const needs_data_range = (range: AxisConfig[`range`] | undefined): boolean =>
     range?.[0] == null || range?.[1] == null

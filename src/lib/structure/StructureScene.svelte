@@ -316,7 +316,10 @@
     isosurface_settings?: IsosurfaceSettings // Isosurface rendering settings
   } = $props()
 
-  const pulse = create_pulse_animation(() => selected_sites.length > 0 || active_sites.length > 0, { step: 0.015, frequency: 5 })
+  const pulse = create_pulse_animation(
+    () => selected_sites.length > 0 || active_sites.length > 0,
+    { step: 0.015, frequency: 5 },
+  )
   let pulse_opacity = $derived(0.15 + 0.25 * pulse.unit)
 
   const threlte = useThrelte()

@@ -13,7 +13,7 @@ export function create_pulse_animation(
 ): PulseAnimation {
   let time = $state(0)
   let frame_id: number | null = null
-  const { step = 0.02, frequency = 4, on_tick, reset_when_inactive = false } = options
+  const { step = 0.02, frequency = 4, on_tick, reset_when_inactive = true } = options
   const cancel_frame = () => {
     if (frame_id == null) return
     cancelAnimationFrame(frame_id)

@@ -34,7 +34,7 @@ afterEach(() => {
 })
 
 describe(`create_pulse_animation`, () => {
-  test(`does not schedule another frame after on_tick deactivates synchronously`, () => {
+  test(`resets time and stops after on_tick deactivates synchronously`, () => {
     install_animation_frame_mock()
     const state = $state({ active: true })
 
@@ -52,6 +52,8 @@ describe(`create_pulse_animation`, () => {
 
     run_frame(1)
 
+    const pulse = document.querySelector<HTMLElement>(`[data-testid="pulse"]`)
+    expect(pulse?.dataset.time).toBe(`0`)
     expect(requested_frames.size).toBe(0)
     void unmount(component)
   })

@@ -460,7 +460,10 @@
   let hull_face_color = $state(`#4caf50`)
 
   // Pulsating highlight for selected point
-  const pulse = create_pulse_animation(() => selected_entry !== null || highlighted_entries.length > 0, { on_tick: render_once })
+  const pulse = create_pulse_animation(
+    () => selected_entry !== null || highlighted_entries.length > 0,
+    { on_tick: render_once },
+  )
   let pulse_opacity = $derived(0.3 + 0.4 * pulse.unit)
 
   // Merge highlight style with defaults
