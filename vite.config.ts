@@ -10,6 +10,10 @@ import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 
 const TEXT_EXT_RE = /\.(xyz|extxyz|cif|poscar|lammpstrj|yaml\.gz)$/
 const strip_query = (path: string) => path.replace(/\?.*$/, ``)
+const split_query = (path: string): [clean: string, query: string] => {
+  const clean = strip_query(path)
+  return [clean, path.slice(clean.length)]
+}
 const resolve_from_importer = (clean: string, importer?: string) =>
   importer ? resolve(dirname(strip_query(importer)), clean) : clean
 
@@ -24,14 +28,14 @@ const json_gz_plugin: Plugin = {
     is_build = config.command === `build`
   },
   resolveId(source, importer) {
-    if (source.includes(`raw`) || source.includes(`url`)) return null
-    const clean = strip_query(source)
+    const [clean, query] = split_query(source)
+    if (query.includes(`raw`) || query.includes(`url`)) return null
     if (!clean.endsWith(`.json.gz`)) return null
     return resolve_from_importer(clean, importer)
   },
   load(id) {
-    if (id.includes(`raw`) || id.includes(`url`)) return null
-    const clean_id = strip_query(id)
+    const [clean_id, query] = split_query(id)
+    if (query.includes(`raw`) || query.includes(`url`)) return null
     if (!clean_id.endsWith(`.json.gz`)) return null
     try {
       const json_str = gunzipSync(readFileSync(clean_id)).toString(`utf-8`)
@@ -53,17 +57,17 @@ const raw_text_plugin: Plugin = {
   name: `vite-plugin-raw-text`,
   enforce: `pre`,
   resolveId(source, importer) {
-    if (source.includes(`url`)) return null
-    const clean = strip_query(source)
-    const is_raw_gz = clean.endsWith(`.json.gz`) && source.includes(`raw`)
+    const [clean, query] = split_query(source)
+    if (query.includes(`url`)) return null
+    const is_raw_gz = clean.endsWith(`.json.gz`) && query.includes(`raw`)
     if (!TEXT_EXT_RE.test(clean) && !is_raw_gz) return null
     const abs = resolve_from_importer(clean, importer)
-    return abs + (source.includes(`?`) ? source.slice(source.indexOf(`?`)) : ``)
+    return abs + query
   },
   load(id) {
-    if (id.includes(`url`)) return null
-    const clean_id = strip_query(id)
-    const is_raw_gz = clean_id.endsWith(`.json.gz`) && id.includes(`raw`)
+    const [clean_id, query] = split_query(id)
+    if (query.includes(`url`)) return null
+    const is_raw_gz = clean_id.endsWith(`.json.gz`) && query.includes(`raw`)
     if (!TEXT_EXT_RE.test(clean_id) && !is_raw_gz) return null
     try {
       const buf = readFileSync(clean_id)
@@ -72,8 +76,9 @@ const raw_text_plugin: Plugin = {
         : buf.toString(`utf-8`)
       return { code: `export default ${JSON.stringify(text)}`, map: null }
     } catch (error) {
-      console.warn(`vite-plugin-raw-text: failed to load ${clean_id}:`, error)
-      return null
+      // resolveId already claimed this file, so surface a clear error (like
+      // json_gz_plugin) instead of returning null and falling back to default loading
+      return this.error(`Failed to read ${clean_id}: ${error}`)
     }
   },
 }

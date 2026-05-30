@@ -34,7 +34,9 @@ describe(`InstancedMesh limits`, () => {
     expect(
       source.match(/instanced_atom_group_key\(atom_group,\s*measure_mode\)/g),
     ).toHaveLength(2)
-    const key_fn = /function instanced_atom_group_key\([^]*?\n  \}/.exec(source)?.[0]
+    // match up to the closing brace at the function's own indent (group 1), so the
+    // pattern tolerates reindentation and skips deeper-nested braces (e.g. template literals)
+    const key_fn = /\n( *)function instanced_atom_group_key\([\s\S]*?\n\1\}/.exec(source)?.[0]
     if (!key_fn) throw new Error(`instanced_atom_group_key function not found`)
     for (const token of [`format_num(radius, \`.3~\`)`, `edit_mode_image`, `atoms.length`]) {
       expect(key_fn).toContain(token)

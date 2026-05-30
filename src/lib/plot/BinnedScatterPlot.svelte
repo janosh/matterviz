@@ -6,15 +6,18 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>, PointData extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { pick_contrast_color } from '$lib/colors'
   import Icon from '$lib/Icon.svelte'
   import { format_value } from '$lib/labels'
   import { FullscreenToggle, set_fullscreen_bg } from '$lib/layout'
   import type { Point2D, Vec2 } from '$lib/math'
   import { create_pulse_animation } from '$lib/effects.svelte'
-  import AxisLabel from '$lib/plot/AxisLabel.svelte'
   import ColorBar from '$lib/plot/ColorBar.svelte'
-  import { compute_element_placement, filter_padding, type Sides } from '$lib/plot/layout'
+  import PlotAxes from '$lib/plot/PlotAxes.svelte'
+  import PlotGrid from '$lib/plot/PlotGrid.svelte'
+  import PlotTooltip from '$lib/plot/PlotTooltip.svelte'
+  import ZoomRect from '$lib/plot/ZoomRect.svelte'
+  import { compute_element_placement, filter_padding } from '$lib/plot/layout'
+  import type { Sides } from '$lib/plot/layout'
   import {
     build_pick_index,
     bin_points,
@@ -241,9 +244,6 @@
   let auto_color_range = $derived<Vec2>([1, Math.max(1, density_result.max_count)])
   let color_scale_fn = $derived(create_color_scale(density_settings.color_scale, auto_color_range))
   let hovered_bin_color = $derived(hovered_bin ? color_scale_fn(hovered_bin.count) : undefined)
-  let hovered_bin_text_color = $derived(
-    hovered_bin_color ? pick_contrast_color({ bg_color: hovered_bin_color }) : undefined,
-  )
   let color_scale_type = $derived(
     typeof density_settings.color_scale === `string` ? undefined : density_settings.color_scale.type,
   )
@@ -295,20 +295,18 @@
     }
 
     const is_vertical = color_bar_props?.orientation === `vertical`
+    // Fallback sizes (incl. room for tick labels) used before the colorbar first
+    // renders; compute_element_placement measures the real footprint once laid out
     const fallback_size = is_vertical
-      ? { width: 48, height: 120 }
-      : { width: default_color_bar_size.width, height: 34 }
-    const element_size =
-      colorbar_element?.offsetWidth && colorbar_element?.offsetHeight
-        ? {
-          width: colorbar_element.offsetWidth,
-          height: colorbar_element.offsetHeight,
-        }
-        : fallback_size
+      ? { width: 56, height: 120 }
+      : { width: default_color_bar_size.width, height: 50 }
 
     return compute_element_placement({
       plot_bounds: plot_rect,
-      element_size,
+      element: colorbar_element,
+      element_size: fallback_size,
+      // Small gap from the corner; the full-footprint measurement reserves the tick
+      // labels, so this alone keeps the colorbar off the axes
       axis_clearance: 12,
       points: density_placement_points,
       grid_resolution: 12,
@@ -854,16 +852,7 @@
       </clipPath>
     </defs>
 
-    <g class="grid">
-      {#each x_ticks as tick}
-        {@const x = x_scale_fn(tick)}
-        <line x1={x} x2={x} y1={pad.t} y2={height - pad.b} />
-      {/each}
-      {#each y_ticks as tick}
-        {@const y = y_scale_fn(tick)}
-        <line x1={pad.l} x2={width - pad.r} y1={y} y2={y} />
-      {/each}
-    </g>
+    <PlotGrid {x_ticks} {y_ticks} x_scale={x_scale_fn} y_scale={y_scale_fn} {pad} {width} {height} />
     <g class="reference-lines" clip-path="url(#{clip_path_id})">
       {#each ref_lines as line}
         <line
@@ -877,49 +866,19 @@
         />
       {/each}
     </g>
-    <g class="axes">
-      <line x1={pad.l} x2={width - pad.r} y1={height - pad.b} y2={height - pad.b} />
-      <line x1={pad.l} x2={pad.l} y1={pad.t} y2={height - pad.b} />
-      {#each x_ticks as tick}
-        {@const x = x_scale_fn(tick)}
-        <text x={x} y={height - pad.b + 18} text-anchor="middle">
-          {format_value(tick, x_axis.format ?? `.2~g`)}
-        </text>
-      {/each}
-      {#each y_ticks as tick}
-        {@const y = y_scale_fn(tick)}
-        <text x={pad.l - 8} y={y + 4} text-anchor="end">
-          {format_value(tick, y_axis.format ?? `.2~g`)}
-        </text>
-      {/each}
-      {#if x_axis.label}
-        <AxisLabel
-          x={pad.l + plot_width / 2}
-          y={height - 12}
-          label={x_axis.label}
-          axis_type="x"
-        />
-      {/if}
-      {#if y_axis.label}
-        <AxisLabel
-          x={22}
-          y={pad.t + plot_height / 2}
-          label={y_axis.label}
-          rotate
-          axis_type="y"
-        />
-      {/if}
-    </g>
+    <PlotAxes
+      {x_ticks}
+      {y_ticks}
+      x_scale={x_scale_fn}
+      y_scale={y_scale_fn}
+      {pad}
+      {width}
+      {height}
+      {x_axis}
+      {y_axis}
+    />
 
-    {#if drag_start && drag_current}
-      <rect
-        class="zoom-rect"
-        x={Math.min(drag_start.x, drag_current.x)}
-        y={Math.min(drag_start.y, drag_current.y)}
-        width={Math.abs(drag_current.x - drag_start.x)}
-        height={Math.abs(drag_current.y - drag_start.y)}
-      />
-    {/if}
+    <ZoomRect start={drag_start} current={drag_current} />
 
     {#if point_label_payloads.length}
       <g class="point-label-leaders" clip-path="url(#{clip_path_id})">
@@ -986,29 +945,28 @@
   {/if}
 
   {#if hovered_bin}
-    <div
-      class="dense-tooltip"
-      style:background-color={hovered_bin_color}
-      style:color={hovered_bin_text_color}
-      style:left={`${tooltip_pos.x}px`}
-      style:top={`${tooltip_pos.y}px`}
+    <PlotTooltip
+      x={tooltip_pos.x}
+      y={tooltip_pos.y}
+      offset={{ x: 0, y: 0 }}
+      bg_color={hovered_bin_color}
     >
       {hovered_bin.count.toLocaleString()} samples<br>
       x: {format_value(hovered_bin.x_range[0], x_axis.format ?? `.3~g`)}
       - {format_value(hovered_bin.x_range[1], x_axis.format ?? `.3~g`)}<br>
       y: {format_value(hovered_bin.y_range[0], y_axis.format ?? `.3~g`)}
       - {format_value(hovered_bin.y_range[1], y_axis.format ?? `.3~g`)}
-    </div>
+    </PlotTooltip>
   {:else if hovered_point}
     {@const props = point_tooltip_props(hovered_point)}
-    <div class="dense-tooltip" style:left={`${tooltip_pos.x}px`} style:top={`${tooltip_pos.y}px`}>
+    <PlotTooltip x={tooltip_pos.x} y={tooltip_pos.y} offset={{ x: 0, y: 0 }}>
       {#if tooltip}
         {@render tooltip(props)}
       {:else}
         {x_axis.label ?? `x`}: {props.x_formatted}<br>
         {y_axis.label ?? `y`}: {props.y_formatted}
       {/if}
-    </div>
+    </PlotTooltip>
   {/if}
 
   {@render children?.({ height, width, fullscreen })}
@@ -1084,35 +1042,8 @@
     overflow: visible;
     pointer-events: none;
   }
-  .grid line {
-    stroke: var(--plot-grid-color, color-mix(in srgb, currentColor 18%, transparent));
-    stroke-width: 1;
-  }
   .reference-lines line {
     opacity: 0.75;
-  }
-  .axes line {
-    stroke: var(--plot-axis-color, currentColor);
-    stroke-width: 1;
-  }
-  text {
-    fill: currentColor;
-    font-size: 11px;
-  }
-  :global(.binned-scatter .axis-label) {
-    color: currentColor;
-    font-size: 13px;
-    font-weight: 600;
-    height: 100%;
-    line-height: 24px;
-    text-align: center;
-    white-space: nowrap;
-    width: 100%;
-  }
-  .zoom-rect {
-    fill: color-mix(in srgb, dodgerblue 18%, transparent);
-    stroke: dodgerblue;
-    stroke-dasharray: 4 3;
   }
   .point-label-leaders line {
     stroke: var(--binned-scatter-label-leader-color, color-mix(in srgb, currentColor 60%, transparent));
@@ -1156,18 +1087,5 @@
   .color-bar {
     pointer-events: auto;
     position: absolute;
-  }
-  .dense-tooltip {
-    background: var(--surface-bg, rgba(0, 0, 0, 0.82));
-    border: 1px solid var(--border-color, color-mix(in srgb, currentColor 20%, transparent));
-    border-radius: 4px;
-    color: var(--text-color, white);
-    font-size: 12px;
-    inline-size: max-content;
-    padding: 4px 7px;
-    pointer-events: none;
-    position: absolute;
-    white-space: nowrap;
-    z-index: var(--z-index-tooltip, 100000003);
   }
 </style>

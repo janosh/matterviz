@@ -17,6 +17,8 @@ export type {
   BinnedSizeScaleConfig,
 } from './binned-scatter-types'
 export type { DensePointSeries } from './adaptive-density'
+export { default as PlotAxes } from './PlotAxes.svelte'
+export { default as PlotGrid } from './PlotGrid.svelte'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
 export * from './data-cleaning'
 export { default as ElementScatter } from './ElementScatter.svelte'

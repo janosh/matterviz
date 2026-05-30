@@ -593,14 +593,10 @@
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    // Use measured size if available, otherwise estimate
-    const legend_size = legend_element
-      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
-      : { width: 120, height: 60 }
-
     const result = compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
-      element_size: legend_size,
+      element: legend_element,
+      element_size: { width: 120, height: 60 }, // fallback before first render
       axis_clearance: legend?.axis_clearance,
       exclude_rects: [],
       points: hist_points_for_placement,

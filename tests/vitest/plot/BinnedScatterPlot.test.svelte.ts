@@ -453,8 +453,7 @@ describe(`BinnedScatterPlot`, () => {
     )
     await tick()
 
-    const tooltip_style = getComputedStyle(doc_query(`.dense-tooltip`))
-    expect(tooltip_style.inlineSize).toBe(`max-content`)
+    const tooltip_style = getComputedStyle(doc_query(`.plot-tooltip`))
     expect(tooltip_style.whiteSpace).toBe(`nowrap`)
   })
 
@@ -483,9 +482,9 @@ describe(`BinnedScatterPlot`, () => {
 
     const expected_color = document.createElement(`div`)
     expected_color.style.backgroundColor = interpolateViridis(0)
-    const tooltip = doc_query<HTMLElement>(`.dense-tooltip`)
+    const tooltip = doc_query<HTMLElement>(`.plot-tooltip`)
     expect(tooltip.style.backgroundColor).toBe(expected_color.style.backgroundColor)
-    expect(tooltip.style.color).toBe(`white`)
+    expect(tooltip.style.color).toBe(`#ffffff`)
 
     doc_query(`.binned-scatter`).dispatchEvent(
       new MouseEvent(`click`, { bubbles: true, clientX: 420, clientY: 283 }),

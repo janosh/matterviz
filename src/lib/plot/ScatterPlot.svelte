@@ -209,6 +209,7 @@
         margin?: number | Sides
         tween?: TweenOptions<Point2D>
         responsive?: boolean // Allow colorbar to reposition if density changes (default: false)
+        axis_clearance?: number // Min distance kept from plot edges/axes (default: 40)
       })
       | null
     label_placement_config?: Partial<LabelPlacementConfig>
@@ -1100,14 +1101,10 @@
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    // Use measured size if available, otherwise estimate
-    const legend_size = legend_element
-      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
-      : { width: 120, height: 80 }
-
     const placement_config = {
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
-      element_size: legend_size,
+      element: legend_element,
+      element_size: { width: 120, height: 80 }, // fallback before first render
       axis_clearance: legend?.axis_clearance,
       exclude_rects: [],
       points: plot_points_for_placement,
@@ -1123,13 +1120,12 @@
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b
 
-    // Use measured size if available, otherwise estimate based on orientation
+    // Fallback estimate (with room for tick labels) used before the colorbar first
+    // renders; compute_element_placement measures the real footprint once it's laid out
     const is_horizontal = color_bar.orientation === `horizontal`
-    const colorbar_size = colorbar_element
-      ? { width: colorbar_element.offsetWidth, height: colorbar_element.offsetHeight }
-      : is_horizontal
-      ? { width: 220, height: 40 }
-      : { width: 40, height: 100 }
+    const colorbar_size = is_horizontal
+      ? { width: 220, height: 56 }
+      : { width: 56, height: 100 }
 
     // Build exclusion rects (avoid legend if it's placed)
     const exclude_rects: Rect[] = []
@@ -1144,9 +1140,11 @@
 
     return compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: plot_width, height: plot_height },
+      element: colorbar_element,
       element_size: colorbar_size,
-      // Colorbar needs slightly more clearance than legend to avoid axis labels
-      axis_clearance: 15,
+      // Small gap from the corner; the full-footprint measurement reserves the tick
+      // labels, so this alone keeps the colorbar off the axes
+      axis_clearance: color_bar?.axis_clearance ?? 15,
       exclude_rects,
       points: plot_points_for_placement,
     })

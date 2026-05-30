@@ -1081,14 +1081,10 @@
     const should_show = show_legend !== undefined ? show_legend : series.length > 1
     if (!should_show || !width || !height) return null
 
-    // Use measured size if available, otherwise estimate
-    const legend_size = legend_element
-      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
-      : { width: 120, height: 60 }
-
     const result = compute_element_placement({
       plot_bounds: { x: pad.l, y: pad.t, width: chart_width, height: chart_height },
-      element_size: legend_size,
+      element: legend_element,
+      element_size: { width: 120, height: 60 }, // fallback before first render
       axis_clearance: legend?.axis_clearance,
       exclude_rects: [],
       points: bar_points_for_placement,

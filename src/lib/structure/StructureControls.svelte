@@ -318,27 +318,21 @@
       Atoms
     </label>
     <label
-      {@attach tooltip({
-                content: SETTINGS_CONFIG.structure.show_image_atoms.description,
-      })}
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_image_atoms.description })}
       style="gap: 6pt"
     >
       <input type="checkbox" bind:checked={show_image_atoms} />
       Image Atoms
     </label>
     <label
-      {@attach tooltip({
-                content: SETTINGS_CONFIG.structure.show_site_labels.description,
-      })}
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_site_labels.description })}
       style="gap: 6pt"
     >
       <input type="checkbox" bind:checked={scene_props.show_site_labels} />
       Site Labels
     </label>
     <label
-      {@attach tooltip({
-                content: SETTINGS_CONFIG.structure.show_site_indices.description,
-      })}
+      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_site_indices.description })}
       style="gap: 6pt"
     >
       <input type="checkbox" bind:checked={scene_props.show_site_indices} />
@@ -427,9 +421,7 @@
   >
     <label>
       <span
-        {@attach tooltip({
-                    content: SETTINGS_CONFIG.structure.camera_projection.description,
-        })}
+        {@attach tooltip({ content: SETTINGS_CONFIG.structure.camera_projection.description })}
       >
         Projection
       </span>
@@ -842,27 +834,21 @@
         />
       </label>
       <label
-        {@attach tooltip({
-                    content: SETTINGS_CONFIG.structure.vector_normalize.description,
-        })}
+        {@attach tooltip({ content: SETTINGS_CONFIG.structure.vector_normalize.description })}
         style="gap: 6pt"
       >
         <input type="checkbox" bind:checked={scene_props.vector_normalize} />
         Normalize
       </label>
       <label
-        {@attach tooltip({
-                    content: SETTINGS_CONFIG.structure.vector_uniform_thickness.description,
-        })}
+        {@attach tooltip({ content: SETTINGS_CONFIG.structure.vector_uniform_thickness.description })}
         style="gap: 6pt"
       >
         <input type="checkbox" bind:checked={scene_props.vector_uniform_thickness} />
         Uniform Thickness
       </label>
       <label
-        {@attach tooltip({
-                    content: SETTINGS_CONFIG.structure.vector_color_mode.description,
-        })}
+        {@attach tooltip({ content: SETTINGS_CONFIG.structure.vector_color_mode.description })}
       >
         Color Mode
         <select bind:value={scene_props.vector_color_mode}>
@@ -888,9 +874,7 @@
       {/if}
       {#if available_vector_keys.length > 1}
         <label
-          {@attach tooltip({
-                        content: SETTINGS_CONFIG.structure.vector_origin_gap.description,
-          })}
+          {@attach tooltip({ content: SETTINGS_CONFIG.structure.vector_origin_gap.description })}
         >
           Origin Gap
           <input
@@ -1188,18 +1172,14 @@
       </label>
       <label
         style="gap: 6pt"
-        {@attach tooltip({
-                    content: SETTINGS_CONFIG.structure.auto_bond_order.description,
-        })}
+        {@attach tooltip({ content: SETTINGS_CONFIG.structure.auto_bond_order.description })}
       >
         <input type="checkbox" bind:checked={scene_props.auto_bond_order} />
         Auto bond order (perceive double/triple/aromatic)
       </label>
       {#if scene_props.auto_bond_order}
         <label
-          {@attach tooltip({
-                        content: SETTINGS_CONFIG.structure.aromatic_display.description,
-          })}
+          {@attach tooltip({ content: SETTINGS_CONFIG.structure.aromatic_display.description })}
         >
           Aromatic display <select bind:value={scene_props.aromatic_display}>
             {#each Object.entries(

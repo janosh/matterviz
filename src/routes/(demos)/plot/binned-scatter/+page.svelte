@@ -19,7 +19,7 @@
     lattice_a: number
   }
 
-  type PointClickPayload = BinnedPointPayload<MaterialPoint, MaterialPoint> & {
+  type PointClickPayload = BinnedPointPayload<MaterialPoint> & {
     event: MouseEvent
   }
 
@@ -64,14 +64,10 @@
   const density = {
     bin_px: 9,
     color_scale: { type: `log`, scheme: `interpolateMagma` },
-    auto_point_mode: { max_points: 500, max_points_per_px: 0.5 },
+    // disable auto density/points switching so the manual toggle (default: binned) is honored
+    auto_point_mode: false,
     bin_click: `point`,
   } as const
-  const size_scale = {
-    radius_range: [4, 12] as [number, number],
-    value_range: [4, 36] as [number, number],
-    pick_radius: 14,
-  }
   const popup_width = 360 // shared with StructurePopup width prop below
   const popup_margin = 40 // room for the control tab + gap when placed right
   const popup_place_right = $derived(
@@ -194,10 +190,10 @@
   const series = make_series()
 
   function handle_point_click(payload: PointClickPayload): void {
-    const point_data = payload.point_data
-    if (!point_data || !plot_host) return
+    const metadata = payload.metadata
+    if (!metadata || !plot_host) return
     const rect = plot_host.getBoundingClientRect()
-    clicked_point = point_data
+    clicked_point = metadata
     selected_point_id = payload.point.point_id ?? null
     popup_pos = {
       x: payload.event.clientX - rect.left,
@@ -207,8 +203,8 @@
 
 </script>
 
-{#snippet point_tooltip(payload: BinnedPointPayload<MaterialPoint, MaterialPoint>)}
-  {@const data = payload.point_data}
+{#snippet point_tooltip(payload: BinnedPointPayload<MaterialPoint>)}
+  {@const data = payload.metadata}
   {#if data}
     <strong>{data.formula}</strong>
     <span>{data.family}</span>
@@ -239,7 +235,6 @@
         <option value="density">Density bins</option>
       </select>
     </label>
-    <button type="button" onclick={clear_selection}>Clear selection</button>
   </div>
 
   <BinnedScatterPlot
@@ -247,8 +242,6 @@
     {x_axis}
     {y_axis}
     {density}
-    {size_scale}
-    point_data={({ point }) => point.metadata}
     tooltip={point_tooltip}
     bind:render_mode
     bind:wrapper={plot_host}
@@ -305,7 +298,7 @@
     padding: 1rem;
     height: 640px;
   }
-  :global(.binned-scatter.plot-card .dense-tooltip) {
+  :global(.binned-scatter.plot-card .plot-tooltip) {
     display: grid;
     gap: 0.15rem;
   }

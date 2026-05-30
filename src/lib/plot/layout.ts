@@ -30,6 +30,23 @@ export function measure_text_width(text: string, font: string = `12px sans-serif
   return ctx.measureText(text).width
 }
 
+// Measure an element's full visual footprint, including descendants that overflow its
+// offset box. Colorbar tick labels are position:absolute outside the bar, so
+// offsetWidth/offsetHeight underestimate the space they actually occupy — which lets
+// auto-placement put the colorbar where its labels overlap the axes.
+export function measure_full_footprint(el: HTMLElement): { width: number; height: number } {
+  const root = el.getBoundingClientRect()
+  let right = root.right
+  let bottom = root.bottom
+  for (const child of el.querySelectorAll(`*`)) {
+    const rect = child.getBoundingClientRect()
+    if (rect.width === 0 && rect.height === 0) continue
+    right = Math.max(right, rect.right)
+    bottom = Math.max(bottom, rect.bottom)
+  }
+  return { width: right - root.left, height: bottom - root.top }
+}
+
 // Calculate auto-adjusted padding based on tick label widths/heights
 // This ensures tick labels don't overlap with axis labels
 export interface AutoPaddingConfig {
@@ -186,8 +203,12 @@ export const rect_within_rect = (rect: Rect, bounds: Rect): boolean =>
 export interface ElementPlacementConfig {
   // Bounds of the plot area (in SVG coordinates)
   plot_bounds: Rect
-  // Size of the element to place
+  // Fallback size of the element to place (used before `element` first renders)
   element_size: { width: number; height: number }
+  // Element to place. When provided and laid out, its full visual footprint
+  // (including descendants that overflow the box, e.g. colorbar tick labels) is
+  // measured and overrides element_size — keeping placement overlap-free everywhere.
+  element?: HTMLElement | null
   // Minimum distance from plot edges to avoid axis label overlap (default: 40)
   axis_clearance?: number
   // Rectangles to avoid (e.g., already-placed legend when placing colorbar)
@@ -238,6 +259,7 @@ export function compute_element_placement(
   const {
     plot_bounds,
     element_size,
+    element,
     axis_clearance = 40,
     exclude_rects = [],
     points,
@@ -247,7 +269,13 @@ export function compute_element_placement(
   // Ensure grid_resolution >= 2 to avoid division by zero in step calculation
   const grid_resolution = Math.max(2, raw_resolution)
 
-  const { width: elem_width, height: elem_height } = element_size
+  // Measure the element's full footprint (incl. descendants that overflow its box,
+  // such as colorbar tick labels) once it's laid out; fall back to element_size before
+  // first render. Centralizing this keeps every plot's auto-placement overlap-free.
+  const { width: elem_width, height: elem_height } =
+    element?.offsetWidth && element?.offsetHeight
+      ? measure_full_footprint(element)
+      : element_size
 
   // Calculate valid placement region (plot bounds minus axis clearance)
   const valid_x_min = plot_bounds.x + axis_clearance
