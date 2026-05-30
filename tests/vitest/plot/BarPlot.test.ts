@@ -506,4 +506,23 @@ describe(`BarPlot`, () => {
       expect(plot.textContent).toContain(`Experiment`)
     })
   })
+
+  test(`legend auto-moves to the bottom margin when bars fill the plot`, async () => {
+    // many full-height bars across the width -> no interior spot avoids overlap so the legend must
+    // drop into the reserved bottom margin
+    const cats = Array.from({ length: 30 }, (_, idx) => idx)
+    await mount_sized_bar_plot({
+      series: [
+        { x: cats, y: cats.map(() => 100), label: `A` },
+        { x: cats, y: cats.map(() => 100), label: `B` },
+      ],
+      legend: {},
+      show_legend: true,
+    })
+    await tick()
+    const legend = document.querySelector<HTMLElement>(`.legend`)
+    expect(legend).toBeInstanceOf(HTMLElement)
+    // interior default is top-left (~pad.t + 10); auto-outside drops it well into the lower half
+    expect(parseFloat(legend?.style.top ?? `0`)).toBeGreaterThan(150)
+  })
 })

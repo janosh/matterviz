@@ -698,6 +698,7 @@
     width: auto;
     &:is(.left, .right) {
       flex-direction: column;
+      justify-content: center; /* center title vertically along the bar height */
     }
     /* Rotate only the label element, not the entire row (keeps selects usable) */
     /* Only rotate when orientation is vertical AND title is on left/right side */

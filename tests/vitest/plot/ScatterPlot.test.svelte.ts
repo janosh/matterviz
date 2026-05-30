@@ -583,4 +583,35 @@ describe(`ScatterPlot`, () => {
     expect(fills[0].classList.contains(`hovered`)).toBe(true)
     expect(fills[1].classList.contains(`hovered`)).toBe(false)
   })
+
+  // Dense grid covering the whole plot so no decoration can avoid overlapping data
+  const dense_grid = (n: number): { x: number[]; y: number[] } => {
+    const x: number[] = []
+    const y: number[] = []
+    for (let row = 0; row < n; row++) {
+      for (let col = 0; col < n; col++) {
+        x.push((row / (n - 1)) * 100)
+        y.push((col / (n - 1)) * 100)
+      }
+    }
+    return { x, y }
+  }
+
+  test(`legend auto-moves to the bottom margin when interior overlap is unavoidable`, async () => {
+    const grid = dense_grid(12)
+    await mount_sized_scatter_plot({
+      series: [
+        { ...grid, label: `Dense`, markers: `points` },
+        { x: [50], y: [50], label: `B`, markers: `points` },
+      ],
+      legend: {},
+      x_axis: { range: [0, 100] as Vec2 },
+      y_axis: { range: [0, 100] as Vec2 },
+    })
+    await tick()
+    // default interior placement would be top-left (~10px); auto-outside drops it into the
+    // reserved bottom margin (~height - footprint - gap), well below mid-plot
+    const legend = doc_query<HTMLElement>(`.legend`)
+    expect(parseFloat(legend.style.top)).toBeGreaterThan(150)
+  })
 })

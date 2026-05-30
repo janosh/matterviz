@@ -38,6 +38,12 @@
     LABEL_GAP_DEFAULT,
     measure_max_tick_width,
   } from '$lib/plot/layout'
+  import {
+    build_obstacles_norm,
+    clip_bar,
+    has_explicit_position,
+    place_decorations,
+  } from '$lib/plot/auto-place'
   import type { IndexedRefLine } from '$lib/plot/reference-line'
   import { group_ref_lines_by_z, index_ref_lines } from '$lib/plot/reference-line'
   import {
@@ -400,7 +406,8 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 20, b: 60, l: 60, r: 20 }
-  let pad = $derived(filter_padding(padding, default_padding))
+  // base_pad reserves space for tick labels/axis titles; pad (below) adds decoration reservations
+  let base_pad = $derived(filter_padding(padding, default_padding))
 
   // Update padding based on tick label widths (untrack breaks circular dependency)
   $effect(() => {
@@ -452,10 +459,63 @@
 
     // Only update if padding actually changed
     if (
-      pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
-      pad.r !== new_pad.r
-    ) pad = new_pad
+      base_pad.t !== new_pad.t || base_pad.b !== new_pad.b ||
+      base_pad.l !== new_pad.l || base_pad.r !== new_pad.r
+    ) base_pad = new_pad
   })
+
+  const legend_footprint = $derived(
+    legend_element?.offsetWidth && legend_element?.offsetHeight
+      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
+      : { width: 120, height: 60 },
+  )
+  const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
+
+  // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each filled bar is modeled as a
+  // vertical segment (top -> baseline) so the legend can't hide inside a tall bar. Built from
+  // histogram_bins (pad-independent) + ranges so the crowding decision can't see its own reservation.
+  const obstacles_norm = $derived.by(() => {
+    if (!width || !height || !histogram_bins.length) return []
+    const base_w = width - base_pad.l - base_pad.r
+    const base_h = height - base_pad.t - base_pad.b
+    if (base_w <= 0 || base_h <= 0) return []
+    const bars: { points: { x: number; y: number }[]; draws_line: boolean }[] = []
+    for (const hist of histogram_bins) {
+      const [rx0, rx1] = hist.x_axis === `x2` ? ranges.current.x2 : ranges.current.x
+      const [ry0, ry1] = hist.y_axis === `y2` ? ranges.current.y2 : ranges.current.y
+      const x_span = rx1 - rx0
+      const y_span = ry1 - ry0
+      if (!(x_span > 0) || !(y_span > 0)) continue
+      for (const series_bin of hist.bins) {
+        if (series_bin.length <= 0) continue
+        const x_norm = (((series_bin.x0 ?? 0) + (series_bin.x1 ?? 0)) / 2 - rx0) / x_span
+        const top = 1 - (series_bin.length - ry0) / y_span
+        const baseline = 1 + ry0 / y_span // normalized y of count=0 (bar foot)
+        const seg = clip_bar(true, x_norm, top, baseline)
+        if (seg) bars.push(seg)
+      }
+    }
+    return build_obstacles_norm(bars, base_w, base_h)
+  })
+
+  // Move the legend to the bottom margin when no interior spot avoids the bars
+  const decor = $derived.by(() =>
+    place_decorations({
+      base_pad,
+      width,
+      height,
+      obstacles_norm,
+      // gate on legend_element (the render signal) not legend_data, whose entries can read pad
+      legend: show_legend && legend != null && series.length > 1 &&
+          legend_element != null && !legend_has_explicit_pos
+        ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
+        : null,
+    })
+  )
+  const pad = $derived(decor.pad)
+  const legend_auto_outside = $derived(decor.legend_outside)
+  const legend_outside_x = $derived(decor.legend_pos.x)
+  const legend_outside_y = $derived(decor.legend_pos.y)
 
   // Scales and data
   let scales = $derived({
@@ -481,7 +541,8 @@
     ),
   })
 
-  let histogram_data = $derived.by(() => {
+  // Pad-independent binning (no pixel scales) so the auto-place obstacle field can reuse it
+  let histogram_bins = $derived.by(() => {
     if (!selected_series.length || !width || !height) return []
     const hist_generator = bin()
       .domain([ranges.current.x[0], ranges.current.x[1]])
@@ -491,11 +552,8 @@
       : null
     return selected_series_entries.map(({ series_data, series_idx }) => {
       const use_x2 = series_data.x_axis === `x2`
-      const active_hist = use_x2 && x2_hist_generator
-        ? x2_hist_generator
-        : hist_generator
+      const active_hist = use_x2 && x2_hist_generator ? x2_hist_generator : hist_generator
       const bins_arr = active_hist(series_data.y)
-      const use_y2 = series_data.y_axis === `y2`
       return {
         id: series_data.id ?? series_idx,
         series_idx,
@@ -507,11 +565,17 @@
         max_count: max(bins_arr, (data) => data.length) || 0,
         x_axis: series_data.x_axis,
         y_axis: series_data.y_axis,
-        x_scale: use_x2 ? scales.x2 : scales.x,
-        y_scale: use_y2 ? scales.y2 : scales.y,
       }
     })
   })
+  // Render-time data adds the pixel scales (pad-dependent)
+  let histogram_data = $derived(
+    histogram_bins.map((hist) => ({
+      ...hist,
+      x_scale: hist.x_axis === `x2` ? scales.x2 : scales.x,
+      y_scale: hist.y_axis === `y2` ? scales.y2 : scales.y,
+    })),
+  )
 
   let ticks = $derived({
     x: width && height
@@ -1399,8 +1463,20 @@
       active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
       style={`
         position: absolute;
-        left: ${legend_placement ? tweened_legend_coords.current.x : pad.l + 10}px;
-        top: ${legend_placement ? tweened_legend_coords.current.y : pad.t + 10}px;
+        left: ${
+        legend_auto_outside
+          ? legend_outside_x
+          : legend_placement
+          ? tweened_legend_coords.current.x
+          : pad.l + 10
+      }px;
+        top: ${
+        legend_auto_outside
+          ? legend_outside_y
+          : legend_placement
+          ? tweened_legend_coords.current.y
+          : pad.t + 10
+      }px;
         pointer-events: auto;
         ${legend?.style || ``}
       `}

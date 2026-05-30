@@ -68,6 +68,12 @@
   import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteMap } from 'svelte/reactivity'
   import {
+    build_obstacles_norm,
+    clip_bar,
+    has_explicit_position,
+    place_decorations,
+  } from './auto-place'
+  import {
     calc_auto_padding,
     constrain_tooltip_position,
     filter_padding,
@@ -482,7 +488,8 @@
 
   // Layout: dynamic padding based on tick label widths
   const default_padding = { t: 20, b: 60, l: 60, r: 20 }
-  let pad = $derived(filter_padding(padding, default_padding))
+  // base_pad reserves space for tick labels/axis titles; pad (below) adds decoration reservations
+  let base_pad = $derived(filter_padding(padding, default_padding))
 
   // Update padding when format or ticks change
   $effect(() => {
@@ -525,10 +532,72 @@
 
     // Only update if padding actually changed (prevents infinite loop)
     if (
-      pad.t !== new_pad.t || pad.b !== new_pad.b || pad.l !== new_pad.l ||
-      pad.r !== new_pad.r
-    ) pad = new_pad
+      base_pad.t !== new_pad.t || base_pad.b !== new_pad.b ||
+      base_pad.l !== new_pad.l || base_pad.r !== new_pad.r
+    ) base_pad = new_pad
   })
+
+  let legend_element = $state<HTMLDivElement | undefined>()
+  const legend_footprint = $derived(
+    legend_element?.offsetWidth && legend_element?.offsetHeight
+      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
+      : { width: 120, height: 60 },
+  )
+  const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
+
+  // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each bar is modeled as a segment
+  // from baseline to its tip so the legend can't hide inside a tall bar. Built from internal_series
+  // (pad-independent) + ranges so the crowding decision can't see its own reservation.
+  const obstacles_norm = $derived.by(() => {
+    if (!width || !height || !visible_series.length) return []
+    const base_w = width - base_pad.l - base_pad.r
+    const base_h = height - base_pad.t - base_pad.b
+    if (base_w <= 0 || base_h <= 0) return []
+    const bars: { points: { x: number; y: number }[]; draws_line: boolean }[] = []
+    const vertical = orientation === `vertical`
+    internal_series.forEach((srs, series_idx) => {
+      if (!(srs?.visible ?? true)) return
+      const is_line = srs.render_mode === `line`
+      const series_offsets = stacked_offsets[series_idx] ?? []
+      const [ax0, ax1] = srs.x_axis === `x2` ? ranges.current.x2 : ranges.current.x
+      const [vy0, vy1] = srs.y_axis === `y2` ? ranges.current.y2 : ranges.current.y
+      const [cy0, cy1] = ranges.current.y
+      const x_span = ax1 - ax0
+      const y_span = vy1 - vy0
+      const cy_span = cy1 - cy0
+      if (!(x_span > 0) || !((vertical ? y_span : cy_span) > 0)) return
+      srs.x.forEach((x_val, bar_idx) => {
+        const base = !is_line && mode === `stacked` ? (series_offsets[bar_idx] ?? 0) : 0
+        const value = base + srs.y[bar_idx]
+        // vertical: category on x, value rises on y (inverted). horizontal: category on y, value on x
+        const seg = vertical
+          ? clip_bar(true, (x_val - ax0) / x_span, 1 - (value - vy0) / y_span, 1 - (base - vy0) / y_span)
+          : clip_bar(false, 1 - (x_val - cy0) / cy_span, (value - ax0) / x_span, (base - ax0) / x_span)
+        if (seg) bars.push(seg)
+      })
+    })
+    return build_obstacles_norm(bars, base_w, base_h)
+  })
+
+  // Move the legend to the bottom margin when no interior spot avoids the bars
+  const decor = $derived.by(() =>
+    place_decorations({
+      base_pad,
+      width,
+      height,
+      obstacles_norm,
+      // gate on legend_element (the render signal) not legend_data, whose entries can read pad
+      legend: legend != null &&
+          (show_legend !== undefined ? show_legend : series.length > 1) &&
+          legend_element != null && !legend_has_explicit_pos
+        ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
+        : null,
+    })
+  )
+  const pad = $derived(decor.pad)
+  const legend_auto_outside = $derived(decor.legend_outside)
+  const legend_outside_x = $derived(decor.legend_pos.x)
+  const legend_outside_y = $derived(decor.legend_pos.y)
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
@@ -1062,8 +1131,7 @@
     })
   })
 
-  // Legend placement stability state
-  let legend_element = $state<HTMLDivElement | undefined>()
+  // Legend placement stability state (legend_element declared above for the auto-place block)
   let hovered_legend_series_idx = $state<number | null>(null)
   const legend_hover = create_hover_lock()
   const dim_tracker = create_dimension_tracker()
@@ -1874,8 +1942,20 @@
         active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
         style={`
           position: absolute;
-          left: ${legend_placement ? tweened_legend_coords.current.x : pad.l + 10}px;
-          top: ${legend_placement ? tweened_legend_coords.current.y : pad.t + 10}px;
+          left: ${
+          legend_auto_outside
+            ? legend_outside_x
+            : legend_placement
+            ? tweened_legend_coords.current.x
+            : pad.l + 10
+        }px;
+          top: ${
+          legend_auto_outside
+            ? legend_outside_y
+            : legend_placement
+            ? tweened_legend_coords.current.y
+            : pad.t + 10
+        }px;
           pointer-events: auto;
           ${legend?.style || ``}
         `}

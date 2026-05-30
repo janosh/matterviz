@@ -48,6 +48,7 @@
     ZeroLines,
     ZoomRect,
   } from '$lib/plot'
+  import { build_obstacles_norm, has_explicit_position, place_decorations } from '$lib/plot/auto-place'
   import type { AxisChangeState } from '$lib/plot/axis-utils'
   import { create_axis_change_handler } from '$lib/plot/axis-utils'
   import {
@@ -105,6 +106,7 @@
     constrain_tooltip_position,
     filter_padding,
     LABEL_GAP_DEFAULT,
+    measure_full_footprint,
     measure_max_tick_width,
     sample_series_obstacle_points,
   } from './layout'
@@ -417,9 +419,9 @@
   let y2_points = $derived(points_by_axis.y2)
   let x2_points = $derived(points_by_axis.x2)
 
-  // Layout: dynamic padding based on tick label widths
+  // Layout: tick-label padding (decoration reservations are added in `pad` below)
   const default_padding = { t: 5, b: 50, l: 50, r: 20 }
-  let pad = $state(untrack(() => filter_padding(padding, default_padding)))
+  let base_pad = $state(untrack(() => filter_padding(padding, default_padding)))
 
   // Update padding when format or ticks change
   $effect(() => {
@@ -435,12 +437,87 @@
       : filter_padding(padding, default_padding)
 
     if (
-      pad.t !== new_pad.t ||
-      pad.b !== new_pad.b ||
-      pad.l !== new_pad.l ||
-      pad.r !== new_pad.r
-    ) pad = new_pad
+      base_pad.t !== new_pad.t ||
+      base_pad.b !== new_pad.b ||
+      base_pad.l !== new_pad.l ||
+      base_pad.r !== new_pad.r
+    ) base_pad = new_pad
   })
+
+  // === Auto-move legend/colorbar outside the plot when interior overlap is unavoidable ===
+  // (shared logic lives in auto-place.ts so every 2D plot reuses it)
+  // ColorBar's orientation prop defaults to horizontal, so treat unset as horizontal too
+  const colorbar_is_horizontal = $derived((color_bar?.orientation ?? `horizontal`) === `horizontal`)
+  const colorbar_footprint = $derived(
+    colorbar_element?.offsetWidth && colorbar_element?.offsetHeight
+      ? measure_full_footprint(colorbar_element)
+      : colorbar_is_horizontal
+      ? { width: 220, height: 56 }
+      : { width: 56, height: 100 },
+  )
+  const legend_footprint = $derived(
+    legend_element?.offsetWidth && legend_element?.offsetHeight
+      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
+      : { width: 120, height: 80 },
+  )
+  const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
+
+  // Plot-specific obstacle field: series points/lines normalized to [0,1] (y=0 at top)
+  const obstacles_norm = $derived.by(() => {
+    if (!width || !height || !filtered_series) return []
+    const base_w = width - base_pad.l - base_pad.r
+    const base_h = height - base_pad.t - base_pad.b
+    if (base_w <= 0 || base_h <= 0) return []
+    const norm_x = is_time_x
+      ? scaleTime().domain([new Date(x_min), new Date(x_max)]).range([0, 1])
+      : create_scale(final_x_axis.scale_type ?? `linear`, [x_min, x_max], [0, 1])
+    const norm_y = create_scale(final_y_axis.scale_type ?? `linear`, [y_min, y_max], [0, 1])
+    return build_obstacles_norm(
+      filtered_series
+        .filter((srs) => srs?.filtered_data)
+        .map((srs) => ({
+          points: srs.filtered_data.map((pt) => ({
+            x: is_time_x ? norm_x(new Date(pt.x)) : norm_x(pt.x),
+            y: 1 - norm_y(pt.y), // norm_y is 0 at bottom; invert so 0 = top
+          })),
+          draws_line: styles.show_lines && (srs.markers ?? DEFAULT_MARKERS).includes(`line`),
+        })),
+      base_w,
+      base_h,
+    )
+  })
+
+  const decor = $derived.by(() =>
+    place_decorations({
+      base_pad,
+      width,
+      height,
+      obstacles_norm,
+      // gate on legend_element (the actual render signal) not legend_data, whose fill entries read
+      // computed_fills -> pad and would make this derived reference itself
+      legend: legend != null && legend_element != null &&
+          !legend_has_explicit_pos && !legend_is_dragging && !legend_manual_position
+        ? { footprint: legend_footprint, clearance: legend?.axis_clearance }
+        : null,
+      // gate on a measured colorbar: its outside style stretches it to full width, so deciding from
+      // the (wide) pre-measure fallback would flip-flop placement between interior and outside
+      colorbar: Boolean(color_bar) && all_color_values.length > 0 && !color_bar?.wrapper_style &&
+          (colorbar_element?.offsetWidth ?? 0) > 0 && (colorbar_element?.offsetHeight ?? 0) > 0
+        ? {
+          footprint: colorbar_footprint,
+          horizontal: colorbar_is_horizontal,
+          clearance: color_bar?.axis_clearance,
+        }
+        : null,
+    })
+  )
+  const pad = $derived(decor.pad)
+  const legend_auto_outside = $derived(decor.legend_outside)
+  const legend_outside_x = $derived(decor.legend_pos.x)
+  const legend_outside_y = $derived(decor.legend_pos.y)
+  const effective_cbar_wrapper_style = $derived(
+    color_bar?.wrapper_style ?? (decor.colorbar_outside ? decor.colorbar_style : undefined),
+  )
 
   // Reactive clip area dimensions to ensure proper responsiveness
   let clip_area = $derived({
@@ -1121,7 +1198,7 @@
 
     // Fallback estimate (with room for tick labels) used before the colorbar first
     // renders; compute_element_placement measures the real footprint once it's laid out
-    const is_horizontal = color_bar.orientation === `horizontal`
+    const is_horizontal = (color_bar.orientation ?? `horizontal`) === `horizontal`
     const colorbar_size = is_horizontal
       ? { width: 220, height: 56 }
       : { width: 56, height: 100 }
@@ -2485,12 +2562,10 @@
         class="colorbar-wrapper"
         role="img"
         aria-label="Color scale legend"
-        style={`
-          position: absolute;
-          left: ${tweened_colorbar_coords.current.x}px;
-          top: ${tweened_colorbar_coords.current.y}px;
-          pointer-events: auto;
-        `}
+        style={`${
+        // explicit wrapper_style or auto-outside places the colorbar; else auto-placement coords
+        effective_cbar_wrapper_style ??
+          `position: absolute; left: ${tweened_colorbar_coords.current.x}px; top: ${tweened_colorbar_coords.current.y}px`}; pointer-events: auto;`}
       >
         <ColorBar
           tick_labels={4}
@@ -2499,9 +2574,9 @@
           color_scale_domain={color_domain}
           scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
           range={color_domain?.every((val) => val != null) ? color_domain : undefined}
-          wrapper_style={color_bar?.wrapper_style ?? ``}
           bar_style="width: 220px; height: 16px; {color_bar?.style ?? ``}"
           {...color_bar}
+          wrapper_style={effective_cbar_wrapper_style ? `height: 100%; width: 100%;` : ``}
         />
       </div>
     {/if}
@@ -2514,11 +2589,15 @@
       {@const default_y = pad.t + 10}
       {@const current_x = legend_is_dragging && legend_manual_position
       ? legend_manual_position.x
+      : legend_auto_outside
+      ? legend_outside_x
       : legend_placement
       ? tweened_legend_coords.current.x
       : default_x}
       {@const current_y = legend_is_dragging && legend_manual_position
       ? legend_manual_position.y
+      : legend_auto_outside
+      ? legend_outside_y
       : legend_placement
       ? tweened_legend_coords.current.y
       : default_y}
@@ -2630,6 +2709,13 @@
     /* Add padding to prevent titles from being cropped at top */
     padding-top: var(--plot-fullscreen-padding-top, 2em);
     box-sizing: border-box;
+  }
+  /* Center the colorbar within its wrapper when shorter than it (e.g. capped by --cbar-max-height
+     in fullscreen). Users can override via wrapper_style (inline wins). */
+  .colorbar-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .header-controls {
     position: absolute;
