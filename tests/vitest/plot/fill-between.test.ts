@@ -63,6 +63,28 @@ describe(`monotone_interpolate`, () => {
     expect(mid).toBeGreaterThanOrEqual(5)
     expect(mid).toBeLessThanOrEqual(100)
   })
+
+  // Pin the hand-rolled cubic to d3's actual curveMonotoneX output at a non-knot x. monotone_interpolate
+  // re-implements d3 internals, so this guards against drift if d3 changes or the reimpl regresses.
+  it(`matches d3 curveMonotoneX between knots`, () => {
+    const xs = [0, 10, 20, 30]
+    const ys = [0, 30, 15, 40]
+    const pts = xs.map((x, idx) => ({ x, y: ys[idx] }))
+    // d3 path: "M x0,y0 C c1x,c1y c2x,c2y x1,y1 C ..." — parse the first cubic segment
+    const [x0, y0, c1x, c1y, c2x, c2y, x1, y1] = (
+      series_line(pts).match(/-?\d+\.?\d*(?:e-?\d+)?/g) ?? []
+    ).map(Number)
+    // d3 places monotoneX x-control points at the 1/3 marks, which makes x linear in the bezier
+    // param. d3 rounds path coords to 3 decimals, so compare to 2 (still catches algorithmic drift).
+    expect(c1x).toBeCloseTo(x0 + (x1 - x0) / 3, 2)
+    expect(c2x).toBeCloseTo(x1 - (x1 - x0) / 3, 2)
+    for (const x of [2.5, 5, 7.5]) {
+      const u = (x - x0) / (x1 - x0)
+      const mu = 1 - u
+      const d3_y = mu ** 3 * y0 + 3 * mu ** 2 * u * c1y + 3 * mu * u ** 2 * c2y + u ** 3 * y1
+      expect(monotone_interpolate(xs, ys, x)).toBeCloseTo(d3_y, 2)
+    }
+  })
 })
 
 describe(`resolve_series_ref`, () => {
@@ -238,6 +260,24 @@ describe(`compute_fill_segments`, () => {
       { x_domain: [0, 30], y_domain: [0, 10] },
     )
     expect(segments).toEqual([])
+  })
+
+  it(`clips a stepAfter curve to its held value, not a linear interpolation`, () => {
+    // upper series y=[30,35,33] at x=[0,10,20]; clip at x=5 and x=15. stepAfter holds the previous
+    // knot's y (30 in [0,10), 35 in [10,20)) — linear interpolation would give 32.5 and 34.
+    const segments = compute_fill_segments(
+      {
+        upper: { type: `series`, series_idx: 1 },
+        lower: { type: `series`, series_idx: 0 },
+        curve: `stepAfter`,
+        x_range: [5, 15],
+      },
+      series,
+      domains,
+    )
+    expect(segments[0].upper_curve).toBe(`stepAfter`)
+    expect(segments[0].upper[0]).toEqual({ x: 5, y: 30 })
+    expect(segments[0].upper.at(-1)).toEqual({ x: 15, y: 35 })
   })
 })
 

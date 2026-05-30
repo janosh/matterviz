@@ -64,8 +64,9 @@ test.describe(`ThemeControl`, () => {
     // Regression: starry-night gates its dark palette behind a prefers-color-scheme
     // media query; starry_night_theme_plugin (vite.config.ts) re-targets it to
     // data-theme so a manually chosen dark theme uses the dark palette even when
-    // the OS prefers light. storage-modifier-import is near-black (#1f2328) in the
-    // light palette and must become the readable dark value (#f0f6fc).
+    // the OS prefers light. Variable name + colors below verified against
+    // @wooorm/starry-night@3.9.0: storage-modifier-import is near-black (#1f2328) in
+    // the light palette and must become the readable dark value (#f0f6fc).
     await page.emulateMedia({ colorScheme: `light` })
     const theme_control = await get_theme_control(page)
     await theme_control.selectOption(`dark`)

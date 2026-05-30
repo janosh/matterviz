@@ -28,10 +28,12 @@ const starry_night_theme_plugin: Plugin = {
   name: `vite-plugin-starry-night-theme`,
   transform(code, id) {
     if (!id.includes(`starry-night/style/both.css`)) return null
-    return code.replace(
-      /@media \(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}\s*\}/u,
-      `:root[data-theme='dark'], :root[data-theme='black'] {$1}`,
-    )
+    const dark_query =
+      /@media \(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}\s*\}/u
+    // warn (don't silently no-op) if upstream restructured both.css and the regex stops matching
+    if (!dark_query.test(code))
+      this.warn(`starry-night dark-palette query not found; update regex`)
+    return code.replace(dark_query, `:root[data-theme='dark'], :root[data-theme='black'] {$1}`)
   },
 }
 

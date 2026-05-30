@@ -92,7 +92,6 @@
     convert_error_band_to_fill_region,
     generate_fill_path,
     is_fill_gradient,
-    LOG_EPSILON,
   } from './fill-utils'
   import {
     expand_range_if_needed,
@@ -892,12 +891,13 @@
       })),
     ]
 
-    // Clamp data coords to a positive epsilon on log axes before scaling (avoids log(0) = -Inf)
+    // On log axes, clamp non-positive coords to the scale's domain floor (x_min/y_min) before
+    // scaling. A fixed tiny epsilon can sit far below the domain and map to extreme pixel coords.
     const x_scale_type = final_x_axis.scale_type ?? `linear`
     const y_scale_type = final_y_axis.scale_type ?? `linear`
     const to_px = (pt: Pt): Pt => ({
-      x: x_scale_fn(x_scale_type === `log` && pt.x <= 0 ? LOG_EPSILON : pt.x),
-      y: y_scale_fn(y_scale_type === `log` && pt.y <= 0 ? LOG_EPSILON : pt.y),
+      x: x_scale_fn(x_scale_type === `log` && pt.x <= 0 ? x_min : pt.x),
+      y: y_scale_fn(y_scale_type === `log` && pt.y <= 0 ? y_min : pt.y),
     })
 
     // Each boundary is traced through its own points with the same curve the series line uses,
@@ -2564,9 +2564,10 @@
         on_hover_change={legend_hover.set_locked}
         on_item_hover={(item) => {
           if (item?.item_type === `fill`) {
-            // highlight the matching fill in the plot (same state plot fill-hover uses)
-            hovered_fill_key = computed_fills.find((fill) => fill.idx === item.fill_idx)
-              ?.hover_key ?? null
+            // highlight the matching fill in the plot (same state plot fill-hover uses), but skip
+            // hidden fills since they render nothing and would mark the legend item active for naught
+            const fill = computed_fills.find((entry) => entry.idx === item.fill_idx)
+            hovered_fill_key = fill && fill.visible !== false ? fill.hover_key : null
             hovered_legend_series_idx = null
           } else {
             hovered_legend_series_idx = item != null && item.series_idx >= 0

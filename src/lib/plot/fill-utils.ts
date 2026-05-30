@@ -1,6 +1,8 @@
 // Fill-between utility functions for ScatterPlot fill regions
 // Each fill edge is traced through its boundary's own points with the same curve the series line
-// uses (curveMonotoneX), so a fill edge coincides exactly with the line it borders.
+// uses (curveMonotoneX), so an unclipped fill edge coincides with the line it borders. When an
+// edge is clipped (x_range / partial overlap), the inserted endpoint shifts the neighboring
+// monotone tangent, so the clipped edge can deviate sub-pixel from the full series line.
 
 import type { CurveFactory } from 'd3-shape'
 import {
@@ -94,27 +96,44 @@ function monotone_tangents(xs: readonly number[], ys: readonly number[]): number
   return tangents
 }
 
-// Evaluate the d3 curveMonotoneX through (xs, ys) at x (xs ascending). Clamps outside the domain.
-export function monotone_interpolate(
-  xs: readonly number[],
-  ys: readonly number[],
-  x: number,
-): number {
-  const num = xs.length
-  if (num === 0) return NaN
-  if (num === 1 || x <= xs[0]) return ys[0]
-  if (x >= xs[num - 1]) return ys[num - 1]
+// Index of the bracket [lo, lo+1] containing x (xs ascending); clamps to interior brackets
+const bracket = (xs: readonly number[], x: number): number => {
   let lo = 0
-  let hi = num - 1
+  let hi = xs.length - 1
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1
     if (xs[mid] <= x) lo = mid
     else hi = mid
   }
+  return lo
+}
+
+// y clamped to the endpoint value when x is at/outside the domain (null when x is strictly inside)
+const endpoint_clamp = (
+  xs: readonly number[],
+  ys: readonly number[],
+  x: number,
+): number | null => {
+  if (xs.length === 0) return NaN
+  if (x <= xs[0]) return ys[0]
+  if (x >= xs[xs.length - 1]) return ys[xs.length - 1]
+  return null
+}
+
+// Evaluate the d3 curveMonotoneX through (xs, ys) at x (xs ascending). Clamps outside the domain.
+export function monotone_interpolate(
+  xs: readonly number[],
+  ys: readonly number[],
+  x: number,
+  tangents?: readonly number[], // pass precomputed monotone_tangents to avoid recomputing per call
+): number {
+  const edge = endpoint_clamp(xs, ys, x)
+  if (edge !== null) return edge
+  const lo = bracket(xs, x)
   const [x0, x1] = [xs[lo], xs[lo + 1]]
   const span = x1 - x0
   if (span === 0) return ys[lo]
-  const tang = monotone_tangents(xs, ys)
+  const tang = tangents ?? monotone_tangents(xs, ys)
   // d3 monotoneX uses equally-spaced x control points, so x is linear in t. y is the cubic Bezier
   // through [y0, y0+dx*t0, y1-dx*t1, y1] with dx = span/3.
   const dx = span / 3
@@ -128,7 +147,7 @@ export function monotone_interpolate(
 }
 
 // Curve types whose interior follows a (near-)monotone cubic; evaluated via monotone_interpolate.
-// Others (linear/step) evaluate piecewise-linearly, which is exact for them at clip points.
+// Others (linear/step) evaluate piecewise (exact for them at clip points).
 const MONOTONE_LIKE = new Set<FillCurveType>([
   `monotoneX`,
   `monotoneY`,
@@ -138,28 +157,41 @@ const MONOTONE_LIKE = new Set<FillCurveType>([
   `basis`,
 ])
 
-// Evaluate a resolved boundary's y at x along its curve
-function eval_boundary(boundary: ResolvedBoundary, x: number): number {
+// A resolved boundary plus a cached y(x) evaluator (tangents/lookup precomputed once)
+interface PreparedBoundary {
+  points: Pt[]
+  curve: FillCurveType
+  eval: (x: number) => number
+}
+
+// Piecewise (non-cubic) evaluation honoring linear and the three step curves
+const piecewise_eval = (
+  xs: readonly number[],
+  ys: readonly number[],
+  x: number,
+  curve: FillCurveType,
+): number => {
+  const edge = endpoint_clamp(xs, ys, x)
+  if (edge !== null) return edge
+  const idx = bracket(xs, x)
+  const [x0, x1, y0, y1] = [xs[idx], xs[idx + 1], ys[idx], ys[idx + 1]]
+  if (curve === `stepAfter`) return y0 // hold previous until the next knot
+  if (curve === `stepBefore`) return y1 // jump to next value immediately past a knot
+  if (curve === `step`) return x < (x0 + x1) / 2 ? y0 : y1 // switch at the midpoint
+  const span = x1 - x0
+  return span === 0 ? y0 : y0 + ((x - x0) / span) * (y1 - y0)
+}
+
+// Build a boundary with a y(x) evaluator that precomputes tangents (monotone) once
+function prepare_boundary(boundary: ResolvedBoundary): PreparedBoundary {
   const { points, curve } = boundary
+  const xs = points.map((pt) => pt.x)
+  const ys = points.map((pt) => pt.y)
   if (MONOTONE_LIKE.has(curve)) {
-    return monotone_interpolate(
-      points.map((pt) => pt.x),
-      points.map((pt) => pt.y),
-      x,
-    )
+    const tangents = monotone_tangents(xs, ys)
+    return { points, curve, eval: (x) => monotone_interpolate(xs, ys, x, tangents) }
   }
-  // linear / step: piecewise-linear lookup
-  const last = points[points.length - 1]
-  if (x <= points[0].x) return points[0].y
-  if (x >= last.x) return last.y
-  for (let idx = 0; idx < points.length - 1; idx++) {
-    const [start, end] = [points[idx], points[idx + 1]]
-    if (x >= start.x && x <= end.x) {
-      const span = end.x - start.x
-      return span === 0 ? start.y : start.y + ((x - start.x) / span) * (end.y - start.y)
-    }
-  }
-  return last.y
+  return { points, curve, eval: (x) => piecewise_eval(xs, ys, x, curve) }
 }
 
 // True when a boundary carries its own x (series or data-with-x), so it needs no companion x
@@ -262,11 +294,11 @@ const horizontal = (xs: readonly number[], y: number): Pt[] =>
         { x: xs[xs.length - 1], y },
       ]
 
-// Clip a resolved boundary to [xa, xb], inserting on-curve endpoints so the edge starts/ends at xa/xb
-function clip_boundary(boundary: ResolvedBoundary, xa: number, xb: number): Pt[] {
+// Clip a prepared boundary to [xa, xb], inserting on-curve endpoints so the edge starts/ends at xa/xb
+function clip_boundary(boundary: PreparedBoundary, xa: number, xb: number): Pt[] {
   const inside = boundary.points.filter((pt) => pt.x > xa && pt.x < xb)
-  const start = { x: xa, y: eval_boundary(boundary, xa) }
-  const end = { x: xb, y: eval_boundary(boundary, xb) }
+  const start = { x: xa, y: boundary.eval(xa) }
+  const end = { x: xb, y: boundary.eval(xb) }
   const pts = [start, ...inside, end]
   return pts.filter((pt) => Number.isFinite(pt.y))
 }
@@ -297,8 +329,8 @@ function where_crossing(
 
 // Split the overlap into x-intervals where region.where passes (whole overlap when no condition)
 function where_intervals(
-  upper: ResolvedBoundary,
-  lower: ResolvedBoundary,
+  upper: PreparedBoundary,
+  lower: PreparedBoundary,
   xa: number,
   xb: number,
   where: FillRegion[`where`],
@@ -315,26 +347,24 @@ function where_intervals(
 
   const intervals: [number, number][] = []
   let seg_start: number | null = null
-  const at = (x: number): [number, number] => [
-    eval_boundary(upper, x),
-    eval_boundary(lower, x),
-  ]
 
+  // carry the previous grid sample so each point's two evals + where() run once, not twice
+  let prev_x = NaN
+  let prev_up = NaN
+  let prev_lo = NaN
+  let prev_passes = false
   for (let idx = 0; idx < grid.length; idx++) {
     const x = grid[idx]
-    const [up, lo] = at(x)
+    const up = upper.eval(x)
+    const lo = lower.eval(x)
     const passes = where(x, up, lo)
-    if (idx > 0) {
-      const prev_x = grid[idx - 1]
-      const [pup, plo] = at(prev_x)
-      if (passes !== where(prev_x, pup, plo)) {
-        const cross = where_crossing(prev_x, x, pup, plo, up, lo, where)
-        if (seg_start !== null) {
-          intervals.push([seg_start, cross])
-          seg_start = null
-        } else {
-          seg_start = cross
-        }
+    if (idx > 0 && passes !== prev_passes) {
+      const cross = where_crossing(prev_x, x, prev_up, prev_lo, up, lo, where)
+      if (seg_start !== null) {
+        intervals.push([seg_start, cross])
+        seg_start = null
+      } else {
+        seg_start = cross
       }
     }
     if (passes && seg_start === null) seg_start = x
@@ -342,6 +372,10 @@ function where_intervals(
       intervals.push([seg_start, x])
       seg_start = null
     }
+    prev_x = x
+    prev_up = up
+    prev_lo = lo
+    prev_passes = passes
   }
   if (seg_start !== null) intervals.push([seg_start, xb])
   return intervals.filter(([a, b]) => b > a)
@@ -373,12 +407,17 @@ export function compute_fill_segments(
     lower.curve = region.curve
   }
 
+  // Prepare once: precomputes monotone tangents / lookup so the where + clip passes below are
+  // O(grid) instead of recomputing an O(n) evaluator on every sample.
+  const up = prepare_boundary(upper)
+  const lo = prepare_boundary(lower)
+
   // x-overlap = intersection of both x-domains, constrained by region.x_range
   const [x_lo, x_hi] = region.x_range ?? [null, null]
-  const xa = Math.max(upper.points[0].x, lower.points[0].x, x_lo ?? -Infinity)
+  const xa = Math.max(up.points[0].x, lo.points[0].x, x_lo ?? -Infinity)
   const xb = Math.min(
-    upper.points[upper.points.length - 1].x,
-    lower.points[lower.points.length - 1].x,
+    up.points[up.points.length - 1].x,
+    lo.points[lo.points.length - 1].x,
     x_hi ?? Infinity,
   )
   if (!(xb > xa)) return []
@@ -389,17 +428,17 @@ export function compute_fill_segments(
     y: Math.min(y_max ?? Infinity, Math.max(y_min ?? -Infinity, pt.y)),
   })
 
-  const intervals = where_intervals(upper, lower, xa, xb, region.where)
+  const intervals = where_intervals(up, lo, xa, xb, region.where)
   const segments: FillSegment[] = []
   for (const [sa, sb] of intervals) {
-    const up_pts = clip_boundary(upper, sa, sb).map(clamp_y)
-    const lo_pts = clip_boundary(lower, sa, sb).map(clamp_y)
+    const up_pts = clip_boundary(up, sa, sb).map(clamp_y)
+    const lo_pts = clip_boundary(lo, sa, sb).map(clamp_y)
     if (up_pts.length >= 2 && lo_pts.length >= 2) {
       segments.push({
         upper: up_pts,
         lower: lo_pts,
-        upper_curve: upper.curve,
-        lower_curve: lower.curve,
+        upper_curve: up.curve,
+        lower_curve: lo.curve,
       })
     }
   }
@@ -431,8 +470,8 @@ const trace = (points: readonly Pt[], curve_type: FillCurveType): string =>
     .curve(get_curve(curve_type))(points as Pt[]) ?? ``
 
 // Generate the closed SVG path for a fill segment (pixel coordinates). The upper edge is traced
-// forward and the lower edge backward, each through its own points with its own curve, so each
-// edge is byte-identical to the corresponding series line (which uses the same line generator).
+// forward and the lower edge backward, each through its own points with its own curve via the same
+// line generator the series uses, so an unclipped edge matches the corresponding series line.
 export function generate_fill_path(
   upper: readonly Pt[],
   lower: readonly Pt[],
