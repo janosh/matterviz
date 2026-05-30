@@ -340,8 +340,12 @@ export function calculate_annotation_position(
       perp_x = sign * nx * gap
       perp_y = sign * ny * gap
     } else {
-      // left = perpendicular to the "left" of direction vector, right = opposite
-      const sign = side === `left` ? 1 : -1
+      // left/right offset to the side of the line in screen space (right -> +x, left -> -x), stable
+      // regardless of endpoint order — vertical ref lines are stored bottom->top, which flips the
+      // perpendicular. Horizontal lines (nx == 0) fall back to right = up (-y), left = down (+y).
+      const want_right = side === `right`
+      const sign =
+        Math.abs(nx) > 1e-9 ? (want_right ? 1 : -1) * Math.sign(nx) : want_right ? -1 : 1
       perp_x = sign * nx * gap
       perp_y = sign * ny * gap
     }
