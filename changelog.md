@@ -1,5 +1,34 @@
 # Changelog
 
+## [v0.3.6](https://github.com/janosh/matterviz/compare/v0.3.5...v0.3.6)
+
+> 30 May 2026
+
+### 🚀 New Features
+
+- Add adaptive density-binned scatter plot with hover picking and auto-placed colorbar https://github.com/janosh/matterviz/pull/345
+- Add bond editing with add/delete modes, undo snapshots, and bond-order setting https://github.com/janosh/matterviz/pull/342
+
+### 🛠 Enhancements
+
+- Auto-move legend/colorbar outside crowded plots with smart side selection and overflow-aware footprint measurement https://github.com/janosh/matterviz/pull/345
+- Add `./coordination`, `./heatmap-matrix`, and `./isosurface` subpath exports and fix the `./periodic-table` export path https://github.com/janosh/matterviz/pull/345
+- Add `knip` unused-dependency CI check and remove the dead `@rollup/plugin-yaml` dependency https://github.com/janosh/matterviz/pull/345
+
+### 🐛 Bug Fixes
+
+- Fix stale visualization interaction state (selections, popups, async frames, legend) leaking across data source replacements https://github.com/janosh/matterviz/pull/343
+- Fix auto-placed colorbar/legend overlapping plot axes and clean up arcsinh tick labels https://github.com/janosh/matterviz/pull/345
+
+### 💡 Refactoring
+
+- Unify the four-side plot axes into a reusable `PlotAxis` component across `ScatterPlot`, `BarPlot`, `Histogram`, and `BinnedScatterPlot` https://github.com/janosh/matterviz/pull/345
+- Tighten lint rules and centralize shared geometry/parser validation (finite `Vec3` checks, throwing `Error` objects) https://github.com/janosh/matterviz/pull/344
+
+### 🔒 Security Fixes
+
+- Sanitize tooltip HTML (e.g. `InfoTag`, `StructureExportPane`) and limit `allow_html` to tooltips that actually render HTML https://github.com/janosh/matterviz/pull/345
+
 ## [v0.3.5](https://github.com/janosh/matterviz/compare/v0.3.4...v0.3.5)
 
 > 19 May 2026

@@ -3,6 +3,15 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 globalThis.fetch = vi.fn()
 
+// decompress_data is a static import in url-drop.ts, so the gzip test below can't mock it via a
+// dynamic import. Mock it through the module registry (hoisted) instead, keeping the other real
+// exports so unrelated decompress paths are unaffected.
+const { mock_decompress } = vi.hoisted(() => ({ mock_decompress: vi.fn() }))
+vi.mock(`$lib/io/decompress`, async (import_original) => {
+  const actual = (await import_original()) as Record<string, unknown>
+  return { ...actual, decompress_data: mock_decompress }
+})
+
 describe(`handle_url_drop`, () => {
   let callback: (content: string | ArrayBuffer, filename: string) => void | Promise<void>
   let get_data: ReturnType<typeof vi.fn>
@@ -166,11 +175,7 @@ describe(`load_from_url`, () => {
   })
 
   test(`gzip files without content-encoding are decompressed`, async () => {
-    // Mock the decompress module
-    const mock_decompress = vi.fn().mockResolvedValue(`decompressed content`)
-    vi.doMock(`$lib/io/decompress`, () => ({
-      decompress_data: mock_decompress,
-    }))
+    mock_decompress.mockResolvedValue(`decompressed content`)
 
     const mock_response = create_mock_response(new ArrayBuffer(8), {
       'content-type': `application/octet-stream`,

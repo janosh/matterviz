@@ -1286,7 +1286,7 @@ This example combines multiple features including different display modes, custo
 
 ## Automatic Color Bar Placement
 
-This example demonstrates how the color bar automatically positions itself in one of the four corners (top-left, top-right, bottom-left, bottom-right) based on where the data points are least dense. Use the sliders to adjust the number of points generated in each quadrant and observe how the color bar moves to avoid overlapping the data.
+This example demonstrates how the color bar automatically positions itself in one of the four corners (top-left, top-right, bottom-left, bottom-right) based on where the data points are least dense. Use the sliders to adjust the number of points generated in each quadrant and observe how the color bar moves to avoid overlapping the data. Point labels also auto-place to repel off each other and their markers (`auto_placement: true`), and are hidden in crowded regions via `label_placement_config={{ max_neighbors: { count, radius } }}` so dense quadrants stay readable.
 
 ```svelte example
 <script lang="ts">
@@ -1355,8 +1355,8 @@ This example demonstrates how the color bar automatically positions itself in on
       color_values: all_points.map((p) => p.color_value),
       point_label: all_points.map((p) => ({
         text: p.label,
-        offset: { x: 0, y: -10 },
-        font_size: '14px',
+        auto_placement: true, // repel labels off each other and their markers
+        font_size: '12px',
       })),
       point_style: {
         radius: 5,
@@ -1398,6 +1398,7 @@ This example demonstrates how the color bar automatically positions itself in on
   y_axis={{ label: 'Y Position', range: [0, 100], format: '~s' }}
   color_scale={{ scheme: `turbo` }}
   color_bar={{ title: `Color Bar Title`, margin: { t: 20, r: 60, b: 90, l: 80 } }}
+  label_placement_config={{ max_neighbors: { count: 2, radius: 35 } }}
   style="height: 450px; margin-block: 1em"
 >
   {#snippet tooltip({ x_formatted, y_formatted, metadata, color_value })}

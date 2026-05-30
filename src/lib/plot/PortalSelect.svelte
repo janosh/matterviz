@@ -223,6 +223,8 @@
     border-radius: 3px;
     padding: 2px 4px;
     font: inherit;
+    /* hug the text: `font: inherit` pulls in the page's loose line-height, inflating the hover bg */
+    line-height: 1.2;
     color: inherit;
     cursor: pointer;
   }
@@ -235,6 +237,8 @@
   }
   .arrow {
     font-size: 1.4em;
+    /* keep the larger glyph from inflating the trigger height (and thus the hover bg) */
+    line-height: 1;
     opacity: 0.8;
   }
   .portal-select-trigger :global(:is(sub, sup)) {

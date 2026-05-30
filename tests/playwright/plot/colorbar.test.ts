@@ -28,6 +28,12 @@ test.describe(`ColorBar Component Tests`, () => {
     await expect(title).toBeVisible()
     await expect(title).toHaveText(`Temperature (°C)`)
 
+    // Title is selectable/copyable; legibility over busy plots comes from a blur-only backdrop
+    // (no tint, so it looks bg-less over a uniform background)
+    await expect(title).toHaveCSS(`user-select`, `text`)
+    expect(await get_style(title, `backdrop-filter`)).toContain(`blur`)
+    await expect(title).toHaveCSS(`background-color`, `rgba(0, 0, 0, 0)`)
+
     // Check layout (title top, bar bottom -> column)
     await expect(colorbar).toHaveCSS(`flex-direction`, `column`)
 

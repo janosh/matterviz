@@ -1,7 +1,7 @@
 {
   "name": "matterviz",
   "displayName": "MatterViz",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Visualize crystal structures and MD trajectories in VSCode",
   "categories": [
     "Data Science",
@@ -23,12 +23,12 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
-    "@types/node": "^25.9.0",
-    "@types/vscode": "1.100.0",
-    "svelte": "^5.55.8",
+    "@types/node": "^25.9.1",
+    "@types/vscode": "^1.100.0",
+    "svelte": "^5.56.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.13",
-    "vitest": "^4.1.6"
+    "vite": "^8.0.14",
+    "vitest": "^4.1.7"
   },
   "contributes": {
     "commands": [

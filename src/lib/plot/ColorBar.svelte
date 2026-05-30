@@ -644,6 +644,12 @@
     display: var(--cbar-label-display);
     align-items: center;
     justify-content: center;
+    /* blur-only (no tint): invisible over uniform bg, smears busy bg to keep title readable */
+    background: var(--cbar-label-bg, transparent);
+    backdrop-filter: var(--cbar-label-backdrop-filter, blur(4px));
+    border-radius: var(--cbar-label-border-radius, var(--border-radius, 3pt));
+    /* keep title selectable/copyable */
+    user-select: text;
   }
   span.tick-label {
     position: absolute;
