@@ -14,6 +14,13 @@ type Size = { width: number; height: number }
 export const has_explicit_position = (style?: string | null): boolean =>
   /(^|[;{]\s*)(top|bottom|left|right)\s*:|position\s*:\s*absolute/.test(style ?? ``)
 
+// A decoration's pixel footprint: its rendered box once laid out, else `fallback` (offset dims read
+// 0 before first render). Used to decide crowding before the real size is known.
+export const measured_footprint = (el: HTMLElement | null | undefined, fallback: Size): Size =>
+  el?.offsetWidth && el?.offsetHeight
+    ? { width: el.offsetWidth, height: el.offsetHeight }
+    : fallback
+
 // Build the obstacle field in normalized [0,1] plot coords from one or more series. Callers pass
 // points already normalized to [0,1] with y=0 at the top. Built from data (not pixel scales) so the
 // crowding decision below is independent of any margins reserved for outside decorations — this

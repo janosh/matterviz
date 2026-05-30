@@ -48,7 +48,12 @@
     ZeroLines,
     ZoomRect,
   } from '$lib/plot'
-  import { build_obstacles_norm, has_explicit_position, place_decorations } from '$lib/plot/auto-place'
+  import {
+    build_obstacles_norm,
+    has_explicit_position,
+    measured_footprint,
+    place_decorations,
+  } from '$lib/plot/auto-place'
   import type { AxisChangeState } from '$lib/plot/axis-utils'
   import { create_axis_change_handler } from '$lib/plot/axis-utils'
   import {
@@ -455,11 +460,7 @@
       ? { width: 220, height: 56 }
       : { width: 56, height: 100 },
   )
-  const legend_footprint = $derived(
-    legend_element?.offsetWidth && legend_element?.offsetHeight
-      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
-      : { width: 120, height: 80 },
-  )
+  const legend_footprint = $derived(measured_footprint(legend_element, { width: 120, height: 80 }))
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Plot-specific obstacle field: series points/lines normalized to [0,1] (y=0 at top)

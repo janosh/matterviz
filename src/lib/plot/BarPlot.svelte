@@ -71,6 +71,7 @@
     build_obstacles_norm,
     clip_bar,
     has_explicit_position,
+    measured_footprint,
     place_decorations,
   } from './auto-place'
   import {
@@ -538,11 +539,7 @@
   })
 
   let legend_element = $state<HTMLDivElement | undefined>()
-  const legend_footprint = $derived(
-    legend_element?.offsetWidth && legend_element?.offsetHeight
-      ? { width: legend_element.offsetWidth, height: legend_element.offsetHeight }
-      : { width: 120, height: 60 },
-  )
+  const legend_footprint = $derived(measured_footprint(legend_element, { width: 120, height: 60 }))
   const legend_has_explicit_pos = $derived(has_explicit_position(legend?.style))
 
   // Obstacle field in normalized [0,1] plot coords (y=0 at top). Each bar is modeled as a segment
@@ -1928,6 +1925,16 @@
 
     <!-- Legend -->
     {#if legend && (show_legend !== undefined ? show_legend : series.length > 1)}
+      {@const legend_left = legend_auto_outside
+      ? legend_outside_x
+      : legend_placement
+      ? tweened_legend_coords.current.x
+      : pad.l + 10}
+      {@const legend_top = legend_auto_outside
+      ? legend_outside_y
+      : legend_placement
+      ? tweened_legend_coords.current.y
+      : pad.t + 10}
       <PlotLegend
         bind:root_element={legend_element}
         {...legend}
@@ -1942,20 +1949,8 @@
         active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
         style={`
           position: absolute;
-          left: ${
-          legend_auto_outside
-            ? legend_outside_x
-            : legend_placement
-            ? tweened_legend_coords.current.x
-            : pad.l + 10
-        }px;
-          top: ${
-          legend_auto_outside
-            ? legend_outside_y
-            : legend_placement
-            ? tweened_legend_coords.current.y
-            : pad.t + 10
-        }px;
+          left: ${legend_left}px;
+          top: ${legend_top}px;
           pointer-events: auto;
           ${legend?.style || ``}
         `}

@@ -2,12 +2,19 @@ import { build_obstacles_norm, clip_bar, place_decorations } from '$lib/plot/aut
 import { describe, expect, test } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
+const width = 400
+const height = 300
 
 // obstacle field filling the whole [0,1] plot so any interior decoration unavoidably overlaps data
 const dense: { x: number; y: number }[] = []
 for (let ix = 0; ix <= 20; ix++) {
   for (let iy = 0; iy <= 20; iy++) dense.push({ x: ix / 20, y: iy / 20 })
 }
+
+// place_decorations over the shared plot box; tests override only what they vary (obstacles default
+// to the fully-dense field that forces every interior decoration to overlap data)
+const place = (overrides: Partial<Parameters<typeof place_decorations>[0]> = {}) =>
+  place_decorations({ base_pad, width, height, obstacles_norm: dense, ...overrides })
 
 describe(`place_decorations`, () => {
   test.each([
@@ -16,13 +23,7 @@ describe(`place_decorations`, () => {
   ])(
     `crowded colorbar (horizontal=$horizontal) moves to the $edge margin`,
     ({ horizontal, edge, inset }) => {
-      const layout = place_decorations({
-        base_pad,
-        width: 400,
-        height: 300,
-        obstacles_norm: dense,
-        colorbar: { footprint: { width: 220, height: 56 }, horizontal },
-      })
+      const layout = place({ colorbar: { footprint: { width: 220, height: 56 }, horizontal } })
       expect(layout.colorbar_outside).toBe(true)
       expect(layout.colorbar_style).toContain(`${edge}:`)
       expect(layout.colorbar_style).toContain(inset)
@@ -38,39 +39,27 @@ describe(`place_decorations`, () => {
   )
 
   test(`crowded wide/short legend drops into the bottom margin`, () => {
-    const layout = place_decorations({
-      base_pad,
-      width: 400,
-      height: 300,
-      obstacles_norm: dense,
-      legend: { footprint: { width: 120, height: 60 } },
-    })
+    const layout = place({ legend: { footprint: { width: 120, height: 60 } } })
     expect(layout.legend_outside).toBe(true)
-    expect(layout.legend_pos.y).toBeGreaterThan(150) // lower half, not the top-left interior default
+    // centered horizontally in the plot area, flush above the bottom edge by DECOR_GAP (8)
+    expect(layout.legend_pos.x).toBeCloseTo(
+      base_pad.l + (width - base_pad.l - base_pad.r - 120) / 2,
+    ) // = 155
+    expect(layout.legend_pos.y).toBeCloseTo(height - 60 - 8) // = 232
     expect(layout.pad.b).toBeGreaterThan(base_pad.b) // reserves bottom, not right
     expect(layout.pad.r).toBe(base_pad.r)
   })
 
   test(`crowded narrow/tall legend moves to the right margin`, () => {
-    const layout = place_decorations({
-      base_pad,
-      width: 400,
-      height: 300,
-      obstacles_norm: dense,
-      legend: { footprint: { width: 80, height: 200 } },
-    })
+    const layout = place({ legend: { footprint: { width: 80, height: 200 } } })
     expect(layout.legend_outside).toBe(true)
     expect(layout.pad.r).toBeGreaterThan(base_pad.r) // reserves right, not bottom
     expect(layout.pad.b).toBe(base_pad.b)
-    expect(layout.legend_pos.x).toBeCloseTo(400 - 80 - 8) // flush to the right edge
+    expect(layout.legend_pos.x).toBeCloseTo(width - 80 - 8) // flush to the right edge
   })
 
   test(`narrow/tall legend falls back to bottom when a vertical colorbar took the right`, () => {
-    const layout = place_decorations({
-      base_pad,
-      width: 400,
-      height: 300,
-      obstacles_norm: dense,
+    const layout = place({
       legend: { footprint: { width: 80, height: 200 } },
       colorbar: { footprint: { width: 56, height: 150 }, horizontal: false },
     })
@@ -82,10 +71,7 @@ describe(`place_decorations`, () => {
   })
 
   test(`decorations stay interior when a sparse region is available`, () => {
-    const layout = place_decorations({
-      base_pad,
-      width: 400,
-      height: 300,
+    const layout = place({
       obstacles_norm: [{ x: 0.05, y: 0.95 }], // single point in a corner
       legend: { footprint: { width: 120, height: 60 } },
       colorbar: { footprint: { width: 220, height: 56 }, horizontal: true },
@@ -96,13 +82,19 @@ describe(`place_decorations`, () => {
     expect(layout.pad).toEqual(base_pad)
   })
 
-  test(`no decorations -> padding unchanged`, () => {
-    const layout = place_decorations({
-      base_pad,
-      width: 400,
-      height: 300,
-      obstacles_norm: dense,
+  test(`a decoration larger than the plot moves outside even over sparse data`, () => {
+    // footprint wider than the plot area can't fit inside regardless of how empty the plot is,
+    // so it's "crowded out" purely by size (not by overlapping the single obstacle point)
+    const layout = place({
+      obstacles_norm: [{ x: 0.5, y: 0.5 }],
+      colorbar: { footprint: { width: 500, height: 56 }, horizontal: true },
     })
+    expect(layout.colorbar_outside).toBe(true)
+    expect(layout.pad.t).toBeGreaterThan(base_pad.t)
+  })
+
+  test(`no decorations -> padding unchanged`, () => {
+    const layout = place()
     expect(layout).toMatchObject({ legend_outside: false, colorbar_outside: false })
     expect(layout.pad).toEqual(base_pad)
   })
@@ -117,22 +109,47 @@ describe(`clip_bar`, () => {
     expect(clip_bar(vertical, cross, a, b)).toBe(expected)
   })
 
-  test(`clamps a vertical bar segment to the visible box`, () => {
-    const seg = clip_bar(true, 0.5, -0.4, 1.6)
-    expect(seg).not.toBeNull()
-    expect(seg?.points).toEqual([
-      { x: 0.5, y: 0 },
-      { x: 0.5, y: 1 },
-    ])
+  test.each([
+    {
+      name: `vertical`,
+      vertical: true,
+      cross: 0.5,
+      a: -0.4,
+      b: 1.6,
+      points: [
+        { x: 0.5, y: 0 },
+        { x: 0.5, y: 1 },
+      ],
+    },
+    {
+      name: `horizontal`,
+      vertical: false,
+      cross: 0.3,
+      a: -0.5,
+      b: 0.7,
+      points: [
+        { x: 0, y: 0.3 },
+        { x: 0.7, y: 0.3 },
+      ],
+    },
+  ])(`clamps a $name bar segment to the visible box`, ({ vertical, cross, a, b, points }) => {
+    const seg = clip_bar(vertical, cross, a, b)
+    expect(seg?.points).toEqual(points)
     expect(seg?.draws_line).toBe(true)
   })
 
-  test(`clamps a horizontal bar segment to the visible box`, () => {
-    const seg = clip_bar(false, 0.3, -0.5, 0.7)
-    expect(seg?.points).toEqual([
-      { x: 0, y: 0.3 },
-      { x: 0.7, y: 0.3 },
-    ])
+  // bars flush to a plot edge (first/last bar or bin) have cross exactly at 0 or 1 and must be
+  // kept as obstacles, else the legend could land on top of an edge bar
+  test.each([
+    { name: `vertical bar at the left edge`, vertical: true, cross: 0 },
+    { name: `vertical bar at the right edge`, vertical: true, cross: 1 },
+    { name: `horizontal bar at the bottom edge`, vertical: false, cross: 0 },
+    { name: `horizontal bar at the top edge`, vertical: false, cross: 1 },
+  ])(`keeps an edge bar ($name)`, ({ vertical, cross }) => {
+    const seg = clip_bar(vertical, cross, 0, 1)
+    expect(seg).not.toBeNull()
+    const fixed_axis = vertical ? `x` : `y`
+    expect(seg?.points.every((pt) => pt[fixed_axis] === cross)).toBe(true)
   })
 })
 
