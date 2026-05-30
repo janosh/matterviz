@@ -149,7 +149,7 @@
   <label
     class="toggle-label"
     class:disabled={col.disabled}
-    {@attach tooltip({ content: col.description })}
+    {@attach tooltip({ allow_html: true, content: col.description })}
   >
     <input
       type="checkbox"
@@ -188,7 +188,7 @@
         }}
         type="button"
         aria-label="Reset all columns to defaults"
-        {@attach tooltip()}
+        {@attach tooltip({ allow_html: true })}
       >
         <Icon icon="Reset" width="12px" />
       </button>
@@ -218,7 +218,7 @@
                   onclick={() => reset_section(section.name)}
                   type="button"
                   aria-label="Reset {section.name} to defaults"
-                  {@attach tooltip()}
+                  {@attach tooltip({ allow_html: true })}
                 >
                   <Icon icon="Reset" width="12px" />
                 </button>

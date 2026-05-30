@@ -98,7 +98,7 @@
     class="toggle-btn"
     class:active={menu_open}
     aria-expanded={menu_open}
-    {@attach tooltip({ content: `Cell type & supercell` })}
+    {@attach tooltip({ allow_html: true, content: `Cell type & supercell` })}
   >
     {#if loading}
       <Spinner
@@ -118,7 +118,6 @@
       class:align-left={align === `left`}
       transition:fade={{ duration: 100 }}
     >
-      <!-- Cell type selector -->
       <div class="cell-type-row">
         {#each cell_types as type (type)}
           {@const disabled = type !== `original` && !sym_data}
@@ -133,14 +132,13 @@
             {disabled}
             onclick={() => (cell_type = type)}
             title={tooltip_text}
-            {@attach tooltip({ content: tooltip_text })}
+            {@attach tooltip({ allow_html: true, content: tooltip_text })}
           >
             {label}
           </button>
         {/each}
       </div>
 
-      <!-- Supercell presets -->
       <div class="supercell-grid">
         {#each supercell_presets as preset (preset)}
           <button
@@ -153,7 +151,6 @@
         {/each}
       </div>
 
-      <!-- Custom input -->
       <div class="custom-input-row">
         <input
           type="text"
@@ -188,10 +185,11 @@
     );
   }
   .toggle-btn {
+    font: inherit;
     padding: var(--struct-legend-padding, 0 4pt);
     line-height: var(--struct-legend-line-height, 1.3);
     vertical-align: middle;
-    color: var(--text-color);
+    color: inherit;
     background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
@@ -211,14 +209,21 @@
     right: 0;
     margin-top: 2px;
     background: var(--surface-bg, light-dark(rgba(255, 255, 255, 0.96), #222));
-    padding: 6px;
+    padding: 4px;
     border-radius: var(--struct-border-radius, var(--border-radius, 3pt));
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
     gap: 5px;
     z-index: 100;
+    font-size: var(--struct-cell-select-dropdown-font, max(10px, 1em));
     min-width: 118px;
+  }
+  .dropdown button,
+  .custom-input-row input {
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
   }
   /* Invisible bridge to prevent menu closing when moving mouse from toggle to dropdown */
   .dropdown::before {
@@ -244,7 +249,6 @@
     left: 0;
   }
 
-  /* Cell type row - compact buttons with minimal padding */
   .cell-type-row {
     display: flex;
     gap: 3px;
@@ -253,9 +257,7 @@
   }
   .cell-type-btn {
     flex: 1;
-    padding: 2px 6px;
-    font-size: 0.9em;
-    color: var(--text-color);
+    padding: 1px 3px;
     background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
@@ -288,16 +290,13 @@
     cursor: not-allowed;
   }
 
-  /* Supercell grid */
   .supercell-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 2px;
+    gap: 3px;
   }
   .preset-btn {
-    padding: 2px 4px;
-    font-size: 0.9em;
-    color: var(--text-color);
+    padding: 1px;
     background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
@@ -324,7 +323,6 @@
     );
   }
 
-  /* Custom input row */
   .custom-input-row {
     display: flex;
     align-items: center;
@@ -334,7 +332,6 @@
     max-width: 60px;
     min-height: 0;
     padding: 1px 4px;
-    font-size: 0.85em;
   }
   .custom-input-row input.invalid {
     border-color: rgba(255, 100, 100, 0.6);

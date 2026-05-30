@@ -1,0 +1,198 @@
+import {
+  build_pick_index,
+  bin_points,
+  density_bin_at_point,
+  first_point_in_bin,
+  pick_from_index,
+  series_extents,
+  should_render_points,
+  type DensePointSeries,
+} from '$lib/plot/adaptive-density'
+import { describe, expect, it } from 'vitest'
+
+const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
+const PSEUDO_RANDOM_MULTIPLIER = 48_271
+
+describe(`adaptive density utilities`, () => {
+  const series: DensePointSeries<{ id: string }>[] = [
+    {
+      x: [0, 0.1, 0.9, 1.8, 2.1],
+      y: [0, 0.1, 0.8, 1.9, 2.2],
+      point_ids: [`a`, `b`, `c`, `d`, `outside`],
+      metadata: [{ id: `a` }, { id: `b` }, { id: `c` }, { id: `d` }, { id: `outside` }],
+    },
+  ]
+
+  it(`bins only visible points and tracks max bin count`, () => {
+    const result = bin_points(series, [0, 2], [0, 2], 2, 2)
+
+    expect(result.visible_count).toBe(4)
+    expect(result.max_count).toBe(3)
+    expect([...result.counts]).toEqual([3, 0, 0, 1])
+    expect(result.first_point_idxs[0]).toBe(0)
+    expect(result.first_point_idxs[3]).toBe(3)
+    expect(result.first_series_idxs[0]).toBe(0)
+    expect(result.first_series_idxs[3]).toBe(0)
+  })
+
+  it(`maps screen coordinates back to density bins and data ranges`, () => {
+    const density = bin_points(series, [0, 2], [0, 2], 2, 2)
+    const bin = density_bin_at_point(
+      density,
+      { x: 25, y: 75 },
+      { x: 0, y: 0, width: 100, height: 100 },
+      [0, 2],
+      [0, 2],
+    )
+
+    expect(bin).toEqual({
+      x_bin: 0,
+      y_bin: 0,
+      count: 3,
+      x_range: [0, 1],
+      y_range: [0, 1],
+    })
+  })
+
+  it(`switches to point rendering for sparse or small views`, () => {
+    expect(should_render_points(10_000, 300 * 300, 25_000, 0.12)).toBe(true)
+    expect(should_render_points(30_000, 300 * 300, 25_000, 0.5)).toBe(true)
+    expect(should_render_points(30_000, 300 * 300, 25_000, 0.12)).toBe(false)
+  })
+
+  const pick_options = {
+    x_range: [0, 2] as [number, number],
+    y_range: [0, 2] as [number, number],
+    x_scale: (x: number) => x * 100,
+    y_scale: (y: number) => y * 100,
+    radius_px: 20,
+  }
+
+  it(`indexes visible points for fast nearest-neighbor picking`, () => {
+    const index = build_pick_index(series, pick_options)
+    const picked = pick_from_index(index, { x: 12, y: 9 })
+
+    expect(index.cells.size).toBe(3)
+    expect(picked?.point_id).toBe(`b`)
+    expect(picked?.metadata).toEqual({ id: `b` })
+  })
+
+  it(`finds the only point inside a singleton density bin`, () => {
+    const density = bin_points(series, [0, 2], [0, 2], 2, 2)
+    const picked = first_point_in_bin(
+      series,
+      density,
+      { x_bin: 1, y_bin: 1 },
+      pick_options.x_scale,
+      pick_options.y_scale,
+    )
+
+    expect(picked?.point_id).toBe(`d`)
+  })
+
+  it(`uses exact density-bin assignment for boundary points`, () => {
+    const boundary_series: DensePointSeries<{ id: string }>[] = [
+      {
+        x: [0.5],
+        y: [0.25],
+        point_ids: [`boundary`],
+        metadata: [{ id: `boundary` }],
+      },
+    ]
+    const density = bin_points(boundary_series, [0, 1], [0, 1], 2, 2)
+
+    expect([...density.counts]).toEqual([0, 1, 0, 0])
+    expect(
+      first_point_in_bin(
+        boundary_series,
+        density,
+        { x_bin: 0, y_bin: 0 },
+        pick_options.x_scale,
+        pick_options.y_scale,
+      ),
+    ).toBeNull()
+    expect(
+      first_point_in_bin(
+        boundary_series,
+        density,
+        { x_bin: 1, y_bin: 0 },
+        pick_options.x_scale,
+        pick_options.y_scale,
+      )?.point_id,
+    ).toBe(`boundary`)
+  })
+
+  it(`computes series extents without materializing dense input arrays`, () => {
+    expect(series_extents(series)).toEqual({
+      x: [-0.10500000000000001, 2.205],
+      y: [-0.11000000000000001, 2.31],
+    })
+  })
+
+  it(`does not pick outside visible ranges or radius`, () => {
+    const hidden = pick_from_index(
+      build_pick_index(series, { ...pick_options, radius_px: 30 }),
+      { x: 210, y: 220 },
+    )
+    const far = pick_from_index(build_pick_index(series, { ...pick_options, radius_px: 10 }), {
+      x: 140,
+      y: 0,
+    })
+
+    expect(hidden).toBeNull()
+    expect(far).toBeNull()
+  })
+
+  it(`retrieves singleton-bin points without rescanning the series`, () => {
+    let accesses = 0
+    const counted = (values: number[]) =>
+      new Proxy(values, {
+        get(target, prop, receiver) {
+          if (typeof prop === `string` && /^\d+$/.test(prop)) accesses++
+          return Reflect.get(target, prop, receiver)
+        },
+      })
+    const counted_series: DensePointSeries<{ id: string }>[] = [
+      {
+        x: counted([0, 0.1, 0.9, 1.8]),
+        y: counted([0, 0.1, 0.8, 1.9]),
+        point_ids: [`a`, `b`, `c`, `d`],
+        metadata: [{ id: `a` }, { id: `b` }, { id: `c` }, { id: `d` }],
+      },
+    ]
+    const density = bin_points(counted_series, [0, 2], [0, 2], 2, 2)
+    accesses = 0
+
+    const picked = first_point_in_bin(
+      counted_series,
+      density,
+      { x_bin: 1, y_bin: 1 },
+      pick_options.x_scale,
+      pick_options.y_scale,
+    )
+
+    expect(picked?.point_id).toBe(`d`)
+    expect(accesses).toBe(2)
+  })
+
+  it(`bins one million finite points below the interaction latency budget`, () => {
+    const n_points = 1_000_000
+    const x = new Float32Array(n_points)
+    const y = new Float32Array(n_points)
+    for (let idx = 0; idx < n_points; idx++) {
+      x[idx] = (idx % 10_000) / 10_000
+      y[idx] = ((idx * PSEUDO_RANDOM_MULTIPLIER) % 1_000_000) / 1_000_000
+    }
+
+    const start = performance.now()
+    const result = bin_points([{ x, y }], [0, 1], [0, 1], 512, 512)
+    const elapsed_ms = performance.now() - start
+
+    expect(result.visible_count).toBe(n_points)
+    expect(result.max_count).toBeGreaterThan(0)
+    expect(
+      elapsed_ms,
+      `1M-point density binning took ${elapsed_ms.toFixed(1)}ms`,
+    ).toBeLessThan(500 * CI_MULTIPLIER)
+  }, 10_000)
+})

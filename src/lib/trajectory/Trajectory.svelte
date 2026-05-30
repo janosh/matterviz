@@ -920,7 +920,7 @@
             <button
               class="filename"
               title="Click to copy filename <code>{current_filename}</code>"
-              {@attach tooltip()}
+              {@attach tooltip({ allow_html: true })}
               onclick={() => {
                 if (current_filename) {
                   navigator.clipboard.writeText(current_filename)
@@ -979,7 +979,7 @@
                 class="step-input"
                 title="Enter step number to jump to"
                 aria-label="Step input"
-                {@attach tooltip()}
+                {@attach tooltip({ allow_html: true })}
               />
               <span aria-label="total frames">/ {format_num(total_frames, `.3~s`)}</span>
               <div class="slider-container">

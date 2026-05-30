@@ -3,6 +3,20 @@ import type { ShowControlsProp } from '$lib/controls'
 import type { ElementSymbol } from '$lib/element'
 import type { Point2D, Point3D, Vec3 } from '$lib/math'
 import type { Rect, Sides } from '$lib/plot/layout'
+import type { AnyStructure } from '$lib/structure'
+
+export interface StructurePopupStats {
+  id?: string
+  formula?: string
+  e_above_hull?: number
+  e_form?: number
+}
+
+export interface StructurePopupContext {
+  structure: AnyStructure
+  stats?: StructurePopupStats
+  formula_html: string
+}
 
 // Unified convex hull entry interface supporting both pymatgen and Materials Project formats
 export interface PhaseData {

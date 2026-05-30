@@ -2,6 +2,21 @@ export { default as AxisLabel } from './AxisLabel.svelte'
 export { default as BarPlot } from './BarPlot.svelte'
 export { default as BarPlotControls } from './BarPlotControls.svelte'
 export { default as ColorBar } from './ColorBar.svelte'
+export { default as BinnedScatterPlot } from './BinnedScatterPlot.svelte'
+export type {
+  BinnedColorScaleConfig,
+  BinnedDensityConfig,
+  BinnedOverlaysConfig,
+  BinnedPointBasePayload,
+  BinnedPointDataFn,
+  BinnedPointLabelPlacementConfig,
+  BinnedPointLabelsConfig,
+  BinnedPointPayload,
+  BinnedPointTooltipPayload,
+  BinnedRefLine,
+  BinnedSizeScaleConfig,
+} from './binned-scatter-types'
+export type { DensePointSeries } from './adaptive-density'
 export { default as ColorScaleSelect } from './ColorScaleSelect.svelte'
 export * from './data-cleaning'
 export { default as ElementScatter } from './ElementScatter.svelte'

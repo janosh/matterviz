@@ -872,7 +872,7 @@
       title={mode_locked
       ? `Mode is locked`
       : `Click to switch to '${next_mode.mode}' → ${next_mode.value}`}
-      {@attach tooltip()}
+      {@attach tooltip({ allow_html: true })}
       aria-label="Change search mode"
     >
       {mode_hint}
@@ -885,7 +885,7 @@
       class:active={mode_locked}
       onclick={toggle_mode_lock}
       title={mode_locked ? `Unlock mode inference` : `Lock current mode`}
-      {@attach tooltip()}
+      {@attach tooltip({ allow_html: true })}
       aria-label={mode_locked ? `Unlock mode` : `Lock mode`}
     >
       <Icon icon={mode_locked ? `Lock` : `Unlock`} style="width: 1em; height: 1em" />
@@ -897,7 +897,7 @@
       class="icon-btn clear-btn"
       onclick={clear_filter}
       title="Clear (Escape)"
-      {@attach tooltip()}
+      {@attach tooltip({ allow_html: true })}
       aria-label="Clear filter"
     >
       <Icon icon="Close" style="width: 1em; height: 1em" />

@@ -2447,7 +2447,10 @@
               }
                 {@const label_id = `${point.series_idx}-${point.point_idx}`}
                 {@const calculated_label_pos = label_positions[label_id]}
-                {@const label_style = point.point_label ?? {}}
+                {@const point_label = point.point_label ?? {}}
+                {@const label_style = point_label.auto_placement && !calculated_label_pos
+          ? {}
+          : point_label}
                 {@const final_label = calculated_label_pos
           ? {
             ...label_style,
@@ -2672,7 +2675,7 @@
           scale_type={typeof color_scale === `string` ? undefined : color_scale.type}
           range={color_domain?.every((val) => val != null) ? color_domain : undefined}
           wrapper_style={color_bar?.wrapper_style ?? ``}
-          bar_style="width: 220px; height: 20px; {color_bar?.style ?? ``}"
+          bar_style="width: 220px; height: 16px; {color_bar?.style ?? ``}"
           {...color_bar}
         />
       </div>

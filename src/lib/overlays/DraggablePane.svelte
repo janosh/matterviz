@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
   import type { IconName } from '$lib/icons'
+  import { DragControlTab } from '$lib/overlays'
   import type { Snippet } from 'svelte'
   import { draggable, tooltip } from 'svelte-multiselect/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -240,7 +241,7 @@
     style={toggle_props.style ?? ``}
     onclick={toggle_pane}
     class="pane-toggle {toggle_props.class ?? ``}"
-    {@attach tooltip({ content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
+    {@attach tooltip({ allow_html: true, content: toggle_props.title ?? (show ? `Close pane` : `Open pane`) })}
   >
     <Icon icon={show ? open_icon : closed_icon} style={icon_style} />
   </button>
@@ -260,38 +261,13 @@
     style:left={initial_position.left}
     style:display={show ? `grid` : `none`}
     {...pane_props}
-    class="draggable-pane {show ? `pane-open` : ``} {pane_props.class ?? ``}"
+    class="draggable-pane toc-exclude {show ? `pane-open` : ``} {pane_props.class ?? ``}"
   >
-    <div class="control-tab">
-      <Icon
-        icon="DragIndicator"
-        class="drag-handle"
-        style="width: 1em; height: 1em"
-      />
-      {#if show_control_buttons}
-        <button
-          type="button"
-          class="reset-button"
-          onclick={(event: MouseEvent) => {
-            event.stopPropagation()
-            reset_position()
-          }}
-          title="Reset pane position"
-          aria-label="Reset pane position"
-        >
-          <Icon icon="Reset" style="width: 1em; height: 1em" />
-        </button>
-        <button
-          type="button"
-          class="close-button"
-          onclick={close_pane}
-          title="Close pane"
-          aria-label="Close pane"
-        >
-          <Icon icon="Cross" style="width: 1em; height: 1em" />
-        </button>
-      {/if}
-    </div>
+    <DragControlTab
+      show_controls={show_control_buttons}
+      on_reset={reset_position}
+      on_close={close_pane}
+    />
     <div class="pane-content">
       {@render children?.({
         show,
@@ -483,59 +459,6 @@
   /* Labels containing range inputs should fill available width */
   .draggable-pane :global(label:has(input[type='range'])) {
     flex: 1;
-  }
-  .draggable-pane .control-tab {
-    position: absolute;
-    top: 6px;
-    right: -1px;
-    transform: translateX(100%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    padding: 3px 2px;
-    background: var(--pane-bg, var(--page-bg, light-dark(white, black)));
-    border: var(
-      --pane-border,
-      1px solid light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15))
-    );
-    border-left: none;
-    border-radius: 0 5px 5px 0;
-    z-index: var(--pane-control-tab-z-index, var(--pane-control-buttons-z-index, 1));
-  }
-  .draggable-pane :global(.drag-handle) {
-    width: 1.1em;
-    height: 1.1em;
-    cursor: grab;
-    border-radius: 3px;
-    padding: 1px;
-    box-sizing: border-box;
-    opacity: 0.5;
-    pointer-events: auto;
-  }
-  .draggable-pane :global(.drag-handle:hover) {
-    opacity: 0.8;
-    background-color: color-mix(in srgb, currentColor 15%, transparent);
-  }
-  .draggable-pane :global(.drag-handle:active) {
-    cursor: grabbing;
-  }
-  .draggable-pane :where(.reset-button, .close-button) {
-    background: none;
-    border: none;
-    padding: 1px;
-    border-radius: 3px;
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.1em;
-    height: 1.1em;
-    opacity: 0.5;
-  }
-  .draggable-pane :where(.reset-button:hover, .close-button:hover) {
-    opacity: 0.8;
-    background-color: color-mix(in srgb, currentColor 15%, transparent);
   }
   .draggable-pane .resize-grip {
     position: absolute;

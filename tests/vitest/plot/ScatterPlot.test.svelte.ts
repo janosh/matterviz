@@ -263,6 +263,28 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelectorAll(`.effect-ring.selected`)).toHaveLength(selected_point ? 1 : 0)
   })
 
+  test(`hides auto labels culled by max_neighbors`, async () => {
+    const coords = [...Array.from({ length: 6 }, (_val, idx) => 1 + idx * 0.001), 100]
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        {
+          x: coords,
+          y: coords,
+          point_label: coords.map((_coord, idx) => ({
+            text: idx < 6 ? `C${idx}` : `Lonely`,
+            auto_placement: true,
+            font_size: `10px`,
+          })),
+        },
+      ],
+      label_placement_config: { max_neighbors: { count: 1, radius: 30 }, sa_iterations: 0 },
+    })
+
+    expect(
+      [...plot.querySelectorAll(`.label-text`)].map((label) => label.textContent),
+    ).toEqual([`Lonely`])
+  })
+
   test.each<LegendGroupingCase>([
     {
       desc: `with legend_group and legend config`,

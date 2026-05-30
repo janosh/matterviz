@@ -57,6 +57,7 @@ export interface LabelStyle {
   font_size?: string
   font_family?: string
   auto_placement?: boolean // Enable/disable auto-placement
+  size?: { width: number; height: number }
 }
 
 export interface BarStyle {
@@ -273,6 +274,9 @@ export interface LabelPlacementConfig {
   weights?: LabelPlacementWeights // Energy function weights
   leader_line_threshold?: number // Min displacement (px) to show dotted leader line (default: 15)
   max_labels?: number // Skip SA when label count exceeds this (default: 300)
+  candidate_gap?: number // Extra gap (px) between marker radius and label candidates (default: 4)
+  // Hide labels in dense regions with more than `count` neighbors within `radius` px
+  max_neighbors?: { count: number; radius: number }
 }
 export type HoverConfig = {
   threshold_px: number // Max screen distance (pixels) to trigger hover

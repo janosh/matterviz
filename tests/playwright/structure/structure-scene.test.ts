@@ -117,6 +117,39 @@ async function load_single_centered_atom_scene(page: Page): Promise<void> {
   })
 }
 
+async function count_canvas_purple_pixels(canvas: Locator): Promise<number> {
+  return canvas.evaluate(async (canvas_element) => {
+    if (!(canvas_element instanceof HTMLCanvasElement)) {
+      throw new Error(`Expected structure canvas, got ${canvas_element.tagName}`)
+    }
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    )
+    const offscreen_canvas = document.createElement(`canvas`)
+    offscreen_canvas.width = canvas_element.width
+    offscreen_canvas.height = canvas_element.height
+    const context = offscreen_canvas.getContext(`2d`)
+    if (!context) throw new Error(`Failed to create 2D canvas context`)
+    context.drawImage(canvas_element, 0, 0)
+    const { data } = context.getImageData(
+      0,
+      0,
+      offscreen_canvas.width,
+      offscreen_canvas.height,
+    )
+    let purple_pixels = 0
+    for (let pixel_idx = 0; pixel_idx < data.length; pixel_idx += 4) {
+      const red = data[pixel_idx]
+      const green = data[pixel_idx + 1]
+      const blue = data[pixel_idx + 2]
+      if (red > 55 && red < 150 && green < 110 && blue > 80 && blue < 210) {
+        purple_pixels += 1
+      }
+    }
+    return purple_pixels
+  })
+}
+
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
     // Skip in CI - 3D canvas and camera control tests are unreliable
@@ -148,6 +181,22 @@ test.describe(`StructureScene Component Tests`, () => {
     }
 
     expect(console_errors).toHaveLength(0)
+  })
+
+  test(`supercell transition keeps atom spheres visible`, async ({ page }) => {
+    const canvas = page.locator(`#test-structure canvas`)
+    const initial_purple_pixels = await count_canvas_purple_pixels(canvas)
+    expect(initial_purple_pixels).toBeGreaterThan(10_000)
+
+    await page.locator(`[data-testid="supercell-input"]`).fill(`2x2x2`)
+    await page.locator(`[data-testid="supercell-input"]`).press(`Enter`)
+    await expect(page.locator(`#test-structure .atom-legend`)).toContainText(/Cs\s*16/)
+
+    await expect
+      .poll(() => count_canvas_purple_pixels(canvas), {
+        timeout: get_canvas_timeout(),
+      })
+      .toBeGreaterThan(initial_purple_pixels * 2)
   })
 
   // Combined tooltip functionality tests

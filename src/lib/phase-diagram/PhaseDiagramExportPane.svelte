@@ -86,6 +86,7 @@
   <div class="export-grid">
     <h4
       {@attach tooltip({
+        allow_html: true,
         content: `Download or copy the phase diagram`,
       })}
     >
@@ -130,6 +131,7 @@
 
     <h4
       {@attach tooltip({
+        allow_html: true,
         content: `Export phase diagram data as JSON`,
       })}
     >

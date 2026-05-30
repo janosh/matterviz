@@ -581,11 +581,11 @@ export function draw_highlight_effect(
   if (effect === `pulse`) {
     // Smooth pulsating effect with moderate size and opacity changes
     const pulse_val = 0.5 + 0.5 * Math.sin(pulse_time * pulse_speed)
-    const hl_size = size * (size_multiplier + 0.5 * pulse_val) // Moderate pulse amplitude
-    const hl_opacity = opacity * (0.5 + 0.5 * pulse_val) // Smooth opacity variation
+    const hl_size = size * (size_multiplier + 0.5 * pulse_val)
+    const hl_opacity = opacity * (0.5 + 0.5 * pulse_val)
 
     // Draw pulsating ring
-    ctx.lineWidth = (1.5 + 1 * pulse_val) * container_scale
+    ctx.lineWidth = (1.5 + pulse_val) * container_scale
     ctx.beginPath()
     ctx.arc(projected.x, projected.y, hl_size, 0, 2 * Math.PI)
     ctx.fillStyle = apply_alpha_to_color(hl_color, hl_opacity * 0.3)

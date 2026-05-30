@@ -635,7 +635,7 @@
             class="clear-search"
             onclick={clear_search}
             title="Clear search (Esc)"
-            {@attach tooltip()}
+            {@attach tooltip({ allow_html: true })}
           >
             <Icon icon="Cross" style="width: 12px; height: 12px" />
           </button>
@@ -648,7 +648,7 @@
             class="nav-btn"
             onclick={go_to_prev_match}
             title="Previous match (Shift+F3)"
-            {@attach tooltip()}
+            {@attach tooltip({ allow_html: true })}
           >
             <Icon icon="ArrowUp" style="width: 12px; height: 12px" />
           </button>
@@ -657,7 +657,7 @@
             class="nav-btn"
             onclick={go_to_next_match}
             title="Next match (F3)"
-            {@attach tooltip()}
+            {@attach tooltip({ allow_html: true })}
           >
             <Icon icon="ArrowDown" style="width: 12px; height: 12px" />
           </button>
@@ -672,7 +672,7 @@
           onclick={() => (show_data_types = !show_data_types)}
           title={show_data_types ? `Hide data types` : `Show data types`}
           class:active={show_data_types}
-          {@attach tooltip()}
+          {@attach tooltip({ allow_html: true })}
         >
           T
         </button>
@@ -681,21 +681,21 @@
           onclick={() => (show_array_indices = !show_array_indices)}
           title={show_array_indices ? `Hide array indices` : `Show array indices`}
           class:active={show_array_indices}
-          {@attach tooltip()}
+          {@attach tooltip({ allow_html: true })}
         >
           #
         </button>
       </div>
       <div class="divider"></div>
       <div class="controls">
-        <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip()}>
+        <button type="button" onclick={expand_all} title="Expand all" {@attach tooltip({ allow_html: true })}>
           <Icon icon="Expand" style="width: 14px; height: 14px" />
         </button>
         <button
           type="button"
           onclick={collapse_all}
           title="Collapse all"
-          {@attach tooltip()}
+          {@attach tooltip({ allow_html: true })}
         >
           <Icon icon="Collapse" style="width: 14px; height: 14px" />
         </button>
@@ -703,7 +703,7 @@
           type="button"
           onclick={() => collapse_to_level(1)}
           title="Collapse to level 1"
-          {@attach tooltip()}
+          {@attach tooltip({ allow_html: true })}
         >
           1
         </button>
@@ -711,7 +711,7 @@
           type="button"
           onclick={() => collapse_to_level(2)}
           title="Collapse to level 2"
-          {@attach tooltip()}
+          {@attach tooltip({ allow_html: true })}
         >
           2
         </button>
@@ -719,7 +719,7 @@
           type="button"
           onclick={() => collapse_to_level(3)}
           title="Collapse to level 3"
-          {@attach tooltip()}
+          {@attach tooltip({ allow_html: true })}
         >
           3
         </button>
@@ -730,7 +730,7 @@
           type="button"
           onclick={copy_all}
           title="Copy JSON to clipboard"
-          {@attach tooltip()}
+          {@attach tooltip({ allow_html: true })}
         >
           <Icon icon="Copy" style="width: 14px; height: 14px" />
         </button>
@@ -738,7 +738,7 @@
           type="button"
           onclick={download_json}
           title="Download as JSON file"
-          {@attach tooltip()}
+          {@attach tooltip({ allow_html: true })}
         >
           <Icon icon="Download" style="width: 14px; height: 14px" />
         </button>
@@ -753,7 +753,7 @@
         class="copy-path-btn"
         onclick={() => copy_to_clipboard(focused_path!, focused_path!)}
         title="Click to copy path"
-        {@attach tooltip()}
+        {@attach tooltip({ allow_html: true })}
       >
         {focused_path}
       </button>
@@ -785,7 +785,7 @@
               serialize_for_copy(get_value_at_path(pinned_path)),
             )}
             title="Click to copy value"
-            {@attach tooltip()}
+            {@attach tooltip({ allow_html: true })}
           >
             {pinned_path}
           </button>

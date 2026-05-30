@@ -69,7 +69,7 @@
   onclick={handle_click}
   onkeydown={handle_keydown}
   {title}
-  {@attach tooltip()}
+  {@attach tooltip({ allow_html: true })}
   class="info-tag {variant} {size}"
   class:disabled
   aria-disabled={disabled}

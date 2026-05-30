@@ -311,7 +311,7 @@
     style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 12pt"
   >
     Show <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_atoms.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.show_atoms.description })}
       style="gap: 6pt"
     >
       <input type="checkbox" bind:checked={scene_props.show_atoms} />
@@ -319,6 +319,7 @@
     </label>
     <label
       {@attach tooltip({
+        allow_html: true,
         content: SETTINGS_CONFIG.structure.show_image_atoms.description,
       })}
       style="gap: 6pt"
@@ -328,6 +329,7 @@
     </label>
     <label
       {@attach tooltip({
+        allow_html: true,
         content: SETTINGS_CONFIG.structure.show_site_labels.description,
       })}
       style="gap: 6pt"
@@ -337,6 +339,7 @@
     </label>
     <label
       {@attach tooltip({
+        allow_html: true,
         content: SETTINGS_CONFIG.structure.show_site_indices.description,
       })}
       style="gap: 6pt"
@@ -348,6 +351,7 @@
       {#each available_vector_keys as key, idx (key)}
         <label
           {@attach tooltip({
+            allow_html: true,
             content: `Toggle ${key} vectors`,
           })}
           style="gap: 4pt"
@@ -387,7 +391,7 @@
       Lattice Vectors
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.show_bonds.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.show_bonds.description })}
       style="gap: 6pt"
     >
       Bonds:
@@ -428,6 +432,7 @@
     <label>
       <span
         {@attach tooltip({
+          allow_html: true,
           content: SETTINGS_CONFIG.structure.camera_projection.description,
         })}
       >
@@ -445,7 +450,7 @@
       </select>
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.auto_rotate.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.auto_rotate.description })}
     >
       Auto-rotate speed
       <input
@@ -464,7 +469,7 @@
       />
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.rotate_speed.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.rotate_speed.description })}
     >
       Rotate speed
       <input
@@ -483,7 +488,7 @@
       />
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_speed.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.zoom_speed.description })}
     >
       Zoom speed
       <input
@@ -502,7 +507,7 @@
       />
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.pan_speed.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.pan_speed.description })}
     >
       Pan speed
       <input
@@ -521,13 +526,13 @@
       />
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.zoom_to_cursor.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.zoom_to_cursor.description })}
     >
       <input type="checkbox" bind:checked={scene_props.zoom_to_cursor} />
       <span>Zoom to cursor</span>
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.rotation_damping.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.rotation_damping.description })}
     >
       Rotation damping
       <input
@@ -551,7 +556,7 @@
       {#each AXIS_COLORS as [axis, color], idx (axis)}
         <div>
           <div
-            {@attach tooltip()}
+            {@attach tooltip({ allow_html: true })}
             title="{axis}-axis rotation in degrees"
             style:color
           >
@@ -604,7 +609,7 @@
     }}
   >
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_radius.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.atom_radius.description })}
     >
       Radius <small>(Å)</small>
       <input
@@ -623,13 +628,13 @@
       />
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.same_size_atoms.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.same_size_atoms.description })}
     >
       Same size atoms
       <input type="checkbox" bind:checked={scene_props.same_size_atoms} />
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.color_scheme.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.color_scheme.description })}
     >
       Color scheme
       <Select
@@ -661,7 +666,7 @@
       </Select>
     </label>
     <label
-      {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_mode.description })}
+      {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.atom_color_mode.description })}
     >
       Atom coloring
       <select bind:value={atom_color_config.mode}>
@@ -675,7 +680,7 @@
     </label>
     {#if atom_color_config.mode !== `element`}
       <label
-        {@attach tooltip({ content: SETTINGS_CONFIG.structure.atom_color_scale.description })}
+        {@attach tooltip({ allow_html: true, content: SETTINGS_CONFIG.structure.atom_color_scale.description })}
       >
         Color scale
         <ColorScaleSelect
@@ -843,6 +848,7 @@
       </label>
       <label
         {@attach tooltip({
+          allow_html: true,
           content: SETTINGS_CONFIG.structure.vector_normalize.description,
         })}
         style="gap: 6pt"
@@ -852,6 +858,7 @@
       </label>
       <label
         {@attach tooltip({
+          allow_html: true,
           content: SETTINGS_CONFIG.structure.vector_uniform_thickness.description,
         })}
         style="gap: 6pt"
@@ -861,6 +868,7 @@
       </label>
       <label
         {@attach tooltip({
+          allow_html: true,
           content: SETTINGS_CONFIG.structure.vector_color_mode.description,
         })}
       >
@@ -889,6 +897,7 @@
       {#if available_vector_keys.length > 1}
         <label
           {@attach tooltip({
+            allow_html: true,
             content: SETTINGS_CONFIG.structure.vector_origin_gap.description,
           })}
         >
@@ -918,6 +927,7 @@
       }}
             <label
               {@attach tooltip({
+                allow_html: true,
                 content:
                   `Scale multiplier for ${key} arrows (applied on top of global scale)`,
               })}
@@ -968,6 +978,7 @@
     >
       <label
         {@attach tooltip({
+          allow_html: true,
           content: sym_data
             ? `Transform to conventional or primitive cell using crystallographic symmetry`
             : `Symmetry analysis required. Wait for analysis to complete.`,
@@ -983,6 +994,7 @@
       <label>
         <span
           {@attach tooltip({
+            allow_html: true,
             content:
               `Create supercells by repeating the unit cell. Examples: "2x2x2", "3x1x2", or "2"`,
           })}
@@ -1123,7 +1135,7 @@
     }}
   >
     <label>
-      <span title="Intensity of the directional light" {@attach tooltip()}>
+      <span title="Intensity of the directional light" {@attach tooltip({ allow_html: true })}>
         Directional light
       </span>
       <input
@@ -1142,7 +1154,7 @@
       />
     </label>
     <label>
-      <span title="Intensity of the ambient light" {@attach tooltip()}>
+      <span title="Intensity of the ambient light" {@attach tooltip({ allow_html: true })}>
         Ambient light
       </span>
       <input
@@ -1195,6 +1207,7 @@
       <label
         style="gap: 6pt"
         {@attach tooltip({
+          allow_html: true,
           content: SETTINGS_CONFIG.structure.auto_bond_order.description,
         })}
       >
@@ -1204,6 +1217,7 @@
       {#if scene_props.auto_bond_order}
         <label
           {@attach tooltip({
+            allow_html: true,
             content: SETTINGS_CONFIG.structure.aromatic_display.description,
           })}
         >

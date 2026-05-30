@@ -143,7 +143,7 @@
         role="button"
         tabindex="0"
         aria-pressed={is_active}
-        {@attach tooltip({ content: `Filter to show only ${category}` })}
+        {@attach tooltip({ allow_html: true, content: `Filter to show only ${category}` })}
       >
         {category}
       </span>
@@ -163,7 +163,7 @@
         (evt.key === `Enter` || evt.key === ` `) && toggle_filter(`type`, format)}
         role="button"
         tabindex="0"
-        {@attach tooltip({ content: `Filter to show only ${format.toUpperCase()} files` })}
+        {@attach tooltip({ allow_html: true, content: `Filter to show only ${format.toUpperCase()} files` })}
       >
         <span
           class="format-circle"
@@ -174,7 +174,7 @@
 
     {#if active_category_filter || active_type_filter}
       <button
-        {@attach tooltip({ content: `Clear all filters` })}
+        {@attach tooltip({ allow_html: true, content: `Clear all filters` })}
         class="clear-filter"
         onclick={() => [active_category_filter, active_type_filter] = [null, null]}
       >

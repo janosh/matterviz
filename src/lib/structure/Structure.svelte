@@ -85,15 +85,11 @@
     bond_edit_mode: BondEditMode
     bond_edit_order: BondOrder
   }
+  type SceneProps = ComponentProps<typeof StructureScene> & typeof DEFAULTS.structure
 
   // Local reactive state for scene and lattice props. Deeply reactive so nested mutations propagate.
   // Deep-clone to prevent mutations from leaking to global defaults across component instances.
-  let scene_props = $state(
-    structuredClone(DEFAULTS.structure) as typeof DEFAULTS.structure & {
-      active_sites?: number[]
-      camera_target?: Vec3
-    },
-  )
+  let scene_props = $state(structuredClone(DEFAULTS.structure) as SceneProps)
   let lattice_props = $state({
     cell_edge_opacity: DEFAULTS.structure.cell_edge_opacity,
     cell_surface_opacity: DEFAULTS.structure.cell_surface_opacity,
@@ -463,6 +459,7 @@
 
   let measure_menu_open = $state(false)
   let export_pane_open = $state(false)
+  let focused = $state(false)
 
   // Bond customization state
   let added_bonds = $state<StructureBond[]>([])
@@ -779,6 +776,8 @@
   })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
+  let viewer_active = $derived(hovered || focused)
+  let scene_gizmo = $derived(viewer_active && (scene_props.gizmo ?? scene_props.show_gizmo))
   let active_scene_sites = $derived([
     ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),
   ])
@@ -1482,6 +1481,7 @@
 <div
   class:dragover
   class:active={info_pane_open || controls_open || export_pane_open}
+  class:gizmo-visible={Boolean(scene_gizmo)}
   role="application"
   tabindex="0"
   style:--canvas-cursor={canvas_cursor}
@@ -1491,6 +1491,12 @@
   bind:clientHeight={height}
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
+  onfocusin={() => (focused = true)}
+  onfocusout={(event) => {
+    if (!(event.relatedTarget instanceof Node) || !wrapper?.contains(event.relatedTarget)) {
+      focused = false
+    }
+  }}
   ondblclick={(event) => {
     const target = event.target
     if (!(target instanceof HTMLElement)) return
@@ -1552,7 +1558,7 @@
             aria-pressed={fullscreen}
             class="fullscreen-toggle"
             style="padding: 0 3px"
-            {@attach tooltip()}
+            {@attach tooltip({ allow_html: true })}
           >
             {#if typeof fullscreen_toggle === `function`}
               {@render fullscreen_toggle({ fullscreen })}
@@ -1794,7 +1800,7 @@
             bind:hovered_site_idx
             bind:selected_sites
             {sym_data}
-            {@attach tooltip({ content: `Structure info pane` })}
+            {@attach tooltip({ allow_html: true, content: `Structure info pane` })}
           />
         {/if}
 
@@ -1846,6 +1852,7 @@
       bind:site_radius_overrides
       selected_sites={atom_legend_selected_sites}
       structure={displayed_structure}
+      show_mode_toggle={viewer_active}
       {sym_data}
     >
       {#if structure && `lattice` in structure}
@@ -1868,6 +1875,7 @@
             structure={displayed_structure}
             base_structure={cell_transformed_structure}
             {...scene_props}
+            gizmo={scene_gizmo}
             {lattice_props}
             volumetric_data={supercell_volume}
             {isosurface_settings}
@@ -1964,6 +1972,11 @@
   .structure :global(canvas) {
     background: transparent;
     cursor: var(--canvas-cursor, default);
+  }
+  .structure:not(.gizmo-visible) :global(.responsive-gizmo) {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
   }
   /* Avoid accidental text selection while interacting with the viewer */
   .structure :global(canvas),

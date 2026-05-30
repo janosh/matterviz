@@ -14,6 +14,12 @@ function get_prop_expr(tag: string, prop: `limit` | `range`): string {
   return match[1].trim().replace(/\s+/g, ``)
 }
 
+function get_key_attr(tag: string): string {
+  const match = /\bkey\s*=\s*"([^"]+)"/.exec(tag)
+  if (!match) throw new Error(`InstancedMesh tag is missing key: ${tag}`)
+  return match[1].replace(/\s+/g, ``)
+}
+
 describe(`InstancedMesh limits`, () => {
   it.each([
     { file_path: `src/lib/structure/StructureScene.svelte`, expected_tags: 1 },
@@ -25,5 +31,12 @@ describe(`InstancedMesh limits`, () => {
     for (const tag of tags) {
       expect(get_prop_expr(tag, `limit`)).toBe(get_prop_expr(tag, `range`))
     }
+  })
+
+  it(`keys StructureScene atom mesh by its limit`, () => {
+    const [tag] = get_instanced_mesh_tags(`src/lib/structure/StructureScene.svelte`)
+    if (!tag) throw new Error(`StructureScene InstancedMesh tag not found`)
+
+    expect(get_key_attr(tag)).toContain(`{${get_prop_expr(tag, `limit`)}}`)
   })
 })

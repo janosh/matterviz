@@ -112,7 +112,7 @@
 )}
   {@const oninput = (ev: Event & { currentTarget: HTMLInputElement }) =>
     on_change(Number(ev.currentTarget.value))}
-  <label {@attach tooltip({ content: tip })}>
+  <label {@attach tooltip({ allow_html: true, content: tip })}>
     {label}
     <input type="number" {min} {max} {step} {value} {oninput} />
     <input type="range" {min} {max} {step} {value} {oninput} />
@@ -158,26 +158,27 @@
     }}
   >
     <div class="visibility-grid">
-      <label {@attach tooltip({ content: `Show phase boundary lines` })}>
+      <label {@attach tooltip({ allow_html: true, content: `Show phase boundary lines` })}>
         <input type="checkbox" bind:checked={show_boundaries} />
         Boundaries
       </label>
-      <label {@attach tooltip({ content: `Show phase region labels` })}>
+      <label {@attach tooltip({ allow_html: true, content: `Show phase region labels` })}>
         <input type="checkbox" bind:checked={show_labels} />
         Labels
       </label>
-      <label {@attach tooltip({ content: `Show background grid lines` })}>
+      <label {@attach tooltip({ allow_html: true, content: `Show background grid lines` })}>
         <input type="checkbox" bind:checked={show_grid} />
         Grid
       </label>
       {#if has_special_points}
-        <label {@attach tooltip({ content: `Show eutectic/peritectic points` })}>
+        <label {@attach tooltip({ allow_html: true, content: `Show eutectic/peritectic points` })}>
           <input type="checkbox" bind:checked={show_special_points} />
           Special Pts
         </label>
       {/if}
       <label
         {@attach tooltip({
+          allow_html: true,
           content: `Show component labels at axes`,
         })}
       >
@@ -242,7 +243,7 @@
   >
     <div class="color-grid">
       {#each color_options as [key, fallback, label, tip] (key)}
-        <label {@attach tooltip({ content: tip })}>
+        <label {@attach tooltip({ allow_html: true, content: tip })}>
           {label}
           <input
             type="color"
@@ -269,7 +270,7 @@
       lever_rule_mode = `horizontal`
     }}
   >
-    <span {@attach tooltip({ content: `Direction of the lever rule tie-line` })}>
+    <span {@attach tooltip({ allow_html: true, content: `Direction of the lever rule tie-line` })}>
       Direction
       <div class="pane-row">
         <label>
@@ -326,7 +327,7 @@
   >
     <div class="pane-row">
       {#each axis_configs as [axis_cfg, axis_name, unit, desc] (axis_name)}
-        <label {@attach tooltip({ content: `Ticks on ${desc} axis (${unit})` })}>
+        <label {@attach tooltip({ allow_html: true, content: `Ticks on ${desc} axis (${unit})` })}>
           {axis_name.toUpperCase()}-axis ticks
           <input
             type="number"
@@ -355,6 +356,7 @@
     >
       <label
         {@attach tooltip({
+          allow_html: true,
           content:
             `DPI (dots per inch) for PNG export. Higher values produce larger, higher-quality images.`,
         })}

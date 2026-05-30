@@ -69,6 +69,7 @@
     {#if volumes.length > 1}
       <label
         {@attach tooltip({
+          allow_html: true,
           content: `Select which volume to display (e.g. charge vs magnetization)`,
         })}
       >
@@ -82,6 +83,7 @@
     {/if}
     <label
       {@attach tooltip({
+        allow_html: true,
         content: `Number of isosurface shells at different density thresholds`,
       })}
     >
@@ -100,6 +102,7 @@
     so the toggle works consistently regardless of which mode is active -->
     <label
       {@attach tooltip({
+        allow_html: true,
         content:
           `Show negative lobe at −isovalue (for orbitals, ESP, magnetization)`,
       })}
@@ -123,7 +126,7 @@
       />
     </label>
     <label
-      {@attach tooltip({ content: `Render as wireframe mesh instead of solid surface` })}
+      {@attach tooltip({ allow_html: true, content: `Render as wireframe mesh instead of solid surface` })}
     >
       <span>Wireframe</span>
       <input type="checkbox" bind:checked={settings.wireframe} />
@@ -177,6 +180,7 @@
     <!-- Single-layer: isovalue slider full width -->
     <label
       {@attach tooltip({
+        allow_html: true,
         content: `Density threshold — surface is drawn where grid values equal this`,
       })}
     >
@@ -195,6 +199,7 @@
     <div class="pane-row compact-row">
       <label
         {@attach tooltip({
+          allow_html: true,
           content: `Surface transparency — lower values reveal inner structure`,
         })}
       >
@@ -209,13 +214,13 @@
         />
         <span class="value">{format_num(settings.opacity, `.2f`)}</span>
       </label>
-      <label {@attach tooltip({ content: `Color for the positive isovalue surface` })}>
+      <label {@attach tooltip({ allow_html: true, content: `Color for the positive isovalue surface` })}>
         <span>+ Color</span>
         <input type="color" bind:value={settings.positive_color} />
       </label>
       {#if settings.show_negative}
         <label
-          {@attach tooltip({ content: `Color for the negative (−isovalue) surface` })}
+          {@attach tooltip({ allow_html: true, content: `Color for the negative (−isovalue) surface` })}
         >
           <span>&minus; Color</span>
           <input type="color" bind:value={settings.negative_color} />
@@ -227,6 +232,7 @@
   {#if volumes?.[active_volume_idx]?.periodic}
     <label
       {@attach tooltip({
+        allow_html: true,
         content:
           `Extend isosurface beyond cell boundaries to close partial spheres (fraction of cell)`,
       })}
