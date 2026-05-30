@@ -4,6 +4,11 @@
   import Icon from '$lib/Icon.svelte'
   // oxlint-disable-next-line import/no-unassigned-import -- global app styles
   import '$lib/app.css'
+  // Starry-night syntax highlighting. Imported here (not via app.css @import) so
+  // starry_night_theme_plugin in vite.config.ts can re-target its dark palette
+  // from OS preference to the app's data-theme. See that plugin for details.
+  // oxlint-disable-next-line import/no-unassigned-import -- global syntax-highlight styles
+  import '@wooorm/starry-night/style/both'
   import { element_data } from '$lib/element'
   import { theme_state } from '$lib/state.svelte'
   import { apply_theme_to_dom, AUTO_THEME, COLOR_THEMES } from '$lib/theme'

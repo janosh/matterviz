@@ -19,6 +19,22 @@ const resolve_from_importer = (clean: string, importer?: string) =>
 
 let is_build = false
 
+// starry-night's `both.css` switches to its dark palette via
+// `@media (prefers-color-scheme: dark)`, i.e. it follows the OS instead of the
+// app's theme toggle. Re-target that one block to the app's `data-theme`
+// attribute so manually chosen themes get readable syntax colors (auto mode
+// already resolves data-theme from the OS, so OS support is preserved).
+const starry_night_theme_plugin: Plugin = {
+  name: `vite-plugin-starry-night-theme`,
+  transform(code, id) {
+    if (!id.includes(`starry-night/style/both.css`)) return null
+    return code.replace(
+      /@media \(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}\s*\}/u,
+      `:root[data-theme='dark'], :root[data-theme='black'] {$1}`,
+    )
+  },
+}
+
 // Handle .json.gz files by decompressing them on-the-fly during SSR/build.
 // Skip ?raw (handled by raw_text_plugin) and ?url (Vite built-in asset).
 const json_gz_plugin: Plugin = {
@@ -190,6 +206,7 @@ export default defineConfig({
   plugins: [
     json_gz_plugin,
     raw_text_plugin,
+    starry_night_theme_plugin,
     sveltekit(),
     live_examples(),
     process.env.VITEST ? mock_vscode() : null,
