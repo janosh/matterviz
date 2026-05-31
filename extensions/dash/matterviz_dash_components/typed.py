@@ -339,6 +339,7 @@ class Trajectory(MatterViz):
         fps: float | None = None,
         fps_range: list | None = None,
         histogram_props: dict | None = None,
+        hovered: bool | None = None,
         layout: Any | None = None,
         loading_options: Any | None = None,
         plot_skimming: bool | None = None,
@@ -382,6 +383,8 @@ class Trajectory(MatterViz):
             mv_props["fps_range"] = fps_range
         if histogram_props is not None:
             mv_props["histogram_props"] = histogram_props
+        if hovered is not None:
+            mv_props["hovered"] = hovered
         if layout is not None:
             mv_props["layout"] = layout
         if loading_options is not None:
