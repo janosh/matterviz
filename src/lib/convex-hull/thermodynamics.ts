@@ -531,15 +531,13 @@ export interface HighDimHullResult {
 
 // Convert a PhaseData entry to a ConvexHullEntry with default visual fields.
 // x/y/z default to 0 since high-dim systems aren't visually plotted.
-function to_hull_entry(entry: PhaseData): ConvexHullEntry {
-  return {
-    ...entry,
-    is_element: get_arity(entry) === 1,
-    x: 0,
-    y: 0,
-    z: 0,
-  }
-}
+const to_hull_entry = (entry: PhaseData): ConvexHullEntry => ({
+  ...entry,
+  is_element: get_arity(entry) === 1,
+  x: 0,
+  y: 0,
+  z: 0,
+})
 
 // Process raw hull entries for high-dimensional systems (5+ elements) where the
 // ConvexHull visual component can't render. Computes formation energies, hull distances,
@@ -2086,11 +2084,11 @@ interface SimplexModelND {
   bbox_max: number[]
 }
 
-function build_simplex_models_nd(
+const build_simplex_models_nd = (
   faces: SimplexFaceND[],
   points: number[][],
-): SimplexModelND[] {
-  return faces.map((face) => {
+): SimplexModelND[] =>
+  faces.map((face) => {
     const vertices = face.vertex_indices.map((idx) => points[idx])
     const n = vertices[0].length
     // Spatial coords are all except last (energy)
@@ -2107,7 +2105,6 @@ function build_simplex_models_nd(
 
     return { vertices, vertices_spatial, bbox_min, bbox_max }
   })
-}
 
 // Check if point is inside simplex and return barycentric coordinates
 // Uses linear system solution: point = sum(bary[i] * vertex[i]) with sum(bary) = 1

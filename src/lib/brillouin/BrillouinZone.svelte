@@ -83,6 +83,7 @@
     k_path_labels = [],
     hovered_k_point = null,
     hovered_qpoint_index = null,
+    on_kpath_hover,
     children,
     tooltip_config,
     on_file_load,
@@ -144,6 +145,8 @@
       hovered_k_point?: Vec3 | null
       // Index of the currently hovered q-point in the band structure
       hovered_qpoint_index?: number | null
+      // Called with the q-point index when the user hovers the k-path in the BZ (null on leave)
+      on_kpath_hover?: (qpoint_index: number | null) => void
       children?: Snippet<
         [{ structure?: Crystal; bz_data?: BrillouinZoneData }]
       >
@@ -430,6 +433,7 @@
             {k_path_labels}
             {hovered_k_point}
             {hovered_qpoint_index}
+            {on_kpath_hover}
             {show_ibz}
             {ibz_data}
             {ibz_color}

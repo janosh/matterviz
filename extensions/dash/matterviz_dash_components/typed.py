@@ -339,6 +339,7 @@ class Trajectory(MatterViz):
         fps: float | None = None,
         fps_range: list | None = None,
         histogram_props: dict | None = None,
+        hovered: bool | None = None,
         layout: Any | None = None,
         loading_options: Any | None = None,
         plot_skimming: bool | None = None,
@@ -382,6 +383,8 @@ class Trajectory(MatterViz):
             mv_props["fps_range"] = fps_range
         if histogram_props is not None:
             mv_props["histogram_props"] = histogram_props
+        if hovered is not None:
+            mv_props["hovered"] = hovered
         if layout is not None:
             mv_props["layout"] = layout
         if loading_options is not None:
@@ -421,7 +424,7 @@ class BrillouinZone(MatterViz):
 
     Component key: ``brillouin/BrillouinZone``
 
-    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_hover
+    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_hover, on_kpath_hover
     """
 
     def __init__(
@@ -1187,13 +1190,13 @@ class Bands(MatterViz):
         band_spin_mode: Any | None = None,
         band_structs: dict | None = None,
         band_type: Any | None = None,
-        class_: str | None = None,
         controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
         error_bands: list | None = None,
         fermi_level: float | None = None,
         fill_regions: list | None = None,
+        highlighted_qpoint_index: int | None = None,
         hover_config: dict | None = None,
         label_placement_config: dict | None = None,
         legend: Any | None = None,
@@ -1238,8 +1241,6 @@ class Bands(MatterViz):
             mv_props["band_structs"] = band_structs
         if band_type is not None:
             mv_props["band_type"] = band_type
-        if class_ is not None:
-            mv_props["class"] = class_
         if controls is not None:
             mv_props["controls"] = controls
         if current_x_value is not None:
@@ -1252,6 +1253,8 @@ class Bands(MatterViz):
             mv_props["fermi_level"] = fermi_level
         if fill_regions is not None:
             mv_props["fill_regions"] = fill_regions
+        if highlighted_qpoint_index is not None:
+            mv_props["highlighted_qpoint_index"] = highlighted_qpoint_index
         if hover_config is not None:
             mv_props["hover_config"] = hover_config
         if label_placement_config is not None:

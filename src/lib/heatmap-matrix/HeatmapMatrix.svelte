@@ -481,16 +481,14 @@
     bg_flat[get_flat_idx(x_idx, y_idx)]
 
   // === Cell context builder (only called for clicks, not per-hover) ===
-  function build_cell_context(x_idx: number, y_idx: number): CellContext {
-    return {
-      x_item: x_items[x_idx],
-      y_item: y_items[y_idx],
-      x_idx,
-      y_idx,
-      value: get_value(x_idx, y_idx),
-      bg_color: get_bg(x_idx, y_idx),
-    }
-  }
+  const build_cell_context = (x_idx: number, y_idx: number): CellContext => ({
+    x_item: x_items[x_idx],
+    y_item: y_items[y_idx],
+    x_idx,
+    y_idx,
+    value: get_value(x_idx, y_idx),
+    bg_color: get_bg(x_idx, y_idx),
+  })
 
   // === Fully imperative hover management ===
   // ZERO $state writes during mouseover — all DOM updates are direct.

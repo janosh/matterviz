@@ -5,7 +5,7 @@
   import type { Vec2 } from '$lib/math'
   import { TableInset } from '$lib/periodic-table'
   import { ColorBar } from '$lib/plot'
-  import { PeriodicTableDemo } from '$site'
+  import { MultiValueHeatmapDemo, PeriodicTableDemo } from '$site'
 
   let four_fold_data = $derived(
     element_data.map((el) => [
@@ -99,6 +99,8 @@
 <h1>Periodic Table</h1>
 
 <PeriodicTableDemo />
+
+<MultiValueHeatmapDemo />
 
 <h2>4-fold Split</h2>
 <p>

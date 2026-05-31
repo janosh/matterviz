@@ -28,7 +28,12 @@
   } from './compute'
   import { with_hover_pointer } from './pointer'
   import { get_temp_filter_payload, get_valid_temperature } from './temperature'
-  import type { ChemPotDiagramConfig, ChemPotDiagramData, ChemPotHoverInfo } from './types'
+  import type {
+    ChemPotColorMode,
+    ChemPotDiagramConfig,
+    ChemPotDiagramData,
+    ChemPotHoverInfo,
+  } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   let {
@@ -78,11 +83,7 @@
     default_min_limit_override ??
       (config.default_min_limit ?? CHEMPOT_DEFAULTS.default_min_limit),
   )
-  let color_mode_override = $state<
-    NonNullable<ChemPotDiagramConfig[`color_mode`]> | null
-  >(
-    null,
-  )
+  let color_mode_override = $state<ChemPotColorMode | null>(null)
   let color_scale_override = $state<D3InterpolateName | null>(null)
   let reverse_color_scale_override = $state<boolean | null>(null)
   const color_mode = $derived(
@@ -199,10 +200,7 @@
     matching_entry_count: number
     min_energy_per_atom: number | null
   }
-  type NumericColorMode = Exclude<
-    NonNullable<ChemPotDiagramConfig[`color_mode`]>,
-    `none` | `arity`
-  >
+  type NumericColorMode = Exclude<ChemPotColorMode, `none` | `arity`>
 
   const raw_el_refs = $derived(
     get_min_entries_and_el_refs(temp_filtered_entries).el_refs,
@@ -436,8 +434,8 @@
   const get_svg_element = (): SVGSVGElement | null =>
     scatter_wrapper?.querySelector<SVGSVGElement>(`svg`) ?? null
 
-  function get_json_string(): string {
-    return JSON.stringify(
+  const get_json_string = (): string =>
+    JSON.stringify(
       {
         elements: diagram_data?.elements ?? [],
         domains: draw_domains,
@@ -446,7 +444,6 @@
       null,
       2,
     )
-  }
 
   function export_json_file(): void {
     download(

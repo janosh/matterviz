@@ -54,12 +54,35 @@ test.describe(`ThemeControl`, () => {
       await expect
         .poll(
           () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme),
-          {
-            timeout: 5000,
-          },
+          { timeout: 5000 },
         )
         .toBe(expected_scheme)
     }
+  })
+
+  test(`syntax highlighting colors follow app theme not OS preference`, async ({ page }) => {
+    // Regression: starry-night gates its dark palette behind a prefers-color-scheme
+    // media query; starry_night_theme_plugin (vite.config.ts) re-targets it to
+    // data-theme so a manually chosen dark theme uses the dark palette even when
+    // the OS prefers light. Variable name + colors below verified against
+    // @wooorm/starry-night@3.9.0: storage-modifier-import is near-black (#1f2328) in
+    // the light palette and must become the readable dark value (#f0f6fc).
+    await page.emulateMedia({ colorScheme: `light` })
+    const theme_control = await get_theme_control(page)
+    await theme_control.selectOption(`dark`)
+    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, { timeout: 5000 })
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            getComputedStyle(document.documentElement)
+              .getPropertyValue(`--color-prettylights-syntax-storage-modifier-import`)
+              .trim(),
+          ),
+        { timeout: 5000 },
+      )
+      .toBe(`#f0f6fc`)
   })
 
   test(`auto theme responds to system preference`, async ({ page }) => {
@@ -106,18 +129,14 @@ test.describe(`ThemeControl`, () => {
     await expect(theme_control).toBeVisible({ timeout: 10000 })
 
     await expect(theme_control).toHaveValue(`dark`, { timeout: 5000 })
-    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
-      timeout: 5000,
-    })
+    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, { timeout: 5000 })
 
     // Test persistence across navigation
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
     const nav_theme_control = page.locator(`.theme-control`)
     await expect(nav_theme_control).toBeVisible({ timeout: 10000 })
     await expect(nav_theme_control).toHaveValue(`dark`, { timeout: 5000 })
-    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
-      timeout: 5000,
-    })
+    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, { timeout: 5000 })
 
     await context.close()
   })

@@ -4,11 +4,10 @@ import type { LayerZIndex, RefLine, RefLineValue } from './types'
 export type IndexedRefLine = RefLine & { idx: number }
 
 // Create indexed ref_lines, filtering out invisible ones
-export function index_ref_lines(ref_lines: RefLine[] | undefined): IndexedRefLine[] {
-  return (ref_lines ?? [])
+export const index_ref_lines = (ref_lines: RefLine[] | undefined): IndexedRefLine[] =>
+  (ref_lines ?? [])
     .filter((line) => line.visible !== false)
     .map((line, idx) => ({ ...line, idx }))
-}
 
 // Z-index groups for ordered rendering
 export interface RefLinesByZIndex {
@@ -340,8 +339,12 @@ export function calculate_annotation_position(
       perp_x = sign * nx * gap
       perp_y = sign * ny * gap
     } else {
-      // left = perpendicular to the "left" of direction vector, right = opposite
-      const sign = side === `left` ? 1 : -1
+      // left/right offset to the side of the line in screen space (right -> +x, left -> -x), stable
+      // regardless of endpoint order — vertical ref lines are stored bottom->top, which flips the
+      // perpendicular. Horizontal lines (nx == 0) fall back to right = up (-y), left = down (+y).
+      const want_right = side === `right`
+      const sign =
+        Math.abs(nx) > 1e-9 ? (want_right ? 1 : -1) * Math.sign(nx) : want_right ? -1 : 1
       perp_x = sign * nx * gap
       perp_y = sign * ny * gap
     }

@@ -15,40 +15,38 @@ const strip_node_imports_plugin = (): Plugin => ({
 
 // Plugin to deduplicate large inline WASM base64 strings
 // moyo-wasm uses wasm-bindgen which inlines WASM as data URLs
-function deduplicate_wasm_plugin(): Plugin {
-  return {
-    name: `deduplicate-wasm`,
-    renderChunk(code: string) {
-      // Find all base64 WASM data URLs (they're ~700KB each as base64)
-      const wasm_regex = /"data:application\/wasm;base64,([A-Za-z0-9+/=]{1000,})"/g
-      const matches = [...code.matchAll(wasm_regex)]
+const deduplicate_wasm_plugin = (): Plugin => ({
+  name: `deduplicate-wasm`,
+  renderChunk(code: string) {
+    // Find all base64 WASM data URLs (they're ~700KB each as base64)
+    const wasm_regex = /"data:application\/wasm;base64,([A-Za-z0-9+/=]{1000,})"/g
+    const matches = [...code.matchAll(wasm_regex)]
 
-      if (matches.length <= 1) return null // Nothing to dedupe
+    if (matches.length <= 1) return null // Nothing to dedupe
 
-      // Group by content to find duplicates
-      const by_content = new Map<string, RegExpExecArray[]>()
-      for (const match of matches) {
-        const full = match[0]
-        const list = by_content.get(full) || []
-        list.push(match)
-        by_content.set(full, list)
+    // Group by content to find duplicates
+    const by_content = new Map<string, RegExpExecArray[]>()
+    for (const match of matches) {
+      const full = match[0]
+      const list = by_content.get(full) || []
+      list.push(match)
+      by_content.set(full, list)
+    }
+
+    // Replace duplicates with a shared variable
+    let result = code
+    let var_idx = 0
+    for (const [wasm_str, occurrences] of by_content) {
+      if (occurrences.length > 1) {
+        const var_name = `__wasm_data_${var_idx++}__`
+        // Add variable declaration at the start of the chunk
+        result = `var ${var_name}=${wasm_str};\n` + result.replaceAll(wasm_str, var_name)
       }
+    }
 
-      // Replace duplicates with a shared variable
-      let result = code
-      let var_idx = 0
-      for (const [wasm_str, occurrences] of by_content) {
-        if (occurrences.length > 1) {
-          const var_name = `__wasm_data_${var_idx++}__`
-          // Add variable declaration at the start of the chunk
-          result = `var ${var_name}=${wasm_str};\n` + result.replaceAll(wasm_str, var_name)
-        }
-      }
-
-      return result
-    },
-  }
-}
+    return result
+  },
+})
 
 export default defineConfig({
   define: {

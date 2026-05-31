@@ -23,9 +23,11 @@ import {
   normalize_densities,
   normalize_dos,
   pretty_sym_point,
+  qpoint_x_position,
   ranges_equal,
   scale_segment_distances,
   shift_to_fermi,
+  sync_axis_range,
 } from '$lib/spectral/helpers'
 import type { BaseBandStructure, RibbonConfig } from '$lib/spectral/types'
 import { describe, expect, it, vi } from 'vitest'
@@ -111,6 +113,45 @@ describe(`axis_with_range`, () => {
     },
   ])(`preserves axis config with $name`, ({ axis, range, expected }) => {
     expect(axis_with_range(axis, range)).toEqual(expected)
+  })
+})
+
+describe(`sync_axis_range`, () => {
+  it.each([
+    {
+      name: `applies a new valid range`,
+      axis: { label: `Y` },
+      range: [0, 10] as Vec2,
+      expected: { label: `Y`, range: [0, 10] },
+    },
+    {
+      name: `updates a differing range`,
+      axis: { label: `Y`, range: [0, 5] as Vec2 },
+      range: [0, 10] as Vec2,
+      expected: { label: `Y`, range: [0, 10] },
+    },
+    {
+      name: `clears range when new range is invalid`,
+      axis: { label: `Y`, range: [0, 5] as Vec2 },
+      range: [NaN, 10] as Vec2,
+      expected: { label: `Y` },
+    },
+    {
+      name: `clears range when new range is undefined`,
+      axis: { label: `Y`, range: [0, 5] as Vec2 },
+      range: undefined,
+      expected: { label: `Y` },
+    },
+  ])(`$name`, ({ axis, range, expected }) => {
+    expect(sync_axis_range(axis, range)).toEqual(expected)
+  })
+
+  it.each([
+    { name: `unchanged valid range`, axis: { label: `Y`, range: [0, 10] as Vec2 } },
+    { name: `invalid range with no existing range`, axis: { label: `Y` } },
+  ])(`returns same reference for $name (skips reactive churn)`, ({ axis }) => {
+    const range = `range` in axis ? axis.range : ([NaN, 1] as Vec2)
+    expect(sync_axis_range(axis, range)).toBe(axis)
   })
 })
 
@@ -488,6 +529,44 @@ describe(`extract_k_path_points`, () => {
     expect(result[1]).toEqual([1, 0.5, 0])
   })
 
+  it(`folds k-path points into the first (Wigner-Seitz) Brillouin zone`, () => {
+    // FCC reciprocal lattice (rows = b vectors). For non-orthogonal lattices,
+    // per-axis centered_frac wrapping alone leaves some points outside the WS zone.
+    const fcc_recip: Matrix3x3 = [
+      [-1, 1, 1],
+      [1, -1, 1],
+      [1, 1, -1],
+    ]
+    // Off-symmetry sample near the K point (3/8, 3/8, 3/4). The old per-axis wrap
+    // placed this at [-0.26, -0.26, 1.0] (norm 1.064) — outside the zone — instead
+    // of the minimum-image representative [0.74, 0.74, 0] (norm 1.05).
+    const band_struct: BaseBandStructure = {
+      qpoints: [{ label: `K`, frac_coords: [0.3713, 0.3713, 0.7425] as Vec3 }],
+      branches: [{ start_index: 0, end_index: 0, name: `K` }],
+      distance: [0],
+      bands: [[0]],
+      nb_bands: 1,
+      labels_dict: {},
+      recip_lattice: { matrix: fcc_recip },
+    }
+
+    const [k_point] = extract_k_path_points(band_struct, fcc_recip)
+    const norm_sq = (vec: Vec3) => vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
+    // Returned point must be the minimum image: no reciprocal-lattice translate is closer to Γ
+    for (const n1 of [-1, 0, 1]) {
+      for (const n2 of [-1, 0, 1]) {
+        for (const n3 of [-1, 0, 1]) {
+          const translated: Vec3 = [
+            k_point[0] + n1 * fcc_recip[0][0] + n2 * fcc_recip[1][0] + n3 * fcc_recip[2][0],
+            k_point[1] + n1 * fcc_recip[0][1] + n2 * fcc_recip[1][1] + n3 * fcc_recip[2][1],
+            k_point[2] + n1 * fcc_recip[0][2] + n2 * fcc_recip[1][2] + n3 * fcc_recip[2][2],
+          ]
+          expect(norm_sq(k_point)).toBeLessThanOrEqual(norm_sq(translated) + 1e-9)
+        }
+      }
+    }
+  })
+
   it(`returns empty array for invalid inputs`, () => {
     const empty_bs: BaseBandStructure = {
       qpoints: [],
@@ -543,6 +622,26 @@ describe(`find_qpoint_at_rescaled_x`, () => {
     { x: 1.25, expected: 4, label: `middle of X-K segment` },
   ])(`maps rescaled x=$x to qpoint index $expected ($label)`, ({ x, expected }) => {
     expect(find_qpoint_at_rescaled_x(rescaled_bs, x, x_pos)).toBe(expected)
+  })
+
+  it.each([
+    { idx: 0, expected: 0.0, label: `Γ` },
+    { idx: 3, expected: 1.0, label: `X` },
+    { idx: 5, expected: 1.5, label: `K` },
+    { idx: 4, expected: 1.25, label: `middle of X-K` },
+  ])(
+    `qpoint_x_position maps index $idx to rescaled x=$expected ($label)`,
+    ({ idx, expected }) => {
+      expect(qpoint_x_position(rescaled_bs, idx, x_pos)).toBeCloseTo(expected, 6)
+    },
+  )
+
+  it(`qpoint_x_position round-trips with find_qpoint_at_rescaled_x`, () => {
+    for (const idx of [0, 3, 5]) {
+      const x = qpoint_x_position(rescaled_bs, idx, x_pos)
+      expect(x).not.toBeNull()
+      expect(find_qpoint_at_rescaled_x(rescaled_bs, x as number, x_pos)).toBe(idx)
+    }
   })
 
   it(`maps intermediate rescaled x in GAMMA-X correctly`, () => {

@@ -1688,7 +1688,11 @@ This example shows how to place the color bar vertically on the right side of th
     </label>
   {/each}
 
-  <ColorScaleSelect bind:value={color_scale.scheme} selected={[color_scale.scheme]} />
+  <ColorScaleSelect
+    bind:value={color_scale.scheme}
+    selected={[color_scale.scheme]}
+    style="min-width: 250px"
+  />
 </div>
 
 The color bar is positioned vertically to the right, outside the plot. The plot's right
@@ -3224,7 +3228,6 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
     markers: `line+points`,
     y_axis: `y1`,
   }
-
   const pressure_data = {
     x: time,
     y: time.map((t) => 100 + 30 * Math.sin(t * 0.3 + 0.5) + Math.random() * 5),
@@ -3238,9 +3241,9 @@ When using dual y-axes (Y1 left, Y2 right), the `sync` property on `y2_axis` con
   const sync_labels = {
     none: `Independent`,
     synced: `Synced`,
-    align: `Align`,
+    align: `Align 0`,
   }
-  let sync_mode = $state(`synced`)
+  let sync_mode = $state(`none`)
 </script>
 
 <div style="margin-bottom: 1em; display: flex; gap: 1.5em; align-items: center">

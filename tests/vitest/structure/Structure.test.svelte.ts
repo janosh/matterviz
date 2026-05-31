@@ -9,7 +9,12 @@ import { readFileSync } from 'node:fs'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { gunzipSync } from 'node:zlib'
-import { bind_props, doc_query } from '../setup'
+import {
+  assert_hover_scoped_shortcut,
+  bind_props,
+  doc_query,
+  press_window_key,
+} from '../setup'
 
 const structure = structures[0]
 
@@ -113,6 +118,62 @@ describe(`Structure`, () => {
     await tick()
     expect(getComputedStyle(mode_toggle).opacity).toBe(`0.7`)
     expect(viewer.classList.contains(`gizmo-visible`)).toBe(true)
+  })
+
+  test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
+    const state = { info_pane_open: false }
+    mount(Structure, {
+      target: document.body,
+      props: bind_props({ structure, enable_info_pane: true }, state),
+    })
+    await tick()
+
+    await assert_hover_scoped_shortcut({
+      viewer: doc_query(`.structure`),
+      fire: () => press_window_key({ key: `i`, ctrlKey: true }),
+      read_state: () => state.info_pane_open,
+    })
+  })
+
+  test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
+    const state = { info_pane_open: false, measure_mode: `edit-atoms` as MeasureMode }
+    mount(Structure, {
+      target: document.body,
+      props: bind_props({ structure, enable_info_pane: true }, state),
+    })
+    await tick()
+    expect(state.measure_mode, `edit-atoms should stick for a plain structure`).toBe(
+      `edit-atoms`,
+    )
+
+    doc_query(`.structure`).dispatchEvent(new MouseEvent(`mouseenter`))
+    await tick()
+    // hovered (not focused) + edit mode → window forwarder ignores the key
+    press_window_key({ key: `i`, ctrlKey: true })
+    expect(state.info_pane_open, `hover path ignored in edit mode`).toBe(false)
+  })
+
+  test(`edit-atoms Delete shortcut deletes the selected atom and prevents default`, async () => {
+    const state = { structure: structures[0], selected_sites: [] as number[] }
+    mount(Structure, {
+      target: document.body,
+      props: bind_props({ measure_mode: `edit-atoms` as MeasureMode }, state),
+    })
+    await tick()
+    state.selected_sites = [0] // select after mount (on-load effect clears selection)
+    const n_before = state.structure.sites.length
+
+    // dispatch on the viewer (focused/element path) — handle_and_prevent should run
+    const event = new KeyboardEvent(`keydown`, {
+      key: `Delete`,
+      cancelable: true,
+      bubbles: true,
+    })
+    doc_query(`.structure`).dispatchEvent(event)
+    await tick()
+
+    expect(event.defaultPrevented, `Delete should be handled`).toBe(true)
+    expect(state.structure.sites.length, `one atom removed`).toBe(n_before - 1)
   })
 
   test.each([

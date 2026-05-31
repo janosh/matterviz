@@ -1,4 +1,3 @@
-import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import type {
   FrameIndex,
   TrajectoryFormat,
@@ -9,20 +8,7 @@ import type {
 import { get_trajectory_stats, validate_trajectory } from '$lib/trajectory'
 import { validate_3x3_matrix } from '$lib/trajectory/helpers'
 import { describe, expect, test } from 'vitest'
-
-// Factory for trajectory frames
-function make_frame(step: number, site_count = 3): TrajectoryFrame {
-  const structure: AnyStructure = {
-    sites: Array.from({ length: site_count }, (_, idx) => ({
-      species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 }],
-      xyz: [idx, 0, 0] as Vec3,
-      abc: [idx / 10, 0, 0] as Vec3,
-      label: `H${idx + 1}`,
-      properties: {},
-    })),
-  }
-  return { structure, step, metadata: {} }
-}
+import { make_trajectory_frame } from '../setup'
 
 // Factory for trajectories
 function make_trajectory(
@@ -44,7 +30,7 @@ function make_trajectory(
   const frames = Array.from({ length: frame_count }, (_, idx) => {
     const atoms =
       typeof atoms_per_frame === `number` ? atoms_per_frame : (atoms_per_frame[idx] ?? 3)
-    return make_frame(idx * 10, atoms)
+    return make_trajectory_frame(idx * 10, atoms)
   })
 
   const trajectory: TrajectoryType = { frames }
@@ -93,7 +79,7 @@ describe(`validate_trajectory`, () => {
   })
 
   test(`returns error for frame without step`, () => {
-    const frame = make_frame(0)
+    const frame = make_trajectory_frame(0)
     // @ts-expect-error intentionally removing step
     delete frame.step
     expect(validate_trajectory({ frames: [frame] })).toContain(
@@ -205,7 +191,7 @@ describe(`validate_trajectory`, () => {
     const traj: TrajectoryType = {
       frames: [
         { structure: { sites: [] }, step: 0 }, // Frame 0: missing sites error
-        make_frame(10),
+        make_trajectory_frame(10),
         { step: 20 } as TrajectoryFrame, // Frame 2: missing structure error
       ],
       is_indexed: true, // is_indexed without indexed_frames error

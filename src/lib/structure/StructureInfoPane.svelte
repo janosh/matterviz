@@ -168,12 +168,11 @@
   const get_element_name = (element: string): string =>
     element_data?.find((element_record) => element_record.symbol === element)?.name || element
 
-  function site_summary(card: SiteCard): string {
-    return [
+  const site_summary = (card: SiteCard): string =>
+    [
       card.element_name,
       ...card.details.map(({ label, value }) => `${label}: ${value}`),
     ].join(`; `)
-  }
 
   function format_site_property(prop_key: string, prop_value: unknown): SiteDetail | null {
     if (prop_value == null) return null

@@ -61,16 +61,14 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
 })
 
 // Merge partial config with defaults - single helper for consistent merging
-export function merge_phase_diagram_config(config: Partial<PhaseDiagramConfig>) {
-  return {
-    margin: { ...PHASE_DIAGRAM_DEFAULTS.margin, ...config.margin },
-    font_size: config.font_size ?? PHASE_DIAGRAM_DEFAULTS.font_size,
-    special_point_radius:
-      config.special_point_radius ?? PHASE_DIAGRAM_DEFAULTS.special_point_radius,
-    tie_line: { ...PHASE_DIAGRAM_DEFAULTS.tie_line, ...config.tie_line },
-    colors: { ...PHASE_DIAGRAM_DEFAULTS.colors, ...config.colors },
-  }
-}
+export const merge_phase_diagram_config = (config: Partial<PhaseDiagramConfig>) => ({
+  margin: { ...PHASE_DIAGRAM_DEFAULTS.margin, ...config.margin },
+  font_size: config.font_size ?? PHASE_DIAGRAM_DEFAULTS.font_size,
+  special_point_radius:
+    config.special_point_radius ?? PHASE_DIAGRAM_DEFAULTS.special_point_radius,
+  tie_line: { ...PHASE_DIAGRAM_DEFAULTS.tie_line, ...config.tie_line },
+  colors: { ...PHASE_DIAGRAM_DEFAULTS.colors, ...config.colors },
+})
 
 // Phase colors as hex - single source of truth
 // Extended palette supports 3+ phase regions (Greek letters α through λ)
@@ -297,9 +295,8 @@ export function format_composition(
 }
 
 // Format temperature value for display
-export function format_temperature(value: number, unit: TempUnit = `K`): string {
-  return `${format_num(value, `.0f`)} ${unit}`
-}
+export const format_temperature = (value: number, unit: TempUnit = `K`): string =>
+  `${format_num(value, `.0f`)} ${unit}`
 
 // Parse a two-phase region name into its two phase names
 // Returns null if the region is not exactly a two-phase region

@@ -487,31 +487,27 @@
     hovered_point = null
   }
 
-  function handler_props(
+  const handler_props = (
     point: DenseInternalPoint<Metadata>,
-  ): ScatterHandlerProps<Metadata> {
-    return {
-      x: point.x,
-      y: point.y,
-      cx: point.cx,
-      cy: point.cy,
-      metadata: point.metadata,
-      label: series[point.series_idx]?.label ?? null,
-      series_idx: point.series_idx,
-      x_axis,
-      y_axis,
-      x_formatted: format_value(point.x, x_axis.format ?? `.3~g`),
-      y_formatted: format_value(point.y, y_axis.format ?? `.3~g`),
-    }
-  }
+  ): ScatterHandlerProps<Metadata> => ({
+    x: point.x,
+    y: point.y,
+    cx: point.cx,
+    cy: point.cy,
+    metadata: point.metadata,
+    label: series[point.series_idx]?.label ?? null,
+    series_idx: point.series_idx,
+    x_axis,
+    y_axis,
+    x_formatted: format_value(point.x, x_axis.format ?? `.3~g`),
+    y_formatted: format_value(point.y, y_axis.format ?? `.3~g`),
+  })
 
-  function point_color(point: DenseInternalPoint<Metadata>): string {
-    return series[point.series_idx]?.color ?? default_point_color
-  }
+  const point_color = (point: DenseInternalPoint<Metadata>): string =>
+    series[point.series_idx]?.color ?? default_point_color
 
-  function point_label_key(point: DenseInternalPoint<Metadata>): string {
-    return `${point.series_idx}-${point.point_idx}`
-  }
+  const point_label_key = (point: DenseInternalPoint<Metadata>): string =>
+    `${point.series_idx}-${point.point_idx}`
 
   function make_point(series_idx: number, point_idx: number): DenseInternalPoint<Metadata> {
     const srs = series[series_idx]
@@ -530,9 +526,8 @@
     }
   }
 
-  function fallback_label_text(point: DenseInternalPoint<Metadata>): string {
-    return String(point.point_id ?? point_label_key(point))
-  }
+  const fallback_label_text = (point: DenseInternalPoint<Metadata>): string =>
+    String(point.point_id ?? point_label_key(point))
 
   function point_payload(
     point: DenseInternalPoint<Metadata>,
@@ -542,16 +537,14 @@
     return { ...base_payload, point_data: point_data?.(base_payload) ?? undefined }
   }
 
-  function label_measure_text(payload: BinnedPointPayload<Metadata, PointData>): string {
-    return point_labels_settings.measure_text?.(payload) ?? fallback_label_text(payload.point)
-  }
+  const label_measure_text = (payload: BinnedPointPayload<Metadata, PointData>): string =>
+    point_labels_settings.measure_text?.(payload) ?? fallback_label_text(payload.point)
 
-  function label_size_for_payload(
+  const label_size_for_payload = (
     payload: BinnedPointPayload<Metadata, PointData>,
-  ): LabelSize {
-    return label_sizes.get(point_label_key(payload.point)) ??
+  ): LabelSize =>
+    label_sizes.get(point_label_key(payload.point)) ??
       estimate_label_size(label_measure_text(payload), point_labels_settings.font_size)
-  }
 
   let point_label_payloads = $derived.by(() => {
     if (!point_labels_settings.render || render_mode !== `points`) return []
@@ -649,12 +642,6 @@
       label_size: label_size_for_payload(payload),
       min_length: point_labels_settings.leaders.min_length_px,
     })
-  }
-
-  function point_tooltip_props(
-    point: DenseInternalPoint<Metadata>,
-  ): BinnedPointTooltipPayload<Metadata, PointData> {
-    return point_payload(point)
   }
 
   function on_pointer_move(event: PointerEvent) {
@@ -971,7 +958,7 @@
       - {format_value(hovered_bin.y_range[1], y_axis.format ?? `.3~g`)}
     </PlotTooltip>
   {:else if hovered_point}
-    {@const props = point_tooltip_props(hovered_point)}
+    {@const props = point_payload(hovered_point)}
     <PlotTooltip x={tooltip_pos.x} y={tooltip_pos.y} offset={{ x: 0, y: 0 }}>
       {#if tooltip}
         {@render tooltip(props)}

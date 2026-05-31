@@ -84,9 +84,13 @@
       )
       : null,
   )
+  // Q-point hovered directly on the BZ k-path (reverse direction: BZ -> bands/DOS)
+  let bz_hovered_qpoint_index = $state<number | null>(null)
+  // Unified hovered q-point: a band-point hover takes priority, else a BZ k-path hover
+  let active_qpoint_index = $derived(hovered_qpoint_index ?? bz_hovered_qpoint_index)
   let hovered_k_point = $derived(
-    hovered_qpoint_index !== null
-      ? (k_path_points[hovered_qpoint_index] as Vec3)
+    active_qpoint_index !== null
+      ? (k_path_points[active_qpoint_index] as Vec3)
       : null,
   )
   const [desktop_width, tablet_width] = [1200, 600]
@@ -132,32 +136,34 @@
     if (result !== undefined) synced_zoom_range = result
   })
 
-  // Propagate synced range to bands y-axis (untrack current to avoid overwriting child zoom)
-  $effect(() => {
+  // Compute the y-axis a plot should adopt when propagating the synced range, or
+  // undefined to leave it untouched. A valid child range is either already at base
+  // or a live zoom we must not clobber, so we only push base when the child has
+  // reset to auto-range (invalid). base_range is read unconditionally to keep the
+  // effect subscribed to synced_zoom_range/shared_frequency_range; current_range is
+  // read via untrack() at the call site to avoid overwriting child zoom.
+  const propagate_synced_range = (
+    current_range: Vec2 | undefined,
+    make_axis: (range?: Vec2) => AxisConfig,
+  ): AxisConfig | undefined => {
     const base_range = synced_zoom_range ?? shared_frequency_range
-    const current_range = untrack(() => bands_y_axis.range) as Vec2 | undefined
-    // Skip if current range already matches base, or is valid but differs (child zoom in progress)
-    if (helpers.ranges_equal(current_range, base_range)) return
-    if (
-      helpers.is_valid_range(current_range) &&
-      !helpers.ranges_equal(current_range, base_range)
-    ) return
-    // Only include range if it's valid (don't override child's auto-range with undefined)
-    bands_y_axis = bands_default_axis(base_range)
+    return helpers.is_valid_range(current_range) ? undefined : make_axis(base_range)
+  }
+
+  $effect(() => {
+    const next = propagate_synced_range(
+      untrack(() => bands_y_axis.range) as Vec2 | undefined,
+      bands_default_axis,
+    )
+    if (next) bands_y_axis = next
   })
 
-  // Propagate synced range to DOS y-axis (untrack current to avoid overwriting child zoom)
   $effect(() => {
-    const base_range = synced_zoom_range ?? shared_frequency_range
-    const current_range = untrack(() => dos_y_axis.range) as Vec2 | undefined
-    // Skip if current range already matches base, or is valid but differs (child zoom in progress)
-    if (helpers.ranges_equal(current_range, base_range)) return
-    if (
-      helpers.is_valid_range(current_range) &&
-      !helpers.ranges_equal(current_range, base_range)
-    ) return
-    // Only include range if it's valid (don't override child's auto-range with undefined)
-    dos_y_axis = dos_default_axis(base_range)
+    const next = propagate_synced_range(
+      untrack(() => dos_y_axis.range) as Vec2 | undefined,
+      dos_default_axis,
+    )
+    if (next) dos_y_axis = next
   })
 
   let hovered_frequency = $state<number | null>(null)
@@ -168,7 +174,11 @@
   class="bands-dos-brillouin {screen_class} {rest.class ?? ``}"
   bind:clientWidth
 >
-  {@render children?.({ hovered_frequency, hovered_band_point, hovered_qpoint_index })}
+  {@render children?.({
+    hovered_frequency,
+    hovered_band_point,
+    hovered_qpoint_index: active_qpoint_index,
+  })}
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
     {band_structs}
@@ -178,6 +188,7 @@
     bind:y_axis={bands_y_axis}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
+    highlighted_qpoint_index={active_qpoint_index}
     on_point_hover={(event: ScatterHandlerEvent | null) => {
       hovered_band_point = event?.point ?? null
       bands_props.on_point_hover?.(event)
@@ -197,7 +208,8 @@
         : []
     ) ?? []}
     {hovered_k_point}
-    {hovered_qpoint_index}
+    hovered_qpoint_index={active_qpoint_index}
+    on_kpath_hover={(idx) => (bz_hovered_qpoint_index = idx)}
     {...bz_props}
   />
 

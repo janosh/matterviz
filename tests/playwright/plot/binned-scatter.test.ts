@@ -16,14 +16,13 @@ async function wait_for_ready(page: Page) {
   return status
 }
 
-async function get_plot_area(page: Page): Promise<PlotArea> {
-  return page.locator(`clipPath rect`).evaluate((rect) => ({
+const get_plot_area = (page: Page): Promise<PlotArea> =>
+  page.locator(`clipPath rect`).evaluate((rect) => ({
     left: Number(rect.getAttribute(`x`)),
     top: Number(rect.getAttribute(`y`)),
     width: Number(rect.getAttribute(`width`)),
     height: Number(rect.getAttribute(`height`)),
   }))
-}
 
 async function measure_plot_interaction(page: Page, click_target: `center` | `known-point`) {
   const known_point_bounds = click_target === `known-point` ? await get_plot_area(page) : null

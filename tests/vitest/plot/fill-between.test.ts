@@ -1,15 +1,13 @@
 // Tests for fill-between: utility functions and type structures
 import type { Vec2 } from '$lib/math'
+import type { Pt } from '$lib/plot/fill-utils'
 import {
-  apply_range_constraints,
-  apply_where_condition,
-  clamp_for_log_scale,
+  compute_fill_segments,
   convert_error_band_to_fill_region,
   generate_fill_path,
-  interpolate_series,
   is_fill_gradient,
-  LOG_EPSILON,
-  resolve_boundary,
+  monotone_interpolate,
+  resolve_boundary_points,
   resolve_series_ref,
 } from '$lib/plot/fill-utils'
 import type {
@@ -23,78 +21,72 @@ import type {
   LegendItem,
 } from '$lib/plot/types'
 import { FILL_CURVE_TYPES } from '$lib/plot/types'
+import { curveMonotoneX, line } from 'd3-shape'
 import { describe, expect, it } from 'vitest'
 
-// Interpolation tests
-describe(`interpolate_series`, () => {
-  it(`handles identical x-values`, () => {
-    const series_a = { x: [1, 2, 3], y: [10, 20, 30] }
-    const series_b = { x: [1, 2, 3], y: [5, 15, 25] }
-    const result = interpolate_series(series_a, series_b)
+// Reproduce the exact generator Line.svelte uses for series lines
+const series_line = (pts: readonly Pt[]): string =>
+  line<Pt>()
+    .x((pt) => pt.x)
+    .y((pt) => pt.y)
+    .curve(curveMonotoneX)(pts as Pt[]) ?? ``
 
-    expect(result.x).toEqual([1, 2, 3])
-    expect(result.y_a).toEqual([10, 20, 30])
-    expect(result.y_b).toEqual([5, 15, 25])
+const domains = { x_domain: [0, 20] as Vec2, y_domain: [0, 100] as Vec2 }
+
+describe(`monotone_interpolate`, () => {
+  it(`returns exact y at knots`, () => {
+    const xs = [0, 10, 20, 30]
+    const ys = [0, 30, 15, 40]
+    for (let idx = 0; idx < xs.length; idx++) {
+      expect(monotone_interpolate(xs, ys, xs[idx])).toBeCloseTo(ys[idx], 9)
+    }
   })
 
-  it(`interpolates mismatched x-values with linear interpolation`, () => {
-    const series_a = { x: [1, 3], y: [10, 30] }
-    const series_b = { x: [1, 2, 3], y: [5, 15, 25] }
-    const result = interpolate_series(series_a, series_b)
-
-    expect(result.x).toEqual([1, 2, 3])
-    expect(result.y_a[0]).toBe(10)
-    expect(result.y_a[1]).toBeCloseTo(20) // interpolated
-    expect(result.y_a[2]).toBe(30)
-    expect(result.y_b).toEqual([5, 15, 25])
+  it(`clamps to endpoints outside the domain`, () => {
+    const xs = [0, 10]
+    const ys = [5, 25]
+    expect(monotone_interpolate(xs, ys, -5)).toBe(5)
+    expect(monotone_interpolate(xs, ys, 15)).toBe(25)
   })
 
-  it(`handles non-overlapping ranges with extrapolation`, () => {
-    const series_a = { x: [1, 2], y: [10, 20] }
-    const series_b = { x: [3, 4], y: [30, 40] }
-    const result = interpolate_series(series_a, series_b)
-
-    // Should use nearest value for extrapolation
-    expect(result.x).toEqual([1, 2, 3, 4])
-    // series_a extrapolates last value for x=3,4
-    expect(result.y_a[2]).toBe(20) // extrapolated from last value
-    expect(result.y_a[3]).toBe(20)
-    // series_b extrapolates first value for x=1,2
-    expect(result.y_b[0]).toBe(30) // extrapolated from first value
-    expect(result.y_b[1]).toBe(30)
+  it(`is linear for collinear points`, () => {
+    const xs = [0, 10, 20]
+    const ys = [0, 10, 20]
+    expect(monotone_interpolate(xs, ys, 5)).toBeCloseTo(5)
+    expect(monotone_interpolate(xs, ys, 17)).toBeCloseTo(17)
   })
 
-  it(`handles step interpolation mode`, () => {
-    const series_a = { x: [1, 3], y: [10, 30] }
-    const series_b = { x: [1, 2, 3], y: [5, 15, 25] }
-    const result = interpolate_series(series_a, series_b, `step`)
-
-    expect(result.x).toEqual([1, 2, 3])
-    // Step interpolation holds previous value
-    expect(result.y_a[1]).toBe(10) // step holds value at x=1
+  it(`stays within neighboring knot bounds (monotonicity)`, () => {
+    const xs = [0, 10, 20, 30]
+    const ys = [0, 5, 100, 105] // monotone increasing
+    const mid = monotone_interpolate(xs, ys, 15)
+    expect(mid).toBeGreaterThanOrEqual(5)
+    expect(mid).toBeLessThanOrEqual(100)
   })
 
-  it(`handles empty series`, () => {
-    const series_a = { x: [], y: [] }
-    const series_b = { x: [1, 2], y: [10, 20] }
-    const result = interpolate_series(series_a, series_b)
-
-    expect(result.x).toEqual([1, 2])
-  })
-
-  it(`handles single point series`, () => {
-    const series_a = { x: [2], y: [20] }
-    const series_b = { x: [1, 2, 3], y: [10, 20, 30] }
-    const result = interpolate_series(series_a, series_b)
-
-    expect(result.x).toEqual([1, 2, 3])
-    expect(result.y_a[0]).toBe(20) // extrapolated
-    expect(result.y_a[1]).toBe(20) // exact match
-    expect(result.y_a[2]).toBe(20) // extrapolated
+  // Pin the hand-rolled cubic to d3's actual curveMonotoneX output at a non-knot x. monotone_interpolate
+  // re-implements d3 internals, so this guards against drift if d3 changes or the reimpl regresses.
+  it(`matches d3 curveMonotoneX between knots`, () => {
+    const xs = [0, 10, 20, 30]
+    const ys = [0, 30, 15, 40]
+    const pts = xs.map((x, idx) => ({ x, y: ys[idx] }))
+    // d3 path: "M x0,y0 C c1x,c1y c2x,c2y x1,y1 C ..." — parse the first cubic segment
+    const matches = series_line(pts).match(/-?\d+\.?\d*(?:e-?\d+)?/g) ?? []
+    expect(matches.length).toBeGreaterThanOrEqual(8) // guards the 8-part destructure below
+    const [x0, y0, c1x, c1y, c2x, c2y, x1, y1] = matches.map(Number)
+    // d3 places monotoneX x-control points at the 1/3 marks, which makes x linear in the bezier
+    // param. d3 rounds path coords to 3 decimals, so compare to 2 (still catches algorithmic drift).
+    expect(c1x).toBeCloseTo(x0 + (x1 - x0) / 3, 2)
+    expect(c2x).toBeCloseTo(x1 - (x1 - x0) / 3, 2)
+    for (const x of [2.5, 5, 7.5]) {
+      const u = (x - x0) / (x1 - x0)
+      const mu = 1 - u
+      const d3_y = mu ** 3 * y0 + 3 * mu ** 2 * u * c1y + 3 * mu * u ** 2 * c2y + u ** 3 * y1
+      expect(monotone_interpolate(xs, ys, x)).toBeCloseTo(d3_y, 2)
+    }
   })
 })
 
-// Boundary resolution tests
 describe(`resolve_series_ref`, () => {
   const mock_series: DataSeries[] = [
     { x: [1, 2, 3], y: [10, 20, 30], id: `series-a` },
@@ -118,242 +110,217 @@ describe(`resolve_series_ref`, () => {
   })
 })
 
-describe(`resolve_boundary`, () => {
-  const mock_series: DataSeries[] = [{ x: [1, 2, 3], y: [10, 20, 30], id: `test` }]
-  const x_values = [1, 2, 3]
-  const scales = {
-    x_scale: (val: number) => val * 10,
-    y_scale: (val: number) => val * 10,
-    x_domain: [1, 3] as Vec2,
-    y_domain: [0, 100] as Vec2,
-  }
+describe(`resolve_boundary_points`, () => {
+  const series: DataSeries[] = [{ x: [0, 10, 20], y: [10, 20, 30], id: `test` }]
+  const companion: Pt[] = [
+    { x: 0, y: 0 },
+    { x: 20, y: 0 },
+  ]
 
-  it.each([
-    [`number shorthand`, 42 as FillBoundary, [42, 42, 42]],
-    [`constant`, { type: `constant`, value: 50 } as FillBoundary, [50, 50, 50]],
-    [`series`, { type: `series`, series_idx: 0 } as FillBoundary, [10, 20, 30]],
-    [`function`, { type: `function`, fn: (c: number) => c * 5 } as FillBoundary, [5, 10, 15]],
-    [`data`, { type: `data`, values: [100, 200, 300] } as FillBoundary, [100, 200, 300]],
-    [`axis`, { type: `axis`, axis: `y`, value: 0 } as FillBoundary, [0, 0, 0]],
-  ])(`resolves %s boundary`, (_, boundary, expected) => {
-    expect(resolve_boundary(boundary, mock_series, x_values, scales)).toEqual(expected)
+  it(`resolves a series boundary to its native points with monotoneX`, () => {
+    const result = resolve_boundary_points({ type: `series`, series_idx: 0 }, series, domains)
+    expect(result?.curve).toBe(`monotoneX`)
+    expect(result?.points).toEqual([
+      { x: 0, y: 10 },
+      { x: 10, y: 20 },
+      { x: 20, y: 30 },
+    ])
   })
 
-  it(`returns null for unresolvable series reference`, () => {
+  it.each([
+    [`number shorthand`, 42 as FillBoundary, 42],
+    [`constant`, { type: `constant`, value: 50 } as FillBoundary, 50],
+    [`axis`, { type: `axis`, axis: `y`, value: 7 } as FillBoundary, 7],
+  ])(`resolves %s to a flat linear edge spanning the companion x`, (_, boundary, y) => {
+    const result = resolve_boundary_points(boundary, series, domains, companion)
+    expect(result?.curve).toBe(`linear`)
+    expect(result?.points).toEqual([
+      { x: 0, y },
+      { x: 20, y },
+    ])
+  })
+
+  it(`samples a function boundary across the span`, () => {
+    const result = resolve_boundary_points(
+      { type: `function`, fn: (coord) => coord * 5 },
+      series,
+      domains,
+      companion,
+    )
+    expect(result?.curve).toBe(`monotoneX`)
+    expect(result?.points[0]).toEqual({ x: 0, y: 0 })
+    expect(result?.points.at(-1)).toEqual({ x: 20, y: 100 })
+  })
+
+  it(`resolves data with explicit x natively`, () => {
+    const result = resolve_boundary_points(
+      { type: `data`, x: [0, 10, 20], values: [1, 2, 3] },
+      series,
+      domains,
+    )
+    expect(result?.points).toEqual([
+      { x: 0, y: 1 },
+      { x: 10, y: 2 },
+      { x: 20, y: 3 },
+    ])
+  })
+
+  it(`aligns data without x to the companion x positions`, () => {
+    const result = resolve_boundary_points(
+      { type: `data`, values: [1, 2, 3] },
+      series,
+      domains,
+      [
+        { x: 0, y: 0 },
+        { x: 5, y: 0 },
+        { x: 10, y: 0 },
+      ],
+    )
+    expect(result?.points).toEqual([
+      { x: 0, y: 1 },
+      { x: 5, y: 2 },
+      { x: 10, y: 3 },
+    ])
+  })
+
+  it(`returns null for an unresolvable series reference`, () => {
     expect(
-      resolve_boundary({ type: `series`, series_idx: 99 }, mock_series, x_values, scales),
+      resolve_boundary_points({ type: `series`, series_idx: 99 }, series, domains),
     ).toBeNull()
   })
 })
 
-describe(`apply_range_constraints`, () => {
-  it(`filters points outside x_range`, () => {
-    const x_values = [1, 2, 3, 4, 5]
-    const y1_values = [10, 20, 30, 40, 50]
-    const y2_values = [5, 15, 25, 35, 45]
-    const region = { x_range: [2, 4] as Vec2 }
+describe(`compute_fill_segments`, () => {
+  const series: DataSeries[] = [
+    { x: [0, 10, 20], y: [10, 12, 11], id: `lower` },
+    { x: [0, 10, 20], y: [30, 35, 33], id: `upper` },
+  ]
 
-    const result = apply_range_constraints(x_values, y1_values, y2_values, region)
-
-    expect(result.x).toEqual([2, 3, 4])
-    expect(result.y1).toEqual([20, 30, 40])
-    expect(result.y2).toEqual([15, 25, 35])
+  it(`traces both edges through the series' own points (single segment)`, () => {
+    const segments = compute_fill_segments(
+      { upper: { type: `series`, series_idx: 1 }, lower: { type: `series`, series_idx: 0 } },
+      series,
+      domains,
+    )
+    expect(segments).toHaveLength(1)
+    expect(segments[0].upper).toEqual([
+      { x: 0, y: 30 },
+      { x: 10, y: 35 },
+      { x: 20, y: 33 },
+    ])
+    expect(segments[0].lower).toEqual([
+      { x: 0, y: 10 },
+      { x: 10, y: 12 },
+      { x: 20, y: 11 },
+    ])
+    expect(segments[0].upper_curve).toBe(`monotoneX`)
   })
 
-  it(`clamps y values to y_range`, () => {
-    const x_values = [1, 2, 3]
-    const y1_values = [10, 50, 90]
-    const y2_values = [5, 40, 80]
-    const region = { y_range: [20, 60] as Vec2 }
-
-    const result = apply_range_constraints(x_values, y1_values, y2_values, region)
-
-    // Points where fill region completely outside y_range are filtered out
-    // Points within or overlapping are kept and clamped
-    expect(result.y1.every((val) => val >= 20 && val <= 60)).toBe(true)
-    expect(result.y2.every((val) => val >= 20 && val <= 60)).toBe(true)
+  it(`clips to the x-overlap and region.x_range with on-curve endpoints`, () => {
+    const segments = compute_fill_segments(
+      {
+        upper: { type: `series`, series_idx: 1 },
+        lower: { type: `series`, series_idx: 0 },
+        x_range: [5, 15],
+      },
+      series,
+      domains,
+    )
+    expect(segments).toHaveLength(1)
+    expect(segments[0].upper[0].x).toBe(5)
+    expect(segments[0].upper.at(-1)?.x).toBe(15)
   })
 
-  it(`handles null range values`, () => {
-    const x_values = [1, 2, 3]
-    const y1_values = [10, 20, 30]
-    const y2_values = [5, 15, 25]
-    const region = { x_range: [null, 2] } as FillRegion
-
-    const result = apply_range_constraints(x_values, y1_values, y2_values, region)
-
-    expect(result.x).toEqual([1, 2])
+  it(`splits into segments where a where-condition toggles`, () => {
+    // lower rises above upper only in the middle, so the fill is split
+    const cross_series: DataSeries[] = [
+      { x: [0, 1, 2, 3, 4], y: [0, 0, 0, 0, 0], id: `lo` },
+      { x: [0, 1, 2, 3, 4], y: [1, -1, 1, -1, 1], id: `up` },
+    ]
+    const segments = compute_fill_segments(
+      {
+        upper: { type: `series`, series_idx: 1 },
+        lower: { type: `series`, series_idx: 0 },
+        where: (_x, y_up, y_lo) => y_up > y_lo,
+      },
+      cross_series,
+      { x_domain: [0, 4], y_domain: [-2, 2] },
+    )
+    expect(segments.length).toBeGreaterThan(1)
   })
 
-  it(`returns original indices for mapping back`, () => {
-    const x_values = [1, 2, 3, 4, 5]
-    const y1_values = [10, 20, 30, 40, 50]
-    const y2_values = [5, 15, 25, 35, 45]
-    const region = { x_range: [2, 4] as Vec2 }
-
-    const result = apply_range_constraints(x_values, y1_values, y2_values, region)
-
-    expect(result.original_indices).toEqual([1, 2, 3])
-  })
-})
-
-// Where condition tests
-describe(`apply_where_condition`, () => {
-  it(`returns single segment when no condition`, () => {
-    const x_values = [1, 2, 3]
-    const y1_values = [10, 20, 30]
-    const y2_values = [5, 15, 25]
-    const region = {}
-
-    const result = apply_where_condition(x_values, y1_values, y2_values, region)
-
-    expect(result.segments.length).toBe(1)
-    expect(result.segments[0].length).toBe(3)
+  it(`returns no segments when boundaries do not overlap in x`, () => {
+    const disjoint: DataSeries[] = [
+      { x: [0, 10], y: [0, 0], id: `a` },
+      { x: [20, 30], y: [5, 5], id: `b` },
+    ]
+    const segments = compute_fill_segments(
+      { upper: { type: `series`, series_idx: 1 }, lower: { type: `series`, series_idx: 0 } },
+      disjoint,
+      { x_domain: [0, 30], y_domain: [0, 10] },
+    )
+    expect(segments).toEqual([])
   })
 
-  it(`filters points based on condition`, () => {
-    const x_values = [1, 2, 3, 4, 5]
-    const y1_values = [10, 20, 30, 40, 50]
-    const y2_values = [15, 15, 25, 45, 45]
-    // Condition: y1 > y2 (fill only where upper boundary is above lower)
-    const region = {
-      where: (_x: number, y1: number, y2: number) => y1 > y2,
-    }
-
-    const result = apply_where_condition(x_values, y1_values, y2_values, region)
-
-    // Check that all points in segments satisfy condition
-    for (const segment of result.segments) {
-      for (const point of segment) {
-        expect(point.y1).toBeGreaterThan(point.y2)
-      }
-    }
-  })
-
-  it(`creates multiple segments when condition changes`, () => {
-    // y1 > y2 only at x=2 and x=4
-    const x_values = [1, 2, 3, 4, 5]
-    const y1_values = [5, 20, 10, 40, 15]
-    const y2_values = [10, 10, 20, 20, 30]
-    const region = {
-      where: (_x: number, y1: number, y2: number) => y1 > y2,
-    }
-
-    const result = apply_where_condition(x_values, y1_values, y2_values, region)
-
-    // Should have multiple segments where condition is true
-    expect(result.segments.length).toBeGreaterThan(0)
-  })
-
-  it(`interpolates at crossing points`, () => {
-    // Linear crossing between x=1 and x=2
-    const x_values = [1, 2]
-    const y1_values = [5, 15] // crosses y2 at midpoint
-    const y2_values = [15, 5]
-    const region = {
-      where: (_x: number, y1: number, y2: number) => y1 > y2,
-    }
-
-    const result = apply_where_condition(x_values, y1_values, y2_values, region)
-
-    // Should have at least one segment with an interpolated crossing point
-    expect(result.segments.length).toBeGreaterThanOrEqual(1)
-    // The first segment should start at or after the crossing
-    if (result.segments.length > 0 && result.segments[0].length > 0) {
-      const first_point = result.segments[0][0]
-      expect(first_point.x).toBeGreaterThanOrEqual(1)
-      expect(first_point.x).toBeLessThanOrEqual(2)
-    }
+  it(`clips a stepAfter curve to its held value, not a linear interpolation`, () => {
+    // upper series y=[30,35,33] at x=[0,10,20]; clip at x=5 and x=15. stepAfter holds the previous
+    // knot's y (30 in [0,10), 35 in [10,20)) — linear interpolation would give 32.5 and 34.
+    const segments = compute_fill_segments(
+      {
+        upper: { type: `series`, series_idx: 1 },
+        lower: { type: `series`, series_idx: 0 },
+        curve: `stepAfter`,
+        x_range: [5, 15],
+      },
+      series,
+      domains,
+    )
+    expect(segments[0].upper_curve).toBe(`stepAfter`)
+    expect(segments[0].upper[0]).toEqual({ x: 5, y: 30 })
+    expect(segments[0].upper.at(-1)).toEqual({ x: 15, y: 35 })
   })
 })
 
-describe(`clamp_for_log_scale`, () => {
-  it(`clamps non-positive y values for log scale and tracks indices`, () => {
-    const result = clamp_for_log_scale([1, 2, 3], [10, -5, 0], [20, 0, 5], `log`)
-
-    expect(result.y1).toEqual([10, LOG_EPSILON, LOG_EPSILON])
-    expect(result.y2).toEqual([20, LOG_EPSILON, 5])
-    expect(result.clamped_indices).toContain(1)
-  })
-
-  it(`clamps non-positive x values when x-axis is log`, () => {
-    const result = clamp_for_log_scale([-1, 0, 1], [10, 20, 30], [5, 15, 25], `linear`, `log`)
-    expect(result.x).toEqual([LOG_EPSILON, LOG_EPSILON, 1])
-  })
-
-  it(`leaves values unchanged for linear scale`, () => {
-    const result = clamp_for_log_scale([1, 2, 3], [10, -5, 0], [20, 0, 5], `linear`)
-    expect(result.y1).toEqual([10, -5, 0])
-    expect(result.clamped_indices).toEqual([])
-  })
-})
-
-// Path generation tests
 describe(`generate_fill_path`, () => {
-  it(`generates valid SVG path for linear curve`, () => {
-    const data = [
-      { x: 0, y1: 0, y2: 10 },
-      { x: 100, y1: 0, y2: 10 },
-    ]
-    const path = generate_fill_path(data, `linear`)
+  const upper: Pt[] = [
+    { x: 0, y: 10 },
+    { x: 50, y: 5 },
+    { x: 100, y: 8 },
+  ]
+  const lower: Pt[] = [
+    { x: 0, y: 40 },
+    { x: 50, y: 45 },
+    { x: 100, y: 42 },
+  ]
 
-    expect(path).toMatch(/^M/) // starts with moveto
-    expect(path).toMatch(/Z$/) // ends with closepath
-    expect(path.length).toBeGreaterThan(0)
+  it(`returns empty string when a boundary has fewer than 2 points`, () => {
+    expect(generate_fill_path([{ x: 0, y: 0 }], lower)).toBe(``)
+    expect(generate_fill_path([], [])).toBe(``)
   })
 
-  it(`returns empty string for empty data`, () => {
-    const path = generate_fill_path([], `linear`)
-    expect(path).toBe(``)
+  it(`makes the upper edge byte-identical to the series line`, () => {
+    const path = generate_fill_path(upper, lower, `monotoneX`, `monotoneX`)
+    expect(path.startsWith(series_line(upper))).toBe(true)
   })
 
-  it(`generates path for monotoneX curve`, () => {
-    const data = [
-      { x: 0, y1: 0, y2: 10 },
-      { x: 50, y1: 5, y2: 15 },
-      { x: 100, y1: 0, y2: 10 },
-    ]
-    const path = generate_fill_path(data, `monotoneX`)
+  it(`makes the lower edge the reversed series line`, () => {
+    const path = generate_fill_path(upper, lower, `monotoneX`, `monotoneX`)
+    const lower_reversed = series_line(lower.toReversed())
+    expect(path.endsWith(`${lower_reversed.slice(1)}Z`)).toBe(true)
+  })
 
+  it(`produces a closed path with cubic segments for monotoneX`, () => {
+    const path = generate_fill_path(upper, lower, `monotoneX`, `monotoneX`)
     expect(path).toMatch(/^M/)
     expect(path).toMatch(/Z$/)
-    // monotoneX uses cubic curves, so should contain C commands
     expect(path).toContain(`C`)
   })
 
-  it(`generates path for step curve`, () => {
-    const data = [
-      { x: 0, y1: 0, y2: 10 },
-      { x: 50, y1: 0, y2: 20 },
-      { x: 100, y1: 0, y2: 10 },
-    ]
-    const path = generate_fill_path(data, `step`)
-
-    expect(path).toMatch(/^M/)
-    expect(path).toMatch(/Z$/)
-  })
-
-  it.each([
-    `linear`,
-    `monotoneX`,
-    `monotoneY`,
-    `step`,
-    `stepBefore`,
-    `stepAfter`,
-    `basis`,
-    `cardinal`,
-    `catmullRom`,
-    `natural`,
-  ] as const)(`supports %s curve type`, (curve_type) => {
-    const data = [
-      { x: 0, y1: 0, y2: 10 },
-      { x: 50, y1: 5, y2: 15 },
-      { x: 100, y1: 0, y2: 10 },
-    ]
-    const path = generate_fill_path(data, curve_type)
-
+  it.each(FILL_CURVE_TYPES)(`supports %s curve type`, (curve_type) => {
+    const path = generate_fill_path(upper, lower, curve_type, curve_type)
     expect(path.length).toBeGreaterThan(0)
     expect(path).toMatch(/^M/)
+    expect(path).toMatch(/Z$/)
   })
 })
 
@@ -365,13 +332,13 @@ describe(`convert_error_band_to_fill_region`, () => {
     [`symmetric constant`, { error: 5 }, [15, 25, 35], [5, 15, 25]],
     [`symmetric per-point`, { error: [1, 2, 3] }, [11, 22, 33], [9, 18, 27]],
     [`asymmetric`, { error: { upper: 10, lower: 5 } }, [20, 30, 40], [5, 15, 25]],
-  ])(`converts %s error`, (_, extra, upper, lower) => {
+  ])(`converts %s error carrying the series x`, (_, extra, upper, lower) => {
     const result = convert_error_band_to_fill_region(
       { series: base_ref, ...extra },
       mock_series,
     )
-    expect(result?.upper).toEqual({ type: `data`, values: upper })
-    expect(result?.lower).toEqual({ type: `data`, values: lower })
+    expect(result?.upper).toEqual({ type: `data`, x: [1, 2, 3], values: upper })
+    expect(result?.lower).toEqual({ type: `data`, x: [1, 2, 3], values: lower })
   })
 
   it(`uses provided fill color and opacity`, () => {
@@ -402,6 +369,25 @@ describe(`convert_error_band_to_fill_region`, () => {
       mock_series,
     )
     expect(result).toMatchObject({ id: `eb-1`, label: `Error` })
+  })
+
+  it(`error band edges coincide with the central series line`, () => {
+    // build the band, resolve its boundaries to points, and verify the upper edge path equals the
+    // monotoneX line through (x, y+err) -- i.e. it would hug a drawn line of the same values
+    const region = convert_error_band_to_fill_region(
+      { series: base_ref, error: 2 },
+      mock_series,
+    )
+    if (!region) throw new Error(`expected a fill region`)
+    const segments = compute_fill_segments(region, mock_series, {
+      x_domain: [1, 3],
+      y_domain: [0, 40],
+    })
+    expect(segments[0].upper).toEqual([
+      { x: 1, y: 12 },
+      { x: 2, y: 22 },
+      { x: 3, y: 32 },
+    ])
   })
 })
 
@@ -434,12 +420,11 @@ describe(`is_fill_gradient`, () => {
     [`null`, null, false],
     [`object without type`, { stops: [[0, `red`]] }, false],
     [`object without stops`, { type: `linear` }, false],
-  ])(`%s → %s`, (_, value, expected) => {
+  ])(`%s -> %s`, (_, value, expected) => {
     expect(is_fill_gradient(value as string | FillGradient | undefined)).toBe(expected)
   })
 })
 
-// Type structure validation tests
 describe(`FILL_CURVE_TYPES`, () => {
   it(`contains exactly 10 expected curve types`, () => {
     expect(FILL_CURVE_TYPES).toEqual([
@@ -464,47 +449,15 @@ describe(`Fill type structures`, () => {
     [`constant`, { type: `constant`, value: 50 }, { type: `constant` }],
     [`function`, { type: `function`, fn: (x: number) => x * 2 }, { type: `function` }],
   ])(`FillBoundary accepts %s`, (_, boundary, expected_match) => {
-    if (Object.keys(expected_match).length > 0) {
-      expect(boundary).toMatchObject(expected_match)
-    }
-    // Function boundary executes correctly
+    if (Object.keys(expected_match).length > 0) expect(boundary).toMatchObject(expected_match)
     if (typeof boundary === `object` && boundary.type === `function`) {
       expect(boundary.fn(5)).toBe(10)
     }
   })
 
-  it.each<[string, FillGradient]>([
-    [
-      `linear`,
-      {
-        type: `linear`,
-        angle: 45,
-        stops: [
-          [0, `red`],
-          [1, `blue`],
-        ],
-      },
-    ],
-    [
-      `radial`,
-      {
-        type: `radial`,
-        center: { x: 0.5, y: 0.5 },
-        stops: [
-          [0, `white`],
-          [1, `black`],
-        ],
-      },
-    ],
-  ])(`FillGradient supports %s type`, (type, gradient) => {
-    expect(gradient.type).toBe(type)
-    expect(gradient.stops.length).toBe(2)
-  })
-
   it(`FillEdgeStyle and FillHoverStyle work correctly`, () => {
     const empty_edge: FillEdgeStyle = {}
     expect(empty_edge.color).toBeUndefined()
-
     const hover: FillHoverStyle = { fill: `orange`, edge: { color: `red`, width: 2 } }
     expect(hover.edge?.color).toBe(`red`)
   })

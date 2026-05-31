@@ -778,7 +778,8 @@ export type FillBoundary =
   | { type: `constant`; value: number }
   | { type: `axis`; axis: `x` | `x2` | `y` | `y2`; value?: number }
   | { type: `function`; fn: (coord: number) => number }
-  | { type: `data`; values: readonly number[] }
+  // x is optional; when omitted, values align to the companion boundary's x positions
+  | { type: `data`; values: readonly number[]; x?: readonly number[] }
   | number // Shorthand for constant value
 
 // Styling types for fill regions
@@ -809,6 +810,8 @@ export interface FillHoverStyle {
   edge?: FillEdgeStyle
   cursor?: string
   scale?: number // Scale factor for hover effect
+  stroke?: string // Outline color drawn around the region on hover (default: theme-aware contrast)
+  stroke_width?: number // Outline width in px on hover (default: 1.5)
 }
 
 // Event type for fill region interactions

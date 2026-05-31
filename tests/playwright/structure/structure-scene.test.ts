@@ -117,8 +117,8 @@ async function load_single_centered_atom_scene(page: Page): Promise<void> {
   })
 }
 
-async function get_canvas_purple_pixel_ratio(canvas: Locator): Promise<number> {
-  return canvas.evaluate(async (canvas_element) => {
+const get_canvas_purple_pixel_ratio = (canvas: Locator): Promise<number> =>
+  canvas.evaluate(async (canvas_element) => {
     if (!(canvas_element instanceof HTMLCanvasElement)) {
       throw new Error(`Expected structure canvas, got ${canvas_element.tagName}`)
     }
@@ -148,7 +148,6 @@ async function get_canvas_purple_pixel_ratio(canvas: Locator): Promise<number> {
     }
     return purple_pixels / (offscreen_canvas.width * offscreen_canvas.height)
   })
-}
 
 test.describe(`StructureScene Component Tests`, () => {
   test.beforeEach(async ({ page }: { page: Page }) => {
