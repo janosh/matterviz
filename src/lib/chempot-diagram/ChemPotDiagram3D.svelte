@@ -14,7 +14,7 @@
     convex_hull_2d,
     cross_3d,
     merge_coplanar_triangles,
-    normalize_vec3,
+    normalize_vec,
   } from '$lib/math'
   import DraggablePane from '$lib/overlays/DraggablePane.svelte'
   import { ColorBar, ScatterPlot3DControls } from '$lib/plot'
@@ -953,7 +953,7 @@
           pos.getY(base + 2) - pos.getY(base),
           pos.getZ(base + 2) - pos.getZ(base),
         ]
-        normals.push(normalize_vec3(cross_3d(e1, e2)))
+        normals.push(normalize_vec(cross_3d(e1, e2)))
       }
       // Build edge → face adjacency
       const edge_faces = new SvelteMap<string, number[]>()

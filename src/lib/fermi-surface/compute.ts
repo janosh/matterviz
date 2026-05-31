@@ -436,7 +436,7 @@ export function compute_fermi_slice(
       )}]`,
     )
   }
-  const unit_normal = math.normalize_vec3(plane_normal)
+  const unit_normal = math.normalize_vec(plane_normal)
 
   // Compute in-plane basis vectors
   const [in_plane_u, in_plane_v] = math.compute_in_plane_basis(unit_normal)

@@ -52,29 +52,6 @@ const create_drop_event = (files: File[]): DragEvent => {
   return drag_event
 }
 
-// Wait for text to appear in document.body via MutationObserver polling
-const wait_for_dom_text = (text: string, timeout_ms = 3000): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const timeout_id = setTimeout(() => {
-      observer.disconnect()
-      reject(new Error(`Timed out waiting for "${text}" in DOM`))
-    }, timeout_ms)
-    const check = () => {
-      if (document.body.textContent?.includes(text)) {
-        clearTimeout(timeout_id)
-        observer.disconnect()
-        resolve()
-      }
-    }
-    const observer = new MutationObserver(check)
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    })
-    check()
-  })
-
 // Tests for Structure component functionality
 describe(`Structure`, () => {
   test(`open control pane when clicking toggle button`, () => {
@@ -483,21 +460,36 @@ describe(`Structure`, () => {
     expect(file_content).toBe(`test content`)
   })
 
-  test(`drag and drop without on_file_drop handler`, async () => {
+  test(`drag and drop without on_file_drop handler parses the file internally`, async () => {
+    // No on_file_drop → component parses the dropped file itself and emits on_file_load.
+    // Awaiting the callback is deterministic (no DOM polling), unlike a rendered-text race.
+    let loaded: StructureHandlerData | undefined
+    let resolve_load!: () => void
+    const load_done = new Promise<void>((resolve) => (resolve_load = resolve))
+
     mount(Structure, {
       target: document.body,
-      props: { structure: undefined, show_controls: true },
+      props: {
+        structure: undefined,
+        show_controls: true,
+        on_file_load: (data: StructureHandlerData) => {
+          loaded = data
+          resolve_load()
+        },
+      },
     })
 
     const wrapper = document.querySelector(`.structure`) as HTMLElement
     expect(wrapper).toBeInstanceOf(HTMLElement)
 
     const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
-    const drag_event = create_drop_event([file])
+    wrapper.dispatchEvent(create_drop_event([file]))
 
-    wrapper.dispatchEvent(drag_event)
-    await wait_for_dom_text(`Ba Ti O3`)
-    expect(document.body.textContent).toContain(`Ba Ti O3`)
+    await load_done
+    expect(loaded?.filename).toBe(`test.poscar`)
+    expect(loaded?.total_atoms).toBe(5)
+    const elements = loaded?.structure?.sites.map((site) => site.species[0].element)
+    expect(elements).toEqual(expect.arrayContaining([`Ba`, `Ti`, `O`]))
   })
 
   test(`info pane site hover updates highlighted sites`, async () => {

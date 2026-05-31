@@ -1089,7 +1089,7 @@
 
     const bond_directions_by_site = new SvelteMap<number, Vec3[]>()
     const add_bond_direction = (site_idx: number, pos_1: Vec3, pos_2: Vec3) => {
-      const direction = math.normalize_vec3(
+      const direction = math.normalize_vec(
         math.subtract(pos_2, pos_1),
         [0, 0, 0],
       )
@@ -1252,9 +1252,9 @@
         let mean: Vec3 = [0, 0, 0]
         for (const key of site_keys) {
           const vec = vec_map.get(key)
-          if (vec) mean = math.add(mean, math.normalize_vec3(vec)) as Vec3
+          if (vec) mean = math.add(mean, math.normalize_vec(vec)) as Vec3
         }
-        const mean_dir = math.normalize_vec3(mean, [0, 1, 0] as Vec3)
+        const mean_dir = math.normalize_vec(mean, [0, 1, 0] as Vec3)
         const [u_vec, v_vec] = math.compute_in_plane_basis(mean_dir)
         const offsets = new SvelteMap<string, Vec3>()
         for (const [idx, key] of site_keys.entries()) {
@@ -1316,7 +1316,7 @@
 
           const offset = site_offsets?.[site_idx]?.get(key)
           const position = offset ? math.add(site.xyz, offset) as Vec3 : site.xyz
-          const arrow_vec = vector_normalize ? math.normalize_vec3(vec) : vec
+          const arrow_vec = vector_normalize ? math.normalize_vec(vec) : vec
 
           return {
             site_idx,

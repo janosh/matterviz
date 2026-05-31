@@ -708,12 +708,10 @@ const parse_cif_atom_data = (
       : 1.0
 
   const from_symbol = symbol >= 0 ? /^([A-Z][a-z]*)/.exec(raw_data[symbol])?.[1] : undefined
-  const element_symbol =
-    from_symbol ??
-    raw_data[label]?.match(/([A-Z][a-z]*)/g)?.[0] ??
-    (() => {
-      throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
-    })()
+  const element_symbol = from_symbol ?? raw_data[label]?.match(/([A-Z][a-z]*)/g)?.[0]
+  if (!element_symbol) {
+    throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
+  }
 
   return {
     id: raw_data[label],

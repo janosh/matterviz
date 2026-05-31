@@ -585,17 +585,25 @@ export const centered_frac = (val: number): number => {
 // Returns true if both are the same reference, or both are defined with equal components.
 export const vecs_equal = (vec_a?: Vec3, vec_b?: Vec3): boolean =>
   vec_a === vec_b ||
-  (vec_a !== undefined &&
-    vec_b !== undefined &&
+  (vec_a != null &&
+    vec_b != null &&
     vec_a[0] === vec_b[0] &&
     vec_a[1] === vec_b[1] &&
     vec_a[2] === vec_b[2])
 
-// Normalize a Vec3 to unit length, returns zero vector if input is zero
-export function normalize_vec3(vec: Vec3, fallback?: Vec3): Vec3 {
-  const len = Math.hypot(vec[0], vec[1], vec[2])
-  if (len < EPS) return fallback ?? [0, 0, 0]
-  return [vec[0] / len, vec[1] / len, vec[2] / len]
+// Vec3 -> Vec3, number[] -> number[] (same length, mutable)
+type Normalized<T extends readonly number[]> = { -readonly [K in keyof T]: number }
+
+// Normalize a vector of any length to unit length; returns `fallback` (or zeros) when ~zero.
+export function normalize_vec<T extends readonly number[]>(
+  vec: T,
+  fallback?: NoInfer<T>,
+): Normalized<T> {
+  let sum_sq = 0
+  for (const coord of vec) sum_sq += coord * coord
+  const len = Math.sqrt(sum_sq)
+  const unit = len < EPS ? (fallback ?? vec.map(() => 0)) : vec.map((coord) => coord / len)
+  return unit as Normalized<T>
 }
 
 // Compute orthonormal basis vectors in a plane perpendicular to `normal`.
@@ -610,7 +618,7 @@ export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
     ref_vec[1] - dot_nr * normal[1],
     ref_vec[2] - dot_nr * normal[2],
   ]
-  const u_vec = normalize_vec3(u_raw, [0, 1, 0])
+  const u_vec = normalize_vec(u_raw, [0, 1, 0])
   const v_vec = cross_3d(normal, u_vec)
   return [u_vec, v_vec] // u, v basis vectors
 }

@@ -33,6 +33,7 @@ import { FERMI_FILE_RE, VOLUMETRIC_EXT_RE, VOLUMETRIC_VASP_RE } from '../types'
 import type { RenderableType } from './detect'
 import { detect_view_type } from './detect'
 import JsonBrowser from './JsonBrowser.svelte'
+import { to_error } from '$lib/utils'
 
 // Maps detect.ts RenderableType to ViewType for direct rendering.
 // Types not listed here fall through to json_browser (which can render all types
@@ -725,7 +726,6 @@ async function cleanup_matterviz(): Promise<void> {
     current_app = null
   }
 } // Export initialization and cleanup functions to global scope
-
 ;(
   globalThis as unknown as {
     initializeMatterViz?: () => Promise<MatterVizApp | null>
@@ -742,7 +742,7 @@ async function cleanup_matterviz(): Promise<void> {
     current_app = app
     return app
   } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error))
+    const err = to_error(error)
     const container = document.getElementById(`matterviz-app`)
     if (container) {
       create_error_display(

@@ -125,8 +125,6 @@ export default defineConfig({
   // via `rules: { ...lint_config.rules, 'some-rule': 'off' }` if ever needed.
   lint: {
     ...lint_config,
-    // explicit-length-check false-positives on numeric `.size` marker-radius fields
-    rules: { ...lint_config.rules, 'eslint-plugin-unicorn/explicit-length-check': `off` },
     ignorePatterns: [
       ...lint_config.ignorePatterns,
       `extensions/**`,
@@ -134,8 +132,8 @@ export default defineConfig({
       `src/scripts/**`,
     ],
   },
-  // @ts-expect-error vite@8's Plugin and vite-plus's bundled Plugin are two copies
-  // of the same type; comparing them exceeds TS's instantiation depth here
+  // vite@8's Plugin and vite-plus's bundled Plugin are two copies of the same type;
+  // @ts-expect-error comparing them exceeds TS's instantiation depth here
   plugins: [
     json_gz_plugin,
     raw_text_plugin,

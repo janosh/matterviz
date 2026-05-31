@@ -1,5 +1,6 @@
 // Export Fermi surface to various 3D formats
 import type { Scene } from 'three'
+import { to_error } from '$lib/utils'
 
 // Helper to trigger file download
 function download_file(content: string | ArrayBuffer, filename: string, mime_type: string) {
@@ -45,7 +46,7 @@ export async function export_to_gltf(scene: Scene, filename: string): Promise<vo
         download_file(output, `${filename}.gltf`, `application/json`)
         resolve()
       },
-      (error) => reject(error instanceof Error ? error : new Error(error.message)),
+      (error) => reject(to_error(error)),
       { binary: false },
     )
   })

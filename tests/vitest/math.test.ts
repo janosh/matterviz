@@ -2154,14 +2154,14 @@ describe(`lerp_vec3`, () => {
   })
 })
 
-describe(`normalize_vec3`, () => {
+describe(`normalize_vec`, () => {
   it(`normalizes unit vector along x-axis`, () => {
-    const result = math.normalize_vec3([5, 0, 0])
+    const result = math.normalize_vec([5, 0, 0])
     expect(result).toEqual([1, 0, 0])
   })
 
   it(`normalizes diagonal vector`, () => {
-    const result = math.normalize_vec3([1, 1, 1])
+    const result = math.normalize_vec([1, 1, 1])
     const expected_component = 1 / Math.sqrt(3)
     expect(result[0]).toBeCloseTo(expected_component)
     expect(result[1]).toBeCloseTo(expected_component)
@@ -2169,18 +2169,18 @@ describe(`normalize_vec3`, () => {
   })
 
   it(`returns zero vector for zero input`, () => {
-    const result = math.normalize_vec3([0, 0, 0])
+    const result = math.normalize_vec([0, 0, 0])
     expect(result).toEqual([0, 0, 0])
   })
 
   it(`uses fallback for zero input when provided`, () => {
     const fallback: Vec3 = [0, 1, 0]
-    const result = math.normalize_vec3([0, 0, 0], fallback)
+    const result = math.normalize_vec([0, 0, 0], fallback)
     expect(result).toEqual([0, 1, 0])
   })
 
   it(`preserves unit vectors`, () => {
-    const result = math.normalize_vec3([0, 1, 0])
+    const result = math.normalize_vec([0, 1, 0])
     expect(result).toEqual([0, 1, 0])
   })
 })
