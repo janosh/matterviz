@@ -146,6 +146,9 @@ export async function assert_hover_scoped_shortcut(opts: {
   input.focus()
   fire()
   expect(took_effect(), `input focused → bails`).toBe(false)
+  // blur before removing so activeElement deterministically returns to <body> (happy-dom doesn't
+  // reliably reset focus when a focused element is detached), making the "resumes" check stable
+  input.blur()
   input.remove()
 
   fire()

@@ -296,8 +296,7 @@
     gap: 3px;
   }
   .preset-btn {
-    padding: 0 1px;
-    line-height: 1;
+    padding: 1px;
     background: var(--btn-bg, light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)));
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius, 3pt);
