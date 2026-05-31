@@ -34,4 +34,4 @@ jobs:
       - run: corepack enable && pnpm install
 
       - name: Check for unused dependencies
-        run: npm run knip
+        run: pnpm run knip

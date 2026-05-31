@@ -372,7 +372,8 @@ C        -2.0      10.0      12.0`
   // For trajectory data, get_pbc_image_sites returns the structure unchanged
   expect(processed_structure.sites).toHaveLength(trajectory_structure.sites.length)
 
-  // Verify that some atoms are outside the unit cell (making it trajectory data)
+  // abc coords are wrapped into the cell on parse, so none read as outside the [-0.1, 1.1]
+  // margin (the raw cartesian positions extend past the 15 Å box, which is what flags trajectory)
   const atoms_outside = trajectory_structure.sites.filter(({ abc }) =>
     abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
