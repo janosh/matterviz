@@ -24,7 +24,7 @@
     [key: string]: unknown
   } = $props()
 
-  let is_interactive = $derived(Boolean(options?.length > 0))
+  let is_interactive = $derived(Boolean(options?.length))
 
   const stop = (evt: Event) => evt.stopPropagation()
   // Only stop propagation for keys the dropdown handles, allow Tab/Escape for navigation

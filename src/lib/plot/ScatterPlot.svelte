@@ -791,7 +791,7 @@
       .filter((
         srs,
       ): srs is DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] } =>
-        Boolean(srs.filtered_data) && srs.filtered_data.length > 0
+        (srs.filtered_data?.length ?? 0) > 0
       ),
   )
 

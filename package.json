@@ -169,9 +169,9 @@
   "scripts": {
     "test": "vp test --run && playwright test",
     "knip": "knip --include dependencies,devDependencies",
-    "package-dist-assets": "NODE_OPTIONS=--experimental-strip-types node scripts/package-dist-assets.ts",
+    "package-dist-assets": "node scripts/package-dist-assets.ts",
     "package:dist": "svelte-package && npm run package-dist-assets",
-    "prepare": "NODE_OPTIONS=--experimental-strip-types svelte-kit sync && npm run package:dist",
+    "prepare": "svelte-kit sync && npm run package:dist",
     "prepublishOnly": "npm run package:dist"
   },
   "dependencies": {
@@ -234,6 +234,7 @@
   "engines": {
     "node": ">=24"
   },
+  "packageManager": "pnpm@11.5.0",
   "knip": {
     "entry": [
       "svelte.config.ts"

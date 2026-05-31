@@ -39,7 +39,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: latest
 
       - uses: actions/setup-python@v6
         with:
@@ -47,7 +47,7 @@ jobs:
 
       # Build root matterviz package (generates dist/*.d.ts files)
       - name: Build matterviz package
-        run: npm install && npm run package:dist
+        run: npx vp install && npm run package:dist
         working-directory: .
 
       # Install dash extension deps

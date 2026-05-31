@@ -120,11 +120,13 @@ export default defineConfig({
       `tests/vitest/phase-diagram/fixtures/*.json`,
     ],
   },
-  // Shared rules/plugins/categories live in @janosh/vite-lint-config (dotfiles).
+  // Shared rules/plugins/categories live in @janosh/vite-config (dotfiles).
   // Append only matterviz-specific ignore dirs here; add per-project rule overrides
   // via `rules: { ...lint_config.rules, 'some-rule': 'off' }` if ever needed.
   lint: {
     ...lint_config,
+    // explicit-length-check false-positives on numeric `.size` marker-radius fields
+    rules: { ...lint_config.rules, 'eslint-plugin-unicorn/explicit-length-check': `off` },
     ignorePatterns: [
       ...lint_config.ignorePatterns,
       `extensions/**`,
