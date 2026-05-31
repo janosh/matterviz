@@ -447,7 +447,7 @@ describe(`LAMMPS Trajectory Format`, () => {
 
     expect(trajectory.metadata?.source_format).toBe(`lammps_trajectory`)
     expect(trajectory.frames.length).toBeGreaterThan(0)
-    expect(trajectory.frames[0].structure.sites.length).toBe(864)
+    expect(trajectory.frames[0].structure.sites).toHaveLength(864)
     expect(trajectory.metadata?.periodic_boundary_conditions).toEqual([true, true, true])
   })
 
@@ -455,12 +455,12 @@ describe(`LAMMPS Trajectory Format`, () => {
     const content = read_test_file(`lammps-sample.lammpstrj.gz`)
     const trajectory = await parse_trajectory_data(content, `test.lammpstrj`)
 
-    expect(trajectory.frames.length).toBe(5)
+    expect(trajectory.frames).toHaveLength(5)
     // First frame should have timestep 0
     expect(trajectory.frames[0].step).toBe(0)
     // Each frame should have consistent atom count
     trajectory.frames.forEach((frame) => {
-      expect(frame.structure.sites.length).toBe(864)
+      expect(frame.structure.sites).toHaveLength(864)
     })
   })
 
@@ -1045,7 +1045,7 @@ describe(`HDF5 Format`, () => {
     const trajectory = await parse_trajectory_data(content, `test.h5`)
 
     expect(trajectory.metadata?.source_format).toBe(`hdf5_trajectory`)
-    expect(trajectory.frames.length).toBe(20)
+    expect(trajectory.frames).toHaveLength(20)
     expect(trajectory.metadata?.num_atoms).toBe(55)
     expect(trajectory.frames[0].structure.sites[0].species[0].element).toBe(`Au`)
 
@@ -1135,7 +1135,7 @@ describe(`HDF5 Format`, () => {
     const trajectory2 = await parse_trajectory_data(content, `test2.h5`)
 
     // Results should be identical but independent
-    expect(trajectory1.frames.length).toBe(trajectory2.frames.length)
+    expect(trajectory1.frames).toHaveLength(trajectory2.frames.length)
     expect(trajectory1.metadata?.num_atoms).toBe(trajectory2.metadata?.num_atoms)
     expect(trajectory1.metadata?.discovered_datasets).toEqual(
       trajectory2.metadata?.discovered_datasets,
@@ -1298,7 +1298,7 @@ describe(`Unsupported Formats`, () => {
   })
 
   it(`should detect binary content as unsupported`, () => {
-    const message = get_unsupported_format_message(`unknown.bin`, `\x00\x01\x02\x03`)
+    const message = get_unsupported_format_message(`unknown.bin`, `\u0000\u0001\u0002\u0003`)
     expect(message).toContain(`Binary format not supported`)
   })
 

@@ -23,7 +23,7 @@ export const molecule_files: FileInfo[] = Object.entries(
     import: `default`,
   }),
 ).map(([path]) => {
-  const filename = path.split(`/`).pop() || path
+  const filename = path.split(`/`).pop() ?? path
   const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
   const url = path.replace(`/src/site`, ``)
   return { name: filename, url, type, category: `molecule`, category_icon: `🧬` }

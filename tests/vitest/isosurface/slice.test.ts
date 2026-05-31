@@ -93,7 +93,7 @@ describe(`sample_hkl_slice`, () => {
     const result = expect_slice(sample_hkl_slice(z_gradient, [0, 0, 1], 0.5))
     expect(result.width).toBeGreaterThan(0)
     expect(result.height).toBeGreaterThan(0)
-    expect(result.data.length).toBe(result.width * result.height)
+    expect(result.data).toHaveLength(result.width * result.height)
   })
 
   test(`(001) slice at d=0.2 has lower values than d=0.8 for z-gradient`, () => {
@@ -146,7 +146,7 @@ describe(`sample_hkl_slice`, () => {
       hex_lattice,
     )
     const result = expect_slice(sample_hkl_slice(vol, [0, 0, 1], 0.5))
-    expect(result.data.length).toBe(result.width * result.height)
+    expect(result.data).toHaveLength(result.width * result.height)
   })
 
   test(`non-periodic volume with out-of-bounds plane returns zeros at edges`, () => {

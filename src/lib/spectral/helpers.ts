@@ -119,12 +119,12 @@ export function pretty_sym_point(symbol: string): string {
   // Handle subscripts: convert S0 to S₀, K1 to K₁, Γ1 to Γ₁, etc.
   // Use \p{L} to match any Unicode letter (not just ASCII A-Z)
   return symbol
-    .replace(/_/g, ``)
-    .replace(/\\?GAMMA/gi, `Γ`)
-    .replace(/\\?DELTA/gi, `Δ`)
-    .replace(/\\?SIGMA/gi, `Σ`)
-    .replace(/\\?LAMBDA/gi, `Λ`)
-    .replace(
+    .replaceAll('_', ``)
+    .replaceAll(/\\?GAMMA/gi, `Γ`)
+    .replaceAll(/\\?DELTA/gi, `Δ`)
+    .replaceAll(/\\?SIGMA/gi, `Σ`)
+    .replaceAll(/\\?LAMBDA/gi, `Λ`)
+    .replaceAll(
       /(\p{L})(\d+)/gu,
       (_, letter, num) =>
         letter +
@@ -217,7 +217,7 @@ export function get_band_xaxis_ticks(
 ): [number[], string[]] {
   const ticks_x_pos: number[] = []
   const tick_labels: string[] = []
-  let prev_label = band_struct.qpoints[0]?.label || null
+  let prev_label = band_struct.qpoints[0]?.label ?? null
   let prev_branch = band_struct.branches[0]?.name || null
 
   // Convert branches to Set for consistent handling
@@ -235,7 +235,7 @@ export function get_band_xaxis_ticks(
 
     if (point.label !== prev_label && prev_branch !== this_branch) {
       // Branch transition - combine labels
-      tick_labels[tick_labels.length - 1] = `${prev_label || ``}|${point.label}`
+      tick_labels[tick_labels.length - 1] = `${prev_label ?? ``}|${point.label}`
       ticks_x_pos[ticks_x_pos.length - 1] = band_struct.distance[idx]
     } else if (branches_set.size === 0 || (this_branch && branches_set.has(this_branch))) {
       tick_labels.push(point.label)
@@ -318,6 +318,7 @@ function fnv1a_hash(arr: number[]): number {
     hash ^= int_view[1]
     hash = Math.imul(hash, 16777619)
   }
+  // oxlint-disable-next-line eslint-plugin-unicorn/prefer-math-trunc -- `>>> 0` is unsigned 32-bit coercion, not truncation
   return hash >>> 0 // Ensure unsigned
 }
 
@@ -418,7 +419,7 @@ interface PymatgenKpoint {
   label?: string | null
 }
 const is_kpoint = (val: unknown): val is PymatgenKpoint =>
-  !!val && typeof val === `object` && `frac_coords` in val && is_vec3(val.frac_coords)
+  val !== null && typeof val === `object` && `frac_coords` in val && is_vec3(val.frac_coords)
 
 const is_pymatgen_format = (obj: Record<string, unknown>): boolean => {
   // Check for explicit pymatgen markers
@@ -446,10 +447,10 @@ const parse_qpoint = (
   if (!frac_coords) return null
 
   const label =
-    (is_kpoint(qpt) && typeof qpt.label === `string` && qpt.label) ||
-    Object.entries(labels_dict ?? {}).find(
-      ([, c]) => euclidean_dist(frac_coords, c) < 1e-4,
-    )?.[0] ||
+    ((is_kpoint(qpt) && typeof qpt.label === `string` && qpt.label) ||
+      Object.entries(labels_dict ?? {}).find(
+        ([, c]) => euclidean_dist(frac_coords, c) < 1e-4,
+      )?.[0]) ??
     null
   return { label, frac_coords }
 }
@@ -534,15 +535,15 @@ function convert_pymatgen_band_structure(
   if (
     !Array.isArray(raw_qpts) ||
     !Array.isArray(raw_bands) ||
-    !raw_qpts.length ||
-    !raw_bands.length
+    raw_qpts.length === 0 ||
+    raw_bands.length === 0
   )
     return null
 
   const qpoints = raw_qpts
     .map((qpoint) => parse_qpoint(qpoint, labels_dict))
     .filter((qpoint): qpoint is types.QPoint => qpoint !== null)
-  if (!qpoints.length) return null
+  if (qpoints.length === 0) return null
 
   // Step distances and discontinuity detection (5x median threshold)
   const steps = qpoints
@@ -605,7 +606,7 @@ function convert_pymatgen_band_structure(
       .filter((branch) => branch.start_index <= branch.end_index)
   }
 
-  if (!branches.length) {
+  if (branches.length === 0) {
     branches.push({ start_index: 0, end_index: qpoints.length - 1, name: `path` })
   }
 
@@ -1306,7 +1307,7 @@ export function format_dos_tooltip(
         format_tooltip_line(
           y_parsed.name || freq_defaults.name,
           y_formatted,
-          y_parsed.unit || freq_defaults.unit,
+          y_parsed.unit ?? freq_defaults.unit,
         ),
         format_tooltip_line(x_parsed.name || `Density`, x_formatted),
       ]
@@ -1315,7 +1316,7 @@ export function format_dos_tooltip(
         format_tooltip_line(
           x_parsed.name || freq_defaults.name,
           x_formatted,
-          x_parsed.unit || freq_defaults.unit,
+          x_parsed.unit ?? freq_defaults.unit,
         ),
       ]
 

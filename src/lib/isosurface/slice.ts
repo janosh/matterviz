@@ -102,7 +102,7 @@ export function sample_hkl_slice(
     h_idx * recip[0][2] + k_idx * recip[1][2] + l_idx * recip[2][2],
   ]
   if (Math.hypot(...plane_normal) < 1e-12) return null // degenerate normal
-  const unit_normal = math.normalize_vec3(plane_normal)
+  const unit_normal = math.normalize_vec(plane_normal)
 
   // In-plane basis vectors
   const [u_vec, v_vec] = math.compute_in_plane_basis(unit_normal)

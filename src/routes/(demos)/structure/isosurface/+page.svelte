@@ -20,6 +20,7 @@
     Structure,
   } from 'matterviz'
   import { onMount } from 'svelte'
+  import { to_error } from '$lib/utils'
 
   let structure = $state<AnyStructure | undefined>()
   let volumetric_data = $state<VolumetricData[] | undefined>()
@@ -116,7 +117,7 @@
       })
       parse_time_ms = Math.round(performance.now() - parse_start)
     } catch (error) {
-      error_msg = error instanceof Error ? error.message : String(error)
+      error_msg = to_error(error).message
     } finally {
       loading = false
     }

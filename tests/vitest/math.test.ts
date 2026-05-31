@@ -167,7 +167,7 @@ test.each([
   ],
 ])(`add vectors`, (vec1, vec2, expected) => {
   expect(math.add(vec1, vec2)).toEqual(expected)
-  expect(Math.hypot(...math.subtract(math.add(vec1, vec2), expected))).toEqual(0)
+  expect(Math.hypot(...math.subtract(math.add(vec1, vec2), expected))).toBe(0)
 })
 
 test(`add function comprehensive`, () => {
@@ -2154,14 +2154,14 @@ describe(`lerp_vec3`, () => {
   })
 })
 
-describe(`normalize_vec3`, () => {
+describe(`normalize_vec`, () => {
   it(`normalizes unit vector along x-axis`, () => {
-    const result = math.normalize_vec3([5, 0, 0])
+    const result = math.normalize_vec([5, 0, 0])
     expect(result).toEqual([1, 0, 0])
   })
 
   it(`normalizes diagonal vector`, () => {
-    const result = math.normalize_vec3([1, 1, 1])
+    const result = math.normalize_vec([1, 1, 1])
     const expected_component = 1 / Math.sqrt(3)
     expect(result[0]).toBeCloseTo(expected_component)
     expect(result[1]).toBeCloseTo(expected_component)
@@ -2169,18 +2169,18 @@ describe(`normalize_vec3`, () => {
   })
 
   it(`returns zero vector for zero input`, () => {
-    const result = math.normalize_vec3([0, 0, 0])
+    const result = math.normalize_vec([0, 0, 0])
     expect(result).toEqual([0, 0, 0])
   })
 
   it(`uses fallback for zero input when provided`, () => {
     const fallback: Vec3 = [0, 1, 0]
-    const result = math.normalize_vec3([0, 0, 0], fallback)
+    const result = math.normalize_vec([0, 0, 0], fallback)
     expect(result).toEqual([0, 1, 0])
   })
 
   it(`preserves unit vectors`, () => {
-    const result = math.normalize_vec3([0, 1, 0])
+    const result = math.normalize_vec([0, 1, 0])
     expect(result).toEqual([0, 1, 0])
   })
 })
@@ -2440,7 +2440,7 @@ describe(`convex_hull_2d`, () => {
       [2.5, 2], // interior
     ]
     const hull = math.convex_hull_2d(pts)
-    expect(hull.length).toBe(5) // interior excluded
+    expect(hull).toHaveLength(5) // interior excluded
   })
 
   test(`duplicate points`, () => {
@@ -2452,7 +2452,7 @@ describe(`convex_hull_2d`, () => {
       [0, 1],
     ]
     const hull = math.convex_hull_2d(pts)
-    expect(hull.length).toBe(3)
+    expect(hull).toHaveLength(3)
   })
 
   test(`all same point`, () => {
@@ -2612,14 +2612,14 @@ describe(`merge_coplanar_triangles`, () => {
   test(`empty input returns empty Float32Array`, () => {
     const result = math.merge_coplanar_triangles(new Float32Array(0))
     expect(result).toBeInstanceOf(Float32Array)
-    expect(result.length).toBe(0)
+    expect(result).toHaveLength(0)
   })
 
   test(`single triangle passes through unchanged`, () => {
     // Triangle on xy-plane
     const input = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
     const result = math.merge_coplanar_triangles(input)
-    expect(result.length).toBe(9)
+    expect(result).toHaveLength(9)
     // Vertices should match (order may differ within fan)
     const verts_in = extract_triangle_verts(input)
     const verts_out = extract_triangle_verts(result)
@@ -2652,7 +2652,7 @@ describe(`merge_coplanar_triangles`, () => {
       0, // tri2: C-D-A  (starts with C)
     ])
     const result = math.merge_coplanar_triangles(input)
-    expect(result.length).toBe(18)
+    expect(result).toHaveLength(18)
     const out_verts = extract_triangle_verts(result)
     const expected_verts: Vec3[] = [
       [0, 0, 0],
@@ -2693,7 +2693,7 @@ describe(`merge_coplanar_triangles`, () => {
       1, // xz-plane
     ])
     const result = math.merge_coplanar_triangles(input)
-    expect(result.length).toBe(18)
+    expect(result).toHaveLength(18)
     expect(
       same_vertex_set(extract_triangle_verts(input), extract_triangle_verts(result)),
     ).toBe(true)
@@ -2727,7 +2727,7 @@ describe(`merge_coplanar_triangles`, () => {
     ])
     const result = math.merge_coplanar_triangles(input)
     // Should merge to 4 fan triangles from 6 hull vertices
-    expect(result.length).toBe(4 * 9)
+    expect(result).toHaveLength(4 * 9)
     // All 6 hex vertices should appear in output
     const out_verts = extract_triangle_verts(result)
     for (const hv of hex_verts) {
@@ -2767,14 +2767,14 @@ describe(`merge_coplanar_triangles`, () => {
       1, // separate triangle on z=1
     ])
     const result = math.merge_coplanar_triangles(input)
-    expect(result.length).toBe(3 * 9)
+    expect(result).toHaveLength(3 * 9)
   })
 
   test(`degenerate zero-area triangle passes through`, () => {
     // All 3 vertices are the same point
     const input = new Float32Array([1, 1, 1, 1, 1, 1, 1, 1, 1])
     const result = math.merge_coplanar_triangles(input)
-    expect(result.length).toBe(9)
+    expect(result).toHaveLength(9)
   })
 
   test(`coplanar triangles on axis-aligned plane merge despite winding differences`, () => {
@@ -2800,7 +2800,7 @@ describe(`merge_coplanar_triangles`, () => {
       1, // tri2 (opposite winding)
     ])
     const result = math.merge_coplanar_triangles(input)
-    expect(result.length).toBe(18)
+    expect(result).toHaveLength(18)
     const out_verts = extract_triangle_verts(result)
     for (const ev of [
       [5, 0, 0],
@@ -2844,7 +2844,7 @@ describe(`merge_coplanar_triangles`, () => {
       0, // A-D-E
     ])
     const result = math.merge_coplanar_triangles(input)
-    expect(result.length).toBe(3 * 9)
+    expect(result).toHaveLength(3 * 9)
     const out_verts = extract_triangle_verts(result)
     for (const ev of [
       [0, 0, 0],
@@ -2881,7 +2881,7 @@ function same_vertex_set(set_a: Vec3[], set_b: Vec3[]): boolean {
   const used = new Set<number>()
   for (const va of set_a) {
     const match_idx = set_b.findIndex((vb, idx) => !used.has(idx) && vec3_close(va, vb))
-    if (match_idx < 0) return false
+    if (match_idx === -1) return false
     used.add(match_idx)
   }
   return true

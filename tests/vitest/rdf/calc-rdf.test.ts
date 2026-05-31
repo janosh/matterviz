@@ -475,7 +475,7 @@ describe(`calculate_all_pair_rdfs`, () => {
       n_bins: 50,
     })
 
-    expect(patterns1.length).toBe(patterns2.length)
+    expect(patterns1).toHaveLength(patterns2.length)
     for (let idx = 0; idx < patterns1.length; idx++) {
       expect(patterns1[idx].r).toEqual(patterns2[idx].r)
       expect(patterns1[idx].g_r).toEqual(patterns2[idx].g_r)

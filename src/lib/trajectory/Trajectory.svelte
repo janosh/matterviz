@@ -367,7 +367,7 @@
 
   // Update visible_properties binding when user toggles series visibility in legend
   $effect(() => {
-    if (!plot_series.length) return
+    if (plot_series.length === 0) return
 
     // Extract property keys from visible series metadata
     const visible_keys = plot_series.flatMap((srs) => {
@@ -509,7 +509,7 @@
     is_playing = false
     if (trajectory) {
       on_pause?.({
-        trajectory: trajectory,
+        trajectory,
         step_idx: current_step_idx,
         frame_count: total_frames,
       })
@@ -520,9 +520,10 @@
     const playing = is_playing
     const rate_ms = 1000 / fps
 
+    // Read current interval once (untrack to avoid circular dependency)
+    const current_interval = untrack(() => play_interval)
     if (playing) {
-      // Clear existing interval if it exists - use untrack to avoid circular dependency
-      const current_interval = untrack(() => play_interval)
+      // Clear existing interval if it exists
       if (current_interval !== undefined) clearInterval(current_interval)
 
       // Create new interval with current frame rate
@@ -542,13 +543,10 @@
           }
         } else next_step()
       }, rate_ms)
-    } else {
-      // Clear interval when not playing - use untrack to avoid circular dependency
-      const current_interval = untrack(() => play_interval)
-      if (current_interval !== undefined) {
-        clearInterval(current_interval)
-        play_interval = undefined
-      }
+    } else if (current_interval !== undefined) {
+      // Clear interval when not playing
+      clearInterval(current_interval)
+      play_interval = undefined
     }
   })
 
@@ -634,7 +632,6 @@
       if (text_data) {
         file_size = new Blob([text_data]).size // Calculate byte size of text data
         await load_trajectory_data(text_data, `trajectory.json`)
-        return
       }
     } catch (error) {
       console.error(`File drop failed:`, error)
@@ -677,7 +674,7 @@
 
   // Watch for frame rate changes
   $effect(() => {
-    on_frame_rate_change?.({ trajectory, fps: fps })
+    on_frame_rate_change?.({ trajectory, fps })
   })
 
   async function load_trajectory_data(data: string | ArrayBuffer, filename: string) {
@@ -840,10 +837,10 @@
     // Playback speed shortcuts (only when playing)
     else if ((event.key === `=` || event.key === `+`) && is_playing) {
       fps = Math.min(fps_range[1], fps + 0.2)
-      on_frame_rate_change?.({ trajectory, fps: fps })
+      on_frame_rate_change?.({ trajectory, fps })
     } else if (event.key === `-` && is_playing) {
       fps = Math.max(fps_range[0], fps - 0.2)
-      on_frame_rate_change?.({ trajectory, fps: fps })
+      on_frame_rate_change?.({ trajectory, fps })
     } // System shortcuts
     else if (event.key === `Escape`) {
       if (document.fullscreenElement) document.exitFullscreen()

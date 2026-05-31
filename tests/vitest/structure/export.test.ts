@@ -231,7 +231,7 @@ describe(`Export functionality`, () => {
       const exported = out(to_any(parsed))
       const reparsed = parse_structure_file(exported)
       assert(reparsed?.lattice, `failed to reparse`)
-      expect(reparsed.sites.length).toBe(parsed.sites.length)
+      expect(reparsed.sites).toHaveLength(parsed.sites.length)
       const L = reparsed.lattice.matrix
       reparsed.sites.forEach((site, idx) => {
         expect(site.abc[0]).toBeCloseTo(parsed.sites[idx].abc[0], TOL)
@@ -1005,13 +1005,11 @@ describe(`Export functionality`, () => {
         const lines = content.split(`\n`)
         if (format === `xyz`) {
           expect(lines[2]).toBe(expected)
-        } else if (format === `cif`) {
-          const coord_line = lines.find((line) => line.includes(`H1`))
-          expect(coord_line).toBeDefined()
-          expect(coord_line).toContain(expected)
         } else {
-          // poscar
-          const coord_line = lines.find((line) => /^0\.\d+ 0\.\d+ 0\.\d+$/.exec(line))
+          const coord_line =
+            format === `cif`
+              ? lines.find((line) => line.includes(`H1`))
+              : lines.find((line) => /^0\.\d+ 0\.\d+ 0\.\d+$/.exec(line)) // poscar
           expect(coord_line).toBeDefined()
           expect(coord_line).toContain(expected)
         }
@@ -1166,7 +1164,7 @@ describe(`Export functionality`, () => {
       const xyz_content = structure_to_xyz_str(large_structure)
       const lines = xyz_content.split(`\n`)
       expect(lines[0]).toBe(`1000`)
-      expect(lines.length).toBe(1002) // 1 count + 1 comment + 1000 atoms
+      expect(lines).toHaveLength(1002) // 1 count + 1 comment + 1000 atoms
     })
 
     it(`handles structures with mixed coordinate types`, () => {

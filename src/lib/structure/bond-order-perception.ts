@@ -90,7 +90,7 @@ function split_fragments(n_atoms: number, edges: [number, number][]): number[][]
     const stack = [start]
     const frag: number[] = []
     seen.add(start)
-    while (stack.length) {
+    while (stack.length > 0) {
       const node = stack.pop()
       if (node === undefined) break
       frag.push(node)

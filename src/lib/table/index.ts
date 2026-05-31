@@ -15,7 +15,7 @@ export type CellVal =
   | undefined
   | null
   | Record<string, unknown>
-  | { [key: string]: string | number | null | undefined | boolean }[]
+  | Record<string, string | number | null | undefined | boolean>[]
 
 // Row data for table entries
 export type RowData = { style?: string; class?: string; [key: string]: CellVal }
@@ -91,7 +91,7 @@ export type ExportData = boolean | { formats?: (`csv` | `json`)[]; filename?: st
 export type OnSortCallback = (column: string, dir: `asc` | `desc`) => Promise<RowData[]>
 
 // Strip HTML tags from a string (for search, export, etc.)
-export const strip_html = (str: string): string => str.replace(/<[^>]*>/g, ``)
+export const strip_html = (str: string): string => str.replaceAll(/<[^>]*>/g, ``)
 
 // Calculate table cell background color based on its value and column config
 export function calc_cell_color(

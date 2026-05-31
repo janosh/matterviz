@@ -72,7 +72,7 @@ describe(`FillArea`, () => {
     })
     const grad = doc_query(`linearGradient`)
     expect(grad.getAttribute(`gradientTransform`)).toBe(`rotate(45, 0.5, 0.5)`)
-    expect(grad.querySelectorAll(`stop`).length).toBe(2)
+    expect(grad.querySelectorAll(`stop`)).toHaveLength(2)
   })
 
   test(`renders radial gradient with correct center and stops`, () => {
@@ -91,7 +91,7 @@ describe(`FillArea`, () => {
     })
     const grad = doc_query(`radialGradient`)
     expect(grad.getAttribute(`cx`)).toBe(`0.3`)
-    expect(grad.querySelectorAll(`stop`).length).toBe(3)
+    expect(grad.querySelectorAll(`stop`)).toHaveLength(3)
   })
 
   test(`on_click handler receives correct FillHandlerEvent`, async () => {

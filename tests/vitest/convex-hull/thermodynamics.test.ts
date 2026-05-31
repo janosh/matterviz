@@ -116,8 +116,8 @@ describe(`find_lowest_energy_unary_refs`, () => {
       make_phase({ O: 1 }, -2.5),
     ]
     const refs = find_lowest_energy_unary_refs(entries)
-    expect(refs[`Fe`].energy_per_atom).toBe(-4.0)
-    expect(refs[`O`].energy_per_atom).toBe(-2.5)
+    expect(refs.Fe.energy_per_atom).toBe(-4.0)
+    expect(refs.O.energy_per_atom).toBe(-2.5)
   })
 
   test(`ignores non-unary entries`, () => {

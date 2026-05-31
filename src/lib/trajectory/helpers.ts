@@ -200,7 +200,7 @@ export function count_xyz_frames(data: string): number {
     let valid_coords = 0
     for (let idx = 0; idx < Math.min(num_atoms, 3); idx++) {
       const parts = lines[line_idx + 2 + idx]?.trim().split(/\s+/)
-      if (parts?.length >= 4 && isNaN(parseInt(parts[0])) && parts[0].length <= 3) {
+      if (parts?.length >= 4 && isNaN(parseInt(parts[0], 10)) && parts[0].length <= 3) {
         if (parts.slice(1, 4).every((coord) => !isNaN(parseFloat(coord)))) valid_coords++
       }
     }

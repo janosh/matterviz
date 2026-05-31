@@ -1,12 +1,11 @@
 import type { FileDropOptions } from '$lib/io/file-drop'
 import { create_file_drop_handler } from '$lib/io/file-drop'
+import { decompress_file } from '$lib/io/decompress'
+import { handle_url_drop } from '$lib/io/url-drop'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock(`$lib/io/decompress`, () => ({ decompress_file: vi.fn() }))
 vi.mock(`$lib/io/url-drop`, () => ({ handle_url_drop: vi.fn() }))
-
-import { decompress_file } from '$lib/io/decompress'
-import { handle_url_drop } from '$lib/io/url-drop'
 
 const make_event = (files: File[] = []) =>
   ({
@@ -41,7 +40,7 @@ describe(`create_file_drop_handler`, () => {
 
   test(`blocks drop when allow returns false`, async () => {
     const event = await run({ allow: () => false })
-    expect(event[`preventDefault`]).toHaveBeenCalled()
+    expect(event.preventDefault).toHaveBeenCalled()
     expect(on_drop).not.toHaveBeenCalled()
     expect(handle_url_drop).not.toHaveBeenCalled()
     expect(set_loading).not.toHaveBeenCalled()
@@ -49,7 +48,7 @@ describe(`create_file_drop_handler`, () => {
 
   test(`calls preventDefault and sets loading true then false`, async () => {
     const event = await run()
-    expect(event[`preventDefault`]).toHaveBeenCalled()
+    expect(event.preventDefault).toHaveBeenCalled()
     expect(set_loading).toHaveBeenCalledWith(true)
     expect(set_loading).toHaveBeenLastCalledWith(false)
   })

@@ -86,7 +86,7 @@ const file_metadata: Record<string, { type: string; label: string; description: 
 
 export const volumetric_files: VolumetricFileInfo[] = Object.entries(volumetric_file_modules)
   .map(([path, url]) => {
-    const name = path.split(`/`).pop() || path
+    const name = path.split(`/`).pop() ?? path
     const meta = file_metadata[name] ?? {
       type: `unknown`,
       label: name,

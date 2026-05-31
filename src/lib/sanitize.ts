@@ -58,7 +58,7 @@ function sanitize_svg_content(
   })
   const open_end = wrapped.indexOf(`>`)
   const close_start = wrapped.lastIndexOf(`</svg>`)
-  if (open_end < 0 || close_start < 0) return wrapped
+  if (open_end === -1 || close_start === -1) return wrapped
   return wrapped.slice(open_end + 1, close_start)
 }
 

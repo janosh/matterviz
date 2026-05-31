@@ -517,15 +517,16 @@ describe(`AtomLegend Component`, () => {
         scale_type: `continuous` as const,
       }
 
-      const property_colors = unique_values.length
-        ? {
-            colors: legend_colors,
-            values: [...unique_values, ...unique_values], // Add duplicates
-            min_value: Math.min(...unique_values),
-            max_value: Math.max(...unique_values),
-            unique_values,
-          }
-        : null
+      const property_colors =
+        unique_values.length > 0
+          ? {
+              colors: legend_colors,
+              values: [...unique_values, ...unique_values], // Add duplicates
+              min_value: Math.min(...unique_values),
+              max_value: Math.max(...unique_values),
+              unique_values,
+            }
+          : null
 
       expect(() => {
         mount(AtomLegend, {
@@ -1010,8 +1011,8 @@ describe(`Disordered Site Color Assignment`, () => {
   test(`each species at disordered site gets own element color`, () => {
     const result = compute_atom_colors([create_species(`Bi`, 0.5), create_species(`Zr`, 0.5)])
 
-    expect(get_color(result, `Bi`)).toBe(colors.element[`Bi`])
-    expect(get_color(result, `Zr`)).toBe(colors.element[`Zr`])
+    expect(get_color(result, `Bi`)).toBe(colors.element.Bi)
+    expect(get_color(result, `Zr`)).toBe(colors.element.Zr)
     expect(result[0].color).not.toBe(result[1].color)
   })
 
@@ -1046,8 +1047,8 @@ describe(`Disordered Site Color Assignment`, () => {
         create_species(`Zr`, 0.5),
       ])
 
-      expect(get_color(result, `Bi`)).toBe(ELEMENT_COLOR_SCHEMES[scheme][`Bi`])
-      expect(get_color(result, `Zr`)).toBe(ELEMENT_COLOR_SCHEMES[scheme][`Zr`])
+      expect(get_color(result, `Bi`)).toBe(ELEMENT_COLOR_SCHEMES[scheme].Bi)
+      expect(get_color(result, `Zr`)).toBe(ELEMENT_COLOR_SCHEMES[scheme].Zr)
     },
   )
 })

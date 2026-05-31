@@ -69,13 +69,13 @@ describe(`IsosurfaceControls`, () => {
   test(`shows negative color picker only when show_negative is true`, () => {
     mount_controls({ settings: { ...DEFAULT_ISOSURFACE_SETTINGS, show_negative: false } })
     const color_inputs = document.querySelectorAll<HTMLInputElement>(`input[type="color"]`)
-    expect(color_inputs.length).toBe(1) // only positive color
+    expect(color_inputs).toHaveLength(1) // only positive color
 
     document.body.innerHTML = ``
     mount_controls({ settings: { ...DEFAULT_ISOSURFACE_SETTINGS, show_negative: true } })
     const color_inputs_with_neg =
       document.querySelectorAll<HTMLInputElement>(`input[type="color"]`)
-    expect(color_inputs_with_neg.length).toBe(2) // positive + negative
+    expect(color_inputs_with_neg).toHaveLength(2) // positive + negative
   })
 
   test(`renders wireframe checkbox unchecked by default`, () => {
@@ -159,11 +159,11 @@ describe(`IsosurfaceControls`, () => {
 
     // Layer rows with correct controls
     const layer_rows = document.querySelectorAll(`.layer-row`)
-    expect(layer_rows.length).toBe(2)
+    expect(layer_rows).toHaveLength(2)
     for (const row of Array.from(layer_rows)) {
       expect(row.querySelector(`input[type="checkbox"]`)).toBeInstanceOf(HTMLElement)
       expect(row.querySelector(`input[type="color"]`)).toBeInstanceOf(HTMLElement)
-      expect(row.querySelectorAll(`input[type="range"]`).length).toBe(2)
+      expect(row.querySelectorAll(`input[type="range"]`)).toHaveLength(2)
     }
 
     // Single-layer controls should be hidden

@@ -495,7 +495,7 @@ describe(`Trajectory Streaming`, () => {
       // Verify metadata has expected structure
       expect(metadata).toBeDefined()
       expect(Array.isArray(metadata)).toBe(true)
-      expect(metadata.length).toBe(frame_count)
+      expect(metadata).toHaveLength(frame_count)
 
       // Verify each metadata entry has required fields
       for (const [idx, entry] of metadata.entries()) {

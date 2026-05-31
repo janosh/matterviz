@@ -34,7 +34,7 @@ test.describe(`XrdPlot Component Tests`, () => {
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 3000 })
     const text = await tooltip.textContent()
-    expect(text || ``).toContain(`2θ:`)
+    expect(text ?? ``).toContain(`2θ:`)
     // hkl and d are conditional; ensure tooltip structure exists
   })
 

@@ -318,7 +318,7 @@ function compute_savgol_coefficients(window: number, order: number): number[] {
   for (let idx = -half; idx <= half; idx++) {
     const row: number[] = []
     for (let power = 0; power <= order; power++) {
-      row.push(Math.pow(idx, power))
+      row.push(idx ** power)
     }
     vandermonde.push(row)
   }

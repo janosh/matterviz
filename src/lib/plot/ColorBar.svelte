@@ -103,11 +103,11 @@
     // If ticks are secondary (top), default label to bottom
     if (orientation === `horizontal`) {
       return tick_side === `primary` ? `top` : `bottom`
-    } else { // orientation === `vertical`
+    } // orientation === `vertical`
       // If ticks are primary (right), default label to left
       // If ticks are secondary (left), default label to right
       return tick_side === `primary` ? `left` : `right`
-    }
+
   })
 
   // Number of ticks to generate
@@ -200,7 +200,7 @@
 
         const power_of_10_ticks: number[] = []
         for (let exp = start_exp; exp <= end_exp; exp++) {
-          power_of_10_ticks.push(Math.pow(10, exp))
+          power_of_10_ticks.push(10 ** exp)
         }
 
         // Ensure domain endpoints are included if they are powers of 10 and missed by loop
@@ -225,27 +225,24 @@
         }
 
         return power_of_10_ticks
-      } else {
-        // Generate exactly n_ticks manually for log scale if not snapping
-        const log_min = Math.log10(scale_min)
-        const log_max = Math.log10(scale_max)
-        return [...Array(n_ticks).keys()].map((idx) => {
-          const fraction = idx / (n_ticks - 1)
-          const log_val = log_min + fraction * (log_max - log_min)
-          return Math.pow(10, log_val)
-        })
       }
-    } else {
-      // Use D3's default nice ticks for linear scale
-      if (snap_ticks) return scale.ticks(n_ticks)
-      else {
-        // Generate exactly n_ticks evenly spaced linear ticks
-        return [...Array(n_ticks).keys()].map((idx) => {
-          const fraction = idx / (n_ticks - 1)
-          return scale_min + fraction * (scale_max - scale_min)
-        })
-      }
+      // Generate exactly n_ticks manually for log scale if not snapping
+      const log_min = Math.log10(scale_min)
+      const log_max = Math.log10(scale_max)
+      return [...Array(n_ticks).keys()].map((idx) => {
+        const fraction = idx / (n_ticks - 1)
+        const log_val = log_min + fraction * (log_max - log_min)
+        return 10 ** log_val
+      })
     }
+    // Use D3's default nice ticks for linear scale
+    if (snap_ticks) return scale.ticks(n_ticks)
+    // Generate exactly n_ticks evenly spaced linear ticks
+    return [...Array(n_ticks).keys()].map((idx) => {
+      const fraction = idx / (n_ticks - 1)
+      return scale_min + fraction * (scale_max - scale_min)
+    })
+
   })
 
   // Update nice_range binding when snapping ticks
@@ -380,7 +377,7 @@
       if (use_log_interp) {
         data_value = log_span === 0
           ? adjusted_min_ramp
-          : Math.pow(10, log_min + fraction * log_span)
+          : 10 ** (log_min + fraction * log_span)
       } else if (type_name === `arcsinh`) {
         data_value = asinh_span === 0
           ? min_ramp_domain

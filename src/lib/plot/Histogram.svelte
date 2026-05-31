@@ -299,7 +299,7 @@
       scale_type: ScaleType,
     ): Vec2 => {
       const type_name = get_scale_type_name(scale_type)
-      if (!series_list.length) {
+      if (series_list.length === 0) {
         const fallback = type_name === `log` ? 1 : 0
         return [fallback, 1]
       }
@@ -416,7 +416,7 @@
     const current_ticks_y = untrack(() => ticks.y)
     const current_ticks_y2 = untrack(() => ticks.y2)
 
-    const new_pad = width && height && current_ticks_y.length
+    const new_pad = width && height && current_ticks_y.length > 0
       ? calc_auto_padding({
         padding,
         default_padding,
@@ -428,7 +428,7 @@
 
     // Add y2 axis label space (calc_auto_padding only accounts for tick labels)
     if (
-      width && height && y2_series.length && current_ticks_y2.length &&
+      width && height && y2_series.length > 0 && current_ticks_y2.length > 0 &&
       final_y2_axis.label
     ) {
       const inside = final_y2_axis.tick?.label?.inside ?? false
@@ -444,7 +444,7 @@
 
     // Add x2 axis label space (mirroring y2 logic for top padding)
     if (
-      width && height && x2_series.length && current_ticks_x2.length &&
+      width && height && x2_series.length > 0 && current_ticks_x2.length > 0 &&
       final_x2_axis.label
     ) {
       const inside = final_x2_axis.tick?.label?.inside ?? false
@@ -472,7 +472,7 @@
   // vertical segment (top -> baseline) so the legend can't hide inside a tall bar. Built from
   // histogram_bins (pad-independent) + ranges so the crowding decision can't see its own reservation.
   const obstacles_norm = $derived.by(() => {
-    if (!width || !height || !histogram_bins.length) return []
+    if (!width || !height || histogram_bins.length === 0) return []
     const base_w = width - base_pad.l - base_pad.r
     const base_h = height - base_pad.t - base_pad.b
     if (base_w <= 0 || base_h <= 0) return []
@@ -540,7 +540,7 @@
 
   // Pad-independent binning (no pixel scales) so the auto-place obstacle field can reuse it
   let histogram_bins = $derived.by(() => {
-    if (!selected_series.length || !width || !height) return []
+    if (selected_series.length === 0 || !width || !height) return []
     const hist_generator = bin()
       .domain([ranges.current.x[0], ranges.current.x[1]])
       .thresholds(bins)
@@ -625,7 +625,7 @@
 
   // Collect histogram bar positions for legend placement
   let hist_points_for_placement = $derived.by(() => {
-    if (!width || !height || !histogram_data.length) return []
+    if (!width || !height || histogram_data.length === 0) return []
 
     const points: { x: number; y: number }[] = []
 

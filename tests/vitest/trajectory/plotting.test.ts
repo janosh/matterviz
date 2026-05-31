@@ -153,7 +153,7 @@ describe(`generate_plot_series`, () => {
 
     const series = generate_plot_series(trajectory, test_extractor)
     const energy_series = find_series_by_label(series, `energy`)
-    expect(series.length).toBe(1)
+    expect(series).toHaveLength(1)
     expect(energy_series?.visible).toBe(true)
     expect(energy_series?.unit).toBe(`eV`)
     expect(energy_series?.y_axis).toBe(`y1`)

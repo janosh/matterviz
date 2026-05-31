@@ -1,5 +1,6 @@
 // Shared utilities for interactive axis functionality
 
+import { to_error } from '$lib/utils'
 import type {
   AxisConfig,
   AxisLoadError,
@@ -105,7 +106,7 @@ export const create_axis_change_handler =
       // Revert selection
       state.set_axis(axis, { ...state.get_axis(axis), selected_key: prev_key })
 
-      const message = err instanceof Error ? err.message : String(err)
+      const message = to_error(err).message
       on_error?.({ axis, key, message })
     } finally {
       state.set_loading(null)

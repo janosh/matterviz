@@ -159,8 +159,8 @@ describe(`JsonTree`, () => {
       expect(bracket_text).toContain(`{`)
       expect(bracket_text).toContain(`}`)
       // Count: outer object { }, inner array [ ], inner object { } = 3 pairs each
-      expect(bracket_text.filter((text) => text === `[`).length).toBe(1) // Only arr uses [
-      expect(bracket_text.filter((text) => text === `{`).length).toBe(2) // outer obj + inner obj
+      expect(bracket_text.filter((text) => text === `[`)).toHaveLength(1) // Only arr uses [
+      expect(bracket_text.filter((text) => text === `{`)).toHaveLength(2) // outer obj + inner obj
     })
 
     it.each([
@@ -177,7 +177,7 @@ describe(`JsonTree`, () => {
         },
       })
       const indices = document.querySelectorAll(`.array-index .index`)
-      expect(indices.length).toBe(expected_count)
+      expect(indices).toHaveLength(expected_count)
     })
 
     it(`sorts object keys when sort_keys=true`, () => {
@@ -191,7 +191,7 @@ describe(`JsonTree`, () => {
         },
       })
       const keys = Array.from(document.querySelectorAll(`.node-key`)).map((el) =>
-        el.textContent?.replace(/"/g, ``).trim(),
+        el.textContent?.replaceAll('"', ``).trim(),
       )
       expect(keys).toEqual([`apple`, `mango`, `zebra`])
     })
@@ -378,9 +378,9 @@ describe(`JsonTree`, () => {
       mount(JsonTree, { target: document.body, props: { value: { name: `test` } } })
       const btns = document.querySelectorAll(`.controls button`)
       // 2 toggles (T, #) + 5 expand/collapse (expand, collapse, 1, 2, 3) + 2 copy/download
-      expect(btns.length).toBe(9)
+      expect(btns).toHaveLength(9)
       const dividers = document.querySelectorAll(`.divider`)
-      expect(dividers.length).toBe(2) // separators between 3 button groups
+      expect(dividers).toHaveLength(2) // separators between 3 button groups
     })
 
     it(`has toggle buttons for data types and array indices`, () => {
@@ -397,7 +397,7 @@ describe(`JsonTree`, () => {
       const control_groups = document.querySelectorAll(`.controls`)
       const last_group = control_groups[control_groups.length - 1]
       const btns = last_group.querySelectorAll(`button`)
-      expect(btns.length).toBe(2)
+      expect(btns).toHaveLength(2)
       // Both should have SVG icons
       expect(btns[0].querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
       expect(btns[1].querySelector(`svg`)).toBeInstanceOf(SVGSVGElement)
@@ -633,7 +633,7 @@ describe(`JsonTree`, () => {
       })
 
       // Initially no type annotations
-      expect(document.querySelectorAll(`.type-annotation`).length).toBe(0)
+      expect(document.querySelectorAll(`.type-annotation`)).toHaveLength(0)
 
       const type_toggle = get_toggle_btns()[0]
       expect(type_toggle.textContent).toBe(`T`)
@@ -652,7 +652,7 @@ describe(`JsonTree`, () => {
       flushSync()
       await tick()
 
-      expect(document.querySelectorAll(`.type-annotation`).length).toBe(0)
+      expect(document.querySelectorAll(`.type-annotation`)).toHaveLength(0)
       expect(type_toggle.classList.contains(`active`)).toBe(false)
     })
 
@@ -667,7 +667,7 @@ describe(`JsonTree`, () => {
       })
 
       // Initially indices are shown
-      expect(document.querySelectorAll(`.array-index .index`).length).toBe(3)
+      expect(document.querySelectorAll(`.array-index .index`)).toHaveLength(3)
 
       const index_toggle = get_toggle_btns()[1]
       expect(index_toggle.textContent).toBe(`#`)
@@ -678,7 +678,7 @@ describe(`JsonTree`, () => {
       await tick()
 
       // Now indices should be hidden
-      expect(document.querySelectorAll(`.array-index .index`).length).toBe(0)
+      expect(document.querySelectorAll(`.array-index .index`)).toHaveLength(0)
       expect(index_toggle.classList.contains(`active`)).toBe(false)
 
       // Toggle on again
@@ -686,7 +686,7 @@ describe(`JsonTree`, () => {
       flushSync()
       await tick()
 
-      expect(document.querySelectorAll(`.array-index .index`).length).toBe(3)
+      expect(document.querySelectorAll(`.array-index .index`)).toHaveLength(3)
       expect(index_toggle.classList.contains(`active`)).toBe(true)
     })
 
@@ -975,7 +975,7 @@ describe(`search navigation`, () => {
     await type_search(`ba`)
 
     expect(get_match_nav()).toBeInstanceOf(HTMLElement)
-    expect(get_nav_btns().length).toBe(2) // prev and next
+    expect(get_nav_btns()).toHaveLength(2) // prev and next
   })
 
   it(`shows "X of Y" match count format`, async () => {
@@ -1832,10 +1832,10 @@ describe(`diff mode`, () => {
         default_fold_level: 5,
       },
     })
-    expect(document.querySelectorAll(`.diff-added`).length).toBe(0)
-    expect(document.querySelectorAll(`.diff-changed`).length).toBe(0)
-    expect(document.querySelectorAll(`.diff-removed`).length).toBe(0)
-    expect(document.querySelectorAll(`.ghost`).length).toBe(0)
+    expect(document.querySelectorAll(`.diff-added`)).toHaveLength(0)
+    expect(document.querySelectorAll(`.diff-changed`)).toHaveLength(0)
+    expect(document.querySelectorAll(`.diff-removed`)).toHaveLength(0)
+    expect(document.querySelectorAll(`.ghost`)).toHaveLength(0)
   })
 })
 
@@ -1851,7 +1851,7 @@ describe(`sticky headers`, () => {
     })
     const sticky_nodes = document.querySelectorAll(`.sticky-header`)
     // root (depth 0), a (depth 1), b (depth 2) should all be sticky
-    expect(sticky_nodes.length).toBe(3)
+    expect(sticky_nodes).toHaveLength(3)
   })
 
   it(`does not add sticky-header to collapsed or leaf nodes`, () => {
@@ -1865,7 +1865,7 @@ describe(`sticky headers`, () => {
     })
     // Only the root node should be sticky (depth 0, expanded)
     const sticky = document.querySelectorAll(`.sticky-header`)
-    expect(sticky.length).toBe(1)
+    expect(sticky).toHaveLength(1)
   })
 })
 

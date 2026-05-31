@@ -307,7 +307,7 @@ export function compute_gas_correction(
     ...DEFAULT_ELEMENT_TO_GAS,
     ...config.element_to_gas,
   }
-  const enabled_gases = new Set(config.enabled_gases ?? [])
+  const enabled_gases = new Set(config.enabled_gases)
 
   let correction = 0
   const n_atoms = count_atoms_in_composition(entry.composition)

@@ -425,7 +425,7 @@ describe(`generate_chem_sys_subspaces`, () => {
   ] as [[number, ElementSymbol[]], string][])(
     `generates 2^n-1 subspaces for %j (%s)`,
     ([expected_num, elements], _desc) => {
-      expect(generate_chem_sys_subspaces(elements).length).toBe(2 ** expected_num - 1)
+      expect(generate_chem_sys_subspaces(elements)).toHaveLength(2 ** expected_num - 1)
     },
   )
 

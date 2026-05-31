@@ -70,9 +70,9 @@
 
     let random_idx = 0
     for (let idx = 0; idx < count; idx++) {
-      const grid_z = (idx / sites_per_layer) | 0
+      const grid_z = Math.trunc((idx / sites_per_layer))
       const remainder = idx - grid_z * sites_per_layer
-      const grid_y = (remainder / sites_per_edge) | 0
+      const grid_y = Math.trunc((remainder / sites_per_edge))
       const grid_x = remainder - grid_y * sites_per_edge
 
       const frac_x = (grid_x + 1) * spacing + randoms[random_idx++]
@@ -112,7 +112,7 @@
     const parse_int = (key: string, min: number, max: number, fallback: number) => {
       const val = params.get(key)
       if (!val) return fallback
-      const parsed = parseInt(val)
+      const parsed = parseInt(val, 10)
       return !isNaN(parsed) && parsed >= min && parsed <= max ? parsed : fallback
     }
 

@@ -252,8 +252,8 @@
     const all_paths = collect_all_paths(value, root_path)
     const descendants = target_path === `` ? all_paths : all_paths.filter(
       (entry) =>
-        entry === target_path || entry.startsWith(target_path + `.`) ||
-        entry.startsWith(target_path + `[`),
+        entry === target_path || entry.startsWith(`${target_path}.`) ||
+        entry.startsWith(`${target_path}[`),
     )
     return descendants.includes(target_path)
       ? descendants

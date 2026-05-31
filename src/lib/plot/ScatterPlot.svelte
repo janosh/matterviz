@@ -429,7 +429,7 @@
   // Update padding when format or ticks change
   $effect(() => {
     const new_pad = width && height &&
-        (y_tick_values.length || y2_tick_values.length || x2_tick_values.length)
+        (y_tick_values.length > 0 || y2_tick_values.length > 0 || x2_tick_values.length > 0)
       ? calc_auto_padding({
         padding,
         default_padding,
@@ -791,7 +791,7 @@
       .filter((
         srs,
       ): srs is DataSeries<Metadata> & { filtered_data: InternalPoint<Metadata>[] } =>
-        !!srs.filtered_data && srs.filtered_data.length > 0
+        (srs.filtered_data?.length ?? 0) > 0
       ),
   )
 
@@ -1161,7 +1161,7 @@
 
   // Calculate color bar placement (coordinates with legend to avoid overlap)
   let color_bar_placement = $derived.by(() => {
-    if (!color_bar || !all_color_values.length || !width || !height) return null
+    if (!color_bar || all_color_values.length === 0 || !width || !height) return null
 
     const plot_width = width - pad.l - pad.r
     const plot_height = height - pad.t - pad.b

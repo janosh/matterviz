@@ -22,7 +22,7 @@ function create_sized_container(): HTMLDivElement {
   const target = document.createElement(`div`)
   target.style.width = `800px`
   target.style.height = `600px`
-  document.body.appendChild(target)
+  document.body.append(target)
   return target
 }
 
@@ -390,7 +390,7 @@ describe(`XrdPlot`, () => {
 
     // Should have 2 bar series for 2 patterns
     const bar_series = target.querySelectorAll(`.bar-series`)
-    expect(bar_series.length).toBe(2)
+    expect(bar_series).toHaveLength(2)
 
     // Verify both pattern labels appear in legend
     const text_content = target.textContent || ``
@@ -408,7 +408,7 @@ describe(`XrdPlot`, () => {
     await wait_for_plot_render(target)
 
     const bar_series = target.querySelectorAll(`.bar-series`)
-    expect(bar_series.length).toBe(1)
+    expect(bar_series).toHaveLength(1)
   })
 
   test(`dragover class toggles correctly`, async () => {

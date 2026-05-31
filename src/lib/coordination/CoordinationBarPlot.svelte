@@ -18,6 +18,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { calc_coordination_nums, type CoordinationData } from './calc-coordination'
   import type { SplitMode } from './index'
+  import { to_error } from '$lib/utils'
 
   type CoordinationMetadata = {
     element?: string
@@ -178,31 +179,30 @@
           metadata: { structure_label: entry.label },
         }
       })
-    } else {
-      // split_mode === 'none': combine all into single series
-      const combined_histogram = new SvelteMap<number, number>()
-
-      for (const entry of entries_with_data) {
-        for (const [cn, count] of entry.data.cn_histogram) {
-          combined_histogram.set(cn, (combined_histogram.get(cn) ?? 0) + count)
-        }
-      }
-
-      const x_vals = Array.from(combined_histogram.keys()).sort((a, b) => a - b)
-      const y_vals = x_vals.map((cn) => combined_histogram.get(cn) ?? 0)
-
-      return [
-        {
-          x: x_vals,
-          y: y_vals,
-          label: `All Sites`,
-          color: PLOT_COLORS[0],
-          bar_width: 0.8,
-          visible: true,
-          metadata: {},
-        },
-      ]
     }
+    // split_mode === 'none': combine all into single series
+    const combined_histogram = new SvelteMap<number, number>()
+
+    for (const entry of entries_with_data) {
+      for (const [cn, count] of entry.data.cn_histogram) {
+        combined_histogram.set(cn, (combined_histogram.get(cn) ?? 0) + count)
+      }
+    }
+
+    const x_vals = Array.from(combined_histogram.keys()).sort((a, b) => a - b)
+    const y_vals = x_vals.map((cn) => combined_histogram.get(cn) ?? 0)
+
+    return [
+      {
+        x: x_vals,
+        y: y_vals,
+        label: `All Sites`,
+        color: PLOT_COLORS[0],
+        bar_width: 0.8,
+        visible: true,
+        metadata: {},
+      },
+    ]
   })
 
   const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
@@ -221,7 +221,7 @@
       }
     } catch (exc) {
       error_msg = `Failed to process structure: ${
-        exc instanceof Error ? exc.message : String(exc)
+        to_error(exc).message
       }`
     }
   }

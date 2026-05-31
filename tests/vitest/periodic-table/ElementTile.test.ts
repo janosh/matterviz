@@ -261,8 +261,8 @@ describe(`ElementTile`, () => {
       })
 
       const node = doc_query(`.element-tile`)
-      expect(node.getAttribute(`tabindex`)).toBe(null)
-      expect(node.getAttribute(`role`)).toBe(null)
+      expect(node.getAttribute(`tabindex`)).toBeNull()
+      expect(node.getAttribute(`role`)).toBeNull()
     })
   })
 
@@ -274,8 +274,8 @@ describe(`ElementTile`, () => {
       })
 
       const node = doc_query(`.element-tile`)
-      expect(node.getAttribute(`role`)).toBe(null)
-      expect(node.getAttribute(`tabindex`)).toBe(null)
+      expect(node.getAttribute(`role`)).toBeNull()
+      expect(node.getAttribute(`tabindex`)).toBeNull()
     })
   })
 
@@ -484,7 +484,7 @@ describe(`ElementTile`, () => {
           target: document.body,
           props: { element: rand_element, ...props },
         })
-        expect(!!document.querySelector(`.number`)).toBe(should_show)
+        expect(Boolean(document.querySelector(`.number`))).toBe(should_show)
       }
 
       test_show_number({ value: 42 }, true) // Single value - show by default
@@ -524,10 +524,10 @@ describe(`ElementTile`, () => {
 
       expect(document.querySelector(`.element-tile`)).toBeInstanceOf(HTMLElement)
       if (expected_count !== undefined) {
-        expect(document.querySelectorAll(`.multi-value`).length).toBe(expected_count)
+        expect(document.querySelectorAll(`.multi-value`)).toHaveLength(expected_count)
       }
       if (expected_segments !== undefined) {
-        expect(document.querySelectorAll(`.segment`).length).toBe(expected_segments)
+        expect(document.querySelectorAll(`.segment`)).toHaveLength(expected_segments)
       }
     })
   })
@@ -550,8 +550,8 @@ describe(`ElementTile`, () => {
 
       const tile = doc_query(`.element-tile`)
       expect(tile.style.backgroundColor).toBe(color_value)
-      expect(!!document.querySelector(`.value`)).toBe(!is_detected)
-      expect(!!document.querySelector(`.name`)).toBe(is_detected)
+      expect(Boolean(document.querySelector(`.value`))).toBe(!is_detected)
+      expect(Boolean(document.querySelector(`.name`))).toBe(is_detected)
     })
 
     test.each([
@@ -568,8 +568,8 @@ describe(`ElementTile`, () => {
         },
       })
 
-      const has_value = !!document.querySelector(`.value`)
-      const has_name = !!document.querySelector(`.name`)
+      const has_value = Boolean(document.querySelector(`.value`))
+      const has_name = Boolean(document.querySelector(`.name`))
       expect(has_value).toBe(show_values)
       expect(has_name).toBe(!show_values)
     })
@@ -584,7 +584,7 @@ describe(`ElementTile`, () => {
         props: { element: rand_element, value: colors, bg_colors: colors },
       })
 
-      expect(document.querySelectorAll(`.segment`).length).toBe(segments)
+      expect(document.querySelectorAll(`.segment`)).toHaveLength(segments)
       expect(doc_query(`.element-tile`).style.backgroundColor).toBe(`transparent`)
       expect(document.querySelector(`.value`)).toBeNull()
     })
@@ -602,8 +602,8 @@ describe(`ElementTile`, () => {
         },
       })
 
-      expect(document.querySelectorAll(`.multi-value`).length).toBe(expected_spans)
-      expect(!!document.querySelector(`.name`)).toBe(!should_show)
+      expect(document.querySelectorAll(`.multi-value`)).toHaveLength(expected_spans)
+      expect(Boolean(document.querySelector(`.name`))).toBe(!should_show)
     })
   })
 
@@ -673,7 +673,7 @@ describe(`ElementTile`, () => {
       })
 
       const segments = document.querySelectorAll(`.segment`)
-      expect(segments.length).toBe(expected_segments)
+      expect(segments).toHaveLength(expected_segments)
 
       if (expected_segments === 0) {
         const fallback_value = document.querySelector(`.value`)

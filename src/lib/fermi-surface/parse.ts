@@ -14,7 +14,7 @@ import type {
 const parse_number_tokens = (line: string): string[] => line.split(/\s+/).filter(Boolean)
 
 // Parse whitespace-separated floats from a line (optimized with unary +)
-const parse_floats = (line: string): number[] => parse_number_tokens(line).map((part) => +part)
+const parse_floats = (line: string): number[] => parse_number_tokens(line).map(Number)
 
 // Parse whitespace-separated integers from a line
 const parse_ints = (line: string): number[] =>
@@ -358,8 +358,10 @@ function parse_fermi_json(content: string): FermiSurfaceData | BandGridData {
       k_grid: bs.k_grid ?? bs.kgrid,
       k_lattice: bs.k_lattice ?? bs.reciprocal_lattice,
       fermi_energy: bs.fermi_energy ?? bs.efermi ?? 0,
-      n_bands: bs.n_bands || bs.nbands || bs.energies[0]?.length || 0,
-      n_spins: bs.n_spins || bs.nspins || bs.energies.length || 1,
+      // oxlint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- numeric fallback chain (0 falls through)
+      n_bands: (bs.n_bands ?? bs.nbands) || bs.energies[0]?.length || 0,
+      // oxlint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- numeric fallback chain (0 falls through)
+      n_spins: (bs.n_spins ?? bs.nspins) || bs.energies.length || 1,
     } as BandGridData
   }
 
@@ -507,7 +509,7 @@ export function parse_fermi_file(
   content: string,
   filename?: string,
 ): BandGridData | FermiSurfaceData | null {
-  const lower_name = filename?.toLowerCase() || ``
+  const lower_name = filename?.toLowerCase() ?? ``
 
   // Detect by filename extension
   if (lower_name.endsWith(`.bxsf`) || lower_name.endsWith(`.bxsf.gz`)) {

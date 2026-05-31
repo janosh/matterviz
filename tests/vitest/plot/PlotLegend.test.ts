@@ -77,7 +77,7 @@ describe(`PlotLegend`, () => {
     expect(wrapper.style.gridTemplateRows).toBe(`repeat(1, auto)`)
 
     const items = document.querySelectorAll(`.legend-item`)
-    expect(items.length).toBe(default_series_data.length)
+    expect(items).toHaveLength(default_series_data.length)
 
     // Check first item details (visible)
     const first_item = items[0]
@@ -88,7 +88,7 @@ describe(`PlotLegend`, () => {
     expect(first_item.getAttribute(`aria-label`)).toBe(`Toggle visibility for Series 1`)
     expect(first_item.querySelector(`.legend-label`)?.textContent).toBe(`Series 1`)
     const first_marker_svgs = first_item.querySelectorAll(`.legend-marker > svg`)
-    expect(first_marker_svgs.length).toBe(2) // line + marker
+    expect(first_marker_svgs).toHaveLength(2) // line + marker
     expect(first_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`)).toBe(`red`)
     expect(first_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
       `solid`,
@@ -104,7 +104,7 @@ describe(`PlotLegend`, () => {
     expect(second_item.getAttribute(`aria-label`)).toBe(`Toggle visibility for Series 2`)
     expect(second_item.querySelector(`.legend-label`)?.textContent).toBe(`Series 2`)
     const second_marker_svgs = second_item.querySelectorAll(`.legend-marker > svg`)
-    expect(second_marker_svgs.length).toBe(2) // line + marker
+    expect(second_marker_svgs).toHaveLength(2) // line + marker
     expect(second_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`)).toBe(`blue`)
     expect(second_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
       `dashed`,
@@ -115,7 +115,7 @@ describe(`PlotLegend`, () => {
     const third_item = items[2]
     expect(third_item.getAttribute(`aria-pressed`)).toBe(`true`)
     const third_marker_svgs = third_item.querySelectorAll(`.legend-marker > svg`)
-    expect(third_marker_svgs.length).toBe(1) // Only marker shape svg
+    expect(third_marker_svgs).toHaveLength(1) // Only marker shape svg
     expect(third_marker_svgs[0].querySelector(`polygon`)).toBeInstanceOf(SVGPolygonElement) // triangle
     expect(third_marker_svgs[0].querySelector(`polygon`)?.getAttribute(`fill`)).toBe(`green`)
 
@@ -123,7 +123,7 @@ describe(`PlotLegend`, () => {
     const fourth_item = items[3]
     expect(fourth_item.getAttribute(`aria-pressed`)).toBe(`true`)
     const fourth_marker_svgs = fourth_item.querySelectorAll(`.legend-marker > svg`)
-    expect(fourth_marker_svgs.length).toBe(1) // Only line svg
+    expect(fourth_marker_svgs).toHaveLength(1) // Only line svg
     expect(fourth_marker_svgs[0].querySelector(`line`)).toBeInstanceOf(SVGLineElement) // line
     expect(fourth_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`)).toBe(`purple`)
     expect(fourth_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
@@ -302,11 +302,11 @@ describe(`PlotLegend`, () => {
     })
 
     const items = document.querySelectorAll(`.legend-item`)
-    expect(items.length).toBe(5)
+    expect(items).toHaveLength(5)
 
     // Circle/Solid
     const item1_marker_svgs = items[0].querySelectorAll(`.legend-marker > svg`)
-    expect(item1_marker_svgs.length).toBe(2) // Line + Marker
+    expect(item1_marker_svgs).toHaveLength(2) // Line + Marker
     expect(item1_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
       `solid`,
     )
@@ -317,7 +317,7 @@ describe(`PlotLegend`, () => {
 
     // Square/Dashed
     const item2_marker_svgs = items[1].querySelectorAll(`.legend-marker > svg`)
-    expect(item2_marker_svgs.length).toBe(2)
+    expect(item2_marker_svgs).toHaveLength(2)
     expect(item2_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
       `dashed`,
     )
@@ -328,7 +328,7 @@ describe(`PlotLegend`, () => {
 
     // Triangle/Dotted
     const item3_marker_svgs = items[2].querySelectorAll(`.legend-marker > svg`)
-    expect(item3_marker_svgs.length).toBe(2)
+    expect(item3_marker_svgs).toHaveLength(2)
     expect(item3_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke-dasharray`)).toBe(
       `dotted`,
     )
@@ -339,14 +339,14 @@ describe(`PlotLegend`, () => {
 
     // Cross (only marker) - rendered as filled polygon matching D3's symbolCross
     const item4_marker_svgs = items[3].querySelectorAll(`.legend-marker > svg`)
-    expect(item4_marker_svgs.length).toBe(1)
+    expect(item4_marker_svgs).toHaveLength(1)
     const cross_polygon = item4_marker_svgs[0].querySelector(`polygon`)
     expect(cross_polygon).toBeInstanceOf(SVGPolygonElement) // cross as filled polygon (plus shape)
     expect(cross_polygon?.getAttribute(`fill`)).toBe(`orange`)
 
     // Star (only marker)
     const item5_marker_svgs = items[4].querySelectorAll(`.legend-marker > svg`)
-    expect(item5_marker_svgs.length).toBe(1)
+    expect(item5_marker_svgs).toHaveLength(1)
     const star_polygon = item5_marker_svgs[0].querySelector(`polygon`)
     expect(star_polygon).toBeInstanceOf(SVGPolygonElement) // star polygon
     expect(star_polygon?.getAttribute(`fill`)).toBe(`magenta`)
@@ -430,18 +430,18 @@ describe(`PlotLegend`, () => {
 
     // Red
     const item1_marker_svgs = items[0].querySelectorAll(`.legend-marker > svg`)
-    expect(item1_marker_svgs.length).toBe(2)
+    expect(item1_marker_svgs).toHaveLength(2)
     expect(item1_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`)).toBe(`red`)
     expect(item1_marker_svgs[1].querySelector(`circle`)?.getAttribute(`fill`)).toBe(`red`)
 
     // Blue Marker Only
     const item2_marker_svgs = items[1].querySelectorAll(`.legend-marker > svg`)
-    expect(item2_marker_svgs.length).toBe(1) // Only marker SVG rendered
+    expect(item2_marker_svgs).toHaveLength(1) // Only marker SVG rendered
     expect(item2_marker_svgs[0].querySelector(`rect`)?.getAttribute(`fill`)).toBe(`blue`)
 
     // Green Line Only
     const item3_marker_svgs = items[2].querySelectorAll(`.legend-marker > svg`)
-    expect(item3_marker_svgs.length).toBe(1) // Only line SVG rendered
+    expect(item3_marker_svgs).toHaveLength(1) // Only line SVG rendered
     expect(item3_marker_svgs[0].querySelector(`line`)?.getAttribute(`stroke`)).toBe(`green`)
   })
 
@@ -521,7 +521,7 @@ describe(`PlotLegend`, () => {
     const wrapper = doc_query(`.legend`)
     expect(wrapper).toBeInstanceOf(HTMLElement)
     const items = document.querySelectorAll(`.legend-item`)
-    expect(items.length).toBe(1)
+    expect(items).toHaveLength(1)
     expect(items[0].querySelector(`.legend-label`)?.textContent).toBe(`Series 1`)
     // Check ARIA attributes for single item
     expect(items[0].getAttribute(`role`)).toBe(`button`)
@@ -587,9 +587,9 @@ describe(`PlotLegend`, () => {
       })
 
       expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(expects.grouped_class)
-      expect(document.querySelectorAll(`.legend-group-header`).length).toBe(expects.headers)
-      expect(document.querySelectorAll(`.legend-item`).length).toBe(expects.items)
-      expect(document.querySelectorAll(`.legend-item.indented`).length).toBe(expects.indented)
+      expect(document.querySelectorAll(`.legend-group-header`)).toHaveLength(expects.headers)
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(expects.items)
+      expect(document.querySelectorAll(`.legend-item.indented`)).toHaveLength(expects.indented)
 
       const group_labels = Array.from(document.querySelectorAll(`.legend-group-header`)).map(
         (h) => h.querySelector(`.group-label`)?.textContent,
@@ -689,19 +689,19 @@ describe(`PlotLegend`, () => {
 
       const chevron = doc_query(`.group-chevron`)
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
-      expect(document.querySelectorAll(`.legend-item`).length).toBe(6)
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
 
       // Click to collapse
       chevron.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       await tick()
       expect(chevron.classList.contains(`collapsed`)).toBe(true)
-      expect(document.querySelectorAll(`.legend-item`).length).toBe(3) // 6 - 3 Li₂O items
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3) // 6 - 3 Li₂O items
 
       // Keyboard (Enter) to expand
       chevron.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
       await tick()
       expect(chevron.classList.contains(`collapsed`)).toBe(false)
-      expect(document.querySelectorAll(`.legend-item`).length).toBe(6)
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
     })
 
     test(`collapsed_groups prop controls initial collapse state`, async () => {
@@ -718,13 +718,13 @@ describe(`PlotLegend`, () => {
       // NaCl (second group) should be expanded
       expect(chevrons[1].classList.contains(`collapsed`)).toBe(false)
       // Only 3 items visible (NaCl: 2 + Ungrouped: 1)
-      expect(document.querySelectorAll(`.legend-item`).length).toBe(3)
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3)
 
       // Clicking chevron updates the bound set
       chevrons[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       await tick()
       expect(collapsed.has(`Li₂O`)).toBe(false) // Removed from set
-      expect(document.querySelectorAll(`.legend-item`).length).toBe(6)
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
     })
 
     test(`no grouping when legend_group not set`, () => {
@@ -734,8 +734,8 @@ describe(`PlotLegend`, () => {
       })
 
       expect(doc_query(`.legend`).classList.contains(`grouped`)).toBe(false)
-      expect(document.querySelectorAll(`.legend-group-header`).length).toBe(0)
-      expect(document.querySelectorAll(`.legend-item.indented`).length).toBe(0)
+      expect(document.querySelectorAll(`.legend-group-header`)).toHaveLength(0)
+      expect(document.querySelectorAll(`.legend-item.indented`)).toHaveLength(0)
     })
 
     test.each([
@@ -784,14 +784,14 @@ describe(`PlotLegend`, () => {
         props: { series_data: make_grouped_data() },
       })
 
-      expect(document.querySelectorAll(`.legend-item`).length).toBe(6)
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(6)
 
       // Collapse first group (Li₂O)
       const chevrons = document.querySelectorAll(`.group-chevron`)
       chevrons[0].dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
       await tick()
 
-      expect(document.querySelectorAll(`.legend-item`).length).toBe(3) // 6 - 3 Li₂O
+      expect(document.querySelectorAll(`.legend-item`)).toHaveLength(3) // 6 - 3 Li₂O
       expect(chevrons[1].classList.contains(`collapsed`)).toBe(false)
     })
 

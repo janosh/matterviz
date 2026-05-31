@@ -1,9 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
-const repo_root = resolve(dirname(fileURLToPath(import.meta.url)), `../..`)
+const repo_root = resolve(import.meta.dirname, `../..`)
 const lib_dir = join(repo_root, `src/lib`)
 const pkg = JSON.parse(readFileSync(join(repo_root, `package.json`), `utf8`)) as {
   exports: Record<string, string | Record<string, string>>

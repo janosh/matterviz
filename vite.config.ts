@@ -1,3 +1,4 @@
+import { lint_config } from '@janosh/vite-config'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -119,92 +120,20 @@ export default defineConfig({
       `tests/vitest/phase-diagram/fixtures/*.json`,
     ],
   },
+  // Shared rules/plugins/categories live in @janosh/vite-config (dotfiles).
+  // Append only matterviz-specific ignore dirs here; add per-project rule overrides
+  // via `rules: { ...lint_config.rules, 'some-rule': 'off' }` if ever needed.
   lint: {
-    plugins: [`oxc`, `typescript`, `unicorn`, `import`, `vitest`],
-    options: { typeAware: true, typeCheck: true },
-    categories: { correctness: `error`, suspicious: `error`, perf: `error` },
+    ...lint_config,
     ignorePatterns: [
-      `build/**`,
-      `.svelte-kit/**`,
-      `package/**`,
-      `dist/**`,
+      ...lint_config.ignorePatterns,
       `extensions/**`,
       `static/**`,
       `src/scripts/**`,
     ],
-    rules: {
-      // Extra rules not in the enabled categories
-      'no-console': [`error`, { allow: [`info`, `warn`, `error`] }],
-      'no-template-curly-in-string': `error`,
-      'no-constructor-return': `error`,
-      'default-param-last': `error`,
-      'guard-for-in': `error`,
-      'eslint-plugin-unicorn/prefer-array-find': `error`,
-      'eslint-plugin-unicorn/no-typeof-undefined': `error`,
-      'eslint-plugin-unicorn/prefer-optional-catch-binding': `error`,
-      'eslint-plugin-unicorn/no-length-as-slice-end': `error`,
-      'eslint-plugin-unicorn/prefer-node-protocol': `error`,
-      'eslint-plugin-unicorn/throw-new-error': `error`,
-      'eslint-plugin-unicorn/prefer-type-error': `error`,
-      'eslint-plugin-unicorn/prefer-date-now': `error`,
-      'eslint-plugin-unicorn/require-number-to-fixed-digits-argument': `error`,
-      'eslint-plugin-unicorn/no-useless-promise-resolve-reject': `error`,
-      'eslint-plugin-unicorn/custom-error-definition': `error`,
-      'eslint-plugin-import/no-duplicates': `error`,
-      '@typescript-eslint/no-non-null-assertion': `error`,
-      '@typescript-eslint/prefer-string-starts-ends-with': `error`,
-      '@typescript-eslint/prefer-readonly': `error`,
-      '@typescript-eslint/prefer-regexp-exec': `error`,
-      '@typescript-eslint/prefer-find': `error`,
-      '@typescript-eslint/no-deprecated': `error`,
-      '@typescript-eslint/no-misused-promises': `error`,
-      '@typescript-eslint/restrict-plus-operands': `error`,
-      '@typescript-eslint/no-dynamic-delete': `error`,
-      '@typescript-eslint/no-empty-object-type': `error`,
-      '@typescript-eslint/no-explicit-any': `error`,
-      '@typescript-eslint/no-import-type-side-effects': `error`,
-      '@typescript-eslint/no-invalid-void-type': `error`,
-      '@typescript-eslint/no-mixed-enums': `error`,
-      '@typescript-eslint/no-require-imports': `error`,
-      '@typescript-eslint/only-throw-error': `error`,
-      '@typescript-eslint/ban-ts-comment': `error`,
-      '@typescript-eslint/consistent-type-imports': `error`,
-      '@typescript-eslint/prefer-function-type': `error`,
-      '@typescript-eslint/prefer-includes': `error`,
-      '@typescript-eslint/prefer-optional-chain': `error`,
-      '@typescript-eslint/prefer-reduce-type-parameter': `error`,
-      '@typescript-eslint/prefer-ts-expect-error': `error`,
-      '@typescript-eslint/return-await': `error`,
-      '@typescript-eslint/switch-exhaustiveness-check': `error`,
-      '@typescript-eslint/unified-signatures': `error`,
-      'array-callback-return': `error`,
-      'prefer-object-has-own': `error`,
-      'eslint-plugin-promise/no-multiple-resolved': `error`,
-      'eslint-plugin-promise/no-return-in-finally': `error`,
-      'eslint-plugin-promise/param-names': `error`,
-      'eslint-plugin-promise/valid-params': `error`,
-      '@typescript-eslint/consistent-type-exports': `error`,
-      'eslint-plugin-unicorn/require-array-join-separator': `error`,
-      'no-useless-computed-key': `error`,
-      'eslint-plugin-vitest/prefer-strict-boolean-matchers': `error`,
-      'eslint-plugin-vitest/prefer-each': `error`,
-      'eslint-plugin-vitest/prefer-called-exactly-once-with': `error`,
-      'eslint-plugin-vitest/require-awaited-expect-poll': `error`,
-
-      'eslint-plugin-vitest/require-mock-type-parameters': `off`, // 242 violations, needs manual type annotations
-      'eslint-plugin-unicorn/consistent-function-scoping': `off`, // Svelte reactive closures
-      // Pervasive intentional patterns
-      '@typescript-eslint/no-unsafe-type-assertion': `off`,
-      '@typescript-eslint/restrict-template-expressions': `off`,
-      'no-await-in-loop': `off`,
-      'eslint-plugin-unicorn/no-array-sort': `off`, // [...arr].sort() is idiomatic
-      'oxc/no-map-spread': `off`,
-      'eslint-plugin-vitest/no-conditional-expect': `off`, // Vitest default rules — too noisy for this codebase
-      'eslint-plugin-vitest/valid-expect': [`error`, { maxArgs: 2 }], // Vitest supports expect(actual, message)
-    },
   },
-  // @ts-expect-error vite@8's Plugin and vite-plus's bundled Plugin are two copies
-  // of the same type; comparing them exceeds TS's instantiation depth here
+  // vite@8's Plugin and vite-plus's bundled Plugin are two copies of the same type;
+  // @ts-expect-error comparing them exceeds TS's instantiation depth here
   plugins: [
     json_gz_plugin,
     raw_text_plugin,
@@ -212,6 +141,7 @@ export default defineConfig({
     sveltekit(),
     live_examples(),
     process.env.VITEST ? mock_vscode() : null,
+    // oxlint-disable-next-line eslint-plugin-unicorn/prefer-native-coercion-functions -- type predicate needed for narrowing
   ].filter((plugin): plugin is Plugin => Boolean(plugin)),
 
   test: {

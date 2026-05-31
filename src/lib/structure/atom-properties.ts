@@ -111,7 +111,7 @@ export function apply_color_scale(
   scale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): { colors: string[]; unique_values?: number[] } {
-  if (!vals.length) return { colors: [] }
+  if (vals.length === 0) return { colors: [] }
   if (type === `categorical`) {
     const result = make_categorical(vals, scale, (val_a, val_b) => val_a - val_b)
     return { colors: result.colors, unique_values: result.unique_values }
@@ -135,7 +135,7 @@ export const apply_categorical_color_scale = (
   vals: string[],
   scale = DEFAULT_COLOR_SCALE,
 ): { colors: string[]; unique_values: string[] } =>
-  vals.length ? make_categorical(vals, scale) : { colors: [], unique_values: [] }
+  vals.length > 0 ? make_categorical(vals, scale) : { colors: [], unique_values: [] }
 
 // Get original site index for property color lookup.
 // Supercell atoms use orig_unit_cell_idx, image atoms use orig_site_idx, otherwise use site_idx.
@@ -148,7 +148,7 @@ export const get_orig_site_idx = (site: Site | undefined, site_idx: number): num
 
 // Expand structure with PBC images - use minimal expansion based on atom positions
 function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
-  if (!(`lattice` in structure) || !structure.lattice || !structure.sites.length) {
+  if (!(`lattice` in structure) || !structure.lattice || structure.sites.length === 0) {
     return structure
   }
 
@@ -158,7 +158,7 @@ function expand_structure_for_pbc(structure: AnyStructure): AnyStructure {
   const all_offsets = get_all_offsets(pbc)
 
   // Small structures: expand all atoms
-  if (sites.length < 20 || !pbc.some((periodic) => periodic)) {
+  if (sites.length < 20 || !pbc.some(Boolean)) {
     const image_sites = sites.flatMap((site, orig_idx) =>
       all_offsets.map((offset) => build_image_site(site, frac_to_cart, offset, orig_idx)),
     )
@@ -195,7 +195,7 @@ export function get_coordination_colors(
   // Check if structure has periodic boundary conditions
   const has_lattice = `lattice` in structure && structure.lattice !== undefined
   const pbc = has_lattice ? structure.lattice.pbc : undefined
-  const has_pbc = has_lattice && (pbc === undefined || pbc.some((is_periodic) => is_periodic))
+  const has_pbc = has_lattice && (pbc === undefined || pbc.some(Boolean))
 
   // For PBC structures, expand with images from neighboring cells for accurate coordination
   const coord_structure = has_pbc ? expand_structure_for_pbc(structure) : structure
@@ -312,5 +312,5 @@ export function get_property_colors(
 ): AtomPropertyColors | null {
   if (!structure || config.mode === `element`) return null
   const result = get_atom_colors(structure, config, bonding_strategy, sym_data)
-  return result.colors.length ? result : null
+  return result.colors.length > 0 ? result : null
 }

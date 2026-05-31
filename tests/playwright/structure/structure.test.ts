@@ -283,7 +283,7 @@ test.describe(`Structure Component Tests`, () => {
     await page.keyboard.press(`i`)
 
     // Should not be in fullscreen mode after 'f' key
-    const is_fullscreen = await page.evaluate(() => !!document.fullscreenElement)
+    const is_fullscreen = await page.evaluate(() => Boolean(document.fullscreenElement))
     expect(is_fullscreen).toBe(false)
 
     // Test that modifier key combinations can be dispatched without errors
@@ -560,22 +560,22 @@ test.describe(`Structure Component Tests`, () => {
 
     // Check initial value
     const initial_value = await padding_number_input.inputValue()
-    expect(parseInt(initial_value)).toBeGreaterThanOrEqual(0)
+    expect(parseInt(initial_value, 10)).toBeGreaterThanOrEqual(0)
 
     // Test number input
     await padding_number_input.fill(`5`)
     const number_value = await padding_number_input.inputValue()
-    expect(parseInt(number_value)).toBe(5)
+    expect(parseInt(number_value, 10)).toBe(5)
 
     // Test range input
     await padding_range_input.fill(`8`)
     const range_value = await padding_range_input.inputValue()
-    expect(parseInt(range_value)).toBe(8)
+    expect(parseInt(range_value, 10)).toBe(8)
 
     // Verify inputs are synchronized
     const final_number_value = await padding_number_input.inputValue()
     const final_range_value = await padding_range_input.inputValue()
-    expect(parseInt(final_number_value)).toBe(parseInt(final_range_value))
+    expect(parseInt(final_number_value, 10)).toBe(parseInt(final_range_value, 10))
   })
 
   test(`label offset X control works correctly`, async ({ page }) => {
@@ -1668,7 +1668,7 @@ test.describe(`Export Button Tests`, () => {
 
     // Test changing DPI value
     const initial_value = await dpi_input.inputValue()
-    expect(parseInt(initial_value)).toBeGreaterThanOrEqual(72)
+    expect(parseInt(initial_value, 10)).toBeGreaterThanOrEqual(72)
 
     await dpi_input.fill(`200`)
     expect(await dpi_input.inputValue()).toBe(`200`)
@@ -2629,7 +2629,7 @@ test.describe(`Structure Rotation Controls Tests`, () => {
       await expect(y_range_input).toHaveValue(expected)
 
       // For valid values, number input should match
-      if (parseInt(input) <= 360) {
+      if (parseInt(input, 10) <= 360) {
         await expect(y_number_input).toHaveValue(expected)
       }
     }

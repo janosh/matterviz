@@ -401,7 +401,7 @@ export class TrajFrameReader implements FrameLoader {
     })
 
     const step_match = /(?:step|frame)\s*[=:]?\s*(\d+)/i.exec(comment)
-    const step = step_match ? parseInt(step_match[1]) : frame_number
+    const step = step_match ? parseInt(step_match[1], 10) : frame_number
 
     return { frame_number, step, properties }
   }

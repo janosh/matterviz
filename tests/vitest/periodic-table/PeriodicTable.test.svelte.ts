@@ -20,12 +20,12 @@ describe(`PeriodicTable`, () => {
   ] as const)(`renders lanth_act_tiles=%s -> %s tiles`, (show_lanth_act, expected_tiles) => {
     const props = show_lanth_act ? {} : { lanth_act_tiles: [] }
     mount(PeriodicTable, { target: document.body, props })
-    expect(document.querySelectorAll(`.element-tile`).length).toBe(expected_tiles)
+    expect(document.querySelectorAll(`.element-tile`)).toHaveLength(expected_tiles)
   })
 
   test(`empty tiles are rendered`, () => {
     mount(PeriodicTable, { target: document.body })
-    expect(document.querySelectorAll(`.element-tile`).length).toBe(120)
+    expect(document.querySelectorAll(`.element-tile`)).toHaveLength(120)
   })
 
   test(`hovering element tile toggles CSS class 'active'`, async () => {
@@ -138,7 +138,7 @@ describe(`PeriodicTable`, () => {
         target: document.body,
         props: { active_category },
       })
-      expect(document.querySelectorAll(`.element-tile.active`).length).toBe(expected_active)
+      expect(document.querySelectorAll(`.element-tile.active`)).toHaveLength(expected_active)
     },
   )
 
@@ -155,7 +155,7 @@ describe(`PeriodicTable`, () => {
         props: { active_elements: [...active_elements] },
       })
       const active_tiles = document.querySelectorAll(`.element-tile.active`)
-      expect(active_tiles.length).toBe(expected_active)
+      expect(active_tiles).toHaveLength(expected_active)
     },
   )
 
@@ -294,7 +294,7 @@ describe(`PeriodicTable`, () => {
     await tick()
 
     const tooltip_el = document.querySelector(`.tooltip`)
-    expect(!!tooltip_el).toBe(should_show)
+    expect(Boolean(tooltip_el)).toBe(should_show)
 
     if (should_show) {
       expect(tooltip_el?.textContent).toContain(`Hydrogen`)
@@ -533,7 +533,7 @@ describe(`PeriodicTable`, () => {
   describe(`automatic ColorBar integration`, () => {
     // Helper to get numeric tick values from colorbar
     const get_tick_values = (colorbar: Element | null) =>
-      Array.from(colorbar?.querySelectorAll(`.tick-label`) || [])
+      Array.from(colorbar?.querySelectorAll(`.tick-label`) ?? [])
         .map((tick_label) => parseFloat((tick_label as HTMLElement).textContent?.trim() || ``))
         .filter((val) => !isNaN(val))
 
@@ -641,7 +641,7 @@ describe(`PeriodicTable`, () => {
         },
       })
 
-      expect(document.querySelectorAll(`.tick-label.tick-secondary`).length).toBe(3)
+      expect(document.querySelectorAll(`.tick-label.tick-secondary`)).toHaveLength(3)
     })
 
     test.each([

@@ -5,6 +5,7 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import { onMount } from 'svelte'
   import { SvelteSet } from 'svelte/reactivity'
+  import { to_error } from '$lib/utils'
 
   // vite-plugin-json-gz decompresses each .json.gz at build time.
   // Lazy chunks are code-split and loaded on demand.
@@ -73,7 +74,7 @@
       all_entries = (await quaternary_files[li_co_ni_o_path]()).default
     } catch (error) {
       quaternary_error = `Failed to load data: ${
-        error instanceof Error ? error.message : String(error)
+        to_error(error).message
       }`
     } finally {
       quaternary_loading = false

@@ -180,9 +180,9 @@ test.each([
 
     const images = find_image_atoms(structure)
     if (expect_skip) {
-      expect(images.length).toBe(0)
+      expect(images).toHaveLength(0)
       const unchanged = get_pbc_image_sites(structure)
-      expect(unchanged.sites.length).toBe(structure.sites.length)
+      expect(unchanged.sites).toHaveLength(structure.sites.length)
     } else {
       // Not trajectory data; may or may not produce images depending on tolerance/edges
       const with_images = get_pbc_image_sites(structure)
@@ -213,7 +213,7 @@ test(`triclinic lattice image xyz must match lattice * abc`, () => {
       },
     ],
     lattice: {
-      matrix: matrix,
+      matrix,
       pbc: [true, true, true],
       ...params,
     },
@@ -301,7 +301,7 @@ test.each([
   const structure = make_crystal(5, [[`Na`, [coord, 0.5, 0.5]]])
   const images = find_image_atoms(structure, { tolerance })
   if (expect_images) expect(images.length).toBeGreaterThan(0)
-  else expect(images.length).toBe(0)
+  else expect(images).toHaveLength(0)
 })
 
 test(`upper boundary at abc=1.0 images wrap near 0 via epsilon`, () => {
@@ -367,16 +367,17 @@ C        -2.0      10.0      12.0`
 
   // This structure has atoms near cell boundaries, so it will be detected as trajectory data
   // and will NOT generate image atoms (trajectory data detection)
-  expect(image_atoms.length).toBe(0)
+  expect(image_atoms).toHaveLength(0)
 
   // For trajectory data, get_pbc_image_sites returns the structure unchanged
-  expect(processed_structure.sites.length).toBe(trajectory_structure.sites.length)
+  expect(processed_structure.sites).toHaveLength(trajectory_structure.sites.length)
 
-  // Verify that some atoms are outside the unit cell (making it trajectory data)
+  // abc coords are wrapped into the cell on parse, so none read as outside the [-0.1, 1.1]
+  // margin (the raw cartesian positions extend past the 15 Å box, which is what flags trajectory)
   const atoms_outside = trajectory_structure.sites.filter(({ abc }) =>
     abc.some((coord) => coord < -0.1 || coord > 1.1),
   )
-  expect(atoms_outside.length).toBe(0)
+  expect(atoms_outside).toHaveLength(0)
 
   // Test multiple frames to ensure consistency
   for (
@@ -386,7 +387,7 @@ C        -2.0      10.0      12.0`
   ) {
     const frame_structure = trajectory_like.frames[frame_idx].structure as Crystal
     const frame_image_atoms = find_image_atoms(frame_structure)
-    expect(frame_image_atoms.length).toBe(0) // Should consistently treat as trajectory data
+    expect(frame_image_atoms).toHaveLength(0) // Should consistently treat as trajectory data
   }
 })
 
@@ -502,7 +503,7 @@ test(`edge detection should be precise for atoms at boundaries`, () => {
 
   // Atom at (0.5,0.5,0.5) should NOT generate images (not at edge)
   const center_images = image_atoms.filter(([idx]) => idx === 2)
-  expect(center_images.length).toBe(0)
+  expect(center_images).toHaveLength(0)
 
   // Check specific image positions for corner atom
   const corner_image_positions = corner_images.map(([_, xyz]) => xyz)
@@ -558,7 +559,7 @@ test.each([
     // Check that we get at least the expected minimum, allowing for algorithm complexity
     if (expected_count === 0) {
       // When we expect no images, assert exactly zero - any non-zero result indicates a regression
-      expect(image_atoms.length).toBe(0)
+      expect(image_atoms).toHaveLength(0)
     } else {
       // For non-zero expectations, check minimum but cap maximum to catch runaway generation
       expect(image_atoms.length).toBeGreaterThanOrEqual(expected_count)
@@ -658,7 +659,7 @@ test(`image atoms preserve fractional coordinates correctly`, () => {
   const orig_n_sites = test_structure.sites.length
   const image_sites = symmetrized.sites.slice(orig_n_sites) // Image atoms are added after original atoms
 
-  expect(image_sites.length).toBe(image_atoms.length)
+  expect(image_sites).toHaveLength(image_atoms.length)
 
   for (let idx = 0; idx < image_atoms.length; idx++) {
     const [orig_idx, expected_xyz, expected_abc] = image_atoms[idx]
@@ -821,7 +822,7 @@ test(`find_image_atoms uses physical tolerance for large cells`, () => {
   const c_images = image_atoms.filter(([idx]) => idx === 0)
   const h_images = image_atoms.filter(([idx]) => idx === 1)
 
-  expect(c_images.length).toBe(0)
+  expect(c_images).toHaveLength(0)
   expect(h_images.length).toBeGreaterThan(0)
 
   // Explicit tolerance override (fractional 0.05 = 5 Angstroms)

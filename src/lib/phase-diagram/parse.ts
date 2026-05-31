@@ -2,6 +2,7 @@
 // Parses CALPHAD TDB files to extract metadata about elements, phases, and parameters
 
 import { ELEM_SYMBOLS } from '$lib/labels'
+import { to_error } from '$lib/utils'
 
 // Default temperature bounds for TDB parsing (in Kelvin)
 export const TDB_TEMP_DEFAULTS = {
@@ -73,20 +74,20 @@ export function parse_tdb(content: string): TdbParseResult {
 
     // Normalize line endings and join continuation lines
     const normalized = content
-      .replace(/\r\n/g, `\n`)
-      .replace(/\r/g, `\n`)
+      .replaceAll('\r\n', `\n`)
+      .replaceAll('\r', `\n`)
       // Join lines that don't end with ! (continuation)
       .split(`\n`)
       .reduce((acc: string[], line) => {
         const trimmed = line.trim()
         if (trimmed.startsWith(`$`)) {
-          data.comments.push(trimmed.substring(1).trim())
+          data.comments.push(trimmed.slice(1).trim())
           return acc
         }
         if (acc.length === 0 || acc[acc.length - 1].endsWith(`!`)) {
           acc.push(trimmed)
         } else {
-          acc[acc.length - 1] += ` ` + trimmed
+          acc[acc.length - 1] += ` ${trimmed}`
         }
         return acc
       }, [])
@@ -129,7 +130,7 @@ export function parse_tdb(content: string): TdbParseResult {
     return {
       success: false,
       data: null,
-      error: exc instanceof Error ? exc.message : String(exc),
+      error: to_error(exc).message,
     }
   }
 }

@@ -111,7 +111,7 @@
       return
     }
     const idx = selected_bands.indexOf(band_idx)
-    if (idx >= 0) {
+    if (idx !== -1) {
       selected_bands = selected_bands.filter((band) => band !== band_idx)
     } else {
       selected_bands = [...selected_bands, band_idx].toSorted((a, b) => a - b)

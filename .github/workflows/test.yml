@@ -24,11 +24,11 @@ jobs:
         with:
           node-version: 24
 
-      - run: npm install
+      - run: corepack enable && pnpm install
 
       - name: Unit tests
         if: matrix.test-type == 'unit'
-        run: npx vp test --run
+        run: pnpm exec vp test --run
 
       - name: Install Playwright
         if: matrix.test-type == 'end-to-end'

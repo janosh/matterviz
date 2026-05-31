@@ -1,20 +1,21 @@
 <script lang="ts">
-  import { get_electro_neg_formula } from '$lib/composition/format';
-  import type { PhaseData } from '$lib/convex-hull/types';
-  import Spinner from '$lib/feedback/Spinner.svelte';
-  import { format_num } from '$lib/labels';
-  import { constrain_tooltip_position } from '$lib/plot/layout';
-  import { sanitize_html } from '$lib/sanitize';
-  import { compute_chempot_async } from './async-compute.svelte';
-  import ChemPotDiagram2D from './ChemPotDiagram2D.svelte';
-  import ChemPotDiagram3D from './ChemPotDiagram3D.svelte';
-  import { get_ternary_combinations } from './compute';
+  import { get_electro_neg_formula } from '$lib/composition/format'
+  import type { PhaseData } from '$lib/convex-hull/types'
+  import Spinner from '$lib/feedback/Spinner.svelte'
+  import { format_num } from '$lib/labels'
+  import { constrain_tooltip_position } from '$lib/plot/layout'
+  import { sanitize_html } from '$lib/sanitize'
+  import { compute_chempot_async } from './async-compute.svelte'
+  import ChemPotDiagram2D from './ChemPotDiagram2D.svelte'
+  import ChemPotDiagram3D from './ChemPotDiagram3D.svelte'
+  import { get_ternary_combinations } from './compute'
   import type {
       ChemPotDiagramConfig,
       ChemPotHoverInfo,
       ChemPotHoverInfo3D,
-  } from './types';
-  import { CHEMPOT_DEFAULTS } from './types';
+  } from './types'
+  import { CHEMPOT_DEFAULTS } from './types'
+  import { to_error } from '$lib/utils'
 
   let {
     entries = [],
@@ -84,7 +85,7 @@
       .catch((err) => {
         if (cancelled) return
         console.error(`Grid precompute failed:`, err)
-        grid_error = err instanceof Error ? err.message : String(err)
+        grid_error = to_error(err).message
       })
     return () => { cancelled = true }
   })
