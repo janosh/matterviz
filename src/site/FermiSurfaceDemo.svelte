@@ -8,7 +8,6 @@
   import type {
     BandGridData,
     FermiFileLoadData,
-    FermiHoverData,
     FermiSurfaceData,
   } from '$lib/fermi-surface'
   import {
@@ -19,23 +18,20 @@
     is_fermi_surface_data,
     parse_fermi_file,
   } from '$lib/fermi-surface'
-  import { format_num } from '$lib/labels'
   import type { Vec3 } from '$lib/math'
   import { fermi_file_colors, fermi_surface_files } from '$site/fermi-surfaces'
   import { onMount } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
   // show_slice: render the 2D slice section + Miller controls
   // sync_url: sync the active file to the `?file=` query param
   let {
     show_slice = false,
     sync_url = false,
-    class: class_name = ``,
-    style = `height: 500px`,
-  }: {
+    ...rest
+  }: HTMLAttributes<HTMLDivElement> & {
     show_slice?: boolean
     sync_url?: boolean
-    class?: string
-    style?: string
   } = $props()
 
   let active_file = $state<string | null>(null)
@@ -47,7 +43,6 @@
   let loading = $state(false)
   let slice_miller = $state<Vec3>([0, 0, 1])
   let slice_distance = $state(0)
-  let hover_data = $state<FermiHoverData | null>(null)
 
   const update_url = (filename: string) => {
     if (!sync_url || !browser) return
@@ -123,46 +118,27 @@
   style="margin-block: 1em"
 />
 
-<div class="fermi-container {class_name}" {style}>
-  <FermiSurface
-    bind:fermi_data
-    bind:band_data
-    bind:error_msg
-    bind:loading
-    style="height: 100%"
-    show_controls="hover"
-    on_file_drop={(filename: string) => {
-      active_file = filename
-      update_url(filename)
-    }}
-    on_file_load={(data: FermiFileLoadData) => {
-      active_file = data.filename
-      fermi_data = data.fermi_data
-      band_data = data.band_data
-      error_msg = undefined
-    }}
-    on_hover={(data) => hover_data = data}
-    tooltip_config={{
-      suffix: (_data) => `File: <code>${active_file ?? `none`}</code>`,
-    }}
-  />
-
-  {#if hover_data}
-    <div class="hover-status">
-      <strong>Hovering:</strong> Band {hover_data.band_index}
-      {#if hover_data.spin}({hover_data.spin}){/if}
-      {#if hover_data.position_fractional}
-        at k = ({format_num(hover_data.position_fractional[0], `.2f`)},
-        {format_num(hover_data.position_fractional[1], `.2f`)},
-        {format_num(hover_data.position_fractional[2], `.2f`)})
-      {:else}
-        at k = ({format_num(hover_data.position_cartesian[0], `.3f`)},
-        {format_num(hover_data.position_cartesian[1], `.3f`)},
-        {format_num(hover_data.position_cartesian[2], `.3f`)}) Å⁻¹
-      {/if}
-    </div>
-  {/if}
-</div>
+<FermiSurface
+  bind:fermi_data
+  bind:band_data
+  bind:error_msg
+  bind:loading
+  show_controls="hover"
+  on_file_drop={(filename: string) => {
+    active_file = filename
+    update_url(filename)
+  }}
+  on_file_load={(data: FermiFileLoadData) => {
+    active_file = data.filename
+    fermi_data = data.fermi_data
+    band_data = data.band_data
+    error_msg = undefined
+  }}
+  tooltip_config={{
+    suffix: (_data) => `File: <code>${active_file ?? `none`}</code>`,
+  }}
+  {...rest}
+/>
 
 {#if show_slice && fermi_data}
   <section class="slice-section">
@@ -204,19 +180,5 @@
   }
   section.slice-section input[type='range'] {
     pointer-events: auto;
-  }
-  .fermi-container {
-    position: relative;
-  }
-  .hover-status {
-    position: absolute;
-    bottom: 1ex;
-    left: 1em;
-    background: var(--tooltip-bg, rgba(0, 0, 0, 0.85));
-    color: var(--tooltip-text, white);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.85em;
-    z-index: 10;
   }
 </style>

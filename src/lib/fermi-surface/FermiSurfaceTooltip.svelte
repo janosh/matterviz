@@ -5,10 +5,7 @@
   import { KCoords, TooltipContent } from '$lib/tooltip'
   import type { FermiHoverData, FermiTooltipProp } from './types'
 
-  let {
-    hover_data,
-    tooltip,
-  }: {
+  let { hover_data, tooltip }: {
     hover_data: FermiHoverData
     tooltip?: FermiTooltipProp
   } = $props()
@@ -23,12 +20,10 @@
       {/if}
     </div>
 
-    <div class="coords-section">
-      <KCoords
-        cartesian={hover_data.position_cartesian}
-        fractional={hover_data.position_fractional}
-      />
-    </div>
+    <KCoords
+      cartesian={hover_data.position_cartesian}
+      fractional={hover_data.position_fractional}
+    />
 
     {#if hover_data.property_value != null}
       <div class="property-row">
@@ -71,9 +66,6 @@
   .spin-badge.spin-down {
     background: #377eb8;
     color: white;
-  }
-  .coords-section {
-    margin: 4px 0;
   }
   .property-row {
     margin-top: 4px;

@@ -794,6 +794,33 @@
       ),
   )
 
+  // Budgets above which path-morph tweens are disabled. Many simultaneously morphing
+  // <path> elements cause DOM/reactivity churn (band structures with 100+ bands),
+  // while a single very long line is bounded by interpolatePath CPU - cap both.
+  const LINE_TWEEN_MAX_SERIES = 16
+  const LINE_TWEEN_MAX_POINTS = 8000
+  let line_tween_load = $derived.by(() => {
+    if (!styles.show_lines) return { series: 0, points: 0 }
+    let [n_series, n_points] = [0, 0]
+    for (const srs of filtered_series ?? []) {
+      if (!(srs.markers ?? DEFAULT_MARKERS).includes(`line`)) continue
+      n_series += 1
+      n_points += srs.x.length
+    }
+    return { series: n_series, points: n_points }
+  })
+  let morph_too_costly = $derived(
+    line_tween_load.series > LINE_TWEEN_MAX_SERIES ||
+      line_tween_load.points > LINE_TWEEN_MAX_POINTS,
+  )
+  // interpolatePath morphing scales poorly with many lines/points (e.g. phonon band
+  // structures). Disable the morph above the budgets unless the caller explicitly
+  // opts into a tween, keeping high-cardinality plots snappy while small plots still
+  // animate. Line.svelte short-circuits the Tween when duration <= 0.
+  let effective_line_tween = $derived(
+    line_tween ?? (morph_too_costly ? { duration: 0 } : undefined),
+  )
+
   // Obstacle field for legend/colorbar auto-placement. Sampling only data points lets the
   // legend land on top of a steep connecting line whose markers are sparse (e.g. y=x^2), so
   // sample_series_obstacle_points also walks each drawn segment at a fixed pixel cadence.
@@ -2275,7 +2302,7 @@
                 line_width={(tc(`line.width`) ? styles.line?.width : null) ?? ls?.stroke_width ?? 2}
                 line_dash={(tc(`line.dash`) ? styles.line?.dash : null) ?? ls?.line_dash}
                 area_color="transparent"
-                {line_tween}
+                line_tween={effective_line_tween}
               />
             {/if}
           </g>

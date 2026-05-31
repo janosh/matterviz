@@ -7,9 +7,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
 
-  let { class: class_name = ``, style = `height: 500px`, ...rest }:
-    & HTMLAttributes<HTMLDivElement>
-    & { style?: string } = $props()
+  let { ...rest }: HTMLAttributes<HTMLDivElement> = $props()
 
   // vite-plugin-json-gz decompresses at build time, lazy chunks are code-split.
   const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
@@ -32,19 +30,20 @@
   const load_system = async (name: string) => {
     const system = systems.find((sys) => sys.name === name)
     if (!system || loaded_data.has(system.path)) return
-    loaded_data.set(system.path, (await system.loader()).default)
+    try {
+      loaded_data.set(system.path, (await system.loader()).default)
+    } catch (error) {
+      console.error(`Failed to load convex hull data ${name}`, error)
+    }
   }
-
-  const log_error = (name: string, error: unknown) =>
-    console.error(`Failed to load convex hull data ${name}`, error)
 
   const handle_click = (file: FileInfo) => {
     active_name = file.name
-    load_system(file.name).catch((error) => log_error(file.name, error))
+    void load_system(file.name)
   }
 
   onMount(() => {
-    if (active_name) load_system(active_name).catch((error) => log_error(active_name, error))
+    if (active_name) void load_system(active_name)
   })
 
   // Keep entries whose composition only spans the given elements
@@ -83,17 +82,17 @@
     on_click={handle_click}
     style="margin-block: 1em"
   />
-  <div class="hull-grid {class_name}" {...rest}>
+  <div {...rest} class="hull-grid {rest.class ?? ``}">
     <ConvexHull3D
       entries={ternary_entries}
       controls={{ title: ternary_elements.join(`-`) }}
-      {style}
+      style="height: 500px"
     />
     <ConvexHull4D
       entries={quaternary_entries}
       controls={{ title: active_name }}
       on_file_drop={(dropped) => loaded_data.set(active_path, dropped)}
-      {style}
+      style="height: 500px"
     />
   </div>
 {/if}

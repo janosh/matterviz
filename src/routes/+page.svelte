@@ -178,13 +178,13 @@
   switch.
 </p>
 
-<ConvexHullDemo class="full-bleed" style="height: 500px" />
+<ConvexHullDemo class="full-bleed" />
 
 <MultiValueHeatmapDemo />
 
 <style>
   h2 {
-    margin-top: 2em;
+    margin-top: 3em;
   }
   p.install {
     display: flex;

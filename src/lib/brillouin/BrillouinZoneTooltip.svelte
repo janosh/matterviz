@@ -52,7 +52,6 @@
 <style>
   .bz-tooltip-content {
     max-width: var(--bz-tooltip-max-width, 250px);
-    text-align: left;
   }
   .bz-tooltip-title {
     margin-bottom: 4px;

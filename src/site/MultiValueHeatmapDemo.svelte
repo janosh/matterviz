@@ -25,7 +25,7 @@
   }
 </script>
 
-<h2>Multi-value Heatmap</h2>
+<h2 style="margin-top: 3em">Multi-value Heatmap</h2>
 The periodic table supports multiple values per element with different visual layouts:
 
 <h3>2-fold Split (Diagonal)</h3>

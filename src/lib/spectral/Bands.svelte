@@ -45,8 +45,6 @@
     show_spin_control = true,
     show_annotation_controls = true,
     id = undefined,
-    class: class_name = undefined,
-    style = undefined,
     'data-testid': data_testid = undefined,
     ...rest
   }: ComponentProps<typeof ScatterPlot> & {
@@ -78,8 +76,6 @@
     show_spin_control?: boolean
     show_annotation_controls?: boolean
     id?: string
-    class?: string
-    style?: string
     'data-testid'?: string
   } = $props()
 
@@ -258,7 +254,8 @@
     const attrs: Record<string, Dom_attr_value> = {}
     for (const [attr_name, attr_value] of Object.entries(rest)) {
       if (
-        (attr_name === `role` || attr_name.startsWith(`aria-`)) &&
+        (attr_name === `class` || attr_name === `style` || attr_name === `role` ||
+          attr_name.startsWith(`aria-`)) &&
         is_dom_attr_value(attr_value)
       ) {
         attrs[attr_name] = attr_value
@@ -683,7 +680,7 @@
     return { vbm, cbm, gap }
   })
 
-  let empty_state_message = $derived.by(() => {
+  let empty_state_msg = $derived.by(() => {
     if (is_strict_path_error) {
       return strict_path_error ?? `Path mismatch in strict mode.`
     }
@@ -701,8 +698,6 @@
 {#if has_series && !is_strict_path_error}
   <ScatterPlot
     {id}
-    class={class_name}
-    {style}
     data-testid={data_testid}
     series={series_data}
     {fill_regions}
@@ -997,11 +992,9 @@
 {:else}
   <EmptyState
     {id}
-    class={class_name}
-    {style}
     data-testid={data_testid}
     {...empty_state_attrs}
-    message={empty_state_message}
+    message={empty_state_msg}
   />
 {/if}
 
