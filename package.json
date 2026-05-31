@@ -170,9 +170,9 @@
     "test": "vp test --run && playwright test",
     "knip": "knip --include dependencies,devDependencies",
     "package-dist-assets": "node scripts/package-dist-assets.ts",
-    "package:dist": "svelte-package && npm run package-dist-assets",
-    "prepare": "svelte-kit sync && npm run package:dist",
-    "prepublishOnly": "npm run package:dist"
+    "package:dist": "svelte-package && pnpm run package-dist-assets",
+    "prepare": "svelte-kit sync && pnpm run package:dist",
+    "prepublishOnly": "pnpm run package:dist"
   },
   "dependencies": {
     "@spglib/moyo-wasm": "^0.10.0",
@@ -196,7 +196,7 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
-    "@janosh/vite-config": "github:janosh/dotfiles#path:/vite-config",
+    "@janosh/vite-config": "github:janosh/dotfiles",
     "@playwright/test": "^1.60.0",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/package": "^2.5.7",

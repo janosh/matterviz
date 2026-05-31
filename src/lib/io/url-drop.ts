@@ -25,7 +25,10 @@ function extract_filename(headers: Headers | undefined, fallback: string): strin
     }
   }
   const plain_match = /filename\s*=\s*"?([^";]+)"?/i.exec(content_disposition_str)
-  return plain_match?.[1]?.trim() ?? fallback
+  // truthiness check (not ??) so whitespace-only `filename=` values fall back too
+  const name = plain_match?.[1]?.trim()
+  if (!name) return fallback
+  return name
 }
 
 // Handle URL-based file drop data by fetching content lazily

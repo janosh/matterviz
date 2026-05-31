@@ -226,23 +226,22 @@
 
         return power_of_10_ticks
       }
-        // Generate exactly n_ticks manually for log scale if not snapping
-        const log_min = Math.log10(scale_min)
-        const log_max = Math.log10(scale_max)
-        return [...Array(n_ticks).keys()].map((idx) => {
-          const fraction = idx / (n_ticks - 1)
-          const log_val = log_min + fraction * (log_max - log_min)
-          return 10 ** log_val
-        })
-
-    }
-      // Use D3's default nice ticks for linear scale
-      if (snap_ticks) return scale.ticks(n_ticks)
-      // Generate exactly n_ticks evenly spaced linear ticks
+      // Generate exactly n_ticks manually for log scale if not snapping
+      const log_min = Math.log10(scale_min)
+      const log_max = Math.log10(scale_max)
       return [...Array(n_ticks).keys()].map((idx) => {
         const fraction = idx / (n_ticks - 1)
-        return scale_min + fraction * (scale_max - scale_min)
+        const log_val = log_min + fraction * (log_max - log_min)
+        return 10 ** log_val
       })
+    }
+    // Use D3's default nice ticks for linear scale
+    if (snap_ticks) return scale.ticks(n_ticks)
+    // Generate exactly n_ticks evenly spaced linear ticks
+    return [...Array(n_ticks).keys()].map((idx) => {
+      const fraction = idx / (n_ticks - 1)
+      return scale_min + fraction * (scale_max - scale_min)
+    })
 
   })
 

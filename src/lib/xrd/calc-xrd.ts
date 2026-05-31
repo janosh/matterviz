@@ -362,7 +362,9 @@ export async function add_xrd_pattern(
       }
       // Get base extension (strip .gz if present) for error message
       const base_name = filename.toLowerCase().replace(/\.gz$/, ``)
-      const ext = base_name.split(`.`).pop()?.toUpperCase() ?? `XRD`
+      // truthiness (not ??) so an empty extension (filename ending in `.`) falls back to XRD
+      const last_part = base_name.split(`.`).pop()
+      const ext = last_part ? last_part.toUpperCase() : `XRD`
       const format_hints: Record<string, string> = {
         XY: `Expected 2-column format: "2theta intensity" (space/tab/comma separated)`,
         XYE: `Expected 3-column format: "2theta intensity error" (space/tab/comma separated)`,

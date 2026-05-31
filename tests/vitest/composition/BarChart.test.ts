@@ -101,11 +101,11 @@ describe(`BarChart component`, () => {
     // Check that external labels exist by looking at their y-coordinates
     const all_labels = document.querySelectorAll(`text.external-label`)
     const above_labels = Array.from(all_labels).filter((label) => {
-      const y = parseFloat(label.getAttribute(`y`) ?? `0`)
+      const y = Number(label.getAttribute(`y`)) || 0
       return y < 20 // Above the bar
     })
     const below_labels = Array.from(all_labels).filter((label) => {
-      const y = parseFloat(label.getAttribute(`y`) ?? `0`)
+      const y = Number(label.getAttribute(`y`)) || 0
       return y > 60 // Below the bar
     })
 

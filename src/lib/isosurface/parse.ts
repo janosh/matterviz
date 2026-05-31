@@ -56,7 +56,7 @@ function parse_float_block(
     const start = pos
     while (pos < len && text.charCodeAt(pos) > 32) pos++
 
-    // Parse number using unary + (handles scientific notation)
+    // Parse number (handles scientific notation)
     const num = Number(text.slice(start, pos))
     if (!Number.isNaN(num)) {
       data[idx++] = num

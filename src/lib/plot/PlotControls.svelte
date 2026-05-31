@@ -81,9 +81,8 @@
         timeFormat(format_string)(new Date())
         return true
       }
-        format(format_string)(123.456)
-        return true
-
+      format(format_string)(123.456)
+      return true
     } catch {
       return false
     }
