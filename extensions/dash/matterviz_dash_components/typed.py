@@ -1190,7 +1190,6 @@ class Bands(MatterViz):
         band_spin_mode: Any | None = None,
         band_structs: dict | None = None,
         band_type: Any | None = None,
-        class_: str | None = None,
         controls: Any | None = None,
         current_x_value: float | None = None,
         data_loader: Any | None = None,
@@ -1241,8 +1240,6 @@ class Bands(MatterViz):
             mv_props["band_structs"] = band_structs
         if band_type is not None:
             mv_props["band_type"] = band_type
-        if class_ is not None:
-            mv_props["class"] = class_
         if controls is not None:
             mv_props["controls"] = controls
         if current_x_value is not None:
