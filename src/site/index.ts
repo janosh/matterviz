@@ -1,4 +1,8 @@
 export { default as CompositionDemo } from './CompositionDemo.svelte'
+export { default as ConvexHullDemo } from './ConvexHullDemo.svelte'
+export { default as FermiSurfaceDemo } from './FermiSurfaceDemo.svelte'
 export { default as Footer } from './Footer.svelte'
+export { default as MultiValueHeatmapDemo } from './MultiValueHeatmapDemo.svelte'
 export { default as OptimadeStructureViewer } from './OptimadeStructureViewer.svelte'
 export { default as PeriodicTableDemo } from './PeriodicTableDemo.svelte'
+export { default as PhononSpectraDemo } from './PhononSpectraDemo.svelte'

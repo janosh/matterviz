@@ -182,10 +182,51 @@ describe(`PlotLegend`, () => {
     expect(items[1].classList.contains(`active`)).toBe(true)
 
     items[2].dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
-    expect(on_item_hover).toHaveBeenLastCalledWith(2)
+    expect(on_item_hover).toHaveBeenLastCalledWith(expect.objectContaining({ series_idx: 2 }))
 
     items[2].dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(on_item_hover).toHaveBeenLastCalledWith(null)
+  })
+
+  test(`fill legend items report the fill item on hover and honor active_fill_idx`, () => {
+    const on_item_hover = vi.fn()
+    const series_data: LegendItem[] = [
+      { label: `Series 1`, visible: true, series_idx: 0, display_style: {} },
+      {
+        label: `Fill A`,
+        visible: true,
+        series_idx: -1,
+        item_type: `fill`,
+        fill_idx: 0,
+        display_style: {},
+      },
+      {
+        label: `Fill B`,
+        visible: true,
+        series_idx: -1,
+        item_type: `fill`,
+        fill_idx: 1,
+        display_style: {},
+      },
+    ]
+    mount(PlotLegend, {
+      target: document.body,
+      props: { series_data, active_fill_idx: 1, on_item_hover },
+    })
+
+    const items = document.querySelectorAll(`.legend-item`)
+    // active_fill_idx=1 marks only the Fill B item (fill_idx 1), not the series or Fill A
+    expect([...items].map((it) => it.classList.contains(`active`))).toEqual([
+      false,
+      false,
+      true,
+    ])
+
+    // hovering a fill item reports the full item (with fill_idx) so the plot can highlight it
+    items[1].dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    expect(on_item_hover).toHaveBeenLastCalledWith(
+      expect.objectContaining({ item_type: `fill`, fill_idx: 0 }),
+    )
   })
 
   test(`filters large legends`, async () => {
@@ -907,8 +948,36 @@ describe(`PlotLegend`, () => {
       ]
       mount(PlotLegend, { target: document.body, props: { series_data: data } })
       const rect = doc_query(`.fill-swatch rect`)
-      expect(rect.getAttribute(`fill-opacity`)).toBe(`0.3`)
       expect(rect.getAttribute(`stroke`)).toBe(`none`)
+      // default case (no display_style.fill_opacity) still renders the chip's fixed 0.7 opacity
+      expect(rect.getAttribute(`fill-opacity`)).toBe(`0.7`)
+    })
+
+    // plot fills bake translucency into the color (e.g. rgba(...,0.15)); the legend chip forces the
+    // color opaque so different fill colors stay distinguishable (fill-opacity alone can't override
+    // the color's own alpha channel)
+    test.each([
+      [`rgba(52, 152, 219, 0.15)`, `rgba(52, 152, 219, 1)`],
+      [`rgba(231, 76, 60, 0.25)`, `rgba(231, 76, 60, 1)`],
+      [`#2ecc71`, `rgba(46, 204, 113, 1)`],
+    ])(`fill swatch renders %s opaque so colors stay distinct`, (fill_color, expected) => {
+      const data: LegendItem[] = [
+        {
+          label: `Fill`,
+          visible: true,
+          series_idx: -1,
+          item_type: `fill`,
+          fill_idx: 0,
+          fill_source_type: `fill_region`,
+          fill_source_idx: 0,
+          display_style: { fill_color, fill_opacity: 0.15 },
+        },
+      ]
+      mount(PlotLegend, { target: document.body, props: { series_data: data } })
+      const rect = doc_query(`.fill-swatch rect`)
+      // color forced opaque (strips faint baked-in alpha), then a light uniform fill-opacity
+      expect(rect.getAttribute(`fill`)).toBe(expected)
+      expect(rect.getAttribute(`fill-opacity`)).toBe(`0.7`)
     })
 
     test(`renders linear gradient swatch when fill_gradient provided`, () => {

@@ -210,17 +210,14 @@ export function density_bin_at_point(
   }
 }
 
-export function should_render_points(
+export const should_render_points = (
   visible_count: number,
   plot_area_px: number,
   max_points: number,
   max_points_per_px: number,
-): boolean {
-  return (
-    visible_count <= max_points ||
-    (plot_area_px > 0 && visible_count / plot_area_px <= max_points_per_px)
-  )
-}
+): boolean =>
+  visible_count <= max_points ||
+  (plot_area_px > 0 && visible_count / plot_area_px <= max_points_per_px)
 
 const internal_point = <Metadata>(
   srs: DensePointSeries<Metadata>,

@@ -704,12 +704,11 @@ describe(`FormulaFilter`, () => {
     }
 
     // Mount with history enabled and unique localStorage key
-    function mount_with_history(props: Record<string, unknown> = {}) {
-      return mount(FormulaFilter, {
+    const mount_with_history = (props: Record<string, unknown> = {}) =>
+      mount(FormulaFilter, {
         target: document.body,
         props: { value: ``, history_key: HISTORY_KEY, max_history: 5, ...props },
       })
-    }
 
     // Seed localStorage, mount, focus input, flushSync — the most common setup
     function seed_mount_focus(entries: string[], props: Record<string, unknown> = {}) {

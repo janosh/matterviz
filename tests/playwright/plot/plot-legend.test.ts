@@ -9,9 +9,8 @@ async function get_element_center(locator: Locator): Promise<{ x: number; y: num
   return { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 }
 }
 
-function distance(p1: { x: number; y: number }, p2: { x: number; y: number }): number {
-  return Math.hypot(p1.x - p2.x, p1.y - p2.y)
-}
+const distance = (p1: { x: number; y: number }, p2: { x: number; y: number }): number =>
+  Math.hypot(p1.x - p2.x, p1.y - p2.y)
 
 async function wait_for_position_stable(
   locator: Locator,

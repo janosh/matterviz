@@ -20,9 +20,14 @@ describe(`Icon`, () => {
     expect(svg_query(`svg path`).getAttribute(`d`)).toBe(custom_path)
   })
 
-  it(`renders raw SVG markup when path starts with <`, () => {
-    mount(Icon, { target: document.body, props: { path: `<circle cx="12" r="10" />` } })
-    expect(svg_query(`svg circle`).getAttribute(`r`)).toBe(`10`)
+  it(`treats the path prop as an escaped d attribute, never injecting markup`, () => {
+    // the user-facing `path` prop is a path `d` string, never rendered via {@html}. SVG/HTML in it
+    // can't inject nodes (no XSS, even during SSR) — it lands escaped inside <path d="…">.
+    const injection = `<circle cx="12" r="10" /><script>alert(1)</script>`
+    mount(Icon, { target: document.body, props: { path: injection } })
+    expect(document.querySelector(`svg circle`)).toBeNull()
+    expect(document.querySelector(`script`)).toBeNull()
+    expect(svg_query(`svg path`).getAttribute(`d`)).toBe(injection)
   })
 
   it.each([

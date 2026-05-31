@@ -10,6 +10,8 @@
     "sourceMap": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    // allow importing @wooorm/starry-night/style/both.css (types via its .d.css.ts) from +layout.svelte
+    "allowArbitraryExtensions": true,
     "skipLibCheck": true
   },
   "exclude": ["src/scripts", "extensions"]

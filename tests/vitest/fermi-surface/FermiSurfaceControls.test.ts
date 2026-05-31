@@ -4,29 +4,27 @@ import { mount, tick, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { bind_props } from '../setup'
 
-function make_fermi_data(band_indices = [0, 1]): FermiSurfaceData {
-  return {
-    isosurfaces: band_indices.map((band_index) => ({
-      vertices: [],
-      faces: [],
-      normals: [],
-      band_index,
-      spin: null,
-    })),
-    k_lattice: [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-    fermi_energy: 0,
-    reciprocal_cell: `parallelepiped`,
-    metadata: {
-      n_bands: band_indices.length,
-      n_surfaces: band_indices.length,
-      total_area: 0,
-    },
-  }
-}
+const make_fermi_data = (band_indices = [0, 1]): FermiSurfaceData => ({
+  isosurfaces: band_indices.map((band_index) => ({
+    vertices: [],
+    faces: [],
+    normals: [],
+    band_index,
+    spin: null,
+  })),
+  k_lattice: [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ],
+  fermi_energy: 0,
+  reciprocal_cell: `parallelepiped`,
+  metadata: {
+    n_bands: band_indices.length,
+    n_surfaces: band_indices.length,
+    total_area: 0,
+  },
+})
 
 describe(`FermiSurfaceControls`, () => {
   test.each([

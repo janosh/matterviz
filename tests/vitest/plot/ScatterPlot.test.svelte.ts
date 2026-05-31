@@ -4,7 +4,7 @@ import type { DataSeries, FillRegion } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, resize_element, svg_query } from '../setup'
 
 const basic = {
@@ -582,6 +582,82 @@ describe(`ScatterPlot`, () => {
     await hover(fills[0])
     expect(fills[0].classList.contains(`hovered`)).toBe(true)
     expect(fills[1].classList.contains(`hovered`)).toBe(false)
+  })
+
+  test(`hidden fill keeps its legend item so it can be toggled back on`, async () => {
+    let fill_regions = $state<FillRegion[]>([
+      { id: `band`, label: `Band`, lower: 0, upper: 0.5, fill: `steelblue` },
+    ])
+    mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x: [0, 1], y: [0, 1] }],
+        x_axis: { range: [0, 1] as Vec2 },
+        y_axis: { range: [0, 1] as Vec2 },
+        get fill_regions() {
+          return fill_regions
+        },
+        legend: {},
+        style: `width: 400px; height: 300px;`,
+      },
+    })
+    await resize_element(doc_query(`.scatter`), 400, 300)
+    await tick()
+
+    const fill_item = () =>
+      [...document.querySelectorAll<HTMLElement>(`.legend-item.fill-item`)].find((el) =>
+        el.textContent?.includes(`Band`),
+      )
+
+    // fill renders and has a legend item
+    expect(document.querySelectorAll(`.fill-region`).length).toBe(1)
+    expect(fill_item()).toBeDefined()
+
+    // hide it (what clicking the legend fill item does via the fill_regions binding)
+    fill_regions = [{ ...fill_regions[0], visible: false }]
+    flushSync()
+    await tick()
+
+    // fill no longer drawn, but the legend item persists (greyed) so it can be toggled back
+    expect(document.querySelectorAll(`.fill-region`).length).toBe(0)
+    expect(fill_item()?.classList.contains(`hidden`)).toBe(true)
+
+    // hovering the hidden fill's legend item must not mark it active (nothing renders to highlight)
+    fill_item()?.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    flushSync()
+    await tick()
+    expect(fill_item()?.classList.contains(`active`)).toBe(false)
+  })
+
+  test(`log axis clamps non-positive fill coords to the domain floor, not a tiny epsilon`, async () => {
+    // lower edge at y=0 is non-positive on a log axis: must clamp to y_min (bottom edge), not
+    // 1e-10 which maps far outside the plot.
+    mount(ScatterPlot, {
+      target: document.body,
+      props: {
+        series: [{ x: [1, 10, 100], y: [2, 20, 80] }],
+        x_axis: { range: [1, 100] as Vec2 },
+        y_axis: { scale_type: `log`, range: [1, 100] as Vec2 },
+        fill_regions: [{ lower: 0, upper: { type: `series`, series_idx: 0 } }],
+      },
+    })
+    // wait for the path Tween to settle (`d` unchanged across two polls) so we read the final
+    // coords, not a wild mid-animation frame — deterministic instead of a fixed sleep
+    let last_d = ``
+    const settled_d = await vi.waitFor(
+      () => {
+        const d = doc_query(`.fill-region path`).getAttribute(`d`) ?? ``
+        const settled = d !== `` && d === last_d
+        last_d = d
+        if (!settled) throw new Error(`fill path not settled`)
+        return d
+      },
+      { timeout: 2000 },
+    )
+
+    const coords = (settled_d.match(/-?\d+\.?\d*/g) ?? []).map(Number)
+    expect(coords.length).toBeGreaterThan(0) // guard: Math.max(...[]) is -Infinity, a false pass
+    expect(Math.max(...coords.map(Math.abs))).toBeLessThan(1000)
   })
 
   // Dense grid covering the whole plot so no decoration can avoid overlapping data

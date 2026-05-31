@@ -91,7 +91,6 @@ test.describe(`Structure Component Tests`, () => {
       .evaluate((element) => {
         const style = getComputedStyle(element)
         return {
-          line_height: Number.parseFloat(style.lineHeight),
           top: Number.parseFloat(style.paddingTop),
           right: Number.parseFloat(style.paddingRight),
         }
@@ -100,8 +99,8 @@ test.describe(`Structure Component Tests`, () => {
     expect(toggle_size).toBeCloseTo(legend_label_size, 1)
     expect(preset_size).toBeGreaterThanOrEqual(legend_label_size)
     expect(preset_gap).toBeGreaterThanOrEqual(3)
-    expect(preset_padding.line_height).toBeCloseTo(preset_size, 1)
-    expect(preset_padding.top).toBe(0)
+    // preset buttons stay compact in narrow legends (line-height removed; padding kept tight at ≤1px)
+    expect(preset_padding.top).toBeLessThanOrEqual(1)
     expect(preset_padding.right).toBeLessThanOrEqual(1)
   })
 

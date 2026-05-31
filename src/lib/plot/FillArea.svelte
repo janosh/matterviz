@@ -40,9 +40,12 @@
     `fill-gradient-${region.id ?? region_idx}-${instance_id}`,
   )
 
+  // On hover (without an explicit hover_style), noticeably raise opacity. A faint fill (e.g. a
+  // low-alpha rgba color at the default 0.3 fill-opacity) is otherwise nearly invisible, so a mere
+  // brightness filter reads as "no change". An explicit hover_style.fill_opacity always wins.
   let effective_opacity = $derived(
-    is_hovered && region.hover_style?.fill_opacity != null
-      ? region.hover_style.fill_opacity
+    is_hovered
+      ? region.hover_style?.fill_opacity ?? Math.min(1, (region.fill_opacity ?? 0.3) + 0.4)
       : region.fill_opacity ?? 0.3,
   )
   let effective_fill = $derived(
@@ -53,6 +56,8 @@
   let path_fill = $derived(
     typeof effective_fill === `object` ? `url(#${gradient_id})` : effective_fill,
   )
+  // outline drawn only on hover when the user opted in via hover_style.stroke
+  let hover_stroke = $derived(is_hovered ? region.hover_style?.stroke : undefined)
   let is_clickable = $derived(Boolean(on_click || region.on_click))
   let cursor_style = $derived(
     region.hover_style?.cursor ?? (is_clickable ? `pointer` : `default`),
@@ -205,11 +210,16 @@
     </defs>
   {/if}
 
-  <!-- Main fill path -->
+  <!-- Main fill path. On hover the opacity boost (effective_opacity) highlights the area. We do NOT
+       stroke by default: a fill-between region is one closed polygon, so stroking traces its whole
+       perimeter (both boundaries + the straight closing edges), which looks messy and doesn't follow
+       the visible area. Users can still opt into an outline via hover_style.stroke. -->
   <path
     d={tweened_path.current}
     fill={path_fill}
     fill-opacity={effective_opacity}
+    stroke={hover_stroke ?? `none`}
+    stroke-width={hover_stroke ? region.hover_style?.stroke_width ?? 1.5 : 0}
   />
 </g>
 
@@ -218,6 +228,6 @@
     transition: opacity 0.15s ease;
   }
   .fill-region.hovered {
-    filter: brightness(1.1);
+    filter: brightness(1.35) saturate(1.2);
   }
 </style>

@@ -48,15 +48,14 @@
   }
 
   // Compute pairwise |ΔEN| for a set of axis items
-  function en_diff_matrix(items: AxisItem<ChemicalElement>[]): (number | null)[][] {
-    return items.map((y_item) => {
+  const en_diff_matrix = (items: AxisItem<ChemicalElement>[]): (number | null)[][] =>
+    items.map((y_item) => {
       const y_en = y_item.data?.electronegativity_pauling ?? null
       return items.map((x_item) => {
         const x_en = x_item.data?.electronegativity_pauling ?? null
         return x_en !== null && y_en !== null ? Math.abs(x_en - y_en) : null
       })
     })
-  }
 
   let en_diff_values = $derived(en_diff_matrix(axis_items))
 

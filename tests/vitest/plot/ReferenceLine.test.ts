@@ -6,9 +6,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 // Helper to query all elements of a type
-function query_all<T extends Element>(selector: string): T[] {
-  return Array.from(document.querySelectorAll<T>(selector))
-}
+const query_all = <T extends Element>(selector: string): T[] =>
+  Array.from(document.querySelectorAll<T>(selector))
 
 describe(`ReferenceLine`, () => {
   const container_style = `width: 800px; height: 600px;`

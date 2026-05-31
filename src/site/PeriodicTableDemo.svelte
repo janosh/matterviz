@@ -4,11 +4,11 @@
   import { element_data, ElementStats, PeriodicTable, PropertySelect } from '$lib'
   import type { D3InterpolateName } from '$lib/colors'
   import { ELEM_PROPERTY_LABELS } from '$lib/labels'
-  import type { Vec2 } from '$lib/math'
   import type { ScaleContext } from '$lib/periodic-table'
   import { PeriodicTableControls, TableInset } from '$lib/periodic-table'
-  import { ColorBar, ColorScaleSelect, ElementScatter } from '$lib/plot'
+  import { ColorScaleSelect, ElementScatter } from '$lib/plot'
   import { selected } from '$lib/state.svelte'
+  import { slide } from 'svelte/transition'
 
   let window_width: number = $state(0)
   let color_scale: D3InterpolateName = $state(`interpolateViridis`)
@@ -25,6 +25,7 @@
   let tile_border_radius: number = $state(1)
   let inner_transition_offset: number = $state(0.5)
   let tile_font_color: string = $state(`#ffffff`)
+  let controls_open = $state(false)
 
   let heatmap_values = $derived(
     heatmap_key
@@ -39,22 +40,6 @@
   let [y_label = ``, y_unit = ``] = $derived(
     heatmap_key ? ELEM_PROPERTY_LABELS[heatmap_key] : [],
   )
-
-  // Multi-value property ranges for color bars
-  let two_fold_data = $derived(
-    element_data.map((el) => [el.atomic_mass, el.density || 0]),
-  )
-
-  // Calculate ranges for each property
-  let atomic_mass_range = $derived([
-    Math.min(...element_data.map((el) => el.atomic_mass)),
-    Math.max(...element_data.map((el) => el.atomic_mass)),
-  ] as Vec2)
-
-  let density_range = $derived([
-    Math.min(...element_data.map((el) => el.density || 0).filter((dens) => dens > 0)),
-    Math.max(...element_data.map((el) => el.density || 0)),
-  ] as Vec2)
 
   const onenter = (element: ChemicalElement) => {
     if (!element?.name) return
@@ -141,56 +126,46 @@
   {/snippet}
 </PeriodicTable>
 
-<PeriodicTableControls
-  bind:tile_gap
-  bind:symbol_font_size
-  bind:number_font_size
-  bind:name_font_size
-  bind:value_font_size
-  bind:tooltip_font_size
-  bind:tooltip_bg_color
-  bind:tile_border_radius
-  bind:inner_transition_offset
-  bind:tile_font_color
-/>
-<h2>Multi-value Heatmap</h2>
-The periodic table supports multiple values per element with different visual layouts:
+<div style="margin: 2em auto">
+  <button
+    class="controls-toggle"
+    aria-expanded={controls_open}
+    onclick={() => (controls_open = !controls_open)}
+  >
+    {controls_open ? `▾` : `▸`} Controls
+  </button>
+  {#if controls_open}
+    <div transition:slide>
+      <PeriodicTableControls
+        bind:tile_gap
+        bind:symbol_font_size
+        bind:number_font_size
+        bind:name_font_size
+        bind:value_font_size
+        bind:tooltip_font_size
+        bind:tooltip_bg_color
+        bind:tile_border_radius
+        bind:inner_transition_offset
+        bind:tile_font_color
+        style="--ptable-ctrl-margin: 1em auto 0"
+      />
+    </div>
+  {/if}
+</div>
 
-<h3>2-fold Split (Diagonal)</h3>
-<p>
-  Each element shows two values as diagonal triangles:
-  <strong>top-left = atomic mass</strong>,
-  <strong>bottom-right = density</strong>.
-</p>
-<PeriodicTable
-  tile_props={{ show_name: false, show_number: false }}
-  heatmap_values={two_fold_data}
-  color_scale="interpolateRdYlBu"
-  tooltip
-  {onenter}
->
-  {#snippet inset()}
-    <TableInset
-      style="display: flex; gap: 0 2em; justify-content: center; align-items: center; flex-wrap: wrap; padding: 0.5em"
-    >
-      <ColorBar
-        title="Atomic Mass (u)"
-        color_scale="interpolateRdYlBu"
-        range={atomic_mass_range}
-        orientation="horizontal"
-        bar_style="width: 180px; height: 12px"
-        tick_labels={3}
-        title_side="top"
-      />
-      <ColorBar
-        title="Density (g/cm³)"
-        color_scale="interpolateRdYlBu"
-        range={density_range}
-        orientation="horizontal"
-        bar_style="width: 180px; height: 12px"
-        tick_labels={3}
-        title_side="top"
-      />
-    </TableInset>
-  {/snippet}
-</PeriodicTable>
+<style>
+  .controls-toggle {
+    display: block;
+    max-width: max-content;
+    margin: 0 auto;
+    padding: 2pt 8pt;
+    border-radius: 4pt;
+    background: var(--surface-bg);
+    border: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+  }
+</style>

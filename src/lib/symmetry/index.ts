@@ -142,14 +142,14 @@ const fractional_sq_dist = (pos_1: Vec3, pos_2: Vec3): number =>
   (pos_1[1] - pos_2[1] - Math.round(pos_1[1] - pos_2[1])) ** 2 +
   (pos_1[2] - pos_2[2] - Math.round(pos_1[2] - pos_2[2])) ** 2
 
-export function map_std_to_orig_site_indices(
+export const map_std_to_orig_site_indices = (
   std_positions: Vec3[],
   std_numbers: number[],
   input_positions: Vec3[],
   input_numbers: number[],
   orig_site_indices_by_input_idx: number[][],
-): number[][] {
-  return std_positions.map((std_pos, std_idx) => {
+): number[][] =>
+  std_positions.map((std_pos, std_idx) => {
     const std_number = std_numbers[std_idx]
     let nearest_input_idx = -1
     let nearest_sq_dist = Infinity
@@ -165,7 +165,6 @@ export function map_std_to_orig_site_indices(
     if (nearest_input_idx === -1) return []
     return orig_site_indices_by_input_idx[nearest_input_idx] ?? []
   })
-}
 
 export async function analyze_structure_symmetry(
   struct_or_mol: AnyStructure,

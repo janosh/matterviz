@@ -409,9 +409,8 @@
 
   // Desaturate a color by blending it toward gray (for ghosting image atoms in edit mode)
   const gray = new Color(0x999999)
-  function desaturate(hex: string | undefined, amount = 0.4): string {
-    return `#${new Color(hex ?? 0x999999).lerp(gray, amount).getHexString()}`
-  }
+  const desaturate = (hex: string | undefined, amount = 0.4): string =>
+    `#${new Color(hex ?? 0x999999).lerp(gray, amount).getHexString()}`
 
   // === Edit-atoms mode state ===
   let transform_object = $state<Mesh | undefined>(undefined)

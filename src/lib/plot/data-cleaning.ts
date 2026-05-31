@@ -641,9 +641,8 @@ export function sync_metadata<M>(
 }
 
 // Filter arrays by kept indices
-function filter_by_indices<T>(arr: readonly T[], kept_indices: number[]): T[] {
-  return kept_indices.map((idx) => arr[idx])
-}
+const filter_by_indices = <T>(arr: readonly T[], kept_indices: number[]): T[] =>
+  kept_indices.map((idx) => arr[idx])
 
 // Check if value is within bounds (static or x-dependent)
 function is_in_bounds(val: number, x_val: number, bounds: PhysicalBounds): boolean {

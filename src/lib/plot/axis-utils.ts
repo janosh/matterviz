@@ -57,13 +57,14 @@ export interface AxisChangeState<T extends DataSeries | BarSeries> {
 
 // Handle axis property change - loads new data via data_loader
 // Returns a function bound to the component's state accessors
-export function create_axis_change_handler<T extends DataSeries | BarSeries>(
-  state: AxisChangeState<T>,
-  data_loader: DataLoaderFn<Record<string, unknown>, T> | undefined,
-  on_axis_change?: (axis: AxisType, key: string, new_series: T[]) => void,
-  on_error?: (error: AxisLoadError) => void,
-): (axis: AxisType, key: string) => Promise<void> {
-  return async (axis: AxisType, key: string) => {
+export const create_axis_change_handler =
+  <T extends DataSeries | BarSeries>(
+    state: AxisChangeState<T>,
+    data_loader: DataLoaderFn<Record<string, unknown>, T> | undefined,
+    on_axis_change?: (axis: AxisType, key: string, new_series: T[]) => void,
+    on_error?: (error: AxisLoadError) => void,
+  ): ((axis: AxisType, key: string) => Promise<void>) =>
+  async (axis: AxisType, key: string) => {
     if (!data_loader || state.get_loading()) return
 
     const axis_config = state.get_axis(axis)
@@ -110,7 +111,6 @@ export function create_axis_change_handler<T extends DataSeries | BarSeries>(
       state.set_loading(null)
     }
   }
-}
 
 // Constants for axis label foreignObject positioning (all values in px)
 // Use minimal dimensions - overflow: visible handles any dropdown expansion

@@ -4,54 +4,52 @@ import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 // Create a successful TDB parse result for testing.
-function create_tdb_result(
+const create_tdb_result = (
   overrides: Partial<NonNullable<TdbParseResult[`data`]>> = {},
-): TdbParseResult {
-  return {
-    success: true,
-    data: {
-      elements: [
-        { symbol: `AL`, reference_phase: `FCC_A1`, mass: 26.98, enthalpy: 0, entropy: 0 },
-        { symbol: `ZN`, reference_phase: `HCP_ZN`, mass: 65.38, enthalpy: 0, entropy: 0 },
-      ],
-      phases: [
-        { name: `LIQUID`, model_hints: ``, sublattice_count: 1, sublattice_sites: [1] },
-        {
-          name: `FCC_A1`,
-          model_hints: `%A`,
-          sublattice_count: 2,
-          sublattice_sites: [1, 1],
-        },
-      ],
-      functions: [
-        {
-          name: `GHSERAL`,
-          expression: ``,
-          temperature_ranges: [{ min: 298, max: 933, expr: `` }],
-        },
-        {
-          name: `GHSERZN`,
-          expression: ``,
-          temperature_ranges: [{ min: 298, max: 693, expr: `` }],
-        },
-      ],
-      parameters: [
-        {
-          type: `G`,
-          phase: `LIQUID`,
-          constituents: [`AL`],
-          order: 0,
-          expression: ``,
-        },
-      ],
-      comments: [],
-      raw_content: ``,
-      ...overrides,
-    },
-    binary_system: [`AL`, `ZN`],
-    temperature_range: [300, 1000],
-  }
-}
+): TdbParseResult => ({
+  success: true,
+  data: {
+    elements: [
+      { symbol: `AL`, reference_phase: `FCC_A1`, mass: 26.98, enthalpy: 0, entropy: 0 },
+      { symbol: `ZN`, reference_phase: `HCP_ZN`, mass: 65.38, enthalpy: 0, entropy: 0 },
+    ],
+    phases: [
+      { name: `LIQUID`, model_hints: ``, sublattice_count: 1, sublattice_sites: [1] },
+      {
+        name: `FCC_A1`,
+        model_hints: `%A`,
+        sublattice_count: 2,
+        sublattice_sites: [1, 1],
+      },
+    ],
+    functions: [
+      {
+        name: `GHSERAL`,
+        expression: ``,
+        temperature_ranges: [{ min: 298, max: 933, expr: `` }],
+      },
+      {
+        name: `GHSERZN`,
+        expression: ``,
+        temperature_ranges: [{ min: 298, max: 693, expr: `` }],
+      },
+    ],
+    parameters: [
+      {
+        type: `G`,
+        phase: `LIQUID`,
+        constituents: [`AL`],
+        order: 0,
+        expression: ``,
+      },
+    ],
+    comments: [],
+    raw_content: ``,
+    ...overrides,
+  },
+  binary_system: [`AL`, `ZN`],
+  temperature_range: [300, 1000],
+})
 
 describe(`TdbInfoPanel`, () => {
   test(`displays system name, phases, and temperature range`, () => {

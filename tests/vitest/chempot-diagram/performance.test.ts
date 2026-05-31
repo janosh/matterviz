@@ -57,9 +57,8 @@ function compute_e_form(entry: PhaseData, el_refs: Record<string, PhaseData>): n
   return energy_per_atom - ref_energy
 }
 
-function hash_points(points_3d: number[][]): string {
-  return points_3d.map((point) => point.map((value) => value.toFixed(4)).join(`,`)).join(`;`)
-}
+const hash_points = (points_3d: number[][]): string =>
+  points_3d.map((point) => point.map((value) => value.toFixed(4)).join(`,`)).join(`;`)
 
 const pd_entries = load_gzip_json(`pd_entries_test.json.gz`)
 const ytos_entries = load_gzip_json(`ytos_entries.json.gz`)

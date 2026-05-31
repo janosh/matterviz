@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { add_alpha } from '$lib/colors'
   import type { LegendItem, Orientation } from '$lib/plot'
   import { sanitize_html } from '$lib/sanitize'
   import { strip_html } from '$lib/table'
@@ -28,6 +29,7 @@
     on_hover_change,
     on_item_hover,
     active_series_idx = null,
+    active_fill_idx = null,
     filterable = true,
     filter_threshold = 12,
     draggable = true,
@@ -58,8 +60,9 @@
     on_drag_end?: (event: MouseEvent) => void
     // Callback when hover state changes (for placement stability)
     on_hover_change?: (is_hovered: boolean) => void
-    on_item_hover?: (series_idx: number | null) => void
+    on_item_hover?: (item: LegendItem | null) => void
     active_series_idx?: number | null
+    active_fill_idx?: number | null // highlight the fill legend item with this fill_idx
     filterable?: boolean
     filter_threshold?: number
     draggable?: boolean
@@ -214,10 +217,13 @@
 
 {#snippet legend_item(series: LegendItem, indent: boolean = false)}
   {@const is_fill_item = series.item_type === `fill`}
+  {@const is_active = is_fill_item
+  ? active_fill_idx === series.fill_idx
+  : active_series_idx === series.series_idx}
   <div
     class="legend-item"
     class:hidden={!series.visible}
-    class:active={active_series_idx === series.series_idx}
+    class:active={is_active}
     class:indented={indent}
     class:fill-item={is_fill_item}
     style={item_style}
@@ -237,9 +243,9 @@
         toggle_item(series)
       }
     }}
-    onmouseenter={() => on_item_hover?.(series.series_idx)}
+    onmouseenter={() => on_item_hover?.(series)}
     onmouseleave={() => on_item_hover?.(null)}
-    onfocus={() => on_item_hover?.(series.series_idx)}
+    onfocus={() => on_item_hover?.(series)}
     onblur={() => on_item_hover?.(null)}
     role="button"
     tabindex="0"
@@ -286,8 +292,8 @@
             rx="2"
             fill={gradient
             ? `url(#${gradient_id})`
-            : (series.display_style.fill_color ?? `steelblue`)}
-            fill-opacity={series.display_style.fill_opacity ?? 0.3}
+            : add_alpha(series.display_style.fill_color ?? `steelblue`, 1)}
+            fill-opacity="0.7"
             stroke={series.display_style.edge_color ?? `none`}
             stroke-width="1"
           />

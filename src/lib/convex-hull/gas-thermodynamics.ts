@@ -132,25 +132,23 @@ function interpolate_ts(data: TabulatedTSData, T: number): number {
 // Default Provider Implementation
 
 // Create the default gas thermodynamics provider using built-in data
-export function create_default_gas_provider(): GasThermodynamicsProvider {
-  return {
-    get_standard_chemical_potential(gas: GasSpecies, T: number): number {
-      // μ°(T) = H_f - T*S
-      // For elemental gases (O2, N2, H2, F2), H_f = 0
-      const H_f = DEFAULT_ENTHALPY[gas] ?? 0
-      const TS = interpolate_ts(DEFAULT_TS_DATA[gas], T)
-      return H_f - TS
-    },
+export const create_default_gas_provider = (): GasThermodynamicsProvider => ({
+  get_standard_chemical_potential(gas: GasSpecies, T: number): number {
+    // μ°(T) = H_f - T*S
+    // For elemental gases (O2, N2, H2, F2), H_f = 0
+    const H_f = DEFAULT_ENTHALPY[gas] ?? 0
+    const TS = interpolate_ts(DEFAULT_TS_DATA[gas], T)
+    return H_f - TS
+  },
 
-    get_supported_gases(): GasSpecies[] {
-      return [...GAS_SPECIES]
-    },
+  get_supported_gases(): GasSpecies[] {
+    return [...GAS_SPECIES]
+  },
 
-    get_temperature_range(): [number, number] {
-      return [0, 2000]
-    },
-  }
-}
+  get_temperature_range(): [number, number] {
+    return [0, 2000]
+  },
+})
 
 // Singleton default provider
 let default_provider: GasThermodynamicsProvider | null = null
@@ -392,9 +390,8 @@ export function apply_gas_corrections(
 }
 
 // Format chemical potential for display (e.g., "-1.23 eV")
-export function format_chemical_potential(mu: number, decimals = 3): string {
-  return `${mu >= 0 ? `+` : ``}${mu.toFixed(decimals)} eV`
-}
+export const format_chemical_potential = (mu: number, decimals = 3): string =>
+  `${mu >= 0 ? `+` : ``}${mu.toFixed(decimals)} eV`
 
 // Format pressure for display (scientific notation for very small/large values)
 export function format_pressure(P: number): string {

@@ -1,6 +1,3 @@
-/* Starry-night syntax highlighting (GitHub-style, auto light/dark) */
-@import '@wooorm/starry-night/style/both';
-
 /* CSS variables are unlayered so they're available to both layers and to
    components that reference them via var(). Custom properties inherit
    naturally regardless of layer ordering. */

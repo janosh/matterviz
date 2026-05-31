@@ -430,12 +430,11 @@ function get_label_representative_energy(entry: PhaseData): number {
   return Number.POSITIVE_INFINITY
 }
 
-function get_fractional_composition_key(composition: Record<string, number>): string {
-  return Object.entries(get_fractional_composition(composition))
+const get_fractional_composition_key = (composition: Record<string, number>): string =>
+  Object.entries(get_fractional_composition(composition))
     .sort(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
     .map(([elem, frac]) => `${elem}:${frac.toFixed(6)}`)
     .join(`|`)
-}
 
 // Pick one label target per normalized composition. Multiple polymorphs, supercell
 // formulas, or same-composition entries often project to the same screen position.

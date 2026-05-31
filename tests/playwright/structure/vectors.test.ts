@@ -9,9 +9,8 @@ import {
 
 const VECTOR_PREFIXES = [`force`, `forces`, `magmom`, `magmoms`, `spin`, `spins`]
 
-function is_vector_key(key: string): boolean {
-  return VECTOR_PREFIXES.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
-}
+const is_vector_key = (key: string): boolean =>
+  VECTOR_PREFIXES.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
 
 const SITE_PROPS = {
   multi: [

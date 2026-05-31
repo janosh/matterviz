@@ -446,12 +446,12 @@ describe(`parse_bruker_raw_file`, () => {
 
 describe(`parse_xrdml_file`, () => {
   // Create a mock XRDML content for testing.
-  function create_mock_xrdml(
+  const create_mock_xrdml = (
     intensities: number[],
     start: number = 10,
     end: number = 70,
-  ): string {
-    return `<?xml version="1.0" encoding="UTF-8"?>
+  ): string =>
+    `<?xml version="1.0" encoding="UTF-8"?>
 <xrdMeasurements>
   <xrdMeasurement>
     <scan>
@@ -465,7 +465,6 @@ describe(`parse_xrdml_file`, () => {
     </scan>
   </xrdMeasurement>
 </xrdMeasurements>`
-  }
 
   test(`returns null for empty intensities`, () => {
     const result = parse_xrdml_file(create_mock_xrdml([], 10, 70))

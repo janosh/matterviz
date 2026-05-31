@@ -285,6 +285,24 @@ describe(`calculate_annotation_position`, () => {
     },
   )
 
+  // Regression: vertical ref lines are stored bottom->top (y1 > y2 in pixels), which used to flip
+  // left/right onto the wrong side and make the label cross the line. Sides must be screen-stable.
+  test.each([
+    [`left`, 90, `end`],
+    [`right`, 110, `start`],
+  ] as const)(
+    `%s side is screen-stable for a bottom->top vertical line`,
+    (side, expected_x, expected_anchor) => {
+      const pos = calculate_annotation_position(100, 200, 100, 0, {
+        position: `center`,
+        side,
+        gap: 10,
+      })
+      expect(pos.x).toBe(expected_x)
+      expect(pos.text_anchor).toBe(expected_anchor)
+    },
+  )
+
   // Diagonal 45° line: (0, 0) -> (100, 100)
   test.each([
     [`left`, 50 - 10 / Math.SQRT2, 50 + 10 / Math.SQRT2, `end`],

@@ -6,6 +6,7 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
   import { handle_url_drop, load_from_url } from '$lib/io'
+  import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { format_num, trajectory_property_config } from '$lib/labels'
   import { sanitize_html } from '$lib/sanitize'
   import { toggle_fullscreen } from '$lib/layout'
@@ -98,6 +99,7 @@
     loading_options = {},
     atom_type_mapping,
     plot_skimming = true,
+    hovered = $bindable(false),
     ...rest
   }: EventHandlers & HTMLAttributes<HTMLDivElement> & {
     // trajectory data - can be provided directly or loaded from file
@@ -184,6 +186,8 @@
     atom_type_mapping?: AtomTypeMapping
     // Disable plot skimming (mouse over plot doesn't update structure/step slider)
     plot_skimming?: boolean
+    // bindable: true while the pointer is over the viewer (drives hover-scoped shortcuts)
+    hovered?: boolean
   } = $props()
 
   let dragover = $state(false)
@@ -477,8 +481,8 @@
   }
 
   // Helper function to read file content
-  async function read_file_content(file: File): Promise<string | ArrayBuffer> {
-    return new Promise((resolve, reject) => {
+  const read_file_content = (file: File): Promise<string | ArrayBuffer> =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.addEventListener(`load`, () => resolve(reader.result as string | ArrayBuffer))
       reader.addEventListener(`error`, () => reject(new Error(`Failed to read file`)))
@@ -488,7 +492,6 @@
         reader.readAsText(file)
       } else reader.readAsArrayBuffer(file)
     })
-  }
 
   // Play/pause functionality
   function toggle_play() {
@@ -783,9 +786,10 @@
     }
   }
 
-  // Handle keyboard shortcuts
-  function onkeydown(event: KeyboardEvent) {
-    if (!trajectory) return
+  // Handle keyboard shortcuts. Returns true if the key was handled, so the caller
+  // (handle_and_prevent / forward_window_keydown) can suppress the browser default.
+  function onkeydown(event: KeyboardEvent): boolean {
+    if (!trajectory) return false
 
     // Don't handle shortcuts if user is typing in an input field (but allow if it's our step input and not focused)
     const target = event.target instanceof HTMLElement ? event.target : null
@@ -794,18 +798,25 @@
       target?.tagName === `INPUT` || target?.tagName === `TEXTAREA`
 
     // Skip if typing in an input that's not our step input
-    if (is_input_focused && !is_step_input) return
+    if (is_input_focused && !is_step_input) return false
 
     // If typing in step input, only handle certain navigation keys
     if (is_step_input && is_input_focused) {
       // Allow normal typing, but handle special navigation keys
       if ([`Escape`, `Enter`].includes(event.key)) target?.blur() // Remove focus from input
-      return
+      return false
     }
 
     const is_cmd_or_ctrl = event.metaKey || event.ctrlKey
 
-    // Navigation shortcuts
+    // Only the Arrow keys intentionally use Cmd/Ctrl (jump to first/last). For any
+    // other key a Cmd/Ctrl combo is a browser/OS shortcut (find, tab switch, zoom)
+    // — bail so we neither hijack it nor preventDefault the browser's own action.
+    if (is_cmd_or_ctrl && event.key !== `ArrowLeft` && event.key !== `ArrowRight`) return false
+
+    // Track whether a shortcut fired so callers suppress browser defaults (page
+    // scroll on Space/arrows/PageUp-Down/Home/End) only when we handled the key.
+    let handled = true
     if (event.key === ` `) toggle_play()
     else if (event.key === `ArrowLeft`) {
       if (is_cmd_or_ctrl) go_to_step(0)
@@ -841,7 +852,9 @@
     } // Number keys 0-9 - jump to percentage of trajectory
     else if (event.key >= `0` && event.key <= `9`) {
       go_to_step(Math.floor((parseInt(event.key, 10) / 10) * (total_frames - 1)))
-    }
+    } else handled = false
+
+    return handled
   }
 
   // Separate state variables for each pane to match component prop types
@@ -859,6 +872,8 @@
   }}
 />
 
+<svelte:window onkeydown={forward_window_keydown(() => hovered, onkeydown)} />
+
 <div
   class:dragover
   class:active={is_playing || structure_info_open || structure_controls_open ||
@@ -869,6 +884,8 @@
   role="button"
   tabindex="0"
   aria-label="Drop trajectory file here to load"
+  onmouseenter={() => (hovered = true)}
+  onmouseleave={() => (hovered = false)}
   ondrop={handle_file_drop}
   ondragover={(event) => {
     event.preventDefault()
@@ -880,7 +897,7 @@
     dragover = false
   }}
   onclick={handle_click_outside}
-  {onkeydown}
+  onkeydown={handle_and_prevent(onkeydown)}
   {...rest}
   class="trajectory {actual_layout} {rest.class ?? ``}"
   class:show-both-views={[`structure+scatter`, `structure+histogram`].includes(display_mode) &&

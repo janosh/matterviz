@@ -1463,9 +1463,9 @@
       series_data={legend_data}
       on_toggle={legend?.on_toggle || toggle_series_visibility}
       on_hover_change={legend_hover.set_locked}
-      on_item_hover={(series_idx: number | null) =>
-        (hovered_legend_series_idx = series_idx != null && series_idx >= 0
-          ? series_idx
+      on_item_hover={(item) =>
+        (hovered_legend_series_idx = item != null && item.series_idx >= 0
+          ? item.series_idx
           : null)}
       active_series_idx={hover_info?.series_idx ?? hovered_legend_series_idx}
       style={`

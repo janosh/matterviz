@@ -2017,14 +2017,13 @@
     }, `image/png`)
   }
 
-  function xml_escape(text: string): string {
-    return text
+  const xml_escape = (text: string): string =>
+    text
       .replaceAll(`&`, `&amp;`)
       .replaceAll(`<`, `&lt;`)
       .replaceAll(`>`, `&gt;`)
       .replaceAll(`"`, `&quot;`)
       .replaceAll(`'`, `&#39;`)
-  }
 
   function export_svg_file(): void {
     if (!wrapper) return
@@ -2128,8 +2127,8 @@
     )
   }
 
-  function get_json_string(): string {
-    return JSON.stringify(
+  const get_json_string = (): string =>
+    JSON.stringify(
       {
         elements: diagram_data?.elements ?? [],
         domains: render_domains.map((domain) => ({
@@ -2142,7 +2141,6 @@
       null,
       2,
     )
-  }
 
   function export_json_file(): void {
     download_blob(

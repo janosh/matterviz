@@ -304,18 +304,17 @@ type BondPair = {
   site_idx_2: number
 }
 
-function get_bond_neighbors(
+const get_bond_neighbors = (
   hovered_idx: number,
   bond_pairs: BondPair[],
   sites: { species: { element: string }[] }[],
-): string[] {
-  return bond_pairs
+): string[] =>
+  bond_pairs
     .filter((b) => b.site_idx_1 === hovered_idx || b.site_idx_2 === hovered_idx)
     .map((b) => {
       const neighbor_idx = b.site_idx_1 === hovered_idx ? b.site_idx_2 : b.site_idx_1
       return sites[neighbor_idx]?.species[0]?.element ?? `?`
     })
-}
 
 function format_bond_summary(neighbors: string[]): string {
   if (neighbors.length === 0) return ``

@@ -8,7 +8,7 @@ import {
 } from '$lib/trajectory/extract'
 import { parse_trajectory_data } from '$lib/trajectory/parse'
 import { describe, expect, it } from 'vitest'
-import { read_binary_test_file } from '../setup'
+import { make_trajectory_frame, read_binary_test_file } from '../setup'
 
 const constant_lattice_keys = [
   `constant_a`,
@@ -18,27 +18,6 @@ const constant_lattice_keys = [
   `constant_beta`,
   `constant_gamma`,
 ] as const
-
-// Helper to create a basic frame structure
-const create_basic_frame = (
-  step: number,
-  metadata: Record<string, unknown> = {},
-): TrajectoryFrame => ({
-  structure: {
-    sites: [
-      {
-        species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [0, 0, 0],
-        label: `H1`,
-        properties: {},
-      },
-    ],
-    charge: 0,
-  },
-  step,
-  metadata,
-})
 
 // Helper to create frame with lattice
 const create_frame_with_lattice = (
@@ -100,7 +79,7 @@ describe(`Energy Data Extractor`, () => {
     },
     { name: `handles missing metadata`, step: 0, metadata: {}, expected: { Step: 0 } },
   ])(`should $name`, ({ step, metadata, expected }) => {
-    const frame = create_basic_frame(step, metadata)
+    const frame = make_trajectory_frame(step, 1, metadata)
     const data = energy_data_extractor(frame, { frames: [], metadata: {} })
     expect(data).toEqual(expected)
   })
@@ -146,7 +125,7 @@ describe(`Force and Stress Data Extractor`, () => {
       },
     },
   ])(`should $name`, ({ step, metadata, expected }) => {
-    const frame = create_basic_frame(step, metadata)
+    const frame = make_trajectory_frame(step, 1, metadata)
     const data = force_stress_data_extractor(frame, { frames: [], metadata: {} })
     expect(data).toEqual(expected)
   })
@@ -193,7 +172,7 @@ describe(`Structural Data Extractor`, () => {
   ])(`should $name`, ({ step, lattice_params, metadata, expected }) => {
     const frame = lattice_params
       ? create_frame_with_lattice(step, lattice_params, metadata)
-      : create_basic_frame(step, metadata)
+      : make_trajectory_frame(step, 1, metadata)
 
     const data = structural_data_extractor(frame, { frames: [], metadata: {} })
     expect(data).toEqual(expected)

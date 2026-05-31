@@ -1,14 +1,18 @@
 <script lang="ts">
   import type { Vec3 } from '$lib/math'
   import { T } from '@threlte/core'
+  import type { ComponentProps } from 'svelte'
   import { Euler, Quaternion, Vector3 } from 'three'
 
-  let { from, to, color = `#808080`, thickness = 0.1 }: {
-    from: Vec3
-    to: Vec3
-    color?: string
-    thickness?: number
-  } = $props()
+  let { from, to, color = `#808080`, thickness = 0.1, opacity = 1, ...rest }:
+    & ComponentProps<typeof T.Mesh>
+    & {
+      from: Vec3
+      to: Vec3
+      color?: string
+      thickness?: number
+      opacity?: number // < 1 renders semi/fully transparent (e.g. invisible hover proxies)
+    } = $props()
 
   let from_vec = $derived(new Vector3(...from))
   let to_vec = $derived(new Vector3(...to))
@@ -39,7 +43,7 @@
   }
 </script>
 
-<T.Mesh {position} {rotation} scale={[thickness, height, thickness]}>
+<T.Mesh {...rest} {position} {rotation} scale={[thickness, height, thickness]}>
   <T.CylinderGeometry args={[thickness, thickness, 1, 8]} />
-  <T.MeshStandardMaterial {color} />
+  <T.MeshStandardMaterial {color} transparent={opacity < 1} {opacity} depthWrite={opacity >= 1} />
 </T.Mesh>

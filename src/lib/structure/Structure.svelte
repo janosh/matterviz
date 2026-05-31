@@ -8,6 +8,7 @@
   import Spinner from '$lib/feedback/Spinner.svelte'
   import Icon from '$lib/Icon.svelte'
   import { create_file_drop_handler, load_from_url } from '$lib/io'
+  import { forward_window_keydown, handle_and_prevent } from '$lib/keyboard'
   import { parse_volumetric_file } from '$lib/isosurface/parse'
   import type { IsosurfaceSettings, VolumetricData } from '$lib/isosurface/types'
   import {
@@ -1139,7 +1140,9 @@
     },
   })
 
-  function handle_keydown(event: KeyboardEvent) {
+  // Handle keyboard shortcuts. Returns true if the key was handled, so the caller
+  // (handle_and_prevent / forward_window_keydown) can suppress the browser default.
+  function handle_keydown(event: KeyboardEvent): boolean {
     // Don't handle shortcuts if user is typing in an input field
     const target = event.target
     const is_input_focused =
@@ -1151,45 +1154,39 @@
 
     // Allow Escape to cancel add-atom mode even when the element input is focused
     if (event.key === `Escape` && measure_mode === `edit-atoms` && add_atom_mode) {
-      event.preventDefault()
       add_atom_mode = false
-      return
+      return true
     }
 
-    if (is_input_focused) return
+    if (is_input_focused) return false
 
     if (measure_mode === `edit-bonds`) {
       const key = event.key.toLowerCase()
       const plain = !event.ctrlKey && !event.metaKey && !event.altKey
       if (event.ctrlKey || event.metaKey) {
         if (key === `z` && !event.shiftKey) {
-          if (bond_undo_stack.length === 0) return
-          event.preventDefault()
+          if (bond_undo_stack.length === 0) return false
           undo_bond_edit()
           show_toast(`Undo bond edit (${bond_undo_stack.length} left)`)
-          return
+          return true
         } else if (key === `y` || (key === `z` && event.shiftKey)) {
-          if (bond_redo_stack.length === 0) return
-          event.preventDefault()
+          if (bond_redo_stack.length === 0) return false
           redo_bond_edit()
           show_toast(`Redo bond edit (${bond_redo_stack.length} left)`)
-          return
+          return true
         }
       }
       if (key === `a` && plain) {
-        event.preventDefault()
         bond_edit_mode = `add`
-        return
+        return true
       }
       if (key === `d` && plain) {
-        event.preventDefault()
         bond_edit_mode = `delete`
-        return
+        return true
       }
       if (event.key === `Escape` && selected_sites.length > 0) {
-        event.preventDefault()
         clear_selection()
-        return
+        return true
       }
     }
 
@@ -1199,24 +1196,21 @@
       if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase()
         if (key === `z` && !event.shiftKey) {
-          if (undo_stack.length === 0) return
-          event.preventDefault()
+          if (undo_stack.length === 0) return false
           undo()
           show_toast(`Undo (${undo_stack.length} left)`)
-          return
+          return true
         } else if (key === `y` || (key === `z` && event.shiftKey)) {
-          if (redo_stack.length === 0) return
-          event.preventDefault()
+          if (redo_stack.length === 0) return false
           redo()
           show_toast(`Redo (${redo_stack.length} left)`)
-          return
+          return true
         }
       }
 
       if (event.key === `Delete` || event.key === `Backspace`) {
         // Delete selected atoms
         if (selected_sites.length > 0 && structure?.sites) {
-          event.preventDefault()
           is_internal_edit = true
           push_undo()
           const to_delete = scene_to_structure_indices(selected_sites, true)
@@ -1230,30 +1224,28 @@
           if (site_radius_overrides?.size > 0) site_radius_overrides.clear()
           clear_bond_edits()
           show_toast(`Deleted ${n_deleted} site${n_deleted > 1 ? `s` : ``}`)
+          return true
         }
-        return
+        return false
       }
       const key = event.key.toLowerCase()
       const plain = !event.ctrlKey && !event.metaKey && !event.altKey
 
       if (key === `a` && plain) {
         // Enter add-atom sub-mode (plain 'a' only, not Ctrl+A/Cmd+A/Alt+A)
-        event.preventDefault()
         add_atom_mode = !add_atom_mode
-        return
+        return true
       }
       // Change element of selected atoms
       if (key === `e` && plain && selected_sites.length > 0) {
-        event.preventDefault()
         change_element_mode = !change_element_mode
-        return
+        return true
       }
       // Duplicate selected atoms at a small offset
       if (
         key === `d` && (event.ctrlKey || event.metaKey) &&
         selected_sites.length > 0 && structure?.sites
       ) {
-        event.preventDefault()
         is_internal_edit = true
         push_undo()
         const orig_indices = scene_to_structure_indices(selected_sites)
@@ -1284,18 +1276,18 @@
         show_toast(
           `Duplicated ${new_sites.length} site${new_sites.length > 1 ? `s` : ``}`,
         )
-        return
+        return true
       }
 
       // add_atom_mode Escape is already handled above (before is_input_focused guard)
       if (event.key === `Escape`) {
         if (change_element_mode) {
           change_element_mode = false
-          return
+          return true
         }
         if (selected_sites.length > 0) {
           clear_selection()
-          return
+          return true
         }
       }
     }
@@ -1303,11 +1295,11 @@
     // Interface shortcuts (require Ctrl/Cmd modifier to avoid accidental triggers)
     const has_modifier = event.ctrlKey || event.metaKey
     if (event.key === `f` && has_modifier && fullscreen_toggle) {
-      event.preventDefault()
       toggle_fullscreen(wrapper)
+      return true
     } else if (event.key === `i` && has_modifier && enable_info_pane) {
-      event.preventDefault()
       info_pane_open = !info_pane_open
+      return true
     } else if (event.key === `Escape`) {
       // Prioritize closing panes, then exit edit modes, then exit fullscreen
       if (info_pane_open) info_pane_open = false
@@ -1315,9 +1307,18 @@
       else if (export_pane_open) export_pane_open = false
       else if (measure_mode === `edit-bonds` || measure_mode === `edit-atoms`) {
         measure_mode = `distance`
-      }
+      } else return false
+      return true
     }
+    return false
   }
+
+  // Hover (window) path: skip edit-mode mutations so destructive keys (delete/undo)
+  // require focus, not just a hovering mouse.
+  const handle_hover_keydown = (event: KeyboardEvent): boolean =>
+    measure_mode === `edit-atoms` || measure_mode === `edit-bonds`
+      ? false
+      : handle_keydown(event)
 
   // === Edit-atoms mode helpers ===
 
@@ -1477,6 +1478,11 @@
   }}
 />
 
+<!-- Forward shortcuts to the hovered viewer when focus is on <body> (see
+  forward_window_keydown). Edit modes are excluded so destructive keys
+  (delete/undo) still require focus, not just a hovering mouse. -->
+<svelte:window onkeydown={forward_window_keydown(() => hovered, handle_hover_keydown)} />
+
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class:dragover
@@ -1525,7 +1531,7 @@
     event.preventDefault()
     dragover = false
   }}
-  onkeydown={handle_keydown}
+  onkeydown={handle_and_prevent(handle_keydown)}
   {...rest}
   class="structure {rest.class ?? ``}"
 >

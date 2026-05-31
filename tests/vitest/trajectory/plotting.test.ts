@@ -35,26 +35,24 @@ const COMMON_TRAJECTORIES = {
 }
 
 // Helper functions
-function create_trajectory(property_frames: Record<string, number>[]): TrajectoryType {
-  return {
-    frames: property_frames.map((props, step) => ({
-      structure: {
-        sites: [
-          {
-            species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-            abc: [0, 0, 0],
-            xyz: [0, 0, 0],
-            label: `H1`,
-            properties: {},
-          },
-        ],
-        charge: 0,
-      },
-      step,
-      metadata: props,
-    })),
-  }
-}
+const create_trajectory = (property_frames: Record<string, number>[]): TrajectoryType => ({
+  frames: property_frames.map((props, step) => ({
+    structure: {
+      sites: [
+        {
+          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
+          abc: [0, 0, 0],
+          xyz: [0, 0, 0],
+          label: `H1`,
+          properties: {},
+        },
+      ],
+      charge: 0,
+    },
+    step,
+    metadata: props,
+  })),
+})
 
 function test_extractor(frame: TrajectoryFrame): Record<string, number> {
   const data: Record<string, number> = { Step: frame.step }
@@ -66,26 +64,24 @@ function test_extractor(frame: TrajectoryFrame): Record<string, number> {
   return data
 }
 
-function create_series(
+const create_series = (
   y_values: number[],
   visible = true,
   label = `Test`,
   unit = ``,
   y_axis: `y1` | `y2` = `y1`,
-): DataSeries {
-  return {
-    x: y_values.map((_, idx) => idx),
-    y: y_values,
-    label,
-    unit,
-    visible,
-    y_axis,
-    markers: `line` as const,
-    metadata: [],
-    line_style: { stroke: `blue`, stroke_width: 2 },
-    point_style: { fill: `blue`, radius: 4, stroke: `blue`, stroke_width: 1 },
-  }
-}
+): DataSeries => ({
+  x: y_values.map((_, idx) => idx),
+  y: y_values,
+  label,
+  unit,
+  visible,
+  y_axis,
+  markers: `line` as const,
+  metadata: [],
+  line_style: { stroke: `blue`, stroke_width: 2 },
+  point_style: { fill: `blue`, radius: 4, stroke: `blue`, stroke_width: 1 },
+})
 
 // Test assertion helpers
 function assert_unit_group_constraints(series: DataSeries[]): void {
