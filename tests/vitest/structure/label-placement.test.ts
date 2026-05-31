@@ -41,7 +41,7 @@ describe(`label placement`, () => {
     const offset = choose_site_label_offset(bond_directions, base_offset)
 
     expect(Math.hypot(...offset)).toBeCloseTo(Math.hypot(...base_offset))
-    expect(math.dot(math.normalize_vec3(offset), [0, 1, 0])).toBeLessThan(0.5)
+    expect(math.dot(math.normalize_vec(offset), [0, 1, 0])).toBeLessThan(0.5)
   })
 
   test(`label position calculator reads updated label offset`, () => {

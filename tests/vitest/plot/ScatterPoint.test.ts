@@ -9,7 +9,7 @@ describe(`ScatterPoint`, () => {
   beforeEach(() => {
     const container = document.createElement(`div`)
     container.setAttribute(`style`, container_style)
-    document.body.appendChild(container)
+    document.body.append(container)
   })
 
   test(`renders with default props`, () => {

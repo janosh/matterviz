@@ -6,6 +6,7 @@
   import { build_diagram } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import type { PhaseDiagramData } from './types'
+  import { to_error } from '$lib/utils'
 
   let {
     editor_open = $bindable(false),
@@ -54,7 +55,7 @@
         build_diagram(updated as DiagramInput)
         diagram_input = updated as DiagramInput
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
+        const msg = to_error(error).message
         show_rejection(msg)
       }
       return

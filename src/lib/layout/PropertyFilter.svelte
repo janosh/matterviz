@@ -46,7 +46,7 @@
 
   // Active when either bound is set (undefined = unbounded)
   let active = $derived(min_value !== undefined || max_value !== undefined)
-  let plain_label = $derived(label.replace(/<[^>]*>/g, ``))
+  let plain_label = $derived(label.replaceAll(/<[^>]*>/g, ``))
 
   let filtered_data = $derived.by(() => {
     if (!histogram_data) return []
@@ -69,7 +69,8 @@
   }
 
   function clear_filter(): void {
-    min_value = max_value = undefined
+    min_value = undefined
+    max_value = undefined
     onclear?.()
     onchange?.(undefined, undefined)
   }

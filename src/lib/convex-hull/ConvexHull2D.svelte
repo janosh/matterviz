@@ -391,7 +391,7 @@
           ? base_radius * hl.size_multiplier
           : base_radius,
         symbol_type: marker_to_d3_symbol(entry.marker),
-        is_highlighted: !!hl,
+        is_highlighted: Boolean(hl),
         highlight_effect: hl?.effect,
         highlight_color: hl?.color,
       }
@@ -437,7 +437,7 @@
     const entry = selected_entry
     if (!entry) return null
     const idx = visible_entries.findIndex((vis_entry) => vis_entry === entry)
-    return idx >= 0 ? { series_idx: 0, point_idx: idx } : null
+    return idx !== -1 ? { series_idx: 0, point_idx: idx } : null
   })
 
   // Convex hull statistics - compute internally and expose via bindable prop

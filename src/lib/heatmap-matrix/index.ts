@@ -1,6 +1,7 @@
 import type { ChemicalElement, ElementSymbol } from '$lib/element'
 import { element_data } from '$lib/element'
 import type { Snippet } from 'svelte'
+
 export { COLOR_OVERRIDE_KEY_SEPARATOR, make_color_override_key } from './shared'
 
 // === Types ===
@@ -102,7 +103,7 @@ function escape_csv_field(value: number | string | null | undefined): string {
 }
 
 export function rows_to_csv(rows: Record<string, number | string | null>[]): string {
-  if (!rows.length) return ``
+  if (rows.length === 0) return ``
   const headers = Object.keys(rows[0])
   const lines = [
     headers.map((header) => escape_csv_field(header)).join(`,`),

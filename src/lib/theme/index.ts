@@ -56,7 +56,7 @@ export const get_theme_preference = (): ThemeMode => {
   if (!is_browser) return AUTO_THEME
   try {
     const saved = localStorage[storage_key]
-    return is_valid_theme_mode(saved || ``) ? (saved as ThemeMode) : AUTO_THEME
+    return is_valid_theme_mode(saved ?? ``) ? (saved as ThemeMode) : AUTO_THEME
   } catch {
     return AUTO_THEME
   }
@@ -82,8 +82,8 @@ export const apply_theme_to_dom = (mode: ThemeMode): void => {
   if (!resolved || !(resolved in THEME_TYPE)) {
     throw new Error(`Invalid theme mode: ${resolved}`)
   }
-  const theme = globalThis.MATTERVIZ_THEMES?.[resolved] || {}
-  const css_vars = globalThis.MATTERVIZ_CSS_MAP || {}
+  const theme = globalThis.MATTERVIZ_THEMES?.[resolved] ?? {}
+  const css_vars = globalThis.MATTERVIZ_CSS_MAP ?? {}
 
   const root = document.documentElement
   Object.entries(theme).forEach(([key, value]) => {
@@ -100,8 +100,8 @@ export const apply_theme_to_dom = (mode: ThemeMode): void => {
 }
 
 // Theme getters
-export const light_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.light] || {}
-export const dark_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.dark] || {}
-export const white_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.white] || {}
-export const black_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.black] || {}
-export const get_theme_by_name = (name: ThemeName) => globalThis.MATTERVIZ_THEMES?.[name] || {}
+export const light_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.light] ?? {}
+export const dark_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.dark] ?? {}
+export const white_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.white] ?? {}
+export const black_theme = () => globalThis.MATTERVIZ_THEMES?.[COLOR_THEMES.black] ?? {}
+export const get_theme_by_name = (name: ThemeName) => globalThis.MATTERVIZ_THEMES?.[name] ?? {}

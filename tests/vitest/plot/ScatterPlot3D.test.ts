@@ -56,7 +56,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
 
   beforeEach(() => {
     container = document.createElement(`div`)
-    document.body.appendChild(container)
+    document.body.append(container)
     // Suppress WebGL warnings in jsdom environment
     vi.spyOn(console, `warn`).mockImplementation(() => {})
     vi.spyOn(console, `error`).mockImplementation(() => {})
@@ -251,9 +251,9 @@ describe(`ScatterPlot3D data processing`, () => {
 
     // Verify no valid point has undefined coordinates
     for (const pt of valid_points) {
-      expect(pt.x).not.toBeUndefined()
-      expect(pt.y).not.toBeUndefined()
-      expect(pt.z).not.toBeUndefined()
+      expect(pt.x).toBeDefined()
+      expect(pt.y).toBeDefined()
+      expect(pt.z).toBeDefined()
       expect(Number.isNaN(pt.x)).toBe(false)
       expect(Number.isNaN(pt.y)).toBe(false)
       expect(Number.isNaN(pt.z)).toBe(false)

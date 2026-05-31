@@ -548,10 +548,10 @@ export function process_hull_for_stats(
   entries: PhaseData[],
   elements?: ElementSymbol[],
 ): HighDimHullResult | null {
-  if (!entries.length) return null
+  if (entries.length === 0) return null
 
   const processed = process_hull_entries(entries)
-  if (!processed.entries.length) return null
+  if (processed.entries.length === 0) return null
   const hull_elements = elements ?? processed.elements
 
   // Compute formation energies

@@ -3,6 +3,7 @@
 import { compute_chempot_diagram, formula_key_from_composition } from './compute'
 import type { ChemPotDiagramConfig, ChemPotDiagramData } from './types'
 import type { PhaseData } from '$lib/convex-hull/types'
+import { to_error } from '$lib/utils'
 
 let worker: Worker | null = null
 let next_id = 0
@@ -44,6 +45,7 @@ function track_pending(
 function get_worker(): Worker | null {
   if (typeof Worker === `undefined`) return null
   if (!worker) {
+    // oxlint-disable-next-line eslint-plugin-unicorn/relative-url-style -- Vite worker detection requires the `./` prefix
     worker = new Worker(new URL(`./chempot-worker.js`, import.meta.url), { type: `module` })
     worker.addEventListener(`message`, ({ data: { id, result, error } }) => {
       const req = pending.get(id)
@@ -87,7 +89,7 @@ export function compute_chempot_async(
       wkr.postMessage($state.snapshot({ id, entries, config }))
     } catch (err) {
       pending.delete(id)
-      reject(err instanceof Error ? err : new Error(String(err)))
+      reject(to_error(err))
     }
   })
   return track_pending(request_key, promise)

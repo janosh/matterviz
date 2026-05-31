@@ -30,7 +30,7 @@
     active_elements = $bindable([]),
     gap = `0.3cqw`,
     inner_transition_metal_offset = 0.5,
-    lanth_act_tiles = tile_props?.show_symbol == false
+    lanth_act_tiles = tile_props?.show_symbol === false
       ? []
       : [...default_f_block_inset_tiles],
     lanth_act_style = ``,
@@ -115,8 +115,8 @@
             `each element possibly omitting elements at the end, got ${heatmap_values.length}`,
         )
         return []
-      } else return heatmap_values
-    } else if (typeof heatmap_values == `object`) {
+      }return heatmap_values
+    } else if (typeof heatmap_values === `object`) {
       const bad_keys = Object.keys(heatmap_values).filter(
         (key) => !ELEM_SYMBOLS.includes(key as ElementSymbol),
       )
@@ -143,7 +143,7 @@
 
   function handle_key(event: KeyboardEvent) {
     if (disabled || !active_element) return
-    if (event.key == `Enter`) onenter?.(active_element)
+    if (event.key === `Enter`) onenter?.(active_element)
 
     const arrow_keys = [`ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`]
     if (!arrow_keys.includes(event.key)) return
@@ -186,12 +186,12 @@
   }
 
   let color_scale_fn = $derived(
-    typeof color_scale == `string` ? d3_sc[color_scale] : color_scale,
+    typeof color_scale === `string` ? d3_sc[color_scale] : color_scale,
   )
 
   let cs_min = $derived(
     color_scale_range[0] ??
-      (heat_values.length
+      (heat_values.length > 0
         ? Math.min(
           ...heat_values.flat().filter((v): v is number => typeof v === `number`),
         )
@@ -199,7 +199,7 @@
   )
   let cs_max = $derived(
     color_scale_range[1] ??
-      (heat_values.length
+      (heat_values.length > 0
         ? Math.max(
           ...heat_values.flat().filter((v): v is number => typeof v === `number`),
         )

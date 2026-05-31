@@ -45,7 +45,7 @@
     }
 
     if (params.has(`bz_order`)) {
-      const order = parseInt(params.get(`bz_order`) || `1`)
+      const order = parseInt(params.get(`bz_order`) || `1`, 10)
       if (!isNaN(order)) bz_order = order
     }
 

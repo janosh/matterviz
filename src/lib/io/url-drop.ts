@@ -17,7 +17,7 @@ function extract_filename(headers: Headers | undefined, fallback: string): strin
   if (!content_disposition_str) return fallback
   const star_match = /filename\*=(?:UTF-8''|)([^;]+)/i.exec(content_disposition_str)
   if (star_match?.[1]) {
-    const raw = star_match[1].trim().replace(/^"|"$/g, ``)
+    const raw = star_match[1].trim().replaceAll(/^"|"$/g, ``)
     try {
       return decodeURIComponent(raw)
     } catch {
@@ -25,7 +25,10 @@ function extract_filename(headers: Headers | undefined, fallback: string): strin
     }
   }
   const plain_match = /filename\s*=\s*"?([^";]+)"?/i.exec(content_disposition_str)
-  return plain_match?.[1]?.trim() || fallback
+  // truthiness check (not ??) so whitespace-only `filename=` values fall back too
+  const name = plain_match?.[1]?.trim()
+  if (!name) return fallback
+  return name
 }
 
 // Handle URL-based file drop data by fetching content lazily
@@ -52,8 +55,8 @@ export async function load_from_url(
   url: string,
   callback: (content: string | ArrayBuffer, filename: string) => Promise<void> | void,
 ): Promise<void> {
-  const url_basename = url.split(`/`).pop() || url
-  const ext = url_basename.split(`.`).pop()?.toLowerCase() || ``
+  const url_basename = url.split(`/`).pop() ?? url
+  const ext = url_basename.split(`.`).pop()?.toLowerCase() ?? ``
 
   if (BINARY_EXTENSIONS.has(ext)) {
     // Force binary mode for known binary files to handle GitHub Pages content-type issues
@@ -66,13 +69,12 @@ export async function load_from_url(
       if (resp.headers.get(`content-encoding`) === `gzip`) {
         // Browser automatically decompressed it, so it's text
         return callback(await resp.text(), filename)
-      } else {
-        // Need to decompress manually
-        const buffer = await resp.arrayBuffer()
-        const content = await decompress_data(buffer, `gzip`)
-        // Remove .gz extension when manually decompressing
-        return callback(content, filename.replace(/\.gz$/, ``))
       }
+      // Need to decompress manually
+      const buffer = await resp.arrayBuffer()
+      const content = await decompress_data(buffer, `gzip`)
+      // Remove .gz extension when manually decompressing
+      return callback(content, filename.replace(/\.gz$/, ``))
     }
 
     // For H5 files, always load as binary regardless of signature

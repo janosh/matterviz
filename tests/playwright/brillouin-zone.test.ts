@@ -226,7 +226,7 @@ test.describe(`BrillouinZone IBZ (Irreducible Brillouin Zone) Tests`, () => {
     // Should have vertices
     await expect(async () => {
       const count = await vertices_count.textContent()
-      expect(parseInt(count || `0`)).toBeGreaterThan(0)
+      expect(parseInt(count ?? `0`, 10)).toBeGreaterThan(0)
     }).toPass({ timeout: 5000 })
   })
 

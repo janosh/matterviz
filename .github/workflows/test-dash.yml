@@ -47,7 +47,7 @@ jobs:
 
       # Build root matterviz package (generates dist/*.d.ts files)
       - name: Build matterviz package
-        run: npm install && npm run package:dist
+        run: corepack enable && pnpm install && pnpm run package:dist
         working-directory: .
 
       # Install dash extension deps

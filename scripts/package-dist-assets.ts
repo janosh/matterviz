@@ -1,9 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 
-const root_dir = resolve(dirname(fileURLToPath(import.meta.url)), `..`)
+const root_dir = resolve(import.meta.dirname, `..`)
 const gz_path = resolve(root_dir, `src/lib/element/data.json.gz`)
 const out_dir = resolve(root_dir, `dist/element`)
 const out_path = resolve(out_dir, `data.js`)

@@ -24,6 +24,7 @@
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
   import { parse_fermi_file } from './parse'
+  import { to_error } from '$lib/utils'
   import type {
     BandGridData,
     ColorProperty,
@@ -202,7 +203,7 @@
       await parse_fermi_content(content, filename)
     } catch (err) {
       error_msg = `Failed to parse ${filename}: ${
-        err instanceof Error ? err.message : err
+        to_error(err).message
       }`
       on_error?.({ error_msg, filename })
     }
@@ -263,7 +264,7 @@
       await export_scene(scene, format, current_filename || `fermi-surface`)
     } catch (err) {
       console.error(`Export failed:`, err)
-      error_msg = `Export failed: ${err instanceof Error ? err.message : err}`
+      error_msg = `Export failed: ${to_error(err).message}`
     }
   }
 
@@ -284,7 +285,7 @@
     try {
       bz_data = compute_brillouin_zone(k_lattice, 1)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = to_error(err).message
       console.warn(`BZ computation failed:`, msg)
       bz_data = undefined
       // Only report error for structure-derived lattice (user-provided data)
@@ -313,7 +314,7 @@
       load_from_url(data_url, safe_parse)
         .catch((err) => {
           if (current_load_id !== load_id) return // stale request
-          error_msg = err instanceof Error ? err.message : String(err)
+          error_msg = to_error(err).message
           on_error?.({ error_msg, filename: data_url })
         })
         .finally(() => {

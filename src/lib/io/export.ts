@@ -1,6 +1,7 @@
 import { download } from '$lib/io/fetch'
 import type { AnyStructure } from '$lib/structure'
 import { create_structure_filename } from '$lib/structure/export'
+import { to_error } from '$lib/utils'
 import { type Camera, type Scene, Vector2, type WebGLRenderer } from 'three'
 
 function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
@@ -16,7 +17,8 @@ function is_webgl_renderer_like(value: unknown): value is WebGLRenderer {
 }
 
 function get_canvas_renderer(canvas: HTMLCanvasElement): WebGLRenderer | undefined {
-  const renderer_val = (canvas as unknown as Record<string, unknown>)[`__renderer`]
+  // oxlint-disable-next-line no-underscore-dangle -- three.js stores its renderer here
+  const renderer_val = (canvas as unknown as Record<string, unknown>).__renderer
   return is_webgl_renderer_like(renderer_val) ? renderer_val : undefined
 }
 
@@ -43,7 +45,7 @@ export function canvas_to_png_blob(
           else reject(new Error(`Failed to generate PNG - canvas may be empty`))
         }, `image/png`)
       } catch (error) {
-        reject(error)
+        reject(to_error(error))
       }
     })
   }
@@ -69,7 +71,7 @@ export function canvas_to_png_blob(
       }, `image/png`)
     } catch (error) {
       restore()
-      reject(error)
+      reject(to_error(error))
     }
   })
 }
@@ -106,7 +108,7 @@ export function export_canvas_as_png(
 
 // Helper to ensure font-family is set on SVG root
 function set_svg_font_family(svg: SVGElement) {
-  const style = svg.getAttribute(`style`) || ``
+  const style = svg.getAttribute(`style`) ?? ``
   if (!style.includes(`font-family`)) {
     svg.setAttribute(`style`, `${style}${style ? `;` : ``}font-family:sans-serif;`)
   }
@@ -198,7 +200,7 @@ export function svg_to_png_blob(svg_element: SVGElement, png_dpi = 150): Promise
           1,
         )
       } catch (error) {
-        reject(error)
+        reject(to_error(error))
       } finally {
         URL.revokeObjectURL(svg_data_url)
       }
@@ -351,7 +353,7 @@ export async function export_trajectory_video(
         on_progress?.(100)
         resolve()
       } catch (error) {
-        reject(error)
+        reject(to_error(error))
       }
     })
 
@@ -378,7 +380,7 @@ export async function export_trajectory_video(
     } catch (error) {
       if (!is_resolved) {
         is_resolved = true
-        reject(error)
+        reject(to_error(error))
       }
     }
   })

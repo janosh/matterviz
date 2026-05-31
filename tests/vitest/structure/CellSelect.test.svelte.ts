@@ -58,7 +58,7 @@ describe(`CellSelect`, () => {
         target: document.body,
         props: { supercell_scaling: `1x1x1`, loading },
       })
-      expect(!!document.querySelector(`.toggle-btn .spinner`)).toBe(has_spinner)
+      expect(Boolean(document.querySelector(`.toggle-btn .spinner`))).toBe(has_spinner)
     })
   })
 

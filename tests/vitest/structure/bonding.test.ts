@@ -773,7 +773,7 @@ describe(`Electronegativity-Based Bonding`, () => {
       metal_metal_penalty: 0.1,
       metal_nonmetal_bonus: 2.5,
     })
-    expect(lenient.length).not.toBe(strict.length)
+    expect(lenient).not.toHaveLength(strict.length)
   })
 
   test(`distance constraints`, () => {
@@ -950,7 +950,7 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   bonds_orig.sort((a, b) => a.bond_length - b.bond_length)
   bonds_img.sort((a, b) => a.bond_length - b.bond_length)
 
-  expect(bonds_img.length).toBe(bonds_orig.length)
+  expect(bonds_img).toHaveLength(bonds_orig.length)
 
   // If fixed, both should have 1 bond (because the penalty is now applied to both)
   // Or both have 2 (if penalty wasn't strong enough).
@@ -963,7 +963,7 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
   // because we calculate closest distances for all pairs BEFORE applying penalties.
   // So the Short bond (2.0) will penalize the Long bond (3.0) even for the original atom.
 
-  expect(bonds_orig.length).toBe(bonds_img.length)
+  expect(bonds_orig).toHaveLength(bonds_img.length)
 })
 test(`electroneg_ratio preserves longer C-C bonds in presence of shorter C-H bonds`, () => {
   // Benzene-like fragment: C bonded to C and H.

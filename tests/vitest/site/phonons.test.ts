@@ -199,7 +199,7 @@ describe(`Phonon Module Tests`, () => {
       expect(dos).toBeDefined()
       expect(Array.isArray(dos.frequencies)).toBe(true)
       expect(Array.isArray(dos.densities)).toBe(true)
-      expect(dos.frequencies.length).toBe(dos.densities.length)
+      expect(dos.frequencies).toHaveLength(dos.densities.length)
       expect(dos.frequencies.length).toBeGreaterThan(0)
 
       // Frequencies should be monotonically increasing
@@ -304,10 +304,7 @@ describe(`Phonon Module Tests`, () => {
 
       // Verify all bands have consistent length
       for (const [band_idx, band] of band_struct.bands.entries()) {
-        expect(
-          band.length,
-          `${id}: band ${band_idx} should have ${band_struct.qpoints.length} points`,
-        ).toBe(band_struct.qpoints.length)
+        expect(band, `${id}: band ${band_idx}`).toHaveLength(band_struct.qpoints.length)
       }
     },
   )
@@ -337,9 +334,7 @@ describe(`Phonon Module Tests`, () => {
       if (!raw_qpoints || !raw_bands || !raw_labels) return // Guard for TypeScript
 
       // Verify transformation preserves data dimensions
-      expect(transformed.qpoints.length, `${id}: qpoint count should match`).toBe(
-        raw_qpoints.length,
-      )
+      expect(transformed.qpoints).toHaveLength(raw_qpoints.length)
       expect(transformed.nb_bands, `${id}: band count should match`).toBe(raw_bands.length)
       expect(
         Object.keys(transformed.labels_dict).sort(),

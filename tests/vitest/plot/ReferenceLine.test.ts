@@ -23,8 +23,8 @@ describe(`ReferenceLine`, () => {
     const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
     svg.setAttribute(`width`, `800`)
     svg.setAttribute(`height`, `600`)
-    container.appendChild(svg)
-    document.body.appendChild(container)
+    container.append(svg)
+    document.body.append(container)
   })
 
   test(`renders horizontal line correctly`, () => {
@@ -47,7 +47,7 @@ describe(`ReferenceLine`, () => {
     expect(group).toBeInstanceOf(SVGGElement)
 
     const lines = query_all(`line`)
-    expect(lines.length).toBe(2) // Hit area + visible line
+    expect(lines).toHaveLength(2) // Hit area + visible line
 
     // Verify the visible line is at correct y position
     const visible_line = Array.from(lines).find(
@@ -75,7 +75,7 @@ describe(`ReferenceLine`, () => {
     })
 
     const lines = query_all(`line`)
-    expect(lines.length).toBe(2) // Hit area + visible line
+    expect(lines).toHaveLength(2) // Hit area + visible line
 
     // Get the visible line (not transparent)
     const visible_line = Array.from(lines).find(
@@ -328,7 +328,7 @@ describe(`ReferenceLine`, () => {
 
     const lines = query_all(`line`)
     // Should have hit area + visible line
-    expect(lines.length).toBe(2)
+    expect(lines).toHaveLength(2)
   })
 
   test(`has correct aria-label`, () => {

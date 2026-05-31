@@ -1,5 +1,6 @@
 import type { COMPRESSION_EXTENSIONS } from '$lib/constants'
 import { COMPRESSION_EXTENSIONS_REGEX, COMPRESSION_FORMATS } from '$lib/constants'
+import { to_error } from '$lib/utils'
 
 export type CompressionFormat = keyof typeof COMPRESSION_FORMATS
 export type CompressionExtension = (typeof COMPRESSION_EXTENSIONS)[number]
@@ -77,7 +78,7 @@ export function decompress_file(file: File): Promise<{ content: string; filename
             resolve({ content: result, filename: file.name })
           }
         } catch (error) {
-          reject(error)
+          reject(to_error(error))
         }
       },
       { once: true },

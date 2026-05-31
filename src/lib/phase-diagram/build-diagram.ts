@@ -36,8 +36,8 @@ export function parse_curve_ref(ref: string): CurveRef {
   const slice_match = /^(.+)\[(-?\d*):(-?\d*)\]$/.exec(name)
   if (slice_match) {
     name = slice_match[1]
-    start = slice_match[2] ? parseInt(slice_match[2]) : null
-    end = slice_match[3] ? parseInt(slice_match[3]) : null
+    start = slice_match[2] ? parseInt(slice_match[2], 10) : null
+    end = slice_match[3] ? parseInt(slice_match[3], 10) : null
   }
 
   return { name, reverse, start, end }

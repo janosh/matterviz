@@ -98,7 +98,7 @@ export async function parse_trajectory_data(
       const frame_obj = frame_data as Record<string, unknown>
       const frame_step = frame_obj.step
       return {
-        structure: (frame_obj.structure || frame_obj) as AnyStructure,
+        structure: (frame_obj.structure ?? frame_obj) as AnyStructure,
         step: typeof frame_step === `number` ? frame_step : idx,
         metadata: (frame_obj.metadata as Record<string, unknown>) || {},
       }

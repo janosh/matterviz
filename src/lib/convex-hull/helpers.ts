@@ -18,6 +18,7 @@ import type {
   PhaseData,
 } from './types'
 import { DEFAULT_GAS_TEMP } from './types'
+
 export { DEFAULT_GAS_TEMP }
 
 // Tolerance for classifying a phase as on the convex hull (eV/atom)
@@ -97,7 +98,7 @@ export function get_point_color_for_entry(
 ): string {
   const is_stable = entry_is_stable(entry)
   if (color_mode === `stability`) {
-    return is_stable ? colors?.stable || `#0072B2` : colors?.unstable || `#E69F00`
+    return is_stable ? (colors?.stable ?? `#0072B2`) : (colors?.unstable ?? `#E69F00`)
   }
   return energy_scale && typeof entry.e_above_hull === `number`
     ? energy_scale(entry.e_above_hull)
@@ -184,7 +185,7 @@ export function build_entry_tooltip_text(entry: PhaseData): string {
 
   let text = is_element
     ? `${elem_symbol}${elem_name ? ` (${elem_name})` : ``}\n`
-    : `${entry.name || entry.reduced_formula || ``}\n`
+    : `${entry.name ?? entry.reduced_formula ?? ``}\n`
 
   if (!is_element) {
     const total = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
@@ -352,7 +353,7 @@ export function is_entry_highlighted<T extends { entry_id?: string; structure_id
   entry: T,
   highlighted_list: (string | T)[],
 ): boolean {
-  if (!highlighted_list.length) return false
+  if (highlighted_list.length === 0) return false
   const { entry_id, structure_id } = entry
   if (!entry_id && !structure_id) return false
 

@@ -52,7 +52,8 @@
     Object.fromEntries(
       selected_ids
         .map((id) => structures_by_id[id])
-        .filter((struct): struct is Crystal => !!struct)
+        // oxlint-disable-next-line eslint-plugin-unicorn/prefer-native-coercion-functions -- type predicate needed for narrowing
+        .filter((struct): struct is Crystal => Boolean(struct))
         .map((struct) => [
           `${struct.id} ${formula_for(struct.id ?? ``)}`,
           struct,

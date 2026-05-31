@@ -8,6 +8,7 @@
   import { compute_fermi_slice } from './compute'
   import { BAND_COLORS } from './constants'
   import type { FermiSliceData, FermiSurfaceData } from './types'
+  import { to_error } from '$lib/utils'
 
   let {
     fermi_data,
@@ -60,7 +61,7 @@
       slice_data = compute_fermi_slice(fermi_data, { miller_indices, distance })
     } catch (err) {
       slice_data = null
-      on_error?.(err instanceof Error ? err : new Error(String(err)))
+      on_error?.(to_error(err))
     }
   })
 
@@ -114,7 +115,7 @@
     const band = slice_data?.isolines[series_idx]?.band_index
     if (band === undefined) return
     const all_bands = [
-      ...new Set(slice_data?.isolines.map((iso) => iso.band_index) ?? []),
+      ...new Set(slice_data?.isolines.map((iso) => iso.band_index)),
     ]
     const is_solo = all_bands.every((bid) => bid === band || hidden_bands.has(bid))
     hidden_bands.clear()

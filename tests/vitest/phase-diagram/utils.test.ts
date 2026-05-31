@@ -911,7 +911,7 @@ describe(`convert_temp`, () => {
 describe(`word boundary regex for component matching`, () => {
   // Tests the \b regex pattern used in IsobaricBinaryPhaseDiagram's x_domain
   function matches_component(region_name: string, component: string): boolean {
-    const escaped = component.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`)
+    const escaped = component.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)
     return new RegExp(`\\b${escaped}\\b`).test(region_name)
   }
 

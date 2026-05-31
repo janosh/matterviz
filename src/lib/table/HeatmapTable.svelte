@@ -484,7 +484,7 @@
 
         // Push invalid values to bottom
         if (is_invalid(val1) || is_invalid(val2)) {
-          return +is_invalid(val1) - +is_invalid(val2)
+          return Number(is_invalid(val1)) - Number(is_invalid(val2))
         }
 
         const sort_val1 = get_sort_val(val1)
@@ -497,10 +497,8 @@
             sensitivity: `base`,
           })
           if (cmp !== 0) return cmp * modifier
-        } else {
-          if (sort_val1 !== sort_val2) {
-            return (sort_val1 ?? 0) < (sort_val2 ?? 0) ? -modifier : modifier
-          }
+        } else if (sort_val1 !== sort_val2) {
+          return (sort_val1 ?? 0) < (sort_val2 ?? 0) ? -modifier : modifier
         }
       }
       return 0
@@ -558,7 +556,7 @@
     // Shift+click for multi-column sort
     if (event.shiftKey) {
       const existing_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
-      if (existing_idx >= 0) {
+      if (existing_idx !== -1) {
         // Toggle direction or remove if clicked again
         const existing = multi_sort[existing_idx]
         if (existing.ascending === (col.better === `lower`)) {
@@ -684,7 +682,7 @@
 
     // Check multi-sort first
     const multi_idx = multi_sort.findIndex((sort_entry) => sort_entry.column === col_id)
-    if (multi_idx >= 0) {
+    if (multi_idx !== -1) {
       const arrow = multi_sort[multi_idx].ascending ? `↓` : `↑`
       const badge = multi_sort.length > 1 ? `<sup>${multi_idx + 1}</sup>` : ``
       return `<span style="font-size: 0.8em;">${arrow}${badge}</span>`
@@ -716,7 +714,7 @@
   function toggle_row_select(row: RowData) {
     const row_id = get_row_id(row)
     const idx = selected_rows.findIndex((selected_row) => get_row_id(selected_row) === row_id)
-    if (idx >= 0) {
+    if (idx !== -1) {
       selected_rows = selected_rows.filter((_, i) => i !== idx)
     } else {
       selected_rows = [...selected_rows, row]
@@ -755,7 +753,7 @@
     const quote = (str: string) => {
       if (!csv_quote) return str
       if (str.includes(`,`) || str.includes(`"`) || str.includes(`\n`)) {
-        return `"${str.replace(/"/g, `""`)}"`
+        return `"${str.replaceAll('"', `""`)}"`
       }
       return str
     }
@@ -799,7 +797,7 @@
     const link = document.createElement(`a`)
     link.href = url
     link.download = filename
-    document.body.appendChild(link)
+    document.body.append(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)

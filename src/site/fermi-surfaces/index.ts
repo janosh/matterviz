@@ -21,10 +21,10 @@ const FRMSF_COLOR_DATA_FILES = new Set([
 // Convert glob results to FileInfo array with categories
 export const fermi_surface_files: FileInfo[] = Object.entries(fermi_file_modules)
   .map(([path, url]) => {
-    const name = path.split(`/`).pop() || path
+    const name = path.split(`/`).pop() ?? path
     // Remove .gz extension to get base format
     const base_name = name.replace(/\.gz$/i, ``)
-    const ext = base_name.split(`.`).pop()?.toLowerCase() || ``
+    const ext = base_name.split(`.`).pop()?.toLowerCase() ?? ``
 
     // Determine category and icon based on format and filename
     let category = `Unknown`

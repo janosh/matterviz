@@ -91,7 +91,7 @@ describe(`Line`, () => {
     mount(Line, { target: document.body, props: { points, origin, ...props } })
 
     const paths = document.querySelectorAll(`path`)
-    expect(paths.length).toBe(2)
+    expect(paths).toHaveLength(2)
 
     const line_path = paths[0]
     const area_path = paths[1]
@@ -171,7 +171,7 @@ describe(`Line`, () => {
         props: { points, origin: [0, 100], area_color, line_tween: { duration: 0 } },
       })
       const paths = document.querySelectorAll(`path`)
-      expect(paths.length).toBe(2)
+      expect(paths).toHaveLength(2)
       expect(paths[0].getAttribute(`d`)).toMatch(/^M0,50L100,0$/)
       expect(paths[1].getAttribute(`d`)).toBe(``)
     },
@@ -187,7 +187,7 @@ describe(`Line`, () => {
     })
 
     const paths = document.querySelectorAll(`path`)
-    expect(paths.length).toBe(2)
+    expect(paths).toHaveLength(2)
     expect(paths[0].getAttribute(`d`)).toBe(``)
     expect(paths[1].getAttribute(`d`)).toBe(``)
   })
@@ -202,7 +202,7 @@ describe(`Line`, () => {
     })
 
     const paths = document.querySelectorAll(`path`)
-    expect(paths.length).toBe(2)
+    expect(paths).toHaveLength(2)
     expect(paths[0].getAttribute(`d`)).toMatch(/^M50,50Z?$/)
     expect(paths[1].getAttribute(`d`)).toMatch(/^M50,50Z?L50,100L50,100Z$/)
   })
@@ -226,7 +226,7 @@ describe(`Line`, () => {
     })
 
     const paths = document.querySelectorAll(`path`)
-    expect(paths.length).toBe(2)
+    expect(paths).toHaveLength(2)
     // Further checks on internal tween state are difficult in unit tests,
     // but mounting confirms the props were accepted.
   })
@@ -248,7 +248,7 @@ describe(`Line`, () => {
     })
 
     const paths = document.querySelectorAll(`path`)
-    expect(paths.length).toBe(2)
+    expect(paths).toHaveLength(2)
 
     // Check that both paths received the rest props
     paths.forEach((path_element) => {

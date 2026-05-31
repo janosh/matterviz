@@ -169,12 +169,12 @@ test.each(structures)(`symmetrize_structure`, (structure) => {
 
   // Basic sanity checks
   expect(symmetrized.sites.length, msg).toBeGreaterThanOrEqual(orig_len)
-  expect(structure.sites.length, msg).toBe(orig_len) // Original structure unchanged
+  expect(structure.sites).toHaveLength(orig_len) // Original structure unchanged
 
   // If structure has lattice and any atoms at edges, should have image atoms
   if (structure.lattice) {
     const image_atoms = struct_utils.find_image_atoms(structure)
-    expect(symmetrized.sites.length, msg).toBe(orig_len + image_atoms.length)
+    expect(symmetrized.sites).toHaveLength(orig_len + image_atoms.length)
   }
 })
 

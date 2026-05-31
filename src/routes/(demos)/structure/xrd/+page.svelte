@@ -9,6 +9,7 @@
   import { compute_xrd_pattern, XrdPlot } from '$lib/xrd'
   import { structures } from '$site/structures'
   import { SvelteMap } from 'svelte/reactivity'
+  import { to_error } from '$lib/utils'
 
   // Auto-discover XRD data files from static/xrd/ using Vite's import.meta.glob
   // Files are picked up at build time; restart dev server to see new files
@@ -102,7 +103,7 @@
         computed_pattern = result
       }
     } catch (exc) {
-      compute_error = exc instanceof Error ? exc.message : String(exc)
+      compute_error = to_error(exc).message
       computed_pattern = null
     }
   })

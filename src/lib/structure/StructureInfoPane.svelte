@@ -231,7 +231,7 @@
         // Only display scalar values (skip arrays and objects)
         if (value == null || typeof value === `object`) continue
         structure_items.push({
-          label: key.replace(/_/g, ` `).replace(/\b\w/g, (char) => char.toUpperCase()),
+          label: key.replaceAll('_', ` `).replaceAll(/\b\w/g, (char) => char.toUpperCase()),
           value: String(value),
           key: `structure-prop-${key}`,
         })
@@ -280,7 +280,7 @@
         international_short?: string
       }).international_short
       const space_group_symbol = (sym_data.hm_symbol ?? international_symbol)
-        ?.replace(
+        ?.replaceAll(
           /\s+/g,
           ``,
         )
@@ -379,7 +379,7 @@
     const selected_site_idx = selected_sites[0]
     if (!pane_open || selected_site_idx === undefined) return
     const visible_idx = visible_site_cards.findIndex(({ idx }) => idx === selected_site_idx)
-    if (visible_idx < 0) return
+    if (visible_idx === -1) return
     const selected_window_start = Math.floor(visible_idx / SITE_WINDOW_SIZE) *
       SITE_WINDOW_SIZE
     if (selected_window_start !== site_window_start) {

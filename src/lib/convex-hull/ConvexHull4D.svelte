@@ -394,12 +394,11 @@
     const total_entries = effective_entries.length
     if (total_entries > label_threshold) {
       show_stable_labels = false
-      show_unstable_labels = false
     } else {
       // For smaller datasets, show stable labels by default
       show_stable_labels = true
-      show_unstable_labels = false
     }
+    show_unstable_labels = false
   })
 
   // Function to extract structure data from a convex hull entry

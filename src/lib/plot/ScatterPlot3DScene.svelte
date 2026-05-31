@@ -216,7 +216,7 @@
   ): Vec2 {
     if (range?.[0] != null && range?.[1] != null) return range as Vec2
     const valid = values.filter(isFinite)
-    if (!valid.length) return [0, 1]
+    if (valid.length === 0) return [0, 1]
     let [min, max] = [Math.min(...valid), Math.max(...valid)]
     const pad = min === max
       ? (min === 0 ? 1 : Math.abs(min * 0.1))
@@ -257,7 +257,7 @@
     all_points.map((pt) => pt.color_value).filter((val): val is number => val != null),
   )
   let auto_color_range: [number, number] = $derived.by(() => {
-    if (!all_color_values.length) return [0, 1]
+    if (all_color_values.length === 0) return [0, 1]
     let min = all_color_values[0]
     let max = all_color_values[0]
     for (const val of all_color_values) {

@@ -284,16 +284,11 @@ describe(`structure validation`, () => {
 
         structure.sites?.forEach((site, idx) => issues.push(...validateSite(site, idx)))
 
-        return { id: structure.id || `unknown`, issues }
+        return { id: structure.id ?? `unknown`, issues }
       })
       .filter((site) => site.issues.length > 0)
 
-    expect(
-      failed.length,
-      `Structures with issues:\n${failed
-        .map((site) => `${site.id}: ${site.issues.join(`, `)}`)
-        .join(`\n`)}`,
-    ).toBe(0)
+    expect(failed).toHaveLength(0)
   })
 
   test(`composition consistency`, () => {
@@ -564,7 +559,7 @@ describe(`site coverage verification`, () => {
 
       const wyckoff_positions = wyckoff_positions_from_moyo(mock_data)
       const total_multiplicity = wyckoff_positions.reduce((sum, pos) => {
-        const multiplicity = parseInt(pos.wyckoff) || 1
+        const multiplicity = parseInt(pos.wyckoff, 10) || 1
         return sum + multiplicity
       }, 0)
 

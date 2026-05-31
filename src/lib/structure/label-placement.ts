@@ -41,8 +41,8 @@ export const choose_site_label_offset = (bond_directions: Vec3[], base_offset: V
     return base_offset
   }
 
-  const preferred_direction = math.normalize_vec3(base_offset, [0, 1, 0])
-  const repulsion_direction = math.normalize_vec3(
+  const preferred_direction = math.normalize_vec(base_offset, [0, 1, 0])
+  const repulsion_direction = math.normalize_vec(
     bond_directions.reduce<Vec3>(
       (offset_sum, bond_direction) => math.subtract(offset_sum, bond_direction),
       [0, 0, 0],
@@ -57,7 +57,7 @@ export const choose_site_label_offset = (bond_directions: Vec3[], base_offset: V
     repulsion_direction,
     ...LABEL_OFFSET_DIRECTIONS,
   ]) {
-    const direction = math.normalize_vec3(candidate_direction, preferred_direction)
+    const direction = math.normalize_vec(candidate_direction, preferred_direction)
     const score = label_direction_score(direction, bond_directions, preferred_direction)
     if (score <= best_score + LABEL_OFFSET_EPS) continue
     best_score = score
@@ -98,7 +98,7 @@ export const label_screen_position = (
   const direction_x = offset_length > LABEL_OFFSET_EPS ? offset_x / offset_length : 0
   const direction_y =
     offset_length > LABEL_OFFSET_EPS ? offset_y / offset_length : label_offset[1] >= 0 ? -1 : 1
-  const radius_direction = math.normalize_vec3(label_offset, [0, 1, 0])
+  const radius_direction = math.normalize_vec(label_offset, [0, 1, 0])
   const radius_edge = math.add(atom_position, math.scale(radius_direction, visual_radius))
   const radius_screen = project_to_screen(radius_edge, label_camera, size)
   const atom_screen_radius = Math.hypot(

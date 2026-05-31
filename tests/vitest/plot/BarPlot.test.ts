@@ -353,7 +353,7 @@ describe(`BarPlot`, () => {
         },
       })
       await tick()
-      expect(document.querySelectorAll(`path[role="button"]`).length).toBe(3)
+      expect(document.querySelectorAll(`path[role="button"]`)).toHaveLength(3)
     })
 
     test(`hover provides category_label and preserves metadata`, async () => {

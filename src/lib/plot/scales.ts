@@ -215,14 +215,14 @@ function generate_positive_arcsinh_ticks(
   const max_power = Math.ceil(Math.log10(max))
 
   for (let power = min_power; power <= max_power; power++) {
-    const val = Math.pow(10, power)
+    const val = 10 ** power
     if (val >= min && val <= max) ticks.push(val)
   }
 
   // Add intermediate values (2x, 5x) for sparser regions
   if (ticks.length < count) {
     for (let power = min_power; power < max_power; power++) {
-      const base = Math.pow(10, power)
+      const base = 10 ** power
       for (const mult of [2, 5]) {
         const val = base * mult
         if (val >= min && val <= max) ticks.push(val)
@@ -388,14 +388,14 @@ export function get_nice_data_range(
       const span = data_max - data_min
       if (is_time) {
         const padding_ms = span * padding_factor
-        data_min = data_min - padding_ms
-        data_max = data_max + padding_ms
+        data_min -= padding_ms
+        data_max += padding_ms
       } else if (type_name === `log`) {
         const log_min = Math.log10(Math.max(data_min, math.LOG_EPS))
         const log_max = Math.log10(Math.max(data_max, math.LOG_EPS))
         const log_span = log_max - log_min
-        data_min = Math.pow(10, log_min - log_span * padding_factor)
-        data_max = Math.pow(10, log_max + log_span * padding_factor)
+        data_min = 10 ** (log_min - log_span * padding_factor)
+        data_max = 10 ** (log_max + log_span * padding_factor)
       } else if (type_name === `arcsinh`) {
         // Arcsinh: apply padding in arcsinh-transformed space
         // Guard against extremely small thresholds that could cause precision issues
@@ -408,31 +408,29 @@ export function get_nice_data_range(
       } else {
         // Linear scale
         const padding_abs = span * padding_factor
-        data_min = data_min - padding_abs
-        data_max = data_max + padding_abs
+        data_min -= padding_abs
+        data_max += padding_abs
       }
-    } else {
       // Handle single data point case with fixed relative padding
-      if (is_time) {
-        const one_day = 86_400_000 // milliseconds in a day
-        data_min = data_min - one_day
-        data_max = data_max + one_day
-      } else if (type_name === `log`) {
-        data_min = Math.max(math.LOG_EPS, data_min / 1.1) // 10% multiplicative padding
-        data_max = data_max * 1.1
-      } else if (type_name === `arcsinh`) {
-        // Arcsinh: 10% padding in transformed space
-        // Guard against extremely small thresholds that could cause precision issues
-        const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
-        const asinh_val = Math.asinh(data_min / threshold)
-        const padding = Math.abs(asinh_val) * 0.1 || 0.1 // Use 0.1 if transformed value is 0 (i.e. data_min = 0)
-        data_min = Math.sinh(asinh_val - padding) * threshold
-        data_max = Math.sinh(asinh_val + padding) * threshold
-      } else {
-        const padding_abs = data_min === 0 ? 1 : Math.abs(data_min * 0.1) // 10% additive padding, or 1 if value is 0
-        data_min = data_min - padding_abs
-        data_max = data_max + padding_abs
-      }
+    } else if (is_time) {
+      const one_day = 86_400_000 // milliseconds in a day
+      data_min -= one_day
+      data_max += one_day
+    } else if (type_name === `log`) {
+      data_min = Math.max(math.LOG_EPS, data_min / 1.1) // 10% multiplicative padding
+      data_max *= 1.1
+    } else if (type_name === `arcsinh`) {
+      // Arcsinh: 10% padding in transformed space
+      // Guard against extremely small thresholds that could cause precision issues
+      const threshold = Math.max(get_arcsinh_threshold(scale_type), Number.EPSILON)
+      const asinh_val = Math.asinh(data_min / threshold)
+      const padding = Math.abs(asinh_val) * 0.1 || 0.1 // Use 0.1 if transformed value is 0 (i.e. data_min = 0)
+      data_min = Math.sinh(asinh_val - padding) * threshold
+      data_max = Math.sinh(asinh_val + padding) * threshold
+    } else {
+      const padding_abs = data_min === 0 ? 1 : Math.abs(data_min * 0.1) // 10% additive padding, or 1 if value is 0
+      data_min -= padding_abs
+      data_max += padding_abs
     }
   }
 
@@ -480,8 +478,8 @@ export function generate_log_ticks(
     range_size <= 2 ? min_power - 1 : min_power - Math.max(1, Math.floor(range_size / 4))
   const extended_max_power = range_size <= 2 ? max_power + 1 : max_power
 
-  const powers = range(extended_min_power, extended_max_power + 1).map((power: number) =>
-    Math.pow(10, power),
+  const powers = range(extended_min_power, extended_max_power + 1).map(
+    (power: number) => 10 ** power,
   )
 
   // For narrow ranges, include intermediate values
@@ -489,8 +487,8 @@ export function generate_log_ticks(
     const detailed_ticks: number[] = []
     powers.forEach((power: number) => {
       detailed_ticks.push(power)
-      if (power * 2 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 2)
-      if (power * 5 <= Math.pow(10, extended_max_power)) detailed_ticks.push(power * 5)
+      if (power * 2 <= 10 ** extended_max_power) detailed_ticks.push(power * 2)
+      if (power * 5 <= 10 ** extended_max_power) detailed_ticks.push(power * 5)
     })
     return detailed_ticks.filter((tick) => tick >= min && tick <= max)
   }

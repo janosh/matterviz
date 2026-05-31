@@ -161,7 +161,7 @@ describe(`compute_xrd_pattern edge cases`, () => {
       scaled: true,
       scaled_intensity_tol: 101, // higher than any scaled intensity
     })
-    expect(none_pass.x.length).toBe(0)
+    expect(none_pass.x).toHaveLength(0)
 
     const many_pass = compute_xrd_pattern(structure, {
       ...base_opts,
@@ -193,9 +193,9 @@ describe(`precomputed XRD fixtures are consistent`, () => {
   test.each(entries.map(([id, pattern]) => [id, pattern] as const))(
     `fixture %s length consistency`,
     (_id, pattern) => {
-      expect(pattern.x.length).toBe(pattern.y.length)
-      if (pattern.hkls) expect(pattern.hkls.length).toBe(pattern.x.length)
-      if (pattern.d_hkls) expect(pattern.d_hkls.length).toBe(pattern.x.length)
+      expect(pattern.x).toHaveLength(pattern.y.length)
+      if (pattern.hkls) expect(pattern.hkls).toHaveLength(pattern.x.length)
+      if (pattern.d_hkls) expect(pattern.d_hkls).toHaveLength(pattern.x.length)
     },
   )
 })

@@ -151,8 +151,8 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     // X-axis: composition 0-100
     const x_ticks = svg.locator(`g.x-axis > g text`)
-    expect(parseFloat((await x_ticks.first().textContent()) || ``)).toBe(0)
-    expect(parseFloat((await x_ticks.last().textContent()) || ``)).toBeGreaterThanOrEqual(80)
+    expect(parseFloat((await x_ticks.first().textContent()) ?? ``)).toBe(0)
+    expect(parseFloat((await x_ticks.last().textContent()) ?? ``)).toBeGreaterThanOrEqual(80)
 
     // Y-axis: temperature label
     await expect(

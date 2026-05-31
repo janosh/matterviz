@@ -47,7 +47,7 @@ describe(`@xrd/ api and compute_xrd_pattern options`, () => {
     const structure = make_simple_cubic(2)
     const pattern = compute_xrd_pattern(structure, { wavelength: 1.54184 })
     expect(pattern.x.length).toBeGreaterThan(0)
-    expect(pattern.y.length).toBe(pattern.x.length)
+    expect(pattern.y).toHaveLength(pattern.x.length)
   })
 
   test(`unknown element symbol throws`, () => {
@@ -101,8 +101,8 @@ describe(`@xrd/ api and compute_xrd_pattern options`, () => {
       wavelength: `CuKa`,
       scaled: true,
     })
-    expect(pattern.x.length).toBe(pattern.y.length)
-    if (pattern.hkls) expect(pattern.hkls.length).toBe(pattern.x.length)
-    if (pattern.d_hkls) expect(pattern.d_hkls.length).toBe(pattern.x.length)
+    expect(pattern.x).toHaveLength(pattern.y.length)
+    if (pattern.hkls) expect(pattern.hkls).toHaveLength(pattern.x.length)
+    if (pattern.d_hkls) expect(pattern.d_hkls).toHaveLength(pattern.x.length)
   })
 })

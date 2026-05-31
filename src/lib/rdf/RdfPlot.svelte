@@ -10,6 +10,7 @@
   import { is_crystal } from '$lib/structure/validation'
   import type { ComponentProps, Snippet } from 'svelte'
   import { calculate_all_pair_rdfs, calculate_rdf, type RdfEntry } from './index'
+  import { to_error } from '$lib/utils'
 
   let {
     patterns,
@@ -66,7 +67,7 @@
       }
     } catch (exc) {
       error_msg = `Failed to process structure: ${
-        exc instanceof Error ? exc.message : String(exc)
+        to_error(exc).message
       }`
     }
   }

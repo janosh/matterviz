@@ -29,6 +29,7 @@
     extract_point_group_from_operations,
     reciprocal_lattice,
   } from './compute'
+  import { to_error } from '$lib/utils'
   import type {
     BrillouinZoneData,
     BZHoverData,
@@ -192,7 +193,7 @@
       parse_structure(content, filename)
     } catch (err) {
       error_msg = `Failed to parse ${filename}: ${
-        err instanceof Error ? err.message : err
+        to_error(err).message
       }`
       on_error?.({ error_msg, filename })
     }
@@ -214,7 +215,7 @@
       const valid_order = Math.min(Math.max(1, bz_order), 3) as 1 | 2 | 3
       bz_data = compute_brillouin_zone(k_lattice, valid_order)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = to_error(err).message
       error_msg = `BZ computation failed: ${msg}`
       bz_data = undefined
       untrack(() => on_error?.({ error_msg, structure, bz_order }))
@@ -253,7 +254,7 @@
   // Load structure from URL or string
   $effect(() => {
     const handle_error = (err: unknown, source: string) => {
-      error_msg = err instanceof Error ? err.message : String(err)
+      error_msg = to_error(err).message
       on_error?.({ error_msg, filename: source })
     }
 

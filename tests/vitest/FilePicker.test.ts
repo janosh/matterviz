@@ -55,9 +55,9 @@ describe(`FilePicker`, () => {
 
         if (is_active_test) {
           const active_elements = document.querySelectorAll(`.file-item.active`)
-          expect(active_elements.length).toBe(expected_count)
+          expect(active_elements).toHaveLength(expected_count)
         } else {
-          expect(carousel.children.length).toBe(expected_count)
+          expect(carousel.children).toHaveLength(expected_count)
         }
       },
     )
@@ -69,7 +69,7 @@ describe(`FilePicker`, () => {
       ]
       mount(FilePicker, { target: document.body, props: { files: labeled } })
       const badges = document.querySelectorAll(`.file-type-badge`)
-      expect(badges.length).toBe(1)
+      expect(badges).toHaveLength(1)
       expect(badges[0].textContent).toBe(`CHGCAR`)
     })
   })
@@ -174,7 +174,7 @@ describe(`FilePicker`, () => {
       })
 
       // Should only show crystal files, not uncategorized or molecule files
-      expect(filtered.length).toBe(2)
+      expect(filtered).toHaveLength(2)
       expect(filtered[0].name).toBe(`structure1.cif`)
       expect(filtered[1].name).toBe(`another.cif`)
     })
@@ -192,7 +192,7 @@ describe(`FilePicker`, () => {
       const get_base_file_type = (file: FileInfo): string => {
         let base_name = file.name.toLowerCase()
         if (base_name.endsWith(`.gz`)) base_name = base_name.slice(0, -3)
-        return base_name.split(`.`).pop() || `file`
+        return base_name.split(`.`).pop() ?? `file`
       }
 
       const active_type_filter = `xyz`
@@ -205,7 +205,7 @@ describe(`FilePicker`, () => {
       })
 
       // Should only show XYZ files
-      expect(filtered.length).toBe(2)
+      expect(filtered).toHaveLength(2)
       expect(filtered[0].name).toBe(`molecule.xyz`)
       expect(filtered[1].name).toBe(`another.xyz`)
     })
@@ -218,14 +218,14 @@ describe(`FilePicker`, () => {
       // Clear filters
       active_category_filter = null
       active_type_filter = null
-      expect(active_category_filter).toBe(null)
-      expect(active_type_filter).toBe(null)
+      expect(active_category_filter).toBeNull()
+      expect(active_type_filter).toBeNull()
 
       // Test mutual exclusion
       active_category_filter = `crystal`
       active_type_filter = `xyz`
       active_category_filter = null
-      expect(active_category_filter).toBe(null)
+      expect(active_category_filter).toBeNull()
       expect(active_type_filter).toBe(`xyz`)
     })
   })
@@ -247,7 +247,7 @@ describe(`FilePicker`, () => {
         if (should_exist) {
           expect(elements.length).toBeGreaterThan(0)
         } else {
-          expect(elements.length).toBe(0)
+          expect(elements).toHaveLength(0)
         }
       },
     )
@@ -330,7 +330,7 @@ describe(`FilePicker`, () => {
 
       const carousel = doc_query(`.file-picker`)
       expect(carousel).toBeInstanceOf(HTMLElement)
-      expect(carousel.children.length).toBe(1) // Only legend
+      expect(carousel.children).toHaveLength(1) // Only legend
     })
 
     it(`handles with empty active_files correctly`, () => {
@@ -340,7 +340,7 @@ describe(`FilePicker`, () => {
       })
 
       const active_elements = document.querySelectorAll(`.file-item.active`)
-      expect(active_elements.length).toBe(0)
+      expect(active_elements).toHaveLength(0)
     })
 
     it(`handles with show_category_filters disabled correctly`, () => {

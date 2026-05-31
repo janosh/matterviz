@@ -118,7 +118,7 @@
   }
 
   // Get children based on value type
-  function get_children(): Array<{ key: string | number; value: unknown }> {
+  function get_children(): { key: string | number; value: unknown }[] {
     if (!expandable) return []
 
     if (value_type === `array`) {

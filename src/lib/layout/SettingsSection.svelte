@@ -26,7 +26,7 @@
   // Create a deep copy of current_values on mount to use as reference values
   function deep_copy(obj: unknown): unknown {
     if (obj === null || typeof obj !== `object`) return obj
-    if (obj instanceof Date) return new Date(obj.getTime())
+    if (obj instanceof Date) return new Date(obj)
     if (obj instanceof RegExp) return new RegExp(obj)
     if (Array.isArray(obj)) {
       return obj.map((item) =>

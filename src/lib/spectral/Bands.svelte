@@ -590,9 +590,9 @@
     const display_values = detected_band_type === `phonon`
       ? convert_band_values(all_freqs)
       : all_freqs
-    if (!display_values.length) return undefined
+    if (display_values.length === 0) return undefined
     const finite = display_values.filter(Number.isFinite)
-    if (!finite.length) return undefined
+    if (finite.length === 0) return undefined
     let min_val = Math.min(...finite), max_val = Math.max(...finite)
     if (
       // clamp phonon min to 0 if negatives are noise
@@ -622,7 +622,7 @@
   })
 
   let has_series = $derived(series_data.length > 0)
-  let is_strict_path_error = $derived(path_mode === `strict` && !!strict_path_error)
+  let is_strict_path_error = $derived(path_mode === `strict` && Boolean(strict_path_error))
 
   let imaginary_mode_region = $derived.by((): FillRegion[] => {
     if (
@@ -675,7 +675,7 @@
     )
     const occupied = all_energies.filter((energy) => energy <= effective_fermi_level)
     const unoccupied = all_energies.filter((energy) => energy > effective_fermi_level)
-    if (!occupied.length || !unoccupied.length) return null
+    if (occupied.length === 0 || unoccupied.length === 0) return null
     const vbm = Math.max(...occupied)
     const cbm = Math.min(...unoccupied)
     const gap = cbm - vbm

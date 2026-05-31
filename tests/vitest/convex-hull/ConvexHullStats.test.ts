@@ -83,7 +83,7 @@ const set_select_value = (select_element: HTMLSelectElement, value: string) => {
   const option_idx = Array.from(select_element.options).findIndex(
     (option_element) => option_element.value === value,
   )
-  if (option_idx >= 0) select_element.selectedIndex = option_idx
+  if (option_idx !== -1) select_element.selectedIndex = option_idx
   select_element.value = value
   select_element.dispatchEvent(new Event(`change`, { bubbles: true }))
   flushSync()
@@ -171,13 +171,13 @@ describe(`ConvexHullStats`, () => {
     mount_stats()
     trigger(doc_query(`[data-testid="pd-total-entries"]`))
     flushSync()
-    expect(navigator.clipboard[`writeText`]).toHaveBeenCalled()
+    expect(navigator.clipboard.writeText).toHaveBeenCalled()
   })
 
   test(`renders both histograms when entries have energy and hull data`, () => {
     // mock_entry has both e_form_per_atom and e_above_hull by default
     mount_stats({ stable_entries: [mock_entry()] })
-    expect(document.querySelectorAll(`.histogram`).length).toBe(2)
+    expect(document.querySelectorAll(`.histogram`)).toHaveLength(2)
   })
 
   test.each([
@@ -216,7 +216,7 @@ describe(`ConvexHullStats`, () => {
 
   test(`renders empty stat items when phase_stats is null`, () => {
     mount_stats({ phase_stats: null })
-    expect(doc_query(`.convex-hull-stats`).querySelectorAll(`.stat-item`).length).toBe(0)
+    expect(doc_query(`.convex-hull-stats`).querySelectorAll(`.stat-item`)).toHaveLength(0)
   })
 
   test(`energy_per_atom fallback renders both histograms`, () => {
@@ -229,7 +229,7 @@ describe(`ConvexHullStats`, () => {
         }),
       ],
     })
-    expect(document.querySelectorAll(`.histogram`).length).toBe(2)
+    expect(document.querySelectorAll(`.histogram`)).toHaveLength(2)
   })
 
   test(`zero totals does not produce NaN in percentages`, () => {
@@ -249,7 +249,7 @@ describe(`ConvexHullStats`, () => {
       ],
     })
     // NaN/Infinity are filtered out → no histogram data → 0 histograms
-    expect(document.querySelectorAll(`.histogram`).length).toBe(0)
+    expect(document.querySelectorAll(`.histogram`)).toHaveLength(0)
   })
 
   test(`missing energy fields render without errors`, () => {

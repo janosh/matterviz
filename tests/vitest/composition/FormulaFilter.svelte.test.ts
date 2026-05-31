@@ -160,7 +160,7 @@ describe(`FormulaFilter`, () => {
     { value: `Fe`, show_clear_button: true, disabled: true, expected: false },
   ])(`clear button visible=$expected`, (params) => {
     mount(FormulaFilter, { target: document.body, props: params })
-    expect(!!document.querySelector(`.clear-btn`)).toBe(params.expected)
+    expect(Boolean(document.querySelector(`.clear-btn`))).toBe(params.expected)
   })
 
   test(`clears value on click or Escape`, () => {
@@ -380,7 +380,7 @@ describe(`FormulaFilter`, () => {
       { show_examples: true, disabled: true, expected: false },
     ])(`help button visible=$expected`, (params) => {
       mount(FormulaFilter, { target: document.body, props: { value: ``, ...params } })
-      expect(!!document.querySelector(`.help-btn`)).toBe(params.expected)
+      expect(Boolean(document.querySelector(`.help-btn`))).toBe(params.expected)
     })
 
     test(`toggles, displays content, and applies example on click`, () => {
@@ -395,8 +395,8 @@ describe(`FormulaFilter`, () => {
       flushSync()
       expect(document.querySelector(`.examples-dropdown`)).toBeInstanceOf(HTMLElement)
       expect(help_btn.getAttribute(`aria-expanded`)).toBe(`true`)
-      expect(document.querySelectorAll(`.example-category`).length).toBe(3)
-      expect(document.querySelectorAll(`.example-tag`).length).toBe(9)
+      expect(document.querySelectorAll(`.example-category`)).toHaveLength(3)
+      expect(document.querySelectorAll(`.example-tag`)).toHaveLength(9)
 
       // Apply example
       Array.from(document.querySelectorAll<HTMLButtonElement>(`.example-tag`))
@@ -733,7 +733,7 @@ describe(`FormulaFilter`, () => {
       expect(history_dropdown()?.getAttribute(`aria-label`)).toBe(`Recent searches`)
       // Items rendered in order with correct roles
       const items = history_values()
-      expect(items.length).toBe(3)
+      expect(items).toHaveLength(3)
       expect(items[0].textContent?.trim()).toBe(`Fe,O`)
       expect(items[1].textContent?.trim()).toBe(`Li-Fe-O`)
       expect(items[2].textContent?.trim()).toBe(`LiFePO4`)
@@ -774,7 +774,7 @@ describe(`FormulaFilter`, () => {
 
     test(`excludes current value from visible history`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`], { value: `Fe,O` })
-      expect(history_values().length).toBe(1)
+      expect(history_values()).toHaveLength(1)
       expect(history_values()[0].textContent?.trim()).toBe(`Li,Na`)
     })
 
@@ -798,10 +798,10 @@ describe(`FormulaFilter`, () => {
 
     test(`remove button removes entry and updates localStorage`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`, `Si,O`])
-      expect(history_items().length).toBe(3)
+      expect(history_items()).toHaveLength(3)
       remove_btns()[1].dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
       flushSync()
-      expect(history_values().length).toBe(2)
+      expect(history_values()).toHaveLength(2)
       expect(history_values()[0].textContent?.trim()).toBe(`Fe,O`)
       expect(history_values()[1].textContent?.trim()).toBe(`Si,O`)
       expect(get_stored()).toEqual([`Fe,O`, `Si,O`])
@@ -909,7 +909,7 @@ describe(`FormulaFilter`, () => {
       })
       focus_input()
       flushSync()
-      expect(history_values().length).toBe(1)
+      expect(history_values()).toHaveLength(1)
       expect(history_values()[0].textContent?.trim()).toBe(`Fe,O`)
       localStorage.removeItem(key_a)
       localStorage.removeItem(key_b)
@@ -1123,21 +1123,21 @@ describe(`FormulaFilter`, () => {
       mount_filter({ value: `+Li,-O` })
       flushSync()
       const chips = document.querySelectorAll(`.token-chip`)
-      expect(chips.length).toBe(2)
+      expect(chips).toHaveLength(2)
       ;(chips[0] as HTMLButtonElement).click()
       flushSync()
-      expect(document.querySelectorAll(`.token-chip`).length).toBe(1)
+      expect(document.querySelectorAll(`.token-chip`)).toHaveLength(1)
     })
 
     test(`removing one duplicate token chip only removes one instance`, () => {
       mount_filter({ value: `Li,Li` })
       flushSync()
       let chips = document.querySelectorAll(`.token-chip`)
-      expect(chips.length).toBe(2)
+      expect(chips).toHaveLength(2)
       ;(chips[0] as HTMLButtonElement).click()
       flushSync()
       chips = document.querySelectorAll(`.token-chip`)
-      expect(chips.length).toBe(1)
+      expect(chips).toHaveLength(1)
       expect(chips[0].textContent).toContain(`+Li`)
     })
 

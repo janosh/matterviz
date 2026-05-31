@@ -348,7 +348,7 @@ describe(`helpers: fractional composition`, () => {
 
   test(`get_fractional_composition handles empty composition`, () => {
     const frac = helpers.get_fractional_composition({})
-    expect(Object.keys(frac).length).toBe(0)
+    expect(Object.keys(frac)).toHaveLength(0)
   })
 
   test(`get_fractional_composition ignores zero amounts`, () => {

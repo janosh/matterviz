@@ -312,7 +312,7 @@ test.describe(`Periodic Table`, () => {
           const heatmap_val = format_num(heatmap_value)
 
           // make sure heatmap value is displayed correctly (use regex for flexible whitespace)
-          const escaped_val = heatmap_val.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`)
+          const escaped_val = heatmap_val.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)
           const tiles_with_text = await tiles
             .filter({
               hasText: new RegExp(

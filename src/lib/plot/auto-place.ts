@@ -85,7 +85,7 @@ function is_crowded(
   base_h: number,
   clearance: number,
 ): boolean {
-  if (!obstacles.length || base_w <= 0 || base_h <= 0) return false
+  if (obstacles.length === 0 || base_w <= 0 || base_h <= 0) return false
   const fw = footprint.width / base_w
   const fh = footprint.height / base_h
   if (fw >= 1 || fh >= 1) return true // too big to fit inside -> outside

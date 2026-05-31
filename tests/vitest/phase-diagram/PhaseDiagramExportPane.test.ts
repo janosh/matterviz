@@ -128,7 +128,7 @@ describe(`PhaseDiagramExportPane`, () => {
       copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
       await vi.waitFor(() => {
-        expect(navigator.clipboard[`writeText`]).toHaveBeenCalledWith(expected_clipboard)
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_clipboard)
       })
 
       vi.advanceTimersByTime(1500)
@@ -270,7 +270,7 @@ describe(`PhaseDiagramExportPane`, () => {
 
     // Flush microtasks then verify clipboard was not called
     await new Promise<void>((resolve) => queueMicrotask(resolve))
-    expect(navigator.clipboard[`writeText`]).not.toHaveBeenCalled()
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
 
   test(`JSON download creates blob URL and triggers download`, async () => {
@@ -303,13 +303,13 @@ describe(`PhaseDiagramExportPane`, () => {
     })
 
     // The button is disabled, but let's also verify click doesn't trigger copy
-    vi.mocked(navigator.clipboard[`writeText`]).mockClear()
+    vi.mocked(navigator.clipboard.writeText).mockClear()
 
     const copy_btn = get_button(`Copy JSON`)
     copy_btn.dispatchEvent(new Event(`click`, { bubbles: true }))
 
     // Flush microtasks then verify clipboard was not called
     await new Promise<void>((resolve) => queueMicrotask(resolve))
-    expect(navigator.clipboard[`writeText`]).not.toHaveBeenCalled()
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled()
   })
 })

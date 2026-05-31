@@ -66,7 +66,7 @@ describe(`StructureControls`, () => {
     })
     // Should not crash and supercell input should not be visible
     const supercell_inputs = document.querySelectorAll(`input[placeholder="1x1x1"]`)
-    expect(supercell_inputs.length).toBe(0)
+    expect(supercell_inputs).toHaveLength(0)
   })
 
   test(`handles undefined structure`, () => {

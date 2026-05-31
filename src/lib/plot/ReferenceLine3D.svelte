@@ -102,7 +102,7 @@
     color: ref_line.style?.color ?? `white`,
     opacity: ref_line.style?.opacity ?? 1,
     width: ref_line.style?.width ?? 2,
-    dashed: !!ref_line.style?.dash,
+    dashed: Boolean(ref_line.style?.dash),
   })
 
   // Create Line2 with LineGeometry and LineMaterial for proper variable-width lines

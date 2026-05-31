@@ -36,7 +36,7 @@ const get_legend_position = async (
 
   return legend_wrapper.evaluate((el) => {
     const rect = el.getBoundingClientRect()
-    const parent_rect = (el as HTMLElement).offsetParent?.getBoundingClientRect() || {
+    const parent_rect = (el as HTMLElement).offsetParent?.getBoundingClientRect() ?? {
       x: 0,
       y: 0,
     }

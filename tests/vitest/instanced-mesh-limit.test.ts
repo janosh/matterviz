@@ -9,7 +9,7 @@ const get_tags = (source: string): string[] =>
 function get_attr(tag: string, attr: `limit` | `range` | `key`): string {
   const match = new RegExp(`\\b${attr}\\s*=\\s*(?:"([^"]+)"|\\{\\s*([^}]+?)\\s*\\})`).exec(tag)
   if (!match) throw new Error(`InstancedMesh tag is missing ${attr}: ${tag}`)
-  return (match[1] ?? match[2]).replace(/\s+/g, ``)
+  return (match[1] ?? match[2]).replaceAll(/\s+/g, ``)
 }
 
 describe(`InstancedMesh limits`, () => {

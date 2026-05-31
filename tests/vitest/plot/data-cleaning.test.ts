@@ -75,14 +75,14 @@ describe(`compute_local_variance`, () => {
 
   it(`handles NaN values gracefully`, () => {
     const result = compute_local_variance([1, 2, NaN, 4, 5], 3)
-    expect(result.length).toBe(5)
+    expect(result).toHaveLength(5)
     expect(result.every((v) => Number.isFinite(v))).toBe(true)
   })
 
   it(`handles different window sizes`, () => {
     const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    expect(compute_local_variance(values, 3).length).toBe(10)
-    expect(compute_local_variance(values, 7).length).toBe(10)
+    expect(compute_local_variance(values, 3)).toHaveLength(10)
+    expect(compute_local_variance(values, 7)).toHaveLength(10)
   })
 })
 
@@ -178,8 +178,8 @@ describe(`remove_local_outliers`, () => {
   it(`keeps all points for smooth linear data`, () => {
     const y = Array.from({ length: 30 }, (_, idx) => idx * 0.5)
     const result = remove_local_outliers(y)
-    expect(result.kept_indices.length).toBe(30)
-    expect(result.removed_indices.length).toBe(0)
+    expect(result.kept_indices).toHaveLength(30)
+    expect(result.removed_indices).toHaveLength(0)
   })
 
   it(`removes single isolated outlier`, () => {
@@ -257,7 +257,7 @@ describe(`remove_local_outliers`, () => {
 
   it(`respects mad_threshold parameter`, () => {
     const y = Array.from({ length: 50 }, (_, idx) => idx + Math.sin(idx) * 2)
-    y[25] = y[25] + 10 // Moderate deviation
+    y[25] += 10 // Moderate deviation
     // Low threshold = more aggressive = should catch it
     const low_threshold = remove_local_outliers(y, { mad_threshold: 1.5 })
     // High threshold = less aggressive = might keep it
@@ -279,8 +279,8 @@ describe(`remove_local_outliers`, () => {
     const y = Array(30).fill(5)
     const result = remove_local_outliers(y)
     // All points identical, zero MAD, nothing should be removed
-    expect(result.kept_indices.length).toBe(30)
-    expect(result.removed_indices.length).toBe(0)
+    expect(result.kept_indices).toHaveLength(30)
+    expect(result.removed_indices).toHaveLength(0)
   })
 
   it(`handles oscillating data without false positives`, () => {
@@ -296,9 +296,9 @@ describe(`remove_local_outliers`, () => {
     // Simulate typical thermodynamic data: G(T) = -aT^2 with spikes
     const y = Array.from({ length: 100 }, (_, idx) => -0.001 * idx * idx)
     // Add typical instability spikes at high T
-    y[70] = y[70] + 5
-    y[75] = y[75] - 8
-    y[80] = y[80] + 3
+    y[70] += 5
+    y[75] -= 8
+    y[80] += 3
     const result = remove_local_outliers(y, {
       window_half: 7,
       mad_threshold: 2.5,
@@ -325,7 +325,7 @@ describe(`handle_invalid_values`, () => {
     `$mode mode handles invalid values correctly`,
     ({ mode, y, expectedLen, invalidCount }) => {
       const result = handle_invalid_values([...y], mode)
-      expect(result.cleaned.length).toBe(expectedLen)
+      expect(result.cleaned).toHaveLength(expectedLen)
       expect(result.invalid_count).toBe(invalidCount)
       if (mode === `remove`) {
         expect(result.cleaned.every((v) => Number.isFinite(v))).toBe(true)
@@ -356,7 +356,7 @@ describe(`handle_invalid_values`, () => {
 
     // All invalid fallback
     const all = handle_invalid_values([NaN, NaN, NaN], `interpolate`)
-    expect(all.cleaned.length).toBe(3)
+    expect(all.cleaned).toHaveLength(3)
   })
 
   it(`handles ±Infinity correctly`, () => {
@@ -429,7 +429,7 @@ describe(`smooth_savitzky_golay`, () => {
     { input: [1, 2], window: 5, desc: `small array` },
   ])(`handles $desc`, ({ input, window }) => {
     const result = smooth_savitzky_golay(input, window)
-    expect(result.length).toBe(input.length)
+    expect(result).toHaveLength(input.length)
   })
 
   it(`preserves linear trends and smooths oscillations`, () => {
@@ -448,9 +448,9 @@ describe(`smooth_savitzky_golay`, () => {
 
   it(`handles different polynomial orders and NaN values`, () => {
     const quadratic = [0, 1, 4, 9, 16, 25, 36, 49, 64]
-    expect(smooth_savitzky_golay(quadratic, 5, 1).length).toBe(9)
-    expect(smooth_savitzky_golay(quadratic, 5, 2).length).toBe(9)
-    expect(smooth_savitzky_golay([1, 2, NaN, 4, 5, 6, 7], 5, 2).length).toBe(7)
+    expect(smooth_savitzky_golay(quadratic, 5, 1)).toHaveLength(9)
+    expect(smooth_savitzky_golay(quadratic, 5, 2)).toHaveLength(9)
+    expect(smooth_savitzky_golay([1, 2, NaN, 4, 5, 6, 7], 5, 2)).toHaveLength(7)
   })
 })
 
@@ -491,7 +491,7 @@ describe(`clean_series`, () => {
     }
     const result = clean_series(series, { in_place: false })
 
-    expect(result.series.x.length).toBe(4)
+    expect(result.series.x).toHaveLength(4)
     expect(result.quality.invalid_values_found).toBe(1)
     expect(result.series.metadata).toEqual([
       { id: `a` },
@@ -570,7 +570,7 @@ describe(`clean_series`, () => {
       expect(result.series.x.length).toBeLessThan(80)
     } else {
       expect(result.quality.stable_range).toBeDefined()
-      expect(result.series.x.length).toBe(80)
+      expect(result.series.x).toHaveLength(80)
     }
   })
 
@@ -595,7 +595,7 @@ describe(`clean_series`, () => {
       { x: [0, 1, 2, 3, 4], y: [0, NaN, 4, Infinity, 8] },
       { invalid_values: `propagate`, in_place: false },
     )
-    expect(result.series.x.length).toBe(5)
+    expect(result.series.x).toHaveLength(5)
     expect(Number.isNaN(result.series.y[1])).toBe(true)
     expect(result.series.y[3]).toBe(Infinity)
     expect(result.quality.points_removed).toBe(0)
@@ -654,7 +654,7 @@ describe(`clean_series`, () => {
       },
     )
     // All arrays should have same length
-    expect(result.series.y.length).toBe(result.series.x.length)
+    expect(result.series.y).toHaveLength(result.series.x.length)
     expect((result.series.metadata as { id: number }[])?.length).toBe(result.series.x.length)
     expect(result.series.color_values?.length).toBe(result.series.x.length)
     expect(result.series.size_values?.length).toBe(result.series.x.length)
@@ -674,7 +674,7 @@ describe(`clean_multi_series`, () => {
       ],
       { invalid_values: `interpolate` },
     )
-    expect(result.cleaned_y.length).toBe(2)
+    expect(result.cleaned_y).toHaveLength(2)
     expect(result.quality[0].invalid_values_found).toBe(1)
     expect(result.quality[1].invalid_values_found).toBe(1)
   })
@@ -686,8 +686,8 @@ describe(`clean_multi_series`, () => {
     const result = clean_multi_series([0, 1, 2], y_series, {
       invalid_values: `interpolate`,
     })
-    expect(result.cleaned_y.length).toBe(y_series.length)
-    expect(result.quality.length).toBe(y_series.length)
+    expect(result.cleaned_y).toHaveLength(y_series.length)
+    expect(result.quality).toHaveLength(y_series.length)
   })
 
   it(`applies bounds to all series`, () => {
@@ -717,9 +717,9 @@ describe(`clean_multi_series`, () => {
       { invalid_values: `remove` },
     )
     // Both NaN positions removed - only indices 0, 3, 4 should remain
-    expect(result.x.length).toBe(3)
-    expect(result.cleaned_y[0].length).toBe(result.x.length)
-    expect(result.cleaned_y[1].length).toBe(result.x.length)
+    expect(result.x).toHaveLength(3)
+    expect(result.cleaned_y[0]).toHaveLength(result.x.length)
+    expect(result.cleaned_y[1]).toHaveLength(result.x.length)
     // Verify correct values remain aligned
     expect(result.x).toEqual([0, 3, 4])
     expect(result.cleaned_y[0]).toEqual([0, 6, 8])
@@ -737,9 +737,9 @@ describe(`clean_multi_series`, () => {
     )
     // First series: -10 and 100 out of bounds -> indices 1, 2, 3 kept
     // All series filtered to intersection of valid indices
-    expect(result.x.length).toBe(3)
-    expect(result.cleaned_y[0].length).toBe(result.x.length)
-    expect(result.cleaned_y[1].length).toBe(result.x.length)
+    expect(result.x).toHaveLength(3)
+    expect(result.cleaned_y[0]).toHaveLength(result.x.length)
+    expect(result.cleaned_y[1]).toHaveLength(result.x.length)
     expect(result.x).toEqual([1, 2, 3])
   })
 
@@ -769,16 +769,16 @@ describe(`clean_xyz`, () => {
     const result = clean_xyz([0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, NaN, 4, 6, 8], {
       invalid_values: `interpolate`,
     })
-    expect(result.x.length).toBe(5)
-    expect(result.y.length).toBe(5)
-    expect(result.z.length).toBe(5)
+    expect(result.x).toHaveLength(5)
+    expect(result.y).toHaveLength(5)
+    expect(result.z).toHaveLength(5)
   })
 
   it.each([`x`, `y`, `z`] as const)(`respects primary_axis=%s option`, (axis) => {
     const result = clean_xyz([0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], {
       primary_axis: axis,
     })
-    expect(result.x.length).toBe(5)
+    expect(result.x).toHaveLength(5)
     expect(result.quality).toBeDefined()
   })
 
@@ -801,9 +801,9 @@ describe(`clean_xyz`, () => {
         invalid_values: `remove`,
       },
     )
-    expect(result.x.length).toBe(4)
-    expect(result.y.length).toBe(result.x.length)
-    expect(result.z.length).toBe(result.x.length)
+    expect(result.x).toHaveLength(4)
+    expect(result.y).toHaveLength(result.x.length)
+    expect(result.z).toHaveLength(result.x.length)
     // Verify correct values at correct positions
     expect(result.x).toEqual([0, 1, 3, 4])
     expect(result.y).toEqual([10, 11, 13, 14])
@@ -821,9 +821,9 @@ describe(`clean_xyz`, () => {
       },
     )
     // Only indices 0 and 4 are valid across all three arrays
-    expect(result.x.length).toBe(2)
-    expect(result.y.length).toBe(2)
-    expect(result.z.length).toBe(2)
+    expect(result.x).toHaveLength(2)
+    expect(result.y).toHaveLength(2)
+    expect(result.z).toHaveLength(2)
     expect(result.x).toEqual([0, 4])
     expect(result.y).toEqual([10, 14])
     expect(result.z).toEqual([100, 104])
@@ -927,10 +927,10 @@ describe(`clean_trajectory_props`, () => {
     )
     // Only indices 0 and 4 are valid across all properties
     const expected_len = 2
-    expect(result.props.Step.length).toBe(expected_len)
-    expect(result.props.energy.length).toBe(expected_len)
-    expect(result.props.volume.length).toBe(expected_len)
-    expect(result.props.pressure.length).toBe(expected_len)
+    expect(result.props.Step).toHaveLength(expected_len)
+    expect(result.props.energy).toHaveLength(expected_len)
+    expect(result.props.volume).toHaveLength(expected_len)
+    expect(result.props.pressure).toHaveLength(expected_len)
     // Verify correct values remain
     expect(result.props.Step).toEqual([0, 4])
     expect(result.props.energy).toEqual([10, 50])
@@ -947,8 +947,8 @@ describe(`clean_trajectory_props`, () => {
       },
       { invalid_values: `remove`, independent_axis: `Step` },
     )
-    expect(result.props.Step.length).toBe(4)
-    expect(result.props.energy.length).toBe(4)
+    expect(result.props.Step).toHaveLength(4)
+    expect(result.props.energy).toHaveLength(4)
     expect(result.props.Step).toEqual([0, 2, 3, 4])
     expect(result.props.energy).toEqual([10, 30, 40, 50])
   })
@@ -983,7 +983,7 @@ describe(`Performance`, () => {
     const { x, y } = generate_linear_data(length, 0.1, 0.01)
     const start = performance.now()
     const result = clean_series({ x, y }, { smooth, in_place: false })
-    expect(result.series.x.length).toBe(length)
+    expect(result.series.x).toHaveLength(length)
     expect(performance.now() - start).toBeLessThan(maxMs)
   })
 })
@@ -1084,7 +1084,7 @@ describe(`Edge Cases`, () => {
     },
   ])(`handles $desc`, ({ x, y, expectedLen }) => {
     const result = clean_series({ x, y }, { invalid_values: `remove`, in_place: false })
-    expect(result.series.x.length).toBe(expectedLen)
+    expect(result.series.x).toHaveLength(expectedLen)
   })
 
   it(`preserves color_values and size_values during filtering`, () => {
@@ -1123,7 +1123,7 @@ describe(`Edge Cases`, () => {
         in_place: false,
       },
     )
-    expect(result.series.x.length).toBe(9)
+    expect(result.series.x).toHaveLength(9)
     expect(result.quality.invalid_values_found).toBe(1)
     expect(result.quality.bounds_violations).toBeGreaterThan(0)
   })
@@ -1139,7 +1139,7 @@ describe(`Edge Cases`, () => {
         in_place: false,
       },
     )
-    expect(result.series.x.length).toBe(length)
+    expect(result.series.x).toHaveLength(length)
     expect(result.quality.bounds_violations).toBeGreaterThan(0)
   })
 })

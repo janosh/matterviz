@@ -44,7 +44,7 @@
   function get_symbol_path(): string {
     const symbol_key: D3SymbolName = style.symbol_type ?? DEFAULTS.scatter.symbol_type
     const symbol_type = symbol_map[symbol_key] ?? d3_symbols.symbolCircle
-    const size = style.symbol_size ?? Math.PI * Math.pow(style.radius ?? 2, 2)
+    const size = style.symbol_size ?? Math.PI * (style.radius ?? 2) ** 2
     return symbol().type(symbol_type).size(size)() || ``
   }
 

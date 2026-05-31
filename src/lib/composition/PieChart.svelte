@@ -151,11 +151,9 @@
         } else if (is_medium_slice) {
           // Medium slices: place closer to outer edge, proportional to chart size
           label_radius = outer_radius - outer_radius * 0.3
-          is_outside_slice = false
         } else {
           // Large slices: place in middle of ring
           label_radius = (outer_radius + inner_radius_adjusted) / 2
-          is_outside_slice = false
         }
 
         // Calculate font scale based on slice size and smart text fitting

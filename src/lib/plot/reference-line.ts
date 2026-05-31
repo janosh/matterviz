@@ -332,22 +332,20 @@ export function calculate_annotation_position(
     // Perpendicular vector (normalized)
     const nx = -dy / len
     const ny = dx / len
+    let sign: number
     if (side === `above` || side === `below`) {
       // In SVG, y increases downward. Flip sign if 'above' and perpendicular points down (ny > 0),
       // or if 'below' and perpendicular points up (ny <= 0), to ensure offset is in correct direction
-      const sign = (side === `above`) === ny > 0 ? -1 : 1
-      perp_x = sign * nx * gap
-      perp_y = sign * ny * gap
+      sign = (side === `above`) === ny > 0 ? -1 : 1
     } else {
       // left/right offset to the side of the line in screen space (right -> +x, left -> -x), stable
       // regardless of endpoint order — vertical ref lines are stored bottom->top, which flips the
       // perpendicular. Horizontal lines (nx == 0) fall back to right = up (-y), left = down (+y).
       const want_right = side === `right`
-      const sign =
-        Math.abs(nx) > 1e-9 ? (want_right ? 1 : -1) * Math.sign(nx) : want_right ? -1 : 1
-      perp_x = sign * nx * gap
-      perp_y = sign * ny * gap
+      sign = Math.abs(nx) > 1e-9 ? (want_right ? 1 : -1) * Math.sign(nx) : want_right ? -1 : 1
     }
+    perp_x = sign * nx * gap
+    perp_y = sign * ny * gap
   }
 
   const final_x = base_x + perp_x + offset_x

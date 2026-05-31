@@ -77,7 +77,7 @@
       { length: 1000 },
       () => Math.exp(Math.random() * 2 + 1),
     )
-    const power_law = Array.from({ length: 1000 }, () => Math.pow(Math.random(), -2))
+    const power_law = Array.from({ length: 1000 }, () => Math.random() ** -2)
 
     return [
       {
@@ -104,7 +104,7 @@
     if (distribution_type === `bimodal`) {
       values = [...generate_normal(300, 20, 3), ...generate_normal(300, 50, 4)]
     } else if (distribution_type === `skewed`) {
-      values = Array.from({ length: 500 }, () => Math.pow(Math.random(), 3) * 100)
+      values = Array.from({ length: 500 }, () => Math.random() ** 3 * 100)
     } else if (distribution_type === `discrete`) {
       values = Array.from({ length: 200 }, () => Math.floor(Math.random() * 6) + 1)
     } else if (distribution_type === `age`) {
@@ -141,9 +141,9 @@
         { ...base_series, label: `${bin_count_30} bins` },
         { ...base_series, label: `${bin_count_100} bins` },
       ] as DataSeries[]
-    } else {
-      return [{ ...base_series, label: `${single_bin_count} bins` }] as DataSeries[]
     }
+      return [{ ...base_series, label: `${single_bin_count} bins` }] as DataSeries[]
+
   })
 
   let tick_test_data = $derived.by(() => {

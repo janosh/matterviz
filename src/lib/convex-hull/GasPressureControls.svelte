@@ -64,7 +64,7 @@
 
   // Convert slider position (0-100) to pressure
   const slider_to_pressure = (value: number): number =>
-    Math.pow(10, LOG_P_MIN + (value / 100) * LOG_P_RANGE)
+    10 ** (LOG_P_MIN + (value / 100) * LOG_P_RANGE)
 
   // Format gas name for display (subscript numbers)
   const format_gas_name = (gas: GasSpecies): string =>
@@ -94,7 +94,7 @@
     gas: GasSpecies,
     event: Event & { currentTarget: HTMLInputElement },
   ): void {
-    const P = slider_to_pressure(+event.currentTarget.value)
+    const P = slider_to_pressure(Number(event.currentTarget.value))
     pressures = { ...pressures, [gas]: P }
     // Clear only this gas's preview (don't reset other sliders being dragged simultaneously)
     const { [gas]: _removed_preview, ...remaining_previews } = preview_pressures
@@ -103,8 +103,8 @@
 
   function set_pressure_direct(gas: GasSpecies, value: number): void {
     const clamped = Math.max(
-      Math.pow(10, LOG_P_MIN),
-      Math.min(Math.pow(10, LOG_P_MAX), value),
+      10 ** LOG_P_MIN,
+      Math.min(10 ** LOG_P_MAX, value),
     )
     pressures = { ...pressures, [gas]: clamped }
   }

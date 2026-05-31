@@ -52,29 +52,6 @@ const create_drop_event = (files: File[]): DragEvent => {
   return drag_event
 }
 
-// Wait for text to appear in document.body via MutationObserver polling
-const wait_for_dom_text = (text: string, timeout_ms = 3000): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const timeout_id = setTimeout(() => {
-      observer.disconnect()
-      reject(new Error(`Timed out waiting for "${text}" in DOM`))
-    }, timeout_ms)
-    const check = () => {
-      if (document.body.textContent?.includes(text)) {
-        clearTimeout(timeout_id)
-        observer.disconnect()
-        resolve()
-      }
-    }
-    const observer = new MutationObserver(check)
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    })
-    check()
-  })
-
 // Tests for Structure component functionality
 describe(`Structure`, () => {
   test(`open control pane when clicking toggle button`, () => {
@@ -173,7 +150,7 @@ describe(`Structure`, () => {
     await tick()
 
     expect(event.defaultPrevented, `Delete should be handled`).toBe(true)
-    expect(state.structure.sites.length, `one atom removed`).toBe(n_before - 1)
+    expect(state.structure.sites).toHaveLength(n_before - 1)
   })
 
   test.each([
@@ -483,21 +460,36 @@ describe(`Structure`, () => {
     expect(file_content).toBe(`test content`)
   })
 
-  test(`drag and drop without on_file_drop handler`, async () => {
+  test(`drag and drop without on_file_drop handler parses the file internally`, async () => {
+    // No on_file_drop → component parses the dropped file itself and emits on_file_load.
+    // Awaiting the callback is deterministic (no DOM polling), unlike a rendered-text race.
+    let loaded: StructureHandlerData | undefined
+    let resolve_load!: () => void
+    const load_done = new Promise<void>((resolve) => (resolve_load = resolve))
+
     mount(Structure, {
       target: document.body,
-      props: { structure: undefined, show_controls: true },
+      props: {
+        structure: undefined,
+        show_controls: true,
+        on_file_load: (data: StructureHandlerData) => {
+          loaded = data
+          resolve_load()
+        },
+      },
     })
 
     const wrapper = document.querySelector(`.structure`) as HTMLElement
     expect(wrapper).toBeInstanceOf(HTMLElement)
 
     const file = new File([SAMPLE_POSCAR_CONTENT], `test.poscar`, { type: `text/plain` })
-    const drag_event = create_drop_event([file])
+    wrapper.dispatchEvent(create_drop_event([file]))
 
-    wrapper.dispatchEvent(drag_event)
-    await wait_for_dom_text(`Ba Ti O3`)
-    expect(document.body.textContent).toContain(`Ba Ti O3`)
+    await load_done
+    expect(loaded?.filename).toBe(`test.poscar`)
+    expect(loaded?.total_atoms).toBe(5)
+    const elements = loaded?.structure?.sites.map((site) => site.species[0].element)
+    expect(elements).toEqual(expect.arrayContaining([`Ba`, `Ti`, `O`]))
   })
 
   test(`info pane site hover updates highlighted sites`, async () => {
@@ -531,7 +523,7 @@ describe(`Structure`, () => {
 
     first_site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(state.highlighted_sites).toEqual([])
-    expect(state.hovered_site_idx).toBe(null)
+    expect(state.hovered_site_idx).toBeNull()
 
     first_site_row.click()
     expect(state.selected_sites).toEqual([0])
@@ -865,7 +857,7 @@ describe(`atom label controls`, () => {
     ) as HTMLInputElement
 
     expect(parseFloat(size_input.value)).toBeCloseTo(1.2, 1)
-    expect(parseInt(padding_input.value)).toBe(4)
+    expect(parseInt(padding_input.value, 10)).toBe(4)
 
     size_input.value = `1.8`
     padding_input.value = `6`
@@ -873,7 +865,7 @@ describe(`atom label controls`, () => {
     padding_input.dispatchEvent(new Event(`input`, { bubbles: true }))
 
     expect(parseFloat(size_input.value)).toBeCloseTo(1.8, 1)
-    expect(parseInt(padding_input.value)).toBe(6)
+    expect(parseInt(padding_input.value, 10)).toBe(6)
   })
 
   test(`input constraints are correct`, () => {
@@ -1029,7 +1021,7 @@ describe(`Structure string parsing`, () => {
             el,
           ),
         )
-        expect(!!(`lattice` in parse_state.parsed && parse_state.parsed.lattice)).toBe(
+        expect(Boolean(`lattice` in parse_state.parsed && parse_state.parsed.lattice)).toBe(
           has_lattice,
         )
       }
@@ -1075,7 +1067,7 @@ describe(`Structure string parsing`, () => {
       props: {
         structure_string: SAMPLE_POSCAR_CONTENT,
         on_file_load: (data: StructureHandlerData) => {
-          size = data.file_size || 0
+          size = data.file_size ?? 0
         },
       },
     })
@@ -1094,7 +1086,7 @@ describe(`Structure string parsing`, () => {
       props: {
         data_url: `/test.poscar`,
         structure_string: `ignored`,
-        on_file_load: (data: StructureHandlerData) => (filename = data.filename || ``),
+        on_file_load: (data: StructureHandlerData) => (filename = data.filename ?? ``),
       },
     })
     await tick()

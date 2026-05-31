@@ -16,6 +16,7 @@ function safe_stringify(val: unknown): string {
       }
       if (typeof inner === `bigint`) return `${inner}n`
       if (typeof inner === `symbol`) return inner.toString()
+      // oxlint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- anonymous fns have name ``
       if (typeof inner === `function`) return `[Function: ${inner.name || `anonymous`}]`
       return inner
     },
@@ -92,7 +93,7 @@ function format_path_segment(segment: string | number, is_first: boolean = false
     return is_first ? segment : `.${segment}`
   }
   // Use bracket notation for keys with special characters
-  return `["${segment.replace(/"/g, `\\"`)}"]`
+  return `["${segment.replaceAll('"', `\\"`)}"]`
 }
 
 // Format a full path from segments
@@ -240,7 +241,7 @@ export function collect_all_paths(
   current_path: string = ``,
   max_depth: number = Infinity,
   current_depth: number = 0,
-  seen: WeakSet<object> = new WeakSet(),
+  seen = new WeakSet<object>(),
 ): string[] {
   if (current_depth >= max_depth) return []
   const type = get_value_type(value)
@@ -266,7 +267,7 @@ export function find_matching_paths(
   query: string,
   current_path: string = ``,
   current_key: string | number | null = null,
-  seen: WeakSet<object> = new WeakSet(),
+  seen = new WeakSet<object>(),
 ): Set<string> {
   const matches = new Set<string>()
   if (!query) return matches
@@ -340,7 +341,7 @@ export function parse_path(path: string): (string | number)[] {
         const num = Number(current)
         if (Number.isNaN(num)) {
           // Remove surrounding quotes and unescape internal quotes
-          const unquoted = current.replace(/^"|"$/g, ``).replace(/\\"/g, `"`)
+          const unquoted = current.replaceAll(/^"|"$/g, ``).replaceAll('\\"', `"`)
           segments.push(unquoted)
         } else segments.push(num)
       }
@@ -355,7 +356,7 @@ export function parse_path(path: string): (string | number)[] {
       // Apply same numeric/quoted-string logic as inside brackets
       const num = Number(current)
       if (Number.isNaN(num)) {
-        const unquoted = current.replace(/^"|"$/g, ``).replace(/\\"/g, `"`)
+        const unquoted = current.replaceAll(/^"|"$/g, ``).replaceAll('\\"', `"`)
         segments.push(unquoted)
       } else segments.push(num)
     } else segments.push(current)
@@ -433,8 +434,8 @@ export function set_at_path(
   const segments = parse_path(path_str)
   const start = root_label && segments[0] === root_label ? 1 : 0
   if (start >= segments.length) return new_value
-  const cloned = JSON.parse(JSON.stringify(root))
-  let current: Record<string | number, unknown> = cloned
+  const cloned = structuredClone(root)
+  let current = cloned as Record<string | number, unknown>
   for (let idx = start; idx < segments.length - 1; idx++) {
     const next = current[segments[idx]]
     if (next === undefined || next === null) return root // bail — path no longer valid
@@ -549,8 +550,8 @@ export function compute_diff(
   old_val: unknown,
   new_val: unknown,
   current_path: string = ``,
-  result: Map<string, DiffEntry> = new Map(),
-  seen: WeakSet<object> = new WeakSet(),
+  result = new Map<string, DiffEntry>(),
+  seen = new WeakSet<object>(),
 ): Map<string, DiffEntry> {
   const old_type = get_value_type(old_val)
   const new_type = get_value_type(new_val)

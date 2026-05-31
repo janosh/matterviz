@@ -14,7 +14,7 @@ describe(`calc_coordination_nums`, () => {
   test(`should calculate coordination numbers`, () => {
     const result = calc_coordination_nums(simple_cubic, `electroneg_ratio`)
 
-    expect(result.sites.length).toBe(4)
+    expect(result.sites).toHaveLength(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)
     expect(result.cn_by_element.size).toBe(2) // Na and Cl
   })
@@ -31,7 +31,7 @@ describe(`calc_coordination_nums`, () => {
   test(`should work with solid_angle strategy`, () => {
     const result = calc_coordination_nums(simple_cubic, `solid_angle`)
 
-    expect(result.sites.length).toBe(4)
+    expect(result.sites).toHaveLength(4)
     expect(result.cn_histogram.size).toBeGreaterThan(0)
   })
 
@@ -48,7 +48,7 @@ describe(`calc_coordination_nums`, () => {
     // With atoms 50 Å apart, no bonds should form with default electroneg_ratio strategy
     const result = calc_coordination_nums(isolated_atoms, `electroneg_ratio`)
 
-    expect(result.sites.length).toBe(2)
+    expect(result.sites).toHaveLength(2)
     // Both atoms should have CN = 0 since they are too far apart for bonding
     const cn_values = result.sites.map((site) => site.coordination_num)
     expect(cn_values.every((cn) => cn === 0)).toBe(true)

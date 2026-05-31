@@ -20,7 +20,7 @@ const tdb_modules = import.meta.glob<string>(`./tdb/*.tdb`, {
 // Build all diagrams from JSON data
 const built_diagrams = new Map<string, PhaseDiagramData>()
 for (const [path, input] of Object.entries(diagram_modules)) {
-  const name = path.split(`/`).pop()?.replace(`.json`, ``) || path
+  const name = path.split(`/`).pop()?.replace(`.json`, ``) ?? path
   built_diagrams.set(name, build_diagram(input))
 }
 
@@ -38,7 +38,7 @@ export const binary_phase_diagram_files: FileInfo[] = Array.from(built_diagrams.
 
 // Convert glob results to FileInfo array for TDB files
 export const tdb_files: FileInfo[] = Object.entries(tdb_modules).map(([path, url]) => {
-  const name = path.split(`/`).pop() || path
+  const name = path.split(`/`).pop() ?? path
   return { name, url, type: `tdb`, category: `TDB`, category_icon: `📄` }
 })
 

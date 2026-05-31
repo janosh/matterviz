@@ -19,7 +19,7 @@
       if (nums.every((num) => !isNaN(num))) return nums as Vec3
     }
     // Fall back to compact single-digit format: "001", "-101"
-    const compact = input.replace(/\s+/g, ``)
+    const compact = input.replaceAll(/\s+/g, ``)
     const match = compact.match(/^(-?\d)(-?\d)(-?\d)$/)
     if (match) return [Number(match[1]), Number(match[2]), Number(match[3])] as Vec3
     return null

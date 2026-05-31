@@ -26,6 +26,7 @@
   import type { BroadeningParams } from './broadening'
   import { compute_broadened_pattern, DEFAULT_BROADENING } from './broadening'
   import type { Hkl, HklFormat, PatternEntry, XrdPattern } from './index'
+  import { to_error } from '$lib/utils'
 
   function is_xrd_pattern(obj: unknown): obj is XrdPattern {
     if (!obj || typeof obj !== `object`) return false
@@ -352,7 +353,7 @@
           }
         } catch (exc) {
           error_msg = `Failed to load file ${file.name}: ${
-            exc instanceof Error ? exc.message : String(exc)
+            to_error(exc).message
           }`
         }
       }

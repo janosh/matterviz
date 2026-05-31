@@ -15,6 +15,7 @@
     parse_phase_diagram_svg,
     TdbInfoPanel,
   } from '$lib/phase-diagram'
+  import { to_error } from '$lib/utils'
   import {
     all_phase_diagram_files,
     find_precomputed_url,
@@ -45,7 +46,7 @@
 
   // Helper for consistent error formatting
   const format_error = (context: string, exc: unknown) =>
-    `${context}: ${exc instanceof Error ? exc.message : String(exc)}`
+    `${context}: ${to_error(exc).message}`
 
   // Token for race condition protection - each load gets a unique Symbol
   let active_load: symbol | null = null
@@ -82,7 +83,7 @@
     update_url_param: boolean = true,
     preserve_tdb: boolean = false,
   ): Promise<boolean> {
-    const token = Symbol()
+    const token = Symbol(`load-token`)
     active_load = token
     loading = true
     error_message = null
@@ -120,7 +121,7 @@
         current_file = filename
         if (update_url_param) update_url(filename)
         return true
-      } else {
+      }
         // JSON files: load directly
         const data = await load_binary_phase_diagram(url)
         if (is_stale(token)) return false
@@ -132,7 +133,7 @@
         current_file = filename
         if (update_url_param) update_url(filename)
         return true
-      }
+
     } catch (exc) {
       if (is_stale(token)) return false
       error_message = format_error(`Failed to load`, exc)

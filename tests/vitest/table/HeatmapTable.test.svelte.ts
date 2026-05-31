@@ -31,9 +31,9 @@ describe(`HeatmapTable`, () => {
 
     const headers = document.querySelectorAll(`th`)
     expect(headers).toHaveLength(3)
-    expect(Array.from(headers).map((h) => h.textContent?.replace(/\s+/g, ` `).trim())).toEqual(
-      [`Model`, `Score`, `Value`],
-    )
+    expect(
+      Array.from(headers).map((h) => h.textContent?.replaceAll(/\s+/g, ` `).trim()),
+    ).toEqual([`Model`, `Score`, `Value`])
 
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(3)
     expect(document.querySelectorAll(`td[data-col="Hidden"]`)).toHaveLength(0)
@@ -418,7 +418,7 @@ describe(`HeatmapTable`, () => {
     })
 
     const header = document.querySelector(`th`)
-    expect(header?.getAttribute(`title`) || header?.getAttribute(`data-title`)).toBe(
+    expect(header?.getAttribute(`title`) ?? header?.getAttribute(`data-title`)).toBe(
       `Description`,
     )
     // sort_hint renders as a separate .sort-hint element, not inside the header
@@ -638,7 +638,7 @@ describe(`HeatmapTable`, () => {
 
       // Column headers should have duplicate label names (Value 1, Value 2) rendered for each group
       expect(
-        Array.from(col_headers).map((h) => h.textContent?.trim().replace(/\s+|[↑↓]/g, ``)),
+        Array.from(col_headers).map((h) => h.textContent?.trim().replaceAll(/\s+|[↑↓]/g, ``)),
       ).toEqual([`Name`, `Value1`, `Value2`, `Metric1`, `Metric2`, `Value1`, `Value2`])
     })
 
@@ -2032,8 +2032,8 @@ describe(`HeatmapTable`, () => {
       copy_btn.click()
       await tick()
 
-      expect(navigator.clipboard[`writeText`]).toHaveBeenCalledTimes(1)
-      const written = (navigator.clipboard[`writeText`] as ReturnType<typeof vi.fn>).mock
+      expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1)
+      const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock
         .calls[0][0] as string
       expect(written).toContain(`Model\tScore\tValue`)
       expect(written).toContain(`Model A`)

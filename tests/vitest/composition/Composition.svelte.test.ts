@@ -130,7 +130,7 @@ describe(`Composition component`, () => {
     const export_options = Array.from(
       document.querySelectorAll(`.context-menu button`),
     ).filter((opt) => opt.textContent?.includes(`Export`) || opt.textContent?.includes(`Copy`))
-    expect(export_options.length).toBe(4)
+    expect(export_options).toHaveLength(4)
 
     const option_texts = export_options.map((opt) => opt.textContent?.trim())
     expect(option_texts).toContain(`Copy Formula`)

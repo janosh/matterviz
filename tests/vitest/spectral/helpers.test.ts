@@ -185,13 +185,13 @@ describe(`detect_zoom_change`, () => {
     { bands: zoomed, dos: zoomed, synced: zoomed, dos_en: true },
     { bands: [1, 9], dos: [2, 6], synced: null, dos_en: true },
   ])(`returns undefined for no change: $bands,$dos`, ({ bands, dos, synced, dos_en }) => {
-    expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toBe(undefined)
+    expect(detect_zoom_change(bands, dos, shared, synced, dos_en)).toBeUndefined()
   })
 
   // dos_enabled=false: ignores DOS
   it(`ignores dos when dos_enabled=false`, () => {
-    expect(detect_zoom_change(shared, zoomed, shared, null, false)).toBe(undefined)
-    expect(detect_zoom_change(zoomed, null, shared, zoomed, false)).toBe(undefined)
+    expect(detect_zoom_change(shared, zoomed, shared, null, false)).toBeUndefined()
+    expect(detect_zoom_change(zoomed, null, shared, zoomed, false)).toBeUndefined()
     expect(detect_zoom_change(zoomed, shared, shared, null, false)).toEqual(zoomed)
   })
 })
@@ -434,10 +434,10 @@ describe(`find_qpoint_at_distance`, () => {
   it(`returns null for empty or invalid band structure`, () => {
     expect(
       find_qpoint_at_distance({ distance: [] } as unknown as BaseBandStructure, 1.0),
-    ).toBe(null)
+    ).toBeNull()
     expect(
       find_qpoint_at_distance({ distance: undefined } as unknown as BaseBandStructure, 1.0),
-    ).toBe(null)
+    ).toBeNull()
   })
 
   it(`correctly distinguishes repeated symmetry points`, () => {
@@ -715,7 +715,7 @@ describe(`find_qpoint_at_rescaled_x`, () => {
     expect(find_qpoint_at_rescaled_x(rescaled_bs, 0.5, {})).toBe(0) // Fallback
     expect(
       find_qpoint_at_rescaled_x({ branches: [] } as unknown as BaseBandStructure, 0.5, {}),
-    ).toBe(null)
+    ).toBeNull()
   })
 })
 
@@ -1839,7 +1839,7 @@ describe(`compute_frequency_range`, () => {
     // 100 points from -0.1 to 10, with most density at positive frequencies
     const frequencies = Array.from({ length: 101 }, (_, idx) => -0.1 + idx * 0.101)
     const densities = frequencies.map((freq) =>
-      freq < 0 ? 0.001 : Math.exp(-Math.pow(freq - 5, 2)),
+      freq < 0 ? 0.001 : Math.exp(-((freq - 5) ** 2)),
     )
     const dos = { frequencies, densities }
     const range = compute_frequency_range(undefined, dos)

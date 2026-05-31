@@ -65,7 +65,7 @@ export function parse_vasp_xdatcar(content: string, filename?: string): Trajecto
     const config_line = lines[config_idx]
     line_idx = config_idx + 1
     const step_match = /configuration=\s*(\d+)/.exec(config_line)
-    const step = step_match ? parseInt(step_match[1]) : frames.length + 1
+    const step = step_match ? parseInt(step_match[1], 10) : frames.length + 1
 
     const positions = []
     for (let idx = 0; idx < elements.length && line_idx < lines.length; idx++) {

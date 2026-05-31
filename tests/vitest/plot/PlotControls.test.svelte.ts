@@ -71,7 +71,7 @@ describe(`PlotControls`, () => {
       const inputs = Array.from(
         document.querySelectorAll<HTMLInputElement>(`input.range-input`),
       )
-      expect(inputs.length).toBe(6) // 2 per axis
+      expect(inputs).toHaveLength(6) // 2 per axis
 
       // Test input updates work
       inputs[0].value = `10`
@@ -81,7 +81,7 @@ describe(`PlotControls`, () => {
 
     test(`hides y2 inputs when has_y2_points is false`, () => {
       mount_controls({ has_y2_points: false })
-      expect(document.querySelectorAll(`input.range-input`).length).toBe(4)
+      expect(document.querySelectorAll(`input.range-input`)).toHaveLength(4)
     })
   })
 
@@ -131,7 +131,7 @@ describe(`PlotControls`, () => {
     test(`renders correct number of grid controls`, () => {
       mount_controls({ has_y2_points: true })
       const grids = get_checkboxes_in_group(`grid`)
-      expect(grids.length).toBe(3)
+      expect(grids).toHaveLength(3)
     })
 
     test.each([
@@ -143,7 +143,7 @@ describe(`PlotControls`, () => {
     ])(`shows $expected zero line controls for ranges`, ({ x_range, y_range, expected }) => {
       mount_controls({ x_range, y_range, auto_x_range: x_range, auto_y_range: y_range })
       const zero_lines = get_checkboxes_in_group(`zero line`)
-      expect(zero_lines.length).toBe(expected)
+      expect(zero_lines).toHaveLength(expected)
     })
   })
 

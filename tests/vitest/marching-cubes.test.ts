@@ -87,7 +87,7 @@ describe(`marching_cubes`, () => {
     })
     const uncentered = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
 
-    expect(centered.faces.length).toBe(uncentered.faces.length)
+    expect(centered.faces).toHaveLength(uncentered.faces.length)
     // Centered vertices have lower mean position (shifted by -0.5)
     const mean_x = (verts: Vec3[]) => verts.reduce((s, v) => s + v[0], 0) / verts.length
     expect(mean_x(centered.vertices)).toBeLessThan(mean_x(uncentered.vertices))
@@ -120,7 +120,7 @@ describe(`marching_cubes`, () => {
       interpolate: false,
     })
     expect(no_interp.vertices.length).toBeGreaterThan(0)
-    expect(no_interp.faces.length).toBe(interp.faces.length)
+    expect(no_interp.faces).toHaveLength(interp.faces.length)
     // Non-linear gradient means interpolated positions differ from midpoints
     const any_different = no_interp.vertices.some(
       (vert, idx) => Math.abs(vert[0] - interp.vertices[idx][0]) > 1e-6,
@@ -138,7 +138,7 @@ describe(`marching_cubes`, () => {
     const unit = marching_cubes(grid, 0.5, IDENTITY, NON_PERIODIC)
     const scaled = marching_cubes(grid, 0.5, scaled_lattice, NON_PERIODIC)
 
-    expect(scaled.vertices.length).toBe(unit.vertices.length)
+    expect(scaled.vertices).toHaveLength(unit.vertices.length)
     // Guard: unit result has non-zero y-coordinates
     expect(unit.vertices.some((v) => Math.abs(v[1]) > 1e-6)).toBe(true)
     // Scaled vertices should be 10x unit vertices

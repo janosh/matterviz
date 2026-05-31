@@ -51,7 +51,7 @@ describe(`Pymatgen cross-validation for quinary (5-element) system`, () => {
 
   test(`reference data has expected structure`, () => {
     expect(reference.elements).toEqual([`Li`, `Na`, `K`, `Rb`, `Cs`])
-    expect(reference.entries.length).toBe(12)
+    expect(reference.entries).toHaveLength(12)
     expect(reference.n_stable).toBe(6)
     expect(reference.n_unstable).toBe(6)
   })

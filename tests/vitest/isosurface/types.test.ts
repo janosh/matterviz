@@ -276,9 +276,9 @@ describe(`downsample_grid`, () => {
     const result = downsample_grid(grid, dims)
     const [rnx, rny, rnz] = result.dims
     expect(rnx * rny * rnz).toBeLessThanOrEqual(500_000)
-    expect(result.grid.length).toBe(rnx)
-    expect(result.grid[0].length).toBe(rny)
-    expect(result.grid[0][0].length).toBe(rnz)
+    expect(result.grid).toHaveLength(rnx)
+    expect(result.grid[0]).toHaveLength(rny)
+    expect(result.grid[0][0]).toHaveLength(rnz)
   })
 
   test(`respects custom max_points budget`, () => {
@@ -315,9 +315,9 @@ describe(`pad_periodic_grid`, () => {
     const result = pad_periodic_grid(grid, [10, 10, 10], 0.3)
     // pad = ceil(10 * 0.3) = 3 per axis → dims 10+6=16
     expect(result.dims).toEqual([16, 16, 16])
-    expect(result.grid.length).toBe(16)
-    expect(result.grid[0].length).toBe(16)
-    expect(result.grid[0][0].length).toBe(16)
+    expect(result.grid).toHaveLength(16)
+    expect(result.grid[0]).toHaveLength(16)
+    expect(result.grid[0][0]).toHaveLength(16)
     // offset = -3/10 = -0.3
     expect(result.offset[0]).toBeCloseTo(-0.3)
     expect(result.offset[1]).toBeCloseTo(-0.3)
@@ -434,9 +434,9 @@ describe(`tile_volumetric_data`, () => {
     const vol = make_volume(4, 5, 6)
     const tiled = tile_volumetric_data(vol, scaling)
     expect(tiled.grid_dims).toEqual([4 * scaling[0], 5 * scaling[1], 6 * scaling[2]])
-    expect(tiled.grid.length).toBe(tiled.grid_dims[0])
-    expect(tiled.grid[0].length).toBe(tiled.grid_dims[1])
-    expect(tiled.grid[0][0].length).toBe(tiled.grid_dims[2])
+    expect(tiled.grid).toHaveLength(tiled.grid_dims[0])
+    expect(tiled.grid[0]).toHaveLength(tiled.grid_dims[1])
+    expect(tiled.grid[0][0]).toHaveLength(tiled.grid_dims[2])
   })
 
   test(`grid values repeat via modulo at boundary wrap points`, () => {
@@ -531,9 +531,9 @@ describe(`tile_volumetric_data`, () => {
     const tiled = tile_volumetric_data(vol, scaling)
     const [tnx, tny, tnz] = tiled.grid_dims
     // Grid shape matches dims
-    expect(tiled.grid.length).toBe(tnx)
-    expect(tiled.grid[0].length).toBe(tny)
-    expect(tiled.grid[0][0].length).toBe(tnz)
+    expect(tiled.grid).toHaveLength(tnx)
+    expect(tiled.grid[0]).toHaveLength(tny)
+    expect(tiled.grid[0][0]).toHaveLength(tnz)
     // Lattice diagonal scaled by supercell factors
     for (let idx = 0; idx < 3; idx++) {
       expect(tiled.lattice[idx][idx]).toBe(vol.lattice[idx][idx] * scaling[idx])

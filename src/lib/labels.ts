@@ -15,7 +15,7 @@ const is_d3_symbol_name = (name: string): name is D3SymbolName =>
 function name_for_symbol(sym: unknown): D3SymbolName | null {
   for (const [key, symbol] of Object.entries(d3_symbols)) {
     if (symbol === sym && /^symbol[A-Z]/.test(key)) {
-      const name = key.substring(6)
+      const name = key.slice(6)
       if (is_d3_symbol_name(name)) return name
     }
   }
@@ -44,7 +44,7 @@ export function format_value(value: number, formatter?: string): string {
   if (Number.isNaN(value)) return `NaN`
 
   // Format and normalize unicode minus
-  const formatted = format(formatter)(value).replace(/−/g, `-`)
+  const formatted = format(formatter)(value).replaceAll('−', `-`)
 
   // Handle percentage formatting - remove trailing zeros
   if (formatter.includes(`%`)) {
@@ -112,7 +112,7 @@ export const ELEM_HEATMAP_LABELS: Partial<Record<string, keyof ChemicalElement>>
 export const DEFAULT_FMT: [string, string] = [`,.3~s`, `.3~g`]
 
 // Unicode glyphs for common fractions used by format_fractional()
-export const FRACTION_GLYPHS: ReadonlyArray<readonly [number, string]> = [
+export const FRACTION_GLYPHS: readonly (readonly [number, string])[] = [
   [0, `0`],
   [1 / 12, `¹⁄₁₂`],
   [1 / 8, `⅛`],
@@ -184,7 +184,7 @@ export function parse_si_float<T extends string | number | null | undefined>(
   // if not string, return as is
   if (typeof value !== `string`) return value
   // Remove whitespace and commas
-  const cleaned = value.trim().replace(/(\d),(\d)/g, `$1$2`)
+  const cleaned = value.trim().replaceAll(/(\d),(\d)/g, `$1$2`)
 
   // Check if the value is a SI-formatted number (e.g. "1.23k", "4.56M", "789µ", "12n")
   const match = /^([-+]?\d*\.?\d+)\s*([yzafpnµmkMGTPEZY])?$/i.exec(cleaned)
@@ -195,7 +195,7 @@ export function parse_si_float<T extends string | number | null | undefined>(
       const suffixes = `yzafpnµm kMGTPEZY`
       const index = suffixes.indexOf(suffix)
       if (index !== -1) {
-        multiplier = Math.pow(1000, index - 8)
+        multiplier = 1000 ** (index - 8)
       }
     }
     return parseFloat(num_part) * multiplier
@@ -268,7 +268,7 @@ export const SUBSCRIPT_MAP = {
 
 // replaces all signs and digits with their unicode superscript equivalent
 export const superscript_digits = (input: string): string =>
-  input.replace(/[\d+-]/g, (match) =>
+  input.replaceAll(/[\d+-]/g, (match) =>
     is_superscript_key(match) ? SUPERSCRIPT_MAP[match] : match,
   )
 

@@ -32,7 +32,7 @@ const EQUAL_MASS_PAIRS = [
 ] as const
 
 test(`element data basics`, () => {
-  expect(element_data.length).toBe(118)
+  expect(element_data).toHaveLength(118)
   expect(element_data[0].name).toBe(`Hydrogen`)
   expect(element_data[0].category).toBe(`diatomic nonmetal`)
   expect(element_data[0].number).toBe(1)

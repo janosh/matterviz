@@ -271,7 +271,7 @@ export function wyckoff_positions_from_moyo(sym_data: SymmetryDataset | null): W
   )
 
   rows.sort((w1, w2) => {
-    const [w1_mult, w2_mult] = [parseInt(w1.wyckoff), parseInt(w2.wyckoff)]
+    const [w1_mult, w2_mult] = [parseInt(w1.wyckoff, 10), parseInt(w2.wyckoff, 10)]
     if (w1_mult !== w2_mult) return w1_mult - w2_mult
     return w1.wyckoff.localeCompare(w2.wyckoff)
   })
@@ -320,7 +320,7 @@ export function map_wyckoff_to_all_atoms(
   }
 
   return wyckoff_positions.map((wyckoff_pos) => {
-    const indices = (wyckoff_pos.site_indices || [])
+    const indices = (wyckoff_pos.site_indices ?? [])
       .filter((idx) => idx < orig_structure.sites.length)
       .flatMap((orig_idx) => {
         const { abc: orig_abc, species } = orig_structure.sites[orig_idx]

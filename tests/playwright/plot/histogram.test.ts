@@ -51,7 +51,7 @@ const get_histogram_tick_range = async (axis_locator: Locator) => {
   const tick_elements = await axis_locator.locator(`.tick text`).all()
   const tick_texts = await Promise.all(tick_elements.map((tick) => tick.textContent()))
   const ticks = tick_texts
-    .map((text) => (text ? Number(text.replace(/[^\deE.+-]/g, ``)) : NaN))
+    .map((text) => (text ? Number(text.replaceAll(/[^\deE.+-]/g, ``)) : NaN))
     .filter((num) => !isNaN(num))
 
   if (ticks.length < 2) return { ticks, range: 0 }
@@ -168,7 +168,7 @@ test.describe(`Histogram Component Tests`, () => {
     expect(series_bars.length).toBeGreaterThan(0)
 
     const stroke_width = await series_bars[0].getAttribute(`stroke-width`)
-    expect(parseFloat(stroke_width || `0`)).toBeGreaterThan(0)
+    expect(parseFloat(stroke_width ?? `0`)).toBeGreaterThan(0)
 
     // Verify histogram remains functional after initial render
     await expect(histogram.locator(`g.x-axis`)).toBeVisible()

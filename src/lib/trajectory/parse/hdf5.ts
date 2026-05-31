@@ -25,7 +25,7 @@ export async function parse_torch_sim_hdf5(
     filename
       ?.split(`/`)
       .at(-1)
-      ?.replace(/[^\w.-]/g, `_`) || `temp`
+      ?.replaceAll(/[^\w.-]/g, `_`) ?? `temp`
   const unique_suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`
   const temp_filename = `${file_basename}-${unique_suffix}.h5`
 

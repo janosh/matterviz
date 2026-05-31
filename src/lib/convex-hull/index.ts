@@ -1,4 +1,5 @@
 import type { D3InterpolateName } from '$lib/colors'
+import type { TooltipConfig } from '$lib/tooltip'
 import type { Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type {
@@ -45,7 +46,6 @@ export interface TooltipSnippetProps<AnyDimEntry = PhaseData> {
 }
 
 // ConvexHull-specific tooltip types
-import type { TooltipConfig } from '$lib/tooltip'
 export type ConvexHullTooltipConfig<AnyDimEntry = PhaseData> = TooltipConfig<AnyDimEntry>
 export type ConvexHullTooltipProp<AnyDimEntry = PhaseData> =
   | Snippet<[TooltipSnippetProps<AnyDimEntry>]>

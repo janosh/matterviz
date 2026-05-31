@@ -80,11 +80,11 @@ export const atomic_symbol_to_num = (
 // Expand parentheses in chemical formulas
 const expand_parentheses = (formula: string): string => {
   while (formula.includes(`(`)) {
-    formula = formula.replace(
+    formula = formula.replaceAll(
       /\(([^()]+)\)(\d+(?:\.\d+)?|\.\d+)?/g,
       (_match, group, multiplier) => {
         const mult = parse_count(multiplier)
-        return group.replace(
+        return group.replaceAll(
           /([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g,
           (_m: string, element: string, count: string) => {
             const count_str = format_count(parse_count(count) * mult)
@@ -100,7 +100,7 @@ const expand_parentheses = (formula: string): string => {
 // Parse chemical formula string into composition object
 export const parse_formula = (formula: string): CompositionType => {
   const composition: CompositionType = {}
-  const cleaned_formula = expand_parentheses(formula.replace(/\s/g, ``))
+  const cleaned_formula = expand_parentheses(formula.replaceAll(/\s/g, ``))
 
   for (const match of cleaned_formula.matchAll(/([A-Z][a-z]?)(\d+(?:\.\d+)?|\.\d+)?/g)) {
     const element = match[1]
@@ -275,7 +275,7 @@ export const parse_formula_with_oxidation = (
   strict = false,
 ): ElementWithOxidation[] => {
   const elements: ElementWithOxidation[] = []
-  const cleaned_formula = expand_parentheses(formula.replace(/\s/g, ``))
+  const cleaned_formula = expand_parentheses(formula.replaceAll(/\s/g, ``))
 
   // Regex to match: Element, optional oxidation state and/or count in either order
   // Pattern: ([A-Z][a-z]?)  - element symbol
@@ -410,7 +410,7 @@ export function normalize_element_symbols<T extends string>(csv: string, all_sym
 export function normalize_element_symbols<T extends string>(
   csv: string,
   all_symbols?: T[],
-): Array<ElementSymbol | T> {
+): (ElementSymbol | T)[] {
   const input_set = new Set(
     csv
       .split(`,`)
@@ -444,7 +444,7 @@ export const has_wildcards = (input: string): boolean => input.includes(`*`)
 // Throws if any non-wildcard token is not a valid element symbol.
 export function parse_chemsys_with_wildcards(input: string): ChemsysWithWildcards {
   const tokens = input
-    .replace(/-/g, `,`)
+    .replaceAll('-', `,`)
     .split(`,`)
     .map((tok) => tok.trim())
     .filter(Boolean)
@@ -484,7 +484,7 @@ export function parse_formula_with_wildcards(formula: string): WildcardFormulaTo
   const tokens: WildcardFormulaToken[] = []
 
   // Expand parentheses, treating * as a pseudo-element (temporarily replace to protect it)
-  let cleaned = formula.replace(/\s/g, ``)
+  let cleaned = formula.replaceAll(/\s/g, ``)
 
   // Protect wildcards from parentheses expansion by replacing * with placeholder
   cleaned = cleaned.replace(ELEM_WILDCARD.to_placeholder, ELEM_WILDCARD.placeholder)
@@ -556,7 +556,7 @@ export function matches_formula_wildcard(
     const composition = parse_formula(formula)
 
     // Separate explicit elements and wildcards from pattern
-    const explicit_requirements: Array<{ element: ElementSymbol; count: number }> = []
+    const explicit_requirements: { element: ElementSymbol; count: number }[] = []
     const wildcard_counts: number[] = []
 
     for (const token of pattern) {

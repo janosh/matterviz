@@ -47,7 +47,7 @@ test.describe(`DOS Component Tests`, () => {
     ).toBeVisible()
     const y_ticks = await max_plot.locator(`g.y-axis text`).allTextContents()
     const nums = y_ticks
-      .map((tick) => Number.parseFloat(tick.replace(/[^\d.\-+eE]/g, ``)))
+      .map((tick) => Number.parseFloat(tick.replaceAll(/[^\d.\-+eE]/g, ``)))
       .filter(Number.isFinite)
     const max_val = Math.max(...nums)
     expect(max_val).toBeLessThanOrEqual(1.01) // Small margin for tick rounding
@@ -280,7 +280,7 @@ test.describe(`DOS Component Tests`, () => {
           tooltip_text.indexOf(`Frequency`),
           tooltip_text.indexOf(`Energy`),
         ].filter((idx) => idx >= 0)
-        const freq_idx = freq_candidates.length ? Math.min(...freq_candidates) : -1
+        const freq_idx = freq_candidates.length > 0 ? Math.min(...freq_candidates) : -1
         const density_idx = tooltip_text.indexOf(`Density`)
 
         // Both should be present
@@ -341,7 +341,7 @@ test.describe(`DOS Component Tests`, () => {
           tooltip_text.indexOf(`Frequency`),
           tooltip_text.indexOf(`Energy`),
         ].filter((idx) => idx >= 0)
-        const freq_idx = freq_candidates.length ? Math.min(...freq_candidates) : -1
+        const freq_idx = freq_candidates.length > 0 ? Math.min(...freq_candidates) : -1
         const density_idx = tooltip_text.indexOf(`Density`)
 
         // Both should be present

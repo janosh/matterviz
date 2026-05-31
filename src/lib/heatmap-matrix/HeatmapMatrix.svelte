@@ -334,7 +334,7 @@
   }
 
   function get_quantile(sorted_values: number[], quantile: number): number {
-    if (!sorted_values.length) return 0
+    if (sorted_values.length === 0) return 0
     const clipped_quantile = Math.max(0, Math.min(1, quantile))
     const float_idx = (sorted_values.length - 1) * clipped_quantile
     const low_idx = Math.floor(float_idx)
@@ -369,7 +369,7 @@
   })
 
   let [robust_min, robust_max] = $derived.by(() => {
-    if (!valid_numeric_values.length) return [0, 1] as const
+    if (valid_numeric_values.length === 0) return [0, 1] as const
     const sorted_values = valid_numeric_values.toSorted((value_a, value_b) =>
       value_a - value_b
     )
@@ -460,7 +460,7 @@
     return colors
   })
 
-  const to_contrast_colors = (bg_values: Array<string | null>): Array<string | null> =>
+  const to_contrast_colors = (bg_values: (string | null)[]): (string | null)[] =>
     bg_values.map((bg_color) =>
       bg_color ? pick_contrast_color({ bg_color }) : null
     )
@@ -775,7 +775,7 @@
       cell_pos_key(pos.x_idx, pos.y_idx) === clicked_key
     )
     const toggle_mode = selection_mode === `multi` && (event.metaKey || event.ctrlKey)
-    if (existing_idx >= 0 && toggle_mode) next_cells.splice(existing_idx, 1)
+    if (existing_idx !== -1 && toggle_mode) next_cells.splice(existing_idx, 1)
     else if (selection_mode === `multi` && toggle_mode) next_cells.push(clicked_cell)
     else next_cells.splice(0, next_cells.length, clicked_cell)
     selected_cells = next_cells
@@ -1010,7 +1010,7 @@
   }
 
   function compute_summary(summary_values: number[]): number | null {
-    if (!summary_values.length) return null
+    if (summary_values.length === 0) return null
     if (summary_fn) return summary_fn(summary_values)
     const total = summary_values.reduce((sum, value) => sum + value, 0)
     return total / summary_values.length

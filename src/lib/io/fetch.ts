@@ -27,7 +27,7 @@ function default_download(data: string | Blob, filename: string, type: string) {
   link.style.display = `none`
   link.href = url
   link.download = filename
-  document.body.appendChild(link)
+  document.body.append(link)
   link.click()
   link.remove()
   URL.revokeObjectURL(url)

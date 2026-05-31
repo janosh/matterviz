@@ -1,7 +1,7 @@
 <script lang="ts">
   // ReferencePlane: 3D reference planes (axis-aligned, normal-defined, or point-defined)
   import type { Vec3 } from '$lib/math'
-  import { cross_3d, normalize_vec3 } from '$lib/math'
+  import { cross_3d, normalize_vec } from '$lib/math'
   import { T } from '@threlte/core'
   import * as THREE from 'three'
   import { create_to_threejs, span_or } from './reference-line'
@@ -82,7 +82,7 @@
       const v2: Vec3 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
       const cross = cross_3d(v1, v2)
       if (Math.hypot(...cross) < 1e-9) return null // collinear points
-      return create_plane_from_normal(normalize_vec3(cross), p1)
+      return create_plane_from_normal(normalize_vec(cross), p1)
     }
     return null
   }
@@ -111,9 +111,9 @@
 
   // Create plane from normal and point, scaled to cover bounding box
   function create_plane_from_normal(normal: Vec3, point: Vec3): THREE.BufferGeometry {
-    const normalized = normalize_vec3(normal)
+    const normalized = normalize_vec(normal)
     // Pick u perpendicular to normal (use axis least aligned with normal)
-    const u_dir = normalize_vec3(
+    const u_dir = normalize_vec(
       cross_3d(normalized, Math.abs(normalized[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]),
     )
     const v_dir = cross_3d(normalized, u_dir)

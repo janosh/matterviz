@@ -36,6 +36,6 @@ describe(`BohrAtom`, () => {
     expect(svg.getAttribute(`style`)).toBe(`width: 300px;`)
 
     const electron = document.querySelectorAll(`.electron`)
-    expect(electron.length).toBe(shells.reduce((a, b) => a + b, 0))
+    expect(electron).toHaveLength(shells.reduce((a, b) => a + b, 0))
   })
 })

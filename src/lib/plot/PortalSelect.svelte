@@ -115,12 +115,12 @@
         btn.setAttribute(`aria-selected`, `true`)
         selected_btn = btn
       }
-      li.appendChild(btn)
-      ul.appendChild(li)
+      li.append(btn)
+      ul.append(li)
     }
 
-    portal_el.appendChild(ul)
-    document.body.appendChild(portal_el)
+    portal_el.append(ul)
+    document.body.append(portal_el)
     update_position()
     dropdown_open = true
     active_close_fn = close_dropdown
@@ -181,8 +181,8 @@
       buttons[(idx + 1) % len]?.focus()
     } else if (evt.key === `ArrowUp`) {
       evt.preventDefault()
-      buttons[idx < 0 ? len - 1 : (idx - 1 + len) % len]?.focus()
-    } else if (evt.key === `Enter` && idx >= 0) {
+      buttons[idx === -1 ? len - 1 : (idx - 1 + len) % len]?.focus()
+    } else if (evt.key === `Enter` && idx !== -1) {
       evt.preventDefault()
       buttons[idx].click()
     }

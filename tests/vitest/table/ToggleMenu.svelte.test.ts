@@ -413,7 +413,7 @@ describe(`ToggleMenu`, () => {
       const headers = document.querySelectorAll(`.section-header`)
       expect(headers[0].textContent).toContain(`Group B`) // first encountered
       expect(headers[1].textContent).toContain(`Group A`)
-      expect(document.querySelectorAll(`.section`).length).toBe(3) // 2 groups + ungrouped
+      expect(document.querySelectorAll(`.section`)).toHaveLength(3) // 2 groups + ungrouped
     })
 
     it(`renders columns with same label but different keys`, () => {

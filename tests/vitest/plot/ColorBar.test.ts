@@ -36,7 +36,7 @@ describe(`ColorBar Horizontal (Default)`, () => {
     expect(cbar_div.style.height).toBe(`20px`)
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(6)
+    expect(tick_label_spans).toHaveLength(6)
     const first_tick = tick_label_spans[0] as HTMLElement
     expect(first_tick.style.left).toBe(`0%`)
     expect(first_tick.classList).toContain(`horizontal`)
@@ -87,7 +87,7 @@ describe(`ColorBar Vertical`, () => {
     expect(computed_style.height).not.toBe(`10px`)
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(6)
+    expect(tick_label_spans).toHaveLength(6)
 
     const first_tick = tick_label_spans[0] as HTMLElement
     expect(first_tick.style.top).toBe(`100%`) // 0 value is at the bottom
@@ -125,7 +125,7 @@ describe(`ColorBar Vertical`, () => {
     expect(cbar_div.style.height).toBe(`300px`)
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(7)
+    expect(tick_label_spans).toHaveLength(7)
 
     const middle_tick = tick_label_spans[3] as HTMLElement // Tick '0'
     expect(middle_tick.textContent).toBe(`0`)
@@ -149,7 +149,7 @@ describe(`ColorBar tick_side='inside'`, () => {
     })
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(4)
+    expect(tick_label_spans).toHaveLength(4)
 
     const first_visible_tick = tick_label_spans[0] as HTMLElement
     expect(first_visible_tick.textContent).toBe(`20`)
@@ -175,7 +175,7 @@ describe(`ColorBar tick_side='inside'`, () => {
     })
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(7)
+    expect(tick_label_spans).toHaveLength(7)
 
     const first_visible_tick = tick_label_spans[0] as HTMLElement
     expect(first_visible_tick.textContent).toBe(`20`) // Range [10, 90], 9 ticks total
@@ -212,7 +212,7 @@ describe(`ColorBar tick_side='inside'`, () => {
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
 
     // Inside ticks hide first/last, so we check ticks at 0.25, 0.5, 0.75
-    expect(tick_label_spans.length).toBe(3)
+    expect(tick_label_spans).toHaveLength(3)
 
     // Tick at 0.25 (Greenish - should be moderately light -> black text)
     const tick1 = tick_label_spans[0] as HTMLElement
@@ -276,7 +276,7 @@ describe(`ColorBar Date/Time Formatting`, () => {
     })
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(3)
+    expect(tick_label_spans).toHaveLength(3)
     expect(tick_label_spans[0].textContent).toBe(`2024-01-01`) // Start date
     expect(tick_label_spans[1].textContent).toBe(`2024-07-01`) // Mid-point (approx)
     expect(tick_label_spans[2].textContent).toBe(`2024-12-31`) // End date
@@ -301,7 +301,7 @@ describe(`ColorBar Date/Time Formatting`, () => {
     const tick_label_spans_date_fmt = document.querySelectorAll(
       `.colorbar > div.bar > span.tick-label`,
     )
-    expect(tick_label_spans_date_fmt.length).toBe(5)
+    expect(tick_label_spans_date_fmt).toHaveLength(5)
     expect(tick_label_spans_date_fmt[0].textContent).toBe(`00:00`)
     expect([`11:59`, `12:00`]).toContain(tick_label_spans_date_fmt[2].textContent)
     expect(tick_label_spans_date_fmt[4].textContent).toBe(`23:59`) // Near end of day
@@ -321,7 +321,7 @@ describe(`ColorBar Numeric Formatting`, () => {
     })
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(6)
+    expect(tick_label_spans).toHaveLength(6)
     expect(tick_label_spans[0].textContent).toBe(`0`)
     expect(tick_label_spans[1].textContent).toBe(`2`)
     expect(tick_label_spans[2].textContent).toBe(`4`)
@@ -342,7 +342,7 @@ describe(`ColorBar Numeric Formatting`, () => {
     })
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(5)
+    expect(tick_label_spans).toHaveLength(5)
     expect(tick_label_spans[0].textContent).toBe(`0%`)
     expect(tick_label_spans[1].textContent).toBe(`25%`)
     expect(tick_label_spans[2].textContent).toBe(`50%`)
@@ -367,7 +367,7 @@ describe(`ColorBar Numeric Formatting`, () => {
       })
 
       const ticks = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-      expect(ticks.length).toBe(expected.length)
+      expect(ticks).toHaveLength(expected.length)
       expected.forEach((text, idx) => expect(ticks[idx].textContent).toBe(text))
     },
   )
@@ -386,7 +386,7 @@ describe(`ColorBar Other Features`, () => {
     })
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(explicit_ticks.length)
+    expect(tick_label_spans).toHaveLength(explicit_ticks.length)
     explicit_ticks.forEach((tick_value, idx) => {
       expect(tick_label_spans[idx].textContent).toBe(tick_value.toString())
     })
@@ -399,7 +399,7 @@ describe(`ColorBar Other Features`, () => {
     })
 
     const tick_label_spans = document.querySelectorAll(`.colorbar > div.bar > span.tick-label`)
-    expect(tick_label_spans.length).toBe(4)
+    expect(tick_label_spans).toHaveLength(4)
     expect(tick_label_spans[0].textContent).toBe(`0`)
     expect(tick_label_spans[1].textContent).toBe(`33`)
     expect(tick_label_spans[2].textContent).toBe(`66`)

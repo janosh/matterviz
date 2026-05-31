@@ -117,7 +117,7 @@ describe(`parse_xy_file`, () => {
     // Generate 10000 points: background=1, peaks at their heights
     const lines = Array.from({ length: 10000 }, (_, idx) => {
       const peak_idx = peak_indices.indexOf(idx)
-      return `${10 + idx * 0.01} ${peak_idx >= 0 ? peak_heights[peak_idx] : 1}`
+      return `${10 + idx * 0.01} ${peak_idx !== -1 ? peak_heights[peak_idx] : 1}`
     }).join(`\n`)
 
     const result = parse_xy_file(lines)
@@ -853,7 +853,7 @@ describe(`real example files`, () => {
     if (!result) return // Type guard for TypeScript
     expect(result.x.length).toBeGreaterThan(0)
     expect(result.y.length).toBeGreaterThan(0)
-    expect(result.x.length).toBe(result.y.length)
+    expect(result.x).toHaveLength(result.y.length)
     // Verify max is normalized to 100
     expect(Math.max(...result.y)).toBeCloseTo(100, 0)
     // Min can be negative for background-subtracted data, but should be finite

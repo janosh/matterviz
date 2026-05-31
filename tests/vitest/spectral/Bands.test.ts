@@ -147,7 +147,7 @@ describe(`Bands component`, () => {
       highlight_regions: [{ y_min: 0.5, y_max: 1.5, label: `Window` }],
     })
     const fill_region_paths = document.querySelectorAll(`g.fill-region path[fill-opacity]`)
-    expect(fill_region_paths.length).toBe(1)
+    expect(fill_region_paths).toHaveLength(1)
   })
 
   it(`shows band-gap annotation when electronic gap exists`, async () => {

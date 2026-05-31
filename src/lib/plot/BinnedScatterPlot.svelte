@@ -574,7 +574,7 @@
   })
 
   let point_label_positions = $derived.by(() => {
-    if (!point_label_payloads.length) return {}
+    if (point_label_payloads.length === 0) return {}
 
     const filtered_data: InternalPoint<Metadata>[] = point_label_payloads.map(
       (payload) => ({
@@ -623,7 +623,7 @@
   }
 
   $effect(() => {
-    if (!label_measure_root || !point_label_payloads.length) return
+    if (!label_measure_root || point_label_payloads.length === 0) return
     void measure_point_labels()
   })
 

@@ -106,7 +106,7 @@
 
   // Calculate distance to nearest phase boundary (liquidus/solidus)
   const boundary_distance = $derived.by(() => {
-    if (!boundaries.length) return null
+    if (boundaries.length === 0) return null
     const { composition, temperature } = hover_info
     let min_dist: { type: string; delta_t: number } | null = null
 

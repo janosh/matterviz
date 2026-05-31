@@ -46,11 +46,11 @@ END_BLOCK_BANDGRID_3D
       expect(result).not.toBeNull()
 
       const band_data = result as { energies: number[][][][][] }
-      expect(band_data.energies.length).toBe(1) // 1 spin
-      expect(band_data.energies[0].length).toBe(1) // 1 band
-      expect(band_data.energies[0][0].length).toBe(3) // kx
-      expect(band_data.energies[0][0][0].length).toBe(3) // ky
-      expect(band_data.energies[0][0][0][0].length).toBe(3) // kz
+      expect(band_data.energies).toHaveLength(1) // 1 spin
+      expect(band_data.energies[0]).toHaveLength(1) // 1 band
+      expect(band_data.energies[0][0]).toHaveLength(3) // kx
+      expect(band_data.energies[0][0][0]).toHaveLength(3) // ky
+      expect(band_data.energies[0][0][0][0]).toHaveLength(3) // kz
     })
 
     test(`parses energy values correctly`, () => {
@@ -290,13 +290,13 @@ END_BLOCK_BANDGRID_3D`
 
       // Type assertion for FermiSurfaceData
       const fermi_data = result as {
-        isosurfaces: Array<{
+        isosurfaces: {
           vertices: number[][]
           faces: number[][]
           band_index: number
           spin: string
           dimensionality?: string
-        }>
+        }[]
         k_lattice: number[][]
         fermi_energy: number
         metadata: { n_bands: number; n_surfaces: number; has_spin: boolean }
@@ -363,7 +363,7 @@ END_BLOCK_BANDGRID_3D`
       expect(result).not.toBeNull()
       expect(`isosurfaces` in (result ?? {})).toBe(true)
 
-      const fermi_data = result as { isosurfaces: Array<{ area?: number }> }
+      const fermi_data = result as { isosurfaces: { area?: number }[] }
 
       // Area should be computed only from valid faces, not NaN
       expect(fermi_data.isosurfaces).toHaveLength(1)

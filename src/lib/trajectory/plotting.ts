@@ -187,7 +187,7 @@ function group_and_assign_series(
   // Group by unit
   const unit_map = new Map<string, DataSeries[]>()
   for (const srs of series) {
-    const unit = srs.unit || `dimensionless`
+    const unit = srs.unit ?? `dimensionless`
     const group = unit_map.get(unit) ?? []
     group.push(srs)
     unit_map.set(unit, group)
@@ -199,7 +199,7 @@ function group_and_assign_series(
       const priority = calculate_priority(unit, group_series)
       const has_default_visible = group_series.some((srs) => {
         const metadata = Array.isArray(srs.metadata) ? srs.metadata[0] : srs.metadata
-        const property_key = (metadata?.property_key as string) || srs.label || ``
+        const property_key = ((metadata?.property_key as string) || srs.label) ?? ``
         return is_default_visible(property_key, default_visible_properties)
       })
 
@@ -252,7 +252,7 @@ function extract_label_and_unit(
   const config = property_config[key] || property_config[key.toLowerCase()]
   if (config) return { clean_label: config.label, unit: config.unit }
   return {
-    clean_label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ` `),
+    clean_label: key.charAt(0).toUpperCase() + key.slice(1).replaceAll('_', ` `),
     unit: ``,
   }
 }
@@ -264,14 +264,14 @@ function calculate_priority(unit: string, group_series: DataSeries[]): number {
 
   // Energy properties get high priority
   const has_energy = group_series.some((srs) => {
-    const label = srs.label?.toLowerCase() || ``
+    const label = srs.label?.toLowerCase() ?? ``
     return ENERGY_PROPERTIES.some((prop) => label.includes(prop))
   })
   if (has_energy) return 10
 
   // Force properties get medium priority
   const has_force = group_series.some((srs) => {
-    const label = srs.label?.toLowerCase() || ``
+    const label = srs.label?.toLowerCase() ?? ``
     return FORCE_PROPERTIES.some((prop) => label.includes(prop))
   })
   if (has_force) return 100
@@ -283,8 +283,8 @@ function calculate_priority(unit: string, group_series: DataSeries[]): number {
 const normalize_property_key = (key: string): string => {
   const normalized = key
     .toLowerCase()
-    .replace(/<[^>]*>/g, ``)
-    .replace(/_/g, ` `)
+    .replaceAll(/<[^>]*>/g, ``)
+    .replaceAll('_', ` `)
     .trim()
   // Map common force property aliases to canonical form
   return [`fmax`, `f`, `force maximum`].includes(normalized) ? `force max` : normalized
@@ -354,7 +354,7 @@ export function toggle_series_visibility(
 function create_unit_groups_from_series(series: DataSeries[]): UnitGroup[] {
   const unit_map = new Map<string, DataSeries[]>()
   for (const srs of series) {
-    const unit = srs.unit || `dimensionless`
+    const unit = srs.unit ?? `dimensionless`
     const group = unit_map.get(unit) ?? []
     group.push(srs)
     unit_map.set(unit, group)
@@ -401,7 +401,7 @@ function update_group_visibility_and_axes(
     .sort((g1, g2) => g1.priority - g2.priority)
 
   const axis_map = new Map<UnitGroup, `y1` | `y2`>()
-  if (final_visible.length >= 1) axis_map.set(final_visible[0], `y1`)
+  if (final_visible.length > 0) axis_map.set(final_visible[0], `y1`)
   if (final_visible.length === 2) axis_map.set(final_visible[1], `y2`)
 
   // Apply to series
@@ -447,19 +447,19 @@ export function should_hide_plot(
 
 function get_axis_label(axis_series: DataSeries[]): string {
   const visible_series = axis_series.filter((srs) => srs.visible)
-  if (!visible_series.length) return `Value`
+  if (visible_series.length === 0) return `Value`
 
   const unit_groups = new Map<string, string[]>()
   visible_series.forEach((srs) => {
-    const unit = srs.unit || ``
-    const label = srs.label || `Value`
+    const unit = srs.unit ?? ``
+    const label = srs.label ?? `Value`
     if (!unit_groups.has(unit)) unit_groups.set(unit, [])
     const group = unit_groups.get(unit)
     if (group) group.push(label)
   })
 
   const unit_entries = Array.from(unit_groups.entries())
-  if (!unit_entries.length) return `Value`
+  if (unit_entries.length === 0) return `Value`
 
   const [unit, labels] = unit_entries[0]
   const unique_labels = [...new Set(labels)].sort().join(` / `)
@@ -470,7 +470,7 @@ export function generate_axis_labels(plot_series: DataSeries[]): {
   y1: string
   y2: string
 } {
-  if (!plot_series.length) return { y1: `Value`, y2: `Value` }
+  if (plot_series.length === 0) return { y1: `Value`, y2: `Value` }
 
   return {
     y1: get_axis_label(plot_series.filter((srs) => (srs.y_axis ?? `y1`) === `y1`)),
@@ -490,7 +490,7 @@ export function generate_streaming_plot_series(
   metadata_list: TrajectoryMetadata[],
   options: StreamingPlotOptions = {},
 ): DataSeries[] {
-  if (!metadata_list.length) return []
+  if (metadata_list.length === 0) return []
 
   const {
     property_config = trajectory_property_config,

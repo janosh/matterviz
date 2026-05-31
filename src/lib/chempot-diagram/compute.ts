@@ -988,7 +988,7 @@ export function compute_chempot_diagram(
   if (is_projection) {
     const col_indices = display_elements.map((element) => {
       const idx = compute_elements.indexOf(element)
-      if (idx < 0) {
+      if (idx === -1) {
         throw new Error(`Display element ${element} not present in compute element set`)
       }
       return idx

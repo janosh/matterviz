@@ -45,16 +45,15 @@ test(`is_binary function detects binary content`, () => {
   expect(lib.is_binary(`\0\0\0\0`)).toBe(true)
 
   // Content with many control characters should be binary
-  const control_chars = `\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F`
-  expect(lib.is_binary(control_chars + `some text`)).toBe(true)
+  const control_chars = `\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u000E\u000F\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D\u001E\u001F`
+  expect(lib.is_binary(`${control_chars}some text`)).toBe(true)
 
   // Content with mostly non-printable characters should be binary
-  const mostly_non_printable = `\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89` + `a`.repeat(5)
+  const mostly_non_printable = `\u0080\u0081\u0082\u0083\u0084\u0085\u0086\u0087\u0088\u0089${`a`.repeat(5)}`
   expect(lib.is_binary(mostly_non_printable)).toBe(true)
 
   // Content with mostly printable characters should not be binary
-  const mostly_printable =
-    `abcdefghijklmnopqrstuvwxyz\x80\x81\x82` + `abcdefghijklmnopqrstuvwxyz`.repeat(10)
+  const mostly_printable = `abcdefghijklmnopqrstuvwxyz\u0080\u0081\u0082${`abcdefghijklmnopqrstuvwxyz`.repeat(10)}`
   expect(lib.is_binary(mostly_printable)).toBe(false)
 })
 
@@ -70,7 +69,10 @@ describe(`Utility Functions`, () => {
 
   test.each([
     [`Hello\0World`, true],
-    [`Hello\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0FWorld`, true],
+    [
+      `Hello\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000A\u000B\u000C\u000D\u000E\u000FWorld`,
+      true,
+    ],
     [`Hello World`, false],
     [``, false],
   ])(`is_binary: %s → %s`, (input, expected) => {
@@ -83,7 +85,7 @@ describe(`Utility Functions`, () => {
 
     beforeEach(() => {
       mock_wrapper = document.createElement(`div`)
-      document.body.appendChild(mock_wrapper) // Must be connected to DOM
+      document.body.append(mock_wrapper) // Must be connected to DOM
       orig_fullscreen_element = document.fullscreenElement
       mock_wrapper.requestFullscreen = vi.fn().mockResolvedValue(undefined)
       document.exitFullscreen = vi.fn().mockResolvedValue(undefined)
@@ -116,8 +118,8 @@ describe(`Utility Functions`, () => {
 
       await lib.toggle_fullscreen(mock_wrapper)
 
-      expect(mock_wrapper[`requestFullscreen`]).toHaveBeenCalledTimes(should_enter ? 1 : 0)
-      expect(document[`exitFullscreen`]).toHaveBeenCalledTimes(should_exit ? 1 : 0)
+      expect(mock_wrapper.requestFullscreen).toHaveBeenCalledTimes(should_enter ? 1 : 0)
+      expect(document.exitFullscreen).toHaveBeenCalledTimes(should_exit ? 1 : 0)
     })
 
     test(`switches when different element is fullscreen`, async () => {
@@ -126,9 +128,9 @@ describe(`Utility Functions`, () => {
 
       await lib.toggle_fullscreen(mock_wrapper)
 
-      expect(document[`exitFullscreen`]).toHaveBeenCalledOnce()
+      expect(document.exitFullscreen).toHaveBeenCalledOnce()
       await new Promise((r) => setTimeout(r, 0))
-      expect(mock_wrapper[`requestFullscreen`]).toHaveBeenCalledOnce()
+      expect(mock_wrapper.requestFullscreen).toHaveBeenCalledOnce()
     })
 
     test.each([
@@ -149,8 +151,8 @@ describe(`Utility Functions`, () => {
 
     test(`returns early when no wrapper provided`, async () => {
       await lib.toggle_fullscreen(undefined)
-      expect(mock_wrapper[`requestFullscreen`]).not.toHaveBeenCalled()
-      expect(document[`exitFullscreen`]).not.toHaveBeenCalled()
+      expect(mock_wrapper.requestFullscreen).not.toHaveBeenCalled()
+      expect(document.exitFullscreen).not.toHaveBeenCalled()
     })
 
     test(`returns early when wrapper not connected to DOM`, async () => {

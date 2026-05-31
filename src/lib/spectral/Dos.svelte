@@ -308,7 +308,7 @@
   )
 
   let x_range = $derived.by((): [number, number] | undefined => {
-    if (!series_data.length) return undefined
+    if (series_data.length === 0) return undefined
     const all_x = series_data.flatMap((srs) => srs.x)
     const min_x = Math.min(...all_x), max_x = Math.max(...all_x)
     // For horizontal orientation with mirror mode, allow negative values (mirrored densities)
@@ -318,7 +318,7 @@
   })
 
   let y_range = $derived.by((): [number, number] | undefined => {
-    if (!series_data.length) return undefined
+    if (series_data.length === 0) return undefined
     const all_y = series_data.flatMap((srs) => srs.y)
     const min_y = Math.min(...all_y), max_y = Math.max(...all_y)
     // For vertical orientation with mirror mode, allow negative values (mirrored densities)
@@ -379,7 +379,7 @@
   // Auto-detect sigma range based on frequency/energy range
   let effective_sigma_range = $derived.by((): [number, number] => {
     if (sigma_range) return sigma_range
-    if (!all_freqs.length) return [0, 1]
+    if (all_freqs.length === 0) return [0, 1]
     const freq_range = Math.max(...all_freqs) - Math.min(...all_freqs)
     // Reasonable sigma range: 0 to ~5% of total range
     const max_sigma = Math.max(0.1, freq_range * 0.05)

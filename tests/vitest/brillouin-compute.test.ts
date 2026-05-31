@@ -105,9 +105,9 @@ describe(`compute_brillouin_zone`, () => {
 
   test(`cubic BZ: 8 vertices, 12 triangulated faces, 12 edges`, () => {
     const bz = compute_brillouin_zone(reference_data.cubic.reciprocal_lattice as Matrix3x3, 1)
-    expect(bz.vertices.length).toBe(8)
-    expect(bz.faces.length).toBe(12)
-    expect(bz.edges.length).toBe(12)
+    expect(bz.vertices).toHaveLength(8)
+    expect(bz.faces).toHaveLength(12)
+    expect(bz.edges).toHaveLength(12)
   })
 
   test(`inversion symmetry`, () => {
@@ -128,7 +128,7 @@ describe(`BZ edge filtering`, () => {
     [`hexagonal`, 18],
   ] as [keyof typeof reference_data, number][])(`%s has %d edges`, (name, expected_count) => {
     const bz = compute_brillouin_zone(reference_data[name].reciprocal_lattice as Matrix3x3, 1)
-    expect(bz.edges.length).toBe(expected_count)
+    expect(bz.edges).toHaveLength(expected_count)
   })
 
   test(`valid edge topology: no duplicates, edges shared by 2 faces`, () => {
@@ -189,7 +189,7 @@ describe(`generate_bz_vertices`, () => {
 
   test(`cubic BZ: 8 vertices at corners`, () => {
     const vertices = generate_bz_vertices(k_lattice, 1)
-    expect(vertices.length).toBe(8)
+    expect(vertices).toHaveLength(8)
     const k_max = Math.PI / 5
     vertices.forEach((v) => v.forEach((c) => expect(Math.abs(c)).toBeCloseTo(k_max, 5)))
   })
@@ -244,9 +244,9 @@ describe(`compute_convex_hull`, () => {
     `%s: %d vertices, %d faces, %d edges`,
     (_, vertices, v_count, f_count, e_count) => {
       const hull = compute_convex_hull(vertices)
-      expect(hull.vertices.length).toBe(v_count)
-      expect(hull.faces.length).toBe(f_count)
-      expect(hull.edges.length).toBe(e_count)
+      expect(hull.vertices).toHaveLength(v_count)
+      expect(hull.faces).toHaveLength(f_count)
+      expect(hull.edges).toHaveLength(e_count)
     },
   )
 

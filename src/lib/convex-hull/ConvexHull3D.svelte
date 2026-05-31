@@ -963,7 +963,7 @@
 
   // Formation energy color bar helpers
   const e_form_range = $derived.by((): [number, number] => {
-    const min_fe = plot_entries.length ? energy_range.min : -1
+    const min_fe = plot_entries.length > 0 ? energy_range.min : -1
     return [min_fe, 0]
   })
 

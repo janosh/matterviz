@@ -51,7 +51,7 @@ describe(`extract_fermi_surface`, () => {
     const band_data = create_spherical_band_data(10, 9) // Fermi level at radius^2 = 9
     const result = extract_fermi_surface(band_data)
 
-    expect(result.isosurfaces.length).toBe(1)
+    expect(result.isosurfaces).toHaveLength(1)
     expect(result.fermi_energy).toBe(9)
     expect(result.reciprocal_cell).toBe(`wigner_seitz`)
   })
@@ -73,7 +73,7 @@ describe(`extract_fermi_surface`, () => {
     const band_data = create_spherical_band_data(10, 100) // Fermi level too high
     const result = extract_fermi_surface(band_data)
 
-    expect(result.isosurfaces.length).toBe(0)
+    expect(result.isosurfaces).toHaveLength(0)
     expect(result.metadata.total_area).toBe(0)
   })
 

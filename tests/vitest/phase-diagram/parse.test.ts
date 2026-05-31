@@ -40,7 +40,7 @@ describe(`parse_tdb`, () => {
 PHASE FCC_A1 %A 2 1 1 !`
     const result = parse_tdb(content)
     const phases = result.data?.phases ?? []
-    expect(phases.length).toBe(2)
+    expect(phases).toHaveLength(2)
     const liquid = phases.find((phase) => phase.name === `LIQUID`)
     expect(liquid?.sublattice_count).toBe(1)
     expect(liquid?.sublattice_sites).toEqual([1.0])

@@ -169,7 +169,7 @@ export function validate_trajectory(trajectory: TrajectoryType): string[] {
 
 export function get_trajectory_stats(trajectory: TrajectoryType): Record<string, unknown> {
   const { frames, total_frames, indexed_frames, plot_metadata } = trajectory
-  const frame_count = total_frames || frames.length
+  const frame_count = total_frames ?? frames.length
   const stats: Record<string, unknown> = {
     frame_count,
     is_indexed: trajectory.is_indexed ?? false,

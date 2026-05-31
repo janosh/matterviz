@@ -42,7 +42,7 @@ export type Site = {
 }
 
 export const LATTICE_PARAM_KEYS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
-export type LatticeParams = { [key in (typeof LATTICE_PARAM_KEYS)[number]]: number }
+export type LatticeParams = Record<(typeof LATTICE_PARAM_KEYS)[number], number>
 
 export type LatticeType = {
   matrix: math.Matrix3x3
