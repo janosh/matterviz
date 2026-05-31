@@ -32,6 +32,7 @@
     y_axis = $bindable({}),
     x_positions = $bindable(),
     reference_frequency = null,
+    highlighted_qpoint_index = null,
     ribbon_config = {},
     fermi_level = undefined,
     units = $bindable(`THz`),
@@ -57,6 +58,8 @@
     show_legend?: boolean
     x_positions?: Record<string, [number, number]>
     reference_frequency?: number | null
+    // Q-point index to highlight with a vertical line (synced from BZ k-path hover)
+    highlighted_qpoint_index?: number | null
     ribbon_config?: RibbonConfig | Record<string, RibbonConfig>
     fermi_level?: number // Fermi level for electronic bands (auto-detected if not provided)
     units?: FrequencyUnit // Phonon frequency display units (electronic always eV)
@@ -693,6 +696,13 @@
     return `No valid band structure data to display.`
   })
 
+  // X-position of the externally hovered q-point (from BZ k-path), for the highlight line
+  let highlight_x = $derived.by(() => {
+    if (highlighted_qpoint_index == null) return null
+    const bs = Object.values(band_structs_dict)[0]
+    return bs ? helpers.qpoint_x_position(bs, highlighted_qpoint_index, x_positions ?? {}) : null
+  })
+
   let display = $state({ x_grid: false, y_grid: true, y_zero_line: true })
 </script>
 {#if has_series && !is_strict_path_error}
@@ -884,6 +894,23 @@
           opacity="var(--bands-symmetry-line-opacity, 0.5)"
         />
       {/each}
+
+      <!-- Hovered q-point vertical line (synced from Brillouin zone k-path hover) -->
+      {#if highlight_x != null}
+        {@const hover_x = x_scale_fn(highlight_x)}
+        {#if Number.isFinite(hover_x)}
+          <line
+            x1={hover_x}
+            x2={hover_x}
+            y1={pad.t}
+            y2={height - pad.b}
+            stroke="var(--bands-hover-line-color, #ff6b35)"
+            stroke-width="var(--bands-hover-line-width, 2)"
+            opacity="var(--bands-hover-line-opacity, 0.85)"
+            pointer-events="none"
+          />
+        {/if}
+      {/if}
 
       <!-- Shared geometry for Fermi level and gap annotations -->
       {@const fermi_y = effective_fermi_level !== undefined

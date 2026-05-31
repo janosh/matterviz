@@ -1,8 +1,36 @@
 import { Line } from '$lib'
+import { resolve_line_tween } from '$lib/plot/utils'
 import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
 import { sineIn } from 'svelte/easing'
 import { describe, expect, test } from 'vitest'
+
+describe(`resolve_line_tween (path-morph budget)`, () => {
+  test.each([
+    {
+      name: `both at budget → morph`,
+      load: { series: 16, points: 8000 },
+      expected: undefined,
+    },
+    {
+      name: `series over budget → disabled`,
+      load: { series: 17, points: 0 },
+      expected: { duration: 0 },
+    },
+    {
+      name: `points over budget → disabled`,
+      load: { series: 0, points: 8001 },
+      expected: { duration: 0 },
+    },
+  ])(`$name`, ({ load, expected }) => {
+    expect(resolve_line_tween(undefined, load)).toEqual(expected)
+  })
+
+  test(`explicit tween always wins, even far over budget`, () => {
+    const tween = { duration: 500 }
+    expect(resolve_line_tween(tween, { series: 999, points: 999_999 })).toBe(tween)
+  })
+})
 
 describe(`Line`, () => {
   // Parameterized test for default and custom styles

@@ -803,6 +803,8 @@ export function extract_k_path_points(
 
 // Fold a Cartesian reciprocal-space point into the first (Wigner-Seitz) Brillouin zone
 // by choosing the periodic image with the smallest norm (minimum-image convention).
+// The ±1 search (27 images) suffices for typical reciprocal lattices; extremely skewed
+// cells could in principle need a wider search.
 function fold_to_first_bz(cart: Vec3, recip: Matrix3x3): Vec3 {
   let best = cart
   let best_norm = cart[0] ** 2 + cart[1] ** 2 + cart[2] ** 2
@@ -836,6 +838,33 @@ export function find_qpoint_at_distance(
       Math.abs(dist - target) < Math.abs(distance[closest] - target) ? idx : closest,
     0,
   )
+}
+
+// Rescaled x-position of a q-point index along the band plot path. Inverse of
+// find_qpoint_at_rescaled_x, used to highlight a q-point hovered in the Brillouin zone.
+// Returns null if the index doesn't fall on a plotted (non-discontinuity) branch.
+export function qpoint_x_position(
+  band_struct: types.BaseBandStructure,
+  qpoint_index: number,
+  x_positions: Record<string, [number, number]>,
+): number | null {
+  if (!band_struct?.branches?.length || !x_positions) return null
+
+  for (const branch of band_struct.branches) {
+    if (qpoint_index < branch.start_index || qpoint_index > branch.end_index) continue
+    const start_label = band_struct.qpoints[branch.start_index]?.label ?? undefined
+    const end_label = band_struct.qpoints[branch.end_index]?.label ?? undefined
+    const range = x_positions[get_segment_key(start_label, end_label)]
+    if (!range) continue
+
+    const [x_start, x_end] = range
+    const d_start = band_struct.distance[branch.start_index]
+    const d_end = band_struct.distance[branch.end_index]
+    if (d_end === d_start) return x_start // discontinuity / zero-length segment
+    const ratio = (band_struct.distance[qpoint_index] - d_start) / (d_end - d_start)
+    return x_start + ratio * (x_end - x_start)
+  }
+  return null
 }
 
 // Find q-point index from rescaled x-coordinate (used in band structure plots)

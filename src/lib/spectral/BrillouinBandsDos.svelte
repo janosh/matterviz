@@ -84,9 +84,13 @@
       )
       : null,
   )
+  // Q-point hovered directly on the BZ k-path (reverse direction: BZ -> bands/DOS)
+  let bz_hovered_qpoint_index = $state<number | null>(null)
+  // Unified hovered q-point: a band-point hover takes priority, else a BZ k-path hover
+  let active_qpoint_index = $derived(hovered_qpoint_index ?? bz_hovered_qpoint_index)
   let hovered_k_point = $derived(
-    hovered_qpoint_index !== null
-      ? (k_path_points[hovered_qpoint_index] as Vec3)
+    active_qpoint_index !== null
+      ? (k_path_points[active_qpoint_index] as Vec3)
       : null,
   )
   const [desktop_width, tablet_width] = [1200, 600]
@@ -170,7 +174,11 @@
   class="bands-dos-brillouin {screen_class} {rest.class ?? ``}"
   bind:clientWidth
 >
-  {@render children?.({ hovered_frequency, hovered_band_point, hovered_qpoint_index })}
+  {@render children?.({
+    hovered_frequency,
+    hovered_band_point,
+    hovered_qpoint_index: active_qpoint_index,
+  })}
   <Bands
     style="grid-area: bands; min-width: 0; min-height: 0; overflow: hidden"
     {band_structs}
@@ -180,6 +188,7 @@
     bind:y_axis={bands_y_axis}
     bind:x_positions={bands_x_positions}
     reference_frequency={hovered_frequency}
+    highlighted_qpoint_index={active_qpoint_index}
     on_point_hover={(event: ScatterHandlerEvent | null) => {
       hovered_band_point = event?.point ?? null
       bands_props.on_point_hover?.(event)
@@ -199,7 +208,8 @@
         : []
     ) ?? []}
     {hovered_k_point}
-    {hovered_qpoint_index}
+    hovered_qpoint_index={active_qpoint_index}
+    on_kpath_hover={(idx) => (bz_hovered_qpoint_index = idx)}
     {...bz_props}
   />
 

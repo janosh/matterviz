@@ -23,6 +23,7 @@ import {
   normalize_densities,
   normalize_dos,
   pretty_sym_point,
+  qpoint_x_position,
   ranges_equal,
   scale_segment_distances,
   shift_to_fermi,
@@ -621,6 +622,26 @@ describe(`find_qpoint_at_rescaled_x`, () => {
     { x: 1.25, expected: 4, label: `middle of X-K segment` },
   ])(`maps rescaled x=$x to qpoint index $expected ($label)`, ({ x, expected }) => {
     expect(find_qpoint_at_rescaled_x(rescaled_bs, x, x_pos)).toBe(expected)
+  })
+
+  it.each([
+    { idx: 0, expected: 0.0, label: `Γ` },
+    { idx: 3, expected: 1.0, label: `X` },
+    { idx: 5, expected: 1.5, label: `K` },
+    { idx: 4, expected: 1.25, label: `middle of X-K` },
+  ])(
+    `qpoint_x_position maps index $idx to rescaled x=$expected ($label)`,
+    ({ idx, expected }) => {
+      expect(qpoint_x_position(rescaled_bs, idx, x_pos)).toBeCloseTo(expected, 6)
+    },
+  )
+
+  it(`qpoint_x_position round-trips with find_qpoint_at_rescaled_x`, () => {
+    for (const idx of [0, 3, 5]) {
+      const x = qpoint_x_position(rescaled_bs, idx, x_pos)
+      expect(x).not.toBeNull()
+      expect(find_qpoint_at_rescaled_x(rescaled_bs, x as number, x_pos)).toBe(idx)
+    }
   })
 
   it(`maps intermediate rescaled x in GAMMA-X correctly`, () => {

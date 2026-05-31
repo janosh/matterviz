@@ -18,7 +18,7 @@ const trajectory: TrajectoryType = {
 
 // Unmount between tests so each viewer's <svelte:window> keydown listener is
 // removed — otherwise a lingering hovered viewer responds to later tests' keys.
-const mounted: Record<string, unknown>[] = []
+const mounted: ReturnType<typeof mount>[] = []
 afterEach(() => {
   for (const app of mounted.splice(0)) void unmount(app)
 })

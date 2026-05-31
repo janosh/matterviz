@@ -1,3 +1,19 @@
+import type { TweenOptions } from 'svelte/motion'
+
+// Path-morph (interpolatePath) tweening scales poorly with many simultaneously morphing
+// <path> elements (band structures with 100+ bands) or a single very long line. Disable
+// the morph above these budgets unless the caller explicitly opts into a tween.
+export const LINE_TWEEN = { max_series: 16, max_points: 8000 }
+
+export const resolve_line_tween = (
+  line_tween: TweenOptions<string> | undefined,
+  load: { series: number; points: number },
+): TweenOptions<string> | undefined =>
+  line_tween ??
+  (load.series > LINE_TWEEN.max_series || load.points > LINE_TWEEN.max_points
+    ? { duration: 0 }
+    : undefined)
+
 export function calc_auto_range(values: number[]): [number, number] {
   const finite_values = values.filter(Number.isFinite)
   if (finite_values.length === 0) return [0, 1]

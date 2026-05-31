@@ -63,6 +63,8 @@
     font-weight: 500;
     background: #666;
     color: white;
+  }
+  .bz-tooltip-badge:not(:first-child) {
     margin-left: 6px;
   }
   .bz-tooltip-row {

@@ -46,12 +46,10 @@
 
   const update_url = (filename: string) => {
     if (!sync_url || !browser) return
-    page.url.searchParams.set(`file`, filename)
-    goto(`${page.url.pathname}?${page.url.searchParams.toString()}`, {
-      replaceState: true,
-      keepFocus: true,
-      noScroll: true,
-    })
+    // Clone page.url (read-only reactive state from $app/state) instead of mutating in place
+    const url = new URL(page.url)
+    url.searchParams.set(`file`, filename)
+    goto(url, { replaceState: true, keepFocus: true, noScroll: true })
   }
 
   const load_file = async (file: FileInfo) => {

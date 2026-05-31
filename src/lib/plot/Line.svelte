@@ -62,20 +62,15 @@
   // every frame, per line). When the tween is disabled (duration <= 0) bind the
   // path directly and skip the Tween entirely for zero per-frame cost.
   let tween_disabled = $derived.by(() => {
-    const duration = line_tween?.duration ?? default_tween.duration
+    const duration = line_tween.duration ?? default_tween.duration
     return typeof duration === `number` && duration <= 0
   })
 
   // Tween objects are stateful - create once, update target via effect
   // untrack() explicitly captures initial tween config (intentional - config set once at mount)
-  const tweened_line = new Tween(
-    ``,
-    untrack(() => ({ ...default_tween, ...line_tween })),
-  )
-  const tweened_area = new Tween(
-    ``,
-    untrack(() => ({ ...default_tween, ...line_tween })),
-  )
+  const tween_opts = untrack(() => ({ ...default_tween, ...line_tween }))
+  const tweened_line = new Tween(``, tween_opts)
+  const tweened_area = new Tween(``, tween_opts)
 
   $effect.pre(() => {
     if (tween_disabled) return // paths bind line_path/area_path directly below

@@ -69,6 +69,10 @@ export function resolve_series_ref(
 // Used to evaluate a boundary's y on its own curve (for endpoint clipping and where-condition
 // detection) so interpolated points lie exactly on the rendered line.
 
+// Mirrors d3-shape's own sign helper (returns 1 for 0, unlike Math.sign) so
+// monotone_tangents reproduces curveMonotoneX exactly. Do NOT change to return 0
+// for 0: that would diverge from the rendered curve. It's harmless either way here
+// since s0/s1 === 0 forces the Math.min term below to 0 regardless.
 const sign = (val: number): number => (val < 0 ? -1 : 1)
 
 // Per-knot tangents reproducing d3 curveMonotoneX (slope3 interior, slope2 endpoints)

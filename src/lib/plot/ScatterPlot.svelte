@@ -121,6 +121,7 @@
     generate_ticks,
     get_nice_data_range,
   } from './scales'
+  import { resolve_line_tween } from './utils'
 
   const in_range = (val: number | null | undefined, lo: number, hi: number) =>
     val != null && !isNaN(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
@@ -794,11 +795,9 @@
       ),
   )
 
-  // Budgets above which path-morph tweens are disabled. Many simultaneously morphing
-  // <path> elements cause DOM/reactivity churn (band structures with 100+ bands),
-  // while a single very long line is bounded by interpolatePath CPU - cap both.
-  const LINE_TWEEN_MAX_SERIES = 16
-  const LINE_TWEEN_MAX_POINTS = 8000
+  // Tally line series/points to budget path-morph tweens (see resolve_line_tween).
+  // Disabling the morph for high-cardinality plots (e.g. phonon bands) keeps them
+  // snappy; Line.svelte short-circuits the Tween when duration <= 0.
   let line_tween_load = $derived.by(() => {
     if (!styles.show_lines) return { series: 0, points: 0 }
     let [n_series, n_points] = [0, 0]
@@ -809,17 +808,7 @@
     }
     return { series: n_series, points: n_points }
   })
-  let morph_too_costly = $derived(
-    line_tween_load.series > LINE_TWEEN_MAX_SERIES ||
-      line_tween_load.points > LINE_TWEEN_MAX_POINTS,
-  )
-  // interpolatePath morphing scales poorly with many lines/points (e.g. phonon band
-  // structures). Disable the morph above the budgets unless the caller explicitly
-  // opts into a tween, keeping high-cardinality plots snappy while small plots still
-  // animate. Line.svelte short-circuits the Tween when duration <= 0.
-  let effective_line_tween = $derived(
-    line_tween ?? (morph_too_costly ? { duration: 0 } : undefined),
-  )
+  let effective_line_tween = $derived(resolve_line_tween(line_tween, line_tween_load))
 
   // Obstacle field for legend/colorbar auto-placement. Sampling only data points lets the
   // legend land on top of a steep connecting line whose markers are sparse (e.g. y=x^2), so
