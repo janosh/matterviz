@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: latest
 
-      - run: npx vp install
+      - run: corepack enable && pnpm install
 
       - name: Copy site data to static
         run: |
@@ -31,7 +31,7 @@ jobs:
       - name: Decompress .json.gz data for rolldown glob resolution
         run: find src/site -name '*.json.gz' -exec sh -c 'gunzip -k "$1"' _ {} \;
 
-      - run: npx vp build
+      - run: pnpm exec vp build
 
       - uses: actions/upload-pages-artifact@v3
         with:

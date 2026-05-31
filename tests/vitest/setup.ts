@@ -12,7 +12,7 @@ import { beforeEach, expect, vi } from 'vitest'
 // API (getItem/setItem/etc). Vitest's populateGlobal skips overriding globals
 // already present unless explicitly allowlisted — localStorage isn't.
 // Replace with happy-dom's spec-compliant Storage when methods are missing.
-if (typeof localStorage.getItem !== `function`) {
+if (typeof localStorage === `undefined` || typeof localStorage.getItem !== `function`) {
   const { Storage } = await import(`happy-dom`)
   Object.defineProperty(globalThis, `localStorage`, {
     value: new Storage(),

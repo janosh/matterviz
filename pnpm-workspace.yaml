@@ -1,0 +1,5 @@
+# Allow the shared lint-config git dependency to run its `prepare` build
+# (esbuild index.ts -> index.js) during install. pnpm blocks git-dep build
+# scripts by default (ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED).
+allowBuilds:
+  '@janosh/vite-config': true
