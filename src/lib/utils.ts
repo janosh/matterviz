@@ -26,14 +26,18 @@ export const escape_html = (unsafe_string: string): string =>
     .replaceAll(`'`, `&#39;`)
 
 // Normalize unicode minus (U+2212) to ASCII hyphen-minus.
-export const normalize_unicode_minus = (value: string): string => value.replace(/−/g, `-`)
+export const normalize_unicode_minus = (value: string): string => value.replaceAll('−', `-`)
 
 // Normalize scientific notation variants (d/D exponent, Mathematica *^).
 export const normalize_scientific_notation = (value: string): string =>
-  normalize_unicode_minus(value).toLowerCase().replace(/d/g, `e`).replace(/\*\^/g, `e`)
+  normalize_unicode_minus(value).toLowerCase().replaceAll('d', `e`).replaceAll('*^', `e`)
+
+// Coerce an unknown thrown value into an Error (for typed Promise rejections / error callbacks).
+export const to_error = (value: unknown): Error =>
+  value instanceof Error ? value : new Error(String(value))
 
 export function make_change_detector(): (value: unknown) => boolean {
-  const unset = Symbol()
+  const unset = Symbol(`unset`)
   let prev: unknown = unset
   return (value: unknown) => {
     const changed = prev !== unset && value !== prev
@@ -46,7 +50,7 @@ export function make_change_detector(): (value: unknown) => boolean {
 // Converts `-` → `+`, `_` → `/`, restores padding, then decodes.
 // Returns undefined if decoding fails.
 export function decode_url_safe_base64(encoded: string): string | undefined {
-  const std_b64 = encoded.replace(/-/g, `+`).replace(/_/g, `/`)
+  const std_b64 = encoded.replaceAll('-', `+`).replaceAll('_', `/`)
   const padded = std_b64 + `=`.repeat((4 - (std_b64.length % 4)) % 4)
   try {
     return atob(padded)

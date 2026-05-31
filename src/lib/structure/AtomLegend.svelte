@@ -128,8 +128,8 @@
       // Use unique_values instead of values to avoid undefined colors from duplicates
       property_colors?.unique_values?.flatMap((val) => {
         const idx = property_colors.values.indexOf(val)
-        return idx >= 0 ? [[val, property_colors.colors[idx]]] : []
-      }) ?? [],
+        return idx !== -1 ? [[val, property_colors.colors[idx]]] : []
+      }),
     ),
   )
 

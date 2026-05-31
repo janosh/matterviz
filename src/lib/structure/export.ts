@@ -126,6 +126,7 @@ export function generate_mtl_content(scene: Scene): string {
     const materials = Array.isArray(object.material) ? object.material : [object.material]
     for (const mat of materials) {
       // Skip if already processed or no name
+      // oxlint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- empty name should use default
       const mat_name = mat.name || `default_material`
       if (processed_materials.has(mat_name)) continue
       processed_materials.add(mat_name)
@@ -347,10 +348,10 @@ function convert_instanced_meshes_to_regular(scene: Scene): Scene {
 // Sanitize string for use in filenames by removing problematic characters.
 const sanitize_filename_part = (text: string): string =>
   text
-    .replace(/<\/?[^>]+>/g, ``) // strip HTML tags
-    .replace(/[/\\:*?"<>|]/g, `_`) // replace filesystem-invalid chars
-    .replace(/_+/g, `_`) // condense consecutive underscores
-    .replace(/^_|_$/g, ``) // remove leading/trailing underscores
+    .replaceAll(/<\/?[^>]+>/g, ``) // strip HTML tags
+    .replaceAll(/[/\\:*?"<>|]/g, `_`) // replace filesystem-invalid chars
+    .replaceAll(/_+/g, `_`) // condense consecutive underscores
+    .replaceAll(/^_|_$/g, ``) // remove leading/trailing underscores
 
 export function create_structure_filename(
   structure: AnyStructure | undefined,
@@ -501,7 +502,7 @@ function get_cif_block_name(structure: AnyStructure): string {
     if (structure.id) {
       // Remove invalid CIF characters (keep alphanumerics and underscores)
       // and condense consecutive underscores for cleaner block names
-      return structure.id.replace(/[^a-zA-Z0-9_]/g, `_`).replace(/_+/g, `_`)
+      return structure.id.replaceAll(/[^a-zA-Z0-9_]/g, `_`).replaceAll(/_+/g, `_`)
     }
     return `structure`
   }
@@ -616,8 +617,8 @@ export function structure_to_poscar_str(structure?: AnyStructure): string {
   // Use plain text formula for POSCAR title to avoid HTML tags
   const formula = get_electro_neg_formula(structure, true)
   const title =
-    structure.id ||
-    (formula && formula !== `Unknown` ? formula : null) ||
+    structure.id || // oxlint-disable-line @typescript-eslint/prefer-nullish-coalescing -- first non-empty string
+    (formula && formula !== `Unknown` ? formula : null) || // oxlint-disable-line @typescript-eslint/prefer-nullish-coalescing -- first non-empty string
     `Generated from structure`
   lines.push(title)
   lines.push(`1.0`) // Scale factor (1.0 for direct coordinates)

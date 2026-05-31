@@ -127,7 +127,7 @@ describe(`StructureExportPane`, () => {
 
       await vi.waitFor(() => {
         expect(str_fn).toHaveBeenCalledWith(simple_structure)
-        expect(navigator.clipboard[`writeText`]).toHaveBeenCalledWith(expected_content)
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expected_content)
       })
     },
   )
@@ -340,16 +340,16 @@ describe(`StructureExportPane`, () => {
       h4.textContent?.includes(`Export as text`),
     )?.nextElementSibling
 
-    const download_buttons = Array.from(text_section?.querySelectorAll(`button`) || []).filter(
+    const download_buttons = Array.from(text_section?.querySelectorAll(`button`) ?? []).filter(
       (btn) => btn.title?.includes(`Download`),
     )
-    expect(download_buttons.length).toBe(4)
+    expect(download_buttons).toHaveLength(4)
     download_buttons.forEach((btn) => expect(btn.title).toContain(`Download`))
 
-    const copy_buttons = Array.from(text_section?.querySelectorAll(`button`) || []).filter(
+    const copy_buttons = Array.from(text_section?.querySelectorAll(`button`) ?? []).filter(
       (btn) => btn.title?.includes(`Copy`) && btn.title?.includes(`clipboard`),
     )
-    expect(copy_buttons.length).toBe(4)
+    expect(copy_buttons).toHaveLength(4)
     copy_buttons.forEach((btn) => {
       expect(btn.title).toContain(`Copy`)
       expect(btn.title).toContain(`clipboard`)

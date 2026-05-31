@@ -34,12 +34,10 @@ import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
 import { convex_hull_2d, polygon_centroid, solve_linear_system } from '$lib/math'
 import { readFileSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 
-const test_dir = dirname(fileURLToPath(import.meta.url))
+const test_dir = import.meta.dirname
 
 function load_gzip_json(filename: string): PhaseData[] {
   const compressed_bytes = readFileSync(`${test_dir}/${filename}`)
@@ -121,9 +119,9 @@ function dedup_vertices(pts: number[][], tol: number = 1e-4): number[][] {
 
 describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
   test(`dim`, () => {
-    expect(cpd_binary.elements.length).toBe(2)
-    expect(cpd_ternary.elements.length).toBe(3)
-    expect(cpd_ternary_formal.elements.length).toBe(3)
+    expect(cpd_binary.elements).toHaveLength(2)
+    expect(cpd_ternary.elements).toHaveLength(3)
+    expect(cpd_ternary_formal.elements).toHaveLength(3)
   })
 
   test(`elements sorted alphabetically`, () => {
@@ -131,9 +129,9 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
   })
 
   test(`el_refs (absolute)`, () => {
-    expect(cpd_ternary.el_refs[`Li`].energy).toBeCloseTo(-1.91301487, 5)
-    expect(cpd_ternary.el_refs[`Fe`].energy).toBeCloseTo(-6.5961471, 5)
-    expect(cpd_ternary.el_refs[`O`].energy).toBeCloseTo(-25.54966885, 5)
+    expect(cpd_ternary.el_refs.Li.energy).toBeCloseTo(-1.91301487, 5)
+    expect(cpd_ternary.el_refs.Fe.energy).toBeCloseTo(-6.5961471, 5)
+    expect(cpd_ternary.el_refs.O.energy).toBeCloseTo(-25.54966885, 5)
   })
 
   test(`el_refs (formal) are zero`, () => {
@@ -259,7 +257,7 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
     expect(actual_pts, `Domain missing for ${our_key}`).toBeDefined()
     const sorted_actual = sort_rows(dedup_vertices(actual_pts))
     const sorted_expected = sort_rows(reorder_cols(pmg_vertices))
-    expect(sorted_actual.length).toBe(sorted_expected.length)
+    expect(sorted_actual).toHaveLength(sorted_expected.length)
     for (let idx = 0; idx < sorted_expected.length; idx++) {
       for (let jdx = 0; jdx < sorted_expected[idx].length; jdx++) {
         expect(sorted_actual[idx][jdx]).toBeCloseTo(sorted_expected[idx][jdx], 4)
@@ -307,8 +305,8 @@ describe(`physical invariants`, () => {
   test(`elemental domains touch the el_ref energy axis`, () => {
     // For absolute chempots: the Fe domain should have vertices where
     // mu_Fe = E_ref(Fe) (the elemental reference energy per atom)
-    const fe_ref_e = cpd_ternary.el_refs[`Fe`].energy
-    const fe_domain = dedup_vertices(cpd_ternary.domains[`Fe`])
+    const fe_ref_e = cpd_ternary.el_refs.Fe.energy
+    const fe_domain = dedup_vertices(cpd_ternary.domains.Fe)
     // Fe column is index 0 (alphabetical: Fe, Li, O)
     const fe_vals = fe_domain.map((pt) => pt[0])
     expect(fe_vals.some((val) => Math.abs(val - fe_ref_e) < 0.01)).toBe(true)
@@ -375,12 +373,12 @@ describe(`binary system (2 elements)`, () => {
   })
 
   test(`elemental ref energies match input`, () => {
-    expect(binary_simple.el_refs[`A`].energy_per_atom).toBe(-2.0)
-    expect(binary_simple.el_refs[`B`].energy_per_atom).toBe(-3.0)
+    expect(binary_simple.el_refs.A.energy_per_atom).toBe(-2.0)
+    expect(binary_simple.el_refs.B.energy_per_atom).toBe(-3.0)
   })
 
   test(`compound domain vertices lie between element refs`, () => {
-    const ab_domain = dedup_vertices(binary_simple.domains[`AB`])
+    const ab_domain = dedup_vertices(binary_simple.domains.AB)
     // AB domain should not extend beyond the elemental reference energies
     for (const pt of ab_domain) {
       expect(pt[0]).toBeLessThanOrEqual(-2.0 + 1e-4) // mu_A <= E_A
@@ -398,8 +396,8 @@ describe(`binary system (2 elements)`, () => {
       { default_min_limit: -20, formal_chempots: true },
     )
 
-    expect(formal.el_refs[`A`].energy_per_atom).toBeCloseTo(0, 8)
-    expect(formal.el_refs[`B`].energy_per_atom).toBeCloseTo(0, 8)
+    expect(formal.el_refs.A.energy_per_atom).toBeCloseTo(0, 8)
+    expect(formal.el_refs.B.energy_per_atom).toBeCloseTo(0, 8)
   })
 
   test(`tighter limits produce vertices within bounds`, () => {
@@ -475,7 +473,7 @@ describe(`get_min_entries_and_el_refs`, () => {
       make_entry({ A: 1 }, -2.0), // lower energy
       make_entry({ A: 1 }, -0.5),
     ])
-    expect(min_entries.length).toBe(1)
+    expect(min_entries).toHaveLength(1)
     expect(min_entries[0].energy_per_atom).toBe(-2.0)
   })
 
@@ -485,9 +483,9 @@ describe(`get_min_entries_and_el_refs`, () => {
       make_entry({ B: 1 }, -2.0),
       make_entry({ A: 1, B: 1 }, -3.0),
     ])
-    expect(min_entries.length).toBe(3)
-    expect(el_refs[`A`].energy_per_atom).toBe(-1.0)
-    expect(el_refs[`B`].energy_per_atom).toBe(-2.0)
+    expect(min_entries).toHaveLength(3)
+    expect(el_refs.A.energy_per_atom).toBe(-1.0)
+    expect(el_refs.B.energy_per_atom).toBe(-2.0)
   })
 
   test(`handles multiple polymorphs of same composition`, () => {
@@ -497,8 +495,8 @@ describe(`get_min_entries_and_el_refs`, () => {
       make_entry({ Fe: 1 }, -6.2),
       make_entry({ O: 2 }, -8.0),
     ])
-    expect(min_entries.length).toBe(2)
-    expect(el_refs[`Fe`].energy_per_atom).toBe(-6.5)
+    expect(min_entries).toHaveLength(2)
+    expect(el_refs.Fe.energy_per_atom).toBe(-6.5)
   })
 })
 
@@ -545,7 +543,7 @@ describe(`build_hyperplanes`, () => {
   }
   const ab_entry = make_entry({ A: 1, B: 1 }, -6.0)
   const { hyperplanes, hyperplane_entries } = build_hyperplanes(
-    [el_refs[`A`], el_refs[`B`], ab_entry],
+    [el_refs.A, el_refs.B, ab_entry],
     el_refs,
     [`A`, `B`],
   )
@@ -556,7 +554,7 @@ describe(`build_hyperplanes`, () => {
 
   test(`rows have dim+1 columns and atomic fractions sum to 1`, () => {
     for (const row of hyperplanes) {
-      expect(row.length).toBe(3) // [x_A, x_B, -E]
+      expect(row).toHaveLength(3) // [x_A, x_B, -E]
       expect(row[0] + row[1]).toBeCloseTo(1.0, 8)
     }
   })
@@ -822,7 +820,7 @@ describe(`convex_hull_2d`, () => {
   ] as { pts: Vec2[]; n: number; label: string }[])(
     `$label → $n hull vertices`,
     ({ pts, n }) => {
-      expect(convex_hull_2d(pts).length).toBe(n)
+      expect(convex_hull_2d(pts)).toHaveLength(n)
     },
   )
 
@@ -1065,7 +1063,7 @@ describe(`config.elements projection vs subsystem`, () => {
     })
     expect(result.elements).toEqual([`Fe`, `Li`, `O`])
     // Same domain count as cpd_ternary (computed without config.elements)
-    expect(Object.keys(result.domains).length).toBe(Object.keys(cpd_ternary.domains).length)
+    expect(Object.keys(result.domains)).toHaveLength(Object.keys(cpd_ternary.domains).length)
   })
 
   // === Stability: configuration sensitivity ===
@@ -1085,14 +1083,14 @@ describe(`config.elements projection vs subsystem`, () => {
       const is_interior = (pt: number[], min_lim: number) =>
         pt.every((val) => Math.abs(val - min_lim) > 1 && Math.abs(val) > 1)
 
-      const feo_tight_interior = dedup_vertices(tight.domains[`FeO`] ?? []).filter((pt) =>
+      const feo_tight_interior = dedup_vertices(tight.domains.FeO ?? []).filter((pt) =>
         is_interior(pt, -15),
       )
-      const feo_wide_interior = dedup_vertices(wide.domains[`FeO`] ?? []).filter((pt) =>
+      const feo_wide_interior = dedup_vertices(wide.domains.FeO ?? []).filter((pt) =>
         is_interior(pt, -50),
       )
 
-      expect(feo_tight_interior.length).toBe(feo_wide_interior.length)
+      expect(feo_tight_interior).toHaveLength(feo_wide_interior.length)
       const sorted_t = sort_rows(feo_tight_interior)
       const sorted_w = sort_rows(feo_wide_interior)
       for (let idx = 0; idx < sorted_t.length; idx++) {
@@ -1167,14 +1165,14 @@ describe(`YTOS quaternary system (projection mode)`, () => {
   test(`projected vertices have 3 columns`, () => {
     for (const pts of Object.values(ytos_y_ti_o.domains)) {
       for (const pt of pts) {
-        expect(pt.length).toBe(3)
+        expect(pt).toHaveLength(3)
       }
     }
   })
 
   test(`projected lims have 3 entries`, () => {
-    expect(ytos_y_ti_o.lims.length).toBe(3)
-    expect(ytos_ti_o_s.lims.length).toBe(3)
+    expect(ytos_y_ti_o.lims).toHaveLength(3)
+    expect(ytos_ti_o_s.lims).toHaveLength(3)
   })
 
   test(`formal chempots are non-positive in projected coordinates`, () => {
@@ -1260,7 +1258,7 @@ describe(`build_axis_ranges`, () => {
 
   test(`elements longer than point dimensions produces Infinity`, () => {
     const result = build_axis_ranges([[1, 2]], [`A`, `B`, `C`])
-    expect(result.length).toBe(3)
+    expect(result).toHaveLength(3)
     // axis 2 reads undefined from points → loop finds no finite values
     expect(result[2].min_val).toBe(Infinity)
     expect(result[2].max_val).toBe(-Infinity)
@@ -1336,7 +1334,7 @@ describe(`dedup_points`, () => {
     },
   ])(`$label → $n_unique unique`, ({ pts, tol, n_unique, indices }) => {
     const result = dedup_points(pts, tol)
-    expect(result.unique.length).toBe(n_unique)
+    expect(result.unique).toHaveLength(n_unique)
     expect(result.orig_indices).toEqual(indices)
     // unique points should match the points at orig_indices
     for (let idx = 0; idx < result.unique.length; idx++) {
@@ -1462,7 +1460,7 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
     },
   ])(`$label → $n_edges edges`, ({ pts, n_edges, ann_loc }) => {
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
-    expect(result.simplex_indices.length).toBe(n_edges)
+    expect(result.simplex_indices).toHaveLength(n_edges)
     if (ann_loc) expect(result.ann_loc).toEqual(ann_loc)
     if (n_edges > 0) assert_valid_edges(result, pts.length)
   })
@@ -1488,7 +1486,7 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
       [10, 0, 0],
     ]
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
-    expect(result.simplex_indices.length).toBe(3)
+    expect(result.simplex_indices).toHaveLength(3)
     expect(result.simplex_indices.flat().every((idx) => idx <= 2)).toBe(true)
     assert_valid_edges(result, pts.length)
   })
@@ -1587,7 +1585,7 @@ describe(`compute_domains`, () => {
   test(`unstable compound → no domain for AB`, () => {
     // AB with E_per_atom = -2.0 is above hull → no stability domain
     const { domains } = make_ab_domains(-2.0)
-    expect(domains[`AB`]).toBeUndefined()
+    expect(domains.AB).toBeUndefined()
   })
 })
 
@@ -1625,11 +1623,11 @@ describe(`compute_chempot_diagram edge cases`, () => {
     )
     // Verify axes actually swapped: Fe domain's O-axis range (col 0 in reordered)
     // should match its col 2 range in default [Fe,Li,O] order
-    const fe_reordered = dedup_vertices(reordered.domains[`Fe`])
-    const fe_default = dedup_vertices(cpd_ternary.domains[`Fe`])
+    const fe_reordered = dedup_vertices(reordered.domains.Fe)
+    const fe_default = dedup_vertices(cpd_ternary.domains.Fe)
     const re_o_vals = fe_reordered.map((pt) => pt[0]).sort((val_a, val_b) => val_a - val_b)
     const def_o_vals = fe_default.map((pt) => pt[2]).sort((val_a, val_b) => val_a - val_b) // O is axis 2 in default
-    expect(re_o_vals.length).toBe(def_o_vals.length)
+    expect(re_o_vals).toHaveLength(def_o_vals.length)
     for (let idx = 0; idx < re_o_vals.length; idx++) {
       expect(re_o_vals[idx]).toBeCloseTo(def_o_vals[idx], 4)
     }
@@ -1661,9 +1659,9 @@ describe(`compute_chempot_diagram edge cases`, () => {
       formal_chempots: true,
     })
     expect(result.elements).toEqual(elements)
-    expect(result.lims.length).toBe(n_axes)
+    expect(result.lims).toHaveLength(n_axes)
     for (const pts of Object.values(result.domains)) {
-      for (const pt of pts) expect(pt.length).toBe(n_axes)
+      for (const pt of pts) expect(pt).toHaveLength(n_axes)
     }
   })
 
@@ -1678,7 +1676,7 @@ describe(`compute_chempot_diagram edge cases`, () => {
     expect(domain_keys.length).toBeGreaterThan(0)
     for (const pts of Object.values(projected.domains)) {
       for (const pt of pts) {
-        expect(pt.length).toBe(3)
+        expect(pt).toHaveLength(3)
         for (const coord of pt) expect(Number.isFinite(coord)).toBe(true)
       }
     }
@@ -1768,8 +1766,8 @@ describe(`formation energy from elemental refs`, () => {
     const renormed = renormalize_entries(all_entries, raw_refs, [`A`, `B`])
     const { el_refs: renorm_refs } = get_min_entries_and_el_refs(renormed)
     // Renormalized refs have epa=0, so compute_e_form degenerates to just epa
-    expect(get_energy_per_atom(renorm_refs[`A`])).toBeCloseTo(0, 8)
-    expect(get_energy_per_atom(renorm_refs[`B`])).toBeCloseTo(0, 8)
+    expect(get_energy_per_atom(renorm_refs.A)).toBeCloseTo(0, 8)
+    expect(get_energy_per_atom(renorm_refs.B)).toBeCloseTo(0, 8)
     // Using renormalized refs, e_form equals raw epa (not true formation energy!)
     const ab = make_entry({ A: 1, B: 1 }, -3.5)
     expect(compute_e_form(ab, renorm_refs)).toBeCloseTo(-3.5, 8)
@@ -1902,7 +1900,7 @@ describe(`temperature filtering integration behavior`, () => {
       default_min_limit: -20,
       formal_chempots: false,
     })
-    expect(result.elements.length).toBe(2)
+    expect(result.elements).toHaveLength(2)
     expect(Object.keys(result.domains)).toEqual(expect.arrayContaining([`Li`, `O`]))
   })
 })
@@ -2043,7 +2041,7 @@ describe(`N-D projection cache consistency`, () => {
       elements: [`O`, `Ti`, `Y`],
     })
     // Formal chempots shifts coordinates by elemental refs → values differ
-    expect(formal.domains[`O2Ti`][0][0]).not.toBeCloseTo(absolute.domains[`O2Ti`][0][0], 1)
+    expect(formal.domains.O2Ti[0][0]).not.toBeCloseTo(absolute.domains.O2Ti[0][0], 1)
   })
 })
 

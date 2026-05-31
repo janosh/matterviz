@@ -113,9 +113,9 @@ function parse_coordinate_line(line: string): number[] {
     const sanitized = line
       .trim()
       // Add space when '-' follows a digit and precedes a digit or dot
-      .replace(/(\d)-(?=[\d.])/g, `$1 -`)
+      .replaceAll(/(\d)-(?=[\d.])/g, `$1 -`)
       // Revert accidental spaces after exponent markers
-      .replace(/([eE])\s-\s/g, `$1-`)
+      .replaceAll(/([eE])\s-\s/g, `$1-`)
     tokens = sanitized.split(/\s+/)
   }
 
@@ -185,7 +185,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
     // Handle negative scale factor (volume-based scaling)
     if (scale_factor < 0) {
       const volume = Math.abs(math.det_3x3(lattice_vecs))
-      scale_factor = Math.pow(-scale_factor / volume, 1 / 3)
+      scale_factor = (-scale_factor / volume) ** (1 / 3)
     }
 
     // Scale lattice vectors
@@ -203,7 +203,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
     // Detect if this is VASP 5+ format (has element symbols)
     // Try to parse the first token as a number - if it succeeds, it's VASP 4 format
     const first_token = lines[line_index].trim().split(/\s+/)[0]
-    const first_token_as_number = parseInt(first_token)
+    const first_token_as_number = parseInt(first_token, 10)
     const has_element_symbols = isNaN(first_token_as_number)
 
     if (has_element_symbols) {
@@ -214,7 +214,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
       for (let lookahead_idx = 1; lookahead_idx < 10; lookahead_idx++) {
         if (line_index + lookahead_idx >= lines.length) break
         const next_line_first_token = lines[line_index + lookahead_idx].trim().split(/\s+/)[0]
-        const next_token_as_number = parseInt(next_line_first_token)
+        const next_token_as_number = parseInt(next_line_first_token, 10)
         if (!isNaN(next_token_as_number)) {
           symbol_lines = lookahead_idx
           break
@@ -339,7 +339,7 @@ export function parse_poscar(content: string): ParsedStructure | null {
             abc,
             xyz,
             label: `${element}${atom_index + atom_count_idx + 1}`,
-            properties: selective_dynamics ? { selective_dynamics: selective_dynamics } : {},
+            properties: selective_dynamics ? { selective_dynamics } : {},
           }
 
           sites.push(site)
@@ -355,10 +355,9 @@ export function parse_poscar(content: string): ParsedStructure | null {
       }
 
       return structure
-    } else {
-      console.error(`Missing coordinate mode line in POSCAR`)
-      return null
     }
+    console.error(`Missing coordinate mode line in POSCAR`)
+    return null
   } catch (error) {
     console.error(`Error parsing POSCAR file:`, error)
     return null
@@ -405,7 +404,7 @@ export function parse_xyz(content: string): ParsedStructure | null {
     }
 
     // Parse number of atoms (line 1)
-    const num_atoms = parseInt(lines[0].trim())
+    const num_atoms = parseInt(lines[0].trim(), 10)
     if (isNaN(num_atoms) || num_atoms <= 0) {
       console.error(`Invalid number of atoms in XYZ file`)
       return null
@@ -502,7 +501,7 @@ const parse_symmetry_expression = (
   let translation = 0
 
   // Remove all whitespace
-  const expr = expr_input.replace(/\s+/g, ``)
+  const expr = expr_input.replaceAll(/\s+/g, ``)
   if (!expr) return { coefficients, translation }
 
   // Tokenize: split into terms while preserving signs
@@ -708,9 +707,10 @@ const parse_cif_atom_data = (
       ? parseFloat(raw_data[occupancy].split(`(`)[0]) || 1.0
       : 1.0
 
+  const from_symbol = symbol >= 0 ? /^([A-Z][a-z]*)/.exec(raw_data[symbol])?.[1] : undefined
   const element_symbol =
-    (symbol >= 0 && /^([A-Z][a-z]*)/.exec(raw_data[symbol])?.[1]) ||
-    raw_data[label]?.match(/([A-Z][a-z]*)/g)?.[0] ||
+    from_symbol ??
+    raw_data[label]?.match(/([A-Z][a-z]*)/g)?.[0] ??
     (() => {
       throw new Error(`Could not extract element symbol from: ${raw_data.join(` `)}`)
     })()
@@ -802,7 +802,7 @@ export function parse_cif(
           if (line.startsWith(`;`)) {
             let multi_line_data = ``
             while (jj < lines.length && !lines[jj].trim().endsWith(`;`)) {
-              multi_line_data += lines[jj] + `\n`
+              multi_line_data += `${lines[jj]}\n`
               jj++
             }
             multi_line_data += lines[jj]
@@ -816,7 +816,7 @@ export function parse_cif(
       if (atom_data_lines.length > 0) break
     }
 
-    if (!atom_headers.length || !atom_data_lines.length) {
+    if (atom_headers.length === 0 || atom_data_lines.length === 0) {
       console.error(`No valid atom site loop found in CIF file`)
       return null
     }
@@ -851,8 +851,8 @@ export function parse_cif(
       .map((line) => {
         // Handle quoted multi-word values by splitting only on whitespace
         // that is not inside quotes.
-        const tokens = line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []
-        return tokens.map((token) => token.replace(/['"]/g, ``))
+        const tokens = line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []
+        return tokens.map((token) => token.replaceAll(/['"]/g, ``))
       })
       .filter((tokens) => {
         const { disorder } = header_indices
@@ -872,7 +872,7 @@ export function parse_cif(
       })
       .filter((atom): atom is NonNullable<typeof atom> => atom !== null)
 
-    if (!atoms.length) {
+    if (atoms.length === 0) {
       console.error(`No valid atoms found in CIF file`)
       return null
     }
@@ -902,8 +902,8 @@ export function parse_cif(
 
     // Normalize symmetry operations (trim/strip quotes) but preserve duplicates; we deduplicate positions later
     const normalized_ops = symmetry_ops
-      .map((op) => /['"]([^'"]+)['"]/.exec(op)?.[1] || op.trim())
-      .map((op) => op.replace(/\s+/g, ``))
+      .map((op) => /['"]([^'"]+)['"]/.exec(op)?.[1] ?? op.trim())
+      .map((op) => op.replaceAll(/\s+/g, ``))
 
     // Rely on symmetry operations list for all centering/translations to avoid double-counting
     // TODO: Support conventional cells with centering by discovering centering from space group metadata
@@ -934,14 +934,14 @@ export function parse_cif(
               lj++
               continue
             }
-            const toks = (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).map((tok) =>
-              tok.replace(/['"]/g, ``),
+            const toks = (line.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? []).map((tok) =>
+              tok.replaceAll(/['"]/g, ``),
             )
             if (toks.length > Math.max(sym_idx, num_idx)) {
               // Normalize type symbol to bare element (e.g. 'Sn2+' -> 'Sn')
               const match = /^([A-Z][a-z]*)/.exec(toks[sym_idx])
               const sym = match ? match[1] : toks[sym_idx]
-              const num = parseInt(toks[num_idx])
+              const num = parseInt(toks[num_idx], 10)
               if (sym && !Number.isNaN(num)) map[sym] = num
             }
             lj++
@@ -1125,10 +1125,9 @@ export function parse_phonopy_yaml(
     if (cell_type && cell_type !== `auto`) {
       const cell = get_phonopy_cell(data, cell_type)
       if (cell) return convert_phonopy_cell(cell)
-      else {
-        console.error(`Requested cell type '${cell_type}' not found in phonopy YAML`)
-        return null
-      }
+
+      console.error(`Requested cell type '${cell_type}' not found in phonopy YAML`)
+      return null
     }
 
     // Auto mode: return preferred structure in order of preference
@@ -1306,7 +1305,7 @@ export function parse_structure_file(
   }
 
   // XYZ format detection: first line should be a number, second line is comment
-  const first_line_number = parseInt(lines[0].trim())
+  const first_line_number = parseInt(lines[0].trim(), 10)
   if (!isNaN(first_line_number) && first_line_number > 0) {
     // Check if this looks like XYZ format
     if (lines.length >= first_line_number + 2) {
@@ -1321,7 +1320,7 @@ export function parse_structure_file(
 
           // Check if first token looks like an element symbol (not a number)
           // and the next 3 tokens look like coordinates (numbers)
-          const is_element_symbol = isNaN(parseInt(first_token)) && first_token.length <= 3
+          const is_element_symbol = isNaN(parseInt(first_token, 10)) && first_token.length <= 3
           const are_coordinates = coords.every((coord) => !isNaN(parseFloat(coord)))
 
           if (is_element_symbol && are_coordinates) {

@@ -173,7 +173,7 @@ describe(`Structure`, () => {
     await tick()
 
     expect(event.defaultPrevented, `Delete should be handled`).toBe(true)
-    expect(state.structure.sites.length, `one atom removed`).toBe(n_before - 1)
+    expect(state.structure.sites).toHaveLength(n_before - 1)
   })
 
   test.each([
@@ -531,7 +531,7 @@ describe(`Structure`, () => {
 
     first_site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(state.highlighted_sites).toEqual([])
-    expect(state.hovered_site_idx).toBe(null)
+    expect(state.hovered_site_idx).toBeNull()
 
     first_site_row.click()
     expect(state.selected_sites).toEqual([0])
@@ -865,7 +865,7 @@ describe(`atom label controls`, () => {
     ) as HTMLInputElement
 
     expect(parseFloat(size_input.value)).toBeCloseTo(1.2, 1)
-    expect(parseInt(padding_input.value)).toBe(4)
+    expect(parseInt(padding_input.value, 10)).toBe(4)
 
     size_input.value = `1.8`
     padding_input.value = `6`
@@ -873,7 +873,7 @@ describe(`atom label controls`, () => {
     padding_input.dispatchEvent(new Event(`input`, { bubbles: true }))
 
     expect(parseFloat(size_input.value)).toBeCloseTo(1.8, 1)
-    expect(parseInt(padding_input.value)).toBe(6)
+    expect(parseInt(padding_input.value, 10)).toBe(6)
   })
 
   test(`input constraints are correct`, () => {
@@ -1029,7 +1029,7 @@ describe(`Structure string parsing`, () => {
             el,
           ),
         )
-        expect(!!(`lattice` in parse_state.parsed && parse_state.parsed.lattice)).toBe(
+        expect(Boolean(`lattice` in parse_state.parsed && parse_state.parsed.lattice)).toBe(
           has_lattice,
         )
       }
@@ -1075,7 +1075,7 @@ describe(`Structure string parsing`, () => {
       props: {
         structure_string: SAMPLE_POSCAR_CONTENT,
         on_file_load: (data: StructureHandlerData) => {
-          size = data.file_size || 0
+          size = data.file_size ?? 0
         },
       },
     })
@@ -1094,7 +1094,7 @@ describe(`Structure string parsing`, () => {
       props: {
         data_url: `/test.poscar`,
         structure_string: `ignored`,
-        on_file_load: (data: StructureHandlerData) => (filename = data.filename || ``),
+        on_file_load: (data: StructureHandlerData) => (filename = data.filename ?? ``),
       },
     })
     await tick()

@@ -48,7 +48,7 @@ export const structure_files: FileInfo[] = Object.entries(
 )
   .filter(([, content]) => typeof content === `string`)
   .map(([path, content]) => {
-    const filename = path.split(`/`).pop() || path
+    const filename = path.split(`/`).pop() ?? path
     const type = path.split(`.`).pop()?.toUpperCase() ?? `FILE`
     const url = path.replace(`/src/site`, ``)
 

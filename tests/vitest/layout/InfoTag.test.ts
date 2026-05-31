@@ -137,7 +137,7 @@ describe(`InfoTag`, () => {
         target: document.body,
         props: { label: `Test`, value: 1, ...params },
       })
-      expect(!!document.querySelector(`[aria-label="Remove"]`)).toBe(params.expected)
+      expect(Boolean(document.querySelector(`[aria-label="Remove"]`))).toBe(params.expected)
     },
   )
 

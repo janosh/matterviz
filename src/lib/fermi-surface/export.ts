@@ -8,7 +8,7 @@ function download_file(content: string | ArrayBuffer, filename: string, mime_typ
   const link = document.createElement(`a`)
   link.href = url
   link.download = filename
-  document.body.appendChild(link)
+  document.body.append(link)
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
@@ -45,7 +45,7 @@ export async function export_to_gltf(scene: Scene, filename: string): Promise<vo
         download_file(output, `${filename}.gltf`, `application/json`)
         resolve()
       },
-      (error) => reject(error),
+      (error) => reject(error instanceof Error ? error : new Error(error.message)),
       { binary: false },
     )
   })

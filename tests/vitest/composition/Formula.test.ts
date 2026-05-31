@@ -221,7 +221,7 @@ test.each([
     props: { formula: `H2O`, color_scheme: scheme },
   })
   const symbols = document.querySelectorAll(`.element-symbol`)
-  expect(symbols.length).toBe(2)
+  expect(symbols).toHaveLength(2)
 
   // Check that elements have color styles applied
   const has_color = Array.from(symbols).some((symbol) => (symbol as HTMLElement).style.color)
@@ -275,7 +275,7 @@ test(`Formula component renders subscripts for amounts > 1`, () => {
   // Mounting to document.body
   mount(Formula, { target: document.body, props: { formula: `H2O` } })
   const subscripts = document.querySelectorAll(`sub`)
-  expect(subscripts.length).toBe(1)
+  expect(subscripts).toHaveLength(1)
   expect(subscripts[0].textContent).toBe(`2`)
 })
 
@@ -283,14 +283,14 @@ test(`Formula component does not render subscripts for amount = 1`, () => {
   // Mounting to document.body
   mount(Formula, { target: document.body, props: { formula: `HO` } })
   const subscripts = document.querySelectorAll(`sub`)
-  expect(subscripts.length).toBe(0)
+  expect(subscripts).toHaveLength(0)
 })
 
 test(`Formula component renders superscripts for oxidation states`, () => {
   // Mounting to document.body
   mount(Formula, { target: document.body, props: { formula: `Fe^2+O^2-` } })
   const superscripts = document.querySelectorAll(`sup`)
-  expect(superscripts.length).toBe(2)
+  expect(superscripts).toHaveLength(2)
 
   const oxidation_values = Array.from(superscripts as NodeListOf<Element>).map(
     (sup) => sup.textContent,
@@ -307,7 +307,7 @@ test(`Formula component does not render superscripts for zero oxidation`, () => 
   // Mounting to document.body
   mount(Formula, { target: document.body, props: { formula: composition } })
   const superscripts = document.querySelectorAll(`sup`)
-  expect(superscripts.length).toBe(0)
+  expect(superscripts).toHaveLength(0)
 })
 
 test(`Formula component accepts OxiComposition input`, () => {
@@ -392,7 +392,7 @@ test.each([
 
     // Check correct number of oxidation state superscripts
     const superscripts = element?.querySelectorAll(`sup`) ?? []
-    expect(superscripts.length).toBe(expected_superscripts)
+    expect(superscripts).toHaveLength(expected_superscripts)
   },
 )
 
@@ -402,7 +402,7 @@ function normalize_to_hex(color: string): string {
   const match = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(color)
   if (!match) return color
   const [, r, g, b] = match
-  const to_hex = (n: string) => parseInt(n).toString(16).padStart(2, `0`)
+  const to_hex = (n: string) => parseInt(n, 10).toString(16).padStart(2, `0`)
   return `#${to_hex(r)}${to_hex(g)}${to_hex(b)}`
 }
 
@@ -431,7 +431,7 @@ test.each([`Vesta`, `Jmol`] as const)(
     expect(tile).toBeInstanceOf(HTMLElement)
 
     // The tile background should match the color scheme for Fe
-    const expected_hex = ELEMENT_COLOR_SCHEMES[color_scheme]?.[`Fe`]
+    const expected_hex = ELEMENT_COLOR_SCHEMES[color_scheme]?.Fe
     if (!expected_hex) throw new Error(`Missing color for Fe in ${color_scheme}`)
     const actual_hex = normalize_to_hex(tile.style.backgroundColor)
     expect(actual_hex).toBe(expected_hex.toLowerCase())

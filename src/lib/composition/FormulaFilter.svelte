@@ -341,7 +341,7 @@
       .replaceAll(`·`, ``)
       .replaceAll(`⋅`, ``)
       .replaceAll(`−`, `-`)
-      .replace(/\s+/g, ``)
+      .replaceAll(/\s+/g, ``)
   }
 
   function normalize_exact_formula(input: string): string {
@@ -361,7 +361,7 @@
       const wildcard_tokens = tokens.filter((token) => token.element === null)
 
       // Merge explicit element counts before sorting.
-      const merged_explicit: Array<{ element: string; count: number }> = []
+      const merged_explicit: { element: string; count: number }[] = []
       for (const token of explicit) {
         const existing = merged_explicit.find((item) =>
           item.element === token.element
@@ -609,14 +609,20 @@
     const reformatted = format_for_mode(elements, next_mode)
 
     search_mode = next_mode
-    last_synced = value = input_value = reformatted // update last_synced to prevent effect re-inference
+    // set last_synced too to prevent effect re-inference
+    last_synced = reformatted
+    value = reformatted
+    input_value = reformatted
     run_validation(reformatted, next_mode)
     onchange?.(reformatted, next_mode)
   }
 
   function set_value(new_value: string, forced_mode?: FormulaSearchMode): void {
     const mode = forced_mode ?? (mode_locked ? search_mode : infer_mode(new_value))
-    last_synced = value = input_value = new_value // update last_synced to prevent effect re-inference
+    // set last_synced too to prevent effect re-inference
+    last_synced = new_value
+    value = new_value
+    input_value = new_value
     search_mode = mode
     if (new_value.trim()) add_to_history(new_value)
     close_history()

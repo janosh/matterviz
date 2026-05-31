@@ -400,10 +400,9 @@ function analyze_surface_topology(
     const orientation: Vec3 = [0, 0, 0]
     orientation[axis_idx] = 1
     return { dimensionality: `1D`, orientation }
-  } else {
-    // Spans all 3 directions - complex warped network
-    return { dimensionality: `quasi-2D`, orientation: null }
   }
+  // Spans all 3 directions - complex warped network
+  return { dimensionality: `quasi-2D`, orientation: null }
 }
 
 // Compute 2D Fermi slice along a specified plane
@@ -538,10 +537,10 @@ function slice_surface_with_plane(
     if (face.length < 3) continue
 
     // Find which edges of this face cross the plane
-    const crossing_edges: Array<{
+    const crossing_edges: {
       edge_key: string
       intersection: { point: Vec3; property?: number }
-    }> = []
+    }[] = []
 
     for (let edge_idx = 0; edge_idx < face.length; edge_idx++) {
       const v0_idx = face[edge_idx]

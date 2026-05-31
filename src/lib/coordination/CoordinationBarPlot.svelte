@@ -18,6 +18,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { calc_coordination_nums, type CoordinationData } from './calc-coordination'
   import type { SplitMode } from './index'
+  import { to_error } from '$lib/utils'
 
   type CoordinationMetadata = {
     element?: string
@@ -178,7 +179,7 @@
           metadata: { structure_label: entry.label },
         }
       })
-    } else {
+    }
       // split_mode === 'none': combine all into single series
       const combined_histogram = new SvelteMap<number, number>()
 
@@ -202,7 +203,7 @@
           metadata: {},
         },
       ]
-    }
+
   })
 
   const compute_and_add = (content: string | ArrayBuffer, filename: string) => {
@@ -221,7 +222,7 @@
       }
     } catch (exc) {
       error_msg = `Failed to process structure: ${
-        exc instanceof Error ? exc.message : String(exc)
+        to_error(exc).message
       }`
     }
   }

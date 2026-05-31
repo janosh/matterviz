@@ -151,7 +151,7 @@
     y: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     color_values: Array(10)
       .fill(0)
-      .map((_, idx) => Math.pow(2, idx)),
+      .map((_, idx) => 2 ** idx),
     point_style: { radius: 10, stroke: `black`, stroke_width: 1 },
   }
 
@@ -194,7 +194,7 @@
       points.point_style.push({ fill: `purple`, radius: 5 })
       points.point_label.push({
         text: `${label_prefix}-${data_idx + 1}`,
-        auto_placement: auto_placement,
+        auto_placement,
         font_size: `10px`,
       })
     }

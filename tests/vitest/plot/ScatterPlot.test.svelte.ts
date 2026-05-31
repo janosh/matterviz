@@ -610,7 +610,7 @@ describe(`ScatterPlot`, () => {
       )
 
     // fill renders and has a legend item
-    expect(document.querySelectorAll(`.fill-region`).length).toBe(1)
+    expect(document.querySelectorAll(`.fill-region`)).toHaveLength(1)
     expect(fill_item()).toBeDefined()
 
     // hide it (what clicking the legend fill item does via the fill_regions binding)
@@ -619,7 +619,7 @@ describe(`ScatterPlot`, () => {
     await tick()
 
     // fill no longer drawn, but the legend item persists (greyed) so it can be toggled back
-    expect(document.querySelectorAll(`.fill-region`).length).toBe(0)
+    expect(document.querySelectorAll(`.fill-region`)).toHaveLength(0)
     expect(fill_item()?.classList.contains(`hidden`)).toBe(true)
 
     // hovering the hidden fill's legend item must not mark it active (nothing renders to highlight)

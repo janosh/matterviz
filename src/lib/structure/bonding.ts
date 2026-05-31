@@ -8,7 +8,7 @@ import type { AnyStructure, BondOrder, BondPair, Site, StructureBond } from '$li
 type SpatialGrid = Map<string, number[]>
 
 const element_lookup = new Map(element_data.map((el) => [el.symbol, el]))
-const covalent_radii: Map<string, number> = new Map(
+const covalent_radii = new Map<string, number>(
   element_data.flatMap((el) =>
     el.covalent_radius === null ? [] : [[el.symbol, el.covalent_radius]],
   ),

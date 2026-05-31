@@ -407,7 +407,7 @@ function parse_bruker_raw_v1(view: DataView, bytes: Uint8Array): XrdPattern | nu
     // Find where binary data starts (after header)
     let data_offset = 512
     if (count_match) {
-      const expected_count = parseInt(count_match[1])
+      const expected_count = parseInt(count_match[1], 10)
       // Binary data is typically 4 bytes per intensity (float32)
       data_offset = bytes.length - expected_count * 4
     }
@@ -478,7 +478,7 @@ function parse_rigaku_raw_file(data: ArrayBuffer): XrdPattern | null {
 
     const start = start_match ? parseFloat(start_match[1]) : 0
     const step = step_match ? parseFloat(step_match[1]) : DEFAULT_STEP_SIZE
-    const expected_count = count_match ? parseInt(count_match[1]) : 0
+    const expected_count = count_match ? parseInt(count_match[1], 10) : 0
 
     // Find binary data section
     // Rigaku typically stores intensities as 32-bit floats or integers

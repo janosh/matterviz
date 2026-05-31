@@ -9,6 +9,7 @@ import { is_crystal } from '$lib/structure/validation'
 import ATOMIC_SCATTERING_PARAMS from './atomic_scattering_params.json' with { type: 'json' }
 import type { Hkl, HklObj, PatternEntry, RecipPoint, XrdOptions, XrdPattern } from './index'
 import { is_xrd_data_file, parse_xrd_file } from './parse'
+import { to_error } from '$lib/utils'
 
 // JSON import yields Record<string, number[][]>; type for element-keyed scattering params
 type ScatteringParamsRecord = Partial<
@@ -361,7 +362,7 @@ export async function add_xrd_pattern(
       }
       // Get base extension (strip .gz if present) for error message
       const base_name = filename.toLowerCase().replace(/\.gz$/, ``)
-      const ext = base_name.split(`.`).pop()?.toUpperCase() || `XRD`
+      const ext = base_name.split(`.`).pop()?.toUpperCase() ?? `XRD`
       const format_hints: Record<string, string> = {
         XY: `Expected 2-column format: "2theta intensity" (space/tab/comma separated)`,
         XYE: `Expected 3-column format: "2theta intensity error" (space/tab/comma separated)`,
@@ -389,7 +390,7 @@ export async function add_xrd_pattern(
     }
   } catch (exc) {
     return {
-      error: `Failed to compute XRD pattern: ${exc instanceof Error ? exc.message : String(exc)}`,
+      error: `Failed to compute XRD pattern: ${to_error(exc).message}`,
     }
   }
 }

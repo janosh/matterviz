@@ -189,7 +189,7 @@ describe(`Dos component`, () => {
     // Each spin-polarized DOS with overlay+stack should render 2 areas (up + down)
     // So 2 DOS entries = 4 area paths total
     const area_paths = document.querySelectorAll(`path[fill-opacity]`)
-    expect(area_paths.length).toBe(4)
+    expect(area_paths).toHaveLength(4)
 
     // Validate structural layering: spin-up and spin-down areas should have different colors
     // In overlay+stack mode, spin-up uses color at index dos_idx, spin-down at (dos_idx * 2 + 1)

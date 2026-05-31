@@ -12,7 +12,7 @@ describe(`plot-utils random generators`, () => {
 
   test(`generators produce correct length and finite values`, () => {
     const size = 10
-    const thunks: ReadonlyArray<() => number[]> = [
+    const thunks: readonly (() => number[])[] = [
       () => utils.generate_normal(size, 0, 1),
       () => utils.generate_exponential(size, 1),
       () => utils.generate_uniform(size, 0, 1),
@@ -36,7 +36,7 @@ describe(`plot-utils random generators`, () => {
 
     for (const make_array of thunks) {
       const arr = make_array()
-      expect(arr.length).toBe(size)
+      expect(arr).toHaveLength(size)
       arr.forEach((num: number) => expect(Number.isFinite(num)).toBe(true))
     }
   })

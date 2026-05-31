@@ -4,10 +4,11 @@ import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { TweenOptions } from 'svelte/motion'
-export type { TweenOptions } from 'svelte/motion'
 import type { Sides } from './layout'
 import type PlotLegend from './PlotLegend.svelte'
 import type { TicksOption } from './scales'
+
+export type { TweenOptions } from 'svelte/motion'
 
 export type XyShift = { x?: number; y?: number } // For optional shift/offset values
 

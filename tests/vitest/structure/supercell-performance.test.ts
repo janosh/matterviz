@@ -164,13 +164,13 @@ describe(`supercell performance profiling`, () => {
               new_lattice_T_inv[2][2] * new_z
 
             // Wrap coordinates
-            abc_x = abc_x % 1
+            abc_x %= 1
             if (abc_x < 0) abc_x += 1
             if (abc_x >= 1 - 1e-10) abc_x = 0
-            abc_y = abc_y % 1
+            abc_y %= 1
             if (abc_y < 0) abc_y += 1
             if (abc_y >= 1 - 1e-10) abc_y = 0
-            abc_z = abc_z % 1
+            abc_z %= 1
             if (abc_z < 0) abc_z += 1
             if (abc_z >= 1 - 1e-10) abc_z = 0
 

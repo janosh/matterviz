@@ -4,8 +4,7 @@ import type { Crystal, LatticeParams, Pbc, Site } from '$lib/structure'
 import type { TrajectoryFrame } from '$lib/trajectory'
 import init from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { flushSync, tick } from 'svelte'
 import { beforeEach, expect, vi } from 'vitest'
 
@@ -23,7 +22,7 @@ if (typeof localStorage.getItem !== `function`) {
 }
 
 // Resolve WASM path for Node.js environment (used by moyo-wasm integration tests)
-const current_dir = dirname(fileURLToPath(import.meta.url))
+const current_dir = import.meta.dirname
 const MOYO_WASM_PATH = resolve(
   current_dir,
   `../../node_modules/@spglib/moyo-wasm/moyo_wasm_bg.wasm`,
@@ -142,7 +141,8 @@ export async function assert_hover_scoped_shortcut(opts: {
   fire()
   expect(took_effect(), `hovered → fires without a prior click`).toBe(true)
 
-  const input = document.body.appendChild(document.createElement(`input`))
+  const input = document.createElement(`input`)
+  document.body.append(input)
   input.focus()
   fire()
   expect(took_effect(), `input focused → bails`).toBe(false)

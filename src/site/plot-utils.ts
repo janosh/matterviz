@@ -41,14 +41,14 @@ export const generate_log_normal = (count: number, mu: number, sigma: number) =>
 export const generate_power_law = (count: number, alpha: number, x_min = 1) =>
   Array.from({ length: count }, () => {
     const rand_val = Math.random()
-    return x_min * Math.pow(1 - rand_val, -1 / (alpha - 1))
+    return x_min * (1 - rand_val) ** (-1 / (alpha - 1))
   })
 
 // Generate Pareto distribution data
 export const generate_pareto = (count: number, x_min: number, alpha: number) =>
   Array.from({ length: count }, () => {
     const rand_val = Math.random()
-    return x_min * Math.pow(rand_val, -1 / alpha)
+    return x_min * rand_val ** (-1 / alpha)
   })
 
 // Generate gamma distribution data (approximation)
@@ -75,8 +75,7 @@ export function generate_gamma(count: number, alpha: number, beta: number): numb
       const u1 = Math.max(Math.random(), Number.EPSILON)
       const u2 = Math.max(Math.random(), Number.EPSILON)
       const beta_sample =
-        Math.pow(u1, 1 / frac_alpha) /
-        (Math.pow(u1, 1 / frac_alpha) + Math.pow(u2, 1 / (1 - frac_alpha)))
+        u1 ** (1 / frac_alpha) / (u1 ** (1 / frac_alpha) + u2 ** (1 / (1 - frac_alpha)))
       sum += (-Math.log(Math.max(Math.random(), Number.EPSILON)) * beta_sample) / beta
     }
 
@@ -100,7 +99,7 @@ export const generate_large_dataset = (count: number, type: `normal` | `uniform`
 
   if (type === `normal`) return generate_normal(count, 50, 15)
   else if (type === `uniform`) return generate_uniform(count, 0, 100)
-  else return generate_normal(count, 50, 15)
+  return generate_normal(count, 50, 15)
 }
 
 // Generate sparse data with many zeros

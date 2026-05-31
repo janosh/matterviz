@@ -32,7 +32,7 @@
   const wyckoff_count = $derived(
     sym_data ? wyckoff_positions_from_moyo(sym_data).length : 0,
   )
-  const display_hm_symbol = $derived(sym_data?.hm_symbol?.replace(/\s+/g, ``) ?? `?`)
+  const display_hm_symbol = $derived(sym_data?.hm_symbol?.replaceAll(/\s+/g, ``) ?? `?`)
 
   const sym_ops_counts = $derived.by(() => {
     const EPS = 1e-10
@@ -83,7 +83,7 @@
   function get_step_from_order_of_magnitude(value: number): number {
     if (!Number.isFinite(value) || value <= 0) return 1e-5
     const exponent = Math.floor(Math.log10(value))
-    return Math.pow(10, exponent)
+    return 10 ** exponent
   }
 
   const symprec_step = $derived(get_step_from_order_of_magnitude(settings.symprec))

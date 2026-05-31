@@ -254,20 +254,20 @@
   // Escape HTML special chars to prevent XSS when rendering user-supplied strings via {@html}
   const escape_html = (str: string): string =>
     str
-      .replace(/&/g, `&amp;`)
-      .replace(/</g, `&lt;`)
-      .replace(/>/g, `&gt;`)
-      .replace(/"/g, `&quot;`)
-      .replace(/'/g, `&#39;`)
+      .replaceAll('&', `&amp;`)
+      .replaceAll('<', `&lt;`)
+      .replaceAll('>', `&gt;`)
+      .replaceAll('"', `&quot;`)
+      .replaceAll('\'', `&#39;`)
   const unescape_html = (str: string, max_rounds = 5): string => {
     let decoded = str
     for (let round_idx = 0; round_idx < max_rounds; round_idx++) {
       const next_decoded = decoded
-        .replace(/&amp;/g, `&`)
-        .replace(/&lt;/g, `<`)
-        .replace(/&gt;/g, `>`)
-        .replace(/&quot;/g, `"`)
-        .replace(/&#39;/g, `'`)
+        .replaceAll('&amp;', `&`)
+        .replaceAll('&lt;', `<`)
+        .replaceAll('&gt;', `>`)
+        .replaceAll('&quot;', `"`)
+        .replaceAll('&#39;', `'`)
       if (next_decoded === decoded) break
       decoded = next_decoded
     }
@@ -336,7 +336,7 @@
       // Match by entry_id or common data fields (mat_id, structure_id)
       // since entry_id may be wrapped in HTML (e.g. <a> tags)
       const entry_data = entry.data as Record<string, unknown> | undefined
-      const is_highlighted = !!(highlighted_entry_id && (
+      const is_highlighted = Boolean(highlighted_entry_id && (
         entry.entry_id === highlighted_entry_id ||
         entry_data?.mat_id === highlighted_entry_id ||
         entry_data?.structure_id === highlighted_entry_id

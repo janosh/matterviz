@@ -8,6 +8,7 @@
   import type { TrajectoryType } from '$lib/trajectory'
   import type { ComponentProps } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
+  import { to_error } from '$lib/utils'
 
   let {
     export_pane_open = $bindable(false),
@@ -123,7 +124,7 @@
       }, 1000)
     } catch (error) {
       console.error(`Export failed:`, error)
-      export_error = error instanceof Error ? error.message : String(error)
+      export_error = to_error(error).message
       is_exporting = false
       export_progress = 0
     }

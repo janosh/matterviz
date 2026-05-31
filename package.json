@@ -196,6 +196,7 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
+    "@janosh/vite-config": "github:janosh/dotfiles#path:/vite-config",
     "@playwright/test": "^1.60.0",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/package": "^2.5.7",

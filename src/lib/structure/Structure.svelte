@@ -65,6 +65,7 @@
   import StructureExportPane from './StructureExportPane.svelte'
   import StructureInfoPane from './StructureInfoPane.svelte'
   import StructureScene from './StructureScene.svelte'
+  import { to_error } from '$lib/utils'
 
   // Type alias for event handlers to reduce verbosity
   type EventHandler = (data: StructureHandlerData) => void
@@ -303,7 +304,7 @@
             emit_file_load_event(parsed, filename, content)
           } catch (error) {
             error_msg = `Failed to parse structure: ${
-              error instanceof Error ? error.message : String(error)
+              to_error(error).message
             }`
             on_error?.({ error_msg, filename })
           }
@@ -334,7 +335,7 @@
       }
     } catch (err) {
       error_msg = `Failed to parse structure from string: ${
-        err instanceof Error ? err.message : String(err)
+        to_error(err).message
       }`
       untrack(() => on_error?.({ error_msg, filename: `string` }))
     } finally {
@@ -823,7 +824,7 @@
   let supercell_structure = $state(structure)
   let supercell_loading = $state(false)
   let has_supercell = $derived(
-    !!supercell_scaling && ![``, `1x1x1`, `1`].includes(supercell_scaling),
+    Boolean(supercell_scaling) && ![``, `1x1x1`, `1`].includes(supercell_scaling),
   )
   let bond_edits_enabled = $derived(
     cell_type === `original` && !has_supercell && !supercell_loading,
@@ -866,8 +867,8 @@
       // For large supercells, show loading state and use async generation
       const sites_count = base_structure.sites?.length || 0
       const [nx_str, ny_str, nz_str] = supercell_scaling.split(/[x×]/)
-      const scaling_mult = (parseInt(nx_str) || 1) * (parseInt(ny_str) || 1) *
-        (parseInt(nz_str) || 1)
+      const scaling_mult = (parseInt(nx_str, 10) || 1) * (parseInt(ny_str, 10) || 1) *
+        (parseInt(nz_str, 10) || 1)
       const estimated_sites = sites_count * scaling_mult
 
       // Show spinner for supercells with >1000 estimated sites or scaling >8
@@ -1125,7 +1126,7 @@
         emit_file_load_event(parsed, filename, content)
       } catch (err) {
         error_msg = `Failed to parse structure: ${
-          err instanceof Error ? err.message : String(err)
+          to_error(err).message
         }`
         on_error?.({ error_msg, filename })
       }

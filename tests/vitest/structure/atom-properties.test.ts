@@ -45,7 +45,7 @@ const make_cubic_structure = (
     species: [{ element: element as ElementSymbol, occu: 1, oxidation_state: 0 }],
     abc,
     xyz: [abc[0] * lattice_size, abc[1] * lattice_size, abc[2] * lattice_size] as Vec3,
-    label: label || element,
+    label: label ?? element,
     properties: {},
   })),
   lattice: {
@@ -491,7 +491,7 @@ describe(`get_atom_colors`, () => {
       `electroneg_ratio`,
       mode === `wyckoff` ? null : undefined,
     )
-    expect(colors.length).toBe(len)
+    expect(colors).toHaveLength(len)
   })
 
   test(`custom with fn`, () => {
@@ -515,7 +515,7 @@ describe(`Config`, () => {
 
   test(`partial uses defaults`, () => {
     const { colors } = ap.get_atom_colors(structure, { mode: `coordination` })
-    expect(colors.length).toBe(2)
+    expect(colors).toHaveLength(2)
   })
 
   test(`empty defaults to element`, () => {

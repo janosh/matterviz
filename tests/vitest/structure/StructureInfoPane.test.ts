@@ -100,7 +100,7 @@ describe(`StructureInfoPane`, () => {
       expect(state.hovered_site_idx).toBe(1)
       site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
       expect(state.highlighted_sites).toEqual([])
-      expect(state.hovered_site_idx).toBe(null)
+      expect(state.hovered_site_idx).toBeNull()
 
       const filter_input = document.querySelector(`input.site-filter`) as HTMLInputElement
       filter_input.value = `H2`

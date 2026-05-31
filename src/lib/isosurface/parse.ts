@@ -57,7 +57,7 @@ function parse_float_block(
     while (pos < len && text.charCodeAt(pos) > 32) pos++
 
     // Parse number using unary + (handles scientific notation)
-    const num = +text.substring(start, pos)
+    const num = Number(text.slice(start, pos))
     if (!Number.isNaN(num)) {
       data[idx++] = num
     }
@@ -81,7 +81,7 @@ function find_line_offset(text: string, target_line: number): number {
 function read_line(text: string, pos: number): { line: string; next: number } {
   let end = pos
   while (end < text.length && text.charCodeAt(end) !== 10 && text.charCodeAt(end) !== 13) end++
-  const line = text.substring(pos, end)
+  const line = text.slice(pos, end)
   let next = end
   if (next < text.length && text.charCodeAt(next) === 13) next++ // skip \r
   if (next < text.length && text.charCodeAt(next) === 10) next++ // skip \n
@@ -237,7 +237,7 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
 
   // Detect VASP 5+ format (has element symbols before counts)
   const first_token = cur.line.trim().split(/\s+/)[0]
-  const has_element_symbols = isNaN(parseInt(first_token))
+  const has_element_symbols = isNaN(parseInt(first_token, 10))
 
   if (has_element_symbols) {
     element_symbols = cur.line.trim().split(/\s+/)
@@ -248,15 +248,14 @@ export function parse_chgcar(content: string): VolumetricFileData | null {
       return null
     }
     atom_counts = cur.line.trim().split(/\s+/).map(Number)
-    pos = cur.next
   } else {
     atom_counts = cur.line.trim().split(/\s+/).map(Number)
     const fallback_elements = [`H`, `He`, `Li`, `Be`, `B`, `C`, `N`, `O`, `F`, `Ne`]
     element_symbols = atom_counts.map(
       (_count, idx) => fallback_elements[idx % fallback_elements.length],
     )
-    pos = cur.next
   }
+  pos = cur.next
 
   if (pos >= content.length) {
     console.error(`CHGCAR: file ends before coordinate mode line`)
@@ -617,7 +616,7 @@ export function parse_volumetric_file(
   // Content-based detection (only parse first few lines, not the whole file)
   // Find enough lines for detection without splitting the entire string
   const detection_end = find_line_offset(content, 10)
-  const detection_text = content.substring(0, detection_end)
+  const detection_text = content.slice(0, detection_end)
   const lines = detection_text.split(/\r?\n/)
 
   // .cube detection: line 3 has 4 numbers (n_atoms + origin), line 4 has 4 numbers (grid dim + voxel)

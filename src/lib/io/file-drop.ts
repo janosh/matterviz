@@ -1,6 +1,7 @@
 // Shared file-drop handler composable for drag-and-drop file loading.
 import { decompress_file } from './decompress'
 import { handle_url_drop } from './url-drop'
+import { to_error } from '$lib/utils'
 
 export interface FileDropOptions {
   allow: () => boolean
@@ -23,7 +24,7 @@ export const create_file_drop_handler =
     try {
       let url_error: string | undefined
       const handled = await handle_url_drop(event, opts.on_drop).catch((exc) => {
-        url_error = exc instanceof Error ? exc.message : String(exc)
+        url_error = to_error(exc).message
         return false
       })
       if (handled) return
@@ -38,7 +39,7 @@ export const create_file_drop_handler =
       const { content, filename } = await decompress_file(file)
       if (content) await opts.on_drop(content, filename)
     } catch (exc) {
-      const detail = exc instanceof Error ? exc.message : String(exc)
+      const detail = to_error(exc).message
       const msg = drop_filename
         ? `Failed to load file ${drop_filename}: ${detail}`
         : `Failed to load file: ${detail}`

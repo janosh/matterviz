@@ -78,7 +78,7 @@ export function calculate_rdf(structure: Crystal, options: RdfOptions = {}): Rdf
   }
 
   // Calculate distances and bin them with occupancy weighting
-  const use_pbc = pbc.some((flag) => flag)
+  const use_pbc = pbc.some(Boolean)
   const converters = use_pbc ? create_lattice_converters(lattice) : undefined
 
   for (const center of centers) {

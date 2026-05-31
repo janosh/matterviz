@@ -210,7 +210,7 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
 
     // All should have some opacity for background effect
     const opacities = await system_rects.evaluateAll((rects) =>
-      rects.map((rect) => parseFloat(rect.getAttribute(`opacity`) || `1`)),
+      rects.map((rect) => parseFloat(rect.getAttribute(`opacity`) ?? `1`)),
     )
 
     // Background rectangles should have low opacity

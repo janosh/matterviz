@@ -585,8 +585,8 @@ export const centered_frac = (val: number): number => {
 // Returns true if both are the same reference, or both are defined with equal components.
 export const vecs_equal = (vec_a?: Vec3, vec_b?: Vec3): boolean =>
   vec_a === vec_b ||
-  (!!vec_a &&
-    !!vec_b &&
+  (vec_a !== undefined &&
+    vec_b !== undefined &&
     vec_a[0] === vec_b[0] &&
     vec_a[1] === vec_b[1] &&
     vec_a[2] === vec_b[2])

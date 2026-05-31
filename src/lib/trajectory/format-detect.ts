@@ -42,7 +42,7 @@ export const FORMAT_PATTERNS = {
   },
 
   vasp: (data: string, filename?: string) => {
-    const basename = filename?.toLowerCase().split(`/`).pop() || ``
+    const basename = filename?.toLowerCase().split(`/`).pop() ?? ``
     if (basename === `xdatcar` || basename.startsWith(`xdatcar`)) return true
     const lines = data.trim().split(/\r?\n/)
     return (

@@ -14,7 +14,7 @@ describe(`PropertyFilter`, () => {
     mount(PropertyFilter, { target: document.body, props: { label: `E<sub>hull</sub>` } })
     expect(get_container()).toBeInstanceOf(HTMLDivElement)
     expect(doc_query(`.filter-label sub`).textContent).toBe(`hull`)
-    expect(get_inputs().length).toBe(2)
+    expect(get_inputs()).toHaveLength(2)
     expect(get_min_input().type).toBe(`number`)
     expect(get_min_input().step).toBe(`any`)
   })
@@ -65,7 +65,7 @@ describe(`PropertyFilter`, () => {
   ])(`unit label visible=$expected when unit=$unit`, ({ unit, expected }) => {
     mount(PropertyFilter, { target: document.body, props: { label: `Energy`, unit } })
     const unit_label = document.querySelector(`.unit-label`)
-    expect(!!unit_label).toBe(expected)
+    expect(Boolean(unit_label)).toBe(expected)
     if (expected) expect(unit_label?.textContent).toBe(unit)
   })
 
@@ -76,7 +76,7 @@ describe(`PropertyFilter`, () => {
     { min_value: 10, show_clear_button: true, disabled: true, expected: false },
   ])(`clear button visible=$expected`, (params) => {
     mount(PropertyFilter, { target: document.body, props: { label: `Test`, ...params } })
-    expect(!!document.querySelector(`.clear-btn`)).toBe(params.expected)
+    expect(Boolean(document.querySelector(`.clear-btn`))).toBe(params.expected)
   })
 
   test(`clear button and Escape key clear values and fire callbacks`, () => {
@@ -146,7 +146,7 @@ describe(`PropertyFilter`, () => {
         target: document.body,
         props: { label: `Test`, histogram_data },
       })
-      expect(!!document.querySelector(`svg`)).toBe(expected)
+      expect(Boolean(document.querySelector(`svg`))).toBe(expected)
     },
   )
 
@@ -160,7 +160,7 @@ describe(`PropertyFilter`, () => {
       props: { label: `Test`, histogram_data: [1, 2, 3], histogram_position: position },
     })
     const svg = document.querySelector(`svg`)
-    expect(!!svg).toBe(visible)
+    expect(Boolean(svg)).toBe(visible)
     if (visible) {
       const container = get_container()
       const row = doc_query(`.filter-row`)
@@ -176,7 +176,7 @@ describe(`PropertyFilter`, () => {
       target: document.body,
       props: { label: `Test`, histogram_data: [1, 2, 3], log },
     })
-    expect(!!document.querySelector(`.log-label`)).toBe(log)
+    expect(Boolean(document.querySelector(`.log-label`))).toBe(log)
   })
 
   test(`clear button accessibility and onchange on blur`, () => {

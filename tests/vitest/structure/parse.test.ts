@@ -725,7 +725,7 @@ O2   O   0.410  0.140  0.880  1.000`
 
     // Expect exact total sites from CIF header (_atom_type_number_in_cell)
     // Ru: 4, S: 24, P: 24, N: 16, C: 296, H: 252 → total = 616
-    expect(result.sites.length).toBe(616)
+    expect(result.sites).toHaveLength(616)
 
     // Per-element site counts must match header to ensure symmetry expansion isn't over-generating
     const element_counts: Record<string, number> = {}
@@ -925,7 +925,7 @@ H1   H   0.500  0.500  0.500  1.000  1.000`
 
       const result = parse_cif(malformed_cif)
       assert(result, `Failed to parse malformed CIF`)
-      expect(result.sites.length).toBe(3)
+      expect(result.sites).toHaveLength(3)
       expect(result.sites[0].species[0].occu).toBe(1.0)
     })
 
@@ -1327,7 +1327,7 @@ loop_
     assert(result, `Failed to parse CIF`)
 
     // Formula: Cs1 K1 B8 O12 F2 = 24 sites
-    expect(result.sites.length).toBe(24)
+    expect(result.sites).toHaveLength(24)
     const counts: Record<string, number> = {}
     for (const site of result.sites) {
       counts[site.species[0].element] = (counts[site.species[0].element] ?? 0) + 1
@@ -1440,7 +1440,7 @@ Na Na 0.000 0.000 0.000`
     // OH2: 1 site with 0.655 occupancy
     // OH: 1 site with 0.345 occupancy
     // Total: 5 oxygen sites
-    expect(oxygen_sites.length).toBe(5)
+    expect(oxygen_sites).toHaveLength(5)
 
     // Check that we have the expected number of each type
     const o1_count = oxygen_sites.filter((site) => site.label === `O1`).length
@@ -1456,7 +1456,7 @@ Na Na 0.000 0.000 0.000`
     expect(oh_count).toBe(1) // 1 unique site
 
     // Check total sites (5 O + 1 As + 3 Zn/Fe/Pb (mixed occupancy) + 1 Pb)
-    expect(result.sites.length).toBe(10)
+    expect(result.sites).toHaveLength(10)
 
     // Verify lattice parameters
     expect(result.lattice?.a).toBeCloseTo(9.143, 3)
@@ -1472,7 +1472,7 @@ Na Na 0.000 0.000 0.000`
 
     // P42/nmc (space group 137), 16 symmetry ops, 9 unique sites
     // After expansion: 62 sites (Ge1/P1 share position but are separate entries)
-    expect(result.sites.length).toBe(62)
+    expect(result.sites).toHaveLength(62)
 
     const count = el_count(result)
     expect(count(`Li`)).toBe(28)
@@ -1492,7 +1492,7 @@ Na Na 0.000 0.000 0.000`
 
     // Fm-3m (space group 225), 192 symmetry ops, 7 unique sites
     // Same as pymatgen: 424 sites (C=192, H=96, O=104, Zn=32)
-    expect(result.sites.length).toBe(424)
+    expect(result.sites).toHaveLength(424)
 
     const count = el_count(result)
     expect(count(`Zn`)).toBe(32)
@@ -1580,9 +1580,9 @@ unit_cell:
     },
     {
       name: `phonopy YAML with phonon_displacements`,
-      content:
-        simple_phonopy_yaml +
-        `\nphonon_displacements:\n- # This should be ignored for performance\n  - 0.1\n  - 0.2\n  - 0.3`,
+      content: `${
+        simple_phonopy_yaml
+      }\nphonon_displacements:\n- # This should be ignored for performance\n  - 0.1\n  - 0.2\n  - 0.3`,
       expected_result: `structure`,
       expected_sites: 2,
     },
@@ -1864,7 +1864,7 @@ describe(`parse_structure_file`, () => {
     // Verify the file contains valid JSON with expected structure
     const parsed = JSON.parse(content)
     expect(Array.isArray(parsed)).toBe(true)
-    expect(parsed.length).toBe(1)
+    expect(parsed).toHaveLength(1)
     expect(parsed[0]).toHaveProperty(`structure`)
 
     // Validate the nested structure format
@@ -1872,7 +1872,7 @@ describe(`parse_structure_file`, () => {
     expect(typeof nested_structure).toBe(`object`)
     expect(nested_structure).toHaveProperty(`sites`)
     expect(Array.isArray(nested_structure.sites)).toBe(true)
-    expect(nested_structure.sites.length).toBe(180)
+    expect(nested_structure.sites).toHaveLength(180)
 
     // Test the actual parsing function can handle this format
     const result = parse_structure_file(content, hea_hcp_filename)
@@ -2398,7 +2398,7 @@ describe(`OPTIMADE JSON parser`, () => {
     // Verify the expected error was logged
     if (expected_error) {
       const error_calls = console_error_spy.mock.calls
-      expect(error_calls.length).toBe(1)
+      expect(error_calls).toHaveLength(1)
       expect(error_calls[0][0]).toContain(expected_error)
     }
   })
@@ -2778,7 +2778,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
 
     // Verify the expected error was logged
     const error_calls = console_error_spy.mock.calls
-    expect(error_calls.length).toBe(1)
+    expect(error_calls).toHaveLength(1)
     expect(error_calls[0][0]).toContain(expected_error)
   })
 
@@ -2917,7 +2917,7 @@ describe(`OPTIMADE to Pymatgen Conversion`, () => {
     expect(result.properties?.chemical_formula_descriptive).toBe(`SiO2`)
     expect(result.properties?.nelements).toBe(2)
     expect(result.properties?.last_modified).toBe(`2023-03-11`)
-    expect(result.properties?.[`_mp_stability`]).toEqual({ energy_above_hull: 0.0 })
+    expect(result.properties?._mp_stability).toEqual({ energy_above_hull: 0.0 })
     // Verify structural fields are NOT in properties
     expect(result.properties?.lattice_vectors).toBeUndefined()
     expect(result.properties?.cartesian_site_positions).toBeUndefined()

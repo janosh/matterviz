@@ -162,7 +162,7 @@
       return { x: x_vals, y: add_nan_values(base, nan_probability) }
     } else if (data_type === `jumpy`) {
       return { x: x_vals, y: generate_jumpy(data_length, 4) }
-    } else {
+    }
       // combined
       let y_vals = generate_smooth(data_length)
       y_vals = add_noise(y_vals, noise_level * 0.5)
@@ -173,7 +173,7 @@
       )
       y_vals = add_nan_values(y_vals, nan_probability * 0.5)
       return { x: x_vals, y: y_vals }
-    }
+
   })
 
   // Derived: cleaned data

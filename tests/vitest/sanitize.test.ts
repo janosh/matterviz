@@ -132,7 +132,7 @@ describe(`sanitize_html`, () => {
   test.each([
     [`malicious toString()`, { toString: (): string => `<script>alert(1)</script>` }],
     [`double-encoded entities`, `<img src=x onerror=&#97;&#108;&#101;&#114;&#116;(1)>`],
-    [`null byte injection`, `<scr\x00ipt>alert(1)</script>`],
+    [`null byte injection`, `<scr\u0000ipt>alert(1)</script>`],
   ] as const)(`bypass attempt: %s`, (_name, input) => {
     assert_no_xss(sanitize_html(input))
   })

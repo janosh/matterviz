@@ -266,9 +266,9 @@ describe(`make_supercell`, () => {
     const original = structuredClone(sample_structure)
     const supercell = make_supercell(original, [2, 2, 2])
 
-    expect(original.sites.length).toBe(2)
+    expect(original.sites).toHaveLength(2)
     expect(`supercell_scaling` in original).toBe(false)
-    expect(supercell.sites.length).toBe(16)
+    expect(supercell.sites).toHaveLength(16)
     expect(`supercell_scaling` in supercell).toBe(true)
   })
 })
@@ -389,7 +389,7 @@ describe(`image atom behavior`, () => {
     const distant_negative = supercell_images.filter(([_idx, xyz]) =>
       xyz.some((coord) => coord < -1.0),
     )
-    expect(distant_negative.length).toBe(0)
+    expect(distant_negative).toHaveLength(0)
   })
 })
 
@@ -582,7 +582,7 @@ describe(`performance tests`, () => {
       const supercell = make_supercell(test_structure, scaling)
       const duration = performance.now() - start_time
 
-      expect(supercell.sites.length).toBe(expected_atoms)
+      expect(supercell.sites).toHaveLength(expected_atoms)
       expect(`supercell_scaling` in supercell).toBe(true)
       expect(duration).toBeLessThan(timeout_ms * 3) // CI multiplier
       expect(supercell.sites.every((site) => site.xyz && site.abc)).toBe(true)

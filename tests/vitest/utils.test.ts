@@ -69,9 +69,7 @@ describe(`merge_nested`, () => {
   test(`does not mutate inputs`, () => {
     const defaults = { a: 1, nested: { b: 2 } }
     const user = { a: 10, nested: { b: 20 } }
-    const [def_copy, user_copy] = [defaults, user].map((obj) =>
-      JSON.parse(JSON.stringify(obj)),
-    )
+    const [def_copy, user_copy] = [defaults, user].map((obj) => structuredClone(obj))
     merge_nested(defaults, user)
     expect([defaults, user]).toEqual([def_copy, user_copy])
   })
@@ -92,7 +90,7 @@ describe(`decode_url_safe_base64`, () => {
 
   test(`decodes a realistic JSON structure payload`, () => {
     const json = JSON.stringify({ lattice: [[1, 0, 0]], sites: [{ element: `Na` }] })
-    const url_safe = btoa(json).replace(/\+/g, `-`).replace(/\//g, `_`).replace(/=+$/, ``)
+    const url_safe = btoa(json).replaceAll('+', `-`).replaceAll('/', `_`).replace(/=+$/, ``)
     expect(decode_url_safe_base64(url_safe)).toBe(json)
   })
 })

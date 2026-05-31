@@ -107,7 +107,7 @@
     const params = new URLSearchParams(globalThis.location.search)
     const dim = params.get(`dim`)
     if (dim && [`2d`, `3d`, `4d`].includes(dim)) dimension = dim as Dimension
-    const cnt = parseInt(params.get(`count`) ?? ``)
+    const cnt = parseInt(params.get(`count`) ?? ``, 10)
     if (!isNaN(cnt) && cnt >= 10 && cnt <= 50000) entry_count = cnt
     const hull = parseFloat(params.get(`hull_dist`) ?? ``)
     if (!isNaN(hull) && hull >= 0) max_hull_dist = hull

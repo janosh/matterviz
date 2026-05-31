@@ -45,7 +45,7 @@
     frames.map((frame) => frame.metadata?.[prop]).filter(is_valid_number)
 
   const format_range = (values: number[], unit = ``, decimals = `.2~f`) => {
-    if (!values.length) return null
+    if (values.length === 0) return null
     if (values.length === 1) {
       return `${format_num(values[0], decimals)} ${unit}`.trim()
     }
@@ -61,6 +61,7 @@
     tooltip?: string,
   ): InfoItem | null => value ? { label, value, key, tooltip } : null
 
+  // oxlint-disable-next-line eslint-plugin-unicorn/prefer-native-coercion-functions -- type predicate needed for narrowing
   const is_info_item = (item: unknown): item is InfoItem => Boolean(item)
 
   const safe_formula = (structure: AnyStructure) => {

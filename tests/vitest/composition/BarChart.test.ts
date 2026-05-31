@@ -87,7 +87,7 @@ describe(`BarChart component`, () => {
     })
 
     const segments = document.querySelectorAll(`rect.bar-segment`)
-    expect(segments.length).toBe(2) // H and O segments
+    expect(segments).toHaveLength(2) // H and O segments
   })
 
   test(`external label positioning balances above and below`, () => {
@@ -101,11 +101,11 @@ describe(`BarChart component`, () => {
     // Check that external labels exist by looking at their y-coordinates
     const all_labels = document.querySelectorAll(`text.external-label`)
     const above_labels = Array.from(all_labels).filter((label) => {
-      const y = parseFloat(label.getAttribute(`y`) || `0`)
+      const y = parseFloat(label.getAttribute(`y`) ?? `0`)
       return y < 20 // Above the bar
     })
     const below_labels = Array.from(all_labels).filter((label) => {
-      const y = parseFloat(label.getAttribute(`y`) || `0`)
+      const y = parseFloat(label.getAttribute(`y`) ?? `0`)
       return y > 60 // Below the bar
     })
 
@@ -152,7 +152,7 @@ describe(`BarChart component`, () => {
     })
 
     const segments = document.querySelectorAll(`rect.bar-segment`)
-    expect(segments.length).toBe(0)
+    expect(segments).toHaveLength(0)
   })
 
   test(`shows labels and percentages when enabled`, () => {

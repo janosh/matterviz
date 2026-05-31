@@ -341,7 +341,7 @@ function make_cube({
   }
   if (orbital_header) lines.push(orbital_header as string)
   lines.push(data as string)
-  return lines.join(`\n`) + `\n`
+  return `${lines.join(`\n`)}\n`
 }
 
 describe(`parse_cube`, () => {
@@ -425,7 +425,7 @@ describe(`parse_cube`, () => {
 
   test(`handles non-zero grid origin`, () => {
     const result = parse_cube(make_cube({ origin: [1.0, 2.0, 3.0] }))
-    expect(result?.volumes[0].origin[0]).toBeCloseTo(1.0 * bohr, 5)
+    expect(result?.volumes[0].origin[0]).toBeCloseTo(bohr, 5)
     expect(result?.volumes[0].origin[1]).toBeCloseTo(2.0 * bohr, 5)
     expect(result?.volumes[0].origin[2]).toBeCloseTo(3.0 * bohr, 5)
   })
@@ -516,18 +516,17 @@ describe(`parse_cube`, () => {
 
   test(`returns null for malformed header (NaN tokens)`, () => {
     // Corrupt line 3 (n_atoms line) with non-numeric tokens
-    const bad_cube =
-      [
-        `title`,
-        `comment`,
-        `    abc   0.000000   0.000000   0.000000`, // "abc" instead of number
-        `   2   1.889726   0.000000   0.000000`,
-        `   2   0.000000   1.889726   0.000000`,
-        `   2   0.000000   0.000000   1.889726`,
-        `    1   0.000000   0.000000   0.000000   0.000000`,
-        `    1   0.000000   0.000000   0.000000   1.400000`,
-        `0.001  0.002  0.003  0.004  0.005  0.006  0.007  0.008`,
-      ].join(`\n`) + `\n`
+    const bad_cube = `${[
+      `title`,
+      `comment`,
+      `    abc   0.000000   0.000000   0.000000`, // "abc" instead of number
+      `   2   1.889726   0.000000   0.000000`,
+      `   2   0.000000   1.889726   0.000000`,
+      `   2   0.000000   0.000000   1.889726`,
+      `    1   0.000000   0.000000   0.000000   0.000000`,
+      `    1   0.000000   0.000000   0.000000   1.400000`,
+      `0.001  0.002  0.003  0.004  0.005  0.006  0.007  0.008`,
+    ].join(`\n`)}\n`
     expect(parse_cube(bad_cube)).toBeNull()
   })
 

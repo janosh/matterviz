@@ -36,7 +36,7 @@ export function parse_xyz_trajectory(content: string): TrajectoryType {
     }
 
     const step_match = extractors.step.exec(comment)
-    const step = step_match?.[1] ? parseInt(step_match[1]) : frames.length
+    const step = step_match?.[1] ? parseInt(step_match[1], 10) : frames.length
     Object.entries(extractors).forEach(([key, pattern]) => {
       if (key === `step`) return
       const match = pattern.exec(comment)

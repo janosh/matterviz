@@ -271,7 +271,7 @@
   })
 
   let category_indices = $derived(
-    category_list.length ? category_list.map((_, idx) => idx) : null,
+    category_list.length > 0 ? category_list.map((_, idx) => idx) : null,
   )
 
   let internal_series = $derived.by<NumericBarSeries[]>(() => {
@@ -365,7 +365,7 @@
         ]
       }
 
-      if (!points.length) return [0, 1]
+      if (points.length === 0) return [0, 1]
 
       let computed_y_range = get_nice_data_range(
         points,
@@ -396,13 +396,13 @@
     // Get x values split by axis for range calculation
     // For categorical data, use fixed range centered on integer indices
     let x_auto_range: number[]
-    if (category_list.length) {
+    if (category_list.length > 0) {
       x_auto_range = [-0.5, category_list.length - 0.5]
     } else {
       const x1_x_points = visible_series
         .filter((srs) => (srs.x_axis ?? `x1`) === `x1`)
         .flatMap((srs) => srs.x.map((x_val) => ({ x: x_val, y: 0 })))
-      x_auto_range = x1_x_points.length
+      x_auto_range = x1_x_points.length > 0
         ? get_nice_data_range(
           x1_x_points,
           (pt) => pt.x,
@@ -418,7 +418,7 @@
       srs.x.map((x_val) => ({ x: x_val, y: 0 }))
     )
     const x2_scale_type = x2_axis.scale_type ?? `linear`
-    const x2_auto_range = x2_x_points.length
+    const x2_auto_range = x2_x_points.length > 0
       ? get_nice_data_range(
         x2_x_points,
         (pt) => pt.x,
@@ -494,7 +494,7 @@
 
   // Update padding when format or ticks change
   $effect(() => {
-    const new_pad = width && height && ticks.y.length
+    const new_pad = width && height && ticks.y.length > 0
       ? calc_auto_padding({
         padding,
         default_padding,
@@ -505,7 +505,7 @@
       : filter_padding(padding, default_padding)
     // Expand right padding if y2 ticks are shown (only for vertical orientation)
     if (
-      width && height && y2_series.length && ticks.y2.length &&
+      width && height && y2_series.length > 0 && ticks.y2.length > 0 &&
       orientation === `vertical`
     ) {
       // Need space for: tick shift + tick width + gap (30px) + label space (20px if present)
@@ -521,7 +521,7 @@
     }
     // Expand top padding if x2 ticks are shown (only for vertical orientation)
     if (
-      width && height && x2_series.length && ticks.x2.length &&
+      width && height && x2_series.length > 0 && ticks.x2.length > 0 &&
       orientation === `vertical`
     ) {
       const inside = x2_axis.tick?.label?.inside ?? false
@@ -546,7 +546,7 @@
   // from baseline to its tip so the legend can't hide inside a tall bar. Built from internal_series
   // (pad-independent) + ranges so the crowding decision can't see its own reservation.
   const obstacles_norm = $derived.by(() => {
-    if (!width || !height || !visible_series.length) return []
+    if (!width || !height || visible_series.length === 0) return []
     const base_w = width - base_pad.l - base_pad.r
     const base_h = height - base_pad.t - base_pad.b
     if (base_w <= 0 || base_h <= 0) return []
@@ -661,7 +661,7 @@
   // In vertical mode categories are on x-axis; in horizontal mode on y-axis
   let cat_axis = $derived(orientation === `horizontal` ? `y` : `x`)
   let effective_cat_ticks = $derived.by(() => {
-    if (!category_list.length) return undefined
+    if (category_list.length === 0) return undefined
     // Only respect user ticks when they're a Record (custom label mapping),
     // not a number (tick count) or array (tick positions)
     const user_ticks = cat_axis === `x` ? x_axis.ticks : y_axis.ticks
@@ -1103,7 +1103,7 @@
 
   // Collect bar and line positions for legend placement
   let bar_points_for_placement = $derived.by(() => {
-    if (!width || !height || !visible_series.length) return []
+    if (!width || !height || visible_series.length === 0) return []
 
     return internal_series.flatMap((srs, series_idx) => {
       if (!(srs?.visible ?? true)) return []

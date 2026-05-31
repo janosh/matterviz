@@ -21,7 +21,7 @@ import { describe, expect, test } from 'vitest'
 
 describe(`ternary: constants and projections`, () => {
   test(`triangle vertices are equilateral base`, () => {
-    expect(TRIANGLE_VERTICES.length).toBe(3)
+    expect(TRIANGLE_VERTICES).toHaveLength(3)
     // side lengths: (0)-(1) and (1)-(2) should match
     const d01 = Math.hypot(
       TRIANGLE_VERTICES[0][0] - TRIANGLE_VERTICES[1][0],
@@ -102,7 +102,7 @@ describe(`ternary: composition and plotting`, () => {
       }, // out-of-system
     ]
     const out = get_ternary_3d_coordinates(entries, elements)
-    expect(out.length).toBe(2)
+    expect(out).toHaveLength(2)
     expect(out[0]).toHaveProperty(`x`)
     expect(out[0]).toHaveProperty(`y`)
     expect(out[0]).toHaveProperty(`z`)
@@ -111,9 +111,9 @@ describe(`ternary: composition and plotting`, () => {
 
   test(`edges and vertical edges are generated with correct counts`, () => {
     const edges = get_triangle_edges()
-    expect(edges.length).toBe(3)
+    expect(edges).toHaveLength(3)
     const v_edges = get_triangle_vertical_edges(-2, 1)
-    expect(v_edges.length).toBe(3)
+    expect(v_edges).toHaveLength(3)
     for (const [lo, hi] of v_edges) {
       expect(lo.z).toBe(-2)
       expect(hi.z).toBe(1)
@@ -153,7 +153,7 @@ describe(`ternary: geometry helpers`, () => {
 
 describe(`quaternary: barycentric and projection`, () => {
   test(`tetrahedron vertex count and non-degenerate`, () => {
-    expect(TETRAHEDRON_VERTICES.length).toBe(4)
+    expect(TETRAHEDRON_VERTICES).toHaveLength(4)
     // distances from vertex 3 (origin) are non-zero
     for (let idx = 0; idx < 3; idx++) {
       const d = Math.hypot(
@@ -196,7 +196,7 @@ describe(`quaternary: compute_4d_coords`, () => {
       { composition: { A: 1, E: 1 } as unknown as CompositionType, energy: 0 },
     ]
     const out = compute_4d_coords(entries, elems)
-    expect(out.length).toBe(2)
+    expect(out).toHaveLength(2)
     expect(out[0]).toHaveProperty(`x`)
     expect(out[0]).toHaveProperty(`y`)
     expect(out[0]).toHaveProperty(`z`)

@@ -86,7 +86,7 @@
       if (!isNaN(opacity)) lattice_props.cell_surface_opacity = opacity
     }
     if (url_params.has(`cell_edge_width`)) {
-      const line_width = parseInt(url_params.get(`cell_edge_width`) || `1`)
+      const line_width = parseInt(url_params.get(`cell_edge_width`) || `1`, 10)
       if (!isNaN(line_width)) lattice_props.cell_edge_width = line_width
     }
 

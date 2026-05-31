@@ -91,7 +91,15 @@ describe(`create_axis_change_handler`, () => {
   test(`does not call data_loader when key unchanged and series loaded (no-op guard)`, async () => {
     const state = create_mock_state(`energy`)
     // Initialize with existing series so no-op guard is active
-    state.get_series = vi.fn(() => [{ x: [1], y: [1] }] as DataSeries[])
+    state.get_series = vi.fn(
+      () =>
+        [
+          {
+            x: [1],
+            y: [1],
+          },
+        ] as DataSeries[],
+    )
     const data_loader = vi.fn().mockResolvedValue({ series: [] })
     const on_axis_change = vi.fn()
 
