@@ -1,8 +1,8 @@
 <script lang="ts">
   // Tooltip component for Fermi surface hover information
   // Displays band index, spin, k-coordinates, and optional property values
-  import { format_num, format_vec3 } from '$lib/labels'
-  import { TooltipContent } from '$lib/tooltip'
+  import { format_num } from '$lib/labels'
+  import { KCoords, TooltipContent } from '$lib/tooltip'
   import type { FermiHoverData, FermiTooltipProp } from './types'
 
   let {
@@ -24,16 +24,10 @@
     </div>
 
     <div class="coords-section">
-      <div class="coord-row">
-        <span class="coord-label">k (Å⁻¹):</span>
-        <span class="coord-values">{format_vec3(hover_data.position_cartesian)}</span>
-      </div>
-      {#if hover_data.position_fractional}
-        <div class="coord-row">
-          <span class="coord-label">k (frac):</span>
-          <span class="coord-values">{format_vec3(hover_data.position_fractional)}</span>
-        </div>
-      {/if}
+      <KCoords
+        cartesian={hover_data.position_cartesian}
+        fractional={hover_data.position_fractional}
+      />
     </div>
 
     {#if hover_data.property_value != null}
@@ -56,7 +50,7 @@
 
 <style>
   .tooltip-content {
-    max-width: var(--tooltip-max-width, 220px);
+    max-width: var(--tooltip-max-width, 250px);
   }
   .tooltip-title {
     display: flex;
@@ -80,18 +74,6 @@
   }
   .coords-section {
     margin: 4px 0;
-  }
-  .coord-row {
-    display: flex;
-    gap: 4px;
-    font-size: 0.9em;
-  }
-  .coord-label {
-    opacity: 0.8;
-    min-width: 55px;
-  }
-  .coord-values {
-    font-family: monospace;
   }
   .property-row {
     margin-top: 4px;

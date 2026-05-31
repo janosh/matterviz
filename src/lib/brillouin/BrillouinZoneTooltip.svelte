@@ -1,8 +1,8 @@
 <script lang="ts">
   // Tooltip component for Brillouin zone hover information
   // Displays k-coordinates, BZ order, volume, and IBZ-specific info
-  import { format_num, format_vec3 } from '$lib/labels'
-  import { TooltipContent } from '$lib/tooltip'
+  import { format_num } from '$lib/labels'
+  import { KCoords, TooltipContent } from '$lib/tooltip'
   import type { BZHoverData, BZTooltipProp } from './types'
 
   let {
@@ -19,33 +19,26 @@
 
 <TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>
   <div class="bz-tooltip-content">
-    <div class="bz-tooltip-title">
-      <strong>{hover_data.is_ibz ? `Irreducible BZ` : `Brillouin Zone`}</strong>
-      {#if hover_data.bz_order > 1}
-        <span class="bz-tooltip-badge">{ordinal(hover_data.bz_order)}</span>
-      {/if}
-    </div>
-    <div class="bz-tooltip-row">
-      <span class="bz-tooltip-label">k (Å⁻¹):</span>
-      <span class="bz-tooltip-value">{format_vec3(hover_data.position_cartesian)}</span>
-    </div>
-    {#if hover_data.position_fractional}
-      <div class="bz-tooltip-row">
-        <span class="bz-tooltip-label">k (frac):</span>
-        <span class="bz-tooltip-value">{
-          format_vec3(hover_data.position_fractional)
-        }</span>
+    {#if hover_data.is_ibz || hover_data.bz_order > 1}
+      <div class="bz-tooltip-title">
+        {#if hover_data.is_ibz}<strong>Irreducible BZ</strong>{/if}
+        {#if hover_data.bz_order > 1}
+          <span class="bz-tooltip-badge">{ordinal(hover_data.bz_order)}</span>
+        {/if}
       </div>
     {/if}
+    <KCoords
+      cartesian={hover_data.position_cartesian}
+      fractional={hover_data.position_fractional}
+    />
     <div class="bz-tooltip-row">
       <span class="bz-tooltip-label">BZ Volume:</span>
-      <span class="bz-tooltip-value">{format_num(hover_data.bz_volume, `.4~`)} Å⁻³</span>
+      <span>{format_num(hover_data.bz_volume, `.4~`)} Å⁻³</span>
     </div>
     {#if hover_data.is_ibz && hover_data.ibz_volume != null}
       <div class="bz-tooltip-row">
         <span class="bz-tooltip-label">IBZ Volume:</span>
-        <span class="bz-tooltip-value">{format_num(hover_data.ibz_volume, `.4~`)}
-          Å⁻³</span>
+        <span>{format_num(hover_data.ibz_volume, `.4~`)} Å⁻³</span>
       </div>
       {#if hover_data.symmetry_multiplicity != null}
         <div class="bz-tooltip-symmetry">
@@ -80,9 +73,6 @@
   .bz-tooltip-label {
     opacity: 0.8;
     min-width: 75px;
-  }
-  .bz-tooltip-value {
-    font-family: monospace;
   }
   .bz-tooltip-symmetry {
     margin-top: 2px;

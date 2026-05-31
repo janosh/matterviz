@@ -16,12 +16,12 @@
     format_sigma,
     FREQUENCY_UNITS,
     IMAGINARY_MODE_NOISE_THRESHOLD,
-    is_valid_range,
     negative_fraction,
     NORMALIZATION_MODES,
     normalize_densities,
     normalize_dos,
     SPIN_MODES,
+    sync_axis_range,
     validate_sigma_range,
   } from './helpers'
   import type {
@@ -346,7 +346,8 @@
     label: x_label,
     format: `.2f`,
     range: x_range,
-    label_shift: { x: 0, y: -48 }, // Increase standoff from tick labels
+    // Keep label standoff identical to Bands' x-axis so the side-by-side
+    // "Density of States" and "Wave Vector" labels align (ScatterPlot default y: -40)
     ...(is_horizontal && { ticks: 4 }),
     ...x_axis,
   })
@@ -361,18 +362,8 @@
   // Sync zoom changes from ScatterPlot back to parent via bindable y_axis
   // Also clears parent range when internal range becomes invalid (auto-range reset)
   $effect(() => {
-    const range = internal_y_axis.range
-    if (is_valid_range(range)) {
-      if (y_axis.range?.[0] !== range[0] || y_axis.range?.[1] !== range[1]) {
-        y_axis = { ...y_axis, range }
-      }
-      return
-    }
-    // Range became invalid - clear parent's range to propagate reset
-    if (`range` in y_axis) {
-      const { range: _omit, ...axis_without_range } = y_axis
-      y_axis = axis_without_range
-    }
+    const next = sync_axis_range(y_axis, internal_y_axis.range)
+    if (next !== y_axis) y_axis = next
   })
 
   let display = $state({

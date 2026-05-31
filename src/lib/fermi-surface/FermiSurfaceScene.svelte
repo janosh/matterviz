@@ -665,6 +665,9 @@
         vector={scaled_vec}
         color={vector_colors[idx]}
         scale={1}
+        shaft_radius={scene_size * 0.008}
+        arrow_head_radius={scene_size * 0.028}
+        arrow_head_length={-0.1}
       />
       <extras.HTML center position={label_position}>
         <span style:color={vector_colors[idx]} style:font-size="1.2em">

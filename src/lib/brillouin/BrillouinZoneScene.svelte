@@ -167,6 +167,18 @@
   const vector_colors = [`red`, `green`, `blue`]
   const vector_labels = [`b₁`, `b₂`, `b₃`]
 
+  // Threshold for skipping k-path segments that bridge a path discontinuity (e.g. `U|K`).
+  // Band paths are densely sampled, so legit segments are tiny; a discontinuity jumps by
+  // a fraction of the zone. Skip segments far longer than the median sampling step.
+  const k_path_seg_cutoff = $derived.by(() => {
+    if (!k_path_points || k_path_points.length < 3) return Infinity
+    const lens = k_path_points
+      .slice(1)
+      .map((pt, idx) => Math.hypot(...math.subtract(pt as Vec3, k_path_points[idx] as Vec3)))
+      .sort((len_a, len_b) => len_a - len_b)
+    return lens[Math.floor(lens.length / 2)] * 10
+  })
+
   // Create mesh geometry from faces with fan triangulation
   function create_mesh_geometry(
     vertices: Vec3[],
@@ -395,6 +407,9 @@
           vector={scaled_vec}
           color={vector_colors[idx]}
           scale={1}
+          shaft_radius={bz_size * 0.008}
+          arrow_head_radius={bz_size * 0.028}
+          arrow_head_length={-0.1}
         />
         <!-- Vector label beyond tip -->
         <extras.HTML center position={label_position}>
@@ -416,14 +431,19 @@
         (`${from_point}-${k_path_points[idx + 1]}#${idx}`)
       }
         {@const to_point = k_path_points[idx + 1]}
+        {@const seg_len = Math.hypot(
+      ...math.subtract(to_point as Vec3, from_point as Vec3),
+    )}
         {@const is_hovered = hovered_qpoint_index !== null &&
       (idx === hovered_qpoint_index || idx === hovered_qpoint_index - 1)}
-        <Cylinder
-          from={from_point as Vec3}
-          to={to_point as Vec3}
-          thickness={0.08}
-          color={is_hovered ? `#ff6b35` : `#ffcc00`}
-        />
+        {#if seg_len <= k_path_seg_cutoff}
+          <Cylinder
+            from={from_point as Vec3}
+            to={to_point as Vec3}
+            thickness={0.08}
+            color={is_hovered ? `#ff6b35` : `#ffcc00`}
+          />
+        {/if}
       {/each}
     {/if}
 

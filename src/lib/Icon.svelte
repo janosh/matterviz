@@ -15,11 +15,8 @@
     return ICON_DATA.Alert
   })
 
-  // Multi-element inline SVG is rendered via {@html}, which by construction only ever receives our
-  // own trusted ICON_DATA constants — never the user-facing `path` prop. `path` is always treated as
-  // a path `d` string rendered as an escaped <path d> attribute below, so untrusted input cannot
-  // reach {@html} (no XSS, even during SSR) and the markup is byte-identical on server and client
-  // (no hydration_html mismatch — no client-only sanitization that would diverge from raw SSR).
+  // {@html} only ever gets trusted ICON_DATA, never the user `path` prop (which renders as an
+  // escaped <path d> below) — so no XSS via path and identical SSR/CSR output (no hydration mismatch)
   const icon_markup = $derived(!path && data.path.trim().startsWith(`<`) ? data.path : null)
 </script>
 

@@ -617,18 +617,8 @@
   // Sync zoom changes from ScatterPlot back to parent via bindable y_axis
   // Also clears parent range when internal range becomes invalid (auto-range reset)
   $effect(() => {
-    const range = internal_y_axis.range
-    if (helpers.is_valid_range(range)) {
-      if (y_axis.range?.[0] !== range[0] || y_axis.range?.[1] !== range[1]) {
-        y_axis = { ...y_axis, range }
-      }
-      return
-    }
-    // Range became invalid - clear parent's range to propagate reset
-    if (`range` in y_axis) {
-      const { range: _omit, ...axis_without_range } = y_axis
-      y_axis = axis_without_range
-    }
+    const next = helpers.sync_axis_range(y_axis, internal_y_axis.range)
+    if (next !== y_axis) y_axis = next
   })
 
   let has_series = $derived(series_data.length > 0)

@@ -4,7 +4,13 @@
   import Structure from '$lib/structure/Structure.svelte'
   import Trajectory from '$lib/trajectory/Trajectory.svelte'
   import type { TrajHandlerData } from '$lib/trajectory'
-  import { CompositionDemo, PeriodicTableDemo } from '$site'
+  import {
+    ConvexHullDemo,
+    FermiSurfaceDemo,
+    MultiValueHeatmapDemo,
+    PeriodicTableDemo,
+    PhononSpectraDemo,
+  } from '$site'
   import { molecule_files } from '$site/molecules'
   import { structure_files } from '$site/structures'
   import { get_trajectory_type, trajectory_files } from '$site/trajectories'
@@ -143,9 +149,38 @@
 
 <PeriodicTableDemo />
 
-<h2><a href="/composition">Composition</a></h2>
+<h2><a href="/reciprocal/brillouin-bands-dos">Phonon Spectra: Brillouin Zone · Bands · DOS</a></h2>
 
-<CompositionDemo show_interactive />
+<p>
+  Compare phonon dispersions from DFT (PBE) against the M3GNet, CHGNet and MACE machine-learning
+  interatomic potentials, with a synced 3d Brillouin zone, band structure and density of states.
+  Pick a material below to switch systems.
+</p>
+
+<PhononSpectraDemo class="full-bleed" style="min-height: 480px; margin-block: 1em" />
+
+<h2><a href="/reciprocal/fermi-surface">Fermi Surface</a></h2>
+
+<p>
+  Render Fermi surfaces from XCrySDen (<code>.bxsf</code>), FermiSurfer (<code>.frmsf</code>) and
+  IFermi JSON via marching cubes, colored by band, Fermi velocity or orbital character. Pick an
+  example below or drag your own file onto the viewer.
+</p>
+
+<FermiSurfaceDemo class="full-bleed" />
+
+<h2><a href="/convex-hull">Convex Hull</a></h2>
+
+<p>
+  Interactive 3d convex hulls of real Materials Project systems, showing a ternary subset (triangle)
+  alongside the full quaternary (tetrahedron): orbit the phase simplex, hover entries for formation
+  energy and energy above hull, and toggle stable/unstable phases. Pick a chemical system below to
+  switch.
+</p>
+
+<ConvexHullDemo class="full-bleed" style="height: 500px" />
+
+<MultiValueHeatmapDemo />
 
 <style>
   h2 {
