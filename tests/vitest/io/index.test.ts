@@ -8,7 +8,7 @@ globalThis.fetch = vi.fn()
 // exports so unrelated decompress paths are unaffected.
 const { mock_decompress } = vi.hoisted(() => ({ mock_decompress: vi.fn() }))
 vi.mock(`$lib/io/decompress`, async (import_original) => {
-  const actual = (await import_original()) as Record<string, unknown>
+  const actual = await import_original<Record<string, unknown>>()
   return { ...actual, decompress_data: mock_decompress }
 })
 

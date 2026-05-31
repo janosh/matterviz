@@ -1,12 +1,13 @@
 import type { AnyStructure, ElementSymbol, Vec3 } from '$lib'
 import * as math from '$lib/math'
 import type { Crystal, LatticeParams, Pbc, Site } from '$lib/structure'
+import type { TrajectoryFrame } from '$lib/trajectory'
 import init from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { tick } from 'svelte'
-import { beforeEach, vi } from 'vitest'
+import { flushSync, tick } from 'svelte'
+import { beforeEach, expect, vi } from 'vitest'
 
 // Node 22+ has a built-in localStorage Proxy that lacks the standard Storage
 // API (getItem/setItem/etc). Vitest's populateGlobal skips overriding globals
@@ -103,6 +104,59 @@ export const bind_props = <P extends object, S extends Record<string, unknown>>(
     ),
   ) as P & S
 
+// Dispatch a cancelable window-level keydown and flush Svelte effects
+// synchronously. Returns the event so callers can assert `defaultPrevented`.
+export const press_window_key = (event_init: KeyboardEventInit): KeyboardEvent => {
+  const event = new KeyboardEvent(`keydown`, { cancelable: true, ...event_init })
+  window.dispatchEvent(event)
+  flushSync()
+  return event
+}
+
+// Assert a viewer forwards window keydown shortcuts only to the hovered viewer
+// while focus is on <body>: ignored when not hovered, fires on hover, bails when
+// an input is focused, resumes once focus returns to <body>, and stops on
+// mouseleave. `fire` triggers the shortcut; `read_state` returns an observable
+// value (a step counter, a toggle flag, ...) — the shortcut is deemed to have
+// "fired" whenever that value changes between checks, so it works for both
+// counters and toggles.
+export async function assert_hover_scoped_shortcut(opts: {
+  viewer: HTMLElement
+  fire: () => void
+  read_state: () => unknown
+}): Promise<void> {
+  const { viewer, fire, read_state } = opts
+  let last = read_state()
+  const took_effect = (): boolean => {
+    const current = read_state()
+    const changed = current !== last
+    last = current
+    return changed
+  }
+
+  fire()
+  expect(took_effect(), `not hovered → ignored`).toBe(false)
+
+  viewer.dispatchEvent(new MouseEvent(`mouseenter`))
+  await tick()
+  fire()
+  expect(took_effect(), `hovered → fires without a prior click`).toBe(true)
+
+  const input = document.body.appendChild(document.createElement(`input`))
+  input.focus()
+  fire()
+  expect(took_effect(), `input focused → bails`).toBe(false)
+  input.remove()
+
+  fire()
+  expect(took_effect(), `focus back on <body> → resumes`).toBe(true)
+
+  viewer.dispatchEvent(new MouseEvent(`mouseleave`))
+  await tick()
+  fire()
+  expect(took_effect(), `mouse left → stops firing`).toBe(false)
+}
+
 export async function resize_element(
   element: HTMLElement,
   width: number,
@@ -135,6 +189,26 @@ export function read_binary_test_file(
   const buffer = readFileSync(file_path)
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 }
+
+// Factory for a trajectory frame with `site_count` hydrogen atoms along x.
+export const make_trajectory_frame = (
+  step: number,
+  site_count = 3,
+  metadata: Record<string, unknown> = {},
+): TrajectoryFrame => ({
+  step,
+  metadata,
+  structure: {
+    charge: 0,
+    sites: Array.from({ length: site_count }, (_, idx) => ({
+      species: [{ element: `H` as ElementSymbol, occu: 1, oxidation_state: 0 }],
+      xyz: [idx, 0, 0] as Vec3,
+      abc: [idx / 10, 0, 0] as Vec3,
+      label: `H${idx + 1}`,
+      properties: {},
+    })),
+  },
+})
 
 // Test data factory for creating mock structures
 export const get_dummy_structure = (

@@ -949,6 +949,8 @@ describe(`PlotLegend`, () => {
       mount(PlotLegend, { target: document.body, props: { series_data: data } })
       const rect = doc_query(`.fill-swatch rect`)
       expect(rect.getAttribute(`stroke`)).toBe(`none`)
+      // default case (no display_style.fill_opacity) still renders the chip's fixed 0.7 opacity
+      expect(rect.getAttribute(`fill-opacity`)).toBe(`0.7`)
     })
 
     // plot fills bake translucency into the color (e.g. rgba(...,0.15)); the legend chip forces the
