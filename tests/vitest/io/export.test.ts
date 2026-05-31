@@ -17,25 +17,22 @@ vi.mock(`$lib/io/fetch`, () => ({ download: vi.fn() }))
 
 // === Shared Helpers ===
 
-function make_mock_canvas(toBlob_impl?: (cb: BlobCallback) => void): HTMLCanvasElement {
-  return {
+const make_mock_canvas = (toBlob_impl?: (cb: BlobCallback) => void): HTMLCanvasElement =>
+  ({
     toBlob: vi.fn(
       toBlob_impl ?? ((cb: BlobCallback) => cb(new Blob([`test`], { type: `image/png` }))),
     ),
     width: 800,
     height: 600,
-  } as unknown as HTMLCanvasElement
-}
+  }) as unknown as HTMLCanvasElement
 
-function make_mock_renderer(): Partial<WebGLRenderer> {
-  return {
-    render: vi.fn(),
-    getPixelRatio: vi.fn().mockReturnValue(1),
-    setPixelRatio: vi.fn(),
-    getSize: vi.fn().mockReturnValue(new Vector2(800, 600)),
-    setSize: vi.fn(),
-  }
-}
+const make_mock_renderer = (): Partial<WebGLRenderer> => ({
+  render: vi.fn(),
+  getPixelRatio: vi.fn().mockReturnValue(1),
+  setPixelRatio: vi.fn(),
+  getSize: vi.fn().mockReturnValue(new Vector2(800, 600)),
+  setSize: vi.fn(),
+})
 
 function make_canvas_with_renderer(toBlob_impl?: (cb: BlobCallback) => void): {
   canvas: HTMLCanvasElement

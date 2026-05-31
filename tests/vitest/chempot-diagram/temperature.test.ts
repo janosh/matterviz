@@ -51,12 +51,10 @@ const get_formula_entry = (entries: PhaseData[], formula: string): PhaseData | u
 const get_formula_set = (entries: PhaseData[]): Set<string> =>
   new Set(entries.map((entry) => formula_key_from_composition(entry.composition)))
 
-function get_payload_at_700(
+const get_payload_at_700 = (
   config: Parameters<typeof get_temp_filter_payload>[2] = {},
   props: Parameters<typeof get_temp_filter_payload>[3] = {},
-) {
-  return get_temp_filter_payload(temp_entries_fixture, 700, config, props)
-}
+) => get_temp_filter_payload(temp_entries_fixture, 700, config, props)
 
 describe(`get_temp_filter_payload`, () => {
   test(`returns no-temp analysis and original entries when dataset has no temperature data`, () => {

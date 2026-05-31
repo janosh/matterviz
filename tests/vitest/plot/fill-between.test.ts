@@ -71,9 +71,9 @@ describe(`monotone_interpolate`, () => {
     const ys = [0, 30, 15, 40]
     const pts = xs.map((x, idx) => ({ x, y: ys[idx] }))
     // d3 path: "M x0,y0 C c1x,c1y c2x,c2y x1,y1 C ..." — parse the first cubic segment
-    const [x0, y0, c1x, c1y, c2x, c2y, x1, y1] = (
-      series_line(pts).match(/-?\d+\.?\d*(?:e-?\d+)?/g) ?? []
-    ).map(Number)
+    const matches = series_line(pts).match(/-?\d+\.?\d*(?:e-?\d+)?/g) ?? []
+    expect(matches.length).toBeGreaterThanOrEqual(8) // guards the 8-part destructure below
+    const [x0, y0, c1x, c1y, c2x, c2y, x1, y1] = matches.map(Number)
     // d3 places monotoneX x-control points at the 1/3 marks, which makes x linear in the bezier
     // param. d3 rounds path coords to 3 decimals, so compare to 2 (still catches algorithmic drift).
     expect(c1x).toBeCloseTo(x0 + (x1 - x0) / 3, 2)

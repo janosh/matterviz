@@ -110,14 +110,13 @@
     }
   }
 
-  function point_formula(elements: ElementSymbol[], idx: number): string {
-    return elements
+  const point_formula = (elements: ElementSymbol[], idx: number): string =>
+    elements
       .map((element, elem_idx) => {
         const count = 1 + ((idx + elem_idx) % 3)
         return `${element}${count > 1 ? count : ``}`
       })
       .join(``)
-  }
 
   function normal_sample(seed: number): number {
     const phase_1 = Math.sin(seed * 12.9898) * 43_758.5453
@@ -132,8 +131,8 @@
     selected_point_id = null
   }
 
-  function make_series(): DensePointSeries<MaterialPoint>[] {
-    return family_configs.map((config, family_idx) => {
+  const make_series = (): DensePointSeries<MaterialPoint>[] =>
+    family_configs.map((config, family_idx) => {
       const point_count = 2_400
       const x = new Float32Array(point_count)
       const y = new Float32Array(point_count)
@@ -185,7 +184,6 @@
       const { family: id, family: label, color } = config
       return { id, label, color, x, y, size_values, point_ids, metadata, }
     })
-  }
 
   const series = make_series()
 

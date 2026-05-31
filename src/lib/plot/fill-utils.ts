@@ -195,12 +195,9 @@ function prepare_boundary(boundary: ResolvedBoundary): PreparedBoundary {
 }
 
 // True when a boundary carries its own x (series or data-with-x), so it needs no companion x
-function defines_own_x(boundary: FillBoundary): boolean {
-  return (
-    typeof boundary !== `number` &&
-    (boundary.type === `series` || (boundary.type === `data` && boundary.x !== undefined))
-  )
-}
+const defines_own_x = (boundary: FillBoundary): boolean =>
+  typeof boundary !== `number` &&
+  (boundary.type === `series` || (boundary.type === `data` && boundary.x !== undefined))
 
 // Keep only finite points, sorted by x
 const clean_pts = (pts: Pt[]): Pt[] =>

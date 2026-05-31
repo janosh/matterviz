@@ -4,11 +4,10 @@ import type { LayerZIndex, RefLine, RefLineValue } from './types'
 export type IndexedRefLine = RefLine & { idx: number }
 
 // Create indexed ref_lines, filtering out invisible ones
-export function index_ref_lines(ref_lines: RefLine[] | undefined): IndexedRefLine[] {
-  return (ref_lines ?? [])
+export const index_ref_lines = (ref_lines: RefLine[] | undefined): IndexedRefLine[] =>
+  (ref_lines ?? [])
     .filter((line) => line.visible !== false)
     .map((line, idx) => ({ ...line, idx }))
-}
 
 // Z-index groups for ordered rendering
 export interface RefLinesByZIndex {

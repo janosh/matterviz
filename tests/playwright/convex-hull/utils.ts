@@ -71,8 +71,8 @@ export async function open_info_and_controls(
 }
 
 // Simple pixel hash of a canvas — sum of every 100th pixel's red channel
-export function get_canvas_hash(canvas: Locator): Promise<string> {
-  return canvas.evaluate((el) => {
+export const get_canvas_hash = (canvas: Locator): Promise<string> =>
+  canvas.evaluate((el) => {
     const ctx = (el as HTMLCanvasElement).getContext(`2d`)
     if (!ctx) return ``
     const { data } = ctx.getImageData(0, 0, el.clientWidth, el.clientHeight)
@@ -80,7 +80,6 @@ export function get_canvas_hash(canvas: Locator): Promise<string> {
     for (let idx = 0; idx < data.length; idx += 400) hash += data[idx]
     return hash.toString()
   })
-}
 
 export async function dom_click(target: Locator): Promise<void> {
   const handle = await target.elementHandle()

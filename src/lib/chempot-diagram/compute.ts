@@ -137,12 +137,12 @@ export function best_form_energy_for_formula(
 
 // Renormalize entry energies to be relative to elemental references (formal chemical potentials).
 // For each entry, subtracts sum(x_i * E_ref_i) from its energy per atom.
-export function renormalize_entries(
+export const renormalize_entries = (
   entries: PhaseData[],
   el_refs: Record<string, PhaseData>,
   elements: string[],
-): PhaseData[] {
-  return entries.map((entry) => {
+): PhaseData[] =>
+  entries.map((entry) => {
     const atoms = count_atoms_in_composition(entry.composition)
     let renorm_energy = 0
     for (const el of elements) {
@@ -158,7 +158,6 @@ export function renormalize_entries(
       energy_per_atom: new_energy_per_atom,
     }
   })
-}
 
 // Build hyperplane representation for minimum entries.
 // Each row is [x_1, ..., x_n, -E_per_atom].

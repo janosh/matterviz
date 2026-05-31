@@ -182,9 +182,8 @@ export const VECTOR_KEY_PREFIXES = [
   `spins`,
 ] as const
 
-export function is_vector_key(key: string): boolean {
-  return VECTOR_KEY_PREFIXES.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
-}
+export const is_vector_key = (key: string): boolean =>
+  VECTOR_KEY_PREFIXES.some((prefix) => key === prefix || key.startsWith(`${prefix}_`))
 
 // Default color palette for distinguishing multiple vector layers
 export const VECTOR_PALETTE = [

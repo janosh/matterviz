@@ -210,8 +210,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
 // Test data processing logic that mirrors ScatterPlot3DScene's all_points derivation
 describe(`ScatterPlot3D data processing`, () => {
   // Simulate the point extraction logic from ScatterPlot3DScene
-  function extract_points(series_list: DataSeries3D[]) {
-    return series_list.filter(Boolean).flatMap((srs, series_idx) =>
+  const extract_points = (series_list: DataSeries3D[]) =>
+    series_list.filter(Boolean).flatMap((srs, series_idx) =>
       srs.x.map((x_val, point_idx) => ({
         x: x_val,
         y: srs.y[point_idx],
@@ -220,7 +220,6 @@ describe(`ScatterPlot3D data processing`, () => {
         point_idx,
       })),
     )
-  }
 
   // Filter to only valid points (no undefined coordinates)
   const get_valid_points = (series_list: DataSeries3D[]) =>

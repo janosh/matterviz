@@ -4,7 +4,7 @@ import type { DataSeries, FillRegion } from '$lib/plot'
 import { get_series_color, get_series_symbol } from '$lib/plot/data-transform'
 import { DEFAULT_SERIES_COLORS, DEFAULT_SERIES_SYMBOLS } from '$lib/plot/types'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, resize_element, svg_query } from '../setup'
 
 const basic = {
@@ -631,7 +631,7 @@ describe(`ScatterPlot`, () => {
 
   test(`log axis clamps non-positive fill coords to the domain floor, not a tiny epsilon`, async () => {
     // lower edge at y=0 is non-positive on a log axis: must clamp to y_min (bottom edge), not
-    // 1e-10 which maps far outside the plot. Wait out the path Tween (300ms) before reading coords.
+    // 1e-10 which maps far outside the plot.
     mount(ScatterPlot, {
       target: document.body,
       props: {
@@ -641,13 +641,21 @@ describe(`ScatterPlot`, () => {
         fill_regions: [{ lower: 0, upper: { type: `series`, series_idx: 0 } }],
       },
     })
-    await new Promise((resolve) => setTimeout(resolve, 400))
+    // wait for the path Tween to settle (`d` unchanged across two polls) so we read the final
+    // coords, not a wild mid-animation frame — deterministic instead of a fixed sleep
+    let last_d = ``
+    const settled_d = await vi.waitFor(
+      () => {
+        const d = doc_query(`.fill-region path`).getAttribute(`d`) ?? ``
+        const settled = d !== `` && d === last_d
+        last_d = d
+        if (!settled) throw new Error(`fill path not settled`)
+        return d
+      },
+      { timeout: 2000 },
+    )
 
-    const coords = (
-      doc_query(`.fill-region path`)
-        .getAttribute(`d`)
-        ?.match(/-?\d+\.?\d*/g) ?? []
-    ).map(Number)
+    const coords = (settled_d.match(/-?\d+\.?\d*/g) ?? []).map(Number)
     expect(coords.length).toBeGreaterThan(0) // guard: Math.max(...[]) is -Infinity, a false pass
     expect(Math.max(...coords.map(Math.abs))).toBeLessThan(1000)
   })

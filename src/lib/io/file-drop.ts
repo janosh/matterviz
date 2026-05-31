@@ -11,10 +11,9 @@ export interface FileDropOptions {
 
 // Handles URL drops (from FilePicker), direct file drops with decompression,
 // loading state, and error reporting.
-export function create_file_drop_handler(
-  opts: FileDropOptions,
-): (event: DragEvent) => Promise<void> {
-  return async (event: DragEvent) => {
+export const create_file_drop_handler =
+  (opts: FileDropOptions): ((event: DragEvent) => Promise<void>) =>
+  async (event: DragEvent) => {
     event.preventDefault()
     if (!opts.allow()) return
 
@@ -48,4 +47,3 @@ export function create_file_drop_handler(
       opts.set_loading?.(false)
     }
   }
-}
