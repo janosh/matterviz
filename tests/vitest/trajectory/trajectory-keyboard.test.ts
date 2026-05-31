@@ -1,7 +1,7 @@
 import Trajectory from '$lib/trajectory/Trajectory.svelte'
 import type { TrajectoryType } from '$lib/trajectory'
-import { type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { type ComponentProps, mount, tick, unmount } from 'svelte'
+import { afterEach, describe, expect, test } from 'vitest'
 import {
   assert_hover_scoped_shortcut,
   bind_props,
@@ -16,17 +16,31 @@ const trajectory: TrajectoryType = {
   frames: [0, 1, 2, 3, 4].map((step) => make_trajectory_frame(step, 1)),
 }
 
+// Unmount between tests so each viewer's <svelte:window> keydown listener is
+// removed — otherwise a lingering hovered viewer responds to later tests' keys.
+const mounted: Record<string, unknown>[] = []
+afterEach(() => {
+  for (const app of mounted.splice(0)) void unmount(app)
+})
+
 // Mount a Trajectory viewer and return its wrapper. Pass `state` to two-way bind
-// current_step_idx for navigation assertions.
-const mount_trajectory = async (state?: {
-  current_step_idx: number
-}): Promise<HTMLElement> => {
+// current_step_idx for navigation assertions; `extra` to override props.
+const mount_trajectory = async (
+  state?: { current_step_idx: number },
+  extra?: Partial<ComponentProps<typeof Trajectory>>,
+): Promise<HTMLElement> => {
   const props: ComponentProps<typeof Trajectory> = {
     trajectory,
     display_mode: `structure`,
     show_controls: `never`,
+    ...extra,
   }
-  mount(Trajectory, { target: document.body, props: state ? bind_props(props, state) : props })
+  mounted.push(
+    mount(Trajectory, {
+      target: document.body,
+      props: state ? bind_props(props, state) : props,
+    }),
+  )
   await tick()
   return doc_query(`.trajectory`)
 }
@@ -67,6 +81,19 @@ describe(`Trajectory keyboard shortcuts`, () => {
     ]
     for (const [init, prevented] of cases) {
       expect(press_window_key(init).defaultPrevented, JSON.stringify(init)).toBe(prevented)
+    }
+  })
+
+  // Kept standalone: needs a fresh mount with fullscreen off and NOT playing. Can't
+  // fold into the test above, whose Space case toggles play (which would make =/+/-
+  // handled), and whose default mount has fullscreen on (which would handle f).
+  test(`keeps browser default when a shortcut's inner condition fails`, async () => {
+    const viewer = await mount_trajectory(undefined, { fullscreen_toggle: false })
+    viewer.dispatchEvent(new MouseEvent(`mouseenter`))
+    await tick()
+
+    for (const init of [{ key: `f` }, { key: `=` }, { key: `+` }, { key: `-` }]) {
+      expect(press_window_key(init).defaultPrevented, JSON.stringify(init)).toBe(false)
     }
   })
 
