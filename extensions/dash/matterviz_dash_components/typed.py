@@ -424,7 +424,7 @@ class BrillouinZone(MatterViz):
 
     Component key: ``brillouin/BrillouinZone``
 
-    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_hover
+    Events: on_error, on_file_drop, on_file_load, on_fullscreen_change, on_hover, on_kpath_hover
     """
 
     def __init__(
@@ -1196,6 +1196,7 @@ class Bands(MatterViz):
         error_bands: list | None = None,
         fermi_level: float | None = None,
         fill_regions: list | None = None,
+        highlighted_qpoint_index: int | None = None,
         hover_config: dict | None = None,
         label_placement_config: dict | None = None,
         legend: Any | None = None,
@@ -1252,6 +1253,8 @@ class Bands(MatterViz):
             mv_props["fermi_level"] = fermi_level
         if fill_regions is not None:
             mv_props["fill_regions"] = fill_regions
+        if highlighted_qpoint_index is not None:
+            mv_props["highlighted_qpoint_index"] = highlighted_qpoint_index
         if hover_config is not None:
             mv_props["hover_config"] = hover_config
         if label_placement_config is not None:
