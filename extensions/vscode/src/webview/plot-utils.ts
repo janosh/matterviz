@@ -139,6 +139,20 @@ export function suggest_mapping(columns: Map<string, ColumnInfo>): {
 const to_numbers = (values: unknown[]): number[] =>
   values.map((val) => (typeof val === `number` && isFinite(val) ? val : NaN))
 
+// Convert an arbitrary cell value to a display label, JSON-encoding objects so
+// they don't stringify to the useless "[object Object]".
+const to_label = (val: unknown): string => {
+  if (val == null) return ``
+  if (
+    typeof val === `string` ||
+    typeof val === `number` ||
+    typeof val === `boolean` ||
+    typeof val === `bigint`
+  )
+    return String(val)
+  return JSON.stringify(val)
+}
+
 // Look up a column by its mapping key, returning undefined if unmapped or missing
 const get_col = (columns: Map<string, ColumnInfo>, key?: string): ColumnInfo | undefined =>
   key ? columns.get(key) : undefined
@@ -229,7 +243,7 @@ export function build_bar_series(
   const y: number[] = []
   for (let idx = 0; idx < raw_y.length; idx++) {
     if (!isFinite(raw_y[idx])) continue
-    x.push(String(x_col.values[idx] ?? ``))
+    x.push(to_label(x_col.values[idx]))
     y.push(raw_y[idx])
   }
   return { x, y, color: `#4c6ef5` }

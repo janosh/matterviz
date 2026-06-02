@@ -1284,21 +1284,18 @@ function assert_structures_equal(
 }
 
 describe(`Round-trip CIF and POSCAR exports`, () => {
-  const cif_files = import.meta.glob(
-    [`/src/site/structures/*.cif`, `!/src/site/structures/P24Ru4H252C296S24N16.cif`],
+  const structure_files = import.meta.glob<string>(
+    [
+      `/src/site/structures/*.cif`,
+      `!/src/site/structures/P24Ru4H252C296S24N16.cif`,
+      `/src/site/structures/*.{poscar,vasp}`,
+    ],
     { eager: true, query: `?raw`, import: `default` },
   )
-  const poscar_files = import.meta.glob(`/src/site/structures/*.{poscar,vasp}`, {
-    eager: true,
-    query: `?raw`,
-    import: `default`,
-  })
-
-  const structure_files = { ...cif_files, ...poscar_files }
 
   const test_cases = Object.entries(structure_files).map(([path, content]) => ({
     filename: path.split(`/`).pop() ?? path,
-    content: content as string,
+    content,
   }))
 
   test.each(test_cases)(`round-trips $filename correctly`, ({ filename, content }) => {

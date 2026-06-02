@@ -24,8 +24,8 @@
   let resolved = $derived(resolve_matterviz_component(component))
 
   // Expose discovered components for easy debugging in the browser console.
-  if (typeof globalThis !== `undefined` && !globalThis.__matterviz_components) {
-    globalThis.__matterviz_components = list_component_keys()
+  if (typeof globalThis !== `undefined` && !globalThis[`__matterviz_components`]) {
+    globalThis[`__matterviz_components`] = list_component_keys()
   }
 </script>
 

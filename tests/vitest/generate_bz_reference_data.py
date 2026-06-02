@@ -6,6 +6,7 @@ Requirements:
     pip install seekpath numpy pymatgen
 """
 
+import gzip
 import json
 from pathlib import Path
 from typing import Any
@@ -169,11 +170,11 @@ def main() -> None:
 
     reference_data = generate_all_reference_data()
 
-    # Save to JSON file
+    # Save as gzipped JSON (~32 KB raw compresses to ~3 KB)
     output_dir = Path(__file__).parent
-    output_file = output_dir / "bz_reference_data.json"
+    output_file = output_dir / "bz_reference_data.json.gz"
 
-    with open(output_file, "w") as file_handle:
+    with gzip.open(output_file, "wt", encoding="utf-8") as file_handle:
         json.dump(reference_data, file_handle, indent=2)
 
     print("=" * 70)

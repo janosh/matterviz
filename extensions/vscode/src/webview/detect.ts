@@ -89,7 +89,7 @@ function is_fermi_surface(obj: unknown): boolean {
     has_array(data, `k_lattice`, 3) &&
     typeof data.fermi_energy === `number` &&
     (data.reciprocal_cell === `wigner_seitz` || data.reciprocal_cell === `parallelepiped`) &&
-    !!as_record(data.metadata)
+    Boolean(as_record(data.metadata))
   )
 }
 
@@ -138,7 +138,7 @@ function is_volumetric(obj: unknown): boolean {
     has_array(data, `grid_dims`, 3) &&
     has_array(data, `lattice`, 3) &&
     has_array(data, `origin`, 3) &&
-    !!as_record(data.data_range) &&
+    Boolean(as_record(data.data_range)) &&
     typeof data.periodic === `boolean`
   )
 }
@@ -190,7 +190,7 @@ function is_dos(obj: unknown): boolean {
   // pymatgen CompleteDos format
   if (
     typeof data[`@class`] === `string` &&
-    (data[`@class`] as string).includes(`Dos`) &&
+    data[`@class`].includes(`Dos`) &&
     has_spectra &&
     data.densities !== undefined
   )
@@ -221,7 +221,7 @@ function is_bands_and_dos(obj: unknown): boolean {
     (has_array(data, `energies`) || has_array(data, `frequencies`)) &&
     data.densities !== undefined &&
     (data.atom_dos !== undefined || data.spd_dos !== undefined)
-  return !!(has_bands_fields && has_dos_fields)
+  return Boolean(has_bands_fields && has_dos_fields)
 }
 
 // BrillouinZone: reciprocal lattice data with optional k-path info
@@ -241,8 +241,8 @@ function is_brillouin_zone(obj: unknown): boolean {
   return (
     has_array(data, `k_path`) ||
     has_array(data, `k_points`) ||
-    !!as_record(data.k_labels) ||
-    !!as_record(data.labels_dict) ||
+    Boolean(as_record(data.k_labels)) ||
+    Boolean(as_record(data.labels_dict)) ||
     data.bz_order !== undefined
   )
 }
@@ -263,7 +263,7 @@ function is_xrd_pattern(obj: unknown): boolean {
   return (
     has_array(data, `hkls`) ||
     has_array(data, `d_hkls`) ||
-    (typeof data[`@class`] === `string` && (data[`@class`] as string).includes(`Xrd`)) ||
+    (typeof data[`@class`] === `string` && data[`@class`].includes(`Xrd`)) ||
     typeof data.wavelength === `number`
   )
 }
@@ -400,7 +400,7 @@ export function scan_renderable_paths(
     if (typeof value !== `object`) return
 
     // Circular reference protection
-    const obj_ref = value as object
+    const obj_ref = value
     if (visited.has(obj_ref)) return
     visited.add(obj_ref)
 
@@ -410,7 +410,7 @@ export function scan_renderable_paths(
       results.set(path, { type: detected_type, label: TYPE_LABELS[detected_type] })
       // If tabular data is also plottable, register a plot badge too
       if (detected_type === `table` && is_plottable_data(value)) {
-        const plot_path = path ? `${path}\x00plot` : `\x00plot`
+        const plot_path = path ? `${path}\u0000plot` : `\u0000plot`
         results.set(plot_path, { type: `plot`, label: TYPE_LABELS.plot })
       }
       // Don't recurse into renderable objects -- their children are part of the data

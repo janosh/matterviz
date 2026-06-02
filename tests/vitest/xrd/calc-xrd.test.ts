@@ -1,15 +1,15 @@
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
 import type { Crystal, Pbc } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
-import { add_xrd_pattern, compute_xrd_pattern } from '$lib/xrd'
+import { add_xrd_pattern, compute_xrd_pattern, type XrdPattern } from '$lib/xrd'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { describe, expect, test } from 'vitest'
-import { xrd_patterns } from '../fixtures/xrd'
+import { fixture_id, xrd_patterns } from '../fixtures/xrd'
+import { read_maybe_gz } from '../setup'
 
 const structures_dir = path.resolve(process.cwd(), `src/site/structures`)
-const xrd_dir = path.resolve(process.cwd(), `tests/vitest/fixtures/xrd`)
 
 // Shared helper for test suites
 function make_simple_cubic_structure(a_len: number): Crystal {
@@ -32,18 +32,17 @@ function make_simple_cubic_structure(a_len: number): Crystal {
   return { lattice, sites: [site] }
 }
 
+// Pair each structure file with its precomputed XRD pattern from ../fixtures/xrd
 function list_matching_pairs() {
-  const structure_files = fs
-    .readdirSync(structures_dir)
-    .filter((name) => name.endsWith(`.json`))
-  const xrd_files = new Set(fs.readdirSync(xrd_dir).filter((name) => name.endsWith(`.json`)))
   const pairs = []
-  for (const file_name of structure_files) {
-    if (!xrd_files.has(file_name)) continue
+  for (const file_name of fs.readdirSync(structures_dir)) {
+    if (!/\.json(\.gz)?$/.test(file_name)) continue
+    const expected: XrdPattern | undefined = xrd_patterns[fixture_id(file_name)]
+    if (!expected) continue
     pairs.push({
       name: file_name,
       struct_path: path.join(structures_dir, file_name),
-      xrd_path: path.join(xrd_dir, file_name),
+      expected,
     })
   }
   return pairs
@@ -59,13 +58,13 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
   test.each(file_pairs.map((p) => [p.name, p] as const))(
     `compare XRD for %s`,
     (_name, pair) => {
-      const structure_json = fs.readFileSync(pair.struct_path, `utf8`)
+      const structure_json = read_maybe_gz(pair.struct_path)
       const parsed = parse_structure_file(structure_json, pair.name)
       expect(parsed).not.toBeNull()
       if (!parsed) return
 
       const structure = parsed as Crystal
-      const expected = JSON.parse(fs.readFileSync(pair.xrd_path, `utf8`))
+      const expected = pair.expected
 
       const computed = compute_xrd_pattern(structure, {
         wavelength: `CuKa`,
