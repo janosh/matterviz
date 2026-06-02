@@ -36,7 +36,7 @@ function make_simple_cubic_structure(a_len: number): Crystal {
 function list_matching_pairs() {
   const pairs = []
   for (const file_name of fs.readdirSync(structures_dir)) {
-    if (!file_name.endsWith(`.json`)) continue
+    if (!/\.json(\.gz)?$/.test(file_name)) continue
     const expected: XrdPattern | undefined = xrd_patterns[fixture_id(file_name)]
     if (!expected) continue
     pairs.push({

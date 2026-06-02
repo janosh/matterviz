@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { vite_plugin as live_examples } from 'svelte-multiselect/live-examples'
-import { defineConfig, type Plugin } from 'vite-plus'
+import type { Plugin } from 'vite'
+import { defineConfig, type PluginOption } from 'vite-plus'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 
@@ -120,12 +121,14 @@ export default defineConfig({
     ...config.lint,
     // src/scripts/** are standalone utility scripts excluded from tsconfig (so
     // type-aware rules can't resolve $lib/Deno-style imports there) — keep them unlinted.
-    ignorePatterns: [`static/**`, `src/scripts/**`],
+    // extensions/dash/** is a separate package (react/prop-types/three deps) not
+    // installed in root CI, so type-aware rules can't resolve its imports here.
+    ignorePatterns: [`static/**`, `src/scripts/**`, `extensions/dash/**`],
   },
-  // sveltekit()/live-examples carry their own copies of vite's Plugin type, so
-  // checking this array against vite-plus's PluginOption exceeds TS's instantiation
-  // depth (TS2321). vite ignores falsy plugins at runtime, so the null is fine.
-  // @ts-expect-error -- known TS limitation comparing large recursive Plugin types
+  // sveltekit()/live-examples ship their own copy of vite's Plugin type; comparing
+  // the array against vite-plus's PluginOption exceeds TS's instantiation depth
+  // (TS2321). Erase through `unknown` to skip that comparison; vite ignores the
+  // falsy (null) entry at runtime.
   plugins: [
     json_gz_plugin,
     raw_text_plugin,
@@ -133,7 +136,7 @@ export default defineConfig({
     sveltekit(),
     live_examples(),
     process.env.VITEST ? mock_vscode() : null,
-  ],
+  ] as unknown as PluginOption[],
 
   test: {
     environment: `happy-dom`,
