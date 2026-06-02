@@ -7,9 +7,11 @@ import {
 import type { ThemeName } from '$lib/theme/index'
 import { is_trajectory_file } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
+import type * as node_path from 'node:path'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Uri } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
+import type { MessageData } from '../src/extension'
 import {
   activate,
   create_html,
@@ -17,7 +19,6 @@ import {
   get_file,
   get_theme,
   handle_msg,
-  MessageData,
   read_file,
   render,
   should_auto_render,
@@ -34,10 +35,10 @@ const mock_fs = vi.hoisted(() => ({
 
 vi.mock(`node:fs`, () => mock_fs)
 vi.mock(`node:path`, async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>
+  const actual = await importOriginal<typeof node_path>()
   return {
     ...actual,
-    basename: vi.fn((p: string) => p.split(`/`).pop() || ``),
+    basename: vi.fn((p: string) => p.split(`/`).pop() ?? ``),
     dirname: vi.fn((p: string) => p.split(`/`).slice(0, -1).join(`/`) || `/`),
     join: vi.fn((...paths: string[]) => paths.join(`/`)),
     isAbsolute: vi.fn((p: string) => p.startsWith(`/`)),
@@ -115,11 +116,9 @@ const mock_vscode = vi.hoisted(() => ({
 vi.mock(`vscode`, () => mock_vscode)
 
 describe(`MatterViz Extension`, () => {
-  let mock_file_system_watcher: {
-    onDidChange: ReturnType<typeof vi.fn>
-    onDidDelete: ReturnType<typeof vi.fn>
-    dispose: ReturnType<typeof vi.fn>
-  }
+  let mock_file_system_watcher: ReturnType<
+    typeof mock_vscode.workspace.createFileSystemWatcher
+  >
   const supported_volumetric_filenames: [string, string][] = [
     [`CHGCAR`, `VASP volumetric`],
     [`AECCAR0`, `VASP volumetric`],
@@ -136,6 +135,39 @@ describe(`MatterViz Extension`, () => {
   ]
   const volumetric_auto_render_filenames: [string, boolean][] =
     supported_volumetric_filenames.map(([filename]) => [filename, true] as [string, boolean])
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+
+    // Import extension module and clear all watchers
+    const ext = await import(`../src/extension`)
+    ext.active_watchers.clear()
+    ext.active_frame_loaders.clear()
+    ext.auto_render_timers.clear()
+    ext.active_auto_render_panels.clear()
+
+    mock_fs.readFileSync.mockReturnValue(`mock content`)
+    mock_fs.existsSync.mockReturnValue(true)
+    mock_fs.readdirSync.mockReturnValue([])
+    mock_vscode.window.activeTextEditor = null
+
+    // Reset theme to default Light theme to avoid inter-test coupling
+    mock_vscode.window.activeColorTheme = { kind: 1 } // Light theme by default
+
+    // Set up file system watcher mock
+    mock_file_system_watcher = {
+      onDidChange: vi.fn(),
+      onDidDelete: vi.fn(),
+      dispose: vi.fn(),
+    }
+    mock_vscode.workspace.createFileSystemWatcher.mockReturnValue(mock_file_system_watcher)
+
+    // Set up default mock for vscode.workspace.fs.stat to return file stats
+    mock_vscode.workspace.fs.stat.mockResolvedValue({ size: 1000, type: 1 })
+    mock_vscode.workspace.fs.readFile.mockResolvedValue(
+      new Uint8Array(Buffer.from(`mock content`)),
+    )
+  })
 
   test(`extensionKind should be configured as ["workspace"] to work locally and in remote SSH sessions`, () => {
     // https://github.com/janosh/matterviz/issues/129#issuecomment-3193473225
@@ -159,9 +191,9 @@ describe(`MatterViz Extension`, () => {
       for (const pattern of patterns) {
         // Convert glob pattern to regex
         const regex_str = pattern
-          .replace(/\./g, `\\.`) // escape dots
-          .replace(/\*/g, `.*`) // * → .*
-          .replace(/\{([^}]+)\}/g, (_, group) => `(${group.split(`,`).join(`|`)})`) // {a,b} → (a|b)
+          .replaceAll(`.`, `\\.`) // escape dots
+          .replaceAll(`*`, `.*`) // * → .*
+          .replaceAll(/\{([^}]+)\}/g, (_, group) => `(${group.split(`,`).join(`|`)})`) // {a,b} → (a|b)
         const regex = new RegExp(`^${regex_str}$`, `i`)
         if (regex.test(filename)) return true
       }
@@ -219,39 +251,6 @@ describe(`MatterViz Extension`, () => {
     })
   })
 
-  beforeEach(async () => {
-    vi.clearAllMocks()
-
-    // Import extension module and clear all watchers
-    const ext = await import(`../src/extension`)
-    ext.active_watchers.clear()
-    ext.active_frame_loaders.clear()
-    ext.auto_render_timers.clear()
-    ext.active_auto_render_panels.clear()
-
-    mock_fs.readFileSync.mockReturnValue(`mock content`)
-    mock_fs.existsSync.mockReturnValue(true)
-    mock_fs.readdirSync.mockReturnValue([])
-    mock_vscode.window.activeTextEditor = null
-
-    // Reset theme to default Light theme to avoid inter-test coupling
-    mock_vscode.window.activeColorTheme = { kind: 1 } // Light theme by default
-
-    // Set up file system watcher mock
-    mock_file_system_watcher = {
-      onDidChange: vi.fn(),
-      onDidDelete: vi.fn(),
-      dispose: vi.fn(),
-    }
-    mock_vscode.workspace.createFileSystemWatcher.mockReturnValue(mock_file_system_watcher)
-
-    // Set up default mock for vscode.workspace.fs.stat to return file stats
-    mock_vscode.workspace.fs.stat.mockResolvedValue({ size: 1000, type: 1 })
-    mock_vscode.workspace.fs.readFile.mockResolvedValue(
-      new Uint8Array(Buffer.from(`mock content`)),
-    )
-  })
-
   // Test data consolidation
   const mock_webview = {
     cspSource: `vscode-webview:`,
@@ -267,6 +266,10 @@ describe(`MatterViz Extension`, () => {
     extensionUri: { fsPath: `/test` },
     subscriptions: [],
   } as unknown as ExtensionContext
+
+  // Minimal context for activate() tests, which only need a pushable subscriptions list
+  const make_activate_context = () =>
+    ({ subscriptions: { push: vi.fn() } }) as unknown as ExtensionContext
 
   test.each([
     [`test.gz`, true],
@@ -457,7 +460,7 @@ describe(`MatterViz Extension`, () => {
     expect(html).toContain(`default-src 'none'`)
     expect(html).toContain(`script-src 'nonce-`)
     expect(html).toMatch(/nonce="[a-zA-Z0-9]{8,32}"/)
-    expect(html).toContain(JSON.stringify(webview_data).replace(/<\//g, `<\\/`))
+    expect(html).toContain(JSON.stringify(webview_data).replaceAll(`</`, `<\\/`))
     expect(html).toContain(`matterviz-app`)
   })
 
@@ -1066,7 +1069,7 @@ describe(`MatterViz Extension`, () => {
         theme: `light`,
       } as const
       const html = create_html(mock_webview, mock_context, data)
-      const escaped_json = JSON.stringify(data).replace(/<\//g, `<\\/`)
+      const escaped_json = JSON.stringify(data).replaceAll(`</`, `<\\/`)
 
       expect(html).toContain(escaped_json)
       // Ensure no raw </script> inside the JSON data breaks out of the script tag
@@ -1086,6 +1089,15 @@ describe(`MatterViz Extension`, () => {
   })
 
   describe(`Theme functionality`, () => {
+    // Stub vscode.workspace.getConfiguration so get(`theme`, default) returns theme_value
+    const stub_theme_config = (theme_value: string) => {
+      mock_vscode.workspace.getConfiguration = vi.fn(() => ({
+        get: vi.fn((key: string, default_value?: string) =>
+          key === `theme` ? theme_value : default_value,
+        ),
+      })) as unknown as typeof mock_vscode.workspace.getConfiguration
+    }
+
     test.each([
       [mock_vscode.ColorThemeKind.Light, `auto`, `light`], // Light VSCode theme, auto setting → light
       [mock_vscode.ColorThemeKind.Dark, `auto`, `dark`], // Dark VSCode theme, auto setting → dark
@@ -1102,14 +1114,7 @@ describe(`MatterViz Extension`, () => {
     ] as const)(
       `theme detection: VSCode theme %i, setting '%s' → '%s'`,
       (vscode_theme_kind: number, setting: string, expected: ThemeName) => {
-        const mock_config = {
-          get: vi.fn((key: string, default_value?: string) =>
-            key === `theme` ? setting : default_value,
-          ),
-        }
-        mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config) as ReturnType<
-          typeof vi.fn
-        >
+        stub_theme_config(setting)
         mock_vscode.window.activeColorTheme = { kind: vscode_theme_kind }
 
         const result = get_theme()
@@ -1118,14 +1123,7 @@ describe(`MatterViz Extension`, () => {
     )
 
     test(`webview data includes theme`, () => {
-      const mock_config = {
-        get: vi.fn((key: string, default_value?: string) =>
-          key === `theme` ? `dark` : default_value,
-        ),
-      }
-      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config) as ReturnType<
-        typeof vi.fn
-      >
+      stub_theme_config(`dark`)
 
       const data = {
         type: `structure` as const,
@@ -1135,19 +1133,12 @@ describe(`MatterViz Extension`, () => {
 
       const html = create_html(mock_webview, mock_context, data)
 
-      const parsed_data = JSON.parse(/matterviz_data=(\{[\s\S]*?\});/.exec(html)?.[1] || `{}`)
+      const parsed_data = JSON.parse(/matterviz_data=(\{[\s\S]*?\});/.exec(html)?.[1] ?? `{}`)
       expect(parsed_data.theme).toBe(`dark`)
     })
 
     test(`invalid theme setting falls back to auto`, () => {
-      const mock_config = {
-        get: vi.fn((key: string, default_value?: string) =>
-          key === `theme` ? `invalid-theme` : default_value,
-        ),
-      }
-      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config) as ReturnType<
-        typeof vi.fn
-      >
+      stub_theme_config(`invalid-theme`)
       mock_vscode.window.activeColorTheme = {
         kind: mock_vscode.ColorThemeKind.Light,
       }
@@ -1157,14 +1148,7 @@ describe(`MatterViz Extension`, () => {
     })
 
     test(`high contrast themes are mapped correctly`, () => {
-      const mock_config = {
-        get: vi.fn((key: string, default_value?: string) =>
-          key === `theme` ? `auto` : default_value,
-        ),
-      }
-      mock_vscode.workspace.getConfiguration = vi.fn(() => mock_config) as ReturnType<
-        typeof vi.fn
-      >
+      stub_theme_config(`auto`)
 
       // Test high contrast dark → black
       mock_vscode.window.activeColorTheme = {
@@ -1428,12 +1412,12 @@ describe(`MatterViz Extension`, () => {
 
     describe(`lifecycle management`, () => {
       test(`should handle activation gracefully`, () => {
-        const mock_context = {
+        const activate_context = {
           extensionUri: { fsPath: `/test/extension` },
           subscriptions: [],
         } as unknown as ExtensionContext
 
-        expect(() => activate(mock_context)).not.toThrow()
+        expect(() => activate(activate_context)).not.toThrow()
 
         expect(mock_vscode.commands.registerCommand).toHaveBeenCalledWith(
           `matterviz.open`,
@@ -1522,7 +1506,7 @@ describe(`MatterViz Extension`, () => {
       [`trajectory_backup.xyz`, true],
       [`trajectory.log`, true], // Contains "trajectory" keyword
       // Very long filenames
-      [`structure`.repeat(100) + `.cif`, true],
+      [`${`structure`.repeat(100)}.cif`, true],
       // Unsupported files
       [`config.yaml`, false],
       [`simulation.trr`, false], // .trr files not supported
@@ -1630,7 +1614,7 @@ describe(`MatterViz Extension`, () => {
       [`..`, false],
       [`/`, false],
       [`\\`, false],
-      [`a`.repeat(1000) + `.txt`, false],
+      [`${`a`.repeat(1000)}.txt`, false],
       // Null/undefined inputs
       [null as unknown as string, false],
       [undefined as unknown as string, false],
@@ -1639,10 +1623,8 @@ describe(`MatterViz Extension`, () => {
     })
 
     test(`should register auto-render functionality`, () => {
-      const mock_context = {
-        subscriptions: { push: vi.fn() },
-      } as unknown as ExtensionContext
-      activate(mock_context)
+      const activate_context = make_activate_context()
+      activate(activate_context)
       expect(mock_vscode.workspace.onDidOpenTextDocument).toHaveBeenCalledWith(
         expect.any(Function),
       )
@@ -1656,11 +1638,9 @@ describe(`MatterViz Extension`, () => {
     })
 
     test(`should not trigger on non-file URIs`, () => {
-      const mock_context = {
-        subscriptions: { push: vi.fn() },
-      } as unknown as ExtensionContext
+      const activate_context = make_activate_context()
 
-      activate(mock_context)
+      activate(activate_context)
 
       // Get the registered callback
       const open_doc_calls = mock_vscode.workspace.onDidOpenTextDocument.mock
@@ -1679,19 +1659,16 @@ describe(`MatterViz Extension`, () => {
     })
 
     test(`should respect auto_render configuration setting`, () => {
-      const mock_context = {
-        subscriptions: { push: vi.fn() },
-      } as unknown as ExtensionContext
+      const activate_context = make_activate_context()
 
       // Mock configuration to disable auto_render
       mock_vscode.workspace.getConfiguration.mockReturnValue({
-        get: vi.fn((key: string, default_val: string) => {
-          if (key === `auto_render`) return false
-          return default_val
-        }),
-      })
+        get: vi.fn((key: string, default_val: string) =>
+          key === `auto_render` ? false : default_val,
+        ),
+      } as unknown as ReturnType<typeof mock_vscode.workspace.getConfiguration>)
 
-      activate(mock_context)
+      activate(activate_context)
 
       const open_doc_calls = mock_vscode.workspace.onDidOpenTextDocument.mock
         .calls as unknown as unknown[][]
@@ -1709,9 +1686,7 @@ describe(`MatterViz Extension`, () => {
     })
 
     test(`should handle file reading errors gracefully during auto-render`, async () => {
-      const mock_context = {
-        subscriptions: { push: vi.fn() },
-      } as unknown as ExtensionContext
+      const activate_context = make_activate_context()
 
       // Mock vscode.workspace.fs.stat to throw an error
       mock_vscode.workspace.fs.stat.mockRejectedValue(new Error(`File not found`))
@@ -1723,7 +1698,7 @@ describe(`MatterViz Extension`, () => {
         ),
       })
 
-      activate(mock_context)
+      activate(activate_context)
 
       const open_doc_calls = mock_vscode.workspace.onDidOpenTextDocument.mock
         .calls as unknown as unknown[][]
@@ -1901,16 +1876,12 @@ H 0.0 1.0 0.0`
       mock_vscode.workspace.getConfiguration.mockReturnValue(mock_config)
 
       const result = get_defaults()
-      const value = result_path
+      return result_path
         .split(`.`)
-        .reduce(
-          (obj: Record<string, unknown>, key: string) => obj?.[key] as Record<string, unknown>,
+        .reduce<unknown>(
+          (obj, key) => (obj as Record<string, unknown> | undefined)?.[key],
           result,
         )
-
-      return Array.isArray(expected_value)
-        ? expect(value).toEqual(expected_value)
-        : expect(value).toBe(expected_value)
     }
 
     test(`should merge user settings with defaults`, () => {
@@ -1993,7 +1964,9 @@ H 0.0 1.0 0.0`
       [`structure.site_label_offset`, [0.5, 1.0, 0]],
       [`trajectory.fps_range`, [0.5, 60]],
     ])(`should handle setting: %s = %s`, (result_path, expected_value) => {
-      test_setting(result_path, expected_value, result_path)
+      const value = test_setting(result_path, expected_value, result_path)
+      if (Array.isArray(expected_value)) expect(value).toEqual(expected_value)
+      else expect(value).toBe(expected_value)
     })
 
     test.each([

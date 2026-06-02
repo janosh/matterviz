@@ -1,11 +1,10 @@
-import { lint_config } from '@janosh/vite-config'
+import { config } from '@janosh/vite-config'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { vite_plugin as live_examples } from 'svelte-multiselect/live-examples'
-import type { Plugin } from 'vite'
-import { defineConfig } from 'vite-plus'
+import { defineConfig, type Plugin } from 'vite-plus'
 // @ts-expect-error Node ESM config load needs the .ts extension here
 import { mock_vscode } from './extensions/vscode/tests/vscode-mock.ts'
 
@@ -43,8 +42,8 @@ const starry_night_theme_plugin: Plugin = {
 const json_gz_plugin: Plugin = {
   name: `vite-plugin-json-gz`,
   enforce: `pre`,
-  configResolved(config) {
-    is_build = config.command === `build`
+  configResolved(resolved_config) {
+    is_build = resolved_config.command === `build`
   },
   resolveId(source, importer) {
     const [clean, query] = split_query(source)
@@ -103,37 +102,30 @@ const raw_text_plugin: Plugin = {
 }
 
 export default defineConfig({
+  ...config, // shared lint/fmt/build from @janosh/vite-config (dotfiles)
   fmt: {
-    semi: false,
-    singleQuote: true,
+    ...config.fmt,
     printWidth: 95,
     ignorePatterns: [
       `src/site/structures/*.json`,
       `src/site/molecules/*.json`,
-      `src/site/trajectories/*.json`,
-      `src/site/phonons/*.json`,
       `src/site/phase-diagrams/binary/data/*.json`,
       `src/lib/xrd/atomic_scattering_params.json`,
       `tests/vitest/fixtures/xrd/*.json`,
-      `tests/vitest/bz_reference_data.json`,
       `tests/vitest/convex-hull/fixtures/*.json`,
       `tests/vitest/phase-diagram/fixtures/*.json`,
     ],
   },
-  // Shared rules/plugins/categories live in @janosh/vite-config (dotfiles).
-  // Append only matterviz-specific ignore dirs here; add per-project rule overrides
-  // via `rules: { ...lint_config.rules, 'some-rule': 'off' }` if ever needed.
   lint: {
-    ...lint_config,
-    ignorePatterns: [
-      ...lint_config.ignorePatterns,
-      `extensions/**`,
-      `static/**`,
-      `src/scripts/**`,
-    ],
+    ...config.lint,
+    // src/scripts/** are standalone utility scripts excluded from tsconfig (so
+    // type-aware rules can't resolve $lib/Deno-style imports there) — keep them unlinted.
+    ignorePatterns: [`static/**`, `src/scripts/**`],
   },
-  // vite@8's Plugin and vite-plus's bundled Plugin are two copies of the same type;
-  // @ts-expect-error comparing them exceeds TS's instantiation depth here
+  // sveltekit()/live-examples carry their own copies of vite's Plugin type, so
+  // checking this array against vite-plus's PluginOption exceeds TS's instantiation
+  // depth (TS2321). vite ignores falsy plugins at runtime, so the null is fine.
+  // @ts-expect-error -- known TS limitation comparing large recursive Plugin types
   plugins: [
     json_gz_plugin,
     raw_text_plugin,
@@ -141,8 +133,7 @@ export default defineConfig({
     sveltekit(),
     live_examples(),
     process.env.VITEST ? mock_vscode() : null,
-    // oxlint-disable-next-line eslint-plugin-unicorn/prefer-native-coercion-functions -- type predicate needed for narrowing
-  ].filter((plugin): plugin is Plugin => Boolean(plugin)),
+  ],
 
   test: {
     environment: `happy-dom`,
@@ -165,11 +156,6 @@ export default defineConfig({
 
   preview: {
     port: 3000,
-  },
-
-  build: {
-    // Default cssTarget is chrome111 which doesn't support light-dark(),
-    cssTarget: `esnext`, // causing LightningCSS to polyfill it with broken space toggles
   },
 
   resolve: {

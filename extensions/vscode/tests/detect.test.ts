@@ -481,7 +481,7 @@ describe(`scan_renderable_paths`, () => {
     }
     for (const [path] of fixture_paths) {
       const resolved = resolve_path(fixture, path)
-      expect(resolved, `resolve_path failed for '${path}'`).not.toBeUndefined()
+      expect(resolved, `resolve_path failed for '${path}'`).toBeDefined()
       // Re-detect should return the same type
       expect(detect_view_type(resolved)).toBe(fixture_paths.get(path)?.type)
     }
@@ -584,8 +584,8 @@ describe(`scan_renderable_paths with plot`, () => {
     expect(types).toContain(`table`)
     expect(types).toContain(`plot`)
     // plot path uses \x00 suffix to co-exist with table at same data path
-    expect(paths.has(`\x00plot`)).toBe(true)
-    expect(paths.get(`\x00plot`)?.type).toBe(`plot`)
+    expect(paths.has(`\u0000plot`)).toBe(true)
+    expect(paths.get(`\u0000plot`)?.type).toBe(`plot`)
   })
 
   test(`registers only table badge for non-plottable tabular data`, () => {

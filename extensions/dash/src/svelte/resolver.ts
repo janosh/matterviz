@@ -36,7 +36,7 @@ for (const [raw_path, mod] of Object.entries(modules)) {
   components_by_key.set(key, comp)
 
   const base_name = key.split(`/`).pop() as string
-  const list = keys_by_base_name.get(base_name) || []
+  const list = keys_by_base_name.get(base_name) ?? []
   list.push(key)
   keys_by_base_name.set(base_name, list)
 }

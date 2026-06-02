@@ -39,6 +39,35 @@ describe(`HeatmapTable`, () => {
     expect(document.querySelectorAll(`td[data-col="Hidden"]`)).toHaveLength(0)
   })
 
+  it(`re-wires cell tooltips after cells re-render`, async () => {
+    const cell = (text: string, tip: string) => `<span title="${tip}">${text}</span>`
+    const rows: RowData[] = $state([
+      { Model: cell(`alpha`, `tip alpha v1`), Score: 1 },
+      { Model: cell(`beta`, `tip beta v1`), Score: 2 },
+    ])
+    const columns: Label[] = [
+      { label: `Model`, description: `` },
+      { label: `Score`, description: `` },
+    ]
+    mount(HeatmapTable, { target: document.body, props: { data: rows, columns } })
+    await tick()
+
+    const alpha_orig = () =>
+      [...document.querySelectorAll(`td[data-col="Model"] span`)]
+        .find((el) => el.textContent === `alpha`)
+        ?.getAttribute(`data-original-title`)
+
+    // tooltip() wires a cell by moving its title -> data-original-title
+    expect(alpha_orig()).toBe(`tip alpha v1`)
+
+    // mutating the cell value re-renders it, replacing the <span>. A one-time tooltip
+    // scan would miss the new node; table_tooltips must re-wire it on DOM mutation.
+    rows[0].Model = cell(`alpha`, `tip alpha v2`)
+    await tick()
+    // re-wiring happens in a MutationObserver microtask, so poll until it lands
+    await vi.waitFor(() => expect(alpha_orig()).toBe(`tip alpha v2`))
+  })
+
   it(`handles empty data and filters undefined rows`, async () => {
     let data_with_empty = $state([{ Model: undefined, Score: undefined }, ...sample_data])
 

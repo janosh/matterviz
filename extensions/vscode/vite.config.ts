@@ -1,10 +1,13 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, type PluginOption } from 'vite'
 import { mock_vscode } from './tests/vscode-mock.ts'
 import { vite_plugin_json_gz } from './vite-plugin-json-gz.ts'
 
 export default defineConfig(({ mode }) => ({
+  // vite@8's Plugin type and the svelte plugin's bundled copy are two instances
+  // of the same type; comparing them exceeds TS's instantiation depth, so widen
+  // to vite's own PluginOption[] to keep defineConfig's overload check shallow.
   plugins: [
     vite_plugin_json_gz(),
     mode === `test`
@@ -16,7 +19,7 @@ export default defineConfig(({ mode }) => ({
         }
       : svelte(),
     mode === `test` ? mock_vscode() : null,
-  ],
+  ] as PluginOption[],
   build: {
     outDir: `dist`,
     rollupOptions: {
