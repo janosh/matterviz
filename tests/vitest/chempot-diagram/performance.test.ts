@@ -7,21 +7,14 @@ import {
 } from '$lib/chempot-diagram/compute'
 import { count_atoms_in_composition } from '$lib/composition/parse'
 import type { PhaseData } from '$lib/convex-hull/types'
-import { readFileSync } from 'node:fs'
 import process from 'node:process'
-import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
+import { load_json } from '../setup'
 
 const test_dir = import.meta.dirname
 const min_speedup_ratio = Number(
   process.env.CHEMPOT_MIN_SPEEDUP_RATIO ?? (process.env.CI ? 1.5 : 2),
 )
-
-function load_gzip_json(filename: string): PhaseData[] {
-  const compressed_bytes = readFileSync(`${test_dir}/${filename}`)
-  const decompressed_text = gunzipSync(compressed_bytes).toString(`utf8`)
-  return JSON.parse(decompressed_text) as PhaseData[]
-}
 
 function median(values: number[]): number {
   const sorted = [...values].sort((left, right) => left - right)
@@ -58,8 +51,8 @@ function compute_e_form(entry: PhaseData, el_refs: Record<string, PhaseData>): n
 const hash_points = (points_3d: number[][]): string =>
   points_3d.map((point) => point.map((value) => value.toFixed(4)).join(`,`)).join(`;`)
 
-const pd_entries = load_gzip_json(`pd_entries_test.json.gz`)
-const ytos_entries = load_gzip_json(`ytos_entries.json.gz`)
+const pd_entries = load_json<PhaseData[]>(`${test_dir}/pd_entries_test.json.gz`)
+const ytos_entries = load_json<PhaseData[]>(`${test_dir}/ytos_entries.json.gz`)
 
 const dataset_cases: { name: string; entries: PhaseData[]; default_min_limit: number }[] = [
   { name: `li_fe_o`, entries: pd_entries, default_min_limit: -25 },

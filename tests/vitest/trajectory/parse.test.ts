@@ -4,23 +4,17 @@ import {
   parse_trajectory_data,
 } from '$lib/trajectory/parse'
 import { Buffer } from 'node:buffer'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
-import { gunzipSync } from 'node:zlib'
 import { describe, expect, it, test } from 'vitest'
-import { get_dummy_structure, read_binary_test_file } from '../setup'
+import { get_dummy_structure, read_binary_test_file, read_maybe_gz } from '../setup'
 
 const TRAJECTORY_DIR = `src/site/trajectories`
 
 // Helper to read text trajectory files (auto-decompresses .gz)
-const read_test_file = (filename: string): string => {
-  const file_path = join(process.cwd(), TRAJECTORY_DIR, filename)
-  if (filename.endsWith(`.gz`)) {
-    return gunzipSync(readFileSync(file_path)).toString(`utf-8`)
-  }
-  return readFileSync(file_path, `utf-8`)
-}
+const read_test_file = (filename: string): string =>
+  read_maybe_gz(join(process.cwd(), TRAJECTORY_DIR, filename))
 
 describe(`Trajectory File Detection`, () => {
   // only checking filename recognition, files don't need to exist

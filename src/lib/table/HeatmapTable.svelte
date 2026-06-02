@@ -32,6 +32,57 @@
   const is_invalid = (val: unknown) =>
     val == null || (typeof val === `number` && Number.isNaN(val))
 
+  // tooltip() wires [title]/[aria-label]/[data-title] elements once when it runs.
+  // Table cells are replaced when the table re-renders (sort, filter, data or
+  // pagination changes), which would silently drop their tooltips. Observe the
+  // container and incrementally wire newly added elements / unwire removed ones,
+  // instead of tearing down and rebuilding every tooltip on each unrelated DOM
+  // mutation (dropdowns, panes, pagination, context menu).
+  const tooltip_selector = `[title], [aria-label], [data-title]`
+  function table_tooltips(node: HTMLElement) {
+    const options = { allow_html: true } as const
+    // Per-element cleanups so individual nodes can be unwired as they leave the DOM.
+    const wired = new SvelteMap<Element, () => void>()
+
+    const wire = (root: Element) => {
+      const targets = root.matches(tooltip_selector)
+        ? [root, ...root.querySelectorAll(tooltip_selector)]
+        : [...root.querySelectorAll(tooltip_selector)]
+      for (const el of targets) {
+        if (!(el instanceof HTMLElement) || wired.has(el)) continue
+        // tooltip() only mutates attributes (title -> data-original-title), never
+        // childList, so wiring here can't re-trigger the childList observer below.
+        const cleanup = tooltip(options)(el)
+        if (cleanup) wired.set(el, cleanup)
+      }
+    }
+
+    wire(node)
+    const observer = new MutationObserver((mutations) => {
+      // Unwire elements that left the DOM. isConnected stays true for moved nodes
+      // (e.g. row reordering on sort), so those keep their tooltips without churn.
+      // Deleting the current entry mid-iteration is safe for Map.
+      for (const [el, cleanup] of wired) {
+        if (!el.isConnected) {
+          cleanup()
+          wired.delete(el)
+        }
+      }
+      // Wire only the freshly added subtrees, not the whole container.
+      for (const { addedNodes } of mutations) {
+        for (const added of addedNodes) {
+          if (added instanceof Element) wire(added)
+        }
+      }
+    })
+    observer.observe(node, { childList: true, subtree: true })
+    return () => {
+      observer.disconnect()
+      for (const cleanup of wired.values()) cleanup()
+      wired.clear()
+    }
+  }
+
   const NUMERIC_WITH_ERROR_RE =
     /^([-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/
 
@@ -867,7 +918,7 @@
 {/snippet}
 
 <div
-  {@attach tooltip({ allow_html: true })}
+  {@attach table_tooltips}
   {...rest_props}
   bind:this={container_el}
   class="table-container {rest_props.class ?? ``}"

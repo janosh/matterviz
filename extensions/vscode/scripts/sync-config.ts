@@ -1,11 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { SETTINGS_CONFIG, type SettingType } from '$lib/settings'
 
 // VSCode configuration generator that derives from your central settings schema
 function sync_package_config() {
-  const script_dir = dirname(fileURLToPath(import.meta.url))
+  const script_dir = import.meta.dirname
   const package_path = resolve(script_dir, `..`, `package.json`)
   const package_content = JSON.parse(readFileSync(package_path, `utf-8`))
 
@@ -69,7 +68,7 @@ function sync_package_config() {
   })
 
   // Preserve existing non-schema settings (like auto_render, theme, etc.)
-  const existing_props = package_content.contributes?.configuration?.properties || {}
+  const existing_props = package_content.contributes?.configuration?.properties ?? {}
   const preserved_props: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(existing_props)) {
@@ -91,7 +90,7 @@ function sync_package_config() {
     ...vscode_config,
   }
 
-  writeFileSync(package_path, JSON.stringify(package_content, null, 2) + `\n`, `utf-8`)
+  writeFileSync(package_path, `${JSON.stringify(package_content, null, 2)}\n`, `utf-8`)
   console.info(
     `✅ Synced ${Object.keys(vscode_config).length} settings from SETTINGS_CONFIG to package.json`,
   )

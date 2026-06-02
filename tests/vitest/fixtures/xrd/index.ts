@@ -1,11 +1,19 @@
 import type { XrdPattern } from '$lib/xrd'
 
-// Precomputed XRD pattern index
-export const xrd_patterns = Object.fromEntries(
-  Object.entries(import.meta.glob(`./*.json`, { eager: true, import: `default` })).map(
-    ([path, data]) => {
-      const id = path.split(`/`).at(-1)?.replace(`.json`, ``) ?? path
-      return [id, data as XrdPattern]
-    },
-  ),
+// Fixture id = base name without .json/.json.gz. Shared so lookups (e.g. pairing with
+// structure files) derive the same key this index uses.
+export const fixture_id = (path_or_name: string) =>
+  path_or_name
+    .split(`/`)
+    .at(-1)
+    ?.replace(/\.json(\.gz)?$/, ``) ?? path_or_name
+
+// Precomputed XRD pattern index. Large fixtures are gzipped (.json.gz, decompressed
+// by the json_gz vite plugin); small ones stay plain .json for readable git diffs.
+const modules = import.meta.glob<XrdPattern>([`./*.json`, `./*.json.gz`], {
+  eager: true,
+  import: `default`,
+})
+export const xrd_patterns: Record<string, XrdPattern> = Object.fromEntries(
+  Object.entries(modules).map(([path, data]) => [fixture_id(path), data]),
 )

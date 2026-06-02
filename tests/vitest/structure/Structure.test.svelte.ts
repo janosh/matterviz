@@ -5,15 +5,14 @@ import { DEFAULTS } from '$lib/settings'
 import type { StructureHandlerData } from '$lib/structure'
 import * as exports from '$lib/structure/export'
 import { structures } from '$site/structures'
-import { readFileSync } from 'node:fs'
 import { mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { gunzipSync } from 'node:zlib'
 import {
   assert_hover_scoped_shortcut,
   bind_props,
   doc_query,
   press_window_key,
+  read_maybe_gz,
 } from '../setup'
 
 const structure = structures[0]
@@ -661,9 +660,7 @@ describe(`Structure component nested JSON handling`, () => {
   test(`handles real nested JSON structure correctly`, () => {
     const file_path = `./src/site/structures/nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
     // Read and parse the actual nested JSON file (compressed)
-    const compressed = readFileSync(file_path)
-    const content = gunzipSync(compressed).toString(`utf8`)
-    const parsed = JSON.parse(content)
+    const parsed = JSON.parse(read_maybe_gz(file_path))
 
     // Extract the nested structure (simulating our parse_any_structure logic)
     const nested_structure = parsed[0].structure

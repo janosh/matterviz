@@ -11,7 +11,17 @@ import {
 import type { Matrix3x3, Vec3, Vec9 } from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import reference_data from './bz_reference_data.json' with { type: 'json' }
+import { load_json } from './setup'
+
+type BzReference = {
+  real_lattice: number[][]
+  reciprocal_lattice: number[][]
+  bz_volume_approximation: number
+}
+// gzipped to keep the ~32 KB reference data out of the repo as ~3 KB
+const reference_data = load_json<Record<string, BzReference>>(
+  `${import.meta.dirname}/bz_reference_data.json.gz`,
+)
 
 // Common test constants
 const CUBIC_5: Matrix3x3 = [

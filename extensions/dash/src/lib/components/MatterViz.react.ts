@@ -62,8 +62,8 @@ function sanitize_for_json(value: unknown): unknown {
     }
     // Circular reference detection
     if (typeof val === `object`) {
-      if (seen.has(val as object)) return `[Circular]`
-      seen.add(val as object)
+      if (seen.has(val)) return `[Circular]`
+      seen.add(val)
     }
     return val
   }
@@ -166,9 +166,9 @@ class MatterVizErrorBoundary extends Component<MatterVizProps, ErrorBoundaryStat
             fontSize: `13px`,
           },
         },
-        React.createElement(`strong`, null, `Error in ${component || `MatterViz`}:`),
+        React.createElement(`strong`, null, `Error in ${component ?? `MatterViz`}:`),
         React.createElement(`br`),
-        React.createElement(`code`, null, error?.message || String(error)),
+        React.createElement(`code`, null, error?.message ?? String(error)),
         React.createElement(`br`),
         React.createElement(`br`),
         React.createElement(
@@ -191,11 +191,6 @@ class MatterVizErrorBoundary extends Component<MatterVizProps, ErrorBoundaryStat
 
     return this.props.children
   }
-}
-
-MatterVizErrorBoundary.propTypes = {
-  children: PropTypes.node,
-  component: PropTypes.string,
 }
 
 // Custom element type for the mv-matterviz web component
@@ -240,7 +235,7 @@ const MatterVizInner = (props: MatterVizProps) => {
       }
 
       // Traverse/create nested path (no-op for flat props like "onclick")
-      let target = callbacks_ref.current as Record<string, unknown>
+      let target = callbacks_ref.current
       let conflict = false
       for (let idx = 0; idx < parts.length - 1; idx++) {
         const part = parts[idx]
@@ -279,14 +274,11 @@ const MatterVizInner = (props: MatterVizProps) => {
 
   useEffect(() => {
     const element = ref.current
-    if (!element) return
+    if (!element) return undefined
 
     // Convert and deep-merge with callbacks (supports nested event props)
     const converted_props = convert_dash_props_to_matterviz(mv_props, set_props, float32_props)
-    const resolved_props = deep_merge(
-      converted_props,
-      callbacks_ref.current as Record<string, unknown>,
-    )
+    const resolved_props = deep_merge(converted_props, callbacks_ref.current)
 
     // Set component and props. Due to Svelte's reactivity, there may be a brief
     // render with incomplete props when switching components. Components should

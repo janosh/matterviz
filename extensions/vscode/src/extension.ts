@@ -1,3 +1,6 @@
+// VS Code's webview postMessage API takes a single argument (no targetOrigin),
+// so unicorn's require-post-message-target-origin is a false positive here.
+// oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import { detect_compression_format } from '$lib/io/decompress'
 import { format_bytes } from '$lib/labels'
@@ -32,8 +35,10 @@ type WebviewLike =
   | {
       cspSource: string
       asWebviewUri: (uri: { fsPath: string }) => string | { toString(): string }
-      onDidReceiveMessage: (listener: (message: unknown) => void) => { dispose(): void } | void
-      postMessage: (message: unknown) => Promise<boolean> | void
+      onDidReceiveMessage: (
+        listener: (message: unknown) => void,
+      ) => { dispose(): void } | undefined
+      postMessage: (message: unknown) => Promise<boolean> | undefined
       html: string
     }
 
@@ -212,7 +217,7 @@ export const read_file = async (file_path: string): Promise<FileData> => {
 
 // Get file data from URI or active editor
 export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
-  if (uri) return await read_file(uri.fsPath)
+  if (uri) return read_file(uri.fsPath)
 
   if (vscode.window.activeTextEditor) {
     const filename = path.basename(vscode.window.activeTextEditor.document.fileName)
@@ -227,7 +232,7 @@ export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
     active_tab.input !== null &&
     `uri` in active_tab.input
   )
-    return await read_file((active_tab.input as { uri: vscode.Uri }).uri.fsPath)
+    return read_file((active_tab.input as { uri: vscode.Uri }).uri.fsPath)
 
   throw new Error(`No file selected. MatterViz needs an active editor to know what to render.`)
 }
@@ -259,7 +264,8 @@ const get_system_theme = (): ThemeName => {
     return COLOR_THEMES.black
   } else if (color_theme.kind === vscode.ColorThemeKind.HighContrastLight) {
     return COLOR_THEMES.white
-  } else return COLOR_THEMES.light
+  }
+  return COLOR_THEMES.light
 }
 
 // Settings reader with nested structure support and built-in error handling
@@ -365,7 +371,7 @@ export const create_html = (
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     ${css_href ? `<link rel="stylesheet" href="${css_href}">` : ``}
     <script nonce="${nonce}">
-      window.matterviz_data=${JSON.stringify(webview_data).replace(/<\//g, `<\\/`)};
+      window.matterviz_data=${JSON.stringify(webview_data).replaceAll(`</`, `<\\/`)};
     </script>
   </head>
   <body>
@@ -461,7 +467,7 @@ export const handle_msg = async (msg: MessageData, webview?: WebviewLike): Promi
     let is_binary_save = false
     try {
       const uri = await vscode.window.showSaveDialog({
-        defaultUri: vscode.Uri.file(msg.filename || `structure`),
+        defaultUri: vscode.Uri.file(msg.filename ?? `structure`),
         filters: { Files: [`*`] },
       })
 
@@ -522,12 +528,12 @@ function start_watching_file(
 
     // Listen for file changes
     watcher.onDidChange(() => {
-      handle_file_change(`change`, file_path, webview, meta)
+      void handle_file_change(`change`, file_path, webview, meta)
     })
 
     // Listen for file deletion
     watcher.onDidDelete(() => {
-      handle_file_change(`delete`, file_path, webview, meta)
+      void handle_file_change(`delete`, file_path, webview, meta)
       stop_watching_file(file_path) // Clean up watcher
     })
 
@@ -658,7 +664,7 @@ function create_webview_panel(
   const theme_listener = vscode.window.onDidChangeActiveColorTheme(update_theme)
   const config_listener = vscode.workspace.onDidChangeConfiguration(
     (event: vscode.ConfigurationChangeEvent) => {
-      if (event.affectsConfiguration(`matterviz`)) update_theme()
+      if (event.affectsConfiguration(`matterviz`)) void update_theme()
     },
   )
 
@@ -678,7 +684,7 @@ export const render = async (
 ): Promise<void> => {
   try {
     const file = await get_file(uri)
-    const file_path = uri?.fsPath || vscode.window.activeTextEditor?.document.fileName
+    const file_path = uri?.fsPath ?? vscode.window.activeTextEditor?.document.fileName
 
     create_webview_panel(context, file, file_path)
   } catch (error: unknown) {
@@ -688,7 +694,7 @@ export const render = async (
 }
 
 // Custom editor provider for MatterViz files
-class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocument> {
+class Provider implements vscode.CustomReadonlyEditorProvider {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   openCustomDocument(
@@ -736,10 +742,10 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
       // Listen for theme changes and update webview
       const update_theme = async () => {
         if (webview_panel.visible) {
-          const current = await read_file(document.uri.fsPath)
+          const current_file = await read_file(document.uri.fsPath)
           webview_panel.webview.html = create_html(webview_panel.webview, this.context, {
-            type: infer_view_type(current),
-            data: current,
+            type: infer_view_type(current_file),
+            data: current_file,
             theme: get_theme(),
             defaults: get_defaults(),
           })
@@ -749,7 +755,7 @@ class Provider implements vscode.CustomReadonlyEditorProvider<vscode.CustomDocum
       const theme_change_listener = vscode.window.onDidChangeActiveColorTheme(update_theme)
       const config_change_listener = vscode.workspace.onDidChangeConfiguration(
         (event: vscode.ConfigurationChangeEvent) => {
-          if (event.affectsConfiguration(`matterviz`)) update_theme()
+          if (event.affectsConfiguration(`matterviz`)) void update_theme()
         },
       )
 
@@ -803,24 +809,26 @@ export const activate = (context: vscode.ExtensionContext) => {
           return
         }
 
-        const timer = setTimeout(async () => {
-          try {
-            if (!vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true))
-              return
-            const panel = create_webview_panel(
-              context,
-              await read_file(file_path),
-              file_path,
-              vscode.ViewColumn.One,
-            )
-            active_auto_render_panels.set(file_path, panel)
-            panel.onDidDispose(() => active_auto_render_panels.delete(file_path))
-          } catch (error: unknown) {
-            console.error(`Error auto-rendering file:`, error)
-            vscode.window.showErrorMessage(`MatterViz auto-render failed: ${error}`)
-          } finally {
-            auto_render_timers.delete(file_path)
-          }
+        const timer = setTimeout(() => {
+          void (async () => {
+            try {
+              if (!vscode.workspace.getConfiguration(`matterviz`).get(`auto_render`, true))
+                return
+              const panel = create_webview_panel(
+                context,
+                await read_file(file_path),
+                file_path,
+                vscode.ViewColumn.One,
+              )
+              active_auto_render_panels.set(file_path, panel)
+              panel.onDidDispose(() => active_auto_render_panels.delete(file_path))
+            } catch (error: unknown) {
+              console.error(`Error auto-rendering file:`, error)
+              vscode.window.showErrorMessage(`MatterViz auto-render failed: ${error}`)
+            } finally {
+              auto_render_timers.delete(file_path)
+            }
+          })()
         }, 100) // Small delay to allow VS Code to finish opening the document
 
         auto_render_timers.set(file_path, timer)
@@ -836,7 +844,7 @@ export const activate = (context: vscode.ExtensionContext) => {
 async function collect_debug_info(): Promise<string> {
   // Check if running remotely
   const remote_name = vscode.env.remoteName
-  const is_remote = !!remote_name
+  const is_remote = Boolean(remote_name)
   const ui_kind = vscode.env.uiKind === vscode.UIKind.Desktop ? `Desktop` : `Web`
 
   // Get information about active files being rendered

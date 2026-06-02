@@ -22,7 +22,7 @@ export function vite_plugin_json_gz(): Plugin {
         if (is_build) return { code: json_str, moduleType: `json` }
         return `export default ${json_str}`
       } catch (error) {
-        this.error(`Failed to load ${id}: ${error}`)
+        return this.error(`Failed to load ${id}: ${error}`)
       }
     },
   }

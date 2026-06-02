@@ -5,6 +5,7 @@ import type { TrajectoryFrame } from '$lib/trajectory'
 import init from '@spglib/moyo-wasm'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 import { flushSync, tick } from 'svelte'
 import { beforeEach, expect, vi } from 'vitest'
 
@@ -192,6 +193,21 @@ export function read_binary_test_file(
   const buffer = readFileSync(file_path)
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 }
+
+// Read a (possibly gzipped) text file as utf-8, decompressing when the path ends in `.gz`.
+export function read_maybe_gz(file_path: string): string {
+  const buffer = readFileSync(file_path)
+  return file_path.endsWith(`.gz`)
+    ? gunzipSync(buffer).toString(`utf8`)
+    : buffer.toString(`utf8`)
+}
+
+// Read and JSON.parse a (possibly gzipped) JSON file. Cast the result at the call site.
+// Generic param is a typed-load convenience for call sites (load_json<Foo>(path)),
+// not used for inference, hence the single-use type parameter is intentional.
+// oxlint-disable-next-line typescript-eslint/no-unnecessary-type-parameters
+export const load_json = <T = unknown>(file_path: string): T =>
+  JSON.parse(read_maybe_gz(file_path)) as T
 
 // Factory for a trajectory frame with `site_count` hydrogen atoms along x.
 export const make_trajectory_frame = (

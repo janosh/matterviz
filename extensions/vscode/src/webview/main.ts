@@ -1,4 +1,9 @@
+// VS Code's webview postMessage API takes a single argument (no targetOrigin),
+// so unicorn's require-post-message-target-origin is a false positive here.
+// oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
+
 // Import MatterViz parsing functions and components
+// oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '$lib/app.css'
 import { COMPRESSION_EXTENSIONS_REGEX } from '$lib/constants'
 import ConvexHull from '$lib/convex-hull/ConvexHull.svelte'
@@ -17,6 +22,7 @@ import { parse_structure_file } from '$lib/structure/parse'
 import Structure from '$lib/structure/Structure.svelte'
 import { ensure_moyo_wasm_ready } from '$lib/symmetry'
 import { apply_theme_to_dom, is_valid_theme_name, type ThemeName } from '$lib/theme/index'
+// oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '$lib/theme/themes.mjs'
 import type {
   FrameIndex,
@@ -217,7 +223,7 @@ export const setup_vscode_download = (): void => {
 const handle_file_change = async (message: FileChangeMessage): Promise<void> => {
   if (message.command === `fileDeleted`) {
     // File was deleted - show error message
-    const container = document.getElementById(`matterviz-app`)
+    const container = document.querySelector<HTMLElement>(`#matterviz-app`)
     if (container) {
       container.innerHTML = `
         <div style="padding: 2rem; text-align: center; color: var(--vscode-errorForeground);">
@@ -239,7 +245,7 @@ const handle_file_change = async (message: FileChangeMessage): Promise<void> => 
       const result = await parse_file_content(content, filename, is_base64)
 
       // Update the display
-      const container = document.getElementById(`matterviz-app`)
+      const container = document.querySelector<HTMLElement>(`#matterviz-app`)
       if (container && current_app) {
         await unmount(current_app) // unmount the existing component to prevent memory leaks
         current_app = create_display(container, result, result.filename)
@@ -353,18 +359,17 @@ const parse_file_content = async (
       `trajectory` in parsed_trajectory &&
       `supports_streaming` in parsed_trajectory
     ) {
-      const { trajectory, supports_streaming, file_path } = parsed_trajectory
-      const streaming_info = { supports_streaming, file_path }
+      const {
+        trajectory,
+        supports_streaming,
+        file_path: streaming_file_path,
+      } = parsed_trajectory
+      const streaming_info = { supports_streaming, file_path: streaming_file_path }
       return { type: `trajectory`, data: trajectory, filename, streaming_info }
     }
 
     // Fallback: if not pre-parsed, treat as raw content
-    return parse_file_content(
-      parsed_trajectory as string,
-      filename,
-      is_compressed,
-      recursion_depth + 1,
-    )
+    return parse_file_content(parsed_trajectory, filename, is_compressed, recursion_depth + 1)
   }
 
   // Handle compressed/binary files by converting from base64 first
@@ -461,11 +466,11 @@ const parse_file_content = async (
 // Escape HTML special chars to prevent XSS when inserting into innerHTML
 const escape_html = (text: string): string =>
   text
-    .replace(/&/g, `&amp;`)
-    .replace(/</g, `&lt;`)
-    .replace(/>/g, `&gt;`)
-    .replace(/"/g, `&quot;`)
-    .replace(/'/g, `&#39;`)
+    .replaceAll(`&`, `&amp;`)
+    .replaceAll(`<`, `&lt;`)
+    .replaceAll(`>`, `&gt;`)
+    .replaceAll(`"`, `&quot;`)
+    .replaceAll(`'`, `&#39;`)
 
 // Create error display in container
 const create_error_display = (
@@ -681,7 +686,7 @@ const trajectory_props = (defaults: DefaultSettings) => {
 // Initialize the MatterViz application
 async function initialize() {
   // Get MatterViz data passed from extension
-  const { content, filename, is_base64 } = globalThis.matterviz_data?.data || {}
+  const { content, filename, is_base64 } = globalThis.matterviz_data?.data ?? {}
   const theme = globalThis.matterviz_data?.theme
   const moyo_wasm_url = globalThis.matterviz_data?.moyo_wasm_url
   if (!content || !filename) {
@@ -697,7 +702,7 @@ async function initialize() {
   // Apply theme early
   if (theme) apply_theme_to_dom(theme)
 
-  const container = document.getElementById(`matterviz-app`)
+  const container = document.querySelector<HTMLElement>(`#matterviz-app`)
   if (!container) throw new Error(`Target container not found in DOM`)
 
   const result = await parse_file_content(content, filename, is_base64)
@@ -711,7 +716,7 @@ async function initialize() {
     // Listen for file change messages from extension
     globalThis.addEventListener(`message`, (event) => {
       if ([`fileUpdated`, `fileDeleted`].includes(event.data.command)) {
-        handle_file_change(event.data)
+        void handle_file_change(event.data)
       }
     })
   }
@@ -743,7 +748,7 @@ async function cleanup_matterviz(): Promise<void> {
     return app
   } catch (error) {
     const err = to_error(error)
-    const container = document.getElementById(`matterviz-app`)
+    const container = document.querySelector<HTMLElement>(`#matterviz-app`)
     if (container) {
       create_error_display(
         container,

@@ -1690,7 +1690,6 @@ This example shows how to place the color bar vertically on the right side of th
 
   <ColorScaleSelect
     bind:value={color_scale.scheme}
-    selected={[color_scale.scheme]}
     style="min-width: 250px"
   />
 </div>

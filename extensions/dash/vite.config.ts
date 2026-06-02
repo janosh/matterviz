@@ -1,7 +1,7 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { resolve } from 'node:path'
 import process from 'node:process'
-import type { Plugin } from 'vite'
+import type { Plugin, PluginOption } from 'vite'
 import { defineConfig } from 'vite'
 
 // Plugin to strip Node.js imports from the UMD bundle
@@ -28,7 +28,7 @@ const deduplicate_wasm_plugin = (): Plugin => ({
     const by_content = new Map<string, RegExpExecArray[]>()
     for (const match of matches) {
       const full = match[0]
-      const list = by_content.get(full) || []
+      const list = by_content.get(full) ?? []
       list.push(match)
       by_content.set(full, list)
     }
@@ -40,7 +40,7 @@ const deduplicate_wasm_plugin = (): Plugin => ({
       if (occurrences.length > 1) {
         const var_name = `__wasm_data_${var_idx++}__`
         // Add variable declaration at the start of the chunk
-        result = `var ${var_name}=${wasm_str};\n` + result.replaceAll(wasm_str, var_name)
+        result = `var ${var_name}=${wasm_str};\n${result.replaceAll(wasm_str, var_name)}`
       }
     }
 
@@ -51,9 +51,12 @@ const deduplicate_wasm_plugin = (): Plugin => ({
 export default defineConfig({
   define: {
     // Replace process.env.NODE_ENV for browser compatibility
-    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || `production`),
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? `production`),
   },
 
+  // vite@8's Plugin type and the svelte plugin's bundled copy are two instances
+  // of the same type; comparing them exceeds TS's instantiation depth, so widen
+  // to vite's own PluginOption[] to keep defineConfig's overload check shallow.
   plugins: [
     strip_node_imports_plugin(),
     deduplicate_wasm_plugin(),
@@ -69,9 +72,10 @@ export default defineConfig({
             customElement: true,
           }
         }
+        return undefined
       },
     }),
-  ],
+  ] as PluginOption[],
 
   build: {
     lib: {
@@ -91,10 +95,10 @@ export default defineConfig({
         },
         // Ensure assets go to the same directory
         assetFileNames: (assetInfo) => {
-          if (assetInfo.name?.endsWith(`.css`)) {
+          if (assetInfo.names?.some((name) => name.endsWith(`.css`))) {
             return `matterviz_dash_components.css`
           }
-          return assetInfo.name || `asset`
+          return assetInfo.names?.[0] ?? `asset`
         },
         // Note: manualChunks not supported with UMD format
       },

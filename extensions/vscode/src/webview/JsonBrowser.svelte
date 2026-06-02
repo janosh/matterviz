@@ -150,8 +150,8 @@
 
   // Strip internal suffix used to register multiple renderable types at the same path
   function strip_type_suffix(path: string): string {
-    const idx = path.indexOf(`\x00`)
-    return idx >= 0 ? path.slice(0, idx) : path
+    const idx = path.indexOf(`\u0000`)
+    return idx !== -1 ? path.slice(0, idx) : path
   }
 
   // Convert a data path (relative to JSON root) to the tree path used by JsonTree
@@ -165,7 +165,7 @@
   let renderable_tree_paths = $derived(
     new Map(
       [...renderable_paths]
-        .filter(([data_path]) => !data_path.includes(`\x00`))
+        .filter(([data_path]) => !data_path.includes(`\u0000`))
         .map(([data_path, info]) => [data_to_tree_path(data_path), { data_path, ...info }]),
     ),
   )
@@ -473,7 +473,7 @@
       panel_id !== undefined
         ? () => {
             const idx = panels.findIndex((p) => p.id === panel_id)
-            if (idx < 0) return
+            if (idx === -1) return
             if (panels.length > 1) close_panel(idx)
             else close_all_panels()
           }
@@ -577,7 +577,7 @@
     for (let idx = 0; idx < panels.length; idx++) {
       const panel = panels[idx]
       if (panel.component) continue // already mounted
-      const el = document.getElementById(panel.id)
+      const el = document.querySelector<HTMLElement>(`#${panel.id}`)
       if (!el) continue
       panel.element = el
       panel.component = mount_into(el, panel.val, panel.detected_type, panel.id)

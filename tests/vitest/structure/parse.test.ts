@@ -29,12 +29,10 @@ import scientific_notation_poscar from '$site/structures/scientific-notation.pos
 import selective_dynamics from '$site/structures/selective-dynamics.poscar?raw'
 import tio2_cif from '$site/structures/TiO2.cif?raw'
 import vasp4_format from '$site/structures/vasp4-format.poscar?raw'
-import { readFileSync } from 'node:fs'
 import process from 'node:process'
 import { join } from 'node:path'
 import { assert, afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
-import { gunzipSync } from 'node:zlib'
-import { get_dummy_structure } from '../setup'
+import { get_dummy_structure, read_maybe_gz } from '../setup'
 
 // Suppress console.error for the entire test file since parse functions
 // are expected to handle invalid input gracefully and log errors
@@ -69,16 +67,14 @@ function expect_xyz_matches_abc(
 }
 
 // Load compressed phonopy files using Node.js built-in decompression
-const agi_compressed = readFileSync(
+const agi_phono3py_params = read_maybe_gz(
   join(process.cwd(), `src/site/structures/AgI-fq978185p-phono3py.yaml.gz`),
 )
-const agi_phono3py_params = gunzipSync(agi_compressed).toString(`utf-8`)
 const hea_hcp_filename = `nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
 
-const beo_compressed = readFileSync(
+const beo_phono3py_params = read_maybe_gz(
   join(process.cwd(), `src/site/structures/BeO-zw12zc18p-phono3py.yaml.gz`),
 )
-const beo_phono3py_params = gunzipSync(beo_compressed).toString(`utf-8`)
 
 describe(`POSCAR Parser`, () => {
   it.each([
@@ -535,7 +531,7 @@ describe(`Auto-detection & Error Handling`, () => {
       )
 
       // Verify perfect reconstruction: fractional → cartesian should match original
-      const lattice = poscar_result.lattice?.matrix
+      const lattice: Matrix3x3 | undefined = poscar_result.lattice?.matrix
       assert(lattice, `Failed to get lattice matrix`)
       const reconstructed = [
         poscar_site.abc[0] * lattice[0][0] +
@@ -1707,8 +1703,7 @@ unit_cell:
 describe(`parse_structure_file`, () => {
   test(`parses nested JSON structure correctly`, () => {
     // Read the actual test file
-    const compressed = readFileSync(`./src/site/structures/${hea_hcp_filename}`)
-    const content = gunzipSync(compressed).toString(`utf8`)
+    const content = read_maybe_gz(`./src/site/structures/${hea_hcp_filename}`)
 
     const result = parse_structure_file(content, hea_hcp_filename)
 
@@ -1858,8 +1853,7 @@ describe(`parse_structure_file`, () => {
 
   test(`parses compressed HEA structure file correctly`, () => {
     // Test parsing of a real compressed JSON structure file
-    const compressed = readFileSync(`./src/site/structures/${hea_hcp_filename}`)
-    const content = gunzipSync(compressed).toString(`utf8`)
+    const content = read_maybe_gz(`./src/site/structures/${hea_hcp_filename}`)
 
     // Verify the file contains valid JSON with expected structure
     const parsed = JSON.parse(content)

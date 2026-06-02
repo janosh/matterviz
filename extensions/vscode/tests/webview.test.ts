@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { base64_to_array_buffer, setup_vscode_download } from '../src/webview/main'
+import { base64_to_array_buffer } from '../src/webview/main'
 
 declare global {
   // download function added by VSCode integration
@@ -88,7 +88,7 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
     const result_array = new Uint8Array(result)
     expect(result.byteLength).toBe(ase_data.length)
     expect(new TextDecoder().decode(result_array.slice(0, 8))).toBe(`- of Ulm`)
-    expect(new TextDecoder().decode(result_array.slice(8, 24)).replace(/\0/g, ``)).toBe(
+    expect(new TextDecoder().decode(result_array.slice(8, 24)).replaceAll(`\0`, ``)).toBe(
       `ASE-Trajectory`,
     )
   })
@@ -97,8 +97,10 @@ describe(`Webview Integration - ASE Binary Trajectory Support`, () => {
 describe(`VSCode Download Integration`, () => {
   afterEach(vi.useRealTimers)
 
-  test(`sets up global download override when VSCode API is available`, async () => {
-    vi.resetModules() // Reset modules to clear cached vscode_api variable in webview/main.ts
+  // Reset modules (clears the cached vscode_api in webview/main.ts), mock the VS Code
+  // API, then install the download override. Returns the postMessage mock to assert on.
+  const init_download = async () => {
+    vi.resetModules()
     const mock_post_message = vi.fn()
     globalThis.acquireVsCodeApi = vi.fn(() => ({
       postMessage: mock_post_message,
@@ -107,6 +109,11 @@ describe(`VSCode Download Integration`, () => {
     }))
     const { setup_vscode_download } = await import(`../src/webview/main`)
     setup_vscode_download()
+    return mock_post_message
+  }
+
+  test(`sets up global download override when VSCode API is available`, async () => {
+    const mock_post_message = await init_download()
     expect(typeof globalThis.download).toBe(`function`)
     globalThis.download(`test content`, `test.json`, `application/json`)
     expect(mock_post_message).toHaveBeenCalledWith({
@@ -119,20 +126,21 @@ describe(`VSCode Download Integration`, () => {
 
   test(`handles binary data (PNG) correctly`, async () => {
     vi.useFakeTimers()
-    vi.resetModules()
     let load_listener: (() => void) | undefined
     let result: string | null = null
 
     globalThis.FileReader = vi.fn(function (this: FileReader) {
       this.readAsDataURL = vi.fn((blob: Blob) => {
-        setTimeout(async () => {
-          // Read actual Blob content for end-to-end correctness
-          const array_buffer = await blob.arrayBuffer()
-          const uint8_array = new Uint8Array(array_buffer)
-          const binary_string = String.fromCharCode(...uint8_array)
-          const base64_string = btoa(binary_string)
-          result = `data:${blob.type};base64,${base64_string}`
-          load_listener?.()
+        setTimeout(() => {
+          void (async () => {
+            // Read actual Blob content for end-to-end correctness
+            const array_buffer = await blob.arrayBuffer()
+            const uint8_array = new Uint8Array(array_buffer)
+            const binary_string = String.fromCharCode(...uint8_array)
+            const base64_string = btoa(binary_string)
+            result = `data:${blob.type};base64,${base64_string}`
+            load_listener?.()
+          })()
         }, 0)
       })
       this.addEventListener = vi.fn((type: string, listener: EventListener) => {
@@ -141,14 +149,7 @@ describe(`VSCode Download Integration`, () => {
       Object.defineProperty(this, `result`, { get: () => result })
     }) as unknown as typeof FileReader
 
-    const mock_post_message = vi.fn()
-    globalThis.acquireVsCodeApi = vi.fn(() => ({
-      postMessage: mock_post_message,
-      setState: vi.fn(),
-      getState: vi.fn(),
-    }))
-    const { setup_vscode_download } = await import(`../src/webview/main`)
-    setup_vscode_download()
+    const mock_post_message = await init_download()
     globalThis.download(
       new Blob([`fake png data`], { type: `image/png` }),
       `structure.png`,
@@ -164,15 +165,8 @@ describe(`VSCode Download Integration`, () => {
     })
   })
 
-  test.each([``, `   `])(`rejects invalid filename: "%s"`, (filename) => {
-    vi.resetModules()
-    const mock_post_message = vi.fn()
-    globalThis.acquireVsCodeApi = vi.fn(() => ({
-      postMessage: mock_post_message,
-      setState: vi.fn(),
-      getState: vi.fn(),
-    }))
-    setup_vscode_download()
+  test.each([``, `   `])(`rejects invalid filename: "%s"`, async (filename) => {
+    const mock_post_message = await init_download()
 
     globalThis.download(`test content`, filename, `application/json`)
     expect(mock_post_message).not.toHaveBeenCalled()
@@ -180,7 +174,6 @@ describe(`VSCode Download Integration`, () => {
 
   test(`handles FileReader errors for binary data`, async () => {
     vi.useFakeTimers()
-    vi.resetModules()
     let error_listener: (() => void) | undefined
 
     globalThis.FileReader = vi.fn(function (this: FileReader) {
@@ -190,14 +183,7 @@ describe(`VSCode Download Integration`, () => {
       })
     }) as unknown as typeof FileReader
 
-    const mock_post_message = vi.fn()
-    globalThis.acquireVsCodeApi = vi.fn(() => ({
-      postMessage: mock_post_message,
-      setState: vi.fn(),
-      getState: vi.fn(),
-    }))
-    const { setup_vscode_download } = await import(`../src/webview/main`)
-    setup_vscode_download()
+    const mock_post_message = await init_download()
     globalThis.download(new Blob([`data`]), `test.png`, `image/png`)
     await vi.runAllTimersAsync()
 
@@ -208,15 +194,7 @@ describe(`VSCode Download Integration`, () => {
   })
 
   test(`handles general exceptions during download`, async () => {
-    vi.resetModules()
-    const mock_post_message = vi.fn()
-    globalThis.acquireVsCodeApi = vi.fn(() => ({
-      postMessage: mock_post_message,
-      setState: vi.fn(),
-      getState: vi.fn(),
-    }))
-    const { setup_vscode_download } = await import(`../src/webview/main`)
-    setup_vscode_download()
+    const mock_post_message = await init_download()
 
     mock_post_message.mockImplementationOnce(() => {
       throw new Error(`Network error`)

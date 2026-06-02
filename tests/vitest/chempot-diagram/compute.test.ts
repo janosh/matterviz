@@ -33,20 +33,12 @@ import { filter_entries_at_temperature } from '$lib/convex-hull/helpers'
 import type { PhaseData } from '$lib/convex-hull/types'
 import type { Vec2 } from '$lib/math'
 import { convex_hull_2d, polygon_centroid, solve_linear_system } from '$lib/math'
-import { readFileSync } from 'node:fs'
-import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
+import { load_json } from '../setup'
 
 const test_dir = import.meta.dirname
-
-function load_gzip_json(filename: string): PhaseData[] {
-  const compressed_bytes = readFileSync(`${test_dir}/${filename}`)
-  const decompressed_text = gunzipSync(compressed_bytes).toString(`utf8`)
-  return JSON.parse(decompressed_text) as PhaseData[]
-}
-
-const entries = load_gzip_json(`pd_entries_test.json.gz`)
-const ytos_entries = load_gzip_json(`ytos_entries.json.gz`)
+const entries = load_json<PhaseData[]>(`${test_dir}/pd_entries_test.json.gz`)
+const ytos_entries = load_json<PhaseData[]>(`${test_dir}/ytos_entries.json.gz`)
 
 // Filter to Fe-O binary subsystem
 const fe_o_elements = new Set([`Fe`, `O`])
