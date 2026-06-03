@@ -1,8 +1,3 @@
-<script module lang="ts">
-  // Module-scoped counter for collision-proof gradient-id fallback across instances
-  let sankey_instance_count = 0
-</script>
-
 <script
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
@@ -30,6 +25,7 @@
     type PositionedLink,
     type PositionedNode,
   } from '$lib/plot/sankey'
+  import { unique_id } from '$lib/plot/utils'
   import { DEFAULTS } from '$lib/settings'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -121,9 +117,8 @@
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGSVGElement | null = $state(null)
   let tooltip_el = $state<HTMLDivElement | undefined>()
-  // Unique per-instance prefix for gradient ids; counter fallback avoids collisions
-  // across instances when crypto.randomUUID is unavailable.
-  const uid = crypto?.randomUUID?.().slice(0, 8) ?? `sankey-${sankey_instance_count++}`
+  // Unique per-instance prefix for gradient ids (collision-resistant, see unique_id)
+  const uid = unique_id(`sankey`)
 
   let hovered_node = $state<number | null>(null)
   let hovered_link = $state<number | null>(null)
