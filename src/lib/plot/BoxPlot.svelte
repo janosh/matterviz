@@ -222,7 +222,7 @@
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGElement | null = $state(null)
-  let clip_path_id = unique_id(`box-clip`) // stable, collision-resistant (see unique_id)
+  const clip_path_id = unique_id(`box-clip`) // stable, collision-resistant (see unique_id)
 
   let hovered_ref_line_idx = $state<number | null>(null)
 

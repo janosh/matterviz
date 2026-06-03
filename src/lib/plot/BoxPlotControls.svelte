@@ -4,6 +4,7 @@
   import { PlotControls } from '$lib/plot'
   import type { PlotControlsProps } from '$lib/plot/types'
   import { unique_id } from '$lib/plot/utils'
+  import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
 
   // Unique ID prefix to avoid conflicts when multiple instances on same page
@@ -52,6 +53,14 @@
   <SettingsSection
     title="Box / Violin"
     current_values={{ orientation, kind, side, whisker_mode, show_outliers, show_mean }}
+    on_reset={() => {
+      orientation = `vertical`
+      kind = DEFAULTS.box.kind as ViolinKind
+      side = DEFAULTS.box.side as ViolinSide
+      whisker_mode = DEFAULTS.box.whisker_mode as WhiskerMode
+      show_outliers = DEFAULTS.box.show_outliers
+      show_mean = DEFAULTS.box.show_mean
+    }}
     style="display: flex; flex-wrap: wrap; gap: 2ex"
   >
     <label style="flex: 1">
