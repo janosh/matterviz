@@ -1,27 +1,32 @@
 // Shared quantile + selection helpers used by box-plot.ts and kde.ts.
 // quickselect partially sorts in place; quantile_unordered mutates its input
 // (quantile_sorted assumes an already-ascending array and never mutates).
+//
+// Unguarded contract: quickselect, quantile_sorted and quantile_unordered all assume
+// values.length > 0 and 0 <= p <= 1. Out-of-range inputs index past the array and
+// yield undefined/NaN — callers (box-plot.ts, kde.ts) must length- and p-range-check
+// before calling.
 
 export function quickselect(values: number[], kth: number): number {
   let left = 0
   let right = values.length - 1
   while (left < right) {
     const pivot = values[(left + right) >>> 1]
-    let i = left
-    let j = right
-    while (i <= j) {
-      while (values[i] < pivot) i++
-      while (values[j] > pivot) j--
-      if (i <= j) {
-        const tmp = values[i]
-        values[i] = values[j]
-        values[j] = tmp
-        i++
-        j--
+    let scan_lo = left
+    let scan_hi = right
+    while (scan_lo <= scan_hi) {
+      while (values[scan_lo] < pivot) scan_lo++
+      while (values[scan_hi] > pivot) scan_hi--
+      if (scan_lo <= scan_hi) {
+        const tmp = values[scan_lo]
+        values[scan_lo] = values[scan_hi]
+        values[scan_hi] = tmp
+        scan_lo++
+        scan_hi--
       }
     }
-    if (kth <= j) right = j
-    else if (kth >= i) left = i
+    if (kth <= scan_hi) right = scan_hi
+    else if (kth >= scan_lo) left = scan_lo
     else return values[kth]
   }
   return values[kth]

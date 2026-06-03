@@ -31,7 +31,7 @@
     has_y2_points = false,
     show_ticks = false,
     controls_title = `plot`,
-    controls_class = ``,
+    controls_class = `plot`,
     toggle_props = {},
     pane_props = {},
   }: PlotControlsProps = $props()
