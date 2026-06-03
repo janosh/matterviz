@@ -13,11 +13,13 @@ const dist = (n: number, center = 0, spread = 1): number[] =>
 async function mount_violin(
   props: Partial<ComponentProps<typeof Violin>>,
 ): Promise<HTMLElement> {
+  const target = document.createElement(`div`)
+  document.body.append(target)
   mount(Violin, {
-    target: document.body,
+    target,
     props: { ...props, style: `width: 400px; height: 300px; ${props.style ?? ``}` },
   })
-  const plot = document.querySelector<HTMLElement>(`.box-plot`)
+  const plot = target.querySelector<HTMLElement>(`.box-plot`)
   if (!plot) throw new Error(`Violin root element not found`)
   await resize_element(plot, 400, 300)
   return plot

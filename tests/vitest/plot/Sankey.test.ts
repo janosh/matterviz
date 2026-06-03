@@ -21,11 +21,13 @@ const data: SankeyData = {
 async function mount_sized_sankey(
   props: Partial<ComponentProps<typeof Sankey>>,
 ): Promise<HTMLElement> {
+  const target = document.createElement(`div`)
+  document.body.append(target)
   mount(Sankey, {
-    target: document.body,
+    target,
     props: { ...props, style: `width: 500px; height: 360px; ${props.style ?? ``}` },
   })
-  const plot = document.querySelector<HTMLElement>(`.sankey`)
+  const plot = target.querySelector<HTMLElement>(`.sankey`)
   if (!plot) throw new Error(`Sankey root element not found`)
   await resize_element(plot, 500, 360)
   return plot
