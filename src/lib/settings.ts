@@ -6,7 +6,15 @@ import type { HullFaceColorMode } from '$lib/convex-hull/types'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
-import type { Orientation } from '$lib/plot'
+import type {
+  BandwidthOption,
+  Orientation,
+  SankeyNodeAlign,
+  SankeyOrientation,
+  ViolinKind,
+  ViolinSide,
+  WhiskerMode,
+} from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import { merge_nested } from './utils'
 
@@ -324,13 +332,13 @@ export interface SettingsConfig {
 
   box: {
     // Box / violin plot settings
-    whisker_mode: SettingType<`tukey` | `minmax` | `percentile` | `std`>
+    whisker_mode: SettingType<WhiskerMode>
     box_width: SettingType<number>
     show_outliers: SettingType<boolean>
     show_mean: SettingType<boolean>
-    kind: SettingType<`box` | `violin` | `violin+box`>
-    side: SettingType<`both` | `positive` | `negative`>
-    bandwidth: SettingType<`silverman` | `scott`>
+    kind: SettingType<ViolinKind>
+    side: SettingType<ViolinSide>
+    bandwidth: SettingType<Exclude<BandwidthOption, number>>
     violin_width: SettingType<number>
     violin_box_width: SettingType<number>
     box: BoxStyleType
@@ -343,8 +351,8 @@ export interface SettingsConfig {
 
   sankey: {
     // Sankey diagram settings
-    orientation: SettingType<`horizontal` | `vertical`>
-    node_align: SettingType<`justify` | `left` | `right` | `center`>
+    orientation: SettingType<SankeyOrientation>
+    node_align: SettingType<SankeyNodeAlign>
     node_width: SettingType<number>
     node_padding: SettingType<number>
     link_opacity: SettingType<number>

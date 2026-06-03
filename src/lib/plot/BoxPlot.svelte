@@ -69,7 +69,7 @@
   import { unique_id } from '$lib/plot/utils'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { Tween, type TweenOptions } from 'svelte/motion'
   import { SvelteMap } from 'svelte/reactivity'
@@ -620,6 +620,18 @@
     window.removeEventListener(`mouseup`, on_pan_end)
   }
 
+  // Tear down any window listeners + cursor override if the component unmounts mid-drag
+  // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
+  onDestroy(() => {
+    window.removeEventListener(`mousemove`, on_window_mouse_move)
+    window.removeEventListener(`mouseup`, on_window_mouse_up)
+    window.removeEventListener(`mousemove`, on_pan_move)
+    window.removeEventListener(`mouseup`, on_pan_end)
+    drag_state = { start: null, current: null, bounds: null }
+    pan_drag_state = null
+    document.body.style.cursor = ``
+  })
+
   function handle_mouse_down(evt: MouseEvent) {
     const coords = get_relative_coords(evt)
     if (!coords || !svg_element) return
@@ -977,6 +989,7 @@
       ontouchstart={handle_touch_start}
       ontouchmove={handle_touch_move}
       ontouchend={handle_touch_end}
+      ontouchcancel={handle_touch_end}
       style:cursor={pan_drag_state
       ? `grabbing`
       : shift_held && pan?.enabled !== false

@@ -113,7 +113,9 @@ export function sankey_from_links(
   let max_idx = -1
   for (const idx of source) if (idx > max_idx) max_idx = idx
   for (const idx of target) if (idx > max_idx) max_idx = idx
-  const n_nodes = labels?.length ?? max_idx + 1
+  // Cover the highest indexed link even when labels is shorter (missing labels fall
+  // back to the index string below), so links never reference a non-existent node.
+  const n_nodes = Math.max(labels?.length ?? 0, max_idx + 1)
   const nodes: SankeyNode[] = Array.from({ length: n_nodes }, (_, idx) => ({
     id: idx,
     label: labels?.[idx] ?? `${idx}`,

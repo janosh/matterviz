@@ -195,7 +195,7 @@
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGElement | null = $state(null)
-  let clip_path_id = unique_id(`histogram-clip`) // stable, collision-resistant (see unique_id)
+  const clip_path_id = unique_id(`histogram-clip`) // stable, collision-resistant (see unique_id)
   let hover_info = $state<HistogramHandlerProps | null>(null)
 
   // Reference line hover state

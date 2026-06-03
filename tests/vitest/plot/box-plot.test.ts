@@ -83,17 +83,6 @@ describe(`compute_box_stats`, () => {
     ).toEqual(stats)
   })
 
-  test(`presorted skips the internal sort and matches the default path`, () => {
-    const raw = [9, NaN, 1, 5, Infinity, 3, 7, 2, 8, 4, 6]
-    const sorted = raw.filter(Number.isFinite).sort((a, b) => a - b)
-    for (const whisker_mode of WHISKER_MODES) {
-      const opts = { whisker_mode: whisker_mode as WhiskerMode }
-      const from_raw = compute_box_stats(raw, opts)
-      const from_sorted = compute_box_stats(sorted, { ...opts, presorted: true })
-      expect(from_sorted).toEqual(from_raw)
-    }
-  })
-
   test(`percentile mode honors custom whisker_percentiles`, () => {
     const data = Array.from({ length: 100 }, (_, idx) => idx + 1)
     const stats = compute_box_stats(data, {

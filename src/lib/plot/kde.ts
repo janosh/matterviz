@@ -1,6 +1,8 @@
 // 1-D Gaussian kernel density estimation for violin plots.
 // Pure and unit-tested; mirrors the style of box-plot.ts. Never mutates inputs.
 
+import { quantile_sorted, quantile_unordered } from './quantile'
+
 export interface KdeResult {
   grid: number[] // evaluation points along the value axis
   density: number[] // estimated density at each grid point (>= 0)
@@ -16,56 +18,10 @@ export interface KdeOptions {
   // Cap on samples used for the O(n*m) density sum. Bandwidth is always computed from the
   // full sample; only the per-grid-point evaluation subsamples (deterministic stride).
   max_samples?: number
-  // When true the caller guarantees `samples` is already finite-filtered and ascending,
-  // so the internal filter+sort is skipped (lets a caller share one sort across helpers).
-  presorted?: boolean
 }
 
 const KDE_EXACT_SAMPLE_LIMIT = 1024
 const KDE_TAIL_SIGMA = 6
-
-function quickselect(values: number[], kth: number): number {
-  let left = 0
-  let right = values.length - 1
-  while (left < right) {
-    const pivot = values[(left + right) >>> 1]
-    let i = left
-    let j = right
-    while (i <= j) {
-      while (values[i] < pivot) i++
-      while (values[j] > pivot) j--
-      if (i <= j) {
-        const tmp = values[i]
-        values[i] = values[j]
-        values[j] = tmp
-        i++
-        j--
-      }
-    }
-    if (kth <= j) right = j
-    else if (kth >= i) left = i
-    else return values[kth]
-  }
-  return values[kth]
-}
-
-function quantile_sorted(values: readonly number[], p: number): number {
-  const idx = (values.length - 1) * p
-  const lo = Math.floor(idx)
-  const hi = Math.ceil(idx)
-  const frac = idx - lo
-  const lo_val = values[lo]
-  return hi === lo ? lo_val : lo_val + (values[hi] - lo_val) * frac
-}
-
-function quantile_unordered(values: number[], p: number): number {
-  const idx = (values.length - 1) * p
-  const lo = Math.floor(idx)
-  const hi = Math.ceil(idx)
-  const frac = idx - lo
-  const lo_val = quickselect(values, lo)
-  return hi === lo ? lo_val : lo_val + (quickselect(values, hi) - lo_val) * frac
-}
 
 function sample_deviation(sorted: readonly number[]): number {
   const n_vals = sorted.length
@@ -82,26 +38,24 @@ function sample_deviation(sorted: readonly number[]): number {
 }
 
 // Silverman's rule of thumb: 0.9 * min(std, IQR/1.34) * n^(-1/5). Matches scipy/seaborn.
-export function silverman_bandwidth(sorted: readonly number[]): number {
-  const n_vals = sorted.length
-  if (n_vals < 2) return 1
-  const std = sample_deviation(sorted)
-  const iqr = quantile_sorted(sorted, 0.75) - quantile_sorted(sorted, 0.25)
-  const spread = iqr > 0 ? Math.min(std, iqr / 1.34) : std
-  const sigma = spread > 0 ? spread : std > 0 ? std : 1 // floor avoids zero bandwidth
-  return 0.9 * sigma * n_vals ** (-1 / 5)
-}
-
-function silverman_bandwidth_unordered(samples: number[]): number {
-  const n_vals = samples.length
-  if (n_vals < 2) return 1
-  const std = sample_deviation(samples)
-  const q1 = quantile_unordered(samples, 0.25)
-  const q3 = quantile_unordered(samples, 0.75)
-  const iqr = q3 - q1
+// (`sigma` floors to std then 1 to avoid a zero bandwidth.)
+const silverman_from_stats = (n_vals: number, std: number, iqr: number): number => {
   const spread = iqr > 0 ? Math.min(std, iqr / 1.34) : std
   const sigma = spread > 0 ? spread : std > 0 ? std : 1
   return 0.9 * sigma * n_vals ** (-1 / 5)
+}
+
+export function silverman_bandwidth(sorted: readonly number[]): number {
+  if (sorted.length < 2) return 1
+  const iqr = quantile_sorted(sorted, 0.75) - quantile_sorted(sorted, 0.25)
+  return silverman_from_stats(sorted.length, sample_deviation(sorted), iqr)
+}
+
+function silverman_bandwidth_unordered(samples: number[]): number {
+  if (samples.length < 2) return 1
+  const q1 = quantile_unordered(samples, 0.25)
+  const q3 = quantile_unordered(samples, 0.75)
+  return silverman_from_stats(samples.length, sample_deviation(samples), q3 - q1)
 }
 
 // Scott's rule: std * n^(-1/5) for 1-D data.
@@ -183,19 +137,9 @@ function binned_density(
 
 // Estimate a smooth density from raw samples via a Gaussian kernel.
 export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}): KdeResult {
-  const {
-    bandwidth = `silverman`,
-    n_points = 100,
-    cut = 2,
-    clip,
-    range,
-    max_samples,
-    presorted = false,
-  } = opts
+  const { bandwidth = `silverman`, n_points = 100, cut = 2, clip, range, max_samples } = opts
 
-  const finite: readonly number[] | number[] = presorted
-    ? samples
-    : samples.filter((val) => Number.isFinite(val))
+  const finite = samples.filter((val) => Number.isFinite(val))
   const n_vals = finite.length
   if (n_vals === 0) return { grid: [], density: [], bandwidth: 0 }
 
@@ -221,9 +165,7 @@ export function gaussian_kde(samples: readonly number[], opts: KdeOptions = {}):
       ? bandwidth
       : bandwidth === `scott`
         ? scott_bandwidth(finite)
-        : presorted
-          ? silverman_bandwidth(finite)
-          : silverman_bandwidth_unordered(finite as number[])
+        : silverman_bandwidth_unordered(finite)
   band = Math.max(band, 1e-12) // guard against zero/negative bandwidth
 
   const n_eval = eval_samples.length

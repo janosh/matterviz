@@ -133,16 +133,4 @@ describe(`gaussian_kde`, () => {
     gaussian_kde(input)
     expect(input).toEqual(snapshot)
   })
-
-  test(`presorted skips the internal sort and matches the default path`, () => {
-    const raw = [...normal_samples(80, 9), NaN, Infinity]
-    const sorted = raw.filter(Number.isFinite).sort((a, b) => a - b)
-    const from_raw = gaussian_kde(raw, { n_points: 40, cut: 2 })
-    const from_sorted = gaussian_kde(sorted, { n_points: 40, cut: 2, presorted: true })
-    expect(from_sorted.bandwidth).toBeCloseTo(from_raw.bandwidth, 12)
-    const max_abs = Math.max(
-      ...from_sorted.density.map((val, idx) => Math.abs(val - from_raw.density[idx])),
-    )
-    expect(max_abs).toBeLessThan(1e-12)
-  })
 })

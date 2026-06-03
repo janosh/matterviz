@@ -1,8 +1,9 @@
 import type { TweenOptions } from 'svelte/motion'
 
-// Unique DOM id token (for SVG clipPath/gradient ids, control `for`/`id` prefixes). Call once
-// and cache so the id stays stable across re-renders. Pass a prefix for a readable
-// `prefix-<uuid>`, or omit it when the caller adds its own prefix.
+// Unique DOM id token (for SVG clipPath/gradient ids, control `for`/`id` prefixes). Returns a
+// fresh id on every call; callers should store it in a const (e.g. `const id = unique_id('foo')`)
+// so it stays stable across re-renders. Pass a prefix for a readable `prefix-<uuid>`, or omit it
+// when the caller adds its own prefix.
 export const unique_id = (prefix = ``): string =>
   prefix ? `${prefix}-${crypto.randomUUID()}` : crypto.randomUUID()
 

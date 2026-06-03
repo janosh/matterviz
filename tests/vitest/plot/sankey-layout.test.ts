@@ -190,6 +190,15 @@ describe(`sankey_from_links`, () => {
     expect(data.nodes).toHaveLength(4)
   })
 
+  test(`covers all indexed nodes when labels are too short`, () => {
+    // labels only cover indices 0..1 but links reference index 2
+    const data = sankey_from_links([0, 1], [2, 2], [10, 20], [`A`, `B`])
+    expect(data.nodes).toHaveLength(3)
+    expect(data.nodes.map((node) => node.label)).toEqual([`A`, `B`, `2`])
+    // the layout must resolve the highest-indexed link without throwing
+    expect(() => compute_sankey_layout(data, dims)).not.toThrow()
+  })
+
   test.each([
     [[0, 1], [2], [1, 2]],
     [[0], [1], [1, 2]],

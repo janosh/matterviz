@@ -24,7 +24,7 @@
   } from '$lib/plot'
   import { DEFAULT_SERIES_COLORS, PlotLegend, PlotTooltip, SankeyControls } from '$lib/plot'
   import { compute_element_placement, constrain_tooltip_position, filter_padding } from '$lib/plot/layout'
-  import type{ Sides } from '$lib/plot/layout'
+  import type { Sides } from '$lib/plot/layout'
   import {
     compute_sankey_layout,
     type PositionedLink,
@@ -132,7 +132,7 @@
   // Nodes muted via legend toggle (dimmed, not removed - keeps layout stable)
   let muted_nodes = new SvelteSet<string | number>()
 
-  let pad = $derived(filter_padding(padding, { t: 20, b: 20, l: 10, r: 10 }))
+  let pad = $derived(filter_padding(padding, DEFAULT_PADDING))
   let inner_width = $derived(Math.max(0, width - pad.l - pad.r))
   let inner_height = $derived(Math.max(0, height - pad.t - pad.b))
 
@@ -314,7 +314,7 @@
       hover_info = make_node_props(node)
       hover_pos = event_pos(event) ?? node_center(node)
       change(hover_info)
-      on_node_hover?.({ ...(hover_info as SankeyNodeHandlerProps<Metadata>), event: event as MouseEvent })
+      if (event) on_node_hover?.({ ...(hover_info as SankeyNodeHandlerProps<Metadata>), event })
     } else {
       hovered_node = null
       hover_info = null
@@ -331,7 +331,7 @@
       hover_info = make_link_props(link)
       hover_pos = event_pos(event) ?? { x: pad.l + link.mid.x, y: pad.t + link.mid.y }
       change(hover_info)
-      on_link_hover?.({ ...(hover_info as SankeyLinkHandlerProps<Metadata>), event: event as MouseEvent })
+      if (event) on_link_hover?.({ ...(hover_info as SankeyLinkHandlerProps<Metadata>), event })
     } else {
       hovered_link = null
       hover_info = null
@@ -488,9 +488,9 @@
               id="{uid}-grad-{link.link_idx}"
               gradientUnits="userSpaceOnUse"
               x1={vertical ? link.mid.x : link.source.x1}
-              y1={vertical ? link.source.x1 : link.mid.y}
+              y1={vertical ? link.source.y1 : link.mid.y}
               x2={vertical ? link.mid.x : link.target.x0}
-              y2={vertical ? link.target.x0 : link.mid.y}
+              y2={vertical ? link.target.y0 : link.mid.y}
             >
               <stop offset="0%" stop-color={src_color} />
               <stop offset="100%" stop-color={tgt_color} />

@@ -1,13 +1,14 @@
 <script lang="ts">
   import { SettingsSection } from '$lib/layout'
   import type { SankeyNodeAlign, SankeyOrientation } from '$lib/plot'
+  import { unique_id } from '$lib/plot/utils'
   import ControlPane from './ControlPane.svelte'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   // Unique id prefix to avoid label/input collisions with other instances
-  const uid = crypto?.randomUUID?.().slice(0, 8) ?? `sankey`
+  const uid = unique_id(`sankey`)
 
   let {
     show_controls = $bindable(true),

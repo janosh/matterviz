@@ -9,7 +9,7 @@
 
   let {
     controls_open = $bindable(false),
-    controls_class = ``,
+    controls_class = `plot`,
     title = controls_class || `plot`,
     toggle_props = {},
     pane_props = {},
