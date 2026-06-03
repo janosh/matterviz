@@ -1006,7 +1006,8 @@ describe(`PlotLegend`, () => {
 
       // Check gradient def is rendered (ID includes instance_id for uniqueness)
       const linear_grad = doc_query(`linearGradient`)
-      expect(linear_grad.id).toMatch(/^legend-grad-[a-f0-9]+-3$/)
+      expect(linear_grad.id).toMatch(/^legend-grad-.+-3$/) // legend-grad-<instance token>-<fill_idx>
+
       expect(linear_grad.getAttribute(`gradientTransform`)).toBe(`rotate(90, 0.5, 0.5)`)
 
       // Check stops
@@ -1046,7 +1047,7 @@ describe(`PlotLegend`, () => {
       mount(PlotLegend, { target: document.body, props: { series_data: data } })
 
       const radial_grad = doc_query(`radialGradient`)
-      expect(radial_grad.id).toMatch(/^legend-grad-[a-f0-9]+-5$/)
+      expect(radial_grad.id).toMatch(/^legend-grad-.+-5$/) // legend-grad-<instance token>-<fill_idx>
       expect(radial_grad.getAttribute(`cx`)).toBe(`0.3`)
       expect(radial_grad.getAttribute(`cy`)).toBe(`0.7`)
 

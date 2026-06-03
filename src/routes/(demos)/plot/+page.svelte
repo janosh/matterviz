@@ -44,6 +44,27 @@
       icon: `Histogram`,
     },
     {
+      href: `/plot/box-plot`,
+      title: `Box Plot`,
+      description:
+        `Distribution summaries with quartile boxes, medians, whiskers, and outliers from raw data.`,
+      icon: `Graph`,
+    },
+    {
+      href: `/plot/violin`,
+      title: `Violin Plot`,
+      description:
+        `KDE density shapes (optionally with inner box) — one-sided, two-sided, and split violins.`,
+      icon: `Graph`,
+    },
+    {
+      href: `/plot/sankey`,
+      title: `Sankey`,
+      description:
+        `Flow diagrams for weighted transitions between categories with horizontal/vertical layout and link highlighting.`,
+      icon: `Graph`,
+    },
+    {
       href: `/plot/spacegroup-bar-plot`,
       title: `Spacegroup Bar Plot`,
       description:

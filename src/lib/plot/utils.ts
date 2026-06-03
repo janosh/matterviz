@@ -1,5 +1,11 @@
 import type { TweenOptions } from 'svelte/motion'
 
+// Unique DOM id token (for SVG clipPath/gradient ids, control `for`/`id` prefixes). Call once
+// and cache so the id stays stable across re-renders. Pass a prefix for a readable
+// `prefix-<uuid>`, or omit it when the caller adds its own prefix.
+export const unique_id = (prefix = ``): string =>
+  prefix ? `${prefix}-${crypto.randomUUID()}` : crypto.randomUUID()
+
 // Path-morph (interpolatePath) tweening scales poorly with many simultaneously morphing
 // <path> elements (band structures with 100+ bands) or a single very long line. Disable
 // the morph above these budgets unless the caller explicitly opts into a tween.

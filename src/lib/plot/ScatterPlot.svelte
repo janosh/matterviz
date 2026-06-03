@@ -121,7 +121,7 @@
     generate_ticks,
     get_nice_data_range,
   } from './scales'
-  import { resolve_line_tween } from './utils'
+  import { resolve_line_tween, unique_id } from './utils'
 
   const in_range = (val: number | null | undefined, lo: number, hi: number) =>
     val != null && !isNaN(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
@@ -289,7 +289,7 @@
   let touched = new SvelteSet<string>()
 
   // Unique component ID to avoid clipPath conflicts between multiple instances
-  let component_id = $state(`scatter-${crypto.randomUUID()}`)
+  let component_id = $state(unique_id(`scatter`))
   let clip_path_id = $derived(`plot-area-clip-${component_id}`)
 
   // Assign stable IDs to series for keying

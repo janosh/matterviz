@@ -1,6 +1,7 @@
 <script lang="ts">
   import { add_alpha } from '$lib/colors'
   import type { LegendItem, Orientation } from '$lib/plot'
+  import { unique_id } from '$lib/plot/utils'
   import { sanitize_html } from '$lib/sanitize'
   import { strip_html } from '$lib/table'
   import { onDestroy } from 'svelte'
@@ -8,7 +9,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 
   // Unique instance ID to prevent gradient ID collisions when multiple legends render on the same page
-  const instance_id = crypto.randomUUID().slice(0, 8)
+  const instance_id = unique_id()
 
   let {
     series_data = [],
