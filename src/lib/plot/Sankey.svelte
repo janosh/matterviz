@@ -554,61 +554,38 @@
         >
           {#each layout.nodes as node (node.node_idx)}
             {@const color = node_colors[node.node_idx]}
-            {@const opacity = node_opacity(node)}
-            {#if !node_content && !show_node_labels && opacity === 1}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <rect
-                class="node"
-                data-sankey-node-idx={node.node_idx}
-                x={node.x0}
-                y={node.y0}
-                width={Math.max(0, node.x1 - node.x0)}
-                height={Math.max(0, node.y1 - node.y0)}
-                fill={color}
-                stroke="var(--sankey-node-stroke, rgba(0, 0, 0, 0.5))"
-                stroke-width="0.5"
-                rx="1"
-                role={on_node_click ? `button` : undefined}
-                tabindex={on_node_click ? 0 : undefined}
-                aria-label={on_node_click ? `${node.label ?? node.id}: ${node.value}` : undefined}
-                style:cursor={on_node_click ? `pointer` : `default`}
-              />
-            {:else}
-              <g class="node" style:opacity>
-                {#if node_content}
+            <g class="node" style:opacity={node_opacity(node)}>
+              {#if node_content}
                 {@render node_content({ node, color })}
-                {:else}
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <rect
-                    data-sankey-node-idx={node.node_idx}
-                    x={node.x0}
-                    y={node.y0}
-                    width={Math.max(0, node.x1 - node.x0)}
-                    height={Math.max(0, node.y1 - node.y0)}
-                    fill={color}
-                    stroke="var(--sankey-node-stroke, rgba(0, 0, 0, 0.5))"
-                    stroke-width="0.5"
-                    rx="1"
-                    role={on_node_click ? `button` : undefined}
-                    tabindex={on_node_click ? 0 : undefined}
-                    aria-label={on_node_click
-                      ? `${node.label ?? node.id}: ${node.value}`
-                      : undefined}
-                    style:cursor={on_node_click ? `pointer` : `default`}
-                  />
-                {/if}
-                {#if show_node_labels}
-                  {@const lbl = label_attrs(node)}
-                  <text
-                    class="node-label"
-                    x={lbl.x}
-                    y={lbl.y}
-                    text-anchor={lbl.anchor}
-                    dominant-baseline={lbl.baseline}
-                  >{node_text(node)}</text>
-                {/if}
-              </g>
-            {/if}
+              {:else}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <rect
+                  data-sankey-node-idx={node.node_idx}
+                  x={node.x0}
+                  y={node.y0}
+                  width={Math.max(0, node.x1 - node.x0)}
+                  height={Math.max(0, node.y1 - node.y0)}
+                  fill={color}
+                  stroke="var(--sankey-node-stroke, rgba(0, 0, 0, 0.5))"
+                  stroke-width="0.5"
+                  rx="1"
+                  role={on_node_click ? `button` : undefined}
+                  tabindex={on_node_click ? 0 : undefined}
+                  aria-label={on_node_click ? `${node.label ?? node.id}: ${node.value}` : undefined}
+                  style:cursor={on_node_click ? `pointer` : `default`}
+                />
+              {/if}
+              {#if show_node_labels}
+                {@const lbl = label_attrs(node)}
+                <text
+                  class="node-label"
+                  x={lbl.x}
+                  y={lbl.y}
+                  text-anchor={lbl.anchor}
+                  dominant-baseline={lbl.baseline}
+                >{node_text(node)}</text>
+              {/if}
+            </g>
           {/each}
         </g>
       </g>
