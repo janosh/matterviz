@@ -1,5 +1,6 @@
 import { compute_box_stats, is_whisker_mode, WHISKER_MODES } from '$lib/plot'
 import type { WhiskerMode } from '$lib/plot'
+import { quantile as d3_quantile } from 'd3-array'
 import { describe, expect, test } from 'vitest'
 
 // d3 quantile uses type-7 (linear) interpolation, matching numpy/pandas defaults.
@@ -159,6 +160,44 @@ describe(`compute_box_stats`, () => {
       expect(stats.median).toBeLessThanOrEqual(stats.q3)
       expect(stats.q3).toBeLessThanOrEqual(stats.whisker_high)
     }
+  })
+
+  // Property test: the in-place quickselect runs 3+ times on the same array per call.
+  // Cross-check quartiles + tukey whiskers/outliers against independent d3/sort references
+  // over randomized inputs (duplicates, negatives, floats) to catch any selection corruption.
+  test(`quartiles + tukey whiskers match d3/sort references on randomized inputs`, () => {
+    let state = 42
+    const rand = () => (state = (state * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
+    let worst_quartile = 0
+    for (let trial = 0; trial < 400; trial++) {
+      const n = 4 + Math.floor(rand() * 60)
+      const mode = trial % 3
+      const arr = Array.from({ length: n }, () =>
+        mode === 0
+          ? Math.floor(rand() * 5) // heavy duplicates
+          : mode === 1
+            ? (rand() - 0.5) * 1000 // floats incl. negatives
+            : Math.floor((rand() - 0.5) * 20),
+      )
+      const sorted = [...arr].sort((left, right) => left - right)
+      const q1 = d3_quantile(sorted, 0.25) as number
+      const q3 = d3_quantile(sorted, 0.75) as number
+      const stats = compute_box_stats(arr, { whisker_mode: `tukey` })
+      worst_quartile = Math.max(
+        worst_quartile,
+        Math.abs(stats.q1 - q1),
+        Math.abs(stats.median - (d3_quantile(sorted, 0.5) as number)),
+        Math.abs(stats.q3 - q3),
+      )
+      const iqr = q3 - q1
+      const lo = q1 - 1.5 * iqr
+      const hi = q3 + 1.5 * iqr
+      const in_bounds = sorted.filter((val) => val >= lo && val <= hi)
+      expect(stats.whisker_low).toBeCloseTo(in_bounds[0], 9)
+      expect(stats.whisker_high).toBeCloseTo(in_bounds[in_bounds.length - 1], 9)
+      expect(stats.outliers).toEqual(sorted.filter((val) => val < lo || val > hi))
+    }
+    expect(worst_quartile).toBeLessThan(1e-9)
   })
 })
 

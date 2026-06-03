@@ -1140,7 +1140,7 @@
   // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
     const should_place = legend != null &&
-      (legend_data.length > 1 || Object.keys(legend).length > 0)
+      (legend_data.length > 1 || Object.keys(legend ?? {}).length > 0)
 
     if (!should_place || !width || !height) return null
 
@@ -2554,7 +2554,7 @@
     <!-- Legend -->
     <!-- Only render if multiple series or if legend prop was explicitly provided by user (even if empty object) -->
     {#if legend != null && legend_data.length > 0 &&
-      (legend_data.length > 1 || Object.keys(legend).length > 0)}
+      (legend_data.length > 1 || Object.keys(legend ?? {}).length > 0)}
       {@const default_x = pad.l + 10}
       {@const default_y = pad.t + 10}
       {@const current_x = legend_is_dragging && legend_manual_position
