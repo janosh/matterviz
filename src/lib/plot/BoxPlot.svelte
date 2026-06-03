@@ -622,7 +622,9 @@
 
   // Tear down any window listeners + cursor override if the component unmounts mid-drag
   // (mouseup/panend would otherwise never fire, leaking listeners and a stuck cursor).
+  // onDestroy also runs during SSR teardown, where window/document don't exist.
   onDestroy(() => {
+    if (typeof window === `undefined`) return
     window.removeEventListener(`mousemove`, on_window_mouse_move)
     window.removeEventListener(`mouseup`, on_window_mouse_up)
     window.removeEventListener(`mousemove`, on_pan_move)
