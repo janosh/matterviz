@@ -1,0 +1,83 @@
+name: Publish matterviz-anywidget to npm
+
+# Builds the prebuilt anywidget bundle (extensions/anywidget) and publishes it to
+# npm as `matterviz-anywidget`. The bundle is then served with CORS + a JS MIME
+# type via jsDelivr/unpkg. `build/` stays gitignored -- nothing enters git.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (e.g. 0.3.7)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write # required for `npm publish --provenance`
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false # publish to npm only; no git writes need the token
+
+      - name: Setup Node + pnpm
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: 'Build MatterViz component library (resolves the file: dependency)'
+        run: corepack enable && pnpm install && pnpm package:dist
+
+      - name: Resolve version
+        id: version
+        # pass workflow inputs via env (not direct ${{ }} interpolation) to avoid
+        # shell injection, then validate before using downstream
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
+          else
+            version="${GITHUB_REF#refs/tags/}"
+          fi
+          version="${version#v}" # strip optional leading v from tags or manual input alike
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "Invalid version: $version"
+            exit 1
+          }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Build + publish extension
+        working-directory: extensions/anywidget
+        run: |
+          pnpm install
+          npm version "$PUBLISH_VERSION" --no-git-tag-version --allow-same-version
+          pnpm run build
+          # sanity-gate the build before publishing (catches empty/broken output;
+          # runtime render coverage lives in pymatviz's test suite)
+          test -s build/matterviz.js && test -s build/matterviz.css
+          js_bytes=$(wc -c < build/matterviz.js)
+          # lower bound: a healthy bundle (all viz components) is well over 1 MB;
+          # anything smaller means a broken/partial build
+          test "$js_bytes" -gt 1000000 || { echo "bundle too small ($js_bytes B)"; exit 1; }
+          # upper bound guards the WASM exclusions (see vite.config.ts): if h5wasm
+          # or moyo WASM creep back in, the bundle balloons -- fail loudly instead
+          # of shipping it (~3.4 MB normally; either WASM back pushes it over 5 MB)
+          test "$js_bytes" -lt 5000000 || { echo "bundle too large ($js_bytes B) -- did h5wasm/moyo WASM get re-bundled?"; exit 1; }
+          # npm (not pnpm) for publish: only `npm publish --provenance` emits npm
+          # provenance attestations -- pnpm exposes no equivalent direct flag
+          # build already ran + was size-gated above; --ignore-scripts skips the
+          # redundant prepublishOnly rebuild (kept for safety on manual publishes)
+          npm publish --ignore-scripts --provenance --access public
+        env:
+          PUBLISH_VERSION: ${{ steps.version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

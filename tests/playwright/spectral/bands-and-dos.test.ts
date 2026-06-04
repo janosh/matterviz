@@ -64,7 +64,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
         2,
       )
       expect(dos_y_ticks.filter((tick) => !isNaN(parseFloat(tick))).length).toBeGreaterThan(2)
-    }).toPass({ timeout: 5000 })
+    }).toPass({ timeout: 15_000 })
   })
 
   test(`applies custom widths and passes props to subcomponents`, async ({ page }) => {
@@ -141,7 +141,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
 
         expect(hovered_bands_lines).toBeGreaterThan(initial_bands_lines)
         expect(hovered_dos_lines).toBeGreaterThan(initial_dos_lines)
-      }).toPass({ timeout: 2000 })
+      }).toPass({ timeout: 15_000 })
     }
   })
 
@@ -186,8 +186,8 @@ test.describe(`BandsAndDos Component Tests`, () => {
       const bands_fermi = plots.first().locator(`.fermi-level-line`)
       const dos_fermi = plots.nth(1).locator(`.fermi-level-line`)
 
-      await expect(bands_fermi).toHaveCount(1, { timeout: 10000 })
-      await expect(dos_fermi).toHaveCount(1, { timeout: 10000 })
+      await expect(bands_fermi).toHaveCount(1, { timeout: 15_000 })
+      await expect(dos_fermi).toHaveCount(1, { timeout: 15_000 })
 
       // Fermi lines should be at approximately the same y position
       await expect(async () => {
@@ -199,7 +199,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
         expect(Math.abs(parseFloat(bands_y1) - parseFloat(dos_y1))).toBeLessThanOrEqual(
           tolerance,
         )
-      }).toPass({ timeout: 5000 })
+      }).toPass({ timeout: 15_000 })
     })
   }
 })

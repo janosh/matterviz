@@ -21,8 +21,14 @@ export default {
       args: [`--enable-unsafe-swiftshader`, `--use-angle=swiftshader`, `--use-gl=angle`],
     },
   },
-  workers: 16, // 4x vCPUs - testing higher parallelism for I/O-bound browser tests
+  // CI runners have 4 vCPUs and software WebGL (SwiftShader) is CPU-bound, so oversubscribing
+  // workers starves the render path and makes timing-sensitive assertions miss their windows.
+  // Keep CI at 1 worker/vCPU to avoid contention; allow more parallelism locally.
+  workers: is_ci ? 4 : 16,
   timeout: is_ci ? 45_000 : 30_000, // CI gets longer timeout due to slower shared resources
+  // default expect timeout is 5s; give assertions more headroom on slower CI so transient
+  // contention (theme/tooltip/render updates) doesn't trip them before retries can help
+  expect: { timeout: is_ci ? 15_000 : 5_000 },
   retries: is_ci ? 2 : 0, // Retry flaky tests in CI
   testDir: `tests/playwright`,
   // Playwright runs all tests by default (maxFailures defaults to 0, useful for CI to see total failures)

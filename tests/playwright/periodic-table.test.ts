@@ -4,11 +4,26 @@ import {
   ELEMENT_CATEGORIES,
   format_num,
 } from '$lib/labels'
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 import element_data from './element-data'
 import { random_sample } from './helpers'
 
 test.describe(`Periodic Table`, () => {
+  // Open the heatmap multiselect dropdown, retrying the click until the options
+  // list appears. Under CI contention svelte-multiselect may not be hydrated when
+  // the first click lands (so it no-ops); re-clicking once interactive opens it.
+  // Returns the options list locator. Short inner timeout lets toPass re-click.
+  const open_heatmap_select = async (page: Page) => {
+    const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
+    await expect(multiselect).toBeVisible({ timeout: 15_000 })
+    const option_list = multiselect.locator(`ul.options`)
+    await expect(async () => {
+      await multiselect.click({ force: true })
+      await expect(option_list).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 20_000 })
+    return option_list
+  }
+
   test(`in default state`, async ({ page }) => {
     await page.goto(`/`, { waitUntil: `networkidle` })
 
@@ -48,7 +63,7 @@ test.describe(`Periodic Table`, () => {
     await hydrogen_tile.hover({ force: true })
 
     // Check for stats display - use flexible assertion with retry
-    await expect(page.locator(`text=1 - Hydrogen`)).toBeVisible({ timeout: 5000 })
+    await expect(page.locator(`text=1 - Hydrogen`)).toBeVisible({ timeout: 15_000 })
   })
 
   test(`can hover random elements without throwing errors`, async ({ page }) => {
@@ -68,7 +83,7 @@ test.describe(`Periodic Table`, () => {
     for (const idx of indices) {
       const tile = tiles.nth(idx)
       await tile.scrollIntoViewIfNeeded()
-      await tile.hover({ timeout: 5000 })
+      await tile.hover({ timeout: 15_000 })
     }
 
     expect(logs, logs.join(`\n`)).toHaveLength(0)
@@ -92,13 +107,29 @@ test.describe(`Periodic Table`, () => {
       // The tooltip uses conditional rendering ({#if tooltip_visible}),
       // so when hidden, it doesn't exist in the DOM at all
       const tooltip = page.locator(`.tooltip`)
-      await expect(tooltip).toHaveCount(0, { timeout: 5000 })
+      await expect(tooltip).toHaveCount(0, { timeout: 15_000 })
+    }
+
+    // Hover an element tile until its tooltip appears, returning the tooltip
+    // locator. Retries the whole hover (move away first to re-arm mouseenter)
+    // because a single hover landing before the page is interactive (common
+    // under CI contention) leaves the mouse stationary, so retrying only the
+    // assertion can't make the tooltip appear. Short inner timeout lets toPass
+    // re-hover instead of blocking on one attempt.
+    const hover_until_tooltip = async (page: Page, tile: Locator) => {
+      const tooltip = get_tooltip(page)
+      await expect(async () => {
+        await page.mouse.move(0, 0)
+        await tile.hover({ force: true })
+        await expect(tooltip).toBeVisible({ timeout: 2000 })
+      }).toPass({ timeout: 15_000 })
+      return tooltip
     }
 
     test(`shows default tooltip on element hover when no heatmap is selected`, async ({
       page,
     }) => {
-      await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
+      await page.goto(`/periodic-table`)
 
       // Wait for element tiles to render before hovering
       await page.waitForSelector(`.element-tile`, { timeout: 10000 })
@@ -107,41 +138,25 @@ test.describe(`Periodic Table`, () => {
       const periodic_table = page.locator(`.ptable-grid`).first()
       await expect(periodic_table).toBeVisible({ timeout: 10000 })
 
-      // Hover on the H tile within the first periodic table
+      // Hover on the H tile within the first periodic table (retries until tooltip shows)
       const h_tile = periodic_table.locator(`.element-tile`).filter({ hasText: `H` }).first()
-      await expect(h_tile).toBeVisible({ timeout: 5000 })
-      // force: true needed - element tiles have stacked text content that intercepts hover
-      await h_tile.hover({ force: true })
+      await expect(h_tile).toBeVisible({ timeout: 15_000 })
 
-      // Get tooltip within the same periodic table container - use retry for visibility
-      const tooltip = periodic_table.locator(`.tooltip`)
-      await expect(async () => {
-        await expect(tooltip).toBeVisible()
-        await expect(tooltip).toContainText(`Hydrogen`)
-      }).toPass({ timeout: 10000 })
+      const tooltip = await hover_until_tooltip(page, h_tile)
+      await expect(tooltip).toContainText(`Hydrogen`, { timeout: 15_000 })
       await expect(tooltip).toContainText(`H • 1`)
     })
 
     test(`shows custom tooltip with heatmap data when heatmap is selected`, async ({
       page,
     }) => {
-      await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
-      const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
-      await expect(multiselect).toBeVisible()
-
-      // force: true needed - svelte-multiselect has SVG icons overlaying the clickable input
-      await multiselect.click({ force: true })
-
-      const option_list = multiselect.locator(`ul.options`)
-      await expect(option_list).toBeVisible({ timeout: 5000 })
+      await page.goto(`/periodic-table`)
+      const option_list = await open_heatmap_select(page)
       const first_option = option_list.locator(`li`).first()
       await first_option.click()
 
-      await get_element_tile(page, `C`).hover()
-
-      const tooltip = get_tooltip(page)
-      await expect(tooltip).toBeVisible()
-      await expect(tooltip).toContainText(`Carbon`)
+      const tooltip = await hover_until_tooltip(page, get_element_tile(page, `C`))
+      await expect(tooltip).toContainText(`Carbon`, { timeout: 15_000 })
       await expect(tooltip).toContainText(`C • 6`)
 
       // Check for enhanced data - but be more flexible about the format
@@ -150,19 +165,16 @@ test.describe(`Periodic Table`, () => {
     })
 
     test(`tooltip follows mouse position`, async ({ page }) => {
-      await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
+      await page.goto(`/periodic-table`)
 
       const hydrogen_tile = get_element_tile(page, `H`)
       const helium_tile = get_element_tile(page, `He`)
-      const tooltip = get_tooltip(page)
 
-      await hydrogen_tile.hover()
-      await expect(tooltip).toBeVisible()
+      const tooltip = await hover_until_tooltip(page, hydrogen_tile)
       const initial_box = await tooltip.boundingBox()
       expect(initial_box).not.toBeNull()
 
-      await helium_tile.hover()
-      await expect(tooltip).toBeVisible()
+      await hover_until_tooltip(page, helium_tile)
       const new_box = await tooltip.boundingBox()
       expect(new_box).not.toBeNull()
       if (!initial_box || !new_box) throw new Error(`Tooltip bounding box not found`)
@@ -171,20 +183,15 @@ test.describe(`Periodic Table`, () => {
     })
 
     test(`tooltip disappears when mouse leaves element`, async ({ page }) => {
-      await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
+      await page.goto(`/periodic-table`)
 
       // Wait for element tiles to render
       await page.waitForSelector(`.element-tile`, { timeout: 10000 })
 
       const h_tile = get_element_tile(page, `H`)
-      await expect(h_tile).toBeVisible({ timeout: 5000 })
-      await h_tile.hover({ force: true })
+      await expect(h_tile).toBeVisible({ timeout: 15_000 })
 
-      const tooltip = get_tooltip(page)
-      // Use toPass for robust visibility check
-      await expect(async () => {
-        await expect(tooltip).toBeVisible()
-      }).toPass({ timeout: 5000 })
+      const tooltip = await hover_until_tooltip(page, h_tile)
 
       await clear_tooltip(page)
       await expect(tooltip).toBeHidden()
@@ -199,12 +206,10 @@ test.describe(`Periodic Table`, () => {
 
     for (const element of test_elements) {
       test(`tooltip shows correct content for ${element.name}`, async ({ page }) => {
-        await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
+        await page.goto(`/periodic-table`)
 
         // Wait for element tiles to render
         await page.waitForSelector(`.element-tile`, { timeout: 10000 })
-
-        await clear_tooltip(page)
 
         const element_tile = page
           .locator(`.element-tile`)
@@ -213,34 +218,19 @@ test.describe(`Periodic Table`, () => {
           })
           .first()
 
-        await expect(element_tile).toBeVisible({ timeout: 5000 })
-        await element_tile.hover({ force: true })
+        await expect(element_tile).toBeVisible({ timeout: 15_000 })
 
-        const tooltip = get_tooltip(page)
-        // Use toPass for robust tooltip visibility
-        await expect(async () => {
-          await expect(tooltip).toBeVisible()
-          await expect(tooltip).toContainText(element.name)
-        }).toPass({ timeout: 5000 })
+        const tooltip = await hover_until_tooltip(page, element_tile)
+        await expect(tooltip).toContainText(element.name, { timeout: 15_000 })
         await expect(tooltip).toContainText(`${element.symbol} • ${element.number}`)
       })
     }
 
     test(`tooltip works with heatmap property selected`, async ({ page }) => {
-      await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
+      await page.goto(`/periodic-table`)
 
-      // Use scoped selector for heatmap multiselect
-      const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
-      await expect(multiselect).toBeVisible()
-
-      // Open multiselect dropdown - force: true needed due to overlaying SVG icons
-      await multiselect.click({ force: true })
-
-      // Wait for dropdown to be visible
-      const option_list = multiselect.locator(`ul.options`)
-      await expect(option_list).toBeVisible({ timeout: 10000 })
-
-      // Select Atomic mass property
+      // Open the heatmap dropdown (retries click until hydrated) and select Atomic mass
+      const option_list = await open_heatmap_select(page)
       const option = option_list.locator(`li`, { hasText: `Atomic mass` })
       await expect(option).toBeVisible()
       await option.click()
@@ -249,14 +239,9 @@ test.describe(`Periodic Table`, () => {
       await page.mouse.click(10, 10)
       await expect(option_list).not.toBeVisible()
 
-      // Hover over Carbon element
-      const carbon_tile = get_element_tile(page, `C`)
-      await carbon_tile.hover()
-
-      // Verify tooltip shows element info with heatmap active
-      const tooltip = get_tooltip(page)
-      await expect(tooltip).toBeVisible()
-      await expect(tooltip).toContainText(`Carbon`)
+      // Hover over Carbon element (retries until tooltip shows)
+      const tooltip = await hover_until_tooltip(page, get_element_tile(page, `C`))
+      await expect(tooltip).toContainText(`Carbon`, { timeout: 15_000 })
       await expect(tooltip).toContainText(`C • 6`)
     })
   })
@@ -266,18 +251,10 @@ test.describe(`Periodic Table`, () => {
     test.describe.configure({ retries: 2 })
 
     test(`displays elemental heat values`, async ({ page }) => {
-      await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
+      await page.goto(`/periodic-table`)
 
-      // Use specific data-id selector for heatmap multiselect
-      const multiselect = page.locator(`div.multiselect[data-id="heatmap-select"]`)
-      await expect(multiselect).toBeVisible()
-
-      // force: true needed - svelte-multiselect has SVG icons overlaying the clickable input
-      await multiselect.click({ force: true })
-
-      // Wait for dropdown list to be visible - look within the multiselect
-      const option_list = multiselect.locator(`ul.options`)
-      await expect(option_list).toBeVisible({ timeout: 20000 })
+      // Open the heatmap dropdown (retries click until hydrated under CI contention)
+      const option_list = await open_heatmap_select(page)
 
       // Click on the first available option (Atomic mass)
       const first_option = option_list.locator(`li`).first()
