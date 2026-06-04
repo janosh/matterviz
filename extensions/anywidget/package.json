@@ -1,0 +1,38 @@
+{
+  "name": "matterviz-anywidget",
+  "version": "0.3.7",
+  "description": "Prebuilt anywidget bundle for MatterViz: renders MatterViz components (structures, trajectories, plots, periodic tables, ...) in Jupyter/marimo/VS Code via a single self-contained ESM file. Consumed by pymatviz and other Python wrappers, and served over CDNs (jsDelivr/unpkg) for HTML export.",
+  "homepage": "https://github.com/janosh/matterviz",
+  "license": "MIT",
+  "author": "Janosh Riebesell <janosh.riebesell@gmail.com>",
+  "repository": "https://github.com/janosh/matterviz",
+  "files": [
+    "build"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./build/matterviz.js",
+    "./style.css": "./build/matterviz.css"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf build && vp build",
+    "dev": "vp dev",
+    "check": "vp check",
+    "prepublishOnly": "pnpm run build"
+  },
+  "devDependencies": {
+    "@janosh/vite-config": "github:janosh/dotfiles",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@types/node": "^25.6.0",
+    "anywidget": "^0.11.0",
+    "matterviz": "file:../..",
+    "svelte": "^5.55.5",
+    "svelte-multiselect": "11.7.0",
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.20",
+    "vite-plus": "^0.1.20"
+  },
+  "packageManager": "pnpm@11.5.0"
+}
