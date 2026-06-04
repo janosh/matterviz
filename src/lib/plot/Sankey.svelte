@@ -12,7 +12,6 @@
     SankeyHandlerProps,
     SankeyLinkColorMode,
     SankeyLinkHandlerProps,
-    SankeyLinkRenderMode,
     SankeyNodeAlign,
     SankeyNodeHandlerProps,
     SankeyOrientation,
@@ -42,8 +41,6 @@
     iterations = DEFAULTS.sankey.iterations,
     link_opacity = $bindable(DEFAULTS.sankey.link_opacity),
     link_color_mode = `source`,
-    link_render_mode = `auto`,
-    link_batch_threshold = 1000,
     show_node_labels = $bindable(DEFAULTS.sankey.show_node_labels),
     node_label,
     value_format = `,`,
@@ -78,8 +75,6 @@
     iterations?: number
     link_opacity?: number
     link_color_mode?: SankeyLinkColorMode
-    link_render_mode?: SankeyLinkRenderMode
-    link_batch_threshold?: number
     show_node_labels?: boolean
     node_label?: (node: PositionedNode) => string
     value_format?: string
@@ -230,37 +225,6 @@
     if (active) return active.links.has(link.link_idx) ? Math.min(1, link_opacity + 0.35) : link_opacity * 0.25
     return link_opacity
   }
-
-  let use_batched_links = $derived(
-    !link_content &&
-      link_color_mode !== `gradient` &&
-      active == null &&
-      muted_nodes.size === 0 &&
-      (link_render_mode === `batched` ||
-        (link_render_mode === `auto` &&
-          layout.links.length >= link_batch_threshold &&
-          !tooltip &&
-          !on_link_click &&
-          !on_link_hover)),
-  )
-
-  let batched_links = $derived.by(() => {
-    const batches = new Map<
-      string,
-      { key: string; color: string; opacity: number; path: string; width: number }
-    >()
-    if (!use_batched_links) return []
-    for (const link of layout.links) {
-      const color = link_color(link)
-      const link_width = Math.max(1, link.width)
-      const opacity = link_stroke_opacity(link)
-      const key = `${color}\u0000${link_width.toFixed(3)}\u0000${opacity.toFixed(3)}`
-      const batch = batches.get(key)
-      if (batch) batch.path += link.path
-      else batches.set(key, { key, color, opacity, path: link.path, width: link_width })
-    }
-    return [...batches.values()]
-  })
 
   const node_text = (node: PositionedNode): string =>
     node_label?.(node) ?? node.label ?? `${node.id}`
@@ -507,38 +471,27 @@
           onclick={handle_link_click}
           onkeydown={handle_link_keydown}
         >
-          {#if use_batched_links}
-            {#each batched_links as batch (batch.key)}
+          {#each layout.links as link (link.link_idx)}
+            {@const color = link_color(link)}
+            {#if link_content}
+              {@render link_content({ link, color })}
+            {:else}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <path
-                d={batch.path}
-                stroke={batch.color}
-                stroke-width={batch.width}
-                stroke-opacity={batch.opacity}
+                d={link.path}
+                data-sankey-link-idx={link.link_idx}
+                stroke={color}
+                stroke-width={Math.max(1, link.width)}
+                stroke-opacity={link_stroke_opacity(link)}
+                role={on_link_click ? `button` : undefined}
+                tabindex={on_link_click ? 0 : undefined}
+                aria-label={on_link_click
+                  ? `flow ${link.source.label} to ${link.target.label}: ${link.value}`
+                  : undefined}
+                style:cursor={on_link_click ? `pointer` : `default`}
               />
-            {/each}
-          {:else}
-            {#each layout.links as link (link.link_idx)}
-              {@const color = link_color(link)}
-              {#if link_content}
-                {@render link_content({ link, color })}
-              {:else}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <path
-                  d={link.path}
-                  data-sankey-link-idx={link.link_idx}
-                  stroke={color}
-                  stroke-width={Math.max(1, link.width)}
-                  stroke-opacity={link_stroke_opacity(link)}
-                  role={on_link_click ? `button` : undefined}
-                  tabindex={on_link_click ? 0 : undefined}
-                  aria-label={on_link_click
-                    ? `flow ${link.source.label} to ${link.target.label}: ${link.value}`
-                    : undefined}
-                  style:cursor={on_link_click ? `pointer` : `default`}
-                />
-              {/if}
-            {/each}
-          {/if}
+            {/if}
+          {/each}
         </g>
 
         <!-- Nodes -->

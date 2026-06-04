@@ -400,8 +400,6 @@ export type SankeyOrientation = `horizontal` | `vertical`
 export type SankeyNodeAlign = `left` | `right` | `center` | `justify`
 // How each link ribbon derives its color when no explicit link.color is set
 export type SankeyLinkColorMode = `source` | `target` | `gradient` | `static`
-// Large read-only Sankey diagrams can batch compatible links into compound paths
-export type SankeyLinkRenderMode = `auto` | `interactive` | `batched`
 
 export interface SankeyNode<Metadata = Record<string, unknown>> {
   id?: string | number // stable id (defaults to array index); referenced by links
