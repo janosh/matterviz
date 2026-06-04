@@ -57,8 +57,7 @@ test.describe(`Periodic Table`, () => {
       const text = msg.text()
       // svelte-multiselect logs a self-contradictory validation noise for its own
       // default (`maxOptions must be undefined or a positive integer, got undefined`)
-      const is_library_noise =
-        text.startsWith(`Failed to load resource:`) || text.includes(`MultiSelect: maxOptions`)
+      const is_library_noise = text.includes(`MultiSelect: maxOptions`)
       if (msg.type() === `error` && !is_library_noise) logs.push(text)
     })
     await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
