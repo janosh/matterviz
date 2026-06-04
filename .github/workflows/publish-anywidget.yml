@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false # publish to npm only; no git writes need the token
 
       - name: Setup Node + pnpm
         uses: actions/setup-node@v6
@@ -64,11 +66,15 @@ jobs:
           # runtime render coverage lives in pymatviz's test suite)
           test -s build/matterviz.js && test -s build/matterviz.css
           js_bytes=$(wc -c < build/matterviz.js)
+          # lower bound: a healthy bundle (all viz components) is well over 1 MB;
+          # anything smaller means a broken/partial build
           test "$js_bytes" -gt 1000000 || { echo "bundle too small ($js_bytes B)"; exit 1; }
           # upper bound guards the WASM exclusions (see vite.config.ts): if h5wasm
           # or moyo WASM creep back in, the bundle balloons -- fail loudly instead
           # of shipping it (~3.4 MB normally; either WASM back pushes it over 5 MB)
           test "$js_bytes" -lt 5000000 || { echo "bundle too large ($js_bytes B) -- did h5wasm/moyo WASM get re-bundled?"; exit 1; }
+          # npm (not pnpm) for publish: only `npm publish --provenance` emits npm
+          # provenance attestations -- pnpm exposes no equivalent direct flag
           npm publish --provenance --access public
         env:
           PUBLISH_VERSION: ${{ steps.version.outputs.version }}

@@ -16,11 +16,21 @@ declare global {
   var MATTERVIZ_CSS_MAP: Record<string, string> | undefined
 }
 
-let current_theme: ThemeType = `light`
-const theme_observers = new Set<(theme_type: ThemeType) => void>()
-let mutation_observer: MutationObserver | null = null
+type ThemeCallback = (theme_type: ThemeType) => void
+
+// Per-element watcher (callback + last-seen theme for dedup + the element's own
+// Shadow-host observer). Widgets can mount in different roots with different
+// themes, so each is tracked and torn down independently.
+const element_watchers = new Map<
+  HTMLElement,
+  { callback: ThemeCallback; theme: ThemeType; shadow_observer: MutationObserver | null }
+>()
+// Shared document observer + media-query listener, created with the first widget
+// and disconnected with the last (counted via element_watchers.size).
+let doc_observer: MutationObserver | null = null
 let media_query_listener: MediaQueryList | null = null
-let media_query_handler: (() => void) | null = null
+
+const observe_opts = { attributes: true, attributeFilter: [`class`, `data-theme`] }
 
 export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
   try {
@@ -137,68 +147,75 @@ function is_dark_color(color: string): boolean | null {
   return luminance(color) < 0.5
 }
 
-function notify_theme_change(target_element?: HTMLElement): void {
-  const new_theme = detect_parent_theme(target_element)
-  if (new_theme !== current_theme) {
-    current_theme = new_theme
-    theme_observers.forEach((callback) => callback(new_theme))
+function notify_theme_change(): void {
+  // Re-detect every element's theme; notify only those whose theme changed.
+  for (const [element, watcher] of element_watchers) {
+    const new_theme = detect_parent_theme(element)
+    if (new_theme !== watcher.theme) {
+      watcher.theme = new_theme
+      watcher.callback(new_theme)
+    }
   }
 }
 
-export function setup_theme_watchers(target_element?: HTMLElement): void {
-  if (mutation_observer || media_query_listener) return // Avoid duplicates
+const schedule_notify = () => setTimeout(notify_theme_change, 10) // Debounce
 
+function on_dom_mutation(mutations: MutationRecord[]): void {
+  if (
+    mutations.some(
+      (mut) =>
+        mut.type === `attributes` &&
+        (mut.attributeName === `class` || mut.attributeName === `data-theme`),
+    )
+  )
+    schedule_notify()
+}
+
+// Register a widget element + its theme-change callback. Returns a disposer that
+// removes this element's subscriber and Shadow-host observer and, once the last
+// widget is gone, disconnects the shared document/media-query watchers (fixing a
+// leak where observers stayed attached for the page's lifetime).
+export function watch_theme(target_element: HTMLElement, callback: ThemeCallback): () => void {
   try {
-    // Watch for DOM changes
-    mutation_observer = new MutationObserver((mutations) => {
-      if (
-        mutations.some(
-          (mut) =>
-            mut.type === `attributes` &&
-            (mut.attributeName === `class` || mut.attributeName === `data-theme`),
-        )
-      )
-        setTimeout(() => notify_theme_change(target_element), 10) // Debounce
-    })
-
-    const observe_opts = { attributes: true, attributeFilter: [`class`, `data-theme`] }
-    mutation_observer.observe(document.documentElement, observe_opts)
-    if (document.body) mutation_observer.observe(document.body, observe_opts)
-    // Shadow DOM hosts (e.g. marimo cells) carry the theme class/data-theme but
-    // aren't reachable from document.body/documentElement, so observe them too.
-    const root_node = target_element?.getRootNode()
-    if (root_node instanceof ShadowRoot)
-      mutation_observer.observe(root_node.host, observe_opts)
-
-    // Watch system preference changes
-    if (globalThis.matchMedia) {
+    // Shared document-level + system-preference watchers (created once for all).
+    if (!doc_observer) {
+      doc_observer = new MutationObserver(on_dom_mutation)
+      doc_observer.observe(document.documentElement, observe_opts)
+      if (document.body) doc_observer.observe(document.body, observe_opts)
+    }
+    if (!media_query_listener && globalThis.matchMedia) {
       media_query_listener = globalThis.matchMedia(`(prefers-color-scheme: dark)`)
-      media_query_handler = () => notify_theme_change(target_element)
-      media_query_listener.addEventListener(`change`, media_query_handler)
+      media_query_listener.addEventListener(`change`, schedule_notify)
     }
 
-    current_theme = detect_parent_theme(target_element) // Set initial theme
+    // Shadow DOM hosts (e.g. marimo cells) carry the theme class/data-theme but
+    // aren't reachable from document, so observe each widget's host individually
+    // (not just the first widget's).
+    let shadow_observer: MutationObserver | null = null
+    const root_node = target_element.getRootNode()
+    if (root_node instanceof ShadowRoot) {
+      shadow_observer = new MutationObserver(on_dom_mutation)
+      shadow_observer.observe(root_node.host, observe_opts)
+    }
+
+    element_watchers.set(target_element, {
+      callback,
+      theme: detect_parent_theme(target_element),
+      shadow_observer,
+    })
   } catch (error) {
     console.warn(`Failed to setup theme watchers:`, error)
   }
-}
 
-export function cleanup_theme_watchers(): void {
-  mutation_observer?.disconnect()
-  mutation_observer = null
-
-  if (media_query_listener && media_query_handler) {
-    media_query_listener.removeEventListener(`change`, media_query_handler)
-  }
-  media_query_listener = null
-  media_query_handler = null
-  theme_observers.clear()
-}
-
-export function on_theme_change(callback: (theme_type: ThemeType) => void): () => void {
-  theme_observers.add(callback)
   return () => {
-    theme_observers.delete(callback)
+    element_watchers.get(target_element)?.shadow_observer?.disconnect()
+    element_watchers.delete(target_element)
+    if (element_watchers.size > 0) return // other widgets still need shared watchers
+
+    doc_observer?.disconnect()
+    doc_observer = null
+    media_query_listener?.removeEventListener(`change`, schedule_notify)
+    media_query_listener = null
   }
 }
 

@@ -26,12 +26,7 @@ import {
 import app_css from 'matterviz/app.css?raw'
 import type { ThemeType } from 'matterviz/theme'
 import { mount, unmount } from 'svelte'
-import {
-  detect_parent_theme,
-  get_theme_css,
-  on_theme_change,
-  setup_theme_watchers,
-} from './theme-detection'
+import { detect_parent_theme, get_theme_css, watch_theme } from './theme-detection'
 
 const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
 
@@ -226,13 +221,13 @@ const render: Render = (props) => {
 
   cleanup_element(el)
   inject_app_css(undefined, el)
-  setup_theme_watchers(el)
 
-  // Recompute the theme per element rather than reusing the single shared
-  // theme_type, so multiple widget roots/hosts each get their own detected theme.
+  // Watch this element's theme and re-inject CSS on change. The returned disposer
+  // (invoked by cleanup_element) unregisters this widget and tears down the shared
+  // DOM/media observers once the last widget is gone.
   theme_unsubs.set(
     el,
-    on_theme_change(() => inject_app_css(undefined, el)),
+    watch_theme(el, () => inject_app_css(undefined, el)),
   )
   void renderer(props)
   return () => cleanup_element(el)
