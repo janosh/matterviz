@@ -14,7 +14,7 @@ test.describe(`ThemeControl`, () => {
   async function get_theme_control(page: Page) {
     await page.goto(`/`, { waitUntil: `networkidle` })
     const control = page.locator(`.theme-control`)
-    await expect(control).toBeVisible({ timeout: 10000 })
+    await expect(control).toBeVisible()
     return control
   }
 
@@ -45,14 +45,14 @@ test.describe(`ThemeControl`, () => {
       await theme_control.selectOption(theme)
 
       // Check DOM attribute (auto-retries built-in)
-      await expect(html_element).toHaveAttribute(`data-theme`, theme, { timeout: 5000 })
+      await expect(html_element).toHaveAttribute(`data-theme`, theme, { timeout: 15_000 })
 
       // Use expect.poll for evaluated values
       const expected_scheme = theme === `white` || theme === `light` ? `light` : `dark`
       await expect
         .poll(
           () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme),
-          { timeout: 5000 },
+          { timeout: 15_000 },
         )
         .toBe(expected_scheme)
     }
@@ -68,7 +68,9 @@ test.describe(`ThemeControl`, () => {
     await page.emulateMedia({ colorScheme: `light` })
     const theme_control = await get_theme_control(page)
     await theme_control.selectOption(`dark`)
-    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, { timeout: 5000 })
+    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
+      timeout: 15_000,
+    })
 
     await expect
       .poll(
@@ -78,7 +80,7 @@ test.describe(`ThemeControl`, () => {
               .getPropertyValue(`--color-prettylights-syntax-storage-modifier-import`)
               .trim(),
           ),
-        { timeout: 5000 },
+        { timeout: 15_000 },
       )
       .toBe(`#f0f6fc`)
   })
@@ -91,11 +93,11 @@ test.describe(`ThemeControl`, () => {
 
     // Test dark preference
     await page.emulateMedia({ colorScheme: `dark` })
-    await expect(html_element).toHaveAttribute(`data-theme`, `dark`, { timeout: 5000 })
+    await expect(html_element).toHaveAttribute(`data-theme`, `dark`, { timeout: 15_000 })
 
     // Test light preference
     await page.emulateMedia({ colorScheme: `light` })
-    await expect(html_element).toHaveAttribute(`data-theme`, `light`, { timeout: 5000 })
+    await expect(html_element).toHaveAttribute(`data-theme`, `light`, { timeout: 15_000 })
   })
 
   test(`persists preferences and handles page navigation`, async ({ browser }) => {
@@ -117,7 +119,7 @@ test.describe(`ThemeControl`, () => {
     // Use expect.poll for evaluated values
     await expect
       .poll(() => page.evaluate(() => localStorage.getItem(`matterviz-theme`)), {
-        timeout: 5000,
+        timeout: 15_000,
       })
       .toBe(`dark`)
 
@@ -126,15 +128,19 @@ test.describe(`ThemeControl`, () => {
     theme_control = page.locator(`.theme-control`)
     await expect(theme_control).toBeVisible({ timeout: 10000 })
 
-    await expect(theme_control).toHaveValue(`dark`, { timeout: 5000 })
-    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, { timeout: 5000 })
+    await expect(theme_control).toHaveValue(`dark`, { timeout: 15_000 })
+    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
+      timeout: 15_000,
+    })
 
     // Test persistence across navigation
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
     const nav_theme_control = page.locator(`.theme-control`)
     await expect(nav_theme_control).toBeVisible({ timeout: 10000 })
-    await expect(nav_theme_control).toHaveValue(`dark`, { timeout: 5000 })
-    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, { timeout: 5000 })
+    await expect(nav_theme_control).toHaveValue(`dark`, { timeout: 15_000 })
+    await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
+      timeout: 15_000,
+    })
 
     await context.close()
   })

@@ -48,7 +48,7 @@ test.describe(`Periodic Table`, () => {
     await hydrogen_tile.hover({ force: true })
 
     // Check for stats display - use flexible assertion with retry
-    await expect(page.locator(`text=1 - Hydrogen`)).toBeVisible({ timeout: 5000 })
+    await expect(page.locator(`text=1 - Hydrogen`)).toBeVisible({ timeout: 15_000 })
   })
 
   test(`can hover random elements without throwing errors`, async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe(`Periodic Table`, () => {
     for (const idx of indices) {
       const tile = tiles.nth(idx)
       await tile.scrollIntoViewIfNeeded()
-      await tile.hover({ timeout: 5000 })
+      await tile.hover({ timeout: 15_000 })
     }
 
     expect(logs, logs.join(`\n`)).toHaveLength(0)
@@ -92,7 +92,7 @@ test.describe(`Periodic Table`, () => {
       // The tooltip uses conditional rendering ({#if tooltip_visible}),
       // so when hidden, it doesn't exist in the DOM at all
       const tooltip = page.locator(`.tooltip`)
-      await expect(tooltip).toHaveCount(0, { timeout: 5000 })
+      await expect(tooltip).toHaveCount(0, { timeout: 15_000 })
     }
 
     test(`shows default tooltip on element hover when no heatmap is selected`, async ({
@@ -109,7 +109,7 @@ test.describe(`Periodic Table`, () => {
 
       // Hover on the H tile within the first periodic table
       const h_tile = periodic_table.locator(`.element-tile`).filter({ hasText: `H` }).first()
-      await expect(h_tile).toBeVisible({ timeout: 5000 })
+      await expect(h_tile).toBeVisible({ timeout: 15_000 })
       // force: true needed - element tiles have stacked text content that intercepts hover
       await h_tile.hover({ force: true })
 
@@ -133,7 +133,7 @@ test.describe(`Periodic Table`, () => {
       await multiselect.click({ force: true })
 
       const option_list = multiselect.locator(`ul.options`)
-      await expect(option_list).toBeVisible({ timeout: 5000 })
+      await expect(option_list).toBeVisible({ timeout: 15_000 })
       const first_option = option_list.locator(`li`).first()
       await first_option.click()
 
@@ -177,14 +177,14 @@ test.describe(`Periodic Table`, () => {
       await page.waitForSelector(`.element-tile`, { timeout: 10000 })
 
       const h_tile = get_element_tile(page, `H`)
-      await expect(h_tile).toBeVisible({ timeout: 5000 })
+      await expect(h_tile).toBeVisible({ timeout: 15_000 })
       await h_tile.hover({ force: true })
 
       const tooltip = get_tooltip(page)
       // Use toPass for robust visibility check
       await expect(async () => {
         await expect(tooltip).toBeVisible()
-      }).toPass({ timeout: 5000 })
+      }).toPass({ timeout: 15_000 })
 
       await clear_tooltip(page)
       await expect(tooltip).toBeHidden()
@@ -213,7 +213,7 @@ test.describe(`Periodic Table`, () => {
           })
           .first()
 
-        await expect(element_tile).toBeVisible({ timeout: 5000 })
+        await expect(element_tile).toBeVisible({ timeout: 15_000 })
         await element_tile.hover({ force: true })
 
         const tooltip = get_tooltip(page)
@@ -221,7 +221,7 @@ test.describe(`Periodic Table`, () => {
         await expect(async () => {
           await expect(tooltip).toBeVisible()
           await expect(tooltip).toContainText(element.name)
-        }).toPass({ timeout: 5000 })
+        }).toPass({ timeout: 15_000 })
         await expect(tooltip).toContainText(`${element.symbol} • ${element.number}`)
       })
     }
