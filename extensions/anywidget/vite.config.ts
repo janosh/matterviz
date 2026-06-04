@@ -14,6 +14,8 @@ const moyo_version = createRequire(import.meta.url)(`@spglib/moyo-wasm/package.j
 const moyo_wasm_cdn = `https://cdn.jsdelivr.net/npm/@spglib/moyo-wasm@${moyo_version}/moyo_wasm_bg.wasm`
 const moyo_glue_url = `new URL('moyo_wasm_bg.wasm', import.meta.url)`
 
+let json_gz_is_build = false
+
 const moyo_wasm_cdn_plugin = {
   name: `moyo-wasm-cdn`,
   enforce: `pre` as const,
@@ -48,13 +50,21 @@ export default defineConfig({
     {
       name: `vite-plugin-json-gz`,
       enforce: `pre`,
+      configResolved(resolved_config) {
+        json_gz_is_build = resolved_config.command === `build`
+      },
       load(id) {
         if (!id.endsWith(`.json.gz`)) return null
         try {
-          const json_data = JSON.parse(gunzipSync(readFileSync(id)).toString(`utf-8`))
-          return { code: `export default ${JSON.stringify(json_data)}`, map: null }
-        } catch {
-          return null
+          const json_str = gunzipSync(readFileSync(id)).toString(`utf-8`)
+          JSON.parse(json_str) // validate before passing to bundler
+          // Rolldown (build) needs moduleType:'json' for import.meta.glob with
+          // import:'default' to properly unwrap the default export. Dev/test
+          // server doesn't support moduleType, needs JS module format.
+          if (json_gz_is_build) return { code: json_str, moduleType: `json` }
+          return `export default ${json_str}`
+        } catch (error) {
+          return this.error(`Failed to decompress ${id}: ${error}`)
         }
       },
     },

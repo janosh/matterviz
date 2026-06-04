@@ -228,9 +228,11 @@ const render: Render = (props) => {
   inject_app_css(undefined, el)
   setup_theme_watchers(el)
 
+  // Recompute the theme per element rather than reusing the single shared
+  // theme_type, so multiple widget roots/hosts each get their own detected theme.
   theme_unsubs.set(
     el,
-    on_theme_change((theme_type) => inject_app_css(theme_type, el)),
+    on_theme_change(() => inject_app_css(undefined, el)),
   )
   void renderer(props)
   return () => cleanup_element(el)
@@ -354,9 +356,14 @@ const render_dos: Render = ({ model, el }) => {
 }
 
 const render_bands_and_dos: Render = ({ model, el }) => {
+  // BandsAndDos forwards config to its child Bands/Dos via bands_props/dos_props.
+  // It internally controls fermi_level, reference_frequency and dos orientation,
+  // so those traits are intentionally not forwarded here (they'd be overridden).
   mount_widget(model, el, BandsAndDos, {
     band_structs: get_prop(model, `band_structure`), // Renamed traitlet
     doses: get_prop(model, `dos`), // Renamed traitlet
+    bands_props: pick_props(model, [`band_type`, `show_legend`]),
+    dos_props: pick_props(model, [`stack`, `sigma`, `normalize`, `show_legend`, `spin_mode`]),
   })
 }
 

@@ -36,13 +36,21 @@ jobs:
 
       - name: Resolve version
         id: version
+        # pass workflow inputs via env (not direct ${{ }} interpolation) to avoid
+        # shell injection, then validate before using downstream
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            version="${{ github.event.inputs.version }}"
+            version="$INPUT_VERSION"
           else
             version="${GITHUB_REF#refs/tags/}"
-            version="${version#v}"
           fi
+          version="${version#v}" # strip optional leading v from tags or manual input alike
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "Invalid version: $version"
+            exit 1
+          }
           echo "version=$version" >> "$GITHUB_OUTPUT"
         shell: bash
 
@@ -50,7 +58,7 @@ jobs:
         working-directory: extensions/anywidget
         run: |
           pnpm install
-          npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm version "$PUBLISH_VERSION" --no-git-tag-version --allow-same-version
           pnpm run build
           # sanity-gate the build before publishing (catches empty/broken output;
           # runtime render coverage lives in pymatviz's test suite)
@@ -63,4 +71,5 @@ jobs:
           test "$js_bytes" -lt 5000000 || { echo "bundle too large ($js_bytes B) -- did h5wasm/moyo WASM get re-bundled?"; exit 1; }
           npm publish --provenance --access public
         env:
+          PUBLISH_VERSION: ${{ steps.version.outputs.version }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

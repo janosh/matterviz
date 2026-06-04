@@ -162,8 +162,13 @@ export function setup_theme_watchers(target_element?: HTMLElement): void {
     })
 
     const observe_opts = { attributes: true, attributeFilter: [`class`, `data-theme`] }
-    mutation_observer.observe(document.body, observe_opts)
     mutation_observer.observe(document.documentElement, observe_opts)
+    if (document.body) mutation_observer.observe(document.body, observe_opts)
+    // Shadow DOM hosts (e.g. marimo cells) carry the theme class/data-theme but
+    // aren't reachable from document.body/documentElement, so observe them too.
+    const root_node = target_element?.getRootNode()
+    if (root_node instanceof ShadowRoot)
+      mutation_observer.observe(root_node.host, observe_opts)
 
     // Watch system preference changes
     if (globalThis.matchMedia) {
