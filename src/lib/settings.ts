@@ -6,7 +6,15 @@ import type { HullFaceColorMode } from '$lib/convex-hull/types'
 import type { D3SymbolName } from '$lib/labels'
 import { symbol_names } from '$lib/labels'
 import type { Vec3 } from '$lib/math'
-import type { Orientation } from '$lib/plot'
+import type {
+  BandwidthOption,
+  Orientation,
+  SankeyNodeAlign,
+  SankeyOrientation,
+  ViolinKind,
+  ViolinSide,
+  WhiskerMode,
+} from '$lib/plot'
 import type { BondingStrategy } from '$lib/structure/bonding'
 import { merge_nested } from './utils'
 
@@ -92,6 +100,33 @@ type SimpleBarStyleType = {
 }
 
 type SimpleLineStyleType = { width: SettingType<number>; color: SettingType<string> }
+
+type BoxStyleType = {
+  color: SettingType<string>
+  opacity: SettingType<number>
+  stroke_width: SettingType<number>
+  stroke_color: SettingType<string>
+  border_radius: SettingType<number>
+}
+
+type BoxWhiskerStyleType = {
+  width: SettingType<number>
+  color: SettingType<string>
+  cap_fraction: SettingType<number>
+}
+
+type BoxLineStyleType = { width: SettingType<number>; color: SettingType<string> }
+
+type BoxOutlierStyleType = {
+  radius: SettingType<number>
+  opacity: SettingType<number>
+  stroke_width: SettingType<number>
+}
+
+type BoxViolinStyleType = {
+  opacity: SettingType<number>
+  stroke_width: SettingType<number>
+}
 
 type ConvexHullCommonType = {
   camera_zoom: SettingType<number>
@@ -293,6 +328,36 @@ export interface SettingsConfig {
     display: DisplayConfigType
     bar: SimpleBarStyleType
     line: SimpleLineStyleType
+  }
+
+  box: {
+    // Box / violin plot settings
+    whisker_mode: SettingType<WhiskerMode>
+    box_width: SettingType<number>
+    show_outliers: SettingType<boolean>
+    show_mean: SettingType<boolean>
+    kind: SettingType<ViolinKind>
+    side: SettingType<ViolinSide>
+    bandwidth: SettingType<Exclude<BandwidthOption, number>>
+    violin_width: SettingType<number>
+    violin_box_width: SettingType<number>
+    box: BoxStyleType
+    whisker: BoxWhiskerStyleType
+    median: BoxLineStyleType
+    outlier: BoxOutlierStyleType
+    violin: BoxViolinStyleType
+    display: DisplayConfigType
+  }
+
+  sankey: {
+    // Sankey diagram settings
+    orientation: SettingType<SankeyOrientation>
+    node_align: SettingType<SankeyNodeAlign>
+    node_width: SettingType<number>
+    node_padding: SettingType<number>
+    link_opacity: SettingType<number>
+    show_node_labels: SettingType<boolean>
+    iterations: SettingType<number>
   }
 
   composition: {
@@ -938,6 +1003,196 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     display: DISPLAY_CONFIG,
   },
 
+  // Box plot specific
+  box: {
+    whisker_mode: {
+      value: `tukey` as const,
+      description: `How whiskers are computed: 'tukey' (1.5*IQR), 'minmax' (data extremes), 'percentile' (5th/95th), or 'std' (mean ± std)`,
+      enum: {
+        tukey: `Tukey (1.5·IQR)`,
+        minmax: `Min/Max`,
+        percentile: `Percentile`,
+        std: `Std Dev`,
+      },
+    },
+    box_width: {
+      value: 0.8,
+      description: `Box width as a fraction of the category slot`,
+      minimum: 0.1,
+      maximum: 1,
+    },
+    show_outliers: {
+      value: true,
+      description: `Show outlier points beyond the whiskers`,
+    },
+    show_mean: {
+      value: false,
+      description: `Show the mean marker inside each box`,
+    },
+    kind: {
+      value: `box` as const,
+      description: `Glyph to draw per series: box, violin (KDE density), or both`,
+      enum: { box: `Box`, violin: `Violin`, 'violin+box': `Violin + Box` },
+    },
+    side: {
+      value: `both` as const,
+      description: `Which half of the slot a violin occupies (one-sided / split violins)`,
+      enum: { both: `Both`, positive: `Positive`, negative: `Negative` },
+    },
+    bandwidth: {
+      value: `silverman` as const,
+      description: `KDE bandwidth rule for violins`,
+      enum: { silverman: `Silverman`, scott: `Scott` },
+    },
+    violin_width: {
+      value: 0.9,
+      description: `Violin width as a fraction of the category slot`,
+      minimum: 0.1,
+      maximum: 1,
+    },
+    violin_box_width: {
+      value: 0.2,
+      description: `Inner box width (fraction of slot) when a box is drawn inside a violin`,
+      minimum: 0.05,
+      maximum: 1,
+    },
+    box: {
+      color: {
+        value: `#4A9EFF`,
+        description: `Box fill color`,
+      },
+      opacity: {
+        value: 0.6,
+        description: `Box fill opacity`,
+        minimum: 0,
+        maximum: 1,
+      },
+      stroke_width: {
+        value: 1.5,
+        description: `Box outline width`,
+        minimum: 0,
+        maximum: 5,
+      },
+      stroke_color: {
+        value: `#000000`,
+        description: `Box outline color`,
+      },
+      border_radius: {
+        value: 0,
+        description: `Corner radius for boxes (px)`,
+        minimum: 0,
+        maximum: 10,
+      },
+    },
+    whisker: {
+      width: {
+        value: 1.5,
+        description: `Whisker line width`,
+        minimum: 0.5,
+        maximum: 5,
+      },
+      color: {
+        value: `#000000`,
+        description: `Whisker line color`,
+      },
+      cap_fraction: {
+        value: 0.3,
+        description: `Whisker cap width as a fraction of the box width`,
+        minimum: 0,
+        maximum: 1,
+      },
+    },
+    median: {
+      width: {
+        value: 2,
+        description: `Median line width`,
+        minimum: 0.5,
+        maximum: 6,
+      },
+      color: {
+        value: `#000000`,
+        description: `Median line color`,
+      },
+    },
+    outlier: {
+      radius: {
+        value: 2.5,
+        description: `Outlier point radius (px)`,
+        minimum: 0.5,
+        maximum: 10,
+      },
+      opacity: {
+        value: 0.6,
+        description: `Outlier point opacity`,
+        minimum: 0,
+        maximum: 1,
+      },
+      stroke_width: {
+        value: 0,
+        description: `Outlier point stroke width`,
+        minimum: 0,
+        maximum: 3,
+      },
+    },
+    violin: {
+      opacity: {
+        value: 0.5,
+        description: `Violin fill opacity`,
+        minimum: 0,
+        maximum: 1,
+      },
+      stroke_width: {
+        value: 1,
+        description: `Violin outline width`,
+        minimum: 0,
+        maximum: 5,
+      },
+    },
+    display: DISPLAY_CONFIG,
+  },
+
+  // Sankey diagram specific
+  sankey: {
+    orientation: {
+      value: `horizontal` as const,
+      description: `Flow direction of the Sankey diagram`,
+      enum: { horizontal: `Horizontal`, vertical: `Vertical` },
+    },
+    node_align: {
+      value: `justify` as const,
+      description: `How nodes are aligned across columns (maps to d3-sankey alignment)`,
+      enum: { justify: `Justify`, left: `Left`, right: `Right`, center: `Center` },
+    },
+    node_width: {
+      value: 24,
+      description: `Node thickness in pixels`,
+      minimum: 4,
+      maximum: 60,
+    },
+    node_padding: {
+      value: 12,
+      description: `Vertical gap in pixels between nodes sharing a column`,
+      minimum: 0,
+      maximum: 40,
+    },
+    link_opacity: {
+      value: 0.5,
+      description: `Opacity of link ribbons`,
+      minimum: 0.05,
+      maximum: 1,
+    },
+    show_node_labels: {
+      value: true,
+      description: `Show node labels next to each node`,
+    },
+    iterations: {
+      value: 6,
+      description: `Number of d3-sankey relaxation iterations for node positioning`,
+      minimum: 0,
+      maximum: 64,
+    },
+  },
+
   // Composition specific
   composition: {
     display_mode: {
@@ -1475,5 +1730,7 @@ export const merge = (user?: Partial<DefaultSettings>): DefaultSettings =>
     scatter: merge_nested(DEFAULTS.scatter, user?.scatter),
     histogram: merge_nested(DEFAULTS.histogram, user?.histogram),
     bar: merge_nested(DEFAULTS.bar, user?.bar),
+    box: merge_nested(DEFAULTS.box, user?.box),
+    sankey: merge_nested(DEFAULTS.sankey, user?.sankey),
     convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
   }) as DefaultSettings

@@ -121,7 +121,7 @@
     generate_ticks,
     get_nice_data_range,
   } from './scales'
-  import { resolve_line_tween } from './utils'
+  import { resolve_line_tween, unique_id } from './utils'
 
   const in_range = (val: number | null | undefined, lo: number, hi: number) =>
     val != null && !isNaN(val) && val >= Math.min(lo, hi) && val <= Math.max(lo, hi)
@@ -289,7 +289,7 @@
   let touched = new SvelteSet<string>()
 
   // Unique component ID to avoid clipPath conflicts between multiple instances
-  let component_id = $state(`scatter-${crypto.randomUUID()}`)
+  let component_id = $state(unique_id(`scatter`))
   let clip_path_id = $derived(`plot-area-clip-${component_id}`)
 
   // Assign stable IDs to series for keying
@@ -1140,7 +1140,7 @@
   // Calculate best legend placement using continuous grid sampling
   let legend_placement = $derived.by(() => {
     const should_place = legend != null &&
-      (legend_data.length > 1 || Object.keys(legend).length > 0)
+      (legend_data.length > 1 || Object.keys(legend ?? {}).length > 0)
 
     if (!should_place || !width || !height) return null
 
@@ -2554,7 +2554,7 @@
     <!-- Legend -->
     <!-- Only render if multiple series or if legend prop was explicitly provided by user (even if empty object) -->
     {#if legend != null && legend_data.length > 0 &&
-      (legend_data.length > 1 || Object.keys(legend).length > 0)}
+      (legend_data.length > 1 || Object.keys(legend ?? {}).length > 0)}
       {@const default_x = pad.l + 10}
       {@const default_y = pad.t + 10}
       {@const current_x = legend_is_dragging && legend_manual_position

@@ -7,12 +7,13 @@
     PlotControlsProps,
     StyleOverrides,
   } from '$lib/plot/types'
+  import { unique_id } from '$lib/plot/utils'
   import { DEFAULTS } from '$lib/settings'
   import type { Snippet } from 'svelte'
   import { tooltip } from 'svelte-multiselect/attachments'
 
   // Unique ID prefix to avoid conflicts when multiple instances on same page
-  const uid = crypto.randomUUID().slice(0, 8)
+  const uid = unique_id(`scatter-ctrl`)
 
   let {
     series = [],

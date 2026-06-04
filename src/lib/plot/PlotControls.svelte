@@ -3,7 +3,7 @@
   // to trigger $bindable reactivity propagation to parent components.
   // Pattern: `x_axis = { ...x_axis, prop: value }` instead of `x_axis.prop = value`
   import SettingsSection from '$lib/layout/SettingsSection.svelte'
-  import DraggablePane from '$lib/overlays/DraggablePane.svelte'
+  import ControlPane from './ControlPane.svelte'
   import { DEFAULTS } from '$lib/settings'
   import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
@@ -31,7 +31,7 @@
     has_y2_points = false,
     show_ticks = false,
     controls_title = `plot`,
-    controls_class = ``,
+    controls_class = `plot`,
     toggle_props = {},
     pane_props = {},
   }: PlotControlsProps = $props()
@@ -147,23 +147,12 @@
 </script>
 
 {#if show_controls}
-  <DraggablePane
-    bind:show={controls_open}
-    closed_icon="Settings"
-    open_icon="Cross"
-    toggle_props={{
-      title: `${controls_open ? `Close` : `Open`} ${controls_title} controls`,
-      ...toggle_props,
-      class: `${controls_class}-controls-toggle ${toggle_props?.class ?? ``}`,
-      style:
-        `position: absolute; top: var(--ctrl-btn-top, 5pt); right: var(--ctrl-btn-right, 1ex);` +
-        (toggle_props?.style ?? ``),
-    }}
-    pane_props={{
-      ...pane_props,
-      class: `${controls_class}-controls-pane ${pane_props?.class ?? ``}`,
-      style: `--pane-padding: 12px; --pane-gap: 4px; ${pane_props?.style ?? ``}`,
-    }}
+  <ControlPane
+    bind:controls_open
+    controls_class={controls_class}
+    title={controls_title}
+    {toggle_props}
+    {pane_props}
   >
     {@render children?.(ctrl_state)}
 
@@ -532,5 +521,5 @@
 
     <!-- Custom controls after base controls -->
     {@render post_children?.(ctrl_state)}
-  </DraggablePane>
+  </ControlPane>
 {/if}

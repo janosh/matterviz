@@ -9,6 +9,7 @@
     FillHandlerEvent,
     FillRegion,
   } from './types'
+  import { unique_id } from './utils'
 
   let {
     region,
@@ -35,7 +36,7 @@
   } = $props()
 
   // Stable instance ID for gradient uniqueness (generated once per component instance)
-  const instance_id = crypto.randomUUID().slice(0, 8)
+  const instance_id = unique_id()
   let gradient_id = $derived(
     `fill-gradient-${region.id ?? region_idx}-${instance_id}`,
   )

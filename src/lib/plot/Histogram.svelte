@@ -73,6 +73,7 @@
   import type { Vec2 } from '$lib/math'
   import PlotTooltip from './PlotTooltip.svelte'
   import { bar_path } from './svg'
+  import { unique_id } from './utils'
 
   let {
     series = $bindable([]),
@@ -194,7 +195,7 @@
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGElement | null = $state(null)
-  let clip_path_id = `histogram-clip-${crypto?.randomUUID?.()}`
+  const clip_path_id = unique_id(`histogram-clip`) // stable, collision-resistant (see unique_id)
   let hover_info = $state<HistogramHandlerProps | null>(null)
 
   // Reference line hover state

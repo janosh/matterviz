@@ -381,14 +381,14 @@
       const hl = is_highlighted(entry) ? merged_highlight_style : null
 
       point_style[idx] = {
-        fill: hl && (hl.effect === `color` || hl.effect === `both`)
-          ? hl.color
+        fill: hl?.effect === `color` || hl?.effect === `both`
+          ? hl?.color
           : is_energy_mode
           ? undefined
           : merged_config.colors?.[is_stable ? `stable` : `unstable`],
         stroke: is_stable ? `#ffffff` : `#000000`,
-        radius: hl && (hl.effect === `size` || hl.effect === `both`)
-          ? base_radius * hl.size_multiplier
+        radius: hl?.effect === `size` || hl?.effect === `both`
+          ? base_radius * (hl?.size_multiplier ?? 1)
           : base_radius,
         symbol_type: marker_to_d3_symbol(entry.marker),
         is_highlighted: Boolean(hl),

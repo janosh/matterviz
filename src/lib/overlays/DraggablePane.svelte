@@ -173,10 +173,10 @@
     if (Date.now() - resize_end_time < 200) return
 
     const target = event.target
-    const is_toggle_button = target instanceof Node && toggle_pane_btn &&
-      (target === toggle_pane_btn || toggle_pane_btn.contains(target))
-    const is_inside_pane = target instanceof Node && pane_div &&
-      (target === pane_div || pane_div.contains(target))
+    const is_toggle_button = target instanceof Node &&
+      (target === toggle_pane_btn || (toggle_pane_btn?.contains(target) ?? false))
+    const is_inside_pane = target instanceof Node &&
+      (target === pane_div || (pane_div?.contains(target) ?? false))
 
     if (!is_toggle_button && !is_inside_pane && !currently_dragging && !resizing) {
       close_pane()

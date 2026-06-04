@@ -3,10 +3,11 @@
   import type { BarMode, PlotConfig } from '$lib/plot'
   import { PlotControls } from '$lib/plot'
   import type { Orientation, PlotControlsProps } from '$lib/plot/types'
+  import { unique_id } from '$lib/plot/utils'
   import type { Snippet } from 'svelte'
 
   // Unique ID prefix to avoid conflicts when multiple instances on same page
-  const uid = crypto.randomUUID().slice(0, 8)
+  const uid = unique_id(`bar-ctrl`)
 
   let {
     orientation = $bindable(`vertical`),

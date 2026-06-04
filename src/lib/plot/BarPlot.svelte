@@ -83,6 +83,7 @@
   } from './layout'
   import PlotTooltip from './PlotTooltip.svelte'
   import { bar_path } from './svg'
+  import { unique_id } from './utils'
   import ZeroLines from './ZeroLines.svelte'
   import ZoomRect from './ZoomRect.svelte'
 
@@ -244,7 +245,7 @@
   let [width, height] = $state([0, 0])
   let wrapper: HTMLDivElement | undefined = $state()
   let svg_element: SVGElement | null = $state(null)
-  let clip_path_id = `chart-clip-${crypto?.randomUUID?.()}`
+  const clip_path_id = unique_id(`chart-clip`) // stable, collision-resistant (see unique_id)
 
   // Reference line hover state
   let hovered_ref_line_idx = $state<number | null>(null)
