@@ -57,9 +57,10 @@ jobs:
           test -s build/matterviz.js && test -s build/matterviz.css
           js_bytes=$(wc -c < build/matterviz.js)
           test "$js_bytes" -gt 1000000 || { echo "bundle too small ($js_bytes B)"; exit 1; }
-          # upper bound guards the h5wasm stub (see h5wasm-stub.ts): if HDF5 WASM
-          # creeps back in, the bundle ~doubles -- fail loudly instead of shipping it
-          test "$js_bytes" -lt 8000000 || { echo "bundle too large ($js_bytes B) -- did h5wasm get re-bundled?"; exit 1; }
+          # upper bound guards the WASM exclusions (see vite.config.ts): if h5wasm
+          # or moyo WASM creep back in, the bundle balloons -- fail loudly instead
+          # of shipping it (~3.4 MB normally; either WASM back pushes it over 5 MB)
+          test "$js_bytes" -lt 5000000 || { echo "bundle too large ($js_bytes B) -- did h5wasm/moyo WASM get re-bundled?"; exit 1; }
           npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
