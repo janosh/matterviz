@@ -134,9 +134,15 @@ export default defineConfig({
     ...config.lint,
     // src/scripts/** are standalone utility scripts excluded from tsconfig (so
     // type-aware rules can't resolve $lib/Deno-style imports there) — keep them unlinted.
-    // extensions/dash/** is a separate package (react/prop-types/three deps) not
-    // installed in root CI, so type-aware rules can't resolve its imports here.
-    ignorePatterns: [`static/**`, `src/scripts/**`, `extensions/dash/**`],
+    // extensions/dash/** and extensions/anywidget/** are separate packages
+    // (react/three, anywidget/svelte deps) not installed in root CI, so type-aware
+    // rules can't resolve their imports here.
+    ignorePatterns: [
+      `static/**`,
+      `src/scripts/**`,
+      `extensions/dash/**`,
+      `extensions/anywidget/**`,
+    ],
   },
 
   test: {

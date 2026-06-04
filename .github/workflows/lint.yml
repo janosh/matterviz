@@ -23,6 +23,10 @@ jobs:
       # (e.g. @types/vscode) so module resolution succeeds in CI.
       - run: pnpm -C extensions/vscode install
 
+      # anywidget extension is checked by root svelte-check; install its deps so
+      # its matterviz/* subpath imports resolve in CI (otherwise TS2882).
+      - run: pnpm -C extensions/anywidget install
+
       - uses: j178/prek-action@v2
 
   knip:

@@ -14,10 +14,10 @@ async function open_settings_pane(page: Page) {
     document.head.append(style)
   })
   const gear = page.locator(`button.structure-controls-toggle`)
-  await expect(gear).toBeVisible({ timeout: 5000 })
+  await expect(gear).toBeVisible({ timeout: 15_000 })
   await gear.click()
   const pane = page.locator(`.controls-pane`)
-  await expect(pane).toBeVisible({ timeout: 5000 })
+  await expect(pane).toBeVisible({ timeout: 15_000 })
   return pane
 }
 
