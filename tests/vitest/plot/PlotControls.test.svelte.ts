@@ -181,11 +181,15 @@ describe(`PlotControls`, () => {
   })
 
   test(`controls visibility toggles`, () => {
-    mount(PlotControls, {
-      target: document.body,
-      props: { show_controls: false, controls_open: true },
-    })
+    mount_controls({ show_controls: false })
     expect(document.querySelector(`.plot-controls-pane`)).toBeNull()
+
+    // When shown, toggle + pane use the `plot-controls-*` prefix (regression guard:
+    // an empty controls_class default produced leading-hyphen `-controls-*` names).
+    document.body.innerHTML = ``
+    mount_controls()
+    expect(document.querySelector(`.plot-controls-toggle`)).not.toBeNull()
+    expect(document.querySelector(`.plot-controls-pane`)).not.toBeNull()
   })
 
   test(`Enter key blurs range input`, () => {

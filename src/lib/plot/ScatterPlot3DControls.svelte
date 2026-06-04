@@ -10,10 +10,11 @@
     DisplayConfig3D,
     Surface3DConfig,
   } from '$lib/plot/types'
+  import { unique_id } from '$lib/plot/utils'
   import type { ComponentProps, Snippet } from 'svelte'
 
   // Unique ID prefix to avoid conflicts when multiple instances on same page
-  const uid = crypto.randomUUID().slice(0, 8)
+  const uid = unique_id(`scatter3d-ctrl`)
 
   let {
     show = $bindable(false),

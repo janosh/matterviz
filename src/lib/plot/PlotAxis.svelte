@@ -21,6 +21,7 @@
     show_grid = false,
     show_baseline = true,
     tick_label,
+    tick_color,
     domain,
     unit_on_first_tick = false,
     label_x,
@@ -38,6 +39,7 @@
     show_grid?: boolean
     show_baseline?: boolean // axis spine line (ScatterPlot omits it)
     tick_label?: (tick: number) => string | null | undefined // custom/categorical label
+    tick_color?: (tick: number) => string | undefined // per-tick label color (else axis.color)
     domain?: [number, number] // when set, cull off-plot ticks and hide out-of-domain labels
     unit_on_first_tick?: boolean // append axis.unit after the first tick label (ScatterPlot)
     label_x?: number
@@ -136,7 +138,7 @@
             y={text_y}
             text-anchor={text_anchor}
             dominant-baseline={text_baseline}
-            fill={text_fill}
+            fill={tick_color?.(tick) ?? text_fill}
             transform={text_transform}
           >
             {tick_text(tick)}{#if unit_on_first_tick && idx === 0 && axis.unit}&zwnj;&ensp;{axis
