@@ -3,19 +3,24 @@ import { mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
 
 describe(`BoxPlotControls`, () => {
-  const checkbox_by_label = (label: string): HTMLInputElement | undefined =>
-    [...document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)].find((box) =>
+  const checkbox_by_label = (
+    container: HTMLElement,
+    label: string,
+  ): HTMLInputElement | undefined =>
+    [...container.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)].find((box) =>
       box.parentElement?.textContent?.includes(label),
     )
 
   test(`Box / Violin reset reverts changed settings to defaults`, async () => {
+    const container = document.createElement(`div`)
+    document.body.append(container)
     mount(BoxPlotControls, {
-      target: document.body,
+      target: container,
       props: { show_controls: true, controls_open: true },
     })
 
-    const mean = checkbox_by_label(`Show mean`)
-    const outliers = checkbox_by_label(`Show outliers`)
+    const mean = checkbox_by_label(container, `Show mean`)
+    const outliers = checkbox_by_label(container, `Show outliers`)
     if (!mean || !outliers) throw new Error(`box/violin controls not found`)
     expect([mean.checked, outliers.checked]).toEqual([false, true])
 
@@ -25,7 +30,7 @@ describe(`BoxPlotControls`, () => {
     await tick()
     expect([mean.checked, outliers.checked]).toEqual([true, false])
 
-    const heading = [...document.querySelectorAll(`h4`)].find((el) =>
+    const heading = [...container.querySelectorAll(`h4`)].find((el) =>
       el.textContent?.includes(`Box / Violin`),
     )
     const reset_btn = heading?.querySelector<HTMLButtonElement>(`button.reset-button`)

@@ -199,24 +199,19 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     label: node.label,
     color: node.color,
   }))
+  // Resolve a source/target ref to a node index: id/label lookup when any link uses
+  // non-numeric refs, otherwise a cheap numeric-range check (no map built).
+  const resolve_ref = (ref: number | string): number =>
+    needs_ref_lookup
+      ? resolve_node_ref(ref, id_to_idx as Map<string | number, number>, data.nodes.length)
+      : resolve_numeric_node_ref(ref as number, data.nodes.length)
+
   const link_copies = data.links.map((link, idx) => ({
     link_idx: idx,
     color: link.color,
     label: link.label,
-    source: needs_ref_lookup
-      ? resolve_node_ref(
-          link.source,
-          id_to_idx as Map<string | number, number>,
-          data.nodes.length,
-        )
-      : resolve_numeric_node_ref(link.source as number, data.nodes.length),
-    target: needs_ref_lookup
-      ? resolve_node_ref(
-          link.target,
-          id_to_idx as Map<string | number, number>,
-          data.nodes.length,
-        )
-      : resolve_numeric_node_ref(link.target as number, data.nodes.length),
+    source: resolve_ref(link.source),
+    target: resolve_ref(link.target),
     value: link.value,
   }))
 
@@ -261,10 +256,9 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
       }
     } else {
       link.path = horizontal_link_path(link)
-      link.mid = {
-        x: (link.source.x1 + link.target.x0) / 2,
-        y: ((link.y0 ?? 0) + (link.y1 ?? 0)) / 2,
-      }
+      const x = (link.source.x1 + link.target.x0) / 2
+      const y = ((link.y0 ?? 0) + (link.y1 ?? 0)) / 2
+      link.mid = { x, y }
     }
   }
 
