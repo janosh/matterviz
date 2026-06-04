@@ -438,59 +438,6 @@ test.describe(`StructureScene Component Tests`, () => {
     expect(console_errors).toHaveLength(0)
   })
 
-  // Test disordered site tooltip formatting
-  // TODO: Investigate Three.js context destruction during test execution
-  // Tracking: This test fails intermittently due to WebGL context issues in headless mode
-  test.fixme(`formats disordered site tooltips without trailing zeros and proper separators`, async ({
-    page,
-  }) => {
-    const canvas = page.locator(`#test-structure canvas`)
-    const console_errors = setup_console_monitoring(page)
-
-    await clear_tooltips_and_overlays(page)
-
-    const positions = [
-      { x: 200, y: 200 },
-      { x: 300, y: 250 },
-      { x: 400, y: 200 },
-      { x: 250, y: 300 },
-      { x: 350, y: 150 },
-    ]
-
-    for (const position of positions) {
-      await safe_canvas_hover(page, canvas, position)
-
-      const tooltip = page.locator(`.tooltip:has(.coordinates)`)
-      try {
-        await tooltip.waitFor({ state: `visible`, timeout: 500 })
-        const occupancy_spans = tooltip.locator(`.occupancy`)
-        const occupancy_count = await occupancy_spans.count()
-
-        if (occupancy_count > 0) {
-          // Test occupancy formatting: no trailing zeros, valid decimals
-          for (let idx = 0; idx < occupancy_count; idx++) {
-            const occupancy_text = await occupancy_spans.nth(idx).textContent()
-            expect(occupancy_text).not.toMatch(/\..*0+$/) // No trailing zeros
-            expect(occupancy_text).toMatch(/^0\.\d*[1-9]$|^1$/) // Valid format
-          }
-
-          // Test species separation: thin space, not plus signs
-          if (occupancy_count > 1) {
-            const elements_text = await tooltip.locator(`.elements`).textContent()
-            expect(elements_text).not.toMatch(/\s\+\s/) // No plus separators
-            expect(elements_text).toMatch(/\u2009/) // Thin space separator
-          }
-          break
-        }
-      } catch {
-        // Continue to next position if tooltip doesn't appear
-        continue
-      }
-    }
-
-    expect(console_errors).toHaveLength(0)
-  })
-
   // Combined rapid interaction and performance test
   test(`handles rapid interactions and maintains performance`, async ({ page }) => {
     const canvas = page.locator(`#test-structure canvas`)

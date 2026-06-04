@@ -2,7 +2,6 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   get_axis_range_inputs,
   get_tick_range,
-  IS_CI,
   is_present,
   set_input_value,
   set_range_input,
@@ -68,7 +67,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`renders basic histogram with correct structure`, async ({ page }) => {
-    test.skip(IS_CI, `Histogram rendering flaky in CI`)
     const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram).toBeVisible()
 
@@ -183,7 +181,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`series visibility toggles work`, async ({ page }) => {
-    test.skip(IS_CI, `Histogram series toggle test flaky in CI due to render timing`)
     const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
     const legend = page.locator(`#multiple-series-overlay .legend`)
     const first_legend_item = legend.locator(`.legend-item`).first()
@@ -218,7 +215,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`logarithmic scale combinations`, async ({ page }) => {
-    test.skip(IS_CI, `Logarithmic histogram rendering flaky in CI`)
     const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
 
     // Wait for initial histogram to render
@@ -319,7 +315,6 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`custom styling and color schemes`, async ({ page }) => {
     // Skip in CI - histogram bar rendering timing is flaky
-    test.skip(IS_CI, `Histogram bar visibility flaky in CI due to render timing`)
 
     // This test is no longer applicable since we removed the custom styling section
     // The histogram still renders correctly with default styling
@@ -350,9 +345,8 @@ test.describe(`Histogram Component Tests`, () => {
     // or tooltip positioning may fail silently. If visible, verify content is correct.
     const tooltip = basic_histogram.locator(`.plot-tooltip`)
     if (await tooltip.isVisible({ timeout: 3000 })) {
-      const tooltip_content = await tooltip.textContent()
-      expect(tooltip_content).toContain(`Value:`)
-      expect(tooltip_content).toContain(`Count:`)
+      await expect(tooltip).toContainText(`Value:`)
+      await expect(tooltip).toContainText(`Count:`)
     }
 
     // Test legend visibility - multiple-series-overlay has show_legend enabled
@@ -605,7 +599,7 @@ test.describe(`Histogram Component Tests`, () => {
     const x_axis_format_label = tick_format_section.locator(`label:has-text("X-axis:")`)
     await expect(x_axis_format_label).toBeVisible()
     // Verify selector specificity - should match exactly one label within Tick Format section
-    expect(await x_axis_format_label.count()).toBe(1)
+    await expect(x_axis_format_label).toHaveCount(1)
 
     const x_format_input = x_axis_format_label.locator(`input[type="text"]`)
     await expect(x_format_input).toBeVisible()

@@ -211,9 +211,8 @@ test.describe(`StructureExportPane Tests`, () => {
         await expect(tooltip_elem).toBeVisible({ timeout: 3000 })
 
         // Verify tooltip contains expected content
-        const tooltip_text = await tooltip_elem.textContent()
-        expect(tooltip_text).toContain(expected_text)
-        expect(tooltip_text).toContain(description)
+        await expect(tooltip_elem).toContainText(expected_text)
+        await expect(tooltip_elem).toContainText(description)
 
         // Verify tooltip contains clickable link with correct href
         const tooltip_link = tooltip_elem.locator(`a[href*="${link_href}"]`)

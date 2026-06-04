@@ -1,10 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
 
 // SVG path elements have zero-size bounding boxes, so force: true is needed for hover
 test.describe(`Bands Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Bands tests timeout in CI`)
     await page.goto(`/test/bands`, { waitUntil: `networkidle` })
   })
 
@@ -17,7 +15,7 @@ test.describe(`Bands Component Tests`, () => {
     // Check SVG and band paths (4 bands expected from mock data)
     const paths = plot.locator(`svg path[fill="none"]`)
     await expect(paths.first()).toBeVisible()
-    expect(await paths.count()).toBe(4)
+    await expect(paths).toHaveCount(4)
 
     // Check axes and high-symmetry point labels
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
@@ -39,10 +37,9 @@ test.describe(`Bands Component Tests`, () => {
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
     const legend_items = legend.locator(`.legend-item`)
-    expect(await legend_items.count()).toBe(2)
-    const legend_text = await legend.textContent()
-    expect(legend_text).toContain(`BS1`)
-    expect(legend_text).toContain(`BS2`)
+    await expect(legend_items).toHaveCount(2)
+    await expect(legend).toContainText(`BS1`)
+    await expect(legend).toContainText(`BS2`)
 
     // Test toggling - should have 8 paths (2 structures × 4 bands)
     await expect(svg.locator(`path[fill="none"]`)).toHaveCount(8)
@@ -255,8 +252,8 @@ test.describe(`Bands Component Tests`, () => {
     const plot = page.getByTestId(`phonon-units-highlight-plot`)
     await expect(plot).toBeVisible()
 
-    const y_axis_text = (await plot.locator(`g.y-axis text`).allTextContents()).join(` `)
-    expect(y_axis_text).toContain(`cm-1`)
+    // unit lives in the y-axis label ("Frequency (cm-1)"), not the tick text
+    await expect(plot.locator(`.axis-label.y-label`)).toContainText(`cm-1`)
 
     const fill_paths = plot.locator(`svg path`)
     await expect(fill_paths.first()).toBeVisible()
@@ -278,6 +275,6 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot).toBeVisible()
     const line_paths = plot.locator(`svg path[fill="none"]`)
     await expect(line_paths.first()).toBeVisible()
-    expect(await line_paths.count()).toBe(4)
+    await expect(line_paths).toHaveCount(4)
   })
 })

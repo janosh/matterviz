@@ -324,6 +324,7 @@
 
 {#if show_element_legend}
   <div {...rest} class="atom-legend element-legend {rest.class ?? ``}">
+    {@render mode_selector_snippet()}
     {#each sorted_element_entries as [elem, amt], idx (elem)}
       {@const is_hidden = hidden_elements.has(elem as ElementSymbol)}
       {@const displayed_elem = element_mapping?.[elem as ElementSymbol] || elem}
@@ -465,7 +466,6 @@
       </div>
     {/each}
     {@render site_radius_control_snippet()}
-    {@render mode_selector_snippet()}
     {@render children?.({ mode_menu_open, structure })}
   </div>
 {:else if show_property_legend}
@@ -474,6 +474,7 @@
     class:categorical-legend={atom_color_config.scale_type === `categorical`}
     {...rest}
   >
+    {@render mode_selector_snippet()}
     {#if legend_title}
       <div class="legend-header">
         <h4>{legend_title}</h4>
@@ -533,7 +534,6 @@
       {/each}
     {/if}
     {@render site_radius_control_snippet()}
-    {@render mode_selector_snippet()}
     {@render children?.({ mode_menu_open, structure })}
   </div>
 {/if}
@@ -723,7 +723,8 @@
     position: relative;
     display: flex;
     align-items: center;
-    margin-left: calc(-0.5 * var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt)));
+    /* extra gap toward the color labels so the chevron groups with the cell-select control */
+    margin-right: calc(0.25 * var(--struct-legend-gap, clamp(3pt, 2cqmin, 7pt)));
   }
   .mode-toggle {
     background: transparent;
@@ -735,17 +736,15 @@
     font-size: 0.9em;
     opacity: 0;
     pointer-events: none;
+    transform: translateY(1px);
     transition: opacity 0.2s ease;
   }
   .mode-toggle :global(svg) {
     font-size: 1.15em;
   }
   .mode-toggle.visible {
-    opacity: 0.7;
-    pointer-events: auto;
-  }
-  .mode-toggle.visible:hover {
     opacity: 1;
+    pointer-events: auto;
   }
   .mode-dropdown {
     position: absolute;

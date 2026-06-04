@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { IS_CI } from './helpers'
 
-const TEST_URL = `/chempot-diagram`
+const TEST_URL = `/convex-hull/chempot-diagram`
 
 const get_section_by_heading = async (page: Page, heading_text: RegExp): Promise<Locator> => {
   const section = page
