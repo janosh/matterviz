@@ -7,6 +7,13 @@ import { defineConfig } from 'vite-plus'
 
 export default defineConfig({
   ...config, // shared lint/fmt/build from @janosh/vite-config (dotfiles)
+  resolve: {
+    alias: {
+      // The widget never parses HDF5 client-side (pymatviz parses on the Python
+      // side), so stub out h5wasm to drop ~5 MB of HDF5 WASM from the bundle.
+      h5wasm: resolve(import.meta.dirname, `h5wasm-stub.ts`),
+    },
+  },
   plugins: [
     {
       name: `vite-plugin-json-gz`,

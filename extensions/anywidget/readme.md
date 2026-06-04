@@ -13,6 +13,15 @@ dependencies (matterviz components, Svelte runtime, three.js, ...) inlined.
 This is a peer of `extensions/dash` and `extensions/vscode`: a framework adapter
 that wraps the MatterViz component library for a specific host runtime.
 
+## Bundle size
+
+`h5wasm` (the ~5 MB HDF5 reader used for client-side `.h5` trajectory parsing) is
+aliased to a stub (`h5wasm-stub.ts`, wired up in `vite.config.ts`), roughly halving
+the bundle. Hosts that drive this widget (e.g. pymatviz) parse trajectories on the
+Python side and pass structured data, so the in-browser HDF5 path is never hit; it
+throws a clear error if it ever is. The publish workflow's size gate fails if HDF5
+WASM creeps back in.
+
 ## Consumers
 
 - [pymatviz](https://github.com/janosh/pymatviz) loads this bundle to render its
