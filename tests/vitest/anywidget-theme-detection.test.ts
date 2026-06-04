@@ -104,7 +104,7 @@ describe(`watch_theme lifecycle`, () => {
       const seen_a: string[] = []
       const seen_b: string[] = []
       const dispose_a = watch_theme(el_a, (theme) => seen_a.push(theme))
-      watch_theme(el_b, (theme) => seen_b.push(theme))
+      const dispose_b = watch_theme(el_b, (theme) => seen_b.push(theme))
 
       prefers_dark = true // flip system preference, then signal a burst of changes
       trigger_dom_mutation()
@@ -125,6 +125,12 @@ describe(`watch_theme lifecycle`, () => {
       vi.advanceTimersByTime(20)
       expect(seen_a).toEqual([`dark`]) // unchanged: A no longer notified
       expect(seen_b).toEqual([`dark`, `light`])
+
+      // disposing the last widget with a notify still pending clears the timer
+      trigger_dom_mutation()
+      expect(vi.getTimerCount()).toBe(1)
+      dispose_b()
+      expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
     }

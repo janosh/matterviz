@@ -220,6 +220,10 @@ export function watch_theme(target_element: HTMLElement, callback: ThemeCallback
     element_watchers.delete(target_element)
     if (element_watchers.size > 0) return // other widgets still need shared watchers
 
+    if (notify_timer) {
+      clearTimeout(notify_timer) // drop a pending notify; no widgets left to update
+      notify_timer = null
+    }
     doc_observer?.disconnect()
     doc_observer = null
     media_query_listener?.removeEventListener(`change`, schedule_notify)

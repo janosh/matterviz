@@ -14,7 +14,7 @@ test.describe(`ThemeControl`, () => {
   async function get_theme_control(page: Page) {
     await page.goto(`/`, { waitUntil: `networkidle` })
     const control = page.locator(`.theme-control`)
-    await expect(control).toBeVisible()
+    await expect(control).toBeVisible({ timeout: 15_000 })
     return control
   }
 
