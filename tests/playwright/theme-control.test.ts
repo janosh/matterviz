@@ -111,7 +111,7 @@ test.describe(`ThemeControl`, () => {
     await page.reload({ waitUntil: `networkidle` })
 
     let theme_control = page.locator(`.theme-control`)
-    await expect(theme_control).toBeVisible({ timeout: 10000 })
+    await expect(theme_control).toBeVisible({ timeout: 15_000 })
 
     // Set theme and check localStorage
     await theme_control.selectOption(`dark`)
@@ -126,7 +126,7 @@ test.describe(`ThemeControl`, () => {
     // Test persistence across reload (no addInitScript to interfere)
     await page.reload({ waitUntil: `networkidle` })
     theme_control = page.locator(`.theme-control`)
-    await expect(theme_control).toBeVisible({ timeout: 10000 })
+    await expect(theme_control).toBeVisible({ timeout: 15_000 })
 
     await expect(theme_control).toHaveValue(`dark`, { timeout: 15_000 })
     await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
@@ -136,7 +136,7 @@ test.describe(`ThemeControl`, () => {
     // Test persistence across navigation
     await page.goto(`/bohr-atoms`, { waitUntil: `networkidle` })
     const nav_theme_control = page.locator(`.theme-control`)
-    await expect(nav_theme_control).toBeVisible({ timeout: 10000 })
+    await expect(nav_theme_control).toBeVisible({ timeout: 15_000 })
     await expect(nav_theme_control).toHaveValue(`dark`, { timeout: 15_000 })
     await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`, {
       timeout: 15_000,

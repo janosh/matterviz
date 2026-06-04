@@ -30,20 +30,10 @@ import { detect_parent_theme, get_theme_css, watch_theme } from './theme-detecti
 
 const adopted_sheets = new WeakMap<ShadowRoot, CSSStyleSheet>()
 
-function inject_app_css(theme_type?: ThemeType, target_element?: HTMLElement): void {
-  const style_id = `matterviz-widget-styles`
-  const detected_theme = theme_type ?? detect_parent_theme(target_element)
-
-  // Determine if we're in Shadow DOM (used by marimo cells) and get the appropriate root
-  const root_node = target_element?.getRootNode() ?? document
-  const in_shadow = root_node instanceof ShadowRoot
-
-  // Remove existing style element (if any)
-  ;(in_shadow ? root_node : document).querySelector(`#${style_id}`)?.remove()
-
-  // Create style content
-  const style_content = `
-    ${get_theme_css(detected_theme, in_shadow)}
+// Static widget chrome + bundled app styles. Only the theme-variable block
+// (get_theme_css) changes between calls, so keep this constant rather than
+// rebuilding the full ~150 KB string on every theme change.
+const widget_base_css = `
     .cell-output-ipywidget-background { background: transparent !important; }
     :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select) {
       background-color: var(--surface-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px;
@@ -55,6 +45,20 @@ function inject_app_css(theme_type?: ThemeType, target_element?: HTMLElement): v
     select option { background-color: var(--surface-bg); color: var(--text-color); }
     ${app_css}
   `
+
+function inject_app_css(theme_type?: ThemeType, target_element?: HTMLElement): void {
+  const style_id = `matterviz-widget-styles`
+  const detected_theme = theme_type ?? detect_parent_theme(target_element)
+
+  // Determine if we're in Shadow DOM (used by marimo cells) and get the appropriate root
+  const root_node = target_element?.getRootNode() ?? document
+  const in_shadow = root_node instanceof ShadowRoot
+
+  // Remove existing style element (if any)
+  ;(in_shadow ? root_node : document).querySelector(`#${style_id}`)?.remove()
+
+  // Only the theme-variable block varies per call; the rest is widget_base_css.
+  const style_content = `${get_theme_css(detected_theme, in_shadow)}${widget_base_css}`
 
   // Apply styles via adoptedStyleSheets (reuse existing sheet to avoid accumulation)
   if (in_shadow && `adoptedStyleSheets` in root_node) {
@@ -198,6 +202,7 @@ const get_scene_props = (model: AnyModel) => ({
     `vector_uniform_thickness`,
     `vector_origin_gap`,
   ]),
+  // defaults mirror the Structure component's own auto_rotate/gizmo defaults
   auto_rotate: get_prop(model, `auto_rotate`) ?? 0.2,
   gizmo: get_prop(model, `show_gizmo`) ?? true,
 })
@@ -216,7 +221,10 @@ const get_lattice_props = (model: AnyModel) =>
 const render: Render = (props) => {
   const { model, el } = props
   const widget_type = get_prop(model, `widget_type`) as string | undefined
-  const renderer = widget_type ? renderers[widget_type] : undefined
+  // guard with Object.hasOwn so prototype keys (toString, constructor, ...) don't
+  // resolve as renderers and silently bypass the unknown-widget_type error
+  const renderer =
+    widget_type && Object.hasOwn(renderers, widget_type) ? renderers[widget_type] : undefined
   if (!renderer) throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
 
   cleanup_element(el)

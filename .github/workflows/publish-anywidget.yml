@@ -75,7 +75,9 @@ jobs:
           test "$js_bytes" -lt 5000000 || { echo "bundle too large ($js_bytes B) -- did h5wasm/moyo WASM get re-bundled?"; exit 1; }
           # npm (not pnpm) for publish: only `npm publish --provenance` emits npm
           # provenance attestations -- pnpm exposes no equivalent direct flag
-          npm publish --provenance --access public
+          # build already ran + was size-gated above; --ignore-scripts skips the
+          # redundant prepublishOnly rebuild (kept for safety on manual publishes)
+          npm publish --ignore-scripts --provenance --access public
         env:
           PUBLISH_VERSION: ${{ steps.version.outputs.version }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
