@@ -12,7 +12,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
 
     // Check both plots render
     const plots = container.locator(`.scatter`)
-    expect(await plots.count()).toBe(2)
+    await expect(plots).toHaveCount(2)
 
     // Verify bands plot (left) and DOS plot (right) both have data
     const bands_paths = plots.first().locator(`path[fill="none"]`)
@@ -71,7 +71,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
     // Check custom widths
     const custom_container = page.locator(`[data-testid="bands-and-dos-custom-widths"]`)
     await expect(custom_container).toBeVisible()
-    expect(await custom_container.getAttribute(`style`)).toContain(`grid-template-columns`)
+    await expect(custom_container).toHaveAttribute(`style`, /grid-template-columns/)
 
     // Check bands props passed
     const bands_container = page.locator(`[data-testid="bands-and-dos-bands-styling"]`)
@@ -160,7 +160,7 @@ test.describe(`BandsAndDos Component Tests`, () => {
 
     // Verify the main functionality is still working
     const plots = container.locator(`.scatter`)
-    expect(await plots.count()).toBe(2)
+    await expect(plots).toHaveCount(2)
   })
 
   // Fermi level alignment tests - verifies BandsAndDos fermi_level prop takes precedence

@@ -15,7 +15,7 @@ test.describe(`Bands Component Tests`, () => {
     // Check SVG and band paths (4 bands expected from mock data)
     const paths = plot.locator(`svg path[fill="none"]`)
     await expect(paths.first()).toBeVisible()
-    expect(await paths.count()).toBe(4)
+    await expect(paths).toHaveCount(4)
 
     // Check axes and high-symmetry point labels
     await expect(plot.locator(`g.x-axis`)).toBeVisible()
@@ -37,10 +37,9 @@ test.describe(`Bands Component Tests`, () => {
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
     const legend_items = legend.locator(`.legend-item`)
-    expect(await legend_items.count()).toBe(2)
-    const legend_text = await legend.textContent()
-    expect(legend_text).toContain(`BS1`)
-    expect(legend_text).toContain(`BS2`)
+    await expect(legend_items).toHaveCount(2)
+    await expect(legend).toContainText(`BS1`)
+    await expect(legend).toContainText(`BS2`)
 
     // Test toggling - should have 8 paths (2 structures × 4 bands)
     await expect(svg.locator(`path[fill="none"]`)).toHaveCount(8)
@@ -254,8 +253,7 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot).toBeVisible()
 
     // unit lives in the y-axis label ("Frequency (cm-1)"), not the tick text
-    const y_label = await plot.locator(`.axis-label.y-label`).textContent()
-    expect(y_label).toContain(`cm-1`)
+    await expect(plot.locator(`.axis-label.y-label`)).toContainText(`cm-1`)
 
     const fill_paths = plot.locator(`svg path`)
     await expect(fill_paths.first()).toBeVisible()
@@ -277,6 +275,6 @@ test.describe(`Bands Component Tests`, () => {
     await expect(plot).toBeVisible()
     const line_paths = plot.locator(`svg path[fill="none"]`)
     await expect(line_paths.first()).toBeVisible()
-    expect(await line_paths.count()).toBe(4)
+    await expect(line_paths).toHaveCount(4)
   })
 })

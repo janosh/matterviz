@@ -226,8 +226,7 @@ test.describe(`Single-Vector Site Vectors`, () => {
 
     const status = page.locator(`[data-testid="vector-configs-status"]`)
     await expect(status).toContainText(`force`, { timeout: get_canvas_timeout() })
-    const text = await status.textContent()
-    expect(text).not.toContain(`force_DFT`)
+    await expect(status).not.toContainText(`force_DFT`)
   })
 
   test(`single-key has no Origin Gap or per-key scale`, async ({ page }) => {

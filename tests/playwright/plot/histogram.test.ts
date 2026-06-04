@@ -345,9 +345,8 @@ test.describe(`Histogram Component Tests`, () => {
     // or tooltip positioning may fail silently. If visible, verify content is correct.
     const tooltip = basic_histogram.locator(`.plot-tooltip`)
     if (await tooltip.isVisible({ timeout: 3000 })) {
-      const tooltip_content = await tooltip.textContent()
-      expect(tooltip_content).toContain(`Value:`)
-      expect(tooltip_content).toContain(`Count:`)
+      await expect(tooltip).toContainText(`Value:`)
+      await expect(tooltip).toContainText(`Count:`)
     }
 
     // Test legend visibility - multiple-series-overlay has show_legend enabled
@@ -600,7 +599,7 @@ test.describe(`Histogram Component Tests`, () => {
     const x_axis_format_label = tick_format_section.locator(`label:has-text("X-axis:")`)
     await expect(x_axis_format_label).toBeVisible()
     // Verify selector specificity - should match exactly one label within Tick Format section
-    expect(await x_axis_format_label.count()).toBe(1)
+    await expect(x_axis_format_label).toHaveCount(1)
 
     const x_format_input = x_axis_format_label.locator(`input[type="text"]`)
     await expect(x_format_input).toBeVisible()

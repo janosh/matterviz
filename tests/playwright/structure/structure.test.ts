@@ -335,11 +335,11 @@ test.describe(`Structure Component Tests`, () => {
     const site_labels_checkbox = site_labels_label.locator(`input[type="checkbox"]`)
 
     await expect(site_labels_label).toBeVisible()
-    expect(await site_labels_checkbox.isChecked()).toBe(false)
+    await expect(site_labels_checkbox).not.toBeChecked()
     await site_labels_checkbox.check()
-    expect(await site_labels_checkbox.isChecked()).toBe(true)
+    await expect(site_labels_checkbox).toBeChecked()
     await site_labels_checkbox.uncheck()
-    expect(await site_labels_checkbox.isChecked()).toBe(false)
+    await expect(site_labels_checkbox).not.toBeChecked()
   })
 
   test(`show_site_indices can be toggled`, async ({ page }) => {
@@ -356,14 +356,14 @@ test.describe(`Structure Component Tests`, () => {
     // Toggle to opposite state
     if (initial_state) {
       await site_indices_checkbox.uncheck()
-      expect(await site_indices_checkbox.isChecked()).toBe(false)
+      await expect(site_indices_checkbox).not.toBeChecked()
       await site_indices_checkbox.check()
-      expect(await site_indices_checkbox.isChecked()).toBe(true)
+      await expect(site_indices_checkbox).toBeChecked()
     } else {
       await site_indices_checkbox.check()
-      expect(await site_indices_checkbox.isChecked()).toBe(true)
+      await expect(site_indices_checkbox).toBeChecked()
       await site_indices_checkbox.uncheck()
-      expect(await site_indices_checkbox.isChecked()).toBe(false)
+      await expect(site_indices_checkbox).not.toBeChecked()
     }
   })
 
@@ -382,23 +382,23 @@ test.describe(`Structure Component Tests`, () => {
     await site_indices_checkbox.check()
 
     // Verify both are enabled
-    expect(await site_labels_checkbox.isChecked()).toBe(true)
-    expect(await site_indices_checkbox.isChecked()).toBe(true)
+    await expect(site_labels_checkbox).toBeChecked()
+    await expect(site_indices_checkbox).toBeChecked()
 
     // Verify Labels section is visible when site labels are enabled
     await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
 
     // Disable one at a time to test independence
     await site_labels_checkbox.uncheck()
-    expect(await site_labels_checkbox.isChecked()).toBe(false)
-    expect(await site_indices_checkbox.isChecked()).toBe(true)
+    await expect(site_labels_checkbox).not.toBeChecked()
+    await expect(site_indices_checkbox).toBeChecked()
 
     // Labels section remains visible when Site Indices enabled
     await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
 
     // Disable both - Labels section should hide
     await site_indices_checkbox.uncheck()
-    expect(await site_indices_checkbox.isChecked()).toBe(false)
+    await expect(site_indices_checkbox).not.toBeChecked()
     await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeHidden()
 
     // Re-enable site indices only
@@ -1671,19 +1671,18 @@ test.describe(`Export Button Tests`, () => {
     expect(parseInt(initial_value, 10)).toBeGreaterThanOrEqual(72)
 
     await dpi_input.fill(`200`)
-    expect(await dpi_input.inputValue()).toBe(`200`)
+    await expect(dpi_input).toHaveValue(`200`)
 
     // Verify PNG button title updates with new DPI
     const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
-    const updated_title = await png_export_btn.getAttribute(`title`)
-    expect(updated_title).toContain(`(200 DPI)`)
+    await expect(png_export_btn).toHaveAttribute(`title`, /\(200 DPI\)/)
 
     // Test that DPI input accepts values within range (HTML inputs don't auto-clamp)
     await dpi_input.fill(`150`)
-    expect(await dpi_input.inputValue()).toBe(`150`)
+    await expect(dpi_input).toHaveValue(`150`)
 
     await dpi_input.fill(`72`)
-    expect(await dpi_input.inputValue()).toBe(`72`)
+    await expect(dpi_input).toHaveValue(`72`)
   })
 
   test(`export buttons work with loaded structure`, async ({ page }) => {
