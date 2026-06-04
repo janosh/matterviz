@@ -386,22 +386,14 @@
   })
 
   $effect(() => { // sync ranges from axis.range overrides / auto ranges
-    const new_x = [
-      x_axis.range?.[0] ?? auto_ranges.x[0],
-      x_axis.range?.[1] ?? auto_ranges.x[1],
-    ] as Vec2
-    const new_x2 = [
-      x2_axis.range?.[0] ?? auto_ranges.x2[0],
-      x2_axis.range?.[1] ?? auto_ranges.x2[1],
-    ] as Vec2
-    const new_y = [
-      y_axis.range?.[0] ?? auto_ranges.y[0],
-      y_axis.range?.[1] ?? auto_ranges.y[1],
-    ] as Vec2
-    const new_y2 = [
-      y2_axis.range?.[0] ?? auto_ranges.y2[0],
-      y2_axis.range?.[1] ?? auto_ranges.y2[1],
-    ] as Vec2
+    const resolve_range = (
+      axis: { range?: [number | null, number | null] },
+      auto: Vec2,
+    ): Vec2 => [axis.range?.[0] ?? auto[0], axis.range?.[1] ?? auto[1]]
+    const new_x = resolve_range(x_axis, auto_ranges.x)
+    const new_x2 = resolve_range(x2_axis, auto_ranges.x2)
+    const new_y = resolve_range(y_axis, auto_ranges.y)
+    const new_y2 = resolve_range(y2_axis, auto_ranges.y2)
     if (
       ranges.initial.x[0] !== new_x[0] || ranges.initial.x[1] !== new_x[1] ||
       ranges.initial.x2[0] !== new_x2[0] || ranges.initial.x2[1] !== new_x2[1] ||
@@ -872,15 +864,6 @@
   // Set theme-aware background when entering fullscreen
   $effect(() => set_fullscreen_bg(wrapper, fullscreen, `--boxplot-fullscreen-bg`))
 
-  // Interactive axis label selection updates selected_key for UI feedback (no data loading:
-  // box plots take raw data directly). Kept for parity with the shared PlotAxis dropdown API.
-  const handle_axis_change = (axis: `x` | `x2` | `y` | `y2`, key: string) => {
-    if (axis === `x`) x_axis = { ...x_axis, selected_key: key }
-    else if (axis === `x2`) x2_axis = { ...x2_axis, selected_key: key }
-    else if (axis === `y`) y_axis = { ...y_axis, selected_key: key }
-    else y2_axis = { ...y2_axis, selected_key: key }
-  }
-
   // Value label helper
   const value_label_for = (stats: Box[`stats`]): string =>
     format_value(value_label_stat === `mean` ? stats.mean : stats.median, value_label_format)
@@ -1031,7 +1014,6 @@
         tick_color={cat_axis === `x` ? (tick) => slot_colors.get(tick) : undefined}
         label_x={pad.l + chart_width / 2 + (x_axis.label_shift?.x ?? 0)}
         label_y={height - pad.b / 3 + (x_axis.label_shift?.y ?? 0)}
-        on_axis_change={(key) => handle_axis_change(`x`, key)}
       />
 
       {#if has_secondary && orientation === `horizontal`}
@@ -1047,7 +1029,6 @@
           tick_label={(tick) => get_tick_label(tick, x2_axis.ticks)}
           label_x={pad.l + chart_width / 2 + (x2_axis.label_shift?.x ?? 0)}
           label_y={Math.max(12, pad.t - (x2_axis.label_shift?.y ?? 40))}
-          on_axis_change={(key) => handle_axis_change(`x2`, key)}
         />
       {/if}
 
@@ -1068,7 +1049,6 @@
           pad.l - (y_axis.tick?.label?.inside ? 0 : tick_label_widths.y_max) - LABEL_GAP_DEFAULT,
         ) + (y_axis.label_shift?.x ?? 0)}
         label_y={pad.t + chart_height / 2 + (y_axis.label_shift?.y ?? 0)}
-        on_axis_change={(key) => handle_axis_change(`y`, key)}
       />
 
       {#if has_secondary && orientation === `vertical`}
@@ -1088,7 +1068,6 @@
           label_x={width - pad.r + y2_tick_shift + y2_tick_width + LABEL_GAP_DEFAULT +
           (y2_axis.label_shift?.x ?? 0)}
           label_y={pad.t + chart_height / 2 + (y2_axis.label_shift?.y ?? 0)}
-          on_axis_change={(key) => handle_axis_change(`y2`, key)}
         />
       {/if}
 
