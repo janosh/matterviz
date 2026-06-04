@@ -1,13 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
 
 test.describe(`RdfPlot Component Tests`, () => {
   // Retry for intermittent SSR warm-up issues
   test.describe.configure({ retries: 1 })
 
   test.beforeEach(async ({ page }) => {
-    // Skip all RdfPlot tests in CI due to SSR warm-up delays causing timeouts
-    test.skip(IS_CI, `RdfPlot tests timeout in CI`)
     await page.goto(`/test/rdf-plot`, { waitUntil: `networkidle` })
     // Wait for first plot to render (SVG paths take time to draw)
     await page.waitForSelector(`#single-pattern svg path`, { timeout: 15000 })
@@ -61,22 +58,22 @@ test.describe(`RdfPlot Component Tests`, () => {
     const main_svg = plot.locator(`svg:has(g.x-axis)`)
     await expect(main_svg).toBeVisible()
 
-    // Get the bounding box and hover in the center of the plot area
     const box = await main_svg.boundingBox()
     if (!box) throw new Error(`Could not get SVG bounding box`)
 
-    // Hover in the middle of the plot area
-    await main_svg.hover({
-      force: true,
-      position: { x: box.width / 2, y: box.height / 2 },
-    })
-
     const tooltip = plot.locator(`.plot-tooltip`)
-    await expect(tooltip).toBeVisible({ timeout: 3000 })
+    // Two-phase move (enter SVG to set hovered, then move across the plot so the
+    // nearest-point tooltip appears) — a single hover() is unreliable headless.
+    await expect(async () => {
+      await page.mouse.move(box.x + 10, box.y + 10)
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await expect(tooltip).toBeVisible({ timeout: 1000 })
+    }).toPass({ timeout: 5000 })
+
     const text = await tooltip.textContent()
-    // Default ScatterPlot tooltip shows "x: <number>" and "y: <number>"
-    expect(text ?? ``).toMatch(/x:\s*-?\d+\.?\d*/)
-    expect(text ?? ``).toMatch(/y:\s*-?\d+\.?\d*/)
+    // Tooltip keys come from the axis labels: "r (Å): <number>" and "g(r): <number>"
+    expect(text ?? ``).toMatch(/r \(Å\):\s*-?\d+\.?\d*/)
+    expect(text ?? ``).toMatch(/g\(r\):\s*-?\d+\.?\d*/)
   })
 
   // Test reference line
@@ -101,7 +98,7 @@ test.describe(`RdfPlot Component Tests`, () => {
   // Test structure-based RDF calculation in both modes
   test(`calculates RDF from structures`, async ({ page }) => {
     // Element pairs mode - multiple series
-    const ep_plot = page.locator(`#single-structure-element-pairs`)
+    const ep_plot = page.locator(`#single-structure-element-pairs-plot`)
     await expect(ep_plot).toBeVisible()
     await expect(ep_plot.locator(`.legend`)).toBeVisible()
     const ep_lines_count = await ep_plot.locator(`svg path[fill="none"]`).count()

@@ -78,7 +78,7 @@
 
 <h2>Single Structure - Element Pairs</h2>
 <RdfPlot
-  id="single-structure-element-pairs"
+  id="single-structure-element-pairs-plot"
   structures={structures.NaCl}
   mode="element_pairs"
   cutoff={7}

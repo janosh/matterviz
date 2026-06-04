@@ -28,6 +28,7 @@
 <Select
   {options}
   maxSelect={1}
+  maxOptions={options.length}
   {minSelect}
   bind:value
   bind:selected

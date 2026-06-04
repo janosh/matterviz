@@ -33,9 +33,8 @@ test.describe(`XrdPlot Component Tests`, () => {
     // Tooltip has class plot-tooltip
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 3000 })
-    const text = await tooltip.textContent()
-    expect(text ?? ``).toContain(`2θ:`)
-    // hkl and d are conditional; ensure tooltip structure exists
+    // hkl and d are conditional; just assert the always-present 2θ row
+    await expect(tooltip).toContainText(`2θ:`)
   })
 
   test(`legend appears for multiple patterns and toggles series`, async ({ page }) => {

@@ -335,11 +335,11 @@ test.describe(`Structure Component Tests`, () => {
     const site_labels_checkbox = site_labels_label.locator(`input[type="checkbox"]`)
 
     await expect(site_labels_label).toBeVisible()
-    expect(await site_labels_checkbox.isChecked()).toBe(false)
+    await expect(site_labels_checkbox).not.toBeChecked()
     await site_labels_checkbox.check()
-    expect(await site_labels_checkbox.isChecked()).toBe(true)
+    await expect(site_labels_checkbox).toBeChecked()
     await site_labels_checkbox.uncheck()
-    expect(await site_labels_checkbox.isChecked()).toBe(false)
+    await expect(site_labels_checkbox).not.toBeChecked()
   })
 
   test(`show_site_indices can be toggled`, async ({ page }) => {
@@ -356,14 +356,14 @@ test.describe(`Structure Component Tests`, () => {
     // Toggle to opposite state
     if (initial_state) {
       await site_indices_checkbox.uncheck()
-      expect(await site_indices_checkbox.isChecked()).toBe(false)
+      await expect(site_indices_checkbox).not.toBeChecked()
       await site_indices_checkbox.check()
-      expect(await site_indices_checkbox.isChecked()).toBe(true)
+      await expect(site_indices_checkbox).toBeChecked()
     } else {
       await site_indices_checkbox.check()
-      expect(await site_indices_checkbox.isChecked()).toBe(true)
+      await expect(site_indices_checkbox).toBeChecked()
       await site_indices_checkbox.uncheck()
-      expect(await site_indices_checkbox.isChecked()).toBe(false)
+      await expect(site_indices_checkbox).not.toBeChecked()
     }
   })
 
@@ -382,23 +382,23 @@ test.describe(`Structure Component Tests`, () => {
     await site_indices_checkbox.check()
 
     // Verify both are enabled
-    expect(await site_labels_checkbox.isChecked()).toBe(true)
-    expect(await site_indices_checkbox.isChecked()).toBe(true)
+    await expect(site_labels_checkbox).toBeChecked()
+    await expect(site_indices_checkbox).toBeChecked()
 
     // Verify Labels section is visible when site labels are enabled
     await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
 
     // Disable one at a time to test independence
     await site_labels_checkbox.uncheck()
-    expect(await site_labels_checkbox.isChecked()).toBe(false)
-    expect(await site_indices_checkbox.isChecked()).toBe(true)
+    await expect(site_labels_checkbox).not.toBeChecked()
+    await expect(site_indices_checkbox).toBeChecked()
 
     // Labels section remains visible when Site Indices enabled
     await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeVisible()
 
     // Disable both - Labels section should hide
     await site_indices_checkbox.uncheck()
-    expect(await site_indices_checkbox.isChecked()).toBe(false)
+    await expect(site_indices_checkbox).not.toBeChecked()
     await expect(control_pane.locator(`h4:has-text("Labels")`)).toBeHidden()
 
     // Re-enable site indices only
@@ -1671,19 +1671,18 @@ test.describe(`Export Button Tests`, () => {
     expect(parseInt(initial_value, 10)).toBeGreaterThanOrEqual(72)
 
     await dpi_input.fill(`200`)
-    expect(await dpi_input.inputValue()).toBe(`200`)
+    await expect(dpi_input).toHaveValue(`200`)
 
     // Verify PNG button title updates with new DPI
     const png_export_btn = export_pane.locator(`button[title*="PNG"]`)
-    const updated_title = await png_export_btn.getAttribute(`title`)
-    expect(updated_title).toContain(`(200 DPI)`)
+    await expect(png_export_btn).toHaveAttribute(`title`, /\(200 DPI\)/)
 
     // Test that DPI input accepts values within range (HTML inputs don't auto-clamp)
     await dpi_input.fill(`150`)
-    expect(await dpi_input.inputValue()).toBe(`150`)
+    await expect(dpi_input).toHaveValue(`150`)
 
     await dpi_input.fill(`72`)
-    expect(await dpi_input.inputValue()).toBe(`72`)
+    await expect(dpi_input).toHaveValue(`72`)
   })
 
   test(`export buttons work with loaded structure`, async ({ page }) => {
@@ -1987,14 +1986,51 @@ test.describe(`Structure Event Handler Tests`, () => {
       }).toPass({ timeout: get_canvas_timeout() })
     })
 
-    // TODO: Camera movement/reset events are hard to trigger reliably in headless mode
-    // The camera move event is triggered by Three.js OrbitControls which requires proper mouse interaction
-    // Tracking: These tests require real browser window for proper mouse events
-    test.fixme(`should trigger on_camera_move event when camera is moved`, async () => {
-      // Implement with proper mouse drag simulation once Playwright supports it better
+    // Camera move/reset go through Three.js OrbitControls. The drag works in headless
+    // (verified via globalThis.camera_target), but is unreliable in CI software GL.
+    test(`should trigger on_camera_move event when camera is moved`, async ({ page }) => {
+      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+      const canvas = page.locator(`#test-structure canvas`).first()
+      await expect(canvas).toBeVisible()
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error(`Canvas bounding box not found`)
+      // on_camera_move writes the orbit target to globalThis.camera_target
+      await page.evaluate(() => {
+        ;(globalThis as Record<string, unknown>).camera_target = undefined
+      })
+      await canvas.dragTo(canvas, {
+        sourcePosition: { x: box.width / 2 - 80, y: box.height / 2 },
+        targetPosition: { x: box.width / 2 + 80, y: box.height / 2 },
+      })
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() =>
+              Array.isArray((globalThis as Record<string, unknown>).camera_target),
+            ),
+          { timeout: get_canvas_timeout() },
+        )
+        .toBe(true)
     })
-    test.fixme(`should trigger on_camera_reset event when camera is reset`, async () => {
-      // Implement with proper double-click reset once camera events are testable
+
+    test(`should trigger on_camera_reset event when camera is reset`, async ({ page }) => {
+      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+      const canvas = page.locator(`#test-structure canvas`).first()
+      await expect(canvas).toBeVisible()
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error(`Canvas bounding box not found`)
+      // Move the camera so camera_has_moved flips true and the reset button appears
+      await canvas.dragTo(canvas, {
+        sourcePosition: { x: box.width / 2 - 80, y: box.height / 2 },
+        targetPosition: { x: box.width / 2 + 80, y: box.height / 2 },
+      })
+      await clear_events_and_wait(page)
+      const reset_btn = page.locator(`#test-structure button.reset-camera`)
+      await expect(reset_btn).toBeVisible({ timeout: get_canvas_timeout() })
+      await reset_btn.click()
+      await expect(async () => {
+        await check_event_triggered(page, `on_camera_reset`, [`structure`, `camera_target`])
+      }).toPass({ timeout: get_canvas_timeout() })
     })
   })
 })
@@ -2781,6 +2817,28 @@ test.describe(`Element Visibility Toggle`, () => {
 
   test.beforeEach(async ({ page }: { page: Page }) => {
     await goto_structure_test(page)
+  })
+
+  test(`atom-color mode toggle reveals on every viewer hover, not just the first`, async ({
+    page,
+  }) => {
+    // Regression: `viewer_active` was a `$derived(hovered || focused)` reading the $bindable
+    // `hovered` prop, which went stale after the first hover/leave cycle so the mode toggle (and
+    // gizmo) only appeared on the very first mouseenter until page reload.
+    await page.setViewportSize({ width: 1400, height: 1200 })
+    const wrapper = page.locator(`#test-structure`)
+    const toggle = page.locator(`#test-structure .atom-legend .mode-toggle`)
+    const box = await page.locator(`#test-structure canvas`).boundingBox()
+    if (!box) throw new Error(`canvas has no bounding box`)
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      await page.mouse.move(box.x + 40, box.y + 40) // hover the canvas (not the icon)
+      await expect(toggle).toHaveCSS(`opacity`, `1`)
+      await expect(wrapper).toHaveClass(/gizmo-visible/)
+      await page.mouse.move(3, 3) // move off the viewer
+      await expect(toggle).toHaveCSS(`opacity`, `0`)
+      await expect(wrapper).not.toHaveClass(/gizmo-visible/)
+    }
   })
 
   test(`toggle buttons are present on element badges`, async ({ page }) => {

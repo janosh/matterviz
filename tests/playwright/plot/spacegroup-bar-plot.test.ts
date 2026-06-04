@@ -1,11 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI, is_present } from '../helpers'
+import { is_present } from '../helpers'
 
 test.describe(`SpacegroupBarPlot Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    // Skip in CI due to mdsvex SSR module resolution issues
-    // Error: "SpacegroupBarPlot is not a function" occurs intermittently in CI
-    test.skip(IS_CI, `SpacegroupBarPlot SSR intermittently fails in CI due to mdsvex warm-up`)
     await page.goto(`/plot/spacegroup-bar-plot`, { waitUntil: `networkidle` })
     // Wait for first bar-plot to render (mdsvex examples may take time)
     await page.waitForSelector(`.bar-plot`, { timeout: 15000 })

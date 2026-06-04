@@ -3,6 +3,7 @@ import {
   assert_test_hook_exists,
   expect_canvas_changed,
   goto_structure_test,
+  IS_CI,
   set_input_value,
 } from '../helpers'
 
@@ -27,6 +28,9 @@ test.describe(`Atom Radius Controls`, () => {
   // Note: site-radius-control only appears when exactly 1 site is selected
   // Uses assert_test_hook_exists for clearer failures if test page changes
   const select_site_programmatically = async (): Promise<Locator> => {
+    // site-radius-control only surfaces in edit-atoms mode (Structure gates
+    // atom_legend_selected_sites behind measure_mode === `edit-atoms`)
+    await page.locator(`[data-testid="btn-set-edit-atoms"]`).click()
     const select_site_btn = await assert_test_hook_exists(
       page,
       `btn-select-site-0`,
@@ -39,6 +43,7 @@ test.describe(`Atom Radius Controls`, () => {
   }
 
   test.beforeEach(async ({ page: p }) => {
+    test.skip(IS_CI, `Atom radius controls need a WebGL canvas, flaky in headless CI`)
     page = p
     await goto_structure_test(page)
     legend = page.locator(`#test-structure .atom-legend`)
@@ -46,7 +51,7 @@ test.describe(`Atom Radius Controls`, () => {
     await expect(legend.locator(`.legend-item`).first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test.skip(`element radius: dropdown opens with correct input attributes`, async () => {
+  test(`element radius: dropdown opens with correct input attributes`, async () => {
     const dropdown = await open_remap_dropdown(get_first_legend_item())
     const radius_control = dropdown.locator(`.radius-control`)
     const radius_input = radius_control.locator(`input[type="number"]`)
@@ -59,7 +64,7 @@ test.describe(`Atom Radius Controls`, () => {
     await expect(radius_control.locator(`.reset-btn`)).toHaveCount(0)
   })
 
-  test.skip(`element radius: change shows reset, affects canvas, reset restores`, async () => {
+  test(`element radius: change shows reset, affects canvas, reset restores`, async () => {
     const canvas = page.locator(`#test-structure canvas`)
     const item = get_first_legend_item()
     let dropdown = await open_remap_dropdown(item)
@@ -107,7 +112,7 @@ test.describe(`Atom Radius Controls`, () => {
   })
 
   // Skip in CI - site selection test hook unreliable in headless CI
-  test.skip(`site radius: control appears on selection with working reset`, async () => {
+  test(`site radius: control appears on selection with working reset`, async () => {
     // Initially no site control
     await expect(legend.locator(`.site-radius-control`)).toHaveCount(0)
 
@@ -132,7 +137,7 @@ test.describe(`Atom Radius Controls`, () => {
   })
 
   // Skip - remap dropdown interactions flaky in CI, covered by vitest unit tests
-  test.skip(`dropdown contains radius control and element remap search`, async () => {
+  test(`dropdown contains radius control and element remap search`, async () => {
     const dropdown = await open_remap_dropdown(get_first_legend_item())
 
     await expect(dropdown.locator(`.radius-control`)).toBeVisible()
@@ -140,58 +145,5 @@ test.describe(`Atom Radius Controls`, () => {
 
     await dropdown.locator(`.remap-search`).fill(`Fe`)
     await expect(dropdown.locator(`.remap-option`).first()).toContainText(`Fe`)
-  })
-
-  test.skip(`site radius overrides are cleared when supercell scaling changes`, async () => {
-    // Select a site programmatically and modify its radius
-    const site_control = await select_site_programmatically()
-    const radius_input = site_control.locator(`input[type="number"]`)
-
-    // Capture original default value before any modification
-    const original_default = await radius_input.inputValue()
-
-    // Set a custom radius different from default (creating a site_radius_override)
-    const override_value = parseFloat(original_default) < 1 ? `1.5` : `0.5`
-    await set_input_value(radius_input, override_value)
-    await expect(site_control.locator(`.reset-btn`)).toBeVisible()
-
-    // Clear selection first (supercell change won't clear it automatically without this)
-    const clear_btn = await assert_test_hook_exists(
-      page,
-      `btn-clear-selected`,
-      `Clear selection button required for supercell test`,
-    )
-    await clear_btn.click()
-    await expect(legend.locator(`.site-radius-control`)).toHaveCount(0)
-
-    // Capture canvas before supercell change to detect transformation completion
-    const canvas = page.locator(`#test-structure canvas`)
-    await expect(canvas).toBeVisible()
-    const canvas_before = await canvas.screenshot()
-
-    // Change supercell scaling - this should clear site_radius_overrides
-    const supercell_input = await assert_test_hook_exists(
-      page,
-      `supercell-input`,
-      `Supercell input required for supercell scaling test`,
-    )
-    await set_input_value(supercell_input, `2x2x2`)
-
-    // Wait for supercell transformation to complete (2x2x2 renders 8x more atoms)
-    await expect_canvas_changed(canvas, canvas_before, 10_000)
-
-    // Re-select a site programmatically after transformation
-    await select_site_programmatically()
-
-    // Get fresh reference to site control after transformation
-    const new_site_control = legend.locator(`.site-radius-control`)
-    const new_radius_input = new_site_control.locator(`input[type="number"]`)
-
-    // The radius should be back to default (no reset button visible)
-    // since site_radius_overrides should have been cleared
-    await expect(new_site_control.locator(`.reset-btn`)).toHaveCount(0)
-    const new_value = await new_radius_input.inputValue()
-    // Value should NOT be the override value - compare to original default or just verify reset hidden
-    expect(parseFloat(new_value)).not.toBe(parseFloat(override_value))
   })
 })

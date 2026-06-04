@@ -6,11 +6,10 @@ import {
 } from '$lib/labels'
 import { expect, type Page, test } from '@playwright/test'
 import element_data from './element-data'
-import { IS_CI, random_sample } from './helpers'
+import { random_sample } from './helpers'
 
 test.describe(`Periodic Table`, () => {
   test(`in default state`, async ({ page }) => {
-    test.skip(IS_CI, `Periodic table tests timeout/flake in CI due to page load timing`)
     await page.goto(`/`, { waitUntil: `networkidle` })
 
     // Get the first periodic table on the page (homepage has multiple periodic tables)
@@ -38,7 +37,6 @@ test.describe(`Periodic Table`, () => {
   })
 
   test(`shows stats on hover element`, async ({ page }) => {
-    test.skip(IS_CI, `Hover stats tests flaky in CI due to mouse event timing`)
     await page.goto(`/`, { waitUntil: `networkidle` })
 
     // Wait for element tiles to be visible
@@ -54,13 +52,9 @@ test.describe(`Periodic Table`, () => {
   })
 
   test(`can hover random elements without throwing errors`, async ({ page }) => {
-    // Skip in CI - page loading can be slow causing tiles.count() to timeout
-    test.skip(IS_CI, `Periodic table rendering unreliable in headless CI`)
-
     const logs: string[] = []
     page.on(`console`, (msg) => {
-      if (msg.type() === `error` && !msg.text().startsWith(`Failed to load resource:`))
-        logs.push(msg.text())
+      if (msg.type() === `error`) logs.push(msg.text())
     })
     await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
@@ -84,9 +78,7 @@ test.describe(`Periodic Table`, () => {
     // Configure retries for tooltip tests which can be timing-sensitive
     test.describe.configure({ retries: 2 })
 
-    test.beforeEach(() => {
-      test.skip(IS_CI, `Tooltip hover tests flaky in CI due to timing`)
-    })
+    test.beforeEach(() => {})
 
     // test utilities
     const get_element_tile = (page: Page, selector: string) =>
@@ -235,8 +227,6 @@ test.describe(`Periodic Table`, () => {
     }
 
     test(`tooltip works with heatmap property selected`, async ({ page }) => {
-      // Skip in CI - multiselect dropdown interactions are unreliable in headless CI
-      test.skip(IS_CI, `Multiselect dropdown interactions flaky in CI`)
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       // Use scoped selector for heatmap multiselect
@@ -276,8 +266,6 @@ test.describe(`Periodic Table`, () => {
     test.describe.configure({ retries: 2 })
 
     test(`displays elemental heat values`, async ({ page }) => {
-      // Skip in CI - multiselect dropdown interactions are unreliable in headless CI
-      test.skip(IS_CI, `Multiselect dropdown interactions flaky in CI`)
       await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 
       // Use specific data-id selector for heatmap multiselect

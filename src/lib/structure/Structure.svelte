@@ -778,7 +778,13 @@
   })
 
   let controls_config = $derived(normalize_show_controls(show_controls))
-  let viewer_active = $derived(hovered || focused)
+  // $effect instead of `$derived(hovered || focused)`: the $derived reading the $bindable
+  // `hovered` prop went stale after the first hover/leave cycle, so the gizmo + mode toggle only
+  // appeared on the first mouseenter until reload.
+  let viewer_active = $state(false)
+  $effect(() => {
+    viewer_active = hovered || focused
+  })
   let scene_gizmo = $derived(viewer_active && (scene_props.gizmo ?? scene_props.show_gizmo))
   let active_scene_sites = $derived([
     ...new SvelteSet([...(scene_props.active_sites ?? []), ...highlighted_sites]),

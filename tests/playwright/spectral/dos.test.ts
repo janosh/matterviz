@@ -1,9 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { get_chart_svg, IS_CI } from '../helpers'
+import { get_chart_svg } from '../helpers'
 
 test.describe(`DOS Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `DOS tests timeout in CI`)
     await page.goto(`/test/dos`, { waitUntil: `networkidle` })
   })
 
@@ -28,9 +27,8 @@ test.describe(`DOS Component Tests`, () => {
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()
     expect(await legend.locator(`.legend-item`).count()).toBe(2)
-    const legend_text = await legend.textContent()
-    expect(legend_text).toContain(`DOS1`)
-    expect(legend_text).toContain(`DOS2`)
+    await expect(legend).toContainText(`DOS1`)
+    await expect(legend).toContainText(`DOS2`)
 
     // Test toggling
     const curves = svg.locator(`path.line, path[stroke]:not([stroke="none"])`)
