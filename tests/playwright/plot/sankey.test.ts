@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
 
 test.describe(`Sankey Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
@@ -7,7 +6,6 @@ test.describe(`Sankey Component Tests`, () => {
   })
 
   test(`renders nodes, links and labels`, async ({ page }) => {
-    test.skip(IS_CI, `Sankey rendering flaky in CI`)
     const plot = page.locator(`#basic-sankey .sankey`)
     await expect(plot).toBeVisible()
 
@@ -25,7 +23,6 @@ test.describe(`Sankey Component Tests`, () => {
   })
 
   test(`shows tooltip and updates handler info on node hover`, async ({ page }) => {
-    test.skip(IS_CI, `hover flaky in CI`)
     const section = page.locator(`#handlers-sankey`)
     const plot = section.locator(`.sankey`)
     await plot.locator(`.nodes rect`).first().hover()

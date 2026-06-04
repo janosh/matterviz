@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { get_tick_range, IS_CI } from '../helpers'
+import { get_tick_range } from '../helpers'
 
 // SHARED HELPER FUNCTIONS
 //
@@ -231,7 +231,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
   // Basic rendering tests
 
   test(`renders basic scatter plot with correct axis labels and ticks`, async ({ page }) => {
-    test.skip(IS_CI, `Scatter plot tick count test flaky in CI due to browser closure`)
     const scatter_plot = page.locator(`#basic-example .scatter`)
     await expect(scatter_plot).toBeVisible()
 
@@ -361,7 +360,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
   }) => {
     // TODO: Consider experimenting with more tolerant area-ratio thresholds
     // so this test can eventually run in CI again
-    test.skip(IS_CI, `Size values test has numerical variations in CI`)
     // Configure retries for size compression tests which can have small numerical variations
     test.info().annotations.push({ type: `slow`, description: `Size calculation test` })
 
@@ -2151,7 +2149,6 @@ test.describe(`ScatterPlot Component Tests`, () => {
   test(`improved label placement prevents overlap for isolated and clustered markers`, async ({
     page,
   }) => {
-    test.skip(IS_CI, `Label placement varies in CI`)
     const section = page.locator(`#label-auto-placement-test`)
     const plot_locator = section.locator(`.scatter`)
     const checkbox = section.getByRole(`checkbox`, { name: `Enable Auto Placement` })

@@ -2,7 +2,6 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   get_axis_range_inputs,
   get_tick_range,
-  IS_CI,
   is_present,
   set_input_value,
   set_range_input,
@@ -68,7 +67,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`renders basic histogram with correct structure`, async ({ page }) => {
-    test.skip(IS_CI, `Histogram rendering flaky in CI`)
     const histogram = page.locator(`#basic-single-series > svg[role="application"]`)
     await expect(histogram).toBeVisible()
 
@@ -183,7 +181,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`series visibility toggles work`, async ({ page }) => {
-    test.skip(IS_CI, `Histogram series toggle test flaky in CI due to render timing`)
     const histogram = page.locator(`#multiple-series-overlay > svg[role="application"]`)
     const legend = page.locator(`#multiple-series-overlay .legend`)
     const first_legend_item = legend.locator(`.legend-item`).first()
@@ -218,7 +215,6 @@ test.describe(`Histogram Component Tests`, () => {
   })
 
   test(`logarithmic scale combinations`, async ({ page }) => {
-    test.skip(IS_CI, `Logarithmic histogram rendering flaky in CI`)
     const histogram = page.locator(`#logarithmic-scales > svg[role="application"]`)
 
     // Wait for initial histogram to render
@@ -319,7 +315,6 @@ test.describe(`Histogram Component Tests`, () => {
 
   test(`custom styling and color schemes`, async ({ page }) => {
     // Skip in CI - histogram bar rendering timing is flaky
-    test.skip(IS_CI, `Histogram bar visibility flaky in CI due to render timing`)
 
     // This test is no longer applicable since we removed the custom styling section
     // The histogram still renders correctly with default styling

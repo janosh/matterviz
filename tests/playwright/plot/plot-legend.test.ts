@@ -1,6 +1,5 @@
 import { rects_overlap } from '$lib/plot/layout'
 import { expect, type Locator, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
 
 // Helper functions for placement stability tests
 async function get_element_center(locator: Locator): Promise<{ x: number; y: number } | null> {
@@ -47,7 +46,6 @@ test.describe(`PlotLegend Component Integration Tests`, () => {
   })
 
   test(`should render legend items correctly based on initial data`, async ({ page }) => {
-    test.skip(IS_CI, `Plot legend rendering flaky in CI`)
     const legend_items = page.locator(main_legend_wrapper).locator(`.legend-item`)
     await expect(legend_items).toHaveCount(5)
 
@@ -232,8 +230,6 @@ test.describe(`Legend Placement Stability`, () => {
   })
 
   test(`legend position stays fixed while hovered during series toggle`, async ({ page }) => {
-    test.skip(IS_CI, `Placement stability tests flaky in CI due to timing`)
-
     const plot = page.locator(`#legend-multi-default.scatter`)
     await expect(plot).toBeVisible()
 
@@ -404,8 +400,6 @@ test.describe(`Legend Placement on Resize`, () => {
   })
 
   test(`legend repositions appropriately after viewport resize`, async ({ page }) => {
-    test.skip(IS_CI, `Resize tests can be flaky in CI`)
-
     const plot = page.locator(`#legend-multi-default.scatter`)
     const legend = plot.locator(`.legend`)
     await expect(legend).toBeVisible()

@@ -1987,14 +1987,51 @@ test.describe(`Structure Event Handler Tests`, () => {
       }).toPass({ timeout: get_canvas_timeout() })
     })
 
-    // TODO: Camera movement/reset events are hard to trigger reliably in headless mode
-    // The camera move event is triggered by Three.js OrbitControls which requires proper mouse interaction
-    // Tracking: These tests require real browser window for proper mouse events
-    test.fixme(`should trigger on_camera_move event when camera is moved`, async () => {
-      // Implement with proper mouse drag simulation once Playwright supports it better
+    // Camera move/reset go through Three.js OrbitControls. The drag works in headless
+    // (verified via globalThis.camera_target), but is unreliable in CI software GL.
+    test(`should trigger on_camera_move event when camera is moved`, async ({ page }) => {
+      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+      const canvas = page.locator(`#test-structure canvas`).first()
+      await expect(canvas).toBeVisible()
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error(`Canvas bounding box not found`)
+      // on_camera_move writes the orbit target to globalThis.camera_target
+      await page.evaluate(() => {
+        ;(globalThis as Record<string, unknown>).camera_target = undefined
+      })
+      await canvas.dragTo(canvas, {
+        sourcePosition: { x: box.width / 2 - 80, y: box.height / 2 },
+        targetPosition: { x: box.width / 2 + 80, y: box.height / 2 },
+      })
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() =>
+              Array.isArray((globalThis as Record<string, unknown>).camera_target),
+            ),
+          { timeout: get_canvas_timeout() },
+        )
+        .toBe(true)
     })
-    test.fixme(`should trigger on_camera_reset event when camera is reset`, async () => {
-      // Implement with proper double-click reset once camera events are testable
+
+    test(`should trigger on_camera_reset event when camera is reset`, async ({ page }) => {
+      test.skip(IS_CI, `Camera drag via OrbitControls unreliable in headless CI`)
+      const canvas = page.locator(`#test-structure canvas`).first()
+      await expect(canvas).toBeVisible()
+      const box = await canvas.boundingBox()
+      if (!box) throw new Error(`Canvas bounding box not found`)
+      // Move the camera so camera_has_moved flips true and the reset button appears
+      await canvas.dragTo(canvas, {
+        sourcePosition: { x: box.width / 2 - 80, y: box.height / 2 },
+        targetPosition: { x: box.width / 2 + 80, y: box.height / 2 },
+      })
+      await clear_events_and_wait(page)
+      const reset_btn = page.locator(`#test-structure button.reset-camera`)
+      await expect(reset_btn).toBeVisible({ timeout: get_canvas_timeout() })
+      await reset_btn.click()
+      await expect(async () => {
+        await check_event_triggered(page, `on_camera_reset`, [`structure`, `camera_target`])
+      }).toPass({ timeout: get_canvas_timeout() })
     })
   })
 })
