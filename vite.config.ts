@@ -102,8 +102,21 @@ const raw_text_plugin: Plugin = {
   },
 }
 
+// sveltekit()/live-examples ship their own copy of vite's Plugin type; inferring this
+// array's element type deep-compares them and exceeds TS's instantiation depth (TS2321).
+// Typing as `unknown[]` skips that comparison; vite ignores the falsy (null) entry.
+const plugins = [
+  json_gz_plugin as unknown,
+  raw_text_plugin as unknown,
+  starry_night_theme_plugin as unknown,
+  sveltekit() as unknown,
+  live_examples() as unknown,
+  (process.env.VITEST ? mock_vscode() : null) as unknown,
+] as PluginOption[]
+
 export default defineConfig({
   ...config, // shared lint/fmt/build from @janosh/vite-config (dotfiles)
+  plugins,
   fmt: {
     ...config.fmt,
     printWidth: 95,
@@ -125,18 +138,6 @@ export default defineConfig({
     // installed in root CI, so type-aware rules can't resolve its imports here.
     ignorePatterns: [`static/**`, `src/scripts/**`, `extensions/dash/**`],
   },
-  // sveltekit()/live-examples ship their own copy of vite's Plugin type; comparing
-  // the array against vite-plus's PluginOption exceeds TS's instantiation depth
-  // (TS2321). Erase through `unknown` to skip that comparison; vite ignores the
-  // falsy (null) entry at runtime.
-  plugins: [
-    json_gz_plugin,
-    raw_text_plugin,
-    starry_night_theme_plugin,
-    sveltekit(),
-    live_examples(),
-    process.env.VITEST ? mock_vscode() : null,
-  ] as unknown as PluginOption[],
 
   test: {
     environment: `happy-dom`,
