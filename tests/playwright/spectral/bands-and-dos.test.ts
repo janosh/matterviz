@@ -1,9 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { get_chart_svg, IS_CI } from '../helpers'
+import { get_chart_svg } from '../helpers'
 
 test.describe(`BandsAndDos Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Bands tests timeout in CI`)
     await page.goto(`/test/bands-and-dos`, { waitUntil: `networkidle` })
   })
 

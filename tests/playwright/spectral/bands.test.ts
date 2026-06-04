@@ -1,10 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { IS_CI } from '../helpers'
 
 // SVG path elements have zero-size bounding boxes, so force: true is needed for hover
 test.describe(`Bands Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Bands tests timeout in CI`)
     await page.goto(`/test/bands`, { waitUntil: `networkidle` })
   })
 
@@ -255,8 +253,9 @@ test.describe(`Bands Component Tests`, () => {
     const plot = page.getByTestId(`phonon-units-highlight-plot`)
     await expect(plot).toBeVisible()
 
-    const y_axis_text = (await plot.locator(`g.y-axis text`).allTextContents()).join(` `)
-    expect(y_axis_text).toContain(`cm-1`)
+    // unit lives in the y-axis label ("Frequency (cm-1)"), not the tick text
+    const y_label = await plot.locator(`.axis-label.y-label`).textContent()
+    expect(y_label).toContain(`cm-1`)
 
     const fill_paths = plot.locator(`svg path`)
     await expect(fill_paths.first()).toBeVisible()
