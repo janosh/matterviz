@@ -54,11 +54,7 @@ test.describe(`Periodic Table`, () => {
   test(`can hover random elements without throwing errors`, async ({ page }) => {
     const logs: string[] = []
     page.on(`console`, (msg) => {
-      const text = msg.text()
-      // svelte-multiselect logs a self-contradictory validation noise for its own
-      // default (`maxOptions must be undefined or a positive integer, got undefined`)
-      const is_library_noise = text.includes(`MultiSelect: maxOptions`)
-      if (msg.type() === `error` && !is_library_noise) logs.push(text)
+      if (msg.type() === `error`) logs.push(msg.text())
     })
     await page.goto(`/periodic-table`, { waitUntil: `networkidle` })
 

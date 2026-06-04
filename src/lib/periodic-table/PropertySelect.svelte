@@ -29,6 +29,7 @@
   {options}
   {selected}
   maxSelect={1}
+  maxOptions={options.length}
   {minSelect}
   bind:value
   placeholder="Select a heatmap"
