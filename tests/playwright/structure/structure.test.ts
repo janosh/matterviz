@@ -2820,6 +2820,28 @@ test.describe(`Element Visibility Toggle`, () => {
     await goto_structure_test(page)
   })
 
+  test(`atom-color mode toggle reveals on every viewer hover, not just the first`, async ({
+    page,
+  }) => {
+    // Regression: `viewer_active` was a `$derived(hovered || focused)` reading the $bindable
+    // `hovered` prop, which went stale after the first hover/leave cycle so the mode toggle (and
+    // gizmo) only appeared on the very first mouseenter until page reload.
+    await page.setViewportSize({ width: 1400, height: 1200 })
+    const wrapper = page.locator(`#test-structure`)
+    const toggle = page.locator(`#test-structure .atom-legend .mode-toggle`)
+    const box = await page.locator(`#test-structure canvas`).boundingBox()
+    if (!box) throw new Error(`canvas has no bounding box`)
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      await page.mouse.move(box.x + 40, box.y + 40) // hover the canvas (not the icon)
+      await expect(toggle).toHaveCSS(`opacity`, `1`)
+      await expect(wrapper).toHaveClass(/gizmo-visible/)
+      await page.mouse.move(3, 3) // move off the viewer
+      await expect(toggle).toHaveCSS(`opacity`, `0`)
+      await expect(wrapper).not.toHaveClass(/gizmo-visible/)
+    }
+  })
+
   test(`toggle buttons are present on element badges`, async ({ page }) => {
     const legend = page.locator(`#test-structure .atom-legend`)
     await expect(legend).toBeVisible()
