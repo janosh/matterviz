@@ -94,7 +94,7 @@ describe(`watch_theme lifecycle`, () => {
     expect(live_observers).toBe(0) // b's shadow observer + shared doc observer all gone
   })
 
-  test(`notifies every current widget on a theme change, never a stale/disposed one`, async () => {
+  test(`debounces mutations and notifies every current widget, never a stale/disposed one`, async () => {
     vi.useFakeTimers()
     try {
       const { watch_theme } = await import(`../../extensions/anywidget/theme-detection`)
@@ -106,9 +106,14 @@ describe(`watch_theme lifecycle`, () => {
       const dispose_a = watch_theme(el_a, (theme) => seen_a.push(theme))
       watch_theme(el_b, (theme) => seen_b.push(theme))
 
-      prefers_dark = true // flip system preference, then signal a DOM change
+      prefers_dark = true // flip system preference, then signal a burst of changes
       trigger_dom_mutation()
+      trigger_dom_mutation()
+      trigger_dom_mutation()
+      // debounce: a burst collapses into one pending timer (old code queued 3)
+      expect(vi.getTimerCount()).toBe(1)
       vi.advanceTimersByTime(20) // past the debounce window
+      expect(vi.getTimerCount()).toBe(0) // timer cleared after it fires
       // both widgets react -- the old code only re-checked the first element's closure
       expect(seen_a).toEqual([`dark`])
       expect(seen_b).toEqual([`dark`])

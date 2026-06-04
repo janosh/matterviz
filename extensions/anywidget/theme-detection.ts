@@ -29,6 +29,9 @@ const element_watchers = new Map<
 // and disconnected with the last (counted via element_watchers.size).
 let doc_observer: MutationObserver | null = null
 let media_query_listener: MediaQueryList | null = null
+// Pending debounce timer shared across all mutation sources; cleared before each
+// reschedule so bursts of mutations collapse into a single notify_theme_change.
+let notify_timer: ReturnType<typeof setTimeout> | null = null
 
 const observe_opts = { attributes: true, attributeFilter: [`class`, `data-theme`] }
 
@@ -148,6 +151,7 @@ function is_dark_color(color: string): boolean | null {
 }
 
 function notify_theme_change(): void {
+  notify_timer = null
   // Re-detect every element's theme; notify only those whose theme changed.
   for (const [element, watcher] of element_watchers) {
     const new_theme = detect_parent_theme(element)
@@ -158,7 +162,11 @@ function notify_theme_change(): void {
   }
 }
 
-const schedule_notify = () => setTimeout(notify_theme_change, 10) // Debounce
+const schedule_notify = () => {
+  // Debounce: cancel any pending notify so only the latest mutation burst fires.
+  if (notify_timer) clearTimeout(notify_timer)
+  notify_timer = setTimeout(notify_theme_change, 10)
+}
 
 function on_dom_mutation(mutations: MutationRecord[]): void {
   if (
