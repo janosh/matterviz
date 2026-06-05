@@ -23,13 +23,14 @@ jobs:
 
       - run: corepack enable && pnpm install
 
-      - name: Copy site data to static
+      # adapter-static won't follow symlinks out of static/, so replace each
+      # static/<dir> -> ../src/site/<dir> symlink with a real copy (auto-discovered)
+      - name: Materialize static data symlinks
         run: |
-          rm -rf static/{molecules,structures,trajectories}
-          cp -r src/site/{molecules,structures,trajectories} static/
-
-      - name: Decompress .json.gz data for rolldown glob resolution
-        run: find src/site -name '*.json.gz' -exec sh -c 'gunzip -k "$1"' _ {} \;
+          for link in static/*; do
+            [ -L "$link" ] || continue
+            case "$(readlink "$link")" in ../src/site/*) rm "$link"; cp -r "src/site/$(basename "$link")" "$link" ;; esac
+          done
 
       - run: pnpm exec vp build
 

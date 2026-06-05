@@ -10,11 +10,10 @@ const diagram_modules = import.meta.glob<DiagramInput>(`./binary/data/*.json`, {
   import: `default`,
 })
 
-// Auto-discover TDB files
-const tdb_modules = import.meta.glob<string>(`./tdb/*.tdb`, {
+// TDB files served at /phase-diagrams/tdb/<name> via the static symlink (url built from the
+// path key, not the glob value)
+const tdb_modules = import.meta.glob(`$site/phase-diagrams/tdb/*.tdb`, {
   query: `?url`,
-  eager: true,
-  import: `default`,
 })
 
 // Build all diagrams from JSON data
@@ -37,8 +36,9 @@ export const binary_phase_diagram_files: FileInfo[] = Array.from(built_diagrams.
 )
 
 // Convert glob results to FileInfo array for TDB files
-export const tdb_files: FileInfo[] = Object.entries(tdb_modules).map(([path, url]) => {
+export const tdb_files: FileInfo[] = Object.keys(tdb_modules).map((path) => {
   const name = path.split(`/`).pop() ?? path
+  const url = path.replace(`/src/site`, ``) // e.g. /phase-diagrams/tdb/Al-Fe.tdb
   return { name, url, type: `tdb`, category: `TDB`, category_icon: `📄` }
 })
 
