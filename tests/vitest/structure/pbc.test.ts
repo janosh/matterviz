@@ -959,3 +959,24 @@ describe(`wrap_to_unit_cell`, () => {
     }
   })
 })
+
+describe(`find_image_atoms respects lattice.pbc`, () => {
+  test(`skips image generation along non-periodic axes (slab)`, () => {
+    // Corner atom in a fully periodic cell generates images along all 3 dims
+    const periodic = make_crystal(5, [[`Na`, [0, 0, 0]]])
+    const periodic_images = find_image_atoms(periodic)
+    expect(periodic_images).toHaveLength(7) // 2^3 - 1 corner images
+
+    // Slab with vacuum along z: no image may be shifted along z
+    const slab = make_crystal(5, [[`Na`, [0, 0, 0]]], { pbc: [true, true, false] })
+    const slab_images = find_image_atoms(slab)
+    expect(slab_images).toHaveLength(3) // 2^2 - 1 in-plane images
+    for (const [, , img_abc] of slab_images) expect(img_abc[2]).toBe(0)
+
+    // Fully non-periodic: no images at all
+    const molecule_like = make_crystal(5, [[`Na`, [0, 0, 0]]], {
+      pbc: [false, false, false],
+    })
+    expect(find_image_atoms(molecule_like)).toHaveLength(0)
+  })
+})

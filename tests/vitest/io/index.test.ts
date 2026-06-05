@@ -3,13 +3,20 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 globalThis.fetch = vi.fn()
 
-// decompress_data is a static import in url-drop.ts, so the gzip test below can't mock it via a
-// dynamic import. Mock it through the module registry (hoisted) instead, keeping the other real
-// exports so unrelated decompress paths are unaffected.
-const { mock_decompress } = vi.hoisted(() => ({ mock_decompress: vi.fn() }))
+// decompress helpers are static imports in url-drop.ts, so the gzip tests below can't mock them
+// via a dynamic import. Mock them through the module registry (hoisted) instead, keeping the
+// other real exports so unrelated decompress paths are unaffected.
+const { mock_decompress, mock_decompress_binary } = vi.hoisted(() => ({
+  mock_decompress: vi.fn(),
+  mock_decompress_binary: vi.fn(),
+}))
 vi.mock(`$lib/io/decompress`, async (import_original) => {
   const actual = await import_original<Record<string, unknown>>()
-  return { ...actual, decompress_data: mock_decompress }
+  return {
+    ...actual,
+    decompress_data: mock_decompress,
+    decompress_data_binary: mock_decompress_binary,
+  }
 })
 
 describe(`handle_url_drop`, () => {
@@ -117,6 +124,7 @@ describe(`load_from_url`, () => {
     [`https://example.com/model.npz`, `model.npz`],
     [`https://example.com/data.pkl`, `data.pkl`],
     [`https://example.com/output.dat`, `output.dat`],
+    [`https://example.com/scan.raw`, `scan.raw`], // Bruker/Rigaku XRD binary
   ])(`binary extensions %s`, async (url, expected_filename) => {
     const { received_content, received_filename } = await load_test_url(
       url,
@@ -155,45 +163,65 @@ describe(`load_from_url`, () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1) // Only one fetch for known text formats
   })
 
-  test(`gzip files with content-encoding are handled as text`, async () => {
-    const mock_response = new Response(`decompressed content`, {
-      headers: { 'content-encoding': `gzip` },
-    })
-    globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
-
-    let received_content: string | ArrayBuffer | null = null
-    let received_filename: string | null = null
-
-    await load_from_url(`https://example.com/file.xyz.gz`, (content, filename) => {
-      received_content = content
-      received_filename = filename
-    })
-
-    expect(typeof received_content).toBe(`string`)
-    expect(received_content).toBe(`decompressed content`)
-    expect(received_filename).toBe(`file.xyz.gz`)
+  // content-encoding gzip: browser already decompressed the stored .gz, so the body is
+  // the inner file — text formats arrive as string, binary inner formats (.h5.gz) as
+  // ArrayBuffer that a text decode would corrupt
+  test.each([
+    [`file.xyz.gz`, `decompressed content`],
+    [`data.h5.gz`, new Uint8Array([0x89, 0x48, 0x44, 0x46]).buffer],
+  ] as const)(`content-encoding gzip body passes through: %s`, async (name, body) => {
+    const { received_content, received_filename } = await load_test_url(
+      `https://example.com/${name}`,
+      body,
+      { 'content-encoding': `gzip` },
+    )
+    expect(received_content).toBe(body)
+    expect(received_filename).toBe(name)
   })
 
-  test(`gzip files without content-encoding are decompressed`, async () => {
-    mock_decompress.mockResolvedValue(`decompressed content`)
+  // No content-encoding: the .gz body is gunzipped manually, the .gz suffix stripped
+  // from the filename, and binary inner formats (.h5.gz) stay ArrayBuffer
+  test.each([
+    [`file.xyz.gz`, `file.xyz`, `string`],
+    [`x.h5.gz`, `x.h5`, `binary`],
+  ] as const)(`manual gunzip: %s -> %s (%s)`, async (name, expected_name, kind) => {
+    const inner = new TextEncoder().encode(`inner bytes`).buffer
+    mock_decompress_binary.mockResolvedValue(inner)
+    const { received_content, received_filename } = await load_test_url(
+      `https://example.com/${name}`,
+      new ArrayBuffer(8),
+      { 'content-type': `application/octet-stream` },
+    )
+    expect(mock_decompress_binary).toHaveBeenCalledWith(new ArrayBuffer(8), `gzip`)
+    expect(received_content).toBe(kind === `string` ? `inner bytes` : inner)
+    expect(received_filename).toBe(expected_name)
+  })
 
-    const mock_response = create_mock_response(new ArrayBuffer(8), {
-      'content-type': `application/octet-stream`,
-    })
-    globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
+  test(`propagates decompress errors instead of falling through to a text fetch`, async () => {
+    // Once magic bytes commit to gzip, a decompress failure must throw rather than be
+    // swallowed and re-fetched as text (which would parse the binary bytes as garbage)
+    mock_decompress_binary.mockRejectedValue(new Error(`corrupt gzip`))
+    const gzip_header = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)]).buffer
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(create_mock_response(gzip_header, {}))
+      .mockResolvedValue(create_mock_response(new ArrayBuffer(8), {}))
 
-    let received_content: string | ArrayBuffer | null = null
-    let received_filename: string | null = null
+    await expect(load_from_url(`https://example.com/blob-uuid`, () => {})).rejects.toThrow(
+      `corrupt gzip`,
+    )
+  })
 
-    await load_from_url(`https://example.com/file.xyz.gz`, (content, filename) => {
-      received_content = content
-      received_filename = filename
-    })
-
-    expect(typeof received_content).toBe(`string`)
-    expect(received_content).toBe(`decompressed content`)
-    expect(received_filename).toBe(`file.xyz`)
-    expect(mock_decompress).toHaveBeenCalledWith(new ArrayBuffer(8), `gzip`)
+  test(`query string and hash are stripped before extension detection`, async () => {
+    // Pre-signed URLs like traj.h5?X-Amz-Expires=300 must still hit the binary
+    // path and not leak the query string into the callback filename
+    const { received_content, received_filename } = await load_test_url(
+      `https://example.com/data.h5?sig=abc`,
+      new ArrayBuffer(8),
+      { 'content-type': `application/octet-stream` },
+    )
+    expect(received_content).toBeInstanceOf(ArrayBuffer)
+    expect(received_filename).toBe(`data.h5`)
   })
 
   test.each([
@@ -273,14 +301,24 @@ describe(`load_from_url`, () => {
     },
   )
 
-  test(`sniffed gzip without .gz extension is decompressed`, async () => {
-    mock_decompress.mockResolvedValue(`decompressed content`)
-    const header = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)])
+  // Sniffed gzip magic on a URL without .gz extension is decompressed; a binary inner
+  // extension from Content-Disposition (relax.traj.gz) keeps the payload an ArrayBuffer
+  test.each([
+    [`data.bin`, `string`, {}],
+    [
+      `relax.traj`,
+      `binary`,
+      { 'content-disposition': `attachment; filename="relax.traj.gz"` },
+    ],
+  ] as const)(`sniffed gzip -> %s (%s)`, async (expected_name, kind, headers) => {
+    const inner = new TextEncoder().encode(`inner bytes`).buffer
+    mock_decompress_binary.mockResolvedValue(inner)
+    const gzip_header = new Uint8Array([0x1f, 0x8b, ...Array(14).fill(0)]).buffer
     const full_body = new ArrayBuffer(100)
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValueOnce(create_mock_response(header.buffer, {}))
-      .mockResolvedValueOnce(create_mock_response(full_body, {}))
+      .mockResolvedValueOnce(create_mock_response(gzip_header, {}))
+      .mockResolvedValueOnce(create_mock_response(full_body, headers))
 
     let received_content: string | ArrayBuffer | null = null
     let received_filename: string | null = null
@@ -289,9 +327,9 @@ describe(`load_from_url`, () => {
       received_filename = filename
     })
 
-    expect(received_content).toBe(`decompressed content`)
-    expect(received_filename).toBe(`data.bin`)
-    expect(mock_decompress).toHaveBeenCalledWith(full_body, `gzip`)
+    expect(received_content).toBe(kind === `string` ? `inner bytes` : inner)
+    expect(received_filename).toBe(expected_name)
+    expect(mock_decompress_binary).toHaveBeenCalledWith(full_body, `gzip`)
   })
 
   test(`blob: object URL with text content passes UUID basename to callback`, async () => {
@@ -408,6 +446,19 @@ describe(`load_from_url`, () => {
         `invalid%ZZencoding.xyz`,
         `invalid percent-encoding returns raw value`,
       ],
+      // RFC 5987 grammar is charset'language'value — strip the full prefix
+      [
+        `filename*=UTF-8'en'na%C3%AFve.cif`,
+        `naïve.cif`,
+        `RFC 5987 filename* with charset and language tag`,
+      ],
+      // Non-UTF-8 charset prefix must still be stripped; %FC is invalid UTF-8
+      // so decodeURIComponent fails and the raw (prefix-stripped) value is kept
+      [
+        `filename*=iso-8859-1''f%FCr.txt`,
+        `f%FCr.txt`,
+        `RFC 5987 filename* with non-UTF-8 charset`,
+      ],
     ])(`%s -> %s (%s)`, async (disposition, expected, _desc) => {
       const mock_response = new Response(`content`, {
         headers: {
@@ -490,26 +541,33 @@ describe(`load_from_url`, () => {
   })
 
   describe(`non-gzip binary files with content-encoding`, () => {
-    test(`gzip content-encoding on non-.gz URL returns text`, async () => {
-      const mock_response = new Response(`decompressed content`, {
+    test(`gzip content-encoding on binary extension stays ArrayBuffer`, async () => {
+      // Content-Encoding is transparent: fetch auto-decompresses, so the body is
+      // the original binary and must not be lossily decoded to text
+      const payload = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe, 0x00, 0x80])
+      const mock_response = new Response(payload, {
         headers: {
           'content-encoding': `gzip`,
-          'content-type': `text/plain`,
+          'content-type': `application/octet-stream`,
         },
+      })
+      Object.defineProperty(mock_response, `arrayBuffer`, {
+        value: () => Promise.resolve(payload.buffer),
       })
       globalThis.fetch = vi.fn().mockResolvedValue(mock_response)
 
       let received_content: string | ArrayBuffer | null = null
       let received_filename: string | null = null
       await load_from_url(
-        `https://example.com/data.npz`, // binary extension but with gzip content-encoding
+        `https://example.com/data.npz`, // binary extension with gzip content-encoding
         (content, filename) => {
           received_content = content
           received_filename = filename
         },
       )
 
-      expect(typeof received_content).toBe(`string`)
+      expect(received_content).toBeInstanceOf(ArrayBuffer)
+      expect(new Uint8Array(received_content as unknown as ArrayBuffer)).toEqual(payload)
       expect(received_filename).toBe(`data.npz`)
     })
   })

@@ -35,15 +35,17 @@ function catmull_rom_coeffs(t: number): [number, number, number, number] {
   return [c1, c2, c3, c4]
 }
 
-// Tricubic interpolation with cached wrap indices and precomputed coefficients
+// Tricubic interpolation with cached wrap indices and precomputed coefficients.
+// px/py/pz are the wrap periods (unique points per axis): n for periodic grids,
+// n−1 for endpoint-inclusive grids whose last point duplicates the first.
 function tricubic_interpolate(
   grid: number[][][],
   fx: number,
   fy: number,
   fz: number,
-  nx: number,
-  ny: number,
-  nz: number,
+  px: number,
+  py: number,
+  pz: number,
 ): number {
   // Get integer and fractional parts
   const ix = Math.floor(fx)
@@ -55,14 +57,13 @@ function tricubic_interpolate(
   const [cy0, cy1, cy2, cy3] = catmull_rom_coeffs(fy - iy)
   const [cz0, cz1, cz2, cz3] = catmull_rom_coeffs(fz - iz)
 
-  // Precompute wrapped indices (avoid modulo in inner loop)
-  const wrap_x = (v: number) => ((v % nx) + nx) % nx
-  const wrap_y = (v: number) => ((v % ny) + ny) % ny
-  const wrap_z = (v: number) => ((v % nz) + nz) % nz
-
-  const wx = [wrap_x(ix - 1), wrap_x(ix), wrap_x(ix + 1), wrap_x(ix + 2)]
-  const wy = [wrap_y(iy - 1), wrap_y(iy), wrap_y(iy + 1), wrap_y(iy + 2)]
-  const wz = [wrap_z(iz - 1), wrap_z(iz), wrap_z(iz + 1), wrap_z(iz + 2)]
+  // Wrapped stencil indices (modulo hoisted out of the inner loop); a zero period
+  // (single-point axis) has no neighbours, so collapse the stencil onto index 0
+  const stencil = (idx: number, period: number) =>
+    [idx - 1, idx, idx + 1, idx + 2].map((v) =>
+      period > 0 ? ((v % period) + period) % period : 0,
+    )
+  const [wx, wy, wz] = [stencil(ix, px), stencil(iy, py), stencil(iz, pz)]
 
   // Interpolate along z, then y, then x (fully inlined)
   let result = 0
@@ -86,26 +87,32 @@ function tricubic_interpolate(
   return result
 }
 
-// Upsample a 3D grid using tricubic interpolation for smoother surfaces
-function upsample_grid(grid: number[][][], factor: number): number[][][] {
+// Upsample a 3D grid with tricubic interpolation, preserving the grid convention:
+// endpoint-inclusive (BXSF, point i ↔ frac i/(n−1)) vs periodic (FRMSF, i ↔ i/n).
+// Mixing conventions rescales the surface and distorts the zone boundary.
+function upsample_grid(grid: number[][][], factor: number, periodic = false): number[][][] {
   if (factor <= 1) return grid
 
-  const nx = grid.length
-  const ny = grid[0]?.length || 0
-  const nz = grid[0]?.[0]?.length || 0
+  // Endpoint-inclusive grids carry one duplicated boundary sample per axis; the wrap
+  // period (count of unique points) doubles as the resampling span numerator
+  const endpoint = periodic ? 0 : 1
+  const dims = [grid.length, grid[0]?.length || 0, grid[0]?.[0]?.length || 0]
+  const [px, py, pz] = dims.map((n) => n - endpoint)
+  const [new_nx, new_ny, new_nz] = [px, py, pz].map((p) => Math.round(p * factor) + endpoint)
 
-  const new_nx = Math.round(nx * factor)
-  const new_ny = Math.round(ny * factor)
-  const new_nz = Math.round(nz * factor)
-
-  // Precompute fractional coordinates for each axis
-  const fx_arr = new Float64Array(new_nx)
-  const fy_arr = new Float64Array(new_ny)
-  const fz_arr = new Float64Array(new_nz)
-
-  for (let ix = 0; ix < new_nx; ix++) fx_arr[ix] = (ix / new_nx) * nx
-  for (let iy = 0; iy < new_ny; iy++) fy_arr[iy] = (iy / new_ny) * ny
-  for (let iz = 0; iz < new_nz; iz++) fz_arr[iz] = (iz / new_nz) * nz
+  // Map new index → source coordinate; a single-point axis (span 0) pins its lone
+  // output to source 0 to avoid 0/0 = NaN
+  const src_coords = (new_n: number, period: number) => {
+    const span = new_n - endpoint
+    return Float64Array.from({ length: new_n }, (_, idx) =>
+      span > 0 ? (idx / span) * period : 0,
+    )
+  }
+  const [fx_arr, fy_arr, fz_arr] = [
+    [new_nx, px],
+    [new_ny, py],
+    [new_nz, pz],
+  ].map(([new_n, period]) => src_coords(new_n, period))
 
   // Preallocate output grid
   const new_grid: number[][][] = Array(new_nx)
@@ -117,7 +124,7 @@ function upsample_grid(grid: number[][][], factor: number): number[][][] {
       const fy = fy_arr[iy]
       const iz_arr = new Float64Array(new_nz)
       for (let iz = 0; iz < new_nz; iz++) {
-        iz_arr[iz] = tricubic_interpolate(grid, fx, fy, fz_arr[iz], nx, ny, nz)
+        iz_arr[iz] = tricubic_interpolate(grid, fx, fy, fz_arr[iz], px, py, pz)
       }
       // Convert Float64Array back to regular array for compatibility
       iy_arr[iy] = Array.from(iz_arr)
@@ -163,17 +170,19 @@ export function extract_fermi_surface(
       // Check if Fermi level intersects this band
       if (!band_intersects_fermi(raw_energies, iso_value)) continue
 
+      // BXSF grids are endpoint-inclusive (store both equivalent k=0 and k=1 → false);
+      // FRMSF grids store k=i/n without the duplicated endpoint (→ true)
+      const periodic = band_data.periodic ?? false
+
       // Apply interpolation for smoother surfaces
       const energies =
         interpolation_factor > 1
-          ? upsample_grid(raw_energies, interpolation_factor)
+          ? upsample_grid(raw_energies, interpolation_factor, periodic)
           : raw_energies
 
       // Extract isosurface using marching cubes
-      // Use periodic: false because BXSF grids include both endpoints (k=0 and k=1)
-      // which are equivalent due to BZ periodicity. This matches scikit-image behavior.
       const mc_result = marching_cubes(energies, iso_value, band_data.k_lattice, {
-        periodic: false,
+        periodic,
         interpolate: true,
       })
 
@@ -201,6 +210,7 @@ export function extract_fermi_surface(
           band_data.velocities[spin_idx][band_idx],
           band_data.k_lattice,
           band_data.k_grid,
+          periodic,
         )
         isosurface.avg_velocity =
           isosurface.properties.reduce((s, v) => s + v, 0) / isosurface.properties.length
@@ -210,7 +220,7 @@ export function extract_fermi_surface(
       if (compute_dimensionality) {
         const { dimensionality, orientation } = analyze_surface_topology(
           isosurface,
-          null, // BZ data not used for topology analysis since we don't clip to Wigner-Seitz
+          band_data.k_lattice,
         )
         isosurface.dimensionality = dimensionality
         isosurface.orientation = orientation
@@ -285,28 +295,25 @@ function compute_fermi_velocities(
   velocity_grid: Vec3[][][],
   k_lattice: Matrix3x3,
   k_grid: Vec3,
+  periodic = false,
 ): number[] {
   const [nx, ny, nz] = k_grid
   const velocities: number[] = []
 
-  // Inverse of k_lattice for Cartesian to fractional conversion
-  const k_inv = math.matrix_inverse_3x3(k_lattice)
+  // Invert the marching-cubes transform cart = k_latticeᵀ·(frac − 0.5): frac =
+  // (k_latticeᵀ)⁻¹·cart + 0.5. Omitting the transpose samples wrong k-points for
+  // non-symmetric lattices; skipping the +0.5 is off by half a reciprocal cell.
+  const k_inv = math.matrix_inverse_3x3(math.transpose_3x3_matrix(k_lattice))
+  // Grid point i sits at frac i/(n−1) (endpoint-inclusive BXSF) or i/n (periodic)
+  const [sx, sy, sz] = periodic ? [nx, ny, nz] : [nx - 1, ny - 1, nz - 1]
+  // Clamp guards float jitter at the cell boundary
+  const clamp01 = (val: number) => Math.min(Math.max(val, 0), 1)
 
   for (const vertex of surface.vertices) {
-    // Convert Cartesian to fractional coordinates
-    const frac = math.mat3x3_vec3_multiply(k_inv, vertex)
-
-    // Wrap to [0, 1)
-    const wrapped: Vec3 = [
-      ((frac[0] % 1) + 1) % 1,
-      ((frac[1] % 1) + 1) % 1,
-      ((frac[2] % 1) + 1) % 1,
-    ]
-
-    // Grid indices (with interpolation)
-    const gx = wrapped[0] * nx
-    const gy = wrapped[1] * ny
-    const gz = wrapped[2] * nz
+    const frac = math.mat3x3_vec3_multiply(k_inv, vertex) // centered, in [-0.5, 0.5]
+    const gx = clamp01(frac[0] + 0.5) * sx
+    const gy = clamp01(frac[1] + 0.5) * sy
+    const gz = clamp01(frac[2] + 0.5) * sz
 
     // Trilinear interpolation of velocity
     const velocity = trilinear_interpolate_vec3(velocity_grid, gx, gy, gz)
@@ -361,16 +368,19 @@ function trilinear_interpolate_vec3(grid: Vec3[][][], x: number, y: number, z: n
 // Analyze surface topology to determine dimensionality
 function analyze_surface_topology(
   surface: Isosurface,
-  bz_data: { vertices: Vec3[] } | null,
+  k_lattice: Matrix3x3,
 ): { dimensionality: SurfaceDimensionality; orientation: Vec3 | null } {
   if (surface.vertices.length === 0) {
     return { dimensionality: `3D`, orientation: null }
   }
 
-  // Check if surface spans the full BZ in each direction
-  const bz_extent = bz_data
-    ? math.compute_bounding_box(bz_data.vertices)
-    : { min: [-1, -1, -1] as Vec3, max: [1, 1, 1] as Vec3 }
+  // Vertices live in the centered parallelepiped k_latticeᵀ·[-0.5, 0.5]³, whose bounding
+  // box along Cartesian axis j has half-extent 0.5·Σᵢ|k_lattice[i][j]| (a hardcoded box
+  // would make dimensionality depend on the absolute lattice scale)
+  const half_extent = [0, 1, 2].map(
+    (axis_idx) => 0.5 * k_lattice.reduce((sum, row) => sum + Math.abs(row[axis_idx]), 0),
+  ) as Vec3
+  const bz_extent = { min: half_extent.map((ext) => -ext) as Vec3, max: half_extent }
 
   const surface_extent = math.compute_bounding_box(surface.vertices)
 

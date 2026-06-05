@@ -1155,3 +1155,27 @@ test(`electroneg_ratio ignores weak bonds for closest neighbor penalty`, () => {
   expect(na_na).toBeUndefined()
   expect(na_cl).toBeDefined()
 })
+
+describe(`remap_bonds_after_deletion`, () => {
+  const bond = (
+    site_idx_1: number,
+    site_idx_2: number,
+    extra: Partial<StructureBond> = {},
+  ): StructureBond => ({ site_idx_1, site_idx_2, order: 1, ...extra })
+
+  const shifted: Partial<StructureBond> = { order: 2, cell_shift: [1, 0, 0] }
+  test.each([
+    [`decrements indices past deleted site`, [bond(1, 2)], [0], [bond(0, 1)]],
+    [`drops bonds touching deleted sites`, [bond(0, 2)], [2], []],
+    [
+      `mixed drop and shift`, // only the 3-4 bond survives, shifted down by 2
+      [bond(0, 1), bond(1, 3), bond(3, 4), bond(2, 4)],
+      [1, 2],
+      [bond(1, 2)],
+    ],
+    [`no deletions is a no-op`, [bond(0, 1), bond(1, 2)], [], [bond(0, 1), bond(1, 2)]],
+    [`preserves order and cell_shift`, [bond(2, 3, shifted)], [0], [bond(1, 2, shifted)]],
+  ])(`%s`, (_desc, bonds, deleted, expected) => {
+    expect(bonding.remap_bonds_after_deletion(bonds, new Set(deleted))).toEqual(expected)
+  })
+})

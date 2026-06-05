@@ -545,7 +545,8 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
     const symmetry = structure.symmetry as Record<string, unknown>
     const { space_group_number, space_group_symbol } = symmetry
     if (typeof space_group_symbol === `string` && space_group_symbol) {
-      lines.push(`_space_group_name_H-M_alt ${space_group_symbol}`)
+      // Quote H-M symbols: their spaces (e.g. 'F m -3 m') would break CIF tokenization
+      lines.push(`_space_group_name_H-M_alt '${space_group_symbol}'`)
     }
     if (
       (typeof space_group_number === `number` || typeof space_group_number === `string`) &&
@@ -556,6 +557,10 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   }
 
   lines.push(``)
+
+  // Explicit identity-only symmetry-ops loop (like pymatgen's CifWriter): sites are the
+  // full P1 list, so without it parsers would re-apply the H-M ops and multiply sites
+  lines.push(`loop_`, `_symmetry_equiv_pos_as_xyz`, `  'x, y, z'`, ``)
 
   // Atom site loop header
   lines.push(`loop_`)
@@ -570,37 +575,32 @@ export function structure_to_cif_str(structure?: AnyStructure): string {
   const cart_to_frac =
     lattice.matrix?.length === 3 ? math.create_cart_to_frac(lattice.matrix) : null
 
-  // Atom sites
+  // Atom sites: one row per species entry so disordered (multi-species) sites
+  // keep every component with its own occupancy instead of only species[0]
   for (let idx = 0; idx < structure.sites.length; idx++) {
     const site = structure.sites[idx]
     if (!site) continue // Skip if site is undefined
 
-    // Extract element symbol from species
-    let element_symbol = `X` // default fallback
-    let occupancy = 1
-    if (site.species && Array.isArray(site.species) && site.species.length > 0) {
-      const first_species = site.species[0]
-      if (first_species && `element` in first_species && first_species.element) {
-        element_symbol = first_species.element
-        occupancy = first_species?.occu ?? 1
-      }
-    }
-
     // Get fractional coordinates
     let frac_coords: number[]
-    if (site.abc && Array.isArray(site.abc) && site.abc.length >= 3) {
+    if (Array.isArray(site.abc) && site.abc.length >= 3) {
       frac_coords = site.abc.slice(0, 3)
     } else if (site.xyz?.length >= 3 && cart_to_frac) {
       frac_coords = cart_to_frac(site.xyz)
     } else throw new Error(`No valid coordinates found for site ${idx}`)
+    const coords_str = frac_coords.map((coord) => coord.toFixed(8)).join(` `)
 
-    // Format: label element_symbol x y z
-    const label = site.label || `${element_symbol}${idx + 1}`
-    lines.push(
-      `${label} ${element_symbol} ${frac_coords[0].toFixed(8)} ${frac_coords[1].toFixed(
-        8,
-      )} ${frac_coords[2].toFixed(8)} ${occupancy.toFixed(8)}`,
-    )
+    const species_list = site.species?.length ? site.species : [{ element: `X`, occu: 1 }]
+    for (const [spec_idx, species] of species_list.entries()) {
+      const elem = species?.element || `X`
+      // Row format: label element x y z occupancy. Labels must be unique per row,
+      // so disordered sites get a per-species suffix.
+      const label =
+        species_list.length > 1
+          ? `${elem}${idx + 1}_${spec_idx}`
+          : site.label || `${elem}${idx + 1}`
+      lines.push(`${label} ${elem} ${coords_str} ${(species?.occu ?? 1).toFixed(8)}`)
+    }
   }
 
   return lines.join(`\n`)

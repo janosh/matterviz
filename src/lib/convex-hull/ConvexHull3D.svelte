@@ -436,7 +436,7 @@
     const current_selection = helpers.current_entry(selected_entry, plot_entries)
     const stale_selection = selected_entry && !current_selection
     if (stale_selection) selected_entry = null
-    else if (current_selection && current_selection !== selected_entry) {
+    else if (current_selection && !helpers.same_entry(current_selection, selected_entry)) {
       selected_entry = current_selection
     }
     const current_hover = helpers.current_entry(hover_data?.entry, plot_entries)

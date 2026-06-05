@@ -62,12 +62,16 @@ export function find_image_atoms(
     return vec_len > 0 ? PHYSICAL_TOLERANCE / vec_len : 0.05
   })
 
+  // Respect per-axis periodicity: no images across non-periodic (vacuum) directions
+  const pbc: Pbc = structure.lattice.pbc ?? [true, true, true]
+
   for (const [idx, site] of structure.sites.entries()) {
     // Find edge dimensions and translation directions
     const edge_dims: { dim: number; direction: number }[] = []
 
     // Find boundary dimensions
     for (let dim = 0; dim < 3; dim++) {
+      if (!pbc[dim]) continue
       const coord = site.abc[dim]
       const dim_tolerance = tolerances[dim]
       if (Math.abs(coord) < dim_tolerance) edge_dims.push({ dim, direction: 1 })

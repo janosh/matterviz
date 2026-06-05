@@ -57,7 +57,7 @@
   import { get_property_colors } from './atom-properties'
   import AtomLegend from './AtomLegend.svelte'
   import CellSelect from './CellSelect.svelte'
-  import { BOND_ORDER_OPTIONS, merge_bond_edits } from './bonding'
+  import { BOND_ORDER_OPTIONS, merge_bond_edits, remap_bonds_after_deletion } from './bonding'
   import type { StructureHandlerData } from './index'
   import { MAX_SELECTED_SITES } from './measure'
   import { normalize_fractional_coords, parse_any_structure } from './parse'
@@ -1226,9 +1226,19 @@
           const to_delete = scene_to_structure_indices(selected_sites, true)
           const n_deleted = to_delete.size
           clear_selection()
+          // Remap explicit bond metadata so surviving bonds track shifted site indices.
+          // structure_with_bonds prefers the bindable `bonds` prop, so remap that too.
+          if (bonds !== undefined) bonds = remap_bonds_after_deletion(bonds, to_delete)
+          const old_bonds = structure.properties?.bonds
           structure = {
             ...structure,
             sites: structure.sites.filter((_, idx) => !to_delete.has(idx)),
+            ...(old_bonds && {
+              properties: {
+                ...structure.properties,
+                bonds: remap_bonds_after_deletion(old_bonds, to_delete),
+              },
+            }),
           }
           // Clear per-site overrides since indices shifted after deletion
           if (site_radius_overrides?.size > 0) site_radius_overrides.clear()

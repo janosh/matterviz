@@ -436,8 +436,10 @@
   const selected_scatter_point = $derived.by(() => {
     const entry = selected_entry
     if (!entry) return null
-    const idx = visible_entries.findIndex((vis_entry) => vis_entry === entry)
-    return idx !== -1 ? { series_idx: 0, point_idx: idx } : null
+    // match by entry_id (same_entry), not reference: selected_entry may be a proxied/
+    // different instance than visible_entries elements when bound to a parent $state
+    const idx = visible_entries.findIndex((vis_entry) => helpers.same_entry(vis_entry, entry))
+    return idx === -1 ? null : { series_idx: 0, point_idx: idx }
   })
 
   // Convex hull statistics - compute internally and expose via bindable prop
@@ -493,7 +495,7 @@
   $effect(() => {
     const current_selection = helpers.current_entry(selected_entry, plot_entries)
     if (selected_entry && !current_selection) selected_entry = null
-    else if (current_selection && current_selection !== selected_entry) {
+    else if (current_selection && !helpers.same_entry(current_selection, selected_entry)) {
       selected_entry = current_selection
     }
     const current_hover = helpers.current_entry(hover_data?.entry, plot_entries)

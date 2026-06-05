@@ -624,6 +624,9 @@
         // Read file content directly
         const content = await read_file_content(file)
         await load_trajectory_data(content, file.name)
+        // Don't fall through: drops from IDEs/file managers often also carry a
+        // text/plain payload (the file path) which would clobber the loaded data
+        return
       }
 
       // Check for plain text data (fallback)

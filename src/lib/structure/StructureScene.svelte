@@ -2095,7 +2095,7 @@
         ] as Vec3}
               {@const direct = math.euclidean_dist(pos_i, pos_j)}
               {@const pbc = lattice
-          ? measure.distance_pbc(pos_i, pos_j, lattice.matrix)
+          ? measure.distance_pbc(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
           : direct}
               {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
               <extras.HTML center position={midpoint}>
@@ -2124,8 +2124,10 @@
               }
                 {@const site_a = structure.sites[idx_a]}
                 {@const site_b = structure.sites[idx_b]}
-                {@const v1 = measure.displacement_pbc(center.xyz, site_a.xyz, lattice?.matrix)}
-                {@const v2 = measure.displacement_pbc(center.xyz, site_b.xyz, lattice?.matrix)}
+                {@const disp = (to: Vec3) =>
+            measure.displacement_pbc(center.xyz, to, lattice?.matrix, undefined, lattice?.pbc)}
+                {@const v1 = disp(site_a.xyz)}
+                {@const v2 = disp(site_b.xyz)}
                 {@const n1 = Math.hypot(v1[0], v1[1], v1[2])}
                 {@const n2 = Math.hypot(v2[0], v2[1], v2[2])}
                 {@const angle_deg = measure.angle_between_vectors(v1, v2, `degrees`)}
