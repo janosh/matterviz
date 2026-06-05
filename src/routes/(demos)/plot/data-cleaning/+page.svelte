@@ -6,13 +6,13 @@
     clean_series,
     clean_xyz,
     detect_instability,
-  } from '$lib/plot/data-cleaning'
+  } from '$lib/plot/core/data-cleaning'
   import type {
     CleaningConfig,
     DataSeries,
     InvalidValueMode,
     TruncationMode,
-  } from '$lib/plot/types'
+  } from '$lib/plot/core/types'
 
   // --- Synthetic Data Generators ---
 

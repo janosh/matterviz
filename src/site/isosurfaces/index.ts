@@ -1,10 +1,10 @@
 // Isosurface example data files
 import type { FileInfo } from '$lib/io'
 
-const volumetric_file_modules = import.meta.glob<string>(`./*.gz`, {
+// Example files served at /isosurfaces/<name> via the static symlink (url built from the
+// path key, not the glob value)
+const volumetric_file_modules = import.meta.glob(`$site/isosurfaces/*.gz`, {
   query: `?url`,
-  eager: true,
-  import: `default`,
 })
 
 export interface VolumetricFileInfo extends FileInfo {
@@ -84,9 +84,10 @@ const file_metadata: Record<string, { type: string; label: string; description: 
   },
 }
 
-export const volumetric_files: VolumetricFileInfo[] = Object.entries(volumetric_file_modules)
-  .map(([path, url]) => {
+export const volumetric_files: VolumetricFileInfo[] = Object.keys(volumetric_file_modules)
+  .map((path) => {
     const name = path.split(`/`).pop() ?? path
+    const url = path.replace(`/src/site`, ``) // e.g. /isosurfaces/h2o-density.cube.gz
     const meta = file_metadata[name] ?? {
       type: `unknown`,
       label: name,

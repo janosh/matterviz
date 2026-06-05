@@ -1,4 +1,4 @@
-import { bar_path } from '$lib/plot/svg'
+import { bar_path } from '$lib/plot/core/svg'
 import { describe, expect, it } from 'vitest'
 
 describe(`bar_path`, () => {

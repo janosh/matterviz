@@ -15,7 +15,7 @@ function get_attr(tag: string, attr: `limit` | `range` | `key`): string {
 describe(`InstancedMesh limits`, () => {
   it.each([
     { file_path: `src/lib/structure/StructureScene.svelte`, expected_tags: 1 },
-    { file_path: `src/lib/plot/ScatterPlot3DScene.svelte`, expected_tags: 2 },
+    { file_path: `src/lib/plot/scatter-3d/ScatterPlot3DScene.svelte`, expected_tags: 2 },
   ])(`sets limit equal to range in $file_path`, ({ file_path, expected_tags }) => {
     const tags = get_tags(readFileSync(file_path, `utf8`))
     expect(tags).toHaveLength(expected_tags)

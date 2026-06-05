@@ -2,7 +2,7 @@
 import { PLOT_COLORS } from '$lib/colors'
 import { trajectory_property_config } from '$lib/labels'
 import { get_coefficient_of_variation } from '$lib/math'
-import type { DataSeries } from '$lib/plot/types'
+import type { DataSeries } from '$lib/plot/core/types'
 import type { TrajectoryDataExtractor, TrajectoryMetadata, TrajectoryType } from './index'
 
 // Configuration constants

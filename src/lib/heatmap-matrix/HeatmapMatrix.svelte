@@ -3,7 +3,7 @@
   import { is_color, pick_contrast_color } from '$lib/colors'
   import { format_num } from '$lib/labels'
   import type { AxisConfig } from '$lib/plot'
-  import ColorBar from '$lib/plot/ColorBar.svelte'
+  import ColorBar from '$lib/plot/core/components/ColorBar.svelte'
   import { make_change_detector } from '$lib/utils'
   import * as d3_sc from 'd3-scale-chromatic'
   import { type ComponentProps, onDestroy, onMount, type Snippet } from 'svelte'

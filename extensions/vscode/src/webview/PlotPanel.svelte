@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from '$lib/Icon.svelte'
   import { BarPlot, Histogram, ScatterPlot } from '$lib/plot'
-  import ScatterPlot3D from '$lib/plot/ScatterPlot3D.svelte'
+  import ScatterPlot3D from '$lib/plot/scatter-3d/ScatterPlot3D.svelte'
   import type { Label, RowData } from '$lib/table'
   import HeatmapTable from '$lib/table/HeatmapTable.svelte'
   import {

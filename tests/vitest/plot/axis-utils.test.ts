@@ -1,5 +1,5 @@
 import type { AxisConfig, DataSeries } from '$lib/plot'
-import { create_axis_change_handler, merge_series_state } from '$lib/plot/axis-utils'
+import { create_axis_change_handler, merge_series_state } from '$lib/plot/core/axis-utils'
 import { describe, expect, test, vi } from 'vitest'
 
 describe(`merge_series_state`, () => {

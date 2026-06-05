@@ -116,30 +116,63 @@ function set_svg_font_family(svg: SVGElement) {
   svg.setAttribute(`font-family`, `sans-serif`)
 }
 
-// Serialize an SVG element to a standalone SVG string with proper XML headers.
-// Clones the element to avoid mutation, sets font-family/xmlns, and
-// prepends XML declaration + SVG DOCTYPE. Returns a complete SVG document string
-// suitable for saving to file or further processing.
-export function svg_to_svg_string(svg_element: SVGElement): string {
-  const cloned_svg = svg_element.cloneNode(true) as SVGElement
-
-  set_svg_font_family(cloned_svg)
-  if (!cloned_svg.hasAttribute(`xmlns`)) {
-    cloned_svg.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
+// Copy the given computed-style props from each live SVG element to its clone counterpart;
+// identical structure lets querySelectorAll(`*`) walk both in lockstep. Writes clone-only.
+function inline_computed_styles(
+  live: SVGElement,
+  clone: SVGElement,
+  properties: readonly string[],
+) {
+  const live_els = [live, ...live.querySelectorAll(`*`)]
+  const clone_els = [clone, ...clone.querySelectorAll(`*`)]
+  for (const [idx, live_el] of live_els.entries()) {
+    const computed = getComputedStyle(live_el)
+    for (const prop of properties) {
+      const val = computed.getPropertyValue(prop)
+      if (val) clone_els[idx].setAttribute(prop, val)
+    }
   }
+}
 
-  const svg_string = new XMLSerializer().serializeToString(cloned_svg)
+// Clone, inline the given computed-style props, ensure font-family + xmlns, then serialize
+// to a standalone SVG string. Never mutates the live element.
+function serialize_svg_for_export(
+  svg_element: SVGElement,
+  inline_styles: readonly string[] = [],
+): string {
+  const clone = svg_element.cloneNode(true) as SVGElement
+  if (inline_styles.length) inline_computed_styles(svg_element, clone, inline_styles)
+  set_svg_font_family(clone)
+  if (!clone.hasAttribute(`xmlns`)) {
+    clone.setAttribute(`xmlns`, `http://www.w3.org/2000/svg`)
+  }
+  return new XMLSerializer().serializeToString(clone)
+}
+
+// Wrap serialize_svg_for_export's output as a full SVG document string (XML declaration +
+// DOCTYPE + SVG), suitable for saving to file.
+export function svg_to_svg_string(
+  svg_element: SVGElement,
+  // CSS props to inline from computed styles as presentation attributes; a standalone SVG
+  // drops page stylesheets (e.g. Svelte component styles), so class-based styling is lost.
+  inline_styles: readonly string[] = [],
+): string {
+  const svg_string = serialize_svg_for_export(svg_element, inline_styles)
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n${svg_string}`
 }
 
 // Export SVG element as SVG file (triggers browser download)
-export function export_svg_as_svg(svg_element: SVGElement | null, filename: string): void {
+export function export_svg_as_svg(
+  svg_element: SVGElement | null,
+  filename: string,
+  inline_styles: readonly string[] = [],
+): void {
   if (!svg_element) {
     console.warn(`SVG element not found for export`)
     return
   }
   try {
-    const svg_content = svg_to_svg_string(svg_element)
+    const svg_content = svg_to_svg_string(svg_element, inline_styles)
     download(svg_content, filename, `image/svg+xml;charset=utf-8`)
   } catch (error) {
     console.error(`Error exporting SVG:`, error)
@@ -151,7 +184,11 @@ export function export_svg_as_svg(svg_element: SVGElement | null, filename: stri
 // Image element, and returns the resulting PNG Blob. Rejects if viewBox is
 // missing or dimensions are invalid (zero width/height).
 // DPI is converted to a resolution multiplier relative to 72 DPI baseline, capped at 10x.
-export function svg_to_png_blob(svg_element: SVGElement, png_dpi = 150): Promise<Blob> {
+export function svg_to_png_blob(
+  svg_element: SVGElement,
+  png_dpi = 150,
+  inline_styles: readonly string[] = [],
+): Promise<Blob> {
   const viewBox = svg_element.getAttribute(`viewBox`)?.trim()
   if (!viewBox) return Promise.reject(new Error(`SVG viewBox not found for PNG export`))
 
@@ -178,10 +215,7 @@ export function svg_to_png_blob(svg_element: SVGElement, png_dpi = 150): Promise
   canvas.width = pixel_width
   canvas.height = pixel_height
 
-  const cloned_svg = svg_element.cloneNode(true) as SVGElement
-  set_svg_font_family(cloned_svg)
-
-  const serialized = new XMLSerializer().serializeToString(cloned_svg)
+  const serialized = serialize_svg_for_export(svg_element, inline_styles)
   const svg_blob = new Blob([serialized], { type: `image/svg+xml;charset=utf-8` })
   const svg_data_url = URL.createObjectURL(svg_blob)
 
@@ -218,12 +252,13 @@ export function export_svg_as_png(
   svg_element: SVGElement | null,
   filename: string,
   png_dpi = 150,
+  inline_styles: readonly string[] = [],
 ): void {
   if (!svg_element) {
     console.warn(`SVG element not found for PNG export`)
     return
   }
-  svg_to_png_blob(svg_element, png_dpi)
+  svg_to_png_blob(svg_element, png_dpi, inline_styles)
     .then((blob) => download(blob, filename, `image/png`))
     .catch((error) => console.error(`Error exporting PNG:`, error))
 }

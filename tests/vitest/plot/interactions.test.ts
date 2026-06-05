@@ -6,8 +6,8 @@ import {
   pan_range,
   pixels_to_data_delta,
   sync_y2_range,
-} from '$lib/plot/interactions'
-import type { Y2SyncConfig, Y2SyncMode } from '$lib/plot/types'
+} from '$lib/plot/core/interactions'
+import type { Y2SyncConfig, Y2SyncMode } from '$lib/plot/core/types'
 import { describe, expect, it } from 'vitest'
 
 describe(`pan_range`, () => {

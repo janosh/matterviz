@@ -1,4 +1,4 @@
-import PlotAxis from '$lib/plot/PlotAxis.svelte'
+import PlotAxis from '$lib/plot/core/components/PlotAxis.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 

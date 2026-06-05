@@ -137,12 +137,19 @@
   x_axis={{ ticks: [], range: [bounds.min[0], bounds.max[0]] }}
   y_axis={{ ticks: [], range: [bounds.min[1], bounds.max[1]] }}
   range_padding={0}
+  line_tween={{ duration: 0 }}
   display={{ x_grid: false, y_grid: false, x_zero_line: show_axes, y_zero_line: show_axes }}
   styles={{ show_points: false, show_lines: true }}
   controls={{ show: false }}
   fullscreen_toggle={false}
   legend={show_legend && series.length > 0
-  ? { on_toggle: toggle_band, on_double_click: isolate_band, draggable: false }
+  ? {
+    on_toggle: toggle_band,
+    on_double_click: isolate_band,
+    draggable: false,
+    // pin bottom-right so it clears the top-left title/controls overlay (e.g. in the demo)
+    style: `left: auto; top: auto; right: 8px; bottom: 8px`,
+  }
   : null}
   padding={{ t: 5, b: 5, l: 5, r: 5 }}
   class="fermi-slice {rest.class ?? ``}"
@@ -178,12 +185,12 @@
   :global(.fermi-slice .zero-line) {
     display: none;
   }
-  :global(.fermi-axis) {
+  .fermi-axis {
     stroke: var(--fermi-surface-axis-color, #888);
     stroke-dasharray: 4, 4;
     stroke-width: 1;
   }
-  :global(.fermi-label) {
+  .fermi-label {
     fill: var(--fermi-surface-axis-color, #888);
     font: 12px system-ui, sans-serif;
   }

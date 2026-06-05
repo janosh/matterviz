@@ -84,7 +84,7 @@ key = "spectral/Dos"
 doc = "Density of states plot (electronic or phonon)."
 
 [components.ScatterPlot]
-key = "plot/ScatterPlot"
+key = "plot/scatter/ScatterPlot"
 doc = "General-purpose scatter plot with customizable axes and tooltips."
 # Generic component with complex props - add key ones manually
 [components.ScatterPlot.extra_props]
@@ -100,7 +100,7 @@ on_point_click = "((data: ScatterHandlerEvent) => void)?"
 on_point_hover = "((data: ScatterHandlerEvent | null) => void)?"
 
 [components.Histogram]
-key = "plot/Histogram"
+key = "plot/histogram/Histogram"
 doc = "Histogram plot for data distributions."
 
 [components.RdfPlot]

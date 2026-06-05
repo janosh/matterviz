@@ -1,7 +1,7 @@
 import { add_alpha } from '$lib/colors'
 import { format_num } from '$lib/labels'
 import { point_in_polygon, type Vec2 } from '$lib/math'
-import type { Sides } from '$lib/plot/layout'
+import type { Sides } from '$lib/plot/core/layout'
 import { line } from 'd3-shape'
 import type {
   CompUnit,

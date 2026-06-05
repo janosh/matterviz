@@ -2,7 +2,7 @@
   import { BrillouinZone, reciprocal_lattice } from '$lib/brillouin'
   import type { Vec2, Vec3 } from '$lib/math'
   import type { InternalPoint, ScatterHandlerEvent } from '$lib/plot'
-  import type { AxisConfig } from '$lib/plot/types'
+  import type { AxisConfig } from '$lib/plot/core/types'
   import type { Crystal } from '$lib/structure'
   import type { ComponentProps, Snippet } from 'svelte'
   import { untrack } from 'svelte'

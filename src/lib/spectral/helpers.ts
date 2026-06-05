@@ -2,7 +2,7 @@
 import { SUBSCRIPT_MAP } from '$lib/labels'
 import { euclidean_dist } from '$lib/math'
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
-import type { AxisConfig } from '$lib/plot/types'
+import type { AxisConfig } from '$lib/plot/core/types'
 import type * as types from './types'
 import type { RibbonConfig } from './types'
 

@@ -11,12 +11,11 @@
   import { SvelteMap } from 'svelte/reactivity'
   import { to_error } from '$lib/utils'
 
-  // Auto-discover XRD data files from static/xrd/ using Vite's import.meta.glob
-  // Files are picked up at build time; restart dev server to see new files
-  // Supports both uncompressed and gzipped (.gz) versions of XRD formats
-  const xrd_file_modules = import.meta.glob<string>(
+  // Auto-discover XRD data files from static/xrd/ (served at /xrd/<name>); restart the dev
+  // server to pick up newly added files. Both plain and gzipped (.gz) formats are supported.
+  const xrd_file_modules = import.meta.glob(
     `/static/xrd/*.{xy,xye,xrdml,brml,ras,uxd,UXD,gsas,gsa,gda,raw,dat,csv,asc,txt,fxye,xy.gz,xye.gz,xrdml.gz,brml.gz,ras.gz,uxd.gz,UXD.gz,gsas.gz,gsa.gz,gda.gz,raw.gz,dat.gz,csv.gz,asc.gz,txt.gz,fxye.gz}`,
-    { query: `?url`, eager: true, import: `default` },
+    { query: `?url` },
   )
 
   // Extension to [category, icon] lookup - default is Powder XRD 📊
@@ -33,9 +32,10 @@
   }
 
   // Convert glob results to FileInfo array
-  const xrd_data_files: FileInfo[] = Object.entries(xrd_file_modules).map(
-    ([path, url]) => {
+  const xrd_data_files: FileInfo[] = Object.keys(xrd_file_modules).map(
+    (path) => {
       const name = path.split(`/`).pop() || path
+      const url = path.replace(`/static`, ``) // e.g. /xrd/cao.xy
       const ext = name.replace(/\.gz$/i, ``).split(`.`).pop()?.toLowerCase() || ``
       const [category, category_icon] = ext_categories[ext] ?? [`Powder XRD`, `📊`]
       return { name, url, type: ext, category, category_icon }

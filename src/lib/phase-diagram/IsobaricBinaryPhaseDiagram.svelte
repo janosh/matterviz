@@ -8,7 +8,7 @@
   import { sanitize_svg } from '$lib/sanitize'
   import { compute_bounding_box_2d, polygon_centroid, type Vec2 } from '$lib/math'
   import type { AxisConfig } from '$lib/plot'
-  import { constrain_tooltip_position } from '$lib/plot/layout'
+  import { constrain_tooltip_position } from '$lib/plot/core/layout'
   import { scaleLinear } from 'd3-scale'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

@@ -11,6 +11,10 @@ import type {
   Orientation,
   SankeyNodeAlign,
   SankeyOrientation,
+  SunburstLabelRotation,
+  SunburstLabelText,
+  SunburstShape,
+  SunburstValueMode,
   ViolinKind,
   ViolinSide,
   WhiskerMode,
@@ -358,6 +362,21 @@ export interface SettingsConfig {
     link_opacity: SettingType<number>
     show_node_labels: SettingType<boolean>
     iterations: SettingType<number>
+  }
+
+  sunburst: {
+    // Sunburst chart settings
+    shape: SettingType<SunburstShape>
+    value_mode: SettingType<SunburstValueMode>
+    max_depth: SettingType<number>
+    inner_radius: SettingType<number>
+    pad_angle: SettingType<number>
+    min_fraction: SettingType<number>
+    show_labels: SettingType<boolean>
+    label_rotation: SettingType<SunburstLabelRotation>
+    label_text: SettingType<SunburstLabelText>
+    zoom_on_click: SettingType<boolean>
+    show_breadcrumbs: SettingType<boolean>
   }
 
   composition: {
@@ -1193,6 +1212,77 @@ export const SETTINGS_CONFIG: SettingsConfig = {
     },
   },
 
+  // Sunburst chart specific
+  sunburst: {
+    shape: {
+      value: `sunburst` as const,
+      description: `Chart geometry: polar rings (sunburst) or stacked rows (icicle)`,
+      enum: { sunburst: `Sunburst`, icicle: `Icicle` },
+    },
+    value_mode: {
+      value: `leaf-sum` as const,
+      description: `How node values are interpreted (plotly branchvalues semantics): leaf-sum ignores parent values, total treats every value as authoritative, remainder adds a node's own value on top of its children`,
+      enum: { 'leaf-sum': `Leaf sum`, total: `Total`, remainder: `Remainder` },
+    },
+    max_depth: {
+      value: 0,
+      description: `Number of rings shown below the current zoom root (0 = all)`,
+      minimum: 0,
+      maximum: 10,
+    },
+    inner_radius: {
+      value: 0.25,
+      description: `Center hole size as fraction of the outer radius`,
+      minimum: 0,
+      maximum: 0.8,
+    },
+    pad_angle: {
+      value: 0.2,
+      description: `Angular gap in degrees between sibling arcs`,
+      minimum: 0,
+      maximum: 4,
+    },
+    min_fraction: {
+      value: 0,
+      description: `Group sibling arcs smaller than this fraction of the total into one 'Other' slice per parent (0 = off)`,
+      minimum: 0,
+      maximum: 0.2,
+    },
+    show_labels: {
+      value: true,
+      description: `Show labels on arcs large enough to fit them`,
+    },
+    label_rotation: {
+      value: `auto` as const,
+      description: `Arc label orientation (auto picks radial/tangential per arc)`,
+      enum: {
+        auto: `Auto`,
+        radial: `Radial`,
+        tangential: `Tangential`,
+        horizontal: `Horizontal`,
+      },
+    },
+    label_text: {
+      value: `label` as const,
+      description: `What arc labels display (percent is of the root total)`,
+      enum: {
+        label: `Label`,
+        value: `Value`,
+        percent: `Percent`,
+        'label+value': `Label + value`,
+        'label+percent': `Label + percent`,
+      },
+    },
+    zoom_on_click: {
+      value: true,
+      description: `Clicking a branch arc zooms into that subtree (center circle zooms out)`,
+    },
+    show_breadcrumbs: {
+      value: true,
+      description: `Show a clickable trail of ancestors when zoomed into a subtree`,
+    },
+  },
+
   // Composition specific
   composition: {
     display_mode: {
@@ -1732,5 +1822,6 @@ export const merge = (user?: Partial<DefaultSettings>): DefaultSettings =>
     bar: merge_nested(DEFAULTS.bar, user?.bar),
     box: merge_nested(DEFAULTS.box, user?.box),
     sankey: merge_nested(DEFAULTS.sankey, user?.sankey),
+    sunburst: merge_nested(DEFAULTS.sunburst, user?.sunburst),
     convex_hull: merge_nested(DEFAULTS.convex_hull, user?.convex_hull),
   }) as DefaultSettings

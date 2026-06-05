@@ -1,6 +1,6 @@
 import { ColorBar } from '$lib'
 import { luminance } from '$lib/colors'
-import type { AxisOption, ColorScaleOption } from '$lib/plot/types'
+import type { AxisOption, ColorScaleOption } from '$lib/plot/core/types'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'

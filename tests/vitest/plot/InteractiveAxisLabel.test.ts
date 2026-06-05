@@ -1,6 +1,6 @@
 // Tests for InteractiveAxisLabel component
 import { InteractiveAxisLabel } from '$lib/plot'
-import type { AxisOption } from '$lib/plot/types'
+import type { AxisOption } from '$lib/plot/core/types'
 import type { ComponentProps } from 'svelte'
 import { mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'

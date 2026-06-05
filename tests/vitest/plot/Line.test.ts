@@ -1,5 +1,5 @@
 import { Line } from '$lib'
-import { resolve_line_tween } from '$lib/plot/utils'
+import { resolve_line_tween } from '$lib/plot/core/utils'
 import { interpolatePath } from 'd3-interpolate-path'
 import { mount } from 'svelte'
 import { sineIn } from 'svelte/easing'

@@ -5,8 +5,8 @@
   import { sanitize_html } from '$lib/sanitize'
   import { SettingsSection } from '$lib/layout'
   import type { Vec2 } from '$lib/math'
-  import ScatterPlot from '$lib/plot/ScatterPlot.svelte'
-  import type { AxisConfig, DataSeries, FillRegion } from '$lib/plot/types'
+  import ScatterPlot from '$lib/plot/scatter/ScatterPlot.svelte'
+  import type { AxisConfig, DataSeries, FillRegion } from '$lib/plot/core/types'
   import * as helpers from '$lib/spectral/helpers'
   import type {
     BandsSpinMode,

@@ -402,7 +402,12 @@
       {...spinner_props}
     />
   {:else if error_msg}
-    <StatusMessage bind:message={error_msg} type="error" dismissible />
+    <StatusMessage
+      bind:message={error_msg}
+      type="error"
+      dismissible
+      style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90%; text-align: center"
+    />
   {:else if fermi_data || band_data}
     <section
       class="control-buttons {controls_config.class}"

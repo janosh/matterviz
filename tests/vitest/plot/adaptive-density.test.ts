@@ -7,7 +7,7 @@ import {
   series_extents,
   should_render_points,
   type DensePointSeries,
-} from '$lib/plot/adaptive-density'
+} from '$lib/plot/scatter/adaptive-density'
 import { describe, expect, it } from 'vitest'
 
 const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1

@@ -1,4 +1,4 @@
-import { build_obstacles_norm, clip_bar, place_decorations } from '$lib/plot/auto-place'
+import { build_obstacles_norm, clip_bar, place_decorations } from '$lib/plot/core/auto-place'
 import { describe, expect, test } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }

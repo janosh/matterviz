@@ -88,7 +88,9 @@
       hover_msg = data ? `Node: ${data.label} = ${data.value}` : `Hover over a node or link`
     }}
     on_link_hover={(data) => {
-      if (data) hover_msg = `Link: ${data.source_label} -> ${data.target_label} = ${data.value}`
+      hover_msg = data
+        ? `Link: ${data.source_label} -> ${data.target_label} = ${data.value}`
+        : `Hover over a node or link`
     }}
     on_node_click={(data) => {
       click_msg = `Clicked node: ${data.label}`

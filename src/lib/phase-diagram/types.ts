@@ -1,6 +1,6 @@
 import type { Point2D, Vec2 } from '$lib/math'
 import type { LineStyle } from '$lib/plot'
-import type { Sides } from '$lib/plot/layout'
+import type { Sides } from '$lib/plot/core/layout'
 import type { TooltipConfig, TooltipProp } from '$lib/tooltip'
 
 export type TempUnit = `K` | `°C` | `°F`

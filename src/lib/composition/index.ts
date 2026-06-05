@@ -2,6 +2,7 @@ import type { ElementSymbol } from '$lib/element'
 
 export { default as BarChart } from './BarChart.svelte'
 export { default as BubbleChart } from './BubbleChart.svelte'
+export * from './chem-sys'
 export { default as Composition } from './Composition.svelte'
 export * from './format'
 export { default as Formula } from './Formula.svelte'

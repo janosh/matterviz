@@ -22,13 +22,13 @@
     constrain_tooltip_position,
     pad_rect,
     rects_overlap,
-  } from '$lib/plot/layout'
+  } from '$lib/plot/core/layout'
   import type {
     AxisConfig3D,
     CameraProjection3D,
     DataSeries3D,
     DisplayConfig3D,
-  } from '$lib/plot/types'
+  } from '$lib/plot/core/types'
   import { Canvas, T } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { scaleLinear } from 'd3-scale'

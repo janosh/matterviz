@@ -1472,7 +1472,7 @@ class Dos(MatterViz):
 class ScatterPlot(MatterViz):
     """General-purpose scatter plot with customizable axes and tooltips.
 
-    Component key: ``plot/ScatterPlot``
+    Component key: ``plot/scatter/ScatterPlot``
 
     Events: on_axis_change, on_error, on_fill_click, on_fill_hover, on_point_click, on_point_hover, on_ref_line_click, on_ref_line_hover
 
@@ -1562,7 +1562,7 @@ class ScatterPlot(MatterViz):
 
         super().__init__(
             id=id,
-            component="plot/ScatterPlot",
+            component="plot/scatter/ScatterPlot",
             mv_props=mv_props,
             set_props=set_props,
             float32_props=float32_props,
@@ -1576,7 +1576,7 @@ class ScatterPlot(MatterViz):
 class Histogram(MatterViz):
     """Histogram plot for data distributions.
 
-    Component key: ``plot/Histogram``
+    Component key: ``plot/histogram/Histogram``
 
     Events: on_axis_change, on_error, on_ref_line_click, on_ref_line_hover, on_series_toggle
 
@@ -1630,7 +1630,7 @@ class Histogram(MatterViz):
 
         super().__init__(
             id=id,
-            component="plot/Histogram",
+            component="plot/histogram/Histogram",
             mv_props=mv_props,
             set_props=set_props,
             float32_props=float32_props,

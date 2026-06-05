@@ -1,0 +1,5 @@
+export * from './box-plot'
+export * from './kde'
+export { default as BoxPlot } from './BoxPlot.svelte'
+export { default as BoxPlotControls } from './BoxPlotControls.svelte'
+export { default as Violin } from './Violin.svelte'
