@@ -18,11 +18,28 @@ export function strip_compression_extensions(filename: string): string {
   return base_name
 }
 
-// Unified format detection
+// Extensions that explicitly identify a format — when present, format detection trusts
+// the extension instead of sniffing content
+const KNOWN_FORMAT_EXT_REGEX =
+  /\.(xyz|extxyz|traj|h5|hdf5|lammpstrj|json|cif|poscar|vasp|yaml|yml|xml|csv)$/
+
+// Classify the filename hint for a format whose extensions match ext_regex:
+// true = filename matches, false = filename names a different known format,
+// null = no usable hint (missing filename or unrecognized extension, e.g. the UUID
+// basenames of blob: object URLs) — callers should fall back to content detection
+export function ext_hint(filename: string | undefined, ext_regex: RegExp): boolean | null {
+  if (!filename) return null
+  const base = strip_compression_extensions(filename)
+  if (ext_regex.test(base)) return true
+  return KNOWN_FORMAT_EXT_REGEX.test(base) ? false : null
+}
+
+// Unified format detection. Each pattern trusts a matching file extension when present
+// but falls back to content/magic-byte detection when the filename gives no hint
+// (e.g. blob: object URLs, extensionless API endpoints).
 export const FORMAT_PATTERNS = {
   ase: (data: unknown, filename?: string) => {
-    const base_name = filename ? strip_compression_extensions(filename) : undefined
-    if (!base_name?.endsWith(`.traj`) || !(data instanceof ArrayBuffer)) {
+    if (ext_hint(filename, /\.traj$/) === false || !(data instanceof ArrayBuffer)) {
       return false
     }
     const view = new Uint8Array(data.slice(0, 24))
@@ -32,9 +49,8 @@ export const FORMAT_PATTERNS = {
   },
 
   hdf5: (data: unknown, filename?: string) => {
-    const base_name = filename ? strip_compression_extensions(filename) : undefined
-    const has_ext = base_name?.match(/\.(h5|hdf5)$/)
-    if (!has_ext || !(data instanceof ArrayBuffer) || data.byteLength < 8) return false
+    if (ext_hint(filename, /\.(h5|hdf5)$/) === false) return false
+    if (!(data instanceof ArrayBuffer) || data.byteLength < 8) return false
     const signature = new Uint8Array(data.slice(0, 8))
     return [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a].every(
       (b, idx) => signature[idx] === b,
@@ -54,14 +70,12 @@ export const FORMAT_PATTERNS = {
   },
 
   xyz_multi: (data: string, filename?: string) => {
-    const base = filename ? strip_compression_extensions(filename) : ``
-    if (!/\.(xyz|extxyz)$/.test(base)) return false
+    if (ext_hint(filename, /\.(xyz|extxyz)$/) === false) return false
     return count_xyz_frames(data) >= 2
   },
 
   lammpstrj: (data: string, filename?: string) => {
-    const base = filename ? strip_compression_extensions(filename) : ``
-    if (!base.endsWith(`.lammpstrj`)) return false
+    if (ext_hint(filename, /\.lammpstrj$/) === false) return false
     return data.includes(`ITEM: TIMESTEP`) && data.includes(`ITEM: ATOMS`)
   },
 } as const

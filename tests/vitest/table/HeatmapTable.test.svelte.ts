@@ -182,6 +182,22 @@ describe(`HeatmapTable`, () => {
       expect(sorted).toEqual([`10,000`, `1,000`, `50`])
     })
 
+    it(`sorts mixed number/string columns: numbers first, desc reverses`, async () => {
+      const data = [`10`, `abc`, `9`, `def`, `2`, `a1`].map((Mixed) => ({ Mixed }))
+      const columns: Label[] = [{ label: `Mixed`, description: `` }]
+      mount(HeatmapTable, {
+        target: document.body,
+        props: { data, columns, initial_sort: `Mixed` }, // string shorthand defaults to asc
+      })
+      await tick()
+      const get_cells = () =>
+        Array.from(document.querySelectorAll(`td`)).map((cell) => cell.textContent?.trim())
+      expect(get_cells()).toEqual([`2`, `9`, `10`, `a1`, `abc`, `def`])
+      document.querySelector(`th`)?.click() // toggle to descending
+      await tick()
+      expect(get_cells()).toEqual([`def`, `abc`, `a1`, `10`, `9`, `2`])
+    })
+
     it(`respects unsortable columns`, async () => {
       const columns: Label[] = [
         { label: `Name`, sortable: true, description: `` },

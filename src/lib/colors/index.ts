@@ -1,4 +1,4 @@
-import { rgb } from 'd3-color'
+import { color as d3_color, rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import type { Vec3 } from '$lib/math'
 import type { ELEM_SYMBOLS } from '$lib/labels'
@@ -78,14 +78,13 @@ export const ELEMENT_COLOR_SCHEMES = {
 export type ColorSchemeName = keyof typeof ELEMENT_COLOR_SCHEMES
 export const default_element_colors = { ...vesta_hex }
 
-// Helper function to detect if a value is a color string
+// Detect if a value is a CSS color string. d3-color parses hex, rgb()/rgba(),
+// hsl()/hsla(), and named colors case-insensitively, rejecting arbitrary words like
+// `pending`. It doesn't parse var()/color()/currentcolor, so match those explicitly.
 export const is_color = (val: unknown): val is string => {
   if (typeof val !== `string`) return false
-  // Check for hex colors, rgb/rgba, hsl/hsla, color(), var(), and named colors
-  // Exclude incomplete function prefixes like 'rgb', 'hsl', 'var', 'color'
-  return /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|color\([^)]+\)|var\([^)]+\)|(?!rgb$|hsl$|var$|color$)[a-z]+)$/i.test(
-    val.trim(),
-  )
+  const trimmed = val.trim()
+  return /^(?:var|color)\([^)]+\)$|^currentcolor$/i.test(trimmed) || d3_color(trimmed) !== null
 }
 
 export const PLOT_COLORS = [

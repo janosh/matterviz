@@ -137,6 +137,27 @@ function validate_element_symbol(symbol: string, index: number): ElementSymbol {
   return fallback
 }
 
+// Per OPTIMADE spec, species_at_sites holds species NAMES (e.g. 'Si1') resolved via the
+// species list: highest-concentration entry in chemical_symbols wins, non-element entries
+// like 'vacancy' are skipped, and unresolved names are treated as element symbols.
+// Returns the chosen element plus its index into the species' chemical_symbols
+// (sym_idx = -1 on fallback), so callers can read the matching mass/concentration entry.
+function resolve_optimade_element(
+  species_name: string,
+  species_list: OptimadeStructure[`attributes`][`species`],
+  index: number,
+): { symbol: ElementSymbol; sym_idx: number } {
+  const spec = species_list?.find((entry) => entry.name === species_name)
+  let best: { symbol: ElementSymbol; conc: number; sym_idx: number } | undefined
+  for (const [sym_idx, symbol] of (spec?.chemical_symbols ?? []).entries()) {
+    if (!is_known_element_symbol(symbol)) continue
+    const conc = spec?.concentration?.[sym_idx] ?? 0
+    if (!best || conc > best.conc) best = { symbol, conc, sym_idx }
+  }
+  if (best) return { symbol: best.symbol, sym_idx: best.sym_idx }
+  return { symbol: validate_element_symbol(species_name, index), sym_idx: -1 }
+}
+
 const try_create_cart_to_frac = (
   lattice_matrix: math.Matrix3x3,
 ): ((v: Vec3) => Vec3) | null => {
@@ -156,19 +177,23 @@ const approximate_cart_to_frac = (xyz: Vec3, axis_lengths: Vec3): Vec3 => [
 // Parse VASP POSCAR file format
 export function parse_poscar(content: string): ParsedStructure | null {
   try {
-    const lines = content.replace(/^\s+/, ``).split(/\r?\n/)
+    // Strip only horizontal whitespace: a blank first (comment) line is valid POSCAR
+    const lines = content.replace(/^[ \t]+/, ``).split(/\r?\n/)
 
     if (lines.length < 8) {
       console.error(`POSCAR file too short`)
       return null
     }
 
-    // Parse scaling factor (line 2)
-    let scale_factor = parseFloat(lines[1])
+    // Scale line: one value (negative = target volume) or three per-axis Cartesian factors
+    const scale_tokens = lines[1].trim().split(/\s+/).map(parseFloat)
+    let scale_factor = scale_tokens[0]
     if (isNaN(scale_factor)) {
       console.error(`Invalid scaling factor in POSCAR`)
       return null
     }
+    const scale_vec = scale_tokens.slice(0, 3) as Vec3
+    const per_axis_scale = scale_vec.length === 3 && !scale_vec.some(isNaN) ? scale_vec : null
 
     // Parse lattice vectors (lines 3-5)
     const parse_vector = (line: string, line_num: number): Vec3 => {
@@ -182,18 +207,17 @@ export function parse_poscar(content: string): ParsedStructure | null {
       parse_vector(lines[4], 5),
     ]
 
-    // Handle negative scale factor (volume-based scaling)
-    if (scale_factor < 0) {
+    // Handle negative scale factor (volume-based scaling, single-factor form only)
+    if (!per_axis_scale && scale_factor < 0) {
       const volume = Math.abs(math.det_3x3(lattice_vecs))
       scale_factor = (-scale_factor / volume) ** (1 / 3)
     }
 
-    // Scale lattice vectors
-    const scaled_lattice: math.Matrix3x3 = [
-      math.scale(lattice_vecs[0], scale_factor),
-      math.scale(lattice_vecs[1], scale_factor),
-      math.scale(lattice_vecs[2], scale_factor),
-    ]
+    // Scale lattice vectors (per-axis factors multiply Cartesian components)
+    const axis_scale: Vec3 = per_axis_scale ?? [scale_factor, scale_factor, scale_factor]
+    const apply_axis_scale = (vec: Vec3): Vec3 =>
+      vec.map((val, axis) => val * axis_scale[axis]) as Vec3
+    const scaled_lattice = lattice_vecs.map(apply_axis_scale) as math.Matrix3x3
 
     // Parse element symbols and atom counts (may span multiple lines)
     let line_index = 5
@@ -317,22 +341,16 @@ export function parse_poscar(content: string): ParsedStructure | null {
               selective_dynamics = [tokens[3] === `T`, tokens[4] === `T`, tokens[5] === `T`]
             }
           }
-          let xyz: Vec3
-          let abc: Vec3
-
-          if (is_direct) {
-            // Store fractional coordinates, wrapping to [0, 1) range
-            abc = wrap_to_unit_cell(coords)
-            xyz = poscar_frac_to_cart(abc)
-          } else {
-            // Already Cartesian, scale if needed
-            xyz = math.scale(coords, scale_factor)
-            const raw_abc = poscar_cart_to_frac
-              ? poscar_cart_to_frac(xyz)
-              : approximate_cart_to_frac(xyz, poscar_axis_lengths)
-            // Wrap fractional coordinates to [0, 1) range
-            abc = wrap_to_unit_cell(raw_abc)
-          }
+          // Cartesian input is scaled then converted to fractional (axis-length fallback
+          // for singular lattices); abc wraps to [0, 1) and xyz is recomputed from it so
+          // both stay consistent (singular Cartesian keeps the scaled input as xyz)
+          const cart = is_direct ? null : apply_axis_scale(coords)
+          const raw_abc = cart
+            ? (poscar_cart_to_frac?.(cart) ??
+              approximate_cart_to_frac(cart, poscar_axis_lengths))
+            : coords
+          const abc = wrap_to_unit_cell(raw_abc)
+          const xyz = cart && !poscar_cart_to_frac ? cart : poscar_frac_to_cart(abc)
 
           const site: Site = {
             species: [{ element, occu: 1, oxidation_state: 0 }],
@@ -627,12 +645,14 @@ const extract_cif_cell_parameters = (text: string, type: string, strict = true):
     .split(`\n`)
     .filter((line) => line.startsWith(`_${type}`))
     .map((line) => {
-      const tokens = line.split(/\s+/).filter((token) => token.length > 0)
+      // Strip trailing comment (# after whitespace) and take the value right after the tag
+      const sans_comment = line.replace(/\s#.*$/, ``)
+      const tokens = sans_comment.split(/\s+/).filter(Boolean)
       if (tokens.length < 2) {
         if (strict) throw new Error(`Invalid CIF cell parameter line format: ${line}`)
         return null
       }
-      const value = parseFloat((tokens.at(-1) ?? ``).split(`(`)[0])
+      const value = parseFloat(tokens[1].split(`(`)[0])
       if (isNaN(value)) {
         if (strict) throw new Error(`Invalid CIF cell parameter in line: ${line}`)
         return null // Return null for invalid values in non-strict mode
@@ -1459,6 +1479,7 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
     if (lattice_matrix && !optimade_exact_cart_to_frac) {
       console.warn(`Failed to create exact coordinate converter for OPTIMADE structure`)
     }
+    const optimade_species = Array.isArray(attrs.species) ? attrs.species : undefined
     const sites: Site[] = []
     for (let idx = 0; idx < positions.length; idx++) {
       const pos = positions[idx]
@@ -1472,7 +1493,11 @@ export function parse_optimade_from_raw(raw: unknown): ParsedStructure | null {
         continue
       }
 
-      const element = validate_element_symbol(element_symbol, idx)
+      const { symbol: element } = resolve_optimade_element(
+        element_symbol,
+        optimade_species,
+        idx,
+      )
 
       // Calculate fractional coordinates if lattice is available
       const abc: Vec3 = optimade_cart_to_frac ? optimade_cart_to_frac(xyz) : [0, 0, 0]
@@ -1575,8 +1600,6 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
     ]
     const lattice_params = math.calc_lattice_params(lattice_matrix)
 
-    // Build species lookup for site properties (mass, concentration, etc.)
-    const species_map = new Map(species?.map((spec) => [spec.name, spec]))
     const crystal_cart_to_frac =
       try_create_cart_to_frac(lattice_matrix) ??
       ((xyz: Vec3): Vec3 =>
@@ -1585,17 +1608,27 @@ export function optimade_to_crystal(optimade_structure: OptimadeStructure): Crys
     const sites = cartesian_site_positions.map((pos, idx) => {
       const element_symbol = species_at_sites[idx]
       if (!element_symbol) throw new Error(`Missing species for site ${idx}`)
-      const element = validate_element_symbol(element_symbol, idx)
+      const { symbol: element, sym_idx } = resolve_optimade_element(
+        element_symbol,
+        species,
+        idx,
+      )
 
       const xyz = vec3_from_values(pos, `OPTIMADE atom position ${idx + 1}`)
       const abc: Vec3 = crystal_cart_to_frac ? crystal_cart_to_frac(xyz) : [0, 0, 0]
 
-      // Extract mass/concentration from species data
-      const spec = species_map.get(element_symbol)
+      // Extract mass/concentration for the chosen element. sym_idx indexes the (parallel)
+      // chemical_symbols/mass/concentration arrays; -1 (name resolved directly, no
+      // chemical_symbols) falls back to index 0 — the single-element entry.
+      const spec = species?.find((entry) => entry.name === element_symbol)
+      const spec_idx = Math.max(sym_idx, 0)
       const site_props: Record<string, unknown> = {}
-      if (spec?.mass?.[0] !== undefined) site_props.mass = spec.mass[0]
-      if (spec?.concentration?.[0] !== undefined && spec.concentration[0] !== 1) {
-        site_props.concentration = spec.concentration[0]
+      if (spec?.mass?.[spec_idx] !== undefined) site_props.mass = spec.mass[spec_idx]
+      if (
+        spec?.concentration?.[spec_idx] !== undefined &&
+        spec.concentration[spec_idx] !== 1
+      ) {
+        site_props.concentration = spec.concentration[spec_idx]
       }
       return {
         species: [{ element, occu: 1, oxidation_state: 0 }],

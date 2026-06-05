@@ -27,12 +27,10 @@ export function create_hover_lock(): {
   return {
     is_locked: locked_ref,
     set_locked(locked: boolean) {
-      if (locked) {
-        if (timeout) clearTimeout(timeout)
-        is_locked = true
-      } else {
-        timeout = setTimeout(() => (is_locked = false), HOVER_DEBOUNCE_MS)
-      }
+      // Always clear any pending unlock so rapid calls don't queue multiple timeouts
+      if (timeout) clearTimeout(timeout)
+      if (locked) is_locked = true
+      else timeout = setTimeout(() => (is_locked = false), HOVER_DEBOUNCE_MS)
     },
     // Clear pending timeout to prevent state updates after unmount
     cleanup() {

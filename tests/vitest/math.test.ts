@@ -2770,6 +2770,22 @@ describe(`merge_coplanar_triangles`, () => {
     expect(result).toHaveLength(3 * 9)
   })
 
+  test(`concave coplanar patch preserves total area`, () => {
+    // Concave dart quad on z=0: 2 triangles, total area 1.0.
+    // Regression: re-triangulating the convex hull filled the notch → area 2.0.
+    const input = new Float32Array([
+      0, 0, 0, 2, 0, 0, 0.5, 0.5, 0, 0, 0, 0, 0.5, 0.5, 0, 0, 2, 0,
+    ])
+    const result = math.merge_coplanar_triangles(input)
+    let area = 0
+    for (let idx = 0; idx < result.length; idx += 9) {
+      const [ax, ay, az, bx, by, bz, cx, cy, cz] = result.subarray(idx, idx + 9)
+      const cr = math.cross_3d([bx - ax, by - ay, bz - az], [cx - ax, cy - ay, cz - az])
+      area += 0.5 * Math.hypot(...cr)
+    }
+    expect(area).toBeCloseTo(1.0, 6)
+  })
+
   test(`degenerate zero-area triangle passes through`, () => {
     // All 3 vertices are the same point
     const input = new Float32Array([1, 1, 1, 1, 1, 1, 1, 1, 1])

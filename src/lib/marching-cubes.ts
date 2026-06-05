@@ -387,9 +387,11 @@ export function marching_cubes(
   const faces: number[][] = []
   const normals: Vec3[] = []
 
-  // Precompute grid dimension products for flattening and cache keys
-  const ny_nz = ny * nz
-  const max_flat = nx * ny_nz // for computing cache keys
+  // Cache keys use UNWRAPPED grid coords (reach n in periodic mode, hence radix n+1):
+  // wrapping would merge vertices on opposite cell faces into cell-spanning triangles.
+  const key_nz = nz + 1
+  const key_ny_nz = (ny + 1) * key_nz
+  const max_flat = (nx + 1) * key_ny_nz // for computing cache keys
   // Use numeric cache key - safe for grids up to ~300³ (2^53 / 2 / max_flat)
   // For much larger grids (>30M cells), consider switching to Map<string, number>
   // with keys like `${flat1},${flat2}` or Map<bigint, number> to avoid
@@ -429,18 +431,10 @@ export function marching_cubes(
     const oy2 = CUBE_VERTS_Y[v2_idx]
     const oz2 = CUBE_VERTS_Z[v2_idx]
 
-    // Compute wrapped grid positions using safe modulo for periodic boundaries
-    const g1x = periodic ? wrap_grid_idx(ix + ox1, nx) : ix + ox1
-    const g1y = periodic ? wrap_grid_idx(iy + oy1, ny) : iy + oy1
-    const g1z = periodic ? wrap_grid_idx(iz + oz1, nz) : iz + oz1
-    const g2x = periodic ? wrap_grid_idx(ix + ox2, nx) : ix + ox2
-    const g2y = periodic ? wrap_grid_idx(iy + oy2, ny) : iy + oy2
-    const g2z = periodic ? wrap_grid_idx(iz + oz2, nz) : iz + oz2
-
-    // Create numeric cache key (sorted for consistency)
+    // Sorted numeric key from UNWRAPPED coords (value/gradient lookups wrap internally).
     // Safe for grids up to ~300³ before exceeding Number.MAX_SAFE_INTEGER
-    const flat1 = g1x * ny_nz + g1y * nz + g1z
-    const flat2 = g2x * ny_nz + g2y * nz + g2z
+    const flat1 = (ix + ox1) * key_ny_nz + (iy + oy1) * key_nz + (iz + oz1)
+    const flat2 = (ix + ox2) * key_ny_nz + (iy + oy2) * key_nz + (iz + oz2)
     const cache_key = flat1 < flat2 ? flat1 * max_flat + flat2 : flat2 * max_flat + flat1
 
     const cached = vertex_cache.get(cache_key)

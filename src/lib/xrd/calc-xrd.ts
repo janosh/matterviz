@@ -94,18 +94,18 @@ function compute_reciprocal_lattice_rows(structure: Crystal): number[][] {
 
 function enumerate_reciprocal_points(
   recip_rows: number[][],
+  direct_rows: number[][],
   max_radius: number,
   min_radius: number,
 ): RecipPoint[] {
   const recip_b1 = recip_rows[0]
   const recip_b2 = recip_rows[1]
   const recip_b3 = recip_rows[2]
-  const n1 = Math.max(Math.hypot(...recip_b1), 1e-12)
-  const n2 = Math.max(Math.hypot(...recip_b2), 1e-12)
-  const n3 = Math.max(Math.hypot(...recip_b3), 1e-12)
-  const h_max = Math.ceil(max_radius / n1 + 2)
-  const k_max = Math.ceil(max_radius / n2 + 2)
-  const l_max = Math.ceil(max_radius / n3 + 2)
+  // Exact index bound: |h_i| = |g·a_i| ≤ R·|a_i| (since a_i·b_j = δ_ij). Bounds from
+  // reciprocal-row norms (R/|b_i| + 2) undercount for skewed cells, dropping reflections.
+  const [h_max, k_max, l_max] = direct_rows.map(
+    (row) => Math.ceil(max_radius * Math.hypot(...row)) + 1,
+  )
   // Safety cap to avoid pathological enumeration volume
   const CAP = 512
   if (Math.max(h_max, k_max, l_max) > CAP) {
@@ -173,10 +173,16 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
           return [r_min, r_max]
         })(two_theta_range)
 
-  const recip_points = enumerate_reciprocal_points(recip_rows, max_radius, min_radius)
+  const recip_points = enumerate_reciprocal_points(
+    recip_rows,
+    structure.lattice.matrix,
+    max_radius,
+    min_radius,
+  )
 
   // Flatten species with occupancies; gather coeffs, frac coords, occu, DW factors.
-  type ScatteringCoeffs = { a: number[]; b: number[]; c?: number }
+  // z is set only for pymatgen-style fitted params (array form); {a, b, c} = Cromer-Mann
+  type ScatteringCoeffs = { a: number[]; b: number[]; c?: number; z?: number }
   const coeffs: ScatteringCoeffs[] = []
   const frac_coords: math.Vec3[] = []
   const occus: number[] = []
@@ -200,7 +206,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
       if (Array.isArray(raw_coeff)) {
         const a_arr = raw_coeff.map(([a]) => a)
         const b_arr = raw_coeff.map(([_, b]) => b)
-        coeff_entry = { a: a_arr, b: b_arr }
+        coeff_entry = { a: a_arr, b: b_arr, z: ELEMENT_Z[element_symbol] }
       } else {
         coeff_entry = { a: raw_coeff.a.slice(), b: raw_coeff.b.slice(), c: raw_coeff.c }
       }
@@ -234,7 +240,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
     // Atomic scattering factors (vectorized style)
     const f_scattering: number[] = coeffs.map((coeff_entry) => {
-      const { a: a_arr, b: b_arr } = coeff_entry
+      const { a: a_arr, b: b_arr, z } = coeff_entry
       const num_terms = Math.min(a_arr.length, b_arr.length)
       const sum_terms = a_arr
         .slice(0, num_terms)
@@ -243,6 +249,8 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
             sum + a_i * Math.exp(-b_arr[term_idx] * sin_theta_over_lambda_sq),
           0,
         )
+      // pymatgen-style fitted params: f = Z − 41.78214·s²·Σ aᵢ·exp(−bᵢ·s²)
+      if (z !== undefined) return z - 41.78214 * sin_theta_over_lambda_sq * sum_terms
       return sum_terms + (coeff_entry.c ?? 0)
     })
 

@@ -548,6 +548,9 @@
             sensitivity: `base`,
           })
           if (cmp !== 0) return cmp * modifier
+        } else if (typeof sort_val1 !== typeof sort_val2) {
+          // number<string is false both ways, breaking the comparator: numbers sort first
+          return (typeof sort_val1 === `number` ? -1 : 1) * modifier
         } else if (sort_val1 !== sort_val2) {
           return (sort_val1 ?? 0) < (sort_val2 ?? 0) ? -modifier : modifier
         }

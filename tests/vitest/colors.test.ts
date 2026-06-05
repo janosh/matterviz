@@ -13,76 +13,21 @@ import { describe, expect, test, vi } from 'vitest'
 // Generate expected element symbols from atomic numbers 1-109 (first 109 elements)
 const EXPECTED_ELEMENTS = Array.from({ length: 109 }, (_, idx) => ELEM_SYMBOLS[idx])
 
-// Test if a string is a valid hex color
-function is_valid_hex_color(color: string): boolean {
-  const hex_regex = /^#[0-9A-Fa-f]{6}$/
-  return hex_regex.test(color)
-}
-
 describe(`Element Color Schemes`, () => {
-  test(`all schemes exist and are objects`, () => {
-    expect(ELEMENT_COLOR_SCHEMES).toBeDefined()
-    expect(typeof ELEMENT_COLOR_SCHEMES).toBe(`object`)
-
-    const schemes = Object.keys(ELEMENT_COLOR_SCHEMES)
-    expect(schemes.length).toBeGreaterThanOrEqual(6)
-    expect(schemes).toContain(`Vesta`)
-    expect(schemes).toContain(`Jmol`)
-    expect(schemes).toContain(`Alloy`)
-    expect(schemes).toContain(`Pastel`)
-    expect(schemes).toContain(`Muted`)
-    expect(schemes).toContain(`Dark Mode`)
-  })
-
-  test(`each scheme has complete element coverage`, () => {
+  test(`all schemes have identical, complete element coverage`, () => {
+    expect(Object.keys(ELEMENT_COLOR_SCHEMES).sort()).toEqual([
+      `Alloy`,
+      `Dark Mode`,
+      `Jmol`,
+      `Muted`,
+      `Pastel`,
+      `Vesta`,
+    ])
+    const expected_keys = Object.keys(ELEMENT_COLOR_SCHEMES.Vesta).sort()
+    expect(expected_keys.length).toBeGreaterThanOrEqual(109)
+    expect(expected_keys).toEqual(expect.arrayContaining(EXPECTED_ELEMENTS))
     for (const [scheme_name, colors] of Object.entries(ELEMENT_COLOR_SCHEMES)) {
-      const scheme_elements = Object.keys(colors)
-
-      // Check minimum element count
-      expect(
-        scheme_elements.length,
-        `${scheme_name} should have at least 109 elements`,
-      ).toBeGreaterThanOrEqual(109)
-
-      // Check that all expected elements are present
-      for (const element of EXPECTED_ELEMENTS) {
-        expect(
-          colors[element],
-          `${scheme_name} should contain element ${element}`,
-        ).toBeDefined()
-      }
-    }
-  })
-
-  test(`all schemes have identical element coverage`, () => {
-    const schemes = Object.entries(ELEMENT_COLOR_SCHEMES)
-    const [first_scheme_name, first_scheme] = schemes[0]
-    const first_elements = new Set(Object.keys(first_scheme))
-
-    for (const [scheme_name, colors] of schemes.slice(1)) {
-      const scheme_elements = new Set(Object.keys(colors))
-
-      // Check same number of elements
-      expect(
-        scheme_elements.size,
-        `${scheme_name} should have same number of elements as ${first_scheme_name}`,
-      ).toBe(first_elements.size)
-
-      // Check for missing elements
-      const missing_elements = [...first_elements]
-        .filter((el) => !scheme_elements.has(el))
-        .join(`, `)
-      expect(
-        missing_elements,
-        `${scheme_name} is missing elements from ${first_scheme_name}: ${missing_elements}`,
-      ).toHaveLength(0)
-
-      // Check for extra elements
-      const extra_elements = [...scheme_elements]
-        .filter((el) => !first_elements.has(el))
-        .join(`, `)
-      const fail_msg = `${scheme_name} has extra elements not in ${first_scheme_name}: ${extra_elements}`
-      expect(extra_elements, fail_msg).toHaveLength(0)
+      expect(Object.keys(colors).sort(), `${scheme_name} coverage`).toEqual(expected_keys)
     }
   })
 
@@ -90,11 +35,9 @@ describe(`Element Color Schemes`, () => {
     for (const [scheme_name, colors] of Object.entries(ELEMENT_COLOR_SCHEMES)) {
       // Check all colors are valid hex format
       for (const [element, color] of Object.entries(colors)) {
-        expect(typeof color, `${scheme_name}.${element} should be a string`).toBe(`string`)
-        expect(
-          is_valid_hex_color(color),
-          `${scheme_name}.${element} should be valid hex color (got: ${color})`,
-        ).toBe(true)
+        expect(color, `${scheme_name}.${element} should be a valid hex color`).toMatch(
+          /^#[0-9a-f]{6}$/i,
+        )
       }
 
       // Check color uniqueness within scheme
@@ -118,19 +61,6 @@ describe(`Element Color Schemes`, () => {
       expect(duplicate_count, `${scheme_name} too many duplicate colors`).toBeLessThan(
         max_duplicates,
       )
-
-      // Check key elements are present
-      const key_elements = [`H`, `C`, `N`, `O`, `Fe`, `Au`, `U`]
-      for (const element of key_elements) {
-        expect(
-          colors[element],
-          `${scheme_name} should have color for ${element}`,
-        ).toBeDefined()
-        expect(
-          is_valid_hex_color(colors[element]),
-          `${scheme_name}.${element} should be valid hex`,
-        ).toBe(true)
-      }
     }
   })
 
@@ -186,8 +116,12 @@ describe(`is_color function`, () => {
     [`red`, true],
     [`blue`, true],
     [`green`, true],
+    [`rebeccapurple`, true],
+    [`RED`, true], // named colors are case-insensitive
     [`transparent`, true],
     [`currentcolor`, true],
+
+    [`pending`, false], // arbitrary words are not colors
 
     // Invalid patterns - incomplete functions
     [`rgb`, false],
@@ -196,8 +130,10 @@ describe(`is_color function`, () => {
     [`color`, false],
 
     // Invalid patterns - malformed
-    [`rgb(255, 0)`, true], // incomplete rgb values but still matches our relaxed pattern
+    [`rgb(255, 0)`, false], // incomplete rgb values are rejected
     [`#gg0000`, false],
+    [`#12345`, false], // 5-digit hex is invalid (regression vs old COLOR_FN_REGEX)
+    [`#1234567`, false], // 7-digit hex is invalid (regression vs old COLOR_FN_REGEX)
     [`hello world`, false],
     [``, false],
     [123, false],
@@ -297,18 +233,11 @@ test.each([
 })
 
 test.each([
-  [`#ffffff`, `black`, `light background`],
-  [`#000000`, `white`, `dark background`],
-  [`#808080`, `black`, `custom threshold`],
-  [`#ffffff`, `black`, `null element`],
-])(`pick_contrast_color: %s → %s (%s)`, (bg_color, expected, description) => {
-  if (description === `custom threshold`) {
-    expect(pick_contrast_color({ bg_color, luminance_threshold: 0.5 })).toBe(expected)
-  } else if (description === `null element`) {
-    expect(pick_contrast_color({ bg_color })).toBe(expected)
-  } else {
-    expect(pick_contrast_color({ bg_color })).toBe(expected)
-  }
+  [`#ffffff`, undefined, `black`], // light background
+  [`#000000`, undefined, `white`], // dark background
+  [`#808080`, 0.5, `black`], // custom threshold
+])(`pick_contrast_color: %s (threshold %s) → %s`, (bg_color, threshold, expected) => {
+  expect(pick_contrast_color({ bg_color, luminance_threshold: threshold })).toBe(expected)
 })
 
 test(`pick_contrast_color uses custom colors`, () => {

@@ -53,9 +53,10 @@ export function trilinear_interpolate(
   const y1 = periodic ? (y0 + 1) % ny : Math.min(y0 + 1, ny - 1)
   const z1 = periodic ? (z0 + 1) % nz : Math.min(z0 + 1, nz - 1)
 
-  const xd = gx - Math.floor(gx)
-  const yd = gy - Math.floor(gy)
-  const zd = gz - Math.floor(gz)
+  // deltas from clamped lower index (non-periodic x0 clamps to nx-2 so floor(gx) may != x0)
+  const xd = periodic ? gx - Math.floor(gx) : gx - x0
+  const yd = periodic ? gy - Math.floor(gy) : gy - y0
+  const zd = periodic ? gz - Math.floor(gz) : gz - z0
 
   // 8-point interpolation
   const c000 = grid[x0][y0][z0]

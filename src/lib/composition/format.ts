@@ -39,9 +39,11 @@ export const format_composition_formula = (
   return sort_fn(symbols)
     .filter((el) => composition[el] && composition[el] > 0)
     .map((el) => {
-      const amount = composition[el]
+      const amount = Number(composition[el])
       if (amount === 1) return el
-      const formatted_amount = format_num(Number(amount), amount_format)
+      // avoid d3 SI prefixes for sub-1 amounts (`s` formats render 0.5 as 500m)
+      const fmt = amount_format.endsWith(`s`) && Math.abs(amount) < 1 ? `.3~g` : amount_format
+      const formatted_amount = format_num(amount, fmt)
       return plain_text ? `${el}${formatted_amount}` : `${el}<sub>${formatted_amount}</sub>`
     })
     .join(delim)

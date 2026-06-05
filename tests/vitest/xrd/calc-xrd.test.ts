@@ -1,7 +1,8 @@
 import type { Matrix3x3, Vec2, Vec3 } from '$lib/math'
+import * as math from '$lib/math'
 import type { Crystal, Pbc } from '$lib/structure'
 import { parse_structure_file } from '$lib/structure/parse'
-import { add_xrd_pattern, compute_xrd_pattern, type XrdPattern } from '$lib/xrd'
+import { add_xrd_pattern, compute_xrd_pattern, WAVELENGTHS, type XrdPattern } from '$lib/xrd'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -72,50 +73,39 @@ describe(`compute_xrd_pattern parity with pymatgen JSON`, () => {
         two_theta_range: [0, 90],
       })
 
-      // Angle tolerance (degrees)
-      const angle_tol = 5e-3
-      const d_rtol = 1e-6
-      const d_atol = 1e-6
+      const angle_tol = 5e-3 // degrees
+      const has_close = (arr: number[], target: number, tol: number) =>
+        arr.some((val) => Math.abs(val - target) <= tol)
 
-      // Compare peak positions in a set-wise manner: each expected peak should
-      // have a computed counterpart within tolerance (independent of intensity filtering)
-      const has_close = (arr: number[], target: number, tol: number): boolean => {
-        for (let idx = 0; idx < arr.length; idx++) {
-          if (Math.abs(arr[idx] - target) <= tol) return true
-        }
-        return false
-      }
-      // Focus on strongest expected peaks by intensity to avoid discrepancies from
-      // low-intensity filtering differences between implementations
-      const top_n = Math.min(200, expected.x.length)
+      // Compare peak positions set-wise over the strongest expected peaks (by intensity)
+      // to avoid discrepancies from low-intensity filtering differences between implementations
       const top_indices = Array.from({ length: expected.y.length }, (_, idx) => idx)
-        .sort((i, j) => expected.y[j] - expected.y[i])
-        .slice(0, top_n)
-        .sort((a, b) => a - b)
-      let matched = 0
-      for (let ii = 0; ii < top_indices.length; ii++) {
-        const idx = top_indices[ii]
-        const angle = expected.x[idx]
-        if (has_close(computed.x, angle, angle_tol)) matched++
-      }
-      const min_match_ratio = 0.95
-      expect(matched / top_indices.length).toBeGreaterThanOrEqual(min_match_ratio)
+        .sort((i1, i2) => expected.y[i2] - expected.y[i1])
+        .slice(0, Math.min(200, expected.x.length))
+      const matched = top_indices.filter((idx) =>
+        has_close(computed.x, expected.x[idx], angle_tol),
+      ).length
+      expect(matched / top_indices.length).toBeGreaterThanOrEqual(0.95)
 
-      // Compare d-spacings if present, over overlapping range only
-      if (expected.d_hkls && computed.d_hkls) {
-        const top_d_indices = Array.from({ length: expected.y.length }, (_, idx) => idx)
-          .sort((i, j) => expected.y[j] - expected.y[i])
-          .slice(0, Math.min(200, expected.d_hkls.length))
-          .sort((a, b) => a - b)
-        let d_matched = 0
-        for (let ii = 0; ii < top_d_indices.length; ii++) {
-          const idx = top_d_indices[ii]
-          const d_val = expected.d_hkls[idx]
-          const tol = d_atol + d_rtol * Math.abs(d_val)
-          if (has_close(computed.d_hkls, d_val, tol)) d_matched++
-        }
-        const min_d_match_ratio = 0.95
-        expect(d_matched / top_d_indices.length).toBeGreaterThanOrEqual(min_d_match_ratio)
+      // The 20 strongest expected peaks must also match in normalized intensity (both
+      // patterns scaled to max=100). Regression for the missing Z − 41.78214·s² prefactor
+      // in the atomic scattering factor, which skewed relative peak heights (38.3 vs 51.0)
+      for (const idx of top_indices.slice(0, 20)) {
+        const diffs = computed.x.map((x_val) => Math.abs(x_val - expected.x[idx]))
+        const nearest = diffs.indexOf(Math.min(...diffs))
+        if (diffs[nearest] > angle_tol) continue // position check covers misses
+        const y_err = Math.abs(computed.y[nearest] - expected.y[idx])
+        expect(y_err, `y at 2θ=${expected.x[idx].toFixed(3)}`).toBeLessThanOrEqual(1)
+      }
+
+      // Compare d-spacings if present (fixture consistency test asserts d_hkls aligns with x)
+      const computed_d = computed.d_hkls
+      if (expected.d_hkls && computed_d) {
+        const expected_d = expected.d_hkls
+        const d_matched = top_indices.filter((idx) =>
+          has_close(computed_d, expected_d[idx], 1e-6 + 1e-6 * Math.abs(expected_d[idx])),
+        ).length
+        expect(d_matched / top_indices.length).toBeGreaterThanOrEqual(0.95)
       }
     },
   )
@@ -168,6 +158,40 @@ describe(`compute_xrd_pattern edge cases`, () => {
       scaled_intensity_tol: 0, // include everything after scaling
     })
     expect(many_pass.x.length).toBeGreaterThan(0)
+  })
+
+  // Regression: hkl bounds from reciprocal-row norms (max_radius/|b_i| + 2) miss in-sphere
+  // reflections for skewed cells — this monoclinic cell (γ ≈ 32°) silently dropped 82 of
+  // 2132 reflections in [0°, 180°]. Correct bound uses direct rows: |h_i| ≤ R·|a_i|.
+  test(`skewed monoclinic cell enumerates every in-sphere reflection`, () => {
+    const file_name = `mp-1183089-Ac4Mg2-monoclinic.json`
+    const structure = parse_structure_file(
+      read_maybe_gz(path.join(structures_dir, file_name)),
+      file_name,
+    ) as Crystal
+    const pattern = compute_xrd_pattern(structure, {
+      wavelength: `CuKa`,
+      two_theta_range: [0, 180],
+      scaled_intensity_tol: 0, // keep every peak so multiplicities are complete
+    })
+    const total_multiplicity = (pattern.hkls ?? [])
+      .flat()
+      .reduce((sum, fam) => sum + (fam.multiplicity ?? 0), 0)
+
+    // Brute-force count with generous index bound 25 (exact bound is ≤ 11 for this cell)
+    const recip_cols = math.matrix_inverse_3x3(structure.lattice.matrix) // bᵢ as columns
+    const max_radius = 2 / WAVELENGTHS.CuKa // 2·sin(90°)/λ
+    const span = Array.from({ length: 51 }, (_, idx) => idx - 25)
+    const brute_count = span
+      .flatMap((h_idx) =>
+        span.flatMap((k_idx) =>
+          span.map((l_idx) => Math.hypot(...math.dot(recip_cols, [h_idx, k_idx, l_idx]))),
+        ),
+      )
+      .filter((g_norm) => g_norm > 0 && g_norm <= max_radius).length
+
+    expect(brute_count).toBeGreaterThan(2000) // sanity: full sphere covered
+    expect(total_multiplicity).toBe(brute_count)
   })
 
   test(`enumeration safety cap throws for pathological ranges`, () => {

@@ -8,7 +8,8 @@ import {
   generate_bz_vertices,
   reciprocal_lattice,
 } from '$lib/brillouin/compute'
-import type { Matrix3x3, Vec3, Vec9 } from '$lib/math'
+import type { Matrix3x3, Vec3 } from '$lib/math'
+import * as math from '$lib/math'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
 import { load_json } from './setup'
@@ -221,35 +222,20 @@ describe(`compute_convex_hull`, () => {
     ).toThrow(/Need ≥4 vertices/)
   })
 
+  // All 8 corners of the [-1, 1]³ cube
+  const cube_verts = [-1, 1].flatMap((z) =>
+    [-1, 1].flatMap((y) => [-1, 1].map((x) => [x, y, z] as Vec3)),
+  )
+  const tetrahedron_verts: Vec3[] = [
+    [0, 0, 0],
+    [1, 0, 0],
+    [0.5, Math.sqrt(3) / 2, 0],
+    [0.5, Math.sqrt(3) / 6, Math.sqrt(2 / 3)],
+  ]
+
   test.each([
-    [
-      `tetrahedron`,
-      [
-        [0, 0, 0],
-        [1, 0, 0],
-        [0.5, Math.sqrt(3) / 2, 0],
-        [0.5, Math.sqrt(3) / 6, Math.sqrt(2 / 3)],
-      ],
-      4,
-      4,
-      6,
-    ],
-    [
-      `cube`,
-      [
-        [-1, -1, -1],
-        [1, -1, -1],
-        [-1, 1, -1],
-        [1, 1, -1],
-        [-1, -1, 1],
-        [1, -1, 1],
-        [-1, 1, 1],
-        [1, 1, 1],
-      ],
-      8,
-      12,
-      12,
-    ],
+    [`tetrahedron`, tetrahedron_verts, 4, 4, 6],
+    [`cube`, cube_verts, 8, 12, 12],
   ] as [string, Vec3[], number, number, number][])(
     `%s: %d vertices, %d faces, %d edges`,
     (_, vertices, v_count, f_count, e_count) => {
@@ -261,18 +247,8 @@ describe(`compute_convex_hull`, () => {
   )
 
   test(`edge_sharp_angle_deg controls edge filtering`, () => {
-    const cube: Vec3[] = [
-      [-1, -1, -1],
-      [1, -1, -1],
-      [-1, 1, -1],
-      [1, 1, -1],
-      [-1, -1, 1],
-      [1, -1, 1],
-      [-1, 1, 1],
-      [1, 1, 1],
-    ]
-    const strict = compute_convex_hull(cube, 1)
-    const loose = compute_convex_hull(cube, 45)
+    const strict = compute_convex_hull(cube_verts, 1)
+    const loose = compute_convex_hull(cube_verts, 45)
     expect(strict.edges.length).toBeGreaterThan(0)
     expect(loose.edges.length).toBeGreaterThan(0)
   })
@@ -342,92 +318,64 @@ describe(`error handling`, () => {
   })
 })
 
-// Rotation matrices as Vec9 (row-major)
-const IDENTITY_ROT: Vec9 = [1, 0, 0, 0, 1, 0, 0, 0, 1]
-const ROT_Z_90: Vec9 = [0, -1, 0, 1, 0, 0, 0, 0, 1]
-const ROT_Z_180: Vec9 = [-1, 0, 0, 0, -1, 0, 0, 0, 1]
-const ROT_Z_270: Vec9 = [0, 1, 0, -1, 0, 0, 0, 0, 1]
-const MIRROR_Z: Vec9 = [1, 0, 0, 0, 1, 0, 0, 0, -1]
-const INVERSION_ROT: Vec9 = [-1, 0, 0, 0, -1, 0, 0, 0, -1]
+// Fractional rotation matrices (row-major) for mock moyo operations
+const ROT_Z_90 = math.vec9_to_mat3x3([0, -1, 0, 1, 0, 0, 0, 0, 1]) as Matrix3x3
+const ROT_Z_180 = math.vec9_to_mat3x3([-1, 0, 0, 0, -1, 0, 0, 0, 1]) as Matrix3x3
+const ROT_Z_270 = math.vec9_to_mat3x3([0, 1, 0, -1, 0, 0, 0, 0, 1]) as Matrix3x3
+const MIRROR_Z = math.vec9_to_mat3x3([1, 0, 0, 0, 1, 0, 0, 0, -1]) as Matrix3x3
 
-// Create mock operation for testing (Vec9 substitutes for Float64Array in tests)
-const make_op = (rot: Vec9, trans: Vec3 = [0, 0, 0]): MoyoDataset[`operations`][number] =>
-  ({ rotation: rot, translation: trans }) as unknown as MoyoDataset[`operations`][number]
+// moyo-wasm serializes nalgebra Matrix3 rotations as flat 9-arrays in COLUMN-major order
+// (number[] substitutes for Float64Array in tests)
+const make_op = (rot: Matrix3x3, translation: Vec3 = [0, 0, 0]) =>
+  ({
+    rotation: [0, 1, 2].flatMap((col) => rot.map((row) => row[col])),
+    translation,
+  }) as unknown as MoyoDataset[`operations`][number]
 
 describe(`extract_point_group_from_operations`, () => {
-  test(`extracts identity and transposes for reciprocal space`, () => {
-    const pg = extract_point_group_from_operations([make_op(IDENTITY_ROT)])
-    expect(pg).toHaveLength(1)
-    expect(pg[0]).toEqual(IDENTITY_MAT)
-  })
-
   test(`deduplicates same rotation with different translations`, () => {
-    const ops = [
-      make_op(IDENTITY_ROT),
-      make_op(IDENTITY_ROT, [0.5, 0, 0]),
-      make_op(IDENTITY_ROT, [0, 0.5, 0]),
-    ]
+    const ops = [make_op(IDENTITY_MAT), make_op(IDENTITY_MAT, [0.5, 0, 0])]
     expect(extract_point_group_from_operations(ops)).toHaveLength(1)
   })
 
   test.each([
-    [`C4 group`, [IDENTITY_ROT, ROT_Z_90, ROT_Z_180, ROT_Z_270], 4],
-    [`with inversion/mirror`, [IDENTITY_ROT, INVERSION_ROT, MIRROR_Z], 3],
+    [`C4 group`, [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270], 4],
+    [`with inversion/mirror`, [IDENTITY_MAT, INVERSION_MAT, MIRROR_Z], 3],
     [`empty input`, [], 0],
-  ])(`%s → %d unique rotations`, (_, rots, expected) => {
+  ] as [string, Matrix3x3[], number][])(`%s → %d unique rotations`, (_, rots, expected) => {
     expect(extract_point_group_from_operations(rots.map((r) => make_op(r)))).toHaveLength(
       expected,
     )
   })
 
-  test(`preserves fractional rotation (no transpose)`, () => {
-    // ROT_Z_90 [[0,-1,0],[1,0,0],[0,0,1]] - returned as-is for later conversion
-    const [pg] = extract_point_group_from_operations([make_op(ROT_Z_90)])
-    expect(pg[0][1]).toBe(-1) // original value at [0][1]
-    expect(pg[1][0]).toBe(1) // original value at [1][0]
+  // Regression: moyo flat arrays are column-major, so a row-major read returns Wᵀ instead
+  // of W. Non-symmetric Ws (C4z, hex C3) catch the layout mix-up.
+  test(`decodes column-major moyo rotations (round-trip)`, () => {
+    for (const rot of [IDENTITY_MAT, ROT_Z_90, C3_HEX, C3_HEX_SQ]) {
+      expect(extract_point_group_from_operations([make_op(rot)])).toEqual([rot])
+    }
   })
 })
 
 describe(`compute_ibz_clipping_planes`, () => {
-  const ROT_90: Matrix3x3 = [
-    [0, 1, 0],
-    [-1, 0, 0],
-    [0, 0, 1],
-  ]
-  const ROT_180: Matrix3x3 = [
-    [-1, 0, 0],
-    [0, -1, 0],
-    [0, 0, 1],
-  ]
-  const ROT_270: Matrix3x3 = [
-    [0, -1, 0],
-    [1, 0, 0],
-    [0, 0, 1],
-  ]
-
   test(`identity-only → no planes`, () => {
     expect(compute_ibz_clipping_planes([IDENTITY_MAT])).toHaveLength(0)
   })
 
   test(`non-trivial symmetry → planes through origin`, () => {
-    const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_90])
+    const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_Z_90])
     expect(planes.length).toBeGreaterThan(0)
     planes.forEach((p) => expect(p.dist).toBe(0))
   })
 
   test(`C4 group deduplicates planes`, () => {
-    const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_90, ROT_180, ROT_270])
+    const planes = compute_ibz_clipping_planes([IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270])
     expect(planes.length).toBeLessThanOrEqual(3)
   })
 })
 
 describe(`compute_irreducible_bz`, () => {
   const bz = compute_brillouin_zone(reciprocal_lattice(CUBIC_5), 1)
-  const MIRROR_Z_MAT: Matrix3x3 = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, -1],
-  ]
 
   test(`P1 (identity only) → full BZ`, () => {
     const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT])
@@ -447,7 +395,7 @@ describe(`compute_irreducible_bz`, () => {
   })
 
   test(`mirror symmetry → valid geometry`, () => {
-    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, MIRROR_Z_MAT])
+    const ibz = compute_irreducible_bz(bz, [IDENTITY_MAT, MIRROR_Z])
     expect(ibz).not.toBeNull()
     if (!ibz) return
     expect(ibz.vertices.length).toBeGreaterThanOrEqual(4)
@@ -491,46 +439,54 @@ describe(`compute_irreducible_bz`, () => {
 describe(`fractional_to_cartesian_rotation`, () => {
   const k_lattice = reference_data.hexagonal.reciprocal_lattice as Matrix3x3
 
-  test(`det = +1 and correct matrix elements for hexagonal C3`, () => {
-    const R = fractional_to_cartesian_rotation(C3_HEX, k_lattice)
-
-    // det(R) should be +1 for proper rotation
-    const det =
-      R[0][0] * (R[1][1] * R[2][2] - R[1][2] * R[2][1]) -
-      R[0][1] * (R[1][0] * R[2][2] - R[1][2] * R[2][0]) +
-      R[0][2] * (R[1][0] * R[2][1] - R[1][1] * R[2][0])
-    expect(det).toBeCloseTo(1, 10)
-
-    // These values distinguish W^{-T} from W^T (wrong impl gives ~-0.577, ~-0.906, ~0.577)
-    expect(R[0][0]).toBeCloseTo(-0.4226497308103744, 6)
-    expect(R[0][1]).toBeCloseTo(-0.6547005383792517, 6)
-    expect(R[1][0]).toBeCloseTo(1.1547005383792515, 6)
-  })
-
+  // The old convention R = B·W^{-T}·B^{-1} gave non-orthogonal "rotations" (row norm
+  // 1.1547 for hex C3) — assert physical invariants instead of hardcoded matrix elements
   test.each([
-    {
-      name: `singular W`,
-      W: [
-        [0, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ] as Matrix3x3,
-      k: k_lattice,
+    [`hexagonal C3 (120°)`, C3_HEX, k_lattice, 0],
+    [`hexagonal C3² (240°)`, C3_HEX_SQ, k_lattice, 0],
+    [`cubic C4z (90°)`, ROT_Z_90, reciprocal_lattice(CUBIC_5), 1],
+  ] as [string, Matrix3x3, Matrix3x3, number][])(
+    `%s: R is a proper rotation mapping the reciprocal lattice onto itself`,
+    (_, frac_rot, k_latt, trace) => {
+      const R = fractional_to_cartesian_rotation(frac_rot, k_latt)
+
+      // Orthogonal (RᵀR = I), proper (det = +1), right angle (trace = 1 + 2·cosθ — also
+      // rules out the identity fallback, which trivially passes the other invariants)
+      math
+        .dot(math.transpose_3x3_matrix(R), R)
+        .forEach((row, ii) =>
+          row.forEach((val, jj) =>
+            expect(val, `RᵀR[${ii}][${jj}]`).toBeCloseTo(ii === jj ? 1 : 0, 10),
+          ),
+        )
+      expect(math.det_3x3(R)).toBeCloseTo(1, 10)
+      expect(R[0][0] + R[1][1] + R[2][2], `trace`).toBeCloseTo(trace, 10)
+
+      // R must map the reciprocal lattice onto itself: coordinates of R·bᵢ in the
+      // reciprocal basis (k_cart = Bᵀ·q) must be integers
+      const basis_inv = math.matrix_inverse_3x3(math.transpose_3x3_matrix(k_latt))
+      for (const b_vec of k_latt) {
+        for (const coord of math.dot(basis_inv, math.dot(R, b_vec))) {
+          expect(coord, `R·b lattice coords`).toBeCloseTo(Math.round(coord), 8)
+        }
+      }
     },
-    {
-      name: `singular k_lattice`,
-      W: IDENTITY_MAT,
-      k: [
-        [0, 0, 0],
-        [0, 0, 0],
-        [0, 0, 0],
-      ] as Matrix3x3,
-    },
-  ])(`returns identity matrix for $name`, ({ W, k }) => {
-    expect(fractional_to_cartesian_rotation(W, k)).toEqual([
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ])
+  )
+
+  const singular_w: Matrix3x3 = [
+    [0, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
+  const zero_mat: Matrix3x3 = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  test.each([
+    [`singular W`, singular_w, k_lattice],
+    [`singular k_lattice`, IDENTITY_MAT, zero_mat],
+  ] as [string, Matrix3x3, Matrix3x3][])(`returns identity matrix for %s`, (_, W, k) => {
+    expect(fractional_to_cartesian_rotation(W, k)).toEqual(IDENTITY_MAT)
   })
 })

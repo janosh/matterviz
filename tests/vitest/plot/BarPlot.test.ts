@@ -222,6 +222,35 @@ describe(`BarPlot`, () => {
     expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(6)
   })
 
+  test(`stacked mode keys offsets by x value for misaligned series grids`, async () => {
+    // Regression test: offsets accumulated per array index stacked B's x=4 bar on A's x=3 total
+    const plot = await mount_sized_bar_plot({
+      series: [
+        { x: [1, 2, 3], y: [10, 20, 30] },
+        { x: [2, 3, 4], y: [5, 5, 5] },
+      ],
+      mode: `stacked`,
+      bar: { border_radius: 0 }, // square corners -> parseable `M x,y h w v h` paths
+    })
+    // Parse a series' rect paths into { top, bottom } screen coords
+    const rects = (idx: number) =>
+      Array.from(
+        plot.querySelectorAll(`.bar-series[data-series-idx="${idx}"] path[role="button"]`),
+        (path) => {
+          const [, y_str, h_str] =
+            path.getAttribute(`d`)?.match(/^M[\d.-]+,([\d.-]+)h[\d.-]+v([\d.-]+)/) ?? []
+          return { top: Number(y_str), bottom: Number(y_str) + Number(h_str) }
+        },
+      )
+    const [a_rects, b_rects] = [rects(0), rects(1)]
+    expect([a_rects.length, b_rects.length]).toEqual([3, 3])
+    // B bars at x=2,3 sit on top of A bars at x=2,3 (B bottom == A top)
+    expect(b_rects[0].bottom).toBeCloseTo(a_rects[1].top, 4)
+    expect(b_rects[1].bottom).toBeCloseTo(a_rects[2].top, 4)
+    // B bar at x=4 has no A bar below it -> starts at baseline 0 (same bottom as A bars)
+    expect(b_rects[2].bottom).toBeCloseTo(a_rects[0].bottom, 4)
+  })
+
   test(`event callbacks`, () => {
     const [change_fn, hover_fn, click_fn] = [vi.fn(), vi.fn(), vi.fn()]
     mount(BarPlot, {

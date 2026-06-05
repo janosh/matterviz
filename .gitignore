@@ -26,3 +26,6 @@ static/tmp
 *.vsix
 !extensions/vscode/.vscode/
 src/lib/element/data.json
+
+# agent worktrees / local config
+.claude

@@ -210,30 +210,16 @@ export function resolve_line_endpoints(
     }
 
     if (!handled_as_vertical) {
-      // Clip line to y bounds
-      let x1 = x_min
-      let x2 = x_max
-      let y1 = slope * x_min + intercept
-      let y2 = slope * x_max + intercept
-
-      if (slope === 0) {
-        if (y1 < y_min || y1 > y_max) return null
-      } else {
-        // Clip each endpoint to y bounds
-        const clip_y = (x: number, y: number, bound: number) =>
-          y < y_min || y > y_max ? [(bound - intercept) / slope, bound] : [x, y]
-        ;[x1, y1] = clip_y(x1, y1, y1 < y_min ? y_min : y_max)
-        ;[x2, y2] = clip_y(x2, y2, y2 < y_min ? y_min : y_max)
-        // If both endpoints clipped to same point, line is entirely outside bounds
-        if (x1 === x2 && y1 === y2) return null
-      }
-
-      // Ensure consistent ordering before applying span constraints
-      const [x_lo, x_hi] = x1 <= x2 ? [x1, x2] : [x2, x1]
-      const [y_lo, y_hi] = y1 <= y2 ? [y1, y2] : [y2, y1]
-      ;[x1_data, x2_data] = apply_x_span(x_lo, x_hi)
-      ;[y1_data, y2_data] = apply_y_span(y_lo, y_hi)
-      if (x1_data > x_max || x2_data < x_min) return null
+      // Intersect bounds with span constraints, then clip the line segment spanning the
+      // clipped x-extent to that rect — keeps endpoints paired on y = slope·x + intercept
+      const [x_lo, x_hi] = apply_x_span(x_min, x_max)
+      const [y_lo, y_hi] = apply_y_span(y_min, y_max)
+      if (x_lo > x_hi || y_lo > y_hi) return null
+      const [y_at_lo, y_at_hi] = [slope * x_lo + intercept, slope * x_hi + intercept]
+      const seg = clip_segment_to_rect(x_lo, y_at_lo, x_hi, y_at_hi, x_lo, x_hi, y_lo, y_hi)
+      // Degenerate (single-point) result means the line only grazes a corner
+      if (!seg || (seg[0] === seg[2] && seg[1] === seg[3])) return null
+      ;[x1_data, y1_data, x2_data, y2_data] = seg
     }
   } else if (line_type === `segment`) {
     const [p1x, p1y] = normalize_point(ref_line.p1)

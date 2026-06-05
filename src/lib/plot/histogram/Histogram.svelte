@@ -270,9 +270,10 @@
   )
 
   let auto_ranges = $derived.by(() => {
-    const all_values = selected_series.flatMap((srs: DataSeries) => srs.y)
+    // Only x1 series contribute to the x1 auto-range (x2 series get their own domain below)
+    const x1_values = selected_series.flatMap((srs) => srs.x_axis === `x2` ? [] : srs.y)
     const auto_x = get_nice_data_range(
-      all_values.map((val) => ({ x: val, y: 0 })),
+      x1_values.map((val) => ({ x: val, y: 0 })),
       ({ x }) => x,
       x_range,
       final_x_axis.scale_type ?? `linear`,
@@ -303,12 +304,14 @@
         const fallback = type_name === `log` ? 1 : 0
         return [fallback, 1]
       }
-      const hist = bin().domain([auto_x[0], auto_x[1]]).thresholds(bins)
+      // Bin each series over the domain of the x-axis it renders on (d3 bin() drops
+      // out-of-domain values, so binning x2 series over the x1 domain skews max_count)
       const max_count = Math.max(
         0,
-        ...series_list.map((srs: DataSeries) =>
-          max(hist(srs.y), (data) => data.length) || 0
-        ),
+        ...series_list.map((srs: DataSeries) => {
+          const hist = bin().domain(srs.x_axis === `x2` ? auto_x2 : auto_x).thresholds(bins)
+          return max(hist(srs.y), (data) => data.length) || 0
+        }),
       )
 
       // If there's effectively no data, avoid log-range issues (counts can't be <= 0 on log)
