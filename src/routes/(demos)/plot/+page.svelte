@@ -65,6 +65,13 @@
       icon: `Graph`,
     },
     {
+      href: `/plot/sunburst`,
+      title: `Sunburst`,
+      description:
+        `Zoomable hierarchical rings with animated drill-down, e.g. crystal-system/spacegroup distributions.`,
+      icon: `Graph`,
+    },
+    {
       href: `/plot/spacegroup-bar-plot`,
       title: `Spacegroup Bar Plot`,
       description:

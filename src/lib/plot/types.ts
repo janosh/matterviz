@@ -1,5 +1,7 @@
 import type { D3SymbolName } from '$lib/labels'
 import type { Point2D, Point3D, Vec2, Vec3 } from '$lib/math'
+// type-only circular import (sunburst.ts imports from this file) - erased at runtime
+import type { PositionedArc } from './sunburst'
 import type DraggablePane from '$lib/overlays/DraggablePane.svelte'
 import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
@@ -447,6 +449,41 @@ export interface SankeyLinkHandlerProps<Metadata = Record<string, unknown>> {
 export type SankeyHandlerProps<Metadata = Record<string, unknown>> =
   | SankeyNodeHandlerProps<Metadata>
   | SankeyLinkHandlerProps<Metadata>
+
+// === Sunburst chart ===
+// How node values are interpreted (plotly `branchvalues` semantics):
+// 'leaf-sum'  - parent values ignored, computed as sum of leaf values (d3 .sum default)
+// 'total'     - every node's value is authoritative; children should sum <= parent
+//               (plotly branchvalues='total'; a shortfall leaves an angular gap)
+// 'remainder' - a node's own value is added on top of its children's sum
+export type SunburstValueMode = `leaf-sum` | `total` | `remainder`
+// Arc label orientation: 'auto' picks radial/tangential per arc based on available space
+export type SunburstLabelRotation = `auto` | `radial` | `tangential` | `horizontal`
+// Sibling ordering: 'none' preserves input order (e.g. spacegroup number order)
+export type SunburstSort = `descending` | `ascending` | `none`
+// What arc labels display (plotly textinfo equivalent); percent is of the root total
+export type SunburstLabelText = `label` | `value` | `percent` | `label+value` | `label+percent`
+// Chart geometry: polar rings (sunburst) or stacked horizontal rows (icicle)
+export type SunburstShape = `sunburst` | `icicle`
+
+export interface SunburstNode<Metadata = Record<string, unknown>> {
+  id?: string | number // stable id (defaults to slash-joined label path, e.g. "cubic/Fm-3m")
+  label?: string
+  value?: number // required on leaves ('leaf-sum') / authoritative on all nodes ('total')
+  color?: string // explicit color, inherited by descendants without their own
+  children?: SunburstNode<Metadata>[]
+  metadata?: Metadata
+}
+
+// Event payload for hover/click/zoom callbacks: a PositionedArc minus its geometry
+// (screen coords are an implementation detail), plus the resolved parent id
+export interface SunburstNodeHandlerProps<Metadata = Record<string, unknown>> extends Omit<
+  PositionedArc<Metadata>,
+  `x0` | `x1` | `y0` | `y1` | `subtree_end` | `parent_idx`
+> {
+  type: `node`
+  parent_id: string | number | null
+}
 
 export interface BarSeries<Metadata = Record<string, unknown>> {
   id?: string | number // Optional stable identifier for the series (used for keying)

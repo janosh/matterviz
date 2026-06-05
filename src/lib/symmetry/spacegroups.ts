@@ -1,5 +1,8 @@
 // Space group to crystal system mappings and utilities
 
+// type-only import (erased at runtime, so no import cycle with $lib/plot)
+import type { SunburstNode } from '$lib/plot/types'
+
 // Crystal system ranges: [min, max] space group numbers (inclusive)
 export const CRYSTAL_SYSTEM_RANGES: Record<CrystalSystem, [number, number]> = {
   triclinic: [1, 2],
@@ -46,25 +49,20 @@ export function spacegroup_num_to_crystal_sys(spacegroup: number): CrystalSystem
 
 // Convert space group (number or symbol) to crystal system
 export function spacegroup_to_crystal_sys(spacegroup: number | string): CrystalSystem | null {
-  if (typeof spacegroup === `number`) return spacegroup_num_to_crystal_sys(spacegroup)
-
-  // Try to parse as symbol
-  const number = SPACEGROUP_SYMBOL_TO_NUM[spacegroup]
-  if (number !== undefined) return spacegroup_num_to_crystal_sys(number)
-
-  // Try to parse string as number
-  const parsed = parseInt(spacegroup, 10)
-  if (!isNaN(parsed)) return spacegroup_num_to_crystal_sys(parsed)
-
-  return null
+  const num = normalize_spacegroup(spacegroup)
+  return num == null ? null : spacegroup_num_to_crystal_sys(num)
 }
 
-// Normalize space group input to number
-export function normalize_spacegroup(spacegroup: number | string) {
+// Normalize space group input (number, Hermann-Mauguin symbol, or numeric string
+// like "225") to a space group number in [1, 230], or null if invalid
+export function normalize_spacegroup(spacegroup: number | string): number | null {
   if (typeof spacegroup === `number`) {
     return spacegroup >= 1 && spacegroup <= 230 ? spacegroup : null
   }
-  return SPACEGROUP_SYMBOL_TO_NUM[spacegroup] ?? null
+  const from_symbol = SPACEGROUP_SYMBOL_TO_NUM[spacegroup]
+  if (from_symbol !== undefined) return from_symbol
+  const parsed = parseInt(spacegroup, 10)
+  return isNaN(parsed) ? null : normalize_spacegroup(parsed)
 }
 
 export const SPACEGROUP_SYMBOL_TO_NUM: Record<string, number> = {
@@ -402,3 +400,53 @@ export const SPACEGROUP_NUM_TO_SYMBOL = Object.entries(SPACEGROUP_SYMBOL_TO_NUM)
   if (!acc[num]) acc[num] = symbol
   return acc
 }, {})
+
+export interface SpacegroupSunburstMetadata {
+  spacegroup: number
+  crystal_system: CrystalSystem
+  [key: string]: unknown // assignable to SunburstNode's default Record<string, unknown>
+}
+
+// Build crystal-system -> spacegroup hierarchy data for the Sunburst component from a
+// list of spacegroup numbers or symbols (one entry per occurrence; counts become leaf
+// values). Leaf ids follow the pymatviz spacegroup_sunburst scheme, e.g. "cubic/225".
+export function spacegroup_sunburst_data(
+  spacegroups: readonly (number | string)[],
+): SunburstNode<SpacegroupSunburstMetadata>[] {
+  const counts = new Map<number, number>()
+  let n_invalid = 0
+  for (const spacegroup of spacegroups) {
+    const num = normalize_spacegroup(spacegroup) // numbers, symbols, numeric strings
+    if (num == null) {
+      n_invalid += 1
+      continue
+    }
+    counts.set(num, (counts.get(num) ?? 0) + 1)
+  }
+  if (n_invalid > 0) {
+    console.warn(
+      `spacegroup_sunburst_data: skipped ${n_invalid} invalid spacegroup(s) (expected numbers 1-230 or Hermann-Mauguin symbols)`,
+    )
+  }
+
+  // Emit crystal systems in canonical (space group number) order, only those present
+  return CRYSTAL_SYSTEMS.flatMap((system) => {
+    const nums = [...counts.keys()]
+      .filter((num) => spacegroup_num_to_crystal_sys(num) === system)
+      .sort((num_a, num_b) => num_a - num_b)
+    if (nums.length === 0) return []
+    return [
+      {
+        id: system,
+        label: system,
+        color: CRYSTAL_SYSTEM_COLORS[system],
+        children: nums.map((num) => ({
+          id: `${system}/${num}`,
+          label: SPACEGROUP_NUM_TO_SYMBOL[num] ?? `${num}`,
+          value: counts.get(num) as number,
+          metadata: { spacegroup: num, crystal_system: system },
+        })),
+      },
+    ]
+  })
+}

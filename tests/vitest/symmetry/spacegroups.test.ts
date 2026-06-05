@@ -1,6 +1,6 @@
 import type { CrystalSystem } from '$lib/symmetry/spacegroups'
 import * as spg from '$lib/symmetry/spacegroups'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 describe(`CRYSTAL_SYSTEM_RANGES`, () => {
   test(`should have 7 contiguous systems from 1-230`, () => {
@@ -241,5 +241,57 @@ describe(`Integration tests`, () => {
     expect(spg.spacegroup_to_crystal_sys(symbol)).toBe(expected_system)
     expect(spg.normalize_spacegroup(num)).toBe(num)
     expect(spg.normalize_spacegroup(symbol)).toBe(num)
+  })
+})
+
+describe(`spacegroup_sunburst_data`, () => {
+  test(`tallies counts and groups by crystal system in canonical order`, () => {
+    const data = spg.spacegroup_sunburst_data([225, 225, 225, 1, 194, `Fm-3m`])
+    // canonical order: triclinic < hexagonal < cubic; absent systems omitted
+    expect(data.map((node) => node.id)).toEqual([`triclinic`, `hexagonal`, `cubic`])
+    const cubic = data[2]
+    expect(cubic.color).toBe(spg.CRYSTAL_SYSTEM_COLORS.cubic)
+    // 3x 225 (number) + 1x 'Fm-3m' (symbol) accumulate into the same leaf
+    expect(cubic.children).toEqual([
+      {
+        id: `cubic/225`,
+        label: `Fm-3m`,
+        value: 4,
+        metadata: { spacegroup: 225, crystal_system: `cubic` },
+      },
+    ])
+  })
+
+  test(`accepts numeric strings and sorts leaves by spacegroup number`, () => {
+    const data = spg.spacegroup_sunburst_data([`229`, `225`, 227])
+    expect(data).toHaveLength(1)
+    expect(data[0].children?.map((node) => node.id)).toEqual([
+      `cubic/225`,
+      `cubic/227`,
+      `cubic/229`,
+    ])
+  })
+
+  test(`skips invalid entries with a single warning`, () => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const data = spg.spacegroup_sunburst_data([225, 0, 231, `not-a-spacegroup`])
+    expect(data).toHaveLength(1)
+    expect(data[0].children?.[0].value).toBe(1)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      expect.stringMatching(/skipped 3 invalid spacegroup/),
+    )
+    warn.mockRestore()
+  })
+
+  test(`returns empty array for empty input`, () => {
+    expect(spg.spacegroup_sunburst_data([])).toEqual([])
+  })
+
+  test(`covers all 7 crystal systems when every spacegroup occurs`, () => {
+    const all = Array.from({ length: 230 }, (_, idx) => idx + 1)
+    const data = spg.spacegroup_sunburst_data(all)
+    expect(data.map((node) => node.id)).toEqual([...spg.CRYSTAL_SYSTEMS])
+    const n_leaves = data.reduce((sum, node) => sum + (node.children?.length ?? 0), 0)
+    expect(n_leaves).toBe(230)
   })
 })

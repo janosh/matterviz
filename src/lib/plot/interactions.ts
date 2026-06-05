@@ -1,14 +1,32 @@
 import type { Point2D, Vec2 } from '$lib/math'
 import type { Y2SyncConfig, Y2SyncMode } from './types'
 
-// Get relative coordinates from a mouse event
-export function get_relative_coords(evt: MouseEvent): Point2D | null {
-  const current_target = evt.currentTarget
-  if (!(current_target instanceof SVGElement)) return null
+// Get coordinates of a mouse event relative to an element (the event's
+// currentTarget by default; pass `element` when the handler is delegated and the
+// reference frame differs, e.g. coordinates relative to the svg root)
+export function get_relative_coords(
+  evt: MouseEvent,
+  element: EventTarget | null = evt.currentTarget,
+): Point2D | null {
+  if (!(element instanceof Element)) return null
 
-  const svg_box = current_target.getBoundingClientRect()
-  if (!svg_box) return null
-  return { x: evt.clientX - svg_box.left, y: evt.clientY - svg_box.top }
+  const box = element.getBoundingClientRect()
+  if (!box) return null
+  return { x: evt.clientX - box.left, y: evt.clientY - box.top }
+}
+
+// Resolve a delegated event to the integer value of the nearest ancestor's data
+// attribute (e.g. data-sunburst-node-idx), scoped to `root` so targets outside the
+// component don't leak in. Returns null when the event didn't hit an indexed element.
+export function closest_data_idx(
+  event: Event,
+  attr: string,
+  root?: Element | null,
+): number | null {
+  const target = event.target instanceof Element ? event.target.closest(`[${attr}]`) : null
+  if (!target || (root && !root.contains(target))) return null
+  const idx = Number(target.getAttribute(attr))
+  return Number.isInteger(idx) ? idx : null
 }
 
 // Normalize Y2 sync config (handle shorthand string vs full object)
@@ -88,6 +106,10 @@ export function pixels_to_data_delta(
 // Threshold for distinguishing pinch-zoom from pan in touch gestures
 // Scale change > this value triggers zoom instead of pan
 export const PINCH_ZOOM_THRESHOLD = 0.1
+
+// Minimum start distance (px) between two touches to treat the gesture as a valid pinch.
+// Guards curr_dist / start_dist scale from blowing up on near-coincident touches
+export const MIN_TOUCH_DISTANCE_PIXELS = 10
 
 // Helper to check if range is the default [0, 1] sentinel (no data)
 // Note: min === 0 handles -0 correctly since -0 === 0 in JavaScript
