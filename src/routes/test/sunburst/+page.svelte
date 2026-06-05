@@ -40,8 +40,8 @@
     ...Array(4).fill(1),
   ]
 
-  // Large 3-level hierarchy (40 * 12 = 480 branches, 2400 leaves -> 2921 arcs) to
-  // exercise render pruning + zoom animation at scale
+  // Large 3-level hierarchy (40 groups + 480 branches + 2400 leaves -> 2920 arcs;
+  // the root isn't rendered) to exercise render pruning + zoom animation at scale
   const large: SunburstNode[] = Array.from({ length: 40 }, (_grp_el, grp) => ({
     label: `group-${grp}`,
     children: Array.from({ length: 12 }, (_sub_el, sub) => ({
