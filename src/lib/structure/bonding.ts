@@ -73,6 +73,24 @@ export const get_bond_key = (idx_1: number, idx_2: number, cell_shift?: Vec3): s
   )}`
 }
 
+// Remap explicit bond metadata after site deletion: drop bonds touching deleted
+// sites and shift each surviving index down by the number of deleted indices below it.
+export function remap_bonds_after_deletion(
+  bonds: readonly StructureBond[],
+  deleted_indices: ReadonlySet<number>,
+): StructureBond[] {
+  const shift = (idx: number) => idx - [...deleted_indices].filter((del) => del < idx).length
+  return bonds
+    .filter(
+      (bond) => !deleted_indices.has(bond.site_idx_1) && !deleted_indices.has(bond.site_idx_2),
+    )
+    .map((bond) => ({
+      ...bond,
+      site_idx_1: shift(bond.site_idx_1),
+      site_idx_2: shift(bond.site_idx_2),
+    }))
+}
+
 export type BondEditState = {
   added_bonds: StructureBond[]
   removed_bonds: StructureBond[]

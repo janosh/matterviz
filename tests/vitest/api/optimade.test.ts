@@ -2,8 +2,9 @@ import {
   decode_structure_id,
   detect_provider_from_slug,
   encode_structure_id,
+  fetch_optimade_providers,
 } from '$lib/api/optimade'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { MOCK_PROVIDERS } from '../../fixtures/optimade-mocks'
 
 describe(`OPTIMADE API utilities`, () => {
@@ -79,5 +80,35 @@ describe(`OPTIMADE API utilities`, () => {
   ])(`should return empty string for %s`, (slug) => {
     const provider = detect_provider_from_slug(slug, MOCK_PROVIDERS)
     expect(provider).toBe(``)
+  })
+})
+
+describe(`fetch_with_cors_proxy behavior (via fetch_optimade_providers)`, () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  test(`HTTP error status from direct fetch surfaces instead of hammering proxies`, async () => {
+    // A 404 is a definitive server answer — return it as-is, not masked by 5 proxy attempts
+    const mock_fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: () => Promise.reject(new Error(`no body`)),
+    })
+    vi.stubGlobal(`fetch`, mock_fetch)
+    await expect(fetch_optimade_providers()).rejects.toThrow(`no body`)
+    expect(mock_fetch).toHaveBeenCalledTimes(1) // no proxy fallback
+  })
+
+  test(`path-suffix proxies receive the raw URL, query proxies the encoded one`, async () => {
+    // Network failure (thrown) triggers the proxy fallback chain
+    const mock_fetch = vi.fn().mockRejectedValue(new TypeError(`Failed to fetch`))
+    vi.stubGlobal(`fetch`, mock_fetch)
+    await expect(fetch_optimade_providers()).rejects.toThrow(`All CORS proxies failed`)
+    const urls = mock_fetch.mock.calls.map(([url]) => url as string)
+    const target = `https://providers.optimade.org/v1/links`
+    expect(urls[0]).toBe(target) // direct attempt first
+    // Query-style proxies must percent-encode the target; path-suffix proxies must not
+    expect(urls.some((url) => url.endsWith(encodeURIComponent(target)))).toBe(true)
+    expect(urls).toContain(`https://cors-anywhere.herokuapp.com/${target}`)
+    expect(urls).toContain(`https://thingproxy.freeboard.io/fetch/${target}`)
   })
 })

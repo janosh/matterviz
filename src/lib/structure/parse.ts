@@ -155,6 +155,10 @@ function resolve_optimade_element(
     if (!best || conc > best.conc) best = { symbol, conc, sym_idx }
   }
   if (best) return { symbol: best.symbol, sym_idx: best.sym_idx }
+  // Fallback: the name may be an element with a trailing atom index (e.g. 'O1');
+  // element symbols never contain digits, so stripping them is safe
+  const stripped = species_name.replace(/\d+$/, ``)
+  if (is_known_element_symbol(stripped)) return { symbol: stripped, sym_idx: -1 }
   return { symbol: validate_element_symbol(species_name, index), sym_idx: -1 }
 }
 

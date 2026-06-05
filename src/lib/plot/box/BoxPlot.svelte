@@ -298,21 +298,37 @@
   // KDE per visible violin series, keyed by series index (bandwidth from the full sample)
   let violin_kdes = $derived.by(() => {
     const map = new SvelteMap<number, KdeResult>()
+    const [val_axis, val_axis2] = orientation === `vertical`
+      ? [y_axis, y2_axis]
+      : [x_axis, x2_axis]
     for (const box_item of visible_boxes) {
       if (!draws_violin(box_item.series)) continue
+      const samples = box_item.series.y ?? []
+      let clip = box_item.series.clip ?? kde_clip
+      // On a log value axis the KDE grid tail (data_min - cut*bandwidth) is usually <= 0 →
+      // NaN pixels + LOG_EPS range pollution. Clamp the grid to the smallest positive sample.
+      if ((is_secondary(box_item.series) ? val_axis2 : val_axis).scale_type === `log`) {
+        const min_pos = samples.reduce((min, val) => (val > 0 && val < min ? val : min), Infinity)
+        clip = [Math.max(clip?.[0] ?? -Infinity, min_pos), clip?.[1] ?? null]
+      }
       map.set(
         box_item.idx,
-        gaussian_kde(box_item.series.y ?? [], {
+        gaussian_kde(samples, {
           bandwidth: box_item.series.bandwidth ?? bandwidth,
           n_points: kde_points,
           cut: kde_cut,
-          clip: box_item.series.clip ?? kde_clip,
+          clip,
           max_samples: kde_max_samples,
         }),
       )
     }
     return map
   })
+
+  // The horizontal category pixel axis is inverted, so flip the half-violin side to keep
+  // `positive` meaning "above the center line" (vertical/`both` pass through unchanged)
+  const to_screen_side = (eff_side: ViolinSide, vertical: boolean): ViolinSide =>
+    vertical || eff_side === `both` ? eff_side : eff_side === `positive` ? `negative` : `positive`
 
   // Peak density per violin, computed once on data change (avoids spreading kde.density into
   // Math.max — unsafe for large kde_points — and re-deriving it on every render/hover).
@@ -335,8 +351,10 @@
   // Collect value-axis points (whiskers, quartiles, outliers, KDE tails) for auto-range
   const value_points = (boxes: Box[]): { x: number; y: number }[] =>
     boxes.flatMap((box_item) => {
-      const { whisker_low, whisker_high, q1, q3, median, outliers } = box_item.stats
+      const { whisker_low, whisker_high, q1, q3, median, mean, outliers } = box_item.stats
       const vals = [whisker_low, whisker_high, q1, q3, median]
+      // keep the drawn mean line in range even when hidden outliers drag it past the whiskers
+      if (show_mean) vals.push(mean)
       // outliers are sorted ascending; auto-range only needs their extremes (avoids
       // spreading a potentially huge array as call args)
       if (show_outliers && outliers.length > 0) {
@@ -1183,9 +1201,10 @@
               {#if kde && max_density > 0}
                 {@const grid_px = kde.grid.map((g_val) => val_scale(g_val))}
                 {@const offsets = kde.density.map((den) => (den / max_density) * violin_half)}
+                {@const screen_side = to_screen_side(eff_side, vertical)}
                 <path
                   class="violin-area"
-                  d={violin_path(grid_px, offsets, c_center, eff_side, pt)}
+                  d={violin_path(grid_px, offsets, c_center, screen_side, pt)}
                   fill={color}
                   fill-opacity={violin_state.opacity}
                   stroke={color}

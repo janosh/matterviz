@@ -264,6 +264,7 @@ function parse_frmsf(content: string): BandGridData {
     fermi_energy: 0, // FRMSF typically expects Fermi level at 0
     n_bands,
     n_spins,
+    periodic: true, // FRMSF stores k=i/n with no duplicated endpoint (unlike BXSF)
   }
 }
 

@@ -124,10 +124,32 @@ describe(`compute_sankey_layout`, () => {
   })
 
   test.each([
-    [{ nodes: [], links: [] } as SankeyData],
-    [tri], // valid data but zero size -> empty
-  ])(`returns empty layout for degenerate input %#`, (data) => {
-    expect(compute_sankey_layout(data, { width: 0, height: 0 }).nodes).toEqual([])
+    [{ nodes: [], links: [] } as SankeyData, { width: 0, height: 0 }],
+    [tri, { width: 0, height: 0 }], // valid data but zero size -> empty
+    // all-zero link values would divide by zero in d3-sankey (NaN ribbon paths)
+    [
+      {
+        nodes: [{ label: `A` }, { label: `B` }],
+        links: [{ source: 0, target: 1, value: 0 }],
+      } as SankeyData,
+      dims,
+    ],
+  ])(`returns empty layout for degenerate input %#`, (data, size) => {
+    expect(compute_sankey_layout(data, size).nodes).toEqual([])
+  })
+
+  test(`a zero-value link among positive links keeps the layout finite`, () => {
+    const data: SankeyData = {
+      nodes: [{ label: `A` }, { label: `B` }, { label: `C` }],
+      links: [
+        { source: 0, target: 2, value: 1 },
+        { source: 1, target: 2, value: 0 },
+      ],
+    }
+    const { nodes, links } = compute_sankey_layout(data, dims)
+    expect(nodes).toHaveLength(3)
+    expect(nodes.every((nd) => Number.isFinite(nd.y0) && Number.isFinite(nd.y1))).toBe(true)
+    for (const link of links) expect(link.path).not.toContain(`NaN`)
   })
 
   test(`warns when node labels collide and no ids are set`, () => {

@@ -1,23 +1,27 @@
 import { load_binary_traj } from '$lib/trajectory/parse'
-import { decompress_data } from './decompress'
+import { decompress_data_binary } from './decompress'
 import type { FileInfo } from './types'
 
 const BINARY_EXTENSIONS = new Set(
-  `h5 hdf5 traj npz pkl dat gz gzip zip bz2 xz brml`.split(` `),
+  `h5 hdf5 traj npz pkl dat gz gzip zip bz2 xz brml raw`.split(` `),
 )
 const TEXT_EXTENSIONS = new Set(
   `xyz extxyz json cif poscar yaml yml txt md py js ts css html xml`.split(` `),
 )
 const VASP_BASENAME_RE = /^(poscar|xdatcar|contcar)$/i
+const GZ_EXT_RE = /\.(gz|gzip)$/i
 
 // Extract filename from Content-Disposition header, falling back to url_basename.
 function extract_filename(headers: Headers | undefined, fallback: string): string {
   if (!headers) return fallback
   const content_disposition_str = headers.get(`content-disposition`)
   if (!content_disposition_str) return fallback
-  const star_match = /filename\*=(?:UTF-8''|)([^;]+)/i.exec(content_disposition_str)
+  const star_match = /filename\*=([^;]+)/i.exec(content_disposition_str)
   if (star_match?.[1]) {
-    const raw = star_match[1].trim().replaceAll(/^"|"$/g, ``)
+    let raw = star_match[1].trim().replaceAll(/^"|"$/g, ``)
+    // Strip any RFC 5987 charset'language' prefix; bare values pass through unchanged
+    const ext_value_match = /^[\w!#$%&+^`{}~-]+'[\w-]*'(.*)$/.exec(raw)
+    if (ext_value_match) raw = ext_value_match[1]
     try {
       return decodeURIComponent(raw)
     } catch {
@@ -29,6 +33,26 @@ function extract_filename(headers: Headers | undefined, fallback: string): strin
   const name = plain_match?.[1]?.trim()
   if (!name) return fallback
   return name
+}
+
+const ext_of = (name: string): string => name.split(`.`).pop()?.toLowerCase() ?? ``
+
+// Whether the file inside a .gz/.gzip wrapper is a known binary format that a
+// lossy text decode would corrupt (bytes >= 0x80 → U+FFFD)
+const has_binary_inner_ext = (filename: string): boolean =>
+  BINARY_EXTENSIONS.has(ext_of(filename.replace(GZ_EXT_RE, ``)))
+
+// Gunzip a fetched payload → [content, filename] with .gz/.gzip stripped; content
+// stays an ArrayBuffer for binary inner formats, decoded string otherwise
+async function decompress_gz_payload(
+  buffer: ArrayBuffer,
+  filename: string,
+): Promise<[content: string | ArrayBuffer, filename: string]> {
+  const decompressed = await decompress_data_binary(buffer, `gzip`)
+  const content = has_binary_inner_ext(filename)
+    ? decompressed
+    : new TextDecoder().decode(decompressed)
+  return [content, filename.replace(GZ_EXT_RE, ``)]
 }
 
 // Handle URL-based file drop data by fetching content lazily
@@ -55,8 +79,10 @@ export async function load_from_url(
   url: string,
   callback: (content: string | ArrayBuffer, filename: string) => Promise<void> | void,
 ): Promise<void> {
-  const url_basename = url.split(`/`).pop() ?? url
-  const ext = url_basename.split(`.`).pop()?.toLowerCase() ?? ``
+  // Strip query string/hash before basename/extension detection so pre-signed
+  // URLs like traj.h5?X-Amz-Expires=300 still hit the right format path
+  const url_basename = url.split(/[?#]/)[0].split(`/`).pop() ?? url
+  const ext = ext_of(url_basename)
 
   if (BINARY_EXTENSIONS.has(ext)) {
     // Force binary mode for known binary files to handle GitHub Pages content-type issues
@@ -67,14 +93,14 @@ export async function load_from_url(
     // Handle gzipped files with proper content-encoding detection
     if (ext === `gz` || ext === `gzip`) {
       if (resp.headers.get(`content-encoding`) === `gzip`) {
-        // Browser automatically decompressed it, so it's text
-        return callback(await resp.text(), filename)
+        // Browser already decompressed the stored .gz (GitHub Pages-style serving), so
+        // the body is the inner file — keep binary inner formats (.h5.gz, ...) binary
+        return callback(
+          await (has_binary_inner_ext(filename) ? resp.arrayBuffer() : resp.text()),
+          filename,
+        )
       }
-      // Need to decompress manually
-      const buffer = await resp.arrayBuffer()
-      const content = await decompress_data(buffer, `gzip`)
-      // Remove .gz/.gzip extension when manually decompressing
-      return callback(content, filename.replace(/\.(gz|gzip)$/i, ``))
+      return callback(...(await decompress_gz_payload(await resp.arrayBuffer(), filename)))
     }
 
     // For H5 files, always load as binary regardless of signature
@@ -112,6 +138,10 @@ export async function load_from_url(
   let sniffed_callback_args: [content: string | ArrayBuffer, filename: string] | undefined
 
   if (!is_known_text) {
+    // Only the Range sniff is guarded (failure → plain text fetch). Once magic bytes
+    // commit to a binary format, download/decompress errors must propagate instead of
+    // falling through to a text fetch that would parse the binary bytes as garbage.
+    let sniffed: `gzip` | `binary` | null = null
     try {
       // Check for magic bytes only for unknown formats (covers extensionless URLs
       // like blob: object URLs whose basenames are UUIDs)
@@ -125,20 +155,21 @@ export async function load_from_url(
         const is_ase_traj = [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d].every(
           (byte, idx) => buf[idx] === byte,
         )
-        if (is_gzip || is_hdf5 || is_ase_traj) {
-          const resp = await fetch(url)
-          if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-          const filename = extract_filename(resp.headers, url_basename)
-          const buffer = await resp.arrayBuffer()
-          // Decompress sniffed gzip since downstream parsers expect text or
-          // format-specific binary, not raw gzip bytes
-          sniffed_callback_args = is_gzip
-            ? [await decompress_data(buffer, `gzip`), filename.replace(/\.(gz|gzip)$/i, ``)]
-            : [buffer, filename]
-        }
+        if (is_gzip) sniffed = `gzip`
+        else if (is_hdf5 || is_ase_traj) sniffed = `binary`
       }
     } catch {
-      // Fall through to text fetch if HEAD request fails
+      // Fall through to text fetch if the Range HEAD request fails
+    }
+
+    if (sniffed) {
+      const resp = await fetch(url)
+      if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
+      const filename = extract_filename(resp.headers, url_basename)
+      const buffer = await resp.arrayBuffer()
+      // Gunzip sniffed gzip — downstream parsers can't handle raw gzip bytes
+      sniffed_callback_args =
+        sniffed === `gzip` ? await decompress_gz_payload(buffer, filename) : [buffer, filename]
     }
   }
 

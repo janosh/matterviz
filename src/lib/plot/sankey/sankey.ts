@@ -165,7 +165,9 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     iterations = 6,
   } = opts
 
-  if (!(width > 0) || !(height > 0) || data.nodes.length === 0 || data.links.length === 0)
+  // All-zero link values would make d3-sankey divide by zero (NaN ribbon paths)
+  const has_flow = data.links.some((link) => link.value > 0)
+  if (!(width > 0) || !(height > 0) || data.nodes.length === 0 || !has_flow)
     return { nodes: [], links: [] }
 
   // Resolve ids -> indices and clone into fresh objects (d3 mutates these).

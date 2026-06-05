@@ -32,7 +32,10 @@
   let entries = $state.raw(entries_for(`old`))
   let stable_entries = $state.raw<ConvexHullEntry[]>([])
   let unstable_entries = $state.raw<ConvexHullEntry[]>([])
-  let selected_entry = $state.raw<ConvexHullEntry | null>(null)
+  // Plain (deeply-proxied) $state, matching how the demo binds selected_entry: the
+  // component writing a raw plot entry back through this binding re-proxies it, which
+  // used to loop the selection effect forever (raw !== proxy → effect_update_depth_exceeded)
+  let selected_entry = $state<ConvexHullEntry | null>(null)
 </script>
 
 <button
